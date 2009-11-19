@@ -1,2 +1,6 @@
 
 these are enterprise only modules for mongodb
+
+in mongo src dir
+
+   ln -s ~/work/enterprise db/modules/enterprise
