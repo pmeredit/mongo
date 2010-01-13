@@ -13,8 +13,9 @@
 
 namespace mongo {
 
-    static oid myoid[] =
-        { 1, 3, 6, 1, 4, 1, 37601, 1, 1, 1 };
+    static oid rootOID[] =
+        { 1, 3, 6, 1, 4, 1, 37601 };
+
     static u_long myvalue = 18;
 
     class SNMPAgent : public BackgroundJob , Module {
@@ -32,6 +33,10 @@ namespace mongo {
                 ( "snmp-subagent" , "run snmp subagent" )
                 ( "snmp-master" , "run snmp as master" )
                 ;
+
+            for ( uint i=0; i<sizeof(rootOID)/sizeof(oid); i++ ){
+                _root.push_back( rootOID[i] );
+            }
         }
         
         ~SNMPAgent(){
@@ -85,10 +90,13 @@ namespace mongo {
             
             init_snmp( _agentName.c_str() );
             
-            if ( ! _subagent )
+            if ( ! _subagent ){
                 init_master_agent(); 
-            
-            log() << "SNMPAgent running" << endl;
+                log() << "SNMPAgent running as master" << endl;
+            }
+            else {
+                log() << "SNMPAgent running as subagent" << endl;
+            }
             
             while( _enabled && ! inShutdown() ){
                 _snmpIterations++;
@@ -98,6 +106,43 @@ namespace mongo {
             log() << "SNMPAgent shutting down" << endl;        
             snmp_shutdown( _agentName.c_str() );
             SOCK_CLEANUP;
+        }
+        
+        /**
+           eg. suffix = 1,1,1
+         */
+        oid* getoid( string suffix ){
+            oid*& it = _oids[suffix];
+            if ( it )
+                return it;
+            
+            vector<oid> l;
+            for ( uint i=0; i<_root.size(); i++ )
+                l.push_back( _root[i] );
+            
+            string::size_type pos;
+            while ( ( pos = suffix.find( ',' ) ) != string::npos ){
+                string x = suffix.substr( 0 , pos );
+                suffix = suffix.substr( pos + 1 );
+                l.push_back( atoi( x.c_str() ) );
+            }
+            l.push_back( atoi( suffix.c_str() ) );
+            
+            it = new oid[l.size()+1];
+
+            for ( uint i=0; i<l.size(); i++ ){
+                it[i] = l[i];
+            }
+            it[l.size()] = 0;
+            return it;
+        }
+
+        int oidlen( string suffix ){
+            oid* o = getoid( suffix );
+            int x = 0;
+            while ( o[x] )
+                x++;
+            return x;
         }
 
     private:
@@ -121,9 +166,8 @@ namespace mongo {
         }
 
         void _init(){
-
             _checkRegister( netsnmp_register_read_only_counter32_instance( "asdasd" , 
-                                                                           myoid , OID_LENGTH( myoid ) ,
+                                                                           getoid( "1,1,1") , oidlen( "1,1,1" ) ,
                                                                            &myvalue , NULL ) );
         }
 
@@ -135,6 +179,10 @@ namespace mongo {
         int _numThings;
         int _snmpIterations;
 
+        vector<oid> _root;
+        
+        map<string,oid*> _oids;
+        
     } snmpAgent;
 
 }

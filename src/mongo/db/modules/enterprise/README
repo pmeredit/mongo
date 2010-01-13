@@ -4,3 +4,5 @@ these are enterprise only modules for mongodb
 in mongo src dir
 
    ln -s ~/work/enterprise db/modules/enterprise
+
+snmpwalk -m MONGO-MIB -v 1 -c eliot 127.0.0.1:1161 1.3.6.1.4.1.37601
