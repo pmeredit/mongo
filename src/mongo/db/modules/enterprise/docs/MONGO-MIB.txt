@@ -13,8 +13,11 @@ IMPORTS
 
 mongodb                 OBJECT IDENTIFIER ::= { enterprises 37601 }
 server                  OBJECT IDENTIFIER ::= { mongodb 1 }
+
 system                  OBJECT IDENTIFIER ::= { server 1 }
 
+opcounts                OBJECT IDENTIFIER ::= { server 2 }
+globalopcounts          OBJECT IDENTIFIER ::= { opcounts 1 }
 
 --=============================================================================
 -- Root for mongod
@@ -22,13 +25,55 @@ system                  OBJECT IDENTIFIER ::= { server 1 }
 
 -- Root OID: .1.3.6.1.4.1.37601.1
 
-foobar OBJECT-TYPE
-   SYNTAX Counter
+sysUpTime OBJECT-TYPE
+   SYNTAX TimeTicks
    ACCESS read-only
    STATUS mandatory
    DESCRIPTION
-      "blah blah."
+      "uptime (in hundredths of a second)"
    ::= { system 1 }
+
+
+globalOpInsert OBJECT-TYPE
+   SYNTAX Counte
+   ACCESS read-only
+   STATUS mandatory
+   DESCRIPTION
+      "global insert counts"
+   ::= { globalopcounts 1 }
+
+globalOpQuery OBJECT-TYPE
+   SYNTAX Counte
+   ACCESS read-only
+   STATUS mandatory
+   DESCRIPTION
+      "global query counts"
+   ::= { globalopcounts 2 }
+
+globalOpUpdate OBJECT-TYPE
+   SYNTAX Counte
+   ACCESS read-only
+   STATUS mandatory
+   DESCRIPTION
+      "global update counts"
+   ::= { globalopcounts 3 }
+
+globalOpDelete OBJECT-TYPE
+   SYNTAX Counte
+   ACCESS read-only
+   STATUS mandatory
+   DESCRIPTION
+      "global delete counts"
+   ::= { globalopcounts 4 }
+
+globalOpGetMore OBJECT-TYPE
+   SYNTAX Counte
+   ACCESS read-only
+   STATUS mandatory
+   DESCRIPTION
+      "global get more counts"
+   ::= { globalopcounts 5 }
+
 
 
 END
