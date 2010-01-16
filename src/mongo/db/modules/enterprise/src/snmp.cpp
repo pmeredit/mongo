@@ -177,7 +177,7 @@ namespace mongo {
         }
 
         void _initCounter( const char * name , const char* oidhelp , int * counter ){
-            log() << "registering: " << name << " " << toString( getoid( oidhelp ) ) << endl;
+            log(2) << "registering: " << name << " " << toString( getoid( oidhelp ) ) << endl;
 
             netsnmp_handler_registration * reg = netsnmp_create_handler_registration( name , NULL,
                                                                                       getoid( oidhelp ) , oidlen( oidhelp ) , 
