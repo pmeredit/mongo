@@ -192,7 +192,7 @@ namespace mongo {
         void _init(){
         
             // uptime
-            _startTime = time(0);
+            _startTime = curTimeMicros64();
             _uptime = "1,1,1";
             netsnmp_handler_registration * upreg = netsnmp_create_handler_registration( "sysUpTime", &my_snmp_callback ,
                                                                                         getoid( _uptime ),oidlen( _uptime ),
@@ -222,13 +222,13 @@ namespace mongo {
         
     public:
         string _uptime;
-        int _startTime;
+        unsigned long long _startTime;
     } snmpAgent;
 
     int my_snmp_callback( netsnmp_mib_handler *handler, netsnmp_handler_registration *reginfo,
                           netsnmp_agent_request_info *reqinfo, netsnmp_request_info *requests){
         
-        int uptime = 100*(time(0)-snmpAgent._startTime);
+        int uptime = ( curTimeMicros64() - snmpAgent._startTime ) / 10000;
                 
         while (requests) {
             netsnmp_variable_list *var = requests->requestvb;
