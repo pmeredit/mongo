@@ -16,31 +16,162 @@
 namespace mongo {
 
     static oid rootOID[] =
-    { 1, 3, 6, 1, 4, 1, 37601 };
-
+        { 1, 3, 6, 1, 4, 1, 37601 };
+    
     int my_snmp_callback( netsnmp_mib_handler *handler, netsnmp_handler_registration *reginfo,
                           netsnmp_agent_request_info *reqinfo, netsnmp_request_info *requests);
 
+    
+    class OIDManager {
+    public:
+        
+        OIDManager() {
+            for ( uint i=0; i<sizeof(rootOID)/sizeof(oid); i++ ) {
+                _root.push_back( rootOID[i] );
+            }
+        }
+        
+        /**
+           eg. suffix = 1,1,1
+         */
+        oid* getoid( string suffix ) {
+            oid*& it = _oids[suffix];
+            if ( it )
+                return it;
 
+            vector<oid> l;
+            for ( uint i=0; i<_root.size(); i++ )
+                l.push_back( _root[i] );
+
+            string::size_type pos;
+            while ( ( pos = suffix.find( ',' ) ) != string::npos ) {
+                string x = suffix.substr( 0 , pos );
+                suffix = suffix.substr( pos + 1 );
+                l.push_back( atoi( x.c_str() ) );
+            }
+            l.push_back( atoi( suffix.c_str() ) );
+
+            it = new oid[l.size()+1];
+
+            for ( uint i=0; i<l.size(); i++ ) {
+                it[i] = l[i];
+            }
+            it[l.size()] = 0;
+            return it;
+        }
+
+        unsigned len( string suffix ) {
+            oid* o = getoid( suffix );
+            unsigned x = 0;
+            while ( o[x] )
+                x++;
+            return x;
+        }
+
+        string toString( oid* o ) {
+            stringstream ss;
+            int x=0;
+            while ( o[x] )
+                ss << "." << o[x++];
+            return ss.str();
+        }
+
+        
+    private:
+        vector<oid> _root;
+
+        // these don't get deleted now
+        // its a bit annoying b/c i cache them, etc...
+        map<string,oid*> _oids; 
+
+    } oidManager;
+
+    class SOID {
+    public:
+        SOID( const string& suffix ) : _suffix( suffix ) {
+            _oid = oidManager.getoid( _suffix );
+            _len = oidManager.len( _suffix );
+        }
+
+        bool operator==( const netsnmp_variable_list *var ) const {
+            if ( _len != var->name_length )
+                return false;
+            
+            for ( unsigned i=0; i<_len; i++ ) 
+                if ( _oid[i] != var->name[i] )
+                    return false;
+
+            return true;
+        }
+        
+        oid * getoid() const { return _oid; }
+        int len() const { return _len; }
+
+    private:
+        string _suffix;
+        oid * _oid;
+        unsigned _len;
+    };
+
+    class SNMPCallBack {
+    public:
+        SNMPCallBack( const string& name , const string& oid ) : _name( name ) , _oid( oid ) { }
+        SNMPCallBack( const string& name , const SOID& oid ) : _name( name ) , _oid( oid ) { }
+        
+        virtual ~SNMPCallBack() { }
+        
+        virtual int respond( netsnmp_variable_list* var ) = 0;
+
+        int init() {
+            netsnmp_handler_registration * upreg = 
+                netsnmp_create_handler_registration( _name.c_str() , &my_snmp_callback ,
+                                                     _oid.getoid() , _oid.len() , 
+                                                     HANDLER_CAN_RONLY );
+            return netsnmp_register_instance( upreg );
+        }
+
+
+        
+        bool operator==( const netsnmp_variable_list *var ) const {
+            return _oid == var;
+        }
+        
+    private:
+        string _name;
+        SOID _oid;
+    };
+
+    class UptimeCallback : public SNMPCallBack {
+    public:
+        UptimeCallback() : SNMPCallBack( "sysUpTime" , "1,1,1" ) {
+            _startTime = curTimeMicros64();
+        }
+        
+        int respond( netsnmp_variable_list* var ) {
+            int uptime = ( curTimeMicros64() - _startTime ) / 10000;
+            return snmp_set_var_typed_value(var, ASN_TIMETICKS, (u_char *) &uptime, sizeof(uptime) );            
+        }
+
+        unsigned long long _startTime;
+    };
+    
     class SNMPAgent : public BackgroundJob , Module {
     public:
 
         SNMPAgent()
             : Module( "snmp" ) {
+
             _enabled = 0;
             _subagent = 1;
             _snmpIterations = 0;
             _numThings = 0;
             _agentName = "mongod";
-
+            
             add_options()
             ( "snmp-subagent" , "run snmp subagent" )
             ( "snmp-master" , "run snmp as master" )
             ;
 
-            for ( uint i=0; i<sizeof(rootOID)/sizeof(oid); i++ ) {
-                _root.push_back( rootOID[i] );
-            }
         }
 
         ~SNMPAgent() {
@@ -119,49 +250,11 @@ namespace mongo {
             SOCK_CLEANUP;
         }
 
-        /**
-           eg. suffix = 1,1,1
-         */
-        oid* getoid( string suffix ) {
-            oid*& it = _oids[suffix];
-            if ( it )
-                return it;
-
-            vector<oid> l;
-            for ( uint i=0; i<_root.size(); i++ )
-                l.push_back( _root[i] );
-
-            string::size_type pos;
-            while ( ( pos = suffix.find( ',' ) ) != string::npos ) {
-                string x = suffix.substr( 0 , pos );
-                suffix = suffix.substr( pos + 1 );
-                l.push_back( atoi( x.c_str() ) );
-            }
-            l.push_back( atoi( suffix.c_str() ) );
-
-            it = new oid[l.size()+1];
-
-            for ( uint i=0; i<l.size(); i++ ) {
-                it[i] = l[i];
-            }
-            it[l.size()] = 0;
-            return it;
-        }
-
-        int oidlen( string suffix ) {
-            oid* o = getoid( suffix );
-            int x = 0;
-            while ( o[x] )
-                x++;
-            return x;
-        }
-
-        string toString( oid* o ) {
-            stringstream ss;
-            int x=0;
-            while ( o[x] )
-                ss << "." << o[x++];
-            return ss.str();
+        SNMPCallBack* getCallBack( const netsnmp_variable_list* var ) const {
+            for ( unsigned i=0; i<_callbacks.size(); i++ )
+                if ( *_callbacks[i] == var )
+                    return _callbacks[i];
+            return 0;
         }
 
     private:
@@ -185,11 +278,11 @@ namespace mongo {
         }
 
         void _initCounter( const char * name , const char* oidhelp , int * counter ) {
-            log(2) << "registering: " << name << " " << toString( getoid( oidhelp ) ) << endl;
+            log(2) << "registering: " << name << " " << oidhelp << endl;
 
             netsnmp_handler_registration * reg = 
                 netsnmp_create_handler_registration( name , NULL,
-                                                     getoid( oidhelp ) , oidlen( oidhelp ) ,
+                                                     oidManager.getoid( oidhelp ) , oidManager.len( oidhelp ) ,
                                                      HANDLER_CAN_RONLY);
             
             netsnmp_watcher_info * winfo = 
@@ -200,11 +293,11 @@ namespace mongo {
         }
 
         void _initCounter( const char * name , const char* oidhelp , AtomicUInt * counter ) {
-            log(2) << "registering: " << name << " " << toString( getoid( oidhelp ) ) << endl;
+            log(2) << "registering: " << name << " " << oidhelp << endl;
 
             netsnmp_handler_registration * reg = 
                 netsnmp_create_handler_registration( name , NULL,
-                                                     getoid( oidhelp ) , oidlen( oidhelp ) ,
+                                                     oidManager.getoid( oidhelp ) , oidManager.len( oidhelp ) ,
                                                      HANDLER_CAN_RONLY);
 
             unsigned * u = (unsigned*)counter;
@@ -218,16 +311,17 @@ namespace mongo {
 
 
         void _init() {
-
-            // uptime
-            _startTime = curTimeMicros64();
-            _uptime = "1,1,1";
-            netsnmp_handler_registration * upreg = netsnmp_create_handler_registration( "sysUpTime", &my_snmp_callback ,
-                                                   getoid( _uptime ),oidlen( _uptime ),
-                                                   HANDLER_CAN_RONLY);
-            _checkRegister( netsnmp_register_instance( upreg ) );
-
-            // globalOpCounters
+            
+            // add all callbacks
+            _callbacks.push_back( new UptimeCallback() );
+            
+            // register
+            for ( unsigned i=0; i<_callbacks.size(); i++ )
+                _checkRegister( _callbacks[i]->init() );
+            
+            // static counters
+            
+            //  ---- globalOpCounters
             _initCounter( "globalOpInsert" , "1,2,1,1" , globalOpCounters.getInsert() );
             _initCounter( "globalOpQuery" , "1,2,1,2" , globalOpCounters.getQuery() );
             _initCounter( "globalOpUpdate" , "1,2,1,3" , globalOpCounters.getUpdate() );
@@ -235,6 +329,7 @@ namespace mongo {
             _initCounter( "globalOpGetMore" , "1,2,1,5" , globalOpCounters.getGetMore() );
 
         }
+
 
         string _agentName;
 
@@ -244,37 +339,38 @@ namespace mongo {
         int _numThings;
         int _snmpIterations;
 
-        vector<oid> _root;
+        vector<SNMPCallBack*> _callbacks;
 
-        map<string,oid*> _oids;
-
-    public:
-        string _uptime;
-        unsigned long long _startTime;
     } snmpAgent;
 
     int my_snmp_callback( netsnmp_mib_handler *handler, netsnmp_handler_registration *reginfo,
                           netsnmp_agent_request_info *reqinfo, netsnmp_request_info *requests) {
 
-        int uptime = ( curTimeMicros64() - snmpAgent._startTime ) / 10000;
-
         while (requests) {
             netsnmp_variable_list *var = requests->requestvb;
-
+            
             switch (reqinfo->mode) {
             case MODE_GET: {
-                if (netsnmp_oid_equals(var->name, var->name_length, snmpAgent.getoid( snmpAgent._uptime ) , snmpAgent.oidlen( snmpAgent._uptime ) ) == 0) {
-                    snmp_set_var_typed_value(var, ASN_TIMETICKS, (u_char *) &uptime, sizeof(uptime) );
+                SNMPCallBack * cb = snmpAgent.getCallBack( var );
+                if ( cb ) {
+                    cb->respond( var );
+                }
+                else {
+                    warning() << "no callback for: " << oidManager.toString( var->name ) << endl;
                 }
                 return SNMP_ERR_NOERROR;
             }
 
             case MODE_GETNEXT: {
-                if (netsnmp_oid_equals(var->name, var->name_length, snmpAgent.getoid( snmpAgent._uptime ) , snmpAgent.oidlen( snmpAgent._uptime ) ) < 0 ) {
-                    snmp_set_var_objid(var,snmpAgent.getoid( snmpAgent._uptime ) , snmpAgent.oidlen( snmpAgent._uptime ) );
+                /*
+                  not sure where this came from or if its remotely correct
+                if ( snmpAgent._uptime == var ) {
+                    snmp_set_var_objid(var,snmpAgent._uptime.getoid() , snmpAgent._uptime.len() );
                     snmp_set_var_typed_value(var, ASN_TIMETICKS, (u_char *) &uptime, sizeof(uptime) );
                     return SNMP_ERR_NOERROR;
                 }
+                */
+                warning() << "i have no idea what i'm supposed to do with MODE_GETNEXT " << __FILE__ << ":" << __LINE__ << endl;
                 break;
             }
             default:
