@@ -141,19 +141,63 @@ namespace mongo {
         SOID _oid;
     };
 
-    class UptimeCallback : public SNMPCallBack {
-    public:
-        UptimeCallback() : SNMPCallBack( "sysUpTime" , "1,1,1" ) {
-            _startTime = curTimeMicros64();
-        }
-        
-        int respond( netsnmp_variable_list* var ) {
-            int uptime = ( curTimeMicros64() - _startTime ) / 10000;
-            return snmp_set_var_typed_value(var, ASN_TIMETICKS, (u_char *) &uptime, sizeof(uptime) );            
-        }
+    namespace callbacks {
 
-        unsigned long long _startTime;
-    };
+        class UptimeCallback : public SNMPCallBack {
+        public:
+            UptimeCallback() : SNMPCallBack( "sysUpTime" , "1,1,1" ) {
+                _startTime = curTimeMicros64();
+            }
+            
+            int respond( netsnmp_variable_list* var ) {
+                int uptime = ( curTimeMicros64() - _startTime ) / 10000;
+                return snmp_set_var_typed_value(var, ASN_TIMETICKS, (u_char *) &uptime, sizeof(uptime) );            
+            }
+            
+            unsigned long long _startTime;
+        };
+        
+        class MemoryCallback : public SNMPCallBack {
+                        
+            enum Type { RES , VIR , MAP } _type;
+
+        public:
+            static void addAll( vector<SNMPCallBack*>& v ) {
+                v.push_back( new MemoryCallback( "memoryResident" , "1" , RES ) );
+                v.push_back( new MemoryCallback( "memoryVirtual" , "2" , VIR ) );
+                v.push_back( new MemoryCallback( "memoryMapped" , "3" , MAP ) );
+            }
+
+            int respond( netsnmp_variable_list* var ) {
+                
+                int val;
+                
+                switch ( _type ) {
+                case RES: {
+                    ProcessInfo pi;
+                    val = pi.getResidentSize();
+                    break;
+                }
+                case VIR: {
+                    ProcessInfo pi;
+                    val = pi.getVirtualMemorySize();
+                    break;
+                }
+                case MAP :
+                    val = MemoryMappedFile::totalMappedLength() / ( 1024 * 1024 ) ;
+                    break;
+                }
+
+                return snmp_set_var_typed_value(var, ASN_INTEGER, (u_char *) &val, sizeof(val) );            
+            }
+
+
+        private:
+            MemoryCallback( const string& name , const string& memsuffix , Type t ) 
+                : SNMPCallBack( name , "1,3," + memsuffix ) , _type(t) {
+            }
+        };
+    }
     
     class SNMPAgent : public BackgroundJob , Module {
     public:
@@ -313,8 +357,9 @@ namespace mongo {
         void _init() {
             
             // add all callbacks
-            _callbacks.push_back( new UptimeCallback() );
-            
+            _callbacks.push_back( new callbacks::UptimeCallback() );
+            callbacks::MemoryCallback::addAll( _callbacks );
+
             // register
             for ( unsigned i=0; i<_callbacks.size(); i++ )
                 _checkRegister( _callbacks[i]->init() );
