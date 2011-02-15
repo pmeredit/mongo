@@ -22,6 +22,11 @@ namespace mongo {
                           netsnmp_agent_request_info *reqinfo, netsnmp_request_info *requests);
 
     
+    /**
+     * does mapping from mongo specific suffixes
+     * to full oids
+     * also some caching for performance
+     */
     class OIDManager {
     public:
         
@@ -86,6 +91,9 @@ namespace mongo {
 
     } oidManager;
 
+    /**
+     * our represntation of an oid
+     */
     class SOID {
     public:
         SOID( const string& suffix ) : _suffix( suffix ) {
