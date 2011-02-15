@@ -1,5 +1,7 @@
 
-def configure( conf , env ):
+customIncludes = True
+
+def configure( conf , env , serverOnlyFiles ):
     
     gotSNMP = False
 
@@ -18,6 +20,6 @@ def configure( conf , env ):
                 removeIfInList( env["LIBS"] , x )
 
     if gotSNMP:
-        env.Append( CPPDEFINES=[ "_HAVESNMP" ] )
+        serverOnlyFiles.append( "db/modules/enterprise/src/snmp.cpp" )
     else:
         print( "WARNING: couldn't find all snmp pieces, not building snmp support" )

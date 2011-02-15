@@ -35,7 +35,7 @@ sysUpTime OBJECT-TYPE
 
 
 globalOpInsert OBJECT-TYPE
-   SYNTAX Counte
+   SYNTAX Counter
    ACCESS read-only
    STATUS mandatory
    DESCRIPTION
@@ -43,7 +43,7 @@ globalOpInsert OBJECT-TYPE
    ::= { globalopcounts 1 }
 
 globalOpQuery OBJECT-TYPE
-   SYNTAX Counte
+   SYNTAX Counter
    ACCESS read-only
    STATUS mandatory
    DESCRIPTION
@@ -51,7 +51,7 @@ globalOpQuery OBJECT-TYPE
    ::= { globalopcounts 2 }
 
 globalOpUpdate OBJECT-TYPE
-   SYNTAX Counte
+   SYNTAX Counter
    ACCESS read-only
    STATUS mandatory
    DESCRIPTION
@@ -59,7 +59,7 @@ globalOpUpdate OBJECT-TYPE
    ::= { globalopcounts 3 }
 
 globalOpDelete OBJECT-TYPE
-   SYNTAX Counte
+   SYNTAX Counter
    ACCESS read-only
    STATUS mandatory
    DESCRIPTION
@@ -67,7 +67,7 @@ globalOpDelete OBJECT-TYPE
    ::= { globalopcounts 4 }
 
 globalOpGetMore OBJECT-TYPE
-   SYNTAX Counte
+   SYNTAX Counter
    ACCESS read-only
    STATUS mandatory
    DESCRIPTION
