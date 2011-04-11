@@ -41,6 +41,14 @@ memory                  OBJECT IDENTIFIER ::= { server 3 }
 -- system
 --------
 
+port OBJECT-TYPE
+   SYNTAX Integer32
+   ACCESS read-only
+   STATUS mandatory
+   DESCRIPTION
+      "port for this process"
+   ::= { system 1 }
+
 
 sysUpTime OBJECT-TYPE
    SYNTAX TimeTicks
@@ -48,7 +56,7 @@ sysUpTime OBJECT-TYPE
    STATUS mandatory
    DESCRIPTION
       "uptime (in hundredths of a second)"
-   ::= { system 1 }
+   ::= { system 2 }
 
 
 --------

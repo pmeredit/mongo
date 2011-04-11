@@ -20,6 +20,6 @@ def configure( conf , env , serverOnlyFiles ):
                 removeIfInList( env["LIBS"] , x )
 
     if gotSNMP:
-        serverOnlyFiles.append( "db/modules/enterprise/src/snmp.cpp" )
+        serverOnlyFiles += env.Glob( "db/modules/enterprise/src/snmp*.cpp" )
     else:
         print( "WARNING: couldn't find all snmp pieces, not building snmp support" )

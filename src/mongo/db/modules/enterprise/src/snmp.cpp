@@ -13,113 +13,14 @@
 #include <net-snmp/agent/net-snmp-agent-includes.h>
 #include <signal.h>
 
+#include "snmp.h"
+
 namespace mongo {
 
-    static oid rootOID[] =
-        { 1, 3, 6, 1, 4, 1, 37601 };
-    
     int my_snmp_callback( netsnmp_mib_handler *handler, netsnmp_handler_registration *reginfo,
                           netsnmp_agent_request_info *reqinfo, netsnmp_request_info *requests);
 
     
-    /**
-     * does mapping from mongo specific suffixes
-     * to full oids
-     * also some caching for performance
-     */
-    class OIDManager {
-    public:
-        
-        OIDManager() {
-            for ( uint i=0; i<sizeof(rootOID)/sizeof(oid); i++ ) {
-                _root.push_back( rootOID[i] );
-            }
-        }
-        
-        /**
-           eg. suffix = 1,1,1
-         */
-        oid* getoid( string suffix ) {
-            oid*& it = _oids[suffix];
-            if ( it )
-                return it;
-
-            vector<oid> l;
-            for ( uint i=0; i<_root.size(); i++ )
-                l.push_back( _root[i] );
-
-            string::size_type pos;
-            while ( ( pos = suffix.find( ',' ) ) != string::npos ) {
-                string x = suffix.substr( 0 , pos );
-                suffix = suffix.substr( pos + 1 );
-                l.push_back( atoi( x.c_str() ) );
-            }
-            l.push_back( atoi( suffix.c_str() ) );
-
-            it = new oid[l.size()+1];
-
-            for ( uint i=0; i<l.size(); i++ ) {
-                it[i] = l[i];
-            }
-            it[l.size()] = 0;
-            return it;
-        }
-
-        unsigned len( string suffix ) {
-            oid* o = getoid( suffix );
-            unsigned x = 0;
-            while ( o[x] )
-                x++;
-            return x;
-        }
-
-        string toString( oid* o ) {
-            stringstream ss;
-            int x=0;
-            while ( o[x] )
-                ss << "." << o[x++];
-            return ss.str();
-        }
-
-        
-    private:
-        vector<oid> _root;
-
-        // these don't get deleted now
-        // its a bit annoying b/c i cache them, etc...
-        map<string,oid*> _oids; 
-
-    } oidManager;
-
-    /**
-     * our represntation of an oid
-     */
-    class SOID {
-    public:
-        SOID( const string& suffix ) : _suffix( suffix ) {
-            _oid = oidManager.getoid( _suffix );
-            _len = oidManager.len( _suffix );
-        }
-
-        bool operator==( const netsnmp_variable_list *var ) const {
-            if ( _len != var->name_length )
-                return false;
-            
-            for ( unsigned i=0; i<_len; i++ ) 
-                if ( _oid[i] != var->name[i] )
-                    return false;
-
-            return true;
-        }
-        
-        oid * getoid() const { return _oid; }
-        int len() const { return _len; }
-
-    private:
-        string _suffix;
-        oid * _oid;
-        unsigned _len;
-    };
 
     class SNMPCallBack {
     public:
@@ -153,7 +54,7 @@ namespace mongo {
 
         class UptimeCallback : public SNMPCallBack {
         public:
-            UptimeCallback() : SNMPCallBack( "sysUpTime" , "1,1,1" ) {
+            UptimeCallback() : SNMPCallBack( "sysUpTime" , "1,1,2" ) {
                 _startTime = curTimeMicros64();
             }
             
