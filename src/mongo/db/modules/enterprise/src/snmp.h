@@ -12,6 +12,8 @@ namespace mongo {
     public:
         
         OIDManager();
+
+        void init();
         
         /**
            eg. suffix = 1,1,1
@@ -25,6 +27,7 @@ namespace mongo {
         
     private:
         vector<oid> _root;
+        vector<oid> _endName;
 
         // these don't get deleted now
         // its a bit annoying b/c i cache them, etc...

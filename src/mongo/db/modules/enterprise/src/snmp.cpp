@@ -52,9 +52,24 @@ namespace mongo {
 
     namespace callbacks {
 
+        class NameCallback : public SNMPCallBack {
+        public:
+            NameCallback() : SNMPCallBack( "serverName" , "1,1" ) {
+                sprintf( _buf , "%d" , cmdLine.port );
+                _len = strlen( _buf );
+            }
+            
+            int respond( netsnmp_variable_list* var ) {
+                return snmp_set_var_typed_value(var, ASN_OCTET_STR, (u_char *)_buf, _len );
+            }
+
+            char _buf[128];
+            size_t _len;
+        };
+
         class UptimeCallback : public SNMPCallBack {
         public:
-            UptimeCallback() : SNMPCallBack( "sysUpTime" , "1,1,2" ) {
+            UptimeCallback() : SNMPCallBack( "sysUpTime" , "1,2,2" ) {
                 _startTime = curTimeMicros64();
             }
             
@@ -103,7 +118,7 @@ namespace mongo {
 
         private:
             MemoryCallback( const string& name , const string& memsuffix , Type t ) 
-                : SNMPCallBack( name , "1,3," + memsuffix ) , _type(t) {
+                : SNMPCallBack( name , "1,4," + memsuffix ) , _type(t) {
             }
         };
     }
@@ -151,6 +166,7 @@ namespace mongo {
         }
 
         void init() {
+            oidManager.init();
             go();
         }
 
@@ -267,6 +283,7 @@ namespace mongo {
             
             // add all callbacks
             _callbacks.push_back( new callbacks::UptimeCallback() );
+            _callbacks.push_back( new callbacks::NameCallback() );
             callbacks::MemoryCallback::addAll( _callbacks );
 
             // register
@@ -276,11 +293,11 @@ namespace mongo {
             // static counters
             
             //  ---- globalOpCounters
-            _initCounter( "globalOpInsert" , "1,2,1,1" , globalOpCounters.getInsert() );
-            _initCounter( "globalOpQuery" , "1,2,1,2" , globalOpCounters.getQuery() );
-            _initCounter( "globalOpUpdate" , "1,2,1,3" , globalOpCounters.getUpdate() );
-            _initCounter( "globalOpDelete" , "1,2,1,4" , globalOpCounters.getDelete() );
-            _initCounter( "globalOpGetMore" , "1,2,1,5" , globalOpCounters.getGetMore() );
+            _initCounter( "globalOpInsert" , "1,3,1,1" , globalOpCounters.getInsert() );
+            _initCounter( "globalOpQuery" , "1,3,1,2" , globalOpCounters.getQuery() );
+            _initCounter( "globalOpUpdate" , "1,3,1,3" , globalOpCounters.getUpdate() );
+            _initCounter( "globalOpDelete" , "1,3,1,4" , globalOpCounters.getDelete() );
+            _initCounter( "globalOpGetMore" , "1,3,1,5" , globalOpCounters.getGetMore() );
 
         }
 
