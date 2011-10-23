@@ -190,6 +190,8 @@ namespace mongo {
                 }
             }
 
+            SOCK_STARTUP;
+
             init_agent( _agentName.c_str() );
 
             _init();
