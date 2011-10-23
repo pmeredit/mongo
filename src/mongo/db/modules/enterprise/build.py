@@ -21,5 +21,6 @@ def configure( conf , env , serverOnlyFiles ):
 
     if gotSNMP:
         serverOnlyFiles += env.Glob( "db/modules/enterprise/src/snmp*.cpp" )
+        env.Append( CPPDEFINES=["NETSNMP_NO_INLINE"] )
     else:
         print( "WARNING: couldn't find all snmp pieces, not building snmp support" )
