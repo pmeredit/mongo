@@ -7,7 +7,7 @@ def configure( conf , env , serverOnlyFiles ):
 
     if conf.CheckCXXHeader( "net-snmp/net-snmp-config.h" ):
 
-        snmplibs = [ "netsnmp" + x for x in [ "mibs" , "agent" , "helpers" , "" ] ]
+        snmplibs = [ "netsnmp" + x for x in [ "" ] ]
 
         gotAll = True
         for x in snmplibs:
