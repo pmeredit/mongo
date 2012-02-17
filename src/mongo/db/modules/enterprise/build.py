@@ -2,25 +2,25 @@
 customIncludes = True
 
 def configure( conf , env , serverOnlyFiles ):
-    
+    root = __file__
+    root = root.rpartition( "/" )[0]
+
     gotSNMP = False
 
     if conf.CheckCXXHeader( "net-snmp/net-snmp-config.h" ):
 
-        snmplibs = [ "netsnmp" + x for x in [ "" ] ]
+        snmplibs = [ "netsnmp" + x for x in [ "" , "helpers" ] ]
 
-        gotAll = True
         for x in snmplibs:
-            if not conf.CheckLib(x):
-                gotAll = False
-        if gotAll:
-            gotSNMP = True
-        else:
-            for x in snmplibs:
-                removeIfInList( env["LIBS"] , x )
+            if conf.CheckLib(x):
+                gotSNMP = True
 
     if gotSNMP:
         serverOnlyFiles += env.Glob( "db/modules/enterprise/src/snmp*.cpp" )
         env.Append( CPPDEFINES=["NETSNMP_NO_INLINE"] )
     else:
-        print( "WARNING: couldn't find all snmp pieces, not building snmp support" )
+        print( "WARNING: couldn't find snmp pieces, not building snmp support" )
+        
+    if "installSetup" in env:
+        env["installSetup"].bannerDir = root + "/distsrc"
+
