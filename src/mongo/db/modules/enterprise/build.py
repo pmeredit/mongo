@@ -5,22 +5,18 @@ def configure( conf , env , serverOnlyFiles ):
     root = __file__
     root = root.rpartition( "/" )[0]
 
-    gotSNMP = False
-
     if conf.CheckCXXHeader( "net-snmp/net-snmp-config.h" ):
+        try:
+            snmpFlags = env.ParseFlags("!net-snmp-config --agent-libs")
+        except OSError, ose:
+            # the net-snmp-config command was not found
+            print( "WARNING: could not find or execute 'net-snmp-config', is it on the PATH?" )
+            print( ose )
+        else:
+            env.Append( **snmpFlags )
+            env.Append( CPPDEFINES=["NETSNMP_NO_INLINE"] )
+            serverOnlyFiles += env.Glob( root + "/src/snmp*.cpp" )
 
-        snmplibs = [ "netsnmp" + x for x in [ "" , "helpers" ] ]
-
-        for x in snmplibs:
-            if conf.CheckLib(x):
-                gotSNMP = True
-
-    if gotSNMP:
-        serverOnlyFiles += env.Glob( root + "/src/snmp*.cpp" )
-        env.Append( CPPDEFINES=["NETSNMP_NO_INLINE"] )
-    else:
-        print( "WARNING: couldn't find snmp pieces, not building snmp support" )
-        
     if "installSetup" in env:
         env["installSetup"].bannerDir = root + "/distsrc"
 
