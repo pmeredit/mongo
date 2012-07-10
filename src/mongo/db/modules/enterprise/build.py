@@ -20,3 +20,12 @@ def configure( conf , env , serverOnlyFiles ):
     if "installSetup" in env:
         env["installSetup"].bannerDir = root + "/distsrc"
 
+    # v2.0 builds don't support module tests
+    try:
+        from buildscripts import moduleconfig
+    except ImportError:
+        print( "WARNING: v2.0 and older builds don't support module tests, skipping" )
+    else:
+        # just a simple example -- this will always pass
+        moduleconfig.register_module_test('/bin/true')
+
