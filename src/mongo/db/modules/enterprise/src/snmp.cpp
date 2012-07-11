@@ -13,6 +13,8 @@
 #include <net-snmp/agent/net-snmp-agent-includes.h>
 #include <signal.h>
 
+#include <boost/program_options.hpp>
+
 #include "snmp.h"
 
 namespace mongo {
@@ -52,10 +54,27 @@ namespace mongo {
 
     namespace callbacks {
 
+        class AtomicWordCallback : public SNMPCallBack {
+        public:
+            AtomicWordCallback( const char* name, const string& oid, const AtomicUInt* word ) 
+                : SNMPCallBack( name, oid ), _word( word ) {
+            }
+
+            int respond( netsnmp_variable_list* var ) {
+                unsigned val = _word->get();
+                return snmp_set_var_typed_value(var, ASN_COUNTER, (u_char *) &val, sizeof(val) );
+            }
+
+
+        private:
+            const AtomicUInt* _word;
+                
+        };
+
         class NameCallback : public SNMPCallBack {
         public:
             NameCallback() : SNMPCallBack( "serverName" , "1,1" ) {
-                sprintf( _buf , "%d" , cmdLine.port );
+                sprintf( _buf , "%s:%d" , getHostNameCached().c_str(), cmdLine.port );
                 _len = strlen( _buf );
             }
             
@@ -63,7 +82,7 @@ namespace mongo {
                 return snmp_set_var_typed_value(var, ASN_OCTET_STR, (u_char *)_buf, _len );
             }
 
-            char _buf[128];
+            char _buf[512];
             size_t _len;
         };
 
@@ -147,7 +166,7 @@ namespace mongo {
 
         virtual string name() const { return "SNMPAgent"; }
 
-        void config( program_options::variables_map& params ) {
+        void config( boost::program_options::variables_map& params ) {
             if ( params.count( "snmp-subagent" ) ) {
                 enable();
             }
@@ -288,19 +307,19 @@ namespace mongo {
             _callbacks.push_back( new callbacks::NameCallback() );
             callbacks::MemoryCallback::addAll( _callbacks );
 
-            // register
-            for ( unsigned i=0; i<_callbacks.size(); i++ )
-                _checkRegister( _callbacks[i]->init() );
-            
             // static counters
             
             //  ---- globalOpCounters
-            _initCounter( "globalOpInsert" , "1,3,1,1" , globalOpCounters.getInsert() );
-            _initCounter( "globalOpQuery" , "1,3,1,2" , globalOpCounters.getQuery() );
-            _initCounter( "globalOpUpdate" , "1,3,1,3" , globalOpCounters.getUpdate() );
-            _initCounter( "globalOpDelete" , "1,3,1,4" , globalOpCounters.getDelete() );
-            _initCounter( "globalOpGetMore" , "1,3,1,5" , globalOpCounters.getGetMore() );
+            _callbacks.push_back( new callbacks::AtomicWordCallback( "globalOpInsert" , "1,3,1,1" , globalOpCounters.getInsert() ) );
+            _callbacks.push_back( new callbacks::AtomicWordCallback( "globalOpInsert" , "1,3,1,2" , globalOpCounters.getQuery() ) );
+            _callbacks.push_back( new callbacks::AtomicWordCallback( "globalOpInsert" , "1,3,1,3" , globalOpCounters.getUpdate() ) );
+            _callbacks.push_back( new callbacks::AtomicWordCallback( "globalOpInsert" , "1,3,1,4" , globalOpCounters.getDelete() ) );
+            _callbacks.push_back( new callbacks::AtomicWordCallback( "globalOpInsert" , "1,3,1,5" , globalOpCounters.getGetMore() ) );
 
+            // register all callbacks
+            for ( unsigned i=0; i<_callbacks.size(); i++ )
+                _checkRegister( _callbacks[i]->init() );
+            
         }
 
 
