@@ -1,9 +1,8 @@
+import buildscripts.moduleconfig as moduleconfig
+import os
 
-customIncludes = True
-
-def configure( conf , env , serverOnlyFiles ):
-    root = __file__
-    root = root.rpartition( "/" )[0]
+def configure(conf, env):
+    root = os.path.dirname(__file__)
 
     if conf.CheckCXXHeader( "net-snmp/net-snmp-config.h" ):
         try:
@@ -13,19 +12,12 @@ def configure( conf , env , serverOnlyFiles ):
             print( "WARNING: could not find or execute 'net-snmp-config', is it on the PATH?" )
             print( ose )
         else:
-            env.Append( **snmpFlags )
-            env.Append( CPPDEFINES=["NETSNMP_NO_INLINE"] )
-            serverOnlyFiles += env.Glob( root + "/src/snmp*.cpp" )
+            snmp_module_name= moduleconfig.get_current_module_libdep_name('mongosnmp')
+            env['SNMP_SYSLIBDEPS'] = snmpFlags['LIBS']
+            del snmpFlags['LIBS']
+            env.Append(**snmpFlags)
+            env.Append(CPPDEFINES=["NETSNMP_NO_INLINE"],
+                       MODULE_LIBDEPS_MONGOD=snmp_module_name)
 
     if "installSetup" in env:
         env["installSetup"].bannerDir = root + "/distsrc"
-
-    # v2.0 builds don't support module tests
-    try:
-        from buildscripts import moduleconfig
-    except ImportError:
-        print( "WARNING: v2.0 and older builds don't support module tests, skipping" )
-    else:
-        # just a simple example -- this will always pass
-        moduleconfig.register_module_test('/bin/true')
-
