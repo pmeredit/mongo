@@ -19,5 +19,17 @@ def configure(conf, env):
             env.Append(CPPDEFINES=["NETSNMP_NO_INLINE"],
                        MODULE_LIBDEPS_MONGOD=snmp_module_name)
 
+    env['MONGO_BUILD_SASL_CLIENT'] = True
+    if not conf.CheckLibWithHeader(
+        "gsasl", "gsasl.h", "C", "gsasl_check_version(GSASL_VERSION);", autoadd=False):
+
+        env.Exit(1)
+
+    sasl_server_module_name = moduleconfig.get_current_module_libdep_name('mongosaslserver')
+    sasl_shell_module_name = moduleconfig.get_current_module_libdep_name('mongosaslshell')
+    env.Append(MODULE_LIBDEPS_MONGOD=sasl_server_module_name,
+               MODULE_LIBDEPS_MONGOS=sasl_server_module_name,
+               MODULE_LIBDEPS_MONGOSHELL=sasl_shell_module_name)
+
     if "installSetup" in env:
         env["installSetup"].bannerDir = root + "/distsrc"
