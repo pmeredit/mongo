@@ -196,7 +196,7 @@ namespace mongo {
         void run() {
             
             while ( ! _enabled ) {
-                log(1) << "SNMPAgent not enabled" << endl;
+                LOG(1) << "SNMPAgent not enabled" << endl;
                 return;
             }
 
@@ -214,7 +214,7 @@ namespace mongo {
             init_agent( _agentName.c_str() );
 
             _init();
-            log(1) << "SNMPAgent num things: " << _numThings << endl;
+            LOG(1) << "SNMPAgent num things: " << _numThings << endl;
 
             init_snmp( _agentName.c_str() );
 
@@ -268,7 +268,7 @@ namespace mongo {
         }
 
         void _initCounter( const char * name , const char* oidhelp , int * counter ) {
-            log(2) << "registering: " << name << " " << oidhelp << endl;
+            LOG(2) << "registering: " << name << " " << oidhelp << endl;
 
             netsnmp_handler_registration * reg = 
                 netsnmp_create_handler_registration( name , NULL,
@@ -283,7 +283,7 @@ namespace mongo {
         }
 
         void _initCounter( const char * name , const char* oidhelp , AtomicUInt * counter ) {
-            log(2) << "registering: " << name << " " << oidhelp << endl;
+            LOG(2) << "registering: " << name << " " << oidhelp << endl;
 
             netsnmp_handler_registration * reg = 
                 netsnmp_create_handler_registration( name , NULL,
