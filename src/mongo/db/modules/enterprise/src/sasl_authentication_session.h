@@ -4,12 +4,14 @@
 
 #pragma once
 
+#include <gsasl.h>
 #include <string>
 
 #include "mongo/base/disallow_copying.h"
 #include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
 #include "mongo/db/auth/authentication_session.h"
+#include "mongo/db/client_common.h"
 #include "mongo/platform/cstdint.h"
 #include "mongo/util/gsasl_session.h"
 
@@ -17,13 +19,15 @@ struct Gsasl;
 
 namespace mongo {
 
+    class DBClientBase;
+
     /**
      * Authentication session data for the server side of SASL authentication.
      */
     class SaslAuthenticationSession : public AuthenticationSession {
         MONGO_DISALLOW_COPYING(SaslAuthenticationSession);
     public:
-        SaslAuthenticationSession();
+        explicit SaslAuthenticationSession(ClientBasic* client);
         virtual ~SaslAuthenticationSession();
 
         /**
@@ -55,17 +59,14 @@ namespace mongo {
          */
         Status step(const StringData& inputData, std::string* outputData);
 
+        ClientBasic* getClient() const { return _client; }
+
         /**
          * Get the conversation id for this authentication session.
          *
          * Must not be called before start().
          */
         int64_t getConversationId() const { return _conversationId; }
-
-        /**
-         * Gets a property from the underlying SASL session.
-         */
-        const std::string getSaslProperty(Gsasl_property property) const;
 
         /**
          * If the last call to step() returned Status::OK(), this method returns true if the
@@ -76,10 +77,17 @@ namespace mongo {
          */
         bool isDone() const { return _gsaslSession.isDone(); }
 
+        /**
+         * Gets the string identifier of the principal being authenticated.
+         */
+        std::string getPrincipalId() const;
+
     private:
+        ClientBasic* _client;
         GsaslSession _gsaslSession;
         int64_t _conversationId;
         bool _autoAuthorize;
+        Gsasl_property _principalIdProperty;
     };
 
 }  // namespace mongo

@@ -7,8 +7,8 @@
 #include <vector>
 
 #include "mongo/base/init.h"
-#include "mongo/base/string_data.h"
 #include "mongo/base/status.h"
+#include "mongo/base/string_data.h"
 #include "mongo/bson/util/bson_extract.h"
 #include "mongo/client/sasl_client_authenticate.h"
 #include "mongo/db/auth/authorization_manager.h"
@@ -144,6 +144,12 @@ namespace {
         status = buildResponse(session, responsePayload, type, result);
         if (!status.isOK())
             return status;
+
+        if (session->isDone()) {
+            log() << "SASL: Successfully authenticated as principal: " << session->getPrincipalId()
+                    << std::endl;
+
+        }
         return Status::OK();
     }
 
@@ -208,13 +214,14 @@ namespace {
         ClientBasic* client = ClientBasic::getCurrent();
         client->resetAuthenticationSession(NULL);
 
-        SaslAuthenticationSession* session = new SaslAuthenticationSession();
+        SaslAuthenticationSession* session =
+            new SaslAuthenticationSession(ClientBasic::getCurrent());
         boost::scoped_ptr<AuthenticationSession> sessionGuard(session);
 
         Status status = doSaslStart(session, cmdObj, &result);
         addStatus(status, &result);
 
-        if (status.isOK())
+        if (status.isOK() && !session->isDone())
             client->swapAuthenticationSession(sessionGuard);
 
         return true;
@@ -250,17 +257,6 @@ namespace {
         Status status = doSaslContinue(session, cmdObj, &result);
         addStatus(status, &result);
 
-        if (status.isOK() && session->isDone()) {
-            // TODO: Add function to get principal name regardless of the sasl auth mechanism used.
-            std::string principalName = session->getSaslProperty(GSASL_AUTHZID);
-            Principal* principal = new Principal(principalName);
-            // TODO: check if session->_autoAuthorize is true and if so inform the
-            // AuthorizationManager to implicitly acquire privileges for this principal.
-            client->getAuthorizationManager()->addAuthorizedPrincipal(principal);
-            log() << "SASL: Successfully authenticated as principal: " << principalName
-                    << std::endl;
-        }
-
         if (status.isOK() && !session->isDone())
             client->swapAuthenticationSession(sessionGuard);
 
@@ -276,17 +272,48 @@ namespace {
         return result;
     }
 
-    int gsaslCallbackFunction(Gsasl* gsasl, Gsasl_session* session, Gsasl_property property) {
+    int gsaslCallbackFunction(Gsasl* gsasl, Gsasl_session* gsession, Gsasl_property property) {
+        SaslAuthenticationSession* session = static_cast<SaslAuthenticationSession*>(
+                gsasl_session_hook_get(gsession));
+
         switch (property) {
         case GSASL_SERVICE:
-            gsasl_property_set(session, GSASL_SERVICE, saslDefaultServiceName);
+            gsasl_property_set(gsession, GSASL_SERVICE, saslDefaultServiceName);
             return GSASL_OK;
         case GSASL_HOSTNAME:
-            gsasl_property_set(session, GSASL_HOSTNAME, getHostNameCached().c_str());
+            gsasl_property_set(gsession, GSASL_HOSTNAME, getHostNameCached().c_str());
             return GSASL_OK;
+        case GSASL_PASSWORD: {
+            fassert(0, NULL != session);
+            std::string principal = session->getPrincipalId();
+            std::string dbname;
+            std::string username;
+            if (!str::splitOn(principal, '$', dbname, username) ||
+                dbname.empty() ||
+                username.empty()) {
+
+                log() << "sasl Bad principal \"" << principal << '"' << endl;
+                return GSASL_NO_CALLBACK;
+            }
+            BSONObj privilegeDocument;
+            Status status = session->getClient()->getAuthorizationManager()->getPrivilegeDocument(
+                    dbname, username, &privilegeDocument);
+            if (!status.isOK()) {
+                log() << status.reason() << endl;
+                return GSASL_NO_CALLBACK;
+            }
+            std::string hashedPassword;
+            status = bsonExtractStringField(privilegeDocument, "pwd", &hashedPassword);
+            if (!status.isOK()) {
+                log() << "sasl No password data for " << principal << endl;
+                return GSASL_NO_CALLBACK;
+            }
+            gsasl_property_set(gsession, GSASL_PASSWORD, hashedPassword.c_str());
+            return GSASL_OK;
+        }
         case GSASL_VALIDATE_GSSAPI:
-            if (!str::equals(gsasl_property_fast(session, GSASL_GSSAPI_DISPLAY_NAME),
-                             gsasl_property_fast(session, GSASL_AUTHZID))) {
+            if (!str::equals(gsasl_property_fast(gsession, GSASL_GSSAPI_DISPLAY_NAME),
+                             gsasl_property_fast(gsession, GSASL_AUTHZID))) {
                 return GSASL_AUTHENTICATION_ERROR;
             }
             return GSASL_OK;
