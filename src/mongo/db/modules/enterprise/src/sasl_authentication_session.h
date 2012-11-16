@@ -63,6 +63,11 @@ namespace mongo {
         int64_t getConversationId() const { return _conversationId; }
 
         /**
+         * Gets a property from the underlying SASL session.
+         */
+        const std::string getSaslProperty(Gsasl_property property) const;
+
+        /**
          * If the last call to step() returned Status::OK(), this method returns true if the
          * authentication conversation has completed, from the server's perspective.  If it returns
          * false, the server expects more input from the client.

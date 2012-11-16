@@ -35,4 +35,8 @@ namespace mongo {
         return _gsaslSession.step(inputData, outputData);
     }
 
+    const std::string SaslAuthenticationSession::getSaslProperty(Gsasl_property property) const {
+        return _gsaslSession.getProperty(property);
+    }
+
 }  // namespace mongo

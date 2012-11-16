@@ -11,7 +11,9 @@
 #include "mongo/base/status.h"
 #include "mongo/bson/util/bson_extract.h"
 #include "mongo/client/sasl_client_authenticate.h"
+#include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/mongo_authentication_session.h"
+#include "mongo/db/auth/principal.h"
 #include "mongo/db/client_common.h"
 #include "mongo/db/commands.h"
 #include "mongo/util/base64.h"
@@ -249,9 +251,14 @@ namespace {
         addStatus(status, &result);
 
         if (status.isOK() && session->isDone()) {
-            // TODO: Authentication succeeded!  Extract the principal's identity and
-            // do any authorization work, here!
-            log() << "sasl: Auth success" << std::endl;
+            // TODO: Add function to get principal name regardless of the sasl auth mechanism used.
+            std::string principalName = session->getSaslProperty(GSASL_AUTHZID);
+            Principal* principal = new Principal(principalName);
+            // TODO: check if session->_autoAuthorize is true and if so inform the
+            // AuthorizationManager to implicitly acquire privileges for this principal.
+            client->getAuthorizationManager()->addAuthorizedPrincipal(principal);
+            log() << "SASL: Successfully authenticated as principal: " << principalName
+                    << std::endl;
         }
 
         if (status.isOK() && !session->isDone())
