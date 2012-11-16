@@ -7,10 +7,14 @@ env.StaticLibrary('mongosnmp',
                    'src/snmp_oid.cpp'],
                   SYSLIBDEPS=env.get('SNMP_SYSLIBDEPS', []))
 
-env.StaticLibrary('mongosaslserver',
+env.StaticLibrary('mongosaslservercommon',
                   ['src/sasl_authentication_session.cpp',
                    'src/sasl_commands.cpp'],
                   SYSLIBDEPS=['gsasl'])
+
+env.StaticLibrary('mongosaslmongod',
+                  ['src/sasl_privilege_commands_d.cpp'],
+                  LIBDEPS=['mongosaslservercommon'])
 
 mongosaslshell_files = ['src/sasl_shell.cpp']
 if usesm:
