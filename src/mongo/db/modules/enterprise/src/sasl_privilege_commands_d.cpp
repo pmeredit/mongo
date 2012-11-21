@@ -28,7 +28,7 @@ namespace {
         }
         // Return true if input is valid.  If input is not valid, returns false and writes error
         // description to errmsg
-        bool validateInput(BSONObj& cmdObj, std::string errmsg) {
+        bool validateInput(BSONObj& cmdObj, std::string& errmsg) {
             if (!cmdObj.hasField("principal")) {
                 errmsg = "Must specify principal name";
                 return false;
