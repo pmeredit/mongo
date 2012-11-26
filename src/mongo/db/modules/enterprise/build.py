@@ -32,5 +32,7 @@ def configure(conf, env):
                MODULE_LIBDEPS_MONGOS=sasl_server_module_name,
                MODULE_LIBDEPS_MONGOSHELL=sasl_shell_module_name)
 
-    if "installSetup" in env:
-        env["installSetup"].bannerDir = root + "/distsrc"
+    distsrc = env.Dir(root).Dir('distsrc')
+    env.Append(MODULE_BANNERS=[
+            distsrc.File('LICENSE.txt'),
+            ])
