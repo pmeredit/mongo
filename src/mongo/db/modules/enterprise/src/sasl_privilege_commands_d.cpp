@@ -8,7 +8,6 @@
 #include "mongo/db/auth/principal.h"
 #include "mongo/db/client.h"
 #include "mongo/db/jsobj.h"
-#include "mongo/db/instance.h"
 #include "mongo/db/namespacestring.h"
 #include "mongo/util/mongoutils/str.h"
 
@@ -103,21 +102,13 @@ namespace {
                 }
             }
 
-            // TODO: extract this block out to mongo{d,s} specific place and make the common pieces
-            // of this command work in both.
             BSONObj privilegeDocument;
-            {
-                Client::GodScope gs;
-                DBDirectClient conn;
-
-                Status status = AuthorizationManager::getPrivilegeDocument(&conn,
-                                                                           resource,
-                                                                           principalName,
-                                                                           &privilegeDocument);
-                if (status != Status::OK()) {
-                    errmsg = "Problem fetching privilege document: " + status.reason();
-                    return false;
-                }
+            Status status = authorizationManager->getPrivilegeDocument(resource,
+                                                                       principalName,
+                                                                       &privilegeDocument);
+            if (status != Status::OK()) {
+                errmsg = "Problem fetching privilege document: " + status.reason();
+                return false;
             }
 
             // TODO: Everything from here down will need to be changed for new-style privilege docs
