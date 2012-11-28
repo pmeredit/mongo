@@ -2,25 +2,20 @@
  * Copyright (C) 2012 10gen, Inc.  All Rights Reserved.
  */
 
-#include <gsasl.h>
 #include <string>
 #include <vector>
 
-#include "mongo/base/init.h"
 #include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/util/bson_extract.h"
 #include "mongo/client/sasl_client_authenticate.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/mongo_authentication_session.h"
-#include "mongo/db/auth/principal.h"
 #include "mongo/db/client_common.h"
 #include "mongo/db/commands.h"
 #include "mongo/util/base64.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
-#include "mongo/util/net/sock.h"
-#include "mongo/util/stringutils.h"
 #include "sasl_authentication_session.h"
 
 namespace mongo {
@@ -29,10 +24,6 @@ namespace {
     using namespace mongoutils;
 
     const bool autoAuthorizeDefault = true;
-
-    Gsasl* _gsaslLibraryContext = NULL;
-
-    std::vector<std::string> getSupportedServerMechanisms();
 
     class CmdSaslStart : public Command {
     public:
@@ -171,9 +162,10 @@ namespace {
         if (!status.isOK())
             return status;
 
-        status = session->start(_gsaslLibraryContext, mechanism, 1, autoAuthorize);
+        status = session->start(mechanism, 1, autoAuthorize);
         if (status == ErrorCodes::BadValue) {
-            result->append(saslCommandMechanismListFieldName, getSupportedServerMechanisms());
+            result->append(saslCommandMechanismListFieldName,
+                           SaslAuthenticationSession::getSupportedServerMechanisms());
             return status;
         }
         else if (!status.isOK()) {
@@ -261,80 +253,6 @@ namespace {
             client->swapAuthenticationSession(sessionGuard);
 
         return true;
-    }
-
-    std::vector<std::string> getSupportedServerMechanisms() {
-        char* mechsString;
-        fassert(0, !gsasl_server_mechlist(_gsaslLibraryContext, &mechsString));
-        std::vector<std::string> result;
-        splitStringDelim(mechsString, &result, ' ');
-        free(mechsString);
-        return result;
-    }
-
-    int gsaslCallbackFunction(Gsasl* gsasl, Gsasl_session* gsession, Gsasl_property property) {
-        SaslAuthenticationSession* session = static_cast<SaslAuthenticationSession*>(
-                gsasl_session_hook_get(gsession));
-
-        switch (property) {
-        case GSASL_SERVICE:
-            gsasl_property_set(gsession, GSASL_SERVICE, saslDefaultServiceName);
-            return GSASL_OK;
-        case GSASL_HOSTNAME:
-            gsasl_property_set(gsession, GSASL_HOSTNAME, getHostNameCached().c_str());
-            return GSASL_OK;
-        case GSASL_PASSWORD: {
-            fassert(0, NULL != session);
-            std::string principal = session->getPrincipalId();
-            std::string dbname;
-            std::string username;
-            if (!str::splitOn(principal, '$', dbname, username) ||
-                dbname.empty() ||
-                username.empty()) {
-
-                log() << "sasl Bad principal \"" << principal << '"' << endl;
-                return GSASL_NO_CALLBACK;
-            }
-            BSONObj privilegeDocument;
-            Status status = session->getClient()->getAuthorizationManager()->getPrivilegeDocument(
-                    dbname, username, &privilegeDocument);
-            if (!status.isOK()) {
-                log() << status.reason() << endl;
-                return GSASL_NO_CALLBACK;
-            }
-            std::string hashedPassword;
-            status = bsonExtractStringField(privilegeDocument, "pwd", &hashedPassword);
-            if (!status.isOK()) {
-                log() << "sasl No password data for " << principal << endl;
-                return GSASL_NO_CALLBACK;
-            }
-            gsasl_property_set(gsession, GSASL_PASSWORD, hashedPassword.c_str());
-            return GSASL_OK;
-        }
-        case GSASL_VALIDATE_GSSAPI:
-            if (!str::equals(gsasl_property_fast(gsession, GSASL_GSSAPI_DISPLAY_NAME),
-                             gsasl_property_fast(gsession, GSASL_AUTHZID))) {
-                return GSASL_AUTHENTICATION_ERROR;
-            }
-            return GSASL_OK;
-        default:
-            return GSASL_NO_CALLBACK;
-        }
-    }
-
-    MONGO_INITIALIZER(SaslCommands)(InitializerContext* context) {
-        fassert(0, _gsaslLibraryContext == NULL);
-
-        if (!gsasl_check_version(GSASL_VERSION))
-            return Status(ErrorCodes::UnknownError, "Incompatible gsasl library.");
-
-        int rc = gsasl_init(&_gsaslLibraryContext);
-        if (GSASL_OK != rc)
-            return Status(ErrorCodes::UnknownError, gsasl_strerror(rc));
-
-        gsasl_callback_set(_gsaslLibraryContext, &gsaslCallbackFunction);
-
-        return Status::OK();
     }
 
 }  // namespace

@@ -6,6 +6,7 @@
 
 #include <gsasl.h>
 #include <string>
+#include <vector>
 
 #include "mongo/base/disallow_copying.h"
 #include "mongo/base/status.h"
@@ -27,13 +28,17 @@ namespace mongo {
     class SaslAuthenticationSession : public AuthenticationSession {
         MONGO_DISALLOW_COPYING(SaslAuthenticationSession);
     public:
+        /**
+         * Returns the list of SASL mechanisms supported by SaslAuthenticationSession.
+         */
+        static const std::vector<std::string>& getSupportedServerMechanisms();
+
         explicit SaslAuthenticationSession(ClientBasic* client);
         virtual ~SaslAuthenticationSession();
 
         /**
          * Start the server side of a SASL authentication session.
          *
-         * "gsasl" is a pointer to an initiliazed Gsasl library context.
          * "mechanism" is the SASL mechanism to use.
          * "conversationId" is the conversation identifier to use for this session.
          *
@@ -43,8 +48,7 @@ namespace mongo {
          *
          * Must be called only once on an instance.
          */
-        Status start(Gsasl* gsasl,
-                     const StringData& mechanism,
+        Status start(const StringData& mechanism,
                      int64_t conversationId,
                      bool autoAuthorize);
 
