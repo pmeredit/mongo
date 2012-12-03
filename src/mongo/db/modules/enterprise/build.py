@@ -33,6 +33,10 @@ def configure(conf, env):
                MODULE_LIBDEPS_MONGOSHELL=sasl_shell_module_name)
 
     distsrc = env.Dir(root).Dir('distsrc')
+    docs = env.Dir(root).Dir('docs')
     env.Append(MODULE_BANNERS=[
             distsrc.File('LICENSE.txt'),
+            docs.File('MONGO-MIB.txt'),
+            docs.File('mongod.conf'),
+            docs.File('snmp.md')
             ])
