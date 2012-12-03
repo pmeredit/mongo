@@ -168,6 +168,4 @@ namespace {
         return Status::OK();
     }
 }  // namespace
-
-}  // namespace
 }  // namespace mongo
