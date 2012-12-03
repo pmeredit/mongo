@@ -4,29 +4,62 @@
 
 #include "sasl_authentication_session.h"
 
+#include <map>
+#include <set>
+
 #include "mongo/base/init.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/util/bson_extract.h"
 #include "mongo/client/sasl_client_authenticate.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/client_common.h"
+#include "mongo/db/security_common.h"
+#include "mongo/db/server_parameters.h"
 #include "mongo/util/assert_util.h"
+#include "mongo/util/map_util.h"
+#include "mongo/util/mongoutils/str.h"
 #include "mongo/util/net/sock.h"
 #include "mongo/util/stringutils.h"
-
-namespace {
-    const std::string MECH_GSSAPI = "GSSAPI";
-    const std::string MECH_CRAMMD5 = "CRAM-MD5";
-    const std::string MECH_PLAIN = "PLAIN";
-}  // namespace
 
 namespace mongo {
 
 namespace {
 
+    std::vector<std::string> stringSplit(const std::string& s, char delim) {
+        std::vector<std::string> result;
+        splitStringDelim(s, &result, delim);
+        return result;
+    }
+
+    MONGO_EXPORT_SERVER_PARAMETER(
+            authenticationMechanisms, std::vector<std::string>, stringSplit("MONGO-CR", ','));
+
+    struct SaslMechanismInfo {
+        const char* name;
+        Gsasl_property principalIdProperty;
+    };
+    typedef std::map<std::string, const SaslMechanismInfo*> SaslMechanismInfoMap;
+
+    // SASL Mechanisms
+    const char MECH_CRAMMD5[] = "CRAM-MD5";
+    const char MECH_DIGESTMD5[] = "DIGEST-MD5";
+    const char MECH_GSSAPI[] = "GSSAPI";
+    const char MECH_PLAIN[] = "PLAIN";
+
+    // The name we give to the nonce-authenticate mechanism in the free product.
+    const char MECH_MONGOCR[] = "MONGO-CR";
+
+    SaslMechanismInfo _mongoKnownMechanisms[] = {
+        { MECH_DIGESTMD5, GSASL_AUTHID },
+        { MECH_CRAMMD5, GSASL_AUTHID },
+        { MECH_GSSAPI, GSASL_AUTHZID },
+        { MECH_PLAIN, GSASL_AUTHID },
+        { NULL }
+    };
+
     Gsasl* _gsaslLibraryContext = NULL;
 
-    std::vector<std::string> _supportedServerMechanisms;
+    SaslMechanismInfoMap _supportedSaslMechanisms;
 
 }  // namespace
 
@@ -49,19 +82,19 @@ namespace {
                           "Cannot call start twice on same SaslAuthenticationSession.");
         }
 
+        const SaslMechanismInfo* mechInfo = mapFindWithDefault(
+                _supportedSaslMechanisms,
+                mechanism.toString(),
+                static_cast<const SaslMechanismInfo*>(NULL));
+
+        if (NULL == mechInfo) {
+            return Status(ErrorCodes::BadValue,
+                          mongoutils::str::stream() << "Unsupported mechanism " << mechanism);
+        }
+
         _conversationId = conversationId;
         _autoAuthorize = autoAuthorize;
-
-        if (mechanism == MECH_GSSAPI)
-            _principalIdProperty = GSASL_AUTHZID;
-        else if (mechanism == MECH_CRAMMD5)
-            _principalIdProperty = GSASL_AUTHID;
-        else if (mechanism == MECH_PLAIN)
-            _principalIdProperty = GSASL_AUTHID;
-        else
-            return Status(ErrorCodes::InternalError,
-                          "Unsupported mechanism; should have caught it earlier: " +
-                          std::string(mechanism.data(), mechanism.data() + mechanism.size()));
+        _principalIdProperty = mechInfo->principalIdProperty;
         return _gsaslSession.initializeServerSession(_gsaslLibraryContext, mechanism, this);
     }
 
@@ -85,8 +118,14 @@ namespace {
         return _gsaslSession.getProperty(_principalIdProperty);
     }
 
-    const std::vector<std::string>& SaslAuthenticationSession::getSupportedServerMechanisms() {
-        return _supportedServerMechanisms;
+    std::vector<std::string> SaslAuthenticationSession::getSupportedMechanisms() {
+        std::vector<std::string> result;
+        for (SaslMechanismInfoMap::const_iterator iter = _supportedSaslMechanisms.begin(),
+                 end = _supportedSaslMechanisms.end(); iter != end; ++iter) {
+
+            result.push_back(iter->first);
+        }
+        return result;
     }
 
 namespace {
@@ -142,13 +181,41 @@ namespace {
         }
     }
 
-    std::vector<std::string> getGsaslSupportedServerMechanisms(Gsasl* gsasl) {
+    std::set<std::string> getGsaslSupportedServerMechanisms(Gsasl* gsasl) {
         char* mechsString;
         fassert(0, !gsasl_server_mechlist(gsasl, &mechsString));
         std::vector<std::string> result;
         splitStringDelim(mechsString, &result, ' ');
         free(mechsString);
-        return result;
+        return std::set<std::string>(result.begin(), result.end());
+    }
+
+    Status initializeSupportedMechanismMap() {
+        const std::set<std::string> gsaslMechanisms =
+            getGsaslSupportedServerMechanisms(_gsaslLibraryContext);
+
+        std::set<std::string> desiredMechanisms(authenticationMechanisms.begin(),
+                                                authenticationMechanisms.end());
+        if (desiredMechanisms.erase(MECH_MONGOCR) == 0) {
+            CmdAuthenticate::disableCommand();
+        }
+
+        for (std::set<std::string>::const_iterator iter = desiredMechanisms.begin(),
+                 end = desiredMechanisms.end(); iter != end; ++iter) {
+            if (gsaslMechanisms.count(*iter) == 0) {
+                return Status(ErrorCodes::BadValue,
+                              mongoutils::str::stream() <<
+                              "Unsupported authenticationMechanism: \"" << *iter << '"');
+            }
+        }
+
+        for (SaslMechanismInfo* mechInfo = _mongoKnownMechanisms; mechInfo->name; ++mechInfo) {
+            if (desiredMechanisms.count(mechInfo->name) && gsaslMechanisms.count(mechInfo->name)) {
+                _supportedSaslMechanisms[mechInfo->name] = mechInfo;
+            }
+        }
+
+        return Status::OK();
     }
 
     MONGO_INITIALIZER(SaslAuthenticationLibrary)(InitializerContext* context) {
@@ -163,7 +230,9 @@ namespace {
 
         gsasl_callback_set(_gsaslLibraryContext, &gsaslCallbackFunction);
 
-        _supportedServerMechanisms = getGsaslSupportedServerMechanisms(_gsaslLibraryContext);
+        Status status = initializeSupportedMechanismMap();
+        if (!status.isOK())
+            return status;
 
         return Status::OK();
     }

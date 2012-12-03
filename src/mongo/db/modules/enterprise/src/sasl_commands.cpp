@@ -165,7 +165,7 @@ namespace {
         status = session->start(mechanism, 1, autoAuthorize);
         if (status == ErrorCodes::BadValue) {
             result->append(saslCommandMechanismListFieldName,
-                           SaslAuthenticationSession::getSupportedServerMechanisms());
+                           SaslAuthenticationSession::getSupportedMechanisms());
             return status;
         }
         else if (!status.isOK()) {

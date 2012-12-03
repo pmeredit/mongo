@@ -31,7 +31,7 @@ namespace mongo {
         /**
          * Returns the list of SASL mechanisms supported by SaslAuthenticationSession.
          */
-        static const std::vector<std::string>& getSupportedServerMechanisms();
+        static std::vector<std::string> getSupportedMechanisms();
 
         explicit SaslAuthenticationSession(ClientBasic* client);
         virtual ~SaslAuthenticationSession();
