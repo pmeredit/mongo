@@ -116,6 +116,14 @@ namespace {
                 return false;
             }
 
+            status = authorizationManager->acquirePrivilegesFromPrivilegeDocument(
+                    userSource, principal, privilegeDocument);
+
+            if (status != Status::OK()) {
+                errmsg = "Problem acquiring privileges: " + status.reason();
+                return false;
+            }
+
             // TODO: Everything from here down will need to be changed for new-style privilege docs
             bool readOnly = privilegeDocument["readOnly"].trueValue();
             std::string action = BSONObjIterator(cmdObj["actions"].Obj()).next().String();
