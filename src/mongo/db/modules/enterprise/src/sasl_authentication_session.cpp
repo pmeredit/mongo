@@ -63,9 +63,11 @@ namespace {
 
 }  // namespace
 
-    SaslAuthenticationSession::SaslAuthenticationSession(ClientBasic* client) :
+    SaslAuthenticationSession::SaslAuthenticationSession(ClientBasic* client,
+                                                         const std::string& principalSource) :
         AuthenticationSession(AuthenticationSession::SESSION_TYPE_SASL),
         _client(client),
+        _principalSource(principalSource),
         _conversationId(0),
         _autoAuthorize(false),
         _principalIdProperty() {
@@ -144,14 +146,17 @@ namespace {
             return GSASL_OK;
         case GSASL_PASSWORD: {
             fassert(0, NULL != session);
-            std::string principal = session->getPrincipalId();
-            std::string dbname;
-            std::string username;
-            if (!str::splitOn(principal, '$', dbname, username) ||
-                dbname.empty() ||
-                username.empty()) {
+            std::string dbname = session->getPrincipalSource();
+            std::string username = session->getPrincipalId();
+            if (dbname == "$sasl") {
+                log() << "Server does not have password data for externally credentialed user "
+                      << username << '.' << endl;
+                return GSASL_NO_CALLBACK;
+            }
+            if (dbname.empty() || username.empty()) {
 
-                log() << "sasl Bad principal \"" << principal << '"' << endl;
+                log() << "sasl Bad database/user information: \"" << dbname << '/' << username
+                      << '"' << endl;
                 return GSASL_NO_CALLBACK;
             }
             BSONObj privilegeDocument;
@@ -164,7 +169,8 @@ namespace {
             std::string hashedPassword;
             status = bsonExtractStringField(privilegeDocument, "pwd", &hashedPassword);
             if (!status.isOK()) {
-                log() << "sasl No password data for " << principal << endl;
+                log() << "sasl No password data for " << username << " on database " << dbname
+                      << endl;
                 return GSASL_NO_CALLBACK;
             }
             gsasl_property_set(gsession, GSASL_PASSWORD, hashedPassword.c_str());

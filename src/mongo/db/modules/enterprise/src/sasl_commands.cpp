@@ -207,7 +207,7 @@ namespace {
         client->resetAuthenticationSession(NULL);
 
         SaslAuthenticationSession* session =
-            new SaslAuthenticationSession(ClientBasic::getCurrent());
+            new SaslAuthenticationSession(ClientBasic::getCurrent(), db);
         boost::scoped_ptr<AuthenticationSession> sessionGuard(session);
 
         Status status = doSaslStart(session, cmdObj, &result);
@@ -245,6 +245,13 @@ namespace {
 
         SaslAuthenticationSession* session =
             static_cast<SaslAuthenticationSession*>(sessionGuard.get());
+
+        if (session->getPrincipalSource() != db) {
+            addStatus(Status(ErrorCodes::ProtocolError,
+                             "sasl: Attempt to switch database target during sasl authentication."),
+                      &result);
+            return true;
+        }
 
         Status status = doSaslContinue(session, cmdObj, &result);
         addStatus(status, &result);

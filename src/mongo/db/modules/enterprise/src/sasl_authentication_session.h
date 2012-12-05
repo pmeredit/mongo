@@ -33,7 +33,7 @@ namespace mongo {
          */
         static std::vector<std::string> getSupportedMechanisms();
 
-        explicit SaslAuthenticationSession(ClientBasic* client);
+        SaslAuthenticationSession(ClientBasic* client, const std::string& principalSource);
         virtual ~SaslAuthenticationSession();
 
         /**
@@ -64,6 +64,7 @@ namespace mongo {
         Status step(const StringData& inputData, std::string* outputData);
 
         ClientBasic* getClient() const { return _client; }
+        const std::string& getPrincipalSource() const { return _principalSource; }
 
         /**
          * Get the conversation id for this authentication session.
@@ -88,6 +89,7 @@ namespace mongo {
 
     private:
         ClientBasic* _client;
+        std::string _principalSource;
         GsaslSession _gsaslSession;
         int64_t _conversationId;
         bool _autoAuthorize;
