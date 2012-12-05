@@ -19,7 +19,6 @@ namespace {
         CmdAcquirePrivilege() : Command("acquirePrivilege", false, "acquireprivilege") {}
         virtual LockType locktype() const { return NONE; }
         virtual bool requiresAuth() { return false; }
-        virtual bool adminOnly() const { return true; }
         virtual bool logTheOp() { return false; }
         virtual bool slaveOk() const { return true; }
         virtual void help( stringstream& help ) const {
@@ -80,12 +79,18 @@ namespace {
             std::string principalName = cmdObj["principal"].str();
             std::string resource = cmdObj["resource"].str();
 
+            // If userSource isn't provided, default to using the database the command was run on.
+            std::string userSource = cmdObj.hasField("userSource") ?
+                    cmdObj["userSource"].str() : dbname;
+
+
             ClientBasic* client = ClientBasic::getCurrent();
             AuthorizationManager* authorizationManager = client->getAuthorizationManager();
-            Principal* principal = authorizationManager->lookupPrincipal(principalName);
+            Principal* principal = authorizationManager->lookupPrincipal(principalName, userSource);
 
             if (!principal) {
-                errmsg = "No authenticated principal found with name: " + principalName;
+                errmsg = "No authenticated principal found with name: " + principalName +
+                        " from source: " + userSource;
                 return false;
             }
 
