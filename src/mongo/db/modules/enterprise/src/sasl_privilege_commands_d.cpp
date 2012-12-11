@@ -86,7 +86,7 @@ namespace {
 
             ClientBasic* client = ClientBasic::getCurrent();
             AuthorizationManager* authorizationManager = client->getAuthorizationManager();
-            Principal* principal = authorizationManager->lookupPrincipal(principalName, userSource);
+            Principal* principal = authorizationManager->lookupPrincipal(PrincipalName(principalName, userSource));
 
             if (!principal) {
                 errmsg = "No authenticated principal found with name: " + principalName +

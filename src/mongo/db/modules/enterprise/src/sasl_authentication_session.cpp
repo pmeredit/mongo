@@ -107,7 +107,7 @@ namespace {
 
         if (isDone()) {
             std::string principalName = getPrincipalId();
-            Principal* principal = new Principal(principalName, getPrincipalSource());
+            Principal* principal = new Principal(PrincipalName(principalName, getPrincipalSource()));
             // TODO: check if session->_autoAuthorize is true and if so inform the
             // AuthorizationManager to implicitly acquire privileges for this principal.
             getClient()->getAuthorizationManager()->addAuthorizedPrincipal(principal);
