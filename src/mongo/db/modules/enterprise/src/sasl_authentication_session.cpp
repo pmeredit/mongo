@@ -161,7 +161,7 @@ namespace {
             }
             BSONObj privilegeDocument;
             Status status = session->getClient()->getAuthorizationManager()->getPrivilegeDocument(
-                    dbname, username, &privilegeDocument);
+                    dbname, PrincipalName(username, dbname), &privilegeDocument);
             if (!status.isOK()) {
                 log() << status.reason() << endl;
                 return GSASL_NO_CALLBACK;

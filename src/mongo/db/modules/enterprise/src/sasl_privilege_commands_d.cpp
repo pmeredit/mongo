@@ -86,30 +86,17 @@ namespace {
 
             ClientBasic* client = ClientBasic::getCurrent();
             AuthorizationManager* authorizationManager = client->getAuthorizationManager();
-            Principal* principal = authorizationManager->lookupPrincipal(PrincipalName(principalName, userSource));
+            PrincipalName principal(principalName, userSource);
 
-            if (!principal) {
+            if (!authorizationManager->lookupPrincipal(principal)) {
                 errmsg = "No authenticated principal found with name: " + principalName +
                         " from source: " + userSource;
                 return false;
             }
 
-            std::string principalDb;
-            std::string principalUsername;
-            if (str::splitOn(principalName, '$', principalDb, principalUsername)) {
-                // We're doing our own authentication against a principal defined in mongo.
-                if (principalDb != resource) {
-                    errmsg = "Resource name not the same as database component of principal name";
-                    return false;
-                } else {
-                    // Make sure the principalName matches the name that will be in system.users
-                    principalName = principalUsername;
-                }
-            }
-
             BSONObj privilegeDocument;
             Status status = authorizationManager->getPrivilegeDocument(resource,
-                                                                       principalName,
+                                                                       principal,
                                                                        &privilegeDocument);
             if (status != Status::OK()) {
                 errmsg = "Problem fetching privilege document: " + status.reason();
@@ -117,7 +104,7 @@ namespace {
             }
 
             status = authorizationManager->acquirePrivilegesFromPrivilegeDocument(
-                    userSource, principal->getName(), privilegeDocument);
+                    userSource, principal, privilegeDocument);
 
             if (status != Status::OK()) {
                 errmsg = "Problem acquiring privileges: " + status.reason();
