@@ -117,7 +117,7 @@ namespace {
             }
 
             status = authorizationManager->acquirePrivilegesFromPrivilegeDocument(
-                    userSource, principal, privilegeDocument);
+                    userSource, principal->getName(), privilegeDocument);
 
             if (status != Status::OK()) {
                 errmsg = "Problem acquiring privileges: " + status.reason();
