@@ -2,5 +2,5 @@ these are enterprise only modules for mongodb
 
 in mongo src dir
 
-   ln -s ~/mongo-enterprise-modules/ src/mongo/db/modules/enterprise
+   ln -s ~/mongo-enterprise-modules src/mongo/db/modules/subscription
 
