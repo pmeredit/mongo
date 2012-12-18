@@ -11,7 +11,7 @@
 #include "mongo/client/sasl_client_authenticate.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/mongo_authentication_session.h"
-#include "mongo/db/client_common.h"
+#include "mongo/db/client_basic.h"
 #include "mongo/db/commands.h"
 #include "mongo/util/base64.h"
 #include "mongo/util/log.h"

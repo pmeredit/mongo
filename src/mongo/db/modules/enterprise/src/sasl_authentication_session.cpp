@@ -12,7 +12,7 @@
 #include "mongo/bson/util/bson_extract.h"
 #include "mongo/client/sasl_client_authenticate.h"
 #include "mongo/db/auth/authorization_manager.h"
-#include "mongo/db/client_common.h"
+#include "mongo/db/client_basic.h"
 #include "mongo/db/security_common.h"
 #include "mongo/db/server_parameters.h"
 #include "mongo/util/assert_util.h"
