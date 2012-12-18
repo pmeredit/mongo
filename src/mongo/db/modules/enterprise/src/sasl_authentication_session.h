@@ -12,7 +12,7 @@
 #include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
 #include "mongo/db/auth/authentication_session.h"
-#include "mongo/db/client_common.h"
+#include "mongo/db/client_basic.h"
 #include "mongo/platform/cstdint.h"
 #include "mongo/util/gsasl_session.h"
 
