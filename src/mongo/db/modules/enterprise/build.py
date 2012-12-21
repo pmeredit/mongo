@@ -26,9 +26,8 @@ def configure(conf, env):
         env.Exit(1)
 
     sasl_server_module_name = moduleconfig.get_current_module_libdep_name('mongosaslservercommon')
-    sasl_mongod_module_name = moduleconfig.get_current_module_libdep_name('mongosaslmongod')
     sasl_shell_module_name = moduleconfig.get_current_module_libdep_name('mongosaslshell')
-    env.Append(MODULE_LIBDEPS_MONGOD=sasl_mongod_module_name,
+    env.Append(MODULE_LIBDEPS_MONGOD=sasl_server_module_name,
                MODULE_LIBDEPS_MONGOS=sasl_server_module_name,
                MODULE_LIBDEPS_MONGOSHELL=sasl_shell_module_name)
 

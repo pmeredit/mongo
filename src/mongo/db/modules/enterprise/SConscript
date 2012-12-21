@@ -12,10 +12,6 @@ env.StaticLibrary('mongosaslservercommon',
                    'src/sasl_commands.cpp'],
                   SYSLIBDEPS=['gsasl'])
 
-env.StaticLibrary('mongosaslmongod',
-                  ['src/sasl_privilege_commands_d.cpp'],
-                  LIBDEPS=['mongosaslservercommon'])
-
 mongosaslshell_files = ['src/sasl_shell.cpp']
 if usesm:
     mongosaslshell_files.extend(['src/sasl_shell_authenticate_sm.cpp'])
