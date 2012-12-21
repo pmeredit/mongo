@@ -30,6 +30,9 @@ namespace {
         CmdSaslStart();
         virtual ~CmdSaslStart();
 
+        virtual void addRequiredPrivileges(
+                const std::string&, const BSONObj&, std::vector<Privilege>*) {}
+
         virtual bool run(const std::string& db,
                          BSONObj& cmdObj,
                          int options,
@@ -48,6 +51,9 @@ namespace {
     public:
         CmdSaslContinue();
         virtual ~CmdSaslContinue();
+
+        virtual void addRequiredPrivileges(
+                const std::string&, const BSONObj&, std::vector<Privilege>*) {}
 
         virtual bool run(const std::string& db,
                          BSONObj& cmdObj,
