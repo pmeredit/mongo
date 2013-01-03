@@ -9,8 +9,10 @@ env.StaticLibrary('mongosnmp',
 
 env.StaticLibrary('mongosaslservercommon',
                   ['src/sasl_authentication_session.cpp',
-                   'src/sasl_commands.cpp'],
-                  SYSLIBDEPS=['gsasl'])
+                   'src/sasl_commands.cpp',
+                   'src/gcrypt_init.cpp',
+                   ],
+                  SYSLIBDEPS=['dl', 'gsasl'])
 
 mongosaslshell_files = ['src/sasl_shell.cpp']
 if usesm:

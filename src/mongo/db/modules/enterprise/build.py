@@ -23,6 +23,11 @@ def configure(conf, env):
     if not conf.CheckLibWithHeader(
         "gsasl", "gsasl.h", "C", "gsasl_check_version(GSASL_VERSION);", autoadd=False):
 
+        print("Could not find <gsasl.h> and gsasl library, required for enterprise build.")
+        env.Exit(1)
+
+    if not conf.CheckCXXHeader("gcrypt.h"):
+        print("Could not find <gcrypt.h>, required for enterprise build.")
         env.Exit(1)
 
     sasl_server_module_name = moduleconfig.get_current_module_libdep_name('mongosaslservercommon')
