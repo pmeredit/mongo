@@ -240,8 +240,12 @@ namespace {
     MONGO_INITIALIZER(SaslAuthenticationLibrary)(InitializerContext* context) {
         fassert(0, _gsaslLibraryContext == NULL);
 
-        if (!gsasl_check_version(GSASL_VERSION))
-            return Status(ErrorCodes::UnknownError, "Incompatible gsasl library.");
+        if (!gsasl_check_version(GSASL_VERSION)) {
+            return Status(ErrorCodes::UnknownError,
+                          mongoutils::str::stream() <<
+                          "Incompatible gsasl library.  Minimum  version required is " GSASL_VERSION
+                          ", but found " << gsasl_check_version(NULL));
+        }
 
         int rc = gsasl_init(&_gsaslLibraryContext);
         if (GSASL_OK != rc)
