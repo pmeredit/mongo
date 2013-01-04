@@ -175,12 +175,20 @@ namespace {
             gsasl_property_set(gsession, GSASL_PASSWORD, hashedPassword.c_str());
             return GSASL_OK;
         }
-        case GSASL_VALIDATE_GSSAPI:
+        case GSASL_VALIDATE_GSSAPI: {
+            std::string dbname = session->getPrincipalSource();
+            if (dbname != StringData("$external", StringData::LiteralTag()) &&
+                dbname != StringData("$sasl", StringData::LiteralTag())) {
+
+                return GSASL_AUTHENTICATION_ERROR;
+            }
+
             if (!str::equals(gsasl_property_fast(gsession, GSASL_GSSAPI_DISPLAY_NAME),
                              gsasl_property_fast(gsession, GSASL_AUTHZID))) {
                 return GSASL_AUTHENTICATION_ERROR;
             }
             return GSASL_OK;
+        }
         default:
             return GSASL_NO_CALLBACK;
         }
