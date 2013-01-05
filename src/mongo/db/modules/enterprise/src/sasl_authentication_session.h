@@ -4,7 +4,6 @@
 
 #pragma once
 
-#include <gsasl.h>
 #include <string>
 #include <vector>
 
@@ -15,6 +14,8 @@
 #include "mongo/db/client_basic.h"
 #include "mongo/platform/cstdint.h"
 #include "mongo/util/gsasl_session.h"
+
+#include <gsasl.h>  // Must be included here because of SERVER-8086.
 
 struct Gsasl;
 
