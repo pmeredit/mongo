@@ -131,6 +131,11 @@ namespace {
 
 namespace {
 
+    bool isExternalUserSource(const StringData& userSource) {
+        return userSource == StringData("$external", StringData::LiteralTag()) ||
+            userSource == StringData("$sasl", StringData::LiteralTag());
+    }
+
     int gsaslCallbackFunction(Gsasl* gsasl, Gsasl_session* gsession, Gsasl_property property) {
 
         SaslAuthenticationSession* session = static_cast<SaslAuthenticationSession*>(
@@ -147,7 +152,7 @@ namespace {
             fassert(0, NULL != session);
             std::string dbname = session->getPrincipalSource();
             std::string username = session->getPrincipalId();
-            if (dbname == "$sasl") {
+            if (isExternalUserSource(dbname)) {
                 log() << "Server does not have password data for externally credentialed user "
                       << username << '.' << endl;
                 return GSASL_NO_CALLBACK;
@@ -177,9 +182,10 @@ namespace {
         }
         case GSASL_VALIDATE_GSSAPI: {
             std::string dbname = session->getPrincipalSource();
-            if (dbname != StringData("$external", StringData::LiteralTag()) &&
-                dbname != StringData("$sasl", StringData::LiteralTag())) {
+            if (!isExternalUserSource(session->getPrincipalSource())) {
 
+                log() << "GSSAPI/Kerberos authentication not allowed except against "
+                    "$external or $sasl database" << endl;
                 return GSASL_AUTHENTICATION_ERROR;
             }
 
