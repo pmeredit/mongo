@@ -36,7 +36,7 @@ namespace {
         virtual bool run(const std::string& db,
                          BSONObj& cmdObj,
                          int options,
-                         std::string& errmsg,
+                         std::string& ignored,
                          BSONObjBuilder& result,
                          bool fromRepl);
 
@@ -58,7 +58,7 @@ namespace {
         virtual bool run(const std::string& db,
                          BSONObj& cmdObj,
                          int options,
-                         std::string& errmsg,
+                         std::string& ignored,
                          BSONObjBuilder& result,
                          bool fromRepl);
 
@@ -116,7 +116,9 @@ namespace {
     }
 
     void addStatus(const Status& status, BSONObjBuilder* builder) {
-        builder->append(saslCommandCodeFieldName, status.code());
+        builder->append("ok", status.isOK() ? 1.0: 0.0);
+        if (!status.isOK())
+            builder->append(saslCommandCodeFieldName, status.code());
         if (!status.reason().empty())
             builder->append(saslCommandErrmsgFieldName, status.reason());
     }
@@ -205,7 +207,7 @@ namespace {
     bool CmdSaslStart::run(const std::string& db,
                            BSONObj& cmdObj,
                            int options,
-                           std::string& errmsg,
+                           std::string& ignored,
                            BSONObjBuilder& result,
                            bool fromRepl) {
 
@@ -222,7 +224,7 @@ namespace {
         if (status.isOK() && !session->isDone())
             client->swapAuthenticationSession(sessionGuard);
 
-        return true;
+        return status.isOK();
     }
 
     CmdSaslContinue::CmdSaslContinue() : Command(saslContinueCommandName) {}
@@ -236,7 +238,7 @@ namespace {
     bool CmdSaslContinue::run(const std::string& db,
                               BSONObj& cmdObj,
                               int options,
-                              std::string& errmsg,
+                              std::string& ignored,
                               BSONObjBuilder& result,
                               bool fromRepl) {
 
@@ -246,7 +248,7 @@ namespace {
 
         if (!sessionGuard || sessionGuard->getType() != AuthenticationSession::SESSION_TYPE_SASL) {
             addStatus(Status(ErrorCodes::ProtocolError, "sasl: No session state found"), &result);
-            return true;
+            return false;
         }
 
         SaslAuthenticationSession* session =
@@ -256,7 +258,7 @@ namespace {
             addStatus(Status(ErrorCodes::ProtocolError,
                              "sasl: Attempt to switch database target during sasl authentication."),
                       &result);
-            return true;
+            return false;
         }
 
         Status status = doSaslContinue(session, cmdObj, &result);
@@ -265,7 +267,7 @@ namespace {
         if (status.isOK() && !session->isDone())
             client->swapAuthenticationSession(sessionGuard);
 
-        return true;
+        return status.isOK();
     }
 
 }  // namespace
