@@ -15,7 +15,7 @@
 #include "mongo/platform/cstdint.h"
 #include "mongo/util/gsasl_session.h"
 
-#include <gsasl.h>  // Must be included here because of SERVER-8086.
+#include <gsasl.h>  // Must be included after "mongo/platform/cstdint.h" because of SERVER-8086.
 
 struct Gsasl;
 
