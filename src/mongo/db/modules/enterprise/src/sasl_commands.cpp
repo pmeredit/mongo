@@ -137,7 +137,8 @@ namespace {
         status = session->step(payload, &responsePayload);
         if (!status.isOK()) {
             log() << "sasl " << status.codeString() << ": " << status.reason() << endl;
-            return status;
+            // All the client needs to know is that authentication has failed.
+            return Status(ErrorCodes::AuthenticationFailed, "Authentication failed.");
         }
 
         status = buildResponse(session, responsePayload, type, result);
