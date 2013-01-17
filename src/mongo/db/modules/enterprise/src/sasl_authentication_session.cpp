@@ -149,7 +149,8 @@ namespace {
             gsasl_property_set(gsession, GSASL_HOSTNAME, getHostNameCached().c_str());
             return GSASL_OK;
         case GSASL_PASSWORD: {
-            fassert(0, NULL != session);
+            if (NULL == session)
+                return GSASL_NO_CALLBACK;
             std::string dbname = session->getPrincipalSource();
             std::string username = session->getPrincipalId();
             if (isExternalUserSource(dbname)) {
@@ -181,6 +182,9 @@ namespace {
             return GSASL_OK;
         }
         case GSASL_VALIDATE_GSSAPI: {
+            if (NULL == session)
+                return GSASL_NO_CALLBACK;
+
             std::string dbname = session->getPrincipalSource();
             if (!isExternalUserSource(session->getPrincipalSource())) {
 
@@ -200,19 +204,7 @@ namespace {
         }
     }
 
-    std::set<std::string> getGsaslSupportedServerMechanisms(Gsasl* gsasl) {
-        char* mechsString;
-        fassert(0, !gsasl_server_mechlist(gsasl, &mechsString));
-        std::vector<std::string> result;
-        splitStringDelim(mechsString, &result, ' ');
-        free(mechsString);
-        return std::set<std::string>(result.begin(), result.end());
-    }
-
     Status initializeSupportedMechanismMap() {
-        const std::set<std::string> gsaslMechanisms =
-            getGsaslSupportedServerMechanisms(_gsaslLibraryContext);
-
         std::set<std::string> desiredMechanisms(authenticationMechanisms.begin(),
                                                 authenticationMechanisms.end());
         if (desiredMechanisms.erase(MECH_MONGOCR) == 0) {
@@ -221,15 +213,18 @@ namespace {
 
         for (std::set<std::string>::const_iterator iter = desiredMechanisms.begin(),
                  end = desiredMechanisms.end(); iter != end; ++iter) {
-            if (gsaslMechanisms.count(*iter) == 0) {
+            GsaslSession gsession;
+            Status status = gsession.initializeServerSession(_gsaslLibraryContext, *iter, NULL);
+            if (!status.isOK()) {
                 return Status(ErrorCodes::BadValue,
                               mongoutils::str::stream() <<
-                              "Unsupported authenticationMechanism: \"" << *iter << '"');
+                              "Unsupported authenticationMechanism: \"" << *iter << "\": " <<
+                              status.reason());
             }
         }
 
         for (SaslMechanismInfo* mechInfo = _mongoKnownMechanisms; mechInfo->name; ++mechInfo) {
-            if (desiredMechanisms.count(mechInfo->name) && gsaslMechanisms.count(mechInfo->name)) {
+            if (desiredMechanisms.count(mechInfo->name)) {
                 _supportedSaslMechanisms[mechInfo->name] = mechInfo;
             }
         }
