@@ -34,6 +34,9 @@ namespace {
     MONGO_EXPORT_SERVER_PARAMETER(
             authenticationMechanisms, std::vector<std::string>, stringSplit("MONGO-CR", ','));
 
+    MONGO_EXPORT_SERVER_PARAMETER(saslHostName, std::string, "");
+    MONGO_EXPORT_SERVER_PARAMETER(saslServiceName, std::string, "");
+
     struct SaslMechanismInfo {
         const char* name;
         Gsasl_property principalIdProperty;
@@ -143,10 +146,10 @@ namespace {
 
         switch (property) {
         case GSASL_SERVICE:
-            gsasl_property_set(gsession, GSASL_SERVICE, saslDefaultServiceName);
+            gsasl_property_set(gsession, GSASL_SERVICE, saslServiceName.c_str());
             return GSASL_OK;
         case GSASL_HOSTNAME:
-            gsasl_property_set(gsession, GSASL_HOSTNAME, getHostNameCached().c_str());
+            gsasl_property_set(gsession, GSASL_HOSTNAME, saslHostName.c_str());
             return GSASL_OK;
         case GSASL_PASSWORD: {
             if (NULL == session)
@@ -234,6 +237,11 @@ namespace {
 
     MONGO_INITIALIZER(SaslAuthenticationLibrary)(InitializerContext* context) {
         fassert(4002, _gsaslLibraryContext == NULL);
+
+        if (saslHostName.empty())
+            saslHostName = getHostNameCached();
+        if (saslServiceName.empty())
+            saslServiceName = saslDefaultServiceName;
 
         if (!gsasl_check_version(GSASL_VERSION)) {
             return Status(ErrorCodes::UnknownError,
