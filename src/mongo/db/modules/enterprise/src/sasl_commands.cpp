@@ -91,7 +91,7 @@ namespace {
             result->append(saslCommandPayloadFieldName, base64::encode(responsePayload));
         }
         else {
-            fassertFailed(0);
+            fassertFailed(4003);
         }
 
         return Status::OK();

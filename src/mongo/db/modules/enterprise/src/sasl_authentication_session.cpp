@@ -78,7 +78,7 @@ namespace {
     Status SaslAuthenticationSession::start(const StringData& mechanism,
                                             int64_t conversationId,
                                             bool autoAuthorize) {
-        fassert(0, conversationId > 0);
+        fassert(4001, conversationId > 0);
         if (_conversationId != 0) {
             return Status(ErrorCodes::InternalError,
                           "Cannot call start twice on same SaslAuthenticationSession.");
@@ -233,7 +233,7 @@ namespace {
     }
 
     MONGO_INITIALIZER(SaslAuthenticationLibrary)(InitializerContext* context) {
-        fassert(0, _gsaslLibraryContext == NULL);
+        fassert(4002, _gsaslLibraryContext == NULL);
 
         if (!gsasl_check_version(GSASL_VERSION)) {
             return Status(ErrorCodes::UnknownError,
