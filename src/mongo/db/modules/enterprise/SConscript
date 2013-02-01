@@ -1,6 +1,6 @@
 # -*- mode: python -*-
 
-Import("env usev8 usesm")
+Import("env")
 
 env.StaticLibrary('mongosnmp',
                   ['src/snmp.cpp',
@@ -13,11 +13,3 @@ env.StaticLibrary('mongosaslservercommon',
                    'src/gcrypt_init.cpp',
                    ],
                   SYSLIBDEPS=['dl', 'gsasl'])
-
-mongosaslshell_files = ['src/sasl_shell.cpp']
-if usesm:
-    mongosaslshell_files.extend(['src/sasl_shell_authenticate_sm.cpp'])
-if usev8:
-    mongosaslshell_files.extend(['src/sasl_shell_authenticate_v8.cpp'])
-
-env.StaticLibrary('mongosaslshell', mongosaslshell_files)
