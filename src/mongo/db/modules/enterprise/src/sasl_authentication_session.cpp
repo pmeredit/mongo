@@ -31,11 +31,11 @@ namespace {
         return result;
     }
 
-    MONGO_EXPORT_SERVER_PARAMETER(
+    MONGO_EXPORT_STARTUP_SERVER_PARAMETER(
             authenticationMechanisms, std::vector<std::string>, stringSplit("MONGO-CR", ','));
 
-    MONGO_EXPORT_SERVER_PARAMETER(saslHostName, std::string, "");
-    MONGO_EXPORT_SERVER_PARAMETER(saslServiceName, std::string, "");
+    MONGO_EXPORT_STARTUP_SERVER_PARAMETER(saslHostName, std::string, "");
+    MONGO_EXPORT_STARTUP_SERVER_PARAMETER(saslServiceName, std::string, "");
 
     struct SaslMechanismInfo {
         const char* name;
