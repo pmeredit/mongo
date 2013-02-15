@@ -32,7 +32,7 @@ namespace {
     }
 
     MONGO_EXPORT_STARTUP_SERVER_PARAMETER(
-            authenticationMechanisms, std::vector<std::string>, stringSplit("MONGO-CR", ','));
+            authenticationMechanisms, std::vector<std::string>, stringSplit("MONGODB-CR", ','));
 
     MONGO_EXPORT_STARTUP_SERVER_PARAMETER(saslHostName, std::string, "");
     MONGO_EXPORT_STARTUP_SERVER_PARAMETER(saslServiceName, std::string, "");
@@ -50,7 +50,7 @@ namespace {
     const char MECH_PLAIN[] = "PLAIN";
 
     // The name we give to the nonce-authenticate mechanism in the free product.
-    const char MECH_MONGOCR[] = "MONGO-CR";
+    const char MECH_MONGOCR[] = "MONGODB-CR";
 
     SaslMechanismInfo _mongoKnownMechanisms[] = {
         { MECH_DIGESTMD5, GSASL_AUTHID },
