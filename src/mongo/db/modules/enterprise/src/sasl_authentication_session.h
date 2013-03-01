@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <sasl/sasl.h>
 #include <string>
 #include <vector>
 
@@ -11,13 +12,7 @@
 #include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
 #include "mongo/db/auth/authentication_session.h"
-#include "mongo/db/client_basic.h"
 #include "mongo/platform/cstdint.h"
-#include "mongo/util/gsasl_session.h"
-
-#include <gsasl.h>  // Must be included after "mongo/platform/cstdint.h" because of SERVER-8086.
-
-struct Gsasl;
 
 namespace mongo {
 
@@ -29,18 +24,32 @@ namespace mongo {
     class SaslAuthenticationSession : public AuthenticationSession {
         MONGO_DISALLOW_COPYING(SaslAuthenticationSession);
     public:
-        /**
-         * Returns the list of SASL mechanisms supported by SaslAuthenticationSession.
-         */
-        static std::vector<std::string> getSupportedMechanisms();
+        struct SaslMechanismInfo;
 
-        SaslAuthenticationSession(ClientBasic* client, const std::string& principalSource);
+        /**
+         * Perform basic smoke testing of SASL mechanism "mechanism", to see if it is available for
+         * use in this server.
+         *
+         * Use this method for startup-time verification that "mechanism" is available, supposing
+         * that "serviceName" is the SASL service name and serviceHostname is the hostname of this
+         * server.
+         *
+         * Returns Status::OK() if the mechanism is available.
+         */
+        static Status smokeTestMechanism(const StringData& mechanism,
+                                         const StringData& serviceName,
+                                         const StringData& serviceHostname);
+
+        explicit SaslAuthenticationSession();
         virtual ~SaslAuthenticationSession();
 
         /**
-         * Start the server side of a SASL authentication session.
+         * Start the server side of a SASL authentication.
          *
+         * "authenticationDatabase" is the database against which the user is authenticating.
          * "mechanism" is the SASL mechanism to use.
+         * "serviceName" is the SASL service name to use.
+         * "serviceHostname" is the FQDN of this server.
          * "conversationId" is the conversation identifier to use for this session.
          *
          * If "autoAuthorize" is set to true, the server will automatically acquire all privileges
@@ -49,7 +58,10 @@ namespace mongo {
          *
          * Must be called only once on an instance.
          */
-        Status start(const StringData& mechanism,
+        Status start(const StringData& authenticationDatabase,
+                     const StringData& mechanism,
+                     const StringData& serviceName,
+                     const StringData& serviceHostname,
                      int64_t conversationId,
                      bool autoAuthorize);
 
@@ -64,8 +76,12 @@ namespace mongo {
          */
         Status step(const StringData& inputData, std::string* outputData);
 
-        ClientBasic* getClient() const { return _client; }
-        const std::string& getPrincipalSource() const { return _principalSource; }
+        /**
+         * Gets the name of the database against which this authentication conversation is running.
+         *
+         * Not meaningful before a successful call to start().
+         */
+        const std::string& getAuthenticationDatabase() const { return _authenticationDatabase; }
 
         /**
          * Get the conversation id for this authentication session.
@@ -81,20 +97,48 @@ namespace mongo {
          *
          * Behavior is undefined if step() has not been called, or has returned a failing status.
          */
-        bool isDone() const { return _gsaslSession.isDone(); }
+        bool isDone() const { return _done; }
 
         /**
          * Gets the string identifier of the principal being authenticated.
+         *
+         * Returns the empty string if the session does not yet know the identity being
+         * authenticated.
          */
         std::string getPrincipalId() const;
 
+        /**
+         * Gets the name of the SASL mechanism in use.
+         *
+         * Returns "" if start() has not been called or if start() did not return Status::OK().
+         */
+        const char* getMechanism() const;
+
+        /**
+         * Returns true if automatic privilege acquisition should be used for this principal, after
+         * authentication.  Not meaningful before a successful call to start().
+         */
+        bool shouldAutoAuthorize() const { return _autoAuthorize; }
+
+        /**
+         * Returns a pointer to the opaque SaslMechanismInfo object for the mechanism in use.
+         *
+         * Not meaningful before a successful call to start().
+         */
+        const SaslMechanismInfo* getMechInfo() const { return _mechInfo; }
+
     private:
-        ClientBasic* _client;
-        std::string _principalSource;
-        GsaslSession _gsaslSession;
+        static const int maxCallbacks = 4;
+        std::string _authenticationDatabase;
+        std::string _serviceName;
+        std::string _serviceHostname;
+        sasl_conn_t* _saslConnection;
+        int _saslStep;
+        sasl_callback_t _callbacks[maxCallbacks];
+        const SaslMechanismInfo* _mechInfo;
         int64_t _conversationId;
         bool _autoAuthorize;
-        Gsasl_property _principalIdProperty;
+        bool _done;
     };
 
 }  // namespace mongo

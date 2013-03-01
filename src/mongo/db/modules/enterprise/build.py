@@ -21,13 +21,12 @@ def configure(conf, env):
 
     env['MONGO_BUILD_SASL_CLIENT'] = True
     if not conf.CheckLibWithHeader(
-        "gsasl", "gsasl.h", "C", "gsasl_check_version(GSASL_VERSION);", autoadd=False):
+        "sasl2",
+        "sasl/sasl.h", "C",
+        "sasl_version_info(0, 0, 0, 0, 0, 0);",
+        autoadd=False):
 
-        print("Could not find <gsasl.h> and gsasl library, required for enterprise build.")
-        env.Exit(1)
-
-    if not conf.CheckCXXHeader("gcrypt.h"):
-        print("Could not find <gcrypt.h>, required for enterprise build.")
+        print("Could not find <sasl/sasl.h> and sasl library, required for enterprise build.")
         env.Exit(1)
 
     sasl_server_module_name = moduleconfig.get_current_module_libdep_name('mongosaslservercommon')

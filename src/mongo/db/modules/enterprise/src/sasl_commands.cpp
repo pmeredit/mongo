@@ -2,9 +2,11 @@
  * Copyright (C) 2012 10gen, Inc.  All Rights Reserved.
  */
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
+#include "mongo/base/init.h"
 #include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/util/bson_extract.h"
@@ -13,9 +15,13 @@
 #include "mongo/db/auth/mongo_authentication_session.h"
 #include "mongo/db/client_basic.h"
 #include "mongo/db/commands.h"
+#include "mongo/db/commands/authentication_commands.h"
+#include "mongo/db/server_parameters.h"
 #include "mongo/util/base64.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
+#include "mongo/util/sequence_util.h"
+#include "mongo/util/stringutils.h"
 #include "sasl_authentication_session.h"
 
 namespace mongo {
@@ -23,7 +29,23 @@ namespace {
 
     using namespace mongoutils;
 
+    /// Split string "s" at instances of "delim" into a vector of strings, and return the result.
+    std::vector<std::string> stringSplit(const std::string& s, char delim) {
+        std::vector<std::string> result;
+        splitStringDelim(s, &result, delim);
+        return result;
+    }
+
+    MONGO_EXPORT_STARTUP_SERVER_PARAMETER(
+            authenticationMechanisms, std::vector<std::string>, stringSplit("MONGODB-CR", ','));
+
+    MONGO_EXPORT_STARTUP_SERVER_PARAMETER(saslHostName, std::string, "");
+    MONGO_EXPORT_STARTUP_SERVER_PARAMETER(saslServiceName, std::string, "");
+
     const bool autoAuthorizeDefault = true;
+
+    // The name we give to the nonce-authenticate mechanism in the free product.
+    const char mechanismMONGODBCR[] = "MONGODB-CR";
 
     class CmdSaslStart : public Command {
     public:
@@ -123,7 +145,8 @@ namespace {
             builder->append(saslCommandErrmsgFieldName, status.reason());
     }
 
-    Status doSaslStep(SaslAuthenticationSession* session,
+    Status doSaslStep(ClientBasic* client,
+                      SaslAuthenticationSession* session,
                       const BSONObj& cmdObj,
                       BSONObjBuilder* result) {
 
@@ -136,7 +159,9 @@ namespace {
         std::string responsePayload;
         status = session->step(payload, &responsePayload);
         if (!status.isOK()) {
-            log() << "sasl " << status.codeString() << ": " << status.reason() << endl;
+            log() << session->getMechanism() << " authentication failed for " <<
+                session->getPrincipalId() << " on " <<
+                session->getAuthenticationDatabase() << " ; " << status.toString() << std::endl;
             // All the client needs to know is that authentication has failed.
             return Status(ErrorCodes::AuthenticationFailed, "Authentication failed.");
         }
@@ -146,15 +171,22 @@ namespace {
             return status;
 
         if (session->isDone()) {
-            log() << "SASL: Successfully authenticated as principal: " << session->getPrincipalId()
-                    << std::endl;
+            Principal* principal = new Principal(
+                    PrincipalName(session->getPrincipalId(), session->getAuthenticationDatabase()));
+            principal->setImplicitPrivilegeAcquisition(session->shouldAutoAuthorize());
+            client->getAuthorizationManager()->addAuthorizedPrincipal(principal);
 
+            log() << "Successfully authenticated as principal " <<
+                session->getPrincipalId() << " on " << session->getAuthenticationDatabase() <<
+                std::endl;
         }
         return Status::OK();
     }
 
 
-    Status doSaslStart(SaslAuthenticationSession* session,
+    Status doSaslStart(ClientBasic* client,
+                       SaslAuthenticationSession* session,
+                       const std::string& db, 
                        const BSONObj& cmdObj,
                        BSONObjBuilder* result) {
 
@@ -171,20 +203,25 @@ namespace {
         if (!status.isOK())
             return status;
 
-        status = session->start(mechanism, 1, autoAuthorize);
-        if (status == ErrorCodes::BadValue) {
-            result->append(saslCommandMechanismListFieldName,
-                           SaslAuthenticationSession::getSupportedMechanisms());
-            return status;
-        }
-        else if (!status.isOK()) {
+        if (!sequenceContains(authenticationMechanisms, mechanism)) {
+            result->append(saslCommandMechanismListFieldName, authenticationMechanisms);
             return status;
         }
 
-        return doSaslStep(session, cmdObj, result);
+        status = session->start(db,
+                                mechanism,
+                                saslServiceName,
+                                saslHostName,
+                                1,
+                                autoAuthorize);
+        if (!status.isOK())
+            return status;
+
+        return doSaslStep(client, session, cmdObj, result);
     }
 
-    Status doSaslContinue(SaslAuthenticationSession* session,
+    Status doSaslContinue(ClientBasic* client,
+                          SaslAuthenticationSession* session,
                           const BSONObj& cmdObj,
                           BSONObjBuilder* result) {
 
@@ -195,7 +232,7 @@ namespace {
         if (conversationId != session->getConversationId())
             return Status(ErrorCodes::ProtocolError, "sasl: Mismatched conversation id");
 
-        return doSaslStep(session, cmdObj, result);
+        return doSaslStep(client, session, cmdObj, result);
     }
 
     CmdSaslStart::CmdSaslStart() : Command(saslStartCommandName) {}
@@ -215,11 +252,10 @@ namespace {
         ClientBasic* client = ClientBasic::getCurrent();
         client->resetAuthenticationSession(NULL);
 
-        SaslAuthenticationSession* session =
-            new SaslAuthenticationSession(ClientBasic::getCurrent(), db);
+        SaslAuthenticationSession* session = new SaslAuthenticationSession();
         boost::scoped_ptr<AuthenticationSession> sessionGuard(session);
 
-        Status status = doSaslStart(session, cmdObj, &result);
+        Status status = doSaslStart(client, session, db, cmdObj, &result);
         addStatus(status, &result);
 
         if (status.isOK() && !session->isDone())
@@ -248,27 +284,54 @@ namespace {
         client->swapAuthenticationSession(sessionGuard);
 
         if (!sessionGuard || sessionGuard->getType() != AuthenticationSession::SESSION_TYPE_SASL) {
-            addStatus(Status(ErrorCodes::ProtocolError, "sasl: No session state found"), &result);
+            addStatus(Status(ErrorCodes::ProtocolError, "No SASL session state found"), &result);
             return false;
         }
 
         SaslAuthenticationSession* session =
             static_cast<SaslAuthenticationSession*>(sessionGuard.get());
 
-        if (session->getPrincipalSource() != db) {
+        if (session->getAuthenticationDatabase() != db) {
             addStatus(Status(ErrorCodes::ProtocolError,
-                             "sasl: Attempt to switch database target during sasl authentication."),
+                             "Attempt to switch database target during SASL authentication."),
                       &result);
             return false;
         }
 
-        Status status = doSaslContinue(session, cmdObj, &result);
+        Status status = doSaslContinue(client, session, cmdObj, &result);
         addStatus(status, &result);
 
         if (status.isOK() && !session->isDone())
             client->swapAuthenticationSession(sessionGuard);
 
         return status.isOK();
+    }
+
+    MONGO_INITIALIZER_WITH_PREREQUISITES(SaslCommands, ("CyrusSaslServerLibrary"))(
+            InitializerContext*) {
+
+        if (saslHostName.empty())
+            saslHostName = getHostNameCached();
+        if (saslServiceName.empty())
+            saslServiceName = saslDefaultServiceName;
+
+        if (!sequenceContains(authenticationMechanisms, mechanismMONGODBCR))
+            CmdAuthenticate::disableCommand();
+
+        for (size_t i = 0; i < authenticationMechanisms.size(); ++i) {
+            const std::string& mechanism = authenticationMechanisms[i];
+            if (mechanism == mechanismMONGODBCR) {
+                // Not a SASL mechanism; no need to smoke test the built-in mechanism.
+                continue;
+            }
+            Status status = SaslAuthenticationSession::smokeTestMechanism(
+                    authenticationMechanisms[i],
+                    saslServiceName,
+                    saslHostName);
+            if (!status.isOK())
+                return status;
+        }
+        return Status::OK();
     }
 
 }  // namespace
