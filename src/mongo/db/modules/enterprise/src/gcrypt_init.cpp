@@ -19,9 +19,10 @@ namespace {
      * Initializes the gcrypt library, if and only if mongo is linked against it dynamically.
      * This may happen if libgsasl is built to use cryptographic functions from libgcrypt.
      */
-    MONGO_INITIALIZER_GENERAL(GcryptLibrary,
-                              MONGO_NO_PREREQUISITES,
-                              ("SaslAuthenticationLibrary"))(InitializerContext*) {
+    MONGO_INITIALIZER_GENERAL(
+        GcryptLibrary,
+        MONGO_NO_PREREQUISITES,
+        ("SaslAuthenticationLibrary", "SaslClientContext"))(InitializerContext*) {
 
         typedef gcry_error_t (*gcry_control_fn)(enum gcry_ctl_cmds, ...);
         typedef const char* (*gcry_check_version_fn)(const char*);
