@@ -57,7 +57,12 @@ namespace {
         // Interpret the flags.
         const bool isAuthzLookup = flags & SASL_AUXPROP_AUTHZID;
         const bool isOverrideLookup = flags & SASL_AUXPROP_OVERRIDE;
+
+#ifdef SASL_AUXPROP_VERIFY_AGAINST_HASH
         const bool verifyAgainstHashedPassword = flags & SASL_AUXPROP_VERIFY_AGAINST_HASH;
+#else
+        const bool verifyAgainstHashedPassword = false;
+#endif
 
         // Find out the target authentication database.  This is the database that contains
         // the user document.
@@ -174,13 +179,31 @@ namespace {
         return ret;
     }
 
+#if SASL_AUXPROP_PLUG_VERSION >= 8
+#define MONGODB_AUXPROP_LOOKUP_FN auxpropLookupMongoDBInternal
+#else
+    void auxpropLookupMongoDBInternalVoid(void* glob_context,
+                                          sasl_server_params_t* sparams,
+                                          unsigned flags,
+                                          const char* user,
+                                          unsigned ulen) {
+        auxpropLookupMongoDBInternal(glob_context,
+                                     sparams,
+                                     flags,
+                                     user,
+                                     ulen);
+    }
+
+#define MONGODB_AUXPROP_LOOKUP_FN auxpropLookupMongoDBInternalVoid
+#endif
+
     /// Plugin vtable.
     sasl_auxprop_plug_t auxpropMongoDBInternal = {
         0,                             // features MBZ
         0,                             // spare_int1 MBZ
         NULL,                          // glob_context
         NULL,                          // auxprop_free
-        auxpropLookupMongoDBInternal,  // auxprop_lookup
+        MONGODB_AUXPROP_LOOKUP_FN,     // auxprop_lookup
         NULL,                          // name
         NULL,                          // auxprop_store
     };
