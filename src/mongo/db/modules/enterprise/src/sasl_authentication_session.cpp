@@ -7,6 +7,8 @@
 #include "mongo/base/init.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/util/bson_extract.h"
+#include "mongo/db/auth/authorization_manager.h"
+#include "mongo/db/auth/auth_external_state_mock.h"
 #include "mongo/client/sasl_client_authenticate.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/mongoutils/str.h"
@@ -28,7 +30,7 @@ namespace {
      * Signature of a function used to determine if "authenticatedUser" is authorized to act as
      * "requestedUser".  This is the final step in completing an authentication.
      *
-     * The "session" object is made available for context.
+     * The "session" and "conn" objects are made available for context.
      */
     typedef bool (*AuthorizeUserFn)(SaslAuthenticationSession* session,
                                     const StringData& requestedUser,
@@ -64,7 +66,8 @@ namespace {
     Status smokeCommonMechanism(const StringData& mechanismName,
                                 const StringData& serviceName,
                                 const StringData& serviceHostname) {
-        SaslAuthenticationSession session;
+        AuthorizationManager authManager(new AuthExternalStateMock);
+        SaslAuthenticationSession session(&authManager);
         Status status = session.start("test",
                                       mechanismName,
                                       serviceName,
@@ -125,7 +128,6 @@ namespace {
     /// NULL-terminated list of SaslMechanismInfos describing the mechanisms MongoDB knows how to
     /// support.
     SaslAuthenticationSession::SaslMechanismInfo _mongoKnownMechanisms[] = {
-        { mechanismDIGESTMD5, smokeCommonMechanism, isAuthorizedCommon },
         { mechanismCRAMMD5, smokeCommonMechanism, isAuthorizedCommon },
         { mechanismGSSAPI, smokeGssapiMechanism, isAuthorizedGssapi },
         { mechanismPLAIN, smokeCommonMechanism, isAuthorizedCommon },
@@ -245,11 +247,20 @@ namespace {
         return SASL_OK;
     }
 
+    int saslAlwaysFailCallback() throw () {
+        return SASL_FAIL;
+    }
+
     /**
      * Type of pointer used to store SASL callback functions.
      */
     typedef int (*SaslCallbackFn)();
 }  // namespace
+
+    /// This value chosen because it is unused, and unlikely to be used by the SASL library.
+
+    // static
+    const int SaslAuthenticationSession::mongoSessionCallbackId = 0xF00F;
 
     // static
     Status SaslAuthenticationSession::smokeTestMechanism(const StringData& mechanism,
@@ -264,8 +275,9 @@ namespace {
         return mechInfo->smokeTestMechanism(mechanism, serviceName, serviceHostname);
     }
 
-    SaslAuthenticationSession::SaslAuthenticationSession() :
+    SaslAuthenticationSession::SaslAuthenticationSession(AuthorizationManager* authManager) :
         AuthenticationSession(AuthenticationSession::SESSION_TYPE_SASL),
+        _authManager(authManager),
         _saslConnection(NULL),
         _saslStep(0),
         _mechInfo(NULL),
@@ -276,6 +288,7 @@ namespace {
         const sasl_callback_t callbackTemplate[maxCallbacks] = {
             { SASL_CB_GETOPT, SaslCallbackFn(saslServerConnGetOpt), this },
             { SASL_CB_PROXY_POLICY, SaslCallbackFn(saslServerConnAuthorize), this },
+            { mongoSessionCallbackId, saslAlwaysFailCallback, this },
             { SASL_CB_LIST_END }
         };
         std::copy(callbackTemplate, callbackTemplate + maxCallbacks, _callbacks);

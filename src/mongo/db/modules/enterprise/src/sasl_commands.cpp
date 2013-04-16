@@ -145,8 +145,7 @@ namespace {
             builder->append(saslCommandErrmsgFieldName, status.reason());
     }
 
-    Status doSaslStep(ClientBasic* client,
-                      SaslAuthenticationSession* session,
+    Status doSaslStep(SaslAuthenticationSession* session,
                       const BSONObj& cmdObj,
                       BSONObjBuilder* result) {
 
@@ -174,7 +173,7 @@ namespace {
             Principal* principal = new Principal(
                     PrincipalName(session->getPrincipalId(), session->getAuthenticationDatabase()));
             principal->setImplicitPrivilegeAcquisition(session->shouldAutoAuthorize());
-            client->getAuthorizationManager()->addAuthorizedPrincipal(principal);
+            session->getAuthorizationManager()->addAuthorizedPrincipal(principal);
 
             log() << "Successfully authenticated as principal " <<
                 session->getPrincipalId() << " on " << session->getAuthenticationDatabase() <<
@@ -184,8 +183,7 @@ namespace {
     }
 
 
-    Status doSaslStart(ClientBasic* client,
-                       SaslAuthenticationSession* session,
+    Status doSaslStart(SaslAuthenticationSession* session,
                        const std::string& db, 
                        const BSONObj& cmdObj,
                        BSONObjBuilder* result) {
@@ -217,11 +215,10 @@ namespace {
         if (!status.isOK())
             return status;
 
-        return doSaslStep(client, session, cmdObj, result);
+        return doSaslStep(session, cmdObj, result);
     }
 
-    Status doSaslContinue(ClientBasic* client,
-                          SaslAuthenticationSession* session,
+    Status doSaslContinue(SaslAuthenticationSession* session,
                           const BSONObj& cmdObj,
                           BSONObjBuilder* result) {
 
@@ -232,7 +229,7 @@ namespace {
         if (conversationId != session->getConversationId())
             return Status(ErrorCodes::ProtocolError, "sasl: Mismatched conversation id");
 
-        return doSaslStep(client, session, cmdObj, result);
+        return doSaslStep(session, cmdObj, result);
     }
 
     CmdSaslStart::CmdSaslStart() : Command(saslStartCommandName) {}
@@ -252,10 +249,11 @@ namespace {
         ClientBasic* client = ClientBasic::getCurrent();
         client->resetAuthenticationSession(NULL);
 
-        SaslAuthenticationSession* session = new SaslAuthenticationSession();
+        SaslAuthenticationSession* session = new SaslAuthenticationSession(
+                client->getAuthorizationManager());
         boost::scoped_ptr<AuthenticationSession> sessionGuard(session);
 
-        Status status = doSaslStart(client, session, db, cmdObj, &result);
+        Status status = doSaslStart(session, db, cmdObj, &result);
         addStatus(status, &result);
 
         if (status.isOK() && !session->isDone())
@@ -298,7 +296,7 @@ namespace {
             return false;
         }
 
-        Status status = doSaslContinue(client, session, cmdObj, &result);
+        Status status = doSaslContinue(session, cmdObj, &result);
         addStatus(status, &result);
 
         if (status.isOK() && !session->isDone())

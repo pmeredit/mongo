@@ -67,7 +67,7 @@ namespace {
             return SASL_FAIL;
         }
 
-        memcpy(out, user.rawData(), user.size());
+        memmove(out, user.rawData(), user.size());
         *outLen = static_cast<unsigned>(user.size());
         return SASL_OK;
     }

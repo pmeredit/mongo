@@ -20,7 +20,6 @@
 #include "mongo/base/string_data.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/principal_name.h"
-#include "mongo/db/client_basic.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/util/mongoutils/str.h"
 #include "sasl_authentication_session.h"
@@ -84,7 +83,18 @@ namespace {
 
         // Look up the user's privilege document in the authentication database.
         BSONObj privilegeDocument;
-        Status status = ClientBasic::getCurrent()->getAuthorizationManager()->getPrivilegeDocument(
+        void* sessionContext;
+        int (*ignored)();
+        ret = sparams->utils->getcallback(sparams->utils->conn,
+                                          SaslAuthenticationSession::mongoSessionCallbackId,
+                                          &ignored,
+                                          &sessionContext);
+        if (ret != SASL_OK)
+            return SASL_FAIL;
+        SaslAuthenticationSession* session = static_cast<SaslAuthenticationSession*>(
+                sessionContext);
+
+        Status status = session->getAuthorizationManager()->getPrivilegeDocument(
                 authenticationDatabase,
                 PrincipalName(StringData(user, ulen), sparams->user_realm),
                 &privilegeDocument);
