@@ -13,6 +13,7 @@ env.StaticLibrary('mongosaslserversession',
                    'src/mongo_gssapi.cpp',
                    'src/sasl_authentication_session.cpp',
                    ],
+                  LIBDEPS=['$BUILD_DIR/mongo/server_parameters'],
                   SYSLIBDEPS=['sasl2', 'gssapi_krb5'])
 
 env.StaticLibrary('mongosaslservercommon',

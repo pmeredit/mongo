@@ -10,6 +10,7 @@
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/auth_external_state_mock.h"
 #include "mongo/client/sasl_client_authenticate.h"
+#include "mongo/db/server_parameters.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/mongoutils/str.h"
 #include "mongo_gssapi.h"
@@ -17,6 +18,8 @@
 namespace mongo {
 
 namespace {
+
+    MONGO_EXPORT_STARTUP_SERVER_PARAMETER(saslauthdPath, std::string, "");
 
     /**
      * Signature of a function that can be used to smoke-test a SASL mechanism at
@@ -174,7 +177,6 @@ namespace {
             return SASL_BADPARAM;
 
         const StringData option = optionRaw;
-        const StringData pluginName = pluginNameRaw ? pluginNameRaw : "";
 
         if (option == StringData("log_level", StringData::LiteralTag())) {
             // Returns the log verbosity level for the SASL library.
@@ -201,13 +203,25 @@ namespace {
             return SASL_OK;
         }
 
-        if (pluginName == StringData(mongodbAuxpropMechanism, StringData::LiteralTag()) &&
-            option == StringData("authenticationDatabase", StringData::LiteralTag())) {
+        if (option == StringData("pwcheck_method", StringData::LiteralTag())) {
+            static const char pwcheckAuxprop[] = "auxprop";
+            static const char pwcheckAuthd[] = "saslauthd";
+            if (session->getAuthenticationDatabase() == "$external") {
+                *outResult = pwcheckAuthd;
+                *outLen = boost::size(pwcheckAuthd);
+            }
+            else {
+                *outResult = pwcheckAuxprop;
+                *outLen = boost::size(pwcheckAuxprop);
+            }
+            return SASL_OK;
+        }
 
-            // Returns the name of the database that is the target of the authentication to the user
-            // property lookup plugin.
-            *outResult = session->getAuthenticationDatabase().c_str();
-            *outLen = static_cast<unsigned>(session->getAuthenticationDatabase().size());
+        if (option == StringData("saslauthd_path", StringData::LiteralTag())) {
+            if (saslauthdPath.empty())
+                return SASL_FAIL;
+            *outResult = saslauthdPath.c_str();
+            *outLen = static_cast<unsigned>(saslauthdPath.size());
             return SASL_OK;
         }
 
@@ -326,7 +340,7 @@ namespace {
 
         int result = sasl_server_new(_serviceName.c_str(),             // service
                                      _serviceHostname.c_str(),         // serviceFQDN
-                                     _authenticationDatabase.c_str(),  // user_realm
+                                     NULL,                             // user_realm
                                      NULL,                             // iplocalport
                                      NULL,                             // ipremoteport
                                      _callbacks,                       // callbacks

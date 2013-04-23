@@ -63,40 +63,24 @@ namespace {
         const bool verifyAgainstHashedPassword = false;
 #endif
 
-        // Find out the target authentication database.  This is the database that contains
-        // the user document.
-        const char* authenticationDatabase;
-        int ret = sparams->utils->getopt(sparams->utils->getopt_context,
-                                         auxpropMongoDBInternalPluginName,
-                                         "authenticationDatabase",
-                                         &authenticationDatabase,
-                                         NULL);
-        if (ret != SASL_OK)
-            return ret;
-
-        // user_realm contains the "userSource" for "user".  If it's NULL, we can't look up
-        // any properties.
-        if (!sparams->user_realm) {
-            sparams->utils->log(sparams->utils->conn, SASL_LOG_DEBUG, "No user_realm");
-            return isAuthzLookup ? SASL_OK : SASL_NOUSER;
-        }
-
         // Look up the user's privilege document in the authentication database.
         BSONObj privilegeDocument;
         void* sessionContext;
         int (*ignored)();
-        ret = sparams->utils->getcallback(sparams->utils->conn,
-                                          SaslAuthenticationSession::mongoSessionCallbackId,
-                                          &ignored,
-                                          &sessionContext);
+        int ret = sparams->utils->getcallback(sparams->utils->conn,
+                                              SaslAuthenticationSession::mongoSessionCallbackId,
+                                              &ignored,
+                                              &sessionContext);
         if (ret != SASL_OK)
             return SASL_FAIL;
         SaslAuthenticationSession* session = static_cast<SaslAuthenticationSession*>(
                 sessionContext);
 
+        // NOTE: since this module is only used for looking up authentication information, the
+        // authentication database is also the userSource database.
         Status status = session->getAuthorizationManager()->getPrivilegeDocument(
-                authenticationDatabase,
-                PrincipalName(StringData(user, ulen), sparams->user_realm),
+                session->getAuthenticationDatabase(),
+                PrincipalName(StringData(user, ulen), session->getAuthenticationDatabase()),
                 &privilegeDocument);
 
         if (!status.isOK()) {
