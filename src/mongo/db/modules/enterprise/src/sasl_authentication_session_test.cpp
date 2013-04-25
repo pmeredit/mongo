@@ -155,7 +155,10 @@ namespace {
             if (!serverStatus.isOK())
                 break;
         } while (!client.isDone());
-        ASSERT_FALSE(serverStatus.isOK() && clientStatus.isOK());
+        ASSERT_FALSE(serverStatus.isOK() &&
+                     clientStatus.isOK() &&
+                     client.isDone() &&
+                     server.isDone());
     }
 
     void SaslConversation::testSuccessfulAuthentication() {
