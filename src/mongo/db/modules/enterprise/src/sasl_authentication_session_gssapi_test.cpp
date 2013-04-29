@@ -23,7 +23,7 @@
 namespace {
     using namespace mongo;
 
-    const std::string mockHostName = "mockhost.10gen.me";
+    const std::string mockHostName = "kdc.10gen.me";
     const std::string mockServiceName = "mockservice";
     const std::string userName = "mockuser@10GEN.ME";
     char krb5ccFile[] = "mongotest-krb5cc-XXXXXX";
