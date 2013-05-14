@@ -12,7 +12,7 @@
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
 #include "mongo/client/sasl_client_session.h"
-#include "mongo/db/auth/authorization_manager.h"
+#include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/auth_external_state_mock.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
@@ -120,7 +120,7 @@ namespace {
     public:
         SaslConversationGssapi();
 
-        AuthorizationManager authManager;
+        AuthorizationSession authSession;
         SaslClientSession client;
         SaslAuthenticationSession server;
         const std::string mechanism;
@@ -130,9 +130,9 @@ namespace {
     };
 
     SaslConversationGssapi::SaslConversationGssapi() :
-        authManager(new AuthExternalStateMock),
+        authSession(new AuthExternalStateMock),
         client(),
-        server(&authManager),
+        server(&authSession),
         mechanism("GSSAPI") {
     }
 

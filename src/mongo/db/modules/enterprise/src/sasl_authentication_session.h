@@ -16,7 +16,7 @@
 
 namespace mongo {
 
-    class AuthorizationManager;
+    class AuthorizationSession;
 
     /**
      * Authentication session data for the server side of SASL authentication.
@@ -50,7 +50,7 @@ namespace mongo {
                                          const StringData& serviceName,
                                          const StringData& serviceHostname);
 
-        explicit SaslAuthenticationSession(AuthorizationManager* authManager);
+        explicit SaslAuthenticationSession(AuthorizationSession* authSession);
         virtual ~SaslAuthenticationSession();
 
         /**
@@ -137,11 +137,11 @@ namespace mongo {
          */
         const SaslMechanismInfo* getMechInfo() const { return _mechInfo; }
 
-        AuthorizationManager* getAuthorizationManager() { return _authManager; }
+        AuthorizationSession* getAuthorizationSession() { return _authzSession; }
 
     private:
         static const int maxCallbacks = 4;
-        AuthorizationManager* _authManager;
+        AuthorizationSession* _authzSession;
         std::string _authenticationDatabase;
         std::string _serviceName;
         std::string _serviceHostname;

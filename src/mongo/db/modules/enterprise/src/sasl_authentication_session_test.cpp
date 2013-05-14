@@ -9,7 +9,7 @@
 #include "mongo/bson/mutable/document.h"
 #include "mongo/bson/mutable/element.h"
 #include "mongo/client/sasl_client_session.h"
-#include "mongo/db/auth/authorization_manager.h"
+#include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/auth_external_state_mock.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/platform/unordered_map.h"
@@ -121,7 +121,7 @@ namespace {
         void testWrongServerMechanism();
 
         AuthExternalStateForSaslTesting* mock;
-        AuthorizationManager authManager;
+        AuthorizationSession authSession;
         SaslClientSession client;
         SaslAuthenticationSession server;
         std::string mechanism;
@@ -135,9 +135,9 @@ namespace {
 
     SaslConversation::SaslConversation() :
         mock(new AuthExternalStateForSaslTesting),
-        authManager(mock),
+        authSession(mock),
         client(),
-        server(&authManager) {
+        server(&authSession) {
 
         mock->addUserDocument("test.system.users", BSON("user" << "andy" << "pwd" << "frim"));
     }

@@ -18,7 +18,7 @@
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
-#include "mongo/db/auth/authorization_manager.h"
+#include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/principal_name.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/util/mongoutils/str.h"
@@ -78,7 +78,7 @@ namespace {
 
         // NOTE: since this module is only used for looking up authentication information, the
         // authentication database is also the userSource database.
-        Status status = session->getAuthorizationManager()->getPrivilegeDocument(
+        Status status = session->getAuthorizationSession()->getPrivilegeDocument(
                 session->getAuthenticationDatabase(),
                 PrincipalName(StringData(user, ulen), session->getAuthenticationDatabase()),
                 &privilegeDocument);

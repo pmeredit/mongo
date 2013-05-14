@@ -11,7 +11,7 @@
 #include "mongo/base/string_data.h"
 #include "mongo/bson/util/bson_extract.h"
 #include "mongo/client/sasl_client_authenticate.h"
-#include "mongo/db/auth/authorization_manager.h"
+#include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/mongo_authentication_session.h"
 #include "mongo/db/client_basic.h"
 #include "mongo/db/commands.h"
@@ -173,7 +173,7 @@ namespace {
             Principal* principal = new Principal(
                     PrincipalName(session->getPrincipalId(), session->getAuthenticationDatabase()));
             principal->setImplicitPrivilegeAcquisition(session->shouldAutoAuthorize());
-            session->getAuthorizationManager()->addAuthorizedPrincipal(principal);
+            session->getAuthorizationSession()->addAuthorizedPrincipal(principal);
 
             log() << "Successfully authenticated as principal " <<
                 session->getPrincipalId() << " on " << session->getAuthenticationDatabase() <<
@@ -250,7 +250,7 @@ namespace {
         client->resetAuthenticationSession(NULL);
 
         SaslAuthenticationSession* session = new SaslAuthenticationSession(
-                client->getAuthorizationManager());
+                client->getAuthorizationSession());
         boost::scoped_ptr<AuthenticationSession> sessionGuard(session);
 
         Status status = doSaslStart(session, db, cmdObj, &result);

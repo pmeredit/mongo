@@ -7,7 +7,7 @@
 #include "mongo/base/init.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/util/bson_extract.h"
-#include "mongo/db/auth/authorization_manager.h"
+#include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/auth_external_state_mock.h"
 #include "mongo/client/sasl_client_authenticate.h"
 #include "mongo/db/server_parameters.h"
@@ -69,8 +69,8 @@ namespace {
     Status smokeCommonMechanism(const StringData& mechanismName,
                                 const StringData& serviceName,
                                 const StringData& serviceHostname) {
-        AuthorizationManager authManager(new AuthExternalStateMock);
-        SaslAuthenticationSession session(&authManager);
+        AuthorizationSession authzSession(new AuthExternalStateMock);
+        SaslAuthenticationSession session(&authzSession);
         Status status = session.start("test",
                                       mechanismName,
                                       serviceName,
@@ -289,9 +289,9 @@ namespace {
         return mechInfo->smokeTestMechanism(mechanism, serviceName, serviceHostname);
     }
 
-    SaslAuthenticationSession::SaslAuthenticationSession(AuthorizationManager* authManager) :
+    SaslAuthenticationSession::SaslAuthenticationSession(AuthorizationSession* authzSession) :
         AuthenticationSession(AuthenticationSession::SESSION_TYPE_SASL),
-        _authManager(authManager),
+        _authzSession(authzSession),
         _saslConnection(NULL),
         _saslStep(0),
         _mechInfo(NULL),
