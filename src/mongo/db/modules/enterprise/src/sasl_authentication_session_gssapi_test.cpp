@@ -13,7 +13,7 @@
 #include "mongo/base/status.h"
 #include "mongo/client/sasl_client_session.h"
 #include "mongo/db/auth/authorization_session.h"
-#include "mongo/db/auth/auth_external_state_mock.h"
+#include "mongo/db/auth/auth_session_external_state_mock.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
@@ -130,7 +130,7 @@ namespace {
     };
 
     SaslConversationGssapi::SaslConversationGssapi() :
-        authSession(new AuthExternalStateMock),
+        authSession(new AuthSessionExternalStateMock),
         client(),
         server(&authSession),
         mechanism("GSSAPI") {

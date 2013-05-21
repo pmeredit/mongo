@@ -10,7 +10,7 @@
 #include "mongo/bson/mutable/element.h"
 #include "mongo/client/sasl_client_session.h"
 #include "mongo/db/auth/authorization_session.h"
-#include "mongo/db/auth/auth_external_state_mock.h"
+#include "mongo/db/auth/auth_session_external_state_mock.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/platform/unordered_map.h"
 #include "mongo/unittest/unittest.h"
@@ -19,7 +19,7 @@
 namespace mongo {
 namespace {
 
-    class AuthExternalStateForSaslTesting : public AuthExternalStateMock {
+    class AuthExternalStateForSaslTesting : public AuthSessionExternalStateMock {
     public:
         virtual bool _findUser(const std::string& usersNamespace,
                                const BSONObj& query,
