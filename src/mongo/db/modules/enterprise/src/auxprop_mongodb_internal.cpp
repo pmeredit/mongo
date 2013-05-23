@@ -19,7 +19,7 @@
 #include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
 #include "mongo/db/auth/authorization_session.h"
-#include "mongo/db/auth/principal_name.h"
+#include "mongo/db/auth/user_name.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/util/mongoutils/str.h"
 #include "sasl_authentication_session.h"
@@ -80,7 +80,7 @@ namespace {
         // authentication database is also the userSource database.
         Status status = session->getAuthorizationSession()->getPrivilegeDocument(
                 session->getAuthenticationDatabase(),
-                PrincipalName(StringData(user, ulen), session->getAuthenticationDatabase()),
+                UserName(StringData(user, ulen), session->getAuthenticationDatabase()),
                 &privilegeDocument);
 
         if (!status.isOK()) {

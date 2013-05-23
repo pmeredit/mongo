@@ -171,7 +171,7 @@ namespace {
 
         if (session->isDone()) {
             Principal* principal = new Principal(
-                    PrincipalName(session->getPrincipalId(), session->getAuthenticationDatabase()));
+                    UserName(session->getPrincipalId(), session->getAuthenticationDatabase()));
             principal->setImplicitPrivilegeAcquisition(session->shouldAutoAuthorize());
             session->getAuthorizationSession()->addAuthorizedPrincipal(principal);
 
