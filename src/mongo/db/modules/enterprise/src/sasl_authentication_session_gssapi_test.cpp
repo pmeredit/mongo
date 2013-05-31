@@ -12,7 +12,9 @@
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
 #include "mongo/client/sasl_client_session.h"
+#include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_session.h"
+#include "mongo/db/auth/authz_manager_external_state_mock.h"
 #include "mongo/db/auth/authz_session_external_state_mock.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
@@ -120,6 +122,7 @@ namespace {
     public:
         SaslConversationGssapi();
 
+        AuthorizationManager authManager;
         AuthorizationSession authSession;
         SaslClientSession client;
         SaslAuthenticationSession server;
@@ -130,7 +133,8 @@ namespace {
     };
 
     SaslConversationGssapi::SaslConversationGssapi() :
-        authSession(new AuthzSessionExternalStateMock),
+        authManager(new AuthzManagerExternalStateMock()),
+        authSession(new AuthzSessionExternalStateMock(&authManager)),
         client(),
         server(&authSession),
         mechanism("GSSAPI") {
