@@ -9,9 +9,7 @@
 #include "mongo/bson/mutable/document.h"
 #include "mongo/bson/mutable/element.h"
 #include "mongo/client/sasl_client_session.h"
-#include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_session.h"
-#include "mongo/db/auth/authz_manager_external_state_mock.h"
 #include "mongo/db/auth/authz_session_external_state_mock.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/platform/unordered_map.h"
@@ -23,9 +21,6 @@ namespace {
 
     class AuthExternalStateForSaslTesting : public AuthzSessionExternalStateMock {
     public:
-        AuthExternalStateForSaslTesting(AuthorizationManager* authzManager) :
-            AuthzSessionExternalStateMock(authzManager) {}
-
         virtual bool _findUser(const std::string& usersNamespace,
                                const BSONObj& query,
                                BSONObj* result) const;
@@ -125,8 +120,6 @@ namespace {
         void testWrongClientMechanism();
         void testWrongServerMechanism();
 
-        AuthzManagerExternalStateMock* authManagerExternalState;
-        AuthorizationManager authManager;
         AuthExternalStateForSaslTesting* mock;
         AuthorizationSession authSession;
         SaslClientSession client;
@@ -141,9 +134,7 @@ namespace {
     const std::string mockHostName = "host.mockery.com";
 
     SaslConversation::SaslConversation() :
-        authManagerExternalState(new AuthzManagerExternalStateMock()),
-        authManager(authManagerExternalState),
-        mock(new AuthExternalStateForSaslTesting(&authManager)),
+        mock(new AuthExternalStateForSaslTesting),
         authSession(mock),
         client(),
         server(&authSession) {
