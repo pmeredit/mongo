@@ -21,10 +21,9 @@
 namespace mongo {
 namespace {
 
-    class AuthExternalStateForSaslTesting : public AuthzSessionExternalStateMock {
+    class AuthManagerExternalStateForSaslTesting : public AuthzManagerExternalStateMock {
     public:
-        AuthExternalStateForSaslTesting(AuthorizationManager* authzManager) :
-            AuthzSessionExternalStateMock(authzManager) {}
+        AuthManagerExternalStateForSaslTesting() {}
 
         virtual bool _findUser(const std::string& usersNamespace,
                                const BSONObj& query,
@@ -38,9 +37,9 @@ namespace {
         UsersCollectionMap _usersCollections;
     };
 
-    bool AuthExternalStateForSaslTesting::_findUser(const std::string& usersNamespace,
-                                                    const BSONObj& queryRaw,
-                                                    BSONObj* result) const {
+    bool AuthManagerExternalStateForSaslTesting::_findUser(const std::string& usersNamespace,
+                                                           const BSONObj& queryRaw,
+                                                           BSONObj* result) const {
 
         // TODO: User the matcher instead, when it can be plugged into a unit test.
         namespace mmb = mutablebson;
@@ -110,8 +109,8 @@ namespace {
         return true;
     }
 
-    void AuthExternalStateForSaslTesting::addUserDocument(const std::string& usersNamespace,
-                                                          const BSONObj& userDocument) {
+    void AuthManagerExternalStateForSaslTesting::addUserDocument(const std::string& usersNamespace,
+                                                                 const BSONObj& userDocument) {
         _usersCollections[usersNamespace].push_back(userDocument.getOwned());
     }
 
@@ -125,9 +124,9 @@ namespace {
         void testWrongClientMechanism();
         void testWrongServerMechanism();
 
-        AuthzManagerExternalStateMock* authManagerExternalState;
+        AuthManagerExternalStateForSaslTesting* authManagerExternalState;
         AuthorizationManager authManager;
-        AuthExternalStateForSaslTesting* mock;
+        AuthzSessionExternalStateMock* authzSessionExternalState;
         AuthorizationSession authSession;
         SaslClientSession client;
         SaslAuthenticationSession server;
@@ -141,14 +140,15 @@ namespace {
     const std::string mockHostName = "host.mockery.com";
 
     SaslConversation::SaslConversation() :
-        authManagerExternalState(new AuthzManagerExternalStateMock()),
+        authManagerExternalState(new AuthManagerExternalStateForSaslTesting()),
         authManager(authManagerExternalState),
-        mock(new AuthExternalStateForSaslTesting(&authManager)),
-        authSession(mock),
+        authzSessionExternalState(new AuthzSessionExternalStateMock(&authManager)),
+        authSession(authzSessionExternalState),
         client(),
         server(&authSession) {
 
-        mock->addUserDocument("test.system.users", BSON("user" << "andy" << "pwd" << "frim"));
+        authManagerExternalState->addUserDocument("test.system.users",
+                                                  BSON("user" << "andy" << "pwd" << "frim"));
     }
 
     void SaslConversation::assertConversationFailure() {
