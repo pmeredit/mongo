@@ -29,6 +29,15 @@ def configure(conf, env):
         print("Could not find <sasl/sasl.h> and sasl library, required for enterprise build.")
         env.Exit(1)
 
+    if conf.CheckLib(library="gssapi_krb5", autoadd=False):
+        env['MONGO_GSSAPI_IMPL'] = "gssapi"
+        env['MONGO_GSSAPI_LIB'] = "gssapi_krb5"
+    elif "win32" == os.sys.platform:
+        env['MONGO_GSSAPI_IMPL'] = "sspi"
+    else:
+        print("Could not find gssapi_krb5 library nor Windows OS, required for enterprise build.")
+        env.Exit(1)
+
     sasl_server_module_name = moduleconfig.get_current_module_libdep_name('mongosaslservercommon')
     env.Append(MODULE_LIBDEPS_MONGOD=sasl_server_module_name,
                MODULE_LIBDEPS_MONGOS=sasl_server_module_name)

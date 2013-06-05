@@ -10,11 +10,11 @@ env.StaticLibrary('mongosnmp',
 env.StaticLibrary('mongosaslserversession',
                   ['src/auxprop_mongodb_internal.cpp',
                    'src/canon_mongodb_internal.cpp',
-                   'src/mongo_gssapi.cpp',
+                   'src/mongo_${MONGO_GSSAPI_IMPL}.cpp',
                    'src/sasl_authentication_session.cpp',
                    ],
                   LIBDEPS=['$BUILD_DIR/mongo/server_parameters'],
-                  SYSLIBDEPS=['sasl2', 'gssapi_krb5'])
+                  SYSLIBDEPS=['sasl2', '$MONGO_GSSAPI_LIB'])
 
 env.StaticLibrary('mongosaslservercommon',
                   ['src/sasl_commands.cpp'],
