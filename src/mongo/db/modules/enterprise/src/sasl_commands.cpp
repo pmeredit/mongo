@@ -203,7 +203,8 @@ namespace {
 
         if (!sequenceContains(authenticationMechanisms, mechanism)) {
             result->append(saslCommandMechanismListFieldName, authenticationMechanisms);
-            return status;
+            return Status(ErrorCodes::BadValue,
+                          mongoutils::str::stream() << "Unsupported mechanism " << mechanism);
         }
 
         status = session->start(db,
