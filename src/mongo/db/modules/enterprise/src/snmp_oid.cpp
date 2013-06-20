@@ -1,12 +1,19 @@
 // snmp_oid.cpp
 
+#include "mongo/platform/basic.h"
+
+#ifdef _WIN32
+// net-snmp uses this particular macro for some reason
+#define WIN32
+#endif
+
 #include <net-snmp/net-snmp-config.h>
 #include <net-snmp/net-snmp-includes.h>
 #include <net-snmp/agent/net-snmp-agent-includes.h>
 
-#include "snmp.h"
+#include "mongo/db/cmdline.h"
 
-#include "db/cmdline.h"
+#include "snmp.h"
 
 namespace mongo {
     OIDManager oidManager;
@@ -14,7 +21,7 @@ namespace mongo {
     static oid rootOID[] = { 1, 3, 6, 1, 4, 1, 37601 , 1 };
 
     OIDManager::OIDManager() {
-        for ( uint i=0; i<sizeof(rootOID)/sizeof(oid); i++ ) {
+        for ( uint32_t i=0; i<sizeof(rootOID)/sizeof(oid); i++ ) {
             _root.push_back( rootOID[i] );
         }
     }
@@ -23,7 +30,7 @@ namespace mongo {
         char buf[128];
         int x = sprintf( buf , "%d" , cmdLine.port );
         _endName.push_back( (oid)x );
-        for ( int i=0; i<x; i++ ) {
+        for ( uint32_t i=0; i<x; i++ ) {
             _endName.push_back( (oid)buf[i] );
         }
     }
@@ -34,7 +41,7 @@ namespace mongo {
             return it;
         
         vector<oid> l;
-        for ( uint i=0; i<_root.size(); i++ )
+        for ( uint32_t i=0; i<_root.size(); i++ )
             l.push_back( _root[i] );
         
         string::size_type pos;
@@ -45,12 +52,12 @@ namespace mongo {
         }
         l.push_back( atoi( suffix.c_str() ) );
         
-        for ( uint i=0; i<_endName.size(); i++ )
+        for ( uint32_t i=0; i<_endName.size(); i++ )
             l.push_back( _endName[i] );
 
         it = new oid[l.size()+1];
         
-        for ( uint i=0; i<l.size(); i++ ) {
+        for ( uint32_t i=0; i<l.size(); i++ ) {
             it[i] = l[i];
         }
         it[l.size()] = 0;
@@ -83,7 +90,7 @@ namespace mongo {
         if ( _len != var->name_length )
             return false;
         
-        for ( unsigned i=0; i<_len; i++ ) 
+        for ( uint32_t i=0; i<_len; i++ ) 
             if ( _oid[i] != var->name[i] )
                 return false;
         

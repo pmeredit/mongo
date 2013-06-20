@@ -5,19 +5,26 @@ def configure(conf, env):
     root = os.path.dirname(__file__)
 
     if conf.CheckCXXHeader( "net-snmp/net-snmp-config.h" ):
-        try:
-            snmpFlags = env.ParseFlags("!net-snmp-config --agent-libs")
-        except OSError, ose:
-            # the net-snmp-config command was not found
-            print( "WARNING: could not find or execute 'net-snmp-config', is it on the PATH?" )
-            print( ose )
-        else:
-            snmp_module_name= moduleconfig.get_current_module_libdep_name('mongosnmp')
-            env['SNMP_SYSLIBDEPS'] = snmpFlags['LIBS']
-            del snmpFlags['LIBS']
-            env.Append(**snmpFlags)
+        if env['PYSYSPLATFORM'] == "win32":
+            env['SNMP_SYSLIBDEPS'] = ['netsnmp','netsnmpagent','netsnmpmibs']
+            snmp_module_name = moduleconfig.get_current_module_libdep_name('mongosnmp')
             env.Append(CPPDEFINES=["NETSNMP_NO_INLINE"],
                        MODULE_LIBDEPS_MONGOD=snmp_module_name)
+        else:
+            try:
+                snmpFlags = env.ParseFlags("!net-snmp-config --agent-libs")
+            except OSError, ose:
+                # the net-snmp-config command was not found
+                print( "Could not find or execute 'net-snmp-config'" )
+                print( ose )
+                env.Exit(1)
+            else:
+                snmp_module_name= moduleconfig.get_current_module_libdep_name('mongosnmp')
+                env['SNMP_SYSLIBDEPS'] = snmpFlags['LIBS']
+                del snmpFlags['LIBS']
+                env.Append(**snmpFlags)
+                env.Append(CPPDEFINES=["NETSNMP_NO_INLINE"],
+                           MODULE_LIBDEPS_MONGOD=snmp_module_name)
 
     env['MONGO_BUILD_SASL_CLIENT'] = True
     if not conf.CheckLibWithHeader(
@@ -32,7 +39,7 @@ def configure(conf, env):
     if conf.CheckLib(library="gssapi_krb5", autoadd=False):
         env['MONGO_GSSAPI_IMPL'] = "gssapi"
         env['MONGO_GSSAPI_LIB'] = "gssapi_krb5"
-    elif "win32" == os.sys.platform:
+    elif env['PYSYSPLATFORM'] == "win32":
         env['MONGO_GSSAPI_IMPL'] = "sspi"
     else:
         print("Could not find gssapi_krb5 library nor Windows OS, required for enterprise build.")

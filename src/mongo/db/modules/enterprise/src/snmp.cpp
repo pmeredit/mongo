@@ -1,19 +1,22 @@
 // snmp.cpp
 
-#include "pch.h"
+#include "mongo/platform/basic.h"
 
-#include "util/background.h"
-#include "util/time_support.h"
-
-#include "db/module.h"
-#include "db/stats/counters.h"
+#ifdef _WIN32
+// net-snmp uses this particular macro for some reason
+#define WIN32
+#endif
 
 #include <net-snmp/net-snmp-config.h>
 #include <net-snmp/net-snmp-includes.h>
 #include <net-snmp/agent/net-snmp-agent-includes.h>
 #include <signal.h>
-
 #include <boost/program_options.hpp>
+ 
+#include "mongo/db/module.h"
+#include "mongo/db/stats/counters.h"
+#include "mongo/util/background.h"
+#include "mongo/util/time_support.h"
 
 #include "snmp.h"
 
