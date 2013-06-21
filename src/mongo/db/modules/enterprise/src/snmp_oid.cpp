@@ -30,7 +30,7 @@ namespace mongo {
         char buf[128];
         int x = sprintf( buf , "%d" , cmdLine.port );
         _endName.push_back( (oid)x );
-        for ( uint32_t i=0; i<x; i++ ) {
+        for ( int32_t i=0; i<x; i++ ) {
             _endName.push_back( (oid)buf[i] );
         }
     }
