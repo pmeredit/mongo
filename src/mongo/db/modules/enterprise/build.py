@@ -29,7 +29,7 @@ def configure(conf, env):
     env['MONGO_BUILD_SASL_CLIENT'] = True
     if not conf.CheckLibWithHeader(
         "sasl2",
-        "sasl/sasl.h", "C",
+        ["stddef.h","sasl/sasl.h"], "C",
         "sasl_version_info(0, 0, 0, 0, 0, 0);",
         autoadd=False):
 
