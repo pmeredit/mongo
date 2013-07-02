@@ -1,4 +1,6 @@
-// snmp.h
+/*
+ * Copyright (C) 2013 10gen, Inc.  All Rights Reserved.
+ */
 
 #include "pch.h"
 
