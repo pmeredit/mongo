@@ -33,7 +33,7 @@ namespace gssapi {
      * Use this function to see if the process can accept connections destined for "principalName",
      * say for validating the keytab supplied in the server configuration.
      */
-    Status tryAcquireServerCredential(const StringData& principalName);
+    Status tryAcquireServerCredential(const std::string& principalName);
 
 }  // namespace gssapi
 }  // namespace mongo

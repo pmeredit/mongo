@@ -5,10 +5,8 @@
 #include <cstdlib>
 #include <string>
 #include <sys/types.h>
-#ifndef _WIN32
 #include <sys/wait.h>
 #include <unistd.h>
-#endif
 #include <vector>
 
 #include "mongo/base/init.h"
@@ -31,8 +29,6 @@ namespace {
     const std::string mockServiceName = "mockservice";
     const std::string userName = "mockuser@10GEN.ME";
     char krb5ccFile[] = "mongotest-krb5cc-XXXXXX";
-
-#ifndef _WIN32
 
     std::string getAbsolutePath(const char* path) {
         char* absolutePath = realpath(path, NULL);
@@ -93,13 +89,9 @@ namespace {
             fassertFailed(4023);
         }
     }
-#endif // not _WIN32
-
 }  // namespace
 
 int main(int argc, char** argv, char** envp) {
-
-#ifndef _WIN32
     // Set up *nix-based kerberos.
     if (!mkstemp(krb5ccFile)) {
         log() << "Failed to make credential cache with template " << krb5ccFile <<
@@ -109,7 +101,6 @@ int main(int argc, char** argv, char** envp) {
     ON_BLOCK_EXIT(unlink, krb5ccFile);
     setupEnvironment();
     initializeClientCredentialCacheOrDie();
-#endif
 
     runGlobalInitializersOrDie(argc, argv, envp);
 

@@ -41,6 +41,7 @@ def configure(conf, env):
         env['MONGO_GSSAPI_LIB'] = "gssapi_krb5"
     elif env['PYSYSPLATFORM'] == "win32":
         env['MONGO_GSSAPI_IMPL'] = "sspi"
+        env['MONGO_GSSAPI_LIB'] = "secur32"
     else:
         print("Could not find gssapi_krb5 library nor Windows OS, required for enterprise build.")
         env.Exit(1)

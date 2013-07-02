@@ -140,7 +140,7 @@ namespace {
         return canonicalizeName(GSS_C_NT_HOSTBASED_SERVICE, name, canonicalName);
     }
 
-    Status tryAcquireServerCredential(const StringData& principalName) {
+    Status tryAcquireServerCredential(const std::string& principalName) {
         OM_uint32 majorStatus;
         OM_uint32 minorStatus;
         gss_buffer_desc nameBuffer;
