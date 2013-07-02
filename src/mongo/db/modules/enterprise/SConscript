@@ -13,7 +13,8 @@ env.StaticLibrary('mongosaslserversession',
                    'src/mongo_${MONGO_GSSAPI_IMPL}.cpp',
                    'src/sasl_authentication_session.cpp',
                    ],
-                  LIBDEPS=['$BUILD_DIR/mongo/server_parameters'],
+                  LIBDEPS=['$BUILD_DIR/mongo/server_parameters',
+                           '$BUILD_DIR/mongo/db/auth/authmocks'],
                   SYSLIBDEPS=['sasl2', '$MONGO_GSSAPI_LIB'])
 
 env.StaticLibrary('mongosaslservercommon',
