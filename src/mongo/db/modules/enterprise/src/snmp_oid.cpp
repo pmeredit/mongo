@@ -20,7 +20,7 @@
 namespace mongo {
     OIDManager oidManager;
 
-    static oid rootOID[] = { 1, 3, 6, 1, 4, 1, 37601 , 1 };
+    static oid rootOID[] = { 1, 3, 6, 1, 4, 1, 34601 , 1 };
 
     OIDManager::OIDManager() {
         for ( uint32_t i=0; i<sizeof(rootOID)/sizeof(oid); i++ ) {
