@@ -2,6 +2,16 @@
 
 Import("env")
 
+env.StaticLibrary('audit',
+                  ['src/audit/audit.cpp',
+                   'src/audit/audit_authz_check.cpp',
+                   'src/audit/audit_event.cpp',
+                   'src/audit/audit_log_domain.cpp',
+                   ],
+                  LIBDEPS=['$BUILD_DIR/mongo/base/base',
+                           '$BUILD_DIR/mongo/logger/logger'],
+                  LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/${LIBPREFIX}coredb${LIBSUFFIX}'])
+
 env.StaticLibrary('mongosnmp',
                   ['src/snmp.cpp',
                    'src/snmp_oid.cpp'],

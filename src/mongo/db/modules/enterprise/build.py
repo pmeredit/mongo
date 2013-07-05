@@ -3,6 +3,8 @@ import os
 def configure(conf, env):
     root = os.path.dirname(__file__)
 
+    env.Append(CPPDEFINES=dict(MONGO_ENTERPRISE_VERSION=1))
+
     if not conf.CheckCXXHeader("net-snmp/net-snmp-config.h"):
         print("Could not find <net-snmp/net-snmp-config.h>, required for enterprise build.")
         env.Exit(1)
