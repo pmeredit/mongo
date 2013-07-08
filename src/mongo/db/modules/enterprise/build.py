@@ -1,30 +1,28 @@
-import buildscripts.moduleconfig as moduleconfig
 import os
 
 def configure(conf, env):
     root = os.path.dirname(__file__)
 
-    if conf.CheckCXXHeader( "net-snmp/net-snmp-config.h" ):
-        if env['PYSYSPLATFORM'] == "win32":
-            env['SNMP_SYSLIBDEPS'] = ['netsnmp','netsnmpagent','netsnmpmibs']
-            snmp_module_name = moduleconfig.get_current_module_libdep_name('mongosnmp')
-            env.Append(CPPDEFINES=["NETSNMP_NO_INLINE"],
-                       MODULE_LIBDEPS_MONGOD=snmp_module_name)
+    if not conf.CheckCXXHeader("net-snmp/net-snmp-config.h"):
+        print("Could not find <net-snmp/net-snmp-config.h>, required for enterprise build.")
+        env.Exit(1)
+
+    if env['PYSYSPLATFORM'] == "win32":
+        env['SNMP_SYSLIBDEPS'] = ['netsnmp','netsnmpagent','netsnmpmibs']
+        env.Append(CPPDEFINES=["NETSNMP_NO_INLINE"])
+    else:
+        try:
+            snmpFlags = env.ParseFlags("!net-snmp-config --agent-libs")
+        except OSError, ose:
+            # the net-snmp-config command was not found
+            print( "Could not find or execute 'net-snmp-config'" )
+            print( ose )
+            env.Exit(1)
         else:
-            try:
-                snmpFlags = env.ParseFlags("!net-snmp-config --agent-libs")
-            except OSError, ose:
-                # the net-snmp-config command was not found
-                print( "Could not find or execute 'net-snmp-config'" )
-                print( ose )
-                env.Exit(1)
-            else:
-                snmp_module_name= moduleconfig.get_current_module_libdep_name('mongosnmp')
-                env['SNMP_SYSLIBDEPS'] = snmpFlags['LIBS']
-                del snmpFlags['LIBS']
-                env.Append(**snmpFlags)
-                env.Append(CPPDEFINES=["NETSNMP_NO_INLINE"],
-                           MODULE_LIBDEPS_MONGOD=snmp_module_name)
+            env['SNMP_SYSLIBDEPS'] = snmpFlags['LIBS']
+            del snmpFlags['LIBS']
+            env.Append(**snmpFlags)
+            env.Append(CPPDEFINES=["NETSNMP_NO_INLINE"])
 
     env['MONGO_BUILD_SASL_CLIENT'] = True
     if not conf.CheckLibWithHeader(
@@ -44,10 +42,6 @@ def configure(conf, env):
     else:
         print("Could not find gssapi_krb5 library nor Windows OS, required for enterprise build.")
         env.Exit(1)
-
-    sasl_server_module_name = moduleconfig.get_current_module_libdep_name('mongosaslservercommon')
-    env.Append(MODULE_LIBDEPS_MONGOD=sasl_server_module_name,
-               MODULE_LIBDEPS_MONGOS=sasl_server_module_name)
 
     distsrc = env.Dir(root).Dir('distsrc')
     docs = env.Dir(root).Dir('docs')

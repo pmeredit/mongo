@@ -5,6 +5,7 @@ Import("env")
 env.StaticLibrary('mongosnmp',
                   ['src/snmp.cpp',
                    'src/snmp_oid.cpp'],
+                  LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/${PROGPREFIX}mongod${PROGSUFFIX}'],
                   SYSLIBDEPS=env.get('SNMP_SYSLIBDEPS', []))
 
 env.StaticLibrary('mongosaslserversession',
@@ -19,7 +20,9 @@ env.StaticLibrary('mongosaslserversession',
 
 env.StaticLibrary('mongosaslservercommon',
                   ['src/sasl_commands.cpp'],
-                  LIBDEPS=['mongosaslserversession'])
+                  LIBDEPS=['mongosaslserversession'],
+                  LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/${PROGPREFIX}mongod${PROGSUFFIX}',
+                                      '$BUILD_DIR/mongo/${PROGPREFIX}mongos${PROGSUFFIX}'])
 
 env.CppUnitTest('sasl_authentication_session_test',
                 ['src/sasl_authentication_session_test.cpp'],
