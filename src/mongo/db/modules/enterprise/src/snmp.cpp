@@ -145,6 +145,44 @@ namespace mongo {
                 : SNMPCallBack( name , "1,4," + memsuffix ) , _type(t) {
             }
         };
+
+        class ConnectionsCallback : public SNMPCallBack {
+                
+            enum Type { CURRENT, AVAILABLE, TOTAL } _type;
+
+        public:
+            static void addAll( vector<SNMPCallBack*>& v ) {
+                v.push_back( new ConnectionsCallback ( "connectionsCurrent" , "1" , CURRENT ) );
+                v.push_back( new ConnectionsCallback ( "connectionsAvailable" , "2" , AVAILABLE ) );
+                v.push_back( new ConnectionsCallback ( "connectionsTotalCreated" , "3" , TOTAL ) );
+            }
+
+            int respond( netsnmp_variable_list* var ) {
+                
+                int val;
+
+                switch ( _type ) {
+                case CURRENT: {
+                    val = Listener::globalTicketHolder.used();
+                    break;
+                }
+                case AVAILABLE: {
+                    val = Listener::globalTicketHolder.available();
+                    break;
+                }
+                case TOTAL:
+                    val = Listener::globalConnectionNumber.load();
+                    break;
+                }
+
+                return snmp_set_var_typed_value( var, ASN_INTEGER, reinterpret_cast<u_char *>(&val), sizeof(val) );
+            }
+
+        private:
+            ConnectionsCallback( const std::string& name , const std::string& consuffix , Type t )
+                : SNMPCallBack( name , "1,5," + consuffix ) , _type(t) {
+            }
+        };
     }
     
     class SNMPAgent : public BackgroundJob , Module {
@@ -311,6 +349,7 @@ namespace mongo {
             _callbacks.push_back( new callbacks::UptimeCallback() );
             _callbacks.push_back( new callbacks::NameCallback() );
             callbacks::MemoryCallback::addAll( _callbacks );
+            callbacks::ConnectionsCallback::addAll( _callbacks );
 
             // static counters
             
