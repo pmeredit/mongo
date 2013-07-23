@@ -172,7 +172,7 @@ namespace {
         if (session->isDone()) {
             Principal* principal = new Principal(
                     UserName(session->getPrincipalId(), session->getAuthenticationDatabase()));
-            session->getAuthorizationSession()->addAuthorizedPrincipal(principal);
+            session->getAuthorizationSession()->addAndAuthorizePrincipal(principal);
 
             log() << "Successfully authenticated as principal " <<
                 session->getPrincipalId() << " on " << session->getAuthenticationDatabase() <<
