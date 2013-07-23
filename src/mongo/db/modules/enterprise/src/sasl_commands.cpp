@@ -172,7 +172,6 @@ namespace {
         if (session->isDone()) {
             Principal* principal = new Principal(
                     UserName(session->getPrincipalId(), session->getAuthenticationDatabase()));
-            principal->setImplicitPrivilegeAcquisition(session->shouldAutoAuthorize());
             session->getAuthorizationSession()->addAuthorizedPrincipal(principal);
 
             log() << "Successfully authenticated as principal " <<
