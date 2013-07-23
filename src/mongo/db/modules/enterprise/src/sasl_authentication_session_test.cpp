@@ -25,9 +25,9 @@ namespace {
     public:
         AuthManagerExternalStateForSaslTesting() {}
 
-        virtual bool _findUser(const std::string& usersNamespace,
-                               const BSONObj& query,
-                               BSONObj* result) const;
+        virtual Status _findUser(const std::string& usersNamespace,
+                                 const BSONObj& query,
+                                 BSONObj* result) const;
 
         void addUserDocument(const std::string& usersNamespace, const BSONObj& userDocument);
 
@@ -37,9 +37,9 @@ namespace {
         UsersCollectionMap _usersCollections;
     };
 
-    bool AuthManagerExternalStateForSaslTesting::_findUser(const std::string& usersNamespace,
-                                                           const BSONObj& queryRaw,
-                                                           BSONObj* result) const {
+    Status AuthManagerExternalStateForSaslTesting::_findUser(const std::string& usersNamespace,
+                                                             const BSONObj& queryRaw,
+                                                             BSONObj* result) const {
 
         // TODO: User the matcher instead, when it can be plugged into a unit test.
         namespace mmb = mutablebson;
@@ -62,7 +62,7 @@ namespace {
 
         const UsersCollectionMap::const_iterator coll = _usersCollections.find(usersNamespace);
         if (coll == _usersCollections.end())
-            return false;
+            return Status(ErrorCodes::UserNotFound, "User not found");
         UsersCollection::const_iterator doc;
         for (doc = coll->second.begin(); doc != coll->second.end(); ++doc) {
             // "user" field must match.
@@ -103,10 +103,10 @@ namespace {
             }
         }
         if (doc == coll->second.end()) {
-            return false;
+            return Status(ErrorCodes::UserNotFound, "User not found");
         }
         *result = *doc;
-        return true;
+        return Status::OK();
     }
 
     void AuthManagerExternalStateForSaslTesting::addUserDocument(const std::string& usersNamespace,
