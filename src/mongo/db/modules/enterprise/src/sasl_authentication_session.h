@@ -103,9 +103,10 @@ namespace mongo {
         /**
          * If the last call to step() returned Status::OK(), this method returns true if the
          * authentication conversation has completed, from the server's perspective.  If it returns
-         * false, the server expects more input from the client.
+         * false, the server expects more input from the client.  If the last call to step() did not
+         * return Status::OK(), returns true.
          *
-         * Behavior is undefined if step() has not been called, or has returned a failing status.
+         * Behavior is undefined if step() has not been called.
          */
         bool isDone() const { return _done; }
 

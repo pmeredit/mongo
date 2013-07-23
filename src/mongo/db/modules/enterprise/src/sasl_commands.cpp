@@ -11,6 +11,7 @@
 #include "mongo/base/string_data.h"
 #include "mongo/bson/util/bson_extract.h"
 #include "mongo/client/sasl_client_authenticate.h"
+#include "mongo/db/audit.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/mongo_authentication_session.h"
 #include "mongo/db/client_basic.h"
@@ -256,9 +257,16 @@ namespace {
         Status status = doSaslStart(session, db, cmdObj, &result);
         addStatus(status, &result);
 
-        if (status.isOK() && !session->isDone())
+        if (session->isDone()) {
+            audit::logAuthentication(
+                    client,
+                    session->getMechanism(),
+                    UserName(session->getPrincipalId(), db),
+                    status.code());
+        }
+        else {
             client->swapAuthenticationSession(sessionGuard);
-
+        }
         return status.isOK();
     }
 
@@ -299,8 +307,16 @@ namespace {
         Status status = doSaslContinue(session, cmdObj, &result);
         addStatus(status, &result);
 
-        if (status.isOK() && !session->isDone())
+        if (session->isDone()) {
+            audit::logAuthentication(
+                    client,
+                    session->getMechanism(),
+                    UserName(session->getPrincipalId(), db),
+                    status.code());
+        }
+        else {
             client->swapAuthenticationSession(sessionGuard);
+        }
 
         return status.isOK();
     }

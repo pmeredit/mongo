@@ -379,6 +379,7 @@ namespace {
                                       &output,
                                       &outputLen);
         }
+        _done = (SASL_CONTINUE != result);
         switch (result) {
         case SASL_OK: {
             _done = true;
