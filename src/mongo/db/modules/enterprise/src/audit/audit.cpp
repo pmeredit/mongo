@@ -11,6 +11,7 @@
 #include "mongo/logger/console_appender.h"
 #include "mongo/logger/encoder.h"
 #include "mongo/logger/logger.h"
+#include "mongo/logger/message_event_utf8_encoder.h"
 #include "mongo/logger/rotatable_file_appender.h"
 #include "mongo/logger/rotatable_file_manager.h"
 #include "mongo/logger/rotatable_file_writer.h"
@@ -30,7 +31,8 @@ namespace {
     class AuditEventEncoder : public logger::Encoder<AuditEvent> {
         virtual ~AuditEventEncoder() {}
         virtual std::ostream& encode(const AuditEvent& event, std::ostream& os) {
-            os << event.getTimestamp().toString() << ' ';
+            os << logger::MessageEventDetailsEncoder::getDateFormatter()(event.getTimestamp()) <<
+                ' ';
 
             PrincipalSet::NameIterator users = event.getAuthenticatedUsers();
             if (users.more()) {
