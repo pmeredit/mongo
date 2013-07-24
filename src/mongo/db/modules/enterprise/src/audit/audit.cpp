@@ -18,14 +18,6 @@
 
 namespace mongo {
 namespace audit {
-
-    void logAuthentication(ClientBasic* client,
-                           const StringData& mechanism,
-                           const UserName& user,
-                           const SockAddr& localAddr,
-                           const SockAddr& remoteAddr,
-                           ErrorCodes::Error result) {}
-
 namespace {
 
     class AuditEventEncoder : public logger::Encoder<AuditEvent> {
