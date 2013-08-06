@@ -76,9 +76,12 @@ namespace audit {
         explicit AuditEvent(const AuditEventEnvelope& envelope) : _envelope(envelope) {}
 
         /**
-         * Destructor.  NOT virtual.  Do not attempt to delete a pointer to AuditEvent.
+         * Destructor.  Should not be virtual.  Do not attempt to delete a pointer to AuditEvent.
+         *
+         * This destructor is virtual due to GCC 4.1.2 erroneously complaining about a non-virtual
+         * protected destructor.
          */
-        ~AuditEvent() {}
+        virtual ~AuditEvent() {}
 
     private:
         virtual std::ostream& putTextDescription(std::ostream& os) const = 0;

@@ -66,11 +66,11 @@ namespace audit {
             const mmb::Document& cmdObj,
             ErrorCodes::Error result) {
 
-        getGlobalAuditLogDomain()->append(
-                AuthzCheckEvent(
-                        makeEnvelope(client, ActionType::authCheck, result),
-                        ns,
-                        &cmdObj));
+        AuthzCheckEvent event(
+                makeEnvelope(client, ActionType::authCheck, result),
+                ns,
+                &cmdObj);
+        getGlobalAuditLogDomain()->append(event);
     }
 
     void logDeleteAuthzCheck(

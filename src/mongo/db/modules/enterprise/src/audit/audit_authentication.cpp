@@ -56,10 +56,10 @@ namespace audit {
                            const StringData& mechanism,
                            const UserName& user,
                            ErrorCodes::Error result) {
-        getGlobalAuditLogDomain()->append(
-                AuthenticationEvent(makeEnvelope(client, ActionType::authenticate, result),
-                                    mechanism,
-                                    user));
+        AuthenticationEvent event(makeEnvelope(client, ActionType::authenticate, result),
+                                  mechanism,
+                                  user);
+        getGlobalAuditLogDomain()->append(event);
     }
 
 }  // namespace audit
