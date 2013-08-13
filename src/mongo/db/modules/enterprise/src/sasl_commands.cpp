@@ -172,8 +172,6 @@ namespace {
 
         if (session->isDone()) {
             UserName userName(session->getPrincipalId(), session->getAuthenticationDatabase());
-            Principal* principal = new Principal(userName);
-            session->getAuthorizationSession()->addAndAuthorizePrincipal(principal);
             status = session->getAuthorizationSession()->addAndAuthorizeUser(userName);
             if (!status.isOK()) {
                 return status;
