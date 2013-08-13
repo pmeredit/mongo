@@ -26,7 +26,7 @@ namespace {
             os << logger::MessageEventDetailsEncoder::getDateFormatter()(event.getTimestamp()) <<
                 ' ';
 
-            PrincipalSet::NameIterator users = event.getAuthenticatedUsers();
+            UserSet::NameIterator users = event.getAuthenticatedUsers();
             if (users.more()) {
                 os << users.next().getFullName();
                 while (users.more()) {

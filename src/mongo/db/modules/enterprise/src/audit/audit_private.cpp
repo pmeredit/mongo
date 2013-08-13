@@ -23,7 +23,7 @@ namespace audit {
             envelope->remoteAddr = client->port()->remoteAddr();
         }
         envelope->authenticatedUsers =
-            client->getAuthorizationSession()->getAuthenticatedPrincipalNames();
+            client->getAuthorizationSession()->getAuthenticatedUserNames();
         envelope->actionType = actionType;
         envelope->result = result;
     }

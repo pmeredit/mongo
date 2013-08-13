@@ -17,7 +17,7 @@ namespace audit {
         builder.append("userSource", user.getDB());
     }
 
-    static void putAllUserNamesBSON(PrincipalSet::NameIterator names, BSONArrayBuilder& builder) {
+    static void putAllUserNamesBSON(UserSet::NameIterator names, BSONArrayBuilder& builder) {
         while (names.more()) {
             BSONObjBuilder nameBuilder(builder.subobjStart());
             putUserNameBSON(names.next(), nameBuilder);

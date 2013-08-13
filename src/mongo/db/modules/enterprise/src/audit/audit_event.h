@@ -8,7 +8,7 @@
 #include "mongo/base/error_codes.h"
 #include "mongo/bson/oid.h"
 #include "mongo/db/auth/action_type.h"
-#include "mongo/db/auth/principal_set.h"
+#include "mongo/db/auth/user_set.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/platform/cstdint.h"
 #include "mongo/util/net/sock.h"
@@ -36,7 +36,7 @@ namespace audit {
         AuditOperationId opId;
         SockAddr localAddr;
         SockAddr remoteAddr;
-        PrincipalSet::NameIterator authenticatedUsers;
+        UserSet::NameIterator authenticatedUsers;
         ActionType actionType;
         ErrorCodes::Error result;
     };
@@ -53,7 +53,7 @@ namespace audit {
     public:
         Date_t getTimestamp() const { return _envelope.timestamp; }
         const AuditOperationId& getOperationId() const { return _envelope.opId; }
-        const PrincipalSet::NameIterator& getAuthenticatedUsers() const {
+        const UserSet::NameIterator& getAuthenticatedUsers() const {
             return _envelope.authenticatedUsers;
         }
 
