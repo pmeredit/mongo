@@ -81,7 +81,6 @@ namespace {
         // authentication database is also the userSource database.
         Status status = session->getAuthorizationSession()->getAuthorizationManager().
                 getPrivilegeDocument(
-                        session->getAuthenticationDatabase(),
                         UserName(StringData(user, ulen), session->getAuthenticationDatabase()),
                         &privilegeDocument);
 
