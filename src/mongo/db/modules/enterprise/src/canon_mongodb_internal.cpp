@@ -47,12 +47,12 @@ namespace {
         StringData user(userRaw, userRawLen ? userRawLen : strlen(userRaw));
         size_t firstNonWhitespace = 0;
         for (; firstNonWhitespace < user.size(); ++firstNonWhitespace) {
-            if (!isspace(user[firstNonWhitespace]))
+            if (!isspace(static_cast<unsigned char>(user[firstNonWhitespace])))
                 break;
         }
         size_t lastWhitespaceOrEnd = user.size();
         for (; lastWhitespaceOrEnd > firstNonWhitespace; --lastWhitespaceOrEnd) {
-            if (!isspace(user[lastWhitespaceOrEnd - 1]))
+            if (!isspace(static_cast<unsigned char>(user[lastWhitespaceOrEnd - 1])))
                 break;
         }
 
