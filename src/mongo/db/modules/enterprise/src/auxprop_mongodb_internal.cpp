@@ -21,6 +21,7 @@
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/user_name.h"
+#include "mongo/db/auth/user.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/util/mongoutils/str.h"
 #include "sasl_authentication_session.h"
@@ -77,19 +78,24 @@ namespace {
         SaslAuthenticationSession* session = static_cast<SaslAuthenticationSession*>(
                 sessionContext);
 
+        User* userObj;
         // NOTE: since this module is only used for looking up authentication information, the
         // authentication database is also the userSource database.
         Status status = session->getAuthorizationSession()->getAuthorizationManager().
-                getPrivilegeDocument(
+                acquireUser(
                         UserName(StringData(user, ulen), session->getAuthenticationDatabase()),
-                        &privilegeDocument);
+                        &userObj);
 
+        std::string userPassword;
         if (!status.isOK()) {
             sparams->utils->log(sparams->utils->conn,
                                 SASL_LOG_DEBUG,
                                 "auxpropMongoDBInternal failed to find privilege document: %s",
                                 status.toString().c_str());
-            privilegeDocument = BSONObj();
+            userPassword = "";
+        } else {
+            userPassword = userObj->getCredentials().password;
+            session->getAuthorizationSession()->getAuthorizationManager().releaseUser(userObj);
         }
 
         // Iterate over the properties to fetch, and set the ones we know how to set.
@@ -130,14 +136,13 @@ namespace {
 
             int curRet;
             if (propName == SASL_AUX_PASSWORD_PROP) {
-                BSONElement pwd = privilegeDocument["pwd"];
-                if (pwd.type() != String) {
+                if (userPassword.empty()) {
                     curRet = SASL_NOUSER;
                 }
                 sparams->utils->prop_set(sparams->propctx,
                                          cur->name,
-                                         pwd.valuestr(),
-                                         pwd.valuestrsize());
+                                         userPassword.c_str(),
+                                         userPassword.size());
                 curRet = SASL_OK;
             }
             else {
