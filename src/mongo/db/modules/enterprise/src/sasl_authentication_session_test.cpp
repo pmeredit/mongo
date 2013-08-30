@@ -21,99 +21,6 @@
 namespace mongo {
 namespace {
 
-    class AuthManagerExternalStateForSaslTesting : public AuthzManagerExternalStateMock {
-    public:
-        AuthManagerExternalStateForSaslTesting() {}
-
-        virtual Status _findUser(const std::string& usersNamespace,
-                                 const BSONObj& query,
-                                 BSONObj* result) const;
-
-        void addUserDocument(const std::string& usersNamespace, const BSONObj& userDocument);
-
-    private:
-        typedef std::vector<BSONObj> UsersCollection;
-        typedef unordered_map<std::string, UsersCollection> UsersCollectionMap;
-        UsersCollectionMap _usersCollections;
-    };
-
-    Status AuthManagerExternalStateForSaslTesting::_findUser(const std::string& usersNamespace,
-                                                             const BSONObj& queryRaw,
-                                                             BSONObj* result) const {
-
-        // TODO: User the matcher instead, when it can be plugged into a unit test.
-        namespace mmb = mutablebson;
-        const mmb::Document query(queryRaw);
-        mmb::ConstElement userNameElement = mmb::findFirstChildNamed(query.root(), "user");
-        mmb::ConstElement userSourceElement = mmb::findFirstChildNamed(query.root(), "userSource");
-        const size_t numQueryFields = mmb::countChildren(query.root());
-
-        ASSERT_GREATER_THAN(numQueryFields, 0U);
-        ASSERT_LESS_THAN_OR_EQUALS(numQueryFields, 2U);
-        ASSERT_TRUE(userNameElement.ok());
-        ASSERT_EQUALS(String, userNameElement.getType());
-
-        if (numQueryFields == 2) {
-            ASSERT_TRUE(userSourceElement.ok());
-            if (!userSourceElement.isValueNull()) {
-                ASSERT_EQUALS(String, userSourceElement.getType());
-            }
-        }
-
-        const UsersCollectionMap::const_iterator coll = _usersCollections.find(usersNamespace);
-        if (coll == _usersCollections.end())
-            return Status(ErrorCodes::UserNotFound, "User not found");
-        UsersCollection::const_iterator doc;
-        for (doc = coll->second.begin(); doc != coll->second.end(); ++doc) {
-            // "user" field must match.
-            mmb::Document mdoc(*doc);
-            if (0 != mmb::findFirstChildNamed(mdoc.root(),
-                                              "user").compareWithElement(userNameElement)) {
-                continue;
-            }
-
-            // If query did not specify a userSource field, we're done!
-            if (!userSourceElement.ok()) {
-                break;  // Found it!
-            }
-            mmb::ConstElement docUserSourceElement = mmb::findFirstChildNamed(mdoc.root(),
-                                                                              "userSource");
-
-            // If the userSourceElement is explicitly null, then "userSource" must be missing or
-            // null in doc to match.
-            if (userSourceElement.isValueNull()) {
-                if (!docUserSourceElement.ok() || docUserSourceElement.isValueNull()) {
-                    break;
-                }
-                else {
-                    continue;
-                }
-            }
-
-            // userSource in query not null; must be a String, which must equal the string in doc to
-            // match.
-            ASSERT_EQUALS(String, userSourceElement.getType());
-            StringData docUserSourceValue;
-            if (!docUserSourceElement.ok() || docUserSourceElement.isValueNull()) {
-                continue;
-            }
-            if (docUserSourceElement.getValueString() == userSourceElement.getValueString()) {
-                // Match!
-                break;
-            }
-        }
-        if (doc == coll->second.end()) {
-            return Status(ErrorCodes::UserNotFound, "User not found");
-        }
-        *result = *doc;
-        return Status::OK();
-    }
-
-    void AuthManagerExternalStateForSaslTesting::addUserDocument(const std::string& usersNamespace,
-                                                                 const BSONObj& userDocument) {
-        _usersCollections[usersNamespace].push_back(userDocument.getOwned());
-    }
-
     class SaslConversation : public unittest::Test {
     public:
         SaslConversation();
@@ -124,7 +31,7 @@ namespace {
         void testWrongClientMechanism();
         void testWrongServerMechanism();
 
-        AuthManagerExternalStateForSaslTesting* authManagerExternalState;
+        AuthzManagerExternalStateMock* authManagerExternalState;
         AuthorizationManager authManager;
         AuthzSessionExternalStateMock* authzSessionExternalState;
         AuthorizationSession authSession;
@@ -140,15 +47,15 @@ namespace {
     const std::string mockHostName = "host.mockery.com";
 
     SaslConversation::SaslConversation() :
-        authManagerExternalState(new AuthManagerExternalStateForSaslTesting()),
+        authManagerExternalState(new AuthzManagerExternalStateMock),
         authManager(authManagerExternalState),
         authzSessionExternalState(new AuthzSessionExternalStateMock(&authManager)),
         authSession(authzSessionExternalState),
         client(),
         server(&authSession) {
 
-        authManagerExternalState->addUserDocument("test.system.users",
-                                                  BSON("user" << "andy" << "pwd" << "frim"));
+        ASSERT_OK(authManagerExternalState->insert(NamespaceString("test.system.users"),
+                                                   BSON("user" << "andy" << "pwd" << "frim")));
     }
 
     void SaslConversation::assertConversationFailure() {
