@@ -54,8 +54,12 @@ namespace {
         client(),
         server(&authSession) {
 
-        ASSERT_OK(authManagerExternalState->insert(NamespaceString("test.system.users"),
-                                                   BSON("user" << "andy" << "pwd" << "frim")));
+        ASSERT_OK(authManagerExternalState->insert(
+                NamespaceString("admin.system.users"),
+                BSON("name" << "andy" <<
+                     "source" << "test" <<
+                     "credentials" << BSON("MONGODB-CR" << "frim") <<
+                     "roles" << BSONArray())));
     }
 
     void SaslConversation::assertConversationFailure() {
