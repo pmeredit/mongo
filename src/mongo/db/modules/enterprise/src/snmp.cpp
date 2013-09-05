@@ -13,16 +13,19 @@
 #include <net-snmp/net-snmp-includes.h>
 #include <net-snmp/agent/net-snmp-agent-includes.h>
 #include <signal.h>
-#include <boost/program_options.hpp>
  
 #include "mongo/db/module.h"
 #include "mongo/db/stats/counters.h"
+#include "mongo/base/status.h"
 #include "mongo/util/background.h"
+#include "mongo/util/options_parser/option_description.h"
 #include "mongo/util/time_support.h"
 
 #include "snmp.h"
 
 namespace mongo {
+
+    namespace moe = mongo::optionenvironment;
 
     int my_snmp_callback( netsnmp_mib_handler *handler, netsnmp_handler_registration *reginfo,
                           netsnmp_agent_request_info *reqinfo, netsnmp_request_info *requests);
@@ -196,12 +199,6 @@ namespace mongo {
             _snmpIterations = 0;
             _numThings = 0;
             _agentName = "mongod";
-            
-            add_options()
-            ( "snmp-subagent" , "run snmp subagent" )
-            ( "snmp-master" , "run snmp as master" )
-            ;
-
         }
 
         ~SNMPAgent() {
@@ -209,7 +206,32 @@ namespace mongo {
 
         virtual string name() const { return "SNMPAgent"; }
 
-        void config( boost::program_options::variables_map& params ) {
+        void addOptions(moe::OptionSection* options) {
+
+            typedef moe::OptionDescription OD;
+
+            moe::OptionSection snmp_options("SNMP Module Options");
+
+            Status ret = snmp_options.addOption(OD("snmp-subagent", "snmp-subagent", moe::Switch,
+                        "run snmp subagent", true));
+            if (!ret.isOK()) {
+                log() << "Failed to register snmp-subagent option: " << ret.toString() << endl;
+                return;
+            }
+            ret = snmp_options.addOption(OD("snmp-master", "snmp-master", moe::Switch,
+                        "run snmp as master", true));
+            if (!ret.isOK()) {
+                log() << "Failed to register snmp-master option: " << ret.toString() << endl;
+                return;
+            }
+            ret = options->addSection(snmp_options);
+            if (!ret.isOK()) {
+                log() << "Failed to add snmp option section: " << ret.toString() << endl;
+                return;
+            }
+        }
+
+        void config(moe::Environment& params) {
             if ( params.count( "snmp-subagent" ) ) {
                 enable();
             }
