@@ -44,6 +44,16 @@ env.CppUnitTest('sasl_authentication_session_test',
                          '$BUILD_DIR/mongo/sasl_client_session'])
 
 if env['PYSYSPLATFORM'] == "win32":
+    # Ensure we're building with /MD or /MDd
+    mdFlags = ["/MD","/MDd"]
+    hasFlag = 0
+    for mdFlag in mdFlags:
+        if mdFlag in env['CCFLAGS']:
+            hasFlag += 1
+    if hasFlag != 1:
+        print("You must enable dynamic CRT --dynamic-windows to build the enterprise version")
+        Exit(1)
+
     sspi_test = env.Program('sasl_authentication_session_sspi_test',
                             ['src/sasl_authentication_session_sspi_test.cpp'],
                             LIBDEPS=['mongosaslserversession'])
