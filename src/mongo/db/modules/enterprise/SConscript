@@ -43,12 +43,19 @@ env.CppUnitTest('sasl_authentication_session_test',
                          '$BUILD_DIR/mongo/db/auth/authcore',
                          '$BUILD_DIR/mongo/sasl_client_session'])
 
-gssapi_test = env.Program('sasl_authentication_session_gssapi_test',
-                          ['src/sasl_authentication_session_gssapi_test.cpp'],
-                          LIBDEPS=['mongosaslserversession',
-                                   '$BUILD_DIR/mongo/bson',
-                                   '$BUILD_DIR/mongo/db/auth/authcore',
-                                   '$BUILD_DIR/mongo/sasl_client_session',
-                                   '$BUILD_DIR/mongo/unittest/unittest',
-                                   '$BUILD_DIR/mongo/unittest/unittest_crutch'])
-env.RegisterUnitTest(gssapi_test[0])
+if env['PYSYSPLATFORM'] == "win32":
+    sspi_test = env.Program('sasl_authentication_session_sspi_test',
+                            ['src/sasl_authentication_session_sspi_test.cpp'],
+                            LIBDEPS=['mongosaslserversession'])
+# SERVER-10700
+#    env.RegisterUnitTest(sspi_test[0])
+else:
+    gssapi_test = env.Program('sasl_authentication_session_gssapi_test',
+                              ['src/sasl_authentication_session_gssapi_test.cpp'],
+                              LIBDEPS=['mongosaslserversession',
+                                       '$BUILD_DIR/mongo/bson',
+                                       '$BUILD_DIR/mongo/db/auth/authcore',
+                                       '$BUILD_DIR/mongo/sasl_client_session',
+                                       '$BUILD_DIR/mongo/unittest/unittest',
+                                       '$BUILD_DIR/mongo/unittest/unittest_crutch'])
+    env.RegisterUnitTest(gssapi_test[0])
