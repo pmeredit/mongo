@@ -59,7 +59,8 @@ namespace {
                 BSON("name" << "andy" <<
                      "source" << "test" <<
                      "credentials" << BSON("MONGODB-CR" << "frim") <<
-                     "roles" << BSONArray())));
+                     "roles" << BSONArray()),
+                BSONObj()));
     }
 
     void SaslConversation::assertConversationFailure() {
