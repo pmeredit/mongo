@@ -22,6 +22,19 @@
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/text.h"
 
+extern "C" int plain_server_plug_init(const sasl_utils_t *utils,
+                                      int maxversion,
+                                      int *out_version,
+                                      sasl_server_plug_t **pluglist,
+                                      int *plugcount);
+
+extern "C" int crammd5_server_plug_init(const sasl_utils_t *utils,
+                                        int maxversion,
+                                        int *out_version,
+                                        sasl_server_plug_t **pluglist,
+                                        int *plugcount);
+
+
 namespace mongo {
 namespace gssapi {
 
@@ -530,6 +543,34 @@ namespace {
 
         return Status::OK();
     }
+
+    MONGO_INITIALIZER_WITH_PREREQUISITES(SaslCramServerPlugin, ("CyrusSaslServerLibrary"))
+        (InitializerContext*) {
+        int ret = sasl_server_add_plugin("CRAMMD5",
+                                     crammd5_server_plug_init);
+        if (SASL_OK != ret) {
+            return Status(ErrorCodes::UnknownError,
+                          mongoutils::str::stream() << "Could not add SASL Server CRAM-MD5 plugin "
+                          << sspiPluginName << ": " << sasl_errstring(ret, NULL, NULL));
+        }
+
+        return Status::OK();
+    }
+
+    MONGO_INITIALIZER_WITH_PREREQUISITES(SaslPlainServerPlugin, ("CyrusSaslServerLibrary"))
+        (InitializerContext*) {
+        int ret = sasl_server_add_plugin("PLAIN",
+                                     plain_server_plug_init);
+        if (SASL_OK != ret) {
+            return Status(ErrorCodes::UnknownError,
+                          mongoutils::str::stream() << "Could not add SASL Server PLAIN plugin "
+                          << sspiPluginName << ": " << sasl_errstring(ret, NULL, NULL));
+        }
+
+        return Status::OK();
+    }
+
+        
 
 } // namespace
 } // namespace mongo
