@@ -16,6 +16,7 @@
 #include <signal.h>
  
 #include "mongo/db/module.h"
+#include "mongo/db/server_options.h"
 #include "mongo/db/stats/counters.h"
 #include "mongo/base/status.h"
 #include "mongo/db/client.h"
@@ -102,7 +103,7 @@ namespace mongo {
         class NameCallback : public SNMPCallBack {
         public:
             NameCallback() : SNMPCallBack( "serverName" , "1,1" ) {
-                sprintf( _buf , "%s:%d" , getHostNameCached().c_str(), cmdLine.port );
+                sprintf( _buf , "%s:%d" , getHostNameCached().c_str(), serverGlobalParams.port );
                 _len = strlen( _buf );
             }
             

@@ -13,7 +13,7 @@
 #include <net-snmp/net-snmp-includes.h>
 #include <net-snmp/agent/net-snmp-agent-includes.h>
 
-#include "mongo/db/cmdline.h"
+#include "mongo/db/server_options.h"
 
 #include "snmp.h"
 
@@ -30,7 +30,7 @@ namespace mongo {
     
     void OIDManager::init() {
         char buf[128];
-        int x = sprintf( buf , "%d" , cmdLine.port );
+        int x = sprintf( buf , "%d" , serverGlobalParams.port );
         _endName.push_back( (oid)x );
         for ( int32_t i=0; i<x; i++ ) {
             _endName.push_back( (oid)buf[i] );
