@@ -70,12 +70,14 @@ namespace audit {
 
         if (!getGlobalAuditManager()->enabled) return;
 
-        AuthzCheckEvent event(
-                makeEnvelope(client, ActionType::authCheck, result),
-                ns,
-                &cmdObj);
-        if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-            getGlobalAuditLogDomain()->append(event);
+        if (result != ErrorCodes::OK) {
+            AuthzCheckEvent event(
+                    makeEnvelope(client, ActionType::authCheck, result),
+                    ns,
+                    &cmdObj);
+            if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+                getGlobalAuditLogDomain()->append(event);
+            }
         }
     }
 
