@@ -3,6 +3,7 @@
  */
 
 #include "audit_event.h"
+#include "mongo/db/matcher/matchable.h"
 
 namespace mongo {
 namespace audit {
@@ -25,20 +26,52 @@ namespace audit {
         }
     }
 
-    BSONObjBuilder& AuditEvent::putBSON(BSONObjBuilder& builder) const {
+    void AuditEvent::generateBSON() const {
+        BSONObjBuilder builder;
         builder.appendDate("ts", getTimestamp());
-        BSONObjBuilder idBuilder(builder.subobjStart("id"));
-        putAuditOperationIdBSON(getOperationId(), idBuilder);
-        idBuilder.done();
-        BSONArrayBuilder usersBuilder(builder.subarrayStart("users"));
-        putAllUserNamesBSON(getAuthenticatedUsers(), usersBuilder);
-        usersBuilder.done();
+        {
+            BSONObjBuilder idBuilder(builder.subobjStart("id"));
+            putAuditOperationIdBSON(getOperationId(), idBuilder);
+        }
+        {
+            BSONArrayBuilder usersBuilder(builder.subarrayStart("users"));
+            putAllUserNamesBSON(getAuthenticatedUsers(), usersBuilder);
+        }
         builder.append("atype", getActionType().toString());
         builder.appendIntOrLL("result", getResultCode());
-        BSONObjBuilder paramBuilder(builder.subobjStart("param"));
-        putParamsBSON(paramBuilder);
-        paramBuilder.done();
-        return builder;
+        {
+            BSONObjBuilder paramBuilder(builder.subobjStart("param"));
+            putParamsBSON(paramBuilder);
+        }
+        _obj = builder.obj();
+        _bsonGenerated = true;
+    }
+
+    BSONObj AuditEvent::toBSON() const {
+        if (!_bsonGenerated) {
+            generateBSON();
+        }
+        return _obj;
+    }
+
+    ElementIterator* AuditEvent::allocateIterator( const ElementPath* path ) const {
+        if (!_bsonGenerated) {
+            generateBSON();
+        }
+        if ( _iteratorUsed )
+            return new BSONElementIterator( path, _obj );
+        _iteratorUsed = true;
+        _iterator.reset( path, _obj );
+        return &_iterator;
+    }
+    
+    void AuditEvent::releaseIterator( ElementIterator* iterator ) const {
+        if ( iterator == &_iterator ) {
+            _iteratorUsed = false;
+        }
+        else {
+            delete iterator;
+        }
     }
 
 }  // namespace audit

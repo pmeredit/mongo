@@ -4,6 +4,7 @@
 
 #include "audit_event.h"
 #include "audit_log_domain.h"
+#include "audit_manager_global.h"
 #include "audit_private.h"
 #include "mongo/base/status.h"
 #include "mongo/bson/mutable/document.h"
@@ -22,7 +23,8 @@ namespace audit {
         AuthzCheckEvent(const AuditEventEnvelope& envelope,
                         const NamespaceString& ns,
                         const mmb::Document* cmdObj)
-            : AuditEvent(envelope), _ns(ns), _cmdObj(cmdObj) {}
+            : AuditEvent(envelope), _ns(ns), _cmdObj(cmdObj) {
+        }
         virtual ~AuthzCheckEvent() {}
 
     private:
@@ -66,11 +68,15 @@ namespace audit {
             const mmb::Document& cmdObj,
             ErrorCodes::Error result) {
 
+        if (!getGlobalAuditManager()->enabled) return;
+
         AuthzCheckEvent event(
                 makeEnvelope(client, ActionType::authCheck, result),
                 ns,
                 &cmdObj);
-        getGlobalAuditLogDomain()->append(event);
+        if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+            getGlobalAuditLogDomain()->append(event);
+        }
     }
 
     void logDeleteAuthzCheck(
@@ -78,6 +84,9 @@ namespace audit {
             const NamespaceString& ns,
             const BSONObj& pattern,
             ErrorCodes::Error result) {
+
+        if (!getGlobalAuditManager()->enabled) return;
+
         mmb::Document cmdObj;
         fassertStatusOK(cmdObj.root().appendString("delete", ns.coll()));
         mmb::Element deleteListElt = cmdObj.makeElementArray("deletes");
@@ -95,6 +104,9 @@ namespace audit {
     void logFsyncUnlockAuthzCheck(
             ClientBasic* client,
             ErrorCodes::Error result) {
+
+        if (!getGlobalAuditManager()->enabled) return;
+
         mmb::Document cmdObj;
         fassertStatusOK(cmdObj.root().appendInt("fsyncUnlock", 1));
         logCommandAuthzCheck(
@@ -109,6 +121,9 @@ namespace audit {
             const NamespaceString& ns,
             long long cursorId,
             ErrorCodes::Error result) {
+
+        if (!getGlobalAuditManager()->enabled) return;
+
         mmb::Document cmdObj;
         fassertStatusOK(cmdObj.root().appendString("getMore", ns.coll()));
         fassertStatusOK(cmdObj.root().appendLong("cursorId", cursorId));
@@ -123,6 +138,9 @@ namespace audit {
             ClientBasic* client,
             const BSONObj& filter,
             ErrorCodes::Error result) {
+
+        if (!getGlobalAuditManager()->enabled) return;
+
         mmb::Document cmdObj;
         fassertStatusOK(cmdObj.root().appendInt("inprog", 1));
         fassertStatusOK(cmdObj.root().appendObject("q", filter));
@@ -138,6 +156,8 @@ namespace audit {
             const NamespaceString& ns,
             const BSONObj& insertedObj,
             ErrorCodes::Error result) {
+
+        if (!getGlobalAuditManager()->enabled) return;
 
         mmb::Document cmdObj;
         fassertStatusOK(cmdObj.root().appendString("insert", ns.coll()));
@@ -156,6 +176,9 @@ namespace audit {
             const NamespaceString& ns,
             long long cursorId,
             ErrorCodes::Error result) {
+
+        if (!getGlobalAuditManager()->enabled) return;
+
         mmb::Document cmdObj;
         fassertStatusOK(cmdObj.root().appendString("killCursors", ns.coll()));
         fassertStatusOK(cmdObj.root().appendLong("cursorId", cursorId));
@@ -170,6 +193,9 @@ namespace audit {
             ClientBasic* client,
             const BSONObj& filter,
             ErrorCodes::Error result) {
+
+        if (!getGlobalAuditManager()->enabled) return;
+
         mmb::Document cmdObj;
         fassertStatusOK(cmdObj.root().appendInt("killOp", 1));
         fassertStatusOK(cmdObj.root().appendObject("q", filter));
@@ -185,6 +211,9 @@ namespace audit {
             const NamespaceString& ns,
             const BSONObj& query,
             ErrorCodes::Error result) {
+
+        if (!getGlobalAuditManager()->enabled) return;
+
         mmb::Document cmdObj;
         fassertStatusOK(cmdObj.root().appendString("find", ns.coll()));
         fassertStatusOK(cmdObj.root().appendObject("q", query));
@@ -203,6 +232,9 @@ namespace audit {
             bool isUpsert,
             bool isMulti,
             ErrorCodes::Error result) {
+
+        if (!getGlobalAuditManager()->enabled) return;
+
         mmb::Document cmdObj;
         fassertStatusOK(cmdObj.root().appendString("update", ns.coll()));
         mmb::Element updatesListElt = cmdObj.makeElementArray("updates");

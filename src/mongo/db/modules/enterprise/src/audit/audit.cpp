@@ -44,7 +44,7 @@ namespace {
 
     MONGO_EXPORT_STARTUP_SERVER_PARAMETER(auditLogPath, std::string, std::string());
 
-    MONGO_INITIALIZER(AuditDomain)(InitializerContext*) {
+    MONGO_INITIALIZER_WITH_PREREQUISITES(AuditDomain, ("CreateAuditManager"))(InitializerContext*) {
         if (auditLogPath == ":console") {
             getGlobalAuditLogDomain()->attachAppender(
                     AuditLogDomain::AppenderAutoPtr(

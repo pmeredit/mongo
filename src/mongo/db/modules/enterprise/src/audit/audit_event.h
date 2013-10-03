@@ -10,6 +10,7 @@
 #include "mongo/db/auth/action_type.h"
 #include "mongo/db/auth/user_set.h"
 #include "mongo/db/jsobj.h"
+#include "mongo/db/matcher/expression.h"
 #include "mongo/platform/cstdint.h"
 #include "mongo/util/net/sock.h"
 
@@ -48,7 +49,7 @@ namespace audit {
      * immediate writing into the audit log domain.  They are not intended to be stored, and may not
      * own all of the data they refernence.
      */
-    class AuditEvent {
+    class AuditEvent : public MatchableDocument {
         MONGO_DISALLOW_COPYING(AuditEvent);
     public:
         Date_t getTimestamp() const { return _envelope.timestamp; }
@@ -68,12 +69,18 @@ namespace audit {
         std::ostream& putText(std::ostream& os) const { return putTextDescription(os); }
 
         /**
-         * Builds BSON describing this event into "builder".
+         *  Virtual functions from MatchableDocument
          */
-        BSONObjBuilder& putBSON(BSONObjBuilder& builder) const;
+        virtual BSONObj toBSON() const;
+
+        virtual ElementIterator* allocateIterator( const ElementPath* path ) const;
+        virtual void releaseIterator( ElementIterator* iterator ) const;
 
     protected:
-        explicit AuditEvent(const AuditEventEnvelope& envelope) : _envelope(envelope) {}
+        explicit AuditEvent(const AuditEventEnvelope& envelope) 
+            : _envelope(envelope),
+            _bsonGenerated(false),
+            _iteratorUsed(false) {}
 
         /**
          * Destructor.  Should not be virtual.  Do not attempt to delete a pointer to AuditEvent.
@@ -87,7 +94,17 @@ namespace audit {
         virtual std::ostream& putTextDescription(std::ostream& os) const = 0;
         virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const = 0;
 
+        /**
+         * Builds BSON describing this event and store in _obj
+         */
+        void generateBSON() const;
+
         AuditEventEnvelope _envelope;
+
+        mutable BSONObj _obj;
+        mutable bool _bsonGenerated;
+        mutable BSONElementIterator _iterator;
+        mutable bool _iteratorUsed;
     };
 
 }  // namespace audit

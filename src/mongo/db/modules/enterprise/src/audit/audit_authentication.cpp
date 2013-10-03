@@ -4,10 +4,12 @@
 
 #include "audit_event.h"
 #include "audit_log_domain.h"
+#include "audit_manager_global.h"
 #include "audit_private.h"
 #include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
 #include "mongo/db/audit.h"
+#include "mongo/db/auth/action_type.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/user_name.h"
 #include "mongo/db/client_basic.h"
@@ -24,7 +26,8 @@ namespace audit {
         AuthenticationEvent(const AuditEventEnvelope& envelope,
                             const StringData& mechanism,
                             const UserName& user)
-            : AuditEvent(envelope), _mechanism(mechanism), _user(user) {}
+            : AuditEvent(envelope), _mechanism(mechanism), _user(user) {
+        }
         virtual ~AuthenticationEvent() {}
 
     private:
@@ -56,10 +59,15 @@ namespace audit {
                            const StringData& mechanism,
                            const UserName& user,
                            ErrorCodes::Error result) {
+
+        if (!getGlobalAuditManager()->enabled) return;
+
         AuthenticationEvent event(makeEnvelope(client, ActionType::authenticate, result),
                                   mechanism,
                                   user);
-        getGlobalAuditLogDomain()->append(event);
+        if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+            getGlobalAuditLogDomain()->append(event);
+        }
     }
 
 }  // namespace audit
