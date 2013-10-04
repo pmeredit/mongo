@@ -29,22 +29,22 @@ namespace mongo {
         void getStringField(const StringData& name, char* o_value, int o_valueLen);
         void getDateField(const StringData& name, char* o_value, int o_valueLen);
         
-        const static std::string ASSERTS;
-        const static std::string BACKGROUND_FLUSHING;
-        const static std::string CONNECTIONS;
-        const static std::string CURSORS;
-        const static std::string DUR;
-        const static std::string EXTRA_INFO;
-        const static std::string GLOBAL_LOCK;
-        const static std::string INDEX_COUNTERS;
-        const static std::string LOCKS;
-        const static std::string NETWORK;
-        const static std::string OPCOUNTERS;
-        const static std::string OPCOUNTERS_REPL;
-        const static std::string RECORD_STATS;
-        const static std::string REPL;
-        const static std::string MEM;
-        const static std::string METRICS;
+        static const std::string ASSERTS;
+        static const std::string BACKGROUND_FLUSHING;
+        static const std::string CONNECTIONS;
+        static const std::string CURSORS;
+        static const std::string DUR;
+        static const std::string EXTRA_INFO;
+        static const std::string GLOBAL_LOCK;
+        static const std::string INDEX_COUNTERS;
+        static const std::string LOCKS;
+        static const std::string NETWORK;
+        static const std::string OPCOUNTERS;
+        static const std::string OPCOUNTERS_REPL;
+        static const std::string RECORD_STATS;
+        static const std::string REPL;
+        static const std::string MEM;
+        static const std::string METRICS;
         
     private:
         DBDirectClient _dbClient;
