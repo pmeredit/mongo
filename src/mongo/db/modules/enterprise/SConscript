@@ -15,7 +15,8 @@ env.StaticLibrary('audit',
                   LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/${LIBPREFIX}coredb${LIBSUFFIX}'])
 
 env.StaticLibrary('mongosnmp',
-                  ['src/snmp.cpp',
+                  ['src/serverstatus_client.cpp',
+                   'src/snmp.cpp',
                    'src/snmp_oid.cpp'],
                   LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/${PROGPREFIX}mongod${PROGSUFFIX}'],
                   SYSLIBDEPS=env.get('SNMP_SYSLIBDEPS', []))
