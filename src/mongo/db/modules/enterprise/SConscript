@@ -37,12 +37,12 @@ env.StaticLibrary('mongosaslservercommon',
                   LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/${PROGPREFIX}mongod${PROGSUFFIX}',
                                       '$BUILD_DIR/mongo/${PROGPREFIX}mongos${PROGSUFFIX}'])
 
-env.CppUnitTest('sasl_authentication_session_test',
-                ['src/sasl_authentication_session_test.cpp'],
-                LIBDEPS=['mongosaslserversession',
-                         '$BUILD_DIR/mongo/bson',
-                         '$BUILD_DIR/mongo/db/auth/authcore',
-                         '$BUILD_DIR/mongo/sasl_client_session'])
+#env.CppUnitTest('sasl_authentication_session_test',
+#                ['src/sasl_authentication_session_test.cpp'],
+#                LIBDEPS=['mongosaslserversession',
+#                         '$BUILD_DIR/mongo/bson',
+#                         '$BUILD_DIR/mongo/db/auth/authcore',
+#                         '$BUILD_DIR/mongo/sasl_client_session'])
 
 if env['PYSYSPLATFORM'] == "win32":
     # Ensure we're building with /MD or /MDd
