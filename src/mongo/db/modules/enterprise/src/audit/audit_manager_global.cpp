@@ -16,17 +16,17 @@ namespace {
 }
 
     void setGlobalAuditManager(AuditManager* auditManager) {
-        fassert(0, globalAuditManager == NULL);
+        fassert(17186, globalAuditManager == NULL);
         globalAuditManager = auditManager;
     }
 
     void clearGlobalAuditManager() {
-        fassert(0, globalAuditManager != NULL);
+        fassert(17187, globalAuditManager != NULL);
         globalAuditManager = NULL;
     }
 
     AuditManager* getGlobalAuditManager() {
-        fassert(16842, globalAuditManager != NULL);
+        fassert(17188, globalAuditManager != NULL);
         return globalAuditManager;
     }
 

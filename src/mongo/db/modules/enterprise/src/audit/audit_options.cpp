@@ -37,7 +37,7 @@ namespace audit {
                 StatusWithMatchExpression parseResult = MatchExpressionParser::parse(_auditfilter);
                 if (!parseResult.isOK()) {
                     //return status;
-                    fassertFailed(0);
+                    fassertFailed(17185);
                 }
                 getGlobalAuditManager()->auditFilter = parseResult.getValue();
             }
