@@ -15,7 +15,6 @@
 #include <net-snmp/agent/net-snmp-agent-includes.h>
 #include <signal.h>
  
-#include "mongo/db/module.h"
 #include "mongo/db/server_options.h"
 #include "mongo/db/stats/counters.h"
 #include "mongo/base/status.h"
@@ -28,6 +27,7 @@
 
 #include "serverstatus_client.h"
 #include "snmp.h"
+#include "snmp_options.h"
 
 namespace mongo {
 
@@ -657,14 +657,11 @@ namespace mongo {
     }
 
     
-    class SNMPAgent : public BackgroundJob , Module {
+    class SNMPAgent : public BackgroundJob {
     public:
 
-        SNMPAgent()
-            : Module( "snmp" ) {
+        SNMPAgent() {
 
-            _enabled = 0;
-            _subagent = 1;
             _snmpIterations = 0;
             _numThings = 0;
             _agentName = "mongod";
@@ -676,68 +673,25 @@ namespace mongo {
 
         virtual string name() const { return "SNMPAgent"; }
 
-        void addOptions(moe::OptionSection* options) {
-
-            typedef moe::OptionDescription OD;
-
-            moe::OptionSection snmp_options("SNMP Module Options");
-
-            Status ret = snmp_options.addOption(OD("snmp-subagent", "snmp-subagent", moe::Switch,
-                        "run snmp subagent", true));
-            if (!ret.isOK()) {
-                log() << "Failed to register snmp-subagent option: " << ret.toString() << endl;
-                return;
-            }
-            ret = snmp_options.addOption(OD("snmp-master", "snmp-master", moe::Switch,
-                        "run snmp as master", true));
-            if (!ret.isOK()) {
-                log() << "Failed to register snmp-master option: " << ret.toString() << endl;
-                return;
-            }
-            ret = options->addSection(snmp_options);
-            if (!ret.isOK()) {
-                log() << "Failed to add snmp option section: " << ret.toString() << endl;
-                return;
-            }
-        }
-
-        void config(moe::Environment& params) {
-            if ( params.count( "snmp-subagent" ) ) {
-                enable();
-            }
-            if ( params.count( "snmp-master" ) ) {
-                makeMaster();
-                enable();
-            }
-        }
-
-        void enable() {
-            _enabled = 1;
-        }
-
-        void makeMaster() {
-            _subagent = false;
-        }
-
         void init() {
             oidManager.init();
             go();
         }
 
         void shutdown() {
-            _enabled = 0;
+            snmpGlobalParams.enabled = 0;
         }
 
         void run() {
             
-            while ( ! _enabled ) {
+            while (!snmpGlobalParams.enabled) {
                 LOG(1) << "SNMPAgent not enabled";
                 return;
             }
 
             snmp_enable_stderrlog();
 
-            if ( _subagent ) {
+            if (snmpGlobalParams.subagent) {
                 if ( netsnmp_ds_set_boolean(NETSNMP_DS_APPLICATION_ID, NETSNMP_DS_AGENT_ROLE, 1)
                          != SNMPERR_SUCCESS ) {
                     log() << "SNMPAgent faild setting subagent" << endl;
@@ -754,7 +708,7 @@ namespace mongo {
 
             init_snmp( _agentName.c_str() );
 
-            if ( ! _subagent ) {
+            if (!snmpGlobalParams.subagent) {
                 int res = init_master_agent();
                 if ( res ) {
                     warning() << "error starting SNMPAgent as master err:" << res << endl;
@@ -766,7 +720,7 @@ namespace mongo {
                 log() << "SNMPAgent running as subagent" << endl;
             }
 
-            while( _enabled && ! inShutdown() ) {
+            while(snmpGlobalParams.enabled && !inShutdown()) {
                 _snmpIterations++;
                 agent_check_and_process(1);
             }
@@ -873,9 +827,6 @@ namespace mongo {
 
 
         string _agentName;
-
-        bool _enabled;
-        bool _subagent;
 
         int _numThings;
         int _snmpIterations;
