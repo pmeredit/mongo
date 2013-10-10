@@ -71,31 +71,38 @@ namespace audit {
         if (params.count("auditing")) {
             auditGlobalParams.enabled = true;
         }
+
         if (params.count("auditformat")) {
             std::string auditFormatStr = params["auditformat"].as<std::string>();
             if (auditFormatStr == "text") {
-                auditGlobalParams.auditFormat = AuditGlobalParams::AuditFormatText;
+                auditGlobalParams.auditFormat = AuditFormatText;
             }
             else if (auditFormatStr == "bson") {
-                auditGlobalParams.auditFormat = AuditGlobalParams::AuditFormatBson;
+                auditGlobalParams.auditFormat = AuditFormatBson;
             }
             else {
                 log() << "invalid auditformat parameter";
                 ::_exit(EXIT_FAILURE);
             }
         }
+        else {
+            // Default to text format if unspecified.
+            auditGlobalParams.auditFormat = AuditFormatText;
+        }
+
         if (params.count("auditfilter")) {
             try {
-                auditGlobalParams.auditfilter = fromjson(params["auditfilter"].as<std::string>());
+                auditGlobalParams.auditFilter = fromjson(params["auditfilter"].as<std::string>());
             }
             catch (const MsgAssertionException& e) {
-                // TODO: This is rather messy.
-                //      Easier when this is in a MONGO_INTIIALIZER
                 log() << "problem with auditfilter param: " << e.what();
-                ::_exit(EXIT_FAILURE);
+                return Status(ErrorCodes::BadValue, e.what());
             }
         }
 
+        if (params.count("auditpath")) {
+            auditGlobalParams.auditPath = params["auditpath"].as<std::string>();
+        }
         return Status::OK();
     }
 
@@ -113,13 +120,18 @@ namespace audit {
 
         if (auditGlobalParams.enabled) {
             StatusWithMatchExpression parseResult =
-                MatchExpressionParser::parse(auditGlobalParams.auditfilter);
+                MatchExpressionParser::parse(auditGlobalParams.auditFilter);
             if (!parseResult.isOK()) {
-                //return status;
-                fassertFailed(17185);
+                return Status(ErrorCodes::BadValue, "failed to parse auditfilter");
             }
-            audit::getGlobalAuditManager()->auditFilter = parseResult.getValue();
+            AuditManager* am = audit::getGlobalAuditManager();
+            am->auditFilter = parseResult.getValue();
+
+            am->auditLogPath = auditGlobalParams.auditPath;
+
+            am->auditFormat = auditGlobalParams.auditFormat;
         }
+
         return Status::OK();
     }
 } // namespace audit

@@ -3,8 +3,7 @@
 Import("env")
 
 env.StaticLibrary('audit',
-                  ['src/audit/audit.cpp',
-                   'src/audit/audit_authentication.cpp',
+                  ['src/audit/audit_authentication.cpp',
                    'src/audit/audit_authz_check.cpp',
                    'src/audit/audit_event.cpp',
                    'src/audit/audit_log_domain.cpp',

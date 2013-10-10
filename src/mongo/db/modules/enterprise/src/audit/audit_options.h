@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "audit_manager.h" // AuditFormat
 #include "mongo/base/status.h"
 #include "mongo/db/jsobj.h"
 
@@ -23,12 +24,8 @@ namespace audit {
 
     struct AuditGlobalParams {
         bool enabled;
-        BSONObj auditfilter;
-
-        enum AuditFormat {
-            AuditFormatText = 0,
-            AuditFormatBson = 1
-        };
+        BSONObj auditFilter;
+        std::string auditPath;
 
         AuditFormat auditFormat;
 
