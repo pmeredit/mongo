@@ -10,6 +10,7 @@
 #include "mongo/util/options_parser/option_section.h"
 #include "mongo/util/options_parser/options_parser.h"
 #include "mongo/util/options_parser/startup_option_init.h"
+#include "mongo/util/options_parser/startup_options.h"
 
 namespace mongo {
 
@@ -58,11 +59,11 @@ namespace mongo {
     }
 
     MONGO_MODULE_STARTUP_OPTIONS_REGISTER(SnmpOptions)(InitializerContext* context) {
-        return addSnmpOptions(&serverOptions);
+        return addSnmpOptions(&moe::startupOptions);
     }
 
     MONGO_STARTUP_OPTIONS_STORE(SnmpOptions)(InitializerContext* context) {
-        return storeSnmpOptions(serverParsedOptions, context->args());
+        return storeSnmpOptions(moe::startupOptionsParsed, context->args());
     }
 
 } // namespace mongo

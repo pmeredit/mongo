@@ -21,6 +21,7 @@
 #include "mongo/util/options_parser/option_section.h"
 #include "mongo/util/options_parser/options_parser.h"
 #include "mongo/util/options_parser/startup_option_init.h"
+#include "mongo/util/options_parser/startup_options.h"
 
 namespace mongo {
 namespace audit {
@@ -104,11 +105,11 @@ namespace audit {
     }
 
     MONGO_MODULE_STARTUP_OPTIONS_REGISTER(AuditOptions)(InitializerContext* context) {
-        return addAuditOptions(&serverOptions);
+        return addAuditOptions(&moe::startupOptions);
     }
 
     MONGO_STARTUP_OPTIONS_STORE(AuditOptions)(InitializerContext* context) {
-        return storeAuditOptions(serverParsedOptions, context->args());
+        return storeAuditOptions(moe::startupOptionsParsed, context->args());
     }
 
     MONGO_INITIALIZER_WITH_PREREQUISITES(InitializeGlobalAuditManager, ("CreateAuditManager"))
