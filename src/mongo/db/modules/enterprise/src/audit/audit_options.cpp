@@ -14,6 +14,7 @@
 #include "mongo/db/json.h"
 #include "mongo/db/matcher/expression_parser.h"
 #include "mongo/util/log.h"
+#include "mongo/util/mongoutils/str.h"
 #include "mongo/util/options_parser/environment.h"
 #include "mongo/util/options_parser/option_description.h"
 #include "mongo/util/options_parser/option_description.h"
@@ -33,26 +34,21 @@ namespace audit {
 
         moe::OptionSection auditing_options("Auditing Options");
 
-        Status ret = auditing_options.addOption(OD("auditing", "auditing", moe::Switch,
-                    "activate auditing", true));
+        Status ret = auditing_options.addOption(OD("auditlog", "auditlog", moe::String,
+                                                   "turn on auditing and specify output for log: "
+                                                   "textfile, bsonfile, syslog, console", true));
         if (!ret.isOK()) {
             return ret;
         }
 
         ret = auditing_options.addOption(OD("auditpath", "auditpath", moe::String,
-                    "full filespec for audit log", true));
-        if (!ret.isOK()) {
-            return ret;
-        }
-
-        ret = auditing_options.addOption(OD("auditformat", "auditformat", moe::String,
-                    "text or bson", true));
+                                            "full filespec for audit log file", true));
         if (!ret.isOK()) {
             return ret;
         }
 
         ret = auditing_options.addOption(OD("auditfilter", "auditfilter", moe::String,
-                    "filter spec to screen audit records", true));
+                                            "filter spec to screen audit records", true));
         if (!ret.isOK()) {
             return ret;
         }
@@ -68,26 +64,30 @@ namespace audit {
 
     Status storeAuditOptions(const moe::Environment& params,
                              const std::vector<std::string>& args) {
-        if (params.count("auditing")) {
+        if (params.count("auditlog")) {
             auditGlobalParams.enabled = true;
-        }
-
-        if (params.count("auditformat")) {
-            std::string auditFormatStr = params["auditformat"].as<std::string>();
-            if (auditFormatStr == "text") {
-                auditGlobalParams.auditFormat = AuditFormatText;
+            std::string auditFormatStr = params["auditlog"].as<std::string>();
+            if (auditFormatStr == "textfile") {
+                auditGlobalParams.auditFormat = AuditFormatTextFile;
+                auditGlobalParams.auditPath = params["auditpath"].as<std::string>();
             }
-            else if (auditFormatStr == "bson") {
-                auditGlobalParams.auditFormat = AuditFormatBson;
+            else if (auditFormatStr == "bsonfile") {
+                auditGlobalParams.auditFormat = AuditFormatBsonFile;
+                auditGlobalParams.auditPath = params["auditpath"].as<std::string>();
+            }
+            else if (auditFormatStr == "syslog") {
+#ifdef _WIN32
+                return Status(ErrorCodes::BadValue, "syslog not available on Windows");
+#else
+                auditGlobalParams.auditFormat = AuditFormatSyslog;
+#endif // ifdef _WIN32
+            }
+            else if (auditFormatStr == "console") {
+                auditGlobalParams.auditFormat = AuditFormatConsole;
             }
             else {
-                log() << "invalid auditformat parameter";
-                ::_exit(EXIT_FAILURE);
+                return Status(ErrorCodes::BadValue, "invalid auditlog parameter");
             }
-        }
-        else {
-            // Default to text format if unspecified.
-            auditGlobalParams.auditFormat = AuditFormatText;
         }
 
         if (params.count("auditfilter")) {
@@ -95,14 +95,11 @@ namespace audit {
                 auditGlobalParams.auditFilter = fromjson(params["auditfilter"].as<std::string>());
             }
             catch (const MsgAssertionException& e) {
-                log() << "problem with auditfilter param: " << e.what();
-                return Status(ErrorCodes::BadValue, e.what());
+                return Status(ErrorCodes::BadValue,
+                              mongoutils::str::stream() << "bad auditfilter:" << e.what());
             }
         }
 
-        if (params.count("auditpath")) {
-            auditGlobalParams.auditPath = params["auditpath"].as<std::string>();
-        }
         return Status::OK();
     }
 

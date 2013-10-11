@@ -17,6 +17,7 @@
 #include "mongo/logger/rotatable_file_appender.h"
 #include "mongo/logger/rotatable_file_manager.h"
 #include "mongo/logger/rotatable_file_writer.h"
+#include "mongo/logger/syslog_appender.h"
 
 namespace mongo {
 
@@ -32,25 +33,36 @@ namespace audit {
 
 namespace {
 
+    std::ostream& encodeTextBody(const AuditEvent& event, std::ostream& os) {
+        UserSet::NameIterator users = event.getAuthenticatedUsers();
+        if (users.more()) {
+            os << users.next().getFullName();
+            while (users.more()) {
+                os << ',' << users.next().getFullName();
+            }
+            os << ' ';
+        }
+        os << event.getRemoteAddr().toString() << '/' << event.getLocalAddr().toString() << ' ';
+        os <<
+            event.getOperationId().getConnectionId() << '.' <<
+            event.getOperationId().getOperationNumber() << ' ';
+        return event.putText(os) << '\n';
+    }
+
     class AuditEventTextEncoder : public logger::Encoder<AuditEvent> {
         virtual ~AuditEventTextEncoder() {}
         virtual std::ostream& encode(const AuditEvent& event, std::ostream& os) {
             os << logger::MessageEventDetailsEncoder::getDateFormatter()(event.getTimestamp()) <<
                 ' ';
+            return encodeTextBody(event, os);
+        }
+    };
 
-            UserSet::NameIterator users = event.getAuthenticatedUsers();
-            if (users.more()) {
-                os << users.next().getFullName();
-                while (users.more()) {
-                    os << ',' << users.next().getFullName();
-                }
-                os << ' ';
-            }
-            os << event.getRemoteAddr().toString() << '/' << event.getLocalAddr().toString() << ' ';
-            os <<
-                event.getOperationId().getConnectionId() << '.' <<
-                event.getOperationId().getOperationNumber() << ' ';
-            return event.putText(os) << '\n';
+    class AuditEventSyslogEncoder : public logger::Encoder<AuditEvent> {
+        virtual ~AuditEventSyslogEncoder() {}
+        virtual std::ostream& encode(const AuditEvent& event, std::ostream& os) {
+            // Note: timestamp automatically added by syslog subsystem
+            return encodeTextBody(event, os);
         }
     };
 
@@ -64,13 +76,27 @@ namespace {
 
     MONGO_INITIALIZER_WITH_PREREQUISITES(AuditDomain, ("CreateAuditManager"))(InitializerContext*) {
         
-        std::string auditLogPath(getGlobalAuditManager()->auditLogPath);
-        if (auditLogPath == ":console") {
+        switch (getGlobalAuditManager()->auditFormat) {
+        case AuditFormatConsole:
+        {
             getGlobalAuditLogDomain()->attachAppender(
-                    AuditLogDomain::AppenderAutoPtr(
-                            new logger::ConsoleAppender<AuditEvent>(new AuditEventTextEncoder)));
+                AuditLogDomain::AppenderAutoPtr(
+                    new logger::ConsoleAppender<AuditEvent>(new AuditEventTextEncoder)));
+            break;
         }
-        else if (!auditLogPath.empty()) {
+#ifndef _WIN32
+        case AuditFormatSyslog:
+        {
+            getGlobalAuditLogDomain()->attachAppender(
+                AuditLogDomain::AppenderAutoPtr(
+                    new logger::SyslogAppender<AuditEvent>(new AuditEventSyslogEncoder)));
+            break;
+        }
+#endif // ndef _WIN32
+        case AuditFormatTextFile:
+        case AuditFormatBsonFile:
+        {
+            std::string auditLogPath(getGlobalAuditManager()->auditLogPath);
             logger::StatusWithRotatableFileWriter statusOrWriter =
                 logger::globalRotatableFileManager()->openFile(auditLogPath, true);
             logger::RotatableFileWriter* writer;
@@ -88,10 +114,10 @@ namespace {
             }
 
             logger::Encoder<AuditEvent>* encoder;
-            if (getGlobalAuditManager()->auditFormat == AuditFormatText) {
+            if (getGlobalAuditManager()->auditFormat == AuditFormatTextFile) {
                 encoder = new AuditEventTextEncoder;
             }
-            else if (getGlobalAuditManager()->auditFormat == AuditFormatBson) {
+            else if (getGlobalAuditManager()->auditFormat == AuditFormatBsonFile) {
                 encoder = new AuditEventBsonEncoder;
             }
             else {
@@ -99,8 +125,12 @@ namespace {
             }
 
             getGlobalAuditLogDomain()->attachAppender(
-                    AuditLogDomain::AppenderAutoPtr(
-                            new logger::RotatableFileAppender<AuditEvent>(encoder, writer)));
+                AuditLogDomain::AppenderAutoPtr(
+                    new logger::RotatableFileAppender<AuditEvent>(encoder, writer)));
+            break;
+        }
+        default:
+            return Status(ErrorCodes::InternalError, "Audit format misconfigured");
         }
         return Status::OK();
     }

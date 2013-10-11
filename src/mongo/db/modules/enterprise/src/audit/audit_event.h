@@ -11,6 +11,7 @@
 #include "mongo/db/auth/user_set.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/db/matcher/expression.h"
+#include "mongo/logger/log_severity.h"
 #include "mongo/platform/cstdint.h"
 #include "mongo/util/net/sock.h"
 
@@ -75,6 +76,11 @@ namespace audit {
 
         virtual ElementIterator* allocateIterator( const ElementPath* path ) const;
         virtual void releaseIterator( ElementIterator* iterator ) const;
+
+        /**
+         * Audit messages get classed as Info when written to syslog 
+         */
+        logger::LogSeverity getSeverity() const { return logger::LogSeverity::Info(); }
 
     protected:
         explicit AuditEvent(const AuditEventEnvelope& envelope) 

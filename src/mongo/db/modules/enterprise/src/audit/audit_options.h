@@ -29,7 +29,7 @@ namespace audit {
 
         AuditFormat auditFormat;
 
-        AuditGlobalParams() : enabled(false), auditFormat(AuditFormatText) {}
+        AuditGlobalParams() : enabled(false), auditFormat(AuditFormatTextFile) {}
     };
 
     extern AuditGlobalParams auditGlobalParams;
