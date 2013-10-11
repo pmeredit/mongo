@@ -4,6 +4,7 @@
 
 #include "audit_log_domain.h"
 #include "audit_manager_global.h"
+#include "audit_options.h"
 
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
@@ -76,6 +77,9 @@ namespace {
 
     MONGO_INITIALIZER_WITH_PREREQUISITES(AuditDomain, ("CreateAuditManager"))(InitializerContext*) {
         
+        if (!auditGlobalParams.enabled) {
+            return Status::OK();
+        }
         switch (getGlobalAuditManager()->auditFormat) {
         case AuditFormatConsole:
         {
