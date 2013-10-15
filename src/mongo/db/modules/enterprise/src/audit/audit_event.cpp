@@ -30,6 +30,16 @@ namespace audit {
         BSONObjBuilder builder;
         builder.appendDate("ts", getTimestamp());
         {
+            BSONObjBuilder localIpBuilder(builder.subobjStart("local"));
+            builder.append("ip", getLocalAddr().getAddr());
+            builder.append("port", getLocalAddr().getPort());
+        }
+        {
+            BSONObjBuilder remoteIpBuilder(builder.subobjStart("remote"));
+            builder.append("ip", getRemoteAddr().getAddr());
+            builder.append("port", getRemoteAddr().getPort());
+        }
+        {
             BSONObjBuilder idBuilder(builder.subobjStart("id"));
             putAuditOperationIdBSON(getOperationId(), idBuilder);
         }
@@ -38,11 +48,11 @@ namespace audit {
             putAllUserNamesBSON(getAuthenticatedUsers(), usersBuilder);
         }
         builder.append("atype", getActionType().toString());
-        builder.appendIntOrLL("result", getResultCode());
         {
             BSONObjBuilder paramBuilder(builder.subobjStart("param"));
             putParamsBSON(paramBuilder);
         }
+        builder.appendIntOrLL("result", getResultCode());
         _obj = builder.obj();
         _bsonGenerated = true;
     }
