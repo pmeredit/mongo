@@ -98,6 +98,9 @@ namespace audit {
 
         if (!getGlobalAuditManager()->enabled) return;
 
+        // Do not log index namespace creation.
+        if (!NamespaceString::normal(nsname)) return;
+
         CreateCollectionEvent event(
                 makeEnvelope(client, ActionType::createCollection, ErrorCodes::OK),
                 nsname);
