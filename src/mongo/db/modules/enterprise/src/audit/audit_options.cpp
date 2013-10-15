@@ -33,28 +33,28 @@ namespace audit {
         typedef moe::OptionDescription OD;
         typedef moe::PositionalOptionDescription POD;
 
-        moe::OptionSection auditing_options("Auditing Options");
+        moe::OptionSection auditingOptions("Auditing Options");
 
-        Status ret = auditing_options.addOption(OD("auditlog", "auditlog", moe::String,
+        Status ret = auditingOptions.addOption(OD("auditLog", "auditLog", moe::String,
                                                    "turn on auditing and specify output for log: "
                                                    "textfile, bsonfile, syslog, console", true));
         if (!ret.isOK()) {
             return ret;
         }
 
-        ret = auditing_options.addOption(OD("auditpath", "auditpath", moe::String,
+        ret = auditingOptions.addOption(OD("auditPath", "auditPath", moe::String,
                                             "full filespec for audit log file", true));
         if (!ret.isOK()) {
             return ret;
         }
 
-        ret = auditing_options.addOption(OD("auditfilter", "auditfilter", moe::String,
+        ret = auditingOptions.addOption(OD("auditFilter", "auditFilter", moe::String,
                                             "filter spec to screen audit records", true));
         if (!ret.isOK()) {
             return ret;
         }
 
-        ret = options->addSection(auditing_options);
+        ret = options->addSection(auditingOptions);
         if (!ret.isOK()) {
             log() << "Failed to add auditing option section: " << ret.toString();
             return ret;
@@ -65,16 +65,16 @@ namespace audit {
 
     Status storeAuditOptions(const moe::Environment& params,
                              const std::vector<std::string>& args) {
-        if (params.count("auditlog")) {
+        if (params.count("auditLog")) {
             auditGlobalParams.enabled = true;
-            std::string auditFormatStr = params["auditlog"].as<std::string>();
+            std::string auditFormatStr = params["auditLog"].as<std::string>();
             if (auditFormatStr == "textfile") {
                 auditGlobalParams.auditFormat = AuditFormatTextFile;
-                auditGlobalParams.auditPath = params["auditpath"].as<std::string>();
+                auditGlobalParams.auditPath = params["auditPath"].as<std::string>();
             }
             else if (auditFormatStr == "bsonfile") {
                 auditGlobalParams.auditFormat = AuditFormatBsonFile;
-                auditGlobalParams.auditPath = params["auditpath"].as<std::string>();
+                auditGlobalParams.auditPath = params["auditPath"].as<std::string>();
             }
             else if (auditFormatStr == "syslog") {
 #ifdef _WIN32
@@ -87,17 +87,17 @@ namespace audit {
                 auditGlobalParams.auditFormat = AuditFormatConsole;
             }
             else {
-                return Status(ErrorCodes::BadValue, "invalid auditlog parameter");
+                return Status(ErrorCodes::BadValue, "invalid auditLog parameter");
             }
         }
 
-        if (params.count("auditfilter")) {
+        if (params.count("auditFilter")) {
             try {
-                auditGlobalParams.auditFilter = fromjson(params["auditfilter"].as<std::string>());
+                auditGlobalParams.auditFilter = fromjson(params["auditFilter"].as<std::string>());
             }
             catch (const MsgAssertionException& e) {
                 return Status(ErrorCodes::BadValue,
-                              mongoutils::str::stream() << "bad auditfilter:" << e.what());
+                              mongoutils::str::stream() << "bad auditFilter:" << e.what());
             }
         }
 
@@ -120,7 +120,7 @@ namespace audit {
             StatusWithMatchExpression parseResult =
                 MatchExpressionParser::parse(auditGlobalParams.auditFilter);
             if (!parseResult.isOK()) {
-                return Status(ErrorCodes::BadValue, "failed to parse auditfilter");
+                return Status(ErrorCodes::BadValue, "failed to parse auditFilter");
             }
             AuditManager* am = audit::getGlobalAuditManager();
             am->auditFilter = parseResult.getValue();
