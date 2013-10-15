@@ -39,7 +39,7 @@ namespace audit {
     std::ostream& CreateIndexEvent::putTextDescription(std::ostream& os) const {
         os << "Created index " << _indexname
            << " on " << _nsname
-           << " as " << _indexSpec << '.';
+           << " as " << *_indexSpec << '.';
         return os;
     }
 
