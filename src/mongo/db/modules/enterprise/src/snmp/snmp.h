@@ -2,7 +2,14 @@
  * Copyright (C) 2013 10gen, Inc.  All Rights Reserved.
  */
 
-#include "pch.h"
+#include <map>
+#include <string>
+#include <vector>
+
+// The following headers must be in this order
+#include <net-snmp/net-snmp-config.h>
+#include <net-snmp/net-snmp-includes.h>
+#include <net-snmp/agent/net-snmp-agent-includes.h>
 
 namespace mongo {
     /**
@@ -20,20 +27,20 @@ namespace mongo {
         /**
            eg. suffix = 1,1,1
          */
-        oid* getoid( string suffix );
+        oid* getoid( std::string suffix );
 
 
-        unsigned len( string suffix );
+        unsigned len( std::string suffix );
 
-        string toString( oid* o );
+        std::string toString( oid* o );
         
     private:
-        vector<oid> _root;
-        vector<oid> _endName;
+        std::vector<oid> _root;
+        std::vector<oid> _endName;
 
         // these don't get deleted now
         // its a bit annoying b/c i cache them, etc...
-        map<string,oid*> _oids; 
+        std::map<std::string,oid*> _oids;
 
     };
 
@@ -44,7 +51,7 @@ namespace mongo {
      */
     class SOID {
     public:
-        SOID( const string& suffix );
+        SOID( const std::string& suffix );
 
         bool operator==( const netsnmp_variable_list *var ) const;
         
@@ -52,7 +59,7 @@ namespace mongo {
         int len() const { return _len; }
 
     private:
-        string _suffix;
+        std::string _suffix;
         oid * _oid;
         unsigned _len;
     };

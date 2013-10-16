@@ -9,24 +9,26 @@
 #define WIN32
 #endif
 
+#include "snmp.h"
+
 #include <boost/shared_ptr.hpp>
 #include <net-snmp/net-snmp-config.h>
 #include <net-snmp/net-snmp-includes.h>
 #include <net-snmp/agent/net-snmp-agent-includes.h>
 #include <signal.h>
  
-#include "mongo/db/server_options.h"
-#include "mongo/db/stats/counters.h"
+#include "mongo/base/init.h"
 #include "mongo/base/status.h"
 #include "mongo/db/client.h"
+#include "mongo/db/db.h"
+#include "mongo/db/repl/replication_server_status.h"
+#include "mongo/db/server_options.h"
+#include "mongo/db/stats/counters.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/background.h"
 #include "mongo/util/options_parser/option_description.h"
 #include "mongo/util/time_support.h"
-#include "mongo/util/assert_util.h"
-#include "mongo/db/repl/replication_server_status.h"
-
 #include "serverstatus_client.h"
-#include "snmp.h"
 #include "snmp_options.h"
 
 namespace mongo {
@@ -673,10 +675,7 @@ namespace mongo {
 
         virtual string name() const { return "SNMPAgent"; }
 
-        void init() {
-            oidManager.init();
-            go();
-        }
+        static void init();
 
         void shutdown() {
             snmpGlobalParams.enabled = 0;
@@ -834,6 +833,16 @@ namespace mongo {
         vector<SNMPCallBack*> _callbacks;
 
     } snmpAgent;
+
+    void SNMPAgent::init() {
+        snmpAgent.go();
+    }
+
+    MONGO_INITIALIZER(InitializeSnmp)(InitializerContext* context) {
+        oidManager.init();
+        snmpInit = &SNMPAgent::init;
+        return Status::OK();
+    }
 
     int my_snmp_callback( netsnmp_mib_handler *handler, netsnmp_handler_registration *reginfo,
                           netsnmp_agent_request_info *reqinfo, netsnmp_request_info *requests) {
