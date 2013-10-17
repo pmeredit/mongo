@@ -218,15 +218,17 @@ namespace audit {
             os << " with customData " << *_customData << ',';
         }
         bool first = true;
-        for (std::vector<RoleName>::const_iterator role = _roles->begin();
-                    role != _roles->end();
-                    role++) {
-            if (first) {
-                os << " with the following roles: " << *role;
-                first = false;
-            }
-            else {
-               os << ", " << *role;
+        if (_roles) {
+            for (std::vector<RoleName>::const_iterator role = _roles->begin();
+                        role != _roles->end();
+                        role++) {
+                if (first) {
+                    os << " with the following roles: " << *role;
+                    first = false;
+                }
+                else {
+                   os << ", " << *role;
+                }
             }
         }
         os << '.';
