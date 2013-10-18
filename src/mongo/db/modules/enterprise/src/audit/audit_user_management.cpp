@@ -22,7 +22,7 @@ namespace audit {
                         const UserName& username,
                         bool password,
                         const BSONObj* customData,
-                        const std::vector<User::RoleData>& roles)
+                        const std::vector<RoleName>& roles)
             : AuditEvent(envelope),
               _username(username),
               _password(password),
@@ -37,7 +37,7 @@ namespace audit {
         const UserName _username;
         bool _password;
         const BSONObj* _customData;
-        const std::vector<User::RoleData> _roles;
+        const std::vector<RoleName> _roles;
     };
 
     std::ostream& CreateUserEvent::putTextDescription(std::ostream& os) const {
@@ -56,15 +56,15 @@ namespace audit {
         }
         os << " with the following roles:";
         bool first = true;
-        for (std::vector<User::RoleData>::const_iterator role = _roles.begin();
+        for (std::vector<RoleName>::const_iterator role = _roles.begin();
                     role != _roles.end();
                     role++) {
             if (first) {
-                os << " " << role->name;
+                os << " " << *role;
                 first = false;
             }
             else {
-               os << ", " << role->name;
+               os << ", " << *role;
             }
         }
         os << '.';
@@ -79,12 +79,12 @@ namespace audit {
             builder.append("customData", *_customData);
         }
         BSONArrayBuilder roleArray(builder.subarrayStart("roles"));
-        for (std::vector<User::RoleData>::const_iterator role = _roles.begin();
+        for (std::vector<RoleName>::const_iterator role = _roles.begin();
                     role != _roles.end();
                     role++) {
-            roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME << role->name.getRole()
+            roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME << role->getRole()
                                << AuthorizationManager::ROLE_SOURCE_FIELD_NAME
-                               << role->name.getDB()));
+                               << role->getDB()));
         }
         roleArray.done();
         return builder;
@@ -94,7 +94,7 @@ namespace audit {
                        const UserName& username,
                        bool password,
                        const BSONObj* customData,
-                       const std::vector<User::RoleData>& roles) {
+                       const std::vector<RoleName>& roles) {
 
         if (!getGlobalAuditManager()->enabled) return;
 
@@ -191,7 +191,7 @@ namespace audit {
                         const UserName& username,
                         bool password,
                         const BSONObj* customData,
-                        const std::vector<User::RoleData>* roles)
+                        const std::vector<RoleName>* roles)
             : AuditEvent(envelope),
               _username(username),
               _password(password),
@@ -206,7 +206,7 @@ namespace audit {
         const UserName _username;
         bool _password;
         const BSONObj* _customData;
-        const std::vector<User::RoleData>* _roles;
+        const std::vector<RoleName>* _roles;
     };
 
     std::ostream& UpdateUserEvent::putTextDescription(std::ostream& os) const {
@@ -218,15 +218,15 @@ namespace audit {
             os << " with customData " << *_customData << ',';
         }
         bool first = true;
-        for (std::vector<User::RoleData>::const_iterator role = _roles->begin();
+        for (std::vector<RoleName>::const_iterator role = _roles->begin();
                     role != _roles->end();
                     role++) {
             if (first) {
-                os << " with the following roles: " << role->name;
+                os << " with the following roles: " << *role;
                 first = false;
             }
             else {
-               os << ", " << role->name;
+               os << ", " << *role;
             }
         }
         os << '.';
@@ -244,13 +244,13 @@ namespace audit {
         }
         if (!_roles->empty()) {
             BSONArrayBuilder roleArray(builder.subarrayStart("roles"));
-            for (std::vector<User::RoleData>::const_iterator role = _roles->begin();
+            for (std::vector<RoleName>::const_iterator role = _roles->begin();
                         role != _roles->end();
                         role++) {
                 roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME
-                                   << role->name.getRole()
+                                   << role->getRole()
                                    << AuthorizationManager::ROLE_SOURCE_FIELD_NAME
-                                   << role->name.getDB()));
+                                   << role->getDB()));
             }
             roleArray.done();
         }
@@ -261,7 +261,7 @@ namespace audit {
                        const UserName& username,
                        bool password,
                        const BSONObj* customData,
-                       const std::vector<User::RoleData>* roles) {
+                       const std::vector<RoleName>* roles) {
 
         if (!getGlobalAuditManager()->enabled) return;
 
