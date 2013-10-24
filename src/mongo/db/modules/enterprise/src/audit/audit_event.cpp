@@ -8,11 +8,6 @@
 namespace mongo {
 namespace audit {
 
-    static void putAuditOperationIdBSON(const AuditOperationId& opId, BSONObjBuilder& builder) {
-        builder.append("connid", opId.getConnectionId());
-        builder.appendIntOrLL("opnum", static_cast<long long>(opId.getOperationNumber()));
-    }
-
     static void putUserNameBSON(const UserName& user, BSONObjBuilder& builder) {
         builder.append("user", user.getUser());
         builder.append("userSource", user.getDB());
@@ -38,10 +33,6 @@ namespace audit {
             BSONObjBuilder remoteIpBuilder(builder.subobjStart("remote"));
             builder.append("ip", getRemoteAddr().getAddr());
             builder.append("port", getRemoteAddr().getPort());
-        }
-        {
-            BSONObjBuilder idBuilder(builder.subobjStart("id"));
-            putAuditOperationIdBSON(getOperationId(), idBuilder);
         }
         {
             BSONArrayBuilder usersBuilder(builder.subarrayStart("users"));

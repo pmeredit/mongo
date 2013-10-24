@@ -44,9 +44,6 @@ namespace {
             os << ' ';
         }
         os << event.getRemoteAddr().toString() << '/' << event.getLocalAddr().toString() << ' ';
-        os <<
-            event.getOperationId().getConnectionId() << '.' <<
-            event.getOperationId().getOperationNumber() << ' ';
         return event.putText(os) << '\n';
     }
 

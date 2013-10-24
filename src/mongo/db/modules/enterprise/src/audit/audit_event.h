@@ -18,24 +18,8 @@
 namespace mongo {
 namespace audit {
 
-    class AuditOperationId {
-    public:
-        AuditOperationId() : _connectionId(), _operationNumber(0) {}
-        AuditOperationId(OID connectionId, int64_t operationNumber) :
-            _connectionId(connectionId),
-            _operationNumber(operationNumber) {}
-
-        const OID& getConnectionId() const { return _connectionId; }
-        int64_t getOperationNumber() const { return _operationNumber; }
-
-    private:
-        OID _connectionId;
-        int64_t _operationNumber;
-    };
-
     struct AuditEventEnvelope {
         Date_t timestamp;
-        AuditOperationId opId;
         SockAddr localAddr;
         SockAddr remoteAddr;
         UserSet::NameIterator authenticatedUsers;
@@ -54,7 +38,6 @@ namespace audit {
         MONGO_DISALLOW_COPYING(AuditEvent);
     public:
         Date_t getTimestamp() const { return _envelope.timestamp; }
-        const AuditOperationId& getOperationId() const { return _envelope.opId; }
         const UserSet::NameIterator& getAuthenticatedUsers() const {
             return _envelope.authenticatedUsers;
         }
