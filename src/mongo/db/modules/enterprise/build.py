@@ -51,6 +51,7 @@ def configure(conf, env):
     env.Append(MODULE_BANNERS=[
             distsrc.File('LICENSE.txt'),
             docs.File('MONGO-MIB.txt'),
-            docs.File('mongod.conf'),
+            docs.File('mongod.conf.master'),
+            docs.File('mongod.conf.subagent'),
             docs.File('snmp.md')
             ])
