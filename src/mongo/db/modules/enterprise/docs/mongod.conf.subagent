@@ -1,0 +1,6 @@
+# simple mongod.conf for running snmp as subagent
+
+# Use tcp when running mongod on windows
+#agentXSocket tcp:localhost:707
+agentXSocket /tmp/agentx/master
+
