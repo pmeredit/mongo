@@ -14,29 +14,19 @@
 
 namespace mongo {
 
-    typedef moe::OptionDescription OD;
-    typedef moe::PositionalOptionDescription POD;
-
     SnmpGlobalParams snmpGlobalParams;
 
     Status addSnmpOptions(moe::OptionSection* options) {
 
-        typedef moe::OptionDescription OD;
-
         moe::OptionSection snmp_options("SNMP Module Options");
 
-        Status ret = snmp_options.addOption(OD("snmp-subagent", "snmp-subagent", moe::Switch,
-                    "run snmp subagent", true));
-        if (!ret.isOK()) {
-            return ret;
-        }
-        ret = snmp_options.addOption(OD("snmp-master", "snmp-master", moe::Switch,
-                    "run snmp as master", true));
-        if (!ret.isOK()) {
-            return ret;
-        }
+        snmp_options.addOptionChaining("snmp-subagent", "snmp-subagent", moe::Switch,
+                                       "run snmp subagent");
 
-        ret = options->addSection(snmp_options);
+        snmp_options.addOptionChaining("snmp-master", "snmp-master", moe::Switch,
+                                       "run snmp as master");
+
+        Status ret = options->addSection(snmp_options);
         if (!ret.isOK()) {
             return ret;
         }

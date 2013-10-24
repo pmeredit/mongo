@@ -30,31 +30,19 @@ namespace audit {
 
     Status addAuditOptions(moe::OptionSection* options) {
 
-        typedef moe::OptionDescription OD;
-        typedef moe::PositionalOptionDescription POD;
-
         moe::OptionSection auditingOptions("Auditing Options");
 
-        Status ret = auditingOptions.addOption(OD("auditLog", "auditLog", moe::String,
-                                                   "turn on auditing and specify output for log: "
-                                                   "textfile, bsonfile, syslog, console", true));
-        if (!ret.isOK()) {
-            return ret;
-        }
+        auditingOptions.addOptionChaining("auditLog", "auditLog", moe::String,
+                                          "turn on auditing and specify output for log: "
+                                          "textfile, bsonfile, syslog, console");
 
-        ret = auditingOptions.addOption(OD("auditPath", "auditPath", moe::String,
-                                            "full filespec for audit log file", true));
-        if (!ret.isOK()) {
-            return ret;
-        }
+        auditingOptions.addOptionChaining("auditPath", "auditPath", moe::String,
+                                          "full filespec for audit log file");
 
-        ret = auditingOptions.addOption(OD("auditFilter", "auditFilter", moe::String,
-                                            "filter spec to screen audit records", true));
-        if (!ret.isOK()) {
-            return ret;
-        }
+        auditingOptions.addOptionChaining("auditFilter", "auditFilter", moe::String,
+                                          "filter spec to screen audit records");
 
-        ret = options->addSection(auditingOptions);
+        Status ret = options->addSection(auditingOptions);
         if (!ret.isOK()) {
             log() << "Failed to add auditing option section: " << ret.toString();
             return ret;
