@@ -25,7 +25,7 @@ IMPORTS
 --        version 1,2,3
 --        pid 1,2,4
 --     opcounts 1,3
---        globalopcounts 1,3,1
+--        globalOpcounts 1,3,1
 --        replOpcounts 1,3,2
 --     memory 1,4
 --     connections 1,5
@@ -152,7 +152,7 @@ ServerEntry ::= SEQUENCE {
 system                  OBJECT IDENTIFIER ::= { serverTableEntry 2 }
 
 opcounts                OBJECT IDENTIFIER ::= { serverTableEntry 3 }
-globalopcounts          OBJECT IDENTIFIER ::= { opcounts 1 }
+globalOpcounts          OBJECT IDENTIFIER ::= { opcounts 1 }
 replOpcounts            OBJECT IDENTIFIER ::= { opcounts 2 }
 
 memory                  OBJECT IDENTIFIER ::= { serverTableEntry 4 }
@@ -231,7 +231,7 @@ globalOpInsert OBJECT-TYPE
    STATUS mandatory
    DESCRIPTION
       "global insert count"
-   ::= { globalopcounts 1 }
+   ::= { globalOpcounts 1 }
 
 globalOpQuery OBJECT-TYPE
    SYNTAX Counter
@@ -239,7 +239,7 @@ globalOpQuery OBJECT-TYPE
    STATUS mandatory
    DESCRIPTION
       "global query count"
-   ::= { globalopcounts 2 }
+   ::= { globalOpcounts 2 }
 
 globalOpUpdate OBJECT-TYPE
    SYNTAX Counter
@@ -247,7 +247,7 @@ globalOpUpdate OBJECT-TYPE
    STATUS mandatory
    DESCRIPTION
       "global update count"
-   ::= { globalopcounts 3 }
+   ::= { globalOpcounts 3 }
 
 globalOpDelete OBJECT-TYPE
    SYNTAX Counter
@@ -255,7 +255,7 @@ globalOpDelete OBJECT-TYPE
    STATUS mandatory
    DESCRIPTION
       "global delete count"
-   ::= { globalopcounts 4 }
+   ::= { globalOpcounts 4 }
 
 globalOpGetMore OBJECT-TYPE
    SYNTAX Counter
@@ -263,7 +263,7 @@ globalOpGetMore OBJECT-TYPE
    STATUS mandatory
    DESCRIPTION
       "global getmore count"
-   ::= { globalopcounts 5 }
+   ::= { globalOpcounts 5 }
 
 globalOpCommand OBJECT-TYPE
    SYNTAX Counter
@@ -271,9 +271,9 @@ globalOpCommand OBJECT-TYPE
    STATUS mandatory
    DESCRIPTION
       "global command count"
-   ::= { globalopcounts 6 }
+   ::= { globalOpcounts 6 }
 
-repllOpInsert OBJECT-TYPE
+replOpInsert OBJECT-TYPE
    SYNTAX Counter
    ACCESS read-only
    STATUS mandatory
@@ -829,7 +829,7 @@ metricsGetLastErrorWtimeTotalMillis OBJECT-TYPE
        "amount of time in milliseconds that the mongod has spent performing getLastError operations with write concern (i.e. w) greater than 1"
    ::= { metricsGetLastErrorWtime 2 }
 
-meticsGetLastErrorWtimeouts OBJECT-TYPE
+metricsGetLastErrorWtimeouts OBJECT-TYPE
    SYNTAX      Counter64
    MAX-ACCESS  read-only
    STATUS      current

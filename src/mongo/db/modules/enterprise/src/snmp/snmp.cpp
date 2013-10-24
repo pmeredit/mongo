@@ -35,6 +35,7 @@ namespace mongo {
 
     namespace moe = mongo::optionenvironment;
 
+    static const int EXPIRE_SEC_OPCOUNTERSREPL = 0;     // global vars - no lock
     static const int EXPIRE_SEC_METRICS = 0;            // atomic counters
     static const int EXPIRE_SEC_BACKGROUNDFLUSHING = 0; // global vars - no lock
     static const int EXPIRE_SEC_CURSORS = 1;            // ccmutex
@@ -267,6 +268,24 @@ namespace mongo {
                
         public:
             static void addAll( vector<SNMPCallBack*>& v ) {
+                v.push_back(new ServerStatusCallback("replOpInsert", "1,3,2,1",
+                            ServerStatusClient::OPCOUNTERS_REPL,
+                            "opcountersRepl.insert", VT_CNT32));
+                v.push_back(new ServerStatusCallback("replOpQuery", "1,3,2,2",
+                            ServerStatusClient::OPCOUNTERS_REPL,
+                            "opcountersRepl.query", VT_CNT32));
+                v.push_back(new ServerStatusCallback("replOpUpdate", "1,3,2,3",
+                            ServerStatusClient::OPCOUNTERS_REPL,
+                            "opcountersRepl.update", VT_CNT32));
+                v.push_back(new ServerStatusCallback("replOpDelete", "1,3,2,4",
+                            ServerStatusClient::OPCOUNTERS_REPL,
+                            "opcountersRepl.delete", VT_CNT32));
+                v.push_back(new ServerStatusCallback("replOpGetMore", "1,3,2,5",
+                            ServerStatusClient::OPCOUNTERS_REPL,
+                            "opcountersRepl.getmore", VT_CNT32));
+                v.push_back(new ServerStatusCallback("replOpCommand", "1,3,2,6",
+                            ServerStatusClient::OPCOUNTERS_REPL,
+                            "opcountersRepl.command", VT_CNT32));
                 v.push_back(new ServerStatusCallback("flushCount", "1,7,1", 
                             ServerStatusClient::BACKGROUND_FLUSHING, 
                             "backgroundFlushing.flushes", VT_CNT32));
@@ -378,7 +397,7 @@ namespace mongo {
                 v.push_back(new ServerStatusCallback("metricsGetLastErrorWtimeTotalMillis",
                             "1,15,2,1,2", ServerStatusClient::METRICS, 
                             "metrics.getLastError.wtime.totalMillis", VT_INT32));
-                v.push_back(new ServerStatusCallback("meticsGetLastErrorWtimeouts", "1,15,2,2",
+                v.push_back(new ServerStatusCallback("metricsGetLastErrorWtimeouts", "1,15,2,2",
                             ServerStatusClient::METRICS, "metrics.getLastError.wtimeouts",
                             VT_CNT64));
                 v.push_back(new ServerStatusCallback("metricsOperationFastmod", "1,15,3,1",
@@ -625,6 +644,9 @@ namespace mongo {
                 
                 if (section == ServerStatusClient::REPL)
                     return EXPIRE_SEC_REPL;
+
+                if (section == ServerStatusClient::OPCOUNTERS_REPL)
+                	return EXPIRE_SEC_OPCOUNTERSREPL;
                     
                 return 0;  
             }
@@ -683,7 +705,7 @@ namespace mongo {
 
         void run() {
             
-            while (!snmpGlobalParams.enabled) {
+            if (!snmpGlobalParams.enabled) {
                 LOG(1) << "SNMPAgent not enabled";
                 return;
             }
@@ -807,14 +829,16 @@ namespace mongo {
             //  ---- globalOpCounters
             _callbacks.push_back( new callbacks::AtomicWordCallback( "globalOpInsert" , "1,3,1,1" ,
                                   globalOpCounters.getInsert() ) );
-            _callbacks.push_back( new callbacks::AtomicWordCallback( "globalOpInsert" , "1,3,1,2" ,
+            _callbacks.push_back( new callbacks::AtomicWordCallback( "globalOpQuery" , "1,3,1,2" ,
                                   globalOpCounters.getQuery() ) );
-            _callbacks.push_back( new callbacks::AtomicWordCallback( "globalOpInsert" , "1,3,1,3" ,
+            _callbacks.push_back( new callbacks::AtomicWordCallback( "globalOpUpdate" , "1,3,1,3" ,
                                   globalOpCounters.getUpdate() ) );
-            _callbacks.push_back( new callbacks::AtomicWordCallback( "globalOpInsert" , "1,3,1,4" ,
+            _callbacks.push_back( new callbacks::AtomicWordCallback( "globalOpDelete" , "1,3,1,4" ,
                                   globalOpCounters.getDelete() ) );
-            _callbacks.push_back( new callbacks::AtomicWordCallback( "globalOpInsert" , "1,3,1,5" ,
+            _callbacks.push_back( new callbacks::AtomicWordCallback( "globalOpGetMore" , "1,3,1,5" ,
                                   globalOpCounters.getGetMore() ) );
+            _callbacks.push_back( new callbacks::AtomicWordCallback( "globalOpCommand" , "1,3,1,6" ,
+                                  globalOpCounters.getCommand() ) );
 
             // register all callbacks
             for ( unsigned i=0; i<_callbacks.size(); i++ )
