@@ -374,7 +374,7 @@ connectionsAvailable OBJECT-TYPE
    ::= { connections 2 }
 
 connectionsTotalCreated OBJECT-TYPE
-   SYNTAX Counter
+   SYNTAX Counter64
    MAX-ACCESS  read-only
    STATUS      current
    DESCRIPTION

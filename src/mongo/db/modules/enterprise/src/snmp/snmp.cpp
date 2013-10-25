@@ -174,47 +174,6 @@ namespace mongo {
             }
         };
 
-        class ConnectionsCallback : public SNMPCallBack {
-                
-            enum Type { CURRENT, AVAILABLE, TOTAL } _type;
-
-        public:
-            static void addAll( vector<SNMPCallBack*>& v ) {
-                v.push_back( new ConnectionsCallback ("connectionsCurrent" , "1" , CURRENT));
-                v.push_back( new ConnectionsCallback ("connectionsAvailable" , "2" , AVAILABLE));
-                v.push_back( new ConnectionsCallback ("connectionsTotalCreated" , "3" , TOTAL));
-            }
-
-            int respond( netsnmp_variable_list* var ) {
-                
-                int val = 0;
-                u_char type = ASN_INTEGER;
-
-                switch ( _type ) {
-                case CURRENT: {
-                    val = Listener::globalTicketHolder.used();
-                    break;
-                }
-                case AVAILABLE: {
-                    val = Listener::globalTicketHolder.available();
-                    break;
-                }
-                case TOTAL:
-                    type = ASN_COUNTER;
-                    val = Listener::globalConnectionNumber.load();
-                    break;
-                }
-
-                return snmp_set_var_typed_value( var, type, reinterpret_cast<u_char *>(&val),
-                                                 sizeof(val) );
-
-            }
-
-        private:
-            ConnectionsCallback( const std::string& name , const std::string& consuffix , Type t )
-                : SNMPCallBack( name , "1,5," + consuffix ) , _type(t) {
-            }
-        };
 
         class AssertsCallback : public SNMPCallBack {
 
@@ -286,6 +245,15 @@ namespace mongo {
                 v.push_back(new ServerStatusCallback("replOpCommand", "1,3,2,6",
                             ServerStatusClient::OPCOUNTERS_REPL,
                             "opcountersRepl.command", VT_CNT32));
+                v.push_back(new ServerStatusCallback("connectionsCurrent", "1,5,1",
+                            ServerStatusClient::CONNECTIONS,
+                            "connections.current", VT_INT32));
+                v.push_back(new ServerStatusCallback("connectionsAvailable", "1,5,2",
+                            ServerStatusClient::CONNECTIONS,
+                            "connections.available", VT_INT32));
+                v.push_back(new ServerStatusCallback("connectionsTotalCreated", "1,5,3",
+                            ServerStatusClient::CONNECTIONS,
+                            "connections.totalCreated", VT_CNT64));
                 v.push_back(new ServerStatusCallback("flushCount", "1,7,1", 
                             ServerStatusClient::BACKGROUND_FLUSHING, 
                             "backgroundFlushing.flushes", VT_CNT32));
@@ -819,7 +787,6 @@ namespace mongo {
             _callbacks.push_back( new callbacks::UptimeCallback() );
             _callbacks.push_back( new callbacks::NameCallback() );
             callbacks::MemoryCallback::addAll( _callbacks );
-            callbacks::ConnectionsCallback::addAll( _callbacks );
             callbacks::AssertsCallback::addAll( _callbacks );
             callbacks::ServerStatusCallback::addAll( _callbacks );
                 
