@@ -296,7 +296,7 @@ namespace audit {
     }
 
     BSONObjBuilder& RenameCollectionEvent::putParamsBSON(BSONObjBuilder& builder) const {
-        builder.append("original", _source);
+        builder.append("old", _source);
         builder.append("new", _target);
         return builder;
     }
