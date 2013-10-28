@@ -304,18 +304,7 @@ namespace {
 
         // Now fetch the authz id out of the message the client passed us, and
         // set it in the oparams.
-        
-        SecPkgContext_Sizes sizes;
-        status = QueryContextAttributes(&pcctx->ctx,
-                                        SECPKG_ATTR_SIZES,
-                                        &sizes);
-        if (status != SEC_E_OK) {
-            HandleLastError(sparams->utils, status, "QueryContextAttributes(sizes)");
-            return SASL_FAIL;
-        }
-        
-        int bufferLength = sizes.cbMaxToken + sizes.cbMaxSignature + sizes.cbSecurityTrailer;
-        boost::scoped_array<char> message(new char[bufferLength]);
+        boost::scoped_array<char> message(new char[clientinlen]);
         memcpy(message.get(), clientin, clientinlen);
 
         SecBuffer wrapBufs[2];
@@ -324,27 +313,32 @@ namespace {
         wrapBufDesc.pBuffers = wrapBufs;
         wrapBufDesc.ulVersion = SECBUFFER_VERSION;
 
-        wrapBufs[0].cbBuffer = 0;
-        wrapBufs[0].BufferType = SECBUFFER_DATA;
+        wrapBufs[0].cbBuffer = clientinlen;
+        wrapBufs[0].BufferType = SECBUFFER_STREAM;
         wrapBufs[0].pvBuffer = message.get();
 
-        wrapBufs[1].cbBuffer = clientinlen;
-        wrapBufs[1].BufferType = SECBUFFER_STREAM;
-        wrapBufs[1].pvBuffer = message.get();
+        wrapBufs[1].cbBuffer = 0;
+        wrapBufs[1].BufferType = SECBUFFER_DATA;
+        wrapBufs[1].pvBuffer = NULL;
 
         ULONG pfQOP = 0;
         status = DecryptMessage(&pcctx->ctx,
                                 &wrapBufDesc,
                                 0,
                                 &pfQOP);
+        LOG(4) << "SSPI encrypted size: " << wrapBufs[0].cbBuffer << 
+            " decrypted size: " << wrapBufs[1].cbBuffer << 
+            " encrypted msg pointer: " << wrapBufs[0].pvBuffer <<
+            " decrypted msg pointer: " << wrapBufs[1].pvBuffer;
+
         if (status != SEC_E_OK) {
             HandleLastError(sparams->utils, status, "DecryptMessage");
             return SASL_FAIL;
         }
 
         // Confirm that the client agrees to use no security layer
-        const char* decryptedMessage = static_cast<char*>(wrapBufs[0].pvBuffer);
-        int decryptedMessageSize = wrapBufs[0].cbBuffer;
+        const char* decryptedMessage = static_cast<char*>(wrapBufs[1].pvBuffer);
+        int decryptedMessageSize = wrapBufs[1].cbBuffer;
         if (decryptedMessageSize < 4) {
             sparams->utils->seterror(sparams->utils->conn, 0, 
                                      "SSPI: no security layer request in auth handshake");
