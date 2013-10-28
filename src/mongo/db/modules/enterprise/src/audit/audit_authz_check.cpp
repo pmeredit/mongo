@@ -42,12 +42,7 @@ namespace audit {
         else {
             os << "Access denied on ";
         }
-        if (_ns.coll().empty()) {
-            os << _ns.db();
-        }
-        else {
-            os << _ns.ns();
-        }
+        os << _ns.ns();
         os << " for " << _cmdObj->toString() << '.';
         return os;
     }
