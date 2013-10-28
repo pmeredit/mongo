@@ -38,7 +38,8 @@ namespace {
     }
 
     MONGO_EXPORT_STARTUP_SERVER_PARAMETER(
-            authenticationMechanisms, std::vector<std::string>, stringSplit("MONGODB-CR", ','));
+            authenticationMechanisms, std::vector<std::string>,
+            stringSplit("MONGODB-CR,MONGODB-X509", ','));
 
     MONGO_EXPORT_STARTUP_SERVER_PARAMETER(saslHostName, std::string, "");
     MONGO_EXPORT_STARTUP_SERVER_PARAMETER(saslServiceName, std::string, "");
@@ -47,6 +48,7 @@ namespace {
 
     // The name we give to the nonce-authenticate mechanism in the free product.
     const char mechanismMONGODBCR[] = "MONGODB-CR";
+    const char mechanismMONGODBX509[] = "MONGODB-X509";
 
     class CmdSaslStart : public Command {
     public:
@@ -332,11 +334,14 @@ namespace {
             saslServiceName = saslDefaultServiceName;
 
         if (!sequenceContains(authenticationMechanisms, mechanismMONGODBCR))
-            CmdAuthenticate::disableCommand();
+            CmdAuthenticate::disableAuthMechanism(mechanismMONGODBCR);
+        
+        if (!sequenceContains(authenticationMechanisms, mechanismMONGODBX509))
+            CmdAuthenticate::disableAuthMechanism(mechanismMONGODBX509);
 
         for (size_t i = 0; i < authenticationMechanisms.size(); ++i) {
             const std::string& mechanism = authenticationMechanisms[i];
-            if (mechanism == mechanismMONGODBCR) {
+            if (mechanism == mechanismMONGODBCR || mechanism == mechanismMONGODBX509) {
                 // Not a SASL mechanism; no need to smoke test the built-in mechanism.
                 continue;
             }
