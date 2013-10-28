@@ -46,7 +46,7 @@ namespace audit {
     BSONObjBuilder& CreateIndexEvent::putParamsBSON(BSONObjBuilder& builder) const {
         builder.append("ns", _nsname);
         builder.append("indexName", _indexname);
-        builder.append("key", *_indexSpec);
+        builder.append("indexSpec", *_indexSpec);
         return builder;
     }
 
