@@ -24,6 +24,7 @@
 #include "mongo/db/repl/replication_server_status.h"
 #include "mongo/db/server_options.h"
 #include "mongo/db/stats/counters.h"
+#include "mongo/db/storage_options.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/background.h"
 #include "mongo/util/options_parser/option_description.h"
@@ -275,28 +276,66 @@ namespace mongo {
                             ServerStatusClient::CURSORS, "cursors.clientCursors_size", VT_INT32));
                 v.push_back(new ServerStatusCallback("cursorTimedOut", "1,8,3",
                             ServerStatusClient::CURSORS, "cursors.timedOut", VT_INT32));
-                v.push_back(new ServerStatusCallback("durCommits", "1,9,1",
-                            ServerStatusClient::DUR, "dur.commits", VT_CNT32));
-                v.push_back(new ServerStatusCallback("durJournaledMb", "1,9,2",
-                            ServerStatusClient::DUR, "dur.journaledMB", VT_DOUBLE));
-                v.push_back(new ServerStatusCallback("durWritesToDataFilesMb", "1,9,3",
-                            ServerStatusClient::DUR, "dur.writeToDataFilesMB", VT_DOUBLE));
-                v.push_back(new ServerStatusCallback("durCompression", "1,9,4",
-                            ServerStatusClient::DUR, "dur.compression", VT_DOUBLE));
-                v.push_back(new ServerStatusCallback("durCommitsInWriteLock", "1,9,5",
-                            ServerStatusClient::DUR, "dur.commitsInWriteLock", VT_INT32));
-                v.push_back(new ServerStatusCallback("durEarlyCommits", "1,9,6", 
-                            ServerStatusClient::DUR, "dur.earlyCommits", VT_INT32));
-                v.push_back(new ServerStatusCallback("durTimeMsDt", "1,9,7,1", 
-                            ServerStatusClient::DUR, "dur.timeMs.dt", VT_INT32));
-                v.push_back(new ServerStatusCallback("durTimeMsPrepLogBuffer", "1,9,7,2",
-                            ServerStatusClient::DUR, "dur.timeMs.prepLogBuffer", VT_INT32));
-                v.push_back(new ServerStatusCallback("durTimeMsWriteToJournal", "1,9,7,3",
-                            ServerStatusClient::DUR, "dur.timeMs.writeToJournal", VT_INT32));
-                v.push_back(new ServerStatusCallback("durTimeMsWriteToDataFiles", "1,9,7,4",
-                            ServerStatusClient::DUR, "dur.timeMs.writeToDataFiles", VT_INT32));
-                v.push_back(new ServerStatusCallback("durTimeMsRemapPrivateView", "1,9,7,5",
-                            ServerStatusClient::DUR, "dur.timeMs.remapPrivateView", VT_INT32));
+
+                {
+                    ServerStatusCallback* sscb =
+                        new ServerStatusCallback("durCommits", "1,9,1",
+                                 ServerStatusClient::DUR, "dur.commits", VT_CNT32);
+                    sscb->_journalOnly = true;
+                    v.push_back(sscb);
+
+                    sscb = new ServerStatusCallback("durJournaledMb", "1,9,2",
+                                 ServerStatusClient::DUR, "dur.journaledMB", VT_DOUBLE);
+                    sscb->_journalOnly = true;
+                    v.push_back(sscb);
+
+                    sscb = new ServerStatusCallback("durWritesToDataFilesMb", "1,9,3",
+                                 ServerStatusClient::DUR, "dur.writeToDataFilesMB", VT_DOUBLE);
+                    sscb->_journalOnly = true;
+                    v.push_back(sscb);
+
+                    sscb = new ServerStatusCallback("durCompression", "1,9,4",
+                                 ServerStatusClient::DUR, "dur.compression", VT_DOUBLE);
+                    sscb->_journalOnly = true;
+                    v.push_back(sscb);
+
+                    sscb = new ServerStatusCallback("durCommitsInWriteLock", "1,9,5",
+                                 ServerStatusClient::DUR, "dur.commitsInWriteLock", VT_INT32);
+                    sscb->_journalOnly = true;
+                    v.push_back(sscb);
+
+                    sscb = new ServerStatusCallback("durEarlyCommits", "1,9,6",
+                                 ServerStatusClient::DUR, "dur.earlyCommits", VT_INT32);
+                    sscb->_journalOnly = true;
+                    v.push_back(sscb);
+
+                    sscb = new ServerStatusCallback("durTimeMsDt", "1,9,7,1",
+                                 ServerStatusClient::DUR, "dur.timeMs.dt", VT_INT32);
+                    sscb->_journalOnly = true;
+                    v.push_back(sscb);
+
+                    sscb = new ServerStatusCallback("durTimeMsPrepLogBuffer", "1,9,7,2",
+                                 ServerStatusClient::DUR, "dur.timeMs.prepLogBuffer", VT_INT32);
+                    sscb->_journalOnly = true;
+                    v.push_back(sscb);
+
+                    sscb = new ServerStatusCallback("durTimeMsWriteToJournal", "1,9,7,3",
+                                 ServerStatusClient::DUR, "dur.timeMs.writeToJournal", VT_INT32);
+                    sscb->_journalOnly = true;
+                    v.push_back(sscb);
+
+                    sscb = new ServerStatusCallback("durTimeMsWriteToDataFiles", "1,9,7,4",
+                                 ServerStatusClient::DUR, "dur.timeMs.writeToDataFiles", VT_INT32);
+                    sscb->_journalOnly = true;
+                    v.push_back(sscb);
+
+                    sscb = new ServerStatusCallback("durTimeMsRemapPrivateView", "1,9,7,5",
+                        ServerStatusClient::DUR, "dur.timeMs.remapPrivateView", VT_INT32);
+                    sscb->_journalOnly = true;
+                    v.push_back(sscb);
+                }
+
+
                 v.push_back(new ServerStatusCallback("extraInfoNote", "1,10,1",
                             ServerStatusClient::EXTRA_INFO, "extra_info.note", VT_STRING));
                 {
@@ -544,7 +583,7 @@ namespace mongo {
                 : SNMPCallBack(name, suffix ),
                   _metricType(metricType), _serverStatusSection(section),
                   _serverStatusMetric(metric),_replicaSetOnly(false), _linuxOnly(false),
-                  _snmpType(ASN_INTEGER) {
+                  _journalOnly(false), _snmpType(ASN_INTEGER) {
                     
                 switch (_metricType) {
                 case VT_CNT64:
@@ -573,14 +612,16 @@ namespace mongo {
                 if (_replicaSetOnly && !anyReplEnabled()) {
                     return false;
                 }
-                    
-               
+
 #ifndef __linux__   // if OS is not linux and metric is linux-only
                 if (_linuxOnly) {
                     return false;
                 }              
 #endif
-                    
+                if (_journalOnly && !storageGlobalParams.dur) {
+                    return false;
+                }
+
                 return true;
             }
             
@@ -637,6 +678,7 @@ namespace mongo {
             std::string _serverStatusMetric;
             bool _replicaSetOnly;
             bool _linuxOnly;
+            bool _journalOnly;
             u_char _snmpType;
             
             static std::map< std::string,
