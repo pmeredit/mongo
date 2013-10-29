@@ -43,10 +43,10 @@ namespace audit {
     std::ostream& CreateUserEvent::putTextDescription(std::ostream& os) const {
         os << "Created user " << _username;
         if (_password) {
-            os << " with password";
+            os << " with password,";
         }
         else {
-            os << " without password";
+            os << " without password,";
         }
         if (_customData) {
             os << " with customData " << *_customData << ',';
