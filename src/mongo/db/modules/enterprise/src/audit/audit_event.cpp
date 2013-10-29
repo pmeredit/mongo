@@ -10,7 +10,7 @@ namespace audit {
 
     static void putUserNameBSON(const UserName& user, BSONObjBuilder& builder) {
         builder.append("user", user.getUser());
-        builder.append("userSource", user.getDB());
+        builder.append("db", user.getDB());
     }
 
     static void putAllUserNamesBSON(UserSet::NameIterator names, BSONArrayBuilder& builder) {

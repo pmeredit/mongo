@@ -73,7 +73,7 @@ namespace audit {
 
     BSONObjBuilder& CreateUserEvent::putParamsBSON(BSONObjBuilder& builder) const {
         builder.append(AuthorizationManager::USER_NAME_FIELD_NAME, _username.getUser());
-        builder.append(AuthorizationManager::USER_SOURCE_FIELD_NAME, _username.getDB());
+        builder.append(AuthorizationManager::USER_DB_FIELD_NAME, _username.getDB());
 
         if (_customData) {
             builder.append("customData", *_customData);
@@ -131,7 +131,7 @@ namespace audit {
 
     BSONObjBuilder& DropUserEvent::putParamsBSON(BSONObjBuilder& builder) const {
         builder.append(AuthorizationManager::USER_NAME_FIELD_NAME, _username.getUser());
-        builder.append(AuthorizationManager::USER_SOURCE_FIELD_NAME, _username.getDB());
+        builder.append(AuthorizationManager::USER_DB_FIELD_NAME, _username.getDB());
         return builder;
     }
 
@@ -238,7 +238,7 @@ namespace audit {
 
     BSONObjBuilder& UpdateUserEvent::putParamsBSON(BSONObjBuilder& builder) const {
         builder.append(AuthorizationManager::USER_NAME_FIELD_NAME, _username.getUser());
-        builder.append(AuthorizationManager::USER_SOURCE_FIELD_NAME, _username.getDB());
+        builder.append(AuthorizationManager::USER_DB_FIELD_NAME, _username.getDB());
 
         builder.append("passwordChanged", _password);
         if (_customData) {

@@ -80,7 +80,7 @@ namespace {
 
         User* userObj;
         // NOTE: since this module is only used for looking up authentication information, the
-        // authentication database is also the userSource database.
+        // authentication database is also the source database for the user.
         Status status = session->getAuthorizationSession()->getAuthorizationManager().
                 acquireUser(
                         UserName(StringData(user, ulen), session->getAuthenticationDatabase()),

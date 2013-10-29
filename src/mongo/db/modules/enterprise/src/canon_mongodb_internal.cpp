@@ -9,7 +9,7 @@
  *
  * The canonicalization rule is quite simple in MongoDB -- strip whitespace from either end, but do
  * _nothing_ else.  This differs from the default canonicalization rule in Cyrus SASL, which appends
- * "@" and the user realm (userSource) to user names when canonicalizing.
+ * "@" and the user realm (db) to user names when canonicalizing.
  *
  * See sasl/saslplug.h and the Cyrus SASL documentation for information about canon plugins and
  * their use.
@@ -28,7 +28,7 @@ namespace {
     char canonMongoDBInternalPluginName[] = "MongoDBInternalCanon";
 
     /**
-     * In MongoDB, canonicalized user names do not include the database realm (userSource).
+     * In MongoDB, canonicalized user names do not include the database realm (db).
      */
     int canonUserServer(void* glob_context,
                         sasl_server_params_t* sparams,

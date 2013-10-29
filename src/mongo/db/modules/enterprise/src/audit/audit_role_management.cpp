@@ -53,7 +53,7 @@ namespace audit {
 
     BSONObjBuilder& GrantRolesToUserEvent::putParamsBSON(BSONObjBuilder& builder) const {
         builder.append(AuthorizationManager::USER_NAME_FIELD_NAME, _username.getUser());
-        builder.append(AuthorizationManager::USER_SOURCE_FIELD_NAME, _username.getDB());
+        builder.append(AuthorizationManager::USER_DB_FIELD_NAME, _username.getDB());
 
         BSONArrayBuilder roleArray(builder.subarrayStart("roles"));
         for (std::vector<RoleName>::const_iterator role = _roles.begin();
@@ -118,7 +118,7 @@ namespace audit {
 
     BSONObjBuilder& RevokeRolesFromUserEvent::putParamsBSON(BSONObjBuilder& builder) const {
         builder.append(AuthorizationManager::USER_NAME_FIELD_NAME, _username.getUser());
-        builder.append(AuthorizationManager::USER_SOURCE_FIELD_NAME, _username.getDB());
+        builder.append(AuthorizationManager::USER_DB_FIELD_NAME, _username.getDB());
 
         BSONArrayBuilder roleArray(builder.subarrayStart("roles"));
         for (std::vector<RoleName>::const_iterator role = _roles.begin();
