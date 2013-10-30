@@ -244,7 +244,7 @@ namespace audit {
         if (_customData) {
             builder.append("customData", *_customData);
         }
-        if (!_roles->empty()) {
+        if (_roles && !_roles->empty()) {
             BSONArrayBuilder roleArray(builder.subarrayStart("roles"));
             for (std::vector<RoleName>::const_iterator role = _roles->begin();
                         role != _roles->end();

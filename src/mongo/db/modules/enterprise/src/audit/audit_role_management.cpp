@@ -263,35 +263,39 @@ namespace audit {
     std::ostream& UpdateRoleEvent::putTextDescription(std::ostream& os) const {
         os << "Updated role " << _role;
         bool first = true;
-        for (std::vector<RoleName>::const_iterator role = _roles->begin();
-                    role != _roles->end();
-                    role++) {
-            if (first) {
-                os << " with the roles: " << *role;
-                first = false;
-            }
-            else {
-               os << ", " << *role;
+        if (_roles) {
+            for (std::vector<RoleName>::const_iterator role = _roles->begin();
+                        role != _roles->end();
+                        role++) {
+                if (first) {
+                    os << " with the roles: " << *role;
+                    first = false;
+                }
+                else {
+                   os << ", " << *role;
+                }
             }
         }
-        if (!first && !_privileges->empty()) {
+        if (!first && _privileges && !_privileges->empty()) {
             // if there was at least one role and there is at least one privilege
             os << " and";
             first = true;
         }
         ParsedPrivilege printable;
         std::string trash;
-        for (PrivilegeVector::const_iterator privilege = _privileges->begin();
-                    privilege != _privileges->end();
-                    privilege++) {
-            fassert(4025,
-                    ParsedPrivilege::privilegeToParsedPrivilege(*privilege, &printable, &trash));
-            if (first) {
-                os << " with the privileges: " << printable.toString();
-                first = false;
-            }
-            else {
-               os << ", " << printable.toString();
+        if (_privileges) {
+            for (PrivilegeVector::const_iterator privilege = _privileges->begin();
+                        privilege != _privileges->end();
+                        privilege++) {
+                fassert(4025,
+                        ParsedPrivilege::privilegeToParsedPrivilege(*privilege, &printable, &trash));
+                if (first) {
+                    os << " with the privileges: " << printable.toString();
+                    first = false;
+                }
+                else {
+                   os << ", " << printable.toString();
+                }
             }
         }
         os << '.';
@@ -301,7 +305,7 @@ namespace audit {
     BSONObjBuilder& UpdateRoleEvent::putParamsBSON(BSONObjBuilder& builder) const {
         builder.append(AuthorizationManager::ROLE_NAME_FIELD_NAME, _role.getRole());
         builder.append(AuthorizationManager::ROLE_SOURCE_FIELD_NAME, _role.getDB());
-        if (!_roles->empty()) {
+        if (_roles && !_roles->empty()) {
             BSONArrayBuilder roleArray(builder.subarrayStart("roles"));
             for (std::vector<RoleName>::const_iterator role = _roles->begin();
                         role != _roles->end();
@@ -312,7 +316,7 @@ namespace audit {
             }
             roleArray.doneFast();
         }
-        if (!_privileges->empty()) {
+        if (_privileges && !_privileges->empty()) {
             BSONArrayBuilder privilegeArray(builder.subarrayStart("privileges"));
             ParsedPrivilege printable;
             std::string trash;
