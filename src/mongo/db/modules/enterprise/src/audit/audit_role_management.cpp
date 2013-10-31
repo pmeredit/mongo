@@ -390,12 +390,12 @@ namespace audit {
     }
 
 
-    class DropAllRolesForDatabaseEvent : public AuditEvent {
+    class DropAllRolesFromDatabaseEvent : public AuditEvent {
     public:
-        DropAllRolesForDatabaseEvent(const AuditEventEnvelope& envelope,
+        DropAllRolesFromDatabaseEvent(const AuditEventEnvelope& envelope,
                                      const StringData& dbname)
             : AuditEvent(envelope), _dbname(dbname) {}
-        virtual ~DropAllRolesForDatabaseEvent() {}
+        virtual ~DropAllRolesFromDatabaseEvent() {}
 
     private:
         virtual std::ostream& putTextDescription(std::ostream& os) const;
@@ -404,23 +404,23 @@ namespace audit {
         const StringData& _dbname;
     };
 
-    std::ostream& DropAllRolesForDatabaseEvent::putTextDescription(std::ostream& os) const {
+    std::ostream& DropAllRolesFromDatabaseEvent::putTextDescription(std::ostream& os) const {
         os << "Dropped all roles from " << _dbname << '.';
         return os;
     }
 
-    BSONObjBuilder& DropAllRolesForDatabaseEvent::putParamsBSON(BSONObjBuilder& builder) const {
+    BSONObjBuilder& DropAllRolesFromDatabaseEvent::putParamsBSON(BSONObjBuilder& builder) const {
         builder.append("db", _dbname);
         return builder;
     }
 
-    void logDropAllRolesForDatabase(ClientBasic* client,
+    void logDropAllRolesFromDatabase(ClientBasic* client,
                                     const StringData& dbname) {
 
         if (!getGlobalAuditManager()->enabled) return;
 
-        DropAllRolesForDatabaseEvent event(
-                makeEnvelope(client, ActionType::dropAllRolesForDatabase, ErrorCodes::OK),
+        DropAllRolesFromDatabaseEvent event(
+                makeEnvelope(client, ActionType::dropAllRolesFromDatabase, ErrorCodes::OK),
                 dbname);
         if (getGlobalAuditManager()->auditFilter->matches(&event)) {
             getGlobalAuditLogDomain()->append(event);
