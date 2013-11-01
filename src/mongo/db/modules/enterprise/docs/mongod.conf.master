@@ -1,8 +1,11 @@
 
 # simple mongod.conf for running snmp as master
 
-#only bind to localhost port 1161
+# only bind to localhost port 1161
 agentaddress 127.0.0.1:1161
+
+# suppress snmp client connect messages
+dontLogTCPWrappersConnects 1
 
 #       sec.name  source          community
 com2sec local     localhost       mongodb
