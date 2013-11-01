@@ -257,10 +257,10 @@ namespace mongo {
                             "connections.totalCreated", VT_CNT64));
                 v.push_back(new ServerStatusCallback("flushCount", "1,7,1", 
                             ServerStatusClient::BACKGROUND_FLUSHING, 
-                            "backgroundFlushing.flushes", VT_CNT32));
+                            "backgroundFlushing.flushes", VT_CNT64));
                 v.push_back(new ServerStatusCallback("flushTotalMs", "1,7,2",
                             ServerStatusClient::BACKGROUND_FLUSHING, 
-                            "backgroundFlushing.total_ms", VT_CNT32));
+                            "backgroundFlushing.total_ms", VT_CNT64));
                 v.push_back(new ServerStatusCallback("flushAverageMs", "1,7,3",
                             ServerStatusClient::BACKGROUND_FLUSHING,
                             "backgroundFlushing.average_ms", VT_DOUBLE));
@@ -275,7 +275,7 @@ namespace mongo {
                 v.push_back(new ServerStatusCallback("cursorClientSize", "1,8,2", 
                             ServerStatusClient::CURSORS, "cursors.clientCursors_size", VT_INT32));
                 v.push_back(new ServerStatusCallback("cursorTimedOut", "1,8,3",
-                            ServerStatusClient::CURSORS, "cursors.timedOut", VT_CNT32));
+                            ServerStatusClient::CURSORS, "cursors.timedOut", VT_CNT64));
 
                 {
                     ServerStatusCallback* sscb =
@@ -350,22 +350,22 @@ namespace mongo {
                             ServerStatusClient::EXTRA_INFO, "extra_info.page_faults", VT_CNT32));
                 v.push_back(new ServerStatusCallback("indexCounterAccesses", "1,11,1",
                             ServerStatusClient::INDEX_COUNTERS, "indexCounters.accesses",
-                            VT_CNT32));
+                            VT_CNT64));
                 v.push_back(new ServerStatusCallback("indexCounterHits", "1,11,2",
-                            ServerStatusClient::INDEX_COUNTERS, "indexCounters.hits", VT_CNT32));
+                            ServerStatusClient::INDEX_COUNTERS, "indexCounters.hits", VT_CNT64));
                 v.push_back(new ServerStatusCallback("indexCounterMisses", "1,11,3",
-                            ServerStatusClient::INDEX_COUNTERS, "indexCounters.misses", VT_CNT32));
+                            ServerStatusClient::INDEX_COUNTERS, "indexCounters.misses", VT_CNT64));
                 v.push_back(new ServerStatusCallback("indexCounterResets", "1,11,4",
                             ServerStatusClient::INDEX_COUNTERS, "indexCounters.resets", VT_CNT32));
                 v.push_back(new ServerStatusCallback("indexCounterMissRatio", "1,11,5",
                             ServerStatusClient::INDEX_COUNTERS, "indexCounters.missRatio",
                             VT_DOUBLE));
                 v.push_back(new ServerStatusCallback("networkBytesIn", "1,12,1",
-                            ServerStatusClient::NETWORK, "network.bytesIn", VT_CNT32));
+                            ServerStatusClient::NETWORK, "network.bytesIn", VT_CNT64));
                 v.push_back(new ServerStatusCallback("networkBytesOut", "1,12,2",
-                            ServerStatusClient::NETWORK, "network.bytesOut", VT_CNT32));
+                            ServerStatusClient::NETWORK, "network.bytesOut", VT_CNT64));
                 v.push_back(new ServerStatusCallback("networkNumRequests", "1,12,3",
-                            ServerStatusClient::NETWORK, "network.numRequests", VT_CNT32));
+                            ServerStatusClient::NETWORK, "network.numRequests", VT_CNT64));
                 v.push_back(new ServerStatusCallback("writeBacksQueued", "1,13",
                             ServerStatusClient::METRICS, "writeBacksQueued", VT_BOOL));
                 v.push_back(new ServerStatusCallback("globalLockTotalTime", "1,14,1", 
@@ -400,10 +400,10 @@ namespace mongo {
                             ServerStatusClient::METRICS, "metrics.document.updated", VT_CNT64));
                 v.push_back(new ServerStatusCallback("metricsGetLastErrorWtimeNum", "1,15,2,1,1",
                             ServerStatusClient::METRICS, "metrics.getLastError.wtime.num",
-                            VT_CNT32));
+                            VT_CNT64));
                 v.push_back(new ServerStatusCallback("metricsGetLastErrorWtimeTotalMillis",
                             "1,15,2,1,2", ServerStatusClient::METRICS, 
-                            "metrics.getLastError.wtime.totalMillis", VT_CNT32));
+                            "metrics.getLastError.wtime.totalMillis", VT_CNT64));
                 v.push_back(new ServerStatusCallback("metricsGetLastErrorWtimeouts", "1,15,2,2",
                             ServerStatusClient::METRICS, "metrics.getLastError.wtimeouts",
                             VT_CNT64));
@@ -421,10 +421,10 @@ namespace mongo {
                             ServerStatusClient::METRICS, "metrics.record.moves", VT_CNT64));
                 v.push_back(new ServerStatusCallback("metricsReplApplyBatchesNum", "1,15,6,1,1,1",
                             ServerStatusClient::METRICS, "metrics.repl.apply.batches.num",
-                            VT_CNT32));
+                            VT_CNT64));
                 v.push_back(new ServerStatusCallback("metricsReplApplyBatchesTotalMillis",
                             "1,15,6,1,1,2", ServerStatusClient::METRICS,
-                            "metrics.repl.apply.batches.totalMillis", VT_CNT32));
+                            "metrics.repl.apply.batches.totalMillis", VT_CNT64));
                 v.push_back(new ServerStatusCallback("metricsReplApplyOps", "1,15,6,1,2",
                             ServerStatusClient::METRICS, "metrics.repl.apply.ops", VT_CNT64));
                 v.push_back(new ServerStatusCallback("metricsReplBufferCount", "1,15,6,2,1",
@@ -439,10 +439,10 @@ namespace mongo {
                             ServerStatusClient::METRICS, "metrics.repl.network.bytes", VT_CNT64));
                 v.push_back(new ServerStatusCallback("metricsReplNetworkGetmoresNum",
                             "1,15,6,3,2,1", ServerStatusClient::METRICS, 
-                            "metrics.repl.network.getmores.num", VT_CNT32));
+                            "metrics.repl.network.getmores.num", VT_CNT64));
                 v.push_back(new ServerStatusCallback("metricsReplNetworkGetmoresTotalMillis",
                             "1,15,6,3,2,2", ServerStatusClient::METRICS,
-                            "metrics.repl.network.getmores.totalMillis", VT_CNT32));
+                            "metrics.repl.network.getmores.totalMillis", VT_CNT64));
                 v.push_back(new ServerStatusCallback("metricsReplNetworkOps", "1,15,6,3,3",
                             ServerStatusClient::METRICS, "metrics.repl.network.ops", VT_CNT64));
                 v.push_back(new ServerStatusCallback("metricsReplNetworkReadersCreated",
@@ -450,25 +450,25 @@ namespace mongo {
                             "metrics.repl.network.readersCreated", VT_CNT64));
                 v.push_back(new ServerStatusCallback("metricsReplOplogInsertNum", "1,15,6,4,1,1",
                             ServerStatusClient::METRICS, "metrics.repl.oplog.insert.num",
-                            VT_CNT32));
+                            VT_CNT64));
                 v.push_back(new ServerStatusCallback("metricsReplOplogInsertTotalMillis",
                             "1,15,6,4,1,2", ServerStatusClient::METRICS,
-                            "metrics.repl.oplog.insert.totalMillis", VT_CNT32));
+                            "metrics.repl.oplog.insert.totalMillis", VT_CNT64));
                 v.push_back(new ServerStatusCallback("metricsReplOplogInsertBytes", "1,15,6,4,2",
                             ServerStatusClient::METRICS, "metrics.repl.oplog.insertBytes",
                             VT_CNT64));
                 v.push_back(new ServerStatusCallback("metricsReplPreloadDocsNum", "1,15,6,5,1,1",
                             ServerStatusClient::METRICS, "metrics.repl.preload.docs.num",
-                            VT_CNT32));
+                            VT_CNT64));
                 v.push_back(new ServerStatusCallback("metricsReplPreloadDocsTotalMillis",
                             "1,15,6,5,1,2", ServerStatusClient::METRICS,
-                            "metrics.repl.preload.docs.totalMillis", VT_CNT32));
+                            "metrics.repl.preload.docs.totalMillis", VT_CNT64));
                 v.push_back(new ServerStatusCallback("metricsReplPreloadIndexesNum",
                             "1,15,6,5,2,1", ServerStatusClient::METRICS,
-                            "metrics.repl.preload.indexes.num", VT_CNT32));
+                            "metrics.repl.preload.indexes.num", VT_CNT64));
                 v.push_back(new ServerStatusCallback("metricsReplPreloadIndexesTotalMillis",
                             "1,15,6,5,2,2", ServerStatusClient::METRICS,
-                            "metrics.repl.preload.indexes.totalMillis", VT_CNT32));
+                            "metrics.repl.preload.indexes.totalMillis", VT_CNT64));
                 v.push_back(new ServerStatusCallback("metricsTtlDeletedDocuments", "1,15,7,1",
                             ServerStatusClient::METRICS, "metrics.ttl.deletedDocuments",
                             VT_CNT64));

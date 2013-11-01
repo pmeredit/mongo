@@ -431,7 +431,7 @@ assertRollovers OBJECT-TYPE
 -- background flushing
 --------------
 flushCount OBJECT-TYPE
-   SYNTAX      Counter32
+   SYNTAX      Counter64
    MAX-ACCESS  read-only
    STATUS      current
    DESCRIPTION
@@ -439,7 +439,7 @@ flushCount OBJECT-TYPE
    ::= { backgroundFlushing 1 }
 
 flushTotalMs OBJECT-TYPE
-   SYNTAX      Counter32
+   SYNTAX      Counter64
    MAX-ACCESS  read-only
    STATUS      current
    DESCRIPTION
@@ -492,7 +492,7 @@ cursorClientSize OBJECT-TYPE
    ::= { cursors 2 }
 
 cursorTimedOut OBJECT-TYPE
-   SYNTAX      Counter32
+   SYNTAX      Counter64
    MAX-ACCESS  read-only
    STATUS      current
    DESCRIPTION
@@ -629,7 +629,7 @@ extraInfoPageFaults OBJECT-TYPE
 -- indexCounters
 --------------
 indexCounterAccesses OBJECT-TYPE
-   SYNTAX      Counter32
+   SYNTAX      Counter64
    MAX-ACCESS  read-only
    STATUS      current
    DESCRIPTION
@@ -637,7 +637,7 @@ indexCounterAccesses OBJECT-TYPE
    ::= { indexCounters 1 }
 
 indexCounterHits OBJECT-TYPE
-   SYNTAX      Counter32
+   SYNTAX      Counter64
    MAX-ACCESS  read-only
    STATUS      current
    DESCRIPTION
@@ -645,7 +645,7 @@ indexCounterHits OBJECT-TYPE
    ::= { indexCounters 2 }
 
 indexCounterMisses OBJECT-TYPE
-   SYNTAX      Counter32
+   SYNTAX      Counter64
    MAX-ACCESS  read-only
    STATUS      current
    DESCRIPTION
@@ -673,7 +673,7 @@ indexCounterMissRatio OBJECT-TYPE
 -- network
 --------------
 networkBytesIn OBJECT-TYPE
-   SYNTAX      Counter32
+   SYNTAX      Counter64
    MAX-ACCESS  read-only
    STATUS      current
    DESCRIPTION
@@ -681,7 +681,7 @@ networkBytesIn OBJECT-TYPE
    ::= { network 1 }
 
 networkBytesOut OBJECT-TYPE
-   SYNTAX      Counter32
+   SYNTAX      Counter64
    MAX-ACCESS  read-only
    STATUS      current
    DESCRIPTION
@@ -689,7 +689,7 @@ networkBytesOut OBJECT-TYPE
    ::= { network 2 }
  
 networkNumRequests OBJECT-TYPE
-   SYNTAX      Counter32
+   SYNTAX      Counter64
    MAX-ACCESS  read-only
    STATUS      current
    DESCRIPTION
@@ -812,7 +812,7 @@ metricsGetLastError OBJECT IDENTIFIER ::= { metrics 2 }
 metricsGetLastErrorWtime OBJECT IDENTIFIER ::= { metricsGetLastError 1 }
 
 metricsGetLastErrorWtimeNum OBJECT-TYPE
-   SYNTAX      Counter32
+   SYNTAX      Counter64
    MAX-ACCESS  read-only
    STATUS      current
    DESCRIPTION
@@ -820,7 +820,7 @@ metricsGetLastErrorWtimeNum OBJECT-TYPE
    ::= { metricsGetLastErrorWtime 1 }
 
 metricsGetLastErrorWtimeTotalMillis OBJECT-TYPE
-   SYNTAX      Counter32
+   SYNTAX      Counter64
    MAX-ACCESS  read-only
    STATUS      current
    DESCRIPTION
@@ -888,7 +888,7 @@ metricsReplApply OBJECT IDENTIFIER ::= { metricsRepl 1 }
 metricsReplApplyBatches OBJECT IDENTIFIER ::= { metricsReplApply 1 }
 
 metricsReplApplyBatchesNum OBJECT-TYPE
-   SYNTAX      Counter32
+   SYNTAX      Counter64
    MAX-ACCESS  read-only
    STATUS      current
    DESCRIPTION
@@ -896,7 +896,7 @@ metricsReplApplyBatchesNum OBJECT-TYPE
    ::= { metricsReplApplyBatches 1 }
 
 metricsReplApplyBatchesTotalMillis OBJECT-TYPE
-   SYNTAX      Counter32
+   SYNTAX      Counter64
    MAX-ACCESS  read-only
    STATUS      current
    DESCRIPTION
@@ -952,7 +952,7 @@ metricsReplNetworkBytes OBJECT-TYPE
 metricsReplNetworkGetmores OBJECT IDENTIFIER ::= { metricsReplNetwork 2 }
 
 metricsReplNetworkGetmoresNum OBJECT-TYPE
-   SYNTAX      Counter32
+   SYNTAX      Counter64
    MAX-ACCESS  read-only
    STATUS      current
    DESCRIPTION
@@ -960,7 +960,7 @@ metricsReplNetworkGetmoresNum OBJECT-TYPE
    ::= { metricsReplNetworkGetmores 1 }
 
 metricsReplNetworkGetmoresTotalMillis OBJECT-TYPE
-   SYNTAX      Counter32
+   SYNTAX      Counter64
    MAX-ACCESS  read-only
    STATUS      current
    DESCRIPTION
@@ -988,7 +988,7 @@ metricsReplOplog OBJECT IDENTIFIER ::= { metricsRepl 4 }
 metricsReplOplogInsert OBJECT IDENTIFIER ::= { metricsReplOplog 1 } 
 
 metricsReplOplogInsertNum OBJECT-TYPE
-   SYNTAX      Counter32
+   SYNTAX      Counter64
    MAX-ACCESS  read-only
    STATUS      current
    DESCRIPTION
@@ -996,7 +996,7 @@ metricsReplOplogInsertNum OBJECT-TYPE
    ::= { metricsReplOplogInsert 1 }
 
 metricsReplOplogInsertTotalMillis OBJECT-TYPE
-   SYNTAX      Counter32
+   SYNTAX      Counter64
    MAX-ACCESS  read-only
    STATUS      current
    DESCRIPTION
@@ -1016,7 +1016,7 @@ metricsReplPreload OBJECT IDENTIFIER ::= { metricsRepl 5 }
 metricsReplPreloadDocs OBJECT IDENTIFIER ::= { metricsReplPreload 1 }
 
 metricsReplPreloadDocsNum OBJECT-TYPE
-   SYNTAX      Counter32
+   SYNTAX      Counter64
    MAX-ACCESS  read-only
    STATUS      current
    DESCRIPTION
@@ -1024,7 +1024,7 @@ metricsReplPreloadDocsNum OBJECT-TYPE
    ::= { metricsReplPreloadDocs 1 }
 
 metricsReplPreloadDocsTotalMillis OBJECT-TYPE
-   SYNTAX      Counter32
+   SYNTAX      Counter64
    MAX-ACCESS  read-only
    STATUS      current
    DESCRIPTION
@@ -1034,7 +1034,7 @@ metricsReplPreloadDocsTotalMillis OBJECT-TYPE
 metricsReplPreloadIndexes OBJECT IDENTIFIER ::= { metricsReplPreload 2 }
 
 metricsReplPreloadIndexesNum OBJECT-TYPE
-   SYNTAX      Counter32
+   SYNTAX      Counter64
    MAX-ACCESS  read-only
    STATUS      current
    DESCRIPTION
@@ -1042,7 +1042,7 @@ metricsReplPreloadIndexesNum OBJECT-TYPE
    ::= { metricsReplPreloadIndexes 1 }
 
 metricsReplPreloadIndexesTotalMillis OBJECT-TYPE
-   SYNTAX      Counter32
+   SYNTAX      Counter64
    MAX-ACCESS  read-only
    STATUS      current
    DESCRIPTION

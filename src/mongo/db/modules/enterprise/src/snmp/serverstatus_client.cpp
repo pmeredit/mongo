@@ -7,6 +7,7 @@
 #include <algorithm>
 
 #include "mongo/bson/bsonobj.h"
+#include "mongo/bson/bsontypes.h"
 #include "mongo/db/client.h"
 #include "mongo/platform/cstdint.h"
 #include "mongo/util/log.h"
@@ -137,7 +138,20 @@ int ServerStatusClient::getIntField(const StringData& name)
 
 int64_t ServerStatusClient::getInt64Field(const StringData& name)
 {
-    return getElement(name).Long();
+    BSONElement elem = getElement(name);
+
+    // We need to handle several potential return types for 64bit ints as mongod will
+    // change type (for some metrics) depending on value to make more readable in the shell
+    // (see https://github.com/mongodb/mongo/blob/r2.5.3/src/mongo/bson/bsonobjbuilder.h#L231)
+    if (elem.type() == mongo::NumberInt) {
+        return static_cast<int64_t>(elem.Int());
+    }
+    else if (elem.type() == mongo::NumberLong) {
+        return elem.Long();
+    }
+    else {
+        return static_cast<int64_t>(elem.Double());
+    }
 }
 
 #if defined(_WIN32)
