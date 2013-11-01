@@ -62,7 +62,7 @@ namespace audit {
         if (!getGlobalAuditManager()->enabled) return;
 
         ReplSetReconfigEvent event(
-                makeEnvelope(client, ActionType::userAdmin, ErrorCodes::OK),
+                makeEnvelope(client, ActionType::replSetReconfig, ErrorCodes::OK),
                 oldConfig,
                 newConfig);
         if (getGlobalAuditManager()->auditFilter->matches(&event)) {
