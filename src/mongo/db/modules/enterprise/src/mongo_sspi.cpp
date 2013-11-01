@@ -289,7 +289,8 @@ namespace {
             HandleLastError(sparams->utils, status, "QueryContextAttributes");
             return SASL_FAIL;
         }
-        ON_BLOCK_EXIT(FreeContextBuffer, &namesx);
+        ON_BLOCK_EXIT(FreeContextBuffer, namesx.sClientName);
+        ON_BLOCK_EXIT(FreeContextBuffer, namesx.sServerName);
 
         LOG(2) << "SSPI authenticated name: " << toUtf8String(namesx.sClientName);
 
