@@ -609,7 +609,7 @@ namespace mongo {
             // returns whether the current metric is valid for this mongod instance
             bool isValidMetric() const {
              
-                if (_replicaSetOnly && !anyReplEnabled()) {
+                if (_replicaSetOnly && !replSettings.usingReplSets()) {
                     return false;
                 }
 
