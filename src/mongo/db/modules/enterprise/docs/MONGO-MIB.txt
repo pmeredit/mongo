@@ -349,8 +349,17 @@ memoryMapped OBJECT-TYPE
    MAX-ACCESS  read-only
    STATUS      current
    DESCRIPTION
-      "data mapped into mongod"
+      "provides the amount of mapped memory, in megabytes (MB), by the database"
    ::= { memory 3 }
+   
+memoryMappedWithJournal OBJECT-TYPE
+   SYNTAX Integer32
+   UNITS       "MB"
+   MAX-ACCESS  read-only
+   STATUS      current
+   DESCRIPTION
+      "provides the amount of mapped memory, in megabytes (MB), including the memory used for journaling"
+   ::= { memory 4 }
    
 
 --------------

@@ -5,6 +5,7 @@
 #include "serverstatus_client.h"
 
 #include <algorithm>
+#include <limits>
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsontypes.h"
@@ -15,6 +16,7 @@
 
 namespace mongo {
 
+const std::string ServerStatusClient::NO_EXTRA = "Uses default return values";
 const std::string ServerStatusClient::ASSERTS = "asserts";
 const std::string ServerStatusClient::BACKGROUND_FLUSHING = "backgroundFlushing";
 const std::string ServerStatusClient::CONNECTIONS = "connections";
@@ -134,6 +136,17 @@ bool ServerStatusClient::getBoolField(const StringData& name)
 int ServerStatusClient::getIntField(const StringData& name)
 {
     return getElement(name).Int();
+}
+
+unsigned int ServerStatusClient::getDurationField(const StringData& name)
+{
+    int64_t timeMs = getInt64Field(name);
+
+    // SNMP duration is 100ths of a second, represented as an unsigned int
+    // In mongod we store as signed 64bit int in milliseconds so conversion is needed
+    const static int64_t UINT32_MOD = static_cast<int64_t>(numeric_limits<unsigned int>::max())+1;
+    int64_t timeSnmp = (timeMs/10) % UINT32_MOD;
+    return static_cast<unsigned int>(timeSnmp);
 }
 
 int64_t ServerStatusClient::getInt64Field(const StringData& name)

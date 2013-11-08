@@ -23,12 +23,14 @@ namespace mongo {
 
         bool getBoolField(const StringData& name);
         int getIntField(const StringData& name);
+        unsigned int getDurationField(const StringData& name);
         int64_t getInt64Field(const StringData& name);
         void getInt64FieldAsString(const StringData& name, char* o_value, int o_valueLen);
         void getDoubleField(const StringData& name, char* o_value, int o_valueLen);
         void getStringField(const StringData& name, char* o_value, int o_valueLen);
         void getDateField(const StringData& name, char* o_value, int o_valueLen);
         
+        static const std::string NO_EXTRA;
         static const std::string ASSERTS;
         static const std::string BACKGROUND_FLUSHING;
         static const std::string CONNECTIONS;

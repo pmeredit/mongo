@@ -70,8 +70,6 @@ namespace mongo {
             return netsnmp_register_instance( upreg );
         }
 
-
-        
         bool operator==( const netsnmp_variable_list *var ) const {
             return _oid == var;
         }
@@ -87,23 +85,9 @@ namespace mongo {
 
     namespace callbacks {
 
-        class AtomicWordCallback : public SNMPCallBack {
-        public:
-            AtomicWordCallback( const char* name, const string& oid, const AtomicUInt* word ) 
-                : SNMPCallBack( name, oid ), _word( word ) {
-            }
-
-            int respond( netsnmp_variable_list* var ) {
-                unsigned val = _word->get();
-                return snmp_set_var_typed_value(var, ASN_COUNTER, (u_char *) &val, sizeof(val) );
-            }
-
-
-        private:
-            const AtomicUInt* _word;
-                
-        };
-
+        // NameCallback is not pulled from serverStatus as serverStatus
+        // does not include port #. serverName must be unique - composed of
+        // both host name and port - as it is used as a MIB table index
         class NameCallback : public SNMPCallBack {
         public:
             NameCallback() : SNMPCallBack( "serverName" , "1,1" ) {
@@ -118,116 +102,32 @@ namespace mongo {
             char _buf[256]; // DisplayString (SIZE (0..255))
             size_t _len;
         };
-
-        class UptimeCallback : public SNMPCallBack {
-        public:
-            UptimeCallback() : SNMPCallBack( "sysUpTime" , "1,2,2" ) {
-                _startTime = curTimeMicros64();
-            }
-            
-            int respond( netsnmp_variable_list* var ) {
-                int uptime = ( curTimeMicros64() - _startTime ) / 10000;
-                return snmp_set_var_typed_value(var, ASN_TIMETICKS, (u_char *) &uptime, 
-                                                sizeof(uptime) );            
-            }
-            
-            unsigned long long _startTime;
-        };
-        
-        class MemoryCallback : public SNMPCallBack {
-                        
-            enum Type { RES , VIR , MAP } _type;
-
-        public:
-            static void addAll( vector<SNMPCallBack*>& v ) {
-                v.push_back( new MemoryCallback( "memoryResident" , "1" , RES ) );
-                v.push_back( new MemoryCallback( "memoryVirtual" , "2" , VIR ) );
-                v.push_back( new MemoryCallback( "memoryMapped" , "3" , MAP ) );
-            }
-
-            int respond( netsnmp_variable_list* var ) {
-                
-                int val = 0;
-                
-                switch ( _type ) {
-                case RES: {
-                    ProcessInfo pi;
-                    val = pi.getResidentSize();
-                    break;
-                }
-                case VIR: {
-                    ProcessInfo pi;
-                    val = pi.getVirtualMemorySize();
-                    break;
-                }
-                case MAP :
-                    val = MemoryMappedFile::totalMappedLength() / ( 1024 * 1024 ) ;
-                    break;
-                }
-
-                return snmp_set_var_typed_value(var, ASN_INTEGER, (u_char *) &val, sizeof(val) );
-            }
-
-
-        private:
-            MemoryCallback( const string& name , const string& memsuffix , Type t ) 
-                : SNMPCallBack( name , "1,4," + memsuffix ) , _type(t) {
-            }
-        };
-
-
-        class AssertsCallback : public SNMPCallBack {
-
-            enum Type { REGULAR, WARNING, MESSAGE, USER, ROLLOVER } _type;
-
-        public:
-            static void addAll( vector<SNMPCallBack*>& v ) {
-                v.push_back( new AssertsCallback( "assertRegular" , "1" , REGULAR ) );
-                v.push_back( new AssertsCallback( "assertWarning" , "2" , WARNING ) );
-                v.push_back( new AssertsCallback( "assertMsg" , "3" , MESSAGE ) );
-                v.push_back( new AssertsCallback( "assertUser" , "4" , USER ) );
-                v.push_back( new AssertsCallback( "assertRollovers" , "5" , ROLLOVER ) );
-            }
-
-            int respond( netsnmp_variable_list* var ) {
-                int val = 0;
-
-                switch ( _type ) {
-                case REGULAR:
-                    val = assertionCount.regular;
-                    break;
-                case WARNING:
-                    val = assertionCount.warning;
-                    break;
-                case MESSAGE:
-                    val = assertionCount.msg;
-                    break;
-                case USER:
-                    val = assertionCount.user;
-                    break;
-                case ROLLOVER:
-                     val = assertionCount.rollovers;
-                     break;
-                default:
-                    return -1;
-                }
-
-                return snmp_set_var_typed_value( var, ASN_COUNTER, 
-                                                 reinterpret_cast<u_char *>(&val),
-                                                 sizeof(val) );
-            }
-
-        private:
-            AssertsCallback( const std::string& name, const std::string& suffix, Type t )
-                : SNMPCallBack( name , "1,6," + suffix ) , _type(t) {
-            }
-
-        };
         
         class ServerStatusCallback : public SNMPCallBack {
                
         public:
             static void addAll( vector<SNMPCallBack*>& v ) {
+                v.push_back(new ServerStatusCallback("sysUpTime", "1,2,2",
+                            ServerStatusClient::NO_EXTRA,
+                            "uptimeMillis", VT_DURATION));
+                v.push_back(new ServerStatusCallback("globalOpInsert", "1,3,1,1",
+                            ServerStatusClient::OPCOUNTERS,
+                            "opcounters.insert", VT_CNT32));
+                v.push_back(new ServerStatusCallback("globalOpQuery", "1,3,1,2",
+                            ServerStatusClient::OPCOUNTERS,
+                            "opcounters.query", VT_CNT32));
+                v.push_back(new ServerStatusCallback("globalOpUpdate", "1,3,1,3",
+                            ServerStatusClient::OPCOUNTERS,
+                            "opcounters.update", VT_CNT32));
+                v.push_back(new ServerStatusCallback("globalOpDelete", "1,3,1,4",
+                            ServerStatusClient::OPCOUNTERS,
+                            "opcounters.delete", VT_CNT32));
+                v.push_back(new ServerStatusCallback("globalOpGetMore", "1,3,1,5",
+                            ServerStatusClient::OPCOUNTERS,
+                            "opcounters.getmore", VT_CNT32));
+                v.push_back(new ServerStatusCallback("globalOpCommand", "1,3,1,6",
+                            ServerStatusClient::OPCOUNTERS,
+                            "opcounters.command", VT_CNT32));
                 v.push_back(new ServerStatusCallback("replOpInsert", "1,3,2,1",
                             ServerStatusClient::OPCOUNTERS_REPL,
                             "opcountersRepl.insert", VT_CNT32));
@@ -246,6 +146,31 @@ namespace mongo {
                 v.push_back(new ServerStatusCallback("replOpCommand", "1,3,2,6",
                             ServerStatusClient::OPCOUNTERS_REPL,
                             "opcountersRepl.command", VT_CNT32));
+
+                {
+                    ServerStatusCallback* sscb =
+                        new ServerStatusCallback("memoryResident", "1,4,1",
+                              ServerStatusClient::METRICS, "mem.resident", VT_INT32);
+                    sscb->_processInfoSupportedOnly = true;
+                    v.push_back(sscb);
+
+                    sscb = new ServerStatusCallback("memoryVirtual", "1,4,2",
+                                 ServerStatusClient::METRICS, "mem.virtual", VT_INT32);
+                    sscb->_processInfoSupportedOnly = true;
+                    v.push_back(sscb);
+                }
+
+                v.push_back(new ServerStatusCallback("memoryMapped", "1,4,3",
+                            ServerStatusClient::METRICS, "mem.mapped", VT_INT32));
+
+                {
+                    ServerStatusCallback* sscb =
+                        new ServerStatusCallback("memoryMappedWithJournal", "1,4,4",
+                              ServerStatusClient::METRICS, "mem.mappedWithJournal", VT_INT32);
+                    sscb->_journalOnly = true;
+                    v.push_back(sscb);
+                }
+
                 v.push_back(new ServerStatusCallback("connectionsCurrent", "1,5,1",
                             ServerStatusClient::CONNECTIONS,
                             "connections.current", VT_INT32));
@@ -255,6 +180,16 @@ namespace mongo {
                 v.push_back(new ServerStatusCallback("connectionsTotalCreated", "1,5,3",
                             ServerStatusClient::CONNECTIONS,
                             "connections.totalCreated", VT_CNT64));
+                v.push_back(new ServerStatusCallback("assertRegular", "1,6,1",
+                            ServerStatusClient::ASSERTS, "asserts.regular", VT_CNT32));
+                v.push_back(new ServerStatusCallback("assertWarning", "1,6,2",
+                            ServerStatusClient::ASSERTS, "asserts.warning", VT_CNT32));
+                v.push_back(new ServerStatusCallback("assertMsg", "1,6,3",
+                            ServerStatusClient::ASSERTS, "asserts.msg", VT_CNT32));
+                v.push_back(new ServerStatusCallback("assertUser", "1,6,4",
+                            ServerStatusClient::ASSERTS, "asserts.user", VT_CNT32));
+                v.push_back(new ServerStatusCallback("assertRollovers", "1,6,5",
+                            ServerStatusClient::ASSERTS, "asserts.rollovers", VT_CNT32));
                 v.push_back(new ServerStatusCallback("flushCount", "1,7,1", 
                             ServerStatusClient::BACKGROUND_FLUSHING, 
                             "backgroundFlushing.flushes", VT_CNT64));
@@ -510,6 +445,7 @@ namespace mongo {
 
             int respond( netsnmp_variable_list* var ) {
                 int val = 0;
+                unsigned int uval = 0;
                 int64_t val64 = 0;
                 char buf[256]; // DisplayString max is 255 chars
                 buf[0] = '\0';
@@ -522,6 +458,9 @@ namespace mongo {
                     case VT_INT32:
                     case VT_CNT32:
                         val = ssClient.getIntField(_serverStatusMetric);
+                        break;
+                    case VT_DURATION:
+                        uval = ssClient.getDurationField(_serverStatusMetric);
                         break;
                     case VT_CNT64:
                         val64 = ssClient.getInt64Field(_serverStatusMetric);
@@ -562,6 +501,10 @@ namespace mongo {
                     return snmp_set_var_typed_value(var, ASN_OCTET_STR, 
                                                     reinterpret_cast<u_char *>(buf),
                                                     strlen(buf));
+                case ASN_TIMETICKS:
+                    return snmp_set_var_typed_value(var, ASN_TIMETICKS,
+                                                    reinterpret_cast<u_char *>(&uval),
+                                                    sizeof(uval));
                 case ASN_INTEGER:
                 case ASN_COUNTER:
                 default:
@@ -575,7 +518,7 @@ namespace mongo {
             // ValueType represents the type of a metric and is a
             // bridge between the serverStatus type and SNMP type
             enum ValueType {VT_INT32, VT_CNT32, VT_BOOL, VT_INT64, VT_CNT64, VT_STRING, 
-                            VT_DATE, VT_DOUBLE} _metricType;
+                            VT_DATE, VT_DOUBLE, VT_DURATION} _metricType;
             
             ServerStatusCallback(const std::string& name, const std::string& suffix,
                                  const std::string& section, const std::string& metric,
@@ -583,7 +526,7 @@ namespace mongo {
                 : SNMPCallBack(name, suffix ),
                   _metricType(metricType), _serverStatusSection(section),
                   _serverStatusMetric(metric),_replicaSetOnly(false), _linuxOnly(false),
-                  _journalOnly(false), _snmpType(ASN_INTEGER) {
+                  _journalOnly(false), _processInfoSupportedOnly(false), _snmpType(ASN_INTEGER) {
                     
                 switch (_metricType) {
                 case VT_CNT64:
@@ -597,6 +540,9 @@ namespace mongo {
                 case VT_DOUBLE:
                 case VT_INT64:
                     _snmpType = ASN_OCTET_STR;
+                    break;
+                case VT_DURATION:
+                    _snmpType = ASN_TIMETICKS;
                     break;
                 case VT_INT32:
                 case VT_BOOL:
@@ -620,6 +566,13 @@ namespace mongo {
 #endif
                 if (_journalOnly && !storageGlobalParams.dur) {
                     return false;
+                }
+
+                if (_processInfoSupportedOnly) {
+                    ProcessInfo p;
+                    if (!p.supported()) {
+                        return false;
+                    }
                 }
 
                 return true;
@@ -679,6 +632,7 @@ namespace mongo {
             bool _replicaSetOnly;
             bool _linuxOnly;
             bool _journalOnly;
+            bool _processInfoSupportedOnly;
             u_char _snmpType;
             
             static std::map< std::string,
@@ -826,35 +780,14 @@ namespace mongo {
         void _init() {
             
             // add all callbacks
-            _callbacks.push_back( new callbacks::UptimeCallback() );
             _callbacks.push_back( new callbacks::NameCallback() );
-            callbacks::MemoryCallback::addAll( _callbacks );
-            callbacks::AssertsCallback::addAll( _callbacks );
             callbacks::ServerStatusCallback::addAll( _callbacks );
                 
-                
-            // static counters
-            
-            //  ---- globalOpCounters
-            _callbacks.push_back( new callbacks::AtomicWordCallback( "globalOpInsert" , "1,3,1,1" ,
-                                  globalOpCounters.getInsert() ) );
-            _callbacks.push_back( new callbacks::AtomicWordCallback( "globalOpQuery" , "1,3,1,2" ,
-                                  globalOpCounters.getQuery() ) );
-            _callbacks.push_back( new callbacks::AtomicWordCallback( "globalOpUpdate" , "1,3,1,3" ,
-                                  globalOpCounters.getUpdate() ) );
-            _callbacks.push_back( new callbacks::AtomicWordCallback( "globalOpDelete" , "1,3,1,4" ,
-                                  globalOpCounters.getDelete() ) );
-            _callbacks.push_back( new callbacks::AtomicWordCallback( "globalOpGetMore" , "1,3,1,5" ,
-                                  globalOpCounters.getGetMore() ) );
-            _callbacks.push_back( new callbacks::AtomicWordCallback( "globalOpCommand" , "1,3,1,6" ,
-                                  globalOpCounters.getCommand() ) );
-
             // register all callbacks
             for ( unsigned i=0; i<_callbacks.size(); i++ )
                 _checkRegister( _callbacks[i]->init() );
 
             Client::initThread("SnmpAgent");
-            
         }
 
 
