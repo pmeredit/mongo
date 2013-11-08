@@ -144,7 +144,7 @@ unsigned int ServerStatusClient::getDurationField(const StringData& name)
 
     // SNMP duration is 100ths of a second, represented as an unsigned int
     // In mongod we store as signed 64bit int in milliseconds so conversion is needed
-    const static int64_t UINT32_MOD = static_cast<int64_t>(numeric_limits<unsigned int>::max())+1;
+    static const int64_t UINT32_MOD = static_cast<int64_t>(numeric_limits<unsigned int>::max())+1;
     int64_t timeSnmp = (timeMs/10) % UINT32_MOD;
     return static_cast<unsigned int>(timeSnmp);
 }
