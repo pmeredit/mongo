@@ -49,8 +49,8 @@ namespace audit {
     }
 
     BSONObjBuilder& AuthenticationEvent::putParamsBSON(BSONObjBuilder& builder) const {
-        builder.append("db", _user.getDB());
-        builder.append("user", _user.getUser());
+        builder.append(AuthorizationManager::USER_NAME_FIELD_NAME, _user.getUser());
+        builder.append(AuthorizationManager::USER_DB_FIELD_NAME, _user.getDB());
         builder.append("mechanism", _mechanism);
         return builder;
     }

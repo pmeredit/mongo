@@ -9,8 +9,8 @@ namespace mongo {
 namespace audit {
 
     static void putUserNameBSON(const UserName& user, BSONObjBuilder& builder) {
-        builder.append("user", user.getUser());
-        builder.append("db", user.getDB());
+        builder.append(AuthorizationManager::USER_NAME_FIELD_NAME, user.getUser());
+        builder.append(AuthorizationManager::USER_DB_FIELD_NAME, user.getDB());
     }
 
     static void putAllUserNamesBSON(UserSet::NameIterator names, BSONArrayBuilder& builder) {
