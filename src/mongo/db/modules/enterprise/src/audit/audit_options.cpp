@@ -34,7 +34,7 @@ namespace audit {
 
         auditingOptions.addOptionChaining("auditLog", "auditLog", moe::String,
                                           "turn on auditing and specify output for log: "
-                                          "textfile, bsonfile, syslog, console");
+                                          "jsonfile, bsonfile, syslog, console");
 
         auditingOptions.addOptionChaining("auditPath", "auditPath", moe::String,
                                           "full filespec for audit log file");
@@ -56,8 +56,8 @@ namespace audit {
         if (params.count("auditLog")) {
             auditGlobalParams.enabled = true;
             std::string auditFormatStr = params["auditLog"].as<std::string>();
-            if (auditFormatStr == "textfile") {
-                auditGlobalParams.auditFormat = AuditFormatTextFile;
+            if (auditFormatStr == "jsonfile") {
+                auditGlobalParams.auditFormat = AuditFormatJsonFile;
                 auditGlobalParams.auditPath = params["auditPath"].as<std::string>();
             }
             else if (auditFormatStr == "bsonfile") {

@@ -13,7 +13,7 @@ namespace mongo {
 namespace audit {
 
     enum AuditFormat {
-        AuditFormatTextFile = 0,
+        AuditFormatJsonFile = 0,
         AuditFormatBsonFile = 1,
         AuditFormatConsole = 2,
         AuditFormatSyslog = 3

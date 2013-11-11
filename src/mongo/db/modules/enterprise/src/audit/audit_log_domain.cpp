@@ -50,17 +50,18 @@ namespace {
     class AuditEventTextEncoder : public logger::Encoder<AuditEvent> {
         virtual ~AuditEventTextEncoder() {}
         virtual std::ostream& encode(const AuditEvent& event, std::ostream& os) {
-            os << logger::MessageEventDetailsEncoder::getDateFormatter()(event.getTimestamp()) <<
-                ' ';
-            return encodeTextBody(event, os);
+            BSONObj eventAsBson(event.toBSON());
+            std::string toWrite = eventAsBson.jsonString() + '\n';
+            return os.write(toWrite.c_str(), toWrite.length());
         }
     };
 
     class AuditEventSyslogEncoder : public logger::Encoder<AuditEvent> {
         virtual ~AuditEventSyslogEncoder() {}
         virtual std::ostream& encode(const AuditEvent& event, std::ostream& os) {
-            // Note: timestamp automatically added by syslog subsystem
-            return encodeTextBody(event, os);
+            BSONObj eventAsBson(event.toBSON());
+            std::string toWrite = eventAsBson.jsonString();
+            return os.write(toWrite.c_str(), toWrite.length());
         }
     };
 
@@ -94,7 +95,7 @@ namespace {
             break;
         }
 #endif // ndef _WIN32
-        case AuditFormatTextFile:
+        case AuditFormatJsonFile:
         case AuditFormatBsonFile:
         {
             std::string auditLogPath(getGlobalAuditManager()->auditLogPath);
@@ -115,7 +116,7 @@ namespace {
             }
 
             logger::Encoder<AuditEvent>* encoder;
-            if (getGlobalAuditManager()->auditFormat == AuditFormatTextFile) {
+            if (getGlobalAuditManager()->auditFormat == AuditFormatJsonFile) {
                 encoder = new AuditEventTextEncoder;
             }
             else if (getGlobalAuditManager()->auditFormat == AuditFormatBsonFile) {
