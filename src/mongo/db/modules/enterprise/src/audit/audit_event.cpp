@@ -23,6 +23,7 @@ namespace audit {
 
     void AuditEvent::generateBSON() const {
         BSONObjBuilder builder;
+        builder.append("atype", getActionType().toString());
         builder.appendDate("ts", getTimestamp());
         {
             BSONObjBuilder localIpBuilder(builder.subobjStart("local"));
@@ -38,7 +39,6 @@ namespace audit {
             BSONArrayBuilder usersBuilder(builder.subarrayStart("users"));
             putAllUserNamesBSON(getAuthenticatedUsers(), usersBuilder);
         }
-        builder.append("atype", getActionType().toString());
         {
             BSONObjBuilder paramBuilder(builder.subobjStart("param"));
             putParamsBSON(paramBuilder);
