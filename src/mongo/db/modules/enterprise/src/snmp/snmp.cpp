@@ -17,11 +17,21 @@
 #include <net-snmp/agent/net-snmp-agent-includes.h>
 #include <signal.h>
  
+// READ & WRITE are #defined in net-snmp/library/snmp_impl.h - undefining here to prevent
+// clash with LockType enum defined in src/mongo/db/commands.h
+#ifdef READ
+#undef READ
+#endif
+
+#ifdef WRITE
+#undef WRITE
+#endif
+
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
 #include "mongo/db/client.h"
 #include "mongo/db/db.h"
-#include "mongo/db/repl/replication_server_status.h"
+#include "mongo/db/repl/is_master.h"
 #include "mongo/db/server_options.h"
 #include "mongo/db/stats/counters.h"
 #include "mongo/db/storage_options.h"
@@ -103,6 +113,24 @@ namespace mongo {
             size_t _len;
         };
         
+        // Ideally we would call serverStatus to populate replIsMaster, but there is a bug
+        // where calling via DBDirectClient results in both slave and master returning true
+        // due to GodScope being set during the _isMaster() call (see SERVER-11630)
+        // TODO: Use serverStatus for this value once master/slave removed from mongod
+        class IsMasterCallback : public SNMPCallBack {
+            public:
+                IsMasterCallback() : SNMPCallBack( "replIsMaster" , "1,16,3" ) {
+                }
+
+                int respond( netsnmp_variable_list* var ) {
+                    int val = _isMaster();
+
+                    return snmp_set_var_typed_value(var, ASN_INTEGER,
+                                                    reinterpret_cast<u_char *>(&val),
+                                                    sizeof(val) );
+                }
+            };
+
         class ServerStatusCallback : public SNMPCallBack {
                
         public:
@@ -418,11 +446,6 @@ namespace mongo {
                     
                     sscb =  new ServerStatusCallback("replSetVersion", "1,16,2",
                                         ServerStatusClient::REPL, "repl.setVersion", VT_INT32);
-                    sscb->_replicaSetOnly = true; 
-                    v.push_back(sscb);
-                    
-                    sscb =  new ServerStatusCallback("replIsMaster", "1,16,3",
-                                        ServerStatusClient::REPL, "repl.ismaster", VT_BOOL);
                     sscb->_replicaSetOnly = true; 
                     v.push_back(sscb);
 
@@ -781,6 +804,7 @@ namespace mongo {
             
             // add all callbacks
             _callbacks.push_back( new callbacks::NameCallback() );
+            _callbacks.push_back( new callbacks::IsMasterCallback() );
             callbacks::ServerStatusCallback::addAll( _callbacks );
                 
             // register all callbacks
