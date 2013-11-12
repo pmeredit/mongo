@@ -22,7 +22,8 @@ namespace audit {
         Date_t timestamp;
         SockAddr localAddr;
         SockAddr remoteAddr;
-        UserSet::NameIterator authenticatedUsers;
+        UserNameIterator authenticatedUsers;
+        UserNameIterator impersonatedUsers;
         ActionType actionType;
         ErrorCodes::Error result;
     };
@@ -38,8 +39,11 @@ namespace audit {
         MONGO_DISALLOW_COPYING(AuditEvent);
     public:
         Date_t getTimestamp() const { return _envelope.timestamp; }
-        const UserSet::NameIterator& getAuthenticatedUsers() const {
+        const UserNameIterator& getAuthenticatedUsers() const {
             return _envelope.authenticatedUsers;
+        }
+        const UserNameIterator& getImpersonatedUsers() const {
+            return _envelope.impersonatedUsers;
         }
 
         const SockAddr& getLocalAddr() const { return _envelope.localAddr; }

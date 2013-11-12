@@ -16,7 +16,6 @@ namespace audit {
             ActionType actionType,
             ErrorCodes::Error result) {
 
-        // TODO: Assign envelope->opId.
         envelope->timestamp = Date_t(curTimeMillis64());
         if (client->port()) {
             envelope->localAddr = client->port()->localAddr();
@@ -24,6 +23,8 @@ namespace audit {
         }
         envelope->authenticatedUsers =
             client->getAuthorizationSession()->getAuthenticatedUserNames();
+        envelope->impersonatedUsers =
+            client->getAuthorizationSession()->getImpersonatedUserNames();
         envelope->actionType = actionType;
         envelope->result = result;
     }

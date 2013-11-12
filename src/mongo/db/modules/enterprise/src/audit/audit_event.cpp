@@ -13,7 +13,7 @@ namespace audit {
         builder.append(AuthorizationManager::USER_DB_FIELD_NAME, user.getDB());
     }
 
-    static void putAllUserNamesBSON(UserSet::NameIterator names, BSONArrayBuilder& builder) {
+    static void putAllUserNamesBSON(UserNameIterator names, BSONArrayBuilder& builder) {
         while (names.more()) {
             BSONObjBuilder nameBuilder(builder.subobjStart());
             putUserNameBSON(names.next(), nameBuilder);
@@ -37,7 +37,13 @@ namespace audit {
         }
         {
             BSONArrayBuilder usersBuilder(builder.subarrayStart("users"));
-            putAllUserNamesBSON(getAuthenticatedUsers(), usersBuilder);
+            UserNameIterator uni = getImpersonatedUsers();
+            if (uni.more()) {
+                putAllUserNamesBSON(uni, usersBuilder);
+            }
+            else {
+                putAllUserNamesBSON(getAuthenticatedUsers(), usersBuilder);
+            }
         }
         {
             BSONObjBuilder paramBuilder(builder.subobjStart("param"));
