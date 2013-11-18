@@ -2,51 +2,51 @@
 
 Import("env")
 
-env.StaticLibrary('audit',
-                  ['src/audit/audit_application_message.cpp',
-                   'src/audit/audit_authentication.cpp',
-                   'src/audit/audit_authz_check.cpp',
-                   'src/audit/audit_command.cpp',
-                   'src/audit/audit_event.cpp',
-                   'src/audit/audit_indexes_collections_databases.cpp',
-                   'src/audit/audit_log_domain.cpp',
-                   'src/audit/audit_manager_global.cpp',
-                   'src/audit/audit_options.cpp',
-                   'src/audit/audit_private.cpp',
-                   'src/audit/audit_replset.cpp',
-                   'src/audit/audit_role_management.cpp',
-                   'src/audit/audit_sharding.cpp',
-                   'src/audit/audit_shutdown.cpp',
-                   'src/audit/audit_user_management.cpp',
-                   ],
-                  LIBDEPS=['$BUILD_DIR/mongo/base/base',
-                           '$BUILD_DIR/mongo/logger/logger'],
-                  LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/${LIBPREFIX}coredb${LIBSUFFIX}'])
+env.Library('audit',
+            ['src/audit/audit_application_message.cpp',
+             'src/audit/audit_authentication.cpp',
+             'src/audit/audit_authz_check.cpp',
+             'src/audit/audit_command.cpp',
+             'src/audit/audit_event.cpp',
+             'src/audit/audit_indexes_collections_databases.cpp',
+             'src/audit/audit_log_domain.cpp',
+             'src/audit/audit_manager_global.cpp',
+             'src/audit/audit_options.cpp',
+             'src/audit/audit_private.cpp',
+             'src/audit/audit_replset.cpp',
+             'src/audit/audit_role_management.cpp',
+             'src/audit/audit_sharding.cpp',
+             'src/audit/audit_shutdown.cpp',
+             'src/audit/audit_user_management.cpp',
+             ],
+            LIBDEPS=['$BUILD_DIR/mongo/base/base',
+                     '$BUILD_DIR/mongo/logger/logger'],
+            LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/${LIBPREFIX}coredb${LIBSUFFIX}'])
 
-env.StaticLibrary('mongosnmp',
-                  ['src/snmp/serverstatus_client.cpp',
-                   'src/snmp/snmp.cpp',
-                   'src/snmp/snmp_oid.cpp',
-                   'src/snmp/snmp_options.cpp'
-                   ],
-                  LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/${PROGPREFIX}mongod${PROGSUFFIX}'],
-                  SYSLIBDEPS=env.get('SNMP_SYSLIBDEPS', []))
+env.Library('mongosnmp',
+            ['src/snmp/serverstatus_client.cpp',
+             'src/snmp/snmp.cpp',
+             'src/snmp/snmp_oid.cpp',
+             'src/snmp/snmp_options.cpp'
+             ],
+            LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/${PROGPREFIX}mongod${PROGSUFFIX}'],
+            SYSLIBDEPS=env.get('SNMP_SYSLIBDEPS', []))
 
-env.StaticLibrary('mongosaslserversession',
-                  ['src/auxprop_mongodb_internal.cpp',
-                   'src/canon_mongodb_internal.cpp',
-                   'src/mongo_${MONGO_GSSAPI_IMPL}.cpp',
-                   'src/sasl_authentication_session.cpp',
-                   ],
-                  LIBDEPS=['$BUILD_DIR/mongo/server_parameters',
-                           '$BUILD_DIR/mongo/db/auth/authmocks'],
-                  SYSLIBDEPS=['sasl2', '${MONGO_GSSAPI_LIB}'])
+env.Library('mongosaslserversession',
+            ['src/auxprop_mongodb_internal.cpp',
+             'src/canon_mongodb_internal.cpp',
+             'src/mongo_${MONGO_GSSAPI_IMPL}.cpp',
+             'src/sasl_authentication_session.cpp',
+             ],
+            LIBDEPS=['$BUILD_DIR/mongo/server_parameters',
+                     '$BUILD_DIR/mongo/db/auth/authmocks'],
+            SYSLIBDEPS=['sasl2', '${MONGO_GSSAPI_LIB}'])
 
-env.StaticLibrary('mongosaslservercommon',
-                  ['src/sasl_commands.cpp'],
-                  LIBDEPS=['mongosaslserversession'],
-                  LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/${PROGPREFIX}mongod${PROGSUFFIX}',
-                                      '$BUILD_DIR/mongo/${PROGPREFIX}mongos${PROGSUFFIX}'])
+env.Library('mongosaslservercommon',
+            ['src/sasl_commands.cpp'],
+            LIBDEPS=['mongosaslserversession'],
+            LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/${PROGPREFIX}mongod${PROGSUFFIX}',
+                                '$BUILD_DIR/mongo/${PROGPREFIX}mongos${PROGSUFFIX}'])
 
 #env.CppUnitTest('sasl_authentication_session_test',
 #                ['src/sasl_authentication_session_test.cpp'],
