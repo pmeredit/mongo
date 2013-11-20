@@ -73,7 +73,8 @@ namespace {
         }
     };
 
-    MONGO_INITIALIZER_WITH_PREREQUISITES(AuditDomain, ("CreateAuditManager"))(InitializerContext*) {
+    MONGO_INITIALIZER_WITH_PREREQUISITES(AuditDomain,
+            ("InitializeGlobalAuditManager"))(InitializerContext*) {
         
         if (!auditGlobalParams.enabled) {
             return Status::OK();
