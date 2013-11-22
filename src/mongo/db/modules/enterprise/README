@@ -1,6 +1,6 @@
 these are enterprise only modules for mongodb
 
-in mongo src dir
-
-   ln -s ~/mongo-enterprise-modules src/mongo/db/modules/subscription
+in mongo repository directory
+   mkdir src/mongo/db/modules/
+   ln -sf ~/mongo-enterprise-modules src/mongo/db/modules/subscription
 
