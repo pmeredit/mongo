@@ -23,6 +23,20 @@ env.Library('audit',
                      '$BUILD_DIR/mongo/logger/logger'],
             LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/${LIBPREFIX}coredb${LIBSUFFIX}'])
 
+# The auditing code needs to be built into the "coredb" library because there is code in there that
+# references audit functions.  However, the "coredb" library is also currently shared by server
+# programs, such as mongod and mongos, as well as client programs, such as mongodump and
+# mongoexport.  For these reasons, we have no choice but to build the audit module into all of
+# these, even though it's dead code in the client programs.  To avoid actually allowing the user to
+# configure this dead code, we need to separate the option registration into this
+# "audit_configuration" library and add it to only mongod and mongos.  Because audit defaults to
+# disabled this effectively prevents this code from being run in client programs.
+env.Library('audit_configuration',
+            'src/audit/audit_options_init.cpp',
+            LIBDEPS=['audit'],
+            LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/${PROGPREFIX}mongod${PROGSUFFIX}',
+                                '$BUILD_DIR/mongo/${PROGPREFIX}mongos${PROGSUFFIX}'])
+
 env.Library('mongosnmp',
             ['src/snmp/serverstatus_client.cpp',
              'src/snmp/snmp.cpp',
