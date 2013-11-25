@@ -58,6 +58,8 @@ namespace mongo {
     static const int EXPIRE_SEC_REPL = 1;               // ReadContext on local 
                                                         // + ScopedDbConnection
 
+    static int snmpLogCallback(int majorID, int minorID, void* serverArg, void* clientArg) throw ();
+
     int my_snmp_callback( netsnmp_mib_handler *handler, netsnmp_handler_registration *reginfo,
                           netsnmp_agent_request_info *reqinfo, netsnmp_request_info *requests);
 
@@ -697,7 +699,12 @@ namespace mongo {
                 return;
             }
 
-            snmp_enable_stderrlog();
+            fassert(4032, SNMPERR_SUCCESS == snmp_register_callback(
+                            SNMP_CALLBACK_LIBRARY,
+                            SNMP_CALLBACK_LOGGING,
+                            snmpLogCallback,
+                            NULL));
+            snmp_enable_calllog();
 
             if (snmpGlobalParams.subagent) {
                 if ( netsnmp_ds_set_boolean(NETSNMP_DS_APPLICATION_ID, NETSNMP_DS_AGENT_ROLE, 1)
@@ -886,6 +893,50 @@ namespace mongo {
             requests = requests->next;
         }
         return SNMP_ERR_NOERROR;
+    }
+
+    /**
+     * Callback invoked by snmp library to log messages.
+     */
+    static int snmpLogCallback(
+            int majorID, int minorID, void* serverArg, void* clientArg) throw () {
+
+        using logger::LogSeverity;
+        fassert(4033, majorID == SNMP_CALLBACK_LIBRARY);
+        fassert(4034, minorID == SNMP_CALLBACK_LOGGING);
+        fassert(4035, clientArg == NULL);
+
+        const snmp_log_message* slm = static_cast<const snmp_log_message*>(serverArg);
+        LogSeverity severity = LogSeverity::Log();
+        switch(slm->priority) {
+        case LOG_EMERG:
+        case LOG_ALERT:
+        case LOG_CRIT:
+            severity = LogSeverity::Severe();
+            break;
+        case LOG_ERR:
+            severity = LogSeverity::Error();
+            break;
+        case LOG_WARNING:
+            severity = LogSeverity::Warning();
+            break;
+        case LOG_NOTICE:
+        case LOG_INFO:
+            severity = LogSeverity::Log();
+            break;
+        case LOG_DEBUG:
+            severity = LogSeverity::Debug(1);
+            break;
+        default:
+            severity = LogSeverity::Log();
+            break;
+        }
+
+        if (logger::globalLogDomain()->shouldLog(severity)) {
+            logger::LogstreamBuilder(logger::globalLogDomain(), getThreadName(), severity) <<
+                slm->msg;
+        }
+        return 1;
     }
 }
 
