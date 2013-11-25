@@ -79,6 +79,10 @@ namespace {
         if (!auditGlobalParams.enabled) {
             return Status::OK();
         }
+
+        // On any audit log failure, abort.
+        getGlobalAuditLogDomain()->setAbortOnFailure(true);
+
         switch (getGlobalAuditManager()->auditFormat) {
         case AuditFormatConsole:
         {
