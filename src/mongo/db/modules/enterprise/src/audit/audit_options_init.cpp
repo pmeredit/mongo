@@ -12,7 +12,6 @@
 #include "mongo/base/status.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/db/json.h"
-#include "mongo/db/matcher/expression_parser.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
 #include "mongo/util/options_parser/environment.h"
@@ -34,25 +33,5 @@ namespace audit {
         return storeAuditOptions(moe::startupOptionsParsed, context->args());
     }
 
-    MONGO_INITIALIZER_WITH_PREREQUISITES(InitializeGlobalAuditManager, ("CreateAuditManager"))
-                                        (InitializerContext* context) {
-        audit::getGlobalAuditManager()->enabled = auditGlobalParams.enabled;
-
-        if (auditGlobalParams.enabled) {
-            StatusWithMatchExpression parseResult =
-                MatchExpressionParser::parse(auditGlobalParams.auditFilter);
-            if (!parseResult.isOK()) {
-                return Status(ErrorCodes::BadValue, "failed to parse auditFilter");
-            }
-            AuditManager* am = audit::getGlobalAuditManager();
-            am->auditFilter = parseResult.getValue();
-
-            am->auditLogPath = auditGlobalParams.auditPath;
-
-            am->auditFormat = auditGlobalParams.auditFormat;
-        }
-
-        return Status::OK();
-    }
 } // namespace audit
 } // namespace mongo
