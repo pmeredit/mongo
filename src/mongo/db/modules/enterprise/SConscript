@@ -47,23 +47,23 @@ env.Library('mongosnmp',
             SYSLIBDEPS=env.get('SNMP_SYSLIBDEPS', []))
 
 env.Library('mongosaslserversession',
-            ['src/auxprop_mongodb_internal.cpp',
-             'src/canon_mongodb_internal.cpp',
-             'src/mongo_${MONGO_GSSAPI_IMPL}.cpp',
-             'src/sasl_authentication_session.cpp',
+            ['src/sasl/auxprop_mongodb_internal.cpp',
+             'src/sasl/canon_mongodb_internal.cpp',
+             'src/sasl/mongo_${MONGO_GSSAPI_IMPL}.cpp',
+             'src/sasl/sasl_authentication_session.cpp',
              ],
             LIBDEPS=['$BUILD_DIR/mongo/server_parameters',
                      '$BUILD_DIR/mongo/db/auth/authmocks'],
             SYSLIBDEPS=['sasl2', '${MONGO_GSSAPI_LIB}'])
 
 env.Library('mongosaslservercommon',
-            ['src/sasl_commands.cpp'],
+            ['src/sasl/sasl_commands.cpp'],
             LIBDEPS=['mongosaslserversession'],
             LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/${PROGPREFIX}mongod${PROGSUFFIX}',
                                 '$BUILD_DIR/mongo/${PROGPREFIX}mongos${PROGSUFFIX}'])
 
 #env.CppUnitTest('sasl_authentication_session_test',
-#                ['src/sasl_authentication_session_test.cpp'],
+#                ['src/sasl/sasl_authentication_session_test.cpp'],
 #                LIBDEPS=['mongosaslserversession',
 #                         '$BUILD_DIR/mongo/bson',
 #                         '$BUILD_DIR/mongo/db/auth/authcore',
@@ -81,13 +81,13 @@ if env['PYSYSPLATFORM'] == "win32":
         Exit(1)
 
     sspi_test = env.Program('sasl_authentication_session_sspi_test',
-                            ['src/sasl_authentication_session_sspi_test.cpp'],
+                            ['src/sasl/sasl_authentication_session_sspi_test.cpp'],
                             LIBDEPS=['mongosaslserversession'])
 # SERVER-10700
 #    env.RegisterUnitTest(sspi_test[0])
 else:
     gssapi_test = env.Program('sasl_authentication_session_gssapi_test',
-                              ['src/sasl_authentication_session_gssapi_test.cpp'],
+                              ['src/sasl/sasl_authentication_session_gssapi_test.cpp'],
                               LIBDEPS=['mongosaslserversession',
                                        '$BUILD_DIR/mongo/bson',
                                        '$BUILD_DIR/mongo/db/auth/authcore',
