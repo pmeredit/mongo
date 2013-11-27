@@ -20,10 +20,10 @@ namespace mongo {
 
         moe::OptionSection snmp_options("SNMP Module Options");
 
-        snmp_options.addOptionChaining("snmp-subagent", "snmp-subagent", moe::Switch,
+        snmp_options.addOptionChaining("snmp.subagent", "snmp-subagent", moe::Switch,
                                        "run snmp subagent");
 
-        snmp_options.addOptionChaining("snmp-master", "snmp-master", moe::Switch,
+        snmp_options.addOptionChaining("snmp.master", "snmp-master", moe::Switch,
                                        "run snmp as master");
 
         Status ret = options->addSection(snmp_options);
