@@ -9,22 +9,20 @@
 #include "mongo/base/init.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/util/bson_extract.h"
-#include "mongo/db/auth/authorization_manager_global.h"
+#include "mongo/client/sasl_client_authenticate.h"
 #include "mongo/db/auth/authorization_manager.h"
+#include "mongo/db/auth/authorization_manager_global.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/authz_manager_external_state_mock.h"
 #include "mongo/db/auth/authz_session_external_state_mock.h"
-#include "mongo/client/sasl_client_authenticate.h"
-#include "mongo/db/server_parameters.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/mongoutils/str.h"
 #include "mongo_gssapi.h"
+#include "sasl_options.h"
 
 namespace mongo {
 
 namespace {
-
-    MONGO_EXPORT_STARTUP_SERVER_PARAMETER(saslauthdPath, std::string, "");
 
     /**
      * Signature of a function that can be used to smoke-test a SASL mechanism at
@@ -224,10 +222,10 @@ namespace {
         }
 
         if (option == StringData("saslauthd_path", StringData::LiteralTag())) {
-            if (saslauthdPath.empty())
+            if (saslGlobalParams.authdPath.empty())
                 return SASL_FAIL;
-            *outResult = saslauthdPath.c_str();
-            *outLen = static_cast<unsigned>(saslauthdPath.size());
+            *outResult = saslGlobalParams.authdPath.c_str();
+            *outLen = static_cast<unsigned>(saslGlobalParams.authdPath.size());
             return SASL_OK;
         }
 

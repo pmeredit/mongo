@@ -17,32 +17,16 @@
 #include "mongo/db/client_basic.h"
 #include "mongo/db/commands.h"
 #include "mongo/db/commands/authentication_commands.h"
-#include "mongo/db/server_parameters.h"
 #include "mongo/util/base64.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
 #include "mongo/util/sequence_util.h"
 #include "mongo/util/stringutils.h"
 #include "sasl_authentication_session.h"
+#include "sasl_options.h"
 
 namespace mongo {
 namespace {
-
-    using namespace mongoutils;
-
-    /// Split string "s" at instances of "delim" into a vector of strings, and return the result.
-    std::vector<std::string> stringSplit(const std::string& s, char delim) {
-        std::vector<std::string> result;
-        splitStringDelim(s, &result, delim);
-        return result;
-    }
-
-    MONGO_EXPORT_STARTUP_SERVER_PARAMETER(
-            authenticationMechanisms, std::vector<std::string>,
-            stringSplit("MONGODB-CR,MONGODB-X509", ','));
-
-    MONGO_EXPORT_STARTUP_SERVER_PARAMETER(saslHostName, std::string, "");
-    MONGO_EXPORT_STARTUP_SERVER_PARAMETER(saslServiceName, std::string, "");
 
     const bool autoAuthorizeDefault = true;
 
@@ -205,16 +189,17 @@ namespace {
         if (!status.isOK())
             return status;
 
-        if (!sequenceContains(authenticationMechanisms, mechanism)) {
-            result->append(saslCommandMechanismListFieldName, authenticationMechanisms);
+        if (!sequenceContains(saslGlobalParams.authenticationMechanisms, mechanism)) {
+            result->append(saslCommandMechanismListFieldName,
+                           saslGlobalParams.authenticationMechanisms);
             return Status(ErrorCodes::BadValue,
                           mongoutils::str::stream() << "Unsupported mechanism " << mechanism);
         }
 
         status = session->start(db,
                                 mechanism,
-                                saslServiceName,
-                                saslHostName,
+                                saslGlobalParams.serviceName,
+                                saslGlobalParams.hostName,
                                 1,
                                 autoAuthorize);
         if (!status.isOK())
@@ -328,27 +313,27 @@ namespace {
     MONGO_INITIALIZER_WITH_PREREQUISITES(SaslCommands, ("CyrusSaslServerLibrary"))(
             InitializerContext*) {
 
-        if (saslHostName.empty())
-            saslHostName = getHostNameCached();
-        if (saslServiceName.empty())
-            saslServiceName = saslDefaultServiceName;
+        if (saslGlobalParams.hostName.empty())
+            saslGlobalParams.hostName = getHostNameCached();
+        if (saslGlobalParams.serviceName.empty())
+            saslGlobalParams.serviceName = saslDefaultServiceName;
 
-        if (!sequenceContains(authenticationMechanisms, mechanismMONGODBCR))
+        if (!sequenceContains(saslGlobalParams.authenticationMechanisms, mechanismMONGODBCR))
             CmdAuthenticate::disableAuthMechanism(mechanismMONGODBCR);
         
-        if (!sequenceContains(authenticationMechanisms, mechanismMONGODBX509))
+        if (!sequenceContains(saslGlobalParams.authenticationMechanisms, mechanismMONGODBX509))
             CmdAuthenticate::disableAuthMechanism(mechanismMONGODBX509);
 
-        for (size_t i = 0; i < authenticationMechanisms.size(); ++i) {
-            const std::string& mechanism = authenticationMechanisms[i];
+        for (size_t i = 0; i < saslGlobalParams.authenticationMechanisms.size(); ++i) {
+            const std::string& mechanism = saslGlobalParams.authenticationMechanisms[i];
             if (mechanism == mechanismMONGODBCR || mechanism == mechanismMONGODBX509) {
                 // Not a SASL mechanism; no need to smoke test the built-in mechanism.
                 continue;
             }
             Status status = SaslAuthenticationSession::smokeTestMechanism(
-                    authenticationMechanisms[i],
-                    saslServiceName,
-                    saslHostName);
+                    saslGlobalParams.authenticationMechanisms[i],
+                    saslGlobalParams.serviceName,
+                    saslGlobalParams.hostName);
             if (!status.isOK())
                 return status;
         }
