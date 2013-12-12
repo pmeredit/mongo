@@ -57,11 +57,11 @@ namespace audit {
         AddShardEvent(const AuditEventEnvelope& envelope,
                       const StringData& name,
                       const std::string& servers,
-                      long long maxsize)
+                      long long maxSize)
             : AuditEvent(envelope),
               _name(name),
               _servers(servers),
-              _maxsize(maxsize) {}
+              _maxSize(maxSize) {}
         virtual ~AddShardEvent() {}
 
     private:
@@ -70,14 +70,14 @@ namespace audit {
 
         const StringData& _name;
         const std::string& _servers;
-        long long _maxsize;
+        long long _maxSize;
     };
 
     std::ostream& AddShardEvent::putTextDescription(std::ostream& os) const {
         os << "Added shard " << _name
            << " with connection string: " << _servers;
-        if (_maxsize) {
-            os << " with a maximum size of " << _maxsize << "MB.";
+        if (_maxSize) {
+            os << " with a maximum size of " << _maxSize << "MB.";
         }
         else {
             os << " without a maxmium size.";
@@ -89,20 +89,20 @@ namespace audit {
     BSONObjBuilder& AddShardEvent::putParamsBSON(BSONObjBuilder& builder) const {
         builder.append("shard", _name);
         builder.append("connectionString", _servers);
-        builder.append("maxsize", _maxsize);
+        builder.append("maxSize", _maxSize);
         return builder;
     }
 
     void logAddShard(ClientBasic* client,
                      const StringData& name,
                      const std::string& servers,
-                     long long maxsize) {
+                     long long maxSize) {
         if (!getGlobalAuditManager()->enabled) return;
 
         AddShardEvent event(makeEnvelope(client, ActionType::shutdown, ErrorCodes::OK),
                             name,
                             servers,
-                            maxsize);
+                            maxSize);
         if (getGlobalAuditManager()->auditFilter->matches(&event)) {
             getGlobalAuditLogDomain()->append(event);
         }
