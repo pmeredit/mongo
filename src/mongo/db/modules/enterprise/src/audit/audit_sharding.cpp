@@ -44,7 +44,7 @@ namespace audit {
                            const StringData& dbname) {
         if (!getGlobalAuditManager()->enabled) return;
 
-        EnableShardingEvent event(makeEnvelope(client, ActionType::shutdown, ErrorCodes::OK),
+        EnableShardingEvent event(makeEnvelope(client, ActionType::enableSharding, ErrorCodes::OK),
                                   dbname);
         if (getGlobalAuditManager()->auditFilter->matches(&event)) {
             getGlobalAuditLogDomain()->append(event);
@@ -99,7 +99,7 @@ namespace audit {
                      long long maxSize) {
         if (!getGlobalAuditManager()->enabled) return;
 
-        AddShardEvent event(makeEnvelope(client, ActionType::shutdown, ErrorCodes::OK),
+        AddShardEvent event(makeEnvelope(client, ActionType::addShard, ErrorCodes::OK),
                             name,
                             servers,
                             maxSize);
@@ -138,7 +138,7 @@ namespace audit {
                         const StringData& shardname) {
         if (!getGlobalAuditManager()->enabled) return;
 
-        RemoveShardEvent event(makeEnvelope(client, ActionType::shutdown, ErrorCodes::OK),
+        RemoveShardEvent event(makeEnvelope(client, ActionType::removeShard, ErrorCodes::OK),
                                shardname);
         if (getGlobalAuditManager()->auditFilter->matches(&event)) {
             getGlobalAuditLogDomain()->append(event);
@@ -189,7 +189,9 @@ namespace audit {
                             bool unique) {
         if (!getGlobalAuditManager()->enabled) return;
 
-        ShardCollectionEvent event(makeEnvelope(client, ActionType::shutdown, ErrorCodes::OK),
+        ShardCollectionEvent event(makeEnvelope(client,
+                                                ActionType::shardCollection,
+                                                ErrorCodes::OK),
                                    ns,
                                    keyPattern,
                                    unique);
