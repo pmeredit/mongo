@@ -3,13 +3,15 @@
  */
 
 #include "audit_log_domain.h"
+
+#include <boost/filesystem.hpp>
+
 #include "audit_manager_global.h"
 #include "audit_options.h"
-
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
 #include "mongo/db/audit.h"
-#include "mongo/db/server_parameters.h"
+#include "mongo/db/server_options.h"
 #include "mongo/logger/console_appender.h"
 #include "mongo/logger/encoder.h"
 #include "mongo/logger/log_domain-impl.h"
@@ -108,14 +110,16 @@ namespace {
         case AuditFormatJsonFile:
         case AuditFormatBsonFile:
         {
-            std::string auditLogPath(getGlobalAuditManager()->auditLogPath);
+            std::string auditLogPath = boost::filesystem::absolute(
+                    getGlobalAuditManager()->auditLogPath,
+                    serverGlobalParams.cwd).string();
             logger::StatusWithRotatableFileWriter statusOrWriter =
                 logger::globalRotatableFileManager()->openFile(auditLogPath, true);
             logger::RotatableFileWriter* writer;
             if (statusOrWriter.isOK()) {
                 writer = statusOrWriter.getValue();
             }
-            else {
+            else if (statusOrWriter.getStatus() == ErrorCodes::FileAlreadyOpen) {
                 writer = logger::globalRotatableFileManager()->getFile(auditLogPath);
                 if (!writer) {
                     return Status(ErrorCodes::InternalError, auditLogPath +
@@ -123,6 +127,9 @@ namespace {
                                   "globalRotatableFileManager()->getFile() returned NULL.");
 
                 }
+            }
+            else {
+                return statusOrWriter.getStatus();
             }
 
             logger::Encoder<AuditEvent>* encoder;
