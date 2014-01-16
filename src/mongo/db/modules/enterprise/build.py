@@ -53,5 +53,5 @@ def configure(conf, env):
             docs.File('MONGO-MIB.txt'),
             docs.File('mongod.conf.master'),
             docs.File('mongod.conf.subagent'),
-            docs.File('snmp.md')
+            docs.File('README-snmp.txt')
             ])
