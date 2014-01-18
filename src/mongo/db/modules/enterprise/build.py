@@ -50,8 +50,13 @@ def configure(conf, env):
     docs = env.Dir(root).Dir('docs')
     env.Append(MODULE_BANNERS=[
             distsrc.File('LICENSE.txt'),
+            ])
+    env.Append(ARCHIVE_ADDITIONS=[
             docs.File('MONGO-MIB.txt'),
             docs.File('mongod.conf.master'),
             docs.File('mongod.conf.subagent'),
             docs.File('README-snmp.txt')
             ])
+    env.Append(ARCHIVE_ADDITION_DIR_MAP={
+            str(env.Dir(root).Dir('docs')): "snmp"
+            })
