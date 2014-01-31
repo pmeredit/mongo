@@ -37,10 +37,10 @@ namespace mongo {
     Status storeSnmpOptions(const moe::Environment& params,
                             const std::vector<std::string>& args) {
 
-        if (params.count("snmp-subagent")) {
+        if (params.count("snmp.subagent")) {
             snmpGlobalParams.enabled = true;
         }
-        if (params.count("snmp-master")) {
+        if (params.count("snmp.master")) {
             snmpGlobalParams.subagent = false;
             snmpGlobalParams.enabled = true;
         }
