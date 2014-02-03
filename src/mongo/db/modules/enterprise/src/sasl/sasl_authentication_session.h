@@ -91,7 +91,7 @@ namespace mongo {
          *
          * Not meaningful before a successful call to start().
          */
-        const std::string& getAuthenticationDatabase() const { return _authenticationDatabase; }
+        StringData getAuthenticationDatabase() const;
 
         /**
          * Get the conversation id for this authentication session.

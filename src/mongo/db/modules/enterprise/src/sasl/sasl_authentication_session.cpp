@@ -10,6 +10,7 @@
 #include "mongo/base/string_data.h"
 #include "mongo/bson/util/bson_extract.h"
 #include "mongo/client/sasl_client_authenticate.h"
+#include "mongo/db/commands.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_manager_global.h"
 #include "mongo/db/auth/authorization_session.h"
@@ -315,6 +316,19 @@ namespace {
     SaslAuthenticationSession::~SaslAuthenticationSession() {
         if (_saslConnection)
             sasl_dispose(&_saslConnection);
+    }
+
+    StringData SaslAuthenticationSession::getAuthenticationDatabase() const {
+        if (Command::testCommandsEnabled &&
+                _authenticationDatabase == "admin" &&
+                getPrincipalId() == internalSecurity.user->getName().getUser()) {
+            // Allows authenticating as the internal user against the admin database.  This is to
+            // support the auth passthrough test framework on mongos (since you can't use the local
+            // database on a mongos, so you can't auth as the internal user without this).
+            return internalSecurity.user->getName().getDB();
+        } else {
+            return _authenticationDatabase;
+        }
     }
 
     Status SaslAuthenticationSession::start(const StringData& authenticationDatabase,
