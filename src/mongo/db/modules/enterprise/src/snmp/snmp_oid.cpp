@@ -20,7 +20,15 @@
 namespace mongo {
     OIDManager oidManager;
 
-    static oid rootOID[] = { 1, 3, 6, 1, 4, 1, 34601 , 1 };
+    // NOTE: rootOID as it stands works for a mongod-only SNMP offering. Expansion to include mongos
+    //       would require pushing the "mongod" element and below to process specific code
+    static oid rootOID[] = { 1, 3, 6, 1, 4, 1,
+                             34601,     // mongodbInc
+                             1,         // software
+                             1,         // mongodb
+                             1,         // mongod
+                             2          // serverTable
+    };
 
     OIDManager::OIDManager() {
         for ( uint32_t i=0; i<sizeof(rootOID)/sizeof(oid); i++ ) {

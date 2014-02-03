@@ -413,26 +413,17 @@ namespace mongo {
                 v.push_back(new ServerStatusCallback("metricsReplNetworkReadersCreated",
                             "1,15,6,3,4", ServerStatusClient::METRICS, 
                             "metrics.repl.network.readersCreated", VT_CNT64));
-                v.push_back(new ServerStatusCallback("metricsReplOplogInsertNum", "1,15,6,4,1,1",
-                            ServerStatusClient::METRICS, "metrics.repl.oplog.insert.num",
-                            VT_CNT64));
-                v.push_back(new ServerStatusCallback("metricsReplOplogInsertTotalMillis",
-                            "1,15,6,4,1,2", ServerStatusClient::METRICS,
-                            "metrics.repl.oplog.insert.totalMillis", VT_CNT64));
-                v.push_back(new ServerStatusCallback("metricsReplOplogInsertBytes", "1,15,6,4,2",
-                            ServerStatusClient::METRICS, "metrics.repl.oplog.insertBytes",
-                            VT_CNT64));
-                v.push_back(new ServerStatusCallback("metricsReplPreloadDocsNum", "1,15,6,5,1,1",
+                v.push_back(new ServerStatusCallback("metricsReplPreloadDocsNum", "1,15,6,4,1,1",
                             ServerStatusClient::METRICS, "metrics.repl.preload.docs.num",
                             VT_CNT64));
                 v.push_back(new ServerStatusCallback("metricsReplPreloadDocsTotalMillis",
-                            "1,15,6,5,1,2", ServerStatusClient::METRICS,
+                            "1,15,6,4,1,2", ServerStatusClient::METRICS,
                             "metrics.repl.preload.docs.totalMillis", VT_CNT64));
                 v.push_back(new ServerStatusCallback("metricsReplPreloadIndexesNum",
-                            "1,15,6,5,2,1", ServerStatusClient::METRICS,
+                            "1,15,6,4,2,1", ServerStatusClient::METRICS,
                             "metrics.repl.preload.indexes.num", VT_CNT64));
                 v.push_back(new ServerStatusCallback("metricsReplPreloadIndexesTotalMillis",
-                            "1,15,6,5,2,2", ServerStatusClient::METRICS,
+                            "1,15,6,4,2,2", ServerStatusClient::METRICS,
                             "metrics.repl.preload.indexes.totalMillis", VT_CNT64));
                 v.push_back(new ServerStatusCallback("metricsTtlDeletedDocuments", "1,15,7,1",
                             ServerStatusClient::METRICS, "metrics.ttl.deletedDocuments",
@@ -523,9 +514,18 @@ namespace mongo {
                                                     sizeof(val64));
                 }
                 case ASN_OCTET_STR:
+                {
+                    int len = 0;
+                    if (_metricType == VT_DATE) {
+                        len = ServerStatusClient::DATE_AND_TIME_TZ_LEN;
+                    }
+                    else {
+                        len = strlen(buf);
+                    }
+
                     return snmp_set_var_typed_value(var, ASN_OCTET_STR, 
-                                                    reinterpret_cast<u_char *>(buf),
-                                                    strlen(buf));
+                                                    reinterpret_cast<u_char *>(buf), len);
+                }
                 case ASN_TIMETICKS:
                     return snmp_set_var_typed_value(var, ASN_TIMETICKS,
                                                     reinterpret_cast<u_char *>(&uval),

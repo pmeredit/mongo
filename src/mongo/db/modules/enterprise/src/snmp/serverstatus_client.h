@@ -47,7 +47,9 @@ namespace mongo {
         static const std::string REPL;
         static const std::string MEM;
         static const std::string METRICS;
-        
+
+        static const int DATE_AND_TIME_TZ_LEN;
+
     private:
         DBDirectClient _dbClient;
         BSONObj        _serverStatusData;

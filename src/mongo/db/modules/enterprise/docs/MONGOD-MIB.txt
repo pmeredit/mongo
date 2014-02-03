@@ -1,22 +1,39 @@
--- Copyright (C) 2013 MongoDB, Inc.  All Rights Reserved.
+-- Copyright (C) 2014 MongoDB, Inc.  All Rights Reserved.
 
---  -*- mode:snmp -*-
-
-MONGO-MIB DEFINITIONS ::= BEGIN
+MONGOD-MIB DEFINITIONS ::= BEGIN
 
 --======================================================================
--- MIB compatible with MongoDB version >= 2.5.3
+-- MIB compatible with MongoDB version >= 2.6.0
 -- For more information, please see http://www.mongodb.org/
 --======================================================================
 
 IMPORTS
-   OBJECT-TYPE, enterprises, Counter, Gauge, IpAddress, TimeTicks
+   enterprises, MODULE-IDENTITY, Integer32, Counter32, Counter64
+      FROM SNMPv2-SMI
+   DateAndTime
+      FROM SNMPv2-TC
+   OBJECT-TYPE, TimeTicks
       FROM RFC1155-SMI
    DisplayString
       FROM RFC1213-MIB;
 
+
+mongodMIB MODULE-IDENTITY
+    LAST-UPDATED "201401310000Z"
+    ORGANIZATION "MongoDB Inc"
+    CONTACT-INFO "http://www.mongodb.com/contact"
+    DESCRIPTION "mib for the MongoDB mongod process"
+    REVISION "201401310000Z"
+    DESCRIPTION "addressed smilint warnings"
+    ::= { mongod 1 }
+
+mongodbInc      OBJECT IDENTIFIER ::= { enterprises 34601 }
+software        OBJECT IDENTIFIER ::= { mongodbInc 1 }
+mongodb         OBJECT IDENTIFIER ::= { software 1 }
+mongod          OBJECT IDENTIFIER ::= { mongodb 1 }
+
 --
--- mongodb 
+-- mongod 
 --   server 1
 --     serverName 1,1
 --     system 1,2
@@ -102,21 +119,18 @@ IMPORTS
 --        me 1,16,6
 
 
-mongodb                 OBJECT IDENTIFIER ::= { enterprises 34601 }
-
-
 serverTable OBJECT-TYPE
-   SYNTAX SEQUENCE OF serverTableEntry
-   ACCESS not-accessible
-   STATUS mandatory
+   SYNTAX SEQUENCE OF ServerEntry
+   MAX-ACCESS not-accessible
+   STATUS current
    DESCRIPTION
       "This table gives information and statistics for each server."
-   ::= { mongodb 1 }
+   ::= { mongod 2 }
 
 serverTableEntry OBJECT-TYPE
     SYNTAX ServerEntry
-    ACCESS not-accessible
-    STATUS mandatory
+    MAX-ACCESS not-accessible
+    STATUS current
     DESCRIPTION
         "This defines a server."
     INDEX { serverName }
@@ -124,14 +138,14 @@ serverTableEntry OBJECT-TYPE
 
 serverName OBJECT-TYPE
    SYNTAX DisplayString (SIZE (0..255))
-   ACCESS read-only
-   STATUS mandatory
+   MAX-ACCESS read-only
+   STATUS current
    DESCRIPTION
       "The port of the virtual server is the name."
    ::= { serverTableEntry 1 }
 
 ServerEntry ::= SEQUENCE {
-     serverName         DisplayString (SIZE (0..255)),
+     serverName         DisplayString,
      system             OBJECT IDENTIFIER,
      opcounts           OBJECT IDENTIFIER,
      memory             OBJECT IDENTIFIER,
@@ -167,7 +181,7 @@ network                 OBJECT IDENTIFIER ::= { serverTableEntry 12 }
 
 writeBacksQueued        OBJECT-TYPE
    SYNTAX Integer32
-   ACCESS read-only
+   MAX-ACCESS read-only
    STATUS current
    DESCRIPTION
         "number of writebacks currently queued (mongos only)"
@@ -190,8 +204,8 @@ repl                    OBJECT IDENTIFIER ::= { serverTableEntry 16 }
 
 port OBJECT-TYPE
    SYNTAX Integer32
-   ACCESS read-only
-   STATUS mandatory
+   MAX-ACCESS read-only
+   STATUS current
    DESCRIPTION
       "port for this process"
    ::= { system 1 }
@@ -199,24 +213,24 @@ port OBJECT-TYPE
 
 sysUpTime OBJECT-TYPE
    SYNTAX TimeTicks
-   ACCESS read-only
-   STATUS mandatory
+   MAX-ACCESS read-only
+   STATUS current
    DESCRIPTION
       "uptime (in hundredths of a second)"
    ::= { system 2 }
 
 version OBJECT-TYPE
    SYNTAX DisplayString (SIZE (0..255))
-   ACCESS read-only
-   STATUS mandatory
+   MAX-ACCESS read-only
+   STATUS current
    DESCRIPTION
       "MongoDB version"
    ::= { system 3 }
 
 pid OBJECT-TYPE
    SYNTAX Integer32
-   ACCESS read-only
-   STATUS mandatory
+   MAX-ACCESS read-only
+   STATUS current
    DESCRIPTION
       "process ID"
    ::= { system 4 }
@@ -227,96 +241,96 @@ pid OBJECT-TYPE
 
 globalOpInsert OBJECT-TYPE
    SYNTAX Counter32
-   ACCESS read-only
-   STATUS mandatory
+   MAX-ACCESS read-only
+   STATUS current
    DESCRIPTION
       "global insert count"
    ::= { globalOpcounts 1 }
 
 globalOpQuery OBJECT-TYPE
    SYNTAX Counter32
-   ACCESS read-only
-   STATUS mandatory
+   MAX-ACCESS read-only
+   STATUS current
    DESCRIPTION
       "global query count"
    ::= { globalOpcounts 2 }
 
 globalOpUpdate OBJECT-TYPE
    SYNTAX Counter32
-   ACCESS read-only
-   STATUS mandatory
+   MAX-ACCESS read-only
+   STATUS current
    DESCRIPTION
       "global update count"
    ::= { globalOpcounts 3 }
 
 globalOpDelete OBJECT-TYPE
    SYNTAX Counter32
-   ACCESS read-only
-   STATUS mandatory
+   MAX-ACCESS read-only
+   STATUS current
    DESCRIPTION
       "global delete count"
    ::= { globalOpcounts 4 }
 
 globalOpGetMore OBJECT-TYPE
    SYNTAX Counter32
-   ACCESS read-only
-   STATUS mandatory
+   MAX-ACCESS read-only
+   STATUS current
    DESCRIPTION
       "global getmore count"
    ::= { globalOpcounts 5 }
 
 globalOpCommand OBJECT-TYPE
    SYNTAX Counter32
-   ACCESS read-only
-   STATUS mandatory
+   MAX-ACCESS read-only
+   STATUS current
    DESCRIPTION
       "global command count"
    ::= { globalOpcounts 6 }
 
 replOpInsert OBJECT-TYPE
    SYNTAX Counter32
-   ACCESS read-only
-   STATUS mandatory
+   MAX-ACCESS read-only
+   STATUS current
    DESCRIPTION
       "repl insert count"
    ::= { replOpcounts 1 }
 
 replOpQuery OBJECT-TYPE
    SYNTAX Counter32
-   ACCESS read-only
-   STATUS mandatory
+   MAX-ACCESS read-only
+   STATUS current
    DESCRIPTION
       "repl query count"
    ::= { replOpcounts 2 }
 
 replOpUpdate OBJECT-TYPE
    SYNTAX Counter32
-   ACCESS read-only
-   STATUS mandatory
+   MAX-ACCESS read-only
+   STATUS current
    DESCRIPTION
       "repl update count"
    ::= { replOpcounts 3 }
 
 replOpDelete OBJECT-TYPE
    SYNTAX Counter32
-   ACCESS read-only
-   STATUS mandatory
+   MAX-ACCESS read-only
+   STATUS current
    DESCRIPTION
       "repl delete count"
    ::= { replOpcounts 4 }
 
 replOpGetMore OBJECT-TYPE
    SYNTAX Counter32
-   ACCESS read-only
-   STATUS mandatory
+   MAX-ACCESS read-only
+   STATUS current
    DESCRIPTION
       "repl getmore count"
    ::= { replOpcounts 5 }
 
 replOpCommand OBJECT-TYPE
    SYNTAX Counter32
-   ACCESS read-only
-   STATUS mandatory
+   MAX-ACCESS read-only
+   STATUS current
    DESCRIPTION
       "repl command count"
    ::= { replOpcounts 6 }
@@ -992,35 +1006,7 @@ metricsReplNetworkReadersCreated OBJECT-TYPE
       "total number of oplog query processes created"
    ::= { metricsReplNetwork 4 }
 
-metricsReplOplog OBJECT IDENTIFIER ::= { metricsRepl 4 }
-
-metricsReplOplogInsert OBJECT IDENTIFIER ::= { metricsReplOplog 1 } 
-
-metricsReplOplogInsertNum OBJECT-TYPE
-   SYNTAX      Counter64
-   MAX-ACCESS  read-only
-   STATUS      current
-   DESCRIPTION
-      "total number of items inserted into the oplog"
-   ::= { metricsReplOplogInsert 1 }
-
-metricsReplOplogInsertTotalMillis OBJECT-TYPE
-   SYNTAX      Counter64
-   MAX-ACCESS  read-only
-   STATUS      current
-   DESCRIPTION
-      "total amount of time spent for the mongod to insert data into the oplog"
-   ::= { metricsReplOplogInsert 2 }
-
-metricsReplOplogInsertBytes OBJECT-TYPE
-   SYNTAX      Counter64
-   MAX-ACCESS  read-only
-   STATUS      current
-   DESCRIPTION
-      "total size in bytes of documents inserted into the oplog"
-   ::= { metricsReplOplog 2 }
-
-metricsReplPreload OBJECT IDENTIFIER ::= { metricsRepl 5 }
+metricsReplPreload OBJECT IDENTIFIER ::= { metricsRepl 4 }
 
 metricsReplPreloadDocs OBJECT IDENTIFIER ::= { metricsReplPreload 1 }
 

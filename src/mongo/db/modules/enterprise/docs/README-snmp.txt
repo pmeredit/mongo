@@ -1,7 +1,7 @@
 MongoDB Enterprise contains the following configuration files to
 support SNMP:
 
-1) MONGO-MIB.txt
+1) MONGOD-MIB.txt
 
 The management information base (MIB) file that defines MongoDB’s
 SNMP output.

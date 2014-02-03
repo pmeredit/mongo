@@ -7,12 +7,14 @@
 #include <algorithm>
 #include <limits>
 
+
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsontypes.h"
 #include "mongo/db/client.h"
 #include "mongo/platform/cstdint.h"
 #include "mongo/util/log.h"
 #include "mongo/util/timer.h"
+#include "mongo/util/time_support.h"
 
 namespace mongo {
 
@@ -34,6 +36,7 @@ const std::string ServerStatusClient::REPL = "repl";
 const std::string ServerStatusClient::MEM = "mem";
 const std::string ServerStatusClient::METRICS = "metrics";
 
+const int ServerStatusClient::DATE_AND_TIME_TZ_LEN = 11;
 
 ServerStatusClient::ServerStatusClient(const std::string& sectionName, time_t cacheExpireSecs)
         : _cacheExpireSecs(cacheExpireSecs), _lastRefresh(0), _sectionName(sectionName)
@@ -237,21 +240,29 @@ void ServerStatusClient::getStringField(const StringData& name, char* o_value, i
 void ServerStatusClient::getDateField(const StringData& name, char* o_value, int o_valueLen)
 {
     verify(o_value);
-    verify(o_valueLen > 0);
+    verify(o_valueLen >= DATE_AND_TIME_TZ_LEN);
     
-    time_t dt =  getElement(name).Date().toTimeT();
+    time_t date_timeT = getElement(name).Date().toTimeT();
 
-    // the following is modelled after timeToISOString in util/time_support.h
-    // should probably add timeToMIBString function there and use here
-    struct tm t;
-    time_t_to_Struct( dt, &t );
+    struct tm dateTime_tm = {0};
+    unsigned short year = 0;
 
-    const char* fmt = "%Y-%m-%d,%H:%M:%S.0,+0:0";
-    
-    // write time to buffer - if strftime fails set to empy string
-    if (strftime(o_value, o_valueLen, fmt, &t) == 0) {
-        o_value[0] = '\0';
-    }
+    time_t_to_Struct(date_timeT, &dateTime_tm);
+
+    // The net-snmp DateAndTime conversion routines are internal only (in library/snmp-tc.h)
+    // which is why we are implementing time_t to DateAndTime ourselves.
+    year = dateTime_tm.tm_year + 1900;
+    o_value[0] = static_cast<u_char>(year >> 8);
+    o_value[1] = static_cast<u_char>(year);
+    o_value[2] = dateTime_tm.tm_mon + 1;
+    o_value[3] = dateTime_tm.tm_mday;
+    o_value[4] = dateTime_tm.tm_hour;
+    o_value[5] = dateTime_tm.tm_min;
+    o_value[6] = dateTime_tm.tm_sec;
+    o_value[7] = 0;
+    o_value[8] = '+';
+    o_value[9] = 0;
+    o_value[10] = 0;
 }
 
 } // namespace mongo

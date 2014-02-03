@@ -52,7 +52,8 @@ def configure(conf, env):
             distsrc.File('LICENSE.txt'),
             ])
     env.Append(ARCHIVE_ADDITIONS=[
-            docs.File('MONGO-MIB.txt'),
+            docs.File('MONGOD-MIB.txt'),
+            docs.File('MONGODBINC-MIB.txt'),
             docs.File('mongod.conf.master'),
             docs.File('mongod.conf.subagent'),
             docs.File('README-snmp.txt')
