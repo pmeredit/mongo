@@ -22,24 +22,20 @@ namespace mongo {
 
         moe::OptionSection saslOptions("SASL Options");
 
-        saslOptions.addOptionChaining("security.sasl.authenticationMechanisms",
-                "SECURITY_SASL_AUTHENTICATIONMECHANISMS_UNUSED", moe::StringVector,
-                "List of supported authentication mechanisms.  "
+        saslOptions.addOptionChaining("security.sasl.authenticationMechanisms", "",
+                moe::StringVector, "List of supported authentication mechanisms.  "
                 "Default is MONGODB-CR and MONGODB-X509.")
                                          .setSources(moe::SourceYAMLConfig);
 
-        saslOptions.addOptionChaining("security.sasl.hostName",
-                "SECURITY_SASL_HOSTNAME_UNUSED", moe::String,
+        saslOptions.addOptionChaining("security.sasl.hostName", "", moe::String,
                 "Fully qualified server domain name")
                                          .setSources(moe::SourceYAMLConfig);
 
-        saslOptions.addOptionChaining("security.sasl.serviceName",
-                "SECURITY_SASL_SERVICENAME_UNUSED", moe::String,
+        saslOptions.addOptionChaining("security.sasl.serviceName", "", moe::String,
                 "Registered name of the service using SASL")
                                          .setSources(moe::SourceYAMLConfig);
 
-        saslOptions.addOptionChaining("security.sasl.saslauthdSocketPath",
-                "SECURITY_SASL_AUTHDPATH_UNUSED", moe::String,
+        saslOptions.addOptionChaining("security.sasl.saslauthdSocketPath", "", moe::String,
                 "Path to Unix domain socket file for saslauthd")
                                          .setSources(moe::SourceYAMLConfig);
 
@@ -94,9 +90,9 @@ namespace mongo {
             saslGlobalParams.serviceName =
                 params["security.sasl.serviceName"].as<std::string>();
         }
-        if (params.count("security.sasl.authdPath") && !haveAuthdPath) {
+        if (params.count("security.sasl.saslauthdSocketPath") && !haveAuthdPath) {
             saslGlobalParams.authdPath =
-                params["security.sasl.authdPath"].as<std::string>();
+                params["security.sasl.saslauthdSocketPath"].as<std::string>();
         }
 
         return Status::OK();
