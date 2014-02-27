@@ -232,8 +232,10 @@ namespace {
     /**
      * Registers the plugin at process initialization time.
      */
-    MONGO_INITIALIZER_WITH_PREREQUISITES(SaslAuxpropMongodbInternal, ("CyrusSaslServerLibrary"))(
-            InitializerContext*) {
+    MONGO_INITIALIZER_GENERAL(SaslAuxpropMongodbInternal, 
+                              ("CyrusSaslServerCore"),
+                              ("CyrusSaslAllPluginsRegistered"))
+        (InitializerContext*) {
 
         auxpropMongoDBInternal.name = auxpropMongoDBInternalPluginName;
         int ret = sasl_auxprop_add_plugin(auxpropMongoDBInternal.name,

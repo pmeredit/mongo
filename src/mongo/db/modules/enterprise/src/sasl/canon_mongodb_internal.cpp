@@ -108,8 +108,10 @@ namespace {
     /**
      * Registers the plugin at process initialization time.
      */
-    MONGO_INITIALIZER_WITH_PREREQUISITES(SaslCanonMongodbInternal, ("CyrusSaslServerLibrary"))(
-            InitializerContext*) {
+    MONGO_INITIALIZER_GENERAL(SaslCanonMongodbInternal, 
+                              ("CyrusSaslServerCore"),
+                              ("CyrusSaslAllPluginsRegistered"))
+        (InitializerContext*) {
 
         canonMongoDBInternal.name = canonMongoDBInternalPluginName;
         int ret = sasl_canonuser_add_plugin(canonMongoDBInternal.name,

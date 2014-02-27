@@ -526,7 +526,9 @@ namespace {
     /**
      * Registers the plugin at process initialization time.
      */
-    MONGO_INITIALIZER_WITH_PREREQUISITES(SaslSspiServerPlugin, ("CyrusSaslServerLibrary"))
+    MONGO_INITIALIZER_GENERAL(SaslSspiServerPlugin, 
+                              ("CyrusSaslServerCore"), 
+                              ("CyrusSaslAllPluginsRegistered"))
         (InitializerContext*) {
         int ret = sasl_server_add_plugin(sspiPluginName,
                                      sspiServerPluginInit);
@@ -539,7 +541,9 @@ namespace {
         return Status::OK();
     }
 
-    MONGO_INITIALIZER_WITH_PREREQUISITES(SaslCramServerPlugin, ("CyrusSaslServerLibrary"))
+    MONGO_INITIALIZER_GENERAL(SaslCramServerPlugin, 
+                              ("CyrusSaslServerCore"),
+                              ("CyrusSaslAllPluginsRegistered"))
         (InitializerContext*) {
         int ret = sasl_server_add_plugin("CRAMMD5",
                                      crammd5_server_plug_init);
@@ -552,7 +556,9 @@ namespace {
         return Status::OK();
     }
 
-    MONGO_INITIALIZER_WITH_PREREQUISITES(SaslPlainServerPlugin, ("CyrusSaslServerLibrary"))
+    MONGO_INITIALIZER_GENERAL(SaslPlainServerPlugin, 
+                              ("CyrusSaslServerCore"),
+                              ("CyrusSaslAllPluginsRegistered"))
         (InitializerContext*) {
         int ret = sasl_server_add_plugin("PLAIN",
                                      plain_server_plug_init);

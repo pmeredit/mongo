@@ -462,10 +462,10 @@ namespace {
         return SASL_OK;
     }
 
-    MONGO_INITIALIZER_WITH_PREREQUISITES(CyrusSaslServerLibrary,
+    MONGO_INITIALIZER_WITH_PREREQUISITES(CyrusSaslServerCore,
                                          ("CyrusSaslAllocatorsAndMutexes",
-                                          "SaslClientContext"))(
-                                                  InitializerContext* context) {
+                                          "SaslClientContext"))
+        (InitializerContext* context) {
 
         static const sasl_callback_t saslServerGlobalCallbacks[] = {
             { SASL_CB_LOG, SaslCallbackFn(saslServerGlobalLog), NULL },
