@@ -310,11 +310,6 @@ namespace {
         return status.isOK();
     }
 
-    // This group is used to ensure that all the plugins are registered before we attempt
-    // the smoke test in SaslCommands.
-    MONGO_INITIALIZER_GROUP(CyrusSaslAllPluginsRegistered, MONGO_NO_PREREQUISITES, 
-                            MONGO_NO_DEPENDENTS);
-
     MONGO_INITIALIZER_WITH_PREREQUISITES(SaslCommands, 
                                          ("CyrusSaslServerCore", "CyrusSaslAllPluginsRegistered"))
         (InitializerContext*) {
