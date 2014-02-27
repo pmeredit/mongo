@@ -5,6 +5,7 @@
 #include "audit_event.h"
 #include "audit_log_domain.h"
 #include "audit_manager_global.h"
+#include "audit_options.h"
 #include "audit_private.h"
 #include "mongo/base/status.h"
 #include "mongo/bson/mutable/document.h"
@@ -65,7 +66,8 @@ namespace audit {
 
         if (!getGlobalAuditManager()->enabled) return;
 
-        if (result != ErrorCodes::OK) {
+        if (auditGlobalParams.auditAuthzSuccess ||
+            result != ErrorCodes::OK) {
             AuthzCheckEvent event(
                     makeEnvelope(client, ActionType::authCheck, result),
                     ns,

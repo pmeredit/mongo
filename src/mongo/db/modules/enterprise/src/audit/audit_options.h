@@ -26,6 +26,7 @@ namespace audit {
         bool enabled;
         BSONObj auditFilter;
         std::string auditPath;
+        bool auditAuthzSuccess;
 
         AuditFormat auditFormat;
 

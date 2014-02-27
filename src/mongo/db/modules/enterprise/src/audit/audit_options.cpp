@@ -13,6 +13,7 @@
 #include "mongo/db/jsobj.h"
 #include "mongo/db/json.h"
 #include "mongo/db/matcher/expression_parser.h"
+#include "mongo/db/server_parameters.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
 #include "mongo/util/options_parser/environment.h"
@@ -120,6 +121,12 @@ namespace audit {
 
         return Status::OK();
     }
+
+    ExportedServerParameter<bool> AuditAuthzSuccessSetting(ServerParameterSet::getGlobal(),
+                                                          "auditAuthzSuccess",
+                                                          &auditGlobalParams.auditAuthzSuccess,
+                                                          true,  // Change at startup
+                                                          true); // Change at runtime
 
 } // namespace audit
 } // namespace mongo
