@@ -22,7 +22,7 @@ namespace mongo {
 
         moe::OptionSection saslOptions("SASL Options");
 
-        saslOptions.addOptionChaining("security.sasl.authenticationMechanisms", "",
+        saslOptions.addOptionChaining("security.authenticationMechanisms", "",
                 moe::StringVector, "List of supported authentication mechanisms.  "
                 "Default is MONGODB-CR and MONGODB-X509.")
                                          .setSources(moe::SourceYAMLConfig);
@@ -77,10 +77,10 @@ namespace mongo {
             }
         }
 
-        if (params.count("security.sasl.authenticationMechanisms") &&
+        if (params.count("security.authenticationMechanisms") &&
             !haveAuthenticationMechanisms) {
             saslGlobalParams.authenticationMechanisms =
-                params["security.sasl.authenticationMechanisms"].as<std::vector<std::string> >();
+                params["security.authenticationMechanisms"].as<std::vector<std::string> >();
         }
         if (params.count("security.sasl.hostName") && !haveHostName) {
             saslGlobalParams.hostName =
