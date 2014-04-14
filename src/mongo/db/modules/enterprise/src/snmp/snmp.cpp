@@ -16,16 +16,6 @@
 #include <net-snmp/net-snmp-includes.h>
 #include <net-snmp/agent/net-snmp-agent-includes.h>
 #include <signal.h>
- 
-// READ & WRITE are #defined in net-snmp/library/snmp_impl.h - undefining here to prevent
-// clash with LockType enum defined in src/mongo/db/commands.h
-#ifdef READ
-#undef READ
-#endif
-
-#ifdef WRITE
-#undef WRITE
-#endif
 
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"

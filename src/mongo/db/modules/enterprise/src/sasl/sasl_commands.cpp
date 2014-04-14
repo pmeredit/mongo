@@ -50,7 +50,7 @@ namespace {
                          bool fromRepl);
 
         virtual void help(stringstream& help) const;
-        virtual LockType locktype() const { return NONE; }
+        virtual bool isWriteCommandForConfigServer() const { return false; }
         virtual bool slaveOk() const { return true; }
         virtual bool requiresAuth() { return false; }
 
@@ -72,7 +72,7 @@ namespace {
                          bool fromRepl);
 
         virtual void help(stringstream& help) const;
-        virtual LockType locktype() const { return NONE; }
+        virtual bool isWriteCommandForConfigServer() const { return false; }
         virtual bool slaveOk() const { return true; }
         virtual bool requiresAuth() { return false; }
     };
