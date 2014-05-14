@@ -44,7 +44,8 @@ namespace mongo {
             return Status::OK();
         }
 
-        virtual bool run(const std::string& db,
+        virtual bool run(TransactionExperiment* txn,
+                         const std::string& db,
                          BSONObj& cmdObj,
                          int options,
                          std::string& errmsg,
@@ -65,7 +66,8 @@ namespace mongo {
         os << "Insert a custom message into the audit log";
     }
 
-    bool CmdLogApplicationMessage::run(const std::string& db,
+    bool CmdLogApplicationMessage::run(TransactionExperiment* txn,
+                                       const std::string& db,
                                        BSONObj& cmdObj,
                                        int options,
                                        std::string& errmsg,

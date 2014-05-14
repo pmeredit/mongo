@@ -42,7 +42,8 @@ namespace {
         virtual void addRequiredPrivileges(
                 const std::string&, const BSONObj&, std::vector<Privilege>*) {}
 
-        virtual bool run(const std::string& db,
+        virtual bool run(TransactionExperiment* txn,
+                         const std::string& db,
                          BSONObj& cmdObj,
                          int options,
                          std::string& ignored,
@@ -64,7 +65,8 @@ namespace {
         virtual void addRequiredPrivileges(
                 const std::string&, const BSONObj&, std::vector<Privilege>*) {}
 
-        virtual bool run(const std::string& db,
+        virtual bool run(TransactionExperiment* txn,
+                         const std::string& db,
                          BSONObj& cmdObj,
                          int options,
                          std::string& ignored,
@@ -229,7 +231,8 @@ namespace {
         os << "First step in a SASL authentication conversation.";
     }
 
-    bool CmdSaslStart::run(const std::string& db,
+    bool CmdSaslStart::run(TransactionExperiment* txn,
+                           const std::string& db,
                            BSONObj& cmdObj,
                            int options,
                            std::string& ignored,
@@ -267,7 +270,8 @@ namespace {
     }
 
 
-    bool CmdSaslContinue::run(const std::string& db,
+    bool CmdSaslContinue::run(TransactionExperiment* txn,
+                              const std::string& db,
                               BSONObj& cmdObj,
                               int options,
                               std::string& ignored,
