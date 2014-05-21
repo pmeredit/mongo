@@ -65,6 +65,7 @@ namespace {
     // Mechanism name constants.
     const char mechanismCRAMMD5[] = "CRAM-MD5";
     const char mechanismDIGESTMD5[] = "DIGEST-MD5";
+    const char mechanismSCRAMSHA1[] = "SCRAM-SHA-1";
     const char mechanismGSSAPI[] = "GSSAPI";
     const char mechanismPLAIN[] = "PLAIN";
 
@@ -140,6 +141,7 @@ namespace {
     /// support.
     SaslAuthenticationSession::SaslMechanismInfo _mongoKnownMechanisms[] = {
         { mechanismCRAMMD5, smokeCommonMechanism, isAuthorizedCommon },
+        { mechanismSCRAMSHA1, smokeCommonMechanism, isAuthorizedCommon },
         { mechanismGSSAPI, smokeGssapiMechanism, isAuthorizedGssapi },
         { mechanismPLAIN, smokeCommonMechanism, isAuthorizedCommon },
         { NULL }
@@ -382,8 +384,11 @@ namespace {
         const char* const input = inputData.empty() ? NULL : inputData.rawData();
         const unsigned inputLen = static_cast<unsigned>(inputData.size());
         if (0 == _saslStep) {
+            // Cyrus SASL uses "SCRAM" as the internal mechanism name
+            std::string mechName = strcmp(_mechInfo->name, "SCRAM-SHA-1") == 0 ?
+                "SCRAM" : _mechInfo->name;
             result = sasl_server_start(_saslConnection,
-                                       _mechInfo->name,
+                                       mechName.c_str(),
                                        input,
                                        inputLen,
                                        &output,

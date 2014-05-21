@@ -87,18 +87,20 @@ namespace {
                         UserName(StringData(user, ulen), session->getAuthenticationDatabase()),
                         &userObj);
 
-        std::string userPassword;
         if (!status.isOK()) {
             sparams->utils->log(sparams->utils->conn,
-                                SASL_LOG_DEBUG,
-                                "auxpropMongoDBInternal failed to find privilege document: %s",
-                                status.toString().c_str());
-            userPassword = "";
-        } else {
-            userPassword = userObj->getCredentials().password;
-            session->getAuthorizationSession()->getAuthorizationManager().releaseUser(userObj);
+                    SASL_LOG_DEBUG,
+                    "auxpropMongoDBInternal failed to find privilege document: %s",
+                    status.toString().c_str());
+            if (isAuthzLookup) {
+                return SASL_OK;  // Cannot return NOUSER for authz lookups
+            }
+            return SASL_NOUSER;
         }
 
+        const User::CredentialData creds = userObj->getCredentials();
+        session->getAuthorizationSession()->getAuthorizationManager().releaseUser(userObj);
+        
         // Iterate over the properties to fetch, and set the ones we know how to set.
         const propval* to_fetch = sparams->utils->prop_get(sparams->propctx);
         if (!to_fetch)
@@ -136,14 +138,37 @@ namespace {
             }
 
             int curRet;
-            if (propName == SASL_AUX_PASSWORD_PROP) {
-                if (userPassword.empty()) {
-                    curRet = SASL_NOUSER;
-                }
+            std::string authMech = session->getMechanism();
+
+            if (propName == SASL_AUX_PASSWORD_PROP && authMech == "CRAM-MD5") {
+                std::string userPassword = creds.password;
                 sparams->utils->prop_set(sparams->propctx,
                                          cur->name,
                                          userPassword.c_str(),
                                          userPassword.size());
+                curRet = SASL_OK;
+            }
+            else if (propName == "authPassword" && authMech == "SCRAM-SHA-1") {
+                
+                /* Create a SCRAM authPassword on the form:
+                 * authPassword:= sasl-mech $ iter-count : salt $ storedKey : serverKey
+                 * This form was chosen for the SCRAM Cyrus SASL plugin to conform with
+                 * the LDAP authPassword property, see RFC 5803
+                 */
+               
+                std::stringstream ss;
+                ss << "SCRAM-SHA-1" << "$";
+                
+                ss << creds.scram.iterationCount << ":";
+                ss << creds.scram.salt << "$";
+                ss << creds.scram.storedKey << ":";
+                ss << creds.scram.serverKey;
+
+                std::string authPassword = ss.str();
+                sparams->utils->prop_set(sparams->propctx,
+                                         cur->name,
+                                         authPassword.c_str(),
+                                         authPassword.size());
                 curRet = SASL_OK;
             }
             else {
