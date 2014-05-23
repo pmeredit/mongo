@@ -115,7 +115,7 @@ namespace mongo {
                 }
 
                 int respond( netsnmp_variable_list* var ) {
-                    int val = replset::_isMaster();
+                    int val = repl::_isMaster();
 
                     return snmp_set_var_typed_value(var, ASN_INTEGER,
                                                     reinterpret_cast<u_char *>(&val),
@@ -570,7 +570,7 @@ namespace mongo {
             // returns whether the current metric is valid for this mongod instance
             bool isValidMetric() const {
              
-                if (_replicaSetOnly && !replset::replSettings.usingReplSets()) {
+                if (_replicaSetOnly && !repl::replSettings.usingReplSets()) {
                     return false;
                 }
 
