@@ -31,14 +31,13 @@ namespace mongo {
         CmdLogApplicationMessage();
         virtual ~CmdLogApplicationMessage();
 
-        virtual Status checkAuthForCommand(OperationContext* txn,
-                                           ClientBasic* client,
+        virtual Status checkAuthForCommand(ClientBasic* client,
                                            const std::string& dbname,
                                            const BSONObj& cmdObj) {
             AuthorizationSession* authzSession = client->getAuthorizationSession();
 
             if (!authzSession->isAuthorizedForActionsOnResource(
-                    txn, ResourcePattern::forClusterResource(), ActionType::applicationMessage)) {
+                    ResourcePattern::forClusterResource(), ActionType::applicationMessage)) {
                 return Status(ErrorCodes::Unauthorized,
                               str::stream() << "Not authorized to send custom message to auditlog");
             }
