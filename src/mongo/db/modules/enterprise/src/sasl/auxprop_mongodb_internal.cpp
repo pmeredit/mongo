@@ -83,6 +83,7 @@ namespace {
         // authentication database is also the source database for the user.
         Status status = session->getAuthorizationSession()->getAuthorizationManager().
                 acquireUser(
+                        session->getOpCtxt(),
                         UserName(StringData(user, ulen), session->getAuthenticationDatabase()),
                         &userObj);
 

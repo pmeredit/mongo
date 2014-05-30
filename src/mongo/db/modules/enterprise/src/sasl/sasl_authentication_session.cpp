@@ -16,6 +16,7 @@
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/authz_manager_external_state_mock.h"
 #include "mongo/db/auth/authz_session_external_state_mock.h"
+#include "mongo/db/operation_context_noop.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/mongoutils/str.h"
 #include "mongo_gssapi.h"
@@ -76,12 +77,14 @@ namespace {
         AuthorizationManager authzManager(new AuthzManagerExternalStateMock());
         AuthorizationSession authzSession(new AuthzSessionExternalStateMock(&authzManager));
         SaslAuthenticationSession session(&authzSession);
+        OperationContextNoop txn;
         Status status = session.start("test",
                                       mechanismName,
                                       serviceName,
                                       serviceHostname,
                                       1,
                                       true);
+        session.setOpCtxt(&txn);
         if (status.isOK()) {
             std::string ignored;
             status = session.step("", &ignored);

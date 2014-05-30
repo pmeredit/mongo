@@ -17,6 +17,7 @@
 namespace mongo {
 
     class AuthorizationSession;
+    class OperationContext;
 
     /**
      * Authentication session data for the server side of SASL authentication.
@@ -87,6 +88,14 @@ namespace mongo {
         Status step(const StringData& inputData, std::string* outputData);
 
         /**
+         * Returns the the operation context associated with the currently executing command.
+         * Authentication commands must set this on their associated 
+         * SaslAuthenticationSession.
+         */
+        OperationContext* getOpCtxt() const { return _txn; }
+        void setOpCtxt(OperationContext* txn) { _txn = txn; }
+
+        /**
          * Gets the name of the database against which this authentication conversation is running.
          *
          * Not meaningful before a successful call to start().
@@ -142,6 +151,7 @@ namespace mongo {
 
     private:
         static const int maxCallbacks = 4;
+        OperationContext* _txn;
         AuthorizationSession* _authzSession;
         std::string _authenticationDatabase;
         std::string _serviceName;

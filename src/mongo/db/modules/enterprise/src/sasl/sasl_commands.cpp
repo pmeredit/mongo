@@ -160,7 +160,8 @@ namespace {
 
         if (session->isDone()) {
             UserName userName(session->getPrincipalId(), session->getAuthenticationDatabase());
-            status = session->getAuthorizationSession()->addAndAuthorizeUser(userName);
+            status = session->getAuthorizationSession()->addAndAuthorizeUser(
+                                                            session->getOpCtxt(), userName);
             if (!status.isOK()) {
                 return status;
             }
@@ -246,6 +247,8 @@ namespace {
                 client->getAuthorizationSession());
         boost::scoped_ptr<AuthenticationSession> sessionGuard(session);
 
+        session->setOpCtxt(txn);
+
         Status status = doSaslStart(session, db, cmdObj, &result);
         addStatus(status, &result);
 
@@ -296,6 +299,8 @@ namespace {
                       &result);
             return false;
         }
+
+        session->setOpCtxt(txn);
 
         Status status = doSaslContinue(session, cmdObj, &result);
         addStatus(status, &result);
