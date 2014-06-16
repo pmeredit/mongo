@@ -9,6 +9,7 @@
 #include "mongo/bson/mutable/document.h"
 #include "mongo/bson/mutable/element.h"
 #include "mongo/client/sasl_client_session.h"
+#include "mongo/db/commands.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/authz_manager_external_state_mock.h"
@@ -19,6 +20,9 @@
 #include "sasl_authentication_session.h"
 
 namespace mongo {
+
+    int Command::testCommandsEnabled = 1; // To fix compile without needing to link Command code.
+
 namespace {
 
     class SaslConversation : public unittest::Test {
@@ -54,10 +58,18 @@ namespace {
         client(),
         server(&authSession) {
 
+        ASSERT_OK(authManagerExternalState->updateOne(
+                AuthorizationManager::versionCollectionNamespace,
+                AuthorizationManager::versionDocumentQuery,
+                BSON("$set" << BSON(AuthorizationManager::schemaVersionFieldName <<
+                                    AuthorizationManager::schemaVersion26Final)),
+                true,
+                BSONObj()));
         ASSERT_OK(authManagerExternalState->insert(
                 NamespaceString("admin.system.users"),
-                BSON("name" << "andy" <<
-                     "source" << "test" <<
+                BSON("_id" << "test.andy" <<
+                     "user" << "andy" <<
+                     "db" << "test" <<
                      "credentials" << BSON("MONGODB-CR" << "frim") <<
                      "roles" << BSONArray()),
                 BSONObj()));

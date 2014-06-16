@@ -100,7 +100,7 @@ namespace {
 
         const User::CredentialData creds = userObj->getCredentials();
         session->getAuthorizationSession()->getAuthorizationManager().releaseUser(userObj);
-        
+
         // Iterate over the properties to fetch, and set the ones we know how to set.
         const propval* to_fetch = sparams->utils->prop_get(sparams->propctx);
         if (!to_fetch)
@@ -140,7 +140,9 @@ namespace {
             int curRet;
             std::string authMech = session->getMechanism();
 
-            if (propName == SASL_AUX_PASSWORD_PROP && authMech == "CRAM-MD5") {
+            if (propName == SASL_AUX_PASSWORD_PROP &&
+                (authMech == "CRAM-MD5" || authMech == "PLAIN")) {
+
                 std::string userPassword = creds.password;
                 sparams->utils->prop_set(sparams->propctx,
                                          cur->name,
@@ -149,16 +151,16 @@ namespace {
                 curRet = SASL_OK;
             }
             else if (propName == "authPassword" && authMech == "SCRAM-SHA-1") {
-                
+
                 /* Create a SCRAM authPassword on the form:
                  * authPassword:= sasl-mech $ iter-count : salt $ storedKey : serverKey
                  * This form was chosen for the SCRAM Cyrus SASL plugin to conform with
                  * the LDAP authPassword property, see RFC 5803
                  */
-               
+
                 std::stringstream ss;
                 ss << "SCRAM-SHA-1" << "$";
-                
+
                 ss << creds.scram.iterationCount << ":";
                 ss << creds.scram.salt << "$";
                 ss << creds.scram.storedKey << ":";
