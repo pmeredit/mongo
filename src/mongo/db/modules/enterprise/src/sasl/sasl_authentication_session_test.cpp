@@ -240,17 +240,4 @@ namespace {
 
 }  // namespace
 
-#if defined(_WIN32)
-    // This can be removed when SERVER-9704 is resolved.
-    struct WinsockInit {
-        WinsockInit() {
-            WSADATA d;
-            if ( WSAStartup(MAKEWORD(2,2), &d) != 0 ) {
-                out() << "ERROR: wsastartup failed " << errnoWithDescription() << endl;
-                problem() << "ERROR: wsastartup failed " << errnoWithDescription() << endl;
-                _exit(EXIT_NTSERVICE_ERROR);
-            }
-        }
-    } winsock_init;
-#endif
 }  // namespace mongo
