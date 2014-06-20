@@ -21,9 +21,11 @@
 #include "mongo/base/status.h"
 #include "mongo/db/client.h"
 #include "mongo/db/db.h"
-#include "mongo/db/repl/is_master.h"
+#include "mongo/db/repl/repl_coordinator_global.h"
+#include "mongo/db/repl/repl_settings.h"
 #include "mongo/db/server_options.h"
 #include "mongo/db/stats/counters.h"
+#include "mongo/db/storage/mmap_v1/dur.h"
 #include "mongo/db/storage_options.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/background.h"
@@ -115,7 +117,8 @@ namespace mongo {
                 }
 
                 int respond( netsnmp_variable_list* var ) {
-                    int val = repl::_isMaster();
+                    int val =
+                            repl::getGlobalReplicationCoordinator()->isMasterForReportingPurposes();
 
                     return snmp_set_var_typed_value(var, ASN_INTEGER,
                                                     reinterpret_cast<u_char *>(&val),
