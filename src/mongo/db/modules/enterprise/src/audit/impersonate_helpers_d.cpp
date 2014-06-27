@@ -13,6 +13,7 @@
 #include "mongo/db/commands/authentication_commands.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/s/d_logic.h"
+#include "mongo/util/mongoutils/str.h"
 
 namespace mongo {
 namespace audit {
