@@ -2,6 +2,7 @@
  * Copyright (C) 2013 10gen, Inc.  All Rights Reserved.
  */
 
+#include <boost/scoped_ptr.hpp>
 #include <cstdlib>
 #include <string>
 #include <sys/types.h>
@@ -21,7 +22,7 @@
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
 #include "mongo/util/scopeguard.h"
-#include "sasl_authentication_session.h"
+#include "cyrus_sasl_authentication_session.h"
 
 namespace mongo {
     int Command::testCommandsEnabled = 1; // To fix compile without needing to link Command code.
@@ -109,7 +110,7 @@ int main(int argc, char** argv, char** envp) {
 
     runGlobalInitializersOrDie(argc, argv, envp);
 
-    Status status = SaslAuthenticationSession::smokeTestMechanism(
+    Status status = CyrusSaslAuthenticationSession::smokeTestMechanism(
             "GSSAPI", mockServiceName, mockHostName);
     if (!status.isOK()) {
         log() << "Failed to smoke server mechanism.  " << status << std::endl;
@@ -131,7 +132,7 @@ namespace {
         AuthorizationManager authManager;
         AuthorizationSession authSession;
         SaslClientSession client;
-        SaslAuthenticationSession server;
+        boost::scoped_ptr<SaslAuthenticationSession> server;
         const std::string mechanism;
 
     protected:
@@ -142,8 +143,8 @@ namespace {
         authManager(new AuthzManagerExternalStateMock()),
         authSession(new AuthzSessionExternalStateMock(&authManager)),
         client(),
-        server(&authSession),
         mechanism("GSSAPI") {
+        server.reset(SaslAuthenticationSession::create(&authSession));
     }
 
     void SaslConversationGssapi::assertConversationFailure() {
@@ -155,7 +156,7 @@ namespace {
             clientStatus = client.step(serverMessage, &clientMessage);
             if (!clientStatus.isOK())
                 break;
-            serverStatus = server.step(clientMessage, &serverMessage);
+            serverStatus = server->step(clientMessage, &serverMessage);
             if (!serverStatus.isOK())
                 break;
         } while (!client.isDone());
@@ -169,20 +170,20 @@ namespace {
         client.setParameter(SaslClientSession::parameterUser, userName);
         ASSERT_OK(client.initialize());
 
-        ASSERT_OK(server.start("test",
-                               mechanism,
-                               mockServiceName,
-                               mockHostName,
-                               1,
-                               true));
+        ASSERT_OK(server->start("test",
+                                mechanism,
+                                mockServiceName,
+                                mockHostName,
+                                1,
+                                true));
 
         std::string clientMessage;
         std::string serverMessage;
         do {
             ASSERT_OK(client.step(serverMessage, &clientMessage));
-            ASSERT_OK(server.step(clientMessage, &serverMessage));
+            ASSERT_OK(server->step(clientMessage, &serverMessage));
         } while (!client.isDone());
-        ASSERT_TRUE(server.isDone());
+        ASSERT_TRUE(server->isDone());
     }
 
     TEST_F(SaslConversationGssapi, NoSuchUser) {
@@ -192,12 +193,12 @@ namespace {
         client.setParameter(SaslClientSession::parameterUser, "WrongUserName");
         ASSERT_OK(client.initialize());
 
-        ASSERT_OK(server.start("test",
-                               mechanism,
-                               mockServiceName,
-                               mockHostName,
-                               1,
-                               true));
+        ASSERT_OK(server->start("test",
+                                mechanism,
+                                mockServiceName,
+                                mockHostName,
+                                1,
+                                true));
 
         assertConversationFailure();
     }
@@ -209,12 +210,12 @@ namespace {
         client.setParameter(SaslClientSession::parameterUser, userName);
         ASSERT_OK(client.initialize());
 
-        ASSERT_OK(server.start("test",
-                               mechanism,
-                               mockServiceName,
-                               mockHostName,
-                               1,
-                               true));
+        ASSERT_OK(server->start("test",
+                                mechanism,
+                                mockServiceName,
+                                mockHostName,
+                                1,
+                                true));
 
         assertConversationFailure();
     }
@@ -226,12 +227,12 @@ namespace {
         client.setParameter(SaslClientSession::parameterUser, userName);
         ASSERT_OK(client.initialize());
 
-        ASSERT_OK(server.start("test",
-                               mechanism,
-                               mockServiceName,
-                               mockHostName,
-                               1,
-                               true));
+        ASSERT_OK(server->start("test",
+                                mechanism,
+                                mockServiceName,
+                                mockHostName,
+                                1,
+                                true));
 
         assertConversationFailure();
     }

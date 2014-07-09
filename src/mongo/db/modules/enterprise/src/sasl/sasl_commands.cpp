@@ -22,17 +22,13 @@
 #include "mongo/util/mongoutils/str.h"
 #include "mongo/util/sequence_util.h"
 #include "mongo/util/stringutils.h"
-#include "sasl_authentication_session.h"
+#include "cyrus_sasl_authentication_session.h"
 #include "sasl_options.h"
 
 namespace mongo {
 namespace {
 
     const bool autoAuthorizeDefault = true;
-
-    // The name we give to the nonce-authenticate mechanism in the free product.
-    const char mechanismMONGODBCR[] = "MONGODB-CR";
-    const char mechanismMONGODBX509[] = "MONGODB-X509";
 
     class CmdSaslStart : public Command {
     public:
@@ -81,7 +77,6 @@ namespace {
 
     CmdSaslStart cmdSaslStart;
     CmdSaslContinue cmdSaslContinue;
-
     Status buildResponse(const SaslAuthenticationSession* session,
                          const std::string& responsePayload,
                          BSONType responsePayloadType,
@@ -145,6 +140,7 @@ namespace {
             return status;
 
         std::string responsePayload;
+        // Passing in a payload and extracting a responsePayload
         status = session->step(payload, &responsePayload);
         if (!status.isOK()) {
             log() << session->getMechanism() << " authentication failed for " <<
@@ -243,8 +239,9 @@ namespace {
         ClientBasic* client = ClientBasic::getCurrent();
         client->resetAuthenticationSession(NULL);
 
-        SaslAuthenticationSession* session = new SaslAuthenticationSession(
-                client->getAuthorizationSession());
+        SaslAuthenticationSession* session = 
+            SaslAuthenticationSession::create(client->getAuthorizationSession());
+        
         boost::scoped_ptr<AuthenticationSession> sessionGuard(session);
 
         session->setOpCtxt(txn);
@@ -271,7 +268,6 @@ namespace {
     void CmdSaslContinue::help(std::stringstream& os) const {
         os << "Subsequent steps in a SASL authentication conversation.";
     }
-
 
     bool CmdSaslContinue::run(OperationContext* txn,
                               const std::string& db,
@@ -319,7 +315,7 @@ namespace {
         return status.isOK();
     }
 
-    MONGO_INITIALIZER_WITH_PREREQUISITES(SaslCommands, 
+    MONGO_INITIALIZER_WITH_PREREQUISITES(SaslAuthMechanisms, 
                                          ("CyrusSaslServerCore", "CyrusSaslAllPluginsRegistered"))
         (InitializerContext*) {
 
@@ -328,19 +324,22 @@ namespace {
         if (saslGlobalParams.serviceName.empty())
             saslGlobalParams.serviceName = saslDefaultServiceName;
 
-        if (!sequenceContains(saslGlobalParams.authenticationMechanisms, mechanismMONGODBCR))
-            CmdAuthenticate::disableAuthMechanism(mechanismMONGODBCR);
+        if (!sequenceContains(saslGlobalParams.authenticationMechanisms, 
+                              SaslAuthenticationSession::mechanismMONGODBCR))
+            CmdAuthenticate::disableAuthMechanism(SaslAuthenticationSession::mechanismMONGODBCR);
         
-        if (!sequenceContains(saslGlobalParams.authenticationMechanisms, mechanismMONGODBX509))
-            CmdAuthenticate::disableAuthMechanism(mechanismMONGODBX509);
+        if (!sequenceContains(saslGlobalParams.authenticationMechanisms, 
+                              SaslAuthenticationSession::mechanismMONGODBX509))
+            CmdAuthenticate::disableAuthMechanism(SaslAuthenticationSession::mechanismMONGODBX509);
 
         for (size_t i = 0; i < saslGlobalParams.authenticationMechanisms.size(); ++i) {
             const std::string& mechanism = saslGlobalParams.authenticationMechanisms[i];
-            if (mechanism == mechanismMONGODBCR || mechanism == mechanismMONGODBX509) {
+            if (mechanism == SaslAuthenticationSession::mechanismMONGODBCR || 
+                mechanism == SaslAuthenticationSession::mechanismMONGODBX509) {
                 // Not a SASL mechanism; no need to smoke test the built-in mechanism.
                 continue;
             }
-            Status status = SaslAuthenticationSession::smokeTestMechanism(
+            Status status = CyrusSaslAuthenticationSession::smokeTestMechanism(
                     saslGlobalParams.authenticationMechanisms[i],
                     saslGlobalParams.serviceName,
                     saslGlobalParams.hostName);

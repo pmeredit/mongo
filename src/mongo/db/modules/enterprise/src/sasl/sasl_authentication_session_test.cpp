@@ -2,6 +2,7 @@
  * Copyright (C) 2013 10gen, Inc.  All Rights Reserved.
  */
 
+#include <boost/scoped_ptr.hpp>
 #include <string>
 #include <vector>
 
@@ -40,7 +41,7 @@ namespace {
         AuthzSessionExternalStateMock* authzSessionExternalState;
         AuthorizationSession authSession;
         SaslClientSession client;
-        SaslAuthenticationSession server;
+        boost::scoped_ptr<SaslAuthenticationSession> server;
         std::string mechanism;
 
     private:
@@ -55,9 +56,9 @@ namespace {
         authManager(authManagerExternalState),
         authzSessionExternalState(new AuthzSessionExternalStateMock(&authManager)),
         authSession(authzSessionExternalState),
-        client(),
-        server(&authSession) {
+        client() {
 
+        server.reset(SaslAuthenticationSession::create(&authSession));
         ASSERT_OK(authManagerExternalState->updateOne(
                 AuthorizationManager::versionCollectionNamespace,
                 AuthorizationManager::versionDocumentQuery,
@@ -84,14 +85,14 @@ namespace {
             clientStatus = client.step(serverMessage, &clientMessage);
             if (!clientStatus.isOK())
                 break;
-            serverStatus = server.step(clientMessage, &serverMessage);
+            serverStatus = server->step(clientMessage, &serverMessage);
             if (!serverStatus.isOK())
                 break;
         } while (!client.isDone());
         ASSERT_FALSE(serverStatus.isOK() &&
                      clientStatus.isOK() &&
                      client.isDone() &&
-                     server.isDone());
+                     server->isDone());
     }
 
     void SaslConversation::testSuccessfulAuthentication() {
@@ -102,7 +103,7 @@ namespace {
         client.setParameter(SaslClientSession::parameterPassword, "frim");
         ASSERT_OK(client.initialize());
 
-        ASSERT_OK(server.start("test",
+        ASSERT_OK(server->start("test",
                                mechanism,
                                mockServiceName,
                                mockHostName,
@@ -113,9 +114,9 @@ namespace {
         std::string serverMessage;
         do {
             ASSERT_OK(client.step(serverMessage, &clientMessage));
-            ASSERT_OK(server.step(clientMessage, &serverMessage));
+            ASSERT_OK(server->step(clientMessage, &serverMessage));
         } while (!client.isDone());
-        ASSERT_TRUE(server.isDone());
+        ASSERT_TRUE(server->isDone());
     }
 
     void SaslConversation::testNoSuchUser() {
@@ -126,7 +127,7 @@ namespace {
         client.setParameter(SaslClientSession::parameterPassword, "frim");
         ASSERT_OK(client.initialize());
 
-        ASSERT_OK(server.start("test",
+        ASSERT_OK(server->start("test",
                                mechanism,
                                mockServiceName,
                                mockHostName,
@@ -144,12 +145,12 @@ namespace {
         client.setParameter(SaslClientSession::parameterPassword, "WRONG");
         ASSERT_OK(client.initialize());
 
-        ASSERT_OK(server.start("test",
-                               mechanism,
-                               mockServiceName,
-                               mockHostName,
-                               1,
-                               true));
+        ASSERT_OK(server->start("test",
+                                mechanism,
+                                mockServiceName,
+                                mockHostName,
+                                1,
+                                true));
 
 
         assertConversationFailure();
@@ -164,12 +165,12 @@ namespace {
         client.setParameter(SaslClientSession::parameterPassword, "frim");
         ASSERT_OK(client.initialize());
 
-        ASSERT_OK(server.start("test",
-                               mechanism,
-                               mockServiceName,
-                               mockHostName,
-                               1,
-                               true));
+        ASSERT_OK(server->start("test",
+                                mechanism,
+                                mockServiceName,
+                                mockHostName,
+                                1,
+                                true));
 
         assertConversationFailure();
     }
@@ -182,12 +183,12 @@ namespace {
         client.setParameter(SaslClientSession::parameterPassword, "frim");
         ASSERT_OK(client.initialize());
 
-        ASSERT_OK(server.start("test",
-                               mechanism == "CRAM-MD5" ? "PLAIN" : "CRAM-MD5",
-                               mockServiceName,
-                               mockHostName,
-                               1,
-                               true));
+        ASSERT_OK(server->start("test",
+                                mechanism == "CRAM-MD5" ? "PLAIN" : "CRAM-MD5",
+                                mockServiceName,
+                                mockHostName,
+                                1,
+                                true));
 
         assertConversationFailure();
     }
@@ -230,12 +231,12 @@ namespace {
     }
 
     TEST_F(SaslConversation, IllegalServerMechanism) {
-        ASSERT_NOT_OK(server.start("test",
-                                   "FAKE",
-                                   mockServiceName,
-                                   mockHostName,
-                                   1,
-                                   true));
+        ASSERT_NOT_OK(server->start("test",
+                                    "FAKE",
+                                    mockServiceName,
+                                    mockHostName,
+                                    1,
+                                    true));
     }
 
 }  // namespace
