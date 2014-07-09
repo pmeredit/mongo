@@ -22,7 +22,6 @@
 #include "mongo/db/client.h"
 #include "mongo/db/db.h"
 #include "mongo/db/repl/repl_coordinator_global.h"
-#include "mongo/db/repl/repl_settings.h"
 #include "mongo/db/server_options.h"
 #include "mongo/db/stats/counters.h"
 #include "mongo/db/storage/mmap_v1/dur.h"
@@ -573,7 +572,8 @@ namespace mongo {
             // returns whether the current metric is valid for this mongod instance
             bool isValidMetric() const {
              
-                if (_replicaSetOnly && !repl::replSettings.usingReplSets()) {
+                if (_replicaSetOnly &&
+                        !repl::getGlobalReplicationCoordinator()->getSettings().usingReplSets()) {
                     return false;
                 }
 
