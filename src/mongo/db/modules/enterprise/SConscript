@@ -76,6 +76,7 @@ env.CppUnitTest('sasl_authentication_session_test',
                 ['src/sasl/sasl_authentication_session_test.cpp'],
                 LIBDEPS=['mongosaslserversession',
                          '$BUILD_DIR/mongo/bson',
+                         '$BUILD_DIR/mongo/network',
                          '$BUILD_DIR/mongo/db/auth/authcore',
                          '$BUILD_DIR/mongo/sasl_client_session'])
 
