@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <sasl/sasl.h>
 #include <string>
 #include <vector>
 
@@ -11,9 +12,7 @@
 #include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
 #include "mongo/db/auth/authentication_session.h"
-#include "mongo/db/auth/authorization_session.h"
 #include "mongo/platform/cstdint.h"
-#include "mongo/stdx/functional.h"
 
 namespace mongo {
 
@@ -26,20 +25,31 @@ namespace mongo {
     class SaslAuthenticationSession : public AuthenticationSession {
         MONGO_DISALLOW_COPYING(SaslAuthenticationSession);
     public:
-        typedef stdx::function<SaslAuthenticationSession* (AuthorizationSession*)> 
-            SaslSessionFactoryFn;
-        static SaslSessionFactoryFn create; 
-
         struct SaslMechanismInfo;
-    
-        // Mechanism name constants.
-        static const char mechanismMONGODBCR[];
-        static const char mechanismMONGODBX509[];
-        static const char mechanismCRAMMD5[];
-        static const char mechanismDIGESTMD5[];
-        static const char mechanismSCRAMSHA1[];
-        static const char mechanismGSSAPI[];
-        static const char mechanismPLAIN[];
+
+        /**
+         * Callback ID of a dummy callback that always returns SASL_FAIL, but whose associated
+         * context pointer points to the SaslAuthenticationSession associated with a given
+         * sasl_conn_t.
+         *
+         * This is used to allow other MongoDB plugins to get a pointer to the correct
+         * SaslAuthenticationSession object.
+         */
+        static const int mongoSessionCallbackId;
+
+        /**
+         * Perform basic smoke testing of SASL mechanism "mechanism", to see if it is available for
+         * use in this server.
+         *
+         * Use this method for startup-time verification that "mechanism" is available, supposing
+         * that "serviceName" is the SASL service name and serviceHostname is the hostname of this
+         * server.
+         *
+         * Returns Status::OK() if the mechanism is available.
+         */
+        static Status smokeTestMechanism(const StringData& mechanism,
+                                         const StringData& serviceName,
+                                         const StringData& serviceHostname);
 
         explicit SaslAuthenticationSession(AuthorizationSession* authSession);
         virtual ~SaslAuthenticationSession();
@@ -59,12 +69,12 @@ namespace mongo {
          *
          * Must be called only once on an instance.
          */
-        virtual Status start(const StringData& authenticationDatabase,
-                             const StringData& mechanism,
-                             const StringData& serviceName,
-                             const StringData& serviceHostname,
-                             int64_t conversationId,
-                             bool autoAuthorize) = 0;
+        Status start(const StringData& authenticationDatabase,
+                     const StringData& mechanism,
+                     const StringData& serviceName,
+                     const StringData& serviceHostname,
+                     int64_t conversationId,
+                     bool autoAuthorize);
 
         /**
          * Perform one step of the server side of the authentication session,
@@ -75,7 +85,7 @@ namespace mongo {
          *
          * Must not be called before start().
          */
-        virtual Status step(const StringData& inputData, std::string* outputData) = 0;
+        Status step(const StringData& inputData, std::string* outputData);
 
         /**
          * Returns the the operation context associated with the currently executing command.
@@ -115,14 +125,14 @@ namespace mongo {
          * Returns the empty string if the session does not yet know the identity being
          * authenticated.
          */
-        virtual std::string getPrincipalId() const = 0;
+        std::string getPrincipalId() const;
 
         /**
          * Gets the name of the SASL mechanism in use.
          *
          * Returns "" if start() has not been called or if start() did not return Status::OK().
          */
-        virtual const char* getMechanism() const = 0;
+        const char* getMechanism() const;
 
         /**
          * Returns true if automatic privilege acquisition should be used for this principal, after
@@ -132,7 +142,6 @@ namespace mongo {
 
         /**
          * Returns a pointer to the opaque SaslMechanismInfo object for the mechanism in use.
-         * Derived classes will provide an definition of SaslMechanismInfo
          *
          * Not meaningful before a successful call to start().
          */
@@ -140,13 +149,16 @@ namespace mongo {
 
         AuthorizationSession* getAuthorizationSession() { return _authzSession; }
 
-    protected:
+    private:
+        static const int maxCallbacks = 4;
         OperationContext* _txn;
         AuthorizationSession* _authzSession;
         std::string _authenticationDatabase;
         std::string _serviceName;
         std::string _serviceHostname;
+        sasl_conn_t* _saslConnection;
         int _saslStep;
+        sasl_callback_t _callbacks[maxCallbacks];
         const SaslMechanismInfo* _mechInfo;
         int64_t _conversationId;
         bool _autoAuthorize;
