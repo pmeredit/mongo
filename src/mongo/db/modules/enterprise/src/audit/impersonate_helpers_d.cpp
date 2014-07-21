@@ -111,7 +111,7 @@ namespace audit {
         for (elem = boit.next(); !elem.eoo(); elem = boit.next()) {
             if ( str::equals(elem.fieldName(), audit::cmdOptionImpersonatedRoles) ) {
                 // Ensure this is the last field in the object
-                uassert(4293, "impersonatedRoles is not the last field", !boit.more());
+                uassert(18530, "impersonatedRoles is not the last field", !boit.more());
                 break;
             }
         }
@@ -130,13 +130,13 @@ namespace audit {
             StringBuilder ss;
             ss << "invalid format of impersonatedRoles: "
                << status.toString();
-            uasserted(4291, ss.str());
+            uasserted(18531, ss.str());
         }
 
         // Check priv
         if (!authSession->isAuthorizedForPrivilege(
                 Privilege(ResourcePattern::forClusterResource(), ActionType::impersonate))) {
-            uasserted(4292, "unauthorized use of impersonatedRoles");
+            uasserted(18532, "unauthorized use of impersonatedRoles");
         }
 
         // Lop off the field.  It must be the last field due to the check above.
