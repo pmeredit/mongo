@@ -22,8 +22,10 @@ namespace audit {
         Date_t timestamp;
         SockAddr localAddr;
         SockAddr remoteAddr;
-        UserNameIterator authenticatedUsers;
-        UserNameIterator impersonatedUsers;
+        UserNameIterator authenticatedUserNames;
+        RoleNameIterator authenticatedRoleNames;
+        UserNameIterator impersonatedUserNames;
+        RoleNameIterator impersonatedRoleNames;
         ActionType actionType;
         ErrorCodes::Error result;
     };
@@ -39,13 +41,18 @@ namespace audit {
         MONGO_DISALLOW_COPYING(AuditEvent);
     public:
         Date_t getTimestamp() const { return _envelope.timestamp; }
-        const UserNameIterator& getAuthenticatedUsers() const {
-            return _envelope.authenticatedUsers;
+        const UserNameIterator getAuthenticatedUserNames() const {
+            return _envelope.authenticatedUserNames;
         }
-        const UserNameIterator& getImpersonatedUsers() const {
-            return _envelope.impersonatedUsers;
+        const RoleNameIterator getAuthenticatedRoleNames() const {
+            return _envelope.authenticatedRoleNames;
         }
-
+        const UserNameIterator getImpersonatedUserNames() const {
+            return _envelope.impersonatedUserNames;
+        }
+        const RoleNameIterator getImpersonatedRoleNames() const {
+            return _envelope.impersonatedRoleNames;
+        }
         const SockAddr& getLocalAddr() const { return _envelope.localAddr; }
         const SockAddr& getRemoteAddr() const { return _envelope.remoteAddr; }
         ActionType getActionType() const { return _envelope.actionType; }
@@ -82,6 +89,7 @@ namespace audit {
          * protected destructor.
          */
         virtual ~AuditEvent() {}
+
 
     private:
         virtual std::ostream& putTextDescription(std::ostream& os) const = 0;

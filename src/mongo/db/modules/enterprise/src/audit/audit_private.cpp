@@ -21,10 +21,14 @@ namespace audit {
             envelope->localAddr = client->port()->localAddr();
             envelope->remoteAddr = client->port()->remoteAddr();
         }
-        envelope->authenticatedUsers =
+        envelope->authenticatedUserNames =
             client->getAuthorizationSession()->getAuthenticatedUserNames();
-        envelope->impersonatedUsers =
+        envelope->authenticatedRoleNames =
+            client->getAuthorizationSession()->getAuthenticatedRoleNames();
+        envelope->impersonatedUserNames =
             client->getAuthorizationSession()->getImpersonatedUserNames();
+        envelope->impersonatedRoleNames =
+            client->getAuthorizationSession()->getImpersonatedRoleNames();
         envelope->actionType = actionType;
         envelope->result = result;
     }

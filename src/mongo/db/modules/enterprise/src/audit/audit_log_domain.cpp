@@ -36,24 +36,6 @@ namespace audit {
 
 namespace {
 
-    std::ostream& encodeTextBody(const AuditEvent& event, std::ostream& os) {
-        // Use impersonated user list if it exists; else use the authenticated users list.
-        UserNameIterator users = event.getImpersonatedUsers();
-        if (!users.more()) {
-            users = event.getAuthenticatedUsers();
-        }
-        if (users.more()) {
-            os << users.next().getFullName();
-            while (users.more()) {
-                os << ',' << users.next().getFullName();
-            }
-            os << ' ';
-        }
-
-        os << event.getRemoteAddr().toString() << '/' << event.getLocalAddr().toString() << ' ';
-        return event.putText(os) << '\n';
-    }
-
     class AuditEventTextEncoder : public logger::Encoder<AuditEvent> {
         virtual ~AuditEventTextEncoder() {}
         virtual std::ostream& encode(const AuditEvent& event, std::ostream& os) {

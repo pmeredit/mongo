@@ -13,6 +13,27 @@
 
 namespace mongo {
 namespace audit {
+
+    void appendImpersonatedRoleNames(RoleNameIterator roles, BSONArrayBuilder& builder) {
+        while (roles.more()) {
+            const RoleName& role = roles.next();
+            BSONObjBuilder roleNameBuilder(builder.subobjStart());
+            roleNameBuilder.append(AuthorizationManager::ROLE_NAME_FIELD_NAME,
+                                   role.getRole());
+            roleNameBuilder.append(AuthorizationManager::ROLE_SOURCE_FIELD_NAME,
+                                   role.getDB());
+        }
+    }
+
+    void appendImpersonatedUserNames(UserNameIterator userNames, BSONArrayBuilder& builder) {
+        while (userNames.more()) {
+            const UserName& userName = userNames.next();
+            BSONObjBuilder userNameBuilder(builder.subobjStart());
+            userNameBuilder.append(AuthorizationManager::USER_NAME_FIELD_NAME, userName.getUser());
+            userNameBuilder.append(AuthorizationManager::USER_DB_FIELD_NAME, userName.getDB());
+        }
+    }
+
     void appendImpersonatedUsers(BSONObjBuilder* cmd) {
         if (!getGlobalAuditManager()->enabled) {
             return;
@@ -23,13 +44,16 @@ namespace audit {
         if (!client) {
             return;
         }
+
         AuthorizationSession* authorizationSession(client->getAuthorizationSession());
-        UserNameIterator nameIter = authorizationSession->getAuthenticatedUserNames();
-        for (; nameIter.more(); nameIter.next()) {
-            BSONObjBuilder user(usersArrayBuilder.subobjStart());
-            user.append(saslCommandUserFieldName, nameIter->getUser());
-            user.append(saslCommandUserDBFieldName, nameIter->getDB());
-        }
+        appendImpersonatedUserNames(authorizationSession->getAuthenticatedUserNames(),
+                                    usersArrayBuilder);
+        usersArrayBuilder.done();
+
+        BSONArrayBuilder rolesArrayBuilder(cmd->subarrayStart(cmdOptionImpersonatedRoles));
+        appendImpersonatedRoleNames(authorizationSession->getAuthenticatedRoleNames(),
+                                    rolesArrayBuilder);
+        rolesArrayBuilder.done();
     }
 
 }
