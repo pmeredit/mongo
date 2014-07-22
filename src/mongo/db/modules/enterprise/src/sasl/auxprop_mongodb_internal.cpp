@@ -24,7 +24,7 @@
 #include "mongo/db/auth/user.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/util/mongoutils/str.h"
-#include "sasl_authentication_session.h"
+#include "cyrus_sasl_authentication_session.h"
 
 namespace mongo {
 namespace {
@@ -69,13 +69,14 @@ namespace {
         BSONObj privilegeDocument;
         void* sessionContext;
         int (*ignored)();
-        int ret = sparams->utils->getcallback(sparams->utils->conn,
-                                              SaslAuthenticationSession::mongoSessionCallbackId,
-                                              &ignored,
-                                              &sessionContext);
+        int ret = sparams->utils->getcallback(
+                                      sparams->utils->conn,
+                                      CyrusSaslAuthenticationSession::mongoSessionCallbackId,
+                                      &ignored,
+                                      &sessionContext);
         if (ret != SASL_OK)
             return SASL_FAIL;
-        SaslAuthenticationSession* session = static_cast<SaslAuthenticationSession*>(
+        CyrusSaslAuthenticationSession* session = static_cast<CyrusSaslAuthenticationSession*>(
                 sessionContext);
 
         User* userObj;

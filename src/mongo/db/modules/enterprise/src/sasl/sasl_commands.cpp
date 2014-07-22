@@ -22,17 +22,13 @@
 #include "mongo/util/mongoutils/str.h"
 #include "mongo/util/sequence_util.h"
 #include "mongo/util/stringutils.h"
-#include "sasl_authentication_session.h"
+#include "cyrus_sasl_authentication_session.h"
 #include "sasl_options.h"
 
 namespace mongo {
 namespace {
 
     const bool autoAuthorizeDefault = true;
-
-    // The name we give to the nonce-authenticate mechanism in the free product.
-    const char mechanismMONGODBCR[] = "MONGODB-CR";
-    const char mechanismMONGODBX509[] = "MONGODB-X509";
 
     class CmdSaslStart : public Command {
     public:
@@ -81,7 +77,6 @@ namespace {
 
     CmdSaslStart cmdSaslStart;
     CmdSaslContinue cmdSaslContinue;
-
     Status buildResponse(const SaslAuthenticationSession* session,
                          const std::string& responsePayload,
                          BSONType responsePayloadType,
@@ -145,6 +140,7 @@ namespace {
             return status;
 
         std::string responsePayload;
+        // Passing in a payload and extracting a responsePayload
         status = session->step(payload, &responsePayload);
         if (!status.isOK()) {
             log() << session->getMechanism() << " authentication failed for " <<
@@ -243,8 +239,9 @@ namespace {
         ClientBasic* client = ClientBasic::getCurrent();
         client->resetAuthenticationSession(NULL);
 
-        SaslAuthenticationSession* session = new SaslAuthenticationSession(
-                client->getAuthorizationSession());
+        SaslAuthenticationSession* session = 
+            SaslAuthenticationSession::create(client->getAuthorizationSession());
+        
         boost::scoped_ptr<AuthenticationSession> sessionGuard(session);
 
         session->setOpCtxt(txn);
@@ -271,7 +268,6 @@ namespace {
     void CmdSaslContinue::help(std::stringstream& os) const {
         os << "Subsequent steps in a SASL authentication conversation.";
     }
-
 
     bool CmdSaslContinue::run(OperationContext* txn,
                               const std::string& db,
@@ -323,6 +319,9 @@ namespace {
                                          ("CyrusSaslServerCore", "CyrusSaslAllPluginsRegistered"))
         (InitializerContext*) {
 
+        const char mechanismMONGODBCR[] = "MONGODB-CR";
+        const char mechanismMONGODBX509[] = "MONGODB-X509";
+        
         if (saslGlobalParams.hostName.empty())
             saslGlobalParams.hostName = getHostNameCached();
         if (saslGlobalParams.serviceName.empty())
@@ -340,7 +339,7 @@ namespace {
                 // Not a SASL mechanism; no need to smoke test the built-in mechanism.
                 continue;
             }
-            Status status = SaslAuthenticationSession::smokeTestMechanism(
+            Status status = CyrusSaslAuthenticationSession::smokeTestMechanism(
                     saslGlobalParams.authenticationMechanisms[i],
                     saslGlobalParams.serviceName,
                     saslGlobalParams.hostName);
