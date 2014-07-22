@@ -60,7 +60,7 @@ namespace audit {
                     role != _roles.end();
                     role++) {
             roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME << role->getRole()
-                               << AuthorizationManager::ROLE_SOURCE_FIELD_NAME << role->getDB()));
+                               << AuthorizationManager::ROLE_DB_FIELD_NAME << role->getDB()));
         }
         roleArray.doneFast();
         return builder;
@@ -125,7 +125,7 @@ namespace audit {
                     role != _roles.end();
                     role++) {
             roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME << role->getRole()
-                               << AuthorizationManager::ROLE_SOURCE_FIELD_NAME << role->getDB()));
+                               << AuthorizationManager::ROLE_DB_FIELD_NAME << role->getDB()));
         }
         roleArray.doneFast();
         return builder;
@@ -201,13 +201,13 @@ namespace audit {
 
     BSONObjBuilder& CreateRoleEvent::putParamsBSON(BSONObjBuilder& builder) const {
         builder.append(AuthorizationManager::ROLE_NAME_FIELD_NAME, _role.getRole());
-        builder.append(AuthorizationManager::ROLE_SOURCE_FIELD_NAME, _role.getDB());
+        builder.append(AuthorizationManager::ROLE_DB_FIELD_NAME, _role.getDB());
         BSONArrayBuilder roleArray(builder.subarrayStart("roles"));
         for (std::vector<RoleName>::const_iterator role = _roles.begin();
                     role != _roles.end();
                     role++) {
             roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME << role->getRole()
-                               << AuthorizationManager::ROLE_SOURCE_FIELD_NAME << role->getDB()));
+                               << AuthorizationManager::ROLE_DB_FIELD_NAME << role->getDB()));
         }
         roleArray.doneFast();
         BSONArrayBuilder privilegeArray(builder.subarrayStart("privileges"));
@@ -304,14 +304,14 @@ namespace audit {
 
     BSONObjBuilder& UpdateRoleEvent::putParamsBSON(BSONObjBuilder& builder) const {
         builder.append(AuthorizationManager::ROLE_NAME_FIELD_NAME, _role.getRole());
-        builder.append(AuthorizationManager::ROLE_SOURCE_FIELD_NAME, _role.getDB());
+        builder.append(AuthorizationManager::ROLE_DB_FIELD_NAME, _role.getDB());
         if (_roles && !_roles->empty()) {
             BSONArrayBuilder roleArray(builder.subarrayStart("roles"));
             for (std::vector<RoleName>::const_iterator role = _roles->begin();
                         role != _roles->end();
                         role++) {
                 roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME << role->getRole()
-                                   << AuthorizationManager::ROLE_SOURCE_FIELD_NAME
+                                   << AuthorizationManager::ROLE_DB_FIELD_NAME
                                    << role->getDB()));
             }
             roleArray.doneFast();
@@ -372,7 +372,7 @@ namespace audit {
 
     BSONObjBuilder& DropRoleEvent::putParamsBSON(BSONObjBuilder& builder) const {
         builder.append(AuthorizationManager::ROLE_NAME_FIELD_NAME, _role.getRole());
-        builder.append(AuthorizationManager::ROLE_SOURCE_FIELD_NAME, _role.getDB());
+        builder.append(AuthorizationManager::ROLE_DB_FIELD_NAME, _role.getDB());
         return builder;
     }
 
@@ -464,13 +464,13 @@ namespace audit {
 
     BSONObjBuilder& GrantRolesToRoleEvent::putParamsBSON(BSONObjBuilder& builder) const {
         builder.append(AuthorizationManager::ROLE_NAME_FIELD_NAME, _role.getRole());
-        builder.append(AuthorizationManager::ROLE_SOURCE_FIELD_NAME, _role.getDB());
+        builder.append(AuthorizationManager::ROLE_DB_FIELD_NAME, _role.getDB());
         BSONArrayBuilder roleArray(builder.subarrayStart("roles"));
         for (std::vector<RoleName>::const_iterator role = _roles.begin();
                     role != _roles.end();
                     role++) {
             roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME << role->getRole()
-                               << AuthorizationManager::ROLE_SOURCE_FIELD_NAME << role->getDB()));
+                               << AuthorizationManager::ROLE_DB_FIELD_NAME << role->getDB()));
         }
         roleArray.doneFast();
         return builder;
@@ -528,13 +528,13 @@ namespace audit {
 
     BSONObjBuilder& RevokeRolesFromRoleEvent::putParamsBSON(BSONObjBuilder& builder) const {
         builder.append(AuthorizationManager::ROLE_NAME_FIELD_NAME, _role.getRole());
-        builder.append(AuthorizationManager::ROLE_SOURCE_FIELD_NAME, _role.getDB());
+        builder.append(AuthorizationManager::ROLE_DB_FIELD_NAME, _role.getDB());
         BSONArrayBuilder roleArray(builder.subarrayStart("roles"));
         for (std::vector<RoleName>::const_iterator role = _roles.begin();
                     role != _roles.end();
                     role++) {
             roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME << role->getRole()
-                               << AuthorizationManager::ROLE_SOURCE_FIELD_NAME << role->getDB()));
+                               << AuthorizationManager::ROLE_DB_FIELD_NAME << role->getDB()));
         }
         roleArray.doneFast();
         return builder;
@@ -596,7 +596,7 @@ namespace audit {
 
     BSONObjBuilder& GrantPrivilegesToRoleEvent::putParamsBSON(BSONObjBuilder& builder) const {
         builder.append(AuthorizationManager::ROLE_NAME_FIELD_NAME, _role.getRole());
-        builder.append(AuthorizationManager::ROLE_SOURCE_FIELD_NAME, _role.getDB());
+        builder.append(AuthorizationManager::ROLE_DB_FIELD_NAME, _role.getDB());
         BSONArrayBuilder privilegeArray(builder.subarrayStart("privileges"));
         ParsedPrivilege printable;
         std::string trash;
@@ -667,7 +667,7 @@ namespace audit {
 
     BSONObjBuilder& RevokePrivilegesFromRoleEvent::putParamsBSON(BSONObjBuilder& builder) const {
         builder.append(AuthorizationManager::ROLE_NAME_FIELD_NAME, _role.getRole());
-        builder.append(AuthorizationManager::ROLE_SOURCE_FIELD_NAME, _role.getDB());
+        builder.append(AuthorizationManager::ROLE_DB_FIELD_NAME, _role.getDB());
         BSONArrayBuilder privilegeArray(builder.subarrayStart("privileges"));
         ParsedPrivilege printable;
         std::string trash;

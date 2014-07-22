@@ -20,7 +20,7 @@ namespace audit {
             BSONObjBuilder roleNameBuilder(builder.subobjStart());
             roleNameBuilder.append(AuthorizationManager::ROLE_NAME_FIELD_NAME,
                                    role.getRole());
-            roleNameBuilder.append(AuthorizationManager::ROLE_SOURCE_FIELD_NAME,
+            roleNameBuilder.append(AuthorizationManager::ROLE_DB_FIELD_NAME,
                                    role.getDB());
         }
     }

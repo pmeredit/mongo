@@ -83,7 +83,7 @@ namespace audit {
                     role != _roles.end();
                     role++) {
             roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME << role->getRole()
-                               << AuthorizationManager::ROLE_SOURCE_FIELD_NAME
+                               << AuthorizationManager::ROLE_DB_FIELD_NAME
                                << role->getDB()));
         }
         roleArray.done();
@@ -251,7 +251,7 @@ namespace audit {
                         role++) {
                 roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME
                                    << role->getRole()
-                                   << AuthorizationManager::ROLE_SOURCE_FIELD_NAME
+                                   << AuthorizationManager::ROLE_DB_FIELD_NAME
                                    << role->getDB()));
             }
             roleArray.done();
