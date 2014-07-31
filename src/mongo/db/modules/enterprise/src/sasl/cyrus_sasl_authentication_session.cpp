@@ -159,14 +159,6 @@ namespace {
 
         const StringData option = optionRaw;
 
-        if (option == StringData("log_level", StringData::LiteralTag())) {
-            // Returns the log verbosity level for the SASL library.
-            static const char saslLogLevel[] = "3";  // 3 is SASL_LOG_WARN.
-            *outResult = saslLogLevel;
-            *outLen = static_cast<unsigned>(boost::size(saslLogLevel));
-            return SASL_OK;
-        }
-
         if (option == StringData("auxprop_plugin", StringData::LiteralTag())) {
             // Returns the name of the plugin to use to look up user properties.  We use a custom
             // one that extracts the information from user privilege documents.
@@ -428,10 +420,8 @@ namespace {
         case SASL_LOG_NONE:
             break;
         case SASL_LOG_ERR:
-            error() << message << endl;
-            break;
         case SASL_LOG_FAIL:
-            // Logged elsewhere.
+            error() << message << endl;
             break;
         case SASL_LOG_WARN:
             warning() << message << endl;
@@ -440,8 +430,10 @@ namespace {
             log() << message << endl;
             break;
         case SASL_LOG_DEBUG:
-        case SASL_LOG_TRACE:
             LOG(1) << message << endl;
+            break;
+        case SASL_LOG_TRACE:
+            LOG(3) << message << endl;
             break;
         case SASL_LOG_PASS:
             // Don't log trace data that includes passwords.
