@@ -765,41 +765,6 @@ namespace mongo {
 
         }
 
-        void _initCounter( const char * name , const char* oidhelp , int * counter ) {
-            LOG(2) << "registering: " << name << " " << oidhelp;
-
-            netsnmp_handler_registration * reg = 
-                netsnmp_create_handler_registration( name , NULL,
-                                                     oidManager.getoid( oidhelp ), 
-                                                     oidManager.len( oidhelp ) ,
-                                                     HANDLER_CAN_RONLY);
-            
-            netsnmp_watcher_info * winfo = 
-                netsnmp_create_watcher_info( counter, sizeof(int),
-                                             ASN_COUNTER, WATCHER_FIXED_SIZE);
-            
-            _checkRegister( netsnmp_register_watched_scalar( reg, winfo ) );
-        }
-
-        void _initCounter( const char * name , const char* oidhelp , AtomicUInt * counter ) {
-            LOG(2) << "registering: " << name << " " << oidhelp;
-
-            netsnmp_handler_registration * reg = 
-                netsnmp_create_handler_registration( name , NULL,
-                                                     oidManager.getoid( oidhelp ),
-                                                     oidManager.len( oidhelp ) ,
-                                                     HANDLER_CAN_RONLY);
-
-            unsigned * u = (unsigned*)counter;
-
-            netsnmp_watcher_info * winfo = 
-                netsnmp_create_watcher_info( u , sizeof(unsigned),
-                                             ASN_COUNTER, WATCHER_FIXED_SIZE);
-            
-            _checkRegister( netsnmp_register_watched_scalar( reg, winfo ) );
-        }
-
-
         void _init() {
             
             // add all callbacks
