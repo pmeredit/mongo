@@ -17,6 +17,7 @@
 #include "mongo/db/commands.h"
 #include "mongo/db/operation_context_noop.h"
 #include "mongo/util/assert_util.h"
+#include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
 #include "mongo_gssapi.h"
 #include "sasl_options.h"

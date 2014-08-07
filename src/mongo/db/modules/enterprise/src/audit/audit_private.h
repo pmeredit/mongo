@@ -24,12 +24,7 @@ namespace audit {
      *
      * TODO(schwerin): Move to assert_util, once you can stream into fasserts.
      */
-    inline void fassertStatusOK(const Status& status) {
-        if (MONGO_unlikely(!status.isOK())) {
-            error() << status;
-            fassertFailed(status.code());
-        }
-    }
+    void fassertStatusOK(const Status& status);
 
     /**
      * Initializes the given "envelope" based on information in "client", plus

@@ -6,9 +6,17 @@
 
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/client_basic.h"
+#include "mongo/util/log.h"
 
 namespace mongo {
 namespace audit {
+
+    void fassertStatusOK(const Status& status) {
+        if (MONGO_unlikely(!status.isOK())) {
+            error() << status;
+            fassertFailed(status.code());
+        }
+    }
 
     void initializeEnvelope(
             AuditEventEnvelope* envelope,

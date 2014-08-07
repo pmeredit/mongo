@@ -6,6 +6,7 @@
 
 #include "mongo/base/status.h"
 #include "mongo/db/server_parameters.h"
+#include "mongo/util/log.h"
 #include "mongo/util/options_parser/startup_option_init.h"
 #include "mongo/util/options_parser/startup_options.h"
 
