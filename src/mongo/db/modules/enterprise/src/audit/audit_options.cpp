@@ -4,6 +4,8 @@
 
 #include "audit_options.h"
 
+#include <boost/filesystem.hpp>
+
 #include "audit_event.h"
 #include "audit_manager.h"
 #include "audit_manager_global.h"
@@ -85,6 +87,18 @@ namespace audit {
                     return Status(ErrorCodes::BadValue, "auditLog.path must be specified when "
                                                         "auditLog.destination is to a file");
                 }
+
+#ifdef _WIN32
+                if (params.count("install") || params.count("reinstall")) {
+                    if (params.count("auditLog.path") &&
+                        !boost::filesystem::path(params["auditLog.path"].as<string>())
+                            .is_absolute()) {
+                        return Status(ErrorCodes::BadValue,
+                            "auditLog.path requires an absolute file path with Windows services");
+                    }
+                }
+#endif
+
                 auditGlobalParams.auditPath = params["auditLog.path"].as<std::string>();
             }
             else {
