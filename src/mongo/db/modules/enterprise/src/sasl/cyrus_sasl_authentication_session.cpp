@@ -11,18 +11,21 @@
 #include "mongo/base/init.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/util/bson_extract.h"
+#include "mongo/client/sasl_client_authenticate.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_manager_global.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/authz_manager_external_state_mock.h"
 #include "mongo/db/auth/authz_session_external_state_mock.h"
+#include "mongo/db/auth/sasl_options.h"
 #include "mongo/db/commands.h"
+#include "mongo/db/commands/authentication_commands.h"
 #include "mongo/db/operation_context_noop.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
+#include "mongo/util/sequence_util.h"
 #include "mongo_gssapi.h"
-#include "sasl_options.h"
 
 namespace mongo {
 
@@ -360,7 +363,6 @@ namespace {
             // Cyrus SASL uses "SCRAM" as the internal mechanism name
             std::string mechName = strcmp(_mechInfo->name, "SCRAM-SHA-1") == 0 ?
                 "SCRAM" : _mechInfo->name;
-            log() << "calling sasl_server_start sasl_step is " << _saslStep;
             result = sasl_server_start(_saslConnection,
                                        mechName.c_str(),
                                        input,
@@ -369,14 +371,15 @@ namespace {
                                        &outputLen);
         }
         else {
-            log() << "calling sasl_server_step sasl_step is " << _saslStep;
             result = sasl_server_step(_saslConnection,
                                       input,
                                       inputLen,
                                       &output,
                                       &outputLen);
         }
+
         _done = (SASL_CONTINUE != result);
+
         switch (result) {
         case SASL_OK: {
             _done = true;
@@ -477,6 +480,29 @@ namespace {
 
         SaslAuthenticationSession::create = createCyrusSaslAuthenticationSession;
         
+        return Status::OK();
+    }
+
+    MONGO_INITIALIZER_GENERAL(CyrusSaslCommands, 
+                              ("NativeSaslServerCore",
+                               "CyrusSaslServerCore", 
+                               "CyrusSaslAllPluginsRegistered"),
+                              ("PostSaslCommands"))
+        (InitializerContext*) {
+        
+        for (size_t i = 0; i < saslGlobalParams.authenticationMechanisms.size(); ++i) {
+            const std::string& mechanism = saslGlobalParams.authenticationMechanisms[i];
+            if (mechanism == "MONGODB-CR" || mechanism == "MONGODB-X509") {
+                // Not a SASL mechanism; no need to smoke test the built-in mechanism.
+                continue;
+            }
+            Status status = CyrusSaslAuthenticationSession::smokeTestMechanism(
+                    saslGlobalParams.authenticationMechanisms[i],
+                    saslGlobalParams.serviceName,
+                    saslGlobalParams.hostName);
+            if (!status.isOK())
+                return status;
+        }
         return Status::OK();
     }
 

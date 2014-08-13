@@ -20,7 +20,7 @@
 #include "mongo/db/jsobj.h"
 #include "mongo/platform/unordered_map.h"
 #include "mongo/unittest/unittest.h"
-#include "sasl_authentication_session.h"
+#include "mongo/db/auth/sasl_authentication_session.h"
 
 namespace mongo {
 

@@ -59,17 +59,13 @@ env.Library('mongosaslserversession',
             ['src/sasl/auxprop_mongodb_internal.cpp',
              'src/sasl/canon_mongodb_internal.cpp',
              'src/sasl/mongo_${MONGO_GSSAPI_IMPL}.cpp',
-             'src/sasl/cyrus_sasl_authentication_session.cpp',
-             'src/sasl/native_sasl_authentication_session.cpp',
-             'src/sasl/sasl_authentication_session.cpp',
-             'src/sasl/sasl_options.cpp',
              ],
             LIBDEPS=['$BUILD_DIR/mongo/server_parameters',
                      '$BUILD_DIR/mongo/db/auth/authmocks'],
             SYSLIBDEPS=['sasl2', '${MONGO_GSSAPI_LIB}'])
 
 env.Library('mongosaslservercommon',
-            ['src/sasl/sasl_commands.cpp'],
+            'src/sasl/cyrus_sasl_authentication_session.cpp',
             LIBDEPS=['mongosaslserversession'],
             LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/${PROGPREFIX}mongod${PROGSUFFIX}',
                                 '$BUILD_DIR/mongo/${PROGPREFIX}mongos${PROGSUFFIX}'])
@@ -77,9 +73,11 @@ env.Library('mongosaslservercommon',
 env.CppUnitTest('sasl_authentication_session_test',
                 ['src/sasl/sasl_authentication_session_test.cpp'],
                 LIBDEPS=['mongosaslserversession',
+                         'mongosaslservercommon',
                          '$BUILD_DIR/mongo/bson',
                          '$BUILD_DIR/mongo/network',
                          '$BUILD_DIR/mongo/db/auth/authcore',
+                         '$BUILD_DIR/mongo/db/auth/saslauth',
                          '$BUILD_DIR/mongo/sasl_client_session'])
 
 if env['PYSYSPLATFORM'] == "win32":
@@ -102,8 +100,11 @@ else:
     gssapi_test = env.Program('sasl_authentication_session_gssapi_test',
                               ['src/sasl/sasl_authentication_session_gssapi_test.cpp'],
                               LIBDEPS=['mongosaslserversession',
+                                       'mongosaslservercommon',
                                        '$BUILD_DIR/mongo/bson',
+                                       '$BUILD_DIR/mongo/network',
                                        '$BUILD_DIR/mongo/db/auth/authcore',
+                                       '$BUILD_DIR/mongo/db/auth/saslauth',
                                        '$BUILD_DIR/mongo/sasl_client_session',
                                        '$BUILD_DIR/mongo/unittest/unittest',
                                        '$BUILD_DIR/mongo/unittest/unittest_crutch'])
