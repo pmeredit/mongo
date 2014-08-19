@@ -15,6 +15,8 @@
  * their use.
  */
 
+#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kAccessControl
+
 #include <cstring>
 #include <sasl/sasl.h>
 #include <sasl/saslplug.h>

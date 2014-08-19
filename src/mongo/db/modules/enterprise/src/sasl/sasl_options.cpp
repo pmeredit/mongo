@@ -2,6 +2,8 @@
  *    Copyright (C) 2013 10gen Inc.
  */
 
+#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kAccessControl
+
 #include "sasl_options.h"
 
 #include "mongo/base/status.h"

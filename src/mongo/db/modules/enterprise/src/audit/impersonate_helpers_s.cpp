@@ -2,6 +2,8 @@
 *    Copyright (C) 2013 MongoDB Inc.
 */
 
+#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kAccessControl
+
 #include "mongo/db/audit.h"
 
 #include "audit_manager_global.h"

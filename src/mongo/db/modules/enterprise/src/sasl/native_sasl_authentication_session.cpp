@@ -2,6 +2,8 @@
  * Copyright (C) 2014 10gen, Inc.  All Rights Reserved.
  */
 
+#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kAccessControl
+
 #include "native_sasl_authentication_session.h"
 
 #include <boost/range/size.hpp>

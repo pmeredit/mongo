@@ -2,6 +2,8 @@
  * Copyright (C) 2012 10gen, Inc.  All Rights Reserved.
  */
 
+#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kAccessControl
+
 #include <algorithm>
 #include <string>
 #include <vector>

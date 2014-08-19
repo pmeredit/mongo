@@ -2,6 +2,8 @@
  * Copyright (C) 2013 10gen, Inc.  All Rights Reserved.
  */
 
+#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kAccessControl
+
 #include <boost/scoped_ptr.hpp>
 #include <cstdlib>
 #include <string>
