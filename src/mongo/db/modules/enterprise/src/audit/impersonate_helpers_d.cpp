@@ -14,7 +14,6 @@
 #include "mongo/db/client_basic.h"
 #include "mongo/db/commands/authentication_commands.h"
 #include "mongo/db/jsobj.h"
-#include "mongo/s/d_logic.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
 
