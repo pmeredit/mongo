@@ -42,7 +42,7 @@ namespace {
         AuthorizationManager authManager;
         AuthzSessionExternalStateMock* authzSessionExternalState;
         AuthorizationSession authSession;
-        SaslClientSession client;
+        boost::scoped_ptr<SaslClientSession> client;
         boost::scoped_ptr<SaslAuthenticationSession> server;
         std::string mechanism;
 
@@ -57,9 +57,9 @@ namespace {
         authManagerExternalState(new AuthzManagerExternalStateMock),
         authManager(authManagerExternalState),
         authzSessionExternalState(new AuthzSessionExternalStateMock(&authManager)),
-        authSession(authzSessionExternalState),
-        client() {
+        authSession(authzSessionExternalState) {
 
+        client.reset(SaslClientSession::create());
         server.reset(SaslAuthenticationSession::create(&authSession));
         ASSERT_OK(authManagerExternalState->updateOne(
                 AuthorizationManager::versionCollectionNamespace,
@@ -84,26 +84,26 @@ namespace {
         Status clientStatus(ErrorCodes::InternalError, "");
         Status serverStatus(ErrorCodes::InternalError, "");
         do {
-            clientStatus = client.step(serverMessage, &clientMessage);
+            clientStatus = client->step(serverMessage, &clientMessage);
             if (!clientStatus.isOK())
                 break;
             serverStatus = server->step(clientMessage, &serverMessage);
             if (!serverStatus.isOK())
                 break;
-        } while (!client.isDone());
+        } while (!client->isDone());
         ASSERT_FALSE(serverStatus.isOK() &&
                      clientStatus.isOK() &&
-                     client.isDone() &&
+                     client->isDone() &&
                      server->isDone());
     }
 
     void SaslConversation::testSuccessfulAuthentication() {
-        client.setParameter(SaslClientSession::parameterServiceName, mockServiceName);
-        client.setParameter(SaslClientSession::parameterServiceHostname, mockHostName);
-        client.setParameter(SaslClientSession::parameterMechanism, mechanism);
-        client.setParameter(SaslClientSession::parameterUser, "andy");
-        client.setParameter(SaslClientSession::parameterPassword, "frim");
-        ASSERT_OK(client.initialize());
+        client->setParameter(SaslClientSession::parameterServiceName, mockServiceName);
+        client->setParameter(SaslClientSession::parameterServiceHostname, mockHostName);
+        client->setParameter(SaslClientSession::parameterMechanism, mechanism);
+        client->setParameter(SaslClientSession::parameterUser, "andy");
+        client->setParameter(SaslClientSession::parameterPassword, "frim");
+        ASSERT_OK(client->initialize());
 
         ASSERT_OK(server->start("test",
                                mechanism,
@@ -115,19 +115,19 @@ namespace {
         std::string clientMessage;
         std::string serverMessage;
         do {
-            ASSERT_OK(client.step(serverMessage, &clientMessage));
+            ASSERT_OK(client->step(serverMessage, &clientMessage));
             ASSERT_OK(server->step(clientMessage, &serverMessage));
-        } while (!client.isDone());
+        } while (!client->isDone());
         ASSERT_TRUE(server->isDone());
     }
 
     void SaslConversation::testNoSuchUser() {
-        client.setParameter(SaslClientSession::parameterServiceName, mockServiceName);
-        client.setParameter(SaslClientSession::parameterServiceHostname, mockHostName);
-        client.setParameter(SaslClientSession::parameterMechanism, mechanism);
-        client.setParameter(SaslClientSession::parameterUser, "nobody");
-        client.setParameter(SaslClientSession::parameterPassword, "frim");
-        ASSERT_OK(client.initialize());
+        client->setParameter(SaslClientSession::parameterServiceName, mockServiceName);
+        client->setParameter(SaslClientSession::parameterServiceHostname, mockHostName);
+        client->setParameter(SaslClientSession::parameterMechanism, mechanism);
+        client->setParameter(SaslClientSession::parameterUser, "nobody");
+        client->setParameter(SaslClientSession::parameterPassword, "frim");
+        ASSERT_OK(client->initialize());
 
         ASSERT_OK(server->start("test",
                                mechanism,
@@ -140,12 +140,12 @@ namespace {
     }
 
     void SaslConversation::testBadPassword() {
-        client.setParameter(SaslClientSession::parameterServiceName, mockServiceName);
-        client.setParameter(SaslClientSession::parameterServiceHostname, mockHostName);
-        client.setParameter(SaslClientSession::parameterMechanism, mechanism);
-        client.setParameter(SaslClientSession::parameterUser, "andy");
-        client.setParameter(SaslClientSession::parameterPassword, "WRONG");
-        ASSERT_OK(client.initialize());
+        client->setParameter(SaslClientSession::parameterServiceName, mockServiceName);
+        client->setParameter(SaslClientSession::parameterServiceHostname, mockHostName);
+        client->setParameter(SaslClientSession::parameterMechanism, mechanism);
+        client->setParameter(SaslClientSession::parameterUser, "andy");
+        client->setParameter(SaslClientSession::parameterPassword, "WRONG");
+        ASSERT_OK(client->initialize());
 
         ASSERT_OK(server->start("test",
                                 mechanism,
@@ -159,13 +159,13 @@ namespace {
     }
 
     void SaslConversation::testWrongClientMechanism() {
-        client.setParameter(SaslClientSession::parameterServiceName, mockServiceName);
-        client.setParameter(SaslClientSession::parameterServiceHostname, mockHostName);
-        client.setParameter(SaslClientSession::parameterMechanism,
+        client->setParameter(SaslClientSession::parameterServiceName, mockServiceName);
+        client->setParameter(SaslClientSession::parameterServiceHostname, mockHostName);
+        client->setParameter(SaslClientSession::parameterMechanism,
                             mechanism == "CRAM-MD5" ? "PLAIN" : "CRAM-MD5");
-        client.setParameter(SaslClientSession::parameterUser, "andy");
-        client.setParameter(SaslClientSession::parameterPassword, "frim");
-        ASSERT_OK(client.initialize());
+        client->setParameter(SaslClientSession::parameterUser, "andy");
+        client->setParameter(SaslClientSession::parameterPassword, "frim");
+        ASSERT_OK(client->initialize());
 
         ASSERT_OK(server->start("test",
                                 mechanism,
@@ -178,12 +178,12 @@ namespace {
     }
 
     void SaslConversation::testWrongServerMechanism() {
-        client.setParameter(SaslClientSession::parameterServiceName, mockServiceName);
-        client.setParameter(SaslClientSession::parameterServiceHostname, mockHostName);
-        client.setParameter(SaslClientSession::parameterMechanism, mechanism);
-        client.setParameter(SaslClientSession::parameterUser, "andy");
-        client.setParameter(SaslClientSession::parameterPassword, "frim");
-        ASSERT_OK(client.initialize());
+        client->setParameter(SaslClientSession::parameterServiceName, mockServiceName);
+        client->setParameter(SaslClientSession::parameterServiceHostname, mockHostName);
+        client->setParameter(SaslClientSession::parameterMechanism, mechanism);
+        client->setParameter(SaslClientSession::parameterUser, "andy");
+        client->setParameter(SaslClientSession::parameterPassword, "frim");
+        ASSERT_OK(client->initialize());
 
         ASSERT_OK(server->start("test",
                                 mechanism == "CRAM-MD5" ? "PLAIN" : "CRAM-MD5",
@@ -220,16 +220,16 @@ namespace {
     TEST_MECHANISM(PLAIN, "PLAIN")
 
     TEST_F(SaslConversation, IllegalClientMechanism) {
-        client.setParameter(SaslClientSession::parameterServiceName, mockServiceName);
-        client.setParameter(SaslClientSession::parameterServiceHostname, mockHostName);
-        client.setParameter(SaslClientSession::parameterMechanism, "FAKE");
-        client.setParameter(SaslClientSession::parameterUser, "andy");
-        client.setParameter(SaslClientSession::parameterPassword, "frim");
-        ASSERT_OK(client.initialize());
+        client->setParameter(SaslClientSession::parameterServiceName, mockServiceName);
+        client->setParameter(SaslClientSession::parameterServiceHostname, mockHostName);
+        client->setParameter(SaslClientSession::parameterMechanism, "FAKE");
+        client->setParameter(SaslClientSession::parameterUser, "andy");
+        client->setParameter(SaslClientSession::parameterPassword, "frim");
+        ASSERT_OK(client->initialize());
 
         std::string clientMessage;
         std::string serverMessage;
-        ASSERT_NOT_OK(client.step(serverMessage, &clientMessage));
+        ASSERT_NOT_OK(client->step(serverMessage, &clientMessage));
     }
 
     TEST_F(SaslConversation, IllegalServerMechanism) {

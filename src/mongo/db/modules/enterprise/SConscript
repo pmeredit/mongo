@@ -74,11 +74,12 @@ env.CppUnitTest('sasl_authentication_session_test',
                 ['src/sasl/sasl_authentication_session_test.cpp'],
                 LIBDEPS=['mongosaslserversession',
                          'mongosaslservercommon',
+                         '$BUILD_DIR/mongo/cyrus_sasl_client_session',
                          '$BUILD_DIR/mongo/bson',
                          '$BUILD_DIR/mongo/network',
                          '$BUILD_DIR/mongo/db/auth/authcore',
                          '$BUILD_DIR/mongo/db/auth/saslauth',
-                         '$BUILD_DIR/mongo/sasl_client_session'])
+                         ])
 
 if env['PYSYSPLATFORM'] == "win32":
     # Ensure we're building with /MD or /MDd
@@ -105,7 +106,7 @@ else:
                                        '$BUILD_DIR/mongo/network',
                                        '$BUILD_DIR/mongo/db/auth/authcore',
                                        '$BUILD_DIR/mongo/db/auth/saslauth',
-                                       '$BUILD_DIR/mongo/sasl_client_session',
+                                       '$BUILD_DIR/mongo/cyrus_sasl_client_session',
                                        '$BUILD_DIR/mongo/unittest/unittest',
                                        '$BUILD_DIR/mongo/unittest/unittest_crutch'])
     env.RegisterUnitTest(gssapi_test[0])

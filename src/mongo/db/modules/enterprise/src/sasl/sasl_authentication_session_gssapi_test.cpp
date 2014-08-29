@@ -133,7 +133,7 @@ namespace {
 
         AuthorizationManager authManager;
         AuthorizationSession authSession;
-        SaslClientSession client;
+        boost::scoped_ptr<SaslClientSession> client;
         boost::scoped_ptr<SaslAuthenticationSession> server;
         const std::string mechanism;
 
@@ -144,8 +144,8 @@ namespace {
     SaslConversationGssapi::SaslConversationGssapi() :
         authManager(new AuthzManagerExternalStateMock()),
         authSession(new AuthzSessionExternalStateMock(&authManager)),
-        client(),
         mechanism("GSSAPI") {
+        client.reset(SaslClientSession::create());
         server.reset(SaslAuthenticationSession::create(&authSession));
     }
 
@@ -155,22 +155,22 @@ namespace {
         Status clientStatus(ErrorCodes::InternalError, "");
         Status serverStatus(ErrorCodes::InternalError, "");
         do {
-            clientStatus = client.step(serverMessage, &clientMessage);
+            clientStatus = client->step(serverMessage, &clientMessage);
             if (!clientStatus.isOK())
                 break;
             serverStatus = server->step(clientMessage, &serverMessage);
             if (!serverStatus.isOK())
                 break;
-        } while (!client.isDone());
+        } while (!client->isDone());
         ASSERT_FALSE(serverStatus.isOK() && clientStatus.isOK());
     }
 
     TEST_F(SaslConversationGssapi, SuccessfulAuthentication) {
-        client.setParameter(SaslClientSession::parameterServiceName, mockServiceName);
-        client.setParameter(SaslClientSession::parameterServiceHostname, mockHostName);
-        client.setParameter(SaslClientSession::parameterMechanism, mechanism);
-        client.setParameter(SaslClientSession::parameterUser, userName);
-        ASSERT_OK(client.initialize());
+        client->setParameter(SaslClientSession::parameterServiceName, mockServiceName);
+        client->setParameter(SaslClientSession::parameterServiceHostname, mockHostName);
+        client->setParameter(SaslClientSession::parameterMechanism, mechanism);
+        client->setParameter(SaslClientSession::parameterUser, userName);
+        ASSERT_OK(client->initialize());
 
         ASSERT_OK(server->start("test",
                                 mechanism,
@@ -182,18 +182,18 @@ namespace {
         std::string clientMessage;
         std::string serverMessage;
         do {
-            ASSERT_OK(client.step(serverMessage, &clientMessage));
+            ASSERT_OK(client->step(serverMessage, &clientMessage));
             ASSERT_OK(server->step(clientMessage, &serverMessage));
-        } while (!client.isDone());
+        } while (!client->isDone());
         ASSERT_TRUE(server->isDone());
     }
 
     TEST_F(SaslConversationGssapi, NoSuchUser) {
-        client.setParameter(SaslClientSession::parameterServiceName, mockServiceName);
-        client.setParameter(SaslClientSession::parameterServiceHostname, mockHostName);
-        client.setParameter(SaslClientSession::parameterMechanism, mechanism);
-        client.setParameter(SaslClientSession::parameterUser, "WrongUserName");
-        ASSERT_OK(client.initialize());
+        client->setParameter(SaslClientSession::parameterServiceName, mockServiceName);
+        client->setParameter(SaslClientSession::parameterServiceHostname, mockHostName);
+        client->setParameter(SaslClientSession::parameterMechanism, mechanism);
+        client->setParameter(SaslClientSession::parameterUser, "WrongUserName");
+        ASSERT_OK(client->initialize());
 
         ASSERT_OK(server->start("test",
                                 mechanism,
@@ -206,11 +206,11 @@ namespace {
     }
 
     TEST_F(SaslConversationGssapi, WrongServiceNameClient) {
-        client.setParameter(SaslClientSession::parameterServiceName, "nosuch");
-        client.setParameter(SaslClientSession::parameterServiceHostname, mockHostName);
-        client.setParameter(SaslClientSession::parameterMechanism, mechanism);
-        client.setParameter(SaslClientSession::parameterUser, userName);
-        ASSERT_OK(client.initialize());
+        client->setParameter(SaslClientSession::parameterServiceName, "nosuch");
+        client->setParameter(SaslClientSession::parameterServiceHostname, mockHostName);
+        client->setParameter(SaslClientSession::parameterMechanism, mechanism);
+        client->setParameter(SaslClientSession::parameterUser, userName);
+        ASSERT_OK(client->initialize());
 
         ASSERT_OK(server->start("test",
                                 mechanism,
@@ -223,11 +223,11 @@ namespace {
     }
 
     TEST_F(SaslConversationGssapi, WrongServerHostNameClient) {
-        client.setParameter(SaslClientSession::parameterServiceName, mockServiceName);
-        client.setParameter(SaslClientSession::parameterServiceHostname, "badhost.10gen.me");
-        client.setParameter(SaslClientSession::parameterMechanism, mechanism);
-        client.setParameter(SaslClientSession::parameterUser, userName);
-        ASSERT_OK(client.initialize());
+        client->setParameter(SaslClientSession::parameterServiceName, mockServiceName);
+        client->setParameter(SaslClientSession::parameterServiceHostname, "badhost.10gen.me");
+        client->setParameter(SaslClientSession::parameterMechanism, mechanism);
+        client->setParameter(SaslClientSession::parameterUser, userName);
+        ASSERT_OK(client->initialize());
 
         ASSERT_OK(server->start("test",
                                 mechanism,

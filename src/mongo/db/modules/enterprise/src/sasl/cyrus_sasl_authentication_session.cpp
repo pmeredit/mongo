@@ -460,7 +460,7 @@ namespace {
 
     MONGO_INITIALIZER_WITH_PREREQUISITES(CyrusSaslServerCore,
                                          ("CyrusSaslAllocatorsAndMutexes",
-                                          "SaslClientContext",
+                                          "CyrusSaslClientContext",
                                           "NativeSaslServerCore"))
         (InitializerContext* context) {
 
