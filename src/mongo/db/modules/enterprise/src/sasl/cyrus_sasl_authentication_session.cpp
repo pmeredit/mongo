@@ -233,9 +233,9 @@ namespace {
                                                       authenticatedIdentity)) {
             std::stringstream errorMsg;
             errorMsg << "saslServerConnAuthorize: Requested identity " <<
-                        escape(string(requestedUserRaw)) << 
+                        escape(std::string(requestedUserRaw)) << 
                         " does not match authenticated identity " <<
-            escape(std::string(authenticatedIdentityRaw));
+                        escape(std::string(authenticatedIdentityRaw));
             sasl_seterror(conn, 0, errorMsg.str().c_str());
             
             return SASL_BADAUTH;
