@@ -231,8 +231,13 @@ namespace {
         if (!session->getMechInfo()->isUserAuthorized(session,
                                                       requestedUser,
                                                       authenticatedIdentity)) {
-            sasl_seterror(conn, 0, "saslServerConnAuthorize: "
-                          "Requested identity not authenticated identity");
+            std::stringstream errorMsg;
+            errorMsg << "saslServerConnAuthorize: Requested identity " <<
+                        escape(string(requestedUserRaw)) << 
+                        " does not match authenticated identity " <<
+            escape(std::string(authenticatedIdentityRaw));
+            sasl_seterror(conn, 0, errorMsg.str().c_str());
+            
             return SASL_BADAUTH;
         }
         return SASL_OK;
