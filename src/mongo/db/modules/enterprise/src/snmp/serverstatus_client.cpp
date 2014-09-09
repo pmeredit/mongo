@@ -38,8 +38,13 @@ const std::string ServerStatusClient::METRICS = "metrics";
 
 const int ServerStatusClient::DATE_AND_TIME_TZ_LEN = 11;
 
-ServerStatusClient::ServerStatusClient(const std::string& sectionName, time_t cacheExpireSecs)
-        : _cacheExpireSecs(cacheExpireSecs), _lastRefresh(0), _sectionName(sectionName)
+ServerStatusClient::ServerStatusClient(OperationContext* txn,
+                                       const std::string& sectionName,
+                                       time_t cacheExpireSecs)
+        : _dbClient(txn),
+          _cacheExpireSecs(cacheExpireSecs),
+          _lastRefresh(0),
+          _sectionName(sectionName)
 {
     std::vector<std::string> sectionList;
     sectionList.push_back(ASSERTS);

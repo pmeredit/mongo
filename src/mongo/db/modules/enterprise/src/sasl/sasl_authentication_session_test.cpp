@@ -18,6 +18,7 @@
 #include "mongo/db/auth/authz_manager_external_state_mock.h"
 #include "mongo/db/auth/authz_session_external_state_mock.h"
 #include "mongo/db/jsobj.h"
+#include "mongo/db/operation_context_noop.h"
 #include "mongo/platform/unordered_map.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/db/auth/sasl_authentication_session.h"
@@ -59,9 +60,12 @@ namespace {
         authzSessionExternalState(new AuthzSessionExternalStateMock(&authManager)),
         authSession(authzSessionExternalState) {
 
+        OperationContextNoop txn;
+
         client.reset(SaslClientSession::create());
         server.reset(SaslAuthenticationSession::create(&authSession));
         ASSERT_OK(authManagerExternalState->updateOne(
+                &txn,
                 AuthorizationManager::versionCollectionNamespace,
                 AuthorizationManager::versionDocumentQuery,
                 BSON("$set" << BSON(AuthorizationManager::schemaVersionFieldName <<
@@ -69,6 +73,7 @@ namespace {
                 true,
                 BSONObj()));
         ASSERT_OK(authManagerExternalState->insert(
+                &txn,
                 NamespaceString("admin.system.users"),
                 BSON("_id" << "test.andy" <<
                      "user" << "andy" <<

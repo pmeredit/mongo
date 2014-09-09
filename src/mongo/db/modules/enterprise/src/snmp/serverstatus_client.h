@@ -19,7 +19,9 @@ namespace mongo {
     class ServerStatusClient {
         MONGO_DISALLOW_COPYING(ServerStatusClient);
     public:
-        ServerStatusClient(const std::string& sectionName, time_t cacheExpireSecs);
+        ServerStatusClient(OperationContext* txn,
+                           const std::string& sectionName,
+                           time_t cacheExpireSecs);
 
         bool getBoolField(const StringData& name);
         int getIntField(const StringData& name);

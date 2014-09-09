@@ -21,6 +21,7 @@
 #include "mongo/base/status.h"
 #include "mongo/db/client.h"
 #include "mongo/db/db.h"
+#include "mongo/db/operation_context_impl.h"
 #include "mongo/db/repl/repl_coordinator_global.h"
 #include "mongo/db/server_options.h"
 #include "mongo/db/stats/counters.h"
@@ -461,7 +462,9 @@ namespace mongo {
                 
                 
                 if (isValidMetric()) {
-                    ServerStatusClient& ssClient = getServerStatusClient(_serverStatusSection);
+                    OperationContextImpl txn;
+                    ServerStatusClient& ssClient = 
+                        getServerStatusClient(&txn, _serverStatusSection);
                     
                     switch (_metricType) {
                     case VT_INT32:
@@ -632,7 +635,8 @@ namespace mongo {
                 return 0;  
             }
             
-            static ServerStatusClient& getServerStatusClient(const std::string& section) {
+            static ServerStatusClient& getServerStatusClient(OperationContext* txn,
+                                                             const std::string& section) {
                 
                 std::map< std::string, boost::shared_ptr<ServerStatusClient> >::iterator it;
                 it = _serverStatusClientMap.find(section);
@@ -640,7 +644,7 @@ namespace mongo {
                 if (it == _serverStatusClientMap.end()) {
                     
                     _serverStatusClientMap[section].reset(
-                            new ServerStatusClient(section, getSectionTimeoutSecs(section)));
+                            new ServerStatusClient(txn, section, getSectionTimeoutSecs(section)));
                 }
                 
                 return *_serverStatusClientMap[section];
