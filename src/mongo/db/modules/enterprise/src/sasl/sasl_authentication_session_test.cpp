@@ -63,7 +63,7 @@ namespace {
         OperationContextNoop txn;
 
         client.reset(SaslClientSession::create());
-        server.reset(SaslAuthenticationSession::create(&authSession));
+        server.reset(SaslAuthenticationSession::create(&authSession, mechanism));
         ASSERT_OK(authManagerExternalState->updateOne(
                 &txn,
                 AuthorizationManager::versionCollectionNamespace,

@@ -17,6 +17,7 @@
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/authz_manager_external_state_mock.h"
 #include "mongo/db/auth/authz_session_external_state_mock.h"
+#include "mongo/db/auth/native_sasl_authentication_session.h"
 #include "mongo/db/auth/sasl_options.h"
 #include "mongo/db/commands.h"
 #include "mongo/db/commands/authentication_commands.h"
@@ -233,11 +234,10 @@ namespace {
                                                       authenticatedIdentity)) {
             std::stringstream errorMsg;
             errorMsg << "saslServerConnAuthorize: Requested identity " <<
-                        escape(std::string(requestedUserRaw)) << 
+                        escape(std::string(requestedUserRaw)) <<
                         " does not match authenticated identity " <<
                         escape(std::string(authenticatedIdentityRaw));
             sasl_seterror(conn, 0, errorMsg.str().c_str());
-            
             return SASL_BADAUTH;
         }
         return SASL_OK;
@@ -454,7 +454,11 @@ namespace {
     }
 
     SaslAuthenticationSession* createCyrusSaslAuthenticationSession(
-        AuthorizationSession* authzSession) {
+        AuthorizationSession* authzSession,
+        const std::string& mechanism) {
+        if (mechanism == "SCRAM-SHA-1") {
+            return new NativeSaslAuthenticationSession(authzSession);
+        }
         return new CyrusSaslAuthenticationSession(authzSession);
     }
 
@@ -497,8 +501,9 @@ namespace {
         
         for (size_t i = 0; i < saslGlobalParams.authenticationMechanisms.size(); ++i) {
             const std::string& mechanism = saslGlobalParams.authenticationMechanisms[i];
-            if (mechanism == "MONGODB-CR" || mechanism == "MONGODB-X509") {
-                // Not a SASL mechanism; no need to smoke test the built-in mechanism.
+            if (mechanism == "MONGODB-CR" || mechanism == "MONGODB-X509" || 
+                mechanism == "SCRAM-SHA-1") {
+                // No need to smoke test built-in mechanism.
                 continue;
             }
             Status status = CyrusSaslAuthenticationSession::smokeTestMechanism(
