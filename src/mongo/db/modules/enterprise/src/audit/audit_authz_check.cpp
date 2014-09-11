@@ -68,7 +68,7 @@ namespace audit {
 
         if (!getGlobalAuditManager()->enabled) return;
 
-        if (auditGlobalParams.auditAuthzSuccess ||
+        if (auditGlobalParams.auditAuthorizationSuccess ||
             result != ErrorCodes::OK) {
             AuthzCheckEvent event(
                     makeEnvelope(client, ActionType::authCheck, result),

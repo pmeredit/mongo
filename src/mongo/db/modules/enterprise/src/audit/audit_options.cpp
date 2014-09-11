@@ -138,11 +138,12 @@ namespace audit {
         return Status::OK();
     }
 
-    ExportedServerParameter<bool> AuditAuthzSuccessSetting(ServerParameterSet::getGlobal(),
-                                                          "auditAuthzSuccess",
-                                                          &auditGlobalParams.auditAuthzSuccess,
-                                                          true,  // Change at startup
-                                                          true); // Change at runtime
+    ExportedServerParameter<bool> AuditAuthorizationSuccessSetting(
+            ServerParameterSet::getGlobal(),
+            "auditAuthorizationSuccess",
+            &auditGlobalParams.auditAuthorizationSuccess,
+            true,  // Change at startup
+            true); // Change at runtime
 
 } // namespace audit
 } // namespace mongo
