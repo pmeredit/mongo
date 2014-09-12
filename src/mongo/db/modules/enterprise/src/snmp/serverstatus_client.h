@@ -4,6 +4,7 @@
 
 #include <string>
 
+#include "mongo/db/dbdirectclient.h"
 #include "mongo/db/instance.h"
 #include "mongo/platform/cstdint.h"
 
