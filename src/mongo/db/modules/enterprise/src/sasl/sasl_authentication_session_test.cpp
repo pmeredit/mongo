@@ -17,11 +17,12 @@
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/authz_manager_external_state_mock.h"
 #include "mongo/db/auth/authz_session_external_state_mock.h"
+#include "mongo/db/auth/sasl_authentication_session.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/db/operation_context_noop.h"
 #include "mongo/platform/unordered_map.h"
 #include "mongo/unittest/unittest.h"
-#include "mongo/db/auth/sasl_authentication_session.h"
+#include "mongo/util/log.h"
 
 namespace mongo {
 
@@ -31,7 +32,7 @@ namespace {
 
     class SaslConversation : public unittest::Test {
     public:
-        SaslConversation();
+        explicit SaslConversation(std::string mech); 
 
         void testSuccessfulAuthentication();
         void testNoSuchUser();
@@ -43,22 +44,30 @@ namespace {
         AuthorizationManager authManager;
         AuthzSessionExternalStateMock* authzSessionExternalState;
         AuthorizationSession authSession;
+        std::string mechanism;
         boost::scoped_ptr<SaslClientSession> client;
         boost::scoped_ptr<SaslAuthenticationSession> server;
-        std::string mechanism;
 
     private:
         void assertConversationFailure();
     };
 
+    class SaslIllegalConversation : public SaslConversation {
+    public:
+        SaslIllegalConversation():
+            SaslConversation("ILLEGAL") {
+        }
+    };
+
     const std::string mockServiceName = "mocksvc";
     const std::string mockHostName = "host.mockery.com";
 
-    SaslConversation::SaslConversation() :
+    SaslConversation::SaslConversation(std::string mech) :
         authManagerExternalState(new AuthzManagerExternalStateMock),
         authManager(authManagerExternalState),
         authzSessionExternalState(new AuthzSessionExternalStateMock(&authManager)),
-        authSession(authzSessionExternalState) {
+        authSession(authzSessionExternalState),
+        mechanism(mech) {
 
         OperationContextNoop txn;
 
@@ -167,7 +176,7 @@ namespace {
         client->setParameter(SaslClientSession::parameterServiceName, mockServiceName);
         client->setParameter(SaslClientSession::parameterServiceHostname, mockHostName);
         client->setParameter(SaslClientSession::parameterMechanism,
-                            mechanism == "CRAM-MD5" ? "PLAIN" : "CRAM-MD5");
+                            mechanism != "CRAM-MD5" ? "CRAM-MD5" : "PLAIN");
         client->setParameter(SaslClientSession::parameterUser, "andy");
         client->setParameter(SaslClientSession::parameterPassword, "frim");
         ASSERT_OK(client->initialize());
@@ -190,21 +199,22 @@ namespace {
         client->setParameter(SaslClientSession::parameterPassword, "frim");
         ASSERT_OK(client->initialize());
 
-        ASSERT_OK(server->start("test",
-                                mechanism == "CRAM-MD5" ? "PLAIN" : "CRAM-MD5",
-                                mockServiceName,
-                                mockHostName,
-                                1,
-                                true));
-
+        server->start("test",
+                      mechanism != "CRAM-MD5" ? "CRAM-MD5" : "PLAIN",
+                      mockServiceName,
+                      mockHostName,
+                      1,
+                      true);
         assertConversationFailure();
     }
 
 #define DEFINE_MECHANISM_FIXTURE(CLASS_SUFFIX, MECH_NAME)               \
     class SaslConversation##CLASS_SUFFIX : public SaslConversation {    \
     public:                                                             \
-        SaslConversation##CLASS_SUFFIX() { mechanism = MECH_NAME; }     \
-    }
+        SaslConversation##CLASS_SUFFIX():                               \
+            SaslConversation(MECH_NAME) {                               \
+        }                                                               \
+    }                                                                   \
 
 #define DEFINE_MECHANISM_TEST(FIXTURE_NAME, TEST_NAME)          \
     TEST_F(FIXTURE_NAME, TEST_NAME) { test##TEST_NAME(); }
@@ -221,10 +231,10 @@ namespace {
     DEFINE_ALL_MECHANISM_TESTS(SaslConversation##CLASS_SUFFIX)
 
     TEST_MECHANISM(CRAMMD5, "CRAM-MD5")
-    //TEST_MECHANISM(DIGESTMD5, "DIGEST-MD5")
+    TEST_MECHANISM(SCRAMSHA1, "SCRAM-SHA-1")
     TEST_MECHANISM(PLAIN, "PLAIN")
 
-    TEST_F(SaslConversation, IllegalClientMechanism) {
+    TEST_F(SaslIllegalConversation, IllegalClientMechanism) {
         client->setParameter(SaslClientSession::parameterServiceName, mockServiceName);
         client->setParameter(SaslClientSession::parameterServiceHostname, mockHostName);
         client->setParameter(SaslClientSession::parameterMechanism, "FAKE");
@@ -237,7 +247,7 @@ namespace {
         ASSERT_NOT_OK(client->step(serverMessage, &clientMessage));
     }
 
-    TEST_F(SaslConversation, IllegalServerMechanism) {
+    TEST_F(SaslIllegalConversation, IllegalServerMechanism) {
         ASSERT_NOT_OK(server->start("test",
                                     "FAKE",
                                     mockServiceName,
