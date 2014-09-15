@@ -145,7 +145,7 @@ namespace {
         authManager(new AuthzManagerExternalStateMock()),
         authSession(new AuthzSessionExternalStateMock(&authManager)),
         mechanism("GSSAPI") {
-        client.reset(SaslClientSession::create());
+        client.reset(SaslClientSession::create("GSSAPI"));
         server.reset(SaslAuthenticationSession::create(&authSession, "GSSAPI"));
     }
 

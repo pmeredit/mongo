@@ -71,7 +71,7 @@ namespace {
 
         OperationContextNoop txn;
 
-        client.reset(SaslClientSession::create());
+        client.reset(SaslClientSession::create(mechanism));
         server.reset(SaslAuthenticationSession::create(&authSession, mechanism));
         ASSERT_OK(authManagerExternalState->updateOne(
                 &txn,
@@ -179,14 +179,14 @@ namespace {
                             mechanism != "CRAM-MD5" ? "CRAM-MD5" : "PLAIN");
         client->setParameter(SaslClientSession::parameterUser, "andy");
         client->setParameter(SaslClientSession::parameterPassword, "frim");
-        ASSERT_OK(client->initialize());
+        client->initialize();
 
-        ASSERT_OK(server->start("test",
-                                mechanism,
-                                mockServiceName,
-                                mockHostName,
-                                1,
-                                true));
+        server->start("test",
+                      mechanism,
+                      mockServiceName,
+                      mockHostName,
+                      1,
+                      true);
 
         assertConversationFailure();
     }
