@@ -137,7 +137,7 @@ namespace {
     }
 
     /**
-     * Callback registered on the sasl_conn_t underlying a CyrusSaslAuthenticationSession that 
+     * Callback registered on the sasl_conn_t underlying a CyrusSaslAuthenticationSession that
      * allows the Cyrus SASL library to read runtime configuration options.
      *
      * Implements the sasl_getopt_t interface, which requires that the memory behind the result
@@ -156,7 +156,7 @@ namespace {
         if (!outLen)
             outLen = &ignored;
 
-        CyrusSaslAuthenticationSession* session = 
+        CyrusSaslAuthenticationSession* session =
             static_cast<CyrusSaslAuthenticationSession*>(context);
         if (!session || !optionRaw || !outResult)
             return SASL_BADPARAM;
@@ -206,7 +206,7 @@ namespace {
     }
 
     /**
-     * Callback registered on the sasl_conn_t underlying a CyrusSaslAuthenticationSession that 
+     * Callback registered on the sasl_conn_t underlying a CyrusSaslAuthenticationSession that
      * confirms the authenticated user is allowed to act as the requested user.
      *
      * Implements the interface sasl_authorize_t.
@@ -224,7 +224,7 @@ namespace {
         if (!conn || !context || !requestedUserRaw || !authenticatedIdentityRaw)
             return SASL_BADPARAM;
 
-        CyrusSaslAuthenticationSession* session = 
+        CyrusSaslAuthenticationSession* session =
             static_cast<CyrusSaslAuthenticationSession*>(context);
 
         StringData requestedUser(requestedUserRaw, requestedUserLen);
@@ -464,7 +464,7 @@ namespace {
 
     // This group is used to ensure that all the plugins are registered before we attempt
     // the smoke test in SaslCommands.
-    MONGO_INITIALIZER_GROUP(CyrusSaslAllPluginsRegistered, MONGO_NO_PREREQUISITES, 
+    MONGO_INITIALIZER_GROUP(CyrusSaslAllPluginsRegistered, MONGO_NO_PREREQUISITES,
                             MONGO_NO_DEPENDENTS);
 
     MONGO_INITIALIZER_WITH_PREREQUISITES(CyrusSaslServerCore,
@@ -488,20 +488,20 @@ namespace {
         }
 
         SaslAuthenticationSession::create = createCyrusSaslAuthenticationSession;
-        
+
         return Status::OK();
     }
 
-    MONGO_INITIALIZER_GENERAL(CyrusSaslCommands, 
+    MONGO_INITIALIZER_GENERAL(CyrusSaslCommands,
                               ("NativeSaslServerCore",
-                               "CyrusSaslServerCore", 
+                               "CyrusSaslServerCore",
                                "CyrusSaslAllPluginsRegistered"),
                               ("PostSaslCommands"))
         (InitializerContext*) {
-        
+
         for (size_t i = 0; i < saslGlobalParams.authenticationMechanisms.size(); ++i) {
             const std::string& mechanism = saslGlobalParams.authenticationMechanisms[i];
-            if (mechanism == "MONGODB-CR" || mechanism == "MONGODB-X509" || 
+            if (mechanism == "MONGODB-CR" || mechanism == "MONGODB-X509" ||
                 mechanism == "SCRAM-SHA-1") {
                 // No need to smoke test built-in mechanism.
                 continue;

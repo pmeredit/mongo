@@ -32,7 +32,7 @@ namespace {
 
     class SaslConversation : public unittest::Test {
     public:
-        explicit SaslConversation(std::string mech); 
+        explicit SaslConversation(std::string mech);
 
         void testSuccessfulAuthentication();
         void testNoSuchUser();
