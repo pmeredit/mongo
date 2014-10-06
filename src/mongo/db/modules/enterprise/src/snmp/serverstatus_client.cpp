@@ -135,7 +135,13 @@ BSONElement ServerStatusClient::getElement(const StringData& name)
     // no need to handle return - fields will not be found in empty BSONObj 
     loadIfNeeded();
     
-    return _serverStatusData.getFieldDotted(name);
+    BSONElement elem = _serverStatusData.getFieldDotted(name);
+
+    massert(28534, str::stream() << "field '" << name
+            << "' does not exist in serverStatus doc: " << _serverStatusData,
+            elem.ok());
+
+    return elem;
 }
 
 bool ServerStatusClient::getBoolField(const StringData& name)
