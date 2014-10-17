@@ -182,7 +182,7 @@ network                 OBJECT IDENTIFIER ::= { serverTableEntry 12 }
 writeBacksQueued        OBJECT-TYPE
    SYNTAX Integer32
    MAX-ACCESS read-only
-   STATUS current
+   STATUS deprecated
    DESCRIPTION
         "number of writebacks currently queued (mongos only)"
    ::= { serverTableEntry 13 }
@@ -654,7 +654,7 @@ extraInfoPageFaults OBJECT-TYPE
 indexCounterAccesses OBJECT-TYPE
    SYNTAX      Counter64
    MAX-ACCESS  read-only
-   STATUS      current
+   STATUS      deprecated
    DESCRIPTION
       "number of times that operations have accessed indexes"
    ::= { indexCounters 1 }
@@ -662,7 +662,7 @@ indexCounterAccesses OBJECT-TYPE
 indexCounterHits OBJECT-TYPE
    SYNTAX      Counter64
    MAX-ACCESS  read-only
-   STATUS      current
+   STATUS      deprecated
    DESCRIPTION
       "number of times that an index has been accessed and mongod is able to return the index from memory"
    ::= { indexCounters 2 }
@@ -670,7 +670,7 @@ indexCounterHits OBJECT-TYPE
 indexCounterMisses OBJECT-TYPE
    SYNTAX      Counter64
    MAX-ACCESS  read-only
-   STATUS      current
+   STATUS      deprecated
    DESCRIPTION
       "number of times that an operation attempted to access an index that was not in memory"
    ::= { indexCounters 3 }
@@ -678,7 +678,7 @@ indexCounterMisses OBJECT-TYPE
 indexCounterResets OBJECT-TYPE
    SYNTAX      Counter32
    MAX-ACCESS  read-only
-   STATUS      current
+   STATUS      deprecated
    DESCRIPTION
       "number of times that the index counters have been reset since the database last restarted"
    ::= { indexCounters 4 }
@@ -687,7 +687,7 @@ indexCounterResets OBJECT-TYPE
 indexCounterMissRatio OBJECT-TYPE
    SYNTAX      DisplayString (SIZE (0.. 16))
    MAX-ACCESS  read-only
-   STATUS      current
+   STATUS      deprecated
    DESCRIPTION
       "ratio of hits to misses"
    ::= { indexCounters 5 }
@@ -734,7 +734,7 @@ globalLockTotalTime OBJECT-TYPE
 globalLockLockTime OBJECT-TYPE
    SYNTAX      Counter64
    MAX-ACCESS  read-only
-   STATUS      current
+   STATUS      deprecated
    DESCRIPTION
       "time, in microseconds, since the database last started, that the globalLock has been held" 
    ::= { globalLock 2 }

@@ -83,7 +83,7 @@ namespace mongo {
         
         static const int RESPOND_OK = 0;
         
-        
+
     private:
         string _name;
         SOID _oid;
@@ -133,6 +133,8 @@ namespace mongo {
                
         public:
             static void addAll( vector<SNMPCallBack*>& v ) {
+                const bool DEPRECATED = true;
+
                 v.push_back(new ServerStatusCallback("sysUpTime", "1,2,2",
                             ServerStatusClient::NO_EXTRA,
                             "uptimeMillis", VT_DURATION));
@@ -311,16 +313,19 @@ namespace mongo {
                             ServerStatusClient::EXTRA_INFO, "extra_info.page_faults", VT_CNT32));
                 v.push_back(new ServerStatusCallback("indexCounterAccesses", "1,11,1",
                             ServerStatusClient::INDEX_COUNTERS, "indexCounters.accesses",
-                            VT_CNT64));
+                            VT_CNT64, DEPRECATED)); // Deprecated for 2.8
                 v.push_back(new ServerStatusCallback("indexCounterHits", "1,11,2",
-                            ServerStatusClient::INDEX_COUNTERS, "indexCounters.hits", VT_CNT64));
+                            ServerStatusClient::INDEX_COUNTERS, "indexCounters.hits", VT_CNT64,
+                            DEPRECATED)); // Deprecated for 2.8
                 v.push_back(new ServerStatusCallback("indexCounterMisses", "1,11,3",
-                            ServerStatusClient::INDEX_COUNTERS, "indexCounters.misses", VT_CNT64));
+                            ServerStatusClient::INDEX_COUNTERS, "indexCounters.misses", VT_CNT64,
+                            DEPRECATED)); // Deprecated for 2.8
                 v.push_back(new ServerStatusCallback("indexCounterResets", "1,11,4",
-                            ServerStatusClient::INDEX_COUNTERS, "indexCounters.resets", VT_CNT32));
+                            ServerStatusClient::INDEX_COUNTERS, "indexCounters.resets", VT_CNT32,
+                            DEPRECATED)); // Deprecated for 2.8
                 v.push_back(new ServerStatusCallback("indexCounterMissRatio", "1,11,5",
                             ServerStatusClient::INDEX_COUNTERS, "indexCounters.missRatio",
-                            VT_DOUBLE));
+                            VT_DOUBLE, DEPRECATED)); // Deprecated for 2.8
                 v.push_back(new ServerStatusCallback("networkBytesIn", "1,12,1",
                             ServerStatusClient::NETWORK, "network.bytesIn", VT_CNT64));
                 v.push_back(new ServerStatusCallback("networkBytesOut", "1,12,2",
@@ -328,11 +333,13 @@ namespace mongo {
                 v.push_back(new ServerStatusCallback("networkNumRequests", "1,12,3",
                             ServerStatusClient::NETWORK, "network.numRequests", VT_CNT64));
                 v.push_back(new ServerStatusCallback("writeBacksQueued", "1,13",
-                            ServerStatusClient::METRICS, "writeBacksQueued", VT_BOOL));
+                            ServerStatusClient::METRICS, "writeBacksQueued", VT_BOOL,
+                            DEPRECATED)); // Deprecated for 2.8
                 v.push_back(new ServerStatusCallback("globalLockTotalTime", "1,14,1", 
                             ServerStatusClient::GLOBAL_LOCK, "globalLock.totalTime", VT_CNT64));
                 v.push_back(new ServerStatusCallback("globalLockLockTime", "1,14,2",
-                            ServerStatusClient::GLOBAL_LOCK, "globalLock.lockTime", VT_CNT64));
+                            ServerStatusClient::GLOBAL_LOCK, "globalLock.lockTime", VT_CNT64,
+                            DEPRECATED)); // Deprecated for 2.8
                 v.push_back(new ServerStatusCallback("globalLockCurrentQueue", "1,14,3,1",
                             ServerStatusClient::GLOBAL_LOCK, "globalLock.currentQueue.total",
                             VT_INT32));
@@ -540,16 +547,17 @@ namespace mongo {
         private:
             // ValueType represents the type of a metric and is a
             // bridge between the serverStatus type and SNMP type
-            enum ValueType {VT_INT32, VT_CNT32, VT_BOOL, VT_INT64, VT_CNT64, VT_STRING, 
+            enum ValueType {VT_INT32, VT_CNT32, VT_BOOL, VT_INT64, VT_CNT64, VT_STRING,
                             VT_DATE, VT_DOUBLE, VT_DURATION} _metricType;
-            
+
             ServerStatusCallback(const std::string& name, const std::string& suffix,
                                  const std::string& section, const std::string& metric,
-                                 ValueType metricType)
+                                 ValueType metricType, bool isDeprecated = false)
                 : SNMPCallBack(name, suffix ),
                   _metricType(metricType), _serverStatusSection(section),
                   _serverStatusMetric(metric),_replicaSetOnly(false), _linuxOnly(false),
-                  _journalOnly(false), _processInfoSupportedOnly(false), _snmpType(ASN_INTEGER) {
+                  _journalOnly(false), _processInfoSupportedOnly(false), _snmpType(ASN_INTEGER),
+                  _isDeprecated(isDeprecated){
                     
                 switch (_metricType) {
                 case VT_CNT64:
@@ -578,6 +586,10 @@ namespace mongo {
             // returns whether the current metric is valid for this mongod instance
             bool isValidMetric() const {
              
+                if (_isDeprecated) {
+                    return false;
+                }
+
                 if (_replicaSetOnly &&
                         !repl::getGlobalReplicationCoordinator()->getSettings().usingReplSets()) {
                     return false;
@@ -659,6 +671,12 @@ namespace mongo {
             bool _journalOnly;
             bool _processInfoSupportedOnly;
             u_char _snmpType;
+
+            // As mongod metrics change over time there will be some that are no longer
+            // valid for the next major release. We will handle by deprecating first for
+            // a major version and then removing completely for the next major version.
+            // To deprecate, we mark deprecated here and flag in the MIB file.
+            bool _isDeprecated;
             
             static std::map< std::string,
                              boost::shared_ptr<ServerStatusClient> > _serverStatusClientMap;
