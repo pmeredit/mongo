@@ -9,7 +9,7 @@ var conn = MongoRunner.runMongod({"snmp-master": ""});
 // Run snmp mapper
 var status;
 
-status = run('snmpwalk', '--version');
+status = run('snmpwalk', '-V');
 assert.eq(0, status, "snmpwalk not found. status="+ status);
 
 status = run('snmpwalk', '-v', '2c', '-c',
