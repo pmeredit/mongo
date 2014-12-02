@@ -14,6 +14,7 @@
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/client_basic.h"
+#include "mongo/db/commands.h"
 #include "mongo/db/namespace_string.h"
 
 namespace mongo {
@@ -60,24 +61,49 @@ namespace audit {
         return builder;
     }
 
-    void logCommandAuthzCheck(
+    /**
+     * Predicate that determines whether or not an authorization check should
+     * be logged, based on global state and the "result" of the authorization
+     * check.
+     */
+    static bool _shouldLogAuthzCheck(ErrorCodes::Error result) {
+        if (!getGlobalAuditManager()->enabled) return false;
+
+        if (auditGlobalParams.auditAuthorizationSuccess) return true;
+        if (result != ErrorCodes::OK) return true;
+
+        return false;
+    }
+
+    static void _logAuthzCheck(
             ClientBasic* client,
             const NamespaceString& ns,
             const mmb::Document& cmdObj,
             ErrorCodes::Error result) {
 
-        if (!getGlobalAuditManager()->enabled) return;
+        AuthzCheckEvent event(
+                makeEnvelope(client, ActionType::authCheck, result),
+                ns,
+                &cmdObj);
 
-        if (auditGlobalParams.auditAuthorizationSuccess ||
-            result != ErrorCodes::OK) {
-            AuthzCheckEvent event(
-                    makeEnvelope(client, ActionType::authCheck, result),
-                    ns,
-                    &cmdObj);
-            if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-                getGlobalAuditLogDomain()->append(event);
-            }
+        if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+            getGlobalAuditLogDomain()->append(event);
         }
+    }
+
+    void logCommandAuthzCheck(
+            ClientBasic* client,
+            const NamespaceString& ns,
+            const BSONObj& cmdObj,
+            Command::Command* command,
+            ErrorCodes::Error result) {
+
+        if (!_shouldLogAuthzCheck(result)) return;
+
+        mmb::Document cmdToLog(cmdObj, mmb::Document::kInPlaceDisabled);
+        command->redactForLogging(&cmdToLog);
+
+        _logAuthzCheck(client, ns, cmdToLog, result);
     }
 
     void logDeleteAuthzCheck(
@@ -86,7 +112,7 @@ namespace audit {
             const BSONObj& pattern,
             ErrorCodes::Error result) {
 
-        if (!getGlobalAuditManager()->enabled) return;
+        if (!_shouldLogAuthzCheck(result)) return;
 
         mmb::Document cmdObj;
         fassertStatusOK(cmdObj.root().appendString("delete", ns.coll()));
@@ -95,26 +121,18 @@ namespace audit {
         fassertStatusOK(deleteElt.appendObject("q", pattern));
         fassertStatusOK(deleteListElt.pushBack(deleteElt));
         fassertStatusOK(cmdObj.root().pushBack(deleteListElt));
-        logCommandAuthzCheck(
-                client,
-                ns,
-                cmdObj,
-                result);
+        _logAuthzCheck(client, ns, cmdObj, result);
     }
 
     void logFsyncUnlockAuthzCheck(
             ClientBasic* client,
             ErrorCodes::Error result) {
 
-        if (!getGlobalAuditManager()->enabled) return;
+        if (!_shouldLogAuthzCheck(result)) return;
 
         mmb::Document cmdObj;
         fassertStatusOK(cmdObj.root().appendInt("fsyncUnlock", 1));
-        logCommandAuthzCheck(
-                client,
-                NamespaceString("admin"),
-                cmdObj,
-                result);
+        _logAuthzCheck(client, NamespaceString("admin"), cmdObj, result);
     }
 
     void logGetMoreAuthzCheck(
@@ -123,16 +141,12 @@ namespace audit {
             long long cursorId,
             ErrorCodes::Error result) {
 
-        if (!getGlobalAuditManager()->enabled) return;
+        if (!_shouldLogAuthzCheck(result)) return;
 
         mmb::Document cmdObj;
         fassertStatusOK(cmdObj.root().appendString("getMore", ns.coll()));
         fassertStatusOK(cmdObj.root().appendLong("cursorId", cursorId));
-        logCommandAuthzCheck(
-                client,
-                ns,
-                cmdObj,
-                result);
+        _logAuthzCheck(client, ns, cmdObj, result);
     }
 
     void logInProgAuthzCheck(
@@ -140,16 +154,12 @@ namespace audit {
             const BSONObj& filter,
             ErrorCodes::Error result) {
 
-        if (!getGlobalAuditManager()->enabled) return;
+        if (!_shouldLogAuthzCheck(result)) return;
 
         mmb::Document cmdObj;
         fassertStatusOK(cmdObj.root().appendInt("inprog", 1));
         fassertStatusOK(cmdObj.root().appendObject("q", filter));
-        logCommandAuthzCheck(
-                client,
-                NamespaceString("admin"),
-                cmdObj,
-                result);
+        _logAuthzCheck(client, NamespaceString("admin"), cmdObj, result);
     }
 
     void logInsertAuthzCheck(
@@ -158,18 +168,14 @@ namespace audit {
             const BSONObj& insertedObj,
             ErrorCodes::Error result) {
 
-        if (!getGlobalAuditManager()->enabled) return;
+        if (!_shouldLogAuthzCheck(result)) return;
 
         mmb::Document cmdObj;
         fassertStatusOK(cmdObj.root().appendString("insert", ns.coll()));
         mmb::Element docsListElt = cmdObj.makeElementArray("documents");
         fassertStatusOK(cmdObj.root().pushBack(docsListElt));
         fassertStatusOK(docsListElt.appendObject(StringData(), insertedObj));
-        logCommandAuthzCheck(
-                client,
-                ns,
-                cmdObj,
-                result);
+        _logAuthzCheck(client, ns, cmdObj, result);
     }
 
     void logKillCursorsAuthzCheck(
@@ -178,16 +184,12 @@ namespace audit {
             long long cursorId,
             ErrorCodes::Error result) {
 
-        if (!getGlobalAuditManager()->enabled) return;
+        if (!_shouldLogAuthzCheck(result)) return;
 
         mmb::Document cmdObj;
         fassertStatusOK(cmdObj.root().appendString("killCursors", ns.coll()));
         fassertStatusOK(cmdObj.root().appendLong("cursorId", cursorId));
-        logCommandAuthzCheck(
-                client,
-                ns,
-                cmdObj,
-                result);
+        _logAuthzCheck(client, ns, cmdObj, result);
     }
 
     void logKillOpAuthzCheck(
@@ -195,16 +197,12 @@ namespace audit {
             const BSONObj& filter,
             ErrorCodes::Error result) {
 
-        if (!getGlobalAuditManager()->enabled) return;
+        if (!_shouldLogAuthzCheck(result)) return;
 
         mmb::Document cmdObj;
         fassertStatusOK(cmdObj.root().appendInt("killOp", 1));
         fassertStatusOK(cmdObj.root().appendObject("q", filter));
-        logCommandAuthzCheck(
-                client,
-                NamespaceString("admin"),
-                cmdObj,
-                result);
+        _logAuthzCheck(client, NamespaceString("admin"), cmdObj, result);
     }
 
     void logQueryAuthzCheck(
@@ -213,16 +211,12 @@ namespace audit {
             const BSONObj& query,
             ErrorCodes::Error result) {
 
-        if (!getGlobalAuditManager()->enabled) return;
+        if (!_shouldLogAuthzCheck(result)) return;
 
         mmb::Document cmdObj;
         fassertStatusOK(cmdObj.root().appendString("find", ns.coll()));
         fassertStatusOK(cmdObj.root().appendObject("q", query));
-        logCommandAuthzCheck(
-                client,
-                ns,
-                cmdObj,
-                result);
+        _logAuthzCheck(client, ns, cmdObj, result);
     }
 
     void logUpdateAuthzCheck(
@@ -234,7 +228,7 @@ namespace audit {
             bool isMulti,
             ErrorCodes::Error result) {
 
-        if (!getGlobalAuditManager()->enabled) return;
+        if (!_shouldLogAuthzCheck(result)) return;
 
         mmb::Document cmdObj;
         fassertStatusOK(cmdObj.root().appendString("update", ns.coll()));
@@ -246,11 +240,7 @@ namespace audit {
         fassertStatusOK(updateElt.appendObject("u", updateObj));
         fassertStatusOK(updateElt.appendBool("upsert", isUpsert));
         fassertStatusOK(updateElt.appendBool("multi", isMulti));
-        logCommandAuthzCheck(
-                client,
-                ns,
-                cmdObj,
-                result);
+        _logAuthzCheck(client, ns, cmdObj, result);
     }
 
 }  // namespace audit
