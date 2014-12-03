@@ -95,7 +95,7 @@ namespace audit {
             ClientBasic* client,
             const NamespaceString& ns,
             const BSONObj& cmdObj,
-            Command::Command* command,
+            Command* command,
             ErrorCodes::Error result) {
 
         if (!_shouldLogAuthzCheck(result)) return;
