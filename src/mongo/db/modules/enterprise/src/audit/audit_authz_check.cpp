@@ -93,7 +93,7 @@ namespace audit {
 
     void logCommandAuthzCheck(
             ClientBasic* client,
-            const NamespaceString& ns,
+            const std::string& dbname,
             const BSONObj& cmdObj,
             Command* command,
             ErrorCodes::Error result) {
@@ -103,7 +103,10 @@ namespace audit {
         mmb::Document cmdToLog(cmdObj, mmb::Document::kInPlaceDisabled);
         command->redactForLogging(&cmdToLog);
 
-        _logAuthzCheck(client, ns, cmdToLog, result);
+        _logAuthzCheck(client,
+                       NamespaceString(command->parseNs(dbname, cmdObj)),
+                       cmdToLog,
+                       result);
     }
 
     void logDeleteAuthzCheck(
