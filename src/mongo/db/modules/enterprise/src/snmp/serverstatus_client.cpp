@@ -20,6 +20,9 @@
 
 namespace mongo {
 
+using std::endl;
+using std::numeric_limits;
+
 const std::string ServerStatusClient::NO_EXTRA = "Uses default return values";
 const std::string ServerStatusClient::ASSERTS = "asserts";
 const std::string ServerStatusClient::BACKGROUND_FLUSHING = "backgroundFlushing";

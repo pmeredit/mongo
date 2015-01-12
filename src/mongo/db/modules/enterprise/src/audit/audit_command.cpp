@@ -28,6 +28,8 @@
 
 namespace mongo {
 
+    using std::stringstream;
+
     class CmdLogApplicationMessage : public Command {
     public:
         CmdLogApplicationMessage();

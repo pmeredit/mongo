@@ -18,6 +18,11 @@
 #include "snmp.h"
 
 namespace mongo {
+
+    using std::string;
+    using std::stringstream;
+    using std::vector;
+
     OIDManager oidManager;
 
     // NOTE: rootOID as it stands works for a mongod-only SNMP offering. Expansion to include mongos

@@ -30,6 +30,8 @@
 
 namespace mongo {
 
+    using std::endl;
+
 namespace {
 
     /**

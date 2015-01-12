@@ -40,6 +40,10 @@
 
 namespace mongo {
 
+    using std::endl;
+    using std::string;
+    using std::vector;
+
     namespace moe = mongo::optionenvironment;
 
     static const int EXPIRE_SEC_OPCOUNTERSREPL = 0;     // global vars - no lock

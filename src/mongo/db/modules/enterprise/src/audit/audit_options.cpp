@@ -93,7 +93,7 @@ namespace audit {
 #ifdef _WIN32
                 if (params.count("install") || params.count("reinstall")) {
                     if (params.count("auditLog.path") &&
-                        !boost::filesystem::path(params["auditLog.path"].as<string>())
+                        !boost::filesystem::path(params["auditLog.path"].as<std::string>())
                             .is_absolute()) {
                         return Status(ErrorCodes::BadValue,
                             "auditLog.path requires an absolute file path with Windows services");
