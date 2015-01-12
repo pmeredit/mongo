@@ -24,7 +24,7 @@
 #include "mongo/db/client.h"
 #include "mongo/db/db.h"
 #include "mongo/db/operation_context_impl.h"
-#include "mongo/db/repl/repl_coordinator_global.h"
+#include "mongo/db/repl/replication_coordinator_global.h"
 #include "mongo/db/server_options.h"
 #include "mongo/db/stats/counters.h"
 #include "mongo/db/storage/mmap_v1/dur.h"
