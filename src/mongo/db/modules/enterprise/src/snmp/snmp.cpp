@@ -920,7 +920,7 @@ namespace mongo {
             break;
         }
 
-        if (logger::globalLogDomain()->shouldLog(severity)) {
+        if (shouldLog(severity)) {
             logger::LogstreamBuilder(logger::globalLogDomain(), getThreadName(), severity) <<
                 slm->msg;
         }
