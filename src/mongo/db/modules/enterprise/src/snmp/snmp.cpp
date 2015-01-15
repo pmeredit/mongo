@@ -27,6 +27,7 @@
 #include "mongo/db/repl/replication_coordinator_global.h"
 #include "mongo/db/server_options.h"
 #include "mongo/db/stats/counters.h"
+#include "mongo/db/storage/mmap_v1/data_file_sync.h"
 #include "mongo/db/storage/mmap_v1/dur.h"
 #include "mongo/db/storage_options.h"
 #include "mongo/util/assert_util.h"
@@ -223,21 +224,40 @@ namespace mongo {
                             ServerStatusClient::ASSERTS, "asserts.user", VT_CNT32));
                 v.push_back(new ServerStatusCallback("assertRollovers", "1,6,5",
                             ServerStatusClient::ASSERTS, "asserts.rollovers", VT_CNT32));
-                v.push_back(new ServerStatusCallback("flushCount", "1,7,1", 
-                            ServerStatusClient::BACKGROUND_FLUSHING, 
-                            "backgroundFlushing.flushes", VT_CNT64));
-                v.push_back(new ServerStatusCallback("flushTotalMs", "1,7,2",
-                            ServerStatusClient::BACKGROUND_FLUSHING, 
-                            "backgroundFlushing.total_ms", VT_CNT64));
-                v.push_back(new ServerStatusCallback("flushAverageMs", "1,7,3",
-                            ServerStatusClient::BACKGROUND_FLUSHING,
-                            "backgroundFlushing.average_ms", VT_DOUBLE));
-                v.push_back(new ServerStatusCallback("flushLastMs", "1,7,4",
-                            ServerStatusClient::BACKGROUND_FLUSHING,
-                            "backgroundFlushing.last_ms", VT_INT32));
-                v.push_back(new ServerStatusCallback("flushLastDateTime", "1,7,5",
-                            ServerStatusClient::BACKGROUND_FLUSHING,
-                            "backgroundFlushing.last_finished", VT_DATE));
+
+                {
+                    ServerStatusCallback* sscb =
+                        new ServerStatusCallback("flushCount", "1,7,1",
+                                ServerStatusClient::BACKGROUND_FLUSHING,
+                                "backgroundFlushing.flushes", VT_CNT64);
+                    sscb->_backgroundFlushingOnly = true;
+                    v.push_back(sscb);
+
+                    sscb = new ServerStatusCallback("flushTotalMs", "1,7,2",
+                                ServerStatusClient::BACKGROUND_FLUSHING,
+                                "backgroundFlushing.total_ms", VT_CNT64);
+                    sscb->_backgroundFlushingOnly = true;
+                    v.push_back(sscb);
+
+                    sscb = new ServerStatusCallback("flushAverageMs", "1,7,3",
+                                ServerStatusClient::BACKGROUND_FLUSHING,
+                                "backgroundFlushing.average_ms", VT_DOUBLE);
+                    sscb->_backgroundFlushingOnly = true;
+                    v.push_back(sscb);
+
+                    sscb = new ServerStatusCallback("flushLastMs", "1,7,4",
+                                ServerStatusClient::BACKGROUND_FLUSHING,
+                                "backgroundFlushing.last_ms", VT_INT32);
+                    sscb->_backgroundFlushingOnly = true;
+                    v.push_back(sscb);
+
+                    sscb = new ServerStatusCallback("flushLastDateTime", "1,7,5",
+                                ServerStatusClient::BACKGROUND_FLUSHING,
+                                "backgroundFlushing.last_finished", VT_DATE);
+                    sscb->_backgroundFlushingOnly = true;
+                    v.push_back(sscb);
+                }
+
                 v.push_back(new ServerStatusCallback("cursorTotalOpen", "1,8,1",
                             ServerStatusClient::CURSORS, "cursors.totalOpen", VT_INT32));
                 v.push_back(new ServerStatusCallback("cursorClientSize", "1,8,2", 
@@ -561,6 +581,7 @@ namespace mongo {
                 : SNMPCallBack(name, suffix ),
                   _metricType(metricType), _serverStatusSection(section),
                   _serverStatusMetric(metric),_replicaSetOnly(false), _linuxOnly(false),
+                  _backgroundFlushingOnly(false),
                   _journalOnly(false), _processInfoSupportedOnly(false), _snmpType(ASN_INTEGER),
                   _isDeprecated(isDeprecated){
                     
@@ -605,7 +626,11 @@ namespace mongo {
                     return false;
                 }              
 #endif
-                if (_journalOnly && !storageGlobalParams.dur) {
+                if (_backgroundFlushingOnly && !dataFileSync.running()) {
+                    return false;
+                }
+
+                if (_journalOnly && !getDur().isDurable()) {
                     return false;
                 }
 
@@ -673,6 +698,7 @@ namespace mongo {
             std::string _serverStatusMetric;
             bool _replicaSetOnly;
             bool _linuxOnly;
+            bool _backgroundFlushingOnly;
             bool _journalOnly;
             bool _processInfoSupportedOnly;
             u_char _snmpType;
