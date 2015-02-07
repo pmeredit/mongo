@@ -131,7 +131,7 @@ bool ServerStatusClient::load()
     return ok;
 }
 
-BSONElement ServerStatusClient::getElement(const StringData& name)
+BSONElement ServerStatusClient::getElement(StringData name)
 {
     LOG(5) << "ServerStatusClient::getElement: " << name;
     
@@ -147,17 +147,17 @@ BSONElement ServerStatusClient::getElement(const StringData& name)
     return elem;
 }
 
-bool ServerStatusClient::getBoolField(const StringData& name)
+bool ServerStatusClient::getBoolField(StringData name)
 {
     return getElement(name).Bool();
 }
 
-int ServerStatusClient::getIntField(const StringData& name)
+int ServerStatusClient::getIntField(StringData name)
 {
     return getElement(name).Int();
 }
 
-unsigned int ServerStatusClient::getDurationField(const StringData& name)
+unsigned int ServerStatusClient::getDurationField(StringData name)
 {
     int64_t timeMs = getInt64Field(name);
 
@@ -168,7 +168,7 @@ unsigned int ServerStatusClient::getDurationField(const StringData& name)
     return static_cast<unsigned int>(timeSnmp);
 }
 
-int64_t ServerStatusClient::getInt64Field(const StringData& name)
+int64_t ServerStatusClient::getInt64Field(StringData name)
 {
     BSONElement elem = getElement(name);
 
@@ -194,7 +194,7 @@ int64_t ServerStatusClient::getInt64Field(const StringData& name)
 
 // MIB does not provide 64bit integer type (outside of Counter64). 
 // We represent with DisplayString (SIZE (0.. 22))
-void ServerStatusClient::getInt64FieldAsString(const StringData& name, char* o_value, 
+void ServerStatusClient::getInt64FieldAsString(StringData name, char* o_value,
                                                int o_valueLen)
 {
     verify(o_value);
@@ -211,7 +211,7 @@ void ServerStatusClient::getInt64FieldAsString(const StringData& name, char* o_v
 }
 
 // MIB does not provide a floating point type. We represent with DisplayString (SIZE (0.. 16))
-void ServerStatusClient::getDoubleField(const StringData& name, char* o_value, int o_valueLen)
+void ServerStatusClient::getDoubleField(StringData name, char* o_value, int o_valueLen)
 {
     verify(o_value);
     verify(o_valueLen > 0);
@@ -228,7 +228,7 @@ void ServerStatusClient::getDoubleField(const StringData& name, char* o_value, i
 #pragma pop_macro("snprintf")
 #endif
 
-void ServerStatusClient::getStringField(const StringData& name, char* o_value, int o_valueLen)
+void ServerStatusClient::getStringField(StringData name, char* o_value, int o_valueLen)
 {
     verify(o_value);
     verify(o_valueLen > 0);
@@ -253,7 +253,7 @@ void ServerStatusClient::getStringField(const StringData& name, char* o_value, i
     }
 }
 
-void ServerStatusClient::getDateField(const StringData& name, char* o_value, int o_valueLen)
+void ServerStatusClient::getDateField(StringData name, char* o_value, int o_valueLen)
 {
     verify(o_value);
     verify(o_valueLen >= DATE_AND_TIME_TZ_LEN);

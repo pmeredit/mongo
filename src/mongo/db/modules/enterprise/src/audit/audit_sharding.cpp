@@ -20,7 +20,7 @@ namespace audit {
     class EnableShardingEvent : public AuditEvent {
     public:
         EnableShardingEvent(const AuditEventEnvelope& envelope,
-                            const StringData& dbname)
+                            StringData dbname)
             : AuditEvent(envelope),
               _dbname(dbname) {}
         virtual ~EnableShardingEvent() {}
@@ -29,7 +29,7 @@ namespace audit {
         virtual std::ostream& putTextDescription(std::ostream& os) const;
         virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
 
-        const StringData& _dbname;
+        StringData _dbname;
     };
 
     std::ostream& EnableShardingEvent::putTextDescription(std::ostream& os) const {
@@ -43,7 +43,7 @@ namespace audit {
     }
 
     void logEnableSharding(ClientBasic* client,
-                           const StringData& dbname) {
+                           StringData dbname) {
         if (!getGlobalAuditManager()->enabled) return;
 
         EnableShardingEvent event(makeEnvelope(client, ActionType::enableSharding, ErrorCodes::OK),
@@ -57,7 +57,7 @@ namespace audit {
     class AddShardEvent : public AuditEvent {
     public:
         AddShardEvent(const AuditEventEnvelope& envelope,
-                      const StringData& name,
+                      StringData name,
                       const std::string& servers,
                       long long maxSize)
             : AuditEvent(envelope),
@@ -70,7 +70,7 @@ namespace audit {
         virtual std::ostream& putTextDescription(std::ostream& os) const;
         virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
 
-        const StringData& _name;
+        StringData _name;
         const std::string& _servers;
         long long _maxSize;
     };
@@ -96,7 +96,7 @@ namespace audit {
     }
 
     void logAddShard(ClientBasic* client,
-                     const StringData& name,
+                     StringData name,
                      const std::string& servers,
                      long long maxSize) {
         if (!getGlobalAuditManager()->enabled) return;
@@ -114,7 +114,7 @@ namespace audit {
     class RemoveShardEvent : public AuditEvent {
     public:
         RemoveShardEvent(const AuditEventEnvelope& envelope,
-                         const StringData& shardname)
+                         StringData shardname)
             : AuditEvent(envelope),
               _shardname(shardname) {}
         virtual ~RemoveShardEvent() {}
@@ -123,7 +123,7 @@ namespace audit {
         virtual std::ostream& putTextDescription(std::ostream& os) const;
         virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
 
-        const StringData& _shardname;
+        StringData _shardname;
     };
 
     std::ostream& RemoveShardEvent::putTextDescription(std::ostream& os) const {
@@ -137,7 +137,7 @@ namespace audit {
     }
 
     void logRemoveShard(ClientBasic* client,
-                        const StringData& shardname) {
+                        StringData shardname) {
         if (!getGlobalAuditManager()->enabled) return;
 
         RemoveShardEvent event(makeEnvelope(client, ActionType::removeShard, ErrorCodes::OK),
@@ -151,7 +151,7 @@ namespace audit {
     class ShardCollectionEvent : public AuditEvent {
     public:
         ShardCollectionEvent(const AuditEventEnvelope& envelope,
-                             const StringData& ns,
+                             StringData ns,
                              const BSONObj& keyPattern,
                              bool unique)
             : AuditEvent(envelope),
@@ -164,7 +164,7 @@ namespace audit {
         virtual std::ostream& putTextDescription(std::ostream& os) const;
         virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
 
-        const StringData& _ns;
+        StringData _ns;
         const BSONObj& _keyPattern;
         bool _unique;
     };
@@ -186,7 +186,7 @@ namespace audit {
     }
 
     void logShardCollection(ClientBasic* client,
-                            const StringData& ns,
+                            StringData ns,
                             const BSONObj& keyPattern,
                             bool unique) {
         if (!getGlobalAuditManager()->enabled) return;

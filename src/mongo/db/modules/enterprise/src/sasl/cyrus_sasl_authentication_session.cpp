@@ -38,9 +38,9 @@ namespace {
      * Signature of a function that can be used to smoke-test a SASL mechanism at
      * startup, to see if it is likely to work in the current environment.
      */
-    typedef Status (*SmokeTestMechanismFn)(const StringData& mechanismName,
-                                           const StringData& serviceName,
-                                           const StringData& serviceHostname);
+    typedef Status (*SmokeTestMechanismFn)(StringData mechanismName,
+                                           StringData serviceName,
+                                           StringData serviceHostname);
 
     /**
      * Signature of a function used to determine if "authenticatedUser" is authorized to act as
@@ -49,8 +49,8 @@ namespace {
      * The "session" and "conn" objects are made available for context.
      */
     typedef bool (*AuthorizeUserFn)(CyrusSaslAuthenticationSession* session,
-                                    const StringData& requestedUser,
-                                    const StringData& authenticatedUser);
+                                    StringData requestedUser,
+                                    StringData authenticatedUser);
 
 }  // namespace
 
@@ -73,9 +73,9 @@ namespace {
     /**
      * Basic smoke test of SASL mechanism functionality, that any requested mechanism should pass.
      */
-    Status smokeCommonMechanism(const StringData& mechanismName,
-                                const StringData& serviceName,
-                                const StringData& serviceHostname) {
+    Status smokeCommonMechanism(StringData mechanismName,
+                                StringData serviceName,
+                                StringData serviceHostname) {
         AuthorizationManager authzManager(new AuthzManagerExternalStateMock());
         AuthorizationSession authzSession(new AuthzSessionExternalStateMock(&authzManager));
         CyrusSaslAuthenticationSession session(&authzSession);
@@ -97,9 +97,9 @@ namespace {
     /**
      * Smoke test of GSSAPI functionality in addition to basic SASL mechanism functionality.
      */
-    Status smokeGssapiMechanism(const StringData& mechanismName,
-                                const StringData& serviceName,
-                                const StringData& serviceHostname) {
+    Status smokeGssapiMechanism(StringData mechanismName,
+                                StringData serviceName,
+                                StringData serviceHostname) {
         Status status = smokeCommonMechanism(mechanismName, serviceName, serviceHostname);
         if (!status.isOK())
             return status;
@@ -115,8 +115,8 @@ namespace {
      * requested user name.
      */
     bool isAuthorizedCommon(CyrusSaslAuthenticationSession* session,
-                            const StringData& requestedUser,
-                            const StringData& authenticatedUser) {
+                            StringData requestedUser,
+                            StringData authenticatedUser) {
 
         return requestedUser == authenticatedUser;
     }
@@ -129,8 +129,8 @@ namespace {
      * the authenticated user name before validating it..
      */
     bool isAuthorizedGssapi(CyrusSaslAuthenticationSession* session,
-                            const StringData& requestedUser,
-                            const StringData& authenticatedUser) {
+                            StringData requestedUser,
+                            StringData authenticatedUser) {
 
         std::string canonicalAuthenticatedUser;
         if (!gssapi::canonicalizeUserName(authenticatedUser, &canonicalAuthenticatedUser).isOK())
@@ -274,7 +274,7 @@ namespace {
      * Returns the SaslMechanismInfo for "mechanism", or NULL if there is none.
      */
     const CyrusSaslAuthenticationSession::SaslMechanismInfo* _findMechanismInfo(
-            const StringData& mechanism) {
+            StringData mechanism) {
 
         for (CyrusSaslAuthenticationSession::SaslMechanismInfo* mechInfo = _mongoKnownMechanisms;
              mechInfo->name != NULL; ++mechInfo) {
@@ -286,9 +286,9 @@ namespace {
     }
 
     // static
-    Status CyrusSaslAuthenticationSession::smokeTestMechanism(const StringData& mechanism,
-                                                         const StringData& serviceName,
-                                                         const StringData& serviceHostname) {
+    Status CyrusSaslAuthenticationSession::smokeTestMechanism(StringData mechanism,
+                                                         StringData serviceName,
+                                                         StringData serviceHostname) {
 
         const SaslMechanismInfo* mechInfo = _findMechanismInfo(mechanism);
         if (NULL == mechInfo) {
@@ -318,10 +318,10 @@ namespace {
             sasl_dispose(&_saslConnection);
     }
 
-    Status CyrusSaslAuthenticationSession::start(const StringData& authenticationDatabase,
-                                                 const StringData& mechanism,
-                                                 const StringData& serviceName,
-                                                 const StringData& serviceHostname,
+    Status CyrusSaslAuthenticationSession::start(StringData authenticationDatabase,
+                                                 StringData mechanism,
+                                                 StringData serviceName,
+                                                 StringData serviceHostname,
                                                  int64_t conversationId,
                                                  bool autoAuthorize) {
         fassert(4001, conversationId > 0);
@@ -359,7 +359,7 @@ namespace {
         return Status::OK();
     }
 
-    Status CyrusSaslAuthenticationSession::step(const StringData& inputData,
+    Status CyrusSaslAuthenticationSession::step(StringData inputData,
                                                 std::string* outputData) {
         int result;
         const char* output;

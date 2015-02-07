@@ -21,8 +21,8 @@ namespace audit {
     public:
         CreateIndexEvent(const AuditEventEnvelope& envelope,
                          const BSONObj* indexSpec,
-                         const StringData& indexname,
-                         const StringData& nsname)
+                         StringData indexname,
+                         StringData nsname)
             : AuditEvent(envelope),
               _indexSpec(indexSpec),
               _indexname(indexname),
@@ -34,8 +34,8 @@ namespace audit {
         virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
 
         const BSONObj* _indexSpec;
-        const StringData& _indexname;
-        const StringData& _nsname;
+        StringData _indexname;
+        StringData _nsname;
     };
 
     std::ostream& CreateIndexEvent::putTextDescription(std::ostream& os) const {
@@ -54,8 +54,8 @@ namespace audit {
 
     void logCreateIndex(ClientBasic* client,
                         const BSONObj* indexSpec,
-                        const StringData& indexname,
-                        const StringData& nsname) {
+                        StringData indexname,
+                        StringData nsname) {
 
         if (!getGlobalAuditManager()->enabled) return;
 
@@ -73,7 +73,7 @@ namespace audit {
     class CreateCollectionEvent : public AuditEvent {
     public:
         CreateCollectionEvent(const AuditEventEnvelope& envelope,
-                              const StringData& nsname)
+                              StringData nsname)
             : AuditEvent(envelope),
               _nsname(nsname) {}
         virtual ~CreateCollectionEvent() {}
@@ -82,7 +82,7 @@ namespace audit {
         virtual std::ostream& putTextDescription(std::ostream& os) const;
         virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
 
-        const StringData& _nsname;
+        StringData _nsname;
     };
 
     std::ostream& CreateCollectionEvent::putTextDescription(std::ostream& os) const {
@@ -96,7 +96,7 @@ namespace audit {
     }
 
     void logCreateCollection(ClientBasic* client,
-                             const StringData& nsname) {
+                             StringData nsname) {
 
         if (!getGlobalAuditManager()->enabled) return;
 
@@ -115,7 +115,7 @@ namespace audit {
     class CreateDatabaseEvent : public AuditEvent {
     public:
         CreateDatabaseEvent(const AuditEventEnvelope& envelope,
-                            const StringData& dbname)
+                            StringData dbname)
             : AuditEvent(envelope),
               _dbname(dbname) {}
         virtual ~CreateDatabaseEvent() {}
@@ -124,7 +124,7 @@ namespace audit {
         virtual std::ostream& putTextDescription(std::ostream& os) const;
         virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
 
-        const StringData& _dbname;
+        StringData _dbname;
     };
 
     std::ostream& CreateDatabaseEvent::putTextDescription(std::ostream& os) const {
@@ -138,7 +138,7 @@ namespace audit {
     }
 
     void logCreateDatabase(ClientBasic* client,
-                           const StringData& dbname) {
+                           StringData dbname) {
 
         if (!getGlobalAuditManager()->enabled) return;
 
@@ -154,8 +154,8 @@ namespace audit {
     class DropIndexEvent : public AuditEvent {
     public:
         DropIndexEvent(const AuditEventEnvelope& envelope,
-                       const StringData& indexname,
-                       const StringData& nsname)
+                       StringData indexname,
+                       StringData nsname)
             : AuditEvent(envelope),
               _indexname(indexname),
               _nsname(nsname) {}
@@ -165,8 +165,8 @@ namespace audit {
         virtual std::ostream& putTextDescription(std::ostream& os) const;
         virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
 
-        const StringData& _indexname;
-        const StringData& _nsname;
+        StringData _indexname;
+        StringData _nsname;
     };
 
     std::ostream& DropIndexEvent::putTextDescription(std::ostream& os) const {
@@ -181,8 +181,8 @@ namespace audit {
     }
 
     void logDropIndex(ClientBasic* client,
-                      const StringData& indexname,
-                      const StringData& nsname) {
+                      StringData indexname,
+                      StringData nsname) {
 
         if (!getGlobalAuditManager()->enabled) return;
 
@@ -199,7 +199,7 @@ namespace audit {
     class DropCollectionEvent : public AuditEvent {
     public:
         DropCollectionEvent(const AuditEventEnvelope& envelope,
-                            const StringData& nsname)
+                            StringData nsname)
             : AuditEvent(envelope),
               _nsname(nsname) {}
         virtual ~DropCollectionEvent() {}
@@ -208,7 +208,7 @@ namespace audit {
         virtual std::ostream& putTextDescription(std::ostream& os) const;
         virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
 
-        const StringData& _nsname;
+        StringData _nsname;
     };
 
     std::ostream& DropCollectionEvent::putTextDescription(std::ostream& os) const {
@@ -222,7 +222,7 @@ namespace audit {
     }
 
     void logDropCollection(ClientBasic* client,
-                           const StringData& nsname) {
+                           StringData nsname) {
 
         if (!getGlobalAuditManager()->enabled) return;
 
@@ -238,7 +238,7 @@ namespace audit {
     class DropDatabaseEvent : public AuditEvent {
     public:
         DropDatabaseEvent(const AuditEventEnvelope& envelope,
-                          const StringData& dbname)
+                          StringData dbname)
             : AuditEvent(envelope),
               _dbname(dbname) {}
         virtual ~DropDatabaseEvent() {}
@@ -247,7 +247,7 @@ namespace audit {
         virtual std::ostream& putTextDescription(std::ostream& os) const;
         virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
 
-        const StringData& _dbname;
+        StringData _dbname;
     };
 
     std::ostream& DropDatabaseEvent::putTextDescription(std::ostream& os) const {
@@ -261,7 +261,7 @@ namespace audit {
     }
 
     void logDropDatabase(ClientBasic* client,
-                         const StringData& dbname) {
+                         StringData dbname) {
 
         if (!getGlobalAuditManager()->enabled) return;
 
@@ -277,8 +277,8 @@ namespace audit {
     class RenameCollectionEvent : public AuditEvent {
     public:
         RenameCollectionEvent(const AuditEventEnvelope& envelope,
-                              const StringData& source,
-                              const StringData& target)
+                              StringData source,
+                              StringData target)
             : AuditEvent(envelope),
               _source(source),
               _target(target) {}
@@ -288,8 +288,8 @@ namespace audit {
         virtual std::ostream& putTextDescription(std::ostream& os) const;
         virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
 
-        const StringData& _source;
-        const StringData& _target;
+        StringData _source;
+        StringData _target;
     };
 
     std::ostream& RenameCollectionEvent::putTextDescription(std::ostream& os) const {
@@ -304,8 +304,8 @@ namespace audit {
     }
 
     void logRenameCollection(ClientBasic* client,
-                             const StringData& source,
-                             const StringData& target) {
+                             StringData source,
+                             StringData target) {
 
         if (!getGlobalAuditManager()->enabled) return;
 

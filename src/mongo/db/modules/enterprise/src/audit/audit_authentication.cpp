@@ -26,7 +26,7 @@ namespace audit {
     class AuthenticationEvent : public AuditEvent {
     public:
         AuthenticationEvent(const AuditEventEnvelope& envelope,
-                            const StringData& mechanism,
+                            StringData mechanism,
                             const UserName& user)
             : AuditEvent(envelope), _mechanism(mechanism), _user(user) {
         }
@@ -58,7 +58,7 @@ namespace audit {
     }
 
     void logAuthentication(ClientBasic* client,
-                           const StringData& mechanism,
+                           StringData mechanism,
                            const UserName& user,
                            ErrorCodes::Error result) {
 

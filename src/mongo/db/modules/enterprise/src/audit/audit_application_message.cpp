@@ -20,7 +20,7 @@ namespace audit {
     class ApplicationMessageEvent : public AuditEvent {
     public:
         ApplicationMessageEvent(const AuditEventEnvelope& envelope,
-                                const StringData& msg)
+                                StringData msg)
             : AuditEvent(envelope), _msg(msg) {}
         virtual ~ApplicationMessageEvent() {}
 
@@ -42,7 +42,7 @@ namespace audit {
     }
 
     void logApplicationMessage(ClientBasic* client,
-                               const StringData& msg) {
+                               StringData msg) {
 
         if (!getGlobalAuditManager()->enabled) return;
 

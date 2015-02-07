@@ -19,12 +19,12 @@ namespace gssapi {
     /**
      * Canonicalize the user principal for "name".
      */
-    Status canonicalizeUserName(const StringData& name, std::string* canonicalName);
+    Status canonicalizeUserName(StringData name, std::string* canonicalName);
 
     /**
      * Canonicalize the server principal for "name".
      */
-    Status canonicalizeServerName(const StringData& name, std::string* canonicalName);
+    Status canonicalizeServerName(StringData name, std::string* canonicalName);
 
     /**
      * Returns Status::OK() if the process can acquire a GSSAPI credential for the given server

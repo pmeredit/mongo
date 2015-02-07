@@ -24,14 +24,14 @@ namespace mongo {
                            const std::string& sectionName,
                            time_t cacheExpireSecs);
 
-        bool getBoolField(const StringData& name);
-        int getIntField(const StringData& name);
-        unsigned int getDurationField(const StringData& name);
-        int64_t getInt64Field(const StringData& name);
-        void getInt64FieldAsString(const StringData& name, char* o_value, int o_valueLen);
-        void getDoubleField(const StringData& name, char* o_value, int o_valueLen);
-        void getStringField(const StringData& name, char* o_value, int o_valueLen);
-        void getDateField(const StringData& name, char* o_value, int o_valueLen);
+        bool getBoolField(StringData name);
+        int getIntField(StringData name);
+        unsigned int getDurationField(StringData name);
+        int64_t getInt64Field(StringData name);
+        void getInt64FieldAsString(StringData name, char* o_value, int o_valueLen);
+        void getDoubleField(StringData name, char* o_value, int o_valueLen);
+        void getStringField(StringData name, char* o_value, int o_valueLen);
+        void getDateField(StringData name, char* o_value, int o_valueLen);
         
         static const std::string NO_EXTRA;
         static const std::string ASSERTS;
@@ -63,7 +63,7 @@ namespace mongo {
 
         bool load();
         bool loadIfNeeded();
-        BSONElement getElement(const StringData& name);
+        BSONElement getElement(StringData name);
     };
 
 }

@@ -80,7 +80,7 @@ namespace {
      *
      * Result stored to "canonicalName" and returns Status::OK() on success.
      */
-    Status canonicalizeName(gss_OID nameType, const StringData& name, std::string* canonicalName) {
+    Status canonicalizeName(gss_OID nameType, StringData name, std::string* canonicalName) {
         OM_uint32 majorStatus = 0;
         OM_uint32 minorStatus = 0;
         gss_buffer_desc nameBuffer;
@@ -134,11 +134,11 @@ namespace {
     }
 }  // namespace
 
-    Status canonicalizeUserName(const StringData& name, std::string* canonicalName) {
+    Status canonicalizeUserName(StringData name, std::string* canonicalName) {
         return canonicalizeName(GSS_C_NT_USER_NAME, name, canonicalName);
     }
 
-    Status canonicalizeServerName(const StringData& name, std::string* canonicalName) {
+    Status canonicalizeServerName(StringData name, std::string* canonicalName) {
         return canonicalizeName(GSS_C_NT_HOSTBASED_SERVICE, name, canonicalName);
     }
 

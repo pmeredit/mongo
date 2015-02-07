@@ -40,12 +40,12 @@ extern "C" int crammd5_server_plug_init(const sasl_utils_t *utils,
 namespace mongo {
 namespace gssapi {
 
-    Status canonicalizeUserName(const StringData& name, std::string* canonicalName) {
+    Status canonicalizeUserName(StringData name, std::string* canonicalName) {
         *canonicalName = name.toString();
         return Status::OK();
     }
 
-    Status canonicalizeServerName(const StringData& name, std::string* canonicalName) {
+    Status canonicalizeServerName(StringData name, std::string* canonicalName) {
         return Status(ErrorCodes::InternalError, "do not call canonicalizeServerName");
     }
 

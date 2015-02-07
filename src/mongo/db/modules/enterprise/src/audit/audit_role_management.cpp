@@ -395,7 +395,7 @@ namespace audit {
     class DropAllRolesFromDatabaseEvent : public AuditEvent {
     public:
         DropAllRolesFromDatabaseEvent(const AuditEventEnvelope& envelope,
-                                     const StringData& dbname)
+                                     StringData dbname)
             : AuditEvent(envelope), _dbname(dbname) {}
         virtual ~DropAllRolesFromDatabaseEvent() {}
 
@@ -403,7 +403,7 @@ namespace audit {
         virtual std::ostream& putTextDescription(std::ostream& os) const;
         virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
 
-        const StringData& _dbname;
+        StringData _dbname;
     };
 
     std::ostream& DropAllRolesFromDatabaseEvent::putTextDescription(std::ostream& os) const {
@@ -417,7 +417,7 @@ namespace audit {
     }
 
     void logDropAllRolesFromDatabase(ClientBasic* client,
-                                    const StringData& dbname) {
+                                    StringData dbname) {
 
         if (!getGlobalAuditManager()->enabled) return;
 

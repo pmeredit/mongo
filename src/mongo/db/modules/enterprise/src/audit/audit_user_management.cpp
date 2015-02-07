@@ -153,7 +153,7 @@ namespace audit {
     class DropAllUsersFromDatabaseEvent : public AuditEvent {
     public:
         DropAllUsersFromDatabaseEvent(const AuditEventEnvelope& envelope,
-                                      const StringData& dbname)
+                                      StringData dbname)
             : AuditEvent(envelope), _dbname(dbname) {}
         virtual ~DropAllUsersFromDatabaseEvent() {}
 
@@ -161,7 +161,7 @@ namespace audit {
         virtual std::ostream& putTextDescription(std::ostream& os) const;
         virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
 
-        const StringData& _dbname;
+        StringData _dbname;
     };
 
     std::ostream& DropAllUsersFromDatabaseEvent::putTextDescription(std::ostream& os) const {
@@ -174,7 +174,7 @@ namespace audit {
         return builder;
     }
 
-    void logDropAllUsersFromDatabase(ClientBasic* client, const StringData& dbname) {
+    void logDropAllUsersFromDatabase(ClientBasic* client, StringData dbname) {
 
         if (!getGlobalAuditManager()->enabled) return;
 
