@@ -63,7 +63,8 @@ def configure(conf, env):
             })
 
     def addFileInExtraPath(file_name):
-        paths = env['EXTRABINPATH']
+        # We look for libraries in the peer 'bin' directory of each path in the libpath.
+        paths = [str(env.Dir(libpath).Dir('..').Dir('bin')) for libpath in env['LIBPATH']]
         for path in paths:
             full_file_name = os.path.join(os.path.normpath(path.lower()), file_name)
             if os.path.exists(full_file_name):
