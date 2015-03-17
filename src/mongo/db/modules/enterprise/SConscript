@@ -110,3 +110,13 @@ else:
                                        '$BUILD_DIR/mongo/unittest/unittest',
                                        '$BUILD_DIR/mongo/unittest/unittest_crutch'])
     env.RegisterUnitTest(gssapi_test[0])
+
+if GetOption("rlp") == "on":
+    env.Library(
+        target='mongorlp',
+        source=[
+            'src/rlp/rlp_options.cpp',
+        ],
+        LIBDEPS_DEPENDENTS=[
+            '$BUILD_DIR/mongo/${PROGPREFIX}mongod${PROGSUFFIX}'
+        ])

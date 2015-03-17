@@ -1,4 +1,14 @@
 import os
+from SCons.Script import AddOption, GetOption
+
+AddOption("--use-basis-tech-rosette-linguistics-platform",
+          choices=["on", "off"],
+          const="?",
+          default="off",
+          dest="rlp",
+          help="Use Basis Tech Rosette Linguistics Platform",
+          type="choice",
+          )
 
 def configure(conf, env):
     root = os.path.dirname(__file__)
@@ -98,4 +108,13 @@ def configure(conf, env):
                         full_path : "bin"
                         })
                 break
+
+    if GetOption("rlp") == "on":
+        if not conf.CheckCXXHeader("bt_rlp_c.h"):
+            print("Could not find bt_rlp_c.h, include <BT_ROOT>/rlp/include in CPPPATH")
+            env.Exit(1)
+        if not conf.CheckCXXHeader("bt_types.h"):
+            print("Could not find bt_types.h, include <BT_ROOT>/rlp/utilities/include in CPPPATH")
+            env.Exit(1)
+
 
