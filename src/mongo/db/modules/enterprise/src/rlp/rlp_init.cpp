@@ -12,6 +12,7 @@
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
 
+#include "rlp_language.h"
 #include "rlp_loader.h"
 #include "rlp_options.h"
 
@@ -48,6 +49,20 @@ namespace fts {
         }
 
         return sw.getStatus();
+    }
+
+    // Register languages so they can be resolved at runtime
+    //
+    MONGO_INITIALIZER_WITH_PREREQUISITES(RlpLangInit, ("FTSAllLanguagesRegistered",
+        "FTSRegisterLanguageAliases",
+        "InitRLP"))
+    (::mongo::InitializerContext* context) {
+        // If user did not specify RLP, it is ok
+        if (rlpLoader) {
+            registerRlpLanguages(rlpLoader->getEnvironment());
+        }
+
+        return Status::OK();
     }
 
 }  // namespace fts

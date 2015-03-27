@@ -8,6 +8,7 @@ if GetOption("rlp") == "on":
         source=[
             'rlp_context.cpp',
             'rlp_environment.cpp',
+            'rlp_language.cpp',
             'rlp_loader.cpp',
             'rlp_stringbuffer.cpp',
             'rlp_token_iterator.cpp',
@@ -25,8 +26,22 @@ if GetOption("rlp") == "on":
             'rlp_options.cpp',
         ],
         LIBDEPS=[
+            'rlpcore',
         ],
         LIBDEPS_DEPENDENTS=[
             '$BUILD_DIR/mongo/${PROGPREFIX}mongod${PROGSUFFIX}'
         ])
 
+    env.CppUnitTest(
+        target='rlp_language_test',
+        source=[
+            'rlp_language_test.cpp'
+        ],
+        LIBDEPS=[
+            'rlpcore',
+            "$BUILD_DIR/mongo/base/base",
+            "$BUILD_DIR/mongo/db/common",
+            "$BUILD_DIR/mongo/db/fts/base",
+            "$BUILD_DIR/mongo/foundation",
+            "$BUILD_DIR/mongo/platform/platform",
+        ])
