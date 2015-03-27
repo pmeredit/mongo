@@ -2,6 +2,11 @@
 
 Import("env")
 
+env.SConscript([
+    'src/encryptdb/SConscript',
+    'src/rlp/SConscript',
+    ])
+
 env.Library('audit',
             ['src/audit/audit_application_message.cpp',
              'src/audit/audit_authentication.cpp',
@@ -45,8 +50,6 @@ env.Library('audit_configuration',
             LIBDEPS=['audit'],
             LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/${PROGPREFIX}mongod${PROGSUFFIX}',
                                 '$BUILD_DIR/mongo/${PROGPREFIX}mongos${PROGSUFFIX}'])
-
-env.SConscript('src/encryptdb/SConscript')
 
 env.Library('mongosnmp',
             ['src/snmp/serverstatus_client.cpp',
@@ -113,12 +116,3 @@ else:
                                        '$BUILD_DIR/mongo/unittest/unittest_crutch'])
     env.RegisterUnitTest(gssapi_test[0])
 
-if GetOption("rlp") == "on":
-    env.Library(
-        target='mongorlp',
-        source=[
-            'src/rlp/rlp_options.cpp',
-        ],
-        LIBDEPS_DEPENDENTS=[
-            '$BUILD_DIR/mongo/${PROGPREFIX}mongod${PROGSUFFIX}'
-        ])

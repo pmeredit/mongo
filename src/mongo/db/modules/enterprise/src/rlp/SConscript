@@ -1,0 +1,30 @@
+# -*- mode: python -*-
+
+Import("env")
+
+if GetOption("rlp") == "on":
+    env.Library(
+        target='rlpcore',
+        source=[
+            'rlp_context.cpp',
+            'rlp_environment.cpp',
+            'rlp_loader.cpp',
+            'rlp_token_iterator.cpp',
+            'rlp_token_iterator_factory.cpp',
+        ],
+        LIBDEPS_DEPENDENTS=[
+            '$BUILD_DIR/mongo/${PROGPREFIX}mongod${PROGSUFFIX}'
+        ])
+
+    env.Library(
+        target='mongorlp',
+        source=[
+            'rlp_init.cpp',
+            'rlp_options.cpp',
+        ],
+        LIBDEPS=[
+        ],
+        LIBDEPS_DEPENDENTS=[
+            '$BUILD_DIR/mongo/${PROGPREFIX}mongod${PROGSUFFIX}'
+        ])
+
