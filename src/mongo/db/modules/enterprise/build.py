@@ -9,7 +9,7 @@ def configure(conf, env):
         print("Could not find <net-snmp/net-snmp-config.h>, required for enterprise build.")
         env.Exit(1)
 
-    if env['PYSYSPLATFORM'] == "win32":
+    if env.TargetOSIs("windows"):
         env['SNMP_SYSLIBDEPS'] = ['netsnmp','netsnmpagent','netsnmpmibs']
         env.Append(CPPDEFINES=["NETSNMP_NO_INLINE"])
     else:
@@ -39,7 +39,7 @@ def configure(conf, env):
     if conf.CheckLib(library="gssapi_krb5", autoadd=False):
         env['MONGO_GSSAPI_IMPL'] = "gssapi"
         env['MONGO_GSSAPI_LIB'] = "gssapi_krb5"
-    elif env['PYSYSPLATFORM'] == "win32":
+    elif env.TargetOSIs("windows"):
         env['MONGO_GSSAPI_IMPL'] = "sspi"
         env['MONGO_GSSAPI_LIB'] = "secur32"
     else:
@@ -75,7 +75,7 @@ def configure(conf, env):
                         })
                 break
 
-    if env['PYSYSPLATFORM'] == "win32":
+    if env.TargetOSIs("windows"):
         files = [
                 'libsasl.dll',
                 'libsasl.pdb',

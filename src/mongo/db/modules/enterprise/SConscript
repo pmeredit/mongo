@@ -81,7 +81,7 @@ env.CppUnitTest('sasl_authentication_session_test',
                          '$BUILD_DIR/mongo/db/auth/saslauth',
                          ])
 
-if env['PYSYSPLATFORM'] == "win32":
+if env.TargetOSIs("windows"):
     # Ensure we're building with /MD or /MDd
     mdFlags = ["/MD","/MDd"]
     hasFlag = 0
