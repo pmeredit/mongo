@@ -41,13 +41,14 @@ namespace audit {
             return;
         }
 
-        BSONArrayBuilder usersArrayBuilder(cmd->subarrayStart(cmdOptionImpersonatedUsers));
         ClientBasic* client(ClientBasic::getCurrent());
         if (!client) {
             return;
         }
 
         AuthorizationSession* authorizationSession(client->getAuthorizationSession());
+
+        BSONArrayBuilder usersArrayBuilder(cmd->subarrayStart(cmdOptionImpersonatedUsers));
         appendImpersonatedUserNames(authorizationSession->getAuthenticatedUserNames(),
                                     usersArrayBuilder);
         usersArrayBuilder.done();
