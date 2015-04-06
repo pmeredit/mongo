@@ -132,7 +132,7 @@ namespace {
         SaslConversationGssapi();
 
         AuthorizationManager authManager;
-        AuthorizationSession authSession;
+        std::unique_ptr<AuthorizationSession> authSession;
         boost::scoped_ptr<SaslClientSession> client;
         boost::scoped_ptr<SaslAuthenticationSession> server;
         const std::string mechanism;
@@ -143,10 +143,10 @@ namespace {
 
     SaslConversationGssapi::SaslConversationGssapi() :
         authManager(new AuthzManagerExternalStateMock()),
-        authSession(new AuthzSessionExternalStateMock(&authManager)),
+        authSession(authManager.makeAuthorizationSession()),
         mechanism("GSSAPI") {
         client.reset(SaslClientSession::create("GSSAPI"));
-        server.reset(SaslAuthenticationSession::create(&authSession, "GSSAPI"));
+        server.reset(SaslAuthenticationSession::create(authSession.get(), "GSSAPI"));
     }
 
     void SaslConversationGssapi::assertConversationFailure() {
