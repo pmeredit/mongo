@@ -77,8 +77,10 @@ namespace {
                                 StringData serviceName,
                                 StringData serviceHostname) {
         AuthorizationManager authzManager(new AuthzManagerExternalStateMock());
-        AuthorizationSession authzSession(new AuthzSessionExternalStateMock(&authzManager));
-        CyrusSaslAuthenticationSession session(&authzSession);
+        const std::unique_ptr<AuthorizationSession> authzSession =
+            authzManager.makeAuthorizationSession();
+
+        CyrusSaslAuthenticationSession session(authzSession.get());
         OperationContextNoop txn;
         Status status = session.start("test",
                                       mechanismName,
