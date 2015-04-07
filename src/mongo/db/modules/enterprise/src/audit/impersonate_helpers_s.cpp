@@ -46,7 +46,7 @@ namespace audit {
             return;
         }
 
-        AuthorizationSession* authorizationSession(client->getAuthorizationSession());
+        AuthorizationSession* authorizationSession(AuthorizationSession::get(client));
 
         BSONArrayBuilder usersArrayBuilder(cmd->subarrayStart(cmdOptionImpersonatedUsers));
         appendImpersonatedUserNames(authorizationSession->getAuthenticatedUserNames(),

@@ -38,7 +38,7 @@ namespace mongo {
         virtual Status checkAuthForCommand(ClientBasic* client,
                                            const std::string& dbname,
                                            const BSONObj& cmdObj) {
-            AuthorizationSession* authzSession = client->getAuthorizationSession();
+            AuthorizationSession* authzSession = AuthorizationSession::get(client);
 
             if (!authzSession->isAuthorizedForActionsOnResource(
                     ResourcePattern::forClusterResource(), ActionType::applicationMessage)) {

@@ -32,13 +32,13 @@ namespace audit {
             envelope->remoteAddr = client->port()->remoteAddr();
         }
         envelope->authenticatedUserNames =
-            client->getAuthorizationSession()->getAuthenticatedUserNames();
+            AuthorizationSession::get(client)->getAuthenticatedUserNames();
         envelope->authenticatedRoleNames =
-            client->getAuthorizationSession()->getAuthenticatedRoleNames();
+            AuthorizationSession::get(client)->getAuthenticatedRoleNames();
         envelope->impersonatedUserNames =
-            client->getAuthorizationSession()->getImpersonatedUserNames();
+            AuthorizationSession::get(client)->getImpersonatedUserNames();
         envelope->impersonatedRoleNames =
-            client->getAuthorizationSession()->getImpersonatedRoleNames();
+            AuthorizationSession::get(client)->getImpersonatedRoleNames();
         envelope->actionType = actionType;
         envelope->result = result;
     }
