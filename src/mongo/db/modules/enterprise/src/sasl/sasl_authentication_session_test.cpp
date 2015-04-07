@@ -42,7 +42,8 @@ namespace {
 
         AuthzManagerExternalStateMock* authManagerExternalState;
         AuthorizationManager authManager;
-        std::unique_ptr<AuthorizationSession> authSession;
+        AuthzSessionExternalStateMock* authzSessionExternalState;
+        AuthorizationSession authSession;
         std::string mechanism;
         boost::scoped_ptr<SaslClientSession> client;
         boost::scoped_ptr<SaslAuthenticationSession> server;
@@ -64,13 +65,14 @@ namespace {
     SaslConversation::SaslConversation(std::string mech) :
         authManagerExternalState(new AuthzManagerExternalStateMock),
         authManager(authManagerExternalState),
-        authSession(authManager.makeAuthorizationSession()),
+        authzSessionExternalState(new AuthzSessionExternalStateMock(&authManager)),
+        authSession(authzSessionExternalState),
         mechanism(mech) {
 
         OperationContextNoop txn;
 
         client.reset(SaslClientSession::create(mechanism));
-        server.reset(SaslAuthenticationSession::create(authSession.get(), mechanism));
+        server.reset(SaslAuthenticationSession::create(&authSession, mechanism));
         ASSERT_OK(authManagerExternalState->updateOne(
                 &txn,
                 AuthorizationManager::versionCollectionNamespace,
