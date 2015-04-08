@@ -9,7 +9,7 @@ namespace fts {
 
     class RlpEnvironment;
 
-    Status registerRlpLanguages(RlpEnvironment* rlpEnvironment);
+    Status registerRlpLanguages(RlpEnvironment* rlpEnvironment, bool rlpExperimentalTestLanguages);
 
 }  // namespace fts
 }  // namespace mongo

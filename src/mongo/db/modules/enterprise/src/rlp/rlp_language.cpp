@@ -40,6 +40,46 @@ namespace {
     MONGO_FTS_RLP_LANGUAGE_DECL(zhs     , "simplified chinese" , ("zhs", "hans") , BT_LANGUAGE_SIMPLIFIED_CHINESE  , kChineseContext) \
     MONGO_FTS_RLP_LANGUAGE_DECL(zht     , "traditional chinese", ("zht", "hant") , BT_LANGUAGE_TRADITIONAL_CHINESE , kChineseContext)
 
+    // NOTE: We do not register additional aliases for languages we do not already support 
+    // in SnowBall
+    // TODO: include Norwegian (Nynorsk)
+#define MONGO_FTS_RLP_EXPERIMENTAL_LANGUAGE_LIST(MONGO_FTS_RLP_LANGUAGE_DECL)\
+    MONGO_FTS_RLP_LANGUAGE_DECL(ces , "czech"      , (NULL) , BT_LANGUAGE_CZECH      , kEuropeanContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(deu , "german"     , ("de") , BT_LANGUAGE_GERMAN     , kEuropeanContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(ell , "greek"      , (NULL) , BT_LANGUAGE_GREEK      , kEuropeanContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(eng , "english"    , ("en") , BT_LANGUAGE_ENGLISH    , kEuropeanContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(fra , "french"     , ("fr") , BT_LANGUAGE_FRENCH     , kEuropeanContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(hun , "hungarian"  , ("hu") , BT_LANGUAGE_HUNGARIAN  , kEuropeanContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(ita , "italian"    , ("it") , BT_LANGUAGE_ITALIAN    , kEuropeanContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(nld , "dutch"      , ("nl") , BT_LANGUAGE_DUTCH      , kEuropeanContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(pol , "polish"     , (NULL) , BT_LANGUAGE_POLISH     , kEuropeanContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(por , "portuguese" , ("pt") , BT_LANGUAGE_PORTUGUESE , kEuropeanContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(rus , "russian"    , ("ru") , BT_LANGUAGE_RUSSIAN    , kEuropeanContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(spa , "spanish"    , ("es") , BT_LANGUAGE_SPANISH    , kEuropeanContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(jp  , "japanese"   , (NULL) , BT_LANGUAGE_JAPANESE   , kJapaneseContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(ko  , "korean"     , (NULL) , BT_LANGUAGE_KOREAN     , kKoreanContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(fin , "finnish"    , ("fi") , BT_LANGUAGE_FINNISH    , kEuropeanContext2) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(tur , "turkish"    , ("tr") , BT_LANGUAGE_TURKISH    , kEuropeanContext2) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(sqi , "albanian"   , (NULL) , BT_LANGUAGE_ALBANIAN   , kBasicContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(bul , "bulgarian"  , (NULL) , BT_LANGUAGE_BULGARIAN  , kBasicContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(cat , "catalan"    , (NULL) , BT_LANGUAGE_CATALAN    , kBasicContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(hrv , "croatian"   , (NULL) , BT_LANGUAGE_CROATIAN   , kBasicContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(dan , "danish"     , (NULL) , BT_LANGUAGE_DANISH     , kBasicContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(est , "estonian"   , (NULL) , BT_LANGUAGE_ESTONIAN   , kBasicContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(heb , "hebrew"     , (NULL) , BT_LANGUAGE_HEBREW     , kBasicContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(ind , "indonesian" , (NULL) , BT_LANGUAGE_INDONESIAN , kBasicContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(lav , "latvian"    , (NULL) , BT_LANGUAGE_LATVIAN    , kBasicContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(msa , "malay"      , (NULL) , BT_LANGUAGE_MALAY      , kBasicContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(nob , "norwegian"  , (NULL) , BT_LANGUAGE_NORWEGIAN  , kBasicContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(pus , "pushto"     , (NULL) , BT_LANGUAGE_PUSHTO     , kBasicContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(ron , "romanian"   , (NULL) , BT_LANGUAGE_ROMANIAN   , kBasicContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(srp , "serbian"    , (NULL) , BT_LANGUAGE_SERBIAN    , kBasicContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(slk , "slovak"     , (NULL) , BT_LANGUAGE_SLOVAK     , kBasicContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(slv , "slovenian"  , (NULL) , BT_LANGUAGE_SLOVENIAN  , kBasicContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(swe , "swedish"    , (NULL) , BT_LANGUAGE_SWEDISH    , kBasicContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(tha , "thai"       , (NULL) , BT_LANGUAGE_THAI       , kBasicContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(ukr , "ukrainian"  , (NULL) , BT_LANGUAGE_UKRAINIAN  , kBasicContext)
+
     // Declare compilation unit local RLP language object
     // Must be declared statically as global language map only keeps a pointer to the language
     // instance
@@ -132,6 +172,80 @@ namespace {
             "</languageprocessors>"
         "</contextconfig>";
 
+    // Supports Japanese
+    // Returns RLP LEMMA, TOKEN
+    const char kJapaneseContext[] =
+        "<?xml version='1.0' encoding='utf-8' standalone='no' ?>"
+        "<!DOCTYPE contextconfig SYSTEM 'http://www.basistech.com/dtds/2003/contextconfig.dtd'>"
+        "<contextconfig>"
+            "<languageprocessors>"
+                "<languageprocessor>Unicode Converter</languageprocessor>"
+                "<languageprocessor>Script Region Locator</languageprocessor>"
+                "<languageprocessor>Sentence Breaker</languageprocessor>"
+                "<languageprocessor>Japanese Language Analyzer</languageprocessor>"
+            "</languageprocessors>"
+        "</contextconfig>";
+
+    // Supports Korean
+    // Returns RLP LEMMA, TOKEN
+    const char kKoreanContext[] =
+        "<?xml version='1.0' encoding='utf-8' standalone='no' ?>"
+        "<!DOCTYPE contextconfig SYSTEM 'http://www.basistech.com/dtds/2003/contextconfig.dtd'>"
+        "<contextconfig>"
+            "<languageprocessors>"
+                "<languageprocessor>Unicode Converter</languageprocessor>"
+                "<languageprocessor>Script Region Locator</languageprocessor>"
+                "<languageprocessor>Sentence Breaker</languageprocessor>"
+                "<languageprocessor>Korean Language Analyzer</languageprocessor>"
+            "</languageprocessors>"
+        "</contextconfig>";
+
+    // Supports European Languages, depends on BT_LANGUAGE_ID
+    // Returns RLP LEMMA, TOKEN
+    const char kEuropeanContext[] =
+        "<?xml version='1.0' encoding='utf-8' standalone='no' ?>"
+        "<!DOCTYPE contextconfig SYSTEM 'http://www.basistech.com/dtds/2003/contextconfig.dtd'>"
+        "<contextconfig>"
+            "<languageprocessors>"
+                "<languageprocessor>Unicode Converter</languageprocessor>"
+                "<languageprocessor>European Language Analyzer2</languageprocessor>"
+                "<languageprocessor>Stopword Locator</languageprocessor>"
+            "</languageprocessors>"
+        "</contextconfig>";
+
+    // Supports Finnish/Turkish, depends on BT_LANGUAGE_ID
+    // Returns RLP STEM
+    const char kEuropeanContext2[] =
+        "<?xml version='1.0' encoding='utf-8' standalone='no' ?>"
+        "<!DOCTYPE contextconfig SYSTEM 'http://www.basistech.com/dtds/2003/contextconfig.dtd'>"
+        "<contextconfig>"
+            "<languageprocessors>"
+                "<languageprocessor>Unicode Converter</languageprocessor>"
+                "<languageprocessor>Sentence Breaker</languageprocessor>"
+                "<languageprocessor>Word Breaker</languageprocessor>"
+                "<languageprocessor>Stemmer</languageprocessor>"
+                "<languageprocessor>Stopword Locator</languageprocessor>"
+            "</languageprocessors>"
+        "</contextconfig>";
+
+    // Basic Context
+    // RLP only does not support Lemmatization or Stemming for all languages
+    // We currently also avoid the Lemmatizer for is variablilty in the order of
+    // RLP ALTERNATE LEMMAS, this may need to change if these languages become officially supported,
+    // and because the Lemmatizer requires separate RLP distributable.
+    // Returns RLP TOKEN
+    const char kBasicContext[] =
+        "<?xml version='1.0' encoding='utf-8' standalone='no' ?>"
+        "<!DOCTYPE contextconfig SYSTEM 'http://www.basistech.com/dtds/2003/contextconfig.dtd'>"
+        "<contextconfig>"
+            "<languageprocessors>"
+                "<languageprocessor>Unicode Converter</languageprocessor>"
+                "<languageprocessor>Sentence Breaker</languageprocessor>"
+                "<languageprocessor>Word Breaker</languageprocessor>"
+                "<languageprocessor>Stopword Locator</languageprocessor>"
+            "</languageprocessors>"
+        "</contextconfig>";
+
     /**
      * RlpFTSLanguage
      *
@@ -159,6 +273,7 @@ namespace {
     };
 
     MONGO_FTS_RLP_LANGUAGE_LIST(LANGUAGE_DECL);
+    MONGO_FTS_RLP_EXPERIMENTAL_LANGUAGE_LIST(LANGUAGE_DECL);
 
     bool registerRlpLanguage(RlpEnvironment* rlpEnvironment,
                              const StringData languageName,
@@ -188,10 +303,14 @@ namespace {
     }
 }  // namespace
 
-    Status registerRlpLanguages(RlpEnvironment* rlpEnvironment) {
+    Status registerRlpLanguages(RlpEnvironment* rlpEnvironment, bool rlpExperimentalTestLanguages) {
         bool anyLanguageRegistered = false;
 
         MONGO_FTS_RLP_LANGUAGE_LIST(LANGUAGE_INIT);
+
+        if (rlpExperimentalTestLanguages) {
+            MONGO_FTS_RLP_EXPERIMENTAL_LANGUAGE_LIST(LANGUAGE_INIT);
+        }
 
         if (!anyLanguageRegistered) {
             return Status(

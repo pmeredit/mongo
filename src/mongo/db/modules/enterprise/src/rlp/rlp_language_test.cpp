@@ -46,7 +46,7 @@ namespace {
 
             rlpLoader = std::move(sw.getValue());
 
-            registerRlpLanguages(rlpLoader->getEnvironment());
+            registerRlpLanguages(rlpLoader->getEnvironment(), false);
 
             return;
         }
