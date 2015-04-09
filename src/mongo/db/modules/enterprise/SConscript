@@ -46,6 +46,8 @@ env.Library('audit_configuration',
             LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/${PROGPREFIX}mongod${PROGSUFFIX}',
                                 '$BUILD_DIR/mongo/${PROGPREFIX}mongos${PROGSUFFIX}'])
 
+env.SConscript('src/encryptdb/SConscript')
+
 env.Library('mongosnmp',
             ['src/snmp/serverstatus_client.cpp',
              'src/snmp/snmp.cpp',
