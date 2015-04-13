@@ -127,17 +127,6 @@ namespace audit {
         _logAuthzCheck(client, ns, cmdObj, result);
     }
 
-    void logFsyncUnlockAuthzCheck(
-            ClientBasic* client,
-            ErrorCodes::Error result) {
-
-        if (!_shouldLogAuthzCheck(result)) return;
-
-        mmb::Document cmdObj;
-        fassertStatusOK(cmdObj.root().appendInt("fsyncUnlock", 1));
-        _logAuthzCheck(client, NamespaceString("admin"), cmdObj, result);
-    }
-
     void logGetMoreAuthzCheck(
             ClientBasic* client,
             const NamespaceString& ns,
@@ -150,19 +139,6 @@ namespace audit {
         fassertStatusOK(cmdObj.root().appendString("getMore", ns.coll()));
         fassertStatusOK(cmdObj.root().appendLong("cursorId", cursorId));
         _logAuthzCheck(client, ns, cmdObj, result);
-    }
-
-    void logInProgAuthzCheck(
-            ClientBasic* client,
-            const BSONObj& filter,
-            ErrorCodes::Error result) {
-
-        if (!_shouldLogAuthzCheck(result)) return;
-
-        mmb::Document cmdObj;
-        fassertStatusOK(cmdObj.root().appendInt("inprog", 1));
-        fassertStatusOK(cmdObj.root().appendObject("q", filter));
-        _logAuthzCheck(client, NamespaceString("admin"), cmdObj, result);
     }
 
     void logInsertAuthzCheck(
@@ -193,19 +169,6 @@ namespace audit {
         fassertStatusOK(cmdObj.root().appendString("killCursors", ns.coll()));
         fassertStatusOK(cmdObj.root().appendLong("cursorId", cursorId));
         _logAuthzCheck(client, ns, cmdObj, result);
-    }
-
-    void logKillOpAuthzCheck(
-            ClientBasic* client,
-            const BSONObj& filter,
-            ErrorCodes::Error result) {
-
-        if (!_shouldLogAuthzCheck(result)) return;
-
-        mmb::Document cmdObj;
-        fassertStatusOK(cmdObj.root().appendInt("killOp", 1));
-        fassertStatusOK(cmdObj.root().appendObject("q", filter));
-        _logAuthzCheck(client, NamespaceString("admin"), cmdObj, result);
     }
 
     void logQueryAuthzCheck(
