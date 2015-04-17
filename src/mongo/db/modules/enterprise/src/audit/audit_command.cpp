@@ -53,8 +53,7 @@ namespace mongo {
                          BSONObj& cmdObj,
                          int options,
                          std::string& errmsg,
-                         BSONObjBuilder& result,
-                         bool fromRepl);
+                         BSONObjBuilder& result);
 
         virtual void help(stringstream& help) const;
         virtual bool isWriteCommandForConfigServer() const { return false; }
@@ -75,8 +74,7 @@ namespace mongo {
                                        BSONObj& cmdObj,
                                        int options,
                                        std::string& errmsg,
-                                       BSONObjBuilder& result,
-                                       bool fromRepl) {
+                                       BSONObjBuilder& result) {
 
         ClientBasic* client = ClientBasic::getCurrent();
 
