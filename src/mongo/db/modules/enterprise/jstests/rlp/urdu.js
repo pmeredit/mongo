@@ -1,7 +1,7 @@
 ﻿(function () {
     'use strict';
 
-    load("fts_lib.js");
+    load("src/mongo/db/modules/enterprise/jstests/rlp/fts_lib.js");
 
     db.urd.drop();
 

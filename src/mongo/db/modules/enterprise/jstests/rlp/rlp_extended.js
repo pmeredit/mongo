@@ -1,6 +1,6 @@
 ﻿'use strict';
 
-load("fts_lib.js");
+load("src/mongo/db/modules/enterprise/jstests/rlp/fts_lib.js");
 
 // All have been translated from English by Google Translate
 // "How old are you?"
