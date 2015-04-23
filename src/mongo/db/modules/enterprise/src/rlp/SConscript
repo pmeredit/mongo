@@ -42,6 +42,6 @@ if GetOption("rlp") == "on":
             "$BUILD_DIR/mongo/base/base",
             "$BUILD_DIR/mongo/db/common",
             "$BUILD_DIR/mongo/db/fts/base",
-            "$BUILD_DIR/mongo/foundation",
+            "$BUILD_DIR/mongo/util/foundation",
             "$BUILD_DIR/mongo/platform/platform",
         ])
