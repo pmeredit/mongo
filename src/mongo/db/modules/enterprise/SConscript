@@ -65,7 +65,7 @@ env.Library('mongosaslserversession',
              'src/sasl/canon_mongodb_internal.cpp',
              'src/sasl/mongo_${MONGO_GSSAPI_IMPL}.cpp',
              ],
-            LIBDEPS=['$BUILD_DIR/mongo/server_parameters',
+            LIBDEPS=['$BUILD_DIR/mongo/db/server_parameters',
                      '$BUILD_DIR/mongo/db/auth/authmocks'],
             SYSLIBDEPS=['sasl2', '${MONGO_GSSAPI_LIB}'])
 
