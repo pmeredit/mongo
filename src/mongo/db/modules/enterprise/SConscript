@@ -34,8 +34,8 @@ env.Library('audit_d',
 
 env.Library('audit_s',
             ['src/audit/impersonate_helpers_s.cpp'],
-            LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/${LIBPREFIX}mongoscore${LIBSUFFIX}',
-                                '$BUILD_DIR/mongo/${LIBPREFIX}coreshard${LIBSUFFIX}'])
+            LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/s/${LIBPREFIX}mongoscore${LIBSUFFIX}',
+                                '$BUILD_DIR/mongo/s/${LIBPREFIX}coreshard${LIBSUFFIX}'])
 
 # The auditing code needs to be built into the "coredb" library because there is code in there that
 # references audit functions.  However, the "coredb" library is also currently shared by server
