@@ -26,7 +26,7 @@ env.Library('audit',
              ],
             LIBDEPS=['$BUILD_DIR/mongo/base/base',
                      '$BUILD_DIR/mongo/logger/logger'],
-            LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/${LIBPREFIX}coredb${LIBSUFFIX}'])
+            LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/db/${LIBPREFIX}coredb${LIBSUFFIX}'])
 
 env.Library('audit_d',
             ['src/audit/impersonate_helpers_d.cpp'],
