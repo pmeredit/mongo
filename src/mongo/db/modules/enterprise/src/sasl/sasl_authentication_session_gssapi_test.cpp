@@ -20,6 +20,7 @@
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/authz_manager_external_state_mock.h"
 #include "mongo/db/auth/authz_session_external_state_mock.h"
+#include "mongo/stdx/memory.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
@@ -142,7 +143,7 @@ namespace {
     };
 
     SaslConversationGssapi::SaslConversationGssapi() :
-        authManager(new AuthzManagerExternalStateMock()),
+        authManager(stdx::make_unique<AuthzManagerExternalStateMock>()),
         authSession(authManager.makeAuthorizationSession()),
         mechanism("GSSAPI") {
         client.reset(SaslClientSession::create("GSSAPI"));

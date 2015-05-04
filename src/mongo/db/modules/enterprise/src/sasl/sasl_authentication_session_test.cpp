@@ -63,7 +63,7 @@ namespace {
 
     SaslConversation::SaslConversation(std::string mech) :
         authManagerExternalState(new AuthzManagerExternalStateMock),
-        authManager(authManagerExternalState),
+        authManager(std::unique_ptr<AuthzManagerExternalState>(authManagerExternalState)),
         authSession(authManager.makeAuthorizationSession()),
         mechanism(mech) {
 

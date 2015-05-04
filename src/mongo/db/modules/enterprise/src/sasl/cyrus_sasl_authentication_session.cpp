@@ -22,6 +22,7 @@
 #include "mongo/db/commands.h"
 #include "mongo/db/commands/authentication_commands.h"
 #include "mongo/db/operation_context_noop.h"
+#include "mongo/stdx/memory.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
@@ -76,7 +77,7 @@ namespace {
     Status smokeCommonMechanism(StringData mechanismName,
                                 StringData serviceName,
                                 StringData serviceHostname) {
-        AuthorizationManager authzManager(new AuthzManagerExternalStateMock());
+        AuthorizationManager authzManager(stdx::make_unique<AuthzManagerExternalStateMock>());
         const std::unique_ptr<AuthorizationSession> authzSession =
             authzManager.makeAuthorizationSession();
 
