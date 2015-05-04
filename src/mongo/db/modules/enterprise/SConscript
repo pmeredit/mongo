@@ -30,7 +30,7 @@ env.Library('audit',
 
 env.Library('audit_d',
             ['src/audit/impersonate_helpers_d.cpp'],
-            LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/${LIBPREFIX}serveronly${LIBSUFFIX}'])
+            LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/db/${LIBPREFIX}serveronly${LIBSUFFIX}'])
 
 env.Library('audit_s',
             ['src/audit/impersonate_helpers_s.cpp'],
