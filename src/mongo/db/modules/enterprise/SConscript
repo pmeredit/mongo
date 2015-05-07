@@ -94,8 +94,8 @@ if env.TargetOSIs("windows"):
         if mdFlag in env['CCFLAGS']:
             hasFlag += 1
     if hasFlag != 1:
-        print("You must enable dynamic CRT --dynamic-windows to build the enterprise version")
-        Exit(1)
+        env.FatalError("You must enable dynamic CRT --dynamic-windows to build the "
+            "enterprise version")
 
     sspi_test = env.Program('sasl_authentication_session_sspi_test',
                             ['src/sasl/sasl_authentication_session_sspi_test.cpp'],

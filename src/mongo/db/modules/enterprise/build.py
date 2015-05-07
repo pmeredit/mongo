@@ -16,8 +16,8 @@ def configure(conf, env):
     env.Append(CPPDEFINES=dict(MONGO_ENTERPRISE_VERSION=1))
 
     if not conf.CheckCXXHeader("net-snmp/net-snmp-config.h"):
-        print("Could not find <net-snmp/net-snmp-config.h>, required for enterprise build.")
-        env.Exit(1)
+        env.ConfError("Could not find <net-snmp/net-snmp-config.h>, required for "
+            "enterprise build.")
 
     if env.TargetOSIs("windows"):
         env['SNMP_SYSLIBDEPS'] = ['netsnmp','netsnmpagent','netsnmpmibs']
@@ -27,9 +27,7 @@ def configure(conf, env):
             snmpFlags = env.ParseFlags("!net-snmp-config --agent-libs")
         except OSError, ose:
             # the net-snmp-config command was not found
-            print( "Could not find or execute 'net-snmp-config'" )
-            print( ose )
-            env.Exit(1)
+            env.ConfError("Could not find or execute 'net-snmp-config': {0}", ose)
         else:
             env['SNMP_SYSLIBDEPS'] = snmpFlags['LIBS']
             del snmpFlags['LIBS']
@@ -42,9 +40,8 @@ def configure(conf, env):
         ["stddef.h","sasl/sasl.h"], "C",
         "sasl_version_info(0, 0, 0, 0, 0, 0);",
         autoadd=False):
-
-        print("Could not find <sasl/sasl.h> and sasl library, required for enterprise build.")
-        env.Exit(1)
+        env.ConfError("Could not find <sasl/sasl.h> and sasl library, required for "
+            "enterprise build.")
 
     if conf.CheckLib(library="gssapi_krb5", autoadd=False):
         env['MONGO_GSSAPI_IMPL'] = "gssapi"
@@ -53,8 +50,8 @@ def configure(conf, env):
         env['MONGO_GSSAPI_IMPL'] = "sspi"
         env['MONGO_GSSAPI_LIB'] = "secur32"
     else:
-        print("Could not find gssapi_krb5 library nor Windows OS, required for enterprise build.")
-        env.Exit(1)
+        conf.ConfError("Could not find gssapi_krb5 library nor Windows OS, required for "
+            "enterprise build.")
 
     distsrc = env.Dir(root).Dir('distsrc')
     docs = env.Dir(root).Dir('docs')
@@ -111,10 +108,8 @@ def configure(conf, env):
 
     if GetOption("rlp") == "on":
         if not conf.CheckCXXHeader("bt_rlp_c.h"):
-            print("Could not find bt_rlp_c.h, include <BT_ROOT>/rlp/include in CPPPATH")
-            env.Exit(1)
+            env.ConfError("Could not find bt_rlp_c.h, include <BT_ROOT>/rlp/include in CPPPATH")
         if not conf.CheckCXXHeader("bt_types.h"):
-            print("Could not find bt_types.h, include <BT_ROOT>/rlp/utilities/include in CPPPATH")
-            env.Exit(1)
-
+            env.ConfError("Could not find bt_types.h, include <BT_ROOT>/rlp/utilities/include "
+                "in CPPPATH")
 
