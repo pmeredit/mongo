@@ -26,7 +26,7 @@ namespace audit {
             ActionType actionType,
             ErrorCodes::Error result) {
 
-        envelope->timestamp = Date_t(curTimeMillis64());
+        envelope->timestamp = Date_t::now();
         if (client->port()) {
             envelope->localAddr = client->port()->localAddr();
             envelope->remoteAddr = client->port()->remoteAddr();
