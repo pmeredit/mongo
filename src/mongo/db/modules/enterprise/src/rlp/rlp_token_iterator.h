@@ -34,6 +34,10 @@ namespace fts {
         RlpTokenIterator(RlpTokenIterator&& other);
 
         RlpTokenIterator& operator=(RlpTokenIterator&& other);
+#else
+        RlpTokenIterator(RlpTokenIterator&&) = default;
+
+        RlpTokenIterator& operator=(RlpTokenIterator&&) = default;
 #endif
 
         void reset(RlpTokenIterator&& other);
