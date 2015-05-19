@@ -56,6 +56,15 @@ namespace {
     }
 }  // namespace
 
+    RlpEnvironment::~RlpEnvironment() {
+        // Free the factory before we destroy the environment
+        _factory.reset(nullptr);
+
+        if (_rlpenv) {
+           BT_RLP_Environment_Destroy(_rlpenv);
+        }
+    }
+
 // Cache function calls
 // These names are stable for RLP Mac gcc40 and Linux gcc41 builds
 //

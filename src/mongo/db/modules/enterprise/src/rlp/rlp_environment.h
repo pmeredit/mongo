@@ -46,6 +46,7 @@ namespace fts {
 
     public:
         RlpEnvironment() = default;
+        ~RlpEnvironment();
 
         /**
          * Initialize RLP system
@@ -63,7 +64,7 @@ namespace fts {
         RLP_C_FUNC(RLP_C_FUNC_DL_MEMBER)
 
     private:
-        BT_RLP_EnvironmentC* _rlpenv;
+        BT_RLP_EnvironmentC* _rlpenv = nullptr;
         std::unique_ptr<ContextFactory> _factory;
     };
 

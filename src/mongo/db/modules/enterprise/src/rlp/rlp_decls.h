@@ -5,7 +5,7 @@
 #pragma once
 
 #include <bt_rlp_c.h>
-
+// clang-format off
 /**
  * List of functions we depend on from RLP C API
  *
@@ -29,10 +29,6 @@
     DECL(BT_Result, BT_RLP_Environment_InitializeFromFile, (BT_RLP_EnvironmentC * envp, const char *pathname))                                                                                         \
                                                                                                                                                                                                        \
     DECL(BT_Result, BT_RLP_Environment_GetContextFromBuffer, (BT_RLP_EnvironmentC * envp, const unsigned char *contextspec, BT_UInt32 len, BT_RLP_ContextC **contextpp))                               \
-                                                                                                                                                                                                       \
-    DECL(void, BT_RLP_Environment_GetProcessorReport, (const BT_RLP_EnvironmentC *envp, char *buffer, BT_UInt32 buffer_size))                                                                          \
-                                                                                                                                                                                                       \
-    DECL(bool, BT_RLP_Environment_HasLicenses, (const BT_RLP_EnvironmentC *envp))                                                                                                                      \
                                                                                                                                                                                                        \
     DECL(bool, BT_RLP_Environment_HasLicenseForLanguage, (const BT_RLP_EnvironmentC *envp, BT_LanguageID lid, BT_UInt32 functionality))                                                                \
                                                                                                                                                                                                        \
@@ -74,4 +70,6 @@
                                                                                                                                                                                                        \
     DECL(size_t, bt_xutf16toutf8_lengths, (char *outbuf, size_t outbuf_size, const BT_Char16 *inbuf, size_t inbuf_size, bool *truncated))                                                              \
                                                                                                                                                                                                        \
-    DECL(size_t, bt_xwcslen, (const BT_Char16 *s1))                                                                                                                                                    
+    DECL(size_t, bt_xwcslen, (const BT_Char16 *s1))
+
+// clang-format on
