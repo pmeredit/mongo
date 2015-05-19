@@ -25,7 +25,6 @@ namespace fts {
 
     private:
         const size_t kInitialSize = 32;
-        const size_t kMaxSize = 16 * 1024;
 
     public:
         RlpStringBuffer(RlpEnvironment* rlpEnvironment)
