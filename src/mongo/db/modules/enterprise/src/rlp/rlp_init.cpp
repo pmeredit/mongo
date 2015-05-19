@@ -34,11 +34,11 @@ namespace fts {
     MONGO_EXPORT_STARTUP_SERVER_PARAMETER(rlpVerbose, bool, false);
 
     /**
-    * Enable unsupported Basis Tech RLP languages for testing
-    *
-    * Useful for performance tests.
-    * NOTE: Buggy, does not do case-insensitive comparisons correctly
-    */
+     * Enable unsupported Basis Tech RLP languages for testing
+     *
+     * Useful for performance tests.
+     * NOTE: Buggy, does not do case-insensitive comparisons correctly
+     */
     MONGO_EXPORT_STARTUP_SERVER_PARAMETER(rlpEnableExperimentalLanguagesForTesting, bool, false);
 
     MONGO_INITIALIZER_GENERAL(InitRLP,
@@ -67,7 +67,7 @@ namespace fts {
     (::mongo::InitializerContext* context) {
         // If user did not specify RLP, it is ok
         if (rlpLoader) {
-            registerRlpLanguages(rlpLoader->getEnvironment(),
+            return registerRlpLanguages(rlpLoader->getEnvironment(),
                                  rlpEnableExperimentalLanguagesForTesting);
         }
 
