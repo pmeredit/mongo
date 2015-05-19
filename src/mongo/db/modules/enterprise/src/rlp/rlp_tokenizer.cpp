@@ -29,10 +29,11 @@ namespace fts {
             document.rawData(), document.size(), _context->getLanguage(), "UTF8", 0);
         uassert(
             28627,
-            str::stream() << "Unable to process the document with return code: "
-                          << static_cast<int>(rc) << ", and document '"
-                          << document.substr(0, std::min(document.size(), static_cast<size_t>(256)))
-                          << "'.",
+            str::stream() << "Unable to process the string: '"
+                          << (document.size() < 256 ? document : document.substr(0, 256).toString()
+                            + "...")
+                          << "'; received return code: " << static_cast<int>(rc)
+                          << ".",
             rc == BT_OK);
 
         _iterator.reset(_factory.createIterator(_context->getContext()));
