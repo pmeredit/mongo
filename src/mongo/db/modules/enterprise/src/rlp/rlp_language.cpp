@@ -64,19 +64,19 @@ namespace {
     MONGO_FTS_RLP_LANGUAGE_DECL(bul , "bulgarian"  , (NULL) , BT_LANGUAGE_BULGARIAN  , kBasicContext) \
     MONGO_FTS_RLP_LANGUAGE_DECL(cat , "catalan"    , (NULL) , BT_LANGUAGE_CATALAN    , kBasicContext) \
     MONGO_FTS_RLP_LANGUAGE_DECL(hrv , "croatian"   , (NULL) , BT_LANGUAGE_CROATIAN   , kBasicContext) \
-    MONGO_FTS_RLP_LANGUAGE_DECL(dan , "danish"     , (NULL) , BT_LANGUAGE_DANISH     , kBasicContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(dan , "danish"     , ("da") , BT_LANGUAGE_DANISH     , kBasicContext) \
     MONGO_FTS_RLP_LANGUAGE_DECL(est , "estonian"   , (NULL) , BT_LANGUAGE_ESTONIAN   , kBasicContext) \
     MONGO_FTS_RLP_LANGUAGE_DECL(heb , "hebrew"     , (NULL) , BT_LANGUAGE_HEBREW     , kBasicContext) \
     MONGO_FTS_RLP_LANGUAGE_DECL(ind , "indonesian" , (NULL) , BT_LANGUAGE_INDONESIAN , kBasicContext) \
     MONGO_FTS_RLP_LANGUAGE_DECL(lav , "latvian"    , (NULL) , BT_LANGUAGE_LATVIAN    , kBasicContext) \
     MONGO_FTS_RLP_LANGUAGE_DECL(msa , "malay"      , (NULL) , BT_LANGUAGE_MALAY      , kBasicContext) \
-    MONGO_FTS_RLP_LANGUAGE_DECL(nob , "norwegian"  , (NULL) , BT_LANGUAGE_NORWEGIAN  , kBasicContext) \
-    MONGO_FTS_RLP_LANGUAGE_DECL(pus , "pushto"     , (NULL) , BT_LANGUAGE_PUSHTO     , kBasicContext) \
-    MONGO_FTS_RLP_LANGUAGE_DECL(ron , "romanian"   , (NULL) , BT_LANGUAGE_ROMANIAN   , kBasicContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(nob , "norwegian"  , ("nb") , BT_LANGUAGE_NORWEGIAN  , kBasicContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(pus , "pashto"     , (NULL) , BT_LANGUAGE_PUSHTO     , kBasicContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(ron , "romanian"   , ("ro") , BT_LANGUAGE_ROMANIAN   , kBasicContext) \
     MONGO_FTS_RLP_LANGUAGE_DECL(srp , "serbian"    , (NULL) , BT_LANGUAGE_SERBIAN    , kBasicContext) \
     MONGO_FTS_RLP_LANGUAGE_DECL(slk , "slovak"     , (NULL) , BT_LANGUAGE_SLOVAK     , kBasicContext) \
     MONGO_FTS_RLP_LANGUAGE_DECL(slv , "slovenian"  , (NULL) , BT_LANGUAGE_SLOVENIAN  , kBasicContext) \
-    MONGO_FTS_RLP_LANGUAGE_DECL(swe , "swedish"    , (NULL) , BT_LANGUAGE_SWEDISH    , kBasicContext) \
+    MONGO_FTS_RLP_LANGUAGE_DECL(swe , "swedish"    , ("sv") , BT_LANGUAGE_SWEDISH    , kBasicContext) \
     MONGO_FTS_RLP_LANGUAGE_DECL(tha , "thai"       , (NULL) , BT_LANGUAGE_THAI       , kBasicContext) \
     MONGO_FTS_RLP_LANGUAGE_DECL(ukr , "ukrainian"  , (NULL) , BT_LANGUAGE_UKRAINIAN  , kBasicContext)
 
