@@ -24,7 +24,7 @@ namespace fts {
     RLPGlobalParams rlpGlobalParams;
 
 namespace {
-    const char kBtRootOptionLong[] = "basisTech.RootDirectory";
+    const char kBtRootOptionLong[] = "basisTech.rootDirectory";
     const char kBtRootOptionShort[] = "basisTechRootDirectory";
 
     Status addRLPOptions(moe::OptionSection* options) {
