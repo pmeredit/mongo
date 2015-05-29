@@ -106,7 +106,7 @@ namespace {
         env->_rlpenv = env->BT_RLP_Environment_Create();
         if (!env->_rlpenv) {
             return {ErrorCodes::InternalError,
-                    str::stream() << "Failed to intialize RLP_Environment"};
+                    str::stream() << "Failed to initialize RLP_Environment"};
         }
 
         // Initialize the empty environment with the global environment
