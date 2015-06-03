@@ -8,14 +8,12 @@
 
 #include <openssl/evp.h>
 
-#include "mongo/util/assert_util.h"
+#include "mongo/util/mongoutils/str.h"
+#include "mongo/util/net/ssl_manager.h"
 
 namespace mongo {
 namespace crypto {
 
-    // TODO Andreas: keep mapped list of EVP_CIPHER_CTX for the different databases
-    // instead of re-scheduling the key on each encrypt/decrypt
-    // TODO Andreas: implement support for GCM
     Status aesEncrypt(const uint8_t* in,
                       size_t inLen,
                       const uint8_t* key,
@@ -32,9 +30,6 @@ namespace crypto {
             return Status(ErrorCodes::BadValue, "Invalid encryption mode");
         }
 
-        std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_cleanup)>
-            cryptoCtx(EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_cleanup);
-
         const EVP_CIPHER* cipher = nullptr;
         if (keySize == sym256KeySize) {
             cipher = EVP_aes_256_cbc();
@@ -43,21 +38,28 @@ namespace crypto {
             cipher = EVP_aes_128_cbc();
         }
         else {
-            return Status(ErrorCodes::BadValue, "Invalid key length");
+            return Status(ErrorCodes::BadValue, str::stream() <<
+                    "Invalid key length: " << keySize);
         }
 
-        if (1 != EVP_EncryptInit_ex(cryptoCtx.get(), cipher, nullptr, key, iv)) {
-            return Status(ErrorCodes::InternalError, "EVP_EncryptInit_ex failed");
+        std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_cleanup)>
+                        encryptCtx(EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_cleanup);
+
+        if (1 != EVP_EncryptInit_ex(encryptCtx.get(), cipher, nullptr, key, iv)) {
+            return Status(ErrorCodes::UnknownError, str::stream() <<
+                    getSSLManager()->getSSLErrorMessage(ERR_get_error()));
         }
 
         int len = 0;
-        if(1 != EVP_EncryptUpdate(cryptoCtx.get(), out, &len, in, inLen)) {
-            return Status(ErrorCodes::InternalError, "EVP_EncryptUpdate failed");
+        if (1 != EVP_EncryptUpdate(encryptCtx.get(), out, &len, in, inLen)) {
+            return Status(ErrorCodes::UnknownError, str::stream() <<
+                    getSSLManager()->getSSLErrorMessage(ERR_get_error()));
         }
 
         int extraLen = 0;
-        if(1 != EVP_EncryptFinal_ex(cryptoCtx.get(), out + len, &extraLen)) {
-            return Status(ErrorCodes::InternalError, "EVP_EncryptFinal failed");
+        if (1 != EVP_EncryptFinal_ex(encryptCtx.get(), out + len, &extraLen)) {
+            return Status(ErrorCodes::UnknownError, str::stream() <<
+                    getSSLManager()->getSSLErrorMessage(ERR_get_error()));
         }
 
         *outLen = len + extraLen;
@@ -80,9 +82,6 @@ namespace crypto {
             return Status(ErrorCodes::BadValue, "Invalid encryption mode");
         }
 
-        std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_cleanup)>
-            cryptoCtx(EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_cleanup);
-
         const EVP_CIPHER* cipher = nullptr;
         if (keySize == sym256KeySize) {
             cipher = EVP_aes_256_cbc();
@@ -94,18 +93,24 @@ namespace crypto {
             return Status(ErrorCodes::BadValue, "Invalid key length");
         }
 
-        if (1 != EVP_DecryptInit_ex(cryptoCtx.get(), cipher, nullptr, key, iv)) {
-            return Status(ErrorCodes::InternalError, "EVP_DecryptInit_ex failed");
+        std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_cleanup)>
+                        decryptCtx(EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_cleanup);
+
+        if (1 != EVP_DecryptInit_ex(decryptCtx.get(), cipher, nullptr, key, iv)) {
+            return Status(ErrorCodes::UnknownError, str::stream() <<
+                    getSSLManager()->getSSLErrorMessage(ERR_get_error()));
         }
 
         int len = 0;
-        if(1 != EVP_DecryptUpdate(cryptoCtx.get(), out, &len, in, inLen)) {
-            return Status(ErrorCodes::InternalError, "EVP_DecryptUpdate failed");
+        if (1 != EVP_DecryptUpdate(decryptCtx.get(), out, &len, in, inLen)) {
+            return Status(ErrorCodes::UnknownError, str::stream() <<
+                    getSSLManager()->getSSLErrorMessage(ERR_get_error()));
         }
 
         int extraLen = 0;
-        if(1 != EVP_DecryptFinal_ex(cryptoCtx.get(), out + len, &extraLen)) {
-            return Status(ErrorCodes::InternalError, "EVP_DecryptFinal failed");
+        if (1 != EVP_DecryptFinal_ex(decryptCtx.get(), out + len, &extraLen)) {
+            return Status(ErrorCodes::UnknownError, str::stream() <<
+                    getSSLManager()->getSSLErrorMessage(ERR_get_error()));
         }
 
         *outLen = len + extraLen;

@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include <cstddef>
+#include <cstdint>
 
 #include "mongo/base/status.h"
 #include "mongo/platform/cstdint.h"
@@ -12,19 +12,31 @@
 namespace mongo {
 namespace crypto {
 
-    // Encryption algorithm identifiers and block sizes
-    const size_t aesAlgorithm = 0x1;
-    const size_t aesBlockSize = 16;
+    /**
+     * Encryption algorithm identifiers and block sizes
+     */
+    const uint8_t aesAlgorithm = 0x1;
 
-    // Key sizes
+    /**
+     * Block and key sizes
+     */
+    const size_t aesBlockSize = 16;
     const size_t sym128KeySize = 16;
     const size_t sym256KeySize = 32;
 
-    // Encryption mode identifiers
-    const size_t cbcMode = 0x100;
-    const size_t gcmMode = 0x200;
+    /**
+     * Min and max symmetric key lengths
+     */
+    const size_t minKeySize = 16;
+    const size_t maxKeySize = 32;
 
-    /*
+    /**
+     * Encryption mode identifiers
+     */
+    const uint8_t cbcMode = 0x10;
+    const uint8_t gcmMode = 0x20;
+
+    /**
      * Encrypts the plaintext 'in' using AES with 'key' and block size 'keySize'
      * using encryption mode 'mode'. Supported modes are CBC and GCM.
      *
@@ -39,7 +51,7 @@ namespace crypto {
                       uint8_t* out,
                       size_t* outLen);
 
-    /*
+    /**
      * Decrypts the plaintext 'in' using AES with 'key' and block size 'keySize'
      * using encryption mode 'mode'. Supported modes are CBC and GCM.
      *
