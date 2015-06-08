@@ -58,6 +58,10 @@ def configure(conf, env):
     env.Append(MODULE_BANNERS=[
             distsrc.File('LICENSE.txt'),
             ])
+    if env.TargetOSIs("windows"):
+        env.Append(MODULE_BANNERS=[
+            distsrc.File('THIRD-PARTY-NOTICES.windows'),
+        ])
     env.Append(ARCHIVE_ADDITIONS=[
             docs.File('MONGOD-MIB.txt'),
             docs.File('MONGODBINC-MIB.txt'),
