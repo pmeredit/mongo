@@ -83,7 +83,7 @@ namespace fts {
 
         uassert(28631,
                 str::stream() << "Unable to create the context for language "
-                              << static_cast<int>(language) << " with return code" << rc,
+                              << static_cast<int>(language) << " with return code " << rc,
                 rc == BT_OK);
 
         // Note: make_unique is not used to keep RlpContext's constructor private
