@@ -45,7 +45,7 @@ namespace fts {
                               ("EndStartupOptionHandling"),
                               ("default"))(InitializerContext* context) {
         if (rlpGlobalParams.btRoot.empty()) {
-            LOG(0) << "Skipping RLP Initialization, BT Root not set.";
+            LOG(1) << "Skipping RLP Initialization, BT Root not set.";
             return Status::OK();
         }
 
