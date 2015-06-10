@@ -151,7 +151,7 @@ namespace {
                           unsigned challen,
                           void **conn_context) throw() {
         TimeStamp ignored;
-        std::auto_ptr<SspiConnContext> pcctx(new SspiConnContext());
+        std::unique_ptr<SspiConnContext> pcctx(new SspiConnContext());
 
         // Compose principal name
         if (sparams->serverFQDN == NULL || strlen(sparams->serverFQDN) == 0) {
