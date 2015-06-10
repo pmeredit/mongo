@@ -11,7 +11,6 @@
 
 #include "mongo_gssapi.h"
 
-#include <boost/scoped_array.hpp>
 #include <sasl/sasl.h>
 #include <sasl/saslplug.h>
 #include <security.h>
@@ -209,7 +208,7 @@ namespace {
 
         // Encrypt a message with the security layer support
         int plaintextMessageSize = 4;  // per RFC4752
-        boost::scoped_array<char> message(new char[sizes.cbSecurityTrailer +
+        std::unique_ptr<char[]> message(new char[sizes.cbSecurityTrailer +
                                                    plaintextMessageSize +
                                                    sizes.cbBlockSize]);
         char* plaintextMessage = message.get() + sizes.cbSecurityTrailer;
@@ -307,7 +306,7 @@ namespace {
 
         // Now fetch the authz id out of the message the client passed us, and
         // set it in the oparams.
-        boost::scoped_array<char> message(new char[clientinlen]);
+        std::unique_ptr<char[]> message(new char[clientinlen]);
         memcpy(message.get(), clientin, clientinlen);
 
         SecBuffer wrapBufs[2];
