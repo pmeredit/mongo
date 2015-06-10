@@ -4,7 +4,6 @@
 
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kAccessControl
 
-#include <boost/scoped_ptr.hpp>
 #include <string>
 #include <vector>
 
@@ -44,8 +43,8 @@ namespace {
         AuthorizationManager authManager;
         std::unique_ptr<AuthorizationSession> authSession;
         std::string mechanism;
-        boost::scoped_ptr<SaslClientSession> client;
-        boost::scoped_ptr<SaslAuthenticationSession> server;
+        std::unique_ptr<SaslClientSession> client;
+        std::unique_ptr<SaslAuthenticationSession> server;
 
     private:
         void assertConversationFailure();
