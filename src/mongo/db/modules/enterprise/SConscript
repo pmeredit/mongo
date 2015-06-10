@@ -1,6 +1,9 @@
 # -*- mode: python -*-
 
-Import("env")
+Import("env has_option")
+
+if not has_option("ssl"):
+    env.FatalError("SSL not enabled. Enterprise MongoDB must be built with --ssl specified")
 
 env.SConscript([
     'src/encryptdb/SConscript',
