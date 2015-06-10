@@ -13,7 +13,6 @@
 
 #include "snmp.h"
 
-#include <boost/shared_ptr.hpp>
 #include <net-snmp/net-snmp-config.h>
 #include <net-snmp/net-snmp-includes.h>
 #include <net-snmp/agent/net-snmp-agent-includes.h>
@@ -682,7 +681,7 @@ namespace mongo {
             static ServerStatusClient& getServerStatusClient(OperationContext* txn,
                                                              const std::string& section) {
                 
-                std::map< std::string, boost::shared_ptr<ServerStatusClient> >::iterator it;
+                std::map< std::string, std::shared_ptr<ServerStatusClient> >::iterator it;
                 it = _serverStatusClientMap.find(section);
                 
                 if (it == _serverStatusClientMap.end()) {
@@ -710,10 +709,10 @@ namespace mongo {
             bool _isDeprecated;
             
             static std::map< std::string,
-                             boost::shared_ptr<ServerStatusClient> > _serverStatusClientMap;
+                             std::shared_ptr<ServerStatusClient> > _serverStatusClientMap;
         };
         
-        std::map< std::string, boost::shared_ptr<ServerStatusClient> > 
+        std::map< std::string, std::shared_ptr<ServerStatusClient> > 
                                 ServerStatusCallback::_serverStatusClientMap;
 
     }
