@@ -6,14 +6,10 @@
 
 #include "mongo/db/audit.h"
 
-#include "audit_manager_global.h"
-#include "mongo/client/sasl_client_authenticate.h"
-#include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/user_management_commands_parser.h"
-#include "mongo/db/auth/user_set.h"
-#include "mongo/db/client_basic.h"
-#include "mongo/db/commands/authentication_commands.h"
+#include "mongo/db/auth/user_name.h"
 #include "mongo/db/jsobj.h"
+#include "mongo/rpc/metadata/audit_metadata.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
 
@@ -30,23 +26,17 @@ namespace audit {
      */
     void parseAndRemoveImpersonatedUsersField(
             BSONObj cmdObj,
-            AuthorizationSession* authSession,
             std::vector<UserName>* parsedUserNames,
             bool* fieldIsPresent) {
 
         *fieldIsPresent = false;
         LOG(4) << "parseAndRemoveImpersonatedUsersField: command: " << cmdObj;
 
-        // Check if auditing is enabled
-        if (!getGlobalAuditManager()->enabled) {
-            return;
-        }
-
         // Find impersonatedUsers element
         BSONObjIterator boit(cmdObj);
         BSONElement elem;
         for (elem = boit.next(); !elem.eoo(); elem = boit.next()) {
-            if ( str::equals(elem.fieldName(), audit::cmdOptionImpersonatedUsers) ) {
+            if ( str::equals(elem.fieldName(), rpc::kLegacyImpersonatedUsersFieldName) ) {
                 // Ensure this is the last field in the object
                 uassert(4293, "impersonatedUsers is not the last field", !boit.more());
                 break;
@@ -70,12 +60,6 @@ namespace audit {
             uasserted(4291, ss.str());
         }
 
-        // Check priv
-        if (!authSession->isAuthorizedForPrivilege(
-                Privilege(ResourcePattern::forClusterResource(), ActionType::impersonate))) {
-            uasserted(4292, "unauthorized use of impersonatedUsers");
-        }
-
         // Lop off the field.  It must be the last field due to the check above.
         char* rawdata = const_cast<char*> (elem.rawdata());
         *rawdata = EOO;
@@ -95,23 +79,17 @@ namespace audit {
      */
     void parseAndRemoveImpersonatedRolesField(
             BSONObj cmdObj,
-            AuthorizationSession* authSession,
             std::vector<RoleName>* parsedRoleNames,
             bool* fieldIsPresent) {
 
         *fieldIsPresent = false;
         LOG(4) << "parseAndRemoveImpersonatedRolesField: command: " << cmdObj;
 
-        // Check if auditing is enabled
-        if (!getGlobalAuditManager()->enabled) {
-            return;
-        }
-
         // Find impersonatedRoles element
         BSONObjIterator boit(cmdObj);
         BSONElement elem;
         for (elem = boit.next(); !elem.eoo(); elem = boit.next()) {
-            if ( str::equals(elem.fieldName(), audit::cmdOptionImpersonatedRoles) ) {
+            if ( str::equals(elem.fieldName(), rpc::kLegacyImpersonatedRolesFieldName) ) {
                 // Ensure this is the last field in the object
                 uassert(18530, "impersonatedRoles is not the last field", !boit.more());
                 break;
@@ -135,12 +113,6 @@ namespace audit {
             uasserted(18531, ss.str());
         }
 
-        // Check priv
-        if (!authSession->isAuthorizedForPrivilege(
-                Privilege(ResourcePattern::forClusterResource(), ActionType::impersonate))) {
-            uasserted(18532, "unauthorized use of impersonatedRoles");
-        }
-
         // Lop off the field.  It must be the last field due to the check above.
         char* rawdata = const_cast<char*> (elem.rawdata());
         *rawdata = EOO;
@@ -149,5 +121,5 @@ namespace audit {
         *fieldIsPresent = true;
     }
 
-}
-}
+}  // namespace auth
+}  // namespace mongo

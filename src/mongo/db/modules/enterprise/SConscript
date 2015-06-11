@@ -28,17 +28,50 @@ env.Library('audit',
              'src/audit/audit_user_management.cpp',
              ],
             LIBDEPS=['$BUILD_DIR/mongo/base/base',
-                     '$BUILD_DIR/mongo/logger/logger'],
+                     '$BUILD_DIR/mongo/logger/logger',
+                     '$BUILD_DIR/mongo/db/auth/authcore'],
             LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/db/${LIBPREFIX}coredb${LIBSUFFIX}'])
 
-env.Library('audit_d',
-            ['src/audit/impersonate_helpers_d.cpp'],
-            LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/db/${LIBPREFIX}serveronly${LIBSUFFIX}'])
+env.Library(
+    target=[
+        'audit_metadata_hook_s'
+    ],
+    source=[
+        'src/audit/audit_metadata_hook_s.cpp'
+    ],
+    LIBDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/s/${LIBPREFIX}mongoscore${LIBSUFFIX}',
+        '$BUILD_DIR/mongo/s/${LIBPREFIX}coreshard${LIBSUFFIX}',
+    ],
+)
 
-env.Library('audit_s',
-            ['src/audit/impersonate_helpers_s.cpp'],
-            LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/s/${LIBPREFIX}mongoscore${LIBSUFFIX}',
-                                '$BUILD_DIR/mongo/s/${LIBPREFIX}coreshard${LIBSUFFIX}'])
+env.Library(
+    target=[
+        'audit_metadata',
+    ],
+    source=[
+        'src/audit/audit_metadata.cpp',
+        'src/audit/impersonate_helpers_d.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/db/auth/authcore',
+    ],
+    LIBDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/rpc/${LIBPREFIX}metadata${LIBSUFFIX}',
+    ],
+)
+
+env.CppUnitTest(
+    target=[
+        'audit_metadata_test',
+    ],
+    source=[
+        'src/audit/audit_metadata_test.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/rpc/metadata',
+    ],
+)
 
 # The auditing code needs to be built into the "coredb" library because there is code in there that
 # references audit functions.  However, the "coredb" library is also currently shared by server
@@ -120,4 +153,3 @@ else:
                                        '$BUILD_DIR/mongo/unittest/unittest',
                                        '$BUILD_DIR/mongo/unittest/unittest_crutch'])
     env.RegisterUnitTest(gssapi_test[0])
-
