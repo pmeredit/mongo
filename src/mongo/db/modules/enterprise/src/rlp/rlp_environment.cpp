@@ -76,7 +76,8 @@ namespace {
         }                                                                                          \
                                                                                                    \
         if (s.getValue() == nullptr) {                                                             \
-            return {ErrorCodes::InternalError, str::stream() << "Symbol " << #name << " is null"}; \
+            return {ErrorCodes::SymbolNotFound,                                                    \
+                    str::stream() << "Symbol " << #name << " is null"};                            \
         }                                                                                          \
         env->_##name = s.getValue();                                                               \
     }
@@ -92,7 +93,7 @@ namespace {
 
         if (!env->BT_RLP_Library_VersionIsCompatible(BT_RLP_LIBRARY_INTERFACE_VERSION)) {
             return StatusWith<std::unique_ptr<RlpEnvironment>>(
-                ErrorCodes::InternalError,
+                ErrorCodes::RLPInitializationFailed,
                 str::stream() << "RLP library mismatch: have version '"
                               << env->BT_RLP_Library_VersionString() << "', expected version '"
                               << BT_RLP_LIBRARY_VERSION_STRING << "'");
@@ -114,7 +115,7 @@ namespace {
 
         env->_rlpenv = env->BT_RLP_Environment_Create();
         if (!env->_rlpenv) {
-            return {ErrorCodes::InternalError,
+            return {ErrorCodes::RLPInitializationFailed,
                     str::stream() << "Failed to initialize RLP_Environment"};
         }
 
@@ -128,7 +129,7 @@ namespace {
             env->getEnvironment(), environmentPath.generic_string().c_str());
 
         if (rc != BT_OK) {
-            return {ErrorCodes::InternalError,
+            return {ErrorCodes::RLPInitializationFailed,
                     str::stream() << "Unable to initialize the RLP environment using: "
                                   << environmentPath.generic_string()};
         }
