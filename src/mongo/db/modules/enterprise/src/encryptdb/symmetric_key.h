@@ -39,6 +39,6 @@ namespace mongo {
 
         size_t _keySize;
 
-        std::unique_ptr<uint8_t> _key;
+        std::unique_ptr<uint8_t[]> _key;
     };
 } // namespace mongo
