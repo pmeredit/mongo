@@ -2,13 +2,44 @@
 
 Import("env")
 
-env.Library('symmetric_crypto',
-            ['symmetric_crypto.cpp',
-             'symmetric_key.cpp'],
-            LIBDEPS=['$BUILD_DIR/mongo/base/base',
-                     '$BUILD_DIR/mongo/util/net/network']);
+env.Library(target='kmip',
+            source=[
+                'kmip_request.cpp',
+                'kmip_response.cpp',
+            ])
 
-env.CppUnitTest('symmetric_crypto_test',
-                ['symmetric_crypto_test.cpp'],
+env.Library(target='symmetric_crypto',
+            source=[
+                'symmetric_crypto.cpp',
+                'symmetric_key.cpp',
+            ],
+            LIBDEPS=[
+                '$BUILD_DIR/mongo/base/base',
+                '$BUILD_DIR/mongo/util/net/network',
+            ]);
+
+env.CppUnitTest(target='symmetric_crypto_test',
+                source=[
+                    'symmetric_crypto_test.cpp'
+                ],
                 LIBDEPS=['symmetric_crypto'])
 
+env.CppUnitTest(target='kmip_response_test',
+                source=[
+                    'kmip_response_test.cpp'
+                ],
+                LIBDEPS=[
+                    'kmip',
+                    'symmetric_crypto',
+                    '$BUILD_DIR/mongo/util/net/network',
+                ])
+
+env.CppUnitTest(target='kmip_request_test',
+                source=[
+                    'kmip_request_test.cpp',
+                ],
+                LIBDEPS=[
+                    'kmip',
+                    'symmetric_crypto',
+                    '$BUILD_DIR/mongo/util/net/network',
+                ])
