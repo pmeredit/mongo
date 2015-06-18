@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <tuple>
+
 #include "kmip_consts.h"
 #include "mongo/base/disallow_copying.h"
 #include "mongo/base/status.h"
@@ -17,12 +19,21 @@ namespace mongo {
 namespace kmip {
 
     class KMIPResponse {
+        MONGO_DISALLOW_COPYING(KMIPResponse);
     public:
         /**
          * Factory function to parse a KMIP response. Parsing errors are indicated
          * in the status portion of the return value.
          */
         static StatusWith<KMIPResponse> create(const char* responseMessage, size_t len);
+
+#if defined(_MSC_VER) && _MSC_VER < 1900
+        KMIPResponse(KMIPResponse&&);
+        KMIPResponse& operator=(KMIPResponse&&);
+#else
+        KMIPResponse(KMIPResponse&&) = default;
+        KMIPResponse& operator=(KMIPResponse&&) = default;
+#endif
 
         /**
          * Gets the protocol version for the parsed response.
@@ -59,6 +70,8 @@ namespace kmip {
         std::string getUID() const { return _uid; }
 
     private:
+        KMIPResponse();
+
         /**
          * Each of the _parseXXX methods below behaves in a similar fashion.
          *

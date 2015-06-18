@@ -35,6 +35,38 @@ namespace kmip {
         return std::move(response);
     }
 
+    KMIPResponse::KMIPResponse() {}
+
+#if defined(_MSC_VER) && _MSC_VER < 1900
+    KMIPResponse::KMIPResponse(KMIPResponse&& resp) :
+        _resultStatus(resp._resultStatus),
+        _resultReason(resp._resultReason),
+        _resultMsg(resp._resultMsg),
+        _timeStamp(resp._timeStamp),
+        _opType(resp._opType),
+        _batchCount(resp._opType),
+        _symmetricKey(std::move(resp._symmetricKey)),
+        _uid(resp._uid) {
+        _protocolVersion[0] = resp._protocolVersion[0];
+        _protocolVersion[1] = resp._protocolVersion[1];
+    }
+
+    KMIPResponse& KMIPResponse::operator=(KMIPResponse&& resp) {
+        _resultStatus = resp._resultStatus;
+        _resultReason = resp._resultReason;
+        _resultMsg = resp._resultMsg;
+        _timeStamp = resp._timeStamp;
+        _opType = resp._opType;
+        _batchCount = resp._opType;
+        _symmetricKey = std::move(resp._symmetricKey);
+        _uid = resp._uid;
+        _protocolVersion[0] = resp._protocolVersion[0];
+        _protocolVersion[1] = resp._protocolVersion[1];
+
+        return *this;
+    }
+#endif
+
     /**
      * Consume a 3 byte tag and compare with the expected input
      * Parse and return the length of the block denoted by the tag
