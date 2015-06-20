@@ -19,49 +19,48 @@
 namespace mongo {
 namespace fts {
 
-    namespace moe = optionenvironment;
+namespace moe = optionenvironment;
 
-    RLPGlobalParams rlpGlobalParams;
+RLPGlobalParams rlpGlobalParams;
 
 namespace {
-    const char kBtRootOptionLong[] = "basisTech.rootDirectory";
-    const char kBtRootOptionShort[] = "basisTechRootDirectory";
+const char kBtRootOptionLong[] = "basisTech.rootDirectory";
+const char kBtRootOptionShort[] = "basisTechRootDirectory";
 
-    Status addRLPOptions(moe::OptionSection* options) {
-        moe::OptionSection rlpOptions("Rosette Linguistics Platform Options");
+Status addRLPOptions(moe::OptionSection* options) {
+    moe::OptionSection rlpOptions("Rosette Linguistics Platform Options");
 
-        rlpOptions.addOptionChaining(
-            kBtRootOptionLong,
-            kBtRootOptionShort,
-            moe::String,
-            "Root directory of a Basis Technology installation, i.e. BT_ROOT");
+    rlpOptions.addOptionChaining(kBtRootOptionLong,
+                                 kBtRootOptionShort,
+                                 moe::String,
+                                 "Root directory of a Basis Technology installation, i.e. BT_ROOT");
 
-        Status ret = options->addSection(rlpOptions);
+    Status ret = options->addSection(rlpOptions);
 
-        if (!ret.isOK()) {
-            error() << "Failed to add btRoot option section: " << ret.toString();
-            return ret;
-        }
-
-        return Status::OK();
+    if (!ret.isOK()) {
+        error() << "Failed to add btRoot option section: " << ret.toString();
+        return ret;
     }
 
-    Status storeRLPOptions(const moe::Environment& params) {
-        if (params.count(kBtRootOptionLong)) {
-            rlpGlobalParams.btRoot = params[kBtRootOptionLong].as<std::string>();
-        }
-
-        return Status::OK();
-    }
+    return Status::OK();
 }
 
-    MONGO_MODULE_STARTUP_OPTIONS_REGISTER(RLPOptions)(InitializerContext* context) {
-        return addRLPOptions(&moe::startupOptions);
+Status storeRLPOptions(const moe::Environment& params) {
+    if (params.count(kBtRootOptionLong)) {
+        rlpGlobalParams.btRoot = params[kBtRootOptionLong].as<std::string>();
     }
 
-    MONGO_STARTUP_OPTIONS_STORE(RLPOptions)(InitializerContext* context) {
-        return storeRLPOptions(moe::startupOptionsParsed);
-    }
+    return Status::OK();
+}
+}
+
+MONGO_MODULE_STARTUP_OPTIONS_REGISTER(RLPOptions)(InitializerContext* context) {
+    return addRLPOptions(&moe::startupOptions);
+}
+
+MONGO_STARTUP_OPTIONS_STORE(RLPOptions)(InitializerContext* context) {
+    return storeRLPOptions(moe::startupOptionsParsed);
+}
 
 }  // namespace fts
 }  // namespace mongo

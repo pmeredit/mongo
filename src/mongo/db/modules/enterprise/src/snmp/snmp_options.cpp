@@ -14,46 +14,42 @@
 
 namespace mongo {
 
-    SnmpGlobalParams snmpGlobalParams;
+SnmpGlobalParams snmpGlobalParams;
 
-    Status addSnmpOptions(moe::OptionSection* options) {
+Status addSnmpOptions(moe::OptionSection* options) {
+    moe::OptionSection snmp_options("SNMP Module Options");
 
-        moe::OptionSection snmp_options("SNMP Module Options");
+    snmp_options.addOptionChaining(
+        "snmp.subagent", "snmp-subagent", moe::Switch, "run snmp subagent");
 
-        snmp_options.addOptionChaining("snmp.subagent", "snmp-subagent", moe::Switch,
-                                       "run snmp subagent");
+    snmp_options.addOptionChaining("snmp.master", "snmp-master", moe::Switch, "run snmp as master");
 
-        snmp_options.addOptionChaining("snmp.master", "snmp-master", moe::Switch,
-                                       "run snmp as master");
-
-        Status ret = options->addSection(snmp_options);
-        if (!ret.isOK()) {
-            return ret;
-        }
-
-        return Status::OK();
+    Status ret = options->addSection(snmp_options);
+    if (!ret.isOK()) {
+        return ret;
     }
 
-    Status storeSnmpOptions(const moe::Environment& params,
-                            const std::vector<std::string>& args) {
+    return Status::OK();
+}
 
-        if (params.count("snmp.subagent")) {
-            snmpGlobalParams.enabled = true;
-        }
-        if (params.count("snmp.master")) {
-            snmpGlobalParams.subagent = false;
-            snmpGlobalParams.enabled = true;
-        }
-
-        return Status::OK();
+Status storeSnmpOptions(const moe::Environment& params, const std::vector<std::string>& args) {
+    if (params.count("snmp.subagent")) {
+        snmpGlobalParams.enabled = true;
+    }
+    if (params.count("snmp.master")) {
+        snmpGlobalParams.subagent = false;
+        snmpGlobalParams.enabled = true;
     }
 
-    MONGO_MODULE_STARTUP_OPTIONS_REGISTER(SnmpOptions)(InitializerContext* context) {
-        return addSnmpOptions(&moe::startupOptions);
-    }
+    return Status::OK();
+}
 
-    MONGO_STARTUP_OPTIONS_STORE(SnmpOptions)(InitializerContext* context) {
-        return storeSnmpOptions(moe::startupOptionsParsed, context->args());
-    }
+MONGO_MODULE_STARTUP_OPTIONS_REGISTER(SnmpOptions)(InitializerContext* context) {
+    return addSnmpOptions(&moe::startupOptions);
+}
 
-} // namespace mongo
+MONGO_STARTUP_OPTIONS_STORE(SnmpOptions)(InitializerContext* context) {
+    return storeSnmpOptions(moe::startupOptionsParsed, context->args());
+}
+
+}  // namespace mongo

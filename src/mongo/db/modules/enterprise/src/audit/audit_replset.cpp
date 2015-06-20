@@ -17,59 +17,52 @@
 namespace mongo {
 namespace audit {
 
-    class ReplSetReconfigEvent : public AuditEvent {
-    public:
-        ReplSetReconfigEvent(const AuditEventEnvelope& envelope,
-                             const BSONObj* oldConfig,
-                             const BSONObj* newConfig)
-            : AuditEvent(envelope),
-              _oldConfig(oldConfig),
-              _newConfig(newConfig) {}
-        virtual ~ReplSetReconfigEvent() {}
+class ReplSetReconfigEvent : public AuditEvent {
+public:
+    ReplSetReconfigEvent(const AuditEventEnvelope& envelope,
+                         const BSONObj* oldConfig,
+                         const BSONObj* newConfig)
+        : AuditEvent(envelope), _oldConfig(oldConfig), _newConfig(newConfig) {}
+    virtual ~ReplSetReconfigEvent() {}
 
-    private:
-        virtual std::ostream& putTextDescription(std::ostream& os) const;
-        virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
+private:
+    virtual std::ostream& putTextDescription(std::ostream& os) const;
+    virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
 
-        const BSONObj* _oldConfig;
-        const BSONObj* _newConfig;
-    };
+    const BSONObj* _oldConfig;
+    const BSONObj* _newConfig;
+};
 
-    std::ostream& ReplSetReconfigEvent::putTextDescription(std::ostream& os) const {
-        if (_oldConfig) {
-            os << "Reconfiguring replica set: ";
-        }
-        else {
-            os << "Configuring replica set: ";
-        }
-        verify(_newConfig);
-        os << *_newConfig;
-        os << '.';
-        return os;
+std::ostream& ReplSetReconfigEvent::putTextDescription(std::ostream& os) const {
+    if (_oldConfig) {
+        os << "Reconfiguring replica set: ";
+    } else {
+        os << "Configuring replica set: ";
     }
+    verify(_newConfig);
+    os << *_newConfig;
+    os << '.';
+    return os;
+}
 
-    BSONObjBuilder& ReplSetReconfigEvent::putParamsBSON(BSONObjBuilder& builder) const {
-        if (_oldConfig) {
-            builder.append("old", *_oldConfig);
-        }
-        verify(_newConfig);
-        builder.append("new", *_newConfig);
-        return builder;
+BSONObjBuilder& ReplSetReconfigEvent::putParamsBSON(BSONObjBuilder& builder) const {
+    if (_oldConfig) {
+        builder.append("old", *_oldConfig);
     }
+    verify(_newConfig);
+    builder.append("new", *_newConfig);
+    return builder;
+}
 
-    void logReplSetReconfig(ClientBasic* client,
-                            const BSONObj* oldConfig,
-                            const BSONObj* newConfig) {
+void logReplSetReconfig(ClientBasic* client, const BSONObj* oldConfig, const BSONObj* newConfig) {
+    if (!getGlobalAuditManager()->enabled)
+        return;
 
-        if (!getGlobalAuditManager()->enabled) return;
-
-        ReplSetReconfigEvent event(
-                makeEnvelope(client, ActionType::replSetReconfig, ErrorCodes::OK),
-                oldConfig,
-                newConfig);
-        if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-            getGlobalAuditLogDomain()->append(event);
-        }
+    ReplSetReconfigEvent event(
+        makeEnvelope(client, ActionType::replSetReconfig, ErrorCodes::OK), oldConfig, newConfig);
+    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+        getGlobalAuditLogDomain()->append(event);
     }
+}
 }
 }

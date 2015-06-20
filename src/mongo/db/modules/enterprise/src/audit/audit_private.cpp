@@ -13,35 +13,31 @@
 namespace mongo {
 namespace audit {
 
-    void fassertStatusOK(const Status& status) {
-        if (MONGO_unlikely(!status.isOK())) {
-            error() << status;
-            fassertFailed(status.code());
-        }
+void fassertStatusOK(const Status& status) {
+    if (MONGO_unlikely(!status.isOK())) {
+        error() << status;
+        fassertFailed(status.code());
     }
+}
 
-    void initializeEnvelope(
-            AuditEventEnvelope* envelope,
-            ClientBasic* client,
-            ActionType actionType,
-            ErrorCodes::Error result) {
-
-        envelope->timestamp = Date_t::now();
-        if (client->port()) {
-            envelope->localAddr = client->port()->localAddr();
-            envelope->remoteAddr = client->port()->remoteAddr();
-        }
-        envelope->authenticatedUserNames =
-            AuthorizationSession::get(client)->getAuthenticatedUserNames();
-        envelope->authenticatedRoleNames =
-            AuthorizationSession::get(client)->getAuthenticatedRoleNames();
-        envelope->impersonatedUserNames =
-            AuthorizationSession::get(client)->getImpersonatedUserNames();
-        envelope->impersonatedRoleNames =
-            AuthorizationSession::get(client)->getImpersonatedRoleNames();
-        envelope->actionType = actionType;
-        envelope->result = result;
+void initializeEnvelope(AuditEventEnvelope* envelope,
+                        ClientBasic* client,
+                        ActionType actionType,
+                        ErrorCodes::Error result) {
+    envelope->timestamp = Date_t::now();
+    if (client->port()) {
+        envelope->localAddr = client->port()->localAddr();
+        envelope->remoteAddr = client->port()->remoteAddr();
     }
+    envelope->authenticatedUserNames =
+        AuthorizationSession::get(client)->getAuthenticatedUserNames();
+    envelope->authenticatedRoleNames =
+        AuthorizationSession::get(client)->getAuthenticatedRoleNames();
+    envelope->impersonatedUserNames = AuthorizationSession::get(client)->getImpersonatedUserNames();
+    envelope->impersonatedRoleNames = AuthorizationSession::get(client)->getImpersonatedRoleNames();
+    envelope->actionType = actionType;
+    envelope->result = result;
+}
 
 }  // namespace audit
 }  // namespace mongo

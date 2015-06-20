@@ -11,34 +11,41 @@
 #include "symmetric_crypto.h"
 
 namespace mongo {
-    class Status;
+class Status;
 
-    /**
-     * Class representing a symmetric key
-     */
-    class SymmetricKey {
-        MONGO_DISALLOW_COPYING(SymmetricKey);
-    public:
-        SymmetricKey(const uint8_t* key, size_t keySize, uint32_t algorithm);
+/**
+ * Class representing a symmetric key
+ */
+class SymmetricKey {
+    MONGO_DISALLOW_COPYING(SymmetricKey);
 
-        SymmetricKey();
+public:
+    SymmetricKey(const uint8_t* key, size_t keySize, uint32_t algorithm);
 
-        SymmetricKey(SymmetricKey&&);
-        SymmetricKey& operator=(SymmetricKey&&);
+    SymmetricKey();
 
-        ~SymmetricKey();
+    SymmetricKey(SymmetricKey&&);
+    SymmetricKey& operator=(SymmetricKey&&);
 
-        const int getAlgorithm() { return _algorithm; }
+    ~SymmetricKey();
 
-        const size_t getKeySize() { return _keySize; }
+    const int getAlgorithm() {
+        return _algorithm;
+    }
 
-        const uint8_t* getKey() { return _key.get(); }
+    const size_t getKeySize() {
+        return _keySize;
+    }
 
-    private:
-        int _algorithm;
+    const uint8_t* getKey() {
+        return _key.get();
+    }
 
-        size_t _keySize;
+private:
+    int _algorithm;
 
-        std::unique_ptr<uint8_t[]> _key;
-    };
-} // namespace mongo
+    size_t _keySize;
+
+    std::unique_ptr<uint8_t[]> _key;
+};
+}  // namespace mongo

@@ -14,46 +14,45 @@
 namespace mongo {
 namespace fts {
 
-    class RlpContextCacheHandle;
-    class RlpTokenIteratorFactory;
+class RlpContextCacheHandle;
+class RlpTokenIteratorFactory;
 
+/**
+ * RlpTokenIteratorFactory
+ *
+ * Modeled after BT_RLP_TokenIteratorFactory, a simple C++ wrapper around the RLP C API
+ * See rlp/doc/api-reference/cpp-reference/classBT__RLP__TokenIteratorFactory.html
+ */
+class RlpTokenIteratorFactory {
+    MONGO_DISALLOW_COPYING(RlpTokenIteratorFactory);
+
+public:
+    RlpTokenIteratorFactory(RlpEnvironment* rlpEnvironment);
+
+    void setReturnReadings(bool flag);
+    void setReturnCompoundComponents(bool flag);
+    RlpTokenIterator createIterator(BT_RLP_ContextC* context);
+
+private:
     /**
-     * RlpTokenIteratorFactory
+     * RlpIteratorFactoryDeleteContext
      *
-     * Modeled after BT_RLP_TokenIteratorFactory, a simple C++ wrapper around the RLP C API
-     * See rlp/doc/api-reference/cpp-reference/classBT__RLP__TokenIteratorFactory.html
+     * std::unique_ptr Deleter function for BT_RLP_TokenIteratorFactoryC
      */
-    class RlpTokenIteratorFactory {
-        MONGO_DISALLOW_COPYING(RlpTokenIteratorFactory);
-
+    class RlpIteratorFactoryDeleteContext {
     public:
-        RlpTokenIteratorFactory(RlpEnvironment* rlpEnvironment);
+        RlpIteratorFactoryDeleteContext(RlpEnvironment* rlpEnvironment);
 
-        void setReturnReadings(bool flag);
-        void setReturnCompoundComponents(bool flag);
-        RlpTokenIterator createIterator(BT_RLP_ContextC* context);
-
-    private:
-        /**
-         * RlpIteratorFactoryDeleteContext
-         *
-         * std::unique_ptr Deleter function for BT_RLP_TokenIteratorFactoryC
-         */
-        class RlpIteratorFactoryDeleteContext {
-        public:
-            RlpIteratorFactoryDeleteContext(RlpEnvironment* rlpEnvironment);
-
-            void operator()(BT_RLP_TokenIteratorFactoryC* iterator) const;
-            RlpEnvironment* getRlpEnvironment();
-
-        private:
-            RlpEnvironment* _rlpEnvironment;
-        };
+        void operator()(BT_RLP_TokenIteratorFactoryC* iterator) const;
+        RlpEnvironment* getRlpEnvironment();
 
     private:
-        std::unique_ptr<BT_RLP_TokenIteratorFactoryC, RlpIteratorFactoryDeleteContext> const
-            _factory;
+        RlpEnvironment* _rlpEnvironment;
     };
+
+private:
+    std::unique_ptr<BT_RLP_TokenIteratorFactoryC, RlpIteratorFactoryDeleteContext> const _factory;
+};
 
 }  // namespace fts
 }  // namespace mongo

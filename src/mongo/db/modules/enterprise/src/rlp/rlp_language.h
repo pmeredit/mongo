@@ -7,9 +7,9 @@
 namespace mongo {
 namespace fts {
 
-    class RlpEnvironment;
+class RlpEnvironment;
 
-    Status registerRlpLanguages(RlpEnvironment* rlpEnvironment, bool rlpExperimentalTestLanguages);
+Status registerRlpLanguages(RlpEnvironment* rlpEnvironment, bool rlpExperimentalTestLanguages);
 
 }  // namespace fts
 }  // namespace mongo

@@ -17,41 +17,38 @@
 namespace mongo {
 namespace audit {
 
-    class ApplicationMessageEvent : public AuditEvent {
-    public:
-        ApplicationMessageEvent(const AuditEventEnvelope& envelope,
-                                StringData msg)
-            : AuditEvent(envelope), _msg(msg) {}
-        virtual ~ApplicationMessageEvent() {}
+class ApplicationMessageEvent : public AuditEvent {
+public:
+    ApplicationMessageEvent(const AuditEventEnvelope& envelope, StringData msg)
+        : AuditEvent(envelope), _msg(msg) {}
+    virtual ~ApplicationMessageEvent() {}
 
-    private:
-        virtual std::ostream& putTextDescription(std::ostream& os) const;
-        virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
+private:
+    virtual std::ostream& putTextDescription(std::ostream& os) const;
+    virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
 
-        const StringData _msg;
-    };
+    const StringData _msg;
+};
 
-    std::ostream& ApplicationMessageEvent::putTextDescription(std::ostream& os) const {
-        os << "Client application message: " << _msg;
-        return os;
+std::ostream& ApplicationMessageEvent::putTextDescription(std::ostream& os) const {
+    os << "Client application message: " << _msg;
+    return os;
+}
+
+BSONObjBuilder& ApplicationMessageEvent::putParamsBSON(BSONObjBuilder& builder) const {
+    builder.append("msg", _msg);
+    return builder;
+}
+
+void logApplicationMessage(ClientBasic* client, StringData msg) {
+    if (!getGlobalAuditManager()->enabled)
+        return;
+
+    ApplicationMessageEvent event(
+        makeEnvelope(client, ActionType::applicationMessage, ErrorCodes::OK), msg);
+    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+        getGlobalAuditLogDomain()->append(event);
     }
-
-    BSONObjBuilder& ApplicationMessageEvent::putParamsBSON(BSONObjBuilder& builder) const {
-        builder.append("msg", _msg);
-        return builder;
-    }
-
-    void logApplicationMessage(ClientBasic* client,
-                               StringData msg) {
-
-        if (!getGlobalAuditManager()->enabled) return;
-
-        ApplicationMessageEvent event(
-                makeEnvelope(client, ActionType::applicationMessage, ErrorCodes::OK),
-                msg);
-        if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-            getGlobalAuditLogDomain()->append(event);
-        }
-    }
+}
 }
 }

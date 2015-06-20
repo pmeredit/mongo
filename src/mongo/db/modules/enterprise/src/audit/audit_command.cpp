@@ -28,70 +28,71 @@
 
 namespace mongo {
 
-    using std::stringstream;
+using std::stringstream;
 
-    class CmdLogApplicationMessage : public Command {
-    public:
-        CmdLogApplicationMessage();
-        virtual ~CmdLogApplicationMessage();
+class CmdLogApplicationMessage : public Command {
+public:
+    CmdLogApplicationMessage();
+    virtual ~CmdLogApplicationMessage();
 
-        virtual Status checkAuthForCommand(ClientBasic* client,
-                                           const std::string& dbname,
-                                           const BSONObj& cmdObj) {
-            AuthorizationSession* authzSession = AuthorizationSession::get(client);
+    virtual Status checkAuthForCommand(ClientBasic* client,
+                                       const std::string& dbname,
+                                       const BSONObj& cmdObj) {
+        AuthorizationSession* authzSession = AuthorizationSession::get(client);
 
-            if (!authzSession->isAuthorizedForActionsOnResource(
-                    ResourcePattern::forClusterResource(), ActionType::applicationMessage)) {
-                return Status(ErrorCodes::Unauthorized,
-                              str::stream() << "Not authorized to send custom message to auditlog");
-            }
-            return Status::OK();
+        if (!authzSession->isAuthorizedForActionsOnResource(ResourcePattern::forClusterResource(),
+                                                            ActionType::applicationMessage)) {
+            return Status(ErrorCodes::Unauthorized,
+                          str::stream() << "Not authorized to send custom message to auditlog");
         }
-
-        virtual bool run(OperationContext* txn,
-                         const std::string& db,
-                         BSONObj& cmdObj,
-                         int options,
-                         std::string& errmsg,
-                         BSONObjBuilder& result);
-
-        virtual void help(stringstream& help) const;
-        virtual bool isWriteCommandForConfigServer() const { return false; }
-        virtual bool slaveOk() const { return true; }
-    };
-
-    CmdLogApplicationMessage cmdLogApplicationMessage;
-
-    CmdLogApplicationMessage::CmdLogApplicationMessage() : Command("logApplicationMessage") {}
-    CmdLogApplicationMessage::~CmdLogApplicationMessage() {}
-
-    void CmdLogApplicationMessage::help(std::stringstream& os) const {
-        os << "Insert a custom message into the audit log";
+        return Status::OK();
     }
 
-    bool CmdLogApplicationMessage::run(OperationContext* txn,
-                                       const std::string& db,
-                                       BSONObj& cmdObj,
-                                       int options,
-                                       std::string& errmsg,
-                                       BSONObjBuilder& result) {
+    virtual bool run(OperationContext* txn,
+                     const std::string& db,
+                     BSONObj& cmdObj,
+                     int options,
+                     std::string& errmsg,
+                     BSONObjBuilder& result);
 
-        ClientBasic* client = ClientBasic::getCurrent();
-
-        if (cmdObj.hasField("logApplicationMessage")) {
-            if (cmdObj["logApplicationMessage"].type() == String) {
-                audit::logApplicationMessage(client, cmdObj["logApplicationMessage"].valuestrsafe());
-            }
-            else {
-                errmsg = "logApplicationMessage takes a string as its only argument";
-                return false;
-            }
-        }
-        else {
-            errmsg = "logApplicationMessage missing eponymous field";
-            return false;
-        }
-
+    virtual void help(stringstream& help) const;
+    virtual bool isWriteCommandForConfigServer() const {
+        return false;
+    }
+    virtual bool slaveOk() const {
         return true;
     }
+};
+
+CmdLogApplicationMessage cmdLogApplicationMessage;
+
+CmdLogApplicationMessage::CmdLogApplicationMessage() : Command("logApplicationMessage") {}
+CmdLogApplicationMessage::~CmdLogApplicationMessage() {}
+
+void CmdLogApplicationMessage::help(std::stringstream& os) const {
+    os << "Insert a custom message into the audit log";
+}
+
+bool CmdLogApplicationMessage::run(OperationContext* txn,
+                                   const std::string& db,
+                                   BSONObj& cmdObj,
+                                   int options,
+                                   std::string& errmsg,
+                                   BSONObjBuilder& result) {
+    ClientBasic* client = ClientBasic::getCurrent();
+
+    if (cmdObj.hasField("logApplicationMessage")) {
+        if (cmdObj["logApplicationMessage"].type() == String) {
+            audit::logApplicationMessage(client, cmdObj["logApplicationMessage"].valuestrsafe());
+        } else {
+            errmsg = "logApplicationMessage takes a string as its only argument";
+            return false;
+        }
+    } else {
+        errmsg = "logApplicationMessage missing eponymous field";
+        return false;
+    }
+
+    return true;
+}
 }

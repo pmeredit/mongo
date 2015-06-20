@@ -17,305 +17,267 @@
 namespace mongo {
 namespace audit {
 
-    class CreateIndexEvent : public AuditEvent {
-    public:
-        CreateIndexEvent(const AuditEventEnvelope& envelope,
-                         const BSONObj* indexSpec,
-                         StringData indexname,
-                         StringData nsname)
-            : AuditEvent(envelope),
-              _indexSpec(indexSpec),
-              _indexname(indexname),
-              _nsname(nsname) {}
-        virtual ~CreateIndexEvent() {}
+class CreateIndexEvent : public AuditEvent {
+public:
+    CreateIndexEvent(const AuditEventEnvelope& envelope,
+                     const BSONObj* indexSpec,
+                     StringData indexname,
+                     StringData nsname)
+        : AuditEvent(envelope), _indexSpec(indexSpec), _indexname(indexname), _nsname(nsname) {}
+    virtual ~CreateIndexEvent() {}
 
-    private:
-        virtual std::ostream& putTextDescription(std::ostream& os) const;
-        virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
+private:
+    virtual std::ostream& putTextDescription(std::ostream& os) const;
+    virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
 
-        const BSONObj* _indexSpec;
-        StringData _indexname;
-        StringData _nsname;
-    };
+    const BSONObj* _indexSpec;
+    StringData _indexname;
+    StringData _nsname;
+};
 
-    std::ostream& CreateIndexEvent::putTextDescription(std::ostream& os) const {
-        os << "Created index " << _indexname
-           << " on " << _nsname
-           << " as " << *_indexSpec << '.';
-        return os;
+std::ostream& CreateIndexEvent::putTextDescription(std::ostream& os) const {
+    os << "Created index " << _indexname << " on " << _nsname << " as " << *_indexSpec << '.';
+    return os;
+}
+
+BSONObjBuilder& CreateIndexEvent::putParamsBSON(BSONObjBuilder& builder) const {
+    builder.append("ns", _nsname);
+    builder.append("indexName", _indexname);
+    builder.append("indexSpec", *_indexSpec);
+    return builder;
+}
+
+void logCreateIndex(ClientBasic* client,
+                    const BSONObj* indexSpec,
+                    StringData indexname,
+                    StringData nsname) {
+    if (!getGlobalAuditManager()->enabled)
+        return;
+
+    CreateIndexEvent event(makeEnvelope(client, ActionType::createIndex, ErrorCodes::OK),
+                           indexSpec,
+                           indexname,
+                           nsname);
+    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+        getGlobalAuditLogDomain()->append(event);
     }
+}
 
-    BSONObjBuilder& CreateIndexEvent::putParamsBSON(BSONObjBuilder& builder) const {
-        builder.append("ns", _nsname);
-        builder.append("indexName", _indexname);
-        builder.append("indexSpec", *_indexSpec);
-        return builder;
+
+class CreateCollectionEvent : public AuditEvent {
+public:
+    CreateCollectionEvent(const AuditEventEnvelope& envelope, StringData nsname)
+        : AuditEvent(envelope), _nsname(nsname) {}
+    virtual ~CreateCollectionEvent() {}
+
+private:
+    virtual std::ostream& putTextDescription(std::ostream& os) const;
+    virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
+
+    StringData _nsname;
+};
+
+std::ostream& CreateCollectionEvent::putTextDescription(std::ostream& os) const {
+    os << "Created collection " << _nsname << '.';
+    return os;
+}
+
+BSONObjBuilder& CreateCollectionEvent::putParamsBSON(BSONObjBuilder& builder) const {
+    builder.append("ns", _nsname);
+    return builder;
+}
+
+void logCreateCollection(ClientBasic* client, StringData nsname) {
+    if (!getGlobalAuditManager()->enabled)
+        return;
+
+    // Do not log index namespace creation.
+    if (!NamespaceString::normal(nsname))
+        return;
+
+    CreateCollectionEvent event(makeEnvelope(client, ActionType::createCollection, ErrorCodes::OK),
+                                nsname);
+    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+        getGlobalAuditLogDomain()->append(event);
     }
+}
 
-    void logCreateIndex(ClientBasic* client,
-                        const BSONObj* indexSpec,
-                        StringData indexname,
-                        StringData nsname) {
 
-        if (!getGlobalAuditManager()->enabled) return;
+class CreateDatabaseEvent : public AuditEvent {
+public:
+    CreateDatabaseEvent(const AuditEventEnvelope& envelope, StringData dbname)
+        : AuditEvent(envelope), _dbname(dbname) {}
+    virtual ~CreateDatabaseEvent() {}
 
-        CreateIndexEvent event(
-                makeEnvelope(client, ActionType::createIndex, ErrorCodes::OK),
-                indexSpec,
-                indexname,
-                nsname);
-        if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-            getGlobalAuditLogDomain()->append(event);
-        }
+private:
+    virtual std::ostream& putTextDescription(std::ostream& os) const;
+    virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
+
+    StringData _dbname;
+};
+
+std::ostream& CreateDatabaseEvent::putTextDescription(std::ostream& os) const {
+    os << "Created database " << _dbname << '.';
+    return os;
+}
+
+BSONObjBuilder& CreateDatabaseEvent::putParamsBSON(BSONObjBuilder& builder) const {
+    builder.append("ns", _dbname);
+    return builder;
+}
+
+void logCreateDatabase(ClientBasic* client, StringData dbname) {
+    if (!getGlobalAuditManager()->enabled)
+        return;
+
+    CreateDatabaseEvent event(makeEnvelope(client, ActionType::createDatabase, ErrorCodes::OK),
+                              dbname);
+    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+        getGlobalAuditLogDomain()->append(event);
     }
+}
 
 
-    class CreateCollectionEvent : public AuditEvent {
-    public:
-        CreateCollectionEvent(const AuditEventEnvelope& envelope,
-                              StringData nsname)
-            : AuditEvent(envelope),
-              _nsname(nsname) {}
-        virtual ~CreateCollectionEvent() {}
+class DropIndexEvent : public AuditEvent {
+public:
+    DropIndexEvent(const AuditEventEnvelope& envelope, StringData indexname, StringData nsname)
+        : AuditEvent(envelope), _indexname(indexname), _nsname(nsname) {}
+    virtual ~DropIndexEvent() {}
 
-    private:
-        virtual std::ostream& putTextDescription(std::ostream& os) const;
-        virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
+private:
+    virtual std::ostream& putTextDescription(std::ostream& os) const;
+    virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
 
-        StringData _nsname;
-    };
+    StringData _indexname;
+    StringData _nsname;
+};
 
-    std::ostream& CreateCollectionEvent::putTextDescription(std::ostream& os) const {
-        os << "Created collection " << _nsname << '.';
-        return os;
+std::ostream& DropIndexEvent::putTextDescription(std::ostream& os) const {
+    os << "Dropped index " << _indexname << " from " << _nsname << '.';
+    return os;
+}
+
+BSONObjBuilder& DropIndexEvent::putParamsBSON(BSONObjBuilder& builder) const {
+    builder.append("ns", _nsname);
+    builder.append("indexName", _indexname);
+    return builder;
+}
+
+void logDropIndex(ClientBasic* client, StringData indexname, StringData nsname) {
+    if (!getGlobalAuditManager()->enabled)
+        return;
+
+    DropIndexEvent event(
+        makeEnvelope(client, ActionType::dropIndex, ErrorCodes::OK), indexname, nsname);
+    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+        getGlobalAuditLogDomain()->append(event);
     }
+}
 
-    BSONObjBuilder& CreateCollectionEvent::putParamsBSON(BSONObjBuilder& builder) const {
-        builder.append("ns", _nsname);
-        return builder;
+
+class DropCollectionEvent : public AuditEvent {
+public:
+    DropCollectionEvent(const AuditEventEnvelope& envelope, StringData nsname)
+        : AuditEvent(envelope), _nsname(nsname) {}
+    virtual ~DropCollectionEvent() {}
+
+private:
+    virtual std::ostream& putTextDescription(std::ostream& os) const;
+    virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
+
+    StringData _nsname;
+};
+
+std::ostream& DropCollectionEvent::putTextDescription(std::ostream& os) const {
+    os << "Dropped collection " << _nsname << '.';
+    return os;
+}
+
+BSONObjBuilder& DropCollectionEvent::putParamsBSON(BSONObjBuilder& builder) const {
+    builder.append("ns", _nsname);
+    return builder;
+}
+
+void logDropCollection(ClientBasic* client, StringData nsname) {
+    if (!getGlobalAuditManager()->enabled)
+        return;
+
+    DropCollectionEvent event(makeEnvelope(client, ActionType::dropCollection, ErrorCodes::OK),
+                              nsname);
+    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+        getGlobalAuditLogDomain()->append(event);
     }
+}
 
-    void logCreateCollection(ClientBasic* client,
-                             StringData nsname) {
 
-        if (!getGlobalAuditManager()->enabled) return;
+class DropDatabaseEvent : public AuditEvent {
+public:
+    DropDatabaseEvent(const AuditEventEnvelope& envelope, StringData dbname)
+        : AuditEvent(envelope), _dbname(dbname) {}
+    virtual ~DropDatabaseEvent() {}
 
-        // Do not log index namespace creation.
-        if (!NamespaceString::normal(nsname)) return;
+private:
+    virtual std::ostream& putTextDescription(std::ostream& os) const;
+    virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
 
-        CreateCollectionEvent event(
-                makeEnvelope(client, ActionType::createCollection, ErrorCodes::OK),
-                nsname);
-        if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-            getGlobalAuditLogDomain()->append(event);
-        }
+    StringData _dbname;
+};
+
+std::ostream& DropDatabaseEvent::putTextDescription(std::ostream& os) const {
+    os << "Dropped database " << _dbname << '.';
+    return os;
+}
+
+BSONObjBuilder& DropDatabaseEvent::putParamsBSON(BSONObjBuilder& builder) const {
+    builder.append("ns", _dbname);
+    return builder;
+}
+
+void logDropDatabase(ClientBasic* client, StringData dbname) {
+    if (!getGlobalAuditManager()->enabled)
+        return;
+
+    DropDatabaseEvent event(makeEnvelope(client, ActionType::dropDatabase, ErrorCodes::OK), dbname);
+    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+        getGlobalAuditLogDomain()->append(event);
     }
+}
 
 
-    class CreateDatabaseEvent : public AuditEvent {
-    public:
-        CreateDatabaseEvent(const AuditEventEnvelope& envelope,
-                            StringData dbname)
-            : AuditEvent(envelope),
-              _dbname(dbname) {}
-        virtual ~CreateDatabaseEvent() {}
+class RenameCollectionEvent : public AuditEvent {
+public:
+    RenameCollectionEvent(const AuditEventEnvelope& envelope, StringData source, StringData target)
+        : AuditEvent(envelope), _source(source), _target(target) {}
+    virtual ~RenameCollectionEvent() {}
 
-    private:
-        virtual std::ostream& putTextDescription(std::ostream& os) const;
-        virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
+private:
+    virtual std::ostream& putTextDescription(std::ostream& os) const;
+    virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
 
-        StringData _dbname;
-    };
+    StringData _source;
+    StringData _target;
+};
 
-    std::ostream& CreateDatabaseEvent::putTextDescription(std::ostream& os) const {
-        os << "Created database " << _dbname << '.';
-        return os;
+std::ostream& RenameCollectionEvent::putTextDescription(std::ostream& os) const {
+    os << "Renamed collection " << _source << " to " << _target << '.';
+    return os;
+}
+
+BSONObjBuilder& RenameCollectionEvent::putParamsBSON(BSONObjBuilder& builder) const {
+    builder.append("old", _source);
+    builder.append("new", _target);
+    return builder;
+}
+
+void logRenameCollection(ClientBasic* client, StringData source, StringData target) {
+    if (!getGlobalAuditManager()->enabled)
+        return;
+
+    RenameCollectionEvent event(
+        makeEnvelope(client, ActionType::renameCollection, ErrorCodes::OK), source, target);
+    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+        getGlobalAuditLogDomain()->append(event);
     }
-
-    BSONObjBuilder& CreateDatabaseEvent::putParamsBSON(BSONObjBuilder& builder) const {
-        builder.append("ns", _dbname);
-        return builder;
-    }
-
-    void logCreateDatabase(ClientBasic* client,
-                           StringData dbname) {
-
-        if (!getGlobalAuditManager()->enabled) return;
-
-        CreateDatabaseEvent event(
-                makeEnvelope(client, ActionType::createDatabase, ErrorCodes::OK),
-                dbname);
-        if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-            getGlobalAuditLogDomain()->append(event);
-        }
-    }
-
-
-    class DropIndexEvent : public AuditEvent {
-    public:
-        DropIndexEvent(const AuditEventEnvelope& envelope,
-                       StringData indexname,
-                       StringData nsname)
-            : AuditEvent(envelope),
-              _indexname(indexname),
-              _nsname(nsname) {}
-        virtual ~DropIndexEvent() {}
-
-    private:
-        virtual std::ostream& putTextDescription(std::ostream& os) const;
-        virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
-
-        StringData _indexname;
-        StringData _nsname;
-    };
-
-    std::ostream& DropIndexEvent::putTextDescription(std::ostream& os) const {
-        os << "Dropped index " << _indexname << " from " << _nsname << '.';
-        return os;
-    }
-
-    BSONObjBuilder& DropIndexEvent::putParamsBSON(BSONObjBuilder& builder) const {
-        builder.append("ns", _nsname);
-        builder.append("indexName", _indexname);
-        return builder;
-    }
-
-    void logDropIndex(ClientBasic* client,
-                      StringData indexname,
-                      StringData nsname) {
-
-        if (!getGlobalAuditManager()->enabled) return;
-
-        DropIndexEvent event(
-                makeEnvelope(client, ActionType::dropIndex, ErrorCodes::OK),
-                indexname,
-                nsname);
-        if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-            getGlobalAuditLogDomain()->append(event);
-        }
-    }
-
-
-    class DropCollectionEvent : public AuditEvent {
-    public:
-        DropCollectionEvent(const AuditEventEnvelope& envelope,
-                            StringData nsname)
-            : AuditEvent(envelope),
-              _nsname(nsname) {}
-        virtual ~DropCollectionEvent() {}
-
-    private:
-        virtual std::ostream& putTextDescription(std::ostream& os) const;
-        virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
-
-        StringData _nsname;
-    };
-
-    std::ostream& DropCollectionEvent::putTextDescription(std::ostream& os) const {
-        os << "Dropped collection " << _nsname << '.';
-        return os;
-    }
-
-    BSONObjBuilder& DropCollectionEvent::putParamsBSON(BSONObjBuilder& builder) const {
-        builder.append("ns", _nsname);
-        return builder;
-    }
-
-    void logDropCollection(ClientBasic* client,
-                           StringData nsname) {
-
-        if (!getGlobalAuditManager()->enabled) return;
-
-        DropCollectionEvent event(
-                makeEnvelope(client, ActionType::dropCollection, ErrorCodes::OK),
-                nsname);
-        if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-            getGlobalAuditLogDomain()->append(event);
-        }
-    }
-
-
-    class DropDatabaseEvent : public AuditEvent {
-    public:
-        DropDatabaseEvent(const AuditEventEnvelope& envelope,
-                          StringData dbname)
-            : AuditEvent(envelope),
-              _dbname(dbname) {}
-        virtual ~DropDatabaseEvent() {}
-
-    private:
-        virtual std::ostream& putTextDescription(std::ostream& os) const;
-        virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
-
-        StringData _dbname;
-    };
-
-    std::ostream& DropDatabaseEvent::putTextDescription(std::ostream& os) const {
-        os << "Dropped database " << _dbname << '.';
-        return os;
-    }
-
-    BSONObjBuilder& DropDatabaseEvent::putParamsBSON(BSONObjBuilder& builder) const {
-        builder.append("ns", _dbname);
-        return builder;
-    }
-
-    void logDropDatabase(ClientBasic* client,
-                         StringData dbname) {
-
-        if (!getGlobalAuditManager()->enabled) return;
-
-        DropDatabaseEvent event(
-                makeEnvelope(client, ActionType::dropDatabase, ErrorCodes::OK),
-                dbname);
-        if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-            getGlobalAuditLogDomain()->append(event);
-        }
-    }
-
-    
-    class RenameCollectionEvent : public AuditEvent {
-    public:
-        RenameCollectionEvent(const AuditEventEnvelope& envelope,
-                              StringData source,
-                              StringData target)
-            : AuditEvent(envelope),
-              _source(source),
-              _target(target) {}
-        virtual ~RenameCollectionEvent() {}
-
-    private:
-        virtual std::ostream& putTextDescription(std::ostream& os) const;
-        virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
-
-        StringData _source;
-        StringData _target;
-    };
-
-    std::ostream& RenameCollectionEvent::putTextDescription(std::ostream& os) const {
-        os << "Renamed collection " << _source << " to " << _target << '.';
-        return os;
-    }
-
-    BSONObjBuilder& RenameCollectionEvent::putParamsBSON(BSONObjBuilder& builder) const {
-        builder.append("old", _source);
-        builder.append("new", _target);
-        return builder;
-    }
-
-    void logRenameCollection(ClientBasic* client,
-                             StringData source,
-                             StringData target) {
-
-        if (!getGlobalAuditManager()->enabled) return;
-
-        RenameCollectionEvent event(
-                makeEnvelope(client, ActionType::renameCollection, ErrorCodes::OK),
-                source,
-                target);
-        if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-            getGlobalAuditLogDomain()->append(event);
-        }
-    }
+}
 }
 }

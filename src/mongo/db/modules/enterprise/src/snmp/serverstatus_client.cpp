@@ -46,11 +46,10 @@ const int ServerStatusClient::DATE_AND_TIME_TZ_LEN = 11;
 ServerStatusClient::ServerStatusClient(OperationContext* txn,
                                        const std::string& sectionName,
                                        time_t cacheExpireSecs)
-        : _dbClient(txn),
-          _cacheExpireSecs(cacheExpireSecs),
-          _lastRefresh(0),
-          _sectionName(sectionName)
-{
+    : _dbClient(txn),
+      _cacheExpireSecs(cacheExpireSecs),
+      _lastRefresh(0),
+      _sectionName(sectionName) {
     std::vector<std::string> sectionList;
     sectionList.push_back(ASSERTS);
     sectionList.push_back(BACKGROUND_FLUSHING);
@@ -68,62 +67,56 @@ ServerStatusClient::ServerStatusClient(OperationContext* txn,
     sectionList.push_back(REPL);
     sectionList.push_back(MEM);
     sectionList.push_back(METRICS);
-    
+
     BSONObjBuilder b;
     b.append("serverStatus", 1);
-    
-    for (unsigned int jj=0; jj < sectionList.size(); ++jj) {
+
+    for (unsigned int jj = 0; jj < sectionList.size(); ++jj) {
         if (sectionList[jj] == sectionName)
             b.append(sectionList[jj], 1);
         else
             b.append(sectionList[jj], 0);
     }
-    
+
     _serverStatusCmd = b.obj();
 }
-        
-bool ServerStatusClient::loadIfNeeded()
-{    
+
+bool ServerStatusClient::loadIfNeeded() {
     bool cachingEnabled = _cacheExpireSecs > 0;
-    
-    if (cachingEnabled)
-    {
+
+    if (cachingEnabled) {
         time_t now = time(0);
         time_t secsFromLastRefresh = now - _lastRefresh;
-         
-        if (secsFromLastRefresh < _cacheExpireSecs)
-        {
-           return true;   
-        } 
+
+        if (secsFromLastRefresh < _cacheExpireSecs) {
+            return true;
+        }
     }
-     
+
     bool ok = load();
-    
-    if (ok && cachingEnabled)
-    {
-        _lastRefresh = time(0); // represents serverStatus completion
+
+    if (ok && cachingEnabled) {
+        _lastRefresh = time(0);  // represents serverStatus completion
     }
 
     return ok;
 }
 
-bool ServerStatusClient::load()
-{
+bool ServerStatusClient::load() {
     BSONObj response;
     bool ok = false;
-    
+
     {
         Timer timer;
         ok = _dbClient.runCommand("admin", _serverStatusCmd, response);
-        LOG(5) << "serverStatus cmd for " << _sectionName << " took " << timer.micros() 
+        LOG(5) << "serverStatus cmd for " << _sectionName << " took " << timer.micros()
                << " micros";
     }
 
     if (ok) {
-        LOG(5) << "ServerStatusClient::load " << response ;
+        LOG(5) << "ServerStatusClient::load " << response;
         _serverStatusData = response;
-    }
-    else {
+    } else {
         warning() << "serverStatus call failed: " << response.toString() << endl;
         _serverStatusData = BSONObj();
     }
@@ -131,45 +124,41 @@ bool ServerStatusClient::load()
     return ok;
 }
 
-BSONElement ServerStatusClient::getElement(StringData name)
-{
+BSONElement ServerStatusClient::getElement(StringData name) {
     LOG(5) << "ServerStatusClient::getElement: " << name;
-    
-    // no need to handle return - fields will not be found in empty BSONObj 
+
+    // no need to handle return - fields will not be found in empty BSONObj
     loadIfNeeded();
-    
+
     BSONElement elem = _serverStatusData.getFieldDotted(name);
 
-    massert(28534, str::stream() << "field '" << name
-            << "' does not exist in serverStatus doc: " << _serverStatusData,
+    massert(28534,
+            str::stream() << "field '" << name
+                          << "' does not exist in serverStatus doc: " << _serverStatusData,
             elem.ok());
 
     return elem;
 }
 
-bool ServerStatusClient::getBoolField(StringData name)
-{
+bool ServerStatusClient::getBoolField(StringData name) {
     return getElement(name).Bool();
 }
 
-int ServerStatusClient::getIntField(StringData name)
-{
+int ServerStatusClient::getIntField(StringData name) {
     return getElement(name).Int();
 }
 
-unsigned int ServerStatusClient::getDurationField(StringData name)
-{
+unsigned int ServerStatusClient::getDurationField(StringData name) {
     int64_t timeMs = getInt64Field(name);
 
     // SNMP duration is 100ths of a second, represented as an unsigned int
     // In mongod we store as signed 64bit int in milliseconds so conversion is needed
-    static const int64_t UINT32_MOD = static_cast<int64_t>(numeric_limits<unsigned int>::max())+1;
-    int64_t timeSnmp = (timeMs/10) % UINT32_MOD;
+    static const int64_t UINT32_MOD = static_cast<int64_t>(numeric_limits<unsigned int>::max()) + 1;
+    int64_t timeSnmp = (timeMs / 10) % UINT32_MOD;
     return static_cast<unsigned int>(timeSnmp);
 }
 
-int64_t ServerStatusClient::getInt64Field(StringData name)
-{
+int64_t ServerStatusClient::getInt64Field(StringData name) {
     BSONElement elem = getElement(name);
 
     // We need to handle several potential return types for 64bit ints as mongod will
@@ -177,11 +166,9 @@ int64_t ServerStatusClient::getInt64Field(StringData name)
     // (see https://github.com/mongodb/mongo/blob/r2.5.3/src/mongo/bson/bsonobjbuilder.h#L231)
     if (elem.type() == mongo::NumberInt) {
         return static_cast<int64_t>(elem.Int());
-    }
-    else if (elem.type() == mongo::NumberLong) {
+    } else if (elem.type() == mongo::NumberLong) {
         return elem.Long();
-    }
-    else {
+    } else {
         return static_cast<int64_t>(elem.Double());
     }
 }
@@ -192,32 +179,29 @@ int64_t ServerStatusClient::getInt64Field(StringData name)
 #endif
 
 
-// MIB does not provide 64bit integer type (outside of Counter64). 
+// MIB does not provide 64bit integer type (outside of Counter64).
 // We represent with DisplayString (SIZE (0.. 22))
-void ServerStatusClient::getInt64FieldAsString(StringData name, char* o_value,
-                                               int o_valueLen)
-{
+void ServerStatusClient::getInt64FieldAsString(StringData name, char* o_value, int o_valueLen) {
     verify(o_value);
     verify(o_valueLen > 0);
-    
+
     int64_t int64Val = getInt64Field(name);
-    
+
     std::ostringstream ostr;
     ostr << int64Val;
-    
+
     int len = snprintf(o_value, o_valueLen, "%s", ostr.str().c_str());
     verify(len >= 0);
     verify(len < o_valueLen);
 }
 
 // MIB does not provide a floating point type. We represent with DisplayString (SIZE (0.. 16))
-void ServerStatusClient::getDoubleField(StringData name, char* o_value, int o_valueLen)
-{
+void ServerStatusClient::getDoubleField(StringData name, char* o_value, int o_valueLen) {
     verify(o_value);
     verify(o_valueLen > 0);
-    
+
     double dblVal = getElement(name).Double();
-    
+
     int len = snprintf(o_value, o_valueLen, "%f", dblVal);
     verify(len >= 0);
     verify(len < o_valueLen);
@@ -228,36 +212,32 @@ void ServerStatusClient::getDoubleField(StringData name, char* o_value, int o_va
 #pragma pop_macro("snprintf")
 #endif
 
-void ServerStatusClient::getStringField(StringData name, char* o_value, int o_valueLen)
-{
+void ServerStatusClient::getStringField(StringData name, char* o_value, int o_valueLen) {
     verify(o_value);
     verify(o_valueLen > 0);
-    
+
     BSONElement elem = getElement(name);
-    if (elem.type() != mongo::String)
-    {
+    if (elem.type() != mongo::String) {
         warning() << name << " is not a string" << endl;
         o_value[0] = '\0';
         return;
     }
-    
+
     int size = elem.valuestrsize();
     memcpy(o_value, elem.valuestr(), std::min(size, o_valueLen));
-    
+
     // if the value was larger than our buffer
-    if (size > o_valueLen)
-    {
-        warning() << name << " value size " << size << " is larger than buffer size "
-                  << o_valueLen << endl;
-        o_value[o_valueLen-1] = '\0';
+    if (size > o_valueLen) {
+        warning() << name << " value size " << size << " is larger than buffer size " << o_valueLen
+                  << endl;
+        o_value[o_valueLen - 1] = '\0';
     }
 }
 
-void ServerStatusClient::getDateField(StringData name, char* o_value, int o_valueLen)
-{
+void ServerStatusClient::getDateField(StringData name, char* o_value, int o_valueLen) {
     verify(o_value);
     verify(o_valueLen >= DATE_AND_TIME_TZ_LEN);
-    
+
     time_t date_timeT = getElement(name).Date().toTimeT();
 
     struct tm dateTime_tm = {0};
@@ -281,4 +261,4 @@ void ServerStatusClient::getDateField(StringData name, char* o_value, int o_valu
     o_value[10] = 0;
 }
 
-} // namespace mongo
+}  // namespace mongo

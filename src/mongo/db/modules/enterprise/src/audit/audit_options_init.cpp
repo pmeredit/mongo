@@ -27,13 +27,13 @@
 namespace mongo {
 namespace audit {
 
-    MONGO_MODULE_STARTUP_OPTIONS_REGISTER(AuditOptions)(InitializerContext* context) {
-        return addAuditOptions(&moe::startupOptions);
-    }
+MONGO_MODULE_STARTUP_OPTIONS_REGISTER(AuditOptions)(InitializerContext* context) {
+    return addAuditOptions(&moe::startupOptions);
+}
 
-    MONGO_STARTUP_OPTIONS_STORE(AuditOptions)(InitializerContext* context) {
-        return storeAuditOptions(moe::startupOptionsParsed, context->args());
-    }
+MONGO_STARTUP_OPTIONS_STORE(AuditOptions)(InitializerContext* context) {
+    return storeAuditOptions(moe::startupOptionsParsed, context->args());
+}
 
-} // namespace audit
-} // namespace mongo
+}  // namespace audit
+}  // namespace mongo

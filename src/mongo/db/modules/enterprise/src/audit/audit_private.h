@@ -15,40 +15,37 @@
 
 namespace mongo {
 
-    class ClientBasic;
+class ClientBasic;
 
 namespace audit {
 
-    /**
-     * Aborts unless "status.isOK()" returns true.
-     *
-     * TODO(schwerin): Move to assert_util, once you can stream into fasserts.
-     */
-    void fassertStatusOK(const Status& status);
+/**
+ * Aborts unless "status.isOK()" returns true.
+ *
+ * TODO(schwerin): Move to assert_util, once you can stream into fasserts.
+ */
+void fassertStatusOK(const Status& status);
 
-    /**
-     * Initializes the given "envelope" based on information in "client", plus
-     * the "actionType" and "result" codes.
-     */
-    void initializeEnvelope(
-            AuditEventEnvelope* envelope,
-            ClientBasic* client,
-            ActionType actionType,
-            ErrorCodes::Error result);
+/**
+ * Initializes the given "envelope" based on information in "client", plus
+ * the "actionType" and "result" codes.
+ */
+void initializeEnvelope(AuditEventEnvelope* envelope,
+                        ClientBasic* client,
+                        ActionType actionType,
+                        ErrorCodes::Error result);
 
-    /**
-     * Returns an AuditEventEnvelope initialized with information from "client", "actionType" and
-     * "result".
-     */
-    inline AuditEventEnvelope makeEnvelope(
-            ClientBasic* client,
-            ActionType actionType,
-            ErrorCodes::Error result) {
-
-        AuditEventEnvelope envelope;
-        initializeEnvelope(&envelope, client, actionType, result);
-        return envelope;
-    }
+/**
+ * Returns an AuditEventEnvelope initialized with information from "client", "actionType" and
+ * "result".
+ */
+inline AuditEventEnvelope makeEnvelope(ClientBasic* client,
+                                       ActionType actionType,
+                                       ErrorCodes::Error result) {
+    AuditEventEnvelope envelope;
+    initializeEnvelope(&envelope, client, actionType, result);
+    return envelope;
+}
 
 }  // namespace audit
 }  // namespace mongo

@@ -7,37 +7,36 @@
 #include <string>
 #include <vector>
 
-#include "audit_manager.h" // AuditFormat
+#include "audit_manager.h"  // AuditFormat
 #include "mongo/base/status.h"
 #include "mongo/db/jsobj.h"
 
 namespace mongo {
 
-    namespace optionenvironment {
-        class OptionSection;
-        class Environment;
-    } // namespace optionenvironment
+namespace optionenvironment {
+class OptionSection;
+class Environment;
+}  // namespace optionenvironment
 
-    namespace moe = optionenvironment;
+namespace moe = optionenvironment;
 
 namespace audit {
 
-    struct AuditGlobalParams {
-        bool enabled;
-        BSONObj auditFilter;
-        std::string auditPath;
-        bool auditAuthorizationSuccess;
+struct AuditGlobalParams {
+    bool enabled;
+    BSONObj auditFilter;
+    std::string auditPath;
+    bool auditAuthorizationSuccess;
 
-        AuditFormat auditFormat;
+    AuditFormat auditFormat;
 
-        AuditGlobalParams() : enabled(false), auditFormat(AuditFormatJsonFile) {}
-    };
+    AuditGlobalParams() : enabled(false), auditFormat(AuditFormatJsonFile) {}
+};
 
-    extern AuditGlobalParams auditGlobalParams;
+extern AuditGlobalParams auditGlobalParams;
 
-    Status addAuditOptions(moe::OptionSection* options);
+Status addAuditOptions(moe::OptionSection* options);
 
-    Status storeAuditOptions(const moe::Environment& params,
-                             const std::vector<std::string>& args);
-} // namespace audit
-} // namespace mongo
+Status storeAuditOptions(const moe::Environment& params, const std::vector<std::string>& args);
+}  // namespace audit
+}  // namespace mongo

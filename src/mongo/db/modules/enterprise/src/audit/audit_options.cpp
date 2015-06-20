@@ -30,120 +30,115 @@
 namespace mongo {
 namespace audit {
 
-    AuditGlobalParams auditGlobalParams;
+AuditGlobalParams auditGlobalParams;
 
-    Status addAuditOptions(moe::OptionSection* options) {
+Status addAuditOptions(moe::OptionSection* options) {
+    moe::OptionSection auditingOptions("Auditing Options");
 
-        moe::OptionSection auditingOptions("Auditing Options");
+    auditingOptions.addOptionChaining("auditLog.format",
+                                      "auditFormat",
+                                      moe::String,
+                                      "Format of the audit log, if logging to a file.  "
+                                      "(BSON/JSON)").format("(:?BSON)|(:?JSON)", "(BSON/JSON)");
 
-        auditingOptions.addOptionChaining("auditLog.format", "auditFormat", moe::String,
-                                          "Format of the audit log, if logging to a file.  "
-                                          "(BSON/JSON)")
-                                         .format("(:?BSON)|(:?JSON)", "(BSON/JSON)");
+    auditingOptions.addOptionChaining("auditLog.destination",
+                                      "auditDestination",
+                                      moe::String,
+                                      "Destination of audit log output.  "
+                                      "(console/syslog/file)")
+        .format("(:?console)|(:?syslog)|(:?file)", "(console/syslog/file)");
 
-        auditingOptions.addOptionChaining("auditLog.destination", "auditDestination",
-                                          moe::String, "Destination of audit log output.  "
-                                          "(console/syslog/file)")
-                                         .format("(:?console)|(:?syslog)|(:?file)",
-                                                 "(console/syslog/file)");
+    auditingOptions.addOptionChaining(
+        "auditLog.path", "auditPath", moe::String, "full filespec for audit log file");
 
-        auditingOptions.addOptionChaining("auditLog.path", "auditPath", moe::String,
-                                          "full filespec for audit log file");
+    auditingOptions.addOptionChaining(
+        "auditLog.filter", "auditFilter", moe::String, "filter spec to screen audit records");
 
-        auditingOptions.addOptionChaining("auditLog.filter", "auditFilter", moe::String,
-                                          "filter spec to screen audit records");
-
-        Status ret = options->addSection(auditingOptions);
-        if (!ret.isOK()) {
-            log() << "Failed to add auditing option section: " << ret.toString();
-            return ret;
-        }
-
-        return Status::OK();
+    Status ret = options->addSection(auditingOptions);
+    if (!ret.isOK()) {
+        log() << "Failed to add auditing option section: " << ret.toString();
+        return ret;
     }
 
-    Status storeAuditOptions(const moe::Environment& params,
-                             const std::vector<std::string>& args) {
+    return Status::OK();
+}
 
-        if (params.count("auditLog.destination")) {
-            auditGlobalParams.enabled = true;
-            std::string auditDestination = params["auditLog.destination"].as<std::string>();
-            if (auditDestination == "file") {
-                if (params.count("auditLog.format")) {
-                    std::string auditFormat = params["auditLog.format"].as<std::string>();
-                    if (auditFormat == "JSON") {
-                        auditGlobalParams.auditFormat = AuditFormatJsonFile;
-                    }
-                    else if (auditFormat == "BSON") {
-                        auditGlobalParams.auditFormat = AuditFormatBsonFile;
-                    }
-                    else {
-                        return Status(ErrorCodes::BadValue, "Invalid value for auditLog.format");
-                    }
+Status storeAuditOptions(const moe::Environment& params, const std::vector<std::string>& args) {
+    if (params.count("auditLog.destination")) {
+        auditGlobalParams.enabled = true;
+        std::string auditDestination = params["auditLog.destination"].as<std::string>();
+        if (auditDestination == "file") {
+            if (params.count("auditLog.format")) {
+                std::string auditFormat = params["auditLog.format"].as<std::string>();
+                if (auditFormat == "JSON") {
+                    auditGlobalParams.auditFormat = AuditFormatJsonFile;
+                } else if (auditFormat == "BSON") {
+                    auditGlobalParams.auditFormat = AuditFormatBsonFile;
+                } else {
+                    return Status(ErrorCodes::BadValue, "Invalid value for auditLog.format");
                 }
-                else {
-                    return Status(ErrorCodes::BadValue, "auditLog.format must be specified when "
-                                                        "auditLog.destination is to a file");
-                }
-                if (!params.count("auditLog.path")) {
-                    return Status(ErrorCodes::BadValue, "auditLog.path must be specified when "
-                                                        "auditLog.destination is to a file");
-                }
+            } else {
+                return Status(ErrorCodes::BadValue,
+                              "auditLog.format must be specified when "
+                              "auditLog.destination is to a file");
+            }
+            if (!params.count("auditLog.path")) {
+                return Status(ErrorCodes::BadValue,
+                              "auditLog.path must be specified when "
+                              "auditLog.destination is to a file");
+            }
 
 #ifdef _WIN32
-                if (params.count("install") || params.count("reinstall")) {
-                    if (params.count("auditLog.path") &&
-                        !boost::filesystem::path(params["auditLog.path"].as<std::string>())
-                            .is_absolute()) {
-                        return Status(ErrorCodes::BadValue,
-                            "auditLog.path requires an absolute file path with Windows services");
-                    }
+            if (params.count("install") || params.count("reinstall")) {
+                if (params.count("auditLog.path") &&
+                    !boost::filesystem::path(params["auditLog.path"].as<std::string>())
+                         .is_absolute()) {
+                    return Status(
+                        ErrorCodes::BadValue,
+                        "auditLog.path requires an absolute file path with Windows services");
                 }
+            }
 #endif
 
-                auditGlobalParams.auditPath = params["auditLog.path"].as<std::string>();
-            }
-            else {
-                if (params.count("auditLog.format")) {
-                    return Status(ErrorCodes::BadValue, "auditLog.format not allowed when "
-                                                        "auditLog.destination is not to a file");
-                }
-                if (auditDestination == "syslog") {
-#ifdef _WIN32
-                    return Status(ErrorCodes::BadValue, "syslog not available on Windows");
-#else
-                    auditGlobalParams.auditFormat = AuditFormatSyslog;
-#endif // ifdef _WIN32
-                }
-                else if (auditDestination == "console") {
-                    auditGlobalParams.auditFormat = AuditFormatConsole;
-                }
-                else {
-                    return Status(ErrorCodes::BadValue, "invalid auditLog destination");
-                }
-            }
-        }
-
-        if (params.count("auditLog.filter")) {
-            try {
-                auditGlobalParams.auditFilter =
-                    fromjson(params["auditLog.filter"].as<std::string>());
-            }
-            catch (const MsgAssertionException& e) {
+            auditGlobalParams.auditPath = params["auditLog.path"].as<std::string>();
+        } else {
+            if (params.count("auditLog.format")) {
                 return Status(ErrorCodes::BadValue,
-                              mongoutils::str::stream() << "bad auditFilter:" << e.what());
+                              "auditLog.format not allowed when "
+                              "auditLog.destination is not to a file");
+            }
+            if (auditDestination == "syslog") {
+#ifdef _WIN32
+                return Status(ErrorCodes::BadValue, "syslog not available on Windows");
+#else
+                auditGlobalParams.auditFormat = AuditFormatSyslog;
+#endif  // ifdef _WIN32
+            } else if (auditDestination == "console") {
+                auditGlobalParams.auditFormat = AuditFormatConsole;
+            } else {
+                return Status(ErrorCodes::BadValue, "invalid auditLog destination");
             }
         }
-
-        return Status::OK();
     }
 
-    ExportedServerParameter<bool> AuditAuthorizationSuccessSetting(
-            ServerParameterSet::getGlobal(),
-            "auditAuthorizationSuccess",
-            &auditGlobalParams.auditAuthorizationSuccess,
-            true,  // Change at startup
-            true); // Change at runtime
+    if (params.count("auditLog.filter")) {
+        try {
+            auditGlobalParams.auditFilter = fromjson(params["auditLog.filter"].as<std::string>());
+        } catch (const MsgAssertionException& e) {
+            return Status(ErrorCodes::BadValue,
+                          mongoutils::str::stream() << "bad auditFilter:" << e.what());
+        }
+    }
 
-} // namespace audit
-} // namespace mongo
+    return Status::OK();
+}
+
+ExportedServerParameter<bool> AuditAuthorizationSuccessSetting(
+    ServerParameterSet::getGlobal(),
+    "auditAuthorizationSuccess",
+    &auditGlobalParams.auditAuthorizationSuccess,
+    true,   // Change at startup
+    true);  // Change at runtime
+
+}  // namespace audit
+}  // namespace mongo

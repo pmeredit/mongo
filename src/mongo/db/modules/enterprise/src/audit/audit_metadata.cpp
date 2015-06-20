@@ -23,255 +23,215 @@ namespace rpc {
 
 namespace {
 
-    const char kAuditMetadataFieldName[] = "$audit";
-    const char kImpersonatedUsersFieldName[] = "$impersonatedUsers";
-    const char kImpersonatedRolesFieldName[] = "$impersonatedRoles";
+const char kAuditMetadataFieldName[] = "$audit";
+const char kImpersonatedUsersFieldName[] = "$impersonatedUsers";
+const char kImpersonatedRolesFieldName[] = "$impersonatedRoles";
 
-    StatusWith<std::vector<UserName>>
-    readImpersonatedUsersFromAuditMetadata(const BSONObj& auditMetadata) {
-        BSONElement impersonatedUsersEl;
-        std::vector<UserName> impersonatedUsers;
+StatusWith<std::vector<UserName>> readImpersonatedUsersFromAuditMetadata(
+    const BSONObj& auditMetadata) {
+    BSONElement impersonatedUsersEl;
+    std::vector<UserName> impersonatedUsers;
 
-        auto impersonatedUsersExtractStatus = bsonExtractTypedField(
-            auditMetadata,
-            kImpersonatedUsersFieldName,
-            mongo::Array,
-            &impersonatedUsersEl
-        );
+    auto impersonatedUsersExtractStatus = bsonExtractTypedField(
+        auditMetadata, kImpersonatedUsersFieldName, mongo::Array, &impersonatedUsersEl);
 
-        if (!impersonatedUsersExtractStatus.isOK()) {
-            return impersonatedUsersExtractStatus;
-        }
-
-        BSONArray impersonatedUsersArr(impersonatedUsersEl.embeddedObject());
-
-        auto userNamesParseStatus = auth::parseUserNamesFromBSONArray(
-            impersonatedUsersArr,
-            "", // dbname unused
-            &impersonatedUsers
-        );
-
-        if (!userNamesParseStatus.isOK()) {
-            return userNamesParseStatus;
-        }
-
-        return impersonatedUsers;
+    if (!impersonatedUsersExtractStatus.isOK()) {
+        return impersonatedUsersExtractStatus;
     }
 
-    StatusWith<std::vector<RoleName>>
-    readImpersonatedRolesFromAuditMetadata(const BSONObj& auditMetadata) {
-        BSONElement impersonatedRolesEl;
-        std::vector<RoleName> impersonatedRoles;
+    BSONArray impersonatedUsersArr(impersonatedUsersEl.embeddedObject());
 
-        auto impersonatedRolesExtractStatus = bsonExtractTypedField(
-            auditMetadata,
-            kImpersonatedRolesFieldName,
-            mongo::Array,
-            &impersonatedRolesEl
-        );
+    auto userNamesParseStatus = auth::parseUserNamesFromBSONArray(impersonatedUsersArr,
+                                                                  "",  // dbname unused
+                                                                  &impersonatedUsers);
 
-        if (!impersonatedRolesExtractStatus.isOK()) {
-            return impersonatedRolesExtractStatus;
-        }
-
-        BSONArray impersonatedRolesArr(impersonatedRolesEl.embeddedObject());
-
-        auto rolesParseStatus = auth::parseRoleNamesFromBSONArray(
-            impersonatedRolesArr,
-            "", // dbname unused
-            &impersonatedRoles
-        );
-
-        if (!rolesParseStatus.isOK()) {
-            return rolesParseStatus;
-        }
-
-        return impersonatedRoles;
+    if (!userNamesParseStatus.isOK()) {
+        return userNamesParseStatus;
     }
 
-    void appendImpersonatedUsers(const std::vector<UserName>& users,
-                                 StringData usersFieldName,
-                                 BSONObjBuilder* auditMetadataBob) {
+    return impersonatedUsers;
+}
 
-        BSONArrayBuilder usersArrayBab(
-            auditMetadataBob->subarrayStart(usersFieldName)
-        );
+StatusWith<std::vector<RoleName>> readImpersonatedRolesFromAuditMetadata(
+    const BSONObj& auditMetadata) {
+    BSONElement impersonatedRolesEl;
+    std::vector<RoleName> impersonatedRoles;
 
-        for (const auto& userName : users) {
-            BSONObjBuilder userNameBob(usersArrayBab.subobjStart());
-            userNameBob.append(AuthorizationManager::USER_NAME_FIELD_NAME, userName.getUser());
-            userNameBob.append(AuthorizationManager::USER_DB_FIELD_NAME, userName.getDB());
-        }
+    auto impersonatedRolesExtractStatus = bsonExtractTypedField(
+        auditMetadata, kImpersonatedRolesFieldName, mongo::Array, &impersonatedRolesEl);
+
+    if (!impersonatedRolesExtractStatus.isOK()) {
+        return impersonatedRolesExtractStatus;
     }
 
-    void appendImpersonatedRoles(const std::vector<RoleName>& roles,
-                                 StringData rolesFieldName,
-                                 BSONObjBuilder* auditMetadataBob) {
+    BSONArray impersonatedRolesArr(impersonatedRolesEl.embeddedObject());
 
-        BSONArrayBuilder rolesArrayBob(
-            auditMetadataBob->subarrayStart(rolesFieldName)
-        );
+    auto rolesParseStatus = auth::parseRoleNamesFromBSONArray(impersonatedRolesArr,
+                                                              "",  // dbname unused
+                                                              &impersonatedRoles);
 
-        for (const auto& roleName: roles) {
-            BSONObjBuilder roleNameBob(rolesArrayBob.subobjStart());
-            roleNameBob.append(AuthorizationManager::ROLE_NAME_FIELD_NAME, roleName.getRole());
-            roleNameBob.append(AuthorizationManager::ROLE_DB_FIELD_NAME, roleName.getDB());
-        }
-
+    if (!rolesParseStatus.isOK()) {
+        return rolesParseStatus;
     }
+
+    return impersonatedRoles;
+}
+
+void appendImpersonatedUsers(const std::vector<UserName>& users,
+                             StringData usersFieldName,
+                             BSONObjBuilder* auditMetadataBob) {
+    BSONArrayBuilder usersArrayBab(auditMetadataBob->subarrayStart(usersFieldName));
+
+    for (const auto& userName : users) {
+        BSONObjBuilder userNameBob(usersArrayBab.subobjStart());
+        userNameBob.append(AuthorizationManager::USER_NAME_FIELD_NAME, userName.getUser());
+        userNameBob.append(AuthorizationManager::USER_DB_FIELD_NAME, userName.getDB());
+    }
+}
+
+void appendImpersonatedRoles(const std::vector<RoleName>& roles,
+                             StringData rolesFieldName,
+                             BSONObjBuilder* auditMetadataBob) {
+    BSONArrayBuilder rolesArrayBob(auditMetadataBob->subarrayStart(rolesFieldName));
+
+    for (const auto& roleName : roles) {
+        BSONObjBuilder roleNameBob(rolesArrayBob.subobjStart());
+        roleNameBob.append(AuthorizationManager::ROLE_NAME_FIELD_NAME, roleName.getRole());
+        roleNameBob.append(AuthorizationManager::ROLE_DB_FIELD_NAME, roleName.getDB());
+    }
+}
 
 }  // namespace
 
-    StatusWith<AuditMetadata> AuditMetadata::readFromMetadata(const BSONObj& metadataObj) {
-        // We expect the AuditMetadata field to have type 'Object' with a field name of '$audit'.
-        // The layout of the '$audit' element should look like this:
-        //     {$impersonatedUsers: [<user0>, <user1>, ... , <userN>],
-        //     {$impersonatedRoles: [<role1>, <role2>, ... , <roleM>]}
-        //
-        // It is legal for the $audit element to not be present, but if it is present it is an error
-        // for it to have any other layout.
-        BSONElement auditMetadataEl;
-        auto auditExtractStatus = bsonExtractTypedField(metadataObj,
-                                                        kAuditMetadataFieldName,
-                                                        mongo::Object,
-                                                        &auditMetadataEl);
+StatusWith<AuditMetadata> AuditMetadata::readFromMetadata(const BSONObj& metadataObj) {
+    // We expect the AuditMetadata field to have type 'Object' with a field name of '$audit'.
+    // The layout of the '$audit' element should look like this:
+    //     {$impersonatedUsers: [<user0>, <user1>, ... , <userN>],
+    //     {$impersonatedRoles: [<role1>, <role2>, ... , <roleM>]}
+    //
+    // It is legal for the $audit element to not be present, but if it is present it is an error
+    // for it to have any other layout.
+    BSONElement auditMetadataEl;
+    auto auditExtractStatus = bsonExtractTypedField(
+        metadataObj, kAuditMetadataFieldName, mongo::Object, &auditMetadataEl);
 
-        if (auditExtractStatus == ErrorCodes::NoSuchKey) {
-            return AuditMetadata{boost::none};
-        }
-        else if (!auditExtractStatus.isOK()) {
-            return auditExtractStatus;
-        }
-
-        if (auditMetadataEl.embeddedObject().nFields() != 2) {
-            return Status(ErrorCodes::IncompatibleAuditMetadata,
-                          str::stream() << "Expected auditMetadata to have only 2 fields but got: "
-                                        << auditMetadataEl.embeddedObject());
-
-        }
-
-        auto swImpersonatedUsers = readImpersonatedUsersFromAuditMetadata(
-            auditMetadataEl.embeddedObject()
-        );
-
-        if (!swImpersonatedUsers.isOK()) {
-            return swImpersonatedUsers.getStatus();
-        }
-
-        auto swImpersonatedRoles = readImpersonatedRolesFromAuditMetadata(
-            auditMetadataEl.embeddedObject()
-        );
-
-        if (!swImpersonatedRoles.isOK()) {
-            return swImpersonatedRoles.getStatus();
-        }
-
-        return AuditMetadata(std::make_tuple(std::move(swImpersonatedUsers.getValue()),
-                                             std::move(swImpersonatedRoles.getValue())));
+    if (auditExtractStatus == ErrorCodes::NoSuchKey) {
+        return AuditMetadata{boost::none};
+    } else if (!auditExtractStatus.isOK()) {
+        return auditExtractStatus;
     }
 
-    Status AuditMetadata::writeToMetadata(BSONObjBuilder* metadataBob) const {
-        const auto& impersonatedUsersAndRoles = getImpersonatedUsersAndRoles();
+    if (auditMetadataEl.embeddedObject().nFields() != 2) {
+        return Status(ErrorCodes::IncompatibleAuditMetadata,
+                      str::stream() << "Expected auditMetadata to have only 2 fields but got: "
+                                    << auditMetadataEl.embeddedObject());
+    }
 
-        if (impersonatedUsersAndRoles == boost::none) {
-            return Status::OK();
-        }
+    auto swImpersonatedUsers =
+        readImpersonatedUsersFromAuditMetadata(auditMetadataEl.embeddedObject());
 
-        BSONObjBuilder auditMetadataBob(metadataBob->subobjStart(kAuditMetadataFieldName));
+    if (!swImpersonatedUsers.isOK()) {
+        return swImpersonatedUsers.getStatus();
+    }
 
-        appendImpersonatedUsers(
-            std::get<0>(*impersonatedUsersAndRoles),
-            kImpersonatedUsersFieldName,
-            &auditMetadataBob
-        );
-        appendImpersonatedRoles(
-            std::get<1>(*impersonatedUsersAndRoles),
-            kImpersonatedRolesFieldName,
-            &auditMetadataBob
-        );
+    auto swImpersonatedRoles =
+        readImpersonatedRolesFromAuditMetadata(auditMetadataEl.embeddedObject());
 
+    if (!swImpersonatedRoles.isOK()) {
+        return swImpersonatedRoles.getStatus();
+    }
+
+    return AuditMetadata(std::make_tuple(std::move(swImpersonatedUsers.getValue()),
+                                         std::move(swImpersonatedRoles.getValue())));
+}
+
+Status AuditMetadata::writeToMetadata(BSONObjBuilder* metadataBob) const {
+    const auto& impersonatedUsersAndRoles = getImpersonatedUsersAndRoles();
+
+    if (impersonatedUsersAndRoles == boost::none) {
         return Status::OK();
     }
 
-    Status AuditMetadata::downconvert(const BSONObj& command,
-                                      const BSONObj& metadata,
-                                      BSONObjBuilder* legacyCommandBob,
-                                      int* legacyQueryFlags) {
+    BSONObjBuilder auditMetadataBob(metadataBob->subobjStart(kAuditMetadataFieldName));
 
-        // Write out all command elements unmodified.
-        legacyCommandBob->appendElements(command);
+    appendImpersonatedUsers(
+        std::get<0>(*impersonatedUsersAndRoles), kImpersonatedUsersFieldName, &auditMetadataBob);
+    appendImpersonatedRoles(
+        std::get<1>(*impersonatedUsersAndRoles), kImpersonatedRolesFieldName, &auditMetadataBob);
 
-        const auto swAuditMetadata = AuditMetadata::readFromMetadata(metadata);
-        if (!swAuditMetadata.isOK()) {
-            return swAuditMetadata.getStatus();
-        }
+    return Status::OK();
+}
 
-        const auto& impersonatedUsersAndRoles = swAuditMetadata.getValue()
-                                                               .getImpersonatedUsersAndRoles();
+Status AuditMetadata::downconvert(const BSONObj& command,
+                                  const BSONObj& metadata,
+                                  BSONObjBuilder* legacyCommandBob,
+                                  int* legacyQueryFlags) {
+    // Write out all command elements unmodified.
+    legacyCommandBob->appendElements(command);
 
-        if (impersonatedUsersAndRoles == boost::none) {
-            return Status::OK();
-        }
+    const auto swAuditMetadata = AuditMetadata::readFromMetadata(metadata);
+    if (!swAuditMetadata.isOK()) {
+        return swAuditMetadata.getStatus();
+    }
 
-        // The users are intentionally appended first.
-        appendImpersonatedUsers(
-            std::get<0>(*impersonatedUsersAndRoles),
-            kLegacyImpersonatedUsersFieldName,
-            legacyCommandBob
-        );
-        appendImpersonatedRoles(
-            std::get<1>(*impersonatedUsersAndRoles),
-            kLegacyImpersonatedRolesFieldName,
-            legacyCommandBob
-        );
+    const auto& impersonatedUsersAndRoles =
+        swAuditMetadata.getValue().getImpersonatedUsersAndRoles();
 
+    if (impersonatedUsersAndRoles == boost::none) {
         return Status::OK();
     }
 
-    Status AuditMetadata::upconvert(const BSONObj& legacyCommand,
-                                    const int legacyQueryFlags,
-                                    BSONObjBuilder* commandBob,
-                                    BSONObjBuilder* metadataBob) {
-        // The pre-OP_COMMAND utilities for parsing impersonated users/roles rely on mutating
-        // the command object.
-        BSONObj mutableCommand(legacyCommand.getOwned());
+    // The users are intentionally appended first.
+    appendImpersonatedUsers(std::get<0>(*impersonatedUsersAndRoles),
+                            kLegacyImpersonatedUsersFieldName,
+                            legacyCommandBob);
+    appendImpersonatedRoles(std::get<1>(*impersonatedUsersAndRoles),
+                            kLegacyImpersonatedRolesFieldName,
+                            legacyCommandBob);
 
-        bool usersFieldIsPresent = false;
-        bool rolesFieldIsPresent = false;
-        std::vector<UserName> impersonatedUsers;
-        std::vector<RoleName> impersonatedRoles;
+    return Status::OK();
+}
 
-        try {
-            audit::parseAndRemoveImpersonatedRolesField(mutableCommand,
-                                                        &impersonatedRoles,
-                                                        &rolesFieldIsPresent);
+Status AuditMetadata::upconvert(const BSONObj& legacyCommand,
+                                const int legacyQueryFlags,
+                                BSONObjBuilder* commandBob,
+                                BSONObjBuilder* metadataBob) {
+    // The pre-OP_COMMAND utilities for parsing impersonated users/roles rely on mutating
+    // the command object.
+    BSONObj mutableCommand(legacyCommand.getOwned());
 
-            audit::parseAndRemoveImpersonatedUsersField(mutableCommand,
-                                                        &impersonatedUsers,
-                                                        &usersFieldIsPresent);
-        }
-        catch (...) {
-            return exceptionToStatus();
-        }
+    bool usersFieldIsPresent = false;
+    bool rolesFieldIsPresent = false;
+    std::vector<UserName> impersonatedUsers;
+    std::vector<RoleName> impersonatedRoles;
 
-        if (rolesFieldIsPresent != usersFieldIsPresent) {
-            // If there is a version mismatch between the mongos and the mongod,
-            // the mongos may fail to pass the role information, causing an error.
-            return Status(ErrorCodes::IncompatibleAuditMetadata,
-                          "Audit metadata does not include both user and role information");
-        }
+    try {
+        audit::parseAndRemoveImpersonatedRolesField(
+            mutableCommand, &impersonatedRoles, &rolesFieldIsPresent);
 
-        // Append remaining elements of the mutable command.
-        commandBob->appendElements(mutableCommand);
-
-        const auto am = rolesFieldIsPresent ?
-            AuditMetadata(std::make_tuple(std::move(impersonatedUsers),
-                                          std::move(impersonatedRoles))) :
-            AuditMetadata(boost::none);
-
-
-        return am.writeToMetadata(metadataBob);
+        audit::parseAndRemoveImpersonatedUsersField(
+            mutableCommand, &impersonatedUsers, &usersFieldIsPresent);
+    } catch (...) {
+        return exceptionToStatus();
     }
+
+    if (rolesFieldIsPresent != usersFieldIsPresent) {
+        // If there is a version mismatch between the mongos and the mongod,
+        // the mongos may fail to pass the role information, causing an error.
+        return Status(ErrorCodes::IncompatibleAuditMetadata,
+                      "Audit metadata does not include both user and role information");
+    }
+
+    // Append remaining elements of the mutable command.
+    commandBob->appendElements(mutableCommand);
+
+    const auto am = rolesFieldIsPresent
+        ? AuditMetadata(std::make_tuple(std::move(impersonatedUsers), std::move(impersonatedRoles)))
+        : AuditMetadata(boost::none);
+
+
+    return am.writeToMetadata(metadataBob);
+}
 
 }  // namespace rpc
 }  // namespace mongo

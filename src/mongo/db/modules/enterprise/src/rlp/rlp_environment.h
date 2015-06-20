@@ -17,7 +17,7 @@
 namespace mongo {
 namespace fts {
 
-    class ContextFactory;
+class ContextFactory;
 
 /**
 * Declare all the C functions we need to call as private members of the RlpLoader class
@@ -36,37 +36,41 @@ namespace fts {
         return _##name(std::forward<Args>(args)...);  \
     }
 
+/**
+ * RlpLoader is responsible for loading Basis Tech Rosette Linguistics Platform binaries,
+ * loading required C API calls from these libraries, and ensuring that the current loaded
+ * RLP libraries are compatible with the RLP SDK we built against.
+ */
+class RlpEnvironment {
+    MONGO_DISALLOW_COPYING(RlpEnvironment);
+
+public:
+    RlpEnvironment() = default;
+    ~RlpEnvironment();
+
     /**
-     * RlpLoader is responsible for loading Basis Tech Rosette Linguistics Platform binaries,
-     * loading required C API calls from these libraries, and ensuring that the current loaded
-     * RLP libraries are compatible with the RLP SDK we built against.
+     * Initialize RLP system
      */
-    class RlpEnvironment {
-        MONGO_DISALLOW_COPYING(RlpEnvironment);
+    static StatusWith<std::unique_ptr<RlpEnvironment>> create(std::string btRoot,
+                                                              bool verbose,
+                                                              SharedLibrary* coreLibrary);
 
-    public:
-        RlpEnvironment() = default;
-        ~RlpEnvironment();
+    ContextFactory* getFactory() {
+        return _factory.get();
+    }
+    BT_RLP_EnvironmentC* getEnvironment() {
+        return _rlpenv;
+    }
 
-        /**
-         * Initialize RLP system
-         */
-        static StatusWith<std::unique_ptr<RlpEnvironment>> create(std::string btRoot,
-                                                                  bool verbose,
-                                                                  SharedLibrary* coreLibrary);
+    RLP_C_FUNC(RLP_INTERFACE_FORWARD)
 
-        ContextFactory* getFactory() { return _factory.get(); }
-        BT_RLP_EnvironmentC* getEnvironment() { return _rlpenv; }
+private:
+    RLP_C_FUNC(RLP_C_FUNC_DL_MEMBER)
 
-        RLP_C_FUNC(RLP_INTERFACE_FORWARD)
-
-    private:
-        RLP_C_FUNC(RLP_C_FUNC_DL_MEMBER)
-
-    private:
-        BT_RLP_EnvironmentC* _rlpenv = nullptr;
-        std::unique_ptr<ContextFactory> _factory;
-    };
+private:
+    BT_RLP_EnvironmentC* _rlpenv = nullptr;
+    std::unique_ptr<ContextFactory> _factory;
+};
 
 }  // namespace fts
 }  // namespace mongo

@@ -17,33 +17,33 @@
 namespace mongo {
 namespace audit {
 
-    class ShutdownEvent : public AuditEvent {
-    public:
-        ShutdownEvent(const AuditEventEnvelope& envelope) : AuditEvent(envelope) {}
-        virtual ~ShutdownEvent() {}
+class ShutdownEvent : public AuditEvent {
+public:
+    ShutdownEvent(const AuditEventEnvelope& envelope) : AuditEvent(envelope) {}
+    virtual ~ShutdownEvent() {}
 
-    private:
-        virtual std::ostream& putTextDescription(std::ostream& os) const;
-        virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
-    };
+private:
+    virtual std::ostream& putTextDescription(std::ostream& os) const;
+    virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
+};
 
-    std::ostream& ShutdownEvent::putTextDescription(std::ostream& os) const {
-        os << "Shutdown commenced.";
-        return os;
+std::ostream& ShutdownEvent::putTextDescription(std::ostream& os) const {
+    os << "Shutdown commenced.";
+    return os;
+}
+
+BSONObjBuilder& ShutdownEvent::putParamsBSON(BSONObjBuilder& builder) const {
+    return builder;
+}
+
+void logShutdown(ClientBasic* client) {
+    if (!getGlobalAuditManager()->enabled)
+        return;
+
+    ShutdownEvent event(makeEnvelope(client, ActionType::shutdown, ErrorCodes::OK));
+    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+        getGlobalAuditLogDomain()->append(event);
     }
-
-    BSONObjBuilder& ShutdownEvent::putParamsBSON(BSONObjBuilder& builder) const {
-        return builder;
-    }
-
-    void logShutdown(ClientBasic* client) {
-
-        if (!getGlobalAuditManager()->enabled) return;
-
-        ShutdownEvent event(makeEnvelope(client, ActionType::shutdown, ErrorCodes::OK));
-        if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-            getGlobalAuditLogDomain()->append(event);
-        }
-    }
+}
 }
 }

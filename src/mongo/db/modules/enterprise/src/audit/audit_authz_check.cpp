@@ -20,194 +20,180 @@
 namespace mongo {
 namespace audit {
 
-    namespace mmb = mongo::mutablebson;
+namespace mmb = mongo::mutablebson;
 
-    class AuthzCheckEvent : public AuditEvent {
-    public:
-        AuthzCheckEvent(const AuditEventEnvelope& envelope,
-                        const NamespaceString& ns,
-                        const mmb::Document* cmdObj)
-            : AuditEvent(envelope), _ns(ns), _cmdObj(cmdObj) {
-        }
-        virtual ~AuthzCheckEvent() {}
+class AuthzCheckEvent : public AuditEvent {
+public:
+    AuthzCheckEvent(const AuditEventEnvelope& envelope,
+                    const NamespaceString& ns,
+                    const mmb::Document* cmdObj)
+        : AuditEvent(envelope), _ns(ns), _cmdObj(cmdObj) {}
+    virtual ~AuthzCheckEvent() {}
 
-    private:
-        virtual std::ostream& putTextDescription(std::ostream& os) const;
-        virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
+private:
+    virtual std::ostream& putTextDescription(std::ostream& os) const;
+    virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
 
-        NamespaceString _ns;
-        const mmb::Document* _cmdObj;
-    };
+    NamespaceString _ns;
+    const mmb::Document* _cmdObj;
+};
 
-    std::ostream& AuthzCheckEvent::putTextDescription(std::ostream& os) const {
-        if (getResultCode() == ErrorCodes::OK) {
-            os << "Access granted on ";
-        }
-        else {
-            os << "Access denied on ";
-        }
-        os << _ns.ns();
-        os << " for " << _cmdObj->toString() << '.';
-        return os;
+std::ostream& AuthzCheckEvent::putTextDescription(std::ostream& os) const {
+    if (getResultCode() == ErrorCodes::OK) {
+        os << "Access granted on ";
+    } else {
+        os << "Access denied on ";
     }
+    os << _ns.ns();
+    os << " for " << _cmdObj->toString() << '.';
+    return os;
+}
 
-    BSONObjBuilder& AuthzCheckEvent::putParamsBSON(BSONObjBuilder& builder) const {
-        mmb::ConstElement cmdElt = _cmdObj->root().leftChild();
-        builder.append("command", (!cmdElt.ok() ? StringData("Error") : cmdElt.getFieldName()));
-        builder.append("ns", _ns);
-        BSONObjBuilder argsBuilder(builder.subobjStart("args"));
-        _cmdObj->writeTo(&argsBuilder);
-        argsBuilder.done();
-        return builder;
-    }
+BSONObjBuilder& AuthzCheckEvent::putParamsBSON(BSONObjBuilder& builder) const {
+    mmb::ConstElement cmdElt = _cmdObj->root().leftChild();
+    builder.append("command", (!cmdElt.ok() ? StringData("Error") : cmdElt.getFieldName()));
+    builder.append("ns", _ns);
+    BSONObjBuilder argsBuilder(builder.subobjStart("args"));
+    _cmdObj->writeTo(&argsBuilder);
+    argsBuilder.done();
+    return builder;
+}
 
-    /**
-     * Predicate that determines whether or not an authorization check should
-     * be logged, based on global state and the "result" of the authorization
-     * check.
-     */
-    static bool _shouldLogAuthzCheck(ErrorCodes::Error result) {
-        if (!getGlobalAuditManager()->enabled) return false;
-
-        if (auditGlobalParams.auditAuthorizationSuccess) return true;
-        if (result != ErrorCodes::OK) return true;
-
+/**
+ * Predicate that determines whether or not an authorization check should
+ * be logged, based on global state and the "result" of the authorization
+ * check.
+ */
+static bool _shouldLogAuthzCheck(ErrorCodes::Error result) {
+    if (!getGlobalAuditManager()->enabled)
         return false;
+
+    if (auditGlobalParams.auditAuthorizationSuccess)
+        return true;
+    if (result != ErrorCodes::OK)
+        return true;
+
+    return false;
+}
+
+static void _logAuthzCheck(ClientBasic* client,
+                           const NamespaceString& ns,
+                           const mmb::Document& cmdObj,
+                           ErrorCodes::Error result) {
+    AuthzCheckEvent event(makeEnvelope(client, ActionType::authCheck, result), ns, &cmdObj);
+
+    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+        getGlobalAuditLogDomain()->append(event);
     }
+}
 
-    static void _logAuthzCheck(
-            ClientBasic* client,
-            const NamespaceString& ns,
-            const mmb::Document& cmdObj,
-            ErrorCodes::Error result) {
+void logCommandAuthzCheck(ClientBasic* client,
+                          const std::string& dbname,
+                          const BSONObj& cmdObj,
+                          Command* command,
+                          ErrorCodes::Error result) {
+    if (!_shouldLogAuthzCheck(result))
+        return;
 
-        AuthzCheckEvent event(
-                makeEnvelope(client, ActionType::authCheck, result),
-                ns,
-                &cmdObj);
+    mmb::Document cmdToLog(cmdObj, mmb::Document::kInPlaceDisabled);
+    command->redactForLogging(&cmdToLog);
 
-        if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-            getGlobalAuditLogDomain()->append(event);
-        }
-    }
+    _logAuthzCheck(client, NamespaceString(command->parseNs(dbname, cmdObj)), cmdToLog, result);
+}
 
-    void logCommandAuthzCheck(
-            ClientBasic* client,
-            const std::string& dbname,
-            const BSONObj& cmdObj,
-            Command* command,
-            ErrorCodes::Error result) {
+void logDeleteAuthzCheck(ClientBasic* client,
+                         const NamespaceString& ns,
+                         const BSONObj& pattern,
+                         ErrorCodes::Error result) {
+    if (!_shouldLogAuthzCheck(result))
+        return;
 
-        if (!_shouldLogAuthzCheck(result)) return;
+    mmb::Document cmdObj;
+    fassertStatusOK(cmdObj.root().appendString("delete", ns.coll()));
+    mmb::Element deleteListElt = cmdObj.makeElementArray("deletes");
+    mmb::Element deleteElt = cmdObj.makeElementObject(StringData());
+    fassertStatusOK(deleteElt.appendObject("q", pattern));
+    fassertStatusOK(deleteListElt.pushBack(deleteElt));
+    fassertStatusOK(cmdObj.root().pushBack(deleteListElt));
+    _logAuthzCheck(client, ns, cmdObj, result);
+}
 
-        mmb::Document cmdToLog(cmdObj, mmb::Document::kInPlaceDisabled);
-        command->redactForLogging(&cmdToLog);
+void logGetMoreAuthzCheck(ClientBasic* client,
+                          const NamespaceString& ns,
+                          long long cursorId,
+                          ErrorCodes::Error result) {
+    if (!_shouldLogAuthzCheck(result))
+        return;
 
-        _logAuthzCheck(client,
-                       NamespaceString(command->parseNs(dbname, cmdObj)),
-                       cmdToLog,
-                       result);
-    }
+    mmb::Document cmdObj;
+    fassertStatusOK(cmdObj.root().appendString("getMore", ns.coll()));
+    fassertStatusOK(cmdObj.root().appendLong("cursorId", cursorId));
+    _logAuthzCheck(client, ns, cmdObj, result);
+}
 
-    void logDeleteAuthzCheck(
-            ClientBasic* client,
-            const NamespaceString& ns,
-            const BSONObj& pattern,
-            ErrorCodes::Error result) {
+void logInsertAuthzCheck(ClientBasic* client,
+                         const NamespaceString& ns,
+                         const BSONObj& insertedObj,
+                         ErrorCodes::Error result) {
+    if (!_shouldLogAuthzCheck(result))
+        return;
 
-        if (!_shouldLogAuthzCheck(result)) return;
+    mmb::Document cmdObj;
+    fassertStatusOK(cmdObj.root().appendString("insert", ns.coll()));
+    mmb::Element docsListElt = cmdObj.makeElementArray("documents");
+    fassertStatusOK(cmdObj.root().pushBack(docsListElt));
+    fassertStatusOK(docsListElt.appendObject(StringData(), insertedObj));
+    _logAuthzCheck(client, ns, cmdObj, result);
+}
 
-        mmb::Document cmdObj;
-        fassertStatusOK(cmdObj.root().appendString("delete", ns.coll()));
-        mmb::Element deleteListElt = cmdObj.makeElementArray("deletes");
-        mmb::Element deleteElt = cmdObj.makeElementObject(StringData());
-        fassertStatusOK(deleteElt.appendObject("q", pattern));
-        fassertStatusOK(deleteListElt.pushBack(deleteElt));
-        fassertStatusOK(cmdObj.root().pushBack(deleteListElt));
-        _logAuthzCheck(client, ns, cmdObj, result);
-    }
+void logKillCursorsAuthzCheck(ClientBasic* client,
+                              const NamespaceString& ns,
+                              long long cursorId,
+                              ErrorCodes::Error result) {
+    if (!_shouldLogAuthzCheck(result))
+        return;
 
-    void logGetMoreAuthzCheck(
-            ClientBasic* client,
-            const NamespaceString& ns,
-            long long cursorId,
-            ErrorCodes::Error result) {
+    mmb::Document cmdObj;
+    fassertStatusOK(cmdObj.root().appendString("killCursors", ns.coll()));
+    fassertStatusOK(cmdObj.root().appendLong("cursorId", cursorId));
+    _logAuthzCheck(client, ns, cmdObj, result);
+}
 
-        if (!_shouldLogAuthzCheck(result)) return;
+void logQueryAuthzCheck(ClientBasic* client,
+                        const NamespaceString& ns,
+                        const BSONObj& query,
+                        ErrorCodes::Error result) {
+    if (!_shouldLogAuthzCheck(result))
+        return;
 
-        mmb::Document cmdObj;
-        fassertStatusOK(cmdObj.root().appendString("getMore", ns.coll()));
-        fassertStatusOK(cmdObj.root().appendLong("cursorId", cursorId));
-        _logAuthzCheck(client, ns, cmdObj, result);
-    }
+    mmb::Document cmdObj;
+    fassertStatusOK(cmdObj.root().appendString("find", ns.coll()));
+    fassertStatusOK(cmdObj.root().appendObject("q", query));
+    _logAuthzCheck(client, ns, cmdObj, result);
+}
 
-    void logInsertAuthzCheck(
-            ClientBasic* client,
-            const NamespaceString& ns,
-            const BSONObj& insertedObj,
-            ErrorCodes::Error result) {
+void logUpdateAuthzCheck(ClientBasic* client,
+                         const NamespaceString& ns,
+                         const BSONObj& query,
+                         const BSONObj& updateObj,
+                         bool isUpsert,
+                         bool isMulti,
+                         ErrorCodes::Error result) {
+    if (!_shouldLogAuthzCheck(result))
+        return;
 
-        if (!_shouldLogAuthzCheck(result)) return;
-
-        mmb::Document cmdObj;
-        fassertStatusOK(cmdObj.root().appendString("insert", ns.coll()));
-        mmb::Element docsListElt = cmdObj.makeElementArray("documents");
-        fassertStatusOK(cmdObj.root().pushBack(docsListElt));
-        fassertStatusOK(docsListElt.appendObject(StringData(), insertedObj));
-        _logAuthzCheck(client, ns, cmdObj, result);
-    }
-
-    void logKillCursorsAuthzCheck(
-            ClientBasic* client,
-            const NamespaceString& ns,
-            long long cursorId,
-            ErrorCodes::Error result) {
-
-        if (!_shouldLogAuthzCheck(result)) return;
-
-        mmb::Document cmdObj;
-        fassertStatusOK(cmdObj.root().appendString("killCursors", ns.coll()));
-        fassertStatusOK(cmdObj.root().appendLong("cursorId", cursorId));
-        _logAuthzCheck(client, ns, cmdObj, result);
-    }
-
-    void logQueryAuthzCheck(
-            ClientBasic* client,
-            const NamespaceString& ns,
-            const BSONObj& query,
-            ErrorCodes::Error result) {
-
-        if (!_shouldLogAuthzCheck(result)) return;
-
-        mmb::Document cmdObj;
-        fassertStatusOK(cmdObj.root().appendString("find", ns.coll()));
-        fassertStatusOK(cmdObj.root().appendObject("q", query));
-        _logAuthzCheck(client, ns, cmdObj, result);
-    }
-
-    void logUpdateAuthzCheck(
-            ClientBasic* client,
-            const NamespaceString& ns,
-            const BSONObj& query,
-            const BSONObj& updateObj,
-            bool isUpsert,
-            bool isMulti,
-            ErrorCodes::Error result) {
-
-        if (!_shouldLogAuthzCheck(result)) return;
-
-        mmb::Document cmdObj;
-        fassertStatusOK(cmdObj.root().appendString("update", ns.coll()));
-        mmb::Element updatesListElt = cmdObj.makeElementArray("updates");
-        fassertStatusOK(cmdObj.root().pushBack(updatesListElt));
-        mmb::Element updateElt = cmdObj.makeElementObject(StringData());
-        fassertStatusOK(updatesListElt.pushBack(updateElt));
-        fassertStatusOK(updateElt.appendObject("q", query));
-        fassertStatusOK(updateElt.appendObject("u", updateObj));
-        fassertStatusOK(updateElt.appendBool("upsert", isUpsert));
-        fassertStatusOK(updateElt.appendBool("multi", isMulti));
-        _logAuthzCheck(client, ns, cmdObj, result);
-    }
+    mmb::Document cmdObj;
+    fassertStatusOK(cmdObj.root().appendString("update", ns.coll()));
+    mmb::Element updatesListElt = cmdObj.makeElementArray("updates");
+    fassertStatusOK(cmdObj.root().pushBack(updatesListElt));
+    mmb::Element updateElt = cmdObj.makeElementObject(StringData());
+    fassertStatusOK(updatesListElt.pushBack(updateElt));
+    fassertStatusOK(updateElt.appendObject("q", query));
+    fassertStatusOK(updateElt.appendObject("u", updateObj));
+    fassertStatusOK(updateElt.appendBool("upsert", isUpsert));
+    fassertStatusOK(updateElt.appendBool("multi", isMulti));
+    _logAuthzCheck(client, ns, cmdObj, result);
+}
 
 }  // namespace audit
 }  // namespace mongo

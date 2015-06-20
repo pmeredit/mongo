@@ -10,25 +10,23 @@
 
 namespace mongo {
 
-    namespace optionenvironment {
-        class Environment;
-        class OptionSection;
-    } // namespace optionenvironment
+namespace optionenvironment {
+class Environment;
+class OptionSection;
+}  // namespace optionenvironment
 
-    namespace moe = mongo::optionenvironment;
+namespace moe = mongo::optionenvironment;
 
-    struct SnmpGlobalParams {
+struct SnmpGlobalParams {
+    SnmpGlobalParams() : enabled(false), subagent(true) {}
 
-        SnmpGlobalParams() : enabled(false), subagent(true) {}
+    bool enabled;
+    bool subagent;
+};
 
-        bool enabled;
-        bool subagent;
-    };
+extern SnmpGlobalParams snmpGlobalParams;
 
-    extern SnmpGlobalParams snmpGlobalParams;
+Status addSnmpOptions(moe::OptionSection* options);
 
-    Status addSnmpOptions(moe::OptionSection* options);
-
-    Status storeSnmpOptions(const moe::Environment& params,
-                            const std::vector<std::string>& args);
+Status storeSnmpOptions(const moe::Environment& params, const std::vector<std::string>& args);
 }

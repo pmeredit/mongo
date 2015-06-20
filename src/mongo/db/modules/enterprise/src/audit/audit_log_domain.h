@@ -10,8 +10,8 @@
 namespace mongo {
 namespace audit {
 
-    typedef mongo::logger::LogDomain<AuditEvent> AuditLogDomain;
+typedef mongo::logger::LogDomain<AuditEvent> AuditLogDomain;
 
-    AuditLogDomain* getGlobalAuditLogDomain();
+AuditLogDomain* getGlobalAuditLogDomain();
 }  // namespace audit
 }  // namespace mongo

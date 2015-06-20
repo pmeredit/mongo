@@ -27,116 +27,107 @@
 namespace mongo {
 
 namespace logger {
-    template class LogDomain<audit::AuditEvent>;
+template class LogDomain<audit::AuditEvent>;
 }  // namespace logger
 
 namespace audit {
 
-    static AuditLogDomain globalAuditLogDomain;
+static AuditLogDomain globalAuditLogDomain;
 
-    AuditLogDomain* getGlobalAuditLogDomain() { return &globalAuditLogDomain; }
+AuditLogDomain* getGlobalAuditLogDomain() {
+    return &globalAuditLogDomain;
+}
 
 namespace {
 
-    class AuditEventTextEncoder : public logger::Encoder<AuditEvent> {
-        virtual ~AuditEventTextEncoder() {}
-        virtual std::ostream& encode(const AuditEvent& event, std::ostream& os) {
-            BSONObj eventAsBson(event.toBSON());
-            std::string toWrite = eventAsBson.jsonString() + '\n';
-            return os.write(toWrite.c_str(), toWrite.length());
-        }
-    };
+class AuditEventTextEncoder : public logger::Encoder<AuditEvent> {
+    virtual ~AuditEventTextEncoder() {}
+    virtual std::ostream& encode(const AuditEvent& event, std::ostream& os) {
+        BSONObj eventAsBson(event.toBSON());
+        std::string toWrite = eventAsBson.jsonString() + '\n';
+        return os.write(toWrite.c_str(), toWrite.length());
+    }
+};
 
-    class AuditEventSyslogEncoder : public logger::Encoder<AuditEvent> {
-        virtual ~AuditEventSyslogEncoder() {}
-        virtual std::ostream& encode(const AuditEvent& event, std::ostream& os) {
-            BSONObj eventAsBson(event.toBSON());
-            std::string toWrite = eventAsBson.jsonString();
-            return os.write(toWrite.c_str(), toWrite.length());
-        }
-    };
+class AuditEventSyslogEncoder : public logger::Encoder<AuditEvent> {
+    virtual ~AuditEventSyslogEncoder() {}
+    virtual std::ostream& encode(const AuditEvent& event, std::ostream& os) {
+        BSONObj eventAsBson(event.toBSON());
+        std::string toWrite = eventAsBson.jsonString();
+        return os.write(toWrite.c_str(), toWrite.length());
+    }
+};
 
-    class AuditEventBsonEncoder : public logger::Encoder<AuditEvent> {
-        virtual ~AuditEventBsonEncoder() {}
-        virtual std::ostream& encode(const AuditEvent& event, std::ostream& os) {
-            BSONObj toWrite(event.toBSON());
-            return os.write(toWrite.objdata(), toWrite.objsize());
-        }
-    };
+class AuditEventBsonEncoder : public logger::Encoder<AuditEvent> {
+    virtual ~AuditEventBsonEncoder() {}
+    virtual std::ostream& encode(const AuditEvent& event, std::ostream& os) {
+        BSONObj toWrite(event.toBSON());
+        return os.write(toWrite.objdata(), toWrite.objsize());
+    }
+};
 
-    MONGO_INITIALIZER_WITH_PREREQUISITES(AuditDomain,
-            ("InitializeGlobalAuditManager"))(InitializerContext*) {
-        
-        if (!auditGlobalParams.enabled) {
-            return Status::OK();
-        }
+MONGO_INITIALIZER_WITH_PREREQUISITES(AuditDomain,
+                                     ("InitializeGlobalAuditManager"))(InitializerContext*) {
+    if (!auditGlobalParams.enabled) {
+        return Status::OK();
+    }
 
-        // On any audit log failure, abort.
-        getGlobalAuditLogDomain()->setAbortOnFailure(true);
+    // On any audit log failure, abort.
+    getGlobalAuditLogDomain()->setAbortOnFailure(true);
 
-        switch (getGlobalAuditManager()->auditFormat) {
-        case AuditFormatConsole:
-        {
-            getGlobalAuditLogDomain()->attachAppender(
-                AuditLogDomain::AppenderAutoPtr(
-                    new logger::ConsoleAppender<AuditEvent>(new AuditEventTextEncoder)));
+    switch (getGlobalAuditManager()->auditFormat) {
+        case AuditFormatConsole: {
+            getGlobalAuditLogDomain()->attachAppender(AuditLogDomain::AppenderAutoPtr(
+                new logger::ConsoleAppender<AuditEvent>(new AuditEventTextEncoder)));
             break;
         }
 #ifndef _WIN32
-        case AuditFormatSyslog:
-        {
-            getGlobalAuditLogDomain()->attachAppender(
-                AuditLogDomain::AppenderAutoPtr(
-                    new logger::SyslogAppender<AuditEvent>(new AuditEventSyslogEncoder)));
+        case AuditFormatSyslog: {
+            getGlobalAuditLogDomain()->attachAppender(AuditLogDomain::AppenderAutoPtr(
+                new logger::SyslogAppender<AuditEvent>(new AuditEventSyslogEncoder)));
             break;
         }
-#endif // ndef _WIN32
+#endif  // ndef _WIN32
         case AuditFormatJsonFile:
-        case AuditFormatBsonFile:
-        {
-            std::string auditLogPath = boost::filesystem::absolute(
-                    getGlobalAuditManager()->auditLogPath,
-                    serverGlobalParams.cwd).string();
+        case AuditFormatBsonFile: {
+            std::string auditLogPath =
+                boost::filesystem::absolute(getGlobalAuditManager()->auditLogPath,
+                                            serverGlobalParams.cwd).string();
             logger::StatusWithRotatableFileWriter statusOrWriter =
                 logger::globalRotatableFileManager()->openFile(auditLogPath, true);
             logger::RotatableFileWriter* writer;
             if (statusOrWriter.isOK()) {
                 writer = statusOrWriter.getValue();
-            }
-            else if (statusOrWriter.getStatus() == ErrorCodes::FileAlreadyOpen) {
+            } else if (statusOrWriter.getStatus() == ErrorCodes::FileAlreadyOpen) {
                 writer = logger::globalRotatableFileManager()->getFile(auditLogPath);
                 if (!writer) {
-                    return Status(ErrorCodes::InternalError, auditLogPath +
-                                  " opened successfully, but "
-                                  "globalRotatableFileManager()->getFile() returned NULL.");
-
+                    return Status(ErrorCodes::InternalError,
+                                  auditLogPath +
+                                      " opened successfully, but "
+                                      "globalRotatableFileManager()->getFile() returned NULL.");
                 }
-            }
-            else {
+            } else {
                 return statusOrWriter.getStatus();
             }
 
             logger::Encoder<AuditEvent>* encoder;
             if (getGlobalAuditManager()->auditFormat == AuditFormatJsonFile) {
                 encoder = new AuditEventTextEncoder;
-            }
-            else if (getGlobalAuditManager()->auditFormat == AuditFormatBsonFile) {
+            } else if (getGlobalAuditManager()->auditFormat == AuditFormatBsonFile) {
                 encoder = new AuditEventBsonEncoder;
-            }
-            else {
+            } else {
                 return Status(ErrorCodes::InternalError, "invalid format");
             }
 
-            getGlobalAuditLogDomain()->attachAppender(
-                AuditLogDomain::AppenderAutoPtr(
-                    new logger::RotatableFileAppender<AuditEvent>(encoder, writer)));
+            getGlobalAuditLogDomain()->attachAppender(AuditLogDomain::AppenderAutoPtr(
+                new logger::RotatableFileAppender<AuditEvent>(encoder, writer)));
             break;
         }
         default:
             return Status(ErrorCodes::InternalError, "Audit format misconfigured");
-        }
-        return Status::OK();
     }
+    return Status::OK();
+}
 
 }  // namespace
 

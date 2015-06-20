@@ -18,35 +18,33 @@
 namespace mongo {
 namespace audit {
 
-    void writeImpersonatedUsersToMetadata(BSONObjBuilder* metadataBob) {
-        if (!getGlobalAuditManager()->enabled) {
-            return;
-        }
-
-        if (!haveClient()) {
-            return;
-        }
-
-        AuthorizationSession* authorizationSession(AuthorizationSession::get(cc()));
-
-        std::vector<UserName> impersonatedUsers;
-        auto userNames = authorizationSession->getAuthenticatedUserNames();
-        while (userNames.more()) {
-            impersonatedUsers.emplace_back(userNames.next());
-        }
-
-        std::vector<RoleName> impersonatedRoles;
-        auto roleNames = authorizationSession->getAuthenticatedRoleNames();
-        while (roleNames.more()) {
-            impersonatedRoles.emplace_back(roleNames.next());
-        }
-
-        uassertStatusOK(
-            rpc::AuditMetadata(std::make_tuple(std::move(impersonatedUsers),
-                                               std::move(impersonatedRoles)))
-            .writeToMetadata(metadataBob)
-        );
+void writeImpersonatedUsersToMetadata(BSONObjBuilder* metadataBob) {
+    if (!getGlobalAuditManager()->enabled) {
+        return;
     }
+
+    if (!haveClient()) {
+        return;
+    }
+
+    AuthorizationSession* authorizationSession(AuthorizationSession::get(cc()));
+
+    std::vector<UserName> impersonatedUsers;
+    auto userNames = authorizationSession->getAuthenticatedUserNames();
+    while (userNames.more()) {
+        impersonatedUsers.emplace_back(userNames.next());
+    }
+
+    std::vector<RoleName> impersonatedRoles;
+    auto roleNames = authorizationSession->getAuthenticatedRoleNames();
+    while (roleNames.more()) {
+        impersonatedRoles.emplace_back(roleNames.next());
+    }
+
+    uassertStatusOK(rpc::AuditMetadata(
+                        std::make_tuple(std::move(impersonatedUsers), std::move(impersonatedRoles)))
+                        .writeToMetadata(metadataBob));
+}
 
 }  // namespace audit
 }  // namespace mongo

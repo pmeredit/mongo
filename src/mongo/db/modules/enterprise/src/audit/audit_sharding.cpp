@@ -17,189 +17,173 @@
 namespace mongo {
 namespace audit {
 
-    class EnableShardingEvent : public AuditEvent {
-    public:
-        EnableShardingEvent(const AuditEventEnvelope& envelope,
-                            StringData dbname)
-            : AuditEvent(envelope),
-              _dbname(dbname) {}
-        virtual ~EnableShardingEvent() {}
+class EnableShardingEvent : public AuditEvent {
+public:
+    EnableShardingEvent(const AuditEventEnvelope& envelope, StringData dbname)
+        : AuditEvent(envelope), _dbname(dbname) {}
+    virtual ~EnableShardingEvent() {}
 
-    private:
-        virtual std::ostream& putTextDescription(std::ostream& os) const;
-        virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
+private:
+    virtual std::ostream& putTextDescription(std::ostream& os) const;
+    virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
 
-        StringData _dbname;
-    };
+    StringData _dbname;
+};
 
-    std::ostream& EnableShardingEvent::putTextDescription(std::ostream& os) const {
-        os << "Enabled sharding on " << _dbname << '.';
-        return os;
+std::ostream& EnableShardingEvent::putTextDescription(std::ostream& os) const {
+    os << "Enabled sharding on " << _dbname << '.';
+    return os;
+}
+
+BSONObjBuilder& EnableShardingEvent::putParamsBSON(BSONObjBuilder& builder) const {
+    builder.append("ns", _dbname);
+    return builder;
+}
+
+void logEnableSharding(ClientBasic* client, StringData dbname) {
+    if (!getGlobalAuditManager()->enabled)
+        return;
+
+    EnableShardingEvent event(makeEnvelope(client, ActionType::enableSharding, ErrorCodes::OK),
+                              dbname);
+    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+        getGlobalAuditLogDomain()->append(event);
     }
+}
 
-    BSONObjBuilder& EnableShardingEvent::putParamsBSON(BSONObjBuilder& builder) const {
-        builder.append("ns", _dbname);
-        return builder;
+
+class AddShardEvent : public AuditEvent {
+public:
+    AddShardEvent(const AuditEventEnvelope& envelope,
+                  StringData name,
+                  const std::string& servers,
+                  long long maxSize)
+        : AuditEvent(envelope), _name(name), _servers(servers), _maxSize(maxSize) {}
+    virtual ~AddShardEvent() {}
+
+private:
+    virtual std::ostream& putTextDescription(std::ostream& os) const;
+    virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
+
+    StringData _name;
+    const std::string& _servers;
+    long long _maxSize;
+};
+
+std::ostream& AddShardEvent::putTextDescription(std::ostream& os) const {
+    os << "Added shard " << _name << " with connection string: " << _servers;
+    if (_maxSize) {
+        os << " with a maximum size of " << _maxSize << "MB.";
+    } else {
+        os << " without a maxmium size.";
     }
+    os << '.';
+    return os;
+}
 
-    void logEnableSharding(ClientBasic* client,
-                           StringData dbname) {
-        if (!getGlobalAuditManager()->enabled) return;
+BSONObjBuilder& AddShardEvent::putParamsBSON(BSONObjBuilder& builder) const {
+    builder.append("shard", _name);
+    builder.append("connectionString", _servers);
+    builder.append("maxSize", _maxSize);
+    return builder;
+}
 
-        EnableShardingEvent event(makeEnvelope(client, ActionType::enableSharding, ErrorCodes::OK),
-                                  dbname);
-        if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-            getGlobalAuditLogDomain()->append(event);
-        }
+void logAddShard(ClientBasic* client,
+                 StringData name,
+                 const std::string& servers,
+                 long long maxSize) {
+    if (!getGlobalAuditManager()->enabled)
+        return;
+
+    AddShardEvent event(
+        makeEnvelope(client, ActionType::addShard, ErrorCodes::OK), name, servers, maxSize);
+    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+        getGlobalAuditLogDomain()->append(event);
     }
+}
 
 
-    class AddShardEvent : public AuditEvent {
-    public:
-        AddShardEvent(const AuditEventEnvelope& envelope,
-                      StringData name,
-                      const std::string& servers,
-                      long long maxSize)
-            : AuditEvent(envelope),
-              _name(name),
-              _servers(servers),
-              _maxSize(maxSize) {}
-        virtual ~AddShardEvent() {}
+class RemoveShardEvent : public AuditEvent {
+public:
+    RemoveShardEvent(const AuditEventEnvelope& envelope, StringData shardname)
+        : AuditEvent(envelope), _shardname(shardname) {}
+    virtual ~RemoveShardEvent() {}
 
-    private:
-        virtual std::ostream& putTextDescription(std::ostream& os) const;
-        virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
+private:
+    virtual std::ostream& putTextDescription(std::ostream& os) const;
+    virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
 
-        StringData _name;
-        const std::string& _servers;
-        long long _maxSize;
-    };
+    StringData _shardname;
+};
 
-    std::ostream& AddShardEvent::putTextDescription(std::ostream& os) const {
-        os << "Added shard " << _name
-           << " with connection string: " << _servers;
-        if (_maxSize) {
-            os << " with a maximum size of " << _maxSize << "MB.";
-        }
-        else {
-            os << " without a maxmium size.";
-        }
-        os << '.';
-        return os;
+std::ostream& RemoveShardEvent::putTextDescription(std::ostream& os) const {
+    os << "Removed shard " << _shardname << '.';
+    return os;
+}
+
+BSONObjBuilder& RemoveShardEvent::putParamsBSON(BSONObjBuilder& builder) const {
+    builder.append("shard", _shardname);
+    return builder;
+}
+
+void logRemoveShard(ClientBasic* client, StringData shardname) {
+    if (!getGlobalAuditManager()->enabled)
+        return;
+
+    RemoveShardEvent event(makeEnvelope(client, ActionType::removeShard, ErrorCodes::OK),
+                           shardname);
+    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+        getGlobalAuditLogDomain()->append(event);
     }
+}
 
-    BSONObjBuilder& AddShardEvent::putParamsBSON(BSONObjBuilder& builder) const {
-        builder.append("shard", _name);
-        builder.append("connectionString", _servers);
-        builder.append("maxSize", _maxSize);
-        return builder;
+
+class ShardCollectionEvent : public AuditEvent {
+public:
+    ShardCollectionEvent(const AuditEventEnvelope& envelope,
+                         StringData ns,
+                         const BSONObj& keyPattern,
+                         bool unique)
+        : AuditEvent(envelope), _ns(ns), _keyPattern(keyPattern), _unique(unique) {}
+    virtual ~ShardCollectionEvent() {}
+
+private:
+    virtual std::ostream& putTextDescription(std::ostream& os) const;
+    virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
+
+    StringData _ns;
+    const BSONObj& _keyPattern;
+    bool _unique;
+};
+
+std::ostream& ShardCollectionEvent::putTextDescription(std::ostream& os) const {
+    os << "Collection " << _ns << " sharded on ";
+    if (_unique) {
+        os << "unique ";
     }
+    os << "shard key pattern " << _keyPattern.toString() << '.';
+    return os;
+}
 
-    void logAddShard(ClientBasic* client,
-                     StringData name,
-                     const std::string& servers,
-                     long long maxSize) {
-        if (!getGlobalAuditManager()->enabled) return;
+BSONObjBuilder& ShardCollectionEvent::putParamsBSON(BSONObjBuilder& builder) const {
+    builder.append("ns", _ns);
+    builder.append("key", _keyPattern);
+    builder.append("options", BSON("unique" << _unique));
+    return builder;
+}
 
-        AddShardEvent event(makeEnvelope(client, ActionType::addShard, ErrorCodes::OK),
-                            name,
-                            servers,
-                            maxSize);
-        if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-            getGlobalAuditLogDomain()->append(event);
-        }
+void logShardCollection(ClientBasic* client,
+                        StringData ns,
+                        const BSONObj& keyPattern,
+                        bool unique) {
+    if (!getGlobalAuditManager()->enabled)
+        return;
+
+    ShardCollectionEvent event(
+        makeEnvelope(client, ActionType::shardCollection, ErrorCodes::OK), ns, keyPattern, unique);
+    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+        getGlobalAuditLogDomain()->append(event);
     }
-
-
-    class RemoveShardEvent : public AuditEvent {
-    public:
-        RemoveShardEvent(const AuditEventEnvelope& envelope,
-                         StringData shardname)
-            : AuditEvent(envelope),
-              _shardname(shardname) {}
-        virtual ~RemoveShardEvent() {}
-
-    private:
-        virtual std::ostream& putTextDescription(std::ostream& os) const;
-        virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
-
-        StringData _shardname;
-    };
-
-    std::ostream& RemoveShardEvent::putTextDescription(std::ostream& os) const {
-        os << "Removed shard " << _shardname << '.';
-        return os;
-    }
-
-    BSONObjBuilder& RemoveShardEvent::putParamsBSON(BSONObjBuilder& builder) const {
-        builder.append("shard", _shardname);
-        return builder;
-    }
-
-    void logRemoveShard(ClientBasic* client,
-                        StringData shardname) {
-        if (!getGlobalAuditManager()->enabled) return;
-
-        RemoveShardEvent event(makeEnvelope(client, ActionType::removeShard, ErrorCodes::OK),
-                               shardname);
-        if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-            getGlobalAuditLogDomain()->append(event);
-        }
-    }
-
-
-    class ShardCollectionEvent : public AuditEvent {
-    public:
-        ShardCollectionEvent(const AuditEventEnvelope& envelope,
-                             StringData ns,
-                             const BSONObj& keyPattern,
-                             bool unique)
-            : AuditEvent(envelope),
-              _ns(ns),
-              _keyPattern(keyPattern),
-              _unique(unique) {}
-        virtual ~ShardCollectionEvent() {}
-
-    private:
-        virtual std::ostream& putTextDescription(std::ostream& os) const;
-        virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
-
-        StringData _ns;
-        const BSONObj& _keyPattern;
-        bool _unique;
-    };
-
-    std::ostream& ShardCollectionEvent::putTextDescription(std::ostream& os) const {
-        os << "Collection " << _ns << " sharded on ";
-        if (_unique) {
-            os << "unique ";
-        }
-        os << "shard key pattern " << _keyPattern.toString() << '.';
-        return os;
-    }
-
-    BSONObjBuilder& ShardCollectionEvent::putParamsBSON(BSONObjBuilder& builder) const {
-        builder.append("ns", _ns);
-        builder.append("key", _keyPattern);
-        builder.append("options", BSON("unique" << _unique));
-        return builder;
-    }
-
-    void logShardCollection(ClientBasic* client,
-                            StringData ns,
-                            const BSONObj& keyPattern,
-                            bool unique) {
-        if (!getGlobalAuditManager()->enabled) return;
-
-        ShardCollectionEvent event(makeEnvelope(client,
-                                                ActionType::shardCollection,
-                                                ErrorCodes::OK),
-                                   ns,
-                                   keyPattern,
-                                   unique);
-        if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-            getGlobalAuditLogDomain()->append(event);
-        }
-    }
+}
 }
 }

@@ -13,39 +13,41 @@
 namespace mongo {
 namespace fts {
 
-    class RlpEnvironment;
+class RlpEnvironment;
+
+/**
+ * RlpStringBuffer
+ *
+ * Provides reusable buffer for converting UTF-16 strings from RLP to UTF-8
+ */
+class RlpStringBuffer {
+    MONGO_DISALLOW_COPYING(RlpStringBuffer);
+
+private:
+    const size_t kInitialSize = 32;
+
+public:
+    RlpStringBuffer(RlpEnvironment* rlpEnvironment)
+        : _rlpEnvironment(rlpEnvironment), _dynamicBuf(kInitialSize) {}
 
     /**
-     * RlpStringBuffer
-     *
-     * Provides reusable buffer for converting UTF-16 strings from RLP to UTF-8
+     * Store a UTF-8 version of the UTF-16 string parameter
      */
-    class RlpStringBuffer {
-        MONGO_DISALLOW_COPYING(RlpStringBuffer);
+    void assign(const BT_Char16* str, size_t len);
 
-    private:
-        const size_t kInitialSize = 32;
+    /**
+     * Accesses the result of the conversion in assign.
+     * Lifetime is bound to both RlpStringBuffer, and the next call to assign.
+     */
+    StringData getStringData() const {
+        return _stringData;
+    }
 
-    public:
-        RlpStringBuffer(RlpEnvironment* rlpEnvironment)
-            : _rlpEnvironment(rlpEnvironment), _dynamicBuf(kInitialSize) {}
-
-        /**
-         * Store a UTF-8 version of the UTF-16 string parameter
-         */
-        void assign(const BT_Char16* str, size_t len);
-
-        /**
-         * Accesses the result of the conversion in assign.
-         * Lifetime is bound to both RlpStringBuffer, and the next call to assign.
-         */
-        StringData getStringData() const { return _stringData; }
-
-    private:
-        RlpEnvironment* const _rlpEnvironment;
-        std::vector<char> _dynamicBuf;
-        StringData _stringData;
-    };
+private:
+    RlpEnvironment* const _rlpEnvironment;
+    std::vector<char> _dynamicBuf;
+    StringData _stringData;
+};
 
 }  // namespace fts
 }  // namespace mongo

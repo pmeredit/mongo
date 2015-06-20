@@ -16,24 +16,24 @@
 namespace mongo {
 namespace gssapi {
 
-    /**
-     * Canonicalize the user principal for "name".
-     */
-    Status canonicalizeUserName(StringData name, std::string* canonicalName);
+/**
+ * Canonicalize the user principal for "name".
+ */
+Status canonicalizeUserName(StringData name, std::string* canonicalName);
 
-    /**
-     * Canonicalize the server principal for "name".
-     */
-    Status canonicalizeServerName(StringData name, std::string* canonicalName);
+/**
+ * Canonicalize the server principal for "name".
+ */
+Status canonicalizeServerName(StringData name, std::string* canonicalName);
 
-    /**
-     * Returns Status::OK() if the process can acquire a GSSAPI credential for the given server
-     * principal.
-     *
-     * Use this function to see if the process can accept connections destined for "principalName",
-     * say for validating the keytab supplied in the server configuration.
-     */
-    Status tryAcquireServerCredential(const std::string& principalName);
+/**
+ * Returns Status::OK() if the process can acquire a GSSAPI credential for the given server
+ * principal.
+ *
+ * Use this function to see if the process can accept connections destined for "principalName",
+ * say for validating the keytab supplied in the server configuration.
+ */
+Status tryAcquireServerCredential(const std::string& principalName);
 
 }  // namespace gssapi
 }  // namespace mongo
