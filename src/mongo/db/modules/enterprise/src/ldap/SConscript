@@ -30,3 +30,28 @@ if not env.TargetOSIs('windows'):
         ],
     )
 
+    env.Library(
+        target='ldap_name_map',
+        source=[
+            'name_mapping/internal_to_ldap_user_name_mapper.cpp',
+            'name_mapping/rewrite_rule.cpp',
+            'name_mapping/ldap_rewrite_rule.cpp',
+            'name_mapping/regex_rewrite_rule.cpp',
+        ],
+        LIBDEPS=[
+            'ldap_query',
+            '$BUILD_DIR/mongo/base',
+            '$BUILD_DIR/third_party/shim_pcrecpp',
+        ],
+    )
+
+    env.CppUnitTest(
+        target='rewrite_rule_test',
+        source=[
+            'name_mapping/rewrite_rule_test.cpp',
+        ],
+        LIBDEPS=[
+            'ldap_name_map',
+        ],
+    )
+
