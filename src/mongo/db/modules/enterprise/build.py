@@ -43,6 +43,21 @@ def configure(conf, env):
         env.ConfError("Could not find <sasl/sasl.h> and sasl library, required for "
             "enterprise build.")
 
+    if not env.TargetOSIs("windows"):
+        if not conf.CheckLibWithHeader(
+                "ldap",
+                ["ldap.h"], "C",
+                "ldap_is_ldap_url(\"ldap://127.0.0.1\");", autoadd=False):
+            env.ConfError("Could not find <ldap.h> and ldap library from OpenLDAP, "
+                           "required for LDAP authorization in the enterprise build")
+        if not conf.CheckLibWithHeader(
+                "lber",
+                ["lber.h"], "C",
+                "ber_free(NULL, 0);", autoadd=False):
+            env.ConfError("Could not find <lber.h> and lber library from OpenLDAP, "
+                          "required for LDAP authorizaton in the enterprise build")
+        env['MONGO_LDAP_LIB'] = ["ldap", "lber"]
+
     if conf.CheckLib(library="gssapi_krb5", autoadd=False):
         env['MONGO_GSSAPI_IMPL'] = "gssapi"
         env['MONGO_GSSAPI_LIB'] = "gssapi_krb5"
