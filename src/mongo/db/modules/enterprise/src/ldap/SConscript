@@ -1,0 +1,32 @@
+# -*- mode: python -*-
+
+Import('env')
+
+if not env.TargetOSIs('windows'):
+    env.Library(
+        target='ldap_query',
+        source=[
+            'ldap_bind_type.cpp',
+            'ldap_connection_options.cpp',
+            'ldap_query.cpp',
+            'ldap_query_config.cpp',
+            'ldap_runner.cpp',
+        ],
+        LIBDEPS=[
+            '$BUILD_DIR/mongo/base',
+            '$BUILD_DIR/mongo/base/secure_allocator',
+            '$BUILD_DIR/mongo/util/net/hostandport',
+            '$BUILD_DIR/third_party/shim_pcrecpp',
+        ],
+    )
+
+    env.CppUnitTest(
+        target='ldap_query_test',
+        source=[
+            'ldap_query_test.cpp',
+        ],
+        LIBDEPS=[
+            'ldap_query',
+        ],
+    )
+
