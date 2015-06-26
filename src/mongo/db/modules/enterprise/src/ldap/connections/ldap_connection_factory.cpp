@@ -16,20 +16,13 @@ namespace mongo {
 
 StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
     const LDAPConnectionOptions& options) {
-    std::unique_ptr<LDAPConnection> client = stdx::make_unique<OpenLDAPConnection>(options.timeout);
+    std::unique_ptr<LDAPConnection> client = stdx::make_unique<OpenLDAPConnection>(options);
 
-    Status status = client->connect(options.hostURI);
+    Status status = client->connect();
     if (!status.isOK()) {
         return status;
     }
 
-    // If a user has been provided, bind to it
-    if (!options.bind.bindDN.empty()) {
-        status = client->authenticateAsUser(options.bind);
-        if (!status.isOK()) {
-            return status;
-        }
-    }
     return std::move(client);
 }
 }  // namespace mongo

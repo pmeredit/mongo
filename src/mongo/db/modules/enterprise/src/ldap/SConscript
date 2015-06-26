@@ -68,3 +68,26 @@ if not env.TargetOSIs('windows'):
         SYSLIBDEPS=env.get("MONGO_LDAP_LIB", [])
     )
 
+    env.Library(
+        target='mongo_ldap',
+        source=[
+            'authz_manager_external_state_ldap.cpp',
+            'ldap_options.cpp',
+            'ldap_user_cache_invalidator_job.cpp',
+        ],
+        LIBDEPS=[
+            'ldap_query',
+            'ldap_openldap_connection',
+            'ldap_name_map',
+            '$BUILD_DIR/mongo/bson/mutable/mutable_bson',
+            '$BUILD_DIR/mongo/db/auth/authcore',
+            '$BUILD_DIR/mongo/db/mongodandmongos',
+            '$BUILD_DIR/mongo/db/serveronly',
+            '$BUILD_DIR/mongo/util/background_job',
+            '$BUILD_DIR/mongo/util/options_parser/options_parser',
+        ],
+        PROGDEPS_DEPENDENTS=[
+            '$BUILD_DIR/mongo/${PROGPREFIX}mongod${PROGSUFFIX}',
+        ],
+    )
+
