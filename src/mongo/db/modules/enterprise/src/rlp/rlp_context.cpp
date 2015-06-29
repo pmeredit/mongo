@@ -49,7 +49,7 @@ void RlpContext::DestoryResultStorage() {
 ContextFactory::ContextCacheUP ContextFactory::getContext(BT_LanguageID language,
                                                           StringData contextXml) {
     {
-        std::lock_guard<std::mutex> lock(_mutex);
+        stdx::lock_guard<stdx::mutex> lock(_mutex);
 
         std::vector<ContextUP>& contexts = _contextMap[language];
 
@@ -67,7 +67,7 @@ ContextFactory::ContextCacheUP ContextFactory::getContext(BT_LanguageID language
 void ContextFactory::returnContext(RlpContext* context) {
     context->DestoryResultStorage();
 
-    std::lock_guard<std::mutex> lock(_mutex);
+    stdx::lock_guard<stdx::mutex> lock(_mutex);
 
     std::vector<ContextUP>& contexts = _contextMap[context->getLanguage()];
     contexts.emplace_back(context);

@@ -5,10 +5,10 @@
 #pragma once
 
 #include <bt_rlp_c.h>
-#include <mutex>
 #include <unordered_map>
 
 #include "mongo/base/disallow_copying.h"
+#include "mongo/stdx/mutex.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -132,7 +132,7 @@ private:
 private:
     RlpEnvironment* const _rlpEnvironment;
 
-    std::mutex _mutex;
+    stdx::mutex _mutex;
     std::unordered_map<BT_LanguageID, std::vector<ContextUP>, BTLanguageHash> _contextMap;
 };
 
