@@ -4,12 +4,12 @@
 
 #pragma once
 
+#include <cstdint>
 #include <tuple>
 
 #include "kmip_consts.h"
 #include "mongo/base/disallow_copying.h"
 #include "mongo/base/status.h"
-#include "mongo/platform/cstdint.h"
 #include "symmetric_key.h"
 
 namespace mongo {

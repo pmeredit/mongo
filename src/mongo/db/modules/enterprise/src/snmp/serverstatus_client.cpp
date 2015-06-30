@@ -7,13 +7,12 @@
 #include "serverstatus_client.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <limits>
-
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsontypes.h"
 #include "mongo/db/client.h"
-#include "mongo/platform/cstdint.h"
 #include "mongo/util/log.h"
 #include "mongo/util/timer.h"
 #include "mongo/util/time_support.h"

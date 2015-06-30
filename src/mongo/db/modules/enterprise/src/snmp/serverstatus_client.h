@@ -2,11 +2,11 @@
  * Copyright (C) 2013 MongoDB, Inc.  All Rights Reserved.
  */
 
+#include <cstdint>
 #include <string>
 
 #include "mongo/db/dbdirectclient.h"
 #include "mongo/db/instance.h"
-#include "mongo/platform/cstdint.h"
 
 namespace mongo {
 

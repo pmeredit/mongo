@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <sasl/sasl.h>
 #include <string>
 #include <vector>
@@ -12,7 +13,6 @@
 #include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
 #include "mongo/db/auth/sasl_authentication_session.h"
-#include "mongo/platform/cstdint.h"
 
 namespace mongo {
 

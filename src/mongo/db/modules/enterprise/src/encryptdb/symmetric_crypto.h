@@ -7,7 +7,6 @@
 #include <cstdint>
 
 #include "mongo/base/status.h"
-#include "mongo/platform/cstdint.h"
 
 namespace mongo {
 namespace crypto {

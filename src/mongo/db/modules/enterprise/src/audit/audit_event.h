@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "mongo/base/disallow_copying.h"
 #include "mongo/base/error_codes.h"
 #include "mongo/bson/oid.h"
@@ -12,7 +14,6 @@
 #include "mongo/db/jsobj.h"
 #include "mongo/db/matcher/expression.h"
 #include "mongo/logger/log_severity.h"
-#include "mongo/platform/cstdint.h"
 #include "mongo/util/net/sock.h"
 
 namespace mongo {
