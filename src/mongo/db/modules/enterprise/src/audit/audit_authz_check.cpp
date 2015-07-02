@@ -52,7 +52,7 @@ std::ostream& AuthzCheckEvent::putTextDescription(std::ostream& os) const {
 BSONObjBuilder& AuthzCheckEvent::putParamsBSON(BSONObjBuilder& builder) const {
     mmb::ConstElement cmdElt = _cmdObj->root().leftChild();
     builder.append("command", (!cmdElt.ok() ? StringData("Error") : cmdElt.getFieldName()));
-    builder.append("ns", _ns);
+    builder.append("ns", _ns.ns());
     BSONObjBuilder argsBuilder(builder.subobjStart("args"));
     _cmdObj->writeTo(&argsBuilder);
     argsBuilder.done();
