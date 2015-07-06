@@ -51,7 +51,7 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(InitializeGlobalAuditManager, ("CreateAudit
             return Status(ErrorCodes::BadValue, "failed to parse auditFilter");
         }
         AuditManager* am = audit::getGlobalAuditManager();
-        am->auditFilter = parseResult.getValue();
+        am->auditFilter = parseResult.getValue().release();
 
         am->auditLogPath = auditGlobalParams.auditPath;
 
