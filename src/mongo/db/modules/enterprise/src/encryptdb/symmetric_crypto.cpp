@@ -28,6 +28,11 @@ Status aesEncrypt(const uint8_t* in,
     if (mode != cbcMode) {
         return Status(ErrorCodes::BadValue, "Invalid encryption mode");
     }
+    if (*outLen < aesBlockSize * (1 + inLen / aesBlockSize)) {
+        return Status(ErrorCodes::BadValue,
+                      str::stream() << "Cipher text buffer too short " << *outLen << " < "
+                                    << aesBlockSize * (1 + inLen / aesBlockSize));
+    }
 
     const EVP_CIPHER* cipher = nullptr;
     if (keySize == sym256KeySize) {
@@ -38,8 +43,8 @@ Status aesEncrypt(const uint8_t* in,
         return Status(ErrorCodes::BadValue, str::stream() << "Invalid key length: " << keySize);
     }
 
-    std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_cleanup)> encryptCtx(
-        EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_cleanup);
+    std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)> encryptCtx(EVP_CIPHER_CTX_new(),
+                                                                               EVP_CIPHER_CTX_free);
 
     if (1 != EVP_EncryptInit_ex(encryptCtx.get(), cipher, nullptr, key, iv)) {
         return Status(ErrorCodes::UnknownError,
@@ -75,6 +80,11 @@ Status aesDecrypt(const uint8_t* in,
     }
     if (mode != cbcMode) {
         return Status(ErrorCodes::BadValue, "Invalid encryption mode");
+    }
+    if (*outLen < inLen - aesBlockSize) {
+        return Status(ErrorCodes::BadValue,
+                      str::stream() << "Clear text buffer too short " << *outLen << " < "
+                                    << inLen - aesBlockSize);
     }
 
     const EVP_CIPHER* cipher = nullptr;

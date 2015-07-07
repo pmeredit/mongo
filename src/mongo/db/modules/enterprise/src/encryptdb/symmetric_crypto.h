@@ -39,7 +39,8 @@ const uint8_t gcmMode = 0x20;
  * Encrypts the plaintext 'in' using AES with 'key' and block size 'keySize'
  * using encryption mode 'mode'. Supported modes are CBC and GCM.
  *
- * The size of the encrypted buffer 'out' is returned in 'outLen'.
+ * 'outLen' is an in-out parameter representing the size of the buffer 'out', and the
+ * resulting length of the encrypted buffer.
  */
 Status aesEncrypt(const uint8_t* in,
                   size_t inLen,
@@ -54,7 +55,8 @@ Status aesEncrypt(const uint8_t* in,
  * Decrypts the plaintext 'in' using AES with 'key' and block size 'keySize'
  * using encryption mode 'mode'. Supported modes are CBC and GCM.
  *
- * The size of the decrypted buffer 'out' is provided in 'outLen'.
+ * 'outLen' is an in-out parameter representing the size of the buffer 'out', and the
+ * resulting length of the decrypted buffer.
  */
 Status aesDecrypt(const uint8_t* in,
                   size_t inLen,

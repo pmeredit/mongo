@@ -396,7 +396,7 @@ TEST(CryptoVectors, AES) {
 
     size_t numTests = sizeof(aesTests) / sizeof(aesTests[0]);
     for (size_t i = 0; i < numTests; i++) {
-        size_t ctLen = 0;
+        size_t ctLen = maxPTSize;
         Status ret = crypto::aesEncrypt(aesTests[i].pt,
                                         aesTests[i].ptLen,
                                         aesTests[i].key,
@@ -413,7 +413,7 @@ TEST(CryptoVectors, AES) {
                0 == memcmp(aesTests[i].ct, ct, aesTests[i].ptLen))
             << "AES encrypt mismatch in iteration " << i;
 
-        size_t ptLen = 0;
+        size_t ptLen = maxPTSize;
         ret = crypto::aesDecrypt(ct,
                                  ctLen,
                                  aesTests[i].key,
