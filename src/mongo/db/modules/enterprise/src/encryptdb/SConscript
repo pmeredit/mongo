@@ -1,11 +1,43 @@
 # -*- mode: python -*-
-
 Import("env")
+Import("wiredtiger")
 
-env.Library(target='kmip',
+if wiredtiger:
+    wtEnv = env.Clone()
+    wtEnv.InjectThirdPartyIncludePaths(libraries=['wiredtiger'])
+    wtEnv.InjectThirdPartyIncludePaths(libraries=['wiredtiger_ext'])
+
+env.Library(target='encryption_key_manager_init',
             source=[
-                'kmip_request.cpp',
-                'kmip_response.cpp',
+                'encryption_key_manager_init.cpp',
+            ],
+            LIBDEPS=[
+                'encryptdb',
+            ],
+            LIBDEPS_DEPENDENTS=[
+                '$BUILD_DIR/mongo/${PROGPREFIX}mongod${PROGSUFFIX}'
+            ])
+
+wtEnv.Library(target='encryptdb',
+              source=[
+                   'encryption_key_manager.cpp',
+                   'kmip_service.cpp',
+                   'wiredtiger_encryption_callbacks.cpp',
+              ],
+              LIBDEPS=[
+                   'encryption_options',
+                   'kmip',
+                   'symmetric_crypto',
+                   '$BUILD_DIR/mongo/base/base',
+                   '$BUILD_DIR/third_party/shim_wiredtiger',
+              ])
+
+env.Library(target='encryption_options',
+            source=[
+                'encryption_options.cpp',
+                'encryption_options_init.cpp',
+            ],
+            LIBDEPS=[
             ])
 
 env.Library(target='symmetric_crypto',
@@ -14,20 +46,24 @@ env.Library(target='symmetric_crypto',
                 'symmetric_key.cpp',
             ],
             LIBDEPS=[
-                '$BUILD_DIR/mongo/base/base',
                 '$BUILD_DIR/mongo/util/net/network',
-            ]);
+            ])
+
+env.Library(target='kmip',
+            source=[
+                'kmip_request.cpp',
+                'kmip_response.cpp',
+            ])
 
 env.CppUnitTest(target='symmetric_crypto_test',
-                source=[
-                    'symmetric_crypto_test.cpp'
-                ],
-                LIBDEPS=['symmetric_crypto'])
+                source='symmetric_crypto_test.cpp',
+                LIBDEPS=[
+                    'symmetric_crypto',
+                    '$BUILD_DIR/mongo/util/net/network',
+                ])
 
 env.CppUnitTest(target='kmip_response_test',
-                source=[
-                    'kmip_response_test.cpp'
-                ],
+                source='kmip_response_test.cpp',
                 LIBDEPS=[
                     'kmip',
                     'symmetric_crypto',
@@ -35,11 +71,19 @@ env.CppUnitTest(target='kmip_response_test',
                 ])
 
 env.CppUnitTest(target='kmip_request_test',
-                source=[
-                    'kmip_request_test.cpp',
-                ],
+                source='kmip_request_test.cpp',
                 LIBDEPS=[
                     'kmip',
                     'symmetric_crypto',
                     '$BUILD_DIR/mongo/util/net/network',
+                ])
+
+wtEnv.CppUnitTest(target='wiredtiger_encryption_test',
+                source='wiredtiger_encryption_test.cpp',
+                LIBDEPS=[
+                    '$BUILD_DIR/mongo/db/service_context',
+                    '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_mock',
+                    '$BUILD_DIR/mongo/util/net/network',
+                    'encryptdb',
+                    'symmetric_crypto',
                 ])

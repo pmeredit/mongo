@@ -105,15 +105,18 @@ void writeData(std::string dbPath) {
     * all tables so that we can verify they're all the same after
     * we decrypt on read.
     */
-    char keybuf[16], valbuf[16];
     for (int i = 0; i < 10; i++) {
-        snprintf(keybuf, sizeof(keybuf), "key%d", i);
-        c1->set_key(c1, keybuf);
-        c2->set_key(c2, keybuf);
+        std::stringstream keyBuf;
+        keyBuf << "key" << i;
+        std::string key = keyBuf.str();
+        c1->set_key(c1, key.c_str());
+        c2->set_key(c2, key.c_str());
 
-        snprintf(valbuf, sizeof(valbuf), "value%d", i);
-        c1->set_value(c1, valbuf);
-        c2->set_value(c2, valbuf);
+        std::stringstream valueBuf;
+        keyBuf << "value" << i;
+        std::string val = valueBuf.str();
+        c1->set_value(c1, val.c_str());
+        c2->set_value(c2, val.c_str());
 
         c1->insert(c1);
         c2->insert(c2);

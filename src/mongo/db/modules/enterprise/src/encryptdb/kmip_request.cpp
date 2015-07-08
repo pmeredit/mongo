@@ -52,7 +52,7 @@ std::vector<uint8_t> encodeAttribute(std::vector<uint8_t>* attributeName,
         attributeSizeInt += processedAttributeData.size();
     } else {
         // not supported
-        fassertFailed(4042);
+        fassertFailed(4049);
     }
     std::vector<uint8_t> attributeSize = convertIntToBigEndianArray(attributeSizeInt);
 
