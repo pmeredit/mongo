@@ -18,12 +18,17 @@ namespace moe = mongo::optionenvironment;
 
 struct EncryptionGlobalParams {
     bool enableEncryption = false;
+
+    // KMIP Options.
     std::string kmipKeyIdentifier;
     std::string kmipServerName;
     int kmipPort = 5696;
     std::string kmipClientCertificateFile;
     std::string kmipClientCertificatePassword;
     std::string kmipServerCAFile;
+
+    // Keyfile Options.
+    std::string encryptionKeyFile;
 };
 
 extern EncryptionGlobalParams encryptionGlobalParams;

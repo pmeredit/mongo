@@ -71,6 +71,11 @@ private:
     StatusWith<std::unique_ptr<SymmetricKey>> _getKeyFromKMIPServer();
 
     /**
+     * Acquires the system key from the encryption keyfile.
+     */
+    StatusWith<std::unique_ptr<SymmetricKey>> _getKeyFromKeyFile();
+
+    /**
      * Reads the systemKey UID from storage.bson.
      */
     std::string _getKeyUIDFromMetadata();

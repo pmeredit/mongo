@@ -27,6 +27,7 @@
 #include "mongo/db/storage/wiredtiger/wiredtiger_customization_hooks.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/util/assert_util.h"
+#include "mongo/util/base64.h"
 #include "mongo/util/log.h"
 #include "mongo/util/net/ssl_manager.h"
 #include "mongo/util/net/ssl_options.h"
@@ -174,8 +175,45 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getKeyFromKMIPS
     return kmipService.getExternalKey(_systemKeyId);
 }
 
+StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getKeyFromKeyFile() {
+    StatusWith<std::string> keyString = readSecurityFile(_encryptionParams->encryptionKeyFile);
+    if (!keyString.isOK()) {
+        return keyString.getStatus();
+    }
+
+    std::string decodedKey;
+    try {
+        decodedKey = base64::decode(keyString.getValue());
+    } catch (const DBException& ex) {
+        return ex.toStatus();
+    }
+
+    const size_t keyLength = decodedKey.size();
+    if (keyLength != crypto::minKeySize && keyLength != crypto::maxKeySize) {
+        return StatusWith<std::unique_ptr<SymmetricKey>>(
+            ErrorCodes::BadValue,
+            str::stream() << "Encryption key in " << _encryptionParams->encryptionKeyFile
+                          << " has length " << keyLength << ", must be either "
+                          << crypto::minKeySize << " or " << crypto::maxKeySize);
+    }
+
+    std::vector<uint8_t> keyVector(decodedKey.begin(), decodedKey.end());
+    const uint8_t* keyData = keyVector.data();
+
+    return stdx::make_unique<SymmetricKey>(keyData, keyLength, crypto::aesAlgorithm);
+}
+
 Status EncryptionKeyManager::_acquireSystemKey() {
     // TODO: Implement support for multiple key provision mechanism.
+
+    if (!_encryptionParams->encryptionKeyFile.empty()) {
+        StatusWith<std::unique_ptr<SymmetricKey>> keyFileSystemKey = _getKeyFromKeyFile();
+        if (!keyFileSystemKey.isOK()) {
+            return keyFileSystemKey.getStatus();
+        }
+        _systemKey = std::move(keyFileSystemKey.getValue());
+        return Status::OK();
+    }
 
     /**
      * 1. Get key from metadata

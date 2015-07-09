@@ -24,27 +24,38 @@ Status addEncryptionOptions(moe::OptionSection* options) {
     encryptionOptions.addOptionChaining("security.kmip.keyIdentifier",
                                         "kmipKeyIdentifier",
                                         moe::String,
-                                        "KMIP unique identifier for existing key to use");
+                                        "KMIP unique identifier for existing key to use")
+        .requires("security.enableEncryption");
     encryptionOptions.addOptionChaining("security.kmip.serverName",
                                         "kmipServerName",
                                         moe::String,
                                         "KMIP server host name")
         .requires("security.enableEncryption");
-    encryptionOptions.addOptionChaining(
-        "security.kmip.port", "kmipPort", moe::Int, "KMIP server port (defaults to 5696)");
+    encryptionOptions.addOptionChaining("security.kmip.port",
+                                        "kmipPort",
+                                        moe::Int,
+                                        "KMIP server port (defaults to 5696)")
+        .requires("security.kmip.serverName");
     encryptionOptions.addOptionChaining("security.kmip.clientCertificateFile",
                                         "kmipClientCertificateFile",
                                         moe::String,
-                                        "Client certificate for authenticating to KMIP server");
+                                        "Client certificate for authenticating to KMIP server")
+        .requires("security.kmip.serverName");
     encryptionOptions.addOptionChaining(
-        "security.kmip.clientCertificatePassword",
-        "kmipClientCertificatePassword",
-        moe::String,
-        "Client certificate for authenticating Mongo to KMIP server");
+                          "security.kmip.clientCertificatePassword",
+                          "kmipClientCertificatePassword",
+                          moe::String,
+                          "Client certificate for authenticating Mongo to KMIP server")
+        .requires("security.kmip.clientCertificateFile");
     encryptionOptions.addOptionChaining("security.kmip.serverCAFile",
                                         "kmipServerCAFile",
                                         moe::String,
                                         "CA File for validating connection to KMIP server");
+    encryptionOptions.addOptionChaining("security.encryptionKeyFile",
+                                        "encryptionKeyFile",
+                                        moe::String,
+                                        "File path for encryption key file")
+        .requires("security.enableEncryption");
 
     Status ret = options->addSection(encryptionOptions);
     if (!ret.isOK()) {
@@ -55,6 +66,14 @@ Status addEncryptionOptions(moe::OptionSection* options) {
 }
 
 static Status validateEncryptionOptions(const moe::Environment& params) {
+    if (params.count("security.enableEncryption")) {
+        if (params.count("security.encryptionKeyFile") ==
+            params.count("security.kmip.serverName")) {
+            return {ErrorCodes::InvalidOptions,
+                    "Must specify either an encryption key file or "
+                    "a KMIP server when enabling file encryption"};
+        }
+    }
     return Status::OK();
 }
 
@@ -97,6 +116,11 @@ Status storeEncryptionOptions(const moe::Environment& params) {
     if (params.count("security.kmip.serverCAFile")) {
         encryptionGlobalParams.kmipServerCAFile =
             params["security.kmip.serverCAFile"].as<std::string>();
+    }
+
+    if (params.count("security.encryptionKeyFile")) {
+        encryptionGlobalParams.encryptionKeyFile =
+            params["security.encryptionKeyFile"].as<std::string>();
     }
 
     return Status::OK();
