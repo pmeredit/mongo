@@ -41,7 +41,7 @@ KMIPResponse::KMIPResponse() {}
 KMIPResponse::KMIPResponse(KMIPResponse&& resp)
     : _resultStatus(resp._resultStatus),
       _resultReason(resp._resultReason),
-      _resultMsg(resp._resultMsg),
+      _resultMsg(std::move(resp._resultMsg)),
       _timeStamp(resp._timeStamp),
       _opType(resp._opType),
       _batchCount(resp._opType),
@@ -54,7 +54,7 @@ KMIPResponse::KMIPResponse(KMIPResponse&& resp)
 KMIPResponse& KMIPResponse::operator=(KMIPResponse&& resp) {
     _resultStatus = resp._resultStatus;
     _resultReason = resp._resultReason;
-    _resultMsg = resp._resultMsg;
+    _resultMsg = std::move(resp._resultMsg);
     _timeStamp = resp._timeStamp;
     _opType = resp._opType;
     _batchCount = resp._opType;
