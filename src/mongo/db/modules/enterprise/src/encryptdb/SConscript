@@ -29,6 +29,7 @@ wtEnv.Library(target='encryptdb',
                    'kmip',
                    'symmetric_crypto',
                    '$BUILD_DIR/mongo/base/base',
+                   '$BUILD_DIR/mongo/db/auth/security_file',
                    '$BUILD_DIR/third_party/shim_wiredtiger',
               ])
 
@@ -81,6 +82,7 @@ env.CppUnitTest(target='kmip_request_test',
 wtEnv.CppUnitTest(target='wiredtiger_encryption_test',
                 source='wiredtiger_encryption_test.cpp',
                 LIBDEPS=[
+                    '$BUILD_DIR/mongo/db/auth/security_file',
                     '$BUILD_DIR/mongo/db/service_context',
                     '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_mock',
                     '$BUILD_DIR/mongo/util/net/network',
