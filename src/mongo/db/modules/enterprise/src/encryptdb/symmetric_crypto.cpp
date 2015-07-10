@@ -96,8 +96,8 @@ Status aesDecrypt(const uint8_t* in,
         return Status(ErrorCodes::BadValue, "Invalid key length");
     }
 
-    std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)> decryptCtx(
-        EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free);
+    std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)> decryptCtx(EVP_CIPHER_CTX_new(),
+                                                                               EVP_CIPHER_CTX_free);
 
     if (1 != EVP_DecryptInit_ex(decryptCtx.get(), cipher, nullptr, key, iv)) {
         return Status(ErrorCodes::UnknownError,
