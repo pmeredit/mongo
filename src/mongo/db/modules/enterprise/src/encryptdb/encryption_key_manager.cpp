@@ -149,9 +149,9 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getKeyFromKMIPS
     sslKMIPParams.sslPEMKeyPassword = _encryptionParams->kmipClientCertificatePassword;
     sslKMIPParams.sslClusterFile = "";
     sslKMIPParams.sslClusterPassword = "";
+    sslKMIPParams.sslCAFile = _encryptionParams->kmipServerCAFile;
 
     // Copy the rest from the global SSL manager options.
-    sslKMIPParams.sslCAFile = _sslParams->sslCAFile;
     sslKMIPParams.sslCRLFile = _sslParams->sslCRLFile;
     sslKMIPParams.sslAllowInvalidCertificates = _sslParams->sslAllowInvalidCertificates;
     sslKMIPParams.sslAllowInvalidHostnames = _sslParams->sslAllowInvalidHostnames;
