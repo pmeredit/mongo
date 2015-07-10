@@ -28,7 +28,7 @@ wtEnv.Library(target='encryptdb',
                    'encryption_options',
                    'kmip',
                    'symmetric_crypto',
-                   '$BUILD_DIR/mongo/base/base',
+                   '$BUILD_DIR/mongo/base',
                    '$BUILD_DIR/mongo/db/auth/security_file',
                    '$BUILD_DIR/third_party/shim_wiredtiger',
               ])

@@ -39,7 +39,7 @@ if GetOption("rlp") == "on":
         ],
         LIBDEPS=[
             'rlpcore',
-            "$BUILD_DIR/mongo/base/base",
+            "$BUILD_DIR/mongo/base",
             "$BUILD_DIR/mongo/db/common",
             "$BUILD_DIR/mongo/db/fts/base",
             "$BUILD_DIR/mongo/util/foundation",
