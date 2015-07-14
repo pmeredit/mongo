@@ -13,7 +13,6 @@
 #include <string>
 
 #include "encryption_key_manager.h"
-#include "encryption_options.h"
 #include "mongo/base/init.h"
 #include "mongo/db/service_context.h"
 #include "mongo/platform/random.h"
@@ -250,7 +249,7 @@ extern "C" MONGO_COMPILER_API_EXPORT int mongo_addWiredTigerEncryptors(WT_CONNEC
     extWTEncryptor->encryptor.decrypt = mongo::decrypt;
     extWTEncryptor->encryptor.terminate = mongo::destroyEncryptor;
     int ret;
-    if (mongo::encryptionGlobalParams.enableEncryption && (ret = connection->add_encryptor(
+    if ((ret = connection->add_encryptor(
              connection, "aes", reinterpret_cast<WT_ENCRYPTOR*>(extWTEncryptor), nullptr)) != 0) {
         return ret;
     }
