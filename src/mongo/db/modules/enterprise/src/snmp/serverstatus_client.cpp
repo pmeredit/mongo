@@ -13,6 +13,8 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsontypes.h"
 #include "mongo/db/client.h"
+#include "mongo/db/dbdirectclient.h"
+#include "mongo/db/operation_context_impl.h"
 #include "mongo/util/log.h"
 #include "mongo/util/timer.h"
 #include "mongo/util/time_support.h"
@@ -42,13 +44,8 @@ const std::string ServerStatusClient::METRICS = "metrics";
 
 const int ServerStatusClient::DATE_AND_TIME_TZ_LEN = 11;
 
-ServerStatusClient::ServerStatusClient(OperationContext* txn,
-                                       const std::string& sectionName,
-                                       time_t cacheExpireSecs)
-    : _dbClient(txn),
-      _cacheExpireSecs(cacheExpireSecs),
-      _lastRefresh(0),
-      _sectionName(sectionName) {
+ServerStatusClient::ServerStatusClient(const std::string& sectionName, time_t cacheExpireSecs)
+    : _cacheExpireSecs(cacheExpireSecs), _lastRefresh(0), _sectionName(sectionName) {
     std::vector<std::string> sectionList;
     sectionList.push_back(ASSERTS);
     sectionList.push_back(BACKGROUND_FLUSHING);
@@ -107,7 +104,9 @@ bool ServerStatusClient::load() {
 
     {
         Timer timer;
-        ok = _dbClient.runCommand("admin", _serverStatusCmd, response);
+        OperationContextImpl opCtx;
+        DBDirectClient dbClient(&opCtx);
+        ok = dbClient.runCommand("admin", _serverStatusCmd, response);
         LOG(5) << "serverStatus cmd for " << _sectionName << " took " << timer.micros()
                << " micros";
     }

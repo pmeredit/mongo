@@ -22,7 +22,6 @@
 #include "mongo/base/status.h"
 #include "mongo/db/client.h"
 #include "mongo/db/db.h"
-#include "mongo/db/operation_context_impl.h"
 #include "mongo/db/repl/replication_coordinator_global.h"
 #include "mongo/db/server_options.h"
 #include "mongo/db/stats/counters.h"
@@ -674,8 +673,7 @@ public:
 
 
         if (isValidMetric()) {
-            OperationContextImpl txn;
-            ServerStatusClient& ssClient = getServerStatusClient(&txn, _serverStatusSection);
+            ServerStatusClient& ssClient = getServerStatusClient(_serverStatusSection);
 
             switch (_metricType) {
                 case VT_INT32:
@@ -865,14 +863,13 @@ private:
         return 0;
     }
 
-    static ServerStatusClient& getServerStatusClient(OperationContext* txn,
-                                                     const std::string& section) {
+    static ServerStatusClient& getServerStatusClient(const std::string& section) {
         std::map<std::string, std::shared_ptr<ServerStatusClient>>::iterator it;
         it = _serverStatusClientMap.find(section);
 
         if (it == _serverStatusClientMap.end()) {
             _serverStatusClientMap[section].reset(
-                new ServerStatusClient(txn, section, getSectionTimeoutSecs(section)));
+                new ServerStatusClient(section, getSectionTimeoutSecs(section)));
         }
 
         return *_serverStatusClientMap[section];

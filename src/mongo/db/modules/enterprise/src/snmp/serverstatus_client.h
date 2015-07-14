@@ -5,7 +5,6 @@
 #include <cstdint>
 #include <string>
 
-#include "mongo/db/dbdirectclient.h"
 #include "mongo/db/instance.h"
 
 namespace mongo {
@@ -21,9 +20,7 @@ class ServerStatusClient {
     MONGO_DISALLOW_COPYING(ServerStatusClient);
 
 public:
-    ServerStatusClient(OperationContext* txn,
-                       const std::string& sectionName,
-                       time_t cacheExpireSecs);
+    ServerStatusClient(const std::string& sectionName, time_t cacheExpireSecs);
 
     bool getBoolField(StringData name);
     int getIntField(StringData name);
@@ -55,7 +52,6 @@ public:
     static const int DATE_AND_TIME_TZ_LEN;
 
 private:
-    DBDirectClient _dbClient;
     BSONObj _serverStatusData;
     time_t _cacheExpireSecs;
     time_t _lastRefresh;
