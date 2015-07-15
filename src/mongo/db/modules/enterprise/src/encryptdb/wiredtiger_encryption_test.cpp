@@ -7,6 +7,7 @@
 #include <string>
 
 #include "encryption_key_manager_noop.h"
+#include "encryption_options.h"
 #include "mongo/base/init.h"
 #include "mongo/base/string_data.h"
 #include "mongo/db/operation_context_noop.h"
@@ -27,6 +28,7 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(CreateEncryptionKeyManager,
     // Reset the WiredTigerCustomizationHooks pointer to be the EncryptionKeyManager
     auto keyManager = stdx::make_unique<EncryptionKeyManagerNoop>();
     WiredTigerCustomizationHooks::set(getGlobalServiceContext(), std::move(keyManager));
+    encryptionGlobalParams.enableEncryption = true;
 
     return Status::OK();
 }
