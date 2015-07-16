@@ -97,8 +97,7 @@ int customize(WT_ENCRYPTOR* encryptor,
         StatusWith<std::unique_ptr<SymmetricKey>> swSymmetricKey =
             EncryptionKeyManager::get(getGlobalServiceContext())->getKey(keyId);
         if (!swSymmetricKey.isOK()) {
-            error() << "Unable to retrieve key " << keyId << " "
-                    << swSymmetricKey.getStatus().toString();
+            error() << "Unable to initialize encryption. " << swSymmetricKey.getStatus().reason();
             return EINVAL;
         }
         *(myEncryptor.get()) = *origEncryptor;
@@ -250,7 +249,8 @@ extern "C" MONGO_COMPILER_API_EXPORT int mongo_addWiredTigerEncryptors(WT_CONNEC
     extWTEncryptor->encryptor.decrypt = mongo::decrypt;
     extWTEncryptor->encryptor.terminate = mongo::destroyEncryptor;
     int ret;
-    if (mongo::encryptionGlobalParams.enableEncryption && (ret = connection->add_encryptor(
+    if (mongo::encryptionGlobalParams.enableEncryption &&
+        (ret = connection->add_encryptor(
              connection, "aes", reinterpret_cast<WT_ENCRYPTOR*>(extWTEncryptor), nullptr)) != 0) {
         return ret;
     }

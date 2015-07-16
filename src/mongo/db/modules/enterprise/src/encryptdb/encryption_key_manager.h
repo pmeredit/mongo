@@ -78,7 +78,7 @@ private:
     /**
      * Reads the systemKey UID from storage.bson.
      */
-    std::string _getKeyUIDFromMetadata();
+    StatusWith<std::string> _getKeyUIDFromMetadata();
 
     /**
      * Flag indicating if the key manager has been initialized yet.

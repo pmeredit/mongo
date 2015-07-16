@@ -89,7 +89,13 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::getKey(const std
         }
 
         _initialized = true;
-        log() << "Encryption key manager initialized using system key with id: " << _systemKeyId;
+        if (!_systemKeyId.empty()) {
+            log() << "Encryption key manager initialized using system key with id: "
+                  << _systemKeyId;
+        } else {
+            log() << "Encryption key manager initialized with key file: "
+                  << _encryptionParams->encryptionKeyFile;
+        }
     }
 
     // TODO: This is an intentional hack to avoid implementing an undesired
@@ -100,10 +106,11 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::getKey(const std
                                            _systemKey.get()->getAlgorithm());
 }
 
-std::string EncryptionKeyManager::_getKeyUIDFromMetadata() {
+StatusWith<std::string> EncryptionKeyManager::_getKeyUIDFromMetadata() {
     boost::filesystem::path metadataPath = boost::filesystem::path(_dbPath) / kMetadataBasename;
     if (!boost::filesystem::exists(metadataPath)) {
-        return "";
+        return Status(ErrorCodes::PathNotViable,
+                      "Storage engine metadata file has not been created yet");
     }
 
     auto fileSize = boost::filesystem::file_size(metadataPath);
@@ -123,17 +130,15 @@ std::string EncryptionKeyManager::_getKeyUIDFromMetadata() {
             validateBSON(obj.objdata(), obj.objsize()).isOK());
     BSONElement encryptionKeyElement = obj.getFieldDotted("storage.options.encryption.keyUID");
 
-    std::string keyUID = "";
-
-    if (!encryptionKeyElement.eoo()) {
-        uassert(4042,
-                "metadata encryption key element must be a string",
-                encryptionKeyElement.type() == mongo::String);
-        keyUID = encryptionKeyElement.String();
-        uassert(4043, "metadata encryption key uuid string cannot be empty", !keyUID.empty());
+    if (encryptionKeyElement.eoo()) {
+        return Status(ErrorCodes::NoMatchingDocument,
+                      "No external encryption key identifier found in metadata");
     }
 
-    return keyUID;
+    uassert(4042,
+            "metadata encryption key element must be a string",
+            encryptionKeyElement.type() == mongo::String);
+    return encryptionKeyElement.String();
 }
 
 StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getKeyFromKMIPServer() {
@@ -194,7 +199,7 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getKeyFromKeyFi
             ErrorCodes::BadValue,
             str::stream() << "Encryption key in " << _encryptionParams->encryptionKeyFile
                           << " has length " << keyLength << ", must be either "
-                          << crypto::minKeySize << " or " << crypto::maxKeySize);
+                          << crypto::minKeySize << " or " << crypto::maxKeySize << " characters.");
     }
 
     std::vector<uint8_t> keyVector(decodedKey.begin(), decodedKey.end());
@@ -206,7 +211,27 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getKeyFromKeyFi
 Status EncryptionKeyManager::_acquireSystemKey() {
     // TODO: Implement support for multiple key provision mechanism.
 
+
+    // Get key id from metadata. If storage.bson exists and does not
+    // contain a key id element return error.
+    auto swStoredKeyId = _getKeyUIDFromMetadata();
+    std::string storedKeyId;
+    if (!swStoredKeyId.isOK()) {
+        if (swStoredKeyId.getStatus().code() == ErrorCodes::NoMatchingDocument) {
+            return Status(ErrorCodes::BadValue,
+                          "The system has previously been started without encryption enabled.");
+        }
+    } else {
+        storedKeyId = swStoredKeyId.getValue();
+    }
+
     if (!_encryptionParams->encryptionKeyFile.empty()) {
+        if (!storedKeyId.empty()) {
+            // Warn if the the server has been started with a KMIP key before.
+            log() << "It looks like the data files were previously encrypted using an "
+                  << "external key with id " << storedKeyId
+                  << ". Attempting to use the provided key file.";
+        }
         StatusWith<std::unique_ptr<SymmetricKey>> keyFileSystemKey = _getKeyFromKeyFile();
         if (!keyFileSystemKey.isOK()) {
             return keyFileSystemKey.getStatus();
@@ -215,27 +240,31 @@ Status EncryptionKeyManager::_acquireSystemKey() {
         return Status::OK();
     }
 
-    /**
-     * 1. Get key from metadata
-     * 2. If we got one check that we don't have a keyIdentifier specified too
-     * 3. If we don't have a key in metadata create one on the KMIP server
-     * 4. Retrieve it from the KMIP server
-     * 5. If a new key id was created, write it to the storage metadata
-     */
-    std::string storedKeyId = _getKeyUIDFromMetadata();
-    if (!_encryptionParams->kmipKeyIdentifier.empty() && !storedKeyId.empty()) {
-        return Status(ErrorCodes::BadValue,
-                      str::stream()
-                          << "A KMIP key identifier was provided but the system is already "
-                             "configured with a key with id " << storedKeyId);
+    if (swStoredKeyId.isOK()) {
+        // Warn if the the server has not been started with a key file before.
+        if (storedKeyId.empty()) {
+            log() << "It looks like the data files were previously encrypted using a key file."
+                  << " Attempting to use the provided KMIP key.";
+        } else if (!_encryptionParams->kmipKeyIdentifier.empty() &&
+                   storedKeyId != _encryptionParams->kmipKeyIdentifier) {
+            // Return error if a new KMIP key identifier was provided that's different from the
+            // stored one.
+            return Status(ErrorCodes::BadValue,
+                          str::stream()
+                              << "The KMIP key id " << _encryptionParams->kmipKeyIdentifier
+                              << " was provided, but the system is already configured with key id "
+                              << storedKeyId << ".");
+        }
     }
 
+    // The _systemKeyId will be written to the metadata by the general WT metadata management.
     if (storedKeyId.empty()) {
         _systemKeyId = _encryptionParams->kmipKeyIdentifier;
     } else {
         _systemKeyId = storedKeyId;
     }
 
+    // Retrieve the key from the KMIP server. The key is created if it does not already exist.
     StatusWith<std::unique_ptr<SymmetricKey>> swSystemKey = _getKeyFromKMIPServer();
     if (!swSystemKey.isOK()) {
         return swSystemKey.getStatus();
