@@ -118,8 +118,6 @@ int main(int argc, char** argv, char** envp) {
     return unittest::Suite::run(std::vector<std::string>(), "", 1);
 }
 
-void mongo::unittest::onCurrentTestNameChange(const std::string& testName) {}
-
 namespace mongo {
 namespace {
 
