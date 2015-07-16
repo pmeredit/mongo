@@ -40,6 +40,9 @@ SymmetricKey::SymmetricKey(const uint8_t* key, size_t keySize, uint32_t algorith
     memcpy(_key.get(), key, _keySize);
 }
 
+SymmetricKey::SymmetricKey(std::unique_ptr<uint8_t[]> key, size_t keySize, uint32_t algorithm)
+    : _algorithm(algorithm), _keySize(keySize), _key(std::move(key)) {}
+
 SymmetricKey::SymmetricKey(SymmetricKey&& sk)
     : _algorithm(sk._algorithm), _keySize(sk._keySize), _key(std::move(sk._key)) {}
 

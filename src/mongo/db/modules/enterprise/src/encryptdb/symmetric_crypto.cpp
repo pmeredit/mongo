@@ -8,11 +8,26 @@
 
 #include <openssl/evp.h>
 
+#include "mongo/base/init.h"
+#include "mongo/base/status.h"
+#include "mongo/platform/random.h"
+#include "mongo/stdx/memory.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/mongoutils/str.h"
 #include "mongo/util/net/ssl_manager.h"
 
+#include "symmetric_key.h"
+
 namespace mongo {
 namespace crypto {
+namespace {
+std::unique_ptr<SecureRandom> random;
+}  // namespace
+
+MONGO_INITIALIZER(CreateKeyEntropySource)(InitializerContext* context) {
+    random = std::unique_ptr<SecureRandom>(SecureRandom::create());
+    return Status::OK();
+}
 
 Status aesEncrypt(const uint8_t* in,
                   size_t inLen,
@@ -129,5 +144,21 @@ Status aesDecrypt(const uint8_t* in,
     *outLen = len + extraLen;
     return Status::OK();
 }
+
+SymmetricKey aesGenerate(size_t keySize) {
+    invariant(keySize == sym128KeySize || keySize == sym256KeySize);
+
+    std::unique_ptr<std::uint8_t[]> keyArray = stdx::make_unique<std::uint8_t[]>(keySize);
+
+    size_t offset = 0;
+    while (offset < keySize) {
+        std::uint64_t randomValue = random->nextInt64();
+        memcpy(keyArray.get() + offset, &randomValue, sizeof(randomValue));
+        offset += sizeof(randomValue);
+    }
+
+    return SymmetricKey(std::move(keyArray), keySize, aesAlgorithm);
+}
+
 }  // namespace crypto
 }  // namespace mongo

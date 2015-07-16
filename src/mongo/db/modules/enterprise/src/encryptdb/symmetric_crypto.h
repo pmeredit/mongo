@@ -6,9 +6,11 @@
 
 #include <cstdint>
 
-#include "mongo/base/status.h"
-
 namespace mongo {
+
+class Status;
+class SymmetricKey;
+
 namespace crypto {
 
 /**
@@ -19,15 +21,15 @@ const uint8_t aesAlgorithm = 0x1;
 /**
  * Block and key sizes
  */
-const size_t aesBlockSize = 16;
-const size_t sym128KeySize = 16;
-const size_t sym256KeySize = 32;
+const std::size_t aesBlockSize = 16;
+const std::size_t sym128KeySize = 16;
+const std::size_t sym256KeySize = 32;
 
 /**
  * Min and max symmetric key lengths
  */
-const size_t minKeySize = 16;
-const size_t maxKeySize = 32;
+const std::size_t minKeySize = 16;
+const std::size_t maxKeySize = 32;
 
 /**
  * Encryption mode identifiers
@@ -43,13 +45,13 @@ const uint8_t gcmMode = 0x20;
  * resulting length of the encrypted buffer.
  */
 Status aesEncrypt(const uint8_t* in,
-                  size_t inLen,
+                  std::size_t inLen,
                   const uint8_t* key,
-                  size_t keySize,
+                  std::size_t keySize,
                   int mode,
                   const uint8_t* iv,
                   uint8_t* out,
-                  size_t* outLen);
+                  std::size_t* outLen);
 
 /**
  * Decrypts the plaintext 'in' using AES with 'key' and block size 'keySize'
@@ -59,13 +61,18 @@ Status aesEncrypt(const uint8_t* in,
  * resulting length of the decrypted buffer.
  */
 Status aesDecrypt(const uint8_t* in,
-                  size_t inLen,
+                  std::size_t inLen,
                   const uint8_t* key,
-                  size_t keySize,
+                  std::size_t keySize,
                   int mode,
                   const uint8_t* iv,
                   uint8_t* out,
-                  size_t* outLen);
+                  std::size_t* outLen);
+
+/**
+ * Generates a new, random, symmetric key for use with AES.
+ */
+SymmetricKey aesGenerate(std::size_t keySize);
 
 }  // namespace crypto
 }  // namespace mongo

@@ -21,8 +21,7 @@ class SymmetricKey {
 
 public:
     SymmetricKey(const uint8_t* key, size_t keySize, uint32_t algorithm);
-
-    SymmetricKey();
+    SymmetricKey(std::unique_ptr<uint8_t[]> key, size_t keySize, uint32_t algorithm);
 
     SymmetricKey(SymmetricKey&&);
     SymmetricKey& operator=(SymmetricKey&&);
