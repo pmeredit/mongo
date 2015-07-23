@@ -115,7 +115,7 @@ env.CppUnitTest('sasl_authentication_session_test',
                 LIBDEPS=['mongosaslserversession',
                          'mongosaslservercommon',
                          '$BUILD_DIR/mongo/client/clientdriver',
-                         '$BUILD_DIR/mongo/client/cyrus_sasl_client_session',
+                         '$BUILD_DIR/mongo/client/sasl_client',
                          '$BUILD_DIR/mongo/base',
                          '$BUILD_DIR/mongo/util/net/network',
                          '$BUILD_DIR/mongo/db/auth/authcore',
@@ -148,7 +148,7 @@ else:
                                        '$BUILD_DIR/mongo/db/auth/authcore',
                                        '$BUILD_DIR/mongo/db/auth/saslauth',
                                        '$BUILD_DIR/mongo/client/clientdriver',
-                                       '$BUILD_DIR/mongo/client/cyrus_sasl_client_session',
+                                       '$BUILD_DIR/mongo/client/sasl_client',
                                        '$BUILD_DIR/mongo/unittest/unittest',
                                        '$BUILD_DIR/mongo/unittest/unittest_crutch'])
     env.RegisterUnitTest(gssapi_test[0])
