@@ -46,6 +46,11 @@ Status aesEncrypt(const uint8_t* in,
     std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)> encryptCtx(EVP_CIPHER_CTX_new(),
                                                                                EVP_CIPHER_CTX_free);
 
+    if (!encryptCtx.get()) {
+        return Status(ErrorCodes::UnknownError,
+                      str::stream() << getSSLManager()->getSSLErrorMessage(ERR_get_error()));
+    }
+
     if (1 != EVP_EncryptInit_ex(encryptCtx.get(), cipher, nullptr, key, iv)) {
         return Status(ErrorCodes::UnknownError,
                       str::stream() << getSSLManager()->getSSLErrorMessage(ERR_get_error()));
@@ -99,6 +104,11 @@ Status aesDecrypt(const uint8_t* in,
     std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)> decryptCtx(EVP_CIPHER_CTX_new(),
                                                                                EVP_CIPHER_CTX_free);
 
+    if (!decryptCtx.get()) {
+        return Status(ErrorCodes::UnknownError,
+                      str::stream() << getSSLManager()->getSSLErrorMessage(ERR_get_error()));
+    }
+    
     if (1 != EVP_DecryptInit_ex(decryptCtx.get(), cipher, nullptr, key, iv)) {
         return Status(ErrorCodes::UnknownError,
                       str::stream() << getSSLManager()->getSSLErrorMessage(ERR_get_error()));
