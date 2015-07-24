@@ -1,9 +1,15 @@
 (function () {
     'use strict';
 
-    var ekfValid1 = "src/mongo/db/modules/enterprise/jstests/libs/ekf";
-    var ekfValid2 = "src/mongo/db/modules/enterprise/jstests/libs/ekf2";
-    var ekfInvalid = "src/mongo/db/modules/enterprise/jstests/libs/badekf";
+    var assetsPath = "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/"
+
+    var ekfValid1 = assetsPath + "ekf";
+    var ekfValid2 = assetsPath + "ekf2";
+    var ekfInvalid = assetsPath + "badekf";
+
+    run("chmod", "600", ekfValid1);
+    run("chmod", "600", ekfValid2);
+    run("chmod", "600", ekfInvalid);
 
     var md1 = MongoRunner.runMongod({enableEncryption: "", encryptionKeyFile: ekfInvalid});
     assert.eq(null, md1, "Possible to start mongodb with an invalid encryption key file.");
