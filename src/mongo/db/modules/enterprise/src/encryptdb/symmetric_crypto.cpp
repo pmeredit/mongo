@@ -123,7 +123,7 @@ Status aesDecrypt(const uint8_t* in,
         return Status(ErrorCodes::UnknownError,
                       str::stream() << getSSLManager()->getSSLErrorMessage(ERR_get_error()));
     }
-    
+
     if (1 != EVP_DecryptInit_ex(decryptCtx.get(), cipher, nullptr, key, iv)) {
         return Status(ErrorCodes::UnknownError,
                       str::stream() << getSSLManager()->getSSLErrorMessage(ERR_get_error()));
