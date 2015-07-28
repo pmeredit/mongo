@@ -29,7 +29,7 @@ env.Library('audit',
              ],
             LIBDEPS=['$BUILD_DIR/mongo/base',
                      '$BUILD_DIR/mongo/db/auth/authcore'],
-            LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/db/${LIBPREFIX}coredb${LIBSUFFIX}'])
+            LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/db/coredb'])
 
 env.Library(
     target=[
@@ -39,8 +39,8 @@ env.Library(
         'src/audit/audit_metadata_hook_s.cpp'
     ],
     LIBDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/s/${LIBPREFIX}mongoscore${LIBSUFFIX}',
-        '$BUILD_DIR/mongo/s/${LIBPREFIX}coreshard${LIBSUFFIX}',
+        '$BUILD_DIR/mongo/s/mongoscore',
+        '$BUILD_DIR/mongo/s/coreshard',
     ],
 )
 
@@ -56,7 +56,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/auth/authcore',
     ],
     LIBDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/rpc/${LIBPREFIX}metadata${LIBSUFFIX}',
+        '$BUILD_DIR/mongo/rpc/metadata',
     ],
 )
 
@@ -83,8 +83,8 @@ env.CppUnitTest(
 env.Library('audit_configuration',
             'src/audit/audit_options_init.cpp',
             LIBDEPS=['audit'],
-            LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/${PROGPREFIX}mongod${PROGSUFFIX}',
-                                '$BUILD_DIR/mongo/${PROGPREFIX}mongos${PROGSUFFIX}'])
+            PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongod',
+                                 '$BUILD_DIR/mongo/mongos'])
 
 env.Library('mongosnmp',
             ['src/snmp/serverstatus_client.cpp',
@@ -92,7 +92,7 @@ env.Library('mongosnmp',
              'src/snmp/snmp_oid.cpp',
              'src/snmp/snmp_options.cpp'
              ],
-            LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/${PROGPREFIX}mongod${PROGSUFFIX}'],
+            PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongod'],
             SYSLIBDEPS=env.get('SNMP_SYSLIBDEPS', []))
 
 env.Library('mongosaslserversession',
@@ -107,8 +107,8 @@ env.Library('mongosaslserversession',
 env.Library('mongosaslservercommon',
             'src/sasl/cyrus_sasl_authentication_session.cpp',
             LIBDEPS=['mongosaslserversession'],
-            LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/${PROGPREFIX}mongod${PROGSUFFIX}',
-                                '$BUILD_DIR/mongo/${PROGPREFIX}mongos${PROGSUFFIX}'])
+            PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongod',
+                                 '$BUILD_DIR/mongo/mongos'])
 
 env.CppUnitTest('sasl_authentication_session_test',
                 ['src/sasl/sasl_authentication_session_test.cpp'],

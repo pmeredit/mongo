@@ -14,8 +14,8 @@ env.Library(target='encryption_key_manager_init',
             LIBDEPS=[
                 'encryptdb',
             ],
-            LIBDEPS_DEPENDENTS=[
-                '$BUILD_DIR/mongo/${PROGPREFIX}mongod${PROGSUFFIX}'
+            PROGDEPS_DEPENDENTS=[
+                '$BUILD_DIR/mongo/mongod'
             ])
 
 wtEnv.Library(target='encryptdb',
