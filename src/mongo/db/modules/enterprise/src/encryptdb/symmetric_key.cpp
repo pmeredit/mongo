@@ -10,26 +10,11 @@
 
 #include <cstring>
 
-#include "mongo/util/mongoutils/str.h"
 #include "mongo/util/log.h"
+#include "mongo/util/mongoutils/str.h"
+#include "mongo/util/secure_zero_memory.h"
 
 namespace mongo {
-namespace {
-void zeroMemory(void* mem, size_t num) {
-#if defined(_WIN32)
-    SecureZeroMemory(mem, num);
-#else
-    // TODO: Use C++ 11 memset_s on platforms where it is supported
-
-    // fall back to using volatile pointer
-    volatile char* p = reinterpret_cast<volatile char*>(mem);
-    while (num--) {
-        *p++ = 0;
-    }
-#endif
-}
-}  // namespace
-
 SymmetricKey::SymmetricKey(const uint8_t* key, size_t keySize, uint32_t algorithm)
     : _algorithm(algorithm), _keySize(keySize) {
     if (_keySize < crypto::minKeySize || _keySize > crypto::maxKeySize) {
@@ -55,6 +40,8 @@ SymmetricKey& SymmetricKey::operator=(SymmetricKey&& sk) {
 }
 
 SymmetricKey::~SymmetricKey() {
-    zeroMemory(_key.get(), _keySize);
+    if (_key) {
+        secureZeroMemory(_key.get(), _keySize);
+    }
 }
 }  // namespace mongo
