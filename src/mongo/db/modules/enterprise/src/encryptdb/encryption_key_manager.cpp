@@ -157,10 +157,12 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getKeyFromKMIPS
     sslKMIPParams.sslCAFile = _encryptionParams->kmipServerCAFile;
 
     // Copy the rest from the global SSL manager options.
-    sslKMIPParams.sslCRLFile = _sslParams->sslCRLFile;
-    sslKMIPParams.sslAllowInvalidCertificates = _sslParams->sslAllowInvalidCertificates;
-    sslKMIPParams.sslAllowInvalidHostnames = _sslParams->sslAllowInvalidHostnames;
     sslKMIPParams.sslFIPSMode = _sslParams->sslFIPSMode;
+
+    // KMIP servers never should have invalid certificates
+    sslKMIPParams.sslAllowInvalidCertificates = false;
+    sslKMIPParams.sslAllowInvalidHostnames = false;
+    sslKMIPParams.sslCRLFile = "";
 
     KMIPService kmipService(
         HostAndPort(_encryptionParams->kmipServerName, _encryptionParams->kmipPort), sslKMIPParams);
