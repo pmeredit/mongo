@@ -276,10 +276,15 @@ public:
         return stdx::make_unique<RlpFTSTokenizer>(std::move(handle));
     }
 
+    const FTSPhraseMatcher& getPhraseMatcher() const final {
+        return _basicPhraseMatcher;
+    }
+
 private:
     const BT_LanguageID _language;
     const StringData _context;
     RlpEnvironment* _rlpEnvironment;
+    BasicFTSPhraseMatcher _basicPhraseMatcher;
 };
 
 MONGO_FTS_RLP_LANGUAGE_LIST(LANGUAGE_DECL);
