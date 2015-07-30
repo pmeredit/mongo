@@ -61,7 +61,7 @@ vector<string> tokenizeString(const char* str, const char* language) {
 
     std::unique_ptr<FTSTokenizer> tokenizer(swl.getValue()->createTokenizer());
 
-    tokenizer->reset(str, FTSTokenizer::None);
+    tokenizer->reset(str, FTSTokenizer::kNone);
 
     vector<string> terms;
 

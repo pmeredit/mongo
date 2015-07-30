@@ -40,7 +40,7 @@ void RlpFTSTokenizer::reset(StringData document, Options options) {
 bool RlpFTSTokenizer::moveNext() {
     while (_iterator.next()) {
         // Skip stop words
-        if ((_options & FTSTokenizer::FilterStopWords) && _iterator.isStopWord())
+        if ((_options & FTSTokenizer::kFilterStopWords) && _iterator.isStopWord())
             continue;
 
         // Arabic, Persian, & Urdu Language Analyzer returns STEM
@@ -56,7 +56,7 @@ bool RlpFTSTokenizer::moveNext() {
         // Fallback to TOKEN
         // Or simply choose TOKEN when we want Case Sensitive tokens
         if ((stem == nullptr) || (stem[0] == L'\0') ||
-            (_options & FTSTokenizer::GenerateCaseSensitiveTokens)) {
+            (_options & FTSTokenizer::kGenerateCaseSensitiveTokens)) {
             stem = _iterator.getToken();
         }
 
