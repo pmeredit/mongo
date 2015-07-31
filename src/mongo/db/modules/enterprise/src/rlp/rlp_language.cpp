@@ -95,7 +95,7 @@ namespace {
 // instance
 //
 #define LANGUAGE_DECL(id, name, aliases, language_id, context) \
-    RlpFTSLanguage language##id(language_id, context);
+    RlpFTSLanguage language##id(language_id, context, name);
 
 // Registers each language and language aliases in the language map if the user has a license
 // for the language
@@ -263,8 +263,11 @@ const char kBasicContext[] =
  */
 class RlpFTSLanguage : public FTSLanguage {
 public:
-    RlpFTSLanguage(BT_LanguageID language, StringData context)
-        : _language(language), _context(context), _rlpEnvironment(nullptr) {}
+    RlpFTSLanguage(BT_LanguageID language, StringData context, const std::string& languageName)
+        : _language(language),
+          _context(context),
+          _rlpEnvironment(nullptr),
+          _unicodePhraseMatcher(languageName) {}
 
     void registerEnvironment(RlpEnvironment* rlpEnvironment) {
         _rlpEnvironment = rlpEnvironment;
@@ -277,14 +280,15 @@ public:
     }
 
     const FTSPhraseMatcher& getPhraseMatcher() const final {
-        return _basicPhraseMatcher;
+        return _unicodePhraseMatcher;
     }
 
 private:
     const BT_LanguageID _language;
     const StringData _context;
     RlpEnvironment* _rlpEnvironment;
-    BasicFTSPhraseMatcher _basicPhraseMatcher;
+
+    UnicodeFTSPhraseMatcher _unicodePhraseMatcher;
 };
 
 MONGO_FTS_RLP_LANGUAGE_LIST(LANGUAGE_DECL);
@@ -308,10 +312,10 @@ bool registerRlpLanguage(RlpEnvironment* rlpEnvironment,
 
     language->registerEnvironment(rlpEnvironment);
 
-    FTSLanguage::registerLanguage(languageName, TEXT_INDEX_VERSION_2, language);
+    FTSLanguage::registerLanguage(languageName, TEXT_INDEX_VERSION_3, language);
 
     for (auto it = aliases.cbegin(); it != aliases.cend(); it++) {
-        FTSLanguage::registerLanguageAlias(language, *it, TEXT_INDEX_VERSION_2);
+        FTSLanguage::registerLanguageAlias(language, *it, TEXT_INDEX_VERSION_3);
     }
 
     return true;

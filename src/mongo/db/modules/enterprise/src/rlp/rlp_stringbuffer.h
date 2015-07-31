@@ -33,7 +33,7 @@ public:
     /**
      * Store a UTF-8 version of the UTF-16 string parameter
      */
-    void assign(const BT_Char16* str, size_t len);
+    void assign(const BT_Char16* str, size_t len, bool removeDiacritics);
 
     /**
      * Accesses the result of the conversion in assign.

@@ -15,6 +15,9 @@ if GetOption("rlp") == "on":
             'rlp_token_iterator_factory.cpp',
             'rlp_tokenizer.cpp',
         ],
+        LIBDEPS=[
+            '$BUILD_DIR/mongo/db/fts/unicode/unicode'
+        ],
         PROGDEPS_DEPENDENTS=[
             '$BUILD_DIR/mongo/mongod'
         ])

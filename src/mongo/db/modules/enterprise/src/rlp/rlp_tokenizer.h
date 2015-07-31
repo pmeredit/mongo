@@ -16,6 +16,12 @@ namespace mongo {
 namespace fts {
 
 /**
+ * Helper method to convert a given UTF-16 character or surrogate pair to its Unicode codepoint
+ * value.
+ */
+char32_t utf16ToCodepoint(const BT_Char16* stem, size_t len);
+
+/**
  * RlpFTSTokenizer
  *
  * Implements an FTSTokenizer using RLPTokenIterator from the

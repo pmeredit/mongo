@@ -8,12 +8,13 @@
 
 #include <algorithm>
 
+#include "mongo/db/fts/unicode/string.h"
 #include "rlp_environment.h"
 
 namespace mongo {
 namespace fts {
 
-void RlpStringBuffer::assign(const BT_Char16* str, size_t len) {
+void RlpStringBuffer::assign(const BT_Char16* str, size_t len, bool removeDiacritics) {
     if (str == nullptr) {
         _stringData = StringData();
         return;
@@ -28,7 +29,22 @@ void RlpStringBuffer::assign(const BT_Char16* str, size_t len) {
             _dynamicBuf.data(), _dynamicBuf.size(), str, len, &truncated);
 
         if (!truncated) {
-            _stringData = StringData(_dynamicBuf.data(), written);
+            // TODO: Add a constructor for unicode::String that takes UTF-16 as input to avoid
+            // conversions and buffer copying.
+            if (removeDiacritics) {
+                // Add a null terminator so the buffer can be converted to a unicode string for
+                // removing diacritics.
+                if (_dynamicBuf.size() == written) {
+                    _dynamicBuf.push_back(0);
+                } else {
+                    _dynamicBuf[written] = 0;
+                }
+
+                _stringData =
+                    StringData(unicode::String(_dynamicBuf.data()).removeDiacritics().toString());
+            } else {
+                _stringData = StringData(_dynamicBuf.data(), written);
+            }
             return;
         }
 
