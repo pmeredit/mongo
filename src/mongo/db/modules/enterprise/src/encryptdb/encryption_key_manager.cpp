@@ -25,25 +25,90 @@
 #include "mongo/db/service_context.h"
 #include "mongo/db/storage_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_customization_hooks.h"
+#include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/base64.h"
 #include "mongo/util/log.h"
+#include "mongo/util/scopeguard.h"
 #include "mongo/util/net/ssl_manager.h"
 #include "mongo/util/net/ssl_options.h"
+#include "symmetric_crypto.h"
 
 namespace mongo {
+namespace {
+
+const std::string kMetadataBasename = "storage.bson";
+const std::string kKeyStorageTableName = "table:keystore";
+const std::string kEncryptionEntrypointConfig =
+    "extensions=[local=(entry=mongo_addWiredTigerEncryptors)],";
+const std::string kSystemKeyId = ".system";
+const std::string kMasterKeyId = ".master";
+
+void closeWTCursorAndSession(WT_CURSOR* cursor) {
+    WT_SESSION* session = cursor->session;
+    invariantWTOK(cursor->close(cursor));
+    invariantWTOK(session->close(session, nullptr));
+}
+
+int keystore_handle_error(WT_EVENT_HANDLER* handler,
+                          WT_SESSION* session,
+                          int errorCode,
+                          const char* message) {
+    try {
+        error() << "WiredTiger keystore (" << errorCode << ") " << message;
+        fassert(4051, errorCode != WT_PANIC);
+    } catch (...) {
+        std::terminate();
+    }
+    return 0;
+}
+
+int keystore_handle_message(WT_EVENT_HANDLER* handler, WT_SESSION* session, const char* message) {
+    try {
+        log() << "WiredTiger keystore " << message;
+    } catch (...) {
+        std::terminate();
+    }
+    return 0;
+}
+
+int keystore_handle_progress(WT_EVENT_HANDLER* handler,
+                             WT_SESSION* session,
+                             const char* operation,
+                             uint64_t progress) {
+    try {
+        log() << "WiredTiger keystore progress " << operation << " " << progress;
+    } catch (...) {
+        std::terminate();
+    }
+    return 0;
+}
+
+WT_EVENT_HANDLER keystoreEventHandlers() {
+    WT_EVENT_HANDLER handlers = {};
+    handlers.handle_error = keystore_handle_error;
+    handlers.handle_message = keystore_handle_message;
+    handlers.handle_progress = keystore_handle_progress;
+    return handlers;
+}
+}  // namespace
 
 EncryptionKeyManager::EncryptionKeyManager(const std::string& dbPath,
                                            EncryptionGlobalParams* encryptionParams,
                                            SSLParams* sslParams)
-    : _initialized(false),
-      _dbPath(dbPath),
+    : _dbPath(dbPath),
+      _localKeyStoreInitialized(false),
+      _keyStorageConnection(nullptr),
+      _keyStorageEventHandler(keystoreEventHandlers()),
       _encryptionParams(encryptionParams),
       _sslParams(sslParams) {}
 
-static const std::string keyIdNamespaceName = "local.system.keyids";
-static const std::string kMetadataBasename = "storage.bson";
+EncryptionKeyManager::~EncryptionKeyManager() {
+    if (_keyStorageConnection != nullptr) {
+        _keyStorageConnection->close(_keyStorageConnection, nullptr);
+    }
+}
 
 EncryptionKeyManager* EncryptionKeyManager::get(ServiceContext* service) {
     EncryptionKeyManager* globalKeyManager =
@@ -54,56 +119,85 @@ EncryptionKeyManager* EncryptionKeyManager::get(ServiceContext* service) {
 
 void EncryptionKeyManager::appendUID(BSONObjBuilder* builder) {
     BSONObjBuilder sub(builder->subobjStart("encryption"));
-    sub.append("keyUID", _systemKeyId);
+    sub.append("keyUID", _kmipMasterKeyId);
     sub.done();
 }
 
-std::string EncryptionKeyManager::getOpenConfig(StringData tableName) {
+std::string EncryptionKeyManager::getOpenConfig(StringData ns) {
     std::string config;
 
-    // Metadata implies that the call is to configure wiredtiger_open.
-    if (tableName == "metadata") {
-        config += "extensions=[local=(entry=mongo_addWiredTigerEncryptors)],";
+    // The keyId system implies that the call is to configure wiredtiger_open for the regular data
+    // store.
+    if (ns == "system") {
+        config += kEncryptionEntrypointConfig;
     }
 
-    /**
-     * TODO: Currently using the system key for all tables.
-     * It looks like we'll be able to feed the actual collection name
-     * to this function so we can use it to determine the keyid straight off
-     * for a multikey scenario.
-     */
-    config += "encryption=(name=aes,keyid=system),";
+    // Internal metadata WT tables such as sizeStorer and _mdb_catalog are identified by not having
+    // a '.' separated name that distinguishes a "normal namespace during collection or index
+    // creation.
+    //
+    // Canonicalize the tables names into a conflict free set of "database ids" by prefixing special
+    // WT table names with '.' and use ".system" for the internal WT tables.
+    std::size_t dotIndex = ns.find(".");
+    std::string keyId;
+    if (dotIndex == std::string::npos) {
+        keyId = kSystemKeyId;
+    } else {
+        keyId = ns.substr(0, dotIndex).toString();
+    }
+
+    config += "encryption=(name=aes,keyid=\"" + keyId + "\"),";
     return config;
 }
 
-StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::getKey(const std::string& keyID) {
-    /**
-     * TODO: This method is currently hardcoded to return the system key regardless
-     * of which key id was asked for. In the multikey scenario we will retrieve the
-     * correct key from the key database instead of copying the system key.
-     */
-    if (!_initialized) {
-        Status status = _acquireSystemKey();
+// The local key store database and the corresponding keys are created lazily as they are requested,
+// but are persisted to disk. All keys except the master key is stored in the local key store. The
+// master key is acquired from the configured external source.
+//
+// The only current caller of getKey is WT_ENCRYPTOR::customize with the keyId provided in the
+// callback.
+StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::getKey(const std::string& keyId) {
+    if (!_localKeyStoreInitialized) {
+        Status status = _initLocalKeyStore();
         if (!status.isOK()) {
             return status;
         }
-
-        _initialized = true;
-        if (!_systemKeyId.empty()) {
-            log() << "Encryption key manager initialized using system key with id: "
-                  << _systemKeyId;
-        } else {
-            log() << "Encryption key manager initialized with key file: "
-                  << _encryptionParams->encryptionKeyFile;
-        }
+    }
+    if (keyId == kMasterKeyId) {
+        return _acquireMasterKey();
     }
 
-    // TODO: This is an intentional hack to avoid implementing an undesired
-    // copy constructor for SymmetricKey. This will be removed when the proper
-    // keys are returned from this method.
-    return stdx::make_unique<SymmetricKey>(_systemKey.get()->getKey(),
-                                           _systemKey.get()->getKeySize(),
-                                           _systemKey.get()->getAlgorithm());
+    // Look for the requested key in the local key store. Assume that the local key store has been
+    // created and that open_session and open_cursor will succeed.
+    WT_SESSION* session;
+    invariantWTOK(
+        _keyStorageConnection->open_session(_keyStorageConnection, nullptr, nullptr, &session));
+
+    WT_CURSOR* cursor;
+    invariantWTOK(
+        session->open_cursor(session, kKeyStorageTableName.c_str(), nullptr, nullptr, &cursor));
+
+    ON_BLOCK_EXIT(closeWTCursorAndSession, cursor);
+
+    WT_ITEM key;
+    cursor->set_key(cursor, keyId.c_str());
+    int ret = cursor->search(cursor);
+    if (ret == 0) {
+        // The key already exists so return it.
+        uint32_t keyStatus;
+        invariantWTOK(cursor->get_value(cursor, &key, &keyStatus));
+        return stdx::make_unique<SymmetricKey>(
+            reinterpret_cast<const uint8_t*>(key.data), key.size, crypto::aesAlgorithm);
+    }
+
+    // There is no key corresponding to keyId yet so create one
+    auto symmetricKey = stdx::make_unique<SymmetricKey>(crypto::aesGenerate(crypto::sym256KeySize));
+    key.data = symmetricKey.get()->getKey();
+    key.size = symmetricKey.get()->getKeySize();
+    cursor->set_value(cursor, &key, 0);
+    invariantWTOK(cursor->insert(cursor));
+
+    return std::move(symmetricKey);
 }
 
 StatusWith<std::string> EncryptionKeyManager::_getKeyUIDFromMetadata() {
@@ -168,8 +262,8 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getKeyFromKMIPS
         HostAndPort(_encryptionParams->kmipServerName, _encryptionParams->kmipPort), sslKMIPParams);
 
     // Try to retrieve an existing key.
-    if (!_systemKeyId.empty()) {
-        return kmipService.getExternalKey(_systemKeyId);
+    if (!_kmipMasterKeyId.empty()) {
+        return kmipService.getExternalKey(_kmipMasterKeyId);
     }
 
     // Create and retrieve new key.
@@ -177,9 +271,9 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getKeyFromKMIPS
     if (!swCreateKey.isOK()) {
         return swCreateKey.getStatus();
     }
-    _systemKeyId = swCreateKey.getValue();
-    log() << "Created KMIP key with id: " << _systemKeyId;
-    return kmipService.getExternalKey(_systemKeyId);
+    _kmipMasterKeyId = swCreateKey.getValue();
+    log() << "Created KMIP key with id: " << _kmipMasterKeyId;
+    return kmipService.getExternalKey(_kmipMasterKeyId);
 }
 
 StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getKeyFromKeyFile() {
@@ -210,10 +304,7 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getKeyFromKeyFi
     return stdx::make_unique<SymmetricKey>(keyData, keyLength, crypto::aesAlgorithm);
 }
 
-Status EncryptionKeyManager::_acquireSystemKey() {
-    // TODO: Implement support for multiple key provision mechanism.
-
-
+StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_acquireMasterKey() {
     // Get key id from metadata. If storage.bson exists and does not
     // contain a key id element return error.
     auto swStoredKeyId = _getKeyUIDFromMetadata();
@@ -238,8 +329,10 @@ Status EncryptionKeyManager::_acquireSystemKey() {
         if (!keyFileSystemKey.isOK()) {
             return keyFileSystemKey.getStatus();
         }
-        _systemKey = std::move(keyFileSystemKey.getValue());
-        return Status::OK();
+
+        log() << "Encryption key manager initialized with key file: "
+              << _encryptionParams->encryptionKeyFile;
+        return std::move(keyFileSystemKey.getValue());
     }
 
     if (swStoredKeyId.isOK()) {
@@ -259,20 +352,84 @@ Status EncryptionKeyManager::_acquireSystemKey() {
         }
     }
 
-    // The _systemKeyId will be written to the metadata by the general WT metadata management.
+    // The _kmipMasterKeyId will be written to the metadata by the general WT metadata management.
     if (storedKeyId.empty()) {
-        _systemKeyId = _encryptionParams->kmipKeyIdentifier;
+        _kmipMasterKeyId = _encryptionParams->kmipKeyIdentifier;
     } else {
-        _systemKeyId = storedKeyId;
+        _kmipMasterKeyId = storedKeyId;
     }
 
     // Retrieve the key from the KMIP server. The key is created if it does not already exist.
-    StatusWith<std::unique_ptr<SymmetricKey>> swSystemKey = _getKeyFromKMIPServer();
-    if (!swSystemKey.isOK()) {
-        return swSystemKey.getStatus();
+    StatusWith<std::unique_ptr<SymmetricKey>> swMasterKey = _getKeyFromKMIPServer();
+    if (!swMasterKey.isOK()) {
+        return swMasterKey.getStatus();
     }
 
-    _systemKey = std::move(swSystemKey.getValue());
+    log() << "Encryption key manager initialized using KMIP key with id: " << _kmipMasterKeyId;
+    return std::move(swMasterKey.getValue());
+}
+
+Status EncryptionKeyManager::_initLocalKeyStore() {
+    // Create the local key store directory, named .local for key file master keys and
+    // '.' || masterKeyId for KMIP keys.
+    std::string keyStoragePath = _dbPath + "/";
+    if (_kmipMasterKeyId.empty()) {
+        keyStoragePath += ".local";
+    } else {
+        keyStoragePath += "." + _kmipMasterKeyId;
+    }
+
+    if (!boost::filesystem::exists(keyStoragePath)) {
+        try {
+            boost::filesystem::create_directory(keyStoragePath);
+        } catch (const std::exception& e) {
+            return Status(ErrorCodes::BadValue,
+                          str::stream() << "error creating path " << keyStoragePath << ' '
+                                        << e.what());
+        }
+    }
+
+    // Create the local WT key store
+    std::string keyStorageEncryptionConfig = "encryption=(name=aes,keyid=" + kMasterKeyId + "),";
+    std::string wtConfig = "create,";
+    wtConfig += "log=(enabled,file_max=3MB),transaction_sync=(enabled=true,method=fsync),";
+    wtConfig += kEncryptionEntrypointConfig;
+    wtConfig += keyStorageEncryptionConfig;
+
+    // The _localKeyStoreInitialized needs to be set before calling wiredtiger_open since that call
+    // eventually will result in a call to getKey for the ".system" key at which point we don't want
+    // to call _initLocalKeyStore recursively.
+    _localKeyStoreInitialized = true;
+    int ret = wiredtiger_open(
+        keyStoragePath.c_str(), &_keyStorageEventHandler, wtConfig.c_str(), &_keyStorageConnection);
+    if (ret != 0) {
+        return wtRCToStatus(ret);
+    }
+
+    WT_SESSION* session;
+    invariantWTOK(
+        _keyStorageConnection->open_session(_keyStorageConnection, nullptr, nullptr, &session));
+
+    // Check if the key store table:encryptionkeys already exists.
+    WT_CURSOR* cursor;
+    if ((ret = session->open_cursor(
+             session, kKeyStorageTableName.c_str(), nullptr, nullptr, &cursor)) == 0) {
+        closeWTCursorAndSession(cursor);
+        return Status::OK();
+    }
+
+    // Create a new WT key storage with the following schema:
+    //
+    // S: database name, null-terminated string.
+    // u: key material, raw byte array stored as a WT_ITEM.
+    // l: key status, currently not used but set to 0.
+    std::string sessionConfig =
+        keyStorageEncryptionConfig + "key_format=S,value_format=uL,columns=(keyid,key,keystatus)";
+
+    invariantWTOK(session->create(session, kKeyStorageTableName.c_str(), sessionConfig.c_str()));
+    invariantWTOK(session->checkpoint(session, nullptr));
+    invariantWTOK(session->close(session, nullptr));
+
     return Status::OK();
 }
 }  // namespace mongo

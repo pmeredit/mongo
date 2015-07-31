@@ -7,7 +7,7 @@ if wiredtiger:
     wtEnv.InjectThirdPartyIncludePaths(libraries=['wiredtiger'])
     wtEnv.InjectThirdPartyIncludePaths(libraries=['wiredtiger_ext'])
 
-env.Library(target='encryption_key_manager_init',
+wtEnv.Library(target='encryption_key_manager_init',
             source=[
                 'encryption_key_manager_init.cpp',
             ],

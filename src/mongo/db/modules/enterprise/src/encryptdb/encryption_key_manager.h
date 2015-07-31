@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <wiredtiger.h>
+
 #include "kmip_service.h"
 #include "mongo/base/disallow_copying.h"
 #include "mongo/db/namespace_string.h"
@@ -35,35 +37,36 @@ public:
                          EncryptionGlobalParams* encryptionParams,
                          SSLParams* sslParams);
 
-    ~EncryptionKeyManager() override = default;
+    ~EncryptionKeyManager() override;
 
     /**
      * Get the key manager from a service context.
      */
     static EncryptionKeyManager* get(ServiceContext* service);
 
+    /**
+     * Methods overriding the customization hooks base class
+     */
     void appendUID(BSONObjBuilder* builder) override;
 
-    std::string getOpenConfig(StringData tableName) override;
+    std::string getOpenConfig(StringData ns) override;
 
     /**
      * Takes in a key identifier and returns a unique_ptr to the
      * associated encryption key for that keyID.
      */
-    virtual StatusWith<std::unique_ptr<SymmetricKey>> getKey(const std::string& keyID);
-
-    /**
-     * Removes a key for a database that is being dropped. Responsible for removing the
-     * relevant data from local.sys.keyids and storage engine metadata.
-     * TODO: Implement together with multikey support
-     */
-    Status removeKey(const std::string& dbname);
+    virtual StatusWith<std::unique_ptr<SymmetricKey>> getKey(const std::string& keyId);
 
 private:
     /**
-     * Acquires the system key from the key management system.
+     * Acquires the master key from the key management system.
      */
-    Status _acquireSystemKey();
+    StatusWith<std::unique_ptr<SymmetricKey>> _acquireMasterKey();
+
+    /**
+     * Open a connection to the local key database
+     */
+    Status _initLocalKeyStore();
 
     /**
      * Acquires the system key from a KMIP server specifically.
@@ -76,14 +79,9 @@ private:
     StatusWith<std::unique_ptr<SymmetricKey>> _getKeyFromKeyFile();
 
     /**
-     * Reads the systemKey UID from storage.bson.
+     * Reads the masterKey UID from storage.bson.
      */
     StatusWith<std::string> _getKeyUIDFromMetadata();
-
-    /**
-     * Flag indicating if the key manager has been initialized yet.
-     */
-    bool _initialized;
 
     /**
      * Taken from global storage parameters -- the dbpath directory.
@@ -93,12 +91,23 @@ private:
     /**
      * The master system key, provided via KMIP or a keyfile.
      */
-    std::unique_ptr<SymmetricKey> _systemKey;
+    std::unique_ptr<SymmetricKey> _masterKey;
 
     /**
      * The id of the master system key.
      */
-    std::string _systemKeyId;
+    std::string _kmipMasterKeyId;
+
+    /**
+     * Flag set when the local key store has been initialized.
+     */
+    bool _localKeyStoreInitialized;
+
+    /**
+     * Management of the local WiredTiger key store.
+     */
+    WT_CONNECTION* _keyStorageConnection;
+    WT_EVENT_HANDLER _keyStorageEventHandler;
 
     /**
      * Pointer to the encryption parameters to use.
