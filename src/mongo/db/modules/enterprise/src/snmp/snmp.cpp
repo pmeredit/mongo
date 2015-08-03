@@ -296,16 +296,20 @@ public:
 
         v.push_back(new ServerStatusCallback("cursorTotalOpen",
                                              "1,8,1",
-                                             ServerStatusClient::CURSORS,
-                                             "cursors.totalOpen",
-                                             VT_INT32));
+                                             ServerStatusClient::METRICS,
+                                             "metrics.cursor.open.total",
+                                             VT_CNT64));
         v.push_back(new ServerStatusCallback("cursorClientSize",
                                              "1,8,2",
                                              ServerStatusClient::CURSORS,
                                              "cursors.clientCursors_size",
-                                             VT_INT32));
-        v.push_back(new ServerStatusCallback(
-            "cursorTimedOut", "1,8,3", ServerStatusClient::CURSORS, "cursors.timedOut", VT_CNT64));
+                                             VT_INT32,
+                                             DEPRECATED));  // Deprecated for 3.2
+        v.push_back(new ServerStatusCallback("cursorTimedOut",
+                                             "1,8,3",
+                                             ServerStatusClient::METRICS,
+                                             "metrics.cursor.timedOut",
+                                             VT_CNT64));
 
         {
             ServerStatusCallback* sscb = new ServerStatusCallback(
