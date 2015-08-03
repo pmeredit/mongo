@@ -33,7 +33,7 @@ int Command::testCommandsEnabled = 1;  // To fix compile without needing to link
 namespace {
 using namespace mongo;
 
-const std::string mockHostName = "ldaptest.10gen.cc";
+const std::string mockHostName = "localhost";
 const std::string mockServiceName = "mockservice";
 const std::string userName = "mockuser@LDAPTEST.10GEN.CC";
 char krb5ccFile[] = "mongotest-krb5cc-XXXXXX";
