@@ -24,6 +24,10 @@ wtEnv.Library(target='encryption_key_manager_init',
             ],
             PROGDEPS_DEPENDENTS=[
                 '$BUILD_DIR/mongo/mongod'
+            ],
+            LIBDEPS_TAGS=[
+                # Depends on storageGlobalParams which is in serverOnlyFiles
+                'incomplete'
             ])
 
 wtEnv.Library(target='encryptdb',
@@ -38,6 +42,7 @@ wtEnv.Library(target='encryptdb',
                    'symmetric_crypto',
                    '$BUILD_DIR/mongo/base',
                    '$BUILD_DIR/mongo/db/auth/security_file',
+                   '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core',
                    '$BUILD_DIR/third_party/shim_wiredtiger',
               ])
 
@@ -47,6 +52,7 @@ env.Library(target='encryption_options',
                 'encryption_options_init.cpp',
             ],
             LIBDEPS=[
+                '$BUILD_DIR/mongo/util/options_parser/options_parser',
             ])
 
 env.Library(target='symmetric_crypto',
@@ -64,6 +70,10 @@ env.Library(target='kmip',
             source=[
                 'kmip_request.cpp',
                 'kmip_response.cpp',
+            ],
+            LIBDEPS=[
+                '$BUILD_DIR/mongo/base',
+                'symmetric_crypto',
             ])
 
 wtEnv.CppUnitTest(target='symmetric_crypto_test',

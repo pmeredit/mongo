@@ -29,8 +29,17 @@ env.Library('audit',
              'src/audit/audit_user_management.cpp',
              ],
             LIBDEPS=['$BUILD_DIR/mongo/base',
-                     '$BUILD_DIR/mongo/db/auth/authcore'],
-            LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/db/coredb'])
+                     '$BUILD_DIR/mongo/db/auth/authcore',
+                     '$BUILD_DIR/mongo/util/net/network',
+            ],
+            LIBDEPS_DEPENDENTS=[
+                '$BUILD_DIR/mongo/db/coredb',
+            ],
+            LIBDEPS_TAGS=[
+                # This library is 'circular' with coredb
+                'incomplete',
+            ],
+)
 
 env.Library(
     target=[
@@ -38,6 +47,12 @@ env.Library(
     ],
     source=[
         'src/audit/audit_metadata_hook_s.cpp'
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/db/auth/authorization_manager_global',
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/rpc/metadata',
+        'audit',
     ],
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/s/mongoscore',
@@ -59,6 +74,10 @@ env.Library(
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/rpc/metadata',
     ],
+    LIBDEPS_TAGS=[
+        # This library is 'circular' with rpc/metadata.
+        'incomplete'
+    ]
 )
 
 env.CppUnitTest(
@@ -93,17 +112,35 @@ env.Library('mongosnmp',
              'src/snmp/snmp_oid.cpp',
              'src/snmp/snmp_options.cpp'
              ],
+            LIBDEPS=[
+                '$BUILD_DIR/mongo/base',
+                '$BUILD_DIR/mongo/client/clientdriver',
+                '$BUILD_DIR/mongo/db/repl/repl_coordinator_global',
+                '$BUILD_DIR/mongo/db/storage/mmap_v1/storage_mmapv1',
+                '$BUILD_DIR/mongo/util/foundation',
+                '$BUILD_DIR/mongo/util/processinfo',
+            ],
             PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongod'],
-            SYSLIBDEPS=env.get('SNMP_SYSLIBDEPS', []))
+            SYSLIBDEPS=env.get('SNMP_SYSLIBDEPS', []),
+            LIBDEPS_TAGS=[
+                # Depends on symbols from serverOnlyFiles
+                'incomplete',
+            ],
+)
 
 env.Library('mongosaslserversession',
             ['src/sasl/auxprop_mongodb_internal.cpp',
              'src/sasl/canon_mongodb_internal.cpp',
              'src/sasl/mongo_${MONGO_GSSAPI_IMPL}.cpp',
              ],
-            LIBDEPS=['$BUILD_DIR/mongo/db/server_parameters',
+            LIBDEPS=['$BUILD_DIR/mongo/db/auth/saslauth',
+                     '$BUILD_DIR/mongo/db/server_parameters',
                      '$BUILD_DIR/mongo/db/auth/authmocks'],
-            SYSLIBDEPS=['sasl2', '${MONGO_GSSAPI_LIB}'])
+            SYSLIBDEPS=['sasl2', '${MONGO_GSSAPI_LIB}'],
+            LIBDEPS_TAGS=[
+                # Circular with mongosaslservercommon below
+                'incomplete',
+            ])
 
 env.Library('mongosaslservercommon',
             'src/sasl/cyrus_sasl_authentication_session.cpp',
