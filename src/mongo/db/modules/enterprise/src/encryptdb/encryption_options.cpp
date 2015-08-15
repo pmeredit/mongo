@@ -6,11 +6,14 @@
 
 #include "encryption_options.h"
 
+#include <openssl/evp.h>
+
 #include "mongo/base/status.h"
 #include "mongo/db/server_options.h"
 #include "mongo/util/log.h"
 #include "mongo/util/options_parser/option_section.h"
 #include "mongo/util/options_parser/startup_options.h"
+#include "symmetric_crypto.h"
 
 namespace mongo {
 
@@ -56,6 +59,12 @@ Status addEncryptionOptions(moe::OptionSection* options) {
                                         moe::String,
                                         "File path for encryption key file")
         .requires("security.enableEncryption");
+    encryptionOptions.addOptionChaining("security.encryptionCipherMode",
+                                        "encryptionCipherMode",
+                                        moe::String,
+                                        "Cipher mode to use for encryption at rest")
+        .requires("security.enableEncryption")
+        .format("(:?AES256-CBC)|(:?AES256-GCM)", "'AES256-CBC' or 'AES256-GCM'");
 
     Status ret = options->addSection(encryptionOptions);
     if (!ret.isOK()) {
@@ -72,6 +81,18 @@ static Status validateEncryptionOptions(const moe::Environment& params) {
             return {ErrorCodes::InvalidOptions,
                     "Must specify either an encryption key file or "
                     "a KMIP server when enabling file encryption"};
+        }
+        if (params.count("security.encryptionCipherMode")) {
+            std::string mode = params["security.encryptionCipherMode"].as<std::string>();
+
+#ifndef EVP_CTRL_GCM_GET_TAG
+            if (mode == crypto::aes256GCMName) {
+                return {ErrorCodes::InvalidOptions, "Server not compiled with GCM support"};
+            }
+#endif
+            if (!(mode == crypto::aes256CBCName || mode == crypto::aes256GCMName)) {
+                return {ErrorCodes::InvalidOptions, "Cipher mode unrecognized"};
+            }
         }
     }
     return Status::OK();
@@ -123,6 +144,10 @@ Status storeEncryptionOptions(const moe::Environment& params) {
             params["security.encryptionKeyFile"].as<std::string>();
     }
 
+    if (params.count("security.encryptionCipherMode")) {
+        encryptionGlobalParams.encryptionCipherMode =
+            params["security.encryptionCipherMode"].as<std::string>();
+    }
     return Status::OK();
 }
 }  // namespace mongo

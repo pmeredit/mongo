@@ -58,13 +58,16 @@ MONGO_INITIALIZER(SeedPRNG)(InitializerContext* context) {
 struct ExtendedWTEncryptor {
     WT_ENCRYPTOR encryptor;      // Must come first
     SymmetricKey* symmetricKey;  // Symmetric key
-    uint8_t cipherMode;          // Cipher mode
+    crypto::aesMode cipherMode;  // Cipher mode
 };
 
 int sizing(WT_ENCRYPTOR* encryptor, WT_SESSION* session, size_t* expansionConstant) {
     try {
-        // Add a constant factor for the iv + padding block
-        *expansionConstant = 2 * crypto::aesBlockSize;
+        // Add a constant factor for WiredTiger to know how much extra memory it must allocate,
+        // at most, for encryption.
+        // The modes have different amounts of overhead. GCM has 12(tag) + 12(IV) bytes, and CBC
+        // has 16(IV) + 16(max padding overhead). Use CBC's which is larger.
+        *expansionConstant = 32;
         return 0;
     } catch (...) {
         // Prevent C++ exceptions from propagating into C code
@@ -93,6 +96,22 @@ int customize(WT_ENCRYPTOR* encryptor,
         }
         std::string keyId = std::string(keyIdItem.str, keyIdItem.len);
 
+        // Get the name from the encryption configuration
+        WT_CONFIG_ITEM encryptorNameItem;
+        if (0 != extApi->config_get(extApi, session, encryptConfig, "name", &encryptorNameItem) ||
+            encryptorNameItem.len == 0) {
+            error() << "Unable to retrieve name when customizing encryptor";
+            return EINVAL;
+        }
+        std::string encryptorName = std::string(encryptorNameItem.str, encryptorNameItem.len);
+        if (mongo::encryptionGlobalParams.encryptionCipherMode != encryptorName) {
+            severe() << "Invalid cipher mode '"
+                     << mongo::encryptionGlobalParams.encryptionCipherMode << "', expected '"
+                     << encryptorName << "'";
+            return EINVAL;
+        }
+
+
         // Get the symmetric key for the key id
         StatusWith<std::unique_ptr<SymmetricKey>> swSymmetricKey =
             EncryptionKeyManager::get(getGlobalServiceContext())->getKey(keyId);
@@ -103,7 +122,7 @@ int customize(WT_ENCRYPTOR* encryptor,
         *(myEncryptor.get()) = *origEncryptor;
 
         myEncryptor.get()->symmetricKey = swSymmetricKey.getValue().release();
-        myEncryptor.get()->cipherMode = crypto::cbcMode;
+        myEncryptor.get()->cipherMode = crypto::getCipherModeFromString(encryptorName);
 
         *customEncryptor = &(myEncryptor.release()->encryptor);
         return 0;
@@ -122,41 +141,39 @@ int encrypt(WT_ENCRYPTOR* encryptor,
             size_t dstLen,
             size_t* resultLen) {
     try {
-        if (!src || !dst) {
+        const ExtendedWTEncryptor* crypto = reinterpret_cast<ExtendedWTEncryptor*>(encryptor);
+        if (!src || !dst || !resultLen | !crypto | !crypto->symmetricKey) {
             return EINVAL;
         }
-        if (dstLen < srcLen + crypto::aesBlockSize) {
+
+        crypto::EncryptedMemoryLayout layout(crypto->cipherMode, dst, dstLen);
+
+        if (!layout.canFitPlaintext(srcLen)) {
+            severe() << "Insufficient memory allocated for encryption.";
             return ENOMEM;
         }
 
-        // Generate IV, we only need something reasonably unpredictable
+        // Generate IV, this is currently very predictable
+        // FIXME: Make this unpredictable to prevent chosen plaintext attacks
         int64_t iv[2] = {prng->nextInt64(), prng->nextInt64()};
-        memcpy(dst, &iv[0], crypto::aesBlockSize);
+        memcpy(layout.getIV(), iv, layout.getIVSize());
 
-        const ExtendedWTEncryptor* crypto = reinterpret_cast<ExtendedWTEncryptor*>(encryptor);
-        *resultLen = dstLen;
-        Status ret = crypto::aesEncrypt(src,
-                                        srcLen,
-                                        crypto->symmetricKey->getKey(),
-                                        crypto->symmetricKey->getKeySize(),
-                                        crypto->cipherMode,
-                                        reinterpret_cast<uint8_t*>(iv),
-                                        &dst[crypto::aesBlockSize],
-                                        resultLen);
+        Status ret =
+            crypto::aesEncrypt(src, srcLen, &layout, *crypto->symmetricKey, crypto->cipherMode);
 
         if (!ret.isOK()) {
             log() << "encrypt error: " << ret;
             return EINVAL;
         }
+
         // Check the returned length, including block size padding
-        if (*resultLen != crypto::aesBlockSize * (1 + srcLen / crypto::aesBlockSize)) {
+        if (layout.getDataSize() != layout.expectedCiphertextLen(srcLen)) {
             log() << "encrypt error, expected cipher text of length "
-                  << crypto::aesBlockSize * (1 + srcLen / crypto::aesBlockSize) << "] but found "
-                  << *resultLen;
+                  << layout.expectedCiphertextLen(srcLen) << "] but found " << *resultLen;
             return EINVAL;
         }
 
-        *resultLen += crypto::aesBlockSize;
+        *resultLen = layout.getHeaderSize() + layout.getDataSize();
 
         return 0;
     } catch (...) {
@@ -174,31 +191,27 @@ int decrypt(WT_ENCRYPTOR* encryptor,
             size_t dstLen,
             size_t* resultLen) {
     try {
-        if (!src || !dst) {
+        const ExtendedWTEncryptor* crypto = reinterpret_cast<ExtendedWTEncryptor*>(encryptor);
+        if (!src || !dst | !resultLen | !crypto | !crypto->symmetricKey) {
             return EINVAL;
         }
 
-        const ExtendedWTEncryptor* crypto = reinterpret_cast<ExtendedWTEncryptor*>(encryptor);
-        *resultLen = dstLen;
-        Status ret = crypto::aesDecrypt(&src[crypto::aesBlockSize],
-                                        srcLen - crypto::aesBlockSize,
-                                        crypto->symmetricKey->getKey(),
-                                        crypto->symmetricKey->getKeySize(),
-                                        crypto->cipherMode,
-                                        &src[0],
-                                        dst,
-                                        resultLen);
+        crypto::EncryptedMemoryLayout layout(crypto->cipherMode, src, srcLen);
+
+        Status ret =
+            crypto::aesDecrypt(&layout, *crypto->symmetricKey, crypto->cipherMode, dst, resultLen);
 
         if (!ret.isOK()) {
             log() << "decrypt error: " << ret;
             return EINVAL;
         }
-        // Check the returned length, excluding IV and removed block size padding
-        if (*resultLen < srcLen - 2 * crypto::aesBlockSize ||
-            *resultLen > srcLen - crypto::aesBlockSize) {
-            log() << "encrypt error, expected clear text length in interval ["
-                  << srcLen - 2 * crypto::aesBlockSize << "," << srcLen - crypto::aesBlockSize
-                  << " but found " << *resultLen;
+        // Check the returned length, excluding headers block padding
+        size_t lowerBound, upperBound;
+        std::tie(lowerBound, upperBound) = layout.expectedPlaintextLen();
+        if (*resultLen < lowerBound || *resultLen > upperBound) {
+            log() << "decrypt error, expected clear text length in interval"
+                  << "[" << lowerBound << "," << upperBound << "]"
+                  << "but found " << *resultLen;
             return EINVAL;
         }
 
@@ -241,19 +254,21 @@ int destroyEncryptor(WT_ENCRYPTOR* encryptor, WT_SESSION* session) {
  * support multiple different encryptors but at the moment we are using a single one.
  */
 extern "C" MONGO_COMPILER_API_EXPORT int mongo_addWiredTigerEncryptors(WT_CONNECTION* connection) {
-    mongo::ExtendedWTEncryptor* extWTEncryptor = new mongo::ExtendedWTEncryptor;
-    extWTEncryptor->symmetricKey = nullptr;
-    extWTEncryptor->encryptor.sizing = mongo::sizing;
-    extWTEncryptor->encryptor.customize = mongo::customize;
-    extWTEncryptor->encryptor.encrypt = mongo::encrypt;
-    extWTEncryptor->encryptor.decrypt = mongo::decrypt;
-    extWTEncryptor->encryptor.terminate = mongo::destroyEncryptor;
+    mongo::ExtendedWTEncryptor* extWTEncryptorCBC = new mongo::ExtendedWTEncryptor;
+    extWTEncryptorCBC->symmetricKey = nullptr;
+    extWTEncryptorCBC->encryptor.sizing = mongo::sizing;
+    extWTEncryptorCBC->encryptor.customize = mongo::customize;
+    extWTEncryptorCBC->encryptor.encrypt = mongo::encrypt;
+    extWTEncryptorCBC->encryptor.decrypt = mongo::decrypt;
+    extWTEncryptorCBC->encryptor.terminate = mongo::destroyEncryptor;
+
     int ret;
     if (mongo::encryptionGlobalParams.enableEncryption &&
-        (ret = connection->add_encryptor(
-             connection, "aes", reinterpret_cast<WT_ENCRYPTOR*>(extWTEncryptor), nullptr)) != 0) {
+        (ret = connection->add_encryptor(connection,
+                                         mongo::encryptionGlobalParams.encryptionCipherMode.c_str(),
+                                         reinterpret_cast<WT_ENCRYPTOR*>(extWTEncryptorCBC),
+                                         nullptr)) != 0) {
         return ret;
     }
-
     return 0;
 }

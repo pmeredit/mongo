@@ -28,15 +28,15 @@ public:
 
     ~SymmetricKey();
 
-    const int getAlgorithm() {
+    const int getAlgorithm() const {
         return _algorithm;
     }
 
-    const size_t getKeySize() {
+    const size_t getKeySize() const {
         return _keySize;
     }
 
-    const uint8_t* getKey() {
+    const uint8_t* getKey() const {
         return _key.get();
     }
 

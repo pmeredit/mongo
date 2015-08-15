@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <string>
+
 #include "mongo/base/status.h"
 
 namespace mongo {
@@ -18,6 +20,7 @@ namespace moe = mongo::optionenvironment;
 
 struct EncryptionGlobalParams {
     bool enableEncryption = false;
+    std::string encryptionCipherMode = "AES256-CBC";  // The default cipher mode
 
     // KMIP Options.
     std::string kmipKeyIdentifier;

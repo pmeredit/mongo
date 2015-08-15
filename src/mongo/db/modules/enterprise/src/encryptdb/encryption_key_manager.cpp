@@ -146,7 +146,9 @@ std::string EncryptionKeyManager::getOpenConfig(StringData ns) {
         keyId = ns.substr(0, dotIndex).toString();
     }
 
-    config += "encryption=(name=aes,keyid=\"" + keyId + "\"),";
+    config += "encryption=(name=" + _encryptionParams->encryptionCipherMode + ",keyid=\"" + keyId +
+        "\"),";
+
     return config;
 }
 
@@ -390,7 +392,9 @@ Status EncryptionKeyManager::_initLocalKeyStore() {
     }
 
     // Create the local WT key store
-    std::string keyStorageEncryptionConfig = "encryption=(name=aes,keyid=" + kMasterKeyId + "),";
+    // FIXME: While using GCM, needs to always use AES-GCM with RBG derived IVs
+    std::string keyStorageEncryptionConfig = "encryption=(name=" +
+        _encryptionParams->encryptionCipherMode + ",keyid=" + kMasterKeyId + "),";
     std::string wtConfig = "create,";
     wtConfig += "log=(enabled,file_max=3MB),transaction_sync=(enabled=true,method=fsync),";
     wtConfig += kEncryptionEntrypointConfig;
