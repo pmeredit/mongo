@@ -29,6 +29,10 @@ Status addEncryptionOptions(moe::OptionSection* options) {
                                         moe::String,
                                         "KMIP unique identifier for existing key to use")
         .requires("security.enableEncryption");
+    encryptionOptions.addOptionChaining("security.kmip.rotateMasterKey",
+                                        "kmipRotateMasterKey",
+                                        moe::Switch,
+                                        "Rotate master encryption key");
     encryptionOptions.addOptionChaining("security.kmip.serverName",
                                         "kmipServerName",
                                         moe::String,
@@ -76,11 +80,15 @@ Status addEncryptionOptions(moe::OptionSection* options) {
 
 static Status validateEncryptionOptions(const moe::Environment& params) {
     if (params.count("security.enableEncryption")) {
-        if (params.count("security.encryptionKeyFile") ==
-            params.count("security.kmip.serverName")) {
-            return {ErrorCodes::InvalidOptions,
-                    "Must specify either an encryption key file or "
-                    "a KMIP server when enabling file encryption"};
+        if (params.count("security.encryptionKeyFile")) {
+            if (params.count("security.kmip.serverName") ||
+                params.count("security.kmip.keyIdentifier")) {
+                return {ErrorCodes::InvalidOptions,
+                        "Must specify either an encryption key file or "
+                        "a KMIP server when enabling file encryption"};
+            } else if (params.count("security.kmip.rotateMasterKey")) {
+                return {ErrorCodes::InvalidOptions, "Key rotation is only supported for KMIP keys"};
+            }
         }
 
         if (params.count("security.kmip.serverName") &&
@@ -119,6 +127,12 @@ Status storeEncryptionOptions(const moe::Environment& params) {
     if (params.count("security.kmip.keyIdentifier")) {
         encryptionGlobalParams.kmipKeyIdentifier =
             params["security.kmip.keyIdentifier"].as<std::string>();
+    }
+
+    if (params.count("security.kmip.rotateMasterKey")) {
+        encryptionGlobalParams.rotateMasterKey = true;
+        encryptionGlobalParams.kmipKeyIdentifierRot = encryptionGlobalParams.kmipKeyIdentifier;
+        encryptionGlobalParams.kmipKeyIdentifier = "";
     }
 
     if (params.count("security.kmip.serverName")) {

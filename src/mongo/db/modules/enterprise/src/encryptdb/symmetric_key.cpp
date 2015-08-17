@@ -15,8 +15,11 @@
 #include "mongo/util/secure_zero_memory.h"
 
 namespace mongo {
-SymmetricKey::SymmetricKey(const uint8_t* key, size_t keySize, uint32_t algorithm)
-    : _algorithm(algorithm), _keySize(keySize) {
+SymmetricKey::SymmetricKey(const uint8_t* key,
+                           size_t keySize,
+                           uint32_t algorithm,
+                           std::string keyId)
+    : _algorithm(algorithm), _keySize(keySize), _keyId(std::move(keyId)) {
     if (_keySize < crypto::minKeySize || _keySize > crypto::maxKeySize) {
         error() << "Attempt to construct symmetric key of invalid size: " << _keySize;
         return;
@@ -25,16 +28,23 @@ SymmetricKey::SymmetricKey(const uint8_t* key, size_t keySize, uint32_t algorith
     memcpy(_key.get(), key, _keySize);
 }
 
-SymmetricKey::SymmetricKey(std::unique_ptr<uint8_t[]> key, size_t keySize, uint32_t algorithm)
-    : _algorithm(algorithm), _keySize(keySize), _key(std::move(key)) {}
+SymmetricKey::SymmetricKey(std::unique_ptr<uint8_t[]> key,
+                           size_t keySize,
+                           uint32_t algorithm,
+                           std::string keyId)
+    : _algorithm(algorithm), _keySize(keySize), _key(std::move(key)), _keyId(std::move(keyId)) {}
 
 SymmetricKey::SymmetricKey(SymmetricKey&& sk)
-    : _algorithm(sk._algorithm), _keySize(sk._keySize), _key(std::move(sk._key)) {}
+    : _algorithm(sk._algorithm),
+      _keySize(sk._keySize),
+      _key(std::move(sk._key)),
+      _keyId(std::move(sk._keyId)) {}
 
 SymmetricKey& SymmetricKey::operator=(SymmetricKey&& sk) {
     _algorithm = sk._algorithm;
     _keySize = sk._keySize;
     _key = std::move(sk._key);
+    _keyId = std::move(sk._keyId);
 
     return *this;
 }

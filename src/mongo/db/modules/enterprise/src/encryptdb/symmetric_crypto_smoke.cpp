@@ -177,7 +177,7 @@ Status smokeTestAESCipherMode(const std::string& modeName) {
             continue;
         }
 
-        SymmetricKey key(test.key, test.keySize, crypto::aesAlgorithm);
+        SymmetricKey key(test.key, test.keySize, crypto::aesAlgorithm, "test");
         crypto::EncryptedMemoryLayout layout(test.mode, outputBuffer, outputBufferSize);
         memcpy(layout.getIV(), test.iv, sizeof(test.iv));
 

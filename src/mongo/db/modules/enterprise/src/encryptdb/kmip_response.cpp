@@ -277,7 +277,7 @@ StatusWith<std::unique_ptr<SymmetricKey>> KMIPResponse::_parseSymmetricKeyPayloa
                                     << paddedKeyLen);
     }
 
-    return stdx::make_unique<SymmetricKey>(key, keySize, algorithm);
+    return stdx::make_unique<SymmetricKey>(key, keySize, algorithm, _uid);
 }
 
 Status KMIPResponse::_parseBatchItem(ConstDataRangeCursor* cdrc) {

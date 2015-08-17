@@ -240,7 +240,7 @@ Status aesDecrypt(EncryptedMemoryLayout* layout,
     return Status::OK();
 }
 
-SymmetricKey aesGenerate(size_t keySize) {
+SymmetricKey aesGenerate(size_t keySize, std::string keyId) {
     invariant(keySize == sym128KeySize || keySize == sym256KeySize);
 
     std::unique_ptr<std::uint8_t[]> keyArray = stdx::make_unique<std::uint8_t[]>(keySize);
@@ -252,7 +252,7 @@ SymmetricKey aesGenerate(size_t keySize) {
         offset += sizeof(randomValue);
     }
 
-    return SymmetricKey(std::move(keyArray), keySize, aesAlgorithm);
+    return SymmetricKey(std::move(keyArray), keySize, aesAlgorithm, std::move(keyId));
 }
 
 }  // namespace crypto

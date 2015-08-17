@@ -22,6 +22,9 @@ class ServiceContext;
 class SSLManagerInterface;
 struct SSLParams;
 
+const std::string kSystemKeyId = ".system";
+const std::string kMasterKeyId = ".master";
+
 /**
  * The EncryptionKeyManager manages the keys for the encrypted storage engine.
  */
@@ -45,11 +48,21 @@ public:
     static EncryptionKeyManager* get(ServiceContext* service);
 
     /**
-     * Methods overriding the customization hooks base class
+     * Get the WT table encryption config for a specific namespace
+     * or internal WT table.
      */
-    void appendUID(BSONObjBuilder* builder) override;
-
     std::string getOpenConfig(StringData ns) override;
+
+    /**
+     * Take any initialization action that needs to wait until after storage engine initialization
+     * including:
+     *
+     * - Verify that the server has not been started without encryption before.
+     * - Rotate the master key.
+     *
+     * Returns a bool indicating if the server should continue start or not.
+     */
+    bool restartRequired() override;
 
     /**
      * Takes in a key identifier and returns a unique_ptr to the
@@ -59,19 +72,34 @@ public:
 
 private:
     /**
-     * Acquires the master key from the key management system.
+     * Validate master key config and initiate the local key store.
      */
-    StatusWith<std::unique_ptr<SymmetricKey>> _acquireMasterKey();
+    Status _initLocalKeystore();
 
     /**
-     * Open a connection to the local key database
+     * Open a local key store at 'path', create it if it doesn't exist.
      */
-    Status _initLocalKeyStore();
+    Status _openKeystore(const std::string& path, WT_CONNECTION** conn);
 
     /**
-     * Acquires the system key from a KMIP server specifically.
+     * Rotate the master encryption key and create a new key store.
      */
-    StatusWith<std::unique_ptr<SymmetricKey>> _getKeyFromKMIPServer();
+    Status _rotateMasterKey(const std::string& newKeyId);
+
+    /**
+     * Internal key management helper methods
+     */
+    StatusWith<std::unique_ptr<SymmetricKey>> _getSystemKey();
+    StatusWith<std::unique_ptr<SymmetricKey>> _getMasterKey();
+    StatusWith<std::unique_ptr<SymmetricKey>> _readKey(const std::string& keyId);
+
+    /**
+     * Acquires the master key 'keyId' from a KMIP server.
+     *
+     * If 'keyId' is empty a new key will be created and keyId will be assigned the new id and hence
+     * as as an out parameter.
+     */
+    StatusWith<std::unique_ptr<SymmetricKey>> _getKeyFromKMIPServer(const std::string& keyId);
 
     /**
      * Acquires the system key from the encryption keyfile.
@@ -79,35 +107,28 @@ private:
     StatusWith<std::unique_ptr<SymmetricKey>> _getKeyFromKeyFile();
 
     /**
-     * Reads the masterKey UID from storage.bson.
-     */
-    StatusWith<std::string> _getKeyUIDFromMetadata();
-
-    /**
      * Taken from global storage parameters -- the dbpath directory.
      */
     std::string _dbPath;
+    std::string _keystoreBasePath;
 
     /**
      * The master system key, provided via KMIP or a keyfile.
      */
     std::unique_ptr<SymmetricKey> _masterKey;
+    std::string _masterKeyId;
 
     /**
-     * The id of the master system key.
+     * The master system key for the new key store when doing key rotation.
      */
-    std::string _kmipMasterKeyId;
-
-    /**
-     * Flag set when the local key store has been initialized.
-     */
-    bool _localKeyStoreInitialized;
+    std::unique_ptr<SymmetricKey> _rotMasterKey;
+    bool _keyRotationAllowed;
 
     /**
      * Management of the local WiredTiger key store.
      */
-    WT_CONNECTION* _keyStorageConnection;
-    WT_EVENT_HANDLER _keyStorageEventHandler;
+    WT_CONNECTION* _keystoreConnection;
+    WT_EVENT_HANDLER _keystoreEventHandler;
 
     /**
      * Pointer to the encryption parameters to use.

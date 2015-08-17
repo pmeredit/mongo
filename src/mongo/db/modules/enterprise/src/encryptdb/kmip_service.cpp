@@ -61,7 +61,8 @@ StatusWith<std::unique_ptr<SymmetricKey>> KMIPService::getExternalKey(const std:
     KMIPResponse response = std::move(swResponse.getValue());
     if (response.getResultStatus() != kmip::statusSuccess) {
         return Status(ErrorCodes::BadValue,
-                      str::stream() << "KMIP get key failed, code: " << response.getResultReason()
+                      str::stream() << "KMIP get key '" << uid
+                                    << "' failed, code: " << response.getResultReason()
                                     << " error: " << response.getResultMsg());
     }
     return response.getSymmetricKey();

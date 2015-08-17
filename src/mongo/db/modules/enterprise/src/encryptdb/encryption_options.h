@@ -32,6 +32,10 @@ struct EncryptionGlobalParams {
 
     // Keyfile Options.
     std::string encryptionKeyFile;
+
+    // Master key rotation options
+    bool rotateMasterKey = false;
+    std::string kmipKeyIdentifierRot;
 };
 
 extern EncryptionGlobalParams encryptionGlobalParams;

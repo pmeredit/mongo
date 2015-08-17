@@ -33,17 +33,17 @@
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/net/ssl_manager.h"
 #include "mongo/util/net/ssl_options.h"
+#include "mongo/util/time_support.h"
 #include "symmetric_crypto.h"
 
 namespace mongo {
 namespace {
 
-const std::string kMetadataBasename = "storage.bson";
-const std::string kKeyStorageTableName = "table:keystore";
+const std::string kKeystoreName = "key.store";
+const std::string kInvalidatedKeyword = "-invalidated-";
+const std::string kKeystoreTableName = "table:keystore";
 const std::string kEncryptionEntrypointConfig =
     "extensions=[local=(entry=mongo_addWiredTigerEncryptors)],";
-const std::string kSystemKeyId = ".system";
-const std::string kMasterKeyId = ".master";
 
 void closeWTCursorAndSession(WT_CURSOR* cursor) {
     WT_SESSION* session = cursor->session;
@@ -92,21 +92,51 @@ WT_EVENT_HANDLER keystoreEventHandlers() {
     handlers.handle_progress = keystore_handle_progress;
     return handlers;
 }
+
+namespace fs = boost::filesystem;
+
+bool hasExistingDatafiles(const std::string& path) {
+    std::string metadataPath = path + "/storage.bson";
+    std::string wtDatafilePath = path + "/WiredTiger.wt";
+
+    bool hasDatafiles = true;  // default to the error condition
+    try {
+        hasDatafiles = fs::exists(metadataPath) || fs::exists(wtDatafilePath);
+    } catch (const std::exception& e) {
+        severe() << "Caught exception when checking for existence of data files: " << e.what();
+    }
+    return hasDatafiles;
+}
+
+Status createDirectoryIfNeeded(const std::string& path) {
+    try {
+        if (!fs::exists(path)) {
+            fs::create_directory(path);
+        }
+    } catch (const std::exception& e) {
+        return Status(ErrorCodes::BadValue,
+                      str::stream() << "Error creating path " << path << ' ' << e.what());
+    }
+    return Status::OK();
+}
+
 }  // namespace
 
 EncryptionKeyManager::EncryptionKeyManager(const std::string& dbPath,
                                            EncryptionGlobalParams* encryptionParams,
                                            SSLParams* sslParams)
     : _dbPath(dbPath),
-      _localKeyStoreInitialized(false),
-      _keyStorageConnection(nullptr),
-      _keyStorageEventHandler(keystoreEventHandlers()),
+      _keystoreBasePath(dbPath + "/key.store"),
+      _masterKeyId(""),
+      _keyRotationAllowed(false),
+      _keystoreConnection(nullptr),
+      _keystoreEventHandler(keystoreEventHandlers()),
       _encryptionParams(encryptionParams),
       _sslParams(sslParams) {}
 
 EncryptionKeyManager::~EncryptionKeyManager() {
-    if (_keyStorageConnection != nullptr) {
-        _keyStorageConnection->close(_keyStorageConnection, nullptr);
+    if (_keystoreConnection != nullptr) {
+        _keystoreConnection->close(_keystoreConnection, nullptr);
     }
 }
 
@@ -117,10 +147,32 @@ EncryptionKeyManager* EncryptionKeyManager::get(ServiceContext* service) {
     return globalKeyManager;
 }
 
-void EncryptionKeyManager::appendUID(BSONObjBuilder* builder) {
-    BSONObjBuilder sub(builder->subobjStart("encryption"));
-    sub.append("keyUID", _kmipMasterKeyId);
-    sub.done();
+bool EncryptionKeyManager::restartRequired() {
+    // It is sufficient to check for 'mmapv1' since it's the only non-wiredWiger storage engine
+    // we detect dynamically for backwards compatibility.
+    if (getGlobalServiceContext()->getGlobalStorageEngine()->isMmapV1()) {
+        log() << "Encryption at rest requires the 'wiredTiger' storage engine, aborting.";
+        return true;
+    }
+
+    if (_encryptionParams->rotateMasterKey) {
+        Status status = _rotateMasterKey(_encryptionParams->kmipKeyIdentifierRot);
+        if (!status.isOK()) {
+            severe() << "Failed to rotate master key: " << status.reason();
+        }
+        // The server should always exit after a key rotation.
+        return true;
+    }
+
+    if (_encryptionParams->encryptionKeyFile.empty()) {
+        log() << "Encryption key manager initialized using KMIP key with id: " << _masterKeyId
+              << ".";
+    } else {
+        log() << "Encryption key manager initialized with key file: "
+              << _encryptionParams->encryptionKeyFile;
+    }
+
+    return false;
 }
 
 std::string EncryptionKeyManager::getOpenConfig(StringData ns) {
@@ -159,25 +211,47 @@ std::string EncryptionKeyManager::getOpenConfig(StringData ns) {
 // The only current caller of getKey is WT_ENCRYPTOR::customize with the keyId provided in the
 // callback.
 StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::getKey(const std::string& keyId) {
-    if (!_localKeyStoreInitialized) {
-        Status status = _initLocalKeyStore();
-        if (!status.isOK()) {
-            return status;
-        }
+    if (keyId == kSystemKeyId) {
+        return _getSystemKey();
+    } else if (keyId == kMasterKeyId) {
+        return _getMasterKey();
     }
-    if (keyId == kMasterKeyId) {
-        return _acquireMasterKey();
+    return _readKey(keyId);
+}
+
+StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getSystemKey() {
+    Status status = _initLocalKeystore();
+    if (!status.isOK()) {
+        return status;
     }
 
+    return _readKey(kSystemKeyId);
+}
+
+StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getMasterKey() {
+    // WT will ask for the .master key twice when rotating keys since there are two databases.
+    // The first request will be for the original master key and the second request for the new
+    // master key.
+    if (_masterKey) {
+        return std::move(_masterKey);
+    }
+    // Check that key rotation is enabled
+    else if (_rotMasterKey) {
+        return std::move(_rotMasterKey);
+    }
+    MONGO_UNREACHABLE;
+}
+
+StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_readKey(const std::string& keyId) {
     // Look for the requested key in the local key store. Assume that the local key store has been
     // created and that open_session and open_cursor will succeed.
     WT_SESSION* session;
     invariantWTOK(
-        _keyStorageConnection->open_session(_keyStorageConnection, nullptr, nullptr, &session));
+        _keystoreConnection->open_session(_keystoreConnection, nullptr, nullptr, &session));
 
     WT_CURSOR* cursor;
     invariantWTOK(
-        session->open_cursor(session, kKeyStorageTableName.c_str(), nullptr, nullptr, &cursor));
+        session->open_cursor(session, kKeystoreTableName.c_str(), nullptr, nullptr, &cursor));
 
     ON_BLOCK_EXIT(closeWTCursorAndSession, cursor);
 
@@ -189,11 +263,12 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::getKey(const std
         uint32_t keyStatus;
         invariantWTOK(cursor->get_value(cursor, &key, &keyStatus));
         return stdx::make_unique<SymmetricKey>(
-            reinterpret_cast<const uint8_t*>(key.data), key.size, crypto::aesAlgorithm);
+            reinterpret_cast<const uint8_t*>(key.data), key.size, crypto::aesAlgorithm, keyId);
     }
 
     // There is no key corresponding to keyId yet so create one
-    auto symmetricKey = stdx::make_unique<SymmetricKey>(crypto::aesGenerate(crypto::sym256KeySize));
+    auto symmetricKey =
+        stdx::make_unique<SymmetricKey>(crypto::aesGenerate(crypto::sym256KeySize, keyId));
     key.data = symmetricKey.get()->getKey();
     key.size = symmetricKey.get()->getKeySize();
     cursor->set_value(cursor, &key, 0);
@@ -202,42 +277,8 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::getKey(const std
     return std::move(symmetricKey);
 }
 
-StatusWith<std::string> EncryptionKeyManager::_getKeyUIDFromMetadata() {
-    boost::filesystem::path metadataPath = boost::filesystem::path(_dbPath) / kMetadataBasename;
-    if (!boost::filesystem::exists(metadataPath)) {
-        return Status(ErrorCodes::PathNotViable,
-                      "Storage engine metadata file has not been created yet");
-    }
-
-    auto fileSize = boost::filesystem::file_size(metadataPath);
-    uassert(
-        4038, "metadata filesize > maximum BSON object size", fileSize <= BSONObjMaxInternalSize);
-
-    std::vector<char> buffer(fileSize);
-    std::string filename = metadataPath.string();
-    std::ifstream ifs(filename.c_str(), std::ios_base::in | std::ios_base::binary);
-    uassert(4039, "failed to read metadata from file", ifs);
-    ifs.read(&buffer[0], buffer.size());
-    uassert(4040, "failed to read metadata from file", ifs);
-
-    BSONObj obj = BSONObj(buffer.data());
-    uassert(4041,
-            "read invalid BSON from metadata file",
-            validateBSON(obj.objdata(), obj.objsize()).isOK());
-    BSONElement encryptionKeyElement = obj.getFieldDotted("storage.options.encryption.keyUID");
-
-    if (encryptionKeyElement.eoo()) {
-        return Status(ErrorCodes::NoMatchingDocument,
-                      "No external encryption key identifier found in metadata");
-    }
-
-    uassert(4042,
-            "metadata encryption key element must be a string",
-            encryptionKeyElement.type() == mongo::String);
-    return encryptionKeyElement.String();
-}
-
-StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getKeyFromKMIPServer() {
+StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getKeyFromKMIPServer(
+    const std::string& keyId) {
     if (_encryptionParams->kmipServerName.empty()) {
         return Status(ErrorCodes::BadValue,
                       "Encryption at rest enabled but no key server specified");
@@ -264,8 +305,8 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getKeyFromKMIPS
         HostAndPort(_encryptionParams->kmipServerName, _encryptionParams->kmipPort), sslKMIPParams);
 
     // Try to retrieve an existing key.
-    if (!_kmipMasterKeyId.empty()) {
-        return kmipService.getExternalKey(_kmipMasterKeyId);
+    if (!keyId.empty()) {
+        return kmipService.getExternalKey(keyId);
     }
 
     // Create and retrieve new key.
@@ -273,9 +314,9 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getKeyFromKMIPS
     if (!swCreateKey.isOK()) {
         return swCreateKey.getStatus();
     }
-    _kmipMasterKeyId = swCreateKey.getValue();
-    log() << "Created KMIP key with id: " << _kmipMasterKeyId;
-    return kmipService.getExternalKey(_kmipMasterKeyId);
+    std::string newKeyId = swCreateKey.getValue();
+    log() << "Created KMIP key with id: " << newKeyId;
+    return kmipService.getExternalKey(newKeyId);
 }
 
 StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getKeyFromKeyFile() {
@@ -303,121 +344,40 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getKeyFromKeyFi
     std::vector<uint8_t> keyVector(decodedKey.begin(), decodedKey.end());
     const uint8_t* keyData = keyVector.data();
 
-    return stdx::make_unique<SymmetricKey>(keyData, keyLength, crypto::aesAlgorithm);
+    return stdx::make_unique<SymmetricKey>(keyData, keyLength, crypto::aesAlgorithm, "local");
 }
 
-StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_acquireMasterKey() {
-    // Get key id from metadata. If storage.bson exists and does not
-    // contain a key id element return error.
-    auto swStoredKeyId = _getKeyUIDFromMetadata();
-    std::string storedKeyId;
-    if (!swStoredKeyId.isOK()) {
-        if (swStoredKeyId.getStatus().code() == ErrorCodes::NoMatchingDocument) {
-            return Status(ErrorCodes::BadValue,
-                          "The system has previously been started without encryption enabled.");
-        }
-    } else {
-        storedKeyId = swStoredKeyId.getValue();
+Status EncryptionKeyManager::_openKeystore(const std::string& path, WT_CONNECTION** conn) {
+    Status status = createDirectoryIfNeeded(path);
+    if (!status.isOK()) {
+        return status;
     }
 
-    if (!_encryptionParams->encryptionKeyFile.empty()) {
-        if (!storedKeyId.empty()) {
-            // Warn if the the server has been started with a KMIP key before.
-            log() << "It looks like the data files were previously encrypted using an "
-                  << "external key with id " << storedKeyId
-                  << ". Attempting to use the provided key file.";
-        }
-        StatusWith<std::unique_ptr<SymmetricKey>> keyFileSystemKey = _getKeyFromKeyFile();
-        if (!keyFileSystemKey.isOK()) {
-            return keyFileSystemKey.getStatus();
-        }
-
-        log() << "Encryption key manager initialized with key file: "
-              << _encryptionParams->encryptionKeyFile;
-        return std::move(keyFileSystemKey.getValue());
-    }
-
-    if (swStoredKeyId.isOK()) {
-        // Warn if the the server has not been started with a key file before.
-        if (storedKeyId.empty()) {
-            log() << "It looks like the data files were previously encrypted using a key file."
-                  << " Attempting to use the provided KMIP key.";
-        } else if (!_encryptionParams->kmipKeyIdentifier.empty() &&
-                   storedKeyId != _encryptionParams->kmipKeyIdentifier) {
-            // Return error if a new KMIP key identifier was provided that's different from the
-            // stored one.
-            return Status(ErrorCodes::BadValue,
-                          str::stream()
-                              << "The KMIP key id " << _encryptionParams->kmipKeyIdentifier
-                              << " was provided, but the system is already configured with key id "
-                              << storedKeyId << ".");
-        }
-    }
-
-    // The _kmipMasterKeyId will be written to the metadata by the general WT metadata management.
-    if (storedKeyId.empty()) {
-        _kmipMasterKeyId = _encryptionParams->kmipKeyIdentifier;
-    } else {
-        _kmipMasterKeyId = storedKeyId;
-    }
-
-    // Retrieve the key from the KMIP server. The key is created if it does not already exist.
-    StatusWith<std::unique_ptr<SymmetricKey>> swMasterKey = _getKeyFromKMIPServer();
-    if (!swMasterKey.isOK()) {
-        return swMasterKey.getStatus();
-    }
-
-    log() << "Encryption key manager initialized using KMIP key with id: " << _kmipMasterKeyId;
-    return std::move(swMasterKey.getValue());
-}
-
-Status EncryptionKeyManager::_initLocalKeyStore() {
-    // Create the local key store directory, named .local for key file master keys and
-    // '.' || masterKeyId for KMIP keys.
-    std::string keyStoragePath = _dbPath + "/";
-    if (_kmipMasterKeyId.empty()) {
-        keyStoragePath += ".local";
-    } else {
-        keyStoragePath += "." + _kmipMasterKeyId;
-    }
-
-    if (!boost::filesystem::exists(keyStoragePath)) {
-        try {
-            boost::filesystem::create_directory(keyStoragePath);
-        } catch (const std::exception& e) {
-            return Status(ErrorCodes::BadValue,
-                          str::stream() << "error creating path " << keyStoragePath << ' '
-                                        << e.what());
-        }
-    }
-
-    // Create the local WT key store
     // FIXME: While using GCM, needs to always use AES-GCM with RBG derived IVs
-    std::string keyStorageEncryptionConfig = "encryption=(name=" +
-        _encryptionParams->encryptionCipherMode + ",keyid=" + kMasterKeyId + "),";
-    std::string wtConfig = "create,";
-    wtConfig += "log=(enabled,file_max=3MB),transaction_sync=(enabled=true,method=fsync),";
-    wtConfig += kEncryptionEntrypointConfig;
-    wtConfig += keyStorageEncryptionConfig;
+    std::string keystoreConfig = "encryption=(name=" + _encryptionParams->encryptionCipherMode +
+        ",keyid=" + kMasterKeyId + "),";
 
-    // The _localKeyStoreInitialized needs to be set before calling wiredtiger_open since that call
-    // eventually will result in a call to getKey for the ".system" key at which point we don't want
-    // to call _initLocalKeyStore recursively.
-    _localKeyStoreInitialized = true;
-    int ret = wiredtiger_open(
-        keyStoragePath.c_str(), &_keyStorageEventHandler, wtConfig.c_str(), &_keyStorageConnection);
+    StringBuilder wtConfig;
+    wtConfig << "create,";
+    wtConfig << "log=(enabled,file_max=3MB),transaction_sync=(enabled=true,method=fsync),";
+    wtConfig << kEncryptionEntrypointConfig;
+    wtConfig << keystoreConfig;
+
+    // _localKeystoreInitialized needs to be set before calling wiredtiger_open since that
+    // call eventually will result in a call to getKey for the ".system" key at which point we don't
+    // want to call _initLocalKeystore recursively.
+    int ret = wiredtiger_open(path.c_str(), &_keystoreEventHandler, wtConfig.str().c_str(), conn);
     if (ret != 0) {
         return wtRCToStatus(ret);
     }
 
     WT_SESSION* session;
-    invariantWTOK(
-        _keyStorageConnection->open_session(_keyStorageConnection, nullptr, nullptr, &session));
+    invariantWTOK((*conn)->open_session(*conn, nullptr, nullptr, &session));
 
     // Check if the key store table:encryptionkeys already exists.
     WT_CURSOR* cursor;
     if ((ret = session->open_cursor(
-             session, kKeyStorageTableName.c_str(), nullptr, nullptr, &cursor)) == 0) {
+             session, kKeystoreTableName.c_str(), nullptr, nullptr, &cursor)) == 0) {
         closeWTCursorAndSession(cursor);
         return Status::OK();
     }
@@ -428,12 +388,188 @@ Status EncryptionKeyManager::_initLocalKeyStore() {
     // u: key material, raw byte array stored as a WT_ITEM.
     // l: key status, currently not used but set to 0.
     std::string sessionConfig =
-        keyStorageEncryptionConfig + "key_format=S,value_format=uL,columns=(keyid,key,keystatus)";
+        keystoreConfig + "key_format=S,value_format=uL,columns=(keyid,key,keystatus)";
 
-    invariantWTOK(session->create(session, kKeyStorageTableName.c_str(), sessionConfig.c_str()));
+    invariantWTOK(session->create(session, kKeystoreTableName.c_str(), sessionConfig.c_str()));
     invariantWTOK(session->checkpoint(session, nullptr));
     invariantWTOK(session->close(session, nullptr));
 
     return Status::OK();
 }
+
+Status EncryptionKeyManager::_initLocalKeystore() {
+    // Create the local key store directory, key.store/masterKeyId with the special case
+    // masterKeyId = local for local key files.
+    Status status = createDirectoryIfNeeded(_keystoreBasePath);
+    if (!status.isOK()) {
+        return status;
+    }
+
+    std::string existingKeyId;
+    // Use the first key store we find that has not been invalidated.
+    for (fs::directory_iterator it(_keystoreBasePath);
+         it != boost::filesystem::directory_iterator();
+         ++it) {
+        std::string fileName = fs::path(*it).filename().string();
+        if (fileName.find(kInvalidatedKeyword) == std::string::npos &&
+            fileName.find("-initializing") == std::string::npos) {
+            existingKeyId = fileName;
+            break;
+        }
+    }
+
+    if (existingKeyId.empty()) {
+        // Initializing the key store for the first time.
+        if (hasExistingDatafiles(_dbPath)) {
+            return Status(ErrorCodes::BadValue,
+                          "There are existing data files, but no valid keystore could be located.");
+        }
+    } else {
+        // The key store exists
+        if (!_encryptionParams->encryptionKeyFile.empty() && existingKeyId != "local") {
+            // Warn if the the server has been started with a KMIP key before.
+            warning() << "It looks like the data files were previously encrypted using an "
+                      << "external key with id " << existingKeyId
+                      << ". Attempting to use the provided key file.";
+        }
+        _keyRotationAllowed = true;
+    }
+
+    StatusWith<std::unique_ptr<SymmetricKey>> swMasterKey =
+        Status(ErrorCodes::InternalError, "Master key never acquired");
+    if (!_encryptionParams->encryptionKeyFile.empty()) {
+        // Retrieve the master key from a key file.
+        swMasterKey = _getKeyFromKeyFile();
+    } else {
+        // Retrieve the master key from a KMIP server.
+        if (!existingKeyId.empty() && !_encryptionParams->kmipKeyIdentifier.empty() &&
+            existingKeyId != _encryptionParams->kmipKeyIdentifier) {
+            return Status(ErrorCodes::BadValue,
+                          str::stream()
+                              << "The KMIP key id " << _encryptionParams->kmipKeyIdentifier
+                              << " was provided, but the system is already configured with key id "
+                              << existingKeyId << ".");
+        }
+
+        if (!existingKeyId.empty()) {
+            // Use the existing key id derived from the key store name.
+            swMasterKey = _getKeyFromKMIPServer(existingKeyId);
+        } else {
+            // Create a new key or use a provided key id.
+            swMasterKey = _getKeyFromKMIPServer(_encryptionParams->kmipKeyIdentifier);
+        }
+    }
+
+    if (!swMasterKey.isOK()) {
+        return swMasterKey.getStatus();
+    }
+    _masterKey = std::move(swMasterKey.getValue());
+    _masterKeyId = _masterKey->getKeyId();
+    std::string keystorePath = _keystoreBasePath + "/" + _masterKeyId;
+
+    // Open the local WT key store, create it if it doesn't exist.
+    return _openKeystore(keystorePath, &_keystoreConnection);
+}
+
+Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) {
+    if (!_keyRotationAllowed) {
+        return Status(ErrorCodes::BadValue,
+                      "It is not possible to rotate the master key on a system that is being "
+                      "started for the first time.");
+    }
+    if (_masterKeyId == newKeyId) {
+        return Status(
+            ErrorCodes::BadValue,
+            "Key rotation requires that the new master key id be different from the old.");
+    }
+
+    auto swRotMasterKey = _getKeyFromKMIPServer(newKeyId);
+    if (!swRotMasterKey.isOK()) {
+        return swRotMasterKey.getStatus();
+    }
+    _rotMasterKey = std::move(swRotMasterKey.getValue());
+
+    WT_CONNECTION* rotKeystoreConnection;
+    std::string rotMasterKeyId = _rotMasterKey->getKeyId();
+    std::string rotKeystorePath = _keystoreBasePath + "/" + rotMasterKeyId;
+    std::string initRotKeystorePath = rotKeystorePath + "-initializing-keystore";
+
+    Status status = _openKeystore(initRotKeystorePath, &rotKeystoreConnection);
+    if (!status.isOK()) {
+        return status;
+    }
+
+    // Open sessions and cursor for the old and new key store.
+    WT_SESSION* readSession;
+    WT_CURSOR* readCursor;
+    invariantWTOK(
+        _keystoreConnection->open_session(_keystoreConnection, nullptr, nullptr, &readSession));
+    invariantWTOK(readSession->open_cursor(
+        readSession, kKeystoreTableName.c_str(), nullptr, nullptr, &readCursor));
+
+    WT_SESSION* writeSession;
+    WT_CURSOR* writeCursor;
+    invariantWTOK(rotKeystoreConnection->open_session(
+        rotKeystoreConnection, nullptr, nullptr, &writeSession));
+    invariantWTOK(writeSession->open_cursor(
+        writeSession, kKeystoreTableName.c_str(), nullptr, nullptr, &writeCursor));
+
+    // Read all the keys from the original key store and write them to the new key store.
+    char* keyId;
+    WT_ITEM key;
+    uint32_t keyStatus;
+    while (readCursor->next(readCursor) == 0) {
+        invariantWTOK(readCursor->get_key(readCursor, &keyId));
+        invariantWTOK(readCursor->get_value(readCursor, &key, &keyStatus));
+        writeCursor->set_key(writeCursor, keyId);
+        writeCursor->set_value(writeCursor, &key, keyStatus);
+        invariantWTOK(writeCursor->insert(writeCursor));
+    }
+
+    closeWTCursorAndSession(readCursor);
+    closeWTCursorAndSession(writeCursor);
+    invariantWTOK(rotKeystoreConnection->close(rotKeystoreConnection, nullptr));
+
+    // Remove the -initializing post fix to the from the new keystore.
+    // Rename the old keystore path to keyid-invalidated-date.
+    std::string oldKeystorePath = _keystoreBasePath + "/" + _masterKeyId;
+    std::string invalidatedKeystorePath =
+        oldKeystorePath + kInvalidatedKeyword + Date_t::now().toString();
+    try {
+        // If the first of these renames succeed and the second fails, we will end up in a state
+        // where the server is without a valid keystore and cannot start. This can be resolved by
+        // manually renaming either the old or the newly created keystore to 'keyid'.
+        fs::rename(oldKeystorePath, invalidatedKeystorePath);
+        fs::rename(initRotKeystorePath, rotKeystorePath);
+
+        // Delete any old invalidated keystores to clean up.
+        for (fs::directory_iterator it(_keystoreBasePath);
+             it != boost::filesystem::directory_iterator();
+             ++it) {
+            std::string fileName = fs::path(*it).filename().string();
+            std::string filePath = fs::path(*it).string();
+            if (fileName.find(kInvalidatedKeyword) != std::string::npos &&
+                filePath != invalidatedKeystorePath) {
+                if (fs::remove_all(filePath) > 0) {
+                    log() << "Removing outdated invalid keystore " << fileName << ".";
+                } else {
+                    warning() << "Failed to remove the invalidated keystore " << filePath << ".";
+                }
+            }
+        }
+    } catch (const std::exception& e) {
+        return Status(ErrorCodes::BadValue,
+                      str::stream() << "Error occured when performing key "
+                                       "rotation directory rename operation. "
+                                       "Verify the contents of your key "
+                                       "store. " << e.what());
+    }
+
+    log() << "Rotated master encryption key from id " << _masterKeyId << " to id " << rotMasterKeyId
+          << ".";
+    _masterKeyId = rotMasterKeyId;
+
+    return Status::OK();
+}
+
 }  // namespace mongo

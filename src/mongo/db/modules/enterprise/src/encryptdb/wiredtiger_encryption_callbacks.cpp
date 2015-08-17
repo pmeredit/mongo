@@ -162,13 +162,13 @@ int encrypt(WT_ENCRYPTOR* encryptor,
             crypto::aesEncrypt(src, srcLen, &layout, *crypto->symmetricKey, crypto->cipherMode);
 
         if (!ret.isOK()) {
-            log() << "encrypt error: " << ret;
+            severe() << "Encrypt error for key " << crypto->symmetricKey->getKeyId() << ": " << ret;
             return EINVAL;
         }
 
         // Check the returned length, including block size padding
         if (layout.getDataSize() != layout.expectedCiphertextLen(srcLen)) {
-            log() << "encrypt error, expected cipher text of length "
+            log() << "Encrypt error, expected cipher text of length "
                   << layout.expectedCiphertextLen(srcLen) << "] but found " << *resultLen;
             return EINVAL;
         }
@@ -202,14 +202,20 @@ int decrypt(WT_ENCRYPTOR* encryptor,
             crypto::aesDecrypt(&layout, *crypto->symmetricKey, crypto->cipherMode, dst, resultLen);
 
         if (!ret.isOK()) {
-            log() << "decrypt error: " << ret;
+            if (crypto->symmetricKey->getKeyId() == kSystemKeyId) {
+                severe()
+                    << "Decryption failed, invalid encryption master key or keystore encountered.";
+            } else {
+                severe() << "Decrypt error for key " << crypto->symmetricKey->getKeyId() << ": "
+                         << ret;
+            }
             return EINVAL;
         }
         // Check the returned length, excluding headers block padding
         size_t lowerBound, upperBound;
         std::tie(lowerBound, upperBound) = layout.expectedPlaintextLen();
         if (*resultLen < lowerBound || *resultLen > upperBound) {
-            log() << "decrypt error, expected clear text length in interval"
+            log() << "Decrypt error, expected clear text length in interval"
                   << "[" << lowerBound << "," << upperBound << "]"
                   << "but found " << *resultLen;
             return EINVAL;

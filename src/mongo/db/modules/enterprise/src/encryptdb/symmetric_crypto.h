@@ -182,7 +182,7 @@ Status aesDecrypt(EncryptedMemoryLayout* layout,
 /**
  * Generates a new, random, symmetric key for use with AES.
  */
-SymmetricKey aesGenerate(size_t keySize);
+SymmetricKey aesGenerate(size_t keySize, std::string keyId);
 
 }  // namespace crypto
 }  // namespace mongo
