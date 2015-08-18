@@ -51,7 +51,7 @@ enum class aesMode : uint8_t { cbc, gcm };
 const std::string aes256CBCName = "AES256-CBC";
 const std::string aes256GCMName = "AES256-GCM";
 
-const aesMode getCipherModeFromString(const std::string& mode);
+aesMode getCipherModeFromString(const std::string& mode);
 
 /** Describes the in memory layout of encryption related data.
  *

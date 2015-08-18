@@ -142,7 +142,7 @@ int encrypt(WT_ENCRYPTOR* encryptor,
             size_t* resultLen) {
     try {
         const ExtendedWTEncryptor* crypto = reinterpret_cast<ExtendedWTEncryptor*>(encryptor);
-        if (!src || !dst || !resultLen | !crypto | !crypto->symmetricKey) {
+        if (!src || !dst || !resultLen || !crypto || !crypto->symmetricKey) {
             return EINVAL;
         }
 
@@ -192,7 +192,7 @@ int decrypt(WT_ENCRYPTOR* encryptor,
             size_t* resultLen) {
     try {
         const ExtendedWTEncryptor* crypto = reinterpret_cast<ExtendedWTEncryptor*>(encryptor);
-        if (!src || !dst | !resultLen | !crypto | !crypto->symmetricKey) {
+        if (!src || !dst || !resultLen || !crypto || !crypto->symmetricKey) {
             return EINVAL;
         }
 

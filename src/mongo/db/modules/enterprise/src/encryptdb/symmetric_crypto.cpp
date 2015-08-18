@@ -54,7 +54,7 @@ MONGO_INITIALIZER(CreateKeyEntropySource)(InitializerContext* context) {
     return Status::OK();
 }
 
-const aesMode getCipherModeFromString(const std::string& mode) {
+aesMode getCipherModeFromString(const std::string& mode) {
     if (mode == aes256CBCName) {
         return aesMode::cbc;
     } else if (mode == aes256GCMName) {
