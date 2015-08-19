@@ -14,6 +14,7 @@
 #include "mongo/db/storage_options.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/util/net/ssl_options.h"
+#include "symmetric_crypto_smoke.h"
 
 namespace mongo {
 MONGO_INITIALIZER_WITH_PREREQUISITES(CreateEncryptionKeyManager,
@@ -24,6 +25,16 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(CreateEncryptionKeyManager,
 (InitializerContext* context) {
     // Reset the WiredTigerCustomizationHooks pointer to be the EncryptionKeyManager
     if (encryptionGlobalParams.enableEncryption) {
+        // Verify that encryption algorithms are functioning
+        Status implementationStatus =
+            crypto::smokeTestAESCipherMode(encryptionGlobalParams.encryptionCipherMode);
+        if (!implementationStatus.isOK()) {
+            return Status(implementationStatus.code(),
+                          str::stream() << "Validation of cryptographic functions for "
+                                        << encryptionGlobalParams.encryptionCipherMode
+                                        << " failed: " << implementationStatus.reason());
+        }
+
         auto keyManager = stdx::make_unique<EncryptionKeyManager>(
             storageGlobalParams.dbpath, &encryptionGlobalParams, &sslGlobalParams);
         WiredTigerCustomizationHooks::set(getGlobalServiceContext(), std::move(keyManager));

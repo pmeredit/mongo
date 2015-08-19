@@ -34,8 +34,19 @@ var runTest = function(cipherMode, expectSuccessfulStartup) {
     MongoRunner.stopMongod(md);
 };
 
+// Ubuntu 12.04 has a bug in its copy of OpenSSL which keeps us from running with GCM.
+// Detect this platform, and assert accordingly.
+
+var md = MongoRunner.runMongod({});
+assert.neq(null, md, "Failed to start mongod to probe host type");
+var db = md.getDB("test");
+var hostInfo = db.hostInfo();
+MongoRunner.stopMongod(md);
+var platformSupportsGCM = !(hostInfo.os.type == "Linux" && hostInfo.os.name == "Ubuntu" &&
+                            version == "12.04");
+
 runTest("AES256-CBC", true);
-runTest("AES256-GCM", true);
+runTest("AES256-GCM", platformSupportsGCM);
 runTest("BadCipher", false);
 
 }) ();

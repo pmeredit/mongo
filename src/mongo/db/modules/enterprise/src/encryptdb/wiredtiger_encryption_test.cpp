@@ -161,18 +161,28 @@ private:
 
 TEST(WiredTigerEncryptionTest, ReadWriteDataCBC) {
     unittest::TempDir dbPath("cbc_wt_test");
-    WiredTigerUtilHarnessHelper helper(dbPath.path(), crypto::aes256CBCName);
-    helper.writeData();
-    helper.readData();
+    {
+        WiredTigerUtilHarnessHelper helper(dbPath.path(), crypto::aes256CBCName);
+        helper.writeData();
+    }
+    {
+        WiredTigerUtilHarnessHelper helper(dbPath.path(), crypto::aes256CBCName);
+        helper.readData();
+    }
 }
 
 
-#ifdef EVP_CTRL_GCM_GET_TAG
+#if defined(EVP_CTRL_GCM_GET_TAG) && !defined(DISABLE_GCM_TESTVECTORS)
 TEST(WiredTigerEncryptionTest, ReadWriteDataGCM) {
     unittest::TempDir dbPath("gcm_wt_test");
-    WiredTigerUtilHarnessHelper helper(dbPath.path(), crypto::aes256GCMName);
-    helper.writeData();
-    helper.readData();
+    {
+        WiredTigerUtilHarnessHelper helper(dbPath.path(), crypto::aes256GCMName);
+        helper.writeData();
+    }
+    {
+        WiredTigerUtilHarnessHelper helper(dbPath.path(), crypto::aes256GCMName);
+        helper.readData();
+    }
 }
 #endif
 

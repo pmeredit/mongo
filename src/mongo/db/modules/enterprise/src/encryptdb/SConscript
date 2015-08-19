@@ -2,10 +2,17 @@
 Import("env")
 Import("wiredtiger")
 
-if wiredtiger:
-    wtEnv = env.Clone()
-    wtEnv.InjectThirdPartyIncludePaths(libraries=['wiredtiger'])
-    wtEnv.InjectThirdPartyIncludePaths(libraries=['wiredtiger_ext'])
+if not wiredtiger:
+    env.FatalError("EncryptedStorage requires WiredTiger")
+
+wtEnv = env.Clone()
+wtEnv.InjectThirdPartyIncludePaths(libraries=['wiredtiger'])
+wtEnv.InjectThirdPartyIncludePaths(libraries=['wiredtiger_ext'])
+# Ubuntu1204 exposes GCM symbols, but they do not work. We have to detect the platform and disable
+# that portion of the symmetric_crypto test.
+if GetOption("distmod") == "ubuntu1204":
+    wtEnv.Append(CPPDEFINES=["DISABLE_GCM_TESTVECTORS"]);
+
 
 wtEnv.Library(target='encryption_key_manager_init',
             source=[
@@ -13,6 +20,7 @@ wtEnv.Library(target='encryption_key_manager_init',
             ],
             LIBDEPS=[
                 'encryptdb',
+                'symmetric_crypto'
             ],
             PROGDEPS_DEPENDENTS=[
                 '$BUILD_DIR/mongo/mongod'
@@ -44,6 +52,7 @@ env.Library(target='encryption_options',
 env.Library(target='symmetric_crypto',
             source=[
                 'symmetric_crypto.cpp',
+                'symmetric_crypto_smoke.cpp',
                 'symmetric_key.cpp',
             ],
             LIBDEPS=[
@@ -57,7 +66,7 @@ env.Library(target='kmip',
                 'kmip_response.cpp',
             ])
 
-env.CppUnitTest(target='symmetric_crypto_test',
+wtEnv.CppUnitTest(target='symmetric_crypto_test',
                 source='symmetric_crypto_test.cpp',
                 LIBDEPS=[
                     'symmetric_crypto',

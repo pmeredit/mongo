@@ -6,8 +6,6 @@
 
 #include "symmetric_crypto.h"
 
-#include <openssl/evp.h>
-
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
 #include "mongo/crypto/crypto.h"
