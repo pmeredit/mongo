@@ -82,6 +82,14 @@ static Status validateEncryptionOptions(const moe::Environment& params) {
                     "Must specify either an encryption key file or "
                     "a KMIP server when enabling file encryption"};
         }
+
+        if (params.count("security.kmip.serverName") &&
+            !params.count("security.kmip.serverCAFile")) {
+            return {ErrorCodes::InvalidOptions,
+                    "Please specify a kmipServerCAFile parameter to validate the KMIP server's "
+                    "certificate"};
+        }
+
         if (params.count("security.encryptionCipherMode")) {
             std::string mode = params["security.encryptionCipherMode"].as<std::string>();
 
