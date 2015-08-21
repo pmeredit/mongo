@@ -39,6 +39,13 @@ public:
      */
     StatusWith<std::unique_ptr<SymmetricKey>> getExternalKey(const std::string& uid);
 
+    /**
+     * Returns true if the underlying socket was set up correctly
+     */
+    bool isValid() {
+        return _isValid;
+    }
+
 private:
     /**
      * Initialize a connection to the KMIP server
@@ -57,6 +64,7 @@ private:
     std::unique_ptr<SSLManagerInterface> _sslManager;
     HostAndPort _server;
     Socket _socket;
+    bool _isValid;
 };
 
 }  // namespace kmip

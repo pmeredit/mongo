@@ -112,12 +112,12 @@ int customize(WT_ENCRYPTOR* encryptor,
             return EINVAL;
         }
 
-
         // Get the symmetric key for the key id
         StatusWith<std::unique_ptr<SymmetricKey>> swSymmetricKey =
             EncryptionKeyManager::get(getGlobalServiceContext())->getKey(keyId);
         if (!swSymmetricKey.isOK()) {
-            error() << "Unable to initialize encryption. " << swSymmetricKey.getStatus().reason();
+            error() << "Unable to retrieve key " << keyId
+                    << ", error: " << swSymmetricKey.getStatus().reason();
             return EINVAL;
         }
         *(myEncryptor.get()) = *origEncryptor;

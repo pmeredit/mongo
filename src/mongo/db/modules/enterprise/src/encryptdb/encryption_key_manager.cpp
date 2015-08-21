@@ -311,6 +311,12 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getKeyFromKMIPS
     KMIPService kmipService(
         HostAndPort(_encryptionParams->kmipServerName, _encryptionParams->kmipPort), sslKMIPParams);
 
+    if (!kmipService.isValid()) {
+        return Status(ErrorCodes::BadValue,
+                      str::stream() << "Failed to open connection to KMIP server "
+                                    << _encryptionParams->kmipServerName << ".");
+    }
+
     // Try to retrieve an existing key.
     if (!keyId.empty()) {
         return kmipService.getExternalKey(keyId);
@@ -534,6 +540,8 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) {
     }
 
     closeWTCursorAndSession(readCursor);
+    invariantWTOK(_keystoreConnection->close(_keystoreConnection, nullptr));
+
     closeWTCursorAndSession(writeCursor);
     invariantWTOK(rotKeystoreConnection->close(rotKeystoreConnection, nullptr));
 

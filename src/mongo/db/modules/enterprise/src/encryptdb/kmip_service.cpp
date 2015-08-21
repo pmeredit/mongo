@@ -28,9 +28,13 @@ namespace kmip {
 
 KMIPService::KMIPService(const HostAndPort& server, const SSLParams& sslKMIPParams)
     : _server(server), _socket(10, logger::LogSeverity::Log()) {
-    _sslManager = SSLManagerInterface::create(sslKMIPParams, false);
-
-    uassertStatusOK(_initServerConnection());
+    try {
+        _sslManager = SSLManagerInterface::create(sslKMIPParams, false);
+        Status status = _initServerConnection();
+        _isValid = status.isOK();
+    } catch (SocketException& e) {
+        _isValid = false;
+    }
 }
 
 StatusWith<std::string> KMIPService::createExternalKey() {
@@ -70,6 +74,11 @@ StatusWith<std::unique_ptr<SymmetricKey>> KMIPService::getExternalKey(const std:
 
 Status KMIPService::_initServerConnection() {
     SockAddr server(_server.host().c_str(), _server.port());
+
+    if (!server.isValid()) {
+        return Status(ErrorCodes::BadValue,
+                      str::stream() << "KMIP server address " << _server.host() << " is invalid.");
+    }
 
     if (!_socket.connect(server)) {
         return Status(ErrorCodes::BadValue,

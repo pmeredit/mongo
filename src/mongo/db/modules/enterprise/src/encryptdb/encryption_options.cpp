@@ -11,6 +11,7 @@
 #include "mongo/base/status.h"
 #include "mongo/db/server_options.h"
 #include "mongo/util/log.h"
+#include "mongo/util/mongoutils/str.h"
 #include "mongo/util/options_parser/option_section.h"
 #include "mongo/util/options_parser/startup_options.h"
 #include "symmetric_crypto.h"
@@ -80,6 +81,15 @@ Status addEncryptionOptions(moe::OptionSection* options) {
 
 static Status validateEncryptionOptions(const moe::Environment& params) {
     if (params.count("security.enableEncryption")) {
+        if (params.count("storage.engine")) {
+            std::string storageEngine = params["storage.engine"].as<std::string>();
+            if (storageEngine != "wiredTiger") {
+                return {ErrorCodes::InvalidOptions,
+                        str::stream() << "Storage engine " << storageEngine
+                                      << " specified, encryption at rest requires wiredTiger."};
+            }
+        }
+
         if (params.count("security.encryptionKeyFile")) {
             if (params.count("security.kmip.serverName") ||
                 params.count("security.kmip.keyIdentifier")) {
