@@ -20,7 +20,11 @@ class SymmetricKey {
     MONGO_DISALLOW_COPYING(SymmetricKey);
 
 public:
-    SymmetricKey(const uint8_t* key, size_t keySize, uint32_t algorithm, std::string keyId);
+    SymmetricKey(const uint8_t* key,
+                 size_t keySize,
+                 uint32_t algorithm,
+                 std::string keyId,
+                 uint32_t initializationCount);
     SymmetricKey(std::unique_ptr<uint8_t[]> key,
                  size_t keySize,
                  uint32_t algorithm,
@@ -39,6 +43,11 @@ public:
         return _keySize;
     }
 
+    // Return the number of times the key has been retrieved from the key store
+    const uint32_t getInitializationCount() const {
+        return _initializationCount;
+    }
+
     const uint8_t* getKey() const {
         return _key.get();
     }
@@ -55,5 +64,7 @@ private:
     std::unique_ptr<uint8_t[]> _key;
 
     std::string _keyId;
+
+    uint32_t _initializationCount;
 };
 }  // namespace mongo

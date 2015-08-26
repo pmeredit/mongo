@@ -59,6 +59,7 @@ struct ExtendedWTEncryptor {
     WT_ENCRYPTOR encryptor;      // Must come first
     SymmetricKey* symmetricKey;  // Symmetric key
     crypto::aesMode cipherMode;  // Cipher mode
+    AtomicUInt64* encryptCount;  // Counter incremented on every encrypt call, reset on restart.
 };
 
 int sizing(WT_ENCRYPTOR* encryptor, WT_SESSION* session, size_t* expansionConstant) {
@@ -123,6 +124,7 @@ int customize(WT_ENCRYPTOR* encryptor,
 
         myEncryptor.get()->symmetricKey = swSymmetricKey.getValue().release();
         myEncryptor.get()->cipherMode = crypto::getCipherModeFromString(encryptorName);
+        myEncryptor.get()->encryptCount = new AtomicUInt64(0);
 
         *customEncryptor = &(myEncryptor.release()->encryptor);
         return 0;
@@ -141,7 +143,7 @@ int encrypt(WT_ENCRYPTOR* encryptor,
             size_t dstLen,
             size_t* resultLen) {
     try {
-        const ExtendedWTEncryptor* crypto = reinterpret_cast<ExtendedWTEncryptor*>(encryptor);
+        ExtendedWTEncryptor* crypto = reinterpret_cast<ExtendedWTEncryptor*>(encryptor);
         if (!src || !dst || !resultLen || !crypto || !crypto->symmetricKey) {
             return EINVAL;
         }
@@ -153,10 +155,22 @@ int encrypt(WT_ENCRYPTOR* encryptor,
             return ENOMEM;
         }
 
-        // Generate IV, this is currently very predictable
-        // FIXME: Make this unpredictable to prevent chosen plaintext attacks
-        int64_t iv[2] = {prng->nextInt64(), prng->nextInt64()};
-        memcpy(layout.getIV(), iv, layout.getIVSize());
+        uint32_t initializationCount = crypto->symmetricKey->getInitializationCount();
+        if (crypto->cipherMode == crypto::aesMode::gcm && initializationCount != 0) {
+            // Generate deterministic 12 byte IV for GCM but not for the master key (identified by
+            // having initializationCount = 0). The rational being that we can't keep a usage count
+            // for the master key and it will never be used more than 2^32 times so using a random
+            // IV is safe.
+            memcpy(layout.getIV(), &initializationCount, sizeof(uint32_t));
+            uint64_t encryptCount = crypto->encryptCount->load() + 1;
+            memcpy(layout.getIV() + sizeof(uint32_t), &encryptCount, sizeof(uint64_t));
+            crypto->encryptCount->store(encryptCount);
+        } else {
+            // Generate random IV for CBC, this is currently very predictable
+            // FIXME: Make this unpredictable to prevent chosen plaintext attacks
+            int64_t iv[2] = {prng->nextInt64(), prng->nextInt64()};
+            memcpy(layout.getIV(), iv, layout.getIVSize());
+        }
 
         Status ret =
             crypto::aesEncrypt(src, srcLen, &layout, *crypto->symmetricKey, crypto->cipherMode);
@@ -238,6 +252,9 @@ int destroyEncryptor(WT_ENCRYPTOR* encryptor, WT_SESSION* session) {
             if (myEncryptor->symmetricKey) {
                 delete myEncryptor->symmetricKey;
             }
+            if (myEncryptor->encryptCount) {
+                delete myEncryptor->encryptCount;
+            }
             delete myEncryptor;
         }
         return 0;
@@ -260,19 +277,24 @@ int destroyEncryptor(WT_ENCRYPTOR* encryptor, WT_SESSION* session) {
  * support multiple different encryptors but at the moment we are using a single one.
  */
 extern "C" MONGO_COMPILER_API_EXPORT int mongo_addWiredTigerEncryptors(WT_CONNECTION* connection) {
-    mongo::ExtendedWTEncryptor* extWTEncryptorCBC = new mongo::ExtendedWTEncryptor;
-    extWTEncryptorCBC->symmetricKey = nullptr;
-    extWTEncryptorCBC->encryptor.sizing = mongo::sizing;
-    extWTEncryptorCBC->encryptor.customize = mongo::customize;
-    extWTEncryptorCBC->encryptor.encrypt = mongo::encrypt;
-    extWTEncryptorCBC->encryptor.decrypt = mongo::decrypt;
-    extWTEncryptorCBC->encryptor.terminate = mongo::destroyEncryptor;
+    if (!mongo::encryptionGlobalParams.enableEncryption) {
+        mongo::severe() << "Encrypted data files detected, please enable encryption";
+        return EINVAL;
+    }
+
+    mongo::ExtendedWTEncryptor* extWTEncryptor = new mongo::ExtendedWTEncryptor;
+    extWTEncryptor->symmetricKey = nullptr;
+    extWTEncryptor->encryptor.sizing = mongo::sizing;
+    extWTEncryptor->encryptor.customize = mongo::customize;
+    extWTEncryptor->encryptor.encrypt = mongo::encrypt;
+    extWTEncryptor->encryptor.decrypt = mongo::decrypt;
+    extWTEncryptor->encryptor.terminate = mongo::destroyEncryptor;
+    extWTEncryptor->encryptCount = nullptr;
 
     int ret;
-    if (mongo::encryptionGlobalParams.enableEncryption &&
-        (ret = connection->add_encryptor(connection,
+    if ((ret = connection->add_encryptor(connection,
                                          mongo::encryptionGlobalParams.encryptionCipherMode.c_str(),
-                                         reinterpret_cast<WT_ENCRYPTOR*>(extWTEncryptorCBC),
+                                         reinterpret_cast<WT_ENCRYPTOR*>(extWTEncryptor),
                                          nullptr)) != 0) {
         return ret;
     }

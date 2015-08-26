@@ -260,10 +260,17 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_readKey(const s
     int ret = cursor->search(cursor);
     if (ret == 0) {
         // The key already exists so return it.
-        uint32_t keyStatus;
-        invariantWTOK(cursor->get_value(cursor, &key, &keyStatus));
-        return stdx::make_unique<SymmetricKey>(
-            reinterpret_cast<const uint8_t*>(key.data), key.size, crypto::aesAlgorithm, keyId);
+        uint32_t keyStatus, initializationCount;
+        invariantWTOK(cursor->get_value(cursor, &key, &keyStatus, &initializationCount));
+        auto symmetricKey =
+            stdx::make_unique<SymmetricKey>(reinterpret_cast<const uint8_t*>(key.data),
+                                            key.size,
+                                            crypto::aesAlgorithm,
+                                            keyId,
+                                            ++initializationCount);
+        cursor->set_value(cursor, &key, keyStatus, initializationCount);
+        invariantWTOK(cursor->update(cursor));
+        return std::move(symmetricKey);
     }
 
     // There is no key corresponding to keyId yet so create one
@@ -271,7 +278,7 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_readKey(const s
         stdx::make_unique<SymmetricKey>(crypto::aesGenerate(crypto::sym256KeySize, keyId));
     key.data = symmetricKey.get()->getKey();
     key.size = symmetricKey.get()->getKeySize();
-    cursor->set_value(cursor, &key, 0);
+    cursor->set_value(cursor, &key, 0, symmetricKey.get()->getInitializationCount());
     invariantWTOK(cursor->insert(cursor));
 
     return std::move(symmetricKey);
@@ -344,7 +351,7 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getKeyFromKeyFi
     std::vector<uint8_t> keyVector(decodedKey.begin(), decodedKey.end());
     const uint8_t* keyData = keyVector.data();
 
-    return stdx::make_unique<SymmetricKey>(keyData, keyLength, crypto::aesAlgorithm, "local");
+    return stdx::make_unique<SymmetricKey>(keyData, keyLength, crypto::aesAlgorithm, "local", 0);
 }
 
 Status EncryptionKeyManager::_openKeystore(const std::string& path, WT_CONNECTION** conn) {
@@ -387,8 +394,8 @@ Status EncryptionKeyManager::_openKeystore(const std::string& path, WT_CONNECTIO
     // S: database name, null-terminated string.
     // u: key material, raw byte array stored as a WT_ITEM.
     // l: key status, currently not used but set to 0.
-    std::string sessionConfig =
-        keystoreConfig + "key_format=S,value_format=uL,columns=(keyid,key,keystatus)";
+    std::string sessionConfig = keystoreConfig +
+        "key_format=S,value_format=uLL,columns=(keyid,key,keystatus,initializationCount)";
 
     invariantWTOK(session->create(session, kKeystoreTableName.c_str(), sessionConfig.c_str()));
     invariantWTOK(session->checkpoint(session, nullptr));
@@ -517,12 +524,12 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) {
     // Read all the keys from the original key store and write them to the new key store.
     char* keyId;
     WT_ITEM key;
-    uint32_t keyStatus;
+    uint32_t keyStatus, initializationCount;
     while (readCursor->next(readCursor) == 0) {
         invariantWTOK(readCursor->get_key(readCursor, &keyId));
-        invariantWTOK(readCursor->get_value(readCursor, &key, &keyStatus));
+        invariantWTOK(readCursor->get_value(readCursor, &key, &keyStatus, &initializationCount));
         writeCursor->set_key(writeCursor, keyId);
-        writeCursor->set_value(writeCursor, &key, keyStatus);
+        writeCursor->set_value(writeCursor, &key, keyStatus, initializationCount);
         invariantWTOK(writeCursor->insert(writeCursor));
     }
 
