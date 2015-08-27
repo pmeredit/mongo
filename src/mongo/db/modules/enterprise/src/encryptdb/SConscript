@@ -10,7 +10,7 @@ wtEnv.InjectThirdPartyIncludePaths(libraries=['wiredtiger'])
 wtEnv.InjectThirdPartyIncludePaths(libraries=['wiredtiger_ext'])
 # Ubuntu1204 exposes GCM symbols, but they do not work. We have to detect the platform and disable
 # that portion of the symmetric_crypto test.
-if GetOption("distmod") == "ubuntu1204":
+if wtEnv['MONGO_DISTMOD'] == "ubuntu1204":
     wtEnv.Append(CPPDEFINES=["DISABLE_GCM_TESTVECTORS"]);
 
 
