@@ -22,6 +22,7 @@
 #include "mongo/util/log.h"
 #include "mongo/util/net/ssl_manager.h"
 #include "mongo/util/net/ssl_options.h"
+#include "mongo/util/secure_zero_memory.h"
 
 namespace mongo {
 namespace kmip {
@@ -123,7 +124,9 @@ StatusWith<KMIPResponse> KMIPService::_sendRequest(const std::vector<uint8_t>& r
     massert(4044, "KMIP server response is too long", bodyLength <= sizeof(resp) - 8);
     _socket.recv(&resp[8], bodyLength);
 
-    return KMIPResponse::create(resp, bodyLength + 8);
+    StatusWith<KMIPResponse> swKMIPResponse = KMIPResponse::create(resp, bodyLength + 8);
+    secureZeroMemory(resp, bodyLength + 8);
+    return std::move(swKMIPResponse);
 }
 
 std::vector<uint8_t> KMIPService::_generateKMIPGetRequest(const std::string& uid) {
