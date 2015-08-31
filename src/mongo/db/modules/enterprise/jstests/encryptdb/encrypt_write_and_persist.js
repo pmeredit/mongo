@@ -43,13 +43,13 @@ var db = md.getDB("test");
 var hostInfo = db.hostInfo();
 MongoRunner.stopMongod(md);
 
-var isUbuntu1204 = !(hostInfo.os.type == "Linux" && hostInfo.os.name == "Ubuntu" &&
+var isUbuntu1204 = (hostInfo.os.type == "Linux" && hostInfo.os.name == "Ubuntu" &&
                      hostInfo.os.version == "12.04");
-var isSUSE = !(hostInfo.os.type == "Linux" && hostInfo.os.name.match("SUSE"));
-var isRHEL5 = !(hostInfo.os.type == "Linux" &&
+var isSUSE = (hostInfo.os.type == "Linux" && hostInfo.os.name.match("SUSE"));
+var isRHEL5 = (hostInfo.os.type == "Linux" &&
                 hostInfo.os.name.match("Red Hat Enterprise Linux Server release 5"));
 
-platformSupportsGCM = !(isUbuntu1204 || isSUSE || isRHEL5);
+var platformSupportsGCM = !(isUbuntu1204 || isSUSE || isRHEL5);
 
 runTest("AES256-CBC", true);
 runTest("AES256-GCM", platformSupportsGCM);
