@@ -378,9 +378,21 @@ Status CyrusSaslAuthenticationSession::step(StringData inputData, std::string* o
 
 std::string CyrusSaslAuthenticationSession::getPrincipalId() const {
     const void* principalId;
-    if (SASL_OK == sasl_getprop(_saslConnection, SASL_USERNAME, &principalId))
-        return static_cast<const char*>(principalId);
-    return std::string();
+
+    int result = sasl_getprop(_saslConnection, SASL_USERNAME, &principalId);
+    if (SASL_NOTDONE == result) {
+        LOG(1) << "Was not able to acquire authorization username from Cyrus SASL. "
+               << "Falling back to authentication name.";
+        result = sasl_getprop(_saslConnection, SASL_AUTHUSER, &principalId);
+    }
+
+    // If either case was successful, we can return the Id that was found
+    if (SASL_OK != result) {
+        error() << "Was not able to acquire principal id from Cyrus SASL.";
+        return std::string();
+    }
+
+    return static_cast<const char*>(principalId);
 }
 
 const char* CyrusSaslAuthenticationSession::getMechanism() const {
