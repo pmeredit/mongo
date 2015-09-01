@@ -177,11 +177,6 @@ int auxpropLookupMongoDBInternal(void* glob_context,
                 ret = curRet;
             }
         }
-
-        // If anything went wrong other than "item not found", proceed to the next property.
-        if (curRet != SASL_OK && curRet != SASL_NOUSER) {
-            break;
-        }
     }
 
     if (ret == SASL_CONTINUE) {
