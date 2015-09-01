@@ -48,8 +48,9 @@ var isUbuntu1204 = (hostInfo.os.type == "Linux" && hostInfo.os.name == "Ubuntu" 
 var isSUSE = (hostInfo.os.type == "Linux" && hostInfo.os.name.match("SUSE"));
 var isRHEL5 = (hostInfo.os.type == "Linux" &&
                 hostInfo.os.name.match("Red Hat Enterprise Linux Server release 5"));
+var isOSX = (hostInfo.os.type == "Darwin");
 
-var platformSupportsGCM = !(isUbuntu1204 || isSUSE || isRHEL5);
+var platformSupportsGCM = !(isUbuntu1204 || isSUSE || isRHEL5 || isOSX);
 
 runTest("AES256-CBC", true);
 runTest("AES256-GCM", platformSupportsGCM);
