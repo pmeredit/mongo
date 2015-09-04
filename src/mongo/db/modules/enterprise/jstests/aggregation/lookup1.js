@@ -34,6 +34,10 @@ load("jstests/aggregation/extras/utils.js");
         assert.writeOK(from.insert({_id: 1, b: null}));
         assert.writeOK(from.insert({_id: 2}));
 
+        //
+        // Basic functionality.
+        //
+
         // "from" document added to "as" field if a == b, where nonexistent fields are treated as
         // null.
         var expectedResults = [
@@ -146,7 +150,11 @@ load("jstests/aggregation/extras/utils.js");
             }
         }], expectedResults, coll);
 
-        // $unwind unwinds "as" field.
+        //
+        // Coalescing with $unwind.
+        //
+
+        // A normal $unwind with on the "as" field.
         expectedResults = [
             {_id: 0, a: 1, "same": {_id: 0, b: 1}},
             {_id: 1, a: null, "same": {_id: 1, b: null}},
@@ -162,10 +170,10 @@ load("jstests/aggregation/extras/utils.js");
                 as: "same"
             }
         }, {
-            $unwind: "$same"
+            $unwind: {path: "$same"}
         }], expectedResults, coll);
 
-        // $unwind ignores input document if "as" field would be empty.
+        // Normal $unwind with no matching documents.
         expectedResults = [];
         testPipeline([{
             $lookUp: {
@@ -175,8 +183,52 @@ load("jstests/aggregation/extras/utils.js");
                 as: "same"
             }
         }, {
-            $unwind: "$same"
+            $unwind: {path: "$same"}
         }], expectedResults, coll);
+
+        // $unwind with preserveNullAndEmptyArray with no matching documents.
+        expectedResults = [
+            {_id: 0, a: 1, same: []},
+            {_id: 1, a: null, same: []},
+            {_id: 2, same: []},
+        ];
+        testPipeline([{
+            $lookUp: {
+                localField: "_id",
+                foreignField: "nonexistent",
+                from: "from",
+                as: "same"
+            }
+        }, {
+            $unwind: {
+                path: "$same",
+                preserveNullAndEmptyArrays: true
+            }
+        }], expectedResults, coll);
+
+        // $unwind with preserveNullAndEmptyArray, some with matching documents, some without.
+        expectedResults = [
+            {_id: 0, a: 1, same: []},
+            {_id: 1, a: null, same: {_id: 0, b: 1}},
+            {_id: 2, same: []},
+        ];
+        testPipeline([{
+            $lookUp: {
+                localField: "_id",
+                foreignField: "b",
+                from: "from",
+                as: "same"
+            }
+        }, {
+            $unwind: {
+                path: "$same",
+                preserveNullAndEmptyArrays: true
+            }
+        }], expectedResults, coll);
+
+        //
+        // Dependencies.
+        //
 
         // If $lookUp didn't add "localField" to its dependencies, this test would fail as the
         // value of the "a" field would be lost and treated as null.
@@ -198,7 +250,10 @@ load("jstests/aggregation/extras/utils.js");
             }
         }], expectedResults, coll);
 
-        // Test dotted field paths.
+        //
+        // Dotted field paths.
+        //
+
         assert.writeOK(coll.insert({_id: 3, a: {c : 1}}));
 
         assert.writeOK(from.insert({_id: 3, b: {c : 1}}));
@@ -233,6 +288,10 @@ load("jstests/aggregation/extras/utils.js");
                 as: "same"
             }
         }], expectedResults, coll);
+
+        //
+        // Error cases.
+        //
 
         // All four fields must be specified.
         assertErrorCode(coll, [{$lookUp: {foreignField:"b", from:"from", as:"same"}}], 4572);

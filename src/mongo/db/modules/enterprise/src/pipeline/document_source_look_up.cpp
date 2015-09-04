@@ -96,37 +96,47 @@ BSONObj DocumentSourceLookUp::queryForInput(const Document& input) const {
 }
 
 boost::optional<Document> DocumentSourceLookUp::unwindResult() {
-    // Skip input documents that have no matches and output one document per match rather than
-    // building an array of matches, as that's what $unwind would do.
+    // Loop until we get a document that has at least one match.
+    // Note we may return early from this loop if our source stage is exhausted or if the unwind
+    // source was asked to return empty arrays and we get a document without a match.
     while (!_cursor || !_cursor->more()) {
         _input = pSource->getNext();
         if (!_input)
             return {};
-        _cursor = _mongod->directClient()->query(_fromNs.ns(), queryForInput(*_input));
-    }
 
-    // Move input document into output if this is the last or only result, otherwise perform a copy.
+        _cursor = _mongod->directClient()->query(_fromNs.ns(), queryForInput(*_input));
+
+        if (_unwindSrc->preserveNullAndEmptyArrays() && !_cursor->more()) {
+            // There were no results for this cursor, but the $unwind was asked to preserve
+            // empty
+            // arrays, so we should return a document with an empty array.
+            MutableDocument output(std::move(*_input));
+            output.setNestedField(_as, Value(BSONArray()));
+            return output.freeze();
+        }
+    }
+    invariant(_cursor->more() && bool(_input));
+    auto nextVal = Value(_cursor->nextSafe());
+
+    // Move input document into output if this is the last or only result, otherwise perform a
+    // copy.
     MutableDocument output(_cursor->more() ? *_input : std::move(*_input));
-    output.setNestedField(_as, Value(_cursor->nextSafe()));
+    output.setNestedField(_as, nextVal);
     return output.freeze();
 }
 
 void DocumentSourceLookUp::serializeToArray(std::vector<Value>& array, bool explain) const {
-    if (explain) {
-        array.push_back(
-            Value(DOC(getSourceName()
-                      << DOC("from" << _fromNs.coll() << "as" << _as.getPath(false) << "localField"
-                                    << _localField.getPath(false) << "foreignField"
-                                    << _foreignField.getPath(false) << "unwinding"
-                                    << (_handlingUnwind ? Value(true) : Value())))));
-    } else {
-        array.push_back(Value(
-            DOC(getSourceName() << DOC("from" << _fromNs.coll() << "as" << _as.getPath(false)
-                                              << "localField" << _localField.getPath(false)
-                                              << "foreignField" << _foreignField.getPath(false)))));
-        if (_handlingUnwind) {
-            _unwindSrc->serializeToArray(array);
-        }
+    MutableDocument output(
+        DOC(getSourceName() << DOC("from" << _fromNs.coll() << "as" << _as.getPath(false)
+                                          << "localField" << _localField.getPath(false)
+                                          << "foreignField" << _foreignField.getPath(false))));
+    if (_handlingUnwind && explain) {
+        output[getSourceName()]["unwinding"] =
+            Value(DOC("preserveNullAndEmptyArrays" << _unwindSrc->preserveNullAndEmptyArrays()));
+    }
+    array.push_back(Value(output.freeze()));
+    if (_handlingUnwind && !explain) {
+        _unwindSrc->serializeToArray(array);
     }
 }
 

@@ -58,12 +58,25 @@ class UnwindOnAs : public Base {
     string inputPipeJson() {
         return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
                "'right'}}"
-               ",{$unwind: '$same'}"
+               ",{$unwind: {path: '$same'}}"
                "]";
     }
     string outputPipeJson() {
         return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
-               "'right', unwinding: true}}]";
+               "'right', unwinding: {preserveNullAndEmptyArrays: false}}}]";
+    }
+};
+
+class UnwindOnAsWithPreserveEmpty : public Base {
+    string inputPipeJson() {
+        return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
+               "'right'}}"
+               ",{$unwind: {path: '$same', preserveNullAndEmptyArrays: true}}"
+               "]";
+    }
+    string outputPipeJson() {
+        return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
+               "'right', unwinding: {preserveNullAndEmptyArrays: true}}}]";
     }
 };
 
@@ -71,13 +84,13 @@ class UnwindNotOnAs : public Base {
     string inputPipeJson() {
         return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
                "'right'}}"
-               ",{$unwind: '$from'}"
+               ",{$unwind: {path: '$from'}}"
                "]";
     }
     string outputPipeJson() {
         return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
                "'right'}}"
-               ",{$unwind: '$from'}"
+               ",{$unwind: {path: '$from'}}"
                "]";
     }
 };
@@ -132,7 +145,7 @@ class UnwindOnAs : public Base {
     string inputPipeJson() {
         return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
                "'right'}}"
-               ",{$unwind: '$same'}"
+               ",{$unwind: {path: '$same'}}"
                "]";
     }
     string shardPipeJson() {
@@ -140,7 +153,24 @@ class UnwindOnAs : public Base {
     }
     string mergePipeJson() {
         return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
-               "'right', unwinding: true}}]";
+               "'right', unwinding: {preserveNullAndEmptyArrays: false}}}]";
+    }
+};
+
+
+class UnwindOnAsWithPreserveEmpty : public Base {
+    string inputPipeJson() {
+        return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
+               "'right'}}"
+               ",{$unwind: {path: '$same', preserveNullAndEmptyArrays: true}}"
+               "]";
+    }
+    string shardPipeJson() {
+        return "[]";
+    }
+    string mergePipeJson() {
+        return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
+               "'right', unwinding: {preserveNullAndEmptyArrays: true}}}]";
     }
 };
 
@@ -148,7 +178,7 @@ class UnwindNotOnAs : public Base {
     string inputPipeJson() {
         return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
                "'right'}}"
-               ",{$unwind: '$from'}"
+               ",{$unwind: {path: '$from'}}"
                "]";
     }
     string shardPipeJson() {
@@ -157,7 +187,7 @@ class UnwindNotOnAs : public Base {
     string mergePipeJson() {
         return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
                "'right'}}"
-               ",{$unwind: '$from'}"
+               ",{$unwind: {path: '$from'}}"
                "]";
     }
 };
@@ -200,8 +230,10 @@ public:
     All() : Suite("pipeline") {}
     void setupTests() {
         add<Local::coalesceLookUpAndUnwind::UnwindOnAs>();
+        add<Local::coalesceLookUpAndUnwind::UnwindOnAsWithPreserveEmpty>();
         add<Local::coalesceLookUpAndUnwind::UnwindNotOnAs>();
         add<Sharded::coalesceLookUpAndUnwind::UnwindOnAs>();
+        add<Sharded::coalesceLookUpAndUnwind::UnwindOnAsWithPreserveEmpty>();
         add<Sharded::coalesceLookUpAndUnwind::UnwindNotOnAs>();
         add<Sharded::needsPrimaryShardMerger::LookUp>();
     }
