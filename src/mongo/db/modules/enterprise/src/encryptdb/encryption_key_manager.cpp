@@ -95,9 +95,9 @@ WT_EVENT_HANDLER keystoreEventHandlers() {
 
 namespace fs = boost::filesystem;
 
-bool hasExistingDatafiles(const std::string& path) {
-    std::string metadataPath = path + "/storage.bson";
-    std::string wtDatafilePath = path + "/WiredTiger.wt";
+bool hasExistingDatafiles(const fs::path& path) {
+    fs::path metadataPath = path / "storage.bson";
+    fs::path wtDatafilePath = path / "WiredTiger.wt";
 
     bool hasDatafiles = true;  // default to the error condition
     try {
@@ -108,14 +108,14 @@ bool hasExistingDatafiles(const std::string& path) {
     return hasDatafiles;
 }
 
-Status createDirectoryIfNeeded(const std::string& path) {
+Status createDirectoryIfNeeded(const fs::path& path) {
     try {
         if (!fs::exists(path)) {
             fs::create_directory(path);
         }
     } catch (const std::exception& e) {
         return Status(ErrorCodes::BadValue,
-                      str::stream() << "Error creating path " << path << ' ' << e.what());
+                      str::stream() << "Error creating path " << path.string() << ' ' << e.what());
     }
     return Status::OK();
 }
@@ -125,8 +125,8 @@ Status createDirectoryIfNeeded(const std::string& path) {
 EncryptionKeyManager::EncryptionKeyManager(const std::string& dbPath,
                                            EncryptionGlobalParams* encryptionParams,
                                            SSLParams* sslParams)
-    : _dbPath(dbPath),
-      _keystoreBasePath(dbPath + "/key.store"),
+    : _dbPath(fs::path(dbPath)),
+      _keystoreBasePath(fs::path(dbPath) / "key.store"),
       _masterKeyId(""),
       _keyRotationAllowed(false),
       _keystoreConnection(nullptr),
@@ -360,7 +360,7 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getKeyFromKeyFi
     return stdx::make_unique<SymmetricKey>(keyData, keyLength, crypto::aesAlgorithm, "local", 0);
 }
 
-Status EncryptionKeyManager::_openKeystore(const std::string& path, WT_CONNECTION** conn) {
+Status EncryptionKeyManager::_openKeystore(const fs::path& path, WT_CONNECTION** conn) {
     Status status = createDirectoryIfNeeded(path);
     if (!status.isOK()) {
         return status;
@@ -379,7 +379,8 @@ Status EncryptionKeyManager::_openKeystore(const std::string& path, WT_CONNECTIO
     // _localKeystoreInitialized needs to be set before calling wiredtiger_open since that
     // call eventually will result in a call to getKey for the ".system" key at which point we don't
     // want to call _initLocalKeystore recursively.
-    int ret = wiredtiger_open(path.c_str(), &_keystoreEventHandler, wtConfig.str().c_str(), conn);
+    int ret = wiredtiger_open(
+        path.string().c_str(), &_keystoreEventHandler, wtConfig.str().c_str(), conn);
     if (ret != 0) {
         return wtRCToStatus(ret);
     }
@@ -478,7 +479,7 @@ Status EncryptionKeyManager::_initLocalKeystore() {
     }
     _masterKey = std::move(swMasterKey.getValue());
     _masterKeyId = _masterKey->getKeyId();
-    std::string keystorePath = _keystoreBasePath + "/" + _masterKeyId;
+    fs::path keystorePath = _keystoreBasePath / _masterKeyId;
 
     // Open the local WT key store, create it if it doesn't exist.
     return _openKeystore(keystorePath, &_keystoreConnection);
@@ -504,8 +505,9 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) {
 
     WT_CONNECTION* rotKeystoreConnection;
     std::string rotMasterKeyId = _rotMasterKey->getKeyId();
-    std::string rotKeystorePath = _keystoreBasePath + "/" + rotMasterKeyId;
-    std::string initRotKeystorePath = rotKeystorePath + "-initializing-keystore";
+    fs::path rotKeystorePath = _keystoreBasePath / rotMasterKeyId;
+    fs::path initRotKeystorePath = rotKeystorePath;
+    initRotKeystorePath += "-initializing-keystore";
 
     Status status = _openKeystore(initRotKeystorePath, &rotKeystoreConnection);
     if (!status.isOK()) {
@@ -547,9 +549,9 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) {
 
     // Remove the -initializing post fix to the from the new keystore.
     // Rename the old keystore path to keyid-invalidated-date.
-    std::string oldKeystorePath = _keystoreBasePath + "/" + _masterKeyId;
-    std::string invalidatedKeystorePath =
-        oldKeystorePath + kInvalidatedKeyword + Date_t::now().toString();
+    fs::path oldKeystorePath = _keystoreBasePath / _masterKeyId;
+    fs::path invalidatedKeystorePath = oldKeystorePath;
+    invalidatedKeystorePath += kInvalidatedKeyword + Date_t::now().toString();
     try {
         // If the first of these renames succeed and the second fails, we will end up in a state
         // where the server is without a valid keystore and cannot start. This can be resolved by

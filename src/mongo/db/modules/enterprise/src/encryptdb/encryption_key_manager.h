@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <boost/filesystem/path.hpp>
 #include <wiredtiger.h>
 
 #include "kmip_service.h"
@@ -79,7 +80,7 @@ private:
     /**
      * Open a local key store at 'path', create it if it doesn't exist.
      */
-    Status _openKeystore(const std::string& path, WT_CONNECTION** conn);
+    Status _openKeystore(const boost::filesystem::path& path, WT_CONNECTION** conn);
 
     /**
      * Rotate the master encryption key and create a new key store.
@@ -109,8 +110,8 @@ private:
     /**
      * Taken from global storage parameters -- the dbpath directory.
      */
-    std::string _dbPath;
-    std::string _keystoreBasePath;
+    boost::filesystem::path _dbPath;
+    boost::filesystem::path _keystoreBasePath;
 
     /**
      * The master system key, provided via KMIP or a keyfile.
