@@ -77,4 +77,6 @@
         kmipKeyIdentifier: "1"
     });
     assertKeyId(md, 1);
+
+    stopMongoProgramByPid(pid);
 })()
