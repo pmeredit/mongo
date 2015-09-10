@@ -551,7 +551,7 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) {
     // Rename the old keystore path to keyid-invalidated-date.
     fs::path oldKeystorePath = _keystoreBasePath / _masterKeyId;
     fs::path invalidatedKeystorePath = oldKeystorePath;
-    invalidatedKeystorePath += kInvalidatedKeyword + Date_t::now().toString();
+    invalidatedKeystorePath += kInvalidatedKeyword + terseCurrentTime(false);
     try {
         // If the first of these renames succeed and the second fails, we will end up in a state
         // where the server is without a valid keystore and cannot start. This can be resolved by
