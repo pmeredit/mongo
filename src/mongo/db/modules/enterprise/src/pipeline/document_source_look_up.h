@@ -76,6 +76,7 @@ private:
     boost::intrusive_ptr<DocumentSourceUnwind> _unwindSrc;
     bool _handlingUnwind = false;
     std::unique_ptr<DBClientCursor> _cursor;
+    long long _cursorIndex = 0;
     boost::optional<Document> _input;
 };
 }

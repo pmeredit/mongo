@@ -105,6 +105,7 @@ boost::optional<Document> DocumentSourceLookUp::unwindResult() {
             return {};
 
         _cursor = _mongod->directClient()->query(_fromNs.ns(), queryForInput(*_input));
+        _cursorIndex = 0;
 
         if (_unwindSrc->preserveNullAndEmptyArrays() && !_cursor->more()) {
             // There were no results for this cursor, but the $unwind was asked to preserve
@@ -118,10 +119,14 @@ boost::optional<Document> DocumentSourceLookUp::unwindResult() {
     invariant(_cursor->more() && bool(_input));
     auto nextVal = Value(_cursor->nextSafe());
 
-    // Move input document into output if this is the last or only result, otherwise perform a
-    // copy.
+    // Move input document into output if this is the last or only result, otherwise perform a copy.
     MutableDocument output(_cursor->more() ? *_input : std::move(*_input));
-    output.setNestedField(_as, nextVal);
+    if (_unwindSrc->includeArrayIndex()) {
+        output.setNestedField(_as, Value(DOC("index" << _cursorIndex << "value" << nextVal)));
+    } else {
+        output.setNestedField(_as, nextVal);
+    }
+    _cursorIndex++;
     return output.freeze();
 }
 
@@ -132,7 +137,9 @@ void DocumentSourceLookUp::serializeToArray(std::vector<Value>& array, bool expl
                                           << "foreignField" << _foreignField.getPath(false))));
     if (_handlingUnwind && explain) {
         output[getSourceName()]["unwinding"] =
-            Value(DOC("preserveNullAndEmptyArrays" << _unwindSrc->preserveNullAndEmptyArrays()));
+            Value(DOC("preserveNullAndEmptyArrays" << _unwindSrc->preserveNullAndEmptyArrays()
+                                                   << "includeArrayIndex"
+                                                   << _unwindSrc->includeArrayIndex()));
     }
     array.push_back(Value(output.freeze()));
     if (_handlingUnwind && !explain) {

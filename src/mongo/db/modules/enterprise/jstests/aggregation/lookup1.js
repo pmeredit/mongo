@@ -156,11 +156,11 @@ load("jstests/aggregation/extras/utils.js");
 
         // A normal $unwind with on the "as" field.
         expectedResults = [
-            {_id: 0, a: 1, "same": {_id: 0, b: 1}},
-            {_id: 1, a: null, "same": {_id: 1, b: null}},
-            {_id: 1, a: null, "same": {_id: 2}},
-            {_id: 2, "same": {_id: 1, b: null}},
-            {_id: 2, "same": {_id: 2}}
+            {_id: 0, a: 1, same: {_id: 0, b: 1}},
+            {_id: 1, a: null, same: {_id: 1, b: null}},
+            {_id: 1, a: null, same: {_id: 2}},
+            {_id: 2, same: {_id: 1, b: null}},
+            {_id: 2, same: {_id: 2}}
         ];
         testPipeline([{
             $lookUp: {
@@ -171,6 +171,28 @@ load("jstests/aggregation/extras/utils.js");
             }
         }, {
             $unwind: {path: "$same"}
+        }], expectedResults, coll);
+
+        // An $unwind with includeArrayIndex on the "as" field.
+        expectedResults = [
+            {_id: 0, a: 1, same: {index: NumberLong(0), value: {_id: 0, b: 1}}},
+            {_id: 1, a: null, same: {index: NumberLong(0), value: {_id: 1, b: null}}},
+            {_id: 1, a: null, same: {index: NumberLong(1), value: {_id: 2}}},
+            {_id: 2, same: {index: NumberLong(0), value: {_id: 1, b: null}}},
+            {_id: 2, same: {index: NumberLong(1), value: {_id: 2}}},
+        ];
+        testPipeline([{
+            $lookUp: {
+                localField: "a",
+                foreignField: "b",
+                from: "from",
+                as: "same"
+            }
+        }, {
+            $unwind: {
+                path: "$same",
+                includeArrayIndex: true
+            }
         }], expectedResults, coll);
 
         // Normal $unwind with no matching documents.
@@ -223,6 +245,28 @@ load("jstests/aggregation/extras/utils.js");
             $unwind: {
                 path: "$same",
                 preserveNullAndEmptyArrays: true
+            }
+        }], expectedResults, coll);
+
+        // $unwind with preserveNullAndEmptyArray and includeArrayIndex, some with matching
+        // documents, some without.
+        expectedResults = [
+            {_id: 0, a: 1, same: []},
+            {_id: 1, a: null, same: {index: NumberLong(0), value: {_id: 0, b: 1}}},
+            {_id: 2, same: []},
+        ];
+        testPipeline([{
+            $lookUp: {
+                localField: "_id",
+                foreignField: "b",
+                from: "from",
+                as: "same"
+            }
+        }, {
+            $unwind: {
+                path: "$same",
+                preserveNullAndEmptyArrays: true,
+                includeArrayIndex: true
             }
         }], expectedResults, coll);
 
