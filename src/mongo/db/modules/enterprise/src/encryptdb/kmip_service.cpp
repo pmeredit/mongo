@@ -33,7 +33,7 @@ KMIPService::KMIPService(const HostAndPort& server, const SSLParams& sslKMIPPara
         _sslManager = SSLManagerInterface::create(sslKMIPParams, false);
         Status status = _initServerConnection();
         _isValid = status.isOK();
-    } catch (SocketException& e) {
+    } catch (DBException& e) {
         _isValid = false;
     }
 }
