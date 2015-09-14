@@ -44,7 +44,7 @@ public:
     }
 
     // Return the number of times the key has been retrieved from the key store
-    const uint32_t getInitializationCount() const {
+    uint32_t getInitializationCount() const {
         return _initializationCount;
     }
 
