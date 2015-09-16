@@ -133,12 +133,10 @@ Status storeAuditOptions(const moe::Environment& params, const std::vector<std::
     return Status::OK();
 }
 
-ExportedServerParameter<bool> AuditAuthorizationSuccessSetting(
-    ServerParameterSet::getGlobal(),
-    "auditAuthorizationSuccess",
-    &auditGlobalParams.auditAuthorizationSuccess,
-    true,   // Change at startup
-    true);  // Change at runtime
+ExportedServerParameter<bool, ServerParameterType::kStartupAndRuntime>
+    AuditAuthorizationSuccessSetting(ServerParameterSet::getGlobal(),
+                                     "auditAuthorizationSuccess",
+                                     &auditGlobalParams.auditAuthorizationSuccess);
 
 }  // namespace audit
 }  // namespace mongo

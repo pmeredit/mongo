@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <string>
 #include <vector>
 
@@ -26,7 +27,7 @@ struct AuditGlobalParams {
     bool enabled;
     BSONObj auditFilter;
     std::string auditPath;
-    bool auditAuthorizationSuccess;
+    std::atomic<bool> auditAuthorizationSuccess;
 
     AuditFormat auditFormat;
 
