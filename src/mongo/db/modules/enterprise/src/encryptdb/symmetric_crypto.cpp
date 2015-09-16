@@ -30,17 +30,12 @@ StatusWith<const EVP_CIPHER*> acquireAESCipher(size_t keySize, crypto::aesMode m
         } else if (mode == crypto::aesMode::gcm) {
             cipher = EVP_get_cipherbyname("aes-256-gcm");
         }
-    } else if (keySize == sym128KeySize) {
-        if (mode == crypto::aesMode::cbc) {
-            cipher = EVP_get_cipherbyname("aes-128-cbc");
-        } else if (mode == crypto::aesMode::gcm) {
-            cipher = EVP_get_cipherbyname("aes-128-gcm");
-        }
     }
 
     if (cipher == nullptr) {
         return Status(ErrorCodes::BadValue,
-                      str::stream() << "Unrecognized AES key size/cipher mode: " << (int)mode);
+                      str::stream() << "Unrecognized AES key size/cipher mode. Size: " << keySize
+                                    << " Mode: " << (int)mode);
     }
 
     return cipher;
@@ -241,7 +236,7 @@ Status aesDecrypt(EncryptedMemoryLayout* layout,
 }
 
 SymmetricKey aesGenerate(size_t keySize, std::string keyId) {
-    invariant(keySize == sym128KeySize || keySize == sym256KeySize);
+    invariant(keySize == sym256KeySize);
 
     std::unique_ptr<std::uint8_t[]> keyArray = stdx::make_unique<std::uint8_t[]>(keySize);
 

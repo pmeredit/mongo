@@ -346,12 +346,12 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getKeyFromKeyFi
     }
 
     const size_t keyLength = decodedKey.size();
-    if (keyLength != crypto::minKeySize && keyLength != crypto::maxKeySize) {
+    if (keyLength != crypto::sym256KeySize) {
         return StatusWith<std::unique_ptr<SymmetricKey>>(
             ErrorCodes::BadValue,
-            str::stream() << "Encryption key in " << _encryptionParams->encryptionKeyFile
-                          << " has length " << keyLength << ", must be either "
-                          << crypto::minKeySize << " or " << crypto::maxKeySize << " characters.");
+            str::stream() << "Encryption key in " << _encryptionParams->encryptionKeyFile << " is "
+                          << keyLength * 8 << " bit, must be " << crypto::sym256KeySize * 8
+                          << " bit.");
     }
 
     std::vector<uint8_t> keyVector(decodedKey.begin(), decodedKey.end());

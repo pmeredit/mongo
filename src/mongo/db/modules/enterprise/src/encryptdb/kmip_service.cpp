@@ -70,7 +70,15 @@ StatusWith<std::unique_ptr<SymmetricKey>> KMIPService::getExternalKey(const std:
                                     << "' failed, code: " << response.getResultReason()
                                     << " error: " << response.getResultMsg());
     }
-    return response.getSymmetricKey();
+
+    std::unique_ptr<SymmetricKey> key = response.getSymmetricKey();
+    if (key->getKeySize() != crypto::sym256KeySize) {
+        return Status(ErrorCodes::BadValue,
+                      str::stream() << "KMIP got a key which was " << key->getKeySize() * 8
+                                    << " bits long, but a " << crypto::sym256KeySize * 8
+                                    << " bit key is required");
+    }
+    return std::move(key);
 }
 
 Status KMIPService::_initServerConnection() {
@@ -137,7 +145,7 @@ std::vector<uint8_t> KMIPService::_generateKMIPGetRequest(const std::string& uid
 
 std::vector<uint8_t> KMIPService::_generateKMIPCreateRequest() {
     std::vector<uint8_t> algorithm(std::begin(aesCryptoAlgorithm), std::end(aesCryptoAlgorithm));
-    std::vector<uint8_t> length = convertIntToBigEndianArray(128);
+    std::vector<uint8_t> length = convertIntToBigEndianArray(256);
     std::vector<uint8_t> usageMask{
         0x00, 0x00, 0x00, cryptoUsageMaskEncrypt | cryptoUsageMaskDecrypt};
 

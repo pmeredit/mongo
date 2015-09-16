@@ -25,7 +25,6 @@ const uint8_t aesAlgorithm = 0x1;
  * Block and key sizes
  */
 const size_t aesBlockSize = 16;
-const size_t sym128KeySize = 16;
 const size_t sym256KeySize = 32;
 
 /**
