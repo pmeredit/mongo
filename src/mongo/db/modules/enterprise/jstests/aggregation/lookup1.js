@@ -1,4 +1,4 @@
-// SERVER-19095: Add $lookUp aggregation stage.
+// SERVER-19095: Add $lookup aggregation stage.
 
 // For assertErrorCode.
 load("jstests/aggregation/extras/utils.js");
@@ -46,7 +46,7 @@ load("jstests/aggregation/extras/utils.js");
             {_id: 2, "same": [{_id: 1, b: null}, {_id: 2}]}
         ];
         testPipeline([{
-            $lookUp: {
+            $lookup: {
                 localField: "a",
                 foreignField: "b",
                 from: "from",
@@ -61,7 +61,7 @@ load("jstests/aggregation/extras/utils.js");
             {_id: 2, "same": [{_id: 1, b: null}, {_id: 2}]}
         ];
         testPipeline([{
-            $lookUp: {
+            $lookup: {
                 localField: "nonexistent",
                 foreignField: "b",
                 from: "from",
@@ -76,7 +76,7 @@ load("jstests/aggregation/extras/utils.js");
             {_id: 2, "same": [{_id: 0, b: 1}, {_id: 1, b: null}, {_id: 2}]}
         ];
         testPipeline([{
-            $lookUp: {
+            $lookup: {
                 localField: "a",
                 foreignField: "nonexistent",
                 from: "from",
@@ -91,7 +91,7 @@ load("jstests/aggregation/extras/utils.js");
             {_id: 2, "same": []}
         ];
         testPipeline([{
-            $lookUp: {
+            $lookup: {
                 localField: "_id",
                 foreignField: "nonexistent",
                 from: "from",
@@ -99,7 +99,7 @@ load("jstests/aggregation/extras/utils.js");
             }
         }], expectedResults, coll);
         testPipeline([{
-            $lookUp: {
+            $lookup: {
                 localField: "a",
                 foreignField: "b",
                 from: "nonexistent",
@@ -114,7 +114,7 @@ load("jstests/aggregation/extras/utils.js");
             {_id: 2, "a": [{_id: 1, b: null}, {_id: 2}]}
         ];
         testPipeline([{
-            $lookUp: {
+            $lookup: {
                 localField: "a",
                 foreignField: "b",
                 from: "from",
@@ -123,14 +123,14 @@ load("jstests/aggregation/extras/utils.js");
         }], expectedResults, coll);
 
 
-        // Running multiple $lookUps in the same pipeline is allowed.
+        // Running multiple $lookups in the same pipeline is allowed.
         expectedResults = [
             {_id: 0, a: 1, "c": [{_id:0, b:1}], "d": [{_id:0, b:1}]},
             {_id: 1, a: null, "c": [{_id:1, b:null}, {_id:2}], "d": [{_id:1, b:null}, {_id:2}]},
             {_id: 2, "c": [{_id:1, b:null}, {_id:2}], "d": [{_id:1, b:null}, {_id:2}]}
         ];
         testPipeline([{
-            $lookUp: {
+            $lookup: {
                 localField: "a",
                 foreignField: "b",
                 from: "from",
@@ -142,7 +142,7 @@ load("jstests/aggregation/extras/utils.js");
                 "c": 1
             }
         }, {
-            $lookUp: {
+            $lookup: {
                 localField: "a",
                 foreignField: "b",
                 from: "from",
@@ -163,7 +163,7 @@ load("jstests/aggregation/extras/utils.js");
             {_id: 2, same: {_id: 2}}
         ];
         testPipeline([{
-            $lookUp: {
+            $lookup: {
                 localField: "a",
                 foreignField: "b",
                 from: "from",
@@ -182,7 +182,7 @@ load("jstests/aggregation/extras/utils.js");
             {_id: 2, same: {index: NumberLong(1), value: {_id: 2}}},
         ];
         testPipeline([{
-            $lookUp: {
+            $lookup: {
                 localField: "a",
                 foreignField: "b",
                 from: "from",
@@ -198,7 +198,7 @@ load("jstests/aggregation/extras/utils.js");
         // Normal $unwind with no matching documents.
         expectedResults = [];
         testPipeline([{
-            $lookUp: {
+            $lookup: {
                 localField: "_id",
                 foreignField: "nonexistent",
                 from: "from",
@@ -215,7 +215,7 @@ load("jstests/aggregation/extras/utils.js");
             {_id: 2, same: []},
         ];
         testPipeline([{
-            $lookUp: {
+            $lookup: {
                 localField: "_id",
                 foreignField: "nonexistent",
                 from: "from",
@@ -235,7 +235,7 @@ load("jstests/aggregation/extras/utils.js");
             {_id: 2, same: []},
         ];
         testPipeline([{
-            $lookUp: {
+            $lookup: {
                 localField: "_id",
                 foreignField: "b",
                 from: "from",
@@ -256,7 +256,7 @@ load("jstests/aggregation/extras/utils.js");
             {_id: 2, same: []},
         ];
         testPipeline([{
-            $lookUp: {
+            $lookup: {
                 localField: "_id",
                 foreignField: "b",
                 from: "from",
@@ -274,7 +274,7 @@ load("jstests/aggregation/extras/utils.js");
         // Dependencies.
         //
 
-        // If $lookUp didn't add "localField" to its dependencies, this test would fail as the
+        // If $lookup didn't add "localField" to its dependencies, this test would fail as the
         // value of the "a" field would be lost and treated as null.
         expectedResults = [
             {_id: 0, "same": [{_id: 0, b: 1}]},
@@ -282,7 +282,7 @@ load("jstests/aggregation/extras/utils.js");
             {_id: 2, "same": [{_id: 1, b: null}, {_id: 2}]}
         ];
         testPipeline([{
-            $lookUp: {
+            $lookup: {
                 localField: "a",
                 foreignField: "b",
                 from: "from",
@@ -310,7 +310,7 @@ load("jstests/aggregation/extras/utils.js");
             {_id: 3, a: {c: 1}, "same": [{_id: 3, b: {c: 1}}]}
         ];
         testPipeline([{
-            $lookUp: {
+            $lookup: {
                 localField: "a",
                 foreignField: "b",
                 from: "from",
@@ -325,7 +325,7 @@ load("jstests/aggregation/extras/utils.js");
             {_id: 3, a: {c: 1}, "same": [{_id: 3, b: {c: 1}}]}
         ];
         testPipeline([{
-            $lookUp: {
+            $lookup: {
                 localField: "a.c",
                 foreignField: "b.c",
                 from: "from",
@@ -338,23 +338,23 @@ load("jstests/aggregation/extras/utils.js");
         //
 
         // All four fields must be specified.
-        assertErrorCode(coll, [{$lookUp: {foreignField:"b", from:"from", as:"same"}}], 4572);
-        assertErrorCode(coll, [{$lookUp: {localField:"a", from:"from", as:"same"}}], 4572);
-        assertErrorCode(coll, [{$lookUp: {localField:"a", foreignField:"b", as:"same"}}], 4572);
-        assertErrorCode(coll, [{$lookUp: {localField:"a", foreignField:"b", from:"from"}}], 4572);
+        assertErrorCode(coll, [{$lookup: {foreignField:"b", from:"from", as:"same"}}], 4572);
+        assertErrorCode(coll, [{$lookup: {localField:"a", from:"from", as:"same"}}], 4572);
+        assertErrorCode(coll, [{$lookup: {localField:"a", foreignField:"b", as:"same"}}], 4572);
+        assertErrorCode(coll, [{$lookup: {localField:"a", foreignField:"b", from:"from"}}], 4572);
 
         // All four field's values must be strings.
-        assertErrorCode(coll, [{$lookUp: {localField:1, foreignField:"b", from:"from", as:"as"}}]
+        assertErrorCode(coll, [{$lookup: {localField:1, foreignField:"b", from:"from", as:"as"}}]
             , 4570);
-        assertErrorCode(coll, [{$lookUp: {localField:"a", foreignField:1, from:"from", as:"as"}}]
+        assertErrorCode(coll, [{$lookup: {localField:"a", foreignField:1, from:"from", as:"as"}}]
             , 4570);
-        assertErrorCode(coll, [{$lookUp: {localField:"a", foreignField:"b", from:1, as:"as"}}]
+        assertErrorCode(coll, [{$lookup: {localField:"a", foreignField:"b", from:1, as:"as"}}]
             , 4570);
-        assertErrorCode(coll, [{$lookUp: {localField:"a", foreignField: "b", from:"from", as:1}}]
+        assertErrorCode(coll, [{$lookup: {localField:"a", foreignField: "b", from:"from", as:1}}]
             , 4570);
 
-        // $lookUp's field must be an object.
-        assertErrorCode(coll, [{$lookUp: "string"}], 4569);
+        // $lookup's field must be an object.
+        assertErrorCode(coll, [{$lookup: "string"}], 4569);
     }
 
     // Run tests on single node.
@@ -373,7 +373,7 @@ load("jstests/aggregation/extras/utils.js");
     // An error is thrown if the from collection is sharded.
     assert(sharded.adminCommand({ shardCollection:"test.from", key: {_id: 1}}));
     assertErrorCode(sharded.getDB('test').lookUp, [{
-        $lookUp: {
+        $lookup: {
             localField: "a",
             foreignField: "b",
             from: "from",

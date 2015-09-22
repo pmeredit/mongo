@@ -30,10 +30,10 @@ DocumentSourceLookUp::DocumentSourceLookUp(NamespaceString fromNs,
       _foreignField(foreignField),
       _foreignFieldFieldName(std::move(foreignField)) {}
 
-REGISTER_DOCUMENT_SOURCE(lookUp, DocumentSourceLookUp::createFromBson);
+REGISTER_DOCUMENT_SOURCE(lookup, DocumentSourceLookUp::createFromBson);
 
 const char* DocumentSourceLookUp::getSourceName() const {
-    return "$lookUp";
+    return "$lookup";
 }
 
 boost::optional<Document> DocumentSourceLookUp::getNext() {
@@ -154,7 +154,7 @@ DocumentSource::GetDepsReturn DocumentSourceLookUp::getDependencies(DepsTracker*
 
 boost::intrusive_ptr<DocumentSource> DocumentSourceLookUp::createFromBson(
     BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& pExpCtx) {
-    uassert(4569, "the $lookUp specification must be an Object", elem.type() == Object);
+    uassert(4569, "the $lookup specification must be an Object", elem.type() == Object);
 
     NamespaceString fromNs;
     std::string as;
@@ -163,7 +163,7 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceLookUp::createFromBson(
 
     for (auto&& argument : elem.Obj()) {
         uassert(4570,
-                str::stream() << "arguments to $lookUp must be strings, " << argument << " is type "
+                str::stream() << "arguments to $lookup must be strings, " << argument << " is type "
                               << argument.type(),
                 argument.type() == String);
         const auto argName = argument.fieldNameStringData();
@@ -178,16 +178,15 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceLookUp::createFromBson(
             foreignField = argument.String();
         } else {
             uasserted(4571,
-                      str::stream() << "unknown argument to $lookUp: " << argument.fieldName());
+                      str::stream() << "unknown argument to $lookup: " << argument.fieldName());
         }
     }
 
     uassert(4572,
-            "need to specify fields from, as, localField, and foreignField for a $lookUp",
+            "need to specify fields from, as, localField, and foreignField for a $lookup",
             !fromNs.ns().empty() && !as.empty() && !localField.empty() && !foreignField.empty());
 
-    intrusive_ptr<DocumentSourceLookUp> lookUp(new DocumentSourceLookUp(
-        std::move(fromNs), std::move(as), std::move(localField), std::move(foreignField), pExpCtx));
-    return lookUp;
+    return new DocumentSourceLookUp(
+        std::move(fromNs), std::move(as), std::move(localField), std::move(foreignField), pExpCtx);
 }
 }

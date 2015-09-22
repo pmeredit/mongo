@@ -56,13 +56,13 @@ namespace coalesceLookUpAndUnwind {
 
 class UnwindOnAs : public Base {
     string inputPipeJson() {
-        return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
+        return "[{$lookup: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
                "'right'}}"
                ",{$unwind: {path: '$same'}}"
                "]";
     }
     string outputPipeJson() {
-        return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
+        return "[{$lookup: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
                "'right', unwinding: {preserveNullAndEmptyArrays: false, includeArrayIndex: "
                "false}}}]";
     }
@@ -70,13 +70,13 @@ class UnwindOnAs : public Base {
 
 class UnwindOnAsWithPreserveEmpty : public Base {
     string inputPipeJson() {
-        return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
+        return "[{$lookup: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
                "'right'}}"
                ",{$unwind: {path: '$same', preserveNullAndEmptyArrays: true}}"
                "]";
     }
     string outputPipeJson() {
-        return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
+        return "[{$lookup: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
                "'right', unwinding: {preserveNullAndEmptyArrays: true, includeArrayIndex: "
                "false}}}]";
     }
@@ -84,13 +84,13 @@ class UnwindOnAsWithPreserveEmpty : public Base {
 
 class UnwindOnAsWithIncludeArrayIndex : public Base {
     string inputPipeJson() {
-        return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
+        return "[{$lookup: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
                "'right'}}"
                ",{$unwind: {path: '$same', includeArrayIndex: true}}"
                "]";
     }
     string outputPipeJson() {
-        return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
+        return "[{$lookup: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
                "'right', unwinding: {preserveNullAndEmptyArrays: false, includeArrayIndex: "
                "true}}}]";
     }
@@ -98,13 +98,13 @@ class UnwindOnAsWithIncludeArrayIndex : public Base {
 
 class UnwindNotOnAs : public Base {
     string inputPipeJson() {
-        return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
+        return "[{$lookup: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
                "'right'}}"
                ",{$unwind: {path: '$from'}}"
                "]";
     }
     string outputPipeJson() {
-        return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
+        return "[{$lookup: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
                "'right'}}"
                ",{$unwind: {path: '$from'}}"
                "]";
@@ -159,7 +159,7 @@ namespace coalesceLookUpAndUnwind {
 
 class UnwindOnAs : public Base {
     string inputPipeJson() {
-        return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
+        return "[{$lookup: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
                "'right'}}"
                ",{$unwind: {path: '$same'}}"
                "]";
@@ -168,7 +168,7 @@ class UnwindOnAs : public Base {
         return "[]";
     }
     string mergePipeJson() {
-        return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
+        return "[{$lookup: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
                "'right', unwinding: {preserveNullAndEmptyArrays: false, includeArrayIndex: "
                "false}}}]";
     }
@@ -176,7 +176,7 @@ class UnwindOnAs : public Base {
 
 class UnwindOnAsWithPreserveEmpty : public Base {
     string inputPipeJson() {
-        return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
+        return "[{$lookup: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
                "'right'}}"
                ",{$unwind: {path: '$same', preserveNullAndEmptyArrays: true}}"
                "]";
@@ -185,7 +185,7 @@ class UnwindOnAsWithPreserveEmpty : public Base {
         return "[]";
     }
     string mergePipeJson() {
-        return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
+        return "[{$lookup: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
                "'right', unwinding: {preserveNullAndEmptyArrays: true, includeArrayIndex: "
                "false}}}]";
     }
@@ -193,7 +193,7 @@ class UnwindOnAsWithPreserveEmpty : public Base {
 
 class UnwindOnAsWithIncludeArrayIndex : public Base {
     string inputPipeJson() {
-        return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
+        return "[{$lookup: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
                "'right'}}"
                ",{$unwind: {path: '$same', includeArrayIndex: true}}"
                "]";
@@ -202,7 +202,7 @@ class UnwindOnAsWithIncludeArrayIndex : public Base {
         return "[]";
     }
     string mergePipeJson() {
-        return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
+        return "[{$lookup: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
                "'right', unwinding: {preserveNullAndEmptyArrays: false, includeArrayIndex: "
                "true}}}]";
     }
@@ -210,7 +210,7 @@ class UnwindOnAsWithIncludeArrayIndex : public Base {
 
 class UnwindNotOnAs : public Base {
     string inputPipeJson() {
-        return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
+        return "[{$lookup: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
                "'right'}}"
                ",{$unwind: {path: '$from'}}"
                "]";
@@ -219,7 +219,7 @@ class UnwindNotOnAs : public Base {
         return "[]";
     }
     string mergePipeJson() {
-        return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
+        return "[{$lookup: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
                "'right'}}"
                ",{$unwind: {path: '$from'}}"
                "]";
@@ -244,14 +244,14 @@ class LookUp : public needsPrimaryShardMergerBase {
         return true;
     }
     string inputPipeJson() {
-        return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
+        return "[{$lookup: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
                "'right'}}]";
     }
     string shardPipeJson() {
         return "[]";
     }
     string mergePipeJson() {
-        return "[{$lookUp: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
+        return "[{$lookup: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
                "'right'}}]";
     }
 };
