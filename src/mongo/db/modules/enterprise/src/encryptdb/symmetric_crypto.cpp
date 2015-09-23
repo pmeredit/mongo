@@ -132,25 +132,25 @@ Status aesEncrypt(const uint8_t* in,
 
     if (!encryptCtx.get()) {
         return Status(ErrorCodes::UnknownError,
-                      str::stream() << getSSLManager()->getSSLErrorMessage(ERR_get_error()));
+                      str::stream() << SSLManagerInterface::getSSLErrorMessage(ERR_get_error()));
     }
 
     if (1 != EVP_EncryptInit_ex(
                  encryptCtx.get(), swCipher.getValue(), nullptr, key.getKey(), layout->getIV())) {
         return Status(ErrorCodes::UnknownError,
-                      str::stream() << getSSLManager()->getSSLErrorMessage(ERR_get_error()));
+                      str::stream() << SSLManagerInterface::getSSLErrorMessage(ERR_get_error()));
     }
 
     int len = 0;
     if (1 != EVP_EncryptUpdate(encryptCtx.get(), layout->getData(), &len, in, inLen)) {
         return Status(ErrorCodes::UnknownError,
-                      str::stream() << getSSLManager()->getSSLErrorMessage(ERR_get_error()));
+                      str::stream() << SSLManagerInterface::getSSLErrorMessage(ERR_get_error()));
     }
 
     int extraLen = 0;
     if (1 != EVP_EncryptFinal_ex(encryptCtx.get(), layout->getData() + len, &extraLen)) {
         return Status(ErrorCodes::UnknownError,
-                      str::stream() << getSSLManager()->getSSLErrorMessage(ERR_get_error()));
+                      str::stream() << SSLManagerInterface::getSSLErrorMessage(ERR_get_error()));
     }
 
     // Some cipher modes, such as GCM, will know in advance exactly how large their ciphertexts will
@@ -167,7 +167,7 @@ Status aesEncrypt(const uint8_t* in,
         1 != EVP_CIPHER_CTX_ctrl(
                  encryptCtx.get(), EVP_CTRL_GCM_GET_TAG, layout->getTagSize(), layout->getTag())) {
         return Status(ErrorCodes::UnknownError,
-                      str::stream() << getSSLManager()->getSSLErrorMessage(ERR_get_error()));
+                      str::stream() << SSLManagerInterface::getSSLErrorMessage(ERR_get_error()));
     }
 #endif
 
@@ -197,20 +197,20 @@ Status aesDecrypt(EncryptedMemoryLayout* layout,
 
     if (!decryptCtx.get()) {
         return Status(ErrorCodes::UnknownError,
-                      str::stream() << getSSLManager()->getSSLErrorMessage(ERR_get_error()));
+                      str::stream() << SSLManagerInterface::getSSLErrorMessage(ERR_get_error()));
     }
 
     if (1 != EVP_DecryptInit_ex(
                  decryptCtx.get(), swCipher.getValue(), nullptr, key.getKey(), layout->getIV())) {
         return Status(ErrorCodes::UnknownError,
-                      str::stream() << getSSLManager()->getSSLErrorMessage(ERR_get_error()));
+                      str::stream() << SSLManagerInterface::getSSLErrorMessage(ERR_get_error()));
     }
 
     int len = 0;
     if (1 !=
         EVP_DecryptUpdate(decryptCtx.get(), out, &len, layout->getData(), layout->getDataSize())) {
         return Status(ErrorCodes::UnknownError,
-                      str::stream() << getSSLManager()->getSSLErrorMessage(ERR_get_error()));
+                      str::stream() << SSLManagerInterface::getSSLErrorMessage(ERR_get_error()));
     }
 
 // validateEncryptionOption asserts that platforms without GCM will never start in GCM mode
@@ -220,7 +220,7 @@ Status aesDecrypt(EncryptedMemoryLayout* layout,
             decryptCtx.get(), EVP_CTRL_GCM_SET_TAG, layout->getTagSize(), layout->getTag())) {
         return Status(ErrorCodes::UnknownError,
                       str::stream() << "Unable to set GCM tag: "
-                                    << getSSLManager()->getSSLErrorMessage(ERR_get_error()));
+                                    << SSLManagerInterface::getSSLErrorMessage(ERR_get_error()));
     }
 #endif
 
@@ -228,7 +228,7 @@ Status aesDecrypt(EncryptedMemoryLayout* layout,
     if (1 != EVP_DecryptFinal_ex(decryptCtx.get(), out + len, &extraLen)) {
         return Status(ErrorCodes::UnknownError,
                       str::stream() << "Unable to finalize decryption: "
-                                    << getSSLManager()->getSSLErrorMessage(ERR_get_error()));
+                                    << SSLManagerInterface::getSSLErrorMessage(ERR_get_error()));
     }
 
     *outLen = len + extraLen;
