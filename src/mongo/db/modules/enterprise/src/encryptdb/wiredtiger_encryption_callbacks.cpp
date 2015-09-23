@@ -44,8 +44,8 @@ MONGO_INITIALIZER(SeedPRNG)(InitializerContext* context) {
  *
  * decrypt   - Decrypt data.
  *
- * terminate - Called when a WT_ENCRYPTOR is no longer used and its
- *             resources can be freed.
+ * destroyEncryptor - Called when a WT_ENCRYPTOR is no longer used and its
+ *                    resources can be freed.
  *
  * The ExtendedWTEncryptor struct is used by the customize function
  * to store data that WiredTiger does not need to know about, but will
@@ -53,7 +53,7 @@ MONGO_INITIALIZER(SeedPRNG)(InitializerContext* context) {
  * WT_ENCRYPTOR* and ignore any other members.
  *
  * The stored ExtendedWTEncryptor* will be passed back in the encrypt,
- * decrypt and terminate callbacks.
+ * decrypt and destroyEncryptor callbacks.
  */
 struct ExtendedWTEncryptor {
     WT_ENCRYPTOR encryptor;      // Must come first
@@ -260,7 +260,7 @@ int destroyEncryptor(WT_ENCRYPTOR* encryptor, WT_SESSION* session) {
         return 0;
     } catch (...) {
         // Prevent C++ exceptions from propagating into C code
-        severe() << "Aborting due to exception in WT_ENCRYPTOR::terminate: " << exceptionToStatus();
+        severe() << "Aborting due to exception in WT_ENCRYPTOR::destroyEncryptor: " << exceptionToStatus();
         fassertFailed(4048);
     }
 }
