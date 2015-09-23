@@ -260,7 +260,8 @@ int destroyEncryptor(WT_ENCRYPTOR* encryptor, WT_SESSION* session) {
         return 0;
     } catch (...) {
         // Prevent C++ exceptions from propagating into C code
-        severe() << "Aborting due to exception in WT_ENCRYPTOR::destroyEncryptor: " << exceptionToStatus();
+        severe() << "Aborting due to exception in WT_ENCRYPTOR::destroyEncryptor: "
+                 << exceptionToStatus();
         fassertFailed(4048);
     }
 }
