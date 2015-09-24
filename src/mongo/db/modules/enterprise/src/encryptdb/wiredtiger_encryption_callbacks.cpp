@@ -17,6 +17,7 @@
 #include "mongo/base/init.h"
 #include "mongo/db/service_context.h"
 #include "mongo/platform/random.h"
+#include "mongo/stdx/memory.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
 #include "symmetric_crypto.h"
@@ -250,6 +251,12 @@ int destroyEncryptor(WT_ENCRYPTOR* encryptor, WT_SESSION* session) {
         if (myEncryptor) {
             // Destroy the SymmetricKey object
             if (myEncryptor->symmetricKey) {
+                if (myEncryptor->symmetricKey->getKeyId() == kSystemKeyId) {
+                    // Overwrite the EncryptionKeyManager on the global service context to enforce
+                    // its destruction and clear the master key.
+                    WiredTigerCustomizationHooks::set(
+                        getGlobalServiceContext(), std::unique_ptr<WiredTigerCustomizationHooks>());
+                }
                 delete myEncryptor->symmetricKey;
             }
             if (myEncryptor->encryptCount) {
