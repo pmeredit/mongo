@@ -173,13 +173,13 @@ load("jstests/aggregation/extras/utils.js");
             $unwind: {path: "$same"}
         }], expectedResults, coll);
 
-        // An $unwind with includeArrayIndex on the "as" field.
+        // An $unwind on the "as" field, with includeArrayIndex.
         expectedResults = [
-            {_id: 0, a: 1, same: {index: NumberLong(0), value: {_id: 0, b: 1}}},
-            {_id: 1, a: null, same: {index: NumberLong(0), value: {_id: 1, b: null}}},
-            {_id: 1, a: null, same: {index: NumberLong(1), value: {_id: 2}}},
-            {_id: 2, same: {index: NumberLong(0), value: {_id: 1, b: null}}},
-            {_id: 2, same: {index: NumberLong(1), value: {_id: 2}}},
+            {_id: 0, a: 1, same: {_id: 0, b: 1}, index: NumberLong(0)},
+            {_id: 1, a: null, same: {_id: 1, b: null}, index: NumberLong(0)},
+            {_id: 1, a: null, same: {_id: 2}, index: NumberLong(1)},
+            {_id: 2, same: {_id: 1, b: null}, index: NumberLong(0)},
+            {_id: 2, same: {_id: 2}, index: NumberLong(1)},
         ];
         testPipeline([{
             $lookup: {
@@ -191,7 +191,7 @@ load("jstests/aggregation/extras/utils.js");
         }, {
             $unwind: {
                 path: "$same",
-                includeArrayIndex: true
+                includeArrayIndex: "index"
             }
         }], expectedResults, coll);
 
@@ -251,9 +251,9 @@ load("jstests/aggregation/extras/utils.js");
         // $unwind with preserveNullAndEmptyArray and includeArrayIndex, some with matching
         // documents, some without.
         expectedResults = [
-            {_id: 0, a: 1, same: []},
-            {_id: 1, a: null, same: {index: NumberLong(0), value: {_id: 0, b: 1}}},
-            {_id: 2, same: []},
+            {_id: 0, a: 1, same: [], index: null},
+            {_id: 1, a: null, same: {_id: 0, b: 1}, index: NumberLong(0)},
+            {_id: 2, same: [], index: null},
         ];
         testPipeline([{
             $lookup: {
@@ -266,7 +266,7 @@ load("jstests/aggregation/extras/utils.js");
             $unwind: {
                 path: "$same",
                 preserveNullAndEmptyArrays: true,
-                includeArrayIndex: true
+                includeArrayIndex: "index"
             }
         }], expectedResults, coll);
 

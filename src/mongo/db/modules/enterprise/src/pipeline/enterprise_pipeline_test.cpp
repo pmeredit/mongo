@@ -63,8 +63,7 @@ class UnwindOnAs : public Base {
     }
     string outputPipeJson() {
         return "[{$lookup: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
-               "'right', unwinding: {preserveNullAndEmptyArrays: false, includeArrayIndex: "
-               "false}}}]";
+               "'right', unwinding: {preserveNullAndEmptyArrays: false}}}]";
     }
 };
 
@@ -77,8 +76,7 @@ class UnwindOnAsWithPreserveEmpty : public Base {
     }
     string outputPipeJson() {
         return "[{$lookup: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
-               "'right', unwinding: {preserveNullAndEmptyArrays: true, includeArrayIndex: "
-               "false}}}]";
+               "'right', unwinding: {preserveNullAndEmptyArrays: true}}}]";
     }
 };
 
@@ -86,13 +84,13 @@ class UnwindOnAsWithIncludeArrayIndex : public Base {
     string inputPipeJson() {
         return "[{$lookup: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
                "'right'}}"
-               ",{$unwind: {path: '$same', includeArrayIndex: true}}"
+               ",{$unwind: {path: '$same', includeArrayIndex: 'index'}}"
                "]";
     }
     string outputPipeJson() {
         return "[{$lookup: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
                "'right', unwinding: {preserveNullAndEmptyArrays: false, includeArrayIndex: "
-               "true}}}]";
+               "'index'}}}]";
     }
 };
 
@@ -169,8 +167,7 @@ class UnwindOnAs : public Base {
     }
     string mergePipeJson() {
         return "[{$lookup: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
-               "'right', unwinding: {preserveNullAndEmptyArrays: false, includeArrayIndex: "
-               "false}}}]";
+               "'right', unwinding: {preserveNullAndEmptyArrays: false}}}]";
     }
 };
 
@@ -186,8 +183,7 @@ class UnwindOnAsWithPreserveEmpty : public Base {
     }
     string mergePipeJson() {
         return "[{$lookup: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
-               "'right', unwinding: {preserveNullAndEmptyArrays: true, includeArrayIndex: "
-               "false}}}]";
+               "'right', unwinding: {preserveNullAndEmptyArrays: true}}}]";
     }
 };
 
@@ -195,7 +191,7 @@ class UnwindOnAsWithIncludeArrayIndex : public Base {
     string inputPipeJson() {
         return "[{$lookup: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
                "'right'}}"
-               ",{$unwind: {path: '$same', includeArrayIndex: true}}"
+               ",{$unwind: {path: '$same', includeArrayIndex: 'index'}}"
                "]";
     }
     string shardPipeJson() {
@@ -204,7 +200,7 @@ class UnwindOnAsWithIncludeArrayIndex : public Base {
     string mergePipeJson() {
         return "[{$lookup: {from : 'coll2', as : 'same', localField: 'left', foreignField: "
                "'right', unwinding: {preserveNullAndEmptyArrays: false, includeArrayIndex: "
-               "true}}}]";
+               "'index'}}}]";
     }
 };
 

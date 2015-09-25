@@ -96,6 +96,8 @@ BSONObj DocumentSourceLookUp::queryForInput(const Document& input) const {
 }
 
 boost::optional<Document> DocumentSourceLookUp::unwindResult() {
+    const boost::optional<FieldPath> indexPath(_unwindSrc->indexPath());
+
     // Loop until we get a document that has at least one match.
     // Note we may return early from this loop if our source stage is exhausted or if the unwind
     // source was asked to return empty arrays and we get a document without a match.
@@ -108,11 +110,13 @@ boost::optional<Document> DocumentSourceLookUp::unwindResult() {
         _cursorIndex = 0;
 
         if (_unwindSrc->preserveNullAndEmptyArrays() && !_cursor->more()) {
-            // There were no results for this cursor, but the $unwind was asked to preserve
-            // empty
+            // There were no results for this cursor, but the $unwind was asked to preserve empty
             // arrays, so we should return a document with an empty array.
             MutableDocument output(std::move(*_input));
             output.setNestedField(_as, Value(BSONArray()));
+            if (indexPath) {
+                output.setNestedField(*indexPath, Value(BSONNULL));
+            }
             return output.freeze();
         }
     }
@@ -121,11 +125,12 @@ boost::optional<Document> DocumentSourceLookUp::unwindResult() {
 
     // Move input document into output if this is the last or only result, otherwise perform a copy.
     MutableDocument output(_cursor->more() ? *_input : std::move(*_input));
-    if (_unwindSrc->includeArrayIndex()) {
-        output.setNestedField(_as, Value(DOC("index" << _cursorIndex << "value" << nextVal)));
-    } else {
-        output.setNestedField(_as, nextVal);
+    output.setNestedField(_as, nextVal);
+
+    if (indexPath) {
+        output.setNestedField(*indexPath, Value(_cursorIndex));
     }
+
     _cursorIndex++;
     return output.freeze();
 }
@@ -136,10 +141,11 @@ void DocumentSourceLookUp::serializeToArray(std::vector<Value>& array, bool expl
                                           << "localField" << _localField.getPath(false)
                                           << "foreignField" << _foreignField.getPath(false))));
     if (_handlingUnwind && explain) {
+        const boost::optional<FieldPath> indexPath = _unwindSrc->indexPath();
         output[getSourceName()]["unwinding"] =
-            Value(DOC("preserveNullAndEmptyArrays" << _unwindSrc->preserveNullAndEmptyArrays()
-                                                   << "includeArrayIndex"
-                                                   << _unwindSrc->includeArrayIndex()));
+            Value(DOC("preserveNullAndEmptyArrays"
+                      << _unwindSrc->preserveNullAndEmptyArrays() << "includeArrayIndex"
+                      << (indexPath ? Value((*indexPath).getPath(false)) : Value())));
     }
     array.push_back(Value(output.freeze()));
     if (_handlingUnwind && !explain) {
