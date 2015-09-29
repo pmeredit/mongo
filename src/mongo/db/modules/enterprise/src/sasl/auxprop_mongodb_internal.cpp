@@ -82,10 +82,9 @@ int auxpropLookupMongoDBInternal(void* glob_context,
     User* userObj;
     // NOTE: since this module is only used for looking up authentication information, the
     // authentication database is also the source database for the user.
+    UserName userName(StringData(user, ulen), session->getAuthenticationDatabase());
     Status status = session->getAuthorizationSession()->getAuthorizationManager().acquireUser(
-        session->getOpCtxt(),
-        UserName(StringData(user, ulen), session->getAuthenticationDatabase()),
-        &userObj);
+        session->getOpCtxt(), userName, &userObj);
 
     if (!status.isOK()) {
         sparams->utils->log(sparams->utils->conn,
@@ -139,6 +138,15 @@ int auxpropLookupMongoDBInternal(void* glob_context,
 
         if (propName == SASL_AUX_PASSWORD_PROP && (authMech == "CRAM-MD5" || authMech == "PLAIN")) {
             std::string userPassword = creds.password;
+            if (userPassword.empty()) {
+                std::stringstream ss;
+                ss << "Failed to acquire authentication credentials for " << userName.toString()
+                   << " using the " << authMech << " authentication mechanism";
+                std::string authenticationError = ss.str();
+                sparams->utils->log(
+                    sparams->utils->conn, SASL_LOG_ERR, authenticationError.c_str());
+                return SASL_BADAUTH;
+            }
             sparams->utils->prop_set(
                 sparams->propctx, cur->name, userPassword.c_str(), userPassword.size());
             curRet = SASL_OK;
