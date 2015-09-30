@@ -543,6 +543,7 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) {
 
     closeWTCursorAndSession(readCursor);
     invariantWTOK(_keystoreConnection->close(_keystoreConnection, nullptr));
+    _keystoreConnection = nullptr;
 
     closeWTCursorAndSession(writeCursor);
     invariantWTOK(rotKeystoreConnection->close(rotKeystoreConnection, nullptr));
