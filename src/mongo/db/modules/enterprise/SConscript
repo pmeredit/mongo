@@ -142,6 +142,12 @@ env.Library('mongosaslserversession',
                 'incomplete',
             ])
 
+env.Library('auth_delay',
+            'src/sasl/auth_delay.cpp',
+            LIBDEPS=['$BUILD_DIR/mongo/db/auth/sasl_options'],
+            PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongod',
+                                 '$BUILD_DIR/mongo/mongos'])
+
 env.Library('mongosaslservercommon',
             'src/sasl/cyrus_sasl_authentication_session.cpp',
             LIBDEPS=['mongosaslserversession'],
