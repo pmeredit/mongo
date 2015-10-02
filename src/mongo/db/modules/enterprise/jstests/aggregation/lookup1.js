@@ -210,9 +210,9 @@ load("jstests/aggregation/extras/utils.js");
 
         // $unwind with preserveNullAndEmptyArray with no matching documents.
         expectedResults = [
-            {_id: 0, a: 1, same: []},
-            {_id: 1, a: null, same: []},
-            {_id: 2, same: []},
+            {_id: 0, a: 1},
+            {_id: 1, a: null},
+            {_id: 2},
         ];
         testPipeline([{
             $lookup: {
@@ -230,9 +230,9 @@ load("jstests/aggregation/extras/utils.js");
 
         // $unwind with preserveNullAndEmptyArray, some with matching documents, some without.
         expectedResults = [
-            {_id: 0, a: 1, same: []},
+            {_id: 0, a: 1},
             {_id: 1, a: null, same: {_id: 0, b: 1}},
-            {_id: 2, same: []},
+            {_id: 2},
         ];
         testPipeline([{
             $lookup: {
@@ -251,9 +251,9 @@ load("jstests/aggregation/extras/utils.js");
         // $unwind with preserveNullAndEmptyArray and includeArrayIndex, some with matching
         // documents, some without.
         expectedResults = [
-            {_id: 0, a: 1, same: [], index: null},
+            {_id: 0, a: 1, index: null},
             {_id: 1, a: null, same: {_id: 0, b: 1}, index: NumberLong(0)},
-            {_id: 2, same: [], index: null},
+            {_id: 2, index: null},
         ];
         testPipeline([{
             $lookup: {
@@ -298,40 +298,84 @@ load("jstests/aggregation/extras/utils.js");
         // Dotted field paths.
         //
 
-        assert.writeOK(coll.insert({_id: 3, a: {c : 1}}));
+        coll.drop();
+        assert.writeOK(coll.insert({_id: 0, a: 1}));
+        assert.writeOK(coll.insert({_id: 1, a: null}));
+        assert.writeOK(coll.insert({_id: 2}));
+        assert.writeOK(coll.insert({_id: 3, a: {c: 1}}));
 
-        assert.writeOK(from.insert({_id: 3, b: {c : 1}}));
-        assert.writeOK(from.insert({_id: 4, b: {c : 2}}));
+        from.drop();
+        assert.writeOK(from.insert({_id: 0, b: 1}));
+        assert.writeOK(from.insert({_id: 1, b: null}));
+        assert.writeOK(from.insert({_id: 2}));
+        assert.writeOK(from.insert({_id: 3, b: {c: 1}}));
+        assert.writeOK(from.insert({_id: 4, b: {c: 2}}));
 
-        expectedResults = [
-            {_id: 0, a: 1, "same": [{_id: 0, b: 1}]},
-            {_id: 1, a: null, "same": [{_id: 1, b: null}, {_id: 2}]},
-            {_id: 2, "same": [{_id: 1, b: null}, {_id: 2}]},
-            {_id: 3, a: {c: 1}, "same": [{_id: 3, b: {c: 1}}]}
-        ];
-        testPipeline([{
+        // Once without a dotted field.
+        var pipeline = [{
             $lookup: {
                 localField: "a",
                 foreignField: "b",
                 from: "from",
                 as: "same"
             }
-        }], expectedResults, coll);
-
+        }];
         expectedResults = [
-            {_id: 0, a: 1, "same": [{_id: 0, b: 1}, {_id: 1, b: null}, {_id: 2}]},
-            {_id: 1, a: null, "same": [{_id: 0, b: 1}, {_id: 1, b: null}, {_id: 2}]},
-            {_id: 2, "same": [{_id: 0, b: 1}, {_id: 1, b: null}, {_id: 2}]},
+            {_id: 0, a: 1, "same": [{_id: 0, b: 1}]},
+            {_id: 1, a: null, "same": [{_id: 1, b: null}, {_id: 2}]},
+            {_id: 2, "same": [{_id: 1, b: null}, {_id: 2}]},
             {_id: 3, a: {c: 1}, "same": [{_id: 3, b: {c: 1}}]}
         ];
-        testPipeline([{
+        testPipeline(pipeline, expectedResults, coll);
+
+        // Look up a dotted field.
+        pipeline = [{
             $lookup: {
                 localField: "a.c",
                 foreignField: "b.c",
                 from: "from",
                 as: "same"
             }
-        }], expectedResults, coll);
+        }];
+        // All but the last document in 'coll' have a nullish value for 'a.c'.
+        expectedResults = [
+            {_id: 0, a: 1, same: [{_id: 0, b: 1}, {_id: 1, b: null}, {_id: 2}]},
+            {_id: 1, a: null, same: [{_id: 0, b: 1}, {_id: 1, b: null}, {_id: 2}]},
+            {_id: 2, same: [{_id: 0, b: 1}, {_id: 1, b: null}, {_id: 2}]},
+            {_id: 3, a: {c: 1}, same: [{_id: 3, b: {c: 1}}]}
+        ];
+        testPipeline(pipeline, expectedResults, coll);
+
+        // With an $unwind stage.
+        coll.drop();
+        assert.writeOK(coll.insert({_id: 0, a: {b: 1}}));
+        assert.writeOK(coll.insert({_id: 1}));
+
+        from.drop();
+        assert.writeOK(from.insert({_id: 0, target: 1}));
+
+        pipeline = [{
+            $lookup: {
+                localField: "a.b",
+                foreignField: "target",
+                from: "from",
+                as: "same.documents",
+            }
+        }, {
+            // Expected input to $unwind:
+            // {_id: 0, a: {b: 1}, same: {documents: [{_id: 0, target: 1}]}}
+            // {_id: 1, same: {documents: []}}
+            $unwind: {
+                path: "$same.documents",
+                preserveNullAndEmptyArrays: true,
+                includeArrayIndex: "c.d.e",
+            }
+        }];
+        expectedResults = [
+            {_id: 0, a: {b: 1}, same: {documents: {_id: 0, target: 1}}, c: {d: {e: NumberLong(0)}}},
+            {_id: 1, same: {}, c: {d: {e: null}}},
+        ];
+        testPipeline(pipeline, expectedResults, coll);
 
         //
         // Error cases.

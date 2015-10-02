@@ -111,9 +111,11 @@ boost::optional<Document> DocumentSourceLookUp::unwindResult() {
 
         if (_unwindSrc->preserveNullAndEmptyArrays() && !_cursor->more()) {
             // There were no results for this cursor, but the $unwind was asked to preserve empty
-            // arrays, so we should return a document with an empty array.
+            // arrays, so we should return a document without the array.
             MutableDocument output(std::move(*_input));
-            output.setNestedField(_as, Value(BSONArray()));
+            // Note this will correctly objects in the prefix of '_as', to act as if we had created
+            // an empty array and then removed it.
+            output.setNestedField(_as, Value());
             if (indexPath) {
                 output.setNestedField(*indexPath, Value(BSONNULL));
             }
