@@ -11,7 +11,6 @@
 #include "mongo/bson/mutable/document.h"
 #include "mongo/bson/mutable/element.h"
 #include "mongo/client/sasl_client_session.h"
-#include "mongo/db/commands.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/authz_manager_external_state_mock.h"
@@ -24,8 +23,6 @@
 #include "mongo/util/log.h"
 
 namespace mongo {
-
-int Command::testCommandsEnabled = 1;  // To fix compile without needing to link Command code.
 
 namespace {
 

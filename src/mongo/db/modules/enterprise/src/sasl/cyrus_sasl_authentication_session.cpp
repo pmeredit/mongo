@@ -19,7 +19,6 @@
 #include "mongo/db/auth/authz_session_external_state_mock.h"
 #include "mongo/db/auth/native_sasl_authentication_session.h"
 #include "mongo/db/auth/sasl_options.h"
-#include "mongo/db/commands.h"
 #include "mongo/db/commands/authentication_commands.h"
 #include "mongo/db/operation_context_noop.h"
 #include "mongo/stdx/memory.h"
