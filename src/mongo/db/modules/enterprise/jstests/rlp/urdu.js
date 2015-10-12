@@ -11,6 +11,8 @@
 
     db.urd.ensureIndex({ t1: "text" }, { default_language: "urdu" });
 
+    assert.eq(1, db.urd.find( { "$text" : { "$search" : "خوش", "$language" : "urd"} } ).itcount());
+
     // Positive Term Match
     assert.eq([1], queryIds(db.urd, "خوش"));
 
