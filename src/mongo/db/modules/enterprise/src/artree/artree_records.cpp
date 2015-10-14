@@ -220,12 +220,13 @@ bool ARTree::updateRec(OperationContext* opCtx,
      */
 
     if (!_catalogCollection) {
-        if (rec->_deadstamp               // (1)
-            || rec->_timestamp > ts       // (2)
-          //|| !rec->_basever             // (3)
-            || isReader(rec->_timestamp)  // (4)
+        if (rec->_deadstamp  // (1)
+            ||
+            rec->_timestamp > ts  // (2)
+                                  //|| !rec->_basever             // (3)
+            ||
+            isReader(rec->_timestamp)  // (4)
             ) {
-
             if (CONFLICT_TRACE) {
                 log() << "ARTree::" << __FUNCTION__ << ":" << __LINE__
                       << " : throw WriteConflictException";

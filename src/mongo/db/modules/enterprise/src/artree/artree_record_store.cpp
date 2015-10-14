@@ -165,7 +165,6 @@ ARTreeRecordStore::ARTreeRecordStore(const StringData& ns, const StringData& ide
       _isCapped(artree->_cappedCollection),
       _cappedMaxSize(artree->_cappedMaxSize),
       _cappedMaxDocs(artree->_cappedMaxDocs) {
-
     _cappedCallback = nullptr;
     if (artree)
         ++artree->_nClients;
@@ -529,7 +528,6 @@ ARTreeRecordCursor::ARTreeRecordCursor(OperationContext* opCtx,
                                        const ARTreeRecordStore& rs,
                                        bool tailable)
     : _opCtx(opCtx), _rs(rs), _isClosed(false), _tailable(tailable) {
-
     ARTree* artree = _rs.getARTree();
     _iterator->init(opCtx, artree, true /*forward*/);
     if (artree)
@@ -630,7 +628,6 @@ void ARTreeRecordCursor::reattachToOperationContext(OperationContext* opCtx) {
 ARTreeRecordReverseCursor::ARTreeRecordReverseCursor(OperationContext* opCtx,
                                                      const ARTreeRecordStore& rs)
     : _opCtx(opCtx), _rs(rs), _isClosed(false) {
-
     ARTree* artree = rs.getARTree();
     _iterator->init(opCtx, artree, false /*reverse*/);
     if (artree)
