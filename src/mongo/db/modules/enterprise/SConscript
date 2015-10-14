@@ -6,6 +6,7 @@ if not has_option("ssl"):
     env.FatalError("SSL not enabled. Enterprise MongoDB must be built with --ssl specified")
 
 env.SConscript([
+    'src/artree/SConscript',
     'src/encryptdb/SConscript',
     'src/pipeline/SConscript',
     'src/rlp/SConscript',
