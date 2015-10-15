@@ -34,7 +34,7 @@ env.Library('audit',
                      '$BUILD_DIR/mongo/util/net/network',
             ],
             LIBDEPS_DEPENDENTS=[
-                '$BUILD_DIR/mongo/db/coredb',
+                '$BUILD_DIR/mongo/db/audit',
             ],
             LIBDEPS_TAGS=[
                 # This library is 'circular' with coredb
