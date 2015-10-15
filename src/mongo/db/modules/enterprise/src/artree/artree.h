@@ -172,9 +172,7 @@ struct ARTree {
      * unlock ART resources
      */
     void close();
-    bool isClosed() const {
-        return _isClosed;
-    }
+    bool isClosed() const { return _isClosed; }
 
     /**
      * even => (uncommitted) reader timestamps

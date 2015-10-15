@@ -138,8 +138,7 @@ public:
         return const_cast<const ARTree*>(_artree);
     }
     ARTree* getARTree() const {
-        if (_isClosed)
-            return nullptr;
+        if (_isClosed) return nullptr;
         return _artree;
     }
     bool isClosed() const {

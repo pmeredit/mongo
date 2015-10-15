@@ -437,7 +437,7 @@ ARTSlot* ARTreeIndex::insertKey(ARTSlot* root, uint32_t set, const uint8_t* key,
                     p->slot = p->newSlot;
                     p->fillKey();
                     rt = EndSearch;
-                    MutexSpinLock::unlock(p->slot);  //@@@ [added 2015.10.12 paul]
+                    MutexSpinLock::unlock(p->slot);     //@@@ [added 2015.10.12 paul]
                     break;
                 }
 

@@ -143,7 +143,7 @@ uint64_t ARTreeIterator::next(bool visible) {
             return recId.off;
 
         // TODO: can we replace the previous three lines with the following?
-        // if (_art->isVisibleVersion(_opCtx, _entry->_value, _recordId))
+        //if (_art->isVisibleVersion(_opCtx, _entry->_value, _recordId))
         //    return _recordId.off;
     }
 
@@ -193,10 +193,10 @@ uint64_t ARTreeIterator::prev(bool visible) {
 
         ARTAddr recId = _art->followVersionChain(_opCtx, _entry->_value, _recordId);
         if (recId.off)
-            return recId.off;
+           return recId.off;
 
         // TODO: can we replace the previous three lines with the following?
-        // if (_art->isVisibleVersion(_opCtx, _entry->_value, _recordId))
+        //if (_art->isVisibleVersion(_opCtx, _entry->_value, _recordId))
         //    return _recordId.off;
     }
 
