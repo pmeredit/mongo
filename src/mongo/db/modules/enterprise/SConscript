@@ -15,7 +15,6 @@ env.Library('audit',
             ['src/audit/audit_application_message.cpp',
              'src/audit/audit_authentication.cpp',
              'src/audit/audit_authz_check.cpp',
-             'src/audit/audit_command.cpp',
              'src/audit/audit_event.cpp',
              'src/audit/audit_indexes_collections_databases.cpp',
              'src/audit/audit_log_domain.cpp',
@@ -28,17 +27,28 @@ env.Library('audit',
              'src/audit/audit_shutdown.cpp',
              'src/audit/audit_user_management.cpp',
              ],
-            LIBDEPS=['$BUILD_DIR/mongo/base',
-                     '$BUILD_DIR/mongo/db/auth/authcore',
-                     '$BUILD_DIR/mongo/util/net/network',
+            LIBDEPS=[
+                '$BUILD_DIR/mongo/base',
+                '$BUILD_DIR/mongo/db/auth/authcore',
+                '$BUILD_DIR/mongo/db/auth/authorization_manager_global',
+                '$BUILD_DIR/mongo/util/net/network',
             ],
             LIBDEPS_DEPENDENTS=[
                 '$BUILD_DIR/mongo/db/audit',
             ],
-            LIBDEPS_TAGS=[
-                # This library is 'circular' with coredb
-                'incomplete',
-            ],
+)
+
+env.Library(
+    target='audit_command',
+    source=[
+        'src/audit/audit_command.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/db/commands',
+    ],
+    LIBDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/db/commands/core',
+    ],
 )
 
 env.Library(
