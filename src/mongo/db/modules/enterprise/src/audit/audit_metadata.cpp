@@ -104,6 +104,9 @@ void appendImpersonatedRoles(const std::vector<RoleName>& roles,
 }  // namespace
 
 StatusWith<AuditMetadata> AuditMetadata::readFromMetadata(const BSONObj& metadataObj) {
+    return readFromMetadata(metadataObj.getField(fieldName()));
+}
+StatusWith<AuditMetadata> AuditMetadata::readFromMetadata(const BSONElement& metadataEl) {
     // We expect the AuditMetadata field to have type 'Object' with a field name of '$audit'.
     // The layout of the '$audit' element should look like this:
     //     {$impersonatedUsers: [<user0>, <user1>, ... , <userN>],
@@ -111,31 +114,28 @@ StatusWith<AuditMetadata> AuditMetadata::readFromMetadata(const BSONObj& metadat
     //
     // It is legal for the $audit element to not be present, but if it is present it is an error
     // for it to have any other layout.
-    BSONElement auditMetadataEl;
-    auto auditExtractStatus = bsonExtractTypedField(
-        metadataObj, kAuditMetadataFieldName, mongo::Object, &auditMetadataEl);
-
-    if (auditExtractStatus == ErrorCodes::NoSuchKey) {
-        return AuditMetadata{boost::none};
-    } else if (!auditExtractStatus.isOK()) {
-        return auditExtractStatus;
+    if (metadataEl.eoo()) {
+        return AuditMetadata{};
+    } else if (metadataEl.type() != mongo::Object) {
+        return {ErrorCodes::TypeMismatch,
+                str::stream() << "ServerSelectionMetadata element has incorrect type: expected"
+                              << mongo::Object << " but got " << metadataEl.type()};
     }
 
-    if (auditMetadataEl.embeddedObject().nFields() != 2) {
+    auto auditObj = metadataEl.embeddedObject();
+    if (auditObj.nFields() != 2) {
         return Status(ErrorCodes::IncompatibleAuditMetadata,
-                      str::stream() << "Expected auditMetadata to have only 2 fields but got: "
-                                    << auditMetadataEl.embeddedObject());
+                      str::stream()
+                          << "Expected auditMetadata to have only 2 fields but got: " << auditObj);
     }
 
-    auto swImpersonatedUsers =
-        readImpersonatedUsersFromAuditMetadata(auditMetadataEl.embeddedObject());
+    auto swImpersonatedUsers = readImpersonatedUsersFromAuditMetadata(auditObj);
 
     if (!swImpersonatedUsers.isOK()) {
         return swImpersonatedUsers.getStatus();
     }
 
-    auto swImpersonatedRoles =
-        readImpersonatedRolesFromAuditMetadata(auditMetadataEl.embeddedObject());
+    auto swImpersonatedRoles = readImpersonatedRolesFromAuditMetadata(auditObj);
 
     if (!swImpersonatedRoles.isOK()) {
         return swImpersonatedRoles.getStatus();
@@ -169,7 +169,12 @@ Status AuditMetadata::downconvert(const BSONObj& command,
     // Write out all command elements unmodified.
     legacyCommandBob->appendElements(command);
 
-    const auto swAuditMetadata = AuditMetadata::readFromMetadata(metadata);
+    BSONElement auditElem = metadata.getField(fieldName());
+    if (auditElem.eoo()) {
+        return Status::OK();
+    }
+
+    const auto swAuditMetadata = AuditMetadata::readFromMetadata(auditElem);
     if (!swAuditMetadata.isOK()) {
         return swAuditMetadata.getStatus();
     }
