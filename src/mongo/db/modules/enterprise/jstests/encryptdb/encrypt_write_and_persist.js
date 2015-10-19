@@ -45,12 +45,12 @@ MongoRunner.stopMongod(md);
 
 var isUbuntu1204 = (hostInfo.os.type == "Linux" && hostInfo.os.name == "Ubuntu" &&
                      hostInfo.os.version == "12.04");
-var isSUSE = (hostInfo.os.type == "Linux" && hostInfo.os.name.match("SUSE"));
+var isSUSE11 = (hostInfo.os.type == "Linux" && hostInfo.os.name.match("SUSE.+11"));
 var isRHEL5 = (hostInfo.os.type == "Linux" &&
                 hostInfo.os.name.match("Red Hat Enterprise Linux Server release 5"));
 var isOSX = (hostInfo.os.type == "Darwin");
 
-var platformSupportsGCM = !(isUbuntu1204 || isSUSE || isRHEL5 || isOSX);
+var platformSupportsGCM = !(isUbuntu1204 || isSUSE11 || isRHEL5 || isOSX);
 
 runTest("AES256-CBC", true);
 runTest("AES256-GCM", platformSupportsGCM);
