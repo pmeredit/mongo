@@ -134,7 +134,7 @@ StatusWith<KMIPResponse> KMIPService::_sendRequest(const std::vector<uint8_t>& r
 
     StatusWith<KMIPResponse> swKMIPResponse = KMIPResponse::create(resp, bodyLength + 8);
     secureZeroMemory(resp, bodyLength + 8);
-    return std::move(swKMIPResponse);
+    return swKMIPResponse;
 }
 
 std::vector<uint8_t> KMIPService::_generateKMIPGetRequest(const std::string& uid) {
