@@ -260,8 +260,33 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_readKey(const s
     int ret = cursor->search(cursor);
     if (ret == 0) {
         // The key already exists so return it.
+
         uint32_t keyStatus, initializationCount;
         invariantWTOK(cursor->get_value(cursor, &key, &keyStatus, &initializationCount));
+
+        // NIST guidelines in SP-800-38D allow us to deterministically construct GCM IVs. We use
+        // this construction for database writes, because it allows us a large number of invocations
+        // of the Authenticated Encryption Function. However, we must take steps to ensure that we
+        // never ever reuse an IV.
+        //
+        // The IV is divided into two fields, a 32 bit "fixed field" representing the context the
+        // function operates inside of, and a 64 bit "invocation field". Every time the AEF is
+        // called, the invocation field must be incremented. On every server startup, the fixed
+        // field must be incremented and written back to the keystore, to indicate the creation of
+        // a new context.
+        //
+        // When the two fields are concatenated together, we have a unique value.
+        // This scheme ensures that we only need to perform one disk write on startup to ensure this
+        // property.
+
+        // Keep the server from starting if all possible fixed fields have been used, rather than
+        // disobey NIST's guidelines.
+        if (initializationCount >= std::numeric_limits<uint32_t>::max() - 10) {
+            return Status(
+                ErrorCodes::Overflow,
+                "Unable to allocate an IV prefix, as the server has been restarted 2^32 times.");
+        }
+
         auto symmetricKey =
             stdx::make_unique<SymmetricKey>(reinterpret_cast<const uint8_t*>(key.data),
                                             key.size,
