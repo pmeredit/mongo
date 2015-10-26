@@ -11,8 +11,6 @@
 
     db.pes.ensureIndex({ t1: "text" }, { default_language: "iranian persian" });
 
-    assert.eq(1, db.pes.find( { "$text" : { "$search" : "گرب", "$language" : "pes"} } ).itcount());
-
     // Positive Term Match
     assert.eq([1], queryIds(db.pes, "گرب"));
 

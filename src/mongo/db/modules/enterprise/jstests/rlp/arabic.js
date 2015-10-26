@@ -12,8 +12,6 @@
 
     db.ara.ensureIndex({ t1: "text" }, { default_language: "arabic" });
 
-    assert.eq(2, db.ara.find( { "$text" : { "$search" : "كتب", "$language" : "ara"} } ).itcount());
-
     // Positive Term Match
     assert.eq(["past_writes", "future_writes"], queryIds(db.ara, "كتب"));
 

@@ -10,8 +10,6 @@
 
     db.zhs.ensureIndex({ t1: "text" }, { default_language: "simplified chinese" });
 
-    assert.eq(1, db.zhs.find( { "$text" : { "$search" : "北京大学", "$language" : "zhs"} } ).itcount());
-
     // Positive Term Match
     assert.eq([1], queryIds(db.zhs, "北京大学"));
     assert.eq([], queryIds(db.zhs, "北京大學"));

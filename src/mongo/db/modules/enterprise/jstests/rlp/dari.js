@@ -11,8 +11,6 @@
 
     db.prs.ensureIndex({ t1: "text" }, { default_language: "dari" });
 
-    assert.eq(1, db.prs.find( { "$text" : { "$search" : "زد", "$language" : "prs"} } ).itcount());
-
     // Positive Term Match
     assert.eq([1], queryIds(db.prs, "زد"));
 
