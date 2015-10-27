@@ -109,6 +109,11 @@ StatusWith<size_t> KMIPResponse::_parseTag(ConstDataRangeCursor* cdrc,
         }
 
         // Advance to the next tag, handle 8 byte aligned padding
+        if (len > std::numeric_limits<size_t>::max() - 8) {
+            return Status(ErrorCodes::FailedToParse,
+                          str::stream() << "Response message was malformed, invalid length " << len
+                                        << " found.");
+        }
         adv = cdrc->advance(len + (8 - (len % 8)) % 8);
         if (!adv.isOK()) {
             return adv;
@@ -242,12 +247,12 @@ StatusWith<std::unique_ptr<SymmetricKey>> KMIPResponse::_parseSymmetricKeyPayloa
     }
     uint32_t paddedKeyLen = swTag.getValue();
 
-    // This is safe since the max length 32 is a multiple of 8 and won't be padded
+    // This is safe since the max length 32 is a multiple of 8 and won't be
+    // padded
     if (paddedKeyLen < crypto::minKeySize || paddedKeyLen > crypto::maxKeySize) {
         return Status(ErrorCodes::FailedToParse,
-                      str::stream()
-                          << "Response message was malformed: unexpected symmetric key length: "
-                          << paddedKeyLen);
+                      str::stream() << "Response message was malformed: unexpected "
+                                       "symmetric key length: " << paddedKeyLen);
     }
 
     const uint8_t* key = reinterpret_cast<const uint8_t*>(cdrc->data());
@@ -386,6 +391,11 @@ StatusWith<std::string> KMIPResponse::_parseString(ConstDataRangeCursor* cdrc,
      * there is no padding so we don't need to advance.
      */
     const char* data = cdrc->data();
+    if (len > std::numeric_limits<size_t>::max() - 8) {
+        return Status(ErrorCodes::FailedToParse,
+                      str::stream() << "Response message was malformed, invalid length " << len
+                                    << " found.");
+    }
     Status adv = cdrc->advance(len + (8 - (len % 8)) % 8);
     if (!adv.isOK()) {
         return adv;
