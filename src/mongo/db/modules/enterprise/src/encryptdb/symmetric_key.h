@@ -8,6 +8,7 @@
 #include <memory>
 
 #include "mongo/base/disallow_copying.h"
+#include "mongo/base/secure_allocator.h"
 #include "symmetric_crypto.h"
 
 namespace mongo {
@@ -25,15 +26,12 @@ public:
                  uint32_t algorithm,
                  std::string keyId,
                  uint32_t initializationCount);
-    SymmetricKey(std::unique_ptr<uint8_t[]> key,
-                 size_t keySize,
-                 uint32_t algorithm,
-                 std::string keyId);
+    SymmetricKey(SecureVector<uint8_t> key, uint32_t algorithm, std::string keyId);
 
     SymmetricKey(SymmetricKey&&);
     SymmetricKey& operator=(SymmetricKey&&);
 
-    ~SymmetricKey();
+    ~SymmetricKey() = default;
 
     int getAlgorithm() const {
         return _algorithm;
@@ -49,7 +47,7 @@ public:
     }
 
     const uint8_t* getKey() const {
-        return _key.get();
+        return _key.data();
     }
 
     const std::string& getKeyId() const {
@@ -61,7 +59,7 @@ private:
 
     size_t _keySize;
 
-    std::unique_ptr<uint8_t[]> _key;
+    SecureVector<uint8_t> _key;
 
     std::string _keyId;
 

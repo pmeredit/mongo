@@ -238,16 +238,16 @@ Status aesDecrypt(EncryptedMemoryLayout* layout,
 SymmetricKey aesGenerate(size_t keySize, std::string keyId) {
     invariant(keySize == sym256KeySize);
 
-    std::unique_ptr<std::uint8_t[]> keyArray = stdx::make_unique<std::uint8_t[]>(keySize);
+    SecureVector<uint8_t> key(keySize);
 
     size_t offset = 0;
     while (offset < keySize) {
         std::uint64_t randomValue = random->nextInt64();
-        memcpy(keyArray.get() + offset, &randomValue, sizeof(randomValue));
+        memcpy(key.data() + offset, &randomValue, sizeof(randomValue));
         offset += sizeof(randomValue);
     }
 
-    return SymmetricKey(std::move(keyArray), keySize, aesAlgorithm, std::move(keyId));
+    return SymmetricKey(std::move(key), aesAlgorithm, std::move(keyId));
 }
 
 }  // namespace crypto
