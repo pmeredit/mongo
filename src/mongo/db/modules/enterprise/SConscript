@@ -7,7 +7,6 @@ if not has_option("ssl"):
 
 env.SConscript([
     'src/encryptdb/SConscript',
-    'src/pipeline/SConscript',
     'src/rlp/SConscript',
     ])
 
