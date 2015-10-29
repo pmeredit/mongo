@@ -6,17 +6,15 @@
 
 #include "mongo/platform/basic.h"
 
+#include <iostream>
+#include <openssl/rand.h>
+#include <string>
 #include <wiredtiger.h>
 #include <wiredtiger_ext.h>
 
-#include <iostream>
-#include <string>
-
 #include "encryption_key_manager.h"
 #include "encryption_options.h"
-#include "mongo/base/init.h"
 #include "mongo/db/service_context.h"
-#include "mongo/platform/random.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
@@ -25,12 +23,6 @@
 namespace mongo {
 
 namespace {
-std::unique_ptr<PseudoRandom> prng;
-MONGO_INITIALIZER(SeedPRNG)(InitializerContext* context) {
-    std::unique_ptr<SecureRandom> sr(SecureRandom::create());
-    prng.reset(new PseudoRandom(sr->nextInt64()));
-    return Status::OK();
-}
 
 /**
  * The WiredTiger encryption API consists of the following callbacks:
@@ -167,10 +159,7 @@ int encrypt(WT_ENCRYPTOR* encryptor,
             memcpy(layout.getIV() + sizeof(uint32_t), &encryptCount, sizeof(uint64_t));
             crypto->encryptCount->store(encryptCount);
         } else {
-            // Generate random IV for CBC, this is currently very predictable
-            // FIXME: Make this unpredictable to prevent chosen plaintext attacks
-            int64_t iv[2] = {prng->nextInt64(), prng->nextInt64()};
-            memcpy(layout.getIV(), iv, layout.getIVSize());
+            RAND_bytes(layout.getIV(), layout.getIVSize());
         }
 
         Status ret =
