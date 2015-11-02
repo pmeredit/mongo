@@ -1,0 +1,25 @@
+Import("env")
+Import("wiredtiger")
+
+if not wiredtiger:
+    env.FatalError("The InMemory storage engine requires WiredTiger")
+
+wtEnv = env.Clone()
+wtEnv.InjectThirdPartyIncludePaths(libraries=['wiredtiger'])
+wtEnv.Library(
+    target='storage_inmemory',
+    source=[
+        'inmemory_init.cpp',
+    ],
+    LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/db/serveronly'],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core',
+        '$BUILD_DIR/mongo/db/storage/kv/kv_engine',
+        '$BUILD_DIR/mongo/db/storage/storage_engine_lock_file',
+        '$BUILD_DIR/mongo/db/storage/storage_engine_metadata',
+    ],
+    LIBDEPS_TAGS=[
+        # Depends on symbols defined in serverOnlyfiles
+        'incomplete',
+    ],
+)
