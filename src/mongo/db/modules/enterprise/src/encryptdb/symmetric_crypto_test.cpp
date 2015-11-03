@@ -51,22 +51,23 @@ TEST(AES, GCMTestVectors) {
 
 TEST(EncryptedMemoryLayout, CanCreateMemoryLayoutWithCBC) {
     uint8_t outputBuffer[outputBufferSize];
-    crypto::EncryptedMemoryLayout layout(crypto::aesMode::cbc, outputBuffer, outputBufferSize);
+    crypto::ConstEncryptedMemoryLayout layout(crypto::aesMode::cbc, outputBuffer, outputBufferSize);
 }
 
 TEST(EncryptedMemoryLayout, CanCreateMemoryLayoutWithGCM) {
     uint8_t outputBuffer[outputBufferSize];
-    crypto::EncryptedMemoryLayout layout(crypto::aesMode::gcm, outputBuffer, outputBufferSize);
+    crypto::ConstEncryptedMemoryLayout layout(crypto::aesMode::gcm, outputBuffer, outputBufferSize);
 }
 
 DEATH_TEST(EncryptedMemoryLayout, CannotCreateMemoryLayoutWithInvalid, "Fatal Assertion 4052") {
     uint8_t outputBuffer[outputBufferSize];
     // Note that this type of cast should never be performed normally
-    crypto::EncryptedMemoryLayout layout((crypto::aesMode)(255), outputBuffer, outputBufferSize);
+    crypto::ConstEncryptedMemoryLayout layout(
+        (crypto::aesMode)(255), outputBuffer, outputBufferSize);
 }
 
 DEATH_TEST(EncryptedMemoryLayout, CannotCreateMemoryLayoutOnNullptr, "invariant") {
-    crypto::EncryptedMemoryLayout layout(crypto::aesMode::gcm, nullptr, outputBufferSize);
+    crypto::ConstEncryptedMemoryLayout layout(crypto::aesMode::gcm, nullptr, outputBufferSize);
 }
 
 TEST(EncryptedMemoryLayout, CiphertexLen) {
@@ -74,12 +75,14 @@ TEST(EncryptedMemoryLayout, CiphertexLen) {
 
     // Test CBC
     size_t expected = 16;
-    crypto::EncryptedMemoryLayout layoutCBC(crypto::aesMode::cbc, outputBuffer, outputBufferSize);
+    crypto::ConstEncryptedMemoryLayout layoutCBC(
+        crypto::aesMode::cbc, outputBuffer, outputBufferSize);
     ASSERT_EQ(expected, layoutCBC.expectedCiphertextLen(10));
 
     // Test GCM
     expected = 10;
-    crypto::EncryptedMemoryLayout layoutGCM(crypto::aesMode::gcm, outputBuffer, outputBufferSize);
+    crypto::ConstEncryptedMemoryLayout layoutGCM(
+        crypto::aesMode::gcm, outputBuffer, outputBufferSize);
     ASSERT_EQ(expected, layoutGCM.expectedCiphertextLen(10));
 }
 
@@ -87,55 +90,48 @@ TEST(EncryptedMemoryLayout, CanFitPlaintText) {
     uint8_t outputBuffer[outputBufferSize];
 
     // Test CBC
-    crypto::EncryptedMemoryLayout layoutCBC(crypto::aesMode::cbc, outputBuffer, outputBufferSize);
+    crypto::ConstEncryptedMemoryLayout layoutCBC(
+        crypto::aesMode::cbc, outputBuffer, outputBufferSize);
     ASSERT_TRUE(layoutCBC.canFitPlaintext(outputBufferSize - 32));
     ASSERT_FALSE(layoutCBC.canFitPlaintext(outputBufferSize - 15));
 
     // Test GCM
-    crypto::EncryptedMemoryLayout layoutGCM(crypto::aesMode::gcm, outputBuffer, outputBufferSize);
+    crypto::ConstEncryptedMemoryLayout layoutGCM(
+        crypto::aesMode::gcm, outputBuffer, outputBufferSize);
     ASSERT_TRUE(layoutGCM.canFitPlaintext(outputBufferSize - 24));
     ASSERT_FALSE(layoutGCM.canFitPlaintext(outputBufferSize - 23));
 }
 
-TEST(EncryptedMemoryLayout, SetData) {
+TEST(EncryptedMemoryLayout, GetDataSize) {
     uint8_t outputBuffer[outputBufferSize];
 
     // Test CBC
-    crypto::EncryptedMemoryLayout layoutCBC(crypto::aesMode::cbc, outputBuffer, outputBufferSize);
-    layoutCBC.setDataSize(outputBufferSize - layoutCBC.getHeaderSize());
+    crypto::ConstEncryptedMemoryLayout layoutCBC(
+        crypto::aesMode::cbc, outputBuffer, outputBufferSize);
     ASSERT_EQ(outputBufferSize - layoutCBC.getHeaderSize(), layoutCBC.getDataSize());
 
     // Test GCM
-    crypto::EncryptedMemoryLayout layoutGCM(crypto::aesMode::gcm, outputBuffer, outputBufferSize);
-    layoutGCM.setDataSize(outputBufferSize - layoutGCM.getHeaderSize());
+    crypto::ConstEncryptedMemoryLayout layoutGCM(
+        crypto::aesMode::gcm, outputBuffer, outputBufferSize);
     ASSERT_EQ(outputBufferSize - layoutGCM.getHeaderSize(), layoutGCM.getDataSize());
-}
-
-DEATH_TEST(EncryptedMemoryLayout, GCMSetDataTooBig, "invariant") {
-    uint8_t outputBuffer[outputBufferSize];
-    crypto::EncryptedMemoryLayout layout(crypto::aesMode::gcm, outputBuffer, outputBufferSize);
-    layout.setDataSize(outputBufferSize - layout.getHeaderSize() + 1);
-}
-
-DEATH_TEST(EncryptedMemoryLayout, CBCSetDataTooBig, "invariant") {
-    uint8_t outputBuffer[outputBufferSize];
-    crypto::EncryptedMemoryLayout layout(crypto::aesMode::cbc, outputBuffer, outputBufferSize);
-    layout.setDataSize(outputBufferSize - layout.getHeaderSize() + 1);
 }
 
 TEST(EncryptedMemoryLayout, PlaintextLen) {
     uint8_t outputBuffer[outputBufferSize];
 
     // Test CBC
-    crypto::EncryptedMemoryLayout layoutCBC(crypto::aesMode::cbc, outputBuffer, outputBufferSize);
-    layoutCBC.setDataSize(16);
-    std::pair<size_t, size_t> expected{0, 16};
+    crypto::ConstEncryptedMemoryLayout layoutCBC(
+        crypto::aesMode::cbc, outputBuffer, outputBufferSize);
+    std::pair<size_t, size_t> expected{outputBufferSize - layoutCBC.getHeaderSize() -
+                                           crypto::aesBlockSize,
+                                       outputBufferSize - layoutCBC.getHeaderSize()};
     ASSERT_TRUE(expected == layoutCBC.expectedPlaintextLen());
 
     // Test GCM
-    crypto::EncryptedMemoryLayout layoutGCM(crypto::aesMode::gcm, outputBuffer, outputBufferSize);
-    layoutGCM.setDataSize(10);
-    expected = {10, 10};
+    crypto::ConstEncryptedMemoryLayout layoutGCM(
+        crypto::aesMode::gcm, outputBuffer, outputBufferSize);
+    expected = {outputBufferSize - layoutGCM.getHeaderSize(),
+                outputBufferSize - layoutGCM.getHeaderSize()};
     ASSERT_TRUE(expected == layoutGCM.expectedPlaintextLen());
 }
 

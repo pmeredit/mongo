@@ -9,7 +9,7 @@
 
 #include "mongo/base/disallow_copying.h"
 #include "mongo/base/secure_allocator.h"
-#include "symmetric_crypto.h"
+#include "mongo/platform/atomic_word.h"
 
 namespace mongo {
 class Status;
@@ -46,6 +46,10 @@ public:
         return _initializationCount;
     }
 
+    uint64_t getAndIncrementInvocationCount() const {
+        return _invocationCount.fetchAndAdd(1);
+    }
+
     const uint8_t* getKey() const {
         return _key.data();
     }
@@ -64,5 +68,6 @@ private:
     std::string _keyId;
 
     uint32_t _initializationCount;
+    mutable AtomicUInt64 _invocationCount;
 };
 }  // namespace mongo

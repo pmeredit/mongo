@@ -104,16 +104,18 @@ Status smokeTestAESCipherMode(const std::string& modeName) {
     for (const aesTest& test : aesTests) {
         uint8_t pt[maxPTSize];
         uint8_t outputBuffer[outputBufferSize];
+        size_t resultLen;
 
         if (test.mode != mode) {
             continue;
         }
 
         SymmetricKey key(test.key, test.keySize, crypto::aesAlgorithm, "test", 0);
-        crypto::EncryptedMemoryLayout layout(test.mode, outputBuffer, outputBufferSize);
+        crypto::MutableEncryptedMemoryLayout layout(test.mode, outputBuffer, outputBufferSize);
         memcpy(layout.getIV(), test.iv, sizeof(test.iv));
 
-        Status ret = crypto::aesEncrypt(test.pt, test.ptLen, &layout, key, test.mode);
+        Status ret = crypto::aesEncrypt(
+            key, test.mode, test.pt, test.ptLen, outputBuffer, outputBufferSize, &resultLen, true);
 #ifndef EVP_CTRL_GCM_GET_TAG
         if (test.mode == crypto::aesMode::gcm) {
             // The platform does not support this cipher mode, so expect failure
@@ -141,7 +143,7 @@ Status smokeTestAESCipherMode(const std::string& modeName) {
             expectedSize = test.ptLen;
         }
 
-        if (expectedSize != layout.getDataSize()) {
+        if (expectedSize != resultLen - layout.getHeaderSize()) {
             return Status(ErrorCodes::OperationFailed,
                           str::stream() << "aesEncrypt produced " << layout.getDataSize() << " but "
                                         << expectedSize << " were expected");
@@ -151,15 +153,15 @@ Status smokeTestAESCipherMode(const std::string& modeName) {
                           "aesEncrypt did not produce the correct ciphertext");
         }
 
-        size_t ptLen = maxPTSize;
-        ret = crypto::aesDecrypt(&layout, key, test.mode, pt, &ptLen);
+        ret =
+            crypto::aesDecrypt(key, test.mode, outputBuffer, resultLen, pt, maxPTSize, &resultLen);
 
         if (!ret.isOK()) {
             return Status(ErrorCodes::OperationFailed,
                           str::stream() << "aesDecrypt failed: " << ret.reason());
         }
 
-        if (ptLen != test.ptLen || 0 != memcmp(test.pt, pt, test.ptLen)) {
+        if (resultLen != test.ptLen || 0 != memcmp(test.pt, pt, test.ptLen)) {
             Status(ErrorCodes::OperationFailed, "aesDecrypt did not produce expected plaintext");
         }
 
@@ -168,7 +170,8 @@ Status smokeTestAESCipherMode(const std::string& modeName) {
             // Corrupt the tag
             layout.getTag()[0] ^= 0xFF;
 
-            if (crypto::aesDecrypt(&layout, key, test.mode, pt, &ptLen).isOK()) {
+            if (crypto::aesDecrypt(
+                    key, test.mode, outputBuffer, resultLen, pt, maxPTSize, &resultLen).isOK()) {
                 Status(ErrorCodes::OperationFailed, "Corrupt GCM tag successfully decrypted");
             }
         }

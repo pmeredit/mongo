@@ -2,9 +2,13 @@
  *    Copyright (C) 2015 MongoDB Inc.
  */
 
+#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
+
 #include "mongo/platform/basic.h"
 
 #include "symmetric_crypto.h"
+
+#include <openssl/rand.h>
 
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
@@ -12,6 +16,7 @@
 #include "mongo/platform/random.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/util/assert_util.h"
+#include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
 #include "mongo/util/net/ssl_manager.h"
 #include "symmetric_key.h"
@@ -57,7 +62,8 @@ aesMode getCipherModeFromString(const std::string& mode) {
     }
 }
 
-EncryptedMemoryLayout::EncryptedMemoryLayout(aesMode mode, uint8_t* basePtr, size_t baseSize)
+template <typename T>
+EncryptedMemoryLayout<T>::EncryptedMemoryLayout(aesMode mode, T basePtr, size_t baseSize)
     : _basePtr(basePtr), _baseSize(baseSize), _aesMode(mode) {
     invariant(basePtr);
     switch (_aesMode) {
@@ -73,14 +79,15 @@ EncryptedMemoryLayout::EncryptedMemoryLayout(aesMode mode, uint8_t* basePtr, siz
             fassertFailed(4052);
     }
     _headerSize = _tagSize + _ivSize;
-    _dataSize = _baseSize - _headerSize;
 }
 
-bool EncryptedMemoryLayout::canFitPlaintext(size_t plaintextLen) const {
+template <typename T>
+bool EncryptedMemoryLayout<T>::canFitPlaintext(size_t plaintextLen) const {
     return _baseSize >= _headerSize + expectedCiphertextLen(plaintextLen);
 }
 
-size_t EncryptedMemoryLayout::expectedCiphertextLen(size_t plaintextLen) const {
+template <typename T>
+size_t EncryptedMemoryLayout<T>::expectedCiphertextLen(size_t plaintextLen) const {
     if (_aesMode == aesMode::cbc) {
         return crypto::aesBlockSize * (1 + plaintextLen / crypto::aesBlockSize);
     } else if (_aesMode == aesMode::gcm) {
@@ -89,38 +96,59 @@ size_t EncryptedMemoryLayout::expectedCiphertextLen(size_t plaintextLen) const {
     MONGO_UNREACHABLE;
 }
 
-std::pair<size_t, size_t> EncryptedMemoryLayout::expectedPlaintextLen() const {
+template <typename T>
+std::pair<size_t, size_t> EncryptedMemoryLayout<T>::expectedPlaintextLen() const {
     if (_aesMode == aesMode::cbc) {
-        return {_dataSize - crypto::aesBlockSize, _dataSize};
+        return {getDataSize() - crypto::aesBlockSize, getDataSize()};
     } else if (_aesMode == aesMode::gcm) {
-        return {_dataSize, _dataSize};
+        return {getDataSize(), getDataSize()};
     }
     MONGO_UNREACHABLE;
 }
 
+template class EncryptedMemoryLayout<const uint8_t*>;
+template class EncryptedMemoryLayout<uint8_t*>;
 
-void EncryptedMemoryLayout::setDataSize(size_t dataSize) {
-    invariant(dataSize <= _baseSize - _headerSize);
-    _dataSize = dataSize;
-}
-
-Status aesEncrypt(const uint8_t* in,
+Status aesEncrypt(const SymmetricKey& key,
+                  aesMode mode,
+                  const uint8_t* in,
                   size_t inLen,
-                  EncryptedMemoryLayout* layout,
-                  const SymmetricKey& key,
-                  aesMode mode) {
-    if (!(in && layout)) {
+                  uint8_t* out,
+                  size_t outLen,
+                  size_t* resultLen,
+                  bool ivProvided) {
+    if (!(in && out)) {
         return Status(ErrorCodes::BadValue, "Invalid encryption buffers");
     }
     if (!(mode == aesMode::cbc || mode == aesMode::gcm)) {
         return Status(ErrorCodes::BadValue, "Invalid encryption mode");
     }
-    if (layout->getDataSize() < layout->expectedCiphertextLen(inLen)) {
+
+    crypto::MutableEncryptedMemoryLayout layout(mode, out, outLen);
+
+    if (!layout.canFitPlaintext(inLen)) {
         return Status(ErrorCodes::BadValue,
-                      str::stream() << "Cipher text buffer too short " << layout->getDataSize()
-                                    << " < " << layout->expectedCiphertextLen(inLen));
+                      str::stream() << "Insufficient memory allocated for encryption.");
     }
 
+    if (!ivProvided) {
+        uint32_t initializationCount = key.getInitializationCount();
+        if (mode == crypto::aesMode::gcm && initializationCount != 0) {
+            // Generate deterministic 12 byte IV for GCM but not for the master key (identified by
+            // having initializationCount = 0). The rational being that we can't keep a usage count
+            // for the master key and it will never be used more than 2^32 times so using a random
+            // IV is safe.
+            *reinterpret_cast<uint32_t*>(layout.getIV()) = initializationCount;
+            *reinterpret_cast<uint64_t*>(layout.getIV() + sizeof(initializationCount)) =
+                key.getAndIncrementInvocationCount();
+        } else {
+            if (RAND_bytes(layout.getIV(), layout.getIVSize()) != 1) {
+                error() << "Unable to acquire random bytes from OpenSSL: "
+                        << SSLManagerInterface::getSSLErrorMessage(ERR_get_error());
+                fassertFailed(4050);
+            }
+        }
+    }
 
     StatusWith<const EVP_CIPHER*> swCipher = acquireAESCipher(key.getKeySize(), mode);
     if (!swCipher.isOK()) {
@@ -136,22 +164,33 @@ Status aesEncrypt(const uint8_t* in,
     }
 
     if (1 != EVP_EncryptInit_ex(
-                 encryptCtx.get(), swCipher.getValue(), nullptr, key.getKey(), layout->getIV())) {
+                 encryptCtx.get(), swCipher.getValue(), nullptr, key.getKey(), layout.getIV())) {
         return Status(ErrorCodes::UnknownError,
                       str::stream() << SSLManagerInterface::getSSLErrorMessage(ERR_get_error()));
     }
 
     int len = 0;
-    if (1 != EVP_EncryptUpdate(encryptCtx.get(), layout->getData(), &len, in, inLen)) {
+    if (1 != EVP_EncryptUpdate(encryptCtx.get(), layout.getData(), &len, in, inLen)) {
+        return Status(ErrorCodes::UnknownError,
+                      str::stream() << SSLManagerInterface::getSSLErrorMessage(ERR_get_error()));
+    }
+    invariant(size_t(layout.getHeaderSize() + len) <= outLen);
+
+    int extraLen = 0;
+    if (1 != EVP_EncryptFinal_ex(encryptCtx.get(), layout.getData() + len, &extraLen)) {
         return Status(ErrorCodes::UnknownError,
                       str::stream() << SSLManagerInterface::getSSLErrorMessage(ERR_get_error()));
     }
 
-    int extraLen = 0;
-    if (1 != EVP_EncryptFinal_ex(encryptCtx.get(), layout->getData() + len, &extraLen)) {
+// validateEncryptionOption asserts that platforms without GCM will never start in GCM mode
+#ifdef EVP_CTRL_GCM_GET_TAG
+    if (mode == aesMode::gcm &&
+        1 != EVP_CIPHER_CTX_ctrl(
+                 encryptCtx.get(), EVP_CTRL_GCM_GET_TAG, layout.getTagSize(), layout.getTag())) {
         return Status(ErrorCodes::UnknownError,
                       str::stream() << SSLManagerInterface::getSSLErrorMessage(ERR_get_error()));
     }
+#endif
 
     // Some cipher modes, such as GCM, will know in advance exactly how large their ciphertexts will
     // be.
@@ -159,33 +198,45 @@ Status aesEncrypt(const uint8_t* in,
     // to store
     // the worst case. We must then set the actual size of the ciphertext so that the buffer it has
     // been written to may be serialized.
-    layout->setDataSize(len + extraLen);
+    *resultLen = layout.getHeaderSize() + len + extraLen;
+    invariant(*resultLen <= outLen);
 
-// validateEncryptionOption asserts that platforms without GCM will never start in GCM mode
-#ifdef EVP_CTRL_GCM_GET_TAG
-    if (mode == aesMode::gcm &&
-        1 != EVP_CIPHER_CTX_ctrl(
-                 encryptCtx.get(), EVP_CTRL_GCM_GET_TAG, layout->getTagSize(), layout->getTag())) {
-        return Status(ErrorCodes::UnknownError,
-                      str::stream() << SSLManagerInterface::getSSLErrorMessage(ERR_get_error()));
+    // Check the returned length, including block size padding
+    if (size_t(len + extraLen) != layout.expectedCiphertextLen(inLen)) {
+        return Status(ErrorCodes::BadValue,
+                      str::stream() << "Encrypt error, expected cipher text of length "
+                                    << layout.expectedCiphertextLen(inLen) << " but found "
+                                    << len + extraLen);
     }
-#endif
 
     return Status::OK();
 }
 
-Status aesDecrypt(EncryptedMemoryLayout* layout,
-                  const SymmetricKey& key,
+Status aesDecrypt(const SymmetricKey& key,
                   aesMode mode,
+                  const uint8_t* in,
+                  size_t inLen,
                   uint8_t* out,
-                  size_t* outLen) {
-    if (!(layout && out && outLen)) {
+                  size_t outLen,
+                  size_t* resultLen) {
+    if (!(in && out)) {
         return Status(ErrorCodes::BadValue, "Invalid encryption buffers");
     }
     if (!(mode == aesMode::cbc || mode == aesMode::gcm)) {
         return Status(ErrorCodes::BadValue, "Invalid encryption mode");
     }
 
+    crypto::ConstEncryptedMemoryLayout layout(mode, in, inLen);
+
+    // Check the plaintext buffer can fit the product of decryption
+    size_t lowerBound, upperBound;
+    std::tie(lowerBound, upperBound) = layout.expectedPlaintextLen();
+    if (upperBound > outLen) {
+        return Status(ErrorCodes::BadValue,
+                      str::stream() << "Cleartext buffer of size " << outLen
+                                    << " too small for output which can be as large as "
+                                    << upperBound << "]");
+    }
 
     StatusWith<const EVP_CIPHER*> swCipher = acquireAESCipher(key.getKeySize(), mode);
     if (!swCipher.isOK()) {
@@ -201,23 +252,26 @@ Status aesDecrypt(EncryptedMemoryLayout* layout,
     }
 
     if (1 != EVP_DecryptInit_ex(
-                 decryptCtx.get(), swCipher.getValue(), nullptr, key.getKey(), layout->getIV())) {
+                 decryptCtx.get(), swCipher.getValue(), nullptr, key.getKey(), layout.getIV())) {
         return Status(ErrorCodes::UnknownError,
                       str::stream() << SSLManagerInterface::getSSLErrorMessage(ERR_get_error()));
     }
 
     int len = 0;
     if (1 !=
-        EVP_DecryptUpdate(decryptCtx.get(), out, &len, layout->getData(), layout->getDataSize())) {
+        EVP_DecryptUpdate(decryptCtx.get(), out, &len, layout.getData(), layout.getDataSize())) {
         return Status(ErrorCodes::UnknownError,
                       str::stream() << SSLManagerInterface::getSSLErrorMessage(ERR_get_error()));
     }
+    invariant(size_t(len) <= outLen);
 
 // validateEncryptionOption asserts that platforms without GCM will never start in GCM mode
 #ifdef EVP_CTRL_GCM_SET_TAG
     if (mode == aesMode::gcm &&
-        !EVP_CIPHER_CTX_ctrl(
-            decryptCtx.get(), EVP_CTRL_GCM_SET_TAG, layout->getTagSize(), layout->getTag())) {
+        !EVP_CIPHER_CTX_ctrl(decryptCtx.get(),
+                             EVP_CTRL_GCM_SET_TAG,
+                             layout.getTagSize(),
+                             const_cast<uint8_t*>(layout.getTag()))) {
         return Status(ErrorCodes::UnknownError,
                       str::stream() << "Unable to set GCM tag: "
                                     << SSLManagerInterface::getSSLErrorMessage(ERR_get_error()));
@@ -231,7 +285,17 @@ Status aesDecrypt(EncryptedMemoryLayout* layout,
                                     << SSLManagerInterface::getSSLErrorMessage(ERR_get_error()));
     }
 
-    *outLen = len + extraLen;
+    *resultLen = len + extraLen;
+    invariant(*resultLen <= outLen);
+
+    // Check the returned length, excluding headers block padding
+    if (*resultLen < lowerBound || *resultLen > upperBound) {
+        return Status(ErrorCodes::BadValue,
+                      str::stream() << "Decrypt error, expected clear text length in interval"
+                                    << "[" << lowerBound << "," << upperBound << "]"
+                                    << "but found " << *resultLen);
+    }
+
     return Status::OK();
 }
 

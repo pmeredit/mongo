@@ -7,7 +7,6 @@
 #include "mongo/platform/basic.h"
 
 #include <iostream>
-#include <openssl/rand.h>
 #include <string>
 #include <wiredtiger.h>
 #include <wiredtiger_ext.h>
@@ -53,7 +52,6 @@ struct ExtendedWTEncryptor {
     WT_ENCRYPTOR encryptor;      // Must come first
     SymmetricKey* symmetricKey;  // Symmetric key
     crypto::aesMode cipherMode;  // Cipher mode
-    AtomicUInt64* encryptCount;  // Counter incremented on every encrypt call, reset on restart.
 };
 
 int sizing(WT_ENCRYPTOR* encryptor, WT_SESSION* session, size_t* expansionConstant) {
@@ -118,7 +116,6 @@ int customize(WT_ENCRYPTOR* encryptor,
 
         myEncryptor.get()->symmetricKey = swSymmetricKey.getValue().release();
         myEncryptor.get()->cipherMode = crypto::getCipherModeFromString(encryptorName);
-        myEncryptor.get()->encryptCount = new AtomicUInt64(0);
 
         *customEncryptor = &(myEncryptor.release()->encryptor);
         return 0;
@@ -142,47 +139,13 @@ int encrypt(WT_ENCRYPTOR* encryptor,
             return EINVAL;
         }
 
-        crypto::EncryptedMemoryLayout layout(crypto->cipherMode, dst, dstLen);
-
-        if (!layout.canFitPlaintext(srcLen)) {
-            severe() << "Insufficient memory allocated for encryption.";
-            return ENOMEM;
-        }
-
-        uint32_t initializationCount = crypto->symmetricKey->getInitializationCount();
-        if (crypto->cipherMode == crypto::aesMode::gcm && initializationCount != 0) {
-            // Generate deterministic 12 byte IV for GCM but not for the master key (identified by
-            // having initializationCount = 0). The rational being that we can't keep a usage count
-            // for the master key and it will never be used more than 2^32 times so using a random
-            // IV is safe.
-            memcpy(layout.getIV(), &initializationCount, sizeof(uint32_t));
-            uint64_t encryptCount = crypto->encryptCount->load() + 1;
-            memcpy(layout.getIV() + sizeof(uint32_t), &encryptCount, sizeof(uint64_t));
-            crypto->encryptCount->store(encryptCount);
-        } else {
-            if (RAND_bytes(layout.getIV(), layout.getIVSize()) != 1) {
-                error() << "Unable to acquire random bytes from OpenSSL: "
-                        << SSLManagerInterface::getSSLErrorMessage(ERR_get_error());
-                fassertFailed(4050);
-            }
-        }
-
-        Status ret =
-            crypto::aesEncrypt(src, srcLen, &layout, *crypto->symmetricKey, crypto->cipherMode);
+        Status ret = crypto::aesEncrypt(
+            *crypto->symmetricKey, crypto->cipherMode, src, srcLen, dst, dstLen, resultLen);
 
         if (!ret.isOK()) {
             severe() << "Encrypt error for key " << crypto->symmetricKey->getKeyId() << ": " << ret;
             return EINVAL;
         }
-
-        // Check the returned length, including block size padding
-        if (layout.getDataSize() != layout.expectedCiphertextLen(srcLen)) {
-            log() << "Encrypt error, expected cipher text of length "
-                  << layout.expectedCiphertextLen(srcLen) << "] but found " << *resultLen;
-            return EINVAL;
-        }
-
-        *resultLen = layout.getHeaderSize() + layout.getDataSize();
 
         return 0;
     } catch (...) {
@@ -205,10 +168,8 @@ int decrypt(WT_ENCRYPTOR* encryptor,
             return EINVAL;
         }
 
-        crypto::EncryptedMemoryLayout layout(crypto->cipherMode, src, srcLen);
-
-        Status ret =
-            crypto::aesDecrypt(&layout, *crypto->symmetricKey, crypto->cipherMode, dst, resultLen);
+        Status ret = crypto::aesDecrypt(
+            *crypto->symmetricKey, crypto->cipherMode, src, srcLen, dst, dstLen, resultLen);
 
         if (!ret.isOK()) {
             if (crypto->symmetricKey->getKeyId() == kSystemKeyId) {
@@ -220,16 +181,6 @@ int decrypt(WT_ENCRYPTOR* encryptor,
             }
             return EINVAL;
         }
-        // Check the returned length, excluding headers block padding
-        size_t lowerBound, upperBound;
-        std::tie(lowerBound, upperBound) = layout.expectedPlaintextLen();
-        if (*resultLen < lowerBound || *resultLen > upperBound) {
-            log() << "Decrypt error, expected clear text length in interval"
-                  << "[" << lowerBound << "," << upperBound << "]"
-                  << "but found " << *resultLen;
-            return EINVAL;
-        }
-
         return 0;
     } catch (...) {
         // Prevent C++ exceptions from propagating into C code
@@ -253,9 +204,6 @@ int destroyEncryptor(WT_ENCRYPTOR* encryptor, WT_SESSION* session) {
                         stdx::make_unique<EmptyWiredTigerCustomizationHooks>());
                 }
                 delete myEncryptor->symmetricKey;
-            }
-            if (myEncryptor->encryptCount) {
-                delete myEncryptor->encryptCount;
             }
             delete myEncryptor;
         }
@@ -292,7 +240,6 @@ extern "C" MONGO_COMPILER_API_EXPORT int mongo_addWiredTigerEncryptors(WT_CONNEC
     extWTEncryptor->encryptor.encrypt = mongo::encrypt;
     extWTEncryptor->encryptor.decrypt = mongo::decrypt;
     extWTEncryptor->encryptor.terminate = mongo::destroyEncryptor;
-    extWTEncryptor->encryptCount = nullptr;
 
     int ret;
     if ((ret = connection->add_encryptor(connection,

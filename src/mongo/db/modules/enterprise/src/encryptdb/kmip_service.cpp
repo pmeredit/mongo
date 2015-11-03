@@ -23,6 +23,7 @@
 #include "mongo/util/net/ssl_manager.h"
 #include "mongo/util/net/ssl_options.h"
 #include "mongo/util/secure_zero_memory.h"
+#include "symmetric_crypto.h"
 
 namespace mongo {
 namespace kmip {

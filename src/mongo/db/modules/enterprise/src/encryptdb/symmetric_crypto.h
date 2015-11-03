@@ -8,7 +8,6 @@
 #include <cstdint>
 #include <string>
 
-
 namespace mongo {
 
 class Status;
@@ -60,9 +59,17 @@ aesMode getCipherModeFromString(const std::string& mode);
  * Ciphertext - Size of plaintext on GCM,
  *              Size of plaintext padded up to the nearest multiple of the AES blocksize on CBC
  */
+template <typename T>
 class EncryptedMemoryLayout {
+    static_assert(
+        std::is_pointer<T>::value &&
+            std::is_same<
+                uint8_t,
+                typename std::remove_const<typename std::remove_pointer<T>::type>::type>::value,
+        "EncryptedMemoryLayout must be instantiated with a uint8_t*");
+
 public:
-    EncryptedMemoryLayout(aesMode mode, uint8_t* basePtr, size_t baseSize);
+    EncryptedMemoryLayout(aesMode mode, T basePtr, size_t baseSize);
 
     /**
      * Ensure there is enough memory for:
@@ -87,7 +94,7 @@ public:
     /**
      * Get a pointer to the tag
      */
-    uint8_t* getTag() const {
+    T getTag() const {
         return _basePtr;
     }
 
@@ -101,7 +108,7 @@ public:
     /**
      * Get a pointer to the IV
      */
-    uint8_t* getIV() const {
+    T getIV() const {
         return _basePtr + _tagSize;
     }
 
@@ -122,61 +129,60 @@ public:
     /**
      * Get a pointer to the ciphertext data
      */
-    uint8_t* getData() const {
+    T getData() const {
         return _basePtr + _headerSize;
     }
 
     /**
      * Get the size of the ciphertext payload.
-     * If setDataSize has not been called, this will be the largest possible amount of ciphertext
-     * that can be stored. Otherwise, it will be the specified size.
+     * The largest possible amount of ciphertext that can be stored in the memory region.
      */
     size_t getDataSize() const {
-        return _dataSize;
+        return _baseSize - _headerSize;
     }
-
-    /**
-     * Overrides the data size with the cipher-mode dependent size of the ciphertext
-     * realized during encryption.
-     */
-    void setDataSize(size_t dataSize);
 
 private:
     size_t _tagSize;     // Size of tag protecting IV and data
     size_t _ivSize;      // Size of the IV
     size_t _headerSize;  // Size of all metadata
 
-    uint8_t* _basePtr;  // Pointer to the memory buffer
-    size_t _baseSize;   // Size of the buffer
-    size_t _dataSize;   // Size of the ciphertext portion
+    T _basePtr;        // Pointer to the memory buffer
+    size_t _baseSize;  // Size of the buffer
 
     aesMode _aesMode;  // Cipher mode to report sizes on
 };
+using ConstEncryptedMemoryLayout = EncryptedMemoryLayout<const uint8_t*>;
+using MutableEncryptedMemoryLayout = EncryptedMemoryLayout<uint8_t*>;
 
 /**
  * Encrypts the plaintext 'in' using AES with the SymmetricKey in 'key'
  * using encryption mode 'mode'. CBC and GCM are the only supported modes at this time.
  *
- * The resulting ciphertext (and tag) are stored in the locations defined in 'layout'
+ * The resulting ciphertext (and tag) are stored in the 'out' buffer.
  */
-Status aesEncrypt(const uint8_t* in,
+Status aesEncrypt(const SymmetricKey& key,
+                  aesMode mode,
+                  const uint8_t* in,
                   size_t inLen,
-                  EncryptedMemoryLayout* layout,
-                  const SymmetricKey& key,
-                  aesMode mode);
+                  uint8_t* out,
+                  size_t outLen,
+                  size_t* resultLen,
+                  bool ivProvided = false);
 
 /**
- * Decrypts the plaintext stored in 'layout' using AES with the SymmetricKey stored in 'key'
+ * Decrypts the plaintext stored in the 'in' buffer using AES with the SymmetricKey stored in 'key'
  * using encryption mode 'mode'. CBC and GCM are the only supported modes at this time.
  *
  * 'outLen' is an in-out parameter representing the size of the buffer 'out', and the
  * resulting length of the decrypted buffer.
  */
-Status aesDecrypt(EncryptedMemoryLayout* layout,
-                  const SymmetricKey& key,
+Status aesDecrypt(const SymmetricKey& key,
                   aesMode mode,
+                  const uint8_t* in,
+                  size_t inLen,
                   uint8_t* out,
-                  size_t* outLen);
+                  size_t outLen,
+                  size_t* resultLen);
 
 /**
  * Generates a new, random, symmetric key for use with AES.
