@@ -18,6 +18,7 @@
 #include "mongo/stdx/memory.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
+#include "mongo/util/net/ssl_manager.h"
 #include "symmetric_crypto.h"
 
 namespace mongo {
@@ -159,7 +160,11 @@ int encrypt(WT_ENCRYPTOR* encryptor,
             memcpy(layout.getIV() + sizeof(uint32_t), &encryptCount, sizeof(uint64_t));
             crypto->encryptCount->store(encryptCount);
         } else {
-            RAND_bytes(layout.getIV(), layout.getIVSize());
+            if (RAND_bytes(layout.getIV(), layout.getIVSize()) != 1) {
+                error() << "Unable to acquire random bytes from OpenSSL: "
+                        << SSLManagerInterface::getSSLErrorMessage(ERR_get_error());
+                fassertFailed(4050);
+            }
         }
 
         Status ret =
