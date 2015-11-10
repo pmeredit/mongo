@@ -129,6 +129,7 @@ EncryptionKeyManager::EncryptionKeyManager(const std::string& dbPath,
       _keystoreBasePath(fs::path(dbPath) / "key.store"),
       _masterKeyId(""),
       _keyRotationAllowed(false),
+      _tmpDataKey(crypto::aesGenerate(crypto::sym256KeySize, kTmpDataKeyId)),
       _keystoreConnection(nullptr),
       _keystoreEventHandler(keystoreEventHandlers()),
       _encryptionParams(encryptionParams),
@@ -145,6 +146,10 @@ EncryptionKeyManager* EncryptionKeyManager::get(ServiceContext* service) {
         checked_cast<EncryptionKeyManager*>(WiredTigerCustomizationHooks::get(service));
     fassert(4036, globalKeyManager != nullptr);
     return globalKeyManager;
+}
+
+bool EncryptionKeyManager::enabled() const {
+    return true;
 }
 
 bool EncryptionKeyManager::restartRequired() {
@@ -202,6 +207,30 @@ std::string EncryptionKeyManager::getOpenConfig(StringData ns) {
         "\"),";
 
     return config;
+}
+
+Status EncryptionKeyManager::protectTmpData(
+    const uint8_t* in, size_t inLen, uint8_t* out, size_t outLen, size_t* resultLen) {
+    return crypto::aesEncrypt(
+        _tmpDataKey,
+        crypto::getCipherModeFromString(_encryptionParams->encryptionCipherMode),
+        in,
+        inLen,
+        out,
+        outLen,
+        resultLen);
+}
+
+Status EncryptionKeyManager::unprotectTmpData(
+    const uint8_t* in, size_t inLen, uint8_t* out, size_t outLen, size_t* resultLen) {
+    return crypto::aesDecrypt(
+        _tmpDataKey,
+        crypto::getCipherModeFromString(_encryptionParams->encryptionCipherMode),
+        in,
+        inLen,
+        out,
+        outLen,
+        resultLen);
 }
 
 // The local key store database and the corresponding keys are created lazily as they are requested,

@@ -25,6 +25,7 @@ struct SSLParams;
 
 const std::string kSystemKeyId = ".system";
 const std::string kMasterKeyId = ".master";
+const std::string kTmpDataKeyId = ".tmp";
 
 /**
  * The EncryptionKeyManager manages the keys for the encrypted storage engine.
@@ -55,6 +56,11 @@ public:
     std::string getOpenConfig(StringData ns) override;
 
     /**
+     * Indicates that encryption at rest is enabled.
+     */
+    bool enabled() const override;
+
+    /**
      * Take any initialization action that needs to wait until after storage engine initialization
      * including:
      *
@@ -64,6 +70,19 @@ public:
      * Returns a bool indicating if the server should continue start or not.
      */
     bool restartRequired() override;
+
+    /**
+     * Encrypt temporary data written to disk outside of the storage engine. The method uses an
+     * ephemeral key _tmpDataKey which is re-generated on each server restart.
+     */
+    Status protectTmpData(
+        const uint8_t* in, size_t inLen, uint8_t* out, size_t outLen, size_t* resultLen) override;
+
+    /**
+     * Decrypt temporary data previously written to disk outside of the storage engine.
+     */
+    Status unprotectTmpData(
+        const uint8_t* in, size_t inLen, uint8_t* out, size_t outLen, size_t* resultLen) override;
 
     /**
      * Takes in a key identifier and returns a unique_ptr to the
@@ -124,6 +143,11 @@ private:
      */
     std::unique_ptr<SymmetricKey> _rotMasterKey;
     bool _keyRotationAllowed;
+
+    /**
+     * Ephemeral key whose life time does not span server restarts.
+     */
+    const SymmetricKey _tmpDataKey;
 
     /**
      * Management of the local WiredTiger key store.
