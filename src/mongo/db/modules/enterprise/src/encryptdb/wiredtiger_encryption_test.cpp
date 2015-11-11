@@ -24,7 +24,9 @@
 namespace mongo {
 namespace {
 MONGO_INITIALIZER_WITH_PREREQUISITES(CreateEncryptionKeyManager,
-                                     ("SetWiredTigerCustomizationHooks", "SetGlobalEnvironment"))
+                                     ("CreateKeyEntropySource",
+                                      "SetWiredTigerCustomizationHooks",
+                                      "SetGlobalEnvironment"))
 (InitializerContext* context) {
     // Reset the WiredTigerCustomizationHooks pointer to be the EncryptionKeyManager
     auto keyManager = stdx::make_unique<EncryptionKeyManagerNoop>();
