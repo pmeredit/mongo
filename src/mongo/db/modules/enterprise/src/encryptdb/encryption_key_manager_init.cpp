@@ -18,8 +18,7 @@
 
 namespace mongo {
 MONGO_INITIALIZER_WITH_PREREQUISITES(CreateEncryptionKeyManager,
-                                     ("CreateKeyEntropySource",
-                                      "SetWiredTigerCustomizationHooks",
+                                     ("SetWiredTigerCustomizationHooks",
                                       "SetGlobalEnvironment",
                                       "SSLManager",
                                       "WiredTigerEngineInit"))
