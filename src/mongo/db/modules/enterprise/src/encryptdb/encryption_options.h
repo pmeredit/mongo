@@ -6,7 +6,7 @@
 
 #include <string>
 
-#include "mongo/base/status.h"
+#include "kmip_options.h"
 
 namespace mongo {
 class Status;
@@ -22,16 +22,11 @@ struct EncryptionGlobalParams {
     bool enableEncryption = false;
     std::string encryptionCipherMode = "AES256-CBC";  // The default cipher mode
 
-    // KMIP Options.
-    std::string kmipKeyIdentifier;
-    std::string kmipServerName;
-    int kmipPort = 5696;
-    std::string kmipClientCertificateFile;
-    std::string kmipClientCertificatePassword;
-    std::string kmipServerCAFile;
-
     // Keyfile Options.
     std::string encryptionKeyFile;
+
+    // KMIP Options.
+    KMIPParams kmipParams;
 
     // Master key rotation options
     bool rotateMasterKey = false;

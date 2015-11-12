@@ -7,7 +7,6 @@
 #include <boost/filesystem/path.hpp>
 #include <wiredtiger.h>
 
-#include "kmip_service.h"
 #include "mongo/base/disallow_copying.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_customization_hooks.h"
@@ -16,7 +15,6 @@
 
 namespace mongo {
 
-using namespace mongo::kmip;
 class DataProtector;
 struct EncryptionGlobalParams;
 class NamespaceString;
@@ -125,19 +123,6 @@ private:
     StatusWith<std::unique_ptr<SymmetricKey>> _getSystemKey();
     StatusWith<std::unique_ptr<SymmetricKey>> _getMasterKey();
     StatusWith<std::unique_ptr<SymmetricKey>> _readKey(const std::string& keyId);
-
-    /**
-     * Acquires the master key 'keyId' from a KMIP server.
-     *
-     * If 'keyId' is empty a new key will be created and keyId will be assigned the new id and hence
-     * as as an out parameter.
-     */
-    StatusWith<std::unique_ptr<SymmetricKey>> _getKeyFromKMIPServer(const std::string& keyId);
-
-    /**
-     * Acquires the system key from the encryption keyfile.
-     */
-    StatusWith<std::unique_ptr<SymmetricKey>> _getKeyFromKeyFile();
 
     /**
      * Taken from global storage parameters -- the dbpath directory.

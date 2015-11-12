@@ -13,13 +13,13 @@
 #include <fstream>
 
 #include "encrypted_data_protector.h"
+#include "encryption_key_acquisition.h"
 #include "encryption_options.h"
 #include "mongo/base/checked_cast.h"
 #include "mongo/base/init.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/bsontypes.h"
-#include "mongo/db/auth/security_file.h"
 #include "mongo/db/dbdirectclient.h"
 #include "mongo/db/dbhelpers.h"
 #include "mongo/db/db_raii.h"
@@ -29,11 +29,9 @@
 #include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/util/assert_util.h"
-#include "mongo/util/base64.h"
 #include "mongo/util/log.h"
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/net/ssl_manager.h"
-#include "mongo/util/net/ssl_options.h"
 #include "mongo/util/time_support.h"
 #include "symmetric_crypto.h"
 
@@ -352,82 +350,6 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_readKey(const s
     return std::move(symmetricKey);
 }
 
-StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getKeyFromKMIPServer(
-    const std::string& keyId) {
-    if (_encryptionParams->kmipServerName.empty()) {
-        return Status(ErrorCodes::BadValue,
-                      "Encryption at rest enabled but no key server specified");
-    }
-
-    SSLParams sslKMIPParams;
-
-    // KMIP specific parameters.
-    sslKMIPParams.sslPEMKeyFile = _encryptionParams->kmipClientCertificateFile;
-    sslKMIPParams.sslPEMKeyPassword = _encryptionParams->kmipClientCertificatePassword;
-    sslKMIPParams.sslClusterFile = "";
-    sslKMIPParams.sslClusterPassword = "";
-    sslKMIPParams.sslCAFile = _encryptionParams->kmipServerCAFile;
-
-    // Copy the rest from the global SSL manager options.
-    sslKMIPParams.sslFIPSMode = _sslParams->sslFIPSMode;
-
-    // KMIP servers never should have invalid certificates
-    sslKMIPParams.sslAllowInvalidCertificates = false;
-    sslKMIPParams.sslAllowInvalidHostnames = false;
-    sslKMIPParams.sslCRLFile = "";
-
-    KMIPService kmipService(
-        HostAndPort(_encryptionParams->kmipServerName, _encryptionParams->kmipPort), sslKMIPParams);
-
-    if (!kmipService.isValid()) {
-        return Status(ErrorCodes::BadValue,
-                      str::stream() << "Failed to open connection to KMIP server "
-                                    << _encryptionParams->kmipServerName << ".");
-    }
-
-    // Try to retrieve an existing key.
-    if (!keyId.empty()) {
-        return kmipService.getExternalKey(keyId);
-    }
-
-    // Create and retrieve new key.
-    StatusWith<std::string> swCreateKey = kmipService.createExternalKey();
-    if (!swCreateKey.isOK()) {
-        return swCreateKey.getStatus();
-    }
-    std::string newKeyId = swCreateKey.getValue();
-    log() << "Created KMIP key with id: " << newKeyId;
-    return kmipService.getExternalKey(newKeyId);
-}
-
-StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getKeyFromKeyFile() {
-    StatusWith<std::string> keyString = readSecurityFile(_encryptionParams->encryptionKeyFile);
-    if (!keyString.isOK()) {
-        return keyString.getStatus();
-    }
-
-    std::string decodedKey;
-    try {
-        decodedKey = base64::decode(keyString.getValue());
-    } catch (const DBException& ex) {
-        return ex.toStatus();
-    }
-
-    const size_t keyLength = decodedKey.size();
-    if (keyLength != crypto::sym256KeySize) {
-        return StatusWith<std::unique_ptr<SymmetricKey>>(
-            ErrorCodes::BadValue,
-            str::stream() << "Encryption key in " << _encryptionParams->encryptionKeyFile << " is "
-                          << keyLength * 8 << " bit, must be " << crypto::sym256KeySize * 8
-                          << " bit.");
-    }
-
-    std::vector<uint8_t> keyVector(decodedKey.begin(), decodedKey.end());
-    const uint8_t* keyData = keyVector.data();
-
-    return stdx::make_unique<SymmetricKey>(keyData, keyLength, crypto::aesAlgorithm, "local", 0);
-}
-
 Status EncryptionKeyManager::_openKeystore(const fs::path& path, WT_CONNECTION** conn) {
     Status status = createDirectoryIfNeeded(path);
     if (!status.isOK()) {
@@ -517,29 +439,30 @@ Status EncryptionKeyManager::_initLocalKeystore() {
         _keyRotationAllowed = true;
     }
 
+    if (!existingKeyId.empty() && !_encryptionParams->kmipParams.kmipKeyIdentifier.empty() &&
+        existingKeyId != _encryptionParams->kmipParams.kmipKeyIdentifier) {
+        return Status(ErrorCodes::BadValue,
+                      str::stream()
+                          << "The KMIP key id " << _encryptionParams->kmipParams.kmipKeyIdentifier
+                          << " was provided, but the system is already configured with key id "
+                          << existingKeyId << ".");
+    }
+
     StatusWith<std::unique_ptr<SymmetricKey>> swMasterKey =
-        Status(ErrorCodes::InternalError, "Master key never acquired");
+        Status(ErrorCodes::InternalError, "Failed to find a valid source of keys");
     if (!_encryptionParams->encryptionKeyFile.empty()) {
-        // Retrieve the master key from a key file.
-        swMasterKey = _getKeyFromKeyFile();
+        swMasterKey = getKeyFromKeyFile(_encryptionParams->encryptionKeyFile);
     } else {
-        // Retrieve the master key from a KMIP server.
-        if (!existingKeyId.empty() && !_encryptionParams->kmipKeyIdentifier.empty() &&
-            existingKeyId != _encryptionParams->kmipKeyIdentifier) {
-            return Status(ErrorCodes::BadValue,
-                          str::stream()
-                              << "The KMIP key id " << _encryptionParams->kmipKeyIdentifier
-                              << " was provided, but the system is already configured with key id "
-                              << existingKeyId << ".");
-        }
+        std::string kmipKeyId{};
 
         if (!existingKeyId.empty()) {
-            // Use the existing key id derived from the key store name.
-            swMasterKey = _getKeyFromKMIPServer(existingKeyId);
-        } else {
-            // Create a new key or use a provided key id.
-            swMasterKey = _getKeyFromKMIPServer(_encryptionParams->kmipKeyIdentifier);
+            kmipKeyId = existingKeyId;
+        } else if (!_encryptionParams->kmipParams.kmipKeyIdentifier.empty()) {
+            kmipKeyId = _encryptionParams->kmipParams.kmipKeyIdentifier;
         }
+
+        // Otherwise, keyId must be empty to request KMIP generate a new key
+        swMasterKey = getKeyFromKMIPServer(_encryptionParams->kmipParams, *_sslParams, kmipKeyId);
     }
 
     if (!swMasterKey.isOK()) {
@@ -565,7 +488,8 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) {
             "Key rotation requires that the new master key id be different from the old.");
     }
 
-    auto swRotMasterKey = _getKeyFromKMIPServer(newKeyId);
+    auto swRotMasterKey =
+        getKeyFromKMIPServer(_encryptionParams->kmipParams, *_sslParams, newKeyId);
     if (!swRotMasterKey.isOK()) {
         return swRotMasterKey.getStatus();
     }

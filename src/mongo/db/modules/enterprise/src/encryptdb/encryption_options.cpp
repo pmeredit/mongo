@@ -25,40 +25,6 @@ Status addEncryptionOptions(moe::OptionSection* options) {
 
     encryptionOptions.addOptionChaining(
         "security.enableEncryption", "enableEncryption", moe::Switch, "Enable encryption at rest");
-    encryptionOptions.addOptionChaining("security.kmip.keyIdentifier",
-                                        "kmipKeyIdentifier",
-                                        moe::String,
-                                        "KMIP unique identifier for existing key to use")
-        .requires("security.enableEncryption");
-    encryptionOptions.addOptionChaining("security.kmip.rotateMasterKey",
-                                        "kmipRotateMasterKey",
-                                        moe::Switch,
-                                        "Rotate master encryption key");
-    encryptionOptions.addOptionChaining("security.kmip.serverName",
-                                        "kmipServerName",
-                                        moe::String,
-                                        "KMIP server host name")
-        .requires("security.enableEncryption");
-    encryptionOptions.addOptionChaining("security.kmip.port",
-                                        "kmipPort",
-                                        moe::Int,
-                                        "KMIP server port (defaults to 5696)")
-        .requires("security.kmip.serverName");
-    encryptionOptions.addOptionChaining("security.kmip.clientCertificateFile",
-                                        "kmipClientCertificateFile",
-                                        moe::String,
-                                        "Client certificate for authenticating to KMIP server")
-        .requires("security.kmip.serverName");
-    encryptionOptions.addOptionChaining(
-                          "security.kmip.clientCertificatePassword",
-                          "kmipClientCertificatePassword",
-                          moe::String,
-                          "Client certificate for authenticating Mongo to KMIP server")
-        .requires("security.kmip.clientCertificateFile");
-    encryptionOptions.addOptionChaining("security.kmip.serverCAFile",
-                                        "kmipServerCAFile",
-                                        moe::String,
-                                        "CA File for validating connection to KMIP server");
     encryptionOptions.addOptionChaining("security.encryptionKeyFile",
                                         "encryptionKeyFile",
                                         moe::String,
@@ -70,6 +36,12 @@ Status addEncryptionOptions(moe::OptionSection* options) {
                                         "Cipher mode to use for encryption at rest")
         .requires("security.enableEncryption")
         .format("(:?AES256-CBC)|(:?AES256-GCM)", "'AES256-CBC' or 'AES256-GCM'");
+    encryptionOptions.addOptionChaining("security.kmip.rotateMasterKey",
+                                        "kmipRotateMasterKey",
+                                        moe::Switch,
+                                        "Rotate master encryption key");
+    addKMIPOptions(&encryptionOptions);
+
 
     Status ret = options->addSection(encryptionOptions);
     if (!ret.isOK()) {
@@ -130,45 +102,17 @@ Status storeEncryptionOptions(const moe::Environment& params) {
         return validate;
     }
 
+    encryptionGlobalParams.kmipParams = parseKMIPOptions(params);
+
     if (params.count("security.enableEncryption")) {
         encryptionGlobalParams.enableEncryption = params["security.enableEncryption"].as<bool>();
     }
 
-    if (params.count("security.kmip.keyIdentifier")) {
-        encryptionGlobalParams.kmipKeyIdentifier =
-            params["security.kmip.keyIdentifier"].as<std::string>();
-    }
-
     if (params.count("security.kmip.rotateMasterKey")) {
         encryptionGlobalParams.rotateMasterKey = true;
-        encryptionGlobalParams.kmipKeyIdentifierRot = encryptionGlobalParams.kmipKeyIdentifier;
-        encryptionGlobalParams.kmipKeyIdentifier = "";
-    }
-
-    if (params.count("security.kmip.serverName")) {
-        encryptionGlobalParams.kmipServerName =
-            params["security.kmip.serverName"].as<std::string>();
-    }
-
-    if (params.count("security.kmip.port")) {
-        encryptionGlobalParams.kmipPort = params["security.kmip.port"].as<int>();
-    } else {
-        encryptionGlobalParams.kmipPort = 5696;
-    }
-
-    if (params.count("security.kmip.clientCertificateFile")) {
-        encryptionGlobalParams.kmipClientCertificateFile =
-            params["security.kmip.clientCertificateFile"].as<std::string>();
-    }
-
-    if (params.count("security.kmip.clientCertificatePassword")) {
-        encryptionGlobalParams.kmipClientCertificatePassword =
-            params["security.kmip.clientCertificatePassword"].as<std::string>();
-    }
-
-    if (params.count("security.kmip.serverCAFile")) {
-        encryptionGlobalParams.kmipServerCAFile =
-            params["security.kmip.serverCAFile"].as<std::string>();
+        encryptionGlobalParams.kmipKeyIdentifierRot =
+            encryptionGlobalParams.kmipParams.kmipKeyIdentifier;
+        encryptionGlobalParams.kmipParams.kmipKeyIdentifier = "";
     }
 
     if (params.count("security.encryptionKeyFile")) {
