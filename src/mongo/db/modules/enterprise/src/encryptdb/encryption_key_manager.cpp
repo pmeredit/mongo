@@ -12,6 +12,7 @@
 #include <boost/filesystem.hpp>
 #include <fstream>
 
+#include "encrypted_data_protector.h"
 #include "encryption_options.h"
 #include "mongo/base/checked_cast.h"
 #include "mongo/base/init.h"
@@ -128,6 +129,7 @@ EncryptionKeyManager::EncryptionKeyManager(const std::string& dbPath,
     : _dbPath(fs::path(dbPath)),
       _keystoreBasePath(fs::path(dbPath) / "key.store"),
       _masterKeyId(""),
+      _masterKeyRequested(false),
       _keyRotationAllowed(false),
       _tmpDataKey(crypto::aesGenerate(crypto::sym256KeySize, kTmpDataKeyId)),
       _keystoreConnection(nullptr),
@@ -221,6 +223,10 @@ Status EncryptionKeyManager::protectTmpData(
         resultLen);
 }
 
+std::unique_ptr<DataProtector> EncryptionKeyManager::getDataProtector() {
+    return stdx::make_unique<EncryptedDataProtector>(_masterKey.get(), crypto::aesMode::cbc);
+}
+
 Status EncryptionKeyManager::unprotectTmpData(
     const uint8_t* in, size_t inLen, uint8_t* out, size_t outLen, size_t* resultLen) {
     return crypto::aesDecrypt(
@@ -261,8 +267,16 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getMasterKey() 
     // WT will ask for the .master key twice when rotating keys since there are two databases.
     // The first request will be for the original master key and the second request for the new
     // master key.
-    if (_masterKey) {
-        return std::move(_masterKey);
+    if (!_masterKeyRequested) {
+        // Make a single copy of the master key for the storage engine layer.
+        _masterKeyRequested = true;
+        auto symmetricKey =
+            stdx::make_unique<SymmetricKey>(reinterpret_cast<const uint8_t*>(_masterKey->getKey()),
+                                            _masterKey->getKeySize(),
+                                            crypto::aesAlgorithm,
+                                            _masterKey->getKeyId(),
+                                            _masterKey->getInitializationCount());
+        return std::move(symmetricKey);
     }
     // Check that key rotation is enabled
     else if (_rotMasterKey) {

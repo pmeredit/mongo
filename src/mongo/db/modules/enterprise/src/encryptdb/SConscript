@@ -32,6 +32,7 @@ wtEnv.Library(target='encryption_key_manager_init',
 
 wtEnv.Library(target='encryptdb',
               source=[
+                   'encrypted_data_protector.cpp',
                    'encryption_key_manager.cpp',
                    'kmip_service.cpp',
                    'wiredtiger_encryption_callbacks.cpp',

@@ -26,6 +26,7 @@ namespace crypto {
 
 namespace {
 std::unique_ptr<SecureRandom> random;
+}  // namespace
 
 StatusWith<const EVP_CIPHER*> acquireAESCipher(size_t keySize, crypto::aesMode mode) {
     const EVP_CIPHER* cipher = nullptr;
@@ -45,7 +46,6 @@ StatusWith<const EVP_CIPHER*> acquireAESCipher(size_t keySize, crypto::aesMode m
 
     return cipher;
 }
-}  // namespace
 
 MONGO_INITIALIZER(CreateKeyEntropySource)(InitializerContext* context) {
     random = std::unique_ptr<SecureRandom>(SecureRandom::create());
@@ -109,6 +109,47 @@ std::pair<size_t, size_t> EncryptedMemoryLayout<T>::expectedPlaintextLen() const
 template class EncryptedMemoryLayout<const uint8_t*>;
 template class EncryptedMemoryLayout<uint8_t*>;
 
+size_t aesGetTagSize(crypto::aesMode mode) {
+    if (mode == crypto::aesMode::gcm) {
+        return crypto::aesGCMTagSize;
+    }
+    return 0;
+}
+
+size_t aesGetIVSize(crypto::aesMode mode) {
+    switch (mode) {
+        case crypto::aesMode::cbc:
+            return crypto::aesCBCIVSize;
+        case crypto::aesMode::gcm:
+            return crypto::aesGCMIVSize;
+        default:
+            fassertFailed(4053);
+    }
+}
+
+void aesGenerateIV(const SymmetricKey* key,
+                   crypto::aesMode mode,
+                   uint8_t* buffer,
+                   size_t bufferLen) {
+    uint32_t initializationCount = key->getInitializationCount();
+    invariant(bufferLen >= aesGetIVSize(mode));
+    if (mode == crypto::aesMode::gcm && initializationCount != 0) {
+        // Generate deterministic 12 byte IV for GCM but not for the master key (identified by
+        // having initializationCount = 0). The rational being that we can't keep a usage count
+        // for the master key and it will never be used more than 2^32 times so using a random
+        // IV is safe.
+        *reinterpret_cast<uint32_t*>(buffer) = initializationCount;
+        *reinterpret_cast<uint64_t*>(buffer + sizeof(initializationCount)) =
+            key->getAndIncrementInvocationCount();
+    } else {
+        if (RAND_bytes(reinterpret_cast<unsigned char*>(buffer), aesGetIVSize(mode)) != 1) {
+            error() << "Unable to acquire random bytes from OpenSSL: "
+                    << SSLManagerInterface::getSSLErrorMessage(ERR_get_error());
+            fassertFailed(4050);
+        }
+    }
+}
+
 Status aesEncrypt(const SymmetricKey& key,
                   aesMode mode,
                   const uint8_t* in,
@@ -132,22 +173,7 @@ Status aesEncrypt(const SymmetricKey& key,
     }
 
     if (!ivProvided) {
-        uint32_t initializationCount = key.getInitializationCount();
-        if (mode == crypto::aesMode::gcm && initializationCount != 0) {
-            // Generate deterministic 12 byte IV for GCM but not for the master key (identified by
-            // having initializationCount = 0). The rational being that we can't keep a usage count
-            // for the master key and it will never be used more than 2^32 times so using a random
-            // IV is safe.
-            *reinterpret_cast<uint32_t*>(layout.getIV()) = initializationCount;
-            *reinterpret_cast<uint64_t*>(layout.getIV() + sizeof(initializationCount)) =
-                key.getAndIncrementInvocationCount();
-        } else {
-            if (RAND_bytes(layout.getIV(), layout.getIVSize()) != 1) {
-                error() << "Unable to acquire random bytes from OpenSSL: "
-                        << SSLManagerInterface::getSSLErrorMessage(ERR_get_error());
-                fassertFailed(4050);
-            }
-        }
+        aesGenerateIV(&key, mode, layout.getIV(), layout.getIVSize());
     }
 
     StatusWith<const EVP_CIPHER*> swCipher = acquireAESCipher(key.getKeySize(), mode);

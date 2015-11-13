@@ -8,9 +8,14 @@
 #include <cstdint>
 #include <string>
 
+
+#include <openssl/evp.h>
+
 namespace mongo {
 
 class Status;
+template <typename T>
+class StatusWith;
 class SymmetricKey;
 
 namespace crypto {
@@ -33,6 +38,11 @@ const size_t minKeySize = 16;
 const size_t maxKeySize = 32;
 
 /**
+ * CBC fixed constants
+ */
+const size_t aesCBCIVSize = aesBlockSize;
+
+/**
  * GCM tunable parameters
  */
 const size_t aesGCMTagSize = 12;
@@ -49,7 +59,15 @@ enum class aesMode : uint8_t { cbc, gcm };
 const std::string aes256CBCName = "AES256-CBC";
 const std::string aes256GCMName = "AES256-GCM";
 
+StatusWith<const EVP_CIPHER*> acquireAESCipher(size_t keySize, crypto::aesMode mode);
 aesMode getCipherModeFromString(const std::string& mode);
+
+size_t aesGetIVSize(crypto::aesMode mode);
+size_t aesGetTagSize(crypto::aesMode mode);
+void aesGenerateIV(const SymmetricKey* key,
+                   crypto::aesMode mode,
+                   uint8_t* buffer,
+                   size_t bufferLen);
 
 /** Describes the in memory layout of encryption related data.
  *

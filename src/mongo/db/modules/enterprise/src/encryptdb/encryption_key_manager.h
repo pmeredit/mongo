@@ -17,6 +17,7 @@
 namespace mongo {
 
 using namespace mongo::kmip;
+class DataProtector;
 struct EncryptionGlobalParams;
 class NamespaceString;
 class ServiceContext;
@@ -29,6 +30,16 @@ const std::string kTmpDataKeyId = ".tmp";
 
 /**
  * The EncryptionKeyManager manages the keys for the encrypted storage engine.
+ *
+ *
+ * Note that WiredTigerCustomizationHooks provides additionalBytesForProtectedBuffer. This function
+ * returns a constant which defines how many more bytes a ciphertext payload may have than its
+ * corresponding cleartext. It is computed by:
+ *  max(MaxCBCPadding, MaxGCMPadding)
+ *  = max(CBC IV + aes blocksize, GCM IV + GCM tag) // GCM is a stream cipher, so doesn't need
+ *                                                     a padded AES block
+ *  = max(16 + 16, 12 + 12)
+ *  = 32
  */
 class EncryptionKeyManager : public WiredTigerCustomizationHooks {
     MONGO_DISALLOW_COPYING(EncryptionKeyManager);
@@ -70,6 +81,8 @@ public:
      * Returns a bool indicating if the server should continue start or not.
      */
     bool restartRequired() override;
+
+    std::unique_ptr<DataProtector> getDataProtector() override;
 
     /**
      * Encrypt temporary data written to disk outside of the storage engine. The method uses an
@@ -137,6 +150,7 @@ private:
      */
     std::unique_ptr<SymmetricKey> _masterKey;
     std::string _masterKeyId;
+    bool _masterKeyRequested;
 
     /**
      * The master system key for the new key store when doing key rotation.
