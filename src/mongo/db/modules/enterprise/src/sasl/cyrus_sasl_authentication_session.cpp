@@ -150,55 +150,61 @@ int saslServerConnGetOpt(void* context,
     static const char mongodbAuxpropMechanism[] = "MongoDBInternalAuxprop";
     static const char mongodbCanonMechanism[] = "MongoDBInternalCanon";
 
-    unsigned ignored;
-    if (!outLen)
-        outLen = &ignored;
+    try {
+        unsigned ignored;
+        if (!outLen)
+            outLen = &ignored;
 
-    CyrusSaslAuthenticationSession* session = static_cast<CyrusSaslAuthenticationSession*>(context);
-    if (!session || !optionRaw || !outResult)
-        return SASL_BADPARAM;
+        CyrusSaslAuthenticationSession* session =
+            static_cast<CyrusSaslAuthenticationSession*>(context);
+        if (!session || !optionRaw || !outResult)
+            return SASL_BADPARAM;
 
-    const StringData option = optionRaw;
+        const StringData option = optionRaw;
 
-    if (option == StringData("auxprop_plugin", StringData::LiteralTag())) {
-        // Returns the name of the plugin to use to look up user properties.  We use a custom
-        // one that extracts the information from user privilege documents.
-        *outResult = mongodbAuxpropMechanism;
-        *outLen = static_cast<unsigned>(boost::size(mongodbAuxpropMechanism));
-        return SASL_OK;
-    }
-
-    if (option == StringData("canon_user_plugin", StringData::LiteralTag())) {
-        // Returns the name of the plugin to use to canonicalize user names.  We use a custome
-        // plugin that only strips leading and trailing whitespace.  The default plugin also
-        // appends realm information, which MongoDB does not expect.
-        *outResult = mongodbCanonMechanism;
-        *outLen = static_cast<unsigned>(boost::size(mongodbCanonMechanism));
-        return SASL_OK;
-    }
-
-    if (option == StringData("pwcheck_method", StringData::LiteralTag())) {
-        static const char pwcheckAuxprop[] = "auxprop";
-        static const char pwcheckAuthd[] = "saslauthd";
-        if (session->getAuthenticationDatabase() == "$external") {
-            *outResult = pwcheckAuthd;
-            *outLen = boost::size(pwcheckAuthd);
-        } else {
-            *outResult = pwcheckAuxprop;
-            *outLen = boost::size(pwcheckAuxprop);
+        if (option == StringData("auxprop_plugin", StringData::LiteralTag())) {
+            // Returns the name of the plugin to use to look up user properties.  We use a custom
+            // one that extracts the information from user privilege documents.
+            *outResult = mongodbAuxpropMechanism;
+            *outLen = static_cast<unsigned>(boost::size(mongodbAuxpropMechanism));
+            return SASL_OK;
         }
-        return SASL_OK;
-    }
 
-    if (option == StringData("saslauthd_path", StringData::LiteralTag())) {
-        if (saslGlobalParams.authdPath.empty())
-            return SASL_FAIL;
-        *outResult = saslGlobalParams.authdPath.c_str();
-        *outLen = static_cast<unsigned>(saslGlobalParams.authdPath.size());
-        return SASL_OK;
-    }
+        if (option == StringData("canon_user_plugin", StringData::LiteralTag())) {
+            // Returns the name of the plugin to use to canonicalize user names.  We use a custome
+            // plugin that only strips leading and trailing whitespace.  The default plugin also
+            // appends realm information, which MongoDB does not expect.
+            *outResult = mongodbCanonMechanism;
+            *outLen = static_cast<unsigned>(boost::size(mongodbCanonMechanism));
+            return SASL_OK;
+        }
 
-    return SASL_FAIL;
+        if (option == StringData("pwcheck_method", StringData::LiteralTag())) {
+            static const char pwcheckAuxprop[] = "auxprop";
+            static const char pwcheckAuthd[] = "saslauthd";
+            if (session->getAuthenticationDatabase() == "$external") {
+                *outResult = pwcheckAuthd;
+                *outLen = boost::size(pwcheckAuthd);
+            } else {
+                *outResult = pwcheckAuxprop;
+                *outLen = boost::size(pwcheckAuxprop);
+            }
+            return SASL_OK;
+        }
+
+        if (option == StringData("saslauthd_path", StringData::LiteralTag())) {
+            if (saslGlobalParams.authdPath.empty())
+                return SASL_FAIL;
+            *outResult = saslGlobalParams.authdPath.c_str();
+            *outLen = static_cast<unsigned>(saslGlobalParams.authdPath.size());
+            return SASL_OK;
+        }
+
+        return SASL_FAIL;
+    } catch (...) {
+        error() << "Unexpected exception in saslServerConnGetOpt: " << exceptionToStatus().reason();
+        return SASL_FAIL;
+    }
 }
 
 /**
@@ -219,20 +225,29 @@ int saslServerConnAuthorize(sasl_conn_t* conn,
     if (!conn || !context || !requestedUserRaw || !authenticatedIdentityRaw)
         return SASL_BADPARAM;
 
-    CyrusSaslAuthenticationSession* session = static_cast<CyrusSaslAuthenticationSession*>(context);
+    try {
+        CyrusSaslAuthenticationSession* session =
+            static_cast<CyrusSaslAuthenticationSession*>(context);
 
-    StringData requestedUser(requestedUserRaw, requestedUserLen);
-    StringData authenticatedIdentity(authenticatedIdentityRaw, authenticatedIdentityLen);
-    if (!session->getMechInfo()->isUserAuthorized(session, requestedUser, authenticatedIdentity)) {
-        std::stringstream errorMsg;
-        errorMsg << "saslServerConnAuthorize: Requested identity "
-                 << escape(std::string(requestedUserRaw))
-                 << " does not match authenticated identity "
-                 << escape(std::string(authenticatedIdentityRaw));
-        sasl_seterror(conn, 0, errorMsg.str().c_str());
-        return SASL_BADAUTH;
+        StringData requestedUser(requestedUserRaw, requestedUserLen);
+        StringData authenticatedIdentity(authenticatedIdentityRaw, authenticatedIdentityLen);
+        if (!session->getMechInfo()->isUserAuthorized(
+                session, requestedUser, authenticatedIdentity)) {
+            std::stringstream errorMsg;
+            errorMsg << "saslServerConnAuthorize: Requested identity "
+                     << escape(std::string(requestedUserRaw))
+                     << " does not match authenticated identity "
+                     << escape(std::string(authenticatedIdentityRaw));
+            sasl_seterror(conn, 0, errorMsg.str().c_str());
+            return SASL_BADAUTH;
+        }
+        return SASL_OK;
+    } catch (...) {
+        StringBuilder sb;
+        sb << "Unexpected exception in saslServerConnAuthorize: " << exceptionToStatus().reason();
+        sasl_seterror(conn, 0, sb.str().c_str());
+        return SASL_FAIL;
     }
-    return SASL_OK;
 }
 
 int saslAlwaysFailCallback() throw() {

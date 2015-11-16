@@ -45,32 +45,39 @@ int canonUserServer(void* glob_context,
 
     const sasl_utils_t* utils = sparams->utils;
 
-    StringData user(userRaw, userRawLen ? userRawLen : strlen(userRaw));
-    size_t firstNonWhitespace = 0;
-    for (; firstNonWhitespace < user.size(); ++firstNonWhitespace) {
-        if (!isspace(static_cast<unsigned char>(user[firstNonWhitespace])))
-            break;
-    }
-    size_t lastWhitespaceOrEnd = user.size();
-    for (; lastWhitespaceOrEnd > firstNonWhitespace; --lastWhitespaceOrEnd) {
-        if (!isspace(static_cast<unsigned char>(user[lastWhitespaceOrEnd - 1])))
-            break;
-    }
+    try {
+        StringData user(userRaw, userRawLen ? userRawLen : strlen(userRaw));
+        size_t firstNonWhitespace = 0;
+        for (; firstNonWhitespace < user.size(); ++firstNonWhitespace) {
+            if (!isspace(static_cast<unsigned char>(user[firstNonWhitespace])))
+                break;
+        }
+        size_t lastWhitespaceOrEnd = user.size();
+        for (; lastWhitespaceOrEnd > firstNonWhitespace; --lastWhitespaceOrEnd) {
+            if (!isspace(static_cast<unsigned char>(user[lastWhitespaceOrEnd - 1])))
+                break;
+        }
 
-    if (firstNonWhitespace == lastWhitespaceOrEnd) {
-        utils->seterror(utils->conn, 0, "All-whitespace username.");
+        if (firstNonWhitespace == lastWhitespaceOrEnd) {
+            utils->seterror(utils->conn, 0, "All-whitespace username.");
+            return SASL_FAIL;
+        }
+
+        user = user.substr(firstNonWhitespace, lastWhitespaceOrEnd);
+        if (user.size() > outMax) {
+            utils->seterror(utils->conn, 0, "Canonicalized username too long.");
+            return SASL_FAIL;
+        }
+
+        memmove(out, user.rawData(), user.size());
+        *outLen = static_cast<unsigned>(user.size());
+        return SASL_OK;
+    } catch (...) {
+        StringBuilder sb;
+        sb << "Unexpected exception in canonUserServer: " << exceptionToStatus().reason();
+        utils->seterror(utils->conn, 0, sb.str().c_str());
         return SASL_FAIL;
     }
-
-    user = user.substr(firstNonWhitespace, lastWhitespaceOrEnd);
-    if (user.size() > outMax) {
-        utils->seterror(utils->conn, 0, "Canonicalized username too long.");
-        return SASL_FAIL;
-    }
-
-    memmove(out, user.rawData(), user.size());
-    *outLen = static_cast<unsigned>(user.size());
-    return SASL_OK;
 }
 
 /// Plugin vtable.
