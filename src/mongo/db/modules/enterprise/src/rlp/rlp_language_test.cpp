@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "mongo/base/init.h"
-#include "mongo/db/fts/fts_query.h"
+#include "mongo/db/fts/fts_language.h"
 #include "mongo/db/fts/fts_tokenizer.h"
 #include "mongo/unittest/death_test.h"
 #include "mongo/unittest/unittest.h"
