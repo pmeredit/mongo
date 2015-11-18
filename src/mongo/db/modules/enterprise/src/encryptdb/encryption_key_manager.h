@@ -33,11 +33,11 @@ const std::string kTmpDataKeyId = ".tmp";
  * Note that WiredTigerCustomizationHooks provides additionalBytesForProtectedBuffer. This function
  * returns a constant which defines how many more bytes a ciphertext payload may have than its
  * corresponding cleartext. It is computed by:
- *  max(MaxCBCPadding, MaxGCMPadding)
- *  = max(CBC IV + aes blocksize, GCM IV + GCM tag) // GCM is a stream cipher, so doesn't need
- *                                                     a padded AES block
- *  = max(16 + 16, 12 + 12)
- *  = 32
+ *  max(MaxCBCPadding, MaxGCMPadding) + sizeof(conditional version number)
+ *  = max(CBC IV + aes blocksize, GCM IV + GCM tag) + 1 // GCM is a stream cipher, so doesn't need
+ *                                                         a padded AES block
+ *  = max(16 + 16, 12 + 12) + 1
+ *  = 32 + 1 = 33
  */
 class EncryptionKeyManager : public WiredTigerCustomizationHooks {
     MONGO_DISALLOW_COPYING(EncryptionKeyManager);

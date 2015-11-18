@@ -16,6 +16,8 @@ namespace mongo {
 class Status;
 class SymmetricKey;
 
+const uint8_t DATA_PROTECTOR_VERSION_0 = 0;
+
 class EncryptedDataProtector : public DataProtector {
 public:
     EncryptedDataProtector(const SymmetricKey* key, crypto::aesMode mode);

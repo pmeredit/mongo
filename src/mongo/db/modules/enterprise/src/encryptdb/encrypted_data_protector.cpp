@@ -35,6 +35,16 @@ Status EncryptedDataProtector::protect(const std::uint8_t* in,
         _encryptCtx = std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)>(
             EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free);
 
+        // Add a 1 byte version token
+        if (outLen < *bytesWritten + 1) {
+            return Status(ErrorCodes::InvalidLength,
+                          "EncryptedDataProtector attempted to reserve version field in "
+                          "insufficiently sized buffer");
+        }
+        *out = DATA_PROTECTOR_VERSION_0;
+        *bytesWritten += sizeof(DATA_PROTECTOR_VERSION_0);
+        out += sizeof(DATA_PROTECTOR_VERSION_0);
+
         // Allocate space for a tag
         if (_mode == crypto::aesMode::gcm) {
             if (outLen < *bytesWritten + crypto::aesGCMTagSize) {
@@ -43,7 +53,7 @@ Status EncryptedDataProtector::protect(const std::uint8_t* in,
                               "sized buffer");
             }
             memset(out, 0xFF, crypto::aesGCMTagSize);
-            *bytesWritten = crypto::aesGCMTagSize;
+            *bytesWritten += crypto::aesGCMTagSize;
             out += crypto::aesGCMTagSize;
             _bytesReservedForTag = crypto::aesGCMTagSize;
         }

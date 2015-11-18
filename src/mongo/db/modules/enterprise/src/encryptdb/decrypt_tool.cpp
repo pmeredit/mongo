@@ -11,6 +11,7 @@
 
 #include "decrypt_tool_options.h"
 
+#include "encrypted_data_protector.h"
 #include "mongo/base/init.h"
 #include "mongo/base/initializer.h"
 #include "mongo/base/secure_allocator.h"
@@ -134,13 +135,18 @@ int decryptToolMain(int argc, char* argv[], char** envp) {
         return 1;
     }
 
-    std::vector<uint8_t> outputData(inputData.size());
+    if (inputData[0] != DATA_PROTECTOR_VERSION_0) {
+        std::cout << "Got version number '" << inputData[0] << "' but expected '0'" << std::endl;
+        return -1;
+    }
+
+    std::vector<uint8_t> outputData(inputData.size() - 1);
 
     size_t resultLen;
     Status ret = aesDecrypt(*swDecryptKey.getValue(),
                             globalDecryptToolOptions.mode,
-                            inputData.data(),
-                            inputData.size(),
+                            inputData.data() + 1,
+                            inputData.size() - 1,
                             outputData.data(),
                             outputData.size(),
                             &resultLen);
