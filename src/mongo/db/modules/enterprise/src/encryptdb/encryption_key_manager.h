@@ -82,6 +82,8 @@ public:
 
     std::unique_ptr<DataProtector> getDataProtector() override;
 
+    boost::filesystem::path getProtectedPathSuffix() override;
+
     /**
      * Encrypt temporary data written to disk outside of the storage engine. The method uses an
      * ephemeral key _tmpDataKey which is re-generated on each server restart.

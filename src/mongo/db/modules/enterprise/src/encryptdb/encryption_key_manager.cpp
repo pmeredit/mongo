@@ -225,6 +225,10 @@ std::unique_ptr<DataProtector> EncryptionKeyManager::getDataProtector() {
     return stdx::make_unique<EncryptedDataProtector>(_masterKey.get(), crypto::aesMode::cbc);
 }
 
+boost::filesystem::path EncryptionKeyManager::getProtectedPathSuffix() {
+    return ".enc";
+}
+
 Status EncryptionKeyManager::unprotectTmpData(
     const uint8_t* in, size_t inLen, uint8_t* out, size_t outLen, size_t* resultLen) {
     return crypto::aesDecrypt(
