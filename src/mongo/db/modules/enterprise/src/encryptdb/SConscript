@@ -90,24 +90,6 @@ env.Library(
     ]
 )
 
-mongodecrypt = env.Program(
-    target="mongodecrypt",
-    source=[
-        "decrypt_tool.cpp",
-        "decrypt_tool_options.cpp",
-    ],
-    LIBDEPS=[
-        "$BUILD_DIR/mongo/base",
-        "$BUILD_DIR/mongo/db/log_process_details",
-        "$BUILD_DIR/mongo/util/options_parser/options_parser_init",
-        "$BUILD_DIR/mongo/util/signal_handlers",
-        "key_acquisition",
-        "symmetric_crypto",
-    ],
-)
-
-env.Install("#/", mongodecrypt)
-
 wtEnv.CppUnitTest(target='symmetric_crypto_test',
                 source='symmetric_crypto_test.cpp',
                 LIBDEPS=[

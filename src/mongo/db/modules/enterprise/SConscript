@@ -206,3 +206,21 @@ else:
                                        '$BUILD_DIR/mongo/unittest/unittest',
                                        '$BUILD_DIR/mongo/unittest/unittest_crutch'])
     env.RegisterUnitTest(gssapi_test[0])
+
+mongodecrypt = env.Program(
+    target="mongodecrypt",
+    source=[
+        "src/encryptdb/decrypt_tool.cpp",
+        "src/encryptdb/decrypt_tool_options.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/log_process_details",
+        "$BUILD_DIR/mongo/util/options_parser/options_parser_init",
+        "$BUILD_DIR/mongo/util/signal_handlers",
+        "src/encryptdb/key_acquisition",
+        "src/encryptdb/symmetric_crypto",
+    ],
+)
+
+env.Install("#/", mongodecrypt)
