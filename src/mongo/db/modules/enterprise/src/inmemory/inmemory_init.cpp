@@ -32,12 +32,13 @@
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/operations.hpp>
 
+#include "inmemory_global_options.h"
+
 #include "mongo/base/init.h"
 #include "mongo/db/catalog/collection_options.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/service_context_d.h"
 #include "mongo/db/storage/kv/kv_storage_engine.h"
-#include "mongo/db/storage/wiredtiger/wiredtiger_global_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_kv_engine.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_parameters.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_server_status.h"
@@ -59,15 +60,39 @@ public:
         boost::filesystem::remove_all(dbpath);
         boost::filesystem::create_directory(dbpath);
 
-        std::string engineConfig = wiredTigerGlobalOptions.engineConfig;
+        std::string engineConfig = inMemoryGlobalOptions.engineConfig;
         engineConfig +=
             "in_memory=true,log=(enabled=false),"
             "file_manager=(close_idle_time=0),checkpoint=(wait=0,log_size=0)";
 
-        WiredTigerKVEngine* kv = new WiredTigerKVEngine(
-            dbpath.string(), engineConfig, /*durable*/ false, /*ephemeral*/ true, /*repair*/ false);
-        kv->setRecordStoreExtraOptions(wiredTigerGlobalOptions.collectionConfig);
-        kv->setSortedDataInterfaceExtraOptions(wiredTigerGlobalOptions.indexConfig);
+        size_t cacheSizeGB = inMemoryGlobalOptions.inMemorySizeGB;
+
+        if (cacheSizeGB == 0) {
+            // Since the user didn't provide a cache size, choose a reasonable default value.
+            // We want to reserve 1GB for the system and binaries and we want to leave some
+            // headroom to deal with fragmentation and other overhead.
+            ProcessInfo pi;
+            double memSizeMB = pi.getMemSizeMB();
+            if (memSizeMB > 0) {
+                double cacheMB = (memSizeMB - 1024) * 0.6;
+                cacheSizeGB = static_cast<size_t>(cacheMB / 1024);
+                if (cacheSizeGB < 1)
+                    cacheSizeGB = 1;
+            }
+        }
+
+        const bool durable = false;
+        const bool ephemeral = true;
+        const bool repair = false;
+        WiredTigerKVEngine* kv = new WiredTigerKVEngine(getCanonicalName().toString(),
+                                                        dbpath.string(),
+                                                        engineConfig,
+                                                        cacheSizeGB,
+                                                        durable,
+                                                        ephemeral,
+                                                        repair);
+        kv->setRecordStoreExtraOptions(inMemoryGlobalOptions.collectionConfig);
+        kv->setSortedDataInterfaceExtraOptions(inMemoryGlobalOptions.indexConfig);
         // Intentionally leaked.
         new WiredTigerServerStatusSection(kv);
         new WiredTigerEngineRuntimeConfigParameter(kv);

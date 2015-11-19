@@ -9,7 +9,9 @@ wtEnv.InjectThirdPartyIncludePaths(libraries=['wiredtiger'])
 wtEnv.Library(
     target='storage_inmemory',
     source=[
+        'inmemory_global_options.cpp',
         'inmemory_init.cpp',
+        'inmemory_options_init.cpp',
     ],
     LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/db/serveronly'],
     LIBDEPS=[
