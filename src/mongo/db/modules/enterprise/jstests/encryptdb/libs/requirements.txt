@@ -1,2 +1,2 @@
-pykmip
+pykmip==0.4.0
 six
