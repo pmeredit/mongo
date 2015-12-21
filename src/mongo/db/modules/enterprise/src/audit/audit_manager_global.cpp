@@ -10,6 +10,7 @@
 #include "audit_options.h"
 #include "mongo/base/init.h"
 #include "mongo/db/matcher/expression_parser.h"
+#include "mongo/db/matcher/extensions_callback_disallow_extensions.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -45,8 +46,8 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(InitializeGlobalAuditManager, ("CreateAudit
     audit::getGlobalAuditManager()->enabled = auditGlobalParams.enabled;
 
     if (auditGlobalParams.enabled) {
-        StatusWithMatchExpression parseResult =
-            MatchExpressionParser::parse(auditGlobalParams.auditFilter);
+        StatusWithMatchExpression parseResult = MatchExpressionParser::parse(
+            auditGlobalParams.auditFilter, ExtensionsCallbackDisallowExtensions());
         if (!parseResult.isOK()) {
             return Status(ErrorCodes::BadValue, "failed to parse auditFilter");
         }
