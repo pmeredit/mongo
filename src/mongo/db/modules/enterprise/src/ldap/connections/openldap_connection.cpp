@@ -20,6 +20,7 @@
 
 #include "../ldap_connection_options.h"
 #include "../ldap_query.h"
+#include "ldap_connection_helpers.h"
 
 namespace mongo {
 namespace {
@@ -135,21 +136,6 @@ int openLDAPBindFunction(
         return LDAP_OPERATIONS_ERROR;
     }
 }
-
-/**
- * Transform LDAPQueryScope enums in LDAPConnectionOptions into libldap compatible constants
- */
-int mapScopeToOpenLDAP(const LDAPQueryScope& type) {
-    if (type == LDAPQueryScope::kBase) {
-        return LDAP_SCOPE_BASE;
-    } else if (type == LDAPQueryScope::kSubtree) {
-        return LDAP_SCOPE_SUB;
-    } else if (type == LDAPQueryScope::kOne) {
-        return LDAP_SCOPE_ONE;
-    }
-    // We should never create an invalid scope
-    MONGO_UNREACHABLE
-}
 }  // namespace
 
 OpenLDAPConnection::OpenLDAPConnection(LDAPConnectionOptions options)
@@ -160,7 +146,10 @@ OpenLDAPConnection::OpenLDAPConnection(LDAPConnectionOptions options)
 }
 
 OpenLDAPConnection::~OpenLDAPConnection() {
-    disconnect();
+    Status status = disconnect();
+    if (!status.isOK()) {
+        error() << "LDAP unbind failed: " << status;
+    }
 }
 
 Status OpenLDAPConnection::connect() {
@@ -301,7 +290,7 @@ StatusWith<LDAPEntityCollection> OpenLDAPConnection::query(LDAPQuery query) {
     // Perform the actual query
     int err = ldap_search_ext_s(_session,
                                 query.getBaseDN().empty() ? nullptr : query.getBaseDN().c_str(),
-                                mapScopeToOpenLDAP(query.getScope()),
+                                mapScopeToLDAP(query.getScope()),
                                 query.getFilter().empty() ? nullptr : query.getFilter().c_str(),
                                 requestedAttributes.data(),
                                 0,

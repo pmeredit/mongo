@@ -46,16 +46,23 @@ struct LDAPBindOptions {
     LDAPBindOptions(std::string bindDN,
                     SecureString password,
                     LDAPBindType authenticationChoice,
-                    std::string saslMechanisms)
+                    std::string saslMechanisms,
+                    bool useLDAPConnectionDefaults)
         : bindDN(std::move(bindDN)),
           password(std::move(password)),
           authenticationChoice(authenticationChoice),
-          saslMechanisms(std::move(saslMechanisms)) {}
+          saslMechanisms(std::move(saslMechanisms)),
+          useLDAPConnectionDefaults(useLDAPConnectionDefaults) {}
 
     std::string bindDN;                 // The username, or entity DN, to bind with
     SecureString password;              // The password to bind with
     LDAPBindType authenticationChoice;  // The authentication system to use, simple or SASL
-    std::string saslMechanisms;  // If authenticating with SASL, the SASL mechanism to bind with
+    std::string saslMechanisms;      // If authenticating with SASL, the SASL mechanism to bind with
+    bool useLDAPConnectionDefaults;  // On Windows, and if true, ignore the bindDN and password and
+                                     // use the service account's credentials
+    bool shouldBind() const {
+        return useLDAPConnectionDefaults || !bindDN.empty();
+    }
 
     std::string toCleanString() const;
 };

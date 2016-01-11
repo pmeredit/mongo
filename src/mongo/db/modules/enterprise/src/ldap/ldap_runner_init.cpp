@@ -19,7 +19,8 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(SetLDAPRunnerImpl, ("SetGlobalEnvironment")
     LDAPBindOptions bindOptions(globalLDAPParams->bindUser,
                                 std::move(globalLDAPParams->bindPassword),
                                 globalLDAPParams->bindMethod,
-                                globalLDAPParams->bindSASLMechanisms);
+                                globalLDAPParams->bindSASLMechanisms,
+                                globalLDAPParams->useOSDefaults);
     LDAPConnectionOptions connectionOptions(globalLDAPParams->connectionTimeout,
                                             globalLDAPParams->serverURI);
     auto runner =

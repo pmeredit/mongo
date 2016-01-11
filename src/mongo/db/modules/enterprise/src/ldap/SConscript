@@ -52,32 +52,26 @@ env.CppUnitTest(
     ],
 )
 
+ldap_connection_sources = [
+    'connections/ldap_connection_factory.cpp',
+    'connections/ldap_connection_helpers.cpp',
+]
+
 if env.TargetOSIs('windows'):
-    env.Library(
-        target='ldap_connection',
-        source=[
-            'connections/ldap_connection_factory.cpp',
-        ],
-        LIBDEPS=[
-            'ldap_query',
-            '$BUILD_DIR/mongo/base',
-            '$BUILD_DIR/mongo/util/net/hostandport',
-        ],
-    )
+    ldap_connection_sources.append('connections/windows_ldap_connection.cpp')
 else:
-    env.Library(
-        target='ldap_connection',
-        source=[
-            'connections/ldap_connection_factory.cpp',
-            'connections/openldap_connection.cpp',
-        ],
-        LIBDEPS=[
-            'ldap_query',
-            '$BUILD_DIR/mongo/base',
-            '$BUILD_DIR/mongo/util/net/hostandport',
-        ],
-        SYSLIBDEPS=env.get("MONGO_LDAP_LIB", [])
-    )
+    ldap_connection_sources.append('connections/openldap_connection.cpp')
+
+env.Library(
+    target='ldap_connection',
+    source=ldap_connection_sources,
+    LIBDEPS=[
+        'ldap_query',
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/util/net/hostandport',
+    ],
+    SYSLIBDEPS=env.get("MONGO_LDAP_LIB", [])
+)
 
 env.Library(
     target='mongo_ldap',
@@ -97,7 +91,7 @@ env.Library(
         '$BUILD_DIR/mongo/util/options_parser/options_parser',
     ],
     PROGDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/${PROGPREFIX}mongod${PROGSUFFIX}',
+        '$BUILD_DIR/mongo/mongod',
     ],
 )
 

@@ -37,6 +37,16 @@ Status addLDAPOptions(moe::OptionSection* options) {
                                    moe::String,
                                    "Location of LDAP server on format (ldap|ldaps)://host:port");
 
+#ifdef _WIN32
+    ldap_options.addOptionChaining(
+                     "security.ldap.bind.useOSDefaults",
+                     "ldapBindWithOSDefaults",
+                     moe::Switch,
+                     "Peform queries with the service account's username and password")
+        .incompatibleWith("ldapQueryUser")
+        .incompatibleWith("ldapQueryPassword");
+#endif
+
     ldap_options.addOptionChaining("security.ldap.bind.method",
                                    "ldapBindMethod",
                                    moe::String,
@@ -92,6 +102,9 @@ Status addLDAPOptions(moe::OptionSection* options) {
 Status storeLDAPOptions(const moe::Environment& params, const std::vector<std::string>& args) {
     if (params.count("security.ldap.server")) {
         globalLDAPParams->serverURI = params["security.ldap.server"].as<std::string>();
+    }
+    if (params.count("security.ldap.bind.useOSDefaults")) {
+        globalLDAPParams->useOSDefaults = params["security.ldap.bind.useOSDefaults"].as<bool>();
     }
     if (params.count("security.ldap.bind.method")) {
         auto swLDAPBindType =

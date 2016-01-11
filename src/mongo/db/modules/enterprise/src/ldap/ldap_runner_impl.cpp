@@ -46,7 +46,7 @@ StatusWith<LDAPEntityCollection> LDAPRunnerImpl::runQuery(const LDAPQuery& query
     }
 
     // If a user has been provided, bind to it
-    if (!_defaultBindOptions.bindDN.empty()) {
+    if (_defaultBindOptions.shouldBind()) {
         Status status = swConnection.getValue()->bindAsUser(_defaultBindOptions);
         if (!status.isOK()) {
             return status;

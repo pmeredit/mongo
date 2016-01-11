@@ -20,7 +20,8 @@ public:
     Milliseconds connectionTimeout;            // Duration after which connections shall fail
     std::string serverURI;                     // URI host component, (ldap|ldaps)://server(:port)
     std::string userAcquisitionQueryTemplate;  // LDAP query, with `{USER}' substitution token
-    LDAPBindType bindMethod;                   // Bind method to use to authenticate, simple or SASL
+    bool useOSDefaults;              // Use the OS's default user when binding to remote LDAP server
+    LDAPBindType bindMethod;         // Bind method to use to authenticate, simple or SASL
     std::string bindUser;            // User DN to bind(authenticate) against on the LDAP server
     std::string bindSASLMechanisms;  // If binding with SASL, comma separated SASL mechanisms to use
     SecureString bindPassword;       // Password to bind with

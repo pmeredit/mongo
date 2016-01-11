@@ -66,7 +66,6 @@ private:
 
         MockQueryEntry& operator=(MockQueryEntry&& rr) = delete;
 #endif
-
         LDAPQuery query;
         std::unique_ptr<LDAPQueryConfig> parameters;
         StatusWith<LDAPEntityCollection> results;

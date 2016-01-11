@@ -113,7 +113,7 @@ Status LDAPSaslAuthenticationSession::step(StringData inputData, std::string* ou
     }
 
     LDAPBindOptions bindOptions(
-        _user, pwd, globalLDAPParams->bindMethod, globalLDAPParams->bindSASLMechanisms);
+        _user, pwd, globalLDAPParams->bindMethod, globalLDAPParams->bindSASLMechanisms, false);
 
     // A SASL PLAIN conversation only has one step
     _done = true;

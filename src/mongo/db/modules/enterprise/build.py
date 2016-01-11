@@ -57,6 +57,8 @@ def configure(conf, env):
             env.ConfError("Could not find <lber.h> and lber library from OpenLDAP, "
                           "required for LDAP authorizaton in the enterprise build")
         env['MONGO_LDAP_LIB'] = ["ldap", "lber"]
+    else:
+        env['MONGO_LDAP_LIB'] = ["Wldap32"]
 
     if conf.CheckLib(library="gssapi_krb5", autoadd=False):
         env['MONGO_GSSAPI_IMPL'] = "gssapi"

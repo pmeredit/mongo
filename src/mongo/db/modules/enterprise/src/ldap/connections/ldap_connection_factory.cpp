@@ -13,17 +13,18 @@
 #ifndef _WIN32
 #include "openldap_connection.h"
 #else
-#include "ldap_connection.h"
+#include "windows_ldap_connection.h"
 #endif
 
 namespace mongo {
 
 StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
     const LDAPConnectionOptions& options) {
-#ifdef _WIN32
-    return Status(ErrorCodes::UnknownError, "LDAP connections are not supported on Windows.");
-#else
+#ifndef _WIN32
     std::unique_ptr<LDAPConnection> client = stdx::make_unique<OpenLDAPConnection>(options);
+#else
+    std::unique_ptr<LDAPConnection> client = stdx::make_unique<WindowsLDAPConnection>(options);
+#endif
 
     Status status = client->connect();
     if (!status.isOK()) {
@@ -31,6 +32,5 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
     }
 
     return std::move(client);
-#endif
 }
 }  // namespace mongo
