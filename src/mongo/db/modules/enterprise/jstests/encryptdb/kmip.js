@@ -79,4 +79,4 @@
     assertKeyId(md, 1);
 
     stopMongoProgramByPid(pid);
-})()
+})();

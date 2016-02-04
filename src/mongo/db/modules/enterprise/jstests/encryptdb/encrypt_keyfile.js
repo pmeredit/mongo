@@ -1,7 +1,7 @@
 (function () {
     'use strict';
 
-    var assetsPath = "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/"
+    var assetsPath = "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/";
 
     var ekfValid1 = assetsPath + "ekf";
     var ekfValid2 = assetsPath + "ekf2";

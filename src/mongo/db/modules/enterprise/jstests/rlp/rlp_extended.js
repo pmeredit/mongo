@@ -161,7 +161,7 @@ var languages = {
 
         db.ara.drop();
 
-        print(langCode)
+        print(langCode);
 
         db.ara.insert({ _id: 1, t1: languages[langCode].document });
 
