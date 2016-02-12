@@ -101,7 +101,6 @@ public:
         options.directoryPerDB = false;
         options.directoryForIndexes = false;
         options.forRepair = false;
-        options.ephemeral = true;
 
         return new KVStorageEngine(kv, options);
     }
