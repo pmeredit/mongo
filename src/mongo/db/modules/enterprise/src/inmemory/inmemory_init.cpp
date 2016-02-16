@@ -54,7 +54,7 @@ public:
     virtual ~InMemoryFactory() {}
 
     StorageEngine* create(const StorageGlobalParams& params,
-                          const StorageEngineLockFile& lockFile) const final {
+                          const StorageEngineLockFile* lockFile) const final {
         boost::filesystem::path dbpath = params.dbpath;
         dbpath /= "/inmem";
         boost::filesystem::remove_all(dbpath);
