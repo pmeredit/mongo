@@ -84,13 +84,15 @@ public:
         const bool durable = false;
         const bool ephemeral = true;
         const bool repair = false;
+        const bool readOnly = false;
         WiredTigerKVEngine* kv = new WiredTigerKVEngine(getCanonicalName().toString(),
                                                         dbpath.string(),
                                                         engineConfig,
                                                         cacheSizeGB,
                                                         durable,
                                                         ephemeral,
-                                                        repair);
+                                                        repair,
+                                                        readOnly);
         kv->setRecordStoreExtraOptions(inMemoryGlobalOptions.collectionConfig);
         kv->setSortedDataInterfaceExtraOptions(inMemoryGlobalOptions.indexConfig);
         // Intentionally leaked.
