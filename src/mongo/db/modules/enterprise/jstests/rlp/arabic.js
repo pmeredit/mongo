@@ -1,4 +1,4 @@
-(function () {
+(function() {
     'use strict';
 
     load("src/mongo/db/modules/enterprise/jstests/rlp/fts_lib.js");
@@ -6,13 +6,13 @@
     db.ara.drop();
 
     // http://en.wikipedia.org/wiki/Arabic_verbs
-    db.ara.insert({ _id: "past_writes", t1: "كَتَبْتُ" });
-    db.ara.insert({ _id: "present_writes", t1: "أَكْتُبُ" });
-    db.ara.insert({ _id: "future_writes", t1: "سَأَكْتُبُ" });
+    db.ara.insert({_id: "past_writes", t1: "كَتَبْتُ"});
+    db.ara.insert({_id: "present_writes", t1: "أَكْتُبُ"});
+    db.ara.insert({_id: "future_writes", t1: "سَأَكْتُبُ"});
 
-    db.ara.ensureIndex({ t1: "text" }, { default_language: "arabic" });
+    db.ara.ensureIndex({t1: "text"}, {default_language: "arabic"});
 
-    assert.eq(2, db.ara.find( { "$text" : { "$search" : "كتب", "$language" : "ara"} } ).itcount());
+    assert.eq(2, db.ara.find({"$text": {"$search": "كتب", "$language": "ara"}}).itcount());
 
     // Positive Term Match
     assert.eq(["past_writes", "future_writes"], queryIds(db.ara, "كتب"));
@@ -22,4 +22,4 @@
 
     // Negative Phrase Match
     assert.eq(["future_writes"], queryIds(db.ara, 'كتب -"كَتَبْتُ"'));
-}) ();
+})();

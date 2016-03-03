@@ -1,4 +1,4 @@
-﻿(function () {
+﻿(function() {
     'use strict';
 
     load("src/mongo/db/modules/enterprise/jstests/rlp/fts_lib.js");
@@ -7,11 +7,11 @@
 
     // http://en.wikipedia.org/wiki/Dari_language
     // to speak - persian farsi/persian dari
-    db.prs.insert({ _id: 1, t1: "حرف زدن/گپ زدن" });
+    db.prs.insert({_id: 1, t1: "حرف زدن/گپ زدن"});
 
-    db.prs.ensureIndex({ t1: "text" }, { default_language: "dari" });
+    db.prs.ensureIndex({t1: "text"}, {default_language: "dari"});
 
-    assert.eq(1, db.prs.find( { "$text" : { "$search" : "زد", "$language" : "prs"} } ).itcount());
+    assert.eq(1, db.prs.find({"$text": {"$search": "زد", "$language": "prs"}}).itcount());
 
     // Positive Term Match
     assert.eq([1], queryIds(db.prs, "زد"));
@@ -23,5 +23,5 @@
     assert.eq([1], queryIds(db.prs, 'زد "زدن/گپ"'));
 
     // Negative Phrase Match
-    //assert.eq([1], queryIds(db.prs, 'كتب -"كَتَبْتُ"'));
+    // assert.eq([1], queryIds(db.prs, 'كتب -"كَتَبْتُ"'));
 })();

@@ -1,13 +1,12 @@
 // This test tests KMIP options and key rotation for encrypted storage engine
 // It assumes that PyKMIP is installed
 
-(function () {
+(function() {
     "use strict";
 
     var testDir = "src/mongo/db/modules/enterprise/jstests/encryptdb/";
 
     function runEncryptedMongod(params) {
-
         var defaultParams = {
             enableEncryption: "",
             kmipServerName: "127.0.0.1",
@@ -31,7 +30,6 @@
     }
 
     function assertKeyId(md, keyId) {
-
         // restart with no keyID should work
         md = runEncryptedMongod({
             restart: md,
@@ -54,7 +52,9 @@
     // Assert here that PyKMIP is compatible with the default Python version
     assert(checkProgram(pid));
     // wait for PyKMIP, a KMIP server framework, to start
-    assert.soon(function () {return rawMongoProgramOutput().search("KMIP server") !== -1; });
+    assert.soon(function() {
+        return rawMongoProgramOutput().search("KMIP server") !== -1;
+    });
 
     // start mongod with default keyID of "1"
     var md = runEncryptedMongod();
@@ -71,11 +71,7 @@
     assertKeyId(md, 2);
 
     // do a key rotation and explicitly specify the keyID "1"
-    runEncryptedMongod({
-        restart: md,
-        kmipRotateMasterKey: "",
-        kmipKeyIdentifier: "1"
-    });
+    runEncryptedMongod({restart: md, kmipRotateMasterKey: "", kmipKeyIdentifier: "1"});
     assertKeyId(md, 1);
 
     stopMongoProgramByPid(pid);
