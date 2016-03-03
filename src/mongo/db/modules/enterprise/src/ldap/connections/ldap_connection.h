@@ -4,8 +4,8 @@
 
 #pragma once
 
-#include "ldap_connection_options.h"
-#include "ldap_type_aliases.h"
+#include "../ldap_connection_options.h"
+#include "../ldap_type_aliases.h"
 
 namespace mongo {
 

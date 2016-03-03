@@ -27,8 +27,7 @@ public:
      *
      * @return Objects of type OpenLDAPConnection, or error
      */
-    virtual StatusWith<std::unique_ptr<LDAPConnection>> create(
-        const LDAPConnectionOptions& options) = 0;
+    StatusWith<std::unique_ptr<LDAPConnection>> create(const LDAPConnectionOptions& options);
 };
 
 }  // namespace mongo

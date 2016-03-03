@@ -6,11 +6,9 @@ if not env.TargetOSIs('windows'):
     env.Library(
         target='ldap_query',
         source=[
-            'ldap_bind_type.cpp',
             'ldap_connection_options.cpp',
             'ldap_query.cpp',
             'ldap_query_config.cpp',
-            'ldap_runner.cpp',
         ],
         LIBDEPS=[
             '$BUILD_DIR/mongo/base',

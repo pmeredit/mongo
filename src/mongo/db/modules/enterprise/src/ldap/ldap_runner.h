@@ -6,12 +6,10 @@
 
 #include "ldap_runner_interface.h"
 
-#include <memory>
-
+#include "connections/ldap_connection_factory.h"
 #include "ldap_connection_options.h"
 
 namespace mongo {
-class LDAPConnection;
 class LDAPConnectionFactory;
 template <typename T>
 class StatusWith;
@@ -23,15 +21,13 @@ class StatusWith;
  */
 class LDAPRunner : public LDAPRunnerInterface {
 public:
-    LDAPRunner(std::unique_ptr<LDAPConnectionFactory> factory,
-               LDAPBindOptions bindOptions,
-               LDAPConnectionOptions options);
+    LDAPRunner(LDAPBindOptions bindOptions, LDAPConnectionOptions options);
     ~LDAPRunner() final;
 
     StatusWith<LDAPEntityCollection> runQuery(const LDAPQuery& query) final;
 
 private:
-    std::unique_ptr<LDAPConnectionFactory> _factory;
+    LDAPConnectionFactory _factory;
     LDAPBindOptions _bindOptions;
     LDAPConnectionOptions _options;
 };
