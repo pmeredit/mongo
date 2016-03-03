@@ -29,21 +29,13 @@ void RlpStringBuffer::assign(const BT_Char16* str, size_t len, bool removeDiacri
             _dynamicBuf.data(), _dynamicBuf.size(), str, len, &truncated);
 
         if (!truncated) {
-            // TODO: Add a constructor for unicode::String that takes UTF-16 as input to avoid
-            // conversions and buffer copying.
+            _stringData = StringData(_dynamicBuf.data(), written);
             if (removeDiacritics) {
-                // Add a null terminator so the buffer can be converted to a unicode string for
-                // removing diacritics.
-                if (_dynamicBuf.size() == written) {
-                    _dynamicBuf.push_back(0);
-                } else {
-                    _dynamicBuf[written] = 0;
-                }
-
                 _stringData =
-                    StringData(unicode::String(_dynamicBuf.data()).removeDiacritics().toString());
-            } else {
-                _stringData = StringData(_dynamicBuf.data(), written);
+                    unicode::String::caseFoldAndStripDiacritics(&_buffer,
+                                                                _stringData,
+                                                                unicode::String::kCaseSensitive,
+                                                                unicode::CaseFoldMode::kNormal);
             }
             return;
         }

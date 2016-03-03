@@ -9,6 +9,7 @@
 
 #include "mongo/base/disallow_copying.h"
 #include "mongo/base/string_data.h"
+#include "mongo/bson/util/builder.h"
 
 namespace mongo {
 namespace fts {
@@ -46,6 +47,7 @@ public:
 private:
     RlpEnvironment* const _rlpEnvironment;
     std::vector<char> _dynamicBuf;
+    StackBufBuilder _buffer;
     StringData _stringData;
 };
 
