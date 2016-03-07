@@ -17,11 +17,16 @@ StatusWith<std::vector<std::string>> RewriteRule::_extractMatches(const pcrecpp:
     // that array, and the underlying Arg objects. Args wrap an underlying datatype,
     // std::strings in our case. So we need to create the std::strings too. DoMatch will then
     // populate these std::strings with the contents of the capture groups it matched.
-    size_t numCaptureGroups = match.NumberOfCapturingGroups();
+    int numCaptureGroups = match.NumberOfCapturingGroups();
+    if (numCaptureGroups < 0) {
+        return Status(ErrorCodes::FailedToParse,
+                      "Failed to extract captures with regular expression, because the regular "
+                      "expression was not valid.");
+    }
     std::vector<std::string> matches(numCaptureGroups);
     std::vector<pcrecpp::Arg> args(numCaptureGroups);
     std::vector<const pcrecpp::Arg*> argPtrs(numCaptureGroups);
-    for (size_t i = 0; i < numCaptureGroups; ++i) {
+    for (int i = 0; i < numCaptureGroups; ++i) {
         args[i] = &matches[i];
         argPtrs[i] = &args[i];
     }
