@@ -43,8 +43,18 @@ StatusWith<LDAPQuery> LDAPQuery::instantiateQuery(
     const UserNameSubstitutionLDAPQueryConfig& parameters, StringData userName) {
     LDAPQuery instance(parameters);
     invariant(kUserNameMatchToken.error().empty());
-    kUserNameMatchToken.GlobalReplace(userName.toString(), &instance._baseDN);
-    kUserNameMatchToken.GlobalReplace(userName.toString(), &instance._filter);
+    int matchedBaseDN = kUserNameMatchToken.GlobalReplace(userName.toString(), &instance._baseDN);
+    if (matchedBaseDN < 0) {
+        return Status(ErrorCodes::FailedToParse,
+                      str::stream()
+                          << "Failed to substitute username into baseDN. Error: " << matchedBaseDN);
+    }
+    int matchedFilter = kUserNameMatchToken.GlobalReplace(userName.toString(), &instance._filter);
+    if (matchedFilter < 0) {
+        return Status(ErrorCodes::FailedToParse,
+                      str::stream()
+                          << "Failed to substitute username into filter. Error: " << matchedFilter);
+    }
     return instance;
 }
 
