@@ -40,12 +40,6 @@ MONGO_INITIALIZER(SetGlobalEnvironment)(InitializerContext* context) {
 
 }  // namespace
 
-void exitCleanly(ExitCode code) {}
-
-bool inShutdown() {
-    return false;
-}
-
 int decryptToolMain(int argc, char* argv[], char** envp) {
     setupSignalHandlers();
     runGlobalInitializersOrDie(argc, argv, envp);
