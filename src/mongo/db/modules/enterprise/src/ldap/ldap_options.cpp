@@ -32,53 +32,54 @@ namespace moe = mongo::optionenvironment;
 Status addLDAPOptions(moe::OptionSection* options) {
     moe::OptionSection ldap_options("LDAP Module Options");
 
-    ldap_options.addOptionChaining("security.externalAuthorization.ldap.query.timeoutMS",
-                                   "ldapQueryTimeoutMS",
-                                   moe::Long,
-                                   "TimeoutMS for LDAP queries").setDefault(moe::Value(10000));
-
-    ldap_options.addOptionChaining("security.externalAuthorization.ldap.bind.user",
-                                   "ldapBindUser",
+    ldap_options.addOptionChaining("security.ldap.server",
+                                   "ldapServer",
                                    moe::String,
-                                   "LDAP entity to use for binding");
+                                   "Location of LDAP server on format (ldap|ldaps)://host:port");
 
-    ldap_options.addOptionChaining("security.externalAuthorization.ldap.bind.saslMechanisms",
-                                   "ldapBindSASLMechs",
-                                   moe::String,
-                                   "Comma separated list of SASL mechanisms to use while "
-                                   "binding to the LDAP server")
-        .setDefault(moe::Value(std::string("DIGEST-MD5")));
-
-    ldap_options.addOptionChaining("security.externalAuthorization.ldap.bind.method",
+    ldap_options.addOptionChaining("security.ldap.bind.method",
                                    "ldapBindMethod",
                                    moe::String,
                                    "Authentication scheme to use while connecting to LDAP. "
                                    "This may either be 'sasl' or 'simple'")
         .setDefault(moe::Value(std::string("sasl")));
 
-    ldap_options.addOptionChaining("security.externalAuthorization.ldap.bind.password",
-                                   "ldapBindPassword",
+    ldap_options.addOptionChaining("security.ldap.bind.saslMechanisms",
+                                   "ldapBindSASLMechs",
                                    moe::String,
-                                   "Password to use while binding to the LDAP server");
+                                   "Comma separated list of SASL mechanisms to use while "
+                                   "binding to the LDAP server")
+        .setDefault(moe::Value(std::string("DIGEST-MD5")));
 
-    ldap_options.addOptionChaining("security.externalAuthorization.ldap.query.url",
-                                   "ldapQueryUrl",
+    ldap_options.addOptionChaining("security.ldap.timeoutMS",
+                                   "ldapTimeoutMS",
+                                   moe::Long,
+                                   "Timeout for LDAP queries (ms)").setDefault(moe::Value(10000));
+
+    ldap_options.addOptionChaining("security.ldap.bind.queryUser",
+                                   "ldapQueryUser",
                                    moe::String,
-                                   "Formatted string of format (ldap|ldaps)://host:port describing "
-                                   "location of LDAP server");
+                                   "LDAP entity to bind with to perform queries");
 
-    ldap_options.addOptionChaining("security.externalAuthorization.ldap.query.template",
-                                   "ldapQueryTemplate",
+    ldap_options.addOptionChaining(
+        "security.ldap.bind.queryPassword",
+        "ldapQueryPassword",
+        moe::String,
+        "Password to use while binding to the LDAP server to perform queries");
+
+    ldap_options.addOptionChaining("security.ldap.authz.queryTemplate",
+                                   "ldapAuthzQueryTemplate",
                                    moe::String,
                                    "Relative LDAP query URL which will be queried against the "
                                    "host to acquire LDAP groups. The token {USER} will be "
                                    "replaced with the mapped username");
 
-    ldap_options.addOptionChaining("security.externalAuthorization.ldap.mapping.user",
-                                   "ldapUserToDN",
+    ldap_options.addOptionChaining("security.ldap.userToDNMapping",
+                                   "ldapUserToDNMapping",
                                    moe::String,
                                    "Tranformation from MongoDB users to LDAP user DNs")
         .setDefault(moe::Value(std::string("[{match: \"(.+)\", substitution: \"{0}\"}]")));
+
 
     Status ret = options->addSection(ldap_options);
     if (!ret.isOK()) {
@@ -89,41 +90,39 @@ Status addLDAPOptions(moe::OptionSection* options) {
 }
 
 Status storeLDAPOptions(const moe::Environment& params, const std::vector<std::string>& args) {
-    if (params.count("security.externalAuthorization.ldap.query.url")) {
-        globalLDAPParams.serverURI =
-            params["security.externalAuthorization.ldap.query.url"].as<std::string>();
+    if (params.count("security.ldap.server")) {
+        globalLDAPParams.serverURI = params["security.ldap.server"].as<std::string>();
     }
-    if (params.count("security.externalAuthorization.ldap.query.template")) {
-        globalLDAPParams.userAcquisitionQueryTemplate =
-            params["security.externalAuthorization.ldap.query.template"].as<std::string>();
-    }
-    if (params.count("security.externalAuthorization.ldap.query.timeoutMS")) {
-        globalLDAPParams.connectionTimeout =
-            Milliseconds(params["security.externalAuthorization.ldap.query.timeoutMS"].as<long>());
-    }
-    if (params.count("security.externalAuthorization.ldap.bind.user")) {
-        globalLDAPParams.bindUser =
-            params["security.externalAuthorization.ldap.bind.user"].as<std::string>();
-    }
-    if (params.count("security.externalAuthorization.ldap.bind.password")) {
-        globalLDAPParams.bindPassword = SecureString(
-            params["security.externalAuthorization.ldap.bind.password"].as<std::string>().c_str());
-    }
-    if (params.count("security.externalAuthorization.ldap.bind.method")) {
-        auto swLDAPBindType = getLDAPBindType(
-            params["security.externalAuthorization.ldap.bind.method"].as<std::string>());
+    if (params.count("security.ldap.bind.method")) {
+        auto swLDAPBindType =
+            getLDAPBindType(params["security.ldap.bind.method"].as<std::string>());
         if (!swLDAPBindType.isOK()) {
             return swLDAPBindType.getStatus();
         }
         globalLDAPParams.bindMethod = swLDAPBindType.getValue();
     }
-    if (params.count("security.externalAuthorization.ldap.bind.saslMechanisms")) {
+    if (params.count("security.ldap.bind.saslMechanisms")) {
         globalLDAPParams.bindSASLMechanisms =
-            params["security.externalAuthorization.ldap.bind.saslMechanisms"].as<std::string>();
+            params["security.ldap.bind.saslMechanisms"].as<std::string>();
     }
-    if (params.count("security.externalAuthorization.ldap.mapping.user")) {
+    if (params.count("security.ldap.timeoutMS")) {
+        globalLDAPParams.connectionTimeout =
+            Milliseconds(params["security.ldap.timeoutMS"].as<long>());
+    }
+    if (params.count("security.ldap.bind.queryUser")) {
+        globalLDAPParams.bindUser = params["security.ldap.bind.queryUser"].as<std::string>();
+    }
+    if (params.count("security.ldap.bind.queryPassword")) {
+        globalLDAPParams.bindPassword =
+            SecureString(params["security.ldap.bind.queryPassword"].as<std::string>().c_str());
+    }
+    if (params.count("security.ldap.authz.queryTemplate")) {
+        globalLDAPParams.userAcquisitionQueryTemplate =
+            params["security.ldap.authz.queryTemplate"].as<std::string>();
+    }
+    if (params.count("security.ldap.userToDNMapping")) {
         globalLDAPParams.userToDNMapping =
-            params["security.externalAuthorization.ldap.mapping.user"].as<std::string>();
+            params["security.ldap.userToDNMapping"].as<std::string>();
     }
     return Status::OK();
 }
