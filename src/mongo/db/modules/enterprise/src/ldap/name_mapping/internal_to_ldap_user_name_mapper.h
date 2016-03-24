@@ -14,6 +14,7 @@
 namespace mongo {
 struct BSONArray;
 class LDAPRunnerInterface;
+class OperationContext;
 template <typename T>
 class StatusWith;
 class StringData;
@@ -39,7 +40,7 @@ public:
      * If the rule does not match, the next rule will be tried. If no rules remain, the
      * transformation will fail.
      */
-    StatusWith<std::string> transform(StringData input) const;
+    StatusWith<std::string> transform(OperationContext* txn, StringData input) const;
 
     /**
      * Factory function which generates a new InternalToLDAPUserNameMapper.
@@ -64,12 +65,10 @@ public:
      *   ldapQuery: <LDAP query>
      * }
      *
-     * @param runner The QueryRunner to perform LDAP queries with, if any defined in the BSON array
      * @param config The BSON configuration array containing documents describing rules
      * @return An error upon failure, or an InternalToLDAPUserNameMapper on success
      */
-    static StatusWith<InternalToLDAPUserNameMapper> createNameMapper(LDAPRunnerInterface* runner,
-                                                                     BSONArray config);
+    static StatusWith<InternalToLDAPUserNameMapper> createNameMapper(BSONArray config);
 
 private:
     explicit InternalToLDAPUserNameMapper(std::vector<std::unique_ptr<RewriteRule>> rules);

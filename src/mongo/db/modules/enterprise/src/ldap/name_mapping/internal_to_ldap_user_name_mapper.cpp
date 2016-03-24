@@ -10,11 +10,11 @@
 
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bsonobj.h"
+#include "mongo/db/operation_context.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
 
-#include "../ldap_runner_interface.h"
 #include "ldap_rewrite_rule.h"
 #include "regex_rewrite_rule.h"
 
@@ -41,9 +41,10 @@ InternalToLDAPUserNameMapper& InternalToLDAPUserNameMapper::operator=(
 #endif
 
 
-StatusWith<std::string> InternalToLDAPUserNameMapper::transform(StringData input) const {
+StatusWith<std::string> InternalToLDAPUserNameMapper::transform(OperationContext* txn,
+                                                                StringData input) const {
     for (const auto& transform : _transformations) {
-        StatusWith<std::string> result = transform->resolve(input);
+        StatusWith<std::string> result = transform->resolve(txn, input);
         LOG(3) << "Transforming username: " << input << " using rule: " << transform->toStringData()
                << ". Result: " << [](const StatusWith<std::string>& result) {
                    return result.isOK() ? std::string("PASS. New userName is ") + result.getValue()
@@ -61,7 +62,7 @@ StatusWith<std::string> InternalToLDAPUserNameMapper::transform(StringData input
 }
 
 StatusWith<InternalToLDAPUserNameMapper> InternalToLDAPUserNameMapper::createNameMapper(
-    LDAPRunnerInterface* runner, BSONArray config) {
+    BSONArray config) {
     std::vector<std::unique_ptr<RewriteRule>> transforms;
     for (const BSONElement& element : config) {
         if (element.type() != BSONType::Object) {
@@ -122,7 +123,7 @@ StatusWith<InternalToLDAPUserNameMapper> InternalToLDAPUserNameMapper::createNam
                 }
 
                 StatusWith<LDAPRewriteRule> swLDAPRewriteRule =
-                    LDAPRewriteRule::create(runner, match.str(), ldapQuery.str());
+                    LDAPRewriteRule::create(match.str(), ldapQuery.str());
                 if (!swLDAPRewriteRule.isOK()) {
                     return {swLDAPRewriteRule.getStatus()};
                 }

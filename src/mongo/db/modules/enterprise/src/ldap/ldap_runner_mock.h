@@ -4,21 +4,25 @@
 
 #pragma once
 
-#include "ldap_runner_interface.h"
-
 #include "mongo/stdx/memory.h"
 #include "mongo/unittest/unittest.h"
+
+#include "ldap_runner.h"
 
 namespace mongo {
 
 /**
- * Mock implementation of the LDAPRunnerInterface. Consumers must load instantiations with
+ * Mock implementation of the LDAPRunner. Consumers must load instantiations with
  * queries and their results using the ``push'' method, which stores them on a stack. runQuery will
  * pop the stack, assert its query matches the caller's, and return the stored result.
  */
-class MockLDAPRunner : public LDAPRunnerInterface {
+class LDAPRunnerMock : public LDAPRunner {
 public:
-    ~MockLDAPRunner() final = default;
+    ~LDAPRunnerMock() final = default;
+    Status verifyLDAPCredentials(const LDAPBindOptions& bindOptions) final {
+        return Status::OK();
+    }
+
     StatusWith<LDAPEntityCollection> runQuery(const LDAPQuery& query) final {
         ASSERT_FALSE(_stored.empty());
         auto next = std::move(_stored.back());
@@ -49,6 +53,20 @@ private:
     // So, LDAPQueryConfig must be created, then moved onto the heap. LDAPQuery can be
     // constructed with a reference to the heap object and placed into the Entry.
     struct MockQueryEntry {
+#if defined(_WIN32) && _MSC_VER < 1900
+        MockQueryEntry(LDAPQuery q,
+                       std::unique_ptr<LDAPQueryConfig> p,
+                       StatusWith<LDAPEntityCollection> r)
+            : query(std::move(q)), parameters(std::move(p)), results(std::move(r)) {}
+
+        MockQueryEntry(MockQueryEntry&& rr)
+            : query(std::move(rr.query)),
+              parameters(std::move(rr.parameters)),
+              results(std::move(rr.results)) {}
+
+        MockQueryEntry& operator=(MockQueryEntry&& rr) = delete;
+#endif
+
         LDAPQuery query;
         std::unique_ptr<LDAPQueryConfig> parameters;
         StatusWith<LDAPEntityCollection> results;

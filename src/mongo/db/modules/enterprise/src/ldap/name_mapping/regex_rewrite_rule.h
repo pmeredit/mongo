@@ -11,6 +11,7 @@
 
 namespace mongo {
 
+class OperationContext;
 template <typename T>
 class StatusWith;
 
@@ -42,7 +43,7 @@ public:
      * are substituted into 'substitution', and the result is returned. Otherwise, a non-OK Status
      * is returned.
      */
-    StatusWith<std::string> resolve(StringData input) const final;
+    StatusWith<std::string> resolve(OperationContext* txn, StringData input) const final;
 
     const StringData toStringData() const final;
 

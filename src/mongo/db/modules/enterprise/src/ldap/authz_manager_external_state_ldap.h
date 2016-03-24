@@ -28,7 +28,6 @@ class AuthzManagerExternalStateLDAP : public AuthzManagerExternalState {
 public:
     AuthzManagerExternalStateLDAP(
         std::unique_ptr<AuthzManagerExternalStateLocal> wrappedExternalState,
-        std::unique_ptr<LDAPRunner> runner,
         UserNameSubstitutionLDAPQueryConfig queryParameters,
         InternalToLDAPUserNameMapper userToDN);
 
@@ -110,7 +109,8 @@ private:
     /**
      * For a given user, acquire its roles from LDAP
      */
-    StatusWith<std::vector<RoleName>> _getUserRoles(const UserName& userName);
+    StatusWith<std::vector<RoleName>> _getUserRoles(OperationContext* txn,
+                                                    const UserName& userName);
 
     /**
      * For a provided LDAP search query, get the requested entities.
@@ -122,7 +122,7 @@ private:
      * @param query An LDAP search query to perform against the server
      * @return Errors arising from the query or the results
      */
-    StatusWith<LDAPDNVector> _getGroupDNsFromServer(LDAPQuery& query);
+    StatusWith<LDAPDNVector> _getGroupDNsFromServer(OperationContext* txn, LDAPQuery& query);
 
     /**
      * Set to 0 if the invalidator has not been started, 1 if it has been started
@@ -138,11 +138,6 @@ private:
      * Wrapped AuthzManagerExternalState object
      */
     std::unique_ptr<AuthzManagerExternalStateLocal> _wrappedExternalState;
-
-    /**
-     * LDAP operation runner
-     */
-    std::unique_ptr<LDAPRunner> _runner;
 
     /**
      * Template containing a query, in which authenticated user's DN will replace '{USER}'

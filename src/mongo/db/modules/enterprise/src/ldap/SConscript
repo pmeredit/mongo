@@ -2,63 +2,74 @@
 
 Import('env')
 
-if not env.TargetOSIs('windows'):
+env.Library(
+    target='ldap_runner_init',
+    source=[
+        'ldap_runner_init.cpp'
+    ],
+    LIBDEPS=['$BUILD_DIR/mongo/db/service_context',
+             'ldap_runner'],
+    PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongod',
+                         '$BUILD_DIR/mongo/mongos'])
+
+env.Library(
+    target='ldap_runner',
+    source=[
+        'ldap_runner.cpp',
+        'ldap_runner_impl.cpp'
+    ],
+    LIBDEPS=[
+        'ldap_connection',
+        'ldap_query',
+    ],
+)
+
+env.Library(
+    target='ldap_query',
+    source=[
+        'ldap_connection_options.cpp',
+        'ldap_options.cpp',
+        'ldap_query.cpp',
+        'ldap_query_config.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/base/secure_allocator',
+        '$BUILD_DIR/mongo/util/decorable',
+        '$BUILD_DIR/mongo/util/net/hostandport',
+        '$BUILD_DIR/mongo/util/options_parser/options_parser',
+        '$BUILD_DIR/third_party/shim_pcrecpp',
+    ],
+)
+
+env.CppUnitTest(
+    target='ldap_query_test',
+    source=[
+        'ldap_query_test.cpp',
+    ],
+    LIBDEPS=[
+        'ldap_query',
+    ],
+)
+
+if env.TargetOSIs('windows'):
     env.Library(
-        target='ldap_query',
+        target='ldap_connection',
         source=[
-            'ldap_connection_options.cpp',
-            'ldap_query.cpp',
-            'ldap_query_config.cpp',
+            'connections/ldap_connection_factory.cpp',
         ],
         LIBDEPS=[
+            'ldap_query',
             '$BUILD_DIR/mongo/base',
-            '$BUILD_DIR/mongo/base/secure_allocator',
             '$BUILD_DIR/mongo/util/net/hostandport',
-            '$BUILD_DIR/third_party/shim_pcrecpp',
         ],
     )
-
-    env.CppUnitTest(
-        target='ldap_query_test',
-        source=[
-            'ldap_query_test.cpp',
-        ],
-        LIBDEPS=[
-            'ldap_query',
-        ],
-    )
-
+else:
     env.Library(
-        target='ldap_name_map',
-        source=[
-            'name_mapping/internal_to_ldap_user_name_mapper.cpp',
-            'name_mapping/rewrite_rule.cpp',
-            'name_mapping/ldap_rewrite_rule.cpp',
-            'name_mapping/regex_rewrite_rule.cpp',
-        ],
-        LIBDEPS=[
-            'ldap_query',
-            '$BUILD_DIR/mongo/base',
-            '$BUILD_DIR/third_party/shim_pcrecpp',
-        ],
-    )
-
-    env.CppUnitTest(
-        target='rewrite_rule_test',
-        source=[
-            'name_mapping/rewrite_rule_test.cpp',
-        ],
-        LIBDEPS=[
-            'ldap_name_map',
-        ],
-    )
-
-    env.Library(
-        target='ldap_openldap_connection',
+        target='ldap_connection',
         source=[
             'connections/ldap_connection_factory.cpp',
             'connections/openldap_connection.cpp',
-            'ldap_runner.cpp',
         ],
         LIBDEPS=[
             'ldap_query',
@@ -68,26 +79,53 @@ if not env.TargetOSIs('windows'):
         SYSLIBDEPS=env.get("MONGO_LDAP_LIB", [])
     )
 
-    env.Library(
-        target='mongo_ldap',
-        source=[
-            'authz_manager_external_state_ldap.cpp',
-            'ldap_options.cpp',
-            'ldap_user_cache_invalidator_job.cpp',
-        ],
-        LIBDEPS=[
-            'ldap_query',
-            'ldap_openldap_connection',
-            'ldap_name_map',
-            '$BUILD_DIR/mongo/bson/mutable/mutable_bson',
-            '$BUILD_DIR/mongo/db/auth/authcore',
-            '$BUILD_DIR/mongo/db/mongodandmongos',
-            '$BUILD_DIR/mongo/db/serveronly',
-            '$BUILD_DIR/mongo/util/background_job',
-            '$BUILD_DIR/mongo/util/options_parser/options_parser',
-        ],
-        PROGDEPS_DEPENDENTS=[
-            '$BUILD_DIR/mongo/${PROGPREFIX}mongod${PROGSUFFIX}',
-        ],
-    )
+env.Library(
+    target='mongo_ldap',
+    source=[
+        'authz_manager_external_state_ldap.cpp',
+        'ldap_user_cache_invalidator_job.cpp',
+    ],
+    LIBDEPS=[
+        'ldap_runner',
+        'ldap_query',
+        'ldap_name_map',
+        '$BUILD_DIR/mongo/bson/mutable/mutable_bson',
+        '$BUILD_DIR/mongo/db/auth/authcore',
+        '$BUILD_DIR/mongo/db/mongodandmongos',
+        '$BUILD_DIR/mongo/db/serveronly',
+        '$BUILD_DIR/mongo/util/background_job',
+        '$BUILD_DIR/mongo/util/options_parser/options_parser',
+    ],
+    PROGDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/${PROGPREFIX}mongod${PROGSUFFIX}',
+    ],
+)
 
+env.Library(
+    target='ldap_name_map',
+    source=[
+        'name_mapping/internal_to_ldap_user_name_mapper.cpp',
+        'name_mapping/rewrite_rule.cpp',
+        'name_mapping/ldap_rewrite_rule.cpp',
+        'name_mapping/regex_rewrite_rule.cpp',
+    ],
+    LIBDEPS=[
+        'ldap_query',
+        'ldap_runner',
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/service_context',
+        '$BUILD_DIR/third_party/shim_pcrecpp',
+    ],
+)
+
+env.CppUnitTest(
+    target='rewrite_rule_test',
+    source=[
+        'name_mapping/rewrite_rule_test.cpp',
+    ],
+    LIBDEPS=[
+        'ldap_name_map',
+        'ldap_runner',
+        '$BUILD_DIR/mongo/db/service_context',
+    ],
+)

@@ -10,15 +10,15 @@
 #include <memory>
 
 #include "mongo/base/status_with.h"
+#include "mongo/db/operation_context.h"
 #include "mongo/util/assert_util.h"
 
 #include "../ldap_query.h"
-#include "../ldap_runner_interface.h"
+#include "../ldap_runner.h"
 
 namespace mongo {
 
-StatusWith<LDAPRewriteRule> LDAPRewriteRule::create(LDAPRunnerInterface* runner,
-                                                    const std::string& strMatch,
+StatusWith<LDAPRewriteRule> LDAPRewriteRule::create(const std::string& strMatch,
                                                     const std::string& strQuery) {
     pcrecpp::RE match(strMatch, pcrecpp::UTF8());
 
@@ -30,25 +30,20 @@ StatusWith<LDAPRewriteRule> LDAPRewriteRule::create(LDAPRunnerInterface* runner,
     std::string stringRepresentation(std::string("{ match: \"") + strMatch + "\" ldapQuery: \"" +
                                      strQuery + "\" }");
 
-    return LDAPRewriteRule{runner,
-                           std::move(match),
-                           std::move(swQueryParameters.getValue()),
-                           std::move(stringRepresentation)};
+    return LDAPRewriteRule{
+        std::move(match), std::move(swQueryParameters.getValue()), std::move(stringRepresentation)};
 }
 
 #if defined(_WIN32) && _MSC_VER < 1900
 LDAPRewriteRule::LDAPRewriteRule(LDAPRewriteRule&& rr)
     : _match(std::move(rr._match)),
-      _runner(rr._runner),
       _queryConfig(std::move(rr._queryConfig)),
       _stringRepresentation(std::move(rr._stringRepresentation)) {}
 
 LDAPRewriteRule& LDAPRewriteRule::operator=(LDAPRewriteRule&& rr) {
     _match = std::move(rr._match);
-    _queryParameters = std::move(rr._queryParameters);
-    _runner = rr._runner;
     _queryConfig = std::move(rr._queryConfig);
-    _stringRepresentation(std::move(rr._stringRepresentation));
+    _stringRepresentation = std::move(rr._stringRepresentation);
     return *this;
 }
 #else
@@ -56,18 +51,14 @@ LDAPRewriteRule::LDAPRewriteRule(LDAPRewriteRule&& rr) = default;
 LDAPRewriteRule& LDAPRewriteRule::operator=(LDAPRewriteRule&& rr) = default;
 #endif
 
-LDAPRewriteRule::LDAPRewriteRule(LDAPRunnerInterface* runner,
-                                 pcrecpp::RE match,
+LDAPRewriteRule::LDAPRewriteRule(pcrecpp::RE match,
                                  ComponentSubstitutionLDAPQueryConfig queryParameters,
                                  std::string stringRepresentation)
     : _match(std::move(match)),
-      _runner(runner),
       _queryConfig(std::move(queryParameters)),
-      _stringRepresentation(std::move(stringRepresentation)) {
-    invariant(runner != nullptr);
-}
+      _stringRepresentation(std::move(stringRepresentation)) {}
 
-StatusWith<std::string> LDAPRewriteRule::resolve(StringData input) const {
+StatusWith<std::string> LDAPRewriteRule::resolve(OperationContext* txn, StringData input) const {
     StatusWith<std::vector<std::string>> swExtractedMatches = _extractMatches(_match, input);
     if (!swExtractedMatches.isOK()) {
         return swExtractedMatches.getStatus();
@@ -80,7 +71,7 @@ StatusWith<std::string> LDAPRewriteRule::resolve(StringData input) const {
     }
 
     StatusWith<LDAPEntityCollection> swLDAPResults =
-        _runner->runQuery(std::move(swParamsStep.getValue()));
+        LDAPRunner::get(txn->getServiceContext())->runQuery(std::move(swParamsStep.getValue()));
     if (!swLDAPResults.isOK()) {
         return swLDAPResults.getStatus();
     }

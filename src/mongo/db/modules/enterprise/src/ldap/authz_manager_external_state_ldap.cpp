@@ -21,12 +21,14 @@
 #include "mongo/db/auth/role_name.h"
 #include "mongo/db/auth/user_name.h"
 #include "mongo/db/namespace_string.h"
+#include "mongo/db/operation_context.h"
 #include "mongo/stdx/functional.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
 
 #include "connections/ldap_connection_factory.h"
+#include "connections/ldap_connection.h"
 #include "ldap_options.h"
 #include "ldap_runner.h"
 
@@ -38,12 +40,10 @@ const pcrecpp::RE userRegex("\\{USER\\}");
 
 AuthzManagerExternalStateLDAP::AuthzManagerExternalStateLDAP(
     std::unique_ptr<AuthzManagerExternalStateLocal> wrappedExternalState,
-    std::unique_ptr<LDAPRunner> runner,
     UserNameSubstitutionLDAPQueryConfig queryParameters,
     InternalToLDAPUserNameMapper userToDN)
     : _hasInitializedInvalidation(0),
       _wrappedExternalState(std::move(wrappedExternalState)),
-      _runner(std::move(runner)),
       _queryConfig(std::move(queryParameters)),
       _userToDN(std::move(userToDN)) {}
 
@@ -87,7 +87,7 @@ Status AuthzManagerExternalStateLDAP::getUserDescription(OperationContext* txn,
         return _wrappedExternalState->getUserDescription(txn, userName, result);
     }
 
-    StatusWith<std::vector<RoleName>> swRoles = _getUserRoles(userName);
+    StatusWith<std::vector<RoleName>> swRoles = _getUserRoles(txn, userName);
     if (!swRoles.isOK()) {
         // Log failing Status objects produced from role acquisition, but because they may contain
         // sensitive information, do not propagate them to the client.
@@ -117,9 +117,9 @@ Status AuthzManagerExternalStateLDAP::getUserDescription(OperationContext* txn,
 }
 
 StatusWith<std::vector<RoleName>> AuthzManagerExternalStateLDAP::_getUserRoles(
-    const UserName& userName) {
+    OperationContext* txn, const UserName& userName) {
 
-    StatusWith<std::string> swUser = _userToDN.transform(userName.getUser());
+    StatusWith<std::string> swUser = _userToDN.transform(txn, userName.getUser());
     if (!swUser.isOK()) {
         return Status(swUser.getStatus().code(),
                       "Failed to transform user name to LDAP DN: " + swUser.getStatus().reason(),
@@ -132,7 +132,7 @@ StatusWith<std::vector<RoleName>> AuthzManagerExternalStateLDAP::_getUserRoles(
         return swQuery.getStatus();
     }
 
-    StatusWith<LDAPDNVector> swEntities = _getGroupDNsFromServer(swQuery.getValue());
+    StatusWith<LDAPDNVector> swEntities = _getGroupDNsFromServer(txn, swQuery.getValue());
     if (!swEntities.isOK()) {
         return Status(swEntities.getStatus().code(),
                       "Failed to obtain LDAP entities: " + swEntities.getStatus().reason(),
@@ -147,11 +147,11 @@ StatusWith<std::vector<RoleName>> AuthzManagerExternalStateLDAP::_getUserRoles(
 }
 
 StatusWith<LDAPDNVector> AuthzManagerExternalStateLDAP::_getGroupDNsFromServer(
-    LDAPQuery& query) {
+    OperationContext* txn, LDAPQuery& query) {
     bool isAcquiringAttributes = !query.getAttributes().empty();
 
     // Perform the query specified in ldapLDAPQuery against the server.
-    StatusWith<LDAPEntityCollection> queryResultStatus = _runner->runQuery(query);
+    StatusWith<LDAPEntityCollection> queryResultStatus = LDAPRunner::get(txn->getServiceContext())->runQuery(query);
     if (!queryResultStatus.isOK()) {
         return queryResultStatus.getStatus();
     }
@@ -204,15 +204,6 @@ std::unique_ptr<AuthzManagerExternalState> createLDAPAuthzManagerExternalState()
             globalLDAPParams.userAcquisitionQueryTemplate);
     massertStatusOK(swQueryParameters.getStatus());
 
-    LDAPBindOptions bindOptions(globalLDAPParams.bindUser,
-                                std::move(globalLDAPParams.bindPassword),
-                                globalLDAPParams.bindMethod,
-                                globalLDAPParams.bindSASLMechanisms);
-    LDAPConnectionOptions connectionOptions(globalLDAPParams.connectionTimeout,
-                                            globalLDAPParams.serverURI);
-    auto runner = stdx::make_unique<LDAPRunner>(std::move(bindOptions),
-                                                std::move(connectionOptions));
-
     BSONArray expression;
     try {
         expression = BSONArray(fromjson(globalLDAPParams.userToDNMapping));
@@ -223,19 +214,18 @@ std::unique_ptr<AuthzManagerExternalState> createLDAPAuthzManagerExternalState()
         throw e;
     }
     auto swMapper =
-        InternalToLDAPUserNameMapper::createNameMapper(runner.get(), std::move(expression));
+        InternalToLDAPUserNameMapper::createNameMapper(std::move(expression));
     massertStatusOK(swMapper.getStatus());
 
     return stdx::make_unique<AuthzManagerExternalStateLDAP>(
         stdx::make_unique<AuthzManagerExternalStateMongod>(),
-        std::move(runner),
         std::move(swQueryParameters.getValue()),
         std::move(swMapper.getValue()));
 }
 
 MONGO_INITIALIZER_GENERAL(CreateLDAPAuthorizationExternalStateFactory,
                           ("CreateAuthorizationExternalStateFactory", "EndStartupOptionStorage"),
-                          ("CreateAuthorizationManager"))(InitializerContext* context) {
+                          ("CreateAuthorizationManager", "SetLDAPRunnerImpl"))(InitializerContext* context) {
     // This initializer dependency injects the LDAPAuthzManagerExternalState into the
     // AuthorizationManager, by replacing the factory function the AuthorizationManager uses
     // to get its external state object.

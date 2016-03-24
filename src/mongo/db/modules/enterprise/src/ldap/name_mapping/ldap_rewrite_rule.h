@@ -9,7 +9,7 @@
 #include "../ldap_query_config.h"
 
 namespace mongo {
-class LDAPRunnerInterface;
+class OperationContext;
 template <typename T>
 class StatusWith;
 
@@ -34,27 +34,24 @@ public:
      * @param match Regular expression which input will be matched against
      * @substitution Relative LDAP query URI which matched capture groups will be substituted into
      */
-    static StatusWith<LDAPRewriteRule> create(LDAPRunnerInterface* runner,
-                                              const std::string& match,
+    static StatusWith<LDAPRewriteRule> create(const std::string& match,
                                               const std::string& substitution);
 
     /**
      * Rewrite 'input' into an LDAP query, and perform it, returning the result if existing
      * and singular.
      */
-    StatusWith<std::string> resolve(StringData input) const final;
+    StatusWith<std::string> resolve(OperationContext* txn, StringData input) const final;
 
     const StringData toStringData() const final;
 
 private:
-    LDAPRewriteRule(LDAPRunnerInterface* runner,
-                    pcrecpp::RE match,
+    LDAPRewriteRule(pcrecpp::RE match,
                     ComponentSubstitutionLDAPQueryConfig queryParameters,
                     std::string stringRepresentation);
 
 
     pcrecpp::RE _match;
-    LDAPRunnerInterface* _runner;  // LDAPRunner to run LDAP queries with
     ComponentSubstitutionLDAPQueryConfig _queryConfig;
     std::string _stringRepresentation;  // Stored for toStringData
 };

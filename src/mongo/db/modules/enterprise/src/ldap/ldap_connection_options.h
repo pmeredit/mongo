@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 #include "mongo/base/secure_allocator.h"

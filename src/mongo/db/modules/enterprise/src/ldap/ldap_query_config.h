@@ -6,6 +6,7 @@
 
 #include "ldap_type_aliases.h"
 
+#include <cstdint>
 #include <ostream>
 #include <string>
 

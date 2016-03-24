@@ -92,6 +92,7 @@ int openLDAPBindFunction(
                << "\" with bind parameters: " << bindOptions->toCleanString();
 
         int ret;
+
         if (bindOptions->authenticationChoice == LDAPBindType::kSasl) {
             ret = ldap_sasl_interactive_bind_s(session,
                                                nullptr,

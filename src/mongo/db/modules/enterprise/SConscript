@@ -160,8 +160,11 @@ env.Library('auth_delay',
                                  '$BUILD_DIR/mongo/mongos'])
 
 env.Library('mongosaslservercommon',
-            'src/sasl/cyrus_sasl_authentication_session.cpp',
-            LIBDEPS=['mongosaslserversession'],
+            ['src/sasl/cyrus_sasl_authentication_session.cpp',
+             'src/sasl/ldap_sasl_authentication_session.cpp'],
+            LIBDEPS=['src/ldap/ldap_runner',
+                     'src/ldap/ldap_name_map',
+                     'mongosaslserversession'],
             PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongod',
                                  '$BUILD_DIR/mongo/mongos'])
 

@@ -28,6 +28,9 @@
 #include "mongo/util/sequence_util.h"
 #include "mongo_gssapi.h"
 
+#include "../ldap/ldap_options.h"
+#include "ldap_sasl_authentication_session.h"
+
 namespace mongo {
 
 using std::endl;
@@ -435,10 +438,14 @@ int saslServerGlobalLog(void* context, int level, const char* message) throw() {
     return SASL_OK;
 }
 
-SaslAuthenticationSession* createCyrusSaslAuthenticationSession(AuthorizationSession* authzSession,
-                                                                const std::string& mechanism) {
-    if (mechanism == "SCRAM-SHA-1") {
+SaslAuthenticationSession* createSaslAuthenticationSession(AuthorizationSession* authzSession,
+                                                           const std::string& mechanism) {
+    if (mechanism == SaslAuthenticationSession::mechanismSCRAMSHA1) {
         return new NativeSaslAuthenticationSession(authzSession);
+    }
+    if (mechanism == SaslAuthenticationSession::mechanismPLAIN &&
+        !globalLDAPParams.serverURI.empty() && saslGlobalParams.authdPath.empty()) {
+        return new LDAPSaslAuthenticationSession(authzSession);
     }
     return new CyrusSaslAuthenticationSession(authzSession);
 }
@@ -462,7 +469,7 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(CyrusSaslServerCore,
                                                 << sasl_errstring(result, NULL, NULL) << ")");
     }
 
-    SaslAuthenticationSession::create = createCyrusSaslAuthenticationSession;
+    SaslAuthenticationSession::create = createSaslAuthenticationSession;
 
     return Status::OK();
 }

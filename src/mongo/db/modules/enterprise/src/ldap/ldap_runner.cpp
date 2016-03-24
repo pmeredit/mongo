@@ -6,42 +6,23 @@
 
 #include "ldap_runner.h"
 
-#include "mongo/util/assert_util.h"
-
-#include "connections/ldap_connection.h"
-#include "connections/ldap_connection_factory.h"
-#include "ldap_query.h"
+#include "mongo/base/init.h"
+#include "mongo/db/service_context.h"
+#include "mongo/stdx/memory.h"
 
 namespace mongo {
 
 namespace {
-const size_t kMaxConnections = 10;
+const auto getLDAPRunner = ServiceContext::declareDecoration<std::unique_ptr<LDAPRunner>>();
 }  // namespace
 
-LDAPRunner::LDAPRunner(LDAPBindOptions bindOptions, LDAPConnectionOptions options)
-    : _factory(LDAPConnectionFactory()),
-      _bindOptions(std::move(bindOptions)),
-      _options(std::move(options)) {}
+void LDAPRunner::set(ServiceContext* service, std::unique_ptr<LDAPRunner> ldapRunner) {
+    auto& runner = getLDAPRunner(service);
+    invariant(ldapRunner);
+    runner = std::move(ldapRunner);
+}
 
-LDAPRunner::~LDAPRunner() = default;
-
-StatusWith<LDAPEntityCollection> LDAPRunner::runQuery(const LDAPQuery& query) {
-    // Create a new connection
-    // TODO: Use a connection pool
-    StatusWith<std::unique_ptr<LDAPConnection>> swConnection = _factory.create(_options);
-    if (!swConnection.isOK()) {
-        return swConnection.getStatus();
-    }
-
-    // If a user has been provided, bind to it
-    if (!_bindOptions.bindDN.empty()) {
-        Status status = swConnection.getValue()->bindAsUser(_bindOptions);
-        if (!status.isOK()) {
-            return status;
-        }
-    }
-
-    // We now have a connection. Run the query, accumulating a result
-    return swConnection.getValue()->query(query);
+LDAPRunner* LDAPRunner::get(ServiceContext* service) {
+    return getLDAPRunner(service).get();
 }
 }  // namespace mongo
