@@ -6,6 +6,8 @@
 
 #include "mongo/db/audit.h"
 
+#include "mongo/base/data_type_endian.h"
+#include "mongo/base/data_view.h"
 #include "mongo/db/auth/user_management_commands_parser.h"
 #include "mongo/db/auth/user_name.h"
 #include "mongo/db/jsobj.h"
@@ -60,8 +62,11 @@ void parseAndRemoveImpersonatedUsersField(BSONObj cmdObj,
     // Lop off the field.  It must be the last field due to the check above.
     char* rawdata = const_cast<char*>(elem.rawdata());
     *rawdata = EOO;
-    int* size = reinterpret_cast<int*>(const_cast<char*>(cmdObj.objdata()));
-    *size -= elem.size();
+
+    DataView dv(const_cast<char*>(cmdObj.objdata()));
+    int32_t size = dv.read<LittleEndian<int32_t>>();
+    dv.write<LittleEndian<int32_t>>(size - elem.size());
+
     *fieldIsPresent = true;
 }
 
@@ -110,8 +115,11 @@ void parseAndRemoveImpersonatedRolesField(BSONObj cmdObj,
     // Lop off the field.  It must be the last field due to the check above.
     char* rawdata = const_cast<char*>(elem.rawdata());
     *rawdata = EOO;
-    int* size = reinterpret_cast<int*>(const_cast<char*>(cmdObj.objdata()));
-    *size -= elem.size();
+
+    DataView dv(const_cast<char*>(cmdObj.objdata()));
+    int32_t size = dv.read<LittleEndian<int32_t>>();
+    dv.write<LittleEndian<int32_t>>(size - elem.size());
+
     *fieldIsPresent = true;
 }
 
