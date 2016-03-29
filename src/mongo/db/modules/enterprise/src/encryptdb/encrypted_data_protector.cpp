@@ -94,13 +94,14 @@ Status EncryptedDataProtector::finalize(std::uint8_t* out,
                                         std::size_t* bytesWritten) {
     *bytesWritten = 0;
     if (_encryptCtx) {
-        if (1 !=
-            EVP_EncryptFinal_ex(_encryptCtx.get(), out, reinterpret_cast<int*>(bytesWritten))) {
+        int tmpLen = 0;
+        if (1 != EVP_EncryptFinal_ex(_encryptCtx.get(), out, &tmpLen)) {
             return Status(ErrorCodes::UnknownError,
                           str::stream()
                               << "Failed to finalize OpenSSL encrypt context"
                               << SSLManagerInterface::getSSLErrorMessage(ERR_get_error()));
         }
+        *bytesWritten = tmpLen;
     }
     invariant(outLen >= *bytesWritten);
     return Status::OK();

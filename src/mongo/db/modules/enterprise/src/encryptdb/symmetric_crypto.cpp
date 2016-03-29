@@ -10,6 +10,7 @@
 
 #include <openssl/rand.h>
 
+#include "mongo/base/data_cursor.h"
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
 #include "mongo/crypto/crypto.h"
@@ -138,9 +139,9 @@ void aesGenerateIV(const SymmetricKey* key,
         // having initializationCount = 0). The rational being that we can't keep a usage count
         // for the master key and it will never be used more than 2^32 times so using a random
         // IV is safe.
-        *reinterpret_cast<uint32_t*>(buffer) = initializationCount;
-        *reinterpret_cast<uint64_t*>(buffer + sizeof(initializationCount)) =
-            key->getAndIncrementInvocationCount();
+        DataCursor dc(reinterpret_cast<char*>(buffer));
+        dc.writeAndAdvance<uint32_t>(initializationCount);
+        dc.write<uint64_t>(key->getAndIncrementInvocationCount());
     } else {
         if (RAND_bytes(reinterpret_cast<unsigned char*>(buffer), aesGetIVSize(mode)) != 1) {
             error() << "Unable to acquire random bytes from OpenSSL: "
