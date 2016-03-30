@@ -196,9 +196,14 @@ int auxpropLookupMongoDBInternal(void* glob_context,
     return ret;
 }
 
-#if SASL_AUXPROP_PLUG_VERSION >= 8
-#define MONGODB_AUXPROP_LOOKUP_FN auxpropLookupMongoDBInternal
-#else
+// On OS X, the saslplug.h header defines this to indicate the minimum
+// acceptable plugin version. We want to respect that, but other
+// systems may not define it. Fall back to defining it in terms of the
+// basic PLUG_VERSION if it isn't defined.
+#ifndef SASL_AUXPROP_PLUG_MIN_VERSION
+#define SASL_AUXPROP_PLUG_MIN_VERSION SASL_AUXPROP_PLUG_VERSION
+#endif
+
 void auxpropLookupMongoDBInternalVoid(void* glob_context,
                                       sasl_server_params_t* sparams,
                                       unsigned flags,
@@ -207,19 +212,8 @@ void auxpropLookupMongoDBInternalVoid(void* glob_context,
     auxpropLookupMongoDBInternal(glob_context, sparams, flags, user, ulen);
 }
 
-#define MONGODB_AUXPROP_LOOKUP_FN auxpropLookupMongoDBInternalVoid
-#endif
-
 /// Plugin vtable.
-sasl_auxprop_plug_t auxpropMongoDBInternal = {
-    0,                          // features MBZ
-    0,                          // spare_int1 MBZ
-    NULL,                       // glob_context
-    NULL,                       // auxprop_free
-    MONGODB_AUXPROP_LOOKUP_FN,  // auxprop_lookup
-    NULL,                       // name
-    NULL,                       // auxprop_store
-};
+sasl_auxprop_plug_t auxpropMongoDBInternal = {};
 
 /**
  * Entry point for initializing the plugin.
@@ -232,10 +226,10 @@ int auxpropMongoDBInternalPluginInit(const sasl_utils_t* utils,
     if (!utils)
         return SASL_BADPARAM;
 
-    if (max_version < SASL_AUXPROP_PLUG_VERSION)
+    if (max_version < SASL_AUXPROP_PLUG_MIN_VERSION)
         return SASL_BADVERS;
 
-    *out_version = SASL_AUXPROP_PLUG_VERSION;
+    *out_version = SASL_AUXPROP_PLUG_MIN_VERSION;
     *plug = &auxpropMongoDBInternal;
     return SASL_OK;
 }
@@ -247,6 +241,12 @@ MONGO_INITIALIZER_GENERAL(SaslAuxpropMongodbInternal,
                           ("CyrusSaslServerCore"),
                           ("CyrusSaslAllPluginsRegistered"))
 (InitializerContext*) {
+#if defined(__APPLE__) && (SASL_AUXPROP_PLUG_MIN_VERSION < SASL_AUXPROP_PLUG_VERSION)
+    auxpropMongoDBInternal.auxprop_lookup_v4 = auxpropLookupMongoDBInternalVoid;
+#else
+    auxpropMongoDBInternal.auxprop_lookup = auxpropLookupMongoDBInternal;
+#endif
+
     auxpropMongoDBInternal.name = auxpropMongoDBInternalPluginName;
     int ret =
         sasl_auxprop_add_plugin(auxpropMongoDBInternal.name, auxpropMongoDBInternalPluginInit);
