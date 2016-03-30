@@ -243,6 +243,8 @@ MONGO_INITIALIZER_GENERAL(SaslAuxpropMongodbInternal,
 (InitializerContext*) {
 #if defined(__APPLE__) && (SASL_AUXPROP_PLUG_MIN_VERSION < SASL_AUXPROP_PLUG_VERSION)
     auxpropMongoDBInternal.auxprop_lookup_v4 = auxpropLookupMongoDBInternalVoid;
+#elif (SASL_AUXPROP_PLUG_MIN_VERSION < 8)
+    auxpropMongoDBInternal.auxprop_lookup = auxpropLookupMongoDBInternalVoid;
 #else
     auxpropMongoDBInternal.auxprop_lookup = auxpropLookupMongoDBInternal;
 #endif
