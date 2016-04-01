@@ -39,6 +39,11 @@
 
         assert.eq(1000, testdb["foo"].count(), "Could not read encrypted storage.");
         var result = testdb["foo"].findOne({x: 500});
+
+        // With --enableJavaScriptProtection, functions are presented as Code objects.
+        if (result.fun instanceof Code) {
+            result.fun = eval("(" + result.fun.code + ")");
+        }
         assert.eq("A result", result.fun(), "Could not get out an expected value");
 
         MongoRunner.stopMongod(md);
