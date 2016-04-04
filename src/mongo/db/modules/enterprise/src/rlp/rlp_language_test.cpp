@@ -141,12 +141,14 @@ TEST_F(RlpTest, TraditionalChinese) {
 TEST(EncodingTest, Utf16Codepoint) {
     // Should map to itself.
     unsigned short singleByte[1] = {0xd3};
+    const char32_t singleCheckValue = 0xd3;
 
     // Should map to codepoint 0x12345.
     unsigned short multiByte[2] = {0xd808, 0xdf45};
+    const char32_t multiCheckValue = 0x12345;
 
-    ASSERT_EQUALS(0xd3, utf16ToCodepoint(singleByte, 1));
-    ASSERT_EQUALS(0x12345, utf16ToCodepoint(multiByte, 2));
+    ASSERT_EQUALS(singleCheckValue, utf16ToCodepoint(singleByte, 1));
+    ASSERT_EQUALS(multiCheckValue, utf16ToCodepoint(multiByte, 2));
 }
 
 DEATH_TEST(EncodingTest, Utf16UnmatchedSurrogate, "Invariant failure (stem[0] >= 0xd800) &&") {
