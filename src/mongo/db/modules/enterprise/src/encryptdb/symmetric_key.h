@@ -51,7 +51,7 @@ public:
     }
 
     const uint8_t* getKey() const {
-        return _key.data();
+        return _key->data();
     }
 
     const std::string& getKeyId() const {

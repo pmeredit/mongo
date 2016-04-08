@@ -5,6 +5,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <string>
 
 #include "mongo/base/secure_allocator.h"
@@ -30,6 +31,6 @@ public:
     }
 };
 
-extern LDAPOptions globalLDAPParams;
+extern LDAPOptions* globalLDAPParams;
 
 }  // namespace mongo

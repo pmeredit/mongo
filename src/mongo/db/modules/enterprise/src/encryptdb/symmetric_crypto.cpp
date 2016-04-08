@@ -334,7 +334,7 @@ SymmetricKey aesGenerate(size_t keySize, std::string keyId) {
     size_t offset = 0;
     while (offset < keySize) {
         std::uint64_t randomValue = random->nextInt64();
-        memcpy(key.data() + offset, &randomValue, sizeof(randomValue));
+        memcpy(key->data() + offset, &randomValue, sizeof(randomValue));
         offset += sizeof(randomValue);
     }
 

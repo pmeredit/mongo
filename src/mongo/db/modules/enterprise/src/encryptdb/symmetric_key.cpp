@@ -35,7 +35,7 @@ SymmetricKey::SymmetricKey(const uint8_t* key,
 
 SymmetricKey::SymmetricKey(SecureVector<uint8_t> key, uint32_t algorithm, std::string keyId)
     : _algorithm(algorithm),
-      _keySize(key.size()),
+      _keySize(key->size()),
       _key(std::move(key)),
       _keyId(std::move(keyId)),
       _initializationCount(1),

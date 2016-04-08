@@ -201,12 +201,12 @@ StatusWith<LDAPDNVector> AuthzManagerExternalStateLDAP::_getGroupDNsFromServer(
 namespace {
 std::unique_ptr<AuthzManagerExternalState> createLDAPAuthzManagerExternalState() {
     auto swQueryParameters = LDAPQueryConfig::createLDAPQueryConfigWithUserName(
-            globalLDAPParams.userAcquisitionQueryTemplate);
+            globalLDAPParams->userAcquisitionQueryTemplate);
     massertStatusOK(swQueryParameters.getStatus());
 
     BSONObj expression;
     try {
-        expression = fromjson(globalLDAPParams.userToDNMapping);
+        expression = fromjson(globalLDAPParams->userToDNMapping);
     } catch (DBException& e) {
         e.addContext(
             "Failed to parse JSON description of the relationship between "
@@ -229,7 +229,7 @@ MONGO_INITIALIZER_GENERAL(CreateLDAPAuthorizationExternalStateFactory,
     // This initializer dependency injects the LDAPAuthzManagerExternalState into the
     // AuthorizationManager, by replacing the factory function the AuthorizationManager uses
     // to get its external state object.
-    if (globalLDAPParams.isLDAPAuthzEnabled()) {
+    if (globalLDAPParams->isLDAPAuthzEnabled()) {
         AuthzManagerExternalState::create = createLDAPAuthzManagerExternalState;
     }
     return Status::OK();

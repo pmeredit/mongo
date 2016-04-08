@@ -25,6 +25,7 @@ namespace mongo {
 namespace {
 MONGO_INITIALIZER_WITH_PREREQUISITES(CreateEncryptionKeyManager,
                                      ("CreateKeyEntropySource",
+                                      "SecureAllocator",
                                       "SetWiredTigerCustomizationHooks",
                                       "SetGlobalEnvironment"))
 (InitializerContext* context) {

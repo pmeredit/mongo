@@ -91,7 +91,7 @@ Status addLDAPOptions(moe::OptionSection* options) {
 
 Status storeLDAPOptions(const moe::Environment& params, const std::vector<std::string>& args) {
     if (params.count("security.ldap.server")) {
-        globalLDAPParams.serverURI = params["security.ldap.server"].as<std::string>();
+        globalLDAPParams->serverURI = params["security.ldap.server"].as<std::string>();
     }
     if (params.count("security.ldap.bind.method")) {
         auto swLDAPBindType =
@@ -99,29 +99,29 @@ Status storeLDAPOptions(const moe::Environment& params, const std::vector<std::s
         if (!swLDAPBindType.isOK()) {
             return swLDAPBindType.getStatus();
         }
-        globalLDAPParams.bindMethod = swLDAPBindType.getValue();
+        globalLDAPParams->bindMethod = swLDAPBindType.getValue();
     }
     if (params.count("security.ldap.bind.saslMechanisms")) {
-        globalLDAPParams.bindSASLMechanisms =
+        globalLDAPParams->bindSASLMechanisms =
             params["security.ldap.bind.saslMechanisms"].as<std::string>();
     }
     if (params.count("security.ldap.timeoutMS")) {
-        globalLDAPParams.connectionTimeout =
+        globalLDAPParams->connectionTimeout =
             Milliseconds(params["security.ldap.timeoutMS"].as<long>());
     }
     if (params.count("security.ldap.bind.queryUser")) {
-        globalLDAPParams.bindUser = params["security.ldap.bind.queryUser"].as<std::string>();
+        globalLDAPParams->bindUser = params["security.ldap.bind.queryUser"].as<std::string>();
     }
     if (params.count("security.ldap.bind.queryPassword")) {
-        globalLDAPParams.bindPassword =
+        globalLDAPParams->bindPassword =
             SecureString(params["security.ldap.bind.queryPassword"].as<std::string>().c_str());
     }
     if (params.count("security.ldap.authz.queryTemplate")) {
-        globalLDAPParams.userAcquisitionQueryTemplate =
+        globalLDAPParams->userAcquisitionQueryTemplate =
             params["security.ldap.authz.queryTemplate"].as<std::string>();
     }
     if (params.count("security.ldap.userToDNMapping")) {
-        globalLDAPParams.userToDNMapping =
+        globalLDAPParams->userToDNMapping =
             params["security.ldap.userToDNMapping"].as<std::string>();
     }
     return Status::OK();
@@ -137,6 +137,13 @@ MONGO_STARTUP_OPTIONS_STORE(LDAPOptions)(InitializerContext* context) {
 
 }  // namespace
 
-LDAPOptions globalLDAPParams;
+MONGO_INITIALIZER_GENERAL(LDAPOptions,
+                          ("SecureAllocator"),
+                          ("LDAPOptions_Store"))(InitializerContext* context) {
+    globalLDAPParams = new LDAPOptions();
+    return Status::OK();
+}
+
+LDAPOptions* globalLDAPParams;
 
 }  // namespace mongo

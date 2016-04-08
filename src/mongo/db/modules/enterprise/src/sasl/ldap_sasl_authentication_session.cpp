@@ -84,7 +84,7 @@ Status LDAPSaslAuthenticationSession::step(StringData inputData, std::string* ou
                               << "Incorrectly formatted PLAIN client message, empty username");
         }
         pwd = SecureString(input.substr(secondNull + 1).c_str());
-        if (pwd.empty()) {
+        if (pwd->empty()) {
             return Status(ErrorCodes::AuthenticationFailed,
                           str::stream()
                               << "Incorrectly formatted PLAIN client message, empty password");
@@ -94,14 +94,14 @@ Status LDAPSaslAuthenticationSession::step(StringData inputData, std::string* ou
                       mongoutils::str::stream() << "Incorrectly formatted PLAIN client message");
     }
 
-    if (!globalLDAPParams.userToDNMapping.empty()) {
+    if (!globalLDAPParams->userToDNMapping.empty()) {
         BSONObj expression;
         try {
-            expression = fromjson(globalLDAPParams.userToDNMapping);
+            expression = fromjson(globalLDAPParams->userToDNMapping);
         } catch (DBException& e) {
             return Status(ErrorCodes::AuthenticationFailed,
                           str::stream() << "Failed to create json representation of "
-                                        << globalLDAPParams.userToDNMapping);
+                                        << globalLDAPParams->userToDNMapping);
         }
         auto swMapper = InternalToLDAPUserNameMapper::createNameMapper(std::move(expression));
         massertStatusOK(swMapper.getStatus());
@@ -113,7 +113,7 @@ Status LDAPSaslAuthenticationSession::step(StringData inputData, std::string* ou
     }
 
     LDAPBindOptions bindOptions(
-        _user, pwd, globalLDAPParams.bindMethod, globalLDAPParams.bindSASLMechanisms);
+        _user, pwd, globalLDAPParams->bindMethod, globalLDAPParams->bindSASLMechanisms);
 
     // A SASL PLAIN conversation only has one step
     _done = true;

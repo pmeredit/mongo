@@ -14,6 +14,14 @@
         }
         assert.neq(null, md, "Unable to start mongodb with " + cipherMode);
 
+        // verify that we can make a lot of databases
+        for (var i = 0; i < 100; i++) {
+            var testdb = md.getDB("test_" + i);
+            testdb["foo"].insert({
+                x: 0,
+            });
+        }
+
         var testdb = md.getDB("test");
         for (var i = 0; i < 1000; i++) {
             testdb["foo"].insert({

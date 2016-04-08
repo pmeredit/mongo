@@ -59,8 +59,8 @@ int saslInteract(LDAP* session, unsigned flags, void* defaults, void* interact) 
                     request->len = bindOptions->bindDN.size();
                     break;
                 case SASL_CB_PASS:
-                    request->result = bindOptions->password.c_str();
-                    request->len = bindOptions->password.size();
+                    request->result = bindOptions->password->c_str();
+                    request->len = bindOptions->password->size();
                     break;
                 default:
                     break;
@@ -105,11 +105,11 @@ int openLDAPBindFunction(
         } else if (bindOptions->authenticationChoice == LDAPBindType::kSimple) {
             // Unfortunately, libldap wants a non-const password. Copy the password to remove risk
             // of it scribbling over our memory.
-            SecureVector<char> passwordCopy(bindOptions->password.begin(),
-                                            bindOptions->password.end());
+            SecureVector<char> passwordCopy(bindOptions->password->begin(),
+                                            bindOptions->password->end());
             berval passwd;
-            passwd.bv_val = passwordCopy.data();
-            passwd.bv_len = passwordCopy.size();
+            passwd.bv_val = passwordCopy->data();
+            passwd.bv_len = passwordCopy->size();
 
             ret = ldap_sasl_bind_s(session,
                                    bindOptions->bindDN.c_str(),
