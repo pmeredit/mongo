@@ -65,22 +65,7 @@ public:
             "in_memory=true,log=(enabled=false),"
             "file_manager=(close_idle_time=0),checkpoint=(wait=0,log_size=0)";
 
-        size_t cacheSizeGB = inMemoryGlobalOptions.inMemorySizeGB;
-
-        if (cacheSizeGB == 0) {
-            // Since the user didn't provide a cache size, choose a reasonable default value.
-            // We want to reserve 1GB for the system and binaries and we want to leave some
-            // headroom to deal with fragmentation and other overhead.
-            ProcessInfo pi;
-            double memSizeMB = pi.getMemSizeMB();
-            if (memSizeMB > 0) {
-                double cacheMB = (memSizeMB - 1024) * 0.6;
-                cacheSizeGB = static_cast<size_t>(cacheMB / 1024);
-                if (cacheSizeGB < 1)
-                    cacheSizeGB = 1;
-            }
-        }
-
+        size_t cacheMB = WiredTigerUtil::getCacheSizeMB(inMemoryGlobalOptions.inMemorySizeGB);
         const bool durable = false;
         const bool ephemeral = true;
         const bool repair = false;
@@ -88,7 +73,7 @@ public:
         WiredTigerKVEngine* kv = new WiredTigerKVEngine(getCanonicalName().toString(),
                                                         dbpath.string(),
                                                         engineConfig,
-                                                        cacheSizeGB,
+                                                        cacheMB,
                                                         durable,
                                                         ephemeral,
                                                         repair,
