@@ -59,6 +59,9 @@ public:
     virtual bool isWriteCommandForConfigServer() const {
         return false;
     }
+    virtual bool supportsWriteConcern(const BSONObj& cmd) const override {
+        return false;
+    }
     virtual bool slaveOk() const {
         return true;
     }
