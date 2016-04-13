@@ -46,10 +46,9 @@ Status InMemoryGlobalOptions::add(moe::OptionSection* options) {
     // inMemory storage engine options
     inMemoryOptions.addOptionChaining("storage.inMemory.engineConfig.inMemorySizeGB",
                                       "inMemorySizeGB",
-                                      moe::Int,
+                                      moe::Double,
                                       "maximum amount of memory to allocate for InMemory data; "
-                                      "defaults to 60% of physical RAM less 1GB")
-        .validRange(1, 10000);
+                                      "defaults to 50% of physical RAM less 1GB");
     inMemoryOptions.addOptionChaining(
                         "storage.inMemory.engineConfig.statisticsLogDelaySecs",
                         "inMemoryStatisticsLogDelaySecs",
@@ -85,7 +84,7 @@ Status InMemoryGlobalOptions::store(const moe::Environment& params,
     // InMemory storage engine options
     if (params.count("storage.inMemory.engineConfig.inMemorySizeGB")) {
         inMemoryGlobalOptions.inMemorySizeGB =
-            params["storage.inMemory.engineConfig.inMemorySizeGB"].as<int>();
+            params["storage.inMemory.engineConfig.inMemorySizeGB"].as<double>();
     }
     if (params.count("storage.inMemory.engineConfig.statisticsLogDelaySecs")) {
         inMemoryGlobalOptions.statisticsLogDelaySecs =

@@ -42,7 +42,7 @@ public:
     Status add(moe::OptionSection* options);
     Status store(const moe::Environment& params, const std::vector<std::string>& args);
 
-    size_t inMemorySizeGB;
+    double inMemorySizeGB;
     size_t statisticsLogDelaySecs;
     std::string engineConfig;
 
