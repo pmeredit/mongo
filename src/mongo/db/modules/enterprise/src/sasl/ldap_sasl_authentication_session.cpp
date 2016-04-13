@@ -95,9 +95,9 @@ Status LDAPSaslAuthenticationSession::step(StringData inputData, std::string* ou
     }
 
     if (!globalLDAPParams.userToDNMapping.empty()) {
-        BSONArray expression;
+        BSONObj expression;
         try {
-            expression = BSONArray(fromjson(globalLDAPParams.userToDNMapping));
+            expression = fromjson(globalLDAPParams.userToDNMapping);
         } catch (DBException& e) {
             return Status(ErrorCodes::AuthenticationFailed,
                           str::stream() << "Failed to create json representation of "

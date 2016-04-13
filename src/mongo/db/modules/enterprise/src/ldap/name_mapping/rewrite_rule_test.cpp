@@ -212,6 +212,19 @@ TEST_F(NameMapperTest, parseRule) {
     ASSERT_EQ("sajack@admin", map1.getValue());
 }
 
+TEST_F(NameMapperTest, parseRuleWithSingleDocument) {
+    auto engineResult(
+        InternalToLDAPUserNameMapper::createNameMapper(BSON("match"
+                                                            << "cn=(.+)," + kEngineeringDN
+                                                            << "substitution"
+                                                            << "{0}@admin")));
+    ASSERT_OK(engineResult.getStatus());
+    InternalToLDAPUserNameMapper engine{std::move(engineResult.getValue())};
+    auto map1 = engine.transform(&txn, "cn=sajack," + kEngineeringDN);
+    ASSERT_OK(map1);
+    ASSERT_EQ("sajack@admin", map1.getValue());
+}
+
 TEST_F(NameMapperTest, parseRuleWithEmptyMatch) {
     auto engineResult(
         InternalToLDAPUserNameMapper::createNameMapper(BSON_ARRAY(BSON("match"

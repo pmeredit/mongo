@@ -204,9 +204,9 @@ std::unique_ptr<AuthzManagerExternalState> createLDAPAuthzManagerExternalState()
             globalLDAPParams.userAcquisitionQueryTemplate);
     massertStatusOK(swQueryParameters.getStatus());
 
-    BSONArray expression;
+    BSONObj expression;
     try {
-        expression = BSONArray(fromjson(globalLDAPParams.userToDNMapping));
+        expression = fromjson(globalLDAPParams.userToDNMapping);
     } catch (DBException& e) {
         e.addContext(
             "Failed to parse JSON description of the relationship between "

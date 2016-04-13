@@ -62,8 +62,16 @@ StatusWith<std::string> InternalToLDAPUserNameMapper::transform(OperationContext
 }
 
 StatusWith<InternalToLDAPUserNameMapper> InternalToLDAPUserNameMapper::createNameMapper(
-    BSONArray config) {
+    BSONObj config) {
     std::vector<std::unique_ptr<RewriteRule>> transforms;
+
+    if (!config.couldBeArray()) {
+        // If a single object is received, attempt to convert to BSON array.
+        BSONArrayBuilder arr;
+        arr.append(config);
+        config = arr.arr();
+    }
+
     for (const BSONElement& element : config) {
         if (element.type() != BSONType::Object) {
             return Status{ErrorCodes::FailedToParse,

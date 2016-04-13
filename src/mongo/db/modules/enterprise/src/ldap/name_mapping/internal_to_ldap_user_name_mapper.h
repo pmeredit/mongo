@@ -12,7 +12,7 @@
 #include "rewrite_rule.h"
 
 namespace mongo {
-struct BSONArray;
+class BSONObj;
 class LDAPRunnerInterface;
 class OperationContext;
 template <typename T>
@@ -45,10 +45,11 @@ public:
     /**
      * Factory function which generates a new InternalToLDAPUserNameMapper.
      *
-     * This function accepts a BSON configuration array and creates and loads resulting the
-     * transformation rules into a new InternalToLDAPUserNameMapper.
+     * This function accepts a BSON configuration object or array of such objects,
+     * and creates and loads the resulting transformation rules into a new
+     * InternalToLDAPUserNameMapper.
      *
-     * The configuration array contains two different types of documents. The first describes
+     * The configuration objects can be two different types of documents. The first describes
      * a transformation using regular expressions and produces a RegexRewriteRule object in
      * the mapper. This document looks like:
      *
@@ -65,10 +66,10 @@ public:
      *   ldapQuery: <LDAP query>
      * }
      *
-     * @param config The BSON configuration array containing documents describing rules
+     * @param config The BSON configuration containing document(s) describing rules
      * @return An error upon failure, or an InternalToLDAPUserNameMapper on success
      */
-    static StatusWith<InternalToLDAPUserNameMapper> createNameMapper(BSONArray config);
+    static StatusWith<InternalToLDAPUserNameMapper> createNameMapper(BSONObj config);
 
 private:
     explicit InternalToLDAPUserNameMapper(std::vector<std::unique_ptr<RewriteRule>> rules);
