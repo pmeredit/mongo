@@ -46,8 +46,9 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(InitializeGlobalAuditManager, ("CreateAudit
     audit::getGlobalAuditManager()->enabled = auditGlobalParams.enabled;
 
     if (auditGlobalParams.enabled) {
+        CollatorInterface* collator = nullptr;
         StatusWithMatchExpression parseResult = MatchExpressionParser::parse(
-            auditGlobalParams.auditFilter, ExtensionsCallbackDisallowExtensions());
+            auditGlobalParams.auditFilter, ExtensionsCallbackDisallowExtensions(), collator);
         if (!parseResult.isOK()) {
             return Status(ErrorCodes::BadValue, "failed to parse auditFilter");
         }
