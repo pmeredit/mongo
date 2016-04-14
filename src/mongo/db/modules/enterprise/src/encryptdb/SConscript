@@ -1,6 +1,12 @@
 # -*- mode: python -*-
 Import("env")
 Import("wiredtiger")
+Import("get_option")
+
+using_ubsan = False
+sanitizer_list = get_option('sanitize')
+if sanitizer_list:
+    using_ubsan = 'undefined' in sanitizer_list.split(',')
 
 if not wiredtiger:
     env.FatalError("EncryptedStorage requires WiredTiger")
@@ -114,13 +120,14 @@ env.CppUnitTest(target='kmip_request_test',
                     '$BUILD_DIR/mongo/util/net/network',
                 ])
 
-wtEnv.CppUnitTest(target='wiredtiger_encryption_test',
-                source='wiredtiger_encryption_test.cpp',
-                LIBDEPS=[
-                    '$BUILD_DIR/mongo/db/auth/security_file',
-                    '$BUILD_DIR/mongo/db/service_context',
-                    '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_mock',
-                    '$BUILD_DIR/mongo/util/net/network',
-                    'encryptdb',
-                    'symmetric_crypto',
-                ])
+if not using_ubsan:
+    wtEnv.CppUnitTest(target='wiredtiger_encryption_test',
+                    source='wiredtiger_encryption_test.cpp',
+                    LIBDEPS=[
+                        '$BUILD_DIR/mongo/db/auth/security_file',
+                        '$BUILD_DIR/mongo/db/service_context',
+                        '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_mock',
+                        '$BUILD_DIR/mongo/util/net/network',
+                        'encryptdb',
+                        'symmetric_crypto',
+                    ])
