@@ -14,7 +14,6 @@
 #include "mongo/bson/bsontypes.h"
 #include "mongo/db/client.h"
 #include "mongo/db/dbdirectclient.h"
-#include "mongo/db/operation_context_impl.h"
 #include "mongo/util/log.h"
 #include "mongo/util/timer.h"
 #include "mongo/util/time_support.h"
@@ -104,8 +103,8 @@ bool ServerStatusClient::load() {
 
     {
         Timer timer;
-        OperationContextImpl opCtx;
-        DBDirectClient dbClient(&opCtx);
+        const auto opCtx = cc().makeOperationContext();
+        DBDirectClient dbClient(opCtx.get());
         ok = dbClient.runCommand("admin", _serverStatusCmd, response);
         LOG(5) << "serverStatus cmd for " << _sectionName << " took " << timer.micros()
                << " micros";
