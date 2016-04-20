@@ -11,6 +11,7 @@
 #include <ntldap.h>
 #include <rpc.h>
 #include <string>
+#include <type_traits>
 #include <winldap.h>
 #include <winber.h>  // winldap.h must be included before
 // clang-format on
@@ -22,6 +23,7 @@
 #include "mongo/base/status_with.h"
 #include "mongo/base/string_data.h"
 #include "mongo/client/cyrus_sasl_client_session.h"
+#include "mongo/stdx/memory.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
 #include "mongo/util/scopeguard.h"
@@ -32,10 +34,54 @@ namespace mongo {
 namespace {
 const std::wstring kLDAP(L"ldap://");
 const std::wstring kLDAPS(L"ldaps://");
+
+
+/**
+ * This class is used as a template argument to instantiate an LDAPSessionHolder with all the
+ * Windows specific types and functions necessary to open and interact with a session. This
+ * is used to deduplicate code shared between RFC 1823 compliant LDAP APIs.
+ */
+class WindowsLDAPSessionParams {
+public:
+    using SessionType = LDAP;
+    using MessageType = LDAPMessage;
+    using BerElementType = BerElement;
+    using BerValueType = BerValue;
+    using ErrorCodeType = ULONG;
+    using LibraryCharType = wchar_t;
+    using TimeoutType = l_timeval;
+
+    static const auto LDAP_success = LDAP_SUCCESS;
+    static const auto LDAP_OPT_error_code = LDAP_OPT_ERROR_NUMBER;
+    static const auto LDAP_OPT_error_string = LDAP_OPT_ERROR_STRING;
+
+    static constexpr auto ldap_err2string = ::ldap_err2string;
+    static constexpr auto ldap_get_option = ::ldap_get_option;
+    static constexpr auto ldap_msgfree = ::ldap_msgfree;
+    static constexpr auto ldap_memfree = ::ldap_memfree;
+    static constexpr auto ldap_value_free_len = ::ldap_value_free_len;
+    static constexpr auto ldap_count_entries = ::ldap_count_entries;
+    static constexpr auto ldap_first_entry = ::ldap_first_entry;
+    static constexpr auto ldap_get_values_len = ::ldap_get_values_len;
+    static constexpr auto ldap_get_dn = ::ldap_get_dn;
+    static constexpr auto ldap_first_attribute = ::ldap_first_attribute;
+    static constexpr auto ber_free = ::ber_free;
+    static constexpr auto ldap_search_ext_s = ::ldap_search_ext_s;
+
+    static std::string toNativeString(const LibraryCharType* str) {
+        return toUtf8String(str);
+    }
+    static std::wstring toLibraryString(const char* str) {
+        return toWideString(str);
+    }
+};
 }
 
+class WindowsLDAPConnection::WindowsLDAPConnectionPIMPL
+    : public LDAPSessionHolder<WindowsLDAPSessionParams> {};
+
 WindowsLDAPConnection::WindowsLDAPConnection(LDAPConnectionOptions options)
-    : LDAPConnection(std::move(options)) {
+    : LDAPConnection(std::move(options)), _pimpl(stdx::make_unique<WindowsLDAPConnectionPIMPL>()) {
     _timeoutSeconds = durationCount<Seconds>(_options.timeout);
 }
 
@@ -46,77 +92,25 @@ WindowsLDAPConnection::~WindowsLDAPConnection() {
     }
 }
 
-Status WindowsLDAPConnection::_resultCodeToStatus(ULONG statusCode,
-                                                  StringData functionName,
-                                                  StringData failureHint) {
-    if (statusCode == LDAP_SUCCESS) {
-        return Status::OK();
-    }
-
-    WCHAR* errorString;
-    ULONG errorWhileGettingError = ldap_get_option(_session, LDAP_OPT_ERROR_STRING, &errorString);
-    if (errorWhileGettingError != LDAP_SUCCESS || !errorString) {
-        return Status(ErrorCodes::UnknownError,
-                      str::stream() << "Unable to get error string after native LDAP operation <"
-                                    << functionName
-                                    << ">, \"Failed to "
-                                    << failureHint
-                                    << "\". ("
-                                    << errorWhileGettingError
-                                    << "/"
-                                    << toUtf8String(ldap_err2string(errorWhileGettingError))
-                                    << ")");
-    }
-
-    return Status(ErrorCodes::OperationFailed,
-                  str::stream() << "Native LDAP operation <" << functionName << "> \"Failed to "
-                                << failureHint
-                                << "\". ("
-                                << statusCode
-                                << "/"
-                                << toUtf8String(ldap_err2string(statusCode))
-                                << "): "
-                                << toUtf8String(errorString));
-}
-
-Status WindowsLDAPConnection::_resultCodeToStatus(StringData functionName, StringData failureHint) {
-    ULONG error;
-    ULONG errorWhileGettingError = ldap_get_option(_session, LDAP_OPT_ERROR_NUMBER, &error);
-    if (errorWhileGettingError != LDAP_SUCCESS) {
-        return Status(ErrorCodes::UnknownError,
-                      str::stream() << "Unable to get error code after native LDAP operation <"
-                                    << functionName
-                                    << ">. \"Failed to "
-                                    << failureHint
-                                    << "\". ("
-                                    << errorWhileGettingError
-                                    << "/"
-                                    << toUtf8String(ldap_err2string(errorWhileGettingError))
-                                    << ")");
-    }
-
-    return _resultCodeToStatus(error, functionName, failureHint);
-}
-
-
 Status WindowsLDAPConnection::connect() {
     // Allocate the underlying connection object
     std::wstring hostName = toWideString(_options.hostURIs.c_str());
     if (hostName.find(kLDAP) == 0) {
         hostName = hostName.substr(kLDAP.size());
-        _session = ldap_initW(const_cast<wchar_t*>(hostName.c_str()), LDAP_PORT);
+        _pimpl->getSession() = ldap_initW(const_cast<wchar_t*>(hostName.c_str()), LDAP_PORT);
     } else if (hostName.find(kLDAPS) == 0) {
         hostName = hostName.substr(kLDAPS.size());
-        _session = ldap_sslinitW(const_cast<wchar_t*>(hostName.c_str()), LDAP_SSL_PORT, 1);
+        _pimpl->getSession() =
+            ldap_sslinitW(const_cast<wchar_t*>(hostName.c_str()), LDAP_SSL_PORT, 1);
     } else {
         return Status(ErrorCodes::OperationFailed,
                       str::stream() << "Couldn't parse LDAP URL: " << _options.hostURIs);
     }
 
-    if (!_session) {
+    if (!_pimpl->getSession()) {
         Status status =
-            _resultCodeToStatus(hostName.find(kLDAP) == 0 ? "ldap_initW" : "ldap_sslinitW",
-                                "initialize LDAP session to server");
+            _pimpl->resultCodeToStatus(hostName.find(kLDAP) == 0 ? "ldap_initW" : "ldap_sslinitW",
+                                       "initialize LDAP session to server");
         if (!status.isOK()) {
             return status;
         }
@@ -125,15 +119,18 @@ Status WindowsLDAPConnection::connect() {
 
     // Configure the connection object
     const ULONG version = LDAP_VERSION3;
-    if (ldap_set_option(_session, LDAP_OPT_PROTOCOL_VERSION, (void*)&version) != LDAP_SUCCESS) {
+    if (ldap_set_option(_pimpl->getSession(), LDAP_OPT_PROTOCOL_VERSION, (void*)&version) !=
+        LDAP_SUCCESS) {
         return Status(ErrorCodes::OperationFailed, "Failed to upgrade LDAP protocol version");
     }
 
-    if (ldap_set_option(_session, LDAP_OPT_TIMELIMIT, (void*)&_timeoutSeconds) != LDAP_SUCCESS) {
+    if (ldap_set_option(_pimpl->getSession(), LDAP_OPT_TIMELIMIT, (void*)&_timeoutSeconds) !=
+        LDAP_SUCCESS) {
         return Status(ErrorCodes::OperationFailed, "Failed to set LDAP timeout");
     }
 
-    if (ldap_set_option(_session, LDAP_OPT_SEND_TIMEOUT, (void*)&_timeoutSeconds) != LDAP_SUCCESS) {
+    if (ldap_set_option(_pimpl->getSession(), LDAP_OPT_SEND_TIMEOUT, (void*)&_timeoutSeconds) !=
+        LDAP_SUCCESS) {
         return Status(ErrorCodes::OperationFailed, "Failed to set LDAP network timeout");
     }
 
@@ -142,8 +139,8 @@ Status WindowsLDAPConnection::connect() {
     // be able to make that work using LDAP_OPT_REFERRAL_CALLBACK.
 
     // Open the connection
-    auto connectSuccess = ldap_connect(_session, NULL);
-    return _resultCodeToStatus(connectSuccess, "ldap_connect", "connect to LDAP server");
+    auto connectSuccess = ldap_connect(_pimpl->getSession(), NULL);
+    return _pimpl->resultCodeToStatus(connectSuccess, "ldap_connect", "connect to LDAP server");
 }
 
 Status WindowsLDAPConnection::bindAsUser(const LDAPBindOptions& options) {
@@ -178,23 +175,24 @@ Status WindowsLDAPConnection::bindAsUser(const LDAPBindOptions& options) {
         }
 
         result =
-            ldap_bind_sW(_session,
+            ldap_bind_sW(_pimpl->getSession(),
                          const_cast<wchar_t*>(toNativeString(options.bindDN.c_str()).c_str()),
                          const_cast<wchar_t*>(toNativeString(options.password->c_str()).c_str()),
                          LDAP_AUTH_SIMPLE);
 
-        return _resultCodeToStatus(result, "ldap_bind_sW", "to perform simple bind");
+        return _pimpl->resultCodeToStatus(result, "ldap_bind_sW", "to perform simple bind");
     } else if (options.authenticationChoice == LDAPBindType::kSasl &&
                options.saslMechanisms == "DIGEST-MD5") {
         if (options.useLDAPConnectionDefaults) {
-            result = ldap_bind_sW(_session, nullptr, nullptr, LDAP_AUTH_DIGEST);
+            result = ldap_bind_sW(_pimpl->getSession(), nullptr, nullptr, LDAP_AUTH_DIGEST);
 
         } else {
-            result =
-                ldap_bind_sW(_session, nullptr, reinterpret_cast<PWCHAR>(&cred), LDAP_AUTH_DIGEST);
+            result = ldap_bind_sW(
+                _pimpl->getSession(), nullptr, reinterpret_cast<PWCHAR>(&cred), LDAP_AUTH_DIGEST);
         }
 
-        return _resultCodeToStatus(result, "ldap_bind_sW", "to perform DIGEST-MD5 SASL bind");
+        return _pimpl->resultCodeToStatus(
+            result, "ldap_bind_sW", "to perform DIGEST-MD5 SASL bind");
     } else if (options.authenticationChoice == LDAPBindType::kSasl &&
                options.saslMechanisms == "GSSAPI") {
         // Per Microsoft's documentation, this option "Sets or retrieves the preferred SASL binding
@@ -202,19 +200,21 @@ Status WindowsLDAPConnection::bindAsUser(const LDAPBindOptions& options) {
         // it causes LDAP_AUTH_DIGEST to use GSSAPI as well. Also, there doesn't seem to be a way to
         // turn this off after it's been set. This may cause problems with connection pooling.
         TCHAR* newSaslMethod = L"GSSAPI";
-        if (ldap_set_option(_session, LDAP_OPT_SASL_METHOD, (void*)&newSaslMethod) !=
+        if (ldap_set_option(_pimpl->getSession(), LDAP_OPT_SASL_METHOD, (void*)&newSaslMethod) !=
             LDAP_SUCCESS) {
             return Status(ErrorCodes::OperationFailed, "Failed to set SASL method");
         }
 
         if (options.useLDAPConnectionDefaults) {
-            result = ldap_bind_sW(_session, nullptr, nullptr, LDAP_AUTH_NEGOTIATE);
+            result = ldap_bind_sW(_pimpl->getSession(), nullptr, nullptr, LDAP_AUTH_NEGOTIATE);
         } else {
-            result = ldap_bind_sW(
-                _session, nullptr, reinterpret_cast<PWCHAR>(&cred), LDAP_AUTH_NEGOTIATE);
+            result = ldap_bind_sW(_pimpl->getSession(),
+                                  nullptr,
+                                  reinterpret_cast<PWCHAR>(&cred),
+                                  LDAP_AUTH_NEGOTIATE);
         }
 
-        return _resultCodeToStatus(result, "ldap_bind_sW", "to perform GSSAPI SASL bind");
+        return _pimpl->resultCodeToStatus(result, "ldap_bind_sW", "to perform GSSAPI SASL bind");
     }
 
     return Status(ErrorCodes::OperationFailed,
@@ -222,125 +222,16 @@ Status WindowsLDAPConnection::bindAsUser(const LDAPBindOptions& options) {
 }
 
 StatusWith<LDAPEntityCollection> WindowsLDAPConnection::query(LDAPQuery query) {
-    LOG(3) << "Performing native Windows LDAP query: " << query;
-
-    // Convert the attribute vector to a mutable null terminated array of wchar_t* strings by
-    // converting all query attributes to wchar_t, copying them to a vector, then obtaining the
-    // underlying
-    // data buffer through std::vector::data.
-    size_t requestedAttributesSize = query.getAttributes().size();
-    std::vector<wchar_t*> requestedAttributes;
-    const auto requestedAttributesGuard = MakeGuard([&]() {
-        for (wchar_t* attribute : requestedAttributes) {
-            delete[] attribute;
-        }
-    });
-
-    requestedAttributes.reserve(requestedAttributesSize + 1);
-    for (size_t i = 0; i < requestedAttributesSize; ++i) {
-        requestedAttributes.push_back(new wchar_t[query.getAttributes()[i].size() + 1]);
-
-        memcpy(requestedAttributes.back(),
-               toWideString(query.getAttributes()[i].c_str()).c_str(),
-               sizeof(wchar_t) * (query.getAttributes()[i].size() + 1));
-    }
-    requestedAttributes.push_back(nullptr);
-
-    LDAPMessage* result = nullptr;
-    const auto queryResultGuard = MakeGuard([&]() { ldap_msgfree(result); });
     l_timeval timeout{_timeoutSeconds, 0};
-
-    // Note the const_cast here. The function takes consted PWSTR typedefs, which contains a
-    // pointer. A consted typedef of a pointer makes the pointer constant, not what it points to.
-    // This function thus takes a constant pointer to a mutable region of string memory.
-    // This is fine, because the string returned by toWideString is a temporary.
-    int err = ldap_search_ext_s(
-        _session,
-        query.getBaseDN().empty() ? NULL : const_cast<const PWSTR>(
-                                               toWideString(query.getBaseDN().c_str()).c_str()),
-        mapScopeToLDAP(query.getScope()),
-        query.getFilter().empty() ? NULL : const_cast<const PWSTR>(
-                                               toWideString(query.getFilter().c_str()).c_str()),
-        requestedAttributes.data(),
-        0,
-        nullptr,
-        nullptr,
-        &timeout,
-        0,
-        &result);
-
-    if (err != LDAP_SUCCESS) {
-        std::string queryError = std::string("to perform LDAP query ") + query.toString();
-        return _resultCodeToStatus(err, "ldap_search_ext_s", queryError);
-    }
-
-    // Process the data recieved by the query, and put into data structure for return
-    // Parse each entity from the response
-    LDAPMessage* entry = ldap_first_entry(_session, result);
-    if (!entry) {
-        Status status = _resultCodeToStatus("ldap_first_entry", "getting LDAP entry from results");
-        if (!status.isOK()) {
-            return status;
-        }
-        warning() << "LDAP query succeeded, but no results were returned.";
-    }
-
-    LDAPEntityCollection results;
-    while (entry) {
-        wchar_t* entryDN = ldap_get_dn(_session, entry);
-        const auto entryDNGuard = MakeGuard([&]() { ldap_memfree(entryDN); });
-        if (!entryDN) {
-            error() << "Failed to get the DN for a result from the LDAP query.";
-            return _resultCodeToStatus("ldap_get_dn", "getting DN for entry");
-        }
-
-        LOG(3) << "From query result, got an entry with DN: " << toUtf8String(entryDN);
-        LDAPAttributeKeyValuesMap attributeValueMap;
-
-        // For each entity in the response, parse each attribute it contained
-        BerElement* element = nullptr;
-        const auto elementGuard = MakeGuard([&]() { ber_free(element, 0); });
-        wchar_t* attribute = ldap_first_attribute(_session, entry, &element);
-        while (attribute) {
-            const auto attributeGuard = MakeGuard([attribute]() { ldap_memfree(attribute); });
-            LOG(3) << "From entry, got attribute " << toUtf8String(attribute);
-
-            berval** values = ldap_get_values_len(_session, entry, attribute);
-            if (values == nullptr) {
-                error() << "LDAP query succeeeded, but failed to extract values for attribute";
-                return _resultCodeToStatus("ldap_get_values_len", "getting values for attribute");
-            }
-            const auto valuesGuard = MakeGuard([&]() { ldap_value_free_len(values); });
-
-            LDAPAttributeValues valueStore;
-
-            // For each attribute contained by the entity, parse each value it contained.
-            // Attributes in LDAP are multi-valued
-            for (berval** value = values; *value != nullptr; value++) {
-                LDAPAttributeValue strValue((*value)->bv_val, (*value)->bv_len);
-                valueStore.emplace_back(std::move(strValue));
-            }
-
-            attributeValueMap.emplace(
-                LDAPAttributeKey(toUtf8String(std::wstring(attribute).c_str())),
-                std::move(valueStore));
-            attribute = ldap_next_attribute(_session, entry, element);
-        }
-
-        results.emplace(std::piecewise_construct,
-                        std::forward_as_tuple(toUtf8String(entryDN)),
-                        std::forward_as_tuple(attributeValueMap));
-        entry = ldap_next_entry(_session, entry);
-    }
-
-    return results;
+    return _pimpl->query(std::move(query), &timeout);
 }
 
 Status WindowsLDAPConnection::disconnect() {
-    if (!_session) {
+    if (!_pimpl->getSession()) {
         return Status::OK();
     }
 
-    return _resultCodeToStatus(ldap_unbind_s(_session), "ldap_unbind_s", "unbind from LDAP");
+    return _pimpl->resultCodeToStatus(
+        ldap_unbind_s(_pimpl->getSession()), "ldap_unbind_s", "unbind from LDAP");
 }
 }

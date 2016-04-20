@@ -7,8 +7,7 @@
 #include "../ldap_type_aliases.h"
 #include "ldap_connection.h"
 
-struct ldap;
-typedef struct ldap LDAP;
+#include <memory>
 
 namespace mongo {
 
@@ -30,13 +29,9 @@ public:
     virtual Status disconnect() final;
 
 private:
-    Status WindowsLDAPConnection::_resultCodeToStatus(StringData functionName,
-                                                      StringData failureHint);
-    Status WindowsLDAPConnection::_resultCodeToStatus(ULONG statusCode,
-                                                      StringData functionName,
-                                                      StringData failureHint);
+    class WindowsLDAPConnectionPIMPL;
+    std::unique_ptr<WindowsLDAPConnectionPIMPL> _pimpl;
 
-    LDAP* _session;
     unsigned long _timeoutSeconds;
 };
 

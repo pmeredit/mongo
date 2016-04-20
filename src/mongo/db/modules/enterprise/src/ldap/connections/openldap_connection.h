@@ -6,7 +6,7 @@
 
 #include "ldap_connection.h"
 
-struct ldap;
+#include <memory>
 
 namespace mongo {
 
@@ -23,14 +23,8 @@ public:
     Status disconnect() final;
 
 private:
-    /**
-     * Convert OpenLDAP's internal errno, acquired through ldap_get_option, to a Status.
-     * This should only be called if we believe that an error has occured. It will never return
-     * Status::OK(). The functionName should be provided to improve the error message.
-     */
-    Status _resultCodeToStatus(StringData functionName, StringData failureHint);
-
-    struct ldap* _session;  // OpenLDAP's state
+    class OpenLDAPConnectionPIMPL;
+    std::unique_ptr<OpenLDAPConnectionPIMPL> _pimpl;  // OpenLDAP's state
 
     struct timeval _timeout;  // Interval of time after which OpenLDAP's connections fail
 };
