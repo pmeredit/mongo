@@ -863,7 +863,7 @@ metricsOperation OBJECT IDENTIFIER ::= { metrics 3 }
 metricsOperationFastmod OBJECT-TYPE
    SYNTAX      Counter64
    MAX-ACCESS  read-only
-   STATUS      current
+   STATUS      deprecated
    DESCRIPTION
       "number of update operations that neither cause documents to grow nor require updates to the index"
    ::= { metricsOperation 1 }

@@ -534,7 +534,8 @@ public:
                                              "1,15,3,1",
                                              ServerStatusClient::METRICS,
                                              "metrics.operation.fastmod",
-                                             VT_CNT64));
+                                             VT_CNT64,
+                                             DEPRECATED));  // Deprecated for 3.4
         v.push_back(new ServerStatusCallback("metricsOperationIdhack",
                                              "1,15,3,2",
                                              ServerStatusClient::METRICS,
