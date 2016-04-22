@@ -156,12 +156,13 @@ Status OpenLDAPConnection::connect() {
     int err;
     {
         stdx::lock_guard<stdx::mutex> lock(libldapGlobalMutex);
-        err = ldap_initialize(&_session, _options.hostURI.c_str());
+        err = ldap_initialize(&_session, _options.hostURIs.c_str());
     }
 
     if (err != LDAP_SUCCESS) {
         return Status(ErrorCodes::OperationFailed,
-                      str::stream() << "Failed to initialize ldap session to \"" << _options.hostURI
+                      str::stream() << "Failed to initialize ldap session to \""
+                                    << _options.hostURIs
                                     << "\". Received LDAP error: " << ldap_err2string(err));
     }
 
@@ -172,6 +173,24 @@ Status OpenLDAPConnection::connect() {
         return Status(ErrorCodes::OperationFailed,
                       str::stream()
                           << "Attempted to upgrade LDAP connection to use LDAPv3. Received error: "
+                          << ldap_err2string(ret));
+    }
+
+    // Set LDAP operation timeout
+    ret = ldap_set_option(_session, LDAP_OPT_TIMELIMIT, &_timeout);
+    if (ret != LDAP_SUCCESS) {
+        return Status(ErrorCodes::OperationFailed,
+                      str::stream()
+                          << "Attempted to set the LDAP operation timeout. Received error: "
+                          << ldap_err2string(ret));
+    }
+
+    // Set network connection timeout
+    ret = ldap_set_option(_session, LDAP_OPT_NETWORK_TIMEOUT, &_timeout);
+    if (ret != LDAP_SUCCESS) {
+        return Status(ErrorCodes::OperationFailed,
+                      str::stream()
+                          << "Attempted to set the LDAP server network timeout. Received error: "
                           << ldap_err2string(ret));
     }
 

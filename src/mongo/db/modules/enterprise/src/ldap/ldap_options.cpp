@@ -32,10 +32,11 @@ namespace moe = mongo::optionenvironment;
 Status addLDAPOptions(moe::OptionSection* options) {
     moe::OptionSection ldap_options("LDAP Module Options");
 
-    ldap_options.addOptionChaining("security.ldap.server",
-                                   "ldapServer",
+    ldap_options.addOptionChaining("security.ldap.servers",
+                                   "ldapServers",
                                    moe::String,
-                                   "Location of LDAP server on format (ldap|ldaps)://host:port");
+                                   "Comma separated list of LDAP servers on format "
+                                   " (ldap|ldaps)://host:port");
 
 #ifdef _WIN32
     ldap_options.addOptionChaining(
@@ -100,8 +101,12 @@ Status addLDAPOptions(moe::OptionSection* options) {
 }
 
 Status storeLDAPOptions(const moe::Environment& params, const std::vector<std::string>& args) {
-    if (params.count("security.ldap.server")) {
-        globalLDAPParams->serverURI = params["security.ldap.server"].as<std::string>();
+    if (params.count("security.ldap.servers")) {
+        globalLDAPParams->serverURIs = params["security.ldap.servers"].as<std::string>();
+
+        // Replace ',' with ' ' to support Windows native LDAP and OpenLDAP syntax.
+        std::replace(
+            globalLDAPParams->serverURIs.begin(), globalLDAPParams->serverURIs.end(), ',', ' ');
     }
     if (params.count("security.ldap.bind.useOSDefaults")) {
         globalLDAPParams->useOSDefaults = params["security.ldap.bind.useOSDefaults"].as<bool>();

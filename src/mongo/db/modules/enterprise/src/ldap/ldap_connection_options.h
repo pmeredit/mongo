@@ -71,10 +71,10 @@ struct LDAPBindOptions {
  * Contains all parameters, beyond those defining a query, needed for an LDAP session.
  */
 struct LDAPConnectionOptions {
-    LDAPConnectionOptions(Milliseconds timeout, std::string hostURI)
-        : timeout(std::move(timeout)), hostURI(std::move(hostURI)) {}
+    LDAPConnectionOptions(Milliseconds timeout, std::string hostURIs)
+        : timeout(std::move(timeout)), hostURIs(std::move(hostURIs)) {}
 
     Milliseconds timeout;  // How long to wait before timing out
-    std::string hostURI;   // URI of the server: (ldap|ldaps)://(server)(:port)
+    std::string hostURIs;  // List of server URIs: (ldap|ldaps)://(server)(:port)
 };
 }  // namespace mongo

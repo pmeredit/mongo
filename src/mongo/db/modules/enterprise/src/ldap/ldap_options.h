@@ -18,7 +18,7 @@ enum class LDAPBindType : std::uint8_t;
 class LDAPOptions {
 public:
     Milliseconds connectionTimeout;            // Duration after which connections shall fail
-    std::string serverURI;                     // URI host component, (ldap|ldaps)://server(:port)
+    std::string serverURIs;                    // URI host component, (ldap|ldaps)://server(:port)
     std::string userAcquisitionQueryTemplate;  // LDAP query, with `{USER}' substitution token
     bool useOSDefaults;              // Use the OS's default user when binding to remote LDAP server
     LDAPBindType bindMethod;         // Bind method to use to authenticate, simple or SASL

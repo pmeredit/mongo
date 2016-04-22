@@ -87,7 +87,7 @@ Status WindowsLDAPConnection::_resultCodeToStatus(StringData functionName, Strin
 
 Status WindowsLDAPConnection::connect() {
     // Allocate the underlying connection object
-    std::wstring hostName = toWideString(_options.hostURI.c_str());
+    std::wstring hostName = toWideString(_options.hostURIs.c_str());
     if (hostName.find(kLDAP) == 0) {
         hostName = hostName.substr(kLDAP.size());
         _session = ldap_initW(const_cast<wchar_t*>(hostName.c_str()), LDAP_PORT);
@@ -96,7 +96,7 @@ Status WindowsLDAPConnection::connect() {
         _session = ldap_sslinitW(const_cast<wchar_t*>(hostName.c_str()), LDAP_SSL_PORT, 1);
     } else {
         return Status(ErrorCodes::OperationFailed,
-                      str::stream() << "Couldn't parse LDAP URL: " << _options.hostURI);
+                      str::stream() << "Couldn't parse LDAP URL: " << _options.hostURIs);
     }
 
     if (!_session) {
@@ -117,6 +117,10 @@ Status WindowsLDAPConnection::connect() {
 
     if (ldap_set_option(_session, LDAP_OPT_TIMELIMIT, (void*)&_timeoutSeconds) != LDAP_SUCCESS) {
         return Status(ErrorCodes::OperationFailed, "Failed to set LDAP timeout");
+    }
+
+    if (ldap_set_option(_session, LDAP_OPT_SEND_TIMEOUT, (void*)&_timeoutSeconds) != LDAP_SUCCESS) {
+        return Status(ErrorCodes::OperationFailed, "Failed to set LDAP network timeout");
     }
 
     // TODO: Microsoft doesn't support LDAP_OPT_REBIND_FN, which
