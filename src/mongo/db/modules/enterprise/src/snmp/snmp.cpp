@@ -540,7 +540,8 @@ public:
                                              "1,15,3,2",
                                              ServerStatusClient::METRICS,
                                              "metrics.operation.idhack",
-                                             VT_CNT64));
+                                             VT_CNT64,
+                                             DEPRECATED));
         v.push_back(new ServerStatusCallback("metricsOperationScanAndOrder",
                                              "1,15,3,3",
                                              ServerStatusClient::METRICS,

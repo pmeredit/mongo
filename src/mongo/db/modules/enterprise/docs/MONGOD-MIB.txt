@@ -871,7 +871,7 @@ metricsOperationFastmod OBJECT-TYPE
 metricsOperationIdhack OBJECT-TYPE
    SYNTAX      Counter64
    MAX-ACCESS  read-only
-   STATUS      current
+   STATUS      deprecated
    DESCRIPTION
       "number of queries that contain the _id field"
    ::= { metricsOperation 2 }
