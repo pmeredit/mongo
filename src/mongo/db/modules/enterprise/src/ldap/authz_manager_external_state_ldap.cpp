@@ -77,7 +77,7 @@ Status AuthzManagerExternalStateLDAP::initialize(OperationContext* txn) {
 Status AuthzManagerExternalStateLDAP::getUserDescription(OperationContext* txn,
                                                          const UserName& userName,
                                                          BSONObj* result) {
-    if (userName.getDB() != "$external") {
+    if (userName.getDB() != "$external" || shouldUseRolesFromConnection(txn, userName)) {
         return _wrappedExternalState->getUserDescription(txn, userName, result);
     }
 
