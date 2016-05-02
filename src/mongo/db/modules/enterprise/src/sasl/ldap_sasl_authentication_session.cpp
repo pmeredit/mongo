@@ -94,6 +94,7 @@ Status LDAPSaslAuthenticationSession::step(StringData inputData, std::string* ou
                       mongoutils::str::stream() << "Incorrectly formatted PLAIN client message");
     }
 
+    std::string userName = _user;
     if (!globalLDAPParams->userToDNMapping.empty()) {
         BSONObj expression;
         try {
@@ -109,11 +110,11 @@ Status LDAPSaslAuthenticationSession::step(StringData inputData, std::string* ou
         if (!swUser.getStatus().isOK()) {
             return swUser.getStatus();
         }
-        _user = swUser.getValue();
+        userName = std::move(swUser.getValue());
     }
 
     LDAPBindOptions bindOptions(
-        _user, pwd, globalLDAPParams->bindMethod, globalLDAPParams->bindSASLMechanisms, false);
+        userName, pwd, globalLDAPParams->bindMethod, globalLDAPParams->bindSASLMechanisms, false);
 
     // A SASL PLAIN conversation only has one step
     _done = true;
