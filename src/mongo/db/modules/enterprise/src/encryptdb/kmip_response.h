@@ -29,14 +29,8 @@ public:
      */
     static StatusWith<KMIPResponse> create(const char* responseMessage, size_t len);
 
-#if defined(_MSC_VER) && _MSC_VER < 1900
-    KMIPResponse(KMIPResponse&&);
-    KMIPResponse& operator=(KMIPResponse&&);
-#else
     KMIPResponse(KMIPResponse&&) = default;
     KMIPResponse& operator=(KMIPResponse&&) = default;
-#endif
-
     /**
      * Gets the protocol version for the parsed response.
      */

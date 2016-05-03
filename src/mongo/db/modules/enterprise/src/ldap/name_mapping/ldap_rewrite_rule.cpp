@@ -34,22 +34,8 @@ StatusWith<LDAPRewriteRule> LDAPRewriteRule::create(const std::string& strMatch,
         std::move(match), std::move(swQueryParameters.getValue()), std::move(stringRepresentation)};
 }
 
-#if defined(_WIN32) && _MSC_VER < 1900
-LDAPRewriteRule::LDAPRewriteRule(LDAPRewriteRule&& rr)
-    : _match(std::move(rr._match)),
-      _queryConfig(std::move(rr._queryConfig)),
-      _stringRepresentation(std::move(rr._stringRepresentation)) {}
-
-LDAPRewriteRule& LDAPRewriteRule::operator=(LDAPRewriteRule&& rr) {
-    _match = std::move(rr._match);
-    _queryConfig = std::move(rr._queryConfig);
-    _stringRepresentation = std::move(rr._stringRepresentation);
-    return *this;
-}
-#else
 LDAPRewriteRule::LDAPRewriteRule(LDAPRewriteRule&& rr) = default;
 LDAPRewriteRule& LDAPRewriteRule::operator=(LDAPRewriteRule&& rr) = default;
-#endif
 
 LDAPRewriteRule::LDAPRewriteRule(pcrecpp::RE match,
                                  ComponentSubstitutionLDAPQueryConfig queryParameters,

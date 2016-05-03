@@ -24,22 +24,10 @@ InternalToLDAPUserNameMapper::InternalToLDAPUserNameMapper(
     std::vector<std::unique_ptr<RewriteRule>> rules)
     : _transformations(std::move(rules)) {}
 
-#if defined(_WIN32) && _MSC_VER < 1900
-InternalToLDAPUserNameMapper::InternalToLDAPUserNameMapper(InternalToLDAPUserNameMapper&& other)
-    : _transformations(std::move(other._transformations)) {}
-
-InternalToLDAPUserNameMapper& InternalToLDAPUserNameMapper::operator=(
-    InternalToLDAPUserNameMapper&& other) {
-    _transformations = std::move(other._transformations);
-    return *this;
-}
-#else
 InternalToLDAPUserNameMapper::InternalToLDAPUserNameMapper(InternalToLDAPUserNameMapper&& other) =
     default;
 InternalToLDAPUserNameMapper& InternalToLDAPUserNameMapper::operator=(
     InternalToLDAPUserNameMapper&& other) = default;
-#endif
-
 
 StatusWith<std::string> InternalToLDAPUserNameMapper::transform(OperationContext* txn,
                                                                 StringData input) const {

@@ -53,19 +53,6 @@ private:
     // So, LDAPQueryConfig must be created, then moved onto the heap. LDAPQuery can be
     // constructed with a reference to the heap object and placed into the Entry.
     struct MockQueryEntry {
-#if defined(_WIN32) && _MSC_VER < 1900
-        MockQueryEntry(LDAPQuery q,
-                       std::unique_ptr<LDAPQueryConfig> p,
-                       StatusWith<LDAPEntityCollection> r)
-            : query(std::move(q)), parameters(std::move(p)), results(std::move(r)) {}
-
-        MockQueryEntry(MockQueryEntry&& rr)
-            : query(std::move(rr.query)),
-              parameters(std::move(rr.parameters)),
-              results(std::move(rr.results)) {}
-
-        MockQueryEntry& operator=(MockQueryEntry&& rr) = delete;
-#endif
         LDAPQuery query;
         std::unique_ptr<LDAPQueryConfig> parameters;
         StatusWith<LDAPEntityCollection> results;

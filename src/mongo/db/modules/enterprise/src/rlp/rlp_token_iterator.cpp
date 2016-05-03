@@ -15,16 +15,6 @@ RlpTokenIterator::RlpTokenIterator(RlpEnvironment* rlpEnvironment)
 RlpTokenIterator::RlpTokenIterator(RlpEnvironment* rlpEnvironment, BT_RLP_TokenIteratorC* iterator)
     : _iterator(iterator, RlpIteratorDeleteContext(rlpEnvironment)) {}
 
-#if defined(_MSC_VER) && _MSC_VER < 1900
-RlpTokenIterator::RlpTokenIterator(RlpTokenIterator&& other)
-    : _iterator(std::move(other._iterator)) {}
-
-RlpTokenIterator& RlpTokenIterator::operator=(RlpTokenIterator&& other) {
-    _iterator = std::move(other._iterator);
-    return *this;
-}
-#endif
-
 void RlpTokenIterator::reset(RlpTokenIterator&& other) {
     _iterator = std::move(other._iterator);
 }

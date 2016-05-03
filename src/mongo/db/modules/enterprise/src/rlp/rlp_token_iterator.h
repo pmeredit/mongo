@@ -30,15 +30,8 @@ public:
     RlpTokenIterator(RlpEnvironment* rlpEnvironment);
     RlpTokenIterator(RlpEnvironment* rlpEnvironment, BT_RLP_TokenIteratorC* iterator);
 
-#if defined(_MSC_VER) && _MSC_VER < 1900
-    RlpTokenIterator(RlpTokenIterator&& other);
-
-    RlpTokenIterator& operator=(RlpTokenIterator&& other);
-#else
     RlpTokenIterator(RlpTokenIterator&&) = default;
-
     RlpTokenIterator& operator=(RlpTokenIterator&&) = default;
-#endif
 
     void reset(RlpTokenIterator&& other);
     bool next();

@@ -32,23 +32,8 @@ StatusWith<RegexRewriteRule> RegexRewriteRule::create(const std::string& strMatc
         std::move(match), std::move(substitution), std::move(stringRepresentation)};
 }
 
-#if defined(_WIN32) && _MSC_VER < 1900
-RegexRewriteRule::RegexRewriteRule(RegexRewriteRule&& rr)
-    : _match(std::move(rr._match)),
-      _substitution(std::move(rr._substitution)),
-      _stringRepresentation(std::move(rr._stringRepresentation)) {}
-
-RegexRewriteRule& RegexRewriteRule::operator=(RegexRewriteRule&& rr) {
-    _match = std::move(rr._match);
-    _substitution = std::move(rr._substitution);
-    _stringRepresentation = std::move(rr._stringRepresentation);
-    return *this;
-}
-#else
 RegexRewriteRule::RegexRewriteRule(RegexRewriteRule&& rr) = default;
 RegexRewriteRule& RegexRewriteRule::operator=(RegexRewriteRule&& rr) = default;
-#endif
-
 
 RegexRewriteRule::RegexRewriteRule(pcrecpp::RE match,
                                    std::string substitution,
