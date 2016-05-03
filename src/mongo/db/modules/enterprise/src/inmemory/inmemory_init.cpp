@@ -70,14 +70,16 @@ public:
         const bool ephemeral = true;
         const bool repair = false;
         const bool readOnly = false;
-        WiredTigerKVEngine* kv = new WiredTigerKVEngine(getCanonicalName().toString(),
-                                                        dbpath.string(),
-                                                        engineConfig,
-                                                        cacheMB,
-                                                        durable,
-                                                        ephemeral,
-                                                        repair,
-                                                        readOnly);
+        WiredTigerKVEngine* kv =
+            new WiredTigerKVEngine(getCanonicalName().toString(),
+                                   dbpath.string(),
+                                   getGlobalServiceContext()->getFastClockSource(),
+                                   engineConfig,
+                                   cacheMB,
+                                   durable,
+                                   ephemeral,
+                                   repair,
+                                   readOnly);
         kv->setRecordStoreExtraOptions(inMemoryGlobalOptions.collectionConfig);
         kv->setSortedDataInterfaceExtraOptions(inMemoryGlobalOptions.indexConfig);
         // Intentionally leaked.
