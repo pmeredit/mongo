@@ -227,4 +227,6 @@ mongodecrypt = env.Program(
     ],
 )
 
+env.Alias("all", mongodecrypt)
+
 env.Install("#/", mongodecrypt)

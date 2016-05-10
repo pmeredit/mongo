@@ -5,6 +5,7 @@
 #pragma once
 
 #include <bt_rlp_c.h>
+#include <memory>
 #include <unordered_map>
 
 #include "mongo/base/disallow_copying.h"
