@@ -26,12 +26,15 @@
  *    it in the license file.
  */
 
+#include "mongo/platform/basic.h"
+
 #include "mongo/util/options_parser/startup_option_init.h"
 
 #include <iostream>
 
 #include "inmemory_global_options.h"
 
+#include "mongo/util/exit_code.h"
 #include "mongo/util/options_parser/startup_options.h"
 
 namespace mongo {

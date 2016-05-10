@@ -68,7 +68,7 @@ void LDAPUserCacheInvalidator::run() {
         Date_t wakeupTime;
         do {
             stdx::unique_lock<stdx::mutex> lock(invalidationIntervalMutex);
-            wakeupTime = start + Seconds(ldapUserCacheInvalidationInterval);
+            wakeupTime = start + Seconds(ldapUserCacheInvalidationInterval.load());
             invalidationIntervalChanged.wait_until(lock, wakeupTime.toSystemTimePoint());
         } while (wakeupTime > Date_t::now());
         log() << "Invalidating user cache entries of external users";
