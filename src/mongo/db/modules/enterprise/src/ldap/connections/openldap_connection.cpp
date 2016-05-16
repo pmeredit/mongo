@@ -224,7 +224,7 @@ Status OpenLDAPConnection::connect() {
             char** it = info->ldapai_extensions;
             while (*it != nullptr) {
                 log << *it;
-                if (++it == nullptr) {
+                if (*(++it) == nullptr) {
                     log << "], ";
                 } else {
                     log << ", ";
