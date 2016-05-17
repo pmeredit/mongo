@@ -34,7 +34,7 @@ const std::wstring kLDAPS(L"ldaps://");
 
 WindowsLDAPConnection::WindowsLDAPConnection(LDAPConnectionOptions options)
     : LDAPConnection(std::move(options)) {
-    _timeoutSeconds = stdx::chrono::duration_cast<stdx::chrono::seconds>(_options.timeout).count();
+    _timeoutSeconds = durationCount<Seconds>(_options.timeout);
 }
 
 WindowsLDAPConnection::~WindowsLDAPConnection() {
