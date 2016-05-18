@@ -162,7 +162,7 @@ int saslServerConnGetOpt(void* context,
 
         const StringData option = optionRaw;
 
-        if (option == StringData("auxprop_plugin", StringData::LiteralTag())) {
+        if (option == "auxprop_plugin"_sd) {
             // Returns the name of the plugin to use to look up user properties.  We use a custom
             // one that extracts the information from user privilege documents.
             *outResult = mongodbAuxpropMechanism;
@@ -170,7 +170,7 @@ int saslServerConnGetOpt(void* context,
             return SASL_OK;
         }
 
-        if (option == StringData("canon_user_plugin", StringData::LiteralTag())) {
+        if (option == "canon_user_plugin"_sd) {
             // Returns the name of the plugin to use to canonicalize user names.  We use a custome
             // plugin that only strips leading and trailing whitespace.  The default plugin also
             // appends realm information, which MongoDB does not expect.
@@ -179,7 +179,7 @@ int saslServerConnGetOpt(void* context,
             return SASL_OK;
         }
 
-        if (option == StringData("pwcheck_method", StringData::LiteralTag())) {
+        if (option == "pwcheck_method"_sd) {
             static const char pwcheckAuxprop[] = "auxprop";
             static const char pwcheckAuthd[] = "saslauthd";
             if (session->getAuthenticationDatabase() == "$external") {
@@ -192,7 +192,7 @@ int saslServerConnGetOpt(void* context,
             return SASL_OK;
         }
 
-        if (option == StringData("saslauthd_path", StringData::LiteralTag())) {
+        if (option == "saslauthd_path"_sd) {
             if (saslGlobalParams.authdPath.empty())
                 return SASL_FAIL;
             *outResult = saslGlobalParams.authdPath.c_str();
