@@ -209,8 +209,7 @@ else:
                                        '$BUILD_DIR/mongo/executor/thread_pool_task_executor',
                                        '$BUILD_DIR/mongo/executor/network_interface_thread_pool',
                                        '$BUILD_DIR/mongo/executor/network_interface_factory',
-                                       '$BUILD_DIR/mongo/unittest/unittest',
-                                       '$BUILD_DIR/mongo/unittest/unittest_crutch'])
+                                       '$BUILD_DIR/mongo/unittest/unittest'])
     env.RegisterUnitTest(gssapi_test[0])
 
 mongodecrypt = env.Program(
