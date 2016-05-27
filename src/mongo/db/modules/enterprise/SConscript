@@ -174,13 +174,8 @@ env.CppUnitTest('sasl_authentication_session_test',
                          'mongosaslservercommon',
                          '$BUILD_DIR/mongo/client/clientdriver',
                          '$BUILD_DIR/mongo/client/sasl_client',
-                         '$BUILD_DIR/mongo/base',
-                         '$BUILD_DIR/mongo/util/net/network',
                          '$BUILD_DIR/mongo/db/auth/authcore',
                          '$BUILD_DIR/mongo/db/auth/saslauth',
-                         '$BUILD_DIR/mongo/executor/thread_pool_task_executor',
-                         '$BUILD_DIR/mongo/executor/network_interface_thread_pool',
-                         '$BUILD_DIR/mongo/executor/network_interface_factory',
                          ])
 
 if env.TargetOSIs("windows"):
