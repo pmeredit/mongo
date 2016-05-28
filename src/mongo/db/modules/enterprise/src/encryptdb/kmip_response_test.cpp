@@ -1351,8 +1351,8 @@ TEST(KMIPResponseParsing, KeyNotFound) {
     ASSERT(r.getResultStatus() != kmip::statusSuccess) << "Expected command to fail";
     ASSERT(r.getResultReason() == 0x01 /* Item not found */)
         << "Expected error code 0x01 (Item not found), found: " << r.getResultReason();
-    ASSERT(r.getResultMsg() == "NOT_FOUND")
-        << "Expected result msg \"NOT_FOUND\", found: " << r.getResultMsg();
+    ASSERT(r.getResultMsg() == "NOT_FOUND") << "Expected result msg \"NOT_FOUND\", found: "
+                                            << r.getResultMsg();
 }
 
 TEST(KMIPResponseParsing, NegativeTests) {

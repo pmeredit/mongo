@@ -6,9 +6,9 @@
 
 #include "rewrite_rule.h"
 
-#include "mongo/base/string_data.h"
 #include "mongo/base/status.h"
 #include "mongo/base/status_with.h"
+#include "mongo/base/string_data.h"
 
 namespace mongo {
 StatusWith<std::vector<std::string>> RewriteRule::_extractMatches(const pcrecpp::RE& match,

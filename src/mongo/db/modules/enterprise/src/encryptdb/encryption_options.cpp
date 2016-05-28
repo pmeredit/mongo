@@ -25,15 +25,17 @@ Status addEncryptionOptions(moe::OptionSection* options) {
 
     encryptionOptions.addOptionChaining(
         "security.enableEncryption", "enableEncryption", moe::Switch, "Enable encryption at rest");
-    encryptionOptions.addOptionChaining("security.encryptionKeyFile",
-                                        "encryptionKeyFile",
-                                        moe::String,
-                                        "File path for encryption key file")
+    encryptionOptions
+        .addOptionChaining("security.encryptionKeyFile",
+                           "encryptionKeyFile",
+                           moe::String,
+                           "File path for encryption key file")
         .requires("security.enableEncryption");
-    encryptionOptions.addOptionChaining("security.encryptionCipherMode",
-                                        "encryptionCipherMode",
-                                        moe::String,
-                                        "Cipher mode to use for encryption at rest")
+    encryptionOptions
+        .addOptionChaining("security.encryptionCipherMode",
+                           "encryptionCipherMode",
+                           moe::String,
+                           "Cipher mode to use for encryption at rest")
         .requires("security.enableEncryption")
         .format("(:?AES256-CBC)|(:?AES256-GCM)", "'AES256-CBC' or 'AES256-GCM'");
     encryptionOptions.addOptionChaining("security.kmip.rotateMasterKey",

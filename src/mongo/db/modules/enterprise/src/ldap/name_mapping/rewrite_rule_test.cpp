@@ -129,8 +129,9 @@ TEST_F(LDAPTransformTest, stringSubstitutionFailureReturnsBadStatus) {
 }
 
 TEST_F(LDAPTransformTest, stringSubstitutionToBadLDAPFailsToCompile) {
-    ASSERT_NOT_OK(LDAPRewriteRule::create(kEngineeringRealmRegex,
-                                          kEngineeringDN + "??invalidScope?(uid={0})").getStatus());
+    ASSERT_NOT_OK(
+        LDAPRewriteRule::create(kEngineeringRealmRegex, kEngineeringDN + "??invalidScope?(uid={0})")
+            .getStatus());
 }
 
 TEST_F(LDAPTransformTest, noResults) {
@@ -178,32 +179,42 @@ TEST_F(NameMapperTest, parseBadConfig) {
         InternalToLDAPUserNameMapper::createNameMapper(BSON_ARRAY(BSON("match" << 5))).getStatus());
     ASSERT_NOT_OK(InternalToLDAPUserNameMapper::createNameMapper(
                       BSON_ARRAY(BSON("match"
-                                      << "cn=(.+)" + kEngineeringDN))).getStatus());
-    ASSERT_NOT_OK(InternalToLDAPUserNameMapper::createNameMapper(
-                      BSON_ARRAY(BSON("match"
-                                      << "cn=(.+)" + kEngineeringDN << "wrong"
-                                      << "BadField"))).getStatus());
+                                      << "cn=(.+)" + kEngineeringDN)))
+                      .getStatus());
     ASSERT_NOT_OK(
-        InternalToLDAPUserNameMapper::createNameMapper(
-            BSON_ARRAY(BSON("match"
-                            << "cn=(.+)" + kEngineeringDN << "substitution" << 5))).getStatus());
+        InternalToLDAPUserNameMapper::createNameMapper(BSON_ARRAY(BSON("match"
+                                                                       << "cn=(.+)" + kEngineeringDN
+                                                                       << "wrong"
+                                                                       << "BadField")))
+            .getStatus());
     ASSERT_NOT_OK(
-        InternalToLDAPUserNameMapper::createNameMapper(
-            BSON_ARRAY(BSON("match"
-                            << "cn=(.+)" + kEngineeringDN << "ldapQuery" << 5))).getStatus());
-    ASSERT_NOT_OK(InternalToLDAPUserNameMapper::createNameMapper(
-                      BSON_ARRAY(BSON("match"
-                                      << "cn=(.+)" + kEngineeringDN << "substitution"
-                                      << ""
-                                      << "ldapQuery"
-                                      << ""))).getStatus());
+        InternalToLDAPUserNameMapper::createNameMapper(BSON_ARRAY(BSON("match"
+                                                                       << "cn=(.+)" + kEngineeringDN
+                                                                       << "substitution"
+                                                                       << 5)))
+            .getStatus());
+    ASSERT_NOT_OK(
+        InternalToLDAPUserNameMapper::createNameMapper(BSON_ARRAY(BSON("match"
+                                                                       << "cn=(.+)" + kEngineeringDN
+                                                                       << "ldapQuery"
+                                                                       << 5)))
+            .getStatus());
+    ASSERT_NOT_OK(
+        InternalToLDAPUserNameMapper::createNameMapper(BSON_ARRAY(BSON("match"
+                                                                       << "cn=(.+)" + kEngineeringDN
+                                                                       << "substitution"
+                                                                       << ""
+                                                                       << "ldapQuery"
+                                                                       << "")))
+            .getStatus());
 }
 
 TEST_F(NameMapperTest, parseRule) {
     auto engineResult(
         InternalToLDAPUserNameMapper::createNameMapper(
             BSON_ARRAY(BSON("match"
-                            << "cn=(.+)," + kEngineeringDN << "substitution"
+                            << "cn=(.+)," + kEngineeringDN
+                            << "substitution"
                             << "{0}@admin"))));
     ASSERT_OK(engineResult.getStatus());
     InternalToLDAPUserNameMapper engine{std::move(engineResult.getValue())};
@@ -239,10 +250,10 @@ TEST_F(NameMapperTest, parseRuleWithEmptyMatch) {
 
 TEST_F(NameMapperTest, parseRuleWithEmptySub) {
     auto engineResult(
-        InternalToLDAPUserNameMapper::createNameMapper(
-            BSON_ARRAY(BSON("match"
-                            << "cn=(.+)" + kEngineeringDN << "substitution"
-                            << ""))));
+        InternalToLDAPUserNameMapper::createNameMapper(BSON_ARRAY(BSON("match"
+                                                                       << "cn=(.+)" + kEngineeringDN
+                                                                       << "substitution"
+                                                                       << ""))));
     ASSERT_OK(engineResult.getStatus());
     InternalToLDAPUserNameMapper engine{std::move(engineResult.getValue())};
     auto map1 = engine.transform(&txn, "cn=sajack," + kEngineeringDN);
@@ -254,10 +265,12 @@ TEST_F(NameMapperTest, parseTwoRules) {
     auto engineResult(
         InternalToLDAPUserNameMapper::createNameMapper(
             BSON_ARRAY(BSON("match"
-                            << "cn=(.+)," + kEngineeringDN << "substitution"
+                            << "cn=(.+)," + kEngineeringDN
+                            << "substitution"
                             << "{0}@admin")
                        << BSON("match"
-                               << "cn=(.+)," + kMarketingDN << "substitution"
+                               << "cn=(.+)," + kMarketingDN
+                               << "substitution"
                                << "{0}@production"))));
     ASSERT_TRUE(engineResult.isOK());
     InternalToLDAPUserNameMapper engine{std::move(engineResult.getValue())};

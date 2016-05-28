@@ -201,17 +201,14 @@ Status findAndValidateTokens(const std::string& input,
 
 StatusWith<UserNameSubstitutionLDAPQueryConfig> LDAPQueryConfig::createLDAPQueryConfigWithUserName(
     const std::string& input) {
-    Status tokensValidated = findAndValidateTokens(
-        input,
-        [](StringData token) {
-            const StringData userToken = "USER";
-            if (token != userToken) {
-                return Status(ErrorCodes::FailedToParse,
-                              str::stream() << "Expected token '{USER}', but found '" << token
-                                            << "'");
-            }
-            return Status::OK();
-        });
+    Status tokensValidated = findAndValidateTokens(input, [](StringData token) {
+        const StringData userToken = "USER";
+        if (token != userToken) {
+            return Status(ErrorCodes::FailedToParse,
+                          str::stream() << "Expected token '{USER}', but found '" << token << "'");
+        }
+        return Status::OK();
+    });
     if (!tokensValidated.isOK()) {
         return tokensValidated;
     }
@@ -222,19 +219,17 @@ StatusWith<UserNameSubstitutionLDAPQueryConfig> LDAPQueryConfig::createLDAPQuery
 
 StatusWith<ComponentSubstitutionLDAPQueryConfig>
 LDAPQueryConfig::createLDAPQueryConfigWithComponents(const std::string& input) {
-    Status tokensValidated = findAndValidateTokens(
-        input,
-        [](StringData token) {
-            for (const char& tokenChar : token) {
-                if (!isdigit(tokenChar)) {
-                    return Status(ErrorCodes::FailedToParse,
-                                  str::stream() << "Expected numeric in token, but found '"
-                                                << tokenChar << "'");
-                }
+    Status tokensValidated = findAndValidateTokens(input, [](StringData token) {
+        for (const char& tokenChar : token) {
+            if (!isdigit(tokenChar)) {
+                return Status(ErrorCodes::FailedToParse,
+                              str::stream() << "Expected numeric in token, but found '" << tokenChar
+                                            << "'");
             }
+        }
 
-            return Status::OK();
-        });
+        return Status::OK();
+    });
     if (!tokensValidated.isOK()) {
         return tokensValidated;
     }

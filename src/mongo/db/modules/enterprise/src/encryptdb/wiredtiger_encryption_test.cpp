@@ -89,19 +89,21 @@ public:
         * Create and open some encrypted and not encrypted tables.
         */
         const std::string encryptionConfigPrefix = std::string("encryption=(name=") + _cipherName;
-        ASSERT_OK(wtRCToStatus(session->create(session,
-                                               "table:crypto1",
-                                               (encryptionConfigPrefix +
-                                                ",keyid=abc),"
-                                                "columns=(key0,value0),"
-                                                "key_format=S,value_format=S").c_str())));
-        ASSERT_OK(wtRCToStatus(session->create(session,
-                                               "table:crypto2",
-                                               (encryptionConfigPrefix +
-                                                ",keyid=efg),"
-                                                "columns=(key0,value0),"
-                                                "key_format=S,value_format=S").c_str())));
-        WT_CURSOR* c1, *c2;
+        ASSERT_OK(
+            wtRCToStatus(session->create(session,
+                                         "table:crypto1",
+                                         (encryptionConfigPrefix + ",keyid=abc),"
+                                                                   "columns=(key0,value0),"
+                                                                   "key_format=S,value_format=S")
+                                             .c_str())));
+        ASSERT_OK(
+            wtRCToStatus(session->create(session,
+                                         "table:crypto2",
+                                         (encryptionConfigPrefix + ",keyid=efg),"
+                                                                   "columns=(key0,value0),"
+                                                                   "key_format=S,value_format=S")
+                                             .c_str())));
+        WT_CURSOR *c1, *c2;
         ASSERT_OK(wtRCToStatus(session->open_cursor(session, "table:crypto1", NULL, NULL, &c1)));
         ASSERT_OK(wtRCToStatus(session->open_cursor(session, "table:crypto2", NULL, NULL, &c2)));
 
@@ -135,11 +137,11 @@ public:
         WiredTigerSession* mongoSession = recoveryUnit.getSession(NULL);
         WT_SESSION* session = mongoSession->getSession();
 
-        WT_CURSOR* c1, *c2;
+        WT_CURSOR *c1, *c2;
         ASSERT_OK(wtRCToStatus(session->open_cursor(session, "table:crypto1", NULL, NULL, &c1)));
         ASSERT_OK(wtRCToStatus(session->open_cursor(session, "table:crypto2", NULL, NULL, &c2)));
 
-        char* key1, *val1, *key2, *val2;
+        char *key1, *val1, *key2, *val2;
         int ret;
         while (c1->next(c1) == 0) {
             ret = c2->next(c2);

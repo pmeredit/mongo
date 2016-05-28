@@ -66,8 +66,8 @@ class AuditEventBsonEncoder : public logger::Encoder<AuditEvent> {
     }
 };
 
-MONGO_INITIALIZER_WITH_PREREQUISITES(AuditDomain,
-                                     ("InitializeGlobalAuditManager"))(InitializerContext*) {
+MONGO_INITIALIZER_WITH_PREREQUISITES(AuditDomain, ("InitializeGlobalAuditManager"))
+(InitializerContext*) {
     if (!auditGlobalParams.enabled) {
         return Status::OK();
     }
@@ -92,7 +92,8 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(AuditDomain,
         case AuditFormatBsonFile: {
             std::string auditLogPath =
                 boost::filesystem::absolute(getGlobalAuditManager()->auditLogPath,
-                                            serverGlobalParams.cwd).string();
+                                            serverGlobalParams.cwd)
+                    .string();
             logger::StatusWithRotatableFileWriter statusOrWriter =
                 logger::globalRotatableFileManager()->openFile(auditLogPath, true);
             logger::RotatableFileWriter* writer;

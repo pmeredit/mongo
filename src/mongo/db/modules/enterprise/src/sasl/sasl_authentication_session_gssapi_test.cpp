@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <vector>
 
+#include "cyrus_sasl_authentication_session.h"
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
 #include "mongo/client/sasl_client_session.h"
@@ -23,7 +24,6 @@
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
 #include "mongo/util/scopeguard.h"
-#include "cyrus_sasl_authentication_session.h"
 
 namespace {
 using namespace mongo;

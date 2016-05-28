@@ -15,8 +15,8 @@
 #include "mongo/db/client.h"
 #include "mongo/db/dbdirectclient.h"
 #include "mongo/util/log.h"
-#include "mongo/util/timer.h"
 #include "mongo/util/time_support.h"
+#include "mongo/util/timer.h"
 
 namespace mongo {
 
@@ -130,8 +130,8 @@ BSONElement ServerStatusClient::getElement(StringData name) {
     BSONElement elem = _serverStatusData.getFieldDotted(name);
 
     massert(28534,
-            str::stream() << "field '" << name
-                          << "' does not exist in serverStatus doc: " << _serverStatusData,
+            str::stream() << "field '" << name << "' does not exist in serverStatus doc: "
+                          << _serverStatusData,
             elem.ok());
 
     return elem;

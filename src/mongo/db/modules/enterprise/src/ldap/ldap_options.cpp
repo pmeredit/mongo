@@ -39,33 +39,35 @@ Status addLDAPOptions(moe::OptionSection* options) {
                                    " (ldap|ldaps)://host:port");
 
 #ifdef _WIN32
-    ldap_options.addOptionChaining(
-                     "security.ldap.bind.useOSDefaults",
-                     "ldapBindWithOSDefaults",
-                     moe::Switch,
-                     "Peform queries with the service account's username and password")
+    ldap_options
+        .addOptionChaining("security.ldap.bind.useOSDefaults",
+                           "ldapBindWithOSDefaults",
+                           moe::Switch,
+                           "Peform queries with the service account's username and password")
         .incompatibleWith("ldapQueryUser")
         .incompatibleWith("ldapQueryPassword");
 #endif
 
-    ldap_options.addOptionChaining("security.ldap.bind.method",
-                                   "ldapBindMethod",
-                                   moe::String,
-                                   "Authentication scheme to use while connecting to LDAP. "
-                                   "This may either be 'sasl' or 'simple'")
+    ldap_options
+        .addOptionChaining("security.ldap.bind.method",
+                           "ldapBindMethod",
+                           moe::String,
+                           "Authentication scheme to use while connecting to LDAP. "
+                           "This may either be 'sasl' or 'simple'")
         .setDefault(moe::Value(std::string("sasl")));
 
-    ldap_options.addOptionChaining("security.ldap.bind.saslMechanisms",
-                                   "ldapBindSASLMechs",
-                                   moe::String,
-                                   "Comma separated list of SASL mechanisms to use while "
-                                   "binding to the LDAP server")
+    ldap_options
+        .addOptionChaining("security.ldap.bind.saslMechanisms",
+                           "ldapBindSASLMechs",
+                           moe::String,
+                           "Comma separated list of SASL mechanisms to use while "
+                           "binding to the LDAP server")
         .setDefault(moe::Value(std::string("DIGEST-MD5")));
 
-    ldap_options.addOptionChaining("security.ldap.timeoutMS",
-                                   "ldapTimeoutMS",
-                                   moe::Long,
-                                   "Timeout for LDAP queries (ms)").setDefault(moe::Value(10000));
+    ldap_options
+        .addOptionChaining(
+            "security.ldap.timeoutMS", "ldapTimeoutMS", moe::Long, "Timeout for LDAP queries (ms)")
+        .setDefault(moe::Value(10000));
 
     ldap_options.addOptionChaining("security.ldap.bind.queryUser",
                                    "ldapQueryUser",
@@ -85,10 +87,11 @@ Status addLDAPOptions(moe::OptionSection* options) {
                                    "host to acquire LDAP groups. The token {USER} will be "
                                    "replaced with the mapped username");
 
-    ldap_options.addOptionChaining("security.ldap.userToDNMapping",
-                                   "ldapUserToDNMapping",
-                                   moe::String,
-                                   "Tranformation from MongoDB users to LDAP user DNs")
+    ldap_options
+        .addOptionChaining("security.ldap.userToDNMapping",
+                           "ldapUserToDNMapping",
+                           moe::String,
+                           "Tranformation from MongoDB users to LDAP user DNs")
         .setDefault(moe::Value(std::string("[{match: \"(.+)\", substitution: \"{0}\"}]")));
 
 
@@ -155,9 +158,8 @@ MONGO_STARTUP_OPTIONS_STORE(LDAPOptions)(InitializerContext* context) {
 
 }  // namespace
 
-MONGO_INITIALIZER_GENERAL(LDAPOptions,
-                          ("SecureAllocator"),
-                          ("LDAPOptions_Store"))(InitializerContext* context) {
+MONGO_INITIALIZER_GENERAL(LDAPOptions, ("SecureAllocator"), ("LDAPOptions_Store"))
+(InitializerContext* context) {
     globalLDAPParams = new LDAPOptions();
     return Status::OK();
 }

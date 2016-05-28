@@ -27,8 +27,8 @@
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
 
-#include "connections/ldap_connection_factory.h"
 #include "connections/ldap_connection.h"
+#include "connections/ldap_connection_factory.h"
 #include "ldap_options.h"
 #include "ldap_runner.h"
 
@@ -65,11 +65,13 @@ Status AuthzManagerExternalStateLDAP::initialize(OperationContext* txn) {
     // Detect if any documents exist in $external. If yes, log that they will not be
     // accessable while LDAP Authorization is active.
     BSONObj userObj;
-    if (_wrappedExternalState->findOne(txn,
-                                       AuthorizationManager::usersCollectionNamespace,
-                                       BSON("db"
-                                            << "$external"),
-                                       &userObj).isOK()) {
+    if (_wrappedExternalState
+            ->findOne(txn,
+                      AuthorizationManager::usersCollectionNamespace,
+                      BSON("db"
+                           << "$external"),
+                      &userObj)
+            .isOK()) {
         log() << "LDAP Authorization has been enabled. Authorization attempts on the "
                  "$external database will be routed to the remote LDAP server. "
                  "Any existing users which may have been created on the $external "

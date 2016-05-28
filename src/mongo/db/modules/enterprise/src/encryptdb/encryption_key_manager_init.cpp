@@ -34,7 +34,8 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(CreateEncryptionKeyManager,
             return Status(implementationStatus.code(),
                           str::stream() << "Validation of cryptographic functions for "
                                         << encryptionGlobalParams.encryptionCipherMode
-                                        << " failed: " << implementationStatus.reason());
+                                        << " failed: "
+                                        << implementationStatus.reason());
         }
 
         auto keyManager = stdx::make_unique<EncryptionKeyManager>(

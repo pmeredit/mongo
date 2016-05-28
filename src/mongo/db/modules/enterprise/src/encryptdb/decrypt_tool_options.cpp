@@ -27,10 +27,9 @@ Status addDecryptToolOptions(moe::OptionSection* options) {
     options->addOptionChaining(
         "outputPath", "outputPath", moe::String, "path to where decrypted file will be placed");
 
-    options->addOptionChaining("cipherMode",
-                               "cipherMode",
-                               moe::String,
-                               "name of the cipher used to encrypt the data")
+    options
+        ->addOptionChaining(
+            "cipherMode", "cipherMode", moe::String, "name of the cipher used to encrypt the data")
         .format("(:?AES256-CBC)|(:?AES256-GCM)", "'AES256-CBC' or 'AES256-GCM'")
         .setDefault(moe::Value(std::string("AES256-CBC")));
 

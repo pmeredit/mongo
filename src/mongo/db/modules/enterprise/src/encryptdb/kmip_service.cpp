@@ -12,8 +12,8 @@
 
 #include "encryption_options.h"
 #include "kmip_consts.h"
-#include "kmip_response.h"
 #include "kmip_request.h"
+#include "kmip_response.h"
 #include "mongo/base/data_range_cursor.h"
 #include "mongo/base/data_type_endian.h"
 #include "mongo/base/init.h"
@@ -43,16 +43,17 @@ StatusWith<std::string> KMIPService::createExternalKey() {
     StatusWith<KMIPResponse> swResponse = _sendRequest(_generateKMIPCreateRequest());
     if (!swResponse.isOK()) {
         return Status(ErrorCodes::BadValue,
-                      str::stream()
-                          << "KMIP create key failed: " << swResponse.getStatus().reason());
+                      str::stream() << "KMIP create key failed: "
+                                    << swResponse.getStatus().reason());
     }
 
     const KMIPResponse& response = swResponse.getValue();
     if (response.getResultStatus() != kmip::statusSuccess) {
         return Status(ErrorCodes::BadValue,
-                      str::stream()
-                          << "KMIP create key failed, code: " << response.getResultReason()
-                          << " error: " << response.getResultMsg());
+                      str::stream() << "KMIP create key failed, code: "
+                                    << response.getResultReason()
+                                    << " error: "
+                                    << response.getResultMsg());
     }
     return response.getUID();
 }
@@ -67,16 +68,18 @@ StatusWith<std::unique_ptr<SymmetricKey>> KMIPService::getExternalKey(const std:
     KMIPResponse response = std::move(swResponse.getValue());
     if (response.getResultStatus() != kmip::statusSuccess) {
         return Status(ErrorCodes::BadValue,
-                      str::stream() << "KMIP get key '" << uid
-                                    << "' failed, code: " << response.getResultReason()
-                                    << " error: " << response.getResultMsg());
+                      str::stream() << "KMIP get key '" << uid << "' failed, code: "
+                                    << response.getResultReason()
+                                    << " error: "
+                                    << response.getResultMsg());
     }
 
     std::unique_ptr<SymmetricKey> key = response.getSymmetricKey();
     if (key->getKeySize() != crypto::sym256KeySize) {
         return Status(ErrorCodes::BadValue,
                       str::stream() << "KMIP got a key which was " << key->getKeySize() * 8
-                                    << " bits long, but a " << crypto::sym256KeySize * 8
+                                    << " bits long, but a "
+                                    << crypto::sym256KeySize * 8
                                     << " bit key is required");
     }
     return std::move(key);

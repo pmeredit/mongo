@@ -22,7 +22,9 @@ StatusWith<RegexRewriteRule> RegexRewriteRule::create(const std::string& strMatc
     if (!match.error().empty()) {
         return {ErrorCodes::FailedToParse,
                 str::stream() << "Error parsing in RegexRewriteRule. Expression was: \"" << strMatch
-                              << "\". Error was: \"" << match.error() << "\"."};
+                              << "\". Error was: \""
+                              << match.error()
+                              << "\"."};
     }
 
     std::string stringRepresentation = str::stream()

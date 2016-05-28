@@ -7,8 +7,8 @@
 #include "encryption_options.h"
 
 #include "mongo/base/init.h"
-#include "mongo/db/server_options.h"
 #include "mongo/base/status.h"
+#include "mongo/db/server_options.h"
 
 #include "mongo/util/options_parser/environment.h"
 #include "mongo/util/options_parser/option_description.h"

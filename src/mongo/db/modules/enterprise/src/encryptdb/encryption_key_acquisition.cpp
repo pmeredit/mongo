@@ -18,8 +18,8 @@
 #include "mongo/util/mongoutils/str.h"
 #include "mongo/util/net/ssl_options.h"
 #include "symmetric_crypto.h"
-#include "symmetric_key.h"
 #include "symmetric_crypto.h"
+#include "symmetric_key.h"
 
 using namespace mongo::kmip;
 
@@ -41,7 +41,9 @@ StatusWith<std::unique_ptr<SymmetricKey>> getKeyFromKeyFile(StringData encryptio
     if (keyLength != crypto::sym256KeySize) {
         return {ErrorCodes::BadValue,
                 str::stream() << "Encryption key in " << encryptionKeyFile << " is "
-                              << keyLength * 8 << " bit, must be " << crypto::sym256KeySize * 8
+                              << keyLength * 8
+                              << " bit, must be "
+                              << crypto::sym256KeySize * 8
                               << " bit."};
     }
 
@@ -83,7 +85,8 @@ StatusWith<std::unique_ptr<SymmetricKey>> getKeyFromKMIPServer(const KMIPParams&
     if (!kmipService.isValid()) {
         return Status(ErrorCodes::BadValue,
                       str::stream() << "Failed to open connection to KMIP server "
-                                    << kmipParams.kmipServerName << ".");
+                                    << kmipParams.kmipServerName
+                                    << ".");
     }
 
     // Try to retrieve an existing key.

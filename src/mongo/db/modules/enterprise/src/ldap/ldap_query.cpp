@@ -46,14 +46,14 @@ StatusWith<LDAPQuery> LDAPQuery::instantiateQuery(
     int matchedBaseDN = kUserNameMatchToken.GlobalReplace(userName.toString(), &instance._baseDN);
     if (matchedBaseDN < 0) {
         return Status(ErrorCodes::FailedToParse,
-                      str::stream()
-                          << "Failed to substitute username into baseDN. Error: " << matchedBaseDN);
+                      str::stream() << "Failed to substitute username into baseDN. Error: "
+                                    << matchedBaseDN);
     }
     int matchedFilter = kUserNameMatchToken.GlobalReplace(userName.toString(), &instance._filter);
     if (matchedFilter < 0) {
         return Status(ErrorCodes::FailedToParse,
-                      str::stream()
-                          << "Failed to substitute username into filter. Error: " << matchedFilter);
+                      str::stream() << "Failed to substitute username into filter. Error: "
+                                    << matchedFilter);
     }
     return instance;
 }
@@ -86,7 +86,9 @@ StatusWith<LDAPQuery> LDAPQuery::instantiateQuery(
                 ErrorCodes::FailedToParse,
                 str::stream()
                     << "Failed to substitute component into filter. Every capture group must "
-                    << "be consumed, token #" << i << " is missing.");
+                    << "be consumed, token #"
+                    << i
+                    << " is missing.");
         }
     }
 

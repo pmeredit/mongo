@@ -16,18 +16,21 @@ void addKMIPOptions(moe::OptionSection* options) {
                                "KMIP unique identifier for existing key to use");
     options->addOptionChaining(
         "security.kmip.serverName", "kmipServerName", moe::String, "KMIP server host name");
-    options->addOptionChaining(
-                 "security.kmip.port", "kmipPort", moe::Int, "KMIP server port (defaults to 5696)")
+    options
+        ->addOptionChaining(
+            "security.kmip.port", "kmipPort", moe::Int, "KMIP server port (defaults to 5696)")
         .requires("security.kmip.serverName");
-    options->addOptionChaining("security.kmip.clientCertificateFile",
-                               "kmipClientCertificateFile",
-                               moe::String,
-                               "Client certificate for authenticating to KMIP server")
+    options
+        ->addOptionChaining("security.kmip.clientCertificateFile",
+                            "kmipClientCertificateFile",
+                            moe::String,
+                            "Client certificate for authenticating to KMIP server")
         .requires("security.kmip.serverName");
-    options->addOptionChaining("security.kmip.clientCertificatePassword",
-                               "kmipClientCertificatePassword",
-                               moe::String,
-                               "Client certificate for authenticating Mongo to KMIP server")
+    options
+        ->addOptionChaining("security.kmip.clientCertificatePassword",
+                            "kmipClientCertificatePassword",
+                            moe::String,
+                            "Client certificate for authenticating Mongo to KMIP server")
         .requires("security.kmip.clientCertificateFile");
     options->addOptionChaining("security.kmip.serverCAFile",
                                "kmipServerCAFile",

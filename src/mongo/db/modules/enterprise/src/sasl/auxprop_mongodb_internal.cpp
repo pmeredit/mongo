@@ -17,16 +17,16 @@
 #include <sasl/sasl.h>
 #include <sasl/saslplug.h>
 
+#include "cyrus_sasl_authentication_session.h"
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_session.h"
-#include "mongo/db/auth/user_name.h"
 #include "mongo/db/auth/user.h"
+#include "mongo/db/auth/user_name.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/util/mongoutils/str.h"
-#include "cyrus_sasl_authentication_session.h"
 
 namespace mongo {
 namespace {
@@ -243,7 +243,7 @@ MONGO_INITIALIZER_GENERAL(SaslAuxpropMongodbInternal,
 (InitializerContext*) {
 #if defined(__APPLE__) && (SASL_AUXPROP_PLUG_MIN_VERSION < SASL_AUXPROP_PLUG_VERSION)
     auxpropMongoDBInternal.auxprop_lookup_v4 = auxpropLookupMongoDBInternalVoid;
-#elif(SASL_AUXPROP_PLUG_MIN_VERSION < 8)
+#elif (SASL_AUXPROP_PLUG_MIN_VERSION < 8)
     auxpropMongoDBInternal.auxprop_lookup = auxpropLookupMongoDBInternalVoid;
 #else
     auxpropMongoDBInternal.auxprop_lookup = auxpropLookupMongoDBInternal;
@@ -255,7 +255,8 @@ MONGO_INITIALIZER_GENERAL(SaslAuxpropMongodbInternal,
     if (SASL_OK != ret) {
         return Status(ErrorCodes::UnknownError,
                       mongoutils::str::stream() << "Could not add sasl auxprop plugin "
-                                                << auxpropMongoDBInternal.name << ": "
+                                                << auxpropMongoDBInternal.name
+                                                << ": "
                                                 << sasl_errstring(ret, NULL, NULL));
     }
 

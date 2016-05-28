@@ -56,7 +56,8 @@ StatusWith<size_t> KMIPResponse::_parseTag(ConstDataRangeCursor* cdrc,
             // Reached the end of the buffer without finding the tag
             return Status(ErrorCodes::FailedToParse,
                           str::stream() << "KMIP response message invalid, looking for " << tagName
-                                        << " tag. " << adv.reason());
+                                        << " tag. "
+                                        << adv.reason());
         }
 
         // Read out the length of the section labeled by the tag
@@ -70,8 +71,10 @@ StatusWith<size_t> KMIPResponse::_parseTag(ConstDataRangeCursor* cdrc,
             if (data[3] != static_cast<char>(itemType)) {
                 return Status(ErrorCodes::FailedToParse,
                               str::stream() << "Response message was malformed: expected "
-                                            << tagName << " to be of type "
-                                            << static_cast<uint8_t>(itemType) << " but found "
+                                            << tagName
+                                            << " to be of type "
+                                            << static_cast<uint8_t>(itemType)
+                                            << " but found "
                                             << static_cast<uint8_t>(data[3]));
             }
             // Success
@@ -222,7 +225,8 @@ StatusWith<std::unique_ptr<SymmetricKey>> KMIPResponse::_parseSymmetricKeyPayloa
     if (paddedKeyLen < crypto::minKeySize || paddedKeyLen > crypto::maxKeySize) {
         return Status(ErrorCodes::FailedToParse,
                       str::stream() << "Response message was malformed: unexpected "
-                                       "symmetric key length: " << paddedKeyLen);
+                                       "symmetric key length: "
+                                    << paddedKeyLen);
     }
 
     const uint8_t* key = reinterpret_cast<const uint8_t*>(cdrc->data());

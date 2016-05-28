@@ -6,8 +6,8 @@
 
 #include "ldap_rewrite_rule.h"
 
-#include <string>
 #include <memory>
+#include <string>
 
 #include "mongo/base/status_with.h"
 #include "mongo/db/operation_context.h"

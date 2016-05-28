@@ -95,8 +95,10 @@ StatusWith<std::unique_ptr<RlpEnvironment>> RlpEnvironment::create(std::string b
         return StatusWith<std::unique_ptr<RlpEnvironment>>(
             ErrorCodes::RLPInitializationFailed,
             str::stream() << "RLP library mismatch: have version '"
-                          << env->BT_RLP_Library_VersionString() << "', expected version '"
-                          << BT_RLP_LIBRARY_VERSION_STRING << "'");
+                          << env->BT_RLP_Library_VersionString()
+                          << "', expected version '"
+                          << BT_RLP_LIBRARY_VERSION_STRING
+                          << "'");
     }
 
     LOG(0) << "Loaded Rosette Linguistics Platform Library: "

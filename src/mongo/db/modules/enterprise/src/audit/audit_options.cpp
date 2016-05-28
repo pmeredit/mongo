@@ -12,11 +12,11 @@
 #include "audit_manager.h"
 #include "audit_manager_global.h"
 #include "mongo/base/init.h"
-#include "mongo/db/server_options.h"
 #include "mongo/base/status.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/db/json.h"
 #include "mongo/db/matcher/expression_parser.h"
+#include "mongo/db/server_options.h"
 #include "mongo/db/server_parameters.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
@@ -35,17 +35,20 @@ AuditGlobalParams auditGlobalParams;
 Status addAuditOptions(moe::OptionSection* options) {
     moe::OptionSection auditingOptions("Auditing Options");
 
-    auditingOptions.addOptionChaining("auditLog.format",
-                                      "auditFormat",
-                                      moe::String,
-                                      "Format of the audit log, if logging to a file.  "
-                                      "(BSON/JSON)").format("(:?BSON)|(:?JSON)", "(BSON/JSON)");
+    auditingOptions
+        .addOptionChaining("auditLog.format",
+                           "auditFormat",
+                           moe::String,
+                           "Format of the audit log, if logging to a file.  "
+                           "(BSON/JSON)")
+        .format("(:?BSON)|(:?JSON)", "(BSON/JSON)");
 
-    auditingOptions.addOptionChaining("auditLog.destination",
-                                      "auditDestination",
-                                      moe::String,
-                                      "Destination of audit log output.  "
-                                      "(console/syslog/file)")
+    auditingOptions
+        .addOptionChaining("auditLog.destination",
+                           "auditDestination",
+                           moe::String,
+                           "Destination of audit log output.  "
+                           "(console/syslog/file)")
         .format("(:?console)|(:?syslog)|(:?file)", "(console/syslog/file)");
 
     auditingOptions.addOptionChaining(

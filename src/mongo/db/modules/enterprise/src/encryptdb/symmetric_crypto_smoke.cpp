@@ -146,7 +146,8 @@ Status smokeTestAESCipherMode(const std::string& modeName) {
         if (expectedSize != resultLen - layout.getHeaderSize()) {
             return Status(ErrorCodes::OperationFailed,
                           str::stream() << "aesEncrypt produced " << layout.getDataSize() << " but "
-                                        << expectedSize << " were expected");
+                                        << expectedSize
+                                        << " were expected");
         }
         if (0 != memcmp(test.ct, layout.getData(), test.ptLen)) {
             return Status(ErrorCodes::OperationFailed,
@@ -171,7 +172,8 @@ Status smokeTestAESCipherMode(const std::string& modeName) {
             layout.getTag()[0] ^= 0xFF;
 
             if (crypto::aesDecrypt(
-                    key, test.mode, outputBuffer, resultLen, pt, maxPTSize, &resultLen).isOK()) {
+                    key, test.mode, outputBuffer, resultLen, pt, maxPTSize, &resultLen)
+                    .isOK()) {
                 Status(ErrorCodes::OperationFailed, "Corrupt GCM tag successfully decrypted");
             }
         }

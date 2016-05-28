@@ -56,7 +56,9 @@ void RlpFTSTokenizer::reset(StringData document, Options options) {
             str::stream() << "Unable to process the string: '"
                           << (document.size() < 256 ? document
                                                     : document.substr(0, 256).toString() + "...")
-                          << "'; received return code: " << static_cast<int>(rc) << ".",
+                          << "'; received return code: "
+                          << static_cast<int>(rc)
+                          << ".",
             rc == BT_OK);
 
     _iterator.reset(_factory.createIterator(_context->getContext()));

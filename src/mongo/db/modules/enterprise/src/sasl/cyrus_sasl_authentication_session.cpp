@@ -466,7 +466,8 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(CyrusSaslServerCore,
     if (result != SASL_OK) {
         return Status(ErrorCodes::UnknownError,
                       mongoutils::str::stream() << "Could not initialize sasl server components ("
-                                                << sasl_errstring(result, NULL, NULL) << ")");
+                                                << sasl_errstring(result, NULL, NULL)
+                                                << ")");
     }
 
     SaslAuthenticationSession::create = createSaslAuthenticationSession;

@@ -49,32 +49,37 @@ Status InMemoryGlobalOptions::add(moe::OptionSection* options) {
                                       moe::Double,
                                       "maximum amount of memory to allocate for InMemory data; "
                                       "defaults to 50% of physical RAM less 1GB");
-    inMemoryOptions.addOptionChaining(
-                        "storage.inMemory.engineConfig.statisticsLogDelaySecs",
-                        "inMemoryStatisticsLogDelaySecs",
-                        moe::Int,
-                        "seconds to wait between each write to a statistics file in the dbpath; "
-                        "0 means do not log statistics")
+    inMemoryOptions
+        .addOptionChaining("storage.inMemory.engineConfig.statisticsLogDelaySecs",
+                           "inMemoryStatisticsLogDelaySecs",
+                           moe::Int,
+                           "seconds to wait between each write to a statistics file in the dbpath; "
+                           "0 means do not log statistics")
         .validRange(0, 100000)
         .setDefault(moe::Value(0));
-    inMemoryOptions.addOptionChaining("storage.inMemory.engineConfig.configString",
-                                      "inMemoryEngineConfigString",
-                                      moe::String,
-                                      "InMemory storage engine custom configuration settings")
+    inMemoryOptions
+        .addOptionChaining("storage.inMemory.engineConfig.configString",
+                           "inMemoryEngineConfigString",
+                           moe::String,
+                           "InMemory storage engine custom configuration settings")
         .hidden();
 
     // InMemory collection options
-    inMemoryOptions.addOptionChaining("storage.inMemory.collectionConfig.configString",
-                                      "inMemoryCollectionConfigString",
-                                      moe::String,
-                                      "InMemory custom collection configuration settings").hidden();
+    inMemoryOptions
+        .addOptionChaining("storage.inMemory.collectionConfig.configString",
+                           "inMemoryCollectionConfigString",
+                           moe::String,
+                           "InMemory custom collection configuration settings")
+        .hidden();
 
 
     // InMemory index options
-    inMemoryOptions.addOptionChaining("storage.inMemory.indexConfig.configString",
-                                      "inMemoryIndexConfigString",
-                                      moe::String,
-                                      "InMemory custom index configuration settings").hidden();
+    inMemoryOptions
+        .addOptionChaining("storage.inMemory.indexConfig.configString",
+                           "inMemoryIndexConfigString",
+                           moe::String,
+                           "InMemory custom index configuration settings")
+        .hidden();
 
     return options->addSection(inMemoryOptions);
 }

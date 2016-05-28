@@ -35,9 +35,10 @@ StatusWith<std::string> InternalToLDAPUserNameMapper::transform(OperationContext
         StatusWith<std::string> result = transform->resolve(txn, input);
         LOG(3) << "Transforming username: " << input << " using rule: " << transform->toStringData()
                << ". Result: " << [](const StatusWith<std::string>& result) {
-                   return result.isOK() ? std::string("PASS. New userName is ") + result.getValue()
-                                        : "FAILED. Attempting next rewrite rule";
-               }(result);
+                      return result.isOK()
+                          ? std::string("PASS. New userName is ") + result.getValue()
+                          : "FAILED. Attempting next rewrite rule";
+                  }(result);
         if (result.isOK()) {
             return result;
         }
@@ -46,7 +47,8 @@ StatusWith<std::string> InternalToLDAPUserNameMapper::transform(OperationContext
     return Status(
         ErrorCodes::FailedToParse,
         str::stream() << "Failed to transform username. No matching transformation out of "
-                      << _transformations.size() << " available transformations.");
+                      << _transformations.size()
+                      << " available transformations.");
 }
 
 StatusWith<InternalToLDAPUserNameMapper> InternalToLDAPUserNameMapper::createNameMapper(

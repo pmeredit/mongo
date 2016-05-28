@@ -42,7 +42,8 @@ StatusWith<const EVP_CIPHER*> acquireAESCipher(size_t keySize, crypto::aesMode m
     if (cipher == nullptr) {
         return Status(ErrorCodes::BadValue,
                       str::stream() << "Unrecognized AES key size/cipher mode. Size: " << keySize
-                                    << " Mode: " << (int)mode);
+                                    << " Mode: "
+                                    << (int)mode);
     }
 
     return cipher;
@@ -232,7 +233,8 @@ Status aesEncrypt(const SymmetricKey& key,
     if (size_t(len + extraLen) != layout.expectedCiphertextLen(inLen)) {
         return Status(ErrorCodes::BadValue,
                       str::stream() << "Encrypt error, expected cipher text of length "
-                                    << layout.expectedCiphertextLen(inLen) << " but found "
+                                    << layout.expectedCiphertextLen(inLen)
+                                    << " but found "
                                     << len + extraLen);
     }
 
@@ -262,7 +264,8 @@ Status aesDecrypt(const SymmetricKey& key,
         return Status(ErrorCodes::BadValue,
                       str::stream() << "Cleartext buffer of size " << outLen
                                     << " too small for output which can be as large as "
-                                    << upperBound << "]");
+                                    << upperBound
+                                    << "]");
     }
 
     StatusWith<const EVP_CIPHER*> swCipher = acquireAESCipher(key.getKeySize(), mode);
@@ -319,8 +322,13 @@ Status aesDecrypt(const SymmetricKey& key,
     if (*resultLen < lowerBound || *resultLen > upperBound) {
         return Status(ErrorCodes::BadValue,
                       str::stream() << "Decrypt error, expected clear text length in interval"
-                                    << "[" << lowerBound << "," << upperBound << "]"
-                                    << "but found " << *resultLen);
+                                    << "["
+                                    << lowerBound
+                                    << ","
+                                    << upperBound
+                                    << "]"
+                                    << "but found "
+                                    << *resultLen);
     }
 
     return Status::OK();

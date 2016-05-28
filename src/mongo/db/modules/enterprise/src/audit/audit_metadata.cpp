@@ -6,8 +6,8 @@
 
 #include "mongo/rpc/metadata/audit_metadata.h"
 
-#include <utility>
 #include <tuple>
+#include <utility>
 
 #include "mongo/base/status.h"
 #include "mongo/bson/bsontypes.h"
@@ -119,14 +119,16 @@ StatusWith<AuditMetadata> AuditMetadata::readFromMetadata(const BSONElement& met
     } else if (metadataEl.type() != mongo::Object) {
         return {ErrorCodes::TypeMismatch,
                 str::stream() << "ServerSelectionMetadata element has incorrect type: expected"
-                              << mongo::Object << " but got " << metadataEl.type()};
+                              << mongo::Object
+                              << " but got "
+                              << metadataEl.type()};
     }
 
     auto auditObj = metadataEl.embeddedObject();
     if (auditObj.nFields() != 2) {
         return Status(ErrorCodes::IncompatibleAuditMetadata,
-                      str::stream()
-                          << "Expected auditMetadata to have only 2 fields but got: " << auditObj);
+                      str::stream() << "Expected auditMetadata to have only 2 fields but got: "
+                                    << auditObj);
     }
 
     auto swImpersonatedUsers = readImpersonatedUsersFromAuditMetadata(auditObj);

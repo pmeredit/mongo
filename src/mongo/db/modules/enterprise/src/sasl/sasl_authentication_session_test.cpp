@@ -81,8 +81,10 @@ SaslConversation::SaslConversation(std::string mech)
                                                     << "andy"
                                                     << "db"
                                                     << "test"
-                                                    << "credentials" << BSON("MONGODB-CR"
-                                                                             << "frim") << "roles"
+                                                    << "credentials"
+                                                    << BSON("MONGODB-CR"
+                                                            << "frim")
+                                                    << "roles"
                                                     << BSONArray()),
                                                BSONObj()));
 }

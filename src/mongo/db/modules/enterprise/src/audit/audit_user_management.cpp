@@ -82,7 +82,8 @@ BSONObjBuilder& CreateUserEvent::putParamsBSON(BSONObjBuilder& builder) const {
     for (std::vector<RoleName>::const_iterator role = _roles.begin(); role != _roles.end();
          role++) {
         roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME
-                              << role->getRole() << AuthorizationManager::ROLE_DB_FIELD_NAME
+                              << role->getRole()
+                              << AuthorizationManager::ROLE_DB_FIELD_NAME
                               << role->getDB()));
     }
     roleArray.done();
@@ -240,7 +241,8 @@ BSONObjBuilder& UpdateUserEvent::putParamsBSON(BSONObjBuilder& builder) const {
         for (std::vector<RoleName>::const_iterator role = _roles->begin(); role != _roles->end();
              role++) {
             roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME
-                                  << role->getRole() << AuthorizationManager::ROLE_DB_FIELD_NAME
+                                  << role->getRole()
+                                  << AuthorizationManager::ROLE_DB_FIELD_NAME
                                   << role->getDB()));
         }
         roleArray.done();

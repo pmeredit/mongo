@@ -163,7 +163,8 @@ Status OpenLDAPConnection::connect() {
         return Status(ErrorCodes::OperationFailed,
                       str::stream() << "Failed to initialize ldap session to \""
                                     << _options.hostURIs
-                                    << "\". Received LDAP error: " << ldap_err2string(err));
+                                    << "\". Received LDAP error: "
+                                    << ldap_err2string(err));
     }
 
     // Upgrade connection to LDAPv3
@@ -207,12 +208,14 @@ Status OpenLDAPConnection::connect() {
             error() << "Attempted to get LDAPAPIInfo. Received error: " << ldap_err2string(ret);
         } else {
             ON_BLOCK_EXIT(ldap_memfree, info->ldapai_vendor_name);
-            ON_BLOCK_EXIT([=](char** extensions) {
-                for (char** it = extensions; *it != nullptr; ++it) {
-                    ldap_memfree(*it);
-                }
-                ldap_memfree(extensions);
-            }, info->ldapai_extensions);
+            ON_BLOCK_EXIT(
+                [=](char** extensions) {
+                    for (char** it = extensions; *it != nullptr; ++it) {
+                        ldap_memfree(*it);
+                    }
+                    ldap_memfree(extensions);
+                },
+                info->ldapai_extensions);
 
             StringBuilder log;
             log << "LDAPAPIInfo: { "
@@ -251,8 +254,8 @@ Status OpenLDAPConnection::bindAsUser(const LDAPBindOptions& bindOptions) {
     err = ldap_set_rebind_proc(_session, &openLDAPBindFunction, (void*)&bindOptions);
     if (err != LDAP_SUCCESS) {
         return Status(ErrorCodes::OperationFailed,
-                      str::stream()
-                          << "Unable to set rebind proc, with error: " << ldap_err2string(err));
+                      str::stream() << "Unable to set rebind proc, with error: "
+                                    << ldap_err2string(err));
     }
     return Status::OK();
 }
@@ -263,7 +266,10 @@ Status OpenLDAPConnection::_resultCodeToStatus(StringData functionName, StringDa
     if (errorWhileGettingError != LDAP_SUCCESS) {
         return Status(ErrorCodes::UnknownError,
                       str::stream() << "Unable to get error code after OpenLDAP operation ("
-                                    << functionName << "), \"" << failureHint << "\". "
+                                    << functionName
+                                    << "), \""
+                                    << failureHint
+                                    << "\". "
                                     << ldap_err2string(errorWhileGettingError));
     }
     if (error == LDAP_SUCCESS) {
@@ -274,7 +280,8 @@ Status OpenLDAPConnection::_resultCodeToStatus(StringData functionName, StringDa
     }
     return Status(ErrorCodes::OperationFailed,
                   str::stream() << "OpenLDAP operation (" << functionName << ") '" << failureHint
-                                << "' failed: " << ldap_err2string(error));
+                                << "' failed: "
+                                << ldap_err2string(error));
 }
 
 StatusWith<LDAPEntityCollection> OpenLDAPConnection::query(LDAPQuery query) {
@@ -285,11 +292,13 @@ StatusWith<LDAPEntityCollection> OpenLDAPConnection::query(LDAPQuery query) {
     // libldap wants a non-const copy, so prevent it from breaking our configuration data
     size_t requestedAttributesSize = query.getAttributes().size();
     std::vector<char*> requestedAttributes;
-    ON_BLOCK_EXIT([](std::vector<char*>* reqAttr) {
-        for (char* attribute : *reqAttr) {
-            delete[] attribute;
-        }
-    }, &requestedAttributes);
+    ON_BLOCK_EXIT(
+        [](std::vector<char*>* reqAttr) {
+            for (char* attribute : *reqAttr) {
+                delete[] attribute;
+            }
+        },
+        &requestedAttributes);
 
     requestedAttributes.reserve(requestedAttributesSize + 1);
     for (size_t i = 0; i < requestedAttributesSize; ++i) {
@@ -321,7 +330,9 @@ StatusWith<LDAPEntityCollection> OpenLDAPConnection::query(LDAPQuery query) {
     if (err != LDAP_SUCCESS) {
         return Status(ErrorCodes::OperationFailed,
                       str::stream() << "Failed to perform OpenLDAP query. Error: '"
-                                    << ldap_err2string(err) << "' Query was: '" << query.toString()
+                                    << ldap_err2string(err)
+                                    << "' Query was: '"
+                                    << query.toString()
                                     << "'");
     }
 

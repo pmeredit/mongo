@@ -77,7 +77,9 @@ Status tryAcquireServerCredential(const std::string& principalName) {
         ON_BLOCK_EXIT(LocalFree, err);
         return Status(ErrorCodes::UnknownError,
                       mongoutils::str::stream() << "sspi could not acquire server credential for "
-                                                << principalName << "; " << err);
+                                                << principalName
+                                                << "; "
+                                                << err);
     }
     FreeCredentialsHandle(&cred);
     return Status::OK();
@@ -150,9 +152,9 @@ int sspiServerMechNew(void* glob_context,
     }
 
 
-    std::wstring principalName =
-        toWideString(std::string(mongoutils::str::stream() << sparams->service << "/"
-                                                           << sparams->serverFQDN).c_str());
+    std::wstring principalName = toWideString(
+        std::string(mongoutils::str::stream() << sparams->service << "/" << sparams->serverFQDN)
+            .c_str());
     LOG(2) << "SSPI principal name: " << toUtf8String(principalName);
 
     SECURITY_STATUS status = AcquireCredentialsHandle(const_cast<wchar_t*>(principalName.c_str()),
@@ -487,7 +489,8 @@ MONGO_INITIALIZER_GENERAL(SaslSspiServerPlugin,
     if (SASL_OK != ret) {
         return Status(ErrorCodes::UnknownError,
                       mongoutils::str::stream() << "Could not add SASL Server SSPI plugin "
-                                                << sspiPluginName << ": "
+                                                << sspiPluginName
+                                                << ": "
                                                 << sasl_errstring(ret, NULL, NULL));
     }
 
@@ -502,7 +505,8 @@ MONGO_INITIALIZER_GENERAL(SaslCramServerPlugin,
     if (SASL_OK != ret) {
         return Status(ErrorCodes::UnknownError,
                       mongoutils::str::stream() << "Could not add SASL Server CRAM-MD5 plugin "
-                                                << sspiPluginName << ": "
+                                                << sspiPluginName
+                                                << ": "
                                                 << sasl_errstring(ret, NULL, NULL));
     }
 
@@ -517,7 +521,8 @@ MONGO_INITIALIZER_GENERAL(SaslPlainServerPlugin,
     if (SASL_OK != ret) {
         return Status(ErrorCodes::UnknownError,
                       mongoutils::str::stream() << "Could not add SASL Server PLAIN plugin "
-                                                << sspiPluginName << ": "
+                                                << sspiPluginName
+                                                << ": "
                                                 << sasl_errstring(ret, NULL, NULL));
     }
 

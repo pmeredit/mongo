@@ -41,9 +41,8 @@ MONGO_EXPORT_STARTUP_SERVER_PARAMETER(rlpVerbose, bool, false);
  */
 MONGO_EXPORT_STARTUP_SERVER_PARAMETER(rlpEnableExperimentalLanguagesForTesting, bool, false);
 
-MONGO_INITIALIZER_GENERAL(InitRLP,
-                          ("EndStartupOptionHandling"),
-                          ("default"))(InitializerContext* context) {
+MONGO_INITIALIZER_GENERAL(InitRLP, ("EndStartupOptionHandling"), ("default"))
+(InitializerContext* context) {
     if (rlpGlobalParams.btRoot.empty()) {
         LOG(1) << "Skipping RLP Initialization, BT Root not set.";
         return Status::OK();

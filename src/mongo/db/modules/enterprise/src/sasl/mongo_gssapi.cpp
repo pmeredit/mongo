@@ -47,7 +47,8 @@ void putGssapiStatusString(mongoutils::str::stream* os, OM_uint32 inStatus, int 
         if (!GSS_ERROR(majorStatus)) {
             *os << (message.length > 0
                         ? StringData(static_cast<const char*>(message.value), message.length)
-                        : StringData("(no data)")) << "; ";
+                        : StringData("(no data)"))
+                << "; ";
             fassert(4010, !GSS_ERROR(gss_release_buffer(&minorStatus, &message)));
         } else {
             *os << "gss_display_status() failed on context value " << context << "; ";
@@ -147,10 +148,10 @@ Status tryAcquireServerCredential(const std::string& principalName) {
     minorStatus = 0;
     majorStatus = gss_import_name(&minorStatus, &nameBuffer, GSS_C_NT_USER_NAME, &gssPrincipalName);
     if (GSS_ERROR(majorStatus)) {
-        status = Status(ErrorCodes::UnknownError,
-                        mongoutils::str::stream()
-                            << "gssapi could not import name " << principalName << "; "
-                            << getGssapiErrorString(majorStatus, minorStatus));
+        status = Status(
+            ErrorCodes::UnknownError,
+            mongoutils::str::stream() << "gssapi could not import name " << principalName << "; "
+                                      << getGssapiErrorString(majorStatus, minorStatus));
         goto done;
     }
 
@@ -167,7 +168,8 @@ Status tryAcquireServerCredential(const std::string& principalName) {
         status =
             Status(ErrorCodes::UnknownError,
                    mongoutils::str::stream() << "gssapi could not acquire server credential for "
-                                             << canonicalPrincipalName << "; "
+                                             << canonicalPrincipalName
+                                             << "; "
                                              << getGssapiErrorString(majorStatus, minorStatus));
         goto done;
     }

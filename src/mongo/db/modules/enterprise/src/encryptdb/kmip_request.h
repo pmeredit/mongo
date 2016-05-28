@@ -4,8 +4,8 @@
 
 #pragma once
 
-#include <sstream>
 #include <cstring>
+#include <sstream>
 #include <vector>
 
 #include "kmip_consts.h"

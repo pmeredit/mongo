@@ -57,7 +57,8 @@ TEST(AuditMetadata, ReadFromMetadata) {
                                                                              << "baz"
                                                                              << "db"
                                                                              << "garply"))
-                                                       << "$impersonatedRoles" << BSONArray()));
+                                                       << "$impersonatedRoles"
+                                                       << BSONArray()));
         auto am = checkParse(metadata);
         auto users = std::get<0>(*am.getImpersonatedUsersAndRoles());
 
@@ -185,7 +186,8 @@ TEST(AuditMetadata, ReadFromInvalidMetadata) {
         // extra keys
         checkParseFails(
             BSON("$audit" << BSON("$impersonatedUsers" << BSONArray() << "$impersonatedRoles"
-                                                       << BSONArray() << "thisshould"
+                                                       << BSONArray()
+                                                       << "thisshould"
                                                        << "notbehere")));
     }
 }
@@ -229,10 +231,11 @@ TEST(AuditMetadata, Upconvert) {
                                                                                   << "u0"
                                                                                   << "db"
                                                                                   << "db0"))
-                                   << "impersonatedRoles" << BSON_ARRAY(BSON("role"
-                                                                             << "r0"
-                                                                             << "db"
-                                                                             << "r0"))),
+                                   << "impersonatedRoles"
+                                   << BSON_ARRAY(BSON("role"
+                                                      << "r0"
+                                                      << "db"
+                                                      << "r0"))),
                        BSON("ping" << 1),
                        BSON("$audit" << BSON("$impersonatedUsers" << BSON_ARRAY(BSON("user"
                                                                                      << "u0"
@@ -258,34 +261,42 @@ TEST(AuditMetadata, UpconvertInvalid) {
         // users wrong type
         checkUpconvertFails(BSON("foo"
                                  << "bar"
-                                 << "impersonatedUsers" << 3 << "impersonatedRoles"
+                                 << "impersonatedUsers"
+                                 << 3
+                                 << "impersonatedRoles"
                                  << BSONArray()));
     }
     {
         // roles wrong type
         checkUpconvertFails(BSON("foo"
                                  << "bar"
-                                 << "impersonatedUsers" << BSONArray() << "impersonatedRoles"
+                                 << "impersonatedUsers"
+                                 << BSONArray()
+                                 << "impersonatedRoles"
                                  << 3));
     }
     {
         // wrong order
         checkUpconvertFails(BSON("foo"
                                  << "bar"
-                                 << "impersonatedRoles" << BSONArray() << "impersonatedUsers"
+                                 << "impersonatedRoles"
+                                 << BSONArray()
+                                 << "impersonatedUsers"
                                  << BSONArray()));
     }
     {
         // missing users
         checkUpconvertFails(BSON("foo"
                                  << "bar"
-                                 << "impersonatedRoles" << BSONArray()));
+                                 << "impersonatedRoles"
+                                 << BSONArray()));
     }
     {
         // missing roles
         checkUpconvertFails(BSON("foo"
                                  << "bar"
-                                 << "impersonatedUsers" << BSONArray()));
+                                 << "impersonatedUsers"
+                                 << BSONArray()));
     }
 }
 
@@ -335,10 +346,11 @@ TEST(AuditMetadata, Downconvert) {
                                                                                        << "u1"
                                                                                        << "db"
                                                                                        << "db1"))
-                                     << "impersonatedRoles" << BSON_ARRAY(BSON("role"
-                                                                               << "r0"
-                                                                               << "db"
-                                                                               << "db1"))));
+                                     << "impersonatedRoles"
+                                     << BSON_ARRAY(BSON("role"
+                                                        << "r0"
+                                                        << "db"
+                                                        << "db1"))));
     }
 }
 

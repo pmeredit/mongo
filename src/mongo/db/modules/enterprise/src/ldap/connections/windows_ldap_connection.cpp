@@ -15,6 +15,8 @@
 #include <winber.h>  // winldap.h must be included before
 // clang-format on
 
+#include "../ldap_connection_options.h"
+#include "../ldap_query.h"
 #include "ldap_connection_helpers.h"
 #include "mongo/base/status.h"
 #include "mongo/base/status_with.h"
@@ -24,8 +26,6 @@
 #include "mongo/util/mongoutils/str.h"
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/text.h"
-#include "../ldap_connection_options.h"
-#include "../ldap_query.h"
 
 namespace mongo {
 
@@ -58,17 +58,25 @@ Status WindowsLDAPConnection::_resultCodeToStatus(ULONG statusCode,
     if (errorWhileGettingError != LDAP_SUCCESS || !errorString) {
         return Status(ErrorCodes::UnknownError,
                       str::stream() << "Unable to get error string after native LDAP operation <"
-                                    << functionName << ">, \"Failed to " << failureHint << "\". ("
-                                    << errorWhileGettingError << "/"
+                                    << functionName
+                                    << ">, \"Failed to "
+                                    << failureHint
+                                    << "\". ("
+                                    << errorWhileGettingError
+                                    << "/"
                                     << toUtf8String(ldap_err2string(errorWhileGettingError))
                                     << ")");
     }
 
     return Status(ErrorCodes::OperationFailed,
                   str::stream() << "Native LDAP operation <" << functionName << "> \"Failed to "
-                                << failureHint << "\". (" << statusCode << "/"
+                                << failureHint
+                                << "\". ("
+                                << statusCode
+                                << "/"
                                 << toUtf8String(ldap_err2string(statusCode))
-                                << "): " << toUtf8String(errorString));
+                                << "): "
+                                << toUtf8String(errorString));
 }
 
 Status WindowsLDAPConnection::_resultCodeToStatus(StringData functionName, StringData failureHint) {
@@ -77,8 +85,12 @@ Status WindowsLDAPConnection::_resultCodeToStatus(StringData functionName, Strin
     if (errorWhileGettingError != LDAP_SUCCESS) {
         return Status(ErrorCodes::UnknownError,
                       str::stream() << "Unable to get error code after native LDAP operation <"
-                                    << functionName << ">. \"Failed to " << failureHint << "\". ("
-                                    << errorWhileGettingError << "/"
+                                    << functionName
+                                    << ">. \"Failed to "
+                                    << failureHint
+                                    << "\". ("
+                                    << errorWhileGettingError
+                                    << "/"
                                     << toUtf8String(ldap_err2string(errorWhileGettingError))
                                     << ")");
     }
@@ -218,11 +230,13 @@ StatusWith<LDAPEntityCollection> WindowsLDAPConnection::query(LDAPQuery query) {
     // data buffer through std::vector::data.
     size_t requestedAttributesSize = query.getAttributes().size();
     std::vector<wchar_t*> requestedAttributes;
-    ON_BLOCK_EXIT([](std::vector<wchar_t*> reqAttr) {
-        for (wchar_t* attribute : reqAttr) {
-            delete[] attribute;
-        }
-    }, requestedAttributes);
+    ON_BLOCK_EXIT(
+        [](std::vector<wchar_t*> reqAttr) {
+            for (wchar_t* attribute : reqAttr) {
+                delete[] attribute;
+            }
+        },
+        requestedAttributes);
 
     requestedAttributes.reserve(requestedAttributesSize + 1);
     for (size_t i = 0; i < requestedAttributesSize; ++i) {

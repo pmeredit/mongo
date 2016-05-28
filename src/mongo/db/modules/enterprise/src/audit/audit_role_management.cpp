@@ -61,7 +61,8 @@ BSONObjBuilder& GrantRolesToUserEvent::putParamsBSON(BSONObjBuilder& builder) co
     for (std::vector<RoleName>::const_iterator role = _roles.begin(); role != _roles.end();
          role++) {
         roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME
-                              << role->getRole() << AuthorizationManager::ROLE_DB_FIELD_NAME
+                              << role->getRole()
+                              << AuthorizationManager::ROLE_DB_FIELD_NAME
                               << role->getDB()));
     }
     roleArray.doneFast();
@@ -122,7 +123,8 @@ BSONObjBuilder& RevokeRolesFromUserEvent::putParamsBSON(BSONObjBuilder& builder)
     for (std::vector<RoleName>::const_iterator role = _roles.begin(); role != _roles.end();
          role++) {
         roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME
-                              << role->getRole() << AuthorizationManager::ROLE_DB_FIELD_NAME
+                              << role->getRole()
+                              << AuthorizationManager::ROLE_DB_FIELD_NAME
                               << role->getDB()));
     }
     roleArray.doneFast();
@@ -198,7 +200,8 @@ BSONObjBuilder& CreateRoleEvent::putParamsBSON(BSONObjBuilder& builder) const {
     for (std::vector<RoleName>::const_iterator role = _roles.begin(); role != _roles.end();
          role++) {
         roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME
-                              << role->getRole() << AuthorizationManager::ROLE_DB_FIELD_NAME
+                              << role->getRole()
+                              << AuthorizationManager::ROLE_DB_FIELD_NAME
                               << role->getDB()));
     }
     roleArray.doneFast();
@@ -295,7 +298,8 @@ BSONObjBuilder& UpdateRoleEvent::putParamsBSON(BSONObjBuilder& builder) const {
         for (std::vector<RoleName>::const_iterator role = _roles->begin(); role != _roles->end();
              role++) {
             roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME
-                                  << role->getRole() << AuthorizationManager::ROLE_DB_FIELD_NAME
+                                  << role->getRole()
+                                  << AuthorizationManager::ROLE_DB_FIELD_NAME
                                   << role->getDB()));
         }
         roleArray.doneFast();
@@ -441,7 +445,8 @@ BSONObjBuilder& GrantRolesToRoleEvent::putParamsBSON(BSONObjBuilder& builder) co
     for (std::vector<RoleName>::const_iterator role = _roles.begin(); role != _roles.end();
          role++) {
         roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME
-                              << role->getRole() << AuthorizationManager::ROLE_DB_FIELD_NAME
+                              << role->getRole()
+                              << AuthorizationManager::ROLE_DB_FIELD_NAME
                               << role->getDB()));
     }
     roleArray.doneFast();
@@ -501,7 +506,8 @@ BSONObjBuilder& RevokeRolesFromRoleEvent::putParamsBSON(BSONObjBuilder& builder)
     for (std::vector<RoleName>::const_iterator role = _roles.begin(); role != _roles.end();
          role++) {
         roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME
-                              << role->getRole() << AuthorizationManager::ROLE_DB_FIELD_NAME
+                              << role->getRole()
+                              << AuthorizationManager::ROLE_DB_FIELD_NAME
                               << role->getDB()));
     }
     roleArray.doneFast();

@@ -39,11 +39,11 @@
 #include "mongo/db/service_context.h"
 #include "mongo/db/service_context_d.h"
 #include "mongo/db/storage/kv/kv_storage_engine.h"
+#include "mongo/db/storage/storage_engine_lock_file.h"
+#include "mongo/db/storage/storage_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_kv_engine.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_parameters.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_server_status.h"
-#include "mongo/db/storage/storage_engine_lock_file.h"
-#include "mongo/db/storage/storage_options.h"
 
 namespace mongo {
 

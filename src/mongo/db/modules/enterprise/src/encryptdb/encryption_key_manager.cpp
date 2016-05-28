@@ -20,9 +20,9 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/bsontypes.h"
+#include "mongo/db/db_raii.h"
 #include "mongo/db/dbdirectclient.h"
 #include "mongo/db/dbhelpers.h"
-#include "mongo/db/db_raii.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_customization_hooks.h"
@@ -30,8 +30,8 @@
 #include "mongo/stdx/memory.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
-#include "mongo/util/scopeguard.h"
 #include "mongo/util/net/ssl_manager.h"
+#include "mongo/util/scopeguard.h"
 #include "mongo/util/time_support.h"
 #include "symmetric_crypto.h"
 
@@ -445,11 +445,12 @@ Status EncryptionKeyManager::_initLocalKeystore() {
 
     if (!existingKeyId.empty() && !_encryptionParams->kmipParams.kmipKeyIdentifier.empty() &&
         existingKeyId != _encryptionParams->kmipParams.kmipKeyIdentifier) {
-        return Status(ErrorCodes::BadValue,
-                      str::stream()
-                          << "The KMIP key id " << _encryptionParams->kmipParams.kmipKeyIdentifier
+        return Status(
+            ErrorCodes::BadValue,
+            str::stream() << "The KMIP key id " << _encryptionParams->kmipParams.kmipKeyIdentifier
                           << " was provided, but the system is already configured with key id "
-                          << existingKeyId << ".");
+                          << existingKeyId
+                          << ".");
     }
 
     StatusWith<std::unique_ptr<SymmetricKey>> swMasterKey =
@@ -576,7 +577,8 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) {
                       str::stream() << "Error occured when performing key "
                                        "rotation directory rename operation. "
                                        "Verify the contents of your key "
-                                       "store. " << e.what());
+                                       "store. "
+                                    << e.what());
     }
 
     log() << "Rotated master encryption key from id " << _masterKeyId << " to id " << rotMasterKeyId
