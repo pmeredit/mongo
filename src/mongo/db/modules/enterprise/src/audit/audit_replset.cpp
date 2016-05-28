@@ -4,6 +4,8 @@
 
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kAccessControl
 
+#include "mongo/platform/basic.h"
+
 #include "audit_event.h"
 #include "audit_log_domain.h"
 #include "audit_manager_global.h"
