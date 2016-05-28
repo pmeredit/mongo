@@ -5,8 +5,10 @@
 #include "mongo/platform/basic.h"
 
 #ifdef _WIN32
-#include "winldap.h"
-#include "winber.h"  // winldap.h must be included before
+// clang-format off
+#include <winldap.h>
+#include <winber.h>  // winldap.h must be included before
+// clang-format on
 #else
 #include <ldap.h>
 #endif

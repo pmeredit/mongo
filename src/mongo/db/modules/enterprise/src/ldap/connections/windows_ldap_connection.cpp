@@ -7,11 +7,13 @@
 
 #include "windows_ldap_connection.h"
 
+// clang-format off
 #include <ntldap.h>
 #include <rpc.h>
 #include <string>
 #include <winldap.h>
 #include <winber.h>  // winldap.h must be included before
+// clang-format on
 
 #include "ldap_connection_helpers.h"
 #include "mongo/base/status.h"

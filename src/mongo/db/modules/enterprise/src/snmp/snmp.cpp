@@ -13,10 +13,12 @@
 
 #include "snmp.h"
 
+// clang-format off
 #include <net-snmp/net-snmp-config.h>
 #include <net-snmp/net-snmp-includes.h>
 #include <net-snmp/agent/net-snmp-agent-includes.h>
 #include <signal.h>
+// clang-format on
 
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
