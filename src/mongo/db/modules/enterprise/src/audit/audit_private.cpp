@@ -8,6 +8,7 @@
 
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/client_basic.h"
+#include "mongo/transport/session.h"
 #include "mongo/util/log.h"
 
 namespace mongo {
@@ -18,9 +19,10 @@ void initializeEnvelope(AuditEventEnvelope* envelope,
                         ActionType actionType,
                         ErrorCodes::Error result) {
     envelope->timestamp = Date_t::now();
-    if (client->port()) {
-        envelope->localAddr = client->port()->localAddr();
-        envelope->remoteAddr = client->port()->remoteAddr();
+    auto session = client->session();
+    if (session) {
+        envelope->localAddr = SockAddr(session->local().host(), session->local().port());
+        envelope->remoteAddr = SockAddr(session->remote().host(), session->remote().port());
     }
     envelope->authenticatedUserNames =
         AuthorizationSession::get(client)->getAuthenticatedUserNames();
