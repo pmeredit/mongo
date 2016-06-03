@@ -12,6 +12,7 @@
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsontypes.h"
+#include "mongo/db/bson/dotted_path_support.h"
 #include "mongo/db/client.h"
 #include "mongo/db/dbdirectclient.h"
 #include "mongo/util/log.h"
@@ -22,6 +23,8 @@ namespace mongo {
 
 using std::endl;
 using std::numeric_limits;
+
+namespace dps = ::mongo::dotted_path_support;
 
 const std::string ServerStatusClient::NO_EXTRA = "Uses default return values";
 const std::string ServerStatusClient::ASSERTS = "asserts";
@@ -127,7 +130,7 @@ BSONElement ServerStatusClient::getElement(StringData name) {
     // no need to handle return - fields will not be found in empty BSONObj
     loadIfNeeded();
 
-    BSONElement elem = _serverStatusData.getFieldDotted(name);
+    BSONElement elem = dps::extractElementAtPath(_serverStatusData, name);
 
     massert(28534,
             str::stream() << "field '" << name << "' does not exist in serverStatus doc: "

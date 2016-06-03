@@ -126,6 +126,7 @@ env.Library('mongosnmp',
             LIBDEPS=[
                 '$BUILD_DIR/mongo/base',
                 '$BUILD_DIR/mongo/client/clientdriver',
+                '$BUILD_DIR/mongo/db/bson/dotted_path_support',
                 '$BUILD_DIR/mongo/db/repl/repl_coordinator_global',
                 '$BUILD_DIR/mongo/db/storage/mmap_v1/storage_mmapv1',
                 '$BUILD_DIR/mongo/util/foundation',
