@@ -399,7 +399,7 @@ public:
                                                                   "1,10,2",
                                                                   ServerStatusClient::EXTRA_INFO,
                                                                   "extra_info.heap_usage_bytes",
-                                                                  VT_INT32);
+                                                                  VT_CNT64);
             sscb->_linuxOnly = true;
             v.push_back(sscb);
         }

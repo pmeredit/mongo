@@ -632,7 +632,7 @@ extraInfoNote OBJECT-TYPE
    ::= { extraInfo 1 }
 
 extraInfoHeapUsageBytes OBJECT-TYPE
-   SYNTAX      Integer32
+   SYNTAX      Counter64
    MAX-ACCESS  read-only
    STATUS      current
    DESCRIPTION
