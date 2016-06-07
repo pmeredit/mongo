@@ -230,13 +230,11 @@ StatusWith<LDAPEntityCollection> WindowsLDAPConnection::query(LDAPQuery query) {
     // data buffer through std::vector::data.
     size_t requestedAttributesSize = query.getAttributes().size();
     std::vector<wchar_t*> requestedAttributes;
-    ON_BLOCK_EXIT(
-        [](std::vector<wchar_t*> reqAttr) {
-            for (wchar_t* attribute : reqAttr) {
-                delete[] attribute;
-            }
-        },
-        requestedAttributes);
+    const auto requestedAttributesGuard = MakeGuard([&]() {
+        for (wchar_t* attribute : requestedAttributes) {
+            delete[] attribute;
+        }
+    });
 
     requestedAttributes.reserve(requestedAttributesSize + 1);
     for (size_t i = 0; i < requestedAttributesSize; ++i) {
@@ -249,7 +247,7 @@ StatusWith<LDAPEntityCollection> WindowsLDAPConnection::query(LDAPQuery query) {
     requestedAttributes.push_back(nullptr);
 
     LDAPMessage* result = nullptr;
-    ON_BLOCK_EXIT(ldap_msgfree, result);
+    const auto queryResultGuard = MakeGuard([&]() { ldap_msgfree(result); });
     l_timeval timeout{_timeoutSeconds, 0};
 
     // Note the const_cast here. The function takes consted PWSTR typedefs, which contains a
@@ -290,21 +288,21 @@ StatusWith<LDAPEntityCollection> WindowsLDAPConnection::query(LDAPQuery query) {
     LDAPEntityCollection results;
     while (entry) {
         wchar_t* entryDN = ldap_get_dn(_session, entry);
+        const auto entryDNGuard = MakeGuard([&]() { ldap_memfree(entryDN); });
         if (!entryDN) {
             error() << "Failed to get the DN for a result from the LDAP query.";
             return _resultCodeToStatus("ldap_get_dn", "getting DN for entry");
         }
-        ON_BLOCK_EXIT(ldap_memfree, entryDN);
 
         LOG(3) << "From query result, got an entry with DN: " << toUtf8String(entryDN);
         LDAPAttributeKeyValuesMap attributeValueMap;
 
         // For each entity in the response, parse each attribute it contained
         BerElement* element = nullptr;
+        const auto elementGuard = MakeGuard([&]() { ber_free(element, 0); });
         wchar_t* attribute = ldap_first_attribute(_session, entry, &element);
-        ON_BLOCK_EXIT([=](BerElement* element) { ber_free(element, 0); }, element);
         while (attribute) {
-            ON_BLOCK_EXIT(ldap_memfree, attribute);
+            const auto attributeGuard = MakeGuard([attribute]() { ldap_memfree(attribute); });
             LOG(3) << "From entry, got attribute " << toUtf8String(attribute);
 
             berval** values = ldap_get_values_len(_session, entry, attribute);
@@ -312,16 +310,15 @@ StatusWith<LDAPEntityCollection> WindowsLDAPConnection::query(LDAPQuery query) {
                 error() << "LDAP query succeeeded, but failed to extract values for attribute";
                 return _resultCodeToStatus("ldap_get_values_len", "getting values for attribute");
             }
+            const auto valuesGuard = MakeGuard([&]() { ldap_value_free_len(values); });
 
             LDAPAttributeValues valueStore;
-            ON_BLOCK_EXIT(ldap_value_free_len, values);
 
             // For each attribute contained by the entity, parse each value it contained.
             // Attributes in LDAP are multi-valued
-            while (*values) {
-                LDAPAttributeValue strValue((*values)->bv_val, (*values)->bv_len);
+            for (berval** value = values; *value != nullptr; value++) {
+                LDAPAttributeValue strValue((*value)->bv_val, (*value)->bv_len);
                 valueStore.emplace_back(std::move(strValue));
-                ++values;
             }
 
             attributeValueMap.emplace(

@@ -207,15 +207,14 @@ Status OpenLDAPConnection::connect() {
         if (ret != LDAP_SUCCESS) {
             error() << "Attempted to get LDAPAPIInfo. Received error: " << ldap_err2string(ret);
         } else {
-            ON_BLOCK_EXIT(ldap_memfree, info->ldapai_vendor_name);
-            ON_BLOCK_EXIT(
-                [=](char** extensions) {
-                    for (char** it = extensions; *it != nullptr; ++it) {
-                        ldap_memfree(*it);
-                    }
-                    ldap_memfree(extensions);
-                },
-                info->ldapai_extensions);
+            const auto vendorNameGuard =
+                MakeGuard([&]() { ldap_memfree(info->ldapai_vendor_name); });
+            const auto extensionsGuard = MakeGuard([&]() {
+                for (char** it = info->ldapai_extensions; *it != nullptr; ++it) {
+                    ldap_memfree(*it);
+                }
+                ldap_memfree(info->ldapai_extensions);
+            });
 
             StringBuilder log;
             log << "LDAPAPIInfo: { "
@@ -292,13 +291,11 @@ StatusWith<LDAPEntityCollection> OpenLDAPConnection::query(LDAPQuery query) {
     // libldap wants a non-const copy, so prevent it from breaking our configuration data
     size_t requestedAttributesSize = query.getAttributes().size();
     std::vector<char*> requestedAttributes;
-    ON_BLOCK_EXIT(
-        [](std::vector<char*>* reqAttr) {
-            for (char* attribute : *reqAttr) {
-                delete[] attribute;
-            }
-        },
-        &requestedAttributes);
+    const auto requestedAttributesGuard = MakeGuard([&]() {
+        for (char* attribute : requestedAttributes) {
+            delete[] attribute;
+        }
+    });
 
     requestedAttributes.reserve(requestedAttributesSize + 1);
     for (size_t i = 0; i < requestedAttributesSize; ++i) {
@@ -313,7 +310,7 @@ StatusWith<LDAPEntityCollection> OpenLDAPConnection::query(LDAPQuery query) {
     // ldap_msgfree is a no-op on nullptr. The result from ldap_search_ext_s must be ldap_msgfreed,
     // reguardless of the return code.
     LDAPMessage* queryResult = nullptr;
-    ON_BLOCK_EXIT(ldap_msgfree, queryResult);
+    const auto queryResultGuard = MakeGuard([&]() { ldap_msgfree(queryResult); });
 
     // Perform the actual query
     int err = ldap_search_ext_s(_session,
@@ -362,7 +359,7 @@ StatusWith<LDAPEntityCollection> OpenLDAPConnection::query(LDAPQuery query) {
         // with ldap_memfree. If ldap_get_dn experiences an error it will return NULL and set an
         // error code.
         char* entryDN = ldap_get_dn(_session, entry);
-        ON_BLOCK_EXIT(ldap_memfree, entryDN);
+        const auto entryDNGuard = MakeGuard([&]() { ldap_memfree(entryDN); });
         if (!entryDN) {
             return _resultCodeToStatus("ldap_get_dn",
                                        "getting DN for a result from the OpenLDAP query");
@@ -381,12 +378,12 @@ StatusWith<LDAPEntityCollection> OpenLDAPConnection::query(LDAPQuery query) {
         // zero. If either functions fail, they return NULL and set an error code.
         // Per RFC1823, if either function have no more attributes to return, they will return NULL.
         BerElement* element = nullptr;
-        ON_BLOCK_EXIT([=](BerElement* element) { ber_free(element, 0); }, element);
+        const auto elementGuard = MakeGuard([&]() { ber_free(element, 0); });
         char* attribute = ldap_first_attribute(_session, entry, &element);
         while (attribute) {
             // This takes attribute by value, so we can safely set it to ldap_next_attribute
-            // later, and the old ON_BLOCK_EXIT will free the old attribute.
-            ON_BLOCK_EXIT(ldap_memfree, attribute);
+            // later, and the old Guard will free the old attribute.
+            const auto attributeGuard = MakeGuard([attribute]() { ldap_memfree(attribute); });
             LOG(3) << "From LDAP entry with DN " << entryDN << ", got attribute " << attribute;
 
             // Attributes in LDAP are multi-valued.
@@ -401,14 +398,13 @@ StatusWith<LDAPEntityCollection> OpenLDAPConnection::query(LDAPQuery query) {
                     "ldap_get_values_len",
                     "extracting values for attribute, after successful OpenLDAP query");
             }
-            ON_BLOCK_EXIT(ldap_value_free_len, values);
+            const auto valuesGuard = MakeGuard([&]() { ldap_value_free_len(values); });
 
             LDAPAttributeValues valueStore;
 
-            while (*values) {
-                LDAPAttributeValue strValue((*values)->bv_val, (*values)->bv_len);
+            for (berval** value = values; *value != nullptr; value++) {
+                LDAPAttributeValue strValue((*value)->bv_val, (*value)->bv_len);
                 valueStore.emplace_back(std::move(strValue));
-                ++values;
             }
 
             attributeValueMap.emplace(LDAPAttributeKey(attribute), std::move(valueStore));
