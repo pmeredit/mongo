@@ -583,7 +583,7 @@ public:
                                              "1,15,6,2,2",
                                              ServerStatusClient::METRICS,
                                              "metrics.repl.buffer.maxSizeBytes",
-                                             VT_INT32));
+                                             VT_INT64));
         v.push_back(new ServerStatusCallback("metricsReplBufferSizeBytes",
                                              "1,15,6,2,3",
                                              ServerStatusClient::METRICS,

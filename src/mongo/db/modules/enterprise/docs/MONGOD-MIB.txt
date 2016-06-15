@@ -945,8 +945,9 @@ metricsReplBufferCount OBJECT-TYPE
       "current number of operations in the oplog buffer"
    ::= { metricsReplBuffer 1 }
 
+-- Note that MIB does not provide a 64bit integer type. Representing int64 as string.
 metricsReplBufferMaxSizeBytes OBJECT-TYPE
-   SYNTAX      Integer32
+   SYNTAX      DisplayString (SIZE (0.. 20))
    MAX-ACCESS  read-only
    STATUS      current
    DESCRIPTION
