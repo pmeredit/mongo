@@ -10,11 +10,12 @@
 
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bsonobj.h"
-#include "mongo/db/operation_context.h"
+#include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
 
+#include "../ldap_runner.h"
 #include "ldap_rewrite_rule.h"
 #include "regex_rewrite_rule.h"
 
@@ -29,10 +30,10 @@ InternalToLDAPUserNameMapper::InternalToLDAPUserNameMapper(InternalToLDAPUserNam
 InternalToLDAPUserNameMapper& InternalToLDAPUserNameMapper::operator=(
     InternalToLDAPUserNameMapper&& other) = default;
 
-StatusWith<std::string> InternalToLDAPUserNameMapper::transform(OperationContext* txn,
+StatusWith<std::string> InternalToLDAPUserNameMapper::transform(LDAPRunner* runner,
                                                                 StringData input) const {
     for (const auto& transform : _transformations) {
-        StatusWith<std::string> result = transform->resolve(txn, input);
+        StatusWith<std::string> result = transform->resolve(runner, input);
         LOG(3) << "Transforming username: " << input << " using rule: " << transform->toStringData()
                << ". Result: " << [](const StatusWith<std::string>& result) {
                       return result.isOK()

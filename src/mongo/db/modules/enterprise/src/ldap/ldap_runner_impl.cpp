@@ -29,11 +29,17 @@ LDAPRunnerImpl::LDAPRunnerImpl(LDAPBindOptions defaultBindOptions, LDAPConnectio
 
 LDAPRunnerImpl::~LDAPRunnerImpl() = default;
 
-Status LDAPRunnerImpl::verifyLDAPCredentials(const LDAPBindOptions& bindOptions) {
+Status LDAPRunnerImpl::bindAsUser(const std::string& user, const SecureString& pwd) {
     StatusWith<std::unique_ptr<LDAPConnection>> swConnection = _factory.create(_options);
     if (!swConnection.isOK()) {
         return swConnection.getStatus();
     }
+
+    LDAPBindOptions bindOptions(user,
+                                pwd,
+                                _defaultBindOptions.authenticationChoice,
+                                _defaultBindOptions.saslMechanisms,
+                                false);
 
     // Attempt to bind to the LDAP server with the provided credentials
     return swConnection.getValue()->bindAsUser(bindOptions);

@@ -9,14 +9,9 @@
 #include "mongo/db/auth/authz_session_external_state.h"
 #include "mongo/util/assert_util.h"
 
-#include "ldap_query.h"
-#include "ldap_query_config.h"
 #include "ldap_user_cache_invalidator_job.h"
-#include "name_mapping/internal_to_ldap_user_name_mapper.h"
 
 namespace mongo {
-
-class LDAPRunner;
 
 /**
  * Wraps an AuthzManagerExternalStateMongod object and provided equivalent functionality, except
@@ -27,9 +22,7 @@ class LDAPRunner;
 class AuthzManagerExternalStateLDAP : public AuthzManagerExternalState {
 public:
     AuthzManagerExternalStateLDAP(
-        std::unique_ptr<AuthzManagerExternalStateLocal> wrappedExternalState,
-        UserNameSubstitutionLDAPQueryConfig queryParameters,
-        InternalToLDAPUserNameMapper userToDN);
+        std::unique_ptr<AuthzManagerExternalStateLocal> wrappedExternalState);
 
     virtual ~AuthzManagerExternalStateLDAP() = default;
 
@@ -107,24 +100,6 @@ public:
 
 private:
     /**
-     * For a given user, acquire its roles from LDAP
-     */
-    StatusWith<std::vector<RoleName>> _getUserRoles(OperationContext* txn,
-                                                    const UserName& userName);
-
-    /**
-     * For a provided LDAP search query, get the requested entities.
-     * These entities can be of two different 'forms'. In the first, the provided query
-     * returns a set of entities, without specifying any attributes. This method should
-     * return the DNs of these entities. In the second, attributes were requested, so
-     * we should return the DNs contained in these attributes.
-     *
-     * @param query An LDAP search query to perform against the server
-     * @return Errors arising from the query or the results
-     */
-    StatusWith<LDAPDNVector> _getGroupDNsFromServer(OperationContext* txn, LDAPQuery& query);
-
-    /**
      * Set to 0 if the invalidator has not been started, 1 if it has been started
      */
     AtomicUInt32 _hasInitializedInvalidation;
@@ -138,16 +113,6 @@ private:
      * Wrapped AuthzManagerExternalState object
      */
     std::unique_ptr<AuthzManagerExternalStateLocal> _wrappedExternalState;
-
-    /**
-     * Template containing a query, in which authenticated user's DN will replace '{USER}'
-     */
-    UserNameSubstitutionLDAPQueryConfig _queryConfig;
-
-    /**
-     * Mapper from authentication user name to LDAP DN
-     */
-    InternalToLDAPUserNameMapper _userToDN;
 };
 
 }  // namespace mongo

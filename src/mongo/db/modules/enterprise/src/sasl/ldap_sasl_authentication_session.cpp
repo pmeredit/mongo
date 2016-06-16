@@ -8,18 +8,18 @@
 
 #include <boost/range/size.hpp>
 
+#include "mongo/base/secure_allocator.h"
 #include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/sasl_options.h"
+#include "mongo/db/operation_context.h"
 #include "mongo/db/service_context.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
 
-#include "../ldap/ldap_connection_options.h"
-#include "../ldap/ldap_options.h"
-#include "../ldap/ldap_runner.h"
+#include "../ldap/ldap_manager.h"
 #include "../ldap/name_mapping/internal_to_ldap_user_name_mapper.h"
 
 namespace mongo {
@@ -94,32 +94,10 @@ Status LDAPSaslAuthenticationSession::step(StringData inputData, std::string* ou
                       mongoutils::str::stream() << "Incorrectly formatted PLAIN client message");
     }
 
-    std::string userName = _user;
-    if (!globalLDAPParams->userToDNMapping.empty()) {
-        BSONObj expression;
-        try {
-            expression = fromjson(globalLDAPParams->userToDNMapping);
-        } catch (DBException& e) {
-            return Status(ErrorCodes::AuthenticationFailed,
-                          str::stream() << "Failed to create json representation of "
-                                        << globalLDAPParams->userToDNMapping);
-        }
-        auto swMapper = InternalToLDAPUserNameMapper::createNameMapper(std::move(expression));
-        massertStatusOK(swMapper.getStatus());
-        auto swUser = swMapper.getValue().transform(_txn, _user);
-        if (!swUser.getStatus().isOK()) {
-            return swUser.getStatus();
-        }
-        userName = std::move(swUser.getValue());
-    }
-
-    LDAPBindOptions bindOptions(
-        userName, pwd, globalLDAPParams->bindMethod, globalLDAPParams->bindSASLMechanisms, false);
-
     // A SASL PLAIN conversation only has one step
     _done = true;
 
-    return LDAPRunner::get(getGlobalServiceContext())->verifyLDAPCredentials(bindOptions);
+    return LDAPManager::get(_txn->getServiceContext())->verifyLDAPCredentials(_user, pwd);
 }
 
 std::string LDAPSaslAuthenticationSession::getPrincipalId() const {

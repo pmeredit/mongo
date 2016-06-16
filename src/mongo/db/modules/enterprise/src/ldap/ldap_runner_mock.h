@@ -19,7 +19,7 @@ namespace mongo {
 class LDAPRunnerMock : public LDAPRunner {
 public:
     ~LDAPRunnerMock() final = default;
-    Status verifyLDAPCredentials(const LDAPBindOptions& bindOptions) final {
+    Status bindAsUser(const std::string& user, const SecureString& pwd) final {
         return Status::OK();
     }
 

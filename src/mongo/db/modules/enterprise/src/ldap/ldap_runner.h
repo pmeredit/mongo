@@ -6,6 +6,8 @@
 
 #include <memory>
 
+#include "mongo/base/secure_allocator.h"
+
 #include "ldap_type_aliases.h"
 
 namespace mongo {
@@ -28,12 +30,13 @@ public:
 
     static LDAPRunner* get(ServiceContext* service);
 
-    /** Verify credentials by attempting to bind to the remote LDAP server.
+    /** Attempt to bind to the remote LDAP server.
      *
-     *  @param bindOptions, options used to bind to the LDAP server including username and password.
+     *  @param user, bind username.
+     *  @param pwd, bind password.
      *  @return, Ok on successful authentication.
      */
-    virtual Status verifyLDAPCredentials(const LDAPBindOptions& bindOptions) = 0;
+    virtual Status bindAsUser(const std::string& user, const SecureString& pwd) = 0;
 
     /** Execute the query, returning the results.
      *

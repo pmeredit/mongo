@@ -11,7 +11,7 @@
 #include "mongo/base/disallow_copying.h"
 
 namespace mongo {
-class OperationContext;
+class LDAPRunner;
 template <typename T>
 class StatusWith;
 class StringData;
@@ -41,7 +41,7 @@ public:
      *
      * @input The input string to transform
      */
-    virtual StatusWith<std::string> resolve(OperationContext* txn, StringData input) const = 0;
+    virtual StatusWith<std::string> resolve(LDAPRunner* runner, StringData input) const = 0;
 
     /**
      * Produce a string representation of the rule

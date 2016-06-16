@@ -3,23 +3,26 @@
 Import('env')
 
 env.Library(
-    target='ldap_runner_init',
+    target='ldap_manager_init',
     source=[
-        'ldap_runner_init.cpp'
+        'ldap_manager_init.cpp'
     ],
     LIBDEPS=['$BUILD_DIR/mongo/db/service_context',
-             'ldap_runner'],
+             'ldap_manager'],
     PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongod',
                          '$BUILD_DIR/mongo/mongos'])
 
 env.Library(
-    target='ldap_runner',
+    target='ldap_manager',
     source=[
-        'ldap_runner.cpp',
+        'ldap_manager.cpp',
+        'ldap_manager_impl.cpp',
         'ldap_runner_impl.cpp'
     ],
     LIBDEPS=[
+        '$BUILD_DIR/mongo/db/auth/authcore',
         'ldap_connection',
+        'ldap_name_map',
         'ldap_query',
     ],
 )
@@ -80,7 +83,7 @@ env.Library(
         'ldap_user_cache_invalidator_job.cpp',
     ],
     LIBDEPS=[
-        'ldap_runner',
+        'ldap_manager',
         'ldap_query',
         'ldap_name_map',
         '$BUILD_DIR/mongo/bson/mutable/mutable_bson',
@@ -105,7 +108,6 @@ env.Library(
     ],
     LIBDEPS=[
         'ldap_query',
-        'ldap_runner',
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/db/service_context',
         '$BUILD_DIR/third_party/shim_pcrecpp',
@@ -118,8 +120,9 @@ env.CppUnitTest(
         'name_mapping/rewrite_rule_test.cpp',
     ],
     LIBDEPS=[
+        'ldap_manager',
         'ldap_name_map',
-        'ldap_runner',
+        '$BUILD_DIR/mongo/db/auth/authcore',
         '$BUILD_DIR/mongo/db/service_context',
     ],
 )

@@ -9,7 +9,6 @@
 #include <vector>
 
 #include "mongo/base/string_data.h"
-#include "mongo/db/operation_context.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/mongoutils/str.h"
 
@@ -44,7 +43,7 @@ RegexRewriteRule::RegexRewriteRule(pcrecpp::RE match,
       _substitution(std::move(substitution)),
       _stringRepresentation(std::move(stringRepresentation)) {}
 
-StatusWith<std::string> RegexRewriteRule::resolve(OperationContext* txn, StringData input) const {
+StatusWith<std::string> RegexRewriteRule::resolve(LDAPRunner* runner, StringData input) const {
     StatusWith<std::vector<std::string>> swExtractedMatches = _extractMatches(_match, input);
     if (!swExtractedMatches.isOK()) {
         return swExtractedMatches.getStatus();

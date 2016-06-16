@@ -13,8 +13,7 @@
 
 namespace mongo {
 class BSONObj;
-class LDAPRunnerInterface;
-class OperationContext;
+class LDAPRunner;
 template <typename T>
 class StatusWith;
 class StringData;
@@ -40,7 +39,7 @@ public:
      * If the rule does not match, the next rule will be tried. If no rules remain, the
      * transformation will fail.
      */
-    StatusWith<std::string> transform(OperationContext* txn, StringData input) const;
+    StatusWith<std::string> transform(LDAPRunner* runner, StringData input) const;
 
     /**
      * Factory function which generates a new InternalToLDAPUserNameMapper.

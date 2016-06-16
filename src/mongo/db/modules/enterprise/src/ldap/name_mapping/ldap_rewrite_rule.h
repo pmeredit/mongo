@@ -9,7 +9,7 @@
 #include "../ldap_query_config.h"
 
 namespace mongo {
-class OperationContext;
+class LDAPRunner;
 template <typename T>
 class StatusWith;
 
@@ -41,7 +41,7 @@ public:
      * Rewrite 'input' into an LDAP query, and perform it, returning the result if existing
      * and singular.
      */
-    StatusWith<std::string> resolve(OperationContext* txn, StringData input) const final;
+    StatusWith<std::string> resolve(LDAPRunner* runner, StringData input) const final;
 
     const StringData toStringData() const final;
 

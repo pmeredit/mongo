@@ -26,7 +26,7 @@ public:
     LDAPRunnerImpl(LDAPBindOptions defaultBindOptions, LDAPConnectionOptions options);
     ~LDAPRunnerImpl() final;
 
-    Status verifyLDAPCredentials(const LDAPBindOptions& bindOptions) final;
+    Status bindAsUser(const std::string& user, const SecureString& pwd) final;
     StatusWith<LDAPEntityCollection> runQuery(const LDAPQuery& query) final;
 
 private:

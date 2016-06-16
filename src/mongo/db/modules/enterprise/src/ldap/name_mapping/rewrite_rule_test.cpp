@@ -17,19 +17,12 @@
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
-#include "mongo/db/operation_context_noop.h"
-#include "mongo/db/service_context_noop.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/unittest/unittest.h"
 #include "regex_rewrite_rule.h"
 #include "rewrite_rule.h"
 
 namespace mongo {
-
-MONGO_INITIALIZER(SetGlobalEnvironment)(InitializerContext* context) {
-    setGlobalServiceContext(stdx::make_unique<ServiceContextNoop>());
-    return Status::OK();
-}
 
 namespace {
 const std::string kEngineeringDN = "ou=engineering,dc=mongodb,dc=com";
@@ -52,20 +45,9 @@ std::unique_ptr<T> assertCreateOKPtr(Args&&... args) {
 
 class LDAPTransformContext : public unittest::Test {
 public:
-    LDAPTransformContext()
-        : client(service.makeClient("RewriteRuleTest")),
-          txn(client.get(), 200),
-          runner(new LDAPRunnerMock()) {
-        // Create a unique ptr for the service context and retain
-        // a local raw pointer for test access.
-        std::unique_ptr<LDAPRunner> uniqueRunner(runner);
-        LDAPRunner::set(&service, std::move(uniqueRunner));
-    }
+    LDAPTransformContext() : runner(new LDAPRunnerMock()) {}
 
 protected:
-    ServiceContextNoop service;
-    ServiceContext::UniqueClient client;
-    OperationContextNoop txn;
     LDAPRunnerMock* runner;
 };
 
@@ -75,24 +57,24 @@ using NameMapperTest = LDAPTransformContext;
 
 TEST_F(RegexTransformTest, matchesAString) {
     auto regex = assertCreateOK<RegexRewriteRule>("[a-zA-Z]+", "");
-    ASSERT_OK(regex.resolve(&txn, "helloWorld"));
+    ASSERT_OK(regex.resolve(runner, "helloWorld"));
 }
 
 TEST_F(RegexTransformTest, failsToMatchAString) {
     auto regex = assertCreateOK<RegexRewriteRule>("[a-zA-Z]+", "");
-    ASSERT_NOT_OK(regex.resolve(&txn, "555"));
+    ASSERT_NOT_OK(regex.resolve(runner, "555"));
 }
 
 TEST_F(RegexTransformTest, substitutesAString) {
     auto regex = assertCreateOK<RegexRewriteRule>("([a-zA-Z]+)", "Got: {0}");
-    auto result = regex.resolve(&txn, "helloWorld");
+    auto result = regex.resolve(runner, "helloWorld");
     ASSERT_OK(result);
     ASSERT_EQ("Got: helloWorld", result.getValue());
 }
 
 TEST_F(RegexTransformTest, substitutesTwoStrings) {
     auto regex = assertCreateOK<RegexRewriteRule>("([a-zA-Z]+) ([a-zA-Z]+)", "Got: {0}. And: {1}.");
-    auto result = regex.resolve(&txn, "helloWorld goodbyeWorld");
+    auto result = regex.resolve(runner, "helloWorld goodbyeWorld");
     ASSERT_OK(result);
     ASSERT_EQ("Got: helloWorld. And: goodbyeWorld.", result.getValue());
 }
@@ -116,16 +98,15 @@ TEST_F(RegexTransformTest, substitutesMultidigitCaptureGroups) {
     }
 
     auto regex = assertCreateOK<RegexRewriteRule>(regexRule.str(), regexSubstitution.str());
-    auto result = regex.resolve(&txn, regexInput.str());
+    auto result = regex.resolve(runner, regexInput.str());
     ASSERT_OK(result);
     ASSERT_EQ(regexOutput.str(), result.getValue());
 }
 
 TEST_F(LDAPTransformTest, stringSubstitutionFailureReturnsBadStatus) {
-    OperationContextNoop txn;
     auto transformer =
         assertCreateOK<LDAPRewriteRule>(kEngineeringRealmRegex, "cn={0}" + kEngineeringDN);
-    ASSERT_NOT_OK(transformer.resolve(&txn, "sajack@MARKETING"));
+    ASSERT_NOT_OK(transformer.resolve(runner, "sajack@MARKETING"));
 }
 
 TEST_F(LDAPTransformTest, stringSubstitutionToBadLDAPFailsToCompile) {
@@ -140,7 +121,7 @@ TEST_F(LDAPTransformTest, noResults) {
 
     auto transformer =
         assertCreateOK<LDAPRewriteRule>(kEngineeringRealmRegex, kEngineeringDN + "??one?(uid={0})");
-    auto result = transformer.resolve(&txn, "sajack@ENGINEERING");
+    auto result = transformer.resolve(runner, "sajack@ENGINEERING");
     ASSERT_EQ(ErrorCodes::UserNotFound, result);
 }
 
@@ -151,7 +132,7 @@ TEST_F(LDAPTransformTest, tooManyResults) {
     runner->push(kEngineeringDN + "??one?(uid=sajack)", std::move(results));
     auto transformer =
         assertCreateOK<LDAPRewriteRule>(kEngineeringRealmRegex, kEngineeringDN + "??one?(uid={0})");
-    auto result = transformer.resolve(&txn, "sajack@ENGINEERING");
+    auto result = transformer.resolve(runner, "sajack@ENGINEERING");
     ASSERT_EQ(ErrorCodes::UserDataInconsistent, result);
 }
 
@@ -161,7 +142,7 @@ TEST_F(LDAPTransformTest, stringSubstitutionSuccess) {
     runner->push(kEngineeringDN + "??one?(uid=sajack)", std::move(results));
     auto transformer =
         assertCreateOK<LDAPRewriteRule>(kEngineeringRealmRegex, kEngineeringDN + "??one?(uid={0})");
-    auto result = transformer.resolve(&txn, "sajack@ENGINEERING");
+    auto result = transformer.resolve(runner, "sajack@ENGINEERING");
     ASSERT_OK(result);
     ASSERT_EQ("cn=sajack" + kEngineeringDN, result.getValue());
 }
@@ -169,7 +150,7 @@ TEST_F(LDAPTransformTest, stringSubstitutionSuccess) {
 TEST_F(NameMapperTest, parseEmptyConfig) {
     auto swEngine = InternalToLDAPUserNameMapper::createNameMapper(BSONArray());
     ASSERT_OK(swEngine.getStatus());
-    ASSERT_NOT_OK(swEngine.getValue().transform(&txn, "helloWorld"));
+    ASSERT_NOT_OK(swEngine.getValue().transform(runner, "helloWorld"));
 }
 
 TEST_F(NameMapperTest, parseBadConfig) {
@@ -218,7 +199,7 @@ TEST_F(NameMapperTest, parseRule) {
                             << "{0}@admin"))));
     ASSERT_OK(engineResult.getStatus());
     InternalToLDAPUserNameMapper engine{std::move(engineResult.getValue())};
-    auto map1 = engine.transform(&txn, "cn=sajack," + kEngineeringDN);
+    auto map1 = engine.transform(runner, "cn=sajack," + kEngineeringDN);
     ASSERT_OK(map1);
     ASSERT_EQ("sajack@admin", map1.getValue());
 }
@@ -231,7 +212,7 @@ TEST_F(NameMapperTest, parseRuleWithSingleDocument) {
                                                             << "{0}@admin")));
     ASSERT_OK(engineResult.getStatus());
     InternalToLDAPUserNameMapper engine{std::move(engineResult.getValue())};
-    auto map1 = engine.transform(&txn, "cn=sajack," + kEngineeringDN);
+    auto map1 = engine.transform(runner, "cn=sajack," + kEngineeringDN);
     ASSERT_OK(map1);
     ASSERT_EQ("sajack@admin", map1.getValue());
 }
@@ -244,7 +225,7 @@ TEST_F(NameMapperTest, parseRuleWithEmptyMatch) {
                                                                        << "{0}@admin"))));
     ASSERT_OK(engineResult.getStatus());
     InternalToLDAPUserNameMapper engine{std::move(engineResult.getValue())};
-    auto map1 = engine.transform(&txn, "cn=sajack," + kEngineeringDN);
+    auto map1 = engine.transform(runner, "cn=sajack," + kEngineeringDN);
     ASSERT_NOT_OK(map1);
 }
 
@@ -256,7 +237,7 @@ TEST_F(NameMapperTest, parseRuleWithEmptySub) {
                                                                        << ""))));
     ASSERT_OK(engineResult.getStatus());
     InternalToLDAPUserNameMapper engine{std::move(engineResult.getValue())};
-    auto map1 = engine.transform(&txn, "cn=sajack," + kEngineeringDN);
+    auto map1 = engine.transform(runner, "cn=sajack," + kEngineeringDN);
     ASSERT_OK(map1);
     ASSERT_EQ("", map1.getValue());
 }
@@ -275,11 +256,11 @@ TEST_F(NameMapperTest, parseTwoRules) {
     ASSERT_TRUE(engineResult.isOK());
     InternalToLDAPUserNameMapper engine{std::move(engineResult.getValue())};
 
-    auto map1 = engine.transform(&txn, "cn=sajack," + kEngineeringDN);
+    auto map1 = engine.transform(runner, "cn=sajack," + kEngineeringDN);
     ASSERT_OK(map1);
     ASSERT_EQ("sajack@admin", map1.getValue());
 
-    auto map2 = engine.transform(&txn, "cn=sajack," + kMarketingDN);
+    auto map2 = engine.transform(runner, "cn=sajack," + kMarketingDN);
     ASSERT_OK(map2);
     ASSERT_EQ("sajack@production", map2.getValue());
 }
@@ -292,7 +273,7 @@ TEST_F(NameMapperTest, parseLDAPRule) {
         "match" << kEngineeringRealmRegex << "ldapQuery" << kEngineeringDN + "??one?(uid={0})"))));
     ASSERT_OK(engineResult.getStatus());
     InternalToLDAPUserNameMapper engine{std::move(engineResult.getValue())};
-    auto map1 = engine.transform(&txn, "sajack@ENGINEERING");
+    auto map1 = engine.transform(runner, "sajack@ENGINEERING");
     ASSERT_OK(map1);
     ASSERT_EQ("cn=sajack," + kEngineeringDN, map1.getValue());
 }
