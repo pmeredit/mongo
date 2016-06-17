@@ -29,9 +29,13 @@ def configure(conf, env):
             # the net-snmp-config command was not found
             env.ConfError("Could not find or execute 'net-snmp-config': {0}", ose)
         else:
+            # Don't inject the whole environment held in snmpFlags, because the net-snmp-config
+            # utility throws some weird flags in that get picked up in LINKFLAGS that we don't want
+            # (see SERVER-23200). The only thing we need here are the LIBS and the LIBPATH, and any
+            # rpath that was set in LINKFLAGS.
             env['SNMP_SYSLIBDEPS'] = snmpFlags['LIBS']
-            del snmpFlags['LIBS']
-            env.Append(**snmpFlags)
+            env.Append(LIBPATH=snmpFlags['LIBPATH'])
+            env.Append(LINKFLAGS=[flag for flag in snmpFlags['LINKFLAGS'] if '-Wl,-rpath' in flag])
             env.Append(CPPDEFINES=["NETSNMP_NO_INLINE"])
 
     env['MONGO_BUILD_SASL_CLIENT'] = True
