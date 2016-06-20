@@ -119,7 +119,12 @@ function LDAPTestConfigGenerator() {
         }
         config.ldapQueryPassword = this.ldapQueryPassword;
         if (!(this.ldapUserToDNMapping === undefined)) {
-            config.ldapUserToDNMapping = JSON.stringify(this.ldapUserToDNMapping);
+            // Some string rewriting is needed here. Quotes need to be single quotes to make Windows
+            // argument parsing happy, and JSONified escaped unicode characters need to be
+            // reformatted, because stringify will try to escape the escape characters.
+            config.ldapUserToDNMapping = JSON.stringify(this.ldapUserToDNMapping)
+                                             .replace(/"/g, "'")
+                                             .replace(/\\\\u/g, "\\u");
         }
 
         var setParameter = {

@@ -166,8 +166,13 @@
         assert(retVal == 0);
     }
 
-    testGSSAPI();
     testNativeLDAP();
-    testLDAPSaslauthd();
     testX509();
+    if (!_isWindows()) {
+        // Windows machines must be a part of the Kerberos domain. Move this out with SERVER-24671.
+        testGSSAPI();
+        // Windows machines don't support saslauthd.
+        testLDAPSaslauthd();
+    }
+
 })();

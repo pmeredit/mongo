@@ -14,6 +14,7 @@
     var authOptions =
         {user: adminUserDN, pwd: defaultPwd, mechanism: "PLAIN", digetPassword: false};
 
+    // Test a query for users which are listed as attributes on groups
     // FIXME: This should be merged into the lib configuration somehow
     var configGenerator = new LDAPTestConfigGenerator();
     configGenerator.ldapAuthzQueryTemplate =
@@ -21,9 +22,10 @@
 
     runTests(authAndVerify, configGenerator, {authOptions: authOptions, user: adminUserDN});
 
+    // Test a query which contains UTF-8 characters
     configGenerator.ldapAuthzQueryTemplate = "{USER}?memberOf";
     configGenerator.ldapUserToDNMapping =
-        [{match: ".*", ldapQuery: defaultUserDNSuffix + "??one?(description=■ ■)"}];
+        [{match: ".*", ldapQuery: defaultUserDNSuffix + "??one?(description=\\u25A0 \\u25A0)"}];
 
     runTests(authAndVerify, configGenerator, {authOptions: authOptions, user: adminUserDN});
 })();

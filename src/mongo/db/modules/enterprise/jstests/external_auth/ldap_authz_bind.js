@@ -36,8 +36,9 @@
 
     ldapSchemes.forEach(function(s) {
         bindOptions.forEach(function(b) {
-            if (b.saslMechanisim == "GSSAPI" && s.useLDAPS) {
-                // configuration not supported by AD
+            if ((b.fragment.ldapBindSASLMechs == "GSSAPI" || s.useLDAPS) && _isWindows()) {
+                // FIXME: Import TLS certificates on Windows builders with SERVER-24672.
+                // FIXME: Enable support for GSSAPI on Windows builders with SERVER-24671.
                 return;
             }
 
