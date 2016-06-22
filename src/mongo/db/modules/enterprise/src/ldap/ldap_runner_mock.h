@@ -46,6 +46,23 @@ public:
         _stored.emplace_back(std::move(savedQuery));
     }
 
+    std::string getHostURIs() const final {
+        return "";
+    }
+    void setHostURIs(const std::string& hostURIs) final {}
+
+    Milliseconds getTimeout() const final {
+        return Milliseconds(0);
+    }
+    void setTimeout(Milliseconds timeout) final {}
+
+    std::string getBindDN() const final {
+        return "";
+    }
+    void setBindDN(const std::string& bindDN) final {}
+
+    void setBindPassword(SecureString pwd) final {}
+
 private:
     // The MockQueryEntry cannot be constructed piece by piece, because LDAPQuery doesn't have a
     // default constructor. But, LDAPQuery must be constructed with a reference to the final

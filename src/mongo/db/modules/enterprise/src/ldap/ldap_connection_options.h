@@ -54,6 +54,8 @@ struct LDAPBindOptions {
           saslMechanisms(std::move(saslMechanisms)),
           useLDAPConnectionDefaults(useLDAPConnectionDefaults) {}
 
+    LDAPBindOptions() = default;
+
     std::string bindDN;                 // The username, or entity DN, to bind with
     SecureString password;              // The password to bind with
     LDAPBindType authenticationChoice;  // The authentication system to use, simple or SASL
@@ -73,6 +75,8 @@ struct LDAPBindOptions {
 struct LDAPConnectionOptions {
     LDAPConnectionOptions(Milliseconds timeout, std::string hostURIs)
         : timeout(std::move(timeout)), hostURIs(std::move(hostURIs)) {}
+
+    LDAPConnectionOptions() = default;
 
     Milliseconds timeout;  // How long to wait before timing out
     std::string hostURIs;  // List of server URIs: (ldap|ldaps)://(server)(:port)

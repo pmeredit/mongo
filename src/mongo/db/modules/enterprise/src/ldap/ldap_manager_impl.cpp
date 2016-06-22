@@ -22,18 +22,22 @@
 
 namespace mongo {
 
-LDAPManagerImpl::LDAPManagerImpl(LDAPBindOptions defaultBindOptions,
-                                 LDAPConnectionOptions options,
+LDAPManagerImpl::LDAPManagerImpl(std::unique_ptr<LDAPRunner> runner,
                                  UserNameSubstitutionLDAPQueryConfig queryParameters,
-                                 InternalToLDAPUserNameMapper userToDN)
-    : _runner(std::move(defaultBindOptions), std::move(options)),
+                                 InternalToLDAPUserNameMapper nameMapper)
+    : _runner(std::move(runner)),
       _queryConfig(std::move(queryParameters)),
-      _userToDN(std::move(userToDN)) {}
+      _userToDN(std::make_shared<InternalToLDAPUserNameMapper>(std::move(nameMapper))) {}
 
 LDAPManagerImpl::~LDAPManagerImpl() = default;
 
 Status LDAPManagerImpl::verifyLDAPCredentials(const std::string& user, const SecureString& pwd) {
-    auto swUser = _userToDN.transform(&_runner, user);
+    std::shared_ptr<InternalToLDAPUserNameMapper> userToDN;
+    {
+        stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
+        userToDN = _userToDN;
+    }
+    auto swUser = userToDN->transform(_runner.get(), user);
     if (!swUser.getStatus().isOK()) {
         return Status(swUser.getStatus().code(),
                       "Failed to transform authentication user name to LDAP DN: " +
@@ -41,11 +45,16 @@ Status LDAPManagerImpl::verifyLDAPCredentials(const std::string& user, const Sec
                       swUser.getStatus().location());
     }
 
-    return _runner.bindAsUser(std::move(swUser.getValue()), pwd);
+    return _runner->bindAsUser(std::move(swUser.getValue()), pwd);
 }
 
 StatusWith<std::vector<RoleName>> LDAPManagerImpl::getUserRoles(const UserName& userName) {
-    auto swUser = _userToDN.transform(&_runner, userName.getUser());
+    std::shared_ptr<InternalToLDAPUserNameMapper> userToDN;
+    {
+        stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
+        userToDN = _userToDN;
+    }
+    auto swUser = userToDN->transform(_runner.get(), userName.getUser());
     if (!swUser.isOK()) {
         return Status(swUser.getStatus().code(),
                       "Failed to transform bind user name to LDAP DN: " +
@@ -53,7 +62,11 @@ StatusWith<std::vector<RoleName>> LDAPManagerImpl::getUserRoles(const UserName& 
                       swUser.getStatus().location());
     }
 
-    StatusWith<LDAPQuery> swQuery = LDAPQuery::instantiateQuery(_queryConfig, swUser.getValue());
+    StatusWith<LDAPQuery> swQuery(ErrorCodes::InternalError, "Not initialized");
+    {
+        stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
+        swQuery = LDAPQuery::instantiateQuery(_queryConfig, swUser.getValue());
+    }
     if (!swQuery.isOK()) {
         return swQuery.getStatus();
     }
@@ -72,11 +85,59 @@ StatusWith<std::vector<RoleName>> LDAPManagerImpl::getUserRoles(const UserName& 
     return roles;
 }
 
+std::string LDAPManagerImpl::getHostURIs() const {
+    return _runner->getHostURIs();
+}
+
+void LDAPManagerImpl::LDAPManagerImpl::setHostURIs(const std::string& hostURIs) {
+    _runner->setHostURIs(hostURIs);
+}
+
+Milliseconds LDAPManagerImpl::getTimeout() const {
+    return _runner->getTimeout();
+}
+
+void LDAPManagerImpl::setTimeout(Milliseconds timeout) {
+    return _runner->setTimeout(timeout);
+}
+
+std::string LDAPManagerImpl::getBindDN() const {
+    return _runner->getBindDN();
+}
+
+void LDAPManagerImpl::setBindDN(const std::string& bindDN) {
+    return _runner->setBindDN(bindDN);
+}
+
+void LDAPManagerImpl::setBindPassword(SecureString pwd) {
+    return _runner->setBindPassword(std::move(pwd));
+}
+
+std::string LDAPManagerImpl::getUserToDNMapping() const {
+    stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
+    return _userToDN->toString();
+}
+
+void LDAPManagerImpl::setUserNameMapper(InternalToLDAPUserNameMapper nameMapper) {
+    stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
+    _userToDN = std::make_shared<InternalToLDAPUserNameMapper>(std::move(nameMapper));
+}
+
+std::string LDAPManagerImpl::getQueryTemplate() const {
+    stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
+    return _queryConfig.toString();
+}
+
+void LDAPManagerImpl::setQueryConfig(UserNameSubstitutionLDAPQueryConfig queryConfig) {
+    stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
+    _queryConfig = std::move(queryConfig);
+}
+
 StatusWith<LDAPDNVector> LDAPManagerImpl::_getGroupDNsFromServer(LDAPQuery& query) {
     bool isAcquiringAttributes = !query.getAttributes().empty();
 
     // Perform the query specified in ldapLDAPQuery against the server.
-    StatusWith<LDAPEntityCollection> queryResultStatus = _runner.runQuery(query);
+    StatusWith<LDAPEntityCollection> queryResultStatus = _runner->runQuery(query);
     if (!queryResultStatus.isOK()) {
         return queryResultStatus.getStatus();
     }

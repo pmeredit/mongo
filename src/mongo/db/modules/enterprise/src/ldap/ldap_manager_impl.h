@@ -5,6 +5,7 @@
 #pragma once
 
 #include "mongo/base/secure_allocator.h"
+#include "mongo/stdx/mutex.h"
 
 #include "ldap_manager.h"
 #include "ldap_query_config.h"
@@ -28,14 +29,36 @@ class UserName;
  */
 class LDAPManagerImpl : public LDAPManager {
 public:
-    LDAPManagerImpl(LDAPBindOptions defaultBindOptions,
-                    LDAPConnectionOptions options,
+    LDAPManagerImpl(std::unique_ptr<LDAPRunner> runner,
                     UserNameSubstitutionLDAPQueryConfig queryParameters,
-                    InternalToLDAPUserNameMapper userToDN);
+                    InternalToLDAPUserNameMapper nameMapper);
     ~LDAPManagerImpl() final;
 
     StatusWith<std::vector<RoleName>> getUserRoles(const UserName& userName) final;
     Status verifyLDAPCredentials(const std::string& user, const SecureString& pwd) final;
+
+    ////////////////////////////////////////////////////////////
+    //
+    // State inspection and manipulation methods.
+    //
+    ////////////////////////////////////////////////////////////
+
+    std::string getHostURIs() const final;
+    void setHostURIs(const std::string& hostURIs) final;
+
+    Milliseconds getTimeout() const final;
+    void setTimeout(Milliseconds timeout) final;
+
+    std::string getBindDN() const final;
+    void setBindDN(const std::string& bindDN) final;
+
+    void setBindPassword(SecureString pwd) final;
+
+    std::string getUserToDNMapping() const final;
+    void setUserNameMapper(InternalToLDAPUserNameMapper nameMapper) final;
+
+    std::string getQueryTemplate() const final;
+    void setQueryConfig(UserNameSubstitutionLDAPQueryConfig queryConfig) final;
 
 private:
     /**
@@ -53,7 +76,12 @@ private:
     /**
      * The LDAPRunner used to make outgoing queries to the LDAP server.
      */
-    LDAPRunnerImpl _runner;
+    std::unique_ptr<LDAPRunner> _runner;
+
+    /**
+     * Protects access to the _queryConfig and _userToDN member variables.
+     */
+    mutable stdx::mutex _memberAccessMutex;
 
     /**
      * Template containing a query, in which authenticated user's DN will replace
@@ -64,6 +92,6 @@ private:
     /**
      * Mapper from authentication user name to LDAP DN
      */
-    InternalToLDAPUserNameMapper _userToDN;
+    std::shared_ptr<InternalToLDAPUserNameMapper> _userToDN;
 };
 }  // namespace mongo

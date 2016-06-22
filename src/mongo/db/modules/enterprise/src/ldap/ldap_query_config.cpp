@@ -106,6 +106,7 @@ template <typename T>
 StatusWith<T> LDAPQueryConfig::createDerivedLDAPQueryConfig(const std::string& input) {
     T params;
     std::string attributes, scope, extensions;
+    params._queryConfigStr = input;
 
     // Use a regular expression to find all the interesting components in the query URI and copy
     // them into std::strings.

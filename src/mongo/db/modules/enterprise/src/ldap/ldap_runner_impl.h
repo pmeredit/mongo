@@ -29,8 +29,26 @@ public:
     Status bindAsUser(const std::string& user, const SecureString& pwd) final;
     StatusWith<LDAPEntityCollection> runQuery(const LDAPQuery& query) final;
 
+    std::string getHostURIs() const final;
+    void setHostURIs(const std::string& hostURIs) final;
+
+    Milliseconds getTimeout() const final;
+    void setTimeout(Milliseconds timeout) final;
+
+    std::string getBindDN() const final;
+    void setBindDN(const std::string& bindDN) final;
+
+    void setBindPassword(SecureString pwd) final;
+
 private:
     LDAPConnectionFactory _factory;
+
+    /**
+     * Protects access to _defaultBindOptions.bindDN, _defaultBindOptions.password,
+     * _options.serverURIs and _options.timeout.
+     */
+    mutable stdx::mutex _memberAccessMutex;
+
     LDAPBindOptions _defaultBindOptions;
     LDAPConnectionOptions _options;
 };

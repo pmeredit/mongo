@@ -89,6 +89,11 @@ public:
     static StatusWith<ComponentSubstitutionLDAPQueryConfig> createLDAPQueryConfigWithComponents(
         const std::string& input);
 
+
+    std::string toString() const {
+        return _queryConfigStr;
+    }
+
     bool operator==(const LDAPQueryConfig& other) const {
         return std::tie(baseDN, scope, filter, attributes) ==
             std::tie(other.baseDN, other.scope, other.filter, other.attributes);
@@ -103,6 +108,8 @@ protected:
     LDAPQueryConfig() = default;
     template <typename T>
     static StatusWith<T> createDerivedLDAPQueryConfig(const std::string& input);
+
+    std::string _queryConfigStr;
 };
 
 class UserNameSubstitutionLDAPQueryConfig : public LDAPQueryConfig {};

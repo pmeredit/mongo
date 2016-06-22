@@ -11,6 +11,7 @@
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
+#include "mongo/bson/json.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
@@ -22,8 +23,8 @@
 namespace mongo {
 
 InternalToLDAPUserNameMapper::InternalToLDAPUserNameMapper(
-    std::vector<std::unique_ptr<RewriteRule>> rules)
-    : _transformations(std::move(rules)) {}
+    std::vector<std::unique_ptr<RewriteRule>> rules, std::string userToDNMapping)
+    : _transformations(std::move(rules)), _userToDNMapping(std::move(userToDNMapping)) {}
 
 InternalToLDAPUserNameMapper::InternalToLDAPUserNameMapper(InternalToLDAPUserNameMapper&& other) =
     default;
@@ -53,7 +54,16 @@ StatusWith<std::string> InternalToLDAPUserNameMapper::transform(LDAPRunner* runn
 }
 
 StatusWith<InternalToLDAPUserNameMapper> InternalToLDAPUserNameMapper::createNameMapper(
-    BSONObj config) {
+    std::string userToDNMapping) {
+    BSONObj config;
+    try {
+        config = fromjson(userToDNMapping);
+    } catch (DBException& e) {
+        return Status(ErrorCodes::FailedToParse,
+                      "Failed to parse JSON description of the relationship between "
+                      "MongoDB usernames and LDAP DNs");
+    }
+
     std::vector<std::unique_ptr<RewriteRule>> transforms;
 
     if (!config.couldBeArray()) {
@@ -141,6 +151,6 @@ StatusWith<InternalToLDAPUserNameMapper> InternalToLDAPUserNameMapper::createNam
     }
 
     return StatusWith<InternalToLDAPUserNameMapper>{
-        InternalToLDAPUserNameMapper(std::move(transforms))};
+        InternalToLDAPUserNameMapper(std::move(transforms), std::move(userToDNMapping))};
 }
 }  // namespace mongo

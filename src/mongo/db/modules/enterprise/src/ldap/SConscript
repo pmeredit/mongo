@@ -17,6 +17,8 @@ env.Library(
     source=[
         'ldap_manager.cpp',
         'ldap_manager_impl.cpp',
+        'ldap_options.cpp',
+        'ldap_runtime_parameters.cpp',
         'ldap_runner_impl.cpp'
     ],
     LIBDEPS=[
@@ -31,7 +33,6 @@ env.Library(
     target='ldap_query',
     source=[
         'ldap_connection_options.cpp',
-        'ldap_options.cpp',
         'ldap_query.cpp',
         'ldap_query_config.cpp',
     ],

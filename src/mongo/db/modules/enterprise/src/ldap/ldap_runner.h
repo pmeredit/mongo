@@ -7,6 +7,7 @@
 #include <memory>
 
 #include "mongo/base/secure_allocator.h"
+#include "mongo/util/duration.h"
 
 #include "ldap_type_aliases.h"
 
@@ -44,5 +45,22 @@ public:
      * @return Either an error arising from the operation, or the results
      */
     virtual StatusWith<LDAPEntityCollection> runQuery(const LDAPQuery& query) = 0;
+
+    ////////////////////////////////////////////////////////////
+    //
+    // State inspection and manipulation methods.
+    //
+    ////////////////////////////////////////////////////////////
+
+    virtual std::string getHostURIs() const = 0;
+    virtual void setHostURIs(const std::string& hostURIs) = 0;
+
+    virtual Milliseconds getTimeout() const = 0;
+    virtual void setTimeout(Milliseconds timeout) = 0;
+
+    virtual std::string getBindDN() const = 0;
+    virtual void setBindDN(const std::string& bindDN) = 0;
+
+    virtual void setBindPassword(SecureString pwd) = 0;
 };
 }  // namespace mongo

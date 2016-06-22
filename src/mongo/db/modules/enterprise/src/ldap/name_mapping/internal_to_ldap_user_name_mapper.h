@@ -65,15 +65,21 @@ public:
      *   ldapQuery: <LDAP query>
      * }
      *
-     * @param config The BSON configuration containing document(s) describing rules
+     * @param userToDNMapping The configuration containing document(s) describing rules
      * @return An error upon failure, or an InternalToLDAPUserNameMapper on success
      */
-    static StatusWith<InternalToLDAPUserNameMapper> createNameMapper(BSONObj config);
+    static StatusWith<InternalToLDAPUserNameMapper> createNameMapper(std::string userToDNMapping);
+
+    std::string toString() const {
+        return _userToDNMapping;
+    }
 
 private:
-    explicit InternalToLDAPUserNameMapper(std::vector<std::unique_ptr<RewriteRule>> rules);
+    InternalToLDAPUserNameMapper(std::vector<std::unique_ptr<RewriteRule>> rules,
+                                 std::string userToDNMapping);
 
     std::vector<std::unique_ptr<RewriteRule>> _transformations;
+    std::string _userToDNMapping;
 };
 
 }  // namespace mongo

@@ -63,7 +63,7 @@ protected:
 
     LDAPDN _baseDN;
     std::string _filter;
-    const LDAPQueryConfig& _templatedQuery;
+    LDAPQueryConfig _templatedQuery;
 };
 
 std::ostream& operator<<(std::ostream& os, const LDAPQuery& query);

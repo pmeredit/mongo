@@ -5,7 +5,6 @@
 #include "mongo/platform/basic.h"
 
 #include "mongo/base/init.h"
-#include "mongo/bson/json.h"
 #include "mongo/db/service_context.h"
 #include "mongo/stdx/memory.h"
 
@@ -29,22 +28,14 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(SetLDAPManagerImpl, ("SetGlobalEnvironment"
         globalLDAPParams->userAcquisitionQueryTemplate);
     massertStatusOK(swQueryParameters.getStatus());
 
-    BSONObj expression;
-    try {
-        expression = fromjson(globalLDAPParams->userToDNMapping);
-    } catch (DBException& e) {
-        e.addContext(
-            "Failed to parse JSON description of the relationship between "
-            "MongoDB usernames and LDAP DNs");
-        throw e;
-    }
-    auto swMapper = InternalToLDAPUserNameMapper::createNameMapper(std::move(expression));
+    auto swMapper =
+        InternalToLDAPUserNameMapper::createNameMapper(globalLDAPParams->userToDNMapping);
     massertStatusOK(swMapper.getStatus());
 
-    auto manager = stdx::make_unique<LDAPManagerImpl>(std::move(bindOptions),
-                                                      std::move(connectionOptions),
-                                                      std::move(swQueryParameters.getValue()),
-                                                      std::move(swMapper.getValue()));
+    auto manager = stdx::make_unique<LDAPManagerImpl>(
+        stdx::make_unique<LDAPRunnerImpl>(bindOptions, connectionOptions),
+        std::move(swQueryParameters.getValue()),
+        std::move(swMapper.getValue()));
     LDAPManager::set(getGlobalServiceContext(), std::move(manager));
 
     return Status::OK();
