@@ -33,11 +33,13 @@ public:
     virtual Status set(const BSONElement& newValueElement) {
         try {
             return setFromString(newValueElement.String());
-        } catch (MsgAssertionException msg) {
+        } catch (const MsgAssertionException& msg) {
             return Status(ErrorCodes::BadValue,
                           mongoutils::str::stream()
                               << "Invalid value for ldapServers via setParameter command: "
-                              << newValueElement);
+                              << newValueElement
+                              << ", exception: "
+                              << msg.what());
         }
     }
 
@@ -92,11 +94,13 @@ public:
     virtual Status set(const BSONElement& newValueElement) {
         try {
             return setFromString(newValueElement.String());
-        } catch (MsgAssertionException msg) {
+        } catch (const MsgAssertionException& msg) {
             return Status(ErrorCodes::BadValue,
                           mongoutils::str::stream()
                               << "Invalid value for ldapQueryUser via setParameter command: "
-                              << newValueElement);
+                              << newValueElement
+                              << ", exception: "
+                              << msg.what());
         }
     }
 
@@ -118,11 +122,13 @@ public:
     virtual Status set(const BSONElement& newValueElement) {
         try {
             return setFromString(newValueElement.String());
-        } catch (MsgAssertionException msg) {
+        } catch (const MsgAssertionException& msg) {
             return Status(ErrorCodes::BadValue,
                           mongoutils::str::stream()
                               << "Invalid value for ldapQueryPassword via setParameter command: "
-                              << newValueElement);
+                              << newValueElement
+                              << ", exception: "
+                              << msg.what());
         }
     }
 
@@ -144,11 +150,13 @@ public:
     virtual Status set(const BSONElement& newValueElement) {
         try {
             return setFromString(newValueElement.String());
-        } catch (MsgAssertionException msg) {
+        } catch (const MsgAssertionException& msg) {
             return Status(ErrorCodes::BadValue,
                           mongoutils::str::stream()
                               << "Invalid value for ldapUserToDNMapping via setParameter command: "
-                              << newValueElement);
+                              << newValueElement
+                              << ", exception: "
+                              << msg.what());
         }
     }
 
@@ -176,12 +184,14 @@ public:
     virtual Status set(const BSONElement& newValueElement) {
         try {
             return setFromString(newValueElement.String());
-        } catch (MsgAssertionException msg) {
+        } catch (const MsgAssertionException& msg) {
             return Status(
                 ErrorCodes::BadValue,
                 mongoutils::str::stream()
                     << "Invalid value for ldapAuthzQueryTemplate via setParameter command: "
-                    << newValueElement);
+                    << newValueElement
+                    << ", exception: "
+                    << msg.what());
         }
     }
 

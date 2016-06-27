@@ -60,6 +60,8 @@ SaslConversation::SaslConversation(std::string mech)
       authManager(std::unique_ptr<AuthzManagerExternalState>(authManagerExternalState)),
       authSession(authManager.makeAuthorizationSession()),
       mechanism(mech) {
+    OperationContextNoop txn;
+
     client.reset(SaslClientSession::create(mechanism));
     server.reset(SaslAuthenticationSession::create(authSession.get(), mechanism));
 
