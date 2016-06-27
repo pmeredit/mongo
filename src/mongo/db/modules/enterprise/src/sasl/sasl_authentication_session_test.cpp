@@ -42,7 +42,6 @@ public:
     std::string mechanism;
     std::unique_ptr<SaslClientSession> client;
     std::unique_ptr<SaslAuthenticationSession> server;
-    OperationContextNoop txn;
 
 private:
     void assertConversationFailure();
@@ -63,7 +62,6 @@ SaslConversation::SaslConversation(std::string mech)
       mechanism(mech) {
     client.reset(SaslClientSession::create(mechanism));
     server.reset(SaslAuthenticationSession::create(authSession.get(), mechanism));
-    server->setOpCtxt(&txn);
 
     ASSERT_OK(authManagerExternalState->updateOne(
         &txn,
