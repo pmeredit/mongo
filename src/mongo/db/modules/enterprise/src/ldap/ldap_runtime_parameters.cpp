@@ -13,6 +13,7 @@
 #include "mongo/logger/parse_log_component_settings.h"
 #include "mongo/util/mongoutils/str.h"
 
+#include "ldap_connection_options.h"
 #include "ldap_manager.h"
 #include "ldap_options.h"
 #include "ldap_query_config.h"
@@ -44,7 +45,11 @@ public:
     }
 
     virtual Status setFromString(const std::string& str) {
-        LDAPManager::get(getGlobalServiceContext())->setHostURIs(str);
+        auto swURIs = LDAPConnectionOptions::parseHostURIs(str);
+        if (!swURIs.isOK()) {
+            return swURIs.getStatus();
+        }
+        LDAPManager::get(getGlobalServiceContext())->setHostURIs(std::move(swURIs.getValue()));
         return Status::OK();
     }
 } ldapServersSetting;

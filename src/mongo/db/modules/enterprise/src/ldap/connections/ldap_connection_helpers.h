@@ -63,10 +63,9 @@ public:
         typename S::ErrorCodeType errorWhileGettingError =
             S::ldap_get_option(_session, S::LDAP_OPT_error_code, &error);
         if (errorWhileGettingError != S::LDAP_success) {
-            return Status(ErrorCodes::UnknownError,
-                          str::stream()
-                              << "Unable to get error code after native LDAP operation <"
-                              << functionName
+            return Status(
+                ErrorCodes::UnknownError,
+                str::stream() << "Unable to get error code after LDAP operation <" << functionName
                               << ">. \"Failed to "
                               << failureHint
                               << "\". ("
@@ -91,21 +90,17 @@ public:
             S::ldap_get_option(_session, S::LDAP_OPT_error_string, &errorString);
         if (errorWhileGettingError != S::LDAP_success || !errorString) {
             return Status(ErrorCodes::UnknownError,
-                          str::stream()
-                              << "Unable to get error string after native LDAP operation <"
-                              << functionName
-                              << ">, \"Failed to "
-                              << failureHint
-                              << "\". ("
-                              << errorWhileGettingError
-                              << "/"
-                              << S::toNativeString(S::ldap_err2string(errorWhileGettingError))
-                              << ")");
+                          str::stream() << "LDAP Operation <" << functionName << ">, "
+                                        << failureHint
+                                        << "\". ("
+                                        << statusCode
+                                        << "/"
+                                        << S::toNativeString(S::ldap_err2string(statusCode))
+                                        << ")");
         }
 
         return Status(ErrorCodes::OperationFailed,
-                      str::stream() << "Native LDAP operation <" << functionName << "> \"Failed to "
-                                    << failureHint
+                      str::stream() << "LDAP operation <" << functionName << ">, " << failureHint
                                     << "\". ("
                                     << statusCode
                                     << "/"
@@ -176,7 +171,7 @@ public:
         int entryCount = S::ldap_count_entries(_session, queryResult);
         if (entryCount < 0) {
             return resultCodeToStatus("ldap_count_entries",
-                                      "getting number of entries returned from OpenLDAP query");
+                                      "getting number of entries returned from LDAP query");
         } else if (entryCount == 0) {
             // If we found no results, don't bother trying to process them.
             return queryResults;
@@ -200,7 +195,7 @@ public:
             const auto entryDNGuard = MakeGuard([&] { S::ldap_memfree(entryDN); });
             if (!entryDN) {
                 return resultCodeToStatus("ldap_get_dn",
-                                          "getting DN for a result from the OpenLDAP query");
+                                          "getting DN for a result from the LDAP query");
             }
 
             MONGO_LDAPLOG(3) << "From LDAP query result, got an entry with DN: "
@@ -238,7 +233,7 @@ public:
                 if (values == nullptr) {
                     return resultCodeToStatus(
                         "ldap_get_values_len",
-                        "extracting values for attribute, after successful OpenLDAP query");
+                        "extracting values for attribute, after successful LDAP query");
                 }
                 const auto valuesGuard = MakeGuard([&] { S::ldap_value_free_len(values); });
 

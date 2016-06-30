@@ -56,6 +56,16 @@ env.CppUnitTest(
     ],
 )
 
+env.CppUnitTest(
+    target='ldap_connection_options_test',
+    source=[
+        'ldap_connection_options_test.cpp',
+    ],
+    LIBDEPS=[
+        'ldap_query',
+    ],
+)
+
 ldap_connection_sources = [
     'connections/ldap_connection_factory.cpp',
     'connections/ldap_connection_helpers.cpp',

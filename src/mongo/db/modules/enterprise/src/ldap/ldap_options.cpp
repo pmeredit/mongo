@@ -105,11 +105,14 @@ Status addLDAPOptions(moe::OptionSection* options) {
 
 Status storeLDAPOptions(const moe::Environment& params, const std::vector<std::string>& args) {
     if (params.count("security.ldap.servers")) {
-        globalLDAPParams->serverURIs = params["security.ldap.servers"].as<std::string>();
 
-        // Replace ',' with ' ' to support Windows native LDAP and OpenLDAP syntax.
-        std::replace(
-            globalLDAPParams->serverURIs.begin(), globalLDAPParams->serverURIs.end(), ',', ' ');
+        auto swURIs =
+            LDAPConnectionOptions::parseHostURIs(params["security.ldap.servers"].as<std::string>());
+        if (!swURIs.isOK()) {
+            return swURIs.getStatus();
+        }
+
+        globalLDAPParams->serverURIs = std::move(swURIs.getValue());
     }
     if (params.count("security.ldap.bind.useOSDefaults")) {
         globalLDAPParams->useOSDefaults = params["security.ldap.bind.useOSDefaults"].as<bool>();

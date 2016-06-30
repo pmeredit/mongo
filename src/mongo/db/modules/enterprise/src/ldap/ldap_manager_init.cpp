@@ -26,7 +26,9 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(SetLDAPManagerImpl, ("SetGlobalEnvironment"
 
     auto swQueryParameters = LDAPQueryConfig::createLDAPQueryConfigWithUserName(
         globalLDAPParams->userAcquisitionQueryTemplate);
-    massertStatusOK(swQueryParameters.getStatus());
+    if (!swQueryParameters.isOK()) {
+        return swQueryParameters.getStatus();
+    }
 
     auto swMapper =
         InternalToLDAPUserNameMapper::createNameMapper(globalLDAPParams->userToDNMapping);

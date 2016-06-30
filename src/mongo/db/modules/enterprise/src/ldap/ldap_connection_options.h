@@ -78,6 +78,13 @@ struct LDAPConnectionOptions {
 
     LDAPConnectionOptions() = default;
 
+    /**
+     * Ensures that URIs are correctly prefixed and separated. Accepts a comma or space separated
+     * list of URIs of the format '(ldap|ldaps)://(fqdn)'. On success, returns a space separated
+     * list of the parsed URIs.
+     */
+    static StatusWith<std::string> parseHostURIs(std::string uris);
+
     Milliseconds timeout;  // How long to wait before timing out
     std::string hostURIs;  // List of server URIs: (ldap|ldaps)://(server)(:port)
 };

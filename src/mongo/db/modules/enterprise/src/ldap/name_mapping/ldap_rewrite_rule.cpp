@@ -49,23 +49,27 @@ StatusWith<std::string> LDAPRewriteRule::resolve(LDAPRunner* runner, StringData 
         return swExtractedMatches.getStatus();
     }
 
-    StatusWith<LDAPQuery> swParamsStep =
+    StatusWith<LDAPQuery> swQuery =
         LDAPQuery::instantiateQuery(_queryConfig, swExtractedMatches.getValue());
-    if (!swParamsStep.isOK()) {
-        return swParamsStep.getStatus();
+    if (!swQuery.isOK()) {
+        return swQuery.getStatus();
     }
+    LDAPQuery query = std::move(swQuery.getValue());
 
-    StatusWith<LDAPEntityCollection> swLDAPResults =
-        runner->runQuery(std::move(swParamsStep.getValue()));
+    StatusWith<LDAPEntityCollection> swLDAPResults = runner->runQuery(query);
     if (!swLDAPResults.isOK()) {
         return swLDAPResults.getStatus();
     }
     LDAPEntityCollection ldapResults(std::move(swLDAPResults.getValue()));
 
     if (ldapResults.empty()) {
-        return Status(ErrorCodes::UserNotFound, "LDAP query returned no results");
+        return Status(ErrorCodes::UserNotFound,
+                      str::stream() << "LDAP query '" << query.toString()
+                                    << "' returned no results");
     } else if (ldapResults.size() > 1) {
-        return Status(ErrorCodes::UserDataInconsistent, "LDAP query returned multiple results");
+        return Status(ErrorCodes::UserDataInconsistent,
+                      str::stream() << "LDAP query '" << query.toString()
+                                    << "' returned multiple results");
     }
 
     return ldapResults.begin()->first;

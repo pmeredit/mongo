@@ -6,8 +6,11 @@
 
 #include "ldap_connection_options.h"
 
+#include <algorithm>
+
 #include "mongo/base/string_data.h"
 #include "mongo/util/mongoutils/str.h"
+#include "mongo/util/text.h"
 
 namespace mongo {
 
@@ -48,6 +51,22 @@ std::string LDAPBindOptions::toCleanString() const {
     builder << "}";
 
     return builder.str();
+}
+
+StatusWith<std::string> LDAPConnectionOptions::parseHostURIs(std::string uris) {
+    // Replace ',' with ' ' to support Windows native LDAP and OpenLDAP syntax.
+    std::replace(uris.begin(), uris.end(), ',', ' ');
+
+    StringSplitter splitter(uris.c_str(), " ");
+    while (splitter.more()) {
+        std::string token = splitter.next();
+        if (token.find("ldap://") != 0 && token.find("ldaps://") != 0) {
+            return Status(ErrorCodes::FailedToParse,
+                          "LDAP server URI must begin with either 'ldap://' or 'ldaps://'");
+        }
+    }
+
+    return uris;
 }
 
 }  //  namespace mongo

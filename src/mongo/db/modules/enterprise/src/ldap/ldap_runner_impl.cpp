@@ -85,9 +85,7 @@ std::string LDAPRunnerImpl::getHostURIs() const {
 void LDAPRunnerImpl::setHostURIs(const std::string& hostURIs) {
     stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
 
-    // Replace ',' with ' ' to support Windows native LDAP and OpenLDAP syntax.
     _options.hostURIs = hostURIs;
-    std::replace(_options.hostURIs.begin(), _options.hostURIs.end(), ',', ' ');
 }
 
 Milliseconds LDAPRunnerImpl::getTimeout() const {

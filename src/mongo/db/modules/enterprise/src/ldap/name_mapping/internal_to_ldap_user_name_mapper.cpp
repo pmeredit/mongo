@@ -8,6 +8,8 @@
 
 #include "internal_to_ldap_user_name_mapper.h"
 
+#include "mongo/base/status.h"
+#include "mongo/base/status_with.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
@@ -33,24 +35,25 @@ InternalToLDAPUserNameMapper& InternalToLDAPUserNameMapper::operator=(
 
 StatusWith<std::string> InternalToLDAPUserNameMapper::transform(LDAPRunner* runner,
                                                                 StringData input) const {
+    StringBuilder errorStack;
     for (const auto& transform : _transformations) {
         StatusWith<std::string> result = transform->resolve(runner, input);
-        LOG(3) << "Transforming username: " << input << " using rule: " << transform->toStringData()
-               << ". Result: " << [](const StatusWith<std::string>& result) {
-                      return result.isOK()
-                          ? std::string("PASS. New userName is ") + result.getValue()
-                          : "FAILED. Attempting next rewrite rule";
-                  }(result);
+
         if (result.isOK()) {
+            LOG(3) << "Transformed username to: " << result.getValue();
             return result;
         }
+
+        errorStack << "{ rule: " << transform->toStringData() << " error: \""
+                   << result.getStatus().toString() << "\" }, ";
     }
 
-    return Status(
-        ErrorCodes::FailedToParse,
-        str::stream() << "Failed to transform username. No matching transformation out of "
-                      << _transformations.size()
-                      << " available transformations.");
+    return Status(ErrorCodes::FailedToParse,
+                  str::stream() << "Failed to transform user '" << input
+                                << "'. No matching transformation out of "
+                                << _transformations.size()
+                                << " available transformations. Results: "
+                                << errorStack.str());
 }
 
 StatusWith<InternalToLDAPUserNameMapper> InternalToLDAPUserNameMapper::createNameMapper(

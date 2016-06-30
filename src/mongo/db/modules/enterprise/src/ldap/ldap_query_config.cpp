@@ -82,7 +82,14 @@ StatusWith<LDAPQueryScope> getLDAPQueryScope(StringData scope) {
     } else if (scope.equalCaseInsensitive(kSub)) {
         return LDAPQueryScope::kSubtree;
     } else {
-        return Status{ErrorCodes::FailedToParse, "Unable to parse LDAPQueryScope"};
+        return Status{ErrorCodes::FailedToParse,
+                      str::stream() << "Unrecognized query scope '" << scope << "'. Options are '"
+                                    << kBase
+                                    << "', '"
+                                    << kOne
+                                    << "', and '"
+                                    << kSub
+                                    << "'"};
     }
 }
 

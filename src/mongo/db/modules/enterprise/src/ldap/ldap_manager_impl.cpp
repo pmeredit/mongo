@@ -70,11 +70,15 @@ StatusWith<std::vector<RoleName>> LDAPManagerImpl::getUserRoles(const UserName& 
     if (!swQuery.isOK()) {
         return swQuery.getStatus();
     }
+    LDAPQuery query = std::move(swQuery.getValue());
 
-    StatusWith<LDAPDNVector> swEntities = _getGroupDNsFromServer(swQuery.getValue());
+    StatusWith<LDAPDNVector> swEntities = _getGroupDNsFromServer(query);
     if (!swEntities.isOK()) {
         return Status(swEntities.getStatus().code(),
-                      "Failed to obtain LDAP entities: " + swEntities.getStatus().reason(),
+                      str::stream() << "Failed to obtain LDAP entities for query '"
+                                    << query.toString()
+                                    << "': "
+                                    << swEntities.getStatus().reason(),
                       swEntities.getStatus().location());
     }
 
