@@ -77,12 +77,18 @@ Status LDAPSaslAuthenticationSession::step(StringData inputData, std::string* ou
                     << "Incorrectly formatted PLAIN client message, missing second NULL delimiter");
         }
 
-        _user = input.substr(0, firstNull);
+        std::string authorizationIdentity = input.substr(0, firstNull);
+        _user = input.substr(firstNull + 1, (secondNull - firstNull) - 1);
         if (_user.empty()) {
             return Status(ErrorCodes::AuthenticationFailed,
                           str::stream()
                               << "Incorrectly formatted PLAIN client message, empty username");
+        } else if (!authorizationIdentity.empty() && authorizationIdentity != _user) {
+            return Status(ErrorCodes::AuthenticationFailed,
+                          str::stream()
+                              << "SASL authorization identity must match authentication identity");
         }
+
         pwd = SecureString(input.substr(secondNull + 1).c_str());
         if (pwd->empty()) {
             return Status(ErrorCodes::AuthenticationFailed,
