@@ -32,9 +32,6 @@
 namespace mongo {
 
 namespace {
-const std::wstring kLDAP(L"ldap://");
-const std::wstring kLDAPS(L"ldaps://");
-
 
 /**
  * This class is used as a template argument to instantiate an LDAPSessionHolder with all the
@@ -94,23 +91,25 @@ WindowsLDAPConnection::~WindowsLDAPConnection() {
 
 Status WindowsLDAPConnection::connect() {
     // Allocate the underlying connection object
-    std::wstring hostName = toWideString(_options.hostURIs.c_str());
-    if (hostName.find(kLDAP) == 0) {
-        hostName = hostName.substr(kLDAP.size());
-        _pimpl->getSession() = ldap_initW(const_cast<wchar_t*>(hostName.c_str()), LDAP_PORT);
-    } else if (hostName.find(kLDAPS) == 0) {
-        hostName = hostName.substr(kLDAPS.size());
-        _pimpl->getSession() =
-            ldap_sslinitW(const_cast<wchar_t*>(hostName.c_str()), LDAP_SSL_PORT, 1);
+    _pimpl->getSession() = nullptr;
+
+    std::wstring hosts = toWideString(StringSplitter::join(_options.hosts, " ").c_str());
+
+    if (_options.transportSecurity == LDAPTransportSecurityType::kNone) {
+        _pimpl->getSession() = ldap_initW(const_cast<wchar_t*>(hosts.c_str()), LDAP_PORT);
+    } else if (_options.transportSecurity == LDAPTransportSecurityType::kTLS) {
+        _pimpl->getSession() = ldap_sslinitW(const_cast<wchar_t*>(hosts.c_str()), LDAP_SSL_PORT, 1);
     } else {
-        return Status(ErrorCodes::OperationFailed,
-                      str::stream() << "Couldn't parse LDAP URL: " << _options.hostURIs);
+        return Status(ErrorCodes::OperationFailed, "Unrecognized protocol security mechanism");
     }
 
     if (!_pimpl->getSession()) {
-        Status status =
-            _pimpl->resultCodeToStatus(hostName.find(kLDAP) == 0 ? "ldap_initW" : "ldap_sslinitW",
-                                       "initialize LDAP session to server");
+        // The ldap_*initW functions don't actually make a connection to the server until
+        // ldap_connect is called. Failure here should not be gracefully recovered from.
+        Status status = _pimpl->resultCodeToStatus(
+            _options.transportSecurity == LDAPTransportSecurityType::kNone ? "ldap_initW"
+                                                                           : "ldap_sslinitW",
+            "initialize LDAP session to server");
         if (!status.isOK()) {
             return status;
         }

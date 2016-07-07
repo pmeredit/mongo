@@ -57,9 +57,9 @@ function LDAPTestConfigGenerator() {
     this.auth = "";
     this.authenticationMechanisms = ["PLAIN", "SCRAM-SHA-1"];
     this.useSaslauthd = false;
-    this.useLDAPS = false;
 
     this.ldapServers = baseLDAPUrls;
+    this.ldapTransportSecurity = "none";
     this.ldapAuthzQueryTemplate = "cn={USER}," + defaultUserDNSuffix + "?memberOf";
     this.ldapBindMethod = "simple";
     this.ldapBindSASLMechs = "DIGEST-MD5";
@@ -95,11 +95,8 @@ function LDAPTestConfigGenerator() {
         config.sslAllowInvalidHostnames = "";
         config.clusterAuthMode = "x509";
 
-        if (!this.useLDAPS) {
-            config.ldapServers = "ldap://" + this.ldapServers.join(",ldap://");
-        } else {
-            config.ldapServers = "ldaps://" + this.ldapServers.join(",ldaps://");
-        }
+        config.ldapServers = this.ldapServers.join(",");
+        config.ldapTransportSecurity = this.ldapTransportSecurity;
 
         config.ldapAuthzQueryTemplate = this.ldapAuthzQueryTemplate;
 

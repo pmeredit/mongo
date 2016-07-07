@@ -89,12 +89,12 @@ StatusWith<std::vector<RoleName>> LDAPManagerImpl::getUserRoles(const UserName& 
     return roles;
 }
 
-std::string LDAPManagerImpl::getHostURIs() const {
-    return _runner->getHostURIs();
+std::vector<std::string> LDAPManagerImpl::getHosts() const {
+    return _runner->getHosts();
 }
 
-void LDAPManagerImpl::LDAPManagerImpl::setHostURIs(const std::string& hostURIs) {
-    _runner->setHostURIs(hostURIs);
+void LDAPManagerImpl::LDAPManagerImpl::setHosts(std::vector<std::string> hosts) {
+    _runner->setHosts(hosts);
 }
 
 Milliseconds LDAPManagerImpl::getTimeout() const {

@@ -46,10 +46,10 @@ public:
         _stored.emplace_back(std::move(savedQuery));
     }
 
-    std::string getHostURIs() const final {
-        return "";
+    std::vector<std::string> getHosts() const final {
+        return {};
     }
-    void setHostURIs(const std::string& hostURIs) final {}
+    void setHosts(std::vector<std::string> hosts) final {}
 
     Milliseconds getTimeout() const final {
         return Milliseconds(0);

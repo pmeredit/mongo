@@ -4,7 +4,7 @@
     load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
 
     // TLS and port
-    var ldapSchemes = [{useLDAPS: false}, {useLDAPS: true}];
+    var ldapSchemes = [{ldapTransportSecurity: "none"}, {ldapTransportSecurity: "tls"}];
 
     // bind methods and SASL bind mechanisms
     var bindOptions = [
@@ -36,7 +36,8 @@
 
     ldapSchemes.forEach(function(s) {
         bindOptions.forEach(function(b) {
-            if ((b.fragment.ldapBindSASLMechs == "GSSAPI" || s.useLDAPS) && _isWindows()) {
+            if ((b.fragment.ldapBindSASLMechs == "GSSAPI" || s.ldapTransportSecurity) &&
+                _isWindows()) {
                 // FIXME: Import TLS certificates on Windows builders with SERVER-24672.
                 // FIXME: Enable support for GSSAPI on Windows builders with SERVER-24671.
                 return;
@@ -46,11 +47,8 @@
             if (b.fragment.ldapBindMethod == "sasl") {
                 saslString += " and " + b.fragment.ldapBindSASLMechs;
             }
-            var tlsString = "";
-            if (s.useLDAPS) {
-                tlsString = " using TLS";
-            }
-            print("Attempting to bind" + tlsString + " as " + b.user + " with " + saslString);
+            print("Attempting to bind with protocol security '" + s.ldapTransportSecurity +
+                  "' as " + b.user + " with " + saslString);
 
             // use LDAP for authentication
             var authOptions =

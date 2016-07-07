@@ -36,43 +36,36 @@ TEST(LDAPBindTypeTests, CanNotParseBadValue) {
 TEST(ParseHostURIs, EmptyString) {
     auto result = LDAPConnectionOptions::parseHostURIs("");
     ASSERT_TRUE(result.isOK());
-    ASSERT_EQ("", result.getValue());
+    ASSERT(result.getValue().empty());
 }
 
-TEST(ParseHostURIs, SingleLDAPHost) {
+TEST(ParseHostURIs, SingleHost) {
+    auto result = LDAPConnectionOptions::parseHostURIs("first.example");
+    ASSERT_TRUE(result.isOK());
+    ASSERT_EQ(size_t(1), result.getValue().size());
+    ASSERT_EQ("first.example", result.getValue()[0]);
+}
+
+TEST(ParseHostURIs, HostWithProtocol) {
     auto result = LDAPConnectionOptions::parseHostURIs("ldap://first.example");
-    ASSERT_TRUE(result.isOK());
-    ASSERT_EQ("ldap://first.example", result.getValue());
-}
-
-TEST(ParseHostURIs, SingleLDAPSHost) {
-    auto result = LDAPConnectionOptions::parseHostURIs("ldaps://first.example");
-    ASSERT_TRUE(result.isOK());
-    ASSERT_EQ("ldaps://first.example", result.getValue());
-}
-
-TEST(ParseHostURIs, BadLDAPProtocol) {
-    auto result = LDAPConnectionOptions::parseHostURIs("mongo://first.example");
     ASSERT_FALSE(result.isOK());
 }
 
 TEST(ParseHostURIs, TwoSpaceSeparatedHosts) {
-    auto result =
-        LDAPConnectionOptions::parseHostURIs("ldap://first.example ldap://second.example");
-    ASSERT_TRUE(result.isOK());
-    ASSERT_EQ("ldap://first.example ldap://second.example", result.getValue());
+    auto result = LDAPConnectionOptions::parseHostURIs("first.example second.example");
+    ASSERT_FALSE(result.isOK());
 }
 
 TEST(ParseHostURIs, TwoCommaSeparatedHosts) {
-    auto result =
-        LDAPConnectionOptions::parseHostURIs("ldap://first.example,ldap://second.example");
+    auto result = LDAPConnectionOptions::parseHostURIs("first.example,second.example");
     ASSERT_TRUE(result.isOK());
-    ASSERT_EQ("ldap://first.example ldap://second.example", result.getValue());
+    ASSERT_EQ(size_t(2), result.getValue().size());
+    ASSERT_EQ("first.example", result.getValue()[0]);
+    ASSERT_EQ("second.example", result.getValue()[1]);
 }
 
-TEST(ParseHostURIs, TwoCommaSeparatedHostsWithBadProtocol) {
-    auto result =
-        LDAPConnectionOptions::parseHostURIs("ldap://first.example,mongo://second.example");
+TEST(ParseHostURIs, TwoCommaSeparatedHostsWithProtocol) {
+    auto result = LDAPConnectionOptions::parseHostURIs("first.example,ldaps://second.example");
     ASSERT_FALSE(result.isOK());
 }
 

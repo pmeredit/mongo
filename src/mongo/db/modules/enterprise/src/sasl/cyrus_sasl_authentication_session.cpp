@@ -459,7 +459,7 @@ SaslAuthenticationSession* createSaslAuthenticationSession(AuthorizationSession*
         return new NativeSaslAuthenticationSession(authzSession);
     }
     if (mechanism == SaslAuthenticationSession::mechanismPLAIN &&
-        !globalLDAPParams->serverURIs.empty() && saslGlobalParams.authdPath.empty()) {
+        !globalLDAPParams->serverHosts.empty() && saslGlobalParams.authdPath.empty()) {
         return new LDAPSaslAuthenticationSession(authzSession);
     }
     return new CyrusSaslAuthenticationSession(authzSession);

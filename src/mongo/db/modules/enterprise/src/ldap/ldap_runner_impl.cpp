@@ -77,15 +77,15 @@ StatusWith<LDAPEntityCollection> LDAPRunnerImpl::runQuery(const LDAPQuery& query
     return swConnection.getValue()->query(query);
 }
 
-std::string LDAPRunnerImpl::getHostURIs() const {
+std::vector<std::string> LDAPRunnerImpl::getHosts() const {
     stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
-    return _options.hostURIs;
+    return _options.hosts;
 }
 
-void LDAPRunnerImpl::setHostURIs(const std::string& hostURIs) {
+void LDAPRunnerImpl::setHosts(std::vector<std::string> hosts) {
     stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
 
-    _options.hostURIs = hostURIs;
+    _options.hosts = std::move(hosts);
 }
 
 Milliseconds LDAPRunnerImpl::getTimeout() const {

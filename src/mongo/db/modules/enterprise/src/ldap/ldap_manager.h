@@ -55,8 +55,8 @@ public:
     /**
      * Gets/sets the list of LDAP servers to connect to.
      */
-    virtual std::string getHostURIs() const = 0;
-    virtual void setHostURIs(const std::string& hostURIs) = 0;
+    virtual std::vector<std::string> getHosts() const = 0;
+    virtual void setHosts(std::vector<std::string> hostURIs) = 0;
 
     /**
      * Gets/sets the LDAP server connection timeout.

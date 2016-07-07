@@ -52,8 +52,8 @@ public:
     //
     ////////////////////////////////////////////////////////////
 
-    virtual std::string getHostURIs() const = 0;
-    virtual void setHostURIs(const std::string& hostURIs) = 0;
+    virtual std::vector<std::string> getHosts() const = 0;
+    virtual void setHosts(std::vector<std::string> hosts) = 0;
 
     virtual Milliseconds getTimeout() const = 0;
     virtual void setTimeout(Milliseconds timeout) = 0;

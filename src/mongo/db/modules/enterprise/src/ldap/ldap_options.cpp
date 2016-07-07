@@ -36,7 +36,16 @@ Status addLDAPOptions(moe::OptionSection* options) {
                                    "ldapServers",
                                    moe::String,
                                    "Comma separated list of LDAP servers on format "
-                                   " (ldap|ldaps)://host:port");
+                                   " host:port");
+
+    ldap_options
+        .addOptionChaining("security.ldap.transportSecurity",
+                           "ldapTransportSecurity",
+                           moe::String,
+                           "Transport security used between MongoDB and remote LDAP server"
+                           "(none|tls)")
+        .setDefault(moe::Value(std::string("tls")));
+
 
 #ifdef _WIN32
     ldap_options
@@ -106,13 +115,26 @@ Status addLDAPOptions(moe::OptionSection* options) {
 Status storeLDAPOptions(const moe::Environment& params, const std::vector<std::string>& args) {
     if (params.count("security.ldap.servers")) {
 
-        auto swURIs =
+        StatusWith<std::vector<std::string>> swHosts =
             LDAPConnectionOptions::parseHostURIs(params["security.ldap.servers"].as<std::string>());
-        if (!swURIs.isOK()) {
-            return swURIs.getStatus();
+        if (!swHosts.isOK()) {
+            return swHosts.getStatus();
         }
 
-        globalLDAPParams->serverURIs = std::move(swURIs.getValue());
+        globalLDAPParams->serverHosts = std::move(swHosts.getValue());
+    }
+    if (params.count("security.ldap.transportSecurity")) {
+
+        auto transportSecurity = params["security.ldap.transportSecurity"].as<std::string>();
+        if (transportSecurity == "none") {
+            globalLDAPParams->transportSecurity = LDAPTransportSecurityType::kNone;
+        } else if (transportSecurity == "tls") {
+            globalLDAPParams->transportSecurity = LDAPTransportSecurityType::kTLS;
+        } else {
+            return Status(ErrorCodes::FailedToParse,
+                          str::stream() << "Unrecognized transport security mechanism: "
+                                        << transportSecurity);
+        }
     }
     if (params.count("security.ldap.bind.useOSDefaults")) {
         globalLDAPParams->useOSDefaults = params["security.ldap.bind.useOSDefaults"].as<bool>();

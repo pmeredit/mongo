@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "mongo/base/secure_allocator.h"
 #include "mongo/util/time_support.h"
@@ -14,12 +15,14 @@
 namespace mongo {
 
 enum class LDAPBindType : std::uint8_t;
+enum class LDAPTransportSecurityType : std::uint8_t;
 
 class LDAPOptions {
 public:
-    Milliseconds connectionTimeout;            // Duration after which connections shall fail
-    std::string serverURIs;                    // URI host component, (ldap|ldaps)://server(:port)
-    std::string userAcquisitionQueryTemplate;  // LDAP query, with `{USER}' substitution token
+    Milliseconds connectionTimeout;        // Duration after which connections shall fail
+    std::vector<std::string> serverHosts;  // List of URI host components of form 'server(:port)'
+    LDAPTransportSecurityType transportSecurity;  // How connections to the LDAP server are secured
+    std::string userAcquisitionQueryTemplate;     // LDAP query, with `{USER}' substitution token
     bool useOSDefaults;              // Use the OS's default user when binding to remote LDAP server
     LDAPBindType bindMethod;         // Bind method to use to authenticate, simple or SASL
     std::string bindUser;            // User DN to bind(authenticate) against on the LDAP server

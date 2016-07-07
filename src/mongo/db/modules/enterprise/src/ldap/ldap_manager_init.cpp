@@ -22,7 +22,8 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(SetLDAPManagerImpl, ("SetGlobalEnvironment"
                                 globalLDAPParams->bindSASLMechanisms,
                                 globalLDAPParams->useOSDefaults);
     LDAPConnectionOptions connectionOptions(globalLDAPParams->connectionTimeout,
-                                            globalLDAPParams->serverURIs);
+                                            globalLDAPParams->serverHosts,
+                                            globalLDAPParams->transportSecurity);
 
     auto swQueryParameters = LDAPQueryConfig::createLDAPQueryConfigWithUserName(
         globalLDAPParams->userAcquisitionQueryTemplate);

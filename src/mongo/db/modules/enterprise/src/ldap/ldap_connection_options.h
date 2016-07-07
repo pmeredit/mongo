@@ -26,6 +26,9 @@ class StringData;
  */
 enum class LDAPBindType : std::uint8_t { kSimple, kSasl };
 
+
+enum class LDAPTransportSecurityType : std::uint8_t { kNone, kTLS };
+
 /**
  * Parse an LDAPBindType from a string.
  * Will perform the following mapping:
@@ -73,19 +76,29 @@ struct LDAPBindOptions {
  * Contains all parameters, beyond those defining a query, needed for an LDAP session.
  */
 struct LDAPConnectionOptions {
-    LDAPConnectionOptions(Milliseconds timeout, std::string hostURIs)
-        : timeout(std::move(timeout)), hostURIs(std::move(hostURIs)) {}
+    LDAPConnectionOptions(Milliseconds timeout,
+                          std::vector<std::string> hosts,
+                          LDAPTransportSecurityType transportSecurity)
+        : timeout(std::move(timeout)),
+          hosts(std::move(hosts)),
+          transportSecurity(transportSecurity) {}
 
     LDAPConnectionOptions() = default;
 
     /**
-     * Ensures that URIs are correctly prefixed and separated. Accepts a comma or space separated
-     * list of URIs of the format '(ldap|ldaps)://(fqdn)'. On success, returns a space separated
-     * list of the parsed URIs.
+     * Accepts a comma separated list of FQDNs and parses it into vector of FQDNs. FQDNs are
+     * checked to ensure they do not have protocol prefixes.
      */
-    static StatusWith<std::string> parseHostURIs(std::string uris);
+    static StatusWith<std::vector<std::string>> parseHostURIs(const std::string& hosts);
 
-    Milliseconds timeout;  // How long to wait before timing out
-    std::string hostURIs;  // List of server URIs: (ldap|ldaps)://(server)(:port)
+    /**
+     * Returns a comma separated list of (protocol)://(fqdn)s, where the protocol is derived from
+     * the value of 'transportSecurity', and the FQDNs are taken from 'hosts'.
+     */
+    StatusWith<std::string> constructHostURIs();
+
+    Milliseconds timeout;                         // How long to wait before timing out
+    std::vector<std::string> hosts;               // List of server URIs: (server)(:port)
+    LDAPTransportSecurityType transportSecurity;  // How to secure connections to the LDAP server
 };
 }  // namespace mongo

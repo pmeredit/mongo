@@ -43,8 +43,8 @@ public:
     //
     ////////////////////////////////////////////////////////////
 
-    std::string getHostURIs() const final;
-    void setHostURIs(const std::string& hostURIs) final;
+    std::vector<std::string> getHosts() const final;
+    void setHosts(std::vector<std::string> hostURIs) final;
 
     Milliseconds getTimeout() const final;
     void setTimeout(Milliseconds timeout) final;

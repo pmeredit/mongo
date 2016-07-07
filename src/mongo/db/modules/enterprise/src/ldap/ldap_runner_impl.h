@@ -29,8 +29,8 @@ public:
     Status bindAsUser(const std::string& user, const SecureString& pwd) final;
     StatusWith<LDAPEntityCollection> runQuery(const LDAPQuery& query) final;
 
-    std::string getHostURIs() const final;
-    void setHostURIs(const std::string& hostURIs) final;
+    std::vector<std::string> getHosts() const final;
+    void setHosts(std::vector<std::string> hosts) final;
 
     Milliseconds getTimeout() const final;
     void setTimeout(Milliseconds timeout) final;

@@ -14,7 +14,7 @@
         var adminDB = m.getDB("admin");
         adminDB.auth("siteRootAdmin", "secret");
 
-        var ldapServers = "ldap://" + baseLDAPUrls[0];
+        var ldapServers = baseLDAPUrls[0];
         assert.commandWorked(m.adminCommand({setParameter: 1, "ldapServers": ldapServers}));
         var ret = m.adminCommand({getParameter: 1, "ldapServers": 1});
         assert.commandWorked(ret);

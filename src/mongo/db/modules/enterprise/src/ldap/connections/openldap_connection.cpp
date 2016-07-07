@@ -197,16 +197,22 @@ OpenLDAPConnection::~OpenLDAPConnection() {
 }
 
 Status OpenLDAPConnection::connect() {
+    auto swHostURIs = _options.constructHostURIs();
+    if (!swHostURIs.isOK()) {
+        return swHostURIs.getStatus();
+    }
+    std::string hostURIs = std::move(swHostURIs.getValue());
+
     int err;
     {
+
         stdx::lock_guard<stdx::mutex> lock(libldapGlobalMutex);
-        err = ldap_initialize(&_pimpl->getSession(), _options.hostURIs.c_str());
+        err = ldap_initialize(&_pimpl->getSession(), hostURIs.c_str());
     }
 
     if (err != LDAP_SUCCESS) {
         return Status(ErrorCodes::OperationFailed,
-                      str::stream() << "Failed to initialize ldap session to \""
-                                    << _options.hostURIs
+                      str::stream() << "Failed to initialize ldap session to \"" << hostURIs
                                     << "\". Received LDAP error: "
                                     << ldap_err2string(err));
     }

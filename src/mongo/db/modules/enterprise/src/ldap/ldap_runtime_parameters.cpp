@@ -12,6 +12,7 @@
 #include "mongo/logger/logger.h"
 #include "mongo/logger/parse_log_component_settings.h"
 #include "mongo/util/mongoutils/str.h"
+#include "mongo/util/text.h"
 
 #include "ldap_connection_options.h"
 #include "ldap_manager.h"
@@ -28,7 +29,8 @@ public:
         : ServerParameter(ServerParameterSet::getGlobal(), "ldapServers", false, true) {}
 
     virtual void append(OperationContext* txn, BSONObjBuilder& b, const std::string& name) {
-        b << name << LDAPManager::get(getGlobalServiceContext())->getHostURIs();
+        b << name
+          << StringSplitter::join(LDAPManager::get(getGlobalServiceContext())->getHosts(), ",");
     }
 
     virtual Status set(const BSONElement& newValueElement) {
@@ -49,7 +51,7 @@ public:
         if (!swURIs.isOK()) {
             return swURIs.getStatus();
         }
-        LDAPManager::get(getGlobalServiceContext())->setHostURIs(std::move(swURIs.getValue()));
+        LDAPManager::get(getGlobalServiceContext())->setHosts(std::move(swURIs.getValue()));
         return Status::OK();
     }
 } ldapServersSetting;
