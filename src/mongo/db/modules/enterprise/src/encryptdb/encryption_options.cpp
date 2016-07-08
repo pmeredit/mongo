@@ -10,7 +10,6 @@
 
 #include "mongo/base/status.h"
 #include "mongo/db/server_options.h"
-#include "mongo/db/server_parameters.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
 #include "mongo/util/options_parser/option_section.h"
@@ -45,8 +44,6 @@ Status addEncryptionOptions(moe::OptionSection* options) {
                                         "Rotate master encryption key");
     addKMIPOptions(&encryptionOptions);
 
-    encryptionOptions.addOptionChaining(
-        "security.redactSystemLog", "redactSystemLog", moe::Switch, "Redact system log");
 
     Status ret = options->addSection(encryptionOptions);
     if (!ret.isOK()) {
@@ -129,45 +126,6 @@ Status storeEncryptionOptions(const moe::Environment& params) {
         encryptionGlobalParams.encryptionCipherMode =
             params["security.encryptionCipherMode"].as<std::string>();
     }
-
-    if (params.count("security.redactSystemLog")) {
-        logger::globalLogDomain()->setShouldRedactLogs(
-            params["security.redactSystemLog"].as<bool>());
-    }
-
     return Status::OK();
 }
-
-class RedactSystemLogSetting : public ServerParameter {
-public:
-    RedactSystemLogSetting()
-        : ServerParameter(ServerParameterSet::getGlobal(), "redactSystemLog", false, true) {}
-
-    virtual void append(OperationContext* txn, BSONObjBuilder& b, const std::string& name) {
-        b << name << logger::globalLogDomain()->shouldRedactLogs();
-    }
-
-    virtual Status set(const BSONElement& newValueElement) {
-        bool newValue;
-        if (!newValueElement.coerce(&newValue))
-            return Status(ErrorCodes::BadValue,
-                          mongoutils::str::stream() << "Invalid value for redactSystemLog: "
-                                                    << newValueElement);
-        logger::globalLogDomain()->setShouldRedactLogs(newValue);
-        return Status::OK();
-    }
-
-    virtual Status setFromString(const std::string& str) {
-        if (str == "true") {
-            logger::globalLogDomain()->setShouldRedactLogs(true);
-        } else if (str == "false") {
-            logger::globalLogDomain()->setShouldRedactLogs(false);
-        } else {
-            return Status(ErrorCodes::BadValue,
-                          mongoutils::str::stream() << "Invalid value for redactSystemLog: "
-                                                    << str);
-        }
-        return Status::OK();
-    }
-} redactSystemLogSetting;
 }  // namespace mongo
