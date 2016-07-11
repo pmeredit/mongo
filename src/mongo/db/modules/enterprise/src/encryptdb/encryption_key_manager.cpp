@@ -557,16 +557,17 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) {
         fs::rename(oldKeystorePath, invalidatedKeystorePath);
         fs::rename(initRotKeystorePath, rotKeystorePath);
 
-        // Delete any old invalidated keystores to clean up.
+        // Delete old invalidated keystores to clean up. It used to be that the key store last
+        // rotated was kept around for backup purposes. This behavior is no longer retained.
         for (fs::directory_iterator it(_keystoreBasePath);
              it != boost::filesystem::directory_iterator();
              ++it) {
             std::string fileName = fs::path(*it).filename().string();
             std::string filePath = fs::path(*it).string();
             if (fileName.find(kInvalidatedKeyword) != std::string::npos &&
-                filePath != invalidatedKeystorePath) {
+                filePath != rotKeystorePath) {
                 if (fs::remove_all(filePath) > 0) {
-                    log() << "Removing outdated invalid keystore " << fileName << ".";
+                    LOG(1) << "Removing old keystore " << fileName << ".";
                 } else {
                     warning() << "Failed to remove the invalidated keystore " << filePath << ".";
                 }
