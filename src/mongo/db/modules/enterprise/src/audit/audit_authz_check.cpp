@@ -111,12 +111,12 @@ void logDeleteAuthzCheck(ClientBasic* client,
         return;
 
     mmb::Document cmdObj;
-    fassertStatusOK(cmdObj.root().appendString("delete", ns.coll()));
+    fassertStatusOK(4054, cmdObj.root().appendString("delete", ns.coll()));
     mmb::Element deleteListElt = cmdObj.makeElementArray("deletes");
     mmb::Element deleteElt = cmdObj.makeElementObject(StringData());
-    fassertStatusOK(deleteElt.appendObject("q", pattern));
-    fassertStatusOK(deleteListElt.pushBack(deleteElt));
-    fassertStatusOK(cmdObj.root().pushBack(deleteListElt));
+    fassertStatusOK(4055, deleteElt.appendObject("q", pattern));
+    fassertStatusOK(4056, deleteListElt.pushBack(deleteElt));
+    fassertStatusOK(4057, cmdObj.root().pushBack(deleteListElt));
     _logAuthzCheck(client, ns, cmdObj, result);
 }
 
@@ -128,8 +128,8 @@ void logGetMoreAuthzCheck(ClientBasic* client,
         return;
 
     mmb::Document cmdObj;
-    fassertStatusOK(cmdObj.root().appendString("getMore", ns.coll()));
-    fassertStatusOK(cmdObj.root().appendLong("cursorId", cursorId));
+    fassertStatusOK(4058, cmdObj.root().appendString("getMore", ns.coll()));
+    fassertStatusOK(4059, cmdObj.root().appendLong("cursorId", cursorId));
     _logAuthzCheck(client, ns, cmdObj, result);
 }
 
@@ -141,10 +141,10 @@ void logInsertAuthzCheck(ClientBasic* client,
         return;
 
     mmb::Document cmdObj;
-    fassertStatusOK(cmdObj.root().appendString("insert", ns.coll()));
+    fassertStatusOK(4060, cmdObj.root().appendString("insert", ns.coll()));
     mmb::Element docsListElt = cmdObj.makeElementArray("documents");
-    fassertStatusOK(cmdObj.root().pushBack(docsListElt));
-    fassertStatusOK(docsListElt.appendObject(StringData(), insertedObj));
+    fassertStatusOK(4061, cmdObj.root().pushBack(docsListElt));
+    fassertStatusOK(4062, docsListElt.appendObject(StringData(), insertedObj));
     _logAuthzCheck(client, ns, cmdObj, result);
 }
 
@@ -156,8 +156,8 @@ void logKillCursorsAuthzCheck(ClientBasic* client,
         return;
 
     mmb::Document cmdObj;
-    fassertStatusOK(cmdObj.root().appendString("killCursors", ns.coll()));
-    fassertStatusOK(cmdObj.root().appendLong("cursorId", cursorId));
+    fassertStatusOK(4063, cmdObj.root().appendString("killCursors", ns.coll()));
+    fassertStatusOK(4064, cmdObj.root().appendLong("cursorId", cursorId));
     _logAuthzCheck(client, ns, cmdObj, result);
 }
 
@@ -169,8 +169,8 @@ void logQueryAuthzCheck(ClientBasic* client,
         return;
 
     mmb::Document cmdObj;
-    fassertStatusOK(cmdObj.root().appendString("find", ns.coll()));
-    fassertStatusOK(cmdObj.root().appendObject("q", query));
+    fassertStatusOK(4065, cmdObj.root().appendString("find", ns.coll()));
+    fassertStatusOK(4066, cmdObj.root().appendObject("q", query));
     _logAuthzCheck(client, ns, cmdObj, result);
 }
 
@@ -185,15 +185,15 @@ void logUpdateAuthzCheck(ClientBasic* client,
         return;
 
     mmb::Document cmdObj;
-    fassertStatusOK(cmdObj.root().appendString("update", ns.coll()));
+    fassertStatusOK(4067, cmdObj.root().appendString("update", ns.coll()));
     mmb::Element updatesListElt = cmdObj.makeElementArray("updates");
-    fassertStatusOK(cmdObj.root().pushBack(updatesListElt));
+    fassertStatusOK(4068, cmdObj.root().pushBack(updatesListElt));
     mmb::Element updateElt = cmdObj.makeElementObject(StringData());
-    fassertStatusOK(updatesListElt.pushBack(updateElt));
-    fassertStatusOK(updateElt.appendObject("q", query));
-    fassertStatusOK(updateElt.appendObject("u", updateObj));
-    fassertStatusOK(updateElt.appendBool("upsert", isUpsert));
-    fassertStatusOK(updateElt.appendBool("multi", isMulti));
+    fassertStatusOK(4069, updatesListElt.pushBack(updateElt));
+    fassertStatusOK(4070, updateElt.appendObject("q", query));
+    fassertStatusOK(4071, updateElt.appendObject("u", updateObj));
+    fassertStatusOK(4072, updateElt.appendBool("upsert", isUpsert));
+    fassertStatusOK(4073, updateElt.appendBool("multi", isMulti));
     _logAuthzCheck(client, ns, cmdObj, result);
 }
 

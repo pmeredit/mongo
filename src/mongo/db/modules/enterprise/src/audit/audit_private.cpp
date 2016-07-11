@@ -13,13 +13,6 @@
 namespace mongo {
 namespace audit {
 
-void fassertStatusOK(const Status& status) {
-    if (MONGO_unlikely(!status.isOK())) {
-        error() << status;
-        fassertFailed(status.code());
-    }
-}
-
 void initializeEnvelope(AuditEventEnvelope* envelope,
                         ClientBasic* client,
                         ActionType actionType,

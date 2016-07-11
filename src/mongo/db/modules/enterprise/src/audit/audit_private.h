@@ -20,13 +20,6 @@ class ClientBasic;
 namespace audit {
 
 /**
- * Aborts unless "status.isOK()" returns true.
- *
- * TODO(schwerin): Move to assert_util, once you can stream into fasserts.
- */
-void fassertStatusOK(const Status& status);
-
-/**
  * Initializes the given "envelope" based on information in "client", plus
  * the "actionType" and "result" codes.
  */
