@@ -7,6 +7,7 @@
 #include <boost/filesystem/path.hpp>
 #include <wiredtiger.h>
 
+#include "encryption_options.h"
 #include "mongo/base/disallow_copying.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_customization_hooks.h"
@@ -16,7 +17,6 @@
 namespace mongo {
 
 class DataProtector;
-struct EncryptionGlobalParams;
 class NamespaceString;
 class ServiceContext;
 class SSLManagerInterface;
@@ -102,6 +102,14 @@ public:
      * associated encryption key for that keyID.
      */
     virtual StatusWith<std::unique_ptr<SymmetricKey>> getKey(const std::string& keyId);
+
+    std::string getMasterKeyId() {
+        return _masterKeyId;
+    }
+
+    std::string getCipherMode() {
+        return _encryptionParams->encryptionCipherMode;
+    }
 
 private:
     /**
