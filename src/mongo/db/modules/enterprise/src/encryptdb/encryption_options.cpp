@@ -45,8 +45,10 @@ Status addEncryptionOptions(moe::OptionSection* options) {
                                         "Rotate master encryption key");
     addKMIPOptions(&encryptionOptions);
 
-    encryptionOptions.addOptionChaining(
-        "security.redactSystemLog", "redactSystemLog", moe::Switch, "Redact system log");
+    encryptionOptions.addOptionChaining("security.redactClientLogData",
+                                        "redactClientLogData",
+                                        moe::Switch,
+                                        "Redact client data written to the diagnostics log");
 
     Status ret = options->addSection(encryptionOptions);
     if (!ret.isOK()) {
@@ -130,18 +132,18 @@ Status storeEncryptionOptions(const moe::Environment& params) {
             params["security.encryptionCipherMode"].as<std::string>();
     }
 
-    if (params.count("security.redactSystemLog")) {
+    if (params.count("security.redactClientLogData")) {
         logger::globalLogDomain()->setShouldRedactLogs(
-            params["security.redactSystemLog"].as<bool>());
+            params["security.redactClientLogData"].as<bool>());
     }
 
     return Status::OK();
 }
 
-class RedactSystemLogSetting : public ServerParameter {
+class RedactClientLogDataSetting : public ServerParameter {
 public:
-    RedactSystemLogSetting()
-        : ServerParameter(ServerParameterSet::getGlobal(), "redactSystemLog", false, true) {}
+    RedactClientLogDataSetting()
+        : ServerParameter(ServerParameterSet::getGlobal(), "redactClientLogData", false, true) {}
 
     virtual void append(OperationContext* txn, BSONObjBuilder& b, const std::string& name) {
         b << name << logger::globalLogDomain()->shouldRedactLogs();
@@ -151,7 +153,7 @@ public:
         bool newValue;
         if (!newValueElement.coerce(&newValue))
             return Status(ErrorCodes::BadValue,
-                          mongoutils::str::stream() << "Invalid value for redactSystemLog: "
+                          mongoutils::str::stream() << "Invalid value for redactClientLogData: "
                                                     << newValueElement);
         logger::globalLogDomain()->setShouldRedactLogs(newValue);
         return Status::OK();
@@ -164,10 +166,10 @@ public:
             logger::globalLogDomain()->setShouldRedactLogs(false);
         } else {
             return Status(ErrorCodes::BadValue,
-                          mongoutils::str::stream() << "Invalid value for redactSystemLog: "
+                          mongoutils::str::stream() << "Invalid value for redactClientLogData: "
                                                     << str);
         }
         return Status::OK();
     }
-} redactSystemLogSetting;
+} redactClientLogDataSetting;
 }  // namespace mongo
