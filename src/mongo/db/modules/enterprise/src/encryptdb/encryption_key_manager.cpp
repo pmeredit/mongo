@@ -14,6 +14,7 @@
 
 #include "encrypted_data_protector.h"
 #include "encryption_key_acquisition.h"
+#include "encryption_options.h"
 #include "mongo/base/checked_cast.h"
 #include "mongo/base/init.h"
 #include "mongo/bson/bsonobj.h"
