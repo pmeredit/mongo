@@ -20,11 +20,13 @@ if wtEnv['MONGO_DISTMOD'] == "ubuntu1204":
     wtEnv.Append(CPPDEFINES=["DISABLE_GCM_TESTVECTORS"]);
 
 
-wtEnv.Library(target='encryption_key_manager_init',
+wtEnv.Library(target='encryption_key_manager_aux',
             source=[
                 'encryption_key_manager_init.cpp',
+                'encryption_server_status.cpp',
             ],
             LIBDEPS=[
+                '$BUILD_DIR/mongo/db/commands/core',
                 'encryptdb',
                 'symmetric_crypto'
             ],
