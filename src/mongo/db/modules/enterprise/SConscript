@@ -10,6 +10,7 @@ env.SConscript([
     'src/inmemory/SConscript',
     'src/ldap/SConscript',
     'src/rlp/SConscript',
+    'src/queryable/SConscript',
     ])
 
 env.Library('audit',

@@ -1,0 +1,80 @@
+/**
+ *  Copyright (C) 2016 MongoDB Inc.
+ */
+
+#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
+
+#include "mongo/platform/basic.h"
+
+#include "queryable_global_options.h"
+
+#include "mongo/util/exit_code.h"
+#include "mongo/util/log.h"
+#include "mongo/util/options_parser/startup_options.h"
+#include "mongo/util/quick_exit.h"
+
+namespace mongo {
+namespace queryable {
+
+QueryableGlobalOptions queryableGlobalOptions;
+
+Status QueryableGlobalOptions::add(moe::OptionSection* options) {
+    moe::OptionSection queryableOptions("Queryable Backup options");
+
+    queryableOptions.addOptionChaining("queryableBackup.apiUri",
+                                       "queryableBackupApiUri",
+                                       moe::String,
+                                       "A connection string to a queryable API server");
+
+    queryableOptions.addOptionChaining("queryableBackup.snapshotId",
+                                       "queryableSnapshotId",
+                                       moe::String,
+                                       "A hex string of the OID for the snapshot to load");
+
+    return options->addSection(queryableOptions);
+}
+
+Status QueryableGlobalOptions::store(const moe::Environment& params,
+                                     const std::vector<std::string>& args) {
+    if (params.count("queryableBackup.apiUri")) {
+        auto uriStr = params["queryableBackup.apiUri"].as<std::string>();
+
+        _apiUri = std::move(uriStr);
+    }
+
+    if (params.count("queryableBackup.snapshotId")) {
+        auto snapshotStr = params["queryableBackup.snapshotId"].as<std::string>();
+        if (snapshotStr.size() != 24) {
+            return {ErrorCodes::BadValue,
+                    str::stream() << "queryableBackup.snapshotId is not a valid OID: "
+                                  << snapshotStr};
+        }
+
+        _snapshotId = OID(snapshotStr);
+    }
+
+    return Status::OK();
+}
+
+}  // namespace queryable
+
+MONGO_MODULE_STARTUP_OPTIONS_REGISTER(QueryableOptions)(InitializerContext* context) {
+    return queryable::queryableGlobalOptions.add(&moe::startupOptions);
+}
+
+MONGO_STARTUP_OPTIONS_VALIDATE(QueryableOptions)(InitializerContext* context) {
+    return Status::OK();
+}
+
+MONGO_STARTUP_OPTIONS_STORE(QueryableOptions)(InitializerContext* context) {
+    Status ret =
+        queryable::queryableGlobalOptions.store(moe::startupOptionsParsed, context->args());
+    if (!ret.isOK()) {
+        severe() << ret.toString() << std::endl;
+        severe() << "try '" << context->args()[0] << " --help' for more information" << std::endl;
+        quickExit(EXIT_BADOPTIONS);
+    }
+    return Status::OK();
+}
+
+}  // namespace mongo

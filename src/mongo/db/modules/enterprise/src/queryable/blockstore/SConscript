@@ -1,0 +1,27 @@
+Import('env')
+
+env.Library(
+    target='blockstore',
+    source=[
+        'curl_http_client.cpp',
+        'list_dir.cpp',
+        'reader.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/bson/util/bson_extract',
+    ],
+    SYSLIBDEPS=[
+        'curl',
+    ],
+)
+
+env.CppIntegrationTest(
+    target='list_dir_test',
+    source=[
+        'list_dir_test.cpp',
+    ],
+    LIBDEPS=[
+        'blockstore',
+    ],
+)

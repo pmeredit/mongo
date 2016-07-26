@@ -1,0 +1,42 @@
+Import("env")
+
+env.Library(
+    target='queryable_datafile',
+    source=[
+        'queryable_datafile.cpp',
+    ],
+    LIBDEPS=[
+        '../blockstore/blockstore',
+    ],
+)
+
+env.Library(
+    target='queryable_mmapv1',
+    source=[
+        'queryable_global_options.cpp',
+        'queryable_mmap_v1_extent_manager.cpp',
+        'queryable_mmap_v1_init.cpp',
+    ],
+    LIBDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/db/serveronly',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/db/storage/mmap_v1/mmap',
+        '../blockstore/blockstore',
+        'queryable_datafile',
+    ],
+    LIBDEPS_TAGS=[
+        # Depends on symbols defined in serverOnlyfiles
+        'incomplete',
+    ],
+)
+
+env.CppIntegrationTest(
+    target='datafile_integration_test',
+    source=[
+        'blockstore_extent_manager_test.cpp',
+    ],
+    LIBDEPS=[
+        'queryable_datafile',
+    ],
+)

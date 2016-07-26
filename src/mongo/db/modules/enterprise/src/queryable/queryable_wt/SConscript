@@ -1,0 +1,22 @@
+Import("env")
+
+wtEnv = env.Clone()
+wtEnv.InjectThirdPartyIncludePaths(libraries=['wiredtiger'])
+
+wtEnv.Library(
+    target='queryable_wt',
+    source=[
+        'blockstore_fs.cpp',
+        'queryable_wt_init.cpp',
+    ],
+    LIBDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/db/serveronly',
+    ],
+    LIBDEPS=[
+        '../blockstore/blockstore',
+    ],
+    LIBDEPS_TAGS=[
+        # Depends on symbols defined in serverOnlyfiles
+        'incomplete',
+    ],
+)

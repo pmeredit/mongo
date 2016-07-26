@@ -47,6 +47,14 @@ def configure(conf, env):
         env.ConfError("Could not find <sasl/sasl.h> and sasl library, required for "
             "enterprise build.")
 
+    if not conf.CheckLibWithHeader(
+        "curl",
+        ["curl/curl.h"], "C",
+        "curl_global_init(0);",
+        autoadd=False):
+        env.ConfError("Could not find <curl/curl.h> and curl lib, required for "
+            "enterprise build")
+
     if not env.TargetOSIs("windows"):
         if not conf.CheckLibWithHeader(
                 "ldap",
@@ -139,4 +147,3 @@ def configure(conf, env):
         if not conf.CheckCXXHeader("bt_types.h"):
             env.ConfError("Could not find bt_types.h, include <BT_ROOT>/rlp/utilities/include "
                 "in CPPPATH")
-
