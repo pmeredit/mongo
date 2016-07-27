@@ -99,15 +99,13 @@ public:
             std::tie(other.baseDN, other.scope, other.filter, other.attributes);
     }
 
-    // Default constructor, configuring a query of the rootDSE.
-    LDAPQueryConfig() : baseDN(""), scope(LDAPQueryScope::kBase) {}
-
     LDAPDN baseDN;
     LDAPQueryScope scope;
     std::string filter;
     LDAPAttributeKeys attributes;
 
 protected:
+    LDAPQueryConfig() = default;
     template <typename T>
     static StatusWith<T> createDerivedLDAPQueryConfig(const std::string& input);
 

@@ -23,7 +23,6 @@ void LDAPManager::set(ServiceContext* service, std::unique_ptr<LDAPManager> ldap
 }
 
 LDAPManager* LDAPManager::get(ServiceContext* service) {
-    uassert(4074, "LDAPManager is not enabled", getLDAPManager(service).get() != nullptr);
     return getLDAPManager(service).get();
 }
 }  // namespace mongo
