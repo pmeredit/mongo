@@ -67,7 +67,7 @@ Status addLDAPOptions(moe::OptionSection* options) {
 
     ldap_options
         .addOptionChaining("security.ldap.bind.saslMechanisms",
-                           "ldapBindSaslMechanisms",
+                           "ldapBindSASLMechs",
                            moe::String,
                            "Comma separated list of SASL mechanisms to use while "
                            "binding to the LDAP server")
