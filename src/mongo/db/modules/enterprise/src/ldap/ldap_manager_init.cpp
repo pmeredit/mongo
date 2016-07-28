@@ -10,6 +10,7 @@
 
 #include "ldap_manager_impl.h"
 #include "ldap_options.h"
+#include "ldap_query.h"
 
 namespace mongo {
 
@@ -34,11 +35,23 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(SetLDAPManagerImpl, ("SetGlobalEnvironment"
     auto swMapper =
         InternalToLDAPUserNameMapper::createNameMapper(globalLDAPParams->userToDNMapping);
     massertStatusOK(swMapper.getStatus());
+    auto runner = stdx::make_unique<LDAPRunnerImpl>(bindOptions, connectionOptions);
+
+    // Perform smoke test of the connection parameters.
+    // TODO: Possibly store the root DSE for future reference.
+    if (!globalLDAPParams->serverHosts.empty()) {
+        StatusWith<LDAPEntityCollection> swRes =
+            runner->runQuery(LDAPQuery::instantiateQuery(LDAPQueryConfig()).getValue());
+
+        if (!swRes.isOK()) {
+            return Status(ErrorCodes::FailedToParse,
+                          str::stream() << "Can't connect to the specified LDAP servers, error: "
+                                        << swRes.getStatus().reason());
+        }
+    }
 
     auto manager = stdx::make_unique<LDAPManagerImpl>(
-        stdx::make_unique<LDAPRunnerImpl>(bindOptions, connectionOptions),
-        std::move(swQueryParameters.getValue()),
-        std::move(swMapper.getValue()));
+        std::move(runner), std::move(swQueryParameters.getValue()), std::move(swMapper.getValue()));
     LDAPManager::set(getGlobalServiceContext(), std::move(manager));
 
     return Status::OK();
