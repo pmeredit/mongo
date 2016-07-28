@@ -20,7 +20,7 @@
           user: adminUser,
           fragment: {
               ldapBindMethod: "sasl",
-              ldapBindSASLMechs: "DIGEST-MD5",
+              ldapBindSaslMechanisms: "DIGEST-MD5",
               ldapQueryUser: saslAuthenticationUser
           }
         },
@@ -28,7 +28,7 @@
           user: adminUser,
           fragment: {
               ldapBindMethod: "sasl",
-              ldapBindSASLMechs: "GSSAPI",
+              ldapBindSaslMechanisms: "GSSAPI",
               ldapQueryUser: saslAuthenticationUser
           }
         },
@@ -36,7 +36,7 @@
 
     ldapSchemes.forEach(function(s) {
         bindOptions.forEach(function(b) {
-            if ((b.fragment.ldapBindSASLMechs == "GSSAPI" || s.ldapTransportSecurity) &&
+            if ((b.fragment.ldapBindSaslMechanisms == "GSSAPI" || s.ldapTransportSecurity) &&
                 _isWindows()) {
                 // FIXME: Import TLS certificates on Windows builders with SERVER-24672.
                 // FIXME: Enable support for GSSAPI on Windows builders with SERVER-24671.
@@ -45,7 +45,7 @@
 
             var saslString = b.fragment.ldapBindMethod;
             if (b.fragment.ldapBindMethod == "sasl") {
-                saslString += " and " + b.fragment.ldapBindSASLMechs;
+                saslString += " and " + b.fragment.ldapBindSaslMechanisms;
             }
             print("Attempting to bind with protocol security '" + s.ldapTransportSecurity +
                   "' as " + b.user + " with " + saslString);

@@ -62,7 +62,7 @@ function LDAPTestConfigGenerator() {
     this.ldapTransportSecurity = "none";
     this.ldapAuthzQueryTemplate = "cn={USER}," + defaultUserDNSuffix + "?memberOf";
     this.ldapBindMethod = "simple";
-    this.ldapBindSASLMechs = "DIGEST-MD5";
+    this.ldapBindSaslMechanisms = "DIGEST-MD5";
     this.ldapQueryUser = undefined;
     this.ldapQueryPassword = "Admin001";
     this.ldapUserToDNMapping = undefined;
@@ -102,7 +102,7 @@ function LDAPTestConfigGenerator() {
 
         config.ldapBindMethod = this.ldapBindMethod;
         if (!(this.ldapBindMethod === "simple")) {
-            config.ldapBindSASLMechs = this.ldapBindSASLMechs;
+            config.ldapBindSaslMechanisms = this.ldapBindSaslMechanisms;
         }
 
         if (this.ldapQueryUser === undefined) {
