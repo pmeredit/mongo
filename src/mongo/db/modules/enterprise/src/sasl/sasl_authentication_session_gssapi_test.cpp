@@ -135,7 +135,7 @@ SaslConversationGssapi::SaslConversationGssapi()
       authSession(authManager.makeAuthorizationSession()),
       mechanism("GSSAPI") {
     client.reset(SaslClientSession::create("GSSAPI"));
-    server.reset(SaslAuthenticationSession::create(authSession.get(), "GSSAPI"));
+    server.reset(SaslAuthenticationSession::create(authSession.get(), "$external", "GSSAPI"));
 }
 
 void SaslConversationGssapi::assertConversationFailure() {

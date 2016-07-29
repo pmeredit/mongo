@@ -63,7 +63,7 @@ SaslConversation::SaslConversation(std::string mech)
     OperationContextNoop txn;
 
     client.reset(SaslClientSession::create(mechanism));
-    server.reset(SaslAuthenticationSession::create(authSession.get(), mechanism));
+    server.reset(SaslAuthenticationSession::create(authSession.get(), "$external", mechanism));
 
     ASSERT_OK(authManagerExternalState->updateOne(
         &txn,

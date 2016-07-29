@@ -454,8 +454,10 @@ int saslServerGlobalLog(void* context, int level, const char* message) throw() {
 }
 
 SaslAuthenticationSession* createSaslAuthenticationSession(AuthorizationSession* authzSession,
-                                                           const std::string& mechanism) {
-    if (mechanism == SaslAuthenticationSession::mechanismSCRAMSHA1) {
+                                                           StringData db,
+                                                           StringData mechanism) {
+    if (mechanism == SaslAuthenticationSession::mechanismSCRAMSHA1 ||
+        (mechanism == SaslAuthenticationSession::mechanismPLAIN && db != "$external")) {
         return new NativeSaslAuthenticationSession(authzSession);
     }
     if (mechanism == SaslAuthenticationSession::mechanismPLAIN &&
