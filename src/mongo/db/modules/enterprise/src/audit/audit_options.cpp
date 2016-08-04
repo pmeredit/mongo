@@ -36,14 +36,6 @@ Status addAuditOptions(moe::OptionSection* options) {
     moe::OptionSection auditingOptions("Auditing Options");
 
     auditingOptions
-        .addOptionChaining("auditLog.format",
-                           "auditFormat",
-                           moe::String,
-                           "Format of the audit log, if logging to a file.  "
-                           "(BSON/JSON)")
-        .format("(:?BSON)|(:?JSON)", "(BSON/JSON)");
-
-    auditingOptions
         .addOptionChaining("auditLog.destination",
                            "auditDestination",
                            moe::String,
@@ -51,11 +43,24 @@ Status addAuditOptions(moe::OptionSection* options) {
                            "(console/syslog/file)")
         .format("(:?console)|(:?syslog)|(:?file)", "(console/syslog/file)");
 
-    auditingOptions.addOptionChaining(
-        "auditLog.path", "auditPath", moe::String, "full filespec for audit log file");
+    auditingOptions
+        .addOptionChaining("auditLog.format",
+                           "auditFormat",
+                           moe::String,
+                           "Format of the audit log, if logging to a file.  "
+                           "(BSON/JSON)")
+        .format("(:?BSON)|(:?JSON)", "(BSON/JSON)")
+        .requires("auditLog.destination");
 
-    auditingOptions.addOptionChaining(
-        "auditLog.filter", "auditFilter", moe::String, "filter spec to screen audit records");
+    auditingOptions
+        .addOptionChaining(
+            "auditLog.path", "auditPath", moe::String, "full filespec for audit log file")
+        .requires("auditLog.destination");
+
+    auditingOptions
+        .addOptionChaining(
+            "auditLog.filter", "auditFilter", moe::String, "filter spec to screen audit records")
+        .requires("auditLog.destination");
 
     Status ret = options->addSection(auditingOptions);
     if (!ret.isOK()) {
@@ -105,10 +110,10 @@ Status storeAuditOptions(const moe::Environment& params, const std::vector<std::
 
             auditGlobalParams.auditPath = params["auditLog.path"].as<std::string>();
         } else {
-            if (params.count("auditLog.format")) {
+            if (params.count("auditLog.format") || params.count("auditLog.path")) {
                 return Status(ErrorCodes::BadValue,
-                              "auditLog.format not allowed when "
-                              "auditLog.destination is not to a file");
+                              "auditLog.format and auditLog.path are only allowed when "
+                              "auditLog.destination is 'file'");
             }
             if (auditDestination == "syslog") {
 #ifdef _WIN32
