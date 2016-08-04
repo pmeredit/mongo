@@ -52,7 +52,7 @@ static int queryableWtFsDirectoryListFree(WT_FILE_SYSTEM* file_system,
  * Forward function declarations for file system API implementation
  */
 static int queryableWtFsFileOpen(
-    WT_FILE_SYSTEM*, WT_SESSION*, const char*, WT_OPEN_FILE_TYPE, uint32_t, WT_FILE_HANDLE**);
+    WT_FILE_SYSTEM*, WT_SESSION*, const char*, WT_FS_OPEN_FILE_TYPE, uint32_t, WT_FILE_HANDLE**);
 static int queryableWtFsFileExist(WT_FILE_SYSTEM*, WT_SESSION*, const char*, bool*);
 static int queryableWtFsFileSize(WT_FILE_SYSTEM*, WT_SESSION*, const char*, wt_off_t*);
 static int queryableWtFsTerminate(WT_FILE_SYSTEM*, WT_SESSION*);
@@ -197,7 +197,7 @@ int queryableWtFsCreate(WT_CONNECTION* conn, WT_CONFIG_ARG* config) {
 static int queryableWtFsFileOpen(WT_FILE_SYSTEM* file_system,
                                  WT_SESSION* session,
                                  const char* name,
-                                 WT_OPEN_FILE_TYPE file_type,
+                                 WT_FS_OPEN_FILE_TYPE file_type,
                                  uint32_t flags,
                                  WT_FILE_HANDLE** file_handlep) {
     auto blockstoreFs = reinterpret_cast<mongo::queryable::BlockstoreFileSystem*>(file_system);
