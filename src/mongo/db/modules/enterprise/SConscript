@@ -234,3 +234,23 @@ mongodecrypt = env.Program(
 env.Alias("all", mongodecrypt)
 
 env.Install("#/", mongodecrypt)
+
+mongoldap = env.Program(
+    target="mongoldap",
+    source=[
+        "src/ldap/ldap_tool.cpp",
+        "src/ldap/ldap_tool_options.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/log_process_details",
+        "$BUILD_DIR/mongo/util/options_parser/options_parser_init",
+        "$BUILD_DIR/mongo/util/signal_handlers",
+        "$BUILD_DIR/mongo/util/version_impl",
+        "src/ldap/ldap_manager",
+    ],
+)
+
+env.Alias("all", mongoldap)
+
+env.Install("#/", mongoldap)
