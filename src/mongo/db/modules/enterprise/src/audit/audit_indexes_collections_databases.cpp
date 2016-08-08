@@ -13,7 +13,7 @@
 #include "mongo/base/status.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/authorization_session.h"
-#include "mongo/db/client_basic.h"
+#include "mongo/db/client.h"
 #include "mongo/db/namespace_string.h"
 
 namespace mongo {
@@ -49,7 +49,7 @@ BSONObjBuilder& CreateIndexEvent::putParamsBSON(BSONObjBuilder& builder) const {
     return builder;
 }
 
-void logCreateIndex(ClientBasic* client,
+void logCreateIndex(Client* client,
                     const BSONObj* indexSpec,
                     StringData indexname,
                     StringData nsname) {
@@ -89,7 +89,7 @@ BSONObjBuilder& CreateCollectionEvent::putParamsBSON(BSONObjBuilder& builder) co
     return builder;
 }
 
-void logCreateCollection(ClientBasic* client, StringData nsname) {
+void logCreateCollection(Client* client, StringData nsname) {
     if (!getGlobalAuditManager()->enabled)
         return;
 
@@ -128,7 +128,7 @@ BSONObjBuilder& CreateDatabaseEvent::putParamsBSON(BSONObjBuilder& builder) cons
     return builder;
 }
 
-void logCreateDatabase(ClientBasic* client, StringData dbname) {
+void logCreateDatabase(Client* client, StringData dbname) {
     if (!getGlobalAuditManager()->enabled)
         return;
 
@@ -165,7 +165,7 @@ BSONObjBuilder& DropIndexEvent::putParamsBSON(BSONObjBuilder& builder) const {
     return builder;
 }
 
-void logDropIndex(ClientBasic* client, StringData indexname, StringData nsname) {
+void logDropIndex(Client* client, StringData indexname, StringData nsname) {
     if (!getGlobalAuditManager()->enabled)
         return;
 
@@ -200,7 +200,7 @@ BSONObjBuilder& DropCollectionEvent::putParamsBSON(BSONObjBuilder& builder) cons
     return builder;
 }
 
-void logDropCollection(ClientBasic* client, StringData nsname) {
+void logDropCollection(Client* client, StringData nsname) {
     if (!getGlobalAuditManager()->enabled)
         return;
 
@@ -235,7 +235,7 @@ BSONObjBuilder& DropDatabaseEvent::putParamsBSON(BSONObjBuilder& builder) const 
     return builder;
 }
 
-void logDropDatabase(ClientBasic* client, StringData dbname) {
+void logDropDatabase(Client* client, StringData dbname) {
     if (!getGlobalAuditManager()->enabled)
         return;
 
@@ -271,7 +271,7 @@ BSONObjBuilder& RenameCollectionEvent::putParamsBSON(BSONObjBuilder& builder) co
     return builder;
 }
 
-void logRenameCollection(ClientBasic* client, StringData source, StringData target) {
+void logRenameCollection(Client* client, StringData source, StringData target) {
     if (!getGlobalAuditManager()->enabled)
         return;
 

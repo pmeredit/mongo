@@ -13,7 +13,7 @@
 #include "mongo/base/status.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/authorization_session.h"
-#include "mongo/db/client_basic.h"
+#include "mongo/db/client.h"
 #include "mongo/db/namespace_string.h"
 
 namespace mongo {
@@ -38,7 +38,7 @@ BSONObjBuilder& ShutdownEvent::putParamsBSON(BSONObjBuilder& builder) const {
     return builder;
 }
 
-void logShutdown(ClientBasic* client) {
+void logShutdown(Client* client) {
     if (!getGlobalAuditManager()->enabled)
         return;
 

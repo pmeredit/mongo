@@ -13,7 +13,7 @@
 #include "mongo/base/status.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/authorization_session.h"
-#include "mongo/db/client_basic.h"
+#include "mongo/db/client.h"
 #include "mongo/db/namespace_string.h"
 
 namespace mongo {
@@ -56,7 +56,7 @@ BSONObjBuilder& ReplSetReconfigEvent::putParamsBSON(BSONObjBuilder& builder) con
     return builder;
 }
 
-void logReplSetReconfig(ClientBasic* client, const BSONObj* oldConfig, const BSONObj* newConfig) {
+void logReplSetReconfig(Client* client, const BSONObj* oldConfig, const BSONObj* newConfig) {
     if (!getGlobalAuditManager()->enabled)
         return;
 

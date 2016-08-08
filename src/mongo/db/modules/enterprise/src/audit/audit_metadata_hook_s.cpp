@@ -11,7 +11,7 @@
 #include "audit_manager_global.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/client.h"
-#include "mongo/db/client_basic.h"
+#include "mongo/db/client.h"
 #include "mongo/rpc/metadata/audit_metadata.h"
 #include "mongo/util/assert_util.h"
 

@@ -11,7 +11,7 @@
 #include "audit_manager_global.h"
 #include "audit_private.h"
 #include "mongo/db/audit.h"
-#include "mongo/db/client_basic.h"
+#include "mongo/db/client.h"
 
 namespace mongo {
 namespace audit {
@@ -45,8 +45,7 @@ BSONObjBuilder& SetParameterEvent::putParamsBSON(BSONObjBuilder& builder) const 
     return builder;
 }
 
-void logSetParameter(ClientBasic* client,
-                     const std::map<std::string, BSONElement>& parametersToSet) {
+void logSetParameter(Client* client, const std::map<std::string, BSONElement>& parametersToSet) {
     if (!getGlobalAuditManager()->enabled)
         return;
 

@@ -7,7 +7,7 @@
 #include "audit_private.h"
 
 #include "mongo/db/auth/authorization_session.h"
-#include "mongo/db/client_basic.h"
+#include "mongo/db/client.h"
 #include "mongo/transport/session.h"
 #include "mongo/util/log.h"
 
@@ -15,7 +15,7 @@ namespace mongo {
 namespace audit {
 
 void initializeEnvelope(AuditEventEnvelope* envelope,
-                        ClientBasic* client,
+                        Client* client,
                         ActionType actionType,
                         ErrorCodes::Error result) {
     envelope->timestamp = Date_t::now();

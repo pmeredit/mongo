@@ -13,7 +13,7 @@
 #include "mongo/base/status.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/authorization_session.h"
-#include "mongo/db/client_basic.h"
+#include "mongo/db/client.h"
 #include "mongo/db/namespace_string.h"
 
 namespace mongo {
@@ -42,7 +42,7 @@ BSONObjBuilder& ApplicationMessageEvent::putParamsBSON(BSONObjBuilder& builder) 
     return builder;
 }
 
-void logApplicationMessage(ClientBasic* client, StringData msg) {
+void logApplicationMessage(Client* client, StringData msg) {
     if (!getGlobalAuditManager()->enabled)
         return;
 

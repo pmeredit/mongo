@@ -14,7 +14,7 @@
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_session.h"
-#include "mongo/db/client_basic.h"
+#include "mongo/db/client.h"
 #include "mongo/db/namespace_string.h"
 
 namespace mongo {
@@ -90,7 +90,7 @@ BSONObjBuilder& CreateUserEvent::putParamsBSON(BSONObjBuilder& builder) const {
     return builder;
 }
 
-void logCreateUser(ClientBasic* client,
+void logCreateUser(Client* client,
                    const UserName& username,
                    bool password,
                    const BSONObj* customData,
@@ -133,7 +133,7 @@ BSONObjBuilder& DropUserEvent::putParamsBSON(BSONObjBuilder& builder) const {
     return builder;
 }
 
-void logDropUser(ClientBasic* client, const UserName& username) {
+void logDropUser(Client* client, const UserName& username) {
     if (!getGlobalAuditManager()->enabled)
         return;
 
@@ -167,7 +167,7 @@ BSONObjBuilder& DropAllUsersFromDatabaseEvent::putParamsBSON(BSONObjBuilder& bui
     return builder;
 }
 
-void logDropAllUsersFromDatabase(ClientBasic* client, StringData dbname) {
+void logDropAllUsersFromDatabase(Client* client, StringData dbname) {
     if (!getGlobalAuditManager()->enabled)
         return;
 
@@ -250,7 +250,7 @@ BSONObjBuilder& UpdateUserEvent::putParamsBSON(BSONObjBuilder& builder) const {
     return builder;
 }
 
-void logUpdateUser(ClientBasic* client,
+void logUpdateUser(Client* client,
                    const UserName& username,
                    bool password,
                    const BSONObj* customData,

@@ -16,7 +16,7 @@
 #include "mongo/db/auth/action_type.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/user_name.h"
-#include "mongo/db/client_basic.h"
+#include "mongo/db/client.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -57,7 +57,7 @@ BSONObjBuilder& AuthenticationEvent::putParamsBSON(BSONObjBuilder& builder) cons
     return builder;
 }
 
-void logAuthentication(ClientBasic* client,
+void logAuthentication(Client* client,
                        StringData mechanism,
                        const UserName& user,
                        ErrorCodes::Error result) {

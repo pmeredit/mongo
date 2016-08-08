@@ -16,7 +16,7 @@
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/mongo_authentication_session.h"
-#include "mongo/db/client_basic.h"
+#include "mongo/db/client.h"
 #include "mongo/db/commands.h"
 #include "mongo/db/commands/authentication_commands.h"
 #include "mongo/db/server_parameters.h"
@@ -35,7 +35,7 @@ public:
     CmdLogApplicationMessage();
     virtual ~CmdLogApplicationMessage();
 
-    virtual Status checkAuthForCommand(ClientBasic* client,
+    virtual Status checkAuthForCommand(Client* client,
                                        const std::string& dbname,
                                        const BSONObj& cmdObj) {
         AuthorizationSession* authzSession = AuthorizationSession::get(client);
@@ -82,7 +82,7 @@ bool CmdLogApplicationMessage::run(OperationContext* txn,
                                    int options,
                                    std::string& errmsg,
                                    BSONObjBuilder& result) {
-    ClientBasic* client = ClientBasic::getCurrent();
+    Client* client = Client::getCurrent();
 
     if (cmdObj.hasField("logApplicationMessage")) {
         if (cmdObj["logApplicationMessage"].type() == String) {

@@ -15,7 +15,7 @@
 #include "mongo/bson/mutable/document.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/authorization_session.h"
-#include "mongo/db/client_basic.h"
+#include "mongo/db/client.h"
 #include "mongo/db/commands.h"
 #include "mongo/db/namespace_string.h"
 
@@ -78,7 +78,7 @@ static bool _shouldLogAuthzCheck(ErrorCodes::Error result) {
     return false;
 }
 
-static void _logAuthzCheck(ClientBasic* client,
+static void _logAuthzCheck(Client* client,
                            const NamespaceString& ns,
                            const mmb::Document& cmdObj,
                            ErrorCodes::Error result) {
@@ -89,7 +89,7 @@ static void _logAuthzCheck(ClientBasic* client,
     }
 }
 
-void logCommandAuthzCheck(ClientBasic* client,
+void logCommandAuthzCheck(Client* client,
                           const std::string& dbname,
                           const BSONObj& cmdObj,
                           Command* command,
@@ -103,7 +103,7 @@ void logCommandAuthzCheck(ClientBasic* client,
     _logAuthzCheck(client, NamespaceString(command->parseNs(dbname, cmdObj)), cmdToLog, result);
 }
 
-void logDeleteAuthzCheck(ClientBasic* client,
+void logDeleteAuthzCheck(Client* client,
                          const NamespaceString& ns,
                          const BSONObj& pattern,
                          ErrorCodes::Error result) {
@@ -120,7 +120,7 @@ void logDeleteAuthzCheck(ClientBasic* client,
     _logAuthzCheck(client, ns, cmdObj, result);
 }
 
-void logGetMoreAuthzCheck(ClientBasic* client,
+void logGetMoreAuthzCheck(Client* client,
                           const NamespaceString& ns,
                           long long cursorId,
                           ErrorCodes::Error result) {
@@ -133,7 +133,7 @@ void logGetMoreAuthzCheck(ClientBasic* client,
     _logAuthzCheck(client, ns, cmdObj, result);
 }
 
-void logInsertAuthzCheck(ClientBasic* client,
+void logInsertAuthzCheck(Client* client,
                          const NamespaceString& ns,
                          const BSONObj& insertedObj,
                          ErrorCodes::Error result) {
@@ -148,7 +148,7 @@ void logInsertAuthzCheck(ClientBasic* client,
     _logAuthzCheck(client, ns, cmdObj, result);
 }
 
-void logKillCursorsAuthzCheck(ClientBasic* client,
+void logKillCursorsAuthzCheck(Client* client,
                               const NamespaceString& ns,
                               long long cursorId,
                               ErrorCodes::Error result) {
@@ -161,7 +161,7 @@ void logKillCursorsAuthzCheck(ClientBasic* client,
     _logAuthzCheck(client, ns, cmdObj, result);
 }
 
-void logQueryAuthzCheck(ClientBasic* client,
+void logQueryAuthzCheck(Client* client,
                         const NamespaceString& ns,
                         const BSONObj& query,
                         ErrorCodes::Error result) {
@@ -174,7 +174,7 @@ void logQueryAuthzCheck(ClientBasic* client,
     _logAuthzCheck(client, ns, cmdObj, result);
 }
 
-void logUpdateAuthzCheck(ClientBasic* client,
+void logUpdateAuthzCheck(Client* client,
                          const NamespaceString& ns,
                          const BSONObj& query,
                          const BSONObj& updateObj,

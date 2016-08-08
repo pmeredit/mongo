@@ -15,7 +15,7 @@
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/user.h"
-#include "mongo/db/client_basic.h"
+#include "mongo/db/client.h"
 #include "mongo/db/namespace_string.h"
 
 namespace mongo {
@@ -69,7 +69,7 @@ BSONObjBuilder& GrantRolesToUserEvent::putParamsBSON(BSONObjBuilder& builder) co
     return builder;
 }
 
-void logGrantRolesToUser(ClientBasic* client,
+void logGrantRolesToUser(Client* client,
                          const UserName& username,
                          const std::vector<RoleName>& roles) {
     if (!getGlobalAuditManager()->enabled)
@@ -131,7 +131,7 @@ BSONObjBuilder& RevokeRolesFromUserEvent::putParamsBSON(BSONObjBuilder& builder)
     return builder;
 }
 
-void logRevokeRolesFromUser(ClientBasic* client,
+void logRevokeRolesFromUser(Client* client,
                             const UserName& username,
                             const std::vector<RoleName>& roles) {
     if (!getGlobalAuditManager()->enabled)
@@ -218,7 +218,7 @@ BSONObjBuilder& CreateRoleEvent::putParamsBSON(BSONObjBuilder& builder) const {
     return builder;
 }
 
-void logCreateRole(ClientBasic* client,
+void logCreateRole(Client* client,
                    const RoleName& role,
                    const std::vector<RoleName>& roles,
                    const PrivilegeVector& privileges) {
@@ -320,7 +320,7 @@ BSONObjBuilder& UpdateRoleEvent::putParamsBSON(BSONObjBuilder& builder) const {
     return builder;
 }
 
-void logUpdateRole(ClientBasic* client,
+void logUpdateRole(Client* client,
                    const RoleName& role,
                    const std::vector<RoleName>* roles,
                    const PrivilegeVector* privileges) {
@@ -360,7 +360,7 @@ BSONObjBuilder& DropRoleEvent::putParamsBSON(BSONObjBuilder& builder) const {
     return builder;
 }
 
-void logDropRole(ClientBasic* client, const RoleName& role) {
+void logDropRole(Client* client, const RoleName& role) {
     if (!getGlobalAuditManager()->enabled)
         return;
 
@@ -394,7 +394,7 @@ BSONObjBuilder& DropAllRolesFromDatabaseEvent::putParamsBSON(BSONObjBuilder& bui
     return builder;
 }
 
-void logDropAllRolesFromDatabase(ClientBasic* client, StringData dbname) {
+void logDropAllRolesFromDatabase(Client* client, StringData dbname) {
     if (!getGlobalAuditManager()->enabled)
         return;
 
@@ -453,9 +453,7 @@ BSONObjBuilder& GrantRolesToRoleEvent::putParamsBSON(BSONObjBuilder& builder) co
     return builder;
 }
 
-void logGrantRolesToRole(ClientBasic* client,
-                         const RoleName& role,
-                         const std::vector<RoleName>& roles) {
+void logGrantRolesToRole(Client* client, const RoleName& role, const std::vector<RoleName>& roles) {
     if (!getGlobalAuditManager()->enabled)
         return;
 
@@ -514,7 +512,7 @@ BSONObjBuilder& RevokeRolesFromRoleEvent::putParamsBSON(BSONObjBuilder& builder)
     return builder;
 }
 
-void logRevokeRolesFromRole(ClientBasic* client,
+void logRevokeRolesFromRole(Client* client,
                             const RoleName& role,
                             const std::vector<RoleName>& roles) {
     if (!getGlobalAuditManager()->enabled)
@@ -580,7 +578,7 @@ BSONObjBuilder& GrantPrivilegesToRoleEvent::putParamsBSON(BSONObjBuilder& builde
     return builder;
 }
 
-void logGrantPrivilegesToRole(ClientBasic* client,
+void logGrantPrivilegesToRole(Client* client,
                               const RoleName& role,
                               const PrivilegeVector& privileges) {
     if (!getGlobalAuditManager()->enabled)
@@ -646,7 +644,7 @@ BSONObjBuilder& RevokePrivilegesFromRoleEvent::putParamsBSON(BSONObjBuilder& bui
     return builder;
 }
 
-void logRevokePrivilegesFromRole(ClientBasic* client,
+void logRevokePrivilegesFromRole(Client* client,
                                  const RoleName& role,
                                  const PrivilegeVector& privileges) {
     if (!getGlobalAuditManager()->enabled)

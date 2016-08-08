@@ -15,7 +15,7 @@
 
 namespace mongo {
 
-class ClientBasic;
+class Client;
 
 namespace audit {
 
@@ -24,7 +24,7 @@ namespace audit {
  * the "actionType" and "result" codes.
  */
 void initializeEnvelope(AuditEventEnvelope* envelope,
-                        ClientBasic* client,
+                        Client* client,
                         ActionType actionType,
                         ErrorCodes::Error result);
 
@@ -32,7 +32,7 @@ void initializeEnvelope(AuditEventEnvelope* envelope,
  * Returns an AuditEventEnvelope initialized with information from "client", "actionType" and
  * "result".
  */
-inline AuditEventEnvelope makeEnvelope(ClientBasic* client,
+inline AuditEventEnvelope makeEnvelope(Client* client,
                                        ActionType actionType,
                                        ErrorCodes::Error result) {
     AuditEventEnvelope envelope;

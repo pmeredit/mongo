@@ -13,7 +13,7 @@
 #include "mongo/base/status.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/authorization_session.h"
-#include "mongo/db/client_basic.h"
+#include "mongo/db/client.h"
 #include "mongo/db/namespace_string.h"
 
 namespace mongo {
@@ -42,7 +42,7 @@ BSONObjBuilder& EnableShardingEvent::putParamsBSON(BSONObjBuilder& builder) cons
     return builder;
 }
 
-void logEnableSharding(ClientBasic* client, StringData dbname) {
+void logEnableSharding(Client* client, StringData dbname) {
     if (!getGlobalAuditManager()->enabled)
         return;
 
@@ -90,10 +90,7 @@ BSONObjBuilder& AddShardEvent::putParamsBSON(BSONObjBuilder& builder) const {
     return builder;
 }
 
-void logAddShard(ClientBasic* client,
-                 StringData name,
-                 const std::string& servers,
-                 long long maxSize) {
+void logAddShard(Client* client, StringData name, const std::string& servers, long long maxSize) {
     if (!getGlobalAuditManager()->enabled)
         return;
 
@@ -128,7 +125,7 @@ BSONObjBuilder& RemoveShardEvent::putParamsBSON(BSONObjBuilder& builder) const {
     return builder;
 }
 
-void logRemoveShard(ClientBasic* client, StringData shardname) {
+void logRemoveShard(Client* client, StringData shardname) {
     if (!getGlobalAuditManager()->enabled)
         return;
 
@@ -174,10 +171,7 @@ BSONObjBuilder& ShardCollectionEvent::putParamsBSON(BSONObjBuilder& builder) con
     return builder;
 }
 
-void logShardCollection(ClientBasic* client,
-                        StringData ns,
-                        const BSONObj& keyPattern,
-                        bool unique) {
+void logShardCollection(Client* client, StringData ns, const BSONObj& keyPattern, bool unique) {
     if (!getGlobalAuditManager()->enabled)
         return;
 
