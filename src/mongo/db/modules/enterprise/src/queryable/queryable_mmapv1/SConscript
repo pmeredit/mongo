@@ -37,6 +37,7 @@ env.CppIntegrationTest(
         'blockstore_extent_manager_test.cpp',
     ],
     LIBDEPS=[
+        '$BUILD_DIR/mongo/util/processinfo',
         'queryable_datafile',
     ],
 )

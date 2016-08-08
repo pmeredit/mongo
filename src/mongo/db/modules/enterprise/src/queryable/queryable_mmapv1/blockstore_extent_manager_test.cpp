@@ -9,6 +9,7 @@
 #include "mongo/stdx/memory.h"
 #include "mongo/unittest/integration_test.h"
 #include "mongo/unittest/unittest.h"
+#include "mongo/util/processinfo.h"
 
 #include "../blockstore/http_client.h"
 #include "../blockstore/reader.h"
@@ -47,7 +48,11 @@ TEST_F(BlockstoreExtentManagerTest, DataFileEnsureRange) {
     const std::size_t numBlocks = 10;
     const std::size_t blocksize = 1000;
     const std::size_t filesize = numBlocks * blocksize;
-    const std::size_t pagesize = 4 * 1024;
+    // If `pagesize` matches `kExpectedPageSize`, run some extra test conditions. On machines with
+    // larger page sizes, ignore the extra assertions.
+    const std::size_t kExpectedPagesize = 4 * 1024;
+    const std::size_t pagesize =
+        std::max(kExpectedPagesize, static_cast<std::size_t>(ProcessInfo().getPageSize()));
 
     auto reader = stdx::make_unique<Reader>(
         stdx::make_unique<MockedHttpClient>(), "file.old", filesize, blocksize);
@@ -89,7 +94,9 @@ TEST_F(BlockstoreExtentManagerTest, DataFileEnsureRange) {
     ASSERT_FALSE(dataFile.getMappedBlocks()[3]);
     ASSERT_TRUE(dataFile.getMappedBlocks()[4]);
     ASSERT_TRUE(dataFile.getMappedBlocks()[5]);
-    ASSERT_TRUE(dataFile.getMappedPages()[1]);
+    if (pagesize == kExpectedPagesize) {
+        ASSERT_TRUE(dataFile.getMappedPages()[1]);
+    }
     ASSERT_EQ(static_cast<char>(4000 % 256), *(static_cast<char*>(dataFile.getBasePtr()) + 4000));
     ASSERT_EQ(static_cast<char>(5999 % 256), *(static_cast<char*>(dataFile.getBasePtr()) + 5999));
 }
