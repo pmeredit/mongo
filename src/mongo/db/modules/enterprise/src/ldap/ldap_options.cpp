@@ -19,7 +19,6 @@
 #include "mongo/util/options_parser/startup_option_init.h"
 #include "mongo/util/options_parser/startup_options.h"
 
-#include "authz_manager_external_state_ldap.h"
 #include "ldap_connection_options.h"
 #include "ldap_runner.h"
 
