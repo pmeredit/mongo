@@ -49,9 +49,9 @@ public:
 
     /**
      * Passthrough to AuthorizationManagerExternalStateMongod, when userName is
-     * not contained in $external, or when X509 authorization should be used. Otherwise, transform
-     * the requested user name into an LDAP DN, perfom LDAP queries to acquire all LDAP groups that
-     * the DN is a member of, and map these groups into MongoDB roles, recursively resolve them,
+     * not contained in $external. Otherwise, transform the requested user name into an LDAP
+     * DN, perfom LDAP queries to acquire all LDAP groups that the DN is a member of, and map
+     * these groups into MongoDB roles, recursively resolve them,
      * and return a description of the requested user possessing all necessary permissions.
      */
     Status getUserDescription(OperationContext* txn,
@@ -63,7 +63,7 @@ public:
      */
     Status getRoleDescription(OperationContext* txn,
                               const RoleName& roleName,
-                              PrivilegeFormat showPrivileges,
+                              bool showPrivileges,
                               BSONObj* result) final {
         return _wrappedExternalState->getRoleDescription(txn, roleName, showPrivileges, result);
     }
@@ -71,19 +71,9 @@ public:
     /**
      * Passthrough to AuthorizationManagerExternalStateMongod
      */
-    Status getRolesDescription(OperationContext* txn,
-                               const std::vector<RoleName>& roleName,
-                               PrivilegeFormat showPrivileges,
-                               BSONObj* result) final {
-        return _wrappedExternalState->getRolesDescription(txn, roleName, showPrivileges, result);
-    }
-
-    /**
-     * Passthrough to AuthorizationManagerExternalStateMongod
-     */
     Status getRoleDescriptionsForDB(OperationContext* txn,
                                     const std::string dbname,
-                                    PrivilegeFormat showPrivileges,
+                                    bool showPrivileges,
                                     bool showBuiltinRoles,
                                     std::vector<BSONObj>* result) final {
         return _wrappedExternalState->getRoleDescriptionsForDB(
