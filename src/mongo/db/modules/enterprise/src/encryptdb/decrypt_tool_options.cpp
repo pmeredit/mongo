@@ -48,7 +48,7 @@ Status addDecryptToolOptions(moe::OptionSection* options) {
 
 void printDecryptToolHelp(std::ostream& out) {
     out << "Usage: mongodecrypt [options] --inputPath <path> --outputPath <path> " << std::endl
-        << "Version " << mongo::versionString << std::endl
+        << "Version " << mongo::VersionInfoInterface::instance().version() << std::endl
         << std::endl
         << moe::startupOptions.helpString() << std::flush;
 }
