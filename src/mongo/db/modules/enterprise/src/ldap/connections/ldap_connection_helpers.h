@@ -240,7 +240,7 @@ public:
                 LDAPAttributeValues valueStore;
 
                 for (berval** value = values; *value != nullptr; value++) {
-                    LDAPAttributeValue strValue((*values)->bv_val, (*values)->bv_len);
+                    LDAPAttributeValue strValue((*value)->bv_val, (*value)->bv_len);
                     valueStore.emplace_back(std::move(strValue));
                 }
 
