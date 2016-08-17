@@ -199,8 +199,8 @@ void checkUpconvert(const BSONObj& legacyCommand,
     BSONObjBuilder upconvertedMetadataBob;
     ASSERT_OK(AuditMetadata::upconvert(
         legacyCommand, 0, &upconvertedCommandBob, &upconvertedMetadataBob));
-    ASSERT_EQ(upconvertedCommand, upconvertedCommandBob.done());
-    ASSERT_EQ(upconvertedMetadata, upconvertedMetadataBob.done());
+    ASSERT_BSONOBJ_EQ(upconvertedCommand, upconvertedCommandBob.done());
+    ASSERT_BSONOBJ_EQ(upconvertedMetadata, upconvertedMetadataBob.done());
 }
 
 TEST(AuditMetadata, Upconvert) {
@@ -307,7 +307,7 @@ void checkDownconvert(const BSONObj& command,
     BSONObjBuilder downconvertedCommandBob;
     int ignored;
     ASSERT_OK(AuditMetadata::downconvert(command, metadata, &downconvertedCommandBob, &ignored));
-    ASSERT_EQ(downconvertedCommand, downconvertedCommandBob.done());
+    ASSERT_BSONOBJ_EQ(downconvertedCommand, downconvertedCommandBob.done());
 }
 
 TEST(AuditMetadata, Downconvert) {
