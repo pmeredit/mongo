@@ -13,8 +13,9 @@
 #include "mongo/base/string_data.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/util/allocator.h"
+#include "mongo/util/log.h"
 
-#include "../blockstore/curl_http_client.h"
+#include "../blockstore/http_client.h"
 
 using mongo::operator""_sd;
 
@@ -23,13 +24,6 @@ extern "C" {
 /*
  * Extension initialization function.
  */
-#ifdef _WIN32
-/*
- * Explicitly export this function so it is visible when loading extensions.
- */
-__declspec(dllexport);
-#endif
-
 static int queryableWtFsDirectoryList(WT_FILE_SYSTEM* file_system,
                                       WT_SESSION* session,
                                       const char* directory,
@@ -153,7 +147,7 @@ int queryableWtFsCreate(WT_CONNECTION* conn, WT_CONFIG_ARG* config) {
     }
 
     std::unique_ptr<mongo::queryable::HttpClientInterface> httpClient =
-        mongo::stdx::make_unique<mongo::queryable::CurlHttpClient>(apiUri, mongo::OID(snapshotId));
+        mongo::queryable::createHttpClient(apiUri, mongo::OID(snapshotId));
     auto swFiles = listDirectory(httpClient.get());
     if (!swFiles.isOK()) {
         (void)wtext->err_printf(
@@ -291,10 +285,8 @@ int BlockstoreFileSystem::open(const char* name, BlockstoreFileHandle** fileHand
 
     auto ret = stdx::make_unique<BlockstoreFileHandle>(
         this,
-        stdx::make_unique<Reader>(stdx::make_unique<CurlHttpClient>(_apiUri, _snapshotId),
-                                  file.filename,
-                                  file.fileSize,
-                                  file.blockSize),
+        stdx::make_unique<Reader>(
+            createHttpClient(_apiUri, _snapshotId), file.filename, file.fileSize, file.blockSize),
         file.fileSize,
         file.blockSize);
     if (ret == nullptr) {

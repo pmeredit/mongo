@@ -11,9 +11,14 @@
 namespace mongo {
 namespace queryable {
 
-class CurlHttpClient final : public HttpClientBase {
+/**
+ * Windows implementation of HttpClientInterface
+ *
+ * Uses WinInet, does not support Kerberos or other Windows authentication mechanisms.
+ */
+class WindowsHttpClient final : public HttpClientBase {
 public:
-    CurlHttpClient(std::string apiUri, OID snapshotId);
+    WindowsHttpClient(std::string apiUri, OID snapshotId);
 
     StatusWith<std::size_t> read(std::string path,
                                  DataRange buf,

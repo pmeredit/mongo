@@ -14,6 +14,9 @@
 namespace mongo {
 namespace queryable {
 
+/**
+ * Http Client interface to blockstore HTTP server.
+ */
 class HttpClientInterface {
     MONGO_DISALLOW_COPYING(HttpClientInterface);
 
@@ -30,6 +33,39 @@ public:
 protected:
     HttpClientInterface() = default;
 };
+
+/**
+ * Base class for Http Client implementations.
+ */
+class HttpClientBase : public HttpClientInterface {
+protected:
+    HttpClientBase(std::string apiUri, OID snapshotId);
+
+    /**
+     * Get the url to get a snapshot block(s).
+     */
+    std::string getSnapshotUrl(StringData path, std::size_t offset, std::size_t count) const;
+
+    /**
+     * Get the url to list a directory in the blockstore.
+     */
+    std::string getListDirectoryUrl() const;
+
+    /**
+     * Get the secret header formatted as "Secret: value".
+     */
+    std::string getSecretHeader() const;
+
+private:
+    std::string _apiUri;
+    OID _snapshotId;
+    std::string _authSecret;
+};
+
+/**
+ * Create an implementation of HttpClientInterface for the specified appUri and snapshotId.
+ */
+std::unique_ptr<HttpClientInterface> createHttpClient(std::string apiUri, OID snapshotId);
 
 }  // namespace queryable
 

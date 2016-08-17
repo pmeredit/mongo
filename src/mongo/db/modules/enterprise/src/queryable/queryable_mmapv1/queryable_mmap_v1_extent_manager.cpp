@@ -21,7 +21,6 @@
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
 
-#include "../blockstore/curl_http_client.h"
 #include "../blockstore/list_dir.h"
 #include "../blockstore/reader.h"
 
@@ -31,9 +30,7 @@ namespace queryable {
 BlockstoreBackedExtentManager::Factory::Factory(Context&& context) : _context(std::move(context)) {
     log() << "Downloading .ns files...";
 
-    initializeCurl();
-    auto httpClient(
-        stdx::make_unique<CurlHttpClient>(getContext()->apiUri(), getContext()->snapshotId()));
+    auto httpClient(createHttpClient(getContext()->apiUri(), getContext()->snapshotId()));
     auto swFiles = listDirectory(httpClient.get());
     uassertStatusOK(swFiles);
 
@@ -52,7 +49,7 @@ BlockstoreBackedExtentManager::Factory::Factory(Context&& context) : _context(st
             boost::filesystem::path(storageGlobalParams.dbpath) / file.filename;
 
         queryable::Reader nsFileReader(
-            stdx::make_unique<CurlHttpClient>(getContext()->apiUri(), getContext()->snapshotId()),
+            createHttpClient(getContext()->apiUri(), getContext()->snapshotId()),
             file.filename,
             file.fileSize,
             file.blockSize);
@@ -85,8 +82,8 @@ BlockstoreBackedExtentManager::BlockstoreBackedExtentManager(Factory* factory,
 Status BlockstoreBackedExtentManager::init(OperationContext* txn) {
     invariant(_dataFiles.empty());
 
-    auto httpClient(stdx::make_unique<CurlHttpClient>(_factory->getContext()->apiUri(),
-                                                      _factory->getContext()->snapshotId()));
+    auto httpClient(
+        createHttpClient(_factory->getContext()->apiUri(), _factory->getContext()->snapshotId()));
     auto swFiles = listDirectory(httpClient.get());
     if (!swFiles.isOK()) {
         return swFiles.getStatus();
@@ -122,8 +119,8 @@ Status BlockstoreBackedExtentManager::init(OperationContext* txn) {
     for (; df != std::end(dataFiles) && id != std::end(dataFileIds); ++df, ++id) {
         _dataFiles[*id] =
             stdx::make_unique<queryable::DataFile>(stdx::make_unique<queryable::Reader>(
-                stdx::make_unique<CurlHttpClient>(_factory->getContext()->apiUri(),
-                                                  _factory->getContext()->snapshotId()),
+                createHttpClient(_factory->getContext()->apiUri(),
+                                 _factory->getContext()->snapshotId()),
                 df->filename,
                 df->fileSize,
                 df->blockSize));

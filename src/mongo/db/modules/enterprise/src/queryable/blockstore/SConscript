@@ -3,7 +3,8 @@ Import('env')
 env.Library(
     target='blockstore',
     source=[
-        'curl_http_client.cpp',
+        'windows_http_client.cpp' if env.TargetOSIs('windows') else 'curl_http_client.cpp',
+        'http_client.cpp',
         'list_dir.cpp',
         'reader.cpp',
     ],
@@ -12,7 +13,7 @@ env.Library(
         '$BUILD_DIR/mongo/bson/util/bson_extract',
     ],
     SYSLIBDEPS=[
-        'curl',
+        'wininet' if env.TargetOSIs('windows') else 'curl',
     ],
 )
 

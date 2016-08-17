@@ -13,8 +13,6 @@
 #include "mongo/db/service_context.h"
 #include "mongo/db/service_context_d.h"
 #include "mongo/db/storage/kv/kv_storage_engine.h"
-#include "mongo/db/storage/mmap_v1/mmap_v1_engine.h"
-#include "mongo/db/storage/storage_engine_lock_file.h"
 #include "mongo/db/storage/storage_engine_metadata.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_global_options.h"
@@ -28,7 +26,6 @@
 #include "mongo/util/exit.h"
 #include "mongo/util/log.h"
 
-#include "../blockstore/curl_http_client.h"
 #include "../queryable_mmapv1/queryable_global_options.h"
 #include "../queryable_mmapv1/queryable_mmap_v1_extent_manager.h"
 
@@ -64,7 +61,6 @@ public:
                 "--dbpath cannot contain quotes",
                 params.dbpath.find('"') == std::string::npos);
 
-        queryable::initializeCurl();
         std::string fsOptions = str::stream()
             << wiredTigerGlobalOptions.engineConfig
             << "extensions=(local={entry=queryableWtFsCreate,early_load=true,config={apiUri=\""

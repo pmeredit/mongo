@@ -2,38 +2,19 @@
  *  Copyright (C) 2016 MongoDB Inc.
  */
 
-#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
-
 #include "mongo/platform/basic.h"
 
 #include "mongo/base/data_range.h"
-#include "mongo/base/init.h"
 #include "mongo/bson/bsonobjbuilder.h"
-#include "mongo/db/catalog/collection_options.h"
 #include "mongo/db/jsobj.h"
-#include "mongo/db/service_context.h"
-#include "mongo/db/service_context_d.h"
-#include "mongo/db/storage/kv/kv_storage_engine.h"
-#include "mongo/db/storage/mmap_v1/mmap_v1_engine.h"
-#include "mongo/db/storage/storage_engine_lock_file.h"
-#include "mongo/db/storage/storage_engine_metadata.h"
-#include "mongo/db/storage/storage_options.h"
-#include "mongo/db/storage/wiredtiger/wiredtiger_global_options.h"
-#include "mongo/db/storage/wiredtiger/wiredtiger_index.h"
-#include "mongo/db/storage/wiredtiger/wiredtiger_kv_engine.h"
-#include "mongo/db/storage/wiredtiger/wiredtiger_parameters.h"
-#include "mongo/db/storage/wiredtiger/wiredtiger_record_store.h"
-#include "mongo/db/storage/wiredtiger/wiredtiger_server_status.h"
-#include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
 #include "mongo/stdx/memory.h"
-#include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
 
 #include "../blockstore/context.h"
 #include "../blockstore/http_client.h"
 #include "../blockstore/list_dir.h"
+#include "../blockstore/reader.h"
 #include "../queryable_mmapv1/queryable_global_options.h"
-#include "../queryable_mmapv1/queryable_mmap_v1_extent_manager.h"
 
 #include "third_party/wiredtiger/src/include/wiredtiger_ext.h"
 #include <wiredtiger.h>

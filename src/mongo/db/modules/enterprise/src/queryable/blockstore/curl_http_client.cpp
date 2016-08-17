@@ -14,6 +14,7 @@
 
 #include "mongo/base/init.h"
 #include "mongo/platform/atomic_word.h"
+#include "mongo/stdx/memory.h"
 #include "mongo/util/exit.h"
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/time_support.h"
@@ -32,7 +33,7 @@ public:
     // initializes curl, idempotent
     void initialize() {
         if (_initialized.compareAndSwap(false, true) == false) {
-            curl_global_init(CURL_GLOBAL_ALL - CURL_GLOBAL_SSL);
+            curl_global_init(CURL_GLOBAL_ALL & ~CURL_GLOBAL_SSL);
         }
     }
 
@@ -56,34 +57,33 @@ size_t WriteMemoryCallback(void* ptr, size_t size, size_t nmemb, void* data) {
     return realsize;
 }
 
-const char* const kSecretKeyEnvVar = "SECRET_KEY";
 CurlLibraryManager curlLibraryManager;
-}
+}  // namespace
 
-void initializeCurl() {
+std::unique_ptr<HttpClientInterface> createHttpClient(std::string apiUri, OID snapshotId) {
     curlLibraryManager.initialize();
+    return stdx::make_unique<CurlHttpClient>(apiUri, snapshotId);
 }
 
 CurlHttpClient::CurlHttpClient(std::string apiUri, OID snapshotId)
-    : _apiUri(std::move(apiUri)),
-      _snapshotId(snapshotId),
-      _authSecret(std::getenv(kSecretKeyEnvVar)) {}
+    : HttpClientBase(apiUri, snapshotId) {}
 
 StatusWith<std::size_t> CurlHttpClient::read(std::string path,
                                              DataRange buf,
                                              std::size_t offset,
                                              std::size_t count) const {
     std::string lastErr;
+    std::string url(getSnapshotUrl(path, offset, count));
+    std::string secretHeader(getSecretHeader());
+
     std::vector<int> kBackoffSleepDurations{1, 5, 10, 15, 20, 25, 30};
+
     for (std::size_t attempt = 0; attempt < kBackoffSleepDurations.size(); ++attempt) {
         std::unique_ptr<CURL, void (*)(CURL*)> myHandle(curl_easy_init(), curl_easy_cleanup);
         if (!myHandle) {
             return {ErrorCodes::InternalError, "Curl initialization failed"};
         }
 
-        std::string url = str::stream()
-            << "http://" << _apiUri << "/os_read?snapshotId=" << _snapshotId << "&filename=" << path
-            << "&offset=" << offset << "&length=" << count;
         curl_easy_setopt(myHandle.get(), CURLOPT_URL, url.c_str());
 
         struct curl_slist* list = nullptr;
@@ -91,7 +91,6 @@ StatusWith<std::size_t> CurlHttpClient::read(std::string path,
             if (list)
                 curl_slist_free_all(list);
         });
-        std::string secretHeader = str::stream() << "Secret: " << _authSecret;
         list = curl_slist_append(list, secretHeader.c_str());
 
         DataBuilder data(count);
@@ -117,11 +116,14 @@ StatusWith<std::size_t> CurlHttpClient::read(std::string path,
 
 StatusWith<DataBuilder> CurlHttpClient::listDirectory() const {
     std::string lastErr;
+
+    std::string url(getListDirectoryUrl());
+    std::string secretHeader(getSecretHeader());
+
     std::vector<int> kBackoffSleepDurations{1, 10, 30};
+
     for (std::size_t attempt = 0; attempt < kBackoffSleepDurations.size(); ++attempt) {
         std::unique_ptr<CURL, void (*)(CURL*)> myHandle(curl_easy_init(), curl_easy_cleanup);
-        std::string url = str::stream() << "http://" << _apiUri
-                                        << "/os_list?snapshotId=" << _snapshotId;
         curl_easy_setopt(myHandle.get(), CURLOPT_URL, url.c_str());
 
         struct curl_slist* list = NULL;
@@ -129,7 +131,6 @@ StatusWith<DataBuilder> CurlHttpClient::listDirectory() const {
             if (list)
                 curl_slist_free_all(list);
         });
-        std::string secretHeader = str::stream() << "Secret: " << _authSecret;
         list = curl_slist_append(list, secretHeader.c_str());
 
         const std::size_t kStartSize = 64 * 1024;

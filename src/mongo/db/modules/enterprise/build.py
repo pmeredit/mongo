@@ -47,7 +47,7 @@ def configure(conf, env):
         env.ConfError("Could not find <sasl/sasl.h> and sasl library, required for "
             "enterprise build.")
 
-    if not conf.CheckLibWithHeader(
+    if not env.TargetOSIs("windows") and not conf.CheckLibWithHeader(
         "curl",
         ["curl/curl.h"], "C",
         "curl_global_init(0);",
