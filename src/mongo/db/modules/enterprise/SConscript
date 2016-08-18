@@ -225,6 +225,7 @@ mongodecrypt = env.Program(
         "$BUILD_DIR/mongo/db/log_process_details",
         "$BUILD_DIR/mongo/util/options_parser/options_parser_init",
         "$BUILD_DIR/mongo/util/signal_handlers",
+        "$BUILD_DIR/mongo/util/version_impl",
         "src/encryptdb/key_acquisition",
         "src/encryptdb/symmetric_crypto",
     ],
