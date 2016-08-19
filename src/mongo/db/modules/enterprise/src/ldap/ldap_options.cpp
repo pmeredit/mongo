@@ -62,7 +62,7 @@ Status addLDAPOptions(moe::OptionSection* options) {
                            moe::String,
                            "Authentication scheme to use while connecting to LDAP. "
                            "This may either be 'sasl' or 'simple'")
-        .setDefault(moe::Value(std::string("sasl")));
+        .setDefault(moe::Value(std::string("simple")));
 
     ldap_options
         .addOptionChaining("security.ldap.bind.saslMechanisms",
