@@ -31,6 +31,13 @@ Status QueryableGlobalOptions::add(moe::OptionSection* options) {
                                        moe::String,
                                        "A hex string of the OID for the snapshot to load");
 
+    queryableOptions.addOptionChaining("queryableBackup.memoryQuotaMB",
+                                       "queryableMemoryQuotaMB",
+                                       moe::Double,
+                                       "A number in MB indicating how much data queryable_mmapv1 "
+                                       "may keep in memory. If omitted, a default value will be "
+                                       "chosen.");
+
     return options->addSection(queryableOptions);
 }
 
@@ -51,6 +58,16 @@ Status QueryableGlobalOptions::store(const moe::Environment& params,
         }
 
         _snapshotId = OID(snapshotStr);
+    }
+
+    if (params.count("queryableBackup.memoryQuotaMB")) {
+        auto memoryQuotaMB = params["queryableBackup.memoryQuotaMB"].as<double>();
+        if (memoryQuotaMB <= 0) {
+            return {ErrorCodes::BadValue,
+                    str::stream() << "queryableBackup.memoryQuotaMB must be positive: "
+                                  << memoryQuotaMB};
+        }
+        _memoryQuotaMB = memoryQuotaMB;
     }
 
     return Status::OK();

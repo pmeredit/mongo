@@ -13,6 +13,7 @@
 #include "mongo/db/storage/mmap_v1/record.h"
 #include "mongo/db/storage/record_fetcher.h"
 
+#include "queryable_alloc_state.h"
 #include "queryable_datafile.h"
 
 #include "../blockstore/context.h"
@@ -46,7 +47,7 @@ class BlockstoreBackedExtentManager final : public MmapV1ExtentManager {
 public:
     class Factory final : public ExtentManager::Factory {
     public:
-        Factory(Context&& context);
+        Factory(Context&& context, std::uint64_t memoryQuotaBytes);
 
         Context* getContext() {
             return &_context;
@@ -57,13 +58,16 @@ public:
                                               bool directoryPerDB) override;
 
     private:
-        queryable::Context _context;
+        Context _context;
+        // `_allocState` shared across the entire queryable_mmapv1 system.
+        std::unique_ptr<AllocState> _allocState;
     };
 
     BlockstoreBackedExtentManager(Factory* factory,
                                   StringData dbname,
                                   StringData path,
-                                  bool directoryPerDB);
+                                  bool directoryPerDB,
+                                  AllocState* allocState);
 
     Status init(OperationContext* txn) override;
 
@@ -90,12 +94,12 @@ public:
 
 private:
     Factory* const _factory;
-
     const std::string _dbname;
-
     const bool _directoryPerDB;
-
     std::vector<std::unique_ptr<DataFile>> _dataFiles;
+
+    // Owned by the BlockstoreBackedExtentManager::Factory
+    AllocState* const _allocState;
 };
 
 }  // namespace queryable

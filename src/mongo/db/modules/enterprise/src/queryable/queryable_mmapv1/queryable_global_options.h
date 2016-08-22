@@ -29,9 +29,15 @@ public:
         return _snapshotId;
     }
 
+    // Only used by `queryable_mmapv1`. `boost::none` implies calculate a reasonable number.
+    boost::optional<double> getMemoryQuotaMB() {
+        return _memoryQuotaMB;
+    }
+
 private:
     boost::optional<std::string> _apiUri;
     boost::optional<OID> _snapshotId;
+    boost::optional<double> _memoryQuotaMB;
 };
 
 extern QueryableGlobalOptions queryableGlobalOptions;

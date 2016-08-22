@@ -6,6 +6,7 @@
 
 #include <sstream>
 
+#include "mongo/db/concurrency/write_conflict_exception.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/unittest/integration_test.h"
 #include "mongo/unittest/unittest.h"
@@ -45,19 +46,20 @@ public:
 };
 
 TEST_F(BlockstoreExtentManagerTest, DataFileEnsureRange) {
-    const std::size_t numBlocks = 10;
-    const std::size_t blocksize = 1000;
-    const std::size_t filesize = numBlocks * blocksize;
-    // If `pagesize` matches `kExpectedPageSize`, run some extra test conditions. On machines with
+    const std::size_t kNumBlocks = 10;
+    const std::size_t kBlockSize = 1000;
+    const std::size_t kFileSize = kNumBlocks * kBlockSize;
+    // If `kPageSize` matches `kExpectedPageSize`, run some extra test conditions. On machines with
     // larger page sizes, ignore the extra assertions.
-    const std::size_t kExpectedPagesize = 4 * 1024;
-    const std::size_t pagesize =
-        std::max(kExpectedPagesize, static_cast<std::size_t>(ProcessInfo().getPageSize()));
+    const std::size_t kExpectedPageSize = 4 * 1024;
+    const std::size_t kPageSize =
+        std::max(kExpectedPageSize, static_cast<std::size_t>(ProcessInfo().getPageSize()));
 
+    AllocState allocState(kFileSize);
     auto reader = stdx::make_unique<Reader>(
-        stdx::make_unique<MockedHttpClient>(), "file.old", filesize, blocksize);
-    DataFile dataFile(std::move(reader), pagesize);
-    ASSERT_EQ(pagesize, dataFile.getPageSize());
+        stdx::make_unique<MockedHttpClient>(), "file.old", kFileSize, kBlockSize);
+    DataFile dataFile(std::move(reader), &allocState, kPageSize);
+    ASSERT_EQ(kPageSize, dataFile.getPageSize());
 
     for (auto pageItr = dataFile.getMappedPages().begin();
          pageItr != dataFile.getMappedPages().end();
@@ -72,7 +74,7 @@ TEST_F(BlockstoreExtentManagerTest, DataFileEnsureRange) {
     }
 
     // Ensuring byte 999 should mmap the first page and only write in data for the first block.
-    uassertStatusOK(dataFile.ensureRange(blocksize - 1, 1));
+    uassertStatusOK(dataFile.ensureRange(kBlockSize - 1, 1));
     ASSERT_TRUE(dataFile.getMappedPages()[0]);
     ASSERT_FALSE(dataFile.getMappedPages()[1]);
     ASSERT_TRUE(dataFile.getMappedBlocks()[0]);
@@ -80,25 +82,118 @@ TEST_F(BlockstoreExtentManagerTest, DataFileEnsureRange) {
     ASSERT_EQ(static_cast<char>(999 % 256), *(static_cast<char*>(dataFile.getBasePtr()) + 999));
 
     // Ensuring 2 bytes starting at 999 should pull in the second block.
-    uassertStatusOK(dataFile.ensureRange(blocksize - 1, 2));
+    uassertStatusOK(dataFile.ensureRange(kBlockSize - 1, 2));
     ASSERT_FALSE(dataFile.getMappedPages()[1]);
     ASSERT_TRUE(dataFile.getMappedBlocks()[1]);
     ASSERT_EQ(static_cast<char>(1000 % 256), *(static_cast<char*>(dataFile.getBasePtr()) + 1000));
 
     // Ensuring on 1000 bytes starting at offset 1000 should not* pull in the third block.
-    uassertStatusOK(dataFile.ensureRange(blocksize, blocksize));
+    uassertStatusOK(dataFile.ensureRange(kBlockSize, kBlockSize));
     ASSERT_FALSE(dataFile.getMappedBlocks()[2]);
 
     // Ensuring the fifth block should mmap the second 4096 sized page.
-    uassertStatusOK(dataFile.ensureRange(4 * blocksize, blocksize + 1));
+    uassertStatusOK(dataFile.ensureRange(4 * kBlockSize, kBlockSize + 1));
     ASSERT_FALSE(dataFile.getMappedBlocks()[3]);
     ASSERT_TRUE(dataFile.getMappedBlocks()[4]);
     ASSERT_TRUE(dataFile.getMappedBlocks()[5]);
-    if (pagesize == kExpectedPagesize) {
+    if (kPageSize == kExpectedPageSize) {
         ASSERT_TRUE(dataFile.getMappedPages()[1]);
     }
     ASSERT_EQ(static_cast<char>(4000 % 256), *(static_cast<char*>(dataFile.getBasePtr()) + 4000));
     ASSERT_EQ(static_cast<char>(5999 % 256), *(static_cast<char*>(dataFile.getBasePtr()) + 5999));
+}
+
+TEST_F(BlockstoreExtentManagerTest, AllocStateTest) {
+    const std::uint64_t kAllocationLimitBytes = 10000;
+    AllocState allocState(kAllocationLimitBytes);
+    ASSERT_EQ(kAllocationLimitBytes, allocState.getMemoryQuotaBytes());
+
+    // `allocPage` only uses `DataFile` pointers for accounting as the keys in a map. Constructing a
+    // real `DataFile` here would be cumbersome and provide no value in this test.
+    DataFile* dummyFileOne = reinterpret_cast<DataFile*>(0x342310);
+    DataFile* dummyFileTwo = reinterpret_cast<DataFile*>(0x342320);
+    // Declare that 4 pages are successfully allocated.
+    allocState.allocPage(dummyFileOne, 0);
+    allocState.allocPage(dummyFileOne, 1);
+    allocState.allocPage(dummyFileTwo, 0);
+    allocState.allocPage(dummyFileTwo, 1);
+
+    // Observe the pages are allocated.
+    ASSERT_EQ(4U, allocState.getNumPagesAllocated());
+    // Also note that `allocBlock` hasn't been called, thus "memory" has not been allocated.
+    ASSERT_EQ(0U, allocState.getMemoryAllocated());
+
+    // Now evict each page with four `selectPageForFree` calls followed by `freePage`.
+    for (int pageToFree = 0; pageToFree < 4; ++pageToFree) {
+        // Reset values after each run to make sure `selectPageForFree` found a correct value.
+        DataFile* dataFile = nullptr;
+        std::size_t pageIdx = 100;
+
+        allocState.selectPageForFree(&dataFile, &pageIdx);
+        // Decided against a more thorough check that enforces each result is seen exactly once.
+        ASSERT_TRUE(dataFile == dummyFileOne || dataFile == dummyFileTwo);
+        ASSERT_TRUE(pageIdx == 0 || pageIdx == 1);
+
+        allocState.freePage(dataFile, pageIdx);
+        ASSERT_EQ(static_cast<std::size_t>(4 - (pageToFree + 1)),
+                  allocState.getNumPagesAllocated());
+    }
+
+    // The first allocation to exceed the limit is allowed.
+    ASSERT_TRUE(allocState.allocBlock(2 * kAllocationLimitBytes).isOK());
+    // But once the limit is reached, future allocations are disallowed.
+    ASSERT_FALSE(allocState.allocBlock(1).isOK());
+    // Free the original allocation.
+    allocState.freeBlock(2 * kAllocationLimitBytes);
+
+    // Repeat with a different allocation pattern.
+    ASSERT_TRUE(allocState.allocBlock(kAllocationLimitBytes / 2).isOK());
+    ASSERT_TRUE(allocState.allocBlock(kAllocationLimitBytes).isOK());
+    ASSERT_FALSE(allocState.allocBlock(1).isOK());
+}
+
+TEST_F(BlockstoreExtentManagerTest, DataFileEnsureRangeWithAllocLimits) {
+    const std::size_t kNumBlocks = 10;
+    const std::size_t kBlockSize = 1024;
+    const std::size_t kFileSize = kNumBlocks * kBlockSize;
+    const std::size_t kPageSize = 4 * 1024;
+
+    const std::uint64_t kAllocLimitBytes = 5 * kBlockSize;
+    AllocState allocState(kAllocLimitBytes);
+    auto reader = stdx::make_unique<Reader>(
+        stdx::make_unique<MockedHttpClient>(), "file.old", kFileSize, kBlockSize);
+    DataFile dataFile(std::move(reader), &allocState, kPageSize);
+    ASSERT_EQ(kPageSize, dataFile.getPageSize());
+
+    // Allocate 5000 bytes, bringing us right to our limit.
+    ASSERT_TRUE(dataFile.ensureRange(0, kAllocLimitBytes).isOK());
+    ASSERT_EQ(2U, allocState.getNumPagesAllocated());
+    ASSERT_EQ(kAllocLimitBytes, allocState.getMemoryAllocated());
+    // Ensuring one byte not in the previous range should throw a `WriteConflictException`.
+    ASSERT_THROWS(dataFile.ensureRange(kAllocLimitBytes, 1), WriteConflictException);
+
+    // Releasing the 0th page (0->4K) leaves the 1st page (4K->8K) allocated. Frees 4K worth of
+    // blocks.
+    ASSERT_TRUE(dataFile.releasePage(0).isOK());
+    ASSERT_EQ(1U, allocState.getNumPagesAllocated());
+    ASSERT_EQ(kBlockSize, allocState.getMemoryAllocated());
+
+    // Ensure one more byte which should succeed.
+    ASSERT_TRUE(dataFile.ensureRange(kAllocLimitBytes, 1).isOK());
+    // This range does not need any new pages allocated.
+    ASSERT_EQ(1U, allocState.getNumPagesAllocated());
+    // However the ensure does not write one byte of data, but rather the entire 1024 byte block.
+    ASSERT_EQ(2U * kBlockSize, allocState.getMemoryAllocated());
+
+    // Fail to allocate the entire first page again.
+    ASSERT_THROWS(dataFile.ensureRange(0, kPageSize), WriteConflictException);
+    // Despite failing, the first three blocks should have succeeded along with allocating the 0th
+    // page.
+    ASSERT_EQ(2U, allocState.getNumPagesAllocated());
+    ASSERT_TRUE(dataFile.getMappedBlocks()[0]);
+    ASSERT_TRUE(dataFile.getMappedBlocks()[1]);
+    ASSERT_TRUE(dataFile.getMappedBlocks()[2]);
+    ASSERT_FALSE(dataFile.getMappedBlocks()[3]);
 }
 
 }  // namespace

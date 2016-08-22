@@ -6,6 +6,7 @@
 
 #include <vector>
 
+#include "mongo/db/concurrency/lock_state.h"
 #include "mongo/stdx/mutex.h"
 
 #include "../blockstore/reader.h"
@@ -15,6 +16,8 @@ namespace queryable {
 namespace {
 std::size_t kDefaultPageSize = 2 * 1024 * 1024;
 }  // namespace
+
+class AllocState;
 
 /**
  * Upon creation, a datafile will virtually allocate its entire `filesize` with `MAP_ANONYMOUS` and
@@ -28,10 +31,17 @@ std::size_t kDefaultPageSize = 2 * 1024 * 1024;
  */
 class DataFile {
 public:
-    DataFile(std::unique_ptr<queryable::Reader> reader, std::size_t pageSize = kDefaultPageSize);
+    DataFile(std::unique_ptr<Reader> reader,
+             AllocState* allocState,
+             std::size_t pageSize = kDefaultPageSize);
     ~DataFile();
 
     Status ensureRange(const std::size_t offset, const std::size_t count);
+
+    // Must be called with an exclusive lock. Set the given page to
+    // `PROT_NONE` and set all required bits in the `_mappedPages` and
+    // `_mappedBlocks` to false.
+    Status releasePage(const std::size_t pageIdx);
 
     void* getBasePtr() {
         return _basePtr;
@@ -56,7 +66,7 @@ public:
     }
 
 private:
-    std::unique_ptr<queryable::Reader> _reader;
+    std::unique_ptr<Reader> _reader;
     std::size_t _pageSize;
 
     // Must be held when reading or writing `_mappedBlocks` and `_mappedPages`, or any data relative
@@ -71,6 +81,10 @@ private:
 
     // The vector will have a length of `filesize / block size`.
     std::vector<bool> _mappedBlocks;
+
+    // A global instance owned by the BlockstoreBackedExtentManager::Factory. All allocations/frees
+    // must be recorded here. The `_mappingLock` must be held when accessing this object.
+    AllocState* const _allocState;
 };
 
 }  // namespace queryable

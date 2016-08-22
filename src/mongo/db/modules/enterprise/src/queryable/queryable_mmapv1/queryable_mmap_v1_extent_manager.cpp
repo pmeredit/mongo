@@ -23,11 +23,15 @@
 
 #include "../blockstore/list_dir.h"
 #include "../blockstore/reader.h"
+#include "queryable_evictor.h"
 
 namespace mongo {
 namespace queryable {
 
-BlockstoreBackedExtentManager::Factory::Factory(Context&& context) : _context(std::move(context)) {
+BlockstoreBackedExtentManager::Factory::Factory(Context&& context, std::uint64_t memoryQuotaBytes)
+    : _context(std::move(context)), _allocState(stdx::make_unique<AllocState>(memoryQuotaBytes)) {
+
+    // Download all the .ns files.
     log() << "Downloading .ns files...";
 
     auto httpClient(createHttpClient(getContext()->apiUri(), getContext()->snapshotId()));
@@ -61,23 +65,29 @@ BlockstoreBackedExtentManager::Factory::Factory(Context&& context) : _context(st
                 str::stream() << "Writing NS file failed. File: " << fullPath.c_str(),
                 nsFileWriter.good());
     }
+
+
+    startQueryableEvictorThread(_allocState.get());
 }
 
 std::unique_ptr<ExtentManager> BlockstoreBackedExtentManager::Factory::create(StringData dbname,
                                                                               StringData path,
                                                                               bool directoryPerDB) {
-    return stdx::make_unique<BlockstoreBackedExtentManager>(this, dbname, path, directoryPerDB);
+    return stdx::make_unique<BlockstoreBackedExtentManager>(
+        this, dbname, path, directoryPerDB, _allocState.get());
 }
 
 BlockstoreBackedExtentManager::BlockstoreBackedExtentManager(Factory* factory,
                                                              StringData dbname,
                                                              StringData path,
-                                                             bool directoryPerDB)
+                                                             bool directoryPerDB,
+                                                             AllocState* const allocState)
     : MmapV1ExtentManager(dbname, path, directoryPerDB),
       _factory(factory),
       _dbname(dbname.toString()),
-      _directoryPerDB(directoryPerDB) {}
-
+      _directoryPerDB(directoryPerDB),
+      _dataFiles(),
+      _allocState(allocState) {}
 
 Status BlockstoreBackedExtentManager::init(OperationContext* txn) {
     invariant(_dataFiles.empty());
@@ -117,13 +127,14 @@ Status BlockstoreBackedExtentManager::init(OperationContext* txn) {
     auto df = std::begin(dataFiles);
     auto id = std::begin(dataFileIds);
     for (; df != std::end(dataFiles) && id != std::end(dataFileIds); ++df, ++id) {
-        _dataFiles[*id] =
-            stdx::make_unique<queryable::DataFile>(stdx::make_unique<queryable::Reader>(
+        _dataFiles[*id] = stdx::make_unique<queryable::DataFile>(
+            stdx::make_unique<queryable::Reader>(
                 createHttpClient(_factory->getContext()->apiUri(),
                                  _factory->getContext()->snapshotId()),
                 df->filename,
                 df->fileSize,
-                df->blockSize));
+                df->blockSize),
+            _allocState);
     }
 
     return Status::OK();

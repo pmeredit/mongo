@@ -11,15 +11,17 @@
 #endif
 
 #include "mongo/base/error_codes.h"
+#include "mongo/db/concurrency/write_conflict_exception.h"
+#include "mongo/stdx/memory.h"
 #include "mongo/util/assert_util.h"
 
 #include "../blockstore/reader.h"
+#include "queryable_alloc_state.h"
 
 namespace mongo {
 namespace queryable {
 
 namespace {
-const std::size_t kPageSize = 2 * 1024 * 1024;
 
 // A tuple of <firstBlockIdx,numBlocks>.
 using BlockIdxRange = std::tuple<std::size_t, std::size_t>;
@@ -33,7 +35,9 @@ static BlockIdxRange getRange(std::size_t offset, std::size_t count, std::size_t
 }
 }
 
-DataFile::DataFile(std::unique_ptr<queryable::Reader> reader, std::size_t pageSize)
+DataFile::DataFile(std::unique_ptr<queryable::Reader> reader,
+                   AllocState* const allocState,
+                   std::size_t pageSize)
     : _reader(std::move(reader)),
       _pageSize(pageSize),
       _mappingLock(),
@@ -49,7 +53,8 @@ DataFile::DataFile(std::unique_ptr<queryable::Reader> reader, std::size_t pageSi
           // math.ceil(filesize / pagesize)
           (_reader->getFileSize() + pageSize - 1) / pageSize,
           false),
-      _mappedBlocks(_reader->getNumBlocks(), false) {
+      _mappedBlocks(_reader->getNumBlocks(), false),
+      _allocState(allocState) {
     uassert(ErrorCodes::InternalError,
             str::stream() << "Failed to allocate virtual memory. File: " << _reader->getFileName()
                           << " Size: "
@@ -78,7 +83,7 @@ Status DataFile::ensureRange(const std::size_t offset, const std::size_t count) 
             continue;
         }
 
-        char* startPos = (char*)_basePtr + (pageIdx * _pageSize);
+        auto startPos = static_cast<char*>(_basePtr) + (pageIdx * _pageSize);
 #ifdef _WIN32
         auto vpRet = VirtualAlloc(startPos, _pageSize, MEM_COMMIT, PAGE_READWRITE);
         uassert(ErrorCodes::OperationFailed,
@@ -91,6 +96,7 @@ Status DataFile::ensureRange(const std::size_t offset, const std::size_t count) 
         uassert(ErrorCodes::BadValue, "Mmap returned an unexpected address", mmapRet == startPos);
 #endif
         _mappedPages[pageIdx] = true;
+        _allocState->allocPage(this, pageIdx);
     }
 
     auto blockSize = _reader->getBlockSize();
@@ -101,7 +107,11 @@ Status DataFile::ensureRange(const std::size_t offset, const std::size_t count) 
             continue;
         }
 
-        char* startPos = (char*)_basePtr + (blockIdx * blockSize);
+        if (!_allocState->allocBlock(blockSize).isOK()) {
+            throw WriteConflictException();
+        }
+
+        auto startPos = static_cast<char*>(_basePtr) + (blockIdx * blockSize);
         auto status = _reader->readBlockInto(DataRange(startPos, blockSize), blockIdx);
         if (!status.isOK()) {
             return status;
@@ -113,6 +123,37 @@ Status DataFile::ensureRange(const std::size_t offset, const std::size_t count) 
     return Status::OK();
 }
 
+Status DataFile::releasePage(const std::size_t pageIdx) {
+    stdx::lock_guard<stdx::mutex> lock(_mappingLock);
+    auto startPos = static_cast<char*>(_basePtr) + (pageIdx * _pageSize);
+#ifdef _WIN32
+    auto vpRet = VirtualFree(startPos, _pageSize, MEM_DECOMMIT);
+    uassert(ErrorCodes::OperationFailed,
+            str::stream() << "Failed to decommit a page. Code: " << GetLastError(),
+            vpRet);
+#else
+    auto mmapRet = mmap(startPos, _pageSize, PROT_NONE, MAP_PRIVATE | MAP_ANON | MAP_FIXED, -1, 0);
+    uassert(ErrorCodes::ExceededMemoryLimit, "Failed to mmap a page", mmapRet != MAP_FAILED);
+    uassert(ErrorCodes::BadValue, "Mmap returned an unexpected address", mmapRet == startPos);
+#endif
+
+    _mappedPages[pageIdx] = false;
+    _allocState->freePage(this, pageIdx);
+
+    auto offset = pageIdx * _pageSize;
+    // Convert [offset -> offset + _pageSize] into block indexes.
+    auto blockSize = _reader->getBlockSize();
+    auto blockIdxRange = getRange(offset, _pageSize, blockSize);
+    for (std::size_t num = 0; num < std::get<1>(blockIdxRange); ++num) {
+        auto blockIdx = std::get<0>(blockIdxRange) + num;
+        if (_mappedBlocks[blockIdx]) {
+            _allocState->freeBlock(blockSize);
+            _mappedBlocks[blockIdx] = false;
+        }
+    }
+
+    return Status::OK();
+}
 
 }  // namespace queryable
 }  // namespace mongo

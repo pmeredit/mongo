@@ -3,9 +3,11 @@ Import("env")
 env.Library(
     target='queryable_datafile',
     source=[
+        'queryable_alloc_state.cpp',
         'queryable_datafile.cpp',
     ],
     LIBDEPS=[
+        '$BUILD_DIR/mongo/db/concurrency/write_conflict_exception',
         '../blockstore/blockstore',
     ],
 )
@@ -13,6 +15,7 @@ env.Library(
 env.Library(
     target='queryable_mmapv1',
     source=[
+        'queryable_evictor.cpp',
         'queryable_global_options.cpp',
         'queryable_mmap_v1_extent_manager.cpp',
         'queryable_mmap_v1_init.cpp',

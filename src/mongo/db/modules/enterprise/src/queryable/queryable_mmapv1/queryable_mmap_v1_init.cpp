@@ -11,6 +11,7 @@
 #include "mongo/db/storage/storage_engine_metadata.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/stdx/memory.h"
+#include "mongo/util/processinfo.h"
 
 #include "../blockstore/context.h"
 #include "queryable_global_options.h"
@@ -19,6 +20,24 @@
 namespace mongo {
 
 namespace {
+
+/**
+ * An input of > 0 implies a user-specified input. An input of zero will calculate a reasonable
+ * quota.
+ */
+std::size_t getMemoryQuotaMB(boost::optional<double> requestedMemoryQuotaMB) {
+    if (requestedMemoryQuotaMB) {
+        return static_cast<size_t>(*requestedMemoryQuotaMB);
+    }
+
+    const double kDefaultMemoryQuotaMB = 64.0;
+    // Choose a reasonable amount of cache when not explicitly specified by user.  Set a minimum of
+    // 64MB, otherwise use 20% of available memory over 1GB.
+    ProcessInfo processInfo;
+    const double memSizeMB = processInfo.getMemSizeMB();
+    double ret = std::max((memSizeMB - 1024) * 0.2, kDefaultMemoryQuotaMB);
+    return static_cast<std::size_t>(ret);
+}
 
 class QueryableMMAPV1Factory final : public StorageEngine::Factory {
 public:
@@ -38,13 +57,16 @@ public:
         auto apiUri = *queryable::queryableGlobalOptions.getApiUri();
         auto snapshotId = *queryable::queryableGlobalOptions.getSnapshotId();
 
+        std::size_t memoryQuotaMB =
+            getMemoryQuotaMB(queryable::queryableGlobalOptions.getMemoryQuotaMB());
+
         auto context = queryable::Context(apiUri, snapshotId);
 
         return new MMAPV1Engine(
             lockFile,
             getGlobalServiceContext()->getFastClockSource(),
             stdx::make_unique<queryable::BlockstoreBackedExtentManager::Factory>(
-                std::move(context)));
+                std::move(context), memoryQuotaMB * 1024 * 1024));
     }
 
     StringData getCanonicalName() const override {
