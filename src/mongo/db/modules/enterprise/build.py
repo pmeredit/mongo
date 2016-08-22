@@ -102,7 +102,8 @@ def configure(conf, env):
             str(env.Dir(root).Dir('docs')): "snmp"
             })
     env.Append(DIST_BINARIES=[
-        "enterprise/mongodecrypt"])
+        "enterprise/mongodecrypt",
+        "enterprise/mongoldap"])
 
     def addFileInExtraPath(file_name):
         # We look for libraries in the peer 'bin' directory of each path in the libpath.
