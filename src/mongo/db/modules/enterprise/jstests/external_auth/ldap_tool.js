@@ -6,7 +6,7 @@
     // No config will result in an error
     assert.neq("0", runProgram("mongoldap", "--color=false", "--user", "ldapz_admin"));
 
-    // Test a correct configuration with a user which exists in LDAP
+    // Test a correct authz configuration with a user which exists in LDAP
     assert.eq("0",
               runProgram("mongoldap",
                          "--color=false",
@@ -18,6 +18,34 @@
                          "none",
                          "--user",
                          "ldapz_admin"));
+
+    // Test a correct authn configuration with a user which exists in LDAP
+    assert.eq("0",
+              runProgram("mongoldap",
+                         "--color=false",
+                         "--ldapServers",
+                         baseLDAPUrls[0],
+                         "--ldapTransportSecurity",
+                         "none",
+                         "--user",
+                         "cn=ldapz_admin," + defaultUserDNSuffix,
+                         "--password",
+                         "Secret123"));
+
+    // Test a correct authz/authn configuration with a user which exists in LDAP
+    assert.eq("0",
+              runProgram("mongoldap",
+                         "--color=false",
+                         "--ldapServers",
+                         baseLDAPUrls[0],
+                         "--ldapAuthzQueryTemplate",
+                         "{USER}?memberOf",
+                         "--ldapTransportSecurity",
+                         "none",
+                         "--user",
+                         "cn=ldapz_admin," + defaultUserDNSuffix,
+                         "--password",
+                         "Secret123"));
 
     // Test a correct configuration with a user which does not exists in LDAP
     assert.neq("0",

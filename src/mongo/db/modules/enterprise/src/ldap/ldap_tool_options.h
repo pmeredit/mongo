@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 
+#include "mongo/base/secure_allocator.h"
+
 namespace mongo {
 
 namespace optionenvironment {
@@ -22,9 +24,10 @@ namespace moe = mongo::optionenvironment;
 struct LDAPToolOptions {
     bool color;
     std::string user;
+    SecureString password;
 };
 
-extern LDAPToolOptions globalLDAPToolOptions;
+extern LDAPToolOptions* globalLDAPToolOptions;
 
 Status addLDAPToolOptions(moe::OptionSection* options);
 

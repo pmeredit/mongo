@@ -29,15 +29,17 @@ bool handlePreValidationLDAPToolOptions(const moe::Environment& params) {
 }
 }  // namespace
 
-LDAPToolOptions globalLDAPToolOptions;
-
 Status addLDAPToolOptions(moe::OptionSection* options) {
     options->addOptionChaining("help", "help", moe::Switch, "produce help message");
     options
         ->addOptionChaining(
             "config", "config,f", moe::String, "configuration file specifying additional options")
         .setSources(moe::SourceAllLegacy);
-    options->addOptionChaining("user", "user", moe::String, "user to acquire roles for")
+    options
+        ->addOptionChaining(
+            "user", "user", moe::String, "user to authenticate and/or acquire roles for")
+        .setSources(moe::SourceAllLegacy);
+    options->addOptionChaining("password", "password", moe::String, "user password")
         .setSources(moe::SourceAllLegacy);
     options->addOptionChaining("color", "color", moe::Bool, "Enable colored output")
         .setSources(moe::SourceAllLegacy);
@@ -49,15 +51,20 @@ Status storeLDAPToolOptions(const moe::Environment& params, const std::vector<st
     if (!params.count("user")) {
         return Status(ErrorCodes::BadValue, "Missing required option: \"--user\"");
     }
-    globalLDAPToolOptions.user = params["user"].as<std::string>();
+    globalLDAPToolOptions->user = params["user"].as<std::string>();
+
+    if (params.count("password")) {
+        globalLDAPToolOptions->password =
+            SecureString(params["password"].as<std::string>().c_str());
+    }
 
     if (params.count("color")) {
-        globalLDAPToolOptions.color = params["color"].as<bool>();
+        globalLDAPToolOptions->color = params["color"].as<bool>();
     } else {
 #ifdef _WIN32
-        globalLDAPToolOptions.color = false;
+        globalLDAPToolOptions->color = false;
 #else
-        globalLDAPToolOptions.color = true;
+        globalLDAPToolOptions->color = true;
 #endif
     }
     return Status::OK();
@@ -83,5 +90,13 @@ MONGO_STARTUP_OPTIONS_STORE(MongoLDAPToolOptions)(InitializerContext* context) {
     }
     return Status::OK();
 }
+
+MONGO_INITIALIZER_GENERAL(MongoLDAPToolOptions, ("SecureAllocator"), ("MongoLDAPToolOptions_Store"))
+(InitializerContext* context) {
+    globalLDAPToolOptions = new LDAPToolOptions();
+    return Status::OK();
+}
+
+LDAPToolOptions* globalLDAPToolOptions;
 
 }  // namespace mongo

@@ -243,6 +243,7 @@ mongoldap = env.Program(
     ],
     LIBDEPS=[
         "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/base/secure_allocator",
         "$BUILD_DIR/mongo/db/log_process_details",
         "$BUILD_DIR/mongo/util/options_parser/options_parser_init",
         "$BUILD_DIR/mongo/util/signal_handlers",

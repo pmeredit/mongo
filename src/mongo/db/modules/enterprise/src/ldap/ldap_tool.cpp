@@ -122,14 +122,14 @@ public:
 
 private:
     StringData okString() {
-        if (globalLDAPToolOptions.color) {
+        if (globalLDAPToolOptions->color) {
             return "[\x1b[32mOK\x1b[0m] ";
         }
         return "[OK] ";
     }
 
     StringData failString() {
-        if (globalLDAPToolOptions.color) {
+        if (globalLDAPToolOptions->color) {
             return "[\x1b[31mFAIL\x1b[0m] ";
         }
         return "[FAIL] ";
@@ -151,59 +151,11 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
 
     Report report;
 
-    report.openSection("Checking that LDAP authorization has been enabled by configuration");
-    report.checkAssert(ResultsAssertion(
-        [] { return globalLDAPParams->isLDAPAuthzEnabled(); },
-        "LDAP authorization is not enabled",
-        {"Make sure you have 'security.ldap.authz.queryTemplate' in your configuration"}));
-    report.closeSection("LDAP authorization enabled");
-
 
     report.openSection("Checking that an LDAP server has been specified");
     report.checkAssert(ResultsAssertion([] { return !globalLDAPParams->serverHosts.empty(); },
                                         "No LDAP servers have been provided"));
     report.closeSection("LDAP server found");
-
-
-    report.openSection("Parsing LDAP query template");
-    auto swQueryParameters = LDAPQueryConfig::createLDAPQueryConfigWithUserName(
-        globalLDAPParams->userAcquisitionQueryTemplate);
-
-    report.checkAssert(ResultsAssertion(
-        [&] { return swQueryParameters.isOK(); },
-        "Unable to parse the LDAP query configuration template",
-        [&] {
-            return std::vector<std::string>{
-                "When a user authenticates to MongoDB, the username they authenticate with will be "
-                "substituted into this URI. The resulting query will be executed against the LDAP "
-                "server to obtain that user's roles.",
-                "Make sure your query template is an RFC 4516 relative URI. This will look "
-                "something like <baseDN>[?<attributes>[?<scope>[?<filter>]]], where all bracketed "
-                "placeholders are replaced with their proper values.",
-                str::stream() << "Error message: " << swQueryParameters.getStatus().toString(),
-            };
-        }));
-    report.closeSection("LDAP query configuration template appears valid");
-
-    // TODO: Maybe change how the userToDNMapping is parsed so we can just check for empty?
-    std::string defaultNameMapper = "[{match: \"(.+)\", substitution: \"{0}\"}]";
-    auto swMapper = InternalToLDAPUserNameMapper::createNameMapper(defaultNameMapper);
-    if (globalLDAPParams->userToDNMapping != defaultNameMapper) {
-        report.openSection("Parsing MongoDB to LDAP DN mappings");
-        swMapper =
-            InternalToLDAPUserNameMapper::createNameMapper(globalLDAPParams->userToDNMapping);
-
-        report.checkAssert(ResultsAssertion(
-            [&] { return swMapper.isOK(); },
-            "Unable to parse the MongoDB username to LDAP DN map",
-            [&] {
-                return std::vector<std::string>{
-                    "This mapping is a transformation applied to MongoDB authentication names "
-                    "before they are substituted into the query template.",
-                    str::stream() << "Error message: " << swMapper.getStatus().toString()};
-            }));
-        report.closeSection("MongoDB to LDAP DN mappings appear to be valid");
-    }
 
 
     report.openSection("Connecting to LDAP server");
@@ -244,8 +196,7 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
                 "The server may be down, or 'security.ldap.servers' or "
                 "'security.ldap.transportSecurity' may be incorrectly configured.",
                 "Alternatively the server may not allow anonymous access to the RootDSE."};
-        },
-        false));
+        }));
     LDAPEntityCollection::iterator rootDSE = results.find("");
     report.closeSection("Connected to LDAP server");
 
@@ -314,29 +265,95 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
         report.closeSection("Server supports at least one requested SASL mechanism");
     }
 
+
+    auto swQueryParameters = LDAPQueryConfig::createLDAPQueryConfigWithUserName(
+        globalLDAPParams->userAcquisitionQueryTemplate);
+
+    // TODO: Maybe change how the userToDNMapping is parsed so we can just check for empty?
+    std::string defaultNameMapper = "[{match: \"(.+)\", substitution: \"{0}\"}]";
+    auto swMapper = InternalToLDAPUserNameMapper::createNameMapper(defaultNameMapper);
+    if (globalLDAPParams->userToDNMapping != defaultNameMapper) {
+        report.openSection("Parsing MongoDB to LDAP DN mappings");
+        swMapper =
+            InternalToLDAPUserNameMapper::createNameMapper(globalLDAPParams->userToDNMapping);
+
+        report.checkAssert(ResultsAssertion(
+            [&] { return swMapper.isOK(); },
+            "Unable to parse the MongoDB username to LDAP DN map",
+            [&] {
+                return std::vector<std::string>{
+                    "This mapping is a transformation applied to MongoDB authentication names "
+                    "before they are substituted into the query template.",
+                    str::stream() << "Error message: " << swMapper.getStatus().toString()};
+            }));
+        report.closeSection("MongoDB to LDAP DN mappings appear to be valid");
+    }
+
     LDAPManagerImpl manager(
         std::move(runner), std::move(swQueryParameters.getValue()), std::move(swMapper.getValue()));
 
-    report.openSection("Executing query against LDAP server");
-    StatusWith<std::vector<RoleName>> swRoles =
-        manager.getUserRoles(UserName(globalLDAPToolOptions.user, "$external"));
-    report.checkAssert(ResultsAssertion([&] { return swRoles.isOK(); },
-                                        "Unable to acquire roles",
-                                        [&] {
-                                            return std::vector<std::string>{
-                                                str::stream() << "Error: "
-                                                              << swRoles.getStatus().toString()};
-                                        }));
-    report.closeSection("Successfully acquired the following roles:");
-    report.printItemList([&] {
-        std::vector<std::string> roleStrings;
-        std::transform(swRoles.getValue().begin(),
-                       swRoles.getValue().end(),
-                       std::back_inserter(roleStrings),
-                       [](const RoleName& role) { return role.toString(); });
-        return roleStrings;
-    });
+    if (!globalLDAPToolOptions->password->empty()) {
+        report.openSection("Attempting to authenticate against the LDAP server");
+        Status authRes = manager.verifyLDAPCredentials(globalLDAPToolOptions->user,
+                                                       globalLDAPToolOptions->password);
+        report.checkAssert(ResultsAssertion([&] { return authRes.isOK(); },
+                                            str::stream() << "Failed to authenticate "
+                                                          << globalLDAPToolOptions->user
+                                                          << " to LDAP server",
+                                            {authRes.toString()}));
+        report.closeSection("Successful authentication performed");
+    }
 
+    report.openSection("Checking if LDAP authorization has been enabled by configuration");
+    report.checkAssert(ResultsAssertion(
+        [] { return globalLDAPParams->isLDAPAuthzEnabled(); },
+        "LDAP authorization is not enabled, the configuration will require internal users to be "
+        "maintained",
+        {"Make sure you have 'security.ldap.authz.queryTemplate' in your configuration"},
+        false));
+    report.closeSection("LDAP authorization enabled");
+
+    if (globalLDAPParams->isLDAPAuthzEnabled()) {
+        report.openSection("Parsing LDAP query template");
+        report.checkAssert(ResultsAssertion(
+            [&] { return swQueryParameters.isOK(); },
+            "Unable to parse the LDAP query configuration template",
+            [&] {
+                return std::vector<std::string>{
+                    "When a user authenticates to MongoDB, the username they authenticate with "
+                    "will be "
+                    "substituted into this URI. The resulting query will be executed against the "
+                    "LDAP "
+                    "server to obtain that user's roles.",
+                    "Make sure your query template is an RFC 4516 relative URI. This will look "
+                    "something like <baseDN>[?<attributes>[?<scope>[?<filter>]]], where all "
+                    "bracketed "
+                    "placeholders are replaced with their proper values.",
+                    str::stream() << "Error message: " << swQueryParameters.getStatus().toString(),
+                };
+            }));
+        report.closeSection("LDAP query configuration template appears valid");
+
+        report.openSection("Executing query against LDAP server");
+        StatusWith<std::vector<RoleName>> swRoles =
+            manager.getUserRoles(UserName(globalLDAPToolOptions->user, "$external"));
+        report.checkAssert(
+            ResultsAssertion([&] { return swRoles.isOK(); },
+                             "Unable to acquire roles",
+                             [&] {
+                                 return std::vector<std::string>{
+                                     str::stream() << "Error: " << swRoles.getStatus().toString()};
+                             }));
+        report.closeSection("Successfully acquired the following roles:");
+        report.printItemList([&] {
+            std::vector<std::string> roleStrings;
+            std::transform(swRoles.getValue().begin(),
+                           swRoles.getValue().end(),
+                           std::back_inserter(roleStrings),
+                           [](const RoleName& role) { return role.toString(); });
+            return roleStrings;
+        });
+    }
     return 0;
 }
 
