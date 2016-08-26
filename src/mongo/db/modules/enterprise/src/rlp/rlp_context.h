@@ -7,6 +7,7 @@
 #include <bt_rlp_c.h>
 #include <memory>
 #include <unordered_map>
+#include <vector>
 
 #include "mongo/base/disallow_copying.h"
 #include "mongo/stdx/mutex.h"
