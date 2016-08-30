@@ -5,6 +5,7 @@
 #include "ldap_tool_options.h"
 
 #include "mongo/util/exit_code.h"
+#include "mongo/util/options_parser/options_parser.h"
 #include "mongo/util/options_parser/startup_option_init.h"
 #include "mongo/util/options_parser/startup_options.h"
 #include "mongo/util/quick_exit.h"
@@ -13,6 +14,21 @@
 namespace mongo {
 
 namespace {
+
+bool shouldUseStrict() {
+    // Indicates that unknown config options are allowed. This is necessary to parse generic mongod
+    // config files successfully without implementing support for all options.
+    return false;
+}
+
+MONGO_INITIALIZER_GENERAL(LDAPToolUseStrict,
+                          ("OptionsParseUseStrict"),
+                          ("BeginStartupOptionParsing"))
+(InitializerContext* context) {
+    optionenvironment::OptionsParser::useStrict = shouldUseStrict;
+    return Status::OK();
+}
+
 void printLDAPToolHelp(std::ostream& out) {
     out << "Usage: mongoldap [options] " << std::endl
         << "Version " << mongo::VersionInfoInterface::instance().version() << std::endl
