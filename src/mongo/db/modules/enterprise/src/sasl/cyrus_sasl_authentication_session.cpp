@@ -26,6 +26,7 @@
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
 #include "mongo/util/sequence_util.h"
+#include "mongo/util/stringutils.h"
 #include "mongo_gssapi.h"
 
 #include "../ldap/ldap_options.h"
