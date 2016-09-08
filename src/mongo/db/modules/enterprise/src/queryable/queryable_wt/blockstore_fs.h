@@ -8,6 +8,7 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/stdx/memory.h"
+#include "mongo/stdx/unordered_map.h"
 #include "mongo/util/mongoutils/str.h"
 
 #include "../blockstore/context.h"
@@ -82,7 +83,7 @@ public:
 private:
     std::string _apiUri;
     mongo::OID _snapshotId;
-    std::unordered_map<std::string, struct File> _files;
+    stdx::unordered_map<std::string, struct File> _files;
     std::string _dbpath;
     WT_EXTENSION_API* _wtExt; /* Extension functions, e.g outputting errors */
 };

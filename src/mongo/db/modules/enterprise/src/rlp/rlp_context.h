@@ -6,11 +6,11 @@
 
 #include <bt_rlp_c.h>
 #include <memory>
-#include <unordered_map>
 #include <vector>
 
 #include "mongo/base/disallow_copying.h"
 #include "mongo/stdx/mutex.h"
+#include "mongo/stdx/unordered_map.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -135,7 +135,7 @@ private:
     RlpEnvironment* const _rlpEnvironment;
 
     stdx::mutex _mutex;
-    std::unordered_map<BT_LanguageID, std::vector<ContextUP>, BTLanguageHash> _contextMap;
+    stdx::unordered_map<BT_LanguageID, std::vector<ContextUP>, BTLanguageHash> _contextMap;
 };
 
 }  // namespace fts
