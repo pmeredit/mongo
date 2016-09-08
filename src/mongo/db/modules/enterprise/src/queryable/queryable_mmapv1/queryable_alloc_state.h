@@ -8,6 +8,7 @@
 #include <set>
 
 #include "mongo/base/status.h"
+#include "mongo/platform/random.h"
 #include "mongo/stdx/mutex.h"
 
 namespace mongo {
@@ -28,7 +29,9 @@ public:
           _lock(),
           _pagesAlloced(),
           _numPagesAllocated(0),
-          _memoryAllocated(0) {}
+          _memoryAllocated(0),
+          // The constant seed is not expected to be a problem.
+          _random(0) {}
 
     std::uint64_t getMemoryQuotaBytes() const {
         return _memoryQuotaBytes;
@@ -76,6 +79,8 @@ private:
 
     // Physical memory, counted from `allocBlock` and `freeBlock`.
     std::uint64_t _memoryAllocated;
+
+    PseudoRandom _random;
 };
 
 }  // namespace queryable

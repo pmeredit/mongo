@@ -56,7 +56,7 @@ void AllocState::selectPageForFree(DataFile** dataFileToFree, std::size_t* pageI
     }
 
     // Finding the page to remove is O(pageToSelect + _pagesAlloced.size()).
-    std::size_t pageToSelect = rand() % _numPagesAllocated;
+    std::size_t pageToSelect = _random.nextInt64(_numPagesAllocated);
 
     auto fileIt = _pagesAlloced.begin();
     // Some values in the `_pagesAlloced` might be empty sets, skip to the first non-empty one.
