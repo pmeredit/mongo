@@ -131,12 +131,36 @@ def save_file(filename):
 
 data_file_re = re.compile("\.\d+$")
 snapshot_files = {}
-for filename in os.listdir(dir_to_snapshot):
-    if filename.startswith("local."):
-        continue
+dirs_to_snapshot = [dir_to_snapshot]
+while len(dirs_to_snapshot) > 0:
+    snapshotting = dirs_to_snapshot.pop()
+    for filename in os.listdir(snapshotting):
+        if filename.startswith("local."):
+            continue
 
-    if filename.endswith(".ns") or data_file_re.findall(filename):
-        snapshot_files[filename.replace('.', ' ')] = {"fileId": save_file(filename)}
+        if filename.startswith("diagnostic.data"):
+            continue
+
+        if os.path.isdir(snapshotting + "/" + filename):
+            dirs_to_snapshot.append(snapshotting + "/" + filename + "/")
+            continue
+
+        def isWT(filename):
+            if filename in ["_mdb_catalog.wt", "sizeStorer.wt", "WiredTiger",
+                            "WiredTigerLAS.wt", "WiredTiger.lock", "WiredTiger.turtle",
+                            "WiredTiger.wt"]:
+                return True
+
+            return filename.endswith(".wt")
+
+
+        if filename.endswith(".ns") or data_file_re.findall(filename) or isWT(filename):
+            dir_filename = filename
+            if dir_to_snapshot != snapshotting:
+                dir_filename = snapshotting + "/" + filename
+
+            dir_filename = re.sub("//+", "/", dir_filename).lstrip("./")
+            snapshot_files[dir_filename.replace('.', ' ')] = {"fileId": save_file(dir_filename)}
 
 ssType = "blockstore"
 ssId = "blockstore1"
@@ -157,4 +181,5 @@ snapshots.insert({"_id": snapshot_id,
                   "deleted": False,
                   "blockstoreId": "blockstore1",
                   "rsId": "rs0",
-                  "lastOplog": Timestamp(int(time.time()), 1)})
+                  "lastOplog": Timestamp(int(time.time()), 1),
+                  "compressionSetting": "GZIP"})

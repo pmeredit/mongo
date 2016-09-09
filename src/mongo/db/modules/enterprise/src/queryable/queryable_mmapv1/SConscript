@@ -13,6 +13,13 @@ env.Library(
 )
 
 env.Library(
+    target='queryable_mmapv1_fs_helpers',
+    source=[
+        'queryable_mmap_v1_fs_helpers.cpp',
+    ],
+)
+
+env.Library(
     target='queryable_mmapv1',
     source=[
         'queryable_evictor.cpp',
@@ -27,10 +34,21 @@ env.Library(
         '$BUILD_DIR/mongo/db/storage/mmap_v1/mmap',
         '../blockstore/blockstore',
         'queryable_datafile',
+        'queryable_mmapv1_fs_helpers',
     ],
     LIBDEPS_TAGS=[
         # Depends on symbols defined in serverOnlyfiles
         'incomplete',
+    ],
+)
+
+env.CppIntegrationTest(
+    target='queryable_mmapv1_fs_helpers_test',
+    source=[
+        'queryable_mmap_v1_fs_helpers_test.cpp',
+    ],
+    LIBDEPS=[
+        'queryable_mmapv1_fs_helpers',
     ],
 )
 

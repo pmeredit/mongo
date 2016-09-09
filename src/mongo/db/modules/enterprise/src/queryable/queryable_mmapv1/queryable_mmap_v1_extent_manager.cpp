@@ -24,6 +24,7 @@
 #include "../blockstore/list_dir.h"
 #include "../blockstore/reader.h"
 #include "queryable_evictor.h"
+#include "queryable_mmap_v1_fs_helpers.h"
 
 namespace mongo {
 namespace queryable {
@@ -50,7 +51,7 @@ BlockstoreBackedExtentManager::Factory::Factory(Context&& context, std::uint64_t
 
         // FileName from blockstore is relative to the dbpath.
         boost::filesystem::path fullPath =
-            boost::filesystem::path(storageGlobalParams.dbpath) / file.filename;
+            boost::filesystem::path(storageGlobalParams.dbpath) / removeDirectory(file.filename);
 
         queryable::Reader nsFileReader(
             createHttpClient(getContext()->apiUri(), getContext()->snapshotId()),
@@ -103,12 +104,7 @@ Status BlockstoreBackedExtentManager::init(OperationContext* txn) {
     std::vector<std::size_t> dataFileIds;
     std::vector<struct File> dataFiles;
     for (auto&& file : swFiles.getValue()) {
-        std::string prefix(_dbname);
-        if (_directoryPerDB) {
-            prefix = str::stream() << prefix << "/" << _dbname;
-        }
-
-        std::regex dbFilesRegex(std::string(str::stream() << "^" << prefix << "\\.(\\d+)$"));
+        std::regex dbFilesRegex = getMMAPV1DatafileRegex(_dbname);
         std::smatch matcher;
         bool matches = std::regex_match(file.filename, matcher, dbFilesRegex);
         if (!matches) {

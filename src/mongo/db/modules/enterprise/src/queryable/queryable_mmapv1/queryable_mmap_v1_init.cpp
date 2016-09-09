@@ -49,7 +49,7 @@ public:
                 params.readOnly);
 
         uassert(ErrorCodes::InvalidOptions,
-                "Cannot start queryable_mmapv1 without setting --queryableBackuApiUri and "
+                "Cannot start queryable_mmapv1 without setting --queryableBackupApiUri and "
                 "--queryableSnapshotId",
                 queryable::queryableGlobalOptions.getApiUri() &&
                     queryable::queryableGlobalOptions.getSnapshotId());
