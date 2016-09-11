@@ -17,6 +17,9 @@ env.Library(
     source=[
         'queryable_mmap_v1_fs_helpers.cpp',
     ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+    ],
 )
 
 env.Library(
