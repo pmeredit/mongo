@@ -6,7 +6,7 @@
 
 #include "ldap_query.h"
 
-#include "pcrecpp.h"
+#include <boost/algorithm/string.hpp>
 #include <string>
 
 #include "mongo/base/status_with.h"
@@ -17,7 +17,23 @@
 namespace mongo {
 
 namespace {
-const pcrecpp::RE kUserNameMatchToken = pcrecpp::RE("{USER}");
+constexpr auto kUserNameMatchToken("{USER}"_sd);
+
+/**
+ * Iterate though 'input', replacing every instance of 'token' with 'replacement'
+ * and writing the resulting string to 'out'. Returns true if any replacements
+ * performed.
+ */
+bool substituteToken(const StringData input,
+                     const StringData token,
+                     const StringData replacement,
+                     std::string* out) {
+    invariant(out);
+    *out = input.toString();
+    boost::replace_all(*out, token, replacement);
+
+    return *out != input;
+}
 }  //  namespace
 
 // TODO: Use RFC4516 encoding here
@@ -42,19 +58,18 @@ StatusWith<LDAPQuery> LDAPQuery::instantiateQuery(const LDAPQueryConfig& paramet
 StatusWith<LDAPQuery> LDAPQuery::instantiateQuery(
     const UserNameSubstitutionLDAPQueryConfig& parameters, StringData userName) {
     LDAPQuery instance(parameters);
-    invariant(kUserNameMatchToken.error().empty());
-    int matchedBaseDN = kUserNameMatchToken.GlobalReplace(userName.toString(), &instance._baseDN);
-    if (matchedBaseDN < 0) {
-        return Status(ErrorCodes::FailedToParse,
-                      str::stream() << "Failed to substitute username into baseDN. Error: "
-                                    << matchedBaseDN);
+    bool replacedDN = substituteToken(
+        parameters.baseDN, kUserNameMatchToken, userName.toString(), &instance._baseDN);
+    bool replacedFilter = substituteToken(
+        parameters.filter, kUserNameMatchToken, userName.toString(), &instance._filter);
+
+    if (!(replacedDN || replacedFilter)) {
+        return Status(
+            ErrorCodes::FailedToParse,
+            str::stream()
+                << "Failed to substitute component into filter. Group '{USER}' must be captured.");
     }
-    int matchedFilter = kUserNameMatchToken.GlobalReplace(userName.toString(), &instance._filter);
-    if (matchedFilter < 0) {
-        return Status(ErrorCodes::FailedToParse,
-                      str::stream() << "Failed to substitute username into filter. Error: "
-                                    << matchedFilter);
-    }
+
     return instance;
 }
 
@@ -62,26 +77,16 @@ StatusWith<LDAPQuery> LDAPQuery::instantiateQuery(
     const ComponentSubstitutionLDAPQueryConfig& parameters,
     const std::vector<std::string>& components) {
     LDAPQuery instance(parameters);
+
     for (size_t i = 0; i < components.size(); ++i) {
-        std::string matchTarget = mongoutils::str::stream() << "\\{" << i << "\\}";
-        pcrecpp::RE matchExp(std::move(matchTarget));
-        int matchedBaseDN =
-            matchExp.GlobalReplace(pcrecpp::StringPiece(components[i]), &instance._baseDN);
-        if (matchedBaseDN < 0) {
-            return Status(ErrorCodes::FailedToParse,
-                          str::stream() << "Failed to substitute component into baseDN. Error: "
-                                        << matchedBaseDN);
-        }
+        std::string token = mongoutils::str::stream() << "{" << i << "}";
 
-        int matchedFilter =
-            matchExp.GlobalReplace(pcrecpp::StringPiece(components[i]), &instance._filter);
-        if (matchedFilter < 0) {
-            return Status(ErrorCodes::FailedToParse,
-                          str::stream() << "Failed to substitute component into filter. Error: "
-                                        << matchedFilter);
-        }
+        bool replacedDN =
+            substituteToken(parameters.baseDN, token, components[i], &instance._baseDN);
+        bool replacedFilter =
+            substituteToken(parameters.filter, token, components[i], &instance._filter);
 
-        if (matchedBaseDN == 0 && matchedFilter == 0) {
+        if (!(replacedDN || replacedFilter)) {
             return Status(
                 ErrorCodes::FailedToParse,
                 str::stream()

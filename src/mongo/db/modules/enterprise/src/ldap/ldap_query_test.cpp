@@ -26,6 +26,7 @@ TEST(LDAPQueryInstantiate, InstantiationFromRawStringAlwaysSucceed) {
     ASSERT_EQ("cn=sajack,dc=mongodb,dc=com", swQuery.getValue().getBaseDN());
 }
 
+
 TEST(LDAPQueryInstantiate, InstantiationFromUserConfigAndUserNameSucceeds) {
     auto swQueryParameters =
         LDAPQueryConfig::createLDAPQueryConfigWithUserName("cn={USER},dc=mongodb,dc=com?");
@@ -35,6 +36,17 @@ TEST(LDAPQueryInstantiate, InstantiationFromUserConfigAndUserNameSucceeds) {
     ASSERT_OK(swQuery.getStatus());
     ASSERT_EQ("cn=sajack,dc=mongodb,dc=com", swQuery.getValue().getBaseDN());
 }
+
+TEST(LDAPQueryInstantiate, InstantiationFromUserConfigAndUserNameWithBackslashSucceeds) {
+    auto swQueryParameters =
+        LDAPQueryConfig::createLDAPQueryConfigWithUserName("cn={USER},dc=mongodb,dc=com?");
+    ASSERT_OK(swQueryParameters.getStatus());
+
+    auto swQuery = LDAPQuery::instantiateQuery(swQueryParameters.getValue(), "jack\\,sa");
+    ASSERT_OK(swQuery.getStatus());
+    ASSERT_EQ("cn=jack\\,sa,dc=mongodb,dc=com", swQuery.getValue().getBaseDN());
+}
+
 
 TEST(LDAPQueryInstantiate, InstantiationFromEmptyComponentsConfigAndNoTokensSucceeds) {
     auto swQueryParameters =
@@ -91,6 +103,15 @@ TEST(LDAPQueryInstantiate, InstantiationFromComponentConfigWithMissingTokenFails
     ASSERT_NOT_OK(LDAPQuery::instantiateQuery(swQueryParameters.getValue(), {"sajack", "mongodb"}));
 }
 
+TEST(LDAPQueryInstantiate, InstantiationFromComponentConfigWithEscapedBackslashSucceeds) {
+    auto swQueryParameters =
+        LDAPQueryConfig::createLDAPQueryConfigWithComponents("cn={0},dc=mongodb,dc=com");
+    ASSERT_OK(swQueryParameters.getStatus());
+
+    auto swQuery = LDAPQuery::instantiateQuery(swQueryParameters.getValue(), {"jack\\,sa"});
+    ASSERT_OK(swQuery.getStatus());
+    ASSERT_EQ("cn=jack\\,sa,dc=mongodb,dc=com", swQuery.getValue().getBaseDN());
+}
 
 std::unique_ptr<LDAPQueryConfig> createLDAPQueryConfig(std::string queryString,
                                                        bool success = true) {
