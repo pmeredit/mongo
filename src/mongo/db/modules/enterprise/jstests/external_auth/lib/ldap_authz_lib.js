@@ -160,10 +160,10 @@ function LDAPTestConfigGenerator() {
 
         var other = {};
         other.enableBalancer = true;
-        other.shardOptions = mongodConfig;
-        other.configOptions = mongodConfig;
+        other.shardOptions = Object.extend({}, mongodConfig, true);
+        other.configOptions = Object.extend({}, mongodConfig, true);
         other.useHostname = true;
-        other.mongosOptions = mongodConfig;
+        other.mongosOptions = Object.extend({}, mongodConfig, true);
         config.other = other;
 
         return config;
