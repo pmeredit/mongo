@@ -1,6 +1,7 @@
 # -*- mode: python -*-
 
 Import("env")
+Import("debugBuild")
 
 if GetOption("rlp") == "on":
     env.Library(
@@ -35,16 +36,22 @@ if GetOption("rlp") == "on":
             '$BUILD_DIR/mongo/mongod'
         ])
 
-    env.CppUnitTest(
-        target='rlp_language_test',
-        source=[
-            'rlp_language_test.cpp'
-        ],
-        LIBDEPS=[
-            'rlpcore',
-            "$BUILD_DIR/mongo/base",
-            "$BUILD_DIR/mongo/db/common",
-            "$BUILD_DIR/mongo/db/fts/base",
-            "$BUILD_DIR/mongo/util/foundation",
-            "$BUILD_DIR/mongo/platform/platform",
-        ])
+    # The RLP library has various memory errors that tcmalloc detects in debug builds. When TCMalloc
+    # detects an error it will log the error, and call abort() while holding a spinlock. Our abort
+    # handler prints stack traces by calling backtrace() and this function needs to allocate memory
+    # on most architectures. This memory allocation will thus cause a deadlock in the spinlock since
+    # the spinlock is not recursive.
+    if not debugBuild:
+        env.CppUnitTest(
+            target='rlp_language_test',
+            source=[
+                'rlp_language_test.cpp'
+            ],
+            LIBDEPS=[
+                'rlpcore',
+                "$BUILD_DIR/mongo/base",
+                "$BUILD_DIR/mongo/db/common",
+                "$BUILD_DIR/mongo/db/fts/base",
+                "$BUILD_DIR/mongo/util/foundation",
+                "$BUILD_DIR/mongo/platform/platform",
+            ])
