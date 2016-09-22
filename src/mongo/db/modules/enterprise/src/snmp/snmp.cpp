@@ -395,11 +395,13 @@ public:
                                              "extra_info.note",
                                              VT_STRING));
         {
-            ServerStatusCallback* sscb = new ServerStatusCallback("extraInfoHeapUsageBytes",
-                                                                  "1,10,2",
-                                                                  ServerStatusClient::EXTRA_INFO,
-                                                                  "extra_info.heap_usage_bytes",
-                                                                  VT_CNT64);
+            ServerStatusCallback* sscb =
+                new ServerStatusCallback("extraInfoHeapUsageBytes",
+                                         "1,10,2",
+                                         ServerStatusClient::EXTRA_INFO,
+                                         "extra_info.heap_usage_bytes",
+                                         VT_CNT64,
+                                         DEPRECATED);  // Deprecated for 3.4
             sscb->_linuxOnly = true;
             v.push_back(sscb);
         }

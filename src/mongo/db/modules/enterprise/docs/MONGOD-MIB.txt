@@ -52,7 +52,6 @@ mongod          OBJECT IDENTIFIER ::= { mongodb 1 }
 --     dur 1,9
 --     extra_info 1,10
 --        note 1,10,1
---        heapUsageBytes
 --        pageFaults 1,10,2
 --     indexCounters 1,11
 --     network 1,12
@@ -634,7 +633,7 @@ extraInfoNote OBJECT-TYPE
 extraInfoHeapUsageBytes OBJECT-TYPE
    SYNTAX      Counter64
    MAX-ACCESS  read-only
-   STATUS      current
+   STATUS      deprecated
    DESCRIPTION
       "total size in bytes of heap space used by the database process (Linux Only)"
    ::= { extraInfo 2 }
