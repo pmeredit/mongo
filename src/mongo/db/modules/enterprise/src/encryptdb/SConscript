@@ -56,12 +56,26 @@ wtEnv.Library(target='encryptdb',
 env.Library(target='encryption_options',
             source=[
                 'encryption_options.cpp',
-                'encryption_options_init.cpp',
             ],
             LIBDEPS=[
                 '$BUILD_DIR/mongo/util/options_parser/options_parser',
                 'key_acquisition',
-            ])
+                'log_redact_options'
+            ],
+)
+
+env.Library(target='log_redact_options',
+            source=[
+                'log_redact_options.cpp',
+            ],
+            LIBDEPS=[
+                '$BUILD_DIR/mongo/util/options_parser/options_parser',
+                '$BUILD_DIR/mongo/db/server_parameters',
+            ],
+            PROGDEPS_DEPENDENTS=[
+                '$BUILD_DIR/mongo/mongos'
+            ],
+)
 
 env.Library(target='symmetric_crypto',
             source=[

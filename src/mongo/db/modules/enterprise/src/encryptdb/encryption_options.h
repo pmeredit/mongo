@@ -34,7 +34,4 @@ struct EncryptionGlobalParams {
 };
 
 extern EncryptionGlobalParams encryptionGlobalParams;
-
-Status addEncryptionOptions(moe::OptionSection* options);
-Status storeEncryptionOptions(const moe::Environment& params);
 }  // namespace mongo

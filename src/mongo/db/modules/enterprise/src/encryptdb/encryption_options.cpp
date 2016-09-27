@@ -1,19 +1,20 @@
 /*
  *    Copyright (C) 2015 MongoDB Inc.
  */
-
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kControl
+
+#include "mongo/platform/basic.h"
 
 #include "encryption_options.h"
 
 #include <openssl/evp.h>
 
+#include "mongo/base/init.h"
 #include "mongo/base/status.h"
-#include "mongo/db/server_options.h"
-#include "mongo/db/server_parameters.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
 #include "mongo/util/options_parser/option_section.h"
+#include "mongo/util/options_parser/startup_option_init.h"
 #include "mongo/util/options_parser/startup_options.h"
 #include "symmetric_crypto.h"
 
@@ -21,6 +22,7 @@ namespace mongo {
 
 EncryptionGlobalParams encryptionGlobalParams;
 
+namespace {
 Status addEncryptionOptions(moe::OptionSection* options) {
     moe::OptionSection encryptionOptions("Encryption at rest options");
 
@@ -44,11 +46,6 @@ Status addEncryptionOptions(moe::OptionSection* options) {
                                         moe::Switch,
                                         "Rotate master encryption key");
     addKMIPOptions(&encryptionOptions);
-
-    encryptionOptions.addOptionChaining("security.redactClientLogData",
-                                        "redactClientLogData",
-                                        moe::Switch,
-                                        "Redact client data written to the diagnostics log");
 
     Status ret = options->addSection(encryptionOptions);
     if (!ret.isOK()) {
@@ -132,44 +129,16 @@ Status storeEncryptionOptions(const moe::Environment& params) {
             params["security.encryptionCipherMode"].as<std::string>();
     }
 
-    if (params.count("security.redactClientLogData")) {
-        logger::globalLogDomain()->setShouldRedactLogs(
-            params["security.redactClientLogData"].as<bool>());
-    }
-
     return Status::OK();
 }
+}  // namespace
 
-class RedactClientLogDataSetting : public ServerParameter {
-public:
-    RedactClientLogDataSetting()
-        : ServerParameter(ServerParameterSet::getGlobal(), "redactClientLogData", false, true) {}
+MONGO_MODULE_STARTUP_OPTIONS_REGISTER(EncryptionOptions)(InitializerContext* context) {
+    return addEncryptionOptions(&moe::startupOptions);
+}
 
-    virtual void append(OperationContext* txn, BSONObjBuilder& b, const std::string& name) {
-        b << name << logger::globalLogDomain()->shouldRedactLogs();
-    }
+MONGO_STARTUP_OPTIONS_STORE(EncryptionOptions)(InitializerContext* context) {
+    return storeEncryptionOptions(moe::startupOptionsParsed);
+}
 
-    virtual Status set(const BSONElement& newValueElement) {
-        bool newValue;
-        if (!newValueElement.coerce(&newValue))
-            return Status(ErrorCodes::BadValue,
-                          mongoutils::str::stream() << "Invalid value for redactClientLogData: "
-                                                    << newValueElement);
-        logger::globalLogDomain()->setShouldRedactLogs(newValue);
-        return Status::OK();
-    }
-
-    virtual Status setFromString(const std::string& str) {
-        if (str == "true") {
-            logger::globalLogDomain()->setShouldRedactLogs(true);
-        } else if (str == "false") {
-            logger::globalLogDomain()->setShouldRedactLogs(false);
-        } else {
-            return Status(ErrorCodes::BadValue,
-                          mongoutils::str::stream() << "Invalid value for redactClientLogData: "
-                                                    << str);
-        }
-        return Status::OK();
-    }
-} redactClientLogDataSetting;
 }  // namespace mongo
