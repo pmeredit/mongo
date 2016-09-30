@@ -21,22 +21,28 @@ QueryableGlobalOptions queryableGlobalOptions;
 Status QueryableGlobalOptions::add(moe::OptionSection* options) {
     moe::OptionSection queryableOptions("Queryable Backup options");
 
-    queryableOptions.addOptionChaining("queryableBackup.apiUri",
-                                       "queryableBackupApiUri",
-                                       moe::String,
-                                       "A connection string to a queryable API server");
+    queryableOptions
+        .addOptionChaining("queryableBackup.apiUri",
+                           "queryableBackupApiUri",
+                           moe::String,
+                           "A connection string to a queryable API server")
+        .hidden();
 
-    queryableOptions.addOptionChaining("queryableBackup.snapshotId",
-                                       "queryableSnapshotId",
-                                       moe::String,
-                                       "A hex string of the OID for the snapshot to load");
+    queryableOptions
+        .addOptionChaining("queryableBackup.snapshotId",
+                           "queryableSnapshotId",
+                           moe::String,
+                           "A hex string of the OID for the snapshot to load")
+        .hidden();
 
-    queryableOptions.addOptionChaining("queryableBackup.memoryQuotaMB",
-                                       "queryableMemoryQuotaMB",
-                                       moe::Double,
-                                       "A number in MB indicating how much data queryable_mmapv1 "
-                                       "may keep in memory. If omitted, a default value will be "
-                                       "chosen.");
+    queryableOptions
+        .addOptionChaining("queryableBackup.memoryQuotaMB",
+                           "queryableMemoryQuotaMB",
+                           moe::Double,
+                           "A number in MB indicating how much data queryable_mmapv1 "
+                           "may keep in memory. If omitted, a default value will be "
+                           "chosen.")
+        .hidden();
 
     return options->addSection(queryableOptions);
 }
