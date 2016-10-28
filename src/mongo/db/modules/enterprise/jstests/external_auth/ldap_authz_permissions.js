@@ -15,7 +15,9 @@
         assert.writeOK(testDB.test.insert({a: 1}), "No write permission after authorization");
         assert.writeError(testDB.getSiblingDB("should_fail").test.insert({a: 1}),
                           "Write permission in wrong DB after authorization");
-        assert.throws(testDB.test.find, [], "Have read permission after write-only authorization");
+        assert.throws(function() {
+            testDB.test.find();
+        }, [], "Have read permission after write-only authorization");
 
         externalDB.logout();
         assert.writeError(testDB.test.insert({a: 1}), "can write after logout");
