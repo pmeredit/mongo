@@ -16,7 +16,7 @@
         assert.writeError(testDB.getSiblingDB("should_fail").test.insert({a: 1}),
                           "Write permission in wrong DB after authorization");
         assert.throws(function() {
-            testDB.test.find();
+            testDB.test.find().hasNext();
         }, [], "Have read permission after write-only authorization");
 
         externalDB.logout();
