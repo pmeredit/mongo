@@ -218,7 +218,7 @@ mongodecrypt = env.Program(
     source=[
         "src/encryptdb/decrypt_tool.cpp",
         "src/encryptdb/decrypt_tool_options.cpp",
-    ],
+    ] + env.WindowsResourceFile("src/encryptdb/decrypt_tool.rc"),
     LIBDEPS=[
         "$BUILD_DIR/mongo/base",
         "$BUILD_DIR/mongo/db/log_process_details",
@@ -239,7 +239,7 @@ mongoldap = env.Program(
     source=[
         "src/ldap/ldap_tool.cpp",
         "src/ldap/ldap_tool_options.cpp",
-    ],
+    ] +  env.WindowsResourceFile("src/ldap/ldap_tool.rc"),
     LIBDEPS=[
         "$BUILD_DIR/mongo/base",
         "$BUILD_DIR/mongo/base/secure_allocator",
