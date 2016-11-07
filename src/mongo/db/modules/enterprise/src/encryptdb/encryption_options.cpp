@@ -59,7 +59,7 @@ static Status validateEncryptionOptions(const moe::Environment& params) {
     if (params.count("security.enableEncryption")) {
         if (params.count("storage.engine")) {
             std::string storageEngine = params["storage.engine"].as<std::string>();
-            if (storageEngine != "wiredTiger" && storageEngine != "queryable_wt") {
+            if (storageEngine != "wiredTiger") {
                 return {ErrorCodes::InvalidOptions,
                         str::stream() << "Storage engine " << storageEngine
                                       << " specified, encryption at rest requires wiredTiger."};

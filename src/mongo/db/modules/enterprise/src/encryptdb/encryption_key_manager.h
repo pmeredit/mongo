@@ -5,7 +5,6 @@
 #pragma once
 
 #include <boost/filesystem/path.hpp>
-#include <vector>
 #include <wiredtiger.h>
 
 #include "encryption_options.h"
@@ -26,8 +25,6 @@ struct SSLParams;
 const std::string kSystemKeyId = ".system";
 const std::string kMasterKeyId = ".master";
 const std::string kTmpDataKeyId = ".tmp";
-const std::string kEncryptionEntrypointConfig =
-    "local={entry=mongo_addWiredTigerEncryptors,early_load=true},";
 
 /**
  * The EncryptionKeyManager manages the keys for the encrypted storage engine.
@@ -63,9 +60,9 @@ public:
 
     /**
      * Get the WT table encryption config for a specific namespace
-     * or internal WT table on a `Session::create` call.
+     * or internal WT table.
      */
-    std::string getTableCreateConfig(StringData ns) override;
+    std::string getOpenConfig(StringData ns) override;
 
     /**
      * Indicates that encryption at rest is enabled.

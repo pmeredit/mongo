@@ -11,6 +11,11 @@
 namespace mongo {
 namespace queryable {
 
+namespace {
+const char* const kSecretKeyEnvVar = "SECRET_KEY";
+}  // namespace
+
+
 HttpClientBase::HttpClientBase(std::string apiUri, OID snapshotId)
     : _apiUri(std::move(apiUri)),
       _snapshotId(snapshotId),
