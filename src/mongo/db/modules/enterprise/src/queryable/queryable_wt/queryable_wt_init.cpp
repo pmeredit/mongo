@@ -15,6 +15,7 @@
 #include "mongo/db/storage/kv/kv_storage_engine.h"
 #include "mongo/db/storage/storage_engine_metadata.h"
 #include "mongo/db/storage/storage_options.h"
+#include "mongo/db/storage/wiredtiger/wiredtiger_extensions.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_global_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_index.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_kv_engine.h"
@@ -26,6 +27,7 @@
 #include "mongo/util/exit.h"
 #include "mongo/util/log.h"
 
+#include "../blockstore/http_client.h"
 #include "../queryable_mmapv1/queryable_global_options.h"
 #include "../queryable_mmapv1/queryable_mmap_v1_extent_manager.h"
 
@@ -48,6 +50,12 @@ public:
                 queryable::queryableGlobalOptions.getApiUri() &&
                     queryable::queryableGlobalOptions.getSnapshotId());
 
+        uassert(ErrorCodes::InvalidOptions,
+                str::stream() << "Cannot start queryable_wt without setting the "
+                              << queryable::kSecretKeyEnvVar
+                              << " environment variable",
+                std::getenv(queryable::kSecretKeyEnvVar) != nullptr);
+
         auto apiUri = *queryable::queryableGlobalOptions.getApiUri();
         auto snapshotId = *queryable::queryableGlobalOptions.getSnapshotId();
 
@@ -62,16 +70,16 @@ public:
                 params.dbpath.find('"') == std::string::npos);
 
         std::string fsOptions = str::stream()
-            << wiredTigerGlobalOptions.engineConfig
-            << "extensions=(local={entry=queryableWtFsCreate,early_load=true,config={apiUri=\""
-            << apiUri << "\",snapshotId=\"" << snapshotId << "\",dbpath=\"" << params.dbpath
-            << "\"}}),";
+            << "local={entry=queryableWtFsCreate,early_load=true,config={apiUri=\"" << apiUri
+            << "\",snapshotId=\"" << snapshotId << "\",dbpath=\"" << params.dbpath << "\"}}";
+
+        WiredTigerExtensions::get(getGlobalServiceContext())->addExtension(fsOptions);
 
         WiredTigerKVEngine* kv =
             new WiredTigerKVEngine(getCanonicalName().toString(),
                                    params.dbpath,
                                    getGlobalServiceContext()->getFastClockSource(),
-                                   fsOptions,
+                                   wiredTigerGlobalOptions.engineConfig,
                                    cacheMB,
                                    params.dur,
                                    kEphemeral,

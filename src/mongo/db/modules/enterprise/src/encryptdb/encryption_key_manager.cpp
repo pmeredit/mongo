@@ -40,8 +40,6 @@ namespace {
 const std::string kKeystoreName = "key.store";
 const std::string kInvalidatedKeyword = "-invalidated-";
 const std::string kKeystoreTableName = "table:keystore";
-const std::string kEncryptionEntrypointConfig =
-    "extensions=[local=(entry=mongo_addWiredTigerEncryptors)],";
 
 void closeWTCursorAndSession(WT_CURSOR* cursor) {
     WT_SESSION* session = cursor->session;
@@ -179,15 +177,7 @@ bool EncryptionKeyManager::restartRequired() {
     return false;
 }
 
-std::string EncryptionKeyManager::getOpenConfig(StringData ns) {
-    std::string config;
-
-    // The keyId system implies that the call is to configure wiredtiger_open for the regular data
-    // store.
-    if (ns == "system") {
-        config += kEncryptionEntrypointConfig;
-    }
-
+std::string EncryptionKeyManager::getTableCreateConfig(StringData ns) {
     // Internal metadata WT tables such as sizeStorer and _mdb_catalog are identified by not having
     // a '.' separated name that distinguishes a "normal namespace during collection or index
     // creation.
@@ -202,10 +192,8 @@ std::string EncryptionKeyManager::getOpenConfig(StringData ns) {
         keyId = ns.substr(0, dotIndex).toString();
     }
 
-    config += "encryption=(name=" + _encryptionParams->encryptionCipherMode + ",keyid=\"" + keyId +
+    return "encryption=(name=" + _encryptionParams->encryptionCipherMode + ",keyid=\"" + keyId +
         "\"),";
-
-    return config;
 }
 
 Status EncryptionKeyManager::protectTmpData(
@@ -366,7 +354,7 @@ Status EncryptionKeyManager::_openKeystore(const fs::path& path, WT_CONNECTION**
     StringBuilder wtConfig;
     wtConfig << "create,";
     wtConfig << "log=(enabled,file_max=3MB),transaction_sync=(enabled=true,method=fsync),";
-    wtConfig << kEncryptionEntrypointConfig;
+    wtConfig << "extensions=[" << kEncryptionEntrypointConfig << "],";
     wtConfig << keystoreConfig;
 
     // _localKeystoreInitialized needs to be set before calling wiredtiger_open since that

@@ -14,6 +14,7 @@
 #include "mongo/util/processinfo.h"
 
 #include "../blockstore/context.h"
+#include "../blockstore/http_client.h"
 #include "queryable_global_options.h"
 #include "queryable_mmap_v1_extent_manager.h"
 
@@ -53,6 +54,12 @@ public:
                 "--queryableSnapshotId",
                 queryable::queryableGlobalOptions.getApiUri() &&
                     queryable::queryableGlobalOptions.getSnapshotId());
+
+        uassert(ErrorCodes::InvalidOptions,
+                str::stream() << "Cannot start queryable_mmapv1 without setting the "
+                              << queryable::kSecretKeyEnvVar
+                              << " environment variable",
+                std::getenv(queryable::kSecretKeyEnvVar) != nullptr);
 
         auto apiUri = *queryable::queryableGlobalOptions.getApiUri();
         auto snapshotId = *queryable::queryableGlobalOptions.getSnapshotId();

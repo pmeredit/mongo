@@ -14,6 +14,8 @@
 namespace mongo {
 namespace queryable {
 
+const char* const kSecretKeyEnvVar = "SECRET_KEY";
+
 /**
  * Http Client interface to blockstore HTTP server.
  */
