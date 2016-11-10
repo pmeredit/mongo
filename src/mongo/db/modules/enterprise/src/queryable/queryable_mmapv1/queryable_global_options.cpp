@@ -8,6 +8,7 @@
 
 #include "queryable_global_options.h"
 
+#include "mongo/bson/util/builder.h"
 #include "mongo/util/exit_code.h"
 #include "mongo/util/log.h"
 #include "mongo/util/options_parser/startup_options.h"
@@ -78,6 +79,16 @@ Status QueryableGlobalOptions::store(const moe::Environment& params,
 
     return Status::OK();
 }
+
+std::string QueryableGlobalOptions::getWiredTigerExtensionConfig(const std::string& dbpath) {
+    StringBuilder wtConfig;
+    wtConfig << "local={entry=queryableWtFsCreate,early_load=true,config={";
+    wtConfig << "apiUri=\"" << *_apiUri << "\",";
+    wtConfig << "snapshotId=\"" << *_snapshotId << "\",";
+    wtConfig << "dbpath=\"" + dbpath + "\"}}";
+    return wtConfig.str();
+}
+
 
 }  // namespace queryable
 

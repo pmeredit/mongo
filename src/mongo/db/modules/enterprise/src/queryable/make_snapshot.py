@@ -85,8 +85,8 @@ else:
 def is_zero_block(data):
     return data.count('\x00') == len(data)
 
-def save_file(filename):
-    reader = open(dir_to_snapshot + filename)
+def save_file(absolutePath, relativePath):
+    reader = open(absolutePath)
     filesize = 0
     block = reader.read(blocksize)
     blockData = []
@@ -119,19 +119,21 @@ def save_file(filename):
 
     file_id = ObjectId()
     files.insert({"_id": file_id,
-                  "filename": filename,
+                  "filename": relativePath,
                   "size": filesize,
                   "blockSize": blocksize,
                   "blockstoreDBRoot": str(jobId),
                   "phase": "A",
                   "blocks": blockData,
                   "backingFileObj": None})
-    print '\t' + filename + ': ' + str(file_id)
+    print '\t' + relativePath + ': ' + str(file_id)
     return file_id
 
 data_file_re = re.compile("\.\d+$")
 snapshot_files = {}
 dirs_to_snapshot = [dir_to_snapshot]
+# Default to saving a snapshot as mmapv1, unless files are discovered to be WT.
+storageEngine = "mmapv1"
 while len(dirs_to_snapshot) > 0:
     snapshotting = dirs_to_snapshot.pop()
     for filename in os.listdir(snapshotting):
@@ -142,7 +144,7 @@ while len(dirs_to_snapshot) > 0:
             continue
 
         if os.path.isdir(snapshotting + "/" + filename):
-            dirs_to_snapshot.append(snapshotting + "/" + filename + "/")
+            dirs_to_snapshot.append(snapshotting.rstrip("/") + "/" + filename + "/")
             continue
 
         def isWT(filename):
@@ -151,16 +153,19 @@ while len(dirs_to_snapshot) > 0:
                             "WiredTiger.wt"]:
                 return True
 
+            if filename.startswith("WiredTigerPreplog."):
+                return True
+
             return filename.endswith(".wt")
 
+        if isWT(filename):
+            # Discovered a WT file, save the snapshot as WT.
+            storageEngine = "wiredTiger"
 
         if filename.endswith(".ns") or data_file_re.findall(filename) or isWT(filename):
-            dir_filename = filename
-            if dir_to_snapshot != snapshotting:
-                dir_filename = snapshotting + "/" + filename
-
-            dir_filename = re.sub("//+", "/", dir_filename).lstrip("./")
-            snapshot_files[dir_filename.replace('.', ' ')] = {"fileId": save_file(dir_filename)}
+            absolutePath = snapshotting.rstrip("/") + "/" + filename
+            relativePath = absolutePath[len(dir_to_snapshot):]
+            snapshot_files[relativePath.replace('.', ' ')] = {"fileId": save_file(absolutePath, relativePath)}
 
 ssType = "blockstore"
 ssId = "blockstore1"
@@ -177,7 +182,7 @@ snapshots.insert({"_id": snapshot_id,
                   "snapshotStoreId": ssId,
                   "timestamp": Timestamp(int(time.time()), 1),
                   "files": snapshot_files,
-                  "storageEngine": "mmapv1",
+                  "storageEngine": storageEngine,
                   "deleted": False,
                   "blockstoreId": "blockstore1",
                   "rsId": "rs0",

@@ -12,6 +12,7 @@
 #include "mongo/base/init.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/storage/storage_options.h"
+#include "mongo/db/storage/wiredtiger/wiredtiger_extensions.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/util/net/ssl_options.h"
 #include "symmetric_crypto_smoke.h"
@@ -21,6 +22,7 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(CreateEncryptionKeyManager,
                                      ("CreateKeyEntropySource",
                                       "SecureAllocator",
                                       "SetWiredTigerCustomizationHooks",
+                                      "SetWiredTigerExtensions",
                                       "SetGlobalEnvironment",
                                       "SSLManager",
                                       "WiredTigerEngineInit"))
@@ -41,6 +43,8 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(CreateEncryptionKeyManager,
         auto keyManager = stdx::make_unique<EncryptionKeyManager>(
             storageGlobalParams.dbpath, &encryptionGlobalParams, &sslGlobalParams);
         WiredTigerCustomizationHooks::set(getGlobalServiceContext(), std::move(keyManager));
+        WiredTigerExtensions::get(getGlobalServiceContext())
+            ->addExtension(mongo::kEncryptionEntrypointConfig);
     }
 
     return Status::OK();
