@@ -31,7 +31,7 @@ for (var i = 0; i < fullLog.log.length; i++) {
 
 // Ensures mongod did not log any asserts
 print("check log for assertions");
-var regex = RegExp("assert", "i");
+var regex = RegExp("(?=\\[SnmpAgent\\]).*(?=Assertion)");
 for (var i = 0; i < fullLog.log.length; i++) {
     var logLine = fullLog.log[i];
     if (regex.test(logLine)) {
