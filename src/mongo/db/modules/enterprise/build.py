@@ -111,7 +111,7 @@ def configure(conf, env):
         for path in paths:
             full_file_name = os.path.join(os.path.normpath(path.lower()), file_name)
             if os.path.exists(full_file_name):
-                env.Append(ARCHIVE_ADDITIONS=[full_file_name])
+                env.AppendUnique(ARCHIVE_ADDITIONS=[full_file_name])
 
                 env.Append(ARCHIVE_ADDITION_DIR_MAP={
                         os.path.normpath(path.lower()): "bin"
