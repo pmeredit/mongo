@@ -75,17 +75,8 @@ int queryableWtFsCreate(WT_CONNECTION* conn, WT_CONFIG_ARG* config) {
 
     wtext = conn->get_extension_api(conn);
 
-    // Retrieve our configuration information, the "config" value.
-    if ((ret = wtext->config_get(wtext, nullptr, config, "config", &v)) != 0) {
-        (void)wtext->err_printf(wtext,
-                                nullptr,
-                                "WT_EXTENSION_API.config_get: config: %s",
-                                wtext->strerror(wtext, nullptr, ret));
-        exit(1);
-    }
-
     // Open a WiredTiger parser on the "config" value.
-    if ((ret = wtext->config_parser_open(wtext, nullptr, v.str, v.len, &config_parser)) != 0) {
+    if ((ret = wtext->config_parser_open_arg(wtext, nullptr, config, &config_parser)) != 0) {
         (void)wtext->err_printf(wtext,
                                 nullptr,
                                 "WT_EXTENSION_API.config_parser_open: config: %s",
