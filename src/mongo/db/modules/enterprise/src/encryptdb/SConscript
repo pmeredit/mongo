@@ -32,10 +32,6 @@ wtEnv.Library(target='encryption_key_manager_aux',
             ],
             PROGDEPS_DEPENDENTS=[
                 '$BUILD_DIR/mongo/mongod'
-            ],
-            LIBDEPS_TAGS=[
-                # Depends on storageGlobalParams which is in serverOnlyFiles
-                'incomplete'
             ])
 
 wtEnv.Library(target='encryptdb',

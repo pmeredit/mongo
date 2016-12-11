@@ -129,14 +129,16 @@ env.Library('mongosnmp',
                 '$BUILD_DIR/mongo/base',
                 '$BUILD_DIR/mongo/client/clientdriver',
                 '$BUILD_DIR/mongo/db/bson/dotted_path_support',
+                '$BUILD_DIR/mongo/db/dbdirectclient',
                 '$BUILD_DIR/mongo/db/repl/repl_coordinator_global',
+                '$BUILD_DIR/mongo/db/repl/repl_settings',
                 '$BUILD_DIR/mongo/db/storage/mmap_v1/storage_mmapv1',
                 '$BUILD_DIR/mongo/util/processinfo',
             ],
             PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongod'],
             SYSLIBDEPS=env.get('SNMP_SYSLIBDEPS', []),
             LIBDEPS_TAGS=[
-                # Depends on symbols from serverOnlyFiles
+                # Depends on snmpInit from db.cpp
                 'incomplete',
             ],
 )

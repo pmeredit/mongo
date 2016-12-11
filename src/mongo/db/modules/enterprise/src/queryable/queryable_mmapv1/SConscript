@@ -34,14 +34,14 @@ env.Library(
         '$BUILD_DIR/mongo/db/serveronly',
     ],
     LIBDEPS=[
+        '$BUILD_DIR/mongo/db/concurrency/lock_manager',
+        '$BUILD_DIR/mongo/db/service_context',
         '$BUILD_DIR/mongo/db/storage/mmap_v1/mmap',
+        '$BUILD_DIR/mongo/db/storage/mmap_v1/storage_mmapv1',
+        '$BUILD_DIR/mongo/db/storage/storage_engine_metadata',
         '../blockstore/blockstore',
         'queryable_datafile',
         'queryable_mmapv1_fs_helpers',
-    ],
-    LIBDEPS_TAGS=[
-        # Depends on symbols defined in serverOnlyfiles
-        'incomplete',
     ],
 )
 
