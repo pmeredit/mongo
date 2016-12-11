@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <string>
 
-#include "mongo/db/instance.h"
+#include "mongo/db/jsobj.h"
 
 namespace mongo {
 
