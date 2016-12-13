@@ -25,12 +25,11 @@
 #include "mongo/util/log.h"
 
 namespace mongo {
-namespace {
 namespace moe = mongo::optionenvironment;
 
-Status addLDAPOptions(moe::OptionSection* options) {
-    moe::OptionSection ldap_options("LDAP Module Options");
+namespace {
 
+void addCommonLDAPOptions(moe::OptionSection& ldap_options) {
     ldap_options.addOptionChaining("security.ldap.servers",
                                    "ldapServers",
                                    moe::String,
@@ -88,27 +87,12 @@ Status addLDAPOptions(moe::OptionSection* options) {
         moe::String,
         "Password to use while binding to the LDAP server to perform queries");
 
-    ldap_options.addOptionChaining("security.ldap.authz.queryTemplate",
-                                   "ldapAuthzQueryTemplate",
-                                   moe::String,
-                                   "Relative LDAP query URL which will be queried against the "
-                                   "host to acquire LDAP groups. The token {USER} will be "
-                                   "replaced with the mapped username");
-
     ldap_options
         .addOptionChaining("security.ldap.userToDNMapping",
                            "ldapUserToDNMapping",
                            moe::String,
                            "Tranformation from MongoDB users to LDAP user DNs")
         .setDefault(moe::Value(std::string("[{match: \"(.+)\", substitution: \"{0}\"}]")));
-
-
-    Status ret = options->addSection(ldap_options);
-    if (!ret.isOK()) {
-        return ret;
-    }
-
-    return Status::OK();
 }
 
 Status storeLDAPOptions(const moe::Environment& params, const std::vector<std::string>& args) {
@@ -172,15 +156,39 @@ Status storeLDAPOptions(const moe::Environment& params, const std::vector<std::s
     return Status::OK();
 }
 
-MONGO_MODULE_STARTUP_OPTIONS_REGISTER(LDAPOptions)(InitializerContext* context) {
-    return addLDAPOptions(&moe::startupOptions);
-}
-
 MONGO_STARTUP_OPTIONS_STORE(LDAPOptions)(InitializerContext* context) {
     return storeLDAPOptions(moe::startupOptionsParsed, context->args());
 }
 
 }  // namespace
+
+Status addSharedLDAPOptions(moe::OptionSection* options) {
+    moe::OptionSection ldap_options("LDAP Module Options");
+    addCommonLDAPOptions(ldap_options);
+    Status ret = options->addSection(ldap_options);
+    if (!ret.isOK()) {
+        return ret;
+    }
+
+    return Status::OK();
+}
+
+Status addMongodLDAPOptions(moe::OptionSection* options) {
+    moe::OptionSection ldap_options("LDAP Module Options");
+    addCommonLDAPOptions(ldap_options);
+    ldap_options.addOptionChaining("security.ldap.authz.queryTemplate",
+                                   "ldapAuthzQueryTemplate",
+                                   moe::String,
+                                   "Relative LDAP query URL which will be queried against the "
+                                   "host to acquire LDAP groups. The token {USER} will be "
+                                   "replaced with the mapped username");
+    Status ret = options->addSection(ldap_options);
+    if (!ret.isOK()) {
+        return ret;
+    }
+
+    return Status::OK();
+}
 
 MONGO_INITIALIZER_GENERAL(LDAPOptions, ("SecureAllocator"), ("LDAPOptions_Store"))
 (InitializerContext* context) {

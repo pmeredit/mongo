@@ -10,12 +10,16 @@
 #include <vector>
 
 #include "mongo/base/secure_allocator.h"
+#include "mongo/util/options_parser/startup_options.h"
 #include "mongo/util/time_support.h"
 
 namespace mongo {
 
 enum class LDAPBindType : std::uint8_t;
 enum class LDAPTransportSecurityType : std::uint8_t;
+
+Status addMongodLDAPOptions(optionenvironment::OptionSection* options);
+Status addSharedLDAPOptions(optionenvironment::OptionSection* options);
 
 class LDAPOptions {
 public:

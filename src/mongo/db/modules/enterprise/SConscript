@@ -259,6 +259,7 @@ mongoldap = env.Program(
         "$BUILD_DIR/mongo/util/signal_handlers",
         "$BUILD_DIR/mongo/util/version_impl",
         "src/ldap/ldap_manager",
+        "src/ldap/ldap_options_mongod",
     ],
 )
 

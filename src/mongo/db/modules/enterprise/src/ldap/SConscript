@@ -32,6 +32,32 @@ env.Library(
 )
 
 env.Library(
+    target='ldap_options_mongod',
+    source=[
+        'ldap_options_mongod.cpp',
+    ],
+    LIBDEPS=[
+        'ldap_manager',
+    ],
+    PROGDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/mongod',
+    ],
+)
+
+env.Library(
+    target='ldap_options_shared',
+    source=[
+        'ldap_options_shared.cpp',
+    ],
+    LIBDEPS=[
+        'ldap_manager',
+    ],
+    PROGDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/mongos',
+    ],
+)
+
+env.Library(
     target='ldap_query',
     source=[
         'ldap_connection_options.cpp',

@@ -164,6 +164,7 @@ function LDAPTestConfigGenerator() {
         other.configOptions = Object.extend({}, mongodConfig, true);
         other.useHostname = true;
         other.mongosOptions = Object.extend({}, mongodConfig, true);
+        delete other.mongosOptions.ldapAuthzQueryTemplate;
         config.other = other;
 
         return config;
