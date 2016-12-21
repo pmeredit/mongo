@@ -2,6 +2,8 @@
 
 Import('env')
 
+env = env.Clone()
+
 env.Library(
     target='ldap_manager_init',
     source=[

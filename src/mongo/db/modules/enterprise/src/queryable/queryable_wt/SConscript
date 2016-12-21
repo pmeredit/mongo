@@ -1,9 +1,10 @@
 Import("env")
 
-wtEnv = env.Clone()
-wtEnv.InjectThirdPartyIncludePaths(libraries=['wiredtiger'])
+env = env.Clone()
 
-wtEnv.Library(
+env.InjectThirdPartyIncludePaths(libraries=['wiredtiger'])
+
+env.Library(
     target='queryable_wt',
     source=[
         'blockstore_fs.cpp',

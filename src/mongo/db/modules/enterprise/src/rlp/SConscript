@@ -3,6 +3,8 @@
 Import("env")
 Import("debugBuild")
 
+env = env.Clone()
+
 if GetOption("rlp") == "on":
     env.Library(
         target='rlpcore',

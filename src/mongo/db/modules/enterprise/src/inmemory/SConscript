@@ -1,6 +1,8 @@
 Import("env")
 Import("wiredtiger")
 
+env = env.Clone()
+
 if not wiredtiger:
     env.FatalError("The InMemory storage engine requires WiredTiger")
 

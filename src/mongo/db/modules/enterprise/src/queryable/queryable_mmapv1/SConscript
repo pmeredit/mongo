@@ -1,5 +1,7 @@
 Import("env")
 
+env = env.Clone()
+
 env.Library(
     target='queryable_datafile',
     source=[

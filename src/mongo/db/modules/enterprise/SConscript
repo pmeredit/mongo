@@ -2,16 +2,25 @@
 
 Import("env has_option")
 
+env = env.Clone()
+
 if not has_option("ssl"):
     env.FatalError("SSL not enabled. Enterprise MongoDB must be built with --ssl specified")
 
-env.SConscript([
-    'src/encryptdb/SConscript',
-    'src/inmemory/SConscript',
-    'src/ldap/SConscript',
-    'src/rlp/SConscript',
-    'src/queryable/SConscript',
-    ])
+env.InjectMongoIncludePaths()
+
+env.SConscript(
+    dirs=[
+        'src/encryptdb',
+        'src/inmemory',
+        'src/ldap',
+        'src/rlp',
+        'src/queryable',
+    ],
+    exports=[
+        'env',
+    ],
+)
 
 env.Library('audit',
             ['src/audit/audit_application_message.cpp',
