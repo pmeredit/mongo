@@ -54,7 +54,7 @@ Status tryAcquireServerCredential(const std::string& principalName) {
     TimeStamp ignored;
     SECURITY_STATUS status =
         AcquireCredentialsHandleW(const_cast<wchar_t*>(utf16principalName.c_str()),
-                                  L"kerberos",
+                                  const_cast<LPWSTR>(L"kerberos"),
                                   SECPKG_CRED_INBOUND,
                                   NULL,  // LOGON id
                                   NULL,  // auth data
@@ -158,7 +158,7 @@ int sspiServerMechNew(void* glob_context,
     LOG(2) << "SSPI principal name: " << toUtf8String(principalName);
 
     SECURITY_STATUS status = AcquireCredentialsHandle(const_cast<wchar_t*>(principalName.c_str()),
-                                                      L"kerberos",
+                                                      const_cast<LPWSTR>(L"kerberos"),
                                                       SECPKG_CRED_INBOUND,
                                                       NULL,  // LOGON id
                                                       NULL,  // auth data

@@ -198,7 +198,7 @@ Status WindowsLDAPConnection::bindAsUser(const LDAPBindOptions& options) {
         // method prior to binding using the LDAP_AUTH_NEGOTIATE flag." But, this is not true, and
         // it causes LDAP_AUTH_DIGEST to use GSSAPI as well. Also, there doesn't seem to be a way to
         // turn this off after it's been set. This may cause problems with connection pooling.
-        TCHAR* newSaslMethod = L"GSSAPI";
+        auto newSaslMethod = const_cast<WCHAR*>(L"GSSAPI");
         if (ldap_set_option(_pimpl->getSession(), LDAP_OPT_SASL_METHOD, (void*)&newSaslMethod) !=
             LDAP_SUCCESS) {
             return Status(ErrorCodes::OperationFailed, "Failed to set SASL method");
