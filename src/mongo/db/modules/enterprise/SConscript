@@ -8,6 +8,54 @@ if not has_option("ssl"):
     env.FatalError("SSL not enabled. Enterprise MongoDB must be built with --ssl specified")
 
 env.InjectMongoIncludePaths()
+env.InjectModule("enterprise", builder=True, consumer=False)
+
+conf = Configure(env, help=False)
+
+if not conf.CheckLibWithHeader(
+    "sasl2",
+    ["stddef.h","sasl/sasl.h"], "C",
+    "sasl_version_info(0, 0, 0, 0, 0, 0);",
+    autoadd=False):
+    env.ConfError("Could not find <sasl/sasl.h> and sasl library, required for "
+        "enterprise build.")
+
+if not env.TargetOSIs("windows") and not conf.CheckLibWithHeader(
+    "curl",
+    ["curl/curl.h"], "C",
+    "curl_global_init(0);",
+    autoadd=False):
+    env.ConfError("Could not find <curl/curl.h> and curl lib, required for "
+        "enterprise build")
+
+if not env.TargetOSIs("windows"):
+    if not conf.CheckLibWithHeader(
+            "ldap",
+            ["ldap.h"], "C",
+            "ldap_is_ldap_url(\"ldap://127.0.0.1\");", autoadd=False):
+        env.ConfError("Could not find <ldap.h> and ldap library from OpenLDAP, "
+                       "required for LDAP authorization in the enterprise build")
+    if not conf.CheckLibWithHeader(
+            "lber",
+            ["lber.h"], "C",
+            "ber_free(NULL, 0);", autoadd=False):
+        env.ConfError("Could not find <lber.h> and lber library from OpenLDAP, "
+                      "required for LDAP authorizaton in the enterprise build")
+    conf.env['MONGO_LDAP_LIB'] = ["ldap", "lber"]
+else:
+    conf.env['MONGO_LDAP_LIB'] = ["Wldap32"]
+
+if conf.CheckLib(library="gssapi_krb5", autoadd=False):
+    conf.env['MONGO_GSSAPI_IMPL'] = "gssapi"
+    conf.env['MONGO_GSSAPI_LIB'] = "gssapi_krb5"
+elif env.TargetOSIs("windows"):
+    conf.env['MONGO_GSSAPI_IMPL'] = "sspi"
+    conf.env['MONGO_GSSAPI_LIB'] = "secur32"
+else:
+    env.ConfError("Could not find gssapi_krb5 library nor Windows OS, required for "
+                  "enterprise build.")
+
+env = conf.Finish()
 
 env.SConscript(
     dirs=[
@@ -160,7 +208,7 @@ env.Library('mongosaslserversession',
                 '$BUILD_DIR/mongo/db/server_parameters',
                 '$BUILD_DIR/mongo/db/auth/authmocks',
             ],
-            SYSLIBDEPS=['sasl2'] + env['MONGO_GSSAPI_LIBDEPS'],
+            SYSLIBDEPS=['sasl2'] + [env['MONGO_GSSAPI_LIB']],
 )
 
 env.Library('auth_delay',

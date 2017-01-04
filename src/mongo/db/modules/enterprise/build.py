@@ -13,16 +13,14 @@ AddOption("--use-basis-tech-rosette-linguistics-platform",
 def configure(conf, env):
     root = os.path.dirname(__file__)
 
-    env.Append(CPPDEFINES=dict(MONGO_ENTERPRISE_VERSION=1))
+    env['MONGO_BUILD_SASL_CLIENT'] = True
 
     if not conf.CheckCXXHeader("net-snmp/net-snmp-config.h"):
         env.ConfError("Could not find <net-snmp/net-snmp-config.h>, required for "
-            "enterprise build.")
+                      "enterprise build.")
 
-    if env.TargetOSIs("windows"):
-        env['SNMP_SYSLIBDEPS'] = ['netsnmp','netsnmpagent','netsnmpmibs']
-        env.Append(CPPDEFINES=["NETSNMP_NO_INLINE"])
-    else:
+    snmpFlags = None
+    if not env.TargetOSIs("windows"):
         try:
             snmpFlags = env.ParseFlags("!net-snmp-config --agent-libs")
         except OSError, ose:
@@ -33,59 +31,25 @@ def configure(conf, env):
             # utility throws some weird flags in that get picked up in LINKFLAGS that we don't want
             # (see SERVER-23200). The only thing we need here are the LIBS and the LIBPATH, and any
             # rpath that was set in LINKFLAGS.
-            env['SNMP_SYSLIBDEPS'] = snmpFlags['LIBS']
-            env.Append(LIBPATH=snmpFlags['LIBPATH'])
+            #
+            # We need to do LINKFLAGS globally since it affects runtime of executables.
             env.Append(LINKFLAGS=[flag for flag in snmpFlags['LINKFLAGS'] if '-Wl,-rpath' in flag])
-            env.Append(CPPDEFINES=["NETSNMP_NO_INLINE"])
 
-    env['MONGO_BUILD_SASL_CLIENT'] = True
-    if not conf.CheckLibWithHeader(
-        "sasl2",
-        ["stddef.h","sasl/sasl.h"], "C",
-        "sasl_version_info(0, 0, 0, 0, 0, 0);",
-        autoadd=False):
-        env.ConfError("Could not find <sasl/sasl.h> and sasl library, required for "
-            "enterprise build.")
+    def injectEnterpriseModule(env, consumer=True, builder=False):
+        if consumer:
+            env.Append(CPPDEFINES=[("MONGO_ENTERPRISE_VERSION", 1)])
 
-    if not env.TargetOSIs("windows") and not conf.CheckLibWithHeader(
-        "curl",
-        ["curl/curl.h"], "C",
-        "curl_global_init(0);",
-        autoadd=False):
-        env.ConfError("Could not find <curl/curl.h> and curl lib, required for "
-            "enterprise build")
+        if builder:
+            if env.TargetOSIs("windows"):
+                env['SNMP_SYSLIBDEPS'] = ['netsnmp','netsnmpagent','netsnmpmibs']
+                env.Append(CPPDEFINES=["NETSNMP_NO_INLINE"])
+            else:
+                env['SNMP_SYSLIBDEPS'] = snmpFlags['LIBS']
+                env.Append(LIBPATH=snmpFlags['LIBPATH'])
+                env.Append(CPPDEFINES=["NETSNMP_NO_INLINE"])
+        return env
 
-    if not env.TargetOSIs("windows"):
-        if not conf.CheckLibWithHeader(
-                "ldap",
-                ["ldap.h"], "C",
-                "ldap_is_ldap_url(\"ldap://127.0.0.1\");", autoadd=False):
-            env.ConfError("Could not find <ldap.h> and ldap library from OpenLDAP, "
-                           "required for LDAP authorization in the enterprise build")
-        if not conf.CheckLibWithHeader(
-                "lber",
-                ["lber.h"], "C",
-                "ber_free(NULL, 0);", autoadd=False):
-            env.ConfError("Could not find <lber.h> and lber library from OpenLDAP, "
-                          "required for LDAP authorizaton in the enterprise build")
-        env['MONGO_LDAP_LIB'] = ["ldap", "lber"]
-    else:
-        env['MONGO_LDAP_LIB'] = ["Wldap32"]
-
-    if conf.CheckLib(library="gssapi_krb5", autoadd=False):
-        env['MONGO_GSSAPI_IMPL'] = "gssapi"
-        env['MONGO_GSSAPI_LIB'] = "gssapi_krb5"
-        if not env.TargetOSIs('freebsd'):
-            env['MONGO_GSSAPI_LIBDEPS'] = ['${MONGO_GSSAPI_LIB}']
-        else:
-            env['MONGO_GSSAPI_LIBDEPS'] = ['${MONGO_GSSAPI_LIB}', '${MONGO_GSSAPI_IMPL}']
-    elif env.TargetOSIs("windows"):
-        env['MONGO_GSSAPI_IMPL'] = "sspi"
-        env['MONGO_GSSAPI_LIB'] = "secur32"
-        env['MONGO_GSSAPI_LIBDEPS'] = ['${MONGO_GSSAPI_LIB}']
-    else:
-        env.ConfError("Could not find gssapi_krb5 library nor Windows OS, required for "
-            "enterprise build.")
+    env['MODULE_INJECTORS']['enterprise'] = injectEnterpriseModule
 
     distsrc = env.Dir(root).Dir('distsrc')
     docs = env.Dir(root).Dir('docs')
