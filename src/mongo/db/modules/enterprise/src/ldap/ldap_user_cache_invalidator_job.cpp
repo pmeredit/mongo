@@ -22,7 +22,7 @@
 
 namespace mongo {
 namespace {
-std::atomic<std::int32_t> ldapUserCacheInvalidationInterval(30);  // NOLINT 30 second default
+AtomicInt32 ldapUserCacheInvalidationInterval(30);  // 30 second default
 stdx::mutex invalidationIntervalMutex;
 stdx::condition_variable invalidationIntervalChanged;
 

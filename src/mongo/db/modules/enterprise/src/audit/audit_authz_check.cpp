@@ -70,7 +70,7 @@ static bool _shouldLogAuthzCheck(ErrorCodes::Error result) {
     if (!getGlobalAuditManager()->enabled)
         return false;
 
-    if (auditGlobalParams.auditAuthorizationSuccess)
+    if (auditGlobalParams.auditAuthorizationSuccess.load())
         return true;
     if (result != ErrorCodes::OK)
         return true;
