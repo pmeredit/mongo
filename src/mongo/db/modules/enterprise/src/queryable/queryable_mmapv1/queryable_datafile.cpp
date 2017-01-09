@@ -2,6 +2,8 @@
  *  Copyright (C) 2016 MongoDB Inc.
  */
 
+#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
+
 #include "mongo/platform/basic.h"
 
 #include "queryable_datafile.h"
@@ -14,6 +16,7 @@
 #include "mongo/db/concurrency/write_conflict_exception.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/util/assert_util.h"
+#include "mongo/util/log.h"
 
 #include "../blockstore/reader.h"
 #include "queryable_alloc_state.h"
@@ -33,7 +36,8 @@ static BlockIdxRange getRange(std::size_t offset, std::size_t count, std::size_t
     auto endBlockIdx = endOfsInclusive / bucketSize;
     return std::make_tuple(startBlockIdx, endBlockIdx - startBlockIdx + 1);
 }
-}
+
+}  // namespace
 
 DataFile::DataFile(std::unique_ptr<queryable::Reader> reader,
                    AllocState* const allocState,
