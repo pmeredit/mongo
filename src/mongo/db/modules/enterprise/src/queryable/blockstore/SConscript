@@ -28,13 +28,3 @@ env.CppIntegrationTest(
         'blockstore',
     ],
 )
-
-env.CppIntegrationTest(
-    target='reader_test',
-    source=[
-        'reader_test.cpp',
-    ],
-    LIBDEPS=[
-        'blockstore',
-    ],
-)

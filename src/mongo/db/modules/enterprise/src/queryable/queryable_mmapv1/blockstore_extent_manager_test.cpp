@@ -53,13 +53,13 @@ TEST_F(BlockstoreExtentManagerTest, DataFileEnsureRange) {
     // larger page sizes, ignore the extra assertions.
     const std::size_t kExpectedPageSize = 4 * 1024;
     const std::size_t kPageSize =
-        std::max(kExpectedPageSize, static_cast<std::size_t>(ProcessInfo::getPageSize()));
+        std::max(kExpectedPageSize, static_cast<std::size_t>(ProcessInfo().getPageSize()));
 
     AllocState allocState(kFileSize);
     auto reader = stdx::make_unique<Reader>(
         stdx::make_unique<MockedHttpClient>(), "file.old", kFileSize, kBlockSize);
     DataFile dataFile(std::move(reader), &allocState, kPageSize);
-    ASSERT_EQ(kPageSize, dataFile.getPageSizeForIdx(0));
+    ASSERT_EQ(kPageSize, dataFile.getPageSize());
 
     for (auto pageItr = dataFile.getMappedPages().begin();
          pageItr != dataFile.getMappedPages().end();
@@ -155,7 +155,7 @@ TEST_F(BlockstoreExtentManagerTest, AllocStateTest) {
 TEST_F(BlockstoreExtentManagerTest, DataFileEnsureRangeWithAllocLimits) {
     const std::size_t kExpectedPageSize = 4 * 1024;
     const std::size_t kPageSize =
-        std::max(kExpectedPageSize, static_cast<std::size_t>(ProcessInfo::getPageSize()));
+        std::max(kExpectedPageSize, static_cast<std::size_t>(ProcessInfo().getPageSize()));
     const std::size_t kNumPages = 2;
     const std::size_t kFileSize = kPageSize * kNumPages;
     const std::size_t kNumBlocks = 4;
@@ -169,7 +169,7 @@ TEST_F(BlockstoreExtentManagerTest, DataFileEnsureRangeWithAllocLimits) {
     auto reader = stdx::make_unique<Reader>(
         stdx::make_unique<MockedHttpClient>(), "file.old", kFileSize, kBlockSize);
     DataFile dataFile(std::move(reader), &allocState, kPageSize);
-    ASSERT_EQ(kPageSize, dataFile.getPageSizeForIdx(0));
+    ASSERT_EQ(kPageSize, dataFile.getPageSize());
 
     // Allocate three blocks, bringing us right to our limit.
     ASSERT_TRUE(dataFile.ensureRange(0, kAllocLimitBytes).isOK());
@@ -199,67 +199,6 @@ TEST_F(BlockstoreExtentManagerTest, DataFileEnsureRangeWithAllocLimits) {
     ASSERT_FALSE(dataFile.getMappedBlocks()[1]);
     ASSERT_TRUE(dataFile.getMappedBlocks()[2]);
     ASSERT_TRUE(dataFile.getMappedBlocks()[3]);
-}
-
-TEST_F(BlockstoreExtentManagerTest, DataFilePageSizeTest) {
-    // Test cases when the "FilePageSize" does not evenly divide the file size.
-    const std::size_t kFileSize = 64 * 1024 * 1024;   // smallest mmap datafile.
-    const std::size_t kBlockSize = 15 * 1024 * 1024;  // typical block size chosen for S3
-    // Code ensures our "file page size" is equal to the block size on large blocks.
-    const std::size_t kPageSize = kBlockSize;
-    const std::size_t kLastPageSize = kFileSize % kPageSize;
-    const std::uint64_t kAllocLimitBytes = 2 * kBlockSize;
-
-    AllocState allocState(kAllocLimitBytes);
-    // Allocate two files adjacently to maximize odds of being adjacent in virtual memory space.
-    DataFile dataFile(stdx::make_unique<Reader>(
-                          stdx::make_unique<MockedHttpClient>(), "file.old", kFileSize, kBlockSize),
-                      &allocState,
-                      kPageSize);
-    DataFile dataFileTwo(
-        stdx::make_unique<Reader>(
-            stdx::make_unique<MockedHttpClient>(), "file.new", kFileSize, kBlockSize),
-        &allocState,
-        kPageSize);
-
-    // Test page allocation of the first datafile.
-    const auto lastPageIdx = dataFile.getMappedBlocks().size() - 1;
-    ASSERT_EQ(kPageSize, dataFile.getPageSizeForIdx(0));
-    // After 4 full 15MB allocations, there's 4MB of leftover data (60MB -> 64MB).
-    ASSERT_EQ(kLastPageSize, dataFile.getPageSizeForIdx(lastPageIdx));
-
-    // Request the first byte which pulls in the first page/block.
-    ASSERT_OK(dataFile.ensureRange(0U, 1U));
-    ASSERT_EQ(1U, allocState.getNumPagesAllocated());
-    ASSERT_EQ(kPageSize, allocState.getMemoryAllocated());
-    // And release the page.
-    ASSERT_OK(dataFile.releasePage(0));
-    ASSERT_EQ(0U, allocState.getMemoryAllocated());
-
-    // Request a byte from the last page/block of each datafile. If the two datafiles were
-    // virtually allocated one after another, this will catch any errors where physically
-    // allocating the last page is not aligned to the file size.
-    ASSERT_OK(dataFile.ensureRange(kFileSize - 1, 1U));
-    ASSERT_EQ(1U, allocState.getNumPagesAllocated());
-    ASSERT_EQ(kLastPageSize, allocState.getMemoryAllocated());
-    // And release
-    ASSERT_OK(dataFile.releasePage(lastPageIdx));
-    ASSERT_EQ(0U, allocState.getMemoryAllocated());
-
-    ASSERT_OK(dataFileTwo.ensureRange(kFileSize - 1, 1U));
-    ASSERT_EQ(1U, allocState.getNumPagesAllocated());
-    ASSERT_EQ(kLastPageSize, allocState.getMemoryAllocated());
-    // And release
-    ASSERT_OK(dataFileTwo.releasePage(lastPageIdx));
-    ASSERT_EQ(0U, allocState.getMemoryAllocated());
-}
-
-TEST_F(BlockstoreExtentManagerTest, SystemPageSizeCheck) {
-    // Backup must always choose a block size that's divisible by any system page size that
-    // queryable_mmapv1 is expected to run on. The smallest known block size we want to support is
-    // 64KB. If 64KB is not divisible by a system page size, fail and let Backup know. Backup has
-    // a similar check to never write a block that is not divisible by 64KB.
-    ASSERT_EQ(0U, (64 * 1024) % ProcessInfo::getPageSize());
 }
 
 }  // namespace
