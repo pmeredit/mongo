@@ -13,9 +13,6 @@
 
 namespace mongo {
 namespace queryable {
-namespace {
-std::size_t kDefaultPageSize = 2 * 1024 * 1024;
-}  // namespace
 
 class AllocState;
 
@@ -31,9 +28,7 @@ class AllocState;
  */
 class DataFile {
 public:
-    DataFile(std::unique_ptr<Reader> reader,
-             AllocState* allocState,
-             std::size_t pageSize = kDefaultPageSize);
+    DataFile(std::unique_ptr<Reader> reader, AllocState* allocState, std::size_t pageSize);
     ~DataFile();
 
     Status ensureRange(const std::size_t offset, const std::size_t count);
@@ -47,9 +42,9 @@ public:
         return _basePtr;
     }
 
-    std::size_t getPageSize() const {
-        return _pageSize;
-    }
+    // Return the "file's" page size at an index. All are the same except the last page which is
+    // truncated with respect to the file size.
+    std::size_t getPageSizeForIdx(std::size_t pageIdx) const;
 
     /**
      * Only used for testing.

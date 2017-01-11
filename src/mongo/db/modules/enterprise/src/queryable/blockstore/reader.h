@@ -29,15 +29,17 @@ public:
            std::size_t blockSize);
 
     /**
-     * Read the file from [offset, offset+count) into `buf`.
+     * Read the file from [offset, offset+count) into `buf`. Returns the number of bytes written
+     * into `buf`.
      */
     StatusWith<std::size_t> read(DataRange buf, std::size_t offset, std::size_t count) const;
 
     /**
      * Read the entirety of a block into `buf`. `buf` must be allocated large enough to hold the
-     * entire block: `readerInstance.getFile().getBlockSize()`.
+     * block i.e: `readerInstance.getBlockSizeForIdx(blockIdx)`. Returns the number of bytes
+     * written into `buf`.
      */
-    Status readBlockInto(DataRange buf, std::size_t blockIdx) const;
+    StatusWith<std::size_t> readBlockInto(DataRange buf, std::size_t blockIdx) const;
 
     /**
      * Reads the entire remote file and writes it to the `writer`.
@@ -54,6 +56,18 @@ public:
 
     std::size_t getBlockSize() const {
         return _blockSize;
+    }
+
+    // Return the block size at an index. All are the same except the last block which is truncated
+    // with respect to the fileSize.
+    std::size_t getBlockSizeForIdx(std::size_t blockIdx) const {
+        const std::size_t lastBlockIdx = getNumBlocks() - 1;
+        if (blockIdx < lastBlockIdx) {
+            return _blockSize;
+        }
+
+        std::size_t lastBlockOffset = blockIdx * _blockSize;
+        return _fileSize - lastBlockOffset;
     }
 
     std::size_t getNumBlocks() const {

@@ -20,6 +20,7 @@
 #include "mongo/stdx/memory.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
+#include "mongo/util/processinfo.h"
 
 #include "../blockstore/list_dir.h"
 #include "../blockstore/reader.h"
@@ -28,6 +29,9 @@
 
 namespace mongo {
 namespace queryable {
+namespace {
+const std::size_t kDefaultPageSize = 2 * 1024 * 1024;
+}
 
 BlockstoreBackedExtentManager::Factory::Factory(Context&& context, std::uint64_t memoryQuotaBytes)
     : _context(std::move(context)), _allocState(stdx::make_unique<AllocState>(memoryQuotaBytes)) {
@@ -66,7 +70,6 @@ BlockstoreBackedExtentManager::Factory::Factory(Context&& context, std::uint64_t
                 str::stream() << "Writing NS file failed. File: " << fullPath.c_str(),
                 nsFileWriter.good());
     }
-
 
     startQueryableEvictorThread(_allocState.get());
 }
@@ -122,15 +125,31 @@ Status BlockstoreBackedExtentManager::init(OperationContext* txn) {
 
     auto df = std::begin(dataFiles);
     auto id = std::begin(dataFileIds);
+    const std::size_t systemPageSize = ProcessInfo::getPageSize();
     for (; df != std::end(dataFiles) && id != std::end(dataFileIds); ++df, ++id) {
+        const std::size_t blockSize = static_cast<std::size_t>(df->blockSize);
+        if (blockSize % systemPageSize != 0) {
+            severe() << "The blockSize must be a multiple of the "
+                        "system's page size. File: "
+                     << df->filename << " BlockSize: " << blockSize
+                     << " SystemPageSize: " << systemPageSize;
+            fassertFailedNoTrace(40368);
+        }
+
+        std::size_t filePageSize = kDefaultPageSize;
+        if (filePageSize < blockSize) {
+            filePageSize = blockSize;
+        }
+
         _dataFiles[*id] = stdx::make_unique<queryable::DataFile>(
             stdx::make_unique<queryable::Reader>(
                 createHttpClient(_factory->getContext()->apiUri(),
                                  _factory->getContext()->snapshotId()),
                 df->filename,
                 df->fileSize,
-                df->blockSize),
-            _allocState);
+                blockSize),
+            _allocState,
+            filePageSize);
     }
 
     return Status::OK();
