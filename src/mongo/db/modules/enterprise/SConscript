@@ -157,20 +157,20 @@ env.Library('mongosaslserversession',
              'src/sasl/canon_mongodb_internal.cpp',
              'src/sasl/mongo_${MONGO_GSSAPI_IMPL}.cpp',
              ],
-            LIBDEPS=['$BUILD_DIR/mongo/db/auth/saslauth',
-                     '$BUILD_DIR/mongo/db/server_parameters',
-                     '$BUILD_DIR/mongo/db/auth/authmocks'],
+            LIBDEPS=[
+                '$BUILD_DIR/mongo/db/auth/saslauth',
+                '$BUILD_DIR/mongo/db/server_parameters',
+                '$BUILD_DIR/mongo/db/auth/authmocks',
+            ],
             SYSLIBDEPS=['sasl2', '${MONGO_GSSAPI_LIB}'],
-            LIBDEPS_TAGS=[
-                # Circular with mongosaslservercommon below
-                'incomplete',
-            ])
+)
 
 env.Library('auth_delay',
             'src/sasl/auth_delay.cpp',
             LIBDEPS=['$BUILD_DIR/mongo/db/auth/sasl_options'],
             PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongod',
-                                 '$BUILD_DIR/mongo/mongos'])
+                                 '$BUILD_DIR/mongo/mongos'],
+)
 
 env.Library('mongosaslservercommon',
             ['src/sasl/cyrus_sasl_authentication_session.cpp',
@@ -179,7 +179,8 @@ env.Library('mongosaslservercommon',
                      'src/ldap/ldap_name_map',
                      'mongosaslserversession'],
             PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongod',
-                                 '$BUILD_DIR/mongo/mongos'])
+                                 '$BUILD_DIR/mongo/mongos'],
+)
 
 env.CppUnitTest('sasl_authentication_session_test',
                 ['src/sasl/sasl_authentication_session_test.cpp'],

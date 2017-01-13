@@ -25,7 +25,10 @@ class CyrusSaslAuthenticationSession : public SaslAuthenticationSession {
 public:
     struct SaslMechanismInfo;
 
-    static const int mongoSessionCallbackId;
+    /// This value chosen because it is unused, and unlikely to be used by the SASL library.
+    // This constant needs to be in the header, because it prevents a linking dependency cycle.
+    static const int mongoSessionCallbackId = 0xF00F;
+
 
     static Status smokeTestMechanism(StringData mechanism,
                                      StringData serviceName,

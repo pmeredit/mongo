@@ -261,10 +261,9 @@ int saslAlwaysFailCallback() throw() {
 typedef int (*SaslCallbackFn)();
 }  // namespace
 
-/// This value chosen because it is unused, and unlikely to be used by the SASL library.
-
+// This is the storage for the in-class constant.  The value is defined in the header.
 // static
-const int CyrusSaslAuthenticationSession::mongoSessionCallbackId = 0xF00F;
+const int CyrusSaslAuthenticationSession::mongoSessionCallbackId;
 
 /// NULL-terminated list of SaslMechanismInfos describing the mechanisms MongoDB knows how to
 /// support.
