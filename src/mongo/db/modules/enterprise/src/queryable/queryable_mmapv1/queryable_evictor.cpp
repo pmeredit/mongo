@@ -47,7 +47,7 @@ void startQueryableEvictorThread(AllocState* const allocState) {
     stdx::thread([allocState] {
         Client::initThread("QueryableMMapEvictor");
 
-        while (!inShutdown()) {
+        while (!globalInShutdownDeprecated()) {
             sleepsecs(kSleepTimeSeconds);
             evict(allocState);
         }

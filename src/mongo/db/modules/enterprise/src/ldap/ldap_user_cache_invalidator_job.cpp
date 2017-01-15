@@ -63,7 +63,7 @@ std::string LDAPUserCacheInvalidator::name() const {
 
 void LDAPUserCacheInvalidator::run() {
     Client::initThread("LDAPUserCacheInvalidator");
-    while (!inShutdown()) {
+    while (!globalInShutdownDeprecated()) {
         Date_t start = Date_t::now();
         Date_t wakeupTime;
         do {

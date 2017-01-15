@@ -968,7 +968,7 @@ public:
             log() << "SNMPAgent running as subagent" << endl;
         }
 
-        while (snmpGlobalParams.enabled && !inShutdown()) {
+        while (snmpGlobalParams.enabled && !globalInShutdownDeprecated()) {
             _snmpIterations++;
             agent_check_and_process(1);
         }
