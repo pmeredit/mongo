@@ -92,13 +92,14 @@ env.Library(
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/auth/authcore',
+        #'$BUILD_DIR/mongo/rpc/metadata', # CYCLE
     ],
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/rpc/metadata',
     ],
     LIBDEPS_TAGS=[
         # This library is 'circular' with rpc/metadata.
-        'incomplete'
+        'illegal_cyclic_or_unresolved_dependencies_whitelisted',
     ]
 )
 
@@ -148,7 +149,7 @@ env.Library('mongosnmp',
             SYSLIBDEPS=env.get('SNMP_SYSLIBDEPS', []),
             LIBDEPS_TAGS=[
                 # Depends on snmpInit from db.cpp
-                'incomplete',
+                'illegal_cyclic_or_unresolved_dependencies_whitelisted',
             ],
 )
 
