@@ -75,6 +75,10 @@ def configure(conf, env):
     if conf.CheckLib(library="gssapi_krb5", autoadd=False):
         env['MONGO_GSSAPI_IMPL'] = "gssapi"
         env['MONGO_GSSAPI_LIB'] = "gssapi_krb5"
+        if not env.TargetOSIs('freebsd'):
+            env['MONGO_GSSAPI_LIBDEPS'] = ['${MONGO_GSSAPI_LIB}']
+        else:
+            env['MONGO_GSSAPI_LIBDEPS'] = ['${MONGO_GSSAPI_LIB}', '${MONGO_GSSAPI_IMPL}']
     elif env.TargetOSIs("windows"):
         env['MONGO_GSSAPI_IMPL'] = "sspi"
         env['MONGO_GSSAPI_LIB'] = "secur32"

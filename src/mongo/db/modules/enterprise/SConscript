@@ -163,7 +163,7 @@ env.Library('mongosaslserversession',
                 '$BUILD_DIR/mongo/db/server_parameters',
                 '$BUILD_DIR/mongo/db/auth/authmocks',
             ],
-            SYSLIBDEPS=['sasl2', '${MONGO_GSSAPI_LIB}'],
+            SYSLIBDEPS=['sasl2'] + env['MONGO_GSSAPI_LIBDEPS'],
 )
 
 env.Library('auth_delay',
