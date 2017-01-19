@@ -82,6 +82,7 @@ def configure(conf, env):
     elif env.TargetOSIs("windows"):
         env['MONGO_GSSAPI_IMPL'] = "sspi"
         env['MONGO_GSSAPI_LIB'] = "secur32"
+        env['MONGO_GSSAPI_LIBDEPS'] = ['${MONGO_GSSAPI_LIB}']
     else:
         env.ConfError("Could not find gssapi_krb5 library nor Windows OS, required for "
             "enterprise build.")
