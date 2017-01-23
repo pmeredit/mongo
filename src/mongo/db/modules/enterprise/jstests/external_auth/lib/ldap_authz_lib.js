@@ -238,10 +238,23 @@ function runTests(testCallback, configGenerator, callbackOptions) {
     testCallback(m, callbackOptions);
     MongoRunner.stopMongod(m);
 
+    // The mongo shell cannot authenticate as the internal __system user in tests that use x509 for
+    // cluster authentication. Choosing the default value for wcMajorityJournalDefault in
+    // ReplSetTest cannot be done automatically without the shell performing such authentication, so
+    // in this test we must make the choice explicitly, based on the global test options.
+    var wcMajorityJournalDefault;
+    if (jsTestOptions().noJournal || jsTestOptions().storageEngine == "ephemeralForTest" ||
+        jsTestOptions().storageEngine == "inMemory") {
+        wcMajorityJournalDefault = false;
+    } else {
+        wcMajorityJournalDefault = true;
+    }
+
     // replset
     var rst = new ReplSetTest(configGenerator.generateReplicaSetConfig());
     rst.startSet();
-    rst.initiate();
+    rst.initiate(Object.extend(rst.getReplSetConfig(),
+                               {writeConcernMajorityJournalDefault: wcMajorityJournalDefault}));
     rst.awaitSecondaryNodes();
 
     var primary = rst.getPrimary();
