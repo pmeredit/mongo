@@ -23,7 +23,7 @@
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
 #include "mongo/db/client.h"
-#include "mongo/db/db.h"
+#include "mongo/db/initialize_snmp.h"
 #include "mongo/db/repl/replication_coordinator_global.h"
 #include "mongo/db/server_options.h"
 #include "mongo/db/stats/counters.h"
@@ -1030,7 +1030,7 @@ void SNMPAgent::init() {
 
 MONGO_INITIALIZER(InitializeSnmp)(InitializerContext* context) {
     oidManager.init();
-    snmpInit = &SNMPAgent::init;
+    registerSNMPInitializer(&SNMPAgent::init);
     return Status::OK();
 }
 
