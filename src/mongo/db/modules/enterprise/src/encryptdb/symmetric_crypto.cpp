@@ -13,7 +13,6 @@
 #include "mongo/base/data_cursor.h"
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
-#include "mongo/crypto/crypto.h"
 #include "mongo/platform/random.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/util/assert_util.h"
