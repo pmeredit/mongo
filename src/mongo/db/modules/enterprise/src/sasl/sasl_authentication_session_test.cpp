@@ -60,20 +60,20 @@ SaslConversation::SaslConversation(std::string mech)
       authManager(std::unique_ptr<AuthzManagerExternalState>(authManagerExternalState)),
       authSession(authManager.makeAuthorizationSession()),
       mechanism(mech) {
-    OperationContextNoop txn;
+    OperationContextNoop opCtx;
 
     client.reset(SaslClientSession::create(mechanism));
     server.reset(SaslAuthenticationSession::create(authSession.get(), "$external", mechanism));
 
     ASSERT_OK(authManagerExternalState->updateOne(
-        &txn,
+        &opCtx,
         AuthorizationManager::versionCollectionNamespace,
         AuthorizationManager::versionDocumentQuery,
         BSON("$set" << BSON(AuthorizationManager::schemaVersionFieldName
                             << AuthorizationManager::schemaVersion26Final)),
         true,
         BSONObj()));
-    ASSERT_OK(authManagerExternalState->insert(&txn,
+    ASSERT_OK(authManagerExternalState->insert(&opCtx,
                                                NamespaceString("admin.system.users"),
                                                BSON("_id"
                                                     << "test.andy"

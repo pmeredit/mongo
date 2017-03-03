@@ -103,7 +103,7 @@ Status LDAPSaslAuthenticationSession::step(StringData inputData, std::string* ou
     // A SASL PLAIN conversation only has one step
     _done = true;
 
-    return LDAPManager::get(_txn->getServiceContext())->verifyLDAPCredentials(_user, pwd);
+    return LDAPManager::get(_opCtx->getServiceContext())->verifyLDAPCredentials(_user, pwd);
 }
 
 std::string LDAPSaslAuthenticationSession::getPrincipalId() const {

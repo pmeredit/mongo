@@ -69,7 +69,7 @@ public:
                                   bool directoryPerDB,
                                   AllocState* allocState);
 
-    Status init(OperationContext* txn) override;
+    Status init(OperationContext* opCtx) override;
 
     /**
      * The input `DiskLoc` can be a location to a btree node or a Collection's BSON document. Both

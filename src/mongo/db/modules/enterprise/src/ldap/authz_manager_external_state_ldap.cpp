@@ -39,8 +39,8 @@ AuthzManagerExternalStateLDAP::AuthzManagerExternalStateLDAP(
     std::unique_ptr<AuthzManagerExternalStateLocal> wrappedExternalState)
     : _hasInitializedInvalidation(0), _wrappedExternalState(std::move(wrappedExternalState)) {}
 
-Status AuthzManagerExternalStateLDAP::initialize(OperationContext* txn) {
-    Status status = _wrappedExternalState->initialize(txn);
+Status AuthzManagerExternalStateLDAP::initialize(OperationContext* opCtx) {
+    Status status = _wrappedExternalState->initialize(opCtx);
 
     // If initialization of the internal
     // object fails, do not perform LDAP specific initialization
@@ -58,7 +58,7 @@ Status AuthzManagerExternalStateLDAP::initialize(OperationContext* txn) {
     // accessable while LDAP Authorization is active.
     BSONObj userObj;
     if (_wrappedExternalState
-            ->findOne(txn,
+            ->findOne(opCtx,
                       AuthorizationManager::usersCollectionNamespace,
                       BSON("db"
                            << "$external"),
@@ -74,15 +74,15 @@ Status AuthzManagerExternalStateLDAP::initialize(OperationContext* txn) {
     return Status::OK();
 }
 
-Status AuthzManagerExternalStateLDAP::getUserDescription(OperationContext* txn,
+Status AuthzManagerExternalStateLDAP::getUserDescription(OperationContext* opCtx,
                                                          const UserName& userName,
                                                          BSONObj* result) {
-    if (userName.getDB() != "$external" || shouldUseRolesFromConnection(txn, userName)) {
-        return _wrappedExternalState->getUserDescription(txn, userName, result);
+    if (userName.getDB() != "$external" || shouldUseRolesFromConnection(opCtx, userName)) {
+        return _wrappedExternalState->getUserDescription(opCtx, userName, result);
     }
 
     StatusWith<std::vector<RoleName>> swRoles =
-        LDAPManager::get(txn->getServiceContext())->getUserRoles(userName);
+        LDAPManager::get(opCtx->getServiceContext())->getUserRoles(userName);
     if (!swRoles.isOK()) {
         // Log failing Status objects produced from role acquisition, but because they may contain
         // sensitive information, do not propagate them to the client.

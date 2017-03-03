@@ -28,8 +28,8 @@ void evict(AllocState* const allocState) {
         return;
     }
 
-    auto txn = cc().makeOperationContext();
-    Lock::GlobalWrite writeLock(txn->lockState());
+    auto opCtx = cc().makeOperationContext();
+    Lock::GlobalWrite writeLock(opCtx->lockState());
 
     const std::size_t pagesAlloced = allocState->getNumPagesAllocated();
     // Evict half the pages, chosen arbitrarily.

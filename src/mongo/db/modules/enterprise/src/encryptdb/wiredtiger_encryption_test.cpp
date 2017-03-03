@@ -79,10 +79,10 @@ public:
 
     void writeData() {
         WiredTigerRecoveryUnit* ru = new WiredTigerRecoveryUnit(&_sessionCache);
-        OperationContextNoop txn(ru);
+        OperationContextNoop opCtx(ru);
         WiredTigerSession* mongoSession = ru->getSession(nullptr);
 
-        WriteUnitOfWork uow(&txn);
+        WriteUnitOfWork uow(&opCtx);
         WT_SESSION* session = mongoSession->getSession();
 
         /*

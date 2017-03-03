@@ -30,7 +30,7 @@ public:
      * Perform some LDAP specific setup, and passthrough to
      * AuthorizationManagerExternalStateMongod
      */
-    Status initialize(OperationContext* txn) final;
+    Status initialize(OperationContext* opCtx) final;
 
     /**
      * Passthrough to AuthorizationManagerExternalStateMongod
@@ -43,8 +43,8 @@ public:
     /**
      * Passthrough to AuthorizationManagerExternalStateMongod
      */
-    Status getStoredAuthorizationVersion(OperationContext* txn, int* outVersion) final {
-        return _wrappedExternalState->getStoredAuthorizationVersion(txn, outVersion);
+    Status getStoredAuthorizationVersion(OperationContext* opCtx, int* outVersion) final {
+        return _wrappedExternalState->getStoredAuthorizationVersion(opCtx, outVersion);
     }
 
     /**
@@ -54,58 +54,58 @@ public:
      * the DN is a member of, and map these groups into MongoDB roles, recursively resolve them,
      * and return a description of the requested user possessing all necessary permissions.
      */
-    Status getUserDescription(OperationContext* txn,
+    Status getUserDescription(OperationContext* opCtx,
                               const UserName& userName,
                               BSONObj* result) final;
 
     /**
      * Passthrough to AuthorizationManagerExternalStateMongod
      */
-    Status getRoleDescription(OperationContext* txn,
+    Status getRoleDescription(OperationContext* opCtx,
                               const RoleName& roleName,
                               PrivilegeFormat showPrivileges,
                               BSONObj* result) final {
-        return _wrappedExternalState->getRoleDescription(txn, roleName, showPrivileges, result);
+        return _wrappedExternalState->getRoleDescription(opCtx, roleName, showPrivileges, result);
     }
 
     /**
      * Passthrough to AuthorizationManagerExternalStateMongod
      */
-    Status getRolesDescription(OperationContext* txn,
+    Status getRolesDescription(OperationContext* opCtx,
                                const std::vector<RoleName>& roleName,
                                PrivilegeFormat showPrivileges,
                                BSONObj* result) final {
-        return _wrappedExternalState->getRolesDescription(txn, roleName, showPrivileges, result);
+        return _wrappedExternalState->getRolesDescription(opCtx, roleName, showPrivileges, result);
     }
 
     /**
      * Passthrough to AuthorizationManagerExternalStateMongod
      */
-    Status getRoleDescriptionsForDB(OperationContext* txn,
+    Status getRoleDescriptionsForDB(OperationContext* opCtx,
                                     const std::string dbname,
                                     PrivilegeFormat showPrivileges,
                                     bool showBuiltinRoles,
                                     std::vector<BSONObj>* result) final {
         return _wrappedExternalState->getRoleDescriptionsForDB(
-            txn, dbname, showPrivileges, showBuiltinRoles, result);
+            opCtx, dbname, showPrivileges, showBuiltinRoles, result);
     }
 
     /**
      * Passthrough to AuthorizationManagerExternalStateMongod
      */
-    bool hasAnyPrivilegeDocuments(OperationContext* txn) final {
-        return _wrappedExternalState->hasAnyPrivilegeDocuments(txn);
+    bool hasAnyPrivilegeDocuments(OperationContext* opCtx) final {
+        return _wrappedExternalState->hasAnyPrivilegeDocuments(opCtx);
     }
 
     /**
      * Passthrough to AuthorizationManagerExternalStateMongod
      */
-    void logOp(OperationContext* txn,
+    void logOp(OperationContext* opCtx,
                const char* op,
                const char* ns,
                const BSONObj& o,
                const BSONObj* o2) final {
-        _wrappedExternalState->logOp(txn, op, ns, o, o2);
+        _wrappedExternalState->logOp(opCtx, op, ns, o, o2);
     }
 
 private:

@@ -35,7 +35,7 @@ public:
     RedactClientLogDataSetting()
         : ServerParameter(ServerParameterSet::getGlobal(), "redactClientLogData", false, true) {}
 
-    virtual void append(OperationContext* txn, BSONObjBuilder& b, const std::string& name) {
+    virtual void append(OperationContext* opCtx, BSONObjBuilder& b, const std::string& name) {
         b << name << logger::globalLogDomain()->shouldRedactLogs();
     }
 

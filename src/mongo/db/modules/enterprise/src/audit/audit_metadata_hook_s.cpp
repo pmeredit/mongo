@@ -18,12 +18,12 @@
 namespace mongo {
 namespace audit {
 
-void writeImpersonatedUsersToMetadata(OperationContext* txn, BSONObjBuilder* metadataBob) {
-    if (!getGlobalAuditManager()->enabled || !txn) {
+void writeImpersonatedUsersToMetadata(OperationContext* opCtx, BSONObjBuilder* metadataBob) {
+    if (!getGlobalAuditManager()->enabled || !opCtx) {
         return;
     }
 
-    AuthorizationSession* authorizationSession(AuthorizationSession::get(txn->getClient()));
+    AuthorizationSession* authorizationSession(AuthorizationSession::get(opCtx->getClient()));
 
     std::vector<UserName> impersonatedUsers;
     auto userNames = authorizationSession->getAuthenticatedUserNames();

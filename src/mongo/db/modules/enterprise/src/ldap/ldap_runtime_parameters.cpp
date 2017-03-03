@@ -28,7 +28,7 @@ public:
     LDAPServersSetting()
         : ServerParameter(ServerParameterSet::getGlobal(), "ldapServers", false, true) {}
 
-    virtual void append(OperationContext* txn, BSONObjBuilder& b, const std::string& name) {
+    virtual void append(OperationContext* opCtx, BSONObjBuilder& b, const std::string& name) {
         b << name
           << StringSplitter::join(LDAPManager::get(getGlobalServiceContext())->getHosts(), ",");
     }
@@ -61,7 +61,7 @@ public:
     LDAPTimeoutSetting()
         : ServerParameter(ServerParameterSet::getGlobal(), "ldapTimeoutMS", false, true) {}
 
-    virtual void append(OperationContext* txn, BSONObjBuilder& b, const std::string& name) {
+    virtual void append(OperationContext* opCtx, BSONObjBuilder& b, const std::string& name) {
         b << name << LDAPManager::get(getGlobalServiceContext())->getTimeout().count();
     }
 
@@ -94,7 +94,7 @@ public:
     LDAPBindDNSetting()
         : ServerParameter(ServerParameterSet::getGlobal(), "ldapQueryUser", false, true) {}
 
-    virtual void append(OperationContext* txn, BSONObjBuilder& b, const std::string& name) {
+    virtual void append(OperationContext* opCtx, BSONObjBuilder& b, const std::string& name) {
         b << name << LDAPManager::get(getGlobalServiceContext())->getBindDN();
     }
 
@@ -122,7 +122,7 @@ public:
     LDAPBindPasswordSetting()
         : ServerParameter(ServerParameterSet::getGlobal(), "ldapQueryPassword", false, true) {}
 
-    virtual void append(OperationContext* txn, BSONObjBuilder& b, const std::string& name) {
+    virtual void append(OperationContext* opCtx, BSONObjBuilder& b, const std::string& name) {
         b << name << "###";
     }
 
@@ -150,7 +150,7 @@ public:
     LDAPUserToDNMappingSetting()
         : ServerParameter(ServerParameterSet::getGlobal(), "ldapUserToDNMapping", false, true) {}
 
-    virtual void append(OperationContext* txn, BSONObjBuilder& b, const std::string& name) {
+    virtual void append(OperationContext* opCtx, BSONObjBuilder& b, const std::string& name) {
         b << name << LDAPManager::get(getGlobalServiceContext())->getUserToDNMapping();
     }
 
@@ -184,7 +184,7 @@ public:
     LDAPQueryTemplateSetting()
         : ServerParameter(ServerParameterSet::getGlobal(), "ldapAuthzQueryTemplate", false, true) {}
 
-    virtual void append(OperationContext* txn, BSONObjBuilder& b, const std::string& name) {
+    virtual void append(OperationContext* opCtx, BSONObjBuilder& b, const std::string& name) {
         b << name << LDAPManager::get(getGlobalServiceContext())->getQueryTemplate();
     }
 

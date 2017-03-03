@@ -93,7 +93,7 @@ BlockstoreBackedExtentManager::BlockstoreBackedExtentManager(Factory* factory,
       _dataFiles(),
       _allocState(allocState) {}
 
-Status BlockstoreBackedExtentManager::init(OperationContext* txn) {
+Status BlockstoreBackedExtentManager::init(OperationContext* opCtx) {
     invariant(_dataFiles.empty());
 
     auto httpClient(

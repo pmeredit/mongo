@@ -85,9 +85,9 @@ Status smokeCommonMechanism(StringData mechanismName,
         authzManager.makeAuthorizationSession();
 
     CyrusSaslAuthenticationSession session(authzSession.get());
-    OperationContextNoop txn;
+    OperationContextNoop opCtx;
     Status status = session.start("test", mechanismName, serviceName, serviceHostname, 1, true);
-    session.setOpCtxt(&txn);
+    session.setOpCtxt(&opCtx);
     if (status.isOK()) {
         std::string ignored;
         status = session.step("", &ignored);

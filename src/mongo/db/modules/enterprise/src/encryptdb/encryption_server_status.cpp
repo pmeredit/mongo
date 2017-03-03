@@ -51,14 +51,14 @@ public:
         return true;
     }
 
-    BSONObj generateSection(OperationContext* txn, const BSONElement& configElement) const {
+    BSONObj generateSection(OperationContext* opCtx, const BSONElement& configElement) const {
         BSONObjBuilder result;
         WiredTigerCustomizationHooks* hooks =
-            WiredTigerCustomizationHooks::get(txn->getServiceContext());
+            WiredTigerCustomizationHooks::get(opCtx->getServiceContext());
         if (!hooks->enabled()) {
             result.append("encryptionEnabled", false);
         } else {
-            EncryptionKeyManager* mgr = EncryptionKeyManager::get(txn->getServiceContext());
+            EncryptionKeyManager* mgr = EncryptionKeyManager::get(opCtx->getServiceContext());
             result.append("encryptionEnabled", true);
             result.append("encryptionKeyId", mgr->getMasterKeyId());
             result.append("encryptionCipherMode", mgr->getCipherMode());

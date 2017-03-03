@@ -48,7 +48,7 @@ public:
         return Status::OK();
     }
 
-    virtual bool run(OperationContext* txn,
+    virtual bool run(OperationContext* opCtx,
                      const std::string& db,
                      BSONObj& cmdObj,
                      int options,
@@ -76,7 +76,7 @@ void CmdLogApplicationMessage::help(std::stringstream& os) const {
     os << "Insert a custom message into the audit log";
 }
 
-bool CmdLogApplicationMessage::run(OperationContext* txn,
+bool CmdLogApplicationMessage::run(OperationContext* opCtx,
                                    const std::string& db,
                                    BSONObj& cmdObj,
                                    int options,
