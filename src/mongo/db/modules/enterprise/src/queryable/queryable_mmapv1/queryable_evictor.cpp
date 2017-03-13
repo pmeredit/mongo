@@ -7,6 +7,7 @@
 #include "queryable_evictor.h"
 
 #include "mongo/db/client.h"
+#include "mongo/db/concurrency/d_concurrency.h"
 #include "mongo/db/concurrency/lock_manager_defs.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/stdx/thread.h"
@@ -29,7 +30,7 @@ void evict(AllocState* const allocState) {
     }
 
     auto opCtx = cc().makeOperationContext();
-    Lock::GlobalWrite writeLock(opCtx->lockState());
+    Lock::GlobalWrite writeLock(opCtx.get());
 
     const std::size_t pagesAlloced = allocState->getNumPagesAllocated();
     // Evict half the pages, chosen arbitrarily.
