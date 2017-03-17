@@ -58,6 +58,27 @@ public:
         return _session;
     }
 
+    // Helper function which converts the error code on the LDAP session handle into a Status.
+    // If it acquires Status::OK(), it will return a different, non-OK, Status.
+    // This function should be called when the caller has encountered a fatal event.
+    // Will acquire any diagnostic message which may have been set on the LDAP session handle.
+    Status obtainFatalResultCodeAsStatus(StringData functionName, StringData failureHint) {
+        Status result(resultCodeToStatus(functionName, failureHint));
+
+        if (result.isOK()) {
+            return Status(
+                ErrorCodes::UnknownError,
+                str::stream() << functionName << "encountered a fatal condition, but the LDAP "
+                              << "session handle reports the last operation was successful. "
+                              << "Failed to "
+                              << failureHint);
+        }
+
+        return result;
+    }
+
+    // Helper function which converts the error code on the LDAP session handle into a Status.
+    // Will acquire any diagnostic message which may have been set on the LDAP session handle.
     Status resultCodeToStatus(StringData functionName, StringData failureHint) {
         typename S::ErrorCodeType error;
         typename S::ErrorCodeType errorWhileGettingError =
@@ -78,6 +99,8 @@ public:
         return resultCodeToStatus(error, functionName, failureHint);
     }
 
+    // Helper function which converts an LDAP error code into a Status.
+    // Will acquire any diagnostic message which may have been set on the LDAP session handle.
     Status resultCodeToStatus(typename S::ErrorCodeType statusCode,
                               StringData functionName,
                               StringData failureHint) {
@@ -170,8 +193,8 @@ public:
         // On error, it returns -1 and sets an error code.
         int entryCount = S::ldap_count_entries(_session, queryResult);
         if (entryCount < 0) {
-            return resultCodeToStatus("ldap_count_entries",
-                                      "getting number of entries returned from LDAP query");
+            return obtainFatalResultCodeAsStatus(
+                "ldap_count_entries", "getting number of entries returned from LDAP query");
         } else if (entryCount == 0) {
             // If we found no results, don't bother trying to process them.
             return queryResults;
@@ -184,7 +207,8 @@ public:
         // results, ldap_next_entry returns NULL.
         typename S::MessageType* entry = S::ldap_first_entry(_session, queryResult);
         if (!entry) {
-            return resultCodeToStatus("ldap_first_entry", "getting LDAP entry from results");
+            return obtainFatalResultCodeAsStatus("ldap_first_entry",
+                                                 "getting LDAP entry from results");
         }
 
         while (entry) {
@@ -194,8 +218,8 @@ public:
             LibraryCharPtr entryDN = S::ldap_get_dn(_session, entry);
             const auto entryDNGuard = MakeGuard([&] { S::ldap_memfree(entryDN); });
             if (!entryDN) {
-                return resultCodeToStatus("ldap_get_dn",
-                                          "getting DN for a result from the LDAP query");
+                return obtainFatalResultCodeAsStatus("ldap_get_dn",
+                                                     "getting DN for a result from the LDAP query");
             }
 
             MONGO_LDAPLOG(3) << "From LDAP query result, got an entry with DN: "
@@ -215,7 +239,7 @@ public:
             typename S::BerElementType* element = nullptr;
             const auto elementGuard = MakeGuard([&] { ber_free(element, 0); });
             LibraryCharPtr attribute = S::ldap_first_attribute(_session, entry, &element);
-            while (attribute) {
+            for (; attribute; attribute = ldap_next_attribute(_session, entry, element)) {
                 // This takes attribute by value, so we can safely set it to ldap_next_attribute
                 // later, and the old ON_BLOCK_EXIT will free the old attribute.
                 const auto attributeGuard = MakeGuard([attribute] { S::ldap_memfree(attribute); });
@@ -231,9 +255,16 @@ public:
                 typename S::BerValueType** values =
                     S::ldap_get_values_len(_session, entry, attribute);
                 if (values == nullptr) {
-                    return resultCodeToStatus(
+                    Status status = resultCodeToStatus(
                         "ldap_get_values_len",
                         "extracting values for attribute, after successful LDAP query");
+                    if (status.isOK()) {
+                        // libldap can return NULL when encountering an attribute with no values.
+                        // This is not an error, and we should just skip parsing the attribute.
+                        continue;
+                    } else {
+                        return status;
+                    }
                 }
                 const auto valuesGuard = MakeGuard([&] { S::ldap_value_free_len(values); });
 
@@ -246,7 +277,6 @@ public:
 
                 attributeValueMap.emplace(LDAPAttributeKey(S::toNativeString(attribute)),
                                           std::move(valueStore));
-                attribute = ldap_next_attribute(_session, entry, element);
             }
 
             queryResults.emplace(std::piecewise_construct,
