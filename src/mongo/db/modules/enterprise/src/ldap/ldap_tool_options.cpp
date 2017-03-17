@@ -47,6 +47,7 @@ bool handlePreValidationLDAPToolOptions(const moe::Environment& params) {
 
 Status addLDAPToolOptions(moe::OptionSection* options) {
     options->addOptionChaining("help", "help", moe::Switch, "produce help message");
+    options->addOptionChaining("debug", "debug", moe::Switch, "produce more detailed log messages");
     options
         ->addOptionChaining(
             "config", "config,f", moe::String, "configuration file specifying additional options")
@@ -72,6 +73,12 @@ Status storeLDAPToolOptions(const moe::Environment& params, const std::vector<st
     if (params.count("password")) {
         globalLDAPToolOptions->password =
             SecureString(params["password"].as<std::string>().c_str());
+    }
+
+    if (params.count("debug")) {
+        globalLDAPToolOptions->debug = params["debug"].as<bool>();
+    } else {
+        globalLDAPToolOptions->debug = false;
     }
 
     if (params.count("color")) {

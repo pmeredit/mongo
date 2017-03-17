@@ -9,6 +9,7 @@
 #include "mongo/db/auth/role_name.h"
 #include "mongo/db/auth/user_name.h"
 #include "mongo/db/service_context_noop.h"
+#include "mongo/logger/logger.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/util/invariant.h"
 #include "mongo/util/quick_exit.h"
@@ -144,6 +145,10 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
     setupSignalHandlers();
     runGlobalInitializersOrDie(argc, argv, envp);
     startSignalProcessingThread();
+
+    if (globalLDAPToolOptions->debug) {
+        logger::globalLogDomain()->setMinimumLoggedSeverity(logger::LogSeverity::Debug(255));
+    }
 
     std::cout << "Running MongoDB LDAP authorization validation checks..." << std::endl
               << "Version: " << mongo::VersionInfoInterface::instance().version() << std::endl

@@ -23,6 +23,7 @@ namespace moe = mongo::optionenvironment;
 
 struct LDAPToolOptions {
     bool color;
+    bool debug;
     std::string user;
     SecureString password;
 };
