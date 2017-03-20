@@ -8,6 +8,7 @@
 
 #include "openldap_connection.h"
 
+#include <boost/algorithm/string/join.hpp>
 #include <ldap.h>
 #include <sasl/sasl.h>
 
@@ -177,6 +178,86 @@ int openLDAPBindFunction(
         return LDAP_OPERATIONS_ERROR;
     }
 }
+
+// Spec for how to process a request for API version information from ldap_get_option.
+class LDAPOptionAPIInfo {
+public:
+    using Type = LDAPAPIInfo;
+    constexpr static auto Code = LDAP_OPT_API_INFO;
+
+    std::string getVendorName() const {
+        return vendorName;
+    }
+
+    auto getVendorVersion() const {
+        return vendorVersion;
+    }
+
+    std::vector<std::string> getExtensions() const {
+        return extensions;
+    }
+
+    auto getInfoVersion() const {
+        return infoVersion;
+    }
+
+    auto getAPIVersion() const {
+        return apiVersion;
+    }
+
+    auto getProtocolVersion() const {
+        return protocolVersion;
+    }
+
+    static auto makeDefaultInParam() {
+        Type info;
+        info.ldapai_info_version = 1;
+        return info;
+    };
+
+    friend LDAPSessionHolder<OpenLDAPSessionParams>;
+
+private:
+    // LDAP_OPT_API populates a LDAPAPIInfo struct. The caller is responsible for
+    // ldap_memfreeing ldapai_vendor_name, each element in ldapai_extensions, and
+    // ldapai_extensions itself.
+    struct FreeLDAPAPIInfoFunctor {
+        explicit FreeLDAPAPIInfoFunctor() noexcept = default;
+        void operator()(LDAPAPIInfo* info) noexcept {
+            ldap_memfree(info->ldapai_vendor_name);
+
+            std::for_each(LDAPArrayIterator<char*>(info->ldapai_extensions),
+                          LDAPArrayIterator<char*>(),
+                          &ldap_memfree);
+            ldap_memfree(info->ldapai_extensions);
+        }
+    };
+
+    // Takes ownership of all of info's fields.
+    LDAPOptionAPIInfo(std::unique_ptr<LDAPAPIInfo, FreeLDAPAPIInfoFunctor> info) {
+        infoVersion = info->ldapai_info_version;
+        vendorName = OpenLDAPSessionParams::toNativeString(info->ldapai_vendor_name);
+        std::transform(LDAPArrayIterator<char*>(info->ldapai_extensions),
+                       LDAPArrayIterator<char*>(),
+                       std::back_inserter(extensions),
+                       OpenLDAPSessionParams::toNativeString);
+        vendorVersion = info->ldapai_vendor_version;
+        apiVersion = info->ldapai_api_version;
+        protocolVersion = info->ldapai_protocol_version;
+    }
+
+    // Takes ownership of all of info's fields.
+    LDAPOptionAPIInfo(LDAPAPIInfo& info)
+        : LDAPOptionAPIInfo(std::unique_ptr<LDAPAPIInfo, FreeLDAPAPIInfoFunctor>(&info)) {}
+
+    decltype(LDAPAPIInfo::ldapai_info_version) infoVersion;
+    std::string vendorName;
+    decltype(LDAPAPIInfo::ldapai_vendor_version) vendorVersion;
+    std::vector<std::string> extensions;
+    decltype(LDAPAPIInfo::ldapai_api_version) apiVersion;
+    decltype(LDAPAPIInfo::ldapai_protocol_version) protocolVersion;
+};
+
 }  // namespace
 
 class OpenLDAPConnection::OpenLDAPConnectionPIMPL
@@ -247,44 +328,21 @@ Status OpenLDAPConnection::connect() {
 
     // Log LDAP API information
     if (shouldLog(LogstreamBuilder::severityCast(3))) {
-        auto info = stdx::make_unique<LDAPAPIInfo>();
-        info->ldapai_info_version = 1;
-        // LDAP_OPT_API populates a LDAPAPIInfo struct. The caller is responsible for
-        // ldap_memfreeing ldapai_vendor_name, each element in ldapai_extensions, and
-        // ldapai_extensions itself.
-        ret = ldap_get_option(_pimpl->getSession(), LDAP_OPT_API_INFO, info.get());
+        try {
+            LDAPOptionAPIInfo info = _pimpl->getOption<LDAPOptionAPIInfo>(
+                "OpenLDAPConnection::connect", "Getting API info");
 
-        if (ret != LDAP_SUCCESS) {
-            error() << "Attempted to get LDAPAPIInfo. Received error: " << ldap_err2string(ret);
-        } else {
-            const auto vendorNameGuard = MakeGuard([&] { ldap_memfree(info->ldapai_vendor_name); });
-            const auto extensionsGuard = MakeGuard([&] {
-                for (char** it = info->ldapai_extensions; *it != nullptr; ++it) {
-                    ldap_memfree(*it);
-                }
-                ldap_memfree(info->ldapai_extensions);
-            });
-
-            StringBuilder log;
-            log << "LDAPAPIInfo: { "
-                << "ldapai_info_version: " << info->ldapai_info_version << ", "
-                << "ldapai_api_version: " << info->ldapai_api_version << ", "
-                << "ldap_protocol_version: " << info->ldapai_protocol_version << ", "
-                << "ldapai_extensions: [";
-
-            char** it = info->ldapai_extensions;
-            while (*it != nullptr) {
-                log << *it;
-                if (*(++it) == nullptr) {
-                    log << "], ";
-                } else {
-                    log << ", ";
-                }
-            }
-
-            log << "ldapai_vendor_name: " << info->ldapai_vendor_name << ", "
-                << "ldapai_vendor_version: " << info->ldapai_vendor_version << "}";
-            LOG(3) << log.str();
+            LOG(3) << "LDAPAPIInfo: { "
+                   << "ldapai_info_version: " << info.getInfoVersion() << ", "
+                   << "ldapai_api_version: " << info.getAPIVersion() << ", "
+                   << "ldap_protocol_version: " << info.getProtocolVersion() << ", "
+                   << "ldapai_extensions: [" << boost::algorithm::join(info.getExtensions(), ", ")
+                   << "], "
+                   << "ldapai_vendor_name: " << info.getVendorName() << ", "
+                   << "ldapai_vendor_version: " << info.getVendorVersion() << "}";
+        } catch (...) {
+            Status status = exceptionToStatus();
+            error() << "Attempted to get LDAPAPIInfo. Received error: " << status;
         }
     }
 

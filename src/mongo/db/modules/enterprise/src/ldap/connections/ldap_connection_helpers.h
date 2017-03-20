@@ -39,6 +39,54 @@ class StringData;
 // Transform an LDAPQueryScope into the corresponding library specific constant
 int mapScopeToLDAP(const LDAPQueryScope& type);
 
+// Iterator across NULL terminated arrays.
+// Arrays of this format will contain 0 or more pointers to objects of type T, followed by a pointer
+// to NULL.
+//
+template <typename T>
+class LDAPArrayIterator : public std::iterator<std::forward_iterator_tag, const T> {
+public:
+    // Constructs a iterator, beginning at the element in basePtr.
+    // If basePtr is nullptr, produces a past-the-end iterator.
+    // The zero argument constructor of this class returns a past-the-end iterator.
+    explicit LDAPArrayIterator(const T* basePtr = nullptr) noexcept : _basePtr(basePtr) {
+        static_assert(std::is_pointer<T>::value,
+                      "LDAPArrayIterator must traverse an array of pointers");
+    }
+    LDAPArrayIterator& operator++() {
+        this->advance();
+        return *this;
+    }
+    LDAPArrayIterator operator++(int) {
+        const auto ret = *this;
+        this->advance();
+        return ret;
+    }
+    friend bool operator==(const LDAPArrayIterator& lhs, const LDAPArrayIterator& rhs) {
+        return lhs._basePtr == rhs._basePtr;
+    }
+    friend bool operator!=(const LDAPArrayIterator& lhs, const LDAPArrayIterator& rhs) {
+        return !(lhs == rhs);
+    }
+    auto& operator*() const {
+        return *this->_basePtr;
+    }
+    auto* operator-> () const {
+        return this->_basePtr;
+    }
+
+private:
+    void advance() {
+        if (this->_basePtr) {
+            ++this->_basePtr;
+            if (!*this->_basePtr) {
+                this->_basePtr = nullptr;
+            }
+        }
+    }
+    const T* _basePtr;
+};
+
 /**
  * Holds and interacts with a session to an LDAP server, using an RFC 1823 compliant
  * LDAP API. This class must be provided with a template parameter containing the
@@ -57,6 +105,110 @@ public:
     typename S::SessionType*& getSession() {
         return _session;
     }
+
+
+    // Template function for making requests from ldap_get_option.
+    // OptionSpec must have the following constraints:
+    //    type Type: The type returned by ldap_get_option
+    //    static member Code: The value passed to ldap_get_option to acquire a particular option
+    //
+    //    static member makeDefaultInParam: A function which makes the unpopulated Type variable
+    //                                      to be passed into ldap_get_option.
+    //    The constructor must take a single variable of type Type.
+    template <typename OptionSpec>
+    OptionSpec getOption(StringData functionName, StringData failureHint) {
+        typename OptionSpec::Type inParam = OptionSpec::makeDefaultInParam();
+        const typename S::ErrorCodeType errorWhileGettingOption =
+            S::ldap_get_option(_session, OptionSpec::Code, &inParam);
+        if (errorWhileGettingOption != S::LDAP_success) {
+            uasserted(
+                ErrorCodes::UnknownError,
+                str::stream() << "Unable to get error code after LDAP operation <" << functionName
+                              << ">. \"Failed to "
+                              << failureHint
+                              << "\". ("
+                              << errorWhileGettingOption
+                              << "/"
+                              << S::toNativeString(S::ldap_err2string(errorWhileGettingOption))
+                              << ")");
+        }
+
+        return OptionSpec(inParam);
+    }
+
+    // A stateless deleter wrapping ldap_memfree, for use with unique_ptr.
+    template <typename T>
+    struct ldapMemFree {
+        void operator()(T p) const {
+            S::ldap_memfree(p);
+        }
+    };
+    template <typename T>
+    using UniqueMemFreed = std::unique_ptr<typename std::remove_pointer<T>::type, ldapMemFree<T>>;
+
+    // Spec for how to process a request for an error code from ldap_get_option.
+    class LDAPOptionErrorCode {
+    public:
+        using Type = typename S::ErrorCodeType;
+        constexpr static auto Code = S::LDAP_OPT_error_code;
+
+        Type getCode() const {
+            return code;
+        };
+
+        static auto makeDefaultInParam() {
+            return Type{};
+        }
+
+        friend LDAPSessionHolder<S>;
+
+    private:
+        explicit LDAPOptionErrorCode(const Type code) : code(code){};
+
+        Type code;
+    };
+
+    // Spec for how to process a request for an error string from ldap_get_option.
+    class LDAPOptionErrorString {
+    public:
+        using Type = typename S::LibraryCharType*;
+        constexpr static auto Code = S::LDAP_OPT_error_string;
+
+        std::string getErrorString() && {
+            return std::move(_errString);
+        }
+
+        StringData getErrorString() const& {
+            return _errString;
+        }
+
+        static auto makeDefaultInParam() {
+            return nullptr;
+        }
+
+        friend LDAPSessionHolder<S>;
+        friend StringBuilder& operator<<(
+            StringBuilder& stream,
+            const typename LDAPSessionHolder<S>::LDAPOptionErrorString& errString) {
+            return stream << errString._errString;
+        }
+
+    private:
+        // Takes ownership of errString which becomes invalid. Pass lifecycle manager
+        // down to the "real" constructor, before member initialization begins.
+        explicit LDAPOptionErrorString(Type errString)
+            : LDAPOptionErrorString(UniqueMemFreed<Type>(errString)) {}
+
+        explicit LDAPOptionErrorString(const UniqueMemFreed<Type>& errString) {
+            if (errString) {
+                _errString = S::toNativeString(errString.get());
+            } else {
+                _errString = "No error could be retrieved from the LDAP server.";
+            }
+        }
+
+        std::string _errString;
+    };
 
     // Helper function which converts the error code on the LDAP session handle into a Status.
     // If it acquires Status::OK(), it will return a different, non-OK, Status.
@@ -80,23 +232,9 @@ public:
     // Helper function which converts the error code on the LDAP session handle into a Status.
     // Will acquire any diagnostic message which may have been set on the LDAP session handle.
     Status resultCodeToStatus(StringData functionName, StringData failureHint) {
-        typename S::ErrorCodeType error;
-        typename S::ErrorCodeType errorWhileGettingError =
-            S::ldap_get_option(_session, S::LDAP_OPT_error_code, &error);
-        if (errorWhileGettingError != S::LDAP_success) {
-            return Status(
-                ErrorCodes::UnknownError,
-                str::stream() << "Unable to get error code after LDAP operation <" << functionName
-                              << ">. \"Failed to "
-                              << failureHint
-                              << "\". ("
-                              << errorWhileGettingError
-                              << "/"
-                              << S::toNativeString(S::ldap_err2string(errorWhileGettingError))
-                              << ")");
-        }
+        LDAPOptionErrorCode swErrorCode = getOption<LDAPOptionErrorCode>(functionName, failureHint);
 
-        return resultCodeToStatus(error, functionName, failureHint);
+        return resultCodeToStatus(swErrorCode.getCode(), functionName, failureHint);
     }
 
     // Helper function which converts an LDAP error code into a Status.
@@ -108,19 +246,8 @@ public:
             return Status::OK();
         }
 
-        LibraryCharPtr errorString;
-        typename S::ErrorCodeType errorWhileGettingError =
-            S::ldap_get_option(_session, S::LDAP_OPT_error_string, &errorString);
-        if (errorWhileGettingError != S::LDAP_success || !errorString) {
-            return Status(ErrorCodes::UnknownError,
-                          str::stream() << "LDAP Operation <" << functionName << ">, "
-                                        << failureHint
-                                        << "\". ("
-                                        << statusCode
-                                        << "/"
-                                        << S::toNativeString(S::ldap_err2string(statusCode))
-                                        << ")");
-        }
+        LDAPOptionErrorString errorStr =
+            getOption<LDAPOptionErrorString>(functionName, failureHint);
 
         return Status(ErrorCodes::OperationFailed,
                       str::stream() << "LDAP operation <" << functionName << ">, " << failureHint
@@ -129,7 +256,7 @@ public:
                                     << "/"
                                     << S::toNativeString(S::ldap_err2string(statusCode))
                                     << "): "
-                                    << S::toNativeString(errorString));
+                                    << errorStr);
     }
 
     StatusWith<LDAPEntityCollection> query(LDAPQuery query, typename S::TimeoutType* timeout) {
@@ -270,10 +397,12 @@ public:
 
                 LDAPAttributeValues valueStore;
 
-                for (berval** value = values; *value != nullptr; value++) {
-                    LDAPAttributeValue strValue((*value)->bv_val, (*value)->bv_len);
-                    valueStore.emplace_back(std::move(strValue));
-                }
+                std::transform(LDAPArrayIterator<berval*>(values),
+                               LDAPArrayIterator<berval*>(),
+                               std::back_inserter(valueStore),
+                               [](const auto* value) {
+                                   return LDAPAttributeValue(value->bv_val, value->bv_len);
+                               });
 
                 attributeValueMap.emplace(LDAPAttributeKey(S::toNativeString(attribute)),
                                           std::move(valueStore));
@@ -290,8 +419,8 @@ public:
 
 private:
     using LibraryCharPtr = typename S::LibraryCharType*;
+
     typename S::SessionType* _session;
 };
-
 
 }  // namespace mongo
