@@ -9,7 +9,7 @@
 #include "ldap_user_cache_invalidator_job.h"
 
 #include "mongo/base/init.h"
-#include "mongo/db/auth/authorization_manager_global.h"
+#include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/client.h"
 #include "mongo/db/server_parameters.h"
 #include "mongo/stdx/condition_variable.h"
@@ -72,7 +72,7 @@ void LDAPUserCacheInvalidator::run() {
             invalidationIntervalChanged.wait_until(lock, wakeupTime.toSystemTimePoint());
         } while (wakeupTime > Date_t::now());
         log() << "Invalidating user cache entries of external users";
-        getGlobalAuthorizationManager()->invalidateUsersFromDB("$external");
+        AuthorizationManager::get(cc().getServiceContext())->invalidateUsersFromDB("$external");
     }
 }
 

@@ -90,7 +90,6 @@ env.Library('audit',
             LIBDEPS=[
                 '$BUILD_DIR/mongo/base',
                 '$BUILD_DIR/mongo/db/auth/authcore',
-                '$BUILD_DIR/mongo/db/auth/authorization_manager_global',
                 '$BUILD_DIR/mongo/util/net/network',
             ],
             LIBDEPS_DEPENDENTS=[
@@ -119,7 +118,7 @@ env.Library(
         'src/audit/audit_metadata_hook_s.cpp'
     ],
     LIBDEPS=[
-        '$BUILD_DIR/mongo/db/auth/authorization_manager_global',
+        '$BUILD_DIR/mongo/db/auth/authcore',
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/rpc/metadata',
         'audit',
