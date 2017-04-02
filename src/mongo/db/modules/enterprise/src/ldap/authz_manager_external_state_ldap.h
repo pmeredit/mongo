@@ -102,7 +102,7 @@ public:
      */
     void logOp(OperationContext* opCtx,
                const char* op,
-               const char* ns,
+               const NamespaceString& ns,
                const BSONObj& o,
                const BSONObj* o2) final {
         _wrappedExternalState->logOp(opCtx, op, ns, o, o2);
