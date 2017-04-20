@@ -57,5 +57,4 @@ public:
 private:
     const std::string _dbPath;
 };
-
 }
