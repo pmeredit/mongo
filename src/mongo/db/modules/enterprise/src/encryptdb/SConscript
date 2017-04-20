@@ -47,6 +47,7 @@ wtEnv.Library(target='encryptdb',
                    'key_acquisition',
                    'symmetric_crypto',
                    '$BUILD_DIR/mongo/base',
+                   '$BUILD_DIR/mongo/db/storage/encryption_hooks',
                    '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core',
                    '$BUILD_DIR/third_party/shim_wiredtiger',
               ])

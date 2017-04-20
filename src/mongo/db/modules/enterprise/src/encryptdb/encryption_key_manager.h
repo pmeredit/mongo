@@ -11,6 +11,7 @@
 #include "encryption_options.h"
 #include "mongo/base/disallow_copying.h"
 #include "mongo/db/namespace_string.h"
+#include "mongo/db/storage/encryption_hooks.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_customization_hooks.h"
 #include "symmetric_crypto.h"
 #include "symmetric_key.h"
@@ -33,7 +34,7 @@ const std::string kEncryptionEntrypointConfig =
  * The EncryptionKeyManager manages the keys for the encrypted storage engine.
  *
  *
- * Note that WiredTigerCustomizationHooks provides additionalBytesForProtectedBuffer. This function
+ * Note that EncryptionHooks provides additionalBytesForProtectedBuffer. This function
  * returns a constant which defines how many more bytes a ciphertext payload may have than its
  * corresponding cleartext. It is computed by:
  *  max(MaxCBCPadding, MaxGCMPadding) + sizeof(conditional version number)
@@ -42,7 +43,7 @@ const std::string kEncryptionEntrypointConfig =
  *  = max(16 + 16, 12 + 12) + 1
  *  = 32 + 1 = 33
  */
-class EncryptionKeyManager : public WiredTigerCustomizationHooks {
+class EncryptionKeyManager : public EncryptionHooks {
     MONGO_DISALLOW_COPYING(EncryptionKeyManager);
 
 public:
@@ -60,12 +61,6 @@ public:
      * Get the key manager from a service context.
      */
     static EncryptionKeyManager* get(ServiceContext* service);
-
-    /**
-     * Get the WT table encryption config for a specific namespace
-     * or internal WT table on a `Session::create` call.
-     */
-    std::string getTableCreateConfig(StringData ns) override;
 
     /**
      * Indicates that encryption at rest is enabled.
@@ -177,4 +172,30 @@ private:
      */
     SSLParams* _sslParams;
 };
+
+class EncryptionWiredTigerCustomizationHooks : public WiredTigerCustomizationHooks {
+    MONGO_DISALLOW_COPYING(EncryptionWiredTigerCustomizationHooks);
+
+public:
+    /**
+     * Initialize the EncryptionWiredTigerCustomizationHooks. The encryptionParams and SSLParams
+     * must outlive the configuration customizer.
+     */
+    EncryptionWiredTigerCustomizationHooks(EncryptionGlobalParams* encryptionParams);
+
+    ~EncryptionWiredTigerCustomizationHooks() override;
+
+    /**
+     * Get the WT table encryption config for a specific namespace or internal WT table on a
+     * `Session::create` call.
+     */
+    std::string getTableCreateConfig(StringData ns) override;
+
+private:
+    /**
+     * Pointer to the encryption parameters to use. The parameters must outlive the object.
+     */
+    EncryptionGlobalParams* _encryptionParams;
+};
+
 }  // namespace mongo

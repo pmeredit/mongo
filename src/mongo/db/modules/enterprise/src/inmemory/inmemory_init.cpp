@@ -33,6 +33,7 @@
 #include <boost/filesystem/operations.hpp>
 
 #include "inmemory_global_options.h"
+#include "inmemory_options_init.h"
 
 #include "mongo/base/init.h"
 #include "mongo/db/catalog/collection_options.h"
@@ -118,9 +119,17 @@ public:
 
 }  // namespace
 
-MONGO_INITIALIZER_WITH_PREREQUISITES(InMemoryEngineInit, ("SetGlobalEnvironment"))
+// XXX: The customization hook mechanism only supports a single customizer. That is enough
+// for now, since the two enterprise modules that configure customization hooks (encryption
+// and in-memory) are mutually exclusive.
+MONGO_INITIALIZER_WITH_PREREQUISITES(InMemoryEngineInit,
+                                     ("SetGlobalEnvironment", "SetWiredTigerCustomizationHooks"))
 (InitializerContext* context) {
     getGlobalServiceContext()->registerStorageEngine("inMemory", new InMemoryFactory());
+    if (storageGlobalParams.engine == "inMemory") {
+        auto optionManager = stdx::make_unique<InMemoryConfigManager>(storageGlobalParams.dbpath);
+        WiredTigerCustomizationHooks::set(getGlobalServiceContext(), std::move(optionManager));
+    }
     return Status::OK();
 }
 

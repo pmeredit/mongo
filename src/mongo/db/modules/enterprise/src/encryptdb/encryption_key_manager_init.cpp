@@ -18,16 +18,36 @@
 #include "symmetric_crypto_smoke.h"
 
 namespace mongo {
+// XXX: The customization hook mechanism only supports a single customizer. That is enough
+// for now, since the two enterprise modules that configure customization hooks (encryption
+// and in-memory) are mutually exclusive.
+MONGO_INITIALIZER_WITH_PREREQUISITES(CreateEncryptionWiredTigerCustomizationHooks,
+                                     ("SetWiredTigerCustomizationHooks",
+                                      "SetWiredTigerExtensions",
+                                      "SetGlobalEnvironment",
+                                      "WiredTigerEngineInit"))
+(InitializerContext* context) {
+    // Reset the WiredTigerCustomizationHooks pointer
+    if (encryptionGlobalParams.enableEncryption) {
+        auto configHooks =
+            stdx::make_unique<EncryptionWiredTigerCustomizationHooks>(&encryptionGlobalParams);
+        WiredTigerCustomizationHooks::set(getGlobalServiceContext(), std::move(configHooks));
+    }
+
+    return Status::OK();
+}
+
 MONGO_INITIALIZER_WITH_PREREQUISITES(CreateEncryptionKeyManager,
                                      ("CreateKeyEntropySource",
                                       "SecureAllocator",
+                                      "SetEncryptionHooks",
                                       "SetWiredTigerCustomizationHooks",
                                       "SetWiredTigerExtensions",
                                       "SetGlobalEnvironment",
                                       "SSLManager",
                                       "WiredTigerEngineInit"))
 (InitializerContext* context) {
-    // Reset the WiredTigerCustomizationHooks pointer to be the EncryptionKeyManager
+    // Reset the EncryptionHooks pointer to be the EncryptionKeyManager
     if (encryptionGlobalParams.enableEncryption) {
         // Verify that encryption algorithms are functioning
         Status implementationStatus =
@@ -42,7 +62,7 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(CreateEncryptionKeyManager,
 
         auto keyManager = stdx::make_unique<EncryptionKeyManager>(
             storageGlobalParams.dbpath, &encryptionGlobalParams, &sslGlobalParams);
-        WiredTigerCustomizationHooks::set(getGlobalServiceContext(), std::move(keyManager));
+        EncryptionHooks::set(getGlobalServiceContext(), std::move(keyManager));
         WiredTigerExtensions::get(getGlobalServiceContext())
             ->addExtension(mongo::kEncryptionEntrypointConfig);
     }

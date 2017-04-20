@@ -197,11 +197,13 @@ int destroyEncryptor(WT_ENCRYPTOR* encryptor, WT_SESSION* session) {
             // Destroy the SymmetricKey object
             if (myEncryptor->symmetricKey) {
                 if (myEncryptor->symmetricKey->getKeyId() == kSystemKeyId) {
-                    // Overwrite the EncryptionKeyManager on the global service context to enforce
-                    // its destruction and clear the master key.
+                    // Overwrite the EncryptionKeyManager and WiredTigerCustomizationHooks on the
+                    // global service context to enforce their destruction and clear the master key.
+                    EncryptionHooks::set(getGlobalServiceContext(),
+                                         stdx::make_unique<EncryptionHooks>());
                     WiredTigerCustomizationHooks::set(
                         getGlobalServiceContext(),
-                        stdx::make_unique<EmptyWiredTigerCustomizationHooks>());
+                        stdx::make_unique<WiredTigerCustomizationHooks>());
                 }
                 delete myEncryptor->symmetricKey;
             }

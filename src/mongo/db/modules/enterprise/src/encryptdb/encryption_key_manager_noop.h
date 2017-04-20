@@ -6,7 +6,6 @@
 
 #include "encryption_key_manager.h"
 #include "mongo/base/status.h"
-#include "mongo/db/storage/wiredtiger/wiredtiger_customization_hooks.h"
 #include "mongo/stdx/memory.h"
 #include "symmetric_key.h"
 

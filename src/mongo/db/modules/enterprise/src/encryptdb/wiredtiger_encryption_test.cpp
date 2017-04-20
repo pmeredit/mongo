@@ -27,11 +27,14 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(CreateEncryptionKeyManager,
                                      ("CreateKeyEntropySource",
                                       "SecureAllocator",
                                       "SetWiredTigerCustomizationHooks",
+                                      "SetEncryptionHooks",
                                       "SetGlobalEnvironment"))
 (InitializerContext* context) {
-    // Reset the WiredTigerCustomizationHooks pointer to be the EncryptionKeyManager
+    // Setup the custom hooks required to enable encryption
+    auto configHooks = stdx::make_unique<WiredTigerCustomizationHooks>();
+    WiredTigerCustomizationHooks::set(getGlobalServiceContext(), std::move(configHooks));
     auto keyManager = stdx::make_unique<EncryptionKeyManagerNoop>();
-    WiredTigerCustomizationHooks::set(getGlobalServiceContext(), std::move(keyManager));
+    EncryptionHooks::set(getGlobalServiceContext(), std::move(keyManager));
     encryptionGlobalParams.enableEncryption = true;
 
     return Status::OK();

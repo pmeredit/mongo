@@ -26,6 +26,7 @@
  *    it in the license file.
  */
 
+#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
 #include "mongo/platform/basic.h"
 
 #include "mongo/util/options_parser/startup_option_init.h"
@@ -33,8 +34,11 @@
 #include <iostream>
 
 #include "inmemory_global_options.h"
+#include "inmemory_options_init.h"
 
+#include "mongo/db/storage/data_protector.h"
 #include "mongo/util/exit_code.h"
+#include "mongo/util/log.h"
 #include "mongo/util/options_parser/startup_options.h"
 
 namespace mongo {
@@ -55,5 +59,31 @@ MONGO_STARTUP_OPTIONS_STORE(InMemoryOptions)(InitializerContext* context) {
         ::_exit(EXIT_BADOPTIONS);
     }
     return Status::OK();
+}
+
+InMemoryConfigManager::InMemoryConfigManager(const std::string& dbPath) : _dbPath(dbPath) {}
+
+InMemoryConfigManager::~InMemoryConfigManager() {}
+
+// Add a special configuration option for MongoDB metadata tables, so the
+// in-memory storage engine doesn't need to handle WT_CACHE_FULL error returns
+// from those tables.
+std::string InMemoryConfigManager::getTableCreateConfig(StringData tableName) {
+    std::string config;
+
+    // Internal metadata WT tables such as sizeStorer and _mdb_catalog are identified by not
+    // having a '.' separated name that distinguishes a "normal namespace during collection
+    // or index creation.
+    std::size_t dotIndex = tableName.find(".");
+    if (dotIndex == std::string::npos && tableName != StringData("system")) {
+        LOG(2) << "Adding custom table create config for: " << tableName;
+        config += "ignore_in_memory_cache_size=true,";
+    }
+
+    return config;
+}
+
+bool InMemoryConfigManager::enabled() const {
+    return true;
 }
 }

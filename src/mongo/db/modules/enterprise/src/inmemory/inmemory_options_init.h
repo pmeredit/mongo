@@ -1,5 +1,5 @@
 /**
- *    Copyright (C) 2016 MongoDB Inc.
+ *    Copyright (C) 2017 MongoDB Inc.
  *
  *    This program is free software: you can redistribute it and/or  modify
  *    it under the terms of the GNU Affero General Public License, version 3,
@@ -26,44 +26,36 @@
  *    it in the license file.
  */
 
-#include "encryption_key_manager.h"
+#pragma once
 
-#include "mongo/db/commands/server_status.h"
-#include "mongo/db/operation_context.h"
+#include "mongo/base/disallow_copying.h"
+#include "mongo/db/storage/wiredtiger/wiredtiger_customization_hooks.h"
+#include "mongo/util/options_parser/startup_option_init.h"
+#include "mongo/util/options_parser/startup_options.h"
 
 namespace mongo {
 
 /**
- * Server status section for the EncryptionKeyManager.
- *
- * Sample format:
- *
- * encryptionAtRest: {
- *       encryptionEnabled: bool,
- *       encryptionKeyId: int,
- *       encryptionCipherMode: string
- * }
+ * The InMemoryConfigManager manages configuration options particular to the
+ * in-memory storage engine.
  */
-class EncryptionServerStatusSection : public ServerStatusSection {
-public:
-    EncryptionServerStatusSection() : ServerStatusSection("encryptionAtRest") {}
-    bool includeByDefault() const {
-        return true;
-    }
+class InMemoryConfigManager : public WiredTigerCustomizationHooks {
+    MONGO_DISALLOW_COPYING(InMemoryConfigManager);
 
-    BSONObj generateSection(OperationContext* opCtx, const BSONElement& configElement) const {
-        BSONObjBuilder result;
-        EncryptionHooks* hooks =
-            dynamic_cast<EncryptionKeyManager*>(EncryptionHooks::get(opCtx->getServiceContext()));
-        if (!hooks || !hooks->enabled()) {
-            result.append("encryptionEnabled", false);
-        } else {
-            EncryptionKeyManager* mgr = EncryptionKeyManager::get(opCtx->getServiceContext());
-            result.append("encryptionEnabled", true);
-            result.append("encryptionKeyId", mgr->getMasterKeyId());
-            result.append("encryptionCipherMode", mgr->getCipherMode());
-        }
-        return result.obj();
-    }
-} encryptionServerStatusSection;
-}  // namespace mongo
+public:
+    /**
+     * Initializes the InMemoryConfigManager.
+     */
+    InMemoryConfigManager(const std::string& dbPath);
+
+    ~InMemoryConfigManager() override;
+
+    bool enabled() const override;
+
+    std::string getTableCreateConfig(StringData tableName) override;
+
+private:
+    const std::string _dbPath;
+};
+
+}

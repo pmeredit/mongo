@@ -23,6 +23,7 @@
 #include "mongo/db/dbdirectclient.h"
 #include "mongo/db/dbhelpers.h"
 #include "mongo/db/service_context.h"
+#include "mongo/db/storage/encryption_hooks.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_customization_hooks.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
@@ -139,8 +140,9 @@ EncryptionKeyManager::~EncryptionKeyManager() {
 }
 
 EncryptionKeyManager* EncryptionKeyManager::get(ServiceContext* service) {
+    // TODO: Does this need to change now that there are different hooks implemented?
     EncryptionKeyManager* globalKeyManager =
-        checked_cast<EncryptionKeyManager*>(WiredTigerCustomizationHooks::get(service));
+        checked_cast<EncryptionKeyManager*>(EncryptionHooks::get(service));
     fassert(4036, globalKeyManager != nullptr);
     return globalKeyManager;
 }
@@ -175,25 +177,6 @@ bool EncryptionKeyManager::restartRequired() {
     }
 
     return false;
-}
-
-std::string EncryptionKeyManager::getTableCreateConfig(StringData ns) {
-    // Internal metadata WT tables such as sizeStorer and _mdb_catalog are identified by not having
-    // a '.' separated name that distinguishes a "normal namespace during collection or index
-    // creation.
-    //
-    // Canonicalize the tables names into a conflict free set of "database ids" by prefixing special
-    // WT table names with '.' and use ".system" for the internal WT tables.
-    std::size_t dotIndex = ns.find(".");
-    std::string keyId;
-    if (dotIndex == std::string::npos) {
-        keyId = kSystemKeyId;
-    } else {
-        keyId = ns.substr(0, dotIndex).toString();
-    }
-
-    return "encryption=(name=" + _encryptionParams->encryptionCipherMode + ",keyid=\"" + keyId +
-        "\"),";
 }
 
 Status EncryptionKeyManager::protectTmpData(
@@ -576,4 +559,28 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) {
     return Status::OK();
 }
 
+EncryptionWiredTigerCustomizationHooks::EncryptionWiredTigerCustomizationHooks(
+    EncryptionGlobalParams* encryptionParams)
+    : _encryptionParams(encryptionParams) {}
+
+EncryptionWiredTigerCustomizationHooks::~EncryptionWiredTigerCustomizationHooks() {}
+
+std::string EncryptionWiredTigerCustomizationHooks::getTableCreateConfig(StringData ns) {
+    // Internal metadata WT tables such as sizeStorer and _mdb_catalog are identified by not having
+    // a '.' separated name that distinguishes a "normal namespace during collection or index
+    // creation.
+    //
+    // Canonicalize the tables names into a conflict free set of "database ids" by prefixing special
+    // WT table names with '.' and use ".system" for the internal WT tables.
+    std::size_t dotIndex = ns.find(".");
+    std::string keyId;
+    if (dotIndex == std::string::npos) {
+        keyId = kSystemKeyId;
+    } else {
+        keyId = ns.substr(0, dotIndex).toString();
+    }
+
+    return "encryption=(name=" + _encryptionParams->encryptionCipherMode + ",keyid=\"" + keyId +
+        "\"),";
+}
 }  // namespace mongo
