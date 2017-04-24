@@ -104,7 +104,28 @@ public:
 
     Status validateMetadata(const StorageEngineMetadata& metadata,
                             const StorageGlobalParams& params) const override {
-        return metadata.validateStorageEngineOption("directoryPerDB", params.directoryperdb);
+        Status status =
+            metadata.validateStorageEngineOption("directoryPerDB", params.directoryperdb);
+        if (!status.isOK()) {
+            return status;
+        }
+
+        status = metadata.validateStorageEngineOption("directoryForIndexes",
+                                                      wiredTigerGlobalOptions.directoryForIndexes);
+        if (!status.isOK()) {
+            return status;
+        }
+
+        const bool kDefaultGroupCollections = false;
+        status =
+            metadata.validateStorageEngineOption("groupCollections",
+                                                 params.groupCollections,
+                                                 boost::optional<bool>(kDefaultGroupCollections));
+        if (!status.isOK()) {
+            return status;
+        }
+
+        return Status::OK();
     }
 
     BSONObj createMetadataOptions(const StorageGlobalParams& params) const override {
