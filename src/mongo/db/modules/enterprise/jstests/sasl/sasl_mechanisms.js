@@ -3,7 +3,6 @@
 (function() {
     var m = MongoRunner.runMongod({
         auth: "",
-        nohttpinterface: "",
         bind_ip: "127.0.0.1",
         useHostname: false,
         setParameter: "authenticationMechanisms=PLAIN,SCRAM-SHA-1,CRAM-MD5"
