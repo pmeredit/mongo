@@ -8,8 +8,6 @@
 
 #include "authz_manager_external_state_ldap.h"
 
-#include <pcrecpp.h>
-
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
 #include "mongo/base/status_with.h"
@@ -30,10 +28,6 @@
 #include "ldap_options.h"
 
 namespace mongo {
-
-namespace {
-const pcrecpp::RE userRegex("\\{USER\\}");
-}  // namespace
 
 AuthzManagerExternalStateLDAP::AuthzManagerExternalStateLDAP(
     std::unique_ptr<AuthzManagerExternalStateLocal> wrappedExternalState)
