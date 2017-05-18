@@ -28,7 +28,7 @@ wtEnv.Library(target='encryption_key_manager_aux',
                 'encryption_server_status.cpp',
             ],
             LIBDEPS=[
-                '$BUILD_DIR/mongo/db/commands/core',
+                '$BUILD_DIR/mongo/db/commands/server_status',
                 'encryptdb',
                 'symmetric_crypto'
             ],
