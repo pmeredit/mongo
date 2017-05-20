@@ -92,7 +92,7 @@ static void _logAuthzCheck(Client* client,
 void logCommandAuthzCheck(Client* client,
                           const std::string& dbname,
                           const BSONObj& cmdObj,
-                          Command* command,
+                          CommandInterface* command,
                           ErrorCodes::Error result) {
     if (!_shouldLogAuthzCheck(result))
         return;
