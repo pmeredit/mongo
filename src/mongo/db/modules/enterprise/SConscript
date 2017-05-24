@@ -176,26 +176,27 @@ env.Library('audit_configuration',
             PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongod',
                                  '$BUILD_DIR/mongo/mongos'])
 
-env.Library('mongosnmp',
-            ['src/snmp/serverstatus_client.cpp',
-             'src/snmp/snmp.cpp',
-             'src/snmp/snmp_oid.cpp',
-             'src/snmp/snmp_options.cpp'
-             ],
-            LIBDEPS=[
-                '$BUILD_DIR/mongo/base',
-                '$BUILD_DIR/mongo/client/clientdriver',
-                '$BUILD_DIR/mongo/db/bson/dotted_path_support',
-                '$BUILD_DIR/mongo/db/dbdirectclient',
-                '$BUILD_DIR/mongo/db/initialize_snmp',
-                '$BUILD_DIR/mongo/db/repl/repl_coordinator_global',
-                '$BUILD_DIR/mongo/db/repl/repl_settings',
-                '$BUILD_DIR/mongo/db/storage/mmap_v1/storage_mmapv1',
-                '$BUILD_DIR/mongo/util/processinfo',
-            ],
-            PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongod'],
-            SYSLIBDEPS=env.get('SNMP_SYSLIBDEPS', []),
-)
+if not env.TargetOSIs("darwin"):
+    env.Library('mongosnmp',
+                ['src/snmp/serverstatus_client.cpp',
+                 'src/snmp/snmp.cpp',
+                 'src/snmp/snmp_oid.cpp',
+                 'src/snmp/snmp_options.cpp'
+                 ],
+                LIBDEPS=[
+                    '$BUILD_DIR/mongo/base',
+                    '$BUILD_DIR/mongo/client/clientdriver',
+                    '$BUILD_DIR/mongo/db/bson/dotted_path_support',
+                    '$BUILD_DIR/mongo/db/dbdirectclient',
+                    '$BUILD_DIR/mongo/db/initialize_snmp',
+                    '$BUILD_DIR/mongo/db/repl/repl_coordinator_global',
+                    '$BUILD_DIR/mongo/db/repl/repl_settings',
+                    '$BUILD_DIR/mongo/db/storage/mmap_v1/storage_mmapv1',
+                    '$BUILD_DIR/mongo/util/processinfo',
+                ],
+                PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongod'],
+                SYSLIBDEPS=env.get('SNMP_SYSLIBDEPS', []),
+    )
 
 env.Library('mongosaslserversession',
             ['src/sasl/auxprop_mongodb_internal.cpp',

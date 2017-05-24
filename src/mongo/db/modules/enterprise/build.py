@@ -15,12 +15,13 @@ def configure(conf, env):
 
     env['MONGO_BUILD_SASL_CLIENT'] = True
 
-    if not conf.CheckCXXHeader("net-snmp/net-snmp-config.h"):
-        env.ConfError("Could not find <net-snmp/net-snmp-config.h>, required for "
-                      "enterprise build.")
+    if not env.TargetOSIs('darwin'):
+        if not conf.CheckCXXHeader("net-snmp/net-snmp-config.h"):
+            env.ConfError("Could not find <net-snmp/net-snmp-config.h>, required for "
+                          "enterprise build.")
 
     snmpFlags = None
-    if not env.TargetOSIs("windows"):
+    if not env.TargetOSIs("windows", "darwin"):
         try:
             snmpFlags = env.ParseFlags("!net-snmp-config --agent-libs")
         except OSError, ose:
@@ -43,7 +44,7 @@ def configure(conf, env):
             if env.TargetOSIs("windows"):
                 env['SNMP_SYSLIBDEPS'] = ['netsnmp','netsnmpagent','netsnmpmibs']
                 env.Append(CPPDEFINES=["NETSNMP_NO_INLINE"])
-            else:
+            elif not env.TargetOSIs("darwin"):
                 env['SNMP_SYSLIBDEPS'] = snmpFlags['LIBS']
                 env.Append(LIBPATH=snmpFlags['LIBPATH'])
                 env.Append(CPPDEFINES=["NETSNMP_NO_INLINE"])
@@ -60,16 +61,19 @@ def configure(conf, env):
         env.Append(MODULE_BANNERS=[
             distsrc.File('THIRD-PARTY-NOTICES.windows'),
         ])
-    env.Append(ARCHIVE_ADDITIONS=[
+
+    if not env.TargetOSIs("darwin"):
+        env.Append(ARCHIVE_ADDITIONS=[
             docs.File('MONGOD-MIB.txt'),
             docs.File('MONGODBINC-MIB.txt'),
             docs.File('mongod.conf.master'),
             docs.File('mongod.conf.subagent'),
             docs.File('README-snmp.txt')
-            ])
-    env.Append(ARCHIVE_ADDITION_DIR_MAP={
+        ])
+        env.Append(ARCHIVE_ADDITION_DIR_MAP={
             str(env.Dir(root).Dir('docs')): "snmp"
-            })
+        })
+
     env.Append(DIST_BINARIES=[
         "enterprise/mongodecrypt",
         "enterprise/mongoldap"])
