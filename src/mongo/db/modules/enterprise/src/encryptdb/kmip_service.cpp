@@ -18,6 +18,7 @@
 #include "mongo/base/data_type_endian.h"
 #include "mongo/base/init.h"
 #include "mongo/base/status_with.h"
+#include "mongo/stdx/memory.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/util/log.h"
 #include "mongo/util/net/ssl_manager.h"
@@ -28,16 +29,28 @@
 namespace mongo {
 namespace kmip {
 
-KMIPService::KMIPService(const HostAndPort& server, const SSLParams& sslKMIPParams)
-    : _server(server), _socket(10, logger::LogSeverity::Log()) {
+StatusWith<KMIPService> KMIPService::createKMIPService(const HostAndPort& server,
+                                                       const SSLParams& sslKMIPParams) {
     try {
-        _sslManager = SSLManagerInterface::create(sslKMIPParams, false);
-        Status status = _initServerConnection();
-        _isValid = status.isOK();
-    } catch (DBException& e) {
-        _isValid = false;
+        std::unique_ptr<SSLManagerInterface> sslManager =
+            SSLManagerInterface::create(sslKMIPParams, false);
+        KMIPService kmipService(server, sslKMIPParams, std::move(sslManager));
+        Status status = kmipService._initServerConnection();
+        if (!status.isOK()) {
+            return status;
+        }
+        return std::move(kmipService);
+    } catch (const DBException& e) {
+        return e.toStatus();
     }
 }
+
+KMIPService::KMIPService(const HostAndPort& server,
+                         const SSLParams& sslKMIPParams,
+                         std::unique_ptr<SSLManagerInterface> sslManager)
+    : _sslManager(std::move(sslManager)),
+      _server(server),
+      _socket(stdx::make_unique<Socket>(10, logger::LogSeverity::Log())) {}
 
 StatusWith<std::string> KMIPService::createExternalKey() {
     StatusWith<KMIPResponse> swResponse = _sendRequest(_generateKMIPCreateRequest());
@@ -93,12 +106,12 @@ Status KMIPService::_initServerConnection() {
                       str::stream() << "KMIP server address " << _server.host() << " is invalid.");
     }
 
-    if (!_socket.connect(server)) {
+    if (!_socket->connect(server)) {
         return Status(ErrorCodes::BadValue,
                       str::stream() << "Could not connect to KMIP server " << server.toString());
     }
 
-    if (!_socket.secure(_sslManager.get(), _server.host())) {
+    if (!_socket->secure(_sslManager.get(), _server.host())) {
         return Status(ErrorCodes::BadValue,
                       str::stream() << "Failed to perform SSL handshake with the KMIP server "
                                     << _server.toString());
@@ -111,14 +124,14 @@ Status KMIPService::_initServerConnection() {
 StatusWith<KMIPResponse> KMIPService::_sendRequest(const std::vector<uint8_t>& request) {
     char resp[2000];
 
-    _socket.send(reinterpret_cast<const char*>(request.data()), request.size(), "KMIP request");
+    _socket->send(reinterpret_cast<const char*>(request.data()), request.size(), "KMIP request");
     /**
      *  Read response header on the form:
      *  data[0:2] - tag identifier
      *  data[3]   - tag type
      *  data[4:7] - big endian encoded message body length
      */
-    _socket.recv(resp, 8);
+    _socket->recv(resp, 8);
     if (memcmp(resp, kmip::responseMessageTag, 3) != 0 ||
         resp[3] != static_cast<char>(ItemType::structure)) {
         return Status(ErrorCodes::FailedToParse,
@@ -134,7 +147,7 @@ StatusWith<KMIPResponse> KMIPService::_sendRequest(const std::vector<uint8_t>& r
 
     uint32_t bodyLength = static_cast<uint32_t>(swBodyLength.getValue());
     massert(4044, "KMIP server response is too long", bodyLength <= sizeof(resp) - 8);
-    _socket.recv(&resp[8], bodyLength);
+    _socket->recv(&resp[8], bodyLength);
 
     StatusWith<KMIPResponse> swKMIPResponse = KMIPResponse::create(resp, bodyLength + 8);
     secureZeroMemory(resp, bodyLength + 8);

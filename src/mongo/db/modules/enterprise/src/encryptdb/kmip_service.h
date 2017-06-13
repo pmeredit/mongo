@@ -7,15 +7,14 @@
 #include <vector>
 
 #include "kmip_consts.h"
+#include "mongo/base/status_with.h"
 #include "mongo/util/net/hostandport.h"
 #include "mongo/util/net/sock.h"
 
 namespace mongo {
-template <typename T>
-class StatusWith;
+
 class SSLManager;
 struct SSLParams;
-class Status;
 class SymmetricKey;
 
 namespace kmip {
@@ -26,7 +25,14 @@ class KMIPResponse;
  */
 class KMIPService {
 public:
-    KMIPService(const HostAndPort& server, const SSLParams& sslKMIPParams);
+    KMIPService(KMIPService&&) = default;
+    KMIPService& operator=(KMIPService&&) = default;
+
+    KMIPService(const KMIPService&) = delete;
+    KMIPService& operator=(const KMIPService&) = delete;
+
+    static StatusWith<KMIPService> createKMIPService(const HostAndPort& server,
+                                                     const SSLParams& sslKMIPParams);
 
     /**
      * Communicates with the KMIP server that a key should be
@@ -39,14 +45,11 @@ public:
      */
     StatusWith<std::unique_ptr<SymmetricKey>> getExternalKey(const std::string& uid);
 
-    /**
-     * Returns true if the underlying socket was set up correctly
-     */
-    bool isValid() {
-        return _isValid;
-    }
-
 private:
+    KMIPService(const HostAndPort& server,
+                const SSLParams& sslKMIPParams,
+                std::unique_ptr<SSLManagerInterface> sslManager);
+
     /**
      * Initialize a connection to the KMIP server
      */
@@ -63,8 +66,7 @@ private:
 
     std::unique_ptr<SSLManagerInterface> _sslManager;
     HostAndPort _server;
-    Socket _socket;
-    bool _isValid;
+    std::unique_ptr<Socket> _socket;
 };
 
 }  // namespace kmip
