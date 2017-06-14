@@ -135,7 +135,6 @@ env.Library(
     ],
     source=[
         'src/audit/audit_metadata.cpp',
-        'src/audit/impersonate_helpers_d.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/auth/authcore',
