@@ -52,7 +52,7 @@ void logSetParameter(Client* client, const std::map<std::string, BSONElement>& p
     SetParameterEvent event(makeEnvelope(client, ActionType::setParameter, ErrorCodes::OK),
                             parametersToSet);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
 }  // namespace audit

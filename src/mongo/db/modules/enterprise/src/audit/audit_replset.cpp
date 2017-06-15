@@ -63,7 +63,7 @@ void logReplSetReconfig(Client* client, const BSONObj* oldConfig, const BSONObj*
     ReplSetReconfigEvent event(
         makeEnvelope(client, ActionType::replSetReconfig, ErrorCodes::OK), oldConfig, newConfig);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
 }

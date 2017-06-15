@@ -159,9 +159,9 @@ void SaslConversation::testWrongClientMechanism() {
                          mechanism != "CRAM-MD5" ? "CRAM-MD5" : "PLAIN");
     client->setParameter(SaslClientSession::parameterUser, "andy");
     client->setParameter(SaslClientSession::parameterPassword, "frim");
-    client->initialize();
+    client->initialize().transitional_ignore();
 
-    server->start("test", mechanism, mockServiceName, mockHostName, 1, true);
+    server->start("test", mechanism, mockServiceName, mockHostName, 1, true).transitional_ignore();
 
     assertConversationFailure();
 }
@@ -174,12 +174,14 @@ void SaslConversation::testWrongServerMechanism() {
     client->setParameter(SaslClientSession::parameterPassword, "frim");
     ASSERT_OK(client->initialize());
 
-    server->start("test",
-                  mechanism != "CRAM-MD5" ? "CRAM-MD5" : "PLAIN",
-                  mockServiceName,
-                  mockHostName,
-                  1,
-                  true);
+    server
+        ->start("test",
+                mechanism != "CRAM-MD5" ? "CRAM-MD5" : "PLAIN",
+                mockServiceName,
+                mockHostName,
+                1,
+                true)
+        .transitional_ignore();
     assertConversationFailure();
 }
 

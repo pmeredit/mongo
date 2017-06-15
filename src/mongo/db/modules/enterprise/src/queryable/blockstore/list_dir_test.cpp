@@ -53,7 +53,7 @@ public:
 
         BSONObj obj = objBuilder.obj();
         DataBuilder copy(obj.objsize());
-        copy.write(ConstDataRange(obj.objdata(), obj.objsize()));
+        copy.write(ConstDataRange(obj.objdata(), obj.objsize())).transitional_ignore();
 
         return {std::move(copy)};
     }

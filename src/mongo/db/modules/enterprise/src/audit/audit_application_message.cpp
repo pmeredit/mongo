@@ -49,8 +49,8 @@ void logApplicationMessage(Client* client, StringData msg) {
     ApplicationMessageEvent event(
         makeEnvelope(client, ActionType::applicationMessage, ErrorCodes::OK), msg);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
-}
-}
+}  // namespace audit
+}  // namespace mongo

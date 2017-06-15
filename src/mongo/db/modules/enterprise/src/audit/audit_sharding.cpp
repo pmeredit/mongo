@@ -49,7 +49,7 @@ void logEnableSharding(Client* client, StringData dbname) {
     EnableShardingEvent event(makeEnvelope(client, ActionType::enableSharding, ErrorCodes::OK),
                               dbname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
 
@@ -97,7 +97,7 @@ void logAddShard(Client* client, StringData name, const std::string& servers, lo
     AddShardEvent event(
         makeEnvelope(client, ActionType::addShard, ErrorCodes::OK), name, servers, maxSize);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
 
@@ -132,7 +132,7 @@ void logRemoveShard(Client* client, StringData shardname) {
     RemoveShardEvent event(makeEnvelope(client, ActionType::removeShard, ErrorCodes::OK),
                            shardname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
 
@@ -178,8 +178,8 @@ void logShardCollection(Client* client, StringData ns, const BSONObj& keyPattern
     ShardCollectionEvent event(
         makeEnvelope(client, ActionType::shardCollection, ErrorCodes::OK), ns, keyPattern, unique);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
-}
-}
+}  // namespace audit
+}  // namespace mongo

@@ -104,7 +104,7 @@ void logCreateUser(Client* client,
                           customData,
                           roles);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
 
@@ -139,7 +139,7 @@ void logDropUser(Client* client, const UserName& username) {
 
     DropUserEvent event(makeEnvelope(client, ActionType::dropUser, ErrorCodes::OK), username);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
 
@@ -174,7 +174,7 @@ void logDropAllUsersFromDatabase(Client* client, StringData dbname) {
     DropAllUsersFromDatabaseEvent event(
         makeEnvelope(client, ActionType::dropAllUsersFromDatabase, ErrorCodes::OK), dbname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
 
@@ -264,8 +264,8 @@ void logUpdateUser(Client* client,
                           customData,
                           roles);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
-}
-}
+}  // namespace audit
+}  // namespace mongo

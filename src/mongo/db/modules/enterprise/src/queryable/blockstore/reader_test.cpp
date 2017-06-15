@@ -33,7 +33,7 @@ public:
             data[idx] = bytePosition % 256;
         }
 
-        buf.write(ConstDataRange(data.c_str(), data.length()));
+        buf.write(ConstDataRange(data.c_str(), data.length())).transitional_ignore();
 
         return count;
     }

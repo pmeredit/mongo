@@ -35,7 +35,7 @@ public:
             data[idx] = bytePosition % 256;
         }
 
-        buf.write(ConstDataRange(data.c_str(), data.length()));
+        buf.write(ConstDataRange(data.c_str(), data.length())).transitional_ignore();
 
         return count;
     }
@@ -176,7 +176,8 @@ TEST_F(BlockstoreExtentManagerTest, DataFileEnsureRangeWithAllocLimits) {
     ASSERT_EQ(2U, allocState.getNumPagesAllocated());
     ASSERT_EQ(kAllocLimitBytes, allocState.getMemoryAllocated());
     // Ensuring one byte not in the previous range should throw a `WriteConflictException`.
-    ASSERT_THROWS(dataFile.ensureRange(kAllocLimitBytes, 1), WriteConflictException);
+    ASSERT_THROWS(dataFile.ensureRange(kAllocLimitBytes, 1).transitional_ignore(),
+                  WriteConflictException);
 
     // Releasing the 0th page (0->4K by default) leaves the 1st page (4K->8K) allocated. Frees
     // two blocks (4K worth of data).
@@ -192,7 +193,7 @@ TEST_F(BlockstoreExtentManagerTest, DataFileEnsureRangeWithAllocLimits) {
     ASSERT_EQ(2U * kBlockSize, allocState.getMemoryAllocated());
 
     // Fail to allocate the entire first page again.
-    ASSERT_THROWS(dataFile.ensureRange(0, kPageSize), WriteConflictException);
+    ASSERT_THROWS(dataFile.ensureRange(0, kPageSize).transitional_ignore(), WriteConflictException);
     // Despite failing, the first block should have succeeded along with allocating the 0th page.
     ASSERT_EQ(2U, allocState.getNumPagesAllocated());
     ASSERT_TRUE(dataFile.getMappedBlocks()[0]);

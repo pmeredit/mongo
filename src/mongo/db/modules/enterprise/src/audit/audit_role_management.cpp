@@ -78,7 +78,7 @@ void logGrantRolesToUser(Client* client,
     GrantRolesToUserEvent event(
         makeEnvelope(client, ActionType::grantRolesToUser, ErrorCodes::OK), username, roles);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
 
@@ -140,7 +140,7 @@ void logRevokeRolesFromUser(Client* client,
     RevokeRolesFromUserEvent event(
         makeEnvelope(client, ActionType::revokeRolesFromUser, ErrorCodes::OK), username, roles);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
 
@@ -228,7 +228,7 @@ void logCreateRole(Client* client,
     CreateRoleEvent event(
         makeEnvelope(client, ActionType::createRole, ErrorCodes::OK), role, roles, privileges);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
 
@@ -330,7 +330,7 @@ void logUpdateRole(Client* client,
     UpdateRoleEvent event(
         makeEnvelope(client, ActionType::updateRole, ErrorCodes::OK), role, roles, privileges);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
 
@@ -366,7 +366,7 @@ void logDropRole(Client* client, const RoleName& role) {
 
     DropRoleEvent event(makeEnvelope(client, ActionType::dropRole, ErrorCodes::OK), role);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
 
@@ -401,7 +401,7 @@ void logDropAllRolesFromDatabase(Client* client, StringData dbname) {
     DropAllRolesFromDatabaseEvent event(
         makeEnvelope(client, ActionType::dropAllRolesFromDatabase, ErrorCodes::OK), dbname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
 
@@ -460,7 +460,7 @@ void logGrantRolesToRole(Client* client, const RoleName& role, const std::vector
     GrantRolesToRoleEvent event(
         makeEnvelope(client, ActionType::grantRolesToRole, ErrorCodes::OK), role, roles);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
 
@@ -521,7 +521,7 @@ void logRevokeRolesFromRole(Client* client,
     RevokeRolesFromRoleEvent event(
         makeEnvelope(client, ActionType::revokeRolesFromRole, ErrorCodes::OK), role, roles);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
 
@@ -587,7 +587,7 @@ void logGrantPrivilegesToRole(Client* client,
     GrantPrivilegesToRoleEvent event(
         makeEnvelope(client, ActionType::grantPrivilegesToRole, ErrorCodes::OK), role, privileges);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
 
@@ -655,8 +655,8 @@ void logRevokePrivilegesFromRole(Client* client,
         role,
         privileges);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
-}
-}
+}  // namespace audit
+}  // namespace mongo

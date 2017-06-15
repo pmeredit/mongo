@@ -85,7 +85,7 @@ static void _logAuthzCheck(Client* client,
     AuthzCheckEvent event(makeEnvelope(client, ActionType::authCheck, result), ns, &cmdObj);
 
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
 

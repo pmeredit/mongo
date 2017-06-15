@@ -44,8 +44,8 @@ void logShutdown(Client* client) {
 
     ShutdownEvent event(makeEnvelope(client, ActionType::shutdown, ErrorCodes::OK));
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
-}
-}
+}  // namespace audit
+}  // namespace mongo

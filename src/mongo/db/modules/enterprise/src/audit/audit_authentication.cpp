@@ -67,7 +67,7 @@ void logAuthentication(Client* client,
     AuthenticationEvent event(
         makeEnvelope(client, ActionType::authenticate, result), mechanism, user);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
 

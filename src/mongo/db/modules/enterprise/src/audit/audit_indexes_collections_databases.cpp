@@ -61,7 +61,7 @@ void logCreateIndex(Client* client,
                            indexname,
                            nsname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
 
@@ -100,7 +100,7 @@ void logCreateCollection(Client* client, StringData nsname) {
     CreateCollectionEvent event(makeEnvelope(client, ActionType::createCollection, ErrorCodes::OK),
                                 nsname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
 
@@ -135,7 +135,7 @@ void logCreateDatabase(Client* client, StringData dbname) {
     CreateDatabaseEvent event(makeEnvelope(client, ActionType::createDatabase, ErrorCodes::OK),
                               dbname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
 
@@ -172,7 +172,7 @@ void logDropIndex(Client* client, StringData indexname, StringData nsname) {
     DropIndexEvent event(
         makeEnvelope(client, ActionType::dropIndex, ErrorCodes::OK), indexname, nsname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
 
@@ -207,7 +207,7 @@ void logDropCollection(Client* client, StringData nsname) {
     DropCollectionEvent event(makeEnvelope(client, ActionType::dropCollection, ErrorCodes::OK),
                               nsname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
 
@@ -241,7 +241,7 @@ void logDropDatabase(Client* client, StringData dbname) {
 
     DropDatabaseEvent event(makeEnvelope(client, ActionType::dropDatabase, ErrorCodes::OK), dbname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
 
@@ -278,8 +278,8 @@ void logRenameCollection(Client* client, StringData source, StringData target) {
     RenameCollectionEvent event(
         makeEnvelope(client, ActionType::renameCollection, ErrorCodes::OK), source, target);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event);
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
-}
-}
+}  // namespace audit
+}  // namespace mongo
