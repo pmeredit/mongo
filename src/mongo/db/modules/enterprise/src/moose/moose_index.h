@@ -1,0 +1,175 @@
+/**
+ * Copyright (C) 2017 MongoDB Inc.
+ */
+
+#pragma once
+
+#include <set>
+
+#include "mongo/db/catalog/index_catalog_entry.h"
+#include "mongo/db/storage/index_entry_comparison.h"
+#include "mongo/db/storage/key_string.h"
+#include "mongo/db/storage/sorted_data_interface.h"
+#include "mongo/platform/basic.h"
+
+#include "moose_sqlite_statement.h"
+
+#pragma once
+
+namespace mongo {
+
+class MooseIndex : public SortedDataInterface {
+public:
+    MooseIndex(OperationContext* opCtx, const IndexDescriptor* desc, const std::string& ident);
+
+    MooseIndex(bool isUnique, const Ordering& ordering, const std::string& ident);
+
+    virtual ~MooseIndex() {}
+
+    Status insert(OperationContext* opCtx,
+                  const BSONObj& key,
+                  const RecordId& recId,
+                  bool dupsAllowed) override;
+
+    void unindex(OperationContext* opCtx,
+                 const BSONObj& key,
+                 const RecordId& recId,
+                 bool dupsAllowed) override;
+
+    void fullValidate(OperationContext* opCtx,
+                      long long* numKeysOut,
+                      ValidateResults* fullResults) const override;
+
+    bool appendCustomStats(OperationContext* opCtx,
+                           BSONObjBuilder* output,
+                           double scale) const override;
+
+    long long getSpaceUsedBytes(OperationContext* opCtx) const override;
+
+    long long numEntries(OperationContext* opCtx) const override;
+
+    bool isEmpty(OperationContext* opCtx) override;
+
+    Status initAsEmpty(OperationContext* opCtx) override;
+
+    Status dupKeyCheck(OperationContext* opCtx, const BSONObj& key, const RecordId& recId) override;
+
+    // Beginning of MooseIndex-specific methods
+
+    /**
+     * Creates a SQLite table suitable for a new Moose index.
+     */
+    static Status create(OperationContext* opCtx, const std::string& ident);
+
+    /**
+     * Performs the insert into the table with the given key and value.
+     */
+    template <typename ValueType>
+    Status doInsert(OperationContext* opCtx,
+                    const KeyString& key,
+                    const ValueType& value,
+                    bool isTransactional = true);
+
+    Ordering getOrdering() const {
+        return _ordering;
+    }
+
+    KeyString::Version getKeyStringVersion() const {
+        return _keyStringVersion;
+    }
+
+    bool isUnique() {
+        return _isUnique;
+    }
+
+    std::string getIdent() const {
+        return _ident;
+    }
+
+protected:
+    bool _isDup(OperationContext* opCtx, const BSONObj& key, RecordId recId);
+
+    Status _dupKeyError(const BSONObj& key);
+
+    /**
+     * Checks if key size is too long.
+     */
+    static Status _checkKeySize(const BSONObj& key);
+
+    /**
+     * Performs the deletion from the table matching the given key.
+     */
+    void _doDelete(OperationContext* opCtx, const KeyString& key, KeyString* value = nullptr);
+
+    virtual Status _insert(OperationContext* opCtx,
+                           const BSONObj& key,
+                           const RecordId& recId,
+                           bool dupsAllowed) = 0;
+
+    virtual void _unindex(OperationContext* opCtx,
+                          const BSONObj& key,
+                          const RecordId& recId,
+                          bool dupsAllowed) = 0;
+
+    class BulkBuilderBase;
+    class BulkBuilderStandard;
+    class BulkBuilderUnique;
+
+    const bool _isUnique;
+    const Ordering _ordering;
+    const KeyString::Version _keyStringVersion = KeyString::kLatestVersion;
+    const std::string _ident;
+};
+
+class MooseIndexStandard final : public MooseIndex {
+public:
+    MooseIndexStandard(OperationContext* opCtx,
+                       const IndexDescriptor* desc,
+                       const std::string& ident);
+
+    MooseIndexStandard(const Ordering& ordering, const std::string& ident);
+
+    SortedDataBuilderInterface* getBulkBuilder(OperationContext* opCtx, bool dupsAllowed) override;
+
+    std::unique_ptr<SortedDataInterface::Cursor> newCursor(OperationContext* opCtx,
+                                                           bool isForward) const override;
+
+protected:
+    Status _insert(OperationContext* opCtx,
+                   const BSONObj& key,
+                   const RecordId& recId,
+                   bool dupsAllowed) override;
+
+    void _unindex(OperationContext* opCtx,
+                  const BSONObj& key,
+                  const RecordId& recId,
+                  bool dupsAllowed) override;
+};
+
+class MooseIndexUnique final : public MooseIndex {
+public:
+    MooseIndexUnique(OperationContext* opCtx,
+                     const IndexDescriptor* desc,
+                     const std::string& ident);
+
+    MooseIndexUnique(const Ordering& ordering, const std::string& ident);
+
+    SortedDataBuilderInterface* getBulkBuilder(OperationContext* opCtx, bool dupsAllowed) override;
+
+    std::unique_ptr<SortedDataInterface::Cursor> newCursor(OperationContext* opCtx,
+                                                           bool isForward) const override;
+
+protected:
+    Status _insert(OperationContext* opCtx,
+                   const BSONObj& key,
+                   const RecordId& recId,
+                   bool dupsAllowed) override;
+
+    void _unindex(OperationContext* opCtx,
+                  const BSONObj& key,
+                  const RecordId& recId,
+                  bool dupsAllowed) override;
+
+    const bool _isPartial = false;
+};
+}  // namespace mongo

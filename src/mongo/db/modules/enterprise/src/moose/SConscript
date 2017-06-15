@@ -1,0 +1,80 @@
+Import("env")
+
+env = env.Clone()
+
+env.Library(
+    target='storage_moose_core',
+    source=[
+        'moose_index.cpp',
+        'moose_kv_engine.cpp',
+        'moose_record_store.cpp',
+        'moose_recovery_unit.cpp',
+        'moose_session.cpp',
+        'moose_session_pool.cpp',
+        'moose_sqlite_statement.cpp',
+        'moose_util.cpp',
+        ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/catalog/collection_options',
+        '$BUILD_DIR/mongo/db/concurrency/lock_manager',
+        '$BUILD_DIR/mongo/db/concurrency/write_conflict_exception',
+        '$BUILD_DIR/mongo/db/index/index_descriptor',
+        '$BUILD_DIR/mongo/db/namespace_string',
+        '$BUILD_DIR/mongo/db/repl/repl_coordinator_global',
+        '$BUILD_DIR/mongo/db/storage/index_entry_comparison',
+        '$BUILD_DIR/mongo/db/storage/journal_listener',
+        '$BUILD_DIR/mongo/db/storage/key_string',
+        '$BUILD_DIR/mongo/db/storage/kv/kv_prefix',
+        '$BUILD_DIR/mongo/db/storage/oplog_hack',
+        '../third_party/sqlite/sqlite'
+        ]
+    )
+
+env.Library(
+    target='storage_moose',
+    source=[
+        'moose_init.cpp',
+        ],
+    LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/db/serveronly'],
+    LIBDEPS=[
+        'storage_moose_core',
+        '$BUILD_DIR/mongo/db/storage/kv/kv_engine'
+        ]   
+    )  
+'''
+env.CppUnitTest(
+    target='storage_moose_index_test',
+    source=[
+        'moose_index_test.cpp'
+    ],
+    LIBDEPS=[
+        'storage_moose_core',
+        '$BUILD_DIR/mongo/db/storage/sorted_data_interface_test_harness'
+        ]
+    )
+'''
+
+env.CppUnitTest(
+    target='storage_moose_record_store_test',
+    source=[
+        'moose_record_store_test.cpp'
+    ],
+    LIBDEPS=[
+        'storage_moose_core',
+        '$BUILD_DIR/mongo/db/storage/record_store_test_harness',
+        '$BUILD_DIR/mongo/db/concurrency/write_conflict_exception',
+    ]
+)
+
+env.CppUnitTest(
+    target='storage_moose_kv_engine_test',
+    source=[
+        'moose_kv_engine_test.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/db/storage/kv/kv_engine_test_harness',
+        '$BUILD_DIR/mongo/db/storage/storage_options',
+        'storage_moose_core',
+    ]
+)

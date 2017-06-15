@@ -62,8 +62,10 @@ env.SConscript(
         'src/encryptdb',
         'src/inmemory',
         'src/ldap',
+        'src/moose',
         'src/rlp',
         'src/queryable',
+        'src/third_party/sqlite',
         'src/watchdog',
     ],
     exports=[
