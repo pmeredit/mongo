@@ -55,6 +55,8 @@ Status InMemoryGlobalOptions::add(moe::OptionSection* options) {
                            moe::Int,
                            "seconds to wait between each write to a statistics file in the dbpath; "
                            "0 means do not log statistics")
+        // FTDC supercedes inMemory's statistics logging.
+        .hidden()
         .validRange(0, 100000)
         .setDefault(moe::Value(0));
     inMemoryOptions
