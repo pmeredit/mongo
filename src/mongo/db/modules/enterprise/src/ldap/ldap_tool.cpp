@@ -164,6 +164,29 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
 
 
     report.openSection("Connecting to LDAP server");
+    // produce warning if either:
+    // 1) connection to LDAP server is not using TLS and the bind method is simple OR
+    // 2) connection to LDAP server is not using TLS and the bind method is SASL PLAIN
+    report.checkAssert(ResultsAssertion(
+        [] {
+            return !((globalLDAPParams->transportSecurity != LDAPTransportSecurityType::kTLS) &&
+                     (globalLDAPParams->bindMethod == LDAPBindType::kSimple));
+        },
+        "Attempted to bind to LDAP server without TLS with a plaintext password.",
+        {"Sending a password over a network in plaintext is insecure.",
+         "To fix this issue, enable TLS or switch to a different LDAP bind mechanism."},
+        false));
+    report.checkAssert(ResultsAssertion(
+        [] {
+            return !(((globalLDAPParams->transportSecurity != LDAPTransportSecurityType::kTLS) &&
+                      globalLDAPParams->bindMethod == LDAPBindType::kSasl) &&
+                     (globalLDAPParams->bindSASLMechanisms.find("PLAIN") != std::string::npos));
+        },
+        "Attempted to bind to LDAP server without TLS using SASL PLAIN.",
+        {"Sending a password over a network in plaintext is insecure.",
+         "To fix this issue, remove the PLAIN mechanism from SASL bind mechanisms, or enable TLS."},
+        false));
+
     LDAPBindOptions bindOptions(globalLDAPParams->bindUser,
                                 std::move(globalLDAPParams->bindPassword),
                                 globalLDAPParams->bindMethod,
