@@ -99,7 +99,7 @@ StatusWith<std::unique_ptr<SymmetricKey>> KMIPService::getExternalKey(const std:
 }
 
 Status KMIPService::_initServerConnection() {
-    SockAddr server(_server.host().c_str(), _server.port(), AF_UNSPEC);
+    SockAddr server(_server.host().c_str(), _server.port());
 
     if (!server.isValid()) {
         return Status(ErrorCodes::BadValue,
