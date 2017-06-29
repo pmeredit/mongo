@@ -30,7 +30,7 @@ namespace mongo {
 
 using std::stringstream;
 
-class CmdLogApplicationMessage : public Command {
+class CmdLogApplicationMessage : public ErrmsgCommandDeprecated {
 public:
     CmdLogApplicationMessage();
     virtual ~CmdLogApplicationMessage();
@@ -48,11 +48,11 @@ public:
         return Status::OK();
     }
 
-    virtual bool run(OperationContext* opCtx,
-                     const std::string& db,
-                     const BSONObj& cmdObj,
-                     std::string& errmsg,
-                     BSONObjBuilder& result);
+    virtual bool errmsgRun(OperationContext* opCtx,
+                           const std::string& db,
+                           const BSONObj& cmdObj,
+                           std::string& errmsg,
+                           BSONObjBuilder& result);
 
     virtual void help(stringstream& help) const;
     virtual bool isWriteCommandForConfigServer() const {
@@ -68,18 +68,19 @@ public:
 
 CmdLogApplicationMessage cmdLogApplicationMessage;
 
-CmdLogApplicationMessage::CmdLogApplicationMessage() : Command("logApplicationMessage") {}
+CmdLogApplicationMessage::CmdLogApplicationMessage()
+    : ErrmsgCommandDeprecated("logApplicationMessage") {}
 CmdLogApplicationMessage::~CmdLogApplicationMessage() {}
 
 void CmdLogApplicationMessage::help(std::stringstream& os) const {
     os << "Insert a custom message into the audit log";
 }
 
-bool CmdLogApplicationMessage::run(OperationContext* opCtx,
-                                   const std::string& db,
-                                   const BSONObj& cmdObj,
-                                   std::string& errmsg,
-                                   BSONObjBuilder& result) {
+bool CmdLogApplicationMessage::errmsgRun(OperationContext* opCtx,
+                                         const std::string& db,
+                                         const BSONObj& cmdObj,
+                                         std::string& errmsg,
+                                         BSONObjBuilder& result) {
     Client* client = Client::getCurrent();
 
     if (cmdObj.hasField("logApplicationMessage")) {

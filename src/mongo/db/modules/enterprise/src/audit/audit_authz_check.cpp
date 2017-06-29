@@ -90,17 +90,28 @@ static void _logAuthzCheck(Client* client,
 }
 
 void logCommandAuthzCheck(Client* client,
-                          const std::string& dbname,
-                          const BSONObj& cmdObj,
+                          const OpMsgRequest& cmdObj,
                           CommandInterface* command,
                           ErrorCodes::Error result) {
     if (!_shouldLogAuthzCheck(result))
         return;
 
-    mmb::Document cmdToLog(cmdObj, mmb::Document::kInPlaceDisabled);
+    mmb::Document cmdToLog(cmdObj.body, mmb::Document::kInPlaceDisabled);
+    for (auto&& seq : cmdObj.sequences) {
+        auto array = cmdToLog.makeElementArray(seq.name);
+        for (auto&& obj : seq.objs) {
+            // Names for array elements are ignored.
+            uassertStatusOK(array.appendObject(StringData(), obj));
+        }
+        uassertStatusOK(cmdToLog.root().pushBack(array));
+    }
+
     command->redactForLogging(&cmdToLog);
 
-    _logAuthzCheck(client, NamespaceString(command->parseNs(dbname, cmdObj)), cmdToLog, result);
+    _logAuthzCheck(client,
+                   NamespaceString(command->parseNs(cmdObj.getDatabase().toString(), cmdObj.body)),
+                   cmdToLog,
+                   result);
 }
 
 void logDeleteAuthzCheck(Client* client,
