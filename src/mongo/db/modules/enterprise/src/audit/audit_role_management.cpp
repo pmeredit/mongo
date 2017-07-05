@@ -14,6 +14,7 @@
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_session.h"
+#include "mongo/db/auth/privilege_parser.h"
 #include "mongo/db/auth/user.h"
 #include "mongo/db/client.h"
 #include "mongo/db/namespace_string.h"
