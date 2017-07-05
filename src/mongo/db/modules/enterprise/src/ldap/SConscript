@@ -68,7 +68,7 @@ env.Library(
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/base/secure_allocator',
         '$BUILD_DIR/mongo/util/decorable',
-        '$BUILD_DIR/mongo/util/net/hostandport',
+        '$BUILD_DIR/mongo/util/net/network',
         '$BUILD_DIR/mongo/util/options_parser/options_parser',
         '$BUILD_DIR/third_party/shim_pcrecpp',
     ],
@@ -110,7 +110,7 @@ env.Library(
     LIBDEPS=[
         'ldap_query',
         '$BUILD_DIR/mongo/base',
-        '$BUILD_DIR/mongo/util/net/hostandport',
+        '$BUILD_DIR/mongo/util/net/network',
     ],
     SYSLIBDEPS=env.get("MONGO_LDAP_LIB", [])
 )
