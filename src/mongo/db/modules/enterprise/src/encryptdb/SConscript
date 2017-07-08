@@ -108,6 +108,7 @@ env.Library(
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/auth/security_file',
+        '$BUILD_DIR/mongo/util/options_parser/options_parser',
         'kmip',
     ]
 )
