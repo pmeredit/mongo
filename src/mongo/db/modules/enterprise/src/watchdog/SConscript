@@ -1,0 +1,43 @@
+# -*- mode: python -*-
+
+Import('env')
+
+if not env.TargetOSIs("darwin"):
+    env.Library(
+        target='watchdog',
+        source=[
+            'watchdog.cpp',
+        ],
+        LIBDEPS=[
+            '$BUILD_DIR/mongo/base',
+            '$BUILD_DIR/mongo/db/service_context',
+            '$BUILD_DIR/mongo/db/storage/storage_options',
+        ]
+    )
+
+
+    env.Library(
+        target='watchdog_mongod',
+        source=[
+            'watchdog_mongod.cpp',
+        ],
+        LIBDEPS=[
+            '$BUILD_DIR/mongo/db/commands/server_status',
+            '../../audit',
+            'watchdog',
+         ],
+        PROGDEPS_DEPENDENTS=[
+            '$BUILD_DIR/mongo/mongod',
+        ]
+    )
+
+    env.CppUnitTest(
+        target='watchdog_test',
+        source=[
+            'watchdog_test.cpp',
+        ],
+        LIBDEPS=[
+            '$BUILD_DIR/mongo/util/clock_source_mock',
+            'watchdog',
+        ],
+    )

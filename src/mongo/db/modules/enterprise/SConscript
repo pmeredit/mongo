@@ -64,6 +64,7 @@ env.SConscript(
         'src/ldap',
         'src/rlp',
         'src/queryable',
+        'src/watchdog',
     ],
     exports=[
         'env',
@@ -192,6 +193,7 @@ if not env.TargetOSIs("darwin"):
                     '$BUILD_DIR/mongo/db/repl/repl_settings',
                     '$BUILD_DIR/mongo/db/storage/mmap_v1/storage_mmapv1',
                     '$BUILD_DIR/mongo/util/processinfo',
+                    'src/watchdog/watchdog_mongod',
                 ],
                 PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongod'],
                 SYSLIBDEPS=env.get('SNMP_SYSLIBDEPS', []),

@@ -38,6 +38,7 @@
 #include "mongo/util/time_support.h"
 #include "serverstatus_client.h"
 #include "snmp_options.h"
+#include "../watchdog/watchdog_mongod.h"
 
 namespace mongo {
 
@@ -1028,9 +1029,17 @@ void SNMPAgent::init() {
     snmpAgent.go();
 }
 
+/**
+ * Start enterprise sub-systems that spawn threads.
+ */
+void enterpriseThreadInit() {
+    SNMPAgent::init();
+    startWatchdog();
+}
+
 MONGO_INITIALIZER(InitializeSnmp)(InitializerContext* context) {
     oidManager.init();
-    registerSNMPInitializer(&SNMPAgent::init);
+    registerSNMPInitializer(&enterpriseThreadInit);
     return Status::OK();
 }
 
