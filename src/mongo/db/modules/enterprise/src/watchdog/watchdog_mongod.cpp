@@ -134,6 +134,16 @@ void startWatchdog() {
 
     checks.push_back(std::move(dataCheck));
 
+    // Add a check for the journal if it is not disabled
+    if (storageGlobalParams.dur) {
+        auto journalDirectory = boost::filesystem::path(storageGlobalParams.dbpath);
+        journalDirectory /= "journal";
+
+        auto journalCheck = stdx::make_unique<DirectoryCheck>(journalDirectory);
+
+        checks.push_back(std::move(journalCheck));
+    }
+
     // If the user specified a log path, also monitor that directory.
     // This may be redudant with the dbpath check but there is not easy way to confirm they are
     // duplicate.
