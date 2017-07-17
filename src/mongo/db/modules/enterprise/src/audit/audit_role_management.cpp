@@ -12,6 +12,7 @@
 #include "audit_private.h"
 #include "mongo/base/status.h"
 #include "mongo/db/audit.h"
+#include "mongo/db/auth/address_restriction.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/privilege_parser.h"
@@ -151,17 +152,22 @@ public:
     CreateRoleEvent(const AuditEventEnvelope& envelope,
                     const RoleName& role,
                     const std::vector<RoleName>& roles,
-                    const PrivilegeVector& privileges)
-        : AuditEvent(envelope), _role(role), _roles(roles), _privileges(privileges) {}
-    virtual ~CreateRoleEvent() {}
+                    const PrivilegeVector& privileges,
+                    const boost::optional<BSONArray>& restrictions)
+        : AuditEvent(envelope),
+          _role(role),
+          _roles(roles),
+          _privileges(privileges),
+          _restrictions(restrictions) {}
 
 private:
-    virtual std::ostream& putTextDescription(std::ostream& os) const;
-    virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
+    std::ostream& putTextDescription(std::ostream& os) const final;
+    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final;
 
     const RoleName _role;
     const std::vector<RoleName> _roles;
     const PrivilegeVector _privileges;
+    const boost::optional<BSONArray> _restrictions;
 };
 
 std::ostream& CreateRoleEvent::putTextDescription(std::ostream& os) const {
@@ -190,6 +196,11 @@ std::ostream& CreateRoleEvent::putTextDescription(std::ostream& os) const {
             os << ", " << printable.toString();
         }
     }
+
+    if (_restrictions && !_restrictions->isEmpty()) {
+        os << " and the restrictions " << _restrictions.get();
+    }
+
     os << '.';
     return os;
 }
@@ -216,40 +227,33 @@ BSONObjBuilder& CreateRoleEvent::putParamsBSON(BSONObjBuilder& builder) const {
         privilegeArray.append(printable.toBSON());
     }
     privilegeArray.doneFast();
+    if (_restrictions && !_restrictions->isEmpty()) {
+        builder.append("authenticationRestrictions", _restrictions.get());
+    }
     return builder;
 }
-
-void logCreateRole(Client* client,
-                   const RoleName& role,
-                   const std::vector<RoleName>& roles,
-                   const PrivilegeVector& privileges) {
-    if (!getGlobalAuditManager()->enabled)
-        return;
-
-    CreateRoleEvent event(
-        makeEnvelope(client, ActionType::createRole, ErrorCodes::OK), role, roles, privileges);
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event).transitional_ignore();
-    }
-}
-
 
 class UpdateRoleEvent : public AuditEvent {
 public:
     UpdateRoleEvent(const AuditEventEnvelope& envelope,
                     const RoleName& role,
                     const std::vector<RoleName>* roles,
-                    const PrivilegeVector* privileges)
-        : AuditEvent(envelope), _role(role), _roles(roles), _privileges(privileges) {}
-    virtual ~UpdateRoleEvent() {}
+                    const PrivilegeVector* privileges,
+                    const boost::optional<BSONArray>& restrictions)
+        : AuditEvent(envelope),
+          _role(role),
+          _roles(roles),
+          _privileges(privileges),
+          _restrictions(restrictions) {}
 
 private:
-    virtual std::ostream& putTextDescription(std::ostream& os) const;
-    virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
+    std::ostream& putTextDescription(std::ostream& os) const final;
+    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final;
 
     const RoleName _role;
     const std::vector<RoleName>* _roles;
     const PrivilegeVector* _privileges;
+    const boost::optional<BSONArray> _restrictions;
 };
 
 std::ostream& UpdateRoleEvent::putTextDescription(std::ostream& os) const {
@@ -287,6 +291,11 @@ std::ostream& UpdateRoleEvent::putTextDescription(std::ostream& os) const {
             }
         }
     }
+
+    if (_restrictions && !_restrictions->isEmpty()) {
+        os << " with the restrictions " << _restrictions.get();
+    }
+
     os << '.';
     return os;
 }
@@ -318,23 +327,13 @@ BSONObjBuilder& UpdateRoleEvent::putParamsBSON(BSONObjBuilder& builder) const {
         }
         privilegeArray.doneFast();
     }
+
+    if (_restrictions && !_restrictions->isEmpty()) {
+        builder.append("authenticationRestrictions", _restrictions.get());
+    }
+
     return builder;
 }
-
-void logUpdateRole(Client* client,
-                   const RoleName& role,
-                   const std::vector<RoleName>* roles,
-                   const PrivilegeVector* privileges) {
-    if (!getGlobalAuditManager()->enabled)
-        return;
-
-    UpdateRoleEvent event(
-        makeEnvelope(client, ActionType::updateRole, ErrorCodes::OK), role, roles, privileges);
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event).transitional_ignore();
-    }
-}
-
 
 class DropRoleEvent : public AuditEvent {
 public:
@@ -661,3 +660,39 @@ void logRevokePrivilegesFromRole(Client* client,
 }
 }  // namespace audit
 }  // namespace mongo
+
+void mongo::audit::logCreateRole(Client* client,
+                                 const RoleName& role,
+                                 const std::vector<RoleName>& roles,
+                                 const PrivilegeVector& privileges,
+                                 const boost::optional<BSONArray>& restrictions) {
+    if (!getGlobalAuditManager()->enabled)
+        return;
+
+    CreateRoleEvent event(makeEnvelope(client, ActionType::createRole, ErrorCodes::OK),
+                          role,
+                          roles,
+                          privileges,
+                          restrictions);
+    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
+    }
+}
+
+void mongo::audit::logUpdateRole(Client* client,
+                                 const RoleName& role,
+                                 const std::vector<RoleName>* roles,
+                                 const PrivilegeVector* privileges,
+                                 const boost::optional<BSONArray>& restrictions) {
+    if (!getGlobalAuditManager()->enabled)
+        return;
+
+    UpdateRoleEvent event(makeEnvelope(client, ActionType::updateRole, ErrorCodes::OK),
+                          role,
+                          roles,
+                          privileges,
+                          restrictions);
+    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
+    }
+}

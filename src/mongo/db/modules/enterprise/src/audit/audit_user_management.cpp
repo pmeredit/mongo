@@ -12,6 +12,7 @@
 #include "audit_private.h"
 #include "mongo/base/status.h"
 #include "mongo/db/audit.h"
+#include "mongo/db/auth/address_restriction.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/client.h"
@@ -26,22 +27,24 @@ public:
                     const UserName& username,
                     bool password,
                     const BSONObj* customData,
-                    const std::vector<RoleName>& roles)
+                    const std::vector<RoleName>& roles,
+                    const boost::optional<BSONArray>& restrictions)
         : AuditEvent(envelope),
           _username(username),
           _password(password),
           _customData(customData),
-          _roles(roles) {}
-    virtual ~CreateUserEvent() {}
+          _roles(roles),
+          _restrictions(restrictions) {}
 
 private:
-    virtual std::ostream& putTextDescription(std::ostream& os) const;
-    virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
+    std::ostream& putTextDescription(std::ostream& os) const final;
+    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final;
 
     const UserName _username;
     bool _password;
     const BSONObj* _customData;
     const std::vector<RoleName> _roles;
+    const boost::optional<BSONArray> _restrictions;
 };
 
 std::ostream& CreateUserEvent::putTextDescription(std::ostream& os) const {
@@ -67,6 +70,11 @@ std::ostream& CreateUserEvent::putTextDescription(std::ostream& os) const {
             os << ", " << *role;
         }
     }
+
+    if (_restrictions && !_restrictions->isEmpty()) {
+        os << " with the restrictions " << _restrictions.get();
+    }
+
     os << '.';
     return os;
 }
@@ -78,6 +86,7 @@ BSONObjBuilder& CreateUserEvent::putParamsBSON(BSONObjBuilder& builder) const {
     if (_customData) {
         builder.append("customData", *_customData);
     }
+
     BSONArrayBuilder roleArray(builder.subarrayStart("roles"));
     for (std::vector<RoleName>::const_iterator role = _roles.begin(); role != _roles.end();
          role++) {
@@ -87,27 +96,12 @@ BSONObjBuilder& CreateUserEvent::putParamsBSON(BSONObjBuilder& builder) const {
                               << role->getDB()));
     }
     roleArray.done();
+
+    if (_restrictions && !_restrictions->isEmpty()) {
+        builder.append("authenticationRestrictions", _restrictions.get());
+    }
     return builder;
 }
-
-void logCreateUser(Client* client,
-                   const UserName& username,
-                   bool password,
-                   const BSONObj* customData,
-                   const std::vector<RoleName>& roles) {
-    if (!getGlobalAuditManager()->enabled)
-        return;
-
-    CreateUserEvent event(makeEnvelope(client, ActionType::createUser, ErrorCodes::OK),
-                          username,
-                          password,
-                          customData,
-                          roles);
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event).transitional_ignore();
-    }
-}
-
 
 class DropUserEvent : public AuditEvent {
 public:
@@ -185,22 +179,24 @@ public:
                     const UserName& username,
                     bool password,
                     const BSONObj* customData,
-                    const std::vector<RoleName>* roles)
+                    const std::vector<RoleName>* roles,
+                    const boost::optional<BSONArray>& restrictions)
         : AuditEvent(envelope),
           _username(username),
           _password(password),
           _customData(customData),
-          _roles(roles) {}
-    virtual ~UpdateUserEvent() {}
+          _roles(roles),
+          _restrictions(restrictions) {}
 
 private:
-    virtual std::ostream& putTextDescription(std::ostream& os) const;
-    virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
+    std::ostream& putTextDescription(std::ostream& os) const final;
+    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final;
 
     const UserName _username;
     bool _password;
     const BSONObj* _customData;
     const std::vector<RoleName>* _roles;
+    const boost::optional<BSONArray> _restrictions;
 };
 
 std::ostream& UpdateUserEvent::putTextDescription(std::ostream& os) const {
@@ -223,6 +219,11 @@ std::ostream& UpdateUserEvent::putTextDescription(std::ostream& os) const {
             }
         }
     }
+
+    if (_restrictions && !_restrictions->isEmpty()) {
+        os << " with the restrictions " << _restrictions.get();
+    }
+
     os << '.';
 
     return os;
@@ -247,14 +248,41 @@ BSONObjBuilder& UpdateUserEvent::putParamsBSON(BSONObjBuilder& builder) const {
         }
         roleArray.done();
     }
+    if (_restrictions && !_restrictions->isEmpty()) {
+        builder.append("authenticationRestrictions", _restrictions.get());
+    }
     return builder;
 }
 
-void logUpdateUser(Client* client,
-                   const UserName& username,
-                   bool password,
-                   const BSONObj* customData,
-                   const std::vector<RoleName>* roles) {
+}  // namespace audit
+}  // namespace mongo
+
+void mongo::audit::logCreateUser(Client* client,
+                                 const UserName& username,
+                                 bool password,
+                                 const BSONObj* customData,
+                                 const std::vector<RoleName>& roles,
+                                 const boost::optional<BSONArray>& restrictions) {
+    if (!getGlobalAuditManager()->enabled)
+        return;
+
+    CreateUserEvent event(makeEnvelope(client, ActionType::createUser, ErrorCodes::OK),
+                          username,
+                          password,
+                          customData,
+                          roles,
+                          restrictions);
+    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+        getGlobalAuditLogDomain()->append(event).transitional_ignore();
+    }
+}
+
+void mongo::audit::logUpdateUser(Client* client,
+                                 const UserName& username,
+                                 bool password,
+                                 const BSONObj* customData,
+                                 const std::vector<RoleName>* roles,
+                                 const boost::optional<BSONArray>& restrictions) {
     if (!getGlobalAuditManager()->enabled)
         return;
 
@@ -262,10 +290,9 @@ void logUpdateUser(Client* client,
                           username,
                           password,
                           customData,
-                          roles);
+                          roles,
+                          restrictions);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         getGlobalAuditLogDomain()->append(event).transitional_ignore();
     }
 }
-}  // namespace audit
-}  // namespace mongo
