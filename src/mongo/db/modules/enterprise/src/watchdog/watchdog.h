@@ -41,6 +41,8 @@ void watchdogTerminate();
  */
 class WatchdogCheck {
 public:
+    virtual ~WatchdogCheck() = default;
+
     /**
      * Runs a health check against the local machine.
      *
@@ -86,6 +88,7 @@ private:
 class WatchdogPeriodicThread {
 public:
     WatchdogPeriodicThread(Milliseconds period, StringData threadName);
+    virtual ~WatchdogPeriodicThread() = default;
 
     /**
      * Starts the periodic thread.
