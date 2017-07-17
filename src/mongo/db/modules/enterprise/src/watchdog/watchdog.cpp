@@ -240,7 +240,7 @@ void WatchdogMonitor::setPeriod(Milliseconds duration) {
             dassert(duration >= Milliseconds(1));
 
             // Make sure that we monitor runs more frequently then checks
-            // 5 feels like an arbitrary good minimum.
+            // 2 feels like an arbitrary good minimum.
             invariant(duration >= 2 * _checkPeriod);
 
             _watchdogCheckThread.setPeriod(_checkPeriod);

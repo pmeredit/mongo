@@ -371,11 +371,12 @@ DEATH_TEST(WatchdogMonitorTest, Death, "") {
     std::vector<std::unique_ptr<WatchdogCheck>> checks;
     checks.push_back(std::move(sleepyCheck));
 
-    WatchdogMonitor monitor(std::move(checks), Milliseconds(1), Milliseconds(5), watchdogTerminate);
+    WatchdogMonitor monitor(
+        std::move(checks), Milliseconds(1), Milliseconds(50), watchdogTerminate);
 
     monitor.start();
 
-    sleepmillis(50);
+    sleepmillis(1000);
 }
 
 // Positive: Make sure the monitor can be paused and resumed, and it does not trigger death
@@ -392,7 +393,7 @@ TEST(WatchdogMonitorTest, PauseAndResume) {
     std::vector<std::unique_ptr<WatchdogCheck>> checks;
     checks.push_back(std::move(counterCheck));
 
-    WatchdogMonitor monitor(std::move(checks), Milliseconds(1), Milliseconds(5), deathCallback);
+    WatchdogMonitor monitor(std::move(checks), Milliseconds(1), Milliseconds(50), deathCallback);
 
     counterCheckPtr->setSignalOnCount(5);
 
@@ -417,7 +418,8 @@ TEST(WatchdogMonitorTest, PauseAndResume) {
     std::uint32_t baseCounter = counterCheckPtr->getCounter();
     counterCheckPtr->setSignalOnCount(baseCounter + 5);
 
-    monitor.setPeriod(Milliseconds(7));
+    // Restart the monitor with a different interval.
+    monitor.setPeriod(Milliseconds(57));
 
     counterCheckPtr->waitForCount();
 
