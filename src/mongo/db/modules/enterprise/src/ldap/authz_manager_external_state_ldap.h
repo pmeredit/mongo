@@ -4,9 +4,11 @@
 
 #pragma once
 
+#include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authz_manager_external_state.h"
 #include "mongo/db/auth/authz_manager_external_state_local.h"
 #include "mongo/db/auth/authz_session_external_state.h"
+#include "mongo/db/auth/privilege_format.h"
 #include "mongo/util/assert_util.h"
 
 #include "ldap_user_cache_invalidator_job.h"
@@ -64,8 +66,10 @@ public:
     Status getRoleDescription(OperationContext* opCtx,
                               const RoleName& roleName,
                               PrivilegeFormat showPrivileges,
+                              AuthenticationRestrictionsFormat showRestrictions,
                               BSONObj* result) final {
-        return _wrappedExternalState->getRoleDescription(opCtx, roleName, showPrivileges, result);
+        return _wrappedExternalState->getRoleDescription(
+            opCtx, roleName, showPrivileges, showRestrictions, result);
     }
 
     /**
@@ -74,20 +78,23 @@ public:
     Status getRolesDescription(OperationContext* opCtx,
                                const std::vector<RoleName>& roleName,
                                PrivilegeFormat showPrivileges,
+                               AuthenticationRestrictionsFormat showRestrictions,
                                BSONObj* result) final {
-        return _wrappedExternalState->getRolesDescription(opCtx, roleName, showPrivileges, result);
+        return _wrappedExternalState->getRolesDescription(
+            opCtx, roleName, showPrivileges, showRestrictions, result);
     }
 
     /**
      * Passthrough to AuthorizationManagerExternalStateMongod
      */
     Status getRoleDescriptionsForDB(OperationContext* opCtx,
-                                    const std::string dbname,
+                                    const std::string& dbname,
                                     PrivilegeFormat showPrivileges,
+                                    AuthenticationRestrictionsFormat showRestrictions,
                                     bool showBuiltinRoles,
                                     std::vector<BSONObj>* result) final {
         return _wrappedExternalState->getRoleDescriptionsForDB(
-            opCtx, dbname, showPrivileges, showBuiltinRoles, result);
+            opCtx, dbname, showPrivileges, showRestrictions, showBuiltinRoles, result);
     }
 
     /**
