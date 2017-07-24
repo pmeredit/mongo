@@ -17,40 +17,36 @@
 #include "mongo/db/namespace_string.h"
 
 namespace mongo {
+
 namespace audit {
+namespace {
 
 class ApplicationMessageEvent : public AuditEvent {
 public:
     ApplicationMessageEvent(const AuditEventEnvelope& envelope, StringData msg)
         : AuditEvent(envelope), _msg(msg) {}
-    virtual ~ApplicationMessageEvent() {}
 
 private:
-    virtual std::ostream& putTextDescription(std::ostream& os) const;
-    virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
+    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
+        builder.append("msg", _msg);
+        return builder;
+    }
 
     const StringData _msg;
 };
 
-std::ostream& ApplicationMessageEvent::putTextDescription(std::ostream& os) const {
-    os << "Client application message: " << _msg;
-    return os;
-}
+}  // namespace
+}  // namespace audit
 
-BSONObjBuilder& ApplicationMessageEvent::putParamsBSON(BSONObjBuilder& builder) const {
-    builder.append("msg", _msg);
-    return builder;
-}
-
-void logApplicationMessage(Client* client, StringData msg) {
+void audit::logApplicationMessage(Client* client, StringData msg) {
     if (!getGlobalAuditManager()->enabled)
         return;
 
     ApplicationMessageEvent event(
         makeEnvelope(client, ActionType::applicationMessage, ErrorCodes::OK), msg);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event).transitional_ignore();
+        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
     }
 }
-}  // namespace audit
+
 }  // namespace mongo

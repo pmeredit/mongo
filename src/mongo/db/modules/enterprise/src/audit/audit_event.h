@@ -71,13 +71,6 @@ public:
     }
 
     /**
-     * Puts human-readable description of this event into "os".
-     */
-    std::ostream& putText(std::ostream& os) const {
-        return putTextDescription(os);
-    }
-
-    /**
      *  Virtual functions from MatchableDocument
      */
     virtual BSONObj toBSON() const;
@@ -106,7 +99,6 @@ protected:
 
 
 private:
-    virtual std::ostream& putTextDescription(std::ostream& os) const = 0;
     virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const = 0;
 
     /**

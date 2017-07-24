@@ -20,7 +20,9 @@
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
+
 namespace audit {
+namespace {
 
 /**
  * Event representing the result of an authentication activity.
@@ -31,45 +33,35 @@ public:
                         StringData mechanism,
                         const UserName& user)
         : AuditEvent(envelope), _mechanism(mechanism), _user(user) {}
-    virtual ~AuthenticationEvent() {}
 
 private:
-    virtual std::ostream& putTextDescription(std::ostream& os) const;
-    virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
+    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
+        builder.append(AuthorizationManager::USER_NAME_FIELD_NAME, _user.getUser());
+        builder.append(AuthorizationManager::USER_DB_FIELD_NAME, _user.getDB());
+        builder.append("mechanism", _mechanism);
+        return builder;
+    }
 
     StringData _mechanism;
     UserName _user;
 };
 
-std::ostream& AuthenticationEvent::putTextDescription(std::ostream& os) const {
-    if (getResultCode() == ErrorCodes::OK) {
-        os << "Authentication succeeded for ";
-    } else {
-        os << "Authentication failed for ";
-    }
-    return os << _user.getFullName() << " using mechanism " << _mechanism << '.';
-}
+}  // namespace
+}  // namespace audit
 
-BSONObjBuilder& AuthenticationEvent::putParamsBSON(BSONObjBuilder& builder) const {
-    builder.append(AuthorizationManager::USER_NAME_FIELD_NAME, _user.getUser());
-    builder.append(AuthorizationManager::USER_DB_FIELD_NAME, _user.getDB());
-    builder.append("mechanism", _mechanism);
-    return builder;
-}
-
-void logAuthentication(Client* client,
-                       StringData mechanism,
-                       const UserName& user,
-                       ErrorCodes::Error result) {
-    if (!getGlobalAuditManager()->enabled)
+void audit::logAuthentication(Client* client,
+                              StringData mechanism,
+                              const UserName& user,
+                              ErrorCodes::Error result) {
+    if (!getGlobalAuditManager()->enabled) {
         return;
+    }
 
     AuthenticationEvent event(
         makeEnvelope(client, ActionType::authenticate, result), mechanism, user);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event).transitional_ignore();
+        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
     }
 }
 
-}  // namespace audit
 }  // namespace mongo

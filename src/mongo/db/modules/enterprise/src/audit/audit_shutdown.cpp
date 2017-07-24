@@ -17,35 +17,32 @@
 #include "mongo/db/namespace_string.h"
 
 namespace mongo {
+
 namespace audit {
+namespace {
 
 class ShutdownEvent : public AuditEvent {
 public:
     ShutdownEvent(const AuditEventEnvelope& envelope) : AuditEvent(envelope) {}
-    virtual ~ShutdownEvent() {}
 
 private:
-    virtual std::ostream& putTextDescription(std::ostream& os) const;
-    virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
+    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
+        return builder;
+    }
 };
 
-std::ostream& ShutdownEvent::putTextDescription(std::ostream& os) const {
-    os << "Shutdown commenced.";
-    return os;
-}
+}  // namespace
+}  // namespace audit
 
-BSONObjBuilder& ShutdownEvent::putParamsBSON(BSONObjBuilder& builder) const {
-    return builder;
-}
-
-void logShutdown(Client* client) {
-    if (!getGlobalAuditManager()->enabled)
+void audit::logShutdown(Client* client) {
+    if (!getGlobalAuditManager()->enabled) {
         return;
+    }
 
     ShutdownEvent event(makeEnvelope(client, ActionType::shutdown, ErrorCodes::OK));
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event).transitional_ignore();
+        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
     }
 }
-}  // namespace audit
+
 }  // namespace mongo

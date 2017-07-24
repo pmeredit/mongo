@@ -17,7 +17,9 @@
 #include "mongo/db/namespace_string.h"
 
 namespace mongo {
+
 namespace audit {
+namespace {
 
 class ReplSetReconfigEvent : public AuditEvent {
 public:
@@ -25,46 +27,34 @@ public:
                          const BSONObj* oldConfig,
                          const BSONObj* newConfig)
         : AuditEvent(envelope), _oldConfig(oldConfig), _newConfig(newConfig) {}
-    virtual ~ReplSetReconfigEvent() {}
 
 private:
-    virtual std::ostream& putTextDescription(std::ostream& os) const;
-    virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const;
+    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
+        if (_oldConfig) {
+            builder.append("old", *_oldConfig);
+        }
+        verify(_newConfig);
+        builder.append("new", *_newConfig);
+        return builder;
+    }
 
     const BSONObj* _oldConfig;
     const BSONObj* _newConfig;
 };
 
-std::ostream& ReplSetReconfigEvent::putTextDescription(std::ostream& os) const {
-    if (_oldConfig) {
-        os << "Reconfiguring replica set: ";
-    } else {
-        os << "Configuring replica set: ";
-    }
-    verify(_newConfig);
-    os << *_newConfig;
-    os << '.';
-    return os;
-}
+}  // namespace
+}  // namespace audit
 
-BSONObjBuilder& ReplSetReconfigEvent::putParamsBSON(BSONObjBuilder& builder) const {
-    if (_oldConfig) {
-        builder.append("old", *_oldConfig);
-    }
-    verify(_newConfig);
-    builder.append("new", *_newConfig);
-    return builder;
-}
-
-void logReplSetReconfig(Client* client, const BSONObj* oldConfig, const BSONObj* newConfig) {
-    if (!getGlobalAuditManager()->enabled)
+void audit::logReplSetReconfig(Client* client, const BSONObj* oldConfig, const BSONObj* newConfig) {
+    if (!getGlobalAuditManager()->enabled) {
         return;
+    }
 
     ReplSetReconfigEvent event(
         makeEnvelope(client, ActionType::replSetReconfig, ErrorCodes::OK), oldConfig, newConfig);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        getGlobalAuditLogDomain()->append(event).transitional_ignore();
+        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
     }
 }
-}
-}
+
+}  // namespace mongo
