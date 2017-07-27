@@ -16,7 +16,7 @@ MongoRunner.runMongodAuditLogger = function(opts) {
     mongo = MongoRunner.runMongod(opts);
 
     mongo.auditSpooler = function() {
-        var spooler = function(){};
+        var spooler = function() {};
         spooler.auditFile = mongo.fullOptions.auditPath;
         spooler._auditLine = 0;
 
@@ -61,4 +61,3 @@ MongoRunner.runMongodAuditLogger = function(opts) {
 
     return mongo;
 };
-
