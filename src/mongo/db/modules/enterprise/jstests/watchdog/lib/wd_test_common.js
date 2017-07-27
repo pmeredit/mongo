@@ -7,7 +7,7 @@ function testMongoDHang(control, mongod_options) {
 
     // Now start MongoD with it enabled at startup
     //
-    if( mongod_options.hasOwnProperty("dbPath")) {
+    if (mongod_options.hasOwnProperty("dbPath")) {
         mkdir(mongod_options.dbPath);
     }
 
