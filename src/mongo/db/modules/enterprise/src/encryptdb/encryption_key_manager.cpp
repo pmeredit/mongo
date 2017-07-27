@@ -335,7 +335,12 @@ Status EncryptionKeyManager::_openKeystore(const fs::path& path, WT_CONNECTION**
         ",keyid=" + kMasterKeyId + "),";
 
     StringBuilder wtConfig;
-    wtConfig << "create,";
+    // Use compatibility version 2.9 (WT's version on MongoDB 3.4) to avoid any 3.6 -> 3.4 binary
+    // downgrade steps. The benefits of newer versions is faster WT log rotation, with the
+    // trade-off of a data on disk format change that 3.4 binaries are not familiar with. Log
+    // rotations for the keystore database are expected to be exceedingly rare; the benefits would
+    // be minimal.
+    wtConfig << "create,compatibility=(release=2.9),";
     wtConfig << "log=(enabled,file_max=3MB),transaction_sync=(enabled=true,method=fsync),";
     wtConfig << "extensions=[" << kEncryptionEntrypointConfig << "],";
     wtConfig << keystoreConfig;
