@@ -91,7 +91,7 @@ TEST(PeriodicThreadTest, Basic) {
     std::uint32_t lastCounter = testThread.getCounter();
 
     // This is racey but it should only produce false negatives
-    sleepmillis(50);
+    sleepmillis(100);
 
     ASSERT_EQ(lastCounter, testThread.getCounter());
 }
@@ -113,7 +113,7 @@ TEST(PeriodicThreadTest, PauseAndStop) {
     std::uint32_t pauseCounter = testThread.getCounter();
 
     // This is racey but it should only produce false negatives
-    sleepmillis(50);
+    sleepmillis(100);
 
     // We could have had one more run of the loop as we paused - allow for that case
     // but no other runs of the thread.
@@ -125,7 +125,7 @@ TEST(PeriodicThreadTest, PauseAndStop) {
     std::uint32_t stopCounter = testThread.getCounter();
 
     // This is racey but it should only produce false negatives
-    sleepmillis(50);
+    sleepmillis(100);
 
     ASSERT_EQ(stopCounter, testThread.getCounter());
 }
@@ -147,7 +147,7 @@ TEST(PeriodicThreadTest, PauseAndResume) {
     std::uint32_t pauseCounter = testThread.getCounter();
 
     // This is racey but it should only produce false negatives
-    sleepmillis(50);
+    sleepmillis(100);
 
     // We could have had one more run of the loop as we paused - allow for that case
     // but no other runs of the thread.
@@ -234,7 +234,7 @@ TEST(WatchdogCheckThreadTest, Basic) {
     std::uint32_t lastCounter = counterCheckPtr->getCounter();
 
     // This is racey but it should only produce false negatives
-    sleepmillis(50);
+    sleepmillis(100);
 
     ASSERT_EQ(lastCounter, counterCheckPtr->getCounter());
 }
@@ -325,7 +325,7 @@ TEST(WatchdogMonitorThreadTest, SleepyHungCheck) {
 
     WatchdogCheckThread checkThread(std::move(checks), Milliseconds(1));
 
-    WatchdogMonitorThread monitorThread(&checkThread, deathCallback, Milliseconds(5));
+    WatchdogMonitorThread monitorThread(&checkThread, deathCallback, Milliseconds(100));
 
     checkThread.start();
 
@@ -372,7 +372,7 @@ DEATH_TEST(WatchdogMonitorTest, Death, "") {
     checks.push_back(std::move(sleepyCheck));
 
     WatchdogMonitor monitor(
-        std::move(checks), Milliseconds(1), Milliseconds(50), watchdogTerminate);
+        std::move(checks), Milliseconds(1), Milliseconds(100), watchdogTerminate);
 
     monitor.start();
 
@@ -393,7 +393,7 @@ TEST(WatchdogMonitorTest, PauseAndResume) {
     std::vector<std::unique_ptr<WatchdogCheck>> checks;
     checks.push_back(std::move(counterCheck));
 
-    WatchdogMonitor monitor(std::move(checks), Milliseconds(1), Milliseconds(50), deathCallback);
+    WatchdogMonitor monitor(std::move(checks), Milliseconds(1), Milliseconds(100), deathCallback);
 
     counterCheckPtr->setSignalOnCount(5);
 
@@ -408,7 +408,7 @@ TEST(WatchdogMonitorTest, PauseAndResume) {
     std::uint32_t pauseCounter = counterCheckPtr->getCounter();
 
     // This is racey but it should only produce false negatives
-    sleepmillis(50);
+    sleepmillis(100);
 
     // We could have had one more run of the loop as we paused - allow for that case
     // but no other runs of the thread.
@@ -419,7 +419,7 @@ TEST(WatchdogMonitorTest, PauseAndResume) {
     counterCheckPtr->setSignalOnCount(baseCounter + 5);
 
     // Restart the monitor with a different interval.
-    monitor.setPeriod(Milliseconds(57));
+    monitor.setPeriod(Milliseconds(107));
 
     counterCheckPtr->waitForCount();
 
@@ -429,7 +429,7 @@ TEST(WatchdogMonitorTest, PauseAndResume) {
     std::uint32_t lastCounter = counterCheckPtr->getCounter();
 
     // This is racey but it should only produce false negatives
-    sleepmillis(50);
+    sleepmillis(100);
 
     ASSERT_EQ(lastCounter, counterCheckPtr->getCounter());
 }
