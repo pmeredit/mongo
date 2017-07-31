@@ -8,7 +8,8 @@
 
     // Be specific about the mechanism in case the default changes
     var authmech = "SCRAM-SHA-1";
-    var m = MongoRunner.runMongodAuditLogger({setParameter: "authenticationMechanisms=" + authmech});
+    var m =
+        MongoRunner.runMongodAuditLogger({setParameter: "authenticationMechanisms=" + authmech});
     var audit = m.auditSpooler();
     var db = m.getDB("test");
 
