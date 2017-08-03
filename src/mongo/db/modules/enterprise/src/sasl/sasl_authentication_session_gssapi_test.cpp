@@ -25,6 +25,13 @@
 #include "mongo/util/log.h"
 #include "mongo/util/scopeguard.h"
 
+/**
+ * This test may require the hostname contained in mockHostName to canonicalize to
+ * "localhost" or "localhost.localdomain".
+ * If this test fails, ensure that "localhost" is the first hostname for 127.0.0.1
+ * and ::1 in /etc/hosts.
+ */
+
 namespace {
 using namespace mongo;
 
