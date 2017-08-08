@@ -85,9 +85,8 @@ int auxpropLookupMongoDBInternal(void* glob_context,
         // NOTE: since this module is only used for looking up authentication information, the
         // authentication database is also the source database for the user.
         UserName userName(StringData(user, ulen), session->getAuthenticationDatabase());
-        Status status =
-            session->getAuthorizationSession()->getAuthorizationManager().acquireUserForInitialAuth(
-                session->getOpCtxt(), userName, &userObj);
+        Status status = session->getAuthorizationSession()->getAuthorizationManager().acquireUser(
+            session->getOpCtxt(), userName, &userObj);
 
         if (!status.isOK()) {
             sparams->utils->log(sparams->utils->conn,
