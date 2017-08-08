@@ -19,8 +19,6 @@
 #include "mongo/db/commands.h"
 #include "mongo/db/namespace_string.h"
 
-using Document = mongo::mutablebson::Document;
-
 namespace mongo {
 
 namespace audit {
@@ -30,7 +28,7 @@ class AuthzCheckEvent : public AuditEvent {
 public:
     AuthzCheckEvent(const AuditEventEnvelope& envelope,
                     const NamespaceString& ns,
-                    const Document* cmdObj)
+                    const mutablebson::Document* cmdObj)
         : AuditEvent(envelope), _ns(ns), _cmdObj(cmdObj) {}
 
 private:
@@ -45,7 +43,7 @@ private:
     }
 
     NamespaceString _ns;
-    const Document* _cmdObj;
+    const mutablebson::Document* _cmdObj;
 };
 
 /**
@@ -70,7 +68,7 @@ static bool _shouldLogAuthzCheck(ErrorCodes::Error result) {
 
 static void _logAuthzCheck(Client* client,
                            const NamespaceString& ns,
-                           const Document& cmdObj,
+                           const mutablebson::Document& cmdObj,
                            ErrorCodes::Error result) {
     AuthzCheckEvent event(makeEnvelope(client, ActionType::authCheck, result), ns, &cmdObj);
 
@@ -89,7 +87,7 @@ void audit::logCommandAuthzCheck(Client* client,
     if (!_shouldLogAuthzCheck(result))
         return;
 
-    Document cmdToLog(cmdObj.body, Document::kInPlaceDisabled);
+    mutablebson::Document cmdToLog(cmdObj.body, mutablebson::Document::kInPlaceDisabled);
     for (auto&& seq : cmdObj.sequences) {
         auto array = cmdToLog.makeElementArray(seq.name);
         for (auto&& obj : seq.objs) {
@@ -115,7 +113,7 @@ void audit::logDeleteAuthzCheck(Client* client,
         return;
     }
 
-    Document cmdObj;
+    mutablebson::Document cmdObj;
     fassertStatusOK(4054, cmdObj.root().appendString("delete", ns.coll()));
     auto deleteListElt = cmdObj.makeElementArray("deletes");
     auto deleteElt = cmdObj.makeElementObject(StringData());
@@ -133,7 +131,7 @@ void audit::logGetMoreAuthzCheck(Client* client,
         return;
     }
 
-    Document cmdObj;
+    mutablebson::Document cmdObj;
     fassertStatusOK(4058, cmdObj.root().appendString("getMore", ns.coll()));
     fassertStatusOK(4059, cmdObj.root().appendLong("cursorId", cursorId));
     _logAuthzCheck(client, ns, cmdObj, result);
@@ -147,7 +145,7 @@ void audit::logInsertAuthzCheck(Client* client,
         return;
     }
 
-    Document cmdObj;
+    mutablebson::Document cmdObj;
     fassertStatusOK(4060, cmdObj.root().appendString("insert", ns.coll()));
     auto docsListElt = cmdObj.makeElementArray("documents");
     fassertStatusOK(4061, cmdObj.root().pushBack(docsListElt));
@@ -163,7 +161,7 @@ void audit::logKillCursorsAuthzCheck(Client* client,
         return;
     }
 
-    Document cmdObj;
+    mutablebson::Document cmdObj;
     fassertStatusOK(4063, cmdObj.root().appendString("killCursors", ns.coll()));
     fassertStatusOK(4064, cmdObj.root().appendLong("cursorId", cursorId));
     _logAuthzCheck(client, ns, cmdObj, result);
@@ -177,7 +175,7 @@ void audit::logQueryAuthzCheck(Client* client,
         return;
     }
 
-    Document cmdObj;
+    mutablebson::Document cmdObj;
     fassertStatusOK(4065, cmdObj.root().appendString("find", ns.coll()));
     fassertStatusOK(4066, cmdObj.root().appendObject("q", query));
     _logAuthzCheck(client, ns, cmdObj, result);
@@ -194,7 +192,7 @@ void audit::logUpdateAuthzCheck(Client* client,
         return;
     }
 
-    Document cmdObj;
+    mutablebson::Document cmdObj;
     fassertStatusOK(4067, cmdObj.root().appendString("update", ns.coll()));
     auto updatesListElt = cmdObj.makeElementArray("updates");
     fassertStatusOK(4068, cmdObj.root().pushBack(updatesListElt));
