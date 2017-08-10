@@ -132,7 +132,7 @@ Status storeAuditOptions(const moe::Environment& params, const std::vector<std::
     if (params.count("auditLog.filter")) {
         try {
             auditGlobalParams.auditFilter = fromjson(params["auditLog.filter"].as<std::string>());
-        } catch (const MsgAssertionException& e) {
+        } catch (const DBException& e) {
             return Status(ErrorCodes::BadValue,
                           mongoutils::str::stream() << "bad auditFilter:" << e.what());
         }

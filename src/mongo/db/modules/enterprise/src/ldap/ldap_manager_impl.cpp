@@ -41,8 +41,7 @@ Status LDAPManagerImpl::verifyLDAPCredentials(const std::string& user, const Sec
     if (!swUser.getStatus().isOK()) {
         return Status(swUser.getStatus().code(),
                       "Failed to transform authentication user name to LDAP DN: " +
-                          swUser.getStatus().reason(),
-                      swUser.getStatus().location());
+                          swUser.getStatus().reason());
     }
 
     return _runner->bindAsUser(std::move(swUser.getValue()), pwd);
@@ -58,8 +57,7 @@ StatusWith<std::vector<RoleName>> LDAPManagerImpl::getUserRoles(const UserName& 
     if (!swUser.isOK()) {
         return Status(swUser.getStatus().code(),
                       "Failed to transform bind user name to LDAP DN: " +
-                          swUser.getStatus().reason(),
-                      swUser.getStatus().location());
+                          swUser.getStatus().reason());
     }
 
     StatusWith<LDAPQuery> swQuery(ErrorCodes::InternalError, "Not initialized");
@@ -78,8 +76,7 @@ StatusWith<std::vector<RoleName>> LDAPManagerImpl::getUserRoles(const UserName& 
                       str::stream() << "Failed to obtain LDAP entities for query '"
                                     << query.toString()
                                     << "': "
-                                    << swEntities.getStatus().reason(),
-                      swEntities.getStatus().location());
+                                    << swEntities.getStatus().reason());
     }
 
     std::vector<RoleName> roles;

@@ -36,7 +36,7 @@ public:
     virtual Status set(const BSONElement& newValueElement) {
         try {
             return setFromString(newValueElement.String());
-        } catch (const MsgAssertionException& msg) {
+        } catch (const DBException& msg) {
             return Status(ErrorCodes::BadValue,
                           mongoutils::str::stream()
                               << "Invalid value for ldapServers via setParameter command: "
@@ -101,7 +101,7 @@ public:
     virtual Status set(const BSONElement& newValueElement) {
         try {
             return setFromString(newValueElement.String());
-        } catch (const MsgAssertionException& msg) {
+        } catch (const DBException& msg) {
             return Status(ErrorCodes::BadValue,
                           mongoutils::str::stream()
                               << "Invalid value for ldapQueryUser via setParameter command: "
@@ -129,7 +129,7 @@ public:
     virtual Status set(const BSONElement& newValueElement) {
         try {
             return setFromString(newValueElement.String());
-        } catch (const MsgAssertionException& msg) {
+        } catch (const DBException& msg) {
             return Status(ErrorCodes::BadValue,
                           mongoutils::str::stream()
                               << "Invalid value for ldapQueryPassword via setParameter command: "
@@ -157,7 +157,7 @@ public:
     virtual Status set(const BSONElement& newValueElement) {
         try {
             return setFromString(newValueElement.String());
-        } catch (const MsgAssertionException& msg) {
+        } catch (const DBException& msg) {
             return Status(ErrorCodes::BadValue,
                           mongoutils::str::stream()
                               << "Invalid value for ldapUserToDNMapping via setParameter command: "
@@ -191,7 +191,7 @@ public:
     virtual Status set(const BSONElement& newValueElement) {
         try {
             return setFromString(newValueElement.String());
-        } catch (const MsgAssertionException& msg) {
+        } catch (const DBException& msg) {
             return Status(
                 ErrorCodes::BadValue,
                 mongoutils::str::stream()
