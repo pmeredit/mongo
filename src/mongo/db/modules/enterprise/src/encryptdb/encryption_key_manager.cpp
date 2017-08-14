@@ -31,6 +31,7 @@
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
 #include "mongo/util/net/ssl_manager.h"
+#include "mongo/util/net/ssl_options.h"
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/time_support.h"
 #include "symmetric_crypto.h"
@@ -562,6 +563,12 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) {
     _masterKeyId = rotMasterKeyId;
 
     return Status::OK();
+}
+
+void InitializeGlobalEncryptionKeyManager() {
+    auto keyManager = stdx::make_unique<EncryptionKeyManager>(
+        storageGlobalParams.dbpath, &encryptionGlobalParams, &sslGlobalParams);
+    EncryptionHooks::set(getGlobalServiceContext(), std::move(keyManager));
 }
 
 EncryptionWiredTigerCustomizationHooks::EncryptionWiredTigerCustomizationHooks(

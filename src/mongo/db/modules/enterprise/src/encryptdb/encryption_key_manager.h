@@ -173,6 +173,13 @@ private:
     SSLParams* _sslParams;
 };
 
+/**
+ * Initialize the global encryption key manager.
+ *
+ * Note: Not idempotent. It will overwrite the existing global encryption key manager.
+ */
+void InitializeGlobalEncryptionKeyManager();
+
 class EncryptionWiredTigerCustomizationHooks : public WiredTigerCustomizationHooks {
     MONGO_DISALLOW_COPYING(EncryptionWiredTigerCustomizationHooks);
 

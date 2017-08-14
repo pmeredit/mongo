@@ -197,13 +197,11 @@ int destroyEncryptor(WT_ENCRYPTOR* encryptor, WT_SESSION* session) {
             // Destroy the SymmetricKey object
             if (myEncryptor->symmetricKey) {
                 if (myEncryptor->symmetricKey->getKeyId() == kSystemKeyId) {
-                    // Overwrite the EncryptionKeyManager and WiredTigerCustomizationHooks on the
-                    // global service context to enforce their destruction and clear the master key.
-                    EncryptionHooks::set(getGlobalServiceContext(),
-                                         stdx::make_unique<EncryptionHooks>());
-                    WiredTigerCustomizationHooks::set(
-                        getGlobalServiceContext(),
-                        stdx::make_unique<WiredTigerCustomizationHooks>());
+                    // With the destruction of the system key, the key manager is not needed
+                    // any more since the process is in shutdown. It may be used during feature
+                    // compatibility version downgrade so make sure a valid global encryption
+                    // manager is installed.
+                    InitializeGlobalEncryptionKeyManager();
                 }
                 delete myEncryptor->symmetricKey;
             }

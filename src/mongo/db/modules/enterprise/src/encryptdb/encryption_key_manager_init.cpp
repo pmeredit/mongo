@@ -60,9 +60,7 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(CreateEncryptionKeyManager,
                                         << implementationStatus.reason());
         }
 
-        auto keyManager = stdx::make_unique<EncryptionKeyManager>(
-            storageGlobalParams.dbpath, &encryptionGlobalParams, &sslGlobalParams);
-        EncryptionHooks::set(getGlobalServiceContext(), std::move(keyManager));
+        InitializeGlobalEncryptionKeyManager();
         WiredTigerExtensions::get(getGlobalServiceContext())
             ->addExtension(mongo::kEncryptionEntrypointConfig);
     }
