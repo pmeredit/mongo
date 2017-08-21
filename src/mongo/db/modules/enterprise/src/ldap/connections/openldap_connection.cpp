@@ -210,7 +210,7 @@ public:
     }
 
     static auto makeDefaultInParam() {
-        Type info;
+        Type info{};
         info.ldapai_info_version = 1;
         return info;
     };
