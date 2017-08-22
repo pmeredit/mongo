@@ -293,9 +293,7 @@ public:
         // Perform the actual query
         typename S::ErrorCodeType err = S::ldap_search_ext_s(
             _session,
-            query.getBaseDN().empty()
-                ? nullptr
-                : const_cast<LibraryCharPtr>(S::toLibraryString(query.getBaseDN().c_str()).c_str()),
+            const_cast<LibraryCharPtr>(S::toLibraryString(query.getBaseDN().c_str()).c_str()),
             mapScopeToLDAP(query.getScope()),
             query.getFilter().empty()
                 ? nullptr
