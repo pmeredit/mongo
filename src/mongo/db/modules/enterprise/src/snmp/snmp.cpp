@@ -34,6 +34,7 @@
 #include "mongo/util/background.h"
 #include "mongo/util/exit.h"
 #include "mongo/util/log.h"
+#include "mongo/util/net/sock.h"
 #include "mongo/util/options_parser/option_description.h"
 #include "mongo/util/time_support.h"
 #include "serverstatus_client.h"
