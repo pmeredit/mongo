@@ -367,10 +367,8 @@ void MooseRecordStore::_cappedDeleteIfNeeded(OperationContext* opCtx) {
     _doCappedDelete(opCtx, recordRemovalStmt, "<=");
 }
 
-StatusWith<RecordId> MooseRecordStore::insertRecord(OperationContext* opCtx,
-                                                    const char* data,
-                                                    int len,
-                                                    bool enforceQuota) {
+StatusWith<RecordId> MooseRecordStore::insertRecord(
+    OperationContext* opCtx, const char* data, int len, Timestamp, bool enforceQuota) {
     // Inserts record into SQLite table (or replaces if duplicate record id).
     MooseSession* session = MooseRecoveryUnit::get(opCtx)->getSession(opCtx);
 
@@ -396,6 +394,7 @@ StatusWith<RecordId> MooseRecordStore::insertRecord(OperationContext* opCtx,
 
 Status MooseRecordStore::insertRecordsWithDocWriter(OperationContext* opCtx,
                                                     const DocWriter* const* docs,
+                                                    const Timestamp* timestamps,
                                                     size_t nDocs,
                                                     RecordId* idsOut) {
     // Calculates the total size of the data buffer.
@@ -409,7 +408,7 @@ Status MooseRecordStore::insertRecordsWithDocWriter(OperationContext* opCtx,
     for (size_t i = 0; i < nDocs; i++) {
         docs[i]->writeDocument(pos);
         size_t docLen = docs[i]->documentSize();
-        StatusWith<RecordId> res = insertRecord(opCtx, pos, docLen, true);
+        StatusWith<RecordId> res = insertRecord(opCtx, pos, docLen, timestamps[i], true);
         idsOut[i] = res.getValue();
         pos += docLen;
     }
