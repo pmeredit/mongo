@@ -372,13 +372,13 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
                                  return std::vector<std::string>{
                                      str::stream() << "Error: " << swRoles.getStatus().toString()};
                              }));
-        report.closeSection("Successfully acquired the following roles:");
+        report.closeSection("Successfully acquired the following roles on the 'admin' database:");
         report.printItemList([&] {
             std::vector<std::string> roleStrings;
             std::transform(swRoles.getValue().begin(),
                            swRoles.getValue().end(),
                            std::back_inserter(roleStrings),
-                           [](const RoleName& role) { return role.toString(); });
+                           [](const RoleName& role) { return role.getRole().toString(); });
             return roleStrings;
         });
     }
