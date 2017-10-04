@@ -192,8 +192,37 @@ function authAndVerify(m, authArgs) {
         "authenticatedUsers": [{"user": authArgs.user, "db": "$external"}],
         "authenticatedUserRoles": [{"role": defaultRole, "db": "admin"}]
     };
+    if (authArgs.user.contains("ldapz_ldap1") || authArgs.user.contains("ldapz_ldap2")) {
+        authInfo.authenticatedUserRoles = authInfo.authenticatedUserRoles.concat([
+            {"role": "cn=groupC,ou=Groups,dc=10gen,dc=cc", "db": "admin"},
+            {"role": "cn=groupB,ou=Groups,dc=10gen,dc=cc", "db": "admin"},
+            {"role": "cn=groupA,ou=Groups,dc=10gen,dc=cc", "db": "admin"}
+        ]);
+        if (authArgs.user.contains("ldapz_ldap1")) {
+            authInfo.authenticatedUserRoles = authInfo.authenticatedUserRoles.concat(
+                [{"role": "cn=groupD,ou=Groups,dc=10gen,dc=cc", "db": "admin"}]);
+        }
 
-    assert.eq(status.authInfo, authInfo, "unexpected authorization status");
+        if (authArgs.user.contains("ldapz_ldap2")) {
+            authInfo.authenticatedUserRoles = authInfo.authenticatedUserRoles.concat(
+                [{"role": "cn=groupE,ou=Groups,dc=10gen,dc=cc", "db": "admin"}]);
+        }
+    }
+
+    // Check that the user we tried to authenticate as was, in fact, authenticated.
+    assert.eq(status.authInfo.authenticatedUsers,
+              authInfo.authenticatedUsers,
+              "unexpected authenticated users");
+
+    // We know the roles we should have authorized with. But we don't know the order. Sort.
+    const serverRoleSet = status.authInfo.authenticatedUserRoles.sort(function(a, b) {
+        return a.role.localeCompare(b.role);
+    });
+    const expectedRoleSet = authInfo.authenticatedUserRoles.sort(function(a, b) {
+        return a.role.localeCompare(b.role);
+    });
+
+    assert.eq(expectedRoleSet, serverRoleSet, "Unexpected roles");
 
     externalDB.logout();
 }
