@@ -146,7 +146,8 @@ function LDAPTestConfigGenerator() {
         return {
             name: "ldapAuthzReplset",
             nodes: {n0: mongodConfig, n1: mongodConfig, n2: mongodConfig},
-            useHostName: true
+            useHostName: true,
+            waitForKeys: false
         };
     };
 
