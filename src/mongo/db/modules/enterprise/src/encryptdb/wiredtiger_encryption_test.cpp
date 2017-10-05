@@ -83,7 +83,7 @@ public:
     void writeData() {
         WiredTigerRecoveryUnit* ru = new WiredTigerRecoveryUnit(&_sessionCache);
         OperationContextNoop opCtx(ru);
-        WiredTigerSession* mongoSession = ru->getSession(nullptr);
+        WiredTigerSession* mongoSession = ru->getSession();
 
         WriteUnitOfWork uow(&opCtx);
         WT_SESSION* session = mongoSession->getSession();
@@ -137,7 +137,7 @@ public:
 
     void readData() {
         WiredTigerRecoveryUnit recoveryUnit(&_sessionCache);
-        WiredTigerSession* mongoSession = recoveryUnit.getSession(NULL);
+        WiredTigerSession* mongoSession = recoveryUnit.getSession();
         WT_SESSION* session = mongoSession->getSession();
 
         WT_CURSOR *c1, *c2;
