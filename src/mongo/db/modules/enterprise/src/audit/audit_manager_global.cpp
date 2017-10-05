@@ -52,7 +52,10 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(InitializeGlobalAuditManager, ("CreateAudit
         OperationContext* opCtx = nullptr;
         boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(opCtx, collator));
         StatusWithMatchExpression parseResult =
-            MatchExpressionParser::parse(auditGlobalParams.auditFilter, std::move(expCtx));
+            MatchExpressionParser::parse(auditGlobalParams.auditFilter,
+                                         std::move(expCtx),
+                                         ExtensionsCallbackNoop(),
+                                         MatchExpressionParser::kBanAllSpecialFeatures);
         if (!parseResult.isOK()) {
             return Status(ErrorCodes::BadValue, "failed to parse auditFilter");
         }
