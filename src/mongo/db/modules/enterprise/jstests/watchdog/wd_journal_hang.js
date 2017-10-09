@@ -21,7 +21,7 @@ load("src/mongo/db/modules/enterprise/jstests/watchdog/lib/wd_test_common.js");
 
     const journalLinkPath = dbPath + "/journal";
 
-    mkdir(dbPath);
+    resetDbpath(dbPath);
 
     // Create a symlink from the non-fuse journal directory to the fuse mount.
     const ret = run("ln", "-s", trimTrailingSlash(journalFusePath), journalLinkPath);

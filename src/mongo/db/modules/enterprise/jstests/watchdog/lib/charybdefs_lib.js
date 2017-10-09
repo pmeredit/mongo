@@ -23,8 +23,8 @@ function CharybdefsControl(test_name) {
     const backing_path = MongoRunner.toRealPath(test_name + '_backing');
 
     // Make them early so that cleanup does not fail if they never existed.
-    mkdir(mount_point);
-    mkdir(backing_path);
+    resetDbpath(mount_point);
+    resetDbpath(backing_path);
 
     this._runControl = function(cmd, ...args) {
         let cmd_args = [python, control_py, cmd];
@@ -121,5 +121,9 @@ function CharybdefsControl(test_name) {
      */
     this.cleanup = function() {
         this._runControl("stop_all", "--fuse_mount=" + mount_point);
+
+        // Delete any remaining files
+        resetDbpath(mount_point);
+        resetDbpath(backing_path);
     };
 }
