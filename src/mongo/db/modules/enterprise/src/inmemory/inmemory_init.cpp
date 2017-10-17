@@ -63,7 +63,7 @@ public:
 
         std::string engineConfig = inMemoryGlobalOptions.engineConfig;
         engineConfig +=
-            "in_memory=true,log=(enabled=false),"
+            ",in_memory=true,log=(enabled=false),"
             "file_manager=(close_idle_time=0),checkpoint=(wait=0,log_size=0)";
 
         size_t cacheMB = WiredTigerUtil::getCacheSizeMB(inMemoryGlobalOptions.inMemorySizeGB);
