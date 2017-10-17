@@ -341,7 +341,7 @@ Status EncryptionKeyManager::_openKeystore(const fs::path& path, WT_CONNECTION**
     // trade-off of a data on disk format change that 3.4 binaries are not familiar with. Log
     // rotations for the keystore database are expected to be exceedingly rare; the benefits would
     // be minimal.
-    wtConfig << "create,compatibility=(release=2.9),";
+    wtConfig << "create,compatibility=(release=2.9),config_base=false,";
     wtConfig << "log=(enabled,file_max=3MB),transaction_sync=(enabled=true,method=fsync),";
     wtConfig << "extensions=[" << kEncryptionEntrypointConfig << "],";
     wtConfig << keystoreConfig;
@@ -349,6 +349,7 @@ Status EncryptionKeyManager::_openKeystore(const fs::path& path, WT_CONNECTION**
     // _localKeystoreInitialized needs to be set before calling wiredtiger_open since that
     // call eventually will result in a call to getKey for the ".system" key at which point we don't
     // want to call _initLocalKeystore recursively.
+    log() << "Opening WiredTiger keystore. Config: " << wtConfig.str();
     int ret = wiredtiger_open(
         path.string().c_str(), &_keystoreEventHandler, wtConfig.str().c_str(), conn);
     if (ret != 0) {
