@@ -20,11 +20,11 @@ SqliteStatement::SqliteStatement(const MooseSession& session, const std::string&
     int status = sqlite3_prepare_v2(
         session.getSession(), sqlQuery.c_str(), sqlQuery.length() + 1, &_stmt, NULL);
     if (status == SQLITE_BUSY) {
-        throw new WriteConflictException();
+        throw WriteConflictException();
     } else if (status != SQLITE_OK) {
         std::string errMsg = "sqlite3_prepare_v2 failed: ";
         errMsg += sqlite3_errstr(status);
-        throw new DBException(ErrorCodes::UnknownError, errMsg);
+        uasserted(ErrorCodes::UnknownError, errMsg);
     }
 }
 

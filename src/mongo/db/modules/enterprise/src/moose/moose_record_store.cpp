@@ -579,7 +579,7 @@ Status MooseRecordStore::validate(OperationContext* opCtx,
         }
 
         if (status == SQLITE_CORRUPT) {
-            throw new DBException(ErrorCodes::UnknownError, sqlite3_errstr(status));
+            uasserted(ErrorCodes::UnknownError, sqlite3_errstr(status));
         }
         checkStatus(status, SQLITE_DONE, "sqlite3_step");
 
@@ -606,7 +606,7 @@ Status MooseRecordStore::validate(OperationContext* opCtx,
         }
         output->appendNumber("nrecords", actualNumRecs);
 
-    } catch (DBException e) {
+    } catch (const DBException& e) {
         std::string errMsg = "record store is corrupt, could not read documents - " + e.toString();
         validateLogAndAppendError(results, errMsg);
     }

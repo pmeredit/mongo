@@ -106,7 +106,7 @@ void doValidate(OperationContext* opCtx, ValidateResults* results) {
         }
 
         if (status == SQLITE_CORRUPT) {
-            throw new DBException(ErrorCodes::UnknownError, sqlite3_errstr(status));
+            uasserted(ErrorCodes::UnknownError, sqlite3_errstr(status));
         }
         checkStatus(status, SQLITE_DONE, "sqlite3_step");
 
