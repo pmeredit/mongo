@@ -95,7 +95,7 @@ Status LDAPSaslAuthenticationSession::step(StringData inputData, std::string* ou
                           str::stream()
                               << "Incorrectly formatted PLAIN client message, empty password");
         }
-    } catch (std::out_of_range& exception) {
+    } catch (const std::out_of_range&) {
         return Status(ErrorCodes::AuthenticationFailed,
                       mongoutils::str::stream() << "Incorrectly formatted PLAIN client message");
     }

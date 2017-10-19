@@ -61,7 +61,7 @@ StatusWith<InternalToLDAPUserNameMapper> InternalToLDAPUserNameMapper::createNam
     BSONObj config;
     try {
         config = fromjson(userToDNMapping);
-    } catch (DBException& e) {
+    } catch (const DBException&) {
         return Status(ErrorCodes::FailedToParse,
                       "Failed to parse JSON description of the relationship between "
                       "MongoDB usernames and LDAP DNs");
