@@ -221,7 +221,7 @@ Status WindowsLDAPConnection::bindAsUser(const LDAPBindOptions& options) {
 }
 
 StatusWith<LDAPEntityCollection> WindowsLDAPConnection::query(LDAPQuery query) {
-    l_timeval timeout{_timeoutSeconds, 0};
+    l_timeval timeout{static_cast<LONG>(_timeoutSeconds), 0};
     return _pimpl->query(std::move(query), &timeout);
 }
 

@@ -13,12 +13,17 @@
 
 #include "snmp.h"
 
+#pragma warning(push)
+// C4828: The file contains a character starting at offset 0xe2 that is illegal in the current
+// source character set (codepage 65001)
+#pragma warning(disable : 4828)
 // clang-format off
 #include <net-snmp/net-snmp-config.h>
 #include <net-snmp/net-snmp-includes.h>
 #include <net-snmp/agent/net-snmp-agent-includes.h>
 #include <signal.h>
 // clang-format on
+#pragma warning(pop)
 
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"

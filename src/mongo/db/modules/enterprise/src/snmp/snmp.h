@@ -6,12 +6,17 @@
 #include <string>
 #include <vector>
 
+#pragma warning(push)
+// C4828: The file contains a character starting at offset 0xe2 that is illegal in the current
+// source character set (codepage 65001)
+#pragma warning(disable : 4828)
 // The following headers must be in this order
 // clang-format off
 #include <net-snmp/net-snmp-config.h>
 #include <net-snmp/net-snmp-includes.h>
 #include <net-snmp/agent/net-snmp-agent-includes.h>
 // clang-format on
+#pragma warning(pop)
 
 namespace mongo {
 /**

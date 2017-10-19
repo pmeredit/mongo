@@ -79,13 +79,15 @@ TEST_F(BlockstoreExtentManagerTest, DataFileEnsureRange) {
     ASSERT_FALSE(dataFile.getMappedPages()[1]);
     ASSERT_TRUE(dataFile.getMappedBlocks()[0]);
     ASSERT_FALSE(dataFile.getMappedBlocks()[1]);
-    ASSERT_EQ(static_cast<char>(999 % 256), *(static_cast<char*>(dataFile.getBasePtr()) + 999));
+    ASSERT_EQ(static_cast<unsigned char>(999 % 256),
+              *(static_cast<unsigned char*>(dataFile.getBasePtr()) + 999));
 
     // Ensuring 2 bytes starting at 999 should pull in the second block.
     uassertStatusOK(dataFile.ensureRange(kBlockSize - 1, 2));
     ASSERT_FALSE(dataFile.getMappedPages()[1]);
     ASSERT_TRUE(dataFile.getMappedBlocks()[1]);
-    ASSERT_EQ(static_cast<char>(1000 % 256), *(static_cast<char*>(dataFile.getBasePtr()) + 1000));
+    ASSERT_EQ(static_cast<unsigned char>(1000 % 256),
+              *(static_cast<unsigned char*>(dataFile.getBasePtr()) + 1000));
 
     // Ensuring on 1000 bytes starting at offset 1000 should not* pull in the third block.
     uassertStatusOK(dataFile.ensureRange(kBlockSize, kBlockSize));
@@ -99,8 +101,10 @@ TEST_F(BlockstoreExtentManagerTest, DataFileEnsureRange) {
     if (kPageSize == kExpectedPageSize) {
         ASSERT_TRUE(dataFile.getMappedPages()[1]);
     }
-    ASSERT_EQ(static_cast<char>(4000 % 256), *(static_cast<char*>(dataFile.getBasePtr()) + 4000));
-    ASSERT_EQ(static_cast<char>(5999 % 256), *(static_cast<char*>(dataFile.getBasePtr()) + 5999));
+    ASSERT_EQ(static_cast<unsigned char>(4000 % 256),
+              *(static_cast<unsigned char*>(dataFile.getBasePtr()) + 4000));
+    ASSERT_EQ(static_cast<unsigned char>(5999 % 256),
+              *(static_cast<unsigned char*>(dataFile.getBasePtr()) + 5999));
 }
 
 TEST_F(BlockstoreExtentManagerTest, AllocStateTest) {
