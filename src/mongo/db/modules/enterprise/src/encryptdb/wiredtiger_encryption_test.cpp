@@ -77,11 +77,12 @@ public:
     }
 
     OperationContext* newOperationContext() {
-        return new OperationContextNoop(new WiredTigerRecoveryUnit(getSessionCache()));
+        return new OperationContextNoop(
+            new WiredTigerRecoveryUnit(getSessionCache(), &_oplogManager));
     }
 
     void writeData() {
-        WiredTigerRecoveryUnit* ru = new WiredTigerRecoveryUnit(&_sessionCache);
+        WiredTigerRecoveryUnit* ru = new WiredTigerRecoveryUnit(&_sessionCache, &_oplogManager);
         OperationContextNoop opCtx(ru);
         WiredTigerSession* mongoSession = ru->getSession();
 
@@ -136,7 +137,7 @@ public:
     }
 
     void readData() {
-        WiredTigerRecoveryUnit recoveryUnit(&_sessionCache);
+        WiredTigerRecoveryUnit recoveryUnit(&_sessionCache, &_oplogManager);
         WiredTigerSession* mongoSession = recoveryUnit.getSession();
         WT_SESSION* session = mongoSession->getSession();
 
@@ -165,6 +166,7 @@ private:
     std::string _cipherName;
     WiredTigerConnection _connection;
     WiredTigerSessionCache _sessionCache;
+    WiredTigerOplogManager _oplogManager;
 };
 
 TEST(WiredTigerEncryptionTest, ReadWriteDataCBC) {
