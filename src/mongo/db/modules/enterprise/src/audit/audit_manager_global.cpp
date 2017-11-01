@@ -40,7 +40,10 @@ MONGO_INITIALIZER(CreateAuditManager)(InitializerContext* context) {
     return Status::OK();
 }
 
-MONGO_INITIALIZER_WITH_PREREQUISITES(InitializeGlobalAuditManager, ("CreateAuditManager"))
+MONGO_INITIALIZER_WITH_PREREQUISITES(InitializeGlobalAuditManager,
+                                     ("CreateAuditManager",
+                                      "MatchExpressionParser",
+                                      "PathlessOperatorMap"))
 (InitializerContext* context) {
     audit::getGlobalAuditManager()->enabled = auditGlobalParams.enabled;
 
