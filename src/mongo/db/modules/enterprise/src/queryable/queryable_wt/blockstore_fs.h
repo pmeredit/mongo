@@ -4,6 +4,8 @@
 
 #include "mongo/platform/basic.h"
 
+#include <boost/filesystem.hpp>
+
 #include "mongo/base/data_range.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/jsobj.h"
@@ -55,7 +57,9 @@ public:
     }
 
     void addFile(struct File file) {
-        _files[_dbpath + "/" + file.filename] = file;
+        boost::filesystem::path fullPath = _dbpath;
+        fullPath /= file.filename;
+        _files[fullPath.string()] = file;
     }
 
     bool fileExists(const char* filename) {

@@ -63,7 +63,7 @@ static int queryableWtFileClose(WT_FILE_HANDLE*, WT_SESSION*);
  * queryableWtFsCreate --
  *   Initialization point for the queryable file system
  */
-int queryableWtFsCreate(WT_CONNECTION* conn, WT_CONFIG_ARG* config) {
+MONGO_COMPILER_API_EXPORT int queryableWtFsCreate(WT_CONNECTION* conn, WT_CONFIG_ARG* config) {
     WT_CONFIG_ITEM k, v;
     WT_CONFIG_PARSER* config_parser;
     WT_EXTENSION_API* wtext;

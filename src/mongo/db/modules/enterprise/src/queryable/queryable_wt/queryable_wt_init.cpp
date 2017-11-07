@@ -6,6 +6,8 @@
 
 #include "mongo/platform/basic.h"
 
+#include <boost/filesystem.hpp>
+
 #include "mongo/base/init.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/catalog/collection_options.h"
@@ -69,15 +71,23 @@ public:
                 "--dbpath cannot contain quotes",
                 params.dbpath.find('"') == std::string::npos);
 
+        // WiredTiger passes a non-normalized path to the operating system, e.g: a `dbpath` of
+        // "/data/db/" will result in WiredTiger trying to open "/data/db//WiredTiger.turtle".
+        // Because the underlying "filesystem" in `queryable_wt` does not go through the operating
+        // system, we'll normalize the `dbpath` here to remove trailing slashes. This should
+        // result in WiredTiger never making a callback with double slashes.
+        std::string dbpath =
+            (boost::filesystem::path(params.dbpath) / "dummy_filename").parent_path().string();
+
         std::string fsOptions = str::stream()
             << "local={entry=queryableWtFsCreate,early_load=true,config={apiUri=\"" << apiUri
-            << "\",snapshotId=\"" << snapshotId << "\",dbpath=\"" << params.dbpath << "\"}}";
+            << "\",snapshotId=\"" << snapshotId << "\",dbpath=\"" << dbpath << "\"}}";
 
         WiredTigerExtensions::get(getGlobalServiceContext())->addExtension(fsOptions);
 
         WiredTigerKVEngine* kv =
             new WiredTigerKVEngine(getCanonicalName().toString(),
-                                   params.dbpath,
+                                   dbpath,
                                    getGlobalServiceContext()->getFastClockSource(),
                                    wiredTigerGlobalOptions.engineConfig,
                                    cacheMB,

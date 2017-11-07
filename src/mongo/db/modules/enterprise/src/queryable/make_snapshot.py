@@ -22,7 +22,6 @@ from bson.binary import Binary
 from bson.timestamp import Timestamp
 from bson.objectid import ObjectId
 from pymongo.errors import DuplicateKeyError
-import boto3
 import bson
 
 dir_to_snapshot = sys.argv[-1]
@@ -65,6 +64,7 @@ def sha256(data):
 BLOCKSTORE = True
 s3Bucket = None
 if BLOCKSTORE == False:
+    import boto3
     s3Bucket = boto3.resource('s3').Bucket("mms-backup-test")
 
 zero_block_compressed = compress('\x00' * blocksize)
