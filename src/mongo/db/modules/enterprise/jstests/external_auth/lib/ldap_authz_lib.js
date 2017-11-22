@@ -209,6 +209,16 @@ function authAndVerify(m, authArgs) {
         }
     }
 
+    if (authArgs.user.contains("ldapz_kerberos1") || authArgs.user.contains("ldapz_kerberos2")) {
+        authInfo.authenticatedUserRoles = authInfo.authenticatedUserRoles.concat(
+            [{"role": "cn=ldapz_kerberos2-group,ou=Groups,dc=10gen,dc=cc", "db": "admin"}]);
+
+        if (authArgs.user.contains("ldapz_kerberos1")) {
+            authInfo.authenticatedUserRoles = authInfo.authenticatedUserRoles.concat(
+                [{"role": "cn=ldapz_kerberos1-group,ou=Groups,dc=10gen,dc=cc", "db": "admin"}]);
+        }
+    }
+
     // Check that the user we tried to authenticate as was, in fact, authenticated.
     assert.eq(status.authInfo.authenticatedUsers,
               authInfo.authenticatedUsers,
