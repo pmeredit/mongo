@@ -29,13 +29,6 @@ extern "C" int plain_server_plug_init(const sasl_utils_t* utils,
                                       sasl_server_plug_t** pluglist,
                                       int* plugcount);
 
-extern "C" int crammd5_server_plug_init(const sasl_utils_t* utils,
-                                        int maxversion,
-                                        int* out_version,
-                                        sasl_server_plug_t** pluglist,
-                                        int* plugcount);
-
-
 namespace mongo {
 namespace gssapi {
 
@@ -489,22 +482,6 @@ MONGO_INITIALIZER_GENERAL(SaslSspiServerPlugin,
     if (SASL_OK != ret) {
         return Status(ErrorCodes::UnknownError,
                       mongoutils::str::stream() << "Could not add SASL Server SSPI plugin "
-                                                << sspiPluginName
-                                                << ": "
-                                                << sasl_errstring(ret, NULL, NULL));
-    }
-
-    return Status::OK();
-}
-
-MONGO_INITIALIZER_GENERAL(SaslCramServerPlugin,
-                          ("CyrusSaslServerCore"),
-                          ("CyrusSaslAllPluginsRegistered"))
-(InitializerContext*) {
-    int ret = sasl_server_add_plugin("CRAMMD5", crammd5_server_plug_init);
-    if (SASL_OK != ret) {
-        return Status(ErrorCodes::UnknownError,
-                      mongoutils::str::stream() << "Could not add SASL Server CRAM-MD5 plugin "
                                                 << sspiPluginName
                                                 << ": "
                                                 << sasl_errstring(ret, NULL, NULL));

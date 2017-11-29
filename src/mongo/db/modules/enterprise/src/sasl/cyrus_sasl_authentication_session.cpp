@@ -147,7 +147,6 @@ int saslServerConnGetOpt(void* context,
                          const char* optionRaw,
                          const char** outResult,
                          unsigned* outLen) throw() {
-    static const char mongodbAuxpropMechanism[] = "MongoDBInternalAuxprop";
     static const char mongodbCanonMechanism[] = "MongoDBInternalCanon";
 
     try {
@@ -162,14 +161,6 @@ int saslServerConnGetOpt(void* context,
 
         const StringData option = optionRaw;
 
-        if (option == "auxprop_plugin"_sd) {
-            // Returns the name of the plugin to use to look up user properties.  We use a custom
-            // one that extracts the information from user privilege documents.
-            *outResult = mongodbAuxpropMechanism;
-            *outLen = static_cast<unsigned>(boost::size(mongodbAuxpropMechanism));
-            return SASL_OK;
-        }
-
         if (option == "canon_user_plugin"_sd) {
             // Returns the name of the plugin to use to canonicalize user names.  We use a custome
             // plugin that only strips leading and trailing whitespace.  The default plugin also
@@ -179,16 +170,11 @@ int saslServerConnGetOpt(void* context,
             return SASL_OK;
         }
 
-        if (option == "pwcheck_method"_sd) {
-            static const char pwcheckAuxprop[] = "auxprop";
+        if ((option == "pwcheck_method"_sd) &&
+            (session->getAuthenticationDatabase() == "$external")) {
             static const char pwcheckAuthd[] = "saslauthd";
-            if (session->getAuthenticationDatabase() == "$external") {
-                *outResult = pwcheckAuthd;
-                *outLen = boost::size(pwcheckAuthd);
-            } else {
-                *outResult = pwcheckAuxprop;
-                *outLen = boost::size(pwcheckAuxprop);
-            }
+            *outResult = pwcheckAuthd;
+            *outLen = boost::size(pwcheckAuthd);
             return SASL_OK;
         }
 
@@ -267,7 +253,6 @@ const int CyrusSaslAuthenticationSession::mongoSessionCallbackId;
 /// NULL-terminated list of SaslMechanismInfos describing the mechanisms MongoDB knows how to
 /// support.
 CyrusSaslAuthenticationSession::SaslMechanismInfo _mongoKnownMechanisms[] = {
-    {SaslAuthenticationSession::mechanismCRAMMD5, smokeCommonMechanism, isAuthorizedCommon},
     {SaslAuthenticationSession::mechanismSCRAMSHA1, smokeCommonMechanism, isAuthorizedCommon},
     {SaslAuthenticationSession::mechanismGSSAPI, smokeGssapiMechanism, isAuthorizedGssapi},
     {SaslAuthenticationSession::mechanismPLAIN, smokeCommonMechanism, isAuthorizedCommon},

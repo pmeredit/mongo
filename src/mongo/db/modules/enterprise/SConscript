@@ -201,8 +201,7 @@ if not env.TargetOSIs("darwin"):
     )
 
 env.Library('mongosaslserversession',
-            ['src/sasl/auxprop_mongodb_internal.cpp',
-             'src/sasl/canon_mongodb_internal.cpp',
+            ['src/sasl/canon_mongodb_internal.cpp',
              'src/sasl/mongo_${MONGO_GSSAPI_IMPL}.cpp',
              ],
             LIBDEPS=[
@@ -229,16 +228,6 @@ env.Library('mongosaslservercommon',
             PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongod',
                                  '$BUILD_DIR/mongo/mongos'],
 )
-
-env.CppUnitTest('sasl_authentication_session_test',
-                ['src/sasl/sasl_authentication_session_test.cpp'],
-                LIBDEPS=['mongosaslserversession',
-                         'mongosaslservercommon',
-                         '$BUILD_DIR/mongo/client/clientdriver',
-                         '$BUILD_DIR/mongo/client/sasl_client',
-                         '$BUILD_DIR/mongo/db/auth/authcore',
-                         '$BUILD_DIR/mongo/db/auth/saslauth',
-                         ])
 
 if env.TargetOSIs("windows"):
     # Ensure we're building with /MD or /MDd
