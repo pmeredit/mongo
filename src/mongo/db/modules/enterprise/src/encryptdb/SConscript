@@ -32,8 +32,8 @@ wtEnv.Library(target='encryption_key_manager_aux',
                 'encryptdb',
                 'symmetric_crypto'
             ],
-            PROGDEPS_DEPENDENTS=[
-                '$BUILD_DIR/mongo/mongod'
+            LIBDEPS_DEPENDENTS=[
+                '$BUILD_DIR/mongo/mongodmain'
             ])
 
 wtEnv.Library(target='encryptdb',

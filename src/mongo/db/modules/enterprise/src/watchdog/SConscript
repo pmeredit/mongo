@@ -26,8 +26,8 @@ if not env.TargetOSIs("darwin"):
             '../../audit',
             'watchdog',
          ],
-        PROGDEPS_DEPENDENTS=[
-            '$BUILD_DIR/mongo/mongod',
+        LIBDEPS_DEPENDENTS=[
+            '$BUILD_DIR/mongo/mongodmain',
         ]
     )
 

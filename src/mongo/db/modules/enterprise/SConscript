@@ -174,8 +174,8 @@ env.CppUnitTest(
 env.Library('audit_configuration',
             'src/audit/audit_options_init.cpp',
             LIBDEPS=['audit'],
-            PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongod',
-                                 '$BUILD_DIR/mongo/mongos'])
+            LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongodmain'],
+            PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongos'])
 
 if not env.TargetOSIs("darwin"):
     env.Library('mongosnmp',
@@ -196,7 +196,7 @@ if not env.TargetOSIs("darwin"):
                     '$BUILD_DIR/mongo/util/processinfo',
                     'src/watchdog/watchdog_mongod',
                 ],
-                PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongod'],
+                LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongodmain'],
                 SYSLIBDEPS=env.get('SNMP_SYSLIBDEPS', []),
     )
 
@@ -215,8 +215,8 @@ env.Library('mongosaslserversession',
 env.Library('auth_delay',
             'src/sasl/auth_delay.cpp',
             LIBDEPS=['$BUILD_DIR/mongo/db/auth/sasl_options'],
-            PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongod',
-                                 '$BUILD_DIR/mongo/mongos'],
+            LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongodmain'],
+            PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongos'],
 )
 
 env.Library('mongosaslservercommon',
@@ -225,8 +225,8 @@ env.Library('mongosaslservercommon',
             LIBDEPS=['src/ldap/ldap_manager',
                      'src/ldap/ldap_name_map',
                      'mongosaslserversession'],
-            PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongod',
-                                 '$BUILD_DIR/mongo/mongos'],
+            LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongodmain'],
+            PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongos'],
 )
 
 if env.TargetOSIs("windows"):

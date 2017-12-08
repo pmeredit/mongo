@@ -21,8 +21,8 @@ if GetOption("rlp") == "on":
         LIBDEPS=[
             '$BUILD_DIR/mongo/db/fts/unicode/unicode'
         ],
-        PROGDEPS_DEPENDENTS=[
-            '$BUILD_DIR/mongo/mongod'
+        LIBDEPS_DEPENDENTS=[
+            '$BUILD_DIR/mongo/mongodmain'
         ])
 
     env.Library(
@@ -34,8 +34,8 @@ if GetOption("rlp") == "on":
         LIBDEPS=[
             'rlpcore',
         ],
-        PROGDEPS_DEPENDENTS=[
-            '$BUILD_DIR/mongo/mongod'
+        LIBDEPS_DEPENDENTS=[
+            '$BUILD_DIR/mongo/mongodmain'
         ])
 
     # The RLP library has various memory errors that tcmalloc detects in debug builds. When TCMalloc

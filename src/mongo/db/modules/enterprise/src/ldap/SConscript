@@ -11,8 +11,9 @@ env.Library(
     ],
     LIBDEPS=['$BUILD_DIR/mongo/db/service_context',
              'ldap_manager'],
-    PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongod',
-                         '$BUILD_DIR/mongo/mongos'])
+    LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongodmain'],
+    PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongos']
+)
 
 env.Library(
     target='ldap_manager',
@@ -39,8 +40,8 @@ env.Library(
     LIBDEPS=[
         'ldap_manager',
     ],
-    PROGDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/mongod',
+    LIBDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/mongodmain',
     ],
 )
 
@@ -132,8 +133,8 @@ env.Library(
         '$BUILD_DIR/mongo/util/background_job',
         '$BUILD_DIR/mongo/util/options_parser/options_parser',
     ],
-    PROGDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/mongod',
+    LIBDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/mongodmain',
     ],
 )
 
