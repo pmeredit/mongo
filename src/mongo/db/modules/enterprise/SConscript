@@ -2,6 +2,8 @@
 
 Import("env has_option")
 
+import libdeps
+
 env = env.Clone()
 
 if not has_option("ssl"):
@@ -95,7 +97,7 @@ env.Library('audit',
                 '$BUILD_DIR/mongo/util/net/network',
             ],
             LIBDEPS_DEPENDENTS=[
-                '$BUILD_DIR/mongo/db/audit',
+                ('$BUILD_DIR/mongo/db/audit', libdeps.dependency.Public),
             ],
 )
 
@@ -143,7 +145,7 @@ env.Library(
         #'$BUILD_DIR/mongo/rpc/metadata', # CYCLE
     ],
     LIBDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/rpc/metadata',
+        ('$BUILD_DIR/mongo/rpc/metadata', libdeps.dependency.Public),
     ],
     LIBDEPS_TAGS=[
         # This library is 'circular' with rpc/metadata.
