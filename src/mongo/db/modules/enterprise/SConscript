@@ -75,7 +75,7 @@ env.SConscript(
     ],
 )
 
-env.Library('audit',
+env.Library('audit_enterprise',
             ['src/audit/audit_application_message.cpp',
              'src/audit/audit_authentication.cpp',
              'src/audit/audit_authz_check.cpp',
@@ -125,7 +125,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/auth/authcore',
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/rpc/metadata',
-        'audit',
+        'audit_enterprise',
     ],
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/s/mongoscore',
@@ -175,7 +175,7 @@ env.CppUnitTest(
 # disabled this effectively prevents this code from being run in client programs.
 env.Library('audit_configuration',
             'src/audit/audit_options_init.cpp',
-            LIBDEPS=['audit'],
+            LIBDEPS=['audit_enterprise'],
             LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongodmain'],
             PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongos'])
 

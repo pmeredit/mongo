@@ -53,5 +53,5 @@ if GetOption("rlp") == "on":
                 'rlpcore',
                 "$BUILD_DIR/mongo/base",
                 "$BUILD_DIR/mongo/db/common",
-                "$BUILD_DIR/mongo/db/fts/base",
+                "$BUILD_DIR/mongo/db/fts/base_fts",
             ])
