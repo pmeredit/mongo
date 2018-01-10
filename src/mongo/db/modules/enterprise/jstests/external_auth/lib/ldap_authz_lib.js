@@ -305,12 +305,20 @@ function runTests(testCallback, configGenerator, callbackOptions) {
     setupTest(primary);
     // TODO: run test on secondary as well?
     testCallback(primary, callbackOptions);
+    rst.nodes.forEach((node) => {
+        node.getDB("admin").auth("siteRootAdmin", "secret");
+    });
     rst.stopSet();
 
     // sharded
     var st = new ShardingTest(configGenerator.generateShardingConfig());
     setupTest(st.s0);
     testCallback(st.s0, callbackOptions);
+    if (st.configRS) {
+        st.configRS.nodes.forEach((node) => {
+            node.getDB("admin").auth("siteRootAdmin", "secret");
+        });
+    }
     st.stop();
 }
 
