@@ -174,9 +174,15 @@ MooseRecordStore::MooseRecordStore(OperationContext* opCtx,
     : RecordStore(ns),
       _path(path),
       _ident(ident),
+      _isOplog(NamespaceString::oplog(ns)),
       _isCapped(options.capped),
       _cappedMaxSize(options.cappedSize > 4096 ? options.cappedSize : 4096),
       _cappedMaxDocs(options.cappedMaxDocs) {
+
+    // Mobile SE doesn't support creating an oplog, assert now
+    massert(ErrorCodes::IllegalOperation,
+            "Replication is not supported by the mobile storage engine",
+            !_isOplog);
 
     // Determines the nextId to be used for a new record.
     MooseSession* session = MooseRecoveryUnit::get(opCtx)->getSession(opCtx);

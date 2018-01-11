@@ -145,6 +145,9 @@ private:
     const std::string _path;
     const std::string _ident;
 
+    // True if the namespace of this record store starts with "local.oplog.", and false otherwise.
+    const bool _isOplog;
+
     /**
      * Returns true if the collection is capped and exceeds the size or document cap.
      */
