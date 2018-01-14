@@ -31,7 +31,7 @@ public:
     }
 
     StringData getCanonicalName() const override {
-        return "moose";
+        return "mobile";
     }
 
     Status validateMetadata(const StorageEngineMetadata& metadata,
@@ -47,7 +47,7 @@ public:
 
 MONGO_INITIALIZER_WITH_PREREQUISITES(MooseKVEngineInit, ("SetGlobalEnvironment"))
 (InitializerContext* context) {
-    getGlobalServiceContext()->registerStorageEngine("moose", new MooseFactory());
+    getGlobalServiceContext()->registerStorageEngine("mobile", new MooseFactory());
     return Status::OK();
 }
 
