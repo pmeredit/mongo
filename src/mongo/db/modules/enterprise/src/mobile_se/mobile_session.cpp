@@ -4,22 +4,22 @@
 
 #include "mongo/platform/basic.h"
 
-#include "moose_session.h"
+#include "mobile_session.h"
 
 #include "../third_party/sqlite/sqlite3.h"
-#include "moose_session_pool.h"
+#include "mobile_session_pool.h"
 
 namespace mongo {
 
-MooseSession::MooseSession(sqlite3* session, MooseSessionPool* sessionPool)
+MobileSession::MobileSession(sqlite3* session, MobileSessionPool* sessionPool)
     : _session(session), _sessionPool(sessionPool) {}
 
-MooseSession::~MooseSession() {
+MobileSession::~MobileSession() {
     // Releases this session back to the session pool.
     _sessionPool->releaseSession(this);
 }
 
-sqlite3* MooseSession::getSession() const {
+sqlite3* MobileSession::getSession() const {
     return _session;
 }
 }  // namespace mongo

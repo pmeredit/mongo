@@ -8,34 +8,34 @@
 #include <vector>
 
 #include "../third_party/sqlite/sqlite3.h"
+#include "mobile_session.h"
 #include "mongo/base/disallow_copying.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/stdx/mutex.h"
-#include "moose_session.h"
 
 namespace mongo {
-class MooseSession;
+class MobileSession;
 
 /**
  * This class manages a pool of open sqlite3* objects.
  */
-class MooseSessionPool final {
-    MONGO_DISALLOW_COPYING(MooseSessionPool);
+class MobileSessionPool final {
+    MONGO_DISALLOW_COPYING(MobileSessionPool);
 
 public:
-    MooseSessionPool(const std::string& path, std::uint64_t maxPoolSize = 80);
+    MobileSessionPool(const std::string& path, std::uint64_t maxPoolSize = 80);
 
-    ~MooseSessionPool();
+    ~MobileSessionPool();
 
     /**
      * Returns a smart pointer to a previously released session for reuse, or creates a new session.
      */
-    std::unique_ptr<MooseSession> getSession(OperationContext* opCtx);
+    std::unique_ptr<MobileSession> getSession(OperationContext* opCtx);
 
     /**
      * Returns a session to the pool for later reuse.
      */
-    void releaseSession(MooseSession* session);
+    void releaseSession(MobileSession* session);
 
     /**
      * Transitions the pool to shutting down mode. It waits until all sessions are released back

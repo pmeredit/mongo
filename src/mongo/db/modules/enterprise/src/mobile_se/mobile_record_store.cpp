@@ -6,7 +6,7 @@
 
 #include "mongo/platform/basic.h"
 
-#include "moose_record_store.h"
+#include "mobile_record_store.h"
 
 #include "mongo/base/static_assert.h"
 #include "mongo/db/catalog/collection_options.h"
@@ -21,17 +21,17 @@
 #include "mongo/util/mongoutils/str.h"
 
 #include "../third_party/sqlite/sqlite3.h"
-#include "moose_recovery_unit.h"
-#include "moose_session.h"
-#include "moose_sqlite_statement.h"
-#include "moose_util.h"
+#include "mobile_recovery_unit.h"
+#include "mobile_session.h"
+#include "mobile_sqlite_statement.h"
+#include "mobile_util.h"
 
 namespace mongo {
 
-class MooseRecordStore::Cursor final : public SeekableRecordCursor {
+class MobileRecordStore::Cursor final : public SeekableRecordCursor {
 public:
     Cursor(OperationContext* opCtx,
-           const MooseRecordStore& rs,
+           const MobileRecordStore& rs,
            const std::string& path,
            const std::string& ident,
            bool forward)
@@ -42,7 +42,7 @@ public:
                     << "WHERE rec_id " << (forward ? '>' : '<') << " ? "
                     << "ORDER BY rec_id " << (forward ? "ASC" : "DESC") << ';';
 
-        MooseSession* session = MooseRecoveryUnit::get(_opCtx)->getSession(_opCtx);
+        MobileSession* session = MobileRecoveryUnit::get(_opCtx)->getSession(_opCtx);
         _stmt = stdx::make_unique<SqliteStatement>(*session, cursorQuery);
 
         _startIdNum = (forward ? RecordId::min().repr() : RecordId::max().repr());
@@ -65,7 +65,7 @@ public:
         }
 
         // Checks no error was thrown and that step retrieved a row.
-        checkStatus(status, SQLITE_ROW, "_stmt->step() in MooseCursor's next");
+        checkStatus(status, SQLITE_ROW, "_stmt->step() in MobileCursor's next");
 
         long long recId = _stmt->getColInt(0);
         const void* data = _stmt->getColBlob(1);
@@ -166,11 +166,11 @@ private:
     const bool _forward;
 };
 
-MooseRecordStore::MooseRecordStore(OperationContext* opCtx,
-                                   StringData ns,
-                                   const std::string& path,
-                                   const std::string& ident,
-                                   const CollectionOptions& options)
+MobileRecordStore::MobileRecordStore(OperationContext* opCtx,
+                                     StringData ns,
+                                     const std::string& path,
+                                     const std::string& ident,
+                                     const CollectionOptions& options)
     : RecordStore(ns),
       _path(path),
       _ident(ident),
@@ -185,7 +185,7 @@ MooseRecordStore::MooseRecordStore(OperationContext* opCtx,
             !_isOplog);
 
     // Determines the nextId to be used for a new record.
-    MooseSession* session = MooseRecoveryUnit::get(opCtx)->getSession(opCtx);
+    MobileSession* session = MobileRecoveryUnit::get(opCtx)->getSession(opCtx);
     std::string maxRecIdQuery = "SELECT IFNULL(MAX(rec_id), 0) FROM \"" + _ident + "\";";
     SqliteStatement maxRecIdStmt(*session, maxRecIdQuery);
 
@@ -195,16 +195,16 @@ MooseRecordStore::MooseRecordStore(OperationContext* opCtx,
     _nextIdNum.store(nextId + 1);
 }
 
-const char* MooseRecordStore::name() const {
-    return "Moose";
+const char* MobileRecordStore::name() const {
+    return "Mobile";
 }
 
-void MooseRecordStore::_initDataSizeIfNeeded_inlock(OperationContext* opCtx) const {
+void MobileRecordStore::_initDataSizeIfNeeded_inlock(OperationContext* opCtx) const {
     if (_isDataSizeInitialized) {
         return;
     }
 
-    MooseSession* session = MooseRecoveryUnit::get(opCtx)->getSession(opCtx);
+    MobileSession* session = MobileRecoveryUnit::get(opCtx)->getSession(opCtx);
     std::string dataSizeQuery = "SELECT IFNULL(SUM(LENGTH(data)), 0) FROM \"" + _ident + "\";";
     SqliteStatement dataSizeStmt(*session, dataSizeQuery);
 
@@ -215,18 +215,18 @@ void MooseRecordStore::_initDataSizeIfNeeded_inlock(OperationContext* opCtx) con
     _isDataSizeInitialized = true;
 }
 
-long long MooseRecordStore::dataSize(OperationContext* opCtx) const {
+long long MobileRecordStore::dataSize(OperationContext* opCtx) const {
     stdx::lock_guard<stdx::mutex> lock(_dataSizeMutex);
     _initDataSizeIfNeeded_inlock(opCtx);
     return _dataSize;
 }
 
-void MooseRecordStore::_initNumRecsIfNeeded_inlock(OperationContext* opCtx) const {
+void MobileRecordStore::_initNumRecsIfNeeded_inlock(OperationContext* opCtx) const {
     if (_isNumRecsInitialized) {
         return;
     }
 
-    MooseSession* session = MooseRecoveryUnit::get(opCtx)->getSession(opCtx);
+    MobileSession* session = MobileRecoveryUnit::get(opCtx)->getSession(opCtx);
     std::string numRecordsQuery = "SELECT COUNT(*) FROM \"" + _ident + "\";";
     SqliteStatement numRecordsStmt(*session, numRecordsQuery);
 
@@ -238,23 +238,23 @@ void MooseRecordStore::_initNumRecsIfNeeded_inlock(OperationContext* opCtx) cons
     _isNumRecsInitialized = true;
 }
 
-long long MooseRecordStore::numRecords(OperationContext* opCtx) const {
+long long MobileRecordStore::numRecords(OperationContext* opCtx) const {
     stdx::lock_guard<stdx::mutex> lock(_numRecsMutex);
     _initNumRecsIfNeeded_inlock(opCtx);
     return _numRecs;
 }
 
-RecordData MooseRecordStore::dataFor(OperationContext* opCtx, const RecordId& recId) const {
+RecordData MobileRecordStore::dataFor(OperationContext* opCtx, const RecordId& recId) const {
     RecordData recData;
     bool recFound = findRecord(opCtx, recId, &recData);
     invariant(recFound);
     return recData;
 }
 
-bool MooseRecordStore::findRecord(OperationContext* opCtx,
-                                  const RecordId& recId,
-                                  RecordData* rd) const {
-    MooseSession* session = MooseRecoveryUnit::get(opCtx)->getSession(opCtx);
+bool MobileRecordStore::findRecord(OperationContext* opCtx,
+                                   const RecordId& recId,
+                                   RecordData* rd) const {
+    MobileSession* session = MobileRecoveryUnit::get(opCtx)->getSession(opCtx);
     std::string sqlQuery = "SELECT data FROM \"" + _ident + "\" WHERE rec_id = ?;";
     SqliteStatement stmt(*session, sqlQuery);
 
@@ -272,10 +272,10 @@ bool MooseRecordStore::findRecord(OperationContext* opCtx,
     return true;
 }
 
-void MooseRecordStore::deleteRecord(OperationContext* opCtx, const RecordId& recId) {
+void MobileRecordStore::deleteRecord(OperationContext* opCtx, const RecordId& recId) {
     invariant(!_isCapped);
 
-    MooseSession* session = MooseRecoveryUnit::get(opCtx)->getSession(opCtx);
+    MobileSession* session = MobileRecoveryUnit::get(opCtx)->getSession(opCtx);
     std::string dataSizeQuery =
         "SELECT IFNULL(LENGTH(data), 0) FROM \"" + _ident + "\" WHERE rec_id = ?;";
     SqliteStatement dataSizeStmt(*session, dataSizeQuery);
@@ -292,7 +292,7 @@ void MooseRecordStore::deleteRecord(OperationContext* opCtx, const RecordId& rec
     deleteStmt.step(SQLITE_DONE);
 }
 
-bool MooseRecordStore::_isCappedAndNeedsDelete(int64_t numRecs, int64_t numBytes) {
+bool MobileRecordStore::_isCappedAndNeedsDelete(int64_t numRecs, int64_t numBytes) {
     if (!_isCapped) {
         return false;
     }
@@ -300,9 +300,9 @@ bool MooseRecordStore::_isCappedAndNeedsDelete(int64_t numRecs, int64_t numBytes
     return numBytes > _cappedMaxSize || (_cappedMaxDocs > 0 && numRecs > _cappedMaxDocs);
 }
 
-void MooseRecordStore::_notifyCappedCallbackIfNeeded_inlock(OperationContext* opCtx,
-                                                            RecordId recId,
-                                                            const RecordData& recData) {
+void MobileRecordStore::_notifyCappedCallbackIfNeeded_inlock(OperationContext* opCtx,
+                                                             RecordId recId,
+                                                             const RecordData& recData) {
     if (!_cappedCallback) {
         return;
     }
@@ -310,11 +310,11 @@ void MooseRecordStore::_notifyCappedCallbackIfNeeded_inlock(OperationContext* op
     uassertStatusOK(_cappedCallback->aboutToDeleteCapped(opCtx, recId, recData));
 }
 
-void MooseRecordStore::_doCappedDelete(OperationContext* opCtx,
-                                       SqliteStatement& stmt,
-                                       const std::string& direction,
-                                       int64_t startRecId) {
-    MooseSession* session = MooseRecoveryUnit::get(opCtx)->getSession(opCtx);
+void MobileRecordStore::_doCappedDelete(OperationContext* opCtx,
+                                        SqliteStatement& stmt,
+                                        const std::string& direction,
+                                        int64_t startRecId) {
+    MobileSession* session = MobileRecoveryUnit::get(opCtx)->getSession(opCtx);
 
     bool isStartRecIdKnown = startRecId;
 
@@ -359,12 +359,12 @@ void MooseRecordStore::_doCappedDelete(OperationContext* opCtx,
     wuow.commit();
 }
 
-void MooseRecordStore::_cappedDeleteIfNeeded(OperationContext* opCtx) {
+void MobileRecordStore::_cappedDeleteIfNeeded(OperationContext* opCtx) {
     if (!_isCappedAndNeedsDelete(numRecords(opCtx), dataSize(opCtx))) {
         return;
     }
 
-    MooseSession* session = MooseRecoveryUnit::get(opCtx)->getSession(opCtx);
+    MobileSession* session = MobileRecoveryUnit::get(opCtx)->getSession(opCtx);
 
     std::string recordRemovalQuery =
         "SELECT rec_id, data FROM \"" + _ident + "\" ORDER BY rec_id ASC;";
@@ -373,10 +373,10 @@ void MooseRecordStore::_cappedDeleteIfNeeded(OperationContext* opCtx) {
     _doCappedDelete(opCtx, recordRemovalStmt, "<=");
 }
 
-StatusWith<RecordId> MooseRecordStore::insertRecord(
+StatusWith<RecordId> MobileRecordStore::insertRecord(
     OperationContext* opCtx, const char* data, int len, Timestamp, bool enforceQuota) {
     // Inserts record into SQLite table (or replaces if duplicate record id).
-    MooseSession* session = MooseRecoveryUnit::get(opCtx)->getSession(opCtx);
+    MobileSession* session = MobileRecoveryUnit::get(opCtx)->getSession(opCtx);
 
     if (_isCapped && len > _cappedMaxSize) {
         return Status(ErrorCodes::BadValue, "object to insert exceeds cappedMaxSize");
@@ -398,11 +398,11 @@ StatusWith<RecordId> MooseRecordStore::insertRecord(
     return StatusWith<RecordId>(recId);
 }
 
-Status MooseRecordStore::insertRecordsWithDocWriter(OperationContext* opCtx,
-                                                    const DocWriter* const* docs,
-                                                    const Timestamp* timestamps,
-                                                    size_t nDocs,
-                                                    RecordId* idsOut) {
+Status MobileRecordStore::insertRecordsWithDocWriter(OperationContext* opCtx,
+                                                     const DocWriter* const* docs,
+                                                     const Timestamp* timestamps,
+                                                     size_t nDocs,
+                                                     RecordId* idsOut) {
     // Calculates the total size of the data buffer.
     size_t totalSize = 0;
     for (size_t i = 0; i < nDocs; i++) {
@@ -422,13 +422,13 @@ Status MooseRecordStore::insertRecordsWithDocWriter(OperationContext* opCtx,
     return Status::OK();
 }
 
-Status MooseRecordStore::updateRecord(OperationContext* opCtx,
-                                      const RecordId& recId,
-                                      const char* data,
-                                      int len,
-                                      bool enforceQuota,
-                                      UpdateNotifier* notifier) {
-    MooseSession* session = MooseRecoveryUnit::get(opCtx)->getSession(opCtx);
+Status MobileRecordStore::updateRecord(OperationContext* opCtx,
+                                       const RecordId& recId,
+                                       const char* data,
+                                       int len,
+                                       bool enforceQuota,
+                                       UpdateNotifier* notifier) {
+    MobileSession* session = MobileRecoveryUnit::get(opCtx)->getSession(opCtx);
     std::string dataSizeQuery =
         "SELECT IFNULL(LENGTH(data), 0) FROM \"" + _ident + "\" WHERE rec_id = ?;";
     SqliteStatement dataSizeStmt(*session, dataSizeQuery);
@@ -454,11 +454,11 @@ Status MooseRecordStore::updateRecord(OperationContext* opCtx,
     return Status::OK();
 }
 
-bool MooseRecordStore::updateWithDamagesSupported() const {
+bool MobileRecordStore::updateWithDamagesSupported() const {
     return false;
 }
 
-StatusWith<RecordData> MooseRecordStore::updateWithDamages(
+StatusWith<RecordData> MobileRecordStore::updateWithDamages(
     OperationContext* opCtx,
     const RecordId& recId,
     const RecordData& oldRec,
@@ -467,8 +467,8 @@ StatusWith<RecordData> MooseRecordStore::updateWithDamages(
     return RecordData();
 }
 
-std::unique_ptr<SeekableRecordCursor> MooseRecordStore::getCursor(OperationContext* opCtx,
-                                                                  bool forward) const {
+std::unique_ptr<SeekableRecordCursor> MobileRecordStore::getCursor(OperationContext* opCtx,
+                                                                   bool forward) const {
     return stdx::make_unique<Cursor>(opCtx, *this, _path, _ident, forward);
 }
 
@@ -476,8 +476,8 @@ std::unique_ptr<SeekableRecordCursor> MooseRecordStore::getCursor(OperationConte
  * SQLite does not directly support truncate. The SQLite documentation recommends dropping then
  * recreating the table rather than deleting all the contents of a table.
  */
-Status MooseRecordStore::truncate(OperationContext* opCtx) {
-    MooseSession* session = MooseRecoveryUnit::get(opCtx)->getSession(opCtx);
+Status MobileRecordStore::truncate(OperationContext* opCtx) {
+    MobileSession* session = MobileRecoveryUnit::get(opCtx)->getSession(opCtx);
 
     int64_t numRecsBefore = numRecords(opCtx);
     _changeNumRecs(opCtx, -numRecsBefore);
@@ -486,7 +486,7 @@ Status MooseRecordStore::truncate(OperationContext* opCtx) {
 
     std::string dropQuery = "DROP TABLE \"" + _ident + "\";";
     SqliteStatement::execQuery(session, dropQuery);
-    MooseRecordStore::create(opCtx, _ident);
+    MobileRecordStore::create(opCtx, _ident);
 
     return Status::OK();
 }
@@ -494,8 +494,8 @@ Status MooseRecordStore::truncate(OperationContext* opCtx) {
 /**
  * The method throws an assertion if the capped truncate results in an emptied table.
  */
-void MooseRecordStore::cappedTruncateAfter(OperationContext* opCtx, RecordId end, bool inclusive) {
-    MooseSession* session = MooseRecoveryUnit::get(opCtx)->getSession(opCtx);
+void MobileRecordStore::cappedTruncateAfter(OperationContext* opCtx, RecordId end, bool inclusive) {
+    MobileSession* session = MobileRecoveryUnit::get(opCtx)->getSession(opCtx);
 
     // Check that the table will not be empty after performing deletes.
     str::stream recordsRemainingQuery;
@@ -519,10 +519,10 @@ void MooseRecordStore::cappedTruncateAfter(OperationContext* opCtx, RecordId end
     _doCappedDelete(opCtx, recordsRemovedStmt, (inclusive ? ">=" : ">"), end.repr());
 }
 
-Status MooseRecordStore::compact(OperationContext* opCtx,
-                                 RecordStoreCompactAdaptor* adaptor,
-                                 const CompactOptions* options,
-                                 CompactStats* stats) {
+Status MobileRecordStore::compact(OperationContext* opCtx,
+                                  RecordStoreCompactAdaptor* adaptor,
+                                  const CompactOptions* options,
+                                  CompactStats* stats) {
     return Status::OK();
 }
 
@@ -530,11 +530,11 @@ Status MooseRecordStore::compact(OperationContext* opCtx,
  * Note: on full validation, this validates the entire database file, not just the table used by
  * this record store.
  */
-Status MooseRecordStore::validate(OperationContext* opCtx,
-                                  ValidateCmdLevel level,
-                                  ValidateAdaptor* adaptor,
-                                  ValidateResults* results,
-                                  BSONObjBuilder* output) {
+Status MobileRecordStore::validate(OperationContext* opCtx,
+                                   ValidateCmdLevel level,
+                                   ValidateAdaptor* adaptor,
+                                   ValidateResults* results,
+                                   BSONObjBuilder* output) {
     if (level == kValidateFull) {
         doValidate(opCtx, results);
     }
@@ -544,7 +544,7 @@ Status MooseRecordStore::validate(OperationContext* opCtx,
         return Status::OK();
     }
 
-    MooseSession* session = MooseRecoveryUnit::get(opCtx)->getSession(opCtx);
+    MobileSession* session = MobileRecoveryUnit::get(opCtx)->getSession(opCtx);
     try {
         std::string selectQuery = "SELECT rec_id, data FROM \"" + _ident + "\";";
         SqliteStatement selectStmt(*session, selectQuery);
@@ -620,9 +620,9 @@ Status MooseRecordStore::validate(OperationContext* opCtx,
     return Status::OK();
 }
 
-void MooseRecordStore::appendCustomStats(OperationContext* opCtx,
-                                         BSONObjBuilder* result,
-                                         double scale) const {
+void MobileRecordStore::appendCustomStats(OperationContext* opCtx,
+                                          BSONObjBuilder* result,
+                                          double scale) const {
     result->appendBool("capped", _isCapped);
     if (_isCapped) {
         result->appendIntOrLL("max", _cappedMaxDocs);
@@ -630,7 +630,7 @@ void MooseRecordStore::appendCustomStats(OperationContext* opCtx,
     }
 }
 
-Status MooseRecordStore::touch(OperationContext* opCtx, BSONObjBuilder* output) const {
+Status MobileRecordStore::touch(OperationContext* opCtx, BSONObjBuilder* output) const {
     return Status(ErrorCodes::CommandNotSupported, "this storage engine does not support touch");
 }
 
@@ -638,13 +638,13 @@ Status MooseRecordStore::touch(OperationContext* opCtx, BSONObjBuilder* output) 
  * Note: does not accurately return the size of the table on disk. Instead, it returns the number of
  * bytes used to store the BSON documents.
  */
-int64_t MooseRecordStore::storageSize(OperationContext* opCtx,
-                                      BSONObjBuilder* extraInfo,
-                                      int infoLevel) const {
+int64_t MobileRecordStore::storageSize(OperationContext* opCtx,
+                                       BSONObjBuilder* extraInfo,
+                                       int infoLevel) const {
     return dataSize(opCtx);
 }
 
-RecordId MooseRecordStore::_nextId() {
+RecordId MobileRecordStore::_nextId() {
     RecordId out = RecordId(_nextIdNum.fetchAndAdd(1));
     invariant(out.isNormal());
     return out;
@@ -653,9 +653,9 @@ RecordId MooseRecordStore::_nextId() {
 /**
  * Keeps track of the changes to the number of records.
  */
-class MooseRecordStore::NumRecsChange final : public RecoveryUnit::Change {
+class MobileRecordStore::NumRecsChange final : public RecoveryUnit::Change {
 public:
-    NumRecsChange(MooseRecordStore* rs, int64_t diff) : _rs(rs), _diff(diff) {}
+    NumRecsChange(MobileRecordStore* rs, int64_t diff) : _rs(rs), _diff(diff) {}
 
     void commit() override {}
 
@@ -665,18 +665,18 @@ public:
     }
 
 private:
-    MooseRecordStore* _rs;
+    MobileRecordStore* _rs;
     int64_t _diff;
 };
 
-void MooseRecordStore::_changeNumRecs(OperationContext* opCtx, int64_t diff) {
+void MobileRecordStore::_changeNumRecs(OperationContext* opCtx, int64_t diff) {
     stdx::lock_guard<stdx::mutex> lock(_numRecsMutex);
     opCtx->recoveryUnit()->registerChange(new NumRecsChange(this, diff));
     _initNumRecsIfNeeded_inlock(opCtx);
     _numRecs += diff;
 }
 
-bool MooseRecordStore::_resetNumRecsIfNeeded(OperationContext* opCtx, int64_t newNumRecs) {
+bool MobileRecordStore::_resetNumRecsIfNeeded(OperationContext* opCtx, int64_t newNumRecs) {
     bool wasReset = false;
     int64_t currNumRecs = numRecords(opCtx);
     if (currNumRecs != newNumRecs) {
@@ -690,9 +690,9 @@ bool MooseRecordStore::_resetNumRecsIfNeeded(OperationContext* opCtx, int64_t ne
 /**
  * Keeps track of the total data size.
  */
-class MooseRecordStore::DataSizeChange final : public RecoveryUnit::Change {
+class MobileRecordStore::DataSizeChange final : public RecoveryUnit::Change {
 public:
-    DataSizeChange(MooseRecordStore* rs, int64_t diff) : _rs(rs), _diff(diff) {}
+    DataSizeChange(MobileRecordStore* rs, int64_t diff) : _rs(rs), _diff(diff) {}
 
     void commit() override {}
 
@@ -702,18 +702,18 @@ public:
     }
 
 private:
-    MooseRecordStore* _rs;
+    MobileRecordStore* _rs;
     int64_t _diff;
 };
 
-void MooseRecordStore::_changeDataSize(OperationContext* opCtx, int64_t diff) {
+void MobileRecordStore::_changeDataSize(OperationContext* opCtx, int64_t diff) {
     stdx::lock_guard<stdx::mutex> lock(_dataSizeMutex);
     opCtx->recoveryUnit()->registerChange(new DataSizeChange(this, diff));
     _initDataSizeIfNeeded_inlock(opCtx);
     _dataSize += diff;
 }
 
-bool MooseRecordStore::_resetDataSizeIfNeeded(OperationContext* opCtx, int64_t newDataSize) {
+bool MobileRecordStore::_resetDataSizeIfNeeded(OperationContext* opCtx, int64_t newDataSize) {
     bool wasReset = false;
     int64_t currDataSize = dataSize(opCtx);
 
@@ -725,13 +725,13 @@ bool MooseRecordStore::_resetDataSizeIfNeeded(OperationContext* opCtx, int64_t n
     return wasReset;
 }
 
-Status MooseRecordStore::updateCappedSize(OperationContext* opCtx, long long cappedSize) {
+Status MobileRecordStore::updateCappedSize(OperationContext* opCtx, long long cappedSize) {
     _cappedMaxSize = cappedSize;
     return Status::OK();
 }
 
-boost::optional<RecordId> MooseRecordStore::oplogStartHack(OperationContext* opCtx,
-                                                           const RecordId& startingPosition) const {
+boost::optional<RecordId> MobileRecordStore::oplogStartHack(
+    OperationContext* opCtx, const RecordId& startingPosition) const {
     return {};
 }
 
@@ -739,8 +739,8 @@ boost::optional<RecordId> MooseRecordStore::oplogStartHack(OperationContext* opC
  * Creates a new record store within SQLite.
  * The method is not transactional. Callers are responsible for handling transactional semantics.
  */
-void MooseRecordStore::create(OperationContext* opCtx, const std::string& ident) {
-    MooseSession* session = MooseRecoveryUnit::get(opCtx)->getSessionNoTxn(opCtx);
+void MobileRecordStore::create(OperationContext* opCtx, const std::string& ident) {
+    MobileSession* session = MobileRecoveryUnit::get(opCtx)->getSessionNoTxn(opCtx);
     std::string sqlQuery =
         "CREATE TABLE IF NOT EXISTS \"" + ident + "\"(rec_id INT, data BLOB, PRIMARY KEY(rec_id));";
     SqliteStatement::execQuery(session, sqlQuery);

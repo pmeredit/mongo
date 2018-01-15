@@ -8,22 +8,22 @@
 #include <string>
 #include <vector>
 
+#include "mobile_session.h"
+#include "mobile_session_pool.h"
 #include "mongo/base/checked_cast.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/record_id.h"
 #include "mongo/db/storage/recovery_unit.h"
 #include "mongo/db/storage/snapshot.h"
-#include "moose_session.h"
-#include "moose_session_pool.h"
 
 namespace mongo {
 
 class SortedDataInterface;
 
-class MooseRecoveryUnit final : public RecoveryUnit {
+class MobileRecoveryUnit final : public RecoveryUnit {
 public:
-    MooseRecoveryUnit(MooseSessionPool* sessionPool);
-    virtual ~MooseRecoveryUnit();
+    MobileRecoveryUnit(MobileSessionPool* sessionPool);
+    virtual ~MobileRecoveryUnit();
 
     void beginUnitOfWork(OperationContext* opCtx) override;
     void commitUnitOfWork() override;
@@ -47,9 +47,9 @@ public:
         return SnapshotId();
     }
 
-    MooseSession* getSession(OperationContext* opCtx);
+    MobileSession* getSession(OperationContext* opCtx);
 
-    MooseSession* getSessionNoTxn(OperationContext* opCtx);
+    MobileSession* getSessionNoTxn(OperationContext* opCtx);
 
     bool inActiveTxn() const {
         return _active;
@@ -57,8 +57,8 @@ public:
 
     void assertInActiveTxn() const;
 
-    static MooseRecoveryUnit* get(OperationContext* opCtx) {
-        return checked_cast<MooseRecoveryUnit*>(opCtx->recoveryUnit());
+    static MobileRecoveryUnit* get(OperationContext* opCtx) {
+        return checked_cast<MobileRecoveryUnit*>(opCtx->recoveryUnit());
     }
 
 private:
@@ -74,8 +74,8 @@ private:
     bool _active;
 
     std::string _path;
-    MooseSessionPool* _sessionPool;
-    std::unique_ptr<MooseSession> _session;
+    MobileSessionPool* _sessionPool;
+    std::unique_ptr<MobileSession> _session;
 
     using Changes = std::vector<std::unique_ptr<Change>>;
     Changes _changes;

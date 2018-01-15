@@ -4,19 +4,19 @@
 
 #include "mongo/platform/basic.h"
 
-#include "moose_sqlite_statement.h"
+#include "mobile_sqlite_statement.h"
 
 #include <string>
 
 #include "../third_party/sqlite/sqlite3.h"
+#include "mobile_util.h"
 #include "mongo/db/concurrency/write_conflict_exception.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/scopeguard.h"
-#include "moose_util.h"
 
 namespace mongo {
 
-SqliteStatement::SqliteStatement(const MooseSession& session, const std::string& sqlQuery) {
+SqliteStatement::SqliteStatement(const MobileSession& session, const std::string& sqlQuery) {
     int status = sqlite3_prepare_v2(
         session.getSession(), sqlQuery.c_str(), sqlQuery.length() + 1, &_stmt, NULL);
     if (status == SQLITE_BUSY) {
@@ -84,7 +84,7 @@ const void* SqliteStatement::getColText(int colIndex) {
     return sqlite3_column_text(_stmt, colIndex);
 }
 
-void SqliteStatement::execQuery(MooseSession* session, const std::string& query) {
+void SqliteStatement::execQuery(MobileSession* session, const std::string& query) {
     char* errMsg = NULL;
     int status = sqlite3_exec(session->getSession(), query.c_str(), NULL, NULL, &errMsg);
 

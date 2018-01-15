@@ -4,7 +4,7 @@
 
 #include "mongo/platform/basic.h"
 
-#include "moose_index.h"
+#include "mobile_index.h"
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/index/index_descriptor.h"
@@ -12,9 +12,9 @@
 #include "mongo/db/storage/key_string.h"
 
 #include "../third_party/sqlite/sqlite3.h"
-#include "moose_recovery_unit.h"
-#include "moose_sqlite_statement.h"
-#include "moose_util.h"
+#include "mobile_recovery_unit.h"
+#include "mobile_sqlite_statement.h"
+#include "mobile_util.h"
 
 namespace mongo {
 namespace {
@@ -48,18 +48,18 @@ BSONObj stripFieldNames(const BSONObj& query) {
 
 }  // namespace
 
-MooseIndex::MooseIndex(OperationContext* opCtx,
-                       const IndexDescriptor* desc,
-                       const std::string& ident)
+MobileIndex::MobileIndex(OperationContext* opCtx,
+                         const IndexDescriptor* desc,
+                         const std::string& ident)
     : _isUnique(desc->unique()), _ordering(Ordering::make(desc->keyPattern())), _ident(ident) {}
 
-MooseIndex::MooseIndex(bool isUnique, const Ordering& ordering, const std::string& ident)
+MobileIndex::MobileIndex(bool isUnique, const Ordering& ordering, const std::string& ident)
     : _isUnique(isUnique), _ordering(ordering), _ident(ident) {}
 
-Status MooseIndex::insert(OperationContext* opCtx,
-                          const BSONObj& key,
-                          const RecordId& recId,
-                          bool dupsAllowed) {
+Status MobileIndex::insert(OperationContext* opCtx,
+                           const BSONObj& key,
+                           const RecordId& recId,
+                           bool dupsAllowed) {
     invariant(recId.isNormal());
     invariant(!hasFieldNames(key));
 
@@ -72,15 +72,15 @@ Status MooseIndex::insert(OperationContext* opCtx,
 }
 
 template <typename ValueType>
-Status MooseIndex::doInsert(OperationContext* opCtx,
-                            const KeyString& key,
-                            const ValueType& value,
-                            bool isTransactional) {
-    MooseSession* session;
+Status MobileIndex::doInsert(OperationContext* opCtx,
+                             const KeyString& key,
+                             const ValueType& value,
+                             bool isTransactional) {
+    MobileSession* session;
     if (isTransactional) {
-        session = MooseRecoveryUnit::get(opCtx)->getSession(opCtx);
+        session = MobileRecoveryUnit::get(opCtx)->getSession(opCtx);
     } else {
-        session = MooseRecoveryUnit::get(opCtx)->getSessionNoTxn(opCtx);
+        session = MobileRecoveryUnit::get(opCtx)->getSessionNoTxn(opCtx);
     }
 
     std::string insertQuery = "INSERT INTO \"" + _ident + "\"(key, value) VALUES(?, ?);";
@@ -102,18 +102,18 @@ Status MooseIndex::doInsert(OperationContext* opCtx,
     return Status::OK();
 }
 
-void MooseIndex::unindex(OperationContext* opCtx,
-                         const BSONObj& key,
-                         const RecordId& recId,
-                         bool dupsAllowed) {
+void MobileIndex::unindex(OperationContext* opCtx,
+                          const BSONObj& key,
+                          const RecordId& recId,
+                          bool dupsAllowed) {
     invariant(recId.isNormal());
     invariant(!hasFieldNames(key));
 
     return _unindex(opCtx, key, recId, dupsAllowed);
 }
 
-void MooseIndex::_doDelete(OperationContext* opCtx, const KeyString& key, KeyString* value) {
-    MooseSession* session = MooseRecoveryUnit::get(opCtx)->getSession(opCtx);
+void MobileIndex::_doDelete(OperationContext* opCtx, const KeyString& key, KeyString* value) {
+    MobileSession* session = MobileRecoveryUnit::get(opCtx)->getSession(opCtx);
 
     str::stream deleteQuery;
     deleteQuery << "DELETE FROM \"" << _ident << "\" WHERE key = ?";
@@ -133,9 +133,9 @@ void MooseIndex::_doDelete(OperationContext* opCtx, const KeyString& key, KeyStr
 /**
  * Note: this validates the entire database file, not just the table used by this index.
  */
-void MooseIndex::fullValidate(OperationContext* opCtx,
-                              long long* numKeysOut,
-                              ValidateResults* fullResults) const {
+void MobileIndex::fullValidate(OperationContext* opCtx,
+                               long long* numKeysOut,
+                               ValidateResults* fullResults) const {
     if (fullResults) {
         doValidate(opCtx, fullResults);
         if (!fullResults->valid) {
@@ -147,14 +147,14 @@ void MooseIndex::fullValidate(OperationContext* opCtx,
     }
 }
 
-bool MooseIndex::appendCustomStats(OperationContext* opCtx,
-                                   BSONObjBuilder* output,
-                                   double scale) const {
+bool MobileIndex::appendCustomStats(OperationContext* opCtx,
+                                    BSONObjBuilder* output,
+                                    double scale) const {
     return true;
 }
 
-long long MooseIndex::getSpaceUsedBytes(OperationContext* opCtx) const {
-    MooseSession* session = MooseRecoveryUnit::get(opCtx)->getSession(opCtx);
+long long MobileIndex::getSpaceUsedBytes(OperationContext* opCtx) const {
+    MobileSession* session = MobileRecoveryUnit::get(opCtx)->getSession(opCtx);
 
     // Sum the number of bytes in each column.
     // SQLite aggregate functions return null if the column is empty or has only nulls, so return 0
@@ -170,8 +170,8 @@ long long MooseIndex::getSpaceUsedBytes(OperationContext* opCtx) const {
     return dataSize;
 }
 
-long long MooseIndex::numEntries(OperationContext* opCtx) const {
-    MooseSession* session = MooseRecoveryUnit::get(opCtx)->getSession(opCtx);
+long long MobileIndex::numEntries(OperationContext* opCtx) const {
+    MobileSession* session = MobileRecoveryUnit::get(opCtx)->getSession(opCtx);
     std::string countQuery = "SELECT COUNT(*) FROM \"" + _ident + "\";";
     SqliteStatement countStmt(*session, countQuery);
 
@@ -180,8 +180,8 @@ long long MooseIndex::numEntries(OperationContext* opCtx) const {
     return numRecs;
 }
 
-bool MooseIndex::isEmpty(OperationContext* opCtx) {
-    MooseSession* session = MooseRecoveryUnit::get(opCtx)->getSession(opCtx);
+bool MobileIndex::isEmpty(OperationContext* opCtx) {
+    MobileSession* session = MobileRecoveryUnit::get(opCtx)->getSession(opCtx);
     std::string emptyCheckQuery = "SELECT * FROM \"" + _ident + "\" LIMIT 1;";
     SqliteStatement emptyCheckStmt(*session, emptyCheckQuery);
 
@@ -193,13 +193,13 @@ bool MooseIndex::isEmpty(OperationContext* opCtx) {
     return false;
 }
 
-Status MooseIndex::initAsEmpty(OperationContext* opCtx) {
+Status MobileIndex::initAsEmpty(OperationContext* opCtx) {
     // No-op.
     return Status::OK();
 }
 
-Status MooseIndex::create(OperationContext* opCtx, const std::string& ident) {
-    MooseSession* session = MooseRecoveryUnit::get(opCtx)->getSessionNoTxn(opCtx);
+Status MobileIndex::create(OperationContext* opCtx, const std::string& ident) {
+    MobileSession* session = MobileRecoveryUnit::get(opCtx)->getSessionNoTxn(opCtx);
     std::string createTableQuery =
         "CREATE TABLE \"" + ident + "\"(key BLOB PRIMARY KEY, value BLOB);";
     SqliteStatement createTableStmt(*session, createTableQuery.c_str());
@@ -208,7 +208,9 @@ Status MooseIndex::create(OperationContext* opCtx, const std::string& ident) {
     return Status::OK();
 }
 
-Status MooseIndex::dupKeyCheck(OperationContext* opCtx, const BSONObj& key, const RecordId& recId) {
+Status MobileIndex::dupKeyCheck(OperationContext* opCtx,
+                                const BSONObj& key,
+                                const RecordId& recId) {
     invariant(!hasFieldNames(key));
     invariant(_isUnique);
 
@@ -217,8 +219,8 @@ Status MooseIndex::dupKeyCheck(OperationContext* opCtx, const BSONObj& key, cons
     return Status::OK();
 }
 
-bool MooseIndex::_isDup(OperationContext* opCtx, const BSONObj& key, RecordId recId) {
-    MooseSession* session = MooseRecoveryUnit::get(opCtx)->getSession(opCtx);
+bool MobileIndex::_isDup(OperationContext* opCtx, const BSONObj& key, RecordId recId) {
+    MobileSession* session = MobileRecoveryUnit::get(opCtx)->getSession(opCtx);
     std::string dupCheckQuery = "SELECT value FROM \"" + _ident + "\" WHERE key = ?;";
     SqliteStatement dupCheckStmt(*session, dupCheckQuery);
 
@@ -247,7 +249,7 @@ bool MooseIndex::_isDup(OperationContext* opCtx, const BSONObj& key, RecordId re
     return isEntryFound;
 }
 
-Status MooseIndex::_dupKeyError(const BSONObj& key) {
+Status MobileIndex::_dupKeyError(const BSONObj& key) {
     StringBuilder sb;
     sb << "E11000 duplicate key error ";
     sb << "index: " << _ident << " ";
@@ -255,16 +257,16 @@ Status MooseIndex::_dupKeyError(const BSONObj& key) {
     return Status(ErrorCodes::DuplicateKey, sb.str());
 }
 
-Status MooseIndex::_checkKeySize(const BSONObj& key) {
+Status MobileIndex::_checkKeySize(const BSONObj& key) {
     if (key.objsize() >= TempKeyMaxSize) {
         return Status(ErrorCodes::KeyTooLong, "key too big");
     }
     return Status::OK();
 }
 
-class MooseIndex::BulkBuilderBase : public SortedDataBuilderInterface {
+class MobileIndex::BulkBuilderBase : public SortedDataBuilderInterface {
 public:
-    BulkBuilderBase(MooseIndex* index, OperationContext* opCtx, bool dupsAllowed)
+    BulkBuilderBase(MobileIndex* index, OperationContext* opCtx, bool dupsAllowed)
         : _index(index), _opCtx(opCtx), _dupsAllowed(dupsAllowed) {}
 
     virtual ~BulkBuilderBase() {}
@@ -307,7 +309,7 @@ protected:
 
     virtual Status _addKey(const BSONObj& key, const RecordId& recId) = 0;
 
-    MooseIndex* _index;
+    MobileIndex* _index;
     OperationContext* const _opCtx;
     BSONObj _lastKey;
     const bool _dupsAllowed;
@@ -316,9 +318,9 @@ protected:
 /**
  * Bulk builds a non-unique index.
  */
-class MooseIndex::BulkBuilderStandard final : public BulkBuilderBase {
+class MobileIndex::BulkBuilderStandard final : public BulkBuilderBase {
 public:
-    BulkBuilderStandard(MooseIndex* index, OperationContext* opCtx, bool dupsAllowed)
+    BulkBuilderStandard(MobileIndex* index, OperationContext* opCtx, bool dupsAllowed)
         : BulkBuilderBase(index, opCtx, dupsAllowed) {}
 
 protected:
@@ -332,9 +334,9 @@ protected:
 /**
  * Bulk builds a unique index.
  */
-class MooseIndex::BulkBuilderUnique : public BulkBuilderBase {
+class MobileIndex::BulkBuilderUnique : public BulkBuilderBase {
 public:
-    BulkBuilderUnique(MooseIndex* index, OperationContext* opCtx, bool dupsAllowed)
+    BulkBuilderUnique(MobileIndex* index, OperationContext* opCtx, bool dupsAllowed)
         : BulkBuilderBase(index, opCtx, dupsAllowed) {
         // Replication is not supported so dups are not allowed.
         invariant(!dupsAllowed);
@@ -361,7 +363,7 @@ namespace {
  */
 class CursorBase : public SortedDataInterface::Cursor {
 public:
-    CursorBase(const MooseIndex& index, OperationContext* opCtx, bool isForward)
+    CursorBase(const MobileIndex& index, OperationContext* opCtx, bool isForward)
         : _index(index),
           _opCtx(opCtx),
           _isForward(isForward),
@@ -369,7 +371,7 @@ public:
           _savedRecId(0),
           _savedTypeBits(index.getKeyStringVersion()),
           _startPosition(index.getKeyStringVersion()) {
-        MooseSession* session = MooseRecoveryUnit::get(opCtx)->getSession(opCtx);
+        MobileSession* session = MobileRecoveryUnit::get(opCtx)->getSession(opCtx);
         str::stream cursorQuery;
         cursorQuery << "SELECT key, value FROM \"" << _index.getIdent() << "\" WHERE key ";
         cursorQuery << (_isForward ? ">=" : "<=") << " ? ORDER BY key ";
@@ -564,7 +566,7 @@ protected:
 
     virtual void _updateRecIdAndTypeBits() = 0;
 
-    const MooseIndex& _index;
+    const MobileIndex& _index;
     OperationContext* _opCtx;  // Not owned.
 
     bool _isForward;
@@ -586,7 +588,7 @@ protected:
  */
 class CursorStandard final : public CursorBase {
 public:
-    CursorStandard(const MooseIndex& index, OperationContext* opCtx, bool isForward)
+    CursorStandard(const MobileIndex& index, OperationContext* opCtx, bool isForward)
         : CursorBase(index, opCtx, isForward) {}
 
 protected:
@@ -605,7 +607,7 @@ protected:
  */
 class CursorUnique final : public CursorBase {
 public:
-    CursorUnique(const MooseIndex& index, OperationContext* opCtx, bool isForward)
+    CursorUnique(const MobileIndex& index, OperationContext* opCtx, bool isForward)
         : CursorBase(index, opCtx, isForward) {}
 
 protected:
@@ -619,29 +621,29 @@ protected:
 };
 }  // namespace
 
-MooseIndexStandard::MooseIndexStandard(OperationContext* opCtx,
-                                       const IndexDescriptor* desc,
-                                       const std::string& ident)
-    : MooseIndex(opCtx, desc, ident) {}
+MobileIndexStandard::MobileIndexStandard(OperationContext* opCtx,
+                                         const IndexDescriptor* desc,
+                                         const std::string& ident)
+    : MobileIndex(opCtx, desc, ident) {}
 
-MooseIndexStandard::MooseIndexStandard(const Ordering& ordering, const std::string& ident)
-    : MooseIndex(false, ordering, ident) {}
+MobileIndexStandard::MobileIndexStandard(const Ordering& ordering, const std::string& ident)
+    : MobileIndex(false, ordering, ident) {}
 
-SortedDataBuilderInterface* MooseIndexStandard::getBulkBuilder(OperationContext* opCtx,
-                                                               bool dupsAllowed) {
+SortedDataBuilderInterface* MobileIndexStandard::getBulkBuilder(OperationContext* opCtx,
+                                                                bool dupsAllowed) {
     invariant(dupsAllowed);
     return new BulkBuilderStandard(this, opCtx, dupsAllowed);
 }
 
-std::unique_ptr<SortedDataInterface::Cursor> MooseIndexStandard::newCursor(OperationContext* opCtx,
-                                                                           bool isForward) const {
+std::unique_ptr<SortedDataInterface::Cursor> MobileIndexStandard::newCursor(OperationContext* opCtx,
+                                                                            bool isForward) const {
     return stdx::make_unique<CursorStandard>(*this, opCtx, isForward);
 }
 
-Status MooseIndexStandard::_insert(OperationContext* opCtx,
-                                   const BSONObj& key,
-                                   const RecordId& recId,
-                                   bool dupsAllowed) {
+Status MobileIndexStandard::_insert(OperationContext* opCtx,
+                                    const BSONObj& key,
+                                    const RecordId& recId,
+                                    bool dupsAllowed) {
     invariant(dupsAllowed);
 
     const KeyString keyStr(_keyStringVersion, key, _ordering, recId);
@@ -649,40 +651,40 @@ Status MooseIndexStandard::_insert(OperationContext* opCtx,
     return doInsert(opCtx, keyStr, value);
 }
 
-void MooseIndexStandard::_unindex(OperationContext* opCtx,
-                                  const BSONObj& key,
-                                  const RecordId& recId,
-                                  bool dupsAllowed) {
+void MobileIndexStandard::_unindex(OperationContext* opCtx,
+                                   const BSONObj& key,
+                                   const RecordId& recId,
+                                   bool dupsAllowed) {
     invariant(dupsAllowed);
 
     const KeyString keyStr(_keyStringVersion, key, _ordering, recId);
     _doDelete(opCtx, keyStr);
 }
 
-MooseIndexUnique::MooseIndexUnique(OperationContext* opCtx,
-                                   const IndexDescriptor* desc,
-                                   const std::string& ident)
-    : MooseIndex(opCtx, desc, ident), _isPartial(desc->isPartial()) {}
+MobileIndexUnique::MobileIndexUnique(OperationContext* opCtx,
+                                     const IndexDescriptor* desc,
+                                     const std::string& ident)
+    : MobileIndex(opCtx, desc, ident), _isPartial(desc->isPartial()) {}
 
-MooseIndexUnique::MooseIndexUnique(const Ordering& ordering, const std::string& ident)
-    : MooseIndex(true, ordering, ident) {}
+MobileIndexUnique::MobileIndexUnique(const Ordering& ordering, const std::string& ident)
+    : MobileIndex(true, ordering, ident) {}
 
-SortedDataBuilderInterface* MooseIndexUnique::getBulkBuilder(OperationContext* opCtx,
-                                                             bool dupsAllowed) {
+SortedDataBuilderInterface* MobileIndexUnique::getBulkBuilder(OperationContext* opCtx,
+                                                              bool dupsAllowed) {
     // Replication is not supported so dups are not allowed.
     invariant(!dupsAllowed);
     return new BulkBuilderUnique(this, opCtx, dupsAllowed);
 }
 
-std::unique_ptr<SortedDataInterface::Cursor> MooseIndexUnique::newCursor(OperationContext* opCtx,
-                                                                         bool isForward) const {
+std::unique_ptr<SortedDataInterface::Cursor> MobileIndexUnique::newCursor(OperationContext* opCtx,
+                                                                          bool isForward) const {
     return stdx::make_unique<CursorUnique>(*this, opCtx, isForward);
 }
 
-Status MooseIndexUnique::_insert(OperationContext* opCtx,
-                                 const BSONObj& key,
-                                 const RecordId& recId,
-                                 bool dupsAllowed) {
+Status MobileIndexUnique::_insert(OperationContext* opCtx,
+                                  const BSONObj& key,
+                                  const RecordId& recId,
+                                  bool dupsAllowed) {
     // Replication is not supported so dups are not allowed.
     invariant(!dupsAllowed);
     const KeyString keyStr(_keyStringVersion, key, _ordering);
@@ -696,10 +698,10 @@ Status MooseIndexUnique::_insert(OperationContext* opCtx,
     return doInsert(opCtx, keyStr, value);
 }
 
-void MooseIndexUnique::_unindex(OperationContext* opCtx,
-                                const BSONObj& key,
-                                const RecordId& recId,
-                                bool dupsAllowed) {
+void MobileIndexUnique::_unindex(OperationContext* opCtx,
+                                 const BSONObj& key,
+                                 const RecordId& recId,
+                                 bool dupsAllowed) {
     // Replication is not supported so dups are not allowed.
     invariant(!dupsAllowed);
     const KeyString keyStr(_keyStringVersion, key, _ordering);

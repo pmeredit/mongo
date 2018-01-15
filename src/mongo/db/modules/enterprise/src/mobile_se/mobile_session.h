@@ -7,22 +7,22 @@
 #include <string>
 
 #include "../third_party/sqlite/sqlite3.h"
+#include "mobile_session_pool.h"
 #include "mongo/base/disallow_copying.h"
-#include "moose_session_pool.h"
 
 namespace mongo {
-class MooseSessionPool;
+class MobileSessionPool;
 
 /**
  * This class manages a SQLite database connection object.
  */
-class MooseSession final {
-    MONGO_DISALLOW_COPYING(MooseSession);
+class MobileSession final {
+    MONGO_DISALLOW_COPYING(MobileSession);
 
 public:
-    MooseSession(sqlite3* session, MooseSessionPool* sessionPool);
+    MobileSession(sqlite3* session, MobileSessionPool* sessionPool);
 
-    ~MooseSession();
+    ~MobileSession();
 
     /**
      * Returns a pointer to the underlying SQLite connection object.
@@ -31,6 +31,6 @@ public:
 
 private:
     sqlite3* _session;
-    MooseSessionPool* _sessionPool;
+    MobileSessionPool* _sessionPool;
 };
 }  // namespace mongo

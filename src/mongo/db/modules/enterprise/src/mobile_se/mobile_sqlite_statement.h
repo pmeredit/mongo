@@ -8,7 +8,7 @@
 
 #include "../third_party/sqlite/sqlite3.h"
 
-#include "moose_session.h"
+#include "mobile_session.h"
 
 namespace mongo {
 
@@ -21,7 +21,7 @@ public:
     /**
      * Creates and prepares a SQLite statement.
      */
-    SqliteStatement(const MooseSession& session, const std::string& sqlQuery);
+    SqliteStatement(const MobileSession& session, const std::string& sqlQuery);
 
     /**
      * Finalizes the prepared statement.
@@ -90,7 +90,7 @@ public:
      * None of the rows retrieved, if any, are saved before the query is finalized. Thus, this
      * method should not be used for read operations.
      */
-    static void execQuery(MooseSession* session, const std::string& query);
+    static void execQuery(MobileSession* session, const std::string& query);
 
 private:
     sqlite3_stmt* _stmt;

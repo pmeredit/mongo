@@ -13,20 +13,20 @@
 #include "mongo/db/storage/record_store.h"
 #include "mongo/platform/atomic_word.h"
 
-#include "moose_sqlite_statement.h"
+#include "mobile_sqlite_statement.h"
 
 namespace mongo {
 
 /**
  * A RecordStore that stores all data in SQLite.
  */
-class MooseRecordStore : public RecordStore {
+class MobileRecordStore : public RecordStore {
 public:
-    explicit MooseRecordStore(OperationContext* opCtx,
-                              StringData ns,
-                              const std::string& path,
-                              const std::string& ident,
-                              const CollectionOptions& options);
+    explicit MobileRecordStore(OperationContext* opCtx,
+                               StringData ns,
+                               const std::string& path,
+                               const std::string& ident,
+                               const CollectionOptions& options);
 
     const char* name() const override;
 

@@ -4,7 +4,7 @@
 
 #include "mongo/platform/basic.h"
 
-#include "moose_kv_engine.h"
+#include "mobile_kv_engine.h"
 
 #include <boost/filesystem/operations.hpp>
 #include <boost/filesystem/path.hpp>
@@ -12,22 +12,22 @@
 #include <memory>
 #include <vector>
 
+#include "mobile_index.h"
+#include "mobile_record_store.h"
+#include "mobile_recovery_unit.h"
+#include "mobile_session.h"
+#include "mobile_sqlite_statement.h"
+#include "mobile_util.h"
 #include "mongo/db/index/index_descriptor.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/util/scopeguard.h"
-#include "moose_index.h"
-#include "moose_record_store.h"
-#include "moose_recovery_unit.h"
-#include "moose_session.h"
-#include "moose_sqlite_statement.h"
-#include "moose_util.h"
 
 namespace mongo {
 
-class MooseSession;
+class MobileSession;
 class SqliteStatement;
 
-MooseKVEngine::MooseKVEngine(const std::string& path) {
+MobileKVEngine::MobileKVEngine(const std::string& path) {
     _initDBPath(path);
 
     // Initialize the database to be in WAL mode.
@@ -52,10 +52,10 @@ MooseKVEngine::MooseKVEngine(const std::string& path) {
     status = sqlite3_finalize(stmt);
     checkStatus(status, SQLITE_OK, "sqlite3_finalize");
 
-    _sessionPool.reset(new MooseSessionPool(_path));
+    _sessionPool.reset(new MobileSessionPool(_path));
 }
 
-void MooseKVEngine::_initDBPath(const std::string& path) {
+void MobileKVEngine::_initDBPath(const std::string& path) {
     boost::system::error_code err;
     boost::filesystem::path dbPath(path);
 
@@ -76,7 +76,7 @@ void MooseKVEngine::_initDBPath(const std::string& path) {
         uasserted(4088, errMsg);
     }
 
-    dbPath /= "moose.sqlite";
+    dbPath /= "mobile.sqlite";
 
     if (boost::filesystem::exists(dbPath, err)) {
         if (err) {
@@ -90,43 +90,43 @@ void MooseKVEngine::_initDBPath(const std::string& path) {
     _path = dbPath.generic_string();
 }
 
-RecoveryUnit* MooseKVEngine::newRecoveryUnit() {
-    return new MooseRecoveryUnit(_sessionPool.get());
+RecoveryUnit* MobileKVEngine::newRecoveryUnit() {
+    return new MobileRecoveryUnit(_sessionPool.get());
 }
 
-Status MooseKVEngine::createRecordStore(OperationContext* opCtx,
-                                        StringData ns,
-                                        StringData ident,
-                                        const CollectionOptions& options) {
+Status MobileKVEngine::createRecordStore(OperationContext* opCtx,
+                                         StringData ns,
+                                         StringData ident,
+                                         const CollectionOptions& options) {
     // TODO: eventually will support file renaming but otherwise do not use collection options.
-    MooseRecordStore::create(opCtx, ident.toString());
+    MobileRecordStore::create(opCtx, ident.toString());
     return Status::OK();
 }
 
-std::unique_ptr<RecordStore> MooseKVEngine::getRecordStore(OperationContext* opCtx,
-                                                           StringData ns,
-                                                           StringData ident,
-                                                           const CollectionOptions& options) {
-    return stdx::make_unique<MooseRecordStore>(opCtx, ns, _path, ident.toString(), options);
+std::unique_ptr<RecordStore> MobileKVEngine::getRecordStore(OperationContext* opCtx,
+                                                            StringData ns,
+                                                            StringData ident,
+                                                            const CollectionOptions& options) {
+    return stdx::make_unique<MobileRecordStore>(opCtx, ns, _path, ident.toString(), options);
 }
 
-Status MooseKVEngine::createSortedDataInterface(OperationContext* opCtx,
-                                                StringData ident,
-                                                const IndexDescriptor* desc) {
-    return MooseIndex::create(opCtx, ident.toString());
+Status MobileKVEngine::createSortedDataInterface(OperationContext* opCtx,
+                                                 StringData ident,
+                                                 const IndexDescriptor* desc) {
+    return MobileIndex::create(opCtx, ident.toString());
 }
 
-SortedDataInterface* MooseKVEngine::getSortedDataInterface(OperationContext* opCtx,
-                                                           StringData ident,
-                                                           const IndexDescriptor* desc) {
+SortedDataInterface* MobileKVEngine::getSortedDataInterface(OperationContext* opCtx,
+                                                            StringData ident,
+                                                            const IndexDescriptor* desc) {
     if (desc->unique()) {
-        return new MooseIndexUnique(opCtx, desc, ident.toString());
+        return new MobileIndexUnique(opCtx, desc, ident.toString());
     }
-    return new MooseIndexStandard(opCtx, desc, ident.toString());
+    return new MobileIndexStandard(opCtx, desc, ident.toString());
 }
 
-Status MooseKVEngine::dropIdent(OperationContext* opCtx, StringData ident) {
-    MooseSession* session = MooseRecoveryUnit::get(opCtx)->getSessionNoTxn(opCtx);
+Status MobileKVEngine::dropIdent(OperationContext* opCtx, StringData ident) {
+    MobileSession* session = MobileRecoveryUnit::get(opCtx)->getSessionNoTxn(opCtx);
     std::string dropQuery = "DROP TABLE IF EXISTS \"" + ident + "\";";
     SqliteStatement::execQuery(session, dropQuery.c_str());
     return Status::OK();
@@ -136,8 +136,8 @@ Status MooseKVEngine::dropIdent(OperationContext* opCtx, StringData ident) {
  * Note: this counts the total number of bytes in the key and value columns, not the actual number
  * of bytes on disk used by this ident.
  */
-int64_t MooseKVEngine::getIdentSize(OperationContext* opCtx, StringData ident) {
-    MooseSession* session = MooseRecoveryUnit::get(opCtx)->getSession(opCtx);
+int64_t MobileKVEngine::getIdentSize(OperationContext* opCtx, StringData ident) {
+    MobileSession* session = MobileRecoveryUnit::get(opCtx)->getSession(opCtx);
 
     // Get key-value column names.
     std::string colNameQuery = "PRAGMA table_info(\"" + ident + "\")";
@@ -159,8 +159,8 @@ int64_t MooseKVEngine::getIdentSize(OperationContext* opCtx, StringData ident) {
     return dataSizeStmt.getColInt(0);
 }
 
-bool MooseKVEngine::hasIdent(OperationContext* opCtx, StringData ident) const {
-    MooseSession* session = MooseRecoveryUnit::get(opCtx)->getSession(opCtx);
+bool MobileKVEngine::hasIdent(OperationContext* opCtx, StringData ident) const {
+    MobileSession* session = MobileRecoveryUnit::get(opCtx)->getSession(opCtx);
 
     std::string findTableQuery = "SELECT * FROM sqlite_master WHERE type='table' AND name = ?;";
     SqliteStatement findTableStmt(*session, findTableQuery);
@@ -175,9 +175,9 @@ bool MooseKVEngine::hasIdent(OperationContext* opCtx, StringData ident) const {
     return true;
 }
 
-std::vector<std::string> MooseKVEngine::getAllIdents(OperationContext* opCtx) const {
+std::vector<std::string> MobileKVEngine::getAllIdents(OperationContext* opCtx) const {
     std::vector<std::string> idents;
-    MooseSession* session = MooseRecoveryUnit::get(opCtx)->getSession(opCtx);
+    MobileSession* session = MobileRecoveryUnit::get(opCtx)->getSession(opCtx);
     std::string getTablesQuery = "SELECT name FROM sqlite_master WHERE type='table';";
     SqliteStatement getTablesStmt(*session, getTablesQuery);
 

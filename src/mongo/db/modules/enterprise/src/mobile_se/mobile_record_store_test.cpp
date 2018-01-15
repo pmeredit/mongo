@@ -4,11 +4,16 @@
 
 #include "mongo/platform/basic.h"
 
-#include "moose_record_store.h"
+#include "mobile_record_store.h"
 
 #include <boost/filesystem.hpp>
 #include <boost/system/error_code.hpp>
 
+#include "mobile_recovery_unit.h"
+#include "mobile_session.h"
+#include "mobile_session_pool.h"
+#include "mobile_sqlite_statement.h"
+#include "mobile_util.h"
 #include "mongo/base/init.h"
 #include "mongo/db/catalog/collection_options.h"
 #include "mongo/db/concurrency/write_conflict_exception.h"
@@ -16,11 +21,6 @@
 #include "mongo/stdx/memory.h"
 #include "mongo/unittest/temp_dir.h"
 #include "mongo/unittest/unittest.h"
-#include "moose_recovery_unit.h"
-#include "moose_session.h"
-#include "moose_session_pool.h"
-#include "moose_sqlite_statement.h"
-#include "moose_util.h"
 
 
 namespace mongo {
@@ -29,9 +29,9 @@ namespace {
 
 static int inc = 0;
 
-class MooseHarnessHelper final : public RecordStoreHarnessHelper {
+class MobileHarnessHelper final : public RecordStoreHarnessHelper {
 public:
-    MooseHarnessHelper() : _dbPath("moose_record_store_harness") {
+    MobileHarnessHelper() : _dbPath("mobile_record_store_harness") {
         // TODO: Determine if this should be util function.
         boost::system::error_code err;
         boost::filesystem::path dir(_dbPath.path());
@@ -47,7 +47,7 @@ public:
             }
         }
 
-        boost::filesystem::path file("moose.sqlite");
+        boost::filesystem::path file("mobile.sqlite");
         boost::filesystem::path fullPath = dir / file;
 
         if (boost::filesystem::exists(fullPath, err)) {
@@ -61,7 +61,7 @@ public:
         }
 
         _fullPath = fullPath.string();
-        _sessionPool.reset(new MooseSessionPool(_fullPath));
+        _sessionPool.reset(new MobileSessionPool(_fullPath));
     }
 
     std::unique_ptr<RecordStore> newNonCappedRecordStore() override {
@@ -71,8 +71,8 @@ public:
 
     std::unique_ptr<RecordStore> newNonCappedRecordStore(const std::string& ns) override {
         ServiceContext::UniqueOperationContext opCtx(this->newOperationContext());
-        MooseRecordStore::create(opCtx.get(), ns);
-        return stdx::make_unique<MooseRecordStore>(
+        MobileRecordStore::create(opCtx.get(), ns);
+        return stdx::make_unique<MobileRecordStore>(
             opCtx.get(), ns, _fullPath, ns, CollectionOptions());
     }
 
@@ -86,16 +86,16 @@ public:
                                                       int64_t cappedMaxSize,
                                                       int64_t cappedMaxDocs) override {
         ServiceContext::UniqueOperationContext opCtx(this->newOperationContext());
-        MooseRecordStore::create(opCtx.get(), ns);
+        MobileRecordStore::create(opCtx.get(), ns);
         CollectionOptions options;
         options.capped = true;
         options.cappedSize = cappedMaxSize;
         options.cappedMaxDocs = cappedMaxDocs;
-        return stdx::make_unique<MooseRecordStore>(opCtx.get(), ns, _fullPath, ns, options);
+        return stdx::make_unique<MobileRecordStore>(opCtx.get(), ns, _fullPath, ns, options);
     }
 
     std::unique_ptr<RecoveryUnit> newRecoveryUnit() final {
-        return stdx::make_unique<MooseRecoveryUnit>(_sessionPool.get());
+        return stdx::make_unique<MobileRecoveryUnit>(_sessionPool.get());
     }
 
     bool supportsDocLocking() final {
@@ -105,11 +105,11 @@ public:
 private:
     unittest::TempDir _dbPath;
     std::string _fullPath;
-    std::unique_ptr<MooseSessionPool> _sessionPool;
+    std::unique_ptr<MobileSessionPool> _sessionPool;
 };
 
 std::unique_ptr<HarnessHelper> makeHarnessHelper() {
-    return stdx::make_unique<MooseHarnessHelper>();
+    return stdx::make_unique<MobileHarnessHelper>();
 }
 
 MONGO_INITIALIZER(RegisterHarnessFactory)(InitializerContext* const) {

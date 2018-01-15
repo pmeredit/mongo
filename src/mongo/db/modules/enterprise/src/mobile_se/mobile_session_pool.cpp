@@ -4,28 +4,28 @@
 
 #include "mongo/platform/basic.h"
 
-#include "moose_session_pool.h"
+#include "mobile_session_pool.h"
 
 #include <string>
 #include <vector>
 
 #include "../third_party/sqlite/sqlite3.h"
+#include "mobile_session.h"
+#include "mobile_util.h"
 #include "mongo/db/client.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/stdx/mutex.h"
-#include "moose_session.h"
-#include "moose_util.h"
 
 namespace mongo {
 
-MooseSessionPool::MooseSessionPool(const std::string& path, std::uint64_t maxPoolSize)
+MobileSessionPool::MobileSessionPool(const std::string& path, std::uint64_t maxPoolSize)
     : _path(path), _maxPoolSize(maxPoolSize) {}
 
-MooseSessionPool::~MooseSessionPool() {
+MobileSessionPool::~MobileSessionPool() {
     shutDown();
 }
 
-std::unique_ptr<MooseSession> MooseSessionPool::getSession(OperationContext* opCtx) {
+std::unique_ptr<MobileSession> MobileSessionPool::getSession(OperationContext* opCtx) {
     stdx::unique_lock<stdx::mutex> lk(_mutex);
 
     // We should never be able to get here after _shuttingDown is set, because no new operations
@@ -35,7 +35,7 @@ std::unique_ptr<MooseSession> MooseSessionPool::getSession(OperationContext* opC
     // Checks if there is an open session available.
     if (!_sessions.empty()) {
         sqlite3* session = _popSession_inlock();
-        return stdx::make_unique<MooseSession>(session, this);
+        return stdx::make_unique<MobileSession>(session, this);
     }
 
     // Checks if a new session can be opened.
@@ -44,7 +44,7 @@ std::unique_ptr<MooseSession> MooseSessionPool::getSession(OperationContext* opC
         int status = sqlite3_open(_path.c_str(), &session);
         checkStatus(status, SQLITE_OK, "sqlite3_open");
         _curPoolSize++;
-        return stdx::make_unique<MooseSession>(session, this);
+        return stdx::make_unique<MobileSession>(session, this);
     }
 
     // There are no open sessions available and the maxPoolSize has been reached.
@@ -53,16 +53,16 @@ std::unique_ptr<MooseSession> MooseSessionPool::getSession(OperationContext* opC
         _releasedSessionNotifier, lk, [&] { return !_sessions.empty(); });
 
     sqlite3* session = _popSession_inlock();
-    return stdx::make_unique<MooseSession>(session, this);
+    return stdx::make_unique<MobileSession>(session, this);
 }
 
-void MooseSessionPool::releaseSession(MooseSession* session) {
+void MobileSessionPool::releaseSession(MobileSession* session) {
     stdx::lock_guard<stdx::mutex> lk(_mutex);
     _sessions.push_back(session->getSession());
     _releasedSessionNotifier.notify_one();
 }
 
-void MooseSessionPool::shutDown() {
+void MobileSessionPool::shutDown() {
     stdx::unique_lock<stdx::mutex> lk(_mutex);
     _shuttingDown = true;
 
@@ -85,7 +85,7 @@ void MooseSessionPool::shutDown() {
 }
 
 // This method should only be called when _sessions is locked.
-sqlite3* MooseSessionPool::_popSession_inlock() {
+sqlite3* MobileSessionPool::_popSession_inlock() {
     sqlite3* session = _sessions.back();
     _sessions.pop_back();
     return session;

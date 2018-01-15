@@ -8,9 +8,9 @@
 #include "mongo/util/mongoutils/str.h"
 
 #include "../third_party/sqlite/sqlite3.h"
-#include "moose_recovery_unit.h"
-#include "moose_sqlite_statement.h"
-#include "moose_util.h"
+#include "mobile_recovery_unit.h"
+#include "mobile_sqlite_statement.h"
+#include "mobile_util.h"
 
 namespace mongo {
 
@@ -86,7 +86,7 @@ void validateLogAndAppendError(ValidateResults* results, const std::string& errM
 }
 
 void doValidate(OperationContext* opCtx, ValidateResults* results) {
-    MooseSession* session = MooseRecoveryUnit::get(opCtx)->getSession(opCtx);
+    MobileSession* session = MobileRecoveryUnit::get(opCtx)->getSession(opCtx);
     std::string validateQuery = "PRAGMA integrity_check;";
     try {
         SqliteStatement validateStmt(*session, validateQuery);

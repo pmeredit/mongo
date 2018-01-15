@@ -7,19 +7,19 @@
 #include "mongo/stdx/memory.h"
 #include "mongo/unittest/temp_dir.h"
 
-#include "moose_kv_engine.h"
+#include "mobile_kv_engine.h"
 
 namespace mongo {
 namespace {
 
-class MooseKVHarnessHelper : public KVHarnessHelper {
+class MobileKVHarnessHelper : public KVHarnessHelper {
 public:
-    MooseKVHarnessHelper() : _dbPath("moose_kv_engine_harness") {
-        _engine = stdx::make_unique<MooseKVEngine>(_dbPath.path());
+    MobileKVHarnessHelper() : _dbPath("mobile_kv_engine_harness") {
+        _engine = stdx::make_unique<MobileKVEngine>(_dbPath.path());
     }
 
     virtual KVEngine* restartEngine() {
-        _engine.reset(new MooseKVEngine(_dbPath.path()));
+        _engine.reset(new MobileKVEngine(_dbPath.path()));
         return _engine.get();
     }
 
@@ -28,12 +28,12 @@ public:
     }
 
 private:
-    std::unique_ptr<MooseKVEngine> _engine;
+    std::unique_ptr<MobileKVEngine> _engine;
     unittest::TempDir _dbPath;
 };
 
 std::unique_ptr<KVHarnessHelper> makeHelper() {
-    return stdx::make_unique<MooseKVHarnessHelper>();
+    return stdx::make_unique<MobileKVHarnessHelper>();
 }
 
 MONGO_INITIALIZER(RegisterKVHarnessFactory)(InitializerContext*) {

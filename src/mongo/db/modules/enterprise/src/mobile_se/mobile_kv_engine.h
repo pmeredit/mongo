@@ -6,19 +6,19 @@
 
 #include <memory>
 
+#include "mobile_session_pool.h"
 #include "mongo/db/storage/journal_listener.h"
 #include "mongo/db/storage/kv/kv_engine.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/util/string_map.h"
-#include "moose_session_pool.h"
 
 namespace mongo {
 
 class JournalListener;
 
-class MooseKVEngine : public KVEngine {
+class MobileKVEngine : public KVEngine {
 public:
-    MooseKVEngine(const std::string& path);
+    MobileKVEngine(const std::string& path);
 
     RecoveryUnit* newRecoveryUnit() override;
 
@@ -96,7 +96,7 @@ private:
     mutable stdx::mutex _mutex;
     void _initDBPath(const std::string& path);
 
-    std::unique_ptr<MooseSessionPool> _sessionPool;
+    std::unique_ptr<MobileSessionPool> _sessionPool;
 
     // Notified when we write as everything is considered "journalled" since repl depends on it.
     JournalListener* _journalListener = &NoOpJournalListener::instance;

@@ -12,19 +12,19 @@
 #include "mongo/db/storage/sorted_data_interface.h"
 #include "mongo/platform/basic.h"
 
-#include "moose_sqlite_statement.h"
+#include "mobile_sqlite_statement.h"
 
 #pragma once
 
 namespace mongo {
 
-class MooseIndex : public SortedDataInterface {
+class MobileIndex : public SortedDataInterface {
 public:
-    MooseIndex(OperationContext* opCtx, const IndexDescriptor* desc, const std::string& ident);
+    MobileIndex(OperationContext* opCtx, const IndexDescriptor* desc, const std::string& ident);
 
-    MooseIndex(bool isUnique, const Ordering& ordering, const std::string& ident);
+    MobileIndex(bool isUnique, const Ordering& ordering, const std::string& ident);
 
-    virtual ~MooseIndex() {}
+    virtual ~MobileIndex() {}
 
     Status insert(OperationContext* opCtx,
                   const BSONObj& key,
@@ -54,10 +54,10 @@ public:
 
     Status dupKeyCheck(OperationContext* opCtx, const BSONObj& key, const RecordId& recId) override;
 
-    // Beginning of MooseIndex-specific methods
+    // Beginning of MobileIndex-specific methods
 
     /**
-     * Creates a SQLite table suitable for a new Moose index.
+     * Creates a SQLite table suitable for a new Mobile index.
      */
     static Status create(OperationContext* opCtx, const std::string& ident);
 
@@ -121,13 +121,13 @@ protected:
     const std::string _ident;
 };
 
-class MooseIndexStandard final : public MooseIndex {
+class MobileIndexStandard final : public MobileIndex {
 public:
-    MooseIndexStandard(OperationContext* opCtx,
-                       const IndexDescriptor* desc,
-                       const std::string& ident);
+    MobileIndexStandard(OperationContext* opCtx,
+                        const IndexDescriptor* desc,
+                        const std::string& ident);
 
-    MooseIndexStandard(const Ordering& ordering, const std::string& ident);
+    MobileIndexStandard(const Ordering& ordering, const std::string& ident);
 
     SortedDataBuilderInterface* getBulkBuilder(OperationContext* opCtx, bool dupsAllowed) override;
 
@@ -146,13 +146,13 @@ protected:
                   bool dupsAllowed) override;
 };
 
-class MooseIndexUnique final : public MooseIndex {
+class MobileIndexUnique final : public MobileIndex {
 public:
-    MooseIndexUnique(OperationContext* opCtx,
-                     const IndexDescriptor* desc,
-                     const std::string& ident);
+    MobileIndexUnique(OperationContext* opCtx,
+                      const IndexDescriptor* desc,
+                      const std::string& ident);
 
-    MooseIndexUnique(const Ordering& ordering, const std::string& ident);
+    MobileIndexUnique(const Ordering& ordering, const std::string& ident);
 
     SortedDataBuilderInterface* getBulkBuilder(OperationContext* opCtx, bool dupsAllowed) override;
 

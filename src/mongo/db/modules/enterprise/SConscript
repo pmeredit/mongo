@@ -64,7 +64,7 @@ env.SConscript(
         'src/encryptdb',
         'src/inmemory',
         'src/ldap',
-        'src/moose',
+        'src/mobile_se',
         'src/rlp',
         'src/queryable',
         'src/third_party/sqlite',
