@@ -36,7 +36,7 @@ void WatchdogPeriodicThread::start() {
         _state = State::kStarted;
 
         // Start the thread.
-        _thread = stdx::thread(stdx::bind(&WatchdogPeriodicThread::doLoop, this));
+        _thread = stdx::thread([this] { this->doLoop(); });
     }
 }
 
