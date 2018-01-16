@@ -317,6 +317,15 @@ Status OpenLDAPConnection::connect() {
                           << ldap_err2string(ret));
     }
 
+    // Set async await timeout
+    ret = ldap_set_option(_pimpl->getSession(), LDAP_OPT_TIMEOUT, &_timeout);
+    if (ret != LDAP_SUCCESS) {
+        return Status(ErrorCodes::OperationFailed,
+                      str::stream()
+                          << "Attempted to set the LDAP async wait timeout. Received error: "
+                          << ldap_err2string(ret));
+    }
+
     // Set network connection timeout
     ret = ldap_set_option(_pimpl->getSession(), LDAP_OPT_NETWORK_TIMEOUT, &_timeout);
     if (ret != LDAP_SUCCESS) {
