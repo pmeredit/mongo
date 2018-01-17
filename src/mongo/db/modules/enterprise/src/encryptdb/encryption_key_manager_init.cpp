@@ -53,11 +53,10 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(CreateEncryptionKeyManager,
         Status implementationStatus =
             crypto::smokeTestAESCipherMode(encryptionGlobalParams.encryptionCipherMode);
         if (!implementationStatus.isOK()) {
-            return Status(implementationStatus.code(),
-                          str::stream() << "Validation of cryptographic functions for "
-                                        << encryptionGlobalParams.encryptionCipherMode
-                                        << " failed: "
-                                        << implementationStatus.reason());
+            return implementationStatus.withContext(str::stream()
+                                                    << "Validation of cryptographic functions for "
+                                                    << encryptionGlobalParams.encryptionCipherMode
+                                                    << " failed");
         }
 
         InitializeGlobalEncryptionKeyManager();
