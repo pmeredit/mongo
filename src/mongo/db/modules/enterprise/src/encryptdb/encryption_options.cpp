@@ -7,8 +7,6 @@
 
 #include "encryption_options.h"
 
-#include <openssl/evp.h>
-
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
 #include "mongo/util/log.h"
@@ -87,13 +85,9 @@ static Status validateEncryptionOptions(const moe::Environment& params) {
         if (params.count("security.encryptionCipherMode")) {
             std::string mode = params["security.encryptionCipherMode"].as<std::string>();
 
-#ifndef EVP_CTRL_GCM_GET_TAG
-            if (mode == crypto::aes256GCMName) {
-                return {ErrorCodes::InvalidOptions, "Server not compiled with GCM support"};
-            }
-#endif
-            if (!(mode == crypto::aes256CBCName || mode == crypto::aes256GCMName)) {
-                return {ErrorCodes::InvalidOptions, "Cipher mode unrecognized"};
+            if (crypto::getSupportedSymmetricAlgorithms().count(mode) == 0) {
+                return {ErrorCodes::InvalidOptions,
+                        str::stream() << "Server not compiled with " << mode << " support"};
             }
         }
     }

@@ -26,11 +26,9 @@
  *    then also delete it in the license file.
  */
 
-#include <openssl/evp.h>
-
+#include "symmetric_crypto.h"
 #include "mongo/unittest/death_test.h"
 #include "mongo/unittest/unittest.h"
-#include "symmetric_crypto.h"
 #include "symmetric_crypto_smoke.h"
 
 namespace mongo {

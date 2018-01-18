@@ -4,7 +4,6 @@
 
 #include "mongo/platform/basic.h"
 
-#include <openssl/evp.h>
 #include <string>
 
 #include "encryption_key_manager_noop.h"
@@ -182,8 +181,12 @@ TEST(WiredTigerEncryptionTest, ReadWriteDataCBC) {
 }
 
 
-#if defined(EVP_CTRL_GCM_GET_TAG) && !defined(DISABLE_GCM_TESTVECTORS)
+#if !defined(DISABLE_GCM_TESTVECTORS)
 TEST(WiredTigerEncryptionTest, ReadWriteDataGCM) {
+    if (crypto::getSupportedSymmetricAlgorithms().count(crypto::aes256GCMName) == 0) {
+        return;
+    }
+
     unittest::TempDir dbPath("gcm_wt_test");
     {
         WiredTigerUtilHarnessHelper helper(dbPath.path(), crypto::aes256GCMName);

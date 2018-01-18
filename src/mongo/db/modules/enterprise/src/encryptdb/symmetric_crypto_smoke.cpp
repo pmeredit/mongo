@@ -6,7 +6,6 @@
 
 #include "symmetric_crypto_smoke.h"
 
-#include <openssl/evp.h>
 #include <vector>
 
 #include "mongo/base/status.h"
@@ -116,8 +115,8 @@ Status smokeTestAESCipherMode(const std::string& modeName) {
 
         Status ret = crypto::aesEncrypt(
             key, test.mode, test.pt, test.ptLen, outputBuffer, outputBufferSize, &resultLen, true);
-#ifndef EVP_CTRL_GCM_GET_TAG
-        if (test.mode == crypto::aesMode::gcm) {
+
+        if (getSupportedSymmetricAlgorithms().count(getStringFromCipherMode(test.mode)) == 0) {
             // The platform does not support this cipher mode, so expect failure
             if (ret.isOK()) {
                 return Status(ErrorCodes::OperationFailed,
@@ -125,7 +124,7 @@ Status smokeTestAESCipherMode(const std::string& modeName) {
             }
             continue;
         }
-#endif
+
         if (!ret.isOK()) {
             return Status(ErrorCodes::OperationFailed,
                           str::stream() << "aesEncrypt failed: " << ret.reason());

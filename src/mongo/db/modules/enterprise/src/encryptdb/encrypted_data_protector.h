@@ -7,14 +7,13 @@
 #include "mongo/db/storage/data_protector.h"
 
 #include <memory>
-#include <openssl/evp.h>
+
+#include "mongo/base/status.h"
 
 #include "symmetric_crypto.h"
+#include "symmetric_key.h"
 
 namespace mongo {
-
-class Status;
-class SymmetricKey;
 
 const uint8_t DATA_PROTECTOR_VERSION_0 = 0;
 
@@ -33,8 +32,7 @@ public:
 private:
     const SymmetricKey* _key;
     const crypto::aesMode _mode;
-    std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)> _encryptCtx;
-    std::size_t _bytesReservedForTag;
+    std::unique_ptr<crypto::SymmetricEncryptor> _encryptor;
 };
 
 }  // namespace mongo

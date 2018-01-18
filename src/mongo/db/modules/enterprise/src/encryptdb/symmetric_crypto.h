@@ -6,18 +6,15 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <set>
 #include <string>
 
+#include "mongo/base/status.h"
+#include "mongo/base/status_with.h"
 
-#include <openssl/evp.h>
+#include "symmetric_key.h"
 
 namespace mongo {
-
-class Status;
-template <typename T>
-class StatusWith;
-class SymmetricKey;
-
 namespace crypto {
 
 /**
@@ -59,8 +56,8 @@ enum class aesMode : uint8_t { cbc, gcm };
 const std::string aes256CBCName = "AES256-CBC";
 const std::string aes256GCMName = "AES256-GCM";
 
-StatusWith<const EVP_CIPHER*> acquireAESCipher(size_t keySize, crypto::aesMode mode);
 aesMode getCipherModeFromString(const std::string& mode);
+std::string getStringFromCipherMode(aesMode);
 
 size_t aesGetIVSize(crypto::aesMode mode);
 size_t aesGetTagSize(crypto::aesMode mode);
@@ -206,6 +203,100 @@ Status aesDecrypt(const SymmetricKey& key,
  * Generates a new, random, symmetric key for use with AES.
  */
 SymmetricKey aesGenerate(size_t keySize, std::string keyId);
+
+/* Platform specific engines should implement these. */
+
+/**
+ * Interface to a symmetric cryptography engine.
+ * For use with encrypting payloads.
+ */
+class SymmetricEncryptor {
+public:
+    virtual ~SymmetricEncryptor() = default;
+
+    /**
+     * Process a chunk of data from <in> and store the ciphertext in <out>.
+     * Returns the number of bytes written to <out> which will not exceed <outLen>.
+     * Because <inLen> for this and/or previous calls may not lie on a block boundary,
+     * the number of bytes written to <out> may be more or less than <inLen>.
+     */
+    virtual StatusWith<size_t> update(const uint8_t* in,
+                                      size_t inLen,
+                                      uint8_t* out,
+                                      size_t outLen) = 0;
+
+    /**
+     * Finish an encryption by flushing any buffered bytes for a partial cipherblock to <out>.
+     * Returns the number of bytes written, not to exceed <outLen>.
+     */
+    virtual StatusWith<size_t> finalize(uint8_t* out, size_t outLen) = 0;
+
+    /**
+     * For aesMode::gcm, writes the GCM tag to <out>.
+     * Returns the number of bytes used, not to exceed <outLen>.
+     */
+    virtual StatusWith<size_t> finalizeTag(uint8_t* out, size_t outLen) = 0;
+
+    /**
+     * Create an instance of a SymmetricEncryptor object from the currently available
+     * cipher engine (e.g. OpenSSL).
+     */
+    static StatusWith<std::unique_ptr<SymmetricEncryptor>> create(const SymmetricKey& key,
+                                                                  aesMode mode,
+                                                                  const uint8_t* iv,
+                                                                  size_t inLen);
+};
+
+/**
+ * Interface to a symmetric cryptography engine.
+ * For use with encrypting payloads.
+ */
+class SymmetricDecryptor {
+public:
+    virtual ~SymmetricDecryptor() = default;
+
+    /**
+     * Process a chunk of data from <in> and store the decrypted text in <out>.
+     * Returns the number of bytes written to <out> which will not exceed <outLen>.
+     * Because <inLen> for this and/or previous calls may not lie on a block boundary,
+     * the number of bytes written to <out> may be more or less than <inLen>.
+     */
+    virtual StatusWith<size_t> update(const uint8_t* in,
+                                      size_t inLen,
+                                      uint8_t* out,
+                                      size_t outLen) = 0;
+
+    /**
+     * For aesMode::gcm, informs the cipher engine of the GCM tag associated with this data stream.
+     */
+    virtual Status updateTag(const uint8_t* tag, size_t tagLen) = 0;
+
+    /**
+     * Finish an decryption by flushing any buffered bytes for a partial cipherblock to <out>.
+     * Returns the number of bytes written, not to exceed <outLen>.
+     */
+    virtual StatusWith<size_t> finalize(uint8_t* out, size_t outLen) = 0;
+
+    /**
+     * Create an instance of a SymmetricDecryptor object from the currently available
+     * cipher engine (e.g. OpenSSL).
+     */
+    static StatusWith<std::unique_ptr<SymmetricDecryptor>> create(const SymmetricKey& key,
+                                                                  aesMode mode,
+                                                                  const uint8_t* iv,
+                                                                  size_t ivLen);
+};
+
+/**
+ * Returns a list of cipher modes supported by the cipher engine.
+ * e.g. {"AES256-CBC", "AES256-GCM"}
+ */
+std::set<std::string> getSupportedSymmetricAlgorithms();
+
+/**
+ * Generate a quantity of random bytes from the cipher engine.
+ */
+Status engineRandBytes(uint8_t* buffer, size_t len);
 
 }  // namespace crypto
 }  // namespace mongo

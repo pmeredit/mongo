@@ -61,6 +61,9 @@ env.Library(target='encryption_options',
                 'key_acquisition',
                 'log_redact_options'
             ],
+            LIBDEPS_PRIVATE=[
+                'symmetric_crypto',
+            ],
 )
 
 env.Library(target='log_redact_options',
@@ -80,6 +83,7 @@ env.Library(target='symmetric_crypto',
             source=[
                 'symmetric_crypto.cpp',
                 'symmetric_crypto_smoke.cpp',
+                'symmetric_crypto_${MONGO_CRYPTO}.cpp',
                 'symmetric_key.cpp',
             ],
             LIBDEPS=[
