@@ -1,5 +1,6 @@
 // This test verifies that one can read from secondaries through mongos when auditing
 // is enabled.  This is a regression test for SERVER-14170.
+// @tags: [requires_sharding]
 
 (function() {
     'use strict';
