@@ -83,7 +83,7 @@ Status MobileIndex::doInsert(OperationContext* opCtx,
         session = MobileRecoveryUnit::get(opCtx)->getSessionNoTxn(opCtx);
     }
 
-    std::string insertQuery = "INSERT INTO \"" + _ident + "\"(key, value) VALUES(?, ?);";
+    std::string insertQuery = "INSERT INTO \"" + _ident + "\" (key, value) VALUES (?, ?);";
     SqliteStatement insertStmt(*session, insertQuery);
 
     insertStmt.bindBlob(0, key.getBuffer(), key.getSize());
@@ -91,11 +91,18 @@ Status MobileIndex::doInsert(OperationContext* opCtx,
 
     int status = insertStmt.step();
     if (status == SQLITE_CONSTRAINT) {
-        // Return error if duplicate key inserted.
         insertStmt.setExceptionStatus(status);
-        BSONObj bson =
-            KeyString::toBson(key.getBuffer(), key.getSize(), _ordering, key.getTypeBits());
-        return _dupKeyError(bson);
+        if (isUnique()) {
+            // Return error if duplicate key inserted in a unique index.
+            BSONObj bson =
+                KeyString::toBson(key.getBuffer(), key.getSize(), _ordering, key.getTypeBits());
+            return _dupKeyError(bson);
+        } else {
+            // A record with same key could already be present in a standard index, that is OK. This
+            // can happen when building a background index while documents are being written in
+            // parallel.
+            return Status::OK();
+        }
     }
     checkStatus(status, SQLITE_DONE, "sqlite3_step");
 
