@@ -38,3 +38,4 @@ function ensureSetParameterFailure(dbConn, parameterName, newValue) {
 var dbConn = MongoRunner.runMongod({setParameter: 'authFailedDelayMs=100'});
 setAndCheckParameter(dbConn, "authFailedDelayMs", 1000);
 ensureSetParameterFailure(dbConn, "authFailedDelayMs", 10000);
+MongoRunner.stopMongod(dbConn);

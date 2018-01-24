@@ -30,4 +30,5 @@
     // Non-SCRAM mechanisms have been disabled pending SERVER-16668
     assert(db.auth({user: "testUser", pwd: "Pswd", mechanism: "SCRAM-SHA-1"}));
     // assert(db.auth({user: "testUser", pwd: "Pswd", mechanism: "PLAIN"}));
+    MongoRunner.stopMongod(m);
 })();

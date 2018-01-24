@@ -38,5 +38,5 @@
     } finally {
         test.getMongo().setReadPref('primary');
     }
-
+    st.stop();
 }());

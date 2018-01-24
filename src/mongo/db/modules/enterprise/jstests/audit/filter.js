@@ -53,4 +53,5 @@
     // Collection drop does not match the audit filter, so no entry is produced
     coll.drop();
     audit.assertNoNewEntries();
+    MongoRunner.stopMongod(m);
 })();

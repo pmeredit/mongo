@@ -18,6 +18,6 @@
 
     assert(db.auth({mechanism: authmech, user: "user1", pwd: "pwd"}));
     audit.assertEntry("authenticate", {user: "user1", db: "test", mechanism: authmech});
-
+    MongoRunner.stopMongod(m);
     print("SUCCESS audit-authenticate.js");
 })();

@@ -16,6 +16,7 @@
     // The audit entry ensures it was processed correctly.
     assert(admin.shutdownServer({timeout: 3}) === undefined);
     audit.assertEntry("shutdown", {});
+    waitProgram(m.pid);
 
     print("SUCCESS audit-shutdown.js");
 })();

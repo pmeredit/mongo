@@ -307,9 +307,14 @@ function runTests(testCallback, configGenerator, callbackOptions) {
     setupTest(primary);
     // TODO: run test on secondary as well?
     testCallback({conn: primary, replSetTest: rst, options: callbackOptions});
+    // Authenticate in an assert.soon because the created siteRootAdmin user may
+    // not have replicated to all secondaries.
     rst.nodes.forEach((node) => {
-        node.getDB("admin").auth("siteRootAdmin", "secret");
+        assert.soon(() => {
+            return node.getDB("admin").auth("siteRootAdmin", "secret");
+        }, "cannot authenticate on replica set node " + node.host);
     });
+
     rst.stopSet();
 
     // sharded
@@ -318,7 +323,9 @@ function runTests(testCallback, configGenerator, callbackOptions) {
     testCallback({conn: st.s0, shardingTest: st, options: callbackOptions});
     if (st.configRS) {
         st.configRS.nodes.forEach((node) => {
-            node.getDB("admin").auth("siteRootAdmin", "secret");
+            assert.soon(() => {
+                return node.getDB("admin").auth("siteRootAdmin", "secret");
+            }, "cannot authenticate on config server replica set node " + node.host);
         });
     }
     st.stop();

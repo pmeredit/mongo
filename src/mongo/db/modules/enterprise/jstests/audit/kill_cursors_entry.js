@@ -33,4 +33,5 @@
         ns: "test.$cmd.aggregate",
         args: {killCursors: "$cmd.aggregate", cursorId: globallyOwnedCursorId}
     });
+    MongoRunner.stopMongod(standalone);
 }());

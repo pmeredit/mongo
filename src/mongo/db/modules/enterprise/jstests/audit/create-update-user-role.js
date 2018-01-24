@@ -130,5 +130,6 @@
         "updateRole",
         {role: "role1", db: "test", authenticationRestrictions: [{clientSource: ["::1/128"]}]});
 
+    MongoRunner.stopMongod(m);
     print("SUCCESS audit-create-update-user-role.js");
 })();

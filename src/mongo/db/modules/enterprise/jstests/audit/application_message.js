@@ -13,5 +13,6 @@
     assert.commandWorked(db.runCommand({logApplicationMessage: "Hello World"}));
     audit.assertEntry("applicationMessage", {msg: "Hello World"});
 
+    MongoRunner.stopMongod(m);
     print("SUCCESS audit-log-application-message.js");
 })();
