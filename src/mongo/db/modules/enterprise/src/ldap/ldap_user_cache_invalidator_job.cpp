@@ -71,7 +71,9 @@ void LDAPUserCacheInvalidator::run() {
             wakeupTime = start + Seconds(ldapUserCacheInvalidationInterval.load());
             invalidationIntervalChanged.wait_until(lock, wakeupTime.toSystemTimePoint());
         } while (wakeupTime > Date_t::now());
-        log() << "Invalidating user cache entries of external users";
+
+        LOG(1) << "Invalidating user cache entries of external users";
+
         AuthorizationManager::get(cc().getServiceContext())->invalidateUsersFromDB("$external");
     }
 }
