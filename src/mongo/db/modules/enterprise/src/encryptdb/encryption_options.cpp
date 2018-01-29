@@ -106,7 +106,8 @@ Status storeEncryptionOptions(const moe::Environment& params) {
         encryptionGlobalParams.enableEncryption = params["security.enableEncryption"].as<bool>();
     }
 
-    if (params.count("security.kmip.rotateMasterKey")) {
+    if (params.count("security.kmip.rotateMasterKey") &&
+        params["security.kmip.rotateMasterKey"].as<bool>()) {
         encryptionGlobalParams.rotateMasterKey = true;
         encryptionGlobalParams.kmipKeyIdentifierRot =
             encryptionGlobalParams.kmipParams.kmipKeyIdentifier;
