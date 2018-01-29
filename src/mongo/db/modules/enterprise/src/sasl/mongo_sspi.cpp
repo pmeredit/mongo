@@ -3,6 +3,8 @@
  */
 
 
+#define SECURITY_WIN32 1  // for sspi.h
+
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kAccessControl
 
 #include "mongo/platform/basic.h"
