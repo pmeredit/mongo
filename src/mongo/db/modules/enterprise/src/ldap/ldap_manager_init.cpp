@@ -38,8 +38,7 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(SetLDAPManagerImpl, ("SetGlobalEnvironment"
     auto runner = stdx::make_unique<LDAPRunnerImpl>(bindOptions, connectionOptions);
 
     // Perform smoke test of the connection parameters.
-    // TODO: Possibly store the root DSE for future reference.
-    if (!globalLDAPParams->serverHosts.empty()) {
+    if (!globalLDAPParams->serverHosts.empty() && globalLDAPParams->smokeTestOnStartup) {
         StatusWith<LDAPEntityCollection> swRes =
             runner->runQuery(LDAPQuery::instantiateQuery(LDAPQueryConfig()).getValue());
 
@@ -50,8 +49,11 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(SetLDAPManagerImpl, ("SetGlobalEnvironment"
         }
     }
 
+
     auto manager = stdx::make_unique<LDAPManagerImpl>(
         std::move(runner), std::move(swQueryParameters.getValue()), std::move(swMapper.getValue()));
+
+
     LDAPManager::set(getGlobalServiceContext(), std::move(manager));
 
     return Status::OK();

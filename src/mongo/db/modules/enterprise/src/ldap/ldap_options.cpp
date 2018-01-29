@@ -35,6 +35,13 @@ void addCommonLDAPOptions(moe::OptionSection& ldap_options) {
                                    moe::String,
                                    "Comma separated list of LDAP servers on format "
                                    " host:port");
+    ldap_options
+        .addOptionChaining("security.ldap.validateLDAPServerConfig",
+                           "ldapValidateLDAPServerConfig",
+                           moe::Bool,
+                           "Verify the LDAP server is online on server start")
+        .hidden()
+        .setDefault(moe::Value(true));
 
     ldap_options
         .addOptionChaining("security.ldap.transportSecurity",
@@ -106,6 +113,12 @@ Status storeLDAPOptions(const moe::Environment& params, const std::vector<std::s
 
         globalLDAPParams->serverHosts = std::move(swHosts.getValue());
     }
+
+    if (params.count("security.ldap.validateLDAPServerConfig")) {
+        globalLDAPParams->smokeTestOnStartup =
+            params["security.ldap.validateLDAPServerConfig"].as<bool>();
+    }
+
     if (params.count("security.ldap.transportSecurity")) {
 
         auto transportSecurity = params["security.ldap.transportSecurity"].as<std::string>();
