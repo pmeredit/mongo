@@ -27,8 +27,6 @@
 
 namespace mongo {
 
-using std::stringstream;
-
 class CmdLogApplicationMessage : public ErrmsgCommandDeprecated {
 public:
     CmdLogApplicationMessage();
@@ -53,7 +51,10 @@ public:
                            std::string& errmsg,
                            BSONObjBuilder& result);
 
-    virtual void help(stringstream& help) const;
+    std::string help() const override {
+        return "Insert a custom message into the audit log";
+    }
+
     virtual bool isWriteCommandForConfigServer() const {
         return false;
     }
@@ -70,10 +71,6 @@ CmdLogApplicationMessage cmdLogApplicationMessage;
 CmdLogApplicationMessage::CmdLogApplicationMessage()
     : ErrmsgCommandDeprecated("logApplicationMessage") {}
 CmdLogApplicationMessage::~CmdLogApplicationMessage() {}
-
-void CmdLogApplicationMessage::help(std::stringstream& os) const {
-    os << "Insert a custom message into the audit log";
-}
 
 bool CmdLogApplicationMessage::errmsgRun(OperationContext* opCtx,
                                          const std::string& db,
