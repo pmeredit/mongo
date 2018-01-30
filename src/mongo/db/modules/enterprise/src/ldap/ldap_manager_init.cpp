@@ -15,7 +15,7 @@
 namespace mongo {
 
 /* Make a LDAPRunnerImpl pointer a decoration on the global ServiceContext */
-MONGO_INITIALIZER_WITH_PREREQUISITES(SetLDAPManagerImpl, ("SetGlobalEnvironment"))
+MONGO_INITIALIZER_GENERAL(SetLDAPManagerImpl, ("SetGlobalEnvironment"), ("CyrusSaslCommands"))
 (InitializerContext* context) {
     LDAPBindOptions bindOptions(globalLDAPParams->bindUser,
                                 std::move(globalLDAPParams->bindPassword),

@@ -28,6 +28,7 @@
 #include "mongo/util/stringutils.h"
 #include "mongo_gssapi.h"
 
+#include "../ldap/ldap_manager.h"
 #include "../ldap/ldap_options.h"
 #include "ldap_sasl_authentication_session.h"
 
@@ -445,8 +446,13 @@ SaslAuthenticationSession* createSaslAuthenticationSession(AuthorizationSession*
         return new NativeSaslAuthenticationSession(authzSession);
     }
     if (mechanism == SaslAuthenticationSession::mechanismPLAIN &&
-        !globalLDAPParams->serverHosts.empty() && saslGlobalParams.authdPath.empty()) {
-        return new LDAPSaslAuthenticationSession(authzSession);
+        saslGlobalParams.authdPath.empty()) {
+
+        LDAPManager* ldapManager = LDAPManager::get(getGlobalServiceContext());
+
+        if (!ldapManager->getHosts().empty()) {
+            return new LDAPSaslAuthenticationSession(authzSession);
+        }
     }
     return new CyrusSaslAuthenticationSession(authzSession);
 }

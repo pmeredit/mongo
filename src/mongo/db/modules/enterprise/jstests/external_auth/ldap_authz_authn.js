@@ -25,7 +25,7 @@
         runTests(testGSSAPICallback, configGenerator);
     }
 
-    function testGSSAPICallback(m) {
+    function testGSSAPICallback({conn}) {
         var user1 = "ldapz_kerberos1@LDAPTEST.10GEN.CC";
         var user2 = "ldapz_kerberos2@LDAPTEST.10GEN.CC";
 
@@ -34,13 +34,13 @@
 
         var authOptions = {user: user1, mechanism: "GSSAPI", serviceHostname: "localhost"};
 
-        authAndVerify(m, {authOptions: authOptions, user: user1});
+        authAndVerify({conn: conn, options: {authOptions: authOptions, user: user1}});
 
         run("kdestroy");
         run("kinit", "-k", "-t", assetsPath + "ldapz_kerberos2.keytab", user2);
         authOptions = {user: user2, mechanism: "GSSAPI", serviceHostname: "localhost"};
 
-        authAndVerify(m, {authOptions: authOptions, user: user2});
+        authAndVerify({conn: conn, options: {authOptions: authOptions, user: user2}});
     }
 
     // LDAP Saslauthd authentication + LDAP authorization
@@ -70,17 +70,17 @@
         runTests(ldapTestCallback, configGenerator);
     }
 
-    function ldapTestCallback(m) {
+    function ldapTestCallback({conn}) {
         var user1 = "ldapz_ldap1";
         var user2 = "ldapz_ldap2";
 
         var authOptions = {user: user1, pwd: defaultPwd, mechanism: "PLAIN", digestPassword: false};
 
-        authAndVerify(m, {authOptions: authOptions, user: user1});
+        authAndVerify({conn: conn, options: {authOptions: authOptions, user: user1}});
 
         authOptions = {user: user2, pwd: defaultPwd, mechanism: "PLAIN", digestPassword: false};
 
-        authAndVerify(m, {authOptions: authOptions, user: user2});
+        authAndVerify({conn: conn, options: {authOptions: authOptions, user: user2}});
     }
 
     // X509 Authentication + LDAP Authorization
@@ -102,7 +102,7 @@
         runTests(testX509Callback, configGenerator);
     }
 
-    function testX509Callback(m) {
+    function testX509Callback({conn}) {
         // We can't run the command in the current shell since there is no way to
         // change client certificates
 
@@ -119,7 +119,7 @@
             user: user1\
         };\
         \
-        authAndVerify(null, {authOptions: authOptions, user: user1});\
+        authAndVerify({conn: null, options: {authOptions: authOptions, user: user1}});\
     ";
 
         var authCmd2 =
@@ -132,7 +132,7 @@
             user: user2\
         };\
         \
-        authAndVerify(null, {authOptions: authOptions, user: user2});\
+        authAndVerify({conn: null, options: {authOptions: authOptions, user: user2}});\
     ";
 
         var retVal = run('mongo',
@@ -142,7 +142,7 @@
                          '--sslCAFile',
                          'jstests/libs/ca.pem',
                          '--port',
-                         m.port,
+                         conn.port,
                          '--host',
                          saslHostName,
                          '--eval',
@@ -157,7 +157,7 @@
                      '--sslCAFile',
                      'jstests/libs/ca.pem',
                      '--port',
-                     m.port,
+                     conn.port,
                      '--host',
                      saslHostName,
                      '--eval',

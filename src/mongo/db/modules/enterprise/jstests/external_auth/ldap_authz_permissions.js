@@ -3,12 +3,12 @@
 (function() {
     load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
 
-    function testPermissions(m) {
+    function testPermissions({conn}) {
         var authInfo =
             {mechanism: "PLAIN", user: adminUserDN, pwd: defaultPwd, digestPassword: false};
 
-        var testDB = m.getDB("test");
-        var externalDB = m.getDB("$external");
+        var testDB = conn.getDB("test");
+        var externalDB = conn.getDB("$external");
 
         // LDAP auth should succeed
         assert(externalDB.auth(authInfo), "LDAP authentication failed");

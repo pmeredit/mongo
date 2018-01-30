@@ -95,7 +95,9 @@ function LDAPTestConfigGenerator() {
         config.sslAllowInvalidHostnames = "";
         config.clusterAuthMode = "x509";
 
-        config.ldapServers = this.ldapServers.join(",");
+        if (this.ldapServers) {
+            config.ldapServers = this.ldapServers.join(",");
+        }
         config.ldapTransportSecurity = this.ldapTransportSecurity;
 
         config.ldapAuthzQueryTemplate = this.ldapAuthzQueryTemplate;
@@ -175,45 +177,45 @@ function LDAPTestConfigGenerator() {
 
 // a helper function that runs auth and verify the result
 // should be called from the tests themselves
-function authAndVerify(m, authArgs) {
+function authAndVerify({conn, options}) {
     // m won't exist for tests using SSL
-    if (!m) {
-        m = db.getMongo();
+    if (!conn) {
+        conn = db.getMongo();
     }
 
-    var externalDB = m.getDB("$external");
+    var externalDB = conn.getDB("$external");
 
-    externalDB.auth(authArgs.authOptions);
+    externalDB.auth(options.authOptions);
 
     var status = externalDB.runCommand({"connectionStatus": 1});
 
     // The default user and role used for most of the tests
     var authInfo = {
-        "authenticatedUsers": [{"user": authArgs.user, "db": "$external"}],
+        "authenticatedUsers": [{"user": options.user, "db": "$external"}],
         "authenticatedUserRoles": [{"role": defaultRole, "db": "admin"}]
     };
-    if (authArgs.user.contains("ldapz_ldap1") || authArgs.user.contains("ldapz_ldap2")) {
+    if (options.user.contains("ldapz_ldap1") || options.user.contains("ldapz_ldap2")) {
         authInfo.authenticatedUserRoles = authInfo.authenticatedUserRoles.concat([
             {"role": "cn=groupC,ou=Groups,dc=10gen,dc=cc", "db": "admin"},
             {"role": "cn=groupB,ou=Groups,dc=10gen,dc=cc", "db": "admin"},
             {"role": "cn=groupA,ou=Groups,dc=10gen,dc=cc", "db": "admin"}
         ]);
-        if (authArgs.user.contains("ldapz_ldap1")) {
+        if (options.user.contains("ldapz_ldap1")) {
             authInfo.authenticatedUserRoles = authInfo.authenticatedUserRoles.concat(
                 [{"role": "cn=groupD,ou=Groups,dc=10gen,dc=cc", "db": "admin"}]);
         }
 
-        if (authArgs.user.contains("ldapz_ldap2")) {
+        if (options.user.contains("ldapz_ldap2")) {
             authInfo.authenticatedUserRoles = authInfo.authenticatedUserRoles.concat(
                 [{"role": "cn=groupE,ou=Groups,dc=10gen,dc=cc", "db": "admin"}]);
         }
     }
 
-    if (authArgs.user.contains("ldapz_kerberos1") || authArgs.user.contains("ldapz_kerberos2")) {
+    if (options.user.contains("ldapz_kerberos1") || options.user.contains("ldapz_kerberos2")) {
         authInfo.authenticatedUserRoles = authInfo.authenticatedUserRoles.concat(
             [{"role": "cn=ldapz_kerberos2-group,ou=Groups,dc=10gen,dc=cc", "db": "admin"}]);
 
-        if (authArgs.user.contains("ldapz_kerberos1")) {
+        if (options.user.contains("ldapz_kerberos1")) {
             authInfo.authenticatedUserRoles = authInfo.authenticatedUserRoles.concat(
                 [{"role": "cn=ldapz_kerberos1-group,ou=Groups,dc=10gen,dc=cc", "db": "admin"}]);
         }
@@ -275,7 +277,7 @@ function runTests(testCallback, configGenerator, callbackOptions) {
     // single mongod
     var m = MongoRunner.runMongod(configGenerator.generateMongodConfig());
     setupTest(m);
-    testCallback(m, callbackOptions);
+    testCallback({conn: m, options: callbackOptions});
     MongoRunner.stopMongod(m);
 
     // The mongo shell cannot authenticate as the internal __system user in tests that use x509 for
@@ -304,7 +306,7 @@ function runTests(testCallback, configGenerator, callbackOptions) {
     var primary = rst.getPrimary();
     setupTest(primary);
     // TODO: run test on secondary as well?
-    testCallback(primary, callbackOptions);
+    testCallback({conn: primary, replSetTest: rst, options: callbackOptions});
     rst.nodes.forEach((node) => {
         node.getDB("admin").auth("siteRootAdmin", "secret");
     });
@@ -313,7 +315,7 @@ function runTests(testCallback, configGenerator, callbackOptions) {
     // sharded
     var st = new ShardingTest(configGenerator.generateShardingConfig());
     setupTest(st.s0);
-    testCallback(st.s0, callbackOptions);
+    testCallback({conn: st.s0, shardingTest: st, options: callbackOptions});
     if (st.configRS) {
         st.configRS.nodes.forEach((node) => {
             node.getDB("admin").auth("siteRootAdmin", "secret");
