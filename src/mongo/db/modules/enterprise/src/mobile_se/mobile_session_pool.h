@@ -31,8 +31,8 @@ public:
     bool isEmpty();
 
 private:
-    std::atomic<bool> _isEmpty;
-    std::mutex _queueMutex;
+    AtomicBool _isEmpty;
+    stdx::mutex _queueMutex;
     std::queue<std::string> _opQueryQueue;
 };
 

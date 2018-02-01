@@ -30,7 +30,7 @@ void MobileDelayedOpQueue::enqueueOp(std::string& opQuery) {
     _queueMutex.lock();
     // If the queue is empty till now, update the cached atomic to reflect the new state.
     if (_opQueryQueue.empty())
-        _isEmpty = false;
+        _isEmpty.store(false);
     _opQueryQueue.push(opQuery);
     LOG(2) << "MobileSE: Enqueued operation for delayed execution: " << opQuery;
     _queueMutex.unlock();
@@ -45,7 +45,7 @@ void MobileDelayedOpQueue::execAndDequeueOp(MobileSession* session) {
         _opQueryQueue.pop();
         // If the queue is empty now, set the cached atomic to reflect the new state.
         if (_opQueryQueue.empty())
-            _isEmpty = true;
+            _isEmpty.store(true);
     }
     _queueMutex.unlock();
 
