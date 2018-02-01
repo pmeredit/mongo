@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <queue>
 #include <string>
 #include <vector>
 
@@ -15,6 +16,25 @@
 
 namespace mongo {
 class MobileSession;
+
+/**
+ * This class manages a queue of operations delayed for some reason
+ */
+class MobileDelayedOpQueue final {
+    MONGO_DISALLOW_COPYING(MobileDelayedOpQueue);
+
+public:
+    MobileDelayedOpQueue();
+    void enqueueOp(std::string& opQuery);
+    void execAndDequeueOp(MobileSession* session);
+    void execAndDequeueAllOps(MobileSession* session);
+    bool isEmpty();
+
+private:
+    std::atomic<bool> _isEmpty;
+    std::mutex _queueMutex;
+    std::queue<std::string> _opQueryQueue;
+};
 
 /**
  * This class manages a pool of open sqlite3* objects.
@@ -42,6 +62,9 @@ public:
      * into the pool and closes all open sessions.
      */
     void shutDown();
+
+    // Failed drops get queued here and get re-tried periodically
+    MobileDelayedOpQueue failedDropsQueue;
 
 private:
     /**

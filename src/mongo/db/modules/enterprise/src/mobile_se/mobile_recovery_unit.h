@@ -57,6 +57,8 @@ public:
 
     void assertInActiveTxn() const;
 
+    void enqueueFailedDrop(std::string& dropQuery);
+
     static MobileRecoveryUnit* get(OperationContext* opCtx) {
         return checked_cast<MobileRecoveryUnit*>(opCtx->recoveryUnit());
     }

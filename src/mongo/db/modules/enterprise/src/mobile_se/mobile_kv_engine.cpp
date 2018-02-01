@@ -2,6 +2,8 @@
  * Copyright (C) 2017 MongoDB Inc.
  */
 
+#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
+
 #include "mongo/platform/basic.h"
 
 #include "mobile_kv_engine.h"
@@ -18,8 +20,10 @@
 #include "mobile_session.h"
 #include "mobile_sqlite_statement.h"
 #include "mobile_util.h"
+#include "mongo/db/concurrency/write_conflict_exception.h"
 #include "mongo/db/index/index_descriptor.h"
 #include "mongo/stdx/memory.h"
+#include "mongo/util/log.h"
 #include "mongo/util/scopeguard.h"
 
 namespace mongo {
@@ -128,7 +132,16 @@ SortedDataInterface* MobileKVEngine::getSortedDataInterface(OperationContext* op
 Status MobileKVEngine::dropIdent(OperationContext* opCtx, StringData ident) {
     MobileSession* session = MobileRecoveryUnit::get(opCtx)->getSessionNoTxn(opCtx);
     std::string dropQuery = "DROP TABLE IF EXISTS \"" + ident + "\";";
-    SqliteStatement::execQuery(session, dropQuery.c_str());
+
+    try {
+        SqliteStatement::execQuery(session, dropQuery.c_str());
+    } catch (const WriteConflictException&) {
+        // It is possible that this drop fails because of transaction running in parallel.
+        // We pretend that it succeeded, queue it for now and keep retrying later.
+        LOG(2) << "MobileSE: Caught WriteConflictException while dropping table, queuing to retry "
+                  "later";
+        MobileRecoveryUnit::get(opCtx)->enqueueFailedDrop(dropQuery);
+    }
     return Status::OK();
 }
 

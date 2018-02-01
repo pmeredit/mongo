@@ -2,6 +2,8 @@
  * Copyright (C) 2017 MongoDB Inc.
  */
 
+#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
+
 #include "mongo/platform/basic.h"
 
 #include "mobile_sqlite_statement.h"
@@ -12,6 +14,7 @@
 #include "mobile_util.h"
 #include "mongo/db/concurrency/write_conflict_exception.h"
 #include "mongo/util/assert_util.h"
+#include "mongo/util/log.h"
 #include "mongo/util/scopeguard.h"
 
 namespace mongo {
@@ -20,8 +23,10 @@ SqliteStatement::SqliteStatement(const MobileSession& session, const std::string
     int status = sqlite3_prepare_v2(
         session.getSession(), sqlQuery.c_str(), sqlQuery.length() + 1, &_stmt, NULL);
     if (status == SQLITE_BUSY) {
+        LOG(2) << "MobileSE: SQLITE_BUSY while preparing query: " << sqlQuery;
         throw WriteConflictException();
     } else if (status != SQLITE_OK) {
+        LOG(2) << "MobileSE: Error while preparing query: " << sqlQuery;
         std::string errMsg = "sqlite3_prepare_v2 failed: ";
         errMsg += sqlite3_errstr(status);
         uasserted(ErrorCodes::UnknownError, errMsg);
@@ -57,6 +62,7 @@ void SqliteStatement::clearBindings() {
 }
 
 int SqliteStatement::step(int desiredStatus) {
+    LOG(2) << "MobileSE: SQLite Statement stepping: " << std::string(sqlite3_sql(_stmt));
     int status = sqlite3_step(_stmt);
 
     // A non-negative desiredStatus indicates that checkStatus should assert that the returned
@@ -86,6 +92,7 @@ const void* SqliteStatement::getColText(int colIndex) {
 
 void SqliteStatement::execQuery(MobileSession* session, const std::string& query) {
     char* errMsg = NULL;
+    LOG(2) << "MobileSE: SQLite Statement sqlite3_exec: " << query;
     int status = sqlite3_exec(session->getSession(), query.c_str(), NULL, NULL, &errMsg);
 
     if (status == SQLITE_BUSY || status == SQLITE_LOCKED) {

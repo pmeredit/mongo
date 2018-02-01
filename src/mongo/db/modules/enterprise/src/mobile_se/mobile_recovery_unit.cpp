@@ -111,7 +111,16 @@ void MobileRecoveryUnit::_txnOpen(OperationContext* opCtx) {
     invariant(!_active);
     _ensureSession(opCtx);
 
-    SqliteStatement::execQuery(_session.get(), "BEGIN");
+    /*
+     * Starting a transaction with the "BEGIN" statement doesn't take an immediate lock.
+     * SQLite defers taking any locks until the database is first accessed. This creates the
+     * possibility of having multiple transactions opened in parallel. All sessions except the
+     * first to request the access get a database locked error.
+     * However, "BEGIN IMMEDIATE" forces SQLite to take a lock immediately. If another session
+     * tries to create a transaction in parallel, it receives a busy error and then retries.
+     * Reads outside these explicit transactions proceed unaffected.
+     */
+    SqliteStatement::execQuery(_session.get(), "BEGIN IMMEDIATE");
 
     _active = true;
 }
@@ -126,5 +135,9 @@ void MobileRecoveryUnit::_txnClose(bool commit) {
     }
 
     _active = false;
+}
+
+void MobileRecoveryUnit::enqueueFailedDrop(std::string& dropQuery) {
+    _sessionPool->failedDropsQueue.enqueueOp(dropQuery);
 }
 }
