@@ -27,14 +27,14 @@
 
 namespace mongo {
 
-class CmdLogApplicationMessage : public ErrmsgCommandDeprecated {
+class CmdLogApplicationMessage final : public ErrmsgCommandDeprecated {
 public:
     CmdLogApplicationMessage();
     virtual ~CmdLogApplicationMessage();
 
-    virtual Status checkAuthForCommand(Client* client,
-                                       const std::string& dbname,
-                                       const BSONObj& cmdObj) {
+    Status checkAuthForCommand(Client* client,
+                               const std::string& dbname,
+                               const BSONObj& cmdObj) const override {
         AuthorizationSession* authzSession = AuthorizationSession::get(client);
 
         if (!authzSession->isAuthorizedForActionsOnResource(ResourcePattern::forClusterResource(),
@@ -45,11 +45,11 @@ public:
         return Status::OK();
     }
 
-    virtual bool errmsgRun(OperationContext* opCtx,
-                           const std::string& db,
-                           const BSONObj& cmdObj,
-                           std::string& errmsg,
-                           BSONObjBuilder& result);
+    bool errmsgRun(OperationContext* opCtx,
+                   const std::string& db,
+                   const BSONObj& cmdObj,
+                   std::string& errmsg,
+                   BSONObjBuilder& result) override;
 
     std::string help() const override {
         return "Insert a custom message into the audit log";
@@ -58,7 +58,7 @@ public:
     virtual bool isWriteCommandForConfigServer() const {
         return false;
     }
-    virtual bool supportsWriteConcern(const BSONObj& cmd) const override {
+    bool supportsWriteConcern(const BSONObj& cmd) const override {
         return false;
     }
     AllowedOnSecondary secondaryAllowed() const override {
