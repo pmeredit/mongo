@@ -442,6 +442,7 @@ SaslAuthenticationSession* createSaslAuthenticationSession(AuthorizationSession*
                                                            StringData db,
                                                            StringData mechanism) {
     if (mechanism == SaslAuthenticationSession::mechanismSCRAMSHA1 ||
+        mechanism == SaslAuthenticationSession::mechanismSCRAMSHA256 ||
         (mechanism == SaslAuthenticationSession::mechanismPLAIN && db != "$external")) {
         return new NativeSaslAuthenticationSession(authzSession);
     }
@@ -490,7 +491,7 @@ MONGO_INITIALIZER_GENERAL(CyrusSaslCommands,
 (InitializerContext*) {
     for (size_t i = 0; i < saslGlobalParams.authenticationMechanisms.size(); ++i) {
         const std::string& mechanism = saslGlobalParams.authenticationMechanisms[i];
-        if (mechanism == "MONGODB-CR" || mechanism == "MONGODB-X509" ||
+        if (mechanism == "SCRAM-SHA-256" || mechanism == "MONGODB-X509" ||
             mechanism == "SCRAM-SHA-1") {
             // No need to smoke test built-in mechanism.
             continue;
