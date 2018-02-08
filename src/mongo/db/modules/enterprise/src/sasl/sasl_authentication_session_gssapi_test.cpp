@@ -22,6 +22,7 @@
 #include "mongo/stdx/memory.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
+#include "mongo/util/errno_util.h"
 #include "mongo/util/log.h"
 #include "mongo/util/scopeguard.h"
 
@@ -75,16 +76,21 @@ void initializeClientCredentialCacheOrDie() {
     const pid_t child = fork();
     fassert(4020, child >= 0);
     if (child == 0) {
-        fassert(4021,
-                0 == execlp("kinit",
-                            "kinit",
-                            "-k",
-                            "-t",
-                            "jstests/libs/mockuser.keytab",
-                            "-c",
-                            krb5ccFile,
-                            userName.c_str(),
-                            NULL));
+        int er = execlp("kinit",
+                        "kinit",
+                        "-k",
+                        "-t",
+                        "jstests/libs/mockuser.keytab",
+                        "-c",
+                        krb5ccFile,
+                        userName.c_str(),
+                        NULL);
+        Status s = Status::OK();
+        if (er != 0) {
+            s = Status(ErrorCodes::InternalError,
+                       errnoWithPrefix("cannot execute \"kinit\""));
+        }
+        fassert(4021, s);
     }
     int waitStatus;
     pid_t waitedPid;
