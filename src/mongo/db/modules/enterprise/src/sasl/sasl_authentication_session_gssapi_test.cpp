@@ -87,8 +87,7 @@ void initializeClientCredentialCacheOrDie() {
                         NULL);
         Status s = Status::OK();
         if (er != 0) {
-            s = Status(ErrorCodes::InternalError,
-                       errnoWithPrefix("cannot execute \"kinit\""));
+            s = Status(ErrorCodes::InternalError, errnoWithPrefix("cannot execute \"kinit\""));
         }
         fassert(4021, s);
     }
