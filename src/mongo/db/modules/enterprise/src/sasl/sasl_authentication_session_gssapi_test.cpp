@@ -11,7 +11,6 @@
 #include <unistd.h>
 #include <vector>
 
-#include "cyrus_sasl_authentication_session.h"
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
 #include "mongo/client/sasl_client_session.h"
@@ -19,12 +18,17 @@
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/authz_manager_external_state_mock.h"
 #include "mongo/db/auth/authz_session_external_state_mock.h"
+#include "mongo/db/auth/sasl_mechanism_registry.h"
+#include "mongo/db/auth/sasl_options.h"
+#include "mongo/db/service_context_noop.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/errno_util.h"
 #include "mongo/util/log.h"
 #include "mongo/util/scopeguard.h"
+
+#include "cyrus_sasl_authentication_session.h"
 
 /**
  * This test may require the hostname contained in mockHostName to canonicalize to
@@ -106,19 +110,32 @@ int main(int argc, char** argv, char** envp) {
     // Set up *nix-based kerberos.
     if (!mkstemp(krb5ccFile)) {
         log() << "Failed to make credential cache with template " << krb5ccFile << "; "
-              << strerror(errno) << " (" << errno << ')' << std::endl;
+              << strerror(errno) << " (" << errno << ')';
         return EXIT_FAILURE;
     }
     ON_BLOCK_EXIT(unlink, krb5ccFile);
     setupEnvironment();
     initializeClientCredentialCacheOrDie();
 
+    saslGlobalParams.authenticationMechanisms.push_back("GSSAPI");
+    saslGlobalParams.serviceName = mockServiceName;
+    saslGlobalParams.hostName = mockHostName;
+
     runGlobalInitializersOrDie(argc, argv, envp);
 
-    Status status =
-        CyrusSaslAuthenticationSession::smokeTestMechanism("GSSAPI", mockServiceName, mockHostName);
-    if (!status.isOK()) {
-        log() << "Failed to smoke server mechanism.  " << status << std::endl;
+    SASLServerMechanismRegistry& registry =
+        SASLServerMechanismRegistry::get(getGlobalServiceContext());
+    auto swMechanism = registry.getServerMechanism("GSSAPI", "$external");
+
+    if (!swMechanism.isOK()) {
+        log() << "Failed to smoke server mechanism from registry.  " << swMechanism.getStatus();
+        return EXIT_FAILURE;
+    }
+
+    try {
+        CyrusGSSAPIServerMechanism mechanism("$external");
+    } catch (...) {
+        log() << "Failed to directly smoke server mechanism.  " << exceptionToStatus();
         return EXIT_FAILURE;
     }
 
@@ -132,10 +149,13 @@ class SaslConversationGssapi : public unittest::Test {
 public:
     SaslConversationGssapi();
 
-    AuthorizationManager authManager;
+    ServiceContextNoop serviceContext;
+    ServiceContext::UniqueClient opClient;
+    ServiceContext::UniqueOperationContext opCtx;
+    AuthorizationManager* authManager;
     std::unique_ptr<AuthorizationSession> authSession;
     std::unique_ptr<SaslClientSession> client;
-    std::unique_ptr<SaslAuthenticationSession> server;
+    std::unique_ptr<ServerMechanismBase> server;
     const std::string mechanism;
 
 protected:
@@ -143,27 +163,37 @@ protected:
 };
 
 SaslConversationGssapi::SaslConversationGssapi()
-    : authManager(stdx::make_unique<AuthzManagerExternalStateMock>()),
-      authSession(authManager.makeAuthorizationSession()),
+    : opClient(serviceContext.makeClient("gssapiTest")),
+      opCtx(getGlobalServiceContext()->makeOperationContext(opClient.get())),
       mechanism("GSSAPI") {
-    client.reset(SaslClientSession::create("GSSAPI"));
-    server.reset(SaslAuthenticationSession::create(authSession.get(), "$external", "GSSAPI"));
+
+    auto tmpAuthManager =
+        stdx::make_unique<AuthorizationManager>(stdx::make_unique<AuthzManagerExternalStateMock>());
+    authSession = tmpAuthManager->makeAuthorizationSession();
+    authManager = tmpAuthManager.get();
+    AuthorizationManager::set(&serviceContext, std::move(tmpAuthManager));
+
+    client.reset(SaslClientSession::create(mechanism));
+
+    server = stdx::make_unique<CyrusGSSAPIServerMechanism>("$external");
 }
 
 void SaslConversationGssapi::assertConversationFailure() {
     std::string clientMessage;
-    std::string serverMessage;
     Status clientStatus(ErrorCodes::InternalError, "");
-    Status serverStatus(ErrorCodes::InternalError, "");
+    StatusWith<std::string> serverResponse("");
     do {
-        clientStatus = client->step(serverMessage, &clientMessage);
-        if (!clientStatus.isOK())
+        clientStatus = client->step(serverResponse.getValue(), &clientMessage);
+        if (!clientStatus.isOK()) {
             break;
-        serverStatus = server->step(clientMessage, &serverMessage);
-        if (!serverStatus.isOK())
+        }
+
+        serverResponse = server->step(opCtx.get(), clientMessage);
+        if (!serverResponse.isOK()) {
             break;
+        }
     } while (!client->isDone());
-    ASSERT_FALSE(serverStatus.isOK() && clientStatus.isOK());
+    ASSERT_FALSE(serverResponse.isOK() && clientStatus.isOK());
 }
 
 TEST_F(SaslConversationGssapi, SuccessfulAuthentication) {
@@ -173,13 +203,12 @@ TEST_F(SaslConversationGssapi, SuccessfulAuthentication) {
     client->setParameter(SaslClientSession::parameterUser, userName);
     ASSERT_OK(client->initialize());
 
-    ASSERT_OK(server->start("test", mechanism, mockServiceName, mockHostName, 1, true));
-
     std::string clientMessage;
-    std::string serverMessage;
+    StatusWith<std::string> serverResponse("");
     do {
-        ASSERT_OK(client->step(serverMessage, &clientMessage));
-        ASSERT_OK(server->step(clientMessage, &serverMessage));
+        ASSERT_OK(client->step(serverResponse.getValue(), &clientMessage));
+        serverResponse = server->step(opCtx.get(), clientMessage);
+        ASSERT_OK(serverResponse.getStatus());
     } while (!client->isDone());
     ASSERT_TRUE(server->isDone());
 }
@@ -191,8 +220,6 @@ TEST_F(SaslConversationGssapi, NoSuchUser) {
     client->setParameter(SaslClientSession::parameterUser, "WrongUserName");
     ASSERT_OK(client->initialize());
 
-    ASSERT_OK(server->start("test", mechanism, mockServiceName, mockHostName, 1, true));
-
     assertConversationFailure();
 }
 
@@ -203,8 +230,6 @@ TEST_F(SaslConversationGssapi, WrongServiceNameClient) {
     client->setParameter(SaslClientSession::parameterUser, userName);
     ASSERT_OK(client->initialize());
 
-    ASSERT_OK(server->start("test", mechanism, mockServiceName, mockHostName, 1, true));
-
     assertConversationFailure();
 }
 
@@ -214,8 +239,6 @@ TEST_F(SaslConversationGssapi, WrongServerHostNameClient) {
     client->setParameter(SaslClientSession::parameterMechanism, mechanism);
     client->setParameter(SaslClientSession::parameterUser, userName);
     ASSERT_OK(client->initialize());
-
-    ASSERT_OK(server->start("test", mechanism, mockServiceName, mockHostName, 1, true));
 
     assertConversationFailure();
 }

@@ -1,68 +1,73 @@
 /*
- * Copyright (C) 2014 10gen, Inc.  All Rights Reserved.
+ * Copyright (C) 2018 MongoDB Inc.  All Rights Reserved.
  */
 
 #pragma once
 
-#include <cstdint>
 #include <sasl/sasl.h>
-#include <string>
-#include <vector>
 
-#include "mongo/base/disallow_copying.h"
-#include "mongo/base/status.h"
+#include <string>
+
+#include "mongo/base/status_with.h"
 #include "mongo/base/string_data.h"
-#include "mongo/db/auth/sasl_authentication_session.h"
+#include "mongo/db/auth/sasl_mechanism_policies.h"
+#include "mongo/db/auth/sasl_mechanism_registry.h"
 
 namespace mongo {
 
-/**
- * Authentication session data for the server side of SASL authentication.
- */
-class CyrusSaslAuthenticationSession : public SaslAuthenticationSession {
-    MONGO_DISALLOW_COPYING(CyrusSaslAuthenticationSession);
+template <typename Policy>
+struct CyrusSaslMechShim : MakeServerMechanism<Policy> {
+    static const bool isInternal = false;
+    explicit CyrusSaslMechShim(std::string authenticationDatabase);
 
-public:
-    struct SaslMechanismInfo;
-
-    /// This value chosen because it is unused, and unlikely to be used by the SASL library.
-    // This constant needs to be in the header, because it prevents a linking dependency cycle.
-    static const int mongoSessionCallbackId = 0xF00F;
-
-
-    static Status smokeTestMechanism(StringData mechanism,
-                                     StringData serviceName,
-                                     StringData serviceHostname);
-
-    explicit CyrusSaslAuthenticationSession(AuthorizationSession* authSession);
-    virtual ~CyrusSaslAuthenticationSession();
-
-    virtual Status start(StringData authenticationDatabase,
-                         StringData mechanism,
-                         StringData serviceName,
-                         StringData serviceHostname,
-                         int64_t conversationId,
-                         bool autoAuthorize);
-
-    virtual Status step(StringData inputData, std::string* outputData);
-
-    virtual std::string getPrincipalId() const;
-
-    virtual const char* getMechanism() const;
-
-    /**
-     * Returns a pointer to the opaque SaslMechanismInfo object for the mechanism in use.
-     *
-     * Not meaningful before a successful call to start().
-     */
-    const SaslMechanismInfo* getMechInfo() const {
-        return _mechInfo;
+    virtual ~CyrusSaslMechShim() {
+        if (_saslConnection) {
+            sasl_dispose(&_saslConnection);
+        }
     }
 
+
+    StringData getPrincipalName() const final;
+
+    StatusWith<std::tuple<bool, std::string>> stepImpl(OperationContext* opCtx,
+                                                       StringData input) final;
+
 private:
-    static const int maxCallbacks = 4;
+    size_t _saslStep = 0;
+    static constexpr int maxCallbacks = 4;
     sasl_conn_t* _saslConnection;
     sasl_callback_t _callbacks[maxCallbacks];
-    const SaslMechanismInfo* _mechInfo;
 };
+
+using CyrusPLAINServerMechanism = CyrusSaslMechShim<PLAINPolicy>;
+
+struct CyrusPlainServerFactory : MakeServerFactory<CyrusPLAINServerMechanism> {
+    bool canMakeMechanismForUser(const User* user) const final {
+        auto credentials = user->getCredentials();
+        return credentials.isExternal;
+    }
+};
+
+struct CyrusGSSAPIServerMechanism : public CyrusSaslMechShim<GSSAPIPolicy> {
+    static const bool isInternal = false;
+    explicit CyrusGSSAPIServerMechanism(std::string authenticationDatabase)
+        : CyrusSaslMechShim(std::move(authenticationDatabase)) {}
+
+    /**
+     * GSSAPI-specific method for determining if "authenticatedUser" may act as "requestedUser."
+     *
+     * The GSSAPI mechanism in Cyrus SASL strips the kerberos realm from the authenticated user
+     * name, if it matches the server realm.  So, for GSSAPI authentication, we must re-canonicalize
+     * the authenticated user name before validating it..
+     */
+    bool isAuthorizedToActAs(StringData requestedUser, StringData authenticatedUser) final;
+};
+
+struct CyrusGSSAPIServerFactory : MakeServerFactory<CyrusGSSAPIServerMechanism> {
+    bool canMakeMechanismForUser(const User* user) const final {
+        auto credentials = user->getCredentials();
+        return credentials.isExternal;
+    }
+};
+
 }  // namespace mongo

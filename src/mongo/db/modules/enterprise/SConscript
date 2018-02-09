@@ -207,7 +207,6 @@ env.Library('mongosaslserversession',
             LIBDEPS=[
                 '$BUILD_DIR/mongo/db/auth/saslauth',
                 '$BUILD_DIR/mongo/db/server_parameters',
-                '$BUILD_DIR/mongo/db/auth/authmocks',
             ],
             SYSLIBDEPS=['sasl2'] + [env['MONGO_GSSAPI_LIB']],
 )
@@ -220,8 +219,10 @@ env.Library('auth_delay',
 )
 
 env.Library('mongosaslservercommon',
-            ['src/sasl/cyrus_sasl_authentication_session.cpp',
-             'src/sasl/ldap_sasl_authentication_session.cpp'],
+            [
+             'src/sasl/cyrus_sasl_authentication_session.cpp',
+             'src/sasl/ldap_sasl_authentication_session.cpp'
+            ],
             LIBDEPS=['src/ldap/ldap_manager',
                      'src/ldap/ldap_name_map',
                      'mongosaslserversession'],
@@ -242,7 +243,10 @@ if env.TargetOSIs("windows"):
 
     sspi_test = env.Program('sasl_authentication_session_sspi_test',
                             ['src/sasl/sasl_authentication_session_sspi_test.cpp'],
-                            LIBDEPS=['mongosaslserversession'])
+                            LIBDEPS=[
+                                'mongosaslserversession',
+                                '$BUILD_DIR/mongo/db/auth/authmocks',
+                            ])
 # SERVER-10700
 #    env.RegisterUnitTest(sspi_test[0])
 else:
@@ -253,7 +257,9 @@ else:
                                        '$BUILD_DIR/mongo/base',
                                        '$BUILD_DIR/mongo/util/net/network',
                                        '$BUILD_DIR/mongo/db/auth/authcore',
+                                       '$BUILD_DIR/mongo/db/auth/authmocks',
                                        '$BUILD_DIR/mongo/db/auth/saslauth',
+                                       '$BUILD_DIR/mongo/db/service_context_noop_init',
                                        '$BUILD_DIR/mongo/client/clientdriver',
                                        '$BUILD_DIR/mongo/client/sasl_client',
                                        '$BUILD_DIR/mongo/executor/thread_pool_task_executor',

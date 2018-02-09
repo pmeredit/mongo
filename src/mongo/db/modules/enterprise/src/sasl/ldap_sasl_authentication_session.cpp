@@ -4,14 +4,17 @@
 
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kAccessControl
 
-#include "ldap_sasl_authentication_session.h"
+#include <vector>
 
 #include <boost/range/size.hpp>
 
 #include "mongo/base/secure_allocator.h"
 #include "mongo/base/status.h"
+#include "mongo/base/status_with.h"
 #include "mongo/base/string_data.h"
 #include "mongo/db/auth/authorization_session.h"
+#include "mongo/db/auth/sasl_mechanism_policies.h"
+#include "mongo/db/auth/sasl_mechanism_registry.h"
 #include "mongo/db/auth/sasl_options.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/service_context.h"
@@ -24,38 +27,19 @@
 
 namespace mongo {
 
-LDAPSaslAuthenticationSession::LDAPSaslAuthenticationSession(AuthorizationSession* authzSession)
-    : SaslAuthenticationSession(authzSession) {}
+struct LDAPPLAINServerMechanism : MakeServerMechanism<PLAINPolicy> {
+    static const bool isInternal = false;
 
-Status LDAPSaslAuthenticationSession::start(StringData authenticationDatabase,
-                                            StringData mechanism,
-                                            StringData serviceName,
-                                            StringData serviceHostname,
-                                            int64_t conversationId,
-                                            bool autoAuthorize) {
-    fassert(40049, conversationId > 0);
+    LDAPPLAINServerMechanism(std::string authenticationDatabase)
+        : MakeServerMechanism<PLAINPolicy>(std::move(authenticationDatabase)) {}
 
-    if (_conversationId != 0) {
-        return Status(ErrorCodes::AlreadyInitialized,
-                      "Cannot call start() twice on same LDAPSaslAuthenticationSession.");
-    }
+private:
+    StatusWith<std::tuple<bool, std::string>> stepImpl(OperationContext* opCtx,
+                                                       StringData input) final;
+};
 
-    _authenticationDatabase = authenticationDatabase.toString();
-    _serviceName = serviceName.toString();
-    _serviceHostname = serviceHostname.toString();
-    _conversationId = conversationId;
-    _autoAuthorize = autoAuthorize;
-
-    if (mechanism != mechanismPLAIN) {
-        return Status(ErrorCodes::BadValue,
-                      mongoutils::str::stream() << "SASL mechanism " << mechanism
-                                                << " is not supported for LDAP authentication");
-    }
-
-    return Status::OK();
-}
-
-Status LDAPSaslAuthenticationSession::step(StringData inputData, std::string* outputData) {
+StatusWith<std::tuple<bool, std::string>> LDAPPLAINServerMechanism::stepImpl(
+    OperationContext* opCtx, StringData inputData) {
     // Expecting user input on the form: [authz-id]\0authn-id\0pwd
     std::string input = inputData.toString();
 
@@ -78,12 +62,14 @@ Status LDAPSaslAuthenticationSession::step(StringData inputData, std::string* ou
         }
 
         std::string authorizationIdentity = input.substr(0, firstNull);
-        _user = input.substr(firstNull + 1, (secondNull - firstNull) - 1);
-        if (_user.empty()) {
+        ServerMechanismBase::_principalName =
+            input.substr(firstNull + 1, (secondNull - firstNull) - 1);
+        if (ServerMechanismBase::_principalName.empty()) {
             return Status(ErrorCodes::AuthenticationFailed,
                           str::stream()
                               << "Incorrectly formatted PLAIN client message, empty username");
-        } else if (!authorizationIdentity.empty() && authorizationIdentity != _user) {
+        } else if (!authorizationIdentity.empty() &&
+                   authorizationIdentity != ServerMechanismBase::_principalName) {
             return Status(ErrorCodes::AuthenticationFailed,
                           str::stream()
                               << "SASL authorization identity must match authentication identity");
@@ -100,18 +86,33 @@ Status LDAPSaslAuthenticationSession::step(StringData inputData, std::string* ou
                       mongoutils::str::stream() << "Incorrectly formatted PLAIN client message");
     }
 
-    // A SASL PLAIN conversation only has one step
-    _done = true;
+    Status status = LDAPManager::get(opCtx->getServiceContext())
+                        ->verifyLDAPCredentials(ServerMechanismBase::_principalName, pwd);
+    if (!status.isOK()) {
+        return status;
+    }
 
-    return LDAPManager::get(_opCtx->getServiceContext())->verifyLDAPCredentials(_user, pwd);
+    return std::make_tuple(true, std::string());
 }
 
-std::string LDAPSaslAuthenticationSession::getPrincipalId() const {
-    return _user;
+
+struct LDAPPLAINServerFactory : MakeServerFactory<LDAPPLAINServerMechanism> {
+    bool canMakeMechanismForUser(const User* user) const final {
+        auto credentials = user->getCredentials();
+        return credentials.isExternal;
+    }
+};
+
+MONGO_INITIALIZER_WITH_PREREQUISITES(LDAPPLAINServerMechanism,
+                                     ("CreateSASLServerMechanismRegistry"))
+(::mongo::InitializerContext* context) {
+    auto& registry = SASLServerMechanismRegistry::get(getGlobalServiceContext());
+
+    if (saslGlobalParams.authdPath.empty()) {
+        registry.registerFactory<LDAPPLAINServerFactory>();
+    }
+    return Status::OK();
 }
 
-const char* LDAPSaslAuthenticationSession::getMechanism() const {
-    return mechanismPLAIN;
-}
 
 }  // namespace mongo

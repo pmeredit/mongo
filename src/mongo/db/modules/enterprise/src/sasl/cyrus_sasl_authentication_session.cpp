@@ -4,10 +4,11 @@
 
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kAccessControl
 
+#include <sasl/sasl.h>
+
 #include "cyrus_sasl_authentication_session.h"
 
-#include <boost/range/size.hpp>
-
+#include "mongo/base/checked_cast.h"
 #include "mongo/base/init.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/util/bson_extract.h"
@@ -16,7 +17,8 @@
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/authz_manager_external_state_mock.h"
 #include "mongo/db/auth/authz_session_external_state_mock.h"
-#include "mongo/db/auth/native_sasl_authentication_session.h"
+#include "mongo/db/auth/sasl_mechanism_policies.h"
+#include "mongo/db/auth/sasl_mechanism_registry.h"
 #include "mongo/db/auth/sasl_options.h"
 #include "mongo/db/commands/authentication_commands.h"
 #include "mongo/db/operation_context_noop.h"
@@ -30,111 +32,10 @@
 
 #include "../ldap/ldap_manager.h"
 #include "../ldap/ldap_options.h"
-#include "ldap_sasl_authentication_session.h"
 
 namespace mongo {
 
-using std::endl;
-
 namespace {
-
-/**
- * Signature of a function that can be used to smoke-test a SASL mechanism at
- * startup, to see if it is likely to work in the current environment.
- */
-typedef Status (*SmokeTestMechanismFn)(StringData mechanismName,
-                                       StringData serviceName,
-                                       StringData serviceHostname);
-
-/**
- * Signature of a function used to determine if "authenticatedUser" is authorized to act as
- * "requestedUser".  This is the final step in completing an authentication.
- *
- * The "session" and "conn" objects are made available for context.
- */
-typedef bool (*AuthorizeUserFn)(CyrusSaslAuthenticationSession* session,
-                                StringData requestedUser,
-                                StringData authenticatedUser);
-
-}  // namespace
-
-/**
- * POD Structure describing a supported SASL mechanism.
- */
-struct CyrusSaslAuthenticationSession::SaslMechanismInfo {
-    /// Mechanism name.
-    const char* name;
-
-    /// Function to use to smoke test the mechanism at startup.
-    SmokeTestMechanismFn smokeTestMechanism;
-
-    /// Function to answer whether or not a user is authorized to access the system.
-    AuthorizeUserFn isUserAuthorized;
-};
-
-namespace {
-
-/**
- * Basic smoke test of SASL mechanism functionality, that any requested mechanism should pass.
- */
-Status smokeCommonMechanism(StringData mechanismName,
-                            StringData serviceName,
-                            StringData serviceHostname) {
-    AuthorizationManager authzManager(stdx::make_unique<AuthzManagerExternalStateMock>());
-    const std::unique_ptr<AuthorizationSession> authzSession =
-        authzManager.makeAuthorizationSession();
-
-    CyrusSaslAuthenticationSession session(authzSession.get());
-    OperationContextNoop opCtx;
-    Status status = session.start("test", mechanismName, serviceName, serviceHostname, 1, true);
-    session.setOpCtxt(&opCtx);
-    if (status.isOK()) {
-        std::string ignored;
-        status = session.step("", &ignored);
-    }
-    return status;
-}
-
-/**
- * Smoke test of GSSAPI functionality in addition to basic SASL mechanism functionality.
- */
-Status smokeGssapiMechanism(StringData mechanismName,
-                            StringData serviceName,
-                            StringData serviceHostname) {
-    Status status = smokeCommonMechanism(mechanismName, serviceName, serviceHostname);
-    if (!status.isOK())
-        return status;
-    return gssapi::tryAcquireServerCredential(static_cast<std::string>(
-        mongoutils::str::stream() << serviceName << "@" << serviceHostname));
-}
-
-/**
- * Standard method in mongodb for determining if "authenticatedUser" may act as "requestedUser."
- *
- * The standard rule in MongoDB is simple.  The authenticated user name must be the same as the
- * requested user name.
- */
-bool isAuthorizedCommon(CyrusSaslAuthenticationSession* session,
-                        StringData requestedUser,
-                        StringData authenticatedUser) {
-    return requestedUser == authenticatedUser;
-}
-
-/**
- * GSSAPI-specific method for determining if "authenticatedUser" may act as "requestedUser."
- *
- * The GSSAPI mechanism in Cyrus SASL strips the kerberos realm from the authenticated user
- * name, if it matches the server realm.  So, for GSSAPI authentication, we must re-canonicalize
- * the authenticated user name before validating it..
- */
-bool isAuthorizedGssapi(CyrusSaslAuthenticationSession* session,
-                        StringData requestedUser,
-                        StringData authenticatedUser) {
-    std::string canonicalAuthenticatedUser;
-    if (!gssapi::canonicalizeUserName(authenticatedUser, &canonicalAuthenticatedUser).isOK())
-        return false;
-    return isAuthorizedCommon(session, requestedUser, canonicalAuthenticatedUser);
-}
 
 /**
  * Callback registered on the sasl_conn_t underlying a CyrusSaslAuthenticationSession that
@@ -148,15 +49,14 @@ int saslServerConnGetOpt(void* context,
                          const char* optionRaw,
                          const char** outResult,
                          unsigned* outLen) throw() {
-    static const char mongodbCanonMechanism[] = "MongoDBInternalCanon";
+    static constexpr StringData mongodbCanonMechanism = "MongoDBInternalCanon"_sd;
 
     try {
         unsigned ignored;
         if (!outLen)
             outLen = &ignored;
 
-        CyrusSaslAuthenticationSession* session =
-            static_cast<CyrusSaslAuthenticationSession*>(context);
+        ServerMechanismBase* session = static_cast<ServerMechanismBase*>(context);
         if (!session || !optionRaw || !outResult)
             return SASL_BADPARAM;
 
@@ -166,16 +66,16 @@ int saslServerConnGetOpt(void* context,
             // Returns the name of the plugin to use to canonicalize user names.  We use a custome
             // plugin that only strips leading and trailing whitespace.  The default plugin also
             // appends realm information, which MongoDB does not expect.
-            *outResult = mongodbCanonMechanism;
-            *outLen = static_cast<unsigned>(boost::size(mongodbCanonMechanism));
+            *outResult = mongodbCanonMechanism.rawData();
+            *outLen = static_cast<unsigned>(mongodbCanonMechanism.size());
             return SASL_OK;
         }
 
         if ((option == "pwcheck_method"_sd) &&
             (session->getAuthenticationDatabase() == "$external")) {
-            static const char pwcheckAuthd[] = "saslauthd";
-            *outResult = pwcheckAuthd;
-            *outLen = boost::size(pwcheckAuthd);
+            static constexpr StringData pwcheckAuthd = "saslauthd"_sd;
+            *outResult = pwcheckAuthd.rawData();
+            *outLen = pwcheckAuthd.size();
             return SASL_OK;
         }
 
@@ -213,13 +113,11 @@ int saslServerConnAuthorize(sasl_conn_t* conn,
         return SASL_BADPARAM;
 
     try {
-        CyrusSaslAuthenticationSession* session =
-            static_cast<CyrusSaslAuthenticationSession*>(context);
+        ServerMechanismBase* session = static_cast<ServerMechanismBase*>(context);
 
         StringData requestedUser(requestedUserRaw, requestedUserLen);
         StringData authenticatedIdentity(authenticatedIdentityRaw, authenticatedIdentityLen);
-        if (!session->getMechInfo()->isUserAuthorized(
-                session, requestedUser, authenticatedIdentity)) {
+        if (!session->isAuthorizedToActAs(requestedUser, authenticatedIdentity)) {
             std::stringstream errorMsg;
             errorMsg << "saslServerConnAuthorize: Requested identity "
                      << escape(std::string(requestedUserRaw))
@@ -245,140 +143,45 @@ int saslAlwaysFailCallback() throw() {
  * Type of pointer used to store SASL callback functions.
  */
 typedef int (*SaslCallbackFn)();
+
+/// This value chosen because it is unused, and unlikely to be used by the SASL library.
+const int mongoSessionCallbackId = 0xF00F;
+
 }  // namespace
 
-// This is the storage for the in-class constant.  The value is defined in the header.
-// static
-const int CyrusSaslAuthenticationSession::mongoSessionCallbackId;
 
-/// NULL-terminated list of SaslMechanismInfos describing the mechanisms MongoDB knows how to
-/// support.
-CyrusSaslAuthenticationSession::SaslMechanismInfo _mongoKnownMechanisms[] = {
-    {SaslAuthenticationSession::mechanismSCRAMSHA1, smokeCommonMechanism, isAuthorizedCommon},
-    {SaslAuthenticationSession::mechanismGSSAPI, smokeGssapiMechanism, isAuthorizedGssapi},
-    {SaslAuthenticationSession::mechanismPLAIN, smokeCommonMechanism, isAuthorizedCommon},
-    {NULL}};
-
-/**
- * Returns the SaslMechanismInfo for "mechanism", or NULL if there is none.
- */
-const CyrusSaslAuthenticationSession::SaslMechanismInfo* _findMechanismInfo(StringData mechanism) {
-    for (CyrusSaslAuthenticationSession::SaslMechanismInfo* mechInfo = _mongoKnownMechanisms;
-         mechInfo->name != NULL;
-         ++mechInfo) {
-        if (mechanism == mechInfo->name)
-            return mechInfo;
-    }
-    return NULL;
-}
-
-// static
-Status CyrusSaslAuthenticationSession::smokeTestMechanism(StringData mechanism,
-                                                          StringData serviceName,
-                                                          StringData serviceHostname) {
-    const SaslMechanismInfo* mechInfo = _findMechanismInfo(mechanism);
-    if (NULL == mechInfo) {
-        return Status(ErrorCodes::BadValue,
-                      mongoutils::str::stream() << "Unsupported mechanism " << mechanism);
-    }
-    return mechInfo->smokeTestMechanism(mechanism, serviceName, serviceHostname);
-}
-
-CyrusSaslAuthenticationSession::CyrusSaslAuthenticationSession(AuthorizationSession* authzSession)
-    : SaslAuthenticationSession(authzSession), _saslConnection(NULL), _mechInfo(NULL) {
+template <typename Policy>
+CyrusSaslMechShim<Policy>::CyrusSaslMechShim(std::string authenticationDatabase)
+    : MakeServerMechanism<Policy>(std::move(authenticationDatabase)) {
     const sasl_callback_t callbackTemplate[maxCallbacks] = {
-        {SASL_CB_GETOPT, SaslCallbackFn(saslServerConnGetOpt), this},
-        {SASL_CB_PROXY_POLICY, SaslCallbackFn(saslServerConnAuthorize), this},
-        {mongoSessionCallbackId, saslAlwaysFailCallback, this},
+        {SASL_CB_GETOPT,
+         SaslCallbackFn(saslServerConnGetOpt),
+         static_cast<ServerMechanismBase*>(this)},
+        {SASL_CB_PROXY_POLICY,
+         SaslCallbackFn(saslServerConnAuthorize),
+         static_cast<ServerMechanismBase*>(this)},
+        {mongoSessionCallbackId, saslAlwaysFailCallback, static_cast<ServerMechanismBase*>(this)},
         {SASL_CB_LIST_END}};
+    static_assert(std::extent<decltype(callbackTemplate)>::value == maxCallbacks,
+                  "Insufficient space for copy");
     std::copy(callbackTemplate, callbackTemplate + maxCallbacks, _callbacks);
-}
 
-CyrusSaslAuthenticationSession::~CyrusSaslAuthenticationSession() {
-    if (_saslConnection)
-        sasl_dispose(&_saslConnection);
-}
-
-Status CyrusSaslAuthenticationSession::start(StringData authenticationDatabase,
-                                             StringData mechanism,
-                                             StringData serviceName,
-                                             StringData serviceHostname,
-                                             int64_t conversationId,
-                                             bool autoAuthorize) {
-    fassert(4001, conversationId > 0);
-
-    if (_conversationId != 0) {
-        return Status(ErrorCodes::AlreadyInitialized,
-                      "Cannot call start() twice on same CyrusSaslAuthenticationSession.");
-    }
-
-    _authenticationDatabase = authenticationDatabase.toString();
-    _serviceName = serviceName.toString();
-    _serviceHostname = serviceHostname.toString();
-    _conversationId = conversationId;
-    _autoAuthorize = autoAuthorize;
-    _mechInfo = _findMechanismInfo(mechanism);
-
-    if (NULL == _mechInfo) {
-        return Status(ErrorCodes::BadValue,
-                      mongoutils::str::stream() << "Unsupported mechanism " << mechanism);
-    }
-
-    int result = sasl_server_new(_serviceName.c_str(),      // service
-                                 _serviceHostname.c_str(),  // serviceFQDN
-                                 NULL,                      // user_realm
-                                 NULL,                      // iplocalport
-                                 NULL,                      // ipremoteport
-                                 _callbacks,                // callbacks
-                                 0,                         // flags
-                                 &_saslConnection);         // pconn
+    int result = sasl_server_new(saslGlobalParams.serviceName.c_str(),  // service
+                                 saslGlobalParams.hostName.c_str(),     // serviceFQDN
+                                 NULL,                                  // user_realm
+                                 NULL,                                  // iplocalport
+                                 NULL,                                  // ipremoteport
+                                 _callbacks,                            // callbacks
+                                 0,                                     // flags
+                                 &_saslConnection);                     // pconn
     if (SASL_OK != result) {
-        return Status(ErrorCodes::UnknownError,
-                      mongoutils::str::stream() << sasl_errstring(result, NULL, NULL));
-    }
-
-    return Status::OK();
-}
-
-Status CyrusSaslAuthenticationSession::step(StringData inputData, std::string* outputData) {
-    int result;
-    const char* output;
-    unsigned outputLen;
-    const char* const input = inputData.empty() ? NULL : inputData.rawData();
-    const unsigned inputLen = static_cast<unsigned>(inputData.size());
-    if (0 == _saslStep) {
-        // Cyrus SASL uses "SCRAM" as the internal mechanism name
-        std::string mechName =
-            strcmp(_mechInfo->name, "SCRAM-SHA-1") == 0 ? "SCRAM" : _mechInfo->name;
-        result = sasl_server_start(
-            _saslConnection, mechName.c_str(), input, inputLen, &output, &outputLen);
-    } else {
-        result = sasl_server_step(_saslConnection, input, inputLen, &output, &outputLen);
-    }
-
-    _done = (SASL_CONTINUE != result);
-
-    switch (result) {
-        case SASL_OK: {
-            _done = true;
-            *outputData = std::string();
-            ++_saslStep;
-            return Status::OK();
-        }
-        case SASL_CONTINUE:
-            *outputData = std::string(output, outputLen);
-            ++_saslStep;
-            return Status::OK();
-        case SASL_NOMECH:
-            return Status(ErrorCodes::BadValue, sasl_errdetail(_saslConnection));
-        case SASL_BADAUTH:
-            return Status(ErrorCodes::AuthenticationFailed, sasl_errdetail(_saslConnection));
-        default:
-            return Status(ErrorCodes::ProtocolError, sasl_errdetail(_saslConnection));
+        uassertStatusOK(Status(ErrorCodes::UnknownError,
+                               mongoutils::str::stream() << sasl_errstring(result, NULL, NULL)));
     }
 }
 
-std::string CyrusSaslAuthenticationSession::getPrincipalId() const {
+template <typename Policy>
+StringData CyrusSaslMechShim<Policy>::getPrincipalName() const {
     const void* principalId;
 
     int result = sasl_getprop(_saslConnection, SASL_USERNAME, &principalId);
@@ -390,20 +193,58 @@ std::string CyrusSaslAuthenticationSession::getPrincipalId() const {
 
     // If either case was successful, we can return the Id that was found
     if (SASL_OK != result) {
-        error() << "Was not able to acquire principal id from Cyrus SASL.";
-        return std::string();
+        error() << "Was not able to acquire principal id from Cyrus SASL: " << result;
+        return "";
     }
 
     return static_cast<const char*>(principalId);
 }
 
-const char* CyrusSaslAuthenticationSession::getMechanism() const {
-    if (_mechInfo && _mechInfo->name)
-        return _mechInfo->name;
-    return "";
+template <typename Policy>
+StatusWith<std::tuple<bool, std::string>> CyrusSaslMechShim<Policy>::stepImpl(
+    OperationContext* opCtx, StringData input) {
+    const char* output;
+    unsigned outputLen;
+    int result;
+
+    if (0 == _saslStep) {
+        // Cyrus SASL uses "SCRAM" as the internal mechanism name
+        std::string mechName = Policy::getName() == "SCRAM-SHA-1" ? std::string("SCRAM")
+                                                                  : Policy::getName().toString();
+        result = sasl_server_start(
+            _saslConnection, mechName.c_str(), input.rawData(), input.size(), &output, &outputLen);
+    } else {
+        result =
+            sasl_server_step(_saslConnection, input.rawData(), input.size(), &output, &outputLen);
+    }
+
+    switch (result) {
+        case SASL_OK: {
+            ++_saslStep;
+            return std::make_tuple(true, std::string());
+        }
+        case SASL_CONTINUE:
+            ++_saslStep;
+            return std::make_tuple(false, std::string(output, outputLen));
+        case SASL_NOMECH:
+            return Status(ErrorCodes::BadValue, sasl_errdetail(_saslConnection));
+        case SASL_BADAUTH:
+            return Status(ErrorCodes::AuthenticationFailed, sasl_errdetail(_saslConnection));
+        default:
+            return Status(ErrorCodes::ProtocolError, sasl_errdetail(_saslConnection));
+    }
 }
 
-namespace {
+bool CyrusGSSAPIServerMechanism::isAuthorizedToActAs(StringData requestedUser,
+                                                     StringData authenticatedUser) {
+    std::string canonicalAuthenticatedUser;
+    if (!gssapi::canonicalizeUserName(authenticatedUser, &canonicalAuthenticatedUser).isOK()) {
+        return false;
+    }
+
+    return requestedUser == canonicalAuthenticatedUser;
+}
+
 
 /**
  * Implementation of sasl_log_t for handling log messages generated by the SASL library.
@@ -414,58 +255,51 @@ int saslServerGlobalLog(void* context, int level, const char* message) throw() {
             break;
         case SASL_LOG_ERR:
         case SASL_LOG_FAIL:
-            error() << message << endl;
+            error() << message;
             break;
         case SASL_LOG_WARN:
-            warning() << message << endl;
+            warning() << message;
             break;
         case SASL_LOG_NOTE:
-            log() << message << endl;
+            log() << message;
             break;
         case SASL_LOG_DEBUG:
-            LOG(1) << message << endl;
+            LOG(1) << message;
             break;
         case SASL_LOG_TRACE:
-            LOG(3) << message << endl;
+            LOG(3) << message;
             break;
         case SASL_LOG_PASS:
             // Don't log trace data that includes passwords.
             break;
         default:
-            error() << "Unexpected sasl log level " << level << endl;
+            error() << "Unexpected sasl log level " << level;
             break;
     }
     return SASL_OK;
-}
-
-SaslAuthenticationSession* createSaslAuthenticationSession(AuthorizationSession* authzSession,
-                                                           StringData db,
-                                                           StringData mechanism) {
-    if (mechanism == SaslAuthenticationSession::mechanismSCRAMSHA1 ||
-        mechanism == SaslAuthenticationSession::mechanismSCRAMSHA256 ||
-        (mechanism == SaslAuthenticationSession::mechanismPLAIN && db != "$external")) {
-        return new NativeSaslAuthenticationSession(authzSession);
-    }
-    if (mechanism == SaslAuthenticationSession::mechanismPLAIN &&
-        saslGlobalParams.authdPath.empty()) {
-
-        LDAPManager* ldapManager = LDAPManager::get(getGlobalServiceContext());
-
-        if (!ldapManager->getHosts().empty()) {
-            return new LDAPSaslAuthenticationSession(authzSession);
-        }
-    }
-    return new CyrusSaslAuthenticationSession(authzSession);
 }
 
 // This group is used to ensure that all the plugins are registered before we attempt
 // the smoke test in SaslCommands.
 MONGO_INITIALIZER_GROUP(CyrusSaslAllPluginsRegistered, MONGO_NO_PREREQUISITES, MONGO_NO_DEPENDENTS);
 
+template <typename Factory>
+void smokeAndRegister(SASLServerMechanismRegistry* registry) {
+    bool registered = registry->registerFactory<Factory>();
+    if (registered) {
+        Factory factory;
+        if (factory.mechanismName() == "GSSAPI") {
+            fassert(50743,
+                    gssapi::tryAcquireServerCredential(static_cast<std::string>(
+                        mongoutils::str::stream() << saslGlobalParams.serviceName << "@"
+                                                  << saslGlobalParams.hostName)));
+        }
+        auto mech = factory.create("test");
+    }
+}
+
 MONGO_INITIALIZER_WITH_PREREQUISITES(CyrusSaslServerCore,
-                                     ("CyrusSaslAllocatorsAndMutexes",
-                                      "CyrusSaslClientContext",
-                                      "NativeSaslServerCore"))
+                                     ("CyrusSaslAllocatorsAndMutexes", "CyrusSaslClientContext"))
 (InitializerContext* context) {
     static const sasl_callback_t saslServerGlobalCallbacks[] = {
         {SASL_CB_LOG, SaslCallbackFn(saslServerGlobalLog), NULL}, {SASL_CB_LIST_END}};
@@ -478,33 +312,23 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(CyrusSaslServerCore,
                                                 << ")");
     }
 
-    SaslAuthenticationSession::create = createSaslAuthenticationSession;
-
     return Status::OK();
-}
+};
 
-MONGO_INITIALIZER_GENERAL(CyrusSaslCommands,
-                          ("NativeSaslServerCore",
-                           "CyrusSaslServerCore",
-                           "CyrusSaslAllPluginsRegistered"),
-                          ("PostSaslCommands"))
-(InitializerContext*) {
-    for (size_t i = 0; i < saslGlobalParams.authenticationMechanisms.size(); ++i) {
-        const std::string& mechanism = saslGlobalParams.authenticationMechanisms[i];
-        if (mechanism == "SCRAM-SHA-256" || mechanism == "MONGODB-X509" ||
-            mechanism == "SCRAM-SHA-1") {
-            // No need to smoke test built-in mechanism.
-            continue;
-        }
-        Status status = CyrusSaslAuthenticationSession::smokeTestMechanism(
-            saslGlobalParams.authenticationMechanisms[i],
-            saslGlobalParams.serviceName,
-            saslGlobalParams.hostName);
-        if (!status.isOK())
-            return status;
+MONGO_INITIALIZER_WITH_PREREQUISITES(CyrusSaslRegisterMechanisms,
+                                     ("CyrusSaslServerCore",
+                                      "CyrusSaslAllPluginsRegistered",
+                                      "CreateSASLServerMechanismRegistry"))
+(InitializerContext* context) {
+    auto& registry = SASLServerMechanismRegistry::get(getGlobalServiceContext());
+
+    if (!saslGlobalParams.authdPath.empty()) {
+        smokeAndRegister<CyrusPlainServerFactory>(&registry);
     }
+
+    smokeAndRegister<CyrusGSSAPIServerFactory>(&registry);
+
     return Status::OK();
 }
 
-}  // namespace
 }  // namespace mongo
