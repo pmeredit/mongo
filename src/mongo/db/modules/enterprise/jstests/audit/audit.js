@@ -47,7 +47,7 @@
                     }
                 }
                 return false;
-            }, 5 * 1000);
+            }, "audit logfile should contain entry within default timeout");
         }
 
         /**
