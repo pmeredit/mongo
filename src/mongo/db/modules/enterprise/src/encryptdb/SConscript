@@ -15,7 +15,6 @@ if not wiredtiger:
 
 wtEnv = env.Clone()
 wtEnv.InjectThirdPartyIncludePaths(libraries=['wiredtiger'])
-wtEnv.InjectThirdPartyIncludePaths(libraries=['wiredtiger_ext'])
 # Ubuntu1204 exposes GCM symbols, but they do not work. We have to detect the platform and disable
 # that portion of the symmetric_crypto test.
 if wtEnv['MONGO_DISTMOD'] == "ubuntu1204":
