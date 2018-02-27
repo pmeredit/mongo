@@ -190,7 +190,7 @@ if not env.TargetOSIs("darwin"):
                     '$BUILD_DIR/mongo/db/bson/dotted_path_support',
                     '$BUILD_DIR/mongo/db/dbdirectclient',
                     '$BUILD_DIR/mongo/db/initialize_snmp',
-                    '$BUILD_DIR/mongo/db/repl/repl_coordinator_global',
+                    '$BUILD_DIR/mongo/db/repl/repl_coordinator_interface',
                     '$BUILD_DIR/mongo/db/repl/repl_settings',
                     '$BUILD_DIR/mongo/db/storage/mmap_v1/storage_mmapv1',
                     '$BUILD_DIR/mongo/util/processinfo',

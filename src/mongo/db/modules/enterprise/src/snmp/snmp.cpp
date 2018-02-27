@@ -29,7 +29,7 @@
 #include "mongo/base/status.h"
 #include "mongo/db/client.h"
 #include "mongo/db/initialize_snmp.h"
-#include "mongo/db/repl/replication_coordinator_global.h"
+#include "mongo/db/repl/replication_coordinator.h"
 #include "mongo/db/server_options.h"
 #include "mongo/db/stats/counters.h"
 #include "mongo/db/storage/mmap_v1/data_file_sync.h"
@@ -131,7 +131,8 @@ public:
     IsMasterCallback() : SNMPCallBack("replIsMaster", "1,16,3") {}
 
     int respond(netsnmp_variable_list* var) {
-        int val = repl::getGlobalReplicationCoordinator()->isMasterForReportingPurposes();
+        int val = repl::ReplicationCoordinator::get(getGlobalServiceContext())
+                      ->isMasterForReportingPurposes();
 
         return snmp_set_var_typed_value(
             var, ASN_INTEGER, reinterpret_cast<u_char*>(&val), sizeof(val));
@@ -818,7 +819,9 @@ private:
         }
 
         if (_replicaSetOnly &&
-            !repl::getGlobalReplicationCoordinator()->getSettings().usingReplSets()) {
+            !repl::ReplicationCoordinator::get(getGlobalServiceContext())
+                 ->getSettings()
+                 .usingReplSets()) {
             return false;
         }
 
