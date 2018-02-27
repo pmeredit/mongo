@@ -28,7 +28,7 @@ function testMongoDHang(control, mongod_options) {
     control.waitForWatchdogToStart(admin);
 
     // Hang the file system
-    control.addWriteDelayFaultAndWait("watchdog_probe.txt");
+    control.addWriteDelayFaultAndWait("watchdog_probe.*");
 
     // Check MongoD is dead by sending SIGTERM
     // This will trigger our "nice" shutdown, but since mongod is stuck in the kernel doing I/O,

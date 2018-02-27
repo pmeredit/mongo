@@ -63,7 +63,8 @@ public:
  */
 class DirectoryCheck : public WatchdogCheck {
 public:
-    static constexpr StringData kProbeFileName = "watchdog_probe.txt"_sd;
+    static constexpr StringData kProbeFileName = "watchdog_probe_"_sd;
+    static constexpr StringData kProbeFileNameExt = ".txt"_sd;
 
 public:
     DirectoryCheck(const boost::filesystem::path& directory) : _directory(directory) {}

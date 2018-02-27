@@ -8,7 +8,9 @@
 
 #include "watchdog.h"
 
-#ifdef __linux__
+#include <boost/filesystem.hpp>
+
+#ifndef _WIN32
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -18,7 +20,9 @@
 #include "mongo/base/static_assert.h"
 #include "mongo/db/client.h"
 #include "mongo/db/operation_context.h"
+#include "mongo/platform/process_id.h"
 #include "mongo/util/concurrency/idle_thread_block.h"
+#include "mongo/util/hex.h"
 #include "mongo/util/log.h"
 #include "mongo/util/timer.h"
 
@@ -314,40 +318,56 @@ void checkFile(OperationContext* opCtx, const boost::filesystem::path& file) {
         fassertNoTrace(4074, gle == 0);
     }
 
-    DWORD bytesWritten;
-    if (!WriteFile(hFile, nowStr.c_str(), nowStr.size(), &bytesWritten, NULL)) {
+    DWORD bytesWrittenTotal;
+    if (!WriteFile(hFile, nowStr.c_str(), nowStr.size(), &bytesWrittenTotal, NULL)) {
         std::uint32_t gle = ::GetLastError();
         severe() << "WriteFile failed for '" << file.generic_string()
                  << "' with error: " << errnoWithDescription(gle);
         fassertNoTrace(4075, gle == 0);
     }
 
-    if (!FlushFileBuffers(hFile)) {
-        std::uint32_t gle = ::GetLastError();
-        severe() << "FlushFileBuffers failed for '" << file.generic_string()
-                 << "' with error: " << errnoWithDescription(gle);
-        fassertNoTrace(4076, gle == 0);
-    }
+    if (bytesWrittenTotal != nowStr.size()) {
+        warning() << "partial write for '" << file.generic_string() << "' expected "
+                  << nowStr.size() << " bytes but wrote " << bytesWrittenTotal << " bytes";
+    } else {
 
-    DWORD newOffset = SetFilePointer(hFile, 0, 0, FILE_BEGIN);
-    if (newOffset != 0) {
-        std::uint32_t gle = ::GetLastError();
-        severe() << "SetFilePointer failed for '" << file.generic_string()
-                 << "' with error: " << errnoWithDescription(gle);
-        fassertNoTrace(4077, gle == 0);
-    }
+        if (!FlushFileBuffers(hFile)) {
+            std::uint32_t gle = ::GetLastError();
+            severe() << "FlushFileBuffers failed for '" << file.generic_string()
+                     << "' with error: " << errnoWithDescription(gle);
+            fassertNoTrace(4076, gle == 0);
+        }
 
-    DWORD bytesRead;
-    auto readBuffer = stdx::make_unique<char[]>(nowStr.size());
-    if (!ReadFile(hFile, readBuffer.get(), nowStr.size(), &bytesRead, NULL)) {
-        std::uint32_t gle = ::GetLastError();
-        severe() << "ReadFile failed for '" << file.generic_string()
-                 << "' with error: " << errnoWithDescription(gle);
-        fassertNoTrace(4078, gle == 0);
-    }
-    invariant(bytesRead == bytesWritten);
+        DWORD newOffset = SetFilePointer(hFile, 0, 0, FILE_BEGIN);
+        if (newOffset != 0) {
+            std::uint32_t gle = ::GetLastError();
+            severe() << "SetFilePointer failed for '" << file.generic_string()
+                     << "' with error: " << errnoWithDescription(gle);
+            fassertNoTrace(4077, gle == 0);
+        }
 
-    invariant(memcmp(nowStr.c_str(), readBuffer.get(), nowStr.size()) == 0);
+        DWORD bytesRead;
+        auto readBuffer = stdx::make_unique<char[]>(nowStr.size());
+        if (!ReadFile(hFile, readBuffer.get(), nowStr.size(), &bytesRead, NULL)) {
+            std::uint32_t gle = ::GetLastError();
+            severe() << "ReadFile failed for '" << file.generic_string()
+                     << "' with error: " << errnoWithDescription(gle);
+            fassertNoTrace(4078, gle == 0);
+        }
+
+        if (bytesRead != bytesWrittenTotal) {
+            severe() << "Read wrong number of bytes for '" << file.generic_string() << "' expected "
+                     << bytesWrittenTotal << " bytes but read " << bytesRead << " bytes";
+            fassertNoTrace(50716, false);
+        }
+
+        if (memcmp(nowStr.c_str(), readBuffer.get(), nowStr.size()) != 0) {
+            severe() << "Read wrong string from file '" << file.generic_string() << nowStr.size()
+                     << " bytes (in hex) '" << toHexLower(nowStr.c_str(), nowStr.size())
+                     << "' but read bytes '" << toHexLower(readBuffer.get(), bytesRead) << "'";
+            fassertNoTrace(50717, false);
+        }
+    }
 
     if (!CloseHandle(hFile)) {
         std::uint32_t gle = ::GetLastError();
@@ -361,7 +381,7 @@ void watchdogTerminate() {
     ::TerminateProcess(::GetCurrentProcess(), ExitCode::EXIT_WATCHDOG);
 }
 
-#elif defined(__linux__)
+#else
 
 /**
  * Check a directory is ok
@@ -382,12 +402,28 @@ void checkFile(OperationContext* opCtx, const boost::filesystem::path& file) {
         fassertNoTrace(4080, err == 0);
     }
 
-    ssize_t bytesWritten = write(fd, nowStr.c_str(), nowStr.size());
-    if (bytesWritten == -1) {
-        auto err = errno;
-        severe() << "write failed for '" << file.generic_string()
-                 << "' with error: " << errnoWithDescription(err);
-        fassertNoTrace(4081, err == 0);
+    size_t bytesWrittenTotal = 0;
+    while (bytesWrittenTotal < nowStr.size()) {
+        ssize_t bytesWrittenInWrite =
+            write(fd, nowStr.c_str() + bytesWrittenTotal, nowStr.size() - bytesWrittenTotal);
+        if (bytesWrittenInWrite == -1) {
+            auto err = errno;
+            if (err == EINTR) {
+                continue;
+            }
+
+            severe() << "write failed for '" << file.generic_string()
+                     << "' with error: " << errnoWithDescription(err);
+            fassertNoTrace(4081, err == 0);
+        }
+
+        // Warn if the write was incomplete
+        if (bytesWrittenTotal == 0 && static_cast<size_t>(bytesWrittenInWrite) != nowStr.size()) {
+            warning() << "parital write for '" << file.generic_string() << "' expected "
+                      << nowStr.size() << " bytes but wrote " << bytesWrittenInWrite << " bytes";
+        }
+
+        bytesWrittenTotal += bytesWrittenInWrite;
     }
 
     if (fsync(fd)) {
@@ -398,16 +434,41 @@ void checkFile(OperationContext* opCtx, const boost::filesystem::path& file) {
     }
 
     auto readBuffer = stdx::make_unique<char[]>(nowStr.size());
-    ssize_t bytesRead = pread(fd, readBuffer.get(), nowStr.size(), 0);
-    if (bytesRead == -1) {
-        auto err = errno;
-        severe() << "read failed for '" << file.generic_string()
-                 << "' with error: " << errnoWithDescription(err);
-        fassertNoTrace(4083, err == 0);
-    }
-    invariant(bytesRead == bytesWritten);
+    size_t bytesReadTotal = 0;
+    while (bytesReadTotal < nowStr.size()) {
+        ssize_t bytesReadInRead = pread(
+            fd, readBuffer.get() + bytesReadTotal, nowStr.size() - bytesReadTotal, bytesReadTotal);
+        if (bytesReadInRead == -1) {
+            auto err = errno;
+            if (err == EINTR) {
+                continue;
+            }
 
-    invariant(memcmp(nowStr.c_str(), readBuffer.get(), nowStr.size()) == 0);
+            severe() << "read failed for '" << file.generic_string()
+                     << "' with error: " << errnoWithDescription(err);
+            fassertNoTrace(4083, err == 0);
+        } else if (bytesReadInRead == 0) {
+            severe() << "read failed for '" << file.generic_string()
+                     << "' with unexpected end of file";
+            fassertNoTrace(50719, false);
+        }
+
+        // Warn if the read was incomplete
+        if (bytesReadTotal == 0 && static_cast<size_t>(bytesReadInRead) != nowStr.size()) {
+            warning() << "partial read for '" << file.generic_string() << "' expected "
+                      << nowStr.size() << " bytes but read " << bytesReadInRead << " bytes";
+        }
+
+        bytesReadTotal += bytesReadInRead;
+    }
+
+    if (memcmp(nowStr.c_str(), readBuffer.get(), nowStr.size()) != 0) {
+        severe() << "Read wrong string from file '" << file.generic_string() << "' expected "
+                 << nowStr.size() << " bytes (in hex) '"
+                 << toHexLower(nowStr.c_str(), nowStr.size()) << "' but read bytes '"
+                 << toHexLower(readBuffer.get(), bytesReadTotal) << "'";
+        fassertNoTrace(50718, false);
+    }
 
     if (close(fd)) {
         auto err = errno;
@@ -421,17 +482,27 @@ void watchdogTerminate() {
     // This calls the exit_group syscall on Linux
     ::_exit(ExitCode::EXIT_WATCHDOG);
 }
-#else
-#error Not Yet Implemented
 #endif
 
 constexpr StringData DirectoryCheck::kProbeFileName;
+constexpr StringData DirectoryCheck::kProbeFileNameExt;
 
 void DirectoryCheck::run(OperationContext* opCtx) {
+    // Ensure we have unique file names if multiple processes share the same logging directory
     boost::filesystem::path file = _directory;
     file /= kProbeFileName.toString();
+    file += ProcessId::getCurrent().toString();
+    file += kProbeFileNameExt.toString();
 
     checkFile(opCtx, file);
+
+    // Try to delete the file so it is not leaked on restart, but ignore errors
+    boost::system::error_code ec;
+    boost::filesystem::remove(file, ec);
+    if (ec) {
+        warning() << "Failed to delete file '" << file.generic_string()
+                  << "', error: " << ec.message();
+    }
 }
 
 std::string DirectoryCheck::getDescriptionForLogging() {
