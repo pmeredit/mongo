@@ -45,6 +45,7 @@
 #include "mongo/db/storage/wiredtiger/wiredtiger_kv_engine.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_parameters.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_server_status.h"
+#include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
 
 namespace mongo {
 
