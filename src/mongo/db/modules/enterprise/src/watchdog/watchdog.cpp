@@ -358,7 +358,7 @@ void checkFile(OperationContext* opCtx, const boost::filesystem::path& file) {
         if (bytesRead != bytesWrittenTotal) {
             severe() << "Read wrong number of bytes for '" << file.generic_string() << "' expected "
                      << bytesWrittenTotal << " bytes but read " << bytesRead << " bytes";
-            fassertNoTrace(50716, false);
+            fassertNoTrace(50724, false);
         }
 
         if (memcmp(nowStr.c_str(), readBuffer.get(), nowStr.size()) != 0) {
