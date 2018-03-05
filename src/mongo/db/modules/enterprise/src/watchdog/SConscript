@@ -2,41 +2,42 @@
 
 Import('env')
 
-env.Library(
-    target='watchdog',
-    source=[
-        'watchdog.cpp',
-    ],
-    LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
-        '$BUILD_DIR/mongo/db/service_context',
-        '$BUILD_DIR/mongo/db/storage/storage_options',
-    ]
-)
-
-
-env.Library(
-    target='watchdog_mongod',
-    source=[
-        'watchdog_mongod.cpp',
-    ],
-    LIBDEPS=[
-        '$BUILD_DIR/mongo/db/commands/server_status',
-        '../../audit_enterprise',
-        'watchdog',
+if not env.TargetOSIs("darwin"):
+    env.Library(
+        target='watchdog',
+        source=[
+            'watchdog.cpp',
         ],
-    LIBDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/mongodmain',
-    ]
-)
+        LIBDEPS=[
+            '$BUILD_DIR/mongo/base',
+            '$BUILD_DIR/mongo/db/service_context',
+            '$BUILD_DIR/mongo/db/storage/storage_options',
+        ]
+    )
 
-env.CppUnitTest(
-    target='watchdog_test',
-    source=[
-        'watchdog_test.cpp',
-    ],
-    LIBDEPS=[
-        '$BUILD_DIR/mongo/util/clock_source_mock',
-        'watchdog',
-    ],
-)
+
+    env.Library(
+        target='watchdog_mongod',
+        source=[
+            'watchdog_mongod.cpp',
+        ],
+        LIBDEPS=[
+            '$BUILD_DIR/mongo/db/commands/server_status',
+            '../../audit_enterprise',
+            'watchdog',
+         ],
+        LIBDEPS_DEPENDENTS=[
+            '$BUILD_DIR/mongo/mongodmain',
+        ]
+    )
+
+    env.CppUnitTest(
+        target='watchdog_test',
+        source=[
+            'watchdog_test.cpp',
+        ],
+        LIBDEPS=[
+            '$BUILD_DIR/mongo/util/clock_source_mock',
+            'watchdog',
+        ],
+    )
