@@ -9,6 +9,7 @@
 #include "mongo/db/auth/role_name.h"
 #include "mongo/db/auth/user_name.h"
 #include "mongo/db/service_context_noop.h"
+#include "mongo/db/service_context_registrar.h"
 #include "mongo/logger/logger.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/util/invariant.h"
@@ -29,10 +30,9 @@ namespace mongo {
 
 namespace {
 
-MONGO_INITIALIZER(SetGlobalEnvironment)(InitializerContext* context) {
-    setGlobalServiceContext(stdx::make_unique<ServiceContextNoop>());
-    return Status::OK();
-}
+ServiceContextRegistrar serviceContextCreator([]() {
+    return stdx::make_unique<ServiceContextNoop>();
+});
 
 struct ResultsAssertion {
     using Conditional = stdx::function<bool()>;
@@ -143,7 +143,8 @@ private:
 
 int ldapToolMain(int argc, char* argv[], char** envp) {
     setupSignalHandlers();
-    runGlobalInitializersOrDie(argc, argv, envp);
+    setGlobalServiceContext(createServiceContext());
+    runGlobalInitializersOrDie(argc, argv, envp, getGlobalServiceContext());
     startSignalProcessingThread();
 
     if (globalLDAPToolOptions->debug) {

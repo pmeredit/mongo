@@ -24,7 +24,6 @@ namespace mongo {
 MONGO_INITIALIZER_WITH_PREREQUISITES(CreateEncryptionWiredTigerCustomizationHooks,
                                      ("SetWiredTigerCustomizationHooks",
                                       "SetWiredTigerExtensions",
-                                      "SetGlobalEnvironment",
                                       "WiredTigerEngineInit"))
 (InitializerContext* context) {
     // Reset the WiredTigerCustomizationHooks pointer
@@ -43,7 +42,6 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(CreateEncryptionKeyManager,
                                       "SetEncryptionHooks",
                                       "SetWiredTigerCustomizationHooks",
                                       "SetWiredTigerExtensions",
-                                      "SetGlobalEnvironment",
                                       "SSLManager",
                                       "WiredTigerEngineInit"))
 (InitializerContext* context) {

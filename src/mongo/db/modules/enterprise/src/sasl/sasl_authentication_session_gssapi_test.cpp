@@ -21,6 +21,7 @@
 #include "mongo/db/auth/sasl_mechanism_registry.h"
 #include "mongo/db/auth/sasl_options.h"
 #include "mongo/db/service_context_noop.h"
+#include "mongo/db/service_context_registrar.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
@@ -121,7 +122,8 @@ int main(int argc, char** argv, char** envp) {
     saslGlobalParams.serviceName = mockServiceName;
     saslGlobalParams.hostName = mockHostName;
 
-    runGlobalInitializersOrDie(argc, argv, envp);
+    setGlobalServiceContext(createServiceContext());
+    runGlobalInitializersOrDie(argc, argv, envp, getGlobalServiceContext());
 
     SASLServerMechanismRegistry& registry =
         SASLServerMechanismRegistry::get(getGlobalServiceContext());

@@ -98,7 +98,7 @@ public:
 
 }  // namespace
 
-MONGO_INITIALIZER_WITH_PREREQUISITES(QueryableMMAPV1EngineInit, ("SetGlobalEnvironment"))
+MONGO_INITIALIZER(QueryableMMAPV1EngineInit)
 (InitializerContext* context) {
     getGlobalServiceContext()->registerStorageEngine("queryable_mmapv1",
                                                      new QueryableMMAPV1Factory());
