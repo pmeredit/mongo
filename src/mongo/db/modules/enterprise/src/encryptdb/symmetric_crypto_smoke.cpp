@@ -162,7 +162,8 @@ Status smokeTestAESCipherMode(const std::string& modeName) {
         }
 
         if (resultLen != test.ptLen || 0 != memcmp(test.pt, pt, test.ptLen)) {
-            Status(ErrorCodes::OperationFailed, "aesDecrypt did not produce expected plaintext");
+            return Status(ErrorCodes::OperationFailed,
+                          "aesDecrypt did not produce expected plaintext");
         }
 
         // Check that GCM ciphers are validating their tags correctly
@@ -173,7 +174,8 @@ Status smokeTestAESCipherMode(const std::string& modeName) {
             if (crypto::aesDecrypt(
                     key, test.mode, outputBuffer, resultLen, pt, maxPTSize, &resultLen)
                     .isOK()) {
-                Status(ErrorCodes::OperationFailed, "Corrupt GCM tag successfully decrypted");
+                return Status(ErrorCodes::OperationFailed,
+                              "Corrupt GCM tag successfully decrypted");
             }
         }
     }
