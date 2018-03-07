@@ -40,7 +40,7 @@ void evict(AllocState* const allocState) {
         std::size_t pageIdx;
 
         allocState->selectPageForFree(&dataFile, &pageIdx);
-        fassertStatusOK(22017, dataFile->releasePage(pageIdx));
+        fassert(22017, dataFile->releasePage(pageIdx));
     }
 }
 

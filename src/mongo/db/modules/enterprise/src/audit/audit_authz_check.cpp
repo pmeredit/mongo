@@ -114,12 +114,12 @@ void audit::logDeleteAuthzCheck(Client* client,
     }
 
     mutablebson::Document cmdObj;
-    fassertStatusOK(4054, cmdObj.root().appendString("delete", ns.coll()));
+    fassert(4054, cmdObj.root().appendString("delete", ns.coll()));
     auto deleteListElt = cmdObj.makeElementArray("deletes");
     auto deleteElt = cmdObj.makeElementObject(StringData());
-    fassertStatusOK(4055, deleteElt.appendObject("q", pattern));
-    fassertStatusOK(4056, deleteListElt.pushBack(deleteElt));
-    fassertStatusOK(4057, cmdObj.root().pushBack(deleteListElt));
+    fassert(4055, deleteElt.appendObject("q", pattern));
+    fassert(4056, deleteListElt.pushBack(deleteElt));
+    fassert(4057, cmdObj.root().pushBack(deleteListElt));
     _logAuthzCheck(client, ns, cmdObj, result);
 }
 
@@ -132,8 +132,8 @@ void audit::logGetMoreAuthzCheck(Client* client,
     }
 
     mutablebson::Document cmdObj;
-    fassertStatusOK(4058, cmdObj.root().appendString("getMore", ns.coll()));
-    fassertStatusOK(4059, cmdObj.root().appendLong("cursorId", cursorId));
+    fassert(4058, cmdObj.root().appendString("getMore", ns.coll()));
+    fassert(4059, cmdObj.root().appendLong("cursorId", cursorId));
     _logAuthzCheck(client, ns, cmdObj, result);
 }
 
@@ -146,10 +146,10 @@ void audit::logInsertAuthzCheck(Client* client,
     }
 
     mutablebson::Document cmdObj;
-    fassertStatusOK(4060, cmdObj.root().appendString("insert", ns.coll()));
+    fassert(4060, cmdObj.root().appendString("insert", ns.coll()));
     auto docsListElt = cmdObj.makeElementArray("documents");
-    fassertStatusOK(4061, cmdObj.root().pushBack(docsListElt));
-    fassertStatusOK(4062, docsListElt.appendObject(StringData(), insertedObj));
+    fassert(4061, cmdObj.root().pushBack(docsListElt));
+    fassert(4062, docsListElt.appendObject(StringData(), insertedObj));
     _logAuthzCheck(client, ns, cmdObj, result);
 }
 
@@ -162,8 +162,8 @@ void audit::logKillCursorsAuthzCheck(Client* client,
     }
 
     mutablebson::Document cmdObj;
-    fassertStatusOK(4063, cmdObj.root().appendString("killCursors", ns.coll()));
-    fassertStatusOK(4064, cmdObj.root().appendLong("cursorId", cursorId));
+    fassert(4063, cmdObj.root().appendString("killCursors", ns.coll()));
+    fassert(4064, cmdObj.root().appendLong("cursorId", cursorId));
     _logAuthzCheck(client, ns, cmdObj, result);
 }
 
@@ -176,8 +176,8 @@ void audit::logQueryAuthzCheck(Client* client,
     }
 
     mutablebson::Document cmdObj;
-    fassertStatusOK(4065, cmdObj.root().appendString("find", ns.coll()));
-    fassertStatusOK(4066, cmdObj.root().appendObject("q", query));
+    fassert(4065, cmdObj.root().appendString("find", ns.coll()));
+    fassert(4066, cmdObj.root().appendObject("q", query));
     _logAuthzCheck(client, ns, cmdObj, result);
 }
 
@@ -193,15 +193,15 @@ void audit::logUpdateAuthzCheck(Client* client,
     }
 
     mutablebson::Document cmdObj;
-    fassertStatusOK(4067, cmdObj.root().appendString("update", ns.coll()));
+    fassert(4067, cmdObj.root().appendString("update", ns.coll()));
     auto updatesListElt = cmdObj.makeElementArray("updates");
-    fassertStatusOK(4068, cmdObj.root().pushBack(updatesListElt));
+    fassert(4068, cmdObj.root().pushBack(updatesListElt));
     auto updateElt = cmdObj.makeElementObject(StringData());
-    fassertStatusOK(4069, updatesListElt.pushBack(updateElt));
-    fassertStatusOK(4070, updateElt.appendObject("q", query));
-    fassertStatusOK(4071, updateElt.appendObject("u", updateObj));
-    fassertStatusOK(4072, updateElt.appendBool("upsert", isUpsert));
-    fassertStatusOK(4073, updateElt.appendBool("multi", isMulti));
+    fassert(4069, updatesListElt.pushBack(updateElt));
+    fassert(4070, updateElt.appendObject("q", query));
+    fassert(4071, updateElt.appendObject("u", updateObj));
+    fassert(4072, updateElt.appendBool("upsert", isUpsert));
+    fassert(4073, updateElt.appendBool("multi", isMulti));
     _logAuthzCheck(client, ns, cmdObj, result);
 }
 
