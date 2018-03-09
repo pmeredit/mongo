@@ -166,6 +166,8 @@ function LDAPTestConfigGenerator() {
         other.shardOptions = Object.extend({}, mongodConfig, true);
         other.configOptions = Object.extend({}, mongodConfig, true);
         other.useHostname = true;
+        // TODO: Remove 'shardAsReplicaSet: false' when SERVER-32672 is fixed.
+        other.shardAsReplicaSet = false;
         other.mongosOptions = Object.extend({}, mongodConfig, true);
         delete other.mongosOptions.ldapAuthzQueryTemplate;
         config.other = other;
