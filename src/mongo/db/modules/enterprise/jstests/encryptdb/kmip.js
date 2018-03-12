@@ -13,13 +13,18 @@
             // default port is 5696, we're setting it here to test option parsing
             kmipPort: "6666",
             kmipServerCAFile: "jstests/libs/ca.pem",
-            kmipClientCertificateFile: testDir + "libs/client_password_protected.pem",
-            kmipClientCertificatePassword: "qwerty",
         };
 
-        var md = MongoRunner.runMongod(Object.merge(params, defaultParams));
+        // Windows and Apple SSL providers don't support encrypted PEM files.
+        if (/OpenSSL/.test(getBuildInfo().openssl.running)) {
+            defaultParams.kmipClientCertificateFile =
+                testDir + "libs/client_password_protected.pem";
+            defaultParams.kmipClientCertificatePassword = "qwerty";
+        } else {
+            defaultParams.kmipClientCertificateFile = "jstests/libs/client.pem";
+        }
 
-        return md;
+        return MongoRunner.runMongod(Object.merge(params, defaultParams));
     }
 
     function assertFind(md) {
