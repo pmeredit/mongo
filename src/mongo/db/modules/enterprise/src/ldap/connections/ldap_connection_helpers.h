@@ -172,6 +172,9 @@ public:
     class LDAPOptionErrorString {
     public:
         using Type = typename S::LibraryCharType*;
+        using MemoryManagedType = typename std::conditional<S::kLDAP_OPT_ERROR_STRINGNeedsFree,
+                                                            UniqueMemFreed<Type>,
+                                                            Type>::type;
         constexpr static auto Code = S::LDAP_OPT_error_string;
 
         std::string getErrorString() && {
@@ -196,12 +199,14 @@ public:
     private:
         // Takes ownership of errString which becomes invalid. Pass lifecycle manager
         // down to the "real" constructor, before member initialization begins.
-        explicit LDAPOptionErrorString(Type errString)
-            : LDAPOptionErrorString(UniqueMemFreed<Type>(errString)) {}
+        template <typename T = Type, typename MMT = MemoryManagedType>
+        explicit LDAPOptionErrorString(
+            typename std::enable_if<!std::is_same<T, MMT>::value, T>::type errString)
+            : LDAPOptionErrorString(MMT(errString)) {}
 
-        explicit LDAPOptionErrorString(const UniqueMemFreed<Type>& errString) {
+        explicit LDAPOptionErrorString(const MemoryManagedType& errString) {
             if (errString) {
-                _errString = S::toNativeString(errString.get());
+                _errString = S::toNativeString(&*errString);  // '&*' works with either type
             } else {
                 _errString = "No error could be retrieved from the LDAP server.";
             }

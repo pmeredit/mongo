@@ -48,6 +48,8 @@ public:
     using LibraryCharType = wchar_t;
     using TimeoutType = l_timeval;
 
+    static const bool kLDAP_OPT_ERROR_STRINGNeedsFree = false;
+
     static const auto LDAP_success = LDAP_SUCCESS;
     static const auto LDAP_OPT_error_code = LDAP_OPT_ERROR_NUMBER;
     static const auto LDAP_OPT_error_string = LDAP_OPT_ERROR_STRING;

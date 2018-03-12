@@ -41,6 +41,8 @@ public:
     using LibraryCharType = char;
     using TimeoutType = struct timeval;
 
+    static const bool kLDAP_OPT_ERROR_STRINGNeedsFree = true;
+
     static const auto LDAP_success = LDAP_SUCCESS;
     static const auto LDAP_OPT_error_code = LDAP_OPT_RESULT_CODE;
     static const auto LDAP_OPT_error_string = LDAP_OPT_ERROR_STRING;
