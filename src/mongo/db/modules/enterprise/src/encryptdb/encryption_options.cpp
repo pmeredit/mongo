@@ -76,9 +76,11 @@ static Status validateEncryptionOptions(const moe::Environment& params) {
         }
 
         if (params.count("security.kmip.serverName") &&
+            !params.count("security.kmip.clientCertificateSelector") &&
             !params.count("security.kmip.serverCAFile")) {
             return {ErrorCodes::InvalidOptions,
-                    "Please specify a kmipServerCAFile parameter to validate the KMIP server's "
+                    "Please specify a kmipServerCAFile or a kmmipClientCertificateSelector "
+                    "parameter to validate the KMIP server's "
                     "certificate"};
         }
 
@@ -100,7 +102,11 @@ Status storeEncryptionOptions(const moe::Environment& params) {
         return validate;
     }
 
-    encryptionGlobalParams.kmipParams = parseKMIPOptions(params);
+    auto swKmipParams = parseKMIPOptions(params);
+    if (!swKmipParams.isOK()) {
+        return swKmipParams.getStatus();
+    }
+    encryptionGlobalParams.kmipParams = std::move(swKmipParams.getValue());
 
     if (params.count("security.enableEncryption")) {
         encryptionGlobalParams.enableEncryption = params["security.enableEncryption"].as<bool>();

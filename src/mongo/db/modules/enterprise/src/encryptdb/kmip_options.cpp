@@ -36,9 +36,18 @@ void addKMIPOptions(moe::OptionSection* options) {
                                "kmipServerCAFile",
                                moe::String,
                                "CA File for validating connection to KMIP server");
+#ifdef MONGO_CONFIG_SSL_CERTIFICATE_SELECTORS
+    options
+        ->addOptionChaining("security.kmip.clientCertificateSelector",
+                            "kmipClientCertificateSelector",
+                            moe::String,
+                            "Client Certificate in system store for authenticating to KMIP server")
+        .incompatibleWith("security.kmip.clientCertificateFile")
+        .incompatibleWith("security.kmip.clientCertificatePassword");
+#endif
 }
 
-KMIPParams parseKMIPOptions(const moe::Environment& params) {
+StatusWith<KMIPParams> parseKMIPOptions(const moe::Environment& params) {
     KMIPParams kmipParams;
 
     if (params.count("security.kmip.keyIdentifier")) {
@@ -66,6 +75,18 @@ KMIPParams parseKMIPOptions(const moe::Environment& params) {
     if (params.count("security.kmip.serverCAFile")) {
         kmipParams.kmipServerCAFile = params["security.kmip.serverCAFile"].as<std::string>();
     }
+
+#ifdef MONGO_CONFIG_SSL_CERTIFICATE_SELECTORS
+    if (params.count("security.kmip.clientCertificateSelector")) {
+        const auto status = parseCertificateSelector(
+            &kmipParams.kmipClientCertificateSelector,
+            "security.kmip.clientCertificateSelector",
+            params["security.kmip.clientCertificateSelector"].as<std::string>());
+        if (!status.isOK()) {
+            return status;
+        }
+    }
+#endif
 
     return kmipParams;
 }

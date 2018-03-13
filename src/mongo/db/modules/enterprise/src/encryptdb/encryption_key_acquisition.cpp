@@ -70,6 +70,9 @@ StatusWith<std::unique_ptr<SymmetricKey>> getKeyFromKMIPServer(const KMIPParams&
     sslKMIPParams.sslClusterFile = "";
     sslKMIPParams.sslClusterPassword = "";
     sslKMIPParams.sslCAFile = kmipParams.kmipServerCAFile;
+#ifdef MONGO_CONFIG_SSL_CERTIFICATE_SELECTORS
+    sslKMIPParams.sslCertificateSelector = kmipParams.kmipClientCertificateSelector;
+#endif
 
     // Copy the rest from the global SSL manager options.
     sslKMIPParams.sslFIPSMode = sslParams.sslFIPSMode;

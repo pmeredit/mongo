@@ -6,6 +6,8 @@
 
 #include <string>
 
+#include "mongo/util/net/ssl_options.h"
+
 namespace mongo {
 class Status;
 
@@ -23,9 +25,13 @@ struct KMIPParams {
     std::string kmipClientCertificateFile;
     std::string kmipClientCertificatePassword;
     std::string kmipServerCAFile;
+
+#ifdef MONGO_CONFIG_SSL_CERTIFICATE_SELECTORS
+    SSLParams::CertificateSelector kmipClientCertificateSelector;  // --kmipCertificateSelector
+#endif
 };
 
 void addKMIPOptions(moe::OptionSection* options);
-KMIPParams parseKMIPOptions(const moe::Environment& params);
+StatusWith<KMIPParams> parseKMIPOptions(const moe::Environment& params);
 
 }  // namespace mongo

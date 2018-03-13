@@ -82,7 +82,11 @@ Status storeDecryptToolOptions(const moe::Environment& params,
         globalDecryptToolOptions.keyFile = params["keyFile"].as<std::string>();
     }
 
-    globalDecryptToolOptions.kmipParams = parseKMIPOptions(params);
+    auto swKmipParams = parseKMIPOptions(params);
+    if (!swKmipParams.isOK()) {
+        return swKmipParams.getStatus();
+    }
+    globalDecryptToolOptions.kmipParams = std::move(swKmipParams.getValue());
 
     if (params.count("verbose")) {
         logger::globalLogDomain()->setMinimumLoggedSeverity(logger::LogSeverity::Debug(1));
