@@ -110,7 +110,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/commands',
     ],
     LIBDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/db/commands/core',
+        '$BUILD_DIR/mongo/db/commands/standalone',
     ],
 )
 
