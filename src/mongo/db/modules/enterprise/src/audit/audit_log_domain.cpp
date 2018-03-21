@@ -41,7 +41,10 @@ AuditLogDomain* getGlobalAuditLogDomain() {
 namespace {
 
 class AuditEventTextEncoder : public logger::Encoder<AuditEvent> {
-    virtual ~AuditEventTextEncoder() {}
+public:
+    ~AuditEventTextEncoder() final {}
+
+private:
     virtual std::ostream& encode(const AuditEvent& event, std::ostream& os) {
         BSONObj eventAsBson(event.toBSON());
         std::string toWrite = eventAsBson.jsonString() + '\n';
@@ -50,7 +53,10 @@ class AuditEventTextEncoder : public logger::Encoder<AuditEvent> {
 };
 
 class AuditEventSyslogEncoder : public logger::Encoder<AuditEvent> {
-    virtual ~AuditEventSyslogEncoder() {}
+public:
+    ~AuditEventSyslogEncoder() final {}
+
+private:
     virtual std::ostream& encode(const AuditEvent& event, std::ostream& os) {
         BSONObj eventAsBson(event.toBSON());
         std::string toWrite = eventAsBson.jsonString();
@@ -59,7 +65,10 @@ class AuditEventSyslogEncoder : public logger::Encoder<AuditEvent> {
 };
 
 class AuditEventBsonEncoder : public logger::Encoder<AuditEvent> {
-    virtual ~AuditEventBsonEncoder() {}
+public:
+    ~AuditEventBsonEncoder() final {}
+
+private:
     virtual std::ostream& encode(const AuditEvent& event, std::ostream& os) {
         BSONObj toWrite(event.toBSON());
         return os.write(toWrite.objdata(), toWrite.objsize());
@@ -77,14 +86,16 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(AuditDomain, ("InitializeGlobalAuditManager
 
     switch (getGlobalAuditManager()->auditFormat) {
         case AuditFormatConsole: {
-            getGlobalAuditLogDomain()->attachAppender(AuditLogDomain::AppenderAutoPtr(
-                new logger::ConsoleAppender<AuditEvent>(new AuditEventTextEncoder)));
+            getGlobalAuditLogDomain()->attachAppender(
+                std::make_unique<logger::ConsoleAppender<AuditEvent>>(
+                    std::make_unique<AuditEventTextEncoder>()));
             break;
         }
 #ifndef _WIN32
         case AuditFormatSyslog: {
-            getGlobalAuditLogDomain()->attachAppender(AuditLogDomain::AppenderAutoPtr(
-                new logger::SyslogAppender<AuditEvent>(new AuditEventSyslogEncoder)));
+            getGlobalAuditLogDomain()->attachAppender(
+                std::make_unique<logger::SyslogAppender<AuditEvent>>(
+                    std::make_unique<AuditEventSyslogEncoder>()));
             break;
         }
 #endif  // ndef _WIN32
@@ -111,17 +122,18 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(AuditDomain, ("InitializeGlobalAuditManager
                 return statusOrWriter.getStatus();
             }
 
-            logger::Encoder<AuditEvent>* encoder;
+            std::unique_ptr<logger::Encoder<AuditEvent>> encoder;
             if (getGlobalAuditManager()->auditFormat == AuditFormatJsonFile) {
-                encoder = new AuditEventTextEncoder;
+                encoder = std::make_unique<AuditEventTextEncoder>();
             } else if (getGlobalAuditManager()->auditFormat == AuditFormatBsonFile) {
-                encoder = new AuditEventBsonEncoder;
+                encoder = std::make_unique<AuditEventBsonEncoder>();
             } else {
                 return Status(ErrorCodes::InternalError, "invalid format");
             }
 
-            getGlobalAuditLogDomain()->attachAppender(AuditLogDomain::AppenderAutoPtr(
-                new logger::RotatableFileAppender<AuditEvent>(encoder, writer)));
+            getGlobalAuditLogDomain()->attachAppender(
+                std::make_unique<logger::RotatableFileAppender<AuditEvent>>(std::move(encoder),
+                                                                            writer));
             break;
         }
         default:
