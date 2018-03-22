@@ -94,7 +94,7 @@ Status AuthzManagerExternalStateLDAP::getUserDescription(OperationContext* opCtx
             << "db" << "$external"
             << "credentials" << BSON("external" << true)
             << "roles" << roleArr.arr();
-    //clang-format on
+    // clang-format on
     BSONObj unresolvedUserDocument = builder.obj();
 
     mutablebson::Document resultDoc(unresolvedUserDocument,
@@ -114,7 +114,8 @@ std::unique_ptr<AuthzManagerExternalState> createLDAPAuthzManagerExternalState()
 
 MONGO_INITIALIZER_GENERAL(CreateLDAPAuthorizationExternalStateFactory,
                           ("CreateAuthorizationExternalStateFactory", "EndStartupOptionStorage"),
-                          ("CreateAuthorizationManager", "SetLDAPManagerImpl"))(InitializerContext* context) {
+                          ("CreateAuthorizationManager", "SetLDAPManagerImpl"))
+(InitializerContext* context) {
     // This initializer dependency injects the LDAPAuthzManagerExternalState into the
     // AuthorizationManager, by replacing the factory function the AuthorizationManager uses
     // to get its external state object.
