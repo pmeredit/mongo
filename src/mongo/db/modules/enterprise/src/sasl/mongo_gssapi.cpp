@@ -6,6 +6,7 @@
 
 #include "mongo_gssapi.h"
 
+#include <time.h>
 #include <gssapi/gssapi.h>
 #include <gssapi/gssapi_krb5.h>
 
