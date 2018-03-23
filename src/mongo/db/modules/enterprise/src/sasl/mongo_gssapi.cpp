@@ -6,7 +6,9 @@
 
 #include "mongo_gssapi.h"
 
+// `time.h` needs to be included first on some systems, to provide `time_t` for gssapi headers.
 #include <time.h>
+
 #include <gssapi/gssapi.h>
 #include <gssapi/gssapi_krb5.h>
 
