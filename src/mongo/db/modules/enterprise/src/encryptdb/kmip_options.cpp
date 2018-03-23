@@ -6,6 +6,7 @@
 
 #include "kmip_options.h"
 
+#include "mongo/config.h"
 #include "mongo/util/options_parser/option_section.h"
 #include "mongo/util/options_parser/startup_options.h"
 

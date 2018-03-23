@@ -12,6 +12,7 @@
 #include "kmip_service.h"
 #include "mongo/base/string_data.h"
 #include "mongo/db/auth/security_file.h"
+#include "mongo/config.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/util/base64.h"
 #include "mongo/util/log.h"

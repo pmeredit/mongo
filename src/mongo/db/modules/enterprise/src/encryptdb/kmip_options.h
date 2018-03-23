@@ -6,6 +6,7 @@
 
 #include <string>
 
+#include "mongo/config.h"
 #include "mongo/util/net/ssl_options.h"
 
 namespace mongo {
