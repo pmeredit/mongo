@@ -26,6 +26,8 @@
  *    it in the license file.
  */
 
+#include "mongo/platform/basic.h"
+
 #include "encryption_key_manager.h"
 
 #include "mongo/db/commands/server_status.h"

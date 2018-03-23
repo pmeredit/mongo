@@ -2,6 +2,8 @@
  *    Copyright (C) 2015 MongoDB Inc.
  */
 
+#include "mongo/platform/basic.h"
+
 #include "kmip_options.h"
 
 #include "mongo/util/options_parser/option_section.h"
