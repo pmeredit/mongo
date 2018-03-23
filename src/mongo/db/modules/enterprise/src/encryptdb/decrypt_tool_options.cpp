@@ -2,6 +2,8 @@
  *    Copyright (C) 2015 MongoDB Inc.
  */
 
+#include "mongo/platform/basic.h"
+
 #include "decrypt_tool_options.h"
 
 #include <iostream>
