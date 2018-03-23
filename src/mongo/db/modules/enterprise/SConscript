@@ -1,6 +1,7 @@
 # -*- mode: python -*-
 
 Import("env has_option")
+Import("get_option")
 
 import libdeps
 
@@ -289,7 +290,9 @@ mongodecrypt = env.Program(
 
 env.Alias("all", mongodecrypt)
 
-env.Install("#/", mongodecrypt)
+hygienic = get_option('install-mode') == 'hygienic'
+if not hygienic:
+    env.Install("#/", mongodecrypt)
 
 mongoldap = env.Program(
     target="mongoldap",
@@ -311,4 +314,5 @@ mongoldap = env.Program(
 
 env.Alias("all", mongoldap)
 
-env.Install("#/", mongoldap)
+if not hygienic:
+    env.Install("#/", mongoldap)
