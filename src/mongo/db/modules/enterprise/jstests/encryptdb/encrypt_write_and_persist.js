@@ -74,7 +74,11 @@
                    hostInfo.os.name.match("Red Hat Enterprise Linux Server release 5"));
     var isOSX = (hostInfo.os.type == "Darwin");
 
-    var platformSupportsGCM = !(isUbuntu1204 || isSUSE11 || isRHEL5 || isOSX);
+    const isWindowsSchannel =
+        (hostInfo.os.type == "Windows" && /SChannel/.test(buildInfo().openssl.running));
+
+    const platformSupportsGCM =
+        !(isUbuntu1204 || isSUSE11 || isRHEL5 || isOSX || isWindowsSchannel);
 
     runTest("AES256-CBC", true);
     runTest("AES256-GCM", platformSupportsGCM);
