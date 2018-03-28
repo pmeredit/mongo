@@ -149,7 +149,6 @@ const int mongoSessionCallbackId = 0xF00F;
 
 }  // namespace
 
-
 template <typename Policy>
 CyrusSaslMechShim<Policy>::CyrusSaslMechShim(std::string authenticationDatabase)
     : MakeServerMechanism<Policy>(std::move(authenticationDatabase)) {
@@ -234,6 +233,10 @@ StatusWith<std::tuple<bool, std::string>> CyrusSaslMechShim<Policy>::stepImpl(
             return Status(ErrorCodes::ProtocolError, sasl_errdetail(_saslConnection));
     }
 }
+
+// Explicitly instantiate these types to match up with the header.
+template struct CyrusSaslMechShim<PLAINPolicy>;
+template struct CyrusSaslMechShim<GSSAPIPolicy>;
 
 bool CyrusGSSAPIServerMechanism::isAuthorizedToActAs(StringData requestedUser,
                                                      StringData authenticatedUser) {

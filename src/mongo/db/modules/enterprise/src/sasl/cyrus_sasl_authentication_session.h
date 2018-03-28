@@ -39,6 +39,10 @@ private:
     sasl_callback_t _callbacks[maxCallbacks];
 };
 
+// Explicitly instantiated in cyrus_sasl_authentication_session.cpp
+extern template struct CyrusSaslMechShim<PLAINPolicy>;
+extern template struct CyrusSaslMechShim<GSSAPIPolicy>;
+
 using CyrusPLAINServerMechanism = CyrusSaslMechShim<PLAINPolicy>;
 
 struct CyrusPlainServerFactory : MakeServerFactory<CyrusPLAINServerMechanism> {
