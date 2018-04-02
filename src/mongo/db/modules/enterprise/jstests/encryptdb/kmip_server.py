@@ -15,7 +15,7 @@ def main():
         keyfile="jstests/libs/server.pem",
         certfile="jstests/libs/server.pem",
         cert_reqs="CERT_REQUIRED",
-        ssl_version="PROTOCOL_TLSv1",
+        ssl_version="PROTOCOL_SSLv23",
         ca_certs="jstests/libs/ca.pem",
         do_handshake_on_connect=True,
         suppress_ragged_eofs=True)
