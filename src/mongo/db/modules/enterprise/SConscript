@@ -108,9 +108,7 @@ env.Library(
         'src/audit/audit_command.cpp',
     ],
     LIBDEPS=[
-        '$BUILD_DIR/mongo/db/audit',
         '$BUILD_DIR/mongo/db/commands',
-        '$BUILD_DIR/mongo/db/service_context',
     ],
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/db/commands/standalone',
