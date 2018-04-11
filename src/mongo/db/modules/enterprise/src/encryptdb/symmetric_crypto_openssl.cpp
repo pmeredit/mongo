@@ -155,7 +155,7 @@ private:
 }  // namespace
 
 std::set<std::string> getSupportedSymmetricAlgorithms() {
-#ifdef EVP_CTRL_GCM_GET_TAG
+#if defined(EVP_CTRL_GCM_GET_TAG) && !defined(__APPLE__)
     return {aes256CBCName, aes256GCMName};
 #else
     return {aes256CBCName};

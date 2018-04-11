@@ -16,8 +16,9 @@ if not wiredtiger:
 wtEnv = env.Clone()
 wtEnv.InjectThirdPartyIncludePaths(libraries=['wiredtiger'])
 # Ubuntu1204 exposes GCM symbols, but they do not work. We have to detect the platform and disable
-# that portion of the symmetric_crypto test.
-if wtEnv['MONGO_DISTMOD'] == "ubuntu1204":
+# that portion of the symmetric_crypto test. Apple does not support GCM with native crypto, so
+# we disable GCM, and its tests, when using OpenSSL.
+if wtEnv['MONGO_DISTMOD'] == "ubuntu1204" or env.TargetOSIs('darwin', 'macOS'):
     wtEnv.Append(CPPDEFINES=["DISABLE_GCM_TESTVECTORS"]);
 
 
