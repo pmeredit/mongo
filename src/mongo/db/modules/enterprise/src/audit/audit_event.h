@@ -14,7 +14,6 @@
 #include "mongo/db/jsobj.h"
 #include "mongo/db/matcher/expression.h"
 #include "mongo/logger/log_severity.h"
-#include "mongo/util/net/sock.h"
 
 namespace mongo {
 namespace audit {

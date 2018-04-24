@@ -6,6 +6,7 @@
 
 #include <string>
 
+#include "mongo/base/status_with.h"
 #include "mongo/config.h"
 #include "mongo/util/net/ssl_options.h"
 

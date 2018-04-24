@@ -10,6 +10,7 @@
 #include "mongo/base/status_with.h"
 #include "mongo/util/net/hostandport.h"
 #include "mongo/util/net/sock.h"
+#include "mongo/util/net/ssl_manager.h"
 
 namespace mongo {
 
