@@ -82,7 +82,7 @@ static void _logAuthzCheck(Client* client,
 
 void audit::logCommandAuthzCheck(Client* client,
                                  const OpMsgRequest& cmdObj,
-                                 CommandInterface* command,
+                                 const CommandInterface& command,
                                  ErrorCodes::Error result) {
     if (!_shouldLogAuthzCheck(result))
         return;
@@ -97,12 +97,9 @@ void audit::logCommandAuthzCheck(Client* client,
         uassertStatusOK(cmdToLog.root().pushBack(array));
     }
 
-    command->redactForLogging(&cmdToLog);
+    command.redactForLogging(&cmdToLog);
 
-    _logAuthzCheck(client,
-                   NamespaceString(command->parseNs(cmdObj.getDatabase().toString(), cmdObj.body)),
-                   cmdToLog,
-                   result);
+    _logAuthzCheck(client, command.ns(), cmdToLog, result);
 }
 
 void audit::logDeleteAuthzCheck(Client* client,
