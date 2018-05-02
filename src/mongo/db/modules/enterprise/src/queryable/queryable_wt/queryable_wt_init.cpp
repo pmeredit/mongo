@@ -151,7 +151,7 @@ public:
 
 }  // namespace
 
-MONGO_INITIALIZER(QueryableWtEngineInit)
+MONGO_INITIALIZER_WITH_PREREQUISITES(QueryableWtEngineInit, ("ServiceContext"))
 (InitializerContext* context) {
     getGlobalServiceContext()->registerStorageEngine("queryable_wt", new QueryableWtFactory());
     return Status::OK();

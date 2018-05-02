@@ -42,8 +42,7 @@ ServiceContextRegistrar serviceContextCreator([]() {
 
 int decryptToolMain(int argc, char* argv[], char** envp) {
     setupSignalHandlers();
-    setGlobalServiceContext(createServiceContext());
-    runGlobalInitializersOrDie(argc, argv, envp, getGlobalServiceContext());
+    runGlobalInitializersOrDie(argc, argv, envp);
     startSignalProcessingThread();
 
     StatusWith<std::unique_ptr<SymmetricKey>> swDecryptKey =

@@ -122,8 +122,7 @@ int main(int argc, char** argv, char** envp) {
     saslGlobalParams.serviceName = mockServiceName;
     saslGlobalParams.hostName = mockHostName;
 
-    setGlobalServiceContext(createServiceContext());
-    runGlobalInitializersOrDie(argc, argv, envp, getGlobalServiceContext());
+    runGlobalInitializersOrDie(argc, argv, envp);
 
     SASLServerMechanismRegistry& registry =
         SASLServerMechanismRegistry::get(getGlobalServiceContext());

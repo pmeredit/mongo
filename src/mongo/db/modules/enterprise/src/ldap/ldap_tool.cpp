@@ -143,8 +143,7 @@ private:
 
 int ldapToolMain(int argc, char* argv[], char** envp) {
     setupSignalHandlers();
-    setGlobalServiceContext(createServiceContext());
-    runGlobalInitializersOrDie(argc, argv, envp, getGlobalServiceContext());
+    runGlobalInitializersOrDie(argc, argv, envp);
     startSignalProcessingThread();
 
     if (globalLDAPToolOptions->debug) {

@@ -123,7 +123,8 @@ public:
 // XXX: The customization hook mechanism only supports a single customizer. That is enough
 // for now, since the two enterprise modules that configure customization hooks (encryption
 // and in-memory) are mutually exclusive.
-MONGO_INITIALIZER_WITH_PREREQUISITES(InMemoryEngineInit, ("SetWiredTigerCustomizationHooks"))
+MONGO_INITIALIZER_WITH_PREREQUISITES(InMemoryEngineInit,
+                                     ("ServiceContext", "SetWiredTigerCustomizationHooks"))
 (InitializerContext* context) {
     getGlobalServiceContext()->registerStorageEngine("inMemory", new InMemoryFactory());
     if (storageGlobalParams.engine == "inMemory") {
