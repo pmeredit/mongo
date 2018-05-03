@@ -155,7 +155,7 @@ bool EncryptionKeyManager::enabled() const {
 bool EncryptionKeyManager::restartRequired() {
     // It is sufficient to check for 'mmapv1' since it's the only non-wiredWiger storage engine
     // we detect dynamically for backwards compatibility.
-    if (getGlobalServiceContext()->getGlobalStorageEngine()->isMmapV1()) {
+    if (getGlobalServiceContext()->getStorageEngine()->isMmapV1()) {
         log() << "Encryption at rest requires the 'wiredTiger' storage engine, aborting.";
         return true;
     }
