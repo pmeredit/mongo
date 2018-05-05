@@ -15,6 +15,7 @@
 #include "mongo/db/service_context.h"
 #include "mongo/db/service_context_d.h"
 #include "mongo/db/storage/kv/kv_storage_engine.h"
+#include "mongo/db/storage/storage_engine_init.h"
 #include "mongo/db/storage/storage_engine_metadata.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_extensions.h"
@@ -153,7 +154,7 @@ public:
 
 MONGO_INITIALIZER_WITH_PREREQUISITES(QueryableWtEngineInit, ("ServiceContext"))
 (InitializerContext* context) {
-    getGlobalServiceContext()->registerStorageEngine("queryable_wt", new QueryableWtFactory());
+    registerStorageEngine(getGlobalServiceContext(), std::make_unique<QueryableWtFactory>());
     return Status::OK();
 }
 

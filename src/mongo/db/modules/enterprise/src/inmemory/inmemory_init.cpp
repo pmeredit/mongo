@@ -40,6 +40,7 @@
 #include "mongo/db/service_context.h"
 #include "mongo/db/service_context_d.h"
 #include "mongo/db/storage/kv/kv_storage_engine.h"
+#include "mongo/db/storage/storage_engine_init.h"
 #include "mongo/db/storage/storage_engine_lock_file.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_kv_engine.h"
@@ -126,7 +127,7 @@ public:
 MONGO_INITIALIZER_WITH_PREREQUISITES(InMemoryEngineInit,
                                      ("ServiceContext", "SetWiredTigerCustomizationHooks"))
 (InitializerContext* context) {
-    getGlobalServiceContext()->registerStorageEngine("inMemory", new InMemoryFactory());
+    registerStorageEngine(getGlobalServiceContext(), std::make_unique<InMemoryFactory>());
     if (storageGlobalParams.engine == "inMemory") {
         auto optionManager = stdx::make_unique<InMemoryConfigManager>(storageGlobalParams.dbpath);
         WiredTigerCustomizationHooks::set(getGlobalServiceContext(), std::move(optionManager));

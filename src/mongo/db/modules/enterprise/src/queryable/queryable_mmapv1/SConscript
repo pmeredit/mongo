@@ -41,6 +41,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/storage/mmap_v1/mmap',
         '$BUILD_DIR/mongo/db/storage/mmap_v1/storage_mmapv1',
         '$BUILD_DIR/mongo/db/storage/storage_engine_metadata',
+        '$BUILD_DIR/mongo/db/storage/storage_engine_common',
         '../blockstore/blockstore',
         'queryable_datafile',
         'queryable_mmapv1_fs_helpers',

@@ -8,6 +8,7 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/storage/mmap_v1/mmap_v1_engine.h"
+#include "mongo/db/storage/storage_engine_init.h"
 #include "mongo/db/storage/storage_engine_metadata.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/stdx/memory.h"
@@ -100,8 +101,7 @@ public:
 
 MONGO_INITIALIZER_WITH_PREREQUISITES(QueryableMMAPV1EngineInit, ("ServiceContext"))
 (InitializerContext* context) {
-    getGlobalServiceContext()->registerStorageEngine("queryable_mmapv1",
-                                                     new QueryableMMAPV1Factory());
+    registerStorageEngine(getGlobalServiceContext(), std::make_unique<QueryableMMAPV1Factory>());
     return Status::OK();
 }
 
