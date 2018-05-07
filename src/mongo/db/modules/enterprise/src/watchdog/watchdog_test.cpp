@@ -393,7 +393,7 @@ TEST(WatchdogMonitorTest, PauseAndResume) {
     std::vector<std::unique_ptr<WatchdogCheck>> checks;
     checks.push_back(std::move(counterCheck));
 
-    WatchdogMonitor monitor(std::move(checks), Milliseconds(1), Milliseconds(100), deathCallback);
+    WatchdogMonitor monitor(std::move(checks), Milliseconds(1), Milliseconds(1001), deathCallback);
 
     counterCheckPtr->setSignalOnCount(5);
 
@@ -419,7 +419,7 @@ TEST(WatchdogMonitorTest, PauseAndResume) {
     counterCheckPtr->setSignalOnCount(baseCounter + 5);
 
     // Restart the monitor with a different interval.
-    monitor.setPeriod(Milliseconds(107));
+    monitor.setPeriod(Milliseconds(1007));
 
     counterCheckPtr->waitForCount();
 
