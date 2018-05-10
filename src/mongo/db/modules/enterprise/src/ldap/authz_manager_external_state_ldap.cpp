@@ -105,22 +105,31 @@ Status AuthzManagerExternalStateLDAP::getUserDescription(OperationContext* opCtx
     return Status::OK();
 }
 
-
+// This code injects the LDAPAuthzManagerExternalState into the AuthorizationManager, by overriding
+// the factory function the AuthorizationManager uses to get its external state object.  This code
+// is aware of the implementation details of the `MONGO_SHIM` mechanism, and it should therefore
+// be replaced with a more applicable `MONGO_SHIM` mechanism.
 namespace {
-std::unique_ptr<AuthzManagerExternalState> createLDAPAuthzManagerExternalState() {
-    return stdx::make_unique<AuthzManagerExternalStateLDAP>(
-        stdx::make_unique<AuthzManagerExternalStateMongod>());
+using ShimType = decltype(AuthzManagerExternalState::create);
+class Implementation final : public ShimType::MongoShimImplGuts {
+    ShimType::MongoShimImplGuts::function_type implementation;
+};
+
+std::unique_ptr<AuthzManagerExternalState> Implementation::implementation() {
+    return std::make_unique<AuthzManagerExternalStateLDAP>(
+        std::make_unique<AuthzManagerExternalStateMongod>());
 }
 
 MONGO_INITIALIZER_GENERAL(CreateLDAPAuthorizationExternalStateFactory,
-                          ("CreateAuthorizationExternalStateFactory", "EndStartupOptionStorage"),
+                          ("ShimHooks", "EndStartupOptionStorage"),
                           ("CreateAuthorizationManager", "SetLDAPManagerImpl"))
 (InitializerContext* context) {
     // This initializer dependency injects the LDAPAuthzManagerExternalState into the
     // AuthorizationManager, by replacing the factory function the AuthorizationManager uses
     // to get its external state object.
     if (globalLDAPParams->isLDAPAuthzEnabled()) {
-        AuthzManagerExternalState::create = createLDAPAuthzManagerExternalState;
+        static Implementation implementation;
+        ShimType::storage::data = &implementation;
     }
     return Status::OK();
 }

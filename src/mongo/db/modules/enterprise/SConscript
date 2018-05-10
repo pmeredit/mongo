@@ -94,7 +94,8 @@ env.Library('audit_enterprise',
              ],
             LIBDEPS=[
                 '$BUILD_DIR/mongo/base',
-                '$BUILD_DIR/mongo/db/auth/authcore',
+                '$BUILD_DIR/mongo/db/auth/auth',
+                '$BUILD_DIR/mongo/db/auth/auth_impl_internal',
                 '$BUILD_DIR/mongo/util/net/network',
             ],
             LIBDEPS_DEPENDENTS=[
@@ -125,7 +126,7 @@ env.Library(
         'src/audit/audit_metadata_hook_s.cpp'
     ],
     LIBDEPS=[
-        '$BUILD_DIR/mongo/db/auth/authcore',
+        '$BUILD_DIR/mongo/db/auth/auth',
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/rpc/metadata',
         'audit_enterprise',
@@ -144,7 +145,8 @@ env.Library(
         'src/audit/audit_metadata.cpp',
     ],
     LIBDEPS=[
-        '$BUILD_DIR/mongo/db/auth/authcore',
+        '$BUILD_DIR/mongo/db/auth/auth',
+        '$BUILD_DIR/mongo/db/auth/auth_impl_internal'
         #'$BUILD_DIR/mongo/rpc/metadata', # CYCLE
     ],
     LIBDEPS_DEPENDENTS=[
@@ -261,7 +263,7 @@ else:
                                        'mongosaslservercommon',
                                        '$BUILD_DIR/mongo/base',
                                        '$BUILD_DIR/mongo/util/net/network',
-                                       '$BUILD_DIR/mongo/db/auth/authcore',
+                                       '$BUILD_DIR/mongo/db/auth/auth',
                                        '$BUILD_DIR/mongo/db/auth/authmocks',
                                        '$BUILD_DIR/mongo/db/auth/saslauth',
                                        '$BUILD_DIR/mongo/db/service_context_noop_init',

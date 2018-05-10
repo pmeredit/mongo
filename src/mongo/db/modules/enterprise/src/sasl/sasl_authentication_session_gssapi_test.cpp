@@ -168,8 +168,7 @@ SaslConversationGssapi::SaslConversationGssapi()
       opCtx(getGlobalServiceContext()->makeOperationContext(opClient.get())),
       mechanism("GSSAPI") {
 
-    auto tmpAuthManager =
-        stdx::make_unique<AuthorizationManager>(stdx::make_unique<AuthzManagerExternalStateMock>());
+    auto tmpAuthManager = AuthorizationManager::create();
     authSession = tmpAuthManager->makeAuthorizationSession();
     authManager = tmpAuthManager.get();
     AuthorizationManager::set(&serviceContext, std::move(tmpAuthManager));
