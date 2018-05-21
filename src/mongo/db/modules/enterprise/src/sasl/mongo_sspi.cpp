@@ -83,6 +83,10 @@ namespace {
 // The SSPI plugin implements the GSSAPI mechanism
 char sspiPluginName[] = "GSSAPI";
 
+void setSaslError(const sasl_utils_t* utils, const std::string& msg) {
+    utils->seterror(utils->conn, 0, "%s", msg.c_str());
+}
+
 // An instance of this structure stores state that is used between calls to various SASL
 // plugin functions during an authentication attempt.
 struct SspiConnContext {
@@ -138,7 +142,7 @@ int sspiServerMechNew(void* glob_context,
 
     // Compose principal name
     if (sparams->serverFQDN == NULL || strlen(sparams->serverFQDN) == 0) {
-        sparams->utils->seterror(sparams->utils->conn, 0, "SSPI: no serverFQDN");
+        setSaslError(sparams->utils, "SSPI: no serverFQDN");
         return SASL_FAIL;
     }
 
@@ -181,7 +185,7 @@ int sendSecuritySupport(SspiConnContext* pcctx,
 
     // Check that the client gave us no data
     if (clientinlen != 0) {
-        sparams->utils->seterror(sparams->utils->conn, 0, "SSPI: client unexpectedly sent data");
+        setSaslError(sparams->utils, "SSPI: client unexpectedly sent data");
         return SASL_FAIL;
     }
 
@@ -307,21 +311,20 @@ int setAuthIdAndAuthzId(SspiConnContext* pcctx,
     const char* decryptedMessage = static_cast<char*>(wrapBufs[1].pvBuffer);
     int decryptedMessageSize = wrapBufs[1].cbBuffer;
     if (decryptedMessageSize < 4) {
-        sparams->utils->seterror(
-            sparams->utils->conn, 0, "SSPI: no security layer request in auth handshake");
+        setSaslError(sparams->utils, "SSPI: no security layer request in auth handshake");
         return SASL_FAIL;
     }
 
     if (!(decryptedMessage[0] == 1 && decryptedMessage[1] == 0 && decryptedMessage[2] == 0 &&
           decryptedMessage[3] == 0)) {
-        sparams->utils->seterror(sparams->utils->conn, 0, "SSPI: wrong security layer from client");
+        setSaslError(sparams->utils, "SSPI: wrong security layer from client");
         return SASL_FAIL;
     }
 
     // fetch authz id
     int authzLength = decryptedMessageSize - 4;
     if (authzLength <= 0) {
-        sparams->utils->seterror(sparams->utils->conn, 0, "SSPI: no authz name in auth handshake");
+        setSaslError(sparams->utils, "SSPI: no authz name in auth handshake");
         return SASL_FAIL;
     }
     std::string authz(decryptedMessage + 4, authzLength);

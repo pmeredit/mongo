@@ -37,6 +37,10 @@ namespace mongo {
 
 namespace {
 
+void setSaslError(sasl_conn_t* conn, const std::string& msg) {
+    sasl_seterror(conn, 0, "%s", msg.c_str());
+}
+
 /**
  * Callback registered on the sasl_conn_t underlying a CyrusSaslAuthenticationSession that
  * allows the Cyrus SASL library to read runtime configuration options.
@@ -123,14 +127,14 @@ int saslServerConnAuthorize(sasl_conn_t* conn,
                      << escape(std::string(requestedUserRaw))
                      << " does not match authenticated identity "
                      << escape(std::string(authenticatedIdentityRaw));
-            sasl_seterror(conn, 0, errorMsg.str().c_str());
+            setSaslError(conn, errorMsg.str());
             return SASL_BADAUTH;
         }
         return SASL_OK;
     } catch (...) {
         StringBuilder sb;
         sb << "Unexpected exception in saslServerConnAuthorize: " << exceptionToStatus().reason();
-        sasl_seterror(conn, 0, sb.str().c_str());
+        setSaslError(conn, sb.str());
         return SASL_FAIL;
     }
 }

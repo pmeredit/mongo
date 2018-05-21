@@ -29,6 +29,10 @@ namespace {
 
 char canonMongoDBInternalPluginName[] = "MongoDBInternalCanon";
 
+void setSaslError(const sasl_utils_t* utils, const std::string& msg) {
+    utils->seterror(utils->conn, 0, "%s", msg.c_str());
+}
+
 /**
  * In MongoDB, canonicalized user names do not include the database realm (db).
  */
@@ -59,13 +63,13 @@ int canonUserServer(void* glob_context,
         }
 
         if (firstNonWhitespace == lastWhitespaceOrEnd) {
-            utils->seterror(utils->conn, 0, "All-whitespace username.");
+            setSaslError(utils, "All-whitespace username.");
             return SASL_FAIL;
         }
 
         user = user.substr(firstNonWhitespace, lastWhitespaceOrEnd);
         if (user.size() > outMax) {
-            utils->seterror(utils->conn, 0, "Canonicalized username too long.");
+            setSaslError(utils, "Canonicalized username too long.");
             return SASL_FAIL;
         }
 
@@ -75,7 +79,7 @@ int canonUserServer(void* glob_context,
     } catch (...) {
         StringBuilder sb;
         sb << "Unexpected exception in canonUserServer: " << exceptionToStatus().reason();
-        utils->seterror(utils->conn, 0, sb.str().c_str());
+        setSaslError(utils, sb.str());
         return SASL_FAIL;
     }
 }
