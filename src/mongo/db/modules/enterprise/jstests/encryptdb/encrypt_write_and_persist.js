@@ -2,7 +2,7 @@
 (function() {
     'use strict';
 
-    var runTest = function(cipherMode, expectSuccessfulStartup) {
+    var runTest = function(cipherMode, expectSuccessfulStartup, readOnly) {
         var key = "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/ekf";
         run("chmod", "600", key);
 
@@ -35,13 +35,18 @@
         }
         MongoRunner.stopMongod(md);
 
-        md = MongoRunner.runMongod({
+        let options = {
             restart: md,
             remember: true,
             enableEncryption: "",
             encryptionKeyFile: key,
-            encryptionCipherMode: cipherMode
-        });
+            encryptionCipherMode: cipherMode,
+        };
+        if (readOnly) {
+            options.queryableBackupMode = "";
+        }
+
+        md = MongoRunner.runMongod(options);
         assert.neq(null, md, "Could not restart mongod with " + cipherMode);
         testdb = md.getDB("test");
 
@@ -80,8 +85,10 @@
     const platformSupportsGCM =
         !(isUbuntu1204 || isSUSE11 || isRHEL5 || isOSX || isWindowsSchannel);
 
-    runTest("AES256-CBC", true);
-    runTest("AES256-GCM", platformSupportsGCM);
+    runTest("AES256-CBC", true, false);
+    runTest("AES256-CBC", true, true);
+    runTest("AES256-GCM", platformSupportsGCM, false);
+    runTest("AES256-GCM", platformSupportsGCM, true);
     runTest("BadCipher", false);
 
 })();

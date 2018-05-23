@@ -26,9 +26,13 @@
  *    then also delete it in the license file.
  */
 
-#include "symmetric_crypto.h"
+#include <algorithm>
+
+#include "encryption_options.h"
 #include "mongo/unittest/death_test.h"
 #include "mongo/unittest/unittest.h"
+#include "mongo/util/scopeguard.h"
+#include "symmetric_crypto.h"
 #include "symmetric_crypto_smoke.h"
 
 namespace mongo {
@@ -41,11 +45,101 @@ TEST(AES, CBCTestVectors) {
     ASSERT_OK(crypto::smokeTestAESCipherMode("AES256-CBC"));
 }
 
+class AESRoundTrip : public mongo::unittest::Test {
+public:
+    AESRoundTrip() {}
+
+    Status encrypt(crypto::aesMode mode) {
+        return crypto::aesEncrypt(key,
+                                  mode,
+                                  plaintext.data(),
+                                  plaintext.size(),
+                                  cryptoBuffer.data(),
+                                  cryptoBuffer.size(),
+                                  &cryptoLen);
+    }
+
+    Status decrypt(crypto::aesMode mode) {
+        return crypto::aesDecrypt(key,
+                                  mode,
+                                  cryptoBuffer.data(),
+                                  cryptoLen,
+                                  plainBuffer.data(),
+                                  plainBuffer.size(),
+                                  &plainLen);
+    }
+
+protected:
+    SymmetricKey key = crypto::aesGenerate(crypto::sym256KeySize, "testID");
+    static constexpr std::array<std::uint8_t, 10> plaintext{"plaintext"};
+    std::array<std::uint8_t, 1024> cryptoBuffer;
+    size_t cryptoLen;
+    std::array<std::uint8_t, 1024> plainBuffer;
+    size_t plainLen;
+};
+constexpr std::array<std::uint8_t, 10> AESRoundTrip::plaintext;
+
+TEST_F(AESRoundTrip, CBC) {
+    ASSERT_OK(encrypt(crypto::aesMode::cbc));
+    ASSERT_OK(decrypt(crypto::aesMode::cbc));
+    ASSERT_TRUE(std::equal(plaintext.begin(),
+                           plaintext.end(),
+                           plainBuffer.begin(),
+                           plainBuffer.begin() + plaintext.size()));
+}
+
+DEATH_TEST_F(AESRoundTrip,
+             CBCReadOnlyCanDecrypt,
+             "Invariant failure !encryptionGlobalParams.readOnlyMode") {
+    ASSERT_OK(encrypt(crypto::aesMode::cbc));
+
+    encryptionGlobalParams.readOnlyMode = true;
+    auto guard = MakeGuard([]() { encryptionGlobalParams.readOnlyMode = false; });
+
+    ASSERT_OK(decrypt(crypto::aesMode::cbc));
+
+    ASSERT_TRUE(std::equal(plaintext.begin(),
+                           plaintext.end(),
+                           plainBuffer.begin(),
+                           plainBuffer.begin() + plaintext.size()));
+
+    encrypt(crypto::aesMode::cbc).ignore();
+}
+
+
 #ifndef DISABLE_GCM_TESTVECTORS
 TEST(AES, GCMTestVectors) {
     ASSERT_OK(crypto::smokeTestAESCipherMode("AES256-GCM"));
 }
+
+TEST_F(AESRoundTrip, GCM) {
+    ASSERT_OK(encrypt(crypto::aesMode::gcm));
+    ASSERT_OK(decrypt(crypto::aesMode::gcm));
+    ASSERT_TRUE(std::equal(plaintext.begin(),
+                           plaintext.end(),
+                           plainBuffer.begin(),
+                           plainBuffer.begin() + plaintext.size()));
+}
+
+DEATH_TEST_F(AESRoundTrip,
+             GCMReadOnlyCanDecrypt,
+             "Invariant failure !encryptionGlobalParams.readOnlyMode") {
+    ASSERT_OK(encrypt(crypto::aesMode::gcm));
+
+    encryptionGlobalParams.readOnlyMode = true;
+    auto guard = MakeGuard([]() { encryptionGlobalParams.readOnlyMode = false; });
+
+    ASSERT_OK(decrypt(crypto::aesMode::gcm));
+
+    ASSERT_TRUE(std::equal(plaintext.begin(),
+                           plaintext.end(),
+                           plainBuffer.begin(),
+                           plainBuffer.begin() + plaintext.size()));
+
+    encrypt(crypto::aesMode::gcm).ignore();
+}
 #endif
+
 
 TEST(EncryptedMemoryLayout, CanCreateMemoryLayoutWithCBC) {
     uint8_t outputBuffer[outputBufferSize];

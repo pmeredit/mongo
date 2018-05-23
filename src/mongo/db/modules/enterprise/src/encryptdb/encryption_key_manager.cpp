@@ -302,8 +302,11 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_readKey(const s
                                             crypto::aesAlgorithm,
                                             keyId,
                                             ++initializationCount);
-        cursor->set_value(cursor, &key, keyStatus, initializationCount);
-        invariantWTOK(cursor->update(cursor));
+
+        if (!_encryptionParams->readOnlyMode) {
+            cursor->set_value(cursor, &key, keyStatus, initializationCount);
+            invariantWTOK(cursor->update(cursor));
+        }
         return std::move(symmetricKey);
     }
 
@@ -338,6 +341,9 @@ Status EncryptionKeyManager::_openKeystore(const fs::path& path, WT_CONNECTION**
     wtConfig << "log=(enabled,file_max=3MB),transaction_sync=(enabled=true,method=fsync),";
     wtConfig << "extensions=[" << kEncryptionEntrypointConfig << "],";
     wtConfig << keystoreConfig;
+    if (_encryptionParams->readOnlyMode) {
+        wtConfig << "readonly=true,";
+    }
 
     // _localKeystoreInitialized needs to be set before calling wiredtiger_open since that
     // call eventually will result in a call to getKey for the ".system" key at which point we don't

@@ -31,6 +31,11 @@ struct EncryptionGlobalParams {
     // Master key rotation options
     bool rotateMasterKey = false;
     std::string kmipKeyIdentifierRot;
+
+    // Whether the keystore should be opened read only.
+    // This is distinct from the global readOnly flag which can be toggled
+    // after startup. If this occurs, writes may still occur in the storage layer.
+    bool readOnlyMode = false;
 };
 
 extern EncryptionGlobalParams encryptionGlobalParams;

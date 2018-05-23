@@ -130,6 +130,10 @@ Status storeEncryptionOptions(const moe::Environment& params) {
             params["security.encryptionCipherMode"].as<std::string>();
     }
 
+    if (params.count("storage.queryableBackupMode")) {
+        encryptionGlobalParams.readOnlyMode = params["storage.queryableBackupMode"].as<bool>();
+    }
+
     return Status::OK();
 }
 }  // namespace

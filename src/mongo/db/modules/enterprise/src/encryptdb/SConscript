@@ -45,27 +45,16 @@ wtEnv.Library(target='encryptdb',
                    'wiredtiger_encryption_callbacks.cpp',
               ],
               LIBDEPS=[
-                   'encryption_options',
                    'key_acquisition',
                    'symmetric_crypto',
                    '$BUILD_DIR/mongo/base',
                    '$BUILD_DIR/mongo/db/storage/encryption_hooks',
                    '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core',
                    '$BUILD_DIR/third_party/shim_wiredtiger',
-              ])
-
-env.Library(target='encryption_options',
-            source=[
-                'encryption_options.cpp',
-            ],
-            LIBDEPS=[
-                '$BUILD_DIR/mongo/util/options_parser/options_parser',
-                'key_acquisition',
-                'log_redact_options'
-            ],
-            LIBDEPS_PRIVATE=[
-                'symmetric_crypto',
-            ],
+              ],
+              LIBDEPS_PRIVATE=[
+                   '$BUILD_DIR/mongo/db/storage/storage_options'
+              ],
 )
 
 env.Library(target='log_redact_options',
@@ -87,12 +76,19 @@ env.Library(target='symmetric_crypto',
                 'symmetric_crypto_smoke.cpp',
                 'symmetric_crypto_${MONGO_CRYPTO}.cpp',
                 'symmetric_key.cpp',
+                'encryption_options.cpp',
+                'kmip_options.cpp'
             ],
             LIBDEPS=[
                 '$BUILD_DIR/mongo/base/secure_allocator',
                 '$BUILD_DIR/mongo/util/net/ssl_manager',
                 '$BUILD_DIR/mongo/util/secure_zero_memory',
-            ])
+            ],
+            LIBDEPS_PRIVATE=[
+                '$BUILD_DIR/mongo/util/options_parser/options_parser',
+                'log_redact_options'
+            ]
+)
 
 env.Library(target='kmip',
             source=[
@@ -110,11 +106,9 @@ env.Library(
     target='key_acquisition',
     source=[
         'encryption_key_acquisition.cpp',
-        'kmip_options.cpp'
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/auth/security_file',
-        '$BUILD_DIR/mongo/util/options_parser/options_parser',
         'kmip',
     ]
 )
@@ -123,6 +117,7 @@ wtEnv.CppUnitTest(target='symmetric_crypto_test',
                 source='symmetric_crypto_test.cpp',
                 LIBDEPS=[
                     'symmetric_crypto',
+                    '$BUILD_DIR/mongo/db/storage/storage_options',
                     '$BUILD_DIR/mongo/util/net/network',
                 ])
 
