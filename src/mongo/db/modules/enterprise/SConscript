@@ -124,7 +124,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/auth/authprivilege',
     ],
     LIBDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/db/commands/standalone',
+        '$BUILD_DIR/mongo/db/commands/mongod',
     ],
 )
 
@@ -149,7 +149,7 @@ env.Library(
 
 env.Library(
     target=[
-        'audit_metadata',
+        'audit_metadata_enterprise',
     ],
     source=[
         'src/audit/audit_metadata.cpp',
