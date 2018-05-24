@@ -26,6 +26,7 @@ env.Library(
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/auth/auth',
+        '$BUILD_DIR/mongo/db/auth/auth_impl_internal',
         'ldap_connection',
         'ldap_name_map',
         'ldap_query',

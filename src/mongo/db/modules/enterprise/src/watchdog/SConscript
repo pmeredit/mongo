@@ -26,9 +26,6 @@ if not env.TargetOSIs("darwin"):
             '../../audit_enterprise',
             'watchdog',
          ],
-        LIBDEPS_PRIVATE=[
-            '$BUILD_DIR/mongo/db/server_options_core',
-         ],
         LIBDEPS_DEPENDENTS=[
             '$BUILD_DIR/mongo/mongodmain',
         ]
