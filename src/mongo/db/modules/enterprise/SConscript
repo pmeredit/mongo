@@ -156,15 +156,11 @@ env.Library(
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/auth/auth',
-        #'$BUILD_DIR/mongo/rpc/metadata', # CYCLE
+        '$BUILD_DIR/mongo/db/auth/authprivilege',
     ],
     LIBDEPS_DEPENDENTS=[
         ('$BUILD_DIR/mongo/rpc/metadata', libdeps.dependency.Public),
     ],
-    LIBDEPS_TAGS=[
-        # This library is 'circular' with rpc/metadata.
-        'illegal_cyclic_or_unresolved_dependencies_whitelisted',
-    ]
 )
 
 env.CppUnitTest(
