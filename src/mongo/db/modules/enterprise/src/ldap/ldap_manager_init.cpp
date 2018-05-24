@@ -4,9 +4,10 @@
 
 #include "mongo/platform/basic.h"
 
+#include <memory>
+
 #include "mongo/base/init.h"
 #include "mongo/db/service_context.h"
-#include "mongo/stdx/memory.h"
 
 #include "ldap_manager_impl.h"
 #include "ldap_options.h"
@@ -15,7 +16,8 @@
 namespace mongo {
 
 /* Make a LDAPRunnerImpl pointer a decoration on the global ServiceContext */
-MONGO_INITIALIZER_WITH_PREREQUISITES(SetLDAPManagerImpl, ("ServiceContext"))
+MONGO_INITIALIZER_WITH_PREREQUISITES(SetLDAPManagerImpl,
+                                     ("ServiceContext", "EndStartupOptionStorage"))
 (InitializerContext* context) {
     LDAPBindOptions bindOptions(globalLDAPParams->bindUser,
                                 std::move(globalLDAPParams->bindPassword),
@@ -35,7 +37,7 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(SetLDAPManagerImpl, ("ServiceContext"))
     auto swMapper =
         InternalToLDAPUserNameMapper::createNameMapper(globalLDAPParams->userToDNMapping);
     massertStatusOK(swMapper.getStatus());
-    auto runner = stdx::make_unique<LDAPRunnerImpl>(bindOptions, connectionOptions);
+    auto runner = std::make_unique<LDAPRunnerImpl>(bindOptions, connectionOptions);
 
     // Perform smoke test of the connection parameters.
     if (!globalLDAPParams->serverHosts.empty() && globalLDAPParams->smokeTestOnStartup) {
@@ -50,7 +52,7 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(SetLDAPManagerImpl, ("ServiceContext"))
     }
 
 
-    auto manager = stdx::make_unique<LDAPManagerImpl>(
+    auto manager = std::make_unique<LDAPManagerImpl>(
         std::move(runner), std::move(swQueryParameters.getValue()), std::move(swMapper.getValue()));
 
 
