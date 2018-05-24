@@ -95,8 +95,14 @@ env.Library('audit_enterprise',
             LIBDEPS=[
                 '$BUILD_DIR/mongo/base',
                 '$BUILD_DIR/mongo/db/auth/auth',
-                '$BUILD_DIR/mongo/db/auth/auth_impl_internal',
                 '$BUILD_DIR/mongo/util/net/network',
+            ],
+            LIBDEPS_PRIVATE=[
+                '$BUILD_DIR/mongo/bson/mutable/mutable_bson',
+                '$BUILD_DIR/mongo/db/auth/authprivilege',
+                '$BUILD_DIR/mongo/db/matcher/expressions',
+                '$BUILD_DIR/mongo/db/server_options_core',
+                '$BUILD_DIR/mongo/util/options_parser/options_parser'
             ],
             LIBDEPS_DEPENDENTS=[
                 ('$BUILD_DIR/mongo/db/audit', libdeps.dependency.Public),
@@ -109,9 +115,13 @@ env.Library(
         'src/audit/audit_command.cpp',
     ],
     LIBDEPS=[
+        '$BUILD_DIR/mongo/db/auth/auth',
         '$BUILD_DIR/mongo/db/audit',
         '$BUILD_DIR/mongo/db/commands',
         '$BUILD_DIR/mongo/db/service_context',
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/db/auth/authprivilege',
     ],
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/db/commands/standalone',
@@ -146,7 +156,6 @@ env.Library(
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/auth/auth',
-        '$BUILD_DIR/mongo/db/auth/auth_impl_internal'
         #'$BUILD_DIR/mongo/rpc/metadata', # CYCLE
     ],
     LIBDEPS_DEPENDENTS=[
@@ -181,6 +190,9 @@ env.CppUnitTest(
 env.Library('audit_configuration',
             'src/audit/audit_options_init.cpp',
             LIBDEPS=['audit_enterprise'],
+            LIBDEPS_PRIVATE=[
+                '$BUILD_DIR/mongo/util/options_parser/options_parser',
+            ],
             LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongodmain'],
             PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongos'])
 
@@ -190,7 +202,7 @@ if not env.TargetOSIs("darwin"):
                  'src/snmp/snmp.cpp',
                  'src/snmp/snmp_oid.cpp',
                  'src/snmp/snmp_options.cpp'
-                 ],
+                ],
                 LIBDEPS=[
                     '$BUILD_DIR/mongo/base',
                     '$BUILD_DIR/mongo/client/clientdriver',
@@ -202,6 +214,9 @@ if not env.TargetOSIs("darwin"):
                     '$BUILD_DIR/mongo/db/storage/mmap_v1/storage_mmapv1',
                     '$BUILD_DIR/mongo/util/processinfo',
                     'src/watchdog/watchdog_mongod',
+                ],
+                LIBDEPS_PRIVATE=[
+                    '$BUILD_DIR/mongo/util/options_parser/options_parser',
                 ],
                 LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongodmain'],
                 SYSLIBDEPS=env.get('SNMP_SYSLIBDEPS', []),
