@@ -201,7 +201,7 @@ if not env.TargetOSIs("darwin"):
                 ],
                 LIBDEPS=[
                     '$BUILD_DIR/mongo/base',
-                    '$BUILD_DIR/mongo/client/clientdriver',
+                    '$BUILD_DIR/mongo/client/clientdriver_network',
                     '$BUILD_DIR/mongo/db/bson/dotted_path_support',
                     '$BUILD_DIR/mongo/db/dbdirectclient',
                     '$BUILD_DIR/mongo/db/initialize_snmp',
@@ -278,7 +278,7 @@ else:
                                        '$BUILD_DIR/mongo/db/auth/authmocks',
                                        '$BUILD_DIR/mongo/db/auth/saslauth',
                                        '$BUILD_DIR/mongo/db/service_context_noop_init',
-                                       '$BUILD_DIR/mongo/client/clientdriver',
+                                       '$BUILD_DIR/mongo/client/clientdriver_network',
                                        '$BUILD_DIR/mongo/client/sasl_client',
                                        '$BUILD_DIR/mongo/executor/thread_pool_task_executor',
                                        '$BUILD_DIR/mongo/executor/network_interface_thread_pool',
