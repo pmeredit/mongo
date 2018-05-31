@@ -20,7 +20,6 @@
 #include "mongo/db/namespace_string.h"
 
 namespace mongo {
-
 namespace audit {
 namespace {
 
@@ -28,22 +27,26 @@ class AuthzCheckEvent : public AuditEvent {
 public:
     AuthzCheckEvent(const AuditEventEnvelope& envelope,
                     const NamespaceString& ns,
-                    const mutablebson::Document* cmdObj)
-        : AuditEvent(envelope), _ns(ns), _cmdObj(cmdObj) {}
+                    const mutablebson::Document* cmdObj,
+                    bool redactArgs)
+        : AuditEvent(envelope), _ns(ns), _cmdObj(cmdObj), _redactArgs(redactArgs) {}
 
 private:
     BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
         const auto& cmdElt = _cmdObj->root().leftChild();
         builder.append("command", (!cmdElt.ok() ? StringData("Error") : cmdElt.getFieldName()));
         builder.append("ns", _ns.ns());
-        BSONObjBuilder argsBuilder(builder.subobjStart("args"));
-        _cmdObj->writeTo(&argsBuilder);
-        argsBuilder.done();
+        if (!_redactArgs) {
+            BSONObjBuilder argsBuilder(builder.subobjStart("args"));
+            _cmdObj->writeTo(&argsBuilder);
+            argsBuilder.done();
+        }
         return builder;
     }
 
     NamespaceString _ns;
     const mutablebson::Document* _cmdObj;
+    bool _redactArgs;
 };
 
 /**
@@ -51,7 +54,7 @@ private:
  * be logged, based on global state and the "result" of the authorization
  * check.
  */
-static bool _shouldLogAuthzCheck(ErrorCodes::Error result) {
+bool _shouldLogAuthzCheck(ErrorCodes::Error result) {
     if (!getGlobalAuditManager()->enabled) {
         return false;
     }
@@ -66,11 +69,13 @@ static bool _shouldLogAuthzCheck(ErrorCodes::Error result) {
     return false;
 }
 
-static void _logAuthzCheck(Client* client,
-                           const NamespaceString& ns,
-                           const mutablebson::Document& cmdObj,
-                           ErrorCodes::Error result) {
-    AuthzCheckEvent event(makeEnvelope(client, ActionType::authCheck, result), ns, &cmdObj);
+void _logAuthzCheck(Client* client,
+                    const NamespaceString& ns,
+                    const mutablebson::Document& cmdObj,
+                    ErrorCodes::Error result,
+                    bool redactArgs = false) {
+    AuthzCheckEvent event(
+        makeEnvelope(client, ActionType::authCheck, result), ns, &cmdObj, redactArgs);
 
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         uassertStatusOK(getGlobalAuditLogDomain()->append(event));
@@ -78,34 +83,37 @@ static void _logAuthzCheck(Client* client,
 }
 
 }  // namespace
-}  // namespace audit
 
-void audit::logCommandAuthzCheck(Client* client,
-                                 const OpMsgRequest& cmdObj,
-                                 const CommandInterface& command,
-                                 ErrorCodes::Error result) {
+void logCommandAuthzCheck(Client* client,
+                          const OpMsgRequest& cmdObj,
+                          const CommandInterface& command,
+                          ErrorCodes::Error result) {
     if (!_shouldLogAuthzCheck(result))
         return;
 
     mutablebson::Document cmdToLog(cmdObj.body, mutablebson::Document::kInPlaceDisabled);
-    for (auto&& seq : cmdObj.sequences) {
-        auto array = cmdToLog.makeElementArray(seq.name);
-        for (auto&& obj : seq.objs) {
-            // Names for array elements are ignored.
-            uassertStatusOK(array.appendObject(StringData(), obj));
-        }
-        uassertStatusOK(cmdToLog.root().pushBack(array));
-    }
 
+    bool mustRedactArgs = command.redactArgs();
+
+    if (!mustRedactArgs) {
+        for (auto&& seq : cmdObj.sequences) {
+            auto array = cmdToLog.makeElementArray(seq.name);
+            for (auto&& obj : seq.objs) {
+                // Names for array elements are ignored.
+                uassertStatusOK(array.appendObject(StringData(), obj));
+            }
+            uassertStatusOK(cmdToLog.root().pushBack(array));
+        }
+    }
     command.redactForLogging(&cmdToLog);
 
-    _logAuthzCheck(client, command.ns(), cmdToLog, result);
+    _logAuthzCheck(client, command.ns(), cmdToLog, result, mustRedactArgs);
 }
 
-void audit::logDeleteAuthzCheck(Client* client,
-                                const NamespaceString& ns,
-                                const BSONObj& pattern,
-                                ErrorCodes::Error result) {
+void logDeleteAuthzCheck(Client* client,
+                         const NamespaceString& ns,
+                         const BSONObj& pattern,
+                         ErrorCodes::Error result) {
     if (!_shouldLogAuthzCheck(result)) {
         return;
     }
@@ -120,10 +128,10 @@ void audit::logDeleteAuthzCheck(Client* client,
     _logAuthzCheck(client, ns, cmdObj, result);
 }
 
-void audit::logGetMoreAuthzCheck(Client* client,
-                                 const NamespaceString& ns,
-                                 long long cursorId,
-                                 ErrorCodes::Error result) {
+void logGetMoreAuthzCheck(Client* client,
+                          const NamespaceString& ns,
+                          long long cursorId,
+                          ErrorCodes::Error result) {
     if (!_shouldLogAuthzCheck(result)) {
         return;
     }
@@ -134,10 +142,10 @@ void audit::logGetMoreAuthzCheck(Client* client,
     _logAuthzCheck(client, ns, cmdObj, result);
 }
 
-void audit::logInsertAuthzCheck(Client* client,
-                                const NamespaceString& ns,
-                                const BSONObj& insertedObj,
-                                ErrorCodes::Error result) {
+void logInsertAuthzCheck(Client* client,
+                         const NamespaceString& ns,
+                         const BSONObj& insertedObj,
+                         ErrorCodes::Error result) {
     if (!_shouldLogAuthzCheck(result)) {
         return;
     }
@@ -150,10 +158,10 @@ void audit::logInsertAuthzCheck(Client* client,
     _logAuthzCheck(client, ns, cmdObj, result);
 }
 
-void audit::logKillCursorsAuthzCheck(Client* client,
-                                     const NamespaceString& ns,
-                                     long long cursorId,
-                                     ErrorCodes::Error result) {
+void logKillCursorsAuthzCheck(Client* client,
+                              const NamespaceString& ns,
+                              long long cursorId,
+                              ErrorCodes::Error result) {
     if (!_shouldLogAuthzCheck(result)) {
         return;
     }
@@ -164,10 +172,10 @@ void audit::logKillCursorsAuthzCheck(Client* client,
     _logAuthzCheck(client, ns, cmdObj, result);
 }
 
-void audit::logQueryAuthzCheck(Client* client,
-                               const NamespaceString& ns,
-                               const BSONObj& query,
-                               ErrorCodes::Error result) {
+void logQueryAuthzCheck(Client* client,
+                        const NamespaceString& ns,
+                        const BSONObj& query,
+                        ErrorCodes::Error result) {
     if (!_shouldLogAuthzCheck(result)) {
         return;
     }
@@ -178,13 +186,13 @@ void audit::logQueryAuthzCheck(Client* client,
     _logAuthzCheck(client, ns, cmdObj, result);
 }
 
-void audit::logUpdateAuthzCheck(Client* client,
-                                const NamespaceString& ns,
-                                const BSONObj& query,
-                                const BSONObj& updateObj,
-                                bool isUpsert,
-                                bool isMulti,
-                                ErrorCodes::Error result) {
+void logUpdateAuthzCheck(Client* client,
+                         const NamespaceString& ns,
+                         const BSONObj& query,
+                         const BSONObj& updateObj,
+                         bool isUpsert,
+                         bool isMulti,
+                         ErrorCodes::Error result) {
     if (!_shouldLogAuthzCheck(result)) {
         return;
     }
@@ -202,4 +210,5 @@ void audit::logUpdateAuthzCheck(Client* client,
     _logAuthzCheck(client, ns, cmdObj, result);
 }
 
+}  // namespace audit
 }  // namespace mongo
