@@ -31,6 +31,7 @@
         "args": {
             "insert": coll.getName(),
             "ordered": true,
+            "lsid": db.getSession().getSessionId(),
             "$db": db.getName(),
             "documents": [{"_id": 0, "data": "foobar"}]
         }
@@ -46,6 +47,7 @@
             "filter": {"_id": 0},
             "limit": 1,
             "singleBatch": true,
+            "lsid": db.getSession().getSessionId(),
             "$db": db.getName()
         }
     });
