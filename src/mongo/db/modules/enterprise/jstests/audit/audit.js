@@ -14,12 +14,31 @@
         }
 
         /**
+         * Return all lines in the audit log.
+         */
+        getAllLines() {
+            return cat(this.auditFile).trim().split("\n");
+        }
+
+        /**
          * Skip forward in the log file to "now"
          * Call this prior to an audit producing command to
          * ensure that old entries don't cause false-positives.
          */
         fastForward() {
-            this._auditLine = cat(this.auditFile).split("\n").length - 1;
+            this._auditLine = this.getAllLines().length;
+        }
+
+        /**
+         * Block until an new entry is available and return it.
+         */
+        getNextEntry() {
+            assert.soon(() => {
+                return this.getAllLines().length > this._auditLine;
+            }, "audit logfile should contain entry within default timeout");
+            const line = this.getAllLines()[this._auditLine];
+            this._auditLine += 1;
+            return JSON.parse(line);
         }
 
         /**
@@ -28,7 +47,7 @@
          */
         assertEntry(atype, param) {
             assert.soon(() => {
-                const log = cat(this.auditFile).split("\n").slice(this._auditLine);
+                const log = this.getAllLines().slice(this._auditLine);
                 for (var idx in log) {
                     const entry = log[idx];
                     try {
@@ -55,8 +74,8 @@
          * via the Spooler.
          */
         assertNoNewEntries() {
-            const log = cat(this.auditFile).split("\n").slice(this._auditLine);
-            assert.eq(tojson([""]), tojson(log), "Log contained new entries: " + tojson(log));
+            const log = this.getAllLines().slice(this._auditLine);
+            assert.eq(log.length, 0, "Log contained new entries: " + tojson(log));
         }
     }
 
