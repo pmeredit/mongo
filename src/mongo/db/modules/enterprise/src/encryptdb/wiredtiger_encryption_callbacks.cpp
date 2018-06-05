@@ -54,7 +54,7 @@ struct ExtendedWTEncryptor {
     crypto::aesMode cipherMode;  // Cipher mode
 };
 
-int sizing(WT_ENCRYPTOR* encryptor, WT_SESSION* session, size_t* expansionConstant) {
+int sizing(WT_ENCRYPTOR* encryptor, WT_SESSION* session, size_t* expansionConstant) noexcept {
     try {
         // Add a constant factor for WiredTiger to know how much extra memory it must allocate,
         // at most, for encryption.
@@ -65,14 +65,14 @@ int sizing(WT_ENCRYPTOR* encryptor, WT_SESSION* session, size_t* expansionConsta
     } catch (...) {
         // Prevent C++ exceptions from propagating into C code
         severe() << "Aborting due to exception in WT_ENCRYPTOR::sizing: " << exceptionToStatus();
-        fassertFailed(4037);
+        fassertFailedNoTrace(4037);
     }
 }
 
 int customize(WT_ENCRYPTOR* encryptor,
               WT_SESSION* session,
               WT_CONFIG_ARG* encryptConfig,
-              WT_ENCRYPTOR** customEncryptor) {
+              WT_ENCRYPTOR** customEncryptor) noexcept {
     try {
         WT_EXTENSION_API* extApi = session->connection->get_extension_api(session->connection);
 
@@ -105,16 +105,24 @@ int customize(WT_ENCRYPTOR* encryptor,
         }
 
         // Get the symmetric key for the key id
-        StatusWith<std::unique_ptr<SymmetricKey>> swSymmetricKey =
-            EncryptionKeyManager::get(getGlobalServiceContext())->getKey(keyId);
-        if (!swSymmetricKey.isOK()) {
-            error() << "Unable to retrieve key " << keyId
-                    << ", error: " << swSymmetricKey.getStatus().reason();
+        // For servers configured with KMIP this will make the request
+        try {
+            StatusWith<std::unique_ptr<SymmetricKey>> swSymmetricKey =
+                EncryptionKeyManager::get(getGlobalServiceContext())->getKey(keyId);
+            if (!swSymmetricKey.isOK()) {
+                error() << "Unable to retrieve key " << keyId
+                        << ", error: " << swSymmetricKey.getStatus().reason();
+                return EINVAL;
+            }
+            *(myEncryptor.get()) = *origEncryptor;
+            myEncryptor.get()->symmetricKey = swSymmetricKey.getValue().release();
+        } catch (const ExceptionForCat<ErrorCategory::NetworkError>& e) {
+            error()
+                << "Socket/network exception in WT_ENCRYPTOR::customize on getKey to KMIP server:"
+                << exceptionToStatus();
             return EINVAL;
         }
-        *(myEncryptor.get()) = *origEncryptor;
 
-        myEncryptor.get()->symmetricKey = swSymmetricKey.getValue().release();
         myEncryptor.get()->cipherMode = crypto::getCipherModeFromString(encryptorName);
 
         *customEncryptor = &(myEncryptor.release()->encryptor);
@@ -122,7 +130,7 @@ int customize(WT_ENCRYPTOR* encryptor,
     } catch (...) {
         // Prevent C++ exceptions from propagating into C code
         severe() << "Aborting due to exception in WT_ENCRYPTOR::customize: " << exceptionToStatus();
-        fassertFailed(4045);
+        fassertFailedNoTrace(4045);
     }
 }
 
@@ -132,7 +140,7 @@ int encrypt(WT_ENCRYPTOR* encryptor,
             size_t srcLen,
             uint8_t* dst,
             size_t dstLen,
-            size_t* resultLen) {
+            size_t* resultLen) noexcept {
     try {
         ExtendedWTEncryptor* crypto = reinterpret_cast<ExtendedWTEncryptor*>(encryptor);
         if (!src || !dst || !resultLen || !crypto || !crypto->symmetricKey) {
@@ -151,7 +159,7 @@ int encrypt(WT_ENCRYPTOR* encryptor,
     } catch (...) {
         // Prevent C++ exceptions from propagating into C code
         severe() << "Aborting due to exception in WT_ENCRYPTOR::encrypt: " << exceptionToStatus();
-        fassertFailed(4046);
+        fassertFailedNoTrace(4046);
     }
 }
 
@@ -161,7 +169,7 @@ int decrypt(WT_ENCRYPTOR* encryptor,
             size_t srcLen,
             uint8_t* dst,
             size_t dstLen,
-            size_t* resultLen) {
+            size_t* resultLen) noexcept {
     try {
         const ExtendedWTEncryptor* crypto = reinterpret_cast<ExtendedWTEncryptor*>(encryptor);
         if (!src || !dst || !resultLen || !crypto || !crypto->symmetricKey) {
@@ -185,11 +193,11 @@ int decrypt(WT_ENCRYPTOR* encryptor,
     } catch (...) {
         // Prevent C++ exceptions from propagating into C code
         severe() << "Aborting due to exception in WT_ENCRYPTOR::decrypt: " << exceptionToStatus();
-        fassertFailed(4047);
+        fassertFailedNoTrace(4047);
     }
 }
 
-int destroyEncryptor(WT_ENCRYPTOR* encryptor, WT_SESSION* session) {
+int destroyEncryptor(WT_ENCRYPTOR* encryptor, WT_SESSION* session) noexcept {
     try {
         ExtendedWTEncryptor* myEncryptor = reinterpret_cast<ExtendedWTEncryptor*>(encryptor);
 
@@ -212,12 +220,10 @@ int destroyEncryptor(WT_ENCRYPTOR* encryptor, WT_SESSION* session) {
         // Prevent C++ exceptions from propagating into C code
         severe() << "Aborting due to exception in WT_ENCRYPTOR::destroyEncryptor: "
                  << exceptionToStatus();
-        fassertFailed(4048);
+        fassertFailedNoTrace(4048);
     }
 }
 
-}  // namespace
-}  // namespace mongo
 
 /**
  * mongo_addWiredTigerEncryptors is the entry point for the WiredTiger crypto
@@ -227,26 +233,40 @@ int destroyEncryptor(WT_ENCRYPTOR* encryptor, WT_SESSION* session) {
  * This function adds a single AES encryptor. The API is flexible enough to
  * support multiple different encryptors but at the moment we are using a single one.
  */
-extern "C" MONGO_COMPILER_API_EXPORT int mongo_addWiredTigerEncryptors(WT_CONNECTION* connection) {
-    if (!mongo::encryptionGlobalParams.enableEncryption) {
-        mongo::severe() << "Encrypted data files detected, please enable encryption";
-        return EINVAL;
-    }
+int mongo_addWiredTigerEncryptors_impl(WT_CONNECTION* connection) noexcept {
+    try {
+        if (!mongo::encryptionGlobalParams.enableEncryption) {
+            mongo::severe() << "Encrypted data files detected, please enable encryption";
+            return EINVAL;
+        }
 
-    mongo::ExtendedWTEncryptor* extWTEncryptor = new mongo::ExtendedWTEncryptor;
-    extWTEncryptor->symmetricKey = nullptr;
-    extWTEncryptor->encryptor.sizing = mongo::sizing;
-    extWTEncryptor->encryptor.customize = mongo::customize;
-    extWTEncryptor->encryptor.encrypt = mongo::encrypt;
-    extWTEncryptor->encryptor.decrypt = mongo::decrypt;
-    extWTEncryptor->encryptor.terminate = mongo::destroyEncryptor;
+        mongo::ExtendedWTEncryptor* extWTEncryptor = new mongo::ExtendedWTEncryptor;
+        extWTEncryptor->symmetricKey = nullptr;
+        extWTEncryptor->encryptor.sizing = mongo::sizing;
+        extWTEncryptor->encryptor.customize = mongo::customize;
+        extWTEncryptor->encryptor.encrypt = mongo::encrypt;
+        extWTEncryptor->encryptor.decrypt = mongo::decrypt;
+        extWTEncryptor->encryptor.terminate = mongo::destroyEncryptor;
 
-    int ret;
-    if ((ret = connection->add_encryptor(connection,
-                                         mongo::encryptionGlobalParams.encryptionCipherMode.c_str(),
-                                         reinterpret_cast<WT_ENCRYPTOR*>(extWTEncryptor),
-                                         nullptr)) != 0) {
-        return ret;
+        int ret;
+        if ((ret = connection->add_encryptor(
+                 connection,
+                 mongo::encryptionGlobalParams.encryptionCipherMode.c_str(),
+                 reinterpret_cast<WT_ENCRYPTOR*>(extWTEncryptor),
+                 nullptr)) != 0) {
+            return ret;
+        }
+        return 0;
+    } catch (...) {
+        severe()
+            << "Aborting due to exception in WT_ENCRYPTOR::mongo_addWiredTigerEncryptors_impl: "
+            << exceptionToStatus();
+        fassertFailedNoTrace(50867);
     }
-    return 0;
 }
+
+extern "C" MONGO_COMPILER_API_EXPORT int mongo_addWiredTigerEncryptors(WT_CONNECTION* connection) {
+    return mongo_addWiredTigerEncryptors_impl(connection);
+}
+}  // namespace
+}  // namespace mongo
