@@ -88,7 +88,7 @@ public:
      * Passthrough to AuthorizationManagerExternalStateMongod
      */
     Status getRoleDescriptionsForDB(OperationContext* opCtx,
-                                    const std::string& dbname,
+                                    StringData dbname,
                                     PrivilegeFormat showPrivileges,
                                     AuthenticationRestrictionsFormat showRestrictions,
                                     bool showBuiltinRoles,
