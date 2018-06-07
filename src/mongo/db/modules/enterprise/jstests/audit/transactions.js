@@ -16,6 +16,7 @@
     const dbName = "test";
     const collName = "transaction_audit";
     const testDB = mongo.getDB(dbName);
+    const adminDB = mongo.getDB("admin");
 
     // Initiate the single node replset.
     let config = {_id: replSetName, protocolVersion: 1};
@@ -23,6 +24,8 @@
     assert.commandWorked(testDB.adminCommand({replSetInitiate: config}));
     // Wait until the single node becomes primary.
     assert.soon(() => testDB.runCommand({ismaster: 1}).ismaster);
+    // Wait until the primary node generates cluster time sign keys.
+    assert.soon(() => adminDB.getCollection('system.keys').count({purpose: 'HMAC'}) >= 2);
 
     testDB.runCommand({drop: collName, writeConcern: {w: "majority"}});
     assert.commandWorked(testDB.createCollection(collName, {writeConcern: {w: "majority"}}));
