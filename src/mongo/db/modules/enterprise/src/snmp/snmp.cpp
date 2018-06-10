@@ -32,8 +32,6 @@
 #include "mongo/db/repl/replication_coordinator.h"
 #include "mongo/db/server_options.h"
 #include "mongo/db/stats/counters.h"
-#include "mongo/db/storage/mmap_v1/data_file_sync.h"
-#include "mongo/db/storage/mmap_v1/dur.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/background.h"
@@ -830,11 +828,11 @@ private:
             return false;
         }
 #endif
-        if (_backgroundFlushingOnly && !dataFileSync.running()) {
+        if (_backgroundFlushingOnly) {
             return false;
         }
 
-        if (_journalOnly && !getDur().isDurable()) {
+        if (_journalOnly) {
             return false;
         }
 

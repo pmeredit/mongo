@@ -132,8 +132,8 @@ def save_file(absolutePath, relativePath):
 data_file_re = re.compile("\.\d+$")
 snapshot_files = {}
 dirs_to_snapshot = [dir_to_snapshot]
-# Default to saving a snapshot as mmapv1, unless files are discovered to be WT.
-storageEngine = "mmapv1"
+# Default to saving a snapshot as WT, as mmapv1 is no longer supported.
+storageEngine = "wiredTiger"
 while len(dirs_to_snapshot) > 0:
     snapshotting = dirs_to_snapshot.pop()
     for filename in os.listdir(snapshotting):
@@ -146,21 +146,6 @@ while len(dirs_to_snapshot) > 0:
         if os.path.isdir(snapshotting + "/" + filename):
             dirs_to_snapshot.append(snapshotting.rstrip("/") + "/" + filename + "/")
             continue
-
-        def isWT(filename):
-            if filename in ["_mdb_catalog.wt", "sizeStorer.wt", "WiredTiger",
-                            "WiredTigerLAS.wt", "WiredTiger.lock", "WiredTiger.turtle",
-                            "WiredTiger.wt"]:
-                return True
-
-            if filename.startswith("WiredTigerPreplog."):
-                return True
-
-            return filename.endswith(".wt")
-
-        if isWT(filename):
-            # Discovered a WT file, save the snapshot as WT.
-            storageEngine = "wiredTiger"
 
         if filename.endswith(".ns") or data_file_re.findall(filename) or isWT(filename):
             absolutePath = snapshotting.rstrip("/") + "/" + filename

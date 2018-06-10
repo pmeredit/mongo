@@ -9,6 +9,7 @@ env.Library(
     source=[
         'blockstore_fs.cpp',
         'queryable_wt_init.cpp',
+        'queryable_global_options.cpp',
     ],
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/db/serveronly',
@@ -16,10 +17,10 @@ env.Library(
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/service_context',
         '$BUILD_DIR/mongo/db/storage/kv/kv_storage_engine',
+        '$BUILD_DIR/mongo/db/storage/storage_engine_common',
         '$BUILD_DIR/mongo/db/storage/storage_engine_metadata',
         '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger',
         '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core',
         '../blockstore/blockstore',
-        '../queryable_mmapv1/queryable_mmapv1',
     ],
 )

@@ -5,7 +5,6 @@ env = env.Clone()
 env.SConscript(
     dirs=[
         'blockstore',
-        'queryable_mmapv1',
         'queryable_wt',
     ],
     exports=[

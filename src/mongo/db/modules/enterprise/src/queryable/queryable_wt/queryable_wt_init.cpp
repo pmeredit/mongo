@@ -31,8 +31,7 @@
 #include "mongo/util/log.h"
 
 #include "../blockstore/http_client.h"
-#include "../queryable_mmapv1/queryable_global_options.h"
-#include "../queryable_mmapv1/queryable_mmap_v1_extent_manager.h"
+#include "queryable_global_options.h"
 
 namespace mongo {
 

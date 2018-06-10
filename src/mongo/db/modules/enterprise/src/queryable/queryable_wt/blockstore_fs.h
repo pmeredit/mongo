@@ -17,7 +17,7 @@
 #include "../blockstore/http_client.h"
 #include "../blockstore/list_dir.h"
 #include "../blockstore/reader.h"
-#include "../queryable_mmapv1/queryable_global_options.h"
+#include "queryable_global_options.h"
 
 #include "third_party/wiredtiger/src/include/wiredtiger_ext.h"
 #include <wiredtiger.h>

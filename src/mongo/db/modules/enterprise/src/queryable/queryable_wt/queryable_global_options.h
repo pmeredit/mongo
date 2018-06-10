@@ -29,11 +29,6 @@ public:
         return _snapshotId;
     }
 
-    // Only used by `queryable_mmapv1`. `boost::none` implies calculate a reasonable number.
-    boost::optional<double> getMemoryQuotaMB() {
-        return _memoryQuotaMB;
-    }
-
     // WiredTiger config strings can take a list of `extensions`. This should return the extension
     // string for a custom filesystem for queryable_wt mode that can be combined with other
     // extensions such as encryption at rest. Example string to return:
@@ -45,7 +40,6 @@ public:
 private:
     boost::optional<std::string> _apiUri;
     boost::optional<OID> _snapshotId;
-    boost::optional<double> _memoryQuotaMB;
 };
 
 extern QueryableGlobalOptions queryableGlobalOptions;
