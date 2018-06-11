@@ -160,7 +160,7 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
     report.openSection("Checking that an LDAP server has been specified");
     report.checkAssert(ResultsAssertion([] { return !globalLDAPParams->serverHosts.empty(); },
                                         "No LDAP servers have been provided"));
-    report.closeSection("LDAP server found");
+    report.closeSection("LDAP server(s) provided in configuration");
 
 
     report.openSection("Connecting to LDAP server");
