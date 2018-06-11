@@ -34,13 +34,22 @@ ServiceContextRegistrar serviceContextCreator([]() {
     return stdx::make_unique<ServiceContextNoop>();
 });
 
+/**
+ * Tracks the assertion failure state for ldap authorization and authentication
+ * There are three possible options, which are represented by this enum:
+ * kFatalFailure, fatal failure (resulting in program termination), logged with the string '[FAIL]'
+ * kNonFatalFailure, non-fatal failure, logged with the string '[FAIL]'
+ * kNonFatalInfo, non-fatal failure, logged with the string '[INFO]'
+ */
+enum class FailType { kFatalFailure, kNonFatalFailure, kNonFatalInfo };
+
 struct ResultsAssertion {
     using Conditional = stdx::function<bool()>;
 
     ResultsAssertion(Conditional assertedCondition,
                      std::string failureMessage,
                      stdx::function<std::vector<std::string>()> failureBulletGenerator,
-                     bool isFatal = true)
+                     FailType isFatal = FailType::kFatalFailure)
         : assertedCondition(std::move(assertedCondition)),
           failureMessage(std::move(failureMessage)),
           failureBulletGenerator(std::move(failureBulletGenerator)),
@@ -48,7 +57,7 @@ struct ResultsAssertion {
     ResultsAssertion(Conditional assertedCondition,
                      std::string failureMessage,
                      std::vector<std::string> failureBullets = std::vector<std::string>{},
-                     bool isFatal = true)
+                     FailType isFatal = FailType::kFatalFailure)
         : ResultsAssertion(std::move(assertedCondition),
                            std::move(failureMessage),
                            [failureBullets] { return failureBullets; },
@@ -57,7 +66,7 @@ struct ResultsAssertion {
     Conditional assertedCondition;
     std::string failureMessage;
     stdx::function<std::vector<std::string>()> failureBulletGenerator;
-    bool isFatal;
+    FailType isFatal;
 };
 
 /**
@@ -99,14 +108,17 @@ public:
             return;
         }
 
-        std::cout << failString() << assert.failureMessage << std::endl;
+        StringData errorString =
+            (assert.isFatal == FailType::kNonFatalInfo) ? infoString() : failString();
+
+        std::cout << errorString << assert.failureMessage << std::endl;
         auto failureBullets = assert.failureBulletGenerator();
         for (const std::string& bullet : failureBullets) {
             std::cout << "\t* " << bullet << std::endl;
         }
         std::cout << std::endl;
 
-        if (assert.isFatal) {
+        if (assert.isFatal == FailType::kFatalFailure) {
             // Fatal assertion failures are logged and the test program terminates immediately
             quickExit(-1);
         } else {
@@ -134,6 +146,13 @@ private:
             return "[\x1b[31mFAIL\x1b[0m] ";
         }
         return "[FAIL] ";
+    }
+
+    StringData infoString() {
+        if (globalLDAPToolOptions->color) {
+            return "[\x1b[33mINFO\x1b[0m] ";
+        }
+        return "[INFO] ";
     }
 
     // Tracks whether an error has occurred which should short circuit
@@ -175,7 +194,7 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
         "Attempted to bind to LDAP server without TLS with a plaintext password.",
         {"Sending a password over a network in plaintext is insecure.",
          "To fix this issue, enable TLS or switch to a different LDAP bind mechanism."},
-        false));
+        FailType::kNonFatalFailure));
     report.checkAssert(ResultsAssertion(
         [] {
             return !(((globalLDAPParams->transportSecurity != LDAPTransportSecurityType::kTLS) &&
@@ -185,7 +204,7 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
         "Attempted to bind to LDAP server without TLS using SASL PLAIN.",
         {"Sending a password over a network in plaintext is insecure.",
          "To fix this issue, remove the PLAIN mechanism from SASL bind mechanisms, or enable TLS."},
-        false));
+        FailType::kNonFatalFailure));
 
     LDAPBindOptions bindOptions(globalLDAPParams->bindUser,
                                 std::move(globalLDAPParams->bindPassword),
@@ -249,7 +268,7 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
             },
             "Was unable to acquire a RootDSE, so couldn't compare SASL mechanisms",
             std::vector<std::string>{},
-            false));
+            FailType::kNonFatalFailure));
 
         report.checkAssert(ResultsAssertion(
             [&] {
@@ -262,7 +281,7 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
             },
             "Server did not return supportedSASLMechanisms in its RootDSE",
             std::vector<std::string>{},
-            false));
+            FailType::kNonFatalFailure));
 
         report.printItemList([&] {
             std::vector<std::string> results{"Server supports the following SASL mechanisms: "};
@@ -338,7 +357,7 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
         "LDAP authorization is not enabled, the configuration will require internal users to be "
         "maintained",
         {"Make sure you have 'security.ldap.authz.queryTemplate' in your configuration"},
-        false));
+        FailType::kNonFatalInfo));
     report.closeSection("LDAP authorization enabled");
 
     if (globalLDAPParams->isLDAPAuthzEnabled()) {
