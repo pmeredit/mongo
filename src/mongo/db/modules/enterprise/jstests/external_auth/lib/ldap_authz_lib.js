@@ -187,6 +187,9 @@ function authAndVerify({conn, options}) {
 
     var externalDB = conn.getDB("$external");
 
+    if (options.authOptions.pwd !== undefined) {
+        assert.eq(0, externalDB.auth(Object.merge(options.authOptions, {pwd: "asdkljfhkljd"})));
+    }
     externalDB.auth(options.authOptions);
 
     var status = externalDB.runCommand({"connectionStatus": 1});

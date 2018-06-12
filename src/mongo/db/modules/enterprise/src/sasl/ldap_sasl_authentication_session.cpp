@@ -6,6 +6,8 @@
 
 #include <vector>
 
+#include <boost/algorithm/string/classification.hpp>
+#include <boost/algorithm/string/split.hpp>
 #include <boost/range/size.hpp>
 
 #include "mongo/base/secure_allocator.h"
@@ -29,6 +31,39 @@
 
 namespace mongo {
 
+namespace {
+
+// Checks the globally static set of SASL mechanisms used to bind to an LDAP server.
+// Returns a not-OK Status if MongoDB cannot use the mechanisms for accepting PLAIN
+// authentication attempts.
+Status supportedBindConfiguration() {
+    // If we are not using saslauthd, we must whitelist the authentication
+    // mechanisms we're willing to bind to LDAP servers with.
+    std::set<std::string> permittedMechanisms{"DIGEST-MD5", "PLAIN"};
+#ifdef _WIN32
+    // On Windows, the platform provided GSSAPI mechanism uses client provided plaintext
+    // passwords to acquire TGTs.
+    permittedMechanisms.emplace("GSSAPI");
+#endif
+
+    std::vector<std::string> mechanisms;
+    std::vector<std::string> difference;
+    boost::split(mechanisms, globalLDAPParams->bindSASLMechanisms, boost::is_any_of(","));
+    std::set_difference(mechanisms.begin(),
+                        mechanisms.end(),
+                        permittedMechanisms.begin(),
+                        permittedMechanisms.end(),
+                        std::inserter(difference, difference.begin()));
+
+    if (!difference.empty()) {
+        return Status(ErrorCodes::BadValue, "Unsupported outbound LDAP SASL bind mechanism");
+    }
+
+    return Status::OK();
+}
+
+}  // namespace
+
 struct LDAPPLAINServerMechanism : MakeServerMechanism<PLAINPolicy> {
     LDAPPLAINServerMechanism(std::string authenticationDatabase)
         : MakeServerMechanism<PLAINPolicy>(std::move(authenticationDatabase)) {}
@@ -40,6 +75,12 @@ private:
 
 StatusWith<std::tuple<bool, std::string>> LDAPPLAINServerMechanism::stepImpl(
     OperationContext* opCtx, StringData inputData) {
+
+    Status status = supportedBindConfiguration();
+    if (!status.isOK()) {
+        return status;
+    }
+
     // Expecting user input on the form: [authz-id]\0authn-id\0pwd
     std::string input = inputData.toString();
 
@@ -86,8 +127,8 @@ StatusWith<std::tuple<bool, std::string>> LDAPPLAINServerMechanism::stepImpl(
                       mongoutils::str::stream() << "Incorrectly formatted PLAIN client message");
     }
 
-    Status status = LDAPManager::get(opCtx->getServiceContext())
-                        ->verifyLDAPCredentials(ServerMechanismBase::_principalName, pwd);
+    status = LDAPManager::get(opCtx->getServiceContext())
+                 ->verifyLDAPCredentials(ServerMechanismBase::_principalName, pwd);
     if (!status.isOK()) {
         return status;
     }
@@ -163,10 +204,19 @@ struct PLAINServerFactoryProxy : ServerFactoryBase {
 };
 
 MONGO_INITIALIZER_WITH_PREREQUISITES(PLAINServerMechanismProxy,
-                                     ("CreateSASLServerMechanismRegistry"))
+                                     ("CreateSASLServerMechanismRegistry", "SetLDAPManagerImpl"))
 (::mongo::InitializerContext* context) {
     auto& registry = SASLServerMechanismRegistry::get(getGlobalServiceContext());
+    if (!PLAINServerFactoryProxy::useCyrus()) {
+        // Supported configuration will later be evaluated at runtime.
+        // This catches incorrect configurations at startup.
+        Status status = supportedBindConfiguration();
+        if (!status.isOK()) {
+            return status;
+        }
+    }
     registry.registerFactory<PLAINServerFactoryProxy>();
+
     return Status::OK();
 }
 

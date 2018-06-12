@@ -271,6 +271,7 @@ else:
                               ['src/sasl/sasl_authentication_session_gssapi_test.cpp'],
                               LIBDEPS=['mongosaslserversession',
                                        'mongosaslservercommon',
+                                       'src/ldap/ldap_manager_init',
                                        '$BUILD_DIR/mongo/base',
                                        '$BUILD_DIR/mongo/util/net/network',
                                        '$BUILD_DIR/mongo/db/auth/auth',

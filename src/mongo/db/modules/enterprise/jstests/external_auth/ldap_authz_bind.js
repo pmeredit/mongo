@@ -36,13 +36,12 @@
 
     ldapSchemes.forEach(function(s) {
         bindOptions.forEach(function(b) {
-            if ((b.fragment.ldapBindSaslMechanisms == "GSSAPI" || s.ldapTransportSecurity) &&
-                _isWindows()) {
+            if (b.fragment.ldapBindSaslMechanisms == "GSSAPI" ||
+                (_isWindows() && s.ldapTransportSecurity)) {
                 // FIXME: Import TLS certificates on Windows builders with SERVER-24672.
                 // FIXME: Enable support for GSSAPI on Windows builders with SERVER-24671.
                 return;
             }
-
             var saslString = b.fragment.ldapBindMethod;
             if (b.fragment.ldapBindMethod == "sasl") {
                 saslString += " and " + b.fragment.ldapBindSaslMechanisms;
@@ -61,5 +60,41 @@
             runTests(authAndVerify, configGenerator, authArgs);
         });
     });
+
+    // Tests that the server will fail to start with unsupported configurations
+    function testConfiguration(mechName, expect = false, extraOpts = {}) {
+        var opts = {
+            ldapServers: baseLDAPUrls,
+            ldapTransportSecurity: "none",
+            ldapBindMethod: "sasl",
+            ldapBindSaslMechanisms: mechName,
+            ldapQueryUser: saslAuthenticationUser,
+            ldapQueryPassword: "Admin001",
+        };
+
+        var conn = MongoRunner.runMongod(Object.merge(opts, extraOpts));
+        assert.eq(expect, conn !== null);
+        if (conn) {
+            MongoRunner.stopMongod(conn);
+        }
+    }
+
+    testConfiguration("unknown");
+    if (_isWindows()) {
+        // FIXME: Enable support for GSSAPI on Windows builders with SERVER-24671.
+        // testConfiguration("GSSAPI", true);
+    } else {
+        testConfiguration("GSSAPI", false);
+
+        testConfiguration("GSSAPI", true, {
+            setParameter: {saslauthdPath: "fdhflkjsadhf"},
+            env: new LDAPTestConfigGenerator().generateEnvConfig()
+        });
+
+        testConfiguration("GSSAPI", true, {
+            config: assetsPath + "mongodb-saslAuthd-snippet.conf",
+            env: new LDAPTestConfigGenerator().generateEnvConfig()
+        });
+    }
 
 })();
