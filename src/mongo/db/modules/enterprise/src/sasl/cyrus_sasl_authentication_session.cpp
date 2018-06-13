@@ -290,21 +290,6 @@ int saslServerGlobalLog(void* context, int level, const char* message) throw() {
 // the smoke test in SaslCommands.
 MONGO_INITIALIZER_GROUP(CyrusSaslAllPluginsRegistered, MONGO_NO_PREREQUISITES, MONGO_NO_DEPENDENTS);
 
-template <typename Factory>
-void smokeAndRegister(SASLServerMechanismRegistry* registry) {
-    bool registered = registry->registerFactory<Factory>();
-    if (registered) {
-        Factory factory;
-        if (factory.mechanismName() == "GSSAPI") {
-            fassert(50743,
-                    gssapi::tryAcquireServerCredential(static_cast<std::string>(
-                        mongoutils::str::stream() << saslGlobalParams.serviceName << "@"
-                                                  << saslGlobalParams.hostName)));
-        }
-        auto mech = factory.create("test");
-    }
-}
-
 MONGO_INITIALIZER_WITH_PREREQUISITES(CyrusSaslServerCore,
                                      ("CyrusSaslAllocatorsAndMutexes", "CyrusSaslClientContext"))
 (InitializerContext* context) {
@@ -322,6 +307,8 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(CyrusSaslServerCore,
     return Status::OK();
 };
 
+CyrusPlainServerFactory cyrusPlainServerFactory;
+
 MONGO_INITIALIZER_WITH_PREREQUISITES(CyrusSaslRegisterMechanisms,
                                      ("CyrusSaslServerCore",
                                       "CyrusSaslAllPluginsRegistered",
@@ -329,11 +316,19 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(CyrusSaslRegisterMechanisms,
 (InitializerContext* context) {
     auto& registry = SASLServerMechanismRegistry::get(getGlobalServiceContext());
 
-    if (!saslGlobalParams.authdPath.empty()) {
-        smokeAndRegister<CyrusPlainServerFactory>(&registry);
+    if (registry.registerFactory<CyrusGSSAPIServerFactory>()) {
+        CyrusGSSAPIServerFactory factory;
+        fassert(50743,
+                gssapi::tryAcquireServerCredential(
+                    static_cast<std::string>(str::stream() << saslGlobalParams.serviceName << "@"
+                                                           << saslGlobalParams.hostName)));
+        auto mech = factory.create("test");
     }
 
-    smokeAndRegister<CyrusGSSAPIServerFactory>(&registry);
+    // The PLAIN variant of Cyrus is not registered direcly.
+    // Rather, it is dispatched to by PLAINServerFactoryProxy in
+    // ldap_sasl_authentication_session.cpp
+    cyrusPlainServerFactory.create("test");
 
     return Status::OK();
 }

@@ -23,13 +23,13 @@
 #include "mongo/util/mongoutils/str.h"
 
 #include "../ldap/ldap_manager.h"
+#include "../ldap/ldap_options.h"
 #include "../ldap/name_mapping/internal_to_ldap_user_name_mapper.h"
+#include "cyrus_sasl_authentication_session.h"
 
 namespace mongo {
 
 struct LDAPPLAINServerMechanism : MakeServerMechanism<PLAINPolicy> {
-    static const bool isInternal = false;
-
     LDAPPLAINServerMechanism(std::string authenticationDatabase)
         : MakeServerMechanism<PLAINPolicy>(std::move(authenticationDatabase)) {}
 
@@ -97,20 +97,76 @@ StatusWith<std::tuple<bool, std::string>> LDAPPLAINServerMechanism::stepImpl(
 
 
 struct LDAPPLAINServerFactory : MakeServerFactory<LDAPPLAINServerMechanism> {
+    static constexpr bool isInternal = false;
     bool canMakeMechanismForUser(const User* user) const final {
         auto credentials = user->getCredentials();
         return credentials.isExternal;
     }
+} ldapPLAINServerFactory;
+
+/**
+ * The PLAIN mechanism will somtimes use the LDAP implementation,
+ * othertimes it will use Cyrus SASL.
+ *
+ * Shim this proxy factory into place to dispatch as appropriate.
+ */
+struct PLAINServerFactoryProxy : ServerFactoryBase {
+    using policy_type = LDAPPLAINServerFactory::policy_type;
+    static constexpr bool isInternal = LDAPPLAINServerFactory::isInternal;
+
+    static bool useCyrus() {
+        // This proxy assumes the targets have matching policy/mechanism types.
+        static_assert(std::is_same<LDAPPLAINServerFactory::policy_type,
+                                   CyrusPlainServerFactory::policy_type>::value,
+                      "PLAINServerFactoryProxy targets have differing policy types");
+        static_assert(LDAPPLAINServerFactory::isInternal == CyrusPlainServerFactory::isInternal,
+                      "PLAINServerFactoryProxy targets have differing externality");
+        if (!saslGlobalParams.authdPath.empty()) {
+            return true;
+        }
+
+        const auto* ldapManager = LDAPManager::get(getGlobalServiceContext());
+        return ldapManager->getHosts().empty();
+    }
+
+    StringData mechanismName() const final {
+        if (useCyrus()) {
+            return cyrusPlainServerFactory.mechanismName();
+        } else {
+            return ldapPLAINServerFactory.mechanismName();
+        }
+    }
+
+    SecurityPropertySet properties() const final {
+        if (useCyrus()) {
+            return cyrusPlainServerFactory.properties();
+        } else {
+            return ldapPLAINServerFactory.properties();
+        }
+    }
+
+    bool canMakeMechanismForUser(const User* user) const final {
+        if (useCyrus()) {
+            return cyrusPlainServerFactory.canMakeMechanismForUser(user);
+        } else {
+            return ldapPLAINServerFactory.canMakeMechanismForUser(user);
+        }
+    }
+
+    ServerMechanismBase* createImpl(std::string authenticationDatabase) final {
+        if (useCyrus()) {
+            return cyrusPlainServerFactory.createImpl(std::move(authenticationDatabase));
+        } else {
+            return ldapPLAINServerFactory.createImpl(std::move(authenticationDatabase));
+        }
+    }
 };
 
-MONGO_INITIALIZER_WITH_PREREQUISITES(LDAPPLAINServerMechanism,
+MONGO_INITIALIZER_WITH_PREREQUISITES(PLAINServerMechanismProxy,
                                      ("CreateSASLServerMechanismRegistry"))
 (::mongo::InitializerContext* context) {
     auto& registry = SASLServerMechanismRegistry::get(getGlobalServiceContext());
-
-    if (saslGlobalParams.authdPath.empty()) {
-        registry.registerFactory<LDAPPLAINServerFactory>();
-    }
+    registry.registerFactory<PLAINServerFactoryProxy>();
     return Status::OK();
 }
 

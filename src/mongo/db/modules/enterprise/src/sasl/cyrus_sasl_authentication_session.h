@@ -17,7 +17,6 @@ namespace mongo {
 
 template <typename Policy>
 struct CyrusSaslMechShim : MakeServerMechanism<Policy> {
-    static const bool isInternal = false;
     explicit CyrusSaslMechShim(std::string authenticationDatabase);
 
     virtual ~CyrusSaslMechShim() {
@@ -46,14 +45,15 @@ extern template struct CyrusSaslMechShim<GSSAPIPolicy>;
 using CyrusPLAINServerMechanism = CyrusSaslMechShim<PLAINPolicy>;
 
 struct CyrusPlainServerFactory : MakeServerFactory<CyrusPLAINServerMechanism> {
+    static constexpr bool isInternal = false;
     bool canMakeMechanismForUser(const User* user) const final {
         auto credentials = user->getCredentials();
         return credentials.isExternal;
     }
 };
+extern CyrusPlainServerFactory cyrusPlainServerFactory;
 
 struct CyrusGSSAPIServerMechanism : public CyrusSaslMechShim<GSSAPIPolicy> {
-    static const bool isInternal = false;
     explicit CyrusGSSAPIServerMechanism(std::string authenticationDatabase)
         : CyrusSaslMechShim(std::move(authenticationDatabase)) {}
 
@@ -68,6 +68,7 @@ struct CyrusGSSAPIServerMechanism : public CyrusSaslMechShim<GSSAPIPolicy> {
 };
 
 struct CyrusGSSAPIServerFactory : MakeServerFactory<CyrusGSSAPIServerMechanism> {
+    static constexpr bool isInternal = false;
     bool canMakeMechanismForUser(const User* user) const final {
         auto credentials = user->getCredentials();
         return credentials.isExternal;
