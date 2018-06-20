@@ -57,7 +57,7 @@ def configure(conf, env):
     distsrc = env.Dir(root).Dir('distsrc')
     docs = env.Dir(root).Dir('docs')
     env.Append(MODULE_BANNERS=[
-            distsrc.File('LICENSE.txt'),
+            distsrc.File('LICENSE-Enterprise.txt'),
             ])
     if env.TargetOSIs("windows"):
         env.Append(MODULE_BANNERS=[
