@@ -14,50 +14,40 @@
 #include "ldap_query.h"
 
 namespace mongo {
+namespace {
+/* Make a LDAPRunnerImpl pointer a decoration on service contexts */
+ServiceContext::ConstructorActionRegisterer setLDAPManagerImpl{
+    "SetLDAPManagerImpl", [](ServiceContext* service) {
+        LDAPBindOptions bindOptions(globalLDAPParams->bindUser,
+                                    globalLDAPParams->bindPassword,
+                                    globalLDAPParams->bindMethod,
+                                    globalLDAPParams->bindSASLMechanisms,
+                                    globalLDAPParams->useOSDefaults);
+        LDAPConnectionOptions connectionOptions(globalLDAPParams->connectionTimeout,
+                                                globalLDAPParams->serverHosts,
+                                                globalLDAPParams->transportSecurity);
 
-/* Make a LDAPRunnerImpl pointer a decoration on the global ServiceContext */
-MONGO_INITIALIZER_WITH_PREREQUISITES(SetLDAPManagerImpl,
-                                     ("ServiceContext", "EndStartupOptionStorage"))
-(InitializerContext* context) {
-    LDAPBindOptions bindOptions(globalLDAPParams->bindUser,
-                                std::move(globalLDAPParams->bindPassword),
-                                globalLDAPParams->bindMethod,
-                                globalLDAPParams->bindSASLMechanisms,
-                                globalLDAPParams->useOSDefaults);
-    LDAPConnectionOptions connectionOptions(globalLDAPParams->connectionTimeout,
-                                            globalLDAPParams->serverHosts,
-                                            globalLDAPParams->transportSecurity);
+        auto queryParameters = uassertStatusOK(LDAPQueryConfig::createLDAPQueryConfigWithUserName(
+            globalLDAPParams->userAcquisitionQueryTemplate));
+        auto mapper = uassertStatusOK(
+            InternalToLDAPUserNameMapper::createNameMapper(globalLDAPParams->userToDNMapping));
+        auto runner = std::make_unique<LDAPRunnerImpl>(bindOptions, connectionOptions);
 
-    auto swQueryParameters = LDAPQueryConfig::createLDAPQueryConfigWithUserName(
-        globalLDAPParams->userAcquisitionQueryTemplate);
-    if (!swQueryParameters.isOK()) {
-        return swQueryParameters.getStatus();
-    }
+        // Perform smoke test of the connection parameters.
+        if (!globalLDAPParams->serverHosts.empty() && globalLDAPParams->smokeTestOnStartup) {
+            StatusWith<LDAPEntityCollection> swRes =
+                runner->runQuery(LDAPQuery::instantiateQuery(LDAPQueryConfig()).getValue());
 
-    auto swMapper =
-        InternalToLDAPUserNameMapper::createNameMapper(globalLDAPParams->userToDNMapping);
-    massertStatusOK(swMapper.getStatus());
-    auto runner = std::make_unique<LDAPRunnerImpl>(bindOptions, connectionOptions);
-
-    // Perform smoke test of the connection parameters.
-    if (!globalLDAPParams->serverHosts.empty() && globalLDAPParams->smokeTestOnStartup) {
-        StatusWith<LDAPEntityCollection> swRes =
-            runner->runQuery(LDAPQuery::instantiateQuery(LDAPQueryConfig()).getValue());
-
-        if (!swRes.isOK()) {
-            return Status(ErrorCodes::FailedToParse,
+            if (!swRes.isOK()) {
+                uasserted(ErrorCodes::FailedToParse,
                           str::stream() << "Can't connect to the specified LDAP servers, error: "
                                         << swRes.getStatus().reason());
+            }
         }
-    }
 
-
-    auto manager = std::make_unique<LDAPManagerImpl>(
-        std::move(runner), std::move(swQueryParameters.getValue()), std::move(swMapper.getValue()));
-
-
-    LDAPManager::set(getGlobalServiceContext(), std::move(manager));
-
-    return Status::OK();
-}
-}  // mongo
+        auto manager = std::make_unique<LDAPManagerImpl>(
+            std::move(runner), std::move(queryParameters), std::move(mapper));
+        LDAPManager::set(service, std::move(manager));
+    }};
+}  // namespace
+}  // namespace mongo

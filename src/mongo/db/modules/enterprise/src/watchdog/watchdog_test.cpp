@@ -8,10 +8,9 @@
 
 #include "watchdog.h"
 
-#include "mongo/base/init.h"
 #include "mongo/db/client.h"
 #include "mongo/db/service_context.h"
-#include "mongo/db/service_context_noop.h"
+#include "mongo/db/service_context_test_fixture.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/unittest/death_test.h"
 #include "mongo/unittest/temp_dir.h"
@@ -68,6 +67,8 @@ private:
     std::uint32_t _wait{0};
 };
 
+class PeriodicThreadTest : public ServiceContextTest {};
+
 // Tests:
 // 1. Make sure it runs at least N times
 // 2. Make sure it responds to stop after being paused
@@ -75,7 +76,7 @@ private:
 // 4. Make sure the period can be changed like from 1 minute -> 1 milli
 
 // Positive: Make sure periodic thread runs at least N times and stops correctly
-TEST(PeriodicThreadTest, Basic) {
+TEST_F(PeriodicThreadTest, Basic) {
 
     TestPeriodicThread testThread(Milliseconds(5));
 
@@ -97,7 +98,7 @@ TEST(PeriodicThreadTest, Basic) {
 }
 
 // Positive: Make sure it stops after being paused
-TEST(PeriodicThreadTest, PauseAndStop) {
+TEST_F(PeriodicThreadTest, PauseAndStop) {
 
     TestPeriodicThread testThread(Milliseconds(5));
     testThread.setSignalOnCount(5);
@@ -131,7 +132,7 @@ TEST(PeriodicThreadTest, PauseAndStop) {
 }
 
 // Positive: Make sure it can be paused and resumed
-TEST(PeriodicThreadTest, PauseAndResume) {
+TEST_F(PeriodicThreadTest, PauseAndResume) {
 
     TestPeriodicThread testThread(Milliseconds(5));
     testThread.setSignalOnCount(5);
@@ -212,8 +213,10 @@ private:
     std::uint32_t _wait{0};
 };
 
+class WatchdogCheckThreadTest : public ServiceContextTest {};
+
 // Positive: Make sure check thread runs at least N times and stops correctly
-TEST(WatchdogCheckThreadTest, Basic) {
+TEST_F(WatchdogCheckThreadTest, Basic) {
     auto counterCheck = stdx::make_unique<TestCounterCheck>();
     auto counterCheckPtr = counterCheck.get();
 
@@ -265,8 +268,10 @@ private:
 };
 
 
+class WatchdogMonitorThreadTest : public ServiceContextTest {};
+
 // Positive: Make sure monitor thread signals death if the check thread never starts
-TEST(WatchdogMonitorThreadTest, Basic) {
+TEST_F(WatchdogMonitorThreadTest, Basic) {
     ManualResetEvent deathEvent;
     WatchdogDeathCallback deathCallback = [&deathEvent]() {
         log() << "Death signalled";
@@ -311,7 +316,7 @@ private:
 };
 
 // Positive: Make sure monitor thread signals death if the thread does not make progress
-TEST(WatchdogMonitorThreadTest, SleepyHungCheck) {
+TEST_F(WatchdogMonitorThreadTest, SleepyHungCheck) {
     ManualResetEvent deathEvent;
     WatchdogDeathCallback deathCallback = [&deathEvent]() {
         log() << "Death signalled";
@@ -341,9 +346,10 @@ TEST(WatchdogMonitorThreadTest, SleepyHungCheck) {
     checkThread.shutdown();
 }
 
+class WatchdogMonitorTest : public ServiceContextTest {};
 
 // Positive: Make sure watchdog monitor signals death if a check is unresponsive
-TEST(WatchdogMonitorTest, SleepyHungCheck) {
+TEST_F(WatchdogMonitorTest, SleepyHungCheck) {
     ManualResetEvent deathEvent;
     WatchdogDeathCallback deathCallback = [&deathEvent]() {
         log() << "Death signalled";
@@ -380,7 +386,7 @@ DEATH_TEST(WatchdogMonitorTest, Death, "") {
 }
 
 // Positive: Make sure the monitor can be paused and resumed, and it does not trigger death
-TEST(WatchdogMonitorTest, PauseAndResume) {
+TEST_F(WatchdogMonitorTest, PauseAndResume) {
 
     WatchdogDeathCallback deathCallback = []() {
         log() << "Death signalled, it should not have been";
@@ -434,25 +440,16 @@ TEST(WatchdogMonitorTest, PauseAndResume) {
     ASSERT_EQ(lastCounter, counterCheckPtr->getCounter());
 }
 
+class DirectoryCheckTest : public ServiceContextTest {};
+
 // Positive: Do a sanity check that directory check passes
-TEST(DirectoryCheckTest, Basic) {
+TEST_F(DirectoryCheckTest, Basic) {
     unittest::TempDir tempdir("watchdog_testpath");
 
     DirectoryCheck check(tempdir.path());
 
-    Client* client = &cc();
-    auto opCtx = client->makeOperationContext();
+    auto opCtx = makeOperationContext();
     check.run(opCtx.get());
-}
-
-
-MONGO_INITIALIZER_WITH_PREREQUISITES(WatchdogTestInit, ("ThreadNameInitializer"))
-(InitializerContext* context) {
-    setGlobalServiceContext(stdx::make_unique<ServiceContextNoop>());
-
-    Client::initThreadIfNotAlready("UnitTest");
-
-    return Status::OK();
 }
 
 }  // namespace mongo

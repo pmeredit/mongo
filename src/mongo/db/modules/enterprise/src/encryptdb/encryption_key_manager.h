@@ -11,6 +11,7 @@
 #include "encryption_options.h"
 #include "mongo/base/disallow_copying.h"
 #include "mongo/db/namespace_string.h"
+#include "mongo/db/service_context.h"
 #include "mongo/db/storage/encryption_hooks.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_customization_hooks.h"
 #include "symmetric_crypto.h"
@@ -174,11 +175,11 @@ private:
 };
 
 /**
- * Initialize the global encryption key manager.
+ * Initialize the encryption key manager attached to the given ServiceContext.
  *
- * Note: Not idempotent. It will overwrite the existing global encryption key manager.
+ * Note: Not idempotent. It will overwrite the existing encryption key manager.
  */
-void InitializeGlobalEncryptionKeyManager();
+void initializeEncryptionKeyManager(ServiceContext* service);
 
 class EncryptionWiredTigerCustomizationHooks : public WiredTigerCustomizationHooks {
     MONGO_DISALLOW_COPYING(EncryptionWiredTigerCustomizationHooks);

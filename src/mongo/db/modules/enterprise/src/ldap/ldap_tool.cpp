@@ -8,8 +8,7 @@
 #include "mongo/base/initializer.h"
 #include "mongo/db/auth/role_name.h"
 #include "mongo/db/auth/user_name.h"
-#include "mongo/db/service_context_noop.h"
-#include "mongo/db/service_context_registrar.h"
+#include "mongo/db/service_context.h"
 #include "mongo/logger/logger.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/util/invariant.h"
@@ -29,10 +28,6 @@
 namespace mongo {
 
 namespace {
-
-ServiceContextRegistrar serviceContextCreator([]() {
-    return stdx::make_unique<ServiceContextNoop>();
-});
 
 /**
  * Tracks the assertion failure state for ldap authorization and authentication

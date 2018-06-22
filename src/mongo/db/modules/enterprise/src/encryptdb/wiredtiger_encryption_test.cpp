@@ -26,7 +26,7 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(CreateEncryptionKeyManager,
                                      ("CreateKeyEntropySource",
                                       "SecureAllocator",
                                       "SetWiredTigerCustomizationHooks",
-                                      "SetEncryptionHooks"))
+                                      "ServiceContext"))
 (InitializerContext* context) {
     // Setup the custom hooks required to enable encryption
     auto configHooks = stdx::make_unique<WiredTigerCustomizationHooks>();

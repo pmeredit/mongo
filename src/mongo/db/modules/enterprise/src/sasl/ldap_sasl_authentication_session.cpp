@@ -155,7 +155,7 @@ struct PLAINServerFactoryProxy : ServerFactoryBase {
     using policy_type = LDAPPLAINServerFactory::policy_type;
     static constexpr bool isInternal = LDAPPLAINServerFactory::isInternal;
 
-    static bool useCyrus() {
+    static bool useCyrus(ServiceContext* service = getGlobalServiceContext()) {
         // This proxy assumes the targets have matching policy/mechanism types.
         static_assert(std::is_same<LDAPPLAINServerFactory::policy_type,
                                    CyrusPlainServerFactory::policy_type>::value,
@@ -166,7 +166,7 @@ struct PLAINServerFactoryProxy : ServerFactoryBase {
             return true;
         }
 
-        const auto* ldapManager = LDAPManager::get(getGlobalServiceContext());
+        const auto* ldapManager = LDAPManager::get(service);
         return ldapManager->getHosts().empty();
     }
 
@@ -203,22 +203,20 @@ struct PLAINServerFactoryProxy : ServerFactoryBase {
     }
 };
 
-MONGO_INITIALIZER_WITH_PREREQUISITES(PLAINServerMechanismProxy,
-                                     ("CreateSASLServerMechanismRegistry", "SetLDAPManagerImpl"))
-(::mongo::InitializerContext* context) {
-    auto& registry = SASLServerMechanismRegistry::get(getGlobalServiceContext());
-    if (!PLAINServerFactoryProxy::useCyrus()) {
-        // Supported configuration will later be evaluated at runtime.
-        // This catches incorrect configurations at startup.
-        Status status = supportedBindConfiguration();
-        if (!status.isOK()) {
-            return status;
+namespace {
+
+ServiceContext::ConstructorActionRegisterer ldapRegisterer{
+    "PLAINServerMechanismProxy",
+    {"CreateSASLServerMechanismRegistry", "SetLDAPManagerImpl"},
+    [](ServiceContext* service) {
+        auto& registry = SASLServerMechanismRegistry::get(service);
+        if (!PLAINServerFactoryProxy::useCyrus(service)) {
+            // Supported configuration will later be evaluated at runtime.
+            // This catches incorrect configurations at startup.
+            uassertStatusOK(supportedBindConfiguration());
         }
-    }
-    registry.registerFactory<PLAINServerFactoryProxy>();
+        registry.registerFactory<PLAINServerFactoryProxy>();
+    }};
 
-    return Status::OK();
-}
-
-
+}  // namespace
 }  // namespace mongo

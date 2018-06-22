@@ -38,7 +38,6 @@
 #include "mongo/base/init.h"
 #include "mongo/db/catalog/collection_options.h"
 #include "mongo/db/service_context.h"
-#include "mongo/db/service_context_d.h"
 #include "mongo/db/storage/kv/kv_storage_engine.h"
 #include "mongo/db/storage/storage_engine_init.h"
 #include "mongo/db/storage/storage_engine_lock_file.h"
@@ -119,20 +118,16 @@ public:
     }
 };
 
+ServiceContext::ConstructorActionRegisterer registerInMemoryEngineInit{
+    "InMemoryEngineInit",
+    {"SetWiredTigerCustomizationHooks"},
+    [](ServiceContext* service) {
+        registerStorageEngine(service, std::make_unique<InMemoryFactory>());
+        if (storageGlobalParams.engine == "inMemory") {
+            auto optionManager =
+                stdx::make_unique<InMemoryConfigManager>(storageGlobalParams.dbpath);
+            WiredTigerCustomizationHooks::set(service, std::move(optionManager));
+        }
+    }};
 }  // namespace
-
-// XXX: The customization hook mechanism only supports a single customizer. That is enough
-// for now, since the two enterprise modules that configure customization hooks (encryption
-// and in-memory) are mutually exclusive.
-MONGO_INITIALIZER_WITH_PREREQUISITES(InMemoryEngineInit,
-                                     ("ServiceContext", "SetWiredTigerCustomizationHooks"))
-(InitializerContext* context) {
-    registerStorageEngine(getGlobalServiceContext(), std::make_unique<InMemoryFactory>());
-    if (storageGlobalParams.engine == "inMemory") {
-        auto optionManager = stdx::make_unique<InMemoryConfigManager>(storageGlobalParams.dbpath);
-        WiredTigerCustomizationHooks::set(getGlobalServiceContext(), std::move(optionManager));
-    }
-    return Status::OK();
-}
-
 }  // namespace mongo

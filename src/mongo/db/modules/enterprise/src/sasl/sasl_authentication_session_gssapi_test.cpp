@@ -20,8 +20,7 @@
 #include "mongo/db/auth/authz_session_external_state_mock.h"
 #include "mongo/db/auth/sasl_mechanism_registry.h"
 #include "mongo/db/auth/sasl_options.h"
-#include "mongo/db/service_context_noop.h"
-#include "mongo/db/service_context_registrar.h"
+#include "mongo/db/service_context_test_fixture.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
@@ -124,13 +123,15 @@ int main(int argc, char** argv, char** envp) {
 
     runGlobalInitializersOrDie(argc, argv, envp);
 
-    SASLServerMechanismRegistry& registry =
-        SASLServerMechanismRegistry::get(getGlobalServiceContext());
-    auto swMechanism = registry.getServerMechanism("GSSAPI", "$external");
+    {
+        auto service = ServiceContext::make();
+        SASLServerMechanismRegistry& registry = SASLServerMechanismRegistry::get(service.get());
+        auto swMechanism = registry.getServerMechanism("GSSAPI", "$external");
 
-    if (!swMechanism.isOK()) {
-        log() << "Failed to smoke server mechanism from registry.  " << swMechanism.getStatus();
-        return EXIT_FAILURE;
+        if (!swMechanism.isOK()) {
+            log() << "Failed to smoke server mechanism from registry.  " << swMechanism.getStatus();
+            return EXIT_FAILURE;
+        }
     }
 
     try {
@@ -146,12 +147,10 @@ int main(int argc, char** argv, char** envp) {
 namespace mongo {
 namespace {
 
-class SaslConversationGssapi : public unittest::Test {
+class SaslConversationGssapi : public ServiceContextTest {
 public:
     SaslConversationGssapi();
 
-    ServiceContextNoop serviceContext;
-    ServiceContext::UniqueClient opClient;
     ServiceContext::UniqueOperationContext opCtx;
     AuthorizationManager* authManager;
     std::unique_ptr<AuthorizationSession> authSession;
@@ -164,14 +163,12 @@ protected:
 };
 
 SaslConversationGssapi::SaslConversationGssapi()
-    : opClient(serviceContext.makeClient("gssapiTest")),
-      opCtx(getGlobalServiceContext()->makeOperationContext(opClient.get())),
-      mechanism("GSSAPI") {
+    : opCtx(makeOperationContext()), mechanism("GSSAPI") {
 
     auto tmpAuthManager = AuthorizationManager::create();
     authSession = tmpAuthManager->makeAuthorizationSession();
     authManager = tmpAuthManager.get();
-    AuthorizationManager::set(&serviceContext, std::move(tmpAuthManager));
+    AuthorizationManager::set(getServiceContext(), std::move(tmpAuthManager));
 
     client.reset(SaslClientSession::create(mechanism));
 

@@ -16,7 +16,6 @@
 #include "mongo/db/server_options.h"
 #include "mongo/db/server_parameters.h"
 #include "mongo/db/service_context.h"
-#include "mongo/db/service_context_noop.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/unittest/unittest.h"

@@ -16,9 +16,6 @@
 #include "mongo/base/initializer.h"
 #include "mongo/base/secure_allocator.h"
 #include "mongo/base/status_with.h"
-#include "mongo/db/service_context.h"
-#include "mongo/db/service_context_noop.h"
-#include "mongo/db/service_context_registrar.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/util/exit_code.h"
 #include "mongo/util/net/ssl_options.h"
@@ -31,14 +28,6 @@
 #include "symmetric_key.h"
 
 namespace mongo {
-
-namespace {
-
-ServiceContextRegistrar serviceContextCreator([]() {
-    return stdx::make_unique<ServiceContextNoop>();
-});
-
-}  // namespace
 
 int decryptToolMain(int argc, char* argv[], char** envp) {
     setupSignalHandlers();

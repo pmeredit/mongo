@@ -201,7 +201,7 @@ int destroyEncryptor(WT_ENCRYPTOR* encryptor, WT_SESSION* session) {
                     // any more since the process is in shutdown. It may be used during feature
                     // compatibility version downgrade so make sure a valid global encryption
                     // manager is installed.
-                    InitializeGlobalEncryptionKeyManager();
+                    initializeEncryptionKeyManager(getGlobalServiceContext());
                 }
                 delete myEncryptor->symmetricKey;
             }

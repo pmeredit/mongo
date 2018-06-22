@@ -18,50 +18,32 @@
 #include "symmetric_crypto_smoke.h"
 
 namespace mongo {
+namespace {
 // XXX: The customization hook mechanism only supports a single customizer. That is enough
 // for now, since the two enterprise modules that configure customization hooks (encryption
 // and in-memory) are mutually exclusive.
-MONGO_INITIALIZER_WITH_PREREQUISITES(CreateEncryptionWiredTigerCustomizationHooks,
-                                     ("SetWiredTigerCustomizationHooks",
-                                      "SetWiredTigerExtensions",
-                                      "WiredTigerEngineInit"))
-(InitializerContext* context) {
-    // Reset the WiredTigerCustomizationHooks pointer
-    if (encryptionGlobalParams.enableEncryption) {
+ServiceContext::ConstructorActionRegisterer registerEncryptionWiredTigerCustomizationHooks{
+    "CreateEncryptionWiredTigerCustomizationHooks",
+    {"SetWiredTigerCustomizationHooks",
+     "WiredTigerEngineInit",
+     "SecureAllocator",
+     "CreateKeyEntropySource",
+     "SSLManager"},
+    [](ServiceContext* service) {
+        if (!encryptionGlobalParams.enableEncryption) {
+            return;
+        }
         auto configHooks =
             stdx::make_unique<EncryptionWiredTigerCustomizationHooks>(&encryptionGlobalParams);
-        WiredTigerCustomizationHooks::set(getGlobalServiceContext(), std::move(configHooks));
-    }
+        WiredTigerCustomizationHooks::set(service, std::move(configHooks));
+        uassertStatusOKWithContext(
+            crypto::smokeTestAESCipherMode(encryptionGlobalParams.encryptionCipherMode),
+            str::stream() << "Validation of cryptographic functions for "
+                          << encryptionGlobalParams.encryptionCipherMode
+                          << " failed");
 
-    return Status::OK();
-}
-
-MONGO_INITIALIZER_WITH_PREREQUISITES(CreateEncryptionKeyManager,
-                                     ("CreateKeyEntropySource",
-                                      "SecureAllocator",
-                                      "SetEncryptionHooks",
-                                      "SetWiredTigerCustomizationHooks",
-                                      "SetWiredTigerExtensions",
-                                      "SSLManager",
-                                      "WiredTigerEngineInit"))
-(InitializerContext* context) {
-    // Reset the EncryptionHooks pointer to be the EncryptionKeyManager
-    if (encryptionGlobalParams.enableEncryption) {
-        // Verify that encryption algorithms are functioning
-        Status implementationStatus =
-            crypto::smokeTestAESCipherMode(encryptionGlobalParams.encryptionCipherMode);
-        if (!implementationStatus.isOK()) {
-            return implementationStatus.withContext(str::stream()
-                                                    << "Validation of cryptographic functions for "
-                                                    << encryptionGlobalParams.encryptionCipherMode
-                                                    << " failed");
-        }
-
-        InitializeGlobalEncryptionKeyManager();
-        WiredTigerExtensions::get(getGlobalServiceContext())
-            ->addExtension(mongo::kEncryptionEntrypointConfig);
-    }
-
-    return Status::OK();
-}
-}
+        initializeEncryptionKeyManager(service);
+        WiredTigerExtensions::get(service)->addExtension(mongo::kEncryptionEntrypointConfig);
+    }};
+}  // namespace
+}  // namespace mongo

@@ -559,10 +559,10 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) {
     return Status::OK();
 }
 
-void InitializeGlobalEncryptionKeyManager() {
+void initializeEncryptionKeyManager(ServiceContext* service) {
     auto keyManager = stdx::make_unique<EncryptionKeyManager>(
         storageGlobalParams.dbpath, &encryptionGlobalParams, &sslGlobalParams);
-    EncryptionHooks::set(getGlobalServiceContext(), std::move(keyManager));
+    EncryptionHooks::set(service, std::move(keyManager));
 }
 
 EncryptionWiredTigerCustomizationHooks::EncryptionWiredTigerCustomizationHooks(
