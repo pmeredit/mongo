@@ -116,7 +116,7 @@ int customize(WT_ENCRYPTOR* encryptor,
             }
             *(myEncryptor.get()) = *origEncryptor;
             myEncryptor.get()->symmetricKey = swSymmetricKey.getValue().release();
-        } catch (const ExceptionForCat<ErrorCategory::NetworkError>& e) {
+        } catch (const ExceptionForCat<ErrorCategory::NetworkError>&) {
             error()
                 << "Socket/network exception in WT_ENCRYPTOR::customize on getKey to KMIP server:"
                 << exceptionToStatus();
