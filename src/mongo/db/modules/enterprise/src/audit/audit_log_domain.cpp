@@ -40,18 +40,6 @@ AuditLogDomain* getGlobalAuditLogDomain() {
 
 namespace {
 
-class AuditEventTextEncoder : public logger::Encoder<AuditEvent> {
-public:
-    ~AuditEventTextEncoder() final {}
-
-private:
-    virtual std::ostream& encode(const AuditEvent& event, std::ostream& os) {
-        BSONObj eventAsBson(event.toBSON());
-        std::string toWrite = eventAsBson.jsonString() + '\n';
-        return os.write(toWrite.c_str(), toWrite.length());
-    }
-};
-
 class AuditEventSyslogEncoder : public logger::Encoder<AuditEvent> {
 public:
     ~AuditEventSyslogEncoder() final {}
@@ -64,16 +52,61 @@ private:
     }
 };
 
-class AuditEventBsonEncoder : public logger::Encoder<AuditEvent> {
+class AuditEventTextEncoder : public logger::Encoder<AuditEvent> {
 public:
-    ~AuditEventBsonEncoder() final {}
+    ~AuditEventTextEncoder() final {}
 
 private:
     virtual std::ostream& encode(const AuditEvent& event, std::ostream& os) {
-        BSONObj toWrite(event.toBSON());
-        return os.write(toWrite.objdata(), toWrite.objsize());
+        BSONObj eventAsBson(event.toBSON());
+        std::string toWrite = eventAsBson.jsonString() + '\n';
+        return os.write(toWrite.c_str(), toWrite.length());
     }
 };
+
+
+class AuditEventJsonEncoder {
+public:
+    static std::string encode(const AuditEvent& event) {
+        BSONObj eventAsBson(event.toBSON());
+        return eventAsBson.jsonString() + '\n';
+    }
+};
+
+class AuditEventBsonEncoder {
+public:
+    static std::string encode(const AuditEvent& event) {
+        BSONObj toWrite(event.toBSON());
+        return toWrite.objdata();
+    }
+};
+
+/**
+ * Appender for writing to instances of RotatableFileWriter for audit events.
+ */
+template <typename Encoder>
+class RotatableAuditFileAppender : public logger::Appender<AuditEvent> {
+    MONGO_DISALLOW_COPYING(RotatableAuditFileAppender);
+
+public:
+    RotatableAuditFileAppender(logger::RotatableFileWriter* writer) : _writer(writer) {}
+
+    ~RotatableAuditFileAppender() final {}
+
+    Status append(const Event& event) final {
+        std::string toWrite = Encoder::encode(event);
+        logger::RotatableFileWriter::Use useWriter(_writer.get());
+        Status status = useWriter.status();
+        if (!status.isOK())
+            return status;
+        useWriter.stream().write(toWrite.c_str(), toWrite.length()).flush();
+        return useWriter.status();
+    }
+
+private:
+    std::unique_ptr<logger::RotatableFileWriter> _writer;
+};
+
 
 MONGO_INITIALIZER_WITH_PREREQUISITES(AuditDomain, ("InitializeGlobalAuditManager"))
 (InitializerContext*) {
@@ -122,18 +155,16 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(AuditDomain, ("InitializeGlobalAuditManager
                 return statusOrWriter.getStatus();
             }
 
-            std::unique_ptr<logger::Encoder<AuditEvent>> encoder;
             if (getGlobalAuditManager()->auditFormat == AuditFormatJsonFile) {
-                encoder = std::make_unique<AuditEventTextEncoder>();
+                getGlobalAuditLogDomain()->attachAppender(
+                    std::make_unique<RotatableAuditFileAppender<AuditEventJsonEncoder>>(writer));
             } else if (getGlobalAuditManager()->auditFormat == AuditFormatBsonFile) {
-                encoder = std::make_unique<AuditEventBsonEncoder>();
+                getGlobalAuditLogDomain()->attachAppender(
+                    std::make_unique<RotatableAuditFileAppender<AuditEventBsonEncoder>>(writer));
             } else {
                 return Status(ErrorCodes::InternalError, "invalid format");
             }
 
-            getGlobalAuditLogDomain()->attachAppender(
-                std::make_unique<logger::RotatableFileAppender<AuditEvent>>(std::move(encoder),
-                                                                            writer));
             break;
         }
         default:
