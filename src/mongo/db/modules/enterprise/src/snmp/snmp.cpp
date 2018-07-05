@@ -217,8 +217,12 @@ public:
             v.push_back(sscb);
         }
 
-        v.push_back(new ServerStatusCallback(
-            "memoryMapped", "1,4,3", ServerStatusClient::METRICS, "mem.mapped", VT_INT32));
+        {
+            ServerStatusCallback* sscb = new ServerStatusCallback(
+                "memoryMapped", "1,4,3", ServerStatusClient::METRICS, "mem.mapped", VT_INT32);
+            sscb->_journalOnly = true;
+            v.push_back(sscb);
+        }
 
         {
             ServerStatusCallback* sscb = new ServerStatusCallback("memoryMappedWithJournal",
@@ -622,26 +626,42 @@ public:
                                              ServerStatusClient::METRICS,
                                              "metrics.repl.network.readersCreated",
                                              VT_CNT64));
-        v.push_back(new ServerStatusCallback("metricsReplPreloadDocsNum",
-                                             "1,15,6,4,1,1",
-                                             ServerStatusClient::METRICS,
-                                             "metrics.repl.preload.docs.num",
-                                             VT_CNT64));
-        v.push_back(new ServerStatusCallback("metricsReplPreloadDocsTotalMillis",
-                                             "1,15,6,4,1,2",
-                                             ServerStatusClient::METRICS,
-                                             "metrics.repl.preload.docs.totalMillis",
-                                             VT_CNT64));
-        v.push_back(new ServerStatusCallback("metricsReplPreloadIndexesNum",
-                                             "1,15,6,4,2,1",
-                                             ServerStatusClient::METRICS,
-                                             "metrics.repl.preload.indexes.num",
-                                             VT_CNT64));
-        v.push_back(new ServerStatusCallback("metricsReplPreloadIndexesTotalMillis",
-                                             "1,15,6,4,2,2",
-                                             ServerStatusClient::METRICS,
-                                             "metrics.repl.preload.indexes.totalMillis",
-                                             VT_CNT64));
+        {
+            auto sscb = new ServerStatusCallback("metricsReplPreloadDocsNum",
+                                                 "1,15,6,4,1,1",
+                                                 ServerStatusClient::METRICS,
+                                                 "metrics.repl.preload.docs.num",
+                                                 VT_CNT64);
+            sscb->_journalOnly = true;
+            v.push_back(sscb);
+        }
+        {
+            auto sscb = new ServerStatusCallback("metricsReplPreloadDocsTotalMillis",
+                                                 "1,15,6,4,1,2",
+                                                 ServerStatusClient::METRICS,
+                                                 "metrics.repl.preload.docs.totalMillis",
+                                                 VT_CNT64);
+            sscb->_journalOnly = true;
+            v.push_back(sscb);
+        }
+        {
+            auto sscb = new ServerStatusCallback("metricsReplPreloadIndexesNum",
+                                                 "1,15,6,4,2,1",
+                                                 ServerStatusClient::METRICS,
+                                                 "metrics.repl.preload.indexes.num",
+                                                 VT_CNT64);
+            sscb->_journalOnly = true;
+            v.push_back(sscb);
+        }
+        {
+            auto sscb = new ServerStatusCallback("metricsReplPreloadIndexesTotalMillis",
+                                                 "1,15,6,4,2,2",
+                                                 ServerStatusClient::METRICS,
+                                                 "metrics.repl.preload.indexes.totalMillis",
+                                                 VT_CNT64);
+            sscb->_journalOnly = true;
+            v.push_back(sscb);
+        }
         v.push_back(new ServerStatusCallback("metricsTtlDeletedDocuments",
                                              "1,15,7,1",
                                              ServerStatusClient::METRICS,
