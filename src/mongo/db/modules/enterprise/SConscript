@@ -2,6 +2,7 @@
 
 Import("env has_option")
 Import("get_option")
+Import("http_client")
 
 import libdeps
 
@@ -23,13 +24,8 @@ if not conf.CheckLibWithHeader(
     env.ConfError("Could not find <sasl/sasl.h> and sasl library, required for "
         "enterprise build.")
 
-if not env.TargetOSIs("windows") and not conf.CheckLibWithHeader(
-    "curl",
-    ["curl/curl.h"], "C",
-    "curl_global_init(0);",
-    autoadd=False):
-    env.ConfError("Could not find <curl/curl.h> and curl lib, required for "
-        "enterprise build")
+if http_client is not "on":
+    env.ConfError("Enterprise build requires http client support")
 
 if not env.TargetOSIs("windows"):
     if not conf.CheckLibWithHeader(

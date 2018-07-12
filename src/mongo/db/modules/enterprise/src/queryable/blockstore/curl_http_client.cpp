@@ -22,24 +22,11 @@
 namespace mongo {
 namespace queryable {
 
-class CurlLibraryManager {
-public:
-    ~CurlLibraryManager() {
-        if (_initialized.load()) {
-            curl_global_cleanup();
-        }
-    }
-
-    // initializes curl, idempotent
-    void initialize() {
-        if (_initialized.compareAndSwap(false, true) == false) {
-            curl_global_init(CURL_GLOBAL_ALL & ~CURL_GLOBAL_SSL);
-        }
-    }
-
-private:
-    AtomicWord<bool> _initialized;
-};
+MONGO_INITIALIZER_WITH_PREREQUISITES(EnterpriseHttpClientCurl, ("HttpClientCurl"))
+(InitializerContext*) {
+    // Register this initializer purely to verify that the curl global initializer ran
+    return Status::OK();
+}
 
 namespace {
 size_t WriteMemoryCallback(void* ptr, size_t size, size_t nmemb, void* data) {
@@ -56,12 +43,9 @@ size_t WriteMemoryCallback(void* ptr, size_t size, size_t nmemb, void* data) {
 
     return realsize;
 }
-
-CurlLibraryManager curlLibraryManager;
 }  // namespace
 
 std::unique_ptr<HttpClientInterface> createHttpClient(std::string apiUri, OID snapshotId) {
-    curlLibraryManager.initialize();
     return stdx::make_unique<CurlHttpClient>(apiUri, snapshotId);
 }
 

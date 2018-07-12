@@ -14,6 +14,9 @@ env.Library(
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/bson/util/bson_extract',
     ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/util/net/http_client',
+    ],
     SYSLIBDEPS=[
         'wininet' if env.TargetOSIs('windows') else 'curl',
     ],
