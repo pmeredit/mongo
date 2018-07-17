@@ -7,11 +7,11 @@
 *
 *    This program is distributed in the hope that it will be useful,
 *    but WITHOUT ANY WARRANTY; without even the implied warranty of
-*    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+*    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 *    GNU Affero General Public License for more details.
 *
 *    You should have received a copy of the GNU Affero General Public License
-*    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*    along with this program. If not, see <http://www.gnu.org/licenses/>.
 *
 *    As a special exception, the copyright holders give permission to link the
 *    code of portions of this program with the OpenSSL library under certain
@@ -43,7 +43,10 @@ using boost::intrusive_ptr;
 
 DocumentSourceLimit::DocumentSourceLimit(const intrusive_ptr<ExpressionContext>& pExpCtx,
                                          long long limit)
-    : DocumentSource(pExpCtx), _limit(limit) {}
+    : DocumentSource(pExpCtx), _limit(limit) {
+
+
+}
 
 REGISTER_DOCUMENT_SOURCE(limit,
                          LiteParsedDocumentSourceDefault::parse,
