@@ -11,6 +11,7 @@
 #include "mongo/base/init.h"
 #include "mongo/base/string_data.h"
 #include "mongo/db/operation_context_noop.h"
+#include "mongo/db/service_context_test_fixture.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_kv_engine.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_recovery_unit.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_session_cache.h"
@@ -22,21 +23,17 @@
 
 namespace mongo {
 namespace {
-MONGO_INITIALIZER_WITH_PREREQUISITES(CreateEncryptionKeyManager,
-                                     ("CreateKeyEntropySource",
-                                      "SecureAllocator",
-                                      "SetWiredTigerCustomizationHooks",
-                                      "ServiceContext"))
-(InitializerContext* context) {
-    // Setup the custom hooks required to enable encryption
-    auto configHooks = stdx::make_unique<WiredTigerCustomizationHooks>();
-    WiredTigerCustomizationHooks::set(getGlobalServiceContext(), std::move(configHooks));
-    auto keyManager = stdx::make_unique<EncryptionKeyManagerNoop>();
-    EncryptionHooks::set(getGlobalServiceContext(), std::move(keyManager));
-    encryptionGlobalParams.enableEncryption = true;
-
-    return Status::OK();
-}
+ServiceContext::ConstructorActionRegisterer createEncryptionKeyManager{
+    "CreateEncryptionKeyManager",
+    {"CreateKeyEntropySource", "SecureAllocator", "SetWiredTigerCustomizationHooks"},
+    [](ServiceContext* service) {
+        // Setup the custom hooks required to enable encryption
+        auto configHooks = stdx::make_unique<WiredTigerCustomizationHooks>();
+        WiredTigerCustomizationHooks::set(service, std::move(configHooks));
+        auto keyManager = stdx::make_unique<EncryptionKeyManagerNoop>();
+        EncryptionHooks::set(service, std::move(keyManager));
+        encryptionGlobalParams.enableEncryption = true;
+    }};
 
 class WiredTigerConnection {
 public:
@@ -167,7 +164,7 @@ private:
     WiredTigerOplogManager _oplogManager;
 };
 
-TEST(WiredTigerEncryptionTest, ReadWriteDataCBC) {
+TEST_F(ServiceContextTest, ReadWriteDataCBC) {
     unittest::TempDir dbPath("cbc_wt_test");
     {
         WiredTigerUtilHarnessHelper helper(dbPath.path(), crypto::aes256CBCName);
@@ -181,7 +178,7 @@ TEST(WiredTigerEncryptionTest, ReadWriteDataCBC) {
 
 
 #if !defined(DISABLE_GCM_TESTVECTORS)
-TEST(WiredTigerEncryptionTest, ReadWriteDataGCM) {
+TEST_F(ServiceContextTest, ReadWriteDataGCM) {
     if (crypto::getSupportedSymmetricAlgorithms().count(crypto::aes256GCMName) == 0) {
         return;
     }

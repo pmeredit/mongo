@@ -148,12 +148,10 @@ public:
     }
 };
 
+
+ServiceContext::ConstructorActionRegisterer registerQueryableWtEngine{
+    "QueryableWtEngineInit", [](ServiceContext* service) {
+        registerStorageEngine(service, std::make_unique<QueryableWtFactory>());
+    }};
 }  // namespace
-
-MONGO_INITIALIZER_WITH_PREREQUISITES(QueryableWtEngineInit, ("ServiceContext"))
-(InitializerContext* context) {
-    registerStorageEngine(getGlobalServiceContext(), std::make_unique<QueryableWtFactory>());
-    return Status::OK();
-}
-
 }  // namespace mongo
