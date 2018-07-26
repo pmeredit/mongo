@@ -20,13 +20,10 @@
 #include "mongo/util/time_support.h"
 
 namespace mongo {
-namespace queryable {
+// Transitional API until we move this onto HTTPClient
+Status curlLibraryManager_initialize();
 
-MONGO_INITIALIZER_WITH_PREREQUISITES(EnterpriseHttpClientCurl, ("HttpClientCurl"))
-(InitializerContext*) {
-    // Register this initializer purely to verify that the curl global initializer ran
-    return Status::OK();
-}
+namespace queryable {
 
 namespace {
 size_t WriteMemoryCallback(void* ptr, size_t size, size_t nmemb, void* data) {
@@ -46,6 +43,7 @@ size_t WriteMemoryCallback(void* ptr, size_t size, size_t nmemb, void* data) {
 }  // namespace
 
 std::unique_ptr<HttpClientInterface> createHttpClient(std::string apiUri, OID snapshotId) {
+    uassertStatusOK(curlLibraryManager_initialize());
     return stdx::make_unique<CurlHttpClient>(apiUri, snapshotId);
 }
 
