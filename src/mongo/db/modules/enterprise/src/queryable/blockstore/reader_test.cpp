@@ -12,7 +12,6 @@
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/mongoutils/str.h"
 
-#include "http_client.h"
 #include "reader.h"
 
 namespace mongo {
@@ -21,26 +20,60 @@ namespace {
 
 class ReaderTest : public unittest::Test {};
 
-class MockedHttpClient final : public HttpClientInterface {
+class MockedHttpClient final : public HttpClient {
 public:
-    StatusWith<std::size_t> read(std::string path,
-                                 DataRange buf,
-                                 std::size_t offset,
-                                 std::size_t count) const override {
-        std::string data(count, 0);
-        for (std::size_t idx = 0; idx < count; ++idx) {
-            std::size_t bytePosition = offset + idx;
-            data[idx] = bytePosition % 256;
-        }
-
-        buf.write(ConstDataRange(data.c_str(), data.length())).transitional_ignore();
-
-        return count;
-    }
-
-    StatusWith<DataBuilder> listDirectory() const override {
+    DataBuilder post(StringData, ConstDataRange) const final {
+        invariant(false);
         return DataBuilder();
     }
+
+    DataBuilder get(StringData url) const final {
+        // This would be better with a proper URI parser,
+        // but we're tightly coupled to blockstore http,
+        // so just pull out the values the hard way.
+        const auto urlString = url.toString();
+        const char* offsetP = strstr(urlString.c_str(), "&offset=");
+        const char* lengthP = strstr(urlString.c_str(), "&length=");
+        invariant(offsetP && lengthP);
+        auto offset = std::atoi(offsetP + strlen("&offset="));
+        auto length = std::atoi(lengthP + strlen("&length="));
+
+        // Block of 256 characters suitable for writing.
+        std::array<char, 256> buffer;
+        for (std::size_t i = 0; i < buffer.size(); ++i) {
+            buffer[i] = static_cast<char>(i);
+        }
+
+        DataBuilder builder;
+
+        // Align up to block boundary first.
+        if (offset % 256) {
+            const auto rel = offset % 256;
+            const auto len = std::min<std::size_t>(length, 256 - rel);
+            uassertStatusOK(builder.writeAndAdvance(ConstDataRange(buffer.data() + rel, len)));
+            length -= len;
+        }
+
+        // Push whole blocks of 256 bytes.
+        if (length >= 256) {
+            ConstDataRange block(buffer.data(), buffer.size());
+            while (length >= 256) {
+                uassertStatusOK(builder.writeAndAdvance(block));
+                length -= 256;
+            }
+        }
+
+        if (length > 0) {
+            ConstDataRange remain(buffer.data(), length);
+            uassertStatusOK(builder.writeAndAdvance(remain));
+        }
+
+        return builder;
+    }
+
+    // Ignore client config.
+    void allowInsecureHTTP(bool) final {}
+    void setHeaders(const std::vector<std::string>&) final {}
 };
 
 TEST_F(ReaderTest, TestReadInto) {
@@ -51,7 +84,8 @@ TEST_F(ReaderTest, TestReadInto) {
     // 3) is the same size as the file
     // 4) is larger than the file
     for (auto blockSize : std::vector<std::size_t>{4 * 1000, 10 * 1000, 44 * 1000, 50 * 1000}) {
-        Reader reader(stdx::make_unique<MockedHttpClient>(), "file", fileSize, blockSize);
+        BlockstoreHTTP blockstore("", mongo::OID(), std::make_unique<MockedHttpClient>());
+        Reader reader(std::move(blockstore), "file", fileSize, blockSize);
         std::ostringstream buf;
         auto status = reader.readInto(&buf);
         ASSERT_EQ(Status::OK(), status);
@@ -68,7 +102,8 @@ TEST_F(ReaderTest, TestReadBlockInto) {
     const std::size_t blockSize = 1000;
     std::array<char, blockSize> data;
 
-    Reader reader(stdx::make_unique<MockedHttpClient>(), "file", fileSize, blockSize);
+    BlockstoreHTTP blockstore("", mongo::OID(), std::make_unique<MockedHttpClient>());
+    Reader reader(std::move(blockstore), "file", fileSize, blockSize);
     // For each of the first nine full blocks:
     for (std::size_t blockIdx = 0; blockIdx < fileSize / blockSize; ++blockIdx) {
         DataRange buf(data.data(), data.data() + blockSize);
@@ -108,7 +143,8 @@ TEST_F(ReaderTest, TestRead) {
     const std::size_t blockSize = 1000;
     std::array<char, fileSize> data;
 
-    Reader reader(stdx::make_unique<MockedHttpClient>(), "file", fileSize, blockSize);
+    BlockstoreHTTP blockstore("", mongo::OID(), std::make_unique<MockedHttpClient>());
+    Reader reader(std::move(blockstore), "file", fileSize, blockSize);
     for (auto bytesToRead : std::vector<std::size_t>{400, 1000, 1400, 2000, 2700}) {
         for (auto fileOffset : std::vector<std::size_t>{0, 400, 1000, 1400}) {
             DataRange buf(data.data(), data.data() + fileSize);

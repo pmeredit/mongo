@@ -14,7 +14,6 @@
 #include "mongo/unittest/integration_test.h"
 #include "mongo/unittest/unittest.h"
 
-#include "../blockstore/http_client.h"
 #include "../blockstore/list_dir.h"
 
 namespace mongo {
@@ -23,16 +22,14 @@ namespace {
 
 class ListDirTest : public unittest::Test {};
 
-class MockedHttpClient final : public HttpClientInterface {
+class MockedHttpClient final : public HttpClient {
 public:
-    StatusWith<std::size_t> read(std::string path,
-                                 DataRange buf,
-                                 std::size_t offset,
-                                 std::size_t count) const override {
-        return 0;
+    DataBuilder post(StringData, ConstDataRange) const final {
+        invariant(false);
+        return DataBuilder();
     }
 
-    StatusWith<DataBuilder> listDirectory() const override {
+    DataBuilder get(StringData) const final {
         BSONObjBuilder objBuilder;
         objBuilder.append("ok", true);
         std::vector<BSONObj> files;
@@ -53,15 +50,19 @@ public:
 
         BSONObj obj = objBuilder.obj();
         DataBuilder copy(obj.objsize());
-        copy.write(ConstDataRange(obj.objdata(), obj.objsize())).transitional_ignore();
+        uassertStatusOK(copy.write(ConstDataRange(obj.objdata(), obj.objsize())));
 
-        return {std::move(copy)};
+        return copy;
     }
+
+    // Ignore client configs.
+    void allowInsecureHTTP(bool) final {}
+    void setHeaders(const std::vector<std::string>& headers) final {}
 };
 
 TEST_F(ListDirTest, ListDirs) {
-    auto httpClient(stdx::make_unique<MockedHttpClient>());
-    auto swFiles = listDirectory(httpClient.get());
+    queryable::BlockstoreHTTP blockstore("", mongo::OID(), std::make_unique<MockedHttpClient>());
+    auto swFiles = listDirectory(std::move(blockstore));
     ASSERT_TRUE(swFiles.isOK());
     ASSERT_EQ(static_cast<std::size_t>(2), swFiles.getValue().size());
     struct File file = swFiles.getValue()[0];

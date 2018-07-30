@@ -15,8 +15,6 @@
 #include "mongo/util/allocator.h"
 #include "mongo/util/log.h"
 
-#include "../blockstore/http_client.h"
-
 using mongo::operator""_sd;
 
 extern "C" {
@@ -137,9 +135,7 @@ MONGO_COMPILER_API_EXPORT int queryableWtFsCreate(WT_CONNECTION* conn, WT_CONFIG
         exit(1);
     }
 
-    std::unique_ptr<mongo::queryable::HttpClientInterface> httpClient =
-        mongo::queryable::createHttpClient(apiUri, mongo::OID(snapshotId));
-    auto swFiles = listDirectory(httpClient.get());
+    auto swFiles = listDirectory(mongo::queryable::BlockstoreHTTP(apiUri, mongo::OID(snapshotId)));
     if (!swFiles.isOK()) {
         (void)wtext->err_printf(
             wtext, nullptr, "ListDir: %s", swFiles.getStatus().reason().c_str());
@@ -277,7 +273,7 @@ int BlockstoreFileSystem::open(const char* name, BlockstoreFileHandle** fileHand
     auto ret = stdx::make_unique<BlockstoreFileHandle>(
         this,
         stdx::make_unique<Reader>(
-            createHttpClient(_apiUri, _snapshotId), file.filename, file.fileSize, file.blockSize),
+            BlockstoreHTTP(_apiUri, _snapshotId), file.filename, file.fileSize, file.blockSize),
         file.fileSize,
         file.blockSize);
     if (ret == nullptr) {

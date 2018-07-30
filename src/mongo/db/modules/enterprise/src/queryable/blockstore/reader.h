@@ -6,12 +6,12 @@
 
 #include <iosfwd>
 
+#include "blockstore_http.h"
+
 #include "mongo/base/data_range.h"
 #include "mongo/base/status.h"
 #include "mongo/base/status_with.h"
 #include "mongo/bson/oid.h"
-
-#include "http_client.h"
 
 namespace mongo {
 namespace queryable {
@@ -23,7 +23,7 @@ namespace queryable {
  */
 class Reader {
 public:
-    Reader(std::unique_ptr<HttpClientInterface> httpClient,
+    Reader(BlockstoreHTTP blockstore,
            std::string path,
            std::size_t fileSize,
            std::size_t blockSize);
@@ -80,7 +80,7 @@ public:
     }
 
 private:
-    std::unique_ptr<HttpClientInterface> _httpClient;
+    BlockstoreHTTP _blockstore;
     std::string _path;
     std::size_t _fileSize;
     std::size_t _blockSize;

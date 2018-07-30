@@ -22,8 +22,8 @@
 namespace mongo {
 namespace queryable {
 
-StatusWith<std::vector<struct File>> listDirectory(HttpClientInterface* httpClient) {
-    auto swListdirResponse = httpClient->listDirectory();
+StatusWith<std::vector<struct File>> listDirectory(const BlockstoreHTTP& blockstore) {
+    auto swListdirResponse = blockstore.listDirectory();
     if (!swListdirResponse.isOK()) {
         return {ErrorCodes::OperationFailed,
                 str::stream() << "Bad HTTP response from the ApiServer: "

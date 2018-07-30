@@ -14,7 +14,6 @@
 #include "mongo/util/mongoutils/str.h"
 
 #include "../blockstore/context.h"
-#include "../blockstore/http_client.h"
 #include "../blockstore/list_dir.h"
 #include "../blockstore/reader.h"
 #include "queryable_global_options.h"

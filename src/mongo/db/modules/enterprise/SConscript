@@ -24,7 +24,7 @@ if not conf.CheckLibWithHeader(
     env.ConfError("Could not find <sasl/sasl.h> and sasl library, required for "
         "enterprise build.")
 
-if http_client is not "on":
+if http_client != "on":
     env.ConfError("Enterprise build requires http client support")
 
 if not env.TargetOSIs("windows"):

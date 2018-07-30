@@ -8,7 +8,7 @@
 
 #include "mongo/base/status_with.h"
 
-#include "http_client.h"
+#include "blockstore_http.h"
 
 namespace mongo {
 namespace queryable {
@@ -19,7 +19,7 @@ struct File {
     std::int32_t blockSize;
 };
 
-StatusWith<std::vector<File>> listDirectory(HttpClientInterface* httpClient);
+StatusWith<std::vector<File>> listDirectory(const BlockstoreHTTP& blockstore);
 
 }  // namespace queryable
 

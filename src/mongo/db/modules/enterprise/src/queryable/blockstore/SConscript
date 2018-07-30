@@ -5,8 +5,7 @@ env = env.Clone()
 env.Library(
     target='blockstore',
     source=[
-        'windows_http_client.cpp' if env.TargetOSIs('windows') else 'curl_http_client.cpp',
-        'http_client.cpp',
+        'blockstore_http.cpp',
         'list_dir.cpp',
         'reader.cpp',
     ],
@@ -16,9 +15,6 @@ env.Library(
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/util/net/http_client',
-    ],
-    SYSLIBDEPS=[
-        'wininet' if env.TargetOSIs('windows') else 'curl',
     ],
 )
 

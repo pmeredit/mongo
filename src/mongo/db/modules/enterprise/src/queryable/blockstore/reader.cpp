@@ -12,8 +12,6 @@
 #include <sstream>
 #include <string>
 
-#include "http_client.h"
-
 #include "mongo/base/init.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/util/bson_extract.h"
@@ -24,11 +22,11 @@
 namespace mongo {
 namespace queryable {
 
-Reader::Reader(std::unique_ptr<HttpClientInterface> httpClient,
+Reader::Reader(BlockstoreHTTP blockstore,
                std::string path,
                std::size_t fileSize,
                std::size_t blockSize)
-    : _httpClient(std::move(httpClient)),
+    : _blockstore(std::move(blockstore)),
       _path(std::move(path)),
       _fileSize(fileSize),
       _blockSize(blockSize) {}
@@ -37,7 +35,7 @@ StatusWith<std::size_t> Reader::read(DataRange buf, std::size_t offset, std::siz
     invariant(offset + count <= _fileSize);
     invariant(count <= buf.length());
 
-    return _httpClient->read(_path, buf, offset, count);
+    return _blockstore.read(_path, buf, offset, count);
 }
 
 StatusWith<std::size_t> Reader::readBlockInto(DataRange buf, std::size_t blockIdx) const {
@@ -45,7 +43,7 @@ StatusWith<std::size_t> Reader::readBlockInto(DataRange buf, std::size_t blockId
     const std::size_t kCount = getBlockSizeForIdx(blockIdx);
     invariant(buf.length() >= kCount);
 
-    return _httpClient->read(_path, buf, kOffset, kCount);
+    return _blockstore.read(_path, buf, kOffset, kCount);
 }
 
 Status Reader::readInto(std::ostream* writer) const {

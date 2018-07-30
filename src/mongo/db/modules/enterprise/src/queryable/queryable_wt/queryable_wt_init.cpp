@@ -29,7 +29,7 @@
 #include "mongo/util/exit.h"
 #include "mongo/util/log.h"
 
-#include "../blockstore/http_client.h"
+#include "../blockstore/blockstore_http.h"
 #include "queryable_global_options.h"
 
 namespace mongo {
