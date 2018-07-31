@@ -101,6 +101,11 @@ void logCommandAuthzCheck(Client* client,
             for (auto&& obj : seq.objs) {
                 // Names for array elements are ignored.
                 uassertStatusOK(array.appendObject(StringData(), obj));
+
+                // Only include the first entry in the DocumentSequence.
+                // This is suboptimal, but the call to redactForLogging below is going to remove all
+                // but the first document from the sequence.
+                break;
             }
             uassertStatusOK(cmdToLog.root().pushBack(array));
         }
