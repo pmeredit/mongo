@@ -46,27 +46,32 @@
          * beginning with the current line.
          */
         assertEntry(atype, param) {
-            assert.soon(() => {
-                const log = this.getAllLines().slice(this._auditLine);
-                for (var idx in log) {
-                    const entry = log[idx];
-                    try {
-                        var line = JSON.parse(entry);
-                    } catch (e) {
-                        continue;
-                    }
-                    if (line.atype !== atype) {
-                        continue;
-                    }
+            assert.soon(
+                () => {
+                    const log = this.getAllLines().slice(this._auditLine);
+                    for (var idx in log) {
+                        const entry = log[idx];
+                        try {
+                            var line = JSON.parse(entry);
+                        } catch (e) {
+                            continue;
+                        }
+                        if (line.atype !== atype) {
+                            continue;
+                        }
 
-                    // Warning: Requires that the subkey/element orders match
-                    if (JSON.stringify(line.param) === JSON.stringify(param)) {
-                        this._auditLine += Number(idx) + 1;
-                        return true;
+                        // Warning: Requires that the subkey/element orders match
+                        if (JSON.stringify(line.param) === JSON.stringify(param)) {
+                            this._auditLine += Number(idx) + 1;
+                            return true;
+                        }
                     }
-                }
-                return false;
-            }, "audit logfile should contain entry within default timeout");
+                    return false;
+                },
+                "audit logfile should contain entry within default timeout.\n" +
+                    "Search started on line number: " + this._auditLine + "\n" +
+                    "Log File Contents\n==============================\n" + this.getAllLines() +
+                    "\n==============================\n");
         }
 
         /**
