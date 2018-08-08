@@ -73,10 +73,13 @@ public:
         // WiredTiger passes a non-normalized path to the operating system, e.g: a `dbpath` of
         // "/data/db/" will result in WiredTiger trying to open "/data/db//WiredTiger.turtle".
         // Because the underlying "filesystem" in `queryable_wt` does not go through the operating
-        // system, we'll normalize the `dbpath` here to remove trailing slashes. This should
-        // result in WiredTiger never making a callback with double slashes.
+        // system, we'll normalize the `dbpath` and the `journalPath` here to remove trailing
+        // slashes. This should result in WiredTiger never making a callback with double slashes.
         std::string dbpath =
             (boost::filesystem::path(params.dbpath) / "dummy_filename").parent_path().string();
+
+        std::string journalPath =
+            (boost::filesystem::path(params.journalPath) / "dummy_filename").parent_path().string();
 
         std::string fsOptions = str::stream()
             << "local={entry=queryableWtFsCreate,early_load=true,config={apiUri=\"" << apiUri
@@ -87,6 +90,7 @@ public:
         WiredTigerKVEngine* kv =
             new WiredTigerKVEngine(getCanonicalName().toString(),
                                    dbpath,
+                                   journalPath,
                                    getGlobalServiceContext()->getFastClockSource(),
                                    wiredTigerGlobalOptions.engineConfig,
                                    cacheMB,
@@ -121,6 +125,11 @@ public:
 
         status = metadata.validateStorageEngineOption("directoryForIndexes",
                                                       wiredTigerGlobalOptions.directoryForIndexes);
+        if (!status.isOK()) {
+            return status;
+        }
+
+        status = metadata.validateJournalPath(params);
         if (!status.isOK()) {
             return status;
         }
