@@ -74,6 +74,8 @@ public:
     // Ignore client config.
     void allowInsecureHTTP(bool) final {}
     void setHeaders(const std::vector<std::string>&) final {}
+    void setConnectTimeout(Seconds timeout) final {}
+    void setTimeout(Seconds timeout) final {}
 };
 
 TEST_F(ReaderTest, TestReadInto) {

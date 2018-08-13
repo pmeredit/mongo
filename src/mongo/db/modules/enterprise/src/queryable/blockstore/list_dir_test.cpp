@@ -58,6 +58,8 @@ public:
     // Ignore client configs.
     void allowInsecureHTTP(bool) final {}
     void setHeaders(const std::vector<std::string>& headers) final {}
+    void setConnectTimeout(Seconds timeout) final {}
+    void setTimeout(Seconds timeout) final {}
 };
 
 TEST_F(ListDirTest, ListDirs) {
