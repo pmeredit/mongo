@@ -94,7 +94,6 @@ env.Library('audit_enterprise',
                 '$BUILD_DIR/mongo/util/net/network',
             ],
             LIBDEPS_PRIVATE=[
-                '$BUILD_DIR/mongo/bson/mutable/mutable_bson',
                 '$BUILD_DIR/mongo/db/auth/authprivilege',
                 '$BUILD_DIR/mongo/db/matcher/expressions',
                 '$BUILD_DIR/mongo/db/server_options_core',

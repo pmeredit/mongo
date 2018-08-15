@@ -63,7 +63,7 @@ void AuditEvent::generateBSON() const {
         putParamsBSON(paramBuilder);
     }
     builder.appendIntOrLL("result", getResultCode());
-    _obj = builder.obj();
+    _obj = builder.obj<BSONObj::LargeSizeTrait>();
     _bsonGenerated = true;
 }
 
