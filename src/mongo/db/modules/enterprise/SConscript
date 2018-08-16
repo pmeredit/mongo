@@ -124,53 +124,6 @@ env.Library(
     ],
 )
 
-env.Library(
-    target=[
-        'audit_metadata_hook_s'
-    ],
-    source=[
-        'src/audit/audit_metadata_hook_s.cpp'
-    ],
-    LIBDEPS=[
-        '$BUILD_DIR/mongo/db/auth/auth',
-        '$BUILD_DIR/mongo/base',
-        '$BUILD_DIR/mongo/rpc/metadata',
-        'audit_enterprise',
-    ],
-    LIBDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/s/mongoscore',
-        '$BUILD_DIR/mongo/s/coreshard',
-    ],
-)
-
-env.Library(
-    target=[
-        'audit_metadata_enterprise',
-    ],
-    source=[
-        'src/audit/audit_metadata.cpp',
-    ],
-    LIBDEPS=[
-        '$BUILD_DIR/mongo/db/auth/auth',
-        '$BUILD_DIR/mongo/db/auth/authprivilege',
-    ],
-    LIBDEPS_DEPENDENTS=[
-        ('$BUILD_DIR/mongo/rpc/metadata', libdeps.dependency.Public),
-    ],
-)
-
-env.CppUnitTest(
-    target=[
-        'audit_metadata_test',
-    ],
-    source=[
-        'src/audit/audit_metadata_test.cpp',
-    ],
-    LIBDEPS=[
-        '$BUILD_DIR/mongo/rpc/metadata',
-    ],
-)
-
 # The auditing code needs to be built into the "coredb" library because there is code in there that
 # references audit functions.  However, the "coredb" library is also currently shared by server
 # programs, such as mongod and mongos, as well as client programs, such as mongodump and
