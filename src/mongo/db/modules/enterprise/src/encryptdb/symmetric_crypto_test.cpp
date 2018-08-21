@@ -49,6 +49,10 @@ class AESRoundTrip : public mongo::unittest::Test {
 public:
     AESRoundTrip() {}
 
+    bool modeSupported(crypto::aesMode mode) {
+        return crypto::getSupportedSymmetricAlgorithms().count(getStringFromCipherMode(mode)) != 0;
+    }
+
     Status encrypt(crypto::aesMode mode) {
         return crypto::aesEncrypt(key,
                                   mode,
@@ -113,6 +117,9 @@ TEST(AES, GCMTestVectors) {
 }
 
 TEST_F(AESRoundTrip, GCM) {
+    if (!modeSupported(crypto::aesMode::gcm)) {
+        return;
+    }
     ASSERT_OK(encrypt(crypto::aesMode::gcm));
     ASSERT_OK(decrypt(crypto::aesMode::gcm));
     ASSERT_TRUE(std::equal(plaintext.begin(),
