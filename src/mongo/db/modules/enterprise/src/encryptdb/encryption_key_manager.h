@@ -97,6 +97,18 @@ public:
         const uint8_t* in, size_t inLen, uint8_t* out, size_t outLen, size_t* resultLen) override;
 
     /**
+     * Opens a backup cursor on the underlying WT database. Returns the list of files that need to
+     * be copied by the application as part of the backup. The file paths may be absolute or
+     * relative; it depends on the dbpath passed into MongoDB.
+     */
+    StatusWith<std::vector<std::string>> beginNonBlockingBackup() override;
+
+    /**
+     * Close the backup cursor and release resources opened by `beginNonBlockingBackup`.
+     */
+    Status endNonBlockingBackup() override;
+
+    /**
      * Takes in a key identifier and returns a unique_ptr to the
      * associated encryption key for that keyID.
      */
@@ -138,6 +150,7 @@ private:
      */
     boost::filesystem::path _dbPath;
     boost::filesystem::path _keystoreBasePath;
+    boost::filesystem::path _wtConnPath;
 
     /**
      * The master system key, provided via KMIP or a keyfile.
@@ -162,6 +175,14 @@ private:
      */
     WT_CONNECTION* _keystoreConnection;
     WT_EVENT_HANDLER _keystoreEventHandler;
+
+    class WtSessionDeleter {
+    public:
+        void operator()(WT_SESSION* session) const {
+            session->close(session, nullptr);
+        }
+    };
+    std::unique_ptr<WT_SESSION, WtSessionDeleter> _backupSession;
 
     /**
      * Pointer to the encryption parameters to use.

@@ -205,6 +205,57 @@ Status EncryptionKeyManager::unprotectTmpData(
         resultLen);
 }
 
+StatusWith<std::vector<std::string>> EncryptionKeyManager::beginNonBlockingBackup() {
+    if (_backupSession) {
+        return {ErrorCodes::CannotBackup,
+                "A backup cursor is already open on the encryption database."};
+    }
+
+    std::unique_ptr<WT_SESSION, WtSessionDeleter> backupSession = [&] {
+        WT_SESSION* session;
+        invariantWTOK(
+            _keystoreConnection->open_session(_keystoreConnection, nullptr, nullptr, &session));
+        return std::unique_ptr<WT_SESSION, WtSessionDeleter>(session);
+    }();
+
+    // Closing a WT session closes all of its corresponding cursors. Instead of explicitly
+    // managing this cursor's lifetime 1-1 with the session, let it be closed when the session
+    // closes. Additionally, this cursor must not be closed unless this method returns an error,
+    // or until `endNonBlockingBackup` is called.
+    WT_CURSOR* cursor;
+    auto wtRet =
+        backupSession->open_cursor(backupSession.get(), "backup:", nullptr, nullptr, &cursor);
+    if (wtRet != 0) {
+        return wtRCToStatus(wtRet);
+    }
+
+    std::vector<std::string> filesToCopy;
+    const auto keystorePath = boost::filesystem::path(_wtConnPath);
+    while ((wtRet = cursor->next(cursor)) == 0) {
+        const char* filename;
+        invariantWTOK(cursor->get_key(cursor, &filename));
+
+        const auto filePath = keystorePath / std::string(filename);
+        filesToCopy.push_back(filePath.string());
+    }
+    if (wtRet != WT_NOTFOUND) {
+        return wtRCToStatus(wtRet, "Error opening backup cursor.");
+    }
+
+    _backupSession = std::move(backupSession);
+    return filesToCopy;
+}
+
+Status EncryptionKeyManager::endNonBlockingBackup() {
+    // The API dictates `EncryptionHooks::endNonBlockingBackup` must allow calls regardless of
+    // whether it was preceded by a successful `EncryptionHooks::beginNonBlockingBackup` call.
+    if (_backupSession) {
+        _backupSession.reset();
+    }
+
+    return Status::OK();
+}
+
 // The local key store database and the corresponding keys are created lazily as they are requested,
 // but are persisted to disk. All keys except the master key is stored in the local key store. The
 // master key is acquired from the configured external source.
@@ -349,6 +400,7 @@ Status EncryptionKeyManager::_openKeystore(const fs::path& path, WT_CONNECTION**
     // call eventually will result in a call to getKey for the ".system" key at which point we don't
     // want to call _initLocalKeystore recursively.
     log() << "Opening WiredTiger keystore. Config: " << wtConfig.str();
+    _wtConnPath = path.string();
     int ret = wiredtiger_open(
         path.string().c_str(), &_keystoreEventHandler, wtConfig.str().c_str(), conn);
     if (ret != 0) {
