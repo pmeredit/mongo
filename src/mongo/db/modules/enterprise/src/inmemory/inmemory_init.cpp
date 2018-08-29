@@ -58,7 +58,6 @@ public:
     StorageEngine* create(const StorageGlobalParams& params,
                           const StorageEngineLockFile* lockFile) const final {
         boost::filesystem::path dbpath = params.dbpath;
-        boost::filesystem::path journalPath = params.journalPath;
         dbpath /= "/inmem";
         boost::filesystem::remove_all(dbpath);
         boost::filesystem::create_directory(dbpath);
@@ -76,7 +75,6 @@ public:
         WiredTigerKVEngine* kv =
             new WiredTigerKVEngine(getCanonicalName().toString(),
                                    dbpath.string(),
-                                   journalPath.string(),
                                    getGlobalServiceContext()->getFastClockSource(),
                                    engineConfig,
                                    cacheMB,
