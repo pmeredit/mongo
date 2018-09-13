@@ -148,4 +148,7 @@ if not using_ubsan:
                         '$BUILD_DIR/mongo/util/net/network',
                         'encryptdb',
                         'symmetric_crypto',
+                    ],
+                    LIBDEPS_PRIVATE=[
+                        '$BUILD_DIR/mongo/db/auth/authmocks',
                     ])
