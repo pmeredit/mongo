@@ -53,6 +53,9 @@ int saslServerConnGetOpt(void* context,
                          const char* optionRaw,
                          const char** outResult,
                          unsigned* outLen) throw() {
+#ifdef _WIN32
+    static constexpr StringData mongodbAuxpropMechanism = "MongoDBInternalAuxprop"_sd;
+#endif
     static constexpr StringData mongodbCanonMechanism = "MongoDBInternalCanon"_sd;
 
     try {
@@ -65,6 +68,16 @@ int saslServerConnGetOpt(void* context,
             return SASL_BADPARAM;
 
         const StringData option = optionRaw;
+
+
+#ifdef _WIN32
+        if (option == "auxprop_plugin"_sd) {
+            // The plugin exists so that sasl cannonicalization does not fail during GSSAPI
+            *outResult = mongodbAuxpropMechanism.rawData();
+            *outLen = static_cast<unsigned>(mongodbAuxpropMechanism.size());
+            return SASL_OK;
+        }
+#endif
 
         if (option == "canon_user_plugin"_sd) {
             // Returns the name of the plugin to use to canonicalize user names.  We use a custome

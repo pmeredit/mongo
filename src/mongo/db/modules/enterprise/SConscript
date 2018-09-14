@@ -167,7 +167,9 @@ if not env.TargetOSIs("darwin"):
     )
 
 env.Library('mongosaslserversession',
-            ['src/sasl/canon_mongodb_internal.cpp',
+            [
+             'src/sasl/auxprop_mongodb_internal.cpp' if env.TargetOSIs("windows") else [],
+             'src/sasl/canon_mongodb_internal.cpp',
              'src/sasl/mongo_${MONGO_GSSAPI_IMPL}.cpp',
              ],
             LIBDEPS=[
