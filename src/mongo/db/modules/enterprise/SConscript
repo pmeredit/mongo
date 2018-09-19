@@ -63,7 +63,6 @@ env.SConscript(
         'src/encryptdb',
         'src/inmemory',
         'src/ldap',
-        'src/rlp',
         'src/queryable',
         'src/watchdog',
     ],
