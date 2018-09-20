@@ -61,9 +61,11 @@ env = conf.Finish()
 env.SConscript(
     dirs=[
         'src/encryptdb',
+        'src/hot_backups',
         'src/inmemory',
         'src/ldap',
         'src/queryable',
+        'src/rlp',
         'src/watchdog',
     ],
     exports=[

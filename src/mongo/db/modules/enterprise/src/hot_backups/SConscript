@@ -1,0 +1,53 @@
+# -*- mode: python -*-
+
+Import("env")
+env.Library(
+    target='backup_cursor_service',
+    source=[
+        'backup_cursor_service.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/db/db_raii',
+        '$BUILD_DIR/mongo/db/dbhelpers',
+        '$BUILD_DIR/mongo/db/namespace_string',
+        '$BUILD_DIR/mongo/db/repl/oplog_entry',
+        '$BUILD_DIR/mongo/db/repl/optime',
+        '$BUILD_DIR/mongo/db/storage/backup_cursor_hooks',
+        '$BUILD_DIR/mongo/db/storage/encryption_hooks',
+        '$BUILD_DIR/mongo/db/storage/storage_options',
+    ],
+    LIBDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/db/serveronly',
+    ],
+)
+
+env.Library(
+    target='document_source_backup_cursor',
+    source=[
+        'document_source_backup_cursor.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/db/pipeline/document_value',
+        '$BUILD_DIR/mongo/db/pipeline/pipeline',
+    ],
+    LIBDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/db/serveronly',
+    ],
+)
+
+
+env.CppUnitTest(
+    target='backup_cursor_service_test',
+    source='backup_cursor_service_test.cpp',
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/db/auth/authmocks',
+        '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
+        'backup_cursor_service',
+    ],
+)
