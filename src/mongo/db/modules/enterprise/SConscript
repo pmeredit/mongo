@@ -65,7 +65,6 @@ env.SConscript(
         'src/inmemory',
         'src/ldap',
         'src/queryable',
-        'src/rlp',
         'src/watchdog',
     ],
     exports=[
