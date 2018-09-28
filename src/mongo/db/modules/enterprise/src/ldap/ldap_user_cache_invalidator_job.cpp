@@ -11,7 +11,6 @@
 #include "mongo/base/init.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/client.h"
-#include "mongo/db/operation_context.h"
 #include "mongo/db/server_parameters.h"
 #include "mongo/stdx/condition_variable.h"
 #include "mongo/stdx/mutex.h"
@@ -75,13 +74,7 @@ void LDAPUserCacheInvalidator::run() {
 
         LOG(1) << "Invalidating user cache entries of external users";
 
-        auto opCtx = Client::getCurrent()->makeOperationContext();
-        try {
-            AuthorizationManager::get(opCtx->getServiceContext())
-                ->invalidateUsersFromDB(opCtx.get(), "$external");
-        } catch (const DBException& e) {
-            warning() << "Error invalidating user cache: " << e.toStatus();
-        }
+        AuthorizationManager::get(cc().getServiceContext())->invalidateUsersFromDB("$external");
     }
 }
 
