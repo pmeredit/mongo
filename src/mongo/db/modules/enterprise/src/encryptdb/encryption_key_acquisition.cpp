@@ -26,14 +26,20 @@ using namespace mongo::kmip;
 
 namespace mongo {
 StatusWith<std::unique_ptr<SymmetricKey>> getKeyFromKeyFile(StringData encryptionKeyFile) {
-    StatusWith<std::string> keyString = readSecurityFile(encryptionKeyFile.toString());
-    if (!keyString.isOK()) {
-        return keyString.getStatus();
+    auto keyStrings = readSecurityFile(encryptionKeyFile.toString());
+    if (!keyStrings.isOK()) {
+        return keyStrings.getStatus();
     }
 
+    if (keyStrings.getValue().size() > 1) {
+        return {ErrorCodes::BadValue,
+                "The encrypted storage engine only supports storing one key in the key file"};
+    }
+
+    const auto& keyString = keyStrings.getValue().front();
     std::string decodedKey;
     try {
-        decodedKey = base64::decode(keyString.getValue());
+        decodedKey = base64::decode(keyString);
     } catch (const DBException& ex) {
         return ex.toStatus();
     }
