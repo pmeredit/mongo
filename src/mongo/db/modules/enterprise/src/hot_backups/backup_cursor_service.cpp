@@ -36,6 +36,8 @@
 #include "mongo/db/dbhelpers.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/repl/oplog_entry.h"
+#include "mongo/db/repl/replication_coordinator.h"
+#include "mongo/db/repl/storage_interface.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/storage/encryption_hooks.h"
 #include "mongo/db/storage/storage_engine.h"
@@ -78,33 +80,34 @@ void BackupCursorService::fsyncUnlock(OperationContext* opCtx) {
 }
 
 BackupCursorState BackupCursorService::openBackupCursor(OperationContext* opCtx) {
-    stdx::lock_guard<stdx::mutex> lk(_mutex);
-    uassert(50887, "The node is currently fsyncLocked.", _state != kFsyncLocked);
-    uassert(50886,
-            "The existing backup cursor must be closed before $backupCursor can succeed.",
-            _state != kBackupCursorOpened);
-
     // Replica sets must also return the opTime's of the earliest and latest oplog entry. The
     // range represented by the oplog start/end values must exist in the backup copy, but are not
     // expected to be exact.
     repl::OpTime oplogStart;
     repl::OpTime oplogEnd;
 
-    // If the oplog exists, capture the last oplog entry before opening the backup cursor. This
-    // value will be checked again after the cursor is established to guarantee it still exists
-    // (and was not truncated before the backup cursor was established.
-    {
-        AutoGetCollectionForRead coll(opCtx, NamespaceString::kRsOplogNamespace);
-        if (coll.getCollection()) {
-            BSONObj lastEntry;
-            uassert(50914,
-                    str::stream() << "No oplog records were found.",
-                    Helpers::getLast(
-                        opCtx, NamespaceString::kRsOplogNamespace.ns().c_str(), lastEntry));
-            auto oplogEntry = fassertNoTrace(50913, repl::OplogEntry::parse(lastEntry));
-            oplogEnd = oplogEntry.getOpTime();
-        }
+    // If replication is enabled, get the optime of the last document in the oplog (using the last
+    // applied as a proxy) before opening the backup cursor. This value will be checked again
+    // after the cursor is established to guarantee it still exists (and was not truncated before
+    // the backup cursor was established).
+    //
+    // This procedure can block, do it before acquiring the mutex to allow fsyncLock requests to
+    // succeed.
+    auto replCoord = repl::ReplicationCoordinator::get(opCtx);
+    if (replCoord &&
+        replCoord->getReplicationMode() == repl::ReplicationCoordinator::Mode::modeReplSet) {
+        oplogEnd = replCoord->getMyLastAppliedOpTime();
+        // If this is a primary, there may be oplog holes. The oplog range being returned must be
+        // contiguous.
+        auto storageInterface = repl::StorageInterface::get(opCtx);
+        storageInterface->waitForAllEarlierOplogWritesToBeVisible(opCtx);
     }
+
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
+    uassert(50887, "The node is currently fsyncLocked.", _state != kFsyncLocked);
+    uassert(50886,
+            "The existing backup cursor must be closed before $backupCursor can succeed.",
+            _state != kBackupCursorOpened);
 
     // Capture the checkpointTimestamp before and after opening a cursor. If it hasn't moved, the
     // checkpointTimestamp is known to be exact. If it has moved, uassert and have the user retry.

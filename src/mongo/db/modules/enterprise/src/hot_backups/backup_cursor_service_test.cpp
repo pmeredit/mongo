@@ -31,6 +31,8 @@
 #include "backup_cursor_service.h"
 
 #include "mongo/db/client.h"
+#include "mongo/db/repl/replication_coordinator_mock.h"
+#include "mongo/db/repl/storage_interface_mock.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/service_context_d_test_fixture.h"
 #include "mongo/db/storage/devnull/devnull_kv_engine.h"
@@ -46,7 +48,13 @@ public:
         : ServiceContextMongoDTest("devnull"),
           _opCtx(cc().makeOperationContext()),
           _storageEngine(getServiceContext()->getStorageEngine()),
-          _backupCursorService(stdx::make_unique<BackupCursorService>(_storageEngine)) {}
+          _backupCursorService(stdx::make_unique<BackupCursorService>(_storageEngine)) {
+        repl::ReplicationCoordinator::set(
+            getServiceContext(),
+            stdx::make_unique<repl::ReplicationCoordinatorMock>(getServiceContext()));
+        repl::StorageInterface::set(getServiceContext(),
+                                    stdx::make_unique<repl::StorageInterfaceMock>());
+    }
 
 protected:
     ServiceContext::UniqueOperationContext _opCtx;
