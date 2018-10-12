@@ -263,6 +263,200 @@ const char* ExpressionAbs::getOpName() const {
     return "$abs";
 }
 
+/* ----------------------- ExpressionAcos ---------------------------- */
+
+Value ExpressionAcos::evaluateNumericArg(const Value& numericArg) const {
+    BSONType type = numericArg.getType();
+    if (type == NumberDouble) {
+        return Value(std::acos(numericArg.getDouble()));
+    } else if (type == NumberDecimal) {
+        return Value(numericArg.getDecimal().acos());
+    } else {
+        long long num = numericArg.getLong();
+        uassert(50971,
+                "can't take $acos of long long min",
+                num != std::numeric_limits<long long>::min());
+        auto acosVal = std::acos(num);
+        return Value(acosVal);
+    }
+}
+
+REGISTER_EXPRESSION(acos, ExpressionAcos::parse);
+const char* ExpressionAcos::getOpName() const {
+    return "$acos";
+}
+
+/* ----------------------- ExpressionAsin ---------------------------- */
+
+Value ExpressionAsin::evaluateNumericArg(const Value& numericArg) const {
+    BSONType type = numericArg.getType();
+    if (type == NumberDouble) {
+        return Value(std::asin(numericArg.getDouble()));
+    } else if (type == NumberDecimal) {
+        return Value(numericArg.getDecimal().asin());
+    } else {
+        long long num = numericArg.getLong();
+        uassert(50972,
+                "can't take $asin of long long min",
+                num != std::numeric_limits<long long>::min());
+        auto asinVal = std::asin(num);
+        return Value(asinVal);
+    }
+}
+
+REGISTER_EXPRESSION(asin, ExpressionAsin::parse);
+const char* ExpressionAsin::getOpName() const {
+    return "$asin";
+}
+
+/* ----------------------- ExpressionAtan ---------------------------- */
+
+Value ExpressionAtan::evaluateNumericArg(const Value& numericArg) const {
+    BSONType type = numericArg.getType();
+    if (type == NumberDouble) {
+        return Value(std::atan(numericArg.getDouble()));
+    } else if (type == NumberDecimal) {
+        return Value(numericArg.getDecimal().atan());
+    } else {
+        long long num = numericArg.getLong();
+        uassert(50973,
+                "can't take $atan of long long min",
+                num != std::numeric_limits<long long>::min());
+        auto atanVal = std::atan(num);
+        return Value(atanVal);
+    }
+}
+
+REGISTER_EXPRESSION(atan, ExpressionAtan::parse);
+const char* ExpressionAtan::getOpName() const {
+    return "$atan";
+}
+
+/* ----------------------- ExpressionAtan2 ---------------------------- */
+
+Value ExpressionAtan2::evaluateNumericArgs(const Value& numericArg1, const Value& numericArg2) const {
+    BSONType type1 = numericArg1.getType();
+    BSONType type2 = numericArg2.getType();
+    auto totalType = NumberDouble;
+    // If the type of either argument is NumberDecimal, we promote to Decimal128. If the type of either
+    // arg is NumberLong, we also promote to NumberDecimal rather than failing in the case where the
+    // long cannot fit in a double.
+    if (type1 == NumberDecimal || type2 == NumberDecimal || type1 == NumberLong || type2 == NumberLong) {
+        totalType = NumberDecimal;
+    }
+    switch (totalType) {
+        case NumberDecimal: {
+            auto getDecimal = [](BSONType type, const Value& arg) -> Decimal128 {
+                switch (type) {
+                    case NumberDecimal:
+                    return arg.getDecimal();
+                    case NumberDouble:
+                    return Decimal128(arg.getDouble());
+                    case NumberLong:
+                    return Decimal128(arg.getLong());
+                    case NumberInt:
+                    return Decimal128(arg.getInt());
+                    default:
+                    uassert(50984, "unreachable", false);
+                }
+            };
+            auto dec1 = getDecimal(type1, numericArg1);
+            auto dec2 = getDecimal(type2, numericArg2);
+            return Value(dec1.atan2(dec2));
+        }
+        case NumberDouble: {
+            auto getDouble = [](BSONType type, const Value& arg) -> double {
+                switch (type) {
+                    case NumberDouble:
+                    return arg.getDouble();
+                    case NumberInt:
+                    return static_cast<double>(arg.getInt());
+                    default:
+                    uassert(50985, "unreachable", false);
+                }
+            };
+            auto double1 = getDouble(type1, numericArg1);
+            auto double2 = getDouble(type2, numericArg2);
+            return Value(std::atan2(double1, double2));
+        }
+        default:
+        uassert(50986, "unreachable", false);
+    }
+}
+
+REGISTER_EXPRESSION(atan2, ExpressionAtan2::parse);
+const char* ExpressionAtan2::getOpName() const {
+    return "$atan2";
+}
+/* ----------------------- ExpressionAcosh ---------------------------- */
+
+Value ExpressionAcosh::evaluateNumericArg(const Value& numericArg) const {
+    BSONType type = numericArg.getType();
+    if (type == NumberDouble) {
+        return Value(std::acosh(numericArg.getDouble()));
+    } else if (type == NumberDecimal) {
+        return Value(numericArg.getDecimal().acosh());
+    } else {
+        long long num = numericArg.getLong();
+        uassert(50978,
+                "can't take $acosh of long long min",
+                num != std::numeric_limits<long long>::min());
+        auto acoshVal = std::acosh(num);
+        return Value(acoshVal);
+    }
+}
+
+REGISTER_EXPRESSION(acosh, ExpressionAcosh::parse);
+const char* ExpressionAcosh::getOpName() const {
+    return "$acosh";
+}
+
+/* ----------------------- ExpressionAsinh ---------------------------- */
+
+Value ExpressionAsinh::evaluateNumericArg(const Value& numericArg) const {
+    BSONType type = numericArg.getType();
+    if (type == NumberDouble) {
+        return Value(std::asinh(numericArg.getDouble()));
+    } else if (type == NumberDecimal) {
+        return Value(numericArg.getDecimal().asinh());
+    } else {
+        long long num = numericArg.getLong();
+        uassert(50979,
+                "can't take $asinh of long long min",
+                num != std::numeric_limits<long long>::min());
+        auto asinhVal = std::asinh(num);
+        return Value(asinhVal);
+    }
+}
+
+REGISTER_EXPRESSION(asinh, ExpressionAsinh::parse);
+const char* ExpressionAsinh::getOpName() const {
+    return "$asinh";
+}
+
+/* ----------------------- ExpressionAtanh ---------------------------- */
+
+Value ExpressionAtanh::evaluateNumericArg(const Value& numericArg) const {
+    BSONType type = numericArg.getType();
+    if (type == NumberDouble) {
+        return Value(std::atanh(numericArg.getDouble()));
+    } else if (type == NumberDecimal) {
+        return Value(numericArg.getDecimal().atanh());
+    } else {
+        long long num = numericArg.getLong();
+        uassert(50980,
+                "can't take $atanh of long long min",
+                num != std::numeric_limits<long long>::min());
+        auto atanhVal = std::atanh(num);
+        return Value(atanhVal);
+    }
+}
+
+REGISTER_EXPRESSION(atanh, ExpressionAtanh::parse);
+const char* ExpressionAtanh::getOpName() const {
+    return "$atanh";
+}
+
 /* ------------------------- ExpressionAdd ----------------------------- */
 
 Value ExpressionAdd::evaluate(const Document& root) const {
@@ -678,6 +872,52 @@ Value ExpressionArrayToObject::evaluate(const Document& root) const {
 REGISTER_EXPRESSION(arrayToObject, ExpressionArrayToObject::parse);
 const char* ExpressionArrayToObject::getOpName() const {
     return "$arrayToObject";
+}
+
+/* ----------------------- ExpressionCos ---------------------------- */
+
+Value ExpressionCos::evaluateNumericArg(const Value& numericArg) const {
+    BSONType type = numericArg.getType();
+    if (type == NumberDouble) {
+        return Value(std::cos(numericArg.getDouble()));
+    } else if (type == NumberDecimal) {
+        return Value(numericArg.getDecimal().cos());
+    } else {
+        long long num = numericArg.getLong();
+        uassert(50968,
+                "can't take $cos of long long min",
+                num != std::numeric_limits<long long>::min());
+        auto cosVal = std::cos(num);
+        return Value(cosVal);
+    }
+}
+
+REGISTER_EXPRESSION(cos, ExpressionCos::parse);
+const char* ExpressionCos::getOpName() const {
+    return "$cos";
+}
+
+/* ----------------------- ExpressionCosh ---------------------------- */
+
+Value ExpressionCosh::evaluateNumericArg(const Value& numericArg) const {
+    BSONType type = numericArg.getType();
+    if (type == NumberDouble) {
+        return Value(std::cosh(numericArg.getDouble()));
+    } else if (type == NumberDecimal) {
+        return Value(numericArg.getDecimal().cosh());
+    } else {
+        long long num = numericArg.getLong();
+        uassert(50974,
+                "can't take $cosh of long long min",
+                num != std::numeric_limits<long long>::min());
+        auto coshVal = std::cosh(num);
+        return Value(coshVal);
+    }
+}
+
+REGISTER_EXPRESSION(cosh, ExpressionCosh::parse);
+const char* ExpressionCosh::getOpName() const {
+    return "$cosh";
 }
 
 /* ------------------------- ExpressionCeil -------------------------- */
@@ -3875,6 +4115,52 @@ const char* ExpressionIsArray::getOpName() const {
     return "$isArray";
 }
 
+/* ----------------------- ExpressionSin ---------------------------- */
+
+Value ExpressionSin::evaluateNumericArg(const Value& numericArg) const {
+    BSONType type = numericArg.getType();
+    if (type == NumberDouble) {
+        return Value(std::sin(numericArg.getDouble()));
+    } else if (type == NumberDecimal) {
+        return Value(numericArg.getDecimal().sin());
+    } else {
+        long long num = numericArg.getLong();
+        uassert(50969,
+                "can't take $sin of long long min",
+                num != std::numeric_limits<long long>::min());
+        auto sinVal = std::sin(num);
+        return Value(sinVal);
+    }
+}
+
+REGISTER_EXPRESSION(sin, ExpressionSin::parse);
+const char* ExpressionSin::getOpName() const {
+    return "$sin";
+}
+
+/* ----------------------- ExpressionSinh ---------------------------- */
+
+Value ExpressionSinh::evaluateNumericArg(const Value& numericArg) const {
+    BSONType type = numericArg.getType();
+    if (type == NumberDouble) {
+        return Value(std::sinh(numericArg.getDouble()));
+    } else if (type == NumberDecimal) {
+        return Value(numericArg.getDecimal().sinh());
+    } else {
+        long long num = numericArg.getLong();
+        uassert(50976,
+                "can't take $sinh of long long min",
+                num != std::numeric_limits<long long>::min());
+        auto sinhVal = std::sinh(num);
+        return Value(sinhVal);
+    }
+}
+
+REGISTER_EXPRESSION(sinh, ExpressionSinh::parse);
+const char* ExpressionSinh::getOpName() const {
+    return "$sinh";
+}
+
 /* ----------------------- ExpressionSlice ---------------------------- */
 
 Value ExpressionSlice::evaluate(const Document& root) const {
@@ -4448,6 +4734,52 @@ Value ExpressionSwitch::serialize(bool explain) const {
     }
 
     return Value(Document{{"$switch", Document{{"branches", Value(serializedBranches)}}}});
+}
+
+/* ----------------------- ExpressionTan ---------------------------- */
+
+Value ExpressionTan::evaluateNumericArg(const Value& numericArg) const {
+    BSONType type = numericArg.getType();
+    if (type == NumberDouble) {
+        return Value(std::tan(numericArg.getDouble()));
+    } else if (type == NumberDecimal) {
+        return Value(numericArg.getDecimal().tan());
+    } else {
+        long long num = numericArg.getLong();
+        uassert(50970,
+                "can't take $tan of long long min",
+                num != std::numeric_limits<long long>::min());
+        auto tanVal = std::tan(num);
+        return Value(tanVal);
+    }
+}
+
+REGISTER_EXPRESSION(tan, ExpressionTan::parse);
+const char* ExpressionTan::getOpName() const {
+    return "$tan";
+}
+
+/* ----------------------- ExpressionTanh ---------------------------- */
+
+Value ExpressionTanh::evaluateNumericArg(const Value& numericArg) const {
+    BSONType type = numericArg.getType();
+    if (type == NumberDouble) {
+        return Value(std::tanh(numericArg.getDouble()));
+    } else if (type == NumberDecimal) {
+        return Value(numericArg.getDecimal().tanh());
+    } else {
+        long long num = numericArg.getLong();
+        uassert(50977,
+                "can't take $tanh of long long min",
+                num != std::numeric_limits<long long>::min());
+        auto tanhVal = std::tanh(num);
+        return Value(tanhVal);
+    }
+}
+
+REGISTER_EXPRESSION(tanh, ExpressionTanh::parse);
+const char* ExpressionTanh::getOpName() const {
+    return "$tanh";
 }
 
 /* ------------------------- ExpressionToLower ----------------------------- */
