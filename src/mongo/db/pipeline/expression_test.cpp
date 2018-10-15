@@ -183,6 +183,41 @@ public:
     intrusive_ptr<ExpressionNary> _expr;
 };
 
+// A testing class for testing approximately equal results. This is useful for floating
+// point output.
+class ExpressionNaryTestOneArgApproximate : public ExpressionBaseTest {
+public:
+    virtual void assertEvaluates(Value input, Value output) {
+        addOperand(_expr, input);
+        auto evaluated = _expr->evaluate(Document());
+        ASSERT_EQUALS(output.getType(), evaluated.getType());
+        switch (evaluated.getType()) {
+            case NumberDouble:
+                ASSERT_VALUE_LT(Value(std::abs(evaluated.getDouble()
+                                - output.getDouble())),
+                        Value(.000001));
+                break;
+            case NumberDecimal:
+                ASSERT_VALUE_LT(Value(evaluated.getDecimal()
+                            .subtract(output.getDecimal()).toAbs()),
+                        Value(Decimal128(".000001")));
+                break;
+            case NumberInt:
+            case NumberLong:
+                ASSERT_VALUE_EQ(evaluated, output);
+                break;
+            default:
+                if (evaluated.nullish()) {
+                    ASSERT_VALUE_EQ(evaluated, output);
+                } else {
+                    ASSERT(false && "ExpressionNaryTestOneArgApproximate should only be used with numeric or nullish Values");
+                }
+        }
+    }
+
+    intrusive_ptr<ExpressionNary> _expr;
+};
+
 /* ------------------------- NaryExpression -------------------------- */
 
 /** A dummy child of ExpressionNary used for testing. */
@@ -713,6 +748,590 @@ TEST_F(ExpressionNaryTest, FlattenInnerOperandsOptimizationOnCommutativeAndAssoc
                                            << BSON_ARRAY(200 << 201 << BSON_ARRAY(100 << 101)
                                                              << 99));
     assertContents(_associativeAndCommutative, expectedContent);
+}
+
+/* ------------------------- ExpressionAsin -------------------------- */
+
+class ExpressionAsinTest : public ExpressionNaryTestOneArgApproximate {
+public:
+
+virtual void assertEvaluates(Value input, Value output) override {
+    intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+       _expr = new ExpressionAsin(expCtx);
+       ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+    }
+};
+
+TEST_F(ExpressionAsinTest, IntArg) {
+    assertEvaluates(Value(0), Value(0.0));
+    assertEvaluates(Value(1), Value(1.57079632679));
+}
+
+TEST_F(ExpressionAsinTest, LongArg) {
+    assertEvaluates(Value(0LL), Value(0.0));
+    assertEvaluates(Value(1LL), Value(1.57079632679));
+}
+
+TEST_F(ExpressionAsinTest, DoubleArg) {
+    assertEvaluates(Value(0.0), Value(0.0));
+    assertEvaluates(Value(0.1), Value(0.100167421162));
+    assertEvaluates(Value(0.2), Value(0.20135792079));
+    assertEvaluates(Value(0.3), Value(0.304692654015));
+    assertEvaluates(Value(0.4), Value(0.411516846067));
+    assertEvaluates(Value(0.5), Value(0.523598775598));
+    assertEvaluates(Value(0.6), Value(0.643501108793));
+    assertEvaluates(Value(0.7), Value(0.775397496611));
+    assertEvaluates(Value(0.8), Value(0.927295218002));
+    assertEvaluates(Value(0.9), Value(1.119769515));
+    assertEvaluates(Value(1.0), Value(1.57079632679));
+}
+
+TEST_F(ExpressionAsinTest, DecimalArg) {
+    assertEvaluates(Value(Decimal128("0.0")), Value(Decimal128("0.0")));
+    assertEvaluates(Value(Decimal128("0.1")), Value(Decimal128("0.100167421162")));
+    assertEvaluates(Value(Decimal128("0.2")), Value(Decimal128("0.20135792079")));
+    assertEvaluates(Value(Decimal128("0.3")), Value(Decimal128("0.304692654015")));
+    assertEvaluates(Value(Decimal128("0.4")), Value(Decimal128("0.411516846067")));
+    assertEvaluates(Value(Decimal128("0.5")), Value(Decimal128("0.523598775598")));
+    assertEvaluates(Value(Decimal128("0.6")), Value(Decimal128("0.643501108793")));
+    assertEvaluates(Value(Decimal128("0.7")), Value(Decimal128("0.775397496611")));
+    assertEvaluates(Value(Decimal128("0.8")), Value(Decimal128("0.927295218002")));
+    assertEvaluates(Value(Decimal128("0.9")), Value(Decimal128("1.119769515")));
+    assertEvaluates(Value(Decimal128("1.0")), Value(Decimal128("1.57079632679")));
+}
+
+TEST_F(ExpressionAsinTest, NullArg) {
+    assertEvaluates(Value(BSONNULL), Value(BSONNULL));
+}
+
+/* ------------------------- ExpressionAcos -------------------------- */
+
+class ExpressionAcosTest : public ExpressionNaryTestOneArgApproximate {
+public:
+
+virtual void assertEvaluates(Value input, Value output) override {
+    intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+       _expr = new ExpressionAcos(expCtx);
+       ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+    }
+};
+
+TEST_F(ExpressionAcosTest, IntArg) {
+    assertEvaluates(Value(0), Value(1.57079632679));
+    assertEvaluates(Value(1), Value(0.0));
+}
+
+TEST_F(ExpressionAcosTest, LongArg) {
+    assertEvaluates(Value(0LL), Value(1.57079632679));
+    assertEvaluates(Value(1LL), Value(0.0));
+}
+
+TEST_F(ExpressionAcosTest, DoubleArg) {
+    assertEvaluates(Value(0.0), Value(1.57079632679));
+    assertEvaluates(Value(0.1), Value(1.47062890563));
+    assertEvaluates(Value(0.2), Value(1.369438406));
+    assertEvaluates(Value(0.3), Value(1.26610367278));
+    assertEvaluates(Value(0.4), Value(1.15927948073));
+    assertEvaluates(Value(0.5), Value(1.0471975512));
+    assertEvaluates(Value(0.6), Value(0.927295218002));
+    assertEvaluates(Value(0.7), Value(0.795398830184));
+    assertEvaluates(Value(0.8), Value(0.643501108793));
+    assertEvaluates(Value(0.9), Value(0.451026811796));
+    assertEvaluates(Value(1.0), Value(0.0));
+}
+
+TEST_F(ExpressionAcosTest, DecimalArg) {
+    assertEvaluates(Value(Decimal128("0.0")), Value(Decimal128("1.57079632679")));
+    assertEvaluates(Value(Decimal128("0.1")), Value(Decimal128("1.47062890563")));
+    assertEvaluates(Value(Decimal128("0.2")), Value(Decimal128("1.369438406")));
+    assertEvaluates(Value(Decimal128("0.3")), Value(Decimal128("1.26610367278")));
+    assertEvaluates(Value(Decimal128("0.4")), Value(Decimal128("1.15927948073")));
+    assertEvaluates(Value(Decimal128("0.5")), Value(Decimal128("1.0471975512")));
+    assertEvaluates(Value(Decimal128("0.6")), Value(Decimal128("0.927295218002")));
+    assertEvaluates(Value(Decimal128("0.7")), Value(Decimal128("0.795398830184")));
+    assertEvaluates(Value(Decimal128("0.8")), Value(Decimal128("0.643501108793")));
+    assertEvaluates(Value(Decimal128("0.9")), Value(Decimal128("0.451026811796")));
+    assertEvaluates(Value(Decimal128("1.0")), Value(Decimal128("0.0")));
+}
+
+TEST_F(ExpressionAcosTest, NullArg) {
+    assertEvaluates(Value(BSONNULL), Value(BSONNULL));
+}
+
+/* ------------------------- ExpressionAtan -------------------------- */
+
+class ExpressionAtanTest : public ExpressionNaryTestOneArgApproximate {
+public:
+
+virtual void assertEvaluates(Value input, Value output) override {
+    intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+       _expr = new ExpressionAtan(expCtx);
+       ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+    }
+};
+
+TEST_F(ExpressionAtanTest, IntArg) {
+    assertEvaluates(Value(-1), Value(-0.785398163397));
+    assertEvaluates(Value(0), Value(0.0));
+    assertEvaluates(Value(1), Value(0.785398163397));
+}
+
+TEST_F(ExpressionAtanTest, LongArg) {
+    assertEvaluates(Value(-1LL), Value(-0.785398163397));
+    assertEvaluates(Value(0LL), Value(0.0));
+    assertEvaluates(Value(1LL), Value(0.785398163397));
+}
+
+TEST_F(ExpressionAtanTest, DoubleArg) {
+    assertEvaluates(Value(-1.5), Value(-0.982793723247));
+    assertEvaluates(Value(-1.0471975512), Value(-0.80844879263));
+    assertEvaluates(Value(-0.785398163397), Value(-0.665773750028));
+    assertEvaluates(Value(0), Value(0.0));
+    assertEvaluates(Value(0.785398163397), Value(0.665773750028));
+    assertEvaluates(Value(1.0471975512), Value(0.80844879263));
+    assertEvaluates(Value(1.5), Value(0.982793723247));
+}
+
+TEST_F(ExpressionAtanTest, DecimalArg) {
+    assertEvaluates(Value(Decimal128("-1.5")), Value(Decimal128("-0.982793723247")));
+    assertEvaluates(Value(Decimal128("-1.0471975512")), Value(Decimal128("-0.80844879263")));
+    assertEvaluates(Value(Decimal128("-0.785398163397")), Value(Decimal128("-0.665773750028")));
+    assertEvaluates(Value(Decimal128("0")), Value(Decimal128("0.0")));
+    assertEvaluates(Value(Decimal128("0.785398163397")), Value(Decimal128("0.665773750028")));
+    assertEvaluates(Value(Decimal128("1.0471975512")), Value(Decimal128("0.80844879263")));
+    assertEvaluates(Value(Decimal128("1.5")), Value(Decimal128("0.982793723247")));
+}
+
+TEST_F(ExpressionAtanTest, NullArg) {
+    assertEvaluates(Value(BSONNULL), Value(BSONNULL));
+}
+
+/* ------------------------- ExpressionCos -------------------------- */
+
+class ExpressionCosTest : public ExpressionNaryTestOneArgApproximate {
+public:
+
+virtual void assertEvaluates(Value input, Value output) override {
+    intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+       _expr = new ExpressionCos(expCtx);
+       ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+    }
+};
+
+TEST_F(ExpressionCosTest, IntArg) {
+    assertEvaluates(Value(0), Value(1.0));
+    assertEvaluates(Value(1), Value(0.540302305868));
+    assertEvaluates(Value(2), Value(-0.416146836547));
+    assertEvaluates(Value(3), Value(-0.9899924966));
+    assertEvaluates(Value(4), Value(-0.653643620864));
+    assertEvaluates(Value(5), Value(0.283662185463));
+    assertEvaluates(Value(6), Value(0.96017028665));
+}
+
+TEST_F(ExpressionCosTest, LongArg) {
+    assertEvaluates(Value(0LL), Value(1.0));
+    assertEvaluates(Value(1LL), Value(0.540302305868));
+    assertEvaluates(Value(2LL), Value(-0.416146836547));
+    assertEvaluates(Value(3LL), Value(-0.9899924966));
+    assertEvaluates(Value(4LL), Value(-0.653643620864));
+    assertEvaluates(Value(5LL), Value(0.283662185463));
+    assertEvaluates(Value(6LL), Value(0.96017028665));
+}
+
+TEST_F(ExpressionCosTest, DoubleArg) {
+    assertEvaluates(Value(0.0), Value(1.0));
+    assertEvaluates(Value(0.523598775598), Value(0.866025403784));
+    assertEvaluates(Value(0.785398163397), Value(0.707106781187));
+    assertEvaluates(Value(1.0471975512), Value(0.5));
+    assertEvaluates(Value(1.57079632679), Value(6.12323399574e-17));
+    assertEvaluates(Value(2.09439510239), Value(-0.5));
+    assertEvaluates(Value(2.35619449019), Value(-0.707106781187));
+    assertEvaluates(Value(2.61799387799), Value(-0.866025403784));
+    assertEvaluates(Value(3.14159265359), Value(-1.0));
+    assertEvaluates(Value(3.66519142919), Value(-0.866025403784));
+    assertEvaluates(Value(3.92699081699), Value(-0.707106781187));
+    assertEvaluates(Value(4.18879020479), Value(-0.5));
+    assertEvaluates(Value(4.71238898038), Value(-1.83697019872e-16));
+    assertEvaluates(Value(5.23598775598), Value(0.5));
+    assertEvaluates(Value(5.49778714378), Value(0.707106781187));
+    assertEvaluates(Value(5.75958653158), Value(0.866025403784));
+    assertEvaluates(Value(6.28318530718), Value(1.0));
+}
+
+TEST_F(ExpressionCosTest, DecimalArg) {
+    assertEvaluates(Value(Decimal128("0.0")), Value(Decimal128("1.0")));
+    assertEvaluates(Value(Decimal128("0.523598775598")), Value(Decimal128("0.866025403784")));
+    assertEvaluates(Value(Decimal128("0.785398163397")), Value(Decimal128("0.707106781187")));
+    assertEvaluates(Value(Decimal128("1.0471975512")), Value(Decimal128("0.5")));
+    assertEvaluates(Value(Decimal128("1.57079632679")), Value(Decimal128("6.12323399574e-17")));
+    assertEvaluates(Value(Decimal128("2.09439510239")), Value(Decimal128("-0.5")));
+    assertEvaluates(Value(Decimal128("2.35619449019")), Value(Decimal128("-0.707106781187")));
+    assertEvaluates(Value(Decimal128("2.61799387799")), Value(Decimal128("-0.866025403784")));
+    assertEvaluates(Value(Decimal128("3.14159265359")), Value(Decimal128("-1.0")));
+    assertEvaluates(Value(Decimal128("3.66519142919")), Value(Decimal128("-0.866025403784")));
+    assertEvaluates(Value(Decimal128("3.92699081699")), Value(Decimal128("-0.707106781187")));
+    assertEvaluates(Value(Decimal128("4.18879020479")), Value(Decimal128("-0.5")));
+    assertEvaluates(Value(Decimal128("4.71238898038")), Value(Decimal128("-1.83697019872e-16")));
+    assertEvaluates(Value(Decimal128("5.23598775598")), Value(Decimal128("0.5")));
+    assertEvaluates(Value(Decimal128("5.49778714378")), Value(Decimal128("0.707106781187")));
+    assertEvaluates(Value(Decimal128("5.75958653158")), Value(Decimal128("0.866025403784")));
+    assertEvaluates(Value(Decimal128("6.28318530718")), Value(Decimal128("1.0")));
+}
+
+TEST_F(ExpressionCosTest, NullArg) {
+    assertEvaluates(Value(BSONNULL), Value(BSONNULL));
+}
+
+/* ------------------------- ExpressionCosh -------------------------- */
+
+class ExpressionCoshTest : public ExpressionNaryTestOneArgApproximate {
+public:
+
+virtual void assertEvaluates(Value input, Value output) override {
+    intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+       _expr = new ExpressionCosh(expCtx);
+       ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+    }
+};
+
+TEST_F(ExpressionCoshTest, IntArg) {
+    assertEvaluates(Value(0), Value(1.0));
+    assertEvaluates(Value(1), Value(1.54308063482));
+    assertEvaluates(Value(2), Value(3.76219569108));
+    assertEvaluates(Value(3), Value(10.0676619958));
+    assertEvaluates(Value(4), Value(27.308232836));
+    assertEvaluates(Value(5), Value(74.2099485248));
+    assertEvaluates(Value(6), Value(201.715636122));
+}
+
+TEST_F(ExpressionCoshTest, LongArg) {
+    assertEvaluates(Value(0LL), Value(1.0));
+    assertEvaluates(Value(1LL), Value(1.54308063482));
+    assertEvaluates(Value(2LL), Value(3.76219569108));
+    assertEvaluates(Value(3LL), Value(10.0676619958));
+    assertEvaluates(Value(4LL), Value(27.308232836));
+    assertEvaluates(Value(5LL), Value(74.2099485248));
+    assertEvaluates(Value(6LL), Value(201.715636122));
+}
+
+TEST_F(ExpressionCoshTest, DoubleArg) {
+    assertEvaluates(Value(0.0), Value(1.0));
+    assertEvaluates(Value(0.523598775598), Value(1.14023832108));
+    assertEvaluates(Value(0.785398163397), Value(1.32460908925));
+    assertEvaluates(Value(1.0471975512), Value(1.6002868577));
+    assertEvaluates(Value(1.57079632679), Value(2.50917847866));
+    assertEvaluates(Value(2.09439510239), Value(4.12183605387));
+    assertEvaluates(Value(2.35619449019), Value(5.32275214952));
+    assertEvaluates(Value(2.61799387799), Value(6.89057236498));
+    assertEvaluates(Value(3.14159265359), Value(11.5919532755));
+    assertEvaluates(Value(3.66519142919), Value(19.5446063168));
+    assertEvaluates(Value(3.92699081699), Value(25.3868611924));
+    assertEvaluates(Value(4.18879020479), Value(32.97906491));
+    assertEvaluates(Value(4.71238898038), Value(55.6633808904));
+    assertEvaluates(Value(5.23598775598), Value(93.9599750339));
+    assertEvaluates(Value(5.49778714378), Value(122.07757934));
+    assertEvaluates(Value(5.75958653158), Value(158.610147472));
+    assertEvaluates(Value(6.28318530718), Value(267.746761484));
+}
+
+TEST_F(ExpressionCoshTest, DecimalArg) {
+    assertEvaluates(Value(Decimal128("0.0")), Value(Decimal128("1.0")));
+    assertEvaluates(Value(Decimal128("0.523598775598")), Value(Decimal128("1.14023832108")));
+    assertEvaluates(Value(Decimal128("0.785398163397")), Value(Decimal128("1.32460908925")));
+    assertEvaluates(Value(Decimal128("1.0471975512")), Value(Decimal128("1.6002868577")));
+    assertEvaluates(Value(Decimal128("1.57079632679")), Value(Decimal128("2.50917847866")));
+    assertEvaluates(Value(Decimal128("2.09439510239")), Value(Decimal128("4.12183605387")));
+    assertEvaluates(Value(Decimal128("2.35619449019")), Value(Decimal128("5.32275214952")));
+    assertEvaluates(Value(Decimal128("2.61799387799")), Value(Decimal128("6.89057236498")));
+    assertEvaluates(Value(Decimal128("3.14159265359")), Value(Decimal128("11.5919532755")));
+    assertEvaluates(Value(Decimal128("3.66519142919")), Value(Decimal128("19.5446063168")));
+    assertEvaluates(Value(Decimal128("3.92699081699")), Value(Decimal128("25.3868611924")));
+    assertEvaluates(Value(Decimal128("4.18879020479")), Value(Decimal128("32.97906491")));
+    assertEvaluates(Value(Decimal128("4.71238898038")), Value(Decimal128("55.6633808904")));
+    assertEvaluates(Value(Decimal128("5.23598775598")), Value(Decimal128("93.9599750339")));
+    assertEvaluates(Value(Decimal128("5.49778714378")), Value(Decimal128("122.07757934")));
+    assertEvaluates(Value(Decimal128("5.75958653158")), Value(Decimal128("158.610147472")));
+    assertEvaluates(Value(Decimal128("6.28318530718")), Value(Decimal128("267.746761484")));
+}
+
+TEST_F(ExpressionCoshTest, NullArg) {
+    assertEvaluates(Value(BSONNULL), Value(BSONNULL));
+}
+
+/* ------------------------- ExpressionSin -------------------------- */
+
+class ExpressionSinTest : public ExpressionNaryTestOneArgApproximate {
+public:
+
+virtual void assertEvaluates(Value input, Value output) override {
+    intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+       _expr = new ExpressionSin(expCtx);
+       ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+    }
+};
+
+TEST_F(ExpressionSinTest, IntArg) {
+    assertEvaluates(Value(0), Value(0.0));
+    assertEvaluates(Value(1), Value(0.841470984808));
+    assertEvaluates(Value(2), Value(0.909297426826));
+    assertEvaluates(Value(3), Value(0.14112000806));
+    assertEvaluates(Value(4), Value(-0.756802495308));
+    assertEvaluates(Value(5), Value(-0.958924274663));
+    assertEvaluates(Value(6), Value(-0.279415498199));
+}
+
+TEST_F(ExpressionSinTest, LongArg) {
+    assertEvaluates(Value(0LL), Value(0.0));
+    assertEvaluates(Value(1LL), Value(0.841470984808));
+    assertEvaluates(Value(2LL), Value(0.909297426826));
+    assertEvaluates(Value(3LL), Value(0.14112000806));
+    assertEvaluates(Value(4LL), Value(-0.756802495308));
+    assertEvaluates(Value(5LL), Value(-0.958924274663));
+    assertEvaluates(Value(6LL), Value(-0.279415498199));
+}
+
+TEST_F(ExpressionSinTest, DoubleArg) {
+    assertEvaluates(Value(0.0), Value(0.0));
+    assertEvaluates(Value(0.523598775598), Value(0.5));
+    assertEvaluates(Value(0.785398163397), Value(0.707106781187));
+    assertEvaluates(Value(1.0471975512), Value(0.866025403784));
+    assertEvaluates(Value(1.57079632679), Value(1.0));
+    assertEvaluates(Value(2.09439510239), Value(0.866025403784));
+    assertEvaluates(Value(2.35619449019), Value(0.707106781187));
+    assertEvaluates(Value(2.61799387799), Value(0.5));
+    assertEvaluates(Value(3.14159265359), Value(1.22464679915e-16));
+    assertEvaluates(Value(3.66519142919), Value(-0.5));
+    assertEvaluates(Value(3.92699081699), Value(-0.707106781187));
+    assertEvaluates(Value(4.18879020479), Value(-0.866025403784));
+    assertEvaluates(Value(4.71238898038), Value(-1.0));
+    assertEvaluates(Value(5.23598775598), Value(-0.866025403784));
+    assertEvaluates(Value(5.49778714378), Value(-0.707106781187));
+    assertEvaluates(Value(5.75958653158), Value(-0.5));
+    assertEvaluates(Value(6.28318530718), Value(-2.44929359829e-16));
+}
+
+TEST_F(ExpressionSinTest, DecimalArg) {
+    assertEvaluates(Value(Decimal128("0.0")), Value(Decimal128("0.0")));
+    assertEvaluates(Value(Decimal128("0.523598775598")), Value(Decimal128("0.5")));
+    assertEvaluates(Value(Decimal128("0.785398163397")), Value(Decimal128("0.707106781187")));
+    assertEvaluates(Value(Decimal128("1.0471975512")), Value(Decimal128("0.866025403784")));
+    assertEvaluates(Value(Decimal128("1.57079632679")), Value(Decimal128("1.0")));
+    assertEvaluates(Value(Decimal128("2.09439510239")), Value(Decimal128("0.866025403784")));
+    assertEvaluates(Value(Decimal128("2.35619449019")), Value(Decimal128("0.707106781187")));
+    assertEvaluates(Value(Decimal128("2.61799387799")), Value(Decimal128("0.5")));
+    assertEvaluates(Value(Decimal128("3.14159265359")), Value(Decimal128("1.22464679915e-16")));
+    assertEvaluates(Value(Decimal128("3.66519142919")), Value(Decimal128("-0.5")));
+    assertEvaluates(Value(Decimal128("3.92699081699")), Value(Decimal128("-0.707106781187")));
+    assertEvaluates(Value(Decimal128("4.18879020479")), Value(Decimal128("-0.866025403784")));
+    assertEvaluates(Value(Decimal128("4.71238898038")), Value(Decimal128("-1.0")));
+    assertEvaluates(Value(Decimal128("5.23598775598")), Value(Decimal128("-0.866025403784")));
+    assertEvaluates(Value(Decimal128("5.49778714378")), Value(Decimal128("-0.707106781187")));
+    assertEvaluates(Value(Decimal128("5.75958653158")), Value(Decimal128("-0.5")));
+    assertEvaluates(Value(Decimal128("6.28318530718")), Value(Decimal128("-2.44929359829e-16")));
+}
+
+TEST_F(ExpressionSinTest, NullArg) {
+    assertEvaluates(Value(BSONNULL), Value(BSONNULL));
+}
+
+/* ------------------------- ExpressionSinh -------------------------- */
+
+class ExpressionSinhTest : public ExpressionNaryTestOneArgApproximate {
+public:
+
+virtual void assertEvaluates(Value input, Value output) override {
+    intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+       _expr = new ExpressionSinh(expCtx);
+       ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+    }
+};
+
+TEST_F(ExpressionSinhTest, IntArg) {
+    assertEvaluates(Value(0), Value(0.0));
+    assertEvaluates(Value(1), Value(1.17520119364));
+    assertEvaluates(Value(2), Value(3.62686040785));
+    assertEvaluates(Value(3), Value(10.0178749274));
+    assertEvaluates(Value(4), Value(27.2899171971));
+    assertEvaluates(Value(5), Value(74.2032105778));
+    assertEvaluates(Value(6), Value(201.71315737));
+}
+
+TEST_F(ExpressionSinhTest, LongArg) {
+    assertEvaluates(Value(0LL), Value(0.0));
+    assertEvaluates(Value(1LL), Value(1.17520119364));
+    assertEvaluates(Value(2LL), Value(3.62686040785));
+    assertEvaluates(Value(3LL), Value(10.0178749274));
+    assertEvaluates(Value(4LL), Value(27.2899171971));
+    assertEvaluates(Value(5LL), Value(74.2032105778));
+    assertEvaluates(Value(6LL), Value(201.71315737));
+}
+
+TEST_F(ExpressionSinhTest, DoubleArg) {
+    assertEvaluates(Value(0.0), Value(0.0));
+    assertEvaluates(Value(0.523598775598), Value(0.547853473888));
+    assertEvaluates(Value(0.785398163397), Value(0.868670961486));
+    assertEvaluates(Value(1.0471975512), Value(1.24936705052));
+    assertEvaluates(Value(1.57079632679), Value(2.30129890231));
+    assertEvaluates(Value(2.09439510239), Value(3.9986913428));
+    assertEvaluates(Value(2.35619449019), Value(5.22797192468));
+    assertEvaluates(Value(2.61799387799), Value(6.81762330413));
+    assertEvaluates(Value(3.14159265359), Value(11.5487393573));
+    assertEvaluates(Value(3.66519142919), Value(19.5190070464));
+    assertEvaluates(Value(3.92699081699), Value(25.3671583194));
+    assertEvaluates(Value(4.18879020479), Value(32.9639002901));
+    assertEvaluates(Value(4.71238898038), Value(55.6543975994));
+    assertEvaluates(Value(5.23598775598), Value(93.9546534685));
+    assertEvaluates(Value(5.49778714378), Value(122.073483515));
+    assertEvaluates(Value(5.75958653158), Value(158.606995057));
+    assertEvaluates(Value(6.28318530718), Value(267.744894041));
+}
+
+TEST_F(ExpressionSinhTest, DecimalArg) {
+    assertEvaluates(Value(Decimal128("0.0")), Value(Decimal128("0.0")));
+    assertEvaluates(Value(Decimal128("0.523598775598")), Value(Decimal128("0.547853473888")));
+    assertEvaluates(Value(Decimal128("0.785398163397")), Value(Decimal128("0.868670961486")));
+    assertEvaluates(Value(Decimal128("1.0471975512")), Value(Decimal128("1.24936705052")));
+    assertEvaluates(Value(Decimal128("1.57079632679")), Value(Decimal128("2.30129890231")));
+    assertEvaluates(Value(Decimal128("2.09439510239")), Value(Decimal128("3.9986913428")));
+    assertEvaluates(Value(Decimal128("2.35619449019")), Value(Decimal128("5.22797192468")));
+    assertEvaluates(Value(Decimal128("2.61799387799")), Value(Decimal128("6.81762330413")));
+    assertEvaluates(Value(Decimal128("3.14159265359")), Value(Decimal128("11.5487393573")));
+    assertEvaluates(Value(Decimal128("3.66519142919")), Value(Decimal128("19.5190070464")));
+    assertEvaluates(Value(Decimal128("3.92699081699")), Value(Decimal128("25.3671583194")));
+    assertEvaluates(Value(Decimal128("4.18879020479")), Value(Decimal128("32.9639002901")));
+    assertEvaluates(Value(Decimal128("4.71238898038")), Value(Decimal128("55.6543975994")));
+    assertEvaluates(Value(Decimal128("5.23598775598")), Value(Decimal128("93.9546534685")));
+    assertEvaluates(Value(Decimal128("5.49778714378")), Value(Decimal128("122.073483515")));
+    assertEvaluates(Value(Decimal128("5.75958653158")), Value(Decimal128("158.606995057")));
+    assertEvaluates(Value(Decimal128("6.28318530718")), Value(Decimal128("267.744894041")));
+}
+
+TEST_F(ExpressionSinhTest, NullArg) {
+    assertEvaluates(Value(BSONNULL), Value(BSONNULL));
+}
+
+/* ------------------------- ExpressionTan -------------------------- */
+
+class ExpressionTanTest : public ExpressionNaryTestOneArgApproximate {
+public:
+
+virtual void assertEvaluates(Value input, Value output) override {
+    intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+       _expr = new ExpressionTan(expCtx);
+       ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+    }
+};
+
+TEST_F(ExpressionTanTest, IntArg) {
+    assertEvaluates(Value(-1), Value(-1.55740772465));
+    assertEvaluates(Value(0), Value(0.0));
+    assertEvaluates(Value(1), Value(1.55740772465));
+}
+
+TEST_F(ExpressionTanTest, LongArg) {
+    assertEvaluates(Value(-1LL), Value(-1.55740772465));
+    assertEvaluates(Value(0LL), Value(0.0));
+    assertEvaluates(Value(1LL), Value(1.55740772465));
+}
+
+TEST_F(ExpressionTanTest, DoubleArg) {
+    assertEvaluates(Value(-1.5), Value(-14.1014199472));
+    assertEvaluates(Value(-1.0471975512), Value(-1.73205080757));
+    assertEvaluates(Value(-0.785398163397), Value(-1.0));
+    assertEvaluates(Value(0), Value(0.0));
+    assertEvaluates(Value(0.785398163397), Value(1.0));
+    assertEvaluates(Value(1.0471975512), Value(1.73205080757));
+    assertEvaluates(Value(1.5), Value(14.1014199472));
+}
+
+TEST_F(ExpressionTanTest, DecimalArg) {
+    assertEvaluates(Value(Decimal128("-1.5")), Value(Decimal128("-14.1014199472")));
+    assertEvaluates(Value(Decimal128("-1.0471975512")), Value(Decimal128("-1.73205080757")));
+    assertEvaluates(Value(Decimal128("-0.785398163397")), Value(Decimal128("-1.0")));
+    assertEvaluates(Value(Decimal128("0")), Value(Decimal128("0.0")));
+    assertEvaluates(Value(Decimal128("0.785398163397")), Value(Decimal128("1.0")));
+    assertEvaluates(Value(Decimal128("1.0471975512")), Value(Decimal128("1.73205080757")));
+    assertEvaluates(Value(Decimal128("1.5")), Value(Decimal128("14.1014199472")));
+}
+
+TEST_F(ExpressionTanTest, NullArg) {
+    assertEvaluates(Value(BSONNULL), Value(BSONNULL));
+}
+
+/* ------------------------- ExpressionTanh -------------------------- */
+
+class ExpressionTanhTest : public ExpressionNaryTestOneArgApproximate {
+public:
+
+virtual void assertEvaluates(Value input, Value output) override {
+    intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+       _expr = new ExpressionTanh(expCtx);
+       ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+    }
+};
+
+TEST_F(ExpressionTanhTest, IntArg) {
+    assertEvaluates(Value(0), Value(0.0));
+    assertEvaluates(Value(1), Value(0.761594155956));
+    assertEvaluates(Value(2), Value(0.964027580076));
+    assertEvaluates(Value(3), Value(0.995054753687));
+    assertEvaluates(Value(4), Value(0.999329299739));
+    assertEvaluates(Value(5), Value(0.999909204263));
+    assertEvaluates(Value(6), Value(0.999987711651));
+}
+
+TEST_F(ExpressionTanhTest, LongArg) {
+    assertEvaluates(Value(0LL), Value(0.0));
+    assertEvaluates(Value(1LL), Value(0.761594155956));
+    assertEvaluates(Value(2LL), Value(0.964027580076));
+    assertEvaluates(Value(3LL), Value(0.995054753687));
+    assertEvaluates(Value(4LL), Value(0.999329299739));
+    assertEvaluates(Value(5LL), Value(0.999909204263));
+    assertEvaluates(Value(6LL), Value(0.999987711651));
+}
+
+TEST_F(ExpressionTanhTest, DoubleArg) {
+    assertEvaluates(Value(0.0), Value(0.0));
+    assertEvaluates(Value(0.523598775598), Value(0.480472778156));
+    assertEvaluates(Value(0.785398163397), Value(0.655794202633));
+    assertEvaluates(Value(1.0471975512), Value(0.780714435359));
+    assertEvaluates(Value(1.57079632679), Value(0.917152335667));
+    assertEvaluates(Value(2.09439510239), Value(0.970123821166));
+    assertEvaluates(Value(2.35619449019), Value(0.982193380007));
+    assertEvaluates(Value(2.61799387799), Value(0.989413207353));
+    assertEvaluates(Value(3.14159265359), Value(0.996272076221));
+    assertEvaluates(Value(3.66519142919), Value(0.998690213046));
+    assertEvaluates(Value(3.92699081699), Value(0.999223894879));
+    assertEvaluates(Value(4.18879020479), Value(0.999540174353));
+    assertEvaluates(Value(4.71238898038), Value(0.999838613989));
+    assertEvaluates(Value(5.23598775598), Value(0.999943363486));
+    assertEvaluates(Value(5.49778714378), Value(0.999966449));
+    assertEvaluates(Value(5.75958653158), Value(0.99998012476));
+    assertEvaluates(Value(6.28318530718), Value(0.99999302534));
+}
+
+TEST_F(ExpressionTanhTest, DecimalArg) {
+    assertEvaluates(Value(Decimal128("0.0")), Value(Decimal128("0.0")));
+    assertEvaluates(Value(Decimal128("0.523598775598")), Value(Decimal128("0.480472778156")));
+    assertEvaluates(Value(Decimal128("0.785398163397")), Value(Decimal128("0.655794202633")));
+    assertEvaluates(Value(Decimal128("1.0471975512")), Value(Decimal128("0.780714435359")));
+    assertEvaluates(Value(Decimal128("1.57079632679")), Value(Decimal128("0.917152335667")));
+    assertEvaluates(Value(Decimal128("2.09439510239")), Value(Decimal128("0.970123821166")));
+    assertEvaluates(Value(Decimal128("2.35619449019")), Value(Decimal128("0.982193380007")));
+    assertEvaluates(Value(Decimal128("2.61799387799")), Value(Decimal128("0.989413207353")));
+    assertEvaluates(Value(Decimal128("3.14159265359")), Value(Decimal128("0.996272076221")));
+    assertEvaluates(Value(Decimal128("3.66519142919")), Value(Decimal128("0.998690213046")));
+    assertEvaluates(Value(Decimal128("3.92699081699")), Value(Decimal128("0.999223894879")));
+    assertEvaluates(Value(Decimal128("4.18879020479")), Value(Decimal128("0.999540174353")));
+    assertEvaluates(Value(Decimal128("4.71238898038")), Value(Decimal128("0.999838613989")));
+    assertEvaluates(Value(Decimal128("5.23598775598")), Value(Decimal128("0.999943363486")));
+    assertEvaluates(Value(Decimal128("5.49778714378")), Value(Decimal128("0.999966449")));
+    assertEvaluates(Value(Decimal128("5.75958653158")), Value(Decimal128("0.99998012476")));
+    assertEvaluates(Value(Decimal128("6.28318530718")), Value(Decimal128("0.99999302534")));
+}
+
+TEST_F(ExpressionTanhTest, NullArg) {
+    assertEvaluates(Value(BSONNULL), Value(BSONNULL));
 }
 
 /* ------------------------- ExpressionArrayToObject -------------------------- */

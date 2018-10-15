@@ -334,14 +334,17 @@ const char* ExpressionAtan::getOpName() const {
 
 /* ----------------------- ExpressionAtan2 ---------------------------- */
 
-Value ExpressionAtan2::evaluateNumericArgs(const Value& numericArg1, const Value& numericArg2) const {
+Value ExpressionAtan2::evaluateNumericArgs(const Value& numericArg1,
+                                           const Value& numericArg2) const {
     BSONType type1 = numericArg1.getType();
     BSONType type2 = numericArg2.getType();
     auto totalType = NumberDouble;
-    // If the type of either argument is NumberDecimal, we promote to Decimal128. If the type of either
+    // If the type of either argument is NumberDecimal, we promote to Decimal128. If the type of
+    // either
     // arg is NumberLong, we also promote to NumberDecimal rather than failing in the case where the
     // long cannot fit in a double.
-    if (type1 == NumberDecimal || type2 == NumberDecimal || type1 == NumberLong || type2 == NumberLong) {
+    if (type1 == NumberDecimal || type2 == NumberDecimal || type1 == NumberLong ||
+        type2 == NumberLong) {
         totalType = NumberDecimal;
     }
     switch (totalType) {
@@ -349,15 +352,15 @@ Value ExpressionAtan2::evaluateNumericArgs(const Value& numericArg1, const Value
             auto getDecimal = [](BSONType type, const Value& arg) -> Decimal128 {
                 switch (type) {
                     case NumberDecimal:
-                    return arg.getDecimal();
+                        return arg.getDecimal();
                     case NumberDouble:
-                    return Decimal128(arg.getDouble());
+                        return Decimal128(arg.getDouble());
                     case NumberLong:
-                    return Decimal128(arg.getLong());
+                        return Decimal128(arg.getLong());
                     case NumberInt:
-                    return Decimal128(arg.getInt());
+                        return Decimal128(arg.getInt());
                     default:
-                    uassert(50984, "unreachable", false);
+                        uassert(50984, "unreachable", false);
                 }
             };
             auto dec1 = getDecimal(type1, numericArg1);
@@ -368,11 +371,11 @@ Value ExpressionAtan2::evaluateNumericArgs(const Value& numericArg1, const Value
             auto getDouble = [](BSONType type, const Value& arg) -> double {
                 switch (type) {
                     case NumberDouble:
-                    return arg.getDouble();
+                        return arg.getDouble();
                     case NumberInt:
-                    return static_cast<double>(arg.getInt());
+                        return static_cast<double>(arg.getInt());
                     default:
-                    uassert(50985, "unreachable", false);
+                        uassert(50985, "unreachable", false);
                 }
             };
             auto double1 = getDouble(type1, numericArg1);
@@ -380,7 +383,7 @@ Value ExpressionAtan2::evaluateNumericArgs(const Value& numericArg1, const Value
             return Value(std::atan2(double1, double2));
         }
         default:
-        uassert(50986, "unreachable", false);
+            uassert(50986, "unreachable", false);
     }
 }
 
