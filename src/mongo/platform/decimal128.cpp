@@ -380,8 +380,8 @@ Decimal128 Decimal128::atan2(const Decimal128& other, RoundingMode roundMode) co
 }
 
 Decimal128 Decimal128::atan2(const Decimal128& other,
-                           std::uint32_t* signalingFlags,
-                           RoundingMode roundMode) const {
+                             std::uint32_t* signalingFlags,
+                             RoundingMode roundMode) const {
     BID_UINT128 current = decimal128ToLibraryType(_value);
     BID_UINT128 divisor = decimal128ToLibraryType(other.getValue());
     current = bid128_atan2(current, divisor, roundMode, signalingFlags);
