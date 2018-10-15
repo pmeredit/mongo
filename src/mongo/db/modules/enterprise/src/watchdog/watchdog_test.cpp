@@ -302,8 +302,8 @@ public:
     void run(OperationContext* opCtx) final {
         ++_counter;
 
-        if (_counter == 6) {
-            sleepFor(Seconds(1));
+        if (_counter >= 6) {
+            sleepFor(Seconds(5));
         }
     }
 
