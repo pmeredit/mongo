@@ -360,7 +360,7 @@ Value ExpressionAtan2::evaluateNumericArgs(const Value& numericArg1,
                     case NumberDouble:
                         return Decimal128(arg.getDouble());
                     case NumberLong:
-                        return Decimal128(arg.getLong());
+                        return Decimal128(static_cast<std::int64_t>(arg.getLong()));
                     case NumberInt:
                         return Decimal128(arg.getInt());
                     default:
