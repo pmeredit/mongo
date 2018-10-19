@@ -1273,11 +1273,10 @@ TEST_F(ExpressionCoshTest, NullArg) {
 
 class ExpressionDegreesTest : public ExpressionNaryTestOneArgApproximate {
 public:
-
-virtual void assertEvaluates(Value input, Value output) override {
-    intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-       _expr = new ExpressionDegrees(expCtx);
-       ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+    virtual void assertEvaluates(Value input, Value output) override {
+        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+        _expr = new ExpressionDegrees(expCtx);
+        ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
     }
 };
 
@@ -1349,11 +1348,10 @@ TEST_F(ExpressionDegreesTest, NullArg) {
 
 class ExpressionRadiansTest : public ExpressionNaryTestOneArgApproximate {
 public:
-
-virtual void assertEvaluates(Value input, Value output) override {
-    intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-       _expr = new ExpressionRadians(expCtx);
-       ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+    virtual void assertEvaluates(Value input, Value output) override {
+        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+        _expr = new ExpressionRadians(expCtx);
+        ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
     }
 };
 
