@@ -2026,7 +2026,7 @@ void ExpressionDateToString::_doAddDependencies(DepsTracker* deps) const {
 Value ExpressionDegrees::evaluateNumericArg(const Value& numericArg) const {
     BSONType type = numericArg.getType();
     if (type == NumberDouble) {
-        return Value(numericArg.getDouble() * 180.0/PI);
+        return Value(numericArg.getDouble() * 180.0 / PI);
     } else if (type == NumberDecimal) {
         return Value(numericArg.getDecimal().multiply(DECIMAL_180).divide(DECIMAL_PI));
     } else {
@@ -2034,7 +2034,7 @@ Value ExpressionDegrees::evaluateNumericArg(const Value& numericArg) const {
         uassert(50987,
                 "can't take $degrees of long long min",
                 num != std::numeric_limits<long long>::min());
-        auto degreesVal = num * 180.0/PI;
+        auto degreesVal = num * 180.0 / PI;
         return Value(degreesVal);
     }
 }
@@ -3699,7 +3699,7 @@ const char* ExpressionPow::getOpName() const {
 Value ExpressionRadians::evaluateNumericArg(const Value& numericArg) const {
     BSONType type = numericArg.getType();
     if (type == NumberDouble) {
-        return Value(numericArg.getDouble() * PI/180.0);
+        return Value(numericArg.getDouble() * PI / 180.0);
     } else if (type == NumberDecimal) {
         return Value(numericArg.getDecimal().multiply(DECIMAL_PI).divide(DECIMAL_180));
     } else {
@@ -3707,7 +3707,7 @@ Value ExpressionRadians::evaluateNumericArg(const Value& numericArg) const {
         uassert(50988,
                 "can't take $radians of long long min",
                 num != std::numeric_limits<long long>::min());
-        auto radiansVal = num * PI/180.0;
+        auto radiansVal = num * PI / 180.0;
         return Value(radiansVal);
     }
 }
