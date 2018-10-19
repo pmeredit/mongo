@@ -63,6 +63,10 @@ using std::set;
 using std::string;
 using std::vector;
 
+static double PI = 3.141592653589793;
+static const Decimal128 DECIMAL_PI = Decimal128(PI);
+static const Decimal128 DECIMAL_180 = Decimal128("180.0");
+
 /// Helper function to easily wrap constants with $const.
 static Value serializeConstant(Value val) {
     if (val.missing()) {
@@ -2019,6 +2023,29 @@ void ExpressionDateToString::_doAddDependencies(DepsTracker* deps) const {
     }
 }
 
+/* ----------------------- ExpressionDegrees ---------------------------- */
+
+Value ExpressionDegrees::evaluateNumericArg(const Value& numericArg) const {
+    BSONType type = numericArg.getType();
+    if (type == NumberDouble) {
+        return Value(numericArg.getDouble() * 180.0/PI);
+    } else if (type == NumberDecimal) {
+        return Value(numericArg.getDecimal().multiply(DECIMAL_180).divide(DECIMAL_PI));
+    } else {
+        long long num = numericArg.getLong();
+        uassert(50987,
+                "can't take $degrees of long long min",
+                num != std::numeric_limits<long long>::min());
+        auto degreesVal = num * 180.0/PI;
+        return Value(degreesVal);
+    }
+}
+
+REGISTER_EXPRESSION(degrees, ExpressionDegrees::parse);
+const char* ExpressionDegrees::getOpName() const {
+    return "$degrees";
+}
+
 /* ----------------------- ExpressionDivide ---------------------------- */
 
 Value ExpressionDivide::evaluate(const Document& root) const {
@@ -3709,6 +3736,29 @@ Value ExpressionPow::evaluate(const Document& root) const {
 REGISTER_EXPRESSION(pow, ExpressionPow::parse);
 const char* ExpressionPow::getOpName() const {
     return "$pow";
+}
+
+/* ----------------------- ExpressionRadians ---------------------------- */
+
+Value ExpressionRadians::evaluateNumericArg(const Value& numericArg) const {
+    BSONType type = numericArg.getType();
+    if (type == NumberDouble) {
+        return Value(numericArg.getDouble() * PI/180.0);
+    } else if (type == NumberDecimal) {
+        return Value(numericArg.getDecimal().multiply(DECIMAL_PI).divide(DECIMAL_180));
+    } else {
+        long long num = numericArg.getLong();
+        uassert(50988,
+                "can't take $radians of long long min",
+                num != std::numeric_limits<long long>::min());
+        auto radiansVal = num * PI/180.0;
+        return Value(radiansVal);
+    }
+}
+
+REGISTER_EXPRESSION(radians, ExpressionRadians::parse);
+const char* ExpressionRadians::getOpName() const {
+    return "$radians";
 }
 
 /* ------------------------- ExpressionRange ------------------------------ */
