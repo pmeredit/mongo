@@ -1167,6 +1167,14 @@ public:
     }
 };
 
+class ExpressionDegrees final : public ExpressionSingleNumericArg<ExpressionDegrees> {
+public:
+    explicit ExpressionDegrees(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+        : ExpressionSingleNumericArg<ExpressionDegrees>(expCtx) {}
+
+    Value evaluateNumericArg(const Value& numericArg) const final;
+    const char* getOpName() const final;
+};
 
 class ExpressionDivide final : public ExpressionFixedArity<ExpressionDivide, 2> {
 public:
@@ -1336,6 +1344,14 @@ public:
     const char* getOpName() const final;
 };
 
+class ExpressionRadians final : public ExpressionSingleNumericArg<ExpressionRadians> {
+public:
+    explicit ExpressionRadians(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+        : ExpressionSingleNumericArg<ExpressionRadians>(expCtx) {}
+
+    Value evaluateNumericArg(const Value& numericArg) const final;
+    const char* getOpName() const final;
+};
 
 class ExpressionIndexOfArray : public ExpressionRangedArity<ExpressionIndexOfArray, 2, 4> {
 public:
