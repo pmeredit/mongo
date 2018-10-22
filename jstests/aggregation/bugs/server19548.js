@@ -43,10 +43,21 @@ load("jstests/aggregation/extras/utils.js");
     testOp({$trunc: 0.9}, 0.0);
     testOp({$trunc: -1.2}, -1.0);
 
+    testOp({$round: NumberLong(4)}, NumberLong(4));
+    testOp({$round: NaN}, NaN);
+    testOp({$round: Infinity}, Infinity);
+    testOp({$round: -Infinity}, -Infinity);
+    testOp({$round: null}, null);
+    testOp({$round: -2.0}, -2.0);
+    testOp({$round: 0.9}, 1.0);
+    testOp({$round: -1.2}, -1.0);
+
     // More than 1 argument.
     assertErrorCode(coll, [{$project: {a: {$ceil: [1, 2]}}}], 16020);
     assertErrorCode(coll, [{$project: {a: {$floor: [1, 2]}}}], 16020);
-    assertErrorCode(coll, [{$project: {a: {$trunc: [1, 2]}}}], 16020);
+
+	// More than 2 arguments
+    assertErrorCode(coll, [{$project: {a: {$trunc: [1, 2, 3]}}}], 16020);
 
     // Non-numeric input.
     assertErrorCode(coll, [{$project: {a: {$ceil: "string"}}}], 28765);
