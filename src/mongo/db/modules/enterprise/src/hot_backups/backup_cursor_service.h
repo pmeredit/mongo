@@ -95,6 +95,10 @@ public:
      */
     void closeBackupCursor(OperationContext* opCtx, std::uint64_t cursorId) override;
 
+    bool isBackupCursorOpen() const {
+        return _state == State::kBackupCursorOpened;
+    }
+
 private:
     void _closeBackupCursor(OperationContext* opCtx, std::uint64_t cursorId, WithLock);
 

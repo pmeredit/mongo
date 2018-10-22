@@ -9,11 +9,19 @@
     let conn = MongoRunner.runMongod();
     let db = conn.getDB("test");
 
+    assert(db.serverStatus()["storageEngine"].hasOwnProperty("backupCursorOpen"));
+    assert(!db.serverStatus()["storageEngine"]["backupCursorOpen"]);
+
     let backupCursor = db.aggregate([{$backupCursor: {}}]);
     // There should be about 14 files in total, but being precise would be unnecessarily fragile.
+    assert(db.serverStatus()["storageEngine"]["backupCursorOpen"]);
     assert.gt(backupCursor.itcount(), 6);
     assert(!backupCursor.isExhausted());
+    // Consuming all of the files does not close the backup cursor.
+    assert(db.serverStatus()["storageEngine"]["backupCursorOpen"]);
     backupCursor.close();
+
+    assert(!db.serverStatus()["storageEngine"]["backupCursorOpen"]);
 
     // Open a backup cursor. Use a small batch size to ensure a getMore retrieves additional
     // results.
