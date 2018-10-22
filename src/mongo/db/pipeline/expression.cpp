@@ -26,6 +26,7 @@
  * it in the license file.
  */
 
+#include <iostream>
 
 #include "mongo/platform/basic.h"
 
@@ -68,6 +69,17 @@ static Value serializeConstant(Value val) {
     }
 
     return Value(DOC("$const" << val));
+}
+
+// Helper function to get precision multiplicand (just 10**arg).
+// This is used to support truncate or round to a certain precision.
+// The C++ standard library does not have integral powers.
+static int64_t getPrecisionMultiplicand(int64_t precision) {
+    auto ret = 1;
+    for (; precision > 0; --precision) {
+        ret *= 10;
+    }
+    return ret;
 }
 
 /* --------------------------- Expression ------------------------------ */
@@ -4702,9 +4714,134 @@ void ExpressionTrim::_doAddDependencies(DepsTracker* deps) const {
     }
 }
 
+/* ------------------------- ExpressionRound -------------------------- */
+
+Value ExpressionRound::evaluate(const Document& root) const {
+    auto numericArg = Value(vpOperand[0]->evaluate(root));
+    // If precision is specified, roundate to the specified precision.
+    if (vpOperand.size() == 2) {
+        int64_t precision = 0;
+        auto precisionArg = Value(vpOperand[1]->evaluate(root));
+        switch (precisionArg.getType()) {
+            case NumberDecimal:
+                precision = static_cast<int64_t>(
+                    precisionArg.getDecimal()
+                        .quantize(Decimal128::kNormalizedZero, Decimal128::kRoundTowardZero)
+                        .toLong());
+                break;
+            case NumberDouble:
+                precision = static_cast<int64_t>(precisionArg.getDouble());
+                break;
+            case NumberLong:
+                precision = static_cast<int64_t>(precisionArg.getLong());
+                break;
+            case NumberInt:
+                precision = static_cast<int64_t>(precisionArg.getInt());
+                break;
+            case jstNULL:
+                return Value(BSONNULL);
+            default:
+                uassert(50974, "$round precision argument must be numeric", false);
+        }
+        if (precision < 0) {
+            return numericArg;
+        }
+        auto precisionMultiplicand = getPrecisionMultiplicand(precision);
+        // There's no point in roundating integers or longs, it will have no effect.
+        switch (numericArg.getType()) {
+            case NumberDecimal: {
+                auto decimalPrecisionMultiplicand =
+                    Decimal128(static_cast<int64_t>(precisionMultiplicand));
+                auto possibleRes =
+                    numericArg.getDecimal()
+                        .multiply(decimalPrecisionMultiplicand)
+                        .quantize(Decimal128::kNormalizedZero, Decimal128::kRoundTiesToEven)
+                        .divide(decimalPrecisionMultiplicand);
+                return possibleRes.isNaN() ? numericArg : Value(possibleRes);
+            }
+            case NumberDouble: {
+                auto possibleRes = (std::round(numericArg.getDouble() * precisionMultiplicand) /
+                                    precisionMultiplicand);
+                return std::isnan(possibleRes) ? numericArg : Value(possibleRes);
+            }
+            default:
+                return numericArg;
+        }
+    }
+    // Else, roundate with 0 precision.
+    // There's no point in roundating integers or longs, it will have no effect.
+    switch (numericArg.getType()) {
+        case NumberDecimal:
+            return Value(numericArg.getDecimal().quantize(Decimal128::kNormalizedZero,
+                                                          Decimal128::kRoundTiesToEven));
+        case NumberDouble:
+            return Value(std::round(numericArg.getDouble()));
+        default:
+            return numericArg;
+    }
+}
+
+REGISTER_EXPRESSION(round, ExpressionRound::parse);
+const char* ExpressionRound::getOpName() const {
+    return "$round";
+}
+
 /* ------------------------- ExpressionTrunc -------------------------- */
 
-Value ExpressionTrunc::evaluateNumericArg(const Value& numericArg) const {
+Value ExpressionTrunc::evaluate(const Document& root) const {
+    auto numericArg = Value(vpOperand[0]->evaluate(root));
+    // If precision is specified, truncate to the specified precision.
+    if (vpOperand.size() == 2) {
+        int64_t precision = 0;
+        auto precisionArg = Value(vpOperand[1]->evaluate(root));
+        switch (precisionArg.getType()) {
+            case NumberDecimal:
+                precision = static_cast<int64_t>(
+                    precisionArg.getDecimal()
+                        .quantize(Decimal128::kNormalizedZero, Decimal128::kRoundTowardZero)
+                        .toLong());
+                break;
+            case NumberDouble:
+                precision = static_cast<int64_t>(precisionArg.getDouble());
+                break;
+            case NumberLong:
+                precision = static_cast<int64_t>(precisionArg.getLong());
+                break;
+            case NumberInt:
+                precision = static_cast<int64_t>(precisionArg.getInt());
+                break;
+            case jstNULL:
+                return Value(BSONNULL);
+            default:
+                uassert(50973, "$trunc precision argument must be numeric", false);
+        }
+        // Perhaps return bson null?
+        if (precision < 0) {
+            return numericArg;
+        }
+        auto precisionMultiplicand = getPrecisionMultiplicand(precision);
+        // There's no point in truncating integers or longs, it will have no effect.
+        switch (numericArg.getType()) {
+            case NumberDecimal: {
+                auto decimalPrecisionMultiplicand =
+                    Decimal128(static_cast<int64_t>(precisionMultiplicand));
+                auto possibleRes =
+                    numericArg.getDecimal()
+                        .multiply(decimalPrecisionMultiplicand)
+                        .quantize(Decimal128::kNormalizedZero, Decimal128::kRoundTowardZero)
+                        .divide(decimalPrecisionMultiplicand);
+                return possibleRes.isNaN() ? numericArg : Value(possibleRes);
+            }
+            case NumberDouble: {
+                auto possibleRes = (std::trunc(numericArg.getDouble() * precisionMultiplicand) /
+                                    precisionMultiplicand);
+                return std::isnan(possibleRes) ? numericArg : Value(possibleRes);
+            }
+            default:
+                return numericArg;
+        }
+    }
+    // Else, truncate with 0 precision.
     // There's no point in truncating integers or longs, it will have no effect.
     switch (numericArg.getType()) {
         case NumberDecimal:

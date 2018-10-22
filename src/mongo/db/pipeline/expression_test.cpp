@@ -181,6 +181,18 @@ public:
     intrusive_ptr<ExpressionNary> _expr;
 };
 
+class ExpressionNaryTestTwoArg : public ExpressionBaseTest {
+public:
+    virtual void assertEvaluates(Value input1, Value input2, Value output) {
+        addOperand(_expr, input1);
+        addOperand(_expr, input2);
+        ASSERT_VALUE_EQ(output, _expr->evaluate(Document()));
+        ASSERT_EQUALS(output.getType(), _expr->evaluate(Document()).getType());
+    }
+
+    intrusive_ptr<ExpressionNary> _expr;
+};
+
 /* ------------------------- NaryExpression -------------------------- */
 
 /** A dummy child of ExpressionNary used for testing. */
@@ -928,9 +940,161 @@ TEST(ExpressionReverseArrayTest, ReturnsNullWithNullishInput) {
         {{{Value(BSONNULL)}, Value(BSONNULL)}, {{Value(BSONUndefined)}, Value(BSONNULL)}});
 }
 
+/* ------------------------- ExpressionRound -------------------------- */
+
+class ExpressionRoundOneArgTest : public ExpressionNaryTestOneArg {
+public:
+    virtual void assertEvaluates(Value input, Value output) override {
+        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+        _expr = new ExpressionRound(expCtx);
+        ExpressionNaryTestOneArg::assertEvaluates(input, output);
+    }
+};
+
+class ExpressionRoundTwoArgTest : public ExpressionNaryTestTwoArg {
+public:
+    virtual void assertEvaluates(Value input1, Value input2, Value output) override {
+        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+        _expr = new ExpressionRound(expCtx);
+        ExpressionNaryTestTwoArg::assertEvaluates(input1, input2, output);
+    }
+};
+
+TEST_F(ExpressionRoundOneArgTest, IntArg1) {
+    assertEvaluates(Value(0), Value(0));
+    assertEvaluates(Value(numeric_limits<int>::min()), Value(numeric_limits<int>::min()));
+    assertEvaluates(Value(numeric_limits<int>::max()), Value(numeric_limits<int>::max()));
+}
+
+TEST_F(ExpressionRoundTwoArgTest, IntArg2) {
+    assertEvaluates(Value(0), Value(0), Value(0));
+    assertEvaluates(Value(2), Value(-1), Value(2));
+    assertEvaluates(
+        Value(numeric_limits<int>::min()), Value(10), Value(numeric_limits<int>::min()));
+    assertEvaluates(
+        Value(numeric_limits<int>::max()), Value(42), Value(numeric_limits<int>::max()));
+}
+
+TEST_F(ExpressionRoundOneArgTest, LongArg1) {
+    assertEvaluates(Value(0LL), Value(0LL));
+    assertEvaluates(Value(numeric_limits<long long>::min()),
+                    Value(numeric_limits<long long>::min()));
+    assertEvaluates(Value(numeric_limits<long long>::max()),
+                    Value(numeric_limits<long long>::max()));
+}
+
+TEST_F(ExpressionRoundTwoArgTest, LongArg2) {
+    assertEvaluates(Value(0LL), Value(0LL), Value(0LL));
+    assertEvaluates(Value(2LL), Value(-1LL), Value(2LL));
+    assertEvaluates(Value(numeric_limits<long long>::min()),
+                    Value(10LL),
+                    Value(numeric_limits<long long>::min()));
+    assertEvaluates(Value(numeric_limits<long long>::max()),
+                    Value(42LL),
+                    Value(numeric_limits<long long>::max()));
+}
+
+TEST_F(ExpressionRoundOneArgTest, DoubleArg1) {
+    assertEvaluates(Value(2.0), Value(2.0));
+    assertEvaluates(Value(-2.0), Value(-2.0));
+    assertEvaluates(Value(0.9), Value(1.0));
+    assertEvaluates(Value(0.1), Value(0.0));
+    assertEvaluates(Value(-1.2), Value(-1.0));
+    assertEvaluates(Value(-1.7), Value(-2.0));
+
+    // Outside the range of long longs (there isn't enough precision for decimals in this range, so
+    // should just preserve the number).
+    double largerThanLong = numeric_limits<long long>::max() * 2.0;
+    assertEvaluates(Value(largerThanLong), Value(largerThanLong));
+    double smallerThanLong = numeric_limits<long long>::min() * 2.0;
+    assertEvaluates(Value(smallerThanLong), Value(smallerThanLong));
+}
+
+TEST_F(ExpressionRoundTwoArgTest, DoubleArg2) {
+    assertEvaluates(Value(2.0), Value(1.0), Value(2.0));
+    assertEvaluates(Value(-2.0), Value(2.0), Value(-2.0));
+    assertEvaluates(Value(0.9), Value(0), Value(1.0));
+    assertEvaluates(Value(0.1), Value(0), Value(0.0));
+    assertEvaluates(Value(-1.2), Value(0), Value(-1.0));
+    assertEvaluates(Value(-1.7), Value(0), Value(-2.0));
+
+    assertEvaluates(Value(3.14159265), Value(0), Value(3.0));
+    assertEvaluates(Value(3.14159265), Value(1), Value(3.1));
+    assertEvaluates(Value(3.14159265), Value(2), Value(3.14));
+    assertEvaluates(Value(3.14159265), Value(3.9), Value(3.142));
+    assertEvaluates(Value(3.14159265), Value(4.6), Value(3.1416));
+    assertEvaluates(Value(3.14159265), Value(5), Value(3.14159));
+    assertEvaluates(Value(3.14159265), Value(6), Value(3.141593));
+    assertEvaluates(Value(3.14159265), Value(7), Value(3.1415927));
+    assertEvaluates(Value(3.14159265), Value(435), Value(3.14159265));
+    assertEvaluates(Value(3.14159265), Value(-1), Value(3.14159265));
+
+    // Outside the range of long longs (there isn't enough precision for decimals in this range, so
+    // should just preserve the number).
+    double largerThanLong = numeric_limits<long long>::max() * 2.0;
+    assertEvaluates(Value(largerThanLong), Value(0), Value(largerThanLong));
+    double smallerThanLong = numeric_limits<long long>::min() * 2.0;
+    assertEvaluates(Value(smallerThanLong), Value(0), Value(smallerThanLong));
+}
+
+TEST_F(ExpressionRoundOneArgTest, DecimalArg1) {
+    assertEvaluates(Value(Decimal128("2")), Value(Decimal128("2.0")));
+    assertEvaluates(Value(Decimal128("-2")), Value(Decimal128("-2.0")));
+    assertEvaluates(Value(Decimal128("0.9")), Value(Decimal128("1.0")));
+    assertEvaluates(Value(Decimal128("0.1")), Value(Decimal128("0.0")));
+    assertEvaluates(Value(Decimal128("-1.2")), Value(Decimal128("-1.0")));
+    assertEvaluates(Value(Decimal128("-1.7")), Value(Decimal128("-2.0")));
+    assertEvaluates(Value(Decimal128("123456789.9999999999999999999999999")),
+                    Value(Decimal128("123456790")));
+    assertEvaluates(Value(Decimal128("-99999999999999999999999999999.99")),
+                    Value(Decimal128("-100000000000000000000000000000")));
+    assertEvaluates(Value(Decimal128("3.4E-6000")), Value(Decimal128("0")));
+}
+
+TEST_F(ExpressionRoundTwoArgTest, DecimalArg2) {
+    assertEvaluates(Value(Decimal128("2")), Value(0), Value(Decimal128("2.0")));
+    assertEvaluates(Value(Decimal128("-2")), Value(0), Value(Decimal128("-2.0")));
+    assertEvaluates(Value(Decimal128("0.9")), Value(0), Value(Decimal128("1.0")));
+    assertEvaluates(Value(Decimal128("0.1")), Value(0), Value(Decimal128("0.0")));
+    assertEvaluates(Value(Decimal128("-1.2")), Value(0), Value(Decimal128("-1.0")));
+    assertEvaluates(Value(Decimal128("-1.7")), Value(0), Value(Decimal128("-2.0")));
+    assertEvaluates(Value(Decimal128("123456789.9999999999999999999999999")),
+                    Value(0),
+                    Value(Decimal128("123456790")));
+    assertEvaluates(Value(Decimal128("-99999999999999999999999999999.99")),
+                    Value(0),
+                    Value(Decimal128("-100000000000000000000000000000")));
+    assertEvaluates(Value(Decimal128("3.4E-6000")), Value(0), Value(Decimal128("0")));
+
+    assertEvaluates(Value(Decimal128("3.14159265")), Value(0), Value(Decimal128("3.0")));
+    assertEvaluates(Value(Decimal128("3.14159265")), Value(1), Value(Decimal128("3.1")));
+    assertEvaluates(Value(Decimal128("3.14159265")), Value(2), Value(Decimal128("3.14")));
+    assertEvaluates(
+        Value(Decimal128("3.14159265")), Value(Decimal128("3.9")), Value(Decimal128("3.142")));
+    assertEvaluates(Value(Decimal128("3.14159265")), Value(4.6), Value(Decimal128("3.1416")));
+    assertEvaluates(
+        Value(Decimal128("3.14159265")), Value(Decimal128("5.1")), Value(Decimal128("3.14159")));
+    assertEvaluates(Value(Decimal128("3.14159265")), Value(6), Value(Decimal128("3.141593")));
+    // ideally we would want the 6 here to be a 7, but this is a limitation of Decimal128.
+    assertEvaluates(Value(Decimal128("3.14159265")), Value(7), Value(Decimal128("3.1415926")));
+    assertEvaluates(Value(Decimal128("3.14159265")), Value(435), Value(Decimal128("3.14159265")));
+    assertEvaluates(
+        Value(Decimal128("3.14159265")), Value(Decimal128("-1")), Value(Decimal128("3.14159265")));
+}
+
+TEST_F(ExpressionRoundOneArgTest, NullArg1) {
+    assertEvaluates(Value(BSONNULL), Value(BSONNULL));
+}
+
+TEST_F(ExpressionRoundTwoArgTest, NullArg2) {
+    assertEvaluates(Value(BSONNULL), Value(BSONNULL), Value(BSONNULL));
+    assertEvaluates(Value(1), Value(BSONNULL), Value(BSONNULL));
+    assertEvaluates(Value(BSONNULL), Value(1), Value(BSONNULL));
+}
+
 /* ------------------------- ExpressionTrunc -------------------------- */
 
-class ExpressionTruncTest : public ExpressionNaryTestOneArg {
+class ExpressionTruncOneArgTest : public ExpressionNaryTestOneArg {
 public:
     virtual void assertEvaluates(Value input, Value output) override {
         intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
@@ -939,13 +1103,31 @@ public:
     }
 };
 
-TEST_F(ExpressionTruncTest, IntArg) {
+class ExpressionTruncTwoArgTest : public ExpressionNaryTestTwoArg {
+public:
+    virtual void assertEvaluates(Value input1, Value input2, Value output) override {
+        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+        _expr = new ExpressionTrunc(expCtx);
+        ExpressionNaryTestTwoArg::assertEvaluates(input1, input2, output);
+    }
+};
+
+TEST_F(ExpressionTruncOneArgTest, IntArg1) {
     assertEvaluates(Value(0), Value(0));
     assertEvaluates(Value(numeric_limits<int>::min()), Value(numeric_limits<int>::min()));
     assertEvaluates(Value(numeric_limits<int>::max()), Value(numeric_limits<int>::max()));
 }
 
-TEST_F(ExpressionTruncTest, LongArg) {
+TEST_F(ExpressionTruncTwoArgTest, IntArg2) {
+    assertEvaluates(Value(0), Value(0), Value(0));
+    assertEvaluates(Value(2), Value(-1), Value(2));
+    assertEvaluates(
+        Value(numeric_limits<int>::min()), Value(10), Value(numeric_limits<int>::min()));
+    assertEvaluates(
+        Value(numeric_limits<int>::max()), Value(42), Value(numeric_limits<int>::max()));
+}
+
+TEST_F(ExpressionTruncOneArgTest, LongArg1) {
     assertEvaluates(Value(0LL), Value(0LL));
     assertEvaluates(Value(numeric_limits<long long>::min()),
                     Value(numeric_limits<long long>::min()));
@@ -953,7 +1135,18 @@ TEST_F(ExpressionTruncTest, LongArg) {
                     Value(numeric_limits<long long>::max()));
 }
 
-TEST_F(ExpressionTruncTest, DoubleArg) {
+TEST_F(ExpressionTruncTwoArgTest, LongArg2) {
+    assertEvaluates(Value(0LL), Value(0LL), Value(0LL));
+    assertEvaluates(Value(2LL), Value(-1LL), Value(2LL));
+    assertEvaluates(Value(numeric_limits<long long>::min()),
+                    Value(10LL),
+                    Value(numeric_limits<long long>::min()));
+    assertEvaluates(Value(numeric_limits<long long>::max()),
+                    Value(42LL),
+                    Value(numeric_limits<long long>::max()));
+}
+
+TEST_F(ExpressionTruncOneArgTest, DoubleArg1) {
     assertEvaluates(Value(2.0), Value(2.0));
     assertEvaluates(Value(-2.0), Value(-2.0));
     assertEvaluates(Value(0.9), Value(0.0));
@@ -969,7 +1162,34 @@ TEST_F(ExpressionTruncTest, DoubleArg) {
     assertEvaluates(Value(smallerThanLong), Value(smallerThanLong));
 }
 
-TEST_F(ExpressionTruncTest, DecimalArg) {
+TEST_F(ExpressionTruncTwoArgTest, DoubleArg2) {
+    assertEvaluates(Value(2.0), Value(1.0), Value(2.0));
+    assertEvaluates(Value(-2.0), Value(2.0), Value(-2.0));
+    assertEvaluates(Value(0.9), Value(0), Value(0.0));
+    assertEvaluates(Value(0.1), Value(0), Value(0.0));
+    assertEvaluates(Value(-1.2), Value(0), Value(-1.0));
+    assertEvaluates(Value(-1.7), Value(0), Value(-1.0));
+
+    assertEvaluates(Value(3.14159265), Value(0), Value(3.0));
+    assertEvaluates(Value(3.14159265), Value(1), Value(3.1));
+    assertEvaluates(Value(3.14159265), Value(2), Value(3.14));
+    assertEvaluates(Value(3.14159265), Value(3.9), Value(3.141));
+    assertEvaluates(Value(3.14159265), Value(4.6), Value(3.1415));
+    assertEvaluates(Value(3.14159265), Value(5), Value(3.14159));
+    assertEvaluates(Value(3.14159265), Value(6), Value(3.141592));
+    assertEvaluates(Value(3.14159265), Value(7), Value(3.1415926));
+    assertEvaluates(Value(3.14159265), Value(435), Value(3.14159265));
+    assertEvaluates(Value(3.14159265), Value(-1), Value(3.14159265));
+
+    // Outside the range of long longs (there isn't enough precision for decimals in this range, so
+    // should just preserve the number).
+    double largerThanLong = numeric_limits<long long>::max() * 2.0;
+    assertEvaluates(Value(largerThanLong), Value(0), Value(largerThanLong));
+    double smallerThanLong = numeric_limits<long long>::min() * 2.0;
+    assertEvaluates(Value(smallerThanLong), Value(0), Value(smallerThanLong));
+}
+
+TEST_F(ExpressionTruncOneArgTest, DecimalArg1) {
     assertEvaluates(Value(Decimal128("2")), Value(Decimal128("2.0")));
     assertEvaluates(Value(Decimal128("-2")), Value(Decimal128("-2.0")));
     assertEvaluates(Value(Decimal128("0.9")), Value(Decimal128("0.0")));
@@ -983,8 +1203,44 @@ TEST_F(ExpressionTruncTest, DecimalArg) {
     assertEvaluates(Value(Decimal128("3.4E-6000")), Value(Decimal128("0")));
 }
 
-TEST_F(ExpressionTruncTest, NullArg) {
+TEST_F(ExpressionTruncTwoArgTest, DecimalArg2) {
+    assertEvaluates(Value(Decimal128("2")), Value(0), Value(Decimal128("2.0")));
+    assertEvaluates(Value(Decimal128("-2")), Value(0), Value(Decimal128("-2.0")));
+    assertEvaluates(Value(Decimal128("0.9")), Value(0), Value(Decimal128("0.0")));
+    assertEvaluates(Value(Decimal128("0.1")), Value(0), Value(Decimal128("0.0")));
+    assertEvaluates(Value(Decimal128("-1.2")), Value(0), Value(Decimal128("-1.0")));
+    assertEvaluates(Value(Decimal128("-1.7")), Value(0), Value(Decimal128("-1.0")));
+    assertEvaluates(Value(Decimal128("123456789.9999999999999999999999999")),
+                    Value(0),
+                    Value(Decimal128("123456789")));
+    assertEvaluates(Value(Decimal128("-99999999999999999999999999999.99")),
+                    Value(0),
+                    Value(Decimal128("-99999999999999999999999999999.00")));
+    assertEvaluates(Value(Decimal128("3.4E-6000")), Value(0), Value(Decimal128("0")));
+
+    assertEvaluates(Value(Decimal128("3.14159265")), Value(0), Value(Decimal128("3.0")));
+    assertEvaluates(Value(Decimal128("3.14159265")), Value(1), Value(Decimal128("3.1")));
+    assertEvaluates(Value(Decimal128("3.14159265")), Value(2), Value(Decimal128("3.14")));
+    assertEvaluates(
+        Value(Decimal128("3.14159265")), Value(Decimal128("3.9")), Value(Decimal128("3.141")));
+    assertEvaluates(Value(Decimal128("3.14159265")), Value(4.6), Value(Decimal128("3.1415")));
+    assertEvaluates(
+        Value(Decimal128("3.14159265")), Value(Decimal128("5.1")), Value(Decimal128("3.14159")));
+    assertEvaluates(Value(Decimal128("3.14159265")), Value(6), Value(Decimal128("3.141592")));
+    assertEvaluates(Value(Decimal128("3.14159265")), Value(7), Value(Decimal128("3.1415926")));
+    assertEvaluates(Value(Decimal128("3.14159265")), Value(435), Value(Decimal128("3.14159265")));
+    assertEvaluates(
+        Value(Decimal128("3.14159265")), Value(Decimal128("-1")), Value(Decimal128("3.14159265")));
+}
+
+TEST_F(ExpressionTruncOneArgTest, NullArg1) {
     assertEvaluates(Value(BSONNULL), Value(BSONNULL));
+}
+
+TEST_F(ExpressionTruncTwoArgTest, NullArg2) {
+    assertEvaluates(Value(BSONNULL), Value(BSONNULL), Value(BSONNULL));
+    assertEvaluates(Value(1), Value(BSONNULL), Value(BSONNULL));
+    assertEvaluates(Value(BSONNULL), Value(1), Value(BSONNULL));
 }
 
 /* ------------------------- Old-style tests -------------------------- */
