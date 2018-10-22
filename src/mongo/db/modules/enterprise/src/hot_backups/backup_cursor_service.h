@@ -95,9 +95,7 @@ public:
      */
     void closeBackupCursor(OperationContext* opCtx, std::uint64_t cursorId) override;
 
-    bool isBackupCursorOpen() const {
-        return _state == State::kBackupCursorOpened;
-    }
+    bool isBackupCursorOpen() const override;
 
 private:
     void _closeBackupCursor(OperationContext* opCtx, std::uint64_t cursorId, WithLock);
@@ -107,7 +105,7 @@ private:
     enum State { kInactive, kFsyncLocked, kBackupCursorOpened };
 
     // This mutex serializes all access into this class.
-    stdx::mutex _mutex;
+    mutable stdx::mutex _mutex;
     State _state = kInactive;
     // When state is `kBackupCursorOpened`, _openCursor contains the cursorId of the active backup
     // cursor. Otherwise it is boost::none.

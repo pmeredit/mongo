@@ -190,6 +190,11 @@ void BackupCursorService::closeBackupCursor(OperationContext* opCtx, std::uint64
     _closeBackupCursor(opCtx, cursorId, lk);
 }
 
+bool BackupCursorService::isBackupCursorOpen() const {
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
+    return _state == State::kBackupCursorOpened;
+}
+
 void BackupCursorService::_closeBackupCursor(OperationContext* opCtx,
                                              std::uint64_t cursorId,
                                              WithLock) {
