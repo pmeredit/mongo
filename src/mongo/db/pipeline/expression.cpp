@@ -4794,7 +4794,7 @@ const char* ExpressionRound::getOpName() const {
 
 Value ExpressionTrunc::evaluate(const Document& root) const {
     auto numericArg = Value(vpOperand[0]->evaluate(root));
-	uassert(50975,
+    uassert(50975,
             str::stream() << this->getOpName() << " only supports numeric types, not "
                           << typeName(numericArg.getType()),
             numericArg.nullish() || numericArg.numeric());
