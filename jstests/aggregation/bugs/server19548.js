@@ -56,11 +56,13 @@ load("jstests/aggregation/extras/utils.js");
     assertErrorCode(coll, [{$project: {a: {$ceil: [1, 2]}}}], 16020);
     assertErrorCode(coll, [{$project: {a: {$floor: [1, 2]}}}], 16020);
 
-	// More than 2 arguments
-    assertErrorCode(coll, [{$project: {a: {$trunc: [1, 2, 3]}}}], 16020);
+    // More than 2 arguments
+    assertErrorCode(coll, [{$project: {a: {$trunc: [1, 2, 3]}}}], 28667);
+    assertErrorCode(coll, [{$project: {a: {$round: [1, 2, 3]}}}], 28667);
 
     // Non-numeric input.
     assertErrorCode(coll, [{$project: {a: {$ceil: "string"}}}], 28765);
     assertErrorCode(coll, [{$project: {a: {$floor: "string"}}}], 28765);
-    assertErrorCode(coll, [{$project: {a: {$trunc: "string"}}}], 28765);
+    assertErrorCode(coll, [{$project: {a: {$round: "string"}}}], 50976);
+    assertErrorCode(coll, [{$project: {a: {$trunc: "string"}}}], 50975);
 }());
