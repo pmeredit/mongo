@@ -75,9 +75,9 @@ static Value serializeConstant(Value val) {
 // This is used to support truncate or round to a certain precision.
 // The C++ standard library does not have integral powers.
 static int64_t getPrecisionMultiplicand(int64_t precision) {
-    auto ret = 1;
-    for (; precision > 0; --precision) {
-        ret *= 10;
+    int64_t ret = 1LL;
+    for (; precision > 0LL; --precision) {
+        ret *= 10LL;
     }
     return ret;
 }
@@ -4718,6 +4718,10 @@ void ExpressionTrim::_doAddDependencies(DepsTracker* deps) const {
 
 Value ExpressionRound::evaluate(const Document& root) const {
     auto numericArg = Value(vpOperand[0]->evaluate(root));
+    uassert(50976,
+            str::stream() << this->getOpName() << " only supports numeric types, not "
+                          << typeName(numericArg.getType()),
+            numericArg.nullish() || numericArg.numeric());
     // If precision is specified, roundate to the specified precision.
     if (vpOperand.size() == 2) {
         int64_t precision = 0;
@@ -4790,6 +4794,10 @@ const char* ExpressionRound::getOpName() const {
 
 Value ExpressionTrunc::evaluate(const Document& root) const {
     auto numericArg = Value(vpOperand[0]->evaluate(root));
+	uassert(50975,
+            str::stream() << this->getOpName() << " only supports numeric types, not "
+                          << typeName(numericArg.getType()),
+            numericArg.nullish() || numericArg.numeric());
     // If precision is specified, truncate to the specified precision.
     if (vpOperand.size() == 2) {
         int64_t precision = 0;
