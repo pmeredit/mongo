@@ -131,12 +131,15 @@ int saslInteract(LDAP* session, unsigned flags, void* defaults, void* interact) 
 int openLDAPBindFunction(
     LDAP* session, LDAP_CONST char* url, ber_tag_t request, ber_int_t msgid, void* params) {
     try {
+        LDAPSessionHolder<OpenLDAPSessionParams> sessionHolder(session);
         LDAPBindOptions* bindOptions = static_cast<LDAPBindOptions*>(params);
 
         LOG(3) << "Binding to LDAP server \"" << url
                << "\" with bind parameters: " << bindOptions->toCleanString();
 
         int ret;
+        const std::string failureHint = str::stream() << "failed to bind to LDAP server at " << url;
+        Status status{ErrorCodes::InternalError, "Status was not set before use"_sd};
 
         if (bindOptions->authenticationChoice == LDAPBindType::kSasl) {
             ret = ldap_sasl_interactive_bind_s(session,
@@ -147,6 +150,8 @@ int openLDAPBindFunction(
                                                LDAP_SASL_QUIET,
                                                &saslInteract,
                                                static_cast<void*>(bindOptions));
+            status =
+                sessionHolder.resultCodeToStatus(ret, "ldap_sasl_interactive_bind_s", failureHint);
         } else if (bindOptions->authenticationChoice == LDAPBindType::kSimple) {
             // Unfortunately, libldap wants a non-const password. Copy the password to remove risk
             // of it scribbling over our memory.
@@ -163,15 +168,16 @@ int openLDAPBindFunction(
                                    nullptr,
                                    nullptr,
                                    nullptr);
+            status = sessionHolder.resultCodeToStatus(ret, "ldap_sasl_bind_s", failureHint);
+
         } else {
             error() << "Attempted to bind to LDAP server with unrecognized bind type: "
                     << authenticationChoiceToString(bindOptions->authenticationChoice);
             return LDAP_OPERATIONS_ERROR;
         }
 
-        if (ret != LDAP_SUCCESS) {
-            error() << "Failed to bind to LDAP server at " << url << ": " << ldap_err2string(ret)
-                    << ". Bind parameters were: " << bindOptions->toCleanString();
+        if (!status.isOK()) {
+            error() << status << ". Bind parameters were: " << bindOptions->toCleanString();
         }
         return ret;
     } catch (...) {
