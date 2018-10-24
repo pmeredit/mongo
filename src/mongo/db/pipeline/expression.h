@@ -856,6 +856,87 @@ public:
     const char* getOpName() const final;
 };
 
+class ExpressionBitAnd final : public ExpressionVariadic<ExpressionBitAnd> {
+public:
+    explicit ExpressionBitAnd(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+        : ExpressionVariadic<ExpressionBitAnd>(expCtx) {}
+
+    boost::intrusive_ptr<Expression> optimize() final;
+    Value evaluate(const Document& root) const final;
+    const char* getOpName() const final;
+
+    bool isAssociative() const final {
+        return true;
+    }
+
+    bool isCommutative() const final {
+        return true;
+    }
+};
+
+class ExpressionBitComplement final : public ExpressionSingleNumericArg<ExpressionBitComplement> {
+public:
+    explicit ExpressionBitComplement(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+        : ExpressionSingleNumericArg<ExpressionBitComplement>(expCtx) {}
+
+    Value evaluateNumericArg(const Value& numericArg) const final;
+    const char* getOpName() const final;
+};
+
+class ExpressionBitShiftLeft final : public ExpressionDoubleNumericArgs<ExpressionBitShiftLeft> {
+public:
+    explicit ExpressionBitShiftLeft(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+        : ExpressionDoubleNumericArgs<ExpressionBitShiftLeft>(expCtx) {}
+
+    Value evaluateNumericArgs(const Value& numericArg1, const Value& numericArg2) const final;
+    const char* getOpName() const final;
+};
+
+class ExpressionBitShiftRight final : public ExpressionDoubleNumericArgs<ExpressionBitShiftRight> {
+public:
+    explicit ExpressionBitShiftRight(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+        : ExpressionDoubleNumericArgs<ExpressionBitShiftRight>(expCtx) {}
+
+    Value evaluateNumericArgs(const Value& numericArg1, const Value& numericArg2) const final;
+    const char* getOpName() const final;
+};
+
+class ExpressionBitOr final : public ExpressionVariadic<ExpressionBitOr> {
+public:
+    explicit ExpressionBitOr(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+        : ExpressionVariadic<ExpressionBitOr>(expCtx) {}
+
+    boost::intrusive_ptr<Expression> optimize() final;
+    Value evaluate(const Document& root) const final;
+    const char* getOpName() const final;
+
+    bool isAssociative() const final {
+        return true;
+    }
+
+    bool isCommutative() const final {
+        return true;
+    }
+};
+
+class ExpressionBitXor final : public ExpressionVariadic<ExpressionBitXor> {
+public:
+    explicit ExpressionBitXor(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+        : ExpressionVariadic<ExpressionBitXor>(expCtx) {}
+
+    boost::intrusive_ptr<Expression> optimize() final;
+    Value evaluate(const Document& root) const final;
+    const char* getOpName() const final;
+
+    bool isAssociative() const final {
+        return true;
+    }
+
+    bool isCommutative() const final {
+        return true;
+    }
+};
+
 class ExpressionCeil final : public ExpressionSingleNumericArg<ExpressionCeil> {
 public:
     explicit ExpressionCeil(const boost::intrusive_ptr<ExpressionContext>& expCtx)

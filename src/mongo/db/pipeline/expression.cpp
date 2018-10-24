@@ -395,6 +395,7 @@ REGISTER_EXPRESSION(atan2, ExpressionAtan2::parse);
 const char* ExpressionAtan2::getOpName() const {
     return "$atan2";
 }
+
 /* ----------------------- ExpressionAcosh ---------------------------- */
 
 Value ExpressionAcosh::evaluateNumericArg(const Value& numericArg) const {
@@ -879,6 +880,416 @@ Value ExpressionArrayToObject::evaluate(const Document& root) const {
 REGISTER_EXPRESSION(arrayToObject, ExpressionArrayToObject::parse);
 const char* ExpressionArrayToObject::getOpName() const {
     return "$arrayToObject";
+}
+
+/* ------------------------- ExpressionBitAnd ----------------------------- */
+
+intrusive_ptr<Expression> ExpressionBitAnd::optimize() {
+    /* optimize the bitAnd as much as possible */
+    intrusive_ptr<Expression> pE(ExpressionNary::optimize());
+
+    /* if the result isn't a bitAnd, we can't do anything */
+    auto pAnd = dynamic_cast<ExpressionBitAnd*>(pE.get());
+    if (!pAnd)
+        return pE;
+
+    /*
+      Check the last argument on the result; if it's not constant (as
+      promised by ExpressionNary::optimize(),) then there's nothing
+      we can do.
+    */
+    const size_t n = pAnd->vpOperand.size();
+    // ExpressionNary::optimize() generates an ExpressionConstant for {$and:[]}.
+    verify(n > 0);
+    intrusive_ptr<Expression> pLast(pAnd->vpOperand[n - 1]);
+    const ExpressionConstant* pConst = dynamic_cast<ExpressionConstant*>(pLast.get());
+    if (!pConst)
+        return pE;
+
+    /*
+      Evaluate the last argument, if it's 0,
+      then we can just return 0. We need to use the type of the argument
+      to decide whether to return an int or a long.
+     */
+    auto val = pConst->getValue();
+    auto type = val.getType();
+    switch (type) {
+        case NumberInt: {
+            auto last = val.getInt();
+            if (last == 0) {
+                    intrusive_ptr<ExpressionConstant> pFinal(
+                        ExpressionConstant::create(getExpressionContext(), Value(0)));
+                    return pFinal;
+                }
+            if (last != -1) {
+                return pE;
+            }
+            break;
+        }
+        case NumberLong: {
+            auto last = val.getLong();
+            if (last == 0LL) {
+                    intrusive_ptr<ExpressionConstant> pFinal(
+                        ExpressionConstant::create(getExpressionContext(), Value(0LL)));
+                    return pFinal;
+                }
+            if (last != -1LL) {
+                return pE;
+            }
+            break;
+        }
+        default:
+            return pE;
+    }
+    /*
+      Remove the final -1 value, and return the new expression.
+    */
+    pAnd->vpOperand.resize(n - 1);
+    return pE;
+}
+
+Value ExpressionBitAnd::evaluate(const Document& root) const {
+    auto productInt = -1;
+    auto productLong = -1LL;
+    BSONType productType = NumberInt;
+
+    const size_t n = vpOperand.size();
+    for (size_t i = 0; i < n; ++i) {
+        Value val = vpOperand[i]->evaluate(root);
+
+        switch (val.getType()) {
+            case NumberInt:
+                productInt &= val.getInt();
+                productLong &= static_cast<long long>(val.getInt());
+                break;
+            case NumberLong:
+                productLong &= val.getLong();
+                productType = NumberLong;
+                break;
+            default:
+                if (val.nullish()) {
+                    return Value(BSONNULL);
+                }
+                uasserted(50989,
+                          str::stream() << getOpName() << " only supports integral types, not "
+                                    << typeName(val.getType()));
+        }
+    }
+
+    if (productType == NumberLong)
+        return Value(productLong);
+    else if (productType == NumberInt)
+        return Value::createIntOrLong(productInt);
+    massert(50990, str::stream() << getOpName() << " resulted in a non-integral type", false);
+}
+
+REGISTER_EXPRESSION(bitAnd, ExpressionBitAnd::parse);
+const char* ExpressionBitAnd::getOpName() const {
+    return "$bitAnd";
+}
+
+/* ----------------------- ExpressionBitComplement ---------------------------- */
+
+Value ExpressionBitComplement::evaluateNumericArg(const Value& numericArg) const {
+    switch (numericArg.getType()) {
+        case NumberInt:
+            return Value(~numericArg.getInt());
+            break;
+        case NumberLong:
+            return Value(~numericArg.getLong());
+            break;
+        default:
+            if (numericArg.nullish()) {
+                return Value(BSONNULL);
+            }
+            uasserted(50995,
+                    str::stream() << getOpName() << " only supports integral types, not "
+                                  << typeName(numericArg.getType()));
+    }
+}
+
+REGISTER_EXPRESSION(bitComplement, ExpressionBitComplement::parse);
+const char* ExpressionBitComplement::getOpName() const {
+    return "$bitComplement";
+}
+
+/* ----------------------- ExpressionBitShiftLeft ---------------------------- */
+
+Value ExpressionBitShiftLeft::evaluateNumericArgs(const Value& numericArg1,
+                                           const Value& numericArg2) const {
+    BSONType type1 = numericArg1.getType();
+    BSONType type2 = numericArg2.getType();
+    auto totalType = NumberInt;
+    if (type1 == NumberLong || type2 == NumberLong) {
+        totalType = NumberLong;
+    }
+    switch (totalType) {
+        case NumberLong: {
+            auto getLong = [](BSONType type, const Value& arg) -> long long {
+                switch (type) {
+                    case NumberLong:
+                        return arg.getLong();
+                    case NumberInt:
+                        return static_cast<long long>(arg.getInt());
+                    default:
+                        uassert(50996, "unreachable", false);
+                }
+            };
+            auto long1 = getLong(type1, numericArg1);
+            auto long2 = getLong(type2, numericArg2);
+            return Value(long1 << long2);
+        }
+        case NumberInt: {
+            auto int1 = numericArg1.getInt();
+            auto int2 = numericArg2.getInt();
+            return Value(int1 << int2);
+        }
+        default:
+            uassert(50997, "unreachable", false);
+    }
+}
+
+REGISTER_EXPRESSION(bitShiftLeft, ExpressionBitShiftLeft::parse);
+const char* ExpressionBitShiftLeft::getOpName() const {
+    return "$bitShiftLeft";
+}
+
+/* ----------------------- ExpressionBitShiftRight ---------------------------- */
+
+Value ExpressionBitShiftRight::evaluateNumericArgs(const Value& numericArg1,
+                                           const Value& numericArg2) const {
+    BSONType type1 = numericArg1.getType();
+    BSONType type2 = numericArg2.getType();
+    auto totalType = NumberInt;
+    if (type1 == NumberLong || type2 == NumberLong) {
+        totalType = NumberLong;
+    }
+    switch (totalType) {
+        case NumberLong: {
+            auto getLong = [](BSONType type, const Value& arg) -> long long {
+                switch (type) {
+                    case NumberLong:
+                        return arg.getLong();
+                    case NumberInt:
+                        return static_cast<long long>(arg.getInt());
+                    default:
+                        uassert(50998, "unreachable", false);
+                }
+            };
+            auto long1 = getLong(type1, numericArg1);
+            auto long2 = getLong(type2, numericArg2);
+            return Value(long1 >> long2);
+        }
+        case NumberInt: {
+            auto int1 = numericArg1.getInt();
+            auto int2 = numericArg2.getInt();
+            return Value(int1 >> int2);
+        }
+        default:
+            uassert(50999, "unreachable", false);
+    }
+}
+
+REGISTER_EXPRESSION(bitShiftRight, ExpressionBitShiftRight::parse);
+const char* ExpressionBitShiftRight::getOpName() const {
+    return "$bitShiftRight";
+}
+
+/* ------------------------- ExpressionBitOr ----------------------------- */
+
+intrusive_ptr<Expression> ExpressionBitOr::optimize() {
+    /* optimize the bitOr as much as possible */
+    intrusive_ptr<Expression> pE(ExpressionNary::optimize());
+
+    /* if the result isn't a bitOr, we can't do anything */
+    auto pOr = dynamic_cast<ExpressionBitOr*>(pE.get());
+    if (!pOr)
+        return pE;
+
+    /*
+      Check the last argument on the result; if it's not constant (as
+      promised by ExpressionNary::optimize(),) then there's nothing
+      we can do.
+    */
+    const size_t n = pOr->vpOperand.size();
+    // ExpressionNary::optimize() generates an ExpressionConstant for {$and:[]}.
+    verify(n > 0);
+    intrusive_ptr<Expression> pLast(pOr->vpOperand[n - 1]);
+    const ExpressionConstant* pConst = dynamic_cast<ExpressionConstant*>(pLast.get());
+    if (!pConst)
+        return pE;
+
+    /*
+      Evaluate the last argument, if it's 0,
+      then we can just return 0. We need to use the type of the argument
+      to decide whether to return an int or a long.
+     */
+    auto val = pConst->getValue();
+    auto type = val.getType();
+    switch (type) {
+        case NumberInt: {
+            auto last = val.getInt();
+            if (last == -1) {
+                    intrusive_ptr<ExpressionConstant> pFinal(
+                        ExpressionConstant::create(getExpressionContext(), Value(-1)));
+                    return pFinal;
+                }
+            if (last != 0) {
+                return pE;
+            }
+            break;
+        }
+        case NumberLong: {
+            auto last = val.getLong();
+            if (last == -1LL) {
+                    intrusive_ptr<ExpressionConstant> pFinal(
+                        ExpressionConstant::create(getExpressionContext(), Value(-1LL)));
+                    return pFinal;
+                }
+            if (last != 0) {
+                return pE;
+            }
+            break;
+        }
+        default:
+            return pE;
+    }
+    /*
+      Remove the final 0 value, and return the new expression.
+    */
+    pOr->vpOperand.resize(n - 1);
+    return pE;
+}
+
+Value ExpressionBitOr::evaluate(const Document& root) const {
+    auto sumInt = 0;
+    auto sumLong = 0LL;
+    BSONType sumType = NumberInt;
+
+    const size_t n = vpOperand.size();
+    for (size_t i = 0; i < n; ++i) {
+        Value val = vpOperand[i]->evaluate(root);
+
+        switch (val.getType()) {
+            case NumberInt:
+                sumInt |= val.getInt();
+                sumLong |= static_cast<long long>(val.getInt());
+                break;
+            case NumberLong:
+                sumLong |= val.getLong();
+                sumType = NumberLong;
+                break;
+            default:
+                if (val.nullish()) {
+                    return Value(BSONNULL);
+                }
+                   uasserted(50991,
+                      str::stream() << getOpName() << " only supports integral types, not "
+                                    << typeName(val.getType()));
+        }
+    }
+
+    if (sumType == NumberLong)
+        return Value(sumLong);
+    else if (sumType == NumberInt)
+        return Value::createIntOrLong(sumInt);
+    massert(50992, str::stream() << getOpName() << " resulted in a non-integral type", false);
+}
+
+REGISTER_EXPRESSION(bitOr, ExpressionBitOr::parse);
+const char* ExpressionBitOr::getOpName() const {
+    return "$bitOr";
+}
+
+/* ------------------------- ExpressionBitXor ----------------------------- */
+
+intrusive_ptr<Expression> ExpressionBitXor::optimize() {
+    /* optimize the bitXor as much as possible */
+    intrusive_ptr<Expression> pE(ExpressionNary::optimize());
+
+    /* if the result isn't a bitXor, we can't do anything */
+    auto pXor = dynamic_cast<ExpressionBitXor*>(pE.get());
+    if (!pXor)
+        return pE;
+
+    /*
+      Check the last argument on the result; if it's not constant (as
+      promised by ExpressionNary::optimize(),) then there's nothing
+      we can do.
+    */
+    const size_t n = pXor->vpOperand.size();
+    // ExpressionNary::optimize() generates an ExpressionConstant for {$and:[]}.
+    verify(n > 0);
+    intrusive_ptr<Expression> pLast(pXor->vpOperand[n - 1]);
+    const ExpressionConstant* pConst = dynamic_cast<ExpressionConstant*>(pLast.get());
+    if (!pConst)
+        return pE;
+
+    /*
+      Evaluate the last argument, if it's 0,
+      then we can just return 0. We need to use the type of the argument
+      to decide whether to return an int or a long.
+     */
+    auto val = pConst->getValue();
+    auto type = val.getType();
+    switch (type) {
+        case NumberInt: {
+            auto last = val.getInt();
+            if (last == 0) {
+    		pXor->vpOperand.resize(n - 1);
+            }
+            return pE;
+        }
+        case NumberLong: {
+            auto last = val.getLong();
+            if (last == 0) {
+    		pXor->vpOperand.resize(n - 1);
+            }
+            return pE;
+        }
+        default:
+            return pE;
+    }
+}
+
+Value ExpressionBitXor::evaluate(const Document& root) const {
+    auto reductionInt = 0;
+    auto reductionLong = 0LL;
+    BSONType reductionType = NumberInt;
+
+    const size_t n = vpOperand.size();
+    for (size_t i = 0; i < n; ++i) {
+        Value val = vpOperand[i]->evaluate(root);
+
+        switch (val.getType()) {
+            case NumberInt:
+                reductionInt ^= val.getInt();
+                reductionLong ^= static_cast<long long>(val.getInt());
+                break;
+            case NumberLong:
+                reductionLong ^= val.getLong();
+                reductionType = NumberLong;
+                break;
+            default:
+                if (val.nullish()) {
+                    return Value(BSONNULL);
+                }
+                uasserted(50993,
+                          str::stream() << getOpName() << " only supports integral types, not "
+                                    << typeName(val.getType()));
+        }
+    }
+
+    if (reductionType == NumberLong)
+        return Value(reductionLong);
+    else if (reductionType == NumberInt)
+        return Value::createIntOrLong(reductionInt);
+    massert(50994, str::stream() << getOpName() << " resulted in a non-integral type", false);
+}
+
+REGISTER_EXPRESSION(bitXor, ExpressionBitXor::parse);
+const char* ExpressionBitXor::getOpName() const {
+    return "$bitXor";
 }
 
 /* ----------------------- ExpressionCos ---------------------------- */
