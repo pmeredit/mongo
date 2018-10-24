@@ -181,6 +181,18 @@ public:
     intrusive_ptr<ExpressionNary> _expr;
 };
 
+class ExpressionNaryTestTwoArg : public ExpressionBaseTest {
+public:
+    virtual void assertEvaluates(Value input1, Value input2, Value output) {
+        addOperand(_expr, input1);
+        addOperand(_expr, input2);
+        ASSERT_VALUE_EQ(output, _expr->evaluate(Document()));
+        ASSERT_EQUALS(output.getType(), _expr->evaluate(Document()).getType());
+    }
+
+    intrusive_ptr<ExpressionNary> _expr;
+};
+
 // assert_approximately_eq is a helper function for asserting approximate results.
 static void assert_approximately_eq(const Value& evaluated, const Value& expected) {
     switch (evaluated.getType()) {
@@ -1116,6 +1128,114 @@ TEST_F(ExpressionAtan2Test, NullArg) {
     assertEvaluates(Value(1), Value(BSONNULL), Value(BSONNULL));
     assertEvaluates(Value(BSONNULL), Value(1), Value(BSONNULL));
 }
+
+/* ------------------------- ExpressionBitComplement -------------------------- */
+
+class ExpressionBitComplementTest : public ExpressionNaryTestOneArg {
+public:
+    virtual void assertEvaluates(Value input, Value output) override {
+        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+        _expr = new ExpressionBitComplement(expCtx);
+        ExpressionNaryTestOneArg::assertEvaluates(input, output);
+    }
+};
+
+TEST_F(ExpressionBitComplementTest, IntArg) {
+    assertEvaluates(Value(0), Value(-1));
+    assertEvaluates(Value(1), Value(-2));
+    assertEvaluates(Value(-1), Value(0));
+    assertEvaluates(Value(-2), Value(1));
+	assertEvaluates(Value(255), Value(-256));
+}
+
+TEST_F(ExpressionBitComplementTest, LongArg) {
+    assertEvaluates(Value(0LL), Value(-1LL));
+    assertEvaluates(Value(1LL), Value(-2LL));
+    assertEvaluates(Value(-1LL), Value(0LL));
+    assertEvaluates(Value(-2LL), Value(1LL));
+	assertEvaluates(Value(255LL), Value(-256LL));
+}
+
+TEST_F(ExpressionBitComplementTest, NullArg) {
+    assertEvaluates(Value(BSONNULL), Value(BSONNULL));
+}
+
+/* ------------------------- ExpressionBitShiftLeft -------------------------- */
+
+class ExpressionBitShiftLeftTest : public ExpressionNaryTestTwoArg {
+public:
+    virtual void assertEvaluates(Value input1, Value input2, Value output) override {
+        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+        _expr = new ExpressionBitShiftLeft(expCtx);
+        ExpressionNaryTestTwoArg::assertEvaluates(input1, input2, output);
+    }
+};
+
+TEST_F(ExpressionBitShiftLeftTest, IntArg) {
+    assertEvaluates(Value(0), Value(1), Value(0));
+    assertEvaluates(Value(1), Value(2), Value(4));
+    assertEvaluates(Value(255), Value(1), Value(510));
+    assertEvaluates(Value(-1), Value(1), Value(-2));
+}
+
+TEST_F(ExpressionBitShiftLeftTest, LongArg) {
+    assertEvaluates(Value(0LL), Value(1LL), Value(0LL));
+    assertEvaluates(Value(1LL), Value(2LL), Value(4LL));
+    assertEvaluates(Value(255LL), Value(1LL), Value(510LL));
+    assertEvaluates(Value(-1LL), Value(1LL), Value(-2LL));
+
+    assertEvaluates(Value(0LL), Value(1), Value(0LL));
+    assertEvaluates(Value(1), Value(2LL), Value(4LL));
+    assertEvaluates(Value(255LL), Value(1), Value(510LL));
+    assertEvaluates(Value(-1), Value(1LL), Value(-2LL));
+}
+
+TEST_F(ExpressionBitShiftLeftTest, NullArg) {
+    assertEvaluates(Value(BSONNULL), Value(BSONNULL), Value(BSONNULL));
+    assertEvaluates(Value(1), Value(BSONNULL), Value(BSONNULL));
+    assertEvaluates(Value(BSONNULL), Value(1), Value(BSONNULL));
+    assertEvaluates(Value(1LL), Value(BSONNULL), Value(BSONNULL));
+    assertEvaluates(Value(BSONNULL), Value(1LL), Value(BSONNULL));
+}
+
+/* ------------------------- ExpressionBitShiftRight -------------------------- */
+
+class ExpressionBitShiftRightTest : public ExpressionNaryTestTwoArg {
+public:
+    virtual void assertEvaluates(Value input1, Value input2, Value output) override {
+        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+        _expr = new ExpressionBitShiftRight(expCtx);
+        ExpressionNaryTestTwoArg::assertEvaluates(input1, input2, output);
+    }
+};
+
+TEST_F(ExpressionBitShiftRightTest, IntArg) {
+    assertEvaluates(Value(0), Value(1), Value(0));
+    assertEvaluates(Value(1), Value(2), Value(0));
+    assertEvaluates(Value(255), Value(1), Value(127));
+    assertEvaluates(Value(-1), Value(1), Value(-1));
+}
+
+TEST_F(ExpressionBitShiftRightTest, LongArg) {
+    assertEvaluates(Value(0LL), Value(1LL), Value(0LL));
+    assertEvaluates(Value(1LL), Value(2LL), Value(0LL));
+    assertEvaluates(Value(255LL), Value(1LL), Value(127LL));
+    assertEvaluates(Value(-1LL), Value(1LL), Value(-1LL));
+
+    assertEvaluates(Value(0LL), Value(1), Value(0LL));
+    assertEvaluates(Value(1), Value(2LL), Value(0LL));
+    assertEvaluates(Value(255LL), Value(1), Value(127LL));
+    assertEvaluates(Value(-1), Value(1LL), Value(-1LL));
+}
+
+TEST_F(ExpressionBitShiftRightTest, NullArg) {
+    assertEvaluates(Value(BSONNULL), Value(BSONNULL), Value(BSONNULL));
+    assertEvaluates(Value(1), Value(BSONNULL), Value(BSONNULL));
+    assertEvaluates(Value(BSONNULL), Value(1), Value(BSONNULL));
+    assertEvaluates(Value(1LL), Value(BSONNULL), Value(BSONNULL));
+    assertEvaluates(Value(BSONNULL), Value(1LL), Value(BSONNULL));
+}
+
 
 /* ------------------------- ExpressionCos -------------------------- */
 
@@ -2536,6 +2656,740 @@ class NestedZero : public OptimizeBase {
 };
 
 }  // namespace And
+
+
+namespace BitAnd {
+
+class ExpectedResultBase {
+public:
+    virtual ~ExpectedResultBase() {}
+    void run() {
+        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+        BSONObj specObject = BSON("" << spec());
+        BSONElement specElement = specObject.firstElement();
+        VariablesParseState vps = expCtx->variablesParseState;
+        intrusive_ptr<Expression> expression = Expression::parseOperand(expCtx, specElement, vps);
+        ASSERT_BSONOBJ_EQ(constify(spec()), expressionToBson(expression));
+        ASSERT_BSONOBJ_EQ(BSON("" << expectedResult()),
+                          toBson(expression->evaluate(fromBson(BSON("a" << 3)))));
+        intrusive_ptr<Expression> optimized = expression->optimize();
+        ASSERT_BSONOBJ_EQ(BSON("" << expectedResult()),
+                          toBson(optimized->evaluate(fromBson(BSON("a" << 3)))));
+    }
+
+protected:
+    virtual BSONObj spec() = 0;
+    virtual Value expectedResult() = 0;
+};
+
+class OptimizeBase {
+public:
+    virtual ~OptimizeBase() {}
+    void run() {
+        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+        BSONObj specObject = BSON("" << spec());
+        BSONElement specElement = specObject.firstElement();
+        VariablesParseState vps = expCtx->variablesParseState;
+        intrusive_ptr<Expression> expression = Expression::parseOperand(expCtx, specElement, vps);
+        ASSERT_BSONOBJ_EQ(constify(spec()), expressionToBson(expression));
+        intrusive_ptr<Expression> optimized = expression->optimize();
+        ASSERT_BSONOBJ_EQ(expectedOptimized(), expressionToBson(optimized));
+    }
+
+protected:
+    virtual BSONObj spec() = 0;
+    virtual BSONObj expectedOptimized() = 0;
+};
+
+class NoOptimizeBase : public OptimizeBase {
+    BSONObj expectedOptimized() {
+        return constify(spec());
+    }
+};
+
+/** $bitAnd without operbitAnds. */
+class NoOperandBitAnd : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitAnd" << BSONArray());
+    }
+    Value expectedResult() {
+        return Value(-1LL);
+    }
+};
+
+/** $bitAnd passed '1'. */
+class One : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitAnd" << BSON_ARRAY(1));
+    }
+    Value expectedResult() {
+        return Value(1);
+    }
+};
+
+/** $bitAnd passed '0'. */
+class Zero : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitAnd" << BSON_ARRAY(0));
+    }
+    Value expectedResult() {
+        return Value(0);
+    }
+};
+
+/** $bitAnd passed '1', '2'. */
+class OneTwo : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitAnd" << BSON_ARRAY(1 << 2));
+    }
+    Value expectedResult() {
+        return Value(0);
+    }
+};
+
+/** $bitAnd passed '2LL', '1LL'. */
+class TwoOne : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitAnd" << BSON_ARRAY(2LL << 1LL));
+    }
+    Value expectedResult() {
+        return Value(0LL);
+    }
+};
+
+/** $bitAnd passed '3', '1'. */
+class ThreeOne : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitAnd" << BSON_ARRAY(3 << 1));
+    }
+    Value expectedResult() {
+        return Value(1);
+    }
+};
+
+/** $bitAnd passed '3LL', '2LL'. */
+class ThreeTwo : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitAnd" << BSON_ARRAY(3LL << 2LL));
+    }
+    Value expectedResult() {
+        return Value(2LL);
+    }
+};
+
+/** $bitAnd passed '3', '2', '1'. */
+class ThreeTwoOne : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitAnd" << BSON_ARRAY(3 << 2 << 1));
+    }
+    Value expectedResult() {
+        return Value(0);
+    }
+};
+
+/** $bitAnd passed '3LL', '5LL', '1LL'. */
+class ThreeFiveOne : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitAnd" << BSON_ARRAY(3LL << 5LL << 1LL));
+    }
+    Value expectedResult() {
+        return Value(1LL);
+    }
+};
+
+/** $bitAnd passed a field path. */
+class FieldPath : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitAnd" << BSON_ARRAY("$a"));
+    }
+    Value expectedResult() {
+        return Value(3);
+    }
+};
+
+/** A constant expression is optimized to a constant. */
+class OptimizeConstantExpression : public OptimizeBase {
+    BSONObj spec() {
+        return BSON("$bitAnd" << BSON_ARRAY(1));
+    }
+    BSONObj expectedOptimized() {
+        return BSON("$const" << 1);
+    }
+};
+
+/** A non constant expression is not optimized. */
+class NonConstant : public NoOptimizeBase {
+    BSONObj spec() {
+        return BSON("$bitAnd" << BSON_ARRAY("$a"));
+    }
+};
+
+/** An expression beginning with a single constant is optimized. */
+class ConstantNonConstantNegOne : public OptimizeBase {
+    BSONObj spec() {
+        return BSON("$bitAnd" << BSON_ARRAY(-1 << "$a"));
+    }
+    BSONObj expectedOptimized() {
+        return BSON("$bitAnd" << BSON_ARRAY("$a"));
+    }
+};
+
+class ConstantNonConstantZero : public OptimizeBase {
+    BSONObj spec() {
+        return BSON("$bitAnd" << BSON_ARRAY(0 << "$a"));
+    }
+    BSONObj expectedOptimized() {
+        return BSON("$const" << 0);
+    }
+};
+
+/** An expression with two field paths bitAnd '-1'. */
+class NonConstantNonConstantNegOne : public OptimizeBase {
+    BSONObj spec() {
+        return BSON("$bitAnd" << BSON_ARRAY("$a"
+                                         << "$b"
+                                         << -1));
+    }
+    BSONObj expectedOptimized() {
+        return BSON("$bitAnd" << BSON_ARRAY("$a"
+                                         << "$b"));
+    }
+};
+
+/** An expression with two field paths bitAnd '0'. */
+class NonConstantNonConstantZero : public OptimizeBase {
+    BSONObj spec() {
+        return BSON("$bitAnd" << BSON_ARRAY("$a"
+                                         << "$b"
+                                         << 0));
+    }
+    BSONObj expectedOptimized() {
+        return BSON("$const" << 0);
+    }
+};
+
+/** An expression with '0LL', '-1', bitAnd a field path. */
+class ZeroOneNonConstant : public OptimizeBase {
+    BSONObj spec() {
+        return BSON("$bitAnd" << BSON_ARRAY(0LL << -1 << "$a"));
+    }
+    BSONObj expectedOptimized() {
+        return BSON("$const" << 0);
+    }
+};
+
+/** An expression with '-1', '-1LL', bitAnd a field path. */
+class OneOneNonConstant : public OptimizeBase {
+    BSONObj spec() {
+        return BSON("$bitAnd" << BSON_ARRAY(-1 << -1LL << "$a"));
+    }
+    BSONObj expectedOptimized() {
+        return BSON("$bitAnd" << BSON_ARRAY("$a"));
+    }
+};
+
+/** Nested $bitAnd expressions. */
+class Nested : public OptimizeBase {
+    BSONObj spec() {
+        return BSON("$bitAnd" << BSON_ARRAY(-1LL << BSON("$bitAnd" << BSON_ARRAY(-1)) << "$a"
+                                           << "$b"));
+    }
+    BSONObj expectedOptimized() {
+        return BSON("$bitAnd" << BSON_ARRAY("$a"
+                                         << "$b"));
+    }
+};
+
+/** Nested $and expressions containing a nested value evaluating to 0. */
+class NestedZero : public OptimizeBase {
+    BSONObj spec() {
+        return BSON("$bitAnd" << BSON_ARRAY(
+                        -1 << BSON("$bitAnd" << BSON_ARRAY(BSON("$bitAnd" << BSON_ARRAY(0)))) << "$a"
+                          << "$b"));
+    }
+    BSONObj expectedOptimized() {
+        return BSON("$const" << 0);
+    }
+};
+
+}  // namespace BitAnd
+
+namespace BitOr {
+
+class ExpectedResultBase {
+public:
+    virtual ~ExpectedResultBase() {}
+    void run() {
+        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+        BSONObj specObject = BSON("" << spec());
+        BSONElement specElement = specObject.firstElement();
+        VariablesParseState vps = expCtx->variablesParseState;
+        intrusive_ptr<Expression> expression = Expression::parseOperand(expCtx, specElement, vps);
+        ASSERT_BSONOBJ_EQ(constify(spec()), expressionToBson(expression));
+        ASSERT_BSONOBJ_EQ(BSON("" << expectedResult()),
+                          toBson(expression->evaluate(fromBson(BSON("a" << 3)))));
+        intrusive_ptr<Expression> optimized = expression->optimize();
+        ASSERT_BSONOBJ_EQ(BSON("" << expectedResult()),
+                          toBson(optimized->evaluate(fromBson(BSON("a" << 3)))));
+    }
+
+protected:
+    virtual BSONObj spec() = 0;
+    virtual Value expectedResult() = 0;
+};
+
+class OptimizeBase {
+public:
+    virtual ~OptimizeBase() {}
+    void run() {
+        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+        BSONObj specObject = BSON("" << spec());
+        BSONElement specElement = specObject.firstElement();
+        VariablesParseState vps = expCtx->variablesParseState;
+        intrusive_ptr<Expression> expression = Expression::parseOperand(expCtx, specElement, vps);
+        ASSERT_BSONOBJ_EQ(constify(spec()), expressionToBson(expression));
+        intrusive_ptr<Expression> optimized = expression->optimize();
+        ASSERT_BSONOBJ_EQ(expectedOptimized(), expressionToBson(optimized));
+    }
+
+protected:
+    virtual BSONObj spec() = 0;
+    virtual BSONObj expectedOptimized() = 0;
+};
+
+class NoOptimizeBase : public OptimizeBase {
+    BSONObj expectedOptimized() {
+        return constify(spec());
+    }
+};
+
+/** $bitOr without operands. */
+class NoOperandBitOr : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitOr" << BSONArray());
+    }
+    Value expectedResult() {
+        return Value(0LL);
+    }
+};
+
+/** $bitOr passed '1'. */
+class One : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitOr" << BSON_ARRAY(1));
+    }
+    Value expectedResult() {
+        return Value(1);
+    }
+};
+
+/** $bitOr passed '0'. */
+class Zero : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitOr" << BSON_ARRAY(0));
+    }
+    Value expectedResult() {
+        return Value(0);
+    }
+};
+
+/** $bitOr passed '1', '2'. */
+class OneTwo : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitOr" << BSON_ARRAY(1 << 2));
+    }
+    Value expectedResult() {
+        return Value(3);
+    }
+};
+
+/** $bitOr passed '2LL', '1LL'. */
+class TwoOne : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitOr" << BSON_ARRAY(2LL << 1LL));
+    }
+    Value expectedResult() {
+        return Value(3LL);
+    }
+};
+
+/** $bitOr passed '3', '1'. */
+class ThreeOne : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitOr" << BSON_ARRAY(3 << 1));
+    }
+    Value expectedResult() {
+        return Value(3);
+    }
+};
+
+/** $bitOr passed '3LL', '2LL'. */
+class ThreeTwo : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitOr" << BSON_ARRAY(3LL << 2LL));
+    }
+    Value expectedResult() {
+        return Value(3LL);
+    }
+};
+
+/** $bitOr passed '3', '2', '1'. */
+class ThreeTwoOne : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitOr" << BSON_ARRAY(3 << 2 << 1));
+    }
+    Value expectedResult() {
+        return Value(3);
+    }
+};
+
+/** $bitOr passed '3LL', '5LL', '1LL'. */
+class ThreeFiveOne : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitOr" << BSON_ARRAY(3LL << 5LL << 1LL));
+    }
+    Value expectedResult() {
+        return Value(7LL);
+    }
+};
+
+/** $bitOr passed a field path. */
+class FieldPath : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitOr" << BSON_ARRAY("$a"));
+    }
+    Value expectedResult() {
+        return Value(3);
+    }
+};
+
+/** A constant expression is optimized to a constant. */
+class OptimizeConstantExpression : public OptimizeBase {
+    BSONObj spec() {
+        return BSON("$bitOr" << BSON_ARRAY(1));
+    }
+    BSONObj expectedOptimized() {
+        return BSON("$const" << 1);
+    }
+};
+
+/** A non constant expression is not optimized. */
+class NonConstant : public NoOptimizeBase {
+    BSONObj spec() {
+        return BSON("$bitOr" << BSON_ARRAY("$a"));
+    }
+};
+
+/** An expression beginning with a single constant is optimized. */
+class ConstantNonConstantNegOne : public OptimizeBase {
+    BSONObj spec() {
+        return BSON("$bitOr" << BSON_ARRAY(-1 << "$a"));
+    }
+    BSONObj expectedOptimized() {
+        return BSON("$const" << -1);
+    }
+};
+
+class ConstantNonConstantZero : public OptimizeBase {
+    BSONObj spec() {
+        return BSON("$bitOr" << BSON_ARRAY(0 << "$a"));
+    }
+    BSONObj expectedOptimized() {
+        return BSON("$bitOr" << BSON_ARRAY("$a"));
+    }
+};
+
+/** An expression with two field paths bitOr '-1'. */
+class NonConstantNonConstantNegOne : public OptimizeBase {
+    BSONObj spec() {
+        return BSON("$bitOr" << BSON_ARRAY("$a"
+                                         << "$b"
+                                         << -1));
+    }
+    BSONObj expectedOptimized() {
+        return BSON("$const" << -1);
+    }
+};
+
+/** An expression with two field paths bitOr '0'. */
+class NonConstantNonConstantZero : public OptimizeBase {
+    BSONObj spec() {
+        return BSON("$bitOr" << BSON_ARRAY("$a"
+                                         << "$b"
+                                         << 0));
+    }
+    BSONObj expectedOptimized() {
+        return BSON("$bitOr" << BSON_ARRAY("$a"
+                                         << "$b"));
+    }
+};
+
+/** An expression with '0LL', '-1', bitOr a field path. */
+class ZeroOneNonConstant : public OptimizeBase {
+    BSONObj spec() {
+        return BSON("$bitOr" << BSON_ARRAY(0LL << -1 << "$a"));
+    }
+    BSONObj expectedOptimized() {
+        return BSON("$const" << -1LL);
+    }
+};
+
+/** An expression with '0', '0LL', bitOr a field path. */
+class ZeroZeroNonConstant : public OptimizeBase {
+    BSONObj spec() {
+        return BSON("$bitOr" << BSON_ARRAY(0 << 0LL << "$a"));
+    }
+    BSONObj expectedOptimized() {
+        return BSON("$bitOr" << BSON_ARRAY("$a"));
+    }
+};
+
+/** Nested $bitOr expressions. */
+class Nested : public OptimizeBase {
+    BSONObj spec() {
+        return BSON("$bitOr" << BSON_ARRAY(0LL << BSON("$bitOr" << BSON_ARRAY(0)) << "$a"
+                                           << "$b"));
+    }
+    BSONObj expectedOptimized() {
+        return BSON("$bitOr" << BSON_ARRAY("$a"
+                                         << "$b"));
+    }
+};
+
+/** Nested $and expressions containing a nested value evaluating to -1. */
+class NestedZero : public OptimizeBase {
+    BSONObj spec() {
+        return BSON("$bitOr" << BSON_ARRAY(
+                        0 << BSON("$bitOr" << BSON_ARRAY(BSON("$bitOr" << BSON_ARRAY(-1)))) << "$a"
+                          << "$b"));
+    }
+    BSONObj expectedOptimized() {
+        return BSON("$const" << -1);
+    }
+};
+
+}  // namespace BitOr
+
+namespace BitXor {
+
+class ExpectedResultBase {
+public:
+    virtual ~ExpectedResultBase() {}
+    void run() {
+        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+        BSONObj specObject = BSON("" << spec());
+        BSONElement specElement = specObject.firstElement();
+        VariablesParseState vps = expCtx->variablesParseState;
+        intrusive_ptr<Expression> expression = Expression::parseOperand(expCtx, specElement, vps);
+        ASSERT_BSONOBJ_EQ(constify(spec()), expressionToBson(expression));
+        ASSERT_BSONOBJ_EQ(BSON("" << expectedResult()),
+                          toBson(expression->evaluate(fromBson(BSON("a" << 3)))));
+        intrusive_ptr<Expression> optimized = expression->optimize();
+        ASSERT_BSONOBJ_EQ(BSON("" << expectedResult()),
+                          toBson(optimized->evaluate(fromBson(BSON("a" << 3)))));
+    }
+
+protected:
+    virtual BSONObj spec() = 0;
+    virtual Value expectedResult() = 0;
+};
+
+class OptimizeBase {
+public:
+    virtual ~OptimizeBase() {}
+    void run() {
+        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+        BSONObj specObject = BSON("" << spec());
+        BSONElement specElement = specObject.firstElement();
+        VariablesParseState vps = expCtx->variablesParseState;
+        intrusive_ptr<Expression> expression = Expression::parseOperand(expCtx, specElement, vps);
+        ASSERT_BSONOBJ_EQ(constify(spec()), expressionToBson(expression));
+        intrusive_ptr<Expression> optimized = expression->optimize();
+        ASSERT_BSONOBJ_EQ(expectedOptimized(), expressionToBson(optimized));
+    }
+
+protected:
+    virtual BSONObj spec() = 0;
+    virtual BSONObj expectedOptimized() = 0;
+};
+
+class NoOptimizeBase : public OptimizeBase {
+    BSONObj expectedOptimized() {
+        return constify(spec());
+    }
+};
+
+/** $bitXor without operands. */
+class NoOperandBitXor : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitXor" << BSONArray());
+    }
+    Value expectedResult() {
+        return Value(0LL);
+    }
+};
+
+/** $bitXor passed '1'. */
+class One : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitXor" << BSON_ARRAY(1));
+    }
+    Value expectedResult() {
+        return Value(1);
+    }
+};
+
+/** $bitXor passed '0'. */
+class Zero : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitXor" << BSON_ARRAY(0));
+    }
+    Value expectedResult() {
+        return Value(0);
+    }
+};
+
+/** $bitXor passed '1', '2'. */
+class OneTwo : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitXor" << BSON_ARRAY(1 << 2));
+    }
+    Value expectedResult() {
+        return Value(3);
+    }
+};
+
+/** $bitXor passed '2LL', '1LL'. */
+class TwoOne : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitXor" << BSON_ARRAY(2LL << 1LL));
+    }
+    Value expectedResult() {
+        return Value(3LL);
+    }
+};
+
+/** $bitXor passed '3', '1'. */
+class ThreeOne : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitXor" << BSON_ARRAY(3 << 1));
+    }
+    Value expectedResult() {
+        return Value(2);
+    }
+};
+
+/** $bitXor passed '3LL', '2LL'. */
+class ThreeTwo : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitXor" << BSON_ARRAY(3LL << 2LL));
+    }
+    Value expectedResult() {
+        return Value(1LL);
+    }
+};
+
+/** $bitXor passed '3', '2', '1'. */
+class ThreeTwoOne : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitXor" << BSON_ARRAY(3 << 2 << 1));
+    }
+    Value expectedResult() {
+        return Value(0);
+    }
+};
+
+/** $bitXor passed '3LL', '5LL', '1LL'. */
+class ThreeFiveOne : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitXor" << BSON_ARRAY(3LL << 5LL << 1LL));
+    }
+    Value expectedResult() {
+        return Value(7LL);
+    }
+};
+
+/** $bitXor passed a field path. */
+class FieldPath : public ExpectedResultBase {
+    BSONObj spec() {
+        return BSON("$bitXor" << BSON_ARRAY("$a"));
+    }
+    Value expectedResult() {
+        return Value(3);
+    }
+};
+
+/** A constant expression is optimized to a constant. */
+class OptimizeConstantExpression : public OptimizeBase {
+    BSONObj spec() {
+        return BSON("$bitXor" << BSON_ARRAY(1));
+    }
+    BSONObj expectedOptimized() {
+        return BSON("$const" << 1);
+    }
+};
+
+/** A non constant expression is not optimized. */
+class NonConstant : public NoOptimizeBase {
+    BSONObj spec() {
+        return BSON("$bitXor" << BSON_ARRAY("$a"));
+    }
+};
+
+class ConstantNonConstantZero : public OptimizeBase {
+    BSONObj spec() {
+        return BSON("$bitXor" << BSON_ARRAY(0 << "$a"));
+    }
+    BSONObj expectedOptimized() {
+        return BSON("$bitXor" << BSON_ARRAY("$a"));
+    }
+};
+
+/** An expression with two field paths bitXor '-1'. */
+class NonConstantNonConstantNegOne : public NoOptimizeBase {
+    BSONObj spec() {
+        return BSON("$bitXor" << BSON_ARRAY("$a"
+                                         << "$b"
+                                         << -1));
+    }
+};
+
+/** An expression with two field paths bitXor '0'. */
+class NonConstantNonConstantZero : public OptimizeBase {
+    BSONObj spec() {
+        return BSON("$bitXor" << BSON_ARRAY("$a"
+                                         << "$b"
+                                         << 0));
+    }
+    BSONObj expectedOptimized() {
+        return BSON("$bitXor" << BSON_ARRAY("$a"
+                                         << "$b"));
+    }
+};
+
+/** An expression with '0', '0LL', bitXor a field path. */
+class ZeroZeroNonConstant : public OptimizeBase {
+    BSONObj spec() {
+        return BSON("$bitXor" << BSON_ARRAY(0 << 0LL << "$a"));
+    }
+    BSONObj expectedOptimized() {
+        return BSON("$bitXor" << BSON_ARRAY("$a"));
+    }
+};
+
+/** Nested $bitXor expressions. */
+class Nested : public OptimizeBase {
+    BSONObj spec() {
+        return BSON("$bitXor" << BSON_ARRAY(0LL << BSON("$bitXor" << BSON_ARRAY(0)) << "$a"
+                                           << "$b"));
+    }
+    BSONObj expectedOptimized() {
+        return BSON("$bitXor" << BSON_ARRAY("$a"
+                                         << "$b"));
+    }
+};
+
+}  // namespace BitXor
 
 namespace CoerceToBool {
 
@@ -6545,6 +7399,63 @@ public:
         add<And::Nested>();
         add<And::NestedZero>();
 
+        add<BitAnd::NoOperandBitAnd>();
+        add<BitAnd::One>();
+        add<BitAnd::Zero>();
+        add<BitAnd::OneTwo>();
+        add<BitAnd::TwoOne>();
+        add<BitAnd::ThreeOne>();
+        add<BitAnd::ThreeTwo>();
+        add<BitAnd::ThreeTwoOne>();
+        add<BitAnd::ThreeFiveOne>();
+        add<BitAnd::FieldPath>();
+        add<BitAnd::OptimizeConstantExpression>();
+        add<BitAnd::NonConstant>();
+        add<BitAnd::ConstantNonConstantNegOne>();
+        add<BitAnd::NonConstantNonConstantNegOne>();
+        add<BitAnd::NonConstantNonConstantZero>();
+        add<BitAnd::ZeroOneNonConstant>();
+        add<BitAnd::OneOneNonConstant>();
+        add<BitAnd::Nested>();
+        add<BitAnd::NestedZero>();
+
+        add<BitOr::NoOperandBitOr>();
+        add<BitOr::One>();
+        add<BitOr::Zero>();
+        add<BitOr::OneTwo>();
+        add<BitOr::TwoOne>();
+        add<BitOr::ThreeOne>();
+        add<BitOr::ThreeTwo>();
+        add<BitOr::ThreeTwoOne>();
+        add<BitOr::ThreeFiveOne>();
+        add<BitOr::FieldPath>();
+        add<BitOr::OptimizeConstantExpression>();
+        add<BitOr::NonConstant>();
+        add<BitOr::ConstantNonConstantNegOne>();
+        add<BitOr::NonConstantNonConstantNegOne>();
+        add<BitOr::NonConstantNonConstantZero>();
+        add<BitOr::ZeroOneNonConstant>();
+        add<BitOr::ZeroZeroNonConstant>();
+        add<BitOr::Nested>();
+        add<BitOr::NestedZero>();
+
+        add<BitXor::NoOperandBitXor>();
+        add<BitXor::One>();
+        add<BitXor::Zero>();
+        add<BitXor::OneTwo>();
+        add<BitXor::TwoOne>();
+        add<BitXor::ThreeOne>();
+        add<BitXor::ThreeTwo>();
+        add<BitXor::ThreeTwoOne>();
+        add<BitXor::ThreeFiveOne>();
+        add<BitXor::FieldPath>();
+        add<BitXor::OptimizeConstantExpression>();
+        add<BitXor::NonConstant>();
+        add<BitXor::NonConstantNonConstantNegOne>();
+        add<BitXor::NonConstantNonConstantZero>();
+        add<BitXor::ZeroZeroNonConstant>();
+        add<BitXor::Nested>();
+
         add<CoerceToBool::EvaluateTrue>();
         add<CoerceToBool::EvaluateFalse>();
         add<CoerceToBool::Dependencies>();
@@ -6621,7 +7532,6 @@ public:
         add<FieldPath::ExpandNestedArrays>();
         add<FieldPath::AddToBsonObj>();
         add<FieldPath::AddToBsonArray>();
-
 
         add<Or::NoOperands>();
         add<Or::True>();
