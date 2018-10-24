@@ -4718,11 +4718,14 @@ void ExpressionTrim::_doAddDependencies(DepsTracker* deps) const {
 
 Value ExpressionRound::evaluate(const Document& root) const {
     auto numericArg = Value(vpOperand[0]->evaluate(root));
+    if (numericArg.nullish()) {
+        return Value(BSONNULL);
+    }
     uassert(50976,
             str::stream() << this->getOpName() << " only supports numeric types, not "
                           << typeName(numericArg.getType()),
-            numericArg.nullish() || numericArg.numeric());
-    // If precision is specified, roundate to the specified precision.
+            numericArg.numeric());
+    // If precision is specified, round to the specified precision.
     if (vpOperand.size() == 2) {
         int64_t precision = 0;
         auto precisionArg = Value(vpOperand[1]->evaluate(root));
@@ -4742,16 +4745,17 @@ Value ExpressionRound::evaluate(const Document& root) const {
             case NumberInt:
                 precision = static_cast<int64_t>(precisionArg.getInt());
                 break;
-            case jstNULL:
-                return Value(BSONNULL);
             default:
+                if (precisionArg.nullish()) {
+                    return Value(BSONNULL);
+                }
                 uassert(50974, "$round precision argument must be numeric", false);
         }
         if (precision < 0) {
             return numericArg;
         }
         auto precisionMultiplicand = getPrecisionMultiplicand(precision);
-        // There's no point in roundating integers or longs, it will have no effect.
+        // There's no point in rounding integers or longs, it will have no effect.
         switch (numericArg.getType()) {
             case NumberDecimal: {
                 auto decimalPrecisionMultiplicand =
@@ -4772,8 +4776,8 @@ Value ExpressionRound::evaluate(const Document& root) const {
                 return numericArg;
         }
     }
-    // Else, roundate with 0 precision.
-    // There's no point in roundating integers or longs, it will have no effect.
+    // Else, round with 0 precision.
+    // There's no point in rounding integers or longs, it will have no effect.
     switch (numericArg.getType()) {
         case NumberDecimal:
             return Value(numericArg.getDecimal().quantize(Decimal128::kNormalizedZero,
@@ -4794,10 +4798,13 @@ const char* ExpressionRound::getOpName() const {
 
 Value ExpressionTrunc::evaluate(const Document& root) const {
     auto numericArg = Value(vpOperand[0]->evaluate(root));
+    if (numericArg.nullish()) {
+        return Value(BSONNULL);
+    }
     uassert(50975,
             str::stream() << this->getOpName() << " only supports numeric types, not "
                           << typeName(numericArg.getType()),
-            numericArg.nullish() || numericArg.numeric());
+            numericArg.numeric());
     // If precision is specified, truncate to the specified precision.
     if (vpOperand.size() == 2) {
         int64_t precision = 0;
@@ -4818,9 +4825,10 @@ Value ExpressionTrunc::evaluate(const Document& root) const {
             case NumberInt:
                 precision = static_cast<int64_t>(precisionArg.getInt());
                 break;
-            case jstNULL:
-                return Value(BSONNULL);
             default:
+                if (precisionArg.nullish()) {
+                    return Value(BSONNULL);
+                }
                 uassert(50973, "$trunc precision argument must be numeric", false);
         }
         // Perhaps return bson null?
