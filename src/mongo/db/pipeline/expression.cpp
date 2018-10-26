@@ -917,10 +917,10 @@ intrusive_ptr<Expression> ExpressionBitAnd::optimize() {
         case NumberInt: {
             auto last = val.getInt();
             if (last == 0) {
-                    intrusive_ptr<ExpressionConstant> pFinal(
-                        ExpressionConstant::create(getExpressionContext(), Value(0)));
-                    return pFinal;
-                }
+                intrusive_ptr<ExpressionConstant> pFinal(
+                    ExpressionConstant::create(getExpressionContext(), Value(0)));
+                return pFinal;
+            }
             if (last != -1) {
                 return pE;
             }
@@ -929,10 +929,10 @@ intrusive_ptr<Expression> ExpressionBitAnd::optimize() {
         case NumberLong: {
             auto last = val.getLong();
             if (last == 0LL) {
-                    intrusive_ptr<ExpressionConstant> pFinal(
-                        ExpressionConstant::create(getExpressionContext(), Value(0LL)));
-                    return pFinal;
-                }
+                intrusive_ptr<ExpressionConstant> pFinal(
+                    ExpressionConstant::create(getExpressionContext(), Value(0LL)));
+                return pFinal;
+            }
             if (last != -1LL) {
                 return pE;
             }
@@ -972,7 +972,7 @@ Value ExpressionBitAnd::evaluate(const Document& root) const {
                 }
                 uasserted(50989,
                           str::stream() << getOpName() << " only supports integral types, not "
-                                    << typeName(val.getType()));
+                                        << typeName(val.getType()));
         }
     }
 
@@ -1003,8 +1003,8 @@ Value ExpressionBitComplement::evaluateNumericArg(const Value& numericArg) const
                 return Value(BSONNULL);
             }
             uasserted(50995,
-                    str::stream() << getOpName() << " only supports integral types, not "
-                                  << typeName(numericArg.getType()));
+                      str::stream() << getOpName() << " only supports integral types, not "
+                                    << typeName(numericArg.getType()));
     }
 }
 
@@ -1016,7 +1016,7 @@ const char* ExpressionBitComplement::getOpName() const {
 /* ----------------------- ExpressionBitShiftLeft ---------------------------- */
 
 Value ExpressionBitShiftLeft::evaluateNumericArgs(const Value& numericArg1,
-                                           const Value& numericArg2) const {
+                                                  const Value& numericArg2) const {
     BSONType type1 = numericArg1.getType();
     BSONType type2 = numericArg2.getType();
     auto totalType = NumberInt;
@@ -1057,7 +1057,7 @@ const char* ExpressionBitShiftLeft::getOpName() const {
 /* ----------------------- ExpressionBitShiftRight ---------------------------- */
 
 Value ExpressionBitShiftRight::evaluateNumericArgs(const Value& numericArg1,
-                                           const Value& numericArg2) const {
+                                                   const Value& numericArg2) const {
     BSONType type1 = numericArg1.getType();
     BSONType type2 = numericArg2.getType();
     auto totalType = NumberInt;
@@ -1130,10 +1130,10 @@ intrusive_ptr<Expression> ExpressionBitOr::optimize() {
         case NumberInt: {
             auto last = val.getInt();
             if (last == -1) {
-                    intrusive_ptr<ExpressionConstant> pFinal(
-                        ExpressionConstant::create(getExpressionContext(), Value(-1)));
-                    return pFinal;
-                }
+                intrusive_ptr<ExpressionConstant> pFinal(
+                    ExpressionConstant::create(getExpressionContext(), Value(-1)));
+                return pFinal;
+            }
             if (last != 0) {
                 return pE;
             }
@@ -1142,10 +1142,10 @@ intrusive_ptr<Expression> ExpressionBitOr::optimize() {
         case NumberLong: {
             auto last = val.getLong();
             if (last == -1LL) {
-                    intrusive_ptr<ExpressionConstant> pFinal(
-                        ExpressionConstant::create(getExpressionContext(), Value(-1LL)));
-                    return pFinal;
-                }
+                intrusive_ptr<ExpressionConstant> pFinal(
+                    ExpressionConstant::create(getExpressionContext(), Value(-1LL)));
+                return pFinal;
+            }
             if (last != 0) {
                 return pE;
             }
@@ -1183,9 +1183,9 @@ Value ExpressionBitOr::evaluate(const Document& root) const {
                 if (val.nullish()) {
                     return Value(BSONNULL);
                 }
-                   uasserted(50991,
-                      str::stream() << getOpName() << " only supports integral types, not "
-                                    << typeName(val.getType()));
+                uasserted(50991,
+                          str::stream() << getOpName() << " only supports integral types, not "
+                                        << typeName(val.getType()));
         }
     }
 
@@ -1236,14 +1236,14 @@ intrusive_ptr<Expression> ExpressionBitXor::optimize() {
         case NumberInt: {
             auto last = val.getInt();
             if (last == 0) {
-    		pXor->vpOperand.resize(n - 1);
+                pXor->vpOperand.resize(n - 1);
             }
             return pE;
         }
         case NumberLong: {
             auto last = val.getLong();
             if (last == 0) {
-    		pXor->vpOperand.resize(n - 1);
+                pXor->vpOperand.resize(n - 1);
             }
             return pE;
         }
@@ -1276,7 +1276,7 @@ Value ExpressionBitXor::evaluate(const Document& root) const {
                 }
                 uasserted(50993,
                           str::stream() << getOpName() << " only supports integral types, not "
-                                    << typeName(val.getType()));
+                                        << typeName(val.getType()));
         }
     }
 

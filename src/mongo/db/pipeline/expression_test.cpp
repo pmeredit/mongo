@@ -1147,7 +1147,7 @@ TEST_F(ExpressionBitComplementTest, IntArg) {
     assertEvaluates(Value(1), Value(-2));
     assertEvaluates(Value(-1), Value(0));
     assertEvaluates(Value(-2), Value(1));
-	assertEvaluates(Value(255), Value(-256));
+    assertEvaluates(Value(255), Value(-256));
 }
 
 TEST_F(ExpressionBitComplementTest, LongArg) {
@@ -1155,7 +1155,7 @@ TEST_F(ExpressionBitComplementTest, LongArg) {
     assertEvaluates(Value(1LL), Value(-2LL));
     assertEvaluates(Value(-1LL), Value(0LL));
     assertEvaluates(Value(-2LL), Value(1LL));
-	assertEvaluates(Value(255LL), Value(-256LL));
+    assertEvaluates(Value(255LL), Value(-256LL));
 }
 
 TEST_F(ExpressionBitComplementTest, NullArg) {
@@ -2849,12 +2849,12 @@ class ConstantNonConstantZero : public OptimizeBase {
 class NonConstantNonConstantNegOne : public OptimizeBase {
     BSONObj spec() {
         return BSON("$bitAnd" << BSON_ARRAY("$a"
-                                         << "$b"
-                                         << -1));
+                                            << "$b"
+                                            << -1));
     }
     BSONObj expectedOptimized() {
         return BSON("$bitAnd" << BSON_ARRAY("$a"
-                                         << "$b"));
+                                            << "$b"));
     }
 };
 
@@ -2862,8 +2862,8 @@ class NonConstantNonConstantNegOne : public OptimizeBase {
 class NonConstantNonConstantZero : public OptimizeBase {
     BSONObj spec() {
         return BSON("$bitAnd" << BSON_ARRAY("$a"
-                                         << "$b"
-                                         << 0));
+                                            << "$b"
+                                            << 0));
     }
     BSONObj expectedOptimized() {
         return BSON("$const" << 0);
@@ -2894,11 +2894,11 @@ class OneOneNonConstant : public OptimizeBase {
 class Nested : public OptimizeBase {
     BSONObj spec() {
         return BSON("$bitAnd" << BSON_ARRAY(-1LL << BSON("$bitAnd" << BSON_ARRAY(-1)) << "$a"
-                                           << "$b"));
+                                                 << "$b"));
     }
     BSONObj expectedOptimized() {
         return BSON("$bitAnd" << BSON_ARRAY("$a"
-                                         << "$b"));
+                                            << "$b"));
     }
 };
 
@@ -2906,8 +2906,9 @@ class Nested : public OptimizeBase {
 class NestedZero : public OptimizeBase {
     BSONObj spec() {
         return BSON("$bitAnd" << BSON_ARRAY(
-                        -1 << BSON("$bitAnd" << BSON_ARRAY(BSON("$bitAnd" << BSON_ARRAY(0)))) << "$a"
-                          << "$b"));
+                        -1 << BSON("$bitAnd" << BSON_ARRAY(BSON("$bitAnd" << BSON_ARRAY(0))))
+                           << "$a"
+                           << "$b"));
     }
     BSONObj expectedOptimized() {
         return BSON("$const" << 0);
@@ -3105,8 +3106,8 @@ class ConstantNonConstantZero : public OptimizeBase {
 class NonConstantNonConstantNegOne : public OptimizeBase {
     BSONObj spec() {
         return BSON("$bitOr" << BSON_ARRAY("$a"
-                                         << "$b"
-                                         << -1));
+                                           << "$b"
+                                           << -1));
     }
     BSONObj expectedOptimized() {
         return BSON("$const" << -1);
@@ -3117,12 +3118,12 @@ class NonConstantNonConstantNegOne : public OptimizeBase {
 class NonConstantNonConstantZero : public OptimizeBase {
     BSONObj spec() {
         return BSON("$bitOr" << BSON_ARRAY("$a"
-                                         << "$b"
-                                         << 0));
+                                           << "$b"
+                                           << 0));
     }
     BSONObj expectedOptimized() {
         return BSON("$bitOr" << BSON_ARRAY("$a"
-                                         << "$b"));
+                                           << "$b"));
     }
 };
 
@@ -3150,11 +3151,11 @@ class ZeroZeroNonConstant : public OptimizeBase {
 class Nested : public OptimizeBase {
     BSONObj spec() {
         return BSON("$bitOr" << BSON_ARRAY(0LL << BSON("$bitOr" << BSON_ARRAY(0)) << "$a"
-                                           << "$b"));
+                                               << "$b"));
     }
     BSONObj expectedOptimized() {
         return BSON("$bitOr" << BSON_ARRAY("$a"
-                                         << "$b"));
+                                           << "$b"));
     }
 };
 
@@ -3351,8 +3352,8 @@ class ConstantNonConstantZero : public OptimizeBase {
 class NonConstantNonConstantNegOne : public NoOptimizeBase {
     BSONObj spec() {
         return BSON("$bitXor" << BSON_ARRAY("$a"
-                                         << "$b"
-                                         << -1));
+                                            << "$b"
+                                            << -1));
     }
 };
 
@@ -3360,12 +3361,12 @@ class NonConstantNonConstantNegOne : public NoOptimizeBase {
 class NonConstantNonConstantZero : public OptimizeBase {
     BSONObj spec() {
         return BSON("$bitXor" << BSON_ARRAY("$a"
-                                         << "$b"
-                                         << 0));
+                                            << "$b"
+                                            << 0));
     }
     BSONObj expectedOptimized() {
         return BSON("$bitXor" << BSON_ARRAY("$a"
-                                         << "$b"));
+                                            << "$b"));
     }
 };
 
@@ -3383,11 +3384,11 @@ class ZeroZeroNonConstant : public OptimizeBase {
 class Nested : public OptimizeBase {
     BSONObj spec() {
         return BSON("$bitXor" << BSON_ARRAY(0LL << BSON("$bitXor" << BSON_ARRAY(0)) << "$a"
-                                           << "$b"));
+                                                << "$b"));
     }
     BSONObj expectedOptimized() {
         return BSON("$bitXor" << BSON_ARRAY("$a"
-                                         << "$b"));
+                                            << "$b"));
     }
 };
 
