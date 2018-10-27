@@ -27,9 +27,6 @@
  *    exception statement from all source files in the program, then also delete
  *    it in the license file.
  */
-
-#include <iostream>
-
 #include "mongo/platform/basic.h"
 
 #include "mongo/db/pipeline/expression.h"
