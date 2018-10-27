@@ -277,7 +277,7 @@ Value ExpressionAcos::evaluateNumericArg(const Value& numericArg) const {
         return Value(numericArg.getDecimal().acos());
     } else {
         long long num = numericArg.getLong();
-        uassert(50971,
+        uassert(51005,
                 "can't take $acos of long long min",
                 num != std::numeric_limits<long long>::min());
         auto acosVal = std::acos(num);
@@ -300,7 +300,7 @@ Value ExpressionAsin::evaluateNumericArg(const Value& numericArg) const {
         return Value(numericArg.getDecimal().asin());
     } else {
         long long num = numericArg.getLong();
-        uassert(50972,
+        uassert(51004,
                 "can't take $asin of long long min",
                 num != std::numeric_limits<long long>::min());
         auto asinVal = std::asin(num);
@@ -323,7 +323,7 @@ Value ExpressionAtan::evaluateNumericArg(const Value& numericArg) const {
         return Value(numericArg.getDecimal().atan());
     } else {
         long long num = numericArg.getLong();
-        uassert(50973,
+        uassert(51006,
                 "can't take $atan of long long min",
                 num != std::numeric_limits<long long>::min());
         auto atanVal = std::atan(num);
@@ -1025,24 +1025,24 @@ Value ExpressionBitShiftLeft::evaluateNumericArgs(const Value& numericArg1,
     }
     switch (totalType) {
         case NumberLong: {
-            auto getLong = [](BSONType type, const Value& arg) -> long long {
+            auto getLong = [](BSONType type, const Value& arg) -> unsigned long long {
                 switch (type) {
                     case NumberLong:
-                        return arg.getLong();
+                        return static_cast<unsigned long long>(arg.getLong());
                     case NumberInt:
-                        return static_cast<long long>(arg.getInt());
+                        return static_cast<unsigned long long>(arg.getInt());
                     default:
                         uassert(50996, "unreachable", false);
                 }
             };
             auto long1 = getLong(type1, numericArg1);
             auto long2 = getLong(type2, numericArg2);
-            return Value(long1 << long2);
+            return Value(static_cast<long long>(long1 << long2));
         }
         case NumberInt: {
-            auto int1 = numericArg1.getInt();
-            auto int2 = numericArg2.getInt();
-            return Value(int1 << int2);
+            auto int1 = static_cast<unsigned>(numericArg1.getInt());
+            auto int2 = static_cast<unsigned>(numericArg2.getInt());
+            return Value(static_cast<int>(int1 << int2));
         }
         default:
             uassert(50997, "unreachable", false);
@@ -1302,7 +1302,7 @@ Value ExpressionCos::evaluateNumericArg(const Value& numericArg) const {
         return Value(numericArg.getDecimal().cos());
     } else {
         long long num = numericArg.getLong();
-        uassert(50968,
+        uassert(51000,
                 "can't take $cos of long long min",
                 num != std::numeric_limits<long long>::min());
         auto cosVal = std::cos(num);
@@ -1325,7 +1325,7 @@ Value ExpressionCosh::evaluateNumericArg(const Value& numericArg) const {
         return Value(numericArg.getDecimal().cosh());
     } else {
         long long num = numericArg.getLong();
-        uassert(50974,
+        uassert(51001,
                 "can't take $cosh of long long min",
                 num != std::numeric_limits<long long>::min());
         auto coshVal = std::cosh(num);
@@ -4612,7 +4612,7 @@ Value ExpressionSinh::evaluateNumericArg(const Value& numericArg) const {
         return Value(numericArg.getDecimal().sinh());
     } else {
         long long num = numericArg.getLong();
-        uassert(50976,
+        uassert(51002,
                 "can't take $sinh of long long min",
                 num != std::numeric_limits<long long>::min());
         auto sinhVal = std::sinh(num);
@@ -5210,7 +5210,7 @@ Value ExpressionTan::evaluateNumericArg(const Value& numericArg) const {
         return Value(numericArg.getDecimal().tan());
     } else {
         long long num = numericArg.getLong();
-        uassert(50970,
+        uassert(51007,
                 "can't take $tan of long long min",
                 num != std::numeric_limits<long long>::min());
         auto tanVal = std::tan(num);
@@ -5233,7 +5233,7 @@ Value ExpressionTanh::evaluateNumericArg(const Value& numericArg) const {
         return Value(numericArg.getDecimal().tanh());
     } else {
         long long num = numericArg.getLong();
-        uassert(50977,
+        uassert(51003,
                 "can't take $tanh of long long min",
                 num != std::numeric_limits<long long>::min());
         auto tanhVal = std::tanh(num);
