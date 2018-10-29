@@ -4715,15 +4715,16 @@ Value ExpressionRound::evaluate(const Document& root) const {
     if (vpOperand.size() == 2) {
         int64_t precision = 0;
         auto precisionArg = Value(vpOperand[1]->evaluate(root));
-	if (precisionArg.nullish()) {
+		if (precisionArg.nullish()) {
             return Value(BSONNULL);
-	}
-	auto precisionValue = precisionArg.;;;
+		}
+		auto precisionValue = precisionArg.coerceToDouble();
+		auto precisionMultiplicand = std::pow(10.0, precisionValue); 
         // There's no point in rounding integers or longs, it will have no effect.
         switch (numericArg.getType()) {
             case NumberDecimal: {
                 auto decimalPrecisionMultiplicand =
-                    Decimal128(static_cast<int64_t>(precisionMultiplicand));
+                    Decimal128(precisionMultiplicand);
                 auto possibleRes =
                     numericArg.getDecimal()
                         .multiply(decimalPrecisionMultiplicand)
