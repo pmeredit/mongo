@@ -70,17 +70,6 @@ static Value serializeConstant(Value val) {
     return Value(DOC("$const" << val));
 }
 
-// Helper function to get precision multiplicand (just 10**arg).
-// This is used to support truncate or round to a certain precision.
-// The C++ standard library does not have integral powers.
-static int64_t getPrecisionMultiplicand(int64_t precision) {
-    int64_t ret = 1LL;
-    for (; precision > 0LL; --precision) {
-        ret *= 10LL;
-    }
-    return ret;
-}
-
 /* --------------------------- Expression ------------------------------ */
 
 string Expression::removeFieldPrefix(const string& prefixedField) {
@@ -4770,32 +4759,10 @@ Value ExpressionRound::evaluate(const Document& root) const {
     if (vpOperand.size() == 2) {
         int64_t precision = 0;
         auto precisionArg = Value(vpOperand[1]->evaluate(root));
-        switch (precisionArg.getType()) {
-            case NumberDecimal:
-                precision = static_cast<int64_t>(
-                    precisionArg.getDecimal()
-                        .quantize(Decimal128::kNormalizedZero, Decimal128::kRoundTowardZero)
-                        .toLong());
-                break;
-            case NumberDouble:
-                precision = static_cast<int64_t>(precisionArg.getDouble());
-                break;
-            case NumberLong:
-                precision = static_cast<int64_t>(precisionArg.getLong());
-                break;
-            case NumberInt:
-                precision = static_cast<int64_t>(precisionArg.getInt());
-                break;
-            default:
-                if (precisionArg.nullish()) {
-                    return Value(BSONNULL);
-                }
-                uassert(50974, "$round precision argument must be numeric", false);
-        }
-        if (precision < 0) {
-            return numericArg;
-        }
-        auto precisionMultiplicand = getPrecisionMultiplicand(precision);
+	if (precisionArg.nullish()) {
+            return Value(BSONNULL);
+	}
+	auto precisionValue = precisionArg.;;;
         // There's no point in rounding integers or longs, it will have no effect.
         switch (numericArg.getType()) {
             case NumberDecimal: {
