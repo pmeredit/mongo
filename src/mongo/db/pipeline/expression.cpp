@@ -4713,13 +4713,12 @@ Value ExpressionRound::evaluate(const Document& root) const {
             numericArg.numeric());
     // If precision is specified, round to the specified precision.
     if (vpOperand.size() == 2) {
-        int64_t precision = 0;
         auto precisionArg = Value(vpOperand[1]->evaluate(root));
-		if (precisionArg.nullish()) {
+	if (precisionArg.nullish()) {
             return Value(BSONNULL);
-		}
-		auto precisionValue = precisionArg.coerceToDouble();
-		auto precisionMultiplicand = std::pow(10.0, precisionValue); 
+	}
+	auto precisionValue = std::trunc(precisionArg.coerceToDouble());
+	auto precisionMultiplicand = std::pow(10.0, precisionValue); 
         // There's no point in rounding integers or longs, it will have no effect.
         switch (numericArg.getType()) {
             case NumberDecimal: {
@@ -4772,40 +4771,17 @@ Value ExpressionTrunc::evaluate(const Document& root) const {
             numericArg.numeric());
     // If precision is specified, truncate to the specified precision.
     if (vpOperand.size() == 2) {
-        int64_t precision = 0;
         auto precisionArg = Value(vpOperand[1]->evaluate(root));
-        switch (precisionArg.getType()) {
-            case NumberDecimal:
-                precision = static_cast<int64_t>(
-                    precisionArg.getDecimal()
-                        .quantize(Decimal128::kNormalizedZero, Decimal128::kRoundTowardZero)
-                        .toLong());
-                break;
-            case NumberDouble:
-                precision = static_cast<int64_t>(precisionArg.getDouble());
-                break;
-            case NumberLong:
-                precision = static_cast<int64_t>(precisionArg.getLong());
-                break;
-            case NumberInt:
-                precision = static_cast<int64_t>(precisionArg.getInt());
-                break;
-            default:
-                if (precisionArg.nullish()) {
-                    return Value(BSONNULL);
-                }
-                uassert(50973, "$trunc precision argument must be numeric", false);
-        }
-        // Perhaps return bson null?
-        if (precision < 0) {
-            return numericArg;
-        }
-        auto precisionMultiplicand = getPrecisionMultiplicand(precision);
+	if (precisionArg.nullish()) {
+            return Value(BSONNULL);
+	}
+	auto precisionValue = std::trunc(precisionArg.coerceToDouble());
+	auto precisionMultiplicand = std::pow(10.0, precisionValue); 
         // There's no point in truncating integers or longs, it will have no effect.
         switch (numericArg.getType()) {
             case NumberDecimal: {
                 auto decimalPrecisionMultiplicand =
-                    Decimal128(static_cast<int64_t>(precisionMultiplicand));
+                    Decimal128(precisionMultiplicand);
                 auto possibleRes =
                     numericArg.getDecimal()
                         .multiply(decimalPrecisionMultiplicand)
@@ -4823,7 +4799,7 @@ Value ExpressionTrunc::evaluate(const Document& root) const {
         }
     }
     // Else, truncate with 0 precision.
-    // There's no point in truncating integers or longs, it will have no effect.
+    // There's no point in rounding integers or longs, it will have no effect.
     switch (numericArg.getType()) {
         case NumberDecimal:
             return Value(numericArg.getDecimal().quantize(Decimal128::kNormalizedZero,
