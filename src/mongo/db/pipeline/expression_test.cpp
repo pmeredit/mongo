@@ -1029,7 +1029,9 @@ TEST_F(ExpressionRoundTwoArgTest, DoubleArg2) {
     assertEvaluates(Value(3.14159265), Value(6), Value(3.141593));
     assertEvaluates(Value(3.14159265), Value(7), Value(3.1415927));
     assertEvaluates(Value(3.14159265), Value(435), Value(3.14159265));
-    assertEvaluates(Value(3.14159265), Value(-1), Value(3.14159265));
+    assertEvaluates(Value(3.14159265), Value(-1), Value(0.0));
+    assertEvaluates(Value(335.14159265), Value(-1), Value(340.0));
+    assertEvaluates(Value(333.14159265), Value(-2), Value(300.0));
 
     // Outside the range of long longs (there isn't enough precision for decimals in this range, so
     // should just preserve the number).
@@ -1081,7 +1083,9 @@ TEST_F(ExpressionRoundTwoArgTest, DecimalArg2) {
     assertEvaluates(Value(Decimal128("3.14159265")), Value(7), Value(Decimal128("3.1415926")));
     assertEvaluates(Value(Decimal128("3.14159265")), Value(435), Value(Decimal128("3.14159265")));
     assertEvaluates(
-        Value(Decimal128("3.14159265")), Value(Decimal128("-1")), Value(Decimal128("3.14159265")));
+        Value(Decimal128("3.14159265")), Value(Decimal128("-1")), Value(Decimal128("0")));
+    assertEvaluates(Value(Decimal128("335.14159265")), Value(-1), Value(Decimal128("340")));
+    assertEvaluates(Value(Decimal128("333.14159265")), Value(-2), Value(Decimal128("300")));
 }
 
 TEST_F(ExpressionRoundOneArgTest, NullArg1) {
@@ -1181,7 +1185,9 @@ TEST_F(ExpressionTruncTwoArgTest, DoubleArg2) {
     assertEvaluates(Value(3.14159265), Value(6), Value(3.141592));
     assertEvaluates(Value(3.14159265), Value(7), Value(3.1415926));
     assertEvaluates(Value(3.14159265), Value(435), Value(3.14159265));
-    assertEvaluates(Value(3.14159265), Value(-1), Value(3.14159265));
+    assertEvaluates(Value(3.14159265), Value(-1), Value(0.0));
+    assertEvaluates(Value(335.14159265), Value(-1), Value(330.0));
+    assertEvaluates(Value(333.14159265), Value(-2), Value(300.0));
 
     // Outside the range of long longs (there isn't enough precision for decimals in this range, so
     // should just preserve the number).
@@ -1232,7 +1238,9 @@ TEST_F(ExpressionTruncTwoArgTest, DecimalArg2) {
     assertEvaluates(Value(Decimal128("3.14159265")), Value(7), Value(Decimal128("3.1415926")));
     assertEvaluates(Value(Decimal128("3.14159265")), Value(435), Value(Decimal128("3.14159265")));
     assertEvaluates(
-        Value(Decimal128("3.14159265")), Value(Decimal128("-1")), Value(Decimal128("3.14159265")));
+        Value(Decimal128("3.14159265")), Value(Decimal128("-1")), Value(Decimal128("0")));
+    assertEvaluates(Value(Decimal128("335.14159265")), Value(-1), Value(Decimal128("330")));
+    assertEvaluates(Value(Decimal128("333.14159265")), Value(-2), Value(Decimal128("300")));
 }
 
 TEST_F(ExpressionTruncOneArgTest, NullArg1) {

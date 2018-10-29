@@ -56,10 +56,14 @@ load("jstests/aggregation/extras/utils.js");
     testOp({$trunc: [1.298, 0]}, 1);
     testOp({$trunc: [1.298, 1]}, 1.2);
     testOp({$trunc: [23.298, -1]}, 20);
+    testOp({$trunc: [1.298, 1.7e308]}, 1.298);
+    testOp({$trunc: [NumberDecimal("1.298"), NumberDecimal("1.7e308")]}, NumberDecimal("1.298"));
 
     testOp({$round: [1.298, 0]}, 1);
     testOp({$round: [1.298, 1]}, 1.3);
     testOp({$round: [23.298, -1]}, 20);
+    testOp({$round: [1.298, 1.7e308]}, 1.298);
+    testOp({$round: [NumberDecimal("1.298"), NumberDecimal("1.7e308")]}, NumberDecimal("1.298"));
 
     // More than 1 argument.
     assertErrorCode(coll, [{$project: {a: {$ceil: [1, 2]}}}], 16020);
