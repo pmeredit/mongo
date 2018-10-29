@@ -52,6 +52,15 @@ load("jstests/aggregation/extras/utils.js");
     testOp({$round: 0.9}, 1.0);
     testOp({$round: -1.2}, -1.0);
 
+    // 2 argument $trunc and $round.
+    testOp({$trunc: [1.298, 0]}, 1);
+    testOp({$trunc: [1.298, 1]}, 1.2);
+    testOp({$trunc: [23.298, -1]}, 20);
+
+    testOp({$round: [1.298, 0]}, 1);
+    testOp({$round: [1.298, 1]}, 1.3);
+    testOp({$round: [23.298, -1]}, 20);
+
     // More than 1 argument.
     assertErrorCode(coll, [{$project: {a: {$ceil: [1, 2]}}}], 16020);
     assertErrorCode(coll, [{$project: {a: {$floor: [1, 2]}}}], 16020);
