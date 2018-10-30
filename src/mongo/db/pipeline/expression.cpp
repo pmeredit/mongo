@@ -5028,10 +5028,7 @@ public:
             [](const boost::intrusive_ptr<ExpressionContext>& expCtx, Value inputValue, const ConversionEnvironment &env) {
                 return Value(inputValue.coerceToDouble());
             };
-        table[BSONType::NumberInt][BSONType::String] =
-            [](const boost::intrusive_ptr<ExpressionContext>& expCtx, Value inputValue, const ConversionEnvironment &env) {
-                return Value(static_cast<std::string>(str::stream() << inputValue.getInt()));
-            };
+        table[BSONType::NumberInt][BSONType::String] = &performFormatIntegral;
         table[BSONType::NumberInt]
              [BSONType::Bool] = [](const boost::intrusive_ptr<ExpressionContext>& expCtx,
                                    Value inputValue, const ConversionEnvironment &env) { return Value(inputValue.coerceToBool()); };
@@ -5052,10 +5049,7 @@ public:
             [](const boost::intrusive_ptr<ExpressionContext>& expCtx, Value inputValue, const ConversionEnvironment &env) {
                 return Value(inputValue.coerceToDouble());
             };
-        table[BSONType::NumberLong][BSONType::String] =
-            [](const boost::intrusive_ptr<ExpressionContext>& expCtx, Value inputValue, const ConversionEnvironment &env) {
-                return Value(static_cast<std::string>(str::stream() << inputValue.getLong()));
-            };
+        table[BSONType::NumberLong][BSONType::String] = &performFormatIntegral;
         table[BSONType::NumberLong]
              [BSONType::Bool] = [](const boost::intrusive_ptr<ExpressionContext>& expCtx,
                                    Value inputValue, const ConversionEnvironment &env) { return Value(inputValue.coerceToBool()); };
@@ -5282,6 +5276,32 @@ private:
         }
     }
 
+
+    static Value performFormatIntegral(const boost::intrusive_ptr<ExpressionContext>& expCtx,
+                                     Value inputValue, const ConversionEnvironment &env) {
+		static const char *digitValues = "0123456789abcdefghijklmnopqrstuvwxyz";
+        auto value = inputValue.coerceToLong();
+		if (value == 0) {
+			return Value("0"_sd);
+		}
+		auto base = env.toBase.coerceToLong();
+		uassert(ErrorCodes::ConversionFailure, "toBase must be <= 36", base <= 36);
+		auto digitLength = static_cast<int>(std::ceil(std::log(value)/std::log(base)));
+		auto digits = new char[digitLength];
+		int lastIndex = -1;
+		for(auto i = 0; value > 0; ++i) {
+			digits[i] = digitValues[value % base];
+			value /= base;
+			lastIndex = i;
+		}
+		auto ret = str::stream();
+		for(auto i = lastIndex; i >= 0; --i) {
+			ret << digits[i];
+		}
+		delete[] digits;
+		return Value(static_cast<std::string>(ret));
+    }
+
     template <class targetType, int base>
     static Value parseStringToNumber(const boost::intrusive_ptr<ExpressionContext>& expCtx,
                                      Value inputValue, const ConversionEnvironment &env) {
@@ -5334,9 +5354,28 @@ private:
         return inputValue;
     }
 
+	// TODO: make helpers to make this faster.
     static Value performIdentityStringConversion(const boost::intrusive_ptr<ExpressionContext>& expCtx,
                                            Value inputValue, const ConversionEnvironment &env) {
-        return inputValue;
+        auto fromBase = env.fromBase.coerceToLong();
+		auto toBase = env.toBase.coerceToLong();
+		uassert(ErrorCodes::ConversionFailure,
+				str::stream() << "Must specify both toBase and fromBase or neither of toBase and fromBase",
+				fromBase == -1 || toBase != -1);
+
+		if (fromBase == -1) {
+			return inputValue;
+		}
+		auto stringValue = inputValue.getString();
+		long long result;
+		Status parseStatus = parseNumberFromStringWithBase(stringValue, fromBase, &result);
+        uassert(ErrorCodes::ConversionFailure,
+                str::stream() << "Failed to parse number '" << stringValue
+                              << "' in $convert with no onError value: "
+                              << parseStatus.reason(),
+                parseStatus.isOK());
+
+		return performFormatIntegral(expCtx, Value(result), env);
     }
 };
 
