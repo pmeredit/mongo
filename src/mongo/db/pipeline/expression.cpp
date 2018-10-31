@@ -27,7 +27,6 @@
  *    exception envment from all source files in the program, then also delete
  *    it in the license file.
  */
-
 #include "mongo/platform/basic.h"
 
 #include "mongo/db/pipeline/expression.h"
@@ -5282,6 +5281,12 @@ private:
 		if (inputValue == 0) {
 			return Value("0"_sd);
 		}
+		auto ret = str::stream();
+		if (inputValue < 0) {
+			// if the input is negative, convert it to positive, and add a "-" to the string stream.
+			inputValue = ~inputValue + 1;
+			ret << "-";
+		}
 		auto base = env.toBase.coerceToLong();
 		uassert(ErrorCodes::ConversionFailure, "toBase must be <= 36", base <= 36);
 		auto digitLength = static_cast<int>(std::ceil(std::log(inputValue)/std::log(base)));
@@ -5292,7 +5297,6 @@ private:
 			inputValue /= base;
 			lastIndex = i;
 		}
-		auto ret = str::stream();
 		for(auto i = lastIndex; i >= 0; --i) {
 			ret << digits[i];
 		}
