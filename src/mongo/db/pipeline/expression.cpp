@@ -4943,7 +4943,7 @@ public:
         // Conversions from String
         //
         table[BSONType::String][BSONType::NumberDouble] = &parseStringToNumber<double, 0>;
-        table[BSONType::String][BSONType::String] = &performIdentityStringConversion;
+        table[BSONType::String][BSONType::String] = &performStringToStringConversion;
         table[BSONType::String][BSONType::jstOID] = &parseStringToOID;
         table[BSONType::String][BSONType::Bool] = &performConvertToTrue;
         table[BSONType::String][BSONType::Date] = [](
@@ -5355,13 +5355,13 @@ private:
     }
 
 	// TODO: make helpers to make this faster.
-    static Value performIdentityStringConversion(const boost::intrusive_ptr<ExpressionContext>& expCtx,
+    static Value performStringToStringConversion(const boost::intrusive_ptr<ExpressionContext>& expCtx,
                                            Value inputValue, const ConversionEnvironment &env) {
         auto fromBase = env.fromBase.coerceToLong();
 		auto toBase = env.toBase.coerceToLong();
 		uassert(ErrorCodes::ConversionFailure,
 				str::stream() << "Must specify both toBase and fromBase or neither of toBase and fromBase",
-				fromBase == -1 || toBase != -1);
+				(fromBase == -1 && toBase == -1) || (fromBase != -1 && toBase != -1));
 
 		if (fromBase == -1) {
 			return inputValue;
