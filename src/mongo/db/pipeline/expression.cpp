@@ -5277,21 +5277,19 @@ private:
     }
 
 
-    static Value performFormatIntegral(const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                                     Value inputValue, const ConversionEnvironment &env) {
+	static Value formatLong(long long inputValue, const ConversionEnvironment &env) {
 		static const char *digitValues = "0123456789abcdefghijklmnopqrstuvwxyz";
-        auto value = inputValue.coerceToLong();
-		if (value == 0) {
+		if (inputValue == 0) {
 			return Value("0"_sd);
 		}
 		auto base = env.toBase.coerceToLong();
 		uassert(ErrorCodes::ConversionFailure, "toBase must be <= 36", base <= 36);
-		auto digitLength = static_cast<int>(std::ceil(std::log(value)/std::log(base)));
+		auto digitLength = static_cast<int>(std::ceil(std::log(inputValue)/std::log(base)));
 		auto digits = new char[digitLength];
 		int lastIndex = -1;
-		for(auto i = 0; value > 0; ++i) {
-			digits[i] = digitValues[value % base];
-			value /= base;
+		for(auto i = 0; inputValue > 0; ++i) {
+			digits[i] = digitValues[inputValue % base];
+			inputValue /= base;
 			lastIndex = i;
 		}
 		auto ret = str::stream();
@@ -5300,6 +5298,12 @@ private:
 		}
 		delete[] digits;
 		return Value(static_cast<std::string>(ret));
+	}
+
+
+    static Value performFormatIntegral(const boost::intrusive_ptr<ExpressionContext>& expCtx,
+                                     Value inputValue, const ConversionEnvironment &env) {
+		return formatLong(inputValue.coerceToLong(), env);
     }
 
     template <class targetType, int base>
@@ -5375,7 +5379,7 @@ private:
                               << parseStatus.reason(),
                 parseStatus.isOK());
 
-		return performFormatIntegral(expCtx, Value(result), env);
+		return formatLong(result, env);
     }
 };
 
