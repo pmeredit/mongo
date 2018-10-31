@@ -5582,6 +5582,20 @@ Value ExpressionConvert::performConversion(BSONType targetType, Value inputValue
 
     static const ConversionTable table;
     BSONType inputType = inputValue.getType();
+	if (targetType != String) {
+		auto toBase = env.toBase.coerceToLong();
+        uassert(ErrorCodes::ConversionFailure,
+                str::stream()
+                    << "In $convert, toBase cannot be specified if 'to' type is not 'string': ",
+					toBase == -1);
+	}
+	if (inputType != String) {
+        auto fromBase = env.fromBase.coerceToLong();
+        uassert(ErrorCodes::ConversionFailure,
+                str::stream()
+                    << "In $convert, fromBase cannot be specified if 'input' value's type is not 'string': ",
+					fromBase == -1);
+	}
     return table.findConversionFunc(inputType, targetType)(getExpressionContext(), inputValue, env);
 }
 
