@@ -5317,10 +5317,10 @@ private:
     static Value formatLong(long long inputValue, const ConversionEnvironment& env) {
         static const char* digitValues = "0123456789abcdefghijklmnopqrstuvwxyz";
         auto base = env.toBase.coerceToLong();
-        uassert(ErrorCodes::ConversionFailure, "toBase must be <= 36", base <= 36);
         if (base == -1) {
             base = 10;
         }
+        uassert(ErrorCodes::ConversionFailure, "toBase must be in range [2,36]", base <= 36 && base > 2);
         if (inputValue == 0) {
             return Value("0"_sd);
         }
