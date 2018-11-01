@@ -2009,8 +2009,8 @@ private:
 // ConversionEnvironment holds any extra environment necessary for the
 // $convert function outside of the input value and conversion target type.
 struct ConversionEnvironment {
-	Value fromBase;
-	Value toBase;
+    Value fromBase;
+    Value toBase;
 };
 
 class ExpressionConvert final : public Expression {
@@ -2039,8 +2039,12 @@ public:
     boost::intrusive_ptr<Expression> optimize() final;
     Value serialize(bool explain) const final;
 
-	boost::intrusive_ptr<Expression> getFromBase() const { return _fromBase; }
-	boost::intrusive_ptr<Expression> getToBase() const { return _toBase; }
+    boost::intrusive_ptr<Expression> getFromBase() const {
+        return _fromBase;
+    }
+    boost::intrusive_ptr<Expression> getToBase() const {
+        return _toBase;
+    }
 
 protected:
     void _doAddDependencies(DepsTracker* deps) const final;
@@ -2051,7 +2055,9 @@ private:
                       BSONType toType);
 
     BSONType computeTargetType(Value typeName) const;
-    Value performConversion(BSONType targetType, Value inputValue, const ConversionEnvironment &env) const;
+    Value performConversion(BSONType targetType,
+                            Value inputValue,
+                            const ConversionEnvironment& env) const;
 
     boost::intrusive_ptr<Expression> _input;
     boost::intrusive_ptr<Expression> _to;
