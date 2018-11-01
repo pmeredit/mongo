@@ -35,8 +35,11 @@
 #include <algorithm>
 #include <boost/algorithm/string.hpp>
 #include <cstdio>
+#include <sstream>
 #include <vector>
 
+#include "mongo/crypto/sha1_block.h"
+#include "mongo/crypto/sha256_block.h"
 #include "mongo/db/commands/feature_compatibility_version_documentation.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/db/pipeline/document.h"
@@ -5567,12 +5570,33 @@ intrusive_ptr<Expression> ExpressionHash::parse(
     return std::move(newHash);
 }
 
-static inline Value computeSHA1(Value input) {
-	return Value("sha1"_sd);
+static inline std::initializer_list<ConstDataRange> getConstantDataRange(StringData sd) {
+	return {ConstDataRange(sd.rawData(), sd.size())};
 }
 
-static inline Value computeSHA256(Value input) {
-	return Value("sha256"_sd);
+template <typename hashType>
+static inline StringData shaHashTypeToStringData(hashType input) {
+	static const char *digits = "0123456789abcdef";
+	auto ret = str::stream();
+	for(auto byte: input) {
+		ret << digits[byte / 16] << digits[byte % 16];
+	}
+	return ret;
+}
+
+template <typename shaType>
+static inline Value computeSHA(Value input) {
+	BSONType type = input.getType();
+	switch (type) {
+		case String:
+			return Value(shaHashTypeToStringData(
+					shaType::computeHash(
+						getConstantDataRange(input.getStringData())
+						)
+					));
+		default:
+			return Value(BSONNULL);
+	}
 }
 
 static inline Value computeMD5(Value input) {
@@ -5583,10 +5607,10 @@ static inline ExpressionHash::hashFunctionType getHashFunction(Value functionVal
 	uassert(50983, "Type of 'function' in $hash must be string",
 			functionValue.getType() == String);
 	if (functionValue.getStringData().equalCaseInsensitive("sha1"_sd)) {
-		return &computeSHA1;
+		return &computeSHA<SHA1BlockTraits>;
 	}
 	if (functionValue.getStringData().equalCaseInsensitive("sha256"_sd)) {
-		return &computeSHA256;
+		return &computeSHA<SHA256BlockTraits>;
 	}
 	if (functionValue.getStringData().equalCaseInsensitive("md5"_sd)) {
 		return &computeMD5;
