@@ -496,7 +496,7 @@ TEST_F(ExpressionConvertTest, StringIdentityConversion) {
 
 TEST_F(ExpressionConvertTest, StringBaseConversion) {
     auto expCtx = getExpCtx();
-
+	{
     auto spec = BSON("$convert" << BSON("input"
                                         << "$path1"
                                         << "to"
@@ -510,6 +510,56 @@ TEST_F(ExpressionConvertTest, StringBaseConversion) {
     Document stringInput{{"path1", "hello"_sd}};
     ASSERT_VALUE_CONTENTS_AND_TYPE(
         convertExp->evaluate(stringInput), "olgdi"_sd, BSONType::String);
+    }
+	{
+    auto spec = BSON("$convert" << BSON("input"
+                                << "$path1"
+                                << "to"
+                                << "string"
+								<< "fromBase"
+								<< 16
+								<< "toBase"
+								<< 10));
+    auto convertExp = Expression::parseExpression(expCtx, spec, expCtx->variablesParseState);
+
+    Document stringInput{{"path1", "ff"_sd}};
+    ASSERT_VALUE_CONTENTS_AND_TYPE(
+        convertExp->evaluate(stringInput), "255"_sd, BSONType::String);
+    }
+}
+
+TEST_F(ExpressionConvertTest, StringNegativeBaseConversion) {
+	auto expCtx = getExpCtx();
+	{
+    auto spec = BSON("$convert" << BSON("input"
+                                        << "$path1"
+                                        << "to"
+                                        << "string"
+										<< "fromBase"
+										<< 36
+										<< "toBase"
+										<< 33));
+    auto convertExp = Expression::parseExpression(expCtx, spec, expCtx->variablesParseState);
+
+    Document stringInput{{"path1", "-hello"_sd}};
+    ASSERT_VALUE_CONTENTS_AND_TYPE(
+        convertExp->evaluate(stringInput), "-olgdi"_sd, BSONType::String);
+    }
+	{
+    auto spec = BSON("$convert" << BSON("input"
+                                   << "$path1"
+                                   << "to"
+                                   << "string"
+	   							<< "fromBase"
+	   							<< 16
+	   							<< "toBase"
+	   							<< 10));
+    auto convertExp = Expression::parseExpression(expCtx, spec, expCtx->variablesParseState);
+
+    Document stringInput{{"path1", "-ff"_sd}};
+    ASSERT_VALUE_CONTENTS_AND_TYPE(
+        convertExp->evaluate(stringInput), "-255"_sd, BSONType::String);
+	}
 }
 
 TEST_F(ExpressionConvertTest, ObjectIdIdentityConversion) {
@@ -1969,14 +2019,21 @@ TEST_F(ExpressionConvertTest, ConvertObjectIdToDate) {
 
 TEST_F(ExpressionConvertTest, ConvertStringToInt) {
     auto expCtx = getExpCtx();
-
+	{
     auto spec = fromjson("{$convert: {input: '5', to: 'int'}}");
     auto convertExp = Expression::parseExpression(expCtx, spec, expCtx->variablesParseState);
     ASSERT_VALUE_CONTENTS_AND_TYPE(convertExp->evaluate({}), 5, BSONType::NumberInt);
-
-    spec = fromjson("{$convert: {input: '" + std::to_string(kIntMax) + "', to: 'int'}}");
-    convertExp = Expression::parseExpression(expCtx, spec, expCtx->variablesParseState);
+    }
+	{
+    auto spec = fromjson("{$convert: {input: '" + std::to_string(kIntMax) + "', to: 'int'}}");
+    auto convertExp = Expression::parseExpression(expCtx, spec, expCtx->variablesParseState);
     ASSERT_VALUE_CONTENTS_AND_TYPE(convertExp->evaluate({}), kIntMax, BSONType::NumberInt);
+    }
+	{
+    auto spec = fromjson("{$convert: {input: '-hello', to: 'long', fromBase: 33}}");
+    auto convertExp = Expression::parseExpression(expCtx, spec, expCtx->variablesParseState);
+    ASSERT_VALUE_CONTENTS_AND_TYPE(convertExp->evaluate({}), -20687361, BSONType::NumberLong);
+	}
 }
 
 TEST_F(ExpressionConvertTest, ConvertStringToIntOverflow) {
@@ -2016,14 +2073,21 @@ TEST_F(ExpressionConvertTest, ConvertStringToIntOverflowWithOnError) {
 
 TEST_F(ExpressionConvertTest, ConvertStringToLong) {
     auto expCtx = getExpCtx();
-
+	{
     auto spec = fromjson("{$convert: {input: '5', to: 'long'}}");
     auto convertExp = Expression::parseExpression(expCtx, spec, expCtx->variablesParseState);
     ASSERT_VALUE_CONTENTS_AND_TYPE(convertExp->evaluate({}), 5LL, BSONType::NumberLong);
-
-    spec = fromjson("{$convert: {input: '" + std::to_string(kLongMax) + "', to: 'long'}}");
-    convertExp = Expression::parseExpression(expCtx, spec, expCtx->variablesParseState);
+	}
+	{
+    auto spec = fromjson("{$convert: {input: '" + std::to_string(kLongMax) + "', to: 'long'}}");
+    auto convertExp = Expression::parseExpression(expCtx, spec, expCtx->variablesParseState);
     ASSERT_VALUE_CONTENTS_AND_TYPE(convertExp->evaluate({}), kLongMax, BSONType::NumberLong);
+	}
+	{
+    auto spec = fromjson("{$convert: {input: '-hello', to: 'long', fromBase: 33}}");
+    auto convertExp = Expression::parseExpression(expCtx, spec, expCtx->variablesParseState);
+    ASSERT_VALUE_CONTENTS_AND_TYPE(convertExp->evaluate({}), -20687361, BSONType::NumberLong);
+	}
 }
 
 TEST_F(ExpressionConvertTest, ConvertStringToLongOverflow) {
