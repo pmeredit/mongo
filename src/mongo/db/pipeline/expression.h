@@ -2009,6 +2009,7 @@ private:
 // ConversionEnvironment holds any extra environment necessary for the
 // $convert function outside of the input value and conversion target type.
 struct ConversionEnvironment {
+	// TODO: use boost::optional I think
     Value fromBase;
     Value toBase;
 };
