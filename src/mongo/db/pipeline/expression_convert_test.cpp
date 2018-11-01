@@ -494,6 +494,24 @@ TEST_F(ExpressionConvertTest, StringIdentityConversion) {
         convertExp->evaluate(stringInput), "More cowbell"_sd, BSONType::String);
 }
 
+TEST_F(ExpressionConvertTest, StringBaseConversion) {
+    auto expCtx = getExpCtx();
+
+    auto spec = BSON("$convert" << BSON("input"
+                                        << "$path1"
+                                        << "to"
+                                        << "string"
+										<< "fromBase"
+										<< 36
+										<< "toBase"
+										<< 33));
+    auto convertExp = Expression::parseExpression(expCtx, spec, expCtx->variablesParseState);
+
+    Document stringInput{{"path1", "hello"_sd}};
+    ASSERT_VALUE_CONTENTS_AND_TYPE(
+        convertExp->evaluate(stringInput), "olgdi"_sd, BSONType::String);
+}
+
 TEST_F(ExpressionConvertTest, ObjectIdIdentityConversion) {
     auto expCtx = getExpCtx();
 

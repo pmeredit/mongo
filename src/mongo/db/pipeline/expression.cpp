@@ -5278,6 +5278,11 @@ private:
 
 	static Value formatLong(long long inputValue, const ConversionEnvironment &env) {
 		static const char *digitValues = "0123456789abcdefghijklmnopqrstuvwxyz";
+		auto base = env.toBase.coerceToLong();
+		uassert(ErrorCodes::ConversionFailure, "toBase must be <= 36", base <= 36);
+		if (base == -1) {
+			base = 10;
+		}
 		if (inputValue == 0) {
 			return Value("0"_sd);
 		}
@@ -5287,8 +5292,6 @@ private:
 			inputValue = ~inputValue + 1;
 			ret << "-";
 		}
-		auto base = env.toBase.coerceToLong();
-		uassert(ErrorCodes::ConversionFailure, "toBase must be <= 36", base <= 36);
 		auto digitLength = static_cast<int>(std::ceil(std::log(inputValue)/std::log(base)));
 		auto digits = new char[digitLength];
 		int lastIndex = -1;
