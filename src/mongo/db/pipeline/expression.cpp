@@ -5582,13 +5582,13 @@ static inline Value computeMD5(Value input) {
 static inline ExpressionHash::hashFunctionType getHashFunction(Value functionValue) {
 	uassert(50983, "Type of 'function' in $hash must be string",
 			functionValue.getType() == String);
-	if (functionValue.getStringData() == "sha1"_sd) {
+	if (functionValue.getStringData().equalCaseInsensitive("sha1"_sd)) {
 		return &computeSHA1;
 	}
-	if (functionValue.getStringData() == "sha256"_sd) {
+	if (functionValue.getStringData().equalCaseInsensitive("sha256"_sd)) {
 		return &computeSHA256;
 	}
-	if (functionValue.getStringData() == "md5"_sd) {
+	if (functionValue.getStringData().equalCaseInsensitive("md5"_sd)) {
 		return &computeMD5;
 	}
 	uassert(50984, str::stream() << "Unknown hash function '"
