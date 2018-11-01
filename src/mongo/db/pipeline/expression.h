@@ -2048,4 +2048,38 @@ private:
     boost::intrusive_ptr<Expression> _onError;
     boost::intrusive_ptr<Expression> _onNull;
 };
+
+class ExpressionHash final : public Expression {
+public:
+	typedef Value (*hashFunctionType)(Value);
+    /**
+     * Creates a $hash expression that hashes 'input' using hash function 'function'.
+     */
+    static boost::intrusive_ptr<Expression> create(const boost::intrusive_ptr<ExpressionContext>&,
+                                                   const boost::intrusive_ptr<Expression>& input,
+                                                   const boost::intrusive_ptr<Expression>& function);
+
+    static boost::intrusive_ptr<Expression> parse(
+        const boost::intrusive_ptr<ExpressionContext>& expCtx,
+        BSONElement expr,
+        const VariablesParseState& vpsIn);
+
+    explicit ExpressionHash(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+        : Expression(expCtx) {}
+    Value evaluate(const Document& root) const final;
+    boost::intrusive_ptr<Expression> optimize() final;
+    Value serialize(bool explain) const final;
+
+protected:
+    void _doAddDependencies(DepsTracker* deps) const final;
+
+private:
+    ExpressionHash(const boost::intrusive_ptr<ExpressionContext>&,
+                      const boost::intrusive_ptr<Expression>& input,
+                      const boost::intrusive_ptr<Expression>& function);
+
+    boost::intrusive_ptr<Expression> _input;
+    boost::intrusive_ptr<Expression> _function;
+	hashFunctionType _hashFunction;
+};
 }

@@ -28,7 +28,6 @@
  *    it in the license file.
  */
 
-
 #include "mongo/platform/basic.h"
 
 #include "mongo/db/pipeline/expression.h"
@@ -5519,5 +5518,120 @@ Value ExpressionConvert::performConversion(BSONType targetType, Value inputValue
     BSONType inputType = inputValue.getType();
     return table.findConversionFunc(inputType, targetType)(getExpressionContext(), inputValue);
 }
+
+/*
+ * ExpressionHash
+ */
+boost::intrusive_ptr<Expression> ExpressionHash::create(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
+    const boost::intrusive_ptr<Expression>& input,
+	const boost::intrusive_ptr<Expression>& function) {
+    return new ExpressionHash(expCtx, input, function);
+}
+
+ExpressionHash::ExpressionHash(const boost::intrusive_ptr<ExpressionContext>& expCtx,
+                                     const boost::intrusive_ptr<Expression>& input,
+                                     const boost::intrusive_ptr<Expression>& function)
+    : Expression(expCtx),
+      _input(input),
+      _function(function),
+      _hashFunction(nullptr) {}
+
+intrusive_ptr<Expression> ExpressionHash::parse(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
+    BSONElement expr,
+    const VariablesParseState& vps) {
+    uassert(ErrorCodes::FailedToParse,
+            str::stream() << "$hash expects an object of named arguments but found: "
+                          << typeName(expr.type()),
+            expr.type() == BSONType::Object);
+
+    intrusive_ptr<ExpressionHash> newHash(new ExpressionHash(expCtx));
+
+    for (auto&& elem : expr.embeddedObject()) {
+        const auto field = elem.fieldNameStringData();
+        if (field == "input"_sd) {
+            newHash->_input = parseOperand(expCtx, elem, vps);
+        } else if (field == "function"_sd) {
+            newHash->_function = parseOperand(expCtx, elem, vps);
+        } else {
+            uasserted(ErrorCodes::FailedToParse,
+                      str::stream() << "$hash found an unknown argument: "
+                                    << elem.fieldNameStringData());
+        }
+    }
+
+    uassert(ErrorCodes::FailedToParse, "Missing 'input' parameter function $convert", newHash->_input);
+    uassert(ErrorCodes::FailedToParse, "Missing 'function' parameter function $convert", newHash->_function);
+
+    return std::move(newHash);
+}
+
+static inline Value computeSHA1(Value input) {
+	return Value("sha1"_sd);
+}
+
+static inline Value computeSHA256(Value input) {
+	return Value("sha256"_sd);
+}
+
+static inline Value computeMD5(Value input) {
+	return Value("md5"_sd);
+}
+
+static inline ExpressionHash::hashFunctionType getHashFunction(Value functionValue) {
+	uassert(50983, "Type of 'function' in $hash must be string",
+			functionValue.getType() == String);
+	if (functionValue.getStringData() == "sha1"_sd) {
+		return &computeSHA1;
+	}
+	if (functionValue.getStringData() == "sha256"_sd) {
+		return &computeSHA256;
+	}
+	if (functionValue.getStringData() == "md5"_sd) {
+		return &computeMD5;
+	}
+	uassert(50984, str::stream() << "Unknown hash function '"
+			                     << functionValue.getString() << "' function $hash", false);
+}
+
+Value ExpressionHash::evaluate(const Document& root) const {
+    Value inputValue = _input->evaluate(root);
+	if (_hashFunction != nullptr) {
+		return _hashFunction(inputValue);
+	}
+    Value functionValue = _function->evaluate(root);
+    if (inputValue.nullish() || functionValue.nullish()) {
+		return Value(BSONNULL);
+    }
+    return getHashFunction(functionValue)(inputValue);
+}
+
+boost::intrusive_ptr<Expression> ExpressionHash::optimize() {
+    _input = _input->optimize();
+    _function = _function->optimize();
+
+	// If the function is a constant, we can optimize to storing the hashFunction and
+	// avoid checking the hash function string every time.
+    const ExpressionConstant* functionConst = dynamic_cast<ExpressionConstant*>(_function.get());
+    if (!functionConst) return this;
+	auto functionValue = functionConst->getValue();
+	_hashFunction = getHashFunction(functionValue);
+	return this;
+}
+
+Value ExpressionHash::serialize(bool explain) const {
+    return Value(Document{{"$hash",
+                           Document{{"input", _input->serialize(explain)},
+                                    {"function", _function->serialize(explain)}}
+						 }});
+}
+
+void ExpressionHash::_doAddDependencies(DepsTracker* deps) const {
+    _input->addDependencies(deps);
+    _function->addDependencies(deps);
+}
+
+REGISTER_EXPRESSION(hash, ExpressionHash::parse);
 
 }  // namespace mongo
