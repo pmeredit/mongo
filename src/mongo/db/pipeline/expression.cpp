@@ -48,6 +48,7 @@
 #include "mongo/db/query/datetime/date_time_support.h"
 #include "mongo/platform/bits.h"
 #include "mongo/platform/decimal128.h"
+#include "mongo/util/md5.hpp"
 #include "mongo/util/mongoutils/str.h"
 #include "mongo/util/string_map.h"
 #include "mongo/util/summation.h"
@@ -5600,7 +5601,15 @@ static inline Value computeSHA(Value input) {
 }
 
 static inline Value computeMD5(Value input) {
-	return Value("md5"_sd);
+	BSONType type = input.getType();
+	md5digest res;
+	switch (type) {
+		case String:
+			md5(input.getString().c_str(), res);
+			return Value(digestToString(res));
+		default:
+			return Value(BSONNULL);
+	}
 }
 
 static inline ExpressionHash::hashFunctionType getHashFunction(Value functionValue) {

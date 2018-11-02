@@ -2051,7 +2051,7 @@ private:
 
 class ExpressionHash final : public Expression {
 public:
-	typedef Value (*hashFunctionType)(Value);
+	typedef std::function<Value(Value)> hashFunctionType;
     /**
      * Creates a $hash expression that hashes 'input' using hash function 'function'.
      */
