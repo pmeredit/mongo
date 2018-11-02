@@ -8,6 +8,8 @@
 
 #include "watchdog_mongod.h"
 
+#include <boost/filesystem.hpp>
+
 #include "../audit/audit_options.h"
 #include "mongo/base/init.h"
 #include "mongo/config.h"
@@ -138,9 +140,15 @@ void startWatchdog() {
         auto journalDirectory = boost::filesystem::path(storageGlobalParams.dbpath);
         journalDirectory /= "journal";
 
-        auto journalCheck = stdx::make_unique<DirectoryCheck>(journalDirectory);
+        if (boost::filesystem::exists(journalDirectory)) {
+            auto journalCheck = stdx::make_unique<DirectoryCheck>(journalDirectory);
 
-        checks.push_back(std::move(journalCheck));
+            checks.push_back(std::move(journalCheck));
+        } else {
+            warning()
+                << "Watchdog is skipping check for journal directory since it does not exist: '"
+                << journalDirectory.generic_string() << "'";
+        }
     }
 
     // If the user specified a log path, also monitor that directory.

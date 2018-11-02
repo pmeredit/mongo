@@ -1,4 +1,5 @@
 // Storage Node Watchdog - validate watchdog monitors --dbpath /journal
+// @tags: [requires_wiredtiger,requires_journaling]
 //
 load("src/mongo/db/modules/enterprise/jstests/watchdog/lib/wd_test_common.js");
 
