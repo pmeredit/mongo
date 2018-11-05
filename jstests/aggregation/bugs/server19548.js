@@ -52,27 +52,6 @@ load("jstests/aggregation/extras/utils.js");
     testOp({$round: 0.9}, 1.0);
     testOp({$round: -1.2}, -1.0);
 
-    // 2 argument $trunc and $round.
-    testOp({$trunc: [1.298, 0]}, 1);
-    testOp({$trunc: [1.298, 1]}, 1.2);
-    testOp({$trunc: [23.298, -1]}, 20);
-    testOp({$trunc: [1.298, 1.7e308]}, 1.298);
-    testOp({$trunc: [NumberDecimal("1.298"), NumberDecimal("1.7e308")]}, NumberDecimal("1.298"));
-
-    testOp({$round: [1.298, 0]}, 1);
-    testOp({$round: [1.298, 1]}, 1.3);
-    testOp({$round: [23.298, -1]}, 20);
-    testOp({$round: [1.298, 1.7e308]}, 1.298);
-    testOp({$round: [NumberDecimal("1.298"), NumberDecimal("1.7e308")]}, NumberDecimal("1.298"));
-
-    // More than 1 argument.
-    assertErrorCode(coll, [{$project: {a: {$ceil: [1, 2]}}}], 16020);
-    assertErrorCode(coll, [{$project: {a: {$floor: [1, 2]}}}], 16020);
-
-    // More than 2 arguments
-    assertErrorCode(coll, [{$project: {a: {$trunc: [1, 2, 3]}}}], 28667);
-    assertErrorCode(coll, [{$project: {a: {$round: [1, 2, 3]}}}], 28667);
-
     // Non-numeric input.
     assertErrorCode(coll, [{$project: {a: {$ceil: "string"}}}], 28765);
     assertErrorCode(coll, [{$project: {a: {$floor: "string"}}}], 28765);

@@ -4747,6 +4747,9 @@ void ExpressionTrim::_doAddDependencies(DepsTracker* deps) const {
 /* ------------------------- ExpressionRound -------------------------- */
 
 Value ExpressionRound::evaluate(const Document& root) const {
+	// This is the max value before we get underflow when constructing
+	// precisionValue below.
+    static const long long MAX_PRECISION_VALUE = 49898997999648LL;
     auto numericArg = Value(vpOperand[0]->evaluate(root));
     if (numericArg.nullish()) {
         return Value(BSONNULL);
@@ -4759,9 +4762,12 @@ Value ExpressionRound::evaluate(const Document& root) const {
     if (vpOperand.size() == 2) {
         auto precisionArg = Value(vpOperand[1]->evaluate(root));
 		if (precisionArg.nullish()) {
-                return Value(BSONNULL);
+            return Value(BSONNULL);
 		}
 		auto precisionValue = precisionArg.truncateToLong();
+		if (precisionValue > MAX_PRECISION_VALUE) {
+			return numericArg;
+		}
 		// construct 10^-precisionValue
 		auto quantum = Decimal128(0LL, Decimal128::kExponentBias - precisionValue, 0LL, 1LL);
         // There's no point in rounding integers or longs, it will have no effect.
@@ -4820,6 +4826,9 @@ const char* ExpressionRound::getOpName() const {
 /* ------------------------- ExpressionTrunc -------------------------- */
 
 Value ExpressionTrunc::evaluate(const Document& root) const {
+	// This is the max value before we get underflow when constructing
+	// precisionValue below.
+    static const long long MAX_PRECISION_VALUE = 49898997999648LL;
     auto numericArg = Value(vpOperand[0]->evaluate(root));
     if (numericArg.nullish()) {
         return Value(BSONNULL);
@@ -4835,6 +4844,9 @@ Value ExpressionTrunc::evaluate(const Document& root) const {
                 return Value(BSONNULL);
 		}
 		auto precisionValue = precisionArg.truncateToLong();
+		if (precisionValue > MAX_PRECISION_VALUE) {
+			return numericArg;
+		}
 		// construct 10^-precisionValue
 		auto quantum = Decimal128(0LL, Decimal128::kExponentBias - precisionValue, 0LL, 1LL);
         // There's no point in rounding integers or longs, it will have no effect.
