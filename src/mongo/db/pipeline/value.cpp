@@ -518,6 +518,29 @@ long long Value::coerceToLong() const {
     }  // switch(getType())
 }
 
+long long Value::truncateToLong() const {
+    switch (getType()) {
+        case NumberLong:
+            return _storage.longValue;
+
+        case NumberInt:
+            return static_cast<long long>(_storage.intValue);
+
+        case NumberDouble:
+            return static_cast<long long>(_storage.doubleValue);
+
+        case NumberDecimal:
+            return _storage.getDecimal().quantize(Decimal128::kNormalizedZero,
+					Decimal128::kRoundTowardZero).toLong();
+
+        default:
+            uassert(50979,
+                    str::stream() << "can't convert from BSON type " << typeName(getType())
+                                  << " to long",
+                    false);
+    }  // switch(getType())
+}
+
 double Value::coerceToDouble() const {
     switch (getType()) {
         case NumberDouble:

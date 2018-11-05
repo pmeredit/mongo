@@ -4761,7 +4761,7 @@ Value ExpressionRound::evaluate(const Document& root) const {
 		if (precisionArg.nullish()) {
                 return Value(BSONNULL);
 		}
-		auto precisionValue = precisionArg.coerceToLong();
+		auto precisionValue = precisionArg.truncateToLong();
 		// construct 10^-precisionValue
 		auto quantum = Decimal128(0LL, Decimal128::kExponentBias - precisionValue, 0LL, 1LL);
         // There's no point in rounding integers or longs, it will have no effect.
@@ -4834,7 +4834,7 @@ Value ExpressionTrunc::evaluate(const Document& root) const {
 		if (precisionArg.nullish()) {
                 return Value(BSONNULL);
 		}
-		auto precisionValue = precisionArg.coerceToLong();
+		auto precisionValue = precisionArg.truncateToLong();
 		// construct 10^-precisionValue
 		auto quantum = Decimal128(0LL, Decimal128::kExponentBias - precisionValue, 0LL, 1LL);
         // There's no point in rounding integers or longs, it will have no effect.
