@@ -4758,30 +4758,45 @@ Value ExpressionRound::evaluate(const Document& root) const {
     // If precision is specified, round to the specified precision.
     if (vpOperand.size() == 2) {
         auto precisionArg = Value(vpOperand[1]->evaluate(root));
-	if (precisionArg.nullish()) {
-            return Value(BSONNULL);
-	}
-	auto precisionValue = std::trunc(precisionArg.coerceToDouble());
-	auto precisionMultiplicand = std::pow(10.0, precisionValue); 
+		if (precisionArg.nullish()) {
+                return Value(BSONNULL);
+		}
+		auto precisionValue = precisionArg.coerceToLong();
+		// construct 10^-precisionValue
+		auto quantum = Decimal128(0LL, Decimal128::kExponentBias - precisionValue, 0LL, 1LL);
         // There's no point in rounding integers or longs, it will have no effect.
         switch (numericArg.getType()) {
             case NumberDecimal: {
-                auto decimalPrecisionMultiplicand =
-                    Decimal128(precisionMultiplicand);
-                auto possibleRes =
-                    numericArg.getDecimal()
-                        .multiply(decimalPrecisionMultiplicand)
-                        .quantize(Decimal128::kNormalizedZero, Decimal128::kRoundTiesToEven)
-                        .divide(decimalPrecisionMultiplicand);
-                return possibleRes.isNaN() ? numericArg : Value(possibleRes);
+                auto out = numericArg.getDecimal().quantize(quantum);
+				if(out.isNaN()) {
+					return numericArg;
+				}
+				return Value(out);
             }
             case NumberDouble: {
-                auto possibleRes = (std::round(numericArg.getDouble() * precisionMultiplicand) /
-                                    precisionMultiplicand);
-                return std::isnan(possibleRes) ? numericArg : Value(possibleRes);
+                auto out = Decimal128(numericArg.getDouble()).quantize(quantum);
+				if(out.isNaN()) {
+					return numericArg;
+				}
+				return Value(out.toDouble());
             }
-            default:
-                return numericArg;
+			case NumberLong: {
+				if (precisionValue >= 0) {
+					return numericArg;
+				}
+                auto out = Decimal128(static_cast<int64_t>(numericArg.getLong())).quantize(quantum);
+				return Value(static_cast<long long>(out.toLong()));
+			}
+            case NumberInt: {
+				if (precisionValue >= 0) {
+					return numericArg;
+				}
+                auto out = Decimal128(numericArg.getInt()).quantize(quantum);
+				return Value(out.toInt());
+			}
+			default: {
+				uassert(50977, "unreachable", false);
+			}
         }
     }
     // Else, round with 0 precision.
@@ -4816,30 +4831,49 @@ Value ExpressionTrunc::evaluate(const Document& root) const {
     // If precision is specified, truncate to the specified precision.
     if (vpOperand.size() == 2) {
         auto precisionArg = Value(vpOperand[1]->evaluate(root));
-	if (precisionArg.nullish()) {
-            return Value(BSONNULL);
-	}
-	auto precisionValue = std::trunc(precisionArg.coerceToDouble());
-	auto precisionMultiplicand = std::pow(10.0, precisionValue); 
-        // There's no point in truncating integers or longs, it will have no effect.
+		if (precisionArg.nullish()) {
+                return Value(BSONNULL);
+		}
+		auto precisionValue = precisionArg.coerceToLong();
+		// construct 10^-precisionValue
+		auto quantum = Decimal128(0LL, Decimal128::kExponentBias - precisionValue, 0LL, 1LL);
+        // There's no point in rounding integers or longs, it will have no effect.
         switch (numericArg.getType()) {
             case NumberDecimal: {
-                auto decimalPrecisionMultiplicand =
-                    Decimal128(precisionMultiplicand);
-                auto possibleRes =
-                    numericArg.getDecimal()
-                        .multiply(decimalPrecisionMultiplicand)
-                        .quantize(Decimal128::kNormalizedZero, Decimal128::kRoundTowardZero)
-                        .divide(decimalPrecisionMultiplicand);
-                return possibleRes.isNaN() ? numericArg : Value(possibleRes);
+                auto out = numericArg.getDecimal()
+					.quantize(quantum, Decimal128::kRoundTowardZero);
+				if(out.isNaN()) {
+					return numericArg;
+				}
+				return Value(out);
             }
             case NumberDouble: {
-                auto possibleRes = (std::trunc(numericArg.getDouble() * precisionMultiplicand) /
-                                    precisionMultiplicand);
-                return std::isnan(possibleRes) ? numericArg : Value(possibleRes);
+                auto out = Decimal128(numericArg.getDouble())
+					.quantize(quantum, Decimal128::kRoundTowardZero);
+				if(out.isNaN()) {
+					return numericArg;
+				}
+				return Value(out.toDouble());
             }
-            default:
-                return numericArg;
+			case NumberLong: {
+				if (precisionValue >= 0) {
+					return numericArg;
+				}
+                auto out = Decimal128(static_cast<int64_t>(numericArg.getLong()))
+					.quantize(quantum, Decimal128::kRoundTowardZero);
+				return Value(static_cast<long long>(out.toLong()));
+			}
+            case NumberInt: {
+				if (precisionValue >= 0) {
+					return numericArg;
+				}
+                auto out = Decimal128(numericArg.getInt())
+					.quantize(quantum, Decimal128::kRoundTowardZero);
+				return Value(out.toInt());
+			}
+			default: {
+				uassert(50978, "unreachable", false);
+			}
         }
     }
     // Else, truncate with 0 precision.

@@ -113,6 +113,13 @@ TEST(Decimal128Test, TestInt64ConstructorMin) {
     ASSERT_EQUALS(val.low64, lowBytes);
 }
 
+TEST(Decimal128Test, TestPartsConstructor) {
+	Decimal128 expected(10);
+	Decimal128 val(0LL, Decimal128::kExponentBias, 0LL, 10LL);
+	ASSERT_EQUALS(val.getValue().low64, expected.getValue().low64);
+	ASSERT_EQUALS(val.getValue().low64, expected.getValue().low64);
+}
+
 TEST(Decimal128Test, TestDoubleConstructorQuant1) {
     double dbl = 0.1 / 10;
     Decimal128 d(dbl);
@@ -1067,12 +1074,62 @@ TEST(Decimal128Test, TestDecimal128DivisionCase2) {
 }
 
 TEST(Decimal128Test, TestDecimal128Quantize) {
+	{
     Decimal128 expected("1.00001");
     Decimal128 val("1.000008");
     Decimal128 ref("0.00001");
     Decimal128 result = val.quantize(ref);
     ASSERT_EQUALS(result.getValue().low64, expected.getValue().low64);
     ASSERT_EQUALS(result.getValue().high64, expected.getValue().high64);
+	}
+	{
+    Decimal128 expected("3.1");
+    Decimal128 val("3.14159");
+    Decimal128 ref("0.1");
+    Decimal128 result = val.quantize(ref);
+    ASSERT_EQUALS(result.getValue().low64, expected.getValue().low64);
+    ASSERT_EQUALS(result.getValue().high64, expected.getValue().high64);
+	}
+	{
+    Decimal128 expected("3.14");
+    Decimal128 val("3.14159");
+    Decimal128 ref("0.01");
+    Decimal128 result = val.quantize(ref);
+    ASSERT_EQUALS(result.getValue().low64, expected.getValue().low64);
+    ASSERT_EQUALS(result.getValue().high64, expected.getValue().high64);
+	}
+	{
+    Decimal128 expected("3.142");
+    Decimal128 val("3.14159");
+    Decimal128 ref("0.001");
+    Decimal128 result = val.quantize(ref);
+    ASSERT_EQUALS(result.getValue().low64, expected.getValue().low64);
+    ASSERT_EQUALS(result.getValue().high64, expected.getValue().high64);
+	}
+	{
+    Decimal128 expected("3.1416");
+    Decimal128 val("3.14159");
+    Decimal128 ref("0.0001");
+    Decimal128 result = val.quantize(ref);
+    ASSERT_EQUALS(result.getValue().low64, expected.getValue().low64);
+    ASSERT_EQUALS(result.getValue().high64, expected.getValue().high64);
+	}
+	{
+    Decimal128 expected("3.141");
+    Decimal128 val("3.14159");
+    Decimal128 ref("0.001");
+    Decimal128 result = val.quantize(ref, Decimal128::kRoundTowardZero);
+    ASSERT_EQUALS(result.getValue().low64, expected.getValue().low64);
+    ASSERT_EQUALS(result.getValue().high64, expected.getValue().high64);
+	}
+	{
+    Decimal128 expected("3.1415");
+    Decimal128 val("3.14159");
+    Decimal128 ref("0.0001");
+    Decimal128 result = val.quantize(ref, Decimal128::kRoundTowardZero);
+    ASSERT_EQUALS(result.getValue().low64, expected.getValue().low64);
+    ASSERT_EQUALS(result.getValue().high64, expected.getValue().high64);
+	}
 }
 
 TEST(Decimal128Test, TestDecimal128NormalizeSmallVals) {
