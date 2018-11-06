@@ -12,7 +12,7 @@ env.Library(
         'queryable_global_options.cpp',
     ],
     LIBDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/db/serveronly',
+        '$BUILD_DIR/mongo/mongodmain',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/service_context',
