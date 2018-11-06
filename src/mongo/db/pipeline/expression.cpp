@@ -4758,7 +4758,7 @@ struct TruncOp {
     }
 };
 
-template <typename doubleOp, Decimal128::RoundingMode roundingMode>
+template <typename DoubleOp, Decimal128::RoundingMode roundingMode>
 static Value evaluateRoundOrTrunc(const Document& root,
                                   const std::vector<boost::intrusive_ptr<Expression>>& vpOperand,
                                   const std::string& opName) {
@@ -4781,7 +4781,7 @@ static Value evaluateRoundOrTrunc(const Document& root,
                 return Value(
                     numericArg.getDecimal().quantize(Decimal128::kNormalizedZero, roundingMode));
             case NumberDouble:
-                doubleOp d;
+                DoubleOp d;
                 return Value(d(numericArg.getDouble()));
             default:
                 return numericArg;
