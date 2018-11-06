@@ -4748,24 +4748,24 @@ void ExpressionTrim::_doAddDependencies(DepsTracker* deps) const {
 
 struct RoundOp {
     double operator()(double x) {
-		return std::round(x);
-	}
+        return std::round(x);
+    }
 };
 
 struct TruncOp {
     double operator()(double x) {
-		return std::trunc(x);
-	}
+        return std::trunc(x);
+    }
 };
 
-template<typename doubleOp, Decimal128::RoundingMode roundingMode>
+template <typename doubleOp, Decimal128::RoundingMode roundingMode>
 static Value evaluateRoundOrTrunc(const Document& root,
-		const std::vector<boost::intrusive_ptr<Expression>>& vpOperand,
-		const std::string& opName) {
+                                  const std::vector<boost::intrusive_ptr<Expression>>& vpOperand,
+                                  const std::string& opName) {
     static const Decimal128 decimalExponentBias(Decimal128::kExponentBias);
-	static const long long negativeExponentBias = -6111LL;
+    static const long long negativeExponentBias = -6111LL;
     static const Decimal128 decimalNegativeExponentBias(static_cast<int64_t>(negativeExponentBias));
-	auto numericArg = Value(vpOperand[0]->evaluate(root));
+    auto numericArg = Value(vpOperand[0]->evaluate(root));
     if (numericArg.nullish()) {
         return Value(BSONNULL);
     }
@@ -4774,139 +4774,138 @@ static Value evaluateRoundOrTrunc(const Document& root,
                           << typeName(numericArg.getType()),
             numericArg.numeric());
     if (vpOperand.size() == 1) {
-		// There's no point to round/trunc integers or longs without precision argument,
-		// it will have no effect.
+        // There's no point to round/trunc integers or longs without precision argument,
+        // it will have no effect.
         switch (numericArg.getType()) {
             case NumberDecimal:
-                return Value(numericArg.getDecimal()
-						.quantize(Decimal128::kNormalizedZero, roundingMode));
+                return Value(
+                    numericArg.getDecimal().quantize(Decimal128::kNormalizedZero, roundingMode));
             case NumberDouble:
-				doubleOp d;
+                doubleOp d;
                 return Value(d(numericArg.getDouble()));
             default:
                 return numericArg;
         }
-	}
+    }
     // Else, if precision is specified, round to the specified precision.
     auto precisionArg = Value(vpOperand[1]->evaluate(root));
-	if (precisionArg.nullish()) {
+    if (precisionArg.nullish()) {
         return Value(BSONNULL);
-	}
-	auto precisionValue = 0LL;
-	switch (precisionArg.getType()) {
-		// We need to have special handling for floating point precisionArgs
-		// because coerceToLong returns the same value
-		// (std::numeric_limits<long long>::min()) for both numbers
-		// that are too positive and too negative to fit in a long, and
-		// we desire to have different outputs for numbers too large
-		// (return numericArg) and too negative (return 0 of
-		// the proper type).
-		case NumberDecimal: {
-			auto precisionValueDecimal = precisionArg.getDecimal();
-			if(precisionValueDecimal.isGreater(decimalExponentBias)) {
-				return numericArg;
-			}
-			if(precisionValueDecimal.isLess(decimalNegativeExponentBias)) {
-                // Allow this to return below so that we can
-				// return a zero value of the proper type, which
-				// is determined by the type of numericArg.
-				// We do this by setting the precisionValue to
-				// a value guaranteed to return 0 below.
-				precisionValue = negativeExponentBias - 1;
-				break;
-			}
-			// We truncate the precision value rather than rounding.
-			precisionValue = precisionValueDecimal
-				.quantize(Decimal128::kNormalizedZero, Decimal128::kRoundTowardZero)
-				.toLong();
-			break;
-		}
-		case NumberDouble: {
-			auto precisionValueDouble = precisionArg.getDouble();
-			if(precisionValueDouble > static_cast<double>(Decimal128::kExponentBias)) {
-				return numericArg;
-			}
-			if(precisionValueDouble < static_cast<double>(negativeExponentBias)) {
-                // Allow this to return below so that we can
-				// return a zero value of the proper type, which
-				// is determined by the type of numericArg.
-				// We do this by setting the precisionValue to
-				// a value guaranteed to return 0 below.
-				precisionValue = negativeExponentBias - 1;
-				break;
-			}
-			precisionValue = static_cast<long long>(precisionValueDouble);
-			break;
-		}
-		case NumberLong:
-			precisionValue = precisionArg.getLong();
-	        if (precisionValue > Decimal128::kExponentBias) {
-		        return numericArg;
-	        }
-			break;
-		case NumberInt:
-			precisionValue = static_cast<long long>(precisionArg.getInt());
-	        if (precisionValue > Decimal128::kExponentBias) {
-		        return numericArg;
-	        }
-			break;
-		default:
-			uassert(50977, "unreachable", false);
-	}
-	// construct 10^-precisionValue
-	auto quantum = Decimal128(0LL, Decimal128::kExponentBias - precisionValue, 0LL, 1LL);
-    switch (numericArg.getType()) {
+    }
+    auto precisionValue = 0LL;
+    switch (precisionArg.getType()) {
+        // We need to have special handling for floating point precisionArgs
+        // because coerceToLong returns the same value
+        // (std::numeric_limits<long long>::min()) for both numbers
+        // that are too positive and too negative to fit in a long, and
+        // we desire to have different outputs for numbers too large
+        // (return numericArg) and too negative (return 0 of
+        // the proper type).
         case NumberDecimal: {
-	        if(precisionValue < negativeExponentBias) {
-	   	        return Value(Decimal128::kNormalizedZero);
-	        }
-            auto out = numericArg.getDecimal()
-				.quantize(quantum, roundingMode);
-			if(out.isNaN()) {
-				return numericArg;
-			}
-			return Value(out);
+            auto precisionValueDecimal = precisionArg.getDecimal();
+            if (precisionValueDecimal.isGreater(decimalExponentBias)) {
+                return numericArg;
+            }
+            if (precisionValueDecimal.isLess(decimalNegativeExponentBias)) {
+                // Allow this to return below so that we can
+                // return a zero value of the proper type, which
+                // is determined by the type of numericArg.
+                // We do this by setting the precisionValue to
+                // a value guaranteed to return 0 below.
+                precisionValue = negativeExponentBias - 1;
+                break;
+            }
+            // We truncate the precision value rather than rounding.
+            precisionValue =
+                precisionValueDecimal
+                    .quantize(Decimal128::kNormalizedZero, Decimal128::kRoundTowardZero)
+                    .toLong();
+            break;
         }
         case NumberDouble: {
-	        if(precisionValue < negativeExponentBias) {
-	   	        return Value(0.0);
-	        }
-            auto out = Decimal128(numericArg.getDouble())
-				.quantize(quantum, roundingMode);
-			if(out.isNaN()) {
-				return numericArg;
-			}
-			return Value(out.toDouble());
+            auto precisionValueDouble = precisionArg.getDouble();
+            if (precisionValueDouble > static_cast<double>(Decimal128::kExponentBias)) {
+                return numericArg;
+            }
+            if (precisionValueDouble < static_cast<double>(negativeExponentBias)) {
+                // Allow this to return below so that we can
+                // return a zero value of the proper type, which
+                // is determined by the type of numericArg.
+                // We do this by setting the precisionValue to
+                // a value guaranteed to return 0 below.
+                precisionValue = negativeExponentBias - 1;
+                break;
+            }
+            precisionValue = static_cast<long long>(precisionValueDouble);
+            break;
         }
-		case NumberLong: {
-			if (precisionValue >= 0) {
-				return numericArg;
-			}
-	        if(precisionValue < negativeExponentBias) {
-	   	        return Value(0LL);
-	        }
+        case NumberLong:
+            precisionValue = precisionArg.getLong();
+            if (precisionValue > Decimal128::kExponentBias) {
+                return numericArg;
+            }
+            break;
+        case NumberInt:
+            precisionValue = static_cast<long long>(precisionArg.getInt());
+            if (precisionValue > Decimal128::kExponentBias) {
+                return numericArg;
+            }
+            break;
+        default:
+            uassert(50977, "unreachable", false);
+    }
+    // construct 10^-precisionValue
+    auto quantum = Decimal128(0LL, Decimal128::kExponentBias - precisionValue, 0LL, 1LL);
+    switch (numericArg.getType()) {
+        case NumberDecimal: {
+            if (precisionValue < negativeExponentBias) {
+                return Value(Decimal128::kNormalizedZero);
+            }
+            auto out = numericArg.getDecimal().quantize(quantum, roundingMode);
+            if (out.isNaN()) {
+                return numericArg;
+            }
+            return Value(out);
+        }
+        case NumberDouble: {
+            if (precisionValue < negativeExponentBias) {
+                return Value(0.0);
+            }
+            auto out = Decimal128(numericArg.getDouble()).quantize(quantum, roundingMode);
+            if (out.isNaN()) {
+                return numericArg;
+            }
+            return Value(out.toDouble());
+        }
+        case NumberLong: {
+            if (precisionValue >= 0) {
+                return numericArg;
+            }
+            if (precisionValue < negativeExponentBias) {
+                return Value(0LL);
+            }
             auto out = Decimal128(static_cast<int64_t>(numericArg.getLong()))
-				.quantize(quantum, roundingMode);
-			return Value(static_cast<long long>(out.toLong()));
-		}
+                           .quantize(quantum, roundingMode);
+            return Value(static_cast<long long>(out.toLong()));
+        }
         case NumberInt: {
-			if (precisionValue >= 0) {
-				return numericArg;
-			}
-	        if(precisionValue < negativeExponentBias) {
-	   	        return Value(0);
-	        }
-            auto out = Decimal128(numericArg.getInt())
-				.quantize(quantum, roundingMode);
-			return Value(out.toInt());
-		}
-		default:
-			uassert(50978, "unreachable", false);
+            if (precisionValue >= 0) {
+                return numericArg;
+            }
+            if (precisionValue < negativeExponentBias) {
+                return Value(0);
+            }
+            auto out = Decimal128(numericArg.getInt()).quantize(quantum, roundingMode);
+            return Value(out.toInt());
+        }
+        default:
+            uassert(50978, "unreachable", false);
     }
 }
 
 Value ExpressionRound::evaluate(const Document& root) const {
-	return evaluateRoundOrTrunc<RoundOp, Decimal128::kRoundTiesToEven>(root, vpOperand, getOpName());
+    return evaluateRoundOrTrunc<RoundOp, Decimal128::kRoundTiesToEven>(
+        root, vpOperand, getOpName());
 }
 
 REGISTER_EXPRESSION(round, ExpressionRound::parse);
@@ -4915,7 +4914,8 @@ const char* ExpressionRound::getOpName() const {
 }
 
 Value ExpressionTrunc::evaluate(const Document& root) const {
-	return evaluateRoundOrTrunc<TruncOp, Decimal128::kRoundTowardZero>(root, vpOperand, getOpName());
+    return evaluateRoundOrTrunc<TruncOp, Decimal128::kRoundTowardZero>(
+        root, vpOperand, getOpName());
 }
 
 REGISTER_EXPRESSION(trunc, ExpressionTrunc::parse);
