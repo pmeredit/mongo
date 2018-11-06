@@ -34,27 +34,7 @@ load("jstests/aggregation/extras/utils.js");
     testOp({$floor: 0.9}, 0.0);
     testOp({$floor: -1.2}, -2.0);
 
-    testOp({$trunc: NumberLong(4)}, NumberLong(4));
-    testOp({$trunc: NaN}, NaN);
-    testOp({$trunc: Infinity}, Infinity);
-    testOp({$trunc: -Infinity}, -Infinity);
-    testOp({$trunc: null}, null);
-    testOp({$trunc: -2.0}, -2.0);
-    testOp({$trunc: 0.9}, 0.0);
-    testOp({$trunc: -1.2}, -1.0);
-
-    testOp({$round: NumberLong(4)}, NumberLong(4));
-    testOp({$round: NaN}, NaN);
-    testOp({$round: Infinity}, Infinity);
-    testOp({$round: -Infinity}, -Infinity);
-    testOp({$round: null}, null);
-    testOp({$round: -2.0}, -2.0);
-    testOp({$round: 0.9}, 1.0);
-    testOp({$round: -1.2}, -1.0);
-
     // Non-numeric input.
     assertErrorCode(coll, [{$project: {a: {$ceil: "string"}}}], 28765);
     assertErrorCode(coll, [{$project: {a: {$floor: "string"}}}], 28765);
-    assertErrorCode(coll, [{$project: {a: {$round: "string"}}}], 50976);
-    assertErrorCode(coll, [{$project: {a: {$trunc: "string"}}}], 50975);
 }());
