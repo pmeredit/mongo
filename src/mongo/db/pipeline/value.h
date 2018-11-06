@@ -247,7 +247,6 @@ public:
     std::string coerceToString() const;
     int coerceToInt() const;
     long long coerceToLong() const;
-    long long truncateToLong() const;
     double coerceToDouble() const;
     Decimal128 coerceToDecimal() const;
     Timestamp coerceToTimestamp() const;
