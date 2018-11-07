@@ -435,7 +435,7 @@ public:
     explicit ExpressionSingleNumericArg(const boost::intrusive_ptr<ExpressionContext>& expCtx)
         : ExpressionFixedArity<SubClass, 1>(expCtx) {}
 
-    virtual ~ExpressionSingleNumericArg() {}
+    virtual ~ExpressionSingleNumericArg() = default;
 
     Value evaluate(const Document& root) const final {
         Value arg = this->vpOperand[0]->evaluate(root);
@@ -462,7 +462,7 @@ public:
     explicit ExpressionDoubleNumericArgs(const boost::intrusive_ptr<ExpressionContext>& expCtx)
         : ExpressionFixedArity<SubClass, 2>(expCtx) {}
 
-    virtual ~ExpressionDoubleNumericArgs() {}
+    virtual ~ExpressionDoubleNumericArgs() = default;
 
     Value evaluate(const Document& root) const final {
         Value arg1 = this->vpOperand[0]->evaluate(root);
@@ -698,24 +698,6 @@ public:
     const char* getOpName() const final;
 };
 
-class ExpressionAcos final : public ExpressionSingleNumericArg<ExpressionAcos> {
-public:
-    explicit ExpressionAcos(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-        : ExpressionSingleNumericArg<ExpressionAcos>(expCtx) {}
-
-    Value evaluateNumericArg(const Value& numericArg) const final;
-    const char* getOpName() const final;
-};
-
-class ExpressionAcosh final : public ExpressionSingleNumericArg<ExpressionAcosh> {
-public:
-    explicit ExpressionAcosh(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-        : ExpressionSingleNumericArg<ExpressionAcosh>(expCtx) {}
-
-    Value evaluateNumericArg(const Value& numericArg) const final;
-    const char* getOpName() const final;
-};
-
 class ExpressionAdd final : public ExpressionVariadic<ExpressionAdd> {
 public:
     explicit ExpressionAdd(const boost::intrusive_ptr<ExpressionContext>& expCtx)
@@ -733,50 +715,6 @@ public:
     }
 };
 
-class ExpressionAsin final : public ExpressionSingleNumericArg<ExpressionAsin> {
-public:
-    explicit ExpressionAsin(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-        : ExpressionSingleNumericArg<ExpressionAsin>(expCtx) {}
-
-    Value evaluateNumericArg(const Value& numericArg) const final;
-    const char* getOpName() const final;
-};
-
-class ExpressionAsinh final : public ExpressionSingleNumericArg<ExpressionAsinh> {
-public:
-    explicit ExpressionAsinh(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-        : ExpressionSingleNumericArg<ExpressionAsinh>(expCtx) {}
-
-    Value evaluateNumericArg(const Value& numericArg) const final;
-    const char* getOpName() const final;
-};
-
-class ExpressionAtan final : public ExpressionSingleNumericArg<ExpressionAtan> {
-public:
-    explicit ExpressionAtan(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-        : ExpressionSingleNumericArg<ExpressionAtan>(expCtx) {}
-
-    Value evaluateNumericArg(const Value& numericArg) const final;
-    const char* getOpName() const final;
-};
-
-class ExpressionAtan2 final : public ExpressionDoubleNumericArgs<ExpressionAtan2> {
-public:
-    explicit ExpressionAtan2(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-        : ExpressionDoubleNumericArgs<ExpressionAtan2>(expCtx) {}
-
-    Value evaluateNumericArgs(const Value& numericArg1, const Value& numericArg2) const final;
-    const char* getOpName() const final;
-};
-
-class ExpressionAtanh final : public ExpressionSingleNumericArg<ExpressionAtanh> {
-public:
-    explicit ExpressionAtanh(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-        : ExpressionSingleNumericArg<ExpressionAtanh>(expCtx) {}
-
-    Value evaluateNumericArg(const Value& numericArg) const final;
-    const char* getOpName() const final;
-};
 
 class ExpressionAllElementsTrue final : public ExpressionFixedArity<ExpressionAllElementsTrue, 1> {
 public:
@@ -974,24 +912,6 @@ private:
     typedef ExpressionFixedArity<ExpressionCond, 3> Base;
 };
 
-class ExpressionCos final : public ExpressionSingleNumericArg<ExpressionCos> {
-public:
-    explicit ExpressionCos(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-        : ExpressionSingleNumericArg<ExpressionCos>(expCtx) {}
-
-    Value evaluateNumericArg(const Value& numericArg) const final;
-    const char* getOpName() const final;
-};
-
-class ExpressionCosh final : public ExpressionSingleNumericArg<ExpressionCosh> {
-public:
-    explicit ExpressionCosh(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-        : ExpressionSingleNumericArg<ExpressionCosh>(expCtx) {}
-
-    Value evaluateNumericArg(const Value& numericArg) const final;
-    const char* getOpName() const final;
-};
-
 class ExpressionDateFromString final : public Expression {
 public:
     boost::intrusive_ptr<Expression> optimize() final;
@@ -1169,14 +1089,6 @@ public:
     }
 };
 
-class ExpressionDegrees final : public ExpressionSingleNumericArg<ExpressionDegrees> {
-public:
-    explicit ExpressionDegrees(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-        : ExpressionSingleNumericArg<ExpressionDegrees>(expCtx) {}
-
-    Value evaluateNumericArg(const Value& numericArg) const final;
-    const char* getOpName() const final;
-};
 
 class ExpressionDivide final : public ExpressionFixedArity<ExpressionDivide, 2> {
 public:
@@ -1346,14 +1258,6 @@ public:
     const char* getOpName() const final;
 };
 
-class ExpressionRadians final : public ExpressionSingleNumericArg<ExpressionRadians> {
-public:
-    explicit ExpressionRadians(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-        : ExpressionSingleNumericArg<ExpressionRadians>(expCtx) {}
-
-    Value evaluateNumericArg(const Value& numericArg) const final;
-    const char* getOpName() const final;
-};
 
 class ExpressionIndexOfArray : public ExpressionRangedArity<ExpressionIndexOfArray, 2, 4> {
 public:
@@ -1802,23 +1706,6 @@ public:
     }
 };
 
-class ExpressionSin final : public ExpressionSingleNumericArg<ExpressionSin> {
-public:
-    explicit ExpressionSin(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-        : ExpressionSingleNumericArg<ExpressionSin>(expCtx) {}
-
-    Value evaluateNumericArg(const Value& numericArg) const final;
-    const char* getOpName() const final;
-};
-
-class ExpressionSinh final : public ExpressionSingleNumericArg<ExpressionSinh> {
-public:
-    explicit ExpressionSinh(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-        : ExpressionSingleNumericArg<ExpressionSinh>(expCtx) {}
-
-    Value evaluateNumericArg(const Value& numericArg) const final;
-    const char* getOpName() const final;
-};
 
 class ExpressionSize final : public ExpressionFixedArity<ExpressionSize, 1> {
 public:
@@ -1964,23 +1851,6 @@ private:
     std::vector<ExpressionPair> _branches;
 };
 
-class ExpressionTan final : public ExpressionSingleNumericArg<ExpressionTan> {
-public:
-    explicit ExpressionTan(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-        : ExpressionSingleNumericArg<ExpressionTan>(expCtx) {}
-
-    Value evaluateNumericArg(const Value& numericArg) const final;
-    const char* getOpName() const final;
-};
-
-class ExpressionTanh final : public ExpressionSingleNumericArg<ExpressionTanh> {
-public:
-    explicit ExpressionTanh(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-        : ExpressionSingleNumericArg<ExpressionTanh>(expCtx) {}
-
-    Value evaluateNumericArg(const Value& numericArg) const final;
-    const char* getOpName() const final;
-};
 
 class ExpressionToLower final : public ExpressionFixedArity<ExpressionToLower, 1> {
 public:
