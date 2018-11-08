@@ -242,53 +242,75 @@ const char* ExpressionArcTangent2::getOpName() const {
     return "$atan2";
 }
 
-static const double PI = 3.141592653589793;
-static const Decimal128 DECIMAL_PI = Decimal128("3.14159265358979323846264338327950288419716939937510"); 
-static const double DOUBLE_180 = 180.0;
-static const Decimal128 DECIMAL_180 = Decimal128("180.0"); 
 
-/* ----------------------- ExpressionDegreesToRadians ---------------------------- */
+/* ----------------------- ExpressionDegreesToRadians and ExpressionRadiansToDegrees ---------------------------- */
+static const Decimal128 DECIMAL_PI = Decimal128("3.14159265358979323846264338327950288419716939937510");
+static const Decimal128 DECIMAL_180 = Decimal128("180");
+static const double DOUBLE_PI = 3.141592653589793;
 
-Value ExpressionDegreesToRadians::evaluateNumericArg(const Value& numericArg) const {
-    BSONType type = numericArg.getType();
+struct DegreesToRadians {
+	Decimal128 decimalNumerator() {
+        return DECIMAL_PI;
+	}
+	Decimal128 decimalDenominator() {
+        return DECIMAL_180;
+	}
+	double doubleNumerator() {
+        return DOUBLE_PI;
+	}
+	double doubleDenominator() {
+        return 180.0;
+	}
+};
+
+struct RadiansToDegrees {
+	Decimal128 decimalNumerator() {
+        return DECIMAL_180;
+	}
+	Decimal128 decimalDenominator() {
+        return DECIMAL_PI;
+	}
+	double doubleNumerator() {
+        return 180.0;
+	}
+	double doubleDenominator() {
+        return DOUBLE_PI;
+	}
+};
+
+template<typename ConversionValues>
+static Value doDegreeRadiansConversion(const Value& numericArg) {
+    ConversionValues c;
+	BSONType type = numericArg.getType();
     if (type == NumberDouble) {
-        return Value(numericArg.getDouble() * 180.0 / PI);
+        return Value(numericArg.getDouble() * c.doubleNumerator() / c.doubleDenominator());
     } else if (type == NumberDecimal) {
-        return Value(numericArg.getDecimal().multiply(DECIMAL_180).divide(DECIMAL_PI));
+        return Value(numericArg.getDecimal()
+				.multiply(c.decimalNumerator()).divide(c.decimalDenominator()));
     } else {
         long long num = numericArg.getLong();
         uassert(50987,
-                "can't take $degrees of long long min",
+                "cannot degree/radians convert long long min",
                 num != std::numeric_limits<long long>::min());
-        auto degreesVal = num * 180.0 / PI;
+        auto degreesVal = num * c.doubleNumerator() / c.doubleDenominator();
         return Value(degreesVal);
     }
 }
 
-REGISTER_EXPRESSION(degrees, ExpressionDegreesToRadians::parse);
+Value ExpressionDegreesToRadians::evaluateNumericArg(const Value& numericArg) const {
+	return doDegreeRadiansConversion<DegreesToRadians>(numericArg);
+}
+
+REGISTER_EXPRESSION(degreesToRadians, ExpressionDegreesToRadians::parse);
 const char* ExpressionDegreesToRadians::getOpName() const {
     return "$degreesToRadians";
 }
 
-/* ----------------------- ExpressionDegreesToRadians ---------------------------- */
-
 Value ExpressionRadiansToDegrees::evaluateNumericArg(const Value& numericArg) const {
-    BSONType type = numericArg.getType();
-    if (type == NumberDouble) {
-        return Value(numericArg.getDouble() * PI / 180.0);
-    } else if (type == NumberDecimal) {
-        return Value(numericArg.getDecimal().multiply(DECIMAL_PI).divide(DECIMAL_180));
-    } else {
-        long long num = numericArg.getLong();
-        uassert(50988,
-                "can't take $radians of long long min",
-                num != std::numeric_limits<long long>::min());
-        auto radiansVal = num * PI / 180.0;
-        return Value(radiansVal);
-    }
+	return doDegreeRadiansConversion<RadiansToDegrees>(numericArg);
 }
 
-REGISTER_EXPRESSION(radians, ExpressionRadiansToDegrees::parse);
+REGISTER_EXPRESSION(radiansToDegrees, ExpressionRadiansToDegrees::parse);
 const char* ExpressionRadiansToDegrees::getOpName() const {
     return "$radiansToDegrees";
 }
