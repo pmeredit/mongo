@@ -8,7 +8,7 @@ import libdeps
 
 env = env.Clone()
 
-if not has_option("ssl"):
+if get_option( "ssl" ) != "on":
     env.FatalError("SSL not enabled. Enterprise MongoDB must be built with --ssl specified")
 
 env.InjectMongoIncludePaths()
