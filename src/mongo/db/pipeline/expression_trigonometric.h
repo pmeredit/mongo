@@ -1,10 +1,12 @@
 #include "expression.h"
 
 namespace mongo {
-class ExpressionTrigonometric : public ExpressionSingleNumericArg<ExpressionTrigonometric> {
+
+template<typename TrigType>
+class ExpressionTrigonometric : public ExpressionSingleNumericArg<TrigType> {
 public:
     explicit ExpressionTrigonometric(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-      : ExpressionSingleNumericArg<ExpressionTrigonometric>(expCtx) {}
+      : ExpressionSingleNumericArg<TrigType>(expCtx) {}
 
     Value evaluateNumericArg(const Value& numericArg) const override {
       BSONType type = numericArg.getType();
@@ -15,27 +17,57 @@ public:
       } else {
           long long num = numericArg.getLong();
           uassert(50968,
-                  str::stream() << "can't take "
-				  << getOpName()
-				  << " of long long min",
+                  str::stream() << "cannot apply trigonometric function to minimum long long",
                   num != std::numeric_limits<long long>::min());
           return Value(doubleFunc(num));
       }
 	}
 
-	virtual double doubleFunc(double x) const {
-	    return 0.0;
+	virtual double doubleFunc(double x) const = 0;
+	virtual Decimal128 decimalFunc(Decimal128 x) const = 0;
+};
+
+template<typename BoundedTrigType>
+class ExpressionBoundedTrigonometric : public ExpressionSingleNumericArg<BoundedTrigType> {
+public:
+    explicit ExpressionBoundedTrigonometric(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+      : ExpressionSingleNumericArg<BoundedTrigType>(expCtx) {}
+
+    Value evaluateNumericArg(const Value& numericArg) const override {
+      BSONType type = numericArg.getType();
+      if (type == NumberDouble) {
+		  auto input = numericArg.getDouble();
+          uassert(50969,
+                  str::stream() << "cannot apply inverse trigonometric function to "
+				  << input <<  ", value must in [-1.0, 1.0]",
+                  input >= -1.0 && input <= 1.0);
+          return Value(doubleFunc(input));
+      } else if (type == NumberDecimal) {
+		  auto input = numericArg.getDecimal();
+          uassert(50970,
+                  str::stream() << "cannot apply inverse trigonometric function to "
+				  << input.toDouble() <<  ", value must in [-1.0, 1.0]",
+                  input.isGreaterEqual(Decimal128(-1))
+					  && input.isLessEqual(Decimal128(1.0)));
+          return Value(decimalFunc(numericArg.getDecimal()));
+      } else {
+          auto input = numericArg.getLong();
+          uassert(50989,
+                  str::stream() << "cannot take apply inverse trigonometric function to "
+				  << input <<  ", value must in [-1.0, 1.0]",
+                  input >= -1 && input <= 1);
+          return Value(doubleFunc(input));
+      }
 	}
-	virtual Decimal128 decimalFunc(Decimal128 x) const {
-        return Decimal128::kNormalizedZero;
-	}
-	virtual const char* getOpName() const {
-        return "$trigFunc";
-	}
+
+	virtual double doubleFunc(double x) const = 0;
+	virtual Decimal128 decimalFunc(Decimal128 x) const = 0;
 };
 
-class ExpressionArcCosine final : public ExpressionTrigonometric {
+class ExpressionArcCosine final : public ExpressionBoundedTrigonometric<ExpressionArcCosine> {
 public:
+	explicit ExpressionArcCosine(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+       : ExpressionBoundedTrigonometric(expCtx) {}
 
 	double doubleFunc(double x) const final;
 	Decimal128 decimalFunc(Decimal128 x) const final;
@@ -43,8 +75,10 @@ public:
 };
 
 
-class ExpressionArcSine final : public ExpressionTrigonometric {
+class ExpressionArcSine final : public ExpressionBoundedTrigonometric<ExpressionArcSine> {
 public:
+	explicit ExpressionArcSine(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+       : ExpressionBoundedTrigonometric(expCtx) {}
 
 	double doubleFunc(double x) const final;
 	Decimal128 decimalFunc(Decimal128 x) const final;
@@ -52,8 +86,10 @@ public:
 };
 
 
-class ExpressionArcTangent final : public ExpressionTrigonometric {
+class ExpressionArcTangent final : public ExpressionTrigonometric<ExpressionArcTangent> {
 public:
+	explicit ExpressionArcTangent(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+       : ExpressionTrigonometric(expCtx) {}
 
 	double doubleFunc(double x) const final;
 	Decimal128 decimalFunc(Decimal128 x) const final;
@@ -61,8 +97,10 @@ public:
 };
 
 
-class ExpressionHyperbolicArcCosine final : public ExpressionTrigonometric {
+class ExpressionHyperbolicArcCosine final : public ExpressionTrigonometric<ExpressionHyperbolicArcCosine> {
 public:
+	explicit ExpressionHyperbolicArcCosine(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+       : ExpressionTrigonometric(expCtx) {}
 
 	double doubleFunc(double x) const final;
 	Decimal128 decimalFunc(Decimal128 x) const final;
@@ -70,8 +108,10 @@ public:
 };
 
 
-class ExpressionHyperbolicArcSine final : public ExpressionTrigonometric {
+class ExpressionHyperbolicArcSine final : public ExpressionTrigonometric<ExpressionHyperbolicArcSine> {
 public:
+	explicit ExpressionHyperbolicArcSine(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+       : ExpressionTrigonometric(expCtx) {}
 
 	double doubleFunc(double x) const final;
 	Decimal128 decimalFunc(Decimal128 x) const final;
@@ -79,8 +119,10 @@ public:
 };
 
 
-class ExpressionHyperbolicArcTangent final : public ExpressionTrigonometric {
+class ExpressionHyperbolicArcTangent final : public ExpressionBoundedTrigonometric<ExpressionHyperbolicArcTangent> {
 public:
+	explicit ExpressionHyperbolicArcTangent(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+       : ExpressionBoundedTrigonometric(expCtx) {}
 
 	double doubleFunc(double x) const final;
 	Decimal128 decimalFunc(Decimal128 x) const final;
@@ -88,8 +130,10 @@ public:
 };
 
 
-class ExpressionHyperbolicCosine final : public ExpressionTrigonometric {
+class ExpressionHyperbolicCosine final : public ExpressionTrigonometric<ExpressionHyperbolicCosine> {
 public:
+	explicit ExpressionHyperbolicCosine(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+       : ExpressionTrigonometric(expCtx) {}
 
 	double doubleFunc(double x) const final;
 	Decimal128 decimalFunc(Decimal128 x) const final;
@@ -97,8 +141,10 @@ public:
 };
 
 
-class ExpressionHyperbolicSine final : public ExpressionTrigonometric {
+class ExpressionHyperbolicSine final : public ExpressionTrigonometric<ExpressionHyperbolicSine> {
 public:
+	explicit ExpressionHyperbolicSine(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+       : ExpressionTrigonometric(expCtx) {}
 
 	double doubleFunc(double x) const final;
 	Decimal128 decimalFunc(Decimal128 x) const final;
@@ -106,8 +152,11 @@ public:
 };
 
 
-class ExpressionHyperbolicTangent final : public ExpressionTrigonometric {
+class ExpressionHyperbolicTangent final : public ExpressionTrigonometric<ExpressionHyperbolicTangent> {
 public:
+	explicit ExpressionHyperbolicTangent(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+       : ExpressionTrigonometric(expCtx) {}
+
 
 	double doubleFunc(double x) const final;
 	Decimal128 decimalFunc(Decimal128 x) const final;
@@ -115,8 +164,10 @@ public:
 };
 
 
-class ExpressionCosine final : public ExpressionTrigonometric {
+class ExpressionCosine final : public ExpressionTrigonometric<ExpressionCosine> {
 public:
+	explicit ExpressionCosine(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+       : ExpressionTrigonometric(expCtx) {}
 
 	double doubleFunc(double x) const final;
 	Decimal128 decimalFunc(Decimal128 x) const final;
@@ -124,8 +175,10 @@ public:
 };
 
 
-class ExpressionSine final : public ExpressionTrigonometric {
+class ExpressionSine final : public ExpressionTrigonometric<ExpressionSine> {
 public:
+	explicit ExpressionSine(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+       : ExpressionTrigonometric(expCtx) {}
 
 	double doubleFunc(double x) const final;
 	Decimal128 decimalFunc(Decimal128 x) const final;
@@ -133,41 +186,44 @@ public:
 };
 
 
-class ExpressionTangent final : public ExpressionTrigonometric {
+class ExpressionTangent final : public ExpressionTrigonometric<ExpressionTangent> {
 public:
+	explicit ExpressionTangent(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+       : ExpressionTrigonometric(expCtx) {}
 
 	double doubleFunc(double x) const final;
 	Decimal128 decimalFunc(Decimal128 x) const final;
     const char* getOpName() const final;
 };
-
-
-class ExpressionArcTangent2 final : public ExpressionDoubleNumericArgs<ExpressionArcTangent2> {
-public:
-	explicit ExpressionArcTangent2(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-         : ExpressionDoubleNumericArgs(expCtx) {}
-
-	Value evaluateNumericArgs(const Value& numericArg1, const Value& numericArg2) const;
-	const char* getOpName() const final;
-};
-
-
-class ExpressionDegreesToRadians final : public ExpressionSingleNumericArg<ExpressionDegreesToRadians> {
-public:
-	explicit ExpressionDegreesToRadians(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-         : ExpressionSingleNumericArg(expCtx) {}
-
-    Value evaluateNumericArg(const Value& numericArg) const final;
-    const char* getOpName() const final;
-};
-
-
-class ExpressionRadiansToDegrees final : public ExpressionSingleNumericArg<ExpressionRadiansToDegrees> {
-public:
-	explicit ExpressionRadiansToDegrees(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-         : ExpressionSingleNumericArg(expCtx) {}
-
-    Value evaluateNumericArg(const Value& numericArg) const final;
-    const char* getOpName() const final;
-};
+//
+//
+//class ExpressionArcTangent2 final : public ExpressionDoubleNumericArgs<ExpressionArcTangent2> {
+//public:
+//	explicit ExpressionArcTangent2(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+//         : ExpressionDoubleNumericArgs(expCtx) {}
+//
+//	Value evaluateNumericArgs(const Value& numericArg1, const Value& numericArg2) const;
+//	const char* getOpName() const final;
+//};
+//
+//
+//class ExpressionDegreesToRadians final : public ExpressionSingleNumericArg<ExpressionDegreesToRadians> {
+//public:
+//	explicit ExpressionDegreesToRadians(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+//         : ExpressionSingleNumericArg(expCtx) {}
+//
+//    Value evaluateNumericArg(const Value& numericArg) const final;
+//    const char* getOpName() const final;
+//};
+//
+//
+//class ExpressionRadiansToDegrees final : public ExpressionSingleNumericArg<ExpressionRadiansToDegrees> {
+//public:
+//	explicit ExpressionRadiansToDegrees(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+//         : ExpressionSingleNumericArg(expCtx) {}
+//
+//    Value evaluateNumericArg(const Value& numericArg) const final;
+//    const char* getOpName() const final;
+//};
+//}
 }

@@ -1,5 +1,7 @@
 #include "expression_trigonometric.h"
 
+#include <iostream>
+
 namespace mongo {
 /* ----------------------- ExpressionArcCosine ---------------------------- */
 
@@ -15,7 +17,6 @@ REGISTER_EXPRESSION(acos, ExpressionArcCosine::parse);
 const char* ExpressionArcCosine::getOpName() const {
     return "$acos";
 }
-
 /* ----------------------- ExpressionArcSine ---------------------------- */
 
 double ExpressionArcSine::doubleFunc(double arg) const {
@@ -94,6 +95,7 @@ const char* ExpressionHyperbolicArcTangent::getOpName() const {
 /* ----------------------- ExpressionCosine ---------------------------- */
 
 double ExpressionCosine::doubleFunc(double arg) const {
+	std::cerr << "foo" << std::endl;
     return std::cos(arg);
 }
 
@@ -180,115 +182,115 @@ REGISTER_EXPRESSION(tanh, ExpressionHyperbolicTangent::parse);
 const char* ExpressionHyperbolicTangent::getOpName() const {
     return "$tanh";
 }
-
-/* ----------------------- ExpressionArcTangent2 ---------------------------- */
-
-Value ExpressionArcTangent2::evaluateNumericArgs(const Value& numericArg1,
-                                           const Value& numericArg2) const {
-    BSONType type1 = numericArg1.getType();
-    BSONType type2 = numericArg2.getType();
-    auto totalType = NumberDouble;
-    // If the type of either argument is NumberDecimal, we promote to Decimal128. If the type of
-    // either
-    // arg is NumberLong, we also promote to NumberDecimal rather than failing in the case where the
-    // long cannot fit in a double.
-    if (type1 == NumberDecimal || type2 == NumberDecimal || type1 == NumberLong ||
-        type2 == NumberLong) {
-        totalType = NumberDecimal;
-    }
-    switch (totalType) {
-        case NumberDecimal: {
-            auto getDecimal = [](BSONType type, const Value& arg) -> Decimal128 {
-                switch (type) {
-                    case NumberDecimal:
-                        return arg.getDecimal();
-                    case NumberDouble:
-                        return Decimal128(arg.getDouble());
-                    case NumberLong:
-                        return Decimal128(static_cast<std::int64_t>(arg.getLong()));
-                    case NumberInt:
-                        return Decimal128(arg.getInt());
-                    default:
-                        uassert(50984, "unreachable", false);
-                }
-            };
-            auto dec1 = getDecimal(type1, numericArg1);
-            auto dec2 = getDecimal(type2, numericArg2);
-            return Value(dec1.atan2(dec2));
-        }
-        case NumberDouble: {
-            auto getDouble = [](BSONType type, const Value& arg) -> double {
-                switch (type) {
-                    case NumberDouble:
-                        return arg.getDouble();
-                    case NumberInt:
-                        return static_cast<double>(arg.getInt());
-                    default:
-                        uassert(50985, "unreachable", false);
-                }
-            };
-            auto double1 = getDouble(type1, numericArg1);
-            auto double2 = getDouble(type2, numericArg2);
-            return Value(std::atan2(double1, double2));
-        }
-        default:
-            uassert(50986, "unreachable", false);
-    }
-}
-
-REGISTER_EXPRESSION(atan2, ExpressionArcTangent2::parse);
-const char* ExpressionArcTangent2::getOpName() const {
-    return "$atan2";
-}
-
-static const double PI = 3.141592653589793;
-static const Decimal128 DECIMAL_PI = Decimal128("3.14159265358979323846264338327950288419716939937510"); 
-static const double DOUBLE_180 = 180.0;
-static const Decimal128 DECIMAL_180 = Decimal128("180.0"); 
-
-/* ----------------------- ExpressionDegreesToRadians ---------------------------- */
-
-Value ExpressionDegreesToRadians::evaluateNumericArg(const Value& numericArg) const {
-    BSONType type = numericArg.getType();
-    if (type == NumberDouble) {
-        return Value(numericArg.getDouble() * 180.0 / PI);
-    } else if (type == NumberDecimal) {
-        return Value(numericArg.getDecimal().multiply(DECIMAL_180).divide(DECIMAL_PI));
-    } else {
-        long long num = numericArg.getLong();
-        uassert(50987,
-                "can't take $degrees of long long min",
-                num != std::numeric_limits<long long>::min());
-        auto degreesVal = num * 180.0 / PI;
-        return Value(degreesVal);
-    }
-}
-
-REGISTER_EXPRESSION(degrees, ExpressionDegreesToRadians::parse);
-const char* ExpressionDegreesToRadians::getOpName() const {
-    return "$degreesToRadians";
-}
-
-/* ----------------------- ExpressionDegreesToRadians ---------------------------- */
-
-Value ExpressionRadiansToDegrees::evaluateNumericArg(const Value& numericArg) const {
-    BSONType type = numericArg.getType();
-    if (type == NumberDouble) {
-        return Value(numericArg.getDouble() * PI / 180.0);
-    } else if (type == NumberDecimal) {
-        return Value(numericArg.getDecimal().multiply(DECIMAL_PI).divide(DECIMAL_180));
-    } else {
-        long long num = numericArg.getLong();
-        uassert(50988,
-                "can't take $radians of long long min",
-                num != std::numeric_limits<long long>::min());
-        auto radiansVal = num * PI / 180.0;
-        return Value(radiansVal);
-    }
-}
-
-REGISTER_EXPRESSION(radians, ExpressionRadiansToDegrees::parse);
-const char* ExpressionRadiansToDegrees::getOpName() const {
-    return "$radiansToDegrees";
-}
+//
+///* ----------------------- ExpressionArcTangent2 ---------------------------- */
+//
+//Value ExpressionArcTangent2::evaluateNumericArgs(const Value& numericArg1,
+//                                           const Value& numericArg2) const {
+//    BSONType type1 = numericArg1.getType();
+//    BSONType type2 = numericArg2.getType();
+//    auto totalType = NumberDouble;
+//    // If the type of either argument is NumberDecimal, we promote to Decimal128. If the type of
+//    // either
+//    // arg is NumberLong, we also promote to NumberDecimal rather than failing in the case where the
+//    // long cannot fit in a double.
+//    if (type1 == NumberDecimal || type2 == NumberDecimal || type1 == NumberLong ||
+//        type2 == NumberLong) {
+//        totalType = NumberDecimal;
+//    }
+//    switch (totalType) {
+//        case NumberDecimal: {
+//            auto getDecimal = [](BSONType type, const Value& arg) -> Decimal128 {
+//                switch (type) {
+//                    case NumberDecimal:
+//                        return arg.getDecimal();
+//                    case NumberDouble:
+//                        return Decimal128(arg.getDouble());
+//                    case NumberLong:
+//                        return Decimal128(static_cast<std::int64_t>(arg.getLong()));
+//                    case NumberInt:
+//                        return Decimal128(arg.getInt());
+//                    default:
+//                        uassert(50984, "unreachable", false);
+//                }
+//            };
+//            auto dec1 = getDecimal(type1, numericArg1);
+//            auto dec2 = getDecimal(type2, numericArg2);
+//            return Value(dec1.atan2(dec2));
+//        }
+//        case NumberDouble: {
+//            auto getDouble = [](BSONType type, const Value& arg) -> double {
+//                switch (type) {
+//                    case NumberDouble:
+//                        return arg.getDouble();
+//                    case NumberInt:
+//                        return static_cast<double>(arg.getInt());
+//                    default:
+//                        uassert(50985, "unreachable", false);
+//                }
+//            };
+//            auto double1 = getDouble(type1, numericArg1);
+//            auto double2 = getDouble(type2, numericArg2);
+//            return Value(std::atan2(double1, double2));
+//        }
+//        default:
+//            uassert(50986, "unreachable", false);
+//    }
+//}
+//
+//REGISTER_EXPRESSION(atan2, ExpressionArcTangent2::parse);
+//const char* ExpressionArcTangent2::getOpName() const {
+//    return "$atan2";
+//}
+//
+//static const double PI = 3.141592653589793;
+//static const Decimal128 DECIMAL_PI = Decimal128("3.14159265358979323846264338327950288419716939937510"); 
+//static const double DOUBLE_180 = 180.0;
+//static const Decimal128 DECIMAL_180 = Decimal128("180.0"); 
+//
+///* ----------------------- ExpressionDegreesToRadians ---------------------------- */
+//
+//Value ExpressionDegreesToRadians::evaluateNumericArg(const Value& numericArg) const {
+//    BSONType type = numericArg.getType();
+//    if (type == NumberDouble) {
+//        return Value(numericArg.getDouble() * 180.0 / PI);
+//    } else if (type == NumberDecimal) {
+//        return Value(numericArg.getDecimal().multiply(DECIMAL_180).divide(DECIMAL_PI));
+//    } else {
+//        long long num = numericArg.getLong();
+//        uassert(50987,
+//                "can't take $degrees of long long min",
+//                num != std::numeric_limits<long long>::min());
+//        auto degreesVal = num * 180.0 / PI;
+//        return Value(degreesVal);
+//    }
+//}
+//
+//REGISTER_EXPRESSION(degrees, ExpressionDegreesToRadians::parse);
+//const char* ExpressionDegreesToRadians::getOpName() const {
+//    return "$degreesToRadians";
+//}
+//
+///* ----------------------- ExpressionDegreesToRadians ---------------------------- */
+//
+//Value ExpressionRadiansToDegrees::evaluateNumericArg(const Value& numericArg) const {
+//    BSONType type = numericArg.getType();
+//    if (type == NumberDouble) {
+//        return Value(numericArg.getDouble() * PI / 180.0);
+//    } else if (type == NumberDecimal) {
+//        return Value(numericArg.getDecimal().multiply(DECIMAL_PI).divide(DECIMAL_180));
+//    } else {
+//        long long num = numericArg.getLong();
+//        uassert(50988,
+//                "can't take $radians of long long min",
+//                num != std::numeric_limits<long long>::min());
+//        auto radiansVal = num * PI / 180.0;
+//        return Value(radiansVal);
+//    }
+//}
+//
+//REGISTER_EXPRESSION(radians, ExpressionRadiansToDegrees::parse);
+//const char* ExpressionRadiansToDegrees::getOpName() const {
+//    return "$radiansToDegrees";
+//}
 }
