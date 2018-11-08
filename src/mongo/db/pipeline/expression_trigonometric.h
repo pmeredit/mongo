@@ -195,35 +195,34 @@ public:
 	Decimal128 decimalFunc(Decimal128 x) const final;
     const char* getOpName() const final;
 };
-//
-//
-//class ExpressionArcTangent2 final : public ExpressionDoubleNumericArgs<ExpressionArcTangent2> {
-//public:
-//	explicit ExpressionArcTangent2(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-//         : ExpressionDoubleNumericArgs(expCtx) {}
-//
-//	Value evaluateNumericArgs(const Value& numericArg1, const Value& numericArg2) const;
-//	const char* getOpName() const final;
-//};
-//
-//
-//class ExpressionDegreesToRadians final : public ExpressionSingleNumericArg<ExpressionDegreesToRadians> {
-//public:
-//	explicit ExpressionDegreesToRadians(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-//         : ExpressionSingleNumericArg(expCtx) {}
-//
-//    Value evaluateNumericArg(const Value& numericArg) const final;
-//    const char* getOpName() const final;
-//};
-//
-//
-//class ExpressionRadiansToDegrees final : public ExpressionSingleNumericArg<ExpressionRadiansToDegrees> {
-//public:
-//	explicit ExpressionRadiansToDegrees(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-//         : ExpressionSingleNumericArg(expCtx) {}
-//
-//    Value evaluateNumericArg(const Value& numericArg) const final;
-//    const char* getOpName() const final;
-//};
-//}
+
+
+class ExpressionArcTangent2 final : public ExpressionDoubleNumericArgs<ExpressionArcTangent2> {
+public:
+	explicit ExpressionArcTangent2(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+         : ExpressionDoubleNumericArgs(expCtx) {}
+
+	Value evaluateNumericArgs(const Value& numericArg1, const Value& numericArg2) const;
+	const char* getOpName() const final;
+};
+
+
+class ExpressionDegreesToRadians final : public ExpressionSingleNumericArg<ExpressionDegreesToRadians> {
+public:
+	explicit ExpressionDegreesToRadians(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+         : ExpressionSingleNumericArg(expCtx) {}
+
+    Value evaluateNumericArg(const Value& numericArg) const final;
+    const char* getOpName() const final;
+};
+
+
+class ExpressionRadiansToDegrees final : public ExpressionSingleNumericArg<ExpressionRadiansToDegrees> {
+public:
+	explicit ExpressionRadiansToDegrees(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+         : ExpressionSingleNumericArg(expCtx) {}
+
+    Value evaluateNumericArg(const Value& numericArg) const final;
+    const char* getOpName() const final;
+};
 }
