@@ -200,18 +200,23 @@
             {
               visibleTime: metadata["checkpointTimestamp"],
               recoverOplog: false,
-            },
-            // Then start up with oplog recovery. This will also set the truncate after point to
-            // the visibleTime. Add tests in reverse visibleTime order such that later scenarios
-            // only need a subset of the oplog of the previous scenario.
-            {
-              visibleTime: metadata["oplogEnd"]["ts"],
-              // Note the `oplogEnd` is a minimum guarantee. It's likely the data contains more
-              // oplog entries than this value. `recoverOplog: true` will call set a
-              // truncateAfterPoint which will result in deleting those excess entries.
-              recoverOplog: true,
             }
         ];
+
+        // Then start up with oplog recovery. This will also set the truncate after point to the
+        // visibleTime. Add tests in reverse visibleTime order such that later scenarios only need
+        // a subset of the oplog of the previous scenario. Note that the `oplogTruncateAfterPoint`
+        // is inclusive. It's possible for the end of the oplog to be equal to the
+        // `checkpointTimestamp`. In that case, the scenario cannot be tested.
+        if (isLessThan(metadata["checkpointTimestamp"], metadata["oplogEnd"]["ts"])) {
+            scenarios.push({
+                visibleTime: metadata["oplogEnd"]["ts"],
+                // Note the `oplogEnd` is a minimum guarantee. It's likely the data contains more
+                // oplog entries than this value. `recoverOplog: true` will call set a
+                // truncateAfterPoint which will result in deleting those excess entries.
+                recoverOplog: true,
+            });
+        }
 
         // If we find a usable optime that splits the checkpoint timestamp and the end of oplog,
         // add it as a scenario.
