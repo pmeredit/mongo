@@ -419,7 +419,7 @@ TEST_F(ExpressionArcTangent2Test, NullArg) {
     assertEvaluates(Value(BSONNULL), Value(1), Value(BSONNULL));
 }
 
-/* ------------------------- ExpressionArcCosine -------------------------- */
+/* ------------------------- ExpressionCosine -------------------------- */
 
 class ExpressionCosineTest : public ExpressionNaryTestOneArgApproximate {
 public:
@@ -982,4 +982,279 @@ TEST_F(ExpressionHyperbolicTangentTest, DecimalArg) {
 TEST_F(ExpressionHyperbolicTangentTest, NullArg) {
     assertEvaluates(Value(BSONNULL), Value(BSONNULL));
 }
+
+/* ------------------------- ExpressionHyperbolicArcCosine -------------------------- */
+
+class ExpressionHyperbolicArcCosineTest : public ExpressionNaryTestOneArgApproximate {
+public:
+   virtual void assertEvaluates(Value input, Value output) override {
+       intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+       _expr = new ExpressionHyperbolicArcCosine(expCtx);
+       ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+   }
+};
+
+TEST_F(ExpressionHyperbolicArcCosineTest, IntArg) {
+    assertEvaluates(Value(1), Value(0.000000));
+    assertEvaluates(Value(2), Value(1.316958));
+    assertEvaluates(Value(3), Value(1.762747));
+    assertEvaluates(Value(4), Value(2.063437));
+    assertEvaluates(Value(5), Value(2.292432));
+    assertEvaluates(Value(6), Value(2.477889));
+    assertEvaluates(Value(7), Value(2.633916));
+    assertEvaluates(Value(8), Value(2.768659));
+    assertEvaluates(Value(9), Value(2.887271));
+}
+
+TEST_F(ExpressionHyperbolicArcCosineTest, LongArg) {
+    assertEvaluates(Value(1LL), Value(0.000000));
+    assertEvaluates(Value(2LL), Value(1.316958));
+    assertEvaluates(Value(3LL), Value(1.762747));
+    assertEvaluates(Value(4LL), Value(2.063437));
+    assertEvaluates(Value(5LL), Value(2.292432));
+    assertEvaluates(Value(6LL), Value(2.477889));
+    assertEvaluates(Value(7LL), Value(2.633916));
+    assertEvaluates(Value(8LL), Value(2.768659));
+    assertEvaluates(Value(9LL), Value(2.887271));
+}
+
+TEST_F(ExpressionHyperbolicArcCosineTest, DoubleArg) {
+    assertEvaluates(Value(1.000000), Value(0.000000));
+    assertEvaluates(Value(1.200000), Value(0.622363));
+    assertEvaluates(Value(1.400000), Value(0.867015));
+    assertEvaluates(Value(1.600000), Value(1.046968));
+    assertEvaluates(Value(1.800000), Value(1.192911));
+    assertEvaluates(Value(2.000000), Value(1.316958));
+    assertEvaluates(Value(2.200000), Value(1.425417));
+    assertEvaluates(Value(2.400000), Value(1.522079));
+    assertEvaluates(Value(2.600000), Value(1.609438));
+    assertEvaluates(Value(2.800000), Value(1.689236));
+    assertEvaluates(Value(3.000000), Value(1.762747));
+    assertEvaluates(Value(3.200000), Value(1.830938));
+    assertEvaluates(Value(3.400000), Value(1.894559));
+    assertEvaluates(Value(3.600000), Value(1.954208));
+    assertEvaluates(Value(3.800000), Value(2.010367));
+    assertEvaluates(Value(4.000000), Value(2.063437));
+    assertEvaluates(Value(4.200000), Value(2.113748));
+    assertEvaluates(Value(4.400000), Value(2.161581));
+    assertEvaluates(Value(4.600000), Value(2.207174));
+    assertEvaluates(Value(4.800000), Value(2.250731));
+    assertEvaluates(Value(5.000000), Value(2.292432));
+    assertEvaluates(Value(5.200000), Value(2.332429));
+    assertEvaluates(Value(5.400000), Value(2.370860));
+    assertEvaluates(Value(5.600000), Value(2.407845));
+    assertEvaluates(Value(5.800000), Value(2.443489));
+    assertEvaluates(Value(6.000000), Value(2.477889));
+    assertEvaluates(Value(6.200000), Value(2.511128));
+    assertEvaluates(Value(6.400000), Value(2.543285));
+    assertEvaluates(Value(6.600000), Value(2.574428));
+    assertEvaluates(Value(6.800000), Value(2.604619));
+    assertEvaluates(Value(7.000000), Value(2.633916));
+    assertEvaluates(Value(7.200000), Value(2.662370));
+    assertEvaluates(Value(7.400000), Value(2.690030));
+    assertEvaluates(Value(7.600000), Value(2.716939));
+    assertEvaluates(Value(7.800000), Value(2.743136));
+    assertEvaluates(Value(8.000000), Value(2.768659));
+    assertEvaluates(Value(8.200000), Value(2.793542));
+    assertEvaluates(Value(8.400000), Value(2.817817));
+    assertEvaluates(Value(8.600000), Value(2.841512));
+    assertEvaluates(Value(8.800000), Value(2.864655));
+    assertEvaluates(Value(9.000000), Value(2.887271));
+    assertEvaluates(Value(9.200000), Value(2.909384));
+    assertEvaluates(Value(9.400000), Value(2.931015));
+    assertEvaluates(Value(9.600000), Value(2.952187));
+    assertEvaluates(Value(9.800000), Value(2.972916));
+    assertEvaluates(Value(10.000000), Value(2.993223));
+}
+
+TEST_F(ExpressionHyperbolicArcCosineTest, DecimalArg) {
+    assertEvaluates(Value(Decimal128(1.000000)), Value(Decimal128(0.000000)));
+    assertEvaluates(Value(Decimal128(1.200000)), Value(Decimal128(0.622363)));
+    assertEvaluates(Value(Decimal128(1.400000)), Value(Decimal128(0.867015)));
+    assertEvaluates(Value(Decimal128(1.600000)), Value(Decimal128(1.046968)));
+    assertEvaluates(Value(Decimal128(1.800000)), Value(Decimal128(1.192911)));
+    assertEvaluates(Value(Decimal128(2.000000)), Value(Decimal128(1.316958)));
+    assertEvaluates(Value(Decimal128(2.200000)), Value(Decimal128(1.425417)));
+    assertEvaluates(Value(Decimal128(2.400000)), Value(Decimal128(1.522079)));
+    assertEvaluates(Value(Decimal128(2.600000)), Value(Decimal128(1.609438)));
+    assertEvaluates(Value(Decimal128(2.800000)), Value(Decimal128(1.689236)));
+    assertEvaluates(Value(Decimal128(3.000000)), Value(Decimal128(1.762747)));
+    assertEvaluates(Value(Decimal128(3.200000)), Value(Decimal128(1.830938)));
+    assertEvaluates(Value(Decimal128(3.400000)), Value(Decimal128(1.894559)));
+    assertEvaluates(Value(Decimal128(3.600000)), Value(Decimal128(1.954208)));
+    assertEvaluates(Value(Decimal128(3.800000)), Value(Decimal128(2.010367)));
+    assertEvaluates(Value(Decimal128(4.000000)), Value(Decimal128(2.063437)));
+    assertEvaluates(Value(Decimal128(4.200000)), Value(Decimal128(2.113748)));
+    assertEvaluates(Value(Decimal128(4.400000)), Value(Decimal128(2.161581)));
+    assertEvaluates(Value(Decimal128(4.600000)), Value(Decimal128(2.207174)));
+    assertEvaluates(Value(Decimal128(4.800000)), Value(Decimal128(2.250731)));
+    assertEvaluates(Value(Decimal128(5.000000)), Value(Decimal128(2.292432)));
+    assertEvaluates(Value(Decimal128(5.200000)), Value(Decimal128(2.332429)));
+    assertEvaluates(Value(Decimal128(5.400000)), Value(Decimal128(2.370860)));
+    assertEvaluates(Value(Decimal128(5.600000)), Value(Decimal128(2.407845)));
+    assertEvaluates(Value(Decimal128(5.800000)), Value(Decimal128(2.443489)));
+    assertEvaluates(Value(Decimal128(6.000000)), Value(Decimal128(2.477889)));
+    assertEvaluates(Value(Decimal128(6.200000)), Value(Decimal128(2.511128)));
+    assertEvaluates(Value(Decimal128(6.400000)), Value(Decimal128(2.543285)));
+    assertEvaluates(Value(Decimal128(6.600000)), Value(Decimal128(2.574428)));
+    assertEvaluates(Value(Decimal128(6.800000)), Value(Decimal128(2.604619)));
+    assertEvaluates(Value(Decimal128(7.000000)), Value(Decimal128(2.633916)));
+    assertEvaluates(Value(Decimal128(7.200000)), Value(Decimal128(2.662370)));
+    assertEvaluates(Value(Decimal128(7.400000)), Value(Decimal128(2.690030)));
+    assertEvaluates(Value(Decimal128(7.600000)), Value(Decimal128(2.716939)));
+    assertEvaluates(Value(Decimal128(7.800000)), Value(Decimal128(2.743136)));
+    assertEvaluates(Value(Decimal128(8.000000)), Value(Decimal128(2.768659)));
+    assertEvaluates(Value(Decimal128(8.200000)), Value(Decimal128(2.793542)));
+    assertEvaluates(Value(Decimal128(8.400000)), Value(Decimal128(2.817817)));
+    assertEvaluates(Value(Decimal128(8.600000)), Value(Decimal128(2.841512)));
+    assertEvaluates(Value(Decimal128(8.800000)), Value(Decimal128(2.864655)));
+    assertEvaluates(Value(Decimal128(9.000000)), Value(Decimal128(2.887271)));
+    assertEvaluates(Value(Decimal128(9.200000)), Value(Decimal128(2.909384)));
+    assertEvaluates(Value(Decimal128(9.400000)), Value(Decimal128(2.931015)));
+    assertEvaluates(Value(Decimal128(9.600000)), Value(Decimal128(2.952187)));
+    assertEvaluates(Value(Decimal128(9.800000)), Value(Decimal128(2.972916)));
+    assertEvaluates(Value(Decimal128(10.000000)), Value(Decimal128(2.993223)));
+}
+
+TEST_F(ExpressionHyperbolicArcCosineTest, NullArg) {
+    assertEvaluates(Value(BSONNULL), Value(BSONNULL));
+}
+
+/* ------------------------- ExpressionHyperbolicArcSine -------------------------- */
+
+class ExpressionHyperbolicArcSineTest : public ExpressionNaryTestOneArgApproximate {
+public:
+   virtual void assertEvaluates(Value input, Value output) override {
+       intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+       _expr = new ExpressionHyperbolicArcSine(expCtx);
+       ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+   }
+};
+
+TEST_F(ExpressionHyperbolicArcSineTest, IntArg) {
+    assertEvaluates(Value(1), Value(0.881374));
+    assertEvaluates(Value(2), Value(1.443635));
+    assertEvaluates(Value(3), Value(1.818446));
+    assertEvaluates(Value(4), Value(2.094713));
+    assertEvaluates(Value(5), Value(2.312438));
+    assertEvaluates(Value(6), Value(2.491780));
+    assertEvaluates(Value(7), Value(2.644121));
+    assertEvaluates(Value(8), Value(2.776472));
+    assertEvaluates(Value(9), Value(2.893444));
+}
+
+TEST_F(ExpressionHyperbolicArcSineTest, LongArg) {
+    assertEvaluates(Value(1LL), Value(0.881374));
+    assertEvaluates(Value(2LL), Value(1.443635));
+    assertEvaluates(Value(3LL), Value(1.818446));
+    assertEvaluates(Value(4LL), Value(2.094713));
+    assertEvaluates(Value(5LL), Value(2.312438));
+    assertEvaluates(Value(6LL), Value(2.491780));
+    assertEvaluates(Value(7LL), Value(2.644121));
+    assertEvaluates(Value(8LL), Value(2.776472));
+    assertEvaluates(Value(9LL), Value(2.893444));
+}
+
+TEST_F(ExpressionHyperbolicArcSineTest, DoubleArg) {
+    assertEvaluates(Value(1.000000), Value(0.881374));
+    assertEvaluates(Value(1.200000), Value(1.015973));
+    assertEvaluates(Value(1.400000), Value(1.137982));
+    assertEvaluates(Value(1.600000), Value(1.248983));
+    assertEvaluates(Value(1.800000), Value(1.350441));
+    assertEvaluates(Value(2.000000), Value(1.443635));
+    assertEvaluates(Value(2.200000), Value(1.529660));
+    assertEvaluates(Value(2.400000), Value(1.609438));
+    assertEvaluates(Value(2.600000), Value(1.683743));
+    assertEvaluates(Value(2.800000), Value(1.753229));
+    assertEvaluates(Value(3.000000), Value(1.818446));
+    assertEvaluates(Value(3.200000), Value(1.879864));
+    assertEvaluates(Value(3.400000), Value(1.937879));
+    assertEvaluates(Value(3.600000), Value(1.992836));
+    assertEvaluates(Value(3.800000), Value(2.045028));
+    assertEvaluates(Value(4.000000), Value(2.094713));
+    assertEvaluates(Value(4.200000), Value(2.142112));
+    assertEvaluates(Value(4.400000), Value(2.187422));
+    assertEvaluates(Value(4.600000), Value(2.230814));
+    assertEvaluates(Value(4.800000), Value(2.272441));
+    assertEvaluates(Value(5.000000), Value(2.312438));
+    assertEvaluates(Value(5.200000), Value(2.350926));
+    assertEvaluates(Value(5.400000), Value(2.388011));
+    assertEvaluates(Value(5.600000), Value(2.423792));
+    assertEvaluates(Value(5.800000), Value(2.458355));
+    assertEvaluates(Value(6.000000), Value(2.491780));
+    assertEvaluates(Value(6.200000), Value(2.524138));
+    assertEvaluates(Value(6.400000), Value(2.555494));
+    assertEvaluates(Value(6.600000), Value(2.585907));
+    assertEvaluates(Value(6.800000), Value(2.615433));
+    assertEvaluates(Value(7.000000), Value(2.644121));
+    assertEvaluates(Value(7.200000), Value(2.672016));
+    assertEvaluates(Value(7.400000), Value(2.699162));
+    assertEvaluates(Value(7.600000), Value(2.725596));
+    assertEvaluates(Value(7.800000), Value(2.751355));
+    assertEvaluates(Value(8.000000), Value(2.776472));
+    assertEvaluates(Value(8.200000), Value(2.800979));
+    assertEvaluates(Value(8.400000), Value(2.824903));
+    assertEvaluates(Value(8.600000), Value(2.848273));
+    assertEvaluates(Value(8.800000), Value(2.871112));
+    assertEvaluates(Value(9.000000), Value(2.893444));
+    assertEvaluates(Value(9.200000), Value(2.915291));
+    assertEvaluates(Value(9.400000), Value(2.936674));
+    assertEvaluates(Value(9.600000), Value(2.957612));
+    assertEvaluates(Value(9.800000), Value(2.978123));
+    assertEvaluates(Value(10.000000), Value(2.998223));
+}
+
+TEST_F(ExpressionHyperbolicArcSineTest, DecimalArg) {
+    assertEvaluates(Value(Decimal128(1.000000)), Value(Decimal128(0.881374)));
+    assertEvaluates(Value(Decimal128(1.200000)), Value(Decimal128(1.015973)));
+    assertEvaluates(Value(Decimal128(1.400000)), Value(Decimal128(1.137982)));
+    assertEvaluates(Value(Decimal128(1.600000)), Value(Decimal128(1.248983)));
+    assertEvaluates(Value(Decimal128(1.800000)), Value(Decimal128(1.350441)));
+    assertEvaluates(Value(Decimal128(2.000000)), Value(Decimal128(1.443635)));
+    assertEvaluates(Value(Decimal128(2.200000)), Value(Decimal128(1.529660)));
+    assertEvaluates(Value(Decimal128(2.400000)), Value(Decimal128(1.609438)));
+    assertEvaluates(Value(Decimal128(2.600000)), Value(Decimal128(1.683743)));
+    assertEvaluates(Value(Decimal128(2.800000)), Value(Decimal128(1.753229)));
+    assertEvaluates(Value(Decimal128(3.000000)), Value(Decimal128(1.818446)));
+    assertEvaluates(Value(Decimal128(3.200000)), Value(Decimal128(1.879864)));
+    assertEvaluates(Value(Decimal128(3.400000)), Value(Decimal128(1.937879)));
+    assertEvaluates(Value(Decimal128(3.600000)), Value(Decimal128(1.992836)));
+    assertEvaluates(Value(Decimal128(3.800000)), Value(Decimal128(2.045028)));
+    assertEvaluates(Value(Decimal128(4.000000)), Value(Decimal128(2.094713)));
+    assertEvaluates(Value(Decimal128(4.200000)), Value(Decimal128(2.142112)));
+    assertEvaluates(Value(Decimal128(4.400000)), Value(Decimal128(2.187422)));
+    assertEvaluates(Value(Decimal128(4.600000)), Value(Decimal128(2.230814)));
+    assertEvaluates(Value(Decimal128(4.800000)), Value(Decimal128(2.272441)));
+    assertEvaluates(Value(Decimal128(5.000000)), Value(Decimal128(2.312438)));
+    assertEvaluates(Value(Decimal128(5.200000)), Value(Decimal128(2.350926)));
+    assertEvaluates(Value(Decimal128(5.400000)), Value(Decimal128(2.388011)));
+    assertEvaluates(Value(Decimal128(5.600000)), Value(Decimal128(2.423792)));
+    assertEvaluates(Value(Decimal128(5.800000)), Value(Decimal128(2.458355)));
+    assertEvaluates(Value(Decimal128(6.000000)), Value(Decimal128(2.491780)));
+    assertEvaluates(Value(Decimal128(6.200000)), Value(Decimal128(2.524138)));
+    assertEvaluates(Value(Decimal128(6.400000)), Value(Decimal128(2.555494)));
+    assertEvaluates(Value(Decimal128(6.600000)), Value(Decimal128(2.585907)));
+    assertEvaluates(Value(Decimal128(6.800000)), Value(Decimal128(2.615433)));
+    assertEvaluates(Value(Decimal128(7.000000)), Value(Decimal128(2.644121)));
+    assertEvaluates(Value(Decimal128(7.200000)), Value(Decimal128(2.672016)));
+    assertEvaluates(Value(Decimal128(7.400000)), Value(Decimal128(2.699162)));
+    assertEvaluates(Value(Decimal128(7.600000)), Value(Decimal128(2.725596)));
+    assertEvaluates(Value(Decimal128(7.800000)), Value(Decimal128(2.751355)));
+    assertEvaluates(Value(Decimal128(8.000000)), Value(Decimal128(2.776472)));
+    assertEvaluates(Value(Decimal128(8.200000)), Value(Decimal128(2.800979)));
+    assertEvaluates(Value(Decimal128(8.400000)), Value(Decimal128(2.824903)));
+    assertEvaluates(Value(Decimal128(8.600000)), Value(Decimal128(2.848273)));
+    assertEvaluates(Value(Decimal128(8.800000)), Value(Decimal128(2.871112)));
+    assertEvaluates(Value(Decimal128(9.000000)), Value(Decimal128(2.893444)));
+    assertEvaluates(Value(Decimal128(9.200000)), Value(Decimal128(2.915291)));
+    assertEvaluates(Value(Decimal128(9.400000)), Value(Decimal128(2.936674)));
+    assertEvaluates(Value(Decimal128(9.600000)), Value(Decimal128(2.957612)));
+    assertEvaluates(Value(Decimal128(9.800000)), Value(Decimal128(2.978123)));
+    assertEvaluates(Value(Decimal128(10.000000)), Value(Decimal128(2.998223)));
+}
+
+TEST_F(ExpressionHyperbolicArcSineTest, NullArg) {
+    assertEvaluates(Value(BSONNULL), Value(BSONNULL));
+}
+
 }
