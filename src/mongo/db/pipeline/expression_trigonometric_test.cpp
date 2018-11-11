@@ -1257,4 +1257,53 @@ TEST_F(ExpressionHyperbolicArcSineTest, NullArg) {
     assertEvaluates(Value(BSONNULL), Value(BSONNULL));
 }
 
+/* ------------------------- ExpressionHyperbolicArcTangent -------------------------- */
+
+class ExpressionHyperbolicArcTangentTest : public ExpressionNaryTestOneArgApproximate {
+public:
+   virtual void assertEvaluates(Value input, Value output) override {
+       intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+       _expr = new ExpressionHyperbolicArcTangent(expCtx);
+       ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+   }
+};
+
+TEST_F(ExpressionHyperbolicArcTangentTest, IntArg) {
+    assertEvaluates(Value(0), Value(0.000000));
+}
+
+TEST_F(ExpressionHyperbolicArcTangentTest, LongArg) {
+    assertEvaluates(Value(0LL), Value(0.000000));
+}
+
+TEST_F(ExpressionHyperbolicArcTangentTest, DoubleArg) {
+    assertEvaluates(Value(-0.990000), Value(-2.646652));
+    assertEvaluates(Value(-0.790000), Value(-1.071432));
+    assertEvaluates(Value(-0.590000), Value(-0.677666));
+    assertEvaluates(Value(-0.390000), Value(-0.411800));
+    assertEvaluates(Value(-0.190000), Value(-0.192337));
+    assertEvaluates(Value(0.010000), Value(0.010000));
+    assertEvaluates(Value(0.210000), Value(0.213171));
+    assertEvaluates(Value(0.410000), Value(0.435611));
+    assertEvaluates(Value(0.610000), Value(0.708921));
+    assertEvaluates(Value(0.810000), Value(1.127029));
+}
+
+TEST_F(ExpressionHyperbolicArcTangentTest, DecimalArg) {
+    assertEvaluates(Value(Decimal128(-0.990000)), Value(Decimal128(-2.646652)));
+    assertEvaluates(Value(Decimal128(-0.790000)), Value(Decimal128(-1.071432)));
+    assertEvaluates(Value(Decimal128(-0.590000)), Value(Decimal128(-0.677666)));
+    assertEvaluates(Value(Decimal128(-0.390000)), Value(Decimal128(-0.411800)));
+    assertEvaluates(Value(Decimal128(-0.190000)), Value(Decimal128(-0.192337)));
+    assertEvaluates(Value(Decimal128(0.010000)), Value(Decimal128(0.010000)));
+    assertEvaluates(Value(Decimal128(0.210000)), Value(Decimal128(0.213171)));
+    assertEvaluates(Value(Decimal128(0.410000)), Value(Decimal128(0.435611)));
+    assertEvaluates(Value(Decimal128(0.610000)), Value(Decimal128(0.708921)));
+    assertEvaluates(Value(Decimal128(0.810000)), Value(Decimal128(1.127029)));
+}
+
+TEST_F(ExpressionHyperbolicArcTangentTest, NullArg) {
+    assertEvaluates(Value(BSONNULL), Value(BSONNULL));
+}
+
 }
