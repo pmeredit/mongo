@@ -1,7 +1,5 @@
 #include "expression_trigonometric.h"
 
-#include <iostream>
-
 namespace mongo {
 /* ----------------------- ExpressionArcCosine ---------------------------- */
 
@@ -11,6 +9,18 @@ double ExpressionArcCosine::doubleFunc(double arg) const {
 
 Decimal128 ExpressionArcCosine::decimalFunc(Decimal128 arg) const {
     return arg.acos();
+}
+
+bool ExpressionArcCosine::isInclusive() const {
+    return true;
+}
+
+boost::optional<double> ExpressionArcCosine::getUpperBound() const {
+	return boost::optional<double>(1.0);
+}
+
+boost::optional<double> ExpressionArcCosine::getLowerBound() const {
+	return boost::optional<double>(-1.0);
 }
 
 REGISTER_EXPRESSION(acos, ExpressionArcCosine::parse);
@@ -25,6 +35,18 @@ double ExpressionArcSine::doubleFunc(double arg) const {
 
 Decimal128 ExpressionArcSine::decimalFunc(Decimal128 arg) const {
     return arg.asin();
+}
+
+bool ExpressionArcSine::isInclusive() const {
+    return true;
+}
+
+boost::optional<double> ExpressionArcSine::getUpperBound() const {
+	return boost::optional<double>(1.0);
+}
+
+boost::optional<double> ExpressionArcSine::getLowerBound() const {
+	return boost::optional<double>(-1.0);
 }
 
 REGISTER_EXPRESSION(asin, ExpressionArcSine::parse);
@@ -57,6 +79,18 @@ Decimal128 ExpressionHyperbolicArcCosine::decimalFunc(Decimal128 arg) const {
     return arg.acosh();
 }
 
+bool ExpressionHyperbolicArcCosine::isInclusive() const {
+    return true;
+}
+
+boost::optional<double> ExpressionHyperbolicArcCosine::getUpperBound() const {
+	return boost::none;
+}
+
+boost::optional<double> ExpressionHyperbolicArcCosine::getLowerBound() const {
+	return boost::optional<double>(1.0);
+}
+
 REGISTER_EXPRESSION(acosh, ExpressionHyperbolicArcCosine::parse);
 const char* ExpressionHyperbolicArcCosine::getOpName() const {
     return "$acosh";
@@ -87,6 +121,18 @@ Decimal128 ExpressionHyperbolicArcTangent::decimalFunc(Decimal128 arg) const {
     return arg.atanh();
 }
 
+bool ExpressionHyperbolicArcTangent::isInclusive() const {
+    return false;
+}
+
+boost::optional<double> ExpressionHyperbolicArcTangent::getUpperBound() const {
+	return boost::optional<double>(1.0);
+}
+
+boost::optional<double> ExpressionHyperbolicArcTangent::getLowerBound() const {
+	return boost::optional<double>(-1.0);
+}
+
 REGISTER_EXPRESSION(atanh, ExpressionHyperbolicArcTangent::parse);
 const char* ExpressionHyperbolicArcTangent::getOpName() const {
     return "$atanh";
@@ -95,7 +141,6 @@ const char* ExpressionHyperbolicArcTangent::getOpName() const {
 /* ----------------------- ExpressionCosine ---------------------------- */
 
 double ExpressionCosine::doubleFunc(double arg) const {
-	std::cerr << "foo" << std::endl;
     return std::cos(arg);
 }
 

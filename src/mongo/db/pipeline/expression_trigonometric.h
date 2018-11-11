@@ -33,33 +33,74 @@ public:
     explicit ExpressionBoundedTrigonometric(const boost::intrusive_ptr<ExpressionContext>& expCtx)
       : ExpressionSingleNumericArg<BoundedTrigType>(expCtx) {}
 
-    Value evaluateNumericArg(const Value& numericArg) const override {
+	Value evaluateInclusive(const Value& numericArg) const {
       BSONType type = numericArg.getType();
       if (type == NumberDouble) {
 		  auto input = numericArg.getDouble();
-          uassert(50969,
+          uassert(50989,
                   str::stream() << "cannot apply inverse trigonometric function to "
-				  << input <<  ", value must in [-1.0, 1.0]",
-                  input >= -1.0 && input <= 1.0);
+				  << input <<  ", value must in [" << getLowerBound() << "," << getUpperBound() << "]",
+                  !(getLowerBound() && input < getLowerBound().get() ||
+					  getUpperBound() && input > getUpperBound().get()));
           return Value(doubleFunc(input));
       } else if (type == NumberDecimal) {
 		  auto input = numericArg.getDecimal();
-          uassert(50970,
+          uassert(50990,
                   str::stream() << "cannot apply inverse trigonometric function to "
-				  << input.toDouble() <<  ", value must in [-1.0, 1.0]",
-                  input.isGreaterEqual(Decimal128(-1))
-					  && input.isLessEqual(Decimal128(1.0)));
-          return Value(decimalFunc(numericArg.getDecimal()));
+				  << input.toDouble() <<  ", value must in [" << getLowerBound() << "," << getUpperBound() << "]",
+                  !(getLowerBound() && input.isLess(Decimal128(getLowerBound().get())) ||
+					  getUpperBound() && input.isGreater(Decimal128(getUpperBound().get()))));
+          return Value(decimalFunc(input));
       } else {
           auto input = numericArg.getLong();
-          uassert(50989,
-                  str::stream() << "cannot take apply inverse trigonometric function to "
-				  << input <<  ", value must in [-1.0, 1.0]",
-                  input >= -1 && input <= 1);
+          uassert(50991,
+                  str::stream() << "cannot apply inverse trigonometric function to "
+				  << input <<  ", value must in [" << getLowerBound() << "," << getUpperBound() << "]",
+                  !(getLowerBound() && input < getLowerBound().get() ||
+					  getUpperBound() && input > getUpperBound().get()));
           return Value(doubleFunc(input));
       }
 	}
 
+	Value evaluateNonInclusive(const Value& numericArg) const {
+      BSONType type = numericArg.getType();
+      if (type == NumberDouble) {
+		  auto input = numericArg.getDouble();
+          uassert(50992,
+                  str::stream() << "cannot apply inverse trigonometric function to "
+				  << input <<  ", value must in (" << getLowerBound() << "," << getUpperBound() << ")",
+                  !(getLowerBound() && input <= getLowerBound().get() ||
+					  getUpperBound() && input >= getUpperBound().get()));
+          return Value(doubleFunc(input));
+      } else if (type == NumberDecimal) {
+		  auto input = numericArg.getDecimal();
+          uassert(50993,
+                  str::stream() << "cannot apply inverse trigonometric function to "
+				  << input.toDouble() <<  ", value must in (" << getLowerBound() << "," << getUpperBound() << ")",
+                  !(getLowerBound() && input.isLessEqual(Decimal128(getLowerBound().get())) ||
+					  getUpperBound() && input.isGreaterEqual(Decimal128(getUpperBound().get()))));
+          return Value(decimalFunc(input));
+      } else {
+          auto input = numericArg.getLong();
+          uassert(50994,
+                  str::stream() << "cannot apply inverse trigonometric function to "
+				  << input <<  ", value must in (" << getLowerBound() << "," << getUpperBound() << ")",
+                  !(getLowerBound() && input <= getLowerBound().get() ||
+					  getUpperBound() && input >= getUpperBound().get()));
+          return Value(doubleFunc(input));
+      }
+	}
+
+    Value evaluateNumericArg(const Value& numericArg) const override {
+		if (isInclusive()) {
+			return evaluateInclusive(numericArg);
+		}
+		return evaluateNonInclusive(numericArg);
+	}
+
+	virtual bool isInclusive() const = 0;
+	virtual boost::optional<double> getLowerBound() const = 0;
+	virtual boost::optional<double> getUpperBound() const = 0;
 	virtual double doubleFunc(double x) const = 0;
 	virtual Decimal128 decimalFunc(Decimal128 x) const = 0;
 };
@@ -69,6 +110,9 @@ public:
 	explicit ExpressionArcCosine(const boost::intrusive_ptr<ExpressionContext>& expCtx)
        : ExpressionBoundedTrigonometric(expCtx) {}
 
+	virtual bool isInclusive() const final;
+	boost::optional<double> getLowerBound() const final;
+	boost::optional<double> getUpperBound() const final;
 	double doubleFunc(double x) const final;
 	Decimal128 decimalFunc(Decimal128 x) const final;
     const char* getOpName() const final;
@@ -80,6 +124,9 @@ public:
 	explicit ExpressionArcSine(const boost::intrusive_ptr<ExpressionContext>& expCtx)
        : ExpressionBoundedTrigonometric(expCtx) {}
 
+	virtual bool isInclusive() const final;
+	boost::optional<double> getLowerBound() const final;
+	boost::optional<double> getUpperBound() const final;
 	double doubleFunc(double x) const final;
 	Decimal128 decimalFunc(Decimal128 x) const final;
     const char* getOpName() const final;
@@ -97,11 +144,14 @@ public:
 };
 
 
-class ExpressionHyperbolicArcCosine final : public ExpressionTrigonometric<ExpressionHyperbolicArcCosine> {
+class ExpressionHyperbolicArcCosine final : public ExpressionBoundedTrigonometric<ExpressionHyperbolicArcCosine> {
 public:
 	explicit ExpressionHyperbolicArcCosine(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-       : ExpressionTrigonometric(expCtx) {}
+       : ExpressionBoundedTrigonometric(expCtx) {}
 
+	virtual bool isInclusive() const final;
+	boost::optional<double> getLowerBound() const final;
+	boost::optional<double> getUpperBound() const final;
 	double doubleFunc(double x) const final;
 	Decimal128 decimalFunc(Decimal128 x) const final;
     const char* getOpName() const final;
@@ -124,6 +174,9 @@ public:
 	explicit ExpressionHyperbolicArcTangent(const boost::intrusive_ptr<ExpressionContext>& expCtx)
        : ExpressionBoundedTrigonometric(expCtx) {}
 
+	virtual bool isInclusive() const final;
+	boost::optional<double> getLowerBound() const final;
+	boost::optional<double> getUpperBound() const final;
 	double doubleFunc(double x) const final;
 	Decimal128 decimalFunc(Decimal128 x) const final;
     const char* getOpName() const final;
