@@ -112,8 +112,8 @@ public:
                                   << ","
                                   << getUpperBound()
                                   << ")",
-                    !((getLowerBound() && input <= getLowerBound().get() ||
-                       (getUpperBound() && input >= getUpperBound().get()))));
+                    !((getLowerBound() && input <= getLowerBound().get()) ||
+                      (getUpperBound() && input >= getUpperBound().get())));
             return Value(doubleFunc(input));
         }
     }
