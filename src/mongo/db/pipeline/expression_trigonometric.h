@@ -56,7 +56,7 @@ public:
           uassert(50991,
                   str::stream() << "cannot apply inverse trigonometric function to "
 				  << input <<  ", value must in [" << getLowerBound() << "," << getUpperBound() << "]",
-                  !(getLowerBound() && input < getLowerBound().get() ||
+                  !((getLowerBound() && input < getLowerBound().get()) ||
 					  (getUpperBound() && input > getUpperBound().get())));
           return Value(doubleFunc(input));
       }
@@ -86,7 +86,7 @@ public:
                   str::stream() << "cannot apply inverse trigonometric function to "
 				  << input <<  ", value must in (" << getLowerBound() << "," << getUpperBound() << ")",
                   !((getLowerBound() && input <= getLowerBound().get() ||
-					  getUpperBound() && input >= getUpperBound().get())));
+					  (getUpperBound() && input >= getUpperBound().get()))));
           return Value(doubleFunc(input));
       }
 	}
