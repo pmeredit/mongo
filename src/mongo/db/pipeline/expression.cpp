@@ -37,6 +37,7 @@
 #include <cstdio>
 #include <sstream>
 #include <vector>
+#include <math.h>
 
 #include "mongo/crypto/sha1_block.h"
 #include "mongo/crypto/sha256_block.h"
@@ -5576,7 +5577,7 @@ static inline std::initializer_list<ConstDataRange> getConstantDataRange(StringD
 }
 
 template <typename hashType>
-static inline std::string shaHashTypeToStringData(hashType input) {
+static inline std::string shaHashTypeToString(hashType input) {
 	static const char *digits = "0123456789abcdef";
 	auto ret = str::stream();
 	for(uint8_t byte: input) {
@@ -5585,16 +5586,70 @@ static inline std::string shaHashTypeToStringData(hashType input) {
 	return ret.ss.str();
 }
 
+static inline void ulongToCharArray(unsigned long long arg, char* buf) {
+	buf[0] = static_cast<char>(arg);
+	buf[1] = static_cast<char>(arg >> 8);
+	buf[2] = static_cast<char>(arg >> 16);
+	buf[3] = static_cast<char>(arg >> 24);
+	buf[4] = static_cast<char>(arg >> 32);
+	buf[5] = static_cast<char>(arg >> 40);
+	buf[6] = static_cast<char>(arg >> 48);
+	buf[7] = static_cast<char>(arg >> 56);
+}
+
+static inline void uintToCharArray(unsigned arg, char* buf) {
+	buf[0] = static_cast<char>(arg);
+	buf[1] = static_cast<char>(arg >> 8);
+	buf[2] = static_cast<char>(arg >> 16);
+	buf[3] = static_cast<char>(arg >> 24);
+}
+
+static inline unsigned long long hashDoubleAsLong(double arg) {
+	double fractpart, intpart;
+	fractpart = modf(arg, &intpart);
+	return static_cast<unsigned long long int>
+}
+
 template <typename shaType>
 static inline Value computeSHA(Value input) {
 	BSONType type = input.getType();
 	switch (type) {
 		case String:
-			return Value(shaHashTypeToStringData(
+			return Value(shaHashTypeToString(
 					shaType::computeHash(
-						getConstantDataRange(input.getStringData())
+						getConstantDataRange(input.getString())
 						)
 					));
+		case NumberLong: {
+			auto arg = static_cast<unsigned long long>(input.getLong());
+			char buf[8];
+			ulongToCharArray(arg, buf);
+			return Value(shaHashTypeToString(
+					shaType::computeHash(
+						{ConstDataRange(buf, 8)}
+						)
+					));
+		}
+		case NumberDouble: {
+			auto arg = hashDoubleAsLong(input.getDouble());
+			char buf[8];
+			ulongToCharArray(arg, buf);
+			return Value(shaHashTypeToString(
+					shaType::computeHash(
+						{ConstDataRange(buf, 8)}
+						)
+					));
+		}
+		case NumberInt: {
+			auto arg = input.getInt();
+			char buf[4];
+			uintToCharArray(arg, buf);
+			return Value(shaHashTypeToString(
+					shaType::computeHash(
+						{ConstDataRange(buf, 4)}
+						)
+					));
+		}
 		default:
 			return Value(BSONNULL);
 	}
@@ -5607,6 +5662,30 @@ static inline Value computeMD5(Value input) {
 		case String:
 			md5(input.getString().c_str(), res);
 			return Value(digestToString(res));
+		case NumberLong: {
+			auto arg = static_cast<unsigned long long>(input.getLong());
+			char buf[9];
+			buf[8] = '\0';
+			ulongToCharArray(arg, buf);
+			md5(buf, res);
+			return Value(digestToString(res));
+		}
+		case NumberDouble: {
+			auto arg = hashDoubleAsLong(input.getDouble());
+			char buf[9];
+			buf[8] = '\0';
+			ulongToCharArray(arg, buf);
+			md5(buf, res);
+			return Value(digestToString(res));
+		}
+		case NumberInt: {
+			auto arg = input.getInt();
+			char buf[5];
+			buf[4] = '\0';
+			uintToCharArray(arg, buf);
+			md5(buf, res);
+			return Value(digestToString(res));
+		}
 		default:
 			return Value(BSONNULL);
 	}
