@@ -263,8 +263,7 @@ Value ExpressionArcTangent2::evaluateNumericArgs(const Value& numericArg1,
     BSONType type1 = numericArg1.getType();
     BSONType type2 = numericArg2.getType();
     auto totalType = NumberDouble;
-    // If the type of either argument is NumberDecimal, we promote to Decimal128. If the type of
-    // either
+    // If the type of either argument is NumberDecimal, we promote to Decimal128.
     if (type1 == NumberDecimal || type2 == NumberDecimal) {
         totalType = NumberDecimal;
     }
