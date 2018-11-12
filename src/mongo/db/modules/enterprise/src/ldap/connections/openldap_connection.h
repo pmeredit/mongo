@@ -29,6 +29,28 @@ private:
 
     struct timeval _timeout;  // Interval of time after which OpenLDAP's connections fail
     ldap_conncb _callback;    // callback that is called on connection
+
+    /**
+     * Locking OpenLDAPGlobalMutex locks a global mutex if setNeedsGlobalLock was called. Otherwise,
+     * it is a no-op. This is intended to synchronize access to libldap, under known thread-unsafe
+     * conditions.
+     */
+    class OpenLDAPGlobalMutex {
+    public:
+        OpenLDAPGlobalMutex() : _needsGlobalLock(false) {}
+
+        void setNeedsGlobalLock() {
+            _needsGlobalLock = true;
+        }
+
+        void lock();
+        void unlock();
+
+    private:
+        bool _needsGlobalLock;
+    };
+
+    OpenLDAPGlobalMutex _conditionalMutex;
 };
 
 }  // namespace mongo

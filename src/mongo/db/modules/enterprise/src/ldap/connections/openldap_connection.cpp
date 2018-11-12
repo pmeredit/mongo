@@ -202,9 +202,10 @@ public:
         return vendorVersion;
     }
 
-    std::vector<std::string> getExtensions() const {
+    const std::vector<std::string>& getExtensions() const& {
         return extensions;
     }
+    const std::vector<std::string>& getExtensions() && = delete;
 
     auto getInfoVersion() const {
         return infoVersion;
@@ -333,6 +334,35 @@ Status OpenLDAPConnection::connect() {
                                     << ldap_err2string(err));
     }
 
+    // Identify whether we need to serialize access to libldap via a global mutex.
+    // libldap with NSS does not use correct synchronization primitives internally.
+    // Neither libldap_r nor libldap with OpenSSL are affected. We can detect whether we're
+    // using libldap, rather than libldap_r, by examining a list of extensions advertised by the
+    // session object.
+    try {
+        static const bool threadsafeExtension = [this]() -> bool {
+            LDAPOptionAPIInfo info = _pimpl->getOption<LDAPOptionAPIInfo>(
+                "OpenLDAPConnection::connect", "Getting API info");
+
+            const auto& extensions = info.getExtensions();
+            return std::find(extensions.begin(), extensions.end(), "THREAD_SAFE") !=
+                extensions.end();
+        }();
+
+        if (!threadsafeExtension) {
+            warning() << "LDAP library does not advertise support for thread safety. All access "
+                         "will be serialized. Link mongod against libldap_r to enable concurrent "
+                         "use of LDAP.";
+            _conditionalMutex.setNeedsGlobalLock();
+        }
+    } catch (...) {
+        Status status = exceptionToStatus();
+        error()
+            << "Attempted to get LDAPAPIInfo while checking libldap thread safety. Received error: "
+            << status;
+        return status;
+    }
+
     // Upgrade connection to LDAPv3
     int version = LDAP_VERSION3;
     int ret = ldap_set_option(_pimpl->getSession(), LDAP_OPT_PROTOCOL_VERSION, &version);
@@ -402,6 +432,8 @@ Status OpenLDAPConnection::connect() {
 }
 
 Status OpenLDAPConnection::bindAsUser(const LDAPBindOptions& bindOptions) {
+    stdx::lock_guard<OpenLDAPGlobalMutex> lock(_conditionalMutex);
+
     int err = openLDAPBindFunction(_pimpl->getSession(), "default", 0, 0, (void*)&bindOptions);
     if (err != LDAP_SUCCESS) {
         return Status(ErrorCodes::OperationFailed,
@@ -419,10 +451,14 @@ Status OpenLDAPConnection::bindAsUser(const LDAPBindOptions& bindOptions) {
 }
 
 StatusWith<LDAPEntityCollection> OpenLDAPConnection::query(LDAPQuery query) {
+    stdx::lock_guard<OpenLDAPGlobalMutex> lock(_conditionalMutex);
+
     return _pimpl->query(std::move(query), &_timeout);
 }
 
 Status OpenLDAPConnection::disconnect() {
+    stdx::lock_guard<OpenLDAPGlobalMutex> lock(_conditionalMutex);
+
     if (!_pimpl->getSession()) {
         return Status::OK();
     }
@@ -437,4 +473,18 @@ Status OpenLDAPConnection::disconnect() {
 
     return Status::OK();
 }
+
+void OpenLDAPConnection::OpenLDAPGlobalMutex::lock() {
+    if (_needsGlobalLock) {
+        libldapGlobalMutex.lock();
+    }
+}
+
+void OpenLDAPConnection::OpenLDAPGlobalMutex::unlock() {
+    if (_needsGlobalLock) {
+        libldapGlobalMutex.unlock();
+    }
+}
+
+
 }  // namespace mongo
