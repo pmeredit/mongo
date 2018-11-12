@@ -16,11 +16,11 @@ bool ExpressionArcCosine::isInclusive() const {
 }
 
 boost::optional<double> ExpressionArcCosine::getUpperBound() const {
-	return boost::optional<double>(1.0);
+    return boost::optional<double>(1.0);
 }
 
 boost::optional<double> ExpressionArcCosine::getLowerBound() const {
-	return boost::optional<double>(-1.0);
+    return boost::optional<double>(-1.0);
 }
 
 REGISTER_EXPRESSION(acos, ExpressionArcCosine::parse);
@@ -42,11 +42,11 @@ bool ExpressionArcSine::isInclusive() const {
 }
 
 boost::optional<double> ExpressionArcSine::getUpperBound() const {
-	return boost::optional<double>(1.0);
+    return boost::optional<double>(1.0);
 }
 
 boost::optional<double> ExpressionArcSine::getLowerBound() const {
-	return boost::optional<double>(-1.0);
+    return boost::optional<double>(-1.0);
 }
 
 REGISTER_EXPRESSION(asin, ExpressionArcSine::parse);
@@ -84,11 +84,11 @@ bool ExpressionHyperbolicArcCosine::isInclusive() const {
 }
 
 boost::optional<double> ExpressionHyperbolicArcCosine::getUpperBound() const {
-	return boost::none;
+    return boost::none;
 }
 
 boost::optional<double> ExpressionHyperbolicArcCosine::getLowerBound() const {
-	return boost::optional<double>(1.0);
+    return boost::optional<double>(1.0);
 }
 
 REGISTER_EXPRESSION(acosh, ExpressionHyperbolicArcCosine::parse);
@@ -126,11 +126,11 @@ bool ExpressionHyperbolicArcTangent::isInclusive() const {
 }
 
 boost::optional<double> ExpressionHyperbolicArcTangent::getUpperBound() const {
-	return boost::optional<double>(1.0);
+    return boost::optional<double>(1.0);
 }
 
 boost::optional<double> ExpressionHyperbolicArcTangent::getLowerBound() const {
-	return boost::optional<double>(-1.0);
+    return boost::optional<double>(-1.0);
 }
 
 REGISTER_EXPRESSION(atanh, ExpressionHyperbolicArcTangent::parse);
@@ -231,7 +231,7 @@ const char* ExpressionHyperbolicTangent::getOpName() const {
 /* ----------------------- ExpressionArcTangent2 ---------------------------- */
 
 Value ExpressionArcTangent2::evaluateNumericArgs(const Value& numericArg1,
-                                           const Value& numericArg2) const {
+                                                 const Value& numericArg2) const {
     BSONType type1 = numericArg1.getType();
     BSONType type2 = numericArg2.getType();
     auto totalType = NumberDouble;
@@ -288,50 +288,52 @@ const char* ExpressionArcTangent2::getOpName() const {
 }
 
 
-/* ----------------------- ExpressionDegreesToRadians and ExpressionRadiansToDegrees ---------------------------- */
-static const Decimal128 DECIMAL_PI = Decimal128("3.14159265358979323846264338327950288419716939937510");
+/* ----------------------- ExpressionDegreesToRadians and ExpressionRadiansToDegrees
+ * ---------------------------- */
+static const Decimal128 DECIMAL_PI =
+    Decimal128("3.14159265358979323846264338327950288419716939937510");
 static const Decimal128 DECIMAL_180 = Decimal128("180");
 static const double DOUBLE_PI = 3.141592653589793;
 
 struct DegreesToRadians {
-	Decimal128 decimalNumerator() {
+    Decimal128 decimalNumerator() {
         return DECIMAL_PI;
-	}
-	Decimal128 decimalDenominator() {
+    }
+    Decimal128 decimalDenominator() {
         return DECIMAL_180;
-	}
-	double doubleNumerator() {
+    }
+    double doubleNumerator() {
         return DOUBLE_PI;
-	}
-	double doubleDenominator() {
+    }
+    double doubleDenominator() {
         return 180.0;
-	}
+    }
 };
 
 struct RadiansToDegrees {
-	Decimal128 decimalNumerator() {
+    Decimal128 decimalNumerator() {
         return DECIMAL_180;
-	}
-	Decimal128 decimalDenominator() {
+    }
+    Decimal128 decimalDenominator() {
         return DECIMAL_PI;
-	}
-	double doubleNumerator() {
+    }
+    double doubleNumerator() {
         return 180.0;
-	}
-	double doubleDenominator() {
+    }
+    double doubleDenominator() {
         return DOUBLE_PI;
-	}
+    }
 };
 
-template<typename ConversionValues>
+template <typename ConversionValues>
 static Value doDegreeRadiansConversion(const Value& numericArg) {
     ConversionValues c;
-	BSONType type = numericArg.getType();
+    BSONType type = numericArg.getType();
     if (type == NumberDouble) {
         return Value(numericArg.getDouble() * c.doubleNumerator() / c.doubleDenominator());
     } else if (type == NumberDecimal) {
-        return Value(numericArg.getDecimal()
-				.multiply(c.decimalNumerator()).divide(c.decimalDenominator()));
+        return Value(
+            numericArg.getDecimal().multiply(c.decimalNumerator()).divide(c.decimalDenominator()));
     } else {
         long long num = numericArg.getLong();
         uassert(50987,
@@ -343,7 +345,7 @@ static Value doDegreeRadiansConversion(const Value& numericArg) {
 }
 
 Value ExpressionDegreesToRadians::evaluateNumericArg(const Value& numericArg) const {
-	return doDegreeRadiansConversion<DegreesToRadians>(numericArg);
+    return doDegreeRadiansConversion<DegreesToRadians>(numericArg);
 }
 
 REGISTER_EXPRESSION(degreesToRadians, ExpressionDegreesToRadians::parse);
@@ -352,7 +354,7 @@ const char* ExpressionDegreesToRadians::getOpName() const {
 }
 
 Value ExpressionRadiansToDegrees::evaluateNumericArg(const Value& numericArg) const {
-	return doDegreeRadiansConversion<RadiansToDegrees>(numericArg);
+    return doDegreeRadiansConversion<RadiansToDegrees>(numericArg);
 }
 
 REGISTER_EXPRESSION(radiansToDegrees, ExpressionRadiansToDegrees::parse);
