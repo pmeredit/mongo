@@ -1,7 +1,7 @@
-#include "mongo/unittest/unittest.h"
-#include "mongo/db/pipeline/document_value_test_util.h"
 #include "mongo/db/pipeline/expression_trigonometric.h"
+#include "mongo/db/pipeline/document_value_test_util.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
+#include "mongo/unittest/unittest.h"
 
 namespace ExpressionTests {
 
@@ -247,15 +247,15 @@ TEST_F(ExpressionArcTangent2Test, TwoLongArg) {
 }
 
 TEST_F(ExpressionArcTangent2Test, LongIntArg) {
-    assertEvaluates(Value(1LL), Value(0),  Value(1.57079632679));
-    assertEvaluates(Value(0LL), Value(1),  Value(0.0));
+    assertEvaluates(Value(1LL), Value(0), Value(1.57079632679));
+    assertEvaluates(Value(0LL), Value(1), Value(0.0));
     assertEvaluates(Value(-1LL), Value(0), Value(-1.57079632679));
     assertEvaluates(Value(0LL), Value(-1), Value(3.14159265359));
 }
 
 TEST_F(ExpressionArcTangent2Test, IntLongArg) {
-    assertEvaluates(Value(1), Value(0LL),  Value(1.57079632679));
-    assertEvaluates(Value(0), Value(1LL),  Value(0.0));
+    assertEvaluates(Value(1), Value(0LL), Value(1.57079632679));
+    assertEvaluates(Value(0), Value(1LL), Value(0.0));
     assertEvaluates(Value(-1), Value(0LL), Value(-1.57079632679));
     assertEvaluates(Value(0), Value(-1LL), Value(3.14159265359));
 }
@@ -987,11 +987,11 @@ TEST_F(ExpressionHyperbolicTangentTest, NullArg) {
 
 class ExpressionHyperbolicArcCosineTest : public ExpressionNaryTestOneArgApproximate {
 public:
-   virtual void assertEvaluates(Value input, Value output) override {
-       intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-       _expr = new ExpressionHyperbolicArcCosine(expCtx);
-       ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
-   }
+    virtual void assertEvaluates(Value input, Value output) override {
+        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+        _expr = new ExpressionHyperbolicArcCosine(expCtx);
+        ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+    }
 };
 
 TEST_F(ExpressionHyperbolicArcCosineTest, IntArg) {
@@ -1124,11 +1124,11 @@ TEST_F(ExpressionHyperbolicArcCosineTest, NullArg) {
 
 class ExpressionHyperbolicArcSineTest : public ExpressionNaryTestOneArgApproximate {
 public:
-   virtual void assertEvaluates(Value input, Value output) override {
-       intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-       _expr = new ExpressionHyperbolicArcSine(expCtx);
-       ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
-   }
+    virtual void assertEvaluates(Value input, Value output) override {
+        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+        _expr = new ExpressionHyperbolicArcSine(expCtx);
+        ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+    }
 };
 
 TEST_F(ExpressionHyperbolicArcSineTest, IntArg) {
@@ -1261,11 +1261,11 @@ TEST_F(ExpressionHyperbolicArcSineTest, NullArg) {
 
 class ExpressionHyperbolicArcTangentTest : public ExpressionNaryTestOneArgApproximate {
 public:
-   virtual void assertEvaluates(Value input, Value output) override {
-       intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-       _expr = new ExpressionHyperbolicArcTangent(expCtx);
-       ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
-   }
+    virtual void assertEvaluates(Value input, Value output) override {
+        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+        _expr = new ExpressionHyperbolicArcTangent(expCtx);
+        ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+    }
 };
 
 TEST_F(ExpressionHyperbolicArcTangentTest, IntArg) {
@@ -1305,5 +1305,4 @@ TEST_F(ExpressionHyperbolicArcTangentTest, DecimalArg) {
 TEST_F(ExpressionHyperbolicArcTangentTest, NullArg) {
     assertEvaluates(Value(BSONNULL), Value(BSONNULL));
 }
-
 }

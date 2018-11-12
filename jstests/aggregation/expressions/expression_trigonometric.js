@@ -16,8 +16,8 @@ load("jstests/aggregation/extras/utils.js");
         assert.eq(coll.aggregate(pipeline).toArray(), [{result: expResult}]);
     }
 
-	// Helper for testing that op returns expResult, approximately, since NumberDecimal has
-	// so many representations for a given number (0 versus 0e-40 for instance).
+    // Helper for testing that op returns expResult, approximately, since NumberDecimal has
+    // so many representations for a given number (0 versus 0e-40 for instance).
     function testOpApprox(op, expResult) {
         var pipeline = [{$project: {_id: 0, result: {$abs: {$subtract: [op, expResult]}}}}];
         assert.lt(coll.aggregate(pipeline).toArray(), [{result: NumberDecimal("0.00000005")}]);
@@ -33,12 +33,12 @@ load("jstests/aggregation/extras/utils.js");
     testOp({$acos: 1}, 0);
     testOp({$asin: 0}, 0);
     testOp({$atan: 0}, 0);
-    testOp({$atan2: [0,1]}, 0);
+    testOp({$atan2: [0, 1]}, 0);
     testOp({$acosh: 1}, 0);
     testOp({$asinh: 0}, 0);
     testOp({$atanh: 0}, 0);
 
-	// Simple successful decimal input.
+    // Simple successful decimal input.
     testOpApprox({$cos: NumberDecimal(0)}, NumberDecimal(1));
     testOpApprox({$sin: NumberDecimal(0)}, NumberDecimal(0));
     testOpApprox({$tan: NumberDecimal(0)}, NumberDecimal(0));
@@ -48,12 +48,12 @@ load("jstests/aggregation/extras/utils.js");
     testOpApprox({$acos: NumberDecimal(1)}, NumberDecimal(0));
     testOpApprox({$asin: NumberDecimal(0)}, NumberDecimal(0));
     testOpApprox({$atan: NumberDecimal(0)}, NumberDecimal(0));
-    testOpApprox({$atan2: [NumberDecimal(0),1]}, NumberDecimal(0));
+    testOpApprox({$atan2: [NumberDecimal(0), 1]}, NumberDecimal(0));
     testOpApprox({$acosh: NumberDecimal(1)}, NumberDecimal(0));
     testOpApprox({$asinh: NumberDecimal(0)}, NumberDecimal(0));
     testOpApprox({$atanh: NumberDecimal(0)}, NumberDecimal(0));
 
-	// Simple successful long input.
+    // Simple successful long input.
     testOpApprox({$cos: NumberLong(0)}, 1);
     testOpApprox({$sin: NumberLong(0)}, 0);
     testOpApprox({$tan: NumberLong(0)}, 0);
@@ -63,12 +63,12 @@ load("jstests/aggregation/extras/utils.js");
     testOpApprox({$acos: NumberLong(1)}, 0);
     testOpApprox({$asin: NumberLong(0)}, 0);
     testOpApprox({$atan: NumberLong(0)}, 0);
-    testOpApprox({$atan2: [NumberLong(0),NumberLong(1)]}, 0);
+    testOpApprox({$atan2: [NumberLong(0), NumberLong(1)]}, 0);
     testOpApprox({$acosh: NumberLong(1)}, 0);
     testOpApprox({$asinh: NumberLong(0)}, 0);
     testOpApprox({$atanh: NumberLong(0)}, 0);
 
-	// Double argument out of bounds.
+    // Double argument out of bounds.
     assertErrorCode(coll, [{$project: {a: {$acos: -1.1}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$acos: 1.1}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$asin: -1.1}}}], 50989);
@@ -77,8 +77,8 @@ load("jstests/aggregation/extras/utils.js");
     assertErrorCode(coll, [{$project: {a: {$atanh: -1.0}}}], 50992);
     assertErrorCode(coll, [{$project: {a: {$atanh: 1.0}}}], 50992);
 
-	// Decimal argument out of bounds.
-	assertErrorCode(coll, [{$project: {a: {$acos: NumberDecimal(-1.1)}}}], 50990);
+    // Decimal argument out of bounds.
+    assertErrorCode(coll, [{$project: {a: {$acos: NumberDecimal(-1.1)}}}], 50990);
     assertErrorCode(coll, [{$project: {a: {$acos: NumberDecimal(1.1)}}}], 50990);
     assertErrorCode(coll, [{$project: {a: {$asin: NumberDecimal(-1.1)}}}], 50990);
     assertErrorCode(coll, [{$project: {a: {$asin: NumberDecimal(1.1)}}}], 50990);
@@ -86,8 +86,8 @@ load("jstests/aggregation/extras/utils.js");
     assertErrorCode(coll, [{$project: {a: {$atanh: NumberDecimal(-1.0)}}}], 50993);
     assertErrorCode(coll, [{$project: {a: {$atanh: NumberDecimal(1.0)}}}], 50993);
 
-	// Long argument out of bounds.
-	assertErrorCode(coll, [{$project: {a: {$acos: NumberLong(-2)}}}], 50991);
+    // Long argument out of bounds.
+    assertErrorCode(coll, [{$project: {a: {$acos: NumberLong(-2)}}}], 50991);
     assertErrorCode(coll, [{$project: {a: {$acos: NumberLong(2)}}}], 50991);
     assertErrorCode(coll, [{$project: {a: {$asin: NumberLong(-2)}}}], 50991);
     assertErrorCode(coll, [{$project: {a: {$asin: NumberLong(2)}}}], 50991);
