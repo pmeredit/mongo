@@ -5576,13 +5576,13 @@ static inline std::initializer_list<ConstDataRange> getConstantDataRange(StringD
 }
 
 template <typename hashType>
-static inline StringData shaHashTypeToStringData(hashType input) {
+static inline std::string shaHashTypeToStringData(hashType input) {
 	static const char *digits = "0123456789abcdef";
 	auto ret = str::stream();
-	for(auto byte: input) {
+	for(uint8_t byte: input) {
 		ret << digits[byte / 16] << digits[byte % 16];
 	}
-	return ret;
+	return ret.ss.str();
 }
 
 template <typename shaType>
