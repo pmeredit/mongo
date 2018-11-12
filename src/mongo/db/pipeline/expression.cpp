@@ -63,10 +63,6 @@ using std::set;
 using std::string;
 using std::vector;
 
-static double PI = 3.141592653589793;
-static const Decimal128 DECIMAL_PI = Decimal128(PI);
-static const Decimal128 DECIMAL_180 = Decimal128("180.0");
-
 /// Helper function to easily wrap constants with $const.
 static Value serializeConstant(Value val) {
     if (val.missing()) {
