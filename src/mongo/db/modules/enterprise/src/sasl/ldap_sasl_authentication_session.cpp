@@ -186,12 +186,24 @@ struct PLAINServerFactoryProxy : ServerFactoryBase {
         }
     }
 
+    int securityLevel() const final {
+        if (useCyrus()) {
+            return cyrusPlainServerFactory.securityLevel();
+        } else {
+            return ldapPLAINServerFactory.securityLevel();
+        }
+    }
+
     bool canMakeMechanismForUser(const User* user) const final {
         if (useCyrus()) {
             return cyrusPlainServerFactory.canMakeMechanismForUser(user);
         } else {
             return ldapPLAINServerFactory.canMakeMechanismForUser(user);
         }
+    }
+
+    bool isInternalAuthMech() const final {
+        return false;
     }
 
     ServerMechanismBase* createImpl(std::string authenticationDatabase) final {
