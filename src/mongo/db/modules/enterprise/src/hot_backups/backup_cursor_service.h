@@ -37,6 +37,7 @@
 #include "mongo/db/storage/backup_cursor_hooks.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/util/concurrency/with_lock.h"
+#include "mongo/util/uuid.h"
 
 namespace mongo {
 
@@ -82,7 +83,7 @@ public:
      * This method will uassert if `_state` is not `kInactive`. Otherwise, the method forwards to
      * `StorageEngine::beginNonBlockingBackup`.
      *
-     * Returns a BackupCursorState. The structure's `cursorId` must be passed to
+     * Returns a BackupCursorState. The structure's `backupId` must be passed to
      * `closeBackupCursor` to successfully exit this backup mode. `filenames` is a list of files
      * relative to the server's `dbpath` that must be copied by the application to complete a
      * backup.
@@ -90,15 +91,15 @@ public:
     BackupCursorState openBackupCursor(OperationContext* opCtx) override;
 
     /**
-     * This method will uassert if `_state` is not `kBackupCursorOpened`, or the `cursorId` input
-     * is not the active backup cursor open known to `_openCursor`.
+     * This method will uassert if `_state` is not `kBackupCursorOpened`, or the `backupId` input
+     * is not the active backup cursor open known to `_activeBackupId`.
      */
-    void closeBackupCursor(OperationContext* opCtx, std::uint64_t cursorId) override;
+    void closeBackupCursor(OperationContext* opCtx, UUID backupId) override;
 
     bool isBackupCursorOpen() const override;
 
 private:
-    void _closeBackupCursor(OperationContext* opCtx, std::uint64_t cursorId, WithLock);
+    void _closeBackupCursor(OperationContext* opCtx, UUID backupId, WithLock);
 
     StorageEngine* _storageEngine;
 
@@ -107,13 +108,9 @@ private:
     // This mutex serializes all access into this class.
     mutable stdx::mutex _mutex;
     State _state = kInactive;
-    // When state is `kBackupCursorOpened`, _openCursor contains the cursorId of the active backup
-    // cursor. Otherwise it is boost::none.
-    boost::optional<std::uint64_t> _openCursor = boost::none;
-    // _cursorIdGenerator is incremented and returned each time a new backup cursor is
-    // opened. While `fsyncLock`ing a system does open a WT backup cursor, the terminology keeps
-    // the two separate here.
-    std::uint64_t _cursorIdGenerator = 0;
+    // When state is `kBackupCursorOpened`, _activeBackupId contains an UUID which uniquely
+    // identifies the active backup cursor. Otherwise it is boost::none.
+    boost::optional<UUID> _activeBackupId = boost::none;
 };
 
 }  // namespace mongo

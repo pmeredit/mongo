@@ -118,13 +118,13 @@ BackupCursorState BackupCursorService::openBackupCursor(OperationContext* opCtx)
 
     auto filesToBackup = uassertStatusOK(_storageEngine->beginNonBlockingBackup(opCtx));
     _state = kBackupCursorOpened;
-    _openCursor = ++_cursorIdGenerator;
-    log() << "Opened backup cursor. ID: " << _openCursor.get();
+    _activeBackupId = UUID::gen();
+    log() << "Opened backup cursor. ID: " << *_activeBackupId;
 
     // A backup cursor is open. Any exception code path must leave the BackupCursorService in an
     // inactive state.
     auto closeCursorGuard =
-        MakeGuard([this, opCtx, &lk] { _closeBackupCursor(opCtx, _openCursor.get(), lk); });
+        MakeGuard([this, opCtx, &lk] { _closeBackupCursor(opCtx, *_activeBackupId, lk); });
 
     uassert(50919,
             "Failpoint hit after opening the backup cursor.",
@@ -168,6 +168,7 @@ BackupCursorState BackupCursorService::openBackupCursor(OperationContext* opCtx)
     }
 
     BSONObjBuilder builder;
+    builder << "backupId" << *_activeBackupId;
     builder << "dbpath" << storageGlobalParams.dbpath;
     if (!oplogStart.isNull()) {
         builder << "oplogStart" << oplogStart.toBSON();
@@ -182,12 +183,12 @@ BackupCursorState BackupCursorService::openBackupCursor(OperationContext* opCtx)
     Document preamble{{"metadata", builder.obj()}};
 
     closeCursorGuard.Dismiss();
-    return {_openCursor.get(), preamble, filesToBackup};
+    return {*_activeBackupId, preamble, filesToBackup};
 }
 
-void BackupCursorService::closeBackupCursor(OperationContext* opCtx, std::uint64_t cursorId) {
+void BackupCursorService::closeBackupCursor(OperationContext* opCtx, UUID backupId) {
     stdx::lock_guard<stdx::mutex> lk(_mutex);
-    _closeBackupCursor(opCtx, cursorId, lk);
+    _closeBackupCursor(opCtx, backupId, lk);
 }
 
 bool BackupCursorService::isBackupCursorOpen() const {
@@ -195,22 +196,20 @@ bool BackupCursorService::isBackupCursorOpen() const {
     return _state == State::kBackupCursorOpened;
 }
 
-void BackupCursorService::_closeBackupCursor(OperationContext* opCtx,
-                                             std::uint64_t cursorId,
-                                             WithLock) {
+void BackupCursorService::_closeBackupCursor(OperationContext* opCtx, UUID backupId, WithLock) {
     uassert(50880, "There is no backup cursor to close.", _state == kBackupCursorOpened);
     uassert(50879,
-            str::stream() << "Can only close the running backup cursor. To close: " << cursorId
+            str::stream() << "Can only close the running backup cursor. To close: " << backupId
                           << " Running: "
-                          << _openCursor.get(),
-            cursorId == _openCursor.get());
+                          << *_activeBackupId,
+            backupId == *_activeBackupId);
     _storageEngine->endNonBlockingBackup(opCtx);
     auto encHooks = EncryptionHooks::get(opCtx->getServiceContext());
     if (encHooks->enabled()) {
         fassert(50934, encHooks->endNonBlockingBackup());
     }
-    log() << "Closed backup cursor. ID: " << cursorId;
+    log() << "Closed backup cursor. ID: " << backupId;
     _state = kInactive;
-    _openCursor = boost::none;
+    _activeBackupId = boost::none;
 }
 }  // namespace mongo

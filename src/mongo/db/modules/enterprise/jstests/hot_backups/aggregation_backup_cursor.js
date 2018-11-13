@@ -107,10 +107,12 @@
     assert(metadataDocEnvelope.hasOwnProperty("metadata"));
 
     let metadataDoc = metadataDocEnvelope["metadata"];
+    let backupId = metadataDoc["backupId"];
     let oplogStart = metadataDoc["oplogStart"];
     let oplogEnd = metadataDoc["oplogEnd"];
     let checkpointTimestamp = metadataDoc["checkpointTimestamp"];
 
+    assert(backupId);
     // When replication is run, there will always be an oplog with a start/end.
     assert(oplogStart);
     assert(oplogEnd);
