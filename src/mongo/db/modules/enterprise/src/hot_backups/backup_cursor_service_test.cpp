@@ -161,5 +161,26 @@ TEST_F(BackupCursorServiceTest, TestMixingFsyncAndCursors) {
     _backupCursorService->closeBackupCursor(_opCtx.get(), backupCursorState.backupId);
 }
 
+TEST_F(BackupCursorServiceTest, TestSuccessfulExtend) {
+    auto backupCursorState = _backupCursorService->openBackupCursor(_opCtx.get());
+    auto backupId = backupCursorState.backupId;
+    auto extendTo = Timestamp(100, 1);
+    auto backupCursorExtendState =
+        _backupCursorService->extendBackupCursor(_opCtx.get(), backupId, extendTo);
+    _backupCursorService->closeBackupCursor(_opCtx.get(), backupId);
+}
+
+TEST_F(BackupCursorServiceTest, TestExtendNonExistentBackupCursor) {
+    auto backupId = UUID::gen();
+    auto extendTo = Timestamp(100, 1);
+    ASSERT_THROWS_WITH_CHECK(
+        _backupCursorService->extendBackupCursor(_opCtx.get(), backupId, extendTo),
+        DBException,
+        [](const DBException& exc) {
+            ASSERT_STRING_CONTAINS(exc.what(),
+                                   "Cannot extend backup cursor, backupId was not found.");
+        });
+}
+
 }  // namespace
 }  // namespace mongo

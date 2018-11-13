@@ -94,12 +94,22 @@ public:
      * This method will uassert if `_state` is not `kBackupCursorOpened`, or the `backupId` input
      * is not the active backup cursor open known to `_activeBackupId`.
      */
-    void closeBackupCursor(OperationContext* opCtx, UUID backupId) override;
+    void closeBackupCursor(OperationContext* opCtx, const UUID& backupId) override;
+
+    /**
+     * Returns a list of journal files covering a timeframe between the timestamp backed up by
+     * 'backupId' and the provided 'extendTo' timestamp.
+     *
+     * This method will uassert if a backup cursor is not currently open associated with 'backupId'.
+     */
+    BackupCursorExtendState extendBackupCursor(OperationContext* opCtx,
+                                               const UUID& backupId,
+                                               const Timestamp& extendTo) override;
 
     bool isBackupCursorOpen() const override;
 
 private:
-    void _closeBackupCursor(OperationContext* opCtx, UUID backupId, WithLock);
+    void _closeBackupCursor(OperationContext* opCtx, const UUID& backupId, WithLock);
 
     StorageEngine* _storageEngine;
 

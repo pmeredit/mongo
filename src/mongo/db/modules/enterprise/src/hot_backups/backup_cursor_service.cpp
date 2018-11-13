@@ -186,9 +186,21 @@ BackupCursorState BackupCursorService::openBackupCursor(OperationContext* opCtx)
     return {*_activeBackupId, preamble, filesToBackup};
 }
 
-void BackupCursorService::closeBackupCursor(OperationContext* opCtx, UUID backupId) {
+void BackupCursorService::closeBackupCursor(OperationContext* opCtx, const UUID& backupId) {
     stdx::lock_guard<stdx::mutex> lk(_mutex);
     _closeBackupCursor(opCtx, backupId, lk);
+}
+
+BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext* opCtx,
+                                                                const UUID& backupId,
+                                                                const Timestamp& extendTo) {
+    stdx::lock_guard<stdx::mutex> lk(_mutex);
+    uassert(51011,
+            str::stream() << "Cannot extend backup cursor, backupId was not found. BackupId: "
+                          << backupId,
+            _activeBackupId == backupId);
+    log() << "Extending backup cursor. backupId: " << backupId << " extendingTo: " << extendTo;
+    return BackupCursorExtendState{{"dummy.journal"}};
 }
 
 bool BackupCursorService::isBackupCursorOpen() const {
@@ -196,7 +208,9 @@ bool BackupCursorService::isBackupCursorOpen() const {
     return _state == State::kBackupCursorOpened;
 }
 
-void BackupCursorService::_closeBackupCursor(OperationContext* opCtx, UUID backupId, WithLock) {
+void BackupCursorService::_closeBackupCursor(OperationContext* opCtx,
+                                             const UUID& backupId,
+                                             WithLock) {
     uassert(50880, "There is no backup cursor to close.", _state == kBackupCursorOpened);
     uassert(50879,
             str::stream() << "Can only close the running backup cursor. To close: " << backupId
