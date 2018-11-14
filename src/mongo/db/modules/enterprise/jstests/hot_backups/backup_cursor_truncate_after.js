@@ -11,7 +11,10 @@
  * writes. Those are then used that to assert exactly whether data should or should not exist in
  * the backed up data when restored to a specific time.
  *
- * @tags: [requires_persistence, requires_replication, requires_wiredtiger]
+ * TODO SERVER-37897: This test should no longer require majority read concern once mongod sets a
+ * stable timestamp when majority read concern is disabled.
+ * @tags: [requires_persistence, requires_replication, requires_wiredtiger,
+ * requires_majority_read_concern]
  */
 (function() {
     "use strict";
