@@ -36,6 +36,7 @@
 #include "mongo/db/dbhelpers.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/repl/oplog_entry.h"
+#include "mongo/db/repl/read_concern_args.h"
 #include "mongo/db/repl/replication_coordinator.h"
 #include "mongo/db/repl/storage_interface.h"
 #include "mongo/db/service_context.h"
@@ -199,7 +200,31 @@ BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext
             str::stream() << "Cannot extend backup cursor, backupId was not found. BackupId: "
                           << backupId,
             _activeBackupId == backupId);
+
+    repl::ReplicationCoordinator* const replCoord = repl::ReplicationCoordinator::get(opCtx);
+    uassert(51016,
+            "Cannot extend backup cursor without replication enabled",
+            replCoord->isReplEnabled());
+
+    auto& readConcernArgs = repl::ReadConcernArgs::get(opCtx);
+    {
+        // We must obtain the client lock to set the ReadConcernArgs on the operation
+        // context as it may be concurrently read by CurrentOp.
+        stdx::lock_guard<Client> lk(*opCtx->getClient());
+        readConcernArgs = repl::ReadConcernArgs(LogicalTime(extendTo),
+                                                repl::ReadConcernLevel::kMajorityReadConcern);
+    }
+
+    // This waiting can block for an arbitrarily long time. Clients making an `$backupCursorExtend`
+    // call are recommended to pass in a `maxTimeMS`, which is obeyed in this waiting logic.
+    uassertStatusOK(replCoord->waitUntilOpTimeForRead(opCtx, readConcernArgs));
+
+    // Force a journal flush because having opTime `extendTo` available for read does not
+    // guarantee the persistency of the oplog with timestamp `extendTo`.
+    opCtx->recoveryUnit()->waitUntilDurable();
+
     log() << "Extending backup cursor. backupId: " << backupId << " extendingTo: " << extendTo;
+
     return BackupCursorExtendState{{"dummy.journal"}};
 }
 

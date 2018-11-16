@@ -97,8 +97,10 @@ public:
     void closeBackupCursor(OperationContext* opCtx, const UUID& backupId) override;
 
     /**
-     * Returns a list of journal files covering a timeframe between the timestamp backed up by
-     * 'backupId' and the provided 'extendTo' timestamp.
+     * Blocks until oplog with `extendTo` is majority committed and persistent, and returns a list
+     * of journal files covering a timeframe between the timestamp backed up by 'backupId' and the
+     * provided 'extendTo' timestamp. This function may block for an arbitrarily long time so
+     * callers should be responsible for setting timeout to interrupt the operation if needed.
      *
      * This method will uassert if a backup cursor is not currently open associated with 'backupId'.
      */

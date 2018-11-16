@@ -1,12 +1,33 @@
 /**
  * Test the basic operation of a `$backupCursorExtend` aggregation stage.
- * @tags: [requires_persistence, requires_wiredtiger]
+ * @tags: [requires_persistence, requires_wiredtiger, requires_journaling]
  */
 (function() {
     "use strict";
 
-    let conn = MongoRunner.runMongod();
-    let db = conn.getDB("test");
+    const backupIdNotExist = UUID();
+    const binData = BinData(0, "AAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+    const extendTo = Timestamp(100, 1);
+    const nullTimestamp = Timestamp();
+
+    (function assertBackupCursorExtendOnlyWorksInReplSetMode() {
+        const conn = MongoRunner.runMongod();
+        const db = conn.getDB("test");
+        const aggBackupCursor = db.aggregate([{$backupCursor: {}}]);
+        const backupId = aggBackupCursor.next().metadata.backupId;
+        assert.commandFailedWithCode(db.runCommand({
+            aggregate: 1,
+            pipeline: [{$backupCursorExtend: {backupId: backupId, timestamp: extendTo}}],
+            cursor: {}
+        }),
+                                     51016);
+        MongoRunner.stopMongod(conn);
+    })();
+
+    let rst = new ReplSetTest({name: "aggBackupCursor", nodes: 1});
+    rst.startSet();
+    rst.initiate();
+    let db = rst.getPrimary().getDB("test");
 
     function assertFailedToParse(parameters) {
         assert.commandFailedWithCode(
@@ -26,11 +47,6 @@
         assert.commandWorked(db.runCommand(
             {aggregate: 1, pipeline: [{$backupCursorExtend: parameters}], cursor: {}}));
     }
-
-    const backupIdNotExist = UUID();
-    const binData = BinData(0, "AAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-    const extendTo = Timestamp(100, 1);
-    const nullTimestamp = Timestamp();
 
     // 1. Extend without a running backup cursor.
     assertBackupIdNotFound({backupId: backupIdNotExist, timestamp: extendTo});
@@ -57,5 +73,5 @@
 
     // Expected usage is for the tailable $backupCursor to be explicitly killed by the client.
     aggBackupCursor.close();
-    MongoRunner.stopMongod(conn);
+    rst.stopSet();
 })();
