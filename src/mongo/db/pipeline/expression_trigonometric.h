@@ -62,44 +62,37 @@ public:
     explicit ExpressionBoundedTrigonometric(const boost::intrusive_ptr<ExpressionContext>& expCtx)
         : ExpressionSingleNumericArg<BoundedTrigType>(expCtx) {}
 
+
+	template<typename T>
+	void assertBounds(T input, bool assertionResult) const {
+        uassert(50989,
+           str::stream() << "cannot apply " << getOpName() << " to " << input
+                         << ", value must in ["
+                         << getLowerBound()
+                         << ","
+                         << getUpperBound()
+                         << "]", assertionResult);
+	}
+
     Value evaluateInclusive(const Value& numericArg) const {
         BSONType type = numericArg.getType();
         if (type == NumberDouble) {
             auto input = numericArg.getDouble();
-            uassert(50989,
-                    str::stream() << "cannot apply " << getOpName() << " to " << input
-                                  << ", value must in ["
-                                  << getLowerBound()
-                                  << ","
-                                  << getUpperBound()
-                                  << "]",
-                    !((getLowerBound() && input < getLowerBound().get()) ||
-                      (getUpperBound() && input > getUpperBound().get())));
+                    assertBounds(input,
+					  ((!getLowerBound() || input >= getLowerBound().get()) &&
+                       (!getUpperBound() || input <= getUpperBound().get())));
             return Value(doubleFunc(input));
         } else if (type == NumberDecimal) {
             auto input = numericArg.getDecimal();
-            uassert(50990,
-                    str::stream() << "cannot apply " << getOpName() << " to "
-                                  << input.toDouble()
-                                  << ", value must in ["
-                                  << getLowerBound()
-                                  << ","
-                                  << getUpperBound()
-                                  << "]",
-                    !((getLowerBound() && input.isLess(Decimal128(getLowerBound().get()))) ||
-                      (getUpperBound() && input.isGreater(Decimal128(getUpperBound().get())))));
+                //assertBounds(input,
+				//  !((getLowerBound() && input.isLess(Decimal128(getLowerBound().get()))) ||
+                //  (getUpperBound() && input.isGreater(Decimal128(getUpperBound().get())))));
             return Value(decimalFunc(input));
         } else {
-            auto input = numericArg.getLong();
-            uassert(50991,
-                    str::stream() << "cannot apply " << getOpName() << " to " << input
-                                  << ", value must in ["
-                                  << getLowerBound()
-                                  << ","
-                                  << getUpperBound()
-                                  << "]",
-                    !((getLowerBound() && input < getLowerBound().get()) ||
-                      (getUpperBound() && input > getUpperBound().get())));
+            auto input = static_cast<double>(numericArg.getLong());
+                assertBounds(input,
+					  ((!getLowerBound() || input >= getLowerBound().get()) &&
+                       (!getUpperBound() || input <= getUpperBound().get())));
             return Value(doubleFunc(input));
         }
     }
@@ -108,41 +101,21 @@ public:
         BSONType type = numericArg.getType();
         if (type == NumberDouble) {
             auto input = numericArg.getDouble();
-            uassert(50992,
-                    str::stream() << "cannot apply inverse trigonometric function to " << input
-                                  << ", value must in ("
-                                  << getLowerBound()
-                                  << ","
-                                  << getUpperBound()
-                                  << ")",
-                    !((getLowerBound() && input <= getLowerBound().get()) ||
-                      (getUpperBound() && input >= getUpperBound().get())));
+                assertBounds(input,
+					  ((!getLowerBound() || input > getLowerBound().get()) ||
+                       (!getUpperBound() || input < getUpperBound().get())));
             return Value(doubleFunc(input));
         } else if (type == NumberDecimal) {
             auto input = numericArg.getDecimal();
-            uassert(
-                50993,
-                str::stream() << "cannot apply inverse trigonometric function to "
-                              << input.toDouble()
-                              << ", value must in ("
-                              << getLowerBound()
-                              << ","
-                              << getUpperBound()
-                              << ")",
-                !((getLowerBound() && input.isLessEqual(Decimal128(getLowerBound().get()))) ||
-                  (getUpperBound() && input.isGreaterEqual(Decimal128(getUpperBound().get())))));
+               // assertBounds(input,
+               //   !((getLowerBound() && input.isLessEqual(Decimal128(getLowerBound().get()))) ||
+               //   (getUpperBound() && input.isGreaterEqual(Decimal128(getUpperBound().get())))));
             return Value(decimalFunc(input));
         } else {
-            auto input = numericArg.getLong();
-            uassert(50994,
-                    str::stream() << "cannot apply inverse trigonometric function to " << input
-                                  << ", value must in ("
-                                  << getLowerBound()
-                                  << ","
-                                  << getUpperBound()
-                                  << ")",
-                    !((getLowerBound() && input <= getLowerBound().get()) ||
-                      (getUpperBound() && input >= getUpperBound().get())));
+            auto input = static_cast<double>(numericArg.getLong());
+			    assertBounds(input,
+                      ((!getLowerBound() || input > getLowerBound().get()) ||
+                       (!getUpperBound() || input < getUpperBound().get())));
             return Value(doubleFunc(input));
         }
     }
