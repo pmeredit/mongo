@@ -189,7 +189,7 @@ void SaslConversationGssapi::assertConversationFailure() {
         if (!serverResponse.isOK()) {
             break;
         }
-    } while (!client->isDone());
+    } while (!client->isSuccess());
     ASSERT_FALSE(serverResponse.isOK() && clientStatus.isOK());
 }
 
@@ -206,8 +206,8 @@ TEST_F(SaslConversationGssapi, SuccessfulAuthentication) {
         ASSERT_OK(client->step(serverResponse.getValue(), &clientMessage));
         serverResponse = server->step(opCtx.get(), clientMessage);
         ASSERT_OK(serverResponse.getStatus());
-    } while (!client->isDone());
-    ASSERT_TRUE(server->isDone());
+    } while (!client->isSuccess());
+    ASSERT_TRUE(server->isSuccess());
 }
 
 TEST_F(SaslConversationGssapi, NoSuchUser) {

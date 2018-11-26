@@ -46,13 +46,14 @@
          * beginning with the current line.
          */
         assertEntry(atype, param) {
+            let line;
             assert.soon(
                 () => {
                     const log = this.getAllLines().slice(this._auditLine);
                     for (var idx in log) {
                         const entry = log[idx];
                         try {
-                            var line = JSON.parse(entry);
+                            line = JSON.parse(entry);
                         } catch (e) {
                             continue;
                         }
@@ -72,6 +73,9 @@
                     "Search started on line number: " + this._auditLine + "\n" +
                     "Log File Contents\n==============================\n" + this.getAllLines() +
                     "\n==============================\n");
+
+            // Success if we got here, return the matched record.
+            return line;
         }
 
         /**

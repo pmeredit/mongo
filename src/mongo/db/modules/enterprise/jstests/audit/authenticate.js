@@ -14,10 +14,21 @@
     var db = m.getDB("test");
 
     assert.commandWorked(db.runCommand({createUser: "user1", pwd: "pwd", roles: []}));
-    audit.fastForward();
 
+    // Check for positive auditing of authentications.
+    audit.fastForward();
     assert(db.auth({mechanism: authmech, user: "user1", pwd: "pwd"}));
-    audit.assertEntry("authenticate", {user: "user1", db: "test", mechanism: authmech});
+    const success =
+        audit.assertEntry("authenticate", {user: "user1", db: "test", mechanism: authmech});
+    assert.eq(success.result, 0);
+
+    // Check for negative auditing of authentications.
+    audit.fastForward();
+    assert(!db.auth({mechanism: authmech, user: "user1", pwd: "wrong_pwd"}));
+    const failure =
+        audit.assertEntry("authenticate", {user: "user1", db: "test", mechanism: authmech});
+    assert.eq(failure.result, ErrorCodes.AuthenticationFailed);
+
     MongoRunner.stopMongod(m);
     print("SUCCESS audit-authenticate.js");
 })();
