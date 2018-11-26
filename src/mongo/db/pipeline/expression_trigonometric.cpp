@@ -1,29 +1,30 @@
 /**
- * Copyright (c) 2018 MongoDB Inc.
+ *    Copyright (C) 2018-present MongoDB, Inc.
  *
- * This program is free software: you can redistribute it and/or  modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
+ *    This program is free software: you can redistribute it and/or modify
+ *    it under the terms of the Server Side Public License, version 1,
+ *    as published by MongoDB, Inc.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
+ *    This program is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    Server Side Public License for more details.
  *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *    You should have received a copy of the Server Side Public License
+ *    along with this program. If not, see
+ *    <http://www.mongodb.com/licensing/server-side-public-license>.
  *
- * As a special exception, the copyright holders give permission to link the
- * code of portions of this program with the OpenSSL library under certain
- * conditions as described in each individual source file and distribute
- * linked combinations including the program with the OpenSSL library. You
- * must comply with the GNU Affero General Public License in all respects for
- * all of the code used other than as permitted herein. If you modify file(s)
- * with this exception, you may extend this exception to your version of the
- * file(s), but you are not obligated to do so. If you do not wish to do so,
- * delete this exception statement from your version. If you delete this
- * exception statement from all source files in the program, then also delete
- * it in the license file.
+ *    As a special exception, the copyright holders give permission to link the
+ *    code of portions of this program with the OpenSSL library under certain
+ *    conditions as described in each individual source file and distribute
+ *    linked combinations including the program with the OpenSSL library. You
+ *    must comply with the Server Side Public License in all respects for
+ *    all of the code used other than as permitted herein. If you modify file(s)
+ *    with this exception, you may extend this exception to your version of the
+ *    file(s), but you are not obligated to do so. If you do not wish to do so,
+ *    delete this exception statement from your version. If you delete this
+ *    exception statement from all source files in the program, then also delete
+ *    it in the license file.
  */
 
 #include "expression_trigonometric.h"
@@ -280,7 +281,7 @@ Value ExpressionArcTangent2::evaluateNumericArgs(const Value& numericArg1,
                     case NumberInt:
                         return Decimal128(arg.getInt());
                     default:
-                        uassert(50984, "unreachable", false);
+						MONGO_UNREACHABLE;
                 }
             };
             auto dec1 = getDecimal(type1, numericArg1);
@@ -297,7 +298,7 @@ Value ExpressionArcTangent2::evaluateNumericArgs(const Value& numericArg1,
                     case NumberLong:
                         return static_cast<double>(arg.getLong());
                     default:
-                        uassert(50985, "unreachable", false);
+						MONGO_UNREACHABLE;
                 }
             };
             auto double1 = getDouble(type1, numericArg1);
@@ -305,7 +306,7 @@ Value ExpressionArcTangent2::evaluateNumericArgs(const Value& numericArg1,
             return Value(std::atan2(double1, double2));
         }
         default:
-            uassert(50986, "unreachable", false);
+			MONGO_UNREACHABLE;
     }
 }
 
@@ -315,40 +316,31 @@ const char* ExpressionArcTangent2::getOpName() const {
 }
 
 
-/* ----------------------- ExpressionDegreesToRadians and ExpressionRadiansToDegrees
- * ---------------------------- */
+/* ----------------------- ExpressionDegreesToRadians and ExpressionRadiansToDegrees ---- */
+static const Decimal128 DECIMAL_180 = Decimal128("180");
 static const Decimal128 DECIMAL_PI =
     Decimal128("3.14159265358979323846264338327950288419716939937510");
-static const Decimal128 DECIMAL_180 = Decimal128("180");
-static const double DOUBLE_PI = 3.141592653589793;
+static const Decimal128 DECIMAL_PI_OVER_180 = DECIMAL_PI.divide(DECIMAL_180);
+static const Decimal128 DECIMAL_180_OVER_PI = DECIMAL_180.divide(DECIMAL_PI);
+static constexpr double DOUBLE_PI = 3.141592653589793;
+static constexpr double DOUBLE_PI_OVER_180 = DOUBLE_PI/180.0;
+static constexpr double DOUBLE_180_OVER_PI = 180.0/DOUBLE_PI;
 
 struct DegreesToRadians {
-    Decimal128 decimalNumerator() {
-        return DECIMAL_PI;
+    Decimal128 decimalFactor() {
+        return DECIMAL_PI_OVER_180;
     }
-    Decimal128 decimalDenominator() {
-        return DECIMAL_180;
-    }
-    double doubleNumerator() {
-        return DOUBLE_PI;
-    }
-    double doubleDenominator() {
-        return 180.0;
+    double doubleFactor() {
+        return DOUBLE_PI_OVER_180;
     }
 };
 
 struct RadiansToDegrees {
-    Decimal128 decimalNumerator() {
-        return DECIMAL_180;
+    Decimal128 decimalFactor() {
+        return DECIMAL_180_OVER_PI;
     }
-    Decimal128 decimalDenominator() {
-        return DECIMAL_PI;
-    }
-    double doubleNumerator() {
-        return 180.0;
-    }
-    double doubleDenominator() {
-        return DOUBLE_PI;
+    double doubleFactor() {
+        return DOUBLE_180_OVER_PI;
     }
 };
 
@@ -357,16 +349,13 @@ static Value doDegreeRadiansConversion(const Value& numericArg) {
     ConversionValues c;
     BSONType type = numericArg.getType();
     if (type == NumberDouble) {
-        return Value(numericArg.getDouble() * c.doubleNumerator() / c.doubleDenominator());
+        return Value(numericArg.getDouble() * c.doubleFactor());
     } else if (type == NumberDecimal) {
         return Value(
-            numericArg.getDecimal().multiply(c.decimalNumerator()).divide(c.decimalDenominator()));
+            numericArg.getDecimal().multiply(c.decimalFactor()));
     } else {
-        long long num = numericArg.getLong();
-        uassert(50987,
-                "cannot degree/radians convert long long min",
-                num != std::numeric_limits<long long>::min());
-        auto degreesVal = num * c.doubleNumerator() / c.doubleDenominator();
+        auto num = static_cast<double>(numericArg.getLong());
+        auto degreesVal = num * c.doubleFactor();
         return Value(degreesVal);
     }
 }
