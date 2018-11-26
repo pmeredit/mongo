@@ -137,8 +137,10 @@ env.Library('audit_configuration',
             LIBDEPS_PRIVATE=[
                 '$BUILD_DIR/mongo/util/options_parser/options_parser',
             ],
-            LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongodmain'],
-            PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongos'])
+            PROGDEPS_DEPENDENTS=[
+                '$BUILD_DIR/mongo/mongod',
+                '$BUILD_DIR/mongo/mongos',
+            ])
 
 if not env.TargetOSIs("darwin"):
     env.Library('mongosnmp',
@@ -161,7 +163,7 @@ if not env.TargetOSIs("darwin"):
                 LIBDEPS_PRIVATE=[
                     '$BUILD_DIR/mongo/util/options_parser/options_parser',
                 ],
-                LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongodmain'],
+                PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongod'],
                 SYSLIBDEPS=env.get('SNMP_SYSLIBDEPS', []),
     )
 
@@ -181,8 +183,10 @@ env.Library('mongosaslserversession',
 env.Library('auth_delay',
             'src/sasl/auth_delay.cpp',
             LIBDEPS=['$BUILD_DIR/mongo/db/auth/sasl_options'],
-            LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongodmain'],
-            PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongos'],
+            PROGDEPS_DEPENDENTS=[
+                '$BUILD_DIR/mongo/mongod',
+                '$BUILD_DIR/mongo/mongos',
+            ],
 )
 
 env.Library('mongosaslservercommon',
@@ -193,8 +197,10 @@ env.Library('mongosaslservercommon',
             LIBDEPS=['src/ldap/ldap_manager',
                      'src/ldap/ldap_name_map',
                      'mongosaslserversession'],
-            LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongodmain'],
-            PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongos'],
+            PROGDEPS_DEPENDENTS=[
+                '$BUILD_DIR/mongo/mongod',
+                '$BUILD_DIR/mongo/mongos',
+            ],
 )
 
 if env.TargetOSIs("windows"):
