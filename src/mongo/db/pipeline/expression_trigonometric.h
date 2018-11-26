@@ -74,6 +74,26 @@ public:
                          << "]", assertionResult);
 	}
 
+	bool checkLowerBound(double input) const {
+		if (!getLowerBound()) {
+			return true;
+		}
+		if (isInclusive()) {
+			return input >= getLowerBound().get();
+		}
+		return input > getLowerBound().get();
+	}
+
+	bool checkUpperBound(Decimal128 input) const {
+		if (!getLowerBound()) {
+			return true;
+		}
+		if (isInclusive()) {
+			return input.isGreaterEqual(Decimal128(getLowerBound().get()));
+		}
+		return input.isGreater(Decimal128(getLowerBound().get()));
+	}
+
     Value evaluateInclusive(const Value& numericArg) const {
         BSONType type = numericArg.getType();
         if (type == NumberDouble) {
@@ -84,13 +104,15 @@ public:
             return Value(doubleFunc(input));
         } else if (type == NumberDecimal) {
             auto input = numericArg.getDecimal();
-                //assertBounds(input,
-				//  !((getLowerBound() && input.isLess(Decimal128(getLowerBound().get()))) ||
-                //  (getUpperBound() && input.isGreater(Decimal128(getUpperBound().get())))));
+			        // toString is necessary because operator<< cannot work on
+					// str::stream and Decimal128 through a templated function.
+                    assertBounds(input.toString(),
+				      ((!getLowerBound() || input.isGreaterEqual(Decimal128(getLowerBound().get()))) ||
+                       (!getUpperBound() || input.isLessEqual(Decimal128(getUpperBound().get())))));
             return Value(decimalFunc(input));
         } else {
             auto input = static_cast<double>(numericArg.getLong());
-                assertBounds(input,
+                    assertBounds(input,
 					  ((!getLowerBound() || input >= getLowerBound().get()) &&
                        (!getUpperBound() || input <= getUpperBound().get())));
             return Value(doubleFunc(input));
@@ -107,9 +129,11 @@ public:
             return Value(doubleFunc(input));
         } else if (type == NumberDecimal) {
             auto input = numericArg.getDecimal();
-               // assertBounds(input,
-               //   !((getLowerBound() && input.isLessEqual(Decimal128(getLowerBound().get()))) ||
-               //   (getUpperBound() && input.isGreaterEqual(Decimal128(getUpperBound().get())))));
+			        // toString is necessary because operator<< cannot work on
+					// str::stream and Decimal128 through a templated function.
+                    assertBounds(input.toString(),
+				      ((!getLowerBound() || input.isGreater(Decimal128(getLowerBound().get()))) ||
+                       (!getUpperBound() || input.isLess(Decimal128(getUpperBound().get())))));
             return Value(decimalFunc(input));
         } else {
             auto input = static_cast<double>(numericArg.getLong());
