@@ -6,7 +6,8 @@
  * @tags: [requires_sharding,
  *         requires_wiredtiger,
  *         requires_journaling,
- *         requires_persistence]
+ *         requires_persistence,
+ *         requires_majority_read_concern]
  */
 (function() {
     "use strict";

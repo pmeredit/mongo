@@ -1,6 +1,9 @@
 /**
  * Test the basic operation of a `$backupCursorExtend` aggregation stage.
- * @tags: [requires_persistence, requires_wiredtiger, requires_journaling]
+ * @tags: [requires_wiredtiger,
+ *         requires_journaling,
+ *         requires_persistence,
+ *         requires_majority_read_concern]
  */
 (function() {
     "use strict";
