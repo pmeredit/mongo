@@ -40,10 +40,6 @@ Decimal128 ExpressionArcCosine::decimalFunc(Decimal128 arg) const {
     return arg.acos();
 }
 
-bool ExpressionArcCosine::isInclusive() const {
-    return true;
-}
-
 boost::optional<double> ExpressionArcCosine::getUpperBound() const {
     return boost::optional<double>(1.0);
 }
@@ -64,10 +60,6 @@ double ExpressionArcSine::doubleFunc(double arg) const {
 
 Decimal128 ExpressionArcSine::decimalFunc(Decimal128 arg) const {
     return arg.asin();
-}
-
-bool ExpressionArcSine::isInclusive() const {
-    return true;
 }
 
 boost::optional<double> ExpressionArcSine::getUpperBound() const {
@@ -108,10 +100,6 @@ Decimal128 ExpressionHyperbolicArcCosine::decimalFunc(Decimal128 arg) const {
     return arg.acosh();
 }
 
-bool ExpressionHyperbolicArcCosine::isInclusive() const {
-    return true;
-}
-
 boost::optional<double> ExpressionHyperbolicArcCosine::getUpperBound() const {
     return boost::none;
 }
@@ -148,10 +136,6 @@ double ExpressionHyperbolicArcTangent::doubleFunc(double arg) const {
 
 Decimal128 ExpressionHyperbolicArcTangent::decimalFunc(Decimal128 arg) const {
     return arg.atanh();
-}
-
-bool ExpressionHyperbolicArcTangent::isInclusive() const {
-    return false;
 }
 
 boost::optional<double> ExpressionHyperbolicArcTangent::getUpperBound() const {
