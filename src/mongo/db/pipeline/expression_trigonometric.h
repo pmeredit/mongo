@@ -62,96 +62,63 @@ public:
     explicit ExpressionBoundedTrigonometric(const boost::intrusive_ptr<ExpressionContext>& expCtx)
         : ExpressionSingleNumericArg<BoundedTrigType>(expCtx) {}
 
+	bool checkLowerBound(double input) const {
+		return !getLowerBound() || input >= getLowerBound().get();
+	}
+
+	bool checkLowerBound(Decimal128 input) const {
+		return !getLowerBound() || input.isGreaterEqual(Decimal128(getLowerBound().get()));
+	}
+
+	bool checkUpperBound(double input) const {
+		return !getUpperBound() || input <= getUpperBound().get();
+	}
+
+	bool checkUpperBound(Decimal128 input) const {
+		return !getUpperBound() || input.isLessEqual(Decimal128(getUpperBound().get()));
+	}
+
+	std::string toString(double d) const {
+		return str::stream() << d;
+	}
+
+	std::string toString(Decimal128 d) const {
+		return d.toString();
+	}
 
 	template<typename T>
-	void assertBounds(T input, bool assertionResult) const {
+	bool checkBounds(T input) const {
+		return checkLowerBound(input) && checkUpperBound(input);
+	}
+
+	template<typename T>
+	void assertBounds(T input) const {
         uassert(50989,
-           str::stream() << "cannot apply " << getOpName() << " to " << input
+           str::stream() << "cannot apply " << getOpName() << " to " << toString(input)
                          << ", value must in ["
                          << getLowerBound()
                          << ","
                          << getUpperBound()
-                         << "]", assertionResult);
+                         << "]", checkBounds(input));
 	}
 
-	bool checkLowerBound(double input) const {
-		if (!getLowerBound()) {
-			return true;
-		}
-		if (isInclusive()) {
-			return input >= getLowerBound().get();
-		}
-		return input > getLowerBound().get();
-	}
-
-	bool checkUpperBound(Decimal128 input) const {
-		if (!getLowerBound()) {
-			return true;
-		}
-		if (isInclusive()) {
-			return input.isGreaterEqual(Decimal128(getLowerBound().get()));
-		}
-		return input.isGreater(Decimal128(getLowerBound().get()));
-	}
-
-    Value evaluateInclusive(const Value& numericArg) const {
+    Value evaluateNumericArg(const Value& numericArg) const {
         BSONType type = numericArg.getType();
         if (type == NumberDouble) {
             auto input = numericArg.getDouble();
-                    assertBounds(input,
-					  ((!getLowerBound() || input >= getLowerBound().get()) &&
-                       (!getUpperBound() || input <= getUpperBound().get())));
+            assertBounds(input);
             return Value(doubleFunc(input));
         } else if (type == NumberDecimal) {
             auto input = numericArg.getDecimal();
-			        // toString is necessary because operator<< cannot work on
-					// str::stream and Decimal128 through a templated function.
-                    assertBounds(input.toString(),
-				      ((!getLowerBound() || input.isGreaterEqual(Decimal128(getLowerBound().get()))) ||
-                       (!getUpperBound() || input.isLessEqual(Decimal128(getUpperBound().get())))));
+            assertBounds(input);
             return Value(decimalFunc(input));
         } else {
             auto input = static_cast<double>(numericArg.getLong());
-                    assertBounds(input,
-					  ((!getLowerBound() || input >= getLowerBound().get()) &&
-                       (!getUpperBound() || input <= getUpperBound().get())));
+            assertBounds(input);
             return Value(doubleFunc(input));
         }
     }
 
-    Value evaluateNonInclusive(const Value& numericArg) const {
-        BSONType type = numericArg.getType();
-        if (type == NumberDouble) {
-            auto input = numericArg.getDouble();
-                assertBounds(input,
-					  ((!getLowerBound() || input > getLowerBound().get()) ||
-                       (!getUpperBound() || input < getUpperBound().get())));
-            return Value(doubleFunc(input));
-        } else if (type == NumberDecimal) {
-            auto input = numericArg.getDecimal();
-			        // toString is necessary because operator<< cannot work on
-					// str::stream and Decimal128 through a templated function.
-                    assertBounds(input.toString(),
-				      ((!getLowerBound() || input.isGreater(Decimal128(getLowerBound().get()))) ||
-                       (!getUpperBound() || input.isLess(Decimal128(getUpperBound().get())))));
-            return Value(decimalFunc(input));
-        } else {
-            auto input = static_cast<double>(numericArg.getLong());
-			    assertBounds(input,
-                      ((!getLowerBound() || input > getLowerBound().get()) ||
-                       (!getUpperBound() || input < getUpperBound().get())));
-            return Value(doubleFunc(input));
-        }
-    }
-
-    Value evaluateNumericArg(const Value& numericArg) const override {
-        if (isInclusive()) {
-            return evaluateInclusive(numericArg);
-        }
-        return evaluateNonInclusive(numericArg);
-    }
-
-    virtual bool isInclusive() const = 0;
     virtual boost::optional<double> getLowerBound() const = 0;
     virtual boost::optional<double> getUpperBound() const = 0;
     virtual double doubleFunc(double x) const = 0;
@@ -164,7 +131,6 @@ public:
     explicit ExpressionArcCosine(const boost::intrusive_ptr<ExpressionContext>& expCtx)
         : ExpressionBoundedTrigonometric(expCtx) {}
 
-    virtual bool isInclusive() const final;
     boost::optional<double> getLowerBound() const final;
     boost::optional<double> getUpperBound() const final;
     double doubleFunc(double x) const final;
@@ -178,7 +144,6 @@ public:
     explicit ExpressionArcSine(const boost::intrusive_ptr<ExpressionContext>& expCtx)
         : ExpressionBoundedTrigonometric(expCtx) {}
 
-    virtual bool isInclusive() const final;
     boost::optional<double> getLowerBound() const final;
     boost::optional<double> getUpperBound() const final;
     double doubleFunc(double x) const final;
@@ -204,7 +169,6 @@ public:
     explicit ExpressionHyperbolicArcCosine(const boost::intrusive_ptr<ExpressionContext>& expCtx)
         : ExpressionBoundedTrigonometric(expCtx) {}
 
-    virtual bool isInclusive() const final;
     boost::optional<double> getLowerBound() const final;
     boost::optional<double> getUpperBound() const final;
     double doubleFunc(double x) const final;
@@ -231,7 +195,6 @@ public:
     explicit ExpressionHyperbolicArcTangent(const boost::intrusive_ptr<ExpressionContext>& expCtx)
         : ExpressionBoundedTrigonometric(expCtx) {}
 
-    virtual bool isInclusive() const final;
     boost::optional<double> getLowerBound() const final;
     boost::optional<double> getUpperBound() const final;
     double doubleFunc(double x) const final;
