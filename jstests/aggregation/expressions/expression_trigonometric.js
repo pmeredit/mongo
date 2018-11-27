@@ -52,6 +52,8 @@ load("jstests/aggregation/extras/utils.js");
     testOpApprox({$acosh: NumberDecimal(1)}, NumberDecimal(0));
     testOpApprox({$asinh: NumberDecimal(0)}, NumberDecimal(0));
     testOpApprox({$atanh: NumberDecimal(0)}, NumberDecimal(0));
+    testOpApprox({$atanh: NumberDecimal(1)}, NumberDecimal('Infinity'));
+    testOpApprox({$atanh: NumberDecimal(-1)}, NumberDecimal('-Infinity'));
 
     // Simple successful long input.
     testOpApprox({$cos: NumberLong(0)}, 1);
@@ -74,26 +76,24 @@ load("jstests/aggregation/extras/utils.js");
     assertErrorCode(coll, [{$project: {a: {$asin: -1.1}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$asin: 1.1}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$acosh: 0.9}}}], 50989);
-    assertErrorCode(coll, [{$project: {a: {$atanh: -1.0}}}], 50992);
-    assertErrorCode(coll, [{$project: {a: {$atanh: 1.0}}}], 50992);
+    assertErrorCode(coll, [{$project: {a: {$atanh: -1.00001}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$atanh: 1.00001}}}], 50989);
 
     // Decimal argument out of bounds.
-    assertErrorCode(coll, [{$project: {a: {$acos: NumberDecimal(-1.1)}}}], 50990);
-    assertErrorCode(coll, [{$project: {a: {$acos: NumberDecimal(1.1)}}}], 50990);
-    assertErrorCode(coll, [{$project: {a: {$asin: NumberDecimal(-1.1)}}}], 50990);
-    assertErrorCode(coll, [{$project: {a: {$asin: NumberDecimal(1.1)}}}], 50990);
-    assertErrorCode(coll, [{$project: {a: {$acosh: NumberDecimal(0.9)}}}], 50990);
-    assertErrorCode(coll, [{$project: {a: {$atanh: NumberDecimal(-1.0)}}}], 50993);
-    assertErrorCode(coll, [{$project: {a: {$atanh: NumberDecimal(1.0)}}}], 50993);
+    assertErrorCode(coll, [{$project: {a: {$acos: NumberDecimal(-1.1)}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$acos: NumberDecimal(1.1)}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$asin: NumberDecimal(-1.1)}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$asin: NumberDecimal(1.1)}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$acosh: NumberDecimal(0.9)}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$atanh: NumberDecimal(-1.00001)}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$atanh: NumberDecimal(1.000001)}}}], 50989);
 
     // Long argument out of bounds.
-    assertErrorCode(coll, [{$project: {a: {$acos: NumberLong(-2)}}}], 50991);
-    assertErrorCode(coll, [{$project: {a: {$acos: NumberLong(2)}}}], 50991);
-    assertErrorCode(coll, [{$project: {a: {$asin: NumberLong(-2)}}}], 50991);
-    assertErrorCode(coll, [{$project: {a: {$asin: NumberLong(2)}}}], 50991);
-    assertErrorCode(coll, [{$project: {a: {$acosh: NumberLong(0)}}}], 50991);
-    assertErrorCode(coll, [{$project: {a: {$atanh: NumberLong(-1)}}}], 50994);
-    assertErrorCode(coll, [{$project: {a: {$atanh: NumberLong(1)}}}], 50994);
+    assertErrorCode(coll, [{$project: {a: {$acos: NumberLong(-2)}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$acos: NumberLong(2)}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$asin: NumberLong(-2)}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$asin: NumberLong(2)}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$acosh: NumberLong(0)}}}], 50989);
 
     // Non-numeric input.
     assertErrorCode(coll, [{$project: {a: {$cos: "string"}}}], 28765);
