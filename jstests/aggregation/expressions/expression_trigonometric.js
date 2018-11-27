@@ -52,8 +52,18 @@ load("jstests/aggregation/extras/utils.js");
     testOpApprox({$acosh: NumberDecimal(1)}, NumberDecimal(0));
     testOpApprox({$asinh: NumberDecimal(0)}, NumberDecimal(0));
     testOpApprox({$atanh: NumberDecimal(0)}, NumberDecimal(0));
+
+
+	// Infinities
+    testOpApprox({$atan2: [NumberDecimal('Infinity'), 0]}, NumberDecimal("1.570796326794896619231321691639751"));
+    testOpApprox({$atan2: [NumberDecimal('-Infinity'), 0]}, NumberDecimal("-1.570796326794896619231321691639751"));
+    testOpApprox({$atan2: [NumberDecimal('-Infinity'), NumberDecimal("Infinity")]}, 
+		NumberDecimal("-0.785398163397448309615660845819876"));
+    testOpApprox({$atan2: [NumberDecimal('-Infinity'), NumberDecimal("-Infinity")]}, 
+		NumberDecimal("-2.356194490192344928846982537459627"));
     testOpApprox({$atanh: NumberDecimal(1)}, NumberDecimal('Infinity'));
     testOpApprox({$atanh: NumberDecimal(-1)}, NumberDecimal('-Infinity'));
+	testOpApprox({$cos: NumberDecimal('Infinity')}, NumberDecimal('Infinity'));
 
     // Simple successful long input.
     testOpApprox({$cos: NumberLong(0)}, 1);

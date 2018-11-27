@@ -93,6 +93,14 @@ public:
 
 	template<typename T>
 	void assertBounds(T input) const {
+		std::string lowerBound;
+		std::string upperBound;
+		if (getLowerBound()) {
+			lowerBound = std()::stream() << getLowerBound().get()
+		}
+		if (getUpperBound()) {
+			upperBound = std()::stream() << getUpperBound().get()
+		}
         uassert(50989,
            str::stream() << "cannot apply " << getOpName() << " to " << toString(input)
                          << ", value must in ["
