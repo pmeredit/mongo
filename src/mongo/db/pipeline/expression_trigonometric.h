@@ -62,53 +62,59 @@ public:
     explicit ExpressionBoundedTrigonometric(const boost::intrusive_ptr<ExpressionContext>& expCtx)
         : ExpressionSingleNumericArg<BoundedTrigType>(expCtx) {}
 
-	bool checkLowerBound(double input) const {
-		return !getLowerBound() || input >= getLowerBound().get();
-	}
+    bool checkLowerBound(double input) const {
+        return !getLowerBound() || input >= getLowerBound().get();
+    }
 
-	bool checkLowerBound(Decimal128 input) const {
-		return !getLowerBound() || input.isGreaterEqual(Decimal128(getLowerBound().get()));
-	}
+    bool checkLowerBound(Decimal128 input) const {
+        return !getLowerBound() || input.isGreaterEqual(Decimal128(getLowerBound().get()));
+    }
 
-	bool checkUpperBound(double input) const {
-		return !getUpperBound() || input <= getUpperBound().get();
-	}
+    bool checkUpperBound(double input) const {
+        return !getUpperBound() || input <= getUpperBound().get();
+    }
 
-	bool checkUpperBound(Decimal128 input) const {
-		return !getUpperBound() || input.isLessEqual(Decimal128(getUpperBound().get()));
-	}
+    bool checkUpperBound(Decimal128 input) const {
+        return !getUpperBound() || input.isLessEqual(Decimal128(getUpperBound().get()));
+    }
 
-	std::string toString(double d) const {
-		return str::stream() << d;
-	}
+    std::string toString(double d) const {
+        return str::stream() << d;
+    }
 
-	std::string toString(Decimal128 d) const {
-		return d.toString();
-	}
+    std::string toString(Decimal128 d) const {
+        return d.toString();
+    }
 
-	template<typename T>
-	bool checkBounds(T input) const {
-		return checkLowerBound(input) && checkUpperBound(input);
-	}
+    template <typename T>
+    bool checkBounds(T input) const {
+        return checkLowerBound(input) && checkUpperBound(input);
+    }
 
-	template<typename T>
-	void assertBounds(T input) const {
-		std::string lowerBound;
-		std::string upperBound;
-		if (getLowerBound()) {
-			lowerBound = std()::stream() << getLowerBound().get()
-		}
-		if (getUpperBound()) {
-			upperBound = std()::stream() << getUpperBound().get()
-		}
-        uassert(50989,
-           str::stream() << "cannot apply " << getOpName() << " to " << toString(input)
-                         << ", value must in ["
-                         << getLowerBound()
-                         << ","
-                         << getUpperBound()
-                         << "]", checkBounds(input));
-	}
+    template <typename T>
+    void assertBounds(T input) const {
+        if (!checkBounds(input)) {
+            std::string lowerBound;
+            std::string upperBound;
+            if (getLowerBound()) {
+                lowerBound = str::stream() << "[" << getLowerBound().get();
+            } else {
+                lowerBound = str::stream() << "(-Infinity";
+            }
+            if (getUpperBound()) {
+                upperBound = str::stream() << getUpperBound().get() << "]";
+            } else {
+                upperBound = str::stream() << "Infinity)";
+            }
+            uassert(50989,
+                    str::stream() << "cannot apply " << getOpName() << " to " << toString(input)
+                                  << ", value must in "
+                                  << lowerBound
+                                  << ","
+                                  << upperBound,
+                    false);
+        }
+    }
 
     Value evaluateNumericArg(const Value& numericArg) const {
         BSONType type = numericArg.getType();
