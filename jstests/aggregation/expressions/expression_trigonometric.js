@@ -133,12 +133,15 @@ load("jstests/aggregation/extras/utils.js");
     // Long argument out of bounds.
     assertErrorCode(coll, [{$project: {a: {$acos: NumberLong(-2)}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$acos: NumberLong(2)}}}], 50989);
-    assertErrorCode(coll, [{$project: {a: {$acos: NumberDecimal('NaN')}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$asin: NumberLong(-2)}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$asin: NumberLong(2)}}}], 50989);
-    assertErrorCode(coll, [{$project: {a: {$asin: NumberDecimal('NaN')}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$acosh: NumberLong(0)}}}], 50989);
+
+	// NaN out of bounds.
+    assertErrorCode(coll, [{$project: {a: {$acos: NumberDecimal('NaN')}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$asin: NumberDecimal('NaN')}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$acosh: NumberDecimal('NaN')}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$atanh: NumberDecimal('NaN')}}}], 50989);
 
     // Non-numeric input.
     assertErrorCode(coll, [{$project: {a: {$cos: "string"}}}], 28765);
