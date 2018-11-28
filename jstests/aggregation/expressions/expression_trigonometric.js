@@ -60,8 +60,10 @@ load("jstests/aggregation/extras/utils.js");
     testOp({$asinh: NumberDecimal('-Infinity')}, NumberDecimal('-Infinity'));
     testOp({$asinh: Infinity}, Infinity);
     testOp({$asinh: -Infinity}, -Infinity);
-    testOp({$atan: NumberDecimal('Infinity')}, NumberDecimal('1.570796326794896619231321691639751'));
-    testOp({$atan: NumberDecimal('-Infinity')}, NumberDecimal('-1.570796326794896619231321691639751'));
+    testOp({$atan: NumberDecimal('Infinity')},
+           NumberDecimal('1.570796326794896619231321691639751'));
+    testOp({$atan: NumberDecimal('-Infinity')},
+           NumberDecimal('-1.570796326794896619231321691639751'));
     testOp({$atan: Infinity}, 1.5707963267948966);
     testOp({$atan: -Infinity}, -1.5707963267948966);
     testOp({$atan2: [NumberDecimal('Infinity'), 0]},
