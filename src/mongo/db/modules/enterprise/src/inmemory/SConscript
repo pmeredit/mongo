@@ -17,7 +17,10 @@ wtEnv.Library(
         'inmemory_init.cpp',
         'inmemory_options_init.cpp',
     ],
-    PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongod'],
+    PROGDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/dbtests/dbtest',
+        '$BUILD_DIR/mongo/mongod'
+    ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger',
         '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core',
