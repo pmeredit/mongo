@@ -4714,13 +4714,20 @@ struct TruncOp {
     }
 };
 
+void assertFlagsValid(uint32_t flags, const std::string& opName,
+		long long numericValue, long long precisionValue) {
+	uassert(50981, str::stream() << "invalid result in " << opName
+	  			   << " resulting from arguments: [" << numericValue
+				   << ", " << precisionValue << "]",
+				   !Decimal128::hasFlag(flags, Decimal128::kInvalid));
+}
+
 template <typename DoubleOp, Decimal128::RoundingMode roundingMode>
 static Value evaluateRoundOrTrunc(const Document& root,
                                   const std::vector<boost::intrusive_ptr<Expression>>& vpOperand,
                                   const std::string& opName) {
-    static const Decimal128 decimalExponentBias(Decimal128::kExponentBias);
-    static const long long negativeExponentBias = -6111LL;
-    static const Decimal128 decimalNegativeExponentBias(static_cast<int64_t>(negativeExponentBias));
+	auto maxPrecision = 100LL;
+	auto minPrecision = -20LL;
     auto numericArg = Value(vpOperand[0]->evaluate(root));
     if (numericArg.nullish()) {
         return Value(BSONNULL);
@@ -4730,8 +4737,8 @@ static Value evaluateRoundOrTrunc(const Document& root,
                           << typeName(numericArg.getType()),
             numericArg.numeric());
     if (vpOperand.size() == 1) {
-        // There's no point to round/trunc integers or longs without precision argument,
-        // it will have no effect.
+		// There's no point to round/trunc integers or longs without precision argument, it will
+		// have no effect.
         switch (numericArg.getType()) {
             case NumberDecimal:
                 return Value(
@@ -4743,119 +4750,75 @@ static Value evaluateRoundOrTrunc(const Document& root,
                 return numericArg;
         }
     }
-    // Else, if precision is specified, round to the specified precision.
+	// Else, if precision is specified, round to the specified precision.
     auto precisionArg = Value(vpOperand[1]->evaluate(root));
     if (precisionArg.nullish()) {
         return Value(BSONNULL);
     }
-    auto precisionValue = 0LL;
-    switch (precisionArg.getType()) {
-        // We need to have special handling for floating point precisionArgs
-        // because coerceToLong returns the same value
-        // (std::numeric_limits<long long>::min()) for both numbers
-        // that are too positive and too negative to fit in a long, and
-        // we desire to have different outputs for numbers too large
-        // (return numericArg) and too negative (return 0 of
-        // the proper type).
-        case NumberDecimal: {
-            auto precisionValueDecimal = precisionArg.getDecimal();
-            if (precisionValueDecimal.isGreater(decimalExponentBias)) {
-                return numericArg;
-            }
-            if (precisionValueDecimal.isLess(decimalNegativeExponentBias)) {
-                // Allow this to return below so that we can
-                // return a zero value of the proper type, which
-                // is determined by the type of numericArg.
-                // We do this by setting the precisionValue to
-                // a value guaranteed to return 0 below.
-                precisionValue = negativeExponentBias - 1;
-                break;
-            }
-            // We truncate the precision value rather than rounding.
-            precisionValue =
-                precisionValueDecimal
-                    .quantize(Decimal128::kNormalizedZero, Decimal128::kRoundTowardZero)
-                    .toLong();
-            break;
-        }
-        case NumberDouble: {
-            auto precisionValueDouble = precisionArg.getDouble();
-            if (precisionValueDouble > static_cast<double>(Decimal128::kExponentBias)) {
-                return numericArg;
-            }
-            if (precisionValueDouble < static_cast<double>(negativeExponentBias)) {
-                // Allow this to return below so that we can
-                // return a zero value of the proper type, which
-                // is determined by the type of numericArg.
-                // We do this by setting the precisionValue to
-                // a value guaranteed to return 0 below.
-                precisionValue = negativeExponentBias - 1;
-                break;
-            }
-            precisionValue = static_cast<long long>(precisionValueDouble);
-            break;
-        }
-        case NumberLong:
-            precisionValue = precisionArg.getLong();
-            if (precisionValue > Decimal128::kExponentBias) {
-                return numericArg;
-            }
-            break;
-        case NumberInt:
-            precisionValue = static_cast<long long>(precisionArg.getInt());
-            if (precisionValue > Decimal128::kExponentBias) {
-                return numericArg;
-            }
-            break;
-        default:
-            uassert(50977, "unreachable", false);
-    }
+    auto precisionValue = precisionArg.coerceToLong();
+	uassert(50979, str::stream() << "cannot apply " << opName
+			<< " with precision value "	<< precisionValue
+			<< " value must be in [-20, 100]",
+			precisionValue <= maxPrecision && precisionValue >= minPrecision);
     // construct 10^-precisionValue
     auto quantum = Decimal128(0LL, Decimal128::kExponentBias - precisionValue, 0LL, 1LL);
     switch (numericArg.getType()) {
         case NumberDecimal: {
-            if (precisionValue < negativeExponentBias) {
+            if (precisionValue < minPrecision) {
                 return Value(Decimal128::kNormalizedZero);
             }
             auto out = numericArg.getDecimal().quantize(quantum, roundingMode);
-            if (out.isNaN()) {
-                return numericArg;
-            }
+			if (out.isNaN()) {
+				return numericArg;
+			}
             return Value(out);
         }
         case NumberDouble: {
-            if (precisionValue < negativeExponentBias) {
+            if (precisionValue < minPrecision) {
                 return Value(0.0);
             }
-            auto out = Decimal128(numericArg.getDouble()).quantize(quantum, roundingMode);
-            if (out.isNaN()) {
-                return numericArg;
-            }
+            auto out = Decimal128(numericArg.getDouble(), Decimal128::kRoundTo34Digits)
+				.quantize(quantum, roundingMode);
+			if (out.isNaN()) {
+				return numericArg;
+			}
             return Value(out.toDouble());
         }
         case NumberLong: {
             if (precisionValue >= 0) {
                 return numericArg;
             }
-            if (precisionValue < negativeExponentBias) {
+            if (precisionValue < minPrecision) {
                 return Value(0LL);
             }
-            auto out = Decimal128(static_cast<int64_t>(numericArg.getLong()))
+			auto numericArgll = numericArg.getLong();
+            auto out = Decimal128(static_cast<int64_t>(numericArgll))
                            .quantize(quantum, roundingMode);
-            return Value(static_cast<long long>(out.toLong()));
+			uint32_t flags = 0;
+			auto outll = out.toLong(&flags);
+			assertFlagsValid(flags, opName, numericArgll, precisionValue);
+            return Value(static_cast<long long>(outll));
         }
         case NumberInt: {
             if (precisionValue >= 0) {
                 return numericArg;
             }
-            if (precisionValue < negativeExponentBias) {
+            if (precisionValue < minPrecision) {
                 return Value(0);
             }
-            auto out = Decimal128(numericArg.getInt()).quantize(quantum, roundingMode);
-            return Value(out.toInt());
+			auto numericArgll = numericArg.getLong();
+            auto out = Decimal128(static_cast<int64_t>(numericArgll))
+                           .quantize(quantum, roundingMode);
+			uint32_t flags = 0;
+			auto outll = out.toLong(&flags);
+			assertFlagsValid(flags, opName, numericArgll, precisionValue);
+			if (outll > std::numeric_limits<int>::max()) {
+				return Value(static_cast<long long>(outll));
+			}
+            return Value(static_cast<int>(outll));
         }
         default:
-            uassert(50978, "unreachable", false);
+			MONGO_UNREACHABLE;
     }
 }
 
