@@ -4762,7 +4762,7 @@ struct TruncOp {
 
 void assertFlagsValid(uint32_t flags, const std::string& opName,
 		long long numericValue, long long precisionValue) {
-	uassert(50981, str::stream() << "invalid result in " << opName
+	uassert(51021, str::stream() << "invalid result in " << opName
 	  			   << " resulting from arguments: [" << numericValue
 				   << ", " << precisionValue << "]",
 				   !Decimal128::hasFlag(flags, Decimal128::kInvalid));
@@ -4778,7 +4778,7 @@ static Value evaluateRoundOrTrunc(const Document& root,
     if (numericArg.nullish()) {
         return Value(BSONNULL);
     }
-    uassert(50976,
+    uassert(51022,
             str::stream() << opName << " only supports numeric types, not "
                           << typeName(numericArg.getType()),
             numericArg.numeric());
@@ -4802,7 +4802,7 @@ static Value evaluateRoundOrTrunc(const Document& root,
         return Value(BSONNULL);
     }
     auto precisionValue = precisionArg.coerceToLong();
-	uassert(50979, str::stream() << "cannot apply " << opName
+	uassert(51023, str::stream() << "cannot apply " << opName
 			<< " with precision value "	<< precisionValue
 			<< " value must be in [-20, 100]",
 			precisionValue <= maxPrecision && precisionValue >= minPrecision);

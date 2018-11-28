@@ -59,31 +59,31 @@ load("jstests/aggregation/extras/utils.js");
 
 	// $round overfllow.
 	testOp({$round: [NumberInt("2147483647"), -1]}, NumberLong("2147483650"));
-	assertErrorCode(coll, [{$project: {a: {$round: [NumberLong("9223372036854775806"), -1]}}}], 50981);
+	assertErrorCode(coll, [{$project: {a: {$round: [NumberLong("9223372036854775806"), -1]}}}], 51021);
 
     // More than 2 arguments
     assertErrorCode(coll, [{$project: {a: {$trunc: [1, 2, 3]}}}], 28667);
     assertErrorCode(coll, [{$project: {a: {$round: [1, 2, 3]}}}], 28667);
 
     // Non-numeric input.
-    assertErrorCode(coll, [{$project: {a: {$round: "string"}}}], 50976);
-    assertErrorCode(coll, [{$project: {a: {$trunc: "string"}}}], 50976);
+    assertErrorCode(coll, [{$project: {a: {$round: "string"}}}], 51022);
+    assertErrorCode(coll, [{$project: {a: {$trunc: "string"}}}], 51022);
 
 	// Out of bounds precision
-    assertErrorCode(coll, [{$project: {a: {$round: [1, NumberLong("101")]}}}], 50979);
-    assertErrorCode(coll, [{$project: {a: {$round: [1, NumberLong("-21")]}}}], 50979);
-    assertErrorCode(coll, [{$project: {a: {$round: [1, NumberDecimal("101")]}}}], 50979);
-    assertErrorCode(coll, [{$project: {a: {$round: [1, NumberDecimal("-21")]}}}], 50979);
-    assertErrorCode(coll, [{$project: {a: {$round: [1, NumberInt("101")]}}}], 50979);
-    assertErrorCode(coll, [{$project: {a: {$round: [1, NumberInt("-21")]}}}], 50979);
-    assertErrorCode(coll, [{$project: {a: {$round: [1, 101]}}}], 50979);
-    assertErrorCode(coll, [{$project: {a: {$round: [1, -21]}}}], 50979);
-    assertErrorCode(coll, [{$project: {a: {$trunc: [1, NumberLong("101")]}}}], 50979);
-    assertErrorCode(coll, [{$project: {a: {$trunc: [1, NumberLong("-21")]}}}], 50979);
-    assertErrorCode(coll, [{$project: {a: {$trunc: [1, NumberDecimal("101")]}}}], 50979);
-    assertErrorCode(coll, [{$project: {a: {$trunc: [1, NumberDecimal("-21")]}}}], 50979);
-    assertErrorCode(coll, [{$project: {a: {$trunc: [1, NumberInt("101")]}}}], 50979);
-    assertErrorCode(coll, [{$project: {a: {$trunc: [1, NumberInt("-21")]}}}], 50979);
-    assertErrorCode(coll, [{$project: {a: {$trunc: [1, 101]}}}], 50979);
-    assertErrorCode(coll, [{$project: {a: {$trunc: [1, -21]}}}], 50979);
+    assertErrorCode(coll, [{$project: {a: {$round: [1, NumberLong("101")]}}}], 51023);
+    assertErrorCode(coll, [{$project: {a: {$round: [1, NumberLong("-21")]}}}], 51023);
+    assertErrorCode(coll, [{$project: {a: {$round: [1, NumberDecimal("101")]}}}], 51023);
+    assertErrorCode(coll, [{$project: {a: {$round: [1, NumberDecimal("-21")]}}}], 51023);
+    assertErrorCode(coll, [{$project: {a: {$round: [1, NumberInt("101")]}}}], 51023);
+    assertErrorCode(coll, [{$project: {a: {$round: [1, NumberInt("-21")]}}}], 51023);
+    assertErrorCode(coll, [{$project: {a: {$round: [1, 101]}}}], 51023);
+    assertErrorCode(coll, [{$project: {a: {$round: [1, -21]}}}], 51023);
+    assertErrorCode(coll, [{$project: {a: {$trunc: [1, NumberLong("101")]}}}], 51023);
+    assertErrorCode(coll, [{$project: {a: {$trunc: [1, NumberLong("-21")]}}}], 51023);
+    assertErrorCode(coll, [{$project: {a: {$trunc: [1, NumberDecimal("101")]}}}], 51023);
+    assertErrorCode(coll, [{$project: {a: {$trunc: [1, NumberDecimal("-21")]}}}], 51023);
+    assertErrorCode(coll, [{$project: {a: {$trunc: [1, NumberInt("101")]}}}], 51023);
+    assertErrorCode(coll, [{$project: {a: {$trunc: [1, NumberInt("-21")]}}}], 51023);
+    assertErrorCode(coll, [{$project: {a: {$trunc: [1, 101]}}}], 51023);
+    assertErrorCode(coll, [{$project: {a: {$trunc: [1, -21]}}}], 51023);
 }());
