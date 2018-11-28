@@ -468,14 +468,14 @@ public:
         Value arg1 = this->vpOperand[0]->evaluate(root);
         if (arg1.nullish())
             return Value(BSONNULL);
-        uassert(50981,
+        uassert(51021,
                 str::stream() << this->getOpName() << " only supports numeric types, not "
                               << typeName(arg1.getType()),
                 arg1.numeric());
         Value arg2 = this->vpOperand[1]->evaluate(root);
         if (arg2.nullish())
             return Value(BSONNULL);
-        uassert(50982,
+        uassert(51023,
                 str::stream() << this->getOpName() << " only supports numeric types, not "
                               << typeName(arg2.getType()),
                 arg2.numeric());

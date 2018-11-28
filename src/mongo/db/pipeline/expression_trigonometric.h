@@ -106,7 +106,7 @@ public:
             } else {
                 upperBound = str::stream() << "Infinity)";
             }
-            uassert(50989,
+            uassert(51024,
                     str::stream() << "cannot apply " << getOpName() << " to " << toString(input)
                                   << ", value must in "
                                   << lowerBound
