@@ -265,7 +265,7 @@ Value ExpressionArcTangent2::evaluateNumericArgs(const Value& numericArg1,
                     case NumberInt:
                         return Decimal128(arg.getInt());
                     default:
-						MONGO_UNREACHABLE;
+                        MONGO_UNREACHABLE;
                 }
             };
             auto dec1 = getDecimal(type1, numericArg1);
@@ -282,7 +282,7 @@ Value ExpressionArcTangent2::evaluateNumericArgs(const Value& numericArg1,
                     case NumberLong:
                         return static_cast<double>(arg.getLong());
                     default:
-						MONGO_UNREACHABLE;
+                        MONGO_UNREACHABLE;
                 }
             };
             auto double1 = getDouble(type1, numericArg1);
@@ -290,7 +290,7 @@ Value ExpressionArcTangent2::evaluateNumericArgs(const Value& numericArg1,
             return Value(std::atan2(double1, double2));
         }
         default:
-			MONGO_UNREACHABLE;
+            MONGO_UNREACHABLE;
     }
 }
 
@@ -307,8 +307,8 @@ static const Decimal128 DECIMAL_PI =
 static const Decimal128 DECIMAL_PI_OVER_180 = DECIMAL_PI.divide(DECIMAL_180);
 static const Decimal128 DECIMAL_180_OVER_PI = DECIMAL_180.divide(DECIMAL_PI);
 static constexpr double DOUBLE_PI = 3.141592653589793;
-static constexpr double DOUBLE_PI_OVER_180 = DOUBLE_PI/180.0;
-static constexpr double DOUBLE_180_OVER_PI = 180.0/DOUBLE_PI;
+static constexpr double DOUBLE_PI_OVER_180 = DOUBLE_PI / 180.0;
+static constexpr double DOUBLE_180_OVER_PI = 180.0 / DOUBLE_PI;
 
 struct DegreesToRadians {
     Decimal128 decimalFactor() {
@@ -335,8 +335,7 @@ static Value doDegreeRadiansConversion(const Value& numericArg) {
     if (type == NumberDouble) {
         return Value(numericArg.getDouble() * c.doubleFactor());
     } else if (type == NumberDecimal) {
-        return Value(
-            numericArg.getDecimal().multiply(c.decimalFactor()));
+        return Value(numericArg.getDecimal().multiply(c.decimalFactor()));
     } else {
         auto num = static_cast<double>(numericArg.getLong());
         auto degreesVal = num * c.doubleFactor();

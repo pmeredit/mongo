@@ -53,17 +53,47 @@ load("jstests/aggregation/extras/utils.js");
     testOpApprox({$asinh: NumberDecimal(0)}, NumberDecimal(0));
     testOpApprox({$atanh: NumberDecimal(0)}, NumberDecimal(0));
 
-
-	// Infinities
-    testOpApprox({$atan2: [NumberDecimal('Infinity'), 0]}, NumberDecimal("1.570796326794896619231321691639751"));
-    testOpApprox({$atan2: [NumberDecimal('-Infinity'), 0]}, NumberDecimal("-1.570796326794896619231321691639751"));
-    testOpApprox({$atan2: [NumberDecimal('-Infinity'), NumberDecimal("Infinity")]}, 
-		NumberDecimal("-0.785398163397448309615660845819876"));
-    testOpApprox({$atan2: [NumberDecimal('-Infinity'), NumberDecimal("-Infinity")]}, 
-		NumberDecimal("-2.356194490192344928846982537459627"));
-    testOpApprox({$atanh: NumberDecimal(1)}, NumberDecimal('Infinity'));
-    testOpApprox({$atanh: NumberDecimal(-1)}, NumberDecimal('-Infinity'));
-	testOpApprox({$cos: NumberDecimal('Infinity')}, NumberDecimal('Infinity'));
+    // Infinities
+    testOp({$acosh: NumberDecimal('Infinity')}, NumberDecimal('Infinity'));
+    testOp({$acosh: Infinity}, Infinity);
+    testOp({$asinh: NumberDecimal('Infinity')}, NumberDecimal('Infinity'));
+    testOp({$asinh: NumberDecimal('-Infinity')}, NumberDecimal('-Infinity'));
+    testOp({$asinh: Infinity}, Infinity);
+    testOp({$asinh: -Infinity}, -Infinity);
+    testOp({$atan: NumberDecimal('Infinity')}, NumberDecimal('1.570796326794896619231321691639751'));
+    testOp({$atan: NumberDecimal('-Infinity')}, NumberDecimal('-1.570796326794896619231321691639751'));
+    testOp({$atan: Infinity}, 1.5707963267948966);
+    testOp({$atan: -Infinity}, -1.5707963267948966);
+    testOp({$atan2: [NumberDecimal('Infinity'), 0]},
+           NumberDecimal("1.570796326794896619231321691639751"));
+    testOp({$atan2: [NumberDecimal('-Infinity'), 0]},
+           NumberDecimal("-1.570796326794896619231321691639751"));
+    testOp({$atan2: [NumberDecimal('-Infinity'), NumberDecimal("Infinity")]},
+           NumberDecimal("-0.785398163397448309615660845819876"));
+    testOp({$atan2: [NumberDecimal('-Infinity'), NumberDecimal("-Infinity")]},
+           NumberDecimal("-2.356194490192344928846982537459627"));
+    testOp({$atanh: NumberDecimal(1)}, NumberDecimal('Infinity'));
+    testOp({$atanh: NumberDecimal(-1)}, NumberDecimal('-Infinity'));
+    testOp({$atanh: 1}, Infinity);
+    testOp({$atanh: -1}, -Infinity);
+    testOp({$cos: NumberDecimal("Infinity")}, NumberDecimal('NaN'));
+    testOp({$cos: NumberDecimal("-Infinity")}, NumberDecimal('NaN'));
+    testOp({$cosh: NumberDecimal('Infinity')}, NumberDecimal('Infinity'));
+    testOp({$cosh: NumberDecimal('-Infinity')}, NumberDecimal('Infinity'));
+    testOp({$cosh: Infinity}, Infinity);
+    testOp({$cosh: -Infinity}, Infinity);
+    testOp({$sin: NumberDecimal('Infinity')}, NumberDecimal('NaN'));
+    testOp({$sin: NumberDecimal('-Infinity')}, NumberDecimal('NaN'));
+    testOp({$sinh: NumberDecimal('Infinity')}, NumberDecimal('Infinity'));
+    testOp({$sinh: NumberDecimal('-Infinity')}, NumberDecimal('-Infinity'));
+    testOp({$sinh: Infinity}, Infinity);
+    testOp({$sinh: -Infinity}, -Infinity);
+    testOp({$tan: NumberDecimal('Infinity')}, NumberDecimal('NaN'));
+    testOp({$tan: NumberDecimal('-Infinity')}, NumberDecimal('NaN'));
+    testOp({$tanh: NumberDecimal('Infinity')}, NumberDecimal('1'));
+    testOp({$tanh: NumberDecimal('-Infinity')}, NumberDecimal('-1'));
+    testOp({$tanh: Infinity}, 1);
+    testOp({$tanh: -Infinity}, -1);
 
     // Simple successful long input.
     testOpApprox({$cos: NumberLong(0)}, 1);
