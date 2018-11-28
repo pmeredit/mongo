@@ -1029,10 +1029,8 @@ TEST_F(ExpressionRoundTwoArgTest, DoubleArg2) {
     assertEvaluates(Value(3.14159265), Value(4.6), Value(3.1416));
     assertEvaluates(Value(3.14159265), Value(5), Value(3.14159));
     assertEvaluates(Value(3.14159265), Value(6), Value(3.141593));
-    // This should ideally be 3.1415927, but this appears to be
-    // a point where Decimal128 quantize has rounding issues.
-    assertEvaluates(Value(3.14159265), Value(7), Value(3.1415926));
-    assertEvaluates(Value(3.14159265), Value(435), Value(3.14159265));
+    assertEvaluates(Value(3.14159265), Value(7), Value(3.1415927));
+    assertEvaluates(Value(3.14159265), Value(100), Value(3.14159265));
     assertEvaluates(Value(3.14159265), Value(-1), Value(0.0));
     assertEvaluates(Value(335.14159265), Value(-1), Value(340.0));
     assertEvaluates(Value(333.14159265), Value(-2), Value(300.0));
@@ -1071,15 +1069,13 @@ TEST_F(ExpressionRoundTwoArgTest, DecimalArg2) {
     assertEvaluates(Value(Decimal128("3.14159265")), Value(1), Value(Decimal128("3.1")));
     assertEvaluates(Value(Decimal128("3.14159265")), Value(2), Value(Decimal128("3.14")));
     assertEvaluates(
-        Value(Decimal128("3.14159265")), Value(Decimal128("3.9")), Value(Decimal128("3.142")));
-    assertEvaluates(Value(Decimal128("3.14159265")), Value(4.6), Value(Decimal128("3.1416")));
+        Value(Decimal128("3.14159265")), Value(Decimal128("3.1")), Value(Decimal128("3.142")));
+    assertEvaluates(Value(Decimal128("3.14159265")), Value(4.3), Value(Decimal128("3.1416")));
     assertEvaluates(
         Value(Decimal128("3.14159265")), Value(Decimal128("5.1")), Value(Decimal128("3.14159")));
     assertEvaluates(Value(Decimal128("3.14159265")), Value(6), Value(Decimal128("3.141593")));
-    // This should ideally be 3.1415927, but this appears to be
-    // a point where Decimal128 quantize has rounding issues.
     assertEvaluates(Value(Decimal128("3.14159265")), Value(7), Value(Decimal128("3.1415926")));
-    assertEvaluates(Value(Decimal128("3.14159265")), Value(435), Value(Decimal128("3.14159265")));
+    assertEvaluates(Value(Decimal128("3.14159265")), Value(100), Value(Decimal128("3.14159265")));
     assertEvaluates(
         Value(Decimal128("3.14159265")), Value(Decimal128("-1")), Value(Decimal128("0")));
     assertEvaluates(Value(Decimal128("335.14159265")), Value(-1), Value(Decimal128("340")));
@@ -1184,7 +1180,7 @@ TEST_F(ExpressionTruncTwoArgTest, DoubleArg2) {
     assertEvaluates(Value(3.14159265), Value(5), Value(3.14159));
     assertEvaluates(Value(3.14159265), Value(6), Value(3.141592));
     assertEvaluates(Value(3.14159265), Value(7), Value(3.1415926));
-    assertEvaluates(Value(3.14159265), Value(435), Value(3.14159265));
+    assertEvaluates(Value(3.14159265), Value(100), Value(3.14159265));
     assertEvaluates(Value(3.14159265), Value(-1), Value(0.0));
     assertEvaluates(Value(335.14159265), Value(-1), Value(330.0));
     assertEvaluates(Value(333.14159265), Value(-2), Value(300.0));
@@ -1223,13 +1219,13 @@ TEST_F(ExpressionTruncTwoArgTest, DecimalArg2) {
     assertEvaluates(Value(Decimal128("3.14159265")), Value(1), Value(Decimal128("3.1")));
     assertEvaluates(Value(Decimal128("3.14159265")), Value(2), Value(Decimal128("3.14")));
     assertEvaluates(
-        Value(Decimal128("3.14159265")), Value(Decimal128("3.9")), Value(Decimal128("3.141")));
-    assertEvaluates(Value(Decimal128("3.14159265")), Value(4.6), Value(Decimal128("3.1415")));
+        Value(Decimal128("3.14159265")), Value(Decimal128("3.2")), Value(Decimal128("3.141")));
+    assertEvaluates(Value(Decimal128("3.14159265")), Value(4.3), Value(Decimal128("3.1415")));
     assertEvaluates(
         Value(Decimal128("3.14159265")), Value(Decimal128("5.1")), Value(Decimal128("3.14159")));
     assertEvaluates(Value(Decimal128("3.14159265")), Value(6), Value(Decimal128("3.141592")));
     assertEvaluates(Value(Decimal128("3.14159265")), Value(7), Value(Decimal128("3.1415926")));
-    assertEvaluates(Value(Decimal128("3.14159265")), Value(435), Value(Decimal128("3.14159265")));
+    assertEvaluates(Value(Decimal128("3.14159265")), Value(100), Value(Decimal128("3.14159265")));
     assertEvaluates(
         Value(Decimal128("3.14159265")), Value(Decimal128("-1")), Value(Decimal128("0")));
     assertEvaluates(Value(Decimal128("335.14159265")), Value(-1), Value(Decimal128("330")));
