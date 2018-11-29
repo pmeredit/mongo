@@ -39,28 +39,14 @@ using namespace mongo;
 
 // assert_approximately_eq is a helper function for asserting approximate results.
 static void assert_approximately_eq(const Value& evaluated, const Value& expected) {
-    switch (evaluated.getType()) {
-        case NumberDouble:
-            ASSERT_VALUE_LT(Value(std::abs(evaluated.getDouble() - expected.getDouble())),
-                            Value(.000001));
-            break;
-        case NumberDecimal:
-            ASSERT_VALUE_LT(Value(evaluated.getDecimal().subtract(expected.getDecimal()).toAbs()),
-                            Value(Decimal128(".000001")));
-            break;
-        case NumberInt:
-        case NumberLong:
-            ASSERT_VALUE_EQ(evaluated, expected);
-            break;
-        default:
-            if (evaluated.nullish()) {
-                ASSERT_VALUE_EQ(evaluated, expected);
-            } else {
-                ASSERT(false &&
-                       "assert_approximately_eq should only be used with expressions that return "
-                       "numeric or nullish Values");
-            }
-    }
+	ASSERT_EQ(evaluated.getType(), expected.getType());
+	if(expected.nullish()) {
+		ASSERT_VALUE_EQ(expected, evaluated);
+	} else {
+        ASSERT_VALUE_LT(Value(evaluated.coerceToDecimal()
+				             .subtract(expected.coerceToDecimal()).toAbs()),
+                             Value(Decimal128(".000001")));
+	}
 }
 
 class ExpressionBaseTest : public mongo::unittest::Test {
