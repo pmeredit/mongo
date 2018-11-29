@@ -455,12 +455,12 @@ public:
  * Inherit from this class if your expression takes exactly two numeric arguments.
  */
 template <typename SubClass>
-class ExpressionDoubleNumericArgs : public ExpressionFixedArity<SubClass, 2> {
+class ExpressionTwoNumericArgs : public ExpressionFixedArity<SubClass, 2> {
 public:
-    explicit ExpressionDoubleNumericArgs(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+    explicit ExpressionTwoNumericArgs(const boost::intrusive_ptr<ExpressionContext>& expCtx)
         : ExpressionFixedArity<SubClass, 2>(expCtx) {}
 
-    virtual ~ExpressionDoubleNumericArgs() = default;
+    virtual ~ExpressionTwoNumericArgs() = default;
 
     Value evaluate(const Document& root) const final {
         Value arg1 = this->vpOperand[0]->evaluate(root);

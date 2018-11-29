@@ -40,15 +40,16 @@ public:
         : ExpressionSingleNumericArg<TrigType>(expCtx) {}
 
     Value evaluateNumericArg(const Value& numericArg) const override {
-        BSONType type = numericArg.getType();
-        if (type == NumberDouble) {
-            return Value(doubleFunc(numericArg.getDouble()));
-        } else if (type == NumberDecimal) {
-            return Value(decimalFunc(numericArg.getDecimal()));
-        } else {
-            auto num = static_cast<double>(numericArg.getLong());
-            return Value(doubleFunc(num));
-        }
+        switch (numericArg.getType()) {
+			case BSONType::NumberDouble:
+    	        return Value(doubleFunc(numericArg.getDouble()));
+			case BSONType::NumberDecimal:
+        	    return Value(decimalFunc(numericArg.getDecimal()));
+			default: {
+    	        auto num = static_cast<double>(numericArg.getLong());
+        	    return Value(doubleFunc(num));
+			}
+		}
     }
 
     virtual double doubleFunc(double x) const = 0;
@@ -86,9 +87,17 @@ public:
         return d.toString();
     }
 
+	bool isnan(double d) const {
+		return std::isnan(d);
+	}
+
+	bool isnan(Decimal128 d) const {
+		return d.isNaN();
+	}
+
     template <typename T>
     bool checkBounds(T input) const {
-        return checkLowerBound(input) && checkUpperBound(input);
+        return isnan(input) || (checkLowerBound(input) && checkUpperBound(input));
     }
 
     template <typename T>
@@ -117,20 +126,23 @@ public:
     }
 
     Value evaluateNumericArg(const Value& numericArg) const {
-        BSONType type = numericArg.getType();
-        if (type == NumberDouble) {
-            auto input = numericArg.getDouble();
-            assertBounds(input);
-            return Value(doubleFunc(input));
-        } else if (type == NumberDecimal) {
-            auto input = numericArg.getDecimal();
-            assertBounds(input);
-            return Value(decimalFunc(input));
-        } else {
-            auto input = static_cast<double>(numericArg.getLong());
-            assertBounds(input);
-            return Value(doubleFunc(input));
-        }
+		switch (numericArg.getType()) {
+			case BSONType::NumberDouble: {
+    	        auto input = numericArg.getDouble();
+        	    assertBounds(input);
+           	 	return Value(doubleFunc(input));
+			}
+            case BSONType::NumberDecimal: {
+            	auto input = numericArg.getDecimal();
+            	assertBounds(input);
+            	return Value(decimalFunc(input));
+			}
+			default: {
+            	auto input = static_cast<double>(numericArg.getLong());
+            	assertBounds(input);
+            	return Value(doubleFunc(input));
+			}
+		}
     }
 
     virtual boost::optional<double> getLowerBound() const = 0;
@@ -286,10 +298,10 @@ public:
 };
 
 
-class ExpressionArcTangent2 final : public ExpressionDoubleNumericArgs<ExpressionArcTangent2> {
+class ExpressionArcTangent2 final : public ExpressionTwoNumericArgs<ExpressionArcTangent2> {
 public:
     explicit ExpressionArcTangent2(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-        : ExpressionDoubleNumericArgs(expCtx) {}
+        : ExpressionTwoNumericArgs(expCtx) {}
 
     Value evaluateNumericArgs(const Value& numericArg1, const Value& numericArg2) const;
     const char* getOpName() const final;

@@ -1,25 +1,26 @@
-// SERVER-19548: Add $floor, $ceil, and $trunc aggregation expressions.
+// SERVER-32930: Basic integration tests for trigonometric aggregation expressions.
 
-// For assertErrorCode.
-load("jstests/aggregation/extras/utils.js");
 
 (function() {
     "use strict";
-    var coll = db.server19548;
+    // For assertErrorCode.
+    load("jstests/aggregation/extras/utils.js");
+
+    const coll = db.server32930;
     coll.drop();
     // Seed collection so that the pipeline will execute.
-    assert.writeOK(coll.insert({}));
+    assert.commandWorked(coll.insert({}), {w: 'majority'});
 
     // Helper for testing that op returns expResult.
     function testOp(op, expResult) {
-        var pipeline = [{$project: {_id: 0, result: op}}];
+        const pipeline = [{$project: {_id: 0, result: op}}];
         assert.eq(coll.aggregate(pipeline).toArray(), [{result: expResult}]);
     }
 
     // Helper for testing that op returns expResult, approximately, since NumberDecimal has
     // so many representations for a given number (0 versus 0e-40 for instance).
     function testOpApprox(op, expResult) {
-        var pipeline = [{$project: {_id: 0, result: {$abs: {$subtract: [op, expResult]}}}}];
+        const pipeline = [{$project: {_id: 0, result: {$abs: {$subtract: [op, expResult]}}}}];
         assert.lt(coll.aggregate(pipeline).toArray(), [{result: NumberDecimal("0.00000005")}]);
     }
 
@@ -137,11 +138,16 @@ load("jstests/aggregation/extras/utils.js");
     assertErrorCode(coll, [{$project: {a: {$asin: NumberLong(2)}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$acosh: NumberLong(0)}}}], 50989);
 
-	// NaN out of bounds.
-    assertErrorCode(coll, [{$project: {a: {$acos: NumberDecimal('NaN')}}}], 50989);
-    assertErrorCode(coll, [{$project: {a: {$asin: NumberDecimal('NaN')}}}], 50989);
-    assertErrorCode(coll, [{$project: {a: {$acosh: NumberDecimal('NaN')}}}], 50989);
-    assertErrorCode(coll, [{$project: {a: {$atanh: NumberDecimal('NaN')}}}], 50989);
+	// Check that NaN still works in bounded trig functions
+    testOp({$acos: NumberDecimal('NaN')}, NumberDecimal('NaN'));
+    testOp({$asin: NumberDecimal('NaN')}, NumberDecimal('NaN'));
+    testOp({$acosh: NumberDecimal('NaN')}, NumberDecimal('NaN'));
+    testOp({$atanh: NumberDecimal('NaN')}, NumberDecimal('NaN'));
+
+    testOp({$acos: NaN}, NaN);
+    testOp({$asin: NaN}, NaN);
+    testOp({$acosh: NaN}, NaN);
+    testOp({$atanh: NaN}, NaN);
 
     // Non-numeric input.
     assertErrorCode(coll, [{$project: {a: {$cos: "string"}}}], 28765);
