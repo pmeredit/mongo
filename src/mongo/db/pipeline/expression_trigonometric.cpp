@@ -110,17 +110,13 @@ struct RadiansToDegrees {
 
 template <typename ConversionValues>
 static Value doDegreeRadiansConversion(const Value& numericArg) {
-    ConversionValues c;
-    BSONType type = numericArg.getType();
-    if (type == NumberDouble) {
-        return Value(numericArg.getDouble() * c.doubleFactor());
-    } else if (type == NumberDecimal) {
-        return Value(numericArg.getDecimal().multiply(c.decimalFactor()));
-    } else {
-        auto num = static_cast<double>(numericArg.getLong());
-        auto degreesVal = num * c.doubleFactor();
-        return Value(degreesVal);
-    }
+	ConversionValues c;
+	switch (numericArg.getType()) {
+        case BSONType::NumberDecimal:
+            return Value(numericArg.getDecimal().multiply(c.decimalFactor()));
+		default:
+        	return Value(numericArg.coerceToDouble() * c.doubleFactor());
+	}
 }
 
 Value ExpressionDegreesToRadians::evaluateNumericArg(const Value& numericArg) const {
