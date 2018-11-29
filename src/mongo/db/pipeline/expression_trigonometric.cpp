@@ -30,216 +30,23 @@
 #include "expression_trigonometric.h"
 
 namespace mongo {
-/* ----------------------- ExpressionArcCosine ---------------------------- */
 
-double ExpressionArcCosine::doubleFunc(double arg) const {
-    return std::acos(arg);
-}
-
-Decimal128 ExpressionArcCosine::decimalFunc(Decimal128 arg) const {
-    return arg.acos();
-}
-
-boost::optional<double> ExpressionArcCosine::getUpperBound() const {
-    return boost::optional<double>(1.0);
-}
-
-boost::optional<double> ExpressionArcCosine::getLowerBound() const {
-    return boost::optional<double>(-1.0);
-}
-
+/* ----------------------- Register Bounded Trigonometric Functions  ----------------------------- */
 REGISTER_EXPRESSION(acos, ExpressionArcCosine::parse);
-const char* ExpressionArcCosine::getOpName() const {
-    return "$acos";
-}
-/* ----------------------- ExpressionArcSine ---------------------------- */
-
-double ExpressionArcSine::doubleFunc(double arg) const {
-    return std::asin(arg);
-}
-
-Decimal128 ExpressionArcSine::decimalFunc(Decimal128 arg) const {
-    return arg.asin();
-}
-
-boost::optional<double> ExpressionArcSine::getUpperBound() const {
-    return boost::optional<double>(1.0);
-}
-
-boost::optional<double> ExpressionArcSine::getLowerBound() const {
-    return boost::optional<double>(-1.0);
-}
-
 REGISTER_EXPRESSION(asin, ExpressionArcSine::parse);
-const char* ExpressionArcSine::getOpName() const {
-    return "$asin";
-}
+REGISTER_EXPRESSION(acosh, ExpressionHyperbolicArcCosine::parse);
+REGISTER_EXPRESSION(atanh, ExpressionHyperbolicArcTangent::parse);
 
-/* ----------------------- ExpressionArcTangent ---------------------------- */
-
-double ExpressionArcTangent::doubleFunc(double arg) const {
-    return std::atan(arg);
-}
-
-Decimal128 ExpressionArcTangent::decimalFunc(Decimal128 arg) const {
-    return arg.atan();
-}
+/* ----------------------- Register Unbounded Trigonometric Functions ---------------------------- */
 
 REGISTER_EXPRESSION(atan, ExpressionArcTangent::parse);
-const char* ExpressionArcTangent::getOpName() const {
-    return "$atan";
-}
-
-/* ----------------------- ExpressionHyperbolicArcCosine ---------------------------- */
-
-double ExpressionHyperbolicArcCosine::doubleFunc(double arg) const {
-    return std::acosh(arg);
-}
-
-Decimal128 ExpressionHyperbolicArcCosine::decimalFunc(Decimal128 arg) const {
-    return arg.acosh();
-}
-
-boost::optional<double> ExpressionHyperbolicArcCosine::getUpperBound() const {
-    return boost::none;
-}
-
-boost::optional<double> ExpressionHyperbolicArcCosine::getLowerBound() const {
-    return boost::optional<double>(1.0);
-}
-
-REGISTER_EXPRESSION(acosh, ExpressionHyperbolicArcCosine::parse);
-const char* ExpressionHyperbolicArcCosine::getOpName() const {
-    return "$acosh";
-}
-
-/* ----------------------- ExpressionHyperbolicArcSine ---------------------------- */
-
-double ExpressionHyperbolicArcSine::doubleFunc(double arg) const {
-    return std::asinh(arg);
-}
-
-Decimal128 ExpressionHyperbolicArcSine::decimalFunc(Decimal128 arg) const {
-    return arg.asinh();
-}
-
 REGISTER_EXPRESSION(asinh, ExpressionHyperbolicArcSine::parse);
-const char* ExpressionHyperbolicArcSine::getOpName() const {
-    return "$asinh";
-}
-
-/* ----------------------- ExpressionHyperbolicArcTangent ---------------------------- */
-
-double ExpressionHyperbolicArcTangent::doubleFunc(double arg) const {
-    return std::atanh(arg);
-}
-
-Decimal128 ExpressionHyperbolicArcTangent::decimalFunc(Decimal128 arg) const {
-    return arg.atanh();
-}
-
-boost::optional<double> ExpressionHyperbolicArcTangent::getUpperBound() const {
-    return boost::optional<double>(1.0);
-}
-
-boost::optional<double> ExpressionHyperbolicArcTangent::getLowerBound() const {
-    return boost::optional<double>(-1.0);
-}
-
-REGISTER_EXPRESSION(atanh, ExpressionHyperbolicArcTangent::parse);
-const char* ExpressionHyperbolicArcTangent::getOpName() const {
-    return "$atanh";
-}
-
-/* ----------------------- ExpressionCosine ---------------------------- */
-
-double ExpressionCosine::doubleFunc(double arg) const {
-    return std::cos(arg);
-}
-
-Decimal128 ExpressionCosine::decimalFunc(Decimal128 arg) const {
-    return arg.cos();
-}
-
 REGISTER_EXPRESSION(cos, ExpressionCosine::parse);
-const char* ExpressionCosine::getOpName() const {
-    return "$cos";
-}
-
-/* ----------------------- ExpressionHyperbolicCosine ---------------------------- */
-
-double ExpressionHyperbolicCosine::doubleFunc(double arg) const {
-    return std::cosh(arg);
-}
-
-Decimal128 ExpressionHyperbolicCosine::decimalFunc(Decimal128 arg) const {
-    return arg.cosh();
-}
-
 REGISTER_EXPRESSION(cosh, ExpressionHyperbolicCosine::parse);
-const char* ExpressionHyperbolicCosine::getOpName() const {
-    return "$cosh";
-}
-
-/* ----------------------- ExpressionSine ---------------------------- */
-
-double ExpressionSine::doubleFunc(double arg) const {
-    return std::sin(arg);
-}
-
-Decimal128 ExpressionSine::decimalFunc(Decimal128 arg) const {
-    return arg.sin();
-}
-
 REGISTER_EXPRESSION(sin, ExpressionSine::parse);
-const char* ExpressionSine::getOpName() const {
-    return "$sin";
-}
-
-/* ----------------------- ExpressionHyperbolicSine ---------------------------- */
-
-double ExpressionHyperbolicSine::doubleFunc(double arg) const {
-    return std::sinh(arg);
-}
-
-Decimal128 ExpressionHyperbolicSine::decimalFunc(Decimal128 arg) const {
-    return arg.sinh();
-}
-
 REGISTER_EXPRESSION(sinh, ExpressionHyperbolicSine::parse);
-const char* ExpressionHyperbolicSine::getOpName() const {
-    return "$sinh";
-}
-
-/* ----------------------- ExpressionTangent ---------------------------- */
-
-double ExpressionTangent::doubleFunc(double arg) const {
-    return std::tan(arg);
-}
-
-Decimal128 ExpressionTangent::decimalFunc(Decimal128 arg) const {
-    return arg.tan();
-}
-
 REGISTER_EXPRESSION(tan, ExpressionTangent::parse);
-const char* ExpressionTangent::getOpName() const {
-    return "$tan";
-}
-
-/* ----------------------- ExpressionHyperbolicTangent ---------------------------- */
-
-double ExpressionHyperbolicTangent::doubleFunc(double arg) const {
-    return std::tanh(arg);
-}
-
-Decimal128 ExpressionHyperbolicTangent::decimalFunc(Decimal128 arg) const {
-    return arg.tanh();
-}
-
 REGISTER_EXPRESSION(tanh, ExpressionHyperbolicTangent::parse);
-const char* ExpressionHyperbolicTangent::getOpName() const {
-    return "$tanh";
-}
 
 /* ----------------------- ExpressionArcTangent2 ---------------------------- */
 
