@@ -31,14 +31,13 @@
 
 namespace mongo {
 
-/* ----------------------- Register Bounded Trigonometric Functions  ----------------------------- */
+/* ----------------------- Register Bounded Single Argument Trigonometric Functions  ----------------------------- */
 REGISTER_EXPRESSION(acos, ExpressionArcCosine::parse);
 REGISTER_EXPRESSION(asin, ExpressionArcSine::parse);
 REGISTER_EXPRESSION(acosh, ExpressionHyperbolicArcCosine::parse);
 REGISTER_EXPRESSION(atanh, ExpressionHyperbolicArcTangent::parse);
 
-/* ----------------------- Register Unbounded Trigonometric Functions ---------------------------- */
-
+/* ----------------------- Register Unbounded Single Argument Trigonometric Functions ---------------------------- */
 REGISTER_EXPRESSION(atan, ExpressionArcTangent::parse);
 REGISTER_EXPRESSION(asinh, ExpressionHyperbolicArcSine::parse);
 REGISTER_EXPRESSION(cos, ExpressionCosine::parse);
@@ -61,39 +60,13 @@ Value ExpressionArcTangent2::evaluateNumericArgs(const Value& numericArg1,
     }
     switch (totalType) {
         case NumberDecimal: {
-            auto getDecimal = [](BSONType type, const Value& arg) -> Decimal128 {
-                switch (type) {
-                    case NumberDecimal:
-                        return arg.getDecimal();
-                    case NumberDouble:
-                        return Decimal128(arg.getDouble());
-                    case NumberLong:
-                        return Decimal128(static_cast<std::int64_t>(arg.getLong()));
-                    case NumberInt:
-                        return Decimal128(arg.getInt());
-                    default:
-                        MONGO_UNREACHABLE;
-                }
-            };
-            auto dec1 = getDecimal(type1, numericArg1);
-            auto dec2 = getDecimal(type2, numericArg2);
+            auto dec1 = numericArg1.coerceToDecimal();
+            auto dec2 = numericArg2.coerceToDecimal();
             return Value(dec1.atan2(dec2));
         }
         case NumberDouble: {
-            auto getDouble = [](BSONType type, const Value& arg) -> double {
-                switch (type) {
-                    case NumberDouble:
-                        return arg.getDouble();
-                    case NumberInt:
-                        return static_cast<double>(arg.getInt());
-                    case NumberLong:
-                        return static_cast<double>(arg.getLong());
-                    default:
-                        MONGO_UNREACHABLE;
-                }
-            };
-            auto double1 = getDouble(type1, numericArg1);
-            auto double2 = getDouble(type2, numericArg2);
+            auto double1 = numericArg1.coerceToDouble();
+            auto double2 = numericArg2.coerceToDouble();
             return Value(std::atan2(double1, double2));
         }
         default:
