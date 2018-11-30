@@ -39,14 +39,14 @@ using namespace mongo;
 
 // assert_approximately_eq is a helper function for asserting approximate results.
 static void assert_approximately_eq(const Value& evaluated, const Value& expected) {
-	ASSERT_EQ(evaluated.getType(), expected.getType());
-	if(expected.nullish()) {
-		ASSERT_VALUE_EQ(expected, evaluated);
-	} else {
-        ASSERT_VALUE_LT(Value(evaluated.coerceToDecimal()
-				             .subtract(expected.coerceToDecimal()).toAbs()),
-                             Value(Decimal128(".000001")));
-	}
+    ASSERT_EQ(evaluated.getType(), expected.getType());
+    if (expected.nullish()) {
+        ASSERT_VALUE_EQ(expected, evaluated);
+    } else {
+        ASSERT_VALUE_LT(
+            Value(evaluated.coerceToDecimal().subtract(expected.coerceToDecimal()).toAbs()),
+            Value(Decimal128(".000001")));
+    }
 }
 
 class ExpressionBaseTest : public mongo::unittest::Test {

@@ -1,6 +1,5 @@
 // SERVER-32930: Basic integration tests for trigonometric aggregation expressions.
 
-
 (function() {
     "use strict";
     // For assertErrorCode.
@@ -138,7 +137,7 @@
     assertErrorCode(coll, [{$project: {a: {$asin: NumberLong(2)}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$acosh: NumberLong(0)}}}], 50989);
 
-	// Check that NaN still works in bounded trig functions
+    // Check that NaN still works in bounded trig functions
     testOp({$acos: NumberDecimal('NaN')}, NumberDecimal('NaN'));
     testOp({$asin: NumberDecimal('NaN')}, NumberDecimal('NaN'));
     testOp({$acosh: NumberDecimal('NaN')}, NumberDecimal('NaN'));

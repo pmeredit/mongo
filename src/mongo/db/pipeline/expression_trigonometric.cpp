@@ -31,13 +31,15 @@
 
 namespace mongo {
 
-/* ----------------------- Register Bounded Single Argument Trigonometric Functions  ----------------------------- */
+/* ----------------------- Register Bounded Single Argument Trigonometric Functions
+ * ----------------------------- */
 REGISTER_EXPRESSION(acos, ExpressionArcCosine::parse);
 REGISTER_EXPRESSION(asin, ExpressionArcSine::parse);
 REGISTER_EXPRESSION(acosh, ExpressionHyperbolicArcCosine::parse);
 REGISTER_EXPRESSION(atanh, ExpressionHyperbolicArcTangent::parse);
 
-/* ----------------------- Register Unbounded Single Argument Trigonometric Functions ---------------------------- */
+/* ----------------------- Register Unbounded Single Argument Trigonometric Functions
+ * ---------------------------- */
 REGISTER_EXPRESSION(atan, ExpressionArcTangent::parse);
 REGISTER_EXPRESSION(asinh, ExpressionHyperbolicArcSine::parse);
 REGISTER_EXPRESSION(cos, ExpressionCosine::parse);
@@ -110,13 +112,13 @@ struct RadiansToDegrees {
 
 template <typename ConversionValues>
 static Value doDegreeRadiansConversion(const Value& numericArg) {
-	ConversionValues c;
-	switch (numericArg.getType()) {
+    ConversionValues c;
+    switch (numericArg.getType()) {
         case BSONType::NumberDecimal:
             return Value(numericArg.getDecimal().multiply(c.decimalFactor()));
-		default:
-        	return Value(numericArg.coerceToDouble() * c.doubleFactor());
-	}
+        default:
+            return Value(numericArg.coerceToDouble() * c.doubleFactor());
+    }
 }
 
 Value ExpressionDegreesToRadians::evaluateNumericArg(const Value& numericArg) const {
