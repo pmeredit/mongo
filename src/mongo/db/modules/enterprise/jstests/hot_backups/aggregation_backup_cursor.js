@@ -12,6 +12,10 @@
     assert(db.serverStatus()["storageEngine"].hasOwnProperty("backupCursorOpen"));
     assert(!db.serverStatus()["storageEngine"]["backupCursorOpen"]);
 
+    // $backupCursor cannot be specified in view pipeline.
+    assert.commandFailedWithCode(db.createView('a', 'b', [{$backupCursor: {}}]),
+                                 ErrorCodes.InvalidNamespace);
+
     let backupCursor = db.aggregate([{$backupCursor: {}}]);
     // There should be about 14 files in total, but being precise would be unnecessarily fragile.
     assert(db.serverStatus()["storageEngine"]["backupCursorOpen"]);

@@ -74,6 +74,11 @@
     assertSuccessfulExtend({backupId: backupId, timestamp: extendTo});
     assertSuccessfulExtend({backupId: backupId, timestamp: extendTo});  // Extend again.
 
+    // 4. Cannot specify it in view pipeline.
+    assert.commandFailedWithCode(
+        db.createView('a', 'b', [{$backupCursorExtend: {backupId: backupId, timestamp: extendTo}}]),
+        ErrorCodes.InvalidNamespace);
+
     // Expected usage is for the tailable $backupCursor to be explicitly killed by the client.
     aggBackupCursor.close();
     rst.stopSet();
