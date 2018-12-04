@@ -24,6 +24,11 @@ Status addSnmpOptions(moe::OptionSection* options) {
 
     snmp_options.addOptionChaining("snmp.master", "snmp-master", moe::Switch, "run snmp as master");
 
+    snmp_options
+        .addOptionChaining("snmp.disabled", "snmp-disabled", moe::Switch, "ensure snmp is disabled")
+        .incompatibleWith("snmp.subagent")
+        .incompatibleWith("snmp.master");
+
     Status ret = options->addSection(snmp_options);
     if (!ret.isOK()) {
         return ret;
