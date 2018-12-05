@@ -86,8 +86,18 @@
     testOpApprox({$tanh: NumberDecimal(0)}, NumberDecimal(0));
 
     // Infinities
+    assertErrorCode(coll, [{$project: {a: {$acos: -Infinity}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$acos: NumberDecimal('-Infinity')}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$acos: Infinity}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$acos: NumberDecimal('Infinity')}}}], 50989);
     testOp({$acosh: NumberDecimal('Infinity')}, NumberDecimal('Infinity'));
     testOp({$acosh: Infinity}, Infinity);
+    assertErrorCode(coll, [{$project: {a: {$acosh: -Infinity}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$acosh: NumberDecimal('-Infinity')}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$asin: -Infinity}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$asin: NumberDecimal('-Infinity')}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$asin: Infinity}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$asin: NumberDecimal('Infinity')}}}], 50989);
     testOp({$asinh: NumberDecimal('Infinity')}, NumberDecimal('Infinity'));
     testOp({$asinh: NumberDecimal('-Infinity')}, NumberDecimal('-Infinity'));
     testOp({$asinh: Infinity}, Infinity);
