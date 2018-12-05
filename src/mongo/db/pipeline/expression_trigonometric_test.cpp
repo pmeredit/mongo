@@ -60,11 +60,14 @@ public:
 // A testing class for testing approximately equal results for one argument numeric expressions.
 class ExpressionNaryTestOneArgApproximate : public ExpressionBaseTest {
 public:
-    virtual void assertEvaluates(Value input, Value output) {
-        addOperand(_expr, input);
-        auto evaluated = _expr->evaluate(Document());
-        ASSERT_EQUALS(output.getType(), evaluated.getType());
-        assert_approximately_eq(evaluated, output);
+    void assertEvaluates(const std::string& expressionName, Value input, Value output) {
+        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+		auto obj = BSON(expressionName << BSON_ARRAY(input));
+		auto vps = expCtx->variablesParseState;
+		auto expression = Expression::parseExpression(expCtx, obj, vps);
+		Value result = expression->evaluate(Document());
+		ASSERT_EQUALS(result.getType(), output.getType());
+		assert_approximately_eq(result, output);
     }
 
     intrusive_ptr<ExpressionNary> _expr;
@@ -73,12 +76,14 @@ public:
 // A testing class for testing approximately equal results for two argument numeric expressions.
 class ExpressionNaryTestTwoArgApproximate : public ExpressionBaseTest {
 public:
-    virtual void assertEvaluates(Value input1, Value input2, Value output) {
-        addOperand(_expr, input1);
-        addOperand(_expr, input2);
-        auto evaluated = _expr->evaluate(Document());
-        ASSERT_EQUALS(output.getType(), evaluated.getType());
-        assert_approximately_eq(evaluated, output);
+    void assertEvaluates(const std::string& expressionName, Value input1, Value input2, Value output) {
+        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
+		auto obj = BSON(expressionName << BSON_ARRAY(input1 << input2));
+		auto vps = expCtx->variablesParseState;
+		auto expression = Expression::parseExpression(expCtx, obj, vps);
+		Value result = expression->evaluate(Document());
+		ASSERT_EQUALS(result.getType(), output.getType());
+		assert_approximately_eq(result, output);
     }
 
     intrusive_ptr<ExpressionNary> _expr;
@@ -87,10 +92,8 @@ public:
 /* ------------------------- ExpressionArcSine -------------------------- */
 class ExpressionArcSineTest : public ExpressionNaryTestOneArgApproximate {
 public:
-    virtual void assertEvaluates(Value input, Value output) override {
-        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-        _expr = new ExpressionArcSine(expCtx);
-        ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+    void assertEvaluates(Value input, Value output) {
+		ExpressionNaryTestOneArgApproximate::assertEvaluates("$asin", input, output);
     }
 };
 
@@ -140,10 +143,8 @@ TEST_F(ExpressionArcSineTest, NullArg) {
 
 class ExpressionArcCosineTest : public ExpressionNaryTestOneArgApproximate {
 public:
-    virtual void assertEvaluates(Value input, Value output) override {
-        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-        _expr = new ExpressionArcCosine(expCtx);
-        ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+    void assertEvaluates(Value input, Value output) {
+		ExpressionNaryTestOneArgApproximate::assertEvaluates("$acos", input, output);
     }
 };
 
@@ -193,10 +194,8 @@ TEST_F(ExpressionArcCosineTest, NullArg) {
 
 class ExpressionArcTangentTest : public ExpressionNaryTestOneArgApproximate {
 public:
-    virtual void assertEvaluates(Value input, Value output) override {
-        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-        _expr = new ExpressionArcTangent(expCtx);
-        ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+    void assertEvaluates(Value input, Value output) {
+		ExpressionNaryTestOneArgApproximate::assertEvaluates("$atan", input, output);
     }
 };
 
@@ -240,10 +239,8 @@ TEST_F(ExpressionArcTangentTest, NullArg) {
 
 class ExpressionArcTangent2Test : public ExpressionNaryTestTwoArgApproximate {
 public:
-    virtual void assertEvaluates(Value input1, Value input2, Value output) override {
-        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-        _expr = new ExpressionArcTangent2(expCtx);
-        ExpressionNaryTestTwoArgApproximate::assertEvaluates(input1, input2, output);
+    void assertEvaluates(Value input1, Value input2, Value output) {
+		ExpressionNaryTestTwoArgApproximate::assertEvaluates("$atan2", input1, input2, output);
     }
 };
 
@@ -438,10 +435,8 @@ TEST_F(ExpressionArcTangent2Test, NullArg) {
 
 class ExpressionCosineTest : public ExpressionNaryTestOneArgApproximate {
 public:
-    virtual void assertEvaluates(Value input, Value output) override {
-        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-        _expr = new ExpressionCosine(expCtx);
-        ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+    void assertEvaluates(Value input, Value output) {
+		ExpressionNaryTestOneArgApproximate::assertEvaluates("$cos", input, output);
     }
 };
 
@@ -513,10 +508,8 @@ TEST_F(ExpressionCosineTest, NullArg) {
 
 class ExpressionHyperbolicCosineTest : public ExpressionNaryTestOneArgApproximate {
 public:
-    virtual void assertEvaluates(Value input, Value output) override {
-        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-        _expr = new ExpressionHyperbolicCosine(expCtx);
-        ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+    void assertEvaluates(Value input, Value output) {
+		ExpressionNaryTestOneArgApproximate::assertEvaluates("$cosh", input, output);
     }
 };
 
@@ -588,10 +581,8 @@ TEST_F(ExpressionHyperbolicCosineTest, NullArg) {
 
 class ExpressionRadiansToDegreesTest : public ExpressionNaryTestOneArgApproximate {
 public:
-    virtual void assertEvaluates(Value input, Value output) override {
-        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-        _expr = new ExpressionRadiansToDegrees(expCtx);
-        ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+    void assertEvaluates(Value input, Value output) {
+		ExpressionNaryTestOneArgApproximate::assertEvaluates("$radiansToDegrees", input, output);
     }
 };
 
@@ -663,10 +654,8 @@ TEST_F(ExpressionRadiansToDegreesTest, NullArg) {
 
 class ExpressionDegreesToRadiansTest : public ExpressionNaryTestOneArgApproximate {
 public:
-    virtual void assertEvaluates(Value input, Value output) override {
-        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-        _expr = new ExpressionDegreesToRadians(expCtx);
-        ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+    void assertEvaluates(Value input, Value output) {
+		ExpressionNaryTestOneArgApproximate::assertEvaluates("$degreesToRadians", input, output);
     }
 };
 
@@ -730,10 +719,8 @@ TEST_F(ExpressionDegreesToRadiansTest, NullArg) {
 
 class ExpressionSineTest : public ExpressionNaryTestOneArgApproximate {
 public:
-    virtual void assertEvaluates(Value input, Value output) override {
-        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-        _expr = new ExpressionSine(expCtx);
-        ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+    void assertEvaluates(Value input, Value output) {
+		ExpressionNaryTestOneArgApproximate::assertEvaluates("$sin", input, output);
     }
 };
 
@@ -805,10 +792,8 @@ TEST_F(ExpressionSineTest, NullArg) {
 
 class ExpressionHyperbolicSineTest : public ExpressionNaryTestOneArgApproximate {
 public:
-    virtual void assertEvaluates(Value input, Value output) override {
-        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-        _expr = new ExpressionHyperbolicSine(expCtx);
-        ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+    void assertEvaluates(Value input, Value output) {
+		ExpressionNaryTestOneArgApproximate::assertEvaluates("$sinh", input, output);
     }
 };
 
@@ -880,10 +865,8 @@ TEST_F(ExpressionHyperbolicSineTest, NullArg) {
 
 class ExpressionTangentTest : public ExpressionNaryTestOneArgApproximate {
 public:
-    virtual void assertEvaluates(Value input, Value output) override {
-        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-        _expr = new ExpressionTangent(expCtx);
-        ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+    void assertEvaluates(Value input, Value output) {
+		ExpressionNaryTestOneArgApproximate::assertEvaluates("$tan", input, output);
     }
 };
 
@@ -927,10 +910,8 @@ TEST_F(ExpressionTangentTest, NullArg) {
 
 class ExpressionHyperbolicTangentTest : public ExpressionNaryTestOneArgApproximate {
 public:
-    virtual void assertEvaluates(Value input, Value output) override {
-        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-        _expr = new ExpressionHyperbolicTangent(expCtx);
-        ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+    void assertEvaluates(Value input, Value output) {
+		ExpressionNaryTestOneArgApproximate::assertEvaluates("$tanh", input, output);
     }
 };
 
@@ -1002,10 +983,8 @@ TEST_F(ExpressionHyperbolicTangentTest, NullArg) {
 
 class ExpressionHyperbolicArcCosineTest : public ExpressionNaryTestOneArgApproximate {
 public:
-    virtual void assertEvaluates(Value input, Value output) override {
-        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-        _expr = new ExpressionHyperbolicArcCosine(expCtx);
-        ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+    void assertEvaluates(Value input, Value output) {
+		ExpressionNaryTestOneArgApproximate::assertEvaluates("$acosh", input, output);
     }
 };
 
@@ -1139,10 +1118,8 @@ TEST_F(ExpressionHyperbolicArcCosineTest, NullArg) {
 
 class ExpressionHyperbolicArcSineTest : public ExpressionNaryTestOneArgApproximate {
 public:
-    virtual void assertEvaluates(Value input, Value output) override {
-        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-        _expr = new ExpressionHyperbolicArcSine(expCtx);
-        ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+    void assertEvaluates(Value input, Value output) {
+		ExpressionNaryTestOneArgApproximate::assertEvaluates("$asinh", input, output);
     }
 };
 
@@ -1276,10 +1253,8 @@ TEST_F(ExpressionHyperbolicArcSineTest, NullArg) {
 
 class ExpressionHyperbolicArcTangentTest : public ExpressionNaryTestOneArgApproximate {
 public:
-    virtual void assertEvaluates(Value input, Value output) override {
-        intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-        _expr = new ExpressionHyperbolicArcTangent(expCtx);
-        ExpressionNaryTestOneArgApproximate::assertEvaluates(input, output);
+    void assertEvaluates(Value input, Value output) {
+		ExpressionNaryTestOneArgApproximate::assertEvaluates("$atanh", input, output);
     }
 };
 
