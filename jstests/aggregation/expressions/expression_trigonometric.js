@@ -98,46 +98,60 @@
     assertErrorCode(coll, [{$project: {a: {$asin: NumberDecimal('-Infinity')}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$asin: Infinity}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$asin: NumberDecimal('Infinity')}}}], 50989);
-    testOp({$asinh: NumberDecimal('Infinity')}, NumberDecimal('Infinity'));
-    testOp({$asinh: NumberDecimal('-Infinity')}, NumberDecimal('-Infinity'));
-    testOp({$asinh: Infinity}, Infinity);
-    testOp({$asinh: -Infinity}, -Infinity);
-    testOp({$atan: NumberDecimal('Infinity')},
-           NumberDecimal('1.570796326794896619231321691639751'));
-    testOp({$atan: NumberDecimal('-Infinity')},
-           NumberDecimal('-1.570796326794896619231321691639751'));
-    testOp({$atan: Infinity}, 1.5707963267948966);
-    testOp({$atan: -Infinity}, -1.5707963267948966);
-    testOp({$atan2: [NumberDecimal('Infinity'), 0]},
-           NumberDecimal("1.570796326794896619231321691639751"));
-    testOp({$atan2: [NumberDecimal('-Infinity'), 0]},
-           NumberDecimal("-1.570796326794896619231321691639751"));
-    testOp({$atan2: [NumberDecimal('-Infinity'), NumberDecimal("Infinity")]},
-           NumberDecimal("-0.785398163397448309615660845819876"));
-    testOp({$atan2: [NumberDecimal('-Infinity'), NumberDecimal("-Infinity")]},
-           NumberDecimal("-2.356194490192344928846982537459627"));
-    testOp({$atanh: NumberDecimal(1)}, NumberDecimal('Infinity'));
-    testOp({$atanh: NumberDecimal(-1)}, NumberDecimal('-Infinity'));
-    testOp({$atanh: 1}, Infinity);
-    testOp({$atanh: -1}, -Infinity);
-    testOp({$cos: NumberDecimal("Infinity")}, NumberDecimal('NaN'));
-    testOp({$cos: NumberDecimal("-Infinity")}, NumberDecimal('NaN'));
-    testOp({$cosh: NumberDecimal('Infinity')}, NumberDecimal('Infinity'));
-    testOp({$cosh: NumberDecimal('-Infinity')}, NumberDecimal('Infinity'));
-    testOp({$cosh: Infinity}, Infinity);
-    testOp({$cosh: -Infinity}, Infinity);
-    testOp({$sin: NumberDecimal('Infinity')}, NumberDecimal('NaN'));
-    testOp({$sin: NumberDecimal('-Infinity')}, NumberDecimal('NaN'));
-    testOp({$sinh: NumberDecimal('Infinity')}, NumberDecimal('Infinity'));
-    testOp({$sinh: NumberDecimal('-Infinity')}, NumberDecimal('-Infinity'));
-    testOp({$sinh: Infinity}, Infinity);
-    testOp({$sinh: -Infinity}, -Infinity);
-    testOp({$tan: NumberDecimal('Infinity')}, NumberDecimal('NaN'));
-    testOp({$tan: NumberDecimal('-Infinity')}, NumberDecimal('NaN'));
-    testOp({$tanh: NumberDecimal('Infinity')}, NumberDecimal('1'));
-    testOp({$tanh: NumberDecimal('-Infinity')}, NumberDecimal('-1'));
-    testOp({$tanh: Infinity}, 1);
-    testOp({$tanh: -Infinity}, -1);
+    testOpApprox({$asinh: NumberDecimal('Infinity')}, NumberDecimal('Infinity'));
+    testOpApprox({$asinh: NumberDecimal('-Infinity')}, NumberDecimal('-Infinity'));
+    testOpApprox({$asinh: Infinity}, Infinity);
+    testOpApprox({$asinh: -Infinity}, -Infinity);
+    testOpApprox({$atan: NumberDecimal('Infinity')},
+           NumberDecimal(Math.PI/2));
+    testOpApprox({$atan: NumberDecimal('-Infinity')},
+           NumberDecimal(Math.Pi/2));
+    testOpApprox({$atan: Infinity}, Math.PI/2);
+    testOpApprox({$atan: -Infinity}, -Math.PI/2);
+    testOpApprox({$atan2: [NumberDecimal('Infinity'), 0]},
+           NumberDecimal(Math.PI/2));
+    testOpApprox({$atan2: [NumberDecimal('-Infinity'), 0]},
+           NumberDecimal(-Math.PI/2));
+    testOpApprox({$atan2: [NumberDecimal('-Infinity'), NumberDecimal("Infinity")]},
+           NumberDecimal(-Math.PI/4));
+    testOpApprox({$atan2: [NumberDecimal('-Infinity'), NumberDecimal("-Infinity")]},
+           NumberDecimal(-3 * Math.PI/4));
+    testOpApprox({$atanh: NumberDecimal(1)}, NumberDecimal('Infinity'));
+    testOpApprox({$atanh: NumberDecimal(-1)}, NumberDecimal('-Infinity'));
+    testOpApprox({$atanh: 1}, Infinity);
+    testOpApprox({$atanh: -1}, -Infinity);
+    testOpApprox({$cos: NumberDecimal("Infinity")}, NumberDecimal('NaN'));
+    testOpApprox({$cos: NumberDecimal("-Infinity")}, NumberDecimal('NaN'));
+    testOpApprox({$cosh: NumberDecimal('Infinity')}, NumberDecimal('Infinity'));
+    testOpApprox({$cosh: NumberDecimal('-Infinity')}, NumberDecimal('Infinity'));
+    testOpApprox({$cosh: Infinity}, Infinity);
+    testOpApprox({$cosh: -Infinity}, Infinity);
+    testOpApprox({$sin: NumberDecimal('Infinity')}, NumberDecimal('NaN'));
+    testOpApprox({$sin: NumberDecimal('-Infinity')}, NumberDecimal('NaN'));
+    testOpApprox({$sinh: NumberDecimal('Infinity')}, NumberDecimal('Infinity'));
+    testOpApprox({$sinh: NumberDecimal('-Infinity')}, NumberDecimal('-Infinity'));
+    testOpApprox({$sinh: Infinity}, Infinity);
+    testOpApprox({$sinh: -Infinity}, -Infinity);
+    testOpApprox({$tan: NumberDecimal('Infinity')}, NumberDecimal('NaN'));
+    testOpApprox({$tan: NumberDecimal('-Infinity')}, NumberDecimal('NaN'));
+    testOpApprox({$tanh: NumberDecimal('Infinity')}, NumberDecimal('1'));
+    testOpApprox({$tanh: NumberDecimal('-Infinity')}, NumberDecimal('-1'));
+    testOpApprox({$tanh: Infinity}, 1);
+    testOpApprox({$tanh: -Infinity}, -1);
+
+    // Int argument out of bounds.
+    assertErrorCode(coll, [{$project: {a: {$acos: NumberInt(-2)}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$acos: NumberInt(2)}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$asin: NumberInt(-2)}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$asin: NumberInt(2)}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$acosh: NumberInt(0)}}}], 50989);
+
+    // Long argument out of bounds.
+    assertErrorCode(coll, [{$project: {a: {$acos: NumberLong(-2)}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$acos: NumberLong(2)}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$asin: NumberLong(-2)}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$asin: NumberLong(2)}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$acosh: NumberLong(0)}}}], 50989);
 
     // Double argument out of bounds.
     assertErrorCode(coll, [{$project: {a: {$acos: -1.1}}}], 50989);
@@ -157,36 +171,29 @@
     assertErrorCode(coll, [{$project: {a: {$atanh: NumberDecimal(-1.00001)}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$atanh: NumberDecimal(1.000001)}}}], 50989);
 
-    // Long argument out of bounds.
-    assertErrorCode(coll, [{$project: {a: {$acos: NumberLong(-2)}}}], 50989);
-    assertErrorCode(coll, [{$project: {a: {$acos: NumberLong(2)}}}], 50989);
-    assertErrorCode(coll, [{$project: {a: {$asin: NumberLong(-2)}}}], 50989);
-    assertErrorCode(coll, [{$project: {a: {$asin: NumberLong(2)}}}], 50989);
-    assertErrorCode(coll, [{$project: {a: {$acosh: NumberLong(0)}}}], 50989);
 
     // Check that NaN still works in bounded trig functions
     testOp({$acos: NumberDecimal('NaN')}, NumberDecimal('NaN'));
     testOp({$asin: NumberDecimal('NaN')}, NumberDecimal('NaN'));
     testOp({$acosh: NumberDecimal('NaN')}, NumberDecimal('NaN'));
     testOp({$atanh: NumberDecimal('NaN')}, NumberDecimal('NaN'));
-
     testOp({$acos: NaN}, NaN);
     testOp({$asin: NaN}, NaN);
     testOp({$acosh: NaN}, NaN);
     testOp({$atanh: NaN}, NaN);
 
     // Non-numeric input.
-    assertErrorCode(coll, [{$project: {a: {$cos: "string"}}}], 28765);
-    assertErrorCode(coll, [{$project: {a: {$sin: "string"}}}], 28765);
-    assertErrorCode(coll, [{$project: {a: {$tan: "string"}}}], 28765);
-    assertErrorCode(coll, [{$project: {a: {$cosh: "string"}}}], 28765);
-    assertErrorCode(coll, [{$project: {a: {$sinh: "string"}}}], 28765);
-    assertErrorCode(coll, [{$project: {a: {$tanh: "string"}}}], 28765);
     assertErrorCode(coll, [{$project: {a: {$acos: "string"}}}], 28765);
+    assertErrorCode(coll, [{$project: {a: {$acosh: "string"}}}], 28765);
     assertErrorCode(coll, [{$project: {a: {$asin: "string"}}}], 28765);
+    assertErrorCode(coll, [{$project: {a: {$asinh: "string"}}}], 28765);
     assertErrorCode(coll, [{$project: {a: {$atan: "string"}}}], 28765);
     assertErrorCode(coll, [{$project: {a: {$atan2: ["string", 0.0]}}}], 50981);
-    assertErrorCode(coll, [{$project: {a: {$acosh: "string"}}}], 28765);
-    assertErrorCode(coll, [{$project: {a: {$asinh: "string"}}}], 28765);
     assertErrorCode(coll, [{$project: {a: {$atanh: "string"}}}], 28765);
+    assertErrorCode(coll, [{$project: {a: {$cos: "string"}}}], 28765);
+    assertErrorCode(coll, [{$project: {a: {$cosh: "string"}}}], 28765);
+    assertErrorCode(coll, [{$project: {a: {$sin: "string"}}}], 28765);
+    assertErrorCode(coll, [{$project: {a: {$sinh: "string"}}}], 28765);
+    assertErrorCode(coll, [{$project: {a: {$tan: "string"}}}], 28765);
+    assertErrorCode(coll, [{$project: {a: {$tanh: "string"}}}], 28765);
 }());
