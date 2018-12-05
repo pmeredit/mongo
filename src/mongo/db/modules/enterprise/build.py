@@ -143,6 +143,10 @@ def configure(conf, env):
                 break
 
     if env.TargetOSIs("windows"):
+        import re
+        import subprocess
+        import _winreg
+
         files = [
                 'libsasl.dll',
                 'libsasl.pdb',
@@ -155,15 +159,19 @@ def configure(conf, env):
         for extra_file in files:
             addFileInExtraPath(extra_file)
 
-        for path in env['ENV']['PATH'].split(";"):
-            full_path = os.path.normpath(os.path.join(path, r"..\..\redist\1033")).lower()
-            full_file_name = os.path.join(full_path, "vcredist_x64.exe")
-            if os.path.exists(full_file_name):
-                env.Append(ARCHIVE_ADDITIONS=[full_file_name])
+        # This magic on how to locate vcredist_x64.exe is taken from src/mongo/installer/msi/SConscript in the community repo
+        programfilesx86 = os.environ.get('ProgramFiles(x86)')
+        if programfilesx86 is None:
+            programfilesx86 = "C:\\Program Files (x86)"
+        vsinstall_path = subprocess.check_output([os.path.join(programfilesx86, "Microsoft Visual Studio", "Installer", "vswhere.exe"), "-version", "[15.0,16.0)", "-property", "installationPath", "-nologo"]).strip()
+        vsruntime_key = _winreg.OpenKey(_winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\\WOW6432Node\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x64")
+        vslib_version,vslib_version_type = _winreg.QueryValueEx(vsruntime_key, "Version")
 
-                env.Append(ARCHIVE_ADDITION_DIR_MAP={
-                        full_path : "bin"
-                        })
-                break
+        full_redist_path = os.path.join(vsinstall_path, "VC", "Redist", "MSVC", re.match("v(\d+\.\d+\.\d+)\.\d+", vslib_version).group(1))
+        full_redist_file_name = os.path.join(full_redist_path, "vcredist_x64.exe")
+        env.Append(ARCHIVE_ADDITIONS=[full_redist_file_name])
+        env.Append(ARCHIVE_ADDITION_DIR_MAP={
+                full_redist_path : "bin"
+                })
 
     return configured_modules
