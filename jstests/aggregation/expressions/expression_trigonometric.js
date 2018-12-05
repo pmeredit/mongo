@@ -5,9 +5,10 @@
     // For assertErrorCode.
     load("jstests/aggregation/extras/utils.js");
 
-    const coll = db.server32930;
+    const coll = db.expression_trigonometric;
     coll.drop();
-    // Seed collection so that the pipeline will execute.
+    // We need at least one document in the collection in order to
+	// test expressions, add it here.
     assert.commandWorked(coll.insert({}), {w: 'majority'});
 
     // Helper for testing that op returns expResult.
@@ -16,42 +17,73 @@
         assert.eq(coll.aggregate(pipeline).toArray(), [{result: expResult}]);
     }
 
-    // Helper for testing that op returns expResult, approximately, since NumberDecimal has
-    // so many representations for a given number (0 versus 0e-40 for instance).
+	// Helper for testing that the aggregation expression 'op' returns
+	// expResult, approximately, since NumberDecimal has so many
+	// representations for a given number (0 versus 0e-40 for instance).
     function testOpApprox(op, expResult) {
         const pipeline = [{$project: {_id: 0, result: {$abs: {$subtract: [op, expResult]}}}}];
         assert.lt(coll.aggregate(pipeline).toArray(), [{result: NumberDecimal("0.00000005")}]);
     }
 
+    // Simple successful int input.
+    testOp({$acos: NumberInt(1)}, 0);
+    testOp({$acosh: NumberInt(1)}, 0);
+    testOp({$asin: NumberInt(0)}, 0);
+    testOp({$asinh: NumberInt(0)}, 0);
+    testOp({$atan: NumberInt(0)}, 0);
+    testOp({$atan2: [NumberInt(0), NumberInt(1)]}, 0);
+    testOp({$atanh: NumberInt(0)}, 0);
+    testOp({$cos: NumberInt(0)}, 1);
+    testOp({$cosh: NumberInt(0)}, 1);
+    testOp({$sin: NumberInt(0)}, 0);
+    testOp({$sinh: NumberInt(0)}, 0);
+    testOp({$tan: NumberInt(0)}, 0);
+    testOp({$tanh: NumberInt(0)}, 0);
+
+    // Simple successful long input.
+    testOp({$acos: NumberLong(1)}, 0);
+    testOp({$acosh: NumberLong(1)}, 0);
+    testOp({$asin: NumberLong(0)}, 0);
+    testOp({$asinh: NumberLong(0)}, 0);
+    testOp({$atan: NumberLong(0)}, 0);
+    testOp({$atan2: [NumberLong(0), NumberLong(1)]}, 0);
+    testOp({$atanh: NumberLong(0)}, 0);
+    testOp({$cos: NumberLong(0)}, 1);
+    testOp({$cosh: NumberLong(0)}, 1);
+    testOp({$sin: NumberLong(0)}, 0);
+    testOp({$sinh: NumberLong(0)}, 0);
+    testOp({$tan: NumberLong(0)}, 0);
+    testOp({$tanh: NumberLong(0)}, 0);
+
     // Simple successful double input.
-    testOp({$cos: 0}, 1);
-    testOp({$sin: 0}, 0);
-    testOp({$tan: 0}, 0);
-    testOp({$cosh: 0}, 1);
-    testOp({$sinh: 0}, 0);
-    testOp({$tanh: 0}, 0);
     testOp({$acos: 1}, 0);
+    testOp({$acosh: 1}, 0);
     testOp({$asin: 0}, 0);
+    testOp({$asinh: 0}, 0);
     testOp({$atan: 0}, 0);
     testOp({$atan2: [0, 1]}, 0);
-    testOp({$acosh: 1}, 0);
-    testOp({$asinh: 0}, 0);
     testOp({$atanh: 0}, 0);
+    testOp({$cos: 0}, 1);
+    testOp({$cosh: 0}, 1);
+    testOp({$sin: 0}, 0);
+    testOp({$sinh: 0}, 0);
+    testOp({$tan: 0}, 0);
+    testOp({$tanh: 0}, 0);
 
     // Simple successful decimal input.
-    testOpApprox({$cos: NumberDecimal(0)}, NumberDecimal(1));
-    testOpApprox({$sin: NumberDecimal(0)}, NumberDecimal(0));
-    testOpApprox({$tan: NumberDecimal(0)}, NumberDecimal(0));
-    testOpApprox({$cosh: NumberDecimal(0)}, NumberDecimal(1));
-    testOpApprox({$sinh: NumberDecimal(0)}, NumberDecimal(0));
-    testOpApprox({$tanh: NumberDecimal(0)}, NumberDecimal(0));
     testOpApprox({$acos: NumberDecimal(1)}, NumberDecimal(0));
+    testOpApprox({$acosh: NumberDecimal(1)}, NumberDecimal(0));
     testOpApprox({$asin: NumberDecimal(0)}, NumberDecimal(0));
+    testOpApprox({$asinh: NumberDecimal(0)}, NumberDecimal(0));
     testOpApprox({$atan: NumberDecimal(0)}, NumberDecimal(0));
     testOpApprox({$atan2: [NumberDecimal(0), 1]}, NumberDecimal(0));
-    testOpApprox({$acosh: NumberDecimal(1)}, NumberDecimal(0));
-    testOpApprox({$asinh: NumberDecimal(0)}, NumberDecimal(0));
     testOpApprox({$atanh: NumberDecimal(0)}, NumberDecimal(0));
+    testOpApprox({$cos: NumberDecimal(0)}, NumberDecimal(1));
+    testOpApprox({$cosh: NumberDecimal(0)}, NumberDecimal(1));
+    testOpApprox({$sin: NumberDecimal(0)}, NumberDecimal(0));
+    testOpApprox({$sinh: NumberDecimal(0)}, NumberDecimal(0));
+    testOpApprox({$tan: NumberDecimal(0)}, NumberDecimal(0));
+    testOpApprox({$tanh: NumberDecimal(0)}, NumberDecimal(0));
 
     // Infinities
     testOp({$acosh: NumberDecimal('Infinity')}, NumberDecimal('Infinity'));
@@ -96,21 +128,6 @@
     testOp({$tanh: NumberDecimal('-Infinity')}, NumberDecimal('-1'));
     testOp({$tanh: Infinity}, 1);
     testOp({$tanh: -Infinity}, -1);
-
-    // Simple successful long input.
-    testOpApprox({$cos: NumberLong(0)}, 1);
-    testOpApprox({$sin: NumberLong(0)}, 0);
-    testOpApprox({$tan: NumberLong(0)}, 0);
-    testOpApprox({$cosh: NumberLong(0)}, 1);
-    testOpApprox({$sinh: NumberLong(0)}, 0);
-    testOpApprox({$tanh: NumberLong(0)}, 0);
-    testOpApprox({$acos: NumberLong(1)}, 0);
-    testOpApprox({$asin: NumberLong(0)}, 0);
-    testOpApprox({$atan: NumberLong(0)}, 0);
-    testOpApprox({$atan2: [NumberLong(0), NumberLong(1)]}, 0);
-    testOpApprox({$acosh: NumberLong(1)}, 0);
-    testOpApprox({$asinh: NumberLong(0)}, 0);
-    testOpApprox({$atanh: NumberLong(0)}, 0);
 
     // Double argument out of bounds.
     assertErrorCode(coll, [{$project: {a: {$acos: -1.1}}}], 50989);

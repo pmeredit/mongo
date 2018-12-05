@@ -39,20 +39,20 @@ public:
     explicit ExpressionBoundedTrigonometric(const boost::intrusive_ptr<ExpressionContext>& expCtx)
         : ExpressionSingleNumericArg<BoundedTrigType>(expCtx) {}
 
-    bool checkLowerBound(double input) const {
-        return !getLowerBound() || input >= getLowerBound().get();
+    bool checkInclusiveLowerBound(double input) const {
+        return !getInclusiveLowerBound() || input >= getInclusiveLowerBound().get();
     }
 
-    bool checkLowerBound(Decimal128 input) const {
-        return !getLowerBound() || input.isGreaterEqual(Decimal128(getLowerBound().get()));
+    bool checkInclusiveLowerBound(Decimal128 input) const {
+        return !getInclusiveLowerBound() || input.isGreaterEqual(Decimal128(getInclusiveLowerBound().get()));
     }
 
-    bool checkUpperBound(double input) const {
-        return !getUpperBound() || input <= getUpperBound().get();
+    bool checkInclusiveUpperBound(double input) const {
+        return !getInclusiveUpperBound() || input <= getInclusiveUpperBound().get();
     }
 
-    bool checkUpperBound(Decimal128 input) const {
-        return !getUpperBound() || input.isLessEqual(Decimal128(getUpperBound().get()));
+    bool checkInclusiveUpperBound(Decimal128 input) const {
+        return !getInclusiveUpperBound() || input.isLessEqual(Decimal128(getInclusiveUpperBound().get()));
     }
 
     std::string toString(double d) const {
@@ -72,24 +72,24 @@ public:
     }
 
     template <typename T>
-    bool checkBounds(T input) const {
-        return isnan(input) || (checkLowerBound(input) && checkUpperBound(input));
+    bool checkInclusiveBounds(T input) const {
+        return checkInclusiveLowerBound(input) && checkInclusiveUpperBound(input);
     }
 
     template <typename T>
-    void assertBounds(T input) const {
-        if (!checkBounds(input)) {
+    void assertInclusiveBounds(T input) const {
+        if (!checkInclusiveBounds(input)) {
             std::string lowerBound;
             std::string upperBound;
-            if (getLowerBound()) {
-                lowerBound = str::stream() << "[" << getLowerBound().get();
+            if (getInclusiveLowerBound()) {
+                lowerBound = str::stream() << "[" << getInclusiveLowerBound().get();
             } else {
-                lowerBound = str::stream() << "(-Infinity";
+                lowerBound = str::stream() << "[-Infinity";
             }
-            if (getUpperBound()) {
-                upperBound = str::stream() << getUpperBound().get() << "]";
+            if (getInclusiveUpperBound()) {
+                upperBound = str::stream() << getInclusiveUpperBound().get() << "]";
             } else {
-                upperBound = str::stream() << "Infinity)";
+                upperBound = str::stream() << "Infinity]";
             }
             uassert(50989,
                     str::stream() << "cannot apply " << getOpName() << " to " << toString(input)
@@ -105,161 +105,35 @@ public:
         switch (numericArg.getType()) {
             case BSONType::NumberDouble: {
                 auto input = numericArg.getDouble();
-                assertBounds(input);
+				if (isnan(input)) {
+					return numericArg;
+				}
+                assertInclusiveBounds(input);
                 return Value(doubleFunc(input));
             }
             case BSONType::NumberDecimal: {
                 auto input = numericArg.getDecimal();
-                assertBounds(input);
+				if (isnan(input)) {
+					return numericArg;
+				}
+                assertInclusiveBounds(input);
                 return Value(decimalFunc(input));
             }
             default: {
                 auto input = static_cast<double>(numericArg.getLong());
-                assertBounds(input);
+				if (isnan(input)) {
+					return numericArg;
+				}
+                assertInclusiveBounds(input);
                 return Value(doubleFunc(input));
             }
         }
     }
 
-    virtual boost::optional<double> getLowerBound() const = 0;
-    virtual boost::optional<double> getUpperBound() const = 0;
+    virtual boost::optional<double> getInclusiveLowerBound() const = 0;
+    virtual boost::optional<double> getInclusiveUpperBound() const = 0;
     virtual double doubleFunc(double x) const = 0;
     virtual Decimal128 decimalFunc(Decimal128 x) const = 0;
     virtual const char* getOpName() const = 0;
 };
-
-#define CREATE_BOUNDED_TRIGONOMETRIC_CLASS(className, funcName, lowerBound, upperBound)       \
-    class Expression##className final                                                         \
-        : public ExpressionBoundedTrigonometric<Expression##className> {                      \
-    public:                                                                                   \
-        explicit Expression##className(const boost::intrusive_ptr<ExpressionContext>& expCtx) \
-            : ExpressionBoundedTrigonometric(expCtx) {}                                       \
-        boost::optional<double> getLowerBound() const final {                                 \
-            return lowerBound;                                                                \
-        }                                                                                     \
-                                                                                              \
-        boost::optional<double> getUpperBound() const final {                                 \
-            return upperBound;                                                                \
-        }                                                                                     \
-                                                                                              \
-        double doubleFunc(double arg) const final {                                           \
-            return std::funcName(arg);                                                        \
-        }                                                                                     \
-                                                                                              \
-        Decimal128 decimalFunc(Decimal128 arg) const final {                                  \
-            return arg.funcName();                                                            \
-        }                                                                                     \
-                                                                                              \
-        const char* getOpName() const final {                                                 \
-            return "$funcName";                                                               \
-        }                                                                                     \
-    };
-
-
-CREATE_BOUNDED_TRIGONOMETRIC_CLASS(ArcCosine,
-                                   acos,
-                                   boost::optional<double>(-1.0),
-                                   boost::optional<double>(1.0));
-
-CREATE_BOUNDED_TRIGONOMETRIC_CLASS(ArcSine,
-                                   asin,
-                                   boost::optional<double>(-1.0),
-                                   boost::optional<double>(1.0));
-
-CREATE_BOUNDED_TRIGONOMETRIC_CLASS(HyperbolicArcTangent,
-                                   atanh,
-                                   boost::optional<double>(-1.0),
-                                   boost::optional<double>(1.0));
-
-CREATE_BOUNDED_TRIGONOMETRIC_CLASS(HyperbolicArcCosine,
-                                   acosh,
-                                   boost::optional<double>(1.0),
-                                   boost::none);
-
-#undef CREATE_BOUNDED_TRIGONOMETRIC_CLASS
-
-template <typename TrigType>
-class ExpressionTrigonometric : public ExpressionSingleNumericArg<TrigType> {
-public:
-    explicit ExpressionTrigonometric(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-        : ExpressionSingleNumericArg<TrigType>(expCtx) {}
-
-    Value evaluateNumericArg(const Value& numericArg) const override {
-        switch (numericArg.getType()) {
-            case BSONType::NumberDouble:
-                return Value(doubleFunc(numericArg.getDouble()));
-            case BSONType::NumberDecimal:
-                return Value(decimalFunc(numericArg.getDecimal()));
-            default: {
-                auto num = static_cast<double>(numericArg.getLong());
-                return Value(doubleFunc(num));
-            }
-        }
-    }
-
-    virtual double doubleFunc(double x) const = 0;
-    virtual Decimal128 decimalFunc(Decimal128 x) const = 0;
-    virtual const char* getOpName() const = 0;
-};
-
-#define CREATE_TRIGONOMETRIC_CLASS(className, funcName)                                         \
-    class Expression##className final : public ExpressionTrigonometric<Expression##className> { \
-    public:                                                                                     \
-        explicit Expression##className(const boost::intrusive_ptr<ExpressionContext>& expCtx)   \
-            : ExpressionTrigonometric(expCtx) {}                                                \
-                                                                                                \
-        double doubleFunc(double arg) const final {                                             \
-            return std::funcName(arg);                                                          \
-        }                                                                                       \
-                                                                                                \
-        Decimal128 decimalFunc(Decimal128 arg) const final {                                    \
-            return arg.funcName();                                                              \
-        }                                                                                       \
-                                                                                                \
-        const char* getOpName() const final {                                                   \
-            return "$funcName";                                                                 \
-        }                                                                                       \
-    };
-
-CREATE_TRIGONOMETRIC_CLASS(ArcTangent, atan);
-CREATE_TRIGONOMETRIC_CLASS(HyperbolicArcSine, asinh);
-CREATE_TRIGONOMETRIC_CLASS(HyperbolicCosine, cosh);
-CREATE_TRIGONOMETRIC_CLASS(HyperbolicSine, sinh);
-CREATE_TRIGONOMETRIC_CLASS(HyperbolicTangent, tanh);
-CREATE_TRIGONOMETRIC_CLASS(Cosine, cos);
-CREATE_TRIGONOMETRIC_CLASS(Sine, sin);
-CREATE_TRIGONOMETRIC_CLASS(Tangent, tan);
-
-#undef CREATE_TRIGONOMETRIC_CLASS
-
-class ExpressionArcTangent2 final : public ExpressionTwoNumericArgs<ExpressionArcTangent2> {
-public:
-    explicit ExpressionArcTangent2(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-        : ExpressionTwoNumericArgs(expCtx) {}
-
-    Value evaluateNumericArgs(const Value& numericArg1, const Value& numericArg2) const;
-    const char* getOpName() const final;
-};
-
-
-class ExpressionDegreesToRadians final
-    : public ExpressionSingleNumericArg<ExpressionDegreesToRadians> {
-public:
-    explicit ExpressionDegreesToRadians(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-        : ExpressionSingleNumericArg(expCtx) {}
-
-    Value evaluateNumericArg(const Value& numericArg) const final;
-    const char* getOpName() const final;
-};
-
-
-class ExpressionRadiansToDegrees final
-    : public ExpressionSingleNumericArg<ExpressionRadiansToDegrees> {
-public:
-    explicit ExpressionRadiansToDegrees(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-        : ExpressionSingleNumericArg(expCtx) {}
-
-    Value evaluateNumericArg(const Value& numericArg) const final;
-    const char* getOpName() const final;
-};
-}
+}  // namespace mongo
