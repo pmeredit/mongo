@@ -1774,7 +1774,6 @@ void ExpressionDateToString::_doAddDependencies(DepsTracker* deps) const {
     }
 }
 
-
 /* ----------------------- ExpressionDivide ---------------------------- */
 
 Value ExpressionDivide::evaluate(const Document& root) const {
@@ -3425,7 +3424,6 @@ const char* ExpressionPow::getOpName() const {
     return "$pow";
 }
 
-
 /* ------------------------- ExpressionRange ------------------------------ */
 
 Value ExpressionRange::evaluate(const Document& root) const {
@@ -3874,7 +3872,6 @@ REGISTER_EXPRESSION(isArray, ExpressionIsArray::parse);
 const char* ExpressionIsArray::getOpName() const {
     return "$isArray";
 }
-
 
 /* ----------------------- ExpressionSlice ---------------------------- */
 
@@ -4450,7 +4447,6 @@ Value ExpressionSwitch::serialize(bool explain) const {
 
     return Value(Document{{"$switch", Document{{"branches", Value(serializedBranches)}}}});
 }
-
 
 /* ------------------------- ExpressionToLower ----------------------------- */
 

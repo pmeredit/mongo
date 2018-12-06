@@ -39,43 +39,53 @@ public:
     explicit ExpressionBoundedTrigonometric(const boost::intrusive_ptr<ExpressionContext>& expCtx)
         : ExpressionSingleNumericArg<BoundedTrigType>(expCtx) {}
 
+	// check lower bound, return false if the input is less than that bound.
     bool checkInclusiveLowerBound(double input) const {
         return !getInclusiveLowerBound() || input >= getInclusiveLowerBound().get();
     }
 
+	// check lower bound, return false if the input is less than that bound.
     bool checkInclusiveLowerBound(Decimal128 input) const {
         return !getInclusiveLowerBound() || input.isGreaterEqual(Decimal128(getInclusiveLowerBound().get()));
     }
 
+	// check upper bound, return false if the input is greater than that bound.
     bool checkInclusiveUpperBound(double input) const {
         return !getInclusiveUpperBound() || input <= getInclusiveUpperBound().get();
     }
 
+	// check upper bound, return false if the input is greater than that bound.
     bool checkInclusiveUpperBound(Decimal128 input) const {
         return !getInclusiveUpperBound() || input.isLessEqual(Decimal128(getInclusiveUpperBound().get()));
     }
 
+	// convert to string for error message purposes.
     std::string toString(double d) const {
         return str::stream() << d;
     }
 
+	// convert to string for error message purposes.
     std::string toString(Decimal128 d) const {
         return d.toString();
     }
 
+	// check if double is nan
     bool isnan(double d) const {
         return std::isnan(d);
     }
 
+	// check if Decimal128 is nan
     bool isnan(Decimal128 d) const {
         return d.isNaN();
     }
 
+	// check both bounds, works on both double and Decimal128
     template <typename T>
     bool checkInclusiveBounds(T input) const {
         return checkInclusiveLowerBound(input) && checkInclusiveUpperBound(input);
     }
 
+	// assert if checkBounds returns false
     template <typename T>
     void assertInclusiveBounds(T input) const {
         if (!checkInclusiveBounds(input)) {
@@ -101,6 +111,7 @@ public:
         }
     }
 
+	// evaluate the implemted trig function on one numericArg
     Value evaluateNumericArg(const Value& numericArg) const {
         switch (numericArg.getType()) {
             case BSONType::NumberDouble: {
@@ -130,10 +141,15 @@ public:
         }
     }
 
+	// gets the inclusive lower bound of the implemted bounded trig function.
     virtual boost::optional<double> getInclusiveLowerBound() const = 0;
+	// gets the inclusive upper bound of the implemted bounded trig function.
     virtual boost::optional<double> getInclusiveUpperBound() const = 0;
+	// doubleFunc performs the double version of the implemented trig function, e.g. std::sin
     virtual double doubleFunc(double x) const = 0;
+	// decimalFunc performs the decimal128 version of the implemented trig function, e.g. d.sin()
     virtual Decimal128 decimalFunc(Decimal128 x) const = 0;
+	// getOpName returns the name of the operation, e.g., $sin
     virtual const char* getOpName() const = 0;
 };
 }  // namespace mongo

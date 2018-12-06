@@ -158,18 +158,18 @@ Value ExpressionArcTangent2::evaluateNumericArgs(const Value& numericArg1,
                                                  const Value& numericArg2) const {
     BSONType type1 = numericArg1.getType();
     BSONType type2 = numericArg2.getType();
-    auto totalType = NumberDouble;
+    auto totalType = BSONType::NumberDouble;
     // If the type of either argument is NumberDecimal, we promote to Decimal128.
-    if (type1 == NumberDecimal || type2 == NumberDecimal) {
-        totalType = NumberDecimal;
+    if (type1 == BSONType::NumberDecimal || type2 == BSONType::NumberDecimal) {
+        totalType = BSONType::NumberDecimal;
     }
     switch (totalType) {
-        case NumberDecimal: {
+        case BSONType::NumberDecimal: {
             auto dec1 = numericArg1.coerceToDecimal();
             auto dec2 = numericArg2.coerceToDecimal();
             return Value(dec1.atan2(dec2));
         }
-        case NumberDouble: {
+        case BSONType::NumberDouble: {
             auto double1 = numericArg1.coerceToDouble();
             auto double2 = numericArg2.coerceToDouble();
             return Value(std::atan2(double1, double2));
@@ -208,18 +208,13 @@ public:
     const char* getOpName() const final;
 };
 
-static const Decimal128 DECIMAL_180 = Decimal128("180");
-static const Decimal128 DECIMAL_PI =
-    Decimal128("3.14159265358979323846264338327950288419716939937510");
-static const Decimal128 DECIMAL_PI_OVER_180 = DECIMAL_PI.divide(DECIMAL_180);
-static const Decimal128 DECIMAL_180_OVER_PI = DECIMAL_180.divide(DECIMAL_PI);
 static constexpr double DOUBLE_PI = 3.141592653589793;
 static constexpr double DOUBLE_PI_OVER_180 = DOUBLE_PI / 180.0;
 static constexpr double DOUBLE_180_OVER_PI = 180.0 / DOUBLE_PI;
 
 struct DegreesToRadians {
     Decimal128 decimalFactor() {
-        return DECIMAL_PI_OVER_180;
+        return Decimal128::kPIOver180;
     }
     double doubleFactor() {
         return DOUBLE_PI_OVER_180;
@@ -228,7 +223,7 @@ struct DegreesToRadians {
 
 struct RadiansToDegrees {
     Decimal128 decimalFactor() {
-        return DECIMAL_180_OVER_PI;
+        return Decimal128::k180OverPI;
     }
     double doubleFactor() {
         return DOUBLE_180_OVER_PI;

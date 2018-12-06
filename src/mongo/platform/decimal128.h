@@ -69,6 +69,10 @@ public:
     static const Decimal128 kPositiveNaN;
     static const Decimal128 kNegativeNaN;
 
+	static const Decimal128 kPI;
+	static const Decimal128 kPIOver180;
+	static const Decimal128 k180OverPI;
+
     static const uint32_t kMaxBiasedExponent = 6143 + 6144;
     // Biased exponent of a Decimal128 with least significant digit in the units place
     static const int32_t kExponentBias = 6143 + 33;
@@ -239,10 +243,6 @@ public:
     Decimal128 toAbs() const;
 
     /**
-     * The following implement standard trigonometric functions for Decimal128.
-     **/
-
-    /**
      * Returns the acos value of this.
      */
     Decimal128 acos(RoundingMode roundMode = kRoundTiesToEven) const;
@@ -275,7 +275,8 @@ public:
     Decimal128 atan(std::uint32_t* signalingFlags, RoundingMode roundMode = kRoundTiesToEven) const;
 
     /**
-     * Returns the atan2 value of this/other. Note that this is not commutative.
+	 * Returns the atan2(this, other) rather than atan2(other,this), which
+	 * would produce different results.
      */
     Decimal128 atan2(const Decimal128& other, RoundingMode roundMode = kRoundTiesToEven) const;
     Decimal128 atan2(const Decimal128& other,

@@ -967,6 +967,10 @@ const Decimal128 Decimal128::kNegativeInfinity(Decimal128::Value({0ull, 0xf8ull 
 const Decimal128 Decimal128::kPositiveNaN(Decimal128::Value({0ull, 0x7cull << 56}));
 const Decimal128 Decimal128::kNegativeNaN(Decimal128::Value({0ull, 0xfcull << 56}));
 
+const Decimal128 Decimal128::kPI("3.14159265358979323846264338327950288419716939937510");
+const Decimal128 Decimal128::kPIOver180(Decimal128::kPI.divide(Decimal128("180")));
+const Decimal128 Decimal128::k180OverPI(Decimal128("180").divide(Decimal128::kPI));
+
 std::ostream& operator<<(std::ostream& stream, const Decimal128& value) {
     return stream << value.toString();
 }
