@@ -61,6 +61,17 @@ ServiceContext::ConstructorActionRegisterer registerBackupCursorHooks{
         BackupCursorHooks::registerInitializer(constructBackupCursorService);
     }};
 
+std::vector<std::string> deduplicateFiles(const std::vector<std::string>& newFiles,
+                                          const std::set<std::string>& oldFiles) {
+    std::vector<std::string> result;
+    for (auto file : newFiles) {
+        if (oldFiles.find(file) == oldFiles.end()) {
+            result.push_back(file);
+        }
+    }
+    return result;
+}
+
 }  // namespace
 
 void BackupCursorService::fsyncLock(OperationContext* opCtx) {
@@ -182,6 +193,7 @@ BackupCursorState BackupCursorService::openBackupCursor(OperationContext* opCtx)
     }
 
     Document preamble{{"metadata", builder.obj()}};
+    _backupFiles = std::set<std::string>(filesToBackup.begin(), filesToBackup.end());
 
     closeCursorGuard.Dismiss();
     return {*_activeBackupId, preamble, filesToBackup};
@@ -215,6 +227,8 @@ BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext
                                                 repl::ReadConcernLevel::kMajorityReadConcern);
     }
 
+    log() << "Extending backup cursor. backupId: " << backupId << " extendingTo: " << extendTo;
+
     // This waiting can block for an arbitrarily long time. Clients making an `$backupCursorExtend`
     // call are recommended to pass in a `maxTimeMS`, which is obeyed in this waiting logic.
     uassertStatusOK(replCoord->waitUntilOpTimeForRead(opCtx, readConcernArgs));
@@ -223,9 +237,11 @@ BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext
     // guarantee the persistency of the oplog with timestamp `extendTo`.
     opCtx->recoveryUnit()->waitUntilDurable();
 
-    log() << "Extending backup cursor. backupId: " << backupId << " extendingTo: " << extendTo;
+    auto filesToBackup = uassertStatusOK(_storageEngine->extendBackupCursor(opCtx));
+    log() << "Backup cursor has been extended. backupId: " << backupId
+          << " extendedTo: " << extendTo;
 
-    return BackupCursorExtendState{{"dummy.journal"}};
+    return BackupCursorExtendState{deduplicateFiles(filesToBackup, _backupFiles)};
 }
 
 bool BackupCursorService::isBackupCursorOpen() const {

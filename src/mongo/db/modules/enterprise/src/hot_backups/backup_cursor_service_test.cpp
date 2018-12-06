@@ -167,6 +167,9 @@ TEST_F(BackupCursorServiceTest, TestSuccessfulExtend) {
     auto extendTo = Timestamp(100, 1);
     auto backupCursorExtendState =
         _backupCursorService->extendBackupCursor(_opCtx.get(), backupId, extendTo);
+    ASSERT_EQUALS(1u, backupCursorExtendState.filenames.size());
+    ASSERT_EQUALS("journal/WiredTigerLog.999", backupCursorExtendState.filenames[0]);
+
     _backupCursorService->closeBackupCursor(_opCtx.get(), backupId);
 }
 

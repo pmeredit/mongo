@@ -51,6 +51,22 @@
             {aggregate: 1, pipeline: [{$backupCursorExtend: parameters}], cursor: {}}));
     }
 
+    function insertDoc(db, collName, doc) {
+        let res = assert.commandWorked(db.runCommand({insert: collName, documents: [doc]}));
+        assert(res.hasOwnProperty("operationTime"), tojson(res));
+        return res.operationTime;
+    }
+
+    function assertAdditionalJournalFiles(parameters) {
+        let res = db.aggregate([{$backupCursorExtend: parameters}]);
+        assert(res.hasNext());
+        let files = res.toArray();
+        jsTestLog("Additional files that need to be copied:");
+        for (let i in files) {
+            jsTestLog(files[i]);
+        }
+    }
+
     // 1. Extend without a running backup cursor.
     assertBackupIdNotFound({backupId: backupIdNotExist, timestamp: extendTo});
 
@@ -76,8 +92,18 @@
 
     // 4. Cannot specify it in view pipeline.
     assert.commandFailedWithCode(
-        db.createView('a', 'b', [{$backupCursorExtend: {backupId: backupId, timestamp: extendTo}}]),
+        db.createView("a", "b", [{$backupCursorExtend: {backupId: backupId, timestamp: extendTo}}]),
         ErrorCodes.InvalidNamespace);
+
+    // 5. Do some writes and verify it returns additional log files.
+    const collName = "test";
+    let clusterTime;
+    jsTestLog(
+        "Inserting some documents so that $backupCursorExtend will return additional journal files that need to be copied.");
+    for (let i = 0; i < 10000; i++) {
+        clusterTime = insertDoc(db, collName, {x: i});
+    }
+    assertAdditionalJournalFiles({backupId: backupId, timestamp: clusterTime});
 
     // Expected usage is for the tailable $backupCursor to be explicitly killed by the client.
     aggBackupCursor.close();
