@@ -6,6 +6,7 @@
 
 #include "ldap_connection.h"
 
+#include <ldap.h>
 #include <memory>
 
 namespace mongo {
@@ -27,6 +28,7 @@ private:
     std::unique_ptr<OpenLDAPConnectionPIMPL> _pimpl;  // OpenLDAP's state
 
     struct timeval _timeout;  // Interval of time after which OpenLDAP's connections fail
+    ldap_conncb _callback;    // callback that is called on connection
 };
 
 }  // namespace mongo

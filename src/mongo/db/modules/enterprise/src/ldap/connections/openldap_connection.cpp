@@ -16,6 +16,7 @@
 #include "mongo/stdx/mutex.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
+#include "mongo/util/net/sockaddr.h"
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/time_support.h"
 
@@ -266,13 +267,39 @@ private:
     decltype(LDAPAPIInfo::ldapai_protocol_version) protocolVersion;
 };
 
+int LDAPConnectCallbackFunction(
+    LDAP* ld, Sockbuf* sb, LDAPURLDesc* srv, struct sockaddr* addr, struct ldap_conncb* ctx) {
+    try {
+        LOG(3) << [=]() -> std::string {
+            struct sockaddr_storage* ss = reinterpret_cast<struct sockaddr_storage*>(addr);
+            SockAddr sa(*ss, sizeof(*addr));
+            StringBuilder builder;
+            builder << "Connected to LDAP server at " << sa.toString();
+            std::unique_ptr<char, decltype(&ldap_memfree)> url(ldap_url_desc2str(srv),
+                                                               &ldap_memfree);
+            if (url.get() != nullptr) {
+                builder << " with LDAP URL: " << url.get();
+            }
+            return builder.str();
+        }();
+        return 0;
+    } catch (const std::exception& e) {
+        error() << "Failed LDAPConnectCallback with: " << e.what();
+        return LDAP_OPERATIONS_ERROR;
+    }
+}
+
+void LDAPConnectCallbackDelete(LDAP* ld, Sockbuf* sb, struct ldap_conncb* ctx) {}
+
 }  // namespace
 
 class OpenLDAPConnection::OpenLDAPConnectionPIMPL
     : public LDAPSessionHolder<OpenLDAPSessionParams> {};
 
 OpenLDAPConnection::OpenLDAPConnection(LDAPConnectionOptions options)
-    : LDAPConnection(std::move(options)), _pimpl(stdx::make_unique<OpenLDAPConnectionPIMPL>()) {
+    : LDAPConnection(std::move(options)),
+      _pimpl(stdx::make_unique<OpenLDAPConnectionPIMPL>()),
+      _callback{&LDAPConnectCallbackFunction, &LDAPConnectCallbackDelete, nullptr} {
     Seconds seconds = duration_cast<Seconds>(_options.timeout);
     _timeout.tv_sec = seconds.count();
     _timeout.tv_usec = durationCount<Microseconds>(_options.timeout - seconds);
@@ -340,6 +367,14 @@ Status OpenLDAPConnection::connect() {
         return Status(ErrorCodes::OperationFailed,
                       str::stream()
                           << "Attempted to set the LDAP server network timeout. Received error: "
+                          << ldap_err2string(ret));
+    }
+
+    ret = ldap_set_option(_pimpl->getSession(), LDAP_OPT_CONNECT_CB, &_callback);
+    if (ret != LDAP_SUCCESS) {
+        return Status(ErrorCodes::OperationFailed,
+                      str::stream()
+                          << "Attempted to set the LDAP connect callback. Received error: "
                           << ldap_err2string(ret));
     }
 
