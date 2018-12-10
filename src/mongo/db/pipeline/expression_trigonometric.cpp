@@ -159,23 +159,20 @@ public:
 
 Value ExpressionArcTangent2::evaluateNumericArgs(const Value& numericArg1,
                                                  const Value& numericArg2) const {
-    BSONType type1 = numericArg1.getType();
-    BSONType type2 = numericArg2.getType();
     auto totalType = BSONType::NumberDouble;
     // If the type of either argument is NumberDecimal, we promote to Decimal128.
-    if (type1 == BSONType::NumberDecimal || type2 == BSONType::NumberDecimal) {
+    if (numericArg1.getType() == BSONType::NumberDecimal
+			|| numericArg2.getType() == BSONType::NumberDecimal) {
         totalType = BSONType::NumberDecimal;
     }
     switch (totalType) {
         case BSONType::NumberDecimal: {
-            auto dec1 = numericArg1.coerceToDecimal();
-            auto dec2 = numericArg2.coerceToDecimal();
-            return Value(dec1.atan2(dec2));
+            auto dec = numericArg1.coerceToDecimal();
+            return Value(dec.atan2(numericArg2.coerceToDecimal()));
         }
         case BSONType::NumberDouble: {
-            auto double1 = numericArg1.coerceToDouble();
-            auto double2 = numericArg2.coerceToDouble();
-            return Value(std::atan2(double1, double2));
+            return Value(std::atan2(numericArg1.coerceToDouble(),
+						numericArg2.coerceToDouble()));
         }
         default:
             MONGO_UNREACHABLE;
@@ -211,36 +208,45 @@ public:
     const char* getOpName() const final;
 };
 
-static constexpr double DOUBLE_PI = 3.141592653589793;
-static constexpr double DOUBLE_PI_OVER_180 = DOUBLE_PI / 180.0;
-static constexpr double DOUBLE_180_OVER_PI = 180.0 / DOUBLE_PI;
+static constexpr double kDoublePi = 3.141592653589793;
+static constexpr double kDoublePiOver180 = kDoublePi / 180.0;
+static constexpr double kDouble_180OverPi = 180.0 / kDoublePi;
 
+/*
+ * DegreesToRadians contains the necessary configuration to convert degrees to
+ * radians.
+ */
 struct DegreesToRadians {
-    Decimal128 decimalFactor() {
-        return Decimal128::kPIOver180;
+    static Decimal128 decimalFactor() {
+        return Decimal128::kPiOver180;
     }
-    double doubleFactor() {
-        return DOUBLE_PI_OVER_180;
+
+    static double doubleFactor() {
+        return kDoublePiOver180;
     }
 };
 
+/*
+ * RadiansToDegrees contains the necessary configuration to convert radians to
+ * degrees.
+ */
 struct RadiansToDegrees {
-    Decimal128 decimalFactor() {
-        return Decimal128::k180OverPI;
+    static Decimal128 decimalFactor() {
+        return Decimal128::k180OverPi;
     }
-    double doubleFactor() {
-        return DOUBLE_180_OVER_PI;
+
+    static double doubleFactor() {
+        return kDouble_180OverPi;
     }
 };
 
 template <typename ConversionValues>
 static Value doDegreeRadiansConversion(const Value& numericArg) {
-    ConversionValues c;
     switch (numericArg.getType()) {
         case BSONType::NumberDecimal:
-            return Value(numericArg.getDecimal().multiply(c.decimalFactor()));
+            return Value(numericArg.getDecimal().multiply(ConversionValues::decimalFactor()));
         default:
-            return Value(numericArg.coerceToDouble() * c.doubleFactor());
+            return Value(numericArg.coerceToDouble() * ConversionValues::doubleFactor());
     }
 }
 

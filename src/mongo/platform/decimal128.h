@@ -69,9 +69,9 @@ public:
     static const Decimal128 kPositiveNaN;
     static const Decimal128 kNegativeNaN;
 
-	static const Decimal128 kPI;
-	static const Decimal128 kPIOver180;
-	static const Decimal128 k180OverPI;
+	static const Decimal128 kPi;
+	static const Decimal128 kPiOver180;
+	static const Decimal128 k180OverPi;
 
     static const uint32_t kMaxBiasedExponent = 6143 + 6144;
     // Biased exponent of a Decimal128 with least significant digit in the units place
