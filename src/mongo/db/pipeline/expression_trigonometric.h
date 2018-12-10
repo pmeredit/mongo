@@ -33,6 +33,10 @@
 
 namespace mongo {
 
+/*
+ * InclusiveBoundType defines the necessary configuration
+ * for inclusively bounded trig functions.
+ */
 struct InclusiveBoundType {
 	static std::string leftBracket() {
 		return "[";
@@ -59,6 +63,10 @@ struct InclusiveBoundType {
 	}
 };
 
+/*
+ * ExclusiveBoundType defines the necessary configuration
+ * for exclusively bounded trig functions.
+ */
 struct ExclusiveBoundType {
 	static std::string leftBracket() {
 		return "(";
@@ -94,13 +102,13 @@ public:
 	// check lower bound, return false if the input is less than that bound.
     template <typename T>
 	bool checkLowerBound(T input) const {
-        return !getLowerBound() || BoundType::gt(input, getLowerBound().get());
+        return BoundType::gt(input, getLowerBound());
     }
 
 	// check upper bound, return false if the input is greater than that bound.
     template <typename T>
     bool checkUpperBound(T input) const {
-        return !getUpperBound() || BoundType::lt(input, getUpperBound().get());
+        return BoundType::lt(input, getUpperBound());
     }
 
 	// convert to string for error message purposes.
@@ -133,29 +141,17 @@ public:
     template <typename T>
     void assertBounds(T input) const {
         if (!checkBounds(input)) {
-            std::string lowerBound;
-            std::string upperBound;
-            if (getLowerBound()) {
-                lowerBound = str::stream() << BoundType::leftBracket() << getLowerBound().get();
-            } else {
-                lowerBound = str::stream() << "-Infinity" << BoundType::leftBracket();
-            }
-            if (getUpperBound()) {
-                upperBound = str::stream() << getUpperBound().get() << BoundType::rightBracket();
-            } else {
-                upperBound = str::stream() << "Infinity" << BoundType::rightBracket();
-            }
             uassert(50989,
                     str::stream() << "cannot apply " << getOpName() << " to " << toString(input)
                                   << ", value must in "
-                                  << lowerBound
+                                  << BoundType::leftBracket() << getLowerBound()
                                   << ","
-                                  << upperBound,
+                                  << getUpperBound() << BoundType::rightBracket(),
                     false);
         }
     }
 
-	// evaluate the implemted trig function on one numericArg
+	// evaluate the implented trig function on one numericArg
     Value evaluateNumericArg(const Value& numericArg) const {
         switch (numericArg.getType()) {
             case BSONType::NumberDouble: {
@@ -185,15 +181,24 @@ public:
         }
     }
 
-	// gets the lower bound of the implented bounded trig function.
+	/* Since bounds are always either Infinity or integral values, double has enough
+	 * precision.
+	 * gets the lower bound of the implented bounded trig function.
+	 */
+
     virtual double getLowerBound() const = 0;
-	// gets the upper bound of the implented bounded trig function.
     virtual double getUpperBound() const = 0;
-	// doubleFunc performs the double version of the implemented trig function, e.g. std::sin
+	/*
+	 * doubleFunc performs the double version of the implemented trig function, e.g. std::sin()
+	 */
     virtual double doubleFunc(double x) const = 0;
-	// decimalFunc performs the decimal128 version of the implemented trig function, e.g. d.sin()
+	/*
+	 * decimalFunc performs the decimal128 version of the implemented trig function, e.g. d.sin()
+	 */
     virtual Decimal128 decimalFunc(Decimal128 x) const = 0;
-	// getOpName returns the name of the operation, e.g., $sin
+	/*
+	 * getOpName returns the name of the operation, e.g., $sin
+	 */
     virtual const char* getOpName() const = 0;
 };
 }  // namespace mongo
