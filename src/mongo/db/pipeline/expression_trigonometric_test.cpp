@@ -65,12 +65,12 @@ class ExpressionNaryTestOneArgApproximate : public ExpressionBaseTest {
 public:
     void assertEvaluates(const std::string& expressionName, Value input, Value output) {
         intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-		auto obj = BSON(expressionName << BSON_ARRAY(input));
-		auto vps = expCtx->variablesParseState;
-		auto expression = Expression::parseExpression(expCtx, obj, vps);
-		Value result = expression->evaluate(Document());
-		ASSERT_EQUALS(result.getType(), output.getType());
-		assertApproxEq(result, output);
+        auto obj = BSON(expressionName << BSON_ARRAY(input));
+        auto vps = expCtx->variablesParseState;
+        auto expression = Expression::parseExpression(expCtx, obj, vps);
+        Value result = expression->evaluate(Document());
+        ASSERT_EQUALS(result.getType(), output.getType());
+        assertApproxEq(result, output);
     }
 
     intrusive_ptr<ExpressionNary> _expr;
@@ -79,14 +79,17 @@ public:
 // A testing class for testing approximately equal results for two argument numeric expressions.
 class ExpressionNaryTestTwoArgApproximate : public ExpressionBaseTest {
 public:
-    void assertEvaluates(const std::string& expressionName, Value input1, Value input2, Value output) {
+    void assertEvaluates(const std::string& expressionName,
+                         Value input1,
+                         Value input2,
+                         Value output) {
         intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
-		auto obj = BSON(expressionName << BSON_ARRAY(input1 << input2));
-		auto vps = expCtx->variablesParseState;
-		auto expression = Expression::parseExpression(expCtx, obj, vps);
-		Value result = expression->evaluate(Document());
-		ASSERT_EQUALS(result.getType(), output.getType());
-		assertApproxEq(result, output);
+        auto obj = BSON(expressionName << BSON_ARRAY(input1 << input2));
+        auto vps = expCtx->variablesParseState;
+        auto expression = Expression::parseExpression(expCtx, obj, vps);
+        Value result = expression->evaluate(Document());
+        ASSERT_EQUALS(result.getType(), output.getType());
+        assertApproxEq(result, output);
     }
 
     intrusive_ptr<ExpressionNary> _expr;
@@ -100,7 +103,7 @@ public:
 class ExpressionArcSineTest : public ExpressionNaryTestOneArgApproximate {
 public:
     void assertEvaluates(Value input, Value output) {
-		ExpressionNaryTestOneArgApproximate::assertEvaluates("$asin", input, output);
+        ExpressionNaryTestOneArgApproximate::assertEvaluates("$asin", input, output);
     }
 };
 
@@ -155,7 +158,7 @@ TEST_F(ExpressionArcSineTest, NullArg) {
 class ExpressionArcCosineTest : public ExpressionNaryTestOneArgApproximate {
 public:
     void assertEvaluates(Value input, Value output) {
-		ExpressionNaryTestOneArgApproximate::assertEvaluates("$acos", input, output);
+        ExpressionNaryTestOneArgApproximate::assertEvaluates("$acos", input, output);
     }
 };
 
@@ -210,7 +213,7 @@ TEST_F(ExpressionArcCosineTest, NullArg) {
 class ExpressionArcTangentTest : public ExpressionNaryTestOneArgApproximate {
 public:
     void assertEvaluates(Value input, Value output) {
-		ExpressionNaryTestOneArgApproximate::assertEvaluates("$atan", input, output);
+        ExpressionNaryTestOneArgApproximate::assertEvaluates("$atan", input, output);
     }
 };
 
@@ -259,7 +262,7 @@ TEST_F(ExpressionArcTangentTest, NullArg) {
 class ExpressionArcTangent2Test : public ExpressionNaryTestTwoArgApproximate {
 public:
     void assertEvaluates(Value input1, Value input2, Value output) {
-		ExpressionNaryTestTwoArgApproximate::assertEvaluates("$atan2", input1, input2, output);
+        ExpressionNaryTestTwoArgApproximate::assertEvaluates("$atan2", input1, input2, output);
     }
 };
 
@@ -459,7 +462,7 @@ TEST_F(ExpressionArcTangent2Test, NullArg) {
 class ExpressionCosineTest : public ExpressionNaryTestOneArgApproximate {
 public:
     void assertEvaluates(Value input, Value output) {
-		ExpressionNaryTestOneArgApproximate::assertEvaluates("$cos", input, output);
+        ExpressionNaryTestOneArgApproximate::assertEvaluates("$cos", input, output);
     }
 };
 
@@ -536,7 +539,7 @@ TEST_F(ExpressionCosineTest, NullArg) {
 class ExpressionHyperbolicCosineTest : public ExpressionNaryTestOneArgApproximate {
 public:
     void assertEvaluates(Value input, Value output) {
-		ExpressionNaryTestOneArgApproximate::assertEvaluates("$cosh", input, output);
+        ExpressionNaryTestOneArgApproximate::assertEvaluates("$cosh", input, output);
     }
 };
 
@@ -613,7 +616,7 @@ TEST_F(ExpressionHyperbolicCosineTest, NullArg) {
 class ExpressionSineTest : public ExpressionNaryTestOneArgApproximate {
 public:
     void assertEvaluates(Value input, Value output) {
-		ExpressionNaryTestOneArgApproximate::assertEvaluates("$sin", input, output);
+        ExpressionNaryTestOneArgApproximate::assertEvaluates("$sin", input, output);
     }
 };
 
@@ -686,7 +689,7 @@ TEST_F(ExpressionSineTest, NullArg) {
 class ExpressionHyperbolicSineTest : public ExpressionNaryTestOneArgApproximate {
 public:
     void assertEvaluates(Value input, Value output) {
-		ExpressionNaryTestOneArgApproximate::assertEvaluates("$sinh", input, output);
+        ExpressionNaryTestOneArgApproximate::assertEvaluates("$sinh", input, output);
     }
 };
 
@@ -763,7 +766,7 @@ TEST_F(ExpressionHyperbolicSineTest, NullArg) {
 class ExpressionTangentTest : public ExpressionNaryTestOneArgApproximate {
 public:
     void assertEvaluates(Value input, Value output) {
-		ExpressionNaryTestOneArgApproximate::assertEvaluates("$tan", input, output);
+        ExpressionNaryTestOneArgApproximate::assertEvaluates("$tan", input, output);
     }
 };
 
@@ -812,7 +815,7 @@ TEST_F(ExpressionTangentTest, NullArg) {
 class ExpressionHyperbolicTangentTest : public ExpressionNaryTestOneArgApproximate {
 public:
     void assertEvaluates(Value input, Value output) {
-		ExpressionNaryTestOneArgApproximate::assertEvaluates("$tanh", input, output);
+        ExpressionNaryTestOneArgApproximate::assertEvaluates("$tanh", input, output);
     }
 };
 
@@ -889,7 +892,7 @@ TEST_F(ExpressionHyperbolicTangentTest, NullArg) {
 class ExpressionHyperbolicArcCosineTest : public ExpressionNaryTestOneArgApproximate {
 public:
     void assertEvaluates(Value input, Value output) {
-		ExpressionNaryTestOneArgApproximate::assertEvaluates("$acosh", input, output);
+        ExpressionNaryTestOneArgApproximate::assertEvaluates("$acosh", input, output);
     }
 };
 
@@ -1028,7 +1031,7 @@ TEST_F(ExpressionHyperbolicArcCosineTest, NullArg) {
 class ExpressionHyperbolicArcSineTest : public ExpressionNaryTestOneArgApproximate {
 public:
     void assertEvaluates(Value input, Value output) {
-		ExpressionNaryTestOneArgApproximate::assertEvaluates("$asinh", input, output);
+        ExpressionNaryTestOneArgApproximate::assertEvaluates("$asinh", input, output);
     }
 };
 
@@ -1167,7 +1170,7 @@ TEST_F(ExpressionHyperbolicArcSineTest, NullArg) {
 class ExpressionHyperbolicArcTangentTest : public ExpressionNaryTestOneArgApproximate {
 public:
     void assertEvaluates(Value input, Value output) {
-		ExpressionNaryTestOneArgApproximate::assertEvaluates("$atanh", input, output);
+        ExpressionNaryTestOneArgApproximate::assertEvaluates("$atanh", input, output);
     }
 };
 
@@ -1214,7 +1217,7 @@ TEST_F(ExpressionHyperbolicArcTangentTest, NullArg) {
 class ExpressionRadiansToDegreesTest : public ExpressionNaryTestOneArgApproximate {
 public:
     void assertEvaluates(Value input, Value output) {
-		ExpressionNaryTestOneArgApproximate::assertEvaluates("$radiansToDegrees", input, output);
+        ExpressionNaryTestOneArgApproximate::assertEvaluates("$radiansToDegrees", input, output);
     }
 };
 
@@ -1287,7 +1290,7 @@ TEST_F(ExpressionRadiansToDegreesTest, NullArg) {
 class ExpressionDegreesToRadiansTest : public ExpressionNaryTestOneArgApproximate {
 public:
     void assertEvaluates(Value input, Value output) {
-		ExpressionNaryTestOneArgApproximate::assertEvaluates("$degreesToRadians", input, output);
+        ExpressionNaryTestOneArgApproximate::assertEvaluates("$degreesToRadians", input, output);
     }
 };
 
@@ -1342,5 +1345,4 @@ TEST_F(ExpressionDegreesToRadiansTest, DecimalArg) {
 TEST_F(ExpressionDegreesToRadiansTest, NullArg) {
     assertEvaluates(Value(BSONNULL), Value(BSONNULL));
 }
-
 }

@@ -69,9 +69,9 @@ public:
     static const Decimal128 kPositiveNaN;
     static const Decimal128 kNegativeNaN;
 
-	static const Decimal128 kPi;
-	static const Decimal128 kPiOver180;
-	static const Decimal128 k180OverPi;
+    static const Decimal128 kPi;
+    static const Decimal128 kPiOver180;
+    static const Decimal128 k180OverPi;
 
     static const uint32_t kMaxBiasedExponent = 6143 + 6144;
     // Biased exponent of a Decimal128 with least significant digit in the units place
@@ -275,8 +275,8 @@ public:
     Decimal128 atan(std::uint32_t* signalingFlags, RoundingMode roundMode = kRoundTiesToEven) const;
 
     /**
-	 * Returns the atan2(this, other) rather than atan2(other,this), which
-	 * would produce different results.
+     * Returns the atan2(this, other) rather than atan2(other,this), which
+     * would produce different results.
      */
     Decimal128 atan2(const Decimal128& other, RoundingMode roundMode = kRoundTiesToEven) const;
     Decimal128 atan2(const Decimal128& other,

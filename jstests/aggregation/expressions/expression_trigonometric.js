@@ -7,7 +7,7 @@
 
     const coll = db.expression_trigonometric;
     coll.drop();
-	// We need at least one document in the collection in order to test expressions, add it here.
+    // We need at least one document in the collection in order to test expressions, add it here.
     assert.commandWorked(coll.insert({}), {w: 'majority'});
 
     // Helper for testing that op returns expResult.
@@ -16,9 +16,9 @@
         assert.eq(coll.aggregate(pipeline).toArray(), [{result: expResult}]);
     }
 
-	// Helper for testing that the aggregation expression 'op' returns expResult, approximately,
-	// since NumberDecimal has so many representations for a given number (0 versus 0e-40 for
-	// instance).
+    // Helper for testing that the aggregation expression 'op' returns expResult, approximately,
+    // since NumberDecimal has so many representations for a given number (0 versus 0e-40 for
+    // instance).
     function testOpApprox(op, expResult) {
         const pipeline = [{$project: {_id: 0, result: {$abs: {$subtract: [op, expResult]}}}}];
         assert.lt(coll.aggregate(pipeline).toArray(), [{result: NumberDecimal("0.00000005")}]);
@@ -97,7 +97,7 @@
     testOpApprox({$radiansToDegrees: NumberDecimal(0)}, NumberDecimal(0));
 
     // Infinities
-	// Infinity input produces out of bounds error.
+    // Infinity input produces out of bounds error.
     assertErrorCode(coll, [{$project: {a: {$acos: -Infinity}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$acos: NumberDecimal('-Infinity')}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$acos: Infinity}}}], 50989);
@@ -106,12 +106,12 @@
     assertErrorCode(coll, [{$project: {a: {$acosh: -Infinity}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$acosh: NumberDecimal('-Infinity')}}}], 50989);
 
-	assertErrorCode(coll, [{$project: {a: {$asin: -Infinity}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$asin: -Infinity}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$asin: NumberDecimal('-Infinity')}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$asin: Infinity}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$asin: NumberDecimal('Infinity')}}}], 50989);
 
-	assertErrorCode(coll, [{$project: {a: {$cos: -Infinity}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$cos: -Infinity}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$cos: NumberDecimal('-Infinity')}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$cos: Infinity}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$cos: NumberDecimal('Infinity')}}}], 50989);
@@ -126,7 +126,7 @@
     assertErrorCode(coll, [{$project: {a: {$tan: Infinity}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$tan: NumberDecimal('Infinity')}}}], 50989);
 
-	// Infinity input produces Infinity as output.
+    // Infinity input produces Infinity as output.
     testOp({$acosh: NumberDecimal('Infinity')}, NumberDecimal('Infinity'));
     testOp({$acosh: Infinity}, Infinity);
 
@@ -143,32 +143,27 @@
     testOp({$sinh: Infinity}, Infinity);
     testOp({$sinh: -Infinity}, -Infinity);
 
-	// Infinity produces finite output (due to asymptotic bounds).
-    testOpApprox({$atan: NumberDecimal('Infinity')},
-           NumberDecimal(Math.PI/2));
-    testOpApprox({$atan: NumberDecimal('-Infinity')},
-           NumberDecimal(Math.Pi/2));
-    testOpApprox({$atan: Infinity}, Math.PI/2);
-    testOpApprox({$atan: -Infinity}, -Math.PI/2);
+    // Infinity produces finite output (due to asymptotic bounds).
+    testOpApprox({$atan: NumberDecimal('Infinity')}, NumberDecimal(Math.PI / 2));
+    testOpApprox({$atan: NumberDecimal('-Infinity')}, NumberDecimal(Math.Pi / 2));
+    testOpApprox({$atan: Infinity}, Math.PI / 2);
+    testOpApprox({$atan: -Infinity}, -Math.PI / 2);
 
-    testOpApprox({$atan2: [NumberDecimal('Infinity'), 0]},
-           NumberDecimal(Math.PI/2));
-    testOpApprox({$atan2: [NumberDecimal('-Infinity'), 0]},
-           NumberDecimal(-Math.PI/2));
+    testOpApprox({$atan2: [NumberDecimal('Infinity'), 0]}, NumberDecimal(Math.PI / 2));
+    testOpApprox({$atan2: [NumberDecimal('-Infinity'), 0]}, NumberDecimal(-Math.PI / 2));
     testOpApprox({$atan2: [NumberDecimal('-Infinity'), NumberDecimal("Infinity")]},
-           NumberDecimal(-Math.PI/4));
+                 NumberDecimal(-Math.PI / 4));
     testOpApprox({$atan2: [NumberDecimal('-Infinity'), NumberDecimal("-Infinity")]},
-           NumberDecimal(-3 * Math.PI/4));
+                 NumberDecimal(-3 * Math.PI / 4));
     testOpApprox({$atan2: [NumberDecimal('0'), NumberDecimal("-Infinity")]},
-           NumberDecimal(Math.PI));
-    testOpApprox({$atan2: [NumberDecimal('0'), NumberDecimal("Infinity")]},
-           NumberDecimal(0));
+                 NumberDecimal(Math.PI));
+    testOpApprox({$atan2: [NumberDecimal('0'), NumberDecimal("Infinity")]}, NumberDecimal(0));
 
     testOp({$tanh: NumberDecimal('Infinity')}, NumberDecimal('1'));
     testOp({$tanh: NumberDecimal('-Infinity')}, NumberDecimal('-1'));
 
-	// Finite input produces infinite outputs.
-	testOp({$atanh: NumberDecimal(1)}, NumberDecimal('Infinity'));
+    // Finite input produces infinite outputs.
+    testOp({$atanh: NumberDecimal(1)}, NumberDecimal('Infinity'));
     testOp({$atanh: NumberDecimal(-1)}, NumberDecimal('-Infinity'));
     testOp({$atanh: 1}, Infinity);
     testOp({$atanh: -1}, -Infinity);
@@ -212,31 +207,29 @@
     assertErrorCode(coll, [{$project: {a: {$atanh: NumberDecimal(-1.00001)}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$atanh: NumberDecimal(1.000001)}}}], 50989);
 
+    // Check NaN is preserved.
+    ["$acos", "$asin", "$atan", "$cos", "$sin", "$tan"].forEach(op => {
+        let oparg = {};
+        oparg[op] = NaN;
+        testOp(oparg, NaN);
+        oparg[op] = NumberDecimal(NaN);
+        testOp(oparg, NumberDecimal(NaN));
+        // Check the hyperbolic version of each function.
+        let hop = op + "h";
+        let hoparg = {};
+        hoparg[hop] = NaN;
+        testOp(hoparg, NaN);
+        hoparg[hop] = NumberDecimal(NaN);
+        testOp(hoparg, NumberDecimal(NaN));
+    });
 
-	// Check NaN is preserved.
-	["$acos","$asin", "$atan",
-	 "$cos", "$sin", "$tan" ].forEach(op => {
-		let oparg = {};
-		oparg[op] = NaN;
-		testOp(oparg, NaN);
-		oparg[op] = NumberDecimal(NaN);
-		testOp(oparg, NumberDecimal(NaN));
-		// Check the hyperbolic version of each function.
-		let hop = op+"h";
-		let hoparg = {};
-		hoparg[hop] = NaN;
-		testOp(hoparg, NaN);
-		hoparg[hop] = NumberDecimal(NaN);
-		testOp(hoparg, NumberDecimal(NaN));
-	});
-
-	["$radiansToDegrees", "$degreesToRadians"].forEach(op => {
-		let oparg = {};
-		oparg[op] = NaN;
-		testOp(oparg, NaN);
-		oparg[op] = NumberDecimal(NaN);
-		testOp(oparg, NumberDecimal(NaN));
-	});
+    ["$radiansToDegrees", "$degreesToRadians"].forEach(op => {
+        let oparg = {};
+        oparg[op] = NaN;
+        testOp(oparg, NaN);
+        oparg[op] = NumberDecimal(NaN);
+        testOp(oparg, NumberDecimal(NaN));
+    });
 
     testOp({$atan2: [NumberDecimal('NaN'), NumberDecimal('NaN')]}, NumberDecimal('NaN'));
     testOp({$atan2: [NumberDecimal('NaN'), NumberDecimal('0')]}, NumberDecimal('NaN'));
