@@ -1537,7 +1537,4 @@ TEST(Decimal128Test, TestTanh) {
     assertDecimal128ApproxEqual(Decimal128("5.75958653158").tanh(), Decimal128("0.99998012476"));
     assertDecimal128ApproxEqual(Decimal128("6.28318530718").tanh(), Decimal128("0.99999302534"));
 }
-
-#undef assertDecimal128ApproxEqual
-
 }  // namespace mongo
