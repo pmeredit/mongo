@@ -462,7 +462,13 @@ public:
 
     virtual ~ExpressionTwoNumericArgs() = default;
 
-	// performs the type checking necessary to make sure that both arguments are numeric.
+	/**
+	 * Evaluate performs the type checking necessary to make sure that both arguments are numeric,
+	 * then calls the evaluateNumericArgs on the two numeric args.:
+	 * 1. If either input is nullish, it returns null.
+	 * 2. If either input is not numeric, it throws an error.
+	 * 3. Call evaluateNumericArgs on the two numeric args.
+	 */
     Value evaluate(const Document& root) const final {
         Value arg1 = this->vpOperand[0]->evaluate(root);
         if (arg1.nullish())
@@ -482,7 +488,9 @@ public:
         return evaluateNumericArgs(arg1, arg2);
     }
 
-	// evaluate the expression on exactly two numeric arguments.
+	/**
+	 *  Evaluate the expression on exactly two numeric arguments.
+	 */
     virtual Value evaluateNumericArgs(const Value& numericArg1, const Value& numericArg2) const = 0;
 };
 

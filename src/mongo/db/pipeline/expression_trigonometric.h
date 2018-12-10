@@ -102,59 +102,56 @@ public:
     explicit ExpressionBoundedTrigonometric(const boost::intrusive_ptr<ExpressionContext>& expCtx)
         : ExpressionSingleNumericArg<BoundedTrigType>(expCtx) {}
 
-	// check lower bound, return false if the input is less than that bound.
     template <typename T>
 	bool checkLowerBound(T input) const {
         return BoundType::gt(input, getLowerBound());
     }
 
-	// check upper bound, return false if the input is greater than that bound.
     template <typename T>
     bool checkUpperBound(T input) const {
         return BoundType::lt(input, getUpperBound());
     }
 
-	// convert to string for error message purposes.
     std::string toString(double d) const {
         return str::stream() << d;
     }
 
-	// convert to string for error message purposes.
     std::string toString(Decimal128 d) const {
         return d.toString();
     }
 
-	// check if double is nan
     bool isnan(double d) const {
         return std::isnan(d);
     }
 
-	// check if Decimal128 is nan
     bool isnan(Decimal128 d) const {
         return d.isNaN();
     }
 
-	// check both bounds, works on both double and Decimal128
     template <typename T>
     bool checkBounds(T input) const {
         return checkLowerBound(input) && checkUpperBound(input);
     }
 
-	// assert if checkBounds returns false
+	/**
+	 * assertBounds asserts if checkBounds returns false, meaning that the input is out of bounds.
+	 * It properly formats the error message if the error message must be thrown.
+	 */
     template <typename T>
     void assertBounds(T input) const {
         if (!checkBounds(input)) {
-            uassert(50989,
+            uasserted(50989,
                     str::stream() << "cannot apply " << getOpName() << " to " << toString(input)
                                   << ", value must in "
                                   << BoundType::leftBracket() << getLowerBound()
                                   << ","
-                                  << getUpperBound() << BoundType::rightBracket(),
-                    false);
+                                  << getUpperBound() << BoundType::rightBracket());
         }
     }
 
-	// evaluate the implented trig function on one numericArg
+	/**
+	 * evaluateNumericArg  evaluates the implented trig function on one numericArg.
+	 */
     Value evaluateNumericArg(const Value& numericArg) const {
         switch (numericArg.getType()) {
             case BSONType::NumberDouble: {
@@ -184,10 +181,10 @@ public:
         }
     }
 
-	/* Since bounds are always either Infinity or integral values, double has enough precision.
+	/**
+	 * Since bounds are always either +/-Infinity or integral values, double has enough precision.
 	 * gets the lower bound of the implented bounded trig function.
 	 */
-
     virtual double getLowerBound() const = 0;
     virtual double getUpperBound() const = 0;
 	/*
@@ -214,6 +211,9 @@ public:
     explicit ExpressionUnboundedTrigonometric(const boost::intrusive_ptr<ExpressionContext>& expCtx)
         : ExpressionSingleNumericArg<TrigType>(expCtx) {}
 
+	/**
+	 * evaluateNumericArg  evaluates the implented trig function on one numericArg.
+	 */
     Value evaluateNumericArg(const Value& numericArg) const override {
         switch (numericArg.getType()) {
             case BSONType::NumberDouble:
