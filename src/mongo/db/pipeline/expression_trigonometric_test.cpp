@@ -40,8 +40,8 @@ namespace ExpressionTests {
 using boost::intrusive_ptr;
 using namespace mongo;
 
-// assert_approximately_eq is a helper function for asserting approximate results.
-static void assert_approximately_eq(const Value& evaluated, const Value& expected) {
+// assertApproxEq is a helper function for asserting approximate results.
+static void assertApproxEq(const Value& evaluated, const Value& expected) {
     ASSERT_EQ(evaluated.getType(), expected.getType());
     if (expected.nullish()) {
         ASSERT_VALUE_EQ(expected, evaluated);
@@ -70,7 +70,7 @@ public:
 		auto expression = Expression::parseExpression(expCtx, obj, vps);
 		Value result = expression->evaluate(Document());
 		ASSERT_EQUALS(result.getType(), output.getType());
-		assert_approximately_eq(result, output);
+		assertApproxEq(result, output);
     }
 
     intrusive_ptr<ExpressionNary> _expr;
@@ -86,13 +86,17 @@ public:
 		auto expression = Expression::parseExpression(expCtx, obj, vps);
 		Value result = expression->evaluate(Document());
 		ASSERT_EQUALS(result.getType(), output.getType());
-		assert_approximately_eq(result, output);
+		assertApproxEq(result, output);
     }
 
     intrusive_ptr<ExpressionNary> _expr;
 };
 
 /* ------------------------- ExpressionArcSine -------------------------- */
+/**
+ * Test values were generated using the 64 bit std version of asin, and should
+ * not be inspected manually for sanity.
+ */
 class ExpressionArcSineTest : public ExpressionNaryTestOneArgApproximate {
 public:
     void assertEvaluates(Value input, Value output) {
@@ -143,6 +147,10 @@ TEST_F(ExpressionArcSineTest, NullArg) {
 }
 
 /* ------------------------- ExpressionArcCosine -------------------------- */
+/**
+ * Test values were generated using the 64 bit std version of acos, and should
+ * not be inspected manually for sanity.
+ */
 
 class ExpressionArcCosineTest : public ExpressionNaryTestOneArgApproximate {
 public:
@@ -194,6 +202,10 @@ TEST_F(ExpressionArcCosineTest, NullArg) {
 }
 
 /* ------------------------- ExpressionArcTangent -------------------------- */
+/**
+ * Test values were generated using the 64 bit std version of atan, and should
+ * not be inspected manually for sanity.
+ */
 
 class ExpressionArcTangentTest : public ExpressionNaryTestOneArgApproximate {
 public:
@@ -239,6 +251,10 @@ TEST_F(ExpressionArcTangentTest, NullArg) {
 }
 
 /* ------------------------- ExpressionArcTangent2 -------------------------- */
+/**
+ * Test values were generated using the 64 bit std version of atan2, and should
+ * not be inspected manually for sanity.
+ */
 
 class ExpressionArcTangent2Test : public ExpressionNaryTestTwoArgApproximate {
 public:
@@ -435,6 +451,10 @@ TEST_F(ExpressionArcTangent2Test, NullArg) {
 }
 
 /* ------------------------- ExpressionCosine -------------------------- */
+/**
+ * Test values were generated using the 64 bit std version of cos, and should
+ * not be inspected manually for sanity.
+ */
 
 class ExpressionCosineTest : public ExpressionNaryTestOneArgApproximate {
 public:
@@ -508,6 +528,10 @@ TEST_F(ExpressionCosineTest, NullArg) {
 }
 
 /* ------------------------- ExpressionHyperbolicCosine -------------------------- */
+/**
+ * Test values were generated using the 64 bit std version of cosh, and should
+ * not be inspected manually for sanity.
+ */
 
 class ExpressionHyperbolicCosineTest : public ExpressionNaryTestOneArgApproximate {
 public:
@@ -580,145 +604,11 @@ TEST_F(ExpressionHyperbolicCosineTest, NullArg) {
     assertEvaluates(Value(BSONNULL), Value(BSONNULL));
 }
 
-/* ------------------------- ExpressionRadiansToDegrees -------------------------- */
-
-class ExpressionRadiansToDegreesTest : public ExpressionNaryTestOneArgApproximate {
-public:
-    void assertEvaluates(Value input, Value output) {
-		ExpressionNaryTestOneArgApproximate::assertEvaluates("$radiansToDegrees", input, output);
-    }
-};
-
-TEST_F(ExpressionRadiansToDegreesTest, IntArg) {
-    assertEvaluates(Value(0), Value(0.0));
-    assertEvaluates(Value(1), Value(57.2957795131));
-    assertEvaluates(Value(2), Value(114.591559026));
-    assertEvaluates(Value(3), Value(171.887338539));
-    assertEvaluates(Value(4), Value(229.183118052));
-    assertEvaluates(Value(5), Value(286.478897565));
-    assertEvaluates(Value(6), Value(343.774677078));
-}
-
-TEST_F(ExpressionRadiansToDegreesTest, LongArg) {
-    assertEvaluates(Value(0LL), Value(0.0));
-    assertEvaluates(Value(1LL), Value(57.2957795131));
-    assertEvaluates(Value(2LL), Value(114.591559026));
-    assertEvaluates(Value(3LL), Value(171.887338539));
-    assertEvaluates(Value(4LL), Value(229.183118052));
-    assertEvaluates(Value(5LL), Value(286.478897565));
-    assertEvaluates(Value(6LL), Value(343.774677078));
-}
-
-TEST_F(ExpressionRadiansToDegreesTest, DoubleArg) {
-    assertEvaluates(Value(0.0), Value(0.0));
-    assertEvaluates(Value(0.523598775598), Value(30.0));
-    assertEvaluates(Value(0.785398163397), Value(45.0));
-    assertEvaluates(Value(1.0471975512), Value(60.0));
-    assertEvaluates(Value(1.57079632679), Value(90.0));
-    assertEvaluates(Value(2.09439510239), Value(120.0));
-    assertEvaluates(Value(2.35619449019), Value(135.0));
-    assertEvaluates(Value(2.61799387799), Value(150.0));
-    assertEvaluates(Value(3.14159265359), Value(180.0));
-    assertEvaluates(Value(3.66519142919), Value(210.0));
-    assertEvaluates(Value(3.92699081699), Value(225.0));
-    assertEvaluates(Value(4.18879020479), Value(240.0));
-    assertEvaluates(Value(4.71238898038), Value(270.0));
-    assertEvaluates(Value(5.23598775598), Value(300.0));
-    assertEvaluates(Value(5.49778714378), Value(315.0));
-    assertEvaluates(Value(5.75958653158), Value(330.0));
-    assertEvaluates(Value(6.28318530718), Value(360.0));
-}
-
-TEST_F(ExpressionRadiansToDegreesTest, DecimalArg) {
-    assertEvaluates(Value(Decimal128("0.0")), Value(Decimal128("0.0")));
-    assertEvaluates(Value(Decimal128("0.523598775598")), Value(Decimal128("30.0")));
-    assertEvaluates(Value(Decimal128("0.785398163397")), Value(Decimal128("45.0")));
-    assertEvaluates(Value(Decimal128("1.0471975512")), Value(Decimal128("60.0")));
-    assertEvaluates(Value(Decimal128("1.57079632679")), Value(Decimal128("90.0")));
-    assertEvaluates(Value(Decimal128("2.09439510239")), Value(Decimal128("120.0")));
-    assertEvaluates(Value(Decimal128("2.35619449019")), Value(Decimal128("135.0")));
-    assertEvaluates(Value(Decimal128("2.61799387799")), Value(Decimal128("150.0")));
-    assertEvaluates(Value(Decimal128("3.14159265359")), Value(Decimal128("180.0")));
-    assertEvaluates(Value(Decimal128("3.66519142919")), Value(Decimal128("210.0")));
-    assertEvaluates(Value(Decimal128("3.92699081699")), Value(Decimal128("225.0")));
-    assertEvaluates(Value(Decimal128("4.18879020479")), Value(Decimal128("240.0")));
-    assertEvaluates(Value(Decimal128("4.71238898038")), Value(Decimal128("270.0")));
-    assertEvaluates(Value(Decimal128("5.23598775598")), Value(Decimal128("300.0")));
-    assertEvaluates(Value(Decimal128("5.49778714378")), Value(Decimal128("315.0")));
-    assertEvaluates(Value(Decimal128("5.75958653158")), Value(Decimal128("330.0")));
-    assertEvaluates(Value(Decimal128("6.28318530718")), Value(Decimal128("360.0")));
-}
-
-TEST_F(ExpressionRadiansToDegreesTest, NullArg) {
-    assertEvaluates(Value(BSONNULL), Value(BSONNULL));
-}
-
-/* ------------------------- ExpressionDegreesToRadians -------------------------- */
-
-class ExpressionDegreesToRadiansTest : public ExpressionNaryTestOneArgApproximate {
-public:
-    void assertEvaluates(Value input, Value output) {
-		ExpressionNaryTestOneArgApproximate::assertEvaluates("$degreesToRadians", input, output);
-    }
-};
-
-TEST_F(ExpressionDegreesToRadiansTest, IntArg) {
-    assertEvaluates(Value(0), Value(0.0));
-    assertEvaluates(Value(45), Value(0.785398163397));
-    assertEvaluates(Value(90), Value(1.57079632679));
-    assertEvaluates(Value(135), Value(2.35619449019));
-    assertEvaluates(Value(180), Value(3.14159265359));
-    assertEvaluates(Value(180), Value(3.14159265359));
-    assertEvaluates(Value(225), Value(3.92699081699));
-    assertEvaluates(Value(270), Value(4.71238898038));
-    assertEvaluates(Value(315), Value(5.49778714378));
-    assertEvaluates(Value(360), Value(6.28318530718));
-}
-
-TEST_F(ExpressionDegreesToRadiansTest, LongArg) {
-    assertEvaluates(Value(0LL), Value(0.0));
-    assertEvaluates(Value(45LL), Value(0.785398163397));
-    assertEvaluates(Value(90LL), Value(1.57079632679));
-    assertEvaluates(Value(135LL), Value(2.35619449019));
-    assertEvaluates(Value(180LL), Value(3.14159265359));
-    assertEvaluates(Value(180LL), Value(3.14159265359));
-    assertEvaluates(Value(225LL), Value(3.92699081699));
-    assertEvaluates(Value(270LL), Value(4.71238898038));
-    assertEvaluates(Value(315LL), Value(5.49778714378));
-    assertEvaluates(Value(360LL), Value(6.28318530718));
-}
-
-TEST_F(ExpressionDegreesToRadiansTest, DoubleArg) {
-    assertEvaluates(Value(0), Value(0.0));
-    assertEvaluates(Value(45), Value(0.785398163397));
-    assertEvaluates(Value(90), Value(1.57079632679));
-    assertEvaluates(Value(135), Value(2.35619449019));
-    assertEvaluates(Value(180), Value(3.14159265359));
-    assertEvaluates(Value(180), Value(3.14159265359));
-    assertEvaluates(Value(225), Value(3.92699081699));
-    assertEvaluates(Value(270), Value(4.71238898038));
-    assertEvaluates(Value(315), Value(5.49778714378));
-    assertEvaluates(Value(360), Value(6.28318530718));
-}
-
-TEST_F(ExpressionDegreesToRadiansTest, DecimalArg) {
-    assertEvaluates(Value(Decimal128("0")), Value(Decimal128("0.0")));
-    assertEvaluates(Value(Decimal128("45")), Value(Decimal128("0.785398163397")));
-    assertEvaluates(Value(Decimal128("90")), Value(Decimal128("1.57079632679")));
-    assertEvaluates(Value(Decimal128("135")), Value(Decimal128("2.35619449019")));
-    assertEvaluates(Value(Decimal128("180")), Value(Decimal128("3.14159265359")));
-    assertEvaluates(Value(Decimal128("180")), Value(Decimal128("3.14159265359")));
-    assertEvaluates(Value(Decimal128("225")), Value(Decimal128("3.92699081699")));
-    assertEvaluates(Value(Decimal128("270")), Value(Decimal128("4.71238898038")));
-    assertEvaluates(Value(Decimal128("315")), Value(Decimal128("5.49778714378")));
-    assertEvaluates(Value(Decimal128("360")), Value(Decimal128("6.28318530718")));
-}
-
-TEST_F(ExpressionDegreesToRadiansTest, NullArg) {
-    assertEvaluates(Value(BSONNULL), Value(BSONNULL));
-}
-
 /* ------------------------- ExpressionSine -------------------------- */
+/**
+ * Test values were generated using the 64 bit std version of sin, and should
+ * not be inspected manually for sanity.
+ */
 
 class ExpressionSineTest : public ExpressionNaryTestOneArgApproximate {
 public:
@@ -865,6 +755,10 @@ TEST_F(ExpressionHyperbolicSineTest, NullArg) {
 }
 
 /* ------------------------- ExpressionTangent -------------------------- */
+/**
+ * Test values were generated using the 64 bit std version of tan, and should
+ * not be inspected manually for sanity.
+ */
 
 class ExpressionTangentTest : public ExpressionNaryTestOneArgApproximate {
 public:
@@ -910,6 +804,10 @@ TEST_F(ExpressionTangentTest, NullArg) {
 }
 
 /* ------------------------- ExpressionHyperbolicTangent -------------------------- */
+/**
+ * Test values were generated using the 64 bit std version of tanh, and should
+ * not be inspected manually for sanity.
+ */
 
 class ExpressionHyperbolicTangentTest : public ExpressionNaryTestOneArgApproximate {
 public:
@@ -983,6 +881,10 @@ TEST_F(ExpressionHyperbolicTangentTest, NullArg) {
 }
 
 /* ------------------------- ExpressionHyperbolicArcCosine -------------------------- */
+/**
+ * Test values were generated using the 64 bit std version of acos, and should
+ * not be inspected manually for sanity.
+ */
 
 class ExpressionHyperbolicArcCosineTest : public ExpressionNaryTestOneArgApproximate {
 public:
@@ -1118,6 +1020,10 @@ TEST_F(ExpressionHyperbolicArcCosineTest, NullArg) {
 }
 
 /* ------------------------- ExpressionHyperbolicArcSine -------------------------- */
+/**
+ * Test values were generated using the 64 bit std version of asinh, and should
+ * not be inspected manually for sanity.
+ */
 
 class ExpressionHyperbolicArcSineTest : public ExpressionNaryTestOneArgApproximate {
 public:
@@ -1253,6 +1159,10 @@ TEST_F(ExpressionHyperbolicArcSineTest, NullArg) {
 }
 
 /* ------------------------- ExpressionHyperbolicArcTangent -------------------------- */
+/**
+ * Test values were generated using the 64 bit std version of atanh, and should
+ * not be inspected manually for sanity.
+ */
 
 class ExpressionHyperbolicArcTangentTest : public ExpressionNaryTestOneArgApproximate {
 public:
@@ -1298,4 +1208,139 @@ TEST_F(ExpressionHyperbolicArcTangentTest, DecimalArg) {
 TEST_F(ExpressionHyperbolicArcTangentTest, NullArg) {
     assertEvaluates(Value(BSONNULL), Value(BSONNULL));
 }
+
+/* ------------------------- ExpressionRadiansToDegrees -------------------------- */
+
+class ExpressionRadiansToDegreesTest : public ExpressionNaryTestOneArgApproximate {
+public:
+    void assertEvaluates(Value input, Value output) {
+		ExpressionNaryTestOneArgApproximate::assertEvaluates("$radiansToDegrees", input, output);
+    }
+};
+
+TEST_F(ExpressionRadiansToDegreesTest, IntArg) {
+    assertEvaluates(Value(0), Value(0.0));
+    assertEvaluates(Value(1), Value(57.2957795131));
+    assertEvaluates(Value(2), Value(114.591559026));
+    assertEvaluates(Value(3), Value(171.887338539));
+    assertEvaluates(Value(4), Value(229.183118052));
+    assertEvaluates(Value(5), Value(286.478897565));
+    assertEvaluates(Value(6), Value(343.774677078));
+}
+
+TEST_F(ExpressionRadiansToDegreesTest, LongArg) {
+    assertEvaluates(Value(0LL), Value(0.0));
+    assertEvaluates(Value(1LL), Value(57.2957795131));
+    assertEvaluates(Value(2LL), Value(114.591559026));
+    assertEvaluates(Value(3LL), Value(171.887338539));
+    assertEvaluates(Value(4LL), Value(229.183118052));
+    assertEvaluates(Value(5LL), Value(286.478897565));
+    assertEvaluates(Value(6LL), Value(343.774677078));
+}
+
+TEST_F(ExpressionRadiansToDegreesTest, DoubleArg) {
+    assertEvaluates(Value(0.0), Value(0.0));
+    assertEvaluates(Value(0.523598775598), Value(30.0));
+    assertEvaluates(Value(0.785398163397), Value(45.0));
+    assertEvaluates(Value(1.0471975512), Value(60.0));
+    assertEvaluates(Value(1.57079632679), Value(90.0));
+    assertEvaluates(Value(2.09439510239), Value(120.0));
+    assertEvaluates(Value(2.35619449019), Value(135.0));
+    assertEvaluates(Value(2.61799387799), Value(150.0));
+    assertEvaluates(Value(3.14159265359), Value(180.0));
+    assertEvaluates(Value(3.66519142919), Value(210.0));
+    assertEvaluates(Value(3.92699081699), Value(225.0));
+    assertEvaluates(Value(4.18879020479), Value(240.0));
+    assertEvaluates(Value(4.71238898038), Value(270.0));
+    assertEvaluates(Value(5.23598775598), Value(300.0));
+    assertEvaluates(Value(5.49778714378), Value(315.0));
+    assertEvaluates(Value(5.75958653158), Value(330.0));
+    assertEvaluates(Value(6.28318530718), Value(360.0));
+}
+
+TEST_F(ExpressionRadiansToDegreesTest, DecimalArg) {
+    assertEvaluates(Value(Decimal128("0.0")), Value(Decimal128("0.0")));
+    assertEvaluates(Value(Decimal128("0.523598775598")), Value(Decimal128("30.0")));
+    assertEvaluates(Value(Decimal128("0.785398163397")), Value(Decimal128("45.0")));
+    assertEvaluates(Value(Decimal128("1.0471975512")), Value(Decimal128("60.0")));
+    assertEvaluates(Value(Decimal128("1.57079632679")), Value(Decimal128("90.0")));
+    assertEvaluates(Value(Decimal128("2.09439510239")), Value(Decimal128("120.0")));
+    assertEvaluates(Value(Decimal128("2.35619449019")), Value(Decimal128("135.0")));
+    assertEvaluates(Value(Decimal128("2.61799387799")), Value(Decimal128("150.0")));
+    assertEvaluates(Value(Decimal128("3.14159265359")), Value(Decimal128("180.0")));
+    assertEvaluates(Value(Decimal128("3.66519142919")), Value(Decimal128("210.0")));
+    assertEvaluates(Value(Decimal128("3.92699081699")), Value(Decimal128("225.0")));
+    assertEvaluates(Value(Decimal128("4.18879020479")), Value(Decimal128("240.0")));
+    assertEvaluates(Value(Decimal128("4.71238898038")), Value(Decimal128("270.0")));
+    assertEvaluates(Value(Decimal128("5.23598775598")), Value(Decimal128("300.0")));
+    assertEvaluates(Value(Decimal128("5.49778714378")), Value(Decimal128("315.0")));
+    assertEvaluates(Value(Decimal128("5.75958653158")), Value(Decimal128("330.0")));
+    assertEvaluates(Value(Decimal128("6.28318530718")), Value(Decimal128("360.0")));
+}
+
+TEST_F(ExpressionRadiansToDegreesTest, NullArg) {
+    assertEvaluates(Value(BSONNULL), Value(BSONNULL));
+}
+
+/* ------------------------- ExpressionDegreesToRadians -------------------------- */
+
+class ExpressionDegreesToRadiansTest : public ExpressionNaryTestOneArgApproximate {
+public:
+    void assertEvaluates(Value input, Value output) {
+		ExpressionNaryTestOneArgApproximate::assertEvaluates("$degreesToRadians", input, output);
+    }
+};
+
+TEST_F(ExpressionDegreesToRadiansTest, IntArg) {
+    assertEvaluates(Value(0), Value(0.0));
+    assertEvaluates(Value(45), Value(0.785398163397));
+    assertEvaluates(Value(90), Value(1.57079632679));
+    assertEvaluates(Value(135), Value(2.35619449019));
+    assertEvaluates(Value(180), Value(3.14159265359));
+    assertEvaluates(Value(225), Value(3.92699081699));
+    assertEvaluates(Value(270), Value(4.71238898038));
+    assertEvaluates(Value(315), Value(5.49778714378));
+    assertEvaluates(Value(360), Value(6.28318530718));
+}
+
+TEST_F(ExpressionDegreesToRadiansTest, LongArg) {
+    assertEvaluates(Value(0LL), Value(0.0));
+    assertEvaluates(Value(45LL), Value(0.785398163397));
+    assertEvaluates(Value(90LL), Value(1.57079632679));
+    assertEvaluates(Value(135LL), Value(2.35619449019));
+    assertEvaluates(Value(180LL), Value(3.14159265359));
+    assertEvaluates(Value(225LL), Value(3.92699081699));
+    assertEvaluates(Value(270LL), Value(4.71238898038));
+    assertEvaluates(Value(315LL), Value(5.49778714378));
+    assertEvaluates(Value(360LL), Value(6.28318530718));
+}
+
+TEST_F(ExpressionDegreesToRadiansTest, DoubleArg) {
+    assertEvaluates(Value(0), Value(0.0));
+    assertEvaluates(Value(45), Value(0.785398163397));
+    assertEvaluates(Value(90), Value(1.57079632679));
+    assertEvaluates(Value(135), Value(2.35619449019));
+    assertEvaluates(Value(180), Value(3.14159265359));
+    assertEvaluates(Value(225), Value(3.92699081699));
+    assertEvaluates(Value(270), Value(4.71238898038));
+    assertEvaluates(Value(315), Value(5.49778714378));
+    assertEvaluates(Value(360), Value(6.28318530718));
+}
+
+TEST_F(ExpressionDegreesToRadiansTest, DecimalArg) {
+    assertEvaluates(Value(Decimal128("0")), Value(Decimal128("0.0")));
+    assertEvaluates(Value(Decimal128("45")), Value(Decimal128("0.785398163397")));
+    assertEvaluates(Value(Decimal128("90")), Value(Decimal128("1.57079632679")));
+    assertEvaluates(Value(Decimal128("135")), Value(Decimal128("2.35619449019")));
+    assertEvaluates(Value(Decimal128("180")), Value(Decimal128("3.14159265359")));
+    assertEvaluates(Value(Decimal128("225")), Value(Decimal128("3.92699081699")));
+    assertEvaluates(Value(Decimal128("270")), Value(Decimal128("4.71238898038")));
+    assertEvaluates(Value(Decimal128("315")), Value(Decimal128("5.49778714378")));
+    assertEvaluates(Value(Decimal128("360")), Value(Decimal128("6.28318530718")));
+}
+
+TEST_F(ExpressionDegreesToRadiansTest, NullArg) {
+    assertEvaluates(Value(BSONNULL), Value(BSONNULL));
+}
+
 }

@@ -1289,8 +1289,11 @@ TEST(Decimal128Test, TestDecimal128GetLargestNegativeExponentZero) {
     ASSERT_EQUALS(d.getValue().low64, largestNegativeExponentZeroLow64);
 }
 
-// Test data was generated using 64 bit versions of these functions, so we must test
-// approximate results.
+/**
+* Test data was generated using 64 bit versions of these functions, so we must test
+* approximate results.
+*/
+
 void assertDecimal128ApproxEqual(Decimal128 x, Decimal128 y) {
     ASSERT_TRUE(x.subtract(y).toAbs().isLess(Decimal128("0.00000005")));
 }
