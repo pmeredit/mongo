@@ -34,8 +34,7 @@
 namespace mongo {
 
 /*
- * InclusiveBoundType defines the necessary configuration
- * for inclusively bounded trig functions.
+ * InclusiveBoundType defines the necessary configuration for inclusively bounded trig functions.
  */
 struct InclusiveBoundType {
 	static std::string leftBracket() {
@@ -64,8 +63,7 @@ struct InclusiveBoundType {
 };
 
 /*
- * ExclusiveBoundType defines the necessary configuration
- * for exclusively bounded trig functions.
+ * ExclusiveBoundType defines the necessary configuration for exclusively bounded trig functions.
  */
 struct ExclusiveBoundType {
 	static std::string leftBracket() {
@@ -93,6 +91,11 @@ struct ExclusiveBoundType {
 	}
 };
 
+/*
+ * ExpressionBoundedTrigonometric is the type of all trigonometric functions that take one argument
+ * and have lower and upper bounds, either inclusive or exclusive, as defined by the BoundType
+ * template argument.
+ */
 template <typename BoundedTrigType, typename BoundType>
 class ExpressionBoundedTrigonometric : public ExpressionSingleNumericArg<BoundedTrigType> {
 public:
@@ -181,8 +184,7 @@ public:
         }
     }
 
-	/* Since bounds are always either Infinity or integral values, double has enough
-	 * precision.
+	/* Since bounds are always either Infinity or integral values, double has enough precision.
 	 * gets the lower bound of the implented bounded trig function.
 	 */
 
@@ -198,6 +200,43 @@ public:
     virtual Decimal128 decimalFunc(Decimal128 x) const = 0;
 	/*
 	 * getOpName returns the name of the operation, e.g., $sin
+	 */
+    virtual const char* getOpName() const = 0;
+};
+
+/*
+ * ExpressionUnboundedTrigonometric is the type for all trigonometric functions that do not have
+ * upper or lower bounds.
+ */
+template <typename TrigType>
+class ExpressionUnboundedTrigonometric : public ExpressionSingleNumericArg<TrigType> {
+public:
+    explicit ExpressionUnboundedTrigonometric(const boost::intrusive_ptr<ExpressionContext>& expCtx)
+        : ExpressionSingleNumericArg<TrigType>(expCtx) {}
+
+    Value evaluateNumericArg(const Value& numericArg) const override {
+        switch (numericArg.getType()) {
+            case BSONType::NumberDouble:
+                return Value(doubleFunc(numericArg.getDouble()));
+            case BSONType::NumberDecimal:
+                return Value(decimalFunc(numericArg.getDecimal()));
+            default: {
+                auto num = static_cast<double>(numericArg.getLong());
+                return Value(doubleFunc(num));
+            }
+        }
+    }
+
+	/*
+	 * doubleFunc performs the double version of the implemented trig function, e.g. std::sinh()
+	 */
+    virtual double doubleFunc(double x) const = 0;
+	/*
+	 * decimalFunc performs the decimal128 version of the implemented trig function, e.g. d.sinh()
+	 */
+    virtual Decimal128 decimalFunc(Decimal128 x) const = 0;
+	/*
+	 * getOpName returns the name of the operation, e.g., $sinh
 	 */
     virtual const char* getOpName() const = 0;
 };

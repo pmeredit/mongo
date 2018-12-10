@@ -64,45 +64,51 @@ namespace mongo {
     REGISTER_EXPRESSION(funcName, Expression##className::parse);                                  \
 
 
+/*
+ * Inclusive Bounds
+ */
 CREATE_BOUNDED_TRIGONOMETRIC_CLASS(ArcCosine,
-                         acos,
-						 InclusiveBoundType,
-                         -1.0,
-                         1.0);
+                                   acos,
+					               InclusiveBoundType,
+                                   -1.0,
+                                   1.0);
 
 CREATE_BOUNDED_TRIGONOMETRIC_CLASS(ArcSine,
-                         asin,
-						 InclusiveBoundType,
-                         -1.0,
-                         1.0);
+                                   asin,
+					               InclusiveBoundType,
+                                   -1.0,
+                                   1.0);
 
 CREATE_BOUNDED_TRIGONOMETRIC_CLASS(HyperbolicArcTangent,
-                         atanh,
-						 InclusiveBoundType,
-                         -1.0,
-                         1.0);
+                                   atanh,
+						           InclusiveBoundType,
+                                   -1.0,
+                                   1.0);
 
 CREATE_BOUNDED_TRIGONOMETRIC_CLASS(HyperbolicArcCosine,
                                    acosh,
-						 InclusiveBoundType,
+					   	           InclusiveBoundType,
                                    1.0,
                                    std::numeric_limits<double>::infinity());
 
+/*
+ * Exclusive Bounds
+ */
 CREATE_BOUNDED_TRIGONOMETRIC_CLASS(Cosine,
 		                           cos,
-						 ExclusiveBoundType,
+						           ExclusiveBoundType,
 								   -std::numeric_limits<double>::infinity(),
 								   std::numeric_limits<double>::infinity());
 
 CREATE_BOUNDED_TRIGONOMETRIC_CLASS(Sine,
 		                           sin,
-						 ExclusiveBoundType,
+						           ExclusiveBoundType,
 								   -std::numeric_limits<double>::infinity(),
 								   std::numeric_limits<double>::infinity());
 
 CREATE_BOUNDED_TRIGONOMETRIC_CLASS(Tangent,
 		                           tan,
-						 ExclusiveBoundType,
+						           ExclusiveBoundType,
 								   -std::numeric_limits<double>::infinity(),
 								   std::numeric_limits<double>::infinity());
 
@@ -110,49 +116,26 @@ CREATE_BOUNDED_TRIGONOMETRIC_CLASS(Tangent,
 
 /* ----------------------- Unbounded Trigonometric Functions ---------------------------- */
 
-template <typename TrigType>
-class ExpressionTrigonometric : public ExpressionSingleNumericArg<TrigType> {
-public:
-    explicit ExpressionTrigonometric(const boost::intrusive_ptr<ExpressionContext>& expCtx)
-        : ExpressionSingleNumericArg<TrigType>(expCtx) {}
 
-    Value evaluateNumericArg(const Value& numericArg) const override {
-        switch (numericArg.getType()) {
-            case BSONType::NumberDouble:
-                return Value(doubleFunc(numericArg.getDouble()));
-            case BSONType::NumberDecimal:
-                return Value(decimalFunc(numericArg.getDecimal()));
-            default: {
-                auto num = static_cast<double>(numericArg.getLong());
-                return Value(doubleFunc(num));
-            }
-        }
-    }
-
-    virtual double doubleFunc(double x) const = 0;
-    virtual Decimal128 decimalFunc(Decimal128 x) const = 0;
-    virtual const char* getOpName() const = 0;
-};
-
-#define CREATE_TRIGONOMETRIC_CLASS(className, funcName)                                         \
-    class Expression##className final : public ExpressionTrigonometric<Expression##className> { \
-    public:                                                                                     \
-        explicit Expression##className(const boost::intrusive_ptr<ExpressionContext>& expCtx)   \
-            : ExpressionTrigonometric(expCtx) {}                                                \
-                                                                                                \
-        double doubleFunc(double arg) const final {                                             \
-            return std::funcName(arg);                                                          \
-        }                                                                                       \
-                                                                                                \
-        Decimal128 decimalFunc(Decimal128 arg) const final {                                    \
-            return arg.funcName();                                                              \
-        }                                                                                       \
-                                                                                                \
-        const char* getOpName() const final {                                                   \
-            return "$"#funcName;                                                                \
-        }                                                                                       \
-    };                                                                                          \
-    REGISTER_EXPRESSION(funcName, Expression##className::parse);                                \
+#define CREATE_TRIGONOMETRIC_CLASS(className, funcName)                                                  \
+    class Expression##className final : public ExpressionUnboundedTrigonometric<Expression##className> { \
+    public:                                                                                              \
+        explicit Expression##className(const boost::intrusive_ptr<ExpressionContext>& expCtx)            \
+            : ExpressionUnboundedTrigonometric(expCtx) {}                                                \
+                                                                                                         \
+        double doubleFunc(double arg) const final {                                                      \
+            return std::funcName(arg);                                                                   \
+        }                                                                                                \
+                                                                                                         \
+        Decimal128 decimalFunc(Decimal128 arg) const final {                                             \
+            return arg.funcName();                                                                       \
+        }                                                                                                \
+                                                                                                         \
+        const char* getOpName() const final {                                                            \
+            return "$"#funcName;                                                                         \
+        }                                                                                                \
+    };                                                                                                   \
+    REGISTER_EXPRESSION(funcName, Expression##className::parse);                                         \
 
 CREATE_TRIGONOMETRIC_CLASS(ArcTangent, atan);
 CREATE_TRIGONOMETRIC_CLASS(HyperbolicArcSine, asinh);
