@@ -33,30 +33,74 @@
 
 namespace mongo {
 
-template <typename BoundedTrigType>
+struct InclusiveBoundType {
+	static std::string leftBracket() {
+		return "[";
+	}
+
+	static std::string rightBracket() {
+		return  "]";
+	}
+
+	static bool lt(double input, double bound) {
+		return input <= bound;
+	}
+	
+	static bool lt(Decimal128 input, double bound) {
+		return input.isLessEqual(Decimal128(bound));
+	}
+
+	static bool gt(double input, double bound) {
+		return input >= bound;
+	}
+	
+	static bool gt(Decimal128 input, double bound) {
+		return input.isGreaterEqual(Decimal128(bound));
+	}
+};
+
+struct ExclusiveBoundType {
+	static std::string leftBracket() {
+		return "(";
+	}
+
+	static std::string rightBracket() {
+		return  ")";
+	}
+
+	static bool lt(double input, double bound) {
+		return input < bound;
+	}
+	
+	static bool lt(Decimal128 input, double bound) {
+		return input.isLess(Decimal128(bound));
+	}
+
+	static bool gt(double input, double bound) {
+		return input > bound;
+	}
+	
+	static bool gt(Decimal128 input, double bound) {
+		return input.isGreater(Decimal128(bound));
+	}
+};
+
+template <typename BoundedTrigType, typename BoundType>
 class ExpressionBoundedTrigonometric : public ExpressionSingleNumericArg<BoundedTrigType> {
 public:
     explicit ExpressionBoundedTrigonometric(const boost::intrusive_ptr<ExpressionContext>& expCtx)
         : ExpressionSingleNumericArg<BoundedTrigType>(expCtx) {}
 
 	// check lower bound, return false if the input is less than that bound.
-    bool checkInclusiveLowerBound(double input) const {
-        return !getInclusiveLowerBound() || input >= getInclusiveLowerBound().get();
-    }
-
-	// check lower bound, return false if the input is less than that bound.
-    bool checkInclusiveLowerBound(Decimal128 input) const {
-        return !getInclusiveLowerBound() || input.isGreaterEqual(Decimal128(getInclusiveLowerBound().get()));
+    template <typename T>
+	bool checkLowerBound(T input) const {
+        return !getLowerBound() || BoundType::gt(input, getLowerBound().get());
     }
 
 	// check upper bound, return false if the input is greater than that bound.
-    bool checkInclusiveUpperBound(double input) const {
-        return !getInclusiveUpperBound() || input <= getInclusiveUpperBound().get();
-    }
-
-	// check upper bound, return false if the input is greater than that bound.
-    bool checkInclusiveUpperBound(Decimal128 input) const {
-        return !getInclusiveUpperBound() || input.isLessEqual(Decimal128(getInclusiveUpperBound().get()));
+    template <typename T>
+    bool checkUpperBound(T input) const {
+        return !getUpperBound() || BoundType::lt(input, getUpperBound().get());
     }
 
 	// convert to string for error message purposes.
@@ -81,25 +125,25 @@ public:
 
 	// check both bounds, works on both double and Decimal128
     template <typename T>
-    bool checkInclusiveBounds(T input) const {
-        return checkInclusiveLowerBound(input) && checkInclusiveUpperBound(input);
+    bool checkBounds(T input) const {
+        return checkLowerBound(input) && checkUpperBound(input);
     }
 
 	// assert if checkBounds returns false
     template <typename T>
-    void assertInclusiveBounds(T input) const {
-        if (!checkInclusiveBounds(input)) {
+    void assertBounds(T input) const {
+        if (!checkBounds(input)) {
             std::string lowerBound;
             std::string upperBound;
-            if (getInclusiveLowerBound()) {
-                lowerBound = str::stream() << "[" << getInclusiveLowerBound().get();
+            if (getLowerBound()) {
+                lowerBound = str::stream() << BoundType::leftBracket() << getLowerBound().get();
             } else {
-                lowerBound = str::stream() << "[-Infinity";
+                lowerBound = str::stream() << "-Infinity" << BoundType::leftBracket();
             }
-            if (getInclusiveUpperBound()) {
-                upperBound = str::stream() << getInclusiveUpperBound().get() << "]";
+            if (getUpperBound()) {
+                upperBound = str::stream() << getUpperBound().get() << BoundType::rightBracket();
             } else {
-                upperBound = str::stream() << "Infinity]";
+                upperBound = str::stream() << "Infinity" << BoundType::rightBracket();
             }
             uassert(50989,
                     str::stream() << "cannot apply " << getOpName() << " to " << toString(input)
@@ -119,7 +163,7 @@ public:
 				if (isnan(input)) {
 					return numericArg;
 				}
-                assertInclusiveBounds(input);
+                assertBounds(input);
                 return Value(doubleFunc(input));
             }
             case BSONType::NumberDecimal: {
@@ -127,7 +171,7 @@ public:
 				if (isnan(input)) {
 					return numericArg;
 				}
-                assertInclusiveBounds(input);
+                assertBounds(input);
                 return Value(decimalFunc(input));
             }
             default: {
@@ -135,16 +179,16 @@ public:
 				if (isnan(input)) {
 					return numericArg;
 				}
-                assertInclusiveBounds(input);
+                assertBounds(input);
                 return Value(doubleFunc(input));
             }
         }
     }
 
-	// gets the inclusive lower bound of the implemted bounded trig function.
-    virtual boost::optional<double> getInclusiveLowerBound() const = 0;
-	// gets the inclusive upper bound of the implemted bounded trig function.
-    virtual boost::optional<double> getInclusiveUpperBound() const = 0;
+	// gets the lower bound of the implented bounded trig function.
+    virtual double getLowerBound() const = 0;
+	// gets the upper bound of the implented bounded trig function.
+    virtual double getUpperBound() const = 0;
 	// doubleFunc performs the double version of the implemented trig function, e.g. std::sin
     virtual double doubleFunc(double x) const = 0;
 	// decimalFunc performs the decimal128 version of the implemented trig function, e.g. d.sin()

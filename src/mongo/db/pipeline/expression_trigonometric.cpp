@@ -33,19 +33,19 @@
 
 namespace mongo {
 
-/* ----------------------- Bounded Trigonometric Functions ---------------------------- */
+/* ----------------------- Inclusive Bounded Trigonometric Functions ---------------------------- */
 
-#define CREATE_BOUNDED_TRIGONOMETRIC_CLASS(className, funcName, lowerBound, upperBound)       \
+#define CREATE_BOUNDED_TRIGONOMETRIC_CLASS(className, funcName, boundType, lowerBound, upperBound)       \
     class Expression##className final                                                         \
-        : public ExpressionBoundedTrigonometric<Expression##className> {                      \
+        : public ExpressionBoundedTrigonometric<Expression##className, boundType> {                      \
     public:                                                                                   \
         explicit Expression##className(const boost::intrusive_ptr<ExpressionContext>& expCtx) \
             : ExpressionBoundedTrigonometric(expCtx) {}                                       \
-        boost::optional<double> getInclusiveLowerBound() const final {                        \
+        boost::optional<double> getLowerBound() const final {                                 \
             return lowerBound;                                                                \
         }                                                                                     \
                                                                                               \
-        boost::optional<double> getInclusiveUpperBound() const final {                        \
+        boost::optional<double> getUpperBound() const final {                                 \
             return upperBound;                                                                \
         }                                                                                     \
                                                                                               \
@@ -65,24 +65,46 @@ namespace mongo {
 
 
 CREATE_BOUNDED_TRIGONOMETRIC_CLASS(ArcCosine,
-                                   acos,
-                                   boost::optional<double>(-1.0),
-                                   boost::optional<double>(1.0));
+                         acos,
+						 InclusiveBoundType,
+                         boost::optional<double>(-1.0),
+                         boost::optional<double>(1.0));
 
 CREATE_BOUNDED_TRIGONOMETRIC_CLASS(ArcSine,
-                                   asin,
-                                   boost::optional<double>(-1.0),
-                                   boost::optional<double>(1.0));
+                         asin,
+						 InclusiveBoundType,
+                         boost::optional<double>(-1.0),
+                         boost::optional<double>(1.0));
 
 CREATE_BOUNDED_TRIGONOMETRIC_CLASS(HyperbolicArcTangent,
-                                   atanh,
-                                   boost::optional<double>(-1.0),
-                                   boost::optional<double>(1.0));
+                         atanh,
+						 InclusiveBoundType,
+                         boost::optional<double>(-1.0),
+                         boost::optional<double>(1.0));
 
 CREATE_BOUNDED_TRIGONOMETRIC_CLASS(HyperbolicArcCosine,
                                    acosh,
+						 InclusiveBoundType,
                                    boost::optional<double>(1.0),
                                    boost::none);
+
+CREATE_BOUNDED_TRIGONOMETRIC_CLASS(Cosine,
+		                           cos,
+						 ExclusiveBoundType,
+								   boost::optional<double>(-std::numeric_limits<double>::infinity()),
+								   boost::optional<double>(std::numeric_limits<double>::infinity()));
+
+CREATE_BOUNDED_TRIGONOMETRIC_CLASS(Sine,
+		                           sin,
+						 ExclusiveBoundType,
+								   boost::optional<double>(-std::numeric_limits<double>::infinity()),
+								   boost::optional<double>(std::numeric_limits<double>::infinity()));
+
+CREATE_BOUNDED_TRIGONOMETRIC_CLASS(Tangent,
+		                           tan,
+						 ExclusiveBoundType,
+								   boost::optional<double>(-std::numeric_limits<double>::infinity()),
+								   boost::optional<double>(std::numeric_limits<double>::infinity()));
 
 #undef CREATE_BOUNDED_TRIGONOMETRIC_CLASS
 
@@ -137,11 +159,9 @@ CREATE_TRIGONOMETRIC_CLASS(HyperbolicArcSine, asinh);
 CREATE_TRIGONOMETRIC_CLASS(HyperbolicCosine, cosh);
 CREATE_TRIGONOMETRIC_CLASS(HyperbolicSine, sinh);
 CREATE_TRIGONOMETRIC_CLASS(HyperbolicTangent, tanh);
-CREATE_TRIGONOMETRIC_CLASS(Cosine, cos);
-CREATE_TRIGONOMETRIC_CLASS(Sine, sin);
-CREATE_TRIGONOMETRIC_CLASS(Tangent, tan);
 
 #undef CREATE_TRIGONOMETRIC_CLASS
+
 
 /* ----------------------- ExpressionArcTangent2 ---------------------------- */
 

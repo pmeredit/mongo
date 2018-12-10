@@ -7,8 +7,7 @@
 
     const coll = db.expression_trigonometric;
     coll.drop();
-    // We need at least one document in the collection in order to
-	// test expressions, add it here.
+	// We need at least one document in the collection in order to test expressions, add it here.
     assert.commandWorked(coll.insert({}), {w: 'majority'});
 
     // Helper for testing that op returns expResult.
@@ -17,9 +16,9 @@
         assert.eq(coll.aggregate(pipeline).toArray(), [{result: expResult}]);
     }
 
-	// Helper for testing that the aggregation expression 'op' returns
-	// expResult, approximately, since NumberDecimal has so many
-	// representations for a given number (0 versus 0e-40 for instance).
+	// Helper for testing that the aggregation expression 'op' returns expResult, approximately,
+	// since NumberDecimal has so many representations for a given number (0 versus 0e-40 for
+	// instance).
     function testOpApprox(op, expResult) {
         const pipeline = [{$project: {_id: 0, result: {$abs: {$subtract: [op, expResult]}}}}];
         assert.lt(coll.aggregate(pipeline).toArray(), [{result: NumberDecimal("0.00000005")}]);
