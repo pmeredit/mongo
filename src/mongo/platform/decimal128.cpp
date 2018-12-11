@@ -331,7 +331,7 @@ Decimal128 Decimal128::acos(std::uint32_t* signalingFlags, RoundingMode roundMod
     // limit.
     static auto diff = Decimal128("0.0000000000000000000000000000000001");
     static auto negOne = Decimal128(-1);
-    if (subtract(negOne).toAbs().isLessEqual(diff)) {
+    if (subtract(negOne).isLessEqual(diff)) {
         return kPi;
     }
     BID_UINT128 current = decimal128ToLibraryType(_value);
