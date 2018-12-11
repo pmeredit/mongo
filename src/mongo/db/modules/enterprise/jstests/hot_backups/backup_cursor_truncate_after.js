@@ -143,8 +143,8 @@
     let backupCursor = openBackupCursor(primary);
     sleep(Random.randInt(1000));
     let primaryBackupMetadata =
-        copyCursorFiles(primary, backupCursor, primary.dbpath + "/primary-backup");
-    jsTestLog({"Primary $backupCursor metadata": primaryBackupMetadata});
+        copyBackupCursorFiles(backupCursor, primary.dbpath + "/primary-backup", false);
+    jsTestLog({"Primary $backupCursor metadata": primaryBackupMetadata.metadata});
     backupCursor.close();
 
     backupCursor = openBackupCursor(secondary);
@@ -155,8 +155,8 @@
     // performing file copies. The data copied must not contain causally related writes.
     sleep(1000 + Random.randInt(1000));
     let secondaryBackupMetadata =
-        copyCursorFiles(secondary, backupCursor, secondary.dbpath + "/secondary-backup");
-    jsTestLog({"Secondary $backupCursor metadata": secondaryBackupMetadata});
+        copyBackupCursorFiles(backupCursor, secondary.dbpath + "/secondary-backup", false);
+    jsTestLog({"Secondary $backupCursor metadata": secondaryBackupMetadata.metadata});
     backupCursor.close();
 
     // Wait for the writers to complete and get a sample list of (docNum, op[eration]Time) pairs.
@@ -315,11 +315,11 @@
     }
 
     assertData(primary.dbpath + "/primary-backup",
-               primaryBackupMetadata,
+               primaryBackupMetadata.metadata,
                writerOneOpTimes,
                writerTwoOpTimes);
     assertData(secondary.dbpath + "/secondary-backup",
-               secondaryBackupMetadata,
+               secondaryBackupMetadata.metadata,
                writerOneOpTimes,
                writerTwoOpTimes);
 
