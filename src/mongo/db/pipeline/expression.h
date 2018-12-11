@@ -464,7 +464,7 @@ public:
 
     /**
      * Evaluate performs the type checking necessary to make sure that both arguments are numeric,
-     * then calls the evaluateNumericArgs on the two numeric args.:
+     * then calls the evaluateNumericArgs on the two numeric args:
      * 1. If either input is nullish, it returns null.
      * 2. If either input is not numeric, it throws an error.
      * 3. Call evaluateNumericArgs on the two numeric args.

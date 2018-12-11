@@ -139,38 +139,48 @@ public:
     explicit ExpressionArcTangent2(const boost::intrusive_ptr<ExpressionContext>& expCtx)
         : ExpressionTwoNumericArgs(expCtx) {}
 
-    Value evaluateNumericArgs(const Value& numericArg1, const Value& numericArg2) const final;
-    const char* getOpName() const final;
+    Value evaluateNumericArgs(const Value& numericArg1, const Value& numericArg2) const final {
+        auto totalType = BSONType::NumberDouble;
+        // If the type of either argument is NumberDecimal, we promote to Decimal128.
+        if (numericArg1.getType() == BSONType::NumberDecimal ||
+            numericArg2.getType() == BSONType::NumberDecimal) {
+            totalType = BSONType::NumberDecimal;
+        }
+        switch (totalType) {
+            case BSONType::NumberDecimal: {
+                auto dec = numericArg1.coerceToDecimal();
+                return Value(dec.atan2(numericArg2.coerceToDecimal()));
+            }
+            case BSONType::NumberDouble: {
+                return Value(std::atan2(numericArg1.coerceToDouble(), numericArg2.coerceToDouble()));
+            }
+            default:
+                MONGO_UNREACHABLE;
+        }
+	}
+
+    const char* getOpName() const final {
+        return "$atan2";
+    }
 };
-
-Value ExpressionArcTangent2::evaluateNumericArgs(const Value& numericArg1,
-                                                 const Value& numericArg2) const {
-    auto totalType = BSONType::NumberDouble;
-    // If the type of either argument is NumberDecimal, we promote to Decimal128.
-    if (numericArg1.getType() == BSONType::NumberDecimal ||
-        numericArg2.getType() == BSONType::NumberDecimal) {
-        totalType = BSONType::NumberDecimal;
-    }
-    switch (totalType) {
-        case BSONType::NumberDecimal: {
-            auto dec = numericArg1.coerceToDecimal();
-            return Value(dec.atan2(numericArg2.coerceToDecimal()));
-        }
-        case BSONType::NumberDouble: {
-            return Value(std::atan2(numericArg1.coerceToDouble(), numericArg2.coerceToDouble()));
-        }
-        default:
-            MONGO_UNREACHABLE;
-    }
-}
-
 REGISTER_EXPRESSION(atan2, ExpressionArcTangent2::parse);
-const char* ExpressionArcTangent2::getOpName() const {
-    return "$atan2";
-}
 
 
 /* ----------------------- ExpressionDegreesToRadians and ExpressionRadiansToDegrees ---- */
+
+static constexpr double kDoublePi = 3.141592653589793;
+static constexpr double kDoublePiOver180 = kDoublePi / 180.0;
+static constexpr double kDouble180OverPi = 180.0 / kDoublePi;
+
+static Value doDegreeRadiansConversion(const Value& numericArg,
+		Decimal128 decimalFactor, double doubleFactor) {
+    switch (numericArg.getType()) {
+        case BSONType::NumberDecimal:
+            return Value(numericArg.getDecimal().multiply(decimalFactor));
+        default:
+            return Value(numericArg.coerceToDouble() * doubleFactor);
+    }
+}
 
 class ExpressionDegreesToRadians final
     : public ExpressionSingleNumericArg<ExpressionDegreesToRadians> {
@@ -178,10 +188,16 @@ public:
     explicit ExpressionDegreesToRadians(const boost::intrusive_ptr<ExpressionContext>& expCtx)
         : ExpressionSingleNumericArg(expCtx) {}
 
-    Value evaluateNumericArg(const Value& numericArg) const final;
-    const char* getOpName() const final;
+    Value evaluateNumericArg(const Value& numericArg) const final {
+        return doDegreeRadiansConversion(numericArg, Decimal128::kPiOver180, kDoublePiOver180);
+	}
+
+	const char* getOpName() const final {
+        return "$degreesToRadians";
+    }
 };
 
+REGISTER_EXPRESSION(degreesToRadians, ExpressionDegreesToRadians::parse);
 
 class ExpressionRadiansToDegrees final
     : public ExpressionSingleNumericArg<ExpressionRadiansToDegrees> {
@@ -189,67 +205,14 @@ public:
     explicit ExpressionRadiansToDegrees(const boost::intrusive_ptr<ExpressionContext>& expCtx)
         : ExpressionSingleNumericArg(expCtx) {}
 
-    Value evaluateNumericArg(const Value& numericArg) const final;
-    const char* getOpName() const final;
-};
+    Value evaluateNumericArg(const Value& numericArg) const final {
+        return doDegreeRadiansConversion(numericArg, Decimal128::k180OverPi, kDouble180OverPi);
+	}
 
-static constexpr double kDoublePi = 3.141592653589793;
-static constexpr double kDoublePiOver180 = kDoublePi / 180.0;
-static constexpr double kDouble_180OverPi = 180.0 / kDoublePi;
-
-/*
- * DegreesToRadians contains the necessary configuration to convert degrees to
- * radians.
- */
-struct DegreesToRadians {
-    static Decimal128 decimalFactor() {
-        return Decimal128::kPiOver180;
-    }
-
-    static double doubleFactor() {
-        return kDoublePiOver180;
+	const char* getOpName() const final {
+        return "$radiansToDegrees";
     }
 };
-
-/*
- * RadiansToDegrees contains the necessary configuration to convert radians to
- * degrees.
- */
-struct RadiansToDegrees {
-    static Decimal128 decimalFactor() {
-        return Decimal128::k180OverPi;
-    }
-
-    static double doubleFactor() {
-        return kDouble_180OverPi;
-    }
-};
-
-template <typename ConversionValues>
-static Value doDegreeRadiansConversion(const Value& numericArg) {
-    switch (numericArg.getType()) {
-        case BSONType::NumberDecimal:
-            return Value(numericArg.getDecimal().multiply(ConversionValues::decimalFactor()));
-        default:
-            return Value(numericArg.coerceToDouble() * ConversionValues::doubleFactor());
-    }
-}
-
-Value ExpressionDegreesToRadians::evaluateNumericArg(const Value& numericArg) const {
-    return doDegreeRadiansConversion<DegreesToRadians>(numericArg);
-}
-
-REGISTER_EXPRESSION(degreesToRadians, ExpressionDegreesToRadians::parse);
-const char* ExpressionDegreesToRadians::getOpName() const {
-    return "$degreesToRadians";
-}
-
-Value ExpressionRadiansToDegrees::evaluateNumericArg(const Value& numericArg) const {
-    return doDegreeRadiansConversion<RadiansToDegrees>(numericArg);
-}
 
 REGISTER_EXPRESSION(radiansToDegrees, ExpressionRadiansToDegrees::parse);
-const char* ExpressionRadiansToDegrees::getOpName() const {
-    return "$radiansToDegrees";
-}
 }  // namespace mongo

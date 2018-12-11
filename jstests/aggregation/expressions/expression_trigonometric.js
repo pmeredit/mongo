@@ -8,7 +8,7 @@
     const coll = db.expression_trigonometric;
     coll.drop();
     // We need at least one document in the collection in order to test expressions, add it here.
-    assert.commandWorked(coll.insert({}), {w: 'majority'});
+    assert.commandWorked(coll.insert({}));
 
     // Helper for testing that op returns expResult.
     function testOp(op, expResult) {
@@ -96,7 +96,6 @@
     testOpApprox({$degreesToRadians: NumberDecimal(0)}, NumberDecimal(0));
     testOpApprox({$radiansToDegrees: NumberDecimal(0)}, NumberDecimal(0));
 
-    // Infinities
     // Infinity input produces out of bounds error.
     assertErrorCode(coll, [{$project: {a: {$acos: -Infinity}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$acos: NumberDecimal('-Infinity')}}}], 50989);
@@ -110,6 +109,11 @@
     assertErrorCode(coll, [{$project: {a: {$asin: NumberDecimal('-Infinity')}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$asin: Infinity}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$asin: NumberDecimal('Infinity')}}}], 50989);
+
+    assertErrorCode(coll, [{$project: {a: {$atanh: -Infinity}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$atanh: NumberDecimal('-Infinity')}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$atanh: Infinity}}}], 50989);
+    assertErrorCode(coll, [{$project: {a: {$atanh: NumberDecimal('Infinity')}}}], 50989);
 
     assertErrorCode(coll, [{$project: {a: {$cos: -Infinity}}}], 50989);
     assertErrorCode(coll, [{$project: {a: {$cos: NumberDecimal('-Infinity')}}}], 50989);
@@ -229,6 +233,14 @@
         testOp(oparg, NaN);
         oparg[op] = NumberDecimal(NaN);
         testOp(oparg, NumberDecimal(NaN));
+        oparg[op] = -Infinity;
+        testOp(oparg, -Infinity);
+        oparg[op] = Infinity;
+        testOp(oparg, Infinity);
+        oparg[op] = NumberDecimal('-Infinity');
+        testOp(oparg, NumberDecimal('-Infinity'));
+        oparg[op] = NumberDecimal('Infinity');
+        testOp(oparg, NumberDecimal('Infinity'));
     });
 
     testOp({$atan2: [NumberDecimal('NaN'), NumberDecimal('NaN')]}, NumberDecimal('NaN'));

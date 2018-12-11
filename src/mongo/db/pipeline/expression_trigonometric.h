@@ -45,19 +45,19 @@ struct InclusiveBoundType {
         return "]";
     }
 
-    static bool lt(double input, double bound) {
+    static bool checkUpperBound(double input, double bound) {
         return input <= bound;
     }
 
-    static bool lt(Decimal128 input, double bound) {
+    static bool checkUpperBound(Decimal128 input, double bound) {
         return input.isLessEqual(Decimal128(bound));
     }
 
-    static bool gt(double input, double bound) {
+    static bool checkLowerBound(double input, double bound) {
         return input >= bound;
     }
 
-    static bool gt(Decimal128 input, double bound) {
+    static bool checkLowerBound(Decimal128 input, double bound) {
         return input.isGreaterEqual(Decimal128(bound));
     }
 };
@@ -74,19 +74,19 @@ struct ExclusiveBoundType {
         return ")";
     }
 
-    static bool lt(double input, double bound) {
+    static bool checkUpperBound(double input, double bound) {
         return input < bound;
     }
 
-    static bool lt(Decimal128 input, double bound) {
+    static bool checkUpperBound(Decimal128 input, double bound) {
         return input.isLess(Decimal128(bound));
     }
 
-    static bool gt(double input, double bound) {
+    static bool checkLowerBound(double input, double bound) {
         return input > bound;
     }
 
-    static bool gt(Decimal128 input, double bound) {
+    static bool checkLowerBound(Decimal128 input, double bound) {
         return input.isGreater(Decimal128(bound));
     }
 };
@@ -101,16 +101,6 @@ class ExpressionBoundedTrigonometric : public ExpressionSingleNumericArg<Bounded
 public:
     explicit ExpressionBoundedTrigonometric(const boost::intrusive_ptr<ExpressionContext>& expCtx)
         : ExpressionSingleNumericArg<BoundedTrigType>(expCtx) {}
-
-    template <typename T>
-    bool checkLowerBound(T input) const {
-        return BoundType::gt(input, getLowerBound());
-    }
-
-    template <typename T>
-    bool checkUpperBound(T input) const {
-        return BoundType::lt(input, getUpperBound());
-    }
 
     std::string toString(double d) const {
         return str::stream() << d;
@@ -130,25 +120,24 @@ public:
 
     template <typename T>
     bool checkBounds(T input) const {
-        return checkLowerBound(input) && checkUpperBound(input);
+        return BoundType::checkLowerBound(input, getLowerBound())
+			&& BoundType::checkUpperBound(input, getUpperBound());
     }
 
     /**
-     * assertBounds asserts if checkBounds returns false, meaning that the input is out of bounds.
-     * It properly formats the error message if the error message must be thrown.
+     * assertBounds uasserts if checkBounds returns false, meaning that the input is out of bounds.
      */
     template <typename T>
     void assertBounds(T input) const {
-        if (!checkBounds(input)) {
-            uasserted(50989,
-                      str::stream() << "cannot apply " << getOpName() << " to " << toString(input)
-                                    << ", value must in "
-                                    << BoundType::leftBracket()
-                                    << getLowerBound()
-                                    << ","
-                                    << getUpperBound()
-                                    << BoundType::rightBracket());
-        }
+        uassert(50989,
+                str::stream() << "cannot apply " << getOpName() << " to " << toString(input)
+                              << ", value must in "
+                              << BoundType::leftBracket()
+                              << getLowerBound()
+                              << ","
+                              << getUpperBound()
+                              << BoundType::rightBracket(),
+		  			  	      checkBounds(input));
     }
 
     /**
@@ -185,7 +174,6 @@ public:
 
     /**
      * Since bounds are always either +/-Infinity or integral values, double has enough precision.
-     * gets the lower bound of the implented bounded trig function.
      */
     virtual double getLowerBound() const = 0;
     virtual double getUpperBound() const = 0;
@@ -214,7 +202,7 @@ public:
         : ExpressionSingleNumericArg<TrigType>(expCtx) {}
 
     /**
-     * evaluateNumericArg  evaluates the implented trig function on one numericArg.
+     * evaluateNumericArg evaluates the implented trig function on one numericArg.
      */
     Value evaluateNumericArg(const Value& numericArg) const override {
         switch (numericArg.getType()) {
