@@ -120,8 +120,8 @@ public:
 
     template <typename T>
     bool checkBounds(T input) const {
-        return BoundType::checkLowerBound(input, getLowerBound())
-			&& BoundType::checkUpperBound(input, getUpperBound());
+        return BoundType::checkLowerBound(input, getLowerBound()) &&
+            BoundType::checkUpperBound(input, getUpperBound());
     }
 
     /**
@@ -137,7 +137,7 @@ public:
                               << ","
                               << getUpperBound()
                               << BoundType::rightBracket(),
-		  			  	      checkBounds(input));
+                checkBounds(input));
     }
 
     /**

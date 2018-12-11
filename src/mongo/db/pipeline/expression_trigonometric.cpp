@@ -152,12 +152,13 @@ public:
                 return Value(dec.atan2(numericArg2.coerceToDecimal()));
             }
             case BSONType::NumberDouble: {
-                return Value(std::atan2(numericArg1.coerceToDouble(), numericArg2.coerceToDouble()));
+                return Value(
+                    std::atan2(numericArg1.coerceToDouble(), numericArg2.coerceToDouble()));
             }
             default:
                 MONGO_UNREACHABLE;
         }
-	}
+    }
 
     const char* getOpName() const final {
         return "$atan2";
@@ -173,7 +174,8 @@ static constexpr double kDoublePiOver180 = kDoublePi / 180.0;
 static constexpr double kDouble180OverPi = 180.0 / kDoublePi;
 
 static Value doDegreeRadiansConversion(const Value& numericArg,
-		Decimal128 decimalFactor, double doubleFactor) {
+                                       Decimal128 decimalFactor,
+                                       double doubleFactor) {
     switch (numericArg.getType()) {
         case BSONType::NumberDecimal:
             return Value(numericArg.getDecimal().multiply(decimalFactor));
@@ -190,9 +192,9 @@ public:
 
     Value evaluateNumericArg(const Value& numericArg) const final {
         return doDegreeRadiansConversion(numericArg, Decimal128::kPiOver180, kDoublePiOver180);
-	}
+    }
 
-	const char* getOpName() const final {
+    const char* getOpName() const final {
         return "$degreesToRadians";
     }
 };
@@ -207,9 +209,9 @@ public:
 
     Value evaluateNumericArg(const Value& numericArg) const final {
         return doDegreeRadiansConversion(numericArg, Decimal128::k180OverPi, kDouble180OverPi);
-	}
+    }
 
-	const char* getOpName() const final {
+    const char* getOpName() const final {
         return "$radiansToDegrees";
     }
 };
