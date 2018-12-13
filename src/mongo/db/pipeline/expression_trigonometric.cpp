@@ -64,7 +64,7 @@ namespace mongo {
     REGISTER_EXPRESSION(funcName, Expression##className::parse);
 
 
-/*
+/**
  * Inclusive Bounds
  */
 CREATE_BOUNDED_TRIGONOMETRIC_CLASS(ArcCosine, acos, InclusiveBoundType, -1.0, 1.0);
@@ -76,7 +76,7 @@ CREATE_BOUNDED_TRIGONOMETRIC_CLASS(HyperbolicArcTangent, atanh, InclusiveBoundTy
 CREATE_BOUNDED_TRIGONOMETRIC_CLASS(
     HyperbolicArcCosine, acosh, InclusiveBoundType, 1.0, std::numeric_limits<double>::infinity());
 
-/*
+/**
  * Exclusive Bounds
  */
 CREATE_BOUNDED_TRIGONOMETRIC_CLASS(Cosine,

@@ -33,10 +33,12 @@
 
 namespace mongo {
 
-/*
+/**
  * InclusiveBoundType defines the necessary configuration for inclusively bounded trig functions.
  */
 struct InclusiveBoundType {
+	// We use a static method rather than a field because the value, as an std::string, would need
+	// to be initialized out of line. This method will be inlined, and result in no overhead.
     static std::string leftBracket() {
         return "[";
     }
@@ -62,10 +64,12 @@ struct InclusiveBoundType {
     }
 };
 
-/*
+/**
  * ExclusiveBoundType defines the necessary configuration for exclusively bounded trig functions.
  */
 struct ExclusiveBoundType {
+	// We use a static method rather than a field because the value, as an std::string, would need
+	// to be initialized out of line. This method will be inlined, and result in no overhead.
     static std::string leftBracket() {
         return "(";
     }
@@ -91,7 +95,7 @@ struct ExclusiveBoundType {
     }
 };
 
-/*
+/**
  * ExpressionBoundedTrigonometric is the type of all trigonometric functions that take one argument
  * and have lower and upper bounds, either inclusive or exclusive, as defined by the BoundType
  * template argument.
@@ -177,21 +181,21 @@ public:
      */
     virtual double getLowerBound() const = 0;
     virtual double getUpperBound() const = 0;
-    /*
+    /**
      * doubleFunc performs the double version of the implemented trig function, e.g. std::sin()
      */
     virtual double doubleFunc(double x) const = 0;
-    /*
+    /**
      * decimalFunc performs the decimal128 version of the implemented trig function, e.g. d.sin()
      */
     virtual Decimal128 decimalFunc(Decimal128 x) const = 0;
-    /*
+    /**
      * getOpName returns the name of the operation, e.g., $sin
      */
     virtual const char* getOpName() const = 0;
 };
 
-/*
+/**
  * ExpressionUnboundedTrigonometric is the type for all trigonometric functions that do not have
  * upper or lower bounds.
  */
@@ -217,15 +221,15 @@ public:
         }
     }
 
-    /*
+    /**
      * doubleFunc performs the double version of the implemented trig function, e.g. std::sinh()
      */
     virtual double doubleFunc(double x) const = 0;
-    /*
+    /**
      * decimalFunc performs the decimal128 version of the implemented trig function, e.g. d.sinh()
      */
     virtual Decimal128 decimalFunc(Decimal128 x) const = 0;
-    /*
+    /**
      * getOpName returns the name of the operation, e.g., $sinh
      */
     virtual const char* getOpName() const = 0;

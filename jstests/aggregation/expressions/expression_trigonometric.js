@@ -16,9 +16,9 @@
         assert.eq(coll.aggregate(pipeline).toArray(), [{result: expResult}]);
     }
 
-    // Helper for testing that the aggregation expression 'op' returns expResult, approximately,
-    // since NumberDecimal has so many representations for a given number (0 versus 0e-40 for
-    // instance).
+	// Helper for testing that the aggregation expression 'op' returns expResult, approximately,
+	// since NumberDecimal has so many representations for a given number (0 versus 0e-40 for
+	// instance).
     function testOpApprox(op, expResult) {
         const pipeline = [{$project: {_id: 0, result: {$abs: {$subtract: [op, expResult]}}}}];
         assert.lt(coll.aggregate(pipeline).toArray(), [{result: NumberDecimal("0.00000005")}]);
@@ -213,34 +213,20 @@
 
     // Check NaN is preserved.
     ["$acos", "$asin", "$atan", "$cos", "$sin", "$tan"].forEach(op => {
-        let oparg = {};
-        oparg[op] = NaN;
-        testOp(oparg, NaN);
-        oparg[op] = NumberDecimal(NaN);
-        testOp(oparg, NumberDecimal(NaN));
+        testOp({[op]: NaN}, NaN);
+        testOp({[op]: NumberDecimal(NaN)}, NumberDecimal(NaN));
         // Check the hyperbolic version of each function.
-        let hop = op + "h";
-        let hoparg = {};
-        hoparg[hop] = NaN;
-        testOp(hoparg, NaN);
-        hoparg[hop] = NumberDecimal(NaN);
-        testOp(hoparg, NumberDecimal(NaN));
+        testOp({[op + 'h']: NaN}, NaN);
+        testOp({[op + 'h']: NumberDecimal(NaN)}, NumberDecimal(NaN));
     });
 
     ["$radiansToDegrees", "$degreesToRadians"].forEach(op => {
-        let oparg = {};
-        oparg[op] = NaN;
-        testOp(oparg, NaN);
-        oparg[op] = NumberDecimal(NaN);
-        testOp(oparg, NumberDecimal(NaN));
-        oparg[op] = -Infinity;
-        testOp(oparg, -Infinity);
-        oparg[op] = Infinity;
-        testOp(oparg, Infinity);
-        oparg[op] = NumberDecimal('-Infinity');
-        testOp(oparg, NumberDecimal('-Infinity'));
-        oparg[op] = NumberDecimal('Infinity');
-        testOp(oparg, NumberDecimal('Infinity'));
+        testOp({[op]: NaN}, NaN);
+        testOp({[op]: NumberDecimal(NaN)}, NumberDecimal(NaN));
+        testOp({[op]: -Infinity}, -Infinity);
+        testOp({[op]: NumberDecimal(-Infinity)}, NumberDecimal(-Infinity));
+        testOp({[op]: Infinity}, Infinity);
+        testOp({[op]: NumberDecimal(Infinity)}, NumberDecimal(Infinity));
     });
 
     testOp({$atan2: [NumberDecimal('NaN'), NumberDecimal('NaN')]}, NumberDecimal('NaN'));

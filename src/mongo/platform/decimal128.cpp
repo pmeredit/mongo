@@ -325,15 +325,6 @@ Decimal128 Decimal128::acos(RoundingMode roundMode) const {
 }
 
 Decimal128 Decimal128::acos(std::uint32_t* signalingFlags, RoundingMode roundMode) const {
-    // There is an issue with acos(-1) returning 0 when it should return Pi. This problem
-    // does not occur for values approaching -1 from 0, e.g., -0.9999999999999999999999999999999999.
-    // So we set the diff to the lowest value that can keep this function consistent up to its
-    // limit.
-    static auto diff = Decimal128("0.0000000000000000000000000000000001");
-    static auto negOne = Decimal128(-1);
-    if (subtract(negOne).isLessEqual(diff)) {
-        return kPi;
-    }
     BID_UINT128 current = decimal128ToLibraryType(_value);
     current = bid128_acos(current, roundMode, signalingFlags);
     return Decimal128{libraryTypeToValue(current)};
