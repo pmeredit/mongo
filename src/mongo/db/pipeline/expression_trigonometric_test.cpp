@@ -66,9 +66,9 @@ static void assertEvaluates(const std::string& expressionName, Value input, Valu
 
 // A testing class for testing approximately equal results for two argument numeric expressions.
 static void assertEvaluates(const std::string& expressionName,
-                     Value input1,
-                     Value input2,
-                     Value output) {
+                            Value input1,
+                            Value input2,
+                            Value output) {
     intrusive_ptr<ExpressionContextForTest> expCtx(new ExpressionContextForTest());
     auto obj = BSON(expressionName << BSON_ARRAY(input1 << input2));
     auto vps = expCtx->variablesParseState;
@@ -207,10 +207,13 @@ TEST(ExpressionArcTangentTest, DoubleArg) {
 
 TEST(ExpressionArcTangentTest, DecimalArg) {
     assertEvaluates("$atan", Value(Decimal128("-1.5")), Value(Decimal128("-0.982793723247")));
-    assertEvaluates("$atan", Value(Decimal128("-1.0471975512")), Value(Decimal128("-0.80844879263")));
-    assertEvaluates("$atan", Value(Decimal128("-0.785398163397")), Value(Decimal128("-0.665773750028")));
+    assertEvaluates(
+        "$atan", Value(Decimal128("-1.0471975512")), Value(Decimal128("-0.80844879263")));
+    assertEvaluates(
+        "$atan", Value(Decimal128("-0.785398163397")), Value(Decimal128("-0.665773750028")));
     assertEvaluates("$atan", Value(Decimal128("0")), Value(Decimal128("0.0")));
-    assertEvaluates("$atan", Value(Decimal128("0.785398163397")), Value(Decimal128("0.665773750028")));
+    assertEvaluates(
+        "$atan", Value(Decimal128("0.785398163397")), Value(Decimal128("0.665773750028")));
     assertEvaluates("$atan", Value(Decimal128("1.0471975512")), Value(Decimal128("0.80844879263")));
     assertEvaluates("$atan", Value(Decimal128("1.5")), Value(Decimal128("0.982793723247")));
 }
@@ -261,11 +264,13 @@ TEST(ExpressionArcTangent2Test, TwoDoubleArg) {
     assertEvaluates("$atan2", Value(0.5), Value(0.866025403784), Value(0.523598775598));
     assertEvaluates("$atan2", Value(6.12323399574e-17), Value(1.0), Value(6.12323399574e-17));
     assertEvaluates("$atan2", Value(-0.5), Value(0.866025403784), Value(-0.523598775598));
-    assertEvaluates("$atan2", Value(-0.707106781187), Value(0.707106781187), Value(-0.785398163397));
+    assertEvaluates(
+        "$atan2", Value(-0.707106781187), Value(0.707106781187), Value(-0.785398163397));
     assertEvaluates("$atan2", Value(-0.866025403784), Value(0.5), Value(-1.0471975512));
     assertEvaluates("$atan2", Value(-1.0), Value(1.22464679915e-16), Value(-1.57079632679));
     assertEvaluates("$atan2", Value(-0.866025403784), Value(-0.5), Value(-2.09439510239));
-    assertEvaluates("$atan2", Value(-0.707106781187), Value(-0.707106781187), Value(-2.35619449019));
+    assertEvaluates(
+        "$atan2", Value(-0.707106781187), Value(-0.707106781187), Value(-2.35619449019));
     assertEvaluates("$atan2", Value(-0.5), Value(-0.866025403784), Value(-2.61799387799));
     assertEvaluates("$atan2", Value(-1.83697019872e-16), Value(-1.0), Value(-3.14159265359));
     assertEvaluates("$atan2", Value(0.5), Value(-0.866025403784), Value(2.61799387799));
@@ -275,136 +280,212 @@ TEST(ExpressionArcTangent2Test, TwoDoubleArg) {
 }
 
 TEST(ExpressionArcTangent2Test, TwoDecimalArg) {
-    assertEvaluates("$atan2", 
-        Value(Decimal128("1.0")), Value(Decimal128("0.0")), Value(Decimal128("1.57079632679")));
-    assertEvaluates("$atan2", Value(Decimal128("0.866025403784")),
+    assertEvaluates("$atan2",
+                    Value(Decimal128("1.0")),
+                    Value(Decimal128("0.0")),
+                    Value(Decimal128("1.57079632679")));
+    assertEvaluates("$atan2",
+                    Value(Decimal128("0.866025403784")),
                     Value(Decimal128("0.5")),
                     Value(Decimal128("1.0471975512")));
-    assertEvaluates("$atan2", Value(Decimal128("0.707106781187")),
+    assertEvaluates("$atan2",
+                    Value(Decimal128("0.707106781187")),
                     Value(Decimal128("0.707106781187")),
                     Value(Decimal128("0.785398163397")));
-    assertEvaluates("$atan2", Value(Decimal128("0.5")),
+    assertEvaluates("$atan2",
+                    Value(Decimal128("0.5")),
                     Value(Decimal128("0.866025403784")),
                     Value(Decimal128("0.523598775598")));
-    assertEvaluates("$atan2", Value(Decimal128("6.12323399574e-17")),
+    assertEvaluates("$atan2",
+                    Value(Decimal128("6.12323399574e-17")),
                     Value(Decimal128("1.0")),
                     Value(Decimal128("6.12323399574e-17")));
-    assertEvaluates("$atan2", Value(Decimal128("-0.5")),
+    assertEvaluates("$atan2",
+                    Value(Decimal128("-0.5")),
                     Value(Decimal128("0.866025403784")),
                     Value(Decimal128("-0.523598775598")));
-    assertEvaluates("$atan2", Value(Decimal128("-0.707106781187")),
+    assertEvaluates("$atan2",
+                    Value(Decimal128("-0.707106781187")),
                     Value(Decimal128("0.707106781187")),
                     Value(Decimal128("-0.785398163397")));
-    assertEvaluates("$atan2", Value(Decimal128("-0.866025403784")),
+    assertEvaluates("$atan2",
+                    Value(Decimal128("-0.866025403784")),
                     Value(Decimal128("0.5")),
                     Value(Decimal128("-1.0471975512")));
-    assertEvaluates("$atan2", Value(Decimal128("-1.0")),
+    assertEvaluates("$atan2",
+                    Value(Decimal128("-1.0")),
                     Value(Decimal128("1.22464679915e-16")),
                     Value(Decimal128("-1.57079632679")));
-    assertEvaluates("$atan2", Value(Decimal128("-0.866025403784")),
+    assertEvaluates("$atan2",
+                    Value(Decimal128("-0.866025403784")),
                     Value(Decimal128("-0.5")),
                     Value(Decimal128("-2.09439510239")));
-    assertEvaluates("$atan2", Value(Decimal128("-0.707106781187")),
+    assertEvaluates("$atan2",
+                    Value(Decimal128("-0.707106781187")),
                     Value(Decimal128("-0.707106781187")),
                     Value(Decimal128("-2.35619449019")));
-    assertEvaluates("$atan2", Value(Decimal128("-0.5")),
+    assertEvaluates("$atan2",
+                    Value(Decimal128("-0.5")),
                     Value(Decimal128("-0.866025403784")),
                     Value(Decimal128("-2.61799387799")));
-    assertEvaluates("$atan2", Value(Decimal128("-1.83697019872e-16")),
+    assertEvaluates("$atan2",
+                    Value(Decimal128("-1.83697019872e-16")),
                     Value(Decimal128("-1.0")),
                     Value(Decimal128("-3.14159265359")));
-    assertEvaluates("$atan2", Value(Decimal128("0.5")),
+    assertEvaluates("$atan2",
+                    Value(Decimal128("0.5")),
                     Value(Decimal128("-0.866025403784")),
                     Value(Decimal128("2.61799387799")));
-    assertEvaluates("$atan2", Value(Decimal128("0.707106781187")),
+    assertEvaluates("$atan2",
+                    Value(Decimal128("0.707106781187")),
                     Value(Decimal128("-0.707106781187")),
                     Value(Decimal128("2.35619449019")));
-    assertEvaluates("$atan2", Value(Decimal128("0.866025403784")),
+    assertEvaluates("$atan2",
+                    Value(Decimal128("0.866025403784")),
                     Value(Decimal128("-0.5")),
                     Value(Decimal128("2.09439510239")));
-    assertEvaluates("$atan2", Value(Decimal128("1.0")),
+    assertEvaluates("$atan2",
+                    Value(Decimal128("1.0")),
                     Value(Decimal128("-2.44929359829e-16")),
                     Value(Decimal128("1.57079632679")));
 }
 
 TEST(ExpressionArcTangent2Test, DoubleDecimalArg) {
-    assertEvaluates("$atan2", Value(1.0), Value(Decimal128("0.0")), Value(Decimal128("1.57079632679")));
-    assertEvaluates("$atan2", 
-        Value(0.866025403784), Value(Decimal128("0.5")), Value(Decimal128("1.0471975512")));
-    assertEvaluates("$atan2", Value(0.707106781187),
+    assertEvaluates(
+        "$atan2", Value(1.0), Value(Decimal128("0.0")), Value(Decimal128("1.57079632679")));
+    assertEvaluates("$atan2",
+                    Value(0.866025403784),
+                    Value(Decimal128("0.5")),
+                    Value(Decimal128("1.0471975512")));
+    assertEvaluates("$atan2",
+                    Value(0.707106781187),
                     Value(Decimal128("0.707106781187")),
                     Value(Decimal128("0.785398163397")));
-    assertEvaluates("$atan2", 
-        Value(0.5), Value(Decimal128("0.866025403784")), Value(Decimal128("0.523598775598")));
-    assertEvaluates("$atan2", 
-        Value(6.12323399574e-17), Value(Decimal128("1.0")), Value(Decimal128("6.12323399574e-17")));
-    assertEvaluates("$atan2", 
-        Value(-0.5), Value(Decimal128("0.866025403784")), Value(Decimal128("-0.523598775598")));
-    assertEvaluates("$atan2", Value(-0.707106781187),
+    assertEvaluates("$atan2",
+                    Value(0.5),
+                    Value(Decimal128("0.866025403784")),
+                    Value(Decimal128("0.523598775598")));
+    assertEvaluates("$atan2",
+                    Value(6.12323399574e-17),
+                    Value(Decimal128("1.0")),
+                    Value(Decimal128("6.12323399574e-17")));
+    assertEvaluates("$atan2",
+                    Value(-0.5),
+                    Value(Decimal128("0.866025403784")),
+                    Value(Decimal128("-0.523598775598")));
+    assertEvaluates("$atan2",
+                    Value(-0.707106781187),
                     Value(Decimal128("0.707106781187")),
                     Value(Decimal128("-0.785398163397")));
-    assertEvaluates("$atan2", 
-        Value(-0.866025403784), Value(Decimal128("0.5")), Value(Decimal128("-1.0471975512")));
-    assertEvaluates("$atan2", 
-        Value(-1.0), Value(Decimal128("1.22464679915e-16")), Value(Decimal128("-1.57079632679")));
-    assertEvaluates("$atan2", 
-        Value(-0.866025403784), Value(Decimal128("-0.5")), Value(Decimal128("-2.09439510239")));
-    assertEvaluates("$atan2", Value(-0.707106781187),
+    assertEvaluates("$atan2",
+                    Value(-0.866025403784),
+                    Value(Decimal128("0.5")),
+                    Value(Decimal128("-1.0471975512")));
+    assertEvaluates("$atan2",
+                    Value(-1.0),
+                    Value(Decimal128("1.22464679915e-16")),
+                    Value(Decimal128("-1.57079632679")));
+    assertEvaluates("$atan2",
+                    Value(-0.866025403784),
+                    Value(Decimal128("-0.5")),
+                    Value(Decimal128("-2.09439510239")));
+    assertEvaluates("$atan2",
+                    Value(-0.707106781187),
                     Value(Decimal128("-0.707106781187")),
                     Value(Decimal128("-2.35619449019")));
-    assertEvaluates("$atan2", 
-        Value(-0.5), Value(Decimal128("-0.866025403784")), Value(Decimal128("-2.61799387799")));
-    assertEvaluates("$atan2", 
-        Value(-1.83697019872e-16), Value(Decimal128("-1.0")), Value(Decimal128("-3.14159265359")));
-    assertEvaluates("$atan2", 
-        Value(0.5), Value(Decimal128("-0.866025403784")), Value(Decimal128("2.61799387799")));
-    assertEvaluates("$atan2", Value(0.707106781187),
+    assertEvaluates("$atan2",
+                    Value(-0.5),
+                    Value(Decimal128("-0.866025403784")),
+                    Value(Decimal128("-2.61799387799")));
+    assertEvaluates("$atan2",
+                    Value(-1.83697019872e-16),
+                    Value(Decimal128("-1.0")),
+                    Value(Decimal128("-3.14159265359")));
+    assertEvaluates("$atan2",
+                    Value(0.5),
+                    Value(Decimal128("-0.866025403784")),
+                    Value(Decimal128("2.61799387799")));
+    assertEvaluates("$atan2",
+                    Value(0.707106781187),
                     Value(Decimal128("-0.707106781187")),
                     Value(Decimal128("2.35619449019")));
-    assertEvaluates("$atan2", 
-        Value(0.866025403784), Value(Decimal128("-0.5")), Value(Decimal128("2.09439510239")));
-    assertEvaluates("$atan2", 
-        Value(1.0), Value(Decimal128("-2.44929359829e-16")), Value(Decimal128("1.57079632679")));
+    assertEvaluates("$atan2",
+                    Value(0.866025403784),
+                    Value(Decimal128("-0.5")),
+                    Value(Decimal128("2.09439510239")));
+    assertEvaluates("$atan2",
+                    Value(1.0),
+                    Value(Decimal128("-2.44929359829e-16")),
+                    Value(Decimal128("1.57079632679")));
 }
 
 TEST(ExpressionArcTangent2Test, DecimalDoubleArg) {
-    assertEvaluates("$atan2", Value(Decimal128("1.0")), Value(0.0), Value(Decimal128("1.57079632679")));
-    assertEvaluates("$atan2", 
-        Value(Decimal128("0.866025403784")), Value(0.5), Value(Decimal128("1.0471975512")));
-    assertEvaluates("$atan2", Value(Decimal128("0.707106781187")),
+    assertEvaluates(
+        "$atan2", Value(Decimal128("1.0")), Value(0.0), Value(Decimal128("1.57079632679")));
+    assertEvaluates("$atan2",
+                    Value(Decimal128("0.866025403784")),
+                    Value(0.5),
+                    Value(Decimal128("1.0471975512")));
+    assertEvaluates("$atan2",
+                    Value(Decimal128("0.707106781187")),
                     Value(0.707106781187),
                     Value(Decimal128("0.785398163397")));
-    assertEvaluates("$atan2", 
-        Value(Decimal128("0.5")), Value(0.866025403784), Value(Decimal128("0.523598775598")));
-    assertEvaluates("$atan2", 
-        Value(Decimal128("6.12323399574e-17")), Value(1.0), Value(Decimal128("6.12323399574e-17")));
-    assertEvaluates("$atan2", 
-        Value(Decimal128("-0.5")), Value(0.866025403784), Value(Decimal128("-0.523598775598")));
-    assertEvaluates("$atan2", Value(Decimal128("-0.707106781187")),
+    assertEvaluates("$atan2",
+                    Value(Decimal128("0.5")),
+                    Value(0.866025403784),
+                    Value(Decimal128("0.523598775598")));
+    assertEvaluates("$atan2",
+                    Value(Decimal128("6.12323399574e-17")),
+                    Value(1.0),
+                    Value(Decimal128("6.12323399574e-17")));
+    assertEvaluates("$atan2",
+                    Value(Decimal128("-0.5")),
+                    Value(0.866025403784),
+                    Value(Decimal128("-0.523598775598")));
+    assertEvaluates("$atan2",
+                    Value(Decimal128("-0.707106781187")),
                     Value(0.707106781187),
                     Value(Decimal128("-0.785398163397")));
-    assertEvaluates("$atan2", 
-        Value(Decimal128("-0.866025403784")), Value(0.5), Value(Decimal128("-1.0471975512")));
-    assertEvaluates("$atan2", 
-        Value(Decimal128("-1.0")), Value(1.22464679915e-16), Value(Decimal128("-1.57079632679")));
-    assertEvaluates("$atan2", 
-        Value(Decimal128("-0.866025403784")), Value(-0.5), Value(Decimal128("-2.09439510239")));
-    assertEvaluates("$atan2", Value(Decimal128("-0.707106781187")),
+    assertEvaluates("$atan2",
+                    Value(Decimal128("-0.866025403784")),
+                    Value(0.5),
+                    Value(Decimal128("-1.0471975512")));
+    assertEvaluates("$atan2",
+                    Value(Decimal128("-1.0")),
+                    Value(1.22464679915e-16),
+                    Value(Decimal128("-1.57079632679")));
+    assertEvaluates("$atan2",
+                    Value(Decimal128("-0.866025403784")),
+                    Value(-0.5),
+                    Value(Decimal128("-2.09439510239")));
+    assertEvaluates("$atan2",
+                    Value(Decimal128("-0.707106781187")),
                     Value(-0.707106781187),
                     Value(Decimal128("-2.35619449019")));
-    assertEvaluates("$atan2", 
-        Value(Decimal128("-0.5")), Value(-0.866025403784), Value(Decimal128("-2.61799387799")));
-    assertEvaluates("$atan2", 
-        Value(Decimal128("-1.83697019872e-16")), Value(-1.0), Value(Decimal128("-3.14159265359")));
-    assertEvaluates("$atan2", 
-        Value(Decimal128("0.5")), Value(-0.866025403784), Value(Decimal128("2.61799387799")));
-    assertEvaluates("$atan2", Value(Decimal128("0.707106781187")),
+    assertEvaluates("$atan2",
+                    Value(Decimal128("-0.5")),
+                    Value(-0.866025403784),
+                    Value(Decimal128("-2.61799387799")));
+    assertEvaluates("$atan2",
+                    Value(Decimal128("-1.83697019872e-16")),
+                    Value(-1.0),
+                    Value(Decimal128("-3.14159265359")));
+    assertEvaluates("$atan2",
+                    Value(Decimal128("0.5")),
+                    Value(-0.866025403784),
+                    Value(Decimal128("2.61799387799")));
+    assertEvaluates("$atan2",
+                    Value(Decimal128("0.707106781187")),
                     Value(-0.707106781187),
                     Value(Decimal128("2.35619449019")));
-    assertEvaluates("$atan2", 
-        Value(Decimal128("0.866025403784")), Value(-0.5), Value(Decimal128("2.09439510239")));
-    assertEvaluates("$atan2", 
-        Value(Decimal128("1.0")), Value(-2.44929359829e-16), Value(Decimal128("1.57079632679")));
+    assertEvaluates("$atan2",
+                    Value(Decimal128("0.866025403784")),
+                    Value(-0.5),
+                    Value(Decimal128("2.09439510239")));
+    assertEvaluates("$atan2",
+                    Value(Decimal128("1.0")),
+                    Value(-2.44929359829e-16),
+                    Value(Decimal128("1.57079632679")));
 }
 
 TEST(ExpressionArcTangent2Test, NullArg) {
@@ -462,21 +543,31 @@ TEST(ExpressionCosineTest, DoubleArg) {
 
 TEST(ExpressionCosineTest, DecimalArg) {
     assertEvaluates("$cos", Value(Decimal128("0.0")), Value(Decimal128("1.0")));
-    assertEvaluates("$cos", Value(Decimal128("0.523598775598")), Value(Decimal128("0.866025403784")));
-    assertEvaluates("$cos", Value(Decimal128("0.785398163397")), Value(Decimal128("0.707106781187")));
+    assertEvaluates(
+        "$cos", Value(Decimal128("0.523598775598")), Value(Decimal128("0.866025403784")));
+    assertEvaluates(
+        "$cos", Value(Decimal128("0.785398163397")), Value(Decimal128("0.707106781187")));
     assertEvaluates("$cos", Value(Decimal128("1.0471975512")), Value(Decimal128("0.5")));
-    assertEvaluates("$cos", Value(Decimal128("1.57079632679")), Value(Decimal128("6.12323399574e-17")));
+    assertEvaluates(
+        "$cos", Value(Decimal128("1.57079632679")), Value(Decimal128("6.12323399574e-17")));
     assertEvaluates("$cos", Value(Decimal128("2.09439510239")), Value(Decimal128("-0.5")));
-    assertEvaluates("$cos", Value(Decimal128("2.35619449019")), Value(Decimal128("-0.707106781187")));
-    assertEvaluates("$cos", Value(Decimal128("2.61799387799")), Value(Decimal128("-0.866025403784")));
+    assertEvaluates(
+        "$cos", Value(Decimal128("2.35619449019")), Value(Decimal128("-0.707106781187")));
+    assertEvaluates(
+        "$cos", Value(Decimal128("2.61799387799")), Value(Decimal128("-0.866025403784")));
     assertEvaluates("$cos", Value(Decimal128("3.14159265359")), Value(Decimal128("-1.0")));
-    assertEvaluates("$cos", Value(Decimal128("3.66519142919")), Value(Decimal128("-0.866025403784")));
-    assertEvaluates("$cos", Value(Decimal128("3.92699081699")), Value(Decimal128("-0.707106781187")));
+    assertEvaluates(
+        "$cos", Value(Decimal128("3.66519142919")), Value(Decimal128("-0.866025403784")));
+    assertEvaluates(
+        "$cos", Value(Decimal128("3.92699081699")), Value(Decimal128("-0.707106781187")));
     assertEvaluates("$cos", Value(Decimal128("4.18879020479")), Value(Decimal128("-0.5")));
-    assertEvaluates("$cos", Value(Decimal128("4.71238898038")), Value(Decimal128("-1.83697019872e-16")));
+    assertEvaluates(
+        "$cos", Value(Decimal128("4.71238898038")), Value(Decimal128("-1.83697019872e-16")));
     assertEvaluates("$cos", Value(Decimal128("5.23598775598")), Value(Decimal128("0.5")));
-    assertEvaluates("$cos", Value(Decimal128("5.49778714378")), Value(Decimal128("0.707106781187")));
-    assertEvaluates("$cos", Value(Decimal128("5.75958653158")), Value(Decimal128("0.866025403784")));
+    assertEvaluates(
+        "$cos", Value(Decimal128("5.49778714378")), Value(Decimal128("0.707106781187")));
+    assertEvaluates(
+        "$cos", Value(Decimal128("5.75958653158")), Value(Decimal128("0.866025403784")));
     assertEvaluates("$cos", Value(Decimal128("6.28318530718")), Value(Decimal128("1.0")));
 }
 
@@ -533,22 +624,35 @@ TEST(ExpressionHyperbolicCosineTest, DoubleArg) {
 
 TEST(ExpressionHyperbolicCosineTest, DecimalArg) {
     assertEvaluates("$cosh", Value(Decimal128("0.0")), Value(Decimal128("1.0")));
-    assertEvaluates("$cosh", Value(Decimal128("0.523598775598")), Value(Decimal128("1.14023832108")));
-    assertEvaluates("$cosh", Value(Decimal128("0.785398163397")), Value(Decimal128("1.32460908925")));
+    assertEvaluates(
+        "$cosh", Value(Decimal128("0.523598775598")), Value(Decimal128("1.14023832108")));
+    assertEvaluates(
+        "$cosh", Value(Decimal128("0.785398163397")), Value(Decimal128("1.32460908925")));
     assertEvaluates("$cosh", Value(Decimal128("1.0471975512")), Value(Decimal128("1.6002868577")));
-    assertEvaluates("$cosh", Value(Decimal128("1.57079632679")), Value(Decimal128("2.50917847866")));
-    assertEvaluates("$cosh", Value(Decimal128("2.09439510239")), Value(Decimal128("4.12183605387")));
-    assertEvaluates("$cosh", Value(Decimal128("2.35619449019")), Value(Decimal128("5.32275214952")));
-    assertEvaluates("$cosh", Value(Decimal128("2.61799387799")), Value(Decimal128("6.89057236498")));
-    assertEvaluates("$cosh", Value(Decimal128("3.14159265359")), Value(Decimal128("11.5919532755")));
-    assertEvaluates("$cosh", Value(Decimal128("3.66519142919")), Value(Decimal128("19.5446063168")));
-    assertEvaluates("$cosh", Value(Decimal128("3.92699081699")), Value(Decimal128("25.3868611924")));
+    assertEvaluates(
+        "$cosh", Value(Decimal128("1.57079632679")), Value(Decimal128("2.50917847866")));
+    assertEvaluates(
+        "$cosh", Value(Decimal128("2.09439510239")), Value(Decimal128("4.12183605387")));
+    assertEvaluates(
+        "$cosh", Value(Decimal128("2.35619449019")), Value(Decimal128("5.32275214952")));
+    assertEvaluates(
+        "$cosh", Value(Decimal128("2.61799387799")), Value(Decimal128("6.89057236498")));
+    assertEvaluates(
+        "$cosh", Value(Decimal128("3.14159265359")), Value(Decimal128("11.5919532755")));
+    assertEvaluates(
+        "$cosh", Value(Decimal128("3.66519142919")), Value(Decimal128("19.5446063168")));
+    assertEvaluates(
+        "$cosh", Value(Decimal128("3.92699081699")), Value(Decimal128("25.3868611924")));
     assertEvaluates("$cosh", Value(Decimal128("4.18879020479")), Value(Decimal128("32.97906491")));
-    assertEvaluates("$cosh", Value(Decimal128("4.71238898038")), Value(Decimal128("55.6633808904")));
-    assertEvaluates("$cosh", Value(Decimal128("5.23598775598")), Value(Decimal128("93.9599750339")));
+    assertEvaluates(
+        "$cosh", Value(Decimal128("4.71238898038")), Value(Decimal128("55.6633808904")));
+    assertEvaluates(
+        "$cosh", Value(Decimal128("5.23598775598")), Value(Decimal128("93.9599750339")));
     assertEvaluates("$cosh", Value(Decimal128("5.49778714378")), Value(Decimal128("122.07757934")));
-    assertEvaluates("$cosh", Value(Decimal128("5.75958653158")), Value(Decimal128("158.610147472")));
-    assertEvaluates("$cosh", Value(Decimal128("6.28318530718")), Value(Decimal128("267.746761484")));
+    assertEvaluates(
+        "$cosh", Value(Decimal128("5.75958653158")), Value(Decimal128("158.610147472")));
+    assertEvaluates(
+        "$cosh", Value(Decimal128("6.28318530718")), Value(Decimal128("267.746761484")));
 }
 
 TEST(ExpressionHyperbolicCosineTest, NullArg) {
@@ -605,21 +709,30 @@ TEST(ExpressionSineTest, DoubleArg) {
 TEST(ExpressionSineTest, DecimalArg) {
     assertEvaluates("$sin", Value(Decimal128("0.0")), Value(Decimal128("0.0")));
     assertEvaluates("$sin", Value(Decimal128("0.523598775598")), Value(Decimal128("0.5")));
-    assertEvaluates("$sin", Value(Decimal128("0.785398163397")), Value(Decimal128("0.707106781187")));
+    assertEvaluates(
+        "$sin", Value(Decimal128("0.785398163397")), Value(Decimal128("0.707106781187")));
     assertEvaluates("$sin", Value(Decimal128("1.0471975512")), Value(Decimal128("0.866025403784")));
     assertEvaluates("$sin", Value(Decimal128("1.57079632679")), Value(Decimal128("1.0")));
-    assertEvaluates("$sin", Value(Decimal128("2.09439510239")), Value(Decimal128("0.866025403784")));
-    assertEvaluates("$sin", Value(Decimal128("2.35619449019")), Value(Decimal128("0.707106781187")));
+    assertEvaluates(
+        "$sin", Value(Decimal128("2.09439510239")), Value(Decimal128("0.866025403784")));
+    assertEvaluates(
+        "$sin", Value(Decimal128("2.35619449019")), Value(Decimal128("0.707106781187")));
     assertEvaluates("$sin", Value(Decimal128("2.61799387799")), Value(Decimal128("0.5")));
-    assertEvaluates("$sin", Value(Decimal128("3.14159265359")), Value(Decimal128("1.22464679915e-16")));
+    assertEvaluates(
+        "$sin", Value(Decimal128("3.14159265359")), Value(Decimal128("1.22464679915e-16")));
     assertEvaluates("$sin", Value(Decimal128("3.66519142919")), Value(Decimal128("-0.5")));
-    assertEvaluates("$sin", Value(Decimal128("3.92699081699")), Value(Decimal128("-0.707106781187")));
-    assertEvaluates("$sin", Value(Decimal128("4.18879020479")), Value(Decimal128("-0.866025403784")));
+    assertEvaluates(
+        "$sin", Value(Decimal128("3.92699081699")), Value(Decimal128("-0.707106781187")));
+    assertEvaluates(
+        "$sin", Value(Decimal128("4.18879020479")), Value(Decimal128("-0.866025403784")));
     assertEvaluates("$sin", Value(Decimal128("4.71238898038")), Value(Decimal128("-1.0")));
-    assertEvaluates("$sin", Value(Decimal128("5.23598775598")), Value(Decimal128("-0.866025403784")));
-    assertEvaluates("$sin", Value(Decimal128("5.49778714378")), Value(Decimal128("-0.707106781187")));
+    assertEvaluates(
+        "$sin", Value(Decimal128("5.23598775598")), Value(Decimal128("-0.866025403784")));
+    assertEvaluates(
+        "$sin", Value(Decimal128("5.49778714378")), Value(Decimal128("-0.707106781187")));
     assertEvaluates("$sin", Value(Decimal128("5.75958653158")), Value(Decimal128("-0.5")));
-    assertEvaluates("$sin", Value(Decimal128("6.28318530718")), Value(Decimal128("-2.44929359829e-16")));
+    assertEvaluates(
+        "$sin", Value(Decimal128("6.28318530718")), Value(Decimal128("-2.44929359829e-16")));
 }
 
 TEST(ExpressionSineTest, NullArg) {
@@ -674,22 +787,36 @@ TEST(ExpressionHyperbolicSineTest, DoubleArg) {
 
 TEST(ExpressionHyperbolicSineTest, DecimalArg) {
     assertEvaluates("$sinh", Value(Decimal128("0.0")), Value(Decimal128("0.0")));
-    assertEvaluates("$sinh", Value(Decimal128("0.523598775598")), Value(Decimal128("0.547853473888")));
-    assertEvaluates("$sinh", Value(Decimal128("0.785398163397")), Value(Decimal128("0.868670961486")));
+    assertEvaluates(
+        "$sinh", Value(Decimal128("0.523598775598")), Value(Decimal128("0.547853473888")));
+    assertEvaluates(
+        "$sinh", Value(Decimal128("0.785398163397")), Value(Decimal128("0.868670961486")));
     assertEvaluates("$sinh", Value(Decimal128("1.0471975512")), Value(Decimal128("1.24936705052")));
-    assertEvaluates("$sinh", Value(Decimal128("1.57079632679")), Value(Decimal128("2.30129890231")));
+    assertEvaluates(
+        "$sinh", Value(Decimal128("1.57079632679")), Value(Decimal128("2.30129890231")));
     assertEvaluates("$sinh", Value(Decimal128("2.09439510239")), Value(Decimal128("3.9986913428")));
-    assertEvaluates("$sinh", Value(Decimal128("2.35619449019")), Value(Decimal128("5.22797192468")));
-    assertEvaluates("$sinh", Value(Decimal128("2.61799387799")), Value(Decimal128("6.81762330413")));
-    assertEvaluates("$sinh", Value(Decimal128("3.14159265359")), Value(Decimal128("11.5487393573")));
-    assertEvaluates("$sinh", Value(Decimal128("3.66519142919")), Value(Decimal128("19.5190070464")));
-    assertEvaluates("$sinh", Value(Decimal128("3.92699081699")), Value(Decimal128("25.3671583194")));
-    assertEvaluates("$sinh", Value(Decimal128("4.18879020479")), Value(Decimal128("32.9639002901")));
-    assertEvaluates("$sinh", Value(Decimal128("4.71238898038")), Value(Decimal128("55.6543975994")));
-    assertEvaluates("$sinh", Value(Decimal128("5.23598775598")), Value(Decimal128("93.9546534685")));
-    assertEvaluates("$sinh", Value(Decimal128("5.49778714378")), Value(Decimal128("122.073483515")));
-    assertEvaluates("$sinh", Value(Decimal128("5.75958653158")), Value(Decimal128("158.606995057")));
-    assertEvaluates("$sinh", Value(Decimal128("6.28318530718")), Value(Decimal128("267.744894041")));
+    assertEvaluates(
+        "$sinh", Value(Decimal128("2.35619449019")), Value(Decimal128("5.22797192468")));
+    assertEvaluates(
+        "$sinh", Value(Decimal128("2.61799387799")), Value(Decimal128("6.81762330413")));
+    assertEvaluates(
+        "$sinh", Value(Decimal128("3.14159265359")), Value(Decimal128("11.5487393573")));
+    assertEvaluates(
+        "$sinh", Value(Decimal128("3.66519142919")), Value(Decimal128("19.5190070464")));
+    assertEvaluates(
+        "$sinh", Value(Decimal128("3.92699081699")), Value(Decimal128("25.3671583194")));
+    assertEvaluates(
+        "$sinh", Value(Decimal128("4.18879020479")), Value(Decimal128("32.9639002901")));
+    assertEvaluates(
+        "$sinh", Value(Decimal128("4.71238898038")), Value(Decimal128("55.6543975994")));
+    assertEvaluates(
+        "$sinh", Value(Decimal128("5.23598775598")), Value(Decimal128("93.9546534685")));
+    assertEvaluates(
+        "$sinh", Value(Decimal128("5.49778714378")), Value(Decimal128("122.073483515")));
+    assertEvaluates(
+        "$sinh", Value(Decimal128("5.75958653158")), Value(Decimal128("158.606995057")));
+    assertEvaluates(
+        "$sinh", Value(Decimal128("6.28318530718")), Value(Decimal128("267.744894041")));
 }
 
 TEST(ExpressionHyperbolicSineTest, NullArg) {
@@ -727,7 +854,8 @@ TEST(ExpressionTangentTest, DoubleArg) {
 
 TEST(ExpressionTangentTest, DecimalArg) {
     assertEvaluates("$tan", Value(Decimal128("-1.5")), Value(Decimal128("-14.1014199472")));
-    assertEvaluates("$tan", Value(Decimal128("-1.0471975512")), Value(Decimal128("-1.73205080757")));
+    assertEvaluates(
+        "$tan", Value(Decimal128("-1.0471975512")), Value(Decimal128("-1.73205080757")));
     assertEvaluates("$tan", Value(Decimal128("-0.785398163397")), Value(Decimal128("-1.0")));
     assertEvaluates("$tan", Value(Decimal128("0")), Value(Decimal128("0.0")));
     assertEvaluates("$tan", Value(Decimal128("0.785398163397")), Value(Decimal128("1.0")));
@@ -787,22 +915,37 @@ TEST(ExpressionHyperbolicTangentTest, DoubleArg) {
 
 TEST(ExpressionHyperbolicTangentTest, DecimalArg) {
     assertEvaluates("$tanh", Value(Decimal128("0.0")), Value(Decimal128("0.0")));
-    assertEvaluates("$tanh", Value(Decimal128("0.523598775598")), Value(Decimal128("0.480472778156")));
-    assertEvaluates("$tanh", Value(Decimal128("0.785398163397")), Value(Decimal128("0.655794202633")));
-    assertEvaluates("$tanh", Value(Decimal128("1.0471975512")), Value(Decimal128("0.780714435359")));
-    assertEvaluates("$tanh", Value(Decimal128("1.57079632679")), Value(Decimal128("0.917152335667")));
-    assertEvaluates("$tanh", Value(Decimal128("2.09439510239")), Value(Decimal128("0.970123821166")));
-    assertEvaluates("$tanh", Value(Decimal128("2.35619449019")), Value(Decimal128("0.982193380007")));
-    assertEvaluates("$tanh", Value(Decimal128("2.61799387799")), Value(Decimal128("0.989413207353")));
-    assertEvaluates("$tanh", Value(Decimal128("3.14159265359")), Value(Decimal128("0.996272076221")));
-    assertEvaluates("$tanh", Value(Decimal128("3.66519142919")), Value(Decimal128("0.998690213046")));
-    assertEvaluates("$tanh", Value(Decimal128("3.92699081699")), Value(Decimal128("0.999223894879")));
-    assertEvaluates("$tanh", Value(Decimal128("4.18879020479")), Value(Decimal128("0.999540174353")));
-    assertEvaluates("$tanh", Value(Decimal128("4.71238898038")), Value(Decimal128("0.999838613989")));
-    assertEvaluates("$tanh", Value(Decimal128("5.23598775598")), Value(Decimal128("0.999943363486")));
+    assertEvaluates(
+        "$tanh", Value(Decimal128("0.523598775598")), Value(Decimal128("0.480472778156")));
+    assertEvaluates(
+        "$tanh", Value(Decimal128("0.785398163397")), Value(Decimal128("0.655794202633")));
+    assertEvaluates(
+        "$tanh", Value(Decimal128("1.0471975512")), Value(Decimal128("0.780714435359")));
+    assertEvaluates(
+        "$tanh", Value(Decimal128("1.57079632679")), Value(Decimal128("0.917152335667")));
+    assertEvaluates(
+        "$tanh", Value(Decimal128("2.09439510239")), Value(Decimal128("0.970123821166")));
+    assertEvaluates(
+        "$tanh", Value(Decimal128("2.35619449019")), Value(Decimal128("0.982193380007")));
+    assertEvaluates(
+        "$tanh", Value(Decimal128("2.61799387799")), Value(Decimal128("0.989413207353")));
+    assertEvaluates(
+        "$tanh", Value(Decimal128("3.14159265359")), Value(Decimal128("0.996272076221")));
+    assertEvaluates(
+        "$tanh", Value(Decimal128("3.66519142919")), Value(Decimal128("0.998690213046")));
+    assertEvaluates(
+        "$tanh", Value(Decimal128("3.92699081699")), Value(Decimal128("0.999223894879")));
+    assertEvaluates(
+        "$tanh", Value(Decimal128("4.18879020479")), Value(Decimal128("0.999540174353")));
+    assertEvaluates(
+        "$tanh", Value(Decimal128("4.71238898038")), Value(Decimal128("0.999838613989")));
+    assertEvaluates(
+        "$tanh", Value(Decimal128("5.23598775598")), Value(Decimal128("0.999943363486")));
     assertEvaluates("$tanh", Value(Decimal128("5.49778714378")), Value(Decimal128("0.999966449")));
-    assertEvaluates("$tanh", Value(Decimal128("5.75958653158")), Value(Decimal128("0.99998012476")));
-    assertEvaluates("$tanh", Value(Decimal128("6.28318530718")), Value(Decimal128("0.99999302534")));
+    assertEvaluates(
+        "$tanh", Value(Decimal128("5.75958653158")), Value(Decimal128("0.99998012476")));
+    assertEvaluates(
+        "$tanh", Value(Decimal128("6.28318530718")), Value(Decimal128("0.99999302534")));
 }
 
 TEST(ExpressionHyperbolicTangentTest, NullArg) {
@@ -1162,22 +1305,38 @@ TEST(ExpressionRadiansToDegreesTest, DoubleArg) {
 
 TEST(ExpressionRadiansToDegreesTest, DecimalArg) {
     assertEvaluates("$radiansToDegrees", Value(Decimal128("0.0")), Value(Decimal128("0.0")));
-    assertEvaluates("$radiansToDegrees", Value(Decimal128("0.523598775598")), Value(Decimal128("30.0")));
-    assertEvaluates("$radiansToDegrees", Value(Decimal128("0.785398163397")), Value(Decimal128("45.0")));
-    assertEvaluates("$radiansToDegrees", Value(Decimal128("1.0471975512")), Value(Decimal128("60.0")));
-    assertEvaluates("$radiansToDegrees", Value(Decimal128("1.57079632679")), Value(Decimal128("90.0")));
-    assertEvaluates("$radiansToDegrees", Value(Decimal128("2.09439510239")), Value(Decimal128("120.0")));
-    assertEvaluates("$radiansToDegrees", Value(Decimal128("2.35619449019")), Value(Decimal128("135.0")));
-    assertEvaluates("$radiansToDegrees", Value(Decimal128("2.61799387799")), Value(Decimal128("150.0")));
-    assertEvaluates("$radiansToDegrees", Value(Decimal128("3.14159265359")), Value(Decimal128("180.0")));
-    assertEvaluates("$radiansToDegrees", Value(Decimal128("3.66519142919")), Value(Decimal128("210.0")));
-    assertEvaluates("$radiansToDegrees", Value(Decimal128("3.92699081699")), Value(Decimal128("225.0")));
-    assertEvaluates("$radiansToDegrees", Value(Decimal128("4.18879020479")), Value(Decimal128("240.0")));
-    assertEvaluates("$radiansToDegrees", Value(Decimal128("4.71238898038")), Value(Decimal128("270.0")));
-    assertEvaluates("$radiansToDegrees", Value(Decimal128("5.23598775598")), Value(Decimal128("300.0")));
-    assertEvaluates("$radiansToDegrees", Value(Decimal128("5.49778714378")), Value(Decimal128("315.0")));
-    assertEvaluates("$radiansToDegrees", Value(Decimal128("5.75958653158")), Value(Decimal128("330.0")));
-    assertEvaluates("$radiansToDegrees", Value(Decimal128("6.28318530718")), Value(Decimal128("360.0")));
+    assertEvaluates(
+        "$radiansToDegrees", Value(Decimal128("0.523598775598")), Value(Decimal128("30.0")));
+    assertEvaluates(
+        "$radiansToDegrees", Value(Decimal128("0.785398163397")), Value(Decimal128("45.0")));
+    assertEvaluates(
+        "$radiansToDegrees", Value(Decimal128("1.0471975512")), Value(Decimal128("60.0")));
+    assertEvaluates(
+        "$radiansToDegrees", Value(Decimal128("1.57079632679")), Value(Decimal128("90.0")));
+    assertEvaluates(
+        "$radiansToDegrees", Value(Decimal128("2.09439510239")), Value(Decimal128("120.0")));
+    assertEvaluates(
+        "$radiansToDegrees", Value(Decimal128("2.35619449019")), Value(Decimal128("135.0")));
+    assertEvaluates(
+        "$radiansToDegrees", Value(Decimal128("2.61799387799")), Value(Decimal128("150.0")));
+    assertEvaluates(
+        "$radiansToDegrees", Value(Decimal128("3.14159265359")), Value(Decimal128("180.0")));
+    assertEvaluates(
+        "$radiansToDegrees", Value(Decimal128("3.66519142919")), Value(Decimal128("210.0")));
+    assertEvaluates(
+        "$radiansToDegrees", Value(Decimal128("3.92699081699")), Value(Decimal128("225.0")));
+    assertEvaluates(
+        "$radiansToDegrees", Value(Decimal128("4.18879020479")), Value(Decimal128("240.0")));
+    assertEvaluates(
+        "$radiansToDegrees", Value(Decimal128("4.71238898038")), Value(Decimal128("270.0")));
+    assertEvaluates(
+        "$radiansToDegrees", Value(Decimal128("5.23598775598")), Value(Decimal128("300.0")));
+    assertEvaluates(
+        "$radiansToDegrees", Value(Decimal128("5.49778714378")), Value(Decimal128("315.0")));
+    assertEvaluates(
+        "$radiansToDegrees", Value(Decimal128("5.75958653158")), Value(Decimal128("330.0")));
+    assertEvaluates(
+        "$radiansToDegrees", Value(Decimal128("6.28318530718")), Value(Decimal128("360.0")));
 }
 
 TEST(ExpressionRadiansToDegreesTest, NullArg) {
@@ -1223,17 +1382,25 @@ TEST(ExpressionDegreesToRadiansTest, DoubleArg) {
 
 TEST(ExpressionDegreesToRadiansTest, DecimalArg) {
     assertEvaluates("$degreesToRadians", Value(Decimal128("0")), Value(Decimal128("0.0")));
-    assertEvaluates("$degreesToRadians", Value(Decimal128("45")), Value(Decimal128("0.785398163397")));
-    assertEvaluates("$degreesToRadians", Value(Decimal128("90")), Value(Decimal128("1.57079632679")));
-    assertEvaluates("$degreesToRadians", Value(Decimal128("135")), Value(Decimal128("2.35619449019")));
-    assertEvaluates("$degreesToRadians", Value(Decimal128("180")), Value(Decimal128("3.14159265359")));
-    assertEvaluates("$degreesToRadians", Value(Decimal128("225")), Value(Decimal128("3.92699081699")));
-    assertEvaluates("$degreesToRadians", Value(Decimal128("270")), Value(Decimal128("4.71238898038")));
-    assertEvaluates("$degreesToRadians", Value(Decimal128("315")), Value(Decimal128("5.49778714378")));
-    assertEvaluates("$degreesToRadians", Value(Decimal128("360")), Value(Decimal128("6.28318530718")));
+    assertEvaluates(
+        "$degreesToRadians", Value(Decimal128("45")), Value(Decimal128("0.785398163397")));
+    assertEvaluates(
+        "$degreesToRadians", Value(Decimal128("90")), Value(Decimal128("1.57079632679")));
+    assertEvaluates(
+        "$degreesToRadians", Value(Decimal128("135")), Value(Decimal128("2.35619449019")));
+    assertEvaluates(
+        "$degreesToRadians", Value(Decimal128("180")), Value(Decimal128("3.14159265359")));
+    assertEvaluates(
+        "$degreesToRadians", Value(Decimal128("225")), Value(Decimal128("3.92699081699")));
+    assertEvaluates(
+        "$degreesToRadians", Value(Decimal128("270")), Value(Decimal128("4.71238898038")));
+    assertEvaluates(
+        "$degreesToRadians", Value(Decimal128("315")), Value(Decimal128("5.49778714378")));
+    assertEvaluates(
+        "$degreesToRadians", Value(Decimal128("360")), Value(Decimal128("6.28318530718")));
 }
 
 TEST(ExpressionDegreesToRadiansTest, NullArg) {
     assertEvaluates("$degreesToRadians", Value(BSONNULL), Value(BSONNULL));
 }
-} // namespace expression_trigonometric_test
+}  // namespace expression_trigonometric_test

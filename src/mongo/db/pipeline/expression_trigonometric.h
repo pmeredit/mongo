@@ -37,8 +37,8 @@ namespace mongo {
  * InclusiveBoundType defines the necessary configuration for inclusively bounded trig functions.
  */
 struct InclusiveBoundType {
-	// We use a static method rather than a field because the value, as an std::string, would need
-	// to be initialized out of line. This method will be inlined, and result in no overhead.
+    // We use a static method rather than a field because the value, as an std::string, would need
+    // to be initialized out of line. This method will be inlined, and result in no overhead.
     static std::string leftBracket() {
         return "[";
     }
@@ -68,8 +68,8 @@ struct InclusiveBoundType {
  * ExclusiveBoundType defines the necessary configuration for exclusively bounded trig functions.
  */
 struct ExclusiveBoundType {
-	// We use a static method rather than a field because the value, as an std::string, would need
-	// to be initialized out of line. This method will be inlined, and result in no overhead.
+    // We use a static method rather than a field because the value, as an std::string, would need
+    // to be initialized out of line. This method will be inlined, and result in no overhead.
     static std::string leftBracket() {
         return "(";
     }

@@ -1333,8 +1333,8 @@ TEST(Decimal128Test, TestAsin) {
 
 TEST(Decimal128Test, TestAcos) {
     // The intel decimal library has a bug at -1 where it returns 0.
-	//
-	// uncomment this test when we update to the new intel decimal library.
+    //
+    // uncomment this test when we update to the new intel decimal library.
     // assertDecimal128ExactlyEqual(Decimal128("-1").acos(), Decimal128::kPi);
     assertDecimal128ExactlyEqual(Decimal128("-0.9999999999999999999999999999999997").acos(),
                                  Decimal128("3.141592653589793213967745955447722"));
