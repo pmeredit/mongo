@@ -92,6 +92,10 @@ void BackupCursorService::fsyncUnlock(OperationContext* opCtx) {
 }
 
 BackupCursorState BackupCursorService::openBackupCursor(OperationContext* opCtx) {
+    uassert(51034,
+            "Cannot open backup cursor with an ephemeral storage engine.",
+            !_storageEngine->isEphemeral());
+
     // Replica sets must also return the opTime's of the earliest and latest oplog entry. The
     // range represented by the oplog start/end values must exist in the backup copy, but are not
     // expected to be exact.
@@ -207,6 +211,10 @@ void BackupCursorService::closeBackupCursor(OperationContext* opCtx, const UUID&
 BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext* opCtx,
                                                                 const UUID& backupId,
                                                                 const Timestamp& extendTo) {
+    uassert(51033,
+            "Cannot extend backup cursor with an ephemeral storage engine.",
+            !_storageEngine->isEphemeral());
+
     stdx::lock_guard<stdx::mutex> lk(_mutex);
     uassert(51011,
             str::stream() << "Cannot extend backup cursor, backupId was not found. BackupId: "
