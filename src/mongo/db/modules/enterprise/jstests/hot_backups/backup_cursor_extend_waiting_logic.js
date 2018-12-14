@@ -54,7 +54,8 @@
         let clusterTime = insertDoc(primaryDB, collName, {});
         // Time out waiting for the clusterTime to be persistent on the secondary.
         assert.commandFailedWithCode(
-            extendBackupCursor(secondaryDB, {backupId: backupId, timestamp: clusterTime}, 2000),
+            extendBackupCursor(
+                secondaryDB, {backupId: backupId, timestamp: clusterTime}, 20 * 1000),
             ErrorCodes.MaxTimeMSExpired);
 
         assert.commandWorked(rst.getSecondary().adminCommand(
@@ -62,8 +63,8 @@
 
         // Do another write in order to update the committedSnapshot value.
         clusterTime = insertDoc(primaryDB, collName, {});
-        assert.commandWorked(
-            extendBackupCursor(secondaryDB, {backupId: backupId, timestamp: clusterTime}, 2000));
+        assert.commandWorked(extendBackupCursor(
+            secondaryDB, {backupId: backupId, timestamp: clusterTime}, 20 * 1000));
 
         rst.stopSet();
     }
@@ -93,7 +94,7 @@
         // Since all writes go to shard A, shard B does not have a valid opTime equal to or greater
         // than `clusterTime` until the noop writer moves the opTime forward.
         assert.commandWorked(extendBackupCursor(
-            shardB.getDB(dbName), {backupId: backupId, timestamp: clusterTime}, 2000));
+            shardB.getDB(dbName), {backupId: backupId, timestamp: clusterTime}, 20 * 1000));
 
         if (DEBUG) {
             jsTestLog("shard A:" + tojson(shardA.getDB("local").oplog.rs.find().toArray()));
