@@ -52,6 +52,10 @@ public:
     explicit LDAPArrayIterator(const T* basePtr = nullptr) noexcept : _basePtr(basePtr) {
         static_assert(std::is_pointer<T>::value,
                       "LDAPArrayIterator must traverse an array of pointers");
+        // If this a pointer to an empty array, treat it as if we never got an array at all
+        if (this->_basePtr && *this->_basePtr == nullptr) {
+            this->_basePtr = nullptr;
+        }
     }
     LDAPArrayIterator& operator++() {
         this->advance();
