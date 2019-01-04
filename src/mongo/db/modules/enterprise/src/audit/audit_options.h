@@ -27,7 +27,7 @@ struct AuditGlobalParams {
     bool enabled;
     BSONObj auditFilter;
     std::string auditPath;
-    AtomicBool auditAuthorizationSuccess;
+    AtomicWord<bool> auditAuthorizationSuccess;
 
     AuditFormat auditFormat;
 

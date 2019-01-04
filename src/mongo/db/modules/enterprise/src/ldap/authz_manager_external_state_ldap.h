@@ -125,7 +125,7 @@ private:
     /**
      * Set to 0 if the invalidator has not been started, 1 if it has been started
      */
-    AtomicUInt32 _hasInitializedInvalidation;
+    AtomicWord<unsigned> _hasInitializedInvalidation;
 
     /**
      * Long running job to periodically invalidate all LDAP authorized users on $external

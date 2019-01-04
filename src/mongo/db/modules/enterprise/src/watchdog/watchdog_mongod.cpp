@@ -49,7 +49,7 @@ WatchdogMonitor* getGlobalWatchdogMonitor() {
     return getWatchdogMonitor(getGlobalServiceContext()).get();
 }
 
-AtomicInt32 localPeriodSeconds(watchdogPeriodSecondsDefault);
+AtomicWord<int> localPeriodSeconds(watchdogPeriodSecondsDefault);
 
 class ExportedWatchdogPeriodParameter
     : public ExportedServerParameter<std::int32_t, ServerParameterType::kStartupAndRuntime> {

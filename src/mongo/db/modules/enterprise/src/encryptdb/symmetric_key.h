@@ -68,6 +68,6 @@ private:
     std::string _keyId;
 
     uint32_t _initializationCount;
-    mutable AtomicUInt64 _invocationCount;
+    mutable AtomicWord<unsigned long long> _invocationCount;
 };
 }  // namespace mongo

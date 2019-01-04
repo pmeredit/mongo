@@ -207,7 +207,7 @@ private:
 
     // A counter that is incremented for each watchdog check completed, and monitored to ensure it
     // does not remain at the same value for too long.
-    AtomicInt64 _checkGeneration{0};
+    AtomicWord<long long> _checkGeneration{0};
 };
 
 /**
@@ -238,7 +238,7 @@ private:
     WatchdogCheckThread* _checkThread;
 
     // A counter that is incremented for each watchdog monitor run is completed.
-    AtomicInt64 _monitorGeneration{0};
+    AtomicWord<long long> _monitorGeneration{0};
 
     // The last seen _checkGeneration value
     std::int64_t _lastSeenGeneration{-1};

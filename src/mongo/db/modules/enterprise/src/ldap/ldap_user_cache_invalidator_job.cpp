@@ -23,7 +23,7 @@
 
 namespace mongo {
 namespace {
-AtomicInt32 ldapUserCacheInvalidationInterval(30);  // 30 second default
+AtomicWord<int> ldapUserCacheInvalidationInterval(30);  // 30 second default
 stdx::mutex invalidationIntervalMutex;
 stdx::condition_variable invalidationIntervalChanged;
 
