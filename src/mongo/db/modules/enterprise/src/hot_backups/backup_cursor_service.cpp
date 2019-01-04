@@ -124,7 +124,7 @@ BackupCursorState BackupCursorService::openBackupCursor(OperationContext* opCtx)
     // Capture the checkpointTimestamp before and after opening a cursor. If it hasn't moved, the
     // checkpointTimestamp is known to be exact. If it has moved, uassert and have the user retry.
     boost::optional<Timestamp> checkpointTimestamp;
-    if (_storageEngine->supportsRecoveryTimestamp()) {
+    if (_storageEngine->supportsRecoverToStableTimestamp()) {
         checkpointTimestamp = _storageEngine->getLastStableRecoveryTimestamp();
     };
 
@@ -144,7 +144,7 @@ BackupCursorState BackupCursorService::openBackupCursor(OperationContext* opCtx)
 
     // Ensure the checkpointTimestamp hasn't moved. A subtle case to catch is the first stable
     // checkpoint coming out of initial sync racing with opening the backup cursor.
-    if (checkpointTimestamp && _storageEngine->supportsRecoveryTimestamp()) {
+    if (checkpointTimestamp && _storageEngine->supportsRecoverToStableTimestamp()) {
         auto requeriedCheckpointTimestamp = _storageEngine->getLastStableRecoveryTimestamp();
         if (!requeriedCheckpointTimestamp ||
             requeriedCheckpointTimestamp.get() < checkpointTimestamp.get()) {
