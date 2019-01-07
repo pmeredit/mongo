@@ -7,6 +7,7 @@ env = env.Clone()
 env.Library(
     target='ldap_manager_init',
     source=[
+        env.Idlc("ldap_parameters.idl")[0],
         'ldap_manager_init.cpp'
     ],
     LIBDEPS=['$BUILD_DIR/mongo/db/service_context',
@@ -112,6 +113,11 @@ env.Library(
     LIBDEPS=[
         'ldap_query',
         '$BUILD_DIR/mongo/base',
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/executor/connection_pool_executor',
+        '$BUILD_DIR/mongo/util/alarm',
+        '$BUILD_DIR/mongo/util/concurrency/thread_pool',
         '$BUILD_DIR/mongo/util/net/network',
     ],
     SYSLIBDEPS=env.get("MONGO_LDAP_LIB", [])

@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <boost/optional.hpp>
+
 #include "../ldap_connection_options.h"
 #include "../ldap_type_aliases.h"
 
@@ -45,6 +47,8 @@ public:
      *   @return Any errors arising from the bind attempt
      */
     virtual Status bindAsUser(const LDAPBindOptions& options) = 0;
+
+    virtual boost::optional<std::string> currentBoundUser() const = 0;
 
     /**
      * Perform a query against the LDAP database.

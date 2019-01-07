@@ -23,7 +23,7 @@ const size_t kMaxConnections = 10;
 
 // TODO: Use a connection pool instead of constantly creating new connections
 LDAPRunnerImpl::LDAPRunnerImpl(LDAPBindOptions defaultBindOptions, LDAPConnectionOptions options)
-    : _factory(LDAPConnectionFactory()),
+    : _factory(options.timeout),
       _defaultBindOptions(std::move(defaultBindOptions)),
       _options(std::move(options)) {}
 
@@ -65,16 +65,18 @@ StatusWith<LDAPEntityCollection> LDAPRunnerImpl::runQuery(const LDAPQuery& query
         return swConnection.getStatus();
     }
 
+    auto connection = std::move(swConnection.getValue());
+    const auto boundUser = connection->currentBoundUser();
     // If a user has been provided, bind to it.
-    if (bindOptions.shouldBind()) {
-        Status status = swConnection.getValue()->bindAsUser(std::move(bindOptions));
+    if (bindOptions.shouldBind() && (!boundUser || *boundUser != bindOptions.bindDN)) {
+        Status status = connection->bindAsUser(std::move(bindOptions));
         if (!status.isOK()) {
             return status;
         }
     }
 
     // We now have a connection. Run the query, accumulating a result.
-    return swConnection.getValue()->query(query);
+    return connection->query(query);
 }
 
 std::vector<std::string> LDAPRunnerImpl::getHosts() const {
@@ -111,6 +113,11 @@ void LDAPRunnerImpl::setBindDN(const std::string& bindDN) {
 void LDAPRunnerImpl::setBindPassword(SecureString pwd) {
     stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
     _defaultBindOptions.password = std::move(pwd);
+}
+
+void LDAPRunnerImpl::setUseConnectionPool(bool val) {
+    stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
+    _options.usePooledConnection = val;
 }
 
 }  // namespace mongo

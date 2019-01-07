@@ -40,6 +40,8 @@ public:
 
     void setBindPassword(SecureString pwd) final;
 
+    void setUseConnectionPool(bool val) final;
+
 private:
     LDAPConnectionFactory _factory;
 

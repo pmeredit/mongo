@@ -63,6 +63,8 @@ public:
 
     void setBindPassword(SecureString pwd) final {}
 
+    void setUseConnectionPool(bool) final {}
+
 private:
     // The MockQueryEntry cannot be constructed piece by piece, because LDAPQuery doesn't have a
     // default constructor. But, LDAPQuery must be constructed with a reference to the final

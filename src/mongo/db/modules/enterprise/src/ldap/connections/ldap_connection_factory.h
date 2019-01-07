@@ -6,6 +6,8 @@
 
 #include <memory>
 
+#include "mongo/executor/connection_pool.h"
+
 namespace mongo {
 
 template <class T>
@@ -21,6 +23,8 @@ class LDAPConnectionFactory {
 public:
     virtual ~LDAPConnectionFactory() = default;
 
+    explicit LDAPConnectionFactory(Milliseconds poolSetupTimeout);
+
     /**
      * Factory function to produce LDAP client objects
      * @param options Describes the connection to create
@@ -28,6 +32,9 @@ public:
      * @return Objects of type OpenLDAPConnection, or error
      */
     StatusWith<std::unique_ptr<LDAPConnection>> create(const LDAPConnectionOptions& options);
+
+private:
+    std::unique_ptr<executor::ConnectionPool> _pool;
 };
 
 }  // namespace mongo

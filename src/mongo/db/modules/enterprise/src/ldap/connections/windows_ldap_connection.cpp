@@ -169,6 +169,9 @@ Status WindowsLDAPConnection::bindAsUser(const LDAPBindOptions& options) {
     }
 
     ULONG result;
+    Status resultStatus(ErrorCodes::OperationFailed,
+                        str::stream() << "Unknown bind operation requested: "
+                                      << options.toCleanString());
     if (options.authenticationChoice == LDAPBindType::kSimple) {
         if (options.useLDAPConnectionDefaults) {
             return Status(ErrorCodes::IllegalOperation,
@@ -181,7 +184,7 @@ Status WindowsLDAPConnection::bindAsUser(const LDAPBindOptions& options) {
                          const_cast<wchar_t*>(toNativeString(options.password->c_str()).c_str()),
                          LDAP_AUTH_SIMPLE);
 
-        return _pimpl->resultCodeToStatus(result, "ldap_bind_sW", "to perform simple bind");
+        resultStatus = _pimpl->resultCodeToStatus(result, "ldap_bind_sW", "to perform simple bind");
     } else if (options.authenticationChoice == LDAPBindType::kSasl &&
                options.saslMechanisms == "DIGEST-MD5") {
         if (options.useLDAPConnectionDefaults) {
@@ -192,8 +195,8 @@ Status WindowsLDAPConnection::bindAsUser(const LDAPBindOptions& options) {
                 _pimpl->getSession(), nullptr, reinterpret_cast<PWCHAR>(&cred), LDAP_AUTH_DIGEST);
         }
 
-        return _pimpl->resultCodeToStatus(
-            result, "ldap_bind_sW", "to perform DIGEST-MD5 SASL bind");
+        resultStatus =
+            _pimpl->resultCodeToStatus(result, "ldap_bind_sW", "to perform DIGEST-MD5 SASL bind");
     } else if (options.authenticationChoice == LDAPBindType::kSasl &&
                options.saslMechanisms == "GSSAPI") {
         // Per Microsoft's documentation, this option "Sets or retrieves the preferred SASL binding
@@ -215,11 +218,19 @@ Status WindowsLDAPConnection::bindAsUser(const LDAPBindOptions& options) {
                                   LDAP_AUTH_NEGOTIATE);
         }
 
-        return _pimpl->resultCodeToStatus(result, "ldap_bind_sW", "to perform GSSAPI SASL bind");
+        resultStatus =
+            _pimpl->resultCodeToStatus(result, "ldap_bind_sW", "to perform GSSAPI SASL bind");
     }
 
-    return Status(ErrorCodes::OperationFailed,
-                  str::stream() << "Unknown bind operation requested: " << options.toCleanString());
+    if (resultStatus.isOK()) {
+        _boundUser = options.bindDN;
+    }
+
+    return resultStatus;
+}
+
+boost::optional<std::string> WindowsLDAPConnection::currentBoundUser() const {
+    return _boundUser;
 }
 
 StatusWith<LDAPEntityCollection> WindowsLDAPConnection::query(LDAPQuery query) {

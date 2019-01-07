@@ -73,7 +73,7 @@ StatusWith<std::vector<std::string>> LDAPConnectionOptions::parseHostURIs(
     return result;
 }
 
-StatusWith<std::string> LDAPConnectionOptions::constructHostURIs() {
+StatusWith<std::string> LDAPConnectionOptions::constructHostURIs() const {
     StringBuilder hostURIBuilder;
     bool firstLoop = true;
     for (const auto& host : hosts) {

@@ -68,7 +68,7 @@ function LDAPTestConfigGenerator() {
     this.ldapUserToDNMapping = undefined;
 
     this.generateEnvConfig = function() {
-        return {
+        const defaultLdapConfig = {
             // override default config file
             "KRB5_CONFIG": assetsPath + "krb5.conf",
             // debug information
@@ -83,6 +83,13 @@ function LDAPTestConfigGenerator() {
             // resolving them to IPs
             "LDAPSASL_NOCANON": "on",
         };
+
+        // On Linux we want to make sure we're using the thread-safe version of the LDAP library
+        if (!_isWindows()) {
+            defaultLdapConfig['LD_PRELOAD'] = 'libldap_r.so';
+        }
+
+        return defaultLdapConfig;
     };
 
     this.generateMongodConfig = function() {

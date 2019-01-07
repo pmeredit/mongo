@@ -22,6 +22,8 @@ public:
     Status bindAsUser(const LDAPBindOptions& params) final;
     StatusWith<LDAPEntityCollection> query(LDAPQuery query) final;
     Status disconnect() final;
+    boost::optional<std::string> currentBoundUser() const final;
+    static bool isThreadSafe();
 
 private:
     class OpenLDAPConnectionPIMPL;
@@ -29,6 +31,7 @@ private:
 
     struct timeval _timeout;  // Interval of time after which OpenLDAP's connections fail
     ldap_conncb _callback;    // callback that is called on connection
+    boost::optional<std::string> _boundUser;
 
     /**
      * Locking OpenLDAPGlobalMutex locks a global mutex if setNeedsGlobalLock was called. Otherwise,
@@ -37,17 +40,8 @@ private:
      */
     class OpenLDAPGlobalMutex {
     public:
-        OpenLDAPGlobalMutex() : _needsGlobalLock(false) {}
-
-        void setNeedsGlobalLock() {
-            _needsGlobalLock = true;
-        }
-
         void lock();
         void unlock();
-
-    private:
-        bool _needsGlobalLock;
     };
 
     OpenLDAPGlobalMutex _conditionalMutex;

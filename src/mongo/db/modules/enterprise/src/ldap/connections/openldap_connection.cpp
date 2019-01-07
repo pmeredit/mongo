@@ -313,6 +313,33 @@ OpenLDAPConnection::~OpenLDAPConnection() {
     }
 }
 
+// Identify whether we need to serialize access to libldap via a global mutex.
+// libldap with NSS does not use correct synchronization primitives internally.
+// Neither libldap_r nor libldap with OpenSSL are affected. We can detect whether we're
+// using libldap, rather than libldap_r, by examining a list of extensions advertised by the
+// session object.
+bool OpenLDAPConnection::isThreadSafe() {
+    static const bool threadsafeExtension = []() -> bool {
+        auto pimpl = std::make_unique<OpenLDAPConnectionPIMPL>();
+        LDAPOptionAPIInfo info =
+            pimpl->getOption<LDAPOptionAPIInfo>("OpenLDAPConnection::connect", "Getting API info");
+
+        const auto& extensions = info.getExtensions();
+        bool isThreadSafe =
+            (std::find(extensions.begin(), extensions.end(), "THREAD_SAFE") != extensions.end());
+
+        if (!isThreadSafe) {
+            warning() << "LDAP library does not advertise support for thread safety. All access "
+                         "will be serialized and connection pooling will be disabled. "
+                         "Link mongod against libldap_r to enable concurrent use of LDAP.";
+        }
+
+        return isThreadSafe;
+    }();
+
+    return threadsafeExtension;
+}
+
 Status OpenLDAPConnection::connect() {
     auto swHostURIs = _options.constructHostURIs();
     if (!swHostURIs.isOK()) {
@@ -332,35 +359,6 @@ Status OpenLDAPConnection::connect() {
                       str::stream() << "Failed to initialize ldap session to \"" << hostURIs
                                     << "\". Received LDAP error: "
                                     << ldap_err2string(err));
-    }
-
-    // Identify whether we need to serialize access to libldap via a global mutex.
-    // libldap with NSS does not use correct synchronization primitives internally.
-    // Neither libldap_r nor libldap with OpenSSL are affected. We can detect whether we're
-    // using libldap, rather than libldap_r, by examining a list of extensions advertised by the
-    // session object.
-    try {
-        static const bool threadsafeExtension = [this]() -> bool {
-            LDAPOptionAPIInfo info = _pimpl->getOption<LDAPOptionAPIInfo>(
-                "OpenLDAPConnection::connect", "Getting API info");
-
-            const auto& extensions = info.getExtensions();
-            return std::find(extensions.begin(), extensions.end(), "THREAD_SAFE") !=
-                extensions.end();
-        }();
-
-        if (!threadsafeExtension) {
-            warning() << "LDAP library does not advertise support for thread safety. All access "
-                         "will be serialized. Link mongod against libldap_r to enable concurrent "
-                         "use of LDAP.";
-            _conditionalMutex.setNeedsGlobalLock();
-        }
-    } catch (...) {
-        Status status = exceptionToStatus();
-        error()
-            << "Attempted to get LDAPAPIInfo while checking libldap thread safety. Received error: "
-            << status;
-        return status;
     }
 
     // Upgrade connection to LDAPv3
@@ -447,7 +445,13 @@ Status OpenLDAPConnection::bindAsUser(const LDAPBindOptions& bindOptions) {
                       str::stream() << "Unable to set rebind proc, with error: "
                                     << ldap_err2string(err));
     }
+    _boundUser = bindOptions.bindDN;
+
     return Status::OK();
+}
+
+boost::optional<std::string> OpenLDAPConnection::currentBoundUser() const {
+    return _boundUser;
 }
 
 StatusWith<LDAPEntityCollection> OpenLDAPConnection::query(LDAPQuery query) {
@@ -475,13 +479,13 @@ Status OpenLDAPConnection::disconnect() {
 }
 
 void OpenLDAPConnection::OpenLDAPGlobalMutex::lock() {
-    if (_needsGlobalLock) {
+    if (!OpenLDAPConnection::isThreadSafe()) {
         libldapGlobalMutex.lock();
     }
 }
 
 void OpenLDAPConnection::OpenLDAPGlobalMutex::unlock() {
-    if (_needsGlobalLock) {
+    if (!OpenLDAPConnection::isThreadSafe()) {
         libldapGlobalMutex.unlock();
     }
 }

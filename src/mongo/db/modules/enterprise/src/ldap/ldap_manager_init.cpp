@@ -7,6 +7,7 @@
 #include <memory>
 
 #include "mongo/base/init.h"
+#include "mongo/db/modules/enterprise/src/ldap/ldap_parameters_gen.h"
 #include "mongo/db/service_context.h"
 
 #include "ldap_manager_impl.h"
@@ -44,6 +45,8 @@ ServiceContext::ConstructorActionRegisterer setLDAPManagerImpl{
                                         << swRes.getStatus().reason());
             }
         }
+
+        runner->setUseConnectionPool(ldapUseConnectionPool);
 
         auto manager = std::make_unique<LDAPManagerImpl>(
             std::move(runner), std::move(queryParameters), std::move(mapper));

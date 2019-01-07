@@ -23,14 +23,16 @@ class WindowsLDAPConnection : public LDAPConnection {
 public:
     WindowsLDAPConnection(LDAPConnectionOptions options);
     ~WindowsLDAPConnection();
-    virtual Status connect() final;
-    virtual Status bindAsUser(const LDAPBindOptions& options) final;
-    virtual StatusWith<LDAPEntityCollection> query(LDAPQuery query) final;
-    virtual Status disconnect() final;
+    Status connect() final;
+    Status bindAsUser(const LDAPBindOptions& options) final;
+    boost::optional<std::string> currentBoundUser() const final;
+    StatusWith<LDAPEntityCollection> query(LDAPQuery query) final;
+    Status disconnect() final;
 
 private:
     class WindowsLDAPConnectionPIMPL;
     std::unique_ptr<WindowsLDAPConnectionPIMPL> _pimpl;
+    boost::optional<std::string> _boundUser;
 
     unsigned long _timeoutSeconds;
 };

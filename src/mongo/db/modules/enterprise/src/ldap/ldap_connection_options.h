@@ -95,10 +95,11 @@ struct LDAPConnectionOptions {
      * Returns a comma separated list of (protocol)://(fqdn)s, where the protocol is derived from
      * the value of 'transportSecurity', and the FQDNs are taken from 'hosts'.
      */
-    StatusWith<std::string> constructHostURIs();
+    StatusWith<std::string> constructHostURIs() const;
 
     Milliseconds timeout;                         // How long to wait before timing out
     std::vector<std::string> hosts;               // List of server URIs: (server)(:port)
     LDAPTransportSecurityType transportSecurity;  // How to secure connections to the LDAP server
+    bool usePooledConnection = false;             // Whether to use the connection pool
 };
 }  // namespace mongo

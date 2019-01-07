@@ -62,5 +62,7 @@ public:
     virtual void setBindDN(const std::string& bindDN) = 0;
 
     virtual void setBindPassword(SecureString pwd) = 0;
+
+    virtual void setUseConnectionPool(bool which) = 0;
 };
 }  // namespace mongo
