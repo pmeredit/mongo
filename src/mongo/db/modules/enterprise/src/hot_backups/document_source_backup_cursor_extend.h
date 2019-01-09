@@ -85,6 +85,10 @@ public:
         return kStageName;
     }
 
+    boost::optional<MergingLogic> mergingLogic() {
+        return boost::none;
+    }
+
     Value serialize(boost::optional<ExplainOptions::Verbosity> explain = boost::none) const final;
 
     StageConstraints constraints(Pipeline::SplitState pipeState) const final {
