@@ -276,7 +276,7 @@ public:
         // libldap wants a non-const copy, so prevent it from breaking our configuration data
         size_t requestedAttributesSize = query.getAttributes().size();
         std::vector<LibraryCharPtr> requestedAttributes;
-        const auto requestedAttributesGuard = MakeGuard([&] {
+        const auto requestedAttributesGuard = makeGuard([&] {
             for (LibraryCharPtr attribute : requestedAttributes) {
                 delete[] attribute;
             }
@@ -297,7 +297,7 @@ public:
         // ldap_msgfree is a no-op on nullptr. The result from ldap_search_ext_s must be freed
         // with ldap_msgfree, reguardless of the return code.
         typename S::MessageType* queryResult = nullptr;
-        const auto queryResultGuard = MakeGuard([&] { S::ldap_msgfree(queryResult); });
+        const auto queryResultGuard = makeGuard([&] { S::ldap_msgfree(queryResult); });
 
         // Perform the actual query
         typename S::ErrorCodeType err = S::ldap_search_ext_s(
@@ -350,7 +350,7 @@ public:
             // with ldap_memfree. If ldap_get_dn experiences an error it will return NULL and set an
             // error code.
             LibraryCharPtr entryDN = S::ldap_get_dn(_session, entry);
-            const auto entryDNGuard = MakeGuard([&] { S::ldap_memfree(entryDN); });
+            const auto entryDNGuard = makeGuard([&] { S::ldap_memfree(entryDN); });
             if (!entryDN) {
                 return obtainFatalResultCodeAsStatus("ldap_get_dn",
                                                      "getting DN for a result from the LDAP query");
@@ -371,12 +371,12 @@ public:
             // an error code.  Per RFC1823, if either function have no more attributes to return,
             // they will return NULL.
             typename S::BerElementType* element = nullptr;
-            const auto elementGuard = MakeGuard([&] { ber_free(element, 0); });
+            const auto elementGuard = makeGuard([&] { ber_free(element, 0); });
             LibraryCharPtr attribute = S::ldap_first_attribute(_session, entry, &element);
             for (; attribute; attribute = ldap_next_attribute(_session, entry, element)) {
                 // This takes attribute by value, so we can safely set it to ldap_next_attribute
                 // later, and the old ON_BLOCK_EXIT will free the old attribute.
-                const auto attributeGuard = MakeGuard([attribute] { S::ldap_memfree(attribute); });
+                const auto attributeGuard = makeGuard([attribute] { S::ldap_memfree(attribute); });
                 MONGO_LDAPLOG(3) << "From LDAP entry with DN " << S::toNativeString(entryDN)
                                  << ", got attribute " << S::toNativeString(attribute);
 
@@ -400,7 +400,7 @@ public:
                         return status;
                     }
                 }
-                const auto valuesGuard = MakeGuard([&] { S::ldap_value_free_len(values); });
+                const auto valuesGuard = makeGuard([&] { S::ldap_value_free_len(values); });
 
                 LDAPAttributeValues valueStore;
 

@@ -65,7 +65,7 @@ Status tryAcquireServerCredential(const std::string& principalName) {
                             NULL)) {
             return Status(ErrorCodes::UnknownError, "sspi could not translate error message");
         }
-        ON_BLOCK_EXIT(LocalFree, err);
+        ON_BLOCK_EXIT([&] { LocalFree(err); });
         return Status(ErrorCodes::UnknownError,
                       mongoutils::str::stream() << "sspi could not acquire server credential for "
                                                 << principalName
@@ -264,8 +264,8 @@ int setAuthIdAndAuthzId(SspiConnContext* pcctx,
         HandleLastError(sparams->utils, status, "QueryContextAttributes");
         return SASL_FAIL;
     }
-    ON_BLOCK_EXIT(FreeContextBuffer, namesx.sClientName);
-    ON_BLOCK_EXIT(FreeContextBuffer, namesx.sServerName);
+    ON_BLOCK_EXIT([&] { FreeContextBuffer(namesx.sClientName); });
+    ON_BLOCK_EXIT([&] { FreeContextBuffer(namesx.sServerName); });
 
     LOG(2) << "SSPI authenticated name: " << toUtf8String(namesx.sClientName);
 

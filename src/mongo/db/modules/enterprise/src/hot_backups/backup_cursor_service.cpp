@@ -136,7 +136,7 @@ BackupCursorState BackupCursorService::openBackupCursor(OperationContext* opCtx)
     // A backup cursor is open. Any exception code path must leave the BackupCursorService in an
     // inactive state.
     auto closeCursorGuard =
-        MakeGuard([this, opCtx, &lk] { _closeBackupCursor(opCtx, *_activeBackupId, lk); });
+        makeGuard([this, opCtx, &lk] { _closeBackupCursor(opCtx, *_activeBackupId, lk); });
 
     uassert(50919,
             "Failpoint hit after opening the backup cursor.",
@@ -195,7 +195,7 @@ BackupCursorState BackupCursorService::openBackupCursor(OperationContext* opCtx)
     Document preamble{{"metadata", builder.obj()}};
     _backupFiles = std::set<std::string>(filesToBackup.begin(), filesToBackup.end());
 
-    closeCursorGuard.Dismiss();
+    closeCursorGuard.dismiss();
     return {*_activeBackupId, preamble, filesToBackup};
 }
 

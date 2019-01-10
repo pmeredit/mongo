@@ -98,7 +98,7 @@ DEATH_TEST_F(AESRoundTrip,
     ASSERT_OK(encrypt(crypto::aesMode::cbc));
 
     encryptionGlobalParams.readOnlyMode = true;
-    auto guard = MakeGuard([]() { encryptionGlobalParams.readOnlyMode = false; });
+    auto guard = makeGuard([]() { encryptionGlobalParams.readOnlyMode = false; });
 
     ASSERT_OK(decrypt(crypto::aesMode::cbc));
 
@@ -134,7 +134,7 @@ DEATH_TEST_F(AESRoundTrip,
     ASSERT_OK(encrypt(crypto::aesMode::gcm));
 
     encryptionGlobalParams.readOnlyMode = true;
-    auto guard = MakeGuard([]() { encryptionGlobalParams.readOnlyMode = false; });
+    auto guard = makeGuard([]() { encryptionGlobalParams.readOnlyMode = false; });
 
     ASSERT_OK(decrypt(crypto::aesMode::gcm));
 

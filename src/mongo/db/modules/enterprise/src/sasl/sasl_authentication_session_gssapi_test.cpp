@@ -113,7 +113,7 @@ int main(int argc, char** argv, char** envp) {
               << strerror(errno) << " (" << errno << ')';
         return EXIT_FAILURE;
     }
-    ON_BLOCK_EXIT(unlink, krb5ccFile);
+    ON_BLOCK_EXIT([] { unlink(krb5ccFile); });
     setupEnvironment();
     initializeClientCredentialCacheOrDie();
 

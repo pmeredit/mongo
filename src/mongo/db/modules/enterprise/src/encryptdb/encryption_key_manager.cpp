@@ -313,7 +313,7 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_readKey(const s
     invariantWTOK(
         session->open_cursor(session, kKeystoreTableName.c_str(), nullptr, nullptr, &cursor));
 
-    ON_BLOCK_EXIT(closeWTCursorAndSession, cursor);
+    ON_BLOCK_EXIT([&] { closeWTCursorAndSession(cursor); });
 
     WT_ITEM key;
     cursor->set_key(cursor, keyId.c_str());
