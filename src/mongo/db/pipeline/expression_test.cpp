@@ -970,30 +970,22 @@ TEST_F(ExpressionRoundTwoArgTest, IntArg2) {
     assertEval(0, 0, 0);
     assertEval(2, -1, 0);
     assertEval(29, -1, 30);
-    assertEval(
-        numeric_limits<int>::min(), 10, numeric_limits<int>::min());
-    assertEval(
-        numeric_limits<int>::max(), 42, numeric_limits<int>::max());
+    assertEval(numeric_limits<int>::min(), 10, numeric_limits<int>::min());
+    assertEval(numeric_limits<int>::max(), 42, numeric_limits<int>::max());
 }
 
 TEST_F(ExpressionRoundOneArgTest, LongArg1) {
     assertEval(0LL, 0LL);
-    assertEval(numeric_limits<long long>::min(),
-                    numeric_limits<long long>::min());
-    assertEval(numeric_limits<long long>::max(),
-                    numeric_limits<long long>::max());
+    assertEval(numeric_limits<long long>::min(), numeric_limits<long long>::min());
+    assertEval(numeric_limits<long long>::max(), numeric_limits<long long>::max());
 }
 
 TEST_F(ExpressionRoundTwoArgTest, LongArg2) {
     assertEval(0LL, 0LL, 0LL);
     assertEval(2LL, -1LL, 0LL);
     assertEval(29LL, -1LL, 30LL);
-    assertEval(numeric_limits<long long>::min(),
-                    10LL,
-                    numeric_limits<long long>::min());
-    assertEval(numeric_limits<long long>::max(),
-                    42LL,
-                    numeric_limits<long long>::max());
+    assertEval(numeric_limits<long long>::min(), 10LL, numeric_limits<long long>::min());
+    assertEval(numeric_limits<long long>::max(), 42LL, numeric_limits<long long>::max());
 }
 
 TEST_F(ExpressionRoundOneArgTest, DoubleArg1) {
@@ -1041,10 +1033,9 @@ TEST_F(ExpressionRoundOneArgTest, DecimalArg1) {
     assertEval(Decimal128("0.1"), Decimal128("0.0"));
     assertEval(Decimal128("-1.2"), Decimal128("-1.0"));
     assertEval(Decimal128("-1.7"), Decimal128("-2.0"));
-    assertEval(Decimal128("123456789.9999999999999999999999999"),
-                    Decimal128("123456790"));
+    assertEval(Decimal128("123456789.9999999999999999999999999"), Decimal128("123456790"));
     assertEval(Decimal128("-99999999999999999999999999999.99"),
-                    Decimal128("-100000000000000000000000000000"));
+               Decimal128("-100000000000000000000000000000"));
     assertEval(Decimal128("3.4E-6000"), Decimal128("0"));
 }
 
@@ -1055,27 +1046,22 @@ TEST_F(ExpressionRoundTwoArgTest, DecimalArg2) {
     assertEval(Decimal128("0.1"), 0, Decimal128("0.0"));
     assertEval(Decimal128("-1.2"), 0, Decimal128("-1.0"));
     assertEval(Decimal128("-1.7"), 0, Decimal128("-2.0"));
-    assertEval(Decimal128("123456789.9999999999999999999999999"),
-                    0,
-                    Decimal128("123456790"));
+    assertEval(Decimal128("123456789.9999999999999999999999999"), 0, Decimal128("123456790"));
     assertEval(Decimal128("-99999999999999999999999999999.99"),
-                    0,
-                    Decimal128("-100000000000000000000000000000"));
+               0,
+               Decimal128("-100000000000000000000000000000"));
     assertEval(Decimal128("3.4E-6000"), 0, Decimal128("0"));
 
     assertEval(Decimal128("3.14159265"), 0, Decimal128("3.0"));
     assertEval(Decimal128("3.14159265"), 1, Decimal128("3.1"));
     assertEval(Decimal128("3.14159265"), 2, Decimal128("3.14"));
-    assertEval(
-        Decimal128("3.14159265"), Decimal128("3.1"), Decimal128("3.142"));
+    assertEval(Decimal128("3.14159265"), Decimal128("3.1"), Decimal128("3.142"));
     assertEval(Decimal128("3.14159265"), 4.3, Decimal128("3.1416"));
-    assertEval(
-        Decimal128("3.14159265"), Decimal128("5.1"), Decimal128("3.14159"));
+    assertEval(Decimal128("3.14159265"), Decimal128("5.1"), Decimal128("3.14159"));
     assertEval(Decimal128("3.14159265"), 6, Decimal128("3.141593"));
     assertEval(Decimal128("3.14159265"), 7, Decimal128("3.1415926"));
     assertEval(Decimal128("3.14159265"), 100, Decimal128("3.14159265"));
-    assertEval(
-        Decimal128("3.14159265"), Decimal128("-1"), Decimal128("0"));
+    assertEval(Decimal128("3.14159265"), Decimal128("-1"), Decimal128("0"));
     assertEval(Decimal128("335.14159265"), -1, Decimal128("340"));
     assertEval(Decimal128("333.14159265"), -2, Decimal128("300"));
 }
@@ -1120,30 +1106,22 @@ TEST_F(ExpressionTruncTwoArgTest, IntArg2) {
     assertEval(0, 0, 0);
     assertEval(2, -1, 0);
     assertEval(29, -1, 20);
-    assertEval(
-        numeric_limits<int>::min(), 10, numeric_limits<int>::min());
-    assertEval(
-        numeric_limits<int>::max(), 42, numeric_limits<int>::max());
+    assertEval(numeric_limits<int>::min(), 10, numeric_limits<int>::min());
+    assertEval(numeric_limits<int>::max(), 42, numeric_limits<int>::max());
 }
 
 TEST_F(ExpressionTruncOneArgTest, LongArg1) {
     assertEval(0LL, 0LL);
-    assertEval(numeric_limits<long long>::min(),
-                    numeric_limits<long long>::min());
-    assertEval(numeric_limits<long long>::max(),
-                    numeric_limits<long long>::max());
+    assertEval(numeric_limits<long long>::min(), numeric_limits<long long>::min());
+    assertEval(numeric_limits<long long>::max(), numeric_limits<long long>::max());
 }
 
 TEST_F(ExpressionTruncTwoArgTest, LongArg2) {
     assertEval(0LL, 0LL, 0LL);
     assertEval(2LL, -1LL, 0LL);
     assertEval(29LL, -1LL, 20LL);
-    assertEval(numeric_limits<long long>::min(),
-                    10LL,
-                    numeric_limits<long long>::min());
-    assertEval(numeric_limits<long long>::max(),
-                    42LL,
-                    numeric_limits<long long>::max());
+    assertEval(numeric_limits<long long>::min(), 10LL, numeric_limits<long long>::min());
+    assertEval(numeric_limits<long long>::max(), 42LL, numeric_limits<long long>::max());
 }
 
 TEST_F(ExpressionTruncOneArgTest, DoubleArg1) {
@@ -1191,10 +1169,9 @@ TEST_F(ExpressionTruncOneArgTest, DecimalArg1) {
     assertEval(Decimal128("0.1"), Decimal128("0.0"));
     assertEval(Decimal128("-1.2"), Decimal128("-1.0"));
     assertEval(Decimal128("-1.7"), Decimal128("-1.0"));
-    assertEval(Decimal128("123456789.9999999999999999999999999"),
-                    Decimal128("123456789"));
+    assertEval(Decimal128("123456789.9999999999999999999999999"), Decimal128("123456789"));
     assertEval(Decimal128("-99999999999999999999999999999.99"),
-                    Decimal128("-99999999999999999999999999999.00"));
+               Decimal128("-99999999999999999999999999999.00"));
     assertEval(Decimal128("3.4E-6000"), Decimal128("0"));
 }
 
@@ -1205,27 +1182,22 @@ TEST_F(ExpressionTruncTwoArgTest, DecimalArg2) {
     assertEval(Decimal128("0.1"), 0, Decimal128("0.0"));
     assertEval(Decimal128("-1.2"), 0, Decimal128("-1.0"));
     assertEval(Decimal128("-1.7"), 0, Decimal128("-1.0"));
-    assertEval(Decimal128("123456789.9999999999999999999999999"),
-                    0,
-                    Decimal128("123456789"));
+    assertEval(Decimal128("123456789.9999999999999999999999999"), 0, Decimal128("123456789"));
     assertEval(Decimal128("-99999999999999999999999999999.99"),
-                    0,
-                    Decimal128("-99999999999999999999999999999.00"));
+               0,
+               Decimal128("-99999999999999999999999999999.00"));
     assertEval(Decimal128("3.4E-6000"), 0, Decimal128("0"));
 
     assertEval(Decimal128("3.14159265"), 0, Decimal128("3.0"));
     assertEval(Decimal128("3.14159265"), 1, Decimal128("3.1"));
     assertEval(Decimal128("3.14159265"), 2, Decimal128("3.14"));
-    assertEval(
-        Decimal128("3.14159265"), Decimal128("3.2"), Decimal128("3.141"));
+    assertEval(Decimal128("3.14159265"), Decimal128("3.2"), Decimal128("3.141"));
     assertEval(Decimal128("3.14159265"), 4.3, Decimal128("3.1415"));
-    assertEval(
-        Decimal128("3.14159265"), Decimal128("5.1"), Decimal128("3.14159"));
+    assertEval(Decimal128("3.14159265"), Decimal128("5.1"), Decimal128("3.14159"));
     assertEval(Decimal128("3.14159265"), 6, Decimal128("3.141592"));
     assertEval(Decimal128("3.14159265"), 7, Decimal128("3.1415926"));
     assertEval(Decimal128("3.14159265"), 100, Decimal128("3.14159265"));
-    assertEval(
-        Decimal128("3.14159265"), Decimal128("-1"), Decimal128("0"));
+    assertEval(Decimal128("3.14159265"), Decimal128("-1"), Decimal128("0"));
     assertEval(Decimal128("335.14159265"), -1, Decimal128("330"));
     assertEval(Decimal128("333.14159265"), -2, Decimal128("300"));
 }

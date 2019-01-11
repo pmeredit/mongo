@@ -1,9 +1,8 @@
 // The following are integration tests for $floor and $ceil.
 
-
 (function() {
-	// For assertErrorCode.
-	load("jstests/aggregation/extras/utils.js");
+    // For assertErrorCode.
+    load("jstests/aggregation/extras/utils.js");
 
     "use strict";
     var coll = db.server19548;

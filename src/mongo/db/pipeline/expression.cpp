@@ -4704,21 +4704,27 @@ void ExpressionTrim::_doAddDependencies(DepsTracker* deps) const {
 
 /* ------------------------- ExpressionRound and ExpressionTrunc -------------------------- */
 
-void assertFlagsValid(uint32_t flags, const std::string& opName,
-		long long numericValue, long long precisionValue) {
-	uassert(50981, str::stream() << "invalid conversion from Decimal128 result in " << opName
-	  			   << " resulting from arguments: [" << numericValue
-				   << ", " << precisionValue << "]",
-				   !Decimal128::hasFlag(flags, Decimal128::kInvalid));
+void assertFlagsValid(uint32_t flags,
+                      const std::string& opName,
+                      long long numericValue,
+                      long long precisionValue) {
+    uassert(50981,
+            str::stream() << "invalid conversion from Decimal128 result in " << opName
+                          << " resulting from arguments: ["
+                          << numericValue
+                          << ", "
+                          << precisionValue
+                          << "]",
+            !Decimal128::hasFlag(flags, Decimal128::kInvalid));
 }
 
 static Value evaluateRoundOrTrunc(const Document& root,
                                   const std::vector<boost::intrusive_ptr<Expression>>& vpOperand,
                                   const std::string& opName,
-								  Decimal128::RoundingMode roundingMode,
-								  std::function<double(double)> doubleOp) {
-	static const auto maxPrecision = 100LL;
-	static const auto minPrecision = -20LL;
+                                  Decimal128::RoundingMode roundingMode,
+                                  std::function<double(double)> doubleOp) {
+    static const auto maxPrecision = 100LL;
+    static const auto minPrecision = -20LL;
     auto numericArg = Value(vpOperand[0]->evaluate(root));
     if (numericArg.nullish()) {
         return Value(BSONNULL);
@@ -4734,86 +4740,85 @@ static Value evaluateRoundOrTrunc(const Document& root,
                     numericArg.getDecimal().quantize(Decimal128::kNormalizedZero, roundingMode));
             case NumberDouble:
                 return Value(doubleOp(numericArg.getDouble()));
-		// There's no point to round/trunc integers or longs without precision argument, it will
-		// have no effect.
+            // There's no point to round/trunc integers or longs without precision argument, it will
+            // have no effect.
             default:
                 return numericArg;
         }
     }
-	// Else, if precision is specified, round to the specified precision.
+    // Else, if precision is specified, round to the specified precision.
     auto precisionArg = Value(vpOperand[1]->evaluate(root));
     if (precisionArg.nullish()) {
         return Value(BSONNULL);
     }
     auto precisionValue = precisionArg.coerceToLong();
-	uassert(50979, str::stream() << "cannot apply " << opName
-			<< " with precision value "	<< precisionValue
-			<< " value must be in [-20, 100]",
-			minPrecision <= precisionValue && precisionValue <= maxPrecision);
+    uassert(50979,
+            str::stream() << "cannot apply " << opName << " with precision value " << precisionValue
+                          << " value must be in [-20, 100]",
+            minPrecision <= precisionValue && precisionValue <= maxPrecision);
     // construct 10^-precisionValue
     auto quantum = Decimal128(0LL, Decimal128::kExponentBias - precisionValue, 0LL, 1LL);
     switch (numericArg.getType()) {
         case NumberDecimal: {
-			auto out = numericArg.getDecimal().quantize(quantum, roundingMode);
-			if (out.isNaN()) {
-				return numericArg;
-			}
+            auto out = numericArg.getDecimal().quantize(quantum, roundingMode);
+            if (out.isNaN()) {
+                return numericArg;
+            }
             return Value(out);
         }
         case NumberDouble: {
             auto out = Decimal128(numericArg.getDouble(), Decimal128::kRoundTo34Digits)
-				.quantize(quantum, roundingMode);
-			if (out.isNaN()) {
-				return numericArg;
-			}
+                           .quantize(quantum, roundingMode);
+            if (out.isNaN()) {
+                return numericArg;
+            }
             return Value(out.toDouble());
         }
         case NumberLong: {
-			// positive precisions have no effect on integral values.
-			if (precisionValue >= 0) {
-				return numericArg;
-			}
-			auto numericArgll = numericArg.getLong();
-            auto out = Decimal128(static_cast<int64_t>(numericArgll))
-                           .quantize(quantum, roundingMode);
-			if (out.isNaN()) {
-				return numericArg;
-			}
-			uint32_t flags = 0;
-			auto outll = out.toLong(&flags);
-			assertFlagsValid(flags, opName, numericArgll, precisionValue);
+            // positive precisions have no effect on integral values.
+            if (precisionValue >= 0) {
+                return numericArg;
+            }
+            auto numericArgll = numericArg.getLong();
+            auto out =
+                Decimal128(static_cast<int64_t>(numericArgll)).quantize(quantum, roundingMode);
+            if (out.isNaN()) {
+                return numericArg;
+            }
+            uint32_t flags = 0;
+            auto outll = out.toLong(&flags);
+            assertFlagsValid(flags, opName, numericArgll, precisionValue);
             return Value(static_cast<long long>(outll));
         }
         case NumberInt: {
-			// positive precisions have no effect on integral values.
-			if (precisionValue >= 0) {
-				return numericArg;
-			}
-			auto numericArgll = numericArg.getLong();
-            auto out = Decimal128(static_cast<int64_t>(numericArgll))
-                           .quantize(quantum, roundingMode);
-			if (out.isNaN()) {
-				return numericArg;
-			}
-			uint32_t flags = 0;
-			auto outll = out.toLong(&flags);
-			assertFlagsValid(flags, opName, numericArgll, precisionValue);
-			if (outll > std::numeric_limits<int>::max()) {
-				return Value(static_cast<long long>(outll));
-			}
+            // positive precisions have no effect on integral values.
+            if (precisionValue >= 0) {
+                return numericArg;
+            }
+            auto numericArgll = numericArg.getLong();
+            auto out =
+                Decimal128(static_cast<int64_t>(numericArgll)).quantize(quantum, roundingMode);
+            if (out.isNaN()) {
+                return numericArg;
+            }
+            uint32_t flags = 0;
+            auto outll = out.toLong(&flags);
+            assertFlagsValid(flags, opName, numericArgll, precisionValue);
+            if (outll > std::numeric_limits<int>::max()) {
+                return Value(static_cast<long long>(outll));
+            }
             return Value(static_cast<int>(outll));
         }
         default:
-			MONGO_UNREACHABLE;
+            MONGO_UNREACHABLE;
     }
 }
 
 Value ExpressionRound::evaluate(const Document& root) const {
     return evaluateRoundOrTrunc(
-        root, vpOperand, getOpName(), Decimal128::kRoundTiesToEven, 
-		[](double x){
-			return std::round(x);
-		});
+        root, vpOperand, getOpName(), Decimal128::kRoundTiesToEven, [](double x) {
+            return std::round(x);
+        });
 }
 
 REGISTER_EXPRESSION(round, ExpressionRound::parse);
@@ -4823,10 +4828,9 @@ const char* ExpressionRound::getOpName() const {
 
 Value ExpressionTrunc::evaluate(const Document& root) const {
     return evaluateRoundOrTrunc(
-        root, vpOperand, getOpName(), Decimal128::kRoundTowardZero, 
-		[](double x){ 
-			return std::trunc(x);
-		});
+        root, vpOperand, getOpName(), Decimal128::kRoundTowardZero, [](double x) {
+            return std::trunc(x);
+        });
 }
 
 REGISTER_EXPRESSION(trunc, ExpressionTrunc::parse);
