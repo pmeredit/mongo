@@ -1,10 +1,11 @@
 // Basic integration tests for the $round and $trunc aggregation expressions.
 
 (function() {
+    "use strict";
+
     // For assertErrorCode.
     load("jstests/aggregation/extras/utils.js");
 
-    "use strict";
     var coll = db.server19548;
     coll.drop();
     // Seed collection so that the pipeline will execute.
