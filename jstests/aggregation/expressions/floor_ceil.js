@@ -2,7 +2,7 @@
 
 (function() {
     "use strict";
-	
+
     // For assertErrorCode.
     load("jstests/aggregation/extras/utils.js");
 
