@@ -1,9 +1,10 @@
-// SERVER-19548: Add $floor, $ceil, and $trunc aggregation expressions.
+// The following are integration tests for $floor and $ceil.
 
-// For assertErrorCode.
-load("jstests/aggregation/extras/utils.js");
 
 (function() {
+	// For assertErrorCode.
+	load("jstests/aggregation/extras/utils.js");
+
     "use strict";
     var coll = db.server19548;
     coll.drop();
