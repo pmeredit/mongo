@@ -1,9 +1,10 @@
-// SERVER-19548: Add $floor, $ceil, and $trunc aggregation expressions.
+// Basic integration tests for the $round and $trunc aggregation expressions.
 
-// For assertErrorCode.
-load("jstests/aggregation/extras/utils.js");
 
 (function() {
+	// For assertErrorCode.
+	load("jstests/aggregation/extras/utils.js");
+
     "use strict";
     var coll = db.server19548;
     coll.drop();
@@ -16,7 +17,7 @@ load("jstests/aggregation/extras/utils.js");
         assert.eq(coll.aggregate(pipeline).toArray(), [{result: expResult}]);
     }
 
-	// 1 argument $trunc and $round
+	// Test $trunc and $round with one argument.
     testOp({$trunc: NumberLong(4)}, NumberLong(4));
     testOp({$trunc: NaN}, NaN);
     testOp({$trunc: Infinity}, Infinity);
@@ -25,6 +26,7 @@ load("jstests/aggregation/extras/utils.js");
     testOp({$trunc: -2.0}, -2.0);
     testOp({$trunc: 0.9}, 0.0);
     testOp({$trunc: -1.2}, -1.0);
+    testOp({$trunc: NumberDecimal("-1.6")}, NumberDecimal("-1"));
 
     testOp({$round: NumberLong(4)}, NumberLong(4));
     testOp({$round: NaN}, NaN);
@@ -34,8 +36,9 @@ load("jstests/aggregation/extras/utils.js");
     testOp({$round: -2.0}, -2.0);
     testOp({$round: 0.9}, 1.0);
     testOp({$round: -1.2}, -1.0);
+    testOp({$round: NumberDecimal("-1.6")}, NumberDecimal("-2"));
 
-    // 2 argument $trunc and $round.
+    // Test $trunc and $round with two arguments.
     testOp({$trunc: [1.298, 0]}, 1);
     testOp({$trunc: [1.298, 1]}, 1.2);
     testOp({$trunc: [23.298, -1]}, 20);
@@ -57,19 +60,19 @@ load("jstests/aggregation/extras/utils.js");
     testOp({$round: [NumberDecimal("1.298"), NumberDecimal("100")]}, NumberDecimal("1.298"));
 
 
-	// $round overfllow.
+	// Test $round overflow.
 	testOp({$round: [NumberInt("2147483647"), -1]}, NumberLong("2147483650"));
 	assertErrorCode(coll, [{$project: {a: {$round: [NumberLong("9223372036854775806"), -1]}}}], 50981);
 
-    // More than 2 arguments
+    // Test $trunc and $round with more than 2 arguments.
     assertErrorCode(coll, [{$project: {a: {$trunc: [1, 2, 3]}}}], 28667);
     assertErrorCode(coll, [{$project: {a: {$round: [1, 2, 3]}}}], 28667);
 
-    // Non-numeric input.
+    // Test non-numeric input to $trunc and $round.
     assertErrorCode(coll, [{$project: {a: {$round: "string"}}}], 50976);
     assertErrorCode(coll, [{$project: {a: {$trunc: "string"}}}], 50976);
 
-	// Out of bounds precision
+	// Test precision arguments that are out of bounds.
     assertErrorCode(coll, [{$project: {a: {$round: [1, NumberLong("101")]}}}], 50979);
     assertErrorCode(coll, [{$project: {a: {$round: [1, NumberLong("-21")]}}}], 50979);
     assertErrorCode(coll, [{$project: {a: {$round: [1, NumberDecimal("101")]}}}], 50979);
