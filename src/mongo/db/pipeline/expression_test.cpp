@@ -1061,14 +1061,14 @@ TEST_F(ExpressionRoundTwoArgTest, DecimalArg2) {
                Decimal128("-100000000000000000000000000000"));
     assertEval(Decimal128("3.4E-6000"), 0, Decimal128("0"));
 
-    assertEval(Decimal128("-3.14159265"), 0,   Decimal128("-3.0"));
-    assertEval(Decimal128("-3.14159265"), 1,   Decimal128("-3.1"));
-    assertEval(Decimal128("-3.14159265"), 2,   Decimal128("-3.14"));
+    assertEval(Decimal128("-3.14159265"), 0, Decimal128("-3.0"));
+    assertEval(Decimal128("-3.14159265"), 1, Decimal128("-3.1"));
+    assertEval(Decimal128("-3.14159265"), 2, Decimal128("-3.14"));
     assertEval(Decimal128("-3.14159265"), 3.9, Decimal128("-3.142"));
     assertEval(Decimal128("-3.14159265"), 4.6, Decimal128("-3.1416"));
-    assertEval(Decimal128("-3.14159265"), 5,   Decimal128("-3.14159"));
-    assertEval(Decimal128("-3.14159265"), 6,   Decimal128("-3.141593"));
-    assertEval(Decimal128("-3.14159265"), 7,   Decimal128("-3.1415926"));
+    assertEval(Decimal128("-3.14159265"), 5, Decimal128("-3.14159"));
+    assertEval(Decimal128("-3.14159265"), 6, Decimal128("-3.141593"));
+    assertEval(Decimal128("-3.14159265"), 7, Decimal128("-3.1415926"));
     assertEval(Decimal128("-3.14159265"), 100, Decimal128("-3.14159265"));
     assertEval(Decimal128("3.14159265"), 0, Decimal128("3.0"));
     assertEval(Decimal128("3.14159265"), 1, Decimal128("3.1"));
@@ -1216,14 +1216,14 @@ TEST_F(ExpressionTruncTwoArgTest, DecimalArg2) {
                Decimal128("-99999999999999999999999999999.00"));
     assertEval(Decimal128("3.4E-6000"), 0, Decimal128("0"));
 
-    assertEval(Decimal128("-3.14159265"), 0,   Decimal128("-3.0"));
-    assertEval(Decimal128("-3.14159265"), 1,   Decimal128("-3.1"));
-    assertEval(Decimal128("-3.14159265"), 2,   Decimal128("-3.14"));
+    assertEval(Decimal128("-3.14159265"), 0, Decimal128("-3.0"));
+    assertEval(Decimal128("-3.14159265"), 1, Decimal128("-3.1"));
+    assertEval(Decimal128("-3.14159265"), 2, Decimal128("-3.14"));
     assertEval(Decimal128("-3.14159265"), 3.9, Decimal128("-3.141"));
     assertEval(Decimal128("-3.14159265"), 4.6, Decimal128("-3.1415"));
-    assertEval(Decimal128("-3.14159265"), 5,   Decimal128("-3.14159"));
-    assertEval(Decimal128("-3.14159265"), 6,   Decimal128("-3.141592"));
-    assertEval(Decimal128("-3.14159265"), 7,   Decimal128("-3.1415926"));
+    assertEval(Decimal128("-3.14159265"), 5, Decimal128("-3.14159"));
+    assertEval(Decimal128("-3.14159265"), 6, Decimal128("-3.141592"));
+    assertEval(Decimal128("-3.14159265"), 7, Decimal128("-3.1415926"));
     assertEval(Decimal128("-3.14159265"), 100, Decimal128("-3.14159265"));
     assertEval(Decimal128("3.14159265"), 0, Decimal128("3.0"));
     assertEval(Decimal128("3.14159265"), 1, Decimal128("3.1"));
