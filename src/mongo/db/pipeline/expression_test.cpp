@@ -1012,6 +1012,15 @@ TEST_F(ExpressionRoundTwoArgTest, DoubleArg2) {
     assertEval(-1.2, 0, -1.0);
     assertEval(-1.7, 0, -2.0);
 
+    assertEval(-3.14159265, 0, -3.0);
+    assertEval(-3.14159265, 1, -3.1);
+    assertEval(-3.14159265, 2, -3.14);
+    assertEval(-3.14159265, 3.9, -3.142);
+    assertEval(-3.14159265, 4.6, -3.1416);
+    assertEval(-3.14159265, 5, -3.14159);
+    assertEval(-3.14159265, 6, -3.141593);
+    assertEval(-3.14159265, 7, -3.1415927);
+    assertEval(-3.14159265, 100, -3.14159265);
     assertEval(3.14159265, 0, 3.0);
     assertEval(3.14159265, 1, 3.1);
     assertEval(3.14159265, 2, 3.14);
@@ -1052,6 +1061,15 @@ TEST_F(ExpressionRoundTwoArgTest, DecimalArg2) {
                Decimal128("-100000000000000000000000000000"));
     assertEval(Decimal128("3.4E-6000"), 0, Decimal128("0"));
 
+    assertEval(Decimal128("-3.14159265"), 0,   Decimal128("-3.0"));
+    assertEval(Decimal128("-3.14159265"), 1,   Decimal128("-3.1"));
+    assertEval(Decimal128("-3.14159265"), 2,   Decimal128("-3.14"));
+    assertEval(Decimal128("-3.14159265"), 3.9, Decimal128("-3.142"));
+    assertEval(Decimal128("-3.14159265"), 4.6, Decimal128("-3.1416"));
+    assertEval(Decimal128("-3.14159265"), 5,   Decimal128("-3.14159"));
+    assertEval(Decimal128("-3.14159265"), 6,   Decimal128("-3.141593"));
+    assertEval(Decimal128("-3.14159265"), 7,   Decimal128("-3.1415926"));
+    assertEval(Decimal128("-3.14159265"), 100, Decimal128("-3.14159265"));
     assertEval(Decimal128("3.14159265"), 0, Decimal128("3.0"));
     assertEval(Decimal128("3.14159265"), 1, Decimal128("3.1"));
     assertEval(Decimal128("3.14159265"), 2, Decimal128("3.14"));
@@ -1148,6 +1166,16 @@ TEST_F(ExpressionTruncTwoArgTest, DoubleArg2) {
     assertEval(-1.2, 0, -1.0);
     assertEval(-1.7, 0, -1.0);
 
+
+    assertEval(-3.14159265, 0, -3.0);
+    assertEval(-3.14159265, 1, -3.1);
+    assertEval(-3.14159265, 2, -3.14);
+    assertEval(-3.14159265, 3.9, -3.141);
+    assertEval(-3.14159265, 4.6, -3.1415);
+    assertEval(-3.14159265, 5, -3.14159);
+    assertEval(-3.14159265, 6, -3.141592);
+    assertEval(-3.14159265, 7, -3.1415926);
+    assertEval(-3.14159265, 100, -3.14159265);
     assertEval(3.14159265, 0, 3.0);
     assertEval(3.14159265, 1, 3.1);
     assertEval(3.14159265, 2, 3.14);
@@ -1188,6 +1216,15 @@ TEST_F(ExpressionTruncTwoArgTest, DecimalArg2) {
                Decimal128("-99999999999999999999999999999.00"));
     assertEval(Decimal128("3.4E-6000"), 0, Decimal128("0"));
 
+    assertEval(Decimal128("-3.14159265"), 0,   Decimal128("-3.0"));
+    assertEval(Decimal128("-3.14159265"), 1,   Decimal128("-3.1"));
+    assertEval(Decimal128("-3.14159265"), 2,   Decimal128("-3.14"));
+    assertEval(Decimal128("-3.14159265"), 3.9, Decimal128("-3.141"));
+    assertEval(Decimal128("-3.14159265"), 4.6, Decimal128("-3.1415"));
+    assertEval(Decimal128("-3.14159265"), 5,   Decimal128("-3.14159"));
+    assertEval(Decimal128("-3.14159265"), 6,   Decimal128("-3.141592"));
+    assertEval(Decimal128("-3.14159265"), 7,   Decimal128("-3.1415926"));
+    assertEval(Decimal128("-3.14159265"), 100, Decimal128("-3.14159265"));
     assertEval(Decimal128("3.14159265"), 0, Decimal128("3.0"));
     assertEval(Decimal128("3.14159265"), 1, Decimal128("3.1"));
     assertEval(Decimal128("3.14159265"), 2, Decimal128("3.14"));
