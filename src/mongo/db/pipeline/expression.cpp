@@ -4722,9 +4722,9 @@ static Value evaluateRoundOrTrunc(const Document& root,
                                   const std::vector<boost::intrusive_ptr<Expression>>& vpOperand,
                                   const std::string& opName,
                                   Decimal128::RoundingMode roundingMode,
-                                  std::function<double(double)> doubleOp) {
-    static const auto maxPrecision = 100LL;
-    static const auto minPrecision = -20LL;
+                                  double (*doubleOp)(double)) {
+    constexpr auto maxPrecision = 100LL;
+    constexpr auto minPrecision = -20LL;
     auto numericArg = Value(vpOperand[0]->evaluate(root));
     if (numericArg.nullish()) {
         return Value(BSONNULL);
@@ -4816,9 +4816,7 @@ static Value evaluateRoundOrTrunc(const Document& root,
 
 Value ExpressionRound::evaluate(const Document& root) const {
     return evaluateRoundOrTrunc(
-        root, vpOperand, getOpName(), Decimal128::kRoundTiesToEven, [](double x) {
-            return std::round(x);
-        });
+        root, vpOperand, getOpName(), Decimal128::kRoundTiesToEven, &std::round);
 }
 
 REGISTER_EXPRESSION(round, ExpressionRound::parse);
@@ -4828,9 +4826,7 @@ const char* ExpressionRound::getOpName() const {
 
 Value ExpressionTrunc::evaluate(const Document& root) const {
     return evaluateRoundOrTrunc(
-        root, vpOperand, getOpName(), Decimal128::kRoundTowardZero, [](double x) {
-            return std::trunc(x);
-        });
+        root, vpOperand, getOpName(), Decimal128::kRoundTowardZero, &std::trunc);
 }
 
 REGISTER_EXPRESSION(trunc, ExpressionTrunc::parse);
