@@ -22,12 +22,27 @@
         audit.assertEntry("authenticate", {user: "user1", db: "test", mechanism: authmech});
     assert.eq(success.result, 0);
 
-    // Check for negative auditing of authentications.
+    // Negative auditing (incorrect password).
     audit.fastForward();
     assert(!db.auth({mechanism: authmech, user: "user1", pwd: "wrong_pwd"}));
-    const failure =
+    const pwdFailure =
         audit.assertEntry("authenticate", {user: "user1", db: "test", mechanism: authmech});
-    assert.eq(failure.result, ErrorCodes.AuthenticationFailed);
+    assert.eq(pwdFailure.result, ErrorCodes.AuthenticationFailed);
+
+    // Negative auditing (unknown user).
+    audit.fastForward();
+    assert(!db.auth({mechanism: authmech, user: "unknown_user", pwd: "pwd"}));
+    const userFailure =
+        audit.assertEntry("authenticate", {user: "unknown_user", db: "test", mechanism: authmech});
+    assert.eq(userFailure.result, ErrorCodes.AuthenticationFailed);
+
+    // Negative auditing (unknown mechanism).
+    // Explicitly call saslStart to avoid hitting client failure at unknown mechanism.
+    audit.fastForward();
+    assert.commandFailed(db.runCommand({saslStart: 1, mechanism: "HAXX", payload: ""}));
+    const mechFailure =
+        audit.assertEntry("authenticate", {user: "", db: "test", mechanism: "HAXX"});
+    assert.eq(mechFailure.result, ErrorCodes.BadValue);
 
     MongoRunner.stopMongod(m);
     print("SUCCESS audit-authenticate.js");
