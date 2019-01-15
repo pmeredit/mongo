@@ -261,12 +261,18 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
             ];
 
             let copyWorkers = [];
+            let heartbeaters = [];
             let backupCursors = [];
             let dbpaths = [];
             let backupIds = [];
             let maxTimestamp = Timestamp();
+            let stopCounter = new CountDownLatch(1);
             for (let i = 0; i < numShards + 1; i++) {
                 backupCursors[i] = openBackupCursor(nodesToBackup[i]);
+                heartbeaters.push(startHeartbeatThread(nodesToBackup[i].host,
+                                                       backupCursors[i],
+                                                       nodesToBackup[i].getDB("admin").getSession(),
+                                                       stopCounter));
                 let res = copyBackupCursorFiles(backupCursors[i], restorePaths[i], true);
                 jsTestLog("Opened up backup cursor on " + nodesToBackup[i] + ": " +
                           tojson(res.metadata));
@@ -293,6 +299,12 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
 
             copyWorkers.forEach((thread) => {
                 thread.join();
+            });
+
+            // Stop the heartbeating thread.
+            stopCounter.countDown();
+            heartbeaters.forEach((heartbeater) => {
+                heartbeater.join();
             });
 
             if (_isTopologyChanged(st.config1, shardsInfo, maxTimestamp)) {
