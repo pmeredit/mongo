@@ -1,6 +1,7 @@
 from __future__ import print_function
 
 import os
+import os.path
 import SCons.Script.Main
 
 def configure(conf, env):
@@ -80,7 +81,15 @@ def configure(conf, env):
                 # We need to do LINKFLAGS globally since it affects runtime of executables.
                 env.Append(LINKFLAGS=[flag for flag in snmpFlags['LINKFLAGS'] if '-Wl,-rpath' in flag])
 
+
+    # Compute a path to use for including files that are generated in the build directory.
+    # Computes: $BUILD_DIR/mongo/db/modules/<enterprise_module_name>/src
+    src_include_path = os.path.join("$BUILD_DIR", str(env.Dir(root).Dir('src'))[4:] )
+
     def injectEnterpriseModule(env, consumer=True, builder=False):
+        # Inject an include path so that idl generated files can be included
+        env.Append(CPPPATH=[src_include_path])
+
         if consumer:
             if 'MONGO_ENTERPRISE_VERSION' in env:
                 env.Append(CPPDEFINES=[("MONGO_ENTERPRISE_VERSION", 1)])
