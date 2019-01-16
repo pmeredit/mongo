@@ -91,4 +91,8 @@
     assertErrorCode(coll, [{$project: {a: {$trunc: [1, NumberInt("-21")]}}}], 50979);
     assertErrorCode(coll, [{$project: {a: {$trunc: [1, 101]}}}], 50979);
     assertErrorCode(coll, [{$project: {a: {$trunc: [1, -21]}}}], 50979);
+
+	// Test non-integral precision arguments.
+    assertErrorCode(coll, [{$project: {a: {$round: [1, NumberDecimal("1.4")]}}}], 50982);
+    assertErrorCode(coll, [{$project: {a: {$trunc: [1, 10.5]}}}], 50982);
 }());

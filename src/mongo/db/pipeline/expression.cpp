@@ -4735,10 +4735,10 @@ static Value evaluateRoundOrTrunc(const Document& root,
             numericArg.numeric());
     if (vpOperand.size() == 1) {
         switch (numericArg.getType()) {
-            case NumberDecimal:
+            case BSONType::NumberDecimal:
                 return Value(
                     numericArg.getDecimal().quantize(Decimal128::kNormalizedZero, roundingMode));
-            case NumberDouble:
+            case BSONType::NumberDouble:
                 return Value(doubleOp(numericArg.getDouble()));
             // There's no point to round/trunc integers or longs without precision argument, it will
             // have no effect.
@@ -4751,6 +4751,9 @@ static Value evaluateRoundOrTrunc(const Document& root,
     if (precisionArg.nullish()) {
         return Value(BSONNULL);
     }
+	uassert(50982,
+			str::stream() << "precision argument to  " << opName << " must be a integral value",
+			precisionArg.integral());
     auto precisionValue = precisionArg.coerceToLong();
     uassert(50979,
             str::stream() << "cannot apply " << opName << " with precision value " << precisionValue
@@ -4759,55 +4762,48 @@ static Value evaluateRoundOrTrunc(const Document& root,
     // construct 10^-precisionValue
     auto quantum = Decimal128(0LL, Decimal128::kExponentBias - precisionValue, 0LL, 1LL);
     switch (numericArg.getType()) {
-        case NumberDecimal: {
+        case BSONType::NumberDecimal: {
             auto out = numericArg.getDecimal().quantize(quantum, roundingMode);
+			// NaN can occur at some large precision values near 100. In such
+			// a case it makes sense to return the original value because rounding or truncating
+			// to 100 decimals places often is not visible, anyway.
             if (out.isNaN()) {
                 return numericArg;
             }
             return Value(out);
         }
-        case NumberDouble: {
+        case BSONType::NumberDouble: {
             auto out = Decimal128(numericArg.getDouble(), Decimal128::kRoundTo34Digits)
                            .quantize(quantum, roundingMode);
+			// NaN can occur at some large precision values near 100. In such
+			// a case it makes sense to return the original value because rounding or truncating
+			// to 100 decimals places often is not visible, anyway.
             if (out.isNaN()) {
                 return numericArg;
             }
             return Value(out.toDouble());
         }
-        case NumberLong: {
-            // positive precisions have no effect on integral values.
-            if (precisionValue >= 0) {
-                return numericArg;
-            }
-            auto numericArgll = numericArg.getLong();
-            auto out =
-                Decimal128(static_cast<int64_t>(numericArgll)).quantize(quantum, roundingMode);
-            if (out.isNaN()) {
-                return numericArg;
-            }
-            uint32_t flags = 0;
-            auto outll = out.toLong(&flags);
-            assertFlagsValid(flags, opName, numericArgll, precisionValue);
-            return Value(static_cast<long long>(outll));
-        }
-        case NumberInt: {
-            // positive precisions have no effect on integral values.
-            if (precisionValue >= 0) {
-                return numericArg;
-            }
-            auto numericArgll = numericArg.getLong();
-            auto out =
-                Decimal128(static_cast<int64_t>(numericArgll)).quantize(quantum, roundingMode);
-            if (out.isNaN()) {
-                return numericArg;
-            }
-            uint32_t flags = 0;
-            auto outll = out.toLong(&flags);
-            assertFlagsValid(flags, opName, numericArgll, precisionValue);
-            if (outll > std::numeric_limits<int>::max()) {
-                return Value(static_cast<long long>(outll));
-            }
-            return Value(static_cast<int>(outll));
+		case BSONType::NumberInt:
+		case BSONType::NumberLong: {
+			if (precisionValue >= 0) {
+				return numericArg;
+			}
+			auto numericArgll = numericArg.getLong();
+			auto out = Decimal128(static_cast<int64_t>(numericArgll)).quantize(quantum, roundingMode);
+			// NaN can occur at some large precision values near 100. In such
+			// a case it makes sense to return the original value because rounding or truncating
+			// to 100 decimals places often is not visible, anyway.
+			if (out.isNaN()) {
+				return numericArg;
+			}
+			uint32_t flags = 0;
+			auto outll = out.toLong(&flags);
+			assertFlagsValid(flags, opName, numericArgll, precisionValue);
+			if (numericArg.getType() == BSONType::NumberLong || outll > std::numeric_limits<int>::max()) {
+				// Even if the original was an int to begin with - it has to be a long now.
+				return Value(static_cast<long long>(outll));
+			}
+			return Value(static_cast<int>(outll));
         }
         default:
             MONGO_UNREACHABLE;
