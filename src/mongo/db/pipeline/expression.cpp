@@ -4751,9 +4751,9 @@ static Value evaluateRoundOrTrunc(const Document& root,
     if (precisionArg.nullish()) {
         return Value(BSONNULL);
     }
-	uassert(50982,
-			str::stream() << "precision argument to  " << opName << " must be a integral value",
-			precisionArg.integral());
+    uassert(50982,
+            str::stream() << "precision argument to  " << opName << " must be a integral value",
+            precisionArg.integral());
     auto precisionValue = precisionArg.coerceToLong();
     uassert(50979,
             str::stream() << "cannot apply " << opName << " with precision value " << precisionValue
@@ -4764,9 +4764,9 @@ static Value evaluateRoundOrTrunc(const Document& root,
     switch (numericArg.getType()) {
         case BSONType::NumberDecimal: {
             auto out = numericArg.getDecimal().quantize(quantum, roundingMode);
-			// NaN can occur at some large precision values near 100. In such
-			// a case it makes sense to return the original value because rounding or truncating
-			// to 100 decimals places often is not visible, anyway.
+            // NaN can occur at some large precision values near 100. In such
+            // a case it makes sense to return the original value because rounding or truncating
+            // to 100 decimals places often is not visible, anyway.
             if (out.isNaN()) {
                 return numericArg;
             }
@@ -4775,35 +4775,37 @@ static Value evaluateRoundOrTrunc(const Document& root,
         case BSONType::NumberDouble: {
             auto out = Decimal128(numericArg.getDouble(), Decimal128::kRoundTo34Digits)
                            .quantize(quantum, roundingMode);
-			// NaN can occur at some large precision values near 100. In such
-			// a case it makes sense to return the original value because rounding or truncating
-			// to 100 decimals places often is not visible, anyway.
+            // NaN can occur at some large precision values near 100. In such
+            // a case it makes sense to return the original value because rounding or truncating
+            // to 100 decimals places often is not visible, anyway.
             if (out.isNaN()) {
                 return numericArg;
             }
             return Value(out.toDouble());
         }
-		case BSONType::NumberInt:
-		case BSONType::NumberLong: {
-			if (precisionValue >= 0) {
-				return numericArg;
-			}
-			auto numericArgll = numericArg.getLong();
-			auto out = Decimal128(static_cast<int64_t>(numericArgll)).quantize(quantum, roundingMode);
-			// NaN can occur at some large precision values near 100. In such
-			// a case it makes sense to return the original value because rounding or truncating
-			// to 100 decimals places often is not visible, anyway.
-			if (out.isNaN()) {
-				return numericArg;
-			}
-			uint32_t flags = 0;
-			auto outll = out.toLong(&flags);
-			assertFlagsValid(flags, opName, numericArgll, precisionValue);
-			if (numericArg.getType() == BSONType::NumberLong || outll > std::numeric_limits<int>::max()) {
-				// Even if the original was an int to begin with - it has to be a long now.
-				return Value(static_cast<long long>(outll));
-			}
-			return Value(static_cast<int>(outll));
+        case BSONType::NumberInt:
+        case BSONType::NumberLong: {
+            if (precisionValue >= 0) {
+                return numericArg;
+            }
+            auto numericArgll = numericArg.getLong();
+            auto out =
+                Decimal128(static_cast<int64_t>(numericArgll)).quantize(quantum, roundingMode);
+            // NaN can occur at some large precision values near 100. In such
+            // a case it makes sense to return the original value because rounding or truncating
+            // to 100 decimals places often is not visible, anyway.
+            if (out.isNaN()) {
+                return numericArg;
+            }
+            uint32_t flags = 0;
+            auto outll = out.toLong(&flags);
+            assertFlagsValid(flags, opName, numericArgll, precisionValue);
+            if (numericArg.getType() == BSONType::NumberLong ||
+                outll > std::numeric_limits<int>::max()) {
+                // Even if the original was an int to begin with - it has to be a long now.
+                return Value(static_cast<long long>(outll));
+            }
+            return Value(static_cast<int>(outll));
         }
         default:
             MONGO_UNREACHABLE;
