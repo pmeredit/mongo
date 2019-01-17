@@ -176,11 +176,22 @@ def configure(conf, env):
         vsruntime_key = _winreg.OpenKey(_winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x64")
         vslib_version,vslib_version_type = _winreg.QueryValueEx(vsruntime_key, "Version")
 
-        full_redist_path = os.path.join(vsinstall_path, "VC", "Redist", "MSVC", re.match("v(\d+\.\d+\.\d+)\.\d+", vslib_version).group(1))
-        full_redist_file_name = os.path.join(full_redist_path, "vcredist_x64.exe")
-        env.Append(ARCHIVE_ADDITIONS=[full_redist_file_name])
+        # Get library version from registry and fallback to directory search if not found as expected on disk
+        redist_root = os.path.join(vsinstall_path, "VC", "Redist", "MSVC")
+        redist_path = os.path.join(redist_root, re.match("v(\d+\.\d+\.\d+)\.\d+", vslib_version).group(1))
+        if not os.path.isdir(redist_path):
+            dirs = os.listdir(redist_root)
+            dirs.sort()
+            for dir in reversed(dirs):
+                candidate = os.path.join(redist_root, dir)
+                if os.path.isdir(candidate):
+                    redist_path = candidate
+                    break
+
+        redist_file_name = os.path.join(redist_path, "vcredist_x64.exe")
+        env.Append(ARCHIVE_ADDITIONS=[redist_file_name])
         env.Append(ARCHIVE_ADDITION_DIR_MAP={
-                full_redist_path : "bin"
+                redist_path : "bin"
                 })
 
     return configured_modules
