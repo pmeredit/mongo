@@ -8,10 +8,8 @@
 
 #include "log_redact_options.h"
 
-#include "mongo/base/init.h"
+#include "encryptdb/log_redact_options_gen.h"
 #include "mongo/base/status.h"
-#include "mongo/db/operation_context.h"
-#include "mongo/db/server_parameters.h"
 #include "mongo/util/log.h"
 #include "mongo/util/options_parser/option_section.h"
 #include "mongo/util/options_parser/startup_option_init.h"
@@ -19,52 +17,45 @@
 
 namespace mongo {
 
-namespace {
-Status storeLogRedactOptions(const moe::Environment& params) {
+void RedactClientLogDataSetting::append(OperationContext* opCtx,
+                                        BSONObjBuilder& b,
+                                        const std::string& name) {
+    b << name << logger::globalLogDomain()->shouldRedactLogs();
+}
+
+Status RedactClientLogDataSetting::set(const BSONElement& newValueElement) {
+    bool newValue;
+    if (!newValueElement.coerce(&newValue)) {
+        return {ErrorCodes::BadValue,
+                str::stream() << "Invalid value for redactClientLogData: " << newValueElement};
+    }
+
+    logger::globalLogDomain()->setShouldRedactLogs(newValue);
+    return Status::OK();
+}
+
+Status RedactClientLogDataSetting::setFromString(const std::string& str) {
+    if (str == "true" || str == "1") {
+        logger::globalLogDomain()->setShouldRedactLogs(true);
+    } else if (str == "false" || str == "0") {
+        logger::globalLogDomain()->setShouldRedactLogs(false);
+    } else {
+        return {ErrorCodes::BadValue,
+                str::stream() << "Invalid value for redactClientLogData: " << str};
+    }
+
+    return Status::OK();
+}
+
+MONGO_STARTUP_OPTIONS_STORE(LogRedactOptions)(InitializerContext* context) {
+    const auto& params = moe::startupOptionsParsed;
+
     if (params.count("security.redactClientLogData")) {
         logger::globalLogDomain()->setShouldRedactLogs(
             params["security.redactClientLogData"].as<bool>());
     }
 
     return Status::OK();
-}
-}  // namespace
-
-class RedactClientLogDataSetting : public ServerParameter {
-public:
-    RedactClientLogDataSetting()
-        : ServerParameter(ServerParameterSet::getGlobal(), "redactClientLogData", false, true) {}
-
-    virtual void append(OperationContext* opCtx, BSONObjBuilder& b, const std::string& name) {
-        b << name << logger::globalLogDomain()->shouldRedactLogs();
-    }
-
-    virtual Status set(const BSONElement& newValueElement) {
-        bool newValue;
-        if (!newValueElement.coerce(&newValue))
-            return Status(ErrorCodes::BadValue,
-                          mongoutils::str::stream() << "Invalid value for redactClientLogData: "
-                                                    << newValueElement);
-        logger::globalLogDomain()->setShouldRedactLogs(newValue);
-        return Status::OK();
-    }
-
-    virtual Status setFromString(const std::string& str) {
-        if (str == "true" || str == "1") {
-            logger::globalLogDomain()->setShouldRedactLogs(true);
-        } else if (str == "false" || str == "0") {
-            logger::globalLogDomain()->setShouldRedactLogs(false);
-        } else {
-            return Status(ErrorCodes::BadValue,
-                          mongoutils::str::stream() << "Invalid value for redactClientLogData: "
-                                                    << str);
-        }
-        return Status::OK();
-    }
-} redactClientLogDataSetting;
-
-MONGO_STARTUP_OPTIONS_STORE(LogRedactOptions)(InitializerContext* context) {
-    return storeLogRedactOptions(moe::startupOptionsParsed);
 }
 
 }  // namespace mongo
