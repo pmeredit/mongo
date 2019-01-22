@@ -206,11 +206,13 @@
         }
 
         /**
-         * Assert that no new audit events have been emitted, since the last event observed
-         * via the Spooler.
+         * Assert that no new audit events, optionally of a give type, have been emitted
+         * since the last event observed via the Spooler.
          */
-        assertNoNewEntries() {
-            const log = this.getAllLines().slice(this._auditLine);
+        assertNoNewEntries(atype = undefined) {
+            const log = this.getAllLines().slice(this._auditLine).filter(function(line) {
+                return (atype === undefined) || (JSON.parse(line).atype === atype);
+            });
             assert.eq(log.length, 0, "Log contained new entries: " + tojson(log));
         }
     }
