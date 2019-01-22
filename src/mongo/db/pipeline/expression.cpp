@@ -4759,14 +4759,14 @@ static Value evaluateRoundOrTrunc(const Document& root,
             str::stream() << "cannot apply " << opName << " with precision value " << precisionValue
                           << " value must be in [-20, 100]",
             minPrecision <= precisionValue && precisionValue <= maxPrecision);
-    // construct 10^-precisionValue
+    // Construct 10^-precisionValue, which will be used as the quantize reference.
     auto quantum = Decimal128(0LL, Decimal128::kExponentBias - precisionValue, 0LL, 1LL);
     switch (numericArg.getType()) {
         case BSONType::NumberDecimal: {
             auto out = numericArg.getDecimal().quantize(quantum, roundingMode);
-            // NaN can occur at some large precision values near 100. In such
-            // a case it makes sense to return the original value because rounding or truncating
-            // to 100 decimals places often is not visible, anyway.
+			// NaN can occur at some large precision values near 100. In such a case it makes sense
+			// to return the original value because rounding or truncating to 100 decimals places
+			// often is not visible, anyway.
             if (out.isNaN()) {
                 return numericArg;
             }
@@ -4775,9 +4775,9 @@ static Value evaluateRoundOrTrunc(const Document& root,
         case BSONType::NumberDouble: {
             auto out = Decimal128(numericArg.getDouble(), Decimal128::kRoundTo34Digits)
                            .quantize(quantum, roundingMode);
-            // NaN can occur at some large precision values near 100. In such
-            // a case it makes sense to return the original value because rounding or truncating
-            // to 100 decimals places often is not visible, anyway.
+			// NaN can occur at some large precision values near 100. In such a case it makes sense
+			// to return the original value because rounding or truncating to 100 decimals places
+			// often is not visible, anyway.
             if (out.isNaN()) {
                 return numericArg;
             }
