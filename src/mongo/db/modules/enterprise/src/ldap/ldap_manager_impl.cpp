@@ -60,7 +60,7 @@ StatusWith<std::vector<RoleName>> LDAPManagerImpl::getUserRoles(const UserName& 
     StatusWith<LDAPQuery> swQuery(ErrorCodes::InternalError, "Not initialized");
     {
         stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
-        swQuery = LDAPQuery::instantiateQuery(_queryConfig, swUser.getValue());
+        swQuery = LDAPQuery::instantiateQuery(_queryConfig, swUser.getValue(), userName.getUser());
     }
     if (!swQuery.isOK()) {
         return swQuery.getStatus();

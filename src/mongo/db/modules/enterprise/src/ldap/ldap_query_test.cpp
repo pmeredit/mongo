@@ -27,12 +27,23 @@ TEST(LDAPQueryInstantiate, InstantiationFromRawStringAlwaysSucceed) {
 }
 
 
+TEST(LDAPQueryInstantiate, POSIXGroupSchema) {
+    auto swQueryParameters = LDAPQueryConfig::createLDAPQueryConfigWithUserName(
+        "dc=mongodb,dc=com??base?(&(objectClass=posixGroup)(memberUid={PROVIDED_USER}))");
+    ASSERT_OK(swQueryParameters.getStatus());
+
+    auto swQuery = LDAPQuery::instantiateQuery(swQueryParameters.getValue(), userDN, "sajack");
+    ASSERT_OK(swQuery.getStatus());
+    auto filter = swQuery.getValue().getFilter();
+    ASSERT_EQ("(&(objectClass=posixGroup)(memberUid=sajack))", filter);
+}
+
 TEST(LDAPQueryInstantiate, InstantiationFromUserConfigAndUserNameSucceeds) {
     auto swQueryParameters =
         LDAPQueryConfig::createLDAPQueryConfigWithUserName("cn={USER},dc=mongodb,dc=com?");
     ASSERT_OK(swQueryParameters.getStatus());
 
-    auto swQuery = LDAPQuery::instantiateQuery(swQueryParameters.getValue(), "sajack");
+    auto swQuery = LDAPQuery::instantiateQuery(swQueryParameters.getValue(), "sajack", "");
     ASSERT_OK(swQuery.getStatus());
     ASSERT_EQ("cn=sajack,dc=mongodb,dc=com", swQuery.getValue().getBaseDN());
 }
@@ -42,7 +53,7 @@ TEST(LDAPQueryInstantiate, InstantiationFromUserConfigAndUserNameWithBackslashSu
         LDAPQueryConfig::createLDAPQueryConfigWithUserName("cn={USER},dc=mongodb,dc=com?");
     ASSERT_OK(swQueryParameters.getStatus());
 
-    auto swQuery = LDAPQuery::instantiateQuery(swQueryParameters.getValue(), "jack\\,sa");
+    auto swQuery = LDAPQuery::instantiateQuery(swQueryParameters.getValue(), "jack\\,sa", "");
     ASSERT_OK(swQuery.getStatus());
     ASSERT_EQ("cn=jack\\,sa,dc=mongodb,dc=com", swQuery.getValue().getBaseDN());
 }
@@ -52,8 +63,8 @@ TEST(LDAPQueryInstantiate, InstantiationFromUserConfigAndSpacePaddedUserNameSucc
         LDAPQueryConfig::createLDAPQueryConfigWithUserName("dc=ACME,dc=QA??sub?{USER}");
     ASSERT_OK(swQueryParameters.getStatus());
 
-    auto swQuery =
-        LDAPQuery::instantiateQuery(swQueryParameters.getValue(), "CN=\\ jack\\ ,DC=ACME,DC=QA");
+    auto swQuery = LDAPQuery::instantiateQuery(
+        swQueryParameters.getValue(), "CN=\\ jack\\ ,DC=ACME,DC=QA", "");
     ASSERT_OK(swQuery.getStatus());
     ASSERT_EQ("CN=\\5c jack\\5c ,DC=ACME,DC=QA", swQuery.getValue().getFilter());
 }
@@ -64,7 +75,7 @@ TEST(LDAPQueryInstantiate, InstantiationFromUserConfigAndNameWithLDAPqueryLangua
     ASSERT_OK(swQueryParameters.getStatus());
 
     auto swQuery =
-        LDAPQuery::instantiateQuery(swQueryParameters.getValue(), "cn=jack (*),DC=ACME,DC=QA");
+        LDAPQuery::instantiateQuery(swQueryParameters.getValue(), "cn=jack (*),DC=ACME,DC=QA", "");
     ASSERT_OK(swQuery.getStatus());
     ASSERT_EQ("cn=jack \\28\\2a\\29,DC=ACME,DC=QA", swQuery.getValue().getFilter());
 }
@@ -74,8 +85,8 @@ TEST(LDAPQueryInstantiate, InstantiationFromUserConfigAndNameWithSpecialCharacte
         LDAPQueryConfig::createLDAPQueryConfigWithUserName("dc=ACME,dc=QA??sub?{USER}");
     ASSERT_OK(swQueryParameters.getStatus());
 
-    auto swQuery = LDAPQuery::instantiateQuery(swQueryParameters.getValue(),
-                                               "CN=jack\\\"\\#\\+\\;\\<\\=\\>\\\\,DC=ACME,DC=QA");
+    auto swQuery = LDAPQuery::instantiateQuery(
+        swQueryParameters.getValue(), "CN=jack\\\"\\#\\+\\;\\<\\=\\>\\\\,DC=ACME,DC=QA", "");
     ASSERT_OK(swQuery.getStatus());
     ASSERT_EQ("CN=jack\\5c\"\\5c#\\5c+\\5c;\\5c<\\5c=\\5c>\\5c\\5c,DC=ACME,DC=QA",
               swQuery.getValue().getFilter());
@@ -86,8 +97,8 @@ TEST(LDAPQueryInstantiate, InstantiationFromUserConfigAndNameWithInternationalCh
         LDAPQueryConfig::createLDAPQueryConfigWithUserName("dc=ACME,dc=QA??sub?{USER}");
     ASSERT_OK(swQueryParameters.getStatus());
 
-    auto swQuery = LDAPQuery::instantiateQuery(swQueryParameters.getValue(),
-                                               "CN=\\ Пётр Иванов (*)\\ ,DC=ACME,DC=QA");
+    auto swQuery = LDAPQuery::instantiateQuery(
+        swQueryParameters.getValue(), "CN=\\ Пётр Иванов (*)\\ ,DC=ACME,DC=QA", "");
     ASSERT_OK(swQuery.getStatus());
     ASSERT_EQ("CN=\\5c Пётр Иванов \\28\\2a\\29\\5c ,DC=ACME,DC=QA",
               swQuery.getValue().getFilter());

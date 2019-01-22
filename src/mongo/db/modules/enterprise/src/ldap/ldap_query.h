@@ -29,7 +29,9 @@ public:
     static StatusWith<LDAPQuery> instantiateQuery(const LDAPQueryConfig& parameters);
 
     static StatusWith<LDAPQuery> instantiateQuery(
-        const UserNameSubstitutionLDAPQueryConfig& parameters, StringData userName);
+        const UserNameSubstitutionLDAPQueryConfig& parameters,
+        StringData userName,
+        StringData unmappedUserName);
 
     static StatusWith<LDAPQuery> instantiateQuery(
         const ComponentSubstitutionLDAPQueryConfig& parameters,

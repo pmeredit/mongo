@@ -205,15 +205,23 @@ Status findAndValidateTokens(const std::string& input,
     return Status::OK();
 }
 
+StringData removeBraces(StringData input) {
+    dassert(input.startsWith("{"_sd) && input.endsWith("}"_sd));
+    return input.substr(1, input.size() - 2);
+}
+
 }  // namespace
 
 StatusWith<UserNameSubstitutionLDAPQueryConfig> LDAPQueryConfig::createLDAPQueryConfigWithUserName(
     const std::string& input) {
     Status tokensValidated = findAndValidateTokens(input, [](StringData token) {
-        const StringData userToken = "USER";
-        if (token != userToken) {
-            return Status(ErrorCodes::FailedToParse,
-                          str::stream() << "Expected token '{USER}', but found '" << token << "'");
+        if (token != removeBraces(kUserNameMatchToken) &&
+            token != removeBraces(kProvidedUserNameMatchToken)) {
+            static const std::string errPrefix = []() -> std::string {
+                return str::stream() << "Expected token '" << kUserNameMatchToken << "' or '"
+                                     << kProvidedUserNameMatchToken << "', but found '";
+            }();
+            return Status(ErrorCodes::FailedToParse, str::stream() << errPrefix << token << "'");
         }
         return Status::OK();
     });
