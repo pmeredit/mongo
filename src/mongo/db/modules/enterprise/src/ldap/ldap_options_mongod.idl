@@ -1,0 +1,19 @@
+# Copyright (C) 2019-present MongoDB, Inc.
+
+global:
+    cpp_namespace: "mongo"
+    cpp_includes:
+        - "ldap/ldap_options.h"
+    configs:
+        section: 'LDAP Module Options'
+        source: [ cli, ini, yaml ]
+
+configs:
+    "security.ldap.authz.queryTemplate":
+        description:
+            Relative LDAP query URL which will be queried against the
+            host to acquire LDAP groups. The token {USER} will be
+            replaced with the mapped username
+        short_name: ldapAuthzQueryTemplate
+        arg_vartype: String
+        cpp_varname: 'globalLDAPParams->userAcquisitionQueryTemplate'

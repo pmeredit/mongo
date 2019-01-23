@@ -1,0 +1,68 @@
+# Copyright (C) 2019-present MongoDB, Inc.
+
+global:
+    cpp_namespace: "mongo"
+    cpp_includes:
+        - "ldap/ldap_options.h"
+    configs:
+        section: 'LDAP Module Options'
+        source: [ cli, ini, yaml ]
+
+configs:
+    "security.ldap.servers":
+        description: 'Comma separated list of LDAP servers in format host:port'
+        short_name: ldapServers
+        arg_vartype: String
+    "security.ldap.validateLDAPServerConfig":
+        description: 'Verify the LDAP server is online on server start'
+        short_name: ldapValidateLDAPServerConfig
+        arg_vartype: Bool
+        cpp_varname: 'globalLDAPParams->smokeTestOnStartup'
+        hidden: true
+        default: true
+    "security.ldap.transportSecurity":
+        description: 'Transport security used between MongoDB and remote LDAP server (none|tls)'
+        short_name: ldapTransportSecurity
+        arg_vartype: String
+        default: 'tls'
+    "security.ldap.bind.useOSDefaults":
+        description: "Peform queries with the service account's username and password"
+        short_name: ldapBindWithOSDefaults
+        arg_vartype: Switch
+        cpp_varname: 'globalLDAPParams->useOSDefaults'
+        conflicts:
+            - ldapQueryUser
+            - ldapQueryPassword
+        condition:
+            preprocessor: 'defined(_WIN32)'
+    "security.ldap.bind.method":
+        description: "Authentication scheme to use while connecting to LDAP. This may either be 'sasl' or 'simple'"
+        short_name: ldapBindMethod
+        arg_vartype: String
+        default: 'simple'
+    "security.ldap.bind.saslMechanisms":
+        description: 'Comma separated list of SASL mechanisms to use while binding to the LDAP server'
+        short_name: ldapBindSaslMechanisms
+        arg_vartype: String
+        cpp_varname: 'globalLDAPParams->bindSASLMechanisms'
+        default: 'DIGEST-MD5'
+    "security.ldap.timeoutMS":
+        description: 'Timeout for LDAP queries (ms)'
+        short_name: ldapTimeoutMS
+        arg_vartype: Long
+        default: 10000
+    "security.ldap.bind.queryUser":
+        description: 'LDAP entity to bind with to perform queries'
+        short_name: ldapQueryUser
+        arg_vartype: String
+        cpp_varname: 'globalLDAPParams->bindUser'
+    "security.ldap.bind.queryPassword":
+        description: 'Password to use while binding to the LDAP server to perform queries'
+        short_name: ldapQueryPassword
+        arg_vartype: String
+    "security.ldap.userToDNMapping":
+        description: 'Tranformation from MongoDB users to LDAP user DNs'
+        short_name: ldapUserToDNMapping
+        arg_vartype: String
+        cpp_varname: 'globalLDAPParams->userToDNMapping'
+        default: '[{match: "(.+)", substitution: "{0}"}]'

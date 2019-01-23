@@ -1,0 +1,34 @@
+# Copyright (C) 2019-present MongoDB, Inc.
+
+global:
+    cpp_namespace: "mongo"
+
+server_parameters:
+    ldapServers:
+        description: "LDAP server hostname(s), comma delimited"
+        set_at: runtime
+        cpp_class: LDAPServersSetting
+    ldapTimeoutMS:
+        description: "Timeout in milliseconds for connecting to LDAP server(s)"
+        set_at: runtime
+        cpp_class:
+            name: LDAPTimeoutSetting
+            override_set: true
+    ldapQueryUser:
+        description: "Distinguished Name to use when querying LDAP server"
+        set_at: runtime
+        cpp_class: LDAPBindDNSetting
+    ldapQueryPassword:
+        description: "Password for ldapQueryUser authentication"
+        set_at: runtime
+        cpp_class: LDAPBindPasswordSetting
+        redact: true
+    ldapUserToDNMapping:
+        description: "LDAP user to DN mapping"
+        set_at: runtime
+        cpp_class: LDAPUserToDNMappingSetting
+    ldapAuthzQueryTemplate:
+        description: "LDAP authz query template"
+        set_at: runtime
+        cpp_class: LDAPQueryTemplateSetting
+

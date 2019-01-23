@@ -291,6 +291,7 @@ if "ldap" in env['MONGO_ENTERPRISE_FEATURES']:
         source=[
             "src/ldap/ldap_tool.cpp",
             "src/ldap/ldap_tool_options.cpp",
+            env.Idlc('src/ldap/ldap_tool_options.idl')[0],
         ] +  env.WindowsResourceFile("src/ldap/ldap_tool.rc"),
         LIBDEPS=[
             "$BUILD_DIR/mongo/base",

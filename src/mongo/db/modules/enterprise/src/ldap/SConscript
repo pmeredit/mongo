@@ -10,8 +10,10 @@ env.Library(
         env.Idlc("ldap_parameters.idl")[0],
         'ldap_manager_init.cpp'
     ],
-    LIBDEPS=['$BUILD_DIR/mongo/db/service_context',
-             'ldap_manager'],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/db/service_context',
+        'ldap_manager',
+    ],
     PROGDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/mongod',
         '$BUILD_DIR/mongo/mongos',
@@ -25,7 +27,13 @@ env.Library(
         'ldap_manager_impl.cpp',
         'ldap_options.cpp',
         'ldap_runtime_parameters.cpp',
-        'ldap_runner_impl.cpp'
+        'ldap_runner_impl.cpp',
+        env.Idlc('ldap_options.idl')[0],
+        env.Idlc('ldap_runtime_parameters.idl')[0],
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/idl/server_parameter',
+        '$BUILD_DIR/mongo/util/options_parser/options_parser',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/auth/auth',
@@ -38,26 +46,16 @@ env.Library(
 env.Library(
     target='ldap_options_mongod',
     source=[
-        'ldap_options_mongod.cpp',
+        env.Idlc('ldap_options_mongod.idl')[0],
     ],
     LIBDEPS=[
         'ldap_manager',
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/util/options_parser/options_parser',
     ],
     PROGDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/mongod',
-    ],
-)
-
-env.Library(
-    target='ldap_options_shared',
-    source=[
-        'ldap_options_shared.cpp',
-    ],
-    LIBDEPS=[
-        'ldap_manager',
-    ],
-    PROGDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/mongos',
     ],
 )
 
@@ -138,7 +136,6 @@ env.Library(
         '$BUILD_DIR/mongo/db/auth/authmongod',
         '$BUILD_DIR/mongo/db/mongodandmongos',
         '$BUILD_DIR/mongo/util/background_job',
-        '$BUILD_DIR/mongo/util/options_parser/options_parser',
     ],
     PROGDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/mongod',

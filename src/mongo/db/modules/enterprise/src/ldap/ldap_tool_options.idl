@@ -1,0 +1,34 @@
+# Copyright (C) 2019-present MongoDB, Inc.
+
+global:
+    cpp_namespace: "mongo"
+    cpp_includes: "ldap/ldap_tool_options.h"
+    configs:
+        source: [ cli, ini ]
+
+configs:
+    help:
+        description: 'Produce help message'
+        source: cli
+        arg_vartype: Switch
+    config:
+        description: 'Configuration file specifying additional options'
+        source: cli
+        single_name: f
+        arg_vartype: String
+    debug:
+        description: 'Produce more detailed log messages'
+        arg_vartype: Switch
+        cpp_varname: 'globalLDAPToolOptions->debug'
+    user:
+        description: 'User to authenticate and/or acquire roles for'
+        arg_vartype: String
+        cpp_varname: 'globalLDAPToolOptions->user'
+    password:
+        description: 'User password'
+        arg_vartype: String
+        redact: true
+    color:
+        description: 'Enable colored output'
+        arg_vartype: Bool
+        cpp_varname: 'globalLDAPToolOptions->color'
