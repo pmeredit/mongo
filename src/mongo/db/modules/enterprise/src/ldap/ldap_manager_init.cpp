@@ -7,9 +7,9 @@
 #include <memory>
 
 #include "mongo/base/init.h"
-#include "mongo/db/modules/enterprise/src/ldap/ldap_parameters_gen.h"
 #include "mongo/db/service_context.h"
 
+#include "ldap/ldap_parameters_gen.h"
 #include "ldap_manager_impl.h"
 #include "ldap_options.h"
 #include "ldap_query.h"
