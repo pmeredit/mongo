@@ -272,6 +272,7 @@ if "encryptdb" in env['MONGO_ENTERPRISE_FEATURES']:
         source=[
             "src/encryptdb/decrypt_tool.cpp",
             "src/encryptdb/decrypt_tool_options.cpp",
+            env.Idlc('src/encryptdb/decrypt_tool_options.idl')[0],
         ] + env.WindowsResourceFile("src/encryptdb/decrypt_tool.rc"),
         LIBDEPS=[
             "$BUILD_DIR/mongo/base",

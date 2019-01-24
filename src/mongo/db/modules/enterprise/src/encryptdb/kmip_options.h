@@ -6,19 +6,11 @@
 
 #include <string>
 
-#include "mongo/base/status.h"
 #include "mongo/base/status_with.h"
 #include "mongo/config.h"
 #include "mongo/util/net/ssl_options.h"
 
 namespace mongo {
-
-namespace optionenvironment {
-class OptionSection;
-class Environment;
-}  // namespace optionenvironment
-
-namespace moe = mongo::optionenvironment;
 
 struct KMIPParams {
     int kmipPort = 5696;
@@ -33,7 +25,10 @@ struct KMIPParams {
 #endif
 };
 
-void addKMIPOptions(moe::OptionSection* options);
-StatusWith<KMIPParams> parseKMIPOptions(const moe::Environment& params);
+namespace optionenvironment {
+class Environment;
+}  // namespace optionenvironment
+
+StatusWith<KMIPParams> parseKMIPOptions(const optionenvironment::Environment& params);
 
 }  // namespace mongo

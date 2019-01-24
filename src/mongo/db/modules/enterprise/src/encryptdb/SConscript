@@ -78,7 +78,9 @@ env.Library(target='symmetric_crypto',
                 'symmetric_crypto_${MONGO_CRYPTO}.cpp',
                 'symmetric_key.cpp',
                 'encryption_options.cpp',
-                'kmip_options.cpp'
+                'kmip_options.cpp',
+                env.Idlc('encryption_options.idl')[0],
+                env.Idlc('kmip_options.idl')[0],
             ],
             LIBDEPS=[
                 '$BUILD_DIR/mongo/base/secure_allocator',

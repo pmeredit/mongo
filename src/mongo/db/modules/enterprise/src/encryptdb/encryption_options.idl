@@ -1,0 +1,34 @@
+# Copyright (C) 2019-present MongoDB, Inc.
+
+global:
+    cpp_namespace: "mongo"
+    cpp_includes:
+        - "encryptdb/encryption_options.h"
+    configs:
+        section: 'Encryption at rest options'
+        source: [ cli, ini, yaml ]
+
+configs:
+    "security.enableEncryption":
+        description: 'Enable encryption at rest'
+        short_name: enableEncryption
+        arg_vartype: Switch
+        cpp_varname: 'encryptionGlobalParams.enableEncryption'
+    "security.encryptionKeyFile":
+        description: 'File path for encryption key file'
+        short_name: encryptionKeyFile
+        arg_vartype: String
+        cpp_varname: 'encryptionGlobalParams.encryptionKeyFile'
+        requires: "security.enableEncryption"
+    "security.encryptionCipherMode":
+        description: 'Cipher mode to use for encryption at rest'
+        short_name: encryptionCipherMode
+        arg_vartype: String
+        cpp_varname: 'encryptionGlobalParams.encryptionCipherMode'
+        requires: "security.enableEncryption"
+        validator:
+            callback: validateCipherModeOption
+    "security.kmip.rotateMasterKey":
+        description: 'Rotate master encryption key'
+        short_name: kmipRotateMasterKey
+        arg_vartype: Switch

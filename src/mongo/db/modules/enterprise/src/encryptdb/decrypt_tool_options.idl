@@ -1,0 +1,35 @@
+# Copyright (C) 2019-present MongoDB, Inc.
+
+global:
+    cpp_namespace: "mongo"
+    cpp_includes:
+        # For validateCipherModeOption callback
+        - "encryptdb/encryption_options.h"
+    configs:
+        source: cli
+
+configs:
+    help:
+        description: 'Produce help message'
+        arg_vartype: Switch
+    inputPath:
+        description: 'Path to encrypted administrative file'
+        arg_vartype: String
+    outputPath:
+        description: 'Path to where decrypted file will be placed'
+        arg_vartype: String
+    cipherMode:
+        description: 'Name of the cipher used to encrypt the data'
+        arg_vartype: String
+        default: 'AES256-CBC'
+        validator:
+            callback: validateCipherModeOption
+    keyFile:
+        description: 'Path to base64 encoded AES key on filesystem'
+        arg_vartype: String
+    verbose:
+        description: 'Increase verbosity'
+        arg_vartype: Switch
+    noConfirm:
+        description: 'Do not ask for confirmation before decrypting'
+        arg_vartype: Switch

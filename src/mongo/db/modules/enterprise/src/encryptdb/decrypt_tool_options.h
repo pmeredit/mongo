@@ -11,17 +11,12 @@
 #include <string>
 #include <vector>
 
+#include "mongo/base/status.h"
+
 #include "kmip_options.h"
 #include "symmetric_crypto.h"
 
 namespace mongo {
-
-namespace optionenvironment {
-class OptionSection;
-class Environment;
-}  // namespace optionenvironment
-
-namespace moe = mongo::optionenvironment;
 
 struct DecryptToolOptions {
     // Path to resource to decrypt
@@ -44,12 +39,5 @@ struct DecryptToolOptions {
 };
 
 extern DecryptToolOptions globalDecryptToolOptions;
-
-Status addDecryptToolOptions(moe::OptionSection* options);
-
-Status storeDecryptToolOptions(const moe::Environment& params,
-                               const std::vector<std::string>& args);
-
-void printDecryptToolHelp(std::ostream* out);
 
 }  // mongo

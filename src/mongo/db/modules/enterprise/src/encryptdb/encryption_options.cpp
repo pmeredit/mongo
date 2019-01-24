@@ -1,59 +1,32 @@
 /*
  *    Copyright (C) 2015 MongoDB Inc.
  */
-#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kControl
-
 #include "mongo/platform/basic.h"
 
 #include "encryption_options.h"
 
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
-#include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
-#include "mongo/util/options_parser/option_section.h"
 #include "mongo/util/options_parser/startup_option_init.h"
 #include "mongo/util/options_parser/startup_options.h"
 #include "symmetric_crypto.h"
+
+namespace moe = mongo::optionenvironment;
 
 namespace mongo {
 
 EncryptionGlobalParams encryptionGlobalParams;
 
-namespace {
-Status addEncryptionOptions(moe::OptionSection* options) {
-    moe::OptionSection encryptionOptions("Encryption at rest options");
-
-    encryptionOptions.addOptionChaining(
-        "security.enableEncryption", "enableEncryption", moe::Switch, "Enable encryption at rest");
-    encryptionOptions
-        .addOptionChaining("security.encryptionKeyFile",
-                           "encryptionKeyFile",
-                           moe::String,
-                           "File path for encryption key file")
-        .requires("security.enableEncryption");
-    encryptionOptions
-        .addOptionChaining("security.encryptionCipherMode",
-                           "encryptionCipherMode",
-                           moe::String,
-                           "Cipher mode to use for encryption at rest")
-        .requires("security.enableEncryption")
-        .format("(:?AES256-CBC)|(:?AES256-GCM)", "'AES256-CBC' or 'AES256-GCM'");
-    encryptionOptions.addOptionChaining("security.kmip.rotateMasterKey",
-                                        "kmipRotateMasterKey",
-                                        moe::Switch,
-                                        "Rotate master encryption key");
-    addKMIPOptions(&encryptionOptions);
-
-    Status ret = options->addSection(encryptionOptions);
-    if (!ret.isOK()) {
-        log() << "Failed to add encryption option section: " << ret.toString();
-        return ret;
+Status validateCipherModeOption(const std::string& mode) {
+    if ((mode != "AES256-CBC") && (mode != "AES256-GCM")) {
+        return {ErrorCodes::BadValue, "cipherMode must be one of 'AES256-CBC' or 'AES256-GCM'"};
     }
     return Status::OK();
 }
 
-static Status validateEncryptionOptions(const moe::Environment& params) {
+namespace {
+Status validateEncryptionOptions(const moe::Environment& params) {
     if (params.count("security.enableEncryption")) {
         if (params.count("storage.engine")) {
             std::string storageEngine = params["storage.engine"].as<std::string>();
@@ -95,8 +68,11 @@ static Status validateEncryptionOptions(const moe::Environment& params) {
     }
     return Status::OK();
 }
+}  // namespace
 
-Status storeEncryptionOptions(const moe::Environment& params) {
+MONGO_STARTUP_OPTIONS_STORE(EncryptionOptions)(InitializerContext* context) {
+    const auto& params = moe::startupOptionsParsed;
+
     Status validate = validateEncryptionOptions(params);
     if (!validate.isOK()) {
         return validate;
@@ -108,10 +84,6 @@ Status storeEncryptionOptions(const moe::Environment& params) {
     }
     encryptionGlobalParams.kmipParams = std::move(swKmipParams.getValue());
 
-    if (params.count("security.enableEncryption")) {
-        encryptionGlobalParams.enableEncryption = params["security.enableEncryption"].as<bool>();
-    }
-
     if (params.count("security.kmip.rotateMasterKey") &&
         params["security.kmip.rotateMasterKey"].as<bool>()) {
         encryptionGlobalParams.rotateMasterKey = true;
@@ -120,30 +92,11 @@ Status storeEncryptionOptions(const moe::Environment& params) {
         encryptionGlobalParams.kmipParams.kmipKeyIdentifier = "";
     }
 
-    if (params.count("security.encryptionKeyFile")) {
-        encryptionGlobalParams.encryptionKeyFile =
-            params["security.encryptionKeyFile"].as<std::string>();
-    }
-
-    if (params.count("security.encryptionCipherMode")) {
-        encryptionGlobalParams.encryptionCipherMode =
-            params["security.encryptionCipherMode"].as<std::string>();
-    }
-
     if (params.count("storage.queryableBackupMode")) {
         encryptionGlobalParams.readOnlyMode = params["storage.queryableBackupMode"].as<bool>();
     }
 
     return Status::OK();
-}
-}  // namespace
-
-MONGO_MODULE_STARTUP_OPTIONS_REGISTER(EncryptionOptions)(InitializerContext* context) {
-    return addEncryptionOptions(&moe::startupOptions);
-}
-
-MONGO_STARTUP_OPTIONS_STORE(EncryptionOptions)(InitializerContext* context) {
-    return storeEncryptionOptions(moe::startupOptionsParsed);
 }
 
 }  // namespace mongo

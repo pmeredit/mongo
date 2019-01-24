@@ -6,17 +6,11 @@
 
 #include <string>
 
+#include "mongo/base/status.h"
+
 #include "kmip_options.h"
 
 namespace mongo {
-class Status;
-
-namespace optionenvironment {
-class OptionSection;
-class Environment;
-}  // namespace optionenvironment
-
-namespace moe = mongo::optionenvironment;
 
 struct EncryptionGlobalParams {
     bool enableEncryption = false;
@@ -39,4 +33,6 @@ struct EncryptionGlobalParams {
 };
 
 extern EncryptionGlobalParams encryptionGlobalParams;
+Status validateCipherModeOption(const std::string&);
+
 }  // namespace mongo
