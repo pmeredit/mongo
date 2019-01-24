@@ -107,7 +107,7 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
             '$BUILD_DIR/mongo/db/auth/authprivilege',
             '$BUILD_DIR/mongo/db/matcher/expressions',
             '$BUILD_DIR/mongo/db/server_options_core',
-            '$BUILD_DIR/mongo/util/options_parser/options_parser'
+            '$BUILD_DIR/mongo/util/options_parser/options_parser',
         ],
         LIBDEPS_DEPENDENTS=[
             ('$BUILD_DIR/mongo/db/audit', libdeps.dependency.Public),
@@ -144,11 +144,14 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
     env.Library(
         target='audit_configuration',
         source=[
-            'src/audit/audit_options_init.cpp',
+            env.Idlc('src/audit/audit_options.idl')[0],
         ],
-        LIBDEPS=['audit_enterprise'],
+        LIBDEPS=[
+            'audit_enterprise',
+        ],
         LIBDEPS_PRIVATE=[
             '$BUILD_DIR/mongo/util/options_parser/options_parser',
+            '$BUILD_DIR/mongo/idl/server_parameter',
         ],
         PROGDEPS_DEPENDENTS=[
             '$BUILD_DIR/mongo/mongod',

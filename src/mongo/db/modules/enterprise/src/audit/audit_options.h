@@ -13,14 +13,6 @@
 #include "mongo/db/jsobj.h"
 
 namespace mongo {
-
-namespace optionenvironment {
-class OptionSection;
-class Environment;
-}  // namespace optionenvironment
-
-namespace moe = optionenvironment;
-
 namespace audit {
 
 struct AuditGlobalParams {
@@ -36,8 +28,8 @@ struct AuditGlobalParams {
 
 extern AuditGlobalParams auditGlobalParams;
 
-Status addAuditOptions(moe::OptionSection* options);
+Status validateAuditLogDestination(const std::string& dest);
+Status validateAuditLogFormat(const std::string& format);
 
-Status storeAuditOptions(const moe::Environment& params, const std::vector<std::string>& args);
 }  // namespace audit
 }  // namespace mongo

@@ -2,8 +2,6 @@
  *    Copyright (C) 2013 10gen Inc.
  */
 
-#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kAccessControl
-
 #include "audit_options.h"
 
 #include <boost/filesystem.hpp>
@@ -11,67 +9,43 @@
 #include "audit_event.h"
 #include "audit_manager.h"
 #include "audit_manager_global.h"
-#include "mongo/base/init.h"
 #include "mongo/base/status.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/db/json.h"
 #include "mongo/db/matcher/expression_parser.h"
-#include "mongo/db/server_options.h"
-#include "mongo/db/server_parameters.h"
-#include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
 #include "mongo/util/options_parser/environment.h"
-#include "mongo/util/options_parser/option_description.h"
-#include "mongo/util/options_parser/option_description.h"
-#include "mongo/util/options_parser/option_section.h"
-#include "mongo/util/options_parser/options_parser.h"
+#include "mongo/util/options_parser/startup_option_init.h"
 #include "mongo/util/options_parser/startup_options.h"
+
+namespace moe = mongo::optionenvironment;
 
 namespace mongo {
 namespace audit {
 
 AuditGlobalParams auditGlobalParams;
 
-Status addAuditOptions(moe::OptionSection* options) {
-    moe::OptionSection auditingOptions("Auditing Options");
-
-    auditingOptions
-        .addOptionChaining("auditLog.destination",
-                           "auditDestination",
-                           moe::String,
-                           "Destination of audit log output.  "
-                           "(console/syslog/file)")
-        .format("(:?console)|(:?syslog)|(:?file)", "(console/syslog/file)");
-
-    auditingOptions
-        .addOptionChaining("auditLog.format",
-                           "auditFormat",
-                           moe::String,
-                           "Format of the audit log, if logging to a file.  "
-                           "(BSON/JSON)")
-        .format("(:?BSON)|(:?JSON)", "(BSON/JSON)")
-        .requires("auditLog.destination");
-
-    auditingOptions
-        .addOptionChaining(
-            "auditLog.path", "auditPath", moe::String, "full filespec for audit log file")
-        .requires("auditLog.destination");
-
-    auditingOptions
-        .addOptionChaining(
-            "auditLog.filter", "auditFilter", moe::String, "filter spec to screen audit records")
-        .requires("auditLog.destination");
-
-    Status ret = options->addSection(auditingOptions);
-    if (!ret.isOK()) {
-        log() << "Failed to add auditing option section: " << ret.toString();
-        return ret;
+Status validateAuditLogDestination(const std::string& strDest) {
+    StringData dest(strDest);
+    if (!dest.equalCaseInsensitive("console"_sd) && !dest.equalCaseInsensitive("syslog"_sd) &&
+        !dest.equalCaseInsensitive("file"_sd)) {
+        return {ErrorCodes::BadValue,
+                "auditDestination must be one of 'console', 'syslog', or 'file'"};
     }
-
     return Status::OK();
 }
 
-Status storeAuditOptions(const moe::Environment& params, const std::vector<std::string>& args) {
+Status validateAuditLogFormat(const std::string& strFormat) {
+    StringData format(strFormat);
+    if (!format.equalCaseInsensitive("BSON"_sd) && !format.equalCaseInsensitive("JSON"_sd)) {
+        return {ErrorCodes::BadValue, "auditFormat must be one of 'BSON' or 'JSON'"};
+    }
+    return Status::OK();
+}
+
+MONGO_STARTUP_OPTIONS_STORE(AuditOptions)(InitializerContext* context) {
+    const auto& params = moe::startupOptionsParsed;
+
     if (params.count("auditLog.destination")) {
         auditGlobalParams.enabled = true;
         std::string auditDestination = params["auditLog.destination"].as<std::string>();
@@ -140,11 +114,6 @@ Status storeAuditOptions(const moe::Environment& params, const std::vector<std::
 
     return Status::OK();
 }
-
-ExportedServerParameter<bool, ServerParameterType::kStartupAndRuntime>
-    AuditAuthorizationSuccessSetting(ServerParameterSet::getGlobal(),
-                                     "auditAuthorizationSuccess",
-                                     &auditGlobalParams.auditAuthorizationSuccess);
 
 }  // namespace audit
 }  // namespace mongo

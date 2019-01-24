@@ -18,7 +18,6 @@
 #include "mongo/db/client.h"
 #include "mongo/db/commands.h"
 #include "mongo/db/commands/authentication_commands.h"
-#include "mongo/db/server_parameters.h"
 #include "mongo/util/base64.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"

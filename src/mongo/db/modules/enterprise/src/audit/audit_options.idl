@@ -1,0 +1,41 @@
+# Copyright (C) 2019-present MongoDB, Inc.
+
+global:
+    cpp_namespace: "mongo::audit"
+    cpp_includes:
+        - "audit/audit_options.h"
+    configs:
+        section: 'Auditing Options'
+        source: [ cli, ini, yaml ]
+
+server_parameters:
+    auditAuthorizationSuccess:
+        description: 'Enable to audit when authentication succeeds'
+        cpp_varname: auditGlobalParams.auditAuthorizationSuccess
+        set_at: [ startup, runtime ]
+        default: false
+
+configs:
+    "auditLog.destination":
+        description: 'Destination of audit log output. (console/syslog/file)'
+        short_name: auditDestination
+        arg_vartype: String
+        validator:
+            callback: validateAuditLogDestination
+    "auditLog.format":
+        description: 'Format of the audit log, if logging to a file. (BSON/JSON)'
+        short_name: auditFormat
+        arg_vartype: String
+        requires: 'auditLog.destination'
+        validator:
+            callback: validateAuditLogFormat
+    "auditLog.path":
+        description: 'Full filespec for audit log file'
+        short_name: auditPath
+        arg_vartype: String
+        requires: 'auditLog.destination'
+    "auditLog.filter":
+        description: 'Filter spec to screen audit records'
+        short_name: auditFilter
+        arg_vartype: String
+        requires: 'auditLog.destination'

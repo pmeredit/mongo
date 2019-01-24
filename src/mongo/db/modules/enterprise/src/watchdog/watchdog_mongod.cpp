@@ -16,7 +16,6 @@
 #include "mongo/db/client.h"
 #include "mongo/db/commands/server_status.h"
 #include "mongo/db/server_options.h"
-#include "mongo/db/server_parameters.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/stdx/memory.h"
