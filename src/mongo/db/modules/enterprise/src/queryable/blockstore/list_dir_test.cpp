@@ -22,14 +22,14 @@ namespace {
 
 class ListDirTest : public unittest::Test {};
 
-class MockedHttpClient final : public HttpClient {
+class MockedHttpClient : public HttpClient {
 public:
-    DataBuilder post(StringData, ConstDataRange) const final {
+    virtual DataBuilder post(StringData, ConstDataRange) const {
         invariant(false);
         return DataBuilder();
     }
 
-    DataBuilder get(StringData) const final {
+    virtual DataBuilder get(StringData) const {
         BSONObjBuilder objBuilder;
         objBuilder.append("ok", true);
         std::vector<BSONObj> files;
@@ -56,15 +56,59 @@ public:
     }
 
     // Ignore client configs.
-    void allowInsecureHTTP(bool) final {}
-    void setHeaders(const std::vector<std::string>& headers) final {}
-    void setConnectTimeout(Seconds timeout) final {}
-    void setTimeout(Seconds timeout) final {}
+    virtual void allowInsecureHTTP(bool) {}
+    virtual void setHeaders(const std::vector<std::string>& headers) {}
+    virtual void setConnectTimeout(Seconds timeout) {}
+    virtual void setTimeout(Seconds timeout) {}
+};
+
+class LargeListDir : public MockedHttpClient {
+public:
+    virtual DataBuilder get(StringData) const {
+        BSONObjBuilder builder;
+        builder.append("ok", true);
+
+        const long long GB = 1024 * 1024 * 1024;
+
+        std::uint64_t bsonSize = 0;
+        std::vector<BSONObj> files;
+        while (bsonSize < 50 * 1024 * 1024) {
+            BSONObjBuilder file;
+            file.append("filename", "index-1323-8358821207107156793.wt");
+            file.append("fileSize", 3 * GB);
+            file.append("blockSize", 16 * 1024 * 1024);
+
+            bsonSize += file.len();
+            files.emplace_back(file.obj());
+        }
+
+        _numFilesInResponse = files.size();
+
+        builder.append("files", files);
+        BSONObj obj = builder.obj<BSONObj::LargeSizeTrait>();
+        DataBuilder copy(obj.objsize());
+        _numBytesInResponse = obj.objsize();
+        uassertStatusOK(copy.write(ConstDataRange(obj.objdata(), obj.objsize())));
+
+        return copy;
+    }
+
+    virtual std::size_t getNumFilesInResponse() {
+        return _numFilesInResponse;
+    }
+
+    virtual std::size_t getNumBytesInResponse() {
+        return _numBytesInResponse;
+    }
+
+private:
+    mutable std::size_t _numFilesInResponse = 0;
+    mutable std::size_t _numBytesInResponse = 0;
 };
 
 TEST_F(ListDirTest, ListDirs) {
     queryable::BlockstoreHTTP blockstore("", mongo::OID(), std::make_unique<MockedHttpClient>());
-    auto swFiles = listDirectory(std::move(blockstore));
+    auto swFiles = listDirectory(blockstore);
     ASSERT_TRUE(swFiles.isOK());
     ASSERT_EQ(static_cast<std::size_t>(2), swFiles.getValue().size());
     struct File file = swFiles.getValue()[0];
@@ -76,6 +120,17 @@ TEST_F(ListDirTest, ListDirs) {
     ASSERT_EQ("index-1323-8358821207107156793.wt", file.filename);
     ASSERT_EQ(static_cast<int64_t>(20480), file.fileSize);
     ASSERT_EQ(static_cast<int32_t>(64 * 1024), file.blockSize);
+}
+
+TEST_F(ListDirTest, LargeListDir) {
+    auto httpClient = std::make_unique<LargeListDir>();
+    LargeListDir* httpClientPtr = httpClient.get();
+
+    queryable::BlockstoreHTTP blockstore("", mongo::OID(), std::move(httpClient));
+    auto swFiles = listDirectory(blockstore);
+    ASSERT_TRUE(swFiles.isOK()) << swFiles.getStatus();
+    ASSERT_EQ(httpClientPtr->getNumFilesInResponse(), swFiles.getValue().size());
+    ASSERT_GT(httpClientPtr->getNumBytesInResponse(), static_cast<std::size_t>(50 * 1024 * 1024));
 }
 
 }  // namespace

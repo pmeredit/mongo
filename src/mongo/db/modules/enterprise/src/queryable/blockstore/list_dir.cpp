@@ -31,7 +31,7 @@ StatusWith<std::vector<struct File>> listDirectory(const BlockstoreHTTP& blockst
     }
 
     auto dataPtr = swListdirResponse.getValue().release();
-    auto bsonObj = BSONObj(dataPtr.get());
+    auto bsonObj = BSONObj(dataPtr.get(), BSONObj::LargeSizeTrait{});
     bool isOk;
     auto status = bsonExtractBooleanField(bsonObj, "ok", &isOk);
     if (!status.isOK()) {
