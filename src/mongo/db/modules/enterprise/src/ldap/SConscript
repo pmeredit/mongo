@@ -126,6 +126,7 @@ env.Library(
     source=[
         'authz_manager_external_state_ldap.cpp',
         'ldap_user_cache_invalidator_job.cpp',
+        env.Idlc('ldap_user_cache_invalidator_job.idl')[0],
     ],
     LIBDEPS=[
         'ldap_manager',
@@ -136,6 +137,9 @@ env.Library(
         '$BUILD_DIR/mongo/db/auth/authmongod',
         '$BUILD_DIR/mongo/db/mongodandmongos',
         '$BUILD_DIR/mongo/util/background_job',
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/idl/server_parameter',
     ],
     PROGDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/mongod',

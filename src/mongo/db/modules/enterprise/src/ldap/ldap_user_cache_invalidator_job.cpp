@@ -8,6 +8,7 @@
 
 #include "ldap_user_cache_invalidator_job.h"
 
+#include "ldap/ldap_user_cache_invalidator_job_gen.h"
 #include "mongo/base/init.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/client.h"
@@ -23,40 +24,37 @@
 
 namespace mongo {
 namespace {
-AtomicWord<int> ldapUserCacheInvalidationInterval(30);  // 30 second default
+AtomicWord<int> ldapUserCacheInvalidationInterval(
+    LDAPUserCacheInvalidationIntervalParameter::kDataDefault);  // seconds
 stdx::mutex invalidationIntervalMutex;
 stdx::condition_variable invalidationIntervalChanged;
-
-// TODO: Factor this and the user_cache_invalidator_job into a single
-// 'exported condition parameter' class
-class ExportedLDAPInvalidationIntervalParameter
-    : public ExportedServerParameter<std::int32_t, ServerParameterType::kStartupAndRuntime> {
-public:
-    ExportedLDAPInvalidationIntervalParameter()
-        : ExportedServerParameter<std::int32_t, ServerParameterType::kStartupAndRuntime>(
-              ServerParameterSet::getGlobal(),
-              "ldapUserCacheInvalidationInterval",
-              &ldapUserCacheInvalidationInterval) {}
-    Status validate(const std::int32_t& potentialNewValue) final {
-        if (potentialNewValue < 1 || potentialNewValue > 86400) {
-            return Status(ErrorCodes::BadValue,
-                          "ldapUserCacheInvalidationIntervalSecs must be between 1 "
-                          "and 86400 (24 hours)");
-        }
-        return Status::OK();
-    }
-
-    using ExportedServerParameter<std::int32_t, ServerParameterType::kStartupAndRuntime>::set;
-    Status set(const std::int32_t& newValue) final {
-        stdx::unique_lock<stdx::mutex> lock(invalidationIntervalMutex);
-        Status status =
-            ExportedServerParameter<std::int32_t, ServerParameterType::kStartupAndRuntime>::set(
-                newValue);
-        invalidationIntervalChanged.notify_all();
-        return status;
-    }
-} exportedIntervalParam;
 }  // namespace
+
+void LDAPUserCacheInvalidationIntervalParameter::append(OperationContext*,
+                                                        BSONObjBuilder& b,
+                                                        const std::string& name) {
+    b << name << ldapUserCacheInvalidationInterval.load();
+}
+
+Status LDAPUserCacheInvalidationIntervalParameter::setFromString(const std::string& str) {
+    int value;
+    auto status = parseNumberFromString(str, &value);
+    if (!status.isOK()) {
+        return {ErrorCodes::BadValue,
+                str::stream() << name() << " must be a numeric value, '" << str << "' provided"};
+    }
+
+    if ((value < 1) || (value > 86400)) {
+        return {ErrorCodes::BadValue,
+                str::stream() << name() << " must be between 1 and 86400 (24 hours)"};
+    }
+
+    stdx::unique_lock<stdx::mutex> lock(invalidationIntervalMutex);
+    ldapUserCacheInvalidationInterval.store(value);
+    invalidationIntervalChanged.notify_all();
+
+    return Status::OK();
+}
 
 std::string LDAPUserCacheInvalidator::name() const {
     return "LDAPUserCacheInvalidatorThread";

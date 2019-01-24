@@ -1,0 +1,15 @@
+# Copyright (C) 2019-present MongoDB, Inc.
+
+global:
+    cpp_namespace: "mongo"
+    cpp_includes:
+        - "mongo/db/auth/sasl_options.h"
+
+server_parameters:
+    "authFailedDelayMs":
+        description: ''
+        set_at: [ startup, runtime ]
+        cpp_varname: 'saslGlobalParams.authFailedDelay'
+        validator:
+            gte: 0
+            lte: 5000

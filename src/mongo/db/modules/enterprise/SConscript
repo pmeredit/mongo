@@ -200,9 +200,12 @@ if "sasl" in env['MONGO_ENTERPRISE_FEATURES']:
     env.Library(
         target='auth_delay',
         source=[
-            'src/sasl/auth_delay.cpp',
+            env.Idlc('src/sasl/auth_delay.idl')[0],
         ],
-        LIBDEPS=['$BUILD_DIR/mongo/db/auth/sasl_options'],
+        LIBDEPS_PRIVATE=[
+            '$BUILD_DIR/mongo/db/auth/sasl_options',
+            '$BUILD_DIR/mongo/idl/server_parameter',
+        ],
         PROGDEPS_DEPENDENTS=[
             '$BUILD_DIR/mongo/mongod',
             '$BUILD_DIR/mongo/mongos',

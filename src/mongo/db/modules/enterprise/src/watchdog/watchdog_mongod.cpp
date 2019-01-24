@@ -26,6 +26,7 @@
 #include "mongo/util/log.h"
 #include "mongo/util/tick_source_mock.h"
 #include "watchdog.h"
+#include "watchdog/watchdog_mongod_gen.h"
 
 namespace mongo {
 
@@ -49,39 +50,31 @@ WatchdogMonitor* getGlobalWatchdogMonitor() {
     return getWatchdogMonitor(getGlobalServiceContext()).get();
 }
 
-AtomicWord<int> localPeriodSeconds(watchdogPeriodSecondsDefault);
+}  // namespace
 
-class ExportedWatchdogPeriodParameter
-    : public ExportedServerParameter<std::int32_t, ServerParameterType::kStartupAndRuntime> {
-public:
-    ExportedWatchdogPeriodParameter()
-        : ExportedServerParameter<std::int32_t, ServerParameterType::kStartupAndRuntime>(
-              ServerParameterSet::getGlobal(), "watchdogPeriodSeconds", &localPeriodSeconds) {}
+Status validateWatchdogPeriodSeconds(const int& value) {
+    if (value < 60 && value != -1) {
 
-    virtual Status validate(const std::int32_t& potentialNewValue) {
-        if (potentialNewValue < 60 && potentialNewValue != -1) {
-            return Status(ErrorCodes::BadValue,
-                          "watchdogPeriodSeconds must be greater than or equal to 60s");
-        }
-
-        // If the watchdog was not enabled at startup, disallow changes the period.
-        if (!watchdogEnabled) {
-            return Status(
-                ErrorCodes::BadValue,
-                "watchdogPeriodSeconds cannot be changed at runtime if it was not set at startup");
-        }
-
-        auto monitor = getGlobalWatchdogMonitor();
-        if (monitor) {
-            monitor->setPeriod(Seconds(potentialNewValue));
-        }
-
-        return Status::OK();
+        return {ErrorCodes::BadValue, "watchdogPeriodSeconds must be greater than or equal to 60s"};
     }
 
-} exportedWatchdogPeriodParameter;
+    // If the watchdog was not enabled at startup, disallow changes the period.
+    if (!watchdogEnabled) {
+        return {ErrorCodes::BadValue,
+                "watchdogPeriodSeconds cannot be changed at runtime if it was not set at startup"};
+    }
 
-}  // namespace
+    return Status::OK();
+}
+
+Status onUpdateWatchdogPeriodSeconds(const int& value) {
+    auto monitor = getGlobalWatchdogMonitor();
+    if (monitor) {
+        monitor->setPeriod(Seconds(value));
+    }
+
+    return Status::OK();
+}
 
 /**
  * Server status section for the Watchdog.
@@ -107,7 +100,7 @@ public:
 
         result.append("checkGeneration", watchdog->getCheckGeneration());
         result.append("monitorGeneration", watchdog->getMonitorGeneration());
-        result.append("monitorPeriod", localPeriodSeconds.load());
+        result.append("monitorPeriod", gWatchdogPeriodSeconds.load());
 
         return result.obj();
     }
@@ -119,7 +112,7 @@ void startWatchdog() {
     // 2. log path - optional
     // 3. audit path - optional
 
-    Seconds period{localPeriodSeconds.load()};
+    Seconds period{gWatchdogPeriodSeconds.load()};
     if (period < Seconds::zero()) {
         // Skip starting the watchdog if the user has not asked for it.
         watchdogEnabled = false;

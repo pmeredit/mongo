@@ -4,15 +4,19 @@
 
 #pragma once
 
-#include <cstdint>
+#include "mongo/base/status.h"
 
 namespace mongo {
-
-constexpr std::int32_t watchdogPeriodSecondsDefault = -1;
 
 /**
 * Start the watchdog.
 */
 void startWatchdog();
+
+/**
+ * Callbacks used by the 'watchdogPeriodSeconds' set parameter.
+ */
+Status validateWatchdogPeriodSeconds(const int& value);
+Status onUpdateWatchdogPeriodSeconds(const int& value);
 
 }  // namespace mongo
