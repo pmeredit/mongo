@@ -34,16 +34,16 @@ MONGO_INITIALIZER_GENERAL(LDAPToolUseStrict,
 MONGO_STARTUP_OPTIONS_VALIDATE(MongoLDAPToolOptions)(InitializerContext* context) {
     const auto& params = moe::startupOptionsParsed;
 
-    if (!params.count("user")) {
-        return {ErrorCodes::BadValue, "Missing required option: \"--user\""};
-    }
-
     if (params.count("help")) {
         std::cout << "Usage: mongoldap [options] " << std::endl
                   << "Version " << mongo::VersionInfoInterface::instance().version() << std::endl
                   << std::endl
                   << moe::startupOptions.helpString() << std::flush;
         quickExit(EXIT_SUCCESS);
+    }
+
+    if (!params.count("user")) {
+        return {ErrorCodes::BadValue, "Missing required option: \"--user\""};
     }
 
     return Status::OK();
@@ -60,7 +60,7 @@ MONGO_STARTUP_OPTIONS_STORE(MongoLDAPToolOptions)(InitializerContext* context) {
     return Status::OK();
 }
 
-MONGO_INITIALIZER_GENERAL(MongoLDAPToolOptions, ("SecureAllocator"), ("MongoLDAPToolOptions_Store"))
+MONGO_INITIALIZER_GENERAL(MongoLDAPToolOptions, ("SecureAllocator"), ("BeginStartupOptionStorage"))
 (InitializerContext* context) {
     globalLDAPToolOptions = new LDAPToolOptions();
     return Status::OK();
