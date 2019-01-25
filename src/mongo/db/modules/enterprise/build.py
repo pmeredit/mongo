@@ -21,6 +21,7 @@ def configure(conf, env):
     all_features = [
         "audit",
         "encryptdb",
+        "fle",
         "hot_backups",
         "inmemory",
         "ldap",
@@ -137,6 +138,8 @@ def configure(conf, env):
         env.Append(DIST_BINARIES=[ "enterprise/mongodecrypt" ])
     if 'ldap' in env['MONGO_ENTERPRISE_FEATURES']:
         env.Append(DIST_BINARIES=[ "enterprise/mongoldap" ])
+    if 'fle' in env['MONGO_ENTERPRISE_FEATURES']:
+        env.Append(DIST_BINARIES=[ "enterprise/mongocryptd" ])
 
     def addFileInExtraPath(file_name):
         # We look for libraries in the peer 'bin' directory of each path in the libpath.

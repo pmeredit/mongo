@@ -9,6 +9,7 @@ import libdeps
 hygienic = get_option('install-mode') == 'hygienic'
 
 feature_dirs = [
+    "fle",
     "encryptdb",
     "hot_backups",
     "inmemory",
@@ -309,3 +310,20 @@ if "ldap" in env['MONGO_ENTERPRISE_FEATURES']:
 
     if not hygienic:
         env.Install("#/", mongoldap)
+
+
+if "fle" in env['MONGO_ENTERPRISE_FEATURES']:
+    mongocryptd = env.Program(
+        target="mongocryptd",
+        source=[
+            "src/fle/cryptd/cryptd_main.cpp",
+        ],
+        LIBDEPS_PRIVATE=[
+            '$BUILD_DIR/mongo/util/options_parser/options_parser_init',
+        ],
+    )
+
+    if not hygienic:
+        env.Install("#/", mongocryptd)
+
+    env.Alias("all", mongocryptd)
