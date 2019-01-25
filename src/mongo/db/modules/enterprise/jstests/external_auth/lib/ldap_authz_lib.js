@@ -206,28 +206,28 @@ function authAndVerify({conn, options}) {
         "authenticatedUsers": [{"user": options.user, "db": "$external"}],
         "authenticatedUserRoles": [{"role": defaultRole, "db": "admin"}]
     };
-    if (options.user.contains("ldapz_ldap1") || options.user.contains("ldapz_ldap2")) {
+    if (options.user.includes("ldapz_ldap1") || options.user.includes("ldapz_ldap2")) {
         authInfo.authenticatedUserRoles = authInfo.authenticatedUserRoles.concat([
             {"role": "cn=groupC,ou=Groups,dc=10gen,dc=cc", "db": "admin"},
             {"role": "cn=groupB,ou=Groups,dc=10gen,dc=cc", "db": "admin"},
             {"role": "cn=groupA,ou=Groups,dc=10gen,dc=cc", "db": "admin"}
         ]);
-        if (options.user.contains("ldapz_ldap1")) {
+        if (options.user.includes("ldapz_ldap1")) {
             authInfo.authenticatedUserRoles = authInfo.authenticatedUserRoles.concat(
                 [{"role": "cn=groupD,ou=Groups,dc=10gen,dc=cc", "db": "admin"}]);
         }
 
-        if (options.user.contains("ldapz_ldap2")) {
+        if (options.user.includes("ldapz_ldap2")) {
             authInfo.authenticatedUserRoles = authInfo.authenticatedUserRoles.concat(
                 [{"role": "cn=groupE,ou=Groups,dc=10gen,dc=cc", "db": "admin"}]);
         }
     }
 
-    if (options.user.contains("ldapz_kerberos1") || options.user.contains("ldapz_kerberos2")) {
+    if (options.user.includes("ldapz_kerberos1") || options.user.includes("ldapz_kerberos2")) {
         authInfo.authenticatedUserRoles = authInfo.authenticatedUserRoles.concat(
             [{"role": "cn=ldapz_kerberos2-group,ou=Groups,dc=10gen,dc=cc", "db": "admin"}]);
 
-        if (options.user.contains("ldapz_kerberos1")) {
+        if (options.user.includes("ldapz_kerberos1")) {
             authInfo.authenticatedUserRoles = authInfo.authenticatedUserRoles.concat(
                 [{"role": "cn=ldapz_kerberos1-group,ou=Groups,dc=10gen,dc=cc", "db": "admin"}]);
         }
