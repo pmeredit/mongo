@@ -210,12 +210,10 @@ Status findAndValidateTokens(const std::string& input,
 StatusWith<UserNameSubstitutionLDAPQueryConfig> LDAPQueryConfig::createLDAPQueryConfigWithUserName(
     const std::string& input) {
     Status tokensValidated = findAndValidateTokens(input, [](StringData token) {
-        if (token != kUserNameMatchToken && token != kProvidedUserNameMatchToken) {
+        const StringData userToken = "USER";
+        if (token != userToken) {
             return Status(ErrorCodes::FailedToParse,
-                          str::stream() << "Expected token '{USER}' or '{PROVIDED_USER}', "
-                                           "but found '"
-                                        << token
-                                        << "'");
+                          str::stream() << "Expected token '{USER}', but found '" << token << "'");
         }
         return Status::OK();
     });

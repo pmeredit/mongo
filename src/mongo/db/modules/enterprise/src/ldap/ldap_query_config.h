@@ -6,8 +6,6 @@
 
 #include "ldap_type_aliases.h"
 
-#include "mongo/base/string_data.h"
-
 #include <cstdint>
 #include <ostream>
 #include <string>
@@ -16,12 +14,7 @@ namespace mongo {
 
 template <typename T>
 class StatusWith;
-
-/*
- * These are the token names available when interpolating the query filter.
- */
-static constexpr auto kUserNameMatchToken = "{USER}"_sd;
-static constexpr auto kProvidedUserNameMatchToken = "{PROVIDED_USER}"_sd;
+class StringData;
 
 /**
  * LDAP URIs may specify a 'scope' for a search, which defines which objects it shall cover.

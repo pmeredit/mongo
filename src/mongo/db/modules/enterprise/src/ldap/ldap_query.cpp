@@ -18,25 +18,24 @@
 namespace mongo {
 
 namespace {
+constexpr auto kUserNameMatchToken("{USER}"_sd);
 
 /**
- * For each replacement pair, replace all occurrences of first with second in *str.
- * If *str does not equal the replacement value then *str is updated. Returns true
- * if any replacements occurred.
+ * Iterate though 'input', replacing every instance of 'token' with 'replacement'
+ * and writing the resulting string to 'out'. Returns true if any replacements
+ * performed.
  */
-using ReplacementList = std::initializer_list<std::pair<StringData, StringData>>;
-bool substituteTokens(std::string* str, const ReplacementList& replacements) {
-    auto replacementOccurred = false;
-    for (const auto& replacement : replacements) {
-        auto transformed = boost::replace_all_copy(*str, replacement.first, replacement.second);
-        if (transformed != *str) {
-            *str = transformed;
-            replacementOccurred = true;
-        }
-    }
+bool substituteToken(const StringData input,
+                     const StringData token,
+                     const StringData replacement,
+                     std::string* out) {
+    invariant(out);
+    *out = input.toString();
+    boost::replace_all(*out, token, replacement);
 
-    return replacementOccurred;
+    return *out != input;
 }
+
 /**
  * RFC4515 escaping for RFC4514-style escaped DNs so those strings can be used
  * in an LDAP filter.
@@ -116,19 +115,16 @@ StatusWith<LDAPQuery> LDAPQuery::instantiateQuery(const LDAPQueryConfig& paramet
     return LDAPQuery(parameters);
 }
 
-
 StatusWith<LDAPQuery> LDAPQuery::instantiateQuery(
-    const UserNameSubstitutionLDAPQueryConfig& parameters,
-    StringData userName,
-    StringData originalUserName) {
+    const UserNameSubstitutionLDAPQueryConfig& parameters, StringData userName) {
     LDAPQuery instance(parameters);
 
     std::string escapedDN = escapeDN(userName.toString());
 
-    bool replacedDN = substituteTokens(&instance._baseDN, {{kUserNameMatchToken, userName}});
-    bool replacedFilter = substituteTokens(
-        &instance._filter,
-        {{kUserNameMatchToken, escapedDN}, {kProvidedUserNameMatchToken, originalUserName}});
+    bool replacedDN = substituteToken(
+        parameters.baseDN, kUserNameMatchToken, userName.toString(), &instance._baseDN);
+    bool replacedFilter = substituteToken(
+        parameters.filter, kUserNameMatchToken, std::move(escapedDN), &instance._filter);
     if (!(replacedDN || replacedFilter)) {
         return Status(
             ErrorCodes::FailedToParse,
@@ -146,10 +142,11 @@ StatusWith<LDAPQuery> LDAPQuery::instantiateQuery(
 
     for (size_t i = 0; i < components.size(); ++i) {
         std::string token = mongoutils::str::stream() << "{" << i << "}";
-        ReplacementList replacements = {{token, components[i]}};
 
-        bool replacedDN = substituteTokens(&instance._baseDN, replacements);
-        bool replacedFilter = substituteTokens(&instance._filter, replacements);
+        bool replacedDN =
+            substituteToken(parameters.baseDN, token, components[i], &instance._baseDN);
+        bool replacedFilter =
+            substituteToken(parameters.filter, token, components[i], &instance._filter);
 
         if (!(replacedDN || replacedFilter)) {
             return Status(
