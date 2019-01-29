@@ -156,7 +156,20 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
         ])
 
 if not env.TargetOSIs("darwin") and "snmp" in env['MONGO_ENTERPRISE_FEATURES']:
-    env.Library(
+
+    snmpEnv = env.Clone()
+
+    if snmpEnv.TargetOSIs('windows'):
+        snmpEnv.Append(
+            CCFLAGS=[
+                # C5033: 'register' is no longer a supported storage
+                # class. The snmp library still uses the 'register'
+                # keyword.
+                "/wd5033",
+            ],
+        )
+
+    snmpEnv.Library(
         target='mongosnmp',
         source=[
             'src/snmp/serverstatus_client.cpp',
@@ -179,7 +192,7 @@ if not env.TargetOSIs("darwin") and "snmp" in env['MONGO_ENTERPRISE_FEATURES']:
             '$BUILD_DIR/mongo/util/options_parser/options_parser',
         ],
         PROGDEPS_DEPENDENTS=['$BUILD_DIR/mongo/mongod'],
-        SYSLIBDEPS=env.get('SNMP_SYSLIBDEPS', []),
+        SYSLIBDEPS=snmpEnv.get('SNMP_SYSLIBDEPS', []),
     )
 
 if "sasl" in env['MONGO_ENTERPRISE_FEATURES']:
