@@ -2,7 +2,7 @@ Import("env")
 
 env = env.Clone()
 
-env.InjectThirdPartyIncludePaths(libraries=['wiredtiger'])
+env.InjectThirdParty(libraries=['wiredtiger'])
 
 env.Library(
     target='queryable_wt',

@@ -9,7 +9,7 @@ if not wiredtiger:
     env.FatalError("The InMemory storage engine requires WiredTiger")
 
 wtEnv = env.Clone()
-wtEnv.InjectThirdPartyIncludePaths(libraries=['wiredtiger'])
+wtEnv.InjectThirdParty(libraries=['wiredtiger'])
 wtEnv.Library(
     target='storage_inmemory',
     source=[

@@ -44,12 +44,18 @@ int mapScopeToLDAP(const LDAPQueryScope& type);
 // to NULL.
 //
 template <typename T>
-class LDAPArrayIterator : public std::iterator<std::forward_iterator_tag, const T> {
+class LDAPArrayIterator {
 public:
+    using iterator_category = std::forward_iterator_tag;
+    using value_type = const T;
+    using difference_type = std::ptrdiff_t;
+    using pointer = value_type*;
+    using reference = value_type&;
+
     // Constructs a iterator, beginning at the element in basePtr.
     // If basePtr is nullptr, produces a past-the-end iterator.
     // The zero argument constructor of this class returns a past-the-end iterator.
-    explicit LDAPArrayIterator(const T* basePtr = nullptr) noexcept : _basePtr(basePtr) {
+    explicit LDAPArrayIterator(pointer basePtr = nullptr) noexcept : _basePtr(basePtr) {
         static_assert(std::is_pointer<T>::value,
                       "LDAPArrayIterator must traverse an array of pointers");
         // If this a pointer to an empty array, treat it as if we never got an array at all
@@ -88,7 +94,7 @@ private:
             }
         }
     }
-    const T* _basePtr;
+    pointer _basePtr;
 };
 
 /**
