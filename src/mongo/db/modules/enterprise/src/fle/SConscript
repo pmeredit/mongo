@@ -3,6 +3,15 @@
 Import('env')
 Import('get_option')
 
+env.SConscript(
+    dirs=[
+        'query_analysis',
+    ],
+    exports=[
+        'env'
+    ],
+)
+
 env.Library(
     target="cryptd_commands",
     source=[
