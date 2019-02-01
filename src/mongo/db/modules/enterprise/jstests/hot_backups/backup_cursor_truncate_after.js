@@ -102,21 +102,20 @@
         let conn = new Mongo(host);
         let docNum = 0;
         let sampledOpTimes = [];
-        while (docNum < 100 * 1000) {
-            // Writers will write a document, record the operationTime the server returns and
-            // check if a backup cursor was opened.
-            let result = assert.commandWorked(collFn(conn, preBackupCursor).runCommand("insert", {
-                documents: [{docNum: ++docNum, payload: largePayload}]
-            }));
-            if (docNum % 50 == 0) {
-                sampledOpTimes.push({doc: docNum, opTime: result["operationTime"]});
+        assert.soon(function() {
+            if (docNum < 1000) {
+                // Writers will write a document, record the operationTime the server returns and
+                // check if a backup cursor was opened.
+                let result =
+                    assert.commandWorked(collFn(conn, preBackupCursor).runCommand("insert", {
+                        documents: [{docNum: ++docNum, payload: largePayload}]
+                    }));
+                if (docNum % 50 == 0) {
+                    sampledOpTimes.push({doc: docNum, opTime: result["operationTime"]});
+                }
             }
-
-            if (backupCollFn(conn).find().itcount() == 1) {
-                break;
-            }
-        }
-
+            return backupCollFn(conn).find().itcount() == 1;
+        });
         jsTestLog({
             msg: "Writer observed the backup cursor. Draining.",
             coll: collFn(conn, preBackupCursor),
