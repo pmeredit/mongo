@@ -1127,6 +1127,14 @@ TEST(Decimal128Test, TestDecimal128Quantize) {
         ASSERT_EQUALS(result.getValue().low64, expected.getValue().low64);
         ASSERT_EQUALS(result.getValue().high64, expected.getValue().high64);
     }
+    {
+        Decimal128 expected("1");
+        Decimal128 val("1");
+        Decimal128 ref("0");
+        Decimal128 result = val.quantize(ref, Decimal128::kRoundTowardZero);
+        ASSERT_EQUALS(result.getValue().low64, expected.getValue().low64);
+        ASSERT_EQUALS(result.getValue().high64, expected.getValue().high64);
+    }
 }
 
 TEST(Decimal128Test, TestDecimal128NormalizeSmallVals) {

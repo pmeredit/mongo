@@ -4718,16 +4718,6 @@ void assertFlagsValid(uint32_t flags,
             !Decimal128::hasFlag(flags, Decimal128::kInvalid));
 }
 
-static int64_t maxSafePrecision(Decimal128 d) {
-	int64_t i = 0LL;
-	static Decimal128 one("1");
-	static Decimal128 ten("10");
-	for(;d.isGreater(one);++i) {
-		d = d.divide(ten);
-	}
-	return 33LL - i;
-}
-
 static Value evaluateRoundOrTrunc(const Document& root,
                                   const std::vector<boost::intrusive_ptr<Expression>>& vpOperand,
                                   const std::string& opName,
@@ -4773,37 +4763,18 @@ static Value evaluateRoundOrTrunc(const Document& root,
     auto quantum = Decimal128(0LL, Decimal128::kExponentBias - precisionValue, 0LL, 1LL);
     switch (numericArg.getType()) {
         case BSONType::NumberDecimal: {
-			if (numericArg.getDecimal().isInfinite()) {
-				return numericArg;
-			}
-            auto out = numericArg.getDecimal().quantize(quantum, roundingMode);
-            if (out.isNaN()) {
-				auto maxPrec = maxSafePrecision(numericArg.getDecimal());
-				// If this NaN is the result of the precision value being greater than maxPrecision
-				// for this Decimal128, we return numericArg, but normalized, since quantize always
-				// normalizes its output.
-				if (precisionValue > maxPrec) {
-					return Value(numericArg.getDecimal().normalize());
-				}
-				// Otherwise, we return the NaN.
+            if (numericArg.getDecimal().isInfinite()) {
+                return numericArg;
             }
+            auto out = numericArg.getDecimal().quantize(quantum, roundingMode);
             return Value(out);
         }
         case BSONType::NumberDouble: {
             auto dec = Decimal128(numericArg.getDouble(), Decimal128::kRoundTo34Digits);
-			if (dec.isInfinite()) {
-				return numericArg;
-			}
-            auto out = dec.quantize(quantum, roundingMode);
-            if (out.isNaN()) {
-				auto maxPrec = maxSafePrecision(numericArg.getDecimal());
-				// If this NaN is the result of the precision value being greater than maxPrecision
-				// for this Decimal128, we return numericArg.
-				if (precisionValue > maxPrec) {
-					return numericArg;
-				}
-				// Otherwise, we return the NaN.
+            if (dec.isInfinite()) {
+                return numericArg;
             }
+            auto out = dec.quantize(quantum, roundingMode);
             return Value(out.toDouble());
         }
         case BSONType::NumberInt:
@@ -4814,20 +4785,6 @@ static Value evaluateRoundOrTrunc(const Document& root,
             auto numericArgll = numericArg.getLong();
             auto out =
                 Decimal128(static_cast<int64_t>(numericArgll)).quantize(quantum, roundingMode);
-			// NaN can occur at some large precision values near 100. In such a case it makes sense
-			// to return the original value because rounding or truncating to 100 decimals places
-			// often is not visible, anyway.
-            if (out.isNaN()) {
-				auto maxPrec = maxSafePrecision(numericArg.getDecimal());
-				// If this NaN is the result of the precision value being greater
-				// than maxPrecision for this Decimal128, we return numericArg.
-				if (precisionValue > maxPrec) {
-					return numericArg;
-				}
-				// Otherwise we return the NaN (as a double NaN, in keeping with not returning
-				// Decimal values unless asked for).
-				return Value(out.toDouble());
-            }
             uint32_t flags = 0;
             auto outll = out.toLong(&flags);
             assertFlagsValid(flags, opName, numericArgll, precisionValue);

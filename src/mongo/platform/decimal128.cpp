@@ -706,6 +706,14 @@ Decimal128 Decimal128::quantize(const Decimal128& other, RoundingMode roundMode)
 Decimal128 Decimal128::quantize(const Decimal128& reference,
                                 std::uint32_t* signalingFlags,
                                 RoundingMode roundMode) const {
+    auto normalizedThis = this->normalize();
+    auto normalizedReferenceExponent =
+        static_cast<int32_t>(reference.normalize().getBiasedExponent());
+    if (normalizedReferenceExponent != 0 &&
+        (static_cast<int32_t>(normalizedThis.getBiasedExponent()) - normalizedReferenceExponent) >
+            33) {
+        return normalizedThis;
+    }
     BID_UINT128 current = decimal128ToLibraryType(_value);
     BID_UINT128 q = decimal128ToLibraryType(reference.getValue());
     BID_UINT128 quantizedResult = bid128_quantize(current, q, roundMode, signalingFlags);

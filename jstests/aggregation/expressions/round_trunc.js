@@ -48,7 +48,8 @@
     testOp({$trunc: [1.298, 100]}, 1.298);
     testOp({$trunc: [NumberDecimal("1.298912343250054252245154325"), NumberLong("20")]},
            NumberDecimal("1.29891234325005425224"));
-    testOp({$trunc: [NumberDecimal("1.298"), NumberDecimal("100")]}, NumberDecimal("1.298000000000000000000000000000000"));
+    testOp({$trunc: [NumberDecimal("1.298"), NumberDecimal("100")]},
+           NumberDecimal("1.298000000000000000000000000000000"));
 
     testOp({$round: [1.298, 0]}, 1);
     testOp({$round: [1.298, 1]}, 1.3);
@@ -59,7 +60,8 @@
     testOp({$round: [1.298, 100]}, 1.298);
     testOp({$round: [NumberDecimal("1.298912343250054252245154325"), NumberLong("20")]},
            NumberDecimal("1.29891234325005425225"));
-    testOp({$round: [NumberDecimal("1.298"), NumberDecimal("100")]}, NumberDecimal("1.298000000000000000000000000000000"));
+    testOp({$round: [NumberDecimal("1.298"), NumberDecimal("100")]},
+           NumberDecimal("1.298000000000000000000000000000000"));
 
     // Test $round overflow.
     testOp({$round: [NumberInt("2147483647"), -1]}, NumberLong("2147483650"));
@@ -74,7 +76,7 @@
     assertErrorCode(coll, [{$project: {a: {$round: "string"}}}], 50976);
     assertErrorCode(coll, [{$project: {a: {$trunc: "string"}}}], 50976);
 
-	// Test NaN and Infinity numeric args.
+    // Test NaN and Infinity numeric args.
     testOp({$round: [Infinity, 0]}, Infinity);
     testOp({$round: [-Infinity, 0]}, -Infinity);
     testOp({$round: [NaN, 0]}, NaN);
