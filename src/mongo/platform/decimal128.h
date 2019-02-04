@@ -150,7 +150,7 @@ public:
      * uint64_t's. This class performs an endian check on the system to ensure
      * that the Value.high64 represents the higher 64 bits.
      */
-    explicit Decimal128(Decimal128::Value dec128Value) : _value(dec128Value) {}
+    constexpr explicit Decimal128(Decimal128::Value dec128Value) : _value(dec128Value) {}
 
     /**
      * Constructs a Decimal128 from parts, dealing with proper encoding of the combination field.

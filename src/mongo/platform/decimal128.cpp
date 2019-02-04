@@ -813,19 +813,19 @@ const Decimal128 Decimal128::kLargestNegative(1, Decimal128::kMaxBiasedExponent,
 const Decimal128 Decimal128::kSmallestNegative(1, 0, 0, 1);
 
 // Get the representation of 0 (0E0).
-const Decimal128 Decimal128::kNormalizedZero(Decimal128::Value(
+constexpr Decimal128 Decimal128::kNormalizedZero(Decimal128::Value(
     {0, static_cast<uint64_t>(Decimal128::kExponentBias) << Decimal128::kExponentFieldPos}));
 
 // Get the representation of 0 with the most negative exponent
-const Decimal128 Decimal128::kLargestNegativeExponentZero(Decimal128::Value({0ull, 0ull}));
+constexpr Decimal128 Decimal128::kLargestNegativeExponentZero(Decimal128::Value({0ull, 0ull}));
 
 // Shift the format of the combination bits to the right position to get Inf and NaN
 // +Inf = 0111 1000 ... ... = 0x78 ... ..., -Inf = 1111 1000 ... ... = 0xf8 ... ...
 // +NaN = 0111 1100 ... ... = 0x7c ... ..., -NaN = 1111 1100 ... ... = 0xfc ... ...
-const Decimal128 Decimal128::kPositiveInfinity(Decimal128::Value({0ull, 0x78ull << 56}));
-const Decimal128 Decimal128::kNegativeInfinity(Decimal128::Value({0ull, 0xf8ull << 56}));
-const Decimal128 Decimal128::kPositiveNaN(Decimal128::Value({0ull, 0x7cull << 56}));
-const Decimal128 Decimal128::kNegativeNaN(Decimal128::Value({0ull, 0xfcull << 56}));
+constexpr Decimal128 Decimal128::kPositiveInfinity(Decimal128::Value({0ull, 0x78ull << 56}));
+constexpr Decimal128 Decimal128::kNegativeInfinity(Decimal128::Value({0ull, 0xf8ull << 56}));
+constexpr Decimal128 Decimal128::kPositiveNaN(Decimal128::Value({0ull, 0x7cull << 56}));
+constexpr Decimal128 Decimal128::kNegativeNaN(Decimal128::Value({0ull, 0xfcull << 56}));
 
 std::ostream& operator<<(std::ostream& stream, const Decimal128& value) {
     return stream << value.toString();
