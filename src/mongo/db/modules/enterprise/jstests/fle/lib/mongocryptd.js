@@ -16,15 +16,6 @@ class MongoCryptD {
     }
 
     /**
-     * Get the Port.
-     *
-     * @return {number} port number of mongocryptd
-     */
-    getPort() {
-        return this.port;
-    }
-
-    /**
      *  Start MongoCryptd and wait for it to start
      *
      *  @param idleTimeoutSecs Idle Timeout in seconds
@@ -42,13 +33,15 @@ class MongoCryptD {
             conn_str = "127.0.0.1:" + this.port;
             args.push("--port=" + this.port);
         } else {
-            // TODO - set sock directory
-            conn_str = "/tmp/mongocryptd.sock";
+            conn_str = MongoRunner.dataDir + "/mongocryptd.sock";
+            args.push("--unixSocketPrefix=" + MongoRunner.dataDir);
         }
 
         args.push("--setParameter");
         args.push("enableTestCommands=1");
         args.push("-vvv");
+
+        args.push("--pidfilepath=" + MongoRunner.dataDir + "/cryptd.pid");
 
         if (idleTimeoutSecs > 0) {
             args.push("--idleShutdownTimeoutSecs=" + idleTimeoutSecs);
@@ -71,13 +64,13 @@ class MongoCryptD {
             } catch (e) {
                 var res = checkProgram(pid);
                 if (!res.alive) {
-                    print("Could not start mongo program at " + port +
+                    print("Could not start mongo program at " + conn_str +
                           ", process ended with exit code: " + res.exitCode);
                     return true;
                 }
             }
             return false;
-        }, "unable to connect to mongo program on port " + this.port, 30 * 1000);
+        }, "unable to connect to mongo program on port " + conn_str, 30 * 1000);
 
         this.conn = conn;
         print("Mongocryptd sucessfully started.");
