@@ -1128,10 +1128,57 @@ TEST(Decimal128Test, TestDecimal128Quantize) {
         ASSERT_EQUALS(result.getValue().high64, expected.getValue().high64);
     }
     {
-        Decimal128 expected("1");
-        Decimal128 val("1");
-        Decimal128 ref("0");
+        Decimal128 expected("30.1415");
+        Decimal128 val("30.14159");
+        Decimal128 ref("0.0001");
         Decimal128 result = val.quantize(ref, Decimal128::kRoundTowardZero);
+        ASSERT_EQUALS(result.getValue().low64, expected.getValue().low64);
+        ASSERT_EQUALS(result.getValue().high64, expected.getValue().high64);
+    }
+    {
+        Decimal128 expected("30.14159");
+        Decimal128 val("30.14159");
+        Decimal128 ref("0.00001");
+        Decimal128 result = val.quantize(ref, Decimal128::kRoundTowardZero);
+        ASSERT_EQUALS(result.getValue().low64, expected.getValue().low64);
+        ASSERT_EQUALS(result.getValue().high64, expected.getValue().high64);
+    }
+    {
+        Decimal128 expected("300000000000000000000.141590000000");
+        Decimal128 val("300000000000000000000.14159000000");
+        Decimal128 ref("0.000000000001");
+        Decimal128 result = val.quantize(ref, Decimal128::kRoundTowardZero);
+        ASSERT_EQUALS(result.getValue().low64, expected.getValue().low64);
+        ASSERT_EQUALS(result.getValue().high64, expected.getValue().high64);
+    }
+    {
+        Decimal128 expected("3000000000000000000000.141590000000");
+        Decimal128 val("3000000000000000000000.14159000000");
+        Decimal128 ref("0.000000000001");
+        Decimal128 result = val.quantize(ref, Decimal128::kRoundTowardZero);
+        ASSERT_EQUALS(result.getValue().low64, expected.getValue().low64);
+        ASSERT_EQUALS(result.getValue().high64, expected.getValue().high64);
+    }
+    {
+        Decimal128 expected("30000000000000000000000.141590000000");
+        Decimal128 val("30000000000000000000000.14159000000");
+        Decimal128 ref("0.000000000001");
+        Decimal128 result = val.quantize(ref, Decimal128::kRoundTowardZero);
+        ASSERT_EQUALS(result.getValue().low64, expected.getValue().low64);
+        ASSERT_EQUALS(result.getValue().high64, expected.getValue().high64);
+    }
+    {
+        Decimal128 expected("3000000000000000000000000.141590000000");
+        Decimal128 val("3000000000000000000000000.141590000");
+        Decimal128 ref("0.000000000001");
+        Decimal128 result = val.quantize(ref, Decimal128::kRoundTowardZero);
+        ASSERT_EQUALS(result.getValue().low64, expected.getValue().low64);
+        ASSERT_EQUALS(result.getValue().high64, expected.getValue().high64);
+    }
+    {
+        Decimal128 expected("3000000000000000000000000");
+        Decimal128 val("3000000000000000000000000.141590000");
+        Decimal128 result = val.quantize(Decimal128::kNormalizedZero, Decimal128::kRoundTowardZero);
         ASSERT_EQUALS(result.getValue().low64, expected.getValue().low64);
         ASSERT_EQUALS(result.getValue().high64, expected.getValue().high64);
     }
