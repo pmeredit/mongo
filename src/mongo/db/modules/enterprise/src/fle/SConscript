@@ -2,3 +2,19 @@
 
 Import('env')
 Import('get_option')
+
+env.Library(
+    target="cryptd_commands",
+    source=[
+        "commands/cryptd_buildinfo.cpp",
+        "commands/cryptd_ismaster.cpp",
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/db/commands',
+        '$BUILD_DIR/mongo/db/commands/test_commands_enabled',
+        '$BUILD_DIR/mongo/db/wire_version',
+        '$BUILD_DIR/mongo/idl/idl_parser',
+        '$BUILD_DIR/mongo/util/version_impl',
+    ],
+)
+
