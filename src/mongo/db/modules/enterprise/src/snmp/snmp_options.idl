@@ -1,0 +1,27 @@
+# Copyright (C) 2019-present MongoDB, Inc.
+
+global:
+    cpp_namespace: "mongo"
+    cpp_includes:
+        - "snmp/snmp_options.h"
+    configs:
+        section: 'SNMP Module Options'
+        source: [ cli, ini, yaml ]
+
+configs:
+    'snmp.subagent':
+        description: 'Run snmp subagent'
+        short_name: 'snmp-subagent'
+        arg_vartype: Switch
+    'snmp.master':
+        description: 'Run snmp as master'
+        short_name: 'snmp-master'
+        arg_vartype: Switch
+    'snmp.disabled':
+        description: 'Ensure snmp is disabled'
+        short_name: 'snmp-disabled'
+        arg_vartype: Switch
+        conflicts:
+            - 'snmp.subagent'
+            - 'snmp.master'
+

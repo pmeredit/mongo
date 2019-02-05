@@ -28,27 +28,19 @@
 
 #pragma once
 
-#include "mongo/util/options_parser/startup_option_init.h"
-#include "mongo/util/options_parser/startup_options.h"
+#include <string>
 
 namespace mongo {
 
-namespace moe = mongo::optionenvironment;
+struct InMemoryGlobalOptions {
+    double inMemorySizeGB{0.0};
+    std::size_t statisticsLogDelaySecs{0};
 
-class InMemoryGlobalOptions {
-public:
-    InMemoryGlobalOptions() : inMemorySizeGB(0), statisticsLogDelaySecs(0){};
-
-    Status add(moe::OptionSection* options);
-    Status store(const moe::Environment& params, const std::vector<std::string>& args);
-
-    double inMemorySizeGB;
-    size_t statisticsLogDelaySecs;
     std::string engineConfig;
-
     std::string collectionConfig;
     std::string indexConfig;
 };
 
 extern InMemoryGlobalOptions inMemoryGlobalOptions;
-}
+
+}  // namespace mongo

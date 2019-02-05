@@ -1,0 +1,44 @@
+# Copyright (C) 2019-present MongoDB, Inc.
+
+global:
+    cpp_namespace: "mongo"
+    cpp_includes:
+        - "inmemory/inmemory_global_options.h"
+    configs:
+        section: 'InMemory options'
+        source: [ cli, ini, yaml ]
+
+configs:
+    'storage.inMemory.engineConfig.inMemorySizeGB':
+        description: >-
+            Maximum amount of memory to allocate for InMemory data;
+            defaults to 50% of physical RAM less 1GB
+        short_name: inMemorySizeGB
+        arg_vartype: Double
+    'storage.inMemory.engineConfig.statisticsLogDelaySecs':
+        description: >-
+            Seconds to wait between each write to a statistics file in the dbpath;
+            0 means do not log statistics
+        short_name: inMemoryStatisticsLogDelaySecs
+        arg_vartype: Int
+        hidden: true
+        validator:
+            gte: 0
+            lte: 100000
+        default: 0
+    'storage.inMemory.engineConfig.configString':
+        description: 'InMemory storage engine custom configuration settings'
+        short_name: inMemoryEngineConfigString
+        arg_vartype: String
+        hidden: true
+    'storage.inMemory.collectionConfig.configString':
+        description: 'InMemory custom collection configuration settings'
+        short_name: inMemoryCollectionConfigString
+        arg_vartype: String
+        hidden: true
+    'storage.inMemory.indexConfig.configString':
+        description: 'InMemory custom index configuration settings'
+        short_name: inMemoryIndexConfigString
+        arg_vartype: String
+        hidden: true
+

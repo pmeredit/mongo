@@ -29,37 +29,14 @@
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
 #include "mongo/platform/basic.h"
 
-#include "mongo/util/options_parser/startup_option_init.h"
-
 #include <iostream>
 
-#include "inmemory_global_options.h"
 #include "inmemory_options_init.h"
 
-#include "mongo/db/storage/data_protector.h"
-#include "mongo/util/exit_code.h"
+//#include "mongo/db/storage/data_protector.h"
 #include "mongo/util/log.h"
-#include "mongo/util/options_parser/startup_options.h"
 
 namespace mongo {
-
-MONGO_MODULE_STARTUP_OPTIONS_REGISTER(InMemoryOptions)(InitializerContext* context) {
-    return inMemoryGlobalOptions.add(&moe::startupOptions);
-}
-
-MONGO_STARTUP_OPTIONS_VALIDATE(InMemoryOptions)(InitializerContext* context) {
-    return Status::OK();
-}
-
-MONGO_STARTUP_OPTIONS_STORE(InMemoryOptions)(InitializerContext* context) {
-    Status ret = inMemoryGlobalOptions.store(moe::startupOptionsParsed, context->args());
-    if (!ret.isOK()) {
-        std::cerr << ret.toString() << std::endl;
-        std::cerr << "try '" << context->args()[0] << " --help' for more information" << std::endl;
-        ::_exit(EXIT_BADOPTIONS);
-    }
-    return Status::OK();
-}
 
 InMemoryConfigManager::InMemoryConfigManager(const std::string& dbPath) : _dbPath(dbPath) {}
 

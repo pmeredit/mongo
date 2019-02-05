@@ -178,7 +178,8 @@ if not env.TargetOSIs("darwin") and "snmp" in env['MONGO_ENTERPRISE_FEATURES']:
             'src/snmp/serverstatus_client.cpp',
             'src/snmp/snmp.cpp',
             'src/snmp/snmp_oid.cpp',
-            'src/snmp/snmp_options.cpp'
+            'src/snmp/snmp_options.cpp',
+            snmpEnv.Idlc('src/snmp/snmp_options.idl')[0],
         ],
         LIBDEPS=[
             '$BUILD_DIR/mongo/base',

@@ -8,19 +8,13 @@
 #include <string>
 #include <vector>
 
-#include "mongo/client/mongo_uri.h"
-#include "mongo/util/options_parser/startup_option_init.h"
-#include "mongo/util/options_parser/startup_options.h"
+#include "mongo/bson/oid.h"
 
 namespace mongo {
-namespace moe = mongo::optionenvironment;
 namespace queryable {
 
 class QueryableGlobalOptions {
 public:
-    Status add(moe::OptionSection* options);
-    Status store(const moe::Environment& params, const std::vector<std::string>& args);
-
     boost::optional<std::string> getApiUri() {
         return _apiUri;
     }
@@ -36,6 +30,9 @@ public:
     // local={entry=queryableWtFsCreate,early_load=true,config={apiUri="127.0.0.1:8097",
     // snapshotId="57fd587b4c1e526d78349c2b",dbpath=/data/db/}}
     std::string getWiredTigerExtensionConfig(const std::string& dbpath);
+
+    // Marshal configuration options into this class.
+    Status store();
 
 private:
     boost::optional<std::string> _apiUri;

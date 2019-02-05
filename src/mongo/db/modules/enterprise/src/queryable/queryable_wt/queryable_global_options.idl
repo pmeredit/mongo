@@ -1,0 +1,20 @@
+# Copyright (C) 2019-present MongoDB, Inc.
+
+global:
+    cpp_namespace: "mongo::queryable"
+    configs:
+        section: 'Queryable Backup options'
+        source: [ cli, ini, yaml ]
+
+configs:
+    'queryableBackup.apiUri':
+        description: 'A connection string to a queryable API server'
+        short_name: queryableBackupApiUri
+        arg_vartype: String
+        hidden: true
+    'queryableBackup.snapshotId':
+        description: 'A hex string of the OID for the snapshot to load'
+        short_name: queryableSnapshotId
+        arg_vartype: String
+        hidden: true
+

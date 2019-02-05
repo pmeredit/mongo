@@ -16,6 +16,7 @@ wtEnv.Library(
         'inmemory_global_options.cpp',
         'inmemory_init.cpp',
         'inmemory_options_init.cpp',
+        wtEnv.Idlc('inmemory_global_options.idl')[0],
     ],
     PROGDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/dbtests/dbtest',
