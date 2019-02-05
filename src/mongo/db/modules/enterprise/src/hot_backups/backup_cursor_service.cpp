@@ -106,8 +106,10 @@ BackupCursorState BackupCursorService::openBackupCursor(OperationContext* opCtx)
     // This procedure can block, do it before acquiring the mutex to allow fsyncLock requests to
     // succeed.
     auto replCoord = repl::ReplicationCoordinator::get(opCtx);
-    if (replCoord &&
-        replCoord->getReplicationMode() == repl::ReplicationCoordinator::Mode::modeReplSet) {
+    bool isReplSet = replCoord &&
+        replCoord->getReplicationMode() == repl::ReplicationCoordinator::Mode::modeReplSet;
+
+    if (isReplSet) {
         oplogEnd = replCoord->getMyLastAppliedOpTime();
         // If this is a primary, there may be oplog holes. The oplog range being returned must be
         // contiguous.
@@ -124,7 +126,7 @@ BackupCursorState BackupCursorService::openBackupCursor(OperationContext* opCtx)
     // Capture the checkpointTimestamp before and after opening a cursor. If it hasn't moved, the
     // checkpointTimestamp is known to be exact. If it has moved, uassert and have the user retry.
     boost::optional<Timestamp> checkpointTimestamp;
-    if (_storageEngine->supportsRecoverToStableTimestamp()) {
+    if (isReplSet) {
         checkpointTimestamp = _storageEngine->getLastStableRecoveryTimestamp();
     };
 
@@ -144,11 +146,11 @@ BackupCursorState BackupCursorService::openBackupCursor(OperationContext* opCtx)
 
     // Ensure the checkpointTimestamp hasn't moved. A subtle case to catch is the first stable
     // checkpoint coming out of initial sync racing with opening the backup cursor.
-    if (checkpointTimestamp && _storageEngine->supportsRecoverToStableTimestamp()) {
+    if (checkpointTimestamp) {
         auto requeriedCheckpointTimestamp = _storageEngine->getLastStableRecoveryTimestamp();
         if (!requeriedCheckpointTimestamp ||
             requeriedCheckpointTimestamp.get() < checkpointTimestamp.get()) {
-            severe() << "The last stable recovery timestamp went backwards. Original: "
+            severe() << "The checkpoint timestamp went backwards. Original: "
                      << checkpointTimestamp.get() << " Found: " << requeriedCheckpointTimestamp;
             fassertFailed(50916);
         }
@@ -218,22 +220,22 @@ BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext
             "Cannot extend backup cursor without replication enabled",
             replCoord->isReplEnabled());
 
-    auto& readConcernArgs = repl::ReadConcernArgs::get(opCtx);
-    {
-        // We must obtain the client lock to set the ReadConcernArgs on the operation
-        // context as it may be concurrently read by CurrentOp.
-        stdx::lock_guard<Client> lk(*opCtx->getClient());
-        readConcernArgs = repl::ReadConcernArgs(LogicalTime(extendTo),
-                                                repl::ReadConcernLevel::kMajorityReadConcern);
-    }
-
-    log() << "Extending backup cursor. backupId: " << backupId << " extendingTo: " << extendTo;
-
     // This waiting can block for an arbitrarily long time. Clients making an `$backupCursorExtend`
     // call are recommended to pass in a `maxTimeMS`, which is obeyed in this waiting logic.
-    uassertStatusOK(replCoord->waitUntilOpTimeForRead(opCtx, readConcernArgs));
+    log() << "Extending backup cursor. backupId: " << backupId << " extendingTo: " << extendTo;
 
-    // Force a journal flush because having opTime `extendTo` available for read does not
+    // Wait 1: This wait guarantees that the local lastApplied timestamp has reached at least the
+    // `extendTo` timestamp.
+    uassertStatusOK(replCoord->waitUntilOpTimeForRead(
+        opCtx,
+        repl::ReadConcernArgs(LogicalTime(extendTo), repl::ReadConcernLevel::kLocalReadConcern)));
+
+    // Wait 2: This wait ensures that this node's majority committed timestamp is >= `extendTo`.
+    // After Wait 1 and 2 complete we should be guaranteed that this node's lastApplied operation is
+    // both majority committed and has a timestamp >= `extendTo`.
+    uassertStatusOK(replCoord->awaitTimestampCommitted(opCtx, extendTo));
+
+    // Wait 3: Force a journal flush because having opTime `extendTo` available for read does not
     // guarantee the persistency of the oplog with timestamp `extendTo`.
     opCtx->recoveryUnit()->waitUntilDurable();
 

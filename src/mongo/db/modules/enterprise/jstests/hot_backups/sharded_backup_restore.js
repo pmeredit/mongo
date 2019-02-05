@@ -84,18 +84,42 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         st.adminCommand({moveChunk: fullNs, find: {numForPartition: 150}, to: st.shard3.shardName});
     }
 
-    function _startCausalWriterClient(host) {
+    function _startCausalWriterClient(st) {
+        // This 1st write goes to shard 0, 2nd goes to shard 1, ..., Nth goes to
+        // shard N-1, and then N+1th goes to shard 0 again, ...
+        const numFallsIntoShard = [-150, -50, 50, 150];
+        let docId = 0;
+
+        // Make sure some writes are persistent on disk in order to have a meaningful checkpoint
+        // to backup.
+        while (docId < 100) {
+            assert.commandWorked(st.getDB(dbName)[collName].insert({
+                shardId: docId % numShards,
+                numForPartition: numFallsIntoShard[docId % numShards],
+                docId: docId
+            },
+                                                                   {writeConcern: {w: 3}}));
+            docId++;
+        }
+
+        for (let i = 0; i < numShards; i++) {
+            for (let node of st["rs" + i].nodes) {
+                // Force a checkpoint.
+                assert.commandWorked(node.getDB(dbName).adminCommand({fsync: 1}));
+            }
+        }
+
         const writerClientCmds = function(dbName, collName, numShards) {
             let session = db.getMongo().startSession({causalConsistency: true});
             let sessionColl = session.getDatabase(dbName).getCollection(collName);
 
             // This 1st write goes to shard 0, 2nd goes to shard 1, ..., Nth goes to
             // shard N-1, and then N+1th goes to shard 0 again, ...
-            let numFallsIntoShard = [-150, -50, 50, 150];
-            let docId = 0;
+            const numFallsIntoShard = [-150, -50, 50, 150];
+            let docId = 100;
 
             // Run indefinitely.
-            while (true) {
+            while (1) {
                 assert.commandWorked(sessionColl.insert({
                     shardId: docId % numShards,
                     numForPartition: numFallsIntoShard[docId % numShards],
@@ -109,36 +133,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
             MongoRunner.mongoShellPath,
             '--eval',
             '(' + writerClientCmds + ')("' + dbName + '", "' + collName + '", ' + numShards + ')',
-            host);
-    }
-
-    function _waitForWrites(st) {
-        jsTestLog(
-            "Wait for some writes to be persistent in order to have a meaningful checkpoint to backup.");
-        let numWritesOnEachNode = 20;
-
-        for (let i = 0; i < numShards; i++) {
-            let numWrites = 0;
-            assert.soon(
-                () => {
-                    numWrites = st["rs" + i]
-                                    .getSecondary()
-                                    .getDB(dbName)[collName]
-                                    .find()
-                                    .readConcern("majority")
-                                    .itcount();
-                    return numWrites > numWritesOnEachNode;
-                },
-                () => {
-                    return "Timeout waiting for shard " + i + " to have " + numWritesOnEachNode +
-                        " writes. numWrites: " + numWrites;
-                });
-
-            // Force a checkpoint.
-            assert.commandWorked(
-                st["rs" + i].getSecondary().getDB(dbName).adminCommand({fsync: 1}));
-            jsTestLog("Shard " + i + " has at least " + numWrites + " writes persistent on disk.");
-        }
+            st.s.host);
     }
 
     function _stopWriterClient(writerPid) {
@@ -225,9 +220,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         _setupShardedCollectionForCausalWrites(st, dbName, collName);
 
         // Launch writer client
-        let writerPid = _startCausalWriterClient(st.s.host);
-
-        _waitForWrites(st);
+        let writerPid = _startCausalWriterClient(st);
 
         resetDbpath(MongoRunner.dataPath + "forRestore/");
         const restorePaths = [
@@ -268,21 +261,27 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
             let maxTimestamp = Timestamp();
             let stopCounter = new CountDownLatch(1);
             for (let i = 0; i < numShards + 1; i++) {
+                let metadata;
+                // Since there might not be enough time for the server to have a checkpoint
+                // timestamp, we simply retry until it has one.
                 backupCursors[i] = openBackupCursor(nodesToBackup[i]);
+                metadata = getBackupCursorMetadata(backupCursors[i]);
+                assert("checkpointTimestamp" in metadata);
                 heartbeaters.push(startHeartbeatThread(nodesToBackup[i].host,
                                                        backupCursors[i],
                                                        nodesToBackup[i].getDB("admin").getSession(),
                                                        stopCounter));
-                let res = copyBackupCursorFiles(backupCursors[i], restorePaths[i], true);
+                let copyThread = copyBackupCursorFiles(
+                    backupCursors[i], metadata["dbpath"], restorePaths[i], true);
                 jsTestLog("Opened up backup cursor on " + nodesToBackup[i] + ": " +
-                          tojson(res.metadata));
-                dbpaths[i] = res.metadata.dbpath;
-                backupIds[i] = res.metadata.backupId;
-                let checkpointTimestamp = res.metadata.checkpointTimestamp;
+                          tojson(metadata));
+                dbpaths[i] = metadata.dbpath;
+                backupIds[i] = metadata.backupId;
+                let checkpointTimestamp = metadata.checkpointTimestamp;
                 if (timestampCmp(checkpointTimestamp, maxTimestamp) > 0) {
                     maxTimestamp = checkpointTimestamp;
                 }
-                copyWorkers.push(res.copyThread);
+                copyWorkers.push(copyThread);
             }
 
             concurrentWorkWhileBackup.setup();

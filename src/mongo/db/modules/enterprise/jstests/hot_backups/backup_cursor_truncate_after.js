@@ -11,10 +11,7 @@
  * writes. Those are then used that to assert exactly whether data should or should not exist in
  * the backed up data when restored to a specific time.
  *
- * TODO SERVER-37897: This test should no longer require majority read concern once mongod sets a
- * stable timestamp when majority read concern is disabled.
- * @tags: [requires_persistence, requires_replication, requires_wiredtiger,
- * requires_majority_read_concern]
+ * @tags: [requires_persistence, requires_replication, requires_wiredtiger]
  */
 (function() {
     "use strict";
@@ -141,9 +138,10 @@
 
     let backupCursor = openBackupCursor(primary);
     sleep(Random.randInt(1000));
-    let primaryBackupMetadata =
-        copyBackupCursorFiles(backupCursor, primary.dbpath + "/primary-backup", false);
-    jsTestLog({"Primary $backupCursor metadata": primaryBackupMetadata.metadata});
+    let primaryBackupMetadata = getBackupCursorMetadata(backupCursor);
+    copyBackupCursorFiles(
+        backupCursor, primaryBackupMetadata.dbpath, primary.dbpath + "/primary-backup", false);
+    jsTestLog({"Primary $backupCursor metadata": primaryBackupMetadata});
     backupCursor.close();
 
     backupCursor = openBackupCursor(secondary);
@@ -153,9 +151,12 @@
     // Give the writers some time to observe the $backupCursor and change behavior before
     // performing file copies. The data copied must not contain causally related writes.
     sleep(1000 + Random.randInt(1000));
-    let secondaryBackupMetadata =
-        copyBackupCursorFiles(backupCursor, secondary.dbpath + "/secondary-backup", false);
-    jsTestLog({"Secondary $backupCursor metadata": secondaryBackupMetadata.metadata});
+    let secondaryBackupMetadata = getBackupCursorMetadata(backupCursor);
+    copyBackupCursorFiles(backupCursor,
+                          secondaryBackupMetadata.dbpath,
+                          secondary.dbpath + "/secondary-backup",
+                          false);
+    jsTestLog({"Secondary $backupCursor metadata": secondaryBackupMetadata});
     backupCursor.close();
 
     // Wait for the writers to complete and get a sample list of (docNum, op[eration]Time) pairs.
@@ -314,11 +315,11 @@
     }
 
     assertData(primary.dbpath + "/primary-backup",
-               primaryBackupMetadata.metadata,
+               primaryBackupMetadata,
                writerOneOpTimes,
                writerTwoOpTimes);
     assertData(secondary.dbpath + "/secondary-backup",
-               secondaryBackupMetadata.metadata,
+               secondaryBackupMetadata,
                writerOneOpTimes,
                writerTwoOpTimes);
 

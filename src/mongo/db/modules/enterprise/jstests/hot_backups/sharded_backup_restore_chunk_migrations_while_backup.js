@@ -4,8 +4,7 @@
  *
  * @tags: [requires_wiredtiger,
  *         requires_journaling,
- *         requires_persistence,
- *         requires_majority_read_concern]
+ *         requires_persistence]
  */
 load("src/mongo/db/modules/enterprise/jstests/hot_backups/sharded_backup_restore.js");
 
