@@ -364,6 +364,7 @@ if "fle" in env['MONGO_ENTERPRISE_FEATURES']:
             '$BUILD_DIR/mongo/util/version_impl',
             'src/watchdog/watchdog',
             'src/fle/cryptd_commands',
+            'src/fle/cryptd_markings',
         ],
     )
 
