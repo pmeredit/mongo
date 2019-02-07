@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2018 MongoDB, Inc.  All Rights Reserved.
+ * Copyright (C) 2019 MongoDB, Inc.  All Rights Reserved.
  */
 
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kControl
