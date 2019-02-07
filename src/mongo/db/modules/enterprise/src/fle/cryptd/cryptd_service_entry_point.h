@@ -12,6 +12,8 @@ class ServiceEntryPointCryptD final : public ServiceEntryPointImpl {
 public:
     explicit ServiceEntryPointCryptD(ServiceContext* svcCtx) : ServiceEntryPointImpl(svcCtx) {}
 
+    void startSession(transport::SessionHandle session) final;
+
     DbResponse handleRequest(OperationContext* opCtx, const Message& request) final;
 };
 

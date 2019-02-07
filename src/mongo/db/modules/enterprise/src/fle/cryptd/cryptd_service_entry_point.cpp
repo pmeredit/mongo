@@ -16,6 +16,7 @@
 #include "mongo/util/mongoutils/str.h"
 
 #include "cryptd_service_entry_point.h"
+#include "cryptd_watchdog.h"
 
 namespace mongo {
 namespace {
@@ -50,6 +51,12 @@ void runComand(OperationContext* opCtx,
     CommandHelpers::extractOrAppendOk(body);
 }
 }  // namespace
+
+void ServiceEntryPointCryptD::startSession(transport::SessionHandle session) {
+    ServiceEntryPointImpl::startSession(session);
+
+    signalIdleWatchdog();
+}
 
 DbResponse ServiceEntryPointCryptD::handleRequest(OperationContext* opCtx, const Message& message) {
     auto replyBuilder = rpc::makeReplyBuilder(rpc::protocolForMessage(message));

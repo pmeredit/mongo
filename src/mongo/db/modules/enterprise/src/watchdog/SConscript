@@ -2,20 +2,19 @@
 
 Import('env')
 
+env.Library(
+    target='watchdog',
+    source=[
+        'watchdog.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/service_context',
+        '$BUILD_DIR/mongo/db/storage/storage_options',
+    ]
+)
+
 if not env.TargetOSIs("darwin"):
-    env.Library(
-        target='watchdog',
-        source=[
-            'watchdog.cpp',
-        ],
-        LIBDEPS=[
-            '$BUILD_DIR/mongo/base',
-            '$BUILD_DIR/mongo/db/service_context',
-            '$BUILD_DIR/mongo/db/storage/storage_options',
-        ]
-    )
-
-
     env.Library(
         target='watchdog_mongod',
         source=[

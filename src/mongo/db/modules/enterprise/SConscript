@@ -342,6 +342,7 @@ if "fle" in env['MONGO_ENTERPRISE_FEATURES']:
             "src/fle/cryptd/cryptd_options.cpp",
             "src/fle/cryptd/cryptd_options_init.cpp",
             env.Idlc("src/fle/cryptd/cryptd_options.idl")[0],
+            "src/fle/cryptd/cryptd_watchdog.cpp",
         ],
         LIBDEPS_PRIVATE=[
             '$BUILD_DIR/mongo/db/commands',
@@ -361,6 +362,7 @@ if "fle" in env['MONGO_ENTERPRISE_FEATURES']:
             '$BUILD_DIR/mongo/util/options_parser/options_parser_init',
             '$BUILD_DIR/mongo/util/signal_handlers',
             '$BUILD_DIR/mongo/util/version_impl',
+            'src/watchdog/watchdog',
             'src/fle/cryptd_commands',
         ],
     )

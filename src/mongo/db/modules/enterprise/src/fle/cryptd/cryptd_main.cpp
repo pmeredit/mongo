@@ -35,6 +35,8 @@
 
 #include "cryptd_options.h"
 #include "cryptd_service_entry_point.h"
+#include "cryptd_watchdog.h"
+
 
 namespace mongo {
 namespace {
@@ -96,6 +98,9 @@ void shutdownTask() {
 
     serviceContext->setKillAllOperations();
 
+    // Shutdown watchdog before service entry point since it has a reference to the entry point
+    shutdownIdleWatchdog(serviceContext);
+
     // Shutdown the TransportLayer so that new connections aren't accepted
     if (auto tl = serviceContext->getTransportLayer()) {
         log(logger::LogComponent::kNetwork) << "shutdown: going to close listening sockets...";
@@ -149,6 +154,10 @@ ExitCode initAndListen() {
     logProcessDetails();
 
     createLockFile(serviceContext);
+
+    startIdleWatchdog(serviceContext,
+                      mongoCryptDGlobalParams.idleShutdownTimeout,
+                      serviceContext->getServiceEntryPoint());
 
     serverGlobalParams.serviceExecutor = "synchronous";
 #ifdef _WIN32

@@ -51,6 +51,8 @@ def configure(conf, env):
             env.ConfError("the sasl enterprise feature depends on the ldap enterprise feature")
         if 'snmp' in selected_features and not 'watchdog' in selected_features:
             env.ConfError("the snmp enterprise feature depends on the watchdog enterprise feature")
+        if 'fle' in selected_features and not 'watchdog' in selected_features:
+            env.ConfError("the fle enterprise feature depends on the watchdog enterprise feature")
 
         configured_modules.extend(selected_features)
 
