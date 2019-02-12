@@ -101,6 +101,19 @@ public:
         return _isEncrypted(path, 0);
     }
 
+    /**
+     * Override this method to indicate whether this node holds encryption metadata.
+     */
+    virtual bool isEncryptedLeafNode() const = 0;
+
+    StringMap<std::unique_ptr<EncryptionSchemaTreeNode>>::const_iterator begin() const {
+        return _children.begin();
+    }
+
+    StringMap<std::unique_ptr<EncryptionSchemaTreeNode>>::const_iterator end() const {
+        return _children.end();
+    }
+
 private:
     /**
      * This method is responsible for recursively descending the encryption tree until the end of
@@ -122,11 +135,6 @@ private:
         return child->_isEncrypted(path, index + 1);
     };
 
-    /**
-     * Override this method to indicate whether this node holds encryption metadata.
-     */
-    virtual bool isEncryptedLeafNode() const = 0;
-
     StringMap<std::unique_ptr<EncryptionSchemaTreeNode>> _children;
 };
 
@@ -134,7 +142,7 @@ private:
  * Node for a path to an object in the encryption schema tree.
  */
 class EncryptionSchemaObjectNode final : public EncryptionSchemaTreeNode {
-private:
+public:
     bool isEncryptedLeafNode() const final {
         return false;
     }
@@ -145,7 +153,7 @@ private:
  * encrypted only if it's final component lands on this node.
  */
 class EncryptionSchemaEncryptedNode final : public EncryptionSchemaTreeNode {
-private:
+public:
     bool isEncryptedLeafNode() const final {
         return true;
     }
@@ -155,7 +163,7 @@ private:
  * A placeholder class for a path which is not encrypted.
  */
 class EncryptionSchemaNotEncryptedNode final : public EncryptionSchemaTreeNode {
-private:
+public:
     bool isEncryptedLeafNode() const final {
         return false;
     }

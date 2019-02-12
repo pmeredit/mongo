@@ -26,23 +26,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/wire_version',
         '$BUILD_DIR/mongo/idl/idl_parser',
         '$BUILD_DIR/mongo/util/version_impl',
-        'cryptd_markings',
+        'query_analysis/cryptd_query_analysis',
     ],
 )
 
-env.Library(
-    target="cryptd_markings",
-    source=[
-        "markings/markings.cpp",
-    ],
-)
-
-env.CppUnitTest(
-    target='fle_test',
-    source=[
-        'markings/fle_test.cpp',
-    ],
-    LIBDEPS_PRIVATE=[
-        'cryptd_markings',
-    ],
-)

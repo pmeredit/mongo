@@ -2,10 +2,9 @@
  * Copyright (C) 2019 MongoDB, Inc.  All Rights Reserved.
  */
 
-#include "mongo/db/commands.h"
-
-#include "../markings/markings.h"
 #include "fle/commands/cryptd_commands_gen.h"
+#include "fle/query_analysis/query_analysis.h"
+#include "mongo/db/commands.h"
 
 namespace mongo {
 namespace {

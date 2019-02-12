@@ -23,3 +23,22 @@ env.CppUnitTest(
     ],
 )
 
+env.Library(
+    target='cryptd_query_analysis',
+    source=[
+        'query_analysis.cpp',
+    ],
+    LIBDEPS_PRIVATE=[
+        'encryption_schema_tree',
+    ]
+)
+
+env.CppUnitTest(
+    target='is_encryption_needed_test',
+    source=[
+        'is_encryption_needed_test.cpp',
+    ],
+    LIBDEPS_PRIVATE=[
+        'cryptd_query_analysis',
+    ],
+)
