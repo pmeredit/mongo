@@ -10,6 +10,7 @@
 
 #include "mongo/base/status.h"
 #include "mongo/db/server_options.h"
+#include "mongo/db/server_options_base.h"
 #include "mongo/db/server_options_server_helpers.h"
 #include "mongo/util/log.h"
 #include "mongo/util/options_parser/startup_options.h"
@@ -20,19 +21,7 @@ namespace mongo {
 MongoCryptDGlobalParams mongoCryptDGlobalParams;
 
 Status addMongoCryptDOptions(moe::OptionSection* options) {
-    moe::OptionSection general_options("General options");
-
-    Status ret = addGeneralServerOptions(&general_options);
-    if (!ret.isOK()) {
-        return ret;
-    }
-
-    ret = options->addSection(general_options);
-    if (!ret.isOK()) {
-        return ret;
-    }
-
-    return Status::OK();
+    return addGeneralServerOptions(options);
 }
 
 void printMongoCryptDHelp(std::ostream* out) {
