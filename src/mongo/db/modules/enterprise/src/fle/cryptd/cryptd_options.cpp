@@ -27,26 +27,10 @@ Status addMongoCryptDOptions(moe::OptionSection* options) {
         return ret;
     }
 
-#if defined(_WIN32)
-    moe::OptionSection windows_scm_options("Windows Service Control Manager options");
-
-    ret = addWindowsServerOptions(&windows_scm_options);
-    if (!ret.isOK()) {
-        return ret;
-    }
-#endif
-
     ret = options->addSection(general_options);
     if (!ret.isOK()) {
         return ret;
     }
-
-#if defined(_WIN32)
-    ret = options->addSection(windows_scm_options);
-    if (!ret.isOK()) {
-        return ret;
-    }
-#endif
 
     return Status::OK();
 }

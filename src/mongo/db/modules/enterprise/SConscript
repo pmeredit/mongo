@@ -350,6 +350,7 @@ if "fle" in env['MONGO_ENTERPRISE_FEATURES']:
             '$BUILD_DIR/mongo/db/server_options_servers',
             '$BUILD_DIR/mongo/db/serverinit',
             '$BUILD_DIR/mongo/db/storage/storage_engine_lock_file',
+            '$BUILD_DIR/mongo/db/windows_options' if env.TargetOSIs('windows') else [],
             '$BUILD_DIR/mongo/rpc/rpc',
             '$BUILD_DIR/mongo/transport/message_compressor',
             '$BUILD_DIR/mongo/transport/service_entry_point',
