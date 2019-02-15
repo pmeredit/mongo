@@ -32,6 +32,7 @@
 #include "encryption_schema_tree.h"
 
 #include "mongo/bson/bsontypes.h"
+#include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/db/matcher/schema/json_schema_parser.h"
 #include "mongo/util/string_map.h"
 
@@ -67,6 +68,27 @@ SchemaTypeRestriction getTypeRestriction(StringMap<BSONElement>& keywordMap) {
     } else {
         return SchemaTypeRestriction::kNone;
     }
+}
+
+/**
+ * Parses the options under the 'encrypt' keyword and returns a pointer to the created encrypted
+ * node.
+ *
+ * Note that this method does not perform full validation of each field (e.g. valid JSON Pointer
+ * keyId) as it assumes this has already been done by the normal JSON Schema parser.
+ */
+std::unique_ptr<EncryptionSchemaEncryptedNode> parseEncrypt(BSONObj encryptObj) {
+    const IDLParserErrorContext encryptCtxt("encrypt");
+
+    EncryptionInfo encryptInfo = EncryptionInfo::parse(encryptCtxt, encryptObj);
+
+    // Manually build an EncryptionMetadata to attach to the schema tree.
+    EncryptionMetadata encryptMetadata;
+    encryptMetadata.setAlgorithm(encryptInfo.getAlgorithm());
+    encryptMetadata.setInitializationVector(encryptInfo.getInitializationVector());
+    encryptMetadata.setKeyId(encryptInfo.getKeyId());
+
+    return std::make_unique<EncryptionSchemaEncryptedNode>(std::move(encryptMetadata));
 }
 
 /**
@@ -136,7 +158,9 @@ std::unique_ptr<EncryptionSchemaTreeNode> _parse(BSONObj schema, bool encryptAll
                                  "cannot work on an encrypted field.",
                 schema.nFields() == 1U);
 
-        return std::make_unique<EncryptionSchemaEncryptedNode>();
+        // It's safe to skip the type check on 'encrypt' since the JSONSchemaParser should have
+        // already validated it.
+        return parseEncrypt(encryptElem.embeddedObject());
     }
 
     // Recurse each nested schema in 'properties' and append the resulting nodes to the encryption

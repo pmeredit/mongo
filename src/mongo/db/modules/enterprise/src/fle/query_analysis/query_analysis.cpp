@@ -20,7 +20,7 @@ bool isEncryptionNeeded(const BSONObj& jsonSchema) {
     while (!nodeStack.empty()) {
         EncryptionSchemaTreeNode* curNode = nodeStack.top();
         nodeStack.pop();
-        if (curNode->isEncryptedLeafNode()) {
+        if (curNode->getEncryptionMetadata()) {
             return true;
         }
         for (auto&& it : *curNode) {

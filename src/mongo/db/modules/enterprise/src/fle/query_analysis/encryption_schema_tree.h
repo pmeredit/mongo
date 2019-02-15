@@ -31,6 +31,7 @@
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/field_ref.h"
+#include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/util/mongoutils/str.h"
 
 namespace mongo {
@@ -93,18 +94,19 @@ public:
     }
 
     /**
-     * Returns true if the given path maps to an encryption node in the tree, otherwise returns
-     * false. Any numerical path components will *always* be treated as field names, not array
-     * indexes.
+     * If the given path maps to an encryption node in the tree then returns the associated
+     * EncryptionMetadata, otherwise returns boost::none. Any numerical path components will
+     * *always* be treated as field names, not array indexes.
      */
-    bool isEncrypted(const FieldRef& path) const {
-        return _isEncrypted(path, 0);
+    boost::optional<EncryptionMetadata> getEncryptionMetadataForPath(const FieldRef& path) const {
+        return _getEncryptionMetadataForPath(path, 0);
     }
 
     /**
-     * Override this method to indicate whether this node holds encryption metadata.
+     * Override this method to return the node's EncryptionMetadata, or boost::none if it holds
+     * none.
      */
-    virtual bool isEncryptedLeafNode() const = 0;
+    virtual boost::optional<EncryptionMetadata> getEncryptionMetadata() const = 0;
 
     StringMap<std::unique_ptr<EncryptionSchemaTreeNode>>::const_iterator begin() const {
         return _children.begin();
@@ -120,20 +122,22 @@ private:
      * the path is reached or there's no edge to take. The 'index' parameter is used to indicate
      * which part of 'path' we're currently at, and is expected to increment as we descend the tree.
      */
-    bool _isEncrypted(const FieldRef& path, size_t index = 0) const {
+    boost::optional<EncryptionMetadata> _getEncryptionMetadataForPath(const FieldRef& path,
+                                                                      size_t index = 0) const {
         // If we've ended on this node, then return whether its an encrypted node.
         if (index >= path.numParts()) {
-            return isEncryptedLeafNode();
+            return getEncryptionMetadata();
         }
 
         auto child = getChild(path[index]);
         if (!child) {
             // No path to take for the current path, return not encrypted.
-            return false;
+            return boost::none;
         }
 
-        return child->_isEncrypted(path, index + 1);
+        return child->_getEncryptionMetadataForPath(path, index + 1);
     };
+
 
     StringMap<std::unique_ptr<EncryptionSchemaTreeNode>> _children;
 };
@@ -143,8 +147,8 @@ private:
  */
 class EncryptionSchemaObjectNode final : public EncryptionSchemaTreeNode {
 public:
-    bool isEncryptedLeafNode() const final {
-        return false;
+    boost::optional<EncryptionMetadata> getEncryptionMetadata() const final {
+        return boost::none;
     }
 };
 
@@ -154,9 +158,14 @@ public:
  */
 class EncryptionSchemaEncryptedNode final : public EncryptionSchemaTreeNode {
 public:
-    bool isEncryptedLeafNode() const final {
-        return true;
+    EncryptionSchemaEncryptedNode(EncryptionMetadata metadata) : _metadata(std::move(metadata)) {}
+
+    boost::optional<EncryptionMetadata> getEncryptionMetadata() const final {
+        return _metadata;
     }
+
+private:
+    const EncryptionMetadata _metadata;
 };
 
 /**
@@ -164,8 +173,8 @@ public:
  */
 class EncryptionSchemaNotEncryptedNode final : public EncryptionSchemaTreeNode {
 public:
-    bool isEncryptedLeafNode() const final {
-        return false;
+    boost::optional<EncryptionMetadata> getEncryptionMetadata() const final {
+        return boost::none;
     }
 };
 

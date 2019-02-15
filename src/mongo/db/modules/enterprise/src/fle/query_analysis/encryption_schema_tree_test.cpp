@@ -33,18 +33,40 @@
 
 #include "mongo/bson/json.h"
 #include "mongo/db/bson/bson_helper.h"
+#include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/unittest/unittest.h"
+#include "mongo/util/uuid.h"
 
 namespace mongo {
 namespace {
 
+const EncryptionMetadata kDefaultMetadata = EncryptionMetadata{};
+
+/**
+ * Parses 'schema' into an encryption schema tree and returns the EncryptionMetadata for
+ * 'path'.
+ */
+EncryptionMetadata extractMetadata(BSONObj schema, std::string path) {
+    auto result = EncryptionSchemaTreeNode::parse(schema);
+    auto metadata = result->getEncryptionMetadataForPath(FieldRef(path));
+    ASSERT(metadata);
+    return metadata.get();
+}
+
+/**
+ * Parses 'schema' into an encryption schema tree and verifies that 'path' is not encrypted.
+ */
+void assertNotEncrypted(BSONObj schema, std::string path) {
+    auto result = EncryptionSchemaTreeNode::parse(schema);
+    ASSERT_FALSE(result->getEncryptionMetadataForPath(FieldRef(path)));
+}
+
 TEST(EncryptionSchemaTreeTest, MarksTopLevelFieldAsEncrypted) {
     BSONObj schema =
         fromjson(R"({type: "object", properties: {ssn: {encrypt: {}}, name: {type: "string"}}})");
-    auto result = EncryptionSchemaTreeNode::parse(schema);
-    ASSERT_TRUE(result->isEncrypted(FieldRef("ssn")));
-    ASSERT_FALSE(result->isEncrypted(FieldRef("ssn.nonexistent")));
-    ASSERT_FALSE(result->isEncrypted(FieldRef("name")));
+    ASSERT(extractMetadata(schema, "ssn") == kDefaultMetadata);
+    assertNotEncrypted(schema, "ssn.nonexistent");
+    assertNotEncrypted(schema, "name");
 }
 
 TEST(EncryptionSchemaTreeTest, MarksNestedFieldsAsEncrypted) {
@@ -59,9 +81,9 @@ TEST(EncryptionSchemaTreeTest, MarksNestedFieldsAsEncrypted) {
             }
         }})");
     auto result = EncryptionSchemaTreeNode::parse(schema);
-    ASSERT_TRUE(result->isEncrypted(FieldRef("user.ssn")));
-    ASSERT_FALSE(result->isEncrypted(FieldRef("user")));
-    ASSERT_FALSE(result->isEncrypted(FieldRef("user.name")));
+    ASSERT(extractMetadata(schema, "user.ssn") == kDefaultMetadata);
+    assertNotEncrypted(schema, "user");
+    assertNotEncrypted(schema, "user.name");
 }
 
 TEST(EncryptionSchemaTreeTest, MarksNumericFieldNameAsEncrypted) {
@@ -69,8 +91,7 @@ TEST(EncryptionSchemaTreeTest, MarksNumericFieldNameAsEncrypted) {
                           << "object"
                           << "properties"
                           << BSON("0" << BSON("encrypt" << BSONObj())));
-    auto result = EncryptionSchemaTreeNode::parse(schema);
-    ASSERT_TRUE(result->isEncrypted(FieldRef("0")));
+    ASSERT(extractMetadata(schema, "0") == kDefaultMetadata);
 
     schema = BSON("type"
                   << "object"
@@ -79,8 +100,7 @@ TEST(EncryptionSchemaTreeTest, MarksNumericFieldNameAsEncrypted) {
                                            << "object"
                                            << "properties"
                                            << BSON("0" << BSON("encrypt" << BSONObj())))));
-    result = EncryptionSchemaTreeNode::parse(schema);
-    ASSERT_TRUE(result->isEncrypted(FieldRef("nested.0")));
+    ASSERT(extractMetadata(schema, "nested.0") == kDefaultMetadata);
 }
 
 TEST(EncryptionSchemaTreeTest, MarksMultipleFieldsAsEncrypted) {
@@ -96,17 +116,31 @@ TEST(EncryptionSchemaTreeTest, MarksMultipleFieldsAsEncrypted) {
                 }
             }
         }})");
-    auto result = EncryptionSchemaTreeNode::parse(schema);
-    ASSERT_TRUE(result->isEncrypted(FieldRef("ssn")));
-    ASSERT_TRUE(result->isEncrypted(FieldRef("accountNumber")));
-    ASSERT_TRUE(result->isEncrypted(FieldRef("super.secret")));
-    ASSERT_FALSE(result->isEncrypted(FieldRef("super")));
+    ASSERT(extractMetadata(schema, "ssn") == kDefaultMetadata);
+    ASSERT(extractMetadata(schema, "accountNumber") == kDefaultMetadata);
+    ASSERT(extractMetadata(schema, "super.secret") == kDefaultMetadata);
+    assertNotEncrypted(schema, "super");
 }
 
 TEST(EncryptionSchemaTreeTest, TopLevelEncryptMarksEmptyPathAsEncrypted) {
-    BSONObj schema = fromjson(R"({encrypt: {}})");
-    auto result = EncryptionSchemaTreeNode::parse(schema);
-    ASSERT_TRUE(result->isEncrypted(FieldRef("")));
+    ASSERT(extractMetadata(fromjson("{encrypt: {}}"), "") == kDefaultMetadata);
+}
+
+TEST(EncryptionSchemaTreeTest, ExtractsCorrectMetadataOptions) {
+    const IDLParserErrorContext encryptCtxt("encrypt");
+    auto metadataObj = BSON("algorithm"
+                            << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
+                            << "initializationVector"
+                            << BSONBinData(NULL, 0, BinDataType::BinDataGeneral)
+                            << "keyId"
+                            << BSON_ARRAY(UUID::gen()));
+
+    BSONObj schema = BSON("type"
+                          << "object"
+                          << "properties"
+                          << BSON("ssn" << BSON("encrypt" << metadataObj)));
+    ASSERT(extractMetadata(schema, "ssn") != kDefaultMetadata);
+    ASSERT(extractMetadata(schema, "ssn") == EncryptionMetadata::parse(encryptCtxt, metadataObj));
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseEncryptAlongsideAnotherTypeKeyword) {
@@ -264,6 +298,50 @@ TEST(EncryptionSchemaTreeTest, FailsToParseInvalidSchema) {
         }})");
     ASSERT_THROWS_CODE(
         EncryptionSchemaTreeNode::parse(schema), AssertionException, ErrorCodes::FailedToParse);
+}
+
+TEST(EncryptionSchemaTreeTest, FailsToParseUnknownFieldInEncrypt) {
+    BSONObj schema = fromjson(R"({
+        type: "object", 
+        properties: {
+            ssn: {
+                encrypt: {unknownField: {}}
+            }
+        }})");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 40415);
+}
+
+TEST(EncryptionSchemaTreeTest, FailsToParseInvalidAlgorithm) {
+    BSONObj schema = fromjson(R"({
+        type: "object", 
+        properties: {
+            ssn: {
+                encrypt: {algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-SomeInvalidAlgo"}
+            }
+        }})");
+    ASSERT_THROWS_CODE(
+        EncryptionSchemaTreeNode::parse(schema), AssertionException, ErrorCodes::BadValue);
+}
+
+TEST(EncryptionSchemaTreeTest, FailsToParseInvalidIV) {
+    BSONObj schema =
+        BSON("type"
+             << "object"
+             << "properties"
+             << BSON("ssn" << BSON("encrypt" << BSON("initializationVector" << BSONBinData(
+                                                         nullptr, 0, BinDataType::MD5Type)))));
+    ASSERT_THROWS_CODE(
+        EncryptionSchemaTreeNode::parse(schema), AssertionException, ErrorCodes::TypeMismatch);
+}
+
+TEST(EncryptionSchemaTreeTest, FailsToParseInvalidKeyIdUUID) {
+    BSONObj schema =
+        BSON("type"
+             << "object"
+             << "properties"
+             << BSON("ssn" << BSON("encrypt" << BSON("keyId" << BSON_ARRAY(BSONBinData(
+                                                         nullptr, 0, BinDataType::MD5Type))))));
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51084);
 }
 
 }  // namespace
