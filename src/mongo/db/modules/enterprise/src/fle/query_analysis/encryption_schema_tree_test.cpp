@@ -40,8 +40,6 @@
 namespace mongo {
 namespace {
 
-const EncryptionMetadata kDefaultMetadata = EncryptionMetadata{};
-
 /**
  * Parses 'schema' into an encryption schema tree and returns the EncryptionMetadata for
  * 'path'.
@@ -62,36 +60,76 @@ void assertNotEncrypted(BSONObj schema, std::string path) {
 }
 
 TEST(EncryptionSchemaTreeTest, MarksTopLevelFieldAsEncrypted) {
+    const auto uuid = UUID::gen();
+    EncryptionMetadata metadata;
+    metadata.setAlgorithm(FleAlgorithmEnum::kRandom);
+    metadata.setKeyId(EncryptSchemaKeyId({uuid}));
+
     BSONObj schema =
-        fromjson(R"({type: "object", properties: {ssn: {encrypt: {}}, name: {type: "string"}}})");
-    ASSERT(extractMetadata(schema, "ssn") == kDefaultMetadata);
+        fromjson(R"({
+            type: "object",
+            properties: {
+                ssn: {
+                    encrypt: {
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                        keyId: [)" +
+                 uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::Strict, false) + R"(]
+                    }
+                },
+                name: {
+                    type: "string"
+                }
+            }
+        })");
+    ASSERT(extractMetadata(schema, "ssn") == metadata);
     assertNotEncrypted(schema, "ssn.nonexistent");
     assertNotEncrypted(schema, "name");
 }
 
 TEST(EncryptionSchemaTreeTest, MarksNestedFieldsAsEncrypted) {
-    BSONObj schema = fromjson(R"({
-        type: "object",
+    const auto uuid = UUID::gen();
+    EncryptionMetadata metadata;
+    metadata.setAlgorithm(FleAlgorithmEnum::kRandom);
+    metadata.setKeyId(EncryptSchemaKeyId({uuid}));
+
+    BSONObj schema =
+        fromjson(R"({
+        type: "object", 
         properties: {
             user: {
                 type: "object",
                 properties: {
-                    ssn: {encrypt: {}}
+                    ssn: {
+                        encrypt: {
+                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                            keyId: [)" +
+                 uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::Strict, false) + R"(]
+                        }
+                    }
                 }
             }
         }})");
     auto result = EncryptionSchemaTreeNode::parse(schema);
-    ASSERT(extractMetadata(schema, "user.ssn") == kDefaultMetadata);
+    ASSERT(extractMetadata(schema, "user.ssn") == metadata);
     assertNotEncrypted(schema, "user");
     assertNotEncrypted(schema, "user.name");
 }
 
 TEST(EncryptionSchemaTreeTest, MarksNumericFieldNameAsEncrypted) {
+    const auto uuid = UUID::gen();
+    EncryptionMetadata metadata;
+    metadata.setAlgorithm(FleAlgorithmEnum::kRandom);
+    metadata.setKeyId(EncryptSchemaKeyId({uuid}));
+    BSONObj encryptObj = fromjson(R"({
+        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+        keyId: [)" + uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::Strict, false) +
+                                  R"(]})");
+
     BSONObj schema = BSON("type"
                           << "object"
                           << "properties"
-                          << BSON("0" << BSON("encrypt" << BSONObj())));
-    ASSERT(extractMetadata(schema, "0") == kDefaultMetadata);
+                          << BSON("0" << BSON("encrypt" << encryptObj)));
+    ASSERT(extractMetadata(schema, "0") == metadata);
 
     schema = BSON("type"
                   << "object"
@@ -99,47 +137,90 @@ TEST(EncryptionSchemaTreeTest, MarksNumericFieldNameAsEncrypted) {
                   << BSON("nested" << BSON("type"
                                            << "object"
                                            << "properties"
-                                           << BSON("0" << BSON("encrypt" << BSONObj())))));
-    ASSERT(extractMetadata(schema, "nested.0") == kDefaultMetadata);
+                                           << BSON("0" << BSON("encrypt" << encryptObj)))));
+    ASSERT(extractMetadata(schema, "nested.0") == metadata);
 }
 
 TEST(EncryptionSchemaTreeTest, MarksMultipleFieldsAsEncrypted) {
+    const auto uuid = UUID::gen();
+    const auto uuidStr = uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::Strict, false);
+    EncryptionMetadata metadata;
+    metadata.setAlgorithm(FleAlgorithmEnum::kRandom);
+    metadata.setKeyId(EncryptSchemaKeyId({uuid}));
+
     BSONObj schema = fromjson(R"({
-        type: "object",
-        properties: {
-            ssn: {encrypt: {}},
-            accountNumber: {encrypt: {}},
+        type: "object", 
+        properties: {            
+            ssn: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [)" +
+                              uuidStr + R"(]
+                }
+            },
+            accountNumber: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [)" +
+                              uuidStr + R"(]
+                }
+            },
             super: {
                 type: "object",
                 properties: {
-                    secret: {encrypt: {}}
+                    secret: {
+                        encrypt: {
+                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                            keyId: [)" +
+                              uuidStr + R"(]
+                        }
+                    }
                 }
             }
         }})");
-    ASSERT(extractMetadata(schema, "ssn") == kDefaultMetadata);
-    ASSERT(extractMetadata(schema, "accountNumber") == kDefaultMetadata);
-    ASSERT(extractMetadata(schema, "super.secret") == kDefaultMetadata);
+    ASSERT(extractMetadata(schema, "ssn") == metadata);
+    ASSERT(extractMetadata(schema, "accountNumber") == metadata);
+    ASSERT(extractMetadata(schema, "super.secret") == metadata);
     assertNotEncrypted(schema, "super");
 }
 
 TEST(EncryptionSchemaTreeTest, TopLevelEncryptMarksEmptyPathAsEncrypted) {
-    ASSERT(extractMetadata(fromjson("{encrypt: {}}"), "") == kDefaultMetadata);
+    const auto uuid = UUID::gen();
+    const auto uuidStr = uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::Strict, false);
+    EncryptionMetadata metadata;
+    metadata.setAlgorithm(FleAlgorithmEnum::kRandom);
+    metadata.setKeyId(EncryptSchemaKeyId({uuid}));
+
+    BSONObj schema = fromjson(R"({
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [)" +
+                              uuidStr + R"(]
+                }})");
+
+    ASSERT(extractMetadata(schema, "") == metadata);
 }
 
 TEST(EncryptionSchemaTreeTest, ExtractsCorrectMetadataOptions) {
+    const auto uuid = UUID::gen();
+    EncryptionMetadata ssnMetadata;
+    ssnMetadata.setAlgorithm(FleAlgorithmEnum::kDeterministic);
+    ssnMetadata.setInitializationVector(ConstDataRange(NULL, static_cast<size_t>(0)));
+    ssnMetadata.setKeyId(EncryptSchemaKeyId({uuid}));
+
     const IDLParserErrorContext encryptCtxt("encrypt");
     auto metadataObj = BSON("algorithm"
                             << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
                             << "initializationVector"
                             << BSONBinData(NULL, 0, BinDataType::BinDataGeneral)
                             << "keyId"
-                            << BSON_ARRAY(UUID::gen()));
+                            << BSON_ARRAY(uuid));
 
     BSONObj schema = BSON("type"
                           << "object"
                           << "properties"
                           << BSON("ssn" << BSON("encrypt" << metadataObj)));
-    ASSERT(extractMetadata(schema, "ssn") != kDefaultMetadata);
+    ASSERT(extractMetadata(schema, "ssn") == ssnMetadata);
     ASSERT(extractMetadata(schema, "ssn") == EncryptionMetadata::parse(encryptCtxt, metadataObj));
 }
 
@@ -148,7 +229,10 @@ TEST(EncryptionSchemaTreeTest, FailsToParseEncryptAlongsideAnotherTypeKeyword) {
         type: "object",
         properties: {
             ssn: {
-                encrypt: {},
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                },
                 type: "object"
             }
         }})");
@@ -159,7 +243,10 @@ TEST(EncryptionSchemaTreeTest, FailsToParseEncryptAlongsideAnotherTypeKeyword) {
         type: "object",
         properties: {
             ssn: {
-                encrypt: {},
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                },
                 bsonType: "BinData"
             }
         }})");
@@ -172,7 +259,10 @@ TEST(EncryptionSchemaTreeTest, FailsToParseEncryptWithSiblingKeywords) {
         type: "object",
         properties: {
             ssn: {
-                encrypt: {},
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                },
                 properties: {invalid: {}}
             }
         }})");
@@ -182,7 +272,10 @@ TEST(EncryptionSchemaTreeTest, FailsToParseEncryptWithSiblingKeywords) {
         type: "object",
         properties: {
             ssn: {
-                encrypt: {},
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                },
                 minimum: 5,
                 items: {}
             }
@@ -197,9 +290,19 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfConflictingEncryptKeywords) {
             ssn: {
                 encrypt: {},
                 properties: {
-                    invalid: {encrypt: {}}
+                    invalid: {
+                        encrypt: {
+                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                            keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                        }
+                    }
                 },
-                items: {encrypt: {}}
+                items: {
+                    encrypt: {
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                        keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                    }
+                }
             }
         }})");
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
@@ -210,8 +313,13 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptWithinItems) {
         type: "object",
         properties: {
             ssn: {
-                type: "array",
-                items: {encrypt: {}}
+                type: "array", 
+                items: {
+                    encrypt: {
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                        keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                    }
+                }
             }
         }})");
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
@@ -223,8 +331,13 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptWithinItems) {
                 type: "object",
                 properties: {
                     ssn: {
-                        type: "array",
-                        items: {encrypt: {}}
+                        type: "array", 
+                        items: {
+                            encrypt: {
+                                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                                keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                            }
+                        }
                     }
                 }
             }
@@ -239,7 +352,12 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptWithinAdditionalItems) {
             ssn: {
                 type: "array",
                 items: {},
-                additionalItems: {encrypt: {}}
+                additionalItems: {
+                    encrypt: {
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                        keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                    }
+                }
             }
         }})");
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
@@ -248,14 +366,27 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptWithinAdditionalItems) {
         type: "object",
         properties: {
             ssn: {
-                additionalItems: {encrypt: {}}
+                additionalItems: {
+                    encrypt: {
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                        keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                    }
+                }
             }
         }})");
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptParentIsNotTypeRestricted) {
-    BSONObj schema = fromjson(R"({properties: {ssn: {encrypt: {}}}})");
+    BSONObj schema = fromjson(R"({
+        properties: {
+            ssn: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                }
+            }
+        }})");
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
 
     schema = fromjson(R"({
@@ -263,7 +394,12 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptParentIsNotTypeRestricted) {
         properties: {
             user: {
                 properties: {
-                    ssn: {encrypt: {}}
+                    ssn: {
+                        encrypt: {
+                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                            keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                        }
+                    }
                 }
             }
         }})");
@@ -277,7 +413,12 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptParentIsTypeRestrictedWithMu
             user: {
                 type: ["object", "array"],
                 properties: {
-                    ssn: {encrypt: {}}
+                    ssn: {
+                        encrypt: {
+                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                            keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                        }
+                    }
                 }
             }
         }})");
@@ -316,7 +457,10 @@ TEST(EncryptionSchemaTreeTest, FailsToParseInvalidAlgorithm) {
         type: "object",
         properties: {
             ssn: {
-                encrypt: {algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-SomeInvalidAlgo"}
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-SomeInvalidAlgo",
+                    keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                }
             }
         }})");
     ASSERT_THROWS_CODE(
@@ -345,7 +489,13 @@ TEST(EncryptionSchemaTreeTest, FailsToParseInvalidKeyIdUUID) {
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptBelowAdditionalPropertiesWithoutTypeObject) {
-    BSONObj schema = fromjson("{additionalProperties: {encrypt: {}}}");
+    BSONObj schema = fromjson(R"({
+        additionalProperties: {
+            encrypt: {
+                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+            }
+        }})");
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
 }
 
@@ -353,7 +503,10 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfIllegalSubschemaUnderAdditionalProp
     BSONObj schema = fromjson(R"({
         type: "object",
         additionalProperties: {
-            encrypt: {},
+            encrypt: {
+                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+            },
             illegal: 1
         }})");
     ASSERT_THROWS_CODE(
@@ -374,7 +527,12 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfAdditionalPropertiesWithEncryptInsi
                 type: "array",
                 items: {
                     type: "object",
-                    additionalProperties: {encrypt: {}}
+                    additionalProperties: {
+                        encrypt: {
+                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                            keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                        }
+                    }
                 }
             }
         }})");
@@ -384,7 +542,12 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfAdditionalPropertiesWithEncryptInsi
 TEST(EncryptionSchemaTreeTest, AdditionalPropertiesAllPropertiesCorrectlyReportedAsEncrypted) {
     BSONObj schema = fromjson(R"({
         type: "object",
-        additionalProperties: {encrypt: {}}
+        additionalProperties: {
+            encrypt: {
+                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+            }
+        }
     })");
     auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
     ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo"}));
@@ -399,7 +562,12 @@ TEST(EncryptionSchemaTreeTest,
         properties: {
             obj: {
                 type: "object",
-                additionalProperties: {encrypt: {}}
+                additionalProperties: {
+                    encrypt: {
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                        keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                    }
+                }
             }
         }})");
     auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
@@ -419,9 +587,19 @@ TEST(EncryptionSchemaTreeTest, AdditionalPropertiesOnlyAppliesToFieldsNotNamedBy
                 properties: {
                     a: {type: "string"},
                     b: {type: "object"},
-                    c: {encrypt: {}}
+                    c: {
+                        encrypt: {
+                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                            keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                        }
+                    }
                 },
-                additionalProperties: {encrypt: {}}
+                additionalProperties: {
+                    encrypt: {
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                        keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                    }
+                }
             }
         }})");
     auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
@@ -443,7 +621,12 @@ TEST(EncryptionSchemaTreeTest, AdditionalPropertiesWorksWithNestedPropertiesSubs
             type: "object",
             properties: {
                 a: {type: "string"},
-                b: {encrypt: {}}
+                b: {
+                    encrypt: {
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                        keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                    }
+                }
             }
         }})");
     auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
@@ -459,7 +642,12 @@ TEST(EncryptionSchemaTreeTest, AdditionalPropertiesWorksWithNestedAdditionalProp
         type: "object",
         additionalProperties: {
             type: "object",
-            additionalProperties: {encrypt: {}}
+            additionalProperties: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                }
+            }
         }})");
     auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
     ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo"}));
@@ -495,6 +683,152 @@ TEST(EncryptionSchemaTreeTest, CanSuccessfullyParseAdditionalPropertiesWhenBoole
     ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"obj"}));
     ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"obj.foo"}));
     ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"obj.bar"}));
+}
+
+TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataWithOverriding) {
+    const auto uuid = UUID::gen();
+    const char initVector[] = "mongo";
+
+    EncryptionMetadata secretMetadata;
+    secretMetadata.setAlgorithm(FleAlgorithmEnum::kRandom);
+    secretMetadata.setKeyId(EncryptSchemaKeyId({uuid}));
+
+    EncryptionMetadata ssnMetadata;
+    ssnMetadata.setAlgorithm(FleAlgorithmEnum::kDeterministic);
+    ssnMetadata.setInitializationVector(
+        ConstDataRange(initVector, initVector + sizeof(initVector) - 1));
+    ssnMetadata.setKeyId(EncryptSchemaKeyId({uuid}));
+
+    BSONObj schema =
+        fromjson(R"({
+        encryptMetadata: {
+            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+            keyId: [)" +
+                 uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::Strict, false) + R"(]
+        },
+        type: "object",
+        properties: {
+            ssn: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                    initializationVector: {$binary: "bW9uZ28=", $type: "00"}
+                }
+            },
+            super: {
+                type: "object",
+                properties: {
+                    secret: {encrypt: {}}
+                }
+            }
+        }})");
+    ASSERT(extractMetadata(schema, "ssn") == ssnMetadata);
+    ASSERT(extractMetadata(schema, "super.secret") == secretMetadata);
+}
+
+TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataMultipleLevels) {
+    const char initVector[] = "mongo";
+    const auto uuid1 = UUID::gen();
+    const auto uuid2 = UUID::gen();
+
+    EncryptionMetadata secretMetadata;
+    secretMetadata.setAlgorithm(FleAlgorithmEnum::kDeterministic);
+    secretMetadata.setInitializationVector(
+        ConstDataRange(initVector, initVector + sizeof(initVector) - 1));
+    secretMetadata.setKeyId(EncryptSchemaKeyId({uuid1}));
+
+    EncryptionMetadata mysteryMetadata;
+    mysteryMetadata.setAlgorithm(FleAlgorithmEnum::kRandom);
+    mysteryMetadata.setKeyId(EncryptSchemaKeyId({uuid2}));
+
+    BSONObj schema =
+        fromjson(R"({
+        encryptMetadata: {
+            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
+        },
+        type: "object",
+        properties: {
+            super: {
+                encryptMetadata: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                    initializationVector: {$binary: "bW9uZ28=", $type: "00"},
+                    keyId: [)" +
+                 uuid1.toBSON().getField("uuid").jsonString(JsonStringFormat::Strict, false) + R"(]
+                },
+                type: "object",
+                properties: {
+                    secret: {encrypt: {}}
+                }
+            },
+            duper: {
+                type: "object",
+                properties: {
+                    mystery: {
+                        encrypt: {
+                            keyId: [)" +
+                 uuid2.toBSON().getField("uuid").jsonString(JsonStringFormat::Strict, false) + R"(]
+                        }
+                    }
+                }
+            }
+        }})");
+    ASSERT(extractMetadata(schema, "super.secret") == secretMetadata);
+    ASSERT(extractMetadata(schema, "duper.mystery") == mysteryMetadata);
+}
+
+TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataMissingAlgorithm) {
+    const auto uuid = UUID::gen();
+
+    BSONObj schema =
+        fromjson(R"({
+        encryptMetadata: {
+            keyId: [)" +
+                 uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::Strict, false) + R"(]
+        },
+        type: "object",
+        properties: {
+            super: {
+                type: "object",
+                properties: {
+                    secret: {encrypt: {}}
+                }
+            }
+        }})");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51095);
+}
+
+TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataMissingInitializationVector) {
+    BSONObj schema = fromjson(R"({
+        encryptMetadata: {
+            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
+        },
+        type: "object",
+        properties: {
+            super: {
+                type: "object",
+                properties: {
+                    secret: {encrypt: {}}
+                }
+            }
+        }})");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51096);
+}
+
+TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataMissingKeyId) {
+    BSONObj schema = fromjson(R"({
+        encryptMetadata: {
+            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+            initializationVector: {$binary: "bW9uZ28=", $type: "00"}
+        },
+        type: "object",
+        properties: {
+            super: {
+                type: "object",
+                properties: {
+                    secret: {encrypt: {}}
+                }
+            }
+        }})");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51097);
 }
 
 }  // namespace

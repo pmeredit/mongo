@@ -193,7 +193,19 @@ public:
  */
 class EncryptionSchemaEncryptedNode final : public EncryptionSchemaTreeNode {
 public:
-    EncryptionSchemaEncryptedNode(EncryptionMetadata metadata) : _metadata(std::move(metadata)) {}
+    EncryptionSchemaEncryptedNode(EncryptionMetadata metadata) : _metadata(std::move(metadata)) {
+        uassert(51095,
+                "Encrypt object combined with encryptMetadata needs to specify an algorithm",
+                _metadata.getAlgorithm());
+        uassert(51096,
+                "Deterministic algorithm must be accompanied with an initialization vector in "
+                "encrypt object combined with encryptMetadata",
+                _metadata.getAlgorithm() == FleAlgorithmEnum::kRandom ||
+                    _metadata.getInitializationVector());
+        uassert(51097,
+                "Encrypt object combined with encryptMetadata needs to specify a keyId",
+                _metadata.getKeyId());
+    }
 
     boost::optional<EncryptionMetadata> getEncryptionMetadata() const final {
         return _metadata;

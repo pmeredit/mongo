@@ -36,12 +36,17 @@
 #include "mongo/db/matcher/schema/json_schema_parser.h"
 #include "mongo/util/string_map.h"
 
+#include <list>
+
 namespace mongo {
 
 namespace {
 
 // Declared early to permit mutual recursion.
-std::unique_ptr<EncryptionSchemaTreeNode> _parse(BSONObj schema, bool encryptAllowed);
+class EncryptMetadataChainMemento;
+std::unique_ptr<EncryptionSchemaTreeNode> _parse(BSONObj schema,
+                                                 bool encryptAllowed,
+                                                 EncryptMetadataChainMemento metadataChain);
 
 enum class SchemaTypeRestriction {
     kNone,    // No type restriction.
@@ -74,6 +79,74 @@ SchemaTypeRestriction getTypeRestriction(StringMap<BSONElement>& keywordMap) {
 }
 
 /**
+ * Memento class facilitating managing of an internal list of EncryptMetadata objects across
+ * recursive invocations during parsing of a JSON schema.
+ *
+ * An object is created at each recursive invocation of the _parse() method but the same
+ * internal list is passed across. If a new EncryptMetadata gets added at a given recursive
+ * call, this fact will be recorded in the memento. Once the call is concluded this new
+ * element will be popped automatically.
+ */
+class EncryptMetadataChainMemento {
+public:
+    EncryptMetadataChainMemento(std::list<EncryptionMetadata>& chain)
+        : _wasMetadataPushed(false), _chain(chain) {}
+
+    EncryptMetadataChainMemento(const EncryptMetadataChainMemento& src)
+        : _wasMetadataPushed(false), _chain(src._chain) {}
+
+    ~EncryptMetadataChainMemento() {
+        if (_wasMetadataPushed)
+            _chain.pop_back();
+    }
+
+    void push(EncryptionMetadata metadata) {
+        uassert(51098,
+                str::stream()
+                    << "At most one EncryptMetadata object can be specified at a given level.",
+                !_wasMetadataPushed);
+
+        _chain.push_back(std::move(metadata));
+        _wasMetadataPushed = true;
+    }
+
+    /**
+     * Computes metadata for a Encrypt node taking into account metadata objects inherited on the
+     * way from the root.
+     */
+    EncryptionMetadata combineWithChain(const EncryptionInfo& encryptInfo) const {
+        EncryptionMetadata metadata;
+
+        // Combine metadata chain from the root to current element.
+        for (const auto& newMetadata : _chain) {
+            if (newMetadata.getAlgorithm())
+                metadata.setAlgorithm(newMetadata.getAlgorithm().value());
+            if (newMetadata.getInitializationVector())
+                metadata.setInitializationVector(newMetadata.getInitializationVector().value());
+            if (newMetadata.getKeyId())
+                metadata.setKeyId(newMetadata.getKeyId().value());
+        }
+
+        // Override non-empty fields of the combined metadata with the fields from
+        // Encrypt element, as they take precedence.
+        if (encryptInfo.getAlgorithm())
+            metadata.setAlgorithm(encryptInfo.getAlgorithm());
+        if (encryptInfo.getInitializationVector())
+            metadata.setInitializationVector(encryptInfo.getInitializationVector());
+        if (encryptInfo.getKeyId())
+            metadata.setKeyId(encryptInfo.getKeyId());
+        return metadata;
+    }
+
+private:
+    // Chain of EncryptionMetadata for which we hold this memento.
+    std::list<EncryptionMetadata>& _chain;
+
+    // Indicates if metadata was added to the list.
+    bool _wasMetadataPushed;
+};
+
+/**
  * Parses the options under the 'encrypt' keyword, passed by the caller in 'encryptElt'. Returns a
  * pointer to the created encrypted node.
  *
@@ -85,9 +158,11 @@ SchemaTypeRestriction getTypeRestriction(StringMap<BSONElement>& keywordMap) {
  * Note that this method does not perform full validation of each field (e.g. valid JSON Pointer
  * keyId) as it assumes this has already been done by the normal JSON Schema parser.
  */
-std::unique_ptr<EncryptionSchemaEncryptedNode> parseEncrypt(BSONElement encryptElt,
-                                                            BSONObj schema,
-                                                            bool encryptAllowed) {
+std::unique_ptr<EncryptionSchemaEncryptedNode> parseEncrypt(
+    BSONElement encryptElt,
+    BSONObj schema,
+    bool encryptAllowed,
+    const EncryptMetadataChainMemento& metadataChain) {
     uassert(51077,
             str::stream() << "Invalid schema containing the '"
                           << JSONSchemaParser::kSchemaEncryptKeyword
@@ -103,36 +178,29 @@ std::unique_ptr<EncryptionSchemaEncryptedNode> parseEncrypt(BSONElement encryptE
 
     const IDLParserErrorContext encryptCtxt("encrypt");
 
-    // It's safe to skip the type check on 'encrypt' since the JSONSchemaParser should have already
-    // validated it.
     EncryptionInfo encryptInfo = EncryptionInfo::parse(encryptCtxt, encryptElt.embeddedObject());
-
-    // Manually build an EncryptionMetadata to attach to the schema tree.
-    EncryptionMetadata encryptMetadata;
-    encryptMetadata.setAlgorithm(encryptInfo.getAlgorithm());
-    encryptMetadata.setInitializationVector(encryptInfo.getInitializationVector());
-    encryptMetadata.setKeyId(encryptInfo.getKeyId());
-
-    return std::make_unique<EncryptionSchemaEncryptedNode>(std::move(encryptMetadata));
+    auto metadata = metadataChain.combineWithChain(encryptInfo);
+    return std::make_unique<EncryptionSchemaEncryptedNode>(metadata);
 }
 
 /**
  * Throws an exception if an illegal 'encrypt' keyword is found inside an 'items' or
  * 'additionalItems' subschema.
  */
-void validateArrayKeywords(StringMap<BSONElement>& keywordMap) {
+void validateArrayKeywords(StringMap<BSONElement>& keywordMap,
+                           const EncryptMetadataChainMemento& metadataChain) {
     // Recurse each schema in items and verify that 'encrypt' is not specified.
     if (auto itemsElem = keywordMap[JSONSchemaParser::kSchemaItemsKeyword]) {
         if (itemsElem.type() == BSONType::Array) {
             for (auto&& subschema : itemsElem.embeddedObject()) {
                 // Parse each nested schema, disallowing 'encrypt'. We can safely ignore the return
                 // value since this method will throw before adding any encryption nodes.
-                _parse(subschema.embeddedObject(), false);
+                _parse(subschema.embeddedObject(), false, metadataChain);
             }
         } else if (itemsElem.type() == BSONType::Object) {
             // Parse the nested schema, disallowing 'encrypt'. We can safely ignore the return
             // value since this method will throw before adding any encryption nodes.
-            _parse(itemsElem.embeddedObject(), false);
+            _parse(itemsElem.embeddedObject(), false, metadataChain);
         }
     }
 
@@ -142,7 +210,7 @@ void validateArrayKeywords(StringMap<BSONElement>& keywordMap) {
         // validation if it contains a nested schema. It is safe to ignore the return value since
         // this method will throw if the nested schema is invalid.
         if (additionalItemsElem.type() == BSONType::Object) {
-            _parse(additionalItemsElem.embeddedObject(), false);
+            _parse(additionalItemsElem.embeddedObject(), false, metadataChain);
         }
     }
 }
@@ -156,8 +224,10 @@ void validateArrayKeywords(StringMap<BSONElement>& keywordMap) {
  * If 'encryptAllowed' is false, throws an exception upon encountering the 'encrypt' keyword in any
  * subschema.
  */
-std::unique_ptr<EncryptionSchemaTreeNode> parseObjectKeywords(StringMap<BSONElement>& keywordMap,
-                                                              bool encryptAllowed) {
+std::unique_ptr<EncryptionSchemaTreeNode> parseObjectKeywords(
+    StringMap<BSONElement>& keywordMap,
+    bool encryptAllowed,
+    const EncryptMetadataChainMemento& metadataChain) {
     auto node = std::make_unique<EncryptionSchemaNotEncryptedNode>();
 
     // Check if the type of the current schema specifies type:"object". We only permit the 'encrypt'
@@ -171,8 +241,9 @@ std::unique_ptr<EncryptionSchemaTreeNode> parseObjectKeywords(StringMap<BSONElem
     // schema tree.
     if (auto propertiesElem = keywordMap[JSONSchemaParser::kSchemaPropertiesKeyword]) {
         for (auto&& property : propertiesElem.embeddedObject()) {
-            node->addChild(std::string(property.fieldName()),
-                           _parse(property.embeddedObject(), encryptAllowedForSubschema));
+            node->addChild(
+                std::string(property.fieldName()),
+                _parse(property.embeddedObject(), encryptAllowedForSubschema, metadataChain));
         }
     }
 
@@ -184,8 +255,9 @@ std::unique_ptr<EncryptionSchemaTreeNode> parseObjectKeywords(StringMap<BSONElem
         // we only need to add nodes to the encryption schema tree when 'additionalProperties'
         // contains a subschema.
         if (additionalPropertiesElem.type() == BSONType::Object) {
-            node->addAdditionalPropertiesChild(
-                _parse(additionalPropertiesElem.embeddedObject(), encryptAllowedForSubschema));
+            node->addAdditionalPropertiesChild(_parse(additionalPropertiesElem.embeddedObject(),
+                                                      encryptAllowedForSubschema,
+                                                      metadataChain));
         }
     }
 
@@ -199,7 +271,9 @@ std::unique_ptr<EncryptionSchemaTreeNode> parseObjectKeywords(StringMap<BSONElem
  *
  * The caller is expected to validate 'schema' before calling this function.
  */
-std::unique_ptr<EncryptionSchemaTreeNode> _parse(BSONObj schema, bool encryptAllowed) {
+std::unique_ptr<EncryptionSchemaTreeNode> _parse(BSONObj schema,
+                                                 bool encryptAllowed,
+                                                 EncryptMetadataChainMemento metadataChain) {
     // Map of JSON Schema keywords which are relevant for encryption. To put a different way, the
     // resulting tree of encryption nodes is only affected by this list of keywords.
     StringMap<BSONElement> keywordMap{
@@ -207,6 +281,7 @@ std::unique_ptr<EncryptionSchemaTreeNode> _parse(BSONObj schema, bool encryptAll
         {std::string(JSONSchemaParser::kSchemaAdditionalPropertiesKeyword), {}},
         {std::string(JSONSchemaParser::kSchemaBsonTypeKeyword), {}},
         {std::string(JSONSchemaParser::kSchemaEncryptKeyword), {}},
+        {std::string(JSONSchemaParser::kSchemaEncryptMetadataKeyword), {}},
         {std::string(JSONSchemaParser::kSchemaItemsKeyword), {}},
         {std::string(JSONSchemaParser::kSchemaPropertiesKeyword), {}},
         {std::string(JSONSchemaParser::kSchemaTypeKeyword), {}},
@@ -222,13 +297,20 @@ std::unique_ptr<EncryptionSchemaTreeNode> _parse(BSONObj schema, bool encryptAll
         keywordMap[elt.fieldNameStringData()] = elt;
     }
 
-    validateArrayKeywords(keywordMap);
+    validateArrayKeywords(keywordMap, metadataChain);
 
     if (auto encryptElem = keywordMap[JSONSchemaParser::kSchemaEncryptKeyword]) {
-        return parseEncrypt(encryptElem, schema, encryptAllowed);
+        return parseEncrypt(encryptElem, schema, encryptAllowed, metadataChain);
     }
 
-    return parseObjectKeywords(keywordMap, encryptAllowed);
+    if (auto encryptMetadataElt = keywordMap[JSONSchemaParser::kSchemaEncryptMetadataKeyword]) {
+        IDLParserErrorContext ctxt("encryptMetadata");
+        const auto& metadata = EncryptionMetadata::parse(ctxt, encryptMetadataElt.embeddedObject());
+
+        metadataChain.push(metadata);
+    }
+
+    return parseObjectKeywords(keywordMap, encryptAllowed, metadataChain);
 }
 
 }  // namespace
@@ -239,7 +321,10 @@ std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parse(BSONOb
     uassertStatusOK(JSONSchemaParser::parse(schema));
 
     // The schema is at least syntatically valid, now build and return an encryption schema tree.
-    return _parse(schema, true);
+    // Inheritance of EncryptMetadata is implemented by passing around a chain of metadata
+    // predecessors.
+    std::list<EncryptionMetadata> metadataChain;
+    return _parse(schema, true, metadataChain);
 }
 
 }  // namespace mongo
