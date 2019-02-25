@@ -297,7 +297,7 @@ TEST(EncryptionSchemaTreeTest, FailsToParseInvalidSchema) {
             }
         }})");
     ASSERT_THROWS_CODE(
-        EncryptionSchemaTreeNode::parse(schema), AssertionException, ErrorCodes::FailedToParse);
+        EncryptionSchemaTreeNode::parse(schema), AssertionException, ErrorCodes::TypeMismatch);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseUnknownFieldInEncrypt) {
