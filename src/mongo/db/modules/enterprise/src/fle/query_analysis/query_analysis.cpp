@@ -13,6 +13,8 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/matcher/expression_parser.h"
+#include "mongo/db/matcher/schema/encrypt_schema_gen.h"
+#include "mongo/db/ops/write_ops.h"
 #include "mongo/db/query/query_request.h"
 #include "mongo/rpc/op_msg.h"
 
@@ -23,15 +25,6 @@ namespace {
 static constexpr auto kJsonSchema = "jsonSchema"_sd;
 static constexpr auto kHasEncryptionPlaceholders = "hasEncryptionPlaceholders"_sd;
 static constexpr auto kResult = "result"_sd;
-
-/**
- * Struct to hold information about placeholder results returned to client.
- */
-struct PlaceHolderResult {
-    bool hasEncryptionPlaceholders{false};
-
-    BSONObj result;
-};
 
 /**
  * Extracts and returns the jsonSchema field in the command 'obj'. Populates 'stripped' with the
@@ -56,6 +49,37 @@ BSONObj extractJSONSchema(BSONObj obj, BSONObjBuilder* stripped) {
     stripped->doneFast();
 
     return ret;
+}
+
+/**
+ * Recursively descends through the doc curDoc. For each key in the doc, checks the schema and
+ * replaces it with an encryption placeholder if neccessary.
+ * Does not descend into arrays.
+ */
+BSONObj replaceEncryptedFieldsRecursive(const EncryptionSchemaTreeNode* schema,
+                                        BSONObj curDoc,
+                                        FieldRef* leadingPath,
+                                        bool* encryptedFieldFound) {
+    BSONObjBuilder builder;
+    for (auto&& element : curDoc) {
+        auto fieldName = element.fieldNameStringData();
+        leadingPath->appendPart(fieldName);
+        if (auto metadata = schema->getEncryptionMetadataForPath(*leadingPath)) {
+            // TODO SERVER-39958: Error on Arrays.
+            *encryptedFieldFound = true;
+            BSONObj placeholder = buildEncryptPlaceholder(element, metadata.get());
+            builder.append(placeholder[fieldName]);
+        } else if (element.type() != BSONType::Object) {
+            // Encrypt markings below arrays are not supported.
+            builder.append(element);
+        } else {
+            builder.append(fieldName,
+                           replaceEncryptedFieldsRecursive(
+                               schema, element.embeddedObject(), leadingPath, encryptedFieldFound));
+        }
+        leadingPath->removeLastPart();
+    }
+    return builder.obj();
 }
 
 PlaceHolderResult addPlaceHoldersForFind(const BSONObj& cmdObj,
@@ -111,7 +135,19 @@ PlaceHolderResult addPlaceHoldersForFindAndModify(
 
 PlaceHolderResult addPlaceHoldersForInsert(const OpMsgRequest& request,
                                            std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
-    return PlaceHolderResult();
+    auto batch = InsertOp::parse(request);
+    auto docs = batch.getDocuments();
+    PlaceHolderResult retPlaceholder;
+    std::vector<BSONObj> docVector;
+    for (const BSONObj& doc : docs) {
+        auto placeholderPair = replaceEncryptedFields(doc, schemaTree.get());
+        retPlaceholder.hasEncryptionPlaceholders =
+            retPlaceholder.hasEncryptionPlaceholders || placeholderPair.hasEncryptionPlaceholders;
+        docVector.push_back(placeholderPair.result);
+    }
+    batch.setDocuments(docVector);
+    retPlaceholder.result = batch.toBSON(request.body);
+    return retPlaceholder;
 }
 
 PlaceHolderResult addPlaceHoldersForUpdate(const OpMsgRequest& request,
@@ -174,6 +210,14 @@ void processQueryCommand(const BSONObj& cmdObj,
 }
 
 }  // namespace
+
+PlaceHolderResult replaceEncryptedFields(BSONObj doc, const EncryptionSchemaTreeNode* schema) {
+    PlaceHolderResult res;
+    FieldRef leadingPath;
+    res.result =
+        replaceEncryptedFieldsRecursive(schema, doc, &leadingPath, &res.hasEncryptionPlaceholders);
+    return res;
+}
 
 bool isEncryptionNeeded(const BSONObj& jsonSchema) {
     auto schemaNode = EncryptionSchemaTreeNode::parse(jsonSchema);

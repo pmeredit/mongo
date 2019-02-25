@@ -23,6 +23,7 @@ env.Library(
     ],
     LIBDEPS=[
         'encryption_schema_tree',
+        '$BUILD_DIR/mongo/db/ops/write_ops_parsers',
     ]
 )
 
@@ -35,9 +36,9 @@ env.CppUnitTest(
 )
 
 env.CppUnitTest(
-    target='is_encryption_needed_test',
+    target='query_analysis_test',
     source=[
-        'is_encryption_needed_test.cpp',
+        'query_analysis_test.cpp',
     ],
     LIBDEPS_PRIVATE=[
         'cryptd_query_analysis',
