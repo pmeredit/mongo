@@ -15,22 +15,23 @@ env.Library(
     ]
 )
 
+env.Library(
+    target='cryptd_query_analysis',
+    source=[
+        'fle_match_expression.cpp',
+        'query_analysis.cpp',
+    ],
+    LIBDEPS=[
+        'encryption_schema_tree',
+    ]
+)
+
 env.CppUnitTest(
     target='encryption_schema_tree_test',
     source='encryption_schema_tree_test.cpp',
     LIBDEPS=[
         'encryption_schema_tree',
     ],
-)
-
-env.Library(
-    target='cryptd_query_analysis',
-    source=[
-        'query_analysis.cpp',
-    ],
-    LIBDEPS_PRIVATE=[
-        'encryption_schema_tree',
-    ]
 )
 
 env.CppUnitTest(
@@ -42,3 +43,13 @@ env.CppUnitTest(
         'cryptd_query_analysis',
     ],
 )
+
+env.CppUnitTest(
+    target='fle_match_expression_test',
+    source='fle_match_expression_test.cpp',
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/db/query/query_test_service_context',
+        'cryptd_query_analysis',
+    ],
+)
+

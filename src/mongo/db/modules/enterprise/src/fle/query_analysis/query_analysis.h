@@ -5,6 +5,8 @@
 #pragma once
 
 #include "mongo/bson/bsonobj.h"
+#include "mongo/db/matcher/schema/encrypt_schema_gen.h"
+#include "mongo/db/matcher/schema/encrypt_schema_types.h"
 #include "mongo/rpc/op_msg.h"
 
 namespace mongo {
@@ -47,5 +49,11 @@ void processUpdateCommand(const OpMsgRequest& request, BSONObjBuilder* builder);
 
 void processDeleteCommand(const OpMsgRequest& request, BSONObjBuilder* builder);
 
+/**
+ * Builds an EncryptionPlaceholder using 'elem' and 'metadata'. Returns a single element BSONObj
+ * whose field name is the same as the field name from 'elem' and whose value is a BinData (sub-type
+ * 6) representing the placeholder.
+ */
+BSONObj buildEncryptPlaceholder(BSONElement elem, const EncryptionMetadata& metadata);
 
 }  // namespace mongo

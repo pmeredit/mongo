@@ -146,7 +146,6 @@ bool isEncryptionNeeded(const BSONObj& jsonSchema) {
     return false;
 }
 
-
 void processFindCommand(const BSONObj& cmdObj, BSONObjBuilder* builder) {
     processQueryCommand(cmdObj, builder, addPlaceHoldersForFind);
 }
@@ -177,6 +176,40 @@ void processUpdateCommand(const OpMsgRequest& request, BSONObjBuilder* builder) 
 
 void processDeleteCommand(const OpMsgRequest& request, BSONObjBuilder* builder) {
     processWriteOpCommand(request, builder, addPlaceHoldersForDelete);
+}
+
+BSONObj buildEncryptPlaceholder(BSONElement elem, const EncryptionMetadata& metadata) {
+    invariant(metadata.getAlgorithm());
+    invariant(metadata.getKeyId());
+
+    EncryptionPlaceholder marking(metadata.getAlgorithm().get(), EncryptSchemaAnyType(elem));
+
+    if (marking.getAlgorithm() == FleAlgorithmEnum::kDeterministic) {
+        invariant(metadata.getInitializationVector());
+        marking.setInitializationVector(metadata.getInitializationVector().get());
+    }
+
+    auto keyId = metadata.getKeyId();
+    uassert(51093,
+            "A non-static (JSONPointer) keyId is not supported.",
+            keyId.get().type() == EncryptSchemaKeyId::Type::kUUIDs);
+    marking.setKeyId(keyId.get().uuids()[0]);
+
+    // Serialize the placeholder to BSON.
+    BSONObjBuilder bob;
+    marking.serialize(&bob);
+    auto markingObj = bob.done();
+
+    // Encode the placeholder BSON as BinData (sub-type 6 for encryption). Prepend the sub-subtype
+    // byte represent the intent-to-encrypt marking before the BSON payload.
+    BufBuilder binDataBuffer;
+    binDataBuffer.appendChar(0);
+    binDataBuffer.appendBuf(markingObj.objdata(), markingObj.objsize());
+
+    BSONObjBuilder binDataBob;
+    binDataBob.appendBinData(
+        elem.fieldNameStringData(), binDataBuffer.len(), BinDataType::Encrypt, binDataBuffer.buf());
+    return binDataBob.obj();
 }
 
 }  // namespace mongo
