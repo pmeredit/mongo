@@ -40,6 +40,9 @@ namespace mongo {
 
 namespace {
 
+// Declared early to permit mutual recursion.
+std::unique_ptr<EncryptionSchemaTreeNode> _parse(BSONObj schema, bool encryptAllowed);
+
 enum class SchemaTypeRestriction {
     kNone,    // No type restriction.
     kObject,  // Restricted on type "object" only.
@@ -71,16 +74,38 @@ SchemaTypeRestriction getTypeRestriction(StringMap<BSONElement>& keywordMap) {
 }
 
 /**
- * Parses the options under the 'encrypt' keyword and returns a pointer to the created encrypted
- * node.
+ * Parses the options under the 'encrypt' keyword, passed by the caller in 'encryptElt'. Returns a
+ * pointer to the created encrypted node.
+ *
+ * As 'schema', the caller should supply the schema or subschema in which the 'encrypt' keyword is
+ * specified in order to validate that 'encrypt' has no illegal sibling keywords.
+ *
+ * Throws if the caller supplies 'false' for 'encryptAllowed'.
  *
  * Note that this method does not perform full validation of each field (e.g. valid JSON Pointer
  * keyId) as it assumes this has already been done by the normal JSON Schema parser.
  */
-std::unique_ptr<EncryptionSchemaEncryptedNode> parseEncrypt(BSONObj encryptObj) {
+std::unique_ptr<EncryptionSchemaEncryptedNode> parseEncrypt(BSONElement encryptElt,
+                                                            BSONObj schema,
+                                                            bool encryptAllowed) {
+    uassert(51077,
+            str::stream() << "Invalid schema containing the '"
+                          << JSONSchemaParser::kSchemaEncryptKeyword
+                          << "' keyword.",
+            encryptAllowed);
+
+    uassert(51078,
+            str::stream() << "Invalid schema containing the '"
+                          << JSONSchemaParser::kSchemaEncryptKeyword
+                          << "' keyword, sibling keywords are not allowed as such restrictions "
+                             "cannot work on an encrypted field.",
+            schema.nFields() == 1U);
+
     const IDLParserErrorContext encryptCtxt("encrypt");
 
-    EncryptionInfo encryptInfo = EncryptionInfo::parse(encryptCtxt, encryptObj);
+    // It's safe to skip the type check on 'encrypt' since the JSONSchemaParser should have already
+    // validated it.
+    EncryptionInfo encryptInfo = EncryptionInfo::parse(encryptCtxt, encryptElt.embeddedObject());
 
     // Manually build an EncryptionMetadata to attach to the schema tree.
     EncryptionMetadata encryptMetadata;
@@ -92,34 +117,10 @@ std::unique_ptr<EncryptionSchemaEncryptedNode> parseEncrypt(BSONObj encryptObj) 
 }
 
 /**
- * Parses the given schema and returns the root of the resulting encryption tree. If
- * 'encryptAllowed' is set to false, then this method will throw an assertion if any nested schema
- * contains the 'encrypt' keyword.
- *
- * The caller is expected to validate 'schema' before calling this function.
+ * Throws an exception if an illegal 'encrypt' keyword is found inside an 'items' or
+ * 'additionalItems' subschema.
  */
-std::unique_ptr<EncryptionSchemaTreeNode> _parse(BSONObj schema, bool encryptAllowed) {
-    // Map of JSON Schema keywords which are relevant for encryption. To put a different way, the
-    // resulting tree of encryption nodes is only affected by this list of keywords.
-    StringMap<BSONElement> keywordMap{
-        {std::string(JSONSchemaParser::kSchemaAdditionalItemsKeyword), {}},
-        {std::string(JSONSchemaParser::kSchemaBsonTypeKeyword), {}},
-        {std::string(JSONSchemaParser::kSchemaEncryptKeyword), {}},
-        {std::string(JSONSchemaParser::kSchemaItemsKeyword), {}},
-        {std::string(JSONSchemaParser::kSchemaPropertiesKeyword), {}},
-        {std::string(JSONSchemaParser::kSchemaTypeKeyword), {}},
-    };
-
-    // Populate the keyword map for the list of relevant keywords for encryption. Can safely ignore
-    // unknown keywords as full validation of the schema should've been handled already.
-    for (auto&& elt : schema) {
-        auto it = keywordMap.find(elt.fieldNameStringData());
-        if (it == keywordMap.end())
-            continue;
-
-        keywordMap[elt.fieldNameStringData()] = elt;
-    }
-
+void validateArrayKeywords(StringMap<BSONElement>& keywordMap) {
     // Recurse each schema in items and verify that 'encrypt' is not specified.
     if (auto itemsElem = keywordMap[JSONSchemaParser::kSchemaItemsKeyword]) {
         if (itemsElem.type() == BSONType::Array) {
@@ -137,54 +138,97 @@ std::unique_ptr<EncryptionSchemaTreeNode> _parse(BSONObj schema, bool encryptAll
 
     // Verify that 'encrypt' is not specified in 'additionalItems'.
     if (auto additionalItemsElem = keywordMap[JSONSchemaParser::kSchemaAdditionalItemsKeyword]) {
-        // Only care if we're parsing a nested schema. Safe to ignore the return value since
+        // Although the value of 'additionalItems' can be a boolean, we only need to do further
+        // validation if it contains a nested schema. It is safe to ignore the return value since
         // this method will throw if the nested schema is invalid.
         if (additionalItemsElem.type() == BSONType::Object) {
             _parse(additionalItemsElem.embeddedObject(), false);
         }
     }
+}
 
-    if (auto encryptElem = keywordMap[JSONSchemaParser::kSchemaEncryptKeyword]) {
-        uassert(51077,
-                str::stream() << "Invalid schema containing the '"
-                              << JSONSchemaParser::kSchemaEncryptKeyword
-                              << "' keyword.",
-                encryptAllowed);
+/**
+ * Returns the encryption schema tree specified by the object keywords 'properties' and
+ * 'additionalProperties'. The BSON elements associated with these object keywords are obtained from
+ * 'keywordMap'. The caller must have already verified that 'encrypt' is not present in
+ * 'keywordMap'.
+ *
+ * If 'encryptAllowed' is false, throws an exception upon encountering the 'encrypt' keyword in any
+ * subschema.
+ */
+std::unique_ptr<EncryptionSchemaTreeNode> parseObjectKeywords(StringMap<BSONElement>& keywordMap,
+                                                              bool encryptAllowed) {
+    auto node = std::make_unique<EncryptionSchemaNotEncryptedNode>();
 
-        uassert(51078,
-                str::stream() << "Invalid schema containing the '"
-                              << JSONSchemaParser::kSchemaEncryptKeyword
-                              << "' keyword, sibling keywords are not allowed as such restrictions "
-                                 "cannot work on an encrypted field.",
-                schema.nFields() == 1U);
+    // Check if the type of the current schema specifies type:"object". We only permit the 'encrypt'
+    // keyword inside nested schemas if the current schema requires an object.
+    SchemaTypeRestriction restriction = getTypeRestriction(keywordMap);
 
-        // It's safe to skip the type check on 'encrypt' since the JSONSchemaParser should have
-        // already validated it.
-        return parseEncrypt(encryptElem.embeddedObject());
-    }
+    bool encryptAllowedForSubschema =
+        (restriction == SchemaTypeRestriction::kObject) ? encryptAllowed : false;
 
     // Recurse each nested schema in 'properties' and append the resulting nodes to the encryption
     // schema tree.
     if (auto propertiesElem = keywordMap[JSONSchemaParser::kSchemaPropertiesKeyword]) {
-        // Check if the type of the current schema is restricted. This allows us to remove ambiguity
-        // when the "encrypt" keyword is found in nested schemas.
-        SchemaTypeRestriction restriction = getTypeRestriction(keywordMap);
-
-        bool encryptAllowedForSubschema =
-            (restriction == SchemaTypeRestriction::kObject) ? encryptAllowed : false;
-
-        auto objectNode = std::make_unique<EncryptionSchemaObjectNode>();
         for (auto&& property : propertiesElem.embeddedObject()) {
-            objectNode->addChild(std::string(property.fieldName()),
-                                 _parse(property.embeddedObject(), encryptAllowedForSubschema));
+            node->addChild(std::string(property.fieldName()),
+                           _parse(property.embeddedObject(), encryptAllowedForSubschema));
         }
-        return objectNode;
     }
 
-    // If we've made it to this point, then the current schema is not encrypted and does not contain
-    // any nested properties. This implies that the current path is either an array or a scalar,
-    // both of which can be treated as not encrypted.
-    return std::make_unique<EncryptionSchemaNotEncryptedNode>();
+    // Handle the 'additionalProperties' keyword.
+    if (auto additionalPropertiesElem =
+            keywordMap[JSONSchemaParser::kSchemaAdditionalPropertiesKeyword]) {
+        // We can ignore 'additionalProperties' when it is a boolean. It doesn't matter whether
+        // additional properties are always allowed or always disallowed with respect to encryption;
+        // we only need to add nodes to the encryption schema tree when 'additionalProperties'
+        // contains a subschema.
+        if (additionalPropertiesElem.type() == BSONType::Object) {
+            node->addAdditionalPropertiesChild(
+                _parse(additionalPropertiesElem.embeddedObject(), encryptAllowedForSubschema));
+        }
+    }
+
+    return node;
+}
+
+/**
+ * Parses the given schema and returns the root of the resulting encryption tree. If
+ * 'encryptAllowed' is set to false, then this method will throw an assertion if any nested schema
+ * contains the 'encrypt' keyword.
+ *
+ * The caller is expected to validate 'schema' before calling this function.
+ */
+std::unique_ptr<EncryptionSchemaTreeNode> _parse(BSONObj schema, bool encryptAllowed) {
+    // Map of JSON Schema keywords which are relevant for encryption. To put a different way, the
+    // resulting tree of encryption nodes is only affected by this list of keywords.
+    StringMap<BSONElement> keywordMap{
+        {std::string(JSONSchemaParser::kSchemaAdditionalItemsKeyword), {}},
+        {std::string(JSONSchemaParser::kSchemaAdditionalPropertiesKeyword), {}},
+        {std::string(JSONSchemaParser::kSchemaBsonTypeKeyword), {}},
+        {std::string(JSONSchemaParser::kSchemaEncryptKeyword), {}},
+        {std::string(JSONSchemaParser::kSchemaItemsKeyword), {}},
+        {std::string(JSONSchemaParser::kSchemaPropertiesKeyword), {}},
+        {std::string(JSONSchemaParser::kSchemaTypeKeyword), {}},
+    };
+
+    // Populate the keyword map for the list of relevant keywords for encryption. Can safely ignore
+    // unknown keywords as full validation of the schema should've been handled already.
+    for (auto&& elt : schema) {
+        auto it = keywordMap.find(elt.fieldNameStringData());
+        if (it == keywordMap.end())
+            continue;
+
+        keywordMap[elt.fieldNameStringData()] = elt;
+    }
+
+    validateArrayKeywords(keywordMap);
+
+    if (auto encryptElem = keywordMap[JSONSchemaParser::kSchemaEncryptKeyword]) {
+        return parseEncrypt(encryptElem, schema, encryptAllowed);
+    }
+
+    return parseObjectKeywords(keywordMap, encryptAllowed);
 }
 
 }  // namespace

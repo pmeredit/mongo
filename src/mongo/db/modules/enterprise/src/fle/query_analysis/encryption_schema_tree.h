@@ -60,11 +60,11 @@ namespace mongo {
  *
  * Results in the following encryption schema tree:
  *
- *                     ObjectNode
+ *                   NotEncryptedNode
  *                       /    \
  *                 user /      \ account
  *                     /        \
- *              ObjectNode      EncryptedNode
+ *        NotEncryptedNode    EncryptedNode
  *               /     \
  *          ssn /       \ address
  *             /         \
@@ -86,11 +86,42 @@ public:
     }
 
     /**
-     * Returns the child node for edge 'name', or returns nullptr if no child with 'name' exists.
+     * Adds 'node' as a special "wildcard" child which is used for all field names that don't have
+     * explicit child nodes. For instance, consider the schema
+     *
+     * {
+     *   type: "object",
+     *   properties: {a: {type: "number"}, b: {type: "string"}},
+     *   required: ["a", "b"],
+     *   additionalProperties: {encrypt: {}}
+     * }
+     *
+     * This schema matches objects where "a" is number, "b" is a string, and all other properties
+     * are encrypted. This requires a special child in the encryption tree which has no particular
+     * field name associated with it:
+     *
+     *                   NotEncryptedNode
+     *                  /    |           \
+     *               a /     | b          \ *
+     *                /      |             \
+     *  NotEncryptedNode  NotEncryptedNode  EncryptedNode
+     *
+     * The "*" in the diagram above indicates wildcard behavior: this child applies for all field
+     * names other than "a" and "b".
+     */
+    void addAdditionalPropertiesChild(std::unique_ptr<EncryptionSchemaTreeNode> node) {
+        _additionalPropertiesChild = std::move(node);
+    }
+
+    /**
+     * Returns the child node for edge 'name'. If no child with 'name' exists, but a node has been
+     * added via addAdditionalPropertiesChild(), then returns this 'additionalProperties' child.
+     * Returns nullptr if no child with 'name' exists and there is also no 'additionalProperties'
+     * child.
      */
     EncryptionSchemaTreeNode* getChild(StringData name) const {
         auto it = _children.find(name.toString());
-        return it != _children.end() ? it->second.get() : nullptr;
+        return it != _children.end() ? it->second.get() : _additionalPropertiesChild.get();
     }
 
     /**
@@ -140,12 +171,16 @@ private:
 
 
     StringMap<std::unique_ptr<EncryptionSchemaTreeNode>> _children;
+
+    // If non-null, this special child is used when no applicable child is found by name in
+    // '_children'. Used to implement encryption analysis for the 'additionalProperties' keyword.
+    std::unique_ptr<EncryptionSchemaTreeNode> _additionalPropertiesChild;
 };
 
 /**
- * Node for a path to an object in the encryption schema tree.
+ * Represents a path that is not encrypted. May be either an internal node or a leaf node.
  */
-class EncryptionSchemaObjectNode final : public EncryptionSchemaTreeNode {
+class EncryptionSchemaNotEncryptedNode final : public EncryptionSchemaTreeNode {
 public:
     boost::optional<EncryptionMetadata> getEncryptionMetadata() const final {
         return boost::none;
@@ -166,16 +201,6 @@ public:
 
 private:
     const EncryptionMetadata _metadata;
-};
-
-/**
- * A placeholder class for a path which is not encrypted.
- */
-class EncryptionSchemaNotEncryptedNode final : public EncryptionSchemaTreeNode {
-public:
-    boost::optional<EncryptionMetadata> getEncryptionMetadata() const final {
-        return boost::none;
-    }
 };
 
 }  // namespace mongo

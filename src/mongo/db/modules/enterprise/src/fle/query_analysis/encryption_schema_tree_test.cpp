@@ -71,10 +71,10 @@ TEST(EncryptionSchemaTreeTest, MarksTopLevelFieldAsEncrypted) {
 
 TEST(EncryptionSchemaTreeTest, MarksNestedFieldsAsEncrypted) {
     BSONObj schema = fromjson(R"({
-        type: "object", 
+        type: "object",
         properties: {
             user: {
-                type: "object", 
+                type: "object",
                 properties: {
                     ssn: {encrypt: {}}
                 }
@@ -105,8 +105,8 @@ TEST(EncryptionSchemaTreeTest, MarksNumericFieldNameAsEncrypted) {
 
 TEST(EncryptionSchemaTreeTest, MarksMultipleFieldsAsEncrypted) {
     BSONObj schema = fromjson(R"({
-        type: "object", 
-        properties: {            
+        type: "object",
+        properties: {
             ssn: {encrypt: {}},
             accountNumber: {encrypt: {}},
             super: {
@@ -145,7 +145,7 @@ TEST(EncryptionSchemaTreeTest, ExtractsCorrectMetadataOptions) {
 
 TEST(EncryptionSchemaTreeTest, FailsToParseEncryptAlongsideAnotherTypeKeyword) {
     BSONObj schema = fromjson(R"({
-        type: "object", 
+        type: "object",
         properties: {
             ssn: {
                 encrypt: {},
@@ -156,7 +156,7 @@ TEST(EncryptionSchemaTreeTest, FailsToParseEncryptAlongsideAnotherTypeKeyword) {
         EncryptionSchemaTreeNode::parse(schema), AssertionException, ErrorCodes::FailedToParse);
 
     schema = fromjson(R"({
-        type: "object", 
+        type: "object",
         properties: {
             ssn: {
                 encrypt: {},
@@ -169,7 +169,7 @@ TEST(EncryptionSchemaTreeTest, FailsToParseEncryptAlongsideAnotherTypeKeyword) {
 
 TEST(EncryptionSchemaTreeTest, FailsToParseEncryptWithSiblingKeywords) {
     BSONObj schema = fromjson(R"({
-        type: "object", 
+        type: "object",
         properties: {
             ssn: {
                 encrypt: {},
@@ -179,7 +179,7 @@ TEST(EncryptionSchemaTreeTest, FailsToParseEncryptWithSiblingKeywords) {
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51078);
 
     schema = fromjson(R"({
-        type: "object", 
+        type: "object",
         properties: {
             ssn: {
                 encrypt: {},
@@ -192,7 +192,7 @@ TEST(EncryptionSchemaTreeTest, FailsToParseEncryptWithSiblingKeywords) {
 
 TEST(EncryptionSchemaTreeTest, FailsToParseIfConflictingEncryptKeywords) {
     BSONObj schema = fromjson(R"({
-        type: "object", 
+        type: "object",
         properties: {
             ssn: {
                 encrypt: {},
@@ -207,23 +207,23 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfConflictingEncryptKeywords) {
 
 TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptWithinItems) {
     BSONObj schema = fromjson(R"({
-        type: "object", 
+        type: "object",
         properties: {
             ssn: {
-                type: "array", 
+                type: "array",
                 items: {encrypt: {}}
             }
         }})");
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
 
     schema = fromjson(R"({
-        type: "object", 
+        type: "object",
         properties: {
             user: {
                 type: "object",
                 properties: {
                     ssn: {
-                        type: "array", 
+                        type: "array",
                         items: {encrypt: {}}
                     }
                 }
@@ -234,10 +234,10 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptWithinItems) {
 
 TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptWithinAdditionalItems) {
     BSONObj schema = fromjson(R"({
-        type: "object", 
+        type: "object",
         properties: {
             ssn: {
-                type: "array", 
+                type: "array",
                 items: {},
                 additionalItems: {encrypt: {}}
             }
@@ -245,7 +245,7 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptWithinAdditionalItems) {
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
 
     schema = fromjson(R"({
-        type: "object", 
+        type: "object",
         properties: {
             ssn: {
                 additionalItems: {encrypt: {}}
@@ -259,7 +259,7 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptParentIsNotTypeRestricted) {
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
 
     schema = fromjson(R"({
-        type: "object", 
+        type: "object",
         properties: {
             user: {
                 properties: {
@@ -272,7 +272,7 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptParentIsNotTypeRestricted) {
 
 TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptParentIsTypeRestrictedWithMultipleTypes) {
     BSONObj schema = fromjson(R"({
-        type: "object", 
+        type: "object",
         properties: {
             user: {
                 type: ["object", "array"],
@@ -290,7 +290,7 @@ TEST(EncryptionSchemaTreeTest, FailsToParseInvalidSchema) {
         EncryptionSchemaTreeNode::parse(schema), AssertionException, ErrorCodes::TypeMismatch);
 
     schema = fromjson(R"({
-        type: "object", 
+        type: "object",
         properties: {
             ssn: {
                 encrypt: "invalid"
@@ -302,7 +302,7 @@ TEST(EncryptionSchemaTreeTest, FailsToParseInvalidSchema) {
 
 TEST(EncryptionSchemaTreeTest, FailsToParseUnknownFieldInEncrypt) {
     BSONObj schema = fromjson(R"({
-        type: "object", 
+        type: "object",
         properties: {
             ssn: {
                 encrypt: {unknownField: {}}
@@ -313,7 +313,7 @@ TEST(EncryptionSchemaTreeTest, FailsToParseUnknownFieldInEncrypt) {
 
 TEST(EncryptionSchemaTreeTest, FailsToParseInvalidAlgorithm) {
     BSONObj schema = fromjson(R"({
-        type: "object", 
+        type: "object",
         properties: {
             ssn: {
                 encrypt: {algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-SomeInvalidAlgo"}
@@ -342,6 +342,159 @@ TEST(EncryptionSchemaTreeTest, FailsToParseInvalidKeyIdUUID) {
              << BSON("ssn" << BSON("encrypt" << BSON("keyId" << BSON_ARRAY(BSONBinData(
                                                          nullptr, 0, BinDataType::MD5Type))))));
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51084);
+}
+
+TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptBelowAdditionalPropertiesWithoutTypeObject) {
+    BSONObj schema = fromjson("{additionalProperties: {encrypt: {}}}");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+}
+
+TEST(EncryptionSchemaTreeTest, FailsToParseIfIllegalSubschemaUnderAdditionalProperties) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        additionalProperties: {
+            encrypt: {},
+            illegal: 1
+        }})");
+    ASSERT_THROWS_CODE(
+        EncryptionSchemaTreeNode::parse(schema), AssertionException, ErrorCodes::FailedToParse);
+}
+
+TEST(EncryptionSchemaTreeTest, FailsToParseIfAdditionalPropertiesIsWrongType) {
+    BSONObj schema = fromjson("{additionalProperties: [{type: 'string'}]}");
+    ASSERT_THROWS_CODE(
+        EncryptionSchemaTreeNode::parse(schema), AssertionException, ErrorCodes::TypeMismatch);
+}
+
+TEST(EncryptionSchemaTreeTest, FailsToParseIfAdditionalPropertiesWithEncryptInsideItems) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            arr: {
+                type: "array",
+                items: {
+                    type: "object",
+                    additionalProperties: {encrypt: {}}
+                }
+            }
+        }})");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+}
+
+TEST(EncryptionSchemaTreeTest, AdditionalPropertiesAllPropertiesCorrectlyReportedAsEncrypted) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        additionalProperties: {encrypt: {}}
+    })");
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"bar"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"baz"}));
+}
+
+TEST(EncryptionSchemaTreeTest,
+     NestedAdditionalPropertiesAllPropertiesCorrectlyReportedAsEncrypted) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            obj: {
+                type: "object",
+                additionalProperties: {encrypt: {}}
+            }
+        }})");
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"obj.foo"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"obj.bar"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"obj.baz"}));
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"other"}));
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"other.foo"}));
+}
+
+TEST(EncryptionSchemaTreeTest, AdditionalPropertiesOnlyAppliesToFieldsNotNamedByProperties) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            obj: {
+                type: "object",
+                properties: {
+                    a: {type: "string"},
+                    b: {type: "object"},
+                    c: {encrypt: {}}
+                },
+                additionalProperties: {encrypt: {}}
+            }
+        }})");
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"obj.foo"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"obj.bar"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"obj.baz"}));
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"obj.a"}));
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"obj.b"}));
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"obj.b.c"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"obj.c"}));
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"other"}));
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"other.foo"}));
+}
+
+TEST(EncryptionSchemaTreeTest, AdditionalPropertiesWorksWithNestedPropertiesSubschema) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        additionalProperties: {
+            type: "object",
+            properties: {
+                a: {type: "string"},
+                b: {encrypt: {}}
+            }
+        }})");
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo.b"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"bar.b"}));
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo.a"}));
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"bar.a"}));
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"bar.c"}));
+}
+
+TEST(EncryptionSchemaTreeTest, AdditionalPropertiesWorksWithNestedAdditionalPropertiesSubschema) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        additionalProperties: {
+            type: "object",
+            additionalProperties: {encrypt: {}}
+        }})");
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo"}));
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"bar"}));
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"baz"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo.bar"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo.baz"}));
+}
+
+TEST(EncryptionSchemaTreeTest, CanSuccessfullyParseAdditionalItemsWhenBoolean) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            arr: {
+                type: "array",
+                additionalItems: true
+            }
+        }})");
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"arr"}));
+}
+
+TEST(EncryptionSchemaTreeTest, CanSuccessfullyParseAdditionalPropertiesWhenBoolean) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            obj: {
+                type: "object",
+                additionalProperties: false
+            }
+        }})");
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"obj"}));
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"obj.foo"}));
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"obj.bar"}));
 }
 
 }  // namespace
