@@ -9,8 +9,11 @@
 #include <stack>
 
 #include "encryption_schema_tree.h"
+#include "fle_match_expression.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
+#include "mongo/db/matcher/expression_parser.h"
+#include "mongo/db/query/query_request.h"
 #include "mongo/rpc/op_msg.h"
 
 namespace mongo {
@@ -30,7 +33,12 @@ struct PlaceHolderResult {
     BSONObj result;
 };
 
-
+/**
+ * Extracts and returns the jsonSchema field in the command 'obj'. Populates 'stripped' with the
+ * same fields as 'obj', except without the jsonSchema.
+ *
+ * Throws an AssertionException if the schema is missing or not of the correct type.
+ */
 BSONObj extractJSONSchema(BSONObj obj, BSONObjBuilder* stripped) {
     BSONObj ret;
     for (auto& e : obj) {
@@ -50,37 +58,69 @@ BSONObj extractJSONSchema(BSONObj obj, BSONObjBuilder* stripped) {
     return ret;
 }
 
-// TODO - Query implements this correctly
-PlaceHolderResult addPlaceHoldersForFind(const BSONObj& cmdObj, const BSONObj& schema) {
+PlaceHolderResult addPlaceHoldersForFind(const BSONObj& cmdObj,
+                                         std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
+    // Parse to a QueryRequest to ensure the command syntax is valid. We can use a temporary
+    // database name however the collection name will be used when serializing back to BSON.
+    auto qr = uassertStatusOK(
+        QueryRequest::makeFromFindCommand(NamespaceString(cmdObj["$db"].checkAndGetStringData(),
+                                                          cmdObj["find"].checkAndGetStringData()),
+                                          cmdObj,
+                                          false));
+
+    // Build a parsed MatchExpression from the filter, allowing all special features.
+    boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(nullptr, nullptr));
+    auto matchExpr = uassertStatusOK(
+        MatchExpressionParser::parse(qr->getFilter(),
+                                     expCtx,
+                                     ExtensionsCallbackNoop(),
+                                     MatchExpressionParser::kAllowAllSpecialFeatures));
+
+    // Build a FLEMatchExpression, which will replace encrypted values with their appropriate
+    // intent-to-encrypt markings.
+    FLEMatchExpression fleMatchExpr(std::move(matchExpr), schemaTree.get());
+
+    // Replace the previous filter object with the new MatchExpression after marking it for
+    // encryption.
+    BSONObjBuilder bob;
+    fleMatchExpr.getMatchExpression()->serialize(&bob);
+    qr->setFilter(bob.obj());
+
+    return PlaceHolderResult{fleMatchExpr.containsEncryptedPlaceholders(), qr->asFindCommand()};
+}
+
+PlaceHolderResult addPlaceHoldersForAggregate(
+    const BSONObj& cmdObj, std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     return PlaceHolderResult();
 }
 
-PlaceHolderResult addPlaceHoldersForAggregate(const BSONObj& cmdObj, const BSONObj& schema) {
+PlaceHolderResult addPlaceHoldersForCount(const BSONObj& cmdObj,
+                                          std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     return PlaceHolderResult();
 }
 
-PlaceHolderResult addPlaceHoldersForCount(const BSONObj& cmdObj, const BSONObj& schema) {
+PlaceHolderResult addPlaceHoldersForDistinct(const BSONObj& cmdObj,
+                                             std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     return PlaceHolderResult();
 }
 
-PlaceHolderResult addPlaceHoldersForDistinct(const BSONObj& cmdObj, const BSONObj& schema) {
+PlaceHolderResult addPlaceHoldersForFindAndModify(
+    const BSONObj& cmdObj, std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     return PlaceHolderResult();
 }
 
-PlaceHolderResult addPlaceHoldersForFindAndModify(const BSONObj& cmdObj, const BSONObj& schema) {
+PlaceHolderResult addPlaceHoldersForInsert(const OpMsgRequest& request,
+                                           std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     return PlaceHolderResult();
 }
 
-
-PlaceHolderResult addPlaceHoldersForInsert(const OpMsgRequest& request, const BSONObj& schema) {
+PlaceHolderResult addPlaceHoldersForUpdate(const OpMsgRequest& request,
+                                           std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     return PlaceHolderResult();
 }
 
-PlaceHolderResult addPlaceHoldersForUpdate(const OpMsgRequest& request, const BSONObj& schema) {
-    return PlaceHolderResult();
-}
-
-PlaceHolderResult addPlaceHoldersForDelete(const OpMsgRequest& request, const BSONObj& schema) {
+PlaceHolderResult addPlaceHoldersForDelete(const OpMsgRequest& request,
+                                           std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     return PlaceHolderResult();
 }
 
@@ -97,8 +137,8 @@ OpMsgRequest makeHybrid(const OpMsgRequest& request, BSONObj body) {
     return newRequest;
 }
 
-using WriteOpProcessFunction = PlaceHolderResult(const OpMsgRequest& request,
-                                                 const BSONObj& jsonSchema);
+using WriteOpProcessFunction = PlaceHolderResult(
+    const OpMsgRequest& request, std::unique_ptr<EncryptionSchemaTreeNode> schemaTree);
 
 void processWriteOpCommand(const OpMsgRequest& request,
                            BSONObjBuilder* builder,
@@ -108,13 +148,16 @@ void processWriteOpCommand(const OpMsgRequest& request,
 
     auto newRequest = makeHybrid(request, stripped.obj());
 
-    PlaceHolderResult placeholder = func(newRequest, schema);
+    // Parse the JSON Schema to an encryption schema tree.
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+
+    PlaceHolderResult placeholder = func(newRequest, std::move(schemaTree));
 
     serializePlaceholderResult(placeholder, builder);
 }
 
-
-using QueryProcessFunction = PlaceHolderResult(const BSONObj& cmdObj, const BSONObj& jsonSchema);
+using QueryProcessFunction =
+    PlaceHolderResult(const BSONObj& cmdObj, std::unique_ptr<EncryptionSchemaTreeNode> schemaTree);
 
 void processQueryCommand(const BSONObj& cmdObj,
                          BSONObjBuilder* builder,
@@ -122,7 +165,10 @@ void processQueryCommand(const BSONObj& cmdObj,
     BSONObjBuilder stripped;
     auto schema = extractJSONSchema(cmdObj, &stripped);
 
-    PlaceHolderResult placeholder = func(stripped.obj(), schema);
+    // Parse the JSON Schema to an encryption schema tree.
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+
+    PlaceHolderResult placeholder = func(stripped.obj(), std::move(schemaTree));
 
     serializePlaceholderResult(placeholder, builder);
 }

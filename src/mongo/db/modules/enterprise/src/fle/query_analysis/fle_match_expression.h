@@ -53,6 +53,13 @@ public:
         return _expression.get();
     }
 
+    /**
+     * Returns true if the underlying MatchExpression contains any EncryptionPlaceholders.
+     */
+    bool containsEncryptedPlaceholders() const {
+        return _encryptedElements.size() > 0;
+    }
+
 private:
     /**
      * Marks RHS elements in 'root' as encrypted if a field is found to be encrypted per the
