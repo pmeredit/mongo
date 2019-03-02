@@ -209,7 +209,6 @@ if "sasl" in env['MONGO_ENTERPRISE_FEATURES']:
         ],
         LIBDEPS=[
             '$BUILD_DIR/mongo/db/auth/saslauth',
-            '$BUILD_DIR/mongo/db/server_parameters',
         ],
         SYSLIBDEPS=['sasl2'] + [env['MONGO_GSSAPI_LIB']],
     )
