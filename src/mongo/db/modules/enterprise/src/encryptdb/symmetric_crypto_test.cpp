@@ -110,7 +110,6 @@ DEATH_TEST_F(AESRoundTrip,
     encrypt(crypto::aesMode::cbc).ignore();
 }
 
-
 #ifndef DISABLE_GCM_TESTVECTORS
 TEST(AES, GCMTestVectors) {
     ASSERT_OK(crypto::smokeTestAESCipherMode("AES256-GCM"));
@@ -232,6 +231,100 @@ TEST(EncryptedMemoryLayout, PlaintextLen) {
     expected = {outputBufferSize - layoutGCM.getHeaderSize(),
                 outputBufferSize - layoutGCM.getHeaderSize()};
     ASSERT_TRUE(expected == layoutGCM.expectedPlaintextLen());
+}
+
+SymmetricKey aesGeneratePredictableKey256(StringData stringKey, StringData keyId) {
+    const size_t keySize = crypto::sym256KeySize;
+    ASSERT_EQ(keySize, stringKey.size());
+
+    SecureVector<uint8_t> key(keySize);
+    std::copy(stringKey.begin(), stringKey.end(), key->begin());
+
+    return SymmetricKey(std::move(key), crypto::aesAlgorithm, keyId.toString());
+}
+
+// Convenience wrappers to avoid line-wraps later.
+const std::uint8_t* asUint8(const char* str) {
+    return reinterpret_cast<const std::uint8_t*>(str);
+};
+
+const char* asChar(const std::uint8_t* data) {
+    return reinterpret_cast<const char*>(data);
+};
+
+// Positive/Negative test for additional authenticated data GCM encryption.
+// Setup encryptor/decryptor with fixed key/iv/aad in order to produce predictable results.
+// Check roundtrip and that tag violation triggers failure.
+void GCMAdditionalAuthenticatedDataHelper(bool succeed) {
+    const auto mode = crypto::aesMode::gcm;
+    if (!crypto::getSupportedSymmetricAlgorithms().count(getStringFromCipherMode(mode))) {
+        return;
+    }
+
+    constexpr auto kKey = "abcdefghijklmnopABCDEFGHIJKLMNOP"_sd;
+    SymmetricKey key = aesGeneratePredictableKey256(kKey, "testID");
+
+    constexpr auto kIV = "FOOBARbazqux"_sd;
+    std::array<std::uint8_t, 12> iv;
+    std::copy(kIV.begin(), kIV.end(), iv.begin());
+
+    auto encryptor =
+        uassertStatusOK(crypto::SymmetricEncryptor::create(key, mode, iv.data(), iv.size()));
+
+    constexpr auto kAAD = "Hello World"_sd;
+    ASSERT_OK(encryptor->addAuthenticatedData(asUint8(kAAD.rawData()), kAAD.size()));
+
+    constexpr auto kPlaintextMessage = "01234567012345670123456701234567"_sd;
+    constexpr auto kBufferSize = kPlaintextMessage.size() + (2 * crypto::aesBlockSize);
+    std::array<std::uint8_t, kBufferSize> cipherText;
+    auto cipherLen = uassertStatusOK(encryptor->update(asUint8(kPlaintextMessage.rawData()),
+                                                       kPlaintextMessage.size(),
+                                                       cipherText.data(),
+                                                       cipherText.size()));
+    cipherLen += uassertStatusOK(
+        encryptor->finalize(cipherText.data() + cipherLen, cipherText.size() - cipherLen));
+
+    constexpr auto kExpectedCipherText =
+        "\xF1\x87\x38\x92\xA3\x0E\x77\x27\x92\xB1\x3B\xA6\x27\xB5\xF5\x2B"
+        "\xA0\x16\xCC\xB8\x88\x54\xC0\x06\x6E\x36\xCF\x3B\xB0\x8B\xF5\x11";
+    ASSERT_EQ(StringData(asChar(cipherText.data()), cipherLen), kExpectedCipherText);
+
+    std::array<std::uint8_t, 12> tag;
+    const auto taglen = uassertStatusOK(encryptor->finalizeTag(tag.data(), tag.size()));
+
+    constexpr auto kExpectedTag = "\xF9\xD6\xF9\x63\x21\x93\xE8\x5C\x42\xAA\x5E\x02"_sd;
+    ASSERT_EQ(StringData(asChar(tag.data()), taglen), kExpectedTag);
+
+    auto decryptor =
+        uassertStatusOK(crypto::SymmetricDecryptor::create(key, mode, iv.data(), iv.size()));
+    ASSERT_OK(decryptor->addAuthenticatedData(asUint8(kAAD.rawData()), kAAD.size()));
+
+    std::array<std::uint8_t, kBufferSize> plainText;
+    auto plainLen = uassertStatusOK(
+        decryptor->update(cipherText.data(), cipherLen, plainText.data(), plainText.size()));
+
+    if (!succeed) {
+        // Corrupt the authenticated tag, which should cause a failure below.
+        ++tag[0];
+    }
+
+    ASSERT_OK(decryptor->updateTag(tag.data(), tag.size()));
+    auto swFinalize = decryptor->finalize(plainText.data() + plainLen, plainText.size() - plainLen);
+
+    if (!succeed) {
+        ASSERT_NOT_OK(swFinalize.getStatus());
+        return;
+    }
+
+    ASSERT_OK(swFinalize.getStatus());
+    plainLen += swFinalize.getValue();
+
+    ASSERT_EQ(StringData(asChar(plainText.data()), plainLen), kPlaintextMessage);
+}
+
+TEST(AES, GCMAdditionalAuthenticatedData) {
+    GCMAdditionalAuthenticatedDataHelper(true);
+    GCMAdditionalAuthenticatedDataHelper(false);
 }
 
 }  // namespace

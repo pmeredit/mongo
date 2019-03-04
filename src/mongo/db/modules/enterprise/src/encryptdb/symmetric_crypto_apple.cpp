@@ -74,6 +74,11 @@ public:
         return outUsed;
     }
 
+    Status addAuthenticatedData(const uint8_t* in, size_t inLen) final {
+        fassert(51128, inLen == 0);
+        return Status::OK();
+    }
+
     StatusWith<size_t> finalize(uint8_t* out, size_t outLen) final {
         size_t outUsed = 0;
         const auto status = CCCryptorFinal(_ctx.get(), out, outLen, &outUsed);

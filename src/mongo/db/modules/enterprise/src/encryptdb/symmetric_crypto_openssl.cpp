@@ -66,6 +66,23 @@ public:
         return static_cast<size_t>(len);
     }
 
+    Status addAuthenticatedData(const uint8_t* in, size_t inLen) final {
+        fassert(51126, _mode == crypto::aesMode::gcm);
+
+        auto swUpdate = update(in, inLen, nullptr, 0);
+        if (!swUpdate.isOK()) {
+            return swUpdate.getStatus();
+        }
+
+        const auto len = swUpdate.getValue();
+        if (len != inLen) {
+            return {ErrorCodes::InternalError,
+                    str::stream() << "Unexpected write length while appending AAD: " << len};
+        }
+
+        return Status::OK();
+    }
+
     StatusWith<size_t> finalize(uint8_t* out, size_t outLen) final {
         int len = 0;
         if (1 != EVP_EncryptFinal_ex(_ctx.get(), out, &len)) {
@@ -114,6 +131,23 @@ public:
                               << SSLManagerInterface::getSSLErrorMessage(ERR_get_error()));
         }
         return static_cast<size_t>(len);
+    }
+
+    Status addAuthenticatedData(const uint8_t* in, size_t inLen) final {
+        fassert(51125, _mode == crypto::aesMode::gcm);
+
+        auto swUpdate = update(in, inLen, nullptr, 0);
+        if (!swUpdate.isOK()) {
+            return swUpdate.getStatus();
+        }
+
+        const auto len = swUpdate.getValue();
+        if (len != inLen) {
+            return {ErrorCodes::InternalError,
+                    str::stream() << "Unexpected write length while appending AAD: " << len};
+        }
+
+        return Status::OK();
     }
 
     StatusWith<size_t> finalize(uint8_t* out, size_t outLen) final {

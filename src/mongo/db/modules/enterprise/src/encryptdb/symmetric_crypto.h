@@ -20,30 +20,30 @@ namespace crypto {
 /**
  * Encryption algorithm identifiers and block sizes
  */
-const uint8_t aesAlgorithm = 0x1;
+constexpr uint8_t aesAlgorithm = 0x1;
 
 /**
  * Block and key sizes
  */
-const size_t aesBlockSize = 16;
-const size_t sym256KeySize = 32;
+constexpr size_t aesBlockSize = 16;
+constexpr size_t sym256KeySize = 32;
 
 /**
  * Min and max symmetric key lengths
  */
-const size_t minKeySize = 16;
-const size_t maxKeySize = 32;
+constexpr size_t minKeySize = 16;
+constexpr size_t maxKeySize = 32;
 
 /**
  * CBC fixed constants
  */
-const size_t aesCBCIVSize = aesBlockSize;
+constexpr size_t aesCBCIVSize = aesBlockSize;
 
 /**
  * GCM tunable parameters
  */
-const size_t aesGCMTagSize = 12;
-const size_t aesGCMIVSize = 12;
+constexpr size_t aesGCMTagSize = 12;
+constexpr size_t aesGCMIVSize = 12;
 
 /**
  * Encryption mode identifiers
@@ -226,6 +226,11 @@ public:
                                       size_t outLen) = 0;
 
     /**
+     * Append Additional AuthenticatedData (AAD) to a GCM encryption stream.
+     */
+    virtual Status addAuthenticatedData(const uint8_t* in, size_t inLen) = 0;
+
+    /**
      * Finish an encryption by flushing any buffered bytes for a partial cipherblock to <out>.
      * Returns the number of bytes written, not to exceed <outLen>.
      */
@@ -265,6 +270,11 @@ public:
                                       size_t inLen,
                                       uint8_t* out,
                                       size_t outLen) = 0;
+
+    /**
+     * For aesMode::gcm, inform the cipher engine of additional authenticated data (AAD).
+     */
+    virtual Status addAuthenticatedData(const uint8_t* in, size_t inLen) = 0;
 
     /**
      * For aesMode::gcm, informs the cipher engine of the GCM tag associated with this data stream.

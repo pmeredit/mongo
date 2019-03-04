@@ -165,6 +165,11 @@ public:
         }
     }
 
+    Status addAuthenticatedData(const uint8_t* in, size_t inLen) final {
+        fassert(51127, inLen == 0);
+        return Status::OK();
+    }
+
 protected:
     const aesMode _mode;
 
