@@ -40,6 +40,8 @@ wtEnv.Library(target='encryption_key_manager_aux',
 
 wtEnv.Library(target='encryptdb',
               source=[
+                   env.Idlc('keystore_metadata.idl')[0],
+                   'keystore_metadata.cpp',
                    'encrypted_data_protector.cpp',
                    'encryption_key_manager.cpp',
                    'wiredtiger_encryption_callbacks.cpp',
@@ -49,6 +51,7 @@ wtEnv.Library(target='encryptdb',
                    'symmetric_crypto',
                    '$BUILD_DIR/mongo/base',
                    '$BUILD_DIR/mongo/db/storage/encryption_hooks',
+                   '$BUILD_DIR/mongo/db/storage/storage_engine_metadata',
                    '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core',
                    '$BUILD_DIR/third_party/shim_wiredtiger',
               ],
@@ -139,6 +142,16 @@ env.CppUnitTest(target='kmip_request_test',
                     'symmetric_crypto',
                     '$BUILD_DIR/mongo/util/net/network',
                 ])
+
+env.CppUnitTest(
+    target='keystore_metadata_test',
+    source=[
+        'keystore_metadata_test.cpp',
+    ],
+    LIBDEPS=[
+        'encryptdb',
+    ],
+)
 
 if not using_ubsan:
     wtEnv.CppUnitTest(target='wiredtiger_encryption_test',

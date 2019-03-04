@@ -9,6 +9,7 @@
 #include <wiredtiger.h>
 
 #include "encryption_options.h"
+#include "keystore_metadata.h"
 #include "mongo/base/disallow_copying.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/service_context.h"
@@ -145,6 +146,9 @@ private:
     StatusWith<std::unique_ptr<SymmetricKey>> _getMasterKey();
     StatusWith<std::unique_ptr<SymmetricKey>> _readKey(const std::string& keyId);
 
+    enum class PathMode { kValid, kInvalid, kInitializing };
+    boost::filesystem::path _metadataPath(PathMode mode);
+
     /**
      * Taken from global storage parameters -- the dbpath directory.
      */
@@ -164,6 +168,12 @@ private:
      */
     std::unique_ptr<SymmetricKey> _rotMasterKey;
     bool _keyRotationAllowed;
+
+    /**
+     * Metadata file containing schema version and whether they keystore is dirty.
+     */
+    stdx::mutex _keystoreMetadataMutex;
+    KeystoreMetadataFile _keystoreMetadata;
 
     /**
      * Ephemeral key whose life time does not span server restarts.

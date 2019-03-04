@@ -42,6 +42,8 @@ namespace {
 const std::string kKeystoreName = "key.store";
 const std::string kInvalidatedKeyword = "-invalidated-";
 const std::string kKeystoreTableName = "table:keystore";
+const std::string kInitializingKeyword = "-initializing";
+const std::string kKeystoreMetadataFilename = "keystore.metadata";
 
 void closeWTCursorAndSession(WT_CURSOR* cursor) {
     WT_SESSION* session = cursor->session;
@@ -229,7 +231,17 @@ StatusWith<std::vector<std::string>> EncryptionKeyManager::beginNonBlockingBacku
         return wtRCToStatus(wtRet);
     }
 
+    stdx::lock_guard<stdx::mutex> lk(_keystoreMetadataMutex);
+    _keystoreMetadata.setDirty(true);
+    auto status =
+        _keystoreMetadata.store(_metadataPath(PathMode::kValid), _masterKey, *_encryptionParams);
+    if (!status.isOK()) {
+        return status;
+    }
+
     std::vector<std::string> filesToCopy;
+    filesToCopy.push_back(_metadataPath(PathMode::kValid).string());
+
     const auto keystorePath = boost::filesystem::path(_wtConnPath);
     while ((wtRet = cursor->next(cursor)) == 0) {
         const char* filename;
@@ -251,6 +263,14 @@ Status EncryptionKeyManager::endNonBlockingBackup() {
     // whether it was preceded by a successful `EncryptionHooks::beginNonBlockingBackup` call.
     if (_backupSession) {
         _backupSession.reset();
+    }
+
+    stdx::lock_guard<stdx::mutex> lk(_keystoreMetadataMutex);
+    _keystoreMetadata.setDirty(false);
+    auto status =
+        _keystoreMetadata.store(_metadataPath(PathMode::kValid), _masterKey, *_encryptionParams);
+    if (!status.isOK()) {
+        return status;
     }
 
     return Status::OK();
@@ -433,6 +453,20 @@ Status EncryptionKeyManager::_openKeystore(const fs::path& path, WT_CONNECTION**
     return Status::OK();
 }
 
+boost::filesystem::path EncryptionKeyManager::_metadataPath(PathMode mode) {
+    switch (mode) {
+        case PathMode::kValid:
+            return _keystoreBasePath / kKeystoreMetadataFilename;
+        case PathMode::kInvalid: {
+            std::string filename = str::stream() << kKeystoreMetadataFilename << kInvalidatedKeyword
+                                                 << terseCurrentTime();
+            return _keystoreBasePath / filename;
+        }
+        case PathMode::kInitializing:
+            return _keystoreBasePath / "keystore.metadata-initialzing";
+    }
+}
+
 Status EncryptionKeyManager::_initLocalKeystore() {
     // Create the local key store directory, key.store/masterKeyId with the special case
     // masterKeyId = local for local key files.
@@ -448,12 +482,14 @@ Status EncryptionKeyManager::_initLocalKeystore() {
          ++it) {
         std::string fileName = fs::path(*it).filename().string();
         if (fileName.find(kInvalidatedKeyword) == std::string::npos &&
-            fileName.find("-initializing") == std::string::npos) {
+            fileName.find(kInitializingKeyword) == std::string::npos &&
+            fileName.find(kKeystoreMetadataFilename) == std::string::npos) {
             existingKeyId = fileName;
             break;
         }
     }
 
+    int defaultKeystoreSchemaVersion = 1;
     if (existingKeyId.empty()) {
         // Initializing the key store for the first time.
         if (hasExistingDatafiles(_dbPath)) {
@@ -469,6 +505,7 @@ Status EncryptionKeyManager::_initLocalKeystore() {
                       << ". Attempting to use the provided key file.";
         }
         _keyRotationAllowed = true;
+        defaultKeystoreSchemaVersion = 0;
     }
 
     if (!existingKeyId.empty() && !_encryptionParams->kmipParams.kmipKeyIdentifier.empty() &&
@@ -505,6 +542,25 @@ Status EncryptionKeyManager::_initLocalKeystore() {
     _masterKeyId = _masterKey->getKeyId();
     fs::path keystorePath = _keystoreBasePath / _masterKeyId;
 
+    auto swMetadata =
+        KeystoreMetadataFile::load(_metadataPath(PathMode::kValid), _masterKey, *_encryptionParams);
+    if (!swMetadata.isOK()) {
+        if (swMetadata.getStatus() == ErrorCodes::NonExistentPath) {
+            KeystoreMetadataFile newMetadata(defaultKeystoreSchemaVersion);
+            auto storeStatus =
+                newMetadata.store(_metadataPath(PathMode::kValid), _masterKey, *_encryptionParams);
+            if (!storeStatus.isOK()) {
+                return storeStatus.withContext("Error creating metadata file");
+            }
+            swMetadata = std::move(newMetadata);
+        } else {
+            return swMetadata.getStatus();
+        }
+    }
+
+    stdx::lock_guard<stdx::mutex> lk(_keystoreMetadataMutex);
+    _keystoreMetadata = std::move(swMetadata.getValue());
+
     // Open the local WT key store, create it if it doesn't exist.
     return _openKeystore(keystorePath, &_keystoreConnection);
 }
@@ -528,13 +584,20 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) {
     }
     _rotMasterKey = std::move(swRotMasterKey.getValue());
 
+    stdx::lock_guard<stdx::mutex> lk(_keystoreMetadataMutex);
+    auto status = _keystoreMetadata.store(
+        _metadataPath(PathMode::kInitializing), _rotMasterKey, *_encryptionParams);
+    if (!status.isOK()) {
+        return status;
+    }
+
     WT_CONNECTION* rotKeystoreConnection;
     std::string rotMasterKeyId = _rotMasterKey->getKeyId();
     fs::path rotKeystorePath = _keystoreBasePath / rotMasterKeyId;
     fs::path initRotKeystorePath = rotKeystorePath;
     initRotKeystorePath += "-initializing-keystore";
 
-    Status status = _openKeystore(initRotKeystorePath, &rotKeystoreConnection);
+    status = _openKeystore(initRotKeystorePath, &rotKeystoreConnection);
     if (!status.isOK()) {
         return status;
     }
@@ -583,7 +646,9 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) {
         // where the server is without a valid keystore and cannot start. This can be resolved by
         // manually renaming either the old or the newly created keystore to 'keyid'.
         fs::rename(oldKeystorePath, invalidatedKeystorePath);
+        fs::rename(_metadataPath(PathMode::kValid), _metadataPath(PathMode::kInvalid));
         fs::rename(initRotKeystorePath, rotKeystorePath);
+        fs::rename(_metadataPath(PathMode::kInitializing), _metadataPath(PathMode::kValid));
 
         // Delete old invalidated keystores to clean up. It used to be that the key store last
         // rotated was kept around for backup purposes. This behavior is no longer retained.

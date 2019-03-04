@@ -70,4 +70,6 @@ private:
     uint32_t _initializationCount;
     mutable AtomicWord<unsigned long long> _invocationCount;
 };
+
+using UniqueSymmetricKey = std::unique_ptr<SymmetricKey>;
 }  // namespace mongo
