@@ -339,7 +339,7 @@ TEST_F(WatchdogMonitorThreadTest, SleepyHungCheck) {
     deathEvent.wait();
 
     // Make sure we actually did some checks
-    ASSERT_GTE(checkThread.getGeneration(), 5);
+    ASSERT_GTE(checkThread.getGeneration(), 2);
 
     monitorThread.shutdown();
 
