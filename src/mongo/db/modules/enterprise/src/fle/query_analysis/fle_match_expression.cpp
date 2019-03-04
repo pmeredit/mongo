@@ -64,6 +64,17 @@ void FLEMatchExpression::replaceEncryptedElements(MatchExpression* root,
             }
 
             auto eqExpression = static_cast<EqualityMatchExpression*>(root);
+
+            // Queries involving comparisons to null cannot work with encryption, as the expected
+            // semantics involve returning documents where the encrypted field is missing, null, or
+            // undefined. Building an encryption placeholder with a null element will only return
+            // documents with the literal null, not missing or undefined.
+            uassert(51095,
+                    str::stream() << "Illegal equality to null predicate for encrypted field: '"
+                                  << root->path()
+                                  << "'",
+                    !eqExpression->getData().isNull());
+
             eqExpression->setData(
                 allocateEncryptedElement(eqExpression->getData(), encryptMetadata.get()));
             break;

@@ -463,5 +463,15 @@ TEST_F(FLEMatchExpressionTest, WhereExpressionNotAllowed) {
         serializeMatchForEncryption(kDefaultSsnSchema, match), AssertionException, 51094);
 }
 
+TEST_F(FLEMatchExpressionTest, ComparisonToNullNotAllowed) {
+    auto match = fromjson("{ssn: null}");
+    ASSERT_THROWS_CODE(
+        serializeMatchForEncryption(kDefaultSsnSchema, match), AssertionException, 51095);
+
+    match = fromjson("{ssn: {$ne: null}}");
+    ASSERT_THROWS_CODE(
+        serializeMatchForEncryption(kDefaultSsnSchema, match), AssertionException, 51095);
+}
+
 }  // namespace
 }  // namespace mongo

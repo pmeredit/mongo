@@ -63,6 +63,15 @@
     assert.commandFailedWithCode(
         testDB.runCommand({find: "test", filter: {ssn: /\d/}, jsonSchema: sampleSchema}), 51092);
 
+    // Comparison to a null value correctly fails.
+    assert.commandFailedWithCode(
+        testDB.runCommand({find: "test", filter: {ssn: null}, jsonSchema: sampleSchema}), 51095);
+    // TODO SERVER-39417 adds support for $in, but a null element within the $in array should still
+    // fail.
+    assert.commandFailedWithCode(
+        testDB.runCommand({find: "test", filter: {ssn: {$in: [null]}}, jsonSchema: sampleSchema}),
+        51094);
+
     // Invalid expressions correctly fail to parse.
     assert.commandFailedWithCode(
         testDB.runCommand({find: "test", filter: {$cantDoThis: 5}, jsonSchema: sampleSchema}),
