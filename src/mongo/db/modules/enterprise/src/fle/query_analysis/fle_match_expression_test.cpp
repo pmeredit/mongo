@@ -210,12 +210,30 @@ TEST_F(FLEMatchExpressionTest, MarksEncryptedFieldWithNonEncryptedSibling) {
     ASSERT_BSONOBJ_EQ(serializeMatchForEncryption(kDefaultSsnSchema, match), translatedMatch);
 }
 
-TEST_F(FLEMatchExpressionTest, ElementWithEncryptedPrefixTreatedAsNotEncrypted) {
+TEST_F(FLEMatchExpressionTest, ElementWithEncryptedPrefixCorrectlyFails) {
     auto match = fromjson("{'ssn.nested': {$eq: 5}}");
-    ASSERT_BSONOBJ_EQ(serializeMatchForEncryption(kDefaultSsnSchema, match), match);
+    ASSERT_THROWS_CODE(
+        serializeMatchForEncryption(kDefaultSsnSchema, match), AssertionException, 51102);
 
     match = fromjson("{'ssn.nested': {$gt: 5}}");
-    ASSERT_BSONOBJ_EQ(serializeMatchForEncryption(kDefaultSsnSchema, match), match);
+    ASSERT_THROWS_CODE(
+        serializeMatchForEncryption(kDefaultSsnSchema, match), AssertionException, 51102);
+
+    match = fromjson("{'ssn.nested': {$lt: 5}}");
+    ASSERT_THROWS_CODE(
+        serializeMatchForEncryption(kDefaultSsnSchema, match), AssertionException, 51102);
+
+    match = fromjson("{'ssn.nested': {$ne: 5}}");
+    ASSERT_THROWS_CODE(
+        serializeMatchForEncryption(kDefaultSsnSchema, match), AssertionException, 51102);
+
+    match = fromjson("{'ssn.nested': {$not: {$eq: 5}}}");
+    ASSERT_THROWS_CODE(
+        serializeMatchForEncryption(kDefaultSsnSchema, match), AssertionException, 51102);
+
+    match = fromjson("{'ssn.nested': {$in: [5]}}");
+    ASSERT_THROWS_CODE(
+        serializeMatchForEncryption(kDefaultSsnSchema, match), AssertionException, 51094);
 }
 
 TEST_F(FLEMatchExpressionTest, DoesNotMarkNonEncryptedFieldsInEquality) {

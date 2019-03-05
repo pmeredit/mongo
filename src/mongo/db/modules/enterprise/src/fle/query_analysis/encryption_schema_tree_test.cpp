@@ -82,7 +82,6 @@ TEST(EncryptionSchemaTreeTest, MarksTopLevelFieldAsEncrypted) {
             }
         })");
     ASSERT(extractMetadata(schema, "ssn") == metadata);
-    assertNotEncrypted(schema, "ssn.nonexistent");
     assertNotEncrypted(schema, "name");
 }
 
@@ -222,6 +221,42 @@ TEST(EncryptionSchemaTreeTest, ExtractsCorrectMetadataOptions) {
                           << BSON("ssn" << BSON("encrypt" << metadataObj)));
     ASSERT(extractMetadata(schema, "ssn") == ssnMetadata);
     ASSERT(extractMetadata(schema, "ssn") == EncryptionMetadata::parse(encryptCtxt, metadataObj));
+}
+
+TEST(EncryptionSchemaTreeTest, ThrowsAnErrorIfPathContainsEncryptedPrefix) {
+    BSONObj schema = fromjson(R"({type: "object", properties: {ssn: {encrypt: {}}}})");
+    ASSERT_THROWS_CODE(extractMetadata(schema, "ssn.nonexistent"), AssertionException, 51099);
+}
+
+TEST(EncryptionSchemaTreeTest, ReturnsNotEncryptedForPathWithNonEncryptedPrefix) {
+    BSONObj schema = fromjson(R"({type: "object", properties: {ssn: {}}})");
+    assertNotEncrypted(schema, "ssn.nonexistent");
+
+    schema = fromjson(R"({type: "object", properties: {blah: {}}, additionalProperties: {}})");
+    assertNotEncrypted(schema, "additional.prop.path");
+}
+
+TEST(EncryptionSchemaTreeTest, ThrowsAnErrorIfPathContainsPrefixToEncryptedAdditionalProperties) {
+    BSONObj schema = fromjson(
+        R"({type: "object", properties: {blah: {}}, additionalProperties: {encrypt: {}}})");
+    ASSERT_THROWS_CODE(extractMetadata(schema, "path.extends.encrypt"), AssertionException, 51099);
+}
+
+TEST(EncryptionSchemaTreeTest,
+     ThrowsAnErrorIfPathContainsPrefixToNestedEncryptedAdditionalProperties) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            blah: {
+                type: "object",
+                properties: {
+                    foo: {}
+                },
+                additionalProperties: {encrypt: {}}
+            }
+        }
+    })");
+    ASSERT_THROWS_CODE(extractMetadata(schema, "blah.not.foo"), AssertionException, 51099);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseEncryptAlongsideAnotherTypeKeyword) {

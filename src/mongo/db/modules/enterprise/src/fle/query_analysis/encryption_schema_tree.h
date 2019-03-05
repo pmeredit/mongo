@@ -152,6 +152,8 @@ private:
      * This method is responsible for recursively descending the encryption tree until the end of
      * the path is reached or there's no edge to take. The 'index' parameter is used to indicate
      * which part of 'path' we're currently at, and is expected to increment as we descend the tree.
+     *
+     * Throws an AssertionException if 'path' contains a prefix to an encrypted field.
      */
     boost::optional<EncryptionMetadata> _getEncryptionMetadataForPath(const FieldRef& path,
                                                                       size_t index = 0) const {
@@ -162,7 +164,17 @@ private:
 
         auto child = getChild(path[index]);
         if (!child) {
-            // No path to take for the current path, return not encrypted.
+            // If there's no path to take from the current node, then we're in one of two cases:
+            //  * The current node is an EncryptNode. This means that the query path has an
+            //    encrypted field as its prefix. No such query can ever succeed when sent to the
+            //    server, so we throw in this case.
+            //  * The path does not exist in the schema tree. In this case, we return boost::none to
+            //    indicate that the path is not encrypted.
+            uassert(51102,
+                    str::stream() << "Invalid operation on path '" << path.dottedField()
+                                  << "' which contains an encrypted path prefix.",
+                    !getEncryptionMetadata());
+
             return boost::none;
         }
 

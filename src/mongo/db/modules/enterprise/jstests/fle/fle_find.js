@@ -72,6 +72,17 @@
         testDB.runCommand({find: "test", filter: {ssn: {$in: [null]}}, jsonSchema: sampleSchema}),
         51094);
 
+    // Queries on paths which contain an encrypted prefixed field should fail.
+    assert.commandFailedWithCode(
+        testDB.runCommand({find: "test", filter: {'ssn.illegal': 5}, jsonSchema: sampleSchema}),
+        51102);
+
+    // Queries on paths which aren't described in the schema AND don't contain an encrypted prefix
+    // should not fail.
+    assert.doesNotThrow(
+        () => testDB.runCommand(
+            {find: "test", filter: {'user.nonexistent': 5}, jsonSchema: sampleSchema}));
+
     // Invalid expressions correctly fail to parse.
     assert.commandFailedWithCode(
         testDB.runCommand({find: "test", filter: {$cantDoThis: 5}, jsonSchema: sampleSchema}),
