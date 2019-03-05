@@ -90,10 +90,10 @@ SchemaTypeRestriction getTypeRestriction(StringMap<BSONElement>& keywordMap) {
 class EncryptMetadataChainMemento {
 public:
     EncryptMetadataChainMemento(std::list<EncryptionMetadata>& chain)
-        : _wasMetadataPushed(false), _chain(chain) {}
+        : _chain(chain), _wasMetadataPushed(false) {}
 
     EncryptMetadataChainMemento(const EncryptMetadataChainMemento& src)
-        : _wasMetadataPushed(false), _chain(src._chain) {}
+        : _chain(src._chain), _wasMetadataPushed(false) {}
 
     ~EncryptMetadataChainMemento() {
         if (_wasMetadataPushed)
