@@ -194,7 +194,7 @@ public:
 class EncryptionSchemaEncryptedNode final : public EncryptionSchemaTreeNode {
 public:
     EncryptionSchemaEncryptedNode(EncryptionMetadata metadata) : _metadata(std::move(metadata)) {
-        uassert(51095,
+        uassert(51099,
                 "Encrypt object combined with encryptMetadata needs to specify an algorithm",
                 _metadata.getAlgorithm());
         uassert(51096,

@@ -793,7 +793,7 @@ TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataMissingAlgorithm) {
                 }
             }
         }})");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51095);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51099);
 }
 
 TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataMissingInitializationVector) {
