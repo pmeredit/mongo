@@ -14,26 +14,30 @@ namespace {
 
 TEST(CommandsTest, IsEncryptedNotPresent) {
     auto input = BSON("properties" << BSON("foo" << BSONObj()));
-
-    ASSERT_FALSE(isEncryptionNeeded(input));
 }
 
 TEST(CommandsTest, isEncryptionNeededEmptyEncrypt) {
-    auto input = BSON("properties" << BSON("a" << BSON("encrypt" << BSONObj())) << "type"
+    uint8_t uuidBytes[] = {0, 0, 0, 0, 0, 0, 0x40, 0, 0x80, 0, 0, 0, 0, 0, 0, 0};
+    auto encryptObj = BSON("keyId" << BSON_ARRAY(BSONBinData(uuidBytes, 16, newUUID)) << "algorithm"
+                                   << "AEAD_AES_256_CBC_HMAC_SHA_512-Random");
+    auto input = BSON("properties" << BSON("a" << BSON("encrypt" << encryptObj)) << "type"
                                    << "object");
-
     ASSERT_TRUE(isEncryptionNeeded(input));
 }
 
 TEST(CommandsTest, isEncryptionNeededDeepEncrypt) {
-    auto input = BSON("properties" << BSON("a" << BSON("type"
-                                                       << "object"
-                                                       << "properties"
-                                                       << BSON("b" << BSON("encrypt" << BSONObj())))
-                                               << "c"
-                                               << BSONObj())
-                                   << "type"
-                                   << "object");
+    uint8_t uuidBytes[] = {0, 0, 0, 0, 0, 0, 0x40, 0, 0x80, 0, 0, 0, 0, 0, 0, 0};
+    auto encryptObj = BSON("keyId" << BSON_ARRAY(BSONBinData(uuidBytes, 16, newUUID)) << "algorithm"
+                                   << "AEAD_AES_256_CBC_HMAC_SHA_512-Random");
+    auto input =
+        BSON("properties" << BSON("a" << BSON("type"
+                                              << "object"
+                                              << "properties"
+                                              << BSON("b" << BSON("encrypt" << encryptObj)))
+                                      << "c"
+                                      << BSONObj())
+                          << "type"
+                          << "object");
 
     ASSERT_TRUE(isEncryptionNeeded(input));
 }
