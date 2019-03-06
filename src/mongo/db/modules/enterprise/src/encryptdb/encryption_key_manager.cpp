@@ -11,6 +11,7 @@
 
 #include <boost/filesystem.hpp>
 #include <fstream>
+#include <tuple>
 
 #include "encrypted_data_protector.h"
 #include "encryption_key_acquisition.h"
@@ -26,7 +27,6 @@
 #include "mongo/db/storage/encryption_hooks.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_customization_hooks.h"
-#include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
@@ -37,63 +37,58 @@
 #include "symmetric_crypto.h"
 
 namespace mongo {
-namespace {
+namespace fs = boost::filesystem;
 
-const std::string kKeystoreName = "key.store";
+namespace {
 const std::string kInvalidatedKeyword = "-invalidated-";
-const std::string kKeystoreTableName = "table:keystore";
 const std::string kInitializingKeyword = "-initializing";
 const std::string kKeystoreMetadataFilename = "keystore.metadata";
 
-void closeWTCursorAndSession(WT_CURSOR* cursor) {
-    WT_SESSION* session = cursor->session;
-    invariantWTOK(cursor->close(cursor));
-    invariantWTOK(session->close(session, nullptr));
-}
+struct KeystoreRecordV0 {
+    using WTKeyType = const char*;
+    using WTValueType = std::tuple<WT_ITEM*, uint32_t, uint32_t>;
 
-int keystore_handle_error(WT_EVENT_HANDLER* handler,
-                          WT_SESSION* session,
-                          int errorCode,
-                          const char* message) {
-    try {
-        error() << "WiredTiger keystore (" << errorCode << ") " << message;
-        fassert(4051, errorCode != WT_PANIC);
-    } catch (...) {
-        std::terminate();
+    // Create a new WT table with the following schema:
+    //
+    // S: database name, null-terminated string.
+    // u: key material, raw byte array stored as a WT_ITEM.
+    // l: key status, currently not used but set to 0.
+    constexpr static auto kWTTableConfig =
+        "key_format=S,value_format=uLL,columns=(keyid,key,keystatus,initializationCount)"_sd;
+
+    KeystoreRecordV0(WTDataStoreCursor& cursor) {
+        id = cursor.getKey<WTKeyType>();
+        std::tie(key, status, initializationCount) =
+            cursor.getValues<WT_ITEM, uint32_t, uint32_t>();
     }
-    return 0;
-}
 
-int keystore_handle_message(WT_EVENT_HANDLER* handler, WT_SESSION* session, const char* message) {
-    try {
-        log() << "WiredTiger keystore " << message;
-    } catch (...) {
-        std::terminate();
+    KeystoreRecordV0(StringData id, const std::unique_ptr<SymmetricKey>& key)
+        : id(id),
+          key{key->getKey(), key->getKeySize()},
+          status{0},
+          initializationCount{key->getInitializationCount()} {}
+
+    WTValueType toTuple() {
+        return std::make_tuple(&key, status, initializationCount);
     }
-    return 0;
-}
 
-int keystore_handle_progress(WT_EVENT_HANDLER* handler,
-                             WT_SESSION* session,
-                             const char* operation,
-                             uint64_t progress) {
+    StringData id;
+    WT_ITEM key;
+    uint32_t status;
+    uint32_t initializationCount;
+};
+
+Status createDirectoryIfNeeded(const fs::path& path) {
     try {
-        log() << "WiredTiger keystore progress " << operation << " " << progress;
-    } catch (...) {
-        std::terminate();
+        if (!fs::exists(path)) {
+            fs::create_directory(path);
+        }
+    } catch (const std::exception& e) {
+        return Status(ErrorCodes::BadValue,
+                      str::stream() << "Error creating path " << path.string() << ' ' << e.what());
     }
-    return 0;
+    return Status::OK();
 }
-
-WT_EVENT_HANDLER keystoreEventHandlers() {
-    WT_EVENT_HANDLER handlers = {};
-    handlers.handle_error = keystore_handle_error;
-    handlers.handle_message = keystore_handle_message;
-    handlers.handle_progress = keystore_handle_progress;
-    return handlers;
-}
-
-namespace fs = boost::filesystem;
 
 bool hasExistingDatafiles(const fs::path& path) {
     fs::path metadataPath = path / "storage.bson";
@@ -108,18 +103,6 @@ bool hasExistingDatafiles(const fs::path& path) {
     return hasDatafiles;
 }
 
-Status createDirectoryIfNeeded(const fs::path& path) {
-    try {
-        if (!fs::exists(path)) {
-            fs::create_directory(path);
-        }
-    } catch (const std::exception& e) {
-        return Status(ErrorCodes::BadValue,
-                      str::stream() << "Error creating path " << path.string() << ' ' << e.what());
-    }
-    return Status::OK();
-}
-
 }  // namespace
 
 EncryptionKeyManager::EncryptionKeyManager(const std::string& dbPath,
@@ -131,16 +114,10 @@ EncryptionKeyManager::EncryptionKeyManager(const std::string& dbPath,
       _masterKeyRequested(false),
       _keyRotationAllowed(false),
       _tmpDataKey(crypto::aesGenerate(crypto::sym256KeySize, kTmpDataKeyId)),
-      _keystoreConnection(nullptr),
-      _keystoreEventHandler(keystoreEventHandlers()),
       _encryptionParams(encryptionParams),
       _sslParams(sslParams) {}
 
-EncryptionKeyManager::~EncryptionKeyManager() {
-    if (_keystoreConnection != nullptr) {
-        _keystoreConnection->close(_keystoreConnection, nullptr);
-    }
-}
+EncryptionKeyManager::~EncryptionKeyManager() {}
 
 EncryptionKeyManager* EncryptionKeyManager::get(ServiceContext* service) {
     // TODO: Does this need to change now that there are different hooks implemented?
@@ -207,29 +184,14 @@ Status EncryptionKeyManager::unprotectTmpData(
         resultLen);
 }
 
-StatusWith<std::vector<std::string>> EncryptionKeyManager::beginNonBlockingBackup() {
+StatusWith<std::vector<std::string>> EncryptionKeyManager::beginNonBlockingBackup() try {
     if (_backupSession) {
         return {ErrorCodes::CannotBackup,
                 "A backup cursor is already open on the encryption database."};
     }
 
-    std::unique_ptr<WT_SESSION, WtSessionDeleter> backupSession = [&] {
-        WT_SESSION* session;
-        invariantWTOK(
-            _keystoreConnection->open_session(_keystoreConnection, nullptr, nullptr, &session));
-        return std::unique_ptr<WT_SESSION, WtSessionDeleter>(session);
-    }();
-
-    // Closing a WT session closes all of its corresponding cursors. Instead of explicitly
-    // managing this cursor's lifetime 1-1 with the session, let it be closed when the session
-    // closes. Additionally, this cursor must not be closed unless this method returns an error,
-    // or until `endNonBlockingBackup` is called.
-    WT_CURSOR* cursor;
-    auto wtRet =
-        backupSession->open_cursor(backupSession.get(), "backup:", nullptr, nullptr, &cursor);
-    if (wtRet != 0) {
-        return wtRCToStatus(wtRet);
-    }
+    auto backupSession = _keystore.makeSession();
+    auto cursor = backupSession.beginBackup();
 
     stdx::lock_guard<stdx::mutex> lk(_keystoreMetadataMutex);
     _keystoreMetadata.setDirty(true);
@@ -243,19 +205,21 @@ StatusWith<std::vector<std::string>> EncryptionKeyManager::beginNonBlockingBacku
     filesToCopy.push_back(_metadataPath(PathMode::kValid).string());
 
     const auto keystorePath = boost::filesystem::path(_wtConnPath);
-    while ((wtRet = cursor->next(cursor)) == 0) {
-        const char* filename;
-        invariantWTOK(cursor->get_key(cursor, &filename));
-
-        const auto filePath = keystorePath / std::string(filename);
+    for (; cursor != backupSession.end(); ++cursor) {
+        StringData filename = cursor.getKey<const char*>();
+        const auto filePath = keystorePath / filename.toString();
         filesToCopy.push_back(filePath.string());
     }
-    if (wtRet != WT_NOTFOUND) {
-        return wtRCToStatus(wtRet, "Error opening backup cursor.");
-    }
 
+    // Closing a WT session closes all of its corresponding cursors. Instead of explicitly
+    // managing this cursor's lifetime 1-1 with the session, let it be closed when the session
+    // closes. Additionally, this cursor must not be closed unless this method returns an error,
+    // or until `endNonBlockingBackup` is called.
+    cursor.release();
     _backupSession = std::move(backupSession);
     return filesToCopy;
+} catch (const DBException& e) {
+    return e.toStatus();
 }
 
 Status EncryptionKeyManager::endNonBlockingBackup() {
@@ -322,28 +286,15 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getMasterKey() 
     MONGO_UNREACHABLE;
 }
 
-StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_readKey(const std::string& keyId) {
+StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_readKey(
+    const std::string& keyId) try {
     // Look for the requested key in the local key store. Assume that the local key store has been
     // created and that open_session and open_cursor will succeed.
-    WT_SESSION* session;
-    invariantWTOK(
-        _keystoreConnection->open_session(_keystoreConnection, nullptr, nullptr, &session));
+    auto session = _keystore.makeSession();
 
-    WT_CURSOR* cursor;
-    invariantWTOK(
-        session->open_cursor(session, kKeystoreTableName.c_str(), nullptr, nullptr, &cursor));
-
-    ON_BLOCK_EXIT([&] { closeWTCursorAndSession(cursor); });
-
-    WT_ITEM key;
-    cursor->set_key(cursor, keyId.c_str());
-    int ret = cursor->search(cursor);
-    if (ret == 0) {
-        // The key already exists so return it.
-
-        uint32_t keyStatus, initializationCount;
-        invariantWTOK(cursor->get_value(cursor, &key, &keyStatus, &initializationCount));
-
+    auto cursor = session.search(keyId.c_str());
+    if (cursor != session.end()) {
+        KeystoreRecordV0 record(cursor);
         // NIST guidelines in SP-800-38D allow us to deterministically construct GCM IVs. We use
         // this construction for database writes, because it allows us a large number of invocations
         // of the Authenticated Encryption Function. However, we must take steps to ensure that we
@@ -361,96 +312,56 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_readKey(const s
 
         // Keep the server from starting if all possible fixed fields have been used, rather than
         // disobey NIST's guidelines.
-        if (initializationCount >= std::numeric_limits<uint32_t>::max() - 10) {
+        if (record.initializationCount >= std::numeric_limits<uint32_t>::max() - 10) {
             return Status(
                 ErrorCodes::Overflow,
                 "Unable to allocate an IV prefix, as the server has been restarted 2^32 times.");
         }
 
         auto symmetricKey =
-            stdx::make_unique<SymmetricKey>(reinterpret_cast<const uint8_t*>(key.data),
-                                            key.size,
+            stdx::make_unique<SymmetricKey>(reinterpret_cast<const uint8_t*>(record.key.data),
+                                            record.key.size,
                                             crypto::aesAlgorithm,
-                                            keyId,
-                                            ++initializationCount);
+                                            record.id,
+                                            ++record.initializationCount);
 
         if (!_encryptionParams->readOnlyMode) {
-            cursor->set_value(cursor, &key, keyStatus, initializationCount);
-            invariantWTOK(cursor->update(cursor));
+            session.update(cursor, record.toTuple());
         }
+
         return std::move(symmetricKey);
     }
 
     // There is no key corresponding to keyId yet so create one
     auto symmetricKey =
         stdx::make_unique<SymmetricKey>(crypto::aesGenerate(crypto::sym256KeySize, keyId));
-    key.data = symmetricKey.get()->getKey();
-    key.size = symmetricKey.get()->getKeySize();
-    cursor->set_value(cursor, &key, 0, symmetricKey.get()->getInitializationCount());
-    invariantWTOK(cursor->insert(cursor));
+
+    KeystoreRecordV0 record(keyId, symmetricKey);
+    session.insert(keyId.c_str(), record.toTuple());
 
     return std::move(symmetricKey);
+} catch (const DBException& e) {
+    return e.toStatus();
 }
 
-Status EncryptionKeyManager::_openKeystore(const fs::path& path, WT_CONNECTION** conn) {
-    Status status = createDirectoryIfNeeded(path);
-    if (!status.isOK()) {
-        return status;
-    }
+Status EncryptionKeyManager::_openKeystore(const fs::path& path) try {
+    WTDataStore keystore(path, _encryptionParams);
 
-    // FIXME: While using GCM, needs to always use AES-GCM with RBG derived IVs
-    std::string keystoreConfig = "encryption=(name=" + _encryptionParams->encryptionCipherMode +
-        ",keyid=" + kMasterKeyId + "),";
-
-    StringBuilder wtConfig;
-    // Use compatibility version 2.9 (WT's version on MongoDB 3.4) to avoid any 3.6 -> 3.4 binary
-    // downgrade steps. The benefits of newer versions is faster WT log rotation, with the
-    // trade-off of a data on disk format change that 3.4 binaries are not familiar with. Log
-    // rotations for the keystore database are expected to be exceedingly rare; the benefits would
-    // be minimal.
-    wtConfig << "create,compatibility=(release=2.9),config_base=false,";
-    wtConfig << "log=(enabled,file_max=3MB),transaction_sync=(enabled=true,method=fsync),";
-    wtConfig << "extensions=[" << kEncryptionEntrypointConfig << "],";
-    wtConfig << keystoreConfig;
-    if (_encryptionParams->readOnlyMode) {
-        wtConfig << "readonly=true,";
-    }
-
-    // _localKeystoreInitialized needs to be set before calling wiredtiger_open since that
-    // call eventually will result in a call to getKey for the ".system" key at which point we don't
-    // want to call _initLocalKeystore recursively.
-    log() << "Opening WiredTiger keystore. Config: " << wtConfig.str();
-    _wtConnPath = path.string();
-    int ret = wiredtiger_open(
-        path.string().c_str(), &_keystoreEventHandler, wtConfig.str().c_str(), conn);
-    if (ret != 0) {
-        return wtRCToStatus(ret);
-    }
-
-    WT_SESSION* session;
-    invariantWTOK((*conn)->open_session(*conn, nullptr, nullptr, &session));
-
-    // Check if the key store table:encryptionkeys already exists.
-    WT_CURSOR* cursor;
-    if ((ret = session->open_cursor(
-             session, kKeystoreTableName.c_str(), nullptr, nullptr, &cursor)) == 0) {
-        closeWTCursorAndSession(cursor);
+    auto session = keystore.makeSession();
+    auto cursor = session.begin();
+    if (cursor != session.end()) {
+        _keystore = std::move(keystore);
         return Status::OK();
     }
 
-    // Create a new WT key storage with the following schema:
-    //
-    // S: database name, null-terminated string.
-    // u: key material, raw byte array stored as a WT_ITEM.
-    // l: key status, currently not used but set to 0.
-    std::string sessionConfig = keystoreConfig +
-        "key_format=S,value_format=uLL,columns=(keyid,key,keystatus,initializationCount)";
-
-    invariantWTOK(session->create(session, kKeystoreTableName.c_str(), sessionConfig.c_str()));
-    invariantWTOK(session->checkpoint(session, nullptr));
-    invariantWTOK(session->close(session, nullptr));
+    keystore.createTable(session, KeystoreRecordV0::kWTTableConfig);
+    session.checkpoint();
+    _keystore = std::move(keystore);
 
     return Status::OK();
+} catch (const DBException& e) {
+    _keystore = WTDataStore();
+    return e.toStatus();
 }
 
 boost::filesystem::path EncryptionKeyManager::_metadataPath(PathMode mode) {
@@ -463,7 +374,7 @@ boost::filesystem::path EncryptionKeyManager::_metadataPath(PathMode mode) {
             return _keystoreBasePath / filename;
         }
         case PathMode::kInitializing:
-            return _keystoreBasePath / "keystore.metadata-initialzing";
+            return _keystoreBasePath / "keystore.metadata-initializing";
     }
 }
 
@@ -562,10 +473,10 @@ Status EncryptionKeyManager::_initLocalKeystore() {
     _keystoreMetadata = std::move(swMetadata.getValue());
 
     // Open the local WT key store, create it if it doesn't exist.
-    return _openKeystore(keystorePath, &_keystoreConnection);
+    return _openKeystore(keystorePath);
 }
 
-Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) {
+Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) try {
     if (!_keyRotationAllowed) {
         return Status(ErrorCodes::BadValue,
                       "It is not possible to rotate the master key on a system that is being "
@@ -591,50 +502,27 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) {
         return status;
     }
 
-    WT_CONNECTION* rotKeystoreConnection;
     std::string rotMasterKeyId = _rotMasterKey->getKeyId();
     fs::path rotKeystorePath = _keystoreBasePath / rotMasterKeyId;
     fs::path initRotKeystorePath = rotKeystorePath;
     initRotKeystorePath += "-initializing-keystore";
 
-    status = _openKeystore(initRotKeystorePath, &rotKeystoreConnection);
-    if (!status.isOK()) {
-        return status;
+    WTDataStore rotKeyStore(rotKeystorePath, _encryptionParams);
+    auto writeSession = rotKeyStore.makeSession();
+    rotKeyStore.createTable(writeSession, KeystoreRecordV0::kWTTableConfig);
+
+    auto keystore = std::move(_keystore);
+    auto readSession = keystore.makeSession();
+    for (auto it = readSession.begin(); it != readSession.end(); ++it) {
+        KeystoreRecordV0 record(it);
+        writeSession.insert(record.id.rawData(), record.toTuple());
     }
 
-    // Open sessions and cursor for the old and new key store.
-    WT_SESSION* readSession;
-    WT_CURSOR* readCursor;
-    invariantWTOK(
-        _keystoreConnection->open_session(_keystoreConnection, nullptr, nullptr, &readSession));
-    invariantWTOK(readSession->open_cursor(
-        readSession, kKeystoreTableName.c_str(), nullptr, nullptr, &readCursor));
+    readSession.close();
+    writeSession.close();
 
-    WT_SESSION* writeSession;
-    WT_CURSOR* writeCursor;
-    invariantWTOK(rotKeystoreConnection->open_session(
-        rotKeystoreConnection, nullptr, nullptr, &writeSession));
-    invariantWTOK(writeSession->open_cursor(
-        writeSession, kKeystoreTableName.c_str(), nullptr, nullptr, &writeCursor));
-
-    // Read all the keys from the original key store and write them to the new key store.
-    char* keyId;
-    WT_ITEM key;
-    uint32_t keyStatus, initializationCount;
-    while (readCursor->next(readCursor) == 0) {
-        invariantWTOK(readCursor->get_key(readCursor, &keyId));
-        invariantWTOK(readCursor->get_value(readCursor, &key, &keyStatus, &initializationCount));
-        writeCursor->set_key(writeCursor, keyId);
-        writeCursor->set_value(writeCursor, &key, keyStatus, initializationCount);
-        invariantWTOK(writeCursor->insert(writeCursor));
-    }
-
-    closeWTCursorAndSession(readCursor);
-    invariantWTOK(_keystoreConnection->close(_keystoreConnection, nullptr));
-    _keystoreConnection = nullptr;
-
-    closeWTCursorAndSession(writeCursor);
-    invariantWTOK(rotKeystoreConnection->close(rotKeystoreConnection, nullptr));
+    keystore.close();
+    rotKeyStore.close();
 
     // Remove the -initializing post fix to the from the new keystore.
     // Rename the old keystore path to keyid-invalidated-date.
@@ -680,6 +568,8 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) {
     _masterKeyId = rotMasterKeyId;
 
     return Status::OK();
+} catch (const DBException& e) {
+    return e.toStatus();
 }
 
 void initializeEncryptionKeyManager(ServiceContext* service) {

@@ -42,6 +42,7 @@ wtEnv.Library(target='encryptdb',
               source=[
                    env.Idlc('keystore_metadata.idl')[0],
                    'keystore_metadata.cpp',
+                   'keystore_data_store.cpp',
                    'encrypted_data_protector.cpp',
                    'encryption_key_manager.cpp',
                    'wiredtiger_encryption_callbacks.cpp',

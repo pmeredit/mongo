@@ -24,9 +24,9 @@ public:
     SymmetricKey(const uint8_t* key,
                  size_t keySize,
                  uint32_t algorithm,
-                 std::string keyId,
+                 StringData keyId,
                  uint32_t initializationCount);
-    SymmetricKey(SecureVector<uint8_t> key, uint32_t algorithm, std::string keyId);
+    SymmetricKey(SecureVector<uint8_t> key, uint32_t algorithm, StringData keyId);
 
     SymmetricKey(SymmetricKey&&);
     SymmetricKey& operator=(SymmetricKey&&);

@@ -9,6 +9,7 @@
 #include <wiredtiger.h>
 
 #include "encryption_options.h"
+#include "keystore_data_store.h"
 #include "keystore_metadata.h"
 #include "mongo/base/disallow_copying.h"
 #include "mongo/db/namespace_string.h"
@@ -132,7 +133,7 @@ private:
     /**
      * Open a local key store at 'path', create it if it doesn't exist.
      */
-    Status _openKeystore(const boost::filesystem::path& path, WT_CONNECTION** conn);
+    Status _openKeystore(const boost::filesystem::path& path);
 
     /**
      * Rotate the master encryption key and create a new key store.
@@ -183,16 +184,8 @@ private:
     /**
      * Management of the local WiredTiger key store.
      */
-    WT_CONNECTION* _keystoreConnection;
-    WT_EVENT_HANDLER _keystoreEventHandler;
-
-    class WtSessionDeleter {
-    public:
-        void operator()(WT_SESSION* session) const {
-            session->close(session, nullptr);
-        }
-    };
-    std::unique_ptr<WT_SESSION, WtSessionDeleter> _backupSession;
+    WTDataStore _keystore;
+    boost::optional<WTDataStoreSession> _backupSession;
 
     /**
      * Pointer to the encryption parameters to use.
