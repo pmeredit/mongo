@@ -32,3 +32,20 @@ env.Library(
     ],
 )
 
+env.Library(
+    target="aead_encryption",
+    source=[
+        "encryption/aead_encryption.cpp",
+    ],
+    LIBDEPS=[
+        '../encryptdb/symmetric_crypto',
+    ],
+)
+
+env.CppUnitTest(
+    target='aead_encryption_test',
+    source='encryption/aead_encryption_test.cpp',
+    LIBDEPS=[
+        'aead_encryption',
+    ]
+)
