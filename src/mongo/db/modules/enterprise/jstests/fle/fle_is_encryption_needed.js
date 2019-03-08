@@ -19,10 +19,19 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
     const retTwo = assert.commandWorked(conn.adminCommand({
         isEncryptionNeeded: 1,
         jsonSchema: {
-            properties: {foo: {type: "object", properties: {bar: {encrypt: {
-                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
-                    keyId: [UUID("4edee966-03cc-4525-bfa8-de8acd6746fa")]
-            }}}}},
+            properties: {
+                foo: {
+                    type: "object",
+                    properties: {
+                        bar: {
+                            encrypt: {
+                                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                                keyId: [UUID("4edee966-03cc-4525-bfa8-de8acd6746fa")]
+                            }
+                        }
+                    }
+                }
+            },
             type: "object"
         }
     }));
@@ -36,10 +45,17 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
                 foo: {
                     type: "object",
                     properties: {
-                        bar: {type: "object", properties: {baz: {encrypt: {
-                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
-                            keyId: [UUID("4edee966-03cc-4525-bfa8-de8acd6746fa")]
-                        }}}},
+                        bar: {
+                            type: "object",
+                            properties: {
+                                baz: {
+                                    encrypt: {
+                                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                                        keyId: [UUID("4edee966-03cc-4525-bfa8-de8acd6746fa")]
+                                    }
+                                }
+                            }
+                        },
                         oof: {type: "string"}
                     }
                 },
@@ -58,10 +74,17 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
                 foo: {
                     type: "object",
                     invalid: {
-                        bar: {type: "object", properties: {baz: {encrypt: {
-                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
-                            keyId: [UUID("4edee966-03cc-4525-bfa8-de8acd6746fa")]
-                        }}}},
+                        bar: {
+                            type: "object",
+                            properties: {
+                                baz: {
+                                    encrypt: {
+                                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                                        keyId: [UUID("4edee966-03cc-4525-bfa8-de8acd6746fa")]
+                                    }
+                                }
+                            }
+                        },
                         oof: {type: "string"}
                     }
                 },
