@@ -14,6 +14,28 @@
 namespace mongo {
 namespace {
 
+static const uint8_t uuidBytes[] = {0, 0, 0, 0, 0, 0, 0x40, 0, 0x80, 0, 0, 0, 0, 0, 0, 0};
+static const BSONObj encryptObj =
+    BSON("encrypt" << BSON("algorithm"
+                           << "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
+                           << "keyId"
+                           << BSON_ARRAY(BSONBinData(uuidBytes, 16, newUUID))));
+static const BSONObj pointerEncryptObj =
+    BSON("encrypt" << BSON("algorithm"
+                           << "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
+                           << "keyId"
+                           << "/key"));
+
+/**
+ * Builds a schema with a single encrypted field using the passed in 'encrypt'
+ * specification. The 'encrypt' data is a single-element object of the format
+ * {encrypt: {...}}.
+ */
+BSONObj buildBasicSchema(BSONObj encryptData) {
+    return BSON("properties" << BSON("foo" << encryptData) << "type"
+                             << "object");
+}
+
 void assertEncryptedCorrectly(PlaceHolderResult response,
                               BSONElement elem,
                               BSONObj metadataobj,
@@ -30,48 +52,42 @@ void assertEncryptedCorrectly(PlaceHolderResult response,
     ASSERT_BSONELT_EQ(correctPlaceholder[elem.fieldNameStringData()], elem);
 }
 
+BSONObj encodePlaceholder(std::string fieldName, EncryptionPlaceholder toSerialize) {
+    BSONObjBuilder bob;
+    toSerialize.serialize(&bob);
+    auto markingObj = bob.done();
+
+    BufBuilder binDataBuffer;
+    binDataBuffer.appendChar(0);
+    binDataBuffer.appendBuf(markingObj.objdata(), markingObj.objsize());
+
+    BSONObjBuilder binDataBob;
+    binDataBob.appendBinData(
+        fieldName, binDataBuffer.len(), BinDataType::Encrypt, binDataBuffer.buf());
+    return binDataBob.obj();
+}
+
 TEST(IsEncryptionNeededTests, IsEncryptedNotPresent) {
     auto input = BSON("properties" << BSON("foo" << BSONObj()));
 
     ASSERT_FALSE(isEncryptionNeeded(input));
 }
 
-TEST(IsEncryptionNeededTests, isEncryptionNeededEmptyEncrypt) {
-    uint8_t uuidBytes[] = {0, 0, 0, 0, 0, 0, 0x40, 0, 0x80, 0, 0, 0, 0, 0, 0, 0};
-    auto encryptObj = BSON("keyId" << BSON_ARRAY(BSONBinData(uuidBytes, 16, newUUID)) << "algorithm"
-                                   << "AEAD_AES_256_CBC_HMAC_SHA_512-Random");
-    auto input = BSON("properties" << BSON("a" << BSON("encrypt" << encryptObj)) << "type"
-                                   << "object");
-    ASSERT_TRUE(isEncryptionNeeded(input));
-}
-
-
 TEST(IsEncryptionNeededTests, isEncryptionNeededDeepEncrypt) {
-    uint8_t uuidBytes[] = {0, 0, 0, 0, 0, 0, 0x40, 0, 0x80, 0, 0, 0, 0, 0, 0, 0};
-    auto encryptObj = BSON("keyId" << BSON_ARRAY(BSONBinData(uuidBytes, 16, newUUID)) << "algorithm"
-                                   << "AEAD_AES_256_CBC_HMAC_SHA_512-Random");
-    auto input =
-        BSON("properties" << BSON("a" << BSON("type"
-                                              << "object"
-                                              << "properties"
-                                              << BSON("b" << BSON("encrypt" << encryptObj)))
-                                      << "c"
-                                      << BSONObj())
-                          << "type"
-                          << "object");
+    auto input = BSON("properties" << BSON("a" << BSON("type"
+                                                       << "object"
+                                                       << "properties"
+                                                       << BSON("b" << encryptObj))
+                                               << "c"
+                                               << BSONObj())
+                                   << "type"
+                                   << "object");
 
     ASSERT_TRUE(isEncryptionNeeded(input));
 }
 
 TEST(ReplaceEncryptedFieldsTest, ReplacesTopLevelFieldCorrectly) {
-    auto encryptObj = BSON("encrypt" << BSON("algorithm"
-                                             << "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
-                                             << "keyId"
-                                             << BSON_ARRAY(UUID::gen())));
-    auto schema = BSON("type"
-                       << "object"
-                       << "properties"
-                       << BSON("foo" << encryptObj));
+    auto schema = buildBasicSchema(encryptObj);
     auto doc = BSON("foo"
                     << "toEncrypt");
     auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
@@ -81,10 +97,6 @@ TEST(ReplaceEncryptedFieldsTest, ReplacesTopLevelFieldCorrectly) {
 }
 
 TEST(ReplaceEncryptedFieldsTest, ReplacesSecondLevelFieldCorrectly) {
-    auto encryptObj = BSON("encrypt" << BSON("algorithm"
-                                             << "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
-                                             << "keyId"
-                                             << BSON_ARRAY(UUID::gen())));
     auto schema = BSON("properties" << BSON("a" << BSON("type"
                                                         << "object"
                                                         << "properties"
@@ -106,10 +118,6 @@ TEST(ReplaceEncryptedFieldsTest, ReplacesSecondLevelFieldCorrectly) {
 }
 
 TEST(ReplaceEncryptedFieldsTest, NumericPathComponentTreatedAsFieldName) {
-    auto encryptObj = BSON("encrypt" << BSON("algorithm"
-                                             << "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
-                                             << "keyId"
-                                             << BSON_ARRAY(UUID::gen())));
     auto schema = BSON("type"
                        << "object"
                        << "properties"
@@ -125,10 +133,6 @@ TEST(ReplaceEncryptedFieldsTest, NumericPathComponentTreatedAsFieldName) {
 }
 
 TEST(ReplaceEncryptedFieldsTest, NumericPathComponentNotTreatedAsArrayIndex) {
-    auto encryptObj = BSON("encrypt" << BSON("algorithm"
-                                             << "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
-                                             << "keyId"
-                                             << BSON_ARRAY(UUID::gen())));
     auto schema = BSON("type"
                        << "object"
                        << "properties"
@@ -146,10 +150,6 @@ TEST(ReplaceEncryptedFieldsTest, NumericPathComponentNotTreatedAsArrayIndex) {
 }
 
 TEST(ReplaceEncryptedFieldsTest, ObjectInArrayWithSameNameNotEncrypted) {
-    auto encryptObj = BSON("encrypt" << BSON("algorithm"
-                                             << "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
-                                             << "keyId"
-                                             << BSON_ARRAY(UUID::gen())));
     auto schema = BSON("type"
                        << "object"
                        << "properties"
@@ -162,6 +162,117 @@ TEST(ReplaceEncryptedFieldsTest, ObjectInArrayWithSameNameNotEncrypted) {
     auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
     auto replaceRes = replaceEncryptedFields(doc, schemaTree.get());
     ASSERT_BSONOBJ_EQ(doc, replaceRes.result);
+}
+
+TEST(BuildEncryptPlaceholderTest, JSONPointerResolvesCorrectly) {
+    auto schema = buildBasicSchema(pointerEncryptObj);
+
+    auto doc = BSON("foo"
+                    << "encrypt"
+                    << "key"
+                    << "value");
+    EncryptionPlaceholder expected(FleAlgorithmEnum::kRandom, EncryptSchemaAnyType(doc["foo"]));
+    auto keyAltName = BSON("key"
+                           << "value");
+    expected.setKeyAltName(EncryptSchemaAnyType(keyAltName["key"]));
+    EncryptionMetadata metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
+                                                            pointerEncryptObj["encrypt"].Obj());
+    auto response = buildEncryptPlaceholder(doc["foo"], metadata, doc);
+    auto correctBSON = encodePlaceholder("foo", expected);
+    ASSERT_BSONOBJ_EQ(correctBSON, response);
+}
+
+TEST(BuildEncryptPlaceholderTest, JSONPointerResolvesCorrectlyThroughArray) {
+    auto localEncryptObj = BSON("encrypt" << BSON("algorithm"
+                                                  << "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
+                                                  << "keyId"
+                                                  << "/key/0"));
+    auto schema = buildBasicSchema(localEncryptObj);
+    auto doc = BSON("foo"
+                    << "encrypt"
+                    << "key"
+                    << BSON_ARRAY("value"));
+    EncryptionPlaceholder expected(FleAlgorithmEnum::kRandom, EncryptSchemaAnyType(doc["foo"]));
+    auto keyAltName = BSON("key"
+                           << "value");
+    expected.setKeyAltName(EncryptSchemaAnyType(keyAltName["key"]));
+    EncryptionMetadata metadata =
+        EncryptionMetadata::parse(IDLParserErrorContext("meta"), localEncryptObj["encrypt"].Obj());
+    auto response = buildEncryptPlaceholder(doc["foo"], metadata, doc);
+    auto correctBSON = encodePlaceholder("foo", expected);
+    ASSERT_BSONOBJ_EQ(correctBSON, response);
+}
+
+TEST(BuildEncryptPlaceholderTest, UAssertIfPointerPointsToObject) {
+    auto schema = buildBasicSchema(pointerEncryptObj);
+    auto doc = BSON("foo"
+                    << "encrypt"
+                    << "key"
+                    << BSON("Forbidden"
+                            << "key"));
+    EncryptionMetadata metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
+                                                            pointerEncryptObj["encrypt"].Obj());
+    ASSERT_THROWS_CODE(
+        buildEncryptPlaceholder(doc["foo"], metadata, doc), AssertionException, 51115);
+}
+
+TEST(BuildEncryptPlaceholderTest, UAssertIfPointerPointsToArray) {
+    auto schema = buildBasicSchema(pointerEncryptObj);
+    BSONObjBuilder builder;
+    builder.append("foo", "encrypt");
+    builder.appendCodeWScope("key",
+                             "This is javascript code;",
+                             BSON("Scope"
+                                  << "Here"));
+    auto doc = builder.obj();
+    EncryptionMetadata metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
+                                                            pointerEncryptObj["encrypt"].Obj());
+    ASSERT_THROWS_CODE(
+        buildEncryptPlaceholder(doc["foo"], metadata, doc), AssertionException, 51115);
+}
+
+TEST(BuildEncryptPlaceholderTest, UAssertIfPointerPointsToCode) {
+    auto schema = buildBasicSchema(pointerEncryptObj);
+    auto doc = BSON("foo"
+                    << "encrypt"
+                    << "key"
+                    << BSON_ARRAY("Forbidden"
+                                  << "key"));
+    EncryptionMetadata metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
+                                                            pointerEncryptObj["encrypt"].Obj());
+    ASSERT_THROWS_CODE(
+        buildEncryptPlaceholder(doc["foo"], metadata, doc), AssertionException, 51115);
+}
+
+TEST(BuildEncryptPlaceholderTest, UAssertIfPointerDoesNotEvaluate) {
+    auto schema = buildBasicSchema(pointerEncryptObj);
+    auto doc = BSON("foo"
+                    << "encrypt");
+    EncryptionPlaceholder expected(FleAlgorithmEnum::kRandom, EncryptSchemaAnyType(doc["foo"]));
+    auto keyAltName = BSON("key"
+                           << "value");
+    expected.setKeyAltName(EncryptSchemaAnyType(keyAltName["key"]));
+    EncryptionMetadata metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
+                                                            pointerEncryptObj["encrypt"].Obj());
+    ASSERT_THROWS_CODE(
+        buildEncryptPlaceholder(doc["foo"], metadata, doc), AssertionException, 51114);
+}
+
+TEST(BuildEncryptPlaceholderTest, PointedToUUIDActsAsKeyIdInsteadOfAltName) {
+    auto schema = buildBasicSchema(pointerEncryptObj);
+    auto uuid = UUID::gen();
+    BSONObjBuilder bob;
+    bob.append("foo", "encrypt");
+    uuid.appendToBuilder(&bob, "key");
+    auto doc = bob.obj();
+
+    EncryptionPlaceholder expected(FleAlgorithmEnum::kRandom, EncryptSchemaAnyType(doc["foo"]));
+    expected.setKeyId(uuid);
+    EncryptionMetadata metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
+                                                            pointerEncryptObj["encrypt"].Obj());
+    auto response = buildEncryptPlaceholder(doc["foo"], metadata, doc);
+    auto correctBSON = encodePlaceholder("foo", expected);
+    ASSERT_BSONOBJ_EQ(correctBSON, response);
 }
 
 }  // namespace

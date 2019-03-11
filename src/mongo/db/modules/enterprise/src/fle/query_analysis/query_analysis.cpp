@@ -59,6 +59,7 @@ BSONObj extractJSONSchema(BSONObj obj, BSONObjBuilder* stripped) {
  */
 BSONObj replaceEncryptedFieldsRecursive(const EncryptionSchemaTreeNode* schema,
                                         BSONObj curDoc,
+                                        const BSONObj& origDoc,
                                         FieldRef* leadingPath,
                                         bool* encryptedFieldFound) {
     BSONObjBuilder builder;
@@ -68,15 +69,16 @@ BSONObj replaceEncryptedFieldsRecursive(const EncryptionSchemaTreeNode* schema,
         if (auto metadata = schema->getEncryptionMetadataForPath(*leadingPath)) {
             // TODO SERVER-39958: Error on Arrays.
             *encryptedFieldFound = true;
-            BSONObj placeholder = buildEncryptPlaceholder(element, metadata.get());
+            BSONObj placeholder = buildEncryptPlaceholder(element, metadata.get(), origDoc);
             builder.append(placeholder[fieldName]);
         } else if (element.type() != BSONType::Object) {
             // Encrypt markings below arrays are not supported.
             builder.append(element);
         } else {
-            builder.append(fieldName,
-                           replaceEncryptedFieldsRecursive(
-                               schema, element.embeddedObject(), leadingPath, encryptedFieldFound));
+            builder.append(
+                fieldName,
+                replaceEncryptedFieldsRecursive(
+                    schema, element.embeddedObject(), origDoc, leadingPath, encryptedFieldFound));
         }
         leadingPath->removeLastPart();
     }
@@ -215,8 +217,8 @@ void processQueryCommand(const BSONObj& cmdObj,
 PlaceHolderResult replaceEncryptedFields(BSONObj doc, const EncryptionSchemaTreeNode* schema) {
     PlaceHolderResult res;
     FieldRef leadingPath;
-    res.result =
-        replaceEncryptedFieldsRecursive(schema, doc, &leadingPath, &res.hasEncryptionPlaceholders);
+    res.result = replaceEncryptedFieldsRecursive(
+        schema, doc, doc, &leadingPath, &res.hasEncryptionPlaceholders);
     return res;
 }
 
@@ -269,7 +271,9 @@ void processDeleteCommand(const OpMsgRequest& request, BSONObjBuilder* builder) 
     processWriteOpCommand(request, builder, addPlaceHoldersForDelete);
 }
 
-BSONObj buildEncryptPlaceholder(BSONElement elem, const EncryptionMetadata& metadata) {
+BSONObj buildEncryptPlaceholder(BSONElement elem,
+                                const EncryptionMetadata& metadata,
+                                BSONObj origDoc) {
     invariant(metadata.getAlgorithm());
     invariant(metadata.getKeyId());
 
@@ -281,10 +285,29 @@ BSONObj buildEncryptPlaceholder(BSONElement elem, const EncryptionMetadata& meta
     }
 
     auto keyId = metadata.getKeyId();
-    uassert(51093,
-            "A non-static (JSONPointer) keyId is not supported.",
-            keyId.get().type() == EncryptSchemaKeyId::Type::kUUIDs);
-    marking.setKeyId(keyId.get().uuids()[0]);
+    if (keyId.get().type() == EncryptSchemaKeyId::Type::kUUIDs) {
+        marking.setKeyId(keyId.get().uuids()[0]);
+    } else {
+        // TODO SERVER-40077 Reject a JSON Pointer which points to a field which is already
+        // encrypted.
+        uassert(51093, "A non-static (JSONPointer) keyId is not supported.", !origDoc.isEmpty());
+        auto pointer = keyId->jsonPointer();
+        auto resolvedKey = pointer.evaluate(origDoc);
+        uassert(51114,
+                "keyId pointer '" + pointer.toString() + "' must point to a field that exists",
+                resolvedKey);
+        uassert(51115,
+                "keyId pointer '" + pointer.toString() +
+                    "' cannot point to an object, array or CodeWScope",
+                !resolvedKey.mayEncapsulate());
+        if (resolvedKey.type() == BSONType::BinData &&
+            resolvedKey.binDataType() == BinDataType::newUUID) {
+            marking.setKeyId(uassertStatusOK(UUID::parse(resolvedKey)));
+        } else {
+            EncryptSchemaAnyType keyAltName(resolvedKey);
+            marking.setKeyAltName(keyAltName);
+        }
+    }
 
     // Serialize the placeholder to BSON.
     BSONObjBuilder bob;

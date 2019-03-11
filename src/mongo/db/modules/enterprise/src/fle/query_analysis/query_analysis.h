@@ -68,8 +68,12 @@ void processDeleteCommand(const OpMsgRequest& request, BSONObjBuilder* builder);
 /**
  * Builds an EncryptionPlaceholder using 'elem' and 'metadata'. Returns a single element BSONObj
  * whose field name is the same as the field name from 'elem' and whose value is a BinData (sub-type
- * 6) representing the placeholder.
+ * 6) representing the placeholder. If 'origDoc' is passed in, will try to resolve a jsonPointer in
+ * metadata using that document. Throws if the pointer evaluates to EOO, an array, CodeWScope,
+ * or an object.
  */
-BSONObj buildEncryptPlaceholder(BSONElement elem, const EncryptionMetadata& metadata);
+BSONObj buildEncryptPlaceholder(BSONElement elem,
+                                const EncryptionMetadata& metadata,
+                                BSONObj origDoc = BSONObj());
 
 }  // namespace mongo
