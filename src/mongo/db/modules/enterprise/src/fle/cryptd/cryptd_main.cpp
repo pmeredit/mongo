@@ -135,10 +135,11 @@ ExitCode initAndListen() {
         ProcessId pid = ProcessId::getCurrent();
         LogstreamBuilder l = log(logger::LogComponent::kControl);
         l << "MongoCryptD starting : pid=" << pid;
-#ifdef _WIN32
         l << " port=" << serverGlobalParams.port;
-#else
-        l << " socketFile=" << socketFile.generic_string();
+#ifndef _WIN32
+        if (!serverGlobalParams.noUnixSocket) {
+            l << " socketFile=" << socketFile.generic_string();
+        }
 #endif
 
         const bool is32bit = sizeof(int*) == 4;
@@ -160,19 +161,28 @@ ExitCode initAndListen() {
                       serviceContext->getServiceEntryPoint());
 
     serverGlobalParams.serviceExecutor = "synchronous";
-#ifdef _WIN32
+
+    // Enable local TCP/IP by default since some drivers (i.e. C#), do not support unix domain
+    // sockets
     // Bind only to localhost, ignore any defaults or command line options
     serverGlobalParams.bind_ips.clear();
     serverGlobalParams.bind_ips.push_back("127.0.0.1");
-    serverGlobalParams.enableIPv6 = true;
-    serverGlobalParams.bind_ips.push_back("::1");
+
+    // Not all machines have ipv6 so users have to opt-in.
+    if (serverGlobalParams.enableIPv6) {
+        serverGlobalParams.bind_ips.push_back("::1");
+    }
+
     serverGlobalParams.port = mongoCryptDGlobalParams.port;
-#else
-    serverGlobalParams.bind_ips.push_back(socketFile.generic_string());
+
+#ifndef _WIN32
+    if (!serverGlobalParams.noUnixSocket) {
+        serverGlobalParams.bind_ips.push_back(socketFile.generic_string());
+        // Set noUnixSocket so that TransportLayer does not create a unix domain socket by default
+        // and instead just uses the one we tell it to use.
+        serverGlobalParams.noUnixSocket = true;
+    }
 #endif
-    // Set noUnixSocket so that TransportLayer does not create a unix domain socket by default
-    // and instead just uses the one we tell it to use.
-    serverGlobalParams.noUnixSocket = true;
 
     auto tl =
         transport::TransportLayerManager::createWithConfig(&serverGlobalParams, serviceContext);

@@ -62,13 +62,11 @@ Status storeMongoCryptDOptions(const moe::Environment& params,
         return ret;
     }
 
-#ifdef _WIN32
     if (!params.count("net.port")) {
-        return {ErrorCodes::BadValue, "Missing required option: --port"};
+        mongoCryptDGlobalParams.port = 27020;
+    } else {
+        mongoCryptDGlobalParams.port = params["net.port"].as<int>();
     }
-
-    mongoCryptDGlobalParams.port = params["net.port"].as<int>();
-#endif
 
     mongoCryptDGlobalParams.idleShutdownTimeout =
         Seconds(params["processManagement.idleShutdownTimeoutSecs"].as<int>());

@@ -5,7 +5,7 @@
 global:
   cpp_namespace: "mongo"
   configs:
-    section: "General Options"
+    section: "MongoCryptD Options"
     source: [ yaml, cli]
 
 imports:
