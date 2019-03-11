@@ -6,8 +6,10 @@
 
 #include <string.h>
 
+#include "encryption_update_visitor.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
+#include "mongo/db/update/update_driver.h"
 #include "mongo/unittest/unittest.h"
 #include "query_analysis.h"
 
@@ -275,5 +277,62 @@ TEST(BuildEncryptPlaceholderTest, PointedToUUIDActsAsKeyIdInsteadOfAltName) {
     ASSERT_BSONOBJ_EQ(correctBSON, response);
 }
 
+TEST(EncryptionUpdateVisitorTest, ReplaceSingleFieldCorrectly) {
+    BSONObj entry = BSON("$set" << BSON("foo"
+                                        << "bar"
+                                        << "baz"
+                                        << "boo"));
+    boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(nullptr, nullptr));
+    UpdateDriver driver(expCtx);
+    std::map<StringData, std::unique_ptr<ExpressionWithPlaceholder>> arrayFilters;
+    driver.parse(entry, arrayFilters);
+
+    auto schema = buildBasicSchema(encryptObj);
+
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto updateVisitor = EncryptionUpdateVisitor(*schemaTree.get());
+
+    driver.visitRoot(&updateVisitor);
+    auto newUpdate = driver.serialize();
+    EncryptionMetadata metadata =
+        EncryptionMetadata::parse(IDLParserErrorContext("meta"), encryptObj["encrypt"].Obj());
+    auto correctField = buildEncryptPlaceholder(entry["$set"]["foo"], metadata, entry);
+    auto correctBSON = BSON("$set" << BSON("baz"
+                                           << "boo"
+                                           << "foo"
+                                           << correctField["foo"]));
+    ASSERT_BSONOBJ_EQ(correctBSON, newUpdate);
+}
+
+TEST(EncryptionUpdateVisitorTest, ReplaceMultipleFieldsCorrectly) {
+    BSONObj entry = BSON("$set" << BSON("foo.bar" << 3 << "baz"
+                                                  << "boo"));
+    boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(nullptr, nullptr));
+    UpdateDriver driver(expCtx);
+    std::map<StringData, std::unique_ptr<ExpressionWithPlaceholder>> arrayFilters;
+    driver.parse(entry, arrayFilters);
+
+    auto schema = BSON("type"
+                       << "object"
+                       << "properties"
+                       << BSON("foo" << BSON("type"
+                                             << "object"
+                                             << "properties"
+                                             << BSON("bar" << encryptObj))
+                                     << "baz"
+                                     << encryptObj));
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto updateVisitor = EncryptionUpdateVisitor(*schemaTree.get());
+
+    driver.visitRoot(&updateVisitor);
+    auto newUpdate = driver.serialize();
+    EncryptionMetadata metadata =
+        EncryptionMetadata::parse(IDLParserErrorContext("meta"), encryptObj["encrypt"].Obj());
+    auto correctBar = buildEncryptPlaceholder(entry["$set"]["foo.bar"], metadata, entry);
+    auto correctBaz = buildEncryptPlaceholder(entry["$set"]["baz"], metadata, entry);
+    auto correctBSON =
+        BSON("$set" << BSON("baz" << correctBaz["baz"] << "foo.bar" << correctBar["foo.bar"]));
+    ASSERT_BSONOBJ_EQ(correctBSON, newUpdate);
+}
 }  // namespace
 }  // namespace mongo

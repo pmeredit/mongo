@@ -9,6 +9,7 @@
 #include <stack>
 
 #include "encryption_schema_tree.h"
+#include "encryption_update_visitor.h"
 #include "fle_match_expression.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
@@ -17,8 +18,10 @@
 #include "mongo/db/matcher/expression_type.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/db/ops/write_ops.h"
+#include "mongo/db/ops/write_ops_gen.h"
 #include "mongo/db/query/distinct_command_gen.h"
 #include "mongo/db/query/query_request.h"
+#include "mongo/db/update/update_driver.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/rpc/op_msg.h"
 
@@ -221,7 +224,28 @@ PlaceHolderResult addPlaceHoldersForInsert(const OpMsgRequest& request,
 
 PlaceHolderResult addPlaceHoldersForUpdate(const OpMsgRequest& request,
                                            std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
-    return PlaceHolderResult();
+    auto updateOp = UpdateOp::parse(request);
+    boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(nullptr, nullptr));
+
+    auto updates = updateOp.getUpdates();
+    std::vector<write_ops::UpdateOpEntry> updateVector;
+    PlaceHolderResult phr;
+
+    for (auto&& update : updateOp.getUpdates()) {
+        UpdateDriver driver(expCtx);
+        // Ignoring array filters as they are not relevant for encryption.
+        driver.parse(update.getU(), {});
+        auto updateVisitor = EncryptionUpdateVisitor(*schemaTree.get());
+        driver.visitRoot(&updateVisitor);
+        auto newFilter = replaceEncryptedFieldsInFilter(*schemaTree.get(), update.getQ());
+        updateVector.push_back(write_ops::UpdateOpEntry(newFilter.result, driver.serialize()));
+        phr.hasEncryptionPlaceholders = phr.hasEncryptionPlaceholders ||
+            updateVisitor.hasPlaceholder() || newFilter.hasEncryptionPlaceholders;
+    }
+
+    updateOp.setUpdates(updateVector);
+    phr.result = updateOp.toBSON(request.body);
+    return phr;
 }
 
 PlaceHolderResult addPlaceHoldersForDelete(const OpMsgRequest& request,

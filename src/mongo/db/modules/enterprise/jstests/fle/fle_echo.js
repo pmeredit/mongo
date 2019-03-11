@@ -24,11 +24,11 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
         {findandmodify: "foo", query: {_id: 1.0}, update: {$inc: {score: 1.0}}},
         {aggregate: "foo", pipeline: [{filter: {$eq: 1.0}}]},
         {insert: "foo", documents: [{a: 1}]},
-        {update: "foo", updates: [{q: {a: 1}, u: {a: 2}}]},
+        {update: "foo", updates: [{q: {a: 1}, u: {"$set": {a: 2}}}]},
         {delete: "foo", deletes: [{q: {a: 1}, limit: 1}]},
     ];
 
-    const supportedCommands = ["find", "insert", "distinct"];
+    const supportedCommands = ["find", "insert", "distinct", "updates"];
 
     cmds.forEach(element => {
         // Make sure no json schema fails

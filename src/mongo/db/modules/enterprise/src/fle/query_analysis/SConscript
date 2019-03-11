@@ -26,6 +26,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/ops/write_ops_parsers',
         '$BUILD_DIR/mongo/db/query/distinct_command_idl',
         'encryption_schema_tree',
+        '$BUILD_DIR/mongo/db/update/update_driver',
     ]
 )
 
