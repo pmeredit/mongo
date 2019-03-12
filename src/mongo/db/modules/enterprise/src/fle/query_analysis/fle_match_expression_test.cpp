@@ -59,6 +59,23 @@ protected:
             }
         })");
 
+        kDefaultNestedSchema = fromjson(R"({
+            type: "object", 
+            properties: {
+                user: {
+                    type: "object", 
+                    properties: {
+                        ssn: {
+                            encrypt: {
+                                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                                keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                            }
+                        }
+                    }
+                }
+            }
+        })");
+
         kDefaultMetadata =
             EncryptionMetadata::parse(IDLParserErrorContext("encryptMetadata"), fromjson(R"({
                 algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random", 
@@ -105,6 +122,9 @@ protected:
     // Default schema where only the path 'ssn' is encrypted.
     BSONObj kDefaultSsnSchema;
 
+    // Schema which defines a 'user' object with a nested 'ssn' encrypted field.
+    BSONObj kDefaultNestedSchema;
+
     // Default metadata, see initialization above for actual values.
     EncryptionMetadata kDefaultMetadata;
 };
@@ -140,27 +160,18 @@ TEST_F(FLEMatchExpressionTest, MarksElementInEqualityAsEncrypted) {
 }
 
 TEST_F(FLEMatchExpressionTest, MarksNestedElementInEqAsEncrypted) {
-    auto schema = fromjson(R"({
-        type: "object", 
-        properties: {
-            user: {
-                type: "object", 
-                properties: {
-                    ssn: {
-                        encrypt: {
-                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
-                            keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
-                        }
-                    }
-                }
-            }
-        }
-    })");
-
     auto match = fromjson("{'user.ssn': 5}");
     auto encryptedObj = buildEncryptElem(match["user.ssn"], kDefaultMetadata);
     auto translatedMatch = BSON("user.ssn" << BSON("$eq" << encryptedObj.firstElement()));
-    ASSERT_BSONOBJ_EQ(serializeMatchForEncryption(schema, match), translatedMatch);
+    ASSERT_BSONOBJ_EQ(serializeMatchForEncryption(kDefaultNestedSchema, match), translatedMatch);
+}
+
+TEST_F(FLEMatchExpressionTest, MarksElementInRHSObjectOfEqExpression) {
+    auto match = fromjson("{user: {$eq: {ssn: 5, notSsn: 1}}}");
+    auto encryptedObj = buildEncryptElem(5, kDefaultMetadata);
+    auto translatedMatch =
+        BSON("user" << BSON("$eq" << BSON("ssn" << encryptedObj.firstElement() << "notSsn" << 1)));
+    ASSERT_BSONOBJ_EQ(serializeMatchForEncryption(kDefaultNestedSchema, match), translatedMatch);
 }
 
 TEST_F(FLEMatchExpressionTest, MarksElementInNotExpression) {
@@ -210,6 +221,38 @@ TEST_F(FLEMatchExpressionTest, MarksEncryptedFieldWithNonEncryptedSibling) {
     ASSERT_BSONOBJ_EQ(serializeMatchForEncryption(kDefaultSsnSchema, match), translatedMatch);
 }
 
+TEST_F(FLEMatchExpressionTest, MarksElementOfInExpression) {
+    auto match = fromjson("{ssn: {$in: ['encrypt this']}}");
+    auto encryptedObj = buildEncryptElem("encrypt this"_sd, kDefaultMetadata);
+    auto translatedMatch = BSON("ssn" << BSON("$in" << BSON_ARRAY(encryptedObj.firstElement())));
+    ASSERT_BSONOBJ_EQ(serializeMatchForEncryption(kDefaultSsnSchema, match), translatedMatch);
+}
+
+TEST_F(FLEMatchExpressionTest, MarksElementOfInExpressionWithDottedPath) {
+    auto match = fromjson("{'user.ssn': {$in: ['encrypt this']}}");
+    auto encryptedObj = buildEncryptElem("encrypt this"_sd, kDefaultMetadata);
+    auto translatedMatch =
+        BSON("user.ssn" << BSON("$in" << BSON_ARRAY(encryptedObj.firstElement())));
+    ASSERT_BSONOBJ_EQ(serializeMatchForEncryption(kDefaultNestedSchema, match), translatedMatch);
+}
+
+TEST_F(FLEMatchExpressionTest, MarksElementOfRHSObjectWithinInExpression) {
+    auto match = fromjson("{user: {$in: ['do not encrypt', {ssn: 'encrypt this'}]}}");
+    auto encryptedObj = buildEncryptElem("encrypt this"_sd, kDefaultMetadata);
+    auto translatedMatch =
+        BSON("user" << BSON("$in" << BSON_ARRAY("do not encrypt"
+                                                << BSON("ssn" << encryptedObj.firstElement()))));
+    ASSERT_BSONOBJ_EQ(serializeMatchForEncryption(kDefaultNestedSchema, match), translatedMatch);
+}
+
+TEST_F(FLEMatchExpressionTest, MarksElementOfRHSObjectWithNullWithinInExpression) {
+    auto match = fromjson("{user: {$in: [{ssn: null}]}}");
+    auto encryptedObj = buildEncryptElem(match["user"]["$in"]["0"]["ssn"], kDefaultMetadata);
+    auto translatedMatch =
+        BSON("user" << BSON("$in" << BSON_ARRAY(BSON("ssn" << encryptedObj.firstElement()))));
+    ASSERT_BSONOBJ_EQ(serializeMatchForEncryption(kDefaultNestedSchema, match), translatedMatch);
+}
+
 TEST_F(FLEMatchExpressionTest, ElementWithEncryptedPrefixCorrectlyFails) {
     auto match = fromjson("{'ssn.nested': {$eq: 5}}");
     ASSERT_THROWS_CODE(
@@ -233,7 +276,7 @@ TEST_F(FLEMatchExpressionTest, ElementWithEncryptedPrefixCorrectlyFails) {
 
     match = fromjson("{'ssn.nested': {$in: [5]}}");
     ASSERT_THROWS_CODE(
-        serializeMatchForEncryption(kDefaultSsnSchema, match), AssertionException, 51094);
+        serializeMatchForEncryption(kDefaultSsnSchema, match), AssertionException, 51102);
 }
 
 TEST_F(FLEMatchExpressionTest, DoesNotMarkNonEncryptedFieldsInEquality) {
@@ -265,16 +308,6 @@ TEST_F(FLEMatchExpressionTest, InternalSchemaBinDataSubTypeNotAllowedOnEncrypted
     ASSERT_THROWS_CODE(serializeMatchForEncryption(kDefaultSsnSchema, match),
                        AssertionException,
                        kInvalidExpressionCode);
-}
-
-TEST_F(FLEMatchExpressionTest, InExpressionNotSupported) {
-    auto match = fromjson("{ssn: {$in: [1, \"123\"]}}");
-    ASSERT_THROWS_CODE(
-        serializeMatchForEncryption(kDefaultSsnSchema, match), AssertionException, 51094);
-
-    match = fromjson("{notSsn: {$in: [1, \"123\"]}}");
-    ASSERT_THROWS_CODE(
-        serializeMatchForEncryption(kDefaultSsnSchema, match), AssertionException, 51094);
 }
 
 TEST_F(FLEMatchExpressionTest, InternalSchemaUniqueItemsNotAllowedOnEncryptedField) {
@@ -381,19 +414,41 @@ TEST_F(FLEMatchExpressionTest, BitExpressionsNotAllowed) {
 TEST_F(FLEMatchExpressionTest, NonEqualityComparisonsNotAllowedOnEncryptedFields) {
     ASSERT_THROWS_CODE(serializeMatchForEncryption(kDefaultSsnSchema, fromjson("{ssn: {$gt: 5}}")),
                        AssertionException,
-                       kInvalidExpressionCode);
+                       51118);
 
     ASSERT_THROWS_CODE(serializeMatchForEncryption(kDefaultSsnSchema, fromjson("{ssn: {$gte: 5}}")),
                        AssertionException,
-                       kInvalidExpressionCode);
+                       51118);
 
     ASSERT_THROWS_CODE(serializeMatchForEncryption(kDefaultSsnSchema, fromjson("{ssn: {$lt: 5}}")),
                        AssertionException,
-                       kInvalidExpressionCode);
+                       51118);
 
     ASSERT_THROWS_CODE(serializeMatchForEncryption(kDefaultSsnSchema, fromjson("{ssn: {$lte: 5}}")),
                        AssertionException,
-                       kInvalidExpressionCode);
+                       51118);
+}
+
+TEST_F(FLEMatchExpressionTest, NonEqualityComparisonsToObjectsWithEncryptedFieldsNotAllowed) {
+    ASSERT_THROWS_CODE(
+        serializeMatchForEncryption(kDefaultNestedSchema, fromjson("{user: {$gt: {ssn: 5}}}")),
+        AssertionException,
+        51119);
+
+    ASSERT_THROWS_CODE(
+        serializeMatchForEncryption(kDefaultNestedSchema, fromjson("{user: {$gte: {ssn: 5}}}")),
+        AssertionException,
+        51119);
+
+    ASSERT_THROWS_CODE(
+        serializeMatchForEncryption(kDefaultNestedSchema, fromjson("{user: {$lt: {ssn: 5}}}")),
+        AssertionException,
+        51119);
+
+    ASSERT_THROWS_CODE(
+        serializeMatchForEncryption(kDefaultNestedSchema, fromjson("{user: {$lte: {ssn: 5}}}")),
+        AssertionException,
+        51119);
 }
 
 TEST_F(FLEMatchExpressionTest, EqualityToRegexNotAllowed) {
@@ -489,6 +544,27 @@ TEST_F(FLEMatchExpressionTest, ComparisonToNullNotAllowed) {
     match = fromjson("{ssn: {$ne: null}}");
     ASSERT_THROWS_CODE(
         serializeMatchForEncryption(kDefaultSsnSchema, match), AssertionException, 51095);
+}
+
+TEST_F(FLEMatchExpressionTest, NullElementWithinInExpressionNotAllowed) {
+    auto match = fromjson("{ssn: {$in: [null]}}");
+    ASSERT_THROWS_CODE(
+        serializeMatchForEncryption(kDefaultSsnSchema, match), AssertionException, 51120);
+}
+
+TEST_F(FLEMatchExpressionTest, RegexElementWithinInExpressionNotAllowed) {
+    auto match = fromjson("{ssn: {$in: [/^1/, 'not a regex']}}");
+    ASSERT_THROWS_CODE(
+        serializeMatchForEncryption(kDefaultSsnSchema, match), AssertionException, 51015);
+}
+
+TEST_F(FLEMatchExpressionTest, RegexWithinInExpressionAllowedOnPrefixOfEncryptedField) {
+    auto match = fromjson("{user: {$in: [/^a/, {ssn: 'encrypted'}]}}");
+    auto encryptedObj = buildEncryptElem("encrypted"_sd, kDefaultMetadata);
+    auto translatedMatch =
+        BSON("user" << BSON("$in" << BSON_ARRAY(BSON("ssn" << encryptedObj.firstElement())
+                                                << BSONRegEx("^a"))));
+    ASSERT_BSONOBJ_EQ(serializeMatchForEncryption(kDefaultNestedSchema, match), translatedMatch);
 }
 
 }  // namespace

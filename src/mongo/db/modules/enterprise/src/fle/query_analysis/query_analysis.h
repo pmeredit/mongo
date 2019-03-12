@@ -24,8 +24,14 @@ struct PlaceHolderResult {
 /*
  * Returns a PlaceHolderResult containing a document with all fields that were marked with
  * 'encrypt' in 'schema' replaced with EncryptionPlaceholders.
+ *
+ * The 'leadingPath' will be treated as a prefix to any fields in 'doc'. For example, calling this
+ * function with a leading path 'a' and document {b: 1, c: 1} will mark "b" or "c" for encryption if
+ * the schema indicates that either "a.b" or "a.c" are encrypted respectively.
  */
-PlaceHolderResult replaceEncryptedFields(BSONObj doc, const EncryptionSchemaTreeNode* schema);
+PlaceHolderResult replaceEncryptedFields(BSONObj doc,
+                                         const EncryptionSchemaTreeNode* schema,
+                                         FieldRef leadingPath);
 
 /**
  * Returns true if one or more fields are marked with 'encrypt' in a JSON schema.

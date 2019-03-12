@@ -143,7 +143,7 @@ PlaceHolderResult addPlaceHoldersForInsert(const OpMsgRequest& request,
     PlaceHolderResult retPlaceholder;
     std::vector<BSONObj> docVector;
     for (const BSONObj& doc : docs) {
-        auto placeholderPair = replaceEncryptedFields(doc, schemaTree.get());
+        auto placeholderPair = replaceEncryptedFields(doc, schemaTree.get(), FieldRef());
         retPlaceholder.hasEncryptionPlaceholders =
             retPlaceholder.hasEncryptionPlaceholders || placeholderPair.hasEncryptionPlaceholders;
         docVector.push_back(placeholderPair.result);
@@ -214,9 +214,10 @@ void processQueryCommand(const BSONObj& cmdObj,
 
 }  // namespace
 
-PlaceHolderResult replaceEncryptedFields(BSONObj doc, const EncryptionSchemaTreeNode* schema) {
+PlaceHolderResult replaceEncryptedFields(BSONObj doc,
+                                         const EncryptionSchemaTreeNode* schema,
+                                         FieldRef leadingPath) {
     PlaceHolderResult res;
-    FieldRef leadingPath;
     res.result = replaceEncryptedFieldsRecursive(
         schema, doc, doc, &leadingPath, &res.hasEncryptionPlaceholders);
     return res;

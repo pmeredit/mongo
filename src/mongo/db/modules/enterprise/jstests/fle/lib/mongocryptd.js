@@ -29,9 +29,9 @@ class MongoCryptD {
 
         args = [this.mongocryptd];
 
+        args.push("--port=" + this.port);
         if (_isWindows()) {
             conn_str = "127.0.0.1:" + this.port;
-            args.push("--port=" + this.port);
         } else {
             conn_str = MongoRunner.dataDir + "/mongocryptd.sock";
             args.push("--unixSocketPrefix=" + MongoRunner.dataDir);

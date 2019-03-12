@@ -44,33 +44,73 @@
         assert(path === "" || res.result.filter[path]["$eq"] instanceof BinData, tojson(res));
     }
 
-    // Basic top-level field correctly marked for encryption.
+    // Basic top-level field in equality correctly marked for encryption.
     assertEncryptedFieldInResponse({filter: {ssn: 5}, path: "ssn", requiresEncryption: true});
 
-    // Nested field correctly marked for encryption.
+    // Nested field in equality correctly marked for encryption.
     assertEncryptedFieldInResponse(
         {filter: {"user.account": "secret"}, path: "user.account", requiresEncryption: true});
+
+    // Elements within $in array correctly marked for encryption.
+    let res = assert.commandWorked(testDB.runCommand(
+        {find: "test", filter: {ssn: {"$in": ["1234"]}}, jsonSchema: sampleSchema}));
+    assert(res.hasEncryptionPlaceholders, tojson(res));
+    assert(res.result.filter["ssn"]["$in"][0] instanceof BinData, tojson(res));
+
+    // Elements within object in $in array correctly marked for encryption.
+    res = assert.commandWorked(testDB.runCommand(
+        {find: "test", filter: {user: {"$in": [{account: "1234"}]}}, jsonSchema: sampleSchema}));
+    assert(res.hasEncryptionPlaceholders, tojson(res));
+    assert(res.result.filter["user"]["$in"][0]["account"] instanceof BinData, tojson(res));
+
+    // Multiple elements inside $in array correctly marked for encryption.
+    res = assert.commandWorked(testDB.runCommand(
+        {find: "test", filter: {ssn: {"$in": [1, 2, {"3": 4}]}}, jsonSchema: sampleSchema}));
+    assert(res.hasEncryptionPlaceholders, tojson(res));
+    assert(res.result.filter["ssn"]["$in"][0] instanceof BinData, tojson(res));
+    assert(res.result.filter["ssn"]["$in"][1] instanceof BinData, tojson(res));
+    assert(res.result.filter["ssn"]["$in"][2] instanceof BinData, tojson(res));
+
+    // Mixture of encrypted and non-encrypt elements inside $in array.
+    res = assert.commandWorked(testDB.runCommand({
+        find: "test",
+        filter: {user: {"$in": ["notEncrypted", {also: "notEncrypted"}, {account: "encrypted"}]}},
+        jsonSchema: sampleSchema
+    }));
+    assert(res.hasEncryptionPlaceholders, tojson(res));
+    assert(res.result.filter["user"]["$in"][0] === "notEncrypted", tojson(res));
+    assert(res.result.filter["user"]["$in"][1]["also"] === "notEncrypted", tojson(res));
+    assert(res.result.filter["user"]["$in"][2]["account"] instanceof BinData, tojson(res));
 
     // Responses to queries without any encrypted fields should not set the
     // 'hasEncryptionPlaceholders' bit.
     assertEncryptedFieldInResponse({filter: {}, requiresEncryption: false});
     assertEncryptedFieldInResponse({filter: {"user.notSecure": 5}, requiresEncryption: false});
+    assertEncryptedFieldInResponse(
+        {filter: {user: {"$in": [{notSecure: 1}]}}, requiresEncryption: false});
 
     // Invalid operators should fail with an appropriate error code.
     assert.commandFailedWithCode(
         testDB.runCommand({find: "test", filter: {ssn: {$gt: 5}}, jsonSchema: sampleSchema}),
-        51092);
+        51118);
     assert.commandFailedWithCode(
         testDB.runCommand({find: "test", filter: {ssn: /\d/}, jsonSchema: sampleSchema}), 51092);
+    assert.commandFailedWithCode(
+        testDB.runCommand({find: "test", filter: {ssn: {$in: [/\d/]}}, jsonSchema: sampleSchema}),
+        51015);
+
+    // Invalid operators with encrypted fields in RHS object should fail.
+    assert.commandFailedWithCode(
+        testDB.runCommand(
+            {find: "test", filter: {user: {$gt: {account: 5}}}, jsonSchema: sampleSchema}),
+        51119);
 
     // Comparison to a null value correctly fails.
     assert.commandFailedWithCode(
         testDB.runCommand({find: "test", filter: {ssn: null}, jsonSchema: sampleSchema}), 51095);
-    // TODO SERVER-39417 adds support for $in, but a null element within the $in array should still
-    // fail.
     assert.commandFailedWithCode(
         testDB.runCommand({find: "test", filter: {ssn: {$in: [null]}}, jsonSchema: sampleSchema}),
-        51094);
+        51120);
 
     // Queries on paths which contain an encrypted prefixed field should fail.
     assert.commandFailedWithCode(

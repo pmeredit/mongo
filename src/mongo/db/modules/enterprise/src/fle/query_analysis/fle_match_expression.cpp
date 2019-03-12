@@ -51,6 +51,82 @@ BSONElement FLEMatchExpression::allocateEncryptedElement(const BSONElement& elem
     return _encryptedElements.back().firstElement();
 }
 
+void FLEMatchExpression::replaceElementsInEqExpression(const EncryptionSchemaTreeNode& schemaTree,
+                                                       EqualityMatchExpression* eqExpr) {
+    if (auto encryptMetadata = schemaTree.getEncryptionMetadataForPath(FieldRef(eqExpr->path()))) {
+        // Queries involving comparisons to null cannot work with encryption, as the expected
+        // semantics involve returning documents where the encrypted field is missing, null, or
+        // undefined. Building an encryption placeholder with a null element will only return
+        // documents with the literal null, not missing or undefined.
+        uassert(51095,
+                str::stream() << "Illegal equality to null predicate for encrypted field: '"
+                              << eqExpr->path()
+                              << "'",
+                !eqExpr->getData().isNull());
+
+        eqExpr->setData(allocateEncryptedElement(eqExpr->getData(), encryptMetadata.get()));
+    } else {
+        // The path to the $eq expression is not encrypted, however there may still be an encrypted
+        // field within the RHS object.
+        auto rhsElem = eqExpr->getData();
+        if (rhsElem.type() == BSONType::Object) {
+            auto[hasEncrypt, placeholder] = replaceEncryptedFields(
+                rhsElem.embeddedObject(), &schemaTree, FieldRef(eqExpr->path()));
+            if (hasEncrypt) {
+                eqExpr->setData(allocateEncryptedObject(placeholder));
+            }
+        }
+    }
+}
+
+void FLEMatchExpression::replaceElementsInInExpression(const EncryptionSchemaTreeNode& schemaTree,
+                                                       InMatchExpression* inExpr) {
+    std::vector<BSONElement> replacedElements;
+    if (auto encryptMetadata = schemaTree.getEncryptionMetadataForPath(FieldRef(inExpr->path()))) {
+        uassert(51015,
+                str::stream() << "Illegal regex inside $in against an encrypted field: '"
+                              << inExpr->path()
+                              << "'",
+                inExpr->getRegexes().empty());
+
+        // Replace each element in the $in expression with its encryption placeholder.
+        for (auto&& elem : inExpr->getEqualities()) {
+            uassert(
+                51120,
+                str::stream() << "Illegal equality to null inside $in against an encrypted field: '"
+                              << inExpr->path()
+                              << "'",
+                !elem.isNull());
+            replacedElements.push_back(allocateEncryptedElement(elem, encryptMetadata.get()));
+        }
+    } else {
+        // The path to the $in expression is not encrypted, however there may still be an
+        // encrypted field within any RHS objects of the $in array.
+        bool hasPlaceholders = false;
+        for (auto&& elem : inExpr->getEqualities()) {
+            if (elem.type() == BSONType::Object) {
+                auto[elemHasEncrypt, placeholder] = replaceEncryptedFields(
+                    elem.embeddedObject(), &schemaTree, FieldRef(inExpr->path()));
+
+                // This class maintains an invariant that BSON storage is allocated if and only if
+                // the underlying MatchExpression has been marked with at least one
+                // intent-to-encrypt placeholder.
+                if (elemHasEncrypt) {
+                    replacedElements.push_back(allocateEncryptedObject(placeholder));
+                } else {
+                    replacedElements.push_back(elem);
+                }
+
+                hasPlaceholders = hasPlaceholders || elemHasEncrypt;
+            } else {
+                replacedElements.push_back(elem);
+            }
+        }
+    }
+
+    uassertStatusOK(inExpr->setEqualities(std::move(replacedElements)));
+}
+
 void FLEMatchExpression::replaceEncryptedElements(MatchExpression* root,
                                                   EncryptionSchemaTreeNode* schemaTree) {
     invariant(root);
@@ -58,25 +134,11 @@ void FLEMatchExpression::replaceEncryptedElements(MatchExpression* root,
     switch (root->matchType()) {
         // Whitelist of expressions which are allowed on encrypted fields.
         case MatchType::EQ: {
-            auto encryptMetadata = schemaTree->getEncryptionMetadataForPath(FieldRef(root->path()));
-            if (!encryptMetadata) {
-                break;
-            }
-
-            auto eqExpression = static_cast<EqualityMatchExpression*>(root);
-
-            // Queries involving comparisons to null cannot work with encryption, as the expected
-            // semantics involve returning documents where the encrypted field is missing, null, or
-            // undefined. Building an encryption placeholder with a null element will only return
-            // documents with the literal null, not missing or undefined.
-            uassert(51095,
-                    str::stream() << "Illegal equality to null predicate for encrypted field: '"
-                                  << root->path()
-                                  << "'",
-                    !eqExpression->getData().isNull());
-
-            eqExpression->setData(
-                allocateEncryptedElement(eqExpression->getData(), encryptMetadata.get()));
+            replaceElementsInEqExpression(*schemaTree, static_cast<EqualityMatchExpression*>(root));
+            break;
+        }
+        case MatchType::MATCH_IN: {
+            replaceElementsInInExpression(*schemaTree, static_cast<InMatchExpression*>(root));
             break;
         }
 
@@ -98,7 +160,6 @@ void FLEMatchExpression::replaceEncryptedElements(MatchExpression* root,
         case MatchType::INTERNAL_SCHEMA_MIN_PROPERTIES:
         case MatchType::INTERNAL_SCHEMA_OBJECT_MATCH:
         case MatchType::INTERNAL_SCHEMA_ROOT_DOC_EQ:
-        case MatchType::MATCH_IN:
         case MatchType::TEXT:
         case MatchType::WHERE:
             uasserted(51094,
@@ -116,8 +177,6 @@ void FLEMatchExpression::replaceEncryptedElements(MatchExpression* root,
         case MatchType::ELEM_MATCH_VALUE:
         case MatchType::GEO:
         case MatchType::GEO_NEAR:
-        case MatchType::GT:
-        case MatchType::GTE:
         case MatchType::INTERNAL_2D_POINT_IN_ANNULUS:
         case MatchType::INTERNAL_EXPR_EQ:
         case MatchType::INTERNAL_SCHEMA_ALL_ELEM_MATCH_FROM_INDEX:
@@ -132,8 +191,6 @@ void FLEMatchExpression::replaceEncryptedElements(MatchExpression* root,
         case MatchType::INTERNAL_SCHEMA_MIN_ITEMS:
         case MatchType::INTERNAL_SCHEMA_TYPE:
         case MatchType::INTERNAL_SCHEMA_UNIQUE_ITEMS:
-        case MatchType::LTE:
-        case MatchType::LT:
         case MatchType::MOD:
         case MatchType::REGEX:
         case MatchType::SIZE:
@@ -144,6 +201,33 @@ void FLEMatchExpression::replaceEncryptedElements(MatchExpression* root,
                                   << "': "
                                   << root->toString(),
                     !schemaTree->getEncryptionMetadataForPath(FieldRef(root->path())));
+            break;
+
+        case MatchType::GT:
+        case MatchType::GTE:
+        case MatchType::LTE:
+        case MatchType::LT: {
+            uassert(51118,
+                    str::stream() << "Invalid match expression operator on encrypted field '"
+                                  << root->path()
+                                  << "': "
+                                  << root->toString(),
+                    !schemaTree->getEncryptionMetadataForPath(FieldRef(root->path())));
+            // For comparison match expressions, also reject encrypted fields within RHS objects of
+            // the expression.
+            auto compExpr = static_cast<ComparisonMatchExpression*>(root);
+            auto rhsElem = compExpr->getData();
+            if (rhsElem.type() == BSONType::Object) {
+                auto[hasEncrypt, placeholder] = replaceEncryptedFields(
+                    rhsElem.embeddedObject(), schemaTree, FieldRef(compExpr->path()));
+                uassert(51119,
+                        str::stream() << "Invalid match expression operator on encrypted field '"
+                                      << root->toString()
+                                      << "'",
+                        !hasEncrypt);
+            }
+            break;
+        }
 
         // These expressions cannot contain constants that need to be marked for encryption, and are
         // safe to run regardless of the encryption schema.

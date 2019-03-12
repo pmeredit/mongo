@@ -91,7 +91,7 @@ TEST(ReplaceEncryptedFieldsTest, ReplacesTopLevelFieldCorrectly) {
     auto doc = BSON("foo"
                     << "toEncrypt");
     auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
-    auto replaceRes = replaceEncryptedFields(doc, schemaTree.get());
+    auto replaceRes = replaceEncryptedFields(doc, schemaTree.get(), {});
     BSONElement encryptedElem = replaceRes.result["foo"];
     assertEncryptedCorrectly(replaceRes, encryptedElem, encryptObj, doc["foo"]);
 }
@@ -110,7 +110,7 @@ TEST(ReplaceEncryptedFieldsTest, ReplacesSecondLevelFieldCorrectly) {
                         << "c"
                         << "bar");
     auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
-    auto replaceRes = replaceEncryptedFields(doc, schemaTree.get());
+    auto replaceRes = replaceEncryptedFields(doc, schemaTree.get(), {});
     BSONElement encryptedElem = replaceRes.result["a"]["b"];
     assertEncryptedCorrectly(replaceRes, encryptedElem, encryptObj, doc["a"]["b"]);
     BSONElement notEncryptedElem = replaceRes.result["c"];
@@ -127,7 +127,7 @@ TEST(ReplaceEncryptedFieldsTest, NumericPathComponentTreatedAsFieldName) {
                                              << BSON(0 << encryptObj))));
     auto doc = BSON("foo" << BSON(0 << "encrypted"));
     auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
-    auto replaceRes = replaceEncryptedFields(doc, schemaTree.get());
+    auto replaceRes = replaceEncryptedFields(doc, schemaTree.get(), {});
     BSONElement encryptedElem = replaceRes.result["foo"][0];
     assertEncryptedCorrectly(replaceRes, encryptedElem, encryptObj, doc["foo"][0]);
 }
@@ -142,10 +142,10 @@ TEST(ReplaceEncryptedFieldsTest, NumericPathComponentNotTreatedAsArrayIndex) {
                                              << BSON(0 << encryptObj))));
     auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
     auto doc = BSON("foo" << BSON_ARRAY("notEncrypted"));
-    auto replaceRes = replaceEncryptedFields(doc, schemaTree.get());
+    auto replaceRes = replaceEncryptedFields(doc, schemaTree.get(), {});
     ASSERT_FALSE(replaceRes.hasEncryptionPlaceholders);
     doc = BSON("foo" << BSON_ARRAY(BSON(0 << "notEncrypted") << BSON(0 << "alsoNotEncrypted")));
-    replaceRes = replaceEncryptedFields(doc, schemaTree.get());
+    replaceRes = replaceEncryptedFields(doc, schemaTree.get(), {});
     ASSERT_FALSE(replaceRes.hasEncryptionPlaceholders);
 }
 
@@ -160,7 +160,7 @@ TEST(ReplaceEncryptedFieldsTest, ObjectInArrayWithSameNameNotEncrypted) {
     auto doc = BSON("foo" << BSON_ARRAY("bar"
                                         << "notEncrypted"));
     auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
-    auto replaceRes = replaceEncryptedFields(doc, schemaTree.get());
+    auto replaceRes = replaceEncryptedFields(doc, schemaTree.get(), {});
     ASSERT_BSONOBJ_EQ(doc, replaceRes.result);
 }
 

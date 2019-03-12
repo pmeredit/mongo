@@ -32,6 +32,7 @@
 #include "encryption_schema_tree.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/matcher/expression.h"
+#include "mongo/db/matcher/expression_leaf.h"
 
 namespace mongo {
 
@@ -74,6 +75,23 @@ private:
      */
     BSONElement allocateEncryptedElement(const BSONElement& elem,
                                          const EncryptionMetadata& metadata);
+
+    /**
+     * Wraps 'encryptedObj' as the only element within a single-field parent object, and holds a
+     * refcount to this newly created parent object. Returns the resulting BSONElement.
+     */
+    BSONElement allocateEncryptedObject(BSONObj encryptedObj) {
+        _encryptedElements.push_back(BSON("" << encryptedObj));
+        return _encryptedElements.back().firstElement();
+    }
+
+    /**
+     * Helper methods to replace encrypted elements in the corresponding match expression.
+     */
+    void replaceElementsInEqExpression(const EncryptionSchemaTreeNode& schemaTree,
+                                       EqualityMatchExpression* expr);
+    void replaceElementsInInExpression(const EncryptionSchemaTreeNode& schemaTree,
+                                       InMatchExpression* expr);
 
     // Backing storage for any elements in the MatchExpression which have been marked for
     // encryption.
