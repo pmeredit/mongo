@@ -121,6 +121,7 @@ void FLEMatchExpression::replaceEncryptedElements(MatchExpression* root,
         case MatchType::INTERNAL_2D_POINT_IN_ANNULUS:
         case MatchType::INTERNAL_EXPR_EQ:
         case MatchType::INTERNAL_SCHEMA_ALL_ELEM_MATCH_FROM_INDEX:
+        case MatchType::INTERNAL_SCHEMA_BIN_DATA_ENCRYPTED_TYPE:
         case MatchType::INTERNAL_SCHEMA_BIN_DATA_SUBTYPE:
         case MatchType::INTERNAL_SCHEMA_EQ:
         case MatchType::INTERNAL_SCHEMA_FMOD:
