@@ -13,7 +13,6 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/matcher/expression_parser.h"
-#include "mongo/db/matcher/expression_type.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/db/ops/write_ops.h"
 #include "mongo/db/query/query_request.h"
@@ -294,7 +293,7 @@ BSONObj buildEncryptPlaceholder(BSONElement elem, const EncryptionMetadata& meta
     // Encode the placeholder BSON as BinData (sub-type 6 for encryption). Prepend the sub-subtype
     // byte represent the intent-to-encrypt marking before the BSON payload.
     BufBuilder binDataBuffer;
-    binDataBuffer.appendChar(FleBlobSubtype::IntentToEncrypt);
+    binDataBuffer.appendChar(0);
     binDataBuffer.appendBuf(markingObj.objdata(), markingObj.objsize());
 
     BSONObjBuilder binDataBob;
