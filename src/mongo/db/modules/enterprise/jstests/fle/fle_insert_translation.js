@@ -55,7 +55,15 @@
           docs: [{foo: "bar", "key": "string"}],
           encryptedPaths: ["foo"],
           notEncryptedPaths: []
-        }
+        },
+        // Test that a document with a nested Timestamp(0, 0) succeeds.
+        {
+          schema:
+              {type: "object", properties: {foo: {type: "object", properties: {bar: encryptDoc}}}},
+          docs: [{foo: {bar: Timestamp(0, 0)}}],
+          encryptedPaths: ["foo.bar"],
+          notEncryptedPaths: []
+        },
     ];
 
     const extractField = function(doc, fieldName) {
@@ -163,5 +171,30 @@
         }
     }
 
+    // Test that a document without _id fails to insert when the schema says encrypt _id.
+    assert.commandFailedWithCode(testDb.runCommand({
+        insert: "test.foo",
+        documents: [{"foo": "bar"}],
+        jsonSchema: {type: "object", properties: {"_id": encryptDoc}}
+    }),
+                                 51130);
+
+    // Test that a document with a top level Timestamp(0, 0) fails to encrypt.
+    assert.commandFailedWithCode(testDb.runCommand({
+        insert: "test.foo",
+        documents: [{"foo": Timestamp(0, 0)}],
+        jsonSchema: {type: "object", properties: {"foo": encryptDoc}}
+    }),
+                                 51129);
+
+    // Test that command does not fail if a subfield of _id is encrypted.
+    assert.commandWorked(testDb.runCommand({
+        insert: "test.foo",
+        documents: [{"foo": "bar"}],
+        jsonSchema: {
+            type: "object",
+            properties: {"_id": {type: "object", properties: {"nested": encryptDoc}}}
+        }
+    }));
     mongocryptd.stop();
 }());

@@ -142,7 +142,23 @@ PlaceHolderResult addPlaceHoldersForInsert(const OpMsgRequest& request,
     auto docs = batch.getDocuments();
     PlaceHolderResult retPlaceholder;
     std::vector<BSONObj> docVector;
+    auto isIDEncrypted = schemaTree->getEncryptionMetadataForPath(FieldRef("_id"));
     for (const BSONObj& doc : docs) {
+        uassert(51130,
+                "_id must be explicitly provided when configured as encrypted",
+                !isIDEncrypted || doc["_id"]);
+        // Top level Timestamp(0, 0) is not allowed to be inserted because the server replaces it
+        // with a different generated value. Nested Timestamp(0,0)s do not have this issue.
+        for (auto&& element : doc) {
+            if (schemaTree->getEncryptionMetadataForPath(FieldRef(element.fieldNameStringData()))) {
+                uassert(51129,
+                        "An insert cannot supply Timestamp(0, 0) for an encrypted top-level field "
+                        "at path " +
+                            element.fieldNameStringData(),
+                        element.type() != BSONType::bsonTimestamp ||
+                            element.timestamp() != Timestamp(0, 0));
+            }
+        }
         auto placeholderPair = replaceEncryptedFields(doc, schemaTree.get(), FieldRef());
         retPlaceholder.hasEncryptionPlaceholders =
             retPlaceholder.hasEncryptionPlaceholders || placeholderPair.hasEncryptionPlaceholders;
