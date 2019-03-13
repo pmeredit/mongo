@@ -16,15 +16,33 @@
 #include "symmetric_crypto.h"
 
 namespace mongo {
+
+std::string SymmetricKeyId::_initStrRep() const {
+    return str::stream() << _name << " (" << _id << ")";
+}
+
+bool SymmetricKeyId::operator==(const std::string& other) const {
+    invariant(!_name.empty());
+    return _name == other;
+}
+
+const std::string& SymmetricKeyId::toString() const {
+    if (!_strRep.empty()) {
+        return _strRep;
+    } else {
+        return _name;
+    }
+}
+
 SymmetricKey::SymmetricKey(const uint8_t* key,
                            size_t keySize,
                            uint32_t algorithm,
-                           StringData keyId,
+                           SymmetricKeyId keyId,
                            uint32_t initializationCount)
     : _algorithm(algorithm),
       _keySize(keySize),
       _key(key, key + keySize),
-      _keyId(keyId.toString()),
+      _keyId(std::move(keyId)),
       _initializationCount(initializationCount),
       _invocationCount(0) {
     if (_keySize < crypto::minKeySize || _keySize > crypto::maxKeySize) {
@@ -33,11 +51,11 @@ SymmetricKey::SymmetricKey(const uint8_t* key,
     }
 }
 
-SymmetricKey::SymmetricKey(SecureVector<uint8_t> key, uint32_t algorithm, StringData keyId)
+SymmetricKey::SymmetricKey(SecureVector<uint8_t> key, uint32_t algorithm, SymmetricKeyId keyId)
     : _algorithm(algorithm),
       _keySize(key->size()),
       _key(std::move(key)),
-      _keyId(keyId.toString()),
+      _keyId(std::move(keyId)),
       _initializationCount(1),
       _invocationCount(0) {}
 

@@ -202,7 +202,7 @@ Status aesDecrypt(const SymmetricKey& key,
 /**
  * Generates a new, random, symmetric key for use with AES.
  */
-SymmetricKey aesGenerate(size_t keySize, std::string keyId);
+SymmetricKey aesGenerate(size_t keySize, SymmetricKeyId keyId);
 
 /* Platform specific engines should implement these. */
 

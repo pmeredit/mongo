@@ -53,6 +53,14 @@
         assert.eq(1000, testdb["foo"].count(), "Could not read encrypted storage.");
         var result = testdb["foo"].findOne({x: 500});
 
+        // Test that we can create new databases after a restart.
+        for (var i = 0; i < 100; i++) {
+            const testdb = md.getDB("test_after_restart_" + i);
+            testdb["foo"].insert({
+                x: 0,
+            });
+        }
+
         // With --enableJavaScriptProtection, functions are presented as Code objects.
         if (result.fun instanceof Code) {
             result.fun = eval("(" + result.fun.code + ")");

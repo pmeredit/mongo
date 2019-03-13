@@ -88,7 +88,17 @@ void uassertWTOK(int ret) {
 
 bool WTDataStoreCursor::advance() {
     invariant(_cursor);
-    auto ret = _cursor->next(_cursor.get());
+    int ret;
+    switch (_direction) {
+        case CursorDirection::kForward:
+            ret = _cursor->next(_cursor.get());
+            break;
+        case CursorDirection::kReverse:
+            ret = _cursor->prev(_cursor.get());
+            break;
+        default:
+            MONGO_UNREACHABLE;
+    }
     if (ret == WT_NOTFOUND) {
         return false;
     } else {
@@ -126,9 +136,26 @@ void WTDataStoreCursor::close() {
     _cursor.reset();
 }
 
-UniqueWTCursor WTDataStoreSession::_makeCursor(StringData uri) {
+bool WTDataStoreCursor::operator==(const WTDataStoreCursor& other) const {
+    if (_cursor && other._cursor) {
+        int equal = 0;
+        _cursor->equals(_cursor.get(), other._cursor.get(), &equal);
+        return (equal == 1);
+    } else if (!_cursor && !other._cursor) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+bool WTDataStoreCursor::operator!=(const WTDataStoreCursor& other) const {
+    return !(*this == other);
+}
+
+UniqueWTCursor WTDataStoreSession::_makeCursor(StringData uri, StringData cursorOpts) {
     WT_CURSOR* cursorPtr = nullptr;
-    auto rc = _session->open_cursor(_session.get(), uri.rawData(), nullptr, nullptr, &cursorPtr);
+    auto rc = _session->open_cursor(
+        _session.get(), uri.rawData(), nullptr, cursorOpts.rawData(), &cursorPtr);
     UniqueWTCursor cursor(cursorPtr);
     if (rc == WT_NOTFOUND || rc == ENOENT) {
         return nullptr;
@@ -139,6 +166,14 @@ UniqueWTCursor WTDataStoreSession::_makeCursor(StringData uri) {
 
 WTDataStoreSession::iterator WTDataStoreSession::begin() {
     iterator it(_makeCursor(kKeystoreTableName));
+    if (!it || !it.advance()) {
+        return iterator();
+    }
+    return it;
+}
+
+WTDataStoreSession::iterator WTDataStoreSession::rbegin() {
+    iterator it(_makeCursor(kKeystoreTableName), WTDataStoreCursor::CursorDirection::kReverse);
     if (!it || !it.advance()) {
         return iterator();
     }

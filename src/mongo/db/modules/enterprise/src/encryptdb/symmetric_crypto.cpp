@@ -284,7 +284,7 @@ Status aesDecrypt(const SymmetricKey& key,
     return Status::OK();
 }
 
-SymmetricKey aesGenerate(size_t keySize, std::string keyId) {
+SymmetricKey aesGenerate(size_t keySize, SymmetricKeyId keyId) {
     invariant(keySize == sym256KeySize);
 
     SecureVector<uint8_t> key(keySize);

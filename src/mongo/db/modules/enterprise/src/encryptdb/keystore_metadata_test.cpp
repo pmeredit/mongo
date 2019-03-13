@@ -55,6 +55,11 @@ TEST(KeystoreMetadataFile, DefaultParams) {
 }
 
 TEST(KeystoreMetadataFile, GCM) {
+    auto supportedAlgos = getSupportedSymmetricAlgorithms();
+    if (supportedAlgos.find("AES256-GCM") == supportedAlgos.end()) {
+        return;
+    }
+
     UniqueSymmetricKey key = std::make_unique<SymmetricKey>(aesGenerate(sym256KeySize, "testID"));
     EncryptionGlobalParams params;
     params.encryptionCipherMode = "AES256-GCM";
@@ -79,7 +84,6 @@ TEST(KeystoreMetadataFile, GCM) {
 TEST(KeystoreMetadataFile, DefaultValues) {
     UniqueSymmetricKey key = std::make_unique<SymmetricKey>(aesGenerate(sym256KeySize, "testID"));
     EncryptionGlobalParams params;
-    params.encryptionCipherMode = "AES256-GCM";
     UniquePath keystorePath;
 
     KeystoreMetadataFile file;

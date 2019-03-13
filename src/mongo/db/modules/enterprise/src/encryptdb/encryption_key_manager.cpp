@@ -44,40 +44,6 @@ const std::string kInvalidatedKeyword = "-invalidated-";
 const std::string kInitializingKeyword = "-initializing";
 const std::string kKeystoreMetadataFilename = "keystore.metadata";
 
-struct KeystoreRecordV0 {
-    using WTKeyType = const char*;
-    using WTValueType = std::tuple<WT_ITEM*, uint32_t, uint32_t>;
-
-    // Create a new WT table with the following schema:
-    //
-    // S: database name, null-terminated string.
-    // u: key material, raw byte array stored as a WT_ITEM.
-    // l: key status, currently not used but set to 0.
-    constexpr static auto kWTTableConfig =
-        "key_format=S,value_format=uLL,columns=(keyid,key,keystatus,initializationCount)"_sd;
-
-    KeystoreRecordV0(WTDataStoreCursor& cursor) {
-        id = cursor.getKey<WTKeyType>();
-        std::tie(key, status, initializationCount) =
-            cursor.getValues<WT_ITEM, uint32_t, uint32_t>();
-    }
-
-    KeystoreRecordV0(StringData id, const std::unique_ptr<SymmetricKey>& key)
-        : id(id),
-          key{key->getKey(), key->getKeySize()},
-          status{0},
-          initializationCount{key->getInitializationCount()} {}
-
-    WTValueType toTuple() {
-        return std::make_tuple(&key, status, initializationCount);
-    }
-
-    StringData id;
-    WT_ITEM key;
-    uint32_t status;
-    uint32_t initializationCount;
-};
-
 Status createDirectoryIfNeeded(const fs::path& path) {
     try {
         if (!fs::exists(path)) {
@@ -110,7 +76,6 @@ EncryptionKeyManager::EncryptionKeyManager(const std::string& dbPath,
                                            SSLParams* sslParams)
     : _dbPath(fs::path(dbPath)),
       _keystoreBasePath(fs::path(dbPath) / "key.store"),
-      _masterKeyId(""),
       _masterKeyRequested(false),
       _keyRotationAllowed(false),
       _tmpDataKey(crypto::aesGenerate(crypto::sym256KeySize, kTmpDataKeyId)),
@@ -142,8 +107,8 @@ bool EncryptionKeyManager::restartRequired() {
     }
 
     if (_encryptionParams->encryptionKeyFile.empty()) {
-        log() << "Encryption key manager initialized using KMIP key with id: " << _masterKeyId
-              << ".";
+        log() << "Encryption key manager initialized using KMIP key with id: "
+              << _masterKey->getKeyId() << ".";
     } else {
         log() << "Encryption key manager initialized with key file: "
               << _encryptionParams->encryptionKeyFile;
@@ -190,8 +155,9 @@ StatusWith<std::vector<std::string>> EncryptionKeyManager::beginNonBlockingBacku
                 "A backup cursor is already open on the encryption database."};
     }
 
-    auto backupSession = _keystore.makeSession();
-    auto cursor = backupSession.beginBackup();
+    auto backupSession = _keystore->makeSession();
+    auto dataStoreSession = backupSession->dataStoreSession();
+    auto cursor = dataStoreSession->beginBackup();
 
     stdx::lock_guard<stdx::mutex> lk(_keystoreMetadataMutex);
     _keystoreMetadata.setDirty(true);
@@ -205,7 +171,7 @@ StatusWith<std::vector<std::string>> EncryptionKeyManager::beginNonBlockingBacku
     filesToCopy.push_back(_metadataPath(PathMode::kValid).string());
 
     const auto keystorePath = boost::filesystem::path(_wtConnPath);
-    for (; cursor != backupSession.end(); ++cursor) {
+    for (; cursor != dataStoreSession->end(); ++cursor) {
         StringData filename = cursor.getKey<const char*>();
         const auto filePath = keystorePath / filename.toString();
         filesToCopy.push_back(filePath.string());
@@ -246,7 +212,8 @@ Status EncryptionKeyManager::endNonBlockingBackup() {
 //
 // The only current caller of getKey is WT_ENCRYPTOR::customize with the keyId provided in the
 // callback.
-StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::getKey(const std::string& keyId) {
+StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::getKey(
+    const SymmetricKeyId& keyId) {
     if (keyId == kSystemKeyId) {
         return _getSystemKey();
     } else if (keyId == kMasterKeyId) {
@@ -287,14 +254,13 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getMasterKey() 
 }
 
 StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_readKey(
-    const std::string& keyId) try {
+    const SymmetricKeyId& keyId) try {
     // Look for the requested key in the local key store. Assume that the local key store has been
     // created and that open_session and open_cursor will succeed.
-    auto session = _keystore.makeSession();
+    auto session = _keystore->makeSession();
 
-    auto cursor = session.search(keyId.c_str());
-    if (cursor != session.end()) {
-        KeystoreRecordV0 record(cursor);
+    auto cursor = session->find(keyId);
+    if (cursor != session->end()) {
         // NIST guidelines in SP-800-38D allow us to deterministically construct GCM IVs. We use
         // this construction for database writes, because it allows us a large number of invocations
         // of the Authenticated Encryption Function. However, we must take steps to ensure that we
@@ -312,21 +278,16 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_readKey(
 
         // Keep the server from starting if all possible fixed fields have been used, rather than
         // disobey NIST's guidelines.
-        if (record.initializationCount >= std::numeric_limits<uint32_t>::max() - 10) {
+        if (cursor->getAndIncrementInvocationCount() >= std::numeric_limits<uint32_t>::max() - 10) {
             return Status(
                 ErrorCodes::Overflow,
                 "Unable to allocate an IV prefix, as the server has been restarted 2^32 times.");
         }
 
-        auto symmetricKey =
-            stdx::make_unique<SymmetricKey>(reinterpret_cast<const uint8_t*>(record.key.data),
-                                            record.key.size,
-                                            crypto::aesAlgorithm,
-                                            record.id,
-                                            ++record.initializationCount);
+        auto symmetricKey = std::move(*cursor);
 
         if (!_encryptionParams->readOnlyMode) {
-            session.update(cursor, record.toTuple());
+            session->update(std::move(cursor), symmetricKey);
         }
 
         return std::move(symmetricKey);
@@ -334,33 +295,12 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_readKey(
 
     // There is no key corresponding to keyId yet so create one
     auto symmetricKey =
-        stdx::make_unique<SymmetricKey>(crypto::aesGenerate(crypto::sym256KeySize, keyId));
+        stdx::make_unique<SymmetricKey>(crypto::aesGenerate(crypto::sym256KeySize, keyId.name()));
 
-    KeystoreRecordV0 record(keyId, symmetricKey);
-    session.insert(keyId.c_str(), record.toTuple());
+    session->insert(symmetricKey);
 
     return std::move(symmetricKey);
 } catch (const DBException& e) {
-    return e.toStatus();
-}
-
-Status EncryptionKeyManager::_openKeystore(const fs::path& path) try {
-    WTDataStore keystore(path, _encryptionParams);
-
-    auto session = keystore.makeSession();
-    auto cursor = session.begin();
-    if (cursor != session.end()) {
-        _keystore = std::move(keystore);
-        return Status::OK();
-    }
-
-    keystore.createTable(session, KeystoreRecordV0::kWTTableConfig);
-    session.checkpoint();
-    _keystore = std::move(keystore);
-
-    return Status::OK();
-} catch (const DBException& e) {
-    _keystore = WTDataStore();
     return e.toStatus();
 }
 
@@ -370,12 +310,15 @@ boost::filesystem::path EncryptionKeyManager::_metadataPath(PathMode mode) {
             return _keystoreBasePath / kKeystoreMetadataFilename;
         case PathMode::kInvalid: {
             std::string filename = str::stream() << kKeystoreMetadataFilename << kInvalidatedKeyword
-                                                 << terseCurrentTime();
+                                                 << terseCurrentTime(false);
             return _keystoreBasePath / filename;
         }
         case PathMode::kInitializing:
             return _keystoreBasePath / "keystore.metadata-initializing";
     }
+
+    // We have covered all the enum values above. This just makes that explicit to the compiler.
+    MONGO_UNREACHABLE;
 }
 
 Status EncryptionKeyManager::_initLocalKeystore() {
@@ -400,7 +343,8 @@ Status EncryptionKeyManager::_initLocalKeystore() {
         }
     }
 
-    int defaultKeystoreSchemaVersion = 1;
+    int defaultKeystoreSchemaVersion =
+        _encryptionParams->encryptionCipherMode == crypto::aes256GCMName ? 1 : 0;
     if (existingKeyId.empty()) {
         // Initializing the key store for the first time.
         if (hasExistingDatafiles(_dbPath)) {
@@ -450,8 +394,7 @@ Status EncryptionKeyManager::_initLocalKeystore() {
         return swMasterKey.getStatus();
     }
     _masterKey = std::move(swMasterKey.getValue());
-    _masterKeyId = _masterKey->getKeyId();
-    fs::path keystorePath = _keystoreBasePath / _masterKeyId;
+    fs::path keystorePath = _keystoreBasePath / _masterKey->getKeyId().name();
 
     auto swMetadata =
         KeystoreMetadataFile::load(_metadataPath(PathMode::kValid), _masterKey, *_encryptionParams);
@@ -473,7 +416,12 @@ Status EncryptionKeyManager::_initLocalKeystore() {
     _keystoreMetadata = std::move(swMetadata.getValue());
 
     // Open the local WT key store, create it if it doesn't exist.
-    return _openKeystore(keystorePath);
+    try {
+        _keystore = Keystore::makeKeystore(keystorePath, _keystoreMetadata, _encryptionParams);
+    } catch (const DBException& e) {
+        return e.toStatus();
+    }
+    return Status::OK();
 }
 
 Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) try {
@@ -482,7 +430,9 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) try {
                       "It is not possible to rotate the master key on a system that is being "
                       "started for the first time.");
     }
-    if (_masterKeyId == newKeyId) {
+
+    const auto oldMasterKeyId = _masterKey->getKeyId();
+    if (oldMasterKeyId == newKeyId) {
         return Status(
             ErrorCodes::BadValue,
             "Key rotation requires that the new master key id be different from the old.");
@@ -502,31 +452,30 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) try {
         return status;
     }
 
-    std::string rotMasterKeyId = _rotMasterKey->getKeyId();
-    fs::path rotKeystorePath = _keystoreBasePath / rotMasterKeyId;
+    SymmetricKeyId rotMasterKeyId = _rotMasterKey->getKeyId();
+    fs::path rotKeystorePath = _keystoreBasePath / rotMasterKeyId.name();
     fs::path initRotKeystorePath = rotKeystorePath;
     initRotKeystorePath += "-initializing-keystore";
 
-    WTDataStore rotKeyStore(rotKeystorePath, _encryptionParams);
-    auto writeSession = rotKeyStore.makeSession();
-    rotKeyStore.createTable(writeSession, KeystoreRecordV0::kWTTableConfig);
+    auto rotKeyStore =
+        Keystore::makeKeystore(initRotKeystorePath, _keystoreMetadata, _encryptionParams);
+    auto writeSession = rotKeyStore->makeSession();
 
     auto keystore = std::move(_keystore);
-    auto readSession = keystore.makeSession();
-    for (auto it = readSession.begin(); it != readSession.end(); ++it) {
-        KeystoreRecordV0 record(it);
-        writeSession.insert(record.id.rawData(), record.toTuple());
+    auto readSession = keystore->makeSession();
+    for (auto&& key : *readSession) {
+        writeSession->insert(key);
     }
 
-    readSession.close();
-    writeSession.close();
+    readSession.reset();
+    writeSession.reset();
 
-    keystore.close();
-    rotKeyStore.close();
+    keystore.reset();
+    rotKeyStore.reset();
 
     // Remove the -initializing post fix to the from the new keystore.
     // Rename the old keystore path to keyid-invalidated-date.
-    fs::path oldKeystorePath = _keystoreBasePath / _masterKeyId;
+    fs::path oldKeystorePath = _keystoreBasePath / oldMasterKeyId.name();
     fs::path invalidatedKeystorePath = oldKeystorePath;
     invalidatedKeystorePath += kInvalidatedKeyword + terseCurrentTime(false);
     try {
@@ -563,9 +512,8 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) try {
                                     << e.what());
     }
 
-    log() << "Rotated master encryption key from id " << _masterKeyId << " to id " << rotMasterKeyId
-          << ".";
-    _masterKeyId = rotMasterKeyId;
+    log() << "Rotated master encryption key from id " << oldMasterKeyId << " to id "
+          << rotMasterKeyId << ".";
 
     return Status::OK();
 } catch (const DBException& e) {

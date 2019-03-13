@@ -62,7 +62,7 @@ public:
         } else {
             EncryptionKeyManager* mgr = EncryptionKeyManager::get(opCtx->getServiceContext());
             result.append("encryptionEnabled", true);
-            result.append("encryptionKeyId", mgr->getMasterKeyId());
+            result.append("encryptionKeyId", mgr->getMasterKeyId().toString());
             result.append("encryptionCipherMode", mgr->getCipherMode());
         }
         return result.obj();

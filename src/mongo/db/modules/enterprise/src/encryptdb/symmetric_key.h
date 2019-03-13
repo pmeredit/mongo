@@ -14,6 +14,34 @@
 namespace mongo {
 class Status;
 
+class SymmetricKeyId {
+public:
+    template <typename StringLike>
+    SymmetricKeyId(const StringLike& name, uint64_t id)
+        : _id(id), _name(name), _strRep(_initStrRep()) {}
+
+    template <typename StringLike>
+    SymmetricKeyId(const StringLike& name) : _name(name) {}
+
+    const std::string& toString() const;
+    bool operator==(const std::string& other) const;
+
+    const boost::optional<uint64_t>& id() const {
+        return _id;
+    }
+
+    const std::string& name() const {
+        return _name;
+    }
+
+private:
+    std::string _initStrRep() const;
+
+    boost::optional<uint64_t> _id;
+    std::string _name;
+    std::string _strRep;
+};
+
 /**
  * Class representing a symmetric key
  */
@@ -24,9 +52,9 @@ public:
     SymmetricKey(const uint8_t* key,
                  size_t keySize,
                  uint32_t algorithm,
-                 StringData keyId,
+                 SymmetricKeyId keyId,
                  uint32_t initializationCount);
-    SymmetricKey(SecureVector<uint8_t> key, uint32_t algorithm, StringData keyId);
+    SymmetricKey(SecureVector<uint8_t> key, uint32_t algorithm, SymmetricKeyId keyId);
 
     SymmetricKey(SymmetricKey&&);
     SymmetricKey& operator=(SymmetricKey&&);
@@ -54,8 +82,12 @@ public:
         return _key->data();
     }
 
-    const std::string& getKeyId() const {
+    const SymmetricKeyId& getKeyId() const {
         return _keyId;
+    }
+
+    void setKeyId(SymmetricKeyId keyId) {
+        _keyId = std::move(keyId);
     }
 
 private:
@@ -65,7 +97,7 @@ private:
 
     SecureVector<uint8_t> _key;
 
-    std::string _keyId;
+    SymmetricKeyId _keyId;
 
     uint32_t _initializationCount;
     mutable AtomicWord<unsigned long long> _invocationCount;

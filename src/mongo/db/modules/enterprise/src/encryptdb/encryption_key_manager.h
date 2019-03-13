@@ -9,7 +9,7 @@
 #include <wiredtiger.h>
 
 #include "encryption_options.h"
-#include "keystore_data_store.h"
+#include "keystore.h"
 #include "keystore_metadata.h"
 #include "mongo/base/disallow_copying.h"
 #include "mongo/db/namespace_string.h"
@@ -114,10 +114,10 @@ public:
      * Takes in a key identifier and returns a unique_ptr to the
      * associated encryption key for that keyID.
      */
-    virtual StatusWith<std::unique_ptr<SymmetricKey>> getKey(const std::string& keyId);
+    virtual StatusWith<std::unique_ptr<SymmetricKey>> getKey(const SymmetricKeyId& keyId);
 
-    std::string getMasterKeyId() {
-        return _masterKeyId;
+    SymmetricKeyId getMasterKeyId() {
+        return _masterKey->getKeyId();
     }
 
     std::string getCipherMode() {
@@ -131,11 +131,6 @@ private:
     Status _initLocalKeystore();
 
     /**
-     * Open a local key store at 'path', create it if it doesn't exist.
-     */
-    Status _openKeystore(const boost::filesystem::path& path);
-
-    /**
      * Rotate the master encryption key and create a new key store.
      */
     Status _rotateMasterKey(const std::string& newKeyId);
@@ -145,7 +140,7 @@ private:
      */
     StatusWith<std::unique_ptr<SymmetricKey>> _getSystemKey();
     StatusWith<std::unique_ptr<SymmetricKey>> _getMasterKey();
-    StatusWith<std::unique_ptr<SymmetricKey>> _readKey(const std::string& keyId);
+    StatusWith<std::unique_ptr<SymmetricKey>> _readKey(const SymmetricKeyId& keyId);
 
     enum class PathMode { kValid, kInvalid, kInitializing };
     boost::filesystem::path _metadataPath(PathMode mode);
@@ -160,8 +155,7 @@ private:
     /**
      * The master system key, provided via KMIP or a keyfile.
      */
-    std::unique_ptr<SymmetricKey> _masterKey;
-    std::string _masterKeyId;
+    UniqueSymmetricKey _masterKey;
     bool _masterKeyRequested;
 
     /**
@@ -184,8 +178,8 @@ private:
     /**
      * Management of the local WiredTiger key store.
      */
-    WTDataStore _keystore;
-    boost::optional<WTDataStoreSession> _backupSession;
+    std::unique_ptr<Keystore> _keystore;
+    std::unique_ptr<Keystore::Session> _backupSession;
 
     /**
      * Pointer to the encryption parameters to use.

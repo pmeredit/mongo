@@ -122,13 +122,8 @@ public:
     }
 
 
-    bool operator==(const WTDataStoreCursor& other) const {
-        return _cursor == other._cursor;
-    }
-
-    bool operator!=(const WTDataStoreCursor& other) const {
-        return _cursor != other._cursor;
-    }
+    bool operator==(const WTDataStoreCursor& other) const;
+    bool operator!=(const WTDataStoreCursor& other) const;
 
     // Releases the cursor so it does not get cleaned up when the iterator goes out of scope.
     // This is mainly used by the backup cursors so we only have to keep their session around
@@ -139,7 +134,10 @@ public:
 
 protected:
     friend class WTDataStoreSession;
-    explicit WTDataStoreCursor(UniqueWTCursor cursor) : _cursor(std::move(cursor)) {}
+    enum class CursorDirection { kForward, kReverse };
+    explicit WTDataStoreCursor(UniqueWTCursor cursor,
+                               CursorDirection direction = CursorDirection::kForward)
+        : _cursor(std::move(cursor)), _direction(direction) {}
 
     WT_CURSOR* operator->() const {
         return _cursor.get();
@@ -176,6 +174,7 @@ private:
     UniqueWTCursor _duplicate(const UniqueWTCursor& other);
 
     UniqueWTCursor _cursor;
+    CursorDirection _direction = CursorDirection::kForward;
 };
 
 /*
@@ -204,6 +203,11 @@ public:
         return iterator();
     }
 
+    iterator rbegin();
+    iterator rend() {
+        return iterator();
+    }
+
     // Returns an iterator that has been advanced to the row with a specific key, or end() if
     // no key exists.
     template <typename Key>
@@ -226,7 +230,7 @@ public:
 
     // Inserts a new row at Key with a tuple of args.
     template <typename Key, typename... Args>
-    void insert(const Key&& key, const std::tuple<Args...>&& args) {
+    void insert(Key&& key, std::tuple<Args...>&& args) {
         iterator it(_makeCursor(kKeystoreTableName));
         it->set_key(it, key);
 
@@ -235,9 +239,22 @@ public:
         uassertWTOK(it->insert(it));
     }
 
+    // This inserts a new row with the value contained in the tuple of args. The table must have
+    // been configured with the "r" record id type as it's key. This function will return the
+    // new record id number that was assigned by WT during the insert.
+    template <typename... Args>
+    uint64_t insert(std::tuple<Args...>&& args) {
+        iterator it(_makeCursor(kKeystoreTableName, "append=true"));
+
+        auto cursorTuple = std::make_tuple<WT_CURSOR*>(it);
+        std::apply(it->set_value, std::tuple_cat(cursorTuple, args));
+        uassertWTOK(it->insert(it));
+        return it.getKey<uint64_t>();
+    }
+
     // Updates or inserts a row at Key with a tuple of args.
-    template <typename Key, typename... Args>
-    void update(const Key&& key, const std::tuple<Args...>&& args) {
+    template <typename Key, typename... Args, typename std::enable_if_t<std::is_trivial_v<Key>> = 0>
+    void update(Key&& key, std::tuple<Args...>&& args) {
         iterator it(_makeCursor(kKeystoreTableName));
         it->set_key(it, key);
         update(it, std::forward<std::tuple<Args...>>(args));
@@ -270,7 +287,7 @@ protected:
     }
 
 private:
-    UniqueWTCursor _makeCursor(StringData uri);
+    UniqueWTCursor _makeCursor(StringData uri, StringData cursorOpts = {});
     UniqueWTSession _session;
 };
 

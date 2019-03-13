@@ -43,7 +43,7 @@ StatusWith<KeystoreMetadataFile> KeystoreMetadataFile::load(const boost::filesys
 
     std::vector<uint8_t> rawData;
     {
-        std::ifstream dataFile(path.string());
+        std::ifstream dataFile(path.string(), std::ios::binary);
         if (!dataFile) {
             return makeError("open", path, ErrorCodes::FileOpenFailed);
         }
@@ -116,7 +116,7 @@ Status KeystoreMetadataFile::store(const boost::filesystem::path& path,
     encrypted.resize(outLen);
     auto metadataTempPath = path.parent_path() / path.filename().replace_extension("tmp");
     {
-        std::ofstream outFile(metadataTempPath.string());
+        std::ofstream outFile(metadataTempPath.string(), std::ios::binary);
         if (!outFile) {
             return makeError("open", path);
         }
