@@ -211,10 +211,17 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
     //////////////////////////////////////////////////////////////////////////////////////
 
     this.run = function() {
+        // Set the secondaries to priority 0 and votes 0 to prevent the primary from stepping down.
         const st = new ShardingTest({
             name: jsTestName(),
             shards: numShards,
-            rs: {nodes: 3, syncdelay: 1, oplogSize: 1, setParameter: {writePeriodicNoops: true}}
+            rs: {
+                nodes:
+                    [{}, {rsConfig: {priority: 0, votes: 0}}, {rsConfig: {priority: 0, votes: 0}}],
+                syncdelay: 1,
+                oplogSize: 1,
+                setParameter: {writePeriodicNoops: true}
+            }
         });
 
         _setupShardedCollectionForCausalWrites(st, dbName, collName);
