@@ -216,10 +216,10 @@ void validateArrayKeywords(StringMap<BSONElement>& keywordMap,
 }
 
 /**
- * Returns the encryption schema tree specified by the object keywords 'properties' and
- * 'additionalProperties'. The BSON elements associated with these object keywords are obtained from
- * 'keywordMap'. The caller must have already verified that 'encrypt' is not present in
- * 'keywordMap'.
+ * Returns the encryption schema tree specified by the object keywords 'properties',
+ * 'patternProperties', and 'additionalProperties'. The BSON elements associated with these object
+ * keywords are obtained from 'keywordMap'. The caller must have already verified that 'encrypt' is
+ * not present in 'keywordMap'.
  *
  * If 'encryptAllowed' is false, throws an exception upon encountering the 'encrypt' keyword in any
  * subschema.
@@ -261,6 +261,18 @@ std::unique_ptr<EncryptionSchemaTreeNode> parseObjectKeywords(
         }
     }
 
+    // Handle the 'patternProperties' keyword.
+    if (auto patternPropertiesElem =
+            keywordMap[JSONSchemaParser::kSchemaPatternPropertiesKeyword]) {
+        // 'patternProperties' must be an object, which should have been validated upstream.
+        // Similarly, each property inside the 'patternProperties' must itself be an object.
+        for (auto&& pattern : patternPropertiesElem.embeddedObject()) {
+            node->addPatternPropertiesChild(
+                pattern.fieldNameStringData(),
+                _parse(pattern.embeddedObject(), encryptAllowedForSubschema, metadataChain));
+        }
+    }
+
     return node;
 }
 
@@ -283,6 +295,7 @@ std::unique_ptr<EncryptionSchemaTreeNode> _parse(BSONObj schema,
         {std::string(JSONSchemaParser::kSchemaEncryptKeyword), {}},
         {std::string(JSONSchemaParser::kSchemaEncryptMetadataKeyword), {}},
         {std::string(JSONSchemaParser::kSchemaItemsKeyword), {}},
+        {std::string(JSONSchemaParser::kSchemaPatternPropertiesKeyword), {}},
         {std::string(JSONSchemaParser::kSchemaPropertiesKeyword), {}},
         {std::string(JSONSchemaParser::kSchemaTypeKeyword), {}},
     };
@@ -326,5 +339,71 @@ std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parse(BSONOb
     std::list<EncryptionMetadata> metadataChain;
     return _parse(schema, true, metadataChain);
 }
+
+std::vector<EncryptionSchemaTreeNode*> EncryptionSchemaTreeNode::getChildrenForPathComponent(
+    StringData name) const {
+    std::vector<EncryptionSchemaTreeNode*> matchingChildren;
+    auto it = _propertiesChildren.find(name.toString());
+    if (it != _propertiesChildren.end()) {
+        matchingChildren.push_back(it->second.get());
+    }
+
+    for (auto && [ regex, child ] : _patternPropertiesChildren) {
+        if (regex->PartialMatch(
+                pcrecpp::StringPiece{name.rawData(), static_cast<int>(name.size())})) {
+            matchingChildren.push_back(child.get());
+        }
+    }
+
+    // We only consider the child for 'additionalProperties' if there are no relevant children from
+    // 'properties' or 'patternProperties'.
+    if (_additionalPropertiesChild && matchingChildren.empty()) {
+        matchingChildren.push_back(_additionalPropertiesChild.get());
+    }
+    return matchingChildren;
+}
+
+boost::optional<EncryptionMetadata> EncryptionSchemaTreeNode::_getEncryptionMetadataForPath(
+    const FieldRef& path, size_t index) const {
+    // If we've ended on this node, then return whether its an encrypted node.
+    if (index >= path.numParts()) {
+        return getEncryptionMetadata();
+    }
+
+    auto children = getChildrenForPathComponent(path[index]);
+    if (children.empty()) {
+        // If there's no path to take from the current node, then we're in one of two cases:
+        //  * The current node is an EncryptNode. This means that the query path has an
+        //    encrypted field as its prefix. No such query can ever succeed when sent to the
+        //    server, so we throw in this case.
+        //  * The path does not exist in the schema tree. In this case, we return boost::none to
+        //    indicate that the path is not encrypted.
+        uassert(51102,
+                str::stream() << "Invalid operation on path '" << path.dottedField()
+                              << "' which contains an encrypted path prefix.",
+                !getEncryptionMetadata());
+
+        return boost::none;
+    }
+
+    // There is at least one relevant child. Recursively get the encryption metadata from this child
+    // schema.
+    auto metadata = children[0]->_getEncryptionMetadataForPath(path, index + 1);
+
+    // Verify that all additional child schemas report the same encryption metadata as the first.
+    auto it = children.begin();
+    ++it;
+    for (; it != children.end(); ++it) {
+        auto nextChild = *it;
+        auto additionalMetadata = nextChild->_getEncryptionMetadataForPath(path, index + 1);
+        uassert(51142,
+                str::stream() << "Found conflicting encryption metadata for path: '"
+                              << path.dottedField()
+                              << "'",
+                additionalMetadata == metadata);
+    }
+
+    return metadata;
+};
 
 }  // namespace mongo

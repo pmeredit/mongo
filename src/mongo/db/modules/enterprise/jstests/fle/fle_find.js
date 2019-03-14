@@ -142,5 +142,24 @@
     assert.commandFailedWithCode(
         testDB.runCommand({find: "test", filter: {}, jsonSchema: "same here"}), 51090);
 
+    // Verify that a schema with 'patternProperties' is supported by mongocryptd for the find
+    // command.
+    let cmdRes = assert.commandWorked(testDB.runCommand({
+        find: "test",
+        filter: {userSsn: "123-45-6789"},
+        jsonSchema: {
+            type: "object",
+            patternProperties: {
+                "[Ss]sn": {
+                    encrypt: {
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                        keyId: [UUID()],
+                    }
+                }
+            }
+        }
+    }));
+    assert(cmdRes.result.filter.userSsn.$eq instanceof BinData, tojson(cmdRes));
+
     mongocryptd.stop();
 })();

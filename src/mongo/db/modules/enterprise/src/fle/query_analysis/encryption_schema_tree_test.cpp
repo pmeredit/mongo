@@ -93,7 +93,7 @@ TEST(EncryptionSchemaTreeTest, MarksNestedFieldsAsEncrypted) {
 
     BSONObj schema =
         fromjson(R"({
-        type: "object", 
+        type: "object",
         properties: {
             user: {
                 type: "object",
@@ -148,8 +148,8 @@ TEST(EncryptionSchemaTreeTest, MarksMultipleFieldsAsEncrypted) {
     metadata.setKeyId(EncryptSchemaKeyId({uuid}));
 
     BSONObj schema = fromjson(R"({
-        type: "object", 
-        properties: {            
+        type: "object",
+        properties: {
             ssn: {
                 encrypt: {
                     algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
@@ -348,7 +348,7 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptWithinItems) {
         type: "object",
         properties: {
             ssn: {
-                type: "array", 
+                type: "array",
                 items: {
                     encrypt: {
                         algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
@@ -366,7 +366,7 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptWithinItems) {
                 type: "object",
                 properties: {
                     ssn: {
-                        type: "array", 
+                        type: "array",
                         items: {
                             encrypt: {
                                 algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
@@ -864,6 +864,522 @@ TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataMissingKeyId) {
             }
         }})");
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51097);
+}
+
+TEST(EncryptionSchemaTreeTest, FailsToParseIfPatternPropertiesIsNotAnObject) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        patternProperties: true
+    })");
+    ASSERT_THROWS_CODE(
+        EncryptionSchemaTreeNode::parse(schema), AssertionException, ErrorCodes::TypeMismatch);
+}
+
+TEST(EncryptionSchemaTreeTest, FailsToParseIfPatternPropertiesHasNonObjectProperty) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        patternProperties: {
+            foo: true
+        }
+    })");
+    ASSERT_THROWS_CODE(
+        EncryptionSchemaTreeNode::parse(schema), AssertionException, ErrorCodes::TypeMismatch);
+}
+
+TEST(EncryptionSchemaTreeTest, FailsToParseIfPatternPropertiesHasAnIllFormedRegex) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        patternProperties: {
+            "(": {}
+        }
+    })");
+    ASSERT_THROWS_CODE(
+        EncryptionSchemaTreeNode::parse(schema), AssertionException, ErrorCodes::BadValue);
+}
+
+TEST(EncryptionSchemaTreeTest, LegalPatternPropertiesParsesSuccessfully) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        patternProperties: {
+            foo: {},
+            bar: {}
+        }
+    })");
+
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo"}));
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"bar"}));
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"baz"}));
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo.quux"}));
+}
+
+TEST(EncryptionSchemaTreeTest, FieldNamesMatchingPatternPropertiesReportEncryptedMetadata) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        patternProperties: {
+            foo: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                }
+            }
+        }
+    })");
+
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo"}));
+    ASSERT_THROWS_CODE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo.quux"}),
+                       AssertionException,
+                       51102);
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"bar"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"a_foo_b"}));
+    ASSERT_THROWS_CODE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"a_foo_b.quux"}),
+                       AssertionException,
+                       51102);
+}
+
+TEST(EncryptionSchemaTreeTest,
+     PatternPropertiesWorksTogetherWithPropertiesAndAdditionalProperties) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            a: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                }
+            },
+            b: {type: "number"}
+        },
+        patternProperties: {
+            foo: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                }
+            },
+            bar: {type: "number"}
+        },
+        additionalProperties: {
+            encrypt: {
+                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+            }
+        }
+    })");
+
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"a"}));
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"b"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo2"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"3foo"}));
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"bar"}));
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"bar2"}));
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"3bar"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"x"}));
+    ASSERT_THROWS_CODE(
+        encryptionTree->getEncryptionMetadataForPath(FieldRef{"y.z.w"}), AssertionException, 51102);
+}
+
+TEST(EncryptionSchemaTreeTest, PatternPropertiesErrorIfMultiplePatternsMatchButOnlyOneEncrypted) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        patternProperties: {
+            foo: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                }
+            },
+            bar: {type: "number"}
+        }
+    })");
+
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    ASSERT_THROWS_CODE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foobar"}),
+                       AssertionException,
+                       51142);
+}
+
+TEST(EncryptionSchemaTreeTest,
+     PatternPropertiesErrorIfMultiplePatternsMatchWithDifferentEncryptionOptions) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        patternProperties: {
+            foo: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                }
+            },
+            bar: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{"$binary": "0PCfrZlWRWeIe4ZbJ1IODQ==", "$type": "04"}]
+                }
+            }
+        }
+    })");
+
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"bar"}));
+    ASSERT_THROWS_CODE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foobar"}),
+                       AssertionException,
+                       51142);
+}
+
+TEST(EncryptionSchemaTreeTest,
+     PatternPropertiesEncryptIfMultiplePatternsMatchWithSameEncryptionOptions) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        patternProperties: {
+            foo: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                }
+            },
+            bar: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                }
+            }
+        }
+    })");
+
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"bar"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foobar"}));
+}
+
+TEST(EncryptionSchemaTreeTest, PatternPropertiesErrorIfInconsistentWithPropertiesOnlyOneEncrypted) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            foobar: {type: "string"}
+        },
+        patternProperties: {
+            foo: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                }
+            }
+        }
+    })");
+
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    ASSERT_THROWS_CODE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foobar"}),
+                       AssertionException,
+                       51142);
+}
+
+TEST(EncryptionSchemaTreeTest,
+     PatternPropertiesErrorIfInconsistentWithPropertiesDifferentEncryptionOptions) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            foobar: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{"$binary": "0PCfrZlWRWeIe4ZbJ1IODQ==", "$type": "04"}]
+                }
+            }
+        },
+        patternProperties: {
+            foo: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                }
+            }
+        }
+    })");
+
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    ASSERT_THROWS_CODE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foobar"}),
+                       AssertionException,
+                       51142);
+}
+
+TEST(EncryptionSchemaTreeTest, PatternPropertiesSuccessIfAlsoInPropertiesButSameEncryptionOptions) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            foobar: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                }
+            }
+        },
+        patternProperties: {
+            foo: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                }
+            }
+        }
+    })");
+
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foobar"}));
+}
+
+TEST(EncryptionSchemaTreeTest, PatternPropertiesFailsIfTypeObjectNotSpecified) {
+    BSONObj schema = fromjson(R"({
+        patternProperties: {
+            foo: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                }
+            }
+        }
+    })");
+
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+}
+
+TEST(EncryptionSchemaTreeTest, NestedPatternPropertiesFailsIfTypeObjectNotSpecified) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            foo: {
+                patternProperties: {
+                    bar: {
+                        encrypt: {
+                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                            keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                        }
+                    }
+                }
+            }
+        }
+    })");
+
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+}
+
+TEST(EncryptionSchemaTreeTest, PatternPropertiesNestedBelowProperties) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            foo: {
+                type: "object",
+                patternProperties: {
+                    bar: {
+                        encrypt: {
+                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                            keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                        }
+                    }
+                }
+            }
+        }
+    })");
+
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo"}));
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"baz"}));
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"baz.x.y"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo.bar"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo.foobar"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo.bar2"}));
+}
+
+TEST(EncryptionSchemaTreeTest, PatternPropertiesNestedBelowPatternProperties) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        patternProperties: {
+            foo: {
+                type: "object",
+                patternProperties: {
+                    bar: {
+                        encrypt: {
+                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                            keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                        }
+                    }
+                }
+            }
+        }
+    })");
+
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo"}));
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foobar"}));
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"baz.x.y"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo.bar"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo.foobar"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo.bar2"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foobar.foobar"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo2.bar3"}));
+}
+
+TEST(EncryptionSchemaTreeTest, FourMatchingEncryptSpecifiersSucceedsIfAllEncryptOptionsSame) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        patternProperties: {
+            a: {
+                type: "object",
+                patternProperties: {
+                    x: {
+                        encrypt: {
+                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                            keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                        }
+                    },
+                    y: {
+                        encrypt: {
+                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                            keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                        }
+                    }
+                }
+            },
+            b: {
+                type: "object",
+                patternProperties: {
+                    w: {
+                        encrypt: {
+                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                            keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                        }
+                    },
+                    z: {
+                        encrypt: {
+                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                            keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                        }
+                    }
+                }
+            }
+        }
+    })");
+
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"aa.xx"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"aa.yy"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"aa.xy"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"bb.ww"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"bb.zz"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"ab.xyzw"}));
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"i.j"}));
+}
+
+TEST(EncryptionSchemaTreeTest, FourMatchingEncryptSpecifiersFailsIfOneEncryptOptionsDiffers) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        patternProperties: {
+            a: {
+                type: "object",
+                patternProperties: {
+                    x: {
+                        encrypt: {
+                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                            keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                        }
+                    },
+                    y: {
+                        encrypt: {
+                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                            keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                        }
+                    }
+                }
+            },
+            b: {
+                type: "object",
+                patternProperties: {
+                    w: {
+                        encrypt: {
+                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                            keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                        }
+                    },
+                    z: {
+                        encrypt: {
+                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                            keyId: [{"$binary": "0PCfrZlWRWeIe4ZbJ1IODQ==", "$type": "04"}]
+                        }
+                    }
+                }
+            }
+        }
+    })");
+
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"aa.xx"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"aa.yy"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"aa.xy"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"bb.ww"}));
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"bb.zz"}));
+    ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"i.j"}));
+    ASSERT_THROWS_CODE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"ab.xyzw"}),
+                       AssertionException,
+                       51142);
+}
+
+TEST(EncryptionSchemaTreeTest,
+     AdditionalPropertiesWithInconsistentEncryptOptionsNotConsideredIfPatternMatches) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            a: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                }
+            }
+        },
+        patternProperties: {
+            b: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                }
+            }
+        },
+        additionalProperties: {type: "string"}
+    })");
+
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"ab"}));
+}
+
+TEST(EncryptionSchemaTreeTest, PatternPropertiesInheritsParentEncryptMetadata) {
+    const auto uuid = UUID::gen();
+    EncryptionMetadata expectedMetadata;
+    expectedMetadata.setAlgorithm(FleAlgorithmEnum::kRandom);
+    expectedMetadata.setKeyId(EncryptSchemaKeyId({uuid}));
+
+    auto uuidJsonStr = uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::Strict, false);
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        encryptMetadata: {
+            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+            keyId: [)" + uuidJsonStr +
+                              R"(]
+        },
+        properties: {
+            a: {
+                type: "object",
+                patternProperties: {
+                    b: {encrypt: {}}
+                }
+            }
+        }
+    })");
+
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    auto foundMetadata = encryptionTree->getEncryptionMetadataForPath(FieldRef{"a.bb"});
+    ASSERT(foundMetadata == expectedMetadata);
 }
 
 }  // namespace

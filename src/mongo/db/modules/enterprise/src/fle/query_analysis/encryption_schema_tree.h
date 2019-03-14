@@ -29,6 +29,8 @@
 
 #pragma once
 
+#include <pcrecpp.h>
+
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/field_ref.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
@@ -82,7 +84,7 @@ public:
     virtual ~EncryptionSchemaTreeNode() = default;
 
     void addChild(std::string path, std::unique_ptr<EncryptionSchemaTreeNode> node) {
-        _children[std::move(path)] = std::move(node);
+        _propertiesChildren[std::move(path)] = std::move(node);
     }
 
     /**
@@ -114,14 +116,29 @@ public:
     }
 
     /**
-     * Returns the child node for edge 'name'. If no child with 'name' exists, but a node has been
-     * added via addAdditionalPropertiesChild(), then returns this 'additionalProperties' child.
-     * Returns nullptr if no child with 'name' exists and there is also no 'additionalProperties'
-     * child.
+     * Adds 'node' as a special child associated with a regular expression rather than a fixed field
+     * name. For instance, consider the schema
+     *
+     * {
+     *   type: "object",
+     *   properties: {a: {type: "number"}, b: {type: "string"}},
+     *   patternProperties: {"^c": {encrypt: {}}}
+     * }
+     *
+     * This schema matches objects where "a" is a number (if it exists), "b" is a string (if it
+     * exists), and any property names which begin with "c" are encrypted. The 'patternProperties'
+     * keyword results in a node in the encryption tree which is associated with the regex /^c/. The
+     * encryption schema tree would look like this:
+     *
+     *                   NotEncryptedNode
+     *                  /    |           \
+     *               a /     | b          \ /^c/
+     *                /      |             \
+     *  NotEncryptedNode  NotEncryptedNode  EncryptedNode
      */
-    EncryptionSchemaTreeNode* getChild(StringData name) const {
-        auto it = _children.find(name.toString());
-        return it != _children.end() ? it->second.get() : _additionalPropertiesChild.get();
+    void addPatternPropertiesChild(StringData regex,
+                                   std::unique_ptr<EncryptionSchemaTreeNode> node) {
+        _patternPropertiesChildren.emplace_back(regex, std::move(node));
     }
 
     /**
@@ -140,52 +157,71 @@ public:
     virtual boost::optional<EncryptionMetadata> getEncryptionMetadata() const = 0;
 
     StringMap<std::unique_ptr<EncryptionSchemaTreeNode>>::const_iterator begin() const {
-        return _children.begin();
+        return _propertiesChildren.begin();
     }
 
     StringMap<std::unique_ptr<EncryptionSchemaTreeNode>>::const_iterator end() const {
-        return _children.end();
+        return _propertiesChildren.end();
     }
 
 private:
+    struct PatternPropertiesChild {
+        PatternPropertiesChild(StringData regexStringData,
+                               std::unique_ptr<EncryptionSchemaTreeNode> child)
+            : regex(std::make_unique<pcrecpp::RE>(regexStringData.toString())),
+              child(std::move(child)) {
+            const auto& errorStr = regex->error();
+            uassert(51141,
+                    str::stream() << "Invalid regular expression in 'patternProperties': "
+                                  << regexStringData
+                                  << " PCRE error string: "
+                                  << errorStr,
+                    errorStr.empty());
+        }
+
+        std::unique_ptr<pcrecpp::RE> regex;
+        std::unique_ptr<EncryptionSchemaTreeNode> child;
+    };
+
+    /**
+     * Given the property name 'name', returns a list of child nodes for the subschemas that are
+     * relevant. This follows the rules associated with the JSON Schema 'properties',
+     * 'patternProperties', and 'additionalProperties' keywords. If there is a child added to the
+     * tree via addChild() with the edge name exactly matching 'name', then that child will be
+     * included in the output list. In addition, children added via addPatternPropertiesChild()
+     * whose regex matches 'name' will be included in the output list.
+     *
+     * If no regular addChild() nodes or 'patternProperties' child nodes are found, but a node has
+     * been added via addAdditionalPropertiesChild(), then returns this 'additionalProperties'
+     * child.
+     *
+     * If no child with 'name' exists, no 'patternProperties' child whose regex matches 'name'
+     * exists, and there is no 'additionalProperties' child, then returns an empty vector.
+     */
+    std::vector<EncryptionSchemaTreeNode*> getChildrenForPathComponent(StringData name) const;
+
     /**
      * This method is responsible for recursively descending the encryption tree until the end of
      * the path is reached or there's no edge to take. The 'index' parameter is used to indicate
      * which part of 'path' we're currently at, and is expected to increment as we descend the tree.
      *
      * Throws an AssertionException if 'path' contains a prefix to an encrypted field.
+     *
+     * Throws if multiple relevant subschemas return conflicting encryption metadata. This can
+     * happen for 'patternProperties', since we may need to descend the subtrees for multiple
+     * matching patterns.
      */
     boost::optional<EncryptionMetadata> _getEncryptionMetadataForPath(const FieldRef& path,
-                                                                      size_t index = 0) const {
-        // If we've ended on this node, then return whether its an encrypted node.
-        if (index >= path.numParts()) {
-            return getEncryptionMetadata();
-        }
+                                                                      size_t index = 0) const;
 
-        auto child = getChild(path[index]);
-        if (!child) {
-            // If there's no path to take from the current node, then we're in one of two cases:
-            //  * The current node is an EncryptNode. This means that the query path has an
-            //    encrypted field as its prefix. No such query can ever succeed when sent to the
-            //    server, so we throw in this case.
-            //  * The path does not exist in the schema tree. In this case, we return boost::none to
-            //    indicate that the path is not encrypted.
-            uassert(51102,
-                    str::stream() << "Invalid operation on path '" << path.dottedField()
-                                  << "' which contains an encrypted path prefix.",
-                    !getEncryptionMetadata());
+    StringMap<std::unique_ptr<EncryptionSchemaTreeNode>> _propertiesChildren;
 
-            return boost::none;
-        }
-
-        return child->_getEncryptionMetadataForPath(path, index + 1);
-    };
-
-
-    StringMap<std::unique_ptr<EncryptionSchemaTreeNode>> _children;
+    // Holds any children which are associated with a regex rather than a specific field name.
+    std::vector<PatternPropertiesChild> _patternPropertiesChildren;
 
     // If non-null, this special child is used when no applicable child is found by name in
-    // '_children'. Used to implement encryption analysis for the 'additionalProperties' keyword.
+    // '_propertiesChildren' or by regex in '_patternPropertiesChildren'. Used to implement
+    // encryption analysis for the 'additionalProperties' keyword.
     std::unique_ptr<EncryptionSchemaTreeNode> _additionalPropertiesChild;
 };
 
