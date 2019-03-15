@@ -35,15 +35,11 @@ const std::string kEncryptionEntrypointConfig =
 /**
  * The EncryptionKeyManager manages the keys for the encrypted storage engine.
  *
- *
  * Note that EncryptionHooks provides additionalBytesForProtectedBuffer. This function
  * returns a constant which defines how many more bytes a ciphertext payload may have than its
  * corresponding cleartext. It is computed by:
- *  max(MaxCBCPadding, MaxGCMPadding) + sizeof(conditional version number)
- *  = max(CBC IV + aes blocksize, GCM IV + GCM tag) + 1 // GCM is a stream cipher, so doesn't need
- *                                                         a padded AES block
- *  = max(16 + 16, 12 + 12) + 1
- *  = 32 + 1 = 33
+ *  max(AllPaddingModes) + sizeof(conditional version number)
+ *  Where max(AllPaddingModes) can be found in crypto::kMaxHeaderSize
  */
 class EncryptionKeyManager : public EncryptionHooks {
     EncryptionKeyManager(const EncryptionKeyManager&) = delete;
@@ -124,6 +120,11 @@ public:
         return _encryptionParams->encryptionCipherMode;
     }
 
+    /**
+     * Returns the current version of the keystore.
+     */
+    std::int32_t getKeystoreVersion() const;
+
 private:
     /**
      * Validate master key config and initiate the local key store.
@@ -167,7 +168,7 @@ private:
     /**
      * Metadata file containing schema version and whether they keystore is dirty.
      */
-    stdx::mutex _keystoreMetadataMutex;
+    mutable stdx::mutex _keystoreMetadataMutex;
     KeystoreMetadataFile _keystoreMetadata;
 
     /**

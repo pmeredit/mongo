@@ -42,7 +42,7 @@ const size_t maxPTSize = (4 + 1) * crypto::aesBlockSize;
 const size_t outputBufferSize = 3 * crypto::aesBlockSize + maxPTSize;
 
 TEST(AES, CBCTestVectors) {
-    ASSERT_OK(crypto::smokeTestAESCipherMode("AES256-CBC"));
+    ASSERT_OK(crypto::smokeTestAESCipherMode(crypto::aesMode::cbc, crypto::PageSchema::k0));
 }
 
 class AESRoundTrip : public mongo::unittest::Test {
@@ -56,6 +56,7 @@ public:
     Status encrypt(crypto::aesMode mode) {
         return crypto::aesEncrypt(key,
                                   mode,
+                                  crypto::PageSchema::k0,
                                   plaintext.data(),
                                   plaintext.size(),
                                   cryptoBuffer.data(),
@@ -66,6 +67,7 @@ public:
     Status decrypt(crypto::aesMode mode) {
         return crypto::aesDecrypt(key,
                                   mode,
+                                  crypto::PageSchema::k0,
                                   cryptoBuffer.data(),
                                   cryptoLen,
                                   plainBuffer.data(),
@@ -112,7 +114,8 @@ DEATH_TEST_F(AESRoundTrip,
 
 #ifndef DISABLE_GCM_TESTVECTORS
 TEST(AES, GCMTestVectors) {
-    ASSERT_OK(crypto::smokeTestAESCipherMode("AES256-GCM"));
+    ASSERT_OK(crypto::smokeTestAESCipherMode(crypto::aesMode::gcm, crypto::PageSchema::k0));
+    ASSERT_OK(crypto::smokeTestAESCipherMode(crypto::aesMode::gcm, crypto::PageSchema::k1));
 }
 
 TEST_F(AESRoundTrip, GCM) {
@@ -149,23 +152,16 @@ DEATH_TEST_F(AESRoundTrip,
 
 TEST(EncryptedMemoryLayout, CanCreateMemoryLayoutWithCBC) {
     uint8_t outputBuffer[outputBufferSize];
-    crypto::ConstEncryptedMemoryLayout layout(crypto::aesMode::cbc, outputBuffer, outputBufferSize);
+    crypto::ConstEncryptedMemoryLayout<crypto::HeaderCBCV0> layout(outputBuffer, outputBufferSize);
 }
 
 TEST(EncryptedMemoryLayout, CanCreateMemoryLayoutWithGCM) {
     uint8_t outputBuffer[outputBufferSize];
-    crypto::ConstEncryptedMemoryLayout layout(crypto::aesMode::gcm, outputBuffer, outputBufferSize);
-}
-
-DEATH_TEST(EncryptedMemoryLayout, CannotCreateMemoryLayoutWithInvalid, "Fatal Assertion 4052") {
-    uint8_t outputBuffer[outputBufferSize];
-    // Note that this type of cast should never be performed normally
-    crypto::ConstEncryptedMemoryLayout layout(
-        (crypto::aesMode)(255), outputBuffer, outputBufferSize);
+    crypto::ConstEncryptedMemoryLayout<crypto::HeaderGCMV0> layout(outputBuffer, outputBufferSize);
 }
 
 DEATH_TEST(EncryptedMemoryLayout, CannotCreateMemoryLayoutOnNullptr, "invariant") {
-    crypto::ConstEncryptedMemoryLayout layout(crypto::aesMode::gcm, nullptr, outputBufferSize);
+    crypto::ConstEncryptedMemoryLayout<crypto::HeaderGCMV0> layout(nullptr, outputBufferSize);
 }
 
 TEST(EncryptedMemoryLayout, CiphertexLen) {
@@ -173,14 +169,14 @@ TEST(EncryptedMemoryLayout, CiphertexLen) {
 
     // Test CBC
     size_t expected = 16;
-    crypto::ConstEncryptedMemoryLayout layoutCBC(
-        crypto::aesMode::cbc, outputBuffer, outputBufferSize);
+    crypto::ConstEncryptedMemoryLayout<crypto::HeaderCBCV0> layoutCBC(outputBuffer,
+                                                                      outputBufferSize);
     ASSERT_EQ(expected, layoutCBC.expectedCiphertextLen(10));
 
     // Test GCM
     expected = 10;
-    crypto::ConstEncryptedMemoryLayout layoutGCM(
-        crypto::aesMode::gcm, outputBuffer, outputBufferSize);
+    crypto::ConstEncryptedMemoryLayout<crypto::HeaderGCMV0> layoutGCM(outputBuffer,
+                                                                      outputBufferSize);
     ASSERT_EQ(expected, layoutGCM.expectedCiphertextLen(10));
 }
 
@@ -188,14 +184,14 @@ TEST(EncryptedMemoryLayout, CanFitPlaintText) {
     uint8_t outputBuffer[outputBufferSize];
 
     // Test CBC
-    crypto::ConstEncryptedMemoryLayout layoutCBC(
-        crypto::aesMode::cbc, outputBuffer, outputBufferSize);
+    crypto::ConstEncryptedMemoryLayout<crypto::HeaderCBCV0> layoutCBC(outputBuffer,
+                                                                      outputBufferSize);
     ASSERT_TRUE(layoutCBC.canFitPlaintext(outputBufferSize - 32));
     ASSERT_FALSE(layoutCBC.canFitPlaintext(outputBufferSize - 15));
 
     // Test GCM
-    crypto::ConstEncryptedMemoryLayout layoutGCM(
-        crypto::aesMode::gcm, outputBuffer, outputBufferSize);
+    crypto::ConstEncryptedMemoryLayout<crypto::HeaderGCMV0> layoutGCM(outputBuffer,
+                                                                      outputBufferSize);
     ASSERT_TRUE(layoutGCM.canFitPlaintext(outputBufferSize - 24));
     ASSERT_FALSE(layoutGCM.canFitPlaintext(outputBufferSize - 23));
 }
@@ -204,13 +200,13 @@ TEST(EncryptedMemoryLayout, GetDataSize) {
     uint8_t outputBuffer[outputBufferSize];
 
     // Test CBC
-    crypto::ConstEncryptedMemoryLayout layoutCBC(
-        crypto::aesMode::cbc, outputBuffer, outputBufferSize);
+    crypto::ConstEncryptedMemoryLayout<crypto::HeaderCBCV0> layoutCBC(outputBuffer,
+                                                                      outputBufferSize);
     ASSERT_EQ(outputBufferSize - layoutCBC.getHeaderSize(), layoutCBC.getDataSize());
 
     // Test GCM
-    crypto::ConstEncryptedMemoryLayout layoutGCM(
-        crypto::aesMode::gcm, outputBuffer, outputBufferSize);
+    crypto::ConstEncryptedMemoryLayout<crypto::HeaderGCMV0> layoutGCM(outputBuffer,
+                                                                      outputBufferSize);
     ASSERT_EQ(outputBufferSize - layoutGCM.getHeaderSize(), layoutGCM.getDataSize());
 }
 
@@ -218,16 +214,16 @@ TEST(EncryptedMemoryLayout, PlaintextLen) {
     uint8_t outputBuffer[outputBufferSize];
 
     // Test CBC
-    crypto::ConstEncryptedMemoryLayout layoutCBC(
-        crypto::aesMode::cbc, outputBuffer, outputBufferSize);
+    crypto::ConstEncryptedMemoryLayout<crypto::HeaderCBCV0> layoutCBC(outputBuffer,
+                                                                      outputBufferSize);
     std::pair<size_t, size_t> expected{outputBufferSize - layoutCBC.getHeaderSize() -
                                            crypto::aesBlockSize,
                                        outputBufferSize - layoutCBC.getHeaderSize()};
     ASSERT_TRUE(expected == layoutCBC.expectedPlaintextLen());
 
     // Test GCM
-    crypto::ConstEncryptedMemoryLayout layoutGCM(
-        crypto::aesMode::gcm, outputBuffer, outputBufferSize);
+    crypto::ConstEncryptedMemoryLayout<crypto::HeaderGCMV0> layoutGCM(outputBuffer,
+                                                                      outputBufferSize);
     expected = {outputBufferSize - layoutGCM.getHeaderSize(),
                 outputBufferSize - layoutGCM.getHeaderSize()};
     ASSERT_TRUE(expected == layoutGCM.expectedPlaintextLen());

@@ -65,11 +65,12 @@ StatusWith<KeystoreMetadataFile> KeystoreMetadataFile::load(const boost::filesys
     }
 
     const auto cipherMode = crypto::getCipherModeFromString(params.encryptionCipherMode);
-    crypto::ConstEncryptedMemoryLayout layout(cipherMode, rawData.data(), rawData.size());
-    std::vector<uint8_t> decryptedData(layout.expectedPlaintextLen().second);
+    std::vector<uint8_t> decryptedData(
+        expectedPlaintextLen(cipherMode, rawData.data(), rawData.size()).second);
     size_t outLen = 0;
     auto decryptStatus = aesDecrypt(*key,
                                     cipherMode,
+                                    crypto::PageSchema::k0,
                                     rawData.data(),
                                     rawData.size(),
                                     decryptedData.data(),
@@ -104,6 +105,7 @@ Status KeystoreMetadataFile::store(const boost::filesystem::path& path,
 
     auto status = aesEncrypt(*key,
                              cipherMode,
+                             crypto::PageSchema::k0,
                              reinterpret_cast<const uint8_t*>(obj.objdata()),
                              obj.objsize(),
                              encrypted.data(),

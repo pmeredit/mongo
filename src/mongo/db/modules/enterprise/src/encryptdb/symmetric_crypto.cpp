@@ -52,53 +52,6 @@ std::string getStringFromCipherMode(aesMode mode) {
     }
 }
 
-template <typename T>
-EncryptedMemoryLayout<T>::EncryptedMemoryLayout(aesMode mode, T basePtr, size_t baseSize)
-    : _basePtr(basePtr), _baseSize(baseSize), _aesMode(mode) {
-    invariant(basePtr);
-    switch (_aesMode) {
-        case aesMode::cbc:
-            _tagSize = 0;
-            _ivSize = aesBlockSize;
-            break;
-        case aesMode::gcm:
-            _tagSize = 12;
-            _ivSize = 12;
-            break;
-        default:
-            fassertFailed(4052);
-    }
-    _headerSize = _tagSize + _ivSize;
-}
-
-template <typename T>
-bool EncryptedMemoryLayout<T>::canFitPlaintext(size_t plaintextLen) const {
-    return _baseSize >= _headerSize + expectedCiphertextLen(plaintextLen);
-}
-
-template <typename T>
-size_t EncryptedMemoryLayout<T>::expectedCiphertextLen(size_t plaintextLen) const {
-    if (_aesMode == aesMode::cbc) {
-        return crypto::aesBlockSize * (1 + plaintextLen / crypto::aesBlockSize);
-    } else if (_aesMode == aesMode::gcm) {
-        return plaintextLen;
-    }
-    MONGO_UNREACHABLE;
-}
-
-template <typename T>
-std::pair<size_t, size_t> EncryptedMemoryLayout<T>::expectedPlaintextLen() const {
-    if (_aesMode == aesMode::cbc) {
-        return {getDataSize() - crypto::aesBlockSize, getDataSize()};
-    } else if (_aesMode == aesMode::gcm) {
-        return {getDataSize(), getDataSize()};
-    }
-    MONGO_UNREACHABLE;
-}
-
-template class EncryptedMemoryLayout<const uint8_t*>;
-template class EncryptedMemoryLayout<uint8_t*>;
-
 size_t aesGetTagSize(crypto::aesMode mode) {
     if (mode == crypto::aesMode::gcm) {
         return crypto::aesGCMTagSize;
@@ -115,6 +68,52 @@ size_t aesGetIVSize(crypto::aesMode mode) {
         default:
             fassertFailed(4053);
     }
+}
+
+std::pair<PageSchema, SymmetricKeyId::id_type> parseGCMPageSchema(const std::uint8_t* ptr,
+                                                                  std::size_t len) {
+    static_assert(HeaderGCMV0::kTagSize == HeaderGCMV1::kTagSize, "Expected common GCM tag size");
+
+    uassert(ErrorCodes::BadValue,
+            str::stream() << "Invalid GCM page length: " << len,
+            len >= (HeaderGCMV1::kTagSize + HeaderGCMV1::kExtraSize));
+
+    const char* bytePtr = reinterpret_cast<const char*>(ptr);
+    ConstDataRangeCursor cursor(bytePtr, bytePtr + len);
+    uassertStatusOK(cursor.advance(HeaderGCMV1::kTagSize));
+
+    const auto marker = uassertStatusOK(cursor.readAndAdvance<std::uint32_t>());
+    if (marker != std::numeric_limits<std::uint32_t>::max()) {
+        return {PageSchema::k0, 0};
+    }
+
+    const auto version = uassertStatusOK(cursor.readAndAdvance<std::uint8_t>());
+    uassert(ErrorCodes::BadValue,
+            str::stream() << "Unknown page encryption schema version " << static_cast<int>(version),
+            version == 1);
+
+    static_assert(std::is_same<SymmetricKeyId::id_type, std::uint64_t>::value,
+                  "GCMV1 page format depends on a uint64 key id");
+
+    const auto id = uassertStatusOK(cursor.readAndAdvance<LittleEndian<SymmetricKeyId::id_type>>());
+    return {PageSchema::k1, id};
+}
+
+std::pair<std::size_t, std::size_t> expectedPlaintextLen(aesMode mode,
+                                                         const std::uint8_t* ptr,
+                                                         std::size_t len) {
+    switch (mode) {
+        case aesMode::cbc:
+            return ConstEncryptedMemoryLayout<HeaderCBCV0>(ptr, len).expectedPlaintextLen();
+        case aesMode::gcm:
+            switch (parseGCMPageSchema(ptr, len).first) {
+                case PageSchema::k0:
+                    return ConstEncryptedMemoryLayout<HeaderGCMV0>(ptr, len).expectedPlaintextLen();
+                case PageSchema::k1:
+                    return ConstEncryptedMemoryLayout<HeaderGCMV1>(ptr, len).expectedPlaintextLen();
+            }
+    }
+    MONGO_UNREACHABLE;
 }
 
 void aesGenerateIV(const SymmetricKey* key,
@@ -144,56 +143,75 @@ void aesGenerateIV(const SymmetricKey* key,
     }
 }
 
-Status aesEncrypt(const SymmetricKey& key,
-                  aesMode mode,
-                  const uint8_t* in,
-                  size_t inLen,
-                  uint8_t* out,
-                  size_t outLen,
-                  size_t* resultLen,
-                  bool ivProvided) {
-    if (!(in && out)) {
-        return Status(ErrorCodes::BadValue, "Invalid encryption buffers");
-    }
-    if (!(mode == aesMode::cbc || mode == aesMode::gcm)) {
-        return Status(ErrorCodes::BadValue, "Invalid encryption mode");
+namespace {
+
+Status _validateModeSchema(aesMode mode, PageSchema schema) {
+    if (schema == PageSchema::k0) {
+        return Status::OK();
     }
 
-    crypto::MutableEncryptedMemoryLayout layout(mode, out, outLen);
+    if ((mode == aesMode::gcm) && (schema == PageSchema::k1)) {
+        return Status::OK();
+    }
 
+    return {ErrorCodes::BadValue,
+            str::stream() << "Invalid schema version " << static_cast<int>(schema)
+                          << " for encryption mode '"
+                          << getStringFromCipherMode(mode)
+                          << "'"};
+}
+
+template <typename T>
+Status _doAESEncrypt(const SymmetricKey& key,
+                     T layout,
+                     const std::uint8_t* in,
+                     std::size_t inLen,
+                     std::size_t* resultLen,
+                     bool ivProvided) try {
     if (!layout.canFitPlaintext(inLen)) {
         return Status(ErrorCodes::BadValue,
                       str::stream() << "Insufficient memory allocated for encryption.");
     }
 
+    constexpr auto mode = T::header_type::kMode;
     if (!ivProvided) {
         aesGenerateIV(&key, mode, layout.getIV(), layout.getIVSize());
     }
 
-    auto swEncryptor = SymmetricEncryptor::create(key, mode, layout.getIV(), layout.getIVSize());
-    if (!swEncryptor.isOK()) {
-        return swEncryptor.getStatus();
-    }
-    auto encryptor = std::move(swEncryptor.getValue());
+    auto encryptor =
+        uassertStatusOK(SymmetricEncryptor::create(key, mode, layout.getIV(), layout.getIVSize()));
 
-    const auto swUpdateLen = encryptor->update(in, inLen, layout.getData(), layout.getDataSize());
-    if (!swUpdateLen.isOK()) {
-        return swUpdateLen.getStatus();
-    }
-    const auto updateLen = swUpdateLen.getValue();
+    if (std::is_same<typename T::header_type, crypto::HeaderGCMV1>::value) {
+        static_assert(crypto::HeaderGCMV1::kExtraSize == 13, "Page schema layout has changed");
 
-    const auto swFinalLen =
-        encryptor->finalize(layout.getData() + updateLen, layout.getDataSize() - updateLen);
-    if (!swFinalLen.isOK()) {
-        return swFinalLen.getStatus();
+        const auto id = key.getKeyId().id();
+        fassert(51155, id != boost::none);
+
+        static_assert(std::is_same<SymmetricKeyId::id_type, std::uint64_t>::value,
+                      "GCMV1 page format depends on a uint64 key id");
+
+        auto* extraPtr = reinterpret_cast<char*>(layout.getExtra());
+        auto extra = DataRangeCursor(extraPtr, extraPtr + layout.getExtraSize());
+        uassertStatusOK(extra.writeAndAdvance<std::uint32_t>(0xFFFFFFFFU));
+        uassertStatusOK(extra.writeAndAdvance(static_cast<std::uint8_t>(T::header_type::kSchema)));
+        uassertStatusOK(extra.writeAndAdvance<LittleEndian<SymmetricKeyId::id_type>>(*id));
+
+
+        // Use the entire "extra" block except for the fixed 0xFFFFFFFF marker for AAD.
+        uassertStatusOK(
+            encryptor->addAuthenticatedData(layout.getExtra() + 4, layout.getExtraSize() - 4));
+    } else {
+        invariant(layout.getExtraSize() == 0);
     }
 
-    const auto swTagLen = encryptor->finalizeTag(layout.getTag(), layout.getTagSize());
-    if (!swTagLen.isOK()) {
-        return swTagLen.getStatus();
-    }
+    const auto updateLen =
+        uassertStatusOK(encryptor->update(in, inLen, layout.getData(), layout.getDataSize()));
+    const auto finalLen = uassertStatusOK(
+        encryptor->finalize(layout.getData() + updateLen, layout.getDataSize() - updateLen));
+    const auto len = updateLen + finalLen;
 
-    const auto len = updateLen + swFinalLen.getValue();
+    uassertStatusOK(encryptor->finalizeTag(layout.getTag(), layout.getTagSize()));
+
 
     // Some cipher modes, such as GCM, will know in advance exactly how large their ciphertexts will
     // be.
@@ -201,87 +219,167 @@ Status aesEncrypt(const SymmetricKey& key,
     // to store
     // the worst case. We must then set the actual size of the ciphertext so that the buffer it has
     // been written to may be serialized.
+    invariant(len <= layout.getDataSize());
     *resultLen = layout.getHeaderSize() + len;
-    invariant(*resultLen <= outLen);
 
     // Check the returned length, including block size padding
     if (len != layout.expectedCiphertextLen(inLen)) {
-        return Status(ErrorCodes::BadValue,
-                      str::stream() << "Encrypt error, expected cipher text of length "
-                                    << layout.expectedCiphertextLen(inLen)
-                                    << " but found "
-                                    << len);
+        return {ErrorCodes::BadValue,
+                str::stream() << "Encrypt error, expected cipher text of length "
+                              << layout.expectedCiphertextLen(inLen)
+                              << " but found "
+                              << len};
     }
 
     return Status::OK();
+} catch (const AssertionException& ex) {
+    return ex.toStatus();
 }
+}  // namespace
+
+Status aesEncrypt(const SymmetricKey& key,
+                  aesMode mode,
+                  PageSchema schema,
+                  const uint8_t* in,
+                  size_t inLen,
+                  uint8_t* out,
+                  size_t outLen,
+                  size_t* resultLen,
+                  bool ivProvided) {
+    if (!(in && out)) {
+        return {ErrorCodes::BadValue, "Invalid encryption buffers"};
+    }
+
+    auto status = _validateModeSchema(mode, schema);
+    if (!status.isOK()) {
+        return status;
+    }
+
+    if (mode == aesMode::cbc) {
+        invariant(schema == PageSchema::k0);
+        return _doAESEncrypt(key,
+                             crypto::MutableEncryptedMemoryLayout<crypto::HeaderCBCV0>(out, outLen),
+                             in,
+                             inLen,
+                             resultLen,
+                             ivProvided);
+    } else {
+        invariant(mode == aesMode::gcm);
+        if (schema == PageSchema::k0) {
+            return _doAESEncrypt(
+                key,
+                crypto::MutableEncryptedMemoryLayout<crypto::HeaderGCMV0>(out, outLen),
+                in,
+                inLen,
+                resultLen,
+                ivProvided);
+        } else {
+            invariant(schema == PageSchema::k1);
+            return _doAESEncrypt(
+                key,
+                crypto::MutableEncryptedMemoryLayout<crypto::HeaderGCMV1>(out, outLen),
+                in,
+                inLen,
+                resultLen,
+                ivProvided);
+        }
+    }
+}
+
+namespace {
+template <typename T>
+Status _doAESDecrypt(const SymmetricKey& key,
+                     T layout,
+                     std::uint8_t* out,
+                     std::size_t outLen,
+                     std::size_t* resultLen) try {
+    // Check the plaintext buffer can fit the product of decryption
+    size_t lowerBound, upperBound;
+    std::tie(lowerBound, upperBound) = layout.expectedPlaintextLen();
+    if (upperBound > outLen) {
+        return {ErrorCodes::BadValue,
+                str::stream() << "Cleartext buffer of size " << outLen
+                              << " too small for output which can be as large as "
+                              << upperBound
+                              << "]"};
+    }
+
+    constexpr auto mode = T::header_type::kMode;
+    auto decryptor =
+        uassertStatusOK(SymmetricDecryptor::create(key, mode, layout.getIV(), layout.getIVSize()));
+
+    if (std::is_same<typename T::header_type, crypto::HeaderGCMV1>::value) {
+        invariant(layout.getExtraSize() == 13);
+        // GCM Page schema only uses the post-marker bytes for AAD.
+        uassertStatusOK(
+            decryptor->addAuthenticatedData(layout.getExtra() + 4, layout.getExtraSize() - 4));
+    } else {
+        invariant(layout.getExtraSize() == 0);
+    }
+
+    const auto updateLen =
+        uassertStatusOK(decryptor->update(layout.getData(), layout.getDataSize(), out, outLen));
+    uassertStatusOK(decryptor->updateTag(layout.getTag(), layout.getTagSize()));
+    const auto finalLen = uassertStatusOK(decryptor->finalize(out + updateLen, outLen - updateLen));
+
+    *resultLen = updateLen + finalLen;
+    invariant(*resultLen <= outLen);
+
+    // Check the returned length, excluding headers block padding
+    if (*resultLen < lowerBound || *resultLen > upperBound) {
+        return {ErrorCodes::BadValue,
+                str::stream() << "Decrypt error, expected clear text length in interval"
+                              << "["
+                              << lowerBound
+                              << ","
+                              << upperBound
+                              << "]"
+                              << "but found "
+                              << *resultLen};
+    }
+
+    return Status::OK();
+} catch (const AssertionException& ex) {
+    return ex.toStatus();
+}
+}  // namespace
 
 Status aesDecrypt(const SymmetricKey& key,
                   aesMode mode,
+                  PageSchema schema,
                   const uint8_t* in,
                   size_t inLen,
                   uint8_t* out,
                   size_t outLen,
                   size_t* resultLen) {
     if (!(in && out)) {
-        return Status(ErrorCodes::BadValue, "Invalid encryption buffers");
-    }
-    if (!(mode == aesMode::cbc || mode == aesMode::gcm)) {
-        return Status(ErrorCodes::BadValue, "Invalid encryption mode");
+        return {ErrorCodes::BadValue, "Invalid encryption buffers"};
     }
 
-    crypto::ConstEncryptedMemoryLayout layout(mode, in, inLen);
-
-    // Check the plaintext buffer can fit the product of decryption
-    size_t lowerBound, upperBound;
-    std::tie(lowerBound, upperBound) = layout.expectedPlaintextLen();
-    if (upperBound > outLen) {
-        return Status(ErrorCodes::BadValue,
-                      str::stream() << "Cleartext buffer of size " << outLen
-                                    << " too small for output which can be as large as "
-                                    << upperBound
-                                    << "]");
+    auto status = _validateModeSchema(mode, schema);
+    if (!status.isOK()) {
+        return status;
     }
 
-    auto swDecryptor = SymmetricDecryptor::create(key, mode, layout.getIV(), layout.getIVSize());
-    if (!swDecryptor.isOK()) {
-        return swDecryptor.getStatus();
+    if (mode == aesMode::cbc) {
+        invariant(schema == PageSchema::k0);
+        return _doAESDecrypt(key,
+                             crypto::ConstEncryptedMemoryLayout<HeaderCBCV0>(in, inLen),
+                             out,
+                             outLen,
+                             resultLen);
+    } else {
+        invariant(mode == aesMode::gcm);
+
+        if (schema == PageSchema::k0) {
+            crypto::ConstEncryptedMemoryLayout<HeaderGCMV0> layout(in, inLen);
+            return _doAESDecrypt(key, std::move(layout), out, outLen, resultLen);
+        } else {
+            invariant(schema == PageSchema::k1);
+            crypto::ConstEncryptedMemoryLayout<HeaderGCMV1> layout(in, inLen);
+            return _doAESDecrypt(key, std::move(layout), out, outLen, resultLen);
+        }
     }
-    auto decryptor = std::move(swDecryptor.getValue());
-
-    const auto swUpdateLen = decryptor->update(layout.getData(), layout.getDataSize(), out, outLen);
-    if (!swUpdateLen.isOK()) {
-        return swUpdateLen.getStatus();
-    }
-    const auto updateLen = swUpdateLen.getValue();
-
-    const auto statusTag = decryptor->updateTag(layout.getTag(), layout.getTagSize());
-    if (!statusTag.isOK()) {
-        return statusTag;
-    }
-
-    const auto swFinalLen = decryptor->finalize(out + updateLen, outLen - updateLen);
-    if (!swFinalLen.isOK()) {
-        return swFinalLen.getStatus();
-    }
-
-    *resultLen = updateLen + swFinalLen.getValue();
-    invariant(*resultLen <= outLen);
-
-    // Check the returned length, excluding headers block padding
-    if (*resultLen < lowerBound || *resultLen > upperBound) {
-        return Status(ErrorCodes::BadValue,
-                      str::stream() << "Decrypt error, expected clear text length in interval"
-                                    << "["
-                                    << lowerBound
-                                    << ","
-                                    << upperBound
-                                    << "]"
-                                    << "but found "
-                                    << *resultLen);
-    }
-
-    return Status::OK();
 }
 
 SymmetricKey aesGenerate(size_t keySize, SymmetricKeyId keyId) {

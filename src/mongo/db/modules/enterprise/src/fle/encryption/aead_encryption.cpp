@@ -66,8 +66,8 @@ Status aeadEncrypt(const SymmetricKey& key,
     size_t cipherTextLen = 0;
 
     SymmetricKey symEncKey(encKey, sym256KeySize, aesAlgorithm, key.getKeyId(), 1);
-    auto sEncrypt =
-        aesEncrypt(symEncKey, aesMode::cbc, in, inLen, out, aesOutLen, &cipherTextLen, true);
+    auto sEncrypt = aesEncrypt(
+        symEncKey, aesMode::cbc, PageSchema::k0, in, inLen, out, aesOutLen, &cipherTextLen, true);
 
     if (!sEncrypt.isOK()) {
         return sEncrypt;
@@ -139,7 +139,8 @@ Status aeadDecrypt(const SymmetricKey& key,
 
     SymmetricKey symEncKey(encKey, sym256KeySize, aesAlgorithm, key.getKeyId(), 1);
 
-    auto sDecrypt = aesDecrypt(symEncKey, aesMode::cbc, cipherText, aesLen, out, aesLen, outLen);
+    auto sDecrypt = aesDecrypt(
+        symEncKey, aesMode::cbc, PageSchema::k0, cipherText, aesLen, out, aesLen, outLen);
     if (!sDecrypt.isOK()) {
         return sDecrypt;
     }

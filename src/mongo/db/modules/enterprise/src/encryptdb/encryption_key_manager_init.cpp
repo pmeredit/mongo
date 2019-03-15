@@ -36,8 +36,10 @@ ServiceContext::ConstructorActionRegisterer registerEncryptionWiredTigerCustomiz
         auto configHooks =
             stdx::make_unique<EncryptionWiredTigerCustomizationHooks>(&encryptionGlobalParams);
         WiredTigerCustomizationHooks::set(service, std::move(configHooks));
+        const auto cipherMode =
+            crypto::getCipherModeFromString(encryptionGlobalParams.encryptionCipherMode);
         uassertStatusOKWithContext(
-            crypto::smokeTestAESCipherMode(encryptionGlobalParams.encryptionCipherMode),
+            crypto::smokeTestAESCipherMode(cipherMode, crypto::PageSchema::k0),
             str::stream() << "Validation of cryptographic functions for "
                           << encryptionGlobalParams.encryptionCipherMode
                           << " failed");

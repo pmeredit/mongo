@@ -189,7 +189,7 @@ class KeystoreImplV1 final : public Keystore {
 public:
     explicit KeystoreImplV1(WTDataStore datastore,
                             uint32_t curRolloverId,
-                            StringMap<uint64_t> dbNameToKeyId)
+                            StringMap<SymmetricKeyId::id_type> dbNameToKeyId)
         : _datastore(std::move(datastore)),
           _rolloverId(curRolloverId),
           _dbNameToKeyId(std::move(dbNameToKeyId)) {}
@@ -221,7 +221,7 @@ private:
     // Looking up keys by name would require scanning the WT table, so we cache the ID's for
     // all the databases in the current rollover set.
     stdx::mutex _dbNameToKeyIdMutex;
-    StringMap<uint64_t> _dbNameToKeyId;
+    StringMap<SymmetricKeyId::id_type> _dbNameToKeyId;
 };
 
 class KeystoreImplV1::SessionImplV1 final : public Keystore::Session {
@@ -266,7 +266,7 @@ public:
         } else {
             // If we don't have a key ID already, WT will assign one for us. We then need to
             // update both the key with the correct key ID.
-            uint64_t keyId = dataStoreSession()->insert(view.toTuple());
+            SymmetricKeyId::id_type keyId = dataStoreSession()->insert(view.toTuple());
             key->setKeyId(SymmetricKeyId(view.database, keyId));
         }
 
@@ -315,7 +315,7 @@ std::unique_ptr<Keystore> KeystoreImplV1::makeKeystore(const boost::filesystem::
     auto session = keystore.makeSession();
     auto cursor = session.rbegin();
 
-    StringMap<uint64_t> dbNameToKeyId;
+    StringMap<SymmetricKeyId::id_type> dbNameToKeyId;
     uint32_t rolloverId = 0;
 
     // If we don't have any schema yet, create the table and checkpoint the session

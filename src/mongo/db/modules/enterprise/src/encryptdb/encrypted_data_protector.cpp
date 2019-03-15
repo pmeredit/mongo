@@ -20,6 +20,21 @@ namespace mongo {
 EncryptedDataProtector::EncryptedDataProtector(const SymmetricKey* key, crypto::aesMode mode)
     : _key(key), _mode(mode) {}
 
+/**
+ * The first call to this method writes a version byte (currently 0),
+ * followed by a PageSchema::k0 header. For GCM, we won't know the tag yet,
+ * so a placeholder value of all 0xFF bytes is used.
+ *
+ * From there, every invocation (including the first), appends chunks of encrypted data.
+ * Eventually, ::finalize() is invoked to flush any queued data (for CBC),
+ * then ::finalizeTag() is invoked to update the tag (for GCM) and the file is closed.
+ *
+ * The end result is a file which may be decrypted (from offset 1) using aesDecrypt
+ * with PageSchema::k0.
+ *
+ * We don't invoke aesEncrypt() directly since we want a streaming
+ * cipher which can be continually appended to rather than a single-shot encrypt.
+ */
 Status EncryptedDataProtector::protect(const std::uint8_t* in,
                                        std::size_t inLen,
                                        std::uint8_t* out,

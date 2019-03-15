@@ -15,8 +15,10 @@ class Status;
 
 class SymmetricKeyId {
 public:
+    using id_type = std::uint64_t;
+
     template <typename StringLike>
-    SymmetricKeyId(const StringLike& name, uint64_t id)
+    SymmetricKeyId(const StringLike& name, id_type id)
         : _id(id), _name(name), _strRep(_initStrRep()) {}
 
     template <typename StringLike>
@@ -25,7 +27,7 @@ public:
     const std::string& toString() const;
     bool operator==(const std::string& other) const;
 
-    const boost::optional<uint64_t>& id() const {
+    const boost::optional<id_type>& id() const {
         return _id;
     }
 
@@ -36,7 +38,7 @@ public:
 private:
     std::string _initStrRep() const;
 
-    boost::optional<uint64_t> _id;
+    boost::optional<id_type> _id;
     std::string _name;
     std::string _strRep;
 };

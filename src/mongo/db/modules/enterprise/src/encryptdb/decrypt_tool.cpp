@@ -126,8 +126,12 @@ int decryptToolMain(int argc, char* argv[], char** envp) {
     std::vector<uint8_t> outputData(inputData.size() - 1);
 
     size_t resultLen;
+    // Encrypted Data Protector's protect() method writes out this file using a
+    // format which is equivalent to having called aesEncrypt with PageSchema::k0,
+    // but in a streaming mode.
     Status ret = aesDecrypt(*swDecryptKey.getValue(),
                             globalDecryptToolOptions.mode,
+                            crypto::PageSchema::k0,
                             inputData.data() + 1,
                             inputData.size() - 1,
                             outputData.data(),

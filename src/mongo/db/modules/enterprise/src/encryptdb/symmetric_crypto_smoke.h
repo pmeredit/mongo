@@ -6,16 +6,17 @@
 
 #include <string>
 
+#include "symmetric_crypto.h"
+
+#include "mongo/base/status.h"
+
 namespace mongo {
-
-class Status;
-
 namespace crypto {
 
 /**
  * Tests AES operations, returns a non-OK Status if encryption/decryption has unexpected outputs.
  */
-Status smokeTestAESCipherMode(const std::string& mode);
+Status smokeTestAESCipherMode(aesMode, PageSchema);
 
 }  // namespace crypto
 }  // namespace mongo

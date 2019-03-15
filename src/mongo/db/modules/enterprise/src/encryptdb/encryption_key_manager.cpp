@@ -122,6 +122,7 @@ Status EncryptionKeyManager::protectTmpData(
     return crypto::aesEncrypt(
         _tmpDataKey,
         crypto::getCipherModeFromString(_encryptionParams->encryptionCipherMode),
+        crypto::PageSchema::k0,
         in,
         inLen,
         out,
@@ -142,6 +143,7 @@ Status EncryptionKeyManager::unprotectTmpData(
     return crypto::aesDecrypt(
         _tmpDataKey,
         crypto::getCipherModeFromString(_encryptionParams->encryptionCipherMode),
+        crypto::PageSchema::k0,
         in,
         inLen,
         out,
@@ -518,6 +520,11 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) try {
     return Status::OK();
 } catch (const DBException& e) {
     return e.toStatus();
+}
+
+std::int32_t EncryptionKeyManager::getKeystoreVersion() const {
+    stdx::lock_guard<stdx::mutex> lk(_keystoreMetadataMutex);
+    return _keystoreMetadata.getVersion();
 }
 
 void initializeEncryptionKeyManager(ServiceContext* service) {
