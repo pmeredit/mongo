@@ -64,7 +64,14 @@
           encryptedPaths: ["foo", "bar"],
           notEncryptedPaths: []
         },
-
+        // Test that an encrypted field in an object replacement style update is correctly marked
+        // for encryption.
+        {
+          schema: {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}},
+          updates: [{q: {foo: 2}, u: {foo: 2, baz: 3}}, {q: {}, u: {foo: 4, bar: 3}}],
+          encryptedPaths: ["foo", "bar"],
+          notEncryptedPaths: ["baz"]
+        }
     ];
 
     const testDb = conn.getDB("test");
@@ -78,7 +85,10 @@
             assert.eq(true, result["hasEncryptionPlaceholders"]);
         }
         for (let encryptedDoc of result["result"]["updates"]) {
-            const realUpdate = encryptedDoc["u"]["$set"];
+            let realUpdate = encryptedDoc["u"];
+            if (realUpdate.hasOwnProperty("$set")) {
+                realUpdate = realUpdate["$set"];
+            }
             // For each field that should be encrypted. Some documents may not contain all of the
             // fields.
             for (let encrypt of test.encryptedPaths) {
@@ -112,6 +122,76 @@
     result = assert.commandWorked(testDb.runCommand(updateCommand));
     assert(result["result"]["updates"][0]["q"]["bar"]["$in"][0] instanceof BinData, tojson(result));
     assert(result["result"]["updates"][0]["q"]["bar"]["$in"][1] instanceof BinData, tojson(result));
+
+    // Test that encryption occurs in $set to an object.
+    updateCommand["jsonSchema"] = {
+        type: "object",
+        properties: {
+            foo: {
+                type: "object",
+                properties: {
+                    bar: encryptDoc,
+                    baz: {type: "object", properties: {encrypted: encryptDoc}}
+                }
+            }
+        }
+    };
+    updateCommand["updates"] =
+        [{q: {}, u: {"$set": {"foo": {"bar": 5, "baz": {"encrypted": 2}, "boo": 2}}}}];
+    result = assert.commandWorked(testDb.runCommand(updateCommand));
+    assert(result["result"]["updates"][0]["u"]["$set"]["foo"]["bar"] instanceof BinData,
+           tojson(result));
+    assert(
+        result["result"]["updates"][0]["u"]["$set"]["foo"]["baz"]["encrypted"] instanceof BinData,
+        tojson(result));
+    assert.eq(result["result"]["updates"][0]["u"]["$set"]["foo"]["boo"], 2, tojson(result));
+
+    // Test that encryption occurs in object replacement style update with nested fields.
+    updateCommand["jsonSchema"] = {
+        type: "object",
+        properties: {foo: {type: "object", properties: {bar: encryptDoc}}}
+    };
+    updateCommand["updates"] = [{q: {}, u: {foo: {bar: "string"}}}];
+    result = assert.commandWorked(testDb.runCommand(updateCommand));
+    assert(result["result"]["updates"][0]["u"]["foo"]["bar"] instanceof BinData, tojson(result));
+
+    // Schema to use for dotted path testing.
+    const dottedSchema = {
+        type: "object",
+        properties: {
+            "d": {
+                type: "object",
+                properties: {"e": {type: "object", properties: {"f": encryptDoc}}}
+            },
+        }
+    };
+
+    // Test that $set to a dotted path correctly does not mark field for encryption if schema has
+    // field names with embedded dots.
+    updateCommand["jsonSchema"] = dottedSchema;
+    updateCommand["updates"] = [{q: {}, u: {"$set": {"d": {"e.f": 4}}}}];
+    result = assert.commandWorked(testDb.runCommand(updateCommand));
+    assert.eq(result["result"]["updates"][0]["u"]["$set"],
+              updateCommand["updates"][0]["u"]["$set"],
+              result);
+
+    // Test that $set of a non-object to a prefix of an encrypted field fails.
+    updateCommand["jsonSchema"] = dottedSchema;
+    updateCommand["updates"] = [{q: {}, u: {"$set": {"d": {"e": 4}}}}];
+    result = assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51159);
+
+    // Test that $set of an object to a prefix of an encrypted field succeeds.
+    updateCommand["jsonSchema"] = dottedSchema;
+    updateCommand["updates"] = [{q: {}, u: {"$set": {"d": {"e": {"foo": 5}}}}}];
+    result = assert.commandWorked(testDb.runCommand(updateCommand));
+    assert.eq(result["result"]["updates"][0]["u"], updateCommand["updates"][0]["u"], result);
+
+    // Test that an object replacement update correctly does not mark field for encryption if
+    // schema has field names with embedded dots.
+    updateCommand["jsonSchema"] = dottedSchema;
+    updateCommand["updates"] = [{q: {}, u: {"d": {"e.f": 4}}}];
+    result = assert.commandWorked(testDb.runCommand(updateCommand));
+    assert.eq(result["result"]["updates"][0]["u"], updateCommand["updates"][0]["u"], result);
 
     // Test that an invalid q fails.
     updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}};

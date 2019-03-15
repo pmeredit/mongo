@@ -34,6 +34,7 @@
 #include "mongo/bson/json.h"
 #include "mongo/db/bson/bson_helper.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
+#include "mongo/unittest/death_test.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/uuid.h"
 
@@ -1603,6 +1604,63 @@ TEST(EncryptionSchemaTreeTest, ContainsEncryptReturnsTrueIfPatternPropertiesHasE
     ASSERT_TRUE(EncryptionSchemaTreeNode::parse(schema)->containsEncryptedNode());
 }
 
+TEST(EncryptionSchemaTreeTest, EncryptedBelowPrefixReturnsTrueOnShortPrefix) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            a: {
+                type: "object",
+                properties: {
+                    b: {
+                        encrypt: {
+                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                            keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                        }}
+                    }
+            }
+        }
+    })");
+    ASSERT_TRUE(
+        EncryptionSchemaTreeNode::parse(schema)->containsEncryptedNodeBelowPrefix(FieldRef("a")));
+}
+
+TEST(EncryptionSchemaTreeTest, EncryptedBelowPrefixReturnsFalseOnMissingPath) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            a: {
+                type: "object",
+                properties: {
+                    b: {
+                        encrypt: {
+                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                            keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                        }}
+                    }
+            }
+        }
+    })");
+    ASSERT_FALSE(
+        EncryptionSchemaTreeNode::parse(schema)->containsEncryptedNodeBelowPrefix(FieldRef("c")));
+}
+
+
+DEATH_TEST(EncryptionSchemaTreeTest, EncryptedBelowPrefixInvariantOnEncryptedPath, "invariant") {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            foo: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                }
+            }
+        }
+    })");
+
+    EncryptionSchemaTreeNode::parse(schema)->containsEncryptedNodeBelowPrefix(FieldRef("foo"));
+}
+
 TEST(EncryptionSchemaTreeTest,
      ContainsEncryptReturnsFalseIfPatternPropertiesDoesNotHaveEncryptNode) {
     BSONObj schema = fromjson(R"({
@@ -1618,6 +1676,39 @@ TEST(EncryptionSchemaTreeTest,
     })");
 
     ASSERT_FALSE(EncryptionSchemaTreeNode::parse(schema)->containsEncryptedNode());
+}
+
+TEST(EncryptionSchemaTreeTest, EncryptedBelowPrefixReturnsTrueOnLongPrefix) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            a: {
+                type: "object",
+                properties: {
+                    b: {
+                        type: "object",
+                        properties: {
+                            c: {
+                                type: "object",
+                                properties: {
+                                    d: {
+                                        encrypt: {
+                                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                                        keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    })");
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    ASSERT_TRUE(schemaTree->containsEncryptedNodeBelowPrefix(FieldRef("a")));
+    ASSERT_TRUE(schemaTree->containsEncryptedNodeBelowPrefix(FieldRef("a.b")));
+    ASSERT_TRUE(schemaTree->containsEncryptedNodeBelowPrefix(FieldRef("a.b.c")));
 }
 
 }  // namespace

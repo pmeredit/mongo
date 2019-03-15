@@ -333,6 +333,21 @@ std::unique_ptr<EncryptionSchemaTreeNode> _parse(BSONObj schema,
 
 }  // namespace
 
+bool EncryptionSchemaTreeNode::_containsEncryptedNodeBelowPrefix(const FieldRef& prefix,
+                                                                 size_t level) const {
+    invariant(!getEncryptionMetadata());
+    if (level >= prefix.numParts()) {
+        return containsEncryptedNode();
+    }
+    auto matchingChildren = getChildrenForPathComponent(prefix.getPart(level));
+    for (auto const& child : matchingChildren) {
+        if (child->_containsEncryptedNodeBelowPrefix(prefix, level + 1)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parse(BSONObj schema) {
     // Verify that the schema is valid by running through the normal JSONSchema parser, ignoring the
     // resulting match expression.

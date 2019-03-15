@@ -51,9 +51,11 @@ public:
     }
 
     void visit(ObjectReplaceNode* host) {
-        // TODO: SERVER-39277
-        uasserted(ErrorCodes::CommandNotSupported,
-                  "Object replacement not yet supported on mongocryptd");
+        auto placeholder = replaceEncryptedFields(host->val, &_schemaTree, FieldRef{}, boost::none);
+        if (placeholder.hasEncryptionPlaceholders) {
+            host->val = placeholder.result;
+            _hasPlaceholder = true;
+        }
     }
 
     void visit(PopNode* host) {
@@ -80,13 +82,50 @@ public:
         uasserted(ErrorCodes::CommandNotSupported, "$rename not yet supported on mongocryptd");
     }
 
+    /**
+     * $set is not allowed to remove an encrypted field. This asserts that no part of 'setVal' is
+     * the prefix of an encrypted field and does not set a value for that encrypted field.
+     */
+    void verifySetSchemaOK(BSONElement setVal, FieldRef prefix) {
+        // If the prefix is encrypted, or has no encrypted nodes below it in the tree, this path is
+        // not removing any encrypted fields.
+        if (_schemaTree.getEncryptionMetadataForPath(prefix) ||
+            !_schemaTree.containsEncryptedNodeBelowPrefix(prefix)) {
+            return;
+        }
+        uassert(51159,
+                "Cannot $set to a path " + prefix.dottedField() +
+                    " that is an encrypted prefix to a non-object type",
+                setVal.type() == BSONType::Object);
+
+        for (auto&& element : setVal.embeddedObject()) {
+            FieldRef::FieldRefTempAppend tempAppend(prefix, element.fieldNameStringData());
+            verifySetSchemaOK(element, prefix);
+        }
+    }
+
     void visit(SetNode* host) {
         if (auto metadata = _schemaTree.getEncryptionMetadataForPath(_currentPath)) {
             // TODO: SERVER-40217 Error if modifying an array.
             auto placeholder = buildEncryptPlaceholder(host->val, metadata.get());
             _backingBSONs.push_back(placeholder);
+            _hasPlaceholder = true;
             // The object returned by 'buildEncryptPlaceholder' only has one element.
             host->val = placeholder.firstElement();
+        } else {
+            verifySetSchemaOK(host->val, _currentPath);
+            if (host->val.type() == BSONType::Object) {
+                // If the right hand side of the $set is an object, recursively check if it contains
+                // any encrypted fields.
+                auto placeholder = replaceEncryptedFields(
+                    host->val.embeddedObject(), &_schemaTree, _currentPath, boost::none);
+                if (placeholder.hasEncryptionPlaceholders) {
+                    auto finalBSON = BSON(host->val.fieldNameStringData() << placeholder.result);
+                    host->val = finalBSON.firstElement();
+                    _backingBSONs.push_back(finalBSON);
+                    _hasPlaceholder = true;
+                }
+            }
         }
     }
 
@@ -111,7 +150,7 @@ public:
     }
 
     bool hasPlaceholder() const {
-        return !_backingBSONs.empty();
+        return _hasPlaceholder;
     }
 
 private:
@@ -121,6 +160,7 @@ private:
                 !_schemaTree.getEncryptionMetadataForPath(_currentPath));
     }
 
+    bool _hasPlaceholder = false;
     FieldRef _currentPath;
     const EncryptionSchemaTreeNode& _schemaTree;
     std::vector<BSONObj> _backingBSONs;

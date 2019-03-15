@@ -156,6 +156,14 @@ public:
     virtual bool containsEncryptedNode() const;
 
     /**
+     * Returns true if the prefix passed in is the prefix of an encrypted path. Returns false if
+     * the prefix does not exist. Should not be called if any part of the prefix is encrypted.
+     */
+    bool containsEncryptedNodeBelowPrefix(const FieldRef& prefix) const {
+        return _containsEncryptedNodeBelowPrefix(prefix, 0);
+    }
+
+    /**
      * Override this method to return the node's EncryptionMetadata, or boost::none if it holds
      * none.
      */
@@ -220,6 +228,8 @@ private:
     // '_propertiesChildren' or by regex in '_patternPropertiesChildren'. Used to implement
     // encryption analysis for the 'additionalProperties' keyword.
     std::unique_ptr<EncryptionSchemaTreeNode> _additionalPropertiesChild;
+
+    bool _containsEncryptedNodeBelowPrefix(const FieldRef& prefix, size_t level) const;
 };
 
 /**

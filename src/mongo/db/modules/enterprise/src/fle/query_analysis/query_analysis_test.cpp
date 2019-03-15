@@ -326,5 +326,54 @@ TEST(EncryptionUpdateVisitorTest, ReplaceMultipleFieldsCorrectly) {
         BSON("$set" << BSON("baz" << correctBaz["baz"] << "foo.bar" << correctBar["foo.bar"]));
     ASSERT_BSONOBJ_EQ(correctBSON, newUpdate);
 }
+
+TEST(EncryptionUpdateVisitorTest, FieldMarkedForEncryptionInRightHandSetObject) {
+    BSONObj entry = BSON("$set" << BSON("foo" << BSON("bar" << 5)));
+    boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(nullptr, nullptr));
+    UpdateDriver driver(expCtx);
+    std::map<StringData, std::unique_ptr<ExpressionWithPlaceholder>> arrayFilters;
+    driver.parse(entry, arrayFilters);
+
+    auto schema = BSON("type"
+                       << "object"
+                       << "properties"
+                       << BSON("foo" << BSON("type"
+                                             << "object"
+                                             << "properties"
+                                             << BSON("bar" << encryptObj))));
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto updateVisitor = EncryptionUpdateVisitor(*schemaTree.get());
+    driver.visitRoot(&updateVisitor);
+    auto newUpdate = driver.serialize();
+    EncryptionMetadata metadata =
+        EncryptionMetadata::parse(IDLParserErrorContext("meta"), encryptObj["encrypt"].Obj());
+    auto correctField = buildEncryptPlaceholder(entry["$set"]["foo"]["bar"], metadata);
+    ASSERT_BSONELT_EQ(newUpdate["$set"]["foo"]["bar"], correctField["bar"]);
+}
+
+TEST(EncryptionUpdateVisitorTest, ObjectReplaceUpdateEncryptsSingleField) {
+    BSONObj entry = BSON("foo"
+                         << "bar"
+                         << "baz"
+                         << "boo");
+    boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(nullptr, nullptr));
+    UpdateDriver driver(expCtx);
+    std::map<StringData, std::unique_ptr<ExpressionWithPlaceholder>> arrayFilters;
+    driver.parse(entry, arrayFilters);
+
+    auto schema = buildBasicSchema(encryptObj);
+
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto updateVisitor = EncryptionUpdateVisitor(*schemaTree.get());
+
+    driver.visitRoot(&updateVisitor);
+    auto newUpdate = driver.serialize();
+    EncryptionMetadata metadata =
+        EncryptionMetadata::parse(IDLParserErrorContext("meta"), encryptObj["encrypt"].Obj());
+    auto correctField = buildEncryptPlaceholder(entry["foo"], metadata);
+    ASSERT_BSONELT_EQ(newUpdate["foo"], correctField["foo"]);
+    ASSERT_EQ(newUpdate["baz"].valueStringData(), "boo");
+}
+
 }  // namespace
 }  // namespace mongo
