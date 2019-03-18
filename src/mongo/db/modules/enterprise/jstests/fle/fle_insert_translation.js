@@ -157,7 +157,7 @@
             insert: "test.foo",
             documents: [{"foo": "bar"}],
             bypassDocumentValidation: false,
-            ordered: true,
+            ordered: true, "$db": "test",
         };
         expectedResult[field] = passThroughFields[field];
         const result = assert.commandWorked(testDb.runCommand(insertCommand));
