@@ -110,10 +110,16 @@ PlaceHolderResult addPlaceHoldersForFind(const BSONObj& cmdObj,
     // Replace the previous filter object with the new MatchExpression after marking it for
     // encryption.
     BSONObjBuilder bob;
-    fleMatchExpr.getMatchExpression()->serialize(&bob);
-    qr->setFilter(bob.obj());
+    for (auto&& elem : cmdObj) {
+        if (elem.fieldNameStringData() == "filter") {
+            BSONObjBuilder filterBob = bob.subobjStart("filter");
+            fleMatchExpr.getMatchExpression()->serialize(&filterBob);
+        } else {
+            bob.append(elem);
+        }
+    }
 
-    return PlaceHolderResult{fleMatchExpr.containsEncryptedPlaceholders(), qr->asFindCommand()};
+    return PlaceHolderResult{fleMatchExpr.containsEncryptedPlaceholders(), bob.obj()};
 }
 
 PlaceHolderResult addPlaceHoldersForAggregate(

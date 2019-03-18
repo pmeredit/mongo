@@ -111,65 +111,31 @@
         }
     }
 
-    // Make sure passthrough fields are present.
-    const passThroughFields = {
-        writeConcern: {w: "majority", wtimeout: 5000},
-        "$audit": "auditString",
-        "$client": "clientString",
-        "$configServerState": 2,
-        "allowImplicitCollectionCreation": true,
-        "$oplogQueryData": false,
-        "$readPreference": 7,
-        "$replData": {data: "here"},
-        "$clusterTime": "now",
-        "maxTimeMS": 500,
-        "readConcern": 1,
-        "databaseVersion": 2.2,
-        "shardVersion": 4.6,
-        "tracking_info": {"found": "it"},
-        "txnNumber": 7,
-        "autocommit": false,
-        "coordinator": false,
-        "startTransaction": "now",
-        // These two fields are added to the result if not set in the command. When we test them,
-        // it is to test that the default values are overwritten.
-        "ordered": false,
-        "bypassDocumentValidation": true,
-        // Excluded because errors with invalid arguments.
-        // "$queryOptions": {limit: 1},
-        // "stmtId": Number(783),
-        // "lsid": 4,
-        // Excluded because field not recognized on insert.
-        // "$gleStats": {"yes": 7, "no": 4},
-        // "operationTime": 10,
-        // Excluded because not allowed on OP_QUERY requests.
-        // "$db": "test"
+    // Make sure that additional command arguments are correctly included in the response.
+    insertCommand = {
+        insert: "test.foo",
+        documents: [{"foo": "bar"}],
+        jsonSchema: {type: "object", properties: {bar: encryptDoc}},
     };
 
-    for (let field of Object.keys(passThroughFields)) {
-        let insertCommand = {
-            insert: "test.foo",
-            documents: [{"foo": "bar"}],
-            jsonSchema: {type: "object", properties: {bar: encryptDoc}},
-        };
-        insertCommand[field] = passThroughFields[field];
-        let expectedResult = {
-            insert: "test.foo",
-            documents: [{"foo": "bar"}],
-            bypassDocumentValidation: false,
-            ordered: true, "$db": "test",
-        };
-        expectedResult[field] = passThroughFields[field];
-        const result = assert.commandWorked(testDb.runCommand(insertCommand));
-        // The shell runs commands inside sessions, and therefore will append the
-        // logical session ID under the hood. We ignore it by deleting it from the object
-        // containing the response.
-        delete result["result"]["lsid"];
-        assert.eq(Object.keys(result["result"]).length, Object.keys(expectedResult).length);
-        for (let key of Object.keys(expectedResult)) {
-            assert.eq(expectedResult[key], result["result"][key]);
-        }
-    }
+    let res = assert.commandWorked(testDb.runCommand(insertCommand));
+
+    // These two fields are added to the result even if not set in the command.
+    assert.eq(res.result.ordered, true, tojson(res));
+    assert.eq(res.result.bypassDocumentValidation, false, tojson(res));
+
+    // Explicitly setting them on the command should override the default.
+    insertCommand = {
+        insert: "test.foo",
+        documents: [{"foo": "bar"}],
+        jsonSchema: {type: "object", properties: {bar: encryptDoc}},
+        ordered: false,
+        bypassDocumentValidation: true,
+    };
+
+    res = assert.commandWorked(testDb.runCommand(insertCommand));
+    assert.eq(res.result.ordered, false, tojson(res));
+    assert.eq(res.result.bypassDocumentValidation, true, tojson(res));
 
     // Test that a document without _id fails to insert when the schema says encrypt _id.
     assert.commandFailedWithCode(testDb.runCommand({
