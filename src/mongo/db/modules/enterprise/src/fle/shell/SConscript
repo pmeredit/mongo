@@ -11,12 +11,15 @@ kmsEnv.Library(
     source=[
         "kms.cpp",
         "kms_aws.cpp",
+        "kms_shell.cpp",
+        "kms-shell-server.cpp",
         kmsEnv.Idlc("kms.idl")[0],
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/base/secure_allocator',
         '$BUILD_DIR/mongo/db/commands/test_commands_enabled',
+        '$BUILD_DIR/mongo/shell_core',
         '$BUILD_DIR/mongo/util/net/network',
         '$BUILD_DIR/mongo/util/net/socket',
         '$BUILD_DIR/mongo/util/net/ssl_manager',
@@ -29,3 +32,13 @@ kmsEnv.Library(
         '$BUILD_DIR/mongo/mongo',
     ]
 )
+
+kmsEnv.JSHeader(
+    target="kms-shell-server.cpp",
+    source=[
+        "keystore.js",
+    ],
+)
+
+kmsEnv.Alias("generated-sources", "kms-shell-server.cpp")
+
