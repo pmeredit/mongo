@@ -111,7 +111,7 @@ protected:
                                          expCtx,
                                          ExtensionsCallbackNoop(),
                                          MatchExpressionParser::kAllowAllSpecialFeatures));
-        FLEMatchExpression fleMatchExpression{std::move(parsedMatch), schemaTree.get()};
+        FLEMatchExpression fleMatchExpression{std::move(parsedMatch), *schemaTree};
 
         // Serialize the modified match expression.
         BSONObjBuilder bob;

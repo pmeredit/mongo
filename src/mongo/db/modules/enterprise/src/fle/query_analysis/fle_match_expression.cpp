@@ -40,9 +40,9 @@ namespace mongo {
 using MatchType = MatchExpression::MatchType;
 
 FLEMatchExpression::FLEMatchExpression(std::unique_ptr<MatchExpression> expression,
-                                       EncryptionSchemaTreeNode* schemaTree)
+                                       const EncryptionSchemaTreeNode& schemaTree)
     : _expression(std::move(expression)) {
-    replaceEncryptedElements(_expression.get(), schemaTree);
+    replaceEncryptedElements(schemaTree, _expression.get());
 }
 
 BSONElement FLEMatchExpression::allocateEncryptedElement(const BSONElement& elem,
@@ -127,18 +127,18 @@ void FLEMatchExpression::replaceElementsInInExpression(const EncryptionSchemaTre
     uassertStatusOK(inExpr->setEqualities(std::move(replacedElements)));
 }
 
-void FLEMatchExpression::replaceEncryptedElements(MatchExpression* root,
-                                                  EncryptionSchemaTreeNode* schemaTree) {
+void FLEMatchExpression::replaceEncryptedElements(const EncryptionSchemaTreeNode& schemaTree,
+                                                  MatchExpression* root) {
     invariant(root);
 
     switch (root->matchType()) {
         // Whitelist of expressions which are allowed on encrypted fields.
         case MatchType::EQ: {
-            replaceElementsInEqExpression(*schemaTree, static_cast<EqualityMatchExpression*>(root));
+            replaceElementsInEqExpression(schemaTree, static_cast<EqualityMatchExpression*>(root));
             break;
         }
         case MatchType::MATCH_IN: {
-            replaceElementsInInExpression(*schemaTree, static_cast<InMatchExpression*>(root));
+            replaceElementsInInExpression(schemaTree, static_cast<InMatchExpression*>(root));
             break;
         }
 
@@ -200,7 +200,7 @@ void FLEMatchExpression::replaceEncryptedElements(MatchExpression* root,
                                   << root->path()
                                   << "': "
                                   << root->toString(),
-                    !schemaTree->getEncryptionMetadataForPath(FieldRef(root->path())));
+                    !schemaTree.getEncryptionMetadataForPath(FieldRef(root->path())));
             break;
 
         case MatchType::GT:
@@ -212,14 +212,14 @@ void FLEMatchExpression::replaceEncryptedElements(MatchExpression* root,
                                   << root->path()
                                   << "': "
                                   << root->toString(),
-                    !schemaTree->getEncryptionMetadataForPath(FieldRef(root->path())));
+                    !schemaTree.getEncryptionMetadataForPath(FieldRef(root->path())));
             // For comparison match expressions, also reject encrypted fields within RHS objects of
             // the expression.
             auto compExpr = static_cast<ComparisonMatchExpression*>(root);
             auto rhsElem = compExpr->getData();
             if (rhsElem.type() == BSONType::Object) {
                 auto[hasEncrypt, placeholder] = replaceEncryptedFields(
-                    rhsElem.embeddedObject(), schemaTree, FieldRef(compExpr->path()));
+                    rhsElem.embeddedObject(), &schemaTree, FieldRef(compExpr->path()));
                 uassert(51119,
                         str::stream() << "Invalid match expression operator on encrypted field '"
                                       << root->toString()
@@ -239,7 +239,7 @@ void FLEMatchExpression::replaceEncryptedElements(MatchExpression* root,
 
     // Recursively descend each child of this expression.
     for (size_t index = 0; index < root->numChildren(); ++index) {
-        replaceEncryptedElements(root->getChild(index), schemaTree);
+        replaceEncryptedElements(schemaTree, root->getChild(index));
     }
 }
 

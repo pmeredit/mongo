@@ -48,7 +48,7 @@ public:
      * MatchExpression contains an invalid operator on an encrypted field.
      */
     FLEMatchExpression(std::unique_ptr<MatchExpression> expression,
-                       EncryptionSchemaTreeNode* schemaTree);
+                       const EncryptionSchemaTreeNode& schemaTree);
 
     MatchExpression* getMatchExpression() const {
         return _expression.get();
@@ -66,7 +66,8 @@ private:
      * Marks RHS elements in 'root' as encrypted if a field is found to be encrypted per the
      * encryption schema tree.
      */
-    void replaceEncryptedElements(MatchExpression* root, EncryptionSchemaTreeNode* schemaTree);
+    void replaceEncryptedElements(const EncryptionSchemaTreeNode& schemaTree,
+                                  MatchExpression* root);
 
     /**
      * Creates an object with a single BinData element representing the encryption placeholder for

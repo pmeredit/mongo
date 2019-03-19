@@ -12,11 +12,14 @@
 #include "fle_match_expression.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
+#include "mongo/db/commands.h"
 #include "mongo/db/matcher/expression_parser.h"
 #include "mongo/db/matcher/expression_type.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/db/ops/write_ops.h"
+#include "mongo/db/query/distinct_command_gen.h"
 #include "mongo/db/query/query_request.h"
+#include "mongo/idl/idl_parser.h"
 #include "mongo/rpc/op_msg.h"
 
 namespace mongo {
@@ -85,60 +88,101 @@ BSONObj replaceEncryptedFieldsRecursive(const EncryptionSchemaTreeNode* schema,
     return builder.obj();
 }
 
-PlaceHolderResult addPlaceHoldersForFind(const BSONObj& cmdObj,
-                                         std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
-    // Parse to a QueryRequest to ensure the command syntax is valid. We can use a temporary
-    // database name however the collection name will be used when serializing back to BSON.
-    auto qr = uassertStatusOK(
-        QueryRequest::makeFromFindCommand(NamespaceString(cmdObj["$db"].checkAndGetStringData(),
-                                                          cmdObj["find"].checkAndGetStringData()),
-                                          cmdObj,
-                                          false));
-
+/**
+ * Parses the MatchExpression given by 'filter' and replaces encrypted fields with their appropriate
+ * EncryptionPlaceholder according to the schema.
+ *
+ * Returns a PlaceHolderResult containing the new MatchExpression and a boolean to indicate whether
+ * it contains an intent-to-encrypt marking. Throws an assertion if the MatchExpression is invalid
+ * or contains an invalid operator over an encrypted field.
+ */
+PlaceHolderResult replaceEncryptedFieldsInFilter(const EncryptionSchemaTreeNode& schemaTree,
+                                                 BSONObj filter) {
     // Build a parsed MatchExpression from the filter, allowing all special features.
     boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(nullptr, nullptr));
-    auto matchExpr = uassertStatusOK(
-        MatchExpressionParser::parse(qr->getFilter(),
-                                     expCtx,
-                                     ExtensionsCallbackNoop(),
-                                     MatchExpressionParser::kAllowAllSpecialFeatures));
+    auto matchExpr = uassertStatusOK(MatchExpressionParser::parse(
+        filter, expCtx, ExtensionsCallbackNoop(), MatchExpressionParser::kAllowAllSpecialFeatures));
 
     // Build a FLEMatchExpression, which will replace encrypted values with their appropriate
     // intent-to-encrypt markings.
-    FLEMatchExpression fleMatchExpr(std::move(matchExpr), schemaTree.get());
+    FLEMatchExpression fleMatchExpr(std::move(matchExpr), schemaTree);
 
     // Replace the previous filter object with the new MatchExpression after marking it for
     // encryption.
     BSONObjBuilder bob;
+    fleMatchExpr.getMatchExpression()->serialize(&bob);
+
+    return {fleMatchExpr.containsEncryptedPlaceholders(), bob.obj()};
+}
+
+PlaceHolderResult addPlaceHoldersForFind(const std::string& dbName,
+                                         const BSONObj& cmdObj,
+                                         std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
+    // Parse to a QueryRequest to ensure the command syntax is valid. We can use a temporary
+    // database name however the collection name will be used when serializing back to BSON.
+    auto qr = uassertStatusOK(QueryRequest::makeFromFindCommand(
+        CommandHelpers::parseNsCollectionRequired(dbName, cmdObj), cmdObj, false));
+
+    auto placeholder = replaceEncryptedFieldsInFilter(*schemaTree, qr->getFilter());
+
+    BSONObjBuilder bob;
     for (auto&& elem : cmdObj) {
         if (elem.fieldNameStringData() == "filter") {
             BSONObjBuilder filterBob = bob.subobjStart("filter");
-            fleMatchExpr.getMatchExpression()->serialize(&filterBob);
+            filterBob.appendElements(placeholder.result);
         } else {
             bob.append(elem);
         }
     }
 
-    return PlaceHolderResult{fleMatchExpr.containsEncryptedPlaceholders(), bob.obj()};
+    return {placeholder.hasEncryptionPlaceholders, bob.obj()};
 }
 
 PlaceHolderResult addPlaceHoldersForAggregate(
-    const BSONObj& cmdObj, std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
+    const std::string& dbName,
+    const BSONObj& cmdObj,
+    std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     return PlaceHolderResult();
 }
 
-PlaceHolderResult addPlaceHoldersForCount(const BSONObj& cmdObj,
+PlaceHolderResult addPlaceHoldersForCount(const std::string& dbName,
+                                          const BSONObj& cmdObj,
                                           std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     return PlaceHolderResult();
 }
 
-PlaceHolderResult addPlaceHoldersForDistinct(const BSONObj& cmdObj,
+PlaceHolderResult addPlaceHoldersForDistinct(const std::string& dbName,
+                                             const BSONObj& cmdObj,
                                              std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
-    return PlaceHolderResult();
+    auto parsedDistinct = DistinctCommand::parse(IDLParserErrorContext("distinct"), cmdObj);
+
+    // The distinct key is not allowed to be encrypted with a keyId which points to another field.
+    if (auto keyMetadata =
+            schemaTree->getEncryptionMetadataForPath(FieldRef(parsedDistinct.getKey()))) {
+        uassert(51131,
+                "The distinct key is not allowed to be marked for encryption with a non-UUID keyId",
+                keyMetadata.get().getKeyId().get().type() !=
+                    EncryptSchemaKeyId::Type::kJSONPointer);
+    }
+
+    PlaceHolderResult placeholder;
+    if (auto query = parsedDistinct.getQuery()) {
+        // Replace any encrypted fields in the query, and overwrite the original query from the
+        // parsed command.
+        placeholder = replaceEncryptedFieldsInFilter(*schemaTree, parsedDistinct.getQuery().get());
+        parsedDistinct.setQuery(placeholder.result);
+    }
+
+    // Serialize the parsed distinct command. Passing the original command object to 'serialize()'
+    // allows the IDL to merge generic fields which the command does not specifically handle.
+    return PlaceHolderResult{placeholder.hasEncryptionPlaceholders,
+                             parsedDistinct.serialize(cmdObj).body};
 }
 
 PlaceHolderResult addPlaceHoldersForFindAndModify(
-    const BSONObj& cmdObj, std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
+    const std::string& dbName,
+    const BSONObj& cmdObj,
+    std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     return PlaceHolderResult();
 }
 
@@ -218,9 +262,12 @@ void processWriteOpCommand(const OpMsgRequest& request,
 }
 
 using QueryProcessFunction =
-    PlaceHolderResult(const BSONObj& cmdObj, std::unique_ptr<EncryptionSchemaTreeNode> schemaTree);
+    PlaceHolderResult(const std::string& dbName,
+                      const BSONObj& cmdObj,
+                      std::unique_ptr<EncryptionSchemaTreeNode> schemaTree);
 
-void processQueryCommand(const BSONObj& cmdObj,
+void processQueryCommand(const std::string& dbName,
+                         const BSONObj& cmdObj,
                          BSONObjBuilder* builder,
                          QueryProcessFunction func) {
     BSONObjBuilder stripped;
@@ -229,7 +276,7 @@ void processQueryCommand(const BSONObj& cmdObj,
     // Parse the JSON Schema to an encryption schema tree.
     auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
 
-    PlaceHolderResult placeholder = func(stripped.obj(), std::move(schemaTree));
+    PlaceHolderResult placeholder = func(dbName, stripped.obj(), std::move(schemaTree));
 
     serializePlaceholderResult(placeholder, builder);
 }
@@ -262,24 +309,32 @@ bool isEncryptionNeeded(const BSONObj& jsonSchema) {
     return false;
 }
 
-void processFindCommand(const BSONObj& cmdObj, BSONObjBuilder* builder) {
-    processQueryCommand(cmdObj, builder, addPlaceHoldersForFind);
+void processFindCommand(const std::string& dbName, const BSONObj& cmdObj, BSONObjBuilder* builder) {
+    processQueryCommand(dbName, cmdObj, builder, addPlaceHoldersForFind);
 }
 
-void processAggregateCommand(const BSONObj& cmdObj, BSONObjBuilder* builder) {
-    processQueryCommand(cmdObj, builder, addPlaceHoldersForAggregate);
+void processAggregateCommand(const std::string& dbName,
+                             const BSONObj& cmdObj,
+                             BSONObjBuilder* builder) {
+    processQueryCommand(dbName, cmdObj, builder, addPlaceHoldersForAggregate);
 }
 
-void processDistinctCommand(const BSONObj& cmdObj, BSONObjBuilder* builder) {
-    processQueryCommand(cmdObj, builder, addPlaceHoldersForDistinct);
+void processDistinctCommand(const std::string& dbName,
+                            const BSONObj& cmdObj,
+                            BSONObjBuilder* builder) {
+    processQueryCommand(dbName, cmdObj, builder, addPlaceHoldersForDistinct);
 }
 
-void processCountCommand(const BSONObj& cmdObj, BSONObjBuilder* builder) {
-    processQueryCommand(cmdObj, builder, addPlaceHoldersForCount);
+void processCountCommand(const std::string& dbName,
+                         const BSONObj& cmdObj,
+                         BSONObjBuilder* builder) {
+    processQueryCommand(dbName, cmdObj, builder, addPlaceHoldersForCount);
 }
 
-void processFindAndModifyCommand(const BSONObj& cmdObj, BSONObjBuilder* builder) {
-    processQueryCommand(cmdObj, builder, addPlaceHoldersForFindAndModify);
+void processFindAndModifyCommand(const std::string& dbName,
+                                 const BSONObj& cmdObj,
+                                 BSONObjBuilder* builder) {
+    processQueryCommand(dbName, cmdObj, builder, addPlaceHoldersForFindAndModify);
 }
 
 void processInsertCommand(const OpMsgRequest& request, BSONObjBuilder* builder) {

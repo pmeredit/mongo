@@ -28,7 +28,7 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
         {delete: "foo", deletes: [{q: {a: 1}, limit: 1}]},
     ];
 
-    const supportedCommands = ["find", "insert"];
+    const supportedCommands = ["find", "insert", "distinct"];
 
     cmds.forEach(element => {
         // Make sure no json schema fails

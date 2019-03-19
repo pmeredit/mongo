@@ -135,7 +135,7 @@
 
     // Invalid type for command parameters correctly result in an error.
     assert.commandFailedWithCode(testDB.runCommand({find: 5, filter: {}, jsonSchema: sampleSchema}),
-                                 13111);
+                                 ErrorCodes.InvalidNamespace);
     assert.commandFailedWithCode(
         testDB.runCommand({find: "test", filter: "not an object", jsonSchema: sampleSchema}),
         ErrorCodes.FailedToParse);

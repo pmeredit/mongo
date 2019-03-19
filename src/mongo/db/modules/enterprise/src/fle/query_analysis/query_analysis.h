@@ -52,16 +52,21 @@ bool isEncryptionNeeded(const BSONObj& jsonSchema);
  *   }
  * }
  */
-void processFindCommand(const BSONObj& cmdObj, BSONObjBuilder* builder);
+void processFindCommand(const std::string& dbName, const BSONObj& cmdObj, BSONObjBuilder* builder);
 
-void processAggregateCommand(const BSONObj& cmdObj, BSONObjBuilder* builder);
+void processAggregateCommand(const std::string& dbName,
+                             const BSONObj& cmdObj,
+                             BSONObjBuilder* builder);
 
-void processDistinctCommand(const BSONObj& cmdObj, BSONObjBuilder* builder);
+void processDistinctCommand(const std::string& dbName,
+                            const BSONObj& cmdObj,
+                            BSONObjBuilder* builder);
 
-void processCountCommand(const BSONObj& cmdObj, BSONObjBuilder* builder);
+void processCountCommand(const std::string& dbName, const BSONObj& cmdObj, BSONObjBuilder* builder);
 
-void processFindAndModifyCommand(const BSONObj& cmdObj, BSONObjBuilder* builder);
-
+void processFindAndModifyCommand(const std::string& dbName,
+                                 const BSONObj& cmdObj,
+                                 BSONObjBuilder* builder);
 
 // Write Ops commands take document sequences so we process OpMsgRequest instead of BSONObj
 

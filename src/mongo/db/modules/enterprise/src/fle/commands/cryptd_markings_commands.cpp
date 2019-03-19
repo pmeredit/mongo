@@ -40,7 +40,7 @@ public:
 
         try {
             BSONObjBuilder builder = result->getBodyBuilder();
-            processCommand(request.body, &builder);
+            processCommand(request.getDatabase().toString(), request.body, &builder);
         } catch (...) {
             return exceptionToStatus();
         }
@@ -50,15 +50,16 @@ public:
 
     bool run(OperationContext* opCtx,
              const std::string& dbname,
-             const BSONObj& jsobj,
+             const BSONObj& cmdObj,
              BSONObjBuilder& result) final {
-
-        processCommand(jsobj, &result);
+        processCommand(dbname, cmdObj, &result);
 
         return true;
     }
 
-    virtual void processCommand(const BSONObj& jsobj, BSONObjBuilder* result) const = 0;
+    virtual void processCommand(const std::string& dbname,
+                                const BSONObj& cmdObj,
+                                BSONObjBuilder* result) const = 0;
 };
 
 
@@ -66,8 +67,10 @@ class CryptDFind final : public CryptDPlaceholder {
 public:
     CryptDFind() : CryptDPlaceholder("find") {}
 
-    void processCommand(const BSONObj& jsobj, BSONObjBuilder* result) const final {
-        processFindCommand(jsobj, result);
+    void processCommand(const std::string& dbname,
+                        const BSONObj& cmdObj,
+                        BSONObjBuilder* result) const final {
+        processFindCommand(dbname, cmdObj, result);
     }
 } cmdCryptDFind;
 
@@ -76,8 +79,10 @@ class CryptDAggregate final : public CryptDPlaceholder {
 public:
     CryptDAggregate() : CryptDPlaceholder("aggregate") {}
 
-    void processCommand(const BSONObj& jsobj, BSONObjBuilder* result) const final {
-        processAggregateCommand(jsobj, result);
+    void processCommand(const std::string& dbname,
+                        const BSONObj& cmdObj,
+                        BSONObjBuilder* result) const final {
+        processAggregateCommand(dbname, cmdObj, result);
     }
 } cmdCryptDAggregate;
 
@@ -86,8 +91,10 @@ class CryptDDistinct final : public CryptDPlaceholder {
 public:
     CryptDDistinct() : CryptDPlaceholder("distinct") {}
 
-    void processCommand(const BSONObj& jsobj, BSONObjBuilder* result) const final {
-        processDistinctCommand(jsobj, result);
+    void processCommand(const std::string& dbname,
+                        const BSONObj& cmdObj,
+                        BSONObjBuilder* result) const final {
+        processDistinctCommand(dbname, cmdObj, result);
     }
 } cmdCryptDDistinct;
 
@@ -95,8 +102,10 @@ class CryptDCount final : public CryptDPlaceholder {
 public:
     CryptDCount() : CryptDPlaceholder("count") {}
 
-    void processCommand(const BSONObj& jsobj, BSONObjBuilder* result) const final {
-        processCountCommand(jsobj, result);
+    void processCommand(const std::string& dbname,
+                        const BSONObj& cmdObj,
+                        BSONObjBuilder* result) const final {
+        processCountCommand(dbname, cmdObj, result);
     }
 } cmdCryptDCount;
 
@@ -105,8 +114,10 @@ class CryptDFindAndModify final : public CryptDPlaceholder {
 public:
     CryptDFindAndModify() : CryptDPlaceholder("findAndModify", "findandmodify") {}
 
-    void processCommand(const BSONObj& jsobj, BSONObjBuilder* result) const final {
-        processFindAndModifyCommand(jsobj, result);
+    void processCommand(const std::string& dbname,
+                        const BSONObj& cmdObj,
+                        BSONObjBuilder* result) const final {
+        processFindAndModifyCommand(dbname, cmdObj, result);
     }
 } cmdCryptDFindAndModify;
 
