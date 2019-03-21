@@ -1,11 +1,11 @@
 # -*- mode: python -*-
 
 Import('env')
-Import('get_option')
 
 env.SConscript(
     dirs=[
         'query_analysis',
+        'shell',
     ],
     exports=[
         'env'

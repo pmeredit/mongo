@@ -1,0 +1,74 @@
+#
+# Copyright (C) 2019 MongoDB, Inc.  All Rights Reserved.
+#
+
+global:
+    cpp_namespace: "mongo"
+
+imports:
+    - "mongo/idl/basic_types.idl"
+
+enums:
+    KMSProvider:
+        description: "Enumeration of supported KMS Providers"
+        type: string
+        values:
+            aws: "aws"
+
+structs:
+    commonProvider:
+        description: "Common Provider fields"
+        strict: false
+        fields:
+          provider: KMSProvider
+
+    # Options passed to Mongo() javascript constructor
+    awsKMS:
+        description: "AWS KMS config"
+        chained_structs:
+          commonProvider: commonProvider
+        fields:
+          region: string
+          accessKeyId: string
+          secretAccessKey: string
+          sessionToken:
+            type: string
+            optional: true
+          url:
+            type: string
+            optional: true
+
+    awsEncryptResponse:
+        description: "Response from AWS KMS Encrypt request, i.e. TrentService.Encrypt"
+        fields:
+          CiphertextBlob:
+            type: string
+          KeyId:
+            type: string
+
+    awsDecryptResponse:
+        description: "Response from AWS KMS Decrypt request, i.e. TrentService.Decrypt"
+        fields:
+          Plaintext:
+            type: string
+          KeyId:
+            type: string
+
+    awsMasterKey:
+        description: "AWS KMS Key Store Description"
+        fields:
+          provider:
+            type: string
+            default: '"aws"'
+          awsKey:
+            type: string
+          awsRegion:
+            type: string
+
+    masterKeyAndMaterial:
+        description: "AWS KMS Key Material Description"
+        fields:
+          keyMaterial:
+            type: string
+          masterKey:
+            type: awsMasterKey

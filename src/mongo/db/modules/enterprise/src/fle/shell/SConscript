@@ -1,0 +1,30 @@
+# -*- mode: python -*-
+
+Import('env')
+
+kmsEnv = env.Clone()
+
+kmsEnv.InjectThirdParty(libraries=['kms-message'])
+
+kmsEnv.Library(
+    target="kms",
+    source=[
+        "kms.cpp",
+        "kms_aws.cpp",
+        kmsEnv.Idlc("kms.idl")[0],
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/base/secure_allocator',
+        '$BUILD_DIR/mongo/util/net/network',
+        '$BUILD_DIR/mongo/util/net/socket',
+        '$BUILD_DIR/mongo/util/net/ssl_manager',
+        '$BUILD_DIR/mongo/util/net/ssl_options',
+        '$BUILD_DIR/third_party/shim_kms_message',
+    ],
+    # Artificially inject it into the shell
+    # TODO - remove this and make the shell depend on a kms_shell library instead
+    PROGDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/mongo',
+    ]
+)
