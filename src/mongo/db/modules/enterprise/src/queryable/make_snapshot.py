@@ -17,7 +17,7 @@ import re
 import os
 import sys
 import time
-from StringIO import StringIO
+from io import StringIO
 from bson.binary import Binary
 from bson.timestamp import Timestamp
 from bson.objectid import ObjectId
@@ -35,10 +35,10 @@ backupdb_uri = "mongodb://127.0.0.1:27017"
 blockstore_uri = "mongodb://127.0.0.1:27017"
 blocksize = 64 * 1024
 
-print "Inserting snapshot data into " + backupdb_uri
-print "Inserting BlockFiles/Blocks into " + blockstore_uri
-print 'SnapshotId: ObjectId("%s")' % (str(snapshot_id),)
-print "Blocksize: " + str(blocksize)
+print("Inserting snapshot data into " + backupdb_uri)
+print("Inserting BlockFiles/Blocks into " + blockstore_uri)
+print('SnapshotId: ObjectId("%s")' % (str(snapshot_id),))
+print("Blocksize: " + str(blocksize))
 
 backupdb = pymongo.MongoClient(backupdb_uri)
 blockstore = pymongo.MongoClient(blockstore_uri)
@@ -126,7 +126,7 @@ def save_file(absolutePath, relativePath):
                   "phase": "A",
                   "blocks": blockData,
                   "backingFileObj": None})
-    print '\t' + relativePath + ': ' + str(file_id)
+    print('\t' + relativePath + ': ' + str(file_id))
     return file_id
 
 data_file_re = re.compile("\.\d+$")

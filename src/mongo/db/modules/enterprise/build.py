@@ -1,4 +1,4 @@
-from __future__ import print_function
+
 
 import os
 import os.path
@@ -73,7 +73,7 @@ def configure(conf, env):
         if not env.TargetOSIs("windows", "darwin"):
             try:
                 snmpFlags = env.ParseFlags("!net-snmp-config --agent-libs")
-            except OSError, ose:
+            except OSError as ose:
                 # the net-snmp-config command was not found
                 env.ConfError("Could not find or execute 'net-snmp-config': {0}", ose)
             else:
@@ -160,7 +160,7 @@ def configure(conf, env):
     if env.TargetOSIs("windows"):
         import re
         import subprocess
-        import _winreg
+        import winreg
 
         files = [
                 'libsasl.dll',
@@ -179,8 +179,8 @@ def configure(conf, env):
         if programfilesx86 is None:
             programfilesx86 = "C:\\Program Files (x86)"
         vsinstall_path = subprocess.check_output([os.path.join(programfilesx86, "Microsoft Visual Studio", "Installer", "vswhere.exe"), "-version", "[15.0,16.0)", "-property", "installationPath", "-nologo"]).strip()
-        vsruntime_key = _winreg.OpenKey(_winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x64")
-        vslib_version,vslib_version_type = _winreg.QueryValueEx(vsruntime_key, "Version")
+        vsruntime_key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x64")
+        vslib_version,vslib_version_type = winreg.QueryValueEx(vsruntime_key, "Version")
 
         # Get library version from registry and fallback to directory search if not found as expected on disk
         redist_root = os.path.join(vsinstall_path, "VC", "Redist", "MSVC")
