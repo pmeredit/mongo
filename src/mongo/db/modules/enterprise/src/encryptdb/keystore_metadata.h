@@ -6,8 +6,8 @@
 
 #include "boost/filesystem/path.hpp"
 
+#include "encryptdb/keystore_metadata_gen.h"
 #include "encryption_options.h"
-#include "mongo/db/modules/enterprise/src/encryptdb/keystore_metadata_gen.h"
 #include "symmetric_key.h"
 
 namespace mongo {
