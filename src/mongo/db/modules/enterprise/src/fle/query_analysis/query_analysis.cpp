@@ -252,7 +252,24 @@ PlaceHolderResult addPlaceHoldersForUpdate(const OpMsgRequest& request,
 
 PlaceHolderResult addPlaceHoldersForDelete(const OpMsgRequest& request,
                                            std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
-    return PlaceHolderResult();
+    invariant(schemaTree);
+    PlaceHolderResult placeHolderResult{};
+
+    auto deleteRequest = write_ops::Delete::parse(IDLParserErrorContext("delete"), request);
+
+    std::vector<write_ops::DeleteOpEntry> markedDeletes;
+    for (auto&& op : deleteRequest.getDeletes()) {
+        markedDeletes.push_back(op);
+        auto& opToMark = markedDeletes.back();
+        auto resultForOp = replaceEncryptedFieldsInFilter(*schemaTree, opToMark.getQ());
+        placeHolderResult.hasEncryptionPlaceholders =
+            placeHolderResult.hasEncryptionPlaceholders || resultForOp.hasEncryptionPlaceholders;
+        opToMark.setQ(resultForOp.result);
+    }
+
+    deleteRequest.setDeletes(std::move(markedDeletes));
+    placeHolderResult.result = deleteRequest.toBSON(request.body);
+    return placeHolderResult;
 }
 
 void serializePlaceholderResult(const PlaceHolderResult& placeholder, BSONObjBuilder* builder) {
