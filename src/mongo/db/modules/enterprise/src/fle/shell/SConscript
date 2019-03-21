@@ -16,6 +16,7 @@ kmsEnv.Library(
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/base/secure_allocator',
+        '$BUILD_DIR/mongo/db/commands/test_commands_enabled',
         '$BUILD_DIR/mongo/util/net/network',
         '$BUILD_DIR/mongo/util/net/socket',
         '$BUILD_DIR/mongo/util/net/ssl_manager',
