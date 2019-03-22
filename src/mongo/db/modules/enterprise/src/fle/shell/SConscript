@@ -1,6 +1,9 @@
 # -*- mode: python -*-
 
-Import('env')
+Import([
+    'env',
+    'get_option'
+])
 
 kmsEnv = env.Clone()
 
@@ -42,3 +45,22 @@ kmsEnv.JSHeader(
 
 kmsEnv.Alias("generated-sources", "kms-shell-server.cpp")
 
+scriptingEnv = kmsEnv.Clone()
+scriptingEnv.InjectMozJS()
+
+scriptingEnv.Library(
+    target="encrypted_dbclient",
+    source=[
+        "encrypted_dbclient_base.cpp",
+        kmsEnv.Idlc("fle_shell_options.idl")[0],
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/client/clientdriver_minimal',
+        '$BUILD_DIR/mongo/scripting/scripting',
+        '$BUILD_DIR/third_party/shim_mozjs',
+        'kms',
+    ],
+    PROGDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/mongo'
+    ]
+)

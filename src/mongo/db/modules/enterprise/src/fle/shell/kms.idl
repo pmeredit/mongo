@@ -28,7 +28,6 @@ structs:
         chained_structs:
           commonProvider: commonProvider
         fields:
-          region: string
           accessKeyId: string
           secretAccessKey: string
           sessionToken:
@@ -36,6 +35,21 @@ structs:
             optional: true
           url:
             type: string
+            optional: true
+
+    
+    clientSideFLEOptions:
+        description: "FLE Options inputted through the Mongo constructor in the shell"
+        fields:
+          keyVaultCollection: #Parsed as a JSHandleValue, not through IDL 
+            type: void
+            ignore: true
+          awsKMS: awsKMS
+          useRemoteSchemas:
+            type: bool
+            optional: true
+          schemas:
+            type: object
             optional: true
 
     awsEncryptResponse:

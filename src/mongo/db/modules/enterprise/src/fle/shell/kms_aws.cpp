@@ -347,9 +347,10 @@ std::unique_ptr<KMSService> AWSKMSService::create(const AwsKMS& config) {
     awsKMS->_sslManager = SSLManagerInterface::create(sslGlobalParams, false);
 
     if (!config.getUrl()) {
-        std::string hostname = str::stream() << "kms." << config.getRegion() << ".amazonaws.com";
+        std::string hostname = str::stream() << "kms."
+                                             << "us-east-1"
+                                             << ".amazonaws.com";
         awsKMS->_server = HostAndPort(hostname, 443);
-        awsKMS->_config.region = config.getRegion().toString();
     } else {
         awsKMS->_server = parseUrl(config.getUrl().get());
     }
