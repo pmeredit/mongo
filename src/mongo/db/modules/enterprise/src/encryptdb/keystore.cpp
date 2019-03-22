@@ -2,6 +2,8 @@
  * Copyright (c) 2019 MongoDB, Inc.
  */
 
+#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
+
 #include "mongo/platform/basic.h"
 
 #include "keystore.h"
@@ -10,6 +12,7 @@
 
 #include "mongo/base/string_data.h"
 #include "mongo/stdx/memory.h"
+#include "mongo/util/log.h"
 #include "mongo/util/string_map.h"
 #include "symmetric_crypto.h"
 
@@ -115,6 +118,7 @@ public:
                                                   const EncryptionGlobalParams* params);
 
     std::unique_ptr<Session> makeSession() override;
+    void rollOverKeys() override;
 
 private:
     // Create a new WT table with the following schema:
@@ -181,6 +185,15 @@ std::unique_ptr<Keystore> KeystoreImplV0::makeKeystore(const boost::filesystem::
     return stdx::make_unique<KeystoreImplV0>(std::move(keystore));
 }
 
+void KeystoreImplV0::rollOverKeys() {
+    // TODO This error message will make sense when SERVER-40074 is done, because the encryption
+    // key manager will transparently upgrade the keystore from v0 to v1 on database key rollover
+    // with GCM enabled.
+    severe() << "The encrypted storage engine must be configured with AES256-GCM mode to "
+             << "support database key rollover";
+    fassertFailedNoTrace(51168);
+}
+
 std::unique_ptr<Keystore::Session> KeystoreImplV0::makeSession() {
     return stdx::make_unique<SessionImplV0>(_datastore.makeSession());
 }
@@ -199,6 +212,7 @@ public:
                                                   const EncryptionGlobalParams* params);
 
     std::unique_ptr<Session> makeSession() override;
+    void rollOverKeys() override;
 
 private:
     friend class SessionImplV1;
@@ -216,7 +230,7 @@ private:
         "columns=(keyid,database,rolloverID,key,initializationCount)"_sd;
 
     WTDataStore _datastore;
-    const uint32_t _rolloverId;
+    uint32_t _rolloverId;
 
     // Looking up keys by name would require scanning the WT table, so we cache the ID's for
     // all the databases in the current rollover set.
@@ -277,7 +291,9 @@ public:
         const auto& keyId = key->getKeyId();
         std::tie(std::ignore, inserted) =
             _parent->_dbNameToKeyId.insert({keyId.name(), keyId.id().get()});
-        fassert(51134, inserted);
+
+        LOG(1) << "Cached encryption key mapping: " << view.database << " -> " << keyId.id().get();
+        fassert(51167, inserted);
     }
 
     void update(iterator it, const UniqueSymmetricKey& key) override {
@@ -331,7 +347,8 @@ std::unique_ptr<Keystore> KeystoreImplV1::makeKeystore(const boost::filesystem::
             bool inserted;
             std::tie(std::ignore, inserted) =
                 dbNameToKeyId.insert({view.database.toString(), view.id});
-            fassert(51133, inserted);
+            LOG(1) << "Cached encryption key mapping: " << view.database << " -> " << view.id;
+            fassert(51166, inserted);
         } while ((++cursor != session.rend()) &&
                  (KeystoreRecordViewV1(cursor).rolloverId == rolloverId));
     }
@@ -340,22 +357,36 @@ std::unique_ptr<Keystore> KeystoreImplV1::makeKeystore(const boost::filesystem::
         std::move(keystore), rolloverId, std::move(dbNameToKeyId));
 }
 
+void KeystoreImplV1::rollOverKeys() {
+    stdx::lock_guard<stdx::mutex> lk(_dbNameToKeyIdMutex);
+
+    _rolloverId++;
+    _dbNameToKeyId.clear();
+}
+
 std::unique_ptr<Keystore::Session> KeystoreImplV1::makeSession() {
     return stdx::make_unique<SessionImplV1>(_datastore.makeSession(), this);
 }
 
 std::unique_ptr<Keystore> Keystore::makeKeystore(const boost::filesystem::path& path,
-                                                 const KeystoreMetadataFile& metadata,
+                                                 Version version,
                                                  const EncryptionGlobalParams* params) {
-    switch (metadata.getVersion()) {
-        case 0:
+    switch (version) {
+        case Version::k0:
             return KeystoreImplV0::makeKeystore(path, params);
-        case 1:
-            fassert(51132, (params->encryptionCipherMode == crypto::aes256GCMName));
+        case Version::k1:
+            fassert(51165, (params->encryptionCipherMode == crypto::aes256GCMName));
             return KeystoreImplV1::makeKeystore(path, params);
         default:
             MONGO_UNREACHABLE;
     }
+}
+
+std::unique_ptr<Keystore> Keystore::makeKeystore(const boost::filesystem::path& path,
+                                                 const KeystoreMetadataFile& metadata,
+                                                 const EncryptionGlobalParams* params) {
+
+    return Keystore::makeKeystore(path, static_cast<Version>(metadata.getVersion()), params);
 }
 
 }  // namespace mongo

@@ -5,6 +5,8 @@
     "use strict";
 
     const testDir = "src/mongo/db/modules/enterprise/jstests/encryptdb/";
+    load(testDir + "libs/helpers.js");
+
     function runTest(cipherMode) {
         let dbNameCounter = 0;
         function runEncryptedMongod(params) {
@@ -91,21 +93,6 @@
     }
 
     runTest("AES256-CBC");
-
-    const hostInfo = function() {
-        const md = MongoRunner.runMongod({});
-        assert.neq(null, md, "Failed to start mongod to probe host type");
-        const db = md.getDB("test");
-        const hostInfo = db.hostInfo();
-        MongoRunner.stopMongod(md);
-        return hostInfo;
-    }();
-    const isOSX = (hostInfo.os.type == "Darwin");
-    const isWindowsSchannel =
-        (hostInfo.os.type == "Windows" && /SChannel/.test(buildInfo().openssl.running));
-
-    const platformSupportsGCM = !(isOSX || isWindowsSchannel);
-
     if (platformSupportsGCM) {
         runTest("AES256-GCM");
     }

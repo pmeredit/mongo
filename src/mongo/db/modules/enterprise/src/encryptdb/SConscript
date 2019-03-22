@@ -71,7 +71,6 @@ wtEnv.Library(target='encryptdb',
                    'wiredtiger_encryption_callbacks.cpp',
               ],
               LIBDEPS=[
-                   'key_acquisition',
                    'symmetric_crypto',
                    '$BUILD_DIR/mongo/base',
                    '$BUILD_DIR/mongo/db/storage/encryption_hooks',
@@ -79,9 +78,23 @@ wtEnv.Library(target='encryptdb',
                    '$BUILD_DIR/third_party/shim_wiredtiger',
               ],
               LIBDEPS_PRIVATE=[
+                   'key_acquisition',
                    'keystore_metadata',
-                   '$BUILD_DIR/mongo/db/storage/storage_options'
+                   '$BUILD_DIR/mongo/db/catalog/catalog_impl',
+                   '$BUILD_DIR/mongo/db/storage/storage_options',
               ],
+)
+
+wtEnv.CppUnitTest(
+    target='keystore_test',
+    source=[
+        'keystore_test.cpp',
+    ],
+    LIBDEPS=[
+        'encryptdb',
+        '$BUILD_DIR/mongo/db/service_context_test_fixture',
+        '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_mock',
+    ],
 )
 
 env.Library(target='log_redact_options',

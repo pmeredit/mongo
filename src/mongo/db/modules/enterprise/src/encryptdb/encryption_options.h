@@ -24,6 +24,7 @@ struct EncryptionGlobalParams {
 
     // Master key rotation options
     bool rotateMasterKey = false;
+    bool rotateDatabaseKeys = false;
     std::string kmipKeyIdentifierRot;
 
     // Whether the keystore should be opened read only.

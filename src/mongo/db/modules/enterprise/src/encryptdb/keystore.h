@@ -29,6 +29,11 @@ public:
                                                   const KeystoreMetadataFile& metadata,
                                                   const EncryptionGlobalParams* params);
 
+    enum class Version : int32_t { k0 = 0, k1 = 1 };
+    static std::unique_ptr<Keystore> makeKeystore(const boost::filesystem::path& path,
+                                                  Version version,
+                                                  const EncryptionGlobalParams* params);
+
     class Session {
     public:
         virtual ~Session() = default;
@@ -85,6 +90,7 @@ public:
     };
 
     virtual std::unique_ptr<Session> makeSession() = 0;
+    virtual void rollOverKeys() = 0;
 };
 
 }  // namespace mongo

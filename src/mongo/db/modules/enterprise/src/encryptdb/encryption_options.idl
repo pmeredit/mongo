@@ -32,3 +32,9 @@ configs:
         description: 'Rotate master encryption key'
         short_name: kmipRotateMasterKey
         arg_vartype: Switch
+
+    "security.eseDatabaseKeyRollover":
+        description: 'Rotate encrypted storage engine database keys'
+        short_name: eseDatabaseKeyRollover
+        arg_vartype: Switch
+        source: cli

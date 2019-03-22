@@ -92,6 +92,11 @@ MONGO_STARTUP_OPTIONS_STORE(EncryptionOptions)(InitializerContext* context) {
         encryptionGlobalParams.kmipParams.kmipKeyIdentifier = "";
     }
 
+    if (params.count("security.eseDatabaseKeyRollover")) {
+        encryptionGlobalParams.rotateDatabaseKeys =
+            params["security.eseDatabaseKeyRollover"].as<bool>();
+    }
+
     if (params.count("storage.queryableBackupMode")) {
         encryptionGlobalParams.readOnlyMode = params["storage.queryableBackupMode"].as<bool>();
     }

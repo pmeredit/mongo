@@ -1,9 +1,12 @@
 // This tests that encrypted storage engines can be written to, rebooted, and read from
+
 (function() {
     'use strict';
+    const assetsPath = "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/";
+    load(assetsPath + "helpers.js");
 
     var runTest = function(cipherMode, expectSuccessfulStartup, readOnly) {
-        var key = "src/mongo/db/modules/enterprise/jstests/encryptdb/libs/ekf";
+        var key = assetsPath + "ekf";
         run("chmod", "600", key);
 
         var md = MongoRunner.runMongod(
@@ -69,29 +72,6 @@
 
         MongoRunner.stopMongod(md);
     };
-
-    // Ubuntu 12.04, SUSE and RHEL5 have a bug in their copy of OpenSSL which keeps us from running
-    // with GCM.
-    // Detect these platforms, and assert accordingly.
-
-    var md = MongoRunner.runMongod({});
-    assert.neq(null, md, "Failed to start mongod to probe host type");
-    var db = md.getDB("test");
-    var hostInfo = db.hostInfo();
-    MongoRunner.stopMongod(md);
-
-    var isUbuntu1204 = (hostInfo.os.type == "Linux" && hostInfo.os.name == "Ubuntu" &&
-                        hostInfo.os.version == "12.04");
-    var isSUSE11 = (hostInfo.os.type == "Linux" && hostInfo.os.name.match("SUSE.+11"));
-    var isRHEL5 = (hostInfo.os.type == "Linux" &&
-                   hostInfo.os.name.match("Red Hat Enterprise Linux Server release 5"));
-    var isOSX = (hostInfo.os.type == "Darwin");
-
-    const isWindowsSchannel =
-        (hostInfo.os.type == "Windows" && /SChannel/.test(buildInfo().openssl.running));
-
-    const platformSupportsGCM =
-        !(isUbuntu1204 || isSUSE11 || isRHEL5 || isOSX || isWindowsSchannel);
 
     runTest("AES256-CBC", true, false);
     runTest("AES256-CBC", true, true);

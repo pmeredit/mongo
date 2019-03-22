@@ -21,11 +21,6 @@ std::string SymmetricKeyId::_initStrRep() const {
     return str::stream() << _name << " (" << _id << ")";
 }
 
-bool SymmetricKeyId::operator==(const std::string& other) const {
-    invariant(!_name.empty());
-    return _name == other;
-}
-
 const std::string& SymmetricKeyId::toString() const {
     if (!_strRep.empty()) {
         return _strRep;

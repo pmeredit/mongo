@@ -132,6 +132,7 @@ int encrypt(WT_ENCRYPTOR* encryptor,
     const auto mode = crypto->cipherMode;
     const auto* key = crypto->dbKey.get();
     const auto& keyId = key->getKeyId();
+
     auto schema = crypto::PageSchema::k0;
     if ((mode == crypto::aesMode::gcm) && (keyId.id()) &&
         EncryptionKeyManager::get(getGlobalServiceContext())->getKeystoreVersion()) {
@@ -165,12 +166,13 @@ int decrypt(WT_ENCRYPTOR* encryptor,
 
     std::unique_ptr<SymmetricKey> pageKey;
     if (mode == crypto::aesMode::gcm) {
-        SymmetricKeyId::id_type id;
-        std::tie(schema, id) = crypto::parseGCMPageSchema(src, srcLen);
-        if ((schema == crypto::PageSchema::k1) && (id != key->getKeyId().id())) {
+        SymmetricKeyId::id_type numericKeyFromPage;
+        std::tie(schema, numericKeyFromPage) = crypto::parseGCMPageSchema(src, srcLen);
+        const SymmetricKeyId keyIdFromPage(key->getKeyId().name(), numericKeyFromPage);
+        if ((schema == crypto::PageSchema::k1) && (keyIdFromPage.id() != key->getKeyId().id())) {
             // Fetch and use page-specific key instead of the current database key.
-            SymmetricKeyId keyId(key->getKeyId().name(), id);
-            auto swPageKey = EncryptionKeyManager::get(getGlobalServiceContext())->getKey(keyId);
+            auto swPageKey =
+                EncryptionKeyManager::get(getGlobalServiceContext())->getKey(keyIdFromPage);
             if (!swPageKey.isOK()) {
                 severe() << "Unable to retrieve encryption key for page: "
                          << swPageKey.getStatus().reason();
@@ -185,7 +187,7 @@ int decrypt(WT_ENCRYPTOR* encryptor,
     Status ret = crypto::aesDecrypt(*key, mode, schema, src, srcLen, dst, dstLen, resultLen);
 
     if (!ret.isOK()) {
-        if (crypto->dbKey->getKeyId() == kSystemKeyId) {
+        if (crypto->dbKey->getKeyId().name() == kSystemKeyId) {
             severe() << "Decryption failed, invalid encryption master key or keystore encountered.";
         } else {
             severe() << "Decrypt error for key " << crypto->dbKey->getKeyId() << ": " << ret;
@@ -201,7 +203,7 @@ int destroyEncryptor(WT_ENCRYPTOR* encryptor, WT_SESSION* session) noexcept {
     if (myEncryptor) {
         // Destroy the SymmetricKey object
         if (myEncryptor->dbKey) {
-            if (myEncryptor->dbKey->getKeyId() == kSystemKeyId) {
+            if (myEncryptor->dbKey->getKeyId().name() == kSystemKeyId) {
                 // With the destruction of the system key, the key manager is not needed
                 // any more since the process is in shutdown. It may be used during feature
                 // compatibility version downgrade so make sure a valid global encryption

@@ -216,21 +216,26 @@ Status EncryptionKeyManager::endNonBlockingBackup() {
 // callback.
 StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::getKey(
     const SymmetricKeyId& keyId) {
-    if (keyId == kSystemKeyId) {
-        return _getSystemKey();
-    } else if (keyId == kMasterKeyId) {
+    if (keyId.name() == kSystemKeyId) {
+        return _getSystemKey(keyId);
+    } else if (keyId.name() == kMasterKeyId) {
         return _getMasterKey();
     }
     return _readKey(keyId);
 }
 
-StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getSystemKey() {
+StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getSystemKey(
+    const SymmetricKeyId& keyId) {
+    if (_keystore) {
+        return _readKey(keyId);
+    }
+
     Status status = _initLocalKeystore();
     if (!status.isOK()) {
         return status;
     }
 
-    return _readKey(kSystemKeyId);
+    return _readKey(keyId);
 }
 
 StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getMasterKey() {
@@ -280,7 +285,8 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_readKey(
 
         // Keep the server from starting if all possible fixed fields have been used, rather than
         // disobey NIST's guidelines.
-        if (cursor->getAndIncrementInvocationCount() >= std::numeric_limits<uint32_t>::max() - 10) {
+        if (cursor->incrementAndGetInitializationCount() >=
+            std::numeric_limits<uint32_t>::max() - 10) {
             return Status(
                 ErrorCodes::Overflow,
                 "Unable to allocate an IV prefix, as the server has been restarted 2^32 times.");
@@ -420,7 +426,23 @@ Status EncryptionKeyManager::_initLocalKeystore() {
     // Open the local WT key store, create it if it doesn't exist.
     try {
         _keystore = Keystore::makeKeystore(keystorePath, _keystoreMetadata, _encryptionParams);
+        if (_keystoreMetadata.getDirty() || _encryptionParams->rotateDatabaseKeys) {
+            if (_keystoreMetadata.getDirty()) {
+                log() << "Detected an unclean shutdown of the encrypted storage engine - "
+                      << "rolling over all database keys.";
+            } else {
+                log() << "Database key rollover for encrypted storage engine was requested.";
+            }
+            _keystore->rollOverKeys();
+            _keystoreMetadata.setDirty(false);
+            // Make sure that we can get the new system key before persisting the metadata file
+            // so that we know the rollover was successful.
+            uassertStatusOK(_getSystemKey(kSystemKeyId));
+            uassertStatusOK(_keystoreMetadata.store(
+                _metadataPath(PathMode::kValid), _masterKey, *_encryptionParams));
+        }
     } catch (const DBException& e) {
+        _keystore.reset();
         return e.toStatus();
     }
     return Status::OK();
@@ -434,7 +456,7 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) try {
     }
 
     const auto oldMasterKeyId = _masterKey->getKeyId();
-    if (oldMasterKeyId == newKeyId) {
+    if (oldMasterKeyId.name() == newKeyId) {
         return Status(
             ErrorCodes::BadValue,
             "Key rotation requires that the new master key id be different from the old.");

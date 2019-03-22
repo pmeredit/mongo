@@ -139,7 +139,7 @@ private:
     /**
      * Internal key management helper methods
      */
-    StatusWith<std::unique_ptr<SymmetricKey>> _getSystemKey();
+    StatusWith<std::unique_ptr<SymmetricKey>> _getSystemKey(const SymmetricKeyId& keyId);
     StatusWith<std::unique_ptr<SymmetricKey>> _getMasterKey();
     StatusWith<std::unique_ptr<SymmetricKey>> _readKey(const SymmetricKeyId& keyId);
 

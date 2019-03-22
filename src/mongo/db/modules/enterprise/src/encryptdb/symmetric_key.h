@@ -25,7 +25,10 @@ public:
     SymmetricKeyId(const StringLike& name) : _name(name) {}
 
     const std::string& toString() const;
-    bool operator==(const std::string& other) const;
+
+    bool operator==(const SymmetricKeyId& other) const {
+        return _id == other._id && _name == other._name;
+    }
 
     const boost::optional<id_type>& id() const {
         return _id;
@@ -73,6 +76,11 @@ public:
 
     // Return the number of times the key has been retrieved from the key store
     uint32_t getInitializationCount() const {
+        return _initializationCount;
+    }
+
+    uint32_t incrementAndGetInitializationCount() {
+        _initializationCount++;
         return _initializationCount;
     }
 
