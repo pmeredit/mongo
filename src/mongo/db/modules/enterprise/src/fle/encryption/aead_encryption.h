@@ -31,11 +31,11 @@ size_t aeadCipherOutputLength(size_t plainTextLen);
  */
 Status aeadEncrypt(const SymmetricKey& key,
                    const uint8_t* in,
-                   size_t inLen,
+                   const size_t inLen,
                    const uint8_t* iv,
                    const size_t ivLen,
-                   uint8_t* associatedData,
-                   const size_t associatedDataLen,
+                   const uint8_t* associatedData,
+                   const uint64_t associatedDataLen,
                    uint8_t* out,
                    const size_t outLen);
 
@@ -47,7 +47,7 @@ Status aeadDecrypt(const SymmetricKey& key,
                    const uint8_t* cipherText,
                    const size_t cipherLen,
                    const uint8_t* associatedData,
-                   const size_t associatedDataLen,
+                   const uint64_t associatedDataLen,
                    uint8_t* out,
                    size_t* outLen);
 
