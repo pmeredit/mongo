@@ -12,6 +12,7 @@
 #include "mongo/base/data_range.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bsonobj.h"
+#include "mongo/stdx/unordered_map.h"
 #include "mongo/util/net/hostandport.h"
 
 namespace mongo {
@@ -87,7 +88,7 @@ public:
     static std::unique_ptr<KMSService> create(const BSONObj& config);
 
 private:
-    static std::unordered_map<KMSProviderEnum, std::unique_ptr<KMSServiceFactory>> _factories;
+    static stdx::unordered_map<KMSProviderEnum, std::unique_ptr<KMSServiceFactory>> _factories;
 };
 
 /**

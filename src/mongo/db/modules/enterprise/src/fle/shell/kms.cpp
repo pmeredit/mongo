@@ -22,7 +22,7 @@ HostAndPort parseUrl(StringData url) {
     return HostAndPort(hostAndPort);
 }
 
-std::unordered_map<KMSProviderEnum, std::unique_ptr<KMSServiceFactory>>
+stdx::unordered_map<KMSProviderEnum, std::unique_ptr<KMSServiceFactory>>
     KMSServiceController::_factories;
 
 void KMSServiceController::registerFactory(KMSProviderEnum provider,
