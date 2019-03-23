@@ -75,7 +75,7 @@ Status aeadEncrypt(const SymmetricKey& key,
 
     uint64_t dataLenBits = associatedDataLen * 8;
     std::array<char, sizeof(uint64_t)> bigEndian;
-    DataView(bigEndian.begin()).write<BigEndian<uint64_t>>(dataLenBits);
+    DataView(bigEndian.data()).write<BigEndian<uint64_t>>(dataLenBits);
 
     SHA512Block hmacOutput = SHA512Block::computeHmac(
         macKey,
@@ -122,7 +122,7 @@ Status aeadDecrypt(const SymmetricKey& key,
 
     uint64_t dataLenBits = associatedDataLen * 8;
     std::array<char, sizeof(uint64_t)> bigEndian;
-    DataView(bigEndian.begin()).write<BigEndian<uint64_t>>(dataLenBits);
+    DataView(bigEndian.data()).write<BigEndian<uint64_t>>(dataLenBits);
 
     SHA512Block hmacOutput = SHA512Block::computeHmac(
         macKey,
