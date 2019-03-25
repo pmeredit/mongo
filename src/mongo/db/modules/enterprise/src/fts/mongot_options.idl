@@ -1,0 +1,16 @@
+# Copyright (C) 2019-present MongoDB, Inc.
+
+global:
+    cpp_namespace: 'mongo'
+    cpp_includes:
+      - 'fts/mongot_options.h'
+
+server_parameters:
+    mongotHost:
+        description: 'mongot host address'
+        set_at: [ startup ]
+        default: ''
+        on_update: 'MongotParams::onSetHost'
+        cpp_varname: 'globalMongotParams.host'
+        validator:
+            callback: 'MongotParams::onValidateHost'
