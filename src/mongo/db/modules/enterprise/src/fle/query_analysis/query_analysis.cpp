@@ -60,12 +60,14 @@ BSONObj extractJSONSchema(BSONObj obj, BSONObjBuilder* stripped) {
 
 /**
  * Recursively descends through the doc curDoc. For each key in the doc, checks the schema and
- * replaces it with an encryption placeholder if neccessary.
+ * replaces it with an encryption placeholder if neccessary. If origDoc is given it is passed to
+ * buildEncryptPlaceholders to resolve JSON Pointers. If it is not given, schemas with pointers
+ * will error.
  * Does not descend into arrays.
  */
 BSONObj replaceEncryptedFieldsRecursive(const EncryptionSchemaTreeNode* schema,
                                         BSONObj curDoc,
-                                        const BSONObj& origDoc,
+                                        const boost::optional<BSONObj>& origDoc,
                                         FieldRef* leadingPath,
                                         bool* encryptedFieldFound) {
     BSONObjBuilder builder;
@@ -212,7 +214,7 @@ PlaceHolderResult addPlaceHoldersForInsert(const OpMsgRequest& request,
                             element.timestamp() != Timestamp(0, 0));
             }
         }
-        auto placeholderPair = replaceEncryptedFields(doc, schemaTree.get(), FieldRef());
+        auto placeholderPair = replaceEncryptedFields(doc, schemaTree.get(), FieldRef(), doc);
         retPlaceholder.hasEncryptionPlaceholders =
             retPlaceholder.hasEncryptionPlaceholders || placeholderPair.hasEncryptionPlaceholders;
         docVector.push_back(placeholderPair.result);
@@ -309,10 +311,11 @@ void processQueryCommand(const std::string& dbName,
 
 PlaceHolderResult replaceEncryptedFields(BSONObj doc,
                                          const EncryptionSchemaTreeNode* schema,
-                                         FieldRef leadingPath) {
+                                         FieldRef leadingPath,
+                                         const boost::optional<BSONObj>& origDoc) {
     PlaceHolderResult res;
     res.result = replaceEncryptedFieldsRecursive(
-        schema, doc, doc, &leadingPath, &res.hasEncryptionPlaceholders);
+        schema, doc, origDoc, &leadingPath, &res.hasEncryptionPlaceholders);
     return res;
 }
 
@@ -375,7 +378,7 @@ void processDeleteCommand(const OpMsgRequest& request, BSONObjBuilder* builder) 
 
 BSONObj buildEncryptPlaceholder(BSONElement elem,
                                 const EncryptionMetadata& metadata,
-                                BSONObj origDoc) {
+                                const boost::optional<BSONObj>& origDoc) {
     invariant(metadata.getAlgorithm());
     invariant(metadata.getKeyId());
 
@@ -392,9 +395,9 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
     } else {
         // TODO SERVER-40077 Reject a JSON Pointer which points to a field which is already
         // encrypted.
-        uassert(51093, "A non-static (JSONPointer) keyId is not supported.", !origDoc.isEmpty());
+        uassert(51093, "A non-static (JSONPointer) keyId is not supported.", origDoc);
         auto pointer = keyId->jsonPointer();
-        auto resolvedKey = pointer.evaluate(origDoc);
+        auto resolvedKey = pointer.evaluate(origDoc.get());
         uassert(51114,
                 "keyId pointer '" + pointer.toString() + "' must point to a field that exists",
                 resolvedKey);

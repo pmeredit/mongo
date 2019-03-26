@@ -71,7 +71,7 @@ void FLEMatchExpression::replaceElementsInEqExpression(const EncryptionSchemaTre
         auto rhsElem = eqExpr->getData();
         if (rhsElem.type() == BSONType::Object) {
             auto[hasEncrypt, placeholder] = replaceEncryptedFields(
-                rhsElem.embeddedObject(), &schemaTree, FieldRef(eqExpr->path()));
+                rhsElem.embeddedObject(), &schemaTree, FieldRef(eqExpr->path()), boost::none);
             if (hasEncrypt) {
                 eqExpr->setData(allocateEncryptedObject(placeholder));
             }
@@ -106,7 +106,7 @@ void FLEMatchExpression::replaceElementsInInExpression(const EncryptionSchemaTre
         for (auto&& elem : inExpr->getEqualities()) {
             if (elem.type() == BSONType::Object) {
                 auto[elemHasEncrypt, placeholder] = replaceEncryptedFields(
-                    elem.embeddedObject(), &schemaTree, FieldRef(inExpr->path()));
+                    elem.embeddedObject(), &schemaTree, FieldRef(inExpr->path()), boost::none);
 
                 // This class maintains an invariant that BSON storage is allocated if and only if
                 // the underlying MatchExpression has been marked with at least one
@@ -219,7 +219,7 @@ void FLEMatchExpression::replaceEncryptedElements(const EncryptionSchemaTreeNode
             auto rhsElem = compExpr->getData();
             if (rhsElem.type() == BSONType::Object) {
                 auto[hasEncrypt, placeholder] = replaceEncryptedFields(
-                    rhsElem.embeddedObject(), &schemaTree, FieldRef(compExpr->path()));
+                    rhsElem.embeddedObject(), &schemaTree, FieldRef(compExpr->path()), boost::none);
                 uassert(51119,
                         str::stream() << "Invalid match expression operator on encrypted field '"
                                       << root->toString()

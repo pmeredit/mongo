@@ -121,5 +121,15 @@
     updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}};
     updateCommand["updates"] = [{q: {bar: 5}, u: {"$set": {"foo.baz": "2"}}}];
     assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51102);
+
+    // Test that an update command with a field encrypted with a JSON Pointer keyId fails.
+    updateCommand["jsonSchema"] = {
+        type: "object",
+        properties:
+            {foo: {encrypt: {algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random", keyId: "/key"}}}
+    };
+    updateCommand["updates"] = [{q: {}, u: {"$set": {foo: 5}}}];
+    assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51093);
+
     mongocryptd.stop();
 }());

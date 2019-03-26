@@ -28,10 +28,13 @@ struct PlaceHolderResult {
  * The 'leadingPath' will be treated as a prefix to any fields in 'doc'. For example, calling this
  * function with a leading path 'a' and document {b: 1, c: 1} will mark "b" or "c" for encryption if
  * the schema indicates that either "a.b" or "a.c" are encrypted respectively.
+ * If the original document is passed in as 'origDoc' it will be used to resolve JSON Pointer
+ * keyIds. If it is not passed in, will throw on pointer keyIds.
  */
 PlaceHolderResult replaceEncryptedFields(BSONObj doc,
                                          const EncryptionSchemaTreeNode* schema,
-                                         FieldRef leadingPath);
+                                         FieldRef leadingPath,
+                                         const boost::optional<BSONObj>& origDoc);
 
 /**
  * Returns true if one or more fields are marked with 'encrypt' in a JSON schema.
@@ -79,12 +82,12 @@ void processDeleteCommand(const OpMsgRequest& request, BSONObjBuilder* builder);
 /**
  * Builds an EncryptionPlaceholder using 'elem' and 'metadata'. Returns a single element BSONObj
  * whose field name is the same as the field name from 'elem' and whose value is a BinData (sub-type
- * 6) representing the placeholder. If 'origDoc' is passed in, will try to resolve a jsonPointer in
- * metadata using that document. Throws if the pointer evaluates to EOO, an array, CodeWScope,
+ * 6) representing the placeholder. If 'origDoc' is initialized, will try to resolve a jsonPointer
+ * in metadata using that document. Throws if the pointer evaluates to EOO, an array, CodeWScope,
  * or an object.
  */
 BSONObj buildEncryptPlaceholder(BSONElement elem,
                                 const EncryptionMetadata& metadata,
-                                BSONObj origDoc = BSONObj());
+                                const boost::optional<BSONObj>& origDoc = boost::none);
 
 }  // namespace mongo

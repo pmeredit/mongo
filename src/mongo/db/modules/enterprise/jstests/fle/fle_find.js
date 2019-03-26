@@ -161,5 +161,21 @@
     }));
     assert(cmdRes.result.filter.userSsn.$eq instanceof BinData, tojson(cmdRes));
 
+    // Verify that a find with a field which is encrypted with a JSONPointer keyId fails.
+    assert.commandFailedWithCode(testDB.runCommand({
+        find: "test",
+        filter: {userSsn: "123-45-6789"},
+        jsonSchema: {
+            type: "object",
+            properties: {
+                userSsn: {
+                    encrypt:
+                        {algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random", keyId: "/key"}
+                }
+            }
+        }
+    }),
+                                 51093);
+
     mongocryptd.stop();
 })();

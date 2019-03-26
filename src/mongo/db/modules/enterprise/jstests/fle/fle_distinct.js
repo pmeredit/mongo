@@ -62,5 +62,14 @@
             {distinct: "test", key: "ssn", invalidFieldName: true, jsonSchema: sampleSchema}),
         40415);
 
+    // Test that a distinct command with a field encrypted with a JSON Pointer keyId fails.
+    assert.commandFailedWithCode(testDB.runCommand({
+        distinct: "test",
+        key: "a",
+        query: {ssnWithPointer: {$eq: 5}},
+        jsonSchema: sampleSchema
+    }),
+                                 51093);
+
     mongocryptd.stop();
 })();
