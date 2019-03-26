@@ -69,25 +69,6 @@ BSONObj encodePlaceholder(std::string fieldName, EncryptionPlaceholder toSeriali
     return binDataBob.obj();
 }
 
-TEST(IsEncryptionNeededTests, IsEncryptedNotPresent) {
-    auto input = BSON("properties" << BSON("foo" << BSONObj()));
-
-    ASSERT_FALSE(isEncryptionNeeded(input));
-}
-
-TEST(IsEncryptionNeededTests, isEncryptionNeededDeepEncrypt) {
-    auto input = BSON("properties" << BSON("a" << BSON("type"
-                                                       << "object"
-                                                       << "properties"
-                                                       << BSON("b" << encryptObj))
-                                               << "c"
-                                               << BSONObj())
-                                   << "type"
-                                   << "object");
-
-    ASSERT_TRUE(isEncryptionNeeded(input));
-}
-
 TEST(ReplaceEncryptedFieldsTest, ReplacesTopLevelFieldCorrectly) {
     auto schema = buildBasicSchema(encryptObj);
     auto doc = BSON("foo"

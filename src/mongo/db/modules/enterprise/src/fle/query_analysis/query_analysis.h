@@ -16,8 +16,14 @@ namespace mongo {
  * Struct to hold information about placeholder results returned to client.
  */
 struct PlaceHolderResult {
+    // Set to true if 'result' contains an intent-to-encrypt marking.
     bool hasEncryptionPlaceholders{false};
 
+    // Set to true if the JSON Schema contains a field which should be marked for encryption.
+    bool schemaRequiresEncryption{false};
+
+    // Serialized command result after replacing fields with their appropriate intent-to-encrypt
+    // marking.
     BSONObj result;
 };
 
@@ -37,18 +43,12 @@ PlaceHolderResult replaceEncryptedFields(BSONObj doc,
                                          const boost::optional<BSONObj>& origDoc);
 
 /**
- * Returns true if one or more fields are marked with 'encrypt' in a JSON schema.
- *
- * Throws an error on invalid schemas.
- */
-bool isEncryptionNeeded(const BSONObj& jsonSchema);
-
-/**
  * Process a find command and return the result with placeholder information.
  *
  * Returns:
  * {
- *   hasEncryptionPlaceholders : <true/false>
+ *   hasEncryptionPlaceholders : <true/false>,
+ *   schemaRequiresEncryption: <true/false>,
  *   result : {
  *     filter : {...}
  *     $db : cmdObj[$db]

@@ -14,6 +14,17 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
     const testDB = conn.getDB("test");
 
     const basicJSONSchema = {properties: {foo: {type: "string"}}};
+    const basicEncryptSchema = {
+        type: "object",
+        properties: {
+            foo: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [UUID("4edee966-03cc-4525-bfa8-de8acd6746fa")]
+                }
+            }
+        }
+    };
 
     let cmds = [
         {find: "foo", filter: {_id: 1}},
@@ -50,6 +61,7 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
         // Make sure json schema works
         const ret1 = assert.commandWorked(testDB.runCommand(element));
         assert.eq(ret1.hasEncryptionPlaceholders, false);
+        assert.eq(ret1.schemaRequiresEncryption, false);
 
         const explain_good = {
             explain: 1,
@@ -59,6 +71,7 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
         // Make sure json schema works when explaining
         const ret2 = assert.commandWorked(testDB.runCommand(explain_good));
         assert.eq(ret2.hasEncryptionPlaceholders, false);
+        assert.eq(ret2.schemaRequiresEncryption, false);
 
         // Test that generic "passthrough" command arguments are correctly echoed back from
         // mongocryptd.
@@ -85,6 +98,9 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
             "lsid": 1,
         };
 
+        // Switch to the schema containing encrypted fields.
+        Object.assign(element, {jsonSchema: basicEncryptSchema});
+
         // Merge the passthrough fields with the current command object.
         Object.assign(element, passthroughFields);
 
@@ -94,16 +110,18 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
             // Command is supported, verify that each of the passthrough fields is included in the
             // result.
             for (let field in passthroughFields) {
-                assert.eq(passthroughResult.result[field],
-                          passthroughFields[field],
-                          tojson(passthroughResult));
+                assert.eq(
+                    passthroughResult.result[field], passthroughFields[field], passthroughResult);
+
+                // Verify that the 'schemaRequiresEncryption' bit is correctly set.
+                assert.eq(passthroughResult.schemaRequiresEncryption, true, passthroughResult);
             }
 
             // The '$db' field is special as it's automatically added by the shell.
-            assert.eq(passthroughResult.result.$db, "test", tojson(passthroughResult));
+            assert.eq(passthroughResult.result.$db, "test", passthroughResult);
         } else {
             // Command is not supported yet, verify an empty 'result' in the response.
-            assert.eq(passthroughResult.result, {}, tojson(passthroughResult));
+            assert.eq(passthroughResult.result, {}, passthroughResult);
         }
     });
 

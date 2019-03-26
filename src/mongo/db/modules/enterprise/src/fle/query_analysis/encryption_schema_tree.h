@@ -151,18 +151,22 @@ public:
     }
 
     /**
+     * Returns true if this tree contains at least one EncryptionSchemaEncryptedNode.
+     */
+    virtual bool containsEncryptedNode() const {
+        for (auto && [ path, child ] : _propertiesChildren) {
+            if (child->containsEncryptedNode()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Override this method to return the node's EncryptionMetadata, or boost::none if it holds
      * none.
      */
     virtual boost::optional<EncryptionMetadata> getEncryptionMetadata() const = 0;
-
-    StringMap<std::unique_ptr<EncryptionSchemaTreeNode>>::const_iterator begin() const {
-        return _propertiesChildren.begin();
-    }
-
-    StringMap<std::unique_ptr<EncryptionSchemaTreeNode>>::const_iterator end() const {
-        return _propertiesChildren.end();
-    }
 
 private:
     struct PatternPropertiesChild {
@@ -257,6 +261,10 @@ public:
 
     boost::optional<EncryptionMetadata> getEncryptionMetadata() const final {
         return _metadata;
+    }
+
+    bool containsEncryptedNode() const final {
+        return true;
     }
 
 private:

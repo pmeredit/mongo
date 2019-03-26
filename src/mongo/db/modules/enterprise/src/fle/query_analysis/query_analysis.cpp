@@ -31,6 +31,7 @@ namespace {
 
 static constexpr auto kJsonSchema = "jsonSchema"_sd;
 static constexpr auto kHasEncryptionPlaceholders = "hasEncryptionPlaceholders"_sd;
+static constexpr auto kSchemaRequiresEncryption = "schemaRequiresEncryption"_sd;
 static constexpr auto kResult = "result"_sd;
 
 /**
@@ -117,7 +118,9 @@ PlaceHolderResult replaceEncryptedFieldsInFilter(const EncryptionSchemaTreeNode&
     BSONObjBuilder bob;
     fleMatchExpr.getMatchExpression()->serialize(&bob);
 
-    return {fleMatchExpr.containsEncryptedPlaceholders(), bob.obj()};
+    return {fleMatchExpr.containsEncryptedPlaceholders(),
+            schemaTree.containsEncryptedNode(),
+            bob.obj()};
 }
 
 PlaceHolderResult addPlaceHoldersForFind(const std::string& dbName,
@@ -140,7 +143,7 @@ PlaceHolderResult addPlaceHoldersForFind(const std::string& dbName,
         }
     }
 
-    return {placeholder.hasEncryptionPlaceholders, bob.obj()};
+    return {placeholder.hasEncryptionPlaceholders, placeholder.schemaRequiresEncryption, bob.obj()};
 }
 
 PlaceHolderResult addPlaceHoldersForAggregate(
@@ -181,6 +184,7 @@ PlaceHolderResult addPlaceHoldersForDistinct(const std::string& dbName,
     // Serialize the parsed distinct command. Passing the original command object to 'serialize()'
     // allows the IDL to merge generic fields which the command does not specifically handle.
     return PlaceHolderResult{placeholder.hasEncryptionPlaceholders,
+                             placeholder.schemaRequiresEncryption,
                              parsedDistinct.serialize(cmdObj).body};
 }
 
@@ -221,6 +225,7 @@ PlaceHolderResult addPlaceHoldersForInsert(const OpMsgRequest& request,
     }
     batch.setDocuments(docVector);
     retPlaceholder.result = batch.toBSON(request.body);
+    retPlaceholder.schemaRequiresEncryption = schemaTree->containsEncryptedNode();
     return retPlaceholder;
 }
 
@@ -247,6 +252,7 @@ PlaceHolderResult addPlaceHoldersForUpdate(const OpMsgRequest& request,
 
     updateOp.setUpdates(updateVector);
     phr.result = updateOp.toBSON(request.body);
+    phr.schemaRequiresEncryption = schemaTree->containsEncryptedNode();
     return phr;
 }
 
@@ -269,12 +275,13 @@ PlaceHolderResult addPlaceHoldersForDelete(const OpMsgRequest& request,
 
     deleteRequest.setDeletes(std::move(markedDeletes));
     placeHolderResult.result = deleteRequest.toBSON(request.body);
+    placeHolderResult.schemaRequiresEncryption = schemaTree->containsEncryptedNode();
     return placeHolderResult;
 }
 
 void serializePlaceholderResult(const PlaceHolderResult& placeholder, BSONObjBuilder* builder) {
     builder->append(kHasEncryptionPlaceholders, placeholder.hasEncryptionPlaceholders);
-
+    builder->append(kSchemaRequiresEncryption, placeholder.schemaRequiresEncryption);
     builder->append(kResult, placeholder.result);
 }
 
@@ -334,23 +341,6 @@ PlaceHolderResult replaceEncryptedFields(BSONObj doc,
     res.result = replaceEncryptedFieldsRecursive(
         schema, doc, origDoc, &leadingPath, &res.hasEncryptionPlaceholders);
     return res;
-}
-
-bool isEncryptionNeeded(const BSONObj& jsonSchema) {
-    auto schemaNode = EncryptionSchemaTreeNode::parse(jsonSchema);
-    std::stack<EncryptionSchemaTreeNode*> nodeStack;
-    nodeStack.push(schemaNode.get());
-    while (!nodeStack.empty()) {
-        EncryptionSchemaTreeNode* curNode = nodeStack.top();
-        nodeStack.pop();
-        if (curNode->getEncryptionMetadata()) {
-            return true;
-        }
-        for (auto&& it : *curNode) {
-            nodeStack.push(it.second.get());
-        }
-    }
-    return false;
 }
 
 void processFindCommand(const std::string& dbName, const BSONObj& cmdObj, BSONObjBuilder* builder) {

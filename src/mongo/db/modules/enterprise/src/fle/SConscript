@@ -17,8 +17,6 @@ env.Library(
     source=[
         "commands/cryptd_buildinfo.cpp",
         "commands/cryptd_ismaster.cpp",
-        env.Idlc("commands/cryptd_commands.idl")[0],
-        "commands/cryptd_is_encryption_needed.cpp",
         "commands/cryptd_markings_commands.cpp",
     ],
     LIBDEPS_PRIVATE=[
@@ -26,7 +24,6 @@ env.Library(
         '$BUILD_DIR/mongo/db/commands/test_commands_enabled',
         '$BUILD_DIR/mongo/db/query/explain_options',
         '$BUILD_DIR/mongo/db/wire_version',
-        '$BUILD_DIR/mongo/idl/idl_parser',
         '$BUILD_DIR/mongo/util/version_impl',
         'query_analysis/cryptd_query_analysis',
     ],
