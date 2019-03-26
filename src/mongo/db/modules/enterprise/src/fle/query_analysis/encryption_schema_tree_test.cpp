@@ -460,6 +460,110 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptParentIsTypeRestrictedWithMu
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
 }
 
+TEST(EncryptionSchemaTreeTest, FailsToParseIfPropertyHasDot) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            "dotted.field" : {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                }
+            }
+        }})");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+}
+
+TEST(EncryptionSchemaTreeTest, FailsToParseIfParentPropertyHasDot) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            "dotted.parent.field" : {
+                type: "object",
+                properties: {
+                    secret: {
+                        encrypt: {
+                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                            keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                        }
+                    }
+                }
+            }
+        }})");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+}
+
+TEST(EncryptionSchemaTreeTest, FailsToParseIfDottedPropertyNestedInPatternProperties) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        patternProperties: {
+            "abc" : {
+                type: "object",
+                properties: {
+                    "d.e" : {
+                        encrypt: {
+                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                            keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                        }
+                    }
+                }
+            }
+        }})");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+}
+
+TEST(EncryptionSchemaTreeTest, FailsToParseIfDottedPropertyNestedInAdditionalProperties) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        additionalProperties: {
+            type: "object",
+            properties: {
+                "a.c" : {
+                    encrypt: {
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                        keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                    }
+                }
+            }
+        }})");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+}
+
+TEST(EncryptionSchemaTreeTest, AllowDottedNonEncryptProperties) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            "dotted.non.encrypt" : {
+                type: "object"
+            },
+            secret: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                }
+            }
+        }})");
+    auto result = EncryptionSchemaTreeNode::parse(schema);
+    assertNotEncrypted(schema, "dotted.non.encrypt");
+    ASSERT(result->getEncryptionMetadataForPath(FieldRef{"secret"}));
+}
+
+TEST(EncryptionSchemaTreeTest, DottedPropertiesNotEncryptedWithMatchingPatternProperties) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        patternProperties: {
+            "a.c" : {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                }
+            }
+        }})");
+    auto result = EncryptionSchemaTreeNode::parse(schema);
+    assertNotEncrypted(schema, "a.c");
+    ASSERT(result->getEncryptionMetadataForPath(FieldRef{"abc"}));
+}
+
 TEST(EncryptionSchemaTreeTest, FailsToParseInvalidSchema) {
     BSONObj schema = fromjson(R"({properties: "invalid"})");
     ASSERT_THROWS_CODE(

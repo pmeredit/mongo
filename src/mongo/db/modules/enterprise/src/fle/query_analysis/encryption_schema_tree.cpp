@@ -241,9 +241,14 @@ std::unique_ptr<EncryptionSchemaTreeNode> parseObjectKeywords(
     // schema tree.
     if (auto propertiesElem = keywordMap[JSONSchemaParser::kSchemaPropertiesKeyword]) {
         for (auto&& property : propertiesElem.embeddedObject()) {
+            auto fieldName = property.fieldNameStringData();
+            // Ban dotted field names in schema. They can incorrectly be treated as paths by the
+            // server's JSON Schema implementation. SERVER-31493 would fix this.
+            bool encryptAllowedForField =
+                encryptAllowedForSubschema && fieldName.find('.') == std::string::npos;
             node->addChild(
-                std::string(property.fieldName()),
-                _parse(property.embeddedObject(), encryptAllowedForSubschema, metadataChain));
+                fieldName.rawData(),
+                _parse(property.embeddedObject(), encryptAllowedForField, metadataChain));
         }
     }
 
