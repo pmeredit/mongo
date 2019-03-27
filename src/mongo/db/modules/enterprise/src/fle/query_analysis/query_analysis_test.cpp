@@ -351,6 +351,58 @@ TEST(EncryptionUpdateVisitorTest, FieldMarkedForEncryptionInRightHandSetObject) 
     ASSERT_BSONELT_EQ(newUpdate["$set"]["foo"]["bar"], correctField["bar"]);
 }
 
+TEST(EncryptionUpdateVisitorTest, RenameWithEncryptedTargetOnlyFails) {
+    BSONObj entry = BSON("$rename" << BSON("boo"
+                                           << "foo"));
+    boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(nullptr, nullptr));
+    UpdateDriver driver(expCtx);
+    std::map<StringData, std::unique_ptr<ExpressionWithPlaceholder>> arrayFilters;
+    driver.parse(entry, arrayFilters);
+
+    auto schema = buildBasicSchema(encryptObj);
+
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto updateVisitor = EncryptionUpdateVisitor(*schemaTree.get());
+
+    ASSERT_THROWS_CODE(driver.visitRoot(&updateVisitor), AssertionException, 51160);
+}
+
+TEST(EncryptionUpdateVisitorTest, RenameWithEncryptedSourceOnlyFails) {
+    BSONObj entry = BSON("$rename" << BSON("foo"
+                                           << "boo"));
+    boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(nullptr, nullptr));
+    UpdateDriver driver(expCtx);
+    std::map<StringData, std::unique_ptr<ExpressionWithPlaceholder>> arrayFilters;
+    driver.parse(entry, arrayFilters);
+
+    auto schema = buildBasicSchema(encryptObj);
+
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto updateVisitor = EncryptionUpdateVisitor(*schemaTree.get());
+
+    ASSERT_THROWS_CODE(driver.visitRoot(&updateVisitor), AssertionException, 51160);
+}
+
+TEST(EncryptionUpdateVisitorTest, RenameWithNestedTargetEncryptFails) {
+    BSONObj entry = BSON("$rename" << BSON("boo"
+                                           << "foo.bar"));
+    boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(nullptr, nullptr));
+    UpdateDriver driver(expCtx);
+    std::map<StringData, std::unique_ptr<ExpressionWithPlaceholder>> arrayFilters;
+    driver.parse(entry, arrayFilters);
+
+    auto schema = BSON("type"
+                       << "object"
+                       << "properties"
+                       << BSON("foo" << BSON("type"
+                                             << "object"
+                                             << "properties"
+                                             << BSON("bar" << encryptObj))));
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto updateVisitor = EncryptionUpdateVisitor(*schemaTree.get());
+    ASSERT_THROWS_CODE(driver.visitRoot(&updateVisitor), AssertionException, 51160);
+}
+
 TEST(EncryptionUpdateVisitorTest, ObjectReplaceUpdateEncryptsSingleField) {
     BSONObj entry = BSON("foo"
                          << "bar"
@@ -360,7 +412,6 @@ TEST(EncryptionUpdateVisitorTest, ObjectReplaceUpdateEncryptsSingleField) {
     UpdateDriver driver(expCtx);
     std::map<StringData, std::unique_ptr<ExpressionWithPlaceholder>> arrayFilters;
     driver.parse(entry, arrayFilters);
-
     auto schema = buildBasicSchema(encryptObj);
 
     auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
@@ -373,6 +424,27 @@ TEST(EncryptionUpdateVisitorTest, ObjectReplaceUpdateEncryptsSingleField) {
     auto correctField = buildEncryptPlaceholder(entry["foo"], metadata);
     ASSERT_BSONELT_EQ(newUpdate["foo"], correctField["foo"]);
     ASSERT_EQ(newUpdate["baz"].valueStringData(), "boo");
+}
+
+TEST(EncryptionUpdateVisitorTest, RenameWithNestedSourceEncryptFails) {
+    BSONObj entry = BSON("$rename" << BSON("foo.bar"
+                                           << "boo"));
+    boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(nullptr, nullptr));
+    UpdateDriver driver(expCtx);
+    std::map<StringData, std::unique_ptr<ExpressionWithPlaceholder>> arrayFilters;
+    driver.parse(entry, arrayFilters);
+
+    auto schema = BSON("type"
+                       << "object"
+                       << "properties"
+                       << BSON("foo" << BSON("type"
+                                             << "object"
+                                             << "properties"
+                                             << BSON("bar" << encryptObj))));
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto updateVisitor = EncryptionUpdateVisitor(*schemaTree.get());
+
+    ASSERT_THROWS_CODE(driver.visitRoot(&updateVisitor), AssertionException, 51160);
 }
 
 }  // namespace

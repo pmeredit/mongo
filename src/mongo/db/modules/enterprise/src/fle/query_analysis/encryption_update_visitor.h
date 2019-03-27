@@ -9,6 +9,7 @@
 #include "encryption_schema_tree.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/update/object_replace_node.h"
+#include "mongo/db/update/rename_node.h"
 #include "mongo/db/update/set_node.h"
 #include "mongo/db/update/update_internal_node.h"
 #include "mongo/db/update/update_node_visitor.h"
@@ -41,10 +42,11 @@ public:
         throwOnEncryptedPath("$max and $min");
     }
 
-    void visit(ConflictPlaceholderNode* host) {
-        // TODO: SERVER-39254 handle $rename.
-        uasserted(ErrorCodes::CommandNotSupported, "$rename not yet supported on mongocryptd");
-    }
+    /**
+     * This node is part of a $rename operation. EncryptionUpdateVisitor does all necessary work
+     * for $rename in the RenameNode visitor, so no work is needed here.
+     */
+    void visit(ConflictPlaceholderNode* host) {}
 
     void visit(CurrentDateNode* host) {
         throwOnEncryptedPath("$currentDate");
@@ -74,13 +76,24 @@ public:
     }
 
     void visit(RenameNode* host) {
-        // TODO: SERVER-39254
-        uasserted(ErrorCodes::CommandNotSupported, "$rename not yet supported on mongocryptd");
+        FieldRef sourcePath{host->getValue().fieldNameStringData()};
+        auto sourceMetadata = _schemaTree.getEncryptionMetadataForPath(sourcePath);
+        auto destinationMetadata = _schemaTree.getEncryptionMetadataForPath(_currentPath);
+        uassert(51160,
+                "$rename between two encrypted fields must have the same metadata",
+                sourceMetadata == destinationMetadata);
+        uassert(51161,
+                "$rename is not allowed on an object containing encrypted fields",
+                sourceMetadata || (!_schemaTree.containsEncryptedNodeBelowPrefix(sourcePath) &&
+                                   !_schemaTree.containsEncryptedNodeBelowPrefix(
+                                       FieldRef{host->getValue().String()})));
     }
 
-    void visit(SetElementNode* host) {
-        uasserted(ErrorCodes::CommandNotSupported, "$rename not yet supported on mongocryptd");
-    }
+    /**
+     * This node is part of a $rename operation. EncryptionUpdateVisitor does all necessary work
+     * for $rename in the RenameNode visitor, so no work is needed here.
+     */
+    void visit(SetElementNode* host) {}
 
     /**
      * $set is not allowed to remove an encrypted field. This asserts that no part of 'setVal' is

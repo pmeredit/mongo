@@ -198,6 +198,48 @@
     updateCommand["updates"] = [{q: {bar: {"$gt": 5}}, u: {"$set": {"foo": "2"}}}];
     result = assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51118);
 
+    // Test that a $rename without encryption does not fail.
+    updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}};
+    updateCommand["updates"] = [{q: {}, u: {"$rename": {"baz": "boo"}}}];
+    assert.commandWorked(testDb.runCommand(updateCommand));
+
+    // Test that a $rename with one encrypted field fails.
+    updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}};
+    updateCommand["updates"] = [{q: {}, u: {"$rename": {"foo": "boo"}}}];
+    assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51160);
+
+    // Test that a $rename between encrypted fields with the same metadata does not fail.
+    updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}};
+    updateCommand["updates"] = [{q: {}, u: {"$rename": {"foo": "bar"}}}];
+    assert.commandWorked(testDb.runCommand(updateCommand));
+
+    // Test that a $rename between encrypted fields with different metadata fails.
+    updateCommand["jsonSchema"] = {
+        type: "object",
+        properties: {
+            foo: {encrypt: {algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random", keyId: "/key"}},
+            bar: encryptDoc
+        }
+    };
+    updateCommand["updates"] = [{q: {}, u: {"$rename": {"foo": "bar"}}}];
+    assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51160);
+
+    // Test that a $rename fails if the source field name is a prefix of an encrypted field.
+    updateCommand["jsonSchema"] = {
+        type: "object",
+        properties: {foo: {type: "object", properties: {bar: encryptDoc}}}
+    };
+    updateCommand["updates"] = [{q: {}, u: {"$rename": {"foo": "baz"}}}];
+    assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51161);
+
+    // Test that a $rename fails if the destination field name is a prefix of an encrypted field.
+    updateCommand["jsonSchema"] = {
+        type: "object",
+        properties: {foo: {type: "object", properties: {bar: encryptDoc}}}
+    };
+    updateCommand["updates"] = [{q: {}, u: {"$rename": {"baz": "foo"}}}];
+    assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51161);
+
     // Test that a $set path with an encrypted field in its prefix fails.
     updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}};
     updateCommand["updates"] = [{q: {bar: 5}, u: {"$set": {"foo.baz": "2"}}}];
