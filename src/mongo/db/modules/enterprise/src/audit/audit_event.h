@@ -6,7 +6,6 @@
 
 #include <cstdint>
 
-#include "mongo/base/disallow_copying.h"
 #include "mongo/base/error_codes.h"
 #include "mongo/bson/oid.h"
 #include "mongo/db/auth/action_type.h"
@@ -38,7 +37,8 @@ struct AuditEventEnvelope {
  * own all of the data they refernence.
  */
 class AuditEvent : public MatchableDocument {
-    MONGO_DISALLOW_COPYING(AuditEvent);
+    AuditEvent(const AuditEvent&) = delete;
+    AuditEvent& operator=(const AuditEvent&) = delete;
 
 public:
     Date_t getTimestamp() const {

@@ -86,7 +86,8 @@ public:
  */
 template <typename Encoder>
 class RotatableAuditFileAppender : public logger::Appender<AuditEvent> {
-    MONGO_DISALLOW_COPYING(RotatableAuditFileAppender);
+    RotatableAuditFileAppender(const RotatableAuditFileAppender&) = delete;
+    RotatableAuditFileAppender& operator=(const RotatableAuditFileAppender&) = delete;
 
 public:
     RotatableAuditFileAppender(logger::RotatableFileWriter* writer) : _writer(writer) {}

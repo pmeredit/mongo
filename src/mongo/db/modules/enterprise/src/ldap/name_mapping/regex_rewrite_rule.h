@@ -24,7 +24,8 @@ class StatusWith;
  * the contents of the corresponding group.
  */
 class RegexRewriteRule : public RewriteRule {
-    MONGO_DISALLOW_COPYING(RegexRewriteRule);
+    RegexRewriteRule(const RegexRewriteRule&) = delete;
+    RegexRewriteRule& operator=(const RegexRewriteRule&) = delete;
 
 public:
     RegexRewriteRule(RegexRewriteRule&& rr);

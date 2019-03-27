@@ -17,7 +17,8 @@ namespace mongo {
  * this could be made more generic if we want to use outside of the SNMP module
  */
 class ServerStatusClient {
-    MONGO_DISALLOW_COPYING(ServerStatusClient);
+    ServerStatusClient(const ServerStatusClient&) = delete;
+    ServerStatusClient& operator=(const ServerStatusClient&) = delete;
 
 public:
     ServerStatusClient(const std::string& sectionName, time_t cacheExpireSecs);

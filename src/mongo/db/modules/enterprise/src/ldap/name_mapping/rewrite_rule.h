@@ -8,7 +8,6 @@
 #include <string>
 #include <vector>
 
-#include "mongo/base/disallow_copying.h"
 
 namespace mongo {
 class LDAPRunner;

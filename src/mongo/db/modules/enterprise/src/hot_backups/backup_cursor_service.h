@@ -32,7 +32,6 @@
 #include <memory>
 #include <vector>
 
-#include "mongo/base/disallow_copying.h"
 #include "mongo/db/pipeline/document.h"
 #include "mongo/db/storage/backup_cursor_hooks.h"
 #include "mongo/stdx/mutex.h"
@@ -58,7 +57,8 @@ class StorageEngine;
  * uassert exceptions.
  */
 class BackupCursorService : public BackupCursorHooks {
-    MONGO_DISALLOW_COPYING(BackupCursorService);
+    BackupCursorService(const BackupCursorService&) = delete;
+    BackupCursorService& operator=(const BackupCursorService&) = delete;
 
 public:
     BackupCursorService(StorageEngine* storageEngine) : _storageEngine(storageEngine) {}

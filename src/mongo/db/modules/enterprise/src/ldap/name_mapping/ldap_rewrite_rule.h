@@ -21,7 +21,8 @@ class StatusWith;
  * is returned as the result.
  */
 class LDAPRewriteRule : public RewriteRule {
-    MONGO_DISALLOW_COPYING(LDAPRewriteRule);
+    LDAPRewriteRule(const LDAPRewriteRule&) = delete;
+    LDAPRewriteRule& operator=(const LDAPRewriteRule&) = delete;
 
 public:
     LDAPRewriteRule(LDAPRewriteRule&& rr);

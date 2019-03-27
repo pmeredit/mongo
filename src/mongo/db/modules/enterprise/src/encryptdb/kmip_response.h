@@ -8,7 +8,6 @@
 #include <tuple>
 
 #include "kmip_consts.h"
-#include "mongo/base/disallow_copying.h"
 #include "mongo/base/status.h"
 #include "symmetric_key.h"
 
@@ -20,7 +19,8 @@ class StatusWith;
 namespace kmip {
 
 class KMIPResponse {
-    MONGO_DISALLOW_COPYING(KMIPResponse);
+    KMIPResponse(const KMIPResponse&) = delete;
+    KMIPResponse& operator=(const KMIPResponse&) = delete;
 
 public:
     /**

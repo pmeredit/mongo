@@ -28,7 +28,6 @@
 
 #pragma once
 
-#include "mongo/base/disallow_copying.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_customization_hooks.h"
 #include "mongo/util/options_parser/startup_option_init.h"
 #include "mongo/util/options_parser/startup_options.h"
@@ -40,7 +39,8 @@ namespace mongo {
  * in-memory storage engine.
  */
 class InMemoryConfigManager : public WiredTigerCustomizationHooks {
-    MONGO_DISALLOW_COPYING(InMemoryConfigManager);
+    InMemoryConfigManager(const InMemoryConfigManager&) = delete;
+    InMemoryConfigManager& operator=(const InMemoryConfigManager&) = delete;
 
 public:
     /**

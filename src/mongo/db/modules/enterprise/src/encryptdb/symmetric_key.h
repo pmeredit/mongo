@@ -7,7 +7,6 @@
 #include <cstdint>
 #include <memory>
 
-#include "mongo/base/disallow_copying.h"
 #include "mongo/base/secure_allocator.h"
 #include "mongo/platform/atomic_word.h"
 
@@ -46,7 +45,8 @@ private:
  * Class representing a symmetric key
  */
 class SymmetricKey {
-    MONGO_DISALLOW_COPYING(SymmetricKey);
+    SymmetricKey(const SymmetricKey&) = delete;
+    SymmetricKey& operator=(const SymmetricKey&) = delete;
 
 public:
     SymmetricKey(const uint8_t* key,

@@ -7,7 +7,6 @@
 #include <memory>
 #include <vector>
 
-#include "mongo/base/disallow_copying.h"
 
 #include "rewrite_rule.h"
 
@@ -26,7 +25,8 @@ class StringData;
  * mapped to an LDAP DN before group acquisition can occur.
  */
 class InternalToLDAPUserNameMapper {
-    MONGO_DISALLOW_COPYING(InternalToLDAPUserNameMapper);
+    InternalToLDAPUserNameMapper(const InternalToLDAPUserNameMapper&) = delete;
+    InternalToLDAPUserNameMapper& operator=(const InternalToLDAPUserNameMapper&) = delete;
 
 public:
     InternalToLDAPUserNameMapper(InternalToLDAPUserNameMapper&& other);

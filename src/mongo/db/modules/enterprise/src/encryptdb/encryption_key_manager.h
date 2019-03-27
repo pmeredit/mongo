@@ -11,7 +11,6 @@
 #include "encryption_options.h"
 #include "keystore.h"
 #include "keystore_metadata.h"
-#include "mongo/base/disallow_copying.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/storage/encryption_hooks.h"
@@ -47,7 +46,8 @@ const std::string kEncryptionEntrypointConfig =
  *  = 32 + 1 = 33
  */
 class EncryptionKeyManager : public EncryptionHooks {
-    MONGO_DISALLOW_COPYING(EncryptionKeyManager);
+    EncryptionKeyManager(const EncryptionKeyManager&) = delete;
+    EncryptionKeyManager& operator=(const EncryptionKeyManager&) = delete;
 
 public:
     /**
@@ -200,7 +200,9 @@ private:
 void initializeEncryptionKeyManager(ServiceContext* service);
 
 class EncryptionWiredTigerCustomizationHooks : public WiredTigerCustomizationHooks {
-    MONGO_DISALLOW_COPYING(EncryptionWiredTigerCustomizationHooks);
+    EncryptionWiredTigerCustomizationHooks(const EncryptionWiredTigerCustomizationHooks&) = delete;
+    EncryptionWiredTigerCustomizationHooks& operator=(
+        const EncryptionWiredTigerCustomizationHooks&) = delete;
 
 public:
     /**
