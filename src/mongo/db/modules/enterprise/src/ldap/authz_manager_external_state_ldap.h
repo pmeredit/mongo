@@ -108,11 +108,12 @@ public:
      * Passthrough to AuthorizationManagerExternalStateMongod
      */
     void logOp(OperationContext* opCtx,
+               AuthorizationManagerImpl* authzManager,
                const char* op,
                const NamespaceString& ns,
                const BSONObj& o,
                const BSONObj* o2) final {
-        _wrappedExternalState->logOp(opCtx, op, ns, o, o2);
+        _wrappedExternalState->logOp(opCtx, authzManager, op, ns, o, o2);
     }
 
     std::unique_ptr<StateLock> lock(OperationContext* opCtx) final {
