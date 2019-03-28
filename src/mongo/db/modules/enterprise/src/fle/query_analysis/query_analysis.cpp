@@ -195,29 +195,37 @@ PlaceHolderResult addPlaceHoldersForFindAndModify(
     return PlaceHolderResult();
 }
 
+/**
+ * Asserts that if _id is encrypted, it is provided explicitly. In addition, asserts
+ * that no top level field in 'doc' has the value Timestamp(0,0). In both of those cases mongod
+ * would usually generate a value so they cannot be encrypted here.
+ */
+void verifyNoGeneratedEncryptedFields(BSONObj doc, const EncryptionSchemaTreeNode& schemaTree) {
+    uassert(51130,
+            "_id must be explicitly provided when configured as encrypted",
+            !schemaTree.getEncryptionMetadataForPath(FieldRef("_id")) || doc["_id"]);
+    // Top level Timestamp(0, 0) is not allowed to be inserted because the server replaces it
+    // with a different generated value. A nested Timestamp(0,0) does not have this issue.
+    for (auto&& element : doc) {
+        if (schemaTree.getEncryptionMetadataForPath(FieldRef(element.fieldNameStringData()))) {
+            uassert(51129,
+                    "A command that inserts cannot supply Timestamp(0, 0) for an encrypted"
+                    "top-level field at path " +
+                        element.fieldNameStringData(),
+                    element.type() != BSONType::bsonTimestamp ||
+                        element.timestamp() != Timestamp(0, 0));
+        }
+    }
+}
+
 PlaceHolderResult addPlaceHoldersForInsert(const OpMsgRequest& request,
                                            std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     auto batch = InsertOp::parse(request);
     auto docs = batch.getDocuments();
     PlaceHolderResult retPlaceholder;
     std::vector<BSONObj> docVector;
-    auto isIDEncrypted = schemaTree->getEncryptionMetadataForPath(FieldRef("_id"));
     for (const BSONObj& doc : docs) {
-        uassert(51130,
-                "_id must be explicitly provided when configured as encrypted",
-                !isIDEncrypted || doc["_id"]);
-        // Top level Timestamp(0, 0) is not allowed to be inserted because the server replaces it
-        // with a different generated value. Nested Timestamp(0,0)s do not have this issue.
-        for (auto&& element : doc) {
-            if (schemaTree->getEncryptionMetadataForPath(FieldRef(element.fieldNameStringData()))) {
-                uassert(51129,
-                        "An insert cannot supply Timestamp(0, 0) for an encrypted top-level field "
-                        "at path " +
-                            element.fieldNameStringData(),
-                        element.type() != BSONType::bsonTimestamp ||
-                            element.timestamp() != Timestamp(0, 0));
-            }
-        }
+        verifyNoGeneratedEncryptedFields(doc, *schemaTree.get());
         auto placeholderPair = replaceEncryptedFields(doc, schemaTree.get(), FieldRef(), doc);
         retPlaceholder.hasEncryptionPlaceholders =
             retPlaceholder.hasEncryptionPlaceholders || placeholderPair.hasEncryptionPlaceholders;
@@ -239,6 +247,9 @@ PlaceHolderResult addPlaceHoldersForUpdate(const OpMsgRequest& request,
     PlaceHolderResult phr;
 
     for (auto&& update : updateOp.getUpdates()) {
+        if (update.getUpsert()) {
+            verifyNoGeneratedEncryptedFields(update.getU(), *schemaTree.get());
+        }
         UpdateDriver driver(expCtx);
         // Ignoring array filters as they are not relevant for encryption.
         driver.parse(update.getU(), {});
@@ -395,7 +406,7 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
 
     EncryptionPlaceholder marking(integerAlgorithm, EncryptSchemaAnyType(elem));
 
-    if (marking.getAlgorithm() == FleAlgorithmInt::kDeterministic) {
+    if (integerAlgorithm == FleAlgorithmInt::kDeterministic) {
         invariant(metadata.getInitializationVector());
         marking.setInitializationVector(metadata.getInitializationVector().get());
     }

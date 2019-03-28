@@ -289,5 +289,26 @@
     assert.eq(
         result["result"]["updates"][0]["u"], updateCommand["updates"][0]["u"], tojson(result));
 
+    // Test that a replacement-style update with an encrypted Timestamp(0, 0) and upsert fails.
+    updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc}};
+    updateCommand["updates"] = [{q: {}, u: {foo: Timestamp(0, 0)}, upsert: true}];
+    assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51129);
+
+    // Test that an update with an encrypted _id and upsert succeeds.
+    updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc, _id: encryptDoc}};
+    updateCommand["updates"] = [{q: {}, u: {_id: 7, foo: 5}, upsert: true}];
+    assert.commandWorked(testDb.runCommand(updateCommand));
+
+    // Test that an update with a missing encrypted _id and upsert fails.
+    updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc, _id: encryptDoc}};
+    updateCommand["updates"] = [{q: {}, u: {foo: 5}, upsert: true}];
+    assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51130);
+
+    // Test that a $set with an encrypted Timestamp(0,0) and upsert succeeds since the server does
+    // not autogenerate the current time in this case.
+    updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc}};
+    updateCommand["updates"] = [{q: {}, u: {"$set": {foo: Timestamp(0, 0)}}, upsert: true}];
+    assert.commandWorked(testDb.runCommand(updateCommand));
+
     mongocryptd.stop();
 }());
