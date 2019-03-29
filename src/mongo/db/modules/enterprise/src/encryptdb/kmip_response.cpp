@@ -51,7 +51,7 @@ StatusWith<size_t> KMIPResponse::_parseTag(ConstDataRangeCursor* cdrc,
      */
     do {
         const char* data = cdrc->data();
-        Status adv = cdrc->advance(4);
+        Status adv = cdrc->advanceNoThrow(4);
         if (!adv.isOK()) {
             // Reached the end of the buffer without finding the tag
             return Status(ErrorCodes::FailedToParse,
@@ -61,7 +61,7 @@ StatusWith<size_t> KMIPResponse::_parseTag(ConstDataRangeCursor* cdrc,
         }
 
         // Read out the length of the section labeled by the tag
-        auto swLen = cdrc->readAndAdvance<BigEndian<uint32_t>>();
+        auto swLen = cdrc->readAndAdvanceNoThrow<BigEndian<uint32_t>>();
         if (!swLen.isOK()) {
             return swLen.getStatus();
         }
@@ -87,7 +87,7 @@ StatusWith<size_t> KMIPResponse::_parseTag(ConstDataRangeCursor* cdrc,
                           str::stream() << "Response message was malformed, invalid length " << len
                                         << " found.");
         }
-        adv = cdrc->advance(len + (8 - (len % 8)) % 8);
+        adv = cdrc->advanceNoThrow(len + (8 - (len % 8)) % 8);
         if (!adv.isOK()) {
             return adv;
         }
@@ -124,7 +124,7 @@ StatusWith<time_t> KMIPResponse::_parseTimeStamp(ConstDataRangeCursor* cdrc) {
         return swTag.getStatus();
     }
 
-    auto swTimeStamp = cdrc->readAndAdvance<BigEndian<uint64_t>>();
+    auto swTimeStamp = cdrc->readAndAdvanceNoThrow<BigEndian<uint64_t>>();
     if (!swTimeStamp.isOK()) {
         return swTimeStamp.getStatus();
     }
@@ -232,7 +232,7 @@ StatusWith<std::unique_ptr<SymmetricKey>> KMIPResponse::_parseSymmetricKeyPayloa
     const uint8_t* key = reinterpret_cast<const uint8_t*>(cdrc->data());
 
     // Verify that we can read paddedKeyLen bytes
-    Status adv = cdrc->advance(paddedKeyLen);
+    Status adv = cdrc->advanceNoThrow(paddedKeyLen);
     if (!adv.isOK()) {
         return adv;
     }
@@ -370,7 +370,7 @@ StatusWith<std::string> KMIPResponse::_parseString(ConstDataRangeCursor* cdrc,
                       str::stream() << "Response message was malformed, invalid length " << len
                                     << " found.");
     }
-    Status adv = cdrc->advance(len + (8 - (len % 8)) % 8);
+    Status adv = cdrc->advanceNoThrow(len + (8 - (len % 8)) % 8);
     if (!adv.isOK()) {
         return adv;
     }
@@ -387,13 +387,13 @@ StatusWith<std::uint32_t> KMIPResponse::_parseInteger(ConstDataRangeCursor* cdrc
         return swTag.getStatus();
     }
 
-    auto swUInt32 = cdrc->readAndAdvance<BigEndian<uint32_t>>();
+    auto swUInt32 = cdrc->readAndAdvanceNoThrow<BigEndian<uint32_t>>();
     if (!swUInt32.isOK()) {
         return swUInt32.getStatus();
     }
 
     // Skip padding
-    Status adv = cdrc->advance(4);
+    Status adv = cdrc->advanceNoThrow(4);
     if (!adv.isOK()) {
         return adv;
     }

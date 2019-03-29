@@ -205,7 +205,7 @@ TEST(EncryptionSchemaTreeTest, ExtractsCorrectMetadataOptions) {
     const auto uuid = UUID::gen();
     EncryptionMetadata ssnMetadata;
     ssnMetadata.setAlgorithm(FleAlgorithmEnum::kDeterministic);
-    ssnMetadata.setInitializationVector(ConstDataRange(NULL, static_cast<size_t>(0)));
+    ssnMetadata.setInitializationVector(ConstDataRange(nullptr, nullptr));
     ssnMetadata.setKeyId(EncryptSchemaKeyId({uuid}));
 
     const IDLParserErrorContext encryptCtxt("encrypt");

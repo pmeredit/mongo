@@ -77,12 +77,12 @@ Status aeadEncrypt(const SymmetricKey& key,
     std::array<char, sizeof(uint64_t)> bigEndian;
     DataView(bigEndian.data()).write<BigEndian<uint64_t>>(dataLenBits);
 
-    SHA512Block hmacOutput = SHA512Block::computeHmac(
-        macKey,
-        sym256KeySize,
-        {ConstDataRange(reinterpret_cast<const char*>(associatedData), associatedDataLen),
-         ConstDataRange(reinterpret_cast<const char*>(out), cipherTextLen),
-         ConstDataRange(reinterpret_cast<const char*>(bigEndian.data()), bigEndian.size())});
+    SHA512Block hmacOutput =
+        SHA512Block::computeHmac(macKey,
+                                 sym256KeySize,
+                                 {ConstDataRange(associatedData, associatedDataLen),
+                                  ConstDataRange(out, cipherTextLen),
+                                  ConstDataRange(bigEndian.data(), bigEndian.size())});
 
     std::copy(hmacOutput.data(), hmacOutput.data() + kHmacOutSize, out + cipherTextLen);
     return Status::OK();
@@ -124,12 +124,12 @@ Status aeadDecrypt(const SymmetricKey& key,
     std::array<char, sizeof(uint64_t)> bigEndian;
     DataView(bigEndian.data()).write<BigEndian<uint64_t>>(dataLenBits);
 
-    SHA512Block hmacOutput = SHA512Block::computeHmac(
-        macKey,
-        sym256KeySize,
-        {ConstDataRange(reinterpret_cast<const char*>(associatedData), associatedDataLen),
-         ConstDataRange(reinterpret_cast<const char*>(cipherText), aesLen),
-         ConstDataRange(reinterpret_cast<const char*>(bigEndian.data()), bigEndian.size())});
+    SHA512Block hmacOutput =
+        SHA512Block::computeHmac(macKey,
+                                 sym256KeySize,
+                                 {ConstDataRange(associatedData, associatedDataLen),
+                                  ConstDataRange(cipherText, aesLen),
+                                  ConstDataRange(bigEndian.data(), bigEndian.size())});
 
     if (consttimeMemEqual(reinterpret_cast<const unsigned char*>(hmacOutput.data()),
                           reinterpret_cast<const unsigned char*>(cipherText + aesLen),

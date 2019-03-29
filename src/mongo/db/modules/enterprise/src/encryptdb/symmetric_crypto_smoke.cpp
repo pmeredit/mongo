@@ -158,20 +158,19 @@ Status _doSmokeTestAESCipherMode(const aesTest& test) {
 
     // Check Page Schema v1 marker, version, and ID.
     if ((T::kMode == crypto::aesMode::gcm) && (T::kSchema == PageSchema::k1)) {
-        const auto* extra = reinterpret_cast<const char*>(layout.getExtra());
-        ConstDataRangeCursor cursor(extra, extra + layout.getExtraSize());
+        ConstDataRangeCursor cursor(layout.getExtra(), layout.getExtraSize());
 
-        const auto marker = uassertStatusOK(cursor.readAndAdvance<std::uint32_t>());
+        const auto marker = cursor.readAndAdvance<std::uint32_t>();
         if (marker != std::numeric_limits<std::uint32_t>::max()) {
             return {ErrorCodes::OperationFailed, "PageSchema marker invalid"};
         }
 
-        const auto version = uassertStatusOK(cursor.readAndAdvance<std::uint8_t>());
+        const auto version = cursor.readAndAdvance<std::uint8_t>();
         if (version != 1) {
             return {ErrorCodes::OperationFailed, "Invalid page schema version"};
         }
 
-        const auto id = uassertStatusOK(cursor.readAndAdvance<SymmetricKeyId::id_type>());
+        const auto id = cursor.readAndAdvance<SymmetricKeyId::id_type>();
         if (id != kKeyIdForTest) {
             return {ErrorCodes::OperationFailed, "Incorrect key id found"};
         }

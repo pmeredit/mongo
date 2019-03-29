@@ -78,16 +78,15 @@ std::pair<PageSchema, SymmetricKeyId::id_type> parseGCMPageSchema(const std::uin
             str::stream() << "Invalid GCM page length: " << len,
             len >= (HeaderGCMV1::kTagSize + HeaderGCMV1::kExtraSize));
 
-    const char* bytePtr = reinterpret_cast<const char*>(ptr);
-    ConstDataRangeCursor cursor(bytePtr, bytePtr + len);
-    uassertStatusOK(cursor.advance(HeaderGCMV1::kTagSize));
+    ConstDataRangeCursor cursor(ptr, len);
+    cursor.advance(HeaderGCMV1::kTagSize);
 
-    const auto marker = uassertStatusOK(cursor.readAndAdvance<std::uint32_t>());
+    const auto marker = cursor.readAndAdvance<std::uint32_t>();
     if (marker != std::numeric_limits<std::uint32_t>::max()) {
         return {PageSchema::k0, 0};
     }
 
-    const auto version = uassertStatusOK(cursor.readAndAdvance<std::uint8_t>());
+    const auto version = cursor.readAndAdvance<std::uint8_t>();
     uassert(ErrorCodes::BadValue,
             str::stream() << "Unknown page encryption schema version " << static_cast<int>(version),
             version == 1);
@@ -95,7 +94,7 @@ std::pair<PageSchema, SymmetricKeyId::id_type> parseGCMPageSchema(const std::uin
     static_assert(std::is_same<SymmetricKeyId::id_type, std::uint64_t>::value,
                   "GCMV1 page format depends on a uint64 key id");
 
-    const auto id = uassertStatusOK(cursor.readAndAdvance<LittleEndian<SymmetricKeyId::id_type>>());
+    const auto id = cursor.readAndAdvance<LittleEndian<SymmetricKeyId::id_type>>();
     return {PageSchema::k1, id};
 }
 
@@ -190,12 +189,10 @@ Status _doAESEncrypt(const SymmetricKey& key,
         static_assert(std::is_same<SymmetricKeyId::id_type, std::uint64_t>::value,
                       "GCMV1 page format depends on a uint64 key id");
 
-        auto* extraPtr = reinterpret_cast<char*>(layout.getExtra());
-        auto extra = DataRangeCursor(extraPtr, extraPtr + layout.getExtraSize());
-        uassertStatusOK(extra.writeAndAdvance<std::uint32_t>(0xFFFFFFFFU));
-        uassertStatusOK(extra.writeAndAdvance(static_cast<std::uint8_t>(T::header_type::kSchema)));
-        uassertStatusOK(extra.writeAndAdvance<LittleEndian<SymmetricKeyId::id_type>>(*id));
-
+        auto extra = DataRangeCursor(layout.getExtra(), layout.getExtraSize());
+        extra.writeAndAdvance<std::uint32_t>(0xFFFFFFFFU);
+        extra.writeAndAdvance(static_cast<std::uint8_t>(T::header_type::kSchema));
+        extra.writeAndAdvance<LittleEndian<SymmetricKeyId::id_type>>(*id);
 
         // Use the entire "extra" block except for the fixed 0xFFFFFFFF marker for AAD.
         uassertStatusOK(

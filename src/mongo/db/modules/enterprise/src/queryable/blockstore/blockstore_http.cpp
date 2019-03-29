@@ -62,7 +62,7 @@ StatusWith<std::size_t> BlockstoreHTTP::read(StringData path,
     for (const auto& secs : kBackoffSleepSecondsRead) {
         try {
             auto result = _client->get(url);
-            status = buf.write(result.getCursor(), 0);
+            status = buf.writeNoThrow(result.getCursor(), 0);
             if (status.isOK()) {
                 return result.size();
             }
