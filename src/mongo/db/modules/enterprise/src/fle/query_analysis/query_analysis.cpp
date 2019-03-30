@@ -21,6 +21,7 @@
 #include "mongo/db/ops/write_ops_gen.h"
 #include "mongo/db/query/count_command_gen.h"
 #include "mongo/db/query/distinct_command_gen.h"
+#include "mongo/db/query/find_and_modify_request.h"
 #include "mongo/db/query/query_request.h"
 #include "mongo/db/update/update_driver.h"
 #include "mongo/idl/idl_parser.h"
@@ -156,6 +157,28 @@ PlaceHolderResult replaceEncryptedFieldsInFilter(const EncryptionSchemaTreeNode&
             bob.obj()};
 }
 
+/**
+ * Parses the update object given by 'update' and replaces encrypted fields with their appropriate
+ * EncryptionPlaceholder according to the schema.
+ *
+ * Returns a PlaceHolderResult containing the new update object and a boolean to indicate whether
+ * it contains an intent-to-encrypt marking. Throws an assertion if the update object is invalid
+ * or contains an invalid operator over an encrypted field.
+ */
+PlaceHolderResult replaceEncryptedFieldsInUpdate(const EncryptionSchemaTreeNode& schemaTree,
+                                                 BSONObj update) {
+    boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(nullptr, nullptr));
+
+    UpdateDriver driver(expCtx);
+    // Ignoring array filters as they are not relevant for encryption.
+    driver.parse(update, {});
+    auto updateVisitor = EncryptionUpdateVisitor(schemaTree);
+    driver.visitRoot(&updateVisitor);
+    return PlaceHolderResult{updateVisitor.hasPlaceholder(),
+                             schemaTree.containsEncryptedNode(),
+                             driver.serialize().getDocument().toBson()};
+}
+
 PlaceHolderResult addPlaceHoldersForFind(const std::string& dbName,
                                          const BSONObj& cmdObj,
                                          std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
@@ -229,13 +252,6 @@ PlaceHolderResult addPlaceHoldersForDistinct(const std::string& dbName,
                              parsedDistinct.serialize(cmdObj).body};
 }
 
-PlaceHolderResult addPlaceHoldersForFindAndModify(
-    const std::string& dbName,
-    const BSONObj& cmdObj,
-    std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
-    return PlaceHolderResult();
-}
-
 /**
  * Asserts that if _id is encrypted, it is provided explicitly. In addition, asserts
  * that no top level field in 'doc' has the value Timestamp(0,0). In both of those cases mongod
@@ -256,6 +272,28 @@ void verifyNoGeneratedEncryptedFields(BSONObj doc, const EncryptionSchemaTreeNod
                     element.type() != BSONType::bsonTimestamp ||
                         element.timestamp() != Timestamp(0, 0));
         }
+    }
+}
+
+PlaceHolderResult addPlaceHoldersForFindAndModify(
+    const std::string& dbName,
+    const BSONObj& cmdObj,
+    std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
+    auto request(uassertStatusOK(FindAndModifyRequest::parseFromBSON(
+        CommandHelpers::parseNsCollectionRequired(dbName, cmdObj), cmdObj)));
+
+    if (request.isUpsert()) {
+        verifyNoGeneratedEncryptedFields(request.getUpdateObj(), *schemaTree.get());
+    }
+    auto newQuery = replaceEncryptedFieldsInFilter(*schemaTree.get(), request.getQuery());
+    auto newUpdate = replaceEncryptedFieldsInUpdate(*schemaTree.get(), request.getUpdateObj());
+
+    if (newQuery.hasEncryptionPlaceholders || newUpdate.hasEncryptionPlaceholders) {
+        request.setQuery(newQuery.result);
+        request.setUpdateObj(newUpdate.result);
+        return PlaceHolderResult{true, schemaTree->containsEncryptedNode(), request.toBSON(cmdObj)};
+    } else {
+        return PlaceHolderResult{false, schemaTree->containsEncryptedNode(), cmdObj};
     }
 }
 
@@ -297,16 +335,12 @@ PlaceHolderResult addPlaceHoldersForUpdate(const OpMsgRequest& request,
         if (update.getUpsert()) {
             verifyNoGeneratedEncryptedFields(updateMod.getUpdateClassic(), *schemaTree.get());
         }
-        UpdateDriver driver(expCtx);
-        // Ignoring array filters as they are not relevant for encryption.
-        driver.parse(updateMod, {});
-        auto updateVisitor = EncryptionUpdateVisitor(*schemaTree.get());
-        driver.visitRoot(&updateVisitor);
         auto newFilter = replaceEncryptedFieldsInFilter(*schemaTree.get(), update.getQ());
-        updateVector.push_back(
-            write_ops::UpdateOpEntry(newFilter.result, driver.serialize().getDocument().toBson()));
+        auto newUpdate =
+            replaceEncryptedFieldsInUpdate(*schemaTree.get(), updateMod.getUpdateClassic());
+        updateVector.push_back(write_ops::UpdateOpEntry(newFilter.result, newUpdate.result));
         phr.hasEncryptionPlaceholders = phr.hasEncryptionPlaceholders ||
-            updateVisitor.hasPlaceholder() || newFilter.hasEncryptionPlaceholders;
+            newUpdate.hasEncryptionPlaceholders || newFilter.hasEncryptionPlaceholders;
     }
 
     updateOp.setUpdates(updateVector);
