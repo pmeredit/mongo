@@ -14,7 +14,8 @@
 
     const encryptDoc = {
         encrypt: {
-            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+            initializationVector: BinData(0, "ASNFZ4mrze/ty6mHZUMhAQ=="),
             keyId: [UUID(), UUID()],
             bsonType: "string"
         }
@@ -125,11 +126,33 @@
     // Test that an update command with a field encrypted with a JSON Pointer keyId fails.
     updateCommand["jsonSchema"] = {
         type: "object",
-        properties:
-            {foo: {encrypt: {algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random", keyId: "/key"}}}
+        properties: {
+            foo: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                    initializationVector: BinData(0, "ASNFZ4mrze/ty6mHZUMhAQ=="),
+                    keyId: "/key"
+                }
+            }
+        }
     };
     updateCommand["updates"] = [{q: {}, u: {"$set": {foo: 5}}}];
     assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51093);
+
+    // Test that an update command with a q field encrypted with the random algorithm fails.
+    updateCommand["jsonSchema"] = {
+        type: "object",
+        properties: {
+            foo: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [UUID(), UUID()],
+                }
+            }
+        }
+    };
+    updateCommand["updates"] = [{q: {foo: 2}, u: {"$set": {foo: 5}}}];
+    assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51158);
 
     mongocryptd.stop();
 }());

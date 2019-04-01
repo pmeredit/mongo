@@ -47,6 +47,9 @@ FLEMatchExpression::FLEMatchExpression(std::unique_ptr<MatchExpression> expressi
 
 BSONElement FLEMatchExpression::allocateEncryptedElement(const BSONElement& elem,
                                                          const EncryptionMetadata& metadata) {
+    uassert(51158,
+            "Cannot query on fields encrypted with the randomized encryption algorithm",
+            metadata.getAlgorithm() == FleAlgorithmEnum::kDeterministic);
     _encryptedElements.push_back(buildEncryptPlaceholder(elem, metadata));
     return _encryptedElements.back().firstElement();
 }

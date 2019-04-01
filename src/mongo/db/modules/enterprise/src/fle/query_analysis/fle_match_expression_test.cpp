@@ -48,27 +48,30 @@ class FLEMatchExpressionTest : public mongo::unittest::Test {
 protected:
     void setUp() {
         kDefaultSsnSchema = fromjson(R"({
-            type: "object", 
+            type: "object",
             properties: {
                 ssn: {
                     encrypt: {
-                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
-                        keyId: [{'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                        keyId: [{'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
+                        initializationVector: {$binary: "bW9uZ28=", $type: "00"}
+
                     }
                 }
             }
         })");
 
         kDefaultNestedSchema = fromjson(R"({
-            type: "object", 
+            type: "object",
             properties: {
                 user: {
-                    type: "object", 
+                    type: "object",
                     properties: {
                         ssn: {
                             encrypt: {
-                                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
-                                keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                                keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
+                                initializationVector: {$binary: "bW9uZ28=", $type: "00"}
                             }
                         }
                     }
@@ -78,8 +81,9 @@ protected:
 
         kDefaultMetadata =
             EncryptionMetadata::parse(IDLParserErrorContext("encryptMetadata"), fromjson(R"({
-                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random", 
-                keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
+                initializationVector: {$binary: "bW9uZ28=", $type: "00"}
             })"));
     }
 
@@ -146,7 +150,8 @@ TEST_F(FLEMatchExpressionTest, VerifyCorrectBinaryFormatForGeneratedPlaceholder)
     // The remaining bytes are encoded as BSON.
     BSONObj placeholderBSON(&rawBuffer[1]);
     ASSERT_BSONOBJ_EQ(placeholderBSON, fromjson(R"({
-        a: "AEAD_AES_256_CBC_HMAC_SHA_512-Random", 
+        a: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+        iv: {$binary: "bW9uZ28=", $type: "00"},
         ki: {$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
         v: 5
     })"));
@@ -565,6 +570,24 @@ TEST_F(FLEMatchExpressionTest, RegexWithinInExpressionAllowedOnPrefixOfEncrypted
         BSON("user" << BSON("$in" << BSON_ARRAY(BSON("ssn" << encryptedObj.firstElement())
                                                 << BSONRegEx("^a"))));
     ASSERT_BSONOBJ_EQ(serializeMatchForEncryption(kDefaultNestedSchema, match), translatedMatch);
+}
+
+TEST_F(FLEMatchExpressionTest, MatchExpressionWithRandomizedAlgorithmFails) {
+    auto randomSSNSchema = fromjson(R"({
+        type: "object",
+        properties: {
+            ssn: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+
+                }
+            }
+        }
+    })");
+    auto match = fromjson("{ssn: 5}");
+    ASSERT_THROWS_CODE(
+        serializeMatchForEncryption(randomSSNSchema, match), AssertionException, 51158);
 }
 
 }  // namespace

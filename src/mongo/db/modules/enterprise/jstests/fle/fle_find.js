@@ -26,8 +26,9 @@
                 properties: {
                     account: {
                         encrypt: {
-                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
                             keyId: [UUID()],
+                            initializationVector: BinData(0, "ASNFZ4mrze/ty6mHZUMhAQ==")
                         }
                     }
                 }
@@ -152,8 +153,9 @@
             patternProperties: {
                 "[Ss]sn": {
                     encrypt: {
-                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
                         keyId: [UUID()],
+                        initializationVector: BinData(0, "ASNFZ4mrze/ty6mHZUMhAQ==")
                     }
                 }
             }
@@ -169,13 +171,34 @@
             type: "object",
             properties: {
                 userSsn: {
-                    encrypt:
-                        {algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random", keyId: "/key"}
+                    encrypt: {
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                        keyId: "/key",
+                        initializationVector: BinData(0, "ASNFZ4mrze/ty6mHZUMhAQ==")
+                    }
                 }
             }
         }
     }),
                                  51093);
+
+    // Verify that a find with a randomized algorithm fails.
+    assert.commandFailedWithCode(testDB.runCommand({
+        find: "test",
+        filter: {userSsn: "123-45-6789"},
+        jsonSchema: {
+            type: "object",
+            properties: {
+                userSsn: {
+                    encrypt: {
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                        keyId: [UUID()],
+                    }
+                }
+            }
+        }
+    }),
+                                 51158);
 
     mongocryptd.stop();
 })();

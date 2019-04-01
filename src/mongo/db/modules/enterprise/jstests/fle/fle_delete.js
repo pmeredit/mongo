@@ -18,16 +18,18 @@
         properties: {
             foo: {
                 encrypt: {
-                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
-                    keyId: [UUID(), UUID()],
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                    keyId: [UUID()],
+                    initializationVector: BinData(0, "ASNFZ4mrze/ty6mHZUMhAQ==")
                 }
             }
         },
         patternProperties: {
             bar: {
                 encrypt: {
-                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
-                    keyId: [UUID(), UUID()],
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                    keyId: [UUID()],
+                    initializationVector: BinData(0, "ASNFZ4mrze/ty6mHZUMhAQ==")
                 }
             }
         }
@@ -93,6 +95,25 @@
     cmdRes = assert.commandWorked(testDb.runCommand(deleteCmd));
     assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
     assert.eq([], cmdRes.result.deletes, cmdRes);
+
+    // Test that a delete query on a field encrypted with the randomized algorithm fails.
+    const randomSchema = {
+        type: "object",
+        properties: {
+            foo: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [UUID()],
+                }
+            }
+        }
+    };
+    deleteCmd = {
+        delete: coll.getName(),
+        deletes: [{q: {foo: 1}, limit: 1}],
+        jsonSchema: randomSchema
+    };
+    assert.commandFailedWithCode(testDb.runCommand(deleteCmd), 51158);
 
     mongocryptd.stop();
 }());
