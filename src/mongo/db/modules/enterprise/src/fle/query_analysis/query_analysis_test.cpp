@@ -285,7 +285,7 @@ TEST(EncryptionUpdateVisitorTest, ReplaceSingleFieldCorrectly) {
     auto updateVisitor = EncryptionUpdateVisitor(*schemaTree.get());
 
     driver.visitRoot(&updateVisitor);
-    auto newUpdate = driver.serialize();
+    auto newUpdate = driver.serialize().getDocument().toBson();
     EncryptionMetadata metadata =
         EncryptionMetadata::parse(IDLParserErrorContext("meta"), encryptObj["encrypt"].Obj());
     auto correctField = buildEncryptPlaceholder(entry["$set"]["foo"], metadata, entry);
@@ -317,7 +317,7 @@ TEST(EncryptionUpdateVisitorTest, ReplaceMultipleFieldsCorrectly) {
     auto updateVisitor = EncryptionUpdateVisitor(*schemaTree.get());
 
     driver.visitRoot(&updateVisitor);
-    auto newUpdate = driver.serialize();
+    auto newUpdate = driver.serialize().getDocument().toBson();
     EncryptionMetadata metadata =
         EncryptionMetadata::parse(IDLParserErrorContext("meta"), encryptObj["encrypt"].Obj());
     auto correctBar = buildEncryptPlaceholder(entry["$set"]["foo.bar"], metadata, entry);
@@ -344,7 +344,7 @@ TEST(EncryptionUpdateVisitorTest, FieldMarkedForEncryptionInRightHandSetObject) 
     auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
     auto updateVisitor = EncryptionUpdateVisitor(*schemaTree.get());
     driver.visitRoot(&updateVisitor);
-    auto newUpdate = driver.serialize();
+    auto newUpdate = driver.serialize().getDocument().toBson();
     EncryptionMetadata metadata =
         EncryptionMetadata::parse(IDLParserErrorContext("meta"), encryptObj["encrypt"].Obj());
     auto correctField = buildEncryptPlaceholder(entry["$set"]["foo"]["bar"], metadata);
@@ -439,7 +439,7 @@ TEST(EncryptionUpdateVisitorTest, ObjectReplaceUpdateEncryptsSingleField) {
     auto updateVisitor = EncryptionUpdateVisitor(*schemaTree.get());
 
     driver.visitRoot(&updateVisitor);
-    auto newUpdate = driver.serialize();
+    auto newUpdate = driver.serialize().getDocument().toBson();
     EncryptionMetadata metadata =
         EncryptionMetadata::parse(IDLParserErrorContext("meta"), encryptObj["encrypt"].Obj());
     auto correctField = buildEncryptPlaceholder(entry["foo"], metadata);

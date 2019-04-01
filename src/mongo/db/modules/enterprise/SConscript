@@ -102,6 +102,7 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
         LIBDEPS=[
             '$BUILD_DIR/mongo/base',
             '$BUILD_DIR/mongo/db/auth/auth',
+            '$BUILD_DIR/mongo/db/ops/write_ops_parsers',
             '$BUILD_DIR/mongo/util/net/network',
         ],
         LIBDEPS_PRIVATE=[

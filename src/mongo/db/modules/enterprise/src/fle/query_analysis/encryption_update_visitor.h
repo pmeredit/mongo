@@ -9,6 +9,7 @@
 #include "encryption_schema_tree.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/update/object_replace_node.h"
+#include "mongo/db/update/pipeline_executor.h"
 #include "mongo/db/update/rename_node.h"
 #include "mongo/db/update/set_node.h"
 #include "mongo/db/update/update_internal_node.h"
@@ -58,6 +59,10 @@ public:
             host->val = placeholder.result;
             _hasPlaceholder = true;
         }
+    }
+
+    void visit(PipelineExecutor* host) {
+        uasserted(ErrorCodes::NotImplemented, "Pipeline updates not yet supported on mongocryptd");
     }
 
     void visit(PopNode* host) {

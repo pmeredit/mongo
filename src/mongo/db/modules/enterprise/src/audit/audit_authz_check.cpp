@@ -233,7 +233,7 @@ void logQueryAuthzCheck(Client* client,
 void logUpdateAuthzCheck(Client* client,
                          const NamespaceString& ns,
                          const BSONObj& query,
-                         const BSONObj& updateObj,
+                         const write_ops::UpdateModification& updateMod,
                          bool isUpsert,
                          bool isMulti,
                          ErrorCodes::Error result) {
@@ -251,7 +251,7 @@ void logUpdateAuthzCheck(Client* client,
                            BSONArrayBuilder updates(builder.subarrayStart("updates"));
                            BSONObjBuilder update(updates.subobjStart());
                            update.append("q", query);
-                           update.append("u", updateObj);
+                           updateMod.serializeToBSON("u", &update);
                            update.append("upsert", isUpsert);
                            update.append("multi", isMulti);
                        }

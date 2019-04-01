@@ -265,16 +265,21 @@ PlaceHolderResult addPlaceHoldersForUpdate(const OpMsgRequest& request,
     PlaceHolderResult phr;
 
     for (auto&& update : updateOp.getUpdates()) {
+        auto& updateMod = update.getU();
+        uassert(ErrorCodes::NotImplemented,
+                "Pipeline updates not yet supported on mongocryptd",
+                updateMod.type() == write_ops::UpdateModification::Type::kClassic);
         if (update.getUpsert()) {
-            verifyNoGeneratedEncryptedFields(update.getU(), *schemaTree.get());
+            verifyNoGeneratedEncryptedFields(updateMod.getUpdateClassic(), *schemaTree.get());
         }
         UpdateDriver driver(expCtx);
         // Ignoring array filters as they are not relevant for encryption.
-        driver.parse(update.getU(), {});
+        driver.parse(updateMod, {});
         auto updateVisitor = EncryptionUpdateVisitor(*schemaTree.get());
         driver.visitRoot(&updateVisitor);
         auto newFilter = replaceEncryptedFieldsInFilter(*schemaTree.get(), update.getQ());
-        updateVector.push_back(write_ops::UpdateOpEntry(newFilter.result, driver.serialize()));
+        updateVector.push_back(
+            write_ops::UpdateOpEntry(newFilter.result, driver.serialize().getDocument().toBson()));
         phr.hasEncryptionPlaceholders = phr.hasEncryptionPlaceholders ||
             updateVisitor.hasPlaceholder() || newFilter.hasEncryptionPlaceholders;
     }
