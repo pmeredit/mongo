@@ -50,6 +50,12 @@ BSONElement FLEMatchExpression::allocateEncryptedElement(const BSONElement& elem
     uassert(51158,
             "Cannot query on fields encrypted with the randomized encryption algorithm",
             metadata.getAlgorithm() == FleAlgorithmEnum::kDeterministic);
+    uassert(
+        31009,
+        str::stream()
+            << "Cannot perform equality to an array predicate against an encrypted path. Array: "
+            << elem,
+        elem.type() != BSONType::Array);
     _encryptedElements.push_back(buildEncryptPlaceholder(elem, metadata));
     return _encryptedElements.back().firstElement();
 }
@@ -78,6 +84,12 @@ void FLEMatchExpression::replaceElementsInEqExpression(const EncryptionSchemaTre
             if (hasEncrypt) {
                 eqExpr->setData(allocateEncryptedObject(placeholder));
             }
+        } else if (rhsElem.type() == BSONType::Array) {
+            uassert(
+                31007,
+                str::stream() << "$eq to array predicate is illegal for prefix of encrypted path: "
+                              << eqExpr->toString(),
+                !schemaTree.containsEncryptedNodeBelowPrefix(FieldRef{eqExpr->path()}));
         }
     }
 }
@@ -121,6 +133,13 @@ void FLEMatchExpression::replaceElementsInInExpression(const EncryptionSchemaTre
                 }
 
                 hasPlaceholders = hasPlaceholders || elemHasEncrypt;
+            } else if (elem.type() == BSONType::Array) {
+                uassert(31008,
+                        str::stream() << "Illegal $in element for prefix '" << inExpr->path()
+                                      << "' of encrypted path: "
+                                      << elem,
+                        !schemaTree.containsEncryptedNodeBelowPrefix(FieldRef{inExpr->path()}));
+                replacedElements.push_back(elem);
             } else {
                 replacedElements.push_back(elem);
             }

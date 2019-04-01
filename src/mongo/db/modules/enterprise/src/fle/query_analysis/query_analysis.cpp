@@ -76,19 +76,37 @@ BSONObj replaceEncryptedFieldsRecursive(const EncryptionSchemaTreeNode* schema,
         auto fieldName = element.fieldNameStringData();
         leadingPath->appendPart(fieldName);
         if (auto metadata = schema->getEncryptionMetadataForPath(*leadingPath)) {
-            // TODO SERVER-39958: Error on Arrays.
+            uassert(31005,
+                    str::stream() << "encrypted path '" << leadingPath->dottedField()
+                                  << "' cannot contain an array",
+                    element.type() != BSONType::Array);
             *encryptedFieldFound = true;
             BSONObj placeholder = buildEncryptPlaceholder(element, metadata.get(), origDoc);
             builder.append(placeholder[fieldName]);
-        } else if (element.type() != BSONType::Object) {
-            // Encrypt markings below arrays are not supported.
-            builder.append(element);
-        } else {
+        } else if (element.type() == BSONType::Object) {
             builder.append(
                 fieldName,
                 replaceEncryptedFieldsRecursive(
                     schema, element.embeddedObject(), origDoc, leadingPath, encryptedFieldFound));
+        } else if (element.type() == BSONType::Array) {
+            // Encrypting beneath an array is not supported. If the user has an array along an
+            // encrypted path, they have violated the type:"object" condition of the schema. For
+            // example, if the user's schema indicates that "foo.bar" is encrypted, it is implied
+            // that "foo" is an object. We should therefore return an error if the user attempts to
+            // insert a document such as {foo: [{bar: 1}, {bar: 2}]}.
+            //
+            // Although mongocryptd doesn't enforce the provided JSON Schema in full, we make an
+            // effort here to enforce the encryption-related aspects of the schema. Ensuring that
+            // there are no arrays along an encrypted path falls within this mandate.
+            uassert(31006,
+                    str::stream() << "An array at path '" << leadingPath->dottedField()
+                                  << "' would violate the schema",
+                    !schema->containsEncryptedNodeBelowPrefix(*leadingPath));
+            builder.append(element);
+        } else {
+            builder.append(element);
         }
+
         leadingPath->removeLastPart();
     }
     return builder.obj();

@@ -125,11 +125,11 @@ TEST(ReplaceEncryptedFieldsTest, NumericPathComponentNotTreatedAsArrayIndex) {
                                              << BSON(0 << encryptObj))));
     auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
     auto doc = BSON("foo" << BSON_ARRAY("notEncrypted"));
-    auto replaceRes = replaceEncryptedFields(doc, schemaTree.get(), {}, boost::none);
-    ASSERT_FALSE(replaceRes.hasEncryptionPlaceholders);
+    ASSERT_THROWS_CODE(
+        replaceEncryptedFields(doc, schemaTree.get(), {}, boost::none), AssertionException, 31006);
     doc = BSON("foo" << BSON_ARRAY(BSON(0 << "notEncrypted") << BSON(0 << "alsoNotEncrypted")));
-    replaceRes = replaceEncryptedFields(doc, schemaTree.get(), {}, boost::none);
-    ASSERT_FALSE(replaceRes.hasEncryptionPlaceholders);
+    ASSERT_THROWS_CODE(
+        replaceEncryptedFields(doc, schemaTree.get(), {}, boost::none), AssertionException, 31006);
 }
 
 TEST(ReplaceEncryptedFieldsTest, ObjectInArrayWithSameNameNotEncrypted) {
@@ -143,8 +143,8 @@ TEST(ReplaceEncryptedFieldsTest, ObjectInArrayWithSameNameNotEncrypted) {
     auto doc = BSON("foo" << BSON_ARRAY("bar"
                                         << "notEncrypted"));
     auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
-    auto replaceRes = replaceEncryptedFields(doc, schemaTree.get(), {}, boost::none);
-    ASSERT_BSONOBJ_EQ(doc, replaceRes.result);
+    ASSERT_THROWS_CODE(
+        replaceEncryptedFields(doc, schemaTree.get(), {}, boost::none), AssertionException, 31006);
 }
 
 TEST(ReplaceEncryptedFieldsTest, FailIfSchemaHasKeyIdWithEmptyOrigDoc) {
