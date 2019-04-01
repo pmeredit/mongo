@@ -411,4 +411,24 @@ boost::optional<EncryptionMetadata> EncryptionSchemaTreeNode::_getEncryptionMeta
     return metadata;
 };
 
+bool EncryptionSchemaTreeNode::containsEncryptedNode() const {
+    for (auto && [ path, child ] : _propertiesChildren) {
+        if (child->containsEncryptedNode()) {
+            return true;
+        }
+    }
+
+    for (auto&& patternPropertiesChild : _patternPropertiesChildren) {
+        if (patternPropertiesChild.child->containsEncryptedNode()) {
+            return true;
+        }
+    }
+
+    if (_additionalPropertiesChild) {
+        return _additionalPropertiesChild->containsEncryptedNode();
+    }
+
+    return false;
+}
+
 }  // namespace mongo

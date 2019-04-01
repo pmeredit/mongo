@@ -1552,5 +1552,73 @@ TEST(EncryptionSchemaTreeTest,
     ASSERT_FALSE(EncryptionSchemaTreeNode::parse(schema)->containsEncryptedNode());
 }
 
+TEST(EncryptionSchemaTreeTest, ContainsEncryptReturnsTrueIfAdditionalPropertiesHasEncryptNode) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            a: {type: "string"}
+        },
+        additionalProperties: {
+            encrypt: {
+                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+            }
+        }
+    })");
+
+    ASSERT_TRUE(EncryptionSchemaTreeNode::parse(schema)->containsEncryptedNode());
+}
+
+TEST(EncryptionSchemaTreeTest,
+     ContainsEncryptReturnsFalseIfAdditionalPropertiesDoesNotHaveEncryptNode) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            a: {type: "string"}
+        },
+        additionalProperties: {
+            type: "number"
+        }
+    })");
+
+    ASSERT_FALSE(EncryptionSchemaTreeNode::parse(schema)->containsEncryptedNode());
+}
+
+TEST(EncryptionSchemaTreeTest, ContainsEncryptReturnsTrueIfPatternPropertiesHasEncryptNode) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            a: {type: "string"}
+        },
+        patternProperties: {
+            "^b": {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                }
+            }
+        }
+    })");
+
+    ASSERT_TRUE(EncryptionSchemaTreeNode::parse(schema)->containsEncryptedNode());
+}
+
+TEST(EncryptionSchemaTreeTest,
+     ContainsEncryptReturnsFalseIfPatternPropertiesDoesNotHaveEncryptNode) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            a: {type: "string"}
+        },
+        patternProperties: {
+            "^b": {
+                type: "number"
+            }
+        }
+    })");
+
+    ASSERT_FALSE(EncryptionSchemaTreeNode::parse(schema)->containsEncryptedNode());
+}
+
 }  // namespace
 }  // namespace mongo

@@ -153,14 +153,7 @@ public:
     /**
      * Returns true if this tree contains at least one EncryptionSchemaEncryptedNode.
      */
-    virtual bool containsEncryptedNode() const {
-        for (auto && [ path, child ] : _propertiesChildren) {
-            if (child->containsEncryptedNode()) {
-                return true;
-            }
-        }
-        return false;
-    }
+    virtual bool containsEncryptedNode() const;
 
     /**
      * Override this method to return the node's EncryptionMetadata, or boost::none if it holds
