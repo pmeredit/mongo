@@ -80,7 +80,8 @@ public:
         auto sourceMetadata = _schemaTree.getEncryptionMetadataForPath(sourcePath);
         auto destinationMetadata = _schemaTree.getEncryptionMetadataForPath(_currentPath);
         uassert(51160,
-                "$rename between two encrypted fields must have the same metadata",
+                "$rename between two encrypted fields must have the same metadata or both be "
+                "unencrypted",
                 sourceMetadata == destinationMetadata);
         uassert(51161,
                 "$rename is not allowed on an object containing encrypted fields",
@@ -142,9 +143,8 @@ public:
         }
     }
 
-    void visit(UnsetNode* host) {
-        // TODO: SERVER-40234 handle $unset.
-        uasserted(ErrorCodes::CommandNotSupported, "$unset not yet supported on mongocryptd");
+    void visit(UnsetNode*) {
+        // No work to do for $unset on mongocryptd.
     }
 
     void visit(UpdateArrayNode* host) {

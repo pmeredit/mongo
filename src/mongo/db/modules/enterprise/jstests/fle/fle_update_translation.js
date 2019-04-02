@@ -276,5 +276,18 @@
     updateCommand["updates"] = [{q: {foo: 2}, u: {"$set": {foo: 5}}}];
     assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51158);
 
+    // Test that an $unset with a q field gets encrypted.
+    updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc}};
+    updateCommand["updates"] = [{q: {foo: 4}, u: {"$unset": {"bar": 1}}}];
+    result = assert.commandWorked(testDb.runCommand(updateCommand));
+    assert(result["result"]["updates"][0]["q"]["foo"]["$eq"] instanceof BinData, tojson(result));
+
+    // Test that $unset works with an encrypted field.
+    updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc}};
+    updateCommand["updates"] = [{q: {}, u: {"$unset": {"foo": 1}}}];
+    result = assert.commandWorked(testDb.runCommand(updateCommand));
+    assert.eq(
+        result["result"]["updates"][0]["u"], updateCommand["updates"][0]["u"], tojson(result));
+
     mongocryptd.stop();
 }());
