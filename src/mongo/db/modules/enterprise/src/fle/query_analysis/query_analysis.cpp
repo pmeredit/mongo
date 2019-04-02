@@ -389,9 +389,13 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
     invariant(metadata.getAlgorithm());
     invariant(metadata.getKeyId());
 
-    EncryptionPlaceholder marking(metadata.getAlgorithm().get(), EncryptSchemaAnyType(elem));
+    FleAlgorithmInt integerAlgorithm = metadata.getAlgorithm() == FleAlgorithmEnum::kDeterministic
+        ? FleAlgorithmInt::kDeterministic
+        : FleAlgorithmInt::kRandom;
 
-    if (marking.getAlgorithm() == FleAlgorithmEnum::kDeterministic) {
+    EncryptionPlaceholder marking(integerAlgorithm, EncryptSchemaAnyType(elem));
+
+    if (marking.getAlgorithm() == FleAlgorithmInt::kDeterministic) {
         invariant(metadata.getInitializationVector());
         marking.setInitializationVector(metadata.getInitializationVector().get());
     }

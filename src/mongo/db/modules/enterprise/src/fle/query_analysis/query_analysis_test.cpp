@@ -165,7 +165,7 @@ TEST(BuildEncryptPlaceholderTest, JSONPointerResolvesCorrectly) {
                     << "encrypt"
                     << "key"
                     << "value");
-    EncryptionPlaceholder expected(FleAlgorithmEnum::kRandom, EncryptSchemaAnyType(doc["foo"]));
+    EncryptionPlaceholder expected(FleAlgorithmInt::kRandom, EncryptSchemaAnyType(doc["foo"]));
     auto keyAltName = BSON("key"
                            << "value");
     expected.setKeyAltName(EncryptSchemaAnyType(keyAltName["key"]));
@@ -186,7 +186,7 @@ TEST(BuildEncryptPlaceholderTest, JSONPointerResolvesCorrectlyThroughArray) {
                     << "encrypt"
                     << "key"
                     << BSON_ARRAY("value"));
-    EncryptionPlaceholder expected(FleAlgorithmEnum::kRandom, EncryptSchemaAnyType(doc["foo"]));
+    EncryptionPlaceholder expected(FleAlgorithmInt::kRandom, EncryptSchemaAnyType(doc["foo"]));
     auto keyAltName = BSON("key"
                            << "value");
     expected.setKeyAltName(EncryptSchemaAnyType(keyAltName["key"]));
@@ -242,7 +242,7 @@ TEST(BuildEncryptPlaceholderTest, UAssertIfPointerDoesNotEvaluate) {
     auto schema = buildBasicSchema(pointerEncryptObj);
     auto doc = BSON("foo"
                     << "encrypt");
-    EncryptionPlaceholder expected(FleAlgorithmEnum::kRandom, EncryptSchemaAnyType(doc["foo"]));
+    EncryptionPlaceholder expected(FleAlgorithmInt::kRandom, EncryptSchemaAnyType(doc["foo"]));
     auto keyAltName = BSON("key"
                            << "value");
     expected.setKeyAltName(EncryptSchemaAnyType(keyAltName["key"]));
@@ -260,7 +260,7 @@ TEST(BuildEncryptPlaceholderTest, PointedToUUIDActsAsKeyIdInsteadOfAltName) {
     uuid.appendToBuilder(&bob, "key");
     auto doc = bob.obj();
 
-    EncryptionPlaceholder expected(FleAlgorithmEnum::kRandom, EncryptSchemaAnyType(doc["foo"]));
+    EncryptionPlaceholder expected(FleAlgorithmInt::kRandom, EncryptSchemaAnyType(doc["foo"]));
     expected.setKeyId(uuid);
     EncryptionMetadata metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
                                                             pointerEncryptObj["encrypt"].Obj());
