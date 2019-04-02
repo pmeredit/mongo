@@ -2,7 +2,7 @@
  * Test that the 'sizeStorer.wt' file gets flushed the most up-to-date information before beginning
  * a nonblocking backup.
  *
- * @tags: [requires_fsync]
+ * @tags: [requires_fsync, requires_persistence]
  */
 (function() {
     'use strict';
