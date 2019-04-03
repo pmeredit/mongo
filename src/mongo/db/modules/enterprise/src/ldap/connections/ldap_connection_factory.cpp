@@ -185,11 +185,7 @@ private:
 
 void PooledLDAPConnection::setup(Milliseconds timeout, SetupCallback cb) {
     _options.timeout = timeout;
-    _executor->schedule([this, cb](auto execStatus) {
-        if (!execStatus.isOK()) {
-            cb(this, execStatus);
-        }
-
+    auto status = _executor->schedule([this, cb] {
         _conn = makeNativeLDAPConn(_options);
         Status status = _conn->connect();
         if (!status.isOK()) {
@@ -198,14 +194,14 @@ void PooledLDAPConnection::setup(Milliseconds timeout, SetupCallback cb) {
 
         cb(this, runEmptyQuery(_conn.get()));
     });
+
+    if (!status.isOK()) {
+        cb(this, status);
+    }
 }
 
 void PooledLDAPConnection::refresh(Milliseconds timeout, RefreshCallback cb) {
-    _executor->schedule([this, cb](auto execStatus) {
-        if (!execStatus.isOK()) {
-            cb(this, execStatus);
-        }
-
+    auto status = _executor->schedule([this, cb] {
         auto status = runEmptyQuery(_conn.get());
         if (status.isOK()) {
             indicateSuccess();
@@ -214,6 +210,10 @@ void PooledLDAPConnection::refresh(Milliseconds timeout, RefreshCallback cb) {
         }
         cb(this, status);
     });
+
+    if (!status.isOK()) {
+        cb(this, status);
+    }
 }
 
 PooledLDAPConnection::PooledLDAPConnection(const std::shared_ptr<ThreadPool> executor,
