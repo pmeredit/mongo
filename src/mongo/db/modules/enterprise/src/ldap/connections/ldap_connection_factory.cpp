@@ -188,7 +188,6 @@ void PooledLDAPConnection::setup(Milliseconds timeout, SetupCallback cb) {
     _executor->schedule([this, cb](auto execStatus) {
         if (!execStatus.isOK()) {
             cb(this, execStatus);
-            return;
         }
 
         _conn = makeNativeLDAPConn(_options);
@@ -205,7 +204,6 @@ void PooledLDAPConnection::refresh(Milliseconds timeout, RefreshCallback cb) {
     _executor->schedule([this, cb](auto execStatus) {
         if (!execStatus.isOK()) {
             cb(this, execStatus);
-            return;
         }
 
         auto status = runEmptyQuery(_conn.get());
@@ -329,10 +327,6 @@ public:
     std::shared_ptr<ConnectionPool::TimerInterface> makeTimer() final {
         _start();
         return std::make_shared<LDAPTimer>(_clockSource, _timerScheduler);
-    }
-
-    OutOfLineExecutor& getExecutor() final {
-        return *_executor;
     }
 
     Date_t now() final {
