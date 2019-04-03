@@ -18,7 +18,6 @@ configs:
         description: 'File path for encryption key file'
         short_name: encryptionKeyFile
         arg_vartype: String
-        cpp_varname: 'encryptionGlobalParams.encryptionKeyFile'
         requires: "security.enableEncryption"
     "security.encryptionCipherMode":
         description: 'Cipher mode to use for encryption at rest'

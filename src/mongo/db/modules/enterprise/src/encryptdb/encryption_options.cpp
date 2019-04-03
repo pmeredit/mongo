@@ -5,6 +5,8 @@
 
 #include "encryption_options.h"
 
+#include <boost/filesystem.hpp>
+
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
 #include "mongo/util/mongoutils/str.h"
@@ -83,6 +85,14 @@ MONGO_STARTUP_OPTIONS_STORE(EncryptionOptions)(InitializerContext* context) {
         return swKmipParams.getStatus();
     }
     encryptionGlobalParams.kmipParams = std::move(swKmipParams.getValue());
+
+    if (params.count("security.encryptionKeyFile")) {
+        boost::filesystem::path fileName(params["security.encryptionKeyFile"].as<std::string>());
+        if (params.count("processManagement.fork") && !fileName.is_absolute()) {
+            fileName = boost::filesystem::absolute(fileName);
+        }
+        encryptionGlobalParams.encryptionKeyFile = fileName.string();
+    }
 
     if (params.count("security.kmip.rotateMasterKey") &&
         params["security.kmip.rotateMasterKey"].as<bool>()) {
