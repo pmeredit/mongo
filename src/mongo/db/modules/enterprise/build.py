@@ -180,11 +180,11 @@ def configure(conf, env):
             programfilesx86 = "C:\\Program Files (x86)"
         vsinstall_path = subprocess.check_output([os.path.join(programfilesx86, "Microsoft Visual Studio", "Installer", "vswhere.exe"), "-version", "[15.0,16.0)", "-property", "installationPath", "-nologo"]).strip()
         vsruntime_key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x64")
-        vslib_version,vslib_version_type = winreg.QueryValueEx(vsruntime_key, "Version")
+        vslib_version, vslib_version_type = winreg.QueryValueEx(vsruntime_key, "Version")
 
         # Get library version from registry and fallback to directory search if not found as expected on disk
-        redist_root = os.path.join(vsinstall_path, "VC", "Redist", "MSVC")
-        redist_path = os.path.join(redist_root, re.match("v(\d+\.\d+\.\d+)\.\d+", vslib_version).group(1))
+        redist_root = os.path.join(vsinstall_path, b"VC", b"Redist", b"MSVC")
+        redist_path = os.path.join(redist_root, re.match("v(\d+\.\d+\.\d+)\.\d+", vslib_version).group(1).encode('utf-8'))
         if not os.path.isdir(redist_path):
             dirs = os.listdir(redist_root)
             dirs.sort()
@@ -194,10 +194,10 @@ def configure(conf, env):
                     redist_path = candidate
                     break
 
-        redist_file_name = os.path.join(redist_path, "vcredist_x64.exe")
+        redist_file_name = os.path.join(redist_path.decode('utf-8'), "vcredist_x64.exe")
         env.Append(ARCHIVE_ADDITIONS=[redist_file_name])
         env.Append(ARCHIVE_ADDITION_DIR_MAP={
-                redist_path : "bin"
+                redist_path.decode('utf-8') : "bin"
                 })
 
     return configured_modules
