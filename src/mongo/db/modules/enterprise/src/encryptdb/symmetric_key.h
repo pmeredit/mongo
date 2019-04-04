@@ -30,6 +30,10 @@ public:
         return _id == other._id && _name == other._name;
     }
 
+    bool operator!=(const SymmetricKeyId& other) const {
+        return !(*this == other);
+    }
+
     const boost::optional<id_type>& id() const {
         return _id;
     }

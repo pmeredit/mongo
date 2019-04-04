@@ -13,6 +13,7 @@
 #include <fstream>
 #include <tuple>
 
+#include "encryptdb/encryption_key_manager_gen.h"
 #include "encrypted_data_protector.h"
 #include "encryption_key_acquisition.h"
 #include "mongo/base/checked_cast.h"
@@ -42,7 +43,11 @@ namespace fs = boost::filesystem;
 namespace {
 const std::string kInvalidatedKeyword = "-invalidated-";
 const std::string kInitializingKeyword = "-initializing";
+const std::string kUpgradingKeyword = "-upgradetmp";
 const std::string kKeystoreMetadataFilename = "keystore.metadata";
+
+// Test-only setParameter: keystoreSchemaVersion
+boost::optional<std::int32_t> gInitialKeystoreSchemaVersion;
 
 Status createDirectoryIfNeeded(const fs::path& path) {
     try {
@@ -70,6 +75,37 @@ bool hasExistingDatafiles(const fs::path& path) {
 }
 
 }  // namespace
+
+void KeystoreSchemaVersionServerParameter::append(OperationContext* opCtx,
+                                                  BSONObjBuilder& b,
+                                                  const std::string& name) {
+    if (!encryptionGlobalParams.enableEncryption) {
+        return;
+    }
+
+    auto keyMgr = EncryptionKeyManager::get(opCtx->getServiceContext());
+    auto systemKeyId =
+        uassertStatusOK(keyMgr->getKey(SymmetricKeyId(kSystemKeyId)))->getKeyId().id();
+    b << name << BSON("version" << keyMgr->getKeystoreVersion() << "systemKeyId"
+                                << (systemKeyId ? std::to_string(*systemKeyId) : std::string())
+                                << "rolloverId"
+                                << keyMgr->getRolloverId());
+}
+
+Status KeystoreSchemaVersionServerParameter::setFromString(const std::string& value) {
+    std::int32_t version;
+    auto status = parseNumberFromString(value, &version);
+    if (!status.isOK()) {
+        return status;
+    }
+    if ((version != 0) && (version != 1)) {
+        return {ErrorCodes::BadValue,
+                str::stream() << "Invalid keystoreSchemaVersion: " << version};
+    }
+
+    gInitialKeystoreSchemaVersion = version;
+    return Status::OK();
+}
 
 EncryptionKeyManager::EncryptionKeyManager(const std::string& dbPath,
                                            EncryptionGlobalParams* encryptionParams,
@@ -214,20 +250,20 @@ Status EncryptionKeyManager::endNonBlockingBackup() {
 //
 // The only current caller of getKey is WT_ENCRYPTOR::customize with the keyId provided in the
 // callback.
-StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::getKey(
-    const SymmetricKeyId& keyId) {
+StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::getKey(const SymmetricKeyId& keyId,
+                                                                       FindMode mode) {
     if (keyId.name() == kSystemKeyId) {
-        return _getSystemKey(keyId);
+        return _getSystemKey(keyId, mode);
     } else if (keyId.name() == kMasterKeyId) {
         return _getMasterKey();
     }
-    return _readKey(keyId);
+    return _readKey(keyId, mode);
 }
 
 StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getSystemKey(
-    const SymmetricKeyId& keyId) {
+    const SymmetricKeyId& keyId, FindMode mode) {
     if (_keystore) {
-        return _readKey(keyId);
+        return _readKey(keyId, mode);
     }
 
     Status status = _initLocalKeystore();
@@ -235,7 +271,7 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getSystemKey(
         return status;
     }
 
-    return _readKey(keyId);
+    return _readKey(keyId, mode);
 }
 
 StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getMasterKey() {
@@ -261,12 +297,12 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getMasterKey() 
 }
 
 StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_readKey(
-    const SymmetricKeyId& keyId) try {
+    const SymmetricKeyId& keyId, FindMode mode) try {
     // Look for the requested key in the local key store. Assume that the local key store has been
     // created and that open_session and open_cursor will succeed.
     auto session = _keystore->makeSession();
 
-    auto cursor = session->find(keyId);
+    auto cursor = session->find(keyId, mode);
     if (cursor != session->end()) {
         // NIST guidelines in SP-800-38D allow us to deterministically construct GCM IVs. We use
         // this construction for database writes, because it allows us a large number of invocations
@@ -329,7 +365,34 @@ boost::filesystem::path EncryptionKeyManager::_metadataPath(PathMode mode) {
     MONGO_UNREACHABLE;
 }
 
+namespace {
+void upgradeKeystoreToV1(std::unique_ptr<Keystore> src,
+                         const boost::filesystem::path& path,
+                         const EncryptionGlobalParams* params) {
+    fassert(51166, params->encryptionCipherMode == crypto::aes256GCMName);
+
+    uassert(ErrorCodes::OperationFailed,
+            str::stream() << "Temporary keystore '" << path.string()
+                          << "' already exists, possibly failed upgrade process",
+            !fs::exists(path));
+
+    auto dest = Keystore::makeKeystore(path, Keystore::Version::k1, params);
+    auto srcSession = src->makeSession();
+    auto destSession = dest->makeSession();
+    for (auto&& key : *srcSession.get()) {
+        destSession->insert(std::move(key));
+    }
+}
+}  // namespace
+
 Status EncryptionKeyManager::_initLocalKeystore() {
+    // Fail early if the user is asking for the impossible.
+    if (_encryptionParams->rotateDatabaseKeys &&
+        (_encryptionParams->encryptionCipherMode != crypto::aes256GCMName)) {
+        return {ErrorCodes::BadValue,
+                "--eseDatabaseKeyRollover is only supported with cipher mode AES256-GCM"};
+    }
+
     // Create the local key store directory, key.store/masterKeyId with the special case
     // masterKeyId = local for local key files.
     Status status = createDirectoryIfNeeded(_keystoreBasePath);
@@ -353,6 +416,12 @@ Status EncryptionKeyManager::_initLocalKeystore() {
 
     int defaultKeystoreSchemaVersion =
         _encryptionParams->encryptionCipherMode == crypto::aes256GCMName ? 1 : 0;
+    if (gInitialKeystoreSchemaVersion) {
+        // test-only setParameter override.
+        defaultKeystoreSchemaVersion =
+            std::min(defaultKeystoreSchemaVersion, *gInitialKeystoreSchemaVersion);
+    }
+
     if (existingKeyId.empty()) {
         // Initializing the key store for the first time.
         if (hasExistingDatafiles(_dbPath)) {
@@ -427,17 +496,53 @@ Status EncryptionKeyManager::_initLocalKeystore() {
     try {
         _keystore = Keystore::makeKeystore(keystorePath, _keystoreMetadata, _encryptionParams);
         if (_keystoreMetadata.getDirty() || _encryptionParams->rotateDatabaseKeys) {
+            const auto kKeystoreSchemaVersionForRotate = 1;
+            if (_keystoreMetadata.getVersion() < kKeystoreSchemaVersionForRotate) {
+                log() << "Detected keystore schema version " << _keystoreMetadata.getVersion()
+                      << " upgrading to schema version " << kKeystoreSchemaVersionForRotate;
+
+                auto tmppath = keystorePath;
+                tmppath += kUpgradingKeyword;
+
+                // Upgrading is similar to master key rotation,
+                // except instead of changing the encryption of the store
+                // we're changing the schema.
+                _masterKeyRequested = false;
+                upgradeKeystoreToV1(std::move(_keystore), tmppath, _encryptionParams);
+                _keystore.reset();
+
+                // Swap in new keystore and metadata file.
+                // If the first of these renames succeed and the second fails,
+                // we will end up in a state where the server is without a valid keystore
+                // and cannot start. This can be resolved by manually renaming the old keystore.
+                auto keystoreBak = keystorePath;
+                keystoreBak += kInvalidatedKeyword;
+                keystoreBak += terseCurrentTime(false);
+                fs::rename(keystorePath, keystoreBak);
+                fs::rename(tmppath, keystorePath);
+                _keystoreMetadata.setVersion(kKeystoreSchemaVersionForRotate);
+                uassertStatusOK(_keystoreMetadata.store(
+                    _metadataPath(PathMode::kValid), _masterKey, *_encryptionParams));
+
+                // Reopen keystore with new schema.
+                _masterKeyRequested = false;
+                _keystore =
+                    Keystore::makeKeystore(keystorePath, _keystoreMetadata, _encryptionParams);
+            }
+
             if (_keystoreMetadata.getDirty()) {
                 log() << "Detected an unclean shutdown of the encrypted storage engine - "
                       << "rolling over all database keys.";
             } else {
                 log() << "Database key rollover for encrypted storage engine was requested.";
             }
+
             _keystore->rollOverKeys();
             _keystoreMetadata.setDirty(false);
+
             // Make sure that we can get the new system key before persisting the metadata file
             // so that we know the rollover was successful.
-            uassertStatusOK(_getSystemKey(kSystemKeyId));
+            uassertStatusOK(_getSystemKey(kSystemKeyId, FindMode::kIdOrCurrent));
             uassertStatusOK(_keystoreMetadata.store(
                 _metadataPath(PathMode::kValid), _masterKey, *_encryptionParams));
         }

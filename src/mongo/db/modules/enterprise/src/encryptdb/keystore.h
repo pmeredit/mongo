@@ -67,7 +67,20 @@ public:
 
         virtual iterator begin() = 0;
         virtual iterator end() = 0;
-        virtual iterator find(const SymmetricKeyId& keyId) = 0;
+
+        // kById requires keyId to have a numeric ID and will retreive that ID specifically.
+        // kCurrent and kOldest will ignore any numeric ID (if present) and get the
+        // current/oldest version of that named key as appropriate.
+        // kIdOrCurrent and kIdOrOldest will find by ID if available,
+        // and fallback on kCurrent/kOldest behavior if not.
+        enum class FindMode {
+            kById,
+            kCurrent,
+            kIdOrCurrent,
+            kOldest,
+            kIdOrOldest,
+        };
+        virtual iterator find(const SymmetricKeyId& keyId, FindMode mode) = 0;
 
         // Inserts a new key into the keystore. The key ID of the key must have a name, but is
         // not required to have a numeric ID. If the keystore supports numeric key IDs, the key
@@ -91,6 +104,7 @@ public:
 
     virtual std::unique_ptr<Session> makeSession() = 0;
     virtual void rollOverKeys() = 0;
+    virtual std::uint32_t getRolloverId() const = 0;
 };
 
 }  // namespace mongo

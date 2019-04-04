@@ -119,6 +119,7 @@ public:
 
     std::unique_ptr<Session> makeSession() override;
     void rollOverKeys() override;
+    std::uint32_t getRolloverId() const override;
 
 private:
     // Create a new WT table with the following schema:
@@ -145,7 +146,8 @@ public:
         return iterator();
     }
 
-    iterator find(const SymmetricKeyId& keyId) override {
+    // V0 keystores have no numeric IDs, therefore FindMode is meaningless.
+    iterator find(const SymmetricKeyId& keyId, FindMode) override {
         return iterator(dataStoreSession()->search(keyId.name().c_str()), this);
     }
 
@@ -186,12 +188,15 @@ std::unique_ptr<Keystore> KeystoreImplV0::makeKeystore(const boost::filesystem::
 }
 
 void KeystoreImplV0::rollOverKeys() {
-    // TODO This error message will make sense when SERVER-40074 is done, because the encryption
-    // key manager will transparently upgrade the keystore from v0 to v1 on database key rollover
-    // with GCM enabled.
+    // EncryptionKeyManager should have upgraded to KeystoreV1 before calling rollover.
     severe() << "The encrypted storage engine must be configured with AES256-GCM mode to "
              << "support database key rollover";
     fassertFailedNoTrace(51168);
+}
+
+std::uint32_t KeystoreImplV0::getRolloverId() const {
+    // Rollover is not supported in keystore V0.
+    return 0;
 }
 
 std::unique_ptr<Keystore::Session> KeystoreImplV0::makeSession() {
@@ -202,10 +207,12 @@ class KeystoreImplV1 final : public Keystore {
 public:
     explicit KeystoreImplV1(WTDataStore datastore,
                             uint32_t curRolloverId,
-                            StringMap<SymmetricKeyId::id_type> dbNameToKeyId)
+                            StringMap<SymmetricKeyId::id_type> dbNameToKeyIdCurrent,
+                            StringMap<SymmetricKeyId::id_type> dbNameToKeyIdOldest)
         : _datastore(std::move(datastore)),
           _rolloverId(curRolloverId),
-          _dbNameToKeyId(std::move(dbNameToKeyId)) {}
+          _dbNameToKeyIdCurrent(std::move(dbNameToKeyIdCurrent)),
+          _dbNameToKeyIdOldest(std::move(dbNameToKeyIdOldest)) {}
 
     class SessionImplV1;
     static std::unique_ptr<Keystore> makeKeystore(const boost::filesystem::path& path,
@@ -213,6 +220,7 @@ public:
 
     std::unique_ptr<Session> makeSession() override;
     void rollOverKeys() override;
+    std::uint32_t getRolloverId() const override;
 
 private:
     friend class SessionImplV1;
@@ -234,8 +242,12 @@ private:
 
     // Looking up keys by name would require scanning the WT table, so we cache the ID's for
     // all the databases in the current rollover set.
-    stdx::mutex _dbNameToKeyIdMutex;
-    StringMap<SymmetricKeyId::id_type> _dbNameToKeyId;
+    // *Current contains the most recent keys for a given name and is suitable for new writes.
+    // *Oldest contains the original keys for a given name and are suitable for reads from v0 pages.
+    stdx::mutex _dbNameToKeyIdCurrentMutex;
+    StringMap<SymmetricKeyId::id_type> _dbNameToKeyIdCurrent;
+
+    const StringMap<SymmetricKeyId::id_type> _dbNameToKeyIdOldest;
 };
 
 class KeystoreImplV1::SessionImplV1 final : public Keystore::Session {
@@ -251,20 +263,13 @@ public:
         return iterator();
     }
 
-    iterator find(const SymmetricKeyId& keyId) override {
-        // If we have a numeric key id, then just do a search in WT
-        if (keyId.id()) {
-            return iterator(dataStoreSession()->search(keyId.id().get()), this);
-        }
-
-        // Otherwise we need to lookup the key ID in our cache of name to ID.
-        stdx::lock_guard<stdx::mutex> lk(_parent->_dbNameToKeyIdMutex);
-        const auto keyIdIt = _parent->_dbNameToKeyId.find(keyId.name());
-        if (keyIdIt == _parent->_dbNameToKeyId.end()) {
+    iterator find(const SymmetricKeyId& keyId, FindMode mode) override {
+        const auto numericId = _findCriteriaToId(keyId, mode);
+        if (!numericId) {
             return iterator();
         }
 
-        return iterator(dataStoreSession()->search(keyIdIt->second), this);
+        return iterator(dataStoreSession()->search(numericId.get()), this);
     }
 
     void insert(const UniqueSymmetricKey& key) override {
@@ -286,14 +291,19 @@ public:
 
         // Now that we've inserted the key, cache the mapping of dbname to numeric ID so we can
         // lookup the key by name later on.
-        stdx::lock_guard<stdx::mutex> lk(_parent->_dbNameToKeyIdMutex);
-        bool inserted;
         const auto& keyId = key->getKeyId();
-        std::tie(std::ignore, inserted) =
-            _parent->_dbNameToKeyId.insert({keyId.name(), keyId.id().get()});
+        bool inserted;
+        {
+            stdx::lock_guard<stdx::mutex> lk(_parent->_dbNameToKeyIdCurrentMutex);
+            std::tie(std::ignore, inserted) =
+                _parent->_dbNameToKeyIdCurrent.insert({keyId.name(), keyId.id().get()});
+        }
+
+        // We don't worry about dbNameToKeyIdOldest mapping here because this key
+        // will never have been used in a V0 page.
 
         LOG(1) << "Cached encryption key mapping: " << view.database << " -> " << keyId.id().get();
-        fassert(51167, inserted);
+        fassert(51172, inserted);
     }
 
     void update(iterator it, const UniqueSymmetricKey& key) override {
@@ -321,6 +331,41 @@ protected:
     }
 
 private:
+    boost::optional<SymmetricKeyId::id_type> _findCriteriaToId(const SymmetricKeyId& keyId,
+                                                               FindMode mode) const {
+        const auto& optId = keyId.id();
+        switch (mode) {
+            case FindMode::kById:
+                return optId;
+            case FindMode::kIdOrCurrent:
+                if (optId) {
+                    return optId;
+                }
+            /* fallthrough */
+            case FindMode::kCurrent: {
+                stdx::lock_guard<stdx::mutex> lk(_parent->_dbNameToKeyIdCurrentMutex);
+                auto it = _parent->_dbNameToKeyIdCurrent.find(keyId.name());
+                if (it == _parent->_dbNameToKeyIdCurrent.end()) {
+                    return {boost::none};
+                }
+                return it->second;
+            }
+            case FindMode::kIdOrOldest:
+                if (optId) {
+                    return optId;
+                }
+            /* fallthrough */
+            case FindMode::kOldest: {
+                auto it = _parent->_dbNameToKeyIdOldest.find(keyId.name());
+                if (it == _parent->_dbNameToKeyIdOldest.end()) {
+                    return {boost::none};
+                }
+                return it->second;
+            }
+        }
+        MONGO_UNREACHABLE;
+    }
+
     KeystoreImplV1* _parent;
 };
 
@@ -328,40 +373,70 @@ std::unique_ptr<Keystore> KeystoreImplV1::makeKeystore(const boost::filesystem::
                                                        const EncryptionGlobalParams* params) {
     WTDataStore keystore(path, params);
 
+    StringMap<SymmetricKeyId::id_type> dbNameToKeyIdCurrent, dbNameToKeyIdOldest;
     auto session = keystore.makeSession();
-    auto cursor = session.rbegin();
-
-    StringMap<SymmetricKeyId::id_type> dbNameToKeyId;
     uint32_t rolloverId = 0;
 
     // If we don't have any schema yet, create the table and checkpoint the session
-    if (cursor == session.end()) {
+    if (session.begin() == session.end()) {
         keystore.createTable(session, kWTTableConfig);
         session.checkpoint();
     } else {
-        // Otherwise walk the keystore in reverse to find all the key ID's for the current
-        // rollover and figure out the max key id and rollover id.
-        do {
-            KeystoreRecordViewV1 view(cursor);
-            rolloverId = view.rolloverId;
-            bool inserted;
-            std::tie(std::ignore, inserted) =
-                dbNameToKeyId.insert({view.database.toString(), view.id});
-            LOG(1) << "Cached encryption key mapping: " << view.database << " -> " << view.id;
-            fassert(51166, inserted);
-        } while ((++cursor != session.rend()) &&
-                 (KeystoreRecordViewV1(cursor).rolloverId == rolloverId));
+        // Otherwise walk the keystore from both ends.
+
+        // First, iterate forward to catalogue any potential v0 page layout keys.
+        // If the keystore started life with v0 keys, then they'll be referenced
+        // on v0 pages without their ID and need to be recovered by name.
+        // v0 pages will always want the oldest version of a given key name.
+        {
+            auto cursor = session.begin();
+            const auto initialRolloverId = KeystoreRecordViewV1(cursor).rolloverId;
+            do {
+                KeystoreRecordViewV1 view(cursor);
+                if (view.rolloverId != initialRolloverId) {
+                    break;
+                }
+                bool inserted;
+                std::tie(std::ignore, inserted) =
+                    dbNameToKeyIdOldest.insert({view.database.toString(), view.id});
+                LOG(1) << "Cached possible v0 key mapping: " << view.database << " -> " << view.id;
+                fassert(51167, inserted);
+            } while (++cursor != session.end());
+        }
+
+        // Second, iterate backward to cache IDs for future writes.
+        {
+            auto cursor = session.rbegin();
+            rolloverId = KeystoreRecordViewV1(cursor).rolloverId;
+            do {
+                KeystoreRecordViewV1 view(cursor);
+                if (view.rolloverId != rolloverId) {
+                    break;
+                }
+                bool inserted;
+                std::tie(std::ignore, inserted) =
+                    dbNameToKeyIdCurrent.insert({view.database.toString(), view.id});
+                LOG(1) << "Cached encryption key mapping: " << view.database << " -> " << view.id;
+                fassert(51133, inserted);
+            } while (++cursor != session.rend());
+        }
     }
 
-    return stdx::make_unique<KeystoreImplV1>(
-        std::move(keystore), rolloverId, std::move(dbNameToKeyId));
+    return stdx::make_unique<KeystoreImplV1>(std::move(keystore),
+                                             rolloverId,
+                                             std::move(dbNameToKeyIdCurrent),
+                                             std::move(dbNameToKeyIdOldest));
 }
 
 void KeystoreImplV1::rollOverKeys() {
-    stdx::lock_guard<stdx::mutex> lk(_dbNameToKeyIdMutex);
+    stdx::lock_guard<stdx::mutex> lk(_dbNameToKeyIdCurrentMutex);
 
     _rolloverId++;
-    _dbNameToKeyId.clear();
+    _dbNameToKeyIdCurrent.clear();
+}
+
+std::uint32_t KeystoreImplV1::getRolloverId() const {
+    return _rolloverId;
 }
 
 std::unique_ptr<Keystore::Session> KeystoreImplV1::makeSession() {

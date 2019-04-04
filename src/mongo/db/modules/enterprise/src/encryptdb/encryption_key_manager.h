@@ -110,7 +110,9 @@ public:
      * Takes in a key identifier and returns a unique_ptr to the
      * associated encryption key for that keyID.
      */
-    virtual StatusWith<std::unique_ptr<SymmetricKey>> getKey(const SymmetricKeyId& keyId);
+    using FindMode = Keystore::Session::FindMode;
+    virtual StatusWith<std::unique_ptr<SymmetricKey>> getKey(
+        const SymmetricKeyId& keyId, FindMode mode = FindMode::kIdOrCurrent);
 
     SymmetricKeyId getMasterKeyId() {
         return _masterKey->getKeyId();
@@ -124,6 +126,13 @@ public:
      * Returns the current version of the keystore.
      */
     std::int32_t getKeystoreVersion() const;
+
+    /**
+     * Access the current rollover ID for testing purposes.
+     */
+    std::uint32_t getRolloverId() const {
+        return _keystore->getRolloverId();
+    }
 
 private:
     /**
@@ -139,9 +148,9 @@ private:
     /**
      * Internal key management helper methods
      */
-    StatusWith<std::unique_ptr<SymmetricKey>> _getSystemKey(const SymmetricKeyId& keyId);
+    StatusWith<std::unique_ptr<SymmetricKey>> _getSystemKey(const SymmetricKeyId& keyId, FindMode);
     StatusWith<std::unique_ptr<SymmetricKey>> _getMasterKey();
-    StatusWith<std::unique_ptr<SymmetricKey>> _readKey(const SymmetricKeyId& keyId);
+    StatusWith<std::unique_ptr<SymmetricKey>> _readKey(const SymmetricKeyId& keyId, FindMode);
 
     enum class PathMode { kValid, kInvalid, kInitializing };
     boost::filesystem::path _metadataPath(PathMode mode);

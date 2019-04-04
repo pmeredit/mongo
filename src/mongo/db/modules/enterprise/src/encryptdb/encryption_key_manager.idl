@@ -1,0 +1,11 @@
+# Copyright (C) 2019-present MongoDB, Inc.
+
+global:
+    cpp_namespace: "mongo"
+
+server_parameters:
+    "keystoreSchemaVersion":
+        description: 'Force a given keystore version on creation, or read current keystore version'
+        set_at: startup
+        test_only: true
+        cpp_class: KeystoreSchemaVersionServerParameter

@@ -148,6 +148,8 @@ TEST_F(KeystoreFixture, V1RolloverTest) {
         return;
     }
 
+    using FindMode = Keystore::Session::FindMode;
+
     auto ks = makeKeystoreAndSession(Keystore::Version::k1);
 
     auto aKey = makeKey("a");
@@ -156,24 +158,24 @@ TEST_F(KeystoreFixture, V1RolloverTest) {
     ks.session->insert(bKey);
 
     // Check that we can find the "a" key by name
-    auto it = ks.session->find(SymmetricKeyId("a"));
+    auto it = ks.session->find(SymmetricKeyId("a"), FindMode::kCurrent);
     ASSERT_FALSE(it == ks.session->end());
     aKey->incrementAndGetInitializationCount();
     ks.session->update(std::move(it), aKey);
 
     // Check that we can find the "b" key by numeric ID
-    it = ks.session->find(bKey->getKeyId());
+    it = ks.session->find(bKey->getKeyId(), FindMode::kIdOrCurrent);
     ASSERT_FALSE(it == ks.session->end());
 
     // roll over the keys (really just flush the name lookup cache)
     ks.keystore->rollOverKeys();
 
     // We should no longer be able to lookup the key by name only
-    it = ks.session->find(SymmetricKeyId("a"));
+    it = ks.session->find(SymmetricKeyId("a"), FindMode::kCurrent);
     ASSERT_TRUE(it == ks.session->end());
 
     // but we should still be able to lookup the key by numeric ID
-    it = ks.session->find(bKey->getKeyId());
+    it = ks.session->find(bKey->getKeyId(), FindMode::kIdOrCurrent);
     ASSERT_FALSE(it == ks.session->end());
     ASSERT_EQ(it->getKeyId().id(), static_cast<uint64_t>(2));
 
@@ -182,14 +184,14 @@ TEST_F(KeystoreFixture, V1RolloverTest) {
     ks.session->insert(newAKey);
 
     // We should be able to do name-based lookups for "a" now.
-    it = ks.session->find(SymmetricKeyId("a"));
+    it = ks.session->find(SymmetricKeyId("a"), FindMode::kCurrent);
     ASSERT_FALSE(it == ks.session->end());
     ASSERT_EQ(it->getInitializationCount(), static_cast<uint32_t>(1));
 
     // Check that this is the new "a" key and not the old one
     ASSERT_FALSE(aKey->getKeyId() == it->getKeyId());
     ASSERT_GT(it->getKeyId().id(), aKey->getKeyId().id());
-    auto secondIt = ks.session->find(aKey->getKeyId());
+    auto secondIt = ks.session->find(aKey->getKeyId(), FindMode::kIdOrCurrent);
     ASSERT_FALSE(it == secondIt);
     ASSERT_FALSE(secondIt == ks.session->end());
 }

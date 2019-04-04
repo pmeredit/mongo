@@ -168,11 +168,21 @@ int decrypt(WT_ENCRYPTOR* encryptor,
     if (mode == crypto::aesMode::gcm) {
         SymmetricKeyId::id_type numericKeyFromPage;
         std::tie(schema, numericKeyFromPage) = crypto::parseGCMPageSchema(src, srcLen);
-        const SymmetricKeyId keyIdFromPage(key->getKeyId().name(), numericKeyFromPage);
-        if ((schema == crypto::PageSchema::k1) && (keyIdFromPage.id() != key->getKeyId().id())) {
+
+        auto pageKeyId = key->getKeyId();
+        auto findMode = EncryptionKeyManager::FindMode::kById;
+        if (schema == crypto::PageSchema::k1) {
+            pageKeyId = SymmetricKeyId(pageKeyId.name(), numericKeyFromPage);
+        } else {
+            invariant(schema == crypto::PageSchema::k0);
+            pageKeyId = SymmetricKeyId(pageKeyId.name());
+            findMode = EncryptionKeyManager::FindMode::kOldest;
+        }
+
+        if (pageKeyId != key->getKeyId()) {
             // Fetch and use page-specific key instead of the current database key.
             auto swPageKey =
-                EncryptionKeyManager::get(getGlobalServiceContext())->getKey(keyIdFromPage);
+                EncryptionKeyManager::get(getGlobalServiceContext())->getKey(pageKeyId, findMode);
             if (!swPageKey.isOK()) {
                 severe() << "Unable to retrieve encryption key for page: "
                          << swPageKey.getStatus().reason();
@@ -187,10 +197,10 @@ int decrypt(WT_ENCRYPTOR* encryptor,
     Status ret = crypto::aesDecrypt(*key, mode, schema, src, srcLen, dst, dstLen, resultLen);
 
     if (!ret.isOK()) {
-        if (crypto->dbKey->getKeyId().name() == kSystemKeyId) {
+        if (key->getKeyId().name() == kSystemKeyId) {
             severe() << "Decryption failed, invalid encryption master key or keystore encountered.";
         } else {
-            severe() << "Decrypt error for key " << crypto->dbKey->getKeyId() << ": " << ret;
+            severe() << "Decrypt error for key " << key->getKeyId() << ": " << ret;
         }
         return EINVAL;
     }
