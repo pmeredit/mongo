@@ -27,7 +27,7 @@
     let cmds = [
         {find: "test", filter: {foo: 1}},
         {distinct: "test", query: {foo: 1}, key: "foo"},
-        {count: "test", filter: {foo: 1}},
+        {count: "test", query: {foo: 1}},
         {findAndModify: "test", query: {foo: 1.0}, update: {$inc: {score: 1.0}}},
         // old name
         {findandmodify: "test", query: {foo: 1.0}, update: {$inc: {score: 1.0}}},

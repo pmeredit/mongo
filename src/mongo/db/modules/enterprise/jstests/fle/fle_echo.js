@@ -28,7 +28,7 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
     let cmds = [
         {find: "foo", filter: {_id: 1}},
         {distinct: "foo", query: {_id: 1}, key: "_id"},
-        {count: "foo", filter: {_id: 1}},
+        {count: "foo", query: {_id: 1}},
         {findAndModify: "foo", query: {_id: 1.0}, update: {$inc: {score: 1.0}}},
         // old name
         {findandmodify: "foo", query: {_id: 1.0}, update: {$inc: {score: 1.0}}},
@@ -39,6 +39,7 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
     ];
 
     const supportedCommands = [
+        "count",
         "delete",
         "distinct",
         "find",

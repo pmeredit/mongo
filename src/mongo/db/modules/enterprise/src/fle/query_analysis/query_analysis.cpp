@@ -19,6 +19,7 @@
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/db/ops/write_ops.h"
 #include "mongo/db/ops/write_ops_gen.h"
+#include "mongo/db/query/count_command_gen.h"
 #include "mongo/db/query/distinct_command_gen.h"
 #include "mongo/db/query/query_request.h"
 #include "mongo/db/update/update_driver.h"
@@ -187,7 +188,16 @@ PlaceHolderResult addPlaceHoldersForAggregate(
 PlaceHolderResult addPlaceHoldersForCount(const std::string& dbName,
                                           const BSONObj& cmdObj,
                                           std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
-    return PlaceHolderResult();
+    BSONObjBuilder resultBuilder;
+    auto countCmd = CountCommand::parse(IDLParserErrorContext("count"), cmdObj);
+    auto query = countCmd.getQuery();
+    auto newQueryPlaceholder = replaceEncryptedFieldsInFilter(*schemaTree, query);
+    countCmd.setQuery(newQueryPlaceholder.result);
+
+    return PlaceHolderResult{newQueryPlaceholder.hasEncryptionPlaceholders,
+                             newQueryPlaceholder.schemaRequiresEncryption ||
+                                 schemaTree->containsEncryptedNode(),
+                             countCmd.toBSON(cmdObj)};
 }
 
 PlaceHolderResult addPlaceHoldersForDistinct(const std::string& dbName,
