@@ -60,9 +60,10 @@
             MongoRunner.stopMongod(md);
         }
 
-        var pid = _startMongoProgram("python", testDir + "kmip_server.py");
+        clearRawMongoProgramOutput();
+        var kmipServerPid = _startMongoProgram("python", testDir + "kmip_server.py");
         // Assert here that PyKMIP is compatible with the default Python version
-        assert(checkProgram(pid));
+        assert(checkProgram(kmipServerPid));
         // wait for PyKMIP, a KMIP server framework, to start
         assert.soon(function() {
             return rawMongoProgramOutput().search("KMIP server") !== -1;
@@ -86,7 +87,7 @@
         runEncryptedMongod({restart: md, kmipRotateMasterKey: "", kmipKeyIdentifier: "1"});
         assertKeyId(md, 1);
 
-        stopMongoProgramByPid(pid);
+        stopMongoProgramByPid(kmipServerPid);
     }
 
     runTest("AES256-CBC");
