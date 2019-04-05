@@ -195,13 +195,13 @@ TEST_F(KeystoreFixture, V1RolloverTest) {
 }
 
 // Rolling over a V0 keystore should be fatal
-DEATH_TEST_F(KeystoreFixture, V0RolloverTest, "Fatal Assertion 51160") {
+DEATH_TEST_F(KeystoreFixture, V0RolloverTest, "Fatal Assertion 51168") {
     encryptionGlobalParams.encryptionCipherMode = "AES256-CBC";
     auto ks = makeKeystoreAndSession(Keystore::Version::k0);
     ks.keystore->rollOverKeys();
 }
 
-DEATH_TEST_F(KeystoreFixture, V1CBCTest, "Fatal Assertion 51163") {
+DEATH_TEST_F(KeystoreFixture, V1CBCTest, "Fatal Assertion 51165") {
     encryptionGlobalParams.encryptionCipherMode = "AES256-CBC";
     auto ks = makeKeystoreAndSession(Keystore::Version::k1);
 }
