@@ -351,7 +351,8 @@ bool EncryptionSchemaTreeNode::_containsEncryptedNodeBelowPrefix(const FieldRef&
 std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parse(BSONObj schema) {
     // Verify that the schema is valid by running through the normal JSONSchema parser, ignoring the
     // resulting match expression.
-    uassertStatusOK(JSONSchemaParser::parse(schema));
+    boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(nullptr, nullptr));
+    uassertStatusOK(JSONSchemaParser::parse(expCtx, schema));
 
     // The schema is at least syntatically valid, now build and return an encryption schema tree.
     // Inheritance of EncryptMetadata is implemented by passing around a chain of metadata
