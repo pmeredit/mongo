@@ -9,8 +9,8 @@
 
 #include "mongo/base/status.h"
 #include "mongo/stdx/memory.h"
-#include "mongo/util/mongoutils/str.h"
 #include "mongo/util/net/ssl_manager.h"
+#include "mongo/util/str.h"
 
 #include "symmetric_crypto.h"
 #include "symmetric_key.h"

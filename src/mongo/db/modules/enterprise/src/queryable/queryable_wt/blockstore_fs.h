@@ -11,7 +11,7 @@
 #include "mongo/db/jsobj.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/stdx/unordered_map.h"
-#include "mongo/util/mongoutils/str.h"
+#include "mongo/util/str.h"
 
 #include "../blockstore/context.h"
 #include "../blockstore/list_dir.h"

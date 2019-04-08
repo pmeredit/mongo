@@ -12,7 +12,7 @@
 #include "mongo/base/status_with.h"
 #include "mongo/stdx/functional.h"
 #include "mongo/util/assert_util.h"
-#include "mongo/util/mongoutils/str.h"
+#include "mongo/util/str.h"
 #include "mongo/util/stringutils.h"
 
 namespace mongo {

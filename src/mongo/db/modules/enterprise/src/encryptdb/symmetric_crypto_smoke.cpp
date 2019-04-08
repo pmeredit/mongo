@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "mongo/base/status.h"
-#include "mongo/util/mongoutils/str.h"
+#include "mongo/util/str.h"
 #include "symmetric_crypto.h"
 #include "symmetric_key.h"
 

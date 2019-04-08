@@ -11,7 +11,7 @@
 #include "mongo/db/service_context.h"
 #include "mongo/logger/logger.h"
 #include "mongo/logger/parse_log_component_settings.h"
-#include "mongo/util/mongoutils/str.h"
+#include "mongo/util/str.h"
 #include "mongo/util/text.h"
 
 #include "ldap_connection_options.h"

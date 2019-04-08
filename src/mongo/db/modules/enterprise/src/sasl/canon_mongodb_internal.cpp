@@ -22,7 +22,7 @@
 #include <sasl/saslplug.h>
 
 #include "mongo/base/init.h"
-#include "mongo/util/mongoutils/str.h"
+#include "mongo/util/str.h"
 
 namespace mongo {
 namespace {
@@ -128,10 +128,10 @@ MONGO_INITIALIZER_GENERAL(SaslCanonMongodbInternal,
     int ret = sasl_canonuser_add_plugin(canonMongoDBInternal.name, canonMongoDBInternalPluginInit);
     if (SASL_OK != ret) {
         return Status(ErrorCodes::UnknownError,
-                      mongoutils::str::stream() << "Could not add sasl canonuser plugin "
-                                                << canonMongoDBInternal.name
-                                                << ": "
-                                                << sasl_errstring(ret, NULL, NULL));
+                      str::stream() << "Could not add sasl canonuser plugin "
+                                    << canonMongoDBInternal.name
+                                    << ": "
+                                    << sasl_errstring(ret, NULL, NULL));
     }
 
     return Status::OK();

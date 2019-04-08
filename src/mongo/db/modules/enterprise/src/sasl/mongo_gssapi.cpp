@@ -14,7 +14,7 @@
 
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
-#include "mongo/util/mongoutils/str.h"
+#include "mongo/util/str.h"
 
 namespace mongo {
 namespace gssapi {
@@ -29,7 +29,7 @@ namespace {
  * status code (GSS_C_MECH_CODE).  When it is a minor code, this function always assumes that
  * the mechanism is gss_mech_krb5.
  */
-void putGssapiStatusString(mongoutils::str::stream* os, OM_uint32 inStatus, int statusType) {
+void putGssapiStatusString(str::stream* os, OM_uint32 inStatus, int statusType) {
     OM_uint32 majorStatus;
     OM_uint32 minorStatus;
     OM_uint32 context = 0;
@@ -64,7 +64,7 @@ void putGssapiStatusString(mongoutils::str::stream* os, OM_uint32 inStatus, int 
  * Return a string describing the GSSAPI error described by "inMajorStatus" and "inMinorStatus."
  */
 std::string getGssapiErrorString(OM_uint32 inMajorStatus, OM_uint32 inMinorStatus) {
-    mongoutils::str::stream os;
+    str::stream os;
     putGssapiStatusString(&os, inMajorStatus, GSS_C_GSS_CODE);
     putGssapiStatusString(&os, inMinorStatus, GSS_C_MECH_CODE);
     return os;
@@ -110,8 +110,8 @@ Status canonicalizeName(gss_OID nameType, StringData name, std::string* canonica
 
 error:
     status = Status(ErrorCodes::UnknownError,
-                    mongoutils::str::stream() << "Could not canonicalize \"" << name << "\"; "
-                                              << getGssapiErrorString(majorStatus, minorStatus));
+                    str::stream() << "Could not canonicalize \"" << name << "\"; "
+                                  << getGssapiErrorString(majorStatus, minorStatus));
 
 done:
     if (gssNameInput != GSS_C_NO_NAME)
@@ -151,9 +151,8 @@ Status tryAcquireServerCredential(const std::string& principalName) {
     minorStatus = 0;
     majorStatus = gss_import_name(&minorStatus, &nameBuffer, GSS_C_NT_USER_NAME, &gssPrincipalName);
     if (GSS_ERROR(majorStatus)) {
-        status = Status(
-            ErrorCodes::UnknownError,
-            mongoutils::str::stream() << "gssapi could not import name " << principalName << "; "
+        status = Status(ErrorCodes::UnknownError,
+                        str::stream() << "gssapi could not import name " << principalName << "; "
                                       << getGssapiErrorString(majorStatus, minorStatus));
         goto done;
     }
@@ -168,12 +167,11 @@ Status tryAcquireServerCredential(const std::string& principalName) {
                                    NULL,                // actual_mechs
                                    NULL);               // time_rec
     if (GSS_ERROR(majorStatus)) {
-        status =
-            Status(ErrorCodes::UnknownError,
-                   mongoutils::str::stream() << "gssapi could not acquire server credential for "
-                                             << canonicalPrincipalName
-                                             << "; "
-                                             << getGssapiErrorString(majorStatus, minorStatus));
+        status = Status(ErrorCodes::UnknownError,
+                        str::stream() << "gssapi could not acquire server credential for "
+                                      << canonicalPrincipalName
+                                      << "; "
+                                      << getGssapiErrorString(majorStatus, minorStatus));
         goto done;
     }
 

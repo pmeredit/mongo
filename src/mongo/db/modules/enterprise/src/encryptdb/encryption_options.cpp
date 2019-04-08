@@ -9,9 +9,9 @@
 
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
-#include "mongo/util/mongoutils/str.h"
 #include "mongo/util/options_parser/startup_option_init.h"
 #include "mongo/util/options_parser/startup_options.h"
+#include "mongo/util/str.h"
 #include "symmetric_crypto.h"
 
 namespace moe = mongo::optionenvironment;

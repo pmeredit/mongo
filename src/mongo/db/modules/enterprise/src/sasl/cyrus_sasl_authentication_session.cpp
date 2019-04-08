@@ -25,8 +25,8 @@
 #include "mongo/stdx/memory.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
-#include "mongo/util/mongoutils/str.h"
 #include "mongo/util/sequence_util.h"
+#include "mongo/util/str.h"
 #include "mongo/util/stringutils.h"
 #include "mongo_gssapi.h"
 
@@ -191,8 +191,8 @@ CyrusSaslMechShim<Policy>::CyrusSaslMechShim(std::string authenticationDatabase)
                                  0,                                     // flags
                                  &_saslConnection);                     // pconn
     if (SASL_OK != result) {
-        uassertStatusOK(Status(ErrorCodes::UnknownError,
-                               mongoutils::str::stream() << sasl_errstring(result, NULL, NULL)));
+        uassertStatusOK(
+            Status(ErrorCodes::UnknownError, str::stream() << sasl_errstring(result, NULL, NULL)));
     }
 }
 
@@ -316,9 +316,9 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(CyrusSaslServerCore,
     int result = sasl_server_init(saslServerGlobalCallbacks, "mongodb");
     if (result != SASL_OK) {
         return Status(ErrorCodes::UnknownError,
-                      mongoutils::str::stream() << "Could not initialize sasl server components ("
-                                                << sasl_errstring(result, NULL, NULL)
-                                                << ")");
+                      str::stream() << "Could not initialize sasl server components ("
+                                    << sasl_errstring(result, NULL, NULL)
+                                    << ")");
     }
 
     return Status::OK();

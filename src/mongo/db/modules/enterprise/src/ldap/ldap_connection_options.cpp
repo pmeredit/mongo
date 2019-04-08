@@ -9,7 +9,7 @@
 #include <algorithm>
 
 #include "mongo/base/string_data.h"
-#include "mongo/util/mongoutils/str.h"
+#include "mongo/util/str.h"
 #include "mongo/util/text.h"
 
 namespace mongo {

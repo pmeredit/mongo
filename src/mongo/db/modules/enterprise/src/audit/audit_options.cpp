@@ -13,10 +13,10 @@
 #include "mongo/db/jsobj.h"
 #include "mongo/db/json.h"
 #include "mongo/db/matcher/expression_parser.h"
-#include "mongo/util/mongoutils/str.h"
 #include "mongo/util/options_parser/environment.h"
 #include "mongo/util/options_parser/startup_option_init.h"
 #include "mongo/util/options_parser/startup_options.h"
+#include "mongo/util/str.h"
 
 namespace moe = mongo::optionenvironment;
 
@@ -107,8 +107,7 @@ MONGO_STARTUP_OPTIONS_STORE(AuditOptions)(InitializerContext* context) {
         try {
             auditGlobalParams.auditFilter = fromjson(params["auditLog.filter"].as<std::string>());
         } catch (const DBException& e) {
-            return Status(ErrorCodes::BadValue,
-                          mongoutils::str::stream() << "bad auditFilter:" << e.what());
+            return Status(ErrorCodes::BadValue, str::stream() << "bad auditFilter:" << e.what());
         }
     }
 

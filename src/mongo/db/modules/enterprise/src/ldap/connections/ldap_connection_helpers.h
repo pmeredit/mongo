@@ -11,8 +11,8 @@
 #include "mongo/logger/log_component.h"
 #include "mongo/logger/logger.h"
 #include "mongo/logger/logstream_builder.h"
-#include "mongo/util/mongoutils/str.h"
 #include "mongo/util/scopeguard.h"
+#include "mongo/util/str.h"
 
 #include "../ldap_connection_options.h"
 #include "../ldap_query.h"

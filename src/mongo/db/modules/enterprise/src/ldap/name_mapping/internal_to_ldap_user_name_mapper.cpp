@@ -16,7 +16,7 @@
 #include "mongo/bson/json.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/util/log.h"
-#include "mongo/util/mongoutils/str.h"
+#include "mongo/util/str.h"
 
 #include "../ldap_runner.h"
 #include "ldap_rewrite_rule.h"

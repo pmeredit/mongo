@@ -10,7 +10,7 @@
 
 #include "mongo/base/string_data.h"
 #include "mongo/util/assert_util.h"
-#include "mongo/util/mongoutils/str.h"
+#include "mongo/util/str.h"
 
 namespace mongo {
 
@@ -52,7 +52,7 @@ StatusWith<std::string> RegexRewriteRule::resolve(LDAPRunner* runner, StringData
 
     std::string output = _substitution;
     for (size_t i = 0; i < components.size(); ++i) {
-        std::string matchTarget = mongoutils::str::stream() << "\\{" << i << "\\}";
+        std::string matchTarget = str::stream() << "\\{" << i << "\\}";
         pcrecpp::RE matchExp(std::move(matchTarget));
         if (matchExp.GlobalReplace(pcrecpp::StringPiece(components[i]), &output) < 0) {
             return Status(ErrorCodes::FailedToParse, "Unable to perform regex substitution");

@@ -13,7 +13,7 @@
 #include "mongo/base/status_with.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/util/builder.h"
-#include "mongo/util/mongoutils/str.h"
+#include "mongo/util/str.h"
 
 namespace mongo {
 
@@ -145,7 +145,7 @@ StatusWith<LDAPQuery> LDAPQuery::instantiateQuery(
     LDAPQuery instance(parameters);
 
     for (size_t i = 0; i < components.size(); ++i) {
-        std::string token = mongoutils::str::stream() << "{" << i << "}";
+        std::string token = str::stream() << "{" << i << "}";
         ReplacementList replacements = {{token, components[i]}};
 
         bool replacedDN = substituteTokens(&instance._baseDN, replacements);

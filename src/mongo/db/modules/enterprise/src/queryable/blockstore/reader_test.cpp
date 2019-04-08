@@ -10,7 +10,7 @@
 #include "mongo/stdx/memory.h"
 #include "mongo/unittest/integration_test.h"
 #include "mongo/unittest/unittest.h"
-#include "mongo/util/mongoutils/str.h"
+#include "mongo/util/str.h"
 
 #include "reader.h"
 
