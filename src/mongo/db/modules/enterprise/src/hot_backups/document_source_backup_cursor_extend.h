@@ -109,6 +109,10 @@ public:
     static boost::intrusive_ptr<DocumentSource> createFromBson(
         BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& pExpCtx);
 
+    void acceptVisitor(DocumentSourceVisitor* visitor) final {
+        visitor->visit(this);
+    }
+
 private:
     DocumentSourceBackupCursorExtend(const boost::intrusive_ptr<ExpressionContext>& pExpCtx,
                                      const UUID& backupId,
