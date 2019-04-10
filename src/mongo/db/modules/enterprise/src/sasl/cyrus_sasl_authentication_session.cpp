@@ -27,7 +27,6 @@
 #include "mongo/util/log.h"
 #include "mongo/util/sequence_util.h"
 #include "mongo/util/str.h"
-#include "mongo/util/stringutils.h"
 #include "mongo_gssapi.h"
 
 #include "../ldap/ldap_manager.h"
@@ -137,9 +136,9 @@ int saslServerConnAuthorize(sasl_conn_t* conn,
         if (!session->isAuthorizedToActAs(requestedUser, authenticatedIdentity)) {
             std::stringstream errorMsg;
             errorMsg << "saslServerConnAuthorize: Requested identity "
-                     << escape(std::string(requestedUserRaw))
+                     << str::escape(std::string(requestedUserRaw))
                      << " does not match authenticated identity "
-                     << escape(std::string(authenticatedIdentityRaw));
+                     << str::escape(std::string(authenticatedIdentityRaw));
             setSaslError(conn, errorMsg.str());
             return SASL_BADAUTH;
         }

@@ -13,7 +13,6 @@
 #include "mongo/stdx/functional.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/str.h"
-#include "mongo/util/stringutils.h"
 
 namespace mongo {
 namespace {
@@ -127,7 +126,7 @@ StatusWith<T> LDAPQueryConfig::createDerivedLDAPQueryConfig(const std::string& i
     // to remove percent encoded octets. We may then pass the vector into the LDAPQuery object.
     if (!attributes.empty()) {
         LDAPAttributeKeys attributesVector;
-        splitStringDelim(std::move(attributes), &attributesVector, ',');
+        str::splitStringDelim(std::move(attributes), &attributesVector, ',');
         // Percent decode all attributes
         for (LDAPAttributeKey& attribute : attributesVector) {
             StatusWith<std::string> swDecodedAttribute = percentDecodeString(std::move(attribute));

@@ -22,7 +22,6 @@
 #include "mongo/util/log.h"
 #include "mongo/util/sequence_util.h"
 #include "mongo/util/str.h"
-#include "mongo/util/stringutils.h"
 
 namespace mongo {
 
