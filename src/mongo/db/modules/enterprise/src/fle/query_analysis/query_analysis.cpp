@@ -81,7 +81,8 @@ BSONObj replaceEncryptedFieldsRecursive(const EncryptionSchemaTreeNode* schema,
                                   << "' cannot contain an array",
                     element.type() != BSONType::Array);
             *encryptedFieldFound = true;
-            BSONObj placeholder = buildEncryptPlaceholder(element, metadata.get(), origDoc);
+            BSONObj placeholder =
+                buildEncryptPlaceholder(element, metadata.get(), origDoc, *schema);
             builder.append(placeholder[fieldName]);
         } else if (element.type() == BSONType::Object) {
             builder.append(
@@ -419,7 +420,8 @@ void processDeleteCommand(const OpMsgRequest& request, BSONObjBuilder* builder) 
 
 BSONObj buildEncryptPlaceholder(BSONElement elem,
                                 const EncryptionMetadata& metadata,
-                                const boost::optional<BSONObj>& origDoc) {
+                                const boost::optional<BSONObj>& origDoc,
+                                const boost::optional<const EncryptionSchemaTreeNode&> schema) {
     invariant(metadata.getAlgorithm());
     invariant(metadata.getKeyId());
 
@@ -438,11 +440,12 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
     if (keyId.get().type() == EncryptSchemaKeyId::Type::kUUIDs) {
         marking.setKeyId(keyId.get().uuids()[0]);
     } else {
-        // TODO SERVER-40077 Reject a JSON Pointer which points to a field which is already
-        // encrypted.
         uassert(51093, "A non-static (JSONPointer) keyId is not supported.", origDoc);
         auto pointer = keyId->jsonPointer();
         auto resolvedKey = pointer.evaluate(origDoc.get());
+        uassert(30017,
+                "keyId pointer '" + pointer.toString() + "' cannot point to an encrypted field",
+                !(schema->getEncryptionMetadataForPath(pointer.toFieldRef())));
         uassert(51114,
                 "keyId pointer '" + pointer.toString() + "' must point to a field that exists",
                 resolvedKey);
@@ -450,6 +453,11 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
                 "keyId pointer '" + pointer.toString() +
                     "' cannot point to an object, array or CodeWScope",
                 !resolvedKey.mayEncapsulate());
+        uassert(30037,
+                "keyId pointer '" + pointer.toString() +
+                    "' cannot point to an already encrypted object",
+                !(resolvedKey.type() == BSONType::BinData &&
+                  resolvedKey.binDataType() == BinDataType::Encrypt));
         if (resolvedKey.type() == BSONType::BinData &&
             resolvedKey.binDataType() == BinDataType::newUUID) {
             marking.setKeyId(uassertStatusOK(UUID::parse(resolvedKey)));

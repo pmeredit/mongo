@@ -160,6 +160,7 @@ TEST(ReplaceEncryptedFieldsTest, FailIfSchemaHasKeyIdWithEmptyOrigDoc) {
 
 TEST(BuildEncryptPlaceholderTest, JSONPointerResolvesCorrectly) {
     auto schema = buildBasicSchema(pointerEncryptObj);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
 
     auto doc = BSON("foo"
                     << "encrypt"
@@ -171,7 +172,7 @@ TEST(BuildEncryptPlaceholderTest, JSONPointerResolvesCorrectly) {
     expected.setKeyAltName(EncryptSchemaAnyType(keyAltName["key"]));
     EncryptionMetadata metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
                                                             pointerEncryptObj["encrypt"].Obj());
-    auto response = buildEncryptPlaceholder(doc["foo"], metadata, doc);
+    auto response = buildEncryptPlaceholder(doc["foo"], metadata, doc, *schemaTree.get());
     auto correctBSON = encodePlaceholder("foo", expected);
     ASSERT_BSONOBJ_EQ(correctBSON, response);
 }
@@ -182,6 +183,7 @@ TEST(BuildEncryptPlaceholderTest, JSONPointerResolvesCorrectlyThroughArray) {
                                                   << "keyId"
                                                   << "/key/0"));
     auto schema = buildBasicSchema(localEncryptObj);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
     auto doc = BSON("foo"
                     << "encrypt"
                     << "key"
@@ -192,13 +194,14 @@ TEST(BuildEncryptPlaceholderTest, JSONPointerResolvesCorrectlyThroughArray) {
     expected.setKeyAltName(EncryptSchemaAnyType(keyAltName["key"]));
     EncryptionMetadata metadata =
         EncryptionMetadata::parse(IDLParserErrorContext("meta"), localEncryptObj["encrypt"].Obj());
-    auto response = buildEncryptPlaceholder(doc["foo"], metadata, doc);
+    auto response = buildEncryptPlaceholder(doc["foo"], metadata, doc, *schemaTree.get());
     auto correctBSON = encodePlaceholder("foo", expected);
     ASSERT_BSONOBJ_EQ(correctBSON, response);
 }
 
 TEST(BuildEncryptPlaceholderTest, UAssertIfPointerPointsToObject) {
     auto schema = buildBasicSchema(pointerEncryptObj);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
     auto doc = BSON("foo"
                     << "encrypt"
                     << "key"
@@ -206,12 +209,14 @@ TEST(BuildEncryptPlaceholderTest, UAssertIfPointerPointsToObject) {
                             << "key"));
     EncryptionMetadata metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
                                                             pointerEncryptObj["encrypt"].Obj());
-    ASSERT_THROWS_CODE(
-        buildEncryptPlaceholder(doc["foo"], metadata, doc), AssertionException, 51115);
+    ASSERT_THROWS_CODE(buildEncryptPlaceholder(doc["foo"], metadata, doc, *schemaTree.get()),
+                       AssertionException,
+                       51115);
 }
 
 TEST(BuildEncryptPlaceholderTest, UAssertIfPointerPointsToArray) {
     auto schema = buildBasicSchema(pointerEncryptObj);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
     BSONObjBuilder builder;
     builder.append("foo", "encrypt");
     builder.appendCodeWScope("key",
@@ -221,12 +226,14 @@ TEST(BuildEncryptPlaceholderTest, UAssertIfPointerPointsToArray) {
     auto doc = builder.obj();
     EncryptionMetadata metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
                                                             pointerEncryptObj["encrypt"].Obj());
-    ASSERT_THROWS_CODE(
-        buildEncryptPlaceholder(doc["foo"], metadata, doc), AssertionException, 51115);
+    ASSERT_THROWS_CODE(buildEncryptPlaceholder(doc["foo"], metadata, doc, *schemaTree.get()),
+                       AssertionException,
+                       51115);
 }
 
 TEST(BuildEncryptPlaceholderTest, UAssertIfPointerPointsToCode) {
     auto schema = buildBasicSchema(pointerEncryptObj);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
     auto doc = BSON("foo"
                     << "encrypt"
                     << "key"
@@ -234,12 +241,14 @@ TEST(BuildEncryptPlaceholderTest, UAssertIfPointerPointsToCode) {
                                   << "key"));
     EncryptionMetadata metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
                                                             pointerEncryptObj["encrypt"].Obj());
-    ASSERT_THROWS_CODE(
-        buildEncryptPlaceholder(doc["foo"], metadata, doc), AssertionException, 51115);
+    ASSERT_THROWS_CODE(buildEncryptPlaceholder(doc["foo"], metadata, doc, *schemaTree.get()),
+                       AssertionException,
+                       51115);
 }
 
 TEST(BuildEncryptPlaceholderTest, UAssertIfPointerDoesNotEvaluate) {
     auto schema = buildBasicSchema(pointerEncryptObj);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
     auto doc = BSON("foo"
                     << "encrypt");
     EncryptionPlaceholder expected(FleAlgorithmInt::kRandom, EncryptSchemaAnyType(doc["foo"]));
@@ -248,12 +257,48 @@ TEST(BuildEncryptPlaceholderTest, UAssertIfPointerDoesNotEvaluate) {
     expected.setKeyAltName(EncryptSchemaAnyType(keyAltName["key"]));
     EncryptionMetadata metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
                                                             pointerEncryptObj["encrypt"].Obj());
-    ASSERT_THROWS_CODE(
-        buildEncryptPlaceholder(doc["foo"], metadata, doc), AssertionException, 51114);
+    ASSERT_THROWS_CODE(buildEncryptPlaceholder(doc["foo"], metadata, doc, *schemaTree.get()),
+                       AssertionException,
+                       51114);
+}
+
+TEST(BuildEncryptPlaceholderTest, UAssertIfPointerPointsToEncryptedField) {
+    auto schema = BSON("type"
+                       << "object"
+                       << "properties"
+                       << BSON("foo" << pointerEncryptObj << "key" << encryptObj));
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto doc = BSON("foo"
+                    << "encrypt"
+                    << "key"
+                    << "value");
+    EncryptionMetadata metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
+                                                            pointerEncryptObj["encrypt"].Obj());
+    ASSERT_THROWS_CODE(buildEncryptPlaceholder(doc["foo"], metadata, doc, *schemaTree.get()),
+                       AssertionException,
+                       30017);
+}
+
+TEST(BuildEncryptPlaceholderTest, UAssertIfPointerPointsToBinDataSubtypeSix) {
+    auto schema = BSON("type"
+                       << "object"
+                       << "properties"
+                       << BSON("foo" << pointerEncryptObj));
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    BSONObjBuilder bob;
+    bob.append("foo", "encrypt");
+    bob.appendBinData("key", 6, BinDataType::Encrypt, "123456");
+    auto doc = bob.obj();
+    EncryptionMetadata metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
+                                                            pointerEncryptObj["encrypt"].Obj());
+    ASSERT_THROWS_CODE(buildEncryptPlaceholder(doc["foo"], metadata, doc, *schemaTree.get()),
+                       AssertionException,
+                       30037);
 }
 
 TEST(BuildEncryptPlaceholderTest, PointedToUUIDActsAsKeyIdInsteadOfAltName) {
     auto schema = buildBasicSchema(pointerEncryptObj);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
     auto uuid = UUID::gen();
     BSONObjBuilder bob;
     bob.append("foo", "encrypt");
@@ -264,7 +309,7 @@ TEST(BuildEncryptPlaceholderTest, PointedToUUIDActsAsKeyIdInsteadOfAltName) {
     expected.setKeyId(uuid);
     EncryptionMetadata metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
                                                             pointerEncryptObj["encrypt"].Obj());
-    auto response = buildEncryptPlaceholder(doc["foo"], metadata, doc);
+    auto response = buildEncryptPlaceholder(doc["foo"], metadata, doc, *schemaTree.get());
     auto correctBSON = encodePlaceholder("foo", expected);
     ASSERT_BSONOBJ_EQ(correctBSON, response);
 }

@@ -86,8 +86,10 @@ void processDeleteCommand(const OpMsgRequest& request, BSONObjBuilder* builder);
  * in metadata using that document. Throws if the pointer evaluates to EOO, an array, CodeWScope,
  * or an object.
  */
-BSONObj buildEncryptPlaceholder(BSONElement elem,
-                                const EncryptionMetadata& metadata,
-                                const boost::optional<BSONObj>& origDoc = boost::none);
+BSONObj buildEncryptPlaceholder(
+    BSONElement elem,
+    const EncryptionMetadata& metadata,
+    const boost::optional<BSONObj>& origDoc = boost::none,
+    const boost::optional<const EncryptionSchemaTreeNode&> schema = boost::none);
 
 }  // namespace mongo

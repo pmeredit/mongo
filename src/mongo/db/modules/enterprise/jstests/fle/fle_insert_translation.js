@@ -162,5 +162,16 @@
             properties: {"_id": {type: "object", properties: {"nested": encryptDoc}}}
         }
     }));
+
+    // Test that an insert is rejected if a pointer points to an encrypted field.
+    const pointerDoc = {
+        encrypt: {algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random", keyId: "/key"}
+    };
+    assert.commandFailedWithCode(testDb.runCommand({
+        insert: "test.foo",
+        documents: [{"foo": "bar", "key": "test"}],
+        jsonSchema: {type: "object", properties: {"foo": pointerDoc, "key": encryptDoc}}
+    }),
+                                 30017);
     mongocryptd.stop();
 }());
