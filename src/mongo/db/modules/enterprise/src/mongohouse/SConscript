@@ -1,0 +1,53 @@
+Import('env')
+Import("get_option")
+
+hygienic = get_option('install-mode') == 'hygienic'
+
+env = env.Clone()
+
+env.Library(
+    target='document_source_bson_file',
+    source=[
+        'document_source_bson_file.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/db/pipeline/pipeline',
+    ],
+)
+
+mqlrun = env.Program(
+    target="mqlrun",
+    source=[
+        "mqlrun.cpp",
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/db/exec/working_set',
+        '$BUILD_DIR/mongo/db/query_exec',
+        'document_source_bson_file',
+    ],
+    INSTALL_ALIAS=[
+        'mongohouse',
+    ],
+)
+
+if not hygienic:
+    env.Install('#/', mqlrun)
+
+    # This is gross but effective. The $SERVER_ARCHIVE we reference
+    # below references this variable in turn, so stepping on it this
+    # way does change the name of the produced file.
+    env['SERVER_DIST_BASENAME'] = env['SERVER_DIST_BASENAME'].replace('mongodb-', 'mh-')
+
+    mongohouse_archive = env.Command(
+        target="#/${SERVER_ARCHIVE}",
+        source=['#buildscripts/make_archive.py'] + mqlrun,
+        action=' '.join([
+            '$PYTHON ${SOURCES[0]} -o $TARGET',
+            '--transform $BUILD_DIR/mongo/db/modules/enterprise/src/mongohouse=$SERVER_DIST_BASENAME',
+            '${TEMPFILE(SOURCES[1:])}',
+        ]),
+        BUILD_DIR=env.Dir('$BUILD_DIR').path
+    )
+
+    env.NoCache(mongohouse_archive)
+    env.Alias('dist-mh', mongohouse_archive)

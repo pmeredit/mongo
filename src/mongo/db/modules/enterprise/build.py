@@ -26,6 +26,7 @@ def configure(conf, env):
         "hot_backups",
         "inmemory",
         "ldap",
+        "mongohouse",
         "queryable",
         "sasl",
         "snmp",

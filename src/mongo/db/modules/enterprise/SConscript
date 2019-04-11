@@ -15,6 +15,7 @@ feature_dirs = [
     "hot_backups",
     "inmemory",
     "ldap",
+    "mongohouse",
     "queryable",
     "watchdog",
 ]
