@@ -22,7 +22,7 @@ def configure(conf, env):
         "audit",
         "encryptdb",
         "fle",
-        "fts",
+        "search_beta",
         "hot_backups",
         "inmemory",
         "ldap",
