@@ -213,9 +213,39 @@ PlaceHolderResult replaceEncryptedFieldsInUpdate(const EncryptionSchemaTreeNode&
     UpdateDriver driver(expCtx);
     // Ignoring array filters as they are not relevant for encryption.
     driver.parse(update, {});
+
+    // 'updateVisitor' must live through driver serialization.
     auto updateVisitor = EncryptionUpdateVisitor(schemaTree);
-    driver.visitRoot(&updateVisitor);
-    return PlaceHolderResult{updateVisitor.hasPlaceholder(),
+
+    bool hasEncryptionPlaceholder = false;
+    switch (driver.type()) {
+        case UpdateDriver::UpdateType::kOperator:
+            driver.visitRoot(&updateVisitor);
+            hasEncryptionPlaceholder = updateVisitor.hasPlaceholder();
+            break;
+        case UpdateDriver::UpdateType::kReplacement: {
+            auto updateExec = static_cast<ObjectReplaceExecutor*>(driver.getUpdateExecutor());
+            // Replacement update need not respect the collation. It is legal to use replacement
+            // update to create an encrypted string field, even if the update operation has a
+            // non-simple collation.
+            const CollatorInterface* collator = nullptr;
+            auto placeholder = replaceEncryptedFields(updateExec->getReplacement(),
+                                                      &schemaTree,
+                                                      EncryptionPlaceholderContext::kWrite,
+                                                      FieldRef{},
+                                                      boost::none,
+                                                      collator);
+            if (placeholder.hasEncryptionPlaceholders) {
+                updateExec->setReplacement(placeholder.result);
+                hasEncryptionPlaceholder = true;
+            }
+            break;
+        }
+        case UpdateDriver::UpdateType::kPipeline:
+            MONGO_UNREACHABLE;
+    }
+
+    return PlaceHolderResult{hasEncryptionPlaceholder,
                              schemaTree.containsEncryptedNode(),
                              driver.serialize().getDocument().toBson()};
 }

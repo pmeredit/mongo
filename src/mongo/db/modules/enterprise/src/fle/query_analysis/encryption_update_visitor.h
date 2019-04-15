@@ -8,7 +8,7 @@
 
 #include "encryption_schema_tree.h"
 #include "mongo/bson/bsonobj.h"
-#include "mongo/db/update/object_replace_node.h"
+#include "mongo/db/update/object_replace_executor.h"
 #include "mongo/db/update/pipeline_executor.h"
 #include "mongo/db/update/rename_node.h"
 #include "mongo/db/update/set_node.h"
@@ -51,27 +51,6 @@ public:
 
     void visit(CurrentDateNode* host) {
         throwOnEncryptedPath("$currentDate");
-    }
-
-    void visit(ObjectReplaceNode* host) {
-        // Replacement update need not respect the collation. It is legal to use replacement update
-        // to create an encrypted string field, even if the update operation has a non-simple
-        // collation.
-        const CollatorInterface* collator = nullptr;
-        auto placeholder = replaceEncryptedFields(host->val,
-                                                  &_schemaTree,
-                                                  EncryptionPlaceholderContext::kWrite,
-                                                  FieldRef{},
-                                                  boost::none,
-                                                  collator);
-        if (placeholder.hasEncryptionPlaceholders) {
-            host->val = placeholder.result;
-            _hasPlaceholder = true;
-        }
-    }
-
-    void visit(PipelineExecutor* host) {
-        uasserted(ErrorCodes::NotImplemented, "Pipeline updates not yet supported on mongocryptd");
     }
 
     void visit(PopNode* host) {
@@ -142,7 +121,6 @@ public:
             auto placeholder = buildEncryptPlaceholder(
                 host->val, metadata.get(), EncryptionPlaceholderContext::kWrite, collator);
             _backingBSONs.push_back(placeholder);
-            _hasPlaceholder = true;
             // The object returned by 'buildEncryptPlaceholder' only has one element.
             host->val = placeholder.firstElement();
         } else {
@@ -166,7 +144,6 @@ public:
                     auto finalBSON = BSON(host->val.fieldNameStringData() << placeholder.result);
                     host->val = finalBSON.firstElement();
                     _backingBSONs.push_back(finalBSON);
-                    _hasPlaceholder = true;
                 }
             }
         }
@@ -192,7 +169,7 @@ public:
     }
 
     bool hasPlaceholder() const {
-        return _hasPlaceholder;
+        return !_backingBSONs.empty();
     }
 
 private:
@@ -202,7 +179,6 @@ private:
                 !_schemaTree.getEncryptionMetadataForPath(_currentPath));
     }
 
-    bool _hasPlaceholder = false;
     FieldRef _currentPath;
     const EncryptionSchemaTreeNode& _schemaTree;
     std::vector<BSONObj> _backingBSONs;

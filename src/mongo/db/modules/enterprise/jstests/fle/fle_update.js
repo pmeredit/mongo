@@ -80,7 +80,7 @@
     for (let test of testCases) {
         updateCommand["jsonSchema"] = test["schema"];
         updateCommand["updates"] = test["updates"];
-        const result = assert.commandWorked(testDb.runCommand(updateCommand));
+        const result = assert.commandWorked(testDb.runCommand(updateCommand), tojson(test));
         assert.eq(test["encryptedPaths"].length >= 1, result["hasEncryptionPlaceholders"]);
         for (let encryptedDoc of result["result"]["updates"]) {
             let realUpdate = encryptedDoc["u"];
