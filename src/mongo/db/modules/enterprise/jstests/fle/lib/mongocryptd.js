@@ -34,8 +34,10 @@ class MongoCryptD {
             conn_str = "127.0.0.1:" + this.port;
         } else {
             conn_str = MongoRunner.dataDir + "/mongocryptd.sock";
+            conn_str = conn_str.replace(new RegExp('/', 'g'), '%2F');
             args.push("--unixSocketPrefix=" + MongoRunner.dataDir);
         }
+        conn_str = "mongodb://" + conn_str + "/?ssl=false";
 
         args.push("--setParameter");
         args.push("enableTestCommands=1");

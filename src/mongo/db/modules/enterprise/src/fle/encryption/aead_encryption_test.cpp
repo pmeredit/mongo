@@ -38,7 +38,7 @@ TEST(AEAD, EncryptAndDecrypt) {
         0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f};
 
     SecureVector<uint8_t> aesVector = SecureVector<uint8_t>(symKey.begin(), symKey.end());
-    SymmetricKey key = SymmetricKey(aesVector, aesAlgorithm, "splitKeyTest");
+    SymmetricKey key = SymmetricKey(aesVector, aesAlgorithm, "aeadEncryptDecryptTest");
 
     const std::array<uint8_t, 128> plainTextTest = {
         0x41, 0x20, 0x63, 0x69, 0x70, 0x68, 0x65, 0x72, 0x20, 0x73, 0x79, 0x73, 0x74, 0x65, 0x6d,

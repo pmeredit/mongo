@@ -7,6 +7,8 @@
 #include "fle/shell/kms_gen.h"
 #include "mongo/platform/random.h"
 #include "mongo/util/net/hostandport.h"
+#include "mongo/util/text.h"
+
 
 namespace mongo {
 
@@ -31,10 +33,21 @@ void KMSServiceController::registerFactory(KMSProviderEnum provider,
     invariant(ret.second);
 }
 
-std::unique_ptr<KMSService> KMSServiceController::create(const BSONObj& config) {
-    auto provider = CommonProvider::parse(IDLParserErrorContext("root"), config);
+std::unique_ptr<KMSService> KMSServiceController::createFromClient(const BSONObj& config) {
+    for (auto && [ _, factory ] : _factories) {
+        std::unique_ptr<KMSService> kmsService = factory->create(config);
+        if (kmsService != nullptr) {
+            return kmsService;
+        }
+    }
+    uasserted(31039, "Unsupported kms type.");
+}
 
-    return _factories.at(provider.getProvider())->create(config);
+std::unique_ptr<KMSService> KMSServiceController::createFromDisk(const BSONObj& config,
+                                                                 const BSONObj& masterKey) {
+    auto providerObj = masterKey.getStringField("provider"_sd);
+    auto provider = KMSProvider_parse(IDLParserErrorContext("root"), providerObj);
+    return _factories.at(provider)->create(config);
 }
 
 }  // namespace mongo

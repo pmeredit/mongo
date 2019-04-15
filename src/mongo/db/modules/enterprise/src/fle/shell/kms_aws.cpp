@@ -20,6 +20,7 @@
 #include "mongo/util/net/sock.h"
 #include "mongo/util/net/ssl_manager.h"
 #include "mongo/util/net/ssl_options.h"
+#include "mongo/util/text.h"
 #include "mongo/util/time_support.h"
 
 #include "fle/shell/kms_gen.h"
@@ -132,9 +133,9 @@ public:
 
     static std::unique_ptr<KMSService> create(const AwsKMS& config);
 
-    std::vector<std::byte> encrypt(ConstDataRange cdr, StringData kmsKeyId) final;
+    std::vector<uint8_t> encrypt(ConstDataRange cdr, StringData kmsKeyId) final;
 
-    std::vector<std::byte> decrypt(ConstDataRange cdr) final;
+    SecureVector<uint8_t> decrypt(ConstDataRange cdr) final;
 
     BSONObj encryptDataKey(ConstDataRange cdr, StringData keyId) final;
 
@@ -180,17 +181,27 @@ void AWSKMSService::initRequest(kms_request_t* request) {
     }
 }
 
-std::vector<std::byte> toVector(const std::string& str) {
-    std::vector<std::byte> blob;
+std::vector<uint8_t> toVector(const std::string& str) {
+    std::vector<uint8_t> blob;
 
     std::transform(std::begin(str), std::end(str), std::back_inserter(blob), [](auto c) {
-        return std::byte{static_cast<uint8_t>(c)};
+        return static_cast<uint8_t>(c);
     });
 
     return blob;
 }
 
-std::vector<std::byte> AWSKMSService::encrypt(ConstDataRange cdr, StringData kmsKeyId) {
+SecureVector<uint8_t> toSecureVector(const std::string& str) {
+    SecureVector<uint8_t> blob(str.length());
+
+    std::transform(std::begin(str), std::end(str), blob->data(), [](auto c) {
+        return static_cast<uint8_t>(c);
+    });
+
+    return blob;
+}
+
+std::vector<uint8_t> AWSKMSService::encrypt(ConstDataRange cdr, StringData kmsKeyId) {
     auto request =
         UniqueKmsRequest(kms_encrypt_request_new(reinterpret_cast<const uint8_t*>(cdr.data()),
                                                  cdr.length(),
@@ -216,7 +227,24 @@ std::vector<std::byte> AWSKMSService::encrypt(ConstDataRange cdr, StringData kms
     return toVector(blobStr);
 }
 
+/**
+ * Takes in a CMK of the format arn:partition:service:region:account-id:resource (minimum). We
+ * care about extracting the region. This function ensures that there are at least 6 partitions,
+ * parses the provider, and returns a pair of provider and the region.
+ */
+static std::string parseCMK(StringData cmk) {
+    std::vector<std::string> cmkTokenized = StringSplitter::split(cmk.toString(), ":");
+    uassert(31040, "Invalid CMK.", cmkTokenized.size() > 5);
+    return cmkTokenized[3];
+}
+
 BSONObj AWSKMSService::encryptDataKey(ConstDataRange cdr, StringData keyId) {
+    if (_server.empty()) {
+        auto region = parseCMK(keyId);
+        std::string hostname = str::stream() << "kms." << region << ".amazonaws.com";
+        _server = HostAndPort(hostname, 443);
+    }
+
     auto dataKey = encrypt(cdr, keyId);
 
     std::string dataKeyBase64 =
@@ -233,7 +261,7 @@ BSONObj AWSKMSService::encryptDataKey(ConstDataRange cdr, StringData keyId) {
     return keyAndMaterial.toBSON();
 }
 
-std::vector<std::byte> AWSKMSService::decrypt(ConstDataRange cdr) {
+SecureVector<uint8_t> AWSKMSService::decrypt(ConstDataRange cdr) {
     auto request = UniqueKmsRequest(kms_decrypt_request_new(
         reinterpret_cast<const uint8_t*>(cdr.data()), cdr.length(), nullptr));
 
@@ -252,7 +280,7 @@ std::vector<std::byte> AWSKMSService::decrypt(ConstDataRange cdr) {
 
     auto blobStr = base64::decode(awsResponse.getPlaintext().toString());
 
-    return toVector(blobStr);
+    return toSecureVector(blobStr);
 }
 
 void AWSConnection::connect(const HostAndPort& host) {
@@ -344,12 +372,7 @@ std::unique_ptr<KMSService> AWSKMSService::create(const AwsKMS& config) {
 
     awsKMS->_sslManager = SSLManagerInterface::create(sslGlobalParams, false);
 
-    if (!config.getUrl()) {
-        std::string hostname = str::stream() << "kms."
-                                             << "us-east-1"
-                                             << ".amazonaws.com";
-        awsKMS->_server = HostAndPort(hostname, 443);
-    } else {
+    if (config.getUrl()) {
         awsKMS->_server = parseUrl(config.getUrl().get());
     }
 
@@ -371,7 +394,11 @@ public:
     ~AWSKMSServiceFactory() = default;
 
     std::unique_ptr<KMSService> create(const BSONObj& config) final {
-        auto obj = config[kAwsKMS].Obj();
+        auto field = config[kAwsKMS];
+        if (field.eoo()) {
+            return nullptr;
+        }
+        auto obj = field.Obj();
         return AWSKMSService::create(AwsKMS::parse(IDLParserErrorContext("root"), obj));
     }
 };
@@ -379,6 +406,7 @@ public:
 }  // namspace
 
 MONGO_INITIALIZER(KMSRegister)(::mongo::InitializerContext* context) {
+    kms_message_init();
     KMSServiceController::registerFactory(KMSProviderEnum::aws,
                                           std::make_unique<AWSKMSServiceFactory>());
     return Status::OK();

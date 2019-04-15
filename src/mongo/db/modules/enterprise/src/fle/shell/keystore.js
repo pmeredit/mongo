@@ -7,36 +7,32 @@ Mongo.prototype.getKeyStore = function() {
 
 class KeyStore {
     constructor(mongo) {
-        mongo.getDB("admin").createCollection("datakeys");
-        this.keyColl = mongo.getCollection("admin.datakeys");
+        this.mongo = mongo;
+        var collection = mongo.getDataKeyCollection();
+        if (collection) {
+            this.keyColl = collection;
+        } else {
+            mongo.getDB("admin").createCollection("datakeys");
+            this.keyColl = mongo.getCollection("admin.datakeys");
+        }
         this.keyColl.createIndex(
             {keyAltNames: 1},
             {unique: true, partialFilterExpression: {keyAltNames: {$exists: true}}});
     }
 
-    createKey(keyAltNames = undefined) {
-        var date = new Date();
-        var data = "";
-        var possible = "abcdef0123456789";
-
-        for (var i = 0; i < 26; i++) {
-            data += possible.charAt(Math.floor(Math.random() * possible.length));
+    createKey(customerMasterKey, keyAltNames = undefined) {
+        if (typeof customerMasterKey !== "string") {
+            return "TypeError: customer master key must be of String type.";
         }
 
-        // TODO: Delete the rest of the code and insert the KMS API call in the
-        // line below. SERVER-39896
+        var masterKeyAndMaterial = this.mongo.generateDataKey(customerMasterKey);
+        var masterKey = masterKeyAndMaterial.masterKey;
 
-        var current = date.getDate();
-
-        var masterKey = {
-            "provider": "aws",
-            "awsKey": data,
-            "awsRegion": "USEAST",
-        };
+        var current = ISODate();
 
         var doc = {
             "_id": UUID(),
-            "keyMaterial": data,
+            "keyMaterial": masterKeyAndMaterial.keyMaterial,
             "creationDate": current,
             "updateDate": current,
             "status": 0,
@@ -49,6 +45,7 @@ class KeyStore {
                 return "TypeError: key alternate names must be of Array type.";
             }
 
+            let i = 0;
             for (i = 0; i < keyAltNames.length; i++) {
                 if (typeof keyAltNames[i] !== "string") {
                     return "TypeError: items in key alternate names must be of String type.";

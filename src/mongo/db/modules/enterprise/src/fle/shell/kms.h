@@ -10,6 +10,7 @@
 
 #include "fle/shell/kms_gen.h"
 #include "mongo/base/data_range.h"
+#include "mongo/base/secure_allocator.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/stdx/unordered_map.h"
@@ -32,12 +33,12 @@ public:
     /**
      * Encrypt a plaintext with the specified key and return a encrypted blob.
      */
-    virtual std::vector<std::byte> encrypt(ConstDataRange cdr, StringData keyId) = 0;
+    virtual std::vector<uint8_t> encrypt(ConstDataRange cdr, StringData keyId) = 0;
 
     /**
      * Decrypt an encrypted blob and return the plaintext.
      */
-    virtual std::vector<std::byte> decrypt(ConstDataRange cdr) = 0;
+    virtual SecureVector<uint8_t> decrypt(ConstDataRange cdr) = 0;
 
     /**
      * Encrypt a data key with the specified key and return a BSONObj that describes what needs to
@@ -82,10 +83,19 @@ public:
     static void registerFactory(KMSProviderEnum provider,
                                 std::unique_ptr<KMSServiceFactory> factory);
 
+
     /**
-     * Create a KMS Service with the given config.
+     * Iterates over the factories and chooses the correct KMS Factory that parses the config
+     * properly. Creates a KMS Service with the config and customer master key.
      */
-    static std::unique_ptr<KMSService> create(const BSONObj& config);
+    static std::unique_ptr<KMSService> createFromClient(const BSONObj& config);
+
+
+    /**
+     * Creates a KMS Service with the given config.
+     */
+    static std::unique_ptr<KMSService> createFromDisk(const BSONObj& config,
+                                                      const BSONObj& kmsProvider);
 
 private:
     static stdx::unordered_map<KMSProviderEnum, std::unique_ptr<KMSServiceFactory>> _factories;

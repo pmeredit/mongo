@@ -60,14 +60,26 @@ Status aeadEncrypt(const SymmetricKey& key,
 
     size_t aesOutLen = outLen - kHmacOutSize;
 
-    invariant(ivLen == 16);
-    std::copy(iv, iv + ivLen, out);
-
     size_t cipherTextLen = 0;
 
     SymmetricKey symEncKey(encKey, sym256KeySize, aesAlgorithm, key.getKeyId(), 1);
-    auto sEncrypt = aesEncrypt(
-        symEncKey, aesMode::cbc, PageSchema::k0, in, inLen, out, aesOutLen, &cipherTextLen, true);
+
+    bool ivProvided = false;
+    if (ivLen != 0) {
+        invariant(ivLen == 16);
+        std::copy(iv, iv + ivLen, out);
+        ivProvided = true;
+    }
+
+    auto sEncrypt = aesEncrypt(symEncKey,
+                               aesMode::cbc,
+                               PageSchema::k0,
+                               in,
+                               inLen,
+                               out,
+                               aesOutLen,
+                               &cipherTextLen,
+                               ivProvided);
 
     if (!sEncrypt.isOK()) {
         return sEncrypt;
