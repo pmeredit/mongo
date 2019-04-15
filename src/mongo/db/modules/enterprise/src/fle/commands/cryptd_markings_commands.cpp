@@ -12,6 +12,29 @@
 namespace mongo {
 namespace {
 
+/**
+ * For explain we need to re-wrap the inner command with placeholders inside an explain
+ * command.
+ */
+void buildExplainReturnMessage(BSONObjBuilder* responseBuilder,
+                               const BSONObj& innerObj,
+                               const ExplainOptions::Verbosity& verbosity) {
+    // All successful commands have a result field.
+    invariant(innerObj.hasField("result") &&
+              innerObj.getField("result").type() == BSONType::Object);
+    for (auto&& elem : innerObj) {
+        if (elem.fieldNameStringData() == "result") {
+            responseBuilder->append(
+                "result",
+                // TODO: SERVER-40354 Only send back verbosity if it was sent in the original
+                // message.
+                BSON("explain" << elem.Obj() << "verbosity"
+                               << ExplainOptions::verbosityString(verbosity)));
+        } else {
+            responseBuilder->append(elem);
+        }
+    }
+}
 
 /**
  * NOTE: The only method called is run(), the rest exist simply to ensure the code compiles.
@@ -37,10 +60,11 @@ public:
                    const OpMsgRequest& request,
                    ExplainOptions::Verbosity verbosity,
                    rpc::ReplyBuilderInterface* result) const final {
-
         try {
-            BSONObjBuilder builder = result->getBodyBuilder();
-            processCommand(request.getDatabase().toString(), request.body, &builder);
+            BSONObjBuilder innerBuilder;
+            processCommand(request.getDatabase().toString(), request.body, &innerBuilder);
+            auto explainBuilder = result->getBodyBuilder();
+            buildExplainReturnMessage(&explainBuilder, innerBuilder.obj(), verbosity);
         } catch (...) {
             return exceptionToStatus();
         }
@@ -191,9 +215,10 @@ public:
                      ExplainOptions::Verbosity verbosity,
                      rpc::ReplyBuilderInterface* result) final {
 
-            auto builder = result->getBodyBuilder();
-
-            processWriteCommand(_request, &builder);
+            BSONObjBuilder innerBuilder;
+            processWriteCommand(_request, &innerBuilder);
+            auto explainBuilder = result->getBodyBuilder();
+            buildExplainReturnMessage(&explainBuilder, innerBuilder.obj(), verbosity);
         }
 
 
@@ -389,6 +414,13 @@ std::unique_ptr<CommandInvocation> CryptdExplainCmd::parse(OperationContext* opC
             cmdObj.firstElement().type() == Object);
 
     auto explainedObj = cmdObj.firstElement().Obj();
+    uassert(30050,
+            "In an explain command the jsonSchema field must be top-level and not inside the "
+            "command being explained.",
+            !explainedObj.hasField("jsonSchema"));
+    if (auto cmdSchema = cmdObj["jsonSchema"]) {
+        explainedObj = explainedObj.addField(cmdSchema);
+    }
     if (auto innerDb = explainedObj["$db"]) {
         uassert(ErrorCodes::InvalidNamespace,
                 str::stream() << "Mismatched $db in explain command. Expected " << dbname
