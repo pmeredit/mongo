@@ -2,8 +2,8 @@
  * Copyright (C) 2019-present MongoDB, Inc.
  */
 
-#include "fts/mongot_options.h"
-#include "fts/mongot_options_gen.h"
+#include "search_beta/mongot_options.h"
+#include "search_beta/mongot_options_gen.h"
 
 #include "mongo/base/status.h"
 #include "mongo/base/status_with.h"

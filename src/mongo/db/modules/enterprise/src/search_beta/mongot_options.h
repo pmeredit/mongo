@@ -11,7 +11,7 @@
 namespace mongo {
 
 /**
- * Mongot (FTS) configuration options
+ * Mongot (searchBeta) configuration options
  */
 struct MongotParams {
     static Status onSetHost(const std::string&);
