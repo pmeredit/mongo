@@ -10,7 +10,7 @@ hygienic = get_option('install-mode') == 'hygienic'
 
 feature_dirs = [
     "fle",
-    "fts",
+    "search_beta",
     "encryptdb",
     "hot_backups",
     "inmemory",

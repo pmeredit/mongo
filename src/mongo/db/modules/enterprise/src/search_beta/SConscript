@@ -1,0 +1,48 @@
+# -*- mode: python -*-
+
+Import("env")
+
+env.Library(
+    target='document_source_search_beta',
+    source=[
+        'document_source_search_beta.cpp',
+        'document_source_internal_search_beta_id_lookup.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/pipeline/document_value',
+        '$BUILD_DIR/mongo/db/pipeline/pipeline',
+    ],
+    LIBDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/db/mongodandmongos',
+    ],
+)
+
+env.Library(
+    target='mongot_options',
+    source=[
+        'mongot_options.cpp',
+        env.Idlc('mongot_options.idl')[0],
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/idl/idl_parser',
+        '$BUILD_DIR/mongo/idl/server_parameter',
+        '$BUILD_DIR/mongo/util/net/network',
+    ]
+)
+
+env.CppUnitTest(
+    target='document_source_search_beta_test',
+    source=[
+        'document_source_search_beta_test.cpp',
+        'document_source_internal_search_beta_id_lookup_test.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/db/auth/authmocks',
+        '$BUILD_DIR/mongo/db/pipeline/document_source_mock',
+        '$BUILD_DIR/mongo/db/pipeline/document_value_test_util',
+        '$BUILD_DIR/mongo/db/service_context_test_fixture',
+        'document_source_search_beta',
+    ]
+)
