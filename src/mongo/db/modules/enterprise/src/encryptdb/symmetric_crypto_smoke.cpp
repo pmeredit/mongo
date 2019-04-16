@@ -170,7 +170,7 @@ Status _doSmokeTestAESCipherMode(const aesTest& test) {
             return {ErrorCodes::OperationFailed, "Invalid page schema version"};
         }
 
-        const auto id = cursor.readAndAdvance<SymmetricKeyId::id_type>();
+        const auto id = cursor.readAndAdvance<LittleEndian<SymmetricKeyId::id_type>>();
         if (id != kKeyIdForTest) {
             return {ErrorCodes::OperationFailed, "Incorrect key id found"};
         }
