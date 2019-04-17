@@ -12,7 +12,7 @@
     load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
 
     var authOptions =
-        {user: adminUserDN, pwd: defaultPwd, mechanism: "PLAIN", digetPassword: false};
+        {user: adminUserDN, pwd: defaultPwd, mechanism: "PLAIN", digestPassword: false};
 
     // Test a query for users which are listed as attributes on groups
     // FIXME: This should be merged into the lib configuration somehow

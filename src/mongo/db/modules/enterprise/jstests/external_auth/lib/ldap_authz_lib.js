@@ -197,7 +197,7 @@ function authAndVerify({conn, options}) {
     if (options.authOptions.pwd !== undefined) {
         assert.eq(0, externalDB.auth(Object.merge(options.authOptions, {pwd: "asdkljfhkljd"})));
     }
-    externalDB.auth(options.authOptions);
+    assert(externalDB.auth(options.authOptions));
 
     var status = externalDB.runCommand({"connectionStatus": 1});
 
@@ -267,7 +267,7 @@ function setupTest(m) {
         ]
     });
 
-    adminDB.auth("siteRootAdmin", "secret");
+    assert(adminDB.auth("siteRootAdmin", "secret"));
 
     // This is the default role used for basic permissions verification.
     // Tests should use this role instead of creating new ones whenever possible

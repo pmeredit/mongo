@@ -171,27 +171,15 @@ struct PLAINServerFactoryProxy : ServerFactoryBase {
     }
 
     StringData mechanismName() const final {
-        if (useCyrus()) {
-            return cyrusPlainServerFactory.mechanismName();
-        } else {
-            return ldapPLAINServerFactory.mechanismName();
-        }
+        return policy_type::getName();
     }
 
     SecurityPropertySet properties() const final {
-        if (useCyrus()) {
-            return cyrusPlainServerFactory.properties();
-        } else {
-            return ldapPLAINServerFactory.properties();
-        }
+        return policy_type::getProperties();
     }
 
     int securityLevel() const final {
-        if (useCyrus()) {
-            return cyrusPlainServerFactory.securityLevel();
-        } else {
-            return ldapPLAINServerFactory.securityLevel();
-        }
+        return policy_type::securityLevel();
     }
 
     bool canMakeMechanismForUser(const User* user) const final {

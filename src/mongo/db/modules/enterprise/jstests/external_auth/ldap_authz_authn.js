@@ -83,6 +83,56 @@
         authAndVerify({conn: conn, options: {authOptions: authOptions, user: user2}});
     }
 
+    function testNativeAndGSSAPI() {
+        let configGenerator = new LDAPTestConfigGenerator();
+        configGenerator.authenticationMechanisms = ["PLAIN", "GSSAPI", "SCRAM-SHA-1"];
+        configGenerator.ldapAuthzQueryTemplate = "{USER}?memberOf";
+        configGenerator.ldapUserToDNMapping = [
+            {
+              match: "(ldapz_kerberos1)@LDAPTEST.10GEN.CC",
+              substitution: "cn={0}," + defaultUserDNSuffix
+            },
+            {
+              match: "(ldapz_kerberos2@LDAPTEST.10GEN.CC)",
+              ldapQuery: defaultUserDNSuffix + "??one?krbPrincipalName={0}"
+            },
+            {match: "(ldapz_ldap1)", substitution: "cn={0}," + defaultUserDNSuffix},
+            {match: "(ldapz_ldap2)", ldapQuery: defaultUserDNSuffix + "??one?(cn={0})"}
+        ];
+
+        runTests(testNativeAndGSSAPICallback, configGenerator);
+    }
+
+    function testNativeAndGSSAPICallback({conn}) {
+        var ldapUser1 = "ldapz_ldap1";
+        var ldapUser2 = "ldapz_ldap2";
+
+        var authOptions =
+            {user: ldapUser1, pwd: defaultPwd, mechanism: "PLAIN", digestPassword: false};
+
+        authAndVerify({conn: conn, options: {authOptions: authOptions, user: ldapUser1}});
+
+        authOptions = {user: ldapUser2, pwd: defaultPwd, mechanism: "PLAIN", digestPassword: false};
+
+        authAndVerify({conn: conn, options: {authOptions: authOptions, user: ldapUser2}});
+
+        var gssapiUser1 = "ldapz_kerberos1@LDAPTEST.10GEN.CC";
+        var gssapiUser2 = "ldapz_kerberos2@LDAPTEST.10GEN.CC";
+
+        run("kdestroy");  // remove any previous tickets
+        run("kinit", "-k", "-t", assetsPath + "ldapz_kerberos1.keytab", gssapiUser1);
+
+        var authOptions = {user: gssapiUser1, mechanism: "GSSAPI", serviceHostname: "localhost"};
+
+        authAndVerify({conn: conn, options: {authOptions: authOptions, user: gssapiUser1}});
+
+        run("kdestroy");
+        run("kinit", "-k", "-t", assetsPath + "ldapz_kerberos2.keytab", gssapiUser2);
+        authOptions = {user: gssapiUser2, mechanism: "GSSAPI", serviceHostname: "localhost"};
+
+        authAndVerify({conn: conn, options: {authOptions: authOptions, user: gssapiUser2}});
+    }
+
     // X509 Authentication + LDAP Authorization
     function testX509() {
         var configGenerator = new LDAPTestConfigGenerator();
@@ -173,6 +223,7 @@
         testGSSAPI();
         // Windows machines don't support saslauthd.
         testLDAPSaslauthd();
+        testNativeAndGSSAPI();
     }
 
 })();
