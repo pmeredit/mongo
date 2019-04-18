@@ -46,17 +46,10 @@ FLEMatchExpression::FLEMatchExpression(std::unique_ptr<MatchExpression> expressi
 }
 
 BSONElement FLEMatchExpression::allocateEncryptedElement(const BSONElement& elem,
-                                                         const EncryptionMetadata& metadata) {
-    uassert(51158,
-            "Cannot query on fields encrypted with the randomized encryption algorithm",
-            metadata.getAlgorithm() == FleAlgorithmEnum::kDeterministic);
-    uassert(
-        31009,
-        str::stream()
-            << "Cannot perform equality to an array predicate against an encrypted path. Array: "
-            << elem,
-        elem.type() != BSONType::Array);
-    _encryptedElements.push_back(buildEncryptPlaceholder(elem, metadata));
+                                                         const EncryptionMetadata& metadata,
+                                                         const CollatorInterface* collator) {
+    _encryptedElements.push_back(buildEncryptPlaceholder(
+        elem, metadata, EncryptionPlaceholderContext::kComparison, collator));
     return _encryptedElements.back().firstElement();
 }
 
@@ -73,14 +66,20 @@ void FLEMatchExpression::replaceElementsInEqExpression(const EncryptionSchemaTre
                               << "'",
                 !eqExpr->getData().isNull());
 
-        eqExpr->setData(allocateEncryptedElement(eqExpr->getData(), encryptMetadata.get()));
+        eqExpr->setData(allocateEncryptedElement(
+            eqExpr->getData(), encryptMetadata.get(), eqExpr->getCollator()));
     } else {
         // The path to the $eq expression is not encrypted, however there may still be an encrypted
         // field within the RHS object.
         auto rhsElem = eqExpr->getData();
         if (rhsElem.type() == BSONType::Object) {
-            auto[hasEncrypt, _, placeholder] = replaceEncryptedFields(
-                rhsElem.embeddedObject(), &schemaTree, FieldRef(eqExpr->path()), boost::none);
+            auto[hasEncrypt, _, placeholder] =
+                replaceEncryptedFields(rhsElem.embeddedObject(),
+                                       &schemaTree,
+                                       EncryptionPlaceholderContext::kComparison,
+                                       FieldRef(eqExpr->path()),
+                                       boost::none,
+                                       eqExpr->getCollator());
             if (hasEncrypt) {
                 eqExpr->setData(allocateEncryptedObject(placeholder));
             }
@@ -112,7 +111,8 @@ void FLEMatchExpression::replaceElementsInInExpression(const EncryptionSchemaTre
                               << inExpr->path()
                               << "'",
                 !elem.isNull());
-            replacedElements.push_back(allocateEncryptedElement(elem, encryptMetadata.get()));
+            replacedElements.push_back(
+                allocateEncryptedElement(elem, encryptMetadata.get(), inExpr->getCollator()));
         }
     } else {
         // The path to the $in expression is not encrypted, however there may still be an
@@ -120,8 +120,13 @@ void FLEMatchExpression::replaceElementsInInExpression(const EncryptionSchemaTre
         bool hasPlaceholders = false;
         for (auto&& elem : inExpr->getEqualities()) {
             if (elem.type() == BSONType::Object) {
-                auto[elemHasEncrypt, _, placeholder] = replaceEncryptedFields(
-                    elem.embeddedObject(), &schemaTree, FieldRef(inExpr->path()), boost::none);
+                auto[elemHasEncrypt, _, placeholder] =
+                    replaceEncryptedFields(elem.embeddedObject(),
+                                           &schemaTree,
+                                           EncryptionPlaceholderContext::kComparison,
+                                           FieldRef(inExpr->path()),
+                                           boost::none,
+                                           inExpr->getCollator());
 
                 // This class maintains an invariant that BSON storage is allocated if and only if
                 // the underlying MatchExpression has been marked with at least one
@@ -240,8 +245,13 @@ void FLEMatchExpression::replaceEncryptedElements(const EncryptionSchemaTreeNode
             auto compExpr = static_cast<ComparisonMatchExpression*>(root);
             auto rhsElem = compExpr->getData();
             if (rhsElem.type() == BSONType::Object) {
-                auto[hasEncrypt, _, placeholder] = replaceEncryptedFields(
-                    rhsElem.embeddedObject(), &schemaTree, FieldRef(compExpr->path()), boost::none);
+                auto[hasEncrypt, _, placeholder] =
+                    replaceEncryptedFields(rhsElem.embeddedObject(),
+                                           &schemaTree,
+                                           EncryptionPlaceholderContext::kComparison,
+                                           FieldRef(compExpr->path()),
+                                           boost::none,
+                                           compExpr->getCollator());
                 uassert(51119,
                         str::stream() << "Invalid match expression operator on encrypted field '"
                                       << root->toString()

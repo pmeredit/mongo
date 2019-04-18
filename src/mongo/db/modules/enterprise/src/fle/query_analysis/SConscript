@@ -18,6 +18,7 @@ env.Library(
 env.Library(
     target='cryptd_query_analysis',
     source=[
+        'collator_factory_cryptd.cpp',
         'fle_match_expression.cpp',
         'fle_pipeline.cpp',
         'query_analysis.cpp',

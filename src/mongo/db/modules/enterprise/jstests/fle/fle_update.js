@@ -274,6 +274,16 @@
     updateCommand["updates"] = [{q: {foo: 2}, u: {"$set": {foo: 5}}}];
     assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51158);
 
+    // $set to a field encrypted with the random algorithm is allowed.
+    updateCommand["updates"] = [{q: {}, u: {"$set": {foo: 5}}}];
+    result = assert.commandWorked(testDb.runCommand(updateCommand));
+    assert.eq(true, result.hasEncryptionPlaceholders, result);
+
+    // Replacement update which encrypts a field with the random algorithm is also allowed.
+    updateCommand["updates"] = [{q: {}, u: {foo: 5}}];
+    result = assert.commandWorked(testDb.runCommand(updateCommand));
+    assert.eq(true, result.hasEncryptionPlaceholders, result);
+
     // Test that an $unset with a q field gets encrypted.
     updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc}};
     updateCommand["updates"] = [{q: {foo: 4}, u: {"$unset": {"bar": 1}}}];

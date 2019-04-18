@@ -73,9 +73,13 @@ private:
      * Creates an object with a single BinData element representing the encryption placeholder for
      * 'elem', using the options in 'metadata'. Returns a BSONElement containing the resulting
      * BinData.
+     *
+     * Throws if 'collator' is non-null (i.e. the collation is non-simple) and 'elem' is of a type
+     * that would require a collation-aware comparison comparison.
      */
     BSONElement allocateEncryptedElement(const BSONElement& elem,
-                                         const EncryptionMetadata& metadata);
+                                         const EncryptionMetadata& metadata,
+                                         const CollatorInterface* collator);
 
     /**
      * Wraps 'encryptedObj' as the only element within a single-field parent object, and holds a

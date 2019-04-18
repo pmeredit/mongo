@@ -54,7 +54,16 @@ public:
     }
 
     void visit(ObjectReplaceNode* host) {
-        auto placeholder = replaceEncryptedFields(host->val, &_schemaTree, FieldRef{}, boost::none);
+        // Replacement update need not respect the collation. It is legal to use replacement update
+        // to create an encrypted string field, even if the update operation has a non-simple
+        // collation.
+        const CollatorInterface* collator = nullptr;
+        auto placeholder = replaceEncryptedFields(host->val,
+                                                  &_schemaTree,
+                                                  EncryptionPlaceholderContext::kWrite,
+                                                  FieldRef{},
+                                                  boost::none,
+                                                  collator);
         if (placeholder.hasEncryptionPlaceholders) {
             host->val = placeholder.result;
             _hasPlaceholder = true;
@@ -125,8 +134,13 @@ public:
 
     void visit(SetNode* host) {
         if (auto metadata = _schemaTree.getEncryptionMetadataForPath(_currentPath)) {
-            // TODO: SERVER-40217 Error if modifying an array.
-            auto placeholder = buildEncryptPlaceholder(host->val, metadata.get());
+            // We need not pass through a collator here, even if the update command has a collation
+            // specified, because the $set does not make collation-aware comparisons. It is legal
+            // to use $set to create an encrypted string field, even if the update operation has a
+            // non-simple collation.
+            const CollatorInterface* collator = nullptr;
+            auto placeholder = buildEncryptPlaceholder(
+                host->val, metadata.get(), EncryptionPlaceholderContext::kWrite, collator);
             _backingBSONs.push_back(placeholder);
             _hasPlaceholder = true;
             // The object returned by 'buildEncryptPlaceholder' only has one element.
@@ -136,8 +150,18 @@ public:
             if (host->val.type() == BSONType::Object) {
                 // If the right hand side of the $set is an object, recursively check if it contains
                 // any encrypted fields.
-                auto placeholder = replaceEncryptedFields(
-                    host->val.embeddedObject(), &_schemaTree, _currentPath, boost::none);
+                //
+                // We need not pass through a collator here, even if the update command has a
+                // collation specified, because the $set does not make collation-aware comparisons.
+                // It is legal to use $set to create an encrypted string field, even if the update
+                // operation has a non-simple collation.
+                const CollatorInterface* collator = nullptr;
+                auto placeholder = replaceEncryptedFields(host->val.embeddedObject(),
+                                                          &_schemaTree,
+                                                          EncryptionPlaceholderContext::kWrite,
+                                                          _currentPath,
+                                                          boost::none,
+                                                          collator);
                 if (placeholder.hasEncryptionPlaceholders) {
                     auto finalBSON = BSON(host->val.fieldNameStringData() << placeholder.result);
                     host->val = finalBSON.firstElement();

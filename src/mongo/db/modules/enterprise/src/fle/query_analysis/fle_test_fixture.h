@@ -87,7 +87,8 @@ protected:
     template <class T>
     BSONObj buildEncryptElem(T value, const EncryptionMetadata& metadata) {
         auto tempObj = BSON("v" << value);
-        return buildEncryptPlaceholder(tempObj.firstElement(), metadata);
+        return buildEncryptPlaceholder(
+            tempObj.firstElement(), metadata, EncryptionPlaceholderContext::kComparison, nullptr);
     }
 
     // Default schema where only the path 'ssn' is encrypted.

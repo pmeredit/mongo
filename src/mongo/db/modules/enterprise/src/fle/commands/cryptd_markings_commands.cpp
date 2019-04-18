@@ -62,7 +62,7 @@ public:
                    rpc::ReplyBuilderInterface* result) const final {
         try {
             BSONObjBuilder innerBuilder;
-            processCommand(request.getDatabase().toString(), request.body, &innerBuilder);
+            processCommand(opCtx, request.getDatabase().toString(), request.body, &innerBuilder);
             auto explainBuilder = result->getBodyBuilder();
             buildExplainReturnMessage(&explainBuilder, innerBuilder.obj(), verbosity);
         } catch (...) {
@@ -76,12 +76,13 @@ public:
              const std::string& dbname,
              const BSONObj& cmdObj,
              BSONObjBuilder& result) final {
-        processCommand(dbname, cmdObj, &result);
+        processCommand(opCtx, dbname, cmdObj, &result);
 
         return true;
     }
 
-    virtual void processCommand(const std::string& dbname,
+    virtual void processCommand(OperationContext* opCtx,
+                                const std::string& dbname,
                                 const BSONObj& cmdObj,
                                 BSONObjBuilder* result) const = 0;
 };
@@ -91,10 +92,11 @@ class CryptDFind final : public CryptDPlaceholder {
 public:
     CryptDFind() : CryptDPlaceholder("find") {}
 
-    void processCommand(const std::string& dbname,
+    void processCommand(OperationContext* opCtx,
+                        const std::string& dbname,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        processFindCommand(dbname, cmdObj, result);
+        processFindCommand(opCtx, dbname, cmdObj, result);
     }
 } cmdCryptDFind;
 
@@ -103,10 +105,11 @@ class CryptDAggregate final : public CryptDPlaceholder {
 public:
     CryptDAggregate() : CryptDPlaceholder("aggregate") {}
 
-    void processCommand(const std::string& dbname,
+    void processCommand(OperationContext* opCtx,
+                        const std::string& dbname,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        processAggregateCommand(dbname, cmdObj, result);
+        processAggregateCommand(opCtx, dbname, cmdObj, result);
     }
 } cmdCryptDAggregate;
 
@@ -115,10 +118,11 @@ class CryptDDistinct final : public CryptDPlaceholder {
 public:
     CryptDDistinct() : CryptDPlaceholder("distinct") {}
 
-    void processCommand(const std::string& dbname,
+    void processCommand(OperationContext* opCtx,
+                        const std::string& dbname,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        processDistinctCommand(dbname, cmdObj, result);
+        processDistinctCommand(opCtx, dbname, cmdObj, result);
     }
 } cmdCryptDDistinct;
 
@@ -126,10 +130,11 @@ class CryptDCount final : public CryptDPlaceholder {
 public:
     CryptDCount() : CryptDPlaceholder("count") {}
 
-    void processCommand(const std::string& dbname,
+    void processCommand(OperationContext* opCtx,
+                        const std::string& dbname,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        processCountCommand(dbname, cmdObj, result);
+        processCountCommand(opCtx, dbname, cmdObj, result);
     }
 } cmdCryptDCount;
 
@@ -138,10 +143,11 @@ class CryptDFindAndModify final : public CryptDPlaceholder {
 public:
     CryptDFindAndModify() : CryptDPlaceholder("findAndModify", "findandmodify") {}
 
-    void processCommand(const std::string& dbname,
+    void processCommand(OperationContext* opCtx,
+                        const std::string& dbname,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        processFindAndModifyCommand(dbname, cmdObj, result);
+        processFindAndModifyCommand(opCtx, dbname, cmdObj, result);
     }
 } cmdCryptDFindAndModify;
 
@@ -214,9 +220,8 @@ public:
         void explain(OperationContext* opCtx,
                      ExplainOptions::Verbosity verbosity,
                      rpc::ReplyBuilderInterface* result) final {
-
             BSONObjBuilder innerBuilder;
-            processWriteCommand(_request, &innerBuilder);
+            processWriteCommand(opCtx, _request, &innerBuilder);
             auto explainBuilder = result->getBodyBuilder();
             buildExplainReturnMessage(&explainBuilder, innerBuilder.obj(), verbosity);
         }
@@ -226,11 +231,13 @@ public:
 
             auto builder = result->getBodyBuilder();
 
-            processWriteCommand(_request, &builder);
+            processWriteCommand(opCtx, _request, &builder);
         }
 
 
-        virtual void processWriteCommand(const OpMsgRequest& request, BSONObjBuilder* builder) = 0;
+        virtual void processWriteCommand(OperationContext* opCtx,
+                                         const OpMsgRequest& request,
+                                         BSONObjBuilder* builder) = 0;
 
 
     private:
@@ -257,8 +264,10 @@ public:
             : InvocationBase(definition, request, dbName) {}
 
 
-        void processWriteCommand(const OpMsgRequest& request, BSONObjBuilder* builder) final {
-            processInsertCommand(request, builder);
+        void processWriteCommand(OperationContext* opCtx,
+                                 const OpMsgRequest& request,
+                                 BSONObjBuilder* builder) final {
+            processInsertCommand(opCtx, request, builder);
         }
     };
 
@@ -282,8 +291,10 @@ public:
             : InvocationBase(definition, request, dbName) {}
 
 
-        void processWriteCommand(const OpMsgRequest& request, BSONObjBuilder* builder) final {
-            processUpdateCommand(request, builder);
+        void processWriteCommand(OperationContext* opCtx,
+                                 const OpMsgRequest& request,
+                                 BSONObjBuilder* builder) final {
+            processUpdateCommand(opCtx, request, builder);
         }
     };
 
@@ -307,8 +318,10 @@ public:
             : InvocationBase(definition, request, dbName) {}
 
 
-        void processWriteCommand(const OpMsgRequest& request, BSONObjBuilder* builder) final {
-            processDeleteCommand(request, builder);
+        void processWriteCommand(OperationContext* opCtx,
+                                 const OpMsgRequest& request,
+                                 BSONObjBuilder* builder) final {
+            processDeleteCommand(opCtx, request, builder);
         }
     };
 
