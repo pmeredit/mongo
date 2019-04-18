@@ -28,7 +28,7 @@ static const BSONObj pointerEncryptObj =
                            << "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
                            << "keyId"
                            << "/key"));
-static const BSONObj encryptDeterministicObj =
+static const BSONObj encryptMetadataDeterministicObj =
     BSON("encrypt" << BSON("algorithm"
                            << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
                            << "initializationVector"
@@ -398,7 +398,7 @@ TEST(BuildEncryptPlaceholderTest, FailsForRandomEncryptionInComparisonContext) {
 
 TEST(BuildEncryptPlaceholderTest, SucceedsForDeterministicEncryptionInComparisonContext) {
     auto metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
-                                              encryptDeterministicObj["encrypt"].Obj());
+                                              encryptMetadataDeterministicObj["encrypt"].Obj());
     auto doc = BSON("foo" << 1);
     auto placeholder = buildEncryptPlaceholder(
         doc.firstElement(), metadata, EncryptionPlaceholderContext::kComparison, nullptr);
@@ -418,7 +418,7 @@ TEST(BuildEncryptPlaceholderTest, SucceedsForRandomEncryptionInWriteContext) {
 
 TEST(BuildEncryptPlaceholderTest, SucceedsForDeterministicEncryptionInWriteContext) {
     auto metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
-                                              encryptDeterministicObj["encrypt"].Obj());
+                                              encryptMetadataDeterministicObj["encrypt"].Obj());
     auto doc = BSON("foo" << 1);
     auto placeholder = buildEncryptPlaceholder(
         doc.firstElement(), metadata, EncryptionPlaceholderContext::kWrite, nullptr);
@@ -428,7 +428,7 @@ TEST(BuildEncryptPlaceholderTest, SucceedsForDeterministicEncryptionInWriteConte
 
 TEST(BuildEncryptPlaceholderTest, FailsForStringWithNonSimpleCollationInComparisonContext) {
     auto metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
-                                              encryptDeterministicObj["encrypt"].Obj());
+                                              encryptMetadataDeterministicObj["encrypt"].Obj());
     auto doc = BSON("foo"
                     << "string");
     auto collator =
@@ -443,7 +443,7 @@ TEST(BuildEncryptPlaceholderTest, FailsForStringWithNonSimpleCollationInComparis
 
 TEST(BuildEncryptPlaceholderTest, FailsForSymbolWithNonSimpleCollationInComparisonContext) {
     auto metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
-                                              encryptDeterministicObj["encrypt"].Obj());
+                                              encryptMetadataDeterministicObj["encrypt"].Obj());
 
     BSONObjBuilder builder;
     builder.append("foo"_sd, "symbol"_sd);
@@ -460,7 +460,7 @@ TEST(BuildEncryptPlaceholderTest, FailsForSymbolWithNonSimpleCollationInComparis
 
 TEST(BuildEncryptPlaceholderTest, SucceedsForStringWithNonSimpleCollationInWriteContext) {
     auto metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
-                                              encryptDeterministicObj["encrypt"].Obj());
+                                              encryptMetadataDeterministicObj["encrypt"].Obj());
     auto doc = BSON("foo"
                     << "string");
     auto collator =
@@ -473,7 +473,7 @@ TEST(BuildEncryptPlaceholderTest, SucceedsForStringWithNonSimpleCollationInWrite
 
 TEST(BuildEncryptPlaceholderTest, SucceedsForStringWithSimpleCollationInComparisonContext) {
     auto metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
-                                              encryptDeterministicObj["encrypt"].Obj());
+                                              encryptMetadataDeterministicObj["encrypt"].Obj());
     auto doc = BSON("foo"
                     << "string");
     auto placeholder = buildEncryptPlaceholder(

@@ -215,11 +215,18 @@ TEST(EncryptionSchemaTreeTest, ExtractsCorrectMetadataOptions) {
                             << BSONBinData(NULL, 0, BinDataType::BinDataGeneral)
                             << "keyId"
                             << BSON_ARRAY(uuid));
-
+    auto encryptObj = BSON("algorithm"
+                           << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
+                           << "initializationVector"
+                           << BSONBinData(NULL, 0, BinDataType::BinDataGeneral)
+                           << "bsonType"
+                           << "string"
+                           << "keyId"
+                           << BSON_ARRAY(uuid));
     BSONObj schema = BSON("type"
                           << "object"
                           << "properties"
-                          << BSON("ssn" << BSON("encrypt" << metadataObj)));
+                          << BSON("ssn" << BSON("encrypt" << encryptObj)));
     ASSERT(extractMetadata(schema, "ssn") == ssnMetadata);
     ASSERT(extractMetadata(schema, "ssn") == EncryptionMetadata::parse(encryptCtxt, metadataObj));
 }
@@ -851,7 +858,8 @@ TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataWithOverriding) {
             ssn: {
                 encrypt: {
                     algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                    initializationVector: {$binary: "bW9uZ28=", $type: "00"}
+                    initializationVector: {$binary: "bW9uZ28=", $type: "00"},
+                    bsonType: "string"
                 }
             },
             super: {
@@ -1709,6 +1717,57 @@ TEST(EncryptionSchemaTreeTest, EncryptedBelowPrefixReturnsTrueOnLongPrefix) {
     ASSERT_TRUE(schemaTree->containsEncryptedNodeBelowPrefix(FieldRef("a")));
     ASSERT_TRUE(schemaTree->containsEncryptedNodeBelowPrefix(FieldRef("a.b")));
     ASSERT_TRUE(schemaTree->containsEncryptedNodeBelowPrefix(FieldRef("a.b.c")));
+}
+
+TEST(EncryptionSchemaTreeTest, ParseFailsIfDeterministicAndNoBSONType) {
+    const auto uuid = UUID::gen();
+    auto encryptObj = BSON("encrypt" << BSON("algorithm"
+                                             << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
+                                             << "initializationVector"
+                                             << BSONBinData(NULL, 0, BinDataType::BinDataGeneral)
+                                             << "keyId"
+                                             << BSON_ARRAY(uuid)));
+    auto schema = BSON("type"
+                       << "object"
+                       << "properties"
+                       << BSON("foo" << encryptObj));
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31051);
+}
+
+TEST(EncryptionSchemaTreeTest, ParseFailsIfDeterministicAndMultipleBSONType) {
+    const auto uuid = UUID::gen();
+    auto encryptObj = BSON("encrypt" << BSON("algorithm"
+                                             << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
+                                             << "initializationVector"
+                                             << BSONBinData(NULL, 0, BinDataType::BinDataGeneral)
+                                             << "bsonType"
+                                             << BSON_ARRAY("string"
+                                                           << "int")
+                                             << "keyId"
+                                             << BSON_ARRAY(uuid)));
+    auto schema = BSON("type"
+                       << "object"
+                       << "properties"
+                       << BSON("foo" << encryptObj));
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31051);
+}
+
+TEST(EncryptionSchemaTreeTest, ParseSucceedsIfLengthOneTypeArray) {
+    const auto uuid = UUID::gen();
+    auto encryptObj = BSON("encrypt" << BSON("algorithm"
+                                             << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
+                                             << "initializationVector"
+                                             << BSONBinData(NULL, 0, BinDataType::BinDataGeneral)
+                                             << "bsonType"
+                                             << BSON_ARRAY("string")
+                                             << "keyId"
+                                             << BSON_ARRAY(uuid)));
+    auto schema = BSON("type"
+                       << "object"
+                       << "properties"
+                       << BSON("foo" << encryptObj));
+    // Just making sure the parse succeeds, don't care about the result.
+    EncryptionSchemaTreeNode::parse(schema);
 }
 
 }  // namespace

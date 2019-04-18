@@ -18,7 +18,8 @@
                 encrypt: {
                     algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
                     keyId: [UUID()],
-                    initializationVector: BinData(0, "ASNFZ4mrze/ty6mHZUMhAQ==")
+                    initializationVector: BinData(0, "ASNFZ4mrze/ty6mHZUMhAQ=="),
+                    bsonType: "double"
                 }
             },
             user: {
@@ -28,7 +29,8 @@
                         encrypt: {
                             algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
                             keyId: [UUID()],
-                            initializationVector: BinData(0, "ASNFZ4mrze/ty6mHZUMhAQ==")
+                            initializationVector: BinData(0, "ASNFZ4mrze/ty6mHZUMhAQ=="),
+                            bsonType: "string"
                         }
                     }
                 }
@@ -54,7 +56,7 @@
 
     // Elements within $in array correctly marked for encryption.
     let res = assert.commandWorked(testDB.runCommand(
-        {find: "test", filter: {ssn: {"$in": ["1234"]}}, jsonSchema: sampleSchema}));
+        {find: "test", filter: {ssn: {"$in": [1234]}}, jsonSchema: sampleSchema}));
     assert(res.hasEncryptionPlaceholders, tojson(res));
     assert(res.result.filter["ssn"]["$in"][0] instanceof BinData, tojson(res));
 
@@ -155,7 +157,8 @@
                     encrypt: {
                         algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
                         keyId: [UUID()],
-                        initializationVector: BinData(0, "ASNFZ4mrze/ty6mHZUMhAQ==")
+                        initializationVector: BinData(0, "ASNFZ4mrze/ty6mHZUMhAQ=="),
+                        bsonType: "string"
                     }
                 }
             }
@@ -174,7 +177,8 @@
                     encrypt: {
                         algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
                         keyId: "/key",
-                        initializationVector: BinData(0, "ASNFZ4mrze/ty6mHZUMhAQ==")
+                        initializationVector: BinData(0, "ASNFZ4mrze/ty6mHZUMhAQ=="),
+                        bsonType: "string"
                     }
                 }
             }

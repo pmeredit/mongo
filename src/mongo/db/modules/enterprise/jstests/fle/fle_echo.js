@@ -20,7 +20,8 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
                 encrypt: {
                     algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
                     initializationVector: BinData(0, "ASNFZ4mrze/ty6mHZUMhAQ=="),
-                    keyId: [UUID("4edee966-03cc-4525-bfa8-de8acd6746fa")]
+                    keyId: [UUID("4edee966-03cc-4525-bfa8-de8acd6746fa")],
+                    bsonType: "double"
                 }
             }
         }
