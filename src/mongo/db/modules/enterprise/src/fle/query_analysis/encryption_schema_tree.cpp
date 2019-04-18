@@ -370,7 +370,7 @@ std::vector<EncryptionSchemaTreeNode*> EncryptionSchemaTreeNode::getChildrenForP
     }
 
     for (auto && [ regex, child ] : _patternPropertiesChildren) {
-        if (regex->PartialMatch(
+        if (regex.PartialMatch(
                 pcrecpp::StringPiece{name.rawData(), static_cast<int>(name.size())})) {
             matchingChildren.push_back(child.get());
         }
@@ -445,6 +445,12 @@ bool EncryptionSchemaTreeNode::containsEncryptedNode() const {
     }
 
     return false;
+}
+
+std::unique_ptr<EncryptionSchemaTreeNode>
+clonable_traits<EncryptionSchemaTreeNode>::clone_factory_type::operator()(
+    const EncryptionSchemaTreeNode& input) const {
+    return input.clone();
 }
 
 }  // namespace mongo

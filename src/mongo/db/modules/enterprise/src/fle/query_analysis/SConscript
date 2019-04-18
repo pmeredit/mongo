@@ -19,11 +19,13 @@ env.Library(
     target='cryptd_query_analysis',
     source=[
         'fle_match_expression.cpp',
+        'fle_pipeline.cpp',
         'query_analysis.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/commands',
         '$BUILD_DIR/mongo/db/ops/write_ops_parsers',
+        '$BUILD_DIR/mongo/db/pipeline/pipeline',
         '$BUILD_DIR/mongo/db/query/distinct_command_idl',
         '$BUILD_DIR/mongo/db/query/command_request_response',
         'encryption_schema_tree',
@@ -43,18 +45,12 @@ env.CppUnitTest(
     target='query_analysis_test',
     source=[
         'query_analysis_test.cpp',
+        'fle_match_expression_test.cpp',
+        'fle_pipeline_test.cpp',
     ],
-    LIBDEPS_PRIVATE=[
-        'cryptd_query_analysis',
-    ],
-)
-
-env.CppUnitTest(
-    target='fle_match_expression_test',
-    source='fle_match_expression_test.cpp',
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/db/query/query_test_service_context',
+        '$BUILD_DIR/mongo/db/service_context_test_fixture',
         'cryptd_query_analysis',
     ],
 )
-

@@ -31,12 +31,28 @@
 
 #include <pcrecpp.h>
 
+#include "mongo/base/clonable_ptr.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/field_ref.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/util/str.h"
 
 namespace mongo {
+
+class EncryptionSchemaTreeNode;
+
+/**
+ * Explicitly declare a type for cloning an EncryptionSchemaTreeNode, for compatibility with
+ * clonable_ptr and to avoid relying on the implicit clone factory which requires a fully defined
+ * type. We need this since an EncryptionSchemaTreeNode holds a
+ * clonable_ptr<EncryptionSchemaTreeNode> as a member of the class.
+ */
+template <>
+struct clonable_traits<EncryptionSchemaTreeNode> {
+    struct clone_factory_type {
+        std::unique_ptr<EncryptionSchemaTreeNode> operator()(const EncryptionSchemaTreeNode&) const;
+    };
+};
 
 /**
  * A class that represents a node in an encryption schema tree.
@@ -82,6 +98,19 @@ public:
     static std::unique_ptr<EncryptionSchemaTreeNode> parse(BSONObj schema);
 
     virtual ~EncryptionSchemaTreeNode() = default;
+
+    virtual std::unique_ptr<EncryptionSchemaTreeNode> clone() const = 0;
+
+    /**
+     * Override this method to return the node's EncryptionMetadata, or boost::none if it holds
+     * none.
+     */
+    virtual boost::optional<EncryptionMetadata> getEncryptionMetadata() const = 0;
+
+    /**
+     * Returns true if this tree contains at least one EncryptionSchemaEncryptedNode.
+     */
+    virtual bool containsEncryptedNode() const;
 
     void addChild(std::string path, std::unique_ptr<EncryptionSchemaTreeNode> node) {
         _propertiesChildren[std::move(path)] = std::move(node);
@@ -151,11 +180,6 @@ public:
     }
 
     /**
-     * Returns true if this tree contains at least one EncryptionSchemaEncryptedNode.
-     */
-    virtual bool containsEncryptedNode() const;
-
-    /**
      * Returns true if the prefix passed in is the prefix of an encrypted path. Returns false if
      * the prefix does not exist. Should not be called if any part of the prefix is encrypted.
      */
@@ -163,19 +187,12 @@ public:
         return _containsEncryptedNodeBelowPrefix(prefix, 0);
     }
 
-    /**
-     * Override this method to return the node's EncryptionMetadata, or boost::none if it holds
-     * none.
-     */
-    virtual boost::optional<EncryptionMetadata> getEncryptionMetadata() const = 0;
-
 private:
     struct PatternPropertiesChild {
         PatternPropertiesChild(StringData regexStringData,
                                std::unique_ptr<EncryptionSchemaTreeNode> child)
-            : regex(std::make_unique<pcrecpp::RE>(regexStringData.toString())),
-              child(std::move(child)) {
-            const auto& errorStr = regex->error();
+            : regex(regexStringData.toString()), child(std::move(child)) {
+            const auto& errorStr = regex.error();
             uassert(51141,
                     str::stream() << "Invalid regular expression in 'patternProperties': "
                                   << regexStringData
@@ -184,8 +201,8 @@ private:
                     errorStr.empty());
         }
 
-        std::unique_ptr<pcrecpp::RE> regex;
-        std::unique_ptr<EncryptionSchemaTreeNode> child;
+        pcrecpp::RE regex;
+        clonable_ptr<EncryptionSchemaTreeNode> child;
     };
 
     /**
@@ -219,7 +236,9 @@ private:
     boost::optional<EncryptionMetadata> _getEncryptionMetadataForPath(const FieldRef& path,
                                                                       size_t index = 0) const;
 
-    StringMap<std::unique_ptr<EncryptionSchemaTreeNode>> _propertiesChildren;
+    bool _containsEncryptedNodeBelowPrefix(const FieldRef& prefix, size_t level) const;
+
+    StringMap<clonable_ptr<EncryptionSchemaTreeNode>> _propertiesChildren;
 
     // Holds any children which are associated with a regex rather than a specific field name.
     std::vector<PatternPropertiesChild> _patternPropertiesChildren;
@@ -227,9 +246,7 @@ private:
     // If non-null, this special child is used when no applicable child is found by name in
     // '_propertiesChildren' or by regex in '_patternPropertiesChildren'. Used to implement
     // encryption analysis for the 'additionalProperties' keyword.
-    std::unique_ptr<EncryptionSchemaTreeNode> _additionalPropertiesChild;
-
-    bool _containsEncryptedNodeBelowPrefix(const FieldRef& prefix, size_t level) const;
+    clonable_ptr<EncryptionSchemaTreeNode> _additionalPropertiesChild;
 };
 
 /**
@@ -239,6 +256,10 @@ class EncryptionSchemaNotEncryptedNode final : public EncryptionSchemaTreeNode {
 public:
     boost::optional<EncryptionMetadata> getEncryptionMetadata() const final {
         return boost::none;
+    }
+
+    std::unique_ptr<EncryptionSchemaTreeNode> clone() const final {
+        return std::make_unique<EncryptionSchemaNotEncryptedNode>(*this);
     }
 };
 
@@ -268,6 +289,10 @@ public:
 
     bool containsEncryptedNode() const final {
         return true;
+    }
+
+    std::unique_ptr<EncryptionSchemaTreeNode> clone() const final {
+        return std::make_unique<EncryptionSchemaEncryptedNode>(*this);
     }
 
 private:

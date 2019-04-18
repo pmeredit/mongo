@@ -32,6 +32,7 @@
 #include "fle_match_expression.h"
 
 #include "encryption_schema_tree.h"
+#include "fle_test_fixture.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/db/pipeline/expression_context_for_test.h"
@@ -44,59 +45,8 @@ namespace {
 
 const auto kInvalidExpressionCode = 51092;
 
-class FLEMatchExpressionTest : public mongo::unittest::Test {
+class FLEMatchExpressionTest : public FLETestFixture {
 protected:
-    void setUp() {
-        kDefaultSsnSchema = fromjson(R"({
-            type: "object",
-            properties: {
-                ssn: {
-                    encrypt: {
-                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                        keyId: [{'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
-                        initializationVector: {$binary: "bW9uZ28=", $type: "00"}
-
-                    }
-                }
-            }
-        })");
-
-        kDefaultNestedSchema = fromjson(R"({
-            type: "object",
-            properties: {
-                user: {
-                    type: "object",
-                    properties: {
-                        ssn: {
-                            encrypt: {
-                                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                                keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
-                                initializationVector: {$binary: "bW9uZ28=", $type: "00"}
-                            }
-                        }
-                    }
-                }
-            }
-        })");
-
-        kDefaultMetadata =
-            EncryptionMetadata::parse(IDLParserErrorContext("encryptMetadata"), fromjson(R"({
-                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
-                initializationVector: {$binary: "bW9uZ28=", $type: "00"}
-            })"));
-    }
-
-    /**
-     * Wraps 'value' in a BSONElement and returns a BSONObj representing the EncryptionPlaceholder.
-     * The first element in the BSONObj will have a value of BinData sub-type 6 for the placeholder.
-     */
-    template <class T>
-    BSONObj buildEncryptElem(T value, const EncryptionMetadata& metadata) {
-        auto tempObj = BSON("v" << value);
-        return buildEncryptPlaceholder(tempObj.firstElement(), metadata);
-    }
-
     /**
      * Parses the given MatchExpression and replaces any unencrypted values with their appropriate
      * intent-to-encrypt marking according to the schema. Returns a serialization of the marked
@@ -122,15 +72,6 @@ protected:
         fleMatchExpression.getMatchExpression()->serialize(&bob);
         return bob.obj();
     }
-
-    // Default schema where only the path 'ssn' is encrypted.
-    BSONObj kDefaultSsnSchema;
-
-    // Schema which defines a 'user' object with a nested 'ssn' encrypted field.
-    BSONObj kDefaultNestedSchema;
-
-    // Default metadata, see initialization above for actual values.
-    EncryptionMetadata kDefaultMetadata;
 };
 
 TEST_F(FLEMatchExpressionTest, VerifyCorrectBinaryFormatForGeneratedPlaceholder) {
