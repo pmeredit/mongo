@@ -3,7 +3,7 @@
 global:
     cpp_namespace: 'mongo'
     cpp_includes:
-      - 'fts/mongot_options.h'
+      - 'search_beta/mongot_options.h'
 
 server_parameters:
     mongotHost:
