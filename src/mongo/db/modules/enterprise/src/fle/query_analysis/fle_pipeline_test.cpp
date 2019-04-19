@@ -42,6 +42,10 @@ namespace {
 
 class FLEPipelineTest : public FLETestFixture {
 public:
+    /**
+     * Given a pipeline and an input schema, returns the schema of documents flowing out of the last
+     * stage of the pipeline.
+     */
     const EncryptionSchemaTreeNode& getSchemaForStage(const std::vector<BSONObj>& pipeline,
                                                       BSONObj inputSchema) {
         auto parsedPipeline = uassertStatusOK(Pipeline::parse(pipeline, getExpCtx()));
@@ -50,15 +54,26 @@ public:
         return _flePipe->getOutputSchema();
     }
 
+    /**
+     * Given a pipeline and an input schema, returns a new serialized pipeline with encrypted fields
+     * replaced by their appropriate intent-to-encrypt markings.
+     */
+    std::vector<BSONObj> translatePipeline(const std::vector<BSONObj>& pipeline,
+                                           BSONObj inputSchema) {
+        FLEPipeline flePipe(uassertStatusOK(Pipeline::parse(pipeline, getExpCtx())),
+                            EncryptionSchemaTreeNode::parse(inputSchema));
+        std::vector<BSONObj> serialized;
+        for (const auto& stage : flePipe.getPipeline().serialize()) {
+            ASSERT(stage.getType() == BSONType::Object);
+            serialized.push_back(stage.getDocument().toBson());
+        }
+
+        return serialized;
+    }
+
 private:
     std::unique_ptr<FLEPipeline> _flePipe;
 };
-
-TEST_F(FLEPipelineTest, LimitStageTreatedAsNoop) {
-    const auto& outputSchema = getSchemaForStage({fromjson("{$limit: 1}")}, kDefaultSsnSchema);
-    ASSERT_TRUE(outputSchema.getEncryptionMetadataForPath(FieldRef("ssn")));
-    ASSERT_FALSE(outputSchema.getEncryptionMetadataForPath(FieldRef("notSsn")));
-}
 
 TEST_F(FLEPipelineTest, ThrowsOnInvalidOrUnsupportedStage) {
     // Setup involved namespaces to avoid crashing on pipeline parse.
@@ -93,7 +108,6 @@ TEST_F(FLEPipelineTest, ThrowsOnInvalidOrUnsupportedStage) {
         fromjson("{$redact: '$$DESCEND'}"),
         fromjson("{$bucketAuto: {groupBy: '$_id', buckets: 2}}"),
         fromjson("{$planCacheStats: {}}"),
-        fromjson("{$match: {}}"),
         fromjson("{$geoNear: {near: [0.0, 0.0], distanceField: 'dist'}}"),
         fromjson("{$sample: {size: 1}}"),
         fromjson("{$_internalInhibitOptimization: {}}"),
@@ -115,6 +129,49 @@ TEST_F(FLEPipelineTest, ThrowsOnInvalidCollectionlessAggregations) {
     ASSERT_THROWS_CODE(getSchemaForStage({fromjson("{$currentOp: {}}")}, kDefaultSsnSchema),
                        AssertionException,
                        31011);
+}
+
+TEST_F(FLEPipelineTest, LimitStageTreatedAsNoop) {
+    const auto& outputSchema = getSchemaForStage({fromjson("{$limit: 1}")}, kDefaultSsnSchema);
+    ASSERT_TRUE(outputSchema.getEncryptionMetadataForPath(FieldRef("ssn")));
+    ASSERT_FALSE(outputSchema.getEncryptionMetadataForPath(FieldRef("notSsn")));
+}
+
+TEST_F(FLEPipelineTest, MatchWithSingleTopLevelEncryptedField) {
+    auto result = translatePipeline({fromjson("{$match: {ssn: 5}}")}, kDefaultSsnSchema);
+    auto expectedMatch = serializeMatchForEncryption(kDefaultSsnSchema, fromjson("{ssn: 5}"));
+    ASSERT_EQ(1UL, result.size());
+    ASSERT_BSONOBJ_EQ(result[0]["$match"].Obj(), expectedMatch);
+}
+
+TEST_F(FLEPipelineTest, MatchPrecededByNoopStageCorrectlyMarksTopLevelField) {
+    auto result = translatePipeline({fromjson("{$limit: 1}"), fromjson("{$match: {ssn: 5}}")},
+                                    kDefaultSsnSchema);
+    auto expectedMatch = serializeMatchForEncryption(kDefaultSsnSchema, fromjson("{ssn: 5}"));
+    ASSERT_EQ(2UL, result.size());
+    ASSERT_BSONOBJ_EQ(result[1]["$match"].Obj(), expectedMatch);
+}
+
+TEST_F(FLEPipelineTest, MatchWithSingleDottedPathEncryptedField) {
+    auto result = translatePipeline({fromjson("{$match: {'user.ssn': 5}}")}, kDefaultNestedSchema);
+    auto expectedMatch =
+        serializeMatchForEncryption(kDefaultNestedSchema, fromjson("{'user.ssn': 5}"));
+    ASSERT_EQ(1UL, result.size());
+    ASSERT_BSONOBJ_EQ(result[0]["$match"].Obj(), expectedMatch);
+}
+
+TEST_F(FLEPipelineTest, MatchWithEncryptedPrefixCorrectlyFails) {
+    ASSERT_THROWS_CODE(
+        translatePipeline({fromjson("{$match: {'ssn.nested': 'not allowed'}}")}, kDefaultSsnSchema),
+        AssertionException,
+        51102);
+}
+
+TEST_F(FLEPipelineTest, MatchWithInvalidComparisonToEncryptedFieldCorrectlyFails) {
+    ASSERT_THROWS_CODE(
+        translatePipeline({fromjson("{$match: {ssn: {$gt: 5}}}")}, kDefaultSsnSchema),
+        AssertionException,
+        51118);
 }
 
 }  // namespace

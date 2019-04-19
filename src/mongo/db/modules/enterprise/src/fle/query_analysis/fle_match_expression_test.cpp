@@ -45,34 +45,7 @@ namespace {
 
 const auto kInvalidExpressionCode = 51092;
 
-class FLEMatchExpressionTest : public FLETestFixture {
-protected:
-    /**
-     * Parses the given MatchExpression and replaces any unencrypted values with their appropriate
-     * intent-to-encrypt marking according to the schema. Returns a serialization of the marked
-     * MatchExpression.
-     *
-     * Throws an assertion if the schema is invalid or the expression is not allowed on an encrypted
-     * field.
-     */
-    BSONObj serializeMatchForEncryption(const BSONObj& schema, const BSONObj& matchExpression) {
-        auto expCtx(new ExpressionContextForTest());
-        auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
-
-        // By default, allow all features for testing.
-        auto parsedMatch = uassertStatusOK(
-            MatchExpressionParser::parse(matchExpression,
-                                         expCtx,
-                                         ExtensionsCallbackNoop(),
-                                         MatchExpressionParser::kAllowAllSpecialFeatures));
-        FLEMatchExpression fleMatchExpression{std::move(parsedMatch), *schemaTree};
-
-        // Serialize the modified match expression.
-        BSONObjBuilder bob;
-        fleMatchExpression.getMatchExpression()->serialize(&bob);
-        return bob.obj();
-    }
-};
+using FLEMatchExpressionTest = FLETestFixture;
 
 TEST_F(FLEMatchExpressionTest, MarksElementInEqualityAsEncrypted) {
     auto match = fromjson("{ssn: 5}");

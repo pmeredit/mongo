@@ -31,21 +31,50 @@
 
 #include "fle_pipeline.h"
 
+#include "fle_match_expression.h"
 #include "mongo/db/pipeline/document_source_limit.h"
 
 namespace mongo {
 
 namespace {
 
-clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForStage(
+//
+// DocumentSource schema propagation
+//
+
+clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaNoop(
     const clonable_ptr<EncryptionSchemaTreeNode>& prevSchema,
     const std::vector<clonable_ptr<EncryptionSchemaTreeNode>>& children,
-    const DocumentSourceLimit& source) {
+    const DocumentSource& source) {
     return prevSchema->clone();
 }
 
+//
+// DocumentSource encryption analysis
+//
+
+void analyzeStageNoop(FLEPipeline* flePipe,
+                      const EncryptionSchemaTreeNode& schema,
+                      DocumentSource* source) {}
+
+void analyzeForMatch(FLEPipeline* flePipe,
+                     const EncryptionSchemaTreeNode& schema,
+                     DocumentSourceMatch* source) {
+    // Build a FLEMatchExpression from the MatchExpression within the $match stage, replacing any
+    // constants with their appropriate intent-to-encrypt markings.
+    FLEMatchExpression fleMatch{source->getMatchExpression()->shallowClone(), schema};
+
+    // Rebuild the DocumentSourceMatch using the serialized MatchExpression after replacing
+    // encrypted values.
+    source->rebuild([&]() {
+        BSONObjBuilder bob;
+        fleMatch.getMatchExpression()->serialize(&bob);
+        return bob.obj();
+    }());
+}
+
 // The 'schemaPropagatorMap' is a map of the typeid of a concrete DocumentSource class to the
-// appropriate dispatch function.
+// appropriate dispatch function for schema modification.
 static stdx::unordered_map<
     std::type_index,
     std::function<clonable_ptr<EncryptionSchemaTreeNode>(
@@ -54,47 +83,73 @@ static stdx::unordered_map<
         const DocumentSource& source)>>
     schemaPropagatorMap;
 
-#define REGISTER_DOCUMENT_SOURCE_PROPAGATOR(className)                                       \
-    MONGO_INITIALIZER(schemaPropagateFor_##className)(InitializerContext*) {                 \
-        invariant(schemaPropagatorMap.find(typeid(className)) == schemaPropagatorMap.end()); \
-        schemaPropagatorMap[typeid(className)] =                                             \
-            [&](const auto& prevSchema,                                                      \
-                const auto& subPipelineSchemas,                                              \
-                const auto& source) -> clonable_ptr<EncryptionSchemaTreeNode> {              \
-            return propagateSchemaForStage(                                                  \
-                prevSchema, subPipelineSchemas, static_cast<const className&>(source));      \
-        };                                                                                   \
-        return Status::OK();                                                                 \
+// The 'stageAnalyzerMap' is a map of the typeid of a concrete DocumentSource class to the
+// appropriate dispatch function for encryption analysis.
+static stdx::unordered_map<
+    std::type_index,
+    std::function<void(FLEPipeline*,
+                       pipeline_metadata_tree::Stage<clonable_ptr<EncryptionSchemaTreeNode>>*,
+                       DocumentSource*)>>
+    stageAnalyzerMap;
+
+#define REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(className, schemaFunc, analyzeFunc)             \
+    MONGO_INITIALIZER(encryptedAnalyzerFor_##className)(InitializerContext*) {                \
+        invariant(schemaPropagatorMap.find(typeid(className)) == schemaPropagatorMap.end());  \
+        schemaPropagatorMap[typeid(className)] =                                              \
+            [&](const auto& prevSchema, const auto& subPipelineSchemas, const auto& source) { \
+                return schemaFunc(                                                            \
+                    prevSchema, subPipelineSchemas, static_cast<const className&>(source));   \
+            };                                                                                \
+                                                                                              \
+        invariant(stageAnalyzerMap.find(typeid(className)) == stageAnalyzerMap.end());        \
+        stageAnalyzerMap[typeid(className)] = [&](auto* flePipe, auto* stage, auto* source) { \
+            return analyzeFunc(flePipe, *stage->contents, static_cast<className*>(source));   \
+        };                                                                                    \
+        return Status::OK();                                                                  \
     }
 
 // Whitelisted set of DocumentSource classes which are supported and/or require action for
-// encryption. Adding to this list assumes that there exists an appropriate overload for the
-// 'propagateSchemaForStage' method.
-REGISTER_DOCUMENT_SOURCE_PROPAGATOR(DocumentSourceLimit);
+// encryption with callbacks for schema propagation and encryption analysis, respectively.
+REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceMatch, propagateSchemaNoop, analyzeForMatch);
+REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceLimit, propagateSchemaNoop, analyzeStageNoop);
 
 }  // namespace
 
 FLEPipeline::FLEPipeline(std::unique_ptr<Pipeline, PipelineDeleter> pipeline,
                          std::unique_ptr<EncryptionSchemaTreeNode> schema)
-    : FLEPipeline([
-          schema{std::move(schema)},
-          _parsedPipeline{std::move(pipeline)}
-      ]()->MetadataTreeWithFinalSchema {
-          // Method for propagating a schema from one stage to the next by dynamically
-          // dispatching based on the runtime-type of 'source'. The 'prevSchema' represents
-          // the schema of the document flowing into 'source', and the 'subPipelineSchemas'
-          // represent the input schemas of any sub-pipelines for the given source.
-          const auto& propagateSchemaFunction = [&](
-              const auto& prevSchema, const auto& subPipelineSchemas, const auto& source) {
-              uassert(31011,
-                      str::stream() << "Aggregation stage " << source.getSourceName()
-                                    << " is not allowed or supported with encryption.",
-                      schemaPropagatorMap.find(typeid(source)) != schemaPropagatorMap.end());
-              return schemaPropagatorMap[typeid(source)](prevSchema, subPipelineSchemas, source);
-          };
+    : _parsedPipeline{std::move(pipeline)} {
+    // Method for propagating a schema from one stage to the next by dynamically dispatching based
+    // on the runtime-type of 'source'. The 'prevSchema' represents the schema of the document
+    // flowing into 'source', and the 'subPipelineSchemas' represent the input schemas of any
+    // sub-pipelines for the given source.
+    const auto& propagateSchemaFunction =
+        [&](const auto& prevSchema, const auto& subPipelineSchemas, const auto& source) {
+            uassert(31011,
+                    str::stream() << "Aggregation stage " << source.getSourceName()
+                                  << " is not allowed or supported with encryption.",
+                    schemaPropagatorMap.find(typeid(source)) != schemaPropagatorMap.end());
+            return schemaPropagatorMap[typeid(source)](prevSchema, subPipelineSchemas, source);
+        };
 
-          return pipeline_metadata_tree::makeTree<clonable_ptr<EncryptionSchemaTreeNode>>(
-              {schema->clone()}, *_parsedPipeline.get(), propagateSchemaFunction);
-      }()) {}
+    auto[metadataTree, finalSchema] =
+        pipeline_metadata_tree::makeTree<clonable_ptr<EncryptionSchemaTreeNode>>(
+            {schema->clone()}, *_parsedPipeline.get(), propagateSchemaFunction);
+
+    // Method for analyzing a DocumentSource alongside it's stage in the pipeline metadata tree.
+    // Replaces any constants with intent-to-encrypt markings based on the schema held in 'stage',
+    // or throws an assertion if 'source' contains an invalid expression/operation over an encrypted
+    // field.
+    const auto& stageAnalysisFunction = [&](auto* stage, auto* source) {
+        // The assumption is that every stage which has a registered propagator, also has a
+        // registered analyzer.
+        invariant(stageAnalyzerMap.find(typeid(*source)) != stageAnalyzerMap.end());
+        return stageAnalyzerMap[typeid(*source)](this, stage, source);
+    };
+
+    pipeline_metadata_tree::zip<clonable_ptr<EncryptionSchemaTreeNode>>(
+        &metadataTree, _parsedPipeline.get(), stageAnalysisFunction);
+
+    _finalSchema = std::move(finalSchema);
+}
 
 }  // namespace mongo

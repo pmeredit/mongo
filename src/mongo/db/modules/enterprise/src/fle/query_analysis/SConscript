@@ -29,8 +29,8 @@ env.Library(
         '$BUILD_DIR/mongo/db/pipeline/pipeline',
         '$BUILD_DIR/mongo/db/query/distinct_command_idl',
         '$BUILD_DIR/mongo/db/query/command_request_response',
-        'encryption_schema_tree',
         '$BUILD_DIR/mongo/db/update/update_driver',
+        'encryption_schema_tree',
     ]
 )
 

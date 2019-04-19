@@ -29,6 +29,7 @@
 
 #pragma once
 
+#include "fle_match_expression.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
@@ -83,6 +84,9 @@ protected:
 
     /**
      * Wraps 'value' in a BSONElement and returns a BSONObj representing the EncryptionPlaceholder.
+     * Performs validity checks against 'value' as though this placeholder is in a "comparison
+     * context" with no collation.
+     *
      * The first element in the BSONObj will have a value of BinData sub-type 6 for the placeholder.
      */
     template <class T>
@@ -90,6 +94,32 @@ protected:
         auto tempObj = BSON("v" << value);
         return buildEncryptPlaceholder(
             tempObj.firstElement(), metadata, EncryptionPlaceholderContext::kComparison, nullptr);
+    }
+
+    /**
+     * Parses the given MatchExpression and replaces any unencrypted values with their appropriate
+     * intent-to-encrypt marking according to the schema. Returns a serialization of the marked
+     * MatchExpression.
+     *
+     * Throws an assertion if the schema is invalid or the expression is not allowed on an encrypted
+     * field.
+     */
+    BSONObj serializeMatchForEncryption(const BSONObj& schema, const BSONObj& matchExpression) {
+        auto expCtx(new ExpressionContextForTest());
+        auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+
+        // By default, allow all features for testing.
+        auto parsedMatch = uassertStatusOK(
+            MatchExpressionParser::parse(matchExpression,
+                                         expCtx,
+                                         ExtensionsCallbackNoop(),
+                                         MatchExpressionParser::kAllowAllSpecialFeatures));
+        FLEMatchExpression fleMatchExpression{std::move(parsedMatch), *schemaTree};
+
+        // Serialize the modified match expression.
+        BSONObjBuilder bob;
+        fleMatchExpression.getMatchExpression()->serialize(&bob);
+        return bob.obj();
     }
 
     // Default schema where only the path 'ssn' is encrypted.

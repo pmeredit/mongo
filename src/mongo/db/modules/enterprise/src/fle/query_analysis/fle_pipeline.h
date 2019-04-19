@@ -43,6 +43,7 @@ class FLEPipeline {
 public:
     FLEPipeline(std::unique_ptr<Pipeline, PipelineDeleter> pipeline,
                 std::unique_ptr<EncryptionSchemaTreeNode> schema);
+
     /**
      * Returns the schema of the document flowing *out* of the pipeline.
      */
@@ -50,21 +51,14 @@ public:
         return *_finalSchema.get();
     }
 
+    const Pipeline& getPipeline() const {
+        return *_parsedPipeline.get();
+    }
+
 private:
-    using MetadataTreeWithFinalSchema =
-        std::pair<pipeline_metadata_tree::Stage<clonable_ptr<EncryptionSchemaTreeNode>>,
-                  clonable_ptr<EncryptionSchemaTreeNode>>;
-
-    FLEPipeline(MetadataTreeWithFinalSchema&& stageWithOutSchema)
-        : _rootStage(std::move(stageWithOutSchema.first)),
-          _finalSchema(std::move(stageWithOutSchema.second)){};
-
+    // Owned pipeline which may be modified if there are any constants that are marked for
+    // encryption.
     std::unique_ptr<Pipeline, PipelineDeleter> _parsedPipeline;
-
-    // Pointer to the root node of a pipeline metadata tree, where each node in the tree holds a
-    // copy of the encryption schema representing the schema of the documents flowing into the
-    // corresponding pipeline stage.
-    pipeline_metadata_tree::Stage<clonable_ptr<EncryptionSchemaTreeNode>> _rootStage;
 
     // Schema of the document flowing out of the pipeline, not associated with any Stage.
     clonable_ptr<EncryptionSchemaTreeNode> _finalSchema;

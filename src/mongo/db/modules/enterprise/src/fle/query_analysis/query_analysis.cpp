@@ -366,7 +366,7 @@ void verifyNoGeneratedEncryptedFields(BSONObj doc, const EncryptionSchemaTreeNod
     for (auto&& element : doc) {
         if (schemaTree.getEncryptionMetadataForPath(FieldRef(element.fieldNameStringData()))) {
             uassert(51129,
-                    "A command that inserts cannot supply Timestamp(0, 0) for an encrypted"
+                    "A command that inserts cannot supply Timestamp(0, 0) for an encrypted "
                     "top-level field at path " +
                         element.fieldNameStringData(),
                     element.type() != BSONType::bsonTimestamp ||
