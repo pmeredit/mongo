@@ -158,10 +158,12 @@ public:
     }
 
     void visit(UpdateObjectNode* host) {
-        // TODO: SERVER-40208 Investigate whether there are scenarios where we can handle this case.
         uassert(51149,
-                "Cannot encrypt update with '$' positional update operator",
-                !host->getChild("$"));
+                "Cannot encrypt fields below '$' positional update operator",
+                !host->getChild("$") ||
+                    !(_schemaTree.getEncryptionMetadataForPath(_currentPath) ||
+                    _schemaTree.containsEncryptedNodeBelowPrefix(_currentPath)));
+
         for (const auto & [ pathSuffix, child ] : host->getChildren()) {
             FieldRef::FieldRefTempAppend tempAppend(_currentPath, pathSuffix);
             child->acceptVisitor(this);

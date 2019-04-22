@@ -191,6 +191,34 @@
     result = assert.commandWorked(testDb.runCommand(updateCommand));
     assert.eq(result["result"]["updates"][0]["u"], updateCommand["updates"][0]["u"], result);
 
+    // Test that a positional update is valid if fields nested below the array are not encrypted.
+    updateCommand["jsonSchema"] = dottedSchema;
+    updateCommand["updates"] = [{q: {"d.e": 2}, u: {"d.e.array.$.g": 4}}];
+    result = assert.commandWorked(testDb.runCommand(updateCommand));
+    assert.eq(result["result"]["updates"][0]["u"], updateCommand["updates"][0]["u"], result);
+
+    // Test that a positional update of an encrypted field fails.
+    updateCommand["jsonSchema"] = {
+        type: "object",
+        properties: {a: {type: "object", properties: {0: encryptDoc}}}
+    };
+    updateCommand["updates"] = [{q: {arr: {$eq: 5}}, u: {$set: {"a.$": 6}}}];
+//    result = assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51149);
+
+    updateCommand["jsonSchema"] = {
+        type: "object",
+        properties: {foo: encryptDoc}
+    };
+    updateCommand["updates"] = [{q: {bar: 5}, u: {$set: {"foo.$": 6}}}];
+    result = assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51149);
+
+    updateCommand["jsonSchema"] = {
+        type: "object",
+        properties: {a: {type: "object", properties: {b: encryptDoc}}}
+    };
+    updateCommand["updates"] = [{q: {"a.b": 4}, u: {$set: {"a.$": 5}}}];
+    result = assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51149);
+
     // Test that an invalid q fails.
     updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}};
     updateCommand["updates"] = [{q: {bar: {"$gt": 5}}, u: {"$set": {"foo": "2"}}}];
