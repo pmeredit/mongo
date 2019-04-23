@@ -120,9 +120,9 @@
 
     let res = assert.commandWorked(testDb.runCommand(insertCommand));
 
-    // These two fields are added to the result even if not set in the command.
-    assert.eq(res.result.ordered, true, tojson(res));
-    assert.eq(res.result.bypassDocumentValidation, false, tojson(res));
+    // Make sure these two fields are not added by the parsers.
+    assert.eq(false, res.result.hasOwnProperty("ordered"), tojson(res));
+    assert.eq(false, res.result.hasOwnProperty("bypassDocumentValidation"), tojson(res));
 
     // Explicitly setting them on the command should override the default.
     insertCommand = {

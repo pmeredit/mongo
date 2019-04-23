@@ -49,8 +49,8 @@
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
     assert(cmdRes.hasOwnProperty("result"), cmdRes);
     assert.eq(coll.getName(), cmdRes.result.delete, cmdRes);
-    assert.eq(false, cmdRes.result.bypassDocumentValidation, cmdRes);
-    assert.eq(true, cmdRes.result.ordered, cmdRes);
+    assert(!cmdRes.result.hasOwnProperty("bypassDocumentValidation"), cmdRes);
+    assert(!cmdRes.result.hasOwnProperty("ordered"), cmdRes);
     assert(cmdRes.result.hasOwnProperty("deletes"), cmdRes);
     assert.eq(2, cmdRes.result.deletes.length, cmdRes);
 

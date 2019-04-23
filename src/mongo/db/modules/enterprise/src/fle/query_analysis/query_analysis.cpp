@@ -114,6 +114,19 @@ BSONObj replaceEncryptedFieldsRecursive(const EncryptionSchemaTreeNode* schema,
 }
 
 /**
+ * Returns a new BSONObj that has all of the fields from 'response' that are also in 'original'.
+ */
+BSONObj removeExtraFields(const std::set<StringData>& original, const BSONObj& response) {
+    BSONObjBuilder bob;
+    for (auto&& elem : response) {
+        if (original.find(elem.fieldNameStringData()) != original.end()) {
+            bob.append(elem);
+        }
+    }
+    return bob.obj();
+}
+
+/**
  * Parses the MatchExpression given by 'filter' and replaces encrypted fields with their appropriate
  * EncryptionPlaceholder according to the schema.
  *
@@ -161,7 +174,6 @@ PlaceHolderResult addPlaceHoldersForFind(const std::string& dbName,
             bob.append(elem);
         }
     }
-
     return {placeholder.hasEncryptionPlaceholders, placeholder.schemaRequiresEncryption, bob.obj()};
 }
 
@@ -251,7 +263,9 @@ PlaceHolderResult addPlaceHoldersForInsert(const OpMsgRequest& request,
         docVector.push_back(placeholderPair.result);
     }
     batch.setDocuments(docVector);
-    retPlaceholder.result = batch.toBSON(request.body);
+    std::set<StringData> fieldNames = request.body.getFieldNames<std::set<StringData>>();
+    fieldNames.insert("documents"_sd);
+    retPlaceholder.result = removeExtraFields(fieldNames, batch.toBSON(request.body));
     retPlaceholder.schemaRequiresEncryption = schemaTree->containsEncryptedNode();
     return retPlaceholder;
 }
@@ -286,7 +300,9 @@ PlaceHolderResult addPlaceHoldersForUpdate(const OpMsgRequest& request,
     }
 
     updateOp.setUpdates(updateVector);
-    phr.result = updateOp.toBSON(request.body);
+    std::set<StringData> fieldNames = request.body.getFieldNames<std::set<StringData>>();
+    fieldNames.insert("updates"_sd);
+    phr.result = removeExtraFields(fieldNames, updateOp.toBSON(request.body));
     phr.schemaRequiresEncryption = schemaTree->containsEncryptedNode();
     return phr;
 }
@@ -309,7 +325,9 @@ PlaceHolderResult addPlaceHoldersForDelete(const OpMsgRequest& request,
     }
 
     deleteRequest.setDeletes(std::move(markedDeletes));
-    placeHolderResult.result = deleteRequest.toBSON(request.body);
+    std::set<StringData> fieldNames = request.body.getFieldNames<std::set<StringData>>();
+    fieldNames.insert("deletes"_sd);
+    placeHolderResult.result = removeExtraFields(fieldNames, deleteRequest.toBSON(request.body));
     placeHolderResult.schemaRequiresEncryption = schemaTree->containsEncryptedNode();
     return placeHolderResult;
 }
@@ -362,6 +380,8 @@ void processQueryCommand(const std::string& dbName,
     auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
 
     PlaceHolderResult placeholder = func(dbName, stripped.obj(), std::move(schemaTree));
+    auto fieldNames = cmdObj.getFieldNames<std::set<StringData>>();
+    placeholder.result = removeExtraFields(fieldNames, placeholder.result);
 
     serializePlaceholderResult(placeholder, builder);
 }
