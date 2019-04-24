@@ -77,17 +77,22 @@ TEST(AEAD, EncryptAndDecrypt) {
 
     const size_t dataLen = 42;
 
+    std::array<uint8_t, sizeof(uint64_t)> dataLenBitsEncodedStorage;
+    DataRange dataLenBitsEncoded(dataLenBitsEncodedStorage);
+    dataLenBitsEncoded.write<BigEndian<uint64_t>>(dataLen * 8);
+
     const size_t outLen = crypto::aeadCipherOutputLength(128);
 
-    ASSERT_OK(crypto::aeadEncrypt(key,
-                                  plainTextTest.data(),
-                                  plainTextTest.size(),
-                                  iv.data(),
-                                  iv.size(),
-                                  associatedData.data(),
-                                  dataLen,
-                                  cryptoBuffer.data(),
-                                  outLen));
+    ASSERT_OK(crypto::aeadEncryptWithIV(symKey,
+                                        plainTextTest.data(),
+                                        plainTextTest.size(),
+                                        iv.data(),
+                                        iv.size(),
+                                        associatedData.data(),
+                                        dataLen,
+                                        dataLenBitsEncoded,
+                                        cryptoBuffer.data(),
+                                        outLen));
 
     std::array<uint8_t, 192> cryptoBufferTest = {
         0x1a, 0xf3, 0x8c, 0x2d, 0xc2, 0xb9, 0x6f, 0xfd, 0xd8, 0x66, 0x94, 0x09, 0x23, 0x41, 0xbc,

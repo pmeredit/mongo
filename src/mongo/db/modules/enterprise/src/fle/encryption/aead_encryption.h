@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "mongo/base/data_view.h"
 #include "mongo/base/status.h"
 
 #include "encryptdb/symmetric_key.h"
@@ -17,13 +18,15 @@ namespace crypto {
 /**
  * Constants used in the AEAD function
  */
-const size_t kAeadAesHmacKeySize = 64;
-const size_t kHmacOutSize = 32;
+
+constexpr size_t kFieldLevelEncryptionKeySize = 96;
+constexpr size_t kAeadAesHmacKeySize = 64;
 
 /**
  * Returns the length of the ciphertext output given the plaintext length. Only for AEAD.
  */
 size_t aeadCipherOutputLength(size_t plainTextLen);
+
 
 /**
  * Encrypts the plaintext using following the AEAD_AES_256_CBC_HMAC_SHA_512 encryption
@@ -32,12 +35,24 @@ size_t aeadCipherOutputLength(size_t plainTextLen);
 Status aeadEncrypt(const SymmetricKey& key,
                    const uint8_t* in,
                    const size_t inLen,
-                   const uint8_t* iv,
-                   const size_t ivLen,
                    const uint8_t* associatedData,
                    const uint64_t associatedDataLen,
                    uint8_t* out,
-                   const size_t outLen);
+                   size_t outLen);
+
+/**
+ * Internal calls for the aeadEncryption algorithm. Only used for testing.
+ */
+Status aeadEncryptWithIV(ConstDataRange key,
+                         const uint8_t* in,
+                         const size_t inLen,
+                         const uint8_t* iv,
+                         const size_t ivLen,
+                         const uint8_t* associatedData,
+                         const uint64_t associatedDataLen,
+                         ConstDataRange dataLenBitsEncodedStorage,
+                         uint8_t* out,
+                         size_t outLen);
 
 /**
  * Decrypts the cipherText using AEAD_AES_256_CBC_HMAC_SHA_512 decryption. Writes output

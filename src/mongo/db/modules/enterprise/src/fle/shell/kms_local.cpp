@@ -51,8 +51,6 @@ std::vector<uint8_t> LocalKMSService::encrypt(ConstDataRange cdr, StringData kms
                                         cdr.length(),
                                         nullptr,
                                         0,
-                                        nullptr,
-                                        0,
                                         ciphertext.data(),
                                         ciphertext.size()));
 

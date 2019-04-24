@@ -40,91 +40,56 @@ load('jstests/ssl/libs/ssl_helpers.js');
 
     const kmsTypes = ["aws", "local"];
 
+    const randomAlgorithm = "AEAD_AES_256_CBC_HMAC_SHA_512-Random";
+    const deterministicAlgorithm = "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic";
+    const encryptionAlgorithms = [randomAlgorithm, deterministicAlgorithm];
+
+    const passTestCases = [
+        "mongo",
+        {"value": "mongo"},
+        12,
+        NumberLong(13),
+        NumberInt(23),
+        NumberDecimal(0.1234),
+        UUID(),
+        ISODate(),
+        new Date('December 17, 1995 03:24:00'),
+        BinData(2, '1234'),
+        true,
+        false,
+        Code("function() { return true; }"),
+        new Timestamp(1, 2),
+        new ObjectId(),
+        new DBPointer("mongo", new ObjectId()),
+        /test/
+    ];
+    const failTestCases = [null, undefined, MinKey(), MaxKey(), DBRef("test", "test", "test")];
+
+    // Testing for every combination of (kmsType, algorithm, javascriptVariable)
     for (const kmsType of kmsTypes) {
-        collection.drop();
+        for (const encryptionAlgorithm of encryptionAlgorithms) {
+            collection.drop();
+            const shell = Mongo(conn.host, clientSideFLEOptions);
+            const keyStore = shell.getKeyStore();
 
-        const shell = Mongo(conn.host, clientSideFLEOptions);
-        const keyStore = shell.getKeyStore();
+            assert.writeOK(
+                keyStore.createKey(kmsType, "arn:aws:kms:us-east-1:fake:fake:fake", ['mongoKey']));
+            const keyId = keyStore.getKeyByAltName("mongoKey").toArray()[0]._id;
 
-        assert.writeOK(
-            keyStore.createKey(kmsType, "arn:aws:kms:us-east-1:fake:fake:fake", ['mongoKey']));
-        const keyId = keyStore.getKeyByAltName("mongoKey").toArray()[0]._id;
+            for (const passTestCase of passTestCases) {
+                const encPassTestCase = shell.encrypt(keyId, passTestCase, encryptionAlgorithm);
+                assert.eq(passTestCase, shell.decrypt(encPassTestCase));
 
-        const str = "mongo";
-        const encStr = shell.encrypt(keyId, str);
-        assert.eq(str, shell.decrypt(encStr));
+                if (encryptionAlgorithm == deterministicAlgorithm) {
+                    assert.eq(encPassTestCase,
+                              shell.encrypt(keyId, passTestCase, encryptionAlgorithm));
+                }
+            }
 
-        const obj = {"value": "mongo"};
-        const encObj = shell.encrypt(keyId, obj);
-        assert.eq(obj, shell.decrypt(encObj));
-
-        const num = 12;
-        const encNum = shell.encrypt(keyId, num);
-        assert.eq(num, shell.decrypt(encNum));
-
-        const numLong = NumberLong(13);
-        const encNumLong = shell.encrypt(keyId, numLong);
-        assert.eq(numLong, shell.decrypt(encNumLong));
-
-        const int = NumberInt(23);
-        const encInt = shell.encrypt(keyId, int);
-        assert.eq(int, shell.decrypt(encInt));
-
-        const dec = NumberDecimal(0.1234);
-        const encDec = shell.encrypt(keyId, dec);
-        assert.eq(dec, shell.decrypt(encDec));
-
-        const uuid = UUID();
-        const encUUID = shell.encrypt(keyId, uuid);
-        assert.eq(uuid, shell.decrypt(encUUID));
-
-        const date = ISODate();
-        const encDate = shell.encrypt(keyId, date);
-        assert.eq(date, shell.decrypt(encDate));
-
-        const jsDate = new Date('December 17, 1995 03:24:00');
-        const encJSDate = shell.encrypt(keyId, jsDate);
-        assert.eq(jsDate, shell.decrypt(encJSDate));
-
-        const binData = BinData(2, '1234');
-        const encBinData = shell.encrypt(keyId, binData);
-        assert.eq(binData, shell.decrypt(encBinData));
-
-        const encBoolT = shell.encrypt(keyId, true);
-        assert.eq(true, shell.decrypt(encBoolT));
-
-        const encBoolF = shell.encrypt(keyId, false);
-        assert.eq(false, shell.decrypt(encBoolF));
-
-        const code = Code("function() { return true; }");
-        const encCode = shell.encrypt(keyId, code);
-        assert.eq(code, shell.decrypt(encCode));
-
-        const timestamp = new Timestamp(1, 2);
-        const encTimestamp = shell.encrypt(keyId, timestamp);
-        assert.eq(timestamp, shell.decrypt(encTimestamp));
-
-        const oid = new ObjectId();
-        const encOid = shell.encrypt(keyId, oid);
-        assert.eq(oid, shell.decrypt(encOid));
-
-        const dbPointer = new DBPointer(str, oid);
-        const encDBPointer = shell.encrypt(keyId, dbPointer);
-        assert.eq(dbPointer, shell.decrypt(encDBPointer));
-
-        const regex = /test/;
-        const encRegex = shell.encrypt(keyId, regex);
-        assert.eq(regex, shell.decrypt(encRegex));
-
-        assert.throws(shell.encrypt, [keyId, null]);
-
-        assert.throws(shell.encrypt, [keyId, undefined]);
-
-        assert.throws(shell.encrypt, [keyId, MinKey()]);
-
-        assert.throws(shell.encrypt, [keyId, MaxKey()]);
-
-        assert.throws(shell.encrypt, [keyId, DBRef("test", "test", "test")]);
+            for (const failTestCase of failTestCases) {
+                assert.throws(shell.encrypt, [keyId, failTestCase, encryptionAlgorithm]);
+            }
+        }
     }
 
     MongoRunner.stopMongod(conn);

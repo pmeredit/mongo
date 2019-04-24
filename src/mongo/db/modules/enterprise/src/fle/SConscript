@@ -70,6 +70,8 @@ env.Library(
     ],
     LIBDEPS=[
         '../encryptdb/symmetric_crypto',
+        # TODO: SERVER-41305 extract FLE related IDL definitions into their own library
+        '$BUILD_DIR/mongo/db/matcher/expressions',
     ],
 )
 

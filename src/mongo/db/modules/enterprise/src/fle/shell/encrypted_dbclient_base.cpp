@@ -32,6 +32,7 @@
 #include "mongo/util/lru_cache.h"
 
 namespace mongo {
+
 EncryptedShellGlobalParams encryptedShellGlobalParams;
 
 namespace {
@@ -108,7 +109,8 @@ public:
             }
         } else if (_encryptionOptions.getSchemas()) {
             BSONObj schemas = _encryptionOptions.getSchemas().get();
-            BSONElement schemaElem = schemas.getField(ns.toString());
+            auto names = ns.toString();
+            BSONElement schemaElem = schemas.getField(names);
 
             if (!schemaElem.eoo()) {
                 uassert(ErrorCodes::BadValue,
@@ -247,7 +249,19 @@ public:
 
     BSONObj buildCommand(const BSONObj& object, bool encrypt, const StringData& databaseName) {
         std::stack<std::pair<BSONObjIterator, BSONObjBuilder>> frameStack;
-        frameStack.push(std::make_pair(BSONObjIterator(object), BSONObjBuilder()));
+
+        // The buildCommand frameStack requires a guard because  if encryptMarking or decrypt
+        // payload throw an exception, the stack's destructor will fire. Because a stack's
+        // variables are not guaranteed to be destroyed in any order, we need to add a guard
+        // to ensure the stack is destroyed in order.
+        const auto frameStackGuard = makeGuard([&] {
+            while (!frameStack.empty()) {
+                frameStack.pop();
+            }
+        });
+
+        frameStack.emplace(BSONObjIterator(object), BSONObjBuilder());
+
         while (frameStack.size() > 1 || frameStack.top().first.more()) {
             uassert(31096,
                     "Object too deep to be encrypted. Exceeded stack depth.",
@@ -256,13 +270,13 @@ public:
             if (iterator.more()) {
                 BSONElement elem = iterator.next();
                 if (elem.type() == BSONType::Object) {
-                    frameStack.push(std::make_pair(
+                    frameStack.emplace(
                         BSONObjIterator(elem.Obj()),
-                        BSONObjBuilder(builder.subobjStart(elem.fieldNameStringData()))));
+                        BSONObjBuilder(builder.subobjStart(elem.fieldNameStringData())));
                 } else if (elem.type() == BSONType::Array) {
-                    frameStack.push(std::make_pair(
+                    frameStack.emplace(
                         BSONObjIterator(elem.Obj()),
-                        BSONObjBuilder(builder.subarrayStart(elem.fieldNameStringData()))));
+                        BSONObjBuilder(builder.subarrayStart(elem.fieldNameStringData())));
                 } else if (elem.isBinData(BinDataType::Encrypt)) {
                     int len;
                     const char* data(elem.binData(len));
@@ -284,6 +298,7 @@ public:
                 frameStack.pop();
             }
         }
+        invariant(frameStack.size() == 1);
         frameStack.top().second.append("$db", databaseName);
         return frameStack.top().second.obj();
     }
@@ -297,7 +312,6 @@ public:
                       "exactly one of either keyId or keyAltName must be specified.");
         }
 
-        ConstDataRange iv = ConstDataRange(nullptr, 0);
         EncryptSchemaAnyType value = toEncrypt.getValue();
         BSONElement valueElem = value.getElement();
 
@@ -308,12 +322,20 @@ public:
         if (toEncrypt.getKeyId()) {
             UUID uuid = toEncrypt.getKeyId().get();
             auto key = getDataKey(uuid);
-            encData = encryptWithKey(uuid, key, plaintext, bsonType, iv);
+            encData = encryptWithKey(uuid,
+                                     key,
+                                     plaintext,
+                                     bsonType,
+                                     FleAlgorithmInt_serializer(toEncrypt.getAlgorithm()));
         } else {
             auto keyAltName = toEncrypt.getKeyAltName().get();
             UUID uuid = getUUIDByDataKeyAltName(keyAltName);
             auto key = getDataKey(uuid);
-            encData = encryptWithKey(uuid, key, plaintext, bsonType, iv);
+            encData = encryptWithKey(uuid,
+                                     key,
+                                     plaintext,
+                                     bsonType,
+                                     FleAlgorithmInt_serializer(toEncrypt.getAlgorithm()));
         };
 
         builder->appendBinData(elemName, encData.size(), BinDataType::Encrypt, encData.data());
@@ -424,8 +446,7 @@ public:
         std::unique_ptr<KMSService> kmsService = KMSServiceController::createFromClient(
             kmsProvider, _encryptionOptions.getKmsProviders().toBSON());
 
-        SecureVector<uint8_t> dataKey(crypto::kAeadAesHmacKeySize);
-
+        SecureVector<uint8_t> dataKey(crypto::kFieldLevelEncryptionKeySize);
         auto res = crypto::engineRandBytes(dataKey->data(), dataKey->size());
         uassert(31042, "Error generating data key: " + res.codeString(), res.isOK());
 
@@ -446,9 +467,7 @@ public:
     using EncryptionCallbacks::encrypt;
     void encrypt(mozjs::MozJSImplScope* scope, JSContext* cx, JS::CallArgs args) final {
         // Input Validation
-        if (args.length() < 2 || args.length() > 3) {
-            uasserted(ErrorCodes::BadValue, "encrypt requires at least 2 args and at most 3 args");
-        }
+        uassert(ErrorCodes::BadValue, "encrypt requires 3 args", args.length() == 3);
 
         if (!(args.get(1).isObject() || args.get(1).isString() || args.get(1).isNumber() ||
               args.get(1).isBoolean())) {
@@ -456,25 +475,22 @@ public:
                       "Second parameter must be an object, string, number, or bool");
         }
 
+        uassert(ErrorCodes::BadValue, "Third parameter must be a string", args.get(2).isString());
+        auto algorithmStr = mozjs::ValueWriter(cx, args.get(2)).toString();
+        int32_t algorithm;
+
+        if (StringData(algorithmStr) == FleAlgorithm_serializer(FleAlgorithmEnum::kRandom)) {
+            algorithm = FleAlgorithmInt_serializer(FleAlgorithmInt::kRandom);
+        } else if (StringData(algorithmStr) ==
+                   FleAlgorithm_serializer(FleAlgorithmEnum::kDeterministic)) {
+            algorithm = FleAlgorithmInt_serializer(FleAlgorithmInt::kDeterministic);
+        } else {
+            uasserted(ErrorCodes::BadValue, "Third parameter must be the FLE Algorithm type");
+        }
+
         // Extract the UUID from the callArgs
         auto binData = getBinDataArg(scope, cx, args, 0, BinDataType::newUUID);
         UUID uuid = UUID::fromCDR(ConstDataRange(binData.data(), binData.size()));
-
-        // Extract the IV
-        std::vector<uint8_t> ivVector;
-        if (args.length() == 3) {
-            if (!args.get(2).isObject()) {
-                uasserted(ErrorCodes::BadValue, "IV parameter must be of BinData type.");
-            }
-            if (!scope->getProto<mozjs::BinDataInfo>().instanceOf(args.get(2))) {
-                uasserted(ErrorCodes::BadValue, "First parameter must be an IV (BinData type)");
-            }
-
-            ivVector = getBinDataArg(scope, cx, args, 2, BinDataType::BinDataGeneral);
-            uassert(
-                ErrorCodes::BadValue, "IV must be exactly 16 bytes long", ivVector.size() == 16);
-        }
-
         BSONType bsonType = BSONType::EOO;
 
         BufBuilder plaintext;
@@ -543,11 +559,8 @@ public:
         ConstDataRange plaintextRange(plaintext.buf(), plaintext.len());
 
         auto key = getDataKey(uuid);
-        ConstDataRange iv(nullptr, 0);
-        if (ivVector.size() != 0) {
-            iv = ConstDataRange(ivVector);
-        }
-        std::vector<uint8_t> fleBlob = encryptWithKey(uuid, key, plaintextRange, bsonType, iv);
+        std::vector<uint8_t> fleBlob =
+            encryptWithKey(uuid, key, plaintextRange, bsonType, algorithm);
 
         // Prepare the return value
         std::string blobStr =
@@ -769,7 +782,7 @@ private:
                                         const std::shared_ptr<SymmetricKey>& key,
                                         ConstDataRange plaintext,
                                         BSONType bsonType,
-                                        ConstDataRange iv) {
+                                        int32_t algorithm) {
         // As per the description of the encryption algorithm for FLE, the
         // associated data is constructed of the following -
         // associatedData[0] = the FleAlgorithmEnum
@@ -780,36 +793,18 @@ private:
         ConstDataRange uuidCdr = uuid.toCDR();
         uint64_t outputLength = crypto::aeadCipherOutputLength(plaintext.length());
         std::vector<uint8_t> outputBuffer(kAssociatedDataLength + outputLength);
+        outputBuffer[0] = static_cast<uint8_t>(algorithm);
         std::memcpy(&outputBuffer[1], uuidCdr.data(), uuidCdr.length());
         outputBuffer[17] = static_cast<uint8_t>(bsonType);
-
-        uint8_t FleAlgorithm;
-        if (!iv.empty()) {
-            FleAlgorithm = static_cast<uint8_t>(FleAlgorithmInt::kDeterministic);
-            outputBuffer[0] = FleAlgorithm;
-            uassertStatusOK(crypto::aeadEncrypt(*key,
-                                                reinterpret_cast<const uint8_t*>(plaintext.data()),
-                                                plaintext.length(),
-                                                reinterpret_cast<const uint8_t*>(iv.data()),
-                                                iv.length(),
-                                                outputBuffer.data(),
-                                                18,
-                                                outputBuffer.data() + 18,
-                                                outputLength));
-
-        } else {
-            FleAlgorithm = static_cast<uint8_t>(FleAlgorithmInt::kRandom);
-            outputBuffer[0] = FleAlgorithm;
-            uassertStatusOK(crypto::aeadEncrypt(*key,
-                                                reinterpret_cast<const uint8_t*>(plaintext.data()),
-                                                plaintext.length(),
-                                                nullptr,
-                                                0,
-                                                outputBuffer.data(),
-                                                18,
-                                                outputBuffer.data() + 18,
-                                                outputLength));
-        }
+        uassertStatusOK(crypto::aeadEncrypt(*key,
+                                            reinterpret_cast<const uint8_t*>(plaintext.data()),
+                                            plaintext.length(),
+                                            outputBuffer.data(),
+                                            18,
+                                            // The ciphertext starts 18 bytes into the output
+                                            // buffer, as described above.
+                                            outputBuffer.data() + 18,
+                                            outputLength));
         return outputBuffer;
     }
 

@@ -9,6 +9,8 @@ load('jstests/ssl/libs/ssl_helpers.js');
     "use strict";
 
     const mock_kms = new MockKMSServer();
+    const randomAlgorithm = "AEAD_AES_256_CBC_HMAC_SHA_512-Random";
+    const deterministicAlgorithm = "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic";
     mock_kms.start();
 
     const x509_options =
@@ -30,7 +32,7 @@ load('jstests/ssl/libs/ssl_helpers.js');
             "/i8ytmWQuCe1zt3bIuVa4taPGKhqasVp0/0yI4Iy0ixQPNmeDF1J5qPUbBYoueVUJHMqj350eRTwztAWXuBdSQ=="),
     };
 
-    const clientSideFLEOptions = {
+    const clientSideRemoteSchemaFLEOptions = {
         kmsProviders: {
             aws: awsKMS,
             local: localKMS,
@@ -39,8 +41,8 @@ load('jstests/ssl/libs/ssl_helpers.js');
         useRemoteSchemas: true,
     };
 
-    const encryptedShell = Mongo(conn.host, clientSideFLEOptions);
-    const keyStore = encryptedShell.getKeyStore();
+    var encryptedShell = Mongo(conn.host, clientSideRemoteSchemaFLEOptions);
+    var keyStore = encryptedShell.getKeyStore();
 
     assert.writeOK(keyStore.createKey(
         "aws", "arn:aws:mongo1:us-east-1:123456789:environment", ['studentsKey']));
@@ -49,22 +51,87 @@ load('jstests/ssl/libs/ssl_helpers.js');
     const studentsKeyId = keyStore.getKeyByAltName("studentsKey").toArray()[0]._id;
     const teachersKeyId = keyStore.getKeyByAltName("teachersKey").toArray()[0]._id;
 
-    const database = encryptedShell.getDB("test");
+    var encryptedDatabase = encryptedShell.getDB("test");
 
-    database.createCollection("students", {
+    let testRandomizedCollection = (keyId, encryptedShell, unencryptedShell, collectionName) => {
+        const encryptedCollection = encryptedShell.getDB("test").getCollection(collectionName);
+        const unencryptedCollection = unencryptedShell.getDB("test").getCollection(collectionName);
+        // Performing CRUD on a collection encrypted with randomized algorithm.
+        assert.writeOK(encryptedCollection.insert({name: "Shreyas", "ssn": NumberInt(123456789)}));
+        assert.eq(0, unencryptedCollection.count({
+            "ssn": encryptedShell.encrypt(keyId, NumberInt(123456789), randomAlgorithm)
+        }));
+
+        const ssn_bin = unencryptedCollection.find({name: "Shreyas"})[0].ssn;
+        assert.eq(NumberInt(123456789), encryptedShell.decrypt(ssn_bin));
+    };
+
+    let testDeterministicCollection = (keyId, encryptedShell, unencryptedShell, collectionName) => {
+        const encryptedCollection = encryptedShell.getDB("test").getCollection(collectionName);
+        const unencryptedCollection = unencryptedShell.getDB("test").getCollection(collectionName);
+        // Testing insert
+        assert.writeOK(encryptedCollection.insert({name: "Shreyas", "ssn": NumberInt(123456789)}));
+        assert.writeOK(encryptedCollection.insert({name: "Mark", "ssn": NumberInt(987654321)}));
+        assert.writeOK(encryptedCollection.insert({name: "Spencer", "ssn": NumberInt(987654321)}));
+        assert.writeOK(encryptedCollection.insert({"name": "Sara", "ssn": NumberInt(200000000)}));
+        assert.writeOK(encryptedCollection.insert({"name": "Sara", "ssn": NumberInt(300000000)}));
+        assert.writeOK(
+            encryptedCollection.insert({"name": "Jonathan", "ssn": NumberInt(300000000)}));
+
+        // Testing count
+        assert.eq(6, encryptedCollection.count());
+        assert.eq(2, encryptedCollection.count({"name": "Sara"}));
+        assert.eq(2, encryptedCollection.count({"ssn": NumberInt(300000000)}));
+        assert.eq(1, encryptedCollection.count({"ssn": NumberInt(123456789)}));
+
+        // Testing update
+        assert.writeOK(encryptedCollection.update({"ssn": NumberInt(987654321)},
+                                                  {name: "Spencer", "ssn": NumberInt(123456789)}));
+        assert.eq(2, encryptedCollection.count({"ssn": NumberInt(123456789)}));
+
+        // Testing delete
+        encryptedCollection.deleteMany({"ssn": NumberInt(300000000)});
+        assert.eq(0, encryptedCollection.count({"ssn": NumberInt(300000000)}));
+        assert.eq(4, encryptedCollection.count());
+
+        // Testing findAndModify
+        let prevData = encryptedCollection.findAndModify(
+            {query: {name: "Shreyas"}, update: {"name": "Shreyas", "ssn": NumberInt(987654321)}});
+        assert.eq(prevData.ssn, NumberInt(123456789));
+        assert.eq(2, encryptedCollection.count({"ssn": NumberInt(987654321)}));
+        prevData = encryptedCollection.findAndModify({
+            query: {ssn: NumberInt(123456789)},
+            update: {"name": "Spencer", "ssn": NumberInt(987654321)}
+        });
+        assert.eq(prevData.ssn, NumberInt(123456789));
+        assert.eq(3, encryptedCollection.count({"ssn": NumberInt(987654321)}));
+
+        // Testing that deterministic encryption works
+        const encryptedDeterministicSSN =
+            encryptedShell.encrypt(keyId, NumberInt(987654321), deterministicAlgorithm);
+        assert.eq(3, unencryptedCollection.count({"ssn": encryptedDeterministicSSN}));
+
+        unencryptedCollection.deleteMany({"ssn": encryptedDeterministicSSN});
+        assert.eq(0, encryptedCollection.count({"ssn": NumberInt(987654321)}));
+
+        unencryptedCollection.insert({"name": "Shreyas", "ssn": encryptedDeterministicSSN});
+        assert.eq(1, encryptedCollection.count({"ssn": NumberInt(987654321)}));
+
+        // Will add tests for aggregate once query implements it.
+        // TODO : File ticket if this goes in before query work is finished.
+    };
+
+    encryptedDatabase.createCollection("students", {
         validator: {
             $jsonSchema: {
                 bsonType: "object",
                 properties: {
-                    name: {
-                        bsonType: "string",
-                        description: "must be a string and is required",
-                    },
+                    name: {bsonType: "string", description: "must be a string"},
                     ssn: {
                         encrypt: {
                             bsonType: "int",
-                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
-                            keyId: [studentsKeyId],
+                            algorithm: randomAlgorithm,
+                            keyId: [studentsKeyId]
                         }
                     }
                 }
@@ -72,9 +139,12 @@ load('jstests/ssl/libs/ssl_helpers.js');
         }
     });
 
-    const teacherBinData = BinData(0, "YXNkZmFzZGZhc3RmYXNkZg==");
+    // assert.writeOK(encryptedStudentsCollection.insert({name: "Shreyas", "ssn":
+    // NumberInt(123456789)}));
 
-    database.createCollection("teachers", {
+    testRandomizedCollection(studentsKeyId, encryptedShell, conn, "students");
+
+    encryptedDatabase.createCollection("teachers", {
         validator: {
             $jsonSchema: {
                 bsonType: "object",
@@ -86,7 +156,7 @@ load('jstests/ssl/libs/ssl_helpers.js');
                     ssn: {
                         encrypt: {
                             bsonType: "int",
-                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                            algorithm: deterministicAlgorithm,
                             keyId: [teachersKeyId],
                         }
                     }
@@ -95,45 +165,10 @@ load('jstests/ssl/libs/ssl_helpers.js');
         }
     });
 
-    print(database.getCollectionInfos());
+    const encryptedTeachersCollection = encryptedDatabase.teachers;
+    const unencryptedTeachersCollection = unencryptedDatabase.teachers;
 
-    assert.writeOK(database.students.insert({name: "Shreyas", "ssn": NumberInt(123456789)}));
-    assert.writeOK(database.teachers.insert({name: "Shreyas", "ssn": NumberInt(123456789)}));
-
-    const ssn_bin = unencryptedDatabase.students.find({name: "Shreyas"})[0].ssn;
-    assert.eq(NumberInt(123456789), encryptedShell.decrypt(ssn_bin));
-
-    assert.writeOK(database.teachers.insert({name: "Mark", "ssn": NumberInt(987654321)}));
-    assert.writeOK(database.teachers.insert({name: "Spencer", "ssn": NumberInt(987654321)}));
-    assert.writeOK(database.teachers.insert({"name": "Sara", "ssn": NumberInt(200000000)}));
-    assert.writeOK(database.teachers.insert({"name": "Sara", "ssn": NumberInt(300000000)}));
-    assert.writeOK(database.teachers.insert({"name": "Jonathan", "ssn": NumberInt(300000000)}));
-
-    assert.eq(6, database.teachers.count());
-    assert.eq(2, database.teachers.count({"name": "Sara"}));
-
-    // assert.eq(2, database.teachers.count({"ssn" : NumberInt(300000000)}));
-
-    // assert.eq(1, database.teachers.count({"ssn" : NumberInt(123456789)}));
-    // assert.writeOK(database.teachers.update({"ssn": NumberInt(987654321)},
-    //                                         { name: "Spencer", "ssn": NumberInt(123456789) }));
-    // assert.eq(2, database.teachers.count({"ssn" : NumberInt(123456789)}));
-
-    // database.teachers.deleteMany({"ssn": NumberInt(300000000)});
-    // assert.eq(0, database.teachers.count({"ssn" : NumberInt(300000000)}));
-    // assert.eq(4, database.teachers.count());
-
-    // let prevData = database.teachers.findAndModify({ query : { name: "Shreyas" }, update: {
-    // "name" : "Shreyas", "ssn" : NumberInt(987654321) } });
-    // assert.eq(prevData.ssn, NumberInt(123456789));
-    // assert.eq(2, database.teachers.count({"ssn" : NumberInt(987654321)}));
-    // prevData = database.teachers.findAndModify({ query : { ssn: NumberInt(123456789) }, update: {
-    // "name" : "Spencer", "ssn" : NumberInt(987654321) } });
-    // assert.eq(prevData.ssn, NumberInt(123456789));
-    // assert.eq(3, database.teachers.count({"ssn" : NumberInt(987654321)}));
-
-    // Will add tests for aggregate once query implements/fixes those.
-    // TODO : File ticket if this goes in before query work is finished.
+    testDeterministicCollection(teachersKeyId, encryptedShell, conn, "teachers");
 
     MongoRunner.stopMongod(conn);
     mock_kms.stop();

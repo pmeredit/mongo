@@ -10,6 +10,8 @@ load('jstests/ssl/libs/ssl_helpers.js');
 
     const x509_options = {sslMode: "requireSSL", sslPEMKeyFile: SERVER_CERT, sslCAFile: CA_CERT};
 
+    const randomAlgorithm = "AEAD_AES_256_CBC_HMAC_SHA_512-Random";
+
     const conn = MongoRunner.runMongod(x509_options);
     const test = conn.getDB("test");
     const collection = test.coll;
@@ -66,7 +68,7 @@ load('jstests/ssl/libs/ssl_helpers.js');
             const keyId = keyStore.getKeys("mongoKey").toArray()[0]._id;
             const str = "mongo";
             assert.throws(() => {
-                const encStr = shell.encrypt(keyId, str);
+                const encStr = shell.encrypt(keyId, str, randomAlgorithm);
             });
         });
     }
@@ -83,7 +85,7 @@ load('jstests/ssl/libs/ssl_helpers.js');
                 keyStore.createKey("aws", "arn:aws:kms:us-east-1:fake:fake:fake", ["mongoKey"]));
             const keyId = keyStore.getKeys("mongoKey").toArray()[0]._id;
             const str = "mongo";
-            const encStr = shell.encrypt(keyId, str);
+            const encStr = shell.encrypt(keyId, str, randomAlgorithm);
 
             mock_kms.enableFaults();
 
