@@ -71,12 +71,10 @@ using UniqueKmsResponse = std::unique_ptr<kms_response_t, kms_response_tFree>;
 
 /**
  * Free kms_char_buffer
- *
- * CDRIVER-3026 - make a proper function in KMS to free its returned strings.
  */
 struct kms_char_free {
     void operator()(char* x) {
-        free(x);
+        kms_request_free_string(x);
     }
 };
 
