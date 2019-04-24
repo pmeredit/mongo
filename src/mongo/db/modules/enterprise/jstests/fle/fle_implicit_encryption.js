@@ -9,9 +9,10 @@ load('jstests/ssl/libs/ssl_helpers.js');
     "use strict";
 
     const mock_kms = new MockKMSServer();
+    mock_kms.start();
+
     const randomAlgorithm = "AEAD_AES_256_CBC_HMAC_SHA_512-Random";
     const deterministicAlgorithm = "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic";
-    mock_kms.start();
 
     const x509_options =
         {sslMode: "requireSSL", sslPEMKeyFile: SERVER_CERT, sslCAFile: CA_CERT, vvvvv: ""};

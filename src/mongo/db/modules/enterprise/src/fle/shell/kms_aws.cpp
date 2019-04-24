@@ -170,7 +170,7 @@ void AWSKMSService::initRequest(kms_request_t* request, StringData region) {
     uassertKmsRequest(kms_request_set_access_key_id(request, _config.accessKeyId.c_str()));
     uassertKmsRequest(kms_request_set_secret_key(request, _config.secretAccessKey->c_str()));
 
-    if (_config.sessionToken) {
+    if (_config.sessionToken && !_config.sessionToken.get().empty()) {
         // TODO: move this into kms-message
         uassertKmsRequest(kms_request_add_header_field(
             request, "X-Amz-Security-Token", _config.sessionToken.get().c_str()));

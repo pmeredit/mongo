@@ -13,15 +13,20 @@ configs:
         description: "AWS Access Key for FLE Amazon KMS"
         arg_vartype: String
         cpp_varname: encryptedShellGlobalParams.awsAccessKeyId
-        requires: [ "awsSecretAccessKey" ]
+        requires: [ "awsSecretAccessKey", "keystoreNamespace" ]
     "awsSecretAccessKey":
         description: "AWS Secret Key for FLE Amazon KMS"
         arg_vartype: String
         cpp_varname: encryptedShellGlobalParams.awsSecretAccessKey
         redact: true
-        requires: [ "awsAccessKeyId" ]
+        requires: [ "awsAccessKeyId", "keystoreNamespace" ]
     "awsSessionToken":
         description: "Optional AWS Session Token ID"
         arg_vartype: String
         cpp_varname: encryptedShellGlobalParams.awsSessionToken
+        requires: [ "awsAccessKeyId", "awsSecretAccessKey", "keystoreNamespace" ]
+    "keystoreNamespace":
+        description: "database.collection to store encrypted FLE parameters"
+        arg_vartype: String
+        cpp_varname: encryptedShellGlobalParams.keystoreNamespace
         requires: [ "awsAccessKeyId", "awsSecretAccessKey" ]

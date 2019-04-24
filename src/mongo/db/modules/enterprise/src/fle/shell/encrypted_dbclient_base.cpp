@@ -59,9 +59,7 @@ public:
                           JS::HandleValue collection,
                           JSContext* cx)
         : _conn(std::move(conn)), _encryptionOptions(std::move(encryptionOptions)), _cx(cx) {
-        if (!collection.isNull() && !collection.isUndefined()) {
-            validateCollection(cx, collection);
-        }
+        validateCollection(cx, collection);
         _collection = JS::Heap<JS::Value>(collection);
         uassert(31078,
                 "Cannot use WriteMode Legacy with Field Level Encryption",
@@ -99,13 +97,12 @@ public:
                 BSONObj highLevelSchema = collectionInfos.front();
 
                 BSONObj options = highLevelSchema.getObjectField("options");
-                uassert(ErrorCodes::BadValue, "Schema missing options field", !options.isEmpty());
-                BSONObj validator = options.getObjectField("validator");
-                uassert(
-                    ErrorCodes::BadValue, "Schema missing validator field", !validator.isEmpty());
-                BSONObj schema = validator.getObjectField("$jsonSchema");
-                uassert(ErrorCodes::BadValue, "schema missing jsonSchema field", !schema.isEmpty());
-                return schema.getOwned();
+                if (!options.isEmpty() && !options.getObjectField("validator").isEmpty() &&
+                    !options.getObjectField("validator").getObjectField("$jsonSchema").isEmpty()) {
+                    BSONObj validator = options.getObjectField("validator");
+                    BSONObj schema = validator.getObjectField("$jsonSchema");
+                    return schema.getOwned();
+                }
             }
         } else if (_encryptionOptions.getSchemas()) {
             BSONObj schemas = _encryptionOptions.getSchemas().get();
@@ -634,6 +631,10 @@ public:
     }
 
     static void validateCollection(JSContext* cx, JS::HandleValue value) {
+        uassert(ErrorCodes::BadValue,
+                "Collection object must be provided to ClientSideFLEOptions",
+                !(value.isNull() || value.isUndefined()));
+
         JS::RootedValue coll(cx, value);
 
         uassert(31043,
@@ -819,6 +820,7 @@ private:
 
 std::unique_ptr<DBClientBase> createEncryptedDBClientBase(std::unique_ptr<DBClientBase> conn,
                                                           JS::HandleValue arg,
+                                                          JS::HandleObject mongoConnection,
                                                           JSContext* cx) {
 
     uassert(
@@ -840,11 +842,44 @@ std::unique_ptr<DBClientBase> createEncryptedDBClientBase(std::unique_ptr<DBClie
         boost::optional<StringData> awsSessionToken(encryptedShellGlobalParams.awsSessionToken);
         awsKms.setSessionToken(awsSessionToken);
 
+        auto ns = NamespaceString(encryptedShellGlobalParams.keystoreNamespace);
+        uassert(ErrorCodes::BadValue,
+                "Invalid keystore namespace.",
+                ns.isValid() && NamespaceString::validCollectionName(ns.coll()));
+
+        auto scope = mozjs::getScope(cx);
+
+        JS::RootedValue databaseRV(cx);
+        JS::AutoValueArray<2> databaseArgs(cx);
+
+        databaseArgs[0].setObject(*mongoConnection.get());
+        mozjs::ValueReader(cx, databaseArgs[1]).fromStringData(ns.db());
+        scope->getProto<mozjs::DBInfo>().newInstance(databaseArgs, &databaseRV);
+
+        invariant(databaseRV.isObject());
+        auto databaseObj = databaseRV.toObjectOrNull();
+
+        JS::AutoValueArray<4> collectionArgs(cx);
+        collectionArgs[0].setObject(*mongoConnection.get());
+        collectionArgs[1].setObject(*databaseObj);
+        mozjs::ValueReader(cx, collectionArgs[2]).fromStringData(ns.coll());
+        mozjs::ValueReader(cx, collectionArgs[3]).fromStringData(ns.ns());
+
+        scope->getProto<mozjs::DBCollectionInfo>().newInstance(collectionArgs, &collection);
+
         KmsProviders kmsProviders;
         kmsProviders.setAws(awsKms);
 
         encryptionOptions = ClientSideFLEOptions(std::move(kmsProviders));
+        // Because we cannot add a schema object through the command line, we set the
+        // schema object in ClientSideFLEOptions to be null so we know to always use
+        // remote schemas.
+        encryptionOptions.setSchemas(BSONObj());
     } else {
+        uassert(ErrorCodes::BadValue,
+                "Collection object must be passed to Field Level Encryption Options",
+                arg.isObject());
+
         const BSONObj obj = mozjs::ValueWriter(cx, arg).toBSON();
         encryptionOptions = encryptionOptions.parse(IDLParserErrorContext("root"), obj);
 

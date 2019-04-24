@@ -9,12 +9,7 @@ class KeyStore {
     constructor(mongo) {
         this.mongo = mongo;
         var collection = mongo.getDataKeyCollection();
-        if (collection) {
-            this.keyColl = collection;
-        } else {
-            mongo.getDB("admin").createCollection("datakeys");
-            this.keyColl = mongo.getCollection("admin.datakeys");
-        }
+        this.keyColl = collection;
         this.keyColl.createIndex(
             {keyAltNames: 1},
             {unique: true, partialFilterExpression: {keyAltNames: {$exists: true}}});
