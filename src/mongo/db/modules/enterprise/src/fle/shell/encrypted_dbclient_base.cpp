@@ -848,6 +848,10 @@ std::unique_ptr<DBClientBase> createEncryptedDBClientBase(std::unique_ptr<DBClie
         const BSONObj obj = mozjs::ValueWriter(cx, arg).toBSON();
         encryptionOptions = encryptionOptions.parse(IDLParserErrorContext("root"), obj);
 
+        if (encryptionOptions.getSchemas()) {
+            encryptionOptions.setSchemas(encryptionOptions.getSchemas().get().getOwned());
+        }
+
         // TODO SERVER-39897 Parse and validate that the collection exists.
         JS::RootedObject handleObject(cx, &arg.toObject());
         JS_GetProperty(cx, handleObject, keyVaultCollectionFieldId.rawData(), &collection);

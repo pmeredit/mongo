@@ -139,9 +139,6 @@ load('jstests/ssl/libs/ssl_helpers.js');
         }
     });
 
-    // assert.writeOK(encryptedStudentsCollection.insert({name: "Shreyas", "ssn":
-    // NumberInt(123456789)}));
-
     testRandomizedCollection(studentsKeyId, encryptedShell, conn, "students");
 
     encryptedDatabase.createCollection("teachers", {
@@ -165,10 +162,67 @@ load('jstests/ssl/libs/ssl_helpers.js');
         }
     });
 
-    const encryptedTeachersCollection = encryptedDatabase.teachers;
-    const unencryptedTeachersCollection = unencryptedDatabase.teachers;
-
     testDeterministicCollection(teachersKeyId, encryptedShell, conn, "teachers");
+
+    assert.writeOK(keyStore.createKey(
+        "local", "arn:aws:mongo2:us-east-1:123456789:environment", ['staffKey']));
+    assert.writeOK(
+        keyStore.createKey("aws", "arn:aws:mongo1:us-east-1:123456789:environment", ['adminKey']));
+    const staffKeyId = keyStore.getKeyByAltName("staffKey").toArray()[0]._id;
+    const adminKeyId = keyStore.getKeyByAltName("adminKey").toArray()[0]._id;
+
+    const staffSchema = {
+        bsonType: "object",
+        properties: {
+            name: {
+                bsonType: "string",
+                description: "must be a string and is required",
+            },
+            ssn: {
+                encrypt: {
+                    bsonType: "int",
+                    algorithm: randomAlgorithm,
+                    keyId: [staffKeyId],
+                }
+            }
+        }
+    };
+
+    const adminSchema = {
+        bsonType: "object",
+        properties: {
+            name: {
+                bsonType: "string",
+                description: "must be a string and is required",
+            },
+            ssn: {
+                encrypt: {
+                    bsonType: "int",
+                    algorithm: deterministicAlgorithm,
+                    keyId: [adminKeyId],
+                }
+            }
+        }
+    };
+
+    const clientSideLocalSchemaFLEOptions = {
+        kmsProviders: {
+            aws: awsKMS,
+            local: localKMS,
+        },
+        keyVaultCollection: collection,
+        schemas: {
+            "test.staff": staffSchema,
+            "test.admin": adminSchema,
+        }
+    };
+
+    encryptedShell = Mongo(conn.host, clientSideLocalSchemaFLEOptions);
+    keyStore = encryptedShell.getKeyStore();
+    encryptedDatabase = encryptedShell.getDB("test");
+
+    testRandomizedCollection(staffKeyId, encryptedShell, conn, "staff");
+    testDeterministicCollection(adminKeyId, encryptedShell, conn, "admin");
 
     MongoRunner.stopMongod(conn);
     mock_kms.stop();
