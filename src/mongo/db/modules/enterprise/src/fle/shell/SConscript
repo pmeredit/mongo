@@ -75,8 +75,10 @@ scriptingEnv.Library(
     LIBDEPS_PRIVATE=[
         '../../encryptdb/symmetric_crypto',
         '../aead_encryption',
+        '../query_analysis/cryptd_query_analysis',
         '$BUILD_DIR/mongo/client/clientdriver_minimal',
         '$BUILD_DIR/mongo/scripting/scripting',
+        '$BUILD_DIR/mongo/shell/shell_options_register',
         '$BUILD_DIR/third_party/shim_mozjs',
         'kms',
     ],

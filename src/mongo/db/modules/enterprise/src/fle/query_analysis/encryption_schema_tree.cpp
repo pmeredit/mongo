@@ -401,6 +401,7 @@ std::unique_ptr<EncryptionSchemaTreeNode> _parse(BSONObj schema,
         {std::string(JSONSchemaParser::kSchemaPatternPropertiesKeyword), {}},
         {std::string(JSONSchemaParser::kSchemaPropertiesKeyword), {}},
         {std::string(JSONSchemaParser::kSchemaTypeKeyword), {}},
+        {std::string(JSONSchemaParser::kSchemaDescriptionKeyword), {}},
     };
 
     // Populate the keyword map for the list of relevant keywords for encryption.

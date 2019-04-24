@@ -6,14 +6,20 @@
 
 #include "encryptdb/symmetric_crypto.h"
 #include "fle/encryption/aead_encryption.h"
+#include "fle/query_analysis/query_analysis.h"
 #include "fle/shell/encrypted_shell_options.h"
 #include "fle/shell/kms.h"
 #include "fle/shell/kms_gen.h"
 #include "mongo/base/data_cursor.h"
 #include "mongo/base/data_type_validated.h"
+#include "mongo/bson/bson_depth.h"
 #include "mongo/client/dbclient_base.h"
+#include "mongo/db/client.h"
+#include "mongo/db/commands.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
+#include "mongo/db/namespace_string.h"
 #include "mongo/rpc/object_check.h"
+#include "mongo/rpc/op_msg_rpc_impls.h"
 #include "mongo/scripting/mozjs/bindata.h"
 #include "mongo/scripting/mozjs/implscope.h"
 #include "mongo/scripting/mozjs/maxkey.h"
@@ -22,12 +28,27 @@
 #include "mongo/scripting/mozjs/objectwrapper.h"
 #include "mongo/scripting/mozjs/valuereader.h"
 #include "mongo/scripting/mozjs/valuewriter.h"
+#include "mongo/shell/shell_options.h"
+#include "mongo/util/lru_cache.h"
 
 namespace mongo {
 EncryptedShellGlobalParams encryptedShellGlobalParams;
 
 namespace {
 constexpr int kAssociatedDataLength = 18;
+constexpr std::size_t kEncryptedDBCacheSize = 50;
+constexpr Duration kCacheInvalidationTime = Minutes(1);
+constexpr std::array<StringData, 8> kEncryptedCommands = {"aggregate"_sd,
+                                                          "count"_sd,
+                                                          "delete"_sd,
+                                                          "find"_sd,
+                                                          "findandmodify"_sd,
+                                                          "findAndModify"_sd,
+                                                          "insert"_sd,
+                                                          "update"_sd};
+constexpr uint8_t kIntentToEncryptBit = 0x00;
+constexpr uint8_t kDeterministicEncryptionBit = 0x01;
+constexpr uint8_t kRandomEncryptionBit = 0x02;
 
 class EncryptedDBClientBase final : public DBClientBase, public mozjs::EncryptionCallbacks {
 
@@ -41,6 +62,9 @@ public:
             validateCollection(cx, collection);
         }
         _collection = JS::Heap<JS::Value>(collection);
+        uassert(31078,
+                "Cannot use WriteMode Legacy with Field Level Encryption",
+                shellGlobalParams.writeMode != "legacy");
     };
 
     std::string getServerAddress() const final {
@@ -52,7 +76,7 @@ public:
     }
 
     void say(Message& toSend, bool isRetry, std::string* actualServer) final {
-        _conn->say(toSend, isRetry, actualServer);
+        MONGO_UNREACHABLE;
     }
 
     bool lazySupported() const final {
@@ -61,7 +85,305 @@ public:
 
     using DBClientBase::runCommandWithTarget;
     std::pair<rpc::UniqueReply, DBClientBase*> runCommandWithTarget(OpMsgRequest request) final {
-        return _conn->runCommandWithTarget(std::move(request));
+        return handleEncryptionRequest(std::move(request));
+    }
+
+    BSONObj getRemoteOrInputSchema(const OpMsgRequest& request, NamespaceString ns) {
+        if (_encryptionOptions.getUseRemoteSchemas().value_or(false)) {
+            BSONObj filter = BSON("name" << ns.coll());
+            auto collectionInfos = _conn->getCollectionInfos(ns.db().toString(), filter);
+
+            invariant(collectionInfos.size() <= 1);
+            if (collectionInfos.size() == 1) {
+                BSONObj highLevelSchema = collectionInfos.front();
+
+                BSONObj options = highLevelSchema.getObjectField("options");
+                uassert(ErrorCodes::BadValue, "Schema missing options field", !options.isEmpty());
+                BSONObj validator = options.getObjectField("validator");
+                uassert(
+                    ErrorCodes::BadValue, "Schema missing validator field", !validator.isEmpty());
+                BSONObj schema = validator.getObjectField("$jsonSchema");
+                uassert(ErrorCodes::BadValue, "schema missing jsonSchema field", !schema.isEmpty());
+                return schema.getOwned();
+            }
+        } else if (_encryptionOptions.getSchemas()) {
+            BSONObj schemas = _encryptionOptions.getSchemas().get();
+            BSONElement schemaElem = schemas.getField(ns.toString());
+
+            if (!schemaElem.eoo()) {
+                uassert(ErrorCodes::BadValue,
+                        "Invalid Schema object in Client Side FLE Options",
+                        schemaElem.isABSONObj());
+                return schemaElem.Obj().getOwned();
+            }
+        } else {
+            uasserted(ErrorCodes::BadValue,
+                      "Client Side FLE Options requires either getUseRemoteSchemas or a schema "
+                      "provided.");
+        }
+        return BSONObj();
+    }
+
+    BSONObj getSchema(const OpMsgRequest& request, NamespaceString ns) {
+        if (_schemaCache.hasKey(ns)) {
+            auto[schema, ts] = _schemaCache.find(ns)->second;
+            auto ts_new = Date_t::now();
+
+            if ((ts_new - ts) < kCacheInvalidationTime) {
+                return schema;
+            }
+
+            _schemaCache.erase(ns);
+        }
+
+        BSONObj schema = getRemoteOrInputSchema(request, ns);
+
+        auto ts_new = Date_t::now();
+        _schemaCache.add(ns, std::make_pair(schema, ts_new));
+
+        return schema;
+    }
+
+    BSONObj runQueryAnalysis(OpMsgRequest request,
+                             const BSONObj& schema,
+                             const NamespaceString& ns,
+                             const StringData& commandName) {
+        BSONObjBuilder schemaInfoBuilder;
+
+        BSONObjBuilder commandBuilder;
+        commandBuilder.append("jsonSchema"_sd, schema);
+        commandBuilder.appendElementsUnique(request.body);
+        BSONObj cmdObj = commandBuilder.obj();
+        request.body = cmdObj;
+        auto client = &cc();
+        auto uniqueOpContext = client->makeOperationContext();
+        auto opCtx = uniqueOpContext.get();
+
+        if (commandName == "find"_sd) {
+            processFindCommand(opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder);
+        } else if (commandName == "aggregate"_sd) {
+            processAggregateCommand(opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder);
+        } else if (commandName == "findandmodify"_sd || commandName == "findAndModify"_sd) {
+            processFindAndModifyCommand(opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder);
+        } else if (commandName == "count"_sd) {
+            processCountCommand(opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder);
+        } else if (commandName == "update"_sd) {
+            processUpdateCommand(opCtx, request, &schemaInfoBuilder);
+        } else if (commandName == "insert"_sd) {
+            processInsertCommand(opCtx, request, &schemaInfoBuilder);
+        } else if (commandName == "delete"_sd) {
+            processDeleteCommand(opCtx, request, &schemaInfoBuilder);
+        }
+
+        return schemaInfoBuilder.obj();
+    }
+
+    std::pair<rpc::UniqueReply, DBClientBase*> handleEncryptionRequest(OpMsgRequest request) {
+        std::string commandName = request.getCommandName().toString();
+        if (std::find(kEncryptedCommands.begin(),
+                      kEncryptedCommands.end(),
+                      StringData(commandName)) == std::end(kEncryptedCommands)) {
+            return _conn->runCommandWithTarget(std::move(request));
+        }
+
+        auto databaseName = request.getDatabase().toString();
+        NamespaceString ns = CommandHelpers::parseNsCollectionRequired(databaseName, request.body);
+        BSONObj schema = getSchema(request, ns);
+
+        if (schema.isEmpty()) {
+            return _conn->runCommandWithTarget(std::move(request));
+        }
+
+        BSONObj schemaInfo = runQueryAnalysis(std::move(request), schema, ns, commandName);
+
+        if (!schemaInfo.getBoolField("hasEncryptionPlaceholders") &&
+            !schemaInfo.getBoolField("schemaRequiresEncryption")) {
+            BSONElement field = schemaInfo.getField("result"_sd);
+            uassert(31115,
+                    "Query preprocessing of command yielded error. Result object not found.",
+                    field.isABSONObj());
+            request.body = field.Obj();
+            return _conn->runCommandWithTarget(request);
+        }
+
+        BSONObj finalRequestObj = preprocessRequest(schemaInfo, databaseName);
+
+        OpMsgRequest finalReq(OpMsg{std::move(finalRequestObj), {}});
+        auto result = _conn->runCommandWithTarget(finalReq).first;
+
+        return processResponse(std::move(result), databaseName);
+    }
+
+    BSONObj preprocessRequest(const BSONObj& schemaInfo, const StringData& databaseName) {
+        BSONElement field = schemaInfo.getField("result"_sd);
+        uassert(31060,
+                "Query preprocessing of command yielded error. Result object not found.",
+                field.isABSONObj());
+
+        return buildCommand(field.Obj(), true, databaseName);
+    }
+
+    std::pair<rpc::UniqueReply, DBClientBase*> processResponse(rpc::UniqueReply result,
+                                                               const StringData& databaseName) {
+
+        auto rawReply = result->getCommandReply();
+        BSONObj decryptedDoc = buildCommand(rawReply, false, databaseName);
+
+        rpc::OpMsgReplyBuilder replyBuilder;
+        replyBuilder.setCommandReply(StatusWith<BSONObj>(decryptedDoc));
+        auto msg = replyBuilder.done();
+
+        auto host = _conn->getServerAddress();
+        auto reply = _conn->parseCommandReplyMessage(host, msg);
+
+        return {std::move(reply), this};
+    }
+
+    BSONObj buildCommand(const BSONObj& object, bool encrypt, const StringData& databaseName) {
+        std::stack<std::pair<BSONObjIterator, BSONObjBuilder>> frameStack;
+        frameStack.push(std::make_pair(BSONObjIterator(object), BSONObjBuilder()));
+        while (frameStack.size() > 1 || frameStack.top().first.more()) {
+            uassert(31096,
+                    "Object too deep to be encrypted. Exceeded stack depth.",
+                    frameStack.size() < BSONDepth::kDefaultMaxAllowableDepth);
+            auto & [ iterator, builder ] = frameStack.top();
+            if (iterator.more()) {
+                BSONElement elem = iterator.next();
+                if (elem.type() == BSONType::Object) {
+                    frameStack.push(std::make_pair(
+                        BSONObjIterator(elem.Obj()),
+                        BSONObjBuilder(builder.subobjStart(elem.fieldNameStringData()))));
+                } else if (elem.type() == BSONType::Array) {
+                    frameStack.push(std::make_pair(
+                        BSONObjIterator(elem.Obj()),
+                        BSONObjBuilder(builder.subarrayStart(elem.fieldNameStringData()))));
+                } else if (elem.isBinData(BinDataType::Encrypt)) {
+                    int len;
+                    const char* data(elem.binData(len));
+                    uassert(31101, "Invalid intentToEncrypt object from Query Analyzer", len >= 1);
+                    if ((*data == kRandomEncryptionBit || *data == kDeterministicEncryptionBit) &&
+                        !encrypt) {
+                        ConstDataRange dataCursor(data, len);
+                        decryptPayload(dataCursor, &builder, elem.fieldNameStringData());
+                    } else if (*data == kIntentToEncryptBit && encrypt) {
+                        BSONObj obj = BSONObj(data + 1);
+                        encryptMarking(obj, &builder, elem.fieldNameStringData());
+                    } else {
+                        builder.append(elem);
+                    }
+                } else {
+                    builder.append(elem);
+                }
+            } else {
+                frameStack.pop();
+            }
+        }
+        frameStack.top().second.append("$db", databaseName);
+        return frameStack.top().second.obj();
+    }
+
+    void encryptMarking(const BSONObj& obj, BSONObjBuilder* builder, StringData elemName) {
+        EncryptionPlaceholder toEncrypt =
+            EncryptionPlaceholder::parse(IDLParserErrorContext("root"), obj);
+        if ((toEncrypt.getKeyId() && toEncrypt.getKeyAltName()) ||
+            !(toEncrypt.getKeyId() || toEncrypt.getKeyAltName())) {
+            uasserted(ErrorCodes::BadValue,
+                      "exactly one of either keyId or keyAltName must be specified.");
+        }
+
+        ConstDataRange iv = ConstDataRange(nullptr, 0);
+        EncryptSchemaAnyType value = toEncrypt.getValue();
+        BSONElement valueElem = value.getElement();
+
+        BSONType bsonType = valueElem.type();
+        ConstDataRange plaintext(valueElem.value(), valueElem.valuesize());
+        std::vector<uint8_t> encData;
+
+        if (toEncrypt.getKeyId()) {
+            UUID uuid = toEncrypt.getKeyId().get();
+            auto key = getDataKey(uuid);
+            encData = encryptWithKey(uuid, key, plaintext, bsonType, iv);
+        } else {
+            auto keyAltName = toEncrypt.getKeyAltName().get();
+            UUID uuid = getUUIDByDataKeyAltName(keyAltName);
+            auto key = getDataKey(uuid);
+            encData = encryptWithKey(uuid, key, plaintext, bsonType, iv);
+        };
+
+        builder->appendBinData(elemName, encData.size(), BinDataType::Encrypt, encData.data());
+    }
+
+    void decryptPayload(ConstDataRange data, BSONObjBuilder* builder, StringData elemName) {
+        invariant(builder);
+        uassert(
+            ErrorCodes::BadValue, "Invalid decryption blob", data.length() > kAssociatedDataLength);
+        ConstDataRange uuidCdr = ConstDataRange(data.data() + 1, 16);
+        UUID uuid = UUID::fromCDR(uuidCdr);
+
+        auto key = getDataKey(uuid);
+        std::vector<uint8_t> out(data.length() - kAssociatedDataLength);
+        size_t outLen = out.size();
+
+        uassertStatusOK(crypto::aeadDecrypt(
+            *key,
+            reinterpret_cast<const uint8_t*>(data.data() + kAssociatedDataLength),
+            data.length() - kAssociatedDataLength,
+            reinterpret_cast<const uint8_t*>(data.data()),
+            kAssociatedDataLength,
+            out.data(),
+            &outLen));
+
+        // extract type byte
+        const uint8_t bsonType = static_cast<const uint8_t>(*(data.data() + 17));
+        BSONObj decryptedObj = validateBSONElement(ConstDataRange(out.data(), outLen), bsonType);
+        if (bsonType == BSONType::Object) {
+            builder->append(elemName, decryptedObj);
+        } else {
+            builder->appendAs(decryptedObj.firstElement(), elemName);
+        }
+    }
+
+    /**
+     *
+     * This function reads the data from the CDR and returns a copy
+     * constructed and owned BSONObject.
+     *
+     */
+    BSONObj validateBSONElement(ConstDataRange out, uint8_t bsonType) {
+        if (bsonType == BSONType::Object) {
+            ConstDataRangeCursor cdc = ConstDataRangeCursor(out);
+            BSONObj valueObj;
+
+            valueObj = cdc.readAndAdvance<Validated<BSONObj>>();
+            return valueObj.getOwned();
+        } else {
+            auto valueString = "value"_sd;
+
+            // The size here is to construct a new BSON document and validate the
+            // total size of the object. The first four bytes is for the size of an
+            // int32_t, then a space for the type of the first element, then the space
+            // for the value string and the the 0x00 terminated field name, then the
+            // size of the actual data, then the last byte for the end document character,
+            // also 0x00.
+            size_t docLength = sizeof(int32_t) + 1 + valueString.size() + 1 + out.length() + 1;
+            BufBuilder builder;
+            builder.reserveBytes(docLength);
+
+            uassert(ErrorCodes::BadValue,
+                    "invalid decryption value",
+                    docLength < std::numeric_limits<int32_t>::max());
+
+            builder.appendNum(static_cast<uint32_t>(docLength));
+            builder.appendChar(static_cast<uint8_t>(bsonType));
+            builder.appendStr(valueString, true);
+            builder.appendBuf(out.data(), out.length());
+            builder.appendChar('\0');
+
+            ConstDataRangeCursor cdc =
+                ConstDataRangeCursor(ConstDataRange(builder.buf(), builder.len()));
+            BSONObj elemWrapped = cdc.readAndAdvance<Validated<BSONObj>>();
+            return elemWrapped.getOwned();
+        }
     }
 
     std::string toString() const final {
@@ -133,7 +455,7 @@ public:
         UUID uuid = UUID::fromCDR(ConstDataRange(binData.data(), binData.size()));
 
         // Extract the IV
-        boost::optional<std::vector<uint8_t>> iv;
+        std::vector<uint8_t> ivVector;
         if (args.length() == 3) {
             if (!args.get(2).isObject()) {
                 uasserted(ErrorCodes::BadValue, "IV parameter must be of BinData type.");
@@ -142,9 +464,9 @@ public:
                 uasserted(ErrorCodes::BadValue, "First parameter must be an IV (BinData type)");
             }
 
-            iv = getBinDataArg(scope, cx, args, 2, BinDataType::BinDataGeneral);
+            ivVector = getBinDataArg(scope, cx, args, 2, BinDataType::BinDataGeneral);
             uassert(
-                ErrorCodes::BadValue, "IV must be exactly 16 bytes long", iv.get().size() == 16);
+                ErrorCodes::BadValue, "IV must be exactly 16 bytes long", ivVector.size() == 16);
         }
 
         BSONType bsonType = BSONType::EOO;
@@ -212,11 +534,14 @@ public:
         } else {
             uasserted(ErrorCodes::BadValue, "Cannot encrypt valuetype provided.");
         }
-        std::vector<uint8_t> plaintextVec(plaintext.buf(), plaintext.buf() + plaintext.len());
+        ConstDataRange plaintextRange(plaintext.buf(), plaintext.len());
 
-        SymmetricKey key(getDataKey(uuid));
-        std::vector<uint8_t> fleBlob =
-            encryptWithKey(uuid, std::move(key), plaintextVec, bsonType, iv);
+        auto key = getDataKey(uuid);
+        ConstDataRange iv(nullptr, 0);
+        if (ivVector.size() != 0) {
+            iv = ConstDataRange(ivVector);
+        }
+        std::vector<uint8_t> fleBlob = encryptWithKey(uuid, key, plaintextRange, bsonType, iv);
 
         // Prepare the return value
         std::string blobStr =
@@ -254,11 +579,11 @@ public:
         ConstDataRange uuidCdr = ConstDataRange(&binData[1], UUID::kNumBytes);
         UUID uuid = UUID::fromCDR(uuidCdr);
 
-        SymmetricKey key(getDataKey(uuid));
+        auto key = getDataKey(uuid);
         std::vector<uint8_t> out(binData.size() - kAssociatedDataLength);
         size_t outLen = out.size();
 
-        auto decryptStatus = crypto::aeadDecrypt(key,
+        auto decryptStatus = crypto::aeadDecrypt(*key,
                                                  &binData[kAssociatedDataLength],
                                                  binData.size() - kAssociatedDataLength,
                                                  &binData[0],
@@ -270,44 +595,13 @@ public:
         }
 
         uint8_t bsonType = binData[17];
-
+        BSONObj parent;
+        BSONObj decryptedObj = validateBSONElement(ConstDataRange(out.data(), outLen), bsonType);
         if (bsonType == BSONType::Object) {
-            ConstDataRangeCursor cdc = ConstDataRangeCursor(ConstDataRange(out.data(), outLen));
-            BSONObj valueObj, parent;
-
-            valueObj = cdc.readAndAdvance<Validated<BSONObj>>();
-            mozjs::ValueReader(cx, args.rval()).fromBSON(valueObj.getOwned(), &parent, true);
+            mozjs::ValueReader(cx, args.rval()).fromBSON(decryptedObj, &parent, true);
         } else {
-            BSONObj parent;
-            auto valueString = "value"_sd;
-
-            // The size here is to construct a new BSON document and validate the
-            // total size of the object. The first four bytes is for the size of an
-            // int32_t, then a space for the type of the first element, then the space
-            // for the value string and the the 0x00 terminated field name, then the
-            // size of the actual data, then the last byte for the end document character,
-            // also 0x00.
-            size_t docLength = sizeof(int32_t) + 1 + valueString.size() + 1 + outLen + 1;
-            BufBuilder builder;
-            builder.reserveBytes(docLength);
-
-            uassert(ErrorCodes::BadValue,
-                    "invalid decryption value",
-                    docLength < std::numeric_limits<int32_t>::max());
-
-            builder.appendNum(static_cast<uint32_t>(docLength));
-            builder.appendChar(static_cast<uint8_t>(bsonType));
-            builder.appendStr(valueString, true);
-            builder.appendBuf(out.data(), outLen);
-            builder.appendChar('\0');
-
-            ConstDataRangeCursor cdc =
-                ConstDataRangeCursor(ConstDataRange(builder.buf(), builder.len()));
-            BSONObj o = cdc.readAndAdvance<Validated<BSONObj>>();
-
-            auto element = o.firstElement();
-
-            mozjs::ValueReader(cx, args.rval()).fromBSONElement(element, parent, true);
+            mozjs::ValueReader(cx, args.rval())
+                .fromBSONElement(decryptedObj.firstElement(), parent, true);
         }
     }
 
@@ -366,6 +660,21 @@ public:
     }
 
 private:
+    NamespaceString getCollectionNS() {
+        JS::RootedValue fullNameRooted(_cx);
+        JS::RootedObject collectionRooted(_cx, &_collection.get().toObject());
+        JS_GetProperty(_cx, collectionRooted, "_fullName", &fullNameRooted);
+        if (!fullNameRooted.isString()) {
+            uasserted(ErrorCodes::BadValue, "Collection object is incomplete.");
+        }
+        std::string fullName = mozjs::ValueWriter(_cx, fullNameRooted).toString();
+        NamespaceString fullNameNS = NamespaceString(fullName);
+        uassert(ErrorCodes::BadValue,
+                str::stream() << "Invalid namespace: " << fullName,
+                fullNameNS.isValid());
+        return fullNameNS;
+    }
+
     std::vector<uint8_t> getBinDataArg(mozjs::MozJSImplScope* scope,
                                        JSContext* cx,
                                        JS::CallArgs args,
@@ -389,24 +698,52 @@ private:
         return std::vector<uint8_t>(string.data(), string.data() + string.length());
     }
 
-
-    SymmetricKey getDataKey(const UUID& uuid) {
-        JS::RootedValue fullNameRooted(_cx);
-        JS::RootedObject collectionRooted(_cx, &_collection.get().toObject());
-        JS_GetProperty(_cx, collectionRooted, "_fullName", &fullNameRooted);
-        if (!fullNameRooted.isString()) {
-            uasserted(ErrorCodes::BadValue, "Collection object is the wrong type");
+    UUID getUUIDByDataKeyAltName(StringData altName) {
+        NamespaceString fullNameNS = getCollectionNS();
+        BSONObjBuilder builder;
+        builder.append("keyAltNames"_sd, altName);
+        BSONObj altNameObj(builder.obj());
+        BSONObj dataKeyObj = _conn->findOne(fullNameNS.ns(), Query(altNameObj));
+        if (dataKeyObj.isEmpty()) {
+            uasserted(ErrorCodes::BadValue, "Invalid keyAltName.");
         }
-        std::string fullName = mozjs::ValueWriter(_cx, fullNameRooted).toString();
-        NamespaceString fullNameNS = NamespaceString(fullName);
+        BSONElement uuidElem;
+        dataKeyObj.getObjectID(uuidElem);
+        return uassertStatusOK(UUID::parse(uuidElem));
+    }
 
+    std::shared_ptr<SymmetricKey> getDataKey(const UUID& uuid) {
+        auto ts_new = Date_t::now();
+
+        if (_datakeyCache.hasKey(uuid)) {
+            auto[key, ts] = _datakeyCache.find(uuid)->second;
+            if (ts_new - ts < kCacheInvalidationTime) {
+                return key;
+            } else {
+                _datakeyCache.erase(uuid);
+            }
+        }
+        auto key = getDataKeyFromDisk(uuid);
+        _datakeyCache.add(uuid, std::make_pair(key, ts_new));
+        return key;
+    }
+
+    std::shared_ptr<SymmetricKey> getDataKeyFromDisk(const UUID& uuid) {
+        NamespaceString fullNameNS = getCollectionNS();
         BSONObj dataKeyObj = _conn->findOne(fullNameNS.ns(), QUERY("_id" << uuid));
         if (dataKeyObj.isEmpty()) {
             uasserted(ErrorCodes::BadValue, "Invalid keyID.");
         }
 
         auto keyStoreRecord = KeyStoreRecord::parse(IDLParserErrorContext("root"), dataKeyObj);
+        if (dataKeyObj.hasField("version"_sd)) {
+            uassert(ErrorCodes::BadValue,
+                    "Invalid version, must be either 0 or undefined",
+                    dataKeyObj.getIntField("version"_sd) == 0);
+        }
 
+        BSONElement elem = dataKeyObj.getField("keyMaterial"_sd);
+        uassert(ErrorCodes::BadValue, "Invalid key.", elem.isBinData(BinDataType::BinDataGeneral));
         uassert(ErrorCodes::BadValue,
                 "Invalid version, must be either 0 or undefined",
                 keyStoreRecord.getVersion() == 0);
@@ -418,14 +755,15 @@ private:
             _encryptionOptions.getKmsProviders().toBSON(), keyStoreRecord.getMasterKey());
         SecureVector<uint8_t> decryptedKey =
             kmsService->decrypt(dataKey, keyStoreRecord.getMasterKey());
-        return SymmetricKey(std::move(decryptedKey), crypto::aesAlgorithm, "kms_encryption");
+        return std::make_shared<SymmetricKey>(
+            std::move(decryptedKey), crypto::aesAlgorithm, "kms_encryption");
     }
 
     std::vector<uint8_t> encryptWithKey(UUID uuid,
-                                        SymmetricKey key,
-                                        std::vector<uint8_t> plaintext,
+                                        const std::shared_ptr<SymmetricKey>& key,
+                                        ConstDataRange plaintext,
                                         BSONType bsonType,
-                                        boost::optional<std::vector<uint8_t>>& iv) {
+                                        ConstDataRange iv) {
         // As per the description of the encryption algorithm for FLE, the
         // associated data is constructed of the following -
         // associatedData[0] = the FleAlgorithmEnum
@@ -434,30 +772,31 @@ private:
         // associatedData[17] = the bson type
 
         ConstDataRange uuidCdr = uuid.toCDR();
-        uint64_t outputLength = crypto::aeadCipherOutputLength(plaintext.size());
+        uint64_t outputLength = crypto::aeadCipherOutputLength(plaintext.length());
         std::vector<uint8_t> outputBuffer(kAssociatedDataLength + outputLength);
         std::memcpy(&outputBuffer[1], uuidCdr.data(), uuidCdr.length());
         outputBuffer[17] = static_cast<uint8_t>(bsonType);
 
         uint8_t FleAlgorithm;
-        if (iv) {
+        if (!iv.empty()) {
             FleAlgorithm = static_cast<uint8_t>(FleAlgorithmInt::kDeterministic);
             outputBuffer[0] = FleAlgorithm;
-            uassertStatusOK(crypto::aeadEncrypt(key,
-                                                plaintext.data(),
-                                                plaintext.size(),
-                                                iv->data(),
-                                                iv->size(),
+            uassertStatusOK(crypto::aeadEncrypt(*key,
+                                                reinterpret_cast<const uint8_t*>(plaintext.data()),
+                                                plaintext.length(),
+                                                reinterpret_cast<const uint8_t*>(iv.data()),
+                                                iv.length(),
                                                 outputBuffer.data(),
                                                 18,
                                                 outputBuffer.data() + 18,
                                                 outputLength));
+
         } else {
             FleAlgorithm = static_cast<uint8_t>(FleAlgorithmInt::kRandom);
             outputBuffer[0] = FleAlgorithm;
-            uassertStatusOK(crypto::aeadEncrypt(key,
-                                                plaintext.data(),
-                                                plaintext.size(),
+            uassertStatusOK(crypto::aeadEncrypt(*key,
+                                                reinterpret_cast<const uint8_t*>(plaintext.data()),
+                                                plaintext.length(),
                                                 nullptr,
                                                 0,
                                                 outputBuffer.data(),
@@ -468,7 +807,9 @@ private:
         return outputBuffer;
     }
 
-
+    LRUCache<NamespaceString, std::pair<BSONObj, Date_t>> _schemaCache{kEncryptedDBCacheSize};
+    LRUCache<UUID, std::pair<std::shared_ptr<SymmetricKey>, Date_t>, UUID::Hash> _datakeyCache{
+        kEncryptedDBCacheSize};
     std::unique_ptr<DBClientBase> _conn;
     ClientSideFLEOptions _encryptionOptions;
     JS::Heap<JS::Value> _collection;

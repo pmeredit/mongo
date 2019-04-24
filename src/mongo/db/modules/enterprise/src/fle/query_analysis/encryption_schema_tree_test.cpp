@@ -1590,7 +1590,10 @@ TEST(EncryptionSchemaTreeTest, ContainsEncryptReturnsTrueIfPatternPropertiesHasE
     BSONObj schema = fromjson(R"({
         type: "object",
         properties: {
-            a: {type: "string"}
+            a: {
+                description: "Must be a string",
+                type: "string"
+            }
         },
         patternProperties: {
             "^b": {
@@ -2098,9 +2101,6 @@ TEST(EncryptionSchemaTreeTest, EncryptMetadataWithoutExplicitTypeObjectSpecifica
 TEST(EncryptionSchemaTreeNode, UnsupportedJSONSchemaKeywords) {
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(fromjson(
                            "{dependencies: {foo: {properties: {bar: {type: 'string'}}}}}")),
-                       AssertionException,
-                       31068);
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(fromjson("{description: 'test'}")),
                        AssertionException,
                        31068);
     ASSERT_THROWS_CODE(

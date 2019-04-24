@@ -31,10 +31,11 @@ load('jstests/ssl/libs/ssl_helpers.js');
         };
 
         const shell = Mongo(conn.host, clientSideFLEOptions);
+        const cleanCacheShell = Mongo(conn.host, clientSideFLEOptions);
 
         collection.drop();
 
-        func(shell);
+        func(shell, cleanCacheShell);
 
         mock_kms.stop();
     }
@@ -45,7 +46,8 @@ load('jstests/ssl/libs/ssl_helpers.js');
         runKMS(mock_kms, (shell) => {
             const keyStore = shell.getKeyStore();
 
-            assert.throws(() => keyStore.createKey("aws", "arn:aws:kms:us-east-1:fake:fake:fake"));
+            assert.throws(() => keyStore.createKey(
+                              "aws", "arn:aws:kms:us-east-1:fake:fake:fake", ["mongoKey"]));
             assert.eq(keyStore.getKeys("mongoKey").toArray().length, 0);
         });
     }
@@ -59,7 +61,8 @@ load('jstests/ssl/libs/ssl_helpers.js');
 
         runKMS(mock_kms, (shell) => {
             const keyStore = shell.getKeyStore();
-            assert.writeOK(keyStore.createKey("aws", "arn:aws:kms:us-east-1:fake:fake:fake"));
+            assert.writeOK(
+                keyStore.createKey("aws", "arn:aws:kms:us-east-1:fake:fake:fake", ["mongoKey"]));
             const keyId = keyStore.getKeys("mongoKey").toArray()[0]._id;
             const str = "mongo";
             assert.throws(() => {
@@ -73,17 +76,19 @@ load('jstests/ssl/libs/ssl_helpers.js');
     function testBadDecryptKeyResult(fault) {
         const mock_kms = new MockKMSServer(fault, true);
 
-        runKMS(mock_kms, (shell) => {
+        runKMS(mock_kms, (shell, cleanCacheShell) => {
             const keyStore = shell.getKeyStore();
 
-            assert.writeOK(keyStore.createKey("aws", "arn:aws:kms:us-east-1:fake:fake:fake"));
+            assert.writeOK(
+                keyStore.createKey("aws", "arn:aws:kms:us-east-1:fake:fake:fake", ["mongoKey"]));
             const keyId = keyStore.getKeys("mongoKey").toArray()[0]._id;
             const str = "mongo";
             const encStr = shell.encrypt(keyId, str);
 
             mock_kms.enableFaults();
+
             assert.throws(() => {
-                shell.decrypt(encStr);
+                var str = cleanCacheShell.decrypt(encStr);
             });
 
         });
