@@ -361,12 +361,11 @@ PlaceHolderResult addPlaceHoldersForDistinct(const boost::intrusive_ptr<Expressi
             schemaTree->getEncryptionMetadataForPath(FieldRef(parsedDistinct.getKey()))) {
         uassert(51131,
                 "The distinct key is not allowed to be marked for encryption with a non-UUID keyId",
-                keyMetadata.get().getKeyId().get().type() !=
-                    EncryptSchemaKeyId::Type::kJSONPointer);
+                keyMetadata->keyId.type() != EncryptSchemaKeyId::Type::kJSONPointer);
         uassert(31026,
                 "Distinct key is not allowed to be marked for encryption with the randomized "
                 "encryption algorithm",
-                keyMetadata.get().getAlgorithm() != FleAlgorithmEnum::kRandom);
+                keyMetadata->algorithm != FleAlgorithmEnum::kRandom);
 
         // TODO SERVER-40798: Relax this check if the schema indicates that the encrypted distinct
         // key is not a string.
@@ -692,14 +691,11 @@ void processDeleteCommand(OperationContext* opCtx,
 }
 
 BSONObj buildEncryptPlaceholder(BSONElement elem,
-                                const EncryptionMetadata& metadata,
+                                const ResolvedEncryptionInfo& metadata,
                                 EncryptionPlaceholderContext placeholderContext,
                                 const CollatorInterface* collator,
                                 const boost::optional<BSONObj>& origDoc,
                                 const boost::optional<const EncryptionSchemaTreeNode&> schema) {
-    invariant(metadata.getAlgorithm());
-    invariant(metadata.getKeyId());
-
     // There are more stringent requirements for which encryption placeholders are legal in the
     // context of a query which makes a comparison to an encrypted field. For instance, comparisons
     // are only possible against deterministically encrypted fields, whereas either the random or
@@ -707,7 +703,7 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
     if (placeholderContext == EncryptionPlaceholderContext::kComparison) {
         uassert(51158,
                 "Cannot query on fields encrypted with the randomized encryption algorithm",
-                metadata.getAlgorithm() == FleAlgorithmEnum::kDeterministic);
+                metadata.algorithm == FleAlgorithmEnum::kDeterministic);
 
         switch (elem.type()) {
             case BSONType::String:
@@ -729,23 +725,23 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
             str::stream() << "Cannot encrypt a field containing an array: " << elem,
             elem.type() != BSONType::Array);
 
-    FleAlgorithmInt integerAlgorithm = metadata.getAlgorithm() == FleAlgorithmEnum::kDeterministic
+    FleAlgorithmInt integerAlgorithm = metadata.algorithm == FleAlgorithmEnum::kDeterministic
         ? FleAlgorithmInt::kDeterministic
         : FleAlgorithmInt::kRandom;
 
     EncryptionPlaceholder marking(integerAlgorithm, EncryptSchemaAnyType(elem));
 
     if (integerAlgorithm == FleAlgorithmInt::kDeterministic) {
-        invariant(metadata.getInitializationVector());
-        marking.setInitializationVector(metadata.getInitializationVector().get());
+        invariant(metadata.initializationVector);
+        marking.setInitializationVector(ConstDataRange{metadata.initializationVector.get()});
     }
 
-    auto keyId = metadata.getKeyId();
-    if (keyId.get().type() == EncryptSchemaKeyId::Type::kUUIDs) {
-        marking.setKeyId(keyId.get().uuids()[0]);
+    const auto& keyId = metadata.keyId;
+    if (keyId.type() == EncryptSchemaKeyId::Type::kUUIDs) {
+        marking.setKeyId(keyId.uuids()[0]);
     } else {
         uassert(51093, "A non-static (JSONPointer) keyId is not supported.", origDoc);
-        auto pointer = keyId->jsonPointer();
+        auto pointer = keyId.jsonPointer();
         auto resolvedKey = pointer.evaluate(origDoc.get());
         uassert(51114,
                 "keyId pointer '" + pointer.toString() + "' must point to a field that exists",
@@ -777,7 +773,7 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
 }
 
 Value buildEncryptPlaceholder(Value input,
-                              const EncryptionMetadata& metadata,
+                              const ResolvedEncryptionInfo& metadata,
                               EncryptionPlaceholderContext placeholderContext,
                               const CollatorInterface* collator) {
     StringData wrappingKey;

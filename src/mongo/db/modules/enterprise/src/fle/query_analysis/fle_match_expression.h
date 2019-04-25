@@ -78,7 +78,7 @@ private:
      * that would require a collation-aware comparison comparison.
      */
     BSONElement allocateEncryptedElement(const BSONElement& elem,
-                                         const EncryptionMetadata& metadata,
+                                         const ResolvedEncryptionInfo& metadata,
                                          const CollatorInterface* collator);
 
     /**

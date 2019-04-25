@@ -12,6 +12,7 @@
 #include "mongo/db/pipeline/value.h"
 #include "mongo/db/query/collation/collator_interface.h"
 #include "mongo/rpc/op_msg.h"
+#include "resolved_encryption_info.h"
 
 namespace mongo {
 
@@ -131,7 +132,7 @@ void processDeleteCommand(OperationContext* opCtx,
  * Assumes that the 'input' is being used in a comparison context.
  */
 Value buildEncryptPlaceholder(Value input,
-                              const EncryptionMetadata& metadata,
+                              const ResolvedEncryptionInfo& metadata,
                               EncryptionPlaceholderContext placeholderContext,
                               const CollatorInterface* collator);
 
@@ -155,7 +156,7 @@ Value buildEncryptPlaceholder(Value input,
  */
 BSONObj buildEncryptPlaceholder(
     BSONElement elem,
-    const EncryptionMetadata& metadata,
+    const ResolvedEncryptionInfo& metadata,
     EncryptionPlaceholderContext placeholderContext,
     const CollatorInterface* collator,
     const boost::optional<BSONObj>& origDoc = boost::none,

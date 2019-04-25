@@ -29,21 +29,6 @@ static const BSONObj pointerEncryptObj =
                            << "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
                            << "keyId"
                            << "/key"));
-static const BSONObj pointerEncryptObjUsingDeterministicAlgo =
-    BSON("encrypt" << BSON("algorithm"
-                           << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
-                           << "keyId"
-                           << "/key"
-                           << "initializationVector"
-                           << BSONBinData(NULL, 0, BinDataType::BinDataGeneral)));
-
-static const BSONObj encryptMetadataDeterministicObj =
-    BSON("encrypt" << BSON("algorithm"
-                           << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
-                           << "initializationVector"
-                           << BSONBinData(NULL, 0, BinDataType::BinDataGeneral)
-                           << "keyId"
-                           << BSON_ARRAY(BSONBinData(uuidBytes, 16, newUUID))));
 
 /**
  * Builds a schema with a single encrypted field using the passed in 'encrypt'
@@ -83,11 +68,14 @@ void assertEncryptedCorrectly(PlaceHolderResult response,
     ASSERT_EQ(rawBinData[0], 0);
     ASSERT_TRUE(elem.isBinData(BinDataType::Encrypt));
     IDLParserErrorContext ctx("queryAnalysis");
-    auto correctPlaceholder =
-        buildEncryptPlaceholder(orig,
-                                EncryptionMetadata::parse(ctx, metadataobj["encrypt"].Obj()),
-                                EncryptionPlaceholderContext::kWrite,
-                                nullptr);
+    auto correctPlaceholder = buildEncryptPlaceholder(
+        orig,
+        ResolvedEncryptionInfo{EncryptSchemaKeyId{{UUID::fromCDR(uuidBytes)}},
+                               FleAlgorithmEnum::kRandom,
+                               boost::none,
+                               boost::none},
+        EncryptionPlaceholderContext::kWrite,
+        nullptr);
     ASSERT_BSONELT_EQ(correctPlaceholder[elem.fieldNameStringData()], elem);
 }
 
@@ -237,8 +225,11 @@ TEST_F(FLETestFixture, VerifyCorrectBinaryFormatForGeneratedPlaceholderWithValue
 }
 
 TEST(BuildEncryptPlaceholderValueTest, FailsForJSONPointerEncryption) {
-    auto metadata = EncryptionMetadata::parse(
-        IDLParserErrorContext("meta"), pointerEncryptObjUsingDeterministicAlgo["encrypt"].Obj());
+    std::vector<std::uint8_t> initializationVector;
+    ResolvedEncryptionInfo metadata{EncryptSchemaKeyId{"/key"},
+                                    FleAlgorithmEnum::kDeterministic,
+                                    ConstDataRange{initializationVector},
+                                    MatcherTypeSet{BSONType::NumberInt}};
     ASSERT_THROWS_CODE(buildEncryptPlaceholder(
                            Value(1), metadata, EncryptionPlaceholderContext::kComparison, nullptr),
                        AssertionException,
@@ -246,8 +237,11 @@ TEST(BuildEncryptPlaceholderValueTest, FailsForJSONPointerEncryption) {
 }
 
 TEST(BuildEncryptPlaceholderValueTest, FailsForArray) {
-    auto metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
-                                              encryptMetadataDeterministicObj["encrypt"].Obj());
+    std::vector<std::uint8_t> initializationVector;
+    ResolvedEncryptionInfo metadata{EncryptSchemaKeyId{"/key"},
+                                    FleAlgorithmEnum::kDeterministic,
+                                    ConstDataRange{initializationVector},
+                                    MatcherTypeSet{BSONType::Array}};
     ASSERT_THROWS_CODE(buildEncryptPlaceholder(Value(BSON_ARRAY("value")),
                                                metadata,
                                                EncryptionPlaceholderContext::kComparison,
@@ -257,8 +251,10 @@ TEST(BuildEncryptPlaceholderValueTest, FailsForArray) {
 }
 
 TEST(BuildEncryptPlaceholderValueTest, FailsForRandomEncryption) {
-    auto metadata =
-        EncryptionMetadata::parse(IDLParserErrorContext("meta"), randomEncryptObj["encrypt"].Obj());
+    ResolvedEncryptionInfo metadata{EncryptSchemaKeyId{{UUID::fromCDR(uuidBytes)}},
+                                    FleAlgorithmEnum::kRandom,
+                                    boost::none,
+                                    boost::none};
     ASSERT_THROWS_CODE(buildEncryptPlaceholder(
                            Value(1), metadata, EncryptionPlaceholderContext::kComparison, nullptr),
                        AssertionException,
@@ -266,8 +262,11 @@ TEST(BuildEncryptPlaceholderValueTest, FailsForRandomEncryption) {
 }
 
 TEST(BuildEncryptPlaceholderValueTest, FailsForStringWithNonSimpleCollation) {
-    auto metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
-                                              encryptMetadataDeterministicObj["encrypt"].Obj());
+    std::vector<std::uint8_t> initializationVector;
+    ResolvedEncryptionInfo metadata{EncryptSchemaKeyId{{UUID::fromCDR(uuidBytes)}},
+                                    FleAlgorithmEnum::kDeterministic,
+                                    ConstDataRange{initializationVector},
+                                    MatcherTypeSet{BSONType::String}};
     auto collator =
         std::make_unique<CollatorInterfaceMock>(CollatorInterfaceMock::MockType::kReverseString);
 
@@ -280,23 +279,13 @@ TEST(BuildEncryptPlaceholderValueTest, FailsForStringWithNonSimpleCollation) {
 }
 
 TEST(BuildEncryptPlaceholderValueTest, SucceedsForDeterministicEncryptionWithScalar) {
-    auto metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
-                                              encryptMetadataDeterministicObj["encrypt"].Obj());
+    std::vector<std::uint8_t> initializationVector;
+    ResolvedEncryptionInfo metadata{EncryptSchemaKeyId{{UUID::fromCDR(uuidBytes)}},
+                                    FleAlgorithmEnum::kDeterministic,
+                                    ConstDataRange{initializationVector},
+                                    MatcherTypeSet{BSONType::String}};
     auto binData = buildEncryptPlaceholder(
         Value("string"_sd), metadata, EncryptionPlaceholderContext::kComparison, nullptr);
-
-    ASSERT_EQ(binData.getType(), BSONType::BinData);
-    ASSERT_EQ(binData.getBinData().type, BinDataType::Encrypt);
-}
-
-TEST(BuildEncryptPlaceholderValueTest, SucceedsForDeterministicEncryptionWithObject) {
-    auto metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
-                                              encryptMetadataDeterministicObj["encrypt"].Obj());
-    auto binData = buildEncryptPlaceholder(Value(BSON("key "
-                                                      << "value")),
-                                           metadata,
-                                           EncryptionPlaceholderContext::kComparison,
-                                           nullptr);
 
     ASSERT_EQ(binData.getType(), BSONType::BinData);
     ASSERT_EQ(binData.getBinData().type, BinDataType::Encrypt);
@@ -312,8 +301,8 @@ TEST(BuildEncryptPlaceholderTest, JSONPointerResolvesCorrectly) {
                     << "value");
     EncryptionPlaceholder expected(FleAlgorithmInt::kRandom, EncryptSchemaAnyType(doc["foo"]));
     expected.setKeyAltName("value"_sd);
-    EncryptionMetadata metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
-                                                            pointerEncryptObj["encrypt"].Obj());
+    ResolvedEncryptionInfo metadata{
+        EncryptSchemaKeyId{"/key"}, FleAlgorithmEnum::kRandom, boost::none, boost::none};
     auto response = buildEncryptPlaceholder(doc["foo"],
                                             metadata,
                                             EncryptionPlaceholderContext::kWrite,
@@ -337,8 +326,8 @@ TEST(BuildEncryptPlaceholderTest, JSONPointerResolvesCorrectlyThroughArray) {
                     << BSON_ARRAY("value"));
     EncryptionPlaceholder expected(FleAlgorithmInt::kRandom, EncryptSchemaAnyType(doc["foo"]));
     expected.setKeyAltName("value"_sd);
-    EncryptionMetadata metadata =
-        EncryptionMetadata::parse(IDLParserErrorContext("meta"), localEncryptObj["encrypt"].Obj());
+    ResolvedEncryptionInfo metadata{
+        EncryptSchemaKeyId{"/key/0"}, FleAlgorithmEnum::kRandom, boost::none, boost::none};
     auto response = buildEncryptPlaceholder(doc["foo"],
                                             metadata,
                                             EncryptionPlaceholderContext::kWrite,
@@ -357,8 +346,8 @@ TEST(BuildEncryptPlaceholderTest, UAssertIfPointerPointsToObject) {
                     << "key"
                     << BSON("Forbidden"
                             << "key"));
-    EncryptionMetadata metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
-                                                            pointerEncryptObj["encrypt"].Obj());
+    ResolvedEncryptionInfo metadata{
+        EncryptSchemaKeyId{"/key"}, FleAlgorithmEnum::kRandom, boost::none, boost::none};
     ASSERT_THROWS_CODE(buildEncryptPlaceholder(doc["foo"],
                                                metadata,
                                                EncryptionPlaceholderContext::kWrite,
@@ -379,8 +368,8 @@ TEST(BuildEncryptPlaceholderTest, UAssertIfPointerPointsToArray) {
                              BSON("Scope"
                                   << "Here"));
     auto doc = builder.obj();
-    EncryptionMetadata metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
-                                                            pointerEncryptObj["encrypt"].Obj());
+    ResolvedEncryptionInfo metadata{
+        EncryptSchemaKeyId{"/key"}, FleAlgorithmEnum::kRandom, boost::none, boost::none};
     ASSERT_THROWS_CODE(buildEncryptPlaceholder(doc["foo"],
                                                metadata,
                                                EncryptionPlaceholderContext::kWrite,
@@ -399,8 +388,8 @@ TEST(BuildEncryptPlaceholderTest, UAssertIfPointerPointsToCode) {
                     << "key"
                     << BSON_ARRAY("Forbidden"
                                   << "key"));
-    EncryptionMetadata metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
-                                                            pointerEncryptObj["encrypt"].Obj());
+    ResolvedEncryptionInfo metadata{
+        EncryptSchemaKeyId{"/key"}, FleAlgorithmEnum::kRandom, boost::none, boost::none};
     ASSERT_THROWS_CODE(buildEncryptPlaceholder(doc["foo"],
                                                metadata,
                                                EncryptionPlaceholderContext::kWrite,
@@ -418,8 +407,8 @@ TEST(BuildEncryptPlaceholderTest, UAssertIfPointerDoesNotEvaluate) {
                     << "encrypt");
     EncryptionPlaceholder expected(FleAlgorithmInt::kRandom, EncryptSchemaAnyType(doc["foo"]));
     expected.setKeyAltName("value"_sd);
-    EncryptionMetadata metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
-                                                            pointerEncryptObj["encrypt"].Obj());
+    ResolvedEncryptionInfo metadata{
+        EncryptSchemaKeyId{"/key"}, FleAlgorithmEnum::kRandom, boost::none, boost::none};
     ASSERT_THROWS_CODE(buildEncryptPlaceholder(doc["foo"],
                                                metadata,
                                                EncryptionPlaceholderContext::kWrite,
@@ -440,8 +429,8 @@ TEST(BuildEncryptPlaceholderTest, UAssertIfPointerPointsToEncryptedField) {
                     << "encrypt"
                     << "key"
                     << "value");
-    EncryptionMetadata metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
-                                                            pointerEncryptObj["encrypt"].Obj());
+    ResolvedEncryptionInfo metadata{
+        EncryptSchemaKeyId{"/key"}, FleAlgorithmEnum::kRandom, boost::none, boost::none};
     ASSERT_THROWS_CODE(buildEncryptPlaceholder(doc["foo"],
                                                metadata,
                                                EncryptionPlaceholderContext::kWrite,
@@ -462,8 +451,8 @@ TEST(BuildEncryptPlaceholderTest, UAssertIfPointerPointsToBinDataSubtypeSix) {
     bob.append("foo", "encrypt");
     bob.appendBinData("key", 6, BinDataType::Encrypt, "123456");
     auto doc = bob.obj();
-    EncryptionMetadata metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
-                                                            pointerEncryptObj["encrypt"].Obj());
+    ResolvedEncryptionInfo metadata{
+        EncryptSchemaKeyId{"/key"}, FleAlgorithmEnum::kRandom, boost::none, boost::none};
     ASSERT_THROWS_CODE(buildEncryptPlaceholder(doc["foo"],
                                                metadata,
                                                EncryptionPlaceholderContext::kWrite,
@@ -485,8 +474,8 @@ TEST(BuildEncryptPlaceholderTest, FailsOnPointedToUUID) {
 
     EncryptionPlaceholder expected(FleAlgorithmInt::kRandom, EncryptSchemaAnyType(doc["foo"]));
     expected.setKeyId(uuid);
-    EncryptionMetadata metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
-                                                            pointerEncryptObj["encrypt"].Obj());
+    ResolvedEncryptionInfo metadata{
+        EncryptSchemaKeyId{"/key"}, FleAlgorithmEnum::kRandom, boost::none, boost::none};
     ASSERT_THROWS_CODE(buildEncryptPlaceholder(doc["foo"],
                                                metadata,
                                                EncryptionPlaceholderContext::kWrite,
@@ -498,8 +487,10 @@ TEST(BuildEncryptPlaceholderTest, FailsOnPointedToUUID) {
 }
 
 TEST(BuildEncryptPlaceholderTest, FailsForRandomEncryptionInComparisonContext) {
-    auto metadata =
-        EncryptionMetadata::parse(IDLParserErrorContext("meta"), randomEncryptObj["encrypt"].Obj());
+    ResolvedEncryptionInfo metadata{EncryptSchemaKeyId{{UUID::fromCDR(uuidBytes)}},
+                                    FleAlgorithmEnum::kRandom,
+                                    boost::none,
+                                    boost::none};
     auto doc = BSON("foo" << 1);
     ASSERT_THROWS_CODE(
         buildEncryptPlaceholder(
@@ -509,8 +500,11 @@ TEST(BuildEncryptPlaceholderTest, FailsForRandomEncryptionInComparisonContext) {
 }
 
 TEST(BuildEncryptPlaceholderTest, SucceedsForDeterministicEncryptionInComparisonContext) {
-    auto metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
-                                              encryptMetadataDeterministicObj["encrypt"].Obj());
+    std::vector<std::uint8_t> initializationVector;
+    ResolvedEncryptionInfo metadata{EncryptSchemaKeyId{{UUID::fromCDR(uuidBytes)}},
+                                    FleAlgorithmEnum::kDeterministic,
+                                    ConstDataRange{initializationVector},
+                                    MatcherTypeSet{BSONType::NumberInt}};
     auto doc = BSON("foo" << 1);
     auto placeholder = buildEncryptPlaceholder(
         doc.firstElement(), metadata, EncryptionPlaceholderContext::kComparison, nullptr);
@@ -519,8 +513,10 @@ TEST(BuildEncryptPlaceholderTest, SucceedsForDeterministicEncryptionInComparison
 }
 
 TEST(BuildEncryptPlaceholderTest, SucceedsForRandomEncryptionInWriteContext) {
-    auto metadata =
-        EncryptionMetadata::parse(IDLParserErrorContext("meta"), randomEncryptObj["encrypt"].Obj());
+    ResolvedEncryptionInfo metadata{EncryptSchemaKeyId{{UUID::fromCDR(uuidBytes)}},
+                                    FleAlgorithmEnum::kRandom,
+                                    boost::none,
+                                    boost::none};
     auto doc = BSON("foo" << 1);
     auto placeholder = buildEncryptPlaceholder(
         doc.firstElement(), metadata, EncryptionPlaceholderContext::kWrite, nullptr);
@@ -529,8 +525,11 @@ TEST(BuildEncryptPlaceholderTest, SucceedsForRandomEncryptionInWriteContext) {
 }
 
 TEST(BuildEncryptPlaceholderTest, SucceedsForDeterministicEncryptionInWriteContext) {
-    auto metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
-                                              encryptMetadataDeterministicObj["encrypt"].Obj());
+    std::vector<std::uint8_t> initializationVector;
+    ResolvedEncryptionInfo metadata{EncryptSchemaKeyId{{UUID::fromCDR(uuidBytes)}},
+                                    FleAlgorithmEnum::kDeterministic,
+                                    ConstDataRange{initializationVector},
+                                    MatcherTypeSet{BSONType::NumberInt}};
     auto doc = BSON("foo" << 1);
     auto placeholder = buildEncryptPlaceholder(
         doc.firstElement(), metadata, EncryptionPlaceholderContext::kWrite, nullptr);
@@ -539,8 +538,11 @@ TEST(BuildEncryptPlaceholderTest, SucceedsForDeterministicEncryptionInWriteConte
 }
 
 TEST(BuildEncryptPlaceholderTest, FailsForStringWithNonSimpleCollationInComparisonContext) {
-    auto metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
-                                              encryptMetadataDeterministicObj["encrypt"].Obj());
+    std::vector<std::uint8_t> initializationVector;
+    ResolvedEncryptionInfo metadata{EncryptSchemaKeyId{{UUID::fromCDR(uuidBytes)}},
+                                    FleAlgorithmEnum::kDeterministic,
+                                    ConstDataRange{initializationVector},
+                                    MatcherTypeSet{BSONType::String}};
     auto doc = BSON("foo"
                     << "string");
     auto collator =
@@ -554,8 +556,11 @@ TEST(BuildEncryptPlaceholderTest, FailsForStringWithNonSimpleCollationInComparis
 }
 
 TEST(BuildEncryptPlaceholderTest, FailsForSymbolWithNonSimpleCollationInComparisonContext) {
-    auto metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
-                                              encryptMetadataDeterministicObj["encrypt"].Obj());
+    std::vector<std::uint8_t> initializationVector;
+    ResolvedEncryptionInfo metadata{EncryptSchemaKeyId{{UUID::fromCDR(uuidBytes)}},
+                                    FleAlgorithmEnum::kDeterministic,
+                                    ConstDataRange{initializationVector},
+                                    MatcherTypeSet{BSONType::Symbol}};
 
     BSONObjBuilder builder;
     builder.append("foo"_sd, "symbol"_sd);
@@ -571,8 +576,11 @@ TEST(BuildEncryptPlaceholderTest, FailsForSymbolWithNonSimpleCollationInComparis
 }
 
 TEST(BuildEncryptPlaceholderTest, SucceedsForStringWithNonSimpleCollationInWriteContext) {
-    auto metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
-                                              encryptMetadataDeterministicObj["encrypt"].Obj());
+    std::vector<std::uint8_t> initializationVector;
+    ResolvedEncryptionInfo metadata{EncryptSchemaKeyId{{UUID::fromCDR(uuidBytes)}},
+                                    FleAlgorithmEnum::kDeterministic,
+                                    ConstDataRange{initializationVector},
+                                    MatcherTypeSet{BSONType::String}};
     auto doc = BSON("foo"
                     << "string");
     auto collator =
@@ -584,8 +592,11 @@ TEST(BuildEncryptPlaceholderTest, SucceedsForStringWithNonSimpleCollationInWrite
 }
 
 TEST(BuildEncryptPlaceholderTest, SucceedsForStringWithSimpleCollationInComparisonContext) {
-    auto metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
-                                              encryptMetadataDeterministicObj["encrypt"].Obj());
+    std::vector<std::uint8_t> initializationVector;
+    ResolvedEncryptionInfo metadata{EncryptSchemaKeyId{{UUID::fromCDR(uuidBytes)}},
+                                    FleAlgorithmEnum::kDeterministic,
+                                    ConstDataRange{initializationVector},
+                                    MatcherTypeSet{BSONType::String}};
     auto doc = BSON("foo"
                     << "string");
     auto placeholder = buildEncryptPlaceholder(
@@ -601,8 +612,8 @@ TEST(BuildEncryptPlaceholderTest, FailsIfPointerPointsToNonString) {
                              << "test"
                              << "key"
                              << 5);
-    auto metadata = EncryptionMetadata::parse(IDLParserErrorContext("meta"),
-                                              pointerEncryptObj["encrypt"].Obj());
+    ResolvedEncryptionInfo metadata{
+        EncryptSchemaKeyId{"/key"}, FleAlgorithmEnum::kRandom, boost::none, boost::none};
     ASSERT_THROWS_CODE(buildEncryptPlaceholder(docToEncrypt["foo"],
                                                metadata,
                                                EncryptionPlaceholderContext::kWrite,
@@ -630,8 +641,10 @@ TEST(EncryptionUpdateVisitorTest, ReplaceSingleFieldCorrectly) {
 
     driver.visitRoot(&updateVisitor);
     auto newUpdate = driver.serialize().getDocument().toBson();
-    EncryptionMetadata metadata =
-        EncryptionMetadata::parse(IDLParserErrorContext("meta"), randomEncryptObj["encrypt"].Obj());
+    ResolvedEncryptionInfo metadata{EncryptSchemaKeyId{{UUID::fromCDR(uuidBytes)}},
+                                    FleAlgorithmEnum::kRandom,
+                                    boost::none,
+                                    boost::none};
     auto correctField = buildEncryptPlaceholder(
         entry["$set"]["foo"], metadata, EncryptionPlaceholderContext::kWrite, nullptr, entry);
     auto correctBSON = BSON("$set" << BSON("baz"
@@ -663,8 +676,10 @@ TEST(EncryptionUpdateVisitorTest, ReplaceMultipleFieldsCorrectly) {
 
     driver.visitRoot(&updateVisitor);
     auto newUpdate = driver.serialize().getDocument().toBson();
-    EncryptionMetadata metadata =
-        EncryptionMetadata::parse(IDLParserErrorContext("meta"), randomEncryptObj["encrypt"].Obj());
+    ResolvedEncryptionInfo metadata{EncryptSchemaKeyId{{UUID::fromCDR(uuidBytes)}},
+                                    FleAlgorithmEnum::kRandom,
+                                    boost::none,
+                                    boost::none};
     auto correctBar = buildEncryptPlaceholder(
         entry["$set"]["foo.bar"], metadata, EncryptionPlaceholderContext::kWrite, nullptr, entry);
     auto correctBaz = buildEncryptPlaceholder(
@@ -692,8 +707,10 @@ TEST(EncryptionUpdateVisitorTest, FieldMarkedForEncryptionInRightHandSetObject) 
     auto updateVisitor = EncryptionUpdateVisitor(*schemaTree.get());
     driver.visitRoot(&updateVisitor);
     auto newUpdate = driver.serialize().getDocument().toBson();
-    EncryptionMetadata metadata =
-        EncryptionMetadata::parse(IDLParserErrorContext("meta"), randomEncryptObj["encrypt"].Obj());
+    ResolvedEncryptionInfo metadata{EncryptSchemaKeyId{{UUID::fromCDR(uuidBytes)}},
+                                    FleAlgorithmEnum::kRandom,
+                                    boost::none,
+                                    boost::none};
     auto correctField = buildEncryptPlaceholder(
         entry["$set"]["foo"]["bar"], metadata, EncryptionPlaceholderContext::kWrite, nullptr);
     ASSERT_BSONELT_EQ(newUpdate["$set"]["foo"]["bar"], correctField["bar"]);

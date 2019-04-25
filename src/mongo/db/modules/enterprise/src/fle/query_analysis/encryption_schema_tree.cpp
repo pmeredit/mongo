@@ -114,28 +114,50 @@ public:
      * Computes metadata for a Encrypt node taking into account metadata objects inherited on the
      * way from the root.
      */
-    EncryptionMetadata combineWithChain(const EncryptionInfo& encryptInfo) const {
-        EncryptionMetadata metadata;
-
-        // Combine metadata chain from the root to current element.
+    ResolvedEncryptionInfo combineWithChain(const EncryptionInfo& encryptInfo) const {
+        // Combine metadata chain from the root to current element. 'currentMetadata' is used to
+        // house the current values of each metadata field as we traverse the chain.
+        EncryptionMetadata currentMetadata;
         for (const auto& newMetadata : _chain) {
             if (newMetadata.getAlgorithm())
-                metadata.setAlgorithm(newMetadata.getAlgorithm().value());
+                currentMetadata.setAlgorithm(newMetadata.getAlgorithm().value());
             if (newMetadata.getInitializationVector())
-                metadata.setInitializationVector(newMetadata.getInitializationVector().value());
+                currentMetadata.setInitializationVector(
+                    newMetadata.getInitializationVector().value());
             if (newMetadata.getKeyId())
-                metadata.setKeyId(newMetadata.getKeyId().value());
+                currentMetadata.setKeyId(newMetadata.getKeyId().value());
         }
 
-        // Override non-empty fields of the combined metadata with the fields from
-        // Encrypt element, as they take precedence.
+        // Override non-empty fields of the combined metadata with the fields from Encrypt element,
+        // as they take precedence.
         if (encryptInfo.getAlgorithm())
-            metadata.setAlgorithm(encryptInfo.getAlgorithm());
+            currentMetadata.setAlgorithm(encryptInfo.getAlgorithm());
         if (encryptInfo.getInitializationVector())
-            metadata.setInitializationVector(encryptInfo.getInitializationVector());
+            currentMetadata.setInitializationVector(encryptInfo.getInitializationVector());
         if (encryptInfo.getKeyId())
-            metadata.setKeyId(encryptInfo.getKeyId());
-        return metadata;
+            currentMetadata.setKeyId(encryptInfo.getKeyId());
+
+        // Verify that after resolving inherited encryption metadata through the metadata chain, we
+        // have the algorithm, IV, and key ID fields.
+        uassert(51099,
+                "Encrypt object combined with encryptMetadata needs to specify an algorithm",
+                currentMetadata.getAlgorithm());
+        uassert(51097,
+                "Encrypt object combined with encryptMetadata needs to specify a keyId",
+                currentMetadata.getKeyId());
+
+        auto matcherTypeSet = encryptInfo.getBsonType()
+            ? boost::optional<MatcherTypeSet>(encryptInfo.getBsonType()->typeSet())
+            : boost::none;
+
+        // Produce an object containing the result of resolving the metadata chain. This object
+        // differs from the individual elements of the metadata chain in that the keyId and
+        // algorithm are non-optional, and also in that it can contain BSON type information
+        // obtained from the EncryptionInfo.
+        return ResolvedEncryptionInfo{*currentMetadata.getKeyId(),
+                                      *currentMetadata.getAlgorithm(),
+                                      currentMetadata.getInitializationVector(),
+                                      std::move(matcherTypeSet)};
     }
 
 private:
@@ -180,7 +202,7 @@ std::unique_ptr<EncryptionSchemaEncryptedNode> parseEncrypt(
 
     EncryptionInfo encryptInfo = EncryptionInfo::parse(encryptCtxt, encryptElt.embeddedObject());
     auto metadata = metadataChain.combineWithChain(encryptInfo);
-    return std::make_unique<EncryptionSchemaEncryptedNode>(metadata);
+    return std::make_unique<EncryptionSchemaEncryptedNode>(std::move(metadata));
 }
 
 /**
@@ -413,7 +435,7 @@ std::vector<EncryptionSchemaTreeNode*> EncryptionSchemaTreeNode::getChildrenForP
     return matchingChildren;
 }
 
-boost::optional<EncryptionMetadata> EncryptionSchemaTreeNode::_getEncryptionMetadataForPath(
+boost::optional<ResolvedEncryptionInfo> EncryptionSchemaTreeNode::_getEncryptionMetadataForPath(
     const FieldRef& path, size_t index) const {
     // If we've ended on this node, then return whether its an encrypted node.
     if (index >= path.numParts()) {

@@ -46,7 +46,7 @@ FLEMatchExpression::FLEMatchExpression(std::unique_ptr<MatchExpression> expressi
 }
 
 BSONElement FLEMatchExpression::allocateEncryptedElement(const BSONElement& elem,
-                                                         const EncryptionMetadata& metadata,
+                                                         const ResolvedEncryptionInfo& metadata,
                                                          const CollatorInterface* collator) {
     _encryptedElements.push_back(buildEncryptPlaceholder(
         elem, metadata, EncryptionPlaceholderContext::kComparison, collator));

@@ -35,6 +35,7 @@
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/unittest/unittest.h"
 #include "query_analysis.h"
+#include "resolved_encryption_info.h"
 
 namespace mongo {
 
@@ -73,13 +74,6 @@ protected:
                 }
             }
         })");
-
-        kDefaultMetadata =
-            EncryptionMetadata::parse(IDLParserErrorContext("encryptMetadata"), fromjson(R"({
-                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
-                initializationVector: {$binary: "bW9uZ28=", $type: "00"}
-            })"));
     }
 
     /**
@@ -90,7 +84,7 @@ protected:
      * The first element in the BSONObj will have a value of BinData sub-type 6 for the placeholder.
      */
     template <class T>
-    BSONObj buildEncryptElem(T value, const EncryptionMetadata& metadata) {
+    BSONObj buildEncryptElem(T value, const ResolvedEncryptionInfo& metadata) {
         auto tempObj = BSON("v" << value);
         return buildEncryptPlaceholder(
             tempObj.firstElement(), metadata, EncryptionPlaceholderContext::kComparison, nullptr);
@@ -128,8 +122,15 @@ protected:
     // Schema which defines a 'user' object with a nested 'ssn' encrypted field.
     BSONObj kDefaultNestedSchema;
 
+    std::vector<std::uint8_t> kInitializationVector{0x6D, 0x6F, 0x6E, 0x67, 0x6F};
+
     // Default metadata, see initialization above for actual values.
-    EncryptionMetadata kDefaultMetadata;
+    ResolvedEncryptionInfo kDefaultMetadata{
+        EncryptSchemaKeyId{std::vector<UUID>{
+            uassertStatusOK(UUID::parse("01234567-89ab-cdef-edcb-a98765432101"))}},
+        FleAlgorithmEnum::kDeterministic,
+        ConstDataRange{kInitializationVector},
+        MatcherTypeSet{BSONType::String}};
 };
 
 }  // namespace mongo

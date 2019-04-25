@@ -36,6 +36,7 @@
 #include "mongo/db/field_ref.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/util/str.h"
+#include "resolved_encryption_info.h"
 
 namespace mongo {
 
@@ -105,7 +106,7 @@ public:
      * Override this method to return the node's EncryptionMetadata, or boost::none if it holds
      * none.
      */
-    virtual boost::optional<EncryptionMetadata> getEncryptionMetadata() const = 0;
+    virtual boost::optional<ResolvedEncryptionInfo> getEncryptionMetadata() const = 0;
 
     /**
      * Returns true if this tree contains at least one EncryptionSchemaEncryptedNode.
@@ -175,7 +176,8 @@ public:
      * EncryptionMetadata, otherwise returns boost::none. Any numerical path components will
      * *always* be treated as field names, not array indexes.
      */
-    boost::optional<EncryptionMetadata> getEncryptionMetadataForPath(const FieldRef& path) const {
+    boost::optional<ResolvedEncryptionInfo> getEncryptionMetadataForPath(
+        const FieldRef& path) const {
         return _getEncryptionMetadataForPath(path, 0);
     }
 
@@ -233,8 +235,8 @@ private:
      * happen for 'patternProperties', since we may need to descend the subtrees for multiple
      * matching patterns.
      */
-    boost::optional<EncryptionMetadata> _getEncryptionMetadataForPath(const FieldRef& path,
-                                                                      size_t index = 0) const;
+    boost::optional<ResolvedEncryptionInfo> _getEncryptionMetadataForPath(const FieldRef& path,
+                                                                          size_t index = 0) const;
 
     bool _containsEncryptedNodeBelowPrefix(const FieldRef& prefix, size_t level) const;
 
@@ -254,7 +256,7 @@ private:
  */
 class EncryptionSchemaNotEncryptedNode final : public EncryptionSchemaTreeNode {
 public:
-    boost::optional<EncryptionMetadata> getEncryptionMetadata() const final {
+    boost::optional<ResolvedEncryptionInfo> getEncryptionMetadata() const final {
         return boost::none;
     }
 
@@ -269,21 +271,10 @@ public:
  */
 class EncryptionSchemaEncryptedNode final : public EncryptionSchemaTreeNode {
 public:
-    EncryptionSchemaEncryptedNode(EncryptionMetadata metadata) : _metadata(std::move(metadata)) {
-        uassert(51099,
-                "Encrypt object combined with encryptMetadata needs to specify an algorithm",
-                _metadata.getAlgorithm());
-        uassert(51096,
-                "Deterministic algorithm must be accompanied with an initialization vector in "
-                "encrypt object combined with encryptMetadata",
-                _metadata.getAlgorithm() == FleAlgorithmEnum::kRandom ||
-                    _metadata.getInitializationVector());
-        uassert(51097,
-                "Encrypt object combined with encryptMetadata needs to specify a keyId",
-                _metadata.getKeyId());
-    }
+    EncryptionSchemaEncryptedNode(ResolvedEncryptionInfo metadata)
+        : _metadata(std::move(metadata)) {}
 
-    boost::optional<EncryptionMetadata> getEncryptionMetadata() const final {
+    boost::optional<ResolvedEncryptionInfo> getEncryptionMetadata() const final {
         return _metadata;
     }
 
@@ -296,7 +287,7 @@ public:
     }
 
 private:
-    const EncryptionMetadata _metadata;
+    const ResolvedEncryptionInfo _metadata;
 };
 
 }  // namespace mongo

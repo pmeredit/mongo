@@ -5,32 +5,24 @@ Import('env')
 env = env.Clone()
 
 env.Library(
-    target='encryption_schema_tree',
-    source=[
-        'encryption_schema_tree.cpp'
-    ],
-    LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
-        '$BUILD_DIR/mongo/db/matcher/expressions',
-    ]
-)
-
-env.Library(
     target='cryptd_query_analysis',
     source=[
         'collator_factory_cryptd.cpp',
+        'encryption_schema_tree.cpp',
         'fle_match_expression.cpp',
         'fle_pipeline.cpp',
         'query_analysis.cpp',
+        'resolved_encryption_info.cpp',
     ],
     LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/db/commands',
+        '$BUILD_DIR/mongo/db/matcher/expressions',
         '$BUILD_DIR/mongo/db/ops/write_ops_parsers',
         '$BUILD_DIR/mongo/db/pipeline/pipeline',
-        '$BUILD_DIR/mongo/db/query/distinct_command_idl',
         '$BUILD_DIR/mongo/db/query/command_request_response',
+        '$BUILD_DIR/mongo/db/query/distinct_command_idl',
         '$BUILD_DIR/mongo/db/update/update_driver',
-        'encryption_schema_tree',
     ]
 )
 
@@ -38,9 +30,9 @@ env.CppUnitTest(
     target='query_analysis_test',
     source=[
         'encryption_schema_tree_test.cpp',
-        'query_analysis_test.cpp',
         'fle_match_expression_test.cpp',
         'fle_pipeline_test.cpp',
+        'query_analysis_test.cpp',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/db/query/query_test_service_context',
