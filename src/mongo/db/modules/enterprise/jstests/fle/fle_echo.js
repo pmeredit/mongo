@@ -107,8 +107,8 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
                 assert.eq(passthroughResult.schemaRequiresEncryption, true, passthroughResult);
             }
 
-            // The '$db' field is special as it's automatically added by the shell.
-            assert.eq(passthroughResult.result.$db, "test", passthroughResult);
+            // The '$db' field is always removed by cryptd.
+            assert(!passthroughResult.hasOwnProperty("$db"));
         } else {
             // Command is not supported yet, verify an empty 'result' in the response.
             assert.eq(passthroughResult.result, {}, passthroughResult);

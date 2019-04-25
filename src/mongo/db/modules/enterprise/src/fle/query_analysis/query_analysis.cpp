@@ -154,12 +154,21 @@ BSONObj replaceEncryptedFieldsRecursive(const EncryptionSchemaTreeNode* schema,
 }
 
 /**
- * Returns a new BSONObj that has all of the fields from 'response' that are also in 'original'.
+ * Returns a new BSONObj that has all of the fields from 'response' that are also in 'original'
+ * and always removes $db.
  */
 BSONObj removeExtraFields(const std::set<StringData>& original, const BSONObj& response) {
     BSONObjBuilder bob;
     for (auto&& elem : response) {
-        if (original.find(elem.fieldNameStringData()) != original.end()) {
+        auto field = elem.fieldNameStringData();
+        // "$db" is always removed because the drivers adds it to every message sent. If
+        // we sent them in the reply, the drivers would wind up trying to add it again when
+        // sending the query to mongod. In addition, some queries may not want to send $db at all
+        // to a specific mongod version, so we remove it here instead of in the driver.
+        if (field == "$db") {
+            continue;
+        }
+        if (original.find(field) != original.end()) {
             bob.append(elem);
         }
     }
