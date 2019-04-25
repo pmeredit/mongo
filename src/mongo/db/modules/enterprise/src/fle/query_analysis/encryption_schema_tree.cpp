@@ -184,11 +184,14 @@ std::unique_ptr<EncryptionSchemaEncryptedNode> parseEncrypt(
 }
 
 /**
- * Throws an exception if an illegal 'encrypt' keyword is found inside an 'items' or
- * 'additionalItems' subschema.
+ * Throws an exception if an illegal 'encrypt' keyword is found inside of a subschema for an array
+ * keyword ('items' or 'additionalItems') or for a logical keyword ('allOf', 'anyOf', 'oneOf', or
+ * 'not').
+ *
+ * We currently make no attempt to simplify or analyze schemas written using the logical keywords.
  */
-void validateArrayKeywords(StringMap<BSONElement>& keywordMap,
-                           const EncryptMetadataChainMemento& metadataChain) {
+void validateArrayAndLogicalSubschemas(StringMap<BSONElement>& keywordMap,
+                                       const EncryptMetadataChainMemento& metadataChain) {
     // Recurse each schema in items and verify that 'encrypt' is not specified.
     if (auto itemsElem = keywordMap[JSONSchemaParser::kSchemaItemsKeyword]) {
         if (itemsElem.type() == BSONType::Array) {
@@ -212,6 +215,22 @@ void validateArrayKeywords(StringMap<BSONElement>& keywordMap,
         if (additionalItemsElem.type() == BSONType::Object) {
             _parse(additionalItemsElem.embeddedObject(), false, metadataChain);
         }
+    }
+
+    // Several of the logical keywords take an array of subschemas.
+    for (auto&& arrayKeyword : {JSONSchemaParser::kSchemaAllOfKeyword,
+                                JSONSchemaParser::kSchemaAnyOfKeyword,
+                                JSONSchemaParser::kSchemaOneOfKeyword}) {
+        if (auto arrayKeywordElem = keywordMap[arrayKeyword]) {
+            for (auto&& subschema : arrayKeywordElem.embeddedObject()) {
+                _parse(subschema.embeddedObject(), false, metadataChain);
+            }
+        }
+    }
+
+    // Ensure that the subschema for the 'not' logical keyword has no 'encrypt' specifiers.
+    if (auto notElem = keywordMap[JSONSchemaParser::kSchemaNotKeyword]) {
+        _parse(notElem.embeddedObject(), false, metadataChain);
     }
 }
 
@@ -296,32 +315,42 @@ std::unique_ptr<EncryptionSchemaTreeNode> _parse(BSONObj schema,
     StringMap<BSONElement> keywordMap{
         {std::string(JSONSchemaParser::kSchemaAdditionalItemsKeyword), {}},
         {std::string(JSONSchemaParser::kSchemaAdditionalPropertiesKeyword), {}},
+        {std::string(JSONSchemaParser::kSchemaAllOfKeyword), {}},
+        {std::string(JSONSchemaParser::kSchemaAnyOfKeyword), {}},
         {std::string(JSONSchemaParser::kSchemaBsonTypeKeyword), {}},
         {std::string(JSONSchemaParser::kSchemaEncryptKeyword), {}},
         {std::string(JSONSchemaParser::kSchemaEncryptMetadataKeyword), {}},
         {std::string(JSONSchemaParser::kSchemaItemsKeyword), {}},
+        {std::string(JSONSchemaParser::kSchemaNotKeyword), {}},
+        {std::string(JSONSchemaParser::kSchemaOneOfKeyword), {}},
         {std::string(JSONSchemaParser::kSchemaPatternPropertiesKeyword), {}},
         {std::string(JSONSchemaParser::kSchemaPropertiesKeyword), {}},
         {std::string(JSONSchemaParser::kSchemaTypeKeyword), {}},
     };
 
-    // Populate the keyword map for the list of relevant keywords for encryption. Can safely ignore
-    // unknown keywords as full validation of the schema should've been handled already.
+    // Populate the keyword map for the list of relevant keywords for encryption.
     for (auto&& elt : schema) {
         auto it = keywordMap.find(elt.fieldNameStringData());
-        if (it == keywordMap.end())
-            continue;
+        uassert(31068,
+                str::stream() << "JSON schema keyword '" << elt.fieldNameStringData()
+                              << "' is not supported for client-side encryption",
+                it != keywordMap.end());
 
         keywordMap[elt.fieldNameStringData()] = elt;
     }
 
-    validateArrayKeywords(keywordMap, metadataChain);
+    validateArrayAndLogicalSubschemas(keywordMap, metadataChain);
 
     if (auto encryptElem = keywordMap[JSONSchemaParser::kSchemaEncryptKeyword]) {
         return parseEncrypt(encryptElem, schema, encryptAllowed, metadataChain);
     }
 
     if (auto encryptMetadataElt = keywordMap[JSONSchemaParser::kSchemaEncryptMetadataKeyword]) {
+        uassert(31077,
+                str::stream() << "Invalid schema containing the '"
+                              << JSONSchemaParser::kSchemaEncryptMetadataKeyword
+                              << "' keyword.",
+                encryptAllowed);
         IDLParserErrorContext ctxt("encryptMetadata");
         const auto& metadata = EncryptionMetadata::parse(ctxt, encryptMetadataElt.embeddedObject());
 

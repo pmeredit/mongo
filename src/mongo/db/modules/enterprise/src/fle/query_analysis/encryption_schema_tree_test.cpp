@@ -319,7 +319,6 @@ TEST(EncryptionSchemaTreeTest, FailsToParseEncryptWithSiblingKeywords) {
                     algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
                     keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
                 },
-                minimum: 5,
                 items: {}
             }
         }})");
@@ -388,6 +387,22 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptWithinItems) {
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
 }
 
+TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptMetadataWithinItems) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            ssn: {
+                type: "array",
+                items: {
+                    encryptMetadata: {
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
+                    }
+                }
+            }
+        }})");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31077);
+}
+
 TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptWithinAdditionalItems) {
     BSONObj schema = fromjson(R"({
         type: "object",
@@ -418,6 +433,23 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptWithinAdditionalItems) {
             }
         }})");
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+}
+
+TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptMetadataWithinAdditionalItems) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            ssn: {
+                type: "array",
+                items: {},
+                additionalItems: {
+                    encryptMetadata: {
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
+                    }
+                }
+            }
+        }})");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31077);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptParentIsNotTypeRestricted) {
@@ -1768,6 +1800,413 @@ TEST(EncryptionSchemaTreeTest, ParseSucceedsIfLengthOneTypeArray) {
                        << BSON("foo" << encryptObj));
     // Just making sure the parse succeeds, don't care about the result.
     EncryptionSchemaTreeNode::parse(schema);
+}
+
+TEST(EncryptionSchemaTreeTest, AllOfKeywordSubschemaWithoutEncryptSucceeds) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            foo: {
+                allOf: [
+                    {
+                        type: "object",
+                        properties: {
+                            bar: {type: "string"}
+                        }
+                    },
+                    {
+                        type: "object",
+                        properties: {
+                            baz: {bsonType: "int"}
+                        }
+                    }
+                ]
+            }
+        }
+    })");
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    ASSERT_FALSE(schemaTree->getEncryptionMetadataForPath(FieldRef("foo")));
+    ASSERT_FALSE(schemaTree->getEncryptionMetadataForPath(FieldRef("foo.bar")));
+    ASSERT_FALSE(schemaTree->getEncryptionMetadataForPath(FieldRef("foo.baz")));
+}
+
+TEST(EncryptionSchemaTreeTest, AllOfKeywordSubschemaWithEncryptFails) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            foo: {
+                allOf: [
+                    {
+                        type: "object",
+                        properties: {
+                            bar: {type: "string"}
+                        }
+                    },
+                    {
+                        type: "object",
+                        properties: {
+                            bar: {
+                                encrypt: {
+                                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                                    keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                                }
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    })");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+}
+
+TEST(EncryptionSchemaTreeTest, AllOfKeywordSubschemaWithEncryptMetadataFails) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            foo: {
+                allOf: [
+                    {
+                        type: "object",
+                        properties: {
+                            bar: {type: "string"}
+                        }
+                    },
+                    {
+                        type: "object",
+                        properties: {
+                            bar: {
+                                encryptMetadata: {
+                                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
+                                }
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    })");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31077);
+}
+
+TEST(EncryptionSchemaTreeTest, AnyOfKeywordSubschemaWithoutEncryptSucceeds) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            foo: {
+                anyOf: [
+                    {
+                        type: "object",
+                        properties: {
+                            bar: {type: "string"}
+                        }
+                    },
+                    {
+                        type: "object",
+                        properties: {
+                            baz: {bsonType: "int"}
+                        }
+                    }
+                ]
+            }
+        }
+    })");
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    ASSERT_FALSE(schemaTree->getEncryptionMetadataForPath(FieldRef("foo")));
+    ASSERT_FALSE(schemaTree->getEncryptionMetadataForPath(FieldRef("foo.bar")));
+    ASSERT_FALSE(schemaTree->getEncryptionMetadataForPath(FieldRef("foo.baz")));
+}
+
+TEST(EncryptionSchemaTreeTest, AnyOfKeywordSubschemaWithEncryptFails) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            foo: {
+                anyOf: [
+                    {
+                        type: "object",
+                        properties: {
+                            bar: {type: "string"}
+                        }
+                    },
+                    {
+                        type: "object",
+                        properties: {
+                            bar: {
+                                encrypt: {
+                                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                                    keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                                }
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    })");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+}
+
+TEST(EncryptionSchemaTreeTest, AnyOfKeywordSubschemaWithEncryptMetadataFails) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            foo: {
+                anyOf: [
+                    {
+                        type: "object",
+                        properties: {
+                            bar: {type: "string"}
+                        }
+                    },
+                    {
+                        type: "object",
+                        properties: {
+                            bar: {
+                                encryptMetadata: {
+                                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
+                                }
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    })");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31077);
+}
+
+TEST(EncryptionSchemaTreeTest, OneOfKeywordSubschemaWithoutEncryptSucceeds) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            foo: {
+                oneOf: [
+                    {
+                        type: "object",
+                        properties: {
+                            bar: {type: "string"}
+                        }
+                    },
+                    {
+                        type: "object",
+                        properties: {
+                            baz: {bsonType: "int"}
+                        }
+                    }
+                ]
+            }
+        }
+    })");
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    ASSERT_FALSE(schemaTree->getEncryptionMetadataForPath(FieldRef("foo")));
+    ASSERT_FALSE(schemaTree->getEncryptionMetadataForPath(FieldRef("foo.bar")));
+    ASSERT_FALSE(schemaTree->getEncryptionMetadataForPath(FieldRef("foo.baz")));
+}
+
+TEST(EncryptionSchemaTreeTest, OneOfKeywordSubschemaWithEncryptFails) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            foo: {
+                oneOf: [
+                    {
+                        type: "object",
+                        properties: {
+                            bar: {type: "string"}
+                        }
+                    },
+                    {
+                        type: "object",
+                        properties: {
+                            bar: {
+                                encrypt: {
+                                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                                    keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                                }
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    })");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+}
+
+TEST(EncryptionSchemaTreeTest, OneOfKeywordSubschemaWithEncryptMetadataFails) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            foo: {
+                oneOf: [
+                    {
+                        type: "object",
+                        properties: {
+                            bar: {type: "string"}
+                        }
+                    },
+                    {
+                        type: "object",
+                        properties: {
+                            bar: {
+                                encryptMetadata: {
+                                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
+                                }
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    })");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31077);
+}
+
+TEST(EncryptionSchemaTreeTest, NotKeywordSubschemaWithoutEncryptSucceeds) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            foo: {
+                not: {
+                    type: "object",
+                    properties: {
+                        bar: {type: "string"}
+                    }
+                }
+            }
+        }
+    })");
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    ASSERT_FALSE(schemaTree->getEncryptionMetadataForPath(FieldRef("foo")));
+    ASSERT_FALSE(schemaTree->getEncryptionMetadataForPath(FieldRef("foo.bar")));
+    ASSERT_FALSE(schemaTree->getEncryptionMetadataForPath(FieldRef("foo.baz")));
+}
+
+TEST(EncryptionSchemaTreeTest, NotKeywordSubschemaWithEncryptFails) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            foo: {
+                not: {
+                    type: "object",
+                    properties: {
+                        bar: {
+                            encrypt: {
+                                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                                keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    })");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+}
+
+TEST(EncryptionSchemaTreeTest, NotKeywordSubschemaWithEncryptMetadataFails) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            foo: {
+                not: {
+                    type: "object",
+                    properties: {
+                        bar: {
+                            encryptMetadata: {
+                                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    })");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31077);
+}
+
+TEST(EncryptionSchemaTreeTest, EncryptMetadataWithoutExplicitTypeObjectSpecificationFails) {
+    BSONObj schema = fromjson(R"({
+        properties: {
+            foo: {
+                encryptMetadata: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
+                }
+            }
+        }
+    })");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31077);
+}
+
+// TODO SERVER-40837 Relax the restrictions on these JSON Schema keywords.
+TEST(EncryptionSchemaTreeNode, UnsupportedJSONSchemaKeywords) {
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(fromjson(
+                           "{dependencies: {foo: {properties: {bar: {type: 'string'}}}}}")),
+                       AssertionException,
+                       31068);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(fromjson("{description: 'test'}")),
+                       AssertionException,
+                       31068);
+    ASSERT_THROWS_CODE(
+        EncryptionSchemaTreeNode::parse(fromjson("{properties: {foo: {enum: [1, 2, 3]}}}")),
+        AssertionException,
+        31068);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(
+                           fromjson("{properties: {foo: {exclusiveMaximum: true, maximum: 1}}}")),
+                       AssertionException,
+                       31068);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(
+                           fromjson("{properties: {foo: {exclusiveMinimum: true, minimum: 1}}}")),
+                       AssertionException,
+                       31068);
+    ASSERT_THROWS_CODE(
+        EncryptionSchemaTreeNode::parse(fromjson("{properties: {foo: {maxItems: 1}}}")),
+        AssertionException,
+        31068);
+    ASSERT_THROWS_CODE(
+        EncryptionSchemaTreeNode::parse(fromjson("{properties: {foo: {maxLength: 1}}}")),
+        AssertionException,
+        31068);
+    ASSERT_THROWS_CODE(
+        EncryptionSchemaTreeNode::parse(fromjson("{maxProperties: 1}")), AssertionException, 31068);
+    ASSERT_THROWS_CODE(
+        EncryptionSchemaTreeNode::parse(fromjson("{properties: {foo: {maximum: 1}}}")),
+        AssertionException,
+        31068);
+    ASSERT_THROWS_CODE(
+        EncryptionSchemaTreeNode::parse(fromjson("{properties: {foo: {minItems: 1}}}")),
+        AssertionException,
+        31068);
+    ASSERT_THROWS_CODE(
+        EncryptionSchemaTreeNode::parse(fromjson("{properties: {foo: {minLength: 1}}}")),
+        AssertionException,
+        31068);
+    ASSERT_THROWS_CODE(
+        EncryptionSchemaTreeNode::parse(fromjson("{minProperties: 1}")), AssertionException, 31068);
+    ASSERT_THROWS_CODE(
+        EncryptionSchemaTreeNode::parse(fromjson("{minProperties: 1}")), AssertionException, 31068);
+    ASSERT_THROWS_CODE(
+        EncryptionSchemaTreeNode::parse(fromjson("{properties: {foo: {minimum: 1}}}")),
+        AssertionException,
+        31068);
+    ASSERT_THROWS_CODE(
+        EncryptionSchemaTreeNode::parse(fromjson("{properties: {foo: {multipleOf: 2}}}")),
+        AssertionException,
+        31068);
+    ASSERT_THROWS_CODE(
+        EncryptionSchemaTreeNode::parse(fromjson("{properties: {foo: {pattern: 'bar'}}}")),
+        AssertionException,
+        31068);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(fromjson("{required: ['a', 'b']}")),
+                       AssertionException,
+                       31068);
+    ASSERT_THROWS_CODE(
+        EncryptionSchemaTreeNode::parse(fromjson("{title: 'title'}")), AssertionException, 31068);
+    ASSERT_THROWS_CODE(
+        EncryptionSchemaTreeNode::parse(fromjson("{properties: {foo: {uniqueItems: true}}}")),
+        AssertionException,
+        31068);
 }
 
 }  // namespace
