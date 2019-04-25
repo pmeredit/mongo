@@ -34,7 +34,7 @@ public:
     StatusWith<std::unique_ptr<LDAPConnection>> create(const LDAPConnectionOptions& options);
 
 private:
-    std::unique_ptr<executor::ConnectionPool> _pool;
+    std::shared_ptr<executor::ConnectionPool> _pool;
 };
 
 }  // namespace mongo

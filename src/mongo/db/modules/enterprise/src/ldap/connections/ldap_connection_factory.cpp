@@ -128,7 +128,7 @@ private:
 class PooledLDAPConnection : public ConnectionPool::ConnectionInterface,
                              public std::enable_shared_from_this<PooledLDAPConnection> {
 public:
-    explicit PooledLDAPConnection(const std::shared_ptr<ThreadPool> executor,
+    explicit PooledLDAPConnection(std::shared_ptr<OutOfLineExecutor> executor,
                                   ClockSource* clockSource,
                                   const std::shared_ptr<AlarmScheduler>& alarmScheduler,
                                   const HostAndPort& host,
@@ -176,7 +176,7 @@ private:
     void refresh(Milliseconds timeout, RefreshCallback cb) final;
 
 private:
-    std::shared_ptr<ThreadPool> _executor;
+    std::shared_ptr<OutOfLineExecutor> _executor;
     LDAPTimer _timer;
     LDAPConnectionOptions _options;
     std::unique_ptr<LDAPConnection> _conn;
@@ -218,14 +218,14 @@ void PooledLDAPConnection::refresh(Milliseconds timeout, RefreshCallback cb) {
     });
 }
 
-PooledLDAPConnection::PooledLDAPConnection(const std::shared_ptr<ThreadPool> executor,
+PooledLDAPConnection::PooledLDAPConnection(std::shared_ptr<OutOfLineExecutor> executor,
                                            ClockSource* clockSource,
                                            const std::shared_ptr<AlarmScheduler>& alarmScheduler,
                                            const HostAndPort& host,
                                            LDAPConnectionOptions options,
                                            size_t generation)
     : ConnectionInterface(generation),
-      _executor(executor),
+      _executor(std::move(executor)),
       _timer(clockSource, alarmScheduler),
       _options(std::move(options)),
       _conn(nullptr),
@@ -331,8 +331,8 @@ public:
         return std::make_shared<LDAPTimer>(_clockSource, _timerScheduler);
     }
 
-    OutOfLineExecutor& getExecutor() final {
-        return *_executor;
+    const std::shared_ptr<OutOfLineExecutor>& getExecutor() final {
+        return _executor;
     }
 
     Date_t now() final {
@@ -344,8 +344,10 @@ public:
             return;
         }
         _timerRunner.shutdown();
-        _executor->shutdown();
-        _executor->join();
+
+        auto pool = checked_pointer_cast<ThreadPool>(_executor);
+        pool->shutdown();
+        pool->join();
     }
 
 private:
@@ -353,7 +355,10 @@ private:
         if (_running)
             return;
         _timerRunner.start();
-        _executor->startup();
+
+        auto pool = checked_pointer_cast<ThreadPool>(_executor);
+        pool->startup();
+
         _running = true;
     }
 
@@ -367,7 +372,7 @@ private:
     }
 
     ClockSource* const _clockSource;
-    std::shared_ptr<ThreadPool> _executor;
+    std::shared_ptr<OutOfLineExecutor> _executor;
     std::shared_ptr<AlarmScheduler> _timerScheduler;
     bool _running = false;
     AlarmRunnerBackgroundThread _timerRunner;
@@ -388,7 +393,7 @@ std::shared_ptr<executor::ConnectionPool::ConnectionInterface> LDAPTypeFactory::
 }
 
 LDAPConnectionFactory::LDAPConnectionFactory(Milliseconds poolSetupTimeout)
-    : _pool(std::make_unique<executor::ConnectionPool>(
+    : _pool(std::make_shared<executor::ConnectionPool>(
           std::make_shared<LDAPTypeFactory>(), "LDAP", makePoolOptions(poolSetupTimeout))) {}
 
 struct LDAPCompletionState {
