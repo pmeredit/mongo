@@ -81,7 +81,9 @@
         updateCommand["jsonSchema"] = test["schema"];
         updateCommand["updates"] = test["updates"];
         const result = assert.commandWorked(testDb.runCommand(updateCommand));
-        assert.eq(test["encryptedPaths"].length >= 1, result["hasEncryptionPlaceholders"]);
+        if (test["encryptedPaths"].length >= 1) {
+            assert.eq(true, result["hasEncryptionPlaceholders"]);
+        }
         for (let encryptedDoc of result["result"]["updates"]) {
             let realUpdate = encryptedDoc["u"];
             if (realUpdate.hasOwnProperty("$set")) {

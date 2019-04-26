@@ -18,8 +18,7 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
         properties: {
             foo: {
                 encrypt: {
-                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                    initializationVector: BinData(0, "ASNFZ4mrze/ty6mHZUMhAQ=="),
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
                     keyId: [UUID("4edee966-03cc-4525-bfa8-de8acd6746fa")]
                 }
             }
@@ -30,13 +29,13 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
         {find: "foo", filter: {_id: 1}},
         {distinct: "foo", query: {_id: 1}, key: "_id"},
         {count: "foo", query: {_id: 1}},
-        {findAndModify: "foo", query: {foo: 1}, update: {$inc: {score: 1.0}}},
+        {findAndModify: "foo", query: {_id: 1.0}, update: {$inc: {score: 1.0}}},
         // old name
-        {findandmodify: "foo", query: {foo: 1}, update: {$inc: {score: 1.0}}},
+        {findandmodify: "foo", query: {_id: 1.0}, update: {$inc: {score: 1.0}}},
         {aggregate: "foo", pipeline: [{filter: {$eq: 1.0}}]},
-        {insert: "foo", documents: [{foo: 1}]},
-        {update: "foo", updates: [{q: {foo: 1}, u: {"$set": {a: 2}}}]},
-        {delete: "foo", deletes: [{q: {foo: 1}, limit: 1}]},
+        {insert: "foo", documents: [{a: 1}]},
+        {update: "foo", updates: [{q: {a: 1}, u: {"$set": {a: 2}}}]},
+        {delete: "foo", deletes: [{q: {a: 1}, limit: 1}]},
     ];
 
     const supportedCommands = [
@@ -44,8 +43,6 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
         "delete",
         "distinct",
         "find",
-        "findandmodify",
-        "findAndModify",
         "insert",
         "updates",
     ];
@@ -59,22 +56,9 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
 
         // Make sure json schema works
         const ret1 = assert.commandWorked(testDB.runCommand(element));
-        assert.eq(ret1.hasEncryptionPlaceholders, false, ret1);
-        assert.eq(ret1.schemaRequiresEncryption, false, ret1);
+        assert.eq(ret1.hasEncryptionPlaceholders, false);
+        assert.eq(ret1.schemaRequiresEncryption, false);
 
-<<<<<<< HEAD
-=======
-        const explain_good = {
-            explain: 1,
-            explain: element,  // eslint-disable-line no-dupe-keys
-        };
-
-        // Make sure json schema works when explaining
-        const ret2 = assert.commandWorked(testDB.runCommand(explain_good));
-        assert.eq(ret2.hasEncryptionPlaceholders, false, ret2);
-        assert.eq(ret2.schemaRequiresEncryption, false, ret2);
-
->>>>>>> SERVER-40005 Add translation for FindAndModify for FLE
         // Test that generic "passthrough" command arguments are correctly echoed back from
         // mongocryptd.
         const passthroughFields = {
