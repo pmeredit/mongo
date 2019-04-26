@@ -31,14 +31,14 @@
 
     // Add some documents and force a checkpoint to have an initial sizeStorer file to backup.
     addDocuments(primaryDB, 0);
-    rst.awaitReplication();
+    rst.awaitLastOpCommitted();
     assert.commandWorked(primaryDB.adminCommand({fsync: 1}));
 
     const backupPath = MongoRunner.dataPath + 'backup_restore';
 
     // Add more documents and begin a backup immediately after, before another checkpoint can run.
     addDocuments(primaryDB, 100);
-    rst.awaitReplication();
+    rst.awaitLastOpCommitted();
 
     let numRecords = primaryDB.getCollection(collName).find({}).count();
     assert.eq(200, numRecords);
