@@ -165,38 +165,38 @@
     let updateCommand = {findAndModify: "test", query: {}, update: {}, jsonSchema: {}};
 
     for (let test of testCases) {
-        updateCommand["jsonSchema"] = test["schema"];
-        updateCommand["query"] = test["query"];
-        if (test["update"]) {
-            updateCommand["update"] = test["update"];
-            delete updateCommand["remove"];
+        updateCommand.jsonSchema = test.schema;
+        updateCommand.query = test.query;
+        if (test.update) {
+            updateCommand.update = test.update;
+            delete updateCommand.remove;
         } else {
-            updateCommand["remove"] = true;
-            delete updateCommand["update"];
+            updateCommand.remove = true;
+            delete updateCommand.update;
         }
-        const errorCode = test["errorCode"];
+        const errorCode = test.errorCode;
 
         if (errorCode == 0) {
             const result = assert.commandWorked(testDb.runCommand(updateCommand));
-            assert.eq(test["encryptedPaths"].length >= 1, result["hasEncryptionPlaceholders"]);
+            assert.eq(test.encryptedPaths.length >= 1, result.hasEncryptionPlaceholders);
 
             // Retrieve the interesting part of the update and query sections
             let realUpdate = null;
-            if (result["result"].hasOwnProperty("update")) {
-                let update = result["result"]["update"];
+            if (result.result.hasOwnProperty("update")) {
+                let update = result.result.update;
                 if (update.hasOwnProperty("$set")) {
-                    realUpdate = update["$set"];
+                    realUpdate = update.$set;
                 } else if (update.hasOwnProperty("$unset")) {
-                    realUpdate = update["$unset"];
+                    realUpdate = update.$unset;
                 }
             }
-            let realQuery = result["result"]["query"];
+            let realQuery = result.result.query;
 
             // For each field that should be encrypted verify both the query
             // and the update. Some documents may not contain all of the fields.
             for (let encrypt of test.encryptedPaths) {
                 if (realQuery.hasOwnProperty(encrypt)) {
-                    assert(realQuery[encrypt]["$eq"] instanceof BinData, tojson(realQuery));
+                    assert(realQuery[encrypt].$eq instanceof BinData, tojson(realQuery));
                 }
                 if (realUpdate && realUpdate.hasOwnProperty(encrypt)) {
                     assert(realUpdate[encrypt] instanceof BinData, tojson(realUpdate));
@@ -206,7 +206,7 @@
             // and the update. Some documents may not contain all of the fields.
             for (let noEncrypt of test.notEncryptedPaths) {
                 if (realQuery.hasOwnProperty(noEncrypt)) {
-                    assert(!(realQuery[encrypt]["$eq"] instanceof BinData, tojson(realQuery)));
+                    assert(!(realQuery[encrypt].$eq instanceof BinData, tojson(realQuery)));
                 }
                 if (realUpdate && realUpdate.hasOwnProperty(noEncrypt)) {
                     assert(!(realUpdate[noEncrypt] instanceof BinData), tojson(realUpdate));
@@ -218,88 +218,88 @@
     }
 
     // Test that a query with set membership is correctly marked for encryption.
-    updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}};
-    updateCommand["query"] = {bar: {"$in": [1, 5]}};
-    updateCommand["update"] = {"$set": {"foo": "2"}};
+    updateCommand.jsonSchema = {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}};
+    updateCommand.query = {bar: {"$in": [1, 5]}};
+    updateCommand.update = {"$set": {"foo": "2"}};
     const result = assert.commandWorked(testDb.runCommand(updateCommand));
-    assert(result["result"]["query"]["bar"]["$in"][0] instanceof BinData, tojson(result));
-    assert(result["result"]["query"]["bar"]["$in"][1] instanceof BinData, tojson(result));
+    assert(result.result.query.bar.$in[0] instanceof BinData, tojson(result));
+    assert(result.result.query.bar.$in[1] instanceof BinData, tojson(result));
 
     // Test that a $rename without encryption does not fail.
-    updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}};
-    updateCommand["query"] = {};
-    updateCommand["update"] = {"$rename": {"baz": "boo"}};
+    updateCommand.jsonSchema = {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}};
+    updateCommand.query = {};
+    updateCommand.update = {"$rename": {"baz": "boo"}};
     assert.commandWorked(testDb.runCommand(updateCommand));
 
     // Test that a $rename with one encrypted field fails.
-    updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}};
-    updateCommand["query"] = {};
-    updateCommand["update"] = {"$rename": {"foo": "boo"}};
+    updateCommand.jsonSchema = {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}};
+    updateCommand.query = {};
+    updateCommand.update = {"$rename": {"foo": "boo"}};
     assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51160);
 
     // Test that a $rename between encrypted fields with the same metadata does not fail.
-    updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}};
-    updateCommand["query"] = {};
-    updateCommand["update"] = {"$rename": {"foo": "bar"}};
+    updateCommand.jsonSchema = {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}};
+    updateCommand.query = {};
+    updateCommand.update = {"$rename": {"foo": "bar"}};
     assert.commandWorked(testDb.runCommand(updateCommand));
 
     // Test that a $rename between encrypted fields with different metadata fails.
-    updateCommand["jsonSchema"] = {
+    updateCommand.jsonSchema = {
         type: "object",
         properties: {
             foo: {encrypt: {algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random", keyId: "/key"}},
             bar: encryptDoc
         }
     };
-    updateCommand["query"] = {};
-    updateCommand["update"] = {"$rename": {"foo": "bar"}};
+    updateCommand.query = {};
+    updateCommand.update = {"$rename": {"foo": "bar"}};
     assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51160);
 
     // Test that a $rename fails if the source field name is a prefix of an encrypted field.
-    updateCommand["jsonSchema"] = {
+    updateCommand.jsonSchema = {
         type: "object",
         properties: {foo: {type: "object", properties: {bar: encryptDoc}}}
     };
-    updateCommand["query"] = {};
-    updateCommand["update"] = {"$rename": {"foo": "baz"}};
+    updateCommand.query = {};
+    updateCommand.update = {"$rename": {"foo": "baz"}};
     assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51161);
 
     // Test that a $rename fails if the destination field name is a prefix of an encrypted field.
-    updateCommand["jsonSchema"] = {
+    updateCommand.jsonSchema = {
         type: "object",
         properties: {foo: {type: "object", properties: {bar: encryptDoc}}}
     };
-    updateCommand["query"] = {};
-    updateCommand["update"] = {"$rename": {"baz": "foo"}};
+    updateCommand.query = {};
+    updateCommand.update = {"$rename": {"baz": "foo"}};
     assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51161);
 
     // Test that a replacement-style update with an encrypted Timestamp(0, 0) and upsert fails.
-    updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc}};
-    updateCommand["query"] = {};
-    updateCommand["update"] = {foo: Timestamp(0, 0)};
-    updateCommand["upsert"] = true;
+    updateCommand.jsonSchema = {type: "object", properties: {foo: encryptDoc}};
+    updateCommand.query = {};
+    updateCommand.update = {foo: Timestamp(0, 0)};
+    updateCommand.upsert = true;
     assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51129);
 
     // Test that an update with an encrypted _id and upsert succeeds.
-    updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc, _id: encryptDoc}};
-    updateCommand["query"] = {};
-    updateCommand["update"] = {_id: 7, foo: 5};
-    updateCommand["upsert"] = true;
+    updateCommand.jsonSchema = {type: "object", properties: {foo: encryptDoc, _id: encryptDoc}};
+    updateCommand.query = {};
+    updateCommand.update = {_id: 7, foo: 5};
+    updateCommand.upsert = true;
     assert.commandWorked(testDb.runCommand(updateCommand));
 
     // Test that an update with a missing encrypted _id and upsert fails.
-    updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc, _id: encryptDoc}};
-    updateCommand["query"] = {};
-    updateCommand["update"] = {foo: 5};
-    updateCommand["upsert"] = true;
+    updateCommand.jsonSchema = {type: "object", properties: {foo: encryptDoc, _id: encryptDoc}};
+    updateCommand.query = {};
+    updateCommand.update = {foo: 5};
+    updateCommand.upsert = true;
     assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51130);
 
     // Test that a $set with an encrypted Timestamp(0,0) and upsert succeeds since the server does
     // not autogenerate the current time in this case.
-    updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc}};
-    updateCommand["query"] = {};
-    updateCommand["update"] = {"$set": {foo: Timestamp(0, 0)}};
-    updateCommand["upsert"] = true;
+    updateCommand.jsonSchema = {type: "object", properties: {foo: encryptDoc}};
+    updateCommand.query = {};
+    updateCommand.update = {"$set": {foo: Timestamp(0, 0)}};
+    updateCommand.upsert = true;
     assert.commandWorked(testDb.runCommand(updateCommand));
 
     mongocryptd.stop();
