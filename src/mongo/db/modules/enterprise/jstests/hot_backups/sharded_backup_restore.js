@@ -274,10 +274,6 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
                 backupCursors[i] = openBackupCursor(nodesToBackup[i]);
                 metadata = getBackupCursorMetadata(backupCursors[i]);
                 assert("checkpointTimestamp" in metadata);
-                heartbeaters.push(startHeartbeatThread(nodesToBackup[i].host,
-                                                       backupCursors[i],
-                                                       nodesToBackup[i].getDB("admin").getSession(),
-                                                       stopCounter));
                 let copyThread = copyBackupCursorFiles(
                     backupCursors[i], metadata["dbpath"], restorePaths[i], true);
                 jsTestLog("Opened up backup cursor on " + nodesToBackup[i] + ": " +
@@ -289,6 +285,10 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
                     maxTimestamp = checkpointTimestamp;
                 }
                 copyWorkers.push(copyThread);
+                heartbeaters.push(startHeartbeatThread(nodesToBackup[i].host,
+                                                       backupCursors[i],
+                                                       nodesToBackup[i].getDB("admin").getSession(),
+                                                       stopCounter));
             }
 
             concurrentWorkWhileBackup.setup();
