@@ -32,6 +32,7 @@
 
 #include "backup_cursor_service.h"
 
+#include "mongo/db/concurrency/replication_state_transition_lock_guard.h"
 #include "mongo/db/db_raii.h"
 #include "mongo/db/dbhelpers.h"
 #include "mongo/db/operation_context.h"
@@ -92,6 +93,9 @@ void BackupCursorService::fsyncUnlock(OperationContext* opCtx) {
 }
 
 BackupCursorState BackupCursorService::openBackupCursor(OperationContext* opCtx) {
+    // Prevent rollback
+    repl::ReplicationStateTransitionLockGuard rstl(opCtx, MODE_IX);
+
     // Replica sets must also return the opTime's of the earliest and latest oplog entry. The
     // range represented by the oplog start/end values must exist in the backup copy, but are not
     // expected to be exact.
@@ -133,7 +137,9 @@ BackupCursorState BackupCursorService::openBackupCursor(OperationContext* opCtx)
     auto filesToBackup = uassertStatusOK(_storageEngine->beginNonBlockingBackup(opCtx));
     _state = kBackupCursorOpened;
     _activeBackupId = UUID::gen();
-    log() << "Opened backup cursor. ID: " << *_activeBackupId;
+    _replTermOfActiveBackup = replCoord->getTerm();
+    log() << "Opened backup cursor. ID: " << *_activeBackupId
+          << " Term: " << *_replTermOfActiveBackup;
 
     // A backup cursor is open. Any exception code path must leave the BackupCursorService in an
     // inactive state.
@@ -243,6 +249,15 @@ BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext
     log() << "Backup cursor has been extended. backupId: " << backupId
           << " extendedTo: " << extendTo;
 
+    if (!_storageEngine->supportsReadConcernMajority()) {
+        auto currentTerm = replCoord->getTerm();
+        uassert(31055,
+                "Term has been changed since opening backup cursor. This is problematic with "
+                "enableMajorityReadConcern=off because it indicates the checkpoint might be rolled "
+                "back. Restart the sharded backup process please.",
+                currentTerm == _replTermOfActiveBackup);
+    }
+
     return BackupCursorExtendState{deduplicateFiles(filesToBackup, _backupFiles)};
 }
 
@@ -268,5 +283,6 @@ void BackupCursorService::_closeBackupCursor(OperationContext* opCtx,
     log() << "Closed backup cursor. ID: " << backupId;
     _state = kInactive;
     _activeBackupId = boost::none;
+    _replTermOfActiveBackup = boost::none;
 }
 }  // namespace mongo

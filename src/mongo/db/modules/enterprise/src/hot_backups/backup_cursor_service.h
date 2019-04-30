@@ -123,6 +123,7 @@ private:
     // When state is `kBackupCursorOpened`, _activeBackupId contains an UUID which uniquely
     // identifies the active backup cursor. Otherwise it is boost::none.
     boost::optional<UUID> _activeBackupId = boost::none;
+    boost::optional<long long> _replTermOfActiveBackup = boost::none;
     std::set<std::string> _backupFiles;
 };
 
