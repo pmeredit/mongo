@@ -1,6 +1,6 @@
 /**
- * Verify that updates to encrypted fields performed with findAndModify are
- * correctly marked for encryption.
+ * Verify that findAndModify commands are correctly marked for encryption if fields referenced in
+ * the query or update are defined as encrypted.
  */
 (function() {
     "use strict";
@@ -23,6 +23,22 @@
     };
 
     const testCases = [
+        // Test that the query using the 'remove' form of findAndModify gets encrypted.
+        {
+          schema: {type: "object", properties: {bar: encryptDoc}},
+          query: {bar: 2},
+          remove: true,
+          encryptedPaths: ["bar"],
+          errorCode: 0
+        },
+        // Test that a findAndModify using the pipeline form of an update fails with NotImplemented.
+        {
+          schema: {type: "object", properties: {bar: encryptDoc}},
+          query: {bar: 2},
+          update: [{$addFields: {newThing: "new"}}],
+          encryptedPaths: ["bar"],
+          errorCode: ErrorCodes.NotImplemented,
+        },
         // Test that a top level field is encrypted.
         {
           schema: {type: "object", properties: {foo: encryptDoc}},
@@ -66,8 +82,7 @@
           notEncryptedPaths: [],
           errorCode: 0
         },
-        // Test that encrypted fields referenced in a query is correctly marked
-        // for encryption.
+        // Test that encrypted fields referenced in a query are correctly marked for encryption.
         {
           schema: {type: "object", properties: {bar: encryptDoc}},
           query: {bar: 2},
@@ -76,8 +91,8 @@
           notEncryptedPaths: ["foo", "baz"],
           errorCode: 0
         },
-        // Test that encrypted fields referenced in a query and update are correctly marked
-        // for encryption.
+        // Test that encrypted fields referenced in a query and update are correctly marked for
+        // encryption.
         {
           schema: {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}},
           query: {bar: 2},
@@ -152,7 +167,13 @@
     for (let test of testCases) {
         updateCommand["jsonSchema"] = test["schema"];
         updateCommand["query"] = test["query"];
-        updateCommand["update"] = test["update"];
+        if (test["update"]) {
+            updateCommand["update"] = test["update"];
+            delete updateCommand["remove"];
+        } else {
+            updateCommand["remove"] = true;
+            delete updateCommand["update"];
+        }
         const errorCode = test["errorCode"];
 
         if (errorCode == 0) {
@@ -160,11 +181,14 @@
             assert.eq(test["encryptedPaths"].length >= 1, result["hasEncryptionPlaceholders"]);
 
             // Retrieve the interesting part of the update and query sections
-            let realUpdate = result["result"]["update"];
-            if (realUpdate.hasOwnProperty("$set")) {
-                realUpdate = realUpdate["$set"];
-            } else if (realUpdate.hasOwnProperty("$unset")) {
-                realUpdate = realUpdate["$unset"];
+            let realUpdate = null;
+            if (result["result"].hasOwnProperty("update")) {
+                let update = result["result"]["update"];
+                if (update.hasOwnProperty("$set")) {
+                    realUpdate = update["$set"];
+                } else if (update.hasOwnProperty("$unset")) {
+                    realUpdate = update["$unset"];
+                }
             }
             let realQuery = result["result"]["query"];
 
@@ -174,7 +198,7 @@
                 if (realQuery.hasOwnProperty(encrypt)) {
                     assert(realQuery[encrypt]["$eq"] instanceof BinData, tojson(realQuery));
                 }
-                if (realUpdate.hasOwnProperty(encrypt)) {
+                if (realUpdate && realUpdate.hasOwnProperty(encrypt)) {
                     assert(realUpdate[encrypt] instanceof BinData, tojson(realUpdate));
                 }
             }
@@ -184,7 +208,7 @@
                 if (realQuery.hasOwnProperty(noEncrypt)) {
                     assert(!(realQuery[encrypt]["$eq"] instanceof BinData, tojson(realQuery)));
                 }
-                if (realUpdate.hasOwnProperty(noEncrypt)) {
+                if (realUpdate && realUpdate.hasOwnProperty(noEncrypt)) {
                     assert(!(realUpdate[noEncrypt] instanceof BinData), tojson(realUpdate));
                 }
             }

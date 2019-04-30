@@ -369,22 +369,36 @@ PlaceHolderResult addPlaceHoldersForFindAndModify(
     auto request(uassertStatusOK(FindAndModifyRequest::parseFromBSON(
         CommandHelpers::parseNsCollectionRequired(dbName, cmdObj), cmdObj)));
 
-    if (request.isUpsert()) {
-        verifyNoGeneratedEncryptedFields(request.getUpdateObj(), *schemaTree.get());
-    }
-
     // TODO SERVER-39258 Support collation for findAndModify.
     auto newQuery =
         replaceEncryptedFieldsInFilter(opCtx, *schemaTree.get(), request.getQuery(), nullptr);
-    auto newUpdate = replaceEncryptedFieldsInUpdate(*schemaTree.get(), request.getUpdateObj());
 
-    if (newQuery.hasEncryptionPlaceholders || newUpdate.hasEncryptionPlaceholders) {
-        request.setQuery(newQuery.result);
-        request.setUpdateObj(newUpdate.result);
-        return PlaceHolderResult{true, schemaTree->containsEncryptedNode(), request.toBSON(cmdObj)};
-    } else {
-        return PlaceHolderResult{false, schemaTree->containsEncryptedNode(), cmdObj};
+    bool anythingEncrypted = false;
+    if (auto updateMod = request.getUpdate()) {
+        uassert(ErrorCodes::NotImplemented,
+                "Pipeline updates not yet supported on mongocryptd",
+                updateMod->type() == write_ops::UpdateModification::Type::kClassic);
+
+        if (request.isUpsert()) {
+            verifyNoGeneratedEncryptedFields(updateMod->getUpdateClassic(), *schemaTree.get());
+        }
+
+        auto newUpdate =
+            replaceEncryptedFieldsInUpdate(*schemaTree.get(), updateMod->getUpdateClassic());
+        if (newUpdate.hasEncryptionPlaceholders) {
+            request.setUpdateObj(newUpdate.result);
+            anythingEncrypted = true;
+        }
     }
+
+    if (newQuery.hasEncryptionPlaceholders) {
+        request.setQuery(newQuery.result);
+        anythingEncrypted = true;
+    }
+
+    return PlaceHolderResult{anythingEncrypted,
+                             schemaTree->containsEncryptedNode(),
+                             anythingEncrypted ? request.toBSON(cmdObj) : cmdObj};
 }
 
 PlaceHolderResult addPlaceHoldersForInsert(OperationContext* opCtx,
