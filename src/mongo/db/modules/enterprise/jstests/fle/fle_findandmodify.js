@@ -29,6 +29,7 @@
           query: {bar: 2},
           remove: true,
           encryptedPaths: ["bar"],
+          notEncryptedPaths: [],
           errorCode: 0
         },
         // Test that a findAndModify using the pipeline form of an update fails with NotImplemented.
@@ -37,6 +38,7 @@
           query: {bar: 2},
           update: [{$addFields: {newThing: "new"}}],
           encryptedPaths: ["bar"],
+          notEncryptedPaths: [],
           errorCode: ErrorCodes.NotImplemented,
         },
         // Test that a top level field is encrypted.
