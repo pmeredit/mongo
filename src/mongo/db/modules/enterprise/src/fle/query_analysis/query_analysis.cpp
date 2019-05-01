@@ -80,7 +80,8 @@ std::unique_ptr<CollatorInterface> parseCollator(OperationContext* opCtx,
  * If the 'collation' field exists in 'command', extracts it and returns the corresponding
  * CollatorInterface pointer. Otherwise, returns nullptr.
  *
- * Expects the caller to have already validated that 'command' is a valid command.
+ * Throws a user assertion if the 'collation' field exists in 'command' but is not of BSON type
+ * Object.
  */
 std::unique_ptr<CollatorInterface> extractCollator(OperationContext* opCtx,
                                                    const BSONObj& command) {
@@ -89,7 +90,9 @@ std::unique_ptr<CollatorInterface> extractCollator(OperationContext* opCtx,
         return nullptr;
     }
 
-    invariant(collationElt.type() == BSONType::Object);
+    uassert(31084,
+            "collation command parameter must be of type Object",
+            collationElt.type() == BSONType::Object);
     return parseCollator(opCtx, collationElt.embeddedObject());
 }
 
@@ -174,12 +177,11 @@ BSONObj removeExtraFields(const std::set<StringData>& original, const BSONObj& r
  * Throws an assertion if 'filter' might require a collation-aware comparison and 'collator' is
  * non-null.
  */
-PlaceHolderResult replaceEncryptedFieldsInFilter(OperationContext* opCtx,
-                                                 const EncryptionSchemaTreeNode& schemaTree,
-                                                 BSONObj filter,
-                                                 const CollatorInterface* collator) {
+PlaceHolderResult replaceEncryptedFieldsInFilter(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
+    const EncryptionSchemaTreeNode& schemaTree,
+    BSONObj filter) {
     // Build a parsed MatchExpression from the filter, allowing all special features.
-    boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(opCtx, collator));
     auto matchExpr = uassertStatusOK(MatchExpressionParser::parse(
         filter, expCtx, ExtensionsCallbackNoop(), MatchExpressionParser::kAllowAllSpecialFeatures));
 
@@ -205,11 +207,10 @@ PlaceHolderResult replaceEncryptedFieldsInFilter(OperationContext* opCtx,
  * it contains an intent-to-encrypt marking. Throws an assertion if the update object is invalid
  * or contains an invalid operator over an encrypted field.
  */
-PlaceHolderResult replaceEncryptedFieldsInUpdate(const EncryptionSchemaTreeNode& schemaTree,
-                                                 BSONObj update) {
-    // TODO SERVER-39258 Plumb collation through to ExpressionContext.
-    boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(nullptr, nullptr));
-
+PlaceHolderResult replaceEncryptedFieldsInUpdate(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
+    const EncryptionSchemaTreeNode& schemaTree,
+    BSONObj update) {
     UpdateDriver driver(expCtx);
     // Ignoring array filters as they are not relevant for encryption.
     driver.parse(update, {});
@@ -250,7 +251,7 @@ PlaceHolderResult replaceEncryptedFieldsInUpdate(const EncryptionSchemaTreeNode&
                              driver.serialize().getDocument().toBson()};
 }
 
-PlaceHolderResult addPlaceHoldersForFind(OperationContext* opCtx,
+PlaceHolderResult addPlaceHoldersForFind(const boost::intrusive_ptr<ExpressionContext>& expCtx,
                                          const std::string& dbName,
                                          const BSONObj& cmdObj,
                                          std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
@@ -258,10 +259,8 @@ PlaceHolderResult addPlaceHoldersForFind(OperationContext* opCtx,
     // database name however the collection name will be used when serializing back to BSON.
     auto qr = uassertStatusOK(QueryRequest::makeFromFindCommand(
         CommandHelpers::parseNsCollectionRequired(dbName, cmdObj), cmdObj, false));
-    auto collator = extractCollator(opCtx, cmdObj);
 
-    auto placeholder =
-        replaceEncryptedFieldsInFilter(opCtx, *schemaTree, qr->getFilter(), collator.get());
+    auto placeholder = replaceEncryptedFieldsInFilter(expCtx, *schemaTree, qr->getFilter());
 
     BSONObjBuilder bob;
     for (auto&& elem : cmdObj) {
@@ -276,23 +275,22 @@ PlaceHolderResult addPlaceHoldersForFind(OperationContext* opCtx,
 }
 
 PlaceHolderResult addPlaceHoldersForAggregate(
-    OperationContext* opCtx,
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const std::string& dbName,
     const BSONObj& cmdObj,
     std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     return PlaceHolderResult();
 }
 
-PlaceHolderResult addPlaceHoldersForCount(OperationContext* opCtx,
+PlaceHolderResult addPlaceHoldersForCount(const boost::intrusive_ptr<ExpressionContext>& expCtx,
                                           const std::string& dbName,
                                           const BSONObj& cmdObj,
                                           std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     BSONObjBuilder resultBuilder;
     auto countCmd = CountCommand::parse(IDLParserErrorContext("count"), cmdObj);
-    auto collator = extractCollator(opCtx, cmdObj);
     auto query = countCmd.getQuery();
-    auto newQueryPlaceholder =
-        replaceEncryptedFieldsInFilter(opCtx, *schemaTree, query, collator.get());
+
+    auto newQueryPlaceholder = replaceEncryptedFieldsInFilter(expCtx, *schemaTree, query);
     countCmd.setQuery(newQueryPlaceholder.result);
 
     return PlaceHolderResult{newQueryPlaceholder.hasEncryptionPlaceholders,
@@ -301,12 +299,11 @@ PlaceHolderResult addPlaceHoldersForCount(OperationContext* opCtx,
                              countCmd.toBSON(cmdObj)};
 }
 
-PlaceHolderResult addPlaceHoldersForDistinct(OperationContext* opCtx,
+PlaceHolderResult addPlaceHoldersForDistinct(const boost::intrusive_ptr<ExpressionContext>& expCtx,
                                              const std::string& dbName,
                                              const BSONObj& cmdObj,
                                              std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     auto parsedDistinct = DistinctCommand::parse(IDLParserErrorContext("distinct"), cmdObj);
-    auto collator = extractCollator(opCtx, cmdObj);
 
     // The distinct key is not allowed to be encrypted with a keyId which points to another field.
     if (auto keyMetadata =
@@ -319,15 +316,15 @@ PlaceHolderResult addPlaceHoldersForDistinct(OperationContext* opCtx,
         // key is not a string.
         uassert(31058,
                 "Distinct key cannot be an encrypted field if the collation is non-simple",
-                !collator);
+                !expCtx->getCollator());
     }
 
     PlaceHolderResult placeholder;
     if (auto query = parsedDistinct.getQuery()) {
         // Replace any encrypted fields in the query, and overwrite the original query from the
         // parsed command.
-        placeholder = replaceEncryptedFieldsInFilter(
-            opCtx, *schemaTree, parsedDistinct.getQuery().get(), collator.get());
+        placeholder =
+            replaceEncryptedFieldsInFilter(expCtx, *schemaTree, parsedDistinct.getQuery().get());
         parsedDistinct.setQuery(placeholder.result);
     }
 
@@ -362,16 +359,14 @@ void verifyNoGeneratedEncryptedFields(BSONObj doc, const EncryptionSchemaTreeNod
 }
 
 PlaceHolderResult addPlaceHoldersForFindAndModify(
-    OperationContext* opCtx,
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const std::string& dbName,
     const BSONObj& cmdObj,
     std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     auto request(uassertStatusOK(FindAndModifyRequest::parseFromBSON(
         CommandHelpers::parseNsCollectionRequired(dbName, cmdObj), cmdObj)));
 
-    // TODO SERVER-39258 Support collation for findAndModify.
-    auto newQuery =
-        replaceEncryptedFieldsInFilter(opCtx, *schemaTree.get(), request.getQuery(), nullptr);
+    auto newQuery = replaceEncryptedFieldsInFilter(expCtx, *schemaTree.get(), request.getQuery());
 
     bool anythingEncrypted = false;
     if (auto updateMod = request.getUpdate()) {
@@ -383,8 +378,8 @@ PlaceHolderResult addPlaceHoldersForFindAndModify(
             verifyNoGeneratedEncryptedFields(updateMod->getUpdateClassic(), *schemaTree.get());
         }
 
-        auto newUpdate =
-            replaceEncryptedFieldsInUpdate(*schemaTree.get(), updateMod->getUpdateClassic());
+        auto newUpdate = replaceEncryptedFieldsInUpdate(
+            expCtx, *schemaTree.get(), updateMod->getUpdateClassic());
         if (newUpdate.hasEncryptionPlaceholders) {
             request.setUpdateObj(newUpdate.result);
             anythingEncrypted = true;
@@ -438,6 +433,8 @@ PlaceHolderResult addPlaceHoldersForUpdate(OperationContext* opCtx,
     for (auto&& update : updateOp.getUpdates()) {
         auto& updateMod = update.getU();
         auto collator = parseCollator(opCtx, update.getCollation());
+        boost::intrusive_ptr<ExpressionContext> expCtx(
+            new ExpressionContext(opCtx, collator.get()));
 
         uassert(ErrorCodes::NotImplemented,
                 "Pipeline updates not yet supported on mongocryptd",
@@ -445,10 +442,9 @@ PlaceHolderResult addPlaceHoldersForUpdate(OperationContext* opCtx,
         if (update.getUpsert()) {
             verifyNoGeneratedEncryptedFields(updateMod.getUpdateClassic(), *schemaTree.get());
         }
-        auto newFilter =
-            replaceEncryptedFieldsInFilter(opCtx, *schemaTree.get(), update.getQ(), collator.get());
+        auto newFilter = replaceEncryptedFieldsInFilter(expCtx, *schemaTree.get(), update.getQ());
         auto newUpdate =
-            replaceEncryptedFieldsInUpdate(*schemaTree.get(), updateMod.getUpdateClassic());
+            replaceEncryptedFieldsInUpdate(expCtx, *schemaTree.get(), updateMod.getUpdateClassic());
         updateVector.push_back(write_ops::UpdateOpEntry(newFilter.result, newUpdate.result));
         phr.hasEncryptionPlaceholders = phr.hasEncryptionPlaceholders ||
             newUpdate.hasEncryptionPlaceholders || newFilter.hasEncryptionPlaceholders;
@@ -474,8 +470,10 @@ PlaceHolderResult addPlaceHoldersForDelete(OperationContext* opCtx,
         markedDeletes.push_back(op);
         auto& opToMark = markedDeletes.back();
         auto collator = parseCollator(opCtx, op.getCollation());
-        auto resultForOp =
-            replaceEncryptedFieldsInFilter(opCtx, *schemaTree, opToMark.getQ(), collator.get());
+        boost::intrusive_ptr<ExpressionContext> expCtx(
+            new ExpressionContext(opCtx, collator.get()));
+
+        auto resultForOp = replaceEncryptedFieldsInFilter(expCtx, *schemaTree, opToMark.getQ());
         placeHolderResult.hasEncryptionPlaceholders =
             placeHolderResult.hasEncryptionPlaceholders || resultForOp.hasEncryptionPlaceholders;
         opToMark.setQ(resultForOp.result);
@@ -525,7 +523,7 @@ void processWriteOpCommand(OperationContext* opCtx,
 }
 
 using QueryProcessFunction =
-    PlaceHolderResult(OperationContext* opCtx,
+    PlaceHolderResult(const boost::intrusive_ptr<ExpressionContext>& expCtx,
                       const std::string& dbName,
                       const BSONObj& cmdObj,
                       std::unique_ptr<EncryptionSchemaTreeNode> schemaTree);
@@ -541,7 +539,10 @@ void processQueryCommand(OperationContext* opCtx,
     // Parse the JSON Schema to an encryption schema tree.
     auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
 
-    PlaceHolderResult placeholder = func(opCtx, dbName, stripped.obj(), std::move(schemaTree));
+    auto collator = extractCollator(opCtx, cmdObj);
+    boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(opCtx, collator.get()));
+
+    PlaceHolderResult placeholder = func(expCtx, dbName, stripped.obj(), std::move(schemaTree));
     auto fieldNames = cmdObj.getFieldNames<std::set<StringData>>();
     placeholder.result = removeExtraFields(fieldNames, placeholder.result);
 

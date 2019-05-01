@@ -276,11 +276,52 @@
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
     assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
 
+    // Test that a findAndModify command fails if there is a $eq comparison to an encrypted string
+    // using a non-simple collation.
+    assert.commandFailedWithCode(testDb.runCommand({
+        findAndModify: coll.getName(),
+        query: {"foo.bar": "string"},
+        update: {$set: {baz: "other"}},
+        collation: {locale: "fr_CA"},
+        jsonSchema: encryptedStringSchema
+    }),
+                                 31054);
+
+    // Test that a findAndModify command succeeds if there is a $eq comparison to an encrypted
+    // non-string using a non-simple collation.
+    cmdRes = assert.commandWorked(testDb.runCommand({
+        findAndModify: coll.getName(),
+        query: {"foo.bar": 1},
+        update: {$set: {baz: "other"}},
+        collation: {locale: "fr_CA"},
+        jsonSchema: encryptedIntSchema
+    }));
+    assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+
+    // Using findAndModify to $set an encrypted field to a string with a non-simple collation is
+    // legal.
+    cmdRes = assert.commandWorked(testDb.runCommand({
+        findAndModify: coll.getName(),
+        query: {},
+        update: {$set: {"foo.bar": "string"}},
+        collation: {locale: "fr_CA"},
+        jsonSchema: encryptedStringSchema
+    }));
+    assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+
     // Test that mongocryptd returns an error when the collation parameter is not an object.
-    assert.commandFailed(
-        testDb.runCommand({find: coll.getName(), collation: 1, jsonSchema: encryptedStringSchema}));
-    assert.commandFailed(testDb.runCommand(
-        {distinct: coll.getName(), key: "baz", collation: 1, jsonSchema: encryptedStringSchema}));
+    assert.commandFailedWithCode(
+        testDb.runCommand({find: coll.getName(), collation: 1, jsonSchema: encryptedStringSchema}),
+        31084);
+    assert.commandFailedWithCode(testDb.runCommand({
+        distinct: coll.getName(),
+        key: "baz",
+        collation: 1,
+        jsonSchema: encryptedStringSchema
+    }),
+                                 31084);
     assert.commandFailed(testDb.runCommand({
         update: coll.getName(),
         updates: [{q: {}, u: {$set: {other: 1}}, collation: 1}],
@@ -291,12 +332,21 @@
         deletes: [{q: {}, limit: 1, collation: 1}],
         jsonSchema: encryptedStringSchema
     }));
-    assert.commandFailed(testDb.runCommand({
+    assert.commandFailedWithCode(testDb.runCommand({
         count: coll.getName(),
         query: {"foo.bar": "string"},
         collation: 1,
         jsonSchema: encryptedStringSchema
-    }));
+    }),
+                                 31084);
+    assert.commandFailedWithCode(testDb.runCommand({
+        findAndModify: coll.getName(),
+        query: {"foo.bar": "string"},
+        update: {$set: {baz: "other"}},
+        collation: 1,
+        jsonSchema: encryptedStringSchema
+    }),
+                                 31084);
 
     // Test that mongocryptd returns an error when the collation is specified as a top-level
     // parameter to an update or delete rather than with each individual write statement.
