@@ -73,5 +73,60 @@
     }),
                                  51093);
 
+    // Test that the command fails if the distinct key is a field encrypted with a randomized
+    // algorithm.
+    assert.commandFailedWithCode(testDB.runCommand({
+        distinct: "test",
+        key: "encryptField",
+        jsonSchema: {
+            type: "object",
+            properties: {
+                encryptField: {
+                    encrypt: {
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                        keyId: [UUID()],
+                    }
+                }
+            }
+        }
+    }),
+                                 31026);
+
+    // Test that the command fails if the distinct key matches a pattern properties field encrypted
+    // with a randomized algorithm.
+    assert.commandFailedWithCode(testDB.runCommand({
+        distinct: "test",
+        key: "ssn",
+        jsonSchema: {
+            type: "object",
+            patternProperties: {
+                "^s.*": {
+                    encrypt: {
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                        keyId: [UUID()],
+                    }
+                }
+            }
+        }
+    }),
+                                 31026);
+
+    // Test that the command fails if the distinct key is an additional properties field encrypted
+    // with a randomized algorithm.
+    assert.commandFailedWithCode(testDB.runCommand({
+        distinct: "test",
+        key: "anyField",
+        jsonSchema: {
+            type: "object",
+            additionalProperties: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [UUID()],
+                }
+            }
+        }
+    }),
+                                 31026);
+
     mongocryptd.stop();
 })();

@@ -314,13 +314,17 @@ PlaceHolderResult addPlaceHoldersForDistinct(const boost::intrusive_ptr<Expressi
                                              std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     auto parsedDistinct = DistinctCommand::parse(IDLParserErrorContext("distinct"), cmdObj);
 
-    // The distinct key is not allowed to be encrypted with a keyId which points to another field.
     if (auto keyMetadata =
             schemaTree->getEncryptionMetadataForPath(FieldRef(parsedDistinct.getKey()))) {
         uassert(51131,
                 "The distinct key is not allowed to be marked for encryption with a non-UUID keyId",
                 keyMetadata.get().getKeyId().get().type() !=
                     EncryptSchemaKeyId::Type::kJSONPointer);
+        uassert(31026,
+                "Distinct key is not allowed to be marked for encryption with the randomized "
+                "encryption algorithm",
+                keyMetadata.get().getAlgorithm() != FleAlgorithmEnum::kRandom);
+
         // TODO SERVER-40798: Relax this check if the schema indicates that the encrypted distinct
         // key is not a string.
         uassert(31058,
