@@ -203,12 +203,9 @@
         properties: {a: {type: "object", properties: {0: encryptDoc}}}
     };
     updateCommand["updates"] = [{q: {arr: {$eq: 5}}, u: {$set: {"a.$": 6}}}];
-//    result = assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51149);
+    //    result = assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51149);
 
-    updateCommand["jsonSchema"] = {
-        type: "object",
-        properties: {foo: encryptDoc}
-    };
+    updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc}};
     updateCommand["updates"] = [{q: {bar: 5}, u: {$set: {"foo.$": 6}}}];
     result = assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51149);
 
