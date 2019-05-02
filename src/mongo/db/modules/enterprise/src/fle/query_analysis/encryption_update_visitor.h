@@ -162,7 +162,7 @@ public:
                 "Cannot encrypt fields below '$' positional update operator",
                 !host->getChild("$") ||
                     !(_schemaTree.getEncryptionMetadataForPath(_currentPath) ||
-                    _schemaTree.containsEncryptedNodeBelowPrefix(_currentPath)));
+                      _schemaTree.containsEncryptedNodeBelowPrefix(_currentPath)));
 
         for (const auto & [ pathSuffix, child ] : host->getChildren()) {
             FieldRef::FieldRefTempAppend tempAppend(_currentPath, pathSuffix);
