@@ -11,16 +11,28 @@
     const conn = mongocryptd.getConnection();
     const testDB = conn.getDB("test");
 
+    const encryptObj = {
+        encrypt: {
+            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+            keyId: [UUID()],
+            initializationVector: BinData(0, "ASNFZ4mrze/ty6mHZUMhAQ=="),
+            bsonType: "int"
+        }
+    };
+
     const sampleSchema = {
         type: "object",
         properties: {
-            ssn: {
-                encrypt: {
-                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                    keyId: [UUID()],
-                    initializationVector: BinData(0, "ASNFZ4mrze/ty6mHZUMhAQ=="),
-                    bsonType: "int"
-                }
+            ssn: encryptObj,
+            fieldWithEncryptedChild: {type: "object", properties: {ssn: encryptObj}},
+            fieldWithEncryptedPatternPropertiesChild: {
+                type: "object",
+                patternProperties:
+                    {"^s.*": {type: "object", properties: {encryptField: encryptObj}}}
+            },
+            fieldWithEncryptedAdditionalPropertiesChild: {
+                type: "object",
+                additionalProperties: {type: "object", properties: {encryptField: encryptObj}}
             },
             ssnWithPointer: {
                 encrypt: {
@@ -127,6 +139,68 @@
         }
     }),
                                  31026);
+
+    // Test that the command works when 'key' is a nested encrypted field.
+    assert.commandWorked(testDB.runCommand(
+        {distinct: "test", key: "fieldWithEncryptedChild.ssn", jsonSchema: sampleSchema}));
+
+    // Test that the command fails when 'key' is a prefix of a nested encrypted field.
+    assert.commandFailedWithCode(
+        testDB.runCommand(
+            {distinct: "test", key: "fieldWithEncryptedChild", jsonSchema: sampleSchema}),
+        31027);
+
+    // Test that the command works when 'key' is an encrypted field nested in patternProperties.
+    assert.commandWorked(testDB.runCommand({
+        distinct: "test",
+        key: "fieldWithEncryptedPatternPropertiesChild.ssn.encryptField",
+        jsonSchema: sampleSchema
+    }));
+
+    // Test that the command works when 'key' doesn't match a patternProperties field, which has a
+    // nested encrypted field.
+    assert.commandWorked(testDB.runCommand({
+        distinct: "test",
+        key: "fieldWithEncryptedPatternPropertiesChild.nonMatchingField",
+        jsonSchema: sampleSchema
+    }));
+
+    // Test that the command fails when 'key' is a prefix of an encrypted field nested in
+    // patternProperties.
+    assert.commandFailedWithCode(testDB.runCommand({
+        distinct: "test",
+        key: "fieldWithEncryptedPatternPropertiesChild.ssn",
+        jsonSchema: sampleSchema
+    }),
+                                 31027);
+    assert.commandFailedWithCode(testDB.runCommand({
+        distinct: "test",
+        key: "fieldWithEncryptedPatternPropertiesChild",
+        jsonSchema: sampleSchema
+    }),
+                                 31027);
+
+    // Test that the command works when 'key' is an encrypted field nested in additionalProperties.
+    assert.commandWorked(testDB.runCommand({
+        distinct: "test",
+        key: "fieldWithEncryptedAdditionalPropertiesChild.additionalField.encryptField",
+        jsonSchema: sampleSchema
+    }));
+
+    // Test that the command fails when 'key' is a prefix of encrypted field nested in
+    // additionalProperties.
+    assert.commandFailedWithCode(testDB.runCommand({
+        distinct: "test",
+        key: "fieldWithEncryptedAdditionalPropertiesChild.someAdditionalField",
+        jsonSchema: sampleSchema
+    }),
+                                 31027);
+    assert.commandFailedWithCode(testDB.runCommand({
+        distinct: "test",
+        key: "fieldWithEncryptedAdditionalPropertiesChild",
+        jsonSchema: sampleSchema
+    }),
+                                 31027);
 
     mongocryptd.stop();
 })();

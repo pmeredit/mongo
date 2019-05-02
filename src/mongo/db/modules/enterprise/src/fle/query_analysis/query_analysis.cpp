@@ -330,6 +330,10 @@ PlaceHolderResult addPlaceHoldersForDistinct(const boost::intrusive_ptr<Expressi
         uassert(31058,
                 "Distinct key cannot be an encrypted field if the collation is non-simple",
                 !expCtx->getCollator());
+    } else {
+        uassert(31027,
+                "Distinct key is not allowed to be a prefix of an encrypted field",
+                !schemaTree->containsEncryptedNodeBelowPrefix(FieldRef(parsedDistinct.getKey())));
     }
 
     PlaceHolderResult placeholder;
