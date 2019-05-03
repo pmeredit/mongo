@@ -48,7 +48,9 @@ def configure(conf, env):
 
         if 'sasl' in selected_features and not 'ldap' in selected_features:
             env.ConfError("the sasl enterprise feature depends on the ldap enterprise feature")
-
+        if 'search_beta' in selected_features and not 'fle' in selected_features:
+            env.ConfError("the search_beta enterprise feature depends on the fle enterprise "
+                          "feature")
         configured_modules.extend(selected_features)
 
     env['MONGO_ENTERPRISE_FEATURES'] = selected_features

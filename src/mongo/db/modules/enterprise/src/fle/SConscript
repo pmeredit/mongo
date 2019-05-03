@@ -13,6 +13,39 @@ env.SConscript(
     ],
 )
 
+mongocryptd_core = env.Library(
+    target="mongocryptd_core",
+    source=[
+        "cryptd/cryptd_main.cpp",
+        "cryptd/cryptd_options.cpp",
+        "cryptd/cryptd_options_init.cpp",
+        "cryptd/cryptd_service_entry_point.cpp",
+        "cryptd/cryptd_watchdog.cpp",
+        env.Idlc("cryptd/cryptd_options.idl")[0],
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/db/commands',
+        '$BUILD_DIR/mongo/db/dbmessage',
+        '$BUILD_DIR/mongo/db/server_options_servers',
+        '$BUILD_DIR/mongo/db/serverinit',
+        '$BUILD_DIR/mongo/db/storage/storage_engine_lock_file',
+        '$BUILD_DIR/mongo/db/windows_options' if env.TargetOSIs('windows') else [],
+        '$BUILD_DIR/mongo/rpc/rpc',
+        '$BUILD_DIR/mongo/transport/message_compressor',
+        '$BUILD_DIR/mongo/transport/service_entry_point',
+        '$BUILD_DIR/mongo/transport/service_executor',
+        '$BUILD_DIR/mongo/transport/transport_layer',
+        '$BUILD_DIR/mongo/transport/transport_layer_manager',
+        '$BUILD_DIR/mongo/util/fail_point',
+        '$BUILD_DIR/mongo/util/net/network',
+        '$BUILD_DIR/mongo/util/ntservice',
+        '$BUILD_DIR/mongo/util/options_parser/options_parser_init',
+        '$BUILD_DIR/mongo/util/signal_handlers',
+        '$BUILD_DIR/mongo/util/version_impl',
+        '$BUILD_DIR/mongo/watchdog/watchdog',
+    ],
+)
+
 env.Library(
     target="cryptd_commands",
     source=[

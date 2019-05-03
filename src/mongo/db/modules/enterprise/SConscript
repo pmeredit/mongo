@@ -339,33 +339,10 @@ if "fle" in env['MONGO_ENTERPRISE_FEATURES']:
     mongocryptd = env.Program(
         target="mongocryptd",
         source=[
-            "src/fle/cryptd/cryptd_main.cpp",
-            "src/fle/cryptd/cryptd_service_entry_point.cpp",
-            "src/fle/cryptd/cryptd_options.cpp",
-            "src/fle/cryptd/cryptd_options_init.cpp",
-            env.Idlc("src/fle/cryptd/cryptd_options.idl")[0],
-            "src/fle/cryptd/cryptd_watchdog.cpp",
+            "src/fle/cryptd/cryptd_main_shim.cpp"
         ],
         LIBDEPS_PRIVATE=[
-            '$BUILD_DIR/mongo/db/commands',
-            '$BUILD_DIR/mongo/db/dbmessage',
-            '$BUILD_DIR/mongo/db/server_options_servers',
-            '$BUILD_DIR/mongo/db/serverinit',
-            '$BUILD_DIR/mongo/db/storage/storage_engine_lock_file',
-            '$BUILD_DIR/mongo/db/windows_options' if env.TargetOSIs('windows') else [],
-            '$BUILD_DIR/mongo/rpc/rpc',
-            '$BUILD_DIR/mongo/transport/message_compressor',
-            '$BUILD_DIR/mongo/transport/service_entry_point',
-            '$BUILD_DIR/mongo/transport/service_executor',
-            '$BUILD_DIR/mongo/transport/transport_layer_manager',
-            '$BUILD_DIR/mongo/transport/transport_layer',
-            '$BUILD_DIR/mongo/util/fail_point',
-            '$BUILD_DIR/mongo/util/net/network',
-            '$BUILD_DIR/mongo/util/ntservice',
-            '$BUILD_DIR/mongo/util/options_parser/options_parser_init',
-            '$BUILD_DIR/mongo/util/signal_handlers',
-            '$BUILD_DIR/mongo/util/version_impl',
-            '$BUILD_DIR/mongo/watchdog/watchdog',
+            'src/fle/mongocryptd_core',
             'src/fle/cryptd_commands',
         ],
     )
@@ -374,3 +351,20 @@ if "fle" in env['MONGO_ENTERPRISE_FEATURES']:
         env.Install("#/", mongocryptd)
 
     env.Alias("all", mongocryptd)
+
+if "search_beta" in env['MONGO_ENTERPRISE_FEATURES']:
+    mongotmock = env.Program(
+        target="mongotmock",
+        source=[
+            "src/search_beta/mongotmock/mongotmock_main_shim.cpp"
+        ],
+        LIBDEPS_PRIVATE=[
+            'src/fle/mongocryptd_core',
+            'src/search_beta/mongotmock_commands'
+        ],
+    )
+
+    if not hygienic:
+        env.Install("#/", mongotmock)
+
+    env.Alias("all", mongotmock)

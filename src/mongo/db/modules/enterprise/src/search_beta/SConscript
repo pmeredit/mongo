@@ -57,3 +57,20 @@ env.CppUnitTest(
         'mongot_options',
     ]
 )
+
+env.Library(
+    target="mongotmock_commands",
+    source=[
+        "mongotmock/mongotmock_ismaster.cpp",
+        "mongotmock/mongotmock_buildinfo.cpp",
+        "mongotmock/mongotmock_commands.cpp",
+        "mongotmock/mongotmock_state.cpp"
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/db/query/command_request_response',
+        '$BUILD_DIR/mongo/db/commands',
+        '$BUILD_DIR/mongo/db/commands/test_commands_enabled',
+        '$BUILD_DIR/mongo/db/wire_version',
+        '$BUILD_DIR/mongo/util/version_impl',
+    ],
+)
