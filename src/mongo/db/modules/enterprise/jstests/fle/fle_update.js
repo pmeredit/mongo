@@ -103,10 +103,19 @@
             }
         }
     }
+
+    // Test that 'multi' and 'upsert' fields are passed through.
+    updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}};
+    updateCommand["updates"] =
+        [{q: {bar: 5}, u: {"$set": {"foo": "2"}}, upsert: true, multi: true}];
+    let result = assert.commandWorked(testDb.runCommand(updateCommand));
+    assert(result["result"]["updates"][0]["upsert"], result);
+    assert(result["result"]["updates"][0]["multi"], result);
+
     // Test that fields in q get replaced.
     updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}};
     updateCommand["updates"] = [{q: {bar: 5}, u: {"$set": {"foo": "2"}}}];
-    let result = assert.commandWorked(testDb.runCommand(updateCommand));
+    result = assert.commandWorked(testDb.runCommand(updateCommand));
     assert(result["result"]["updates"][0]["q"]["bar"]["$eq"] instanceof BinData, tojson(result));
 
     // Test that q is correctly marked for encryption.

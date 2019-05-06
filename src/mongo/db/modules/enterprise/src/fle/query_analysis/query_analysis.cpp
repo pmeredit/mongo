@@ -505,7 +505,11 @@ PlaceHolderResult addPlaceHoldersForUpdate(OperationContext* opCtx,
         auto newFilter = replaceEncryptedFieldsInFilter(expCtx, *schemaTree.get(), update.getQ());
         auto newUpdate =
             replaceEncryptedFieldsInUpdate(expCtx, *schemaTree.get(), updateMod.getUpdateClassic());
-        updateVector.push_back(write_ops::UpdateOpEntry(newFilter.result, newUpdate.result));
+        // Create a non-const copy.
+        auto newEntry = update;
+        newEntry.setQ(newFilter.result);
+        newEntry.setU(newUpdate.result);
+        updateVector.push_back(newEntry);
         phr.hasEncryptionPlaceholders = phr.hasEncryptionPlaceholders ||
             newUpdate.hasEncryptionPlaceholders || newFilter.hasEncryptionPlaceholders;
     }
