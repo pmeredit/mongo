@@ -116,12 +116,6 @@ public:
         _wrappedExternalState->logOp(opCtx, authzManager, op, ns, o, o2);
     }
 
-    std::unique_ptr<StateLock> lock(OperationContext* opCtx) final {
-        return _wrappedExternalState->lock(opCtx);
-    }
-
-    bool needsLockForUserName(OperationContext* opCtx, const UserName& name) final;
-
 private:
     /**
      * Set to 0 if the invalidator has not been started, 1 if it has been started

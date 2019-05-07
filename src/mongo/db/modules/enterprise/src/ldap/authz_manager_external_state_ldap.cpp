@@ -68,12 +68,6 @@ Status AuthzManagerExternalStateLDAP::initialize(OperationContext* opCtx) {
     return Status::OK();
 }
 
-bool AuthzManagerExternalStateLDAP::needsLockForUserName(OperationContext* opCtx,
-                                                         const UserName& userName) {
-    return (userName.getDB() == "$external" ||
-            _wrappedExternalState->needsLockForUserName(opCtx, userName));
-}
-
 Status AuthzManagerExternalStateLDAP::getUserDescription(OperationContext* opCtx,
                                                          const UserName& userName,
                                                          BSONObj* result) {
