@@ -38,7 +38,8 @@ TEST_F(InternalSearchBetaIdLookupTest, ShouldSkipResultsWhenIdNotFound) {
     auto idLookupStage = DocumentSourceInternalSearchBetaIdLookUp::createFromBson(spec, expCtx);
 
     // Mock its input.
-    auto mockLocalSource = DocumentSourceMock::create({Document{{"_id", 0}}, Document{{"_id", 1}}});
+    auto mockLocalSource =
+        DocumentSourceMock::createForTest({Document{{"_id", 0}}, Document{{"_id", 1}}});
     idLookupStage->setSource(mockLocalSource.get());
 
     // Mock documents for this namespace.
@@ -129,7 +130,7 @@ TEST_F(InternalSearchBetaIdLookupTest, ShouldAllowStringOrObjectIdValues) {
     auto idLookupStage = DocumentSourceInternalSearchBetaIdLookUp::createFromBson(spec, expCtx);
 
     // Mock its input.
-    auto mockLocalSource = DocumentSourceMock::create(
+    auto mockLocalSource = DocumentSourceMock::createForTest(
         {Document{{"_id", "tango"_sd}},
          Document{{"_id", Document{{"number", 42}, {"irrelevant", "something"_sd}}}}});
     idLookupStage->setSource(mockLocalSource.get());
@@ -166,7 +167,7 @@ TEST_F(InternalSearchBetaIdLookupTest, ShouldNotErrorOnEmptyResult) {
     auto idLookupStage = DocumentSourceInternalSearchBetaIdLookUp::createFromBson(spec, expCtx);
 
     // Mock its input.
-    auto mockLocalSource = DocumentSourceMock::create({});
+    auto mockLocalSource = DocumentSourceMock::createForTest({});
     idLookupStage->setSource(mockLocalSource.get());
 
     // Mock documents for this namespace.
