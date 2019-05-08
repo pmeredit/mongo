@@ -74,30 +74,6 @@ protected:
     }
 };
 
-TEST_F(FLEMatchExpressionTest, VerifyCorrectBinaryFormatForGeneratedPlaceholder) {
-    BSONObj placeholder = buildEncryptElem(5, kDefaultMetadata);
-    auto binDataElem = placeholder.firstElement();
-    ASSERT_EQ(binDataElem.type(), BSONType::BinData);
-    ASSERT_EQ(binDataElem.binDataType(), BinDataType::Encrypt);
-
-    int length = 0;
-    auto rawBuffer = binDataElem.binData(length);
-    ASSERT(rawBuffer);
-
-    // First byte is the type, with '0' indicating that this is an intent-to-encrypt marking.
-    ASSERT_GT(length, 1);
-    ASSERT_EQ(rawBuffer[0], 0);
-
-    // The remaining bytes are encoded as BSON.
-    BSONObj placeholderBSON(&rawBuffer[1]);
-    ASSERT_BSONOBJ_EQ(placeholderBSON, fromjson(R"({
-        a: 1,
-        iv: {$binary: "bW9uZ28=", $type: "00"},
-        ki: {$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
-        v: 5
-    })"));
-}
-
 TEST_F(FLEMatchExpressionTest, MarksElementInEqualityAsEncrypted) {
     auto match = fromjson("{ssn: 5}");
     auto encryptedObj = buildEncryptElem(match["ssn"], kDefaultMetadata);

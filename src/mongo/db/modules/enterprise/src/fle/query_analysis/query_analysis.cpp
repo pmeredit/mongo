@@ -735,4 +735,19 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
     return binDataBob.obj();
 }
 
+Value buildEncryptPlaceholder(Value input,
+                              const EncryptionMetadata& metadata,
+                              EncryptionPlaceholderContext placeholderContext,
+                              const CollatorInterface* collator) {
+    StringData wrappingKey;
+    // We cannot convert a Value directly into a BSONElement. So we wrap the 'input' into a Document
+    // with key as 'wrappingKey' and then unwrap before returning.
+    return Value(buildEncryptPlaceholder(Document{{wrappingKey, input}}.toBson().firstElement(),
+                                         metadata,
+                                         placeholderContext,
+                                         collator,
+                                         boost::none,
+                                         boost::none)[wrappingKey]);
+}
+
 }  // namespace mongo

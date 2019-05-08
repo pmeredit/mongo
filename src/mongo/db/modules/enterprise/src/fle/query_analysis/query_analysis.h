@@ -9,6 +9,7 @@
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/db/matcher/schema/encrypt_schema_types.h"
 #include "mongo/db/operation_context.h"
+#include "mongo/db/pipeline/value.h"
 #include "mongo/db/query/collation/collator_interface.h"
 #include "mongo/rpc/op_msg.h"
 
@@ -122,6 +123,17 @@ void processUpdateCommand(OperationContext* opCtx,
 void processDeleteCommand(OperationContext* opCtx,
                           const OpMsgRequest& request,
                           BSONObjBuilder* builder);
+
+/**
+ * Builds an EncryptionPlaceholder using 'input' and 'metadata'. Returns a Value which is a BinData
+ * (sub-type 6) representing the placeholder.
+ *
+ * Assumes that the 'input' is being used in a comparison context.
+ */
+Value buildEncryptPlaceholder(Value input,
+                              const EncryptionMetadata& metadata,
+                              EncryptionPlaceholderContext placeholderContext,
+                              const CollatorInterface* collator);
 
 /**
  * Builds an EncryptionPlaceholder using 'elem' and 'metadata'. Returns a single element BSONObj
