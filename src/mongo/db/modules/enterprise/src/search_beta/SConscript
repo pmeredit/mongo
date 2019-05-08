@@ -7,11 +7,18 @@ env.Library(
     source=[
         'document_source_search_beta.cpp',
         'document_source_internal_search_beta_id_lookup.cpp',
+        'document_source_internal_search_beta_mongot_remote.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/db/pipeline/document_value',
         '$BUILD_DIR/mongo/db/pipeline/pipeline',
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/executor/non_auth_task_executor',
+        '$BUILD_DIR/mongo/executor/task_executor_cursor',
+        '$BUILD_DIR/mongo/executor/task_executor_interface',
+        'mongot_options',
     ],
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/db/mongodandmongos',
@@ -37,6 +44,7 @@ env.CppUnitTest(
     source=[
         'document_source_search_beta_test.cpp',
         'document_source_internal_search_beta_id_lookup_test.cpp',
+        'document_source_internal_search_beta_mongot_remote_test.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/auth/authmocks',
@@ -44,5 +52,8 @@ env.CppUnitTest(
         '$BUILD_DIR/mongo/db/pipeline/document_value_test_util',
         '$BUILD_DIR/mongo/db/service_context_test_fixture',
         'document_source_search_beta',
+    ],
+    LIBDEPS_PRIVATE=[
+        'mongot_options',
     ]
 )

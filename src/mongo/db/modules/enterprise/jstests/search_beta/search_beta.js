@@ -4,6 +4,7 @@
 (function() {
     "use strict";
 
+    // TODO configure this to use the mongot mock. Before then, this test should fail.
     let conn = MongoRunner.runMongod();
     let db = conn.getDB("test");
     const collName = "search_beta";

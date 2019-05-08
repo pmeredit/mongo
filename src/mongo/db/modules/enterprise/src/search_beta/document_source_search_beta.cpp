@@ -7,6 +7,7 @@
 #include "document_source_search_beta.h"
 
 #include "document_source_internal_search_beta_id_lookup.h"
+#include "document_source_internal_search_beta_mongot_remote.h"
 #include "mongo/db/pipeline/document_source.h"
 #include "mongo/db/pipeline/expression_context.h"
 
@@ -31,9 +32,8 @@ list<intrusive_ptr<DocumentSource>> DocumentSourceSearchBeta::createFromBson(
                           << typeName(elem.type()),
             elem.type() == BSONType::Object);
 
-    // TODO (SERVER-39447): Create the initial stage for communicating with a remote mongot node.
-
-    return {new DocumentSourceInternalSearchBetaIdLookUp(pExpCtx)};
+    return {DocumentSourceInternalSearchBetaMongotRemote::createFromBson(elem, pExpCtx),
+            new DocumentSourceInternalSearchBetaIdLookUp(pExpCtx)};
 }
 
 }  // namespace mongo

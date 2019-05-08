@@ -19,7 +19,6 @@ MongotParams::MongotParams() {
 }
 
 Status MongotParams::onSetHost(const std::string&) {
-    globalMongotParams.enabled = true;
     return Status::OK();
 }
 
@@ -34,6 +33,7 @@ Status MongotParams::onValidateHost(StringData str) {
         return status.getStatus().withContext("mongoHost must be of the form \"host:port\"");
     }
 
+    globalMongotParams.enabled = true;
     return Status::OK();
 }
 
