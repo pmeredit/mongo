@@ -357,6 +357,17 @@ function withSaslauthd(saslAuthdConfigFile, configGenerator, callback) {
     var pid = _startMongoProgram(
         "saslauthd", "-V", "-a", "ldap", "-m", saslauthdPath, "-n", "1", "-O", saslAuthdConfigFile);
 
+    assert.soon(function() {
+        let exitCode = runNonMongoProgram("testsaslauthd",
+                                          "-f",
+                                          saslauthdPath + "/mux",
+                                          "-u",
+                                          saslAuthenticationUser,
+                                          "-p",
+                                          configGenerator.ldapQueryPassword);
+        return exitCode == 0;
+    });
+
     try {
         callback();
     } finally {
