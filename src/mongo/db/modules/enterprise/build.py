@@ -166,8 +166,6 @@ def configure(conf, env):
         files = [
                 'libsasl.dll',
                 'libsasl.pdb',
-                'ssleay32.dll',
-                'libeay32.dll',
                 'netsnmp.dll',
                 'netsnmp.pdb',
                 ]
