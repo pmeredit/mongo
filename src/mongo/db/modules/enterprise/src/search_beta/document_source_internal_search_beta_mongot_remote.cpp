@@ -24,6 +24,8 @@ REGISTER_DOCUMENT_SOURCE(_internalSearchBetaMongotRemote,
                          DocumentSourceInternalSearchBetaMongotRemote::LiteParsed::parse,
                          DocumentSourceInternalSearchBetaMongotRemote::createFromBson);
 
+MONGO_FAIL_POINT_DEFINE(searchBetaReturnEofImmediately);
+
 const char* DocumentSourceInternalSearchBetaMongotRemote::getSourceName() const {
     return "$_internalSearchBetaMongotRemote";
 }
@@ -60,6 +62,10 @@ void DocumentSourceInternalSearchBetaMongotRemote::populateCursor() {
  */
 DocumentSource::GetNextResult DocumentSourceInternalSearchBetaMongotRemote::getNext() {
     pExpCtx->checkForInterrupt();
+
+    if (MONGO_FAIL_POINT(searchBetaReturnEofImmediately)) {
+        return DocumentSource::GetNextResult::makeEOF();
+    }
 
     if (!_cursor) {
         populateCursor();
