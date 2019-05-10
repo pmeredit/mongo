@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "encryption_update_visitor.h"
+#include "fle_test_fixture.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/query/collation/collator_interface_mock.h"
@@ -43,13 +44,6 @@ static const BSONObj encryptMetadataDeterministicObj =
                            << BSONBinData(NULL, 0, BinDataType::BinDataGeneral)
                            << "keyId"
                            << BSON_ARRAY(BSONBinData(uuidBytes, 16, newUUID))));
-
-static const EncryptionMetadata kDefaultMetadata =
-    EncryptionMetadata::parse(IDLParserErrorContext("encryptMetadata"), fromjson(R"({
-                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
-                initializationVector: {$binary: "bW9uZ28=", $type: "00"}
-            })"));
 
 /**
  * Builds a schema with a single encrypted field using the passed in 'encrypt'
@@ -216,6 +210,32 @@ TEST(ReplaceEncryptedFieldsTest, FailIfSchemaHasKeyIdWithEmptyOrigDoc) {
         51093);
 }
 
+
+TEST_F(FLETestFixture, VerifyCorrectBinaryFormatForGeneratedPlaceholder) {
+    BSONObj placeholder = buildEncryptPlaceholder(BSON("foo" << 5).firstElement(),
+                                                  kDefaultMetadata,
+                                                  EncryptionPlaceholderContext::kComparison,
+                                                  nullptr);
+    auto binDataElem = placeholder.firstElement();
+    ASSERT_EQ(binDataElem.type(), BSONType::BinData);
+    ASSERT_EQ(binDataElem.binDataType(), BinDataType::Encrypt);
+
+    int length = 0;
+    auto rawBuffer = binDataElem.binData(length);
+    verifyBinData(rawBuffer, length);
+}
+
+TEST_F(FLETestFixture, VerifyCorrectBinaryFormatForGeneratedPlaceholderWithValue) {
+    Value binData = buildEncryptPlaceholder(
+        Value(5), kDefaultMetadata, EncryptionPlaceholderContext::kComparison, nullptr);
+
+    ASSERT_EQ(binData.getType(), BSONType::BinData);
+    auto binDataElem = binData.getBinData();
+    ASSERT_EQ(binDataElem.type, BinDataType::Encrypt);
+
+    verifyBinData(static_cast<const char*>(binDataElem.data), binDataElem.length);
+}
+
 TEST(BuildEncryptPlaceholderValueTest, FailsForJSONPointerEncryption) {
     auto metadata = EncryptionMetadata::parse(
         IDLParserErrorContext("meta"), pointerEncryptObjUsingDeterministicAlgo["encrypt"].Obj());
@@ -280,31 +300,6 @@ TEST(BuildEncryptPlaceholderValueTest, SucceedsForDeterministicEncryptionWithObj
 
     ASSERT_EQ(binData.getType(), BSONType::BinData);
     ASSERT_EQ(binData.getBinData().type, BinDataType::Encrypt);
-}
-
-TEST(BuildEncryptPlaceholderValueTest, VerifyCorrectBinaryFormatForGeneratedPlaceholder) {
-    Value binData = buildEncryptPlaceholder(
-        Value(5), kDefaultMetadata, EncryptionPlaceholderContext::kComparison, nullptr);
-
-    ASSERT_EQ(binData.getType(), BSONType::BinData);
-    auto binDataElem = binData.getBinData();
-    ASSERT_EQ(binDataElem.type, BinDataType::Encrypt);
-
-    verifyBinData(static_cast<const char*>(binDataElem.data), binDataElem.length);
-}
-
-TEST(BuildEncryptPlaceholderTest, VerifyCorrectBinaryFormatForGeneratedPlaceholder) {
-    BSONObj placeholder = buildEncryptPlaceholder(BSON("foo" << 5).firstElement(),
-                                                  kDefaultMetadata,
-                                                  EncryptionPlaceholderContext::kComparison,
-                                                  nullptr);
-    auto binDataElem = placeholder.firstElement();
-    ASSERT_EQ(binDataElem.type(), BSONType::BinData);
-    ASSERT_EQ(binDataElem.binDataType(), BinDataType::Encrypt);
-
-    int length = 0;
-    auto rawBuffer = binDataElem.binData(length);
-    verifyBinData(rawBuffer, length);
 }
 
 TEST(BuildEncryptPlaceholderTest, JSONPointerResolvesCorrectly) {
