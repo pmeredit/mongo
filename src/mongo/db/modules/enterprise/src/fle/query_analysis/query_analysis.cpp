@@ -561,6 +561,12 @@ void processQueryCommand(OperationContext* opCtx,
 
     PlaceHolderResult placeholder = func(expCtx, dbName, stripped.obj(), std::move(schemaTree));
     auto fieldNames = cmdObj.getFieldNames<std::set<StringData>>();
+
+    // A new camel-case name of the FindAndModify command needs to be used
+    // in place of the legacy one.
+    if (fieldNames.count(FindAndModifyRequest::kLegacyCommandName)) {
+        fieldNames.insert(FindAndModifyRequest::kCommandName);
+    }
     placeholder.result = removeExtraFields(fieldNames, placeholder.result);
 
     serializePlaceholderResult(placeholder, builder);

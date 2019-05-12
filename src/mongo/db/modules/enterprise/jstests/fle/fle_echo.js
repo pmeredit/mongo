@@ -28,16 +28,22 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
     };
 
     let cmds = [
-        {find: "foo", filter: {_id: 1}},
-        {distinct: "foo", query: {_id: 1}, key: "_id"},
-        {count: "foo", query: {_id: 1}},
-        {findAndModify: "foo", query: {foo: 1}, update: {$inc: {score: 1.0}}},
+        {cmdName: "find", cmd: {find: "foo", filter: {_id: 1}}},
+        {cmdName: "distinct", cmd: {distinct: "foo", query: {_id: 1}, key: "_id"}},
+        {cmdName: "count", cmd: {count: "foo", query: {_id: 1}}},
+        {
+          cmdName: "findAndModify",
+          cmd: {findAndModify: "foo", query: {foo: 1}, update: {$inc: {score: 1.0}}}
+        },
         // old name
-        {findandmodify: "foo", query: {foo: 1}, update: {$inc: {score: 1.0}}},
-        {aggregate: "foo", pipeline: [{filter: {$eq: 1.0}}]},
-        {insert: "foo", documents: [{foo: 1}]},
-        {update: "foo", updates: [{q: {foo: 1}, u: {"$set": {a: 2}}}]},
-        {delete: "foo", deletes: [{q: {foo: 1}, limit: 1}]},
+        {
+          cmdName: "findAndModify",
+          cmd: {findandmodify: "foo", query: {foo: 1}, update: {$inc: {score: 1.0}}}
+        },
+        {cmdName: "aggregate", cmd: {aggregate: "foo", pipeline: [{filter: {$eq: 1.0}}]}},
+        {cmdName: "insert", cmd: {insert: "foo", documents: [{foo: 1}]}},
+        {cmdName: "update", cmd: {update: "foo", updates: [{q: {foo: 1}, u: {"$set": {a: 2}}}]}},
+        {cmdName: "delete", cmd: {delete: "foo", deletes: [{q: {foo: 1}, limit: 1}]}}
     ];
 
     const supportedCommands = [
@@ -53,13 +59,13 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
 
     cmds.forEach(element => {
         // Make sure no json schema fails
-        assert.commandFailed(testDB.runCommand(element));
+        assert.commandFailed(testDB.runCommand(element.cmd));
 
         // NOTE: This mutates element so it now has jsonSchema
-        Object.extend(element, {jsonSchema: basicJSONSchema});
+        Object.extend(element.cmd, {jsonSchema: basicJSONSchema});
 
         // Make sure json schema works
-        const ret1 = assert.commandWorked(testDB.runCommand(element));
+        const ret1 = assert.commandWorked(testDB.runCommand(element.cmd));
         assert.eq(ret1.hasEncryptionPlaceholders, false, ret1);
         assert.eq(ret1.schemaRequiresEncryption, false, ret1);
 
@@ -89,14 +95,14 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
         };
 
         // Switch to the schema containing encrypted fields.
-        Object.assign(element, {jsonSchema: basicEncryptSchema});
+        Object.assign(element.cmd, {jsonSchema: basicEncryptSchema});
 
         // Merge the passthrough fields with the current command object.
-        Object.assign(element, passthroughFields);
+        Object.assign(element.cmd, passthroughFields);
 
-        const passthroughResult = assert.commandWorked(testDB.runCommand(element));
+        const passthroughResult = assert.commandWorked(testDB.runCommand(element.cmd));
 
-        if (Object.keys(element).some(field => supportedCommands.includes(field))) {
+        if (Object.keys(element.cmd).some(field => supportedCommands.includes(field))) {
             // Command is supported, verify that each of the passthrough fields is included in the
             // result.
             for (let field in passthroughFields) {
@@ -109,6 +115,9 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
 
             // The '$db' field is always removed by cryptd.
             assert(!passthroughResult.hasOwnProperty("$db"));
+
+            // Commands name should hold the collection name
+            assert.eq(passthroughResult.result[element.cmdName], "foo", passthroughResult);
         } else {
             // Command is not supported yet, verify an empty 'result' in the response.
             assert.eq(passthroughResult.result, {}, passthroughResult);
