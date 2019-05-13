@@ -42,6 +42,7 @@
 #include "mongo/util/time_support.h"
 #include "serverstatus_client.h"
 #include "snmp_options.h"
+#include "../watchdog/watchdog_mongod.h"
 
 namespace mongo {
 
@@ -1060,6 +1061,7 @@ void SNMPAgent::init() {
  */
 void enterpriseThreadInit() {
     SNMPAgent::init();
+    startWatchdog();
 }
 
 MONGO_INITIALIZER(InitializeSnmp)(InitializerContext* context) {

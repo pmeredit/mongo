@@ -17,6 +17,7 @@ feature_dirs = [
     "ldap",
     "mongohouse",
     "queryable",
+    "watchdog",
 ]
 
 env = env.Clone()
@@ -147,7 +148,6 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
         target='audit_configuration',
         source=[
             env.Idlc('src/audit/audit_options.idl')[0],
-            'src/audit/audit_watchdog.cpp',
         ],
         LIBDEPS=[
             'audit_enterprise',
@@ -155,7 +155,6 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
         LIBDEPS_PRIVATE=[
             '$BUILD_DIR/mongo/util/options_parser/options_parser',
             '$BUILD_DIR/mongo/idl/server_parameter',
-            '$BUILD_DIR/mongo/watchdog/watchdog_mongod',
         ],
         PROGDEPS_DEPENDENTS=[
             '$BUILD_DIR/mongo/mongod',
@@ -194,6 +193,7 @@ if not env.TargetOSIs("darwin") and "snmp" in env['MONGO_ENTERPRISE_FEATURES']:
             '$BUILD_DIR/mongo/db/repl/repl_coordinator_interface',
             '$BUILD_DIR/mongo/db/repl/repl_settings',
             '$BUILD_DIR/mongo/util/processinfo',
+            'src/watchdog/watchdog_mongod',
         ],
         LIBDEPS_PRIVATE=[
             '$BUILD_DIR/mongo/util/options_parser/options_parser',
