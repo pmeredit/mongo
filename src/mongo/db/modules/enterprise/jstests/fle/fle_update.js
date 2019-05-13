@@ -351,5 +351,15 @@
     updateCommand["updates"] = [{q: {}, u: {"$set": {foo: Timestamp(0, 0)}}, upsert: true}];
     assert.commandWorked(testDb.runCommand(updateCommand));
 
+    // Test that arrayFilters on a non-encrypted field is allowed.
+    updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc}};
+    updateCommand["updates"] = [{q: {}, u: {"$set": {"bar.$[i]": 1}}, arrayFilters: [{i: 0}]}];
+    assert.commandWorked(testDb.runCommand(updateCommand));
+
+    // Test that an arrayFilter used on an encrypted field path is not allowed.
+    updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc}};
+    updateCommand["updates"] = [{q: {}, u: {"$set": {"foo.$[i]": 1}}, arrayFilters: [{i: 0}]}];
+    assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51150);
+
     mongocryptd.stop();
 }());

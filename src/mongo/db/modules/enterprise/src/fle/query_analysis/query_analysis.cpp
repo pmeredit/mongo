@@ -18,6 +18,7 @@
 #include "mongo/db/matcher/expression_parser.h"
 #include "mongo/db/matcher/expression_type.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
+#include "mongo/db/ops/parsed_update.h"
 #include "mongo/db/ops/write_ops.h"
 #include "mongo/db/ops/write_ops_gen.h"
 #include "mongo/db/pipeline/stub_mongo_process_interface.h"
@@ -221,10 +222,14 @@ PlaceHolderResult replaceEncryptedFieldsInFilter(
 PlaceHolderResult replaceEncryptedFieldsInUpdate(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const EncryptionSchemaTreeNode& schemaTree,
-    BSONObj update) {
+    BSONObj update,
+    const std::vector<mongo::BSONObj>& arrayFilters) {
     UpdateDriver driver(expCtx);
-    // Ignoring array filters as they are not relevant for encryption.
-    driver.parse(update, {});
+    // Although arrayFilters cannot contain encrypted fields, pass them through to the UpdateDriver
+    // to prevent parsing errors for arrayFilters on a non-encrypted field path.
+    auto parsedArrayFilters = uassertStatusOK(ParsedUpdate::parseArrayFilters(
+        arrayFilters, expCtx->opCtx, const_cast<CollatorInterface*>(expCtx->getCollator())));
+    driver.parse(update, parsedArrayFilters);
 
     // 'updateVisitor' must live through driver serialization.
     auto updateVisitor = EncryptionUpdateVisitor(schemaTree);
@@ -438,7 +443,7 @@ PlaceHolderResult addPlaceHoldersForFindAndModify(
         }
 
         auto newUpdate = replaceEncryptedFieldsInUpdate(
-            expCtx, *schemaTree.get(), updateMod->getUpdateClassic());
+            expCtx, *schemaTree.get(), updateMod->getUpdateClassic(), request.getArrayFilters());
         if (newUpdate.hasEncryptionPlaceholders) {
             request.setUpdateObj(newUpdate.result);
             anythingEncrypted = true;
@@ -502,8 +507,10 @@ PlaceHolderResult addPlaceHoldersForUpdate(OperationContext* opCtx,
             verifyNoGeneratedEncryptedFields(updateMod.getUpdateClassic(), *schemaTree.get());
         }
         auto newFilter = replaceEncryptedFieldsInFilter(expCtx, *schemaTree.get(), update.getQ());
-        auto newUpdate =
-            replaceEncryptedFieldsInUpdate(expCtx, *schemaTree.get(), updateMod.getUpdateClassic());
+        auto newUpdate = replaceEncryptedFieldsInUpdate(expCtx,
+                                                        *schemaTree.get(),
+                                                        updateMod.getUpdateClassic(),
+                                                        write_ops::arrayFiltersOf(update));
         // Create a non-const copy.
         auto newEntry = update;
         newEntry.setQ(newFilter.result);
