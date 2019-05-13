@@ -747,28 +747,16 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
         uassert(51093, "A non-static (JSONPointer) keyId is not supported.", origDoc);
         auto pointer = keyId->jsonPointer();
         auto resolvedKey = pointer.evaluate(origDoc.get());
-        uassert(30017,
-                "keyId pointer '" + pointer.toString() + "' cannot point to an encrypted field",
-                !(schema->getEncryptionMetadataForPath(pointer.toFieldRef())));
         uassert(51114,
                 "keyId pointer '" + pointer.toString() + "' must point to a field that exists",
                 resolvedKey);
+        uassert(30017,
+                "keyId pointer '" + pointer.toString() + "' cannot point to an encrypted field",
+                !(schema->getEncryptionMetadataForPath(pointer.toFieldRef())));
         uassert(51115,
-                "keyId pointer '" + pointer.toString() +
-                    "' cannot point to an object, array or CodeWScope",
-                !resolvedKey.mayEncapsulate());
-        uassert(30037,
-                "keyId pointer '" + pointer.toString() +
-                    "' cannot point to an already encrypted object",
-                !(resolvedKey.type() == BSONType::BinData &&
-                  resolvedKey.binDataType() == BinDataType::Encrypt));
-        if (resolvedKey.type() == BSONType::BinData &&
-            resolvedKey.binDataType() == BinDataType::newUUID) {
-            marking.setKeyId(uassertStatusOK(UUID::parse(resolvedKey)));
-        } else {
-            EncryptSchemaAnyType keyAltName(resolvedKey);
-            marking.setKeyAltName(keyAltName);
-        }
+                "keyId pointer '" + pointer.toString() + "' must point to a string",
+                resolvedKey.type() == BSONType::String);
+        marking.setKeyAltName(resolvedKey.valueStringData());
     }
 
     // Serialize the placeholder to BSON.
