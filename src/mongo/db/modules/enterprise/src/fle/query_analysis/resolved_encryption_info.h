@@ -33,12 +33,11 @@ struct ResolvedEncryptionInfo {
      */
     ResolvedEncryptionInfo(EncryptSchemaKeyId keyId,
                            FleAlgorithmEnum algorithm,
-                           boost::optional<ConstDataRange> initializationVector,
                            boost::optional<MatcherTypeSet> bsonTypeSet);
 
     bool operator==(const ResolvedEncryptionInfo& other) const {
         return keyId == other.keyId && algorithm == other.algorithm &&
-            initializationVector == other.initializationVector && bsonTypeSet == other.bsonTypeSet;
+            bsonTypeSet == other.bsonTypeSet;
     }
 
     bool operator!=(const ResolvedEncryptionInfo& other) const {
@@ -47,7 +46,6 @@ struct ResolvedEncryptionInfo {
 
     const EncryptSchemaKeyId keyId;
     const FleAlgorithmEnum algorithm;
-    const boost::optional<std::vector<std::uint8_t>> initializationVector;
     const boost::optional<MatcherTypeSet> bsonTypeSet;
 };
 

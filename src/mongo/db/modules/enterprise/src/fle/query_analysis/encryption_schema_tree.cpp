@@ -121,9 +121,6 @@ public:
         for (const auto& newMetadata : _chain) {
             if (newMetadata.getAlgorithm())
                 currentMetadata.setAlgorithm(newMetadata.getAlgorithm().value());
-            if (newMetadata.getInitializationVector())
-                currentMetadata.setInitializationVector(
-                    newMetadata.getInitializationVector().value());
             if (newMetadata.getKeyId())
                 currentMetadata.setKeyId(newMetadata.getKeyId().value());
         }
@@ -132,8 +129,6 @@ public:
         // as they take precedence.
         if (encryptInfo.getAlgorithm())
             currentMetadata.setAlgorithm(encryptInfo.getAlgorithm());
-        if (encryptInfo.getInitializationVector())
-            currentMetadata.setInitializationVector(encryptInfo.getInitializationVector());
         if (encryptInfo.getKeyId())
             currentMetadata.setKeyId(encryptInfo.getKeyId());
 
@@ -156,7 +151,6 @@ public:
         // obtained from the EncryptionInfo.
         return ResolvedEncryptionInfo{*currentMetadata.getKeyId(),
                                       *currentMetadata.getAlgorithm(),
-                                      currentMetadata.getInitializationVector(),
                                       std::move(matcherTypeSet)};
     }
 

@@ -731,11 +731,6 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
 
     EncryptionPlaceholder marking(integerAlgorithm, EncryptSchemaAnyType(elem));
 
-    if (integerAlgorithm == FleAlgorithmInt::kDeterministic) {
-        invariant(metadata.initializationVector);
-        marking.setInitializationVector(ConstDataRange{metadata.initializationVector.get()});
-    }
-
     const auto& keyId = metadata.keyId;
     if (keyId.type() == EncryptSchemaKeyId::Type::kUUIDs) {
         marking.setKeyId(keyId.uuids()[0]);

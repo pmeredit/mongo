@@ -62,10 +62,8 @@ void assertNotEncrypted(BSONObj schema, std::string path) {
 
 TEST(EncryptionSchemaTreeTest, MarksTopLevelFieldAsEncrypted) {
     const auto uuid = UUID::gen();
-    ResolvedEncryptionInfo metadata{EncryptSchemaKeyId{std::vector<UUID>{uuid}},
-                                    FleAlgorithmEnum::kRandom,
-                                    boost::none,
-                                    boost::none};
+    ResolvedEncryptionInfo metadata{
+        EncryptSchemaKeyId{std::vector<UUID>{uuid}}, FleAlgorithmEnum::kRandom, boost::none};
 
     BSONObj schema =
         fromjson(R"({
@@ -89,10 +87,8 @@ TEST(EncryptionSchemaTreeTest, MarksTopLevelFieldAsEncrypted) {
 
 TEST(EncryptionSchemaTreeTest, MarksNestedFieldsAsEncrypted) {
     const auto uuid = UUID::gen();
-    ResolvedEncryptionInfo metadata{EncryptSchemaKeyId{std::vector<UUID>{uuid}},
-                                    FleAlgorithmEnum::kRandom,
-                                    boost::none,
-                                    boost::none};
+    ResolvedEncryptionInfo metadata{
+        EncryptSchemaKeyId{std::vector<UUID>{uuid}}, FleAlgorithmEnum::kRandom, boost::none};
 
     BSONObj schema =
         fromjson(R"({
@@ -119,10 +115,8 @@ TEST(EncryptionSchemaTreeTest, MarksNestedFieldsAsEncrypted) {
 
 TEST(EncryptionSchemaTreeTest, MarksNumericFieldNameAsEncrypted) {
     const auto uuid = UUID::gen();
-    ResolvedEncryptionInfo metadata{EncryptSchemaKeyId{std::vector<UUID>{uuid}},
-                                    FleAlgorithmEnum::kRandom,
-                                    boost::none,
-                                    boost::none};
+    ResolvedEncryptionInfo metadata{
+        EncryptSchemaKeyId{std::vector<UUID>{uuid}}, FleAlgorithmEnum::kRandom, boost::none};
     BSONObj encryptObj = fromjson(R"({
         algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
         keyId: [)" + uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::Strict, false) +
@@ -147,10 +141,8 @@ TEST(EncryptionSchemaTreeTest, MarksNumericFieldNameAsEncrypted) {
 TEST(EncryptionSchemaTreeTest, MarksMultipleFieldsAsEncrypted) {
     const auto uuid = UUID::gen();
     const auto uuidStr = uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::Strict, false);
-    ResolvedEncryptionInfo metadata{EncryptSchemaKeyId{std::vector<UUID>{uuid}},
-                                    FleAlgorithmEnum::kRandom,
-                                    boost::none,
-                                    boost::none};
+    ResolvedEncryptionInfo metadata{
+        EncryptSchemaKeyId{std::vector<UUID>{uuid}}, FleAlgorithmEnum::kRandom, boost::none};
 
     BSONObj schema = fromjson(R"({
         type: "object",
@@ -191,10 +183,8 @@ TEST(EncryptionSchemaTreeTest, MarksMultipleFieldsAsEncrypted) {
 TEST(EncryptionSchemaTreeTest, TopLevelEncryptMarksEmptyPathAsEncrypted) {
     const auto uuid = UUID::gen();
     const auto uuidStr = uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::Strict, false);
-    ResolvedEncryptionInfo metadata{EncryptSchemaKeyId{std::vector<UUID>{uuid}},
-                                    FleAlgorithmEnum::kRandom,
-                                    boost::none,
-                                    boost::none};
+    ResolvedEncryptionInfo metadata{
+        EncryptSchemaKeyId{std::vector<UUID>{uuid}}, FleAlgorithmEnum::kRandom, boost::none};
 
     BSONObj schema = fromjson(R"({
                 encrypt: {
@@ -210,14 +200,11 @@ TEST(EncryptionSchemaTreeTest, ExtractsCorrectMetadataOptions) {
     const auto uuid = UUID::gen();
     ResolvedEncryptionInfo ssnMetadata{EncryptSchemaKeyId{std::vector<UUID>{uuid}},
                                        FleAlgorithmEnum::kDeterministic,
-                                       ConstDataRange{nullptr, nullptr},
                                        MatcherTypeSet{BSONType::String}};
 
     const IDLParserErrorContext encryptCtxt("encrypt");
     auto encryptObj = BSON("algorithm"
                            << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
-                           << "initializationVector"
-                           << BSONBinData(NULL, 0, BinDataType::BinDataGeneral)
                            << "bsonType"
                            << "string"
                            << "keyId"
@@ -644,17 +631,6 @@ TEST(EncryptionSchemaTreeTest, FailsToParseInvalidAlgorithm) {
         EncryptionSchemaTreeNode::parse(schema), AssertionException, ErrorCodes::BadValue);
 }
 
-TEST(EncryptionSchemaTreeTest, FailsToParseInvalidIV) {
-    BSONObj schema =
-        BSON("type"
-             << "object"
-             << "properties"
-             << BSON("ssn" << BSON("encrypt" << BSON("initializationVector" << BSONBinData(
-                                                         nullptr, 0, BinDataType::MD5Type)))));
-    ASSERT_THROWS_CODE(
-        EncryptionSchemaTreeNode::parse(schema), AssertionException, ErrorCodes::TypeMismatch);
-}
-
 TEST(EncryptionSchemaTreeTest, FailsToParseInvalidKeyIdUUID) {
     BSONObj schema =
         BSON("type"
@@ -864,18 +840,13 @@ TEST(EncryptionSchemaTreeTest, CanSuccessfullyParseAdditionalPropertiesWhenBoole
 
 TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataWithOverriding) {
     const auto uuid = UUID::gen();
-    const char initVector[] = "mongo";
 
-    ResolvedEncryptionInfo secretMetadata{EncryptSchemaKeyId{std::vector<UUID>{uuid}},
-                                          FleAlgorithmEnum::kRandom,
-                                          boost::none,
-                                          boost::none};
+    ResolvedEncryptionInfo secretMetadata{
+        EncryptSchemaKeyId{std::vector<UUID>{uuid}}, FleAlgorithmEnum::kRandom, boost::none};
 
-    ResolvedEncryptionInfo ssnMetadata{
-        EncryptSchemaKeyId{{uuid}},
-        FleAlgorithmEnum::kDeterministic,
-        ConstDataRange{initVector, initVector + sizeof(initVector) - 1},
-        MatcherTypeSet{BSONType::String}};
+    ResolvedEncryptionInfo ssnMetadata{EncryptSchemaKeyId{{uuid}},
+                                       FleAlgorithmEnum::kDeterministic,
+                                       MatcherTypeSet{BSONType::String}};
 
     BSONObj schema =
         fromjson(R"({
@@ -889,7 +860,6 @@ TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataWithOverriding) {
             ssn: {
                 encrypt: {
                     algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                    initializationVector: {$binary: "bW9uZ28=", $type: "00"},
                     bsonType: "string"
                 }
             },
@@ -905,18 +875,15 @@ TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataWithOverriding) {
 }
 
 TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataMultipleLevels) {
-    const char initVector[] = "mongo";
     const auto uuid1 = UUID::gen();
     const auto uuid2 = UUID::gen();
 
-    ResolvedEncryptionInfo secretMetadata{
-        EncryptSchemaKeyId{{uuid1}},
-        FleAlgorithmEnum::kDeterministic,
-        ConstDataRange{initVector, initVector + sizeof(initVector) - 1},
-        MatcherTypeSet{BSONType::String}};
+    ResolvedEncryptionInfo secretMetadata{EncryptSchemaKeyId{{uuid1}},
+                                          FleAlgorithmEnum::kDeterministic,
+                                          MatcherTypeSet{BSONType::String}};
 
     ResolvedEncryptionInfo mysteryMetadata{
-        EncryptSchemaKeyId{{uuid2}}, FleAlgorithmEnum::kRandom, boost::none, boost::none};
+        EncryptSchemaKeyId{{uuid2}}, FleAlgorithmEnum::kRandom, boost::none};
 
     BSONObj schema =
         fromjson(R"({
@@ -928,7 +895,6 @@ TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataMultipleLevels) {
             super: {
                 encryptMetadata: {
                     algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                    initializationVector: {$binary: "bW9uZ28=", $type: "00"},
                     keyId: [)" +
                  uuid1.toBSON().getField("uuid").jsonString(JsonStringFormat::Strict, false) + R"(]
                 },
@@ -974,29 +940,10 @@ TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataMissingAlgorithm) {
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51099);
 }
 
-TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataMissingInitializationVector) {
-    BSONObj schema = fromjson(R"({
-        encryptMetadata: {
-            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-            keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
-        },
-        type: "object",
-        properties: {
-            super: {
-                type: "object",
-                properties: {
-                    secret: {encrypt: {bsonType: 'int'}}
-                }
-            }
-        }})");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51096);
-}
-
 TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataMissingKeyId) {
     BSONObj schema = fromjson(R"({
         encryptMetadata: {
-            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-            initializationVector: {$binary: "bW9uZ28=", $type: "00"}
+            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
         },
         type: "object",
         properties: {
@@ -1499,10 +1446,8 @@ TEST(EncryptionSchemaTreeTest,
 
 TEST(EncryptionSchemaTreeTest, PatternPropertiesInheritsParentEncryptMetadata) {
     const auto uuid = UUID::gen();
-    ResolvedEncryptionInfo expectedMetadata{EncryptSchemaKeyId{std::vector<UUID>{uuid}},
-                                            FleAlgorithmEnum::kRandom,
-                                            boost::none,
-                                            boost::none};
+    ResolvedEncryptionInfo expectedMetadata{
+        EncryptSchemaKeyId{std::vector<UUID>{uuid}}, FleAlgorithmEnum::kRandom, boost::none};
 
     auto uuidJsonStr = uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::Strict, false);
     BSONObj schema = fromjson(R"({
@@ -1755,8 +1700,6 @@ TEST(EncryptionSchemaTreeTest, ParseFailsIfDeterministicAndNoBSONType) {
     const auto uuid = UUID::gen();
     auto encryptObj = BSON("encrypt" << BSON("algorithm"
                                              << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
-                                             << "initializationVector"
-                                             << BSONBinData(NULL, 0, BinDataType::BinDataGeneral)
                                              << "keyId"
                                              << BSON_ARRAY(uuid)));
     auto schema = BSON("type"
@@ -1770,8 +1713,6 @@ TEST(EncryptionSchemaTreeTest, ParseFailsIfDeterministicAndMultipleBSONType) {
     const auto uuid = UUID::gen();
     auto encryptObj = BSON("encrypt" << BSON("algorithm"
                                              << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
-                                             << "initializationVector"
-                                             << BSONBinData(NULL, 0, BinDataType::BinDataGeneral)
                                              << "bsonType"
                                              << BSON_ARRAY("string"
                                                            << "int")
@@ -1788,8 +1729,6 @@ TEST(EncryptionSchemaTreeTest, ParseSucceedsIfLengthOneTypeArray) {
     const auto uuid = UUID::gen();
     auto encryptObj = BSON("encrypt" << BSON("algorithm"
                                              << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
-                                             << "initializationVector"
-                                             << BSONBinData(NULL, 0, BinDataType::BinDataGeneral)
                                              << "bsonType"
                                              << BSON_ARRAY("string")
                                              << "keyId"
@@ -2235,8 +2174,6 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithNoBSONTypeInDeterministicEncrypt)
     auto uuid = UUID::gen();
     BSONObj schema = BSON("encrypt" << BSON("algorithm"
                                             << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
-                                            << "initializationVector"
-                                            << BSONBinData(NULL, 0, BinDataType::BinDataGeneral)
                                             << "keyId"
                                             << BSON_ARRAY(uuid)));
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31051);
@@ -2246,8 +2183,6 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithBSONTypeObjectInDeterministicEncr
     auto uuid = UUID::gen();
     BSONObj schema = BSON("encrypt" << BSON("algorithm"
                                             << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
-                                            << "initializationVector"
-                                            << BSONBinData(NULL, 0, BinDataType::BinDataGeneral)
                                             << "keyId"
                                             << BSON_ARRAY(uuid)
                                             << "bsonType"
@@ -2259,8 +2194,6 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithEmptyArrayBSONTypeInDeterministic
     auto uuid = UUID::gen();
     BSONObj schema = BSON("encrypt" << BSON("algorithm"
                                             << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
-                                            << "initializationVector"
-                                            << BSONBinData(NULL, 0, BinDataType::BinDataGeneral)
                                             << "keyId"
                                             << BSON_ARRAY(uuid)
                                             << "bsonType"
@@ -2272,8 +2205,6 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithMultipleElementArrayBSONTypeInDet
     auto uuid = UUID::gen();
     BSONObj schema = BSON("encrypt" << BSON("algorithm"
                                             << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
-                                            << "initializationVector"
-                                            << BSONBinData(NULL, 0, BinDataType::BinDataGeneral)
                                             << "keyId"
                                             << BSON_ARRAY(uuid)
                                             << "bsonType"
@@ -2286,8 +2217,6 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithObjectInArrayBSONTypeInDeterminis
     auto uuid = UUID::gen();
     BSONObj schema = BSON("encrypt" << BSON("algorithm"
                                             << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
-                                            << "initializationVector"
-                                            << BSONBinData(NULL, 0, BinDataType::BinDataGeneral)
                                             << "keyId"
                                             << BSON_ARRAY(uuid)
                                             << "bsonType"
@@ -2300,8 +2229,6 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithSingleValueBSONTypeInEncryptObjec
     // Test MinKey
     BSONObj encrypt = BSON("encrypt" << BSON("algorithm"
                                              << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
-                                             << "initializationVector"
-                                             << BSONBinData(NULL, 0, BinDataType::BinDataGeneral)
                                              << "bsonType"
                                              << "minKey"
                                              << "keyId"
@@ -2314,8 +2241,6 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithSingleValueBSONTypeInEncryptObjec
     // Test MaxKey
     encrypt = BSON("encrypt" << BSON("algorithm"
                                      << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
-                                     << "initializationVector"
-                                     << BSONBinData(NULL, 0, BinDataType::BinDataGeneral)
                                      << "bsonType"
                                      << "maxKey"
                                      << "keyId"
@@ -2328,8 +2253,6 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithSingleValueBSONTypeInEncryptObjec
     // Test Undefined
     encrypt = BSON("encrypt" << BSON("algorithm"
                                      << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
-                                     << "initializationVector"
-                                     << BSONBinData(NULL, 0, BinDataType::BinDataGeneral)
                                      << "bsonType"
                                      << "undefined"
                                      << "keyId"
@@ -2342,8 +2265,6 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithSingleValueBSONTypeInEncryptObjec
     // Test Null
     encrypt = BSON("encrypt" << BSON("algorithm"
                                      << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
-                                     << "initializationVector"
-                                     << BSONBinData(NULL, 0, BinDataType::BinDataGeneral)
                                      << "bsonType"
                                      << "null"
                                      << "keyId"

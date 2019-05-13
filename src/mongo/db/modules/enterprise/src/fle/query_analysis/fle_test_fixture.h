@@ -49,7 +49,6 @@ protected:
                     encrypt: {
                         algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
                         keyId: [{'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
-                        initializationVector: {$binary: "bW9uZ28=", $type: "00"},
                         bsonType: "string"
                     }
                 }
@@ -66,7 +65,6 @@ protected:
                             encrypt: {
                                 algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
                                 keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
-                                initializationVector: {$binary: "bW9uZ28=", $type: "00"},
                                 bsonType: "string"
                             }
                         }
@@ -129,7 +127,6 @@ protected:
         EncryptSchemaKeyId{std::vector<UUID>{
             uassertStatusOK(UUID::parse("01234567-89ab-cdef-edcb-a98765432101"))}},
         FleAlgorithmEnum::kDeterministic,
-        ConstDataRange{kInitializationVector},
         MatcherTypeSet{BSONType::String}};
 };
 

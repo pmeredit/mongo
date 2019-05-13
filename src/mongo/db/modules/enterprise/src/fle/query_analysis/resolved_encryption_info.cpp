@@ -10,23 +10,14 @@ namespace mongo {
 
 ResolvedEncryptionInfo::ResolvedEncryptionInfo(EncryptSchemaKeyId keyId,
                                                FleAlgorithmEnum algorithm,
-                                               boost::optional<ConstDataRange> initializationVector,
                                                boost::optional<MatcherTypeSet> bsonTypeSet)
-    : keyId(std::move(keyId)),
-      algorithm(algorithm),
-      initializationVector(dataRangeToVector(initializationVector)),
-      bsonTypeSet(std::move(bsonTypeSet)) {
+    : keyId(std::move(keyId)), algorithm(algorithm), bsonTypeSet(std::move(bsonTypeSet)) {
     if (algorithm == FleAlgorithmEnum::kDeterministic) {
         uassert(31051,
                 "A deterministically encrypted field must have exactly one specified "
                 "non-object type.",
                 this->bsonTypeSet && this->bsonTypeSet->isSingleType() &&
                     !this->bsonTypeSet->hasType(BSONType::Object));
-
-        uassert(51096,
-                "Deterministic algorithm must be accompanied with an initialization vector in "
-                "encrypt object combined with encryptMetadata",
-                this->initializationVector);
     }
 
     if (this->bsonTypeSet) {
