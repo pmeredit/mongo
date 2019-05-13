@@ -174,5 +174,11 @@ TEST_F(FLEPipelineTest, MatchWithInvalidComparisonToEncryptedFieldCorrectlyFails
         51118);
 }
 
+TEST_F(FLEPipelineTest, EmptyPipelineCorrectlyPropagatesInputSchema) {
+    const auto& outputSchema = getSchemaForStage({}, kDefaultSsnSchema);
+    ASSERT_TRUE(outputSchema.getEncryptionMetadataForPath(FieldRef("ssn")));
+    ASSERT_FALSE(outputSchema.getEncryptionMetadataForPath(FieldRef("notSsn")));
+}
+
 }  // namespace
 }  // namespace mongo

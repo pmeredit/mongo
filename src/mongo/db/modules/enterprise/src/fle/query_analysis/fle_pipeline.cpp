@@ -135,6 +135,13 @@ FLEPipeline::FLEPipeline(std::unique_ptr<Pipeline, PipelineDeleter> pipeline,
         pipeline_metadata_tree::makeTree<clonable_ptr<EncryptionSchemaTreeNode>>(
             {schema->clone()}, *_parsedPipeline.get(), propagateSchemaFunction);
 
+    _finalSchema = std::move(finalSchema);
+
+    // If 'metadataTree' is not set, then this implies that the pipeline is empty and we can return
+    // early here.
+    if (!metadataTree)
+        return;
+
     // Method for analyzing a DocumentSource alongside it's stage in the pipeline metadata tree.
     // Replaces any constants with intent-to-encrypt markings based on the schema held in 'stage',
     // or throws an assertion if 'source' contains an invalid expression/operation over an encrypted
@@ -147,9 +154,7 @@ FLEPipeline::FLEPipeline(std::unique_ptr<Pipeline, PipelineDeleter> pipeline,
     };
 
     pipeline_metadata_tree::zip<clonable_ptr<EncryptionSchemaTreeNode>>(
-        &metadataTree, _parsedPipeline.get(), stageAnalysisFunction);
-
-    _finalSchema = std::move(finalSchema);
+        &metadataTree.get(), _parsedPipeline.get(), stageAnalysisFunction);
 }
 
 }  // namespace mongo
