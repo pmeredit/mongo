@@ -32,7 +32,7 @@
         {findAndModify: "test", query: {foo: 1.0}, update: {$inc: {score: 1.0}}},
         // old name
         {findandmodify: "test", query: {foo: 1.0}, update: {$inc: {score: 1.0}}},
-        {aggregate: "test", pipeline: [{$match: {foo: 1}}]},
+        {aggregate: "test", pipeline: [{$match: {foo: 1}}], cursor: {}},
         {insert: "test", documents: [{foo: 1}]},
         {update: "test", updates: [{q: {foo: 1}, u: {"$set": {a: 2}}}]},
         {delete: "test", deletes: [{q: {foo: 1}, limit: 1}]},

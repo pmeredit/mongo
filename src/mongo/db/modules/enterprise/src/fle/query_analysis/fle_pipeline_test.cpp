@@ -49,8 +49,8 @@ public:
     const EncryptionSchemaTreeNode& getSchemaForStage(const std::vector<BSONObj>& pipeline,
                                                       BSONObj inputSchema) {
         auto parsedPipeline = uassertStatusOK(Pipeline::parse(pipeline, getExpCtx()));
-        _flePipe = std::make_unique<FLEPipeline>(std::move(parsedPipeline),
-                                                 EncryptionSchemaTreeNode::parse(inputSchema));
+        auto schema = EncryptionSchemaTreeNode::parse(inputSchema);
+        _flePipe = std::make_unique<FLEPipeline>(std::move(parsedPipeline), *schema.get());
         return _flePipe->getOutputSchema();
     }
 
@@ -60,8 +60,8 @@ public:
      */
     std::vector<BSONObj> translatePipeline(const std::vector<BSONObj>& pipeline,
                                            BSONObj inputSchema) {
-        FLEPipeline flePipe(uassertStatusOK(Pipeline::parse(pipeline, getExpCtx())),
-                            EncryptionSchemaTreeNode::parse(inputSchema));
+        auto schema = EncryptionSchemaTreeNode::parse(inputSchema);
+        FLEPipeline flePipe(uassertStatusOK(Pipeline::parse(pipeline, getExpCtx())), *schema.get());
         std::vector<BSONObj> serialized;
         for (const auto& stage : flePipe.getPipeline().serialize()) {
             ASSERT(stage.getType() == BSONType::Object);

@@ -40,21 +40,10 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
           cmdName: "findAndModify",
           cmd: {findandmodify: "foo", query: {foo: 1}, update: {$inc: {score: 1.0}}}
         },
-        {cmdName: "aggregate", cmd: {aggregate: "foo", pipeline: [{filter: {$eq: 1.0}}]}},
+        {cmdName: "aggregate", cmd: {aggregate: "foo", pipeline: [{$match: {foo: 1}}], cursor: {}}},
         {cmdName: "insert", cmd: {insert: "foo", documents: [{foo: 1}]}},
         {cmdName: "update", cmd: {update: "foo", updates: [{q: {foo: 1}, u: {"$set": {a: 2}}}]}},
         {cmdName: "delete", cmd: {delete: "foo", deletes: [{q: {foo: 1}, limit: 1}]}}
-    ];
-
-    const supportedCommands = [
-        "count",
-        "delete",
-        "distinct",
-        "find",
-        "findandmodify",
-        "findAndModify",
-        "insert",
-        "updates",
     ];
 
     cmds.forEach(element => {
@@ -102,26 +91,19 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
 
         const passthroughResult = assert.commandWorked(testDB.runCommand(element.cmd));
 
-        if (Object.keys(element.cmd).some(field => supportedCommands.includes(field))) {
-            // Command is supported, verify that each of the passthrough fields is included in the
-            // result.
-            for (let field in passthroughFields) {
-                assert.eq(
-                    passthroughResult.result[field], passthroughFields[field], passthroughResult);
-
-                // Verify that the 'schemaRequiresEncryption' bit is correctly set.
-                assert.eq(passthroughResult.schemaRequiresEncryption, true, passthroughResult);
-            }
-
-            // The '$db' field is always removed by cryptd.
-            assert(!passthroughResult.hasOwnProperty("$db"));
-
-            // Commands name should hold the collection name
-            assert.eq(passthroughResult.result[element.cmdName], "foo", passthroughResult);
-        } else {
-            // Command is not supported yet, verify an empty 'result' in the response.
-            assert.eq(passthroughResult.result, {}, passthroughResult);
+        // Verify that each of the passthrough fields is included in the result.
+        for (let field in passthroughFields) {
+            assert.eq(passthroughResult.result[field], passthroughFields[field], passthroughResult);
         }
+
+        // Verify that the 'schemaRequiresEncryption' bit is correctly set.
+        assert.eq(passthroughResult.schemaRequiresEncryption, true, passthroughResult);
+
+        // The '$db' field is always removed by cryptd.
+        assert(!passthroughResult.hasOwnProperty("$db"));
+
+        // Commands name should hold the collection name
+        assert.eq(passthroughResult.result[element.cmdName], "foo", passthroughResult);
     });
 
     mongocryptd.stop();

@@ -42,7 +42,7 @@ namespace mongo {
 class FLEPipeline {
 public:
     FLEPipeline(std::unique_ptr<Pipeline, PipelineDeleter> pipeline,
-                std::unique_ptr<EncryptionSchemaTreeNode> schema);
+                const EncryptionSchemaTreeNode& schema);
 
     /**
      * Returns the schema of the document flowing *out* of the pipeline.
@@ -54,6 +54,13 @@ public:
     const Pipeline& getPipeline() const {
         return *_parsedPipeline.get();
     }
+
+    /**
+     * Boolean to indicate whether any constants in the pipeline were replaced with their
+     * intent-to-encrypt markings. The per-stage analyzers are responsible for setting this bit when
+     * adding a placeholder.
+     */
+    bool hasEncryptedPlaceholders{false};
 
 private:
     // Owned pipeline which may be modified if there are any constants that are marked for

@@ -311,6 +311,29 @@
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
     assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
 
+    // Test that an aggregate command throws if there is a $eq comparison to an encrypted string
+    // using a non-simple collation.
+    assert.commandFailedWithCode(testDb.runCommand({
+        aggregate: coll.getName(),
+        pipeline: [{$match: {"foo.bar": "string"}}],
+        cursor: {},
+        collation: {locale: "fr_CA"},
+        jsonSchema: encryptedStringSchema
+    }),
+                                 31054);
+
+    // Test that an aggregate command succeeds if there is a $eq comparison to an encrypted
+    // non-string using a non-simple collation.
+    cmdRes = assert.commandWorked(testDb.runCommand({
+        aggregate: coll.getName(),
+        pipeline: [{$match: {"foo.bar": 1}}],
+        cursor: {},
+        collation: {locale: "fr_CA"},
+        jsonSchema: encryptedIntSchema
+    }));
+    assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+
     // Test that mongocryptd returns an error when the collation parameter is not an object.
     assert.commandFailedWithCode(
         testDb.runCommand({find: coll.getName(), collation: 1, jsonSchema: encryptedStringSchema}),

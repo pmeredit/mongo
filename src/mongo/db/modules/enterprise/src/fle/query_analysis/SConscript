@@ -35,16 +35,9 @@ env.Library(
 )
 
 env.CppUnitTest(
-    target='encryption_schema_tree_test',
-    source='encryption_schema_tree_test.cpp',
-    LIBDEPS=[
-        'encryption_schema_tree',
-    ],
-)
-
-env.CppUnitTest(
     target='query_analysis_test',
     source=[
+        'encryption_schema_tree_test.cpp',
         'query_analysis_test.cpp',
         'fle_match_expression_test.cpp',
         'fle_pipeline_test.cpp',

@@ -64,6 +64,9 @@ void analyzeForMatch(FLEPipeline* flePipe,
     // constants with their appropriate intent-to-encrypt markings.
     FLEMatchExpression fleMatch{source->getMatchExpression()->shallowClone(), schema};
 
+    flePipe->hasEncryptedPlaceholders =
+        flePipe->hasEncryptedPlaceholders || fleMatch.containsEncryptedPlaceholders();
+
     // Rebuild the DocumentSourceMatch using the serialized MatchExpression after replacing
     // encrypted values.
     source->rebuild([&]() {
@@ -116,7 +119,7 @@ REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceLimit, propagateSchemaNoop, 
 }  // namespace
 
 FLEPipeline::FLEPipeline(std::unique_ptr<Pipeline, PipelineDeleter> pipeline,
-                         std::unique_ptr<EncryptionSchemaTreeNode> schema)
+                         const EncryptionSchemaTreeNode& schema)
     : _parsedPipeline{std::move(pipeline)} {
     // Method for propagating a schema from one stage to the next by dynamically dispatching based
     // on the runtime-type of 'source'. The 'prevSchema' represents the schema of the document
@@ -133,7 +136,7 @@ FLEPipeline::FLEPipeline(std::unique_ptr<Pipeline, PipelineDeleter> pipeline,
 
     auto[metadataTree, finalSchema] =
         pipeline_metadata_tree::makeTree<clonable_ptr<EncryptionSchemaTreeNode>>(
-            {schema->clone()}, *_parsedPipeline.get(), propagateSchemaFunction);
+            {schema.clone()}, *_parsedPipeline.get(), propagateSchemaFunction);
 
     _finalSchema = std::move(finalSchema);
 

@@ -11,6 +11,7 @@
 #include "encryption_schema_tree.h"
 #include "encryption_update_visitor.h"
 #include "fle_match_expression.h"
+#include "fle_pipeline.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/commands.h"
@@ -19,6 +20,7 @@
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/db/ops/write_ops.h"
 #include "mongo/db/ops/write_ops_gen.h"
+#include "mongo/db/pipeline/stub_mongo_process_interface.h"
 #include "mongo/db/query/collation/collator_factory_interface.h"
 #include "mongo/db/query/count_command_gen.h"
 #include "mongo/db/query/distinct_command_gen.h"
@@ -44,7 +46,7 @@ static constexpr auto kResult = "result"_sd;
  * Throws an AssertionException if the schema is missing or not of the correct type.
  */
 BSONObj extractJSONSchema(BSONObj obj, BSONObjBuilder* stripped) {
-    BSONObj ret;
+    boost::optional<BSONObj> ret;
     for (auto& e : obj) {
         if (e.fieldNameStringData() == kJsonSchema) {
             uassert(51090, "jsonSchema is expected to be a object", e.type() == Object);
@@ -55,11 +57,11 @@ BSONObj extractJSONSchema(BSONObj obj, BSONObjBuilder* stripped) {
         }
     }
 
-    uassert(51073, "jsonSchema is a required command field", !ret.isEmpty());
+    uassert(51073, "jsonSchema is a required command field", ret);
 
     stripped->doneFast();
 
-    return ret;
+    return ret.get();
 }
 
 /**
@@ -288,7 +290,46 @@ PlaceHolderResult addPlaceHoldersForAggregate(
     const std::string& dbName,
     const BSONObj& cmdObj,
     std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
-    return PlaceHolderResult();
+    uassert(31114, "Aggregate command is not supported with encryption", getTestCommandsEnabled());
+    // Parse the command to an AggregationRequest to verify that there no unknown fields.
+    auto request = uassertStatusOK(AggregationRequest::parseFromBSON(dbName, cmdObj, boost::none));
+
+    // Add the populated list of involved namespaces to the expression context, needed at parse time
+    // by stages such as $lookup and $out.
+    expCtx->ns = request.getNamespaceString();
+    expCtx->setResolvedNamespaces([&]() {
+        const LiteParsedPipeline liteParsedPipeline(request);
+        const auto& pipelineInvolvedNamespaces = liteParsedPipeline.getInvolvedNamespaces();
+
+        StringMap<ExpressionContext::ResolvedNamespace> resolvedNamespaces;
+        for (auto&& involvedNs : pipelineInvolvedNamespaces) {
+            resolvedNamespaces[involvedNs.coll()] = {involvedNs, std::vector<BSONObj>{}};
+        }
+        return resolvedNamespaces;
+    }());
+
+    // Build a FLEPipeline which will replace encrypted fields with intent-to-encrypt markings, then
+    // update the AggregationRequest with the new pipeline if there were any replaced fields.
+    FLEPipeline flePipe{uassertStatusOK(Pipeline::parse(request.getPipeline(), expCtx)),
+                        *schemaTree.get()};
+
+    // Serialize the translated command by manually appending each field that was present in the
+    // original command, replacing the pipeline with the translated version containing
+    // intent-to-encrypt markings.
+    BSONObjBuilder bob;
+    for (auto&& elem : cmdObj) {
+        if (elem.fieldNameStringData() == "pipeline"_sd) {
+            BSONArrayBuilder arr(bob.subarrayStart("pipeline"));
+            for (auto&& stage : flePipe.getPipeline().serialize()) {
+                invariant(stage.getType() == BSONType::Object);
+                arr.append(stage.getDocument().toBson());
+            }
+        } else {
+            bob.append(elem);
+        }
+    }
+
+    return {flePipe.hasEncryptedPlaceholders, schemaTree->containsEncryptedNode(), bob.obj()};
 }
 
 PlaceHolderResult addPlaceHoldersForCount(const boost::intrusive_ptr<ExpressionContext>& expCtx,
