@@ -28,11 +28,11 @@ public:
         return _claimed;
     }
 
-    bool hasNextCursorResponse() {
+    bool hasNextCursorResponse() const {
         return !_remainingResponses.empty();
     }
 
-    ExpectedCommandResponsePair peekNextCommandResponsePair() {
+    ExpectedCommandResponsePair peekNextCommandResponsePair() const {
         invariant(hasNextCursorResponse());
         return _remainingResponses.front();
     }
