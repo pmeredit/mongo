@@ -20,12 +20,16 @@ class KeyStore {
             {unique: true, partialFilterExpression: {keyAltNames: {$exists: true}}});
     }
 
-    createKey(customerMasterKey, keyAltNames = undefined) {
+    createKey(kmsProvider, customerMasterKey, keyAltNames = undefined) {
+        if (typeof kmsProvider !== "string") {
+            return "TypeError: kmsProvider must be of String type.";
+        }
+
         if (typeof customerMasterKey !== "string") {
             return "TypeError: customer master key must be of String type.";
         }
 
-        var masterKeyAndMaterial = this.mongo.generateDataKey(customerMasterKey);
+        var masterKeyAndMaterial = this.mongo.generateDataKey(kmsProvider, customerMasterKey);
         var masterKey = masterKeyAndMaterial.masterKey;
 
         var current = ISODate();
@@ -35,8 +39,8 @@ class KeyStore {
             "keyMaterial": masterKeyAndMaterial.keyMaterial,
             "creationDate": current,
             "updateDate": current,
-            "status": 0,
-            "version": 0,
+            "status": NumberInt(0),
+            "version": NumberLong(0),
             "masterKey": masterKey,
         };
 

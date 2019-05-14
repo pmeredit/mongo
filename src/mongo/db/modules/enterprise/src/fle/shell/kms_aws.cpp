@@ -29,8 +29,6 @@
 namespace mongo {
 namespace {
 
-constexpr StringData kAwsKMS = "awsKMS"_sd;
-
 /**
  * Free kms_request_t
  */
@@ -116,9 +114,6 @@ struct AWSConfig {
     // AWS_SECRET_ACCESS_KEY
     SecureString secretAccessKey;
 
-    // AWS region name like "us-east-1"
-    std::string region;
-
     // Optional AWS_SESSION_TOKEN for AWS STS tokens
     boost::optional<std::string> sessionToken;
 };
@@ -135,12 +130,12 @@ public:
 
     std::vector<uint8_t> encrypt(ConstDataRange cdr, StringData kmsKeyId) final;
 
-    SecureVector<uint8_t> decrypt(ConstDataRange cdr) final;
+    SecureVector<uint8_t> decrypt(ConstDataRange cdr, BSONObj masterKey) final;
 
     BSONObj encryptDataKey(ConstDataRange cdr, StringData keyId) final;
 
 private:
-    void initRequest(kms_request_t* request);
+    void initRequest(kms_request_t* request, StringData region);
 
 private:
     // SSL Manager
@@ -162,11 +157,12 @@ void uassertKmsRequestInternal(kms_request_t* request, bool ok) {
 
 #define uassertKmsRequest(X) uassertKmsRequestInternal(request, (X));
 
-void AWSKMSService::initRequest(kms_request_t* request) {
+void AWSKMSService::initRequest(kms_request_t* request, StringData region) {
+
     // use current time
     uassertKmsRequest(kms_request_set_date(request, nullptr));
 
-    uassertKmsRequest(kms_request_set_region(request, _config.region.c_str()));
+    uassertKmsRequest(kms_request_set_region(request, region.toString().c_str()));
 
     // kms is always the name of the service
     uassertKmsRequest(kms_request_set_service(request, "kms"));
@@ -201,6 +197,22 @@ SecureVector<uint8_t> toSecureVector(const std::string& str) {
     return blob;
 }
 
+/**
+ * Takes in a CMK of the format arn:partition:service:region:account-id:resource (minimum). We
+ * care about extracting the region. This function ensures that there are at least 6 partitions,
+ * parses the provider, and returns a pair of provider and the region.
+ */
+std::string parseCMK(StringData cmk) {
+    std::vector<std::string> cmkTokenized = StringSplitter::split(cmk.toString(), ":");
+    uassert(31040, "Invalid AWS KMS Customer Master Key.", cmkTokenized.size() > 5);
+    return cmkTokenized[3];
+}
+
+HostAndPort getDefaultHost(StringData region) {
+    std::string hostname = str::stream() << "kms." << region << ".amazonaws.com";
+    return HostAndPort(hostname, 443);
+}
+
 std::vector<uint8_t> AWSKMSService::encrypt(ConstDataRange cdr, StringData kmsKeyId) {
     auto request =
         UniqueKmsRequest(kms_encrypt_request_new(reinterpret_cast<const uint8_t*>(cdr.data()),
@@ -208,7 +220,13 @@ std::vector<uint8_t> AWSKMSService::encrypt(ConstDataRange cdr, StringData kmsKe
                                                  kmsKeyId.toString().c_str(),
                                                  NULL));
 
-    initRequest(request.get());
+    auto region = parseCMK(kmsKeyId);
+
+    if (_server.empty()) {
+        _server = getDefaultHost(region);
+    }
+
+    initRequest(request.get(), region);
 
     auto buffer = UniqueKmsCharBuffer(kms_request_get_signed(request.get()));
     auto buffer_len = strlen(buffer.get());
@@ -227,45 +245,32 @@ std::vector<uint8_t> AWSKMSService::encrypt(ConstDataRange cdr, StringData kmsKe
     return toVector(blobStr);
 }
 
-/**
- * Takes in a CMK of the format arn:partition:service:region:account-id:resource (minimum). We
- * care about extracting the region. This function ensures that there are at least 6 partitions,
- * parses the provider, and returns a pair of provider and the region.
- */
-static std::string parseCMK(StringData cmk) {
-    std::vector<std::string> cmkTokenized = StringSplitter::split(cmk.toString(), ":");
-    uassert(31040, "Invalid CMK.", cmkTokenized.size() > 5);
-    return cmkTokenized[3];
-}
-
 BSONObj AWSKMSService::encryptDataKey(ConstDataRange cdr, StringData keyId) {
-    if (_server.empty()) {
-        auto region = parseCMK(keyId);
-        std::string hostname = str::stream() << "kms." << region << ".amazonaws.com";
-        _server = HostAndPort(hostname, 443);
-    }
-
     auto dataKey = encrypt(cdr, keyId);
 
-    std::string dataKeyBase64 =
-        base64::encode(reinterpret_cast<const char*>(dataKey.data()), dataKey.size());
-
     AwsMasterKey masterKey;
-    masterKey.setAwsKey(keyId);
-    masterKey.setAwsRegion(_config.region);
+    masterKey.setKey(keyId);
+    masterKey.setRegion(parseCMK(keyId));
+    masterKey.setEndpoint(_server.toString());
 
-    MasterKeyAndMaterial keyAndMaterial;
-    keyAndMaterial.setKeyMaterial(dataKeyBase64);
+    AwsMasterKeyAndMaterial keyAndMaterial;
+    keyAndMaterial.setKeyMaterial(dataKey);
     keyAndMaterial.setMasterKey(masterKey);
 
     return keyAndMaterial.toBSON();
 }
 
-SecureVector<uint8_t> AWSKMSService::decrypt(ConstDataRange cdr) {
+SecureVector<uint8_t> AWSKMSService::decrypt(ConstDataRange cdr, BSONObj masterKey) {
+    auto awsMasterKey = AwsMasterKey::parse(IDLParserErrorContext("root"), masterKey);
+
     auto request = UniqueKmsRequest(kms_decrypt_request_new(
         reinterpret_cast<const uint8_t*>(cdr.data()), cdr.length(), nullptr));
 
-    initRequest(request.get());
+    initRequest(request.get(), awsMasterKey.getRegion());
+
+    if (_server.empty()) {
+        _server = getDefaultHost(awsMasterKey.getRegion());
+    }
 
     auto buffer = UniqueKmsCharBuffer(kms_request_get_signed(request.get()));
     auto buffer_len = strlen(buffer.get());
@@ -354,7 +359,7 @@ std::unique_ptr<KMSService> AWSKMSService::create(const AwsKMS& config) {
     // Leave the CA file empty so we default to system CA but for local testing allow it to inherit
     // the CA file.
     params.sslCAFile = "";
-    if (!getTestCommandsEnabled()) {
+    if (config.getUrl()) {
         params.sslCAFile = sslGlobalParams.sslCAFile;
     }
 
@@ -370,7 +375,7 @@ std::unique_ptr<KMSService> AWSKMSService::create(const AwsKMS& config) {
     params.sslDisabledProtocols =
         std::vector({SSLParams::Protocols::TLS1_0, SSLParams::Protocols::TLS1_1});
 
-    awsKMS->_sslManager = SSLManagerInterface::create(sslGlobalParams, false);
+    awsKMS->_sslManager = SSLManagerInterface::create(params, false);
 
     if (config.getUrl()) {
         awsKMS->_server = parseUrl(config.getUrl().get());
@@ -394,7 +399,7 @@ public:
     ~AWSKMSServiceFactory() = default;
 
     std::unique_ptr<KMSService> create(const BSONObj& config) final {
-        auto field = config[kAwsKMS];
+        auto field = config[KmsProviders::kAwsFieldName];
         if (field.eoo()) {
             return nullptr;
         }

@@ -14,45 +14,62 @@ kmsEnv.Library(
     source=[
         "kms.cpp",
         "kms_aws.cpp",
-        "kms_shell.cpp",
-        "kms-shell-server.cpp",
+        "kms_local.cpp",
         kmsEnv.Idlc("kms.idl")[0],
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/base/secure_allocator',
         '$BUILD_DIR/mongo/db/commands/test_commands_enabled',
-        '$BUILD_DIR/mongo/shell_core',
         '$BUILD_DIR/mongo/util/net/network',
         '$BUILD_DIR/mongo/util/net/socket',
         '$BUILD_DIR/mongo/util/net/ssl_manager',
         '$BUILD_DIR/mongo/util/net/ssl_options',
         '$BUILD_DIR/third_party/shim_kms_message',
+        '../aead_encryption',
     ],
-    # Artificially inject it into the shell
-    # TODO - remove this and make the shell depend on a kms_shell library instead
-    PROGDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/mongo',
+)
+
+env.CppUnitTest(
+    target='kms_test',
+    source='kms_test.cpp',
+    LIBDEPS=[
+        'kms',
     ]
 )
 
-kmsEnv.JSHeader(
+env.Library(
+    target="kms_shell",
+    source=[
+        "kms_shell.cpp",
+        "kms-shell-server.cpp",
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/shell_core',
+        'kms',
+    ],
+    PROGDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/mongo',
+    ],
+)
+
+env.JSHeader(
     target="kms-shell-server.cpp",
     source=[
         "keystore.js",
     ],
 )
 
-kmsEnv.Alias("generated-sources", "kms-shell-server.cpp")
+env.Alias("generated-sources", "kms-shell-server.cpp")
 
-scriptingEnv = kmsEnv.Clone()
+scriptingEnv = env.Clone()
 scriptingEnv.InjectMozJS()
 
 scriptingEnv.Library(
     target="encrypted_dbclient",
     source=[
         "encrypted_dbclient_base.cpp",
-        kmsEnv.Idlc("fle_shell_options.idl")[0],
+        scriptingEnv.Idlc("fle_shell_options.idl")[0],
     ],
     LIBDEPS_PRIVATE=[
         '../../encryptdb/symmetric_crypto',

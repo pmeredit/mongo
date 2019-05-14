@@ -38,7 +38,7 @@ public:
     /**
      * Decrypt an encrypted blob and return the plaintext.
      */
-    virtual SecureVector<uint8_t> decrypt(ConstDataRange cdr) = 0;
+    virtual SecureVector<uint8_t> decrypt(ConstDataRange cdr, BSONObj masterKey) = 0;
 
     /**
      * Encrypt a data key with the specified key and return a BSONObj that describes what needs to
@@ -85,14 +85,13 @@ public:
 
 
     /**
-     * Iterates over the factories and chooses the correct KMS Factory that parses the config
-     * properly. Creates a KMS Service with the config and customer master key.
+     * Creates a KMS Service for the specified provider with the config.
      */
-    static std::unique_ptr<KMSService> createFromClient(const BSONObj& config);
-
+    static std::unique_ptr<KMSService> createFromClient(StringData kmsProvider,
+                                                        const BSONObj& config);
 
     /**
-     * Creates a KMS Service with the given config.
+     * Creates a KMS Service with the given mongo constructor options and key vault record.
      */
     static std::unique_ptr<KMSService> createFromDisk(const BSONObj& config,
                                                       const BSONObj& kmsProvider);

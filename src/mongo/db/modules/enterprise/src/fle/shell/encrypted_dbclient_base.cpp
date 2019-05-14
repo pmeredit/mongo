@@ -78,23 +78,32 @@ public:
 
     using EncryptionCallbacks::generateDataKey;
     void generateDataKey(JSContext* cx, JS::CallArgs args) final {
-        if (args.length() != 1) {
-            uasserted(ErrorCodes::BadValue, "generateDataKey requires 1 arg");
+        if (args.length() != 2) {
+            uasserted(ErrorCodes::BadValue, "generateDataKey requires 2 arg");
         }
 
         if (!args.get(0).isString()) {
             uasserted(ErrorCodes::BadValue, "1st param to generateDataKey has to be a string");
         }
 
-        std::string clientMasterKey = mozjs::ValueWriter(cx, args.get(0)).toString();
-        std::unique_ptr<KMSService> kmsService =
-            KMSServiceController::createFromClient(_encryptionOptions.toBSON());
+        if (!args.get(1).isString()) {
+            uasserted(ErrorCodes::BadValue, "2nd param to generateDataKey has to be a string");
+        }
+
+        std::string kmsProvider = mozjs::ValueWriter(cx, args.get(0)).toString();
+        std::string clientMasterKey = mozjs::ValueWriter(cx, args.get(1)).toString();
+
+        std::unique_ptr<KMSService> kmsService = KMSServiceController::createFromClient(
+            kmsProvider, _encryptionOptions.getKmsProviders().toBSON());
 
         SecureVector<uint8_t> dataKey(crypto::kAeadAesHmacKeySize);
+
         auto res = crypto::engineRandBytes(dataKey->data(), dataKey->size());
         uassert(31042, "Error generating data key: " + res.codeString(), res.isOK());
+
         BSONObj obj = kmsService->encryptDataKey(ConstDataRange(dataKey->data(), dataKey->size()),
                                                  clientMasterKey);
+
         mozjs::ValueReader(cx, args.rval()).fromBSON(obj, nullptr, false);
     }
 
@@ -233,7 +242,6 @@ public:
 
         JS::RootedObject obj(cx, &args.get(0).get().toObject());
         std::vector<uint8_t> binData = getBinDataArg(scope, cx, args, 0, BinDataType::Encrypt);
-        ;
 
         uassert(ErrorCodes::BadValue,
                 "Ciphertext blob too small",
@@ -397,29 +405,19 @@ private:
             uasserted(ErrorCodes::BadValue, "Invalid keyID.");
         }
 
-        if (dataKeyObj.hasField("version"_sd)) {
-            uassert(ErrorCodes::BadValue,
-                    "Invalid version, must be either 0 or undefined",
-                    dataKeyObj.getIntField("version"_sd) == 0);
-        }
+        auto keyStoreRecord = KeyStoreRecord::parse(IDLParserErrorContext("root"), dataKeyObj);
 
-        BSONElement elem = dataKeyObj.getField("keyMaterial"_sd);
-        uassert(ErrorCodes::BadValue, "Invalid key.", elem.isBinData(BinDataType::BinDataGeneral));
-
-        int len;
-        const char* dataKey = elem.binData(len);
-        if (len == 0) {
-            uasserted(ErrorCodes::BadValue, "Invalid key.");
-        }
-
-        BSONObj masterKey = dataKeyObj.getObjectField("masterKey"_sd);
         uassert(ErrorCodes::BadValue,
-                "Key in keystore missing metadata field 'masterKey'",
-                !masterKey.isEmpty());
+                "Invalid version, must be either 0 or undefined",
+                keyStoreRecord.getVersion() == 0);
 
-        std::unique_ptr<KMSService> kmsService =
-            KMSServiceController::createFromDisk(_encryptionOptions.toBSON(), masterKey);
-        SecureVector<uint8_t> decryptedKey = kmsService->decrypt(ConstDataRange(dataKey, len));
+        auto dataKey = keyStoreRecord.getKeyMaterial();
+        uassert(ErrorCodes::BadValue, "Invalid data key.", dataKey.length() != 0);
+
+        std::unique_ptr<KMSService> kmsService = KMSServiceController::createFromDisk(
+            _encryptionOptions.getKmsProviders().toBSON(), keyStoreRecord.getMasterKey());
+        SecureVector<uint8_t> decryptedKey =
+            kmsService->decrypt(dataKey, keyStoreRecord.getMasterKey());
         return SymmetricKey(std::move(decryptedKey), crypto::aesAlgorithm, "kms_encryption");
     }
 
@@ -500,7 +498,10 @@ std::unique_ptr<DBClientBase> createEncryptedDBClientBase(std::unique_ptr<DBClie
         boost::optional<StringData> awsSessionToken(encryptedShellGlobalParams.awsSessionToken);
         awsKms.setSessionToken(awsSessionToken);
 
-        encryptionOptions = ClientSideFLEOptions(std::move(awsKms));
+        KmsProviders kmsProviders;
+        kmsProviders.setAws(awsKms);
+
+        encryptionOptions = ClientSideFLEOptions(std::move(kmsProviders));
     } else {
         const BSONObj obj = mozjs::ValueWriter(cx, arg).toBSON();
         encryptionOptions = encryptionOptions.parse(IDLParserErrorContext("root"), obj);

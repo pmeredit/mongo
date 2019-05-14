@@ -24,7 +24,9 @@ load('jstests/ssl/libs/ssl_helpers.js');
     };
 
     const clientSideFLEOptions = {
-        awsKMS: awsKMS,
+        kmsProviders: {
+            aws: awsKMS,
+        },
         keyVaultCollection: collection,
     };
 
@@ -32,13 +34,13 @@ load('jstests/ssl/libs/ssl_helpers.js');
     const shell = Mongo(conn_str, clientSideFLEOptions);
     const keyStore = shell.getKeyStore();
 
-    var key = keyStore.createKey("customerMasterKey", ['mongoKey']);
+    var key = keyStore.createKey("aws", "arn:aws:kms:us-east-1:fake:fake:fake", ['mongoKey']);
     assert.eq(1, keyStore.getKeys().itcount());
 
-    var result = keyStore.createKey("newKey", {});
+    var result = keyStore.createKey("aws", "arn:aws:kms:us-east-4:fake:fake:fake", {});
     assert.eq("TypeError: key alternate names must be of Array type.", result);
 
-    result = keyStore.createKey("newKey", [1]);
+    result = keyStore.createKey("aws", "arn:aws:kms:us-east-5:fake:fake:fake", [1]);
     assert.eq("TypeError: items in key alternate names must be of String type.", result);
 
     assert.eq(1, keyStore.getKeyByAltName("mongoKey").itcount());
@@ -61,9 +63,9 @@ load('jstests/ssl/libs/ssl_helpers.js');
     assert.eq(0, keyStore.getKey(keyId).itcount());
     assert.eq(0, keyStore.getKeys().itcount());
 
-    assert.writeOK(keyStore.createKey("key1"));
-    assert.writeOK(keyStore.createKey("key2"));
-    assert.writeOK(keyStore.createKey("key3"));
+    assert.writeOK(keyStore.createKey("aws", "arn:aws:kms:us-east-1:fake:fake:fake1"));
+    assert.writeOK(keyStore.createKey("aws", "arn:aws:kms:us-east-2:fake:fake:fake2"));
+    assert.writeOK(keyStore.createKey("aws", "arn:aws:kms:us-east-3:fake:fake:fake3"));
 
     assert.eq(3, keyStore.getKeys().itcount());
 

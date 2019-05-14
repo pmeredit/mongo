@@ -14,14 +14,9 @@ enums:
         type: string
         values:
             aws: "aws"
+            local: "local"
 
 structs:
-    commonProvider:
-        description: "Common Provider fields"
-        strict: false
-        fields:
-          provider: KMSProvider
-
     # Options passed to Mongo() javascript constructor
     awsKMS:
         description: "AWS KMS config"
@@ -35,14 +30,30 @@ structs:
             type: string
             optional: true
 
-    
+    # Options passed to Mongo() javascript constructor
+    localKMS:
+        description: "Local KMS config"
+        fields:
+          key: bindata_generic
+
+    kmsProviders:
+      description: "Supported KMS Providers"
+      strict: true
+      fields:
+        aws:
+          type: awsKMS
+          optional: true
+        local:
+          type: localKMS
+          optional: true
+
     clientSideFLEOptions:
         description: "FLE Options inputted through the Mongo constructor in the shell"
         fields:
-          keyVaultCollection: #Parsed as a JSHandleValue, not through IDL 
+          keyVaultCollection: #Parsed as a JSHandleValue, not through IDL
             type: void
             ignore: true
-          awsKMS: awsKMS
+          kmsProviders: kmsProviders
           useRemoteSchemas:
             type: bool
             optional: true
@@ -72,15 +83,49 @@ structs:
           provider:
             type: string
             default: '"aws"'
-          awsKey:
+          key:
             type: string
-          awsRegion:
+          region:
+            type: string
+          endpoint:
             type: string
 
-    masterKeyAndMaterial:
+    awsMasterKeyAndMaterial:
         description: "AWS KMS Key Material Description"
         fields:
           keyMaterial:
             type: bindata_generic
           masterKey:
             type: awsMasterKey
+
+    localMasterKey:
+        description: "Local KMS Key Store Description"
+        fields:
+          provider:
+            type: string
+            default: '"local"'
+
+    localMasterKeyAndMaterial:
+        description: "Local KMS Key Material Description"
+        fields:
+          keyMaterial:
+            type: bindata_generic
+          masterKey:
+            type: localMasterKey
+
+    keyStoreRecord:
+        description: "A V0 Key Store Record"
+        fields:
+          _id: uuid
+          keyMaterial: bindata_generic
+          creationDate: date
+          updateDate: date
+          status: int
+          version:
+            type: long
+            default: 0
+          masterKey: object
+          keyAltNames:
+              type: array<string>
+              ignore: true
+

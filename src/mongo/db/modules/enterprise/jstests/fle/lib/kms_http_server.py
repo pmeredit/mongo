@@ -109,11 +109,12 @@ class FreeMonHandler(http.server.BaseHTTPRequestHandler):
         keyid = request["KeyId"]
 
         ciphertext = SECRET_PREFIX.encode() + plaintext.encode()
+        ciphertext = base64.b64encode(ciphertext).decode()
 
         print("Encoded the cipher")
 
         response = {
-            "CiphertextBlob" : ciphertext.decode(),
+            "CiphertextBlob" : ciphertext,
             "KeyId" : keyid,
         }
 
@@ -138,7 +139,7 @@ class FreeMonHandler(http.server.BaseHTTPRequestHandler):
             "Plaintext" : blob,
             "KeyId" : "Not a clue",
         }
-    
+
         return json.dumps(response).encode('utf-8')
 
     def _do_stats(self):
@@ -172,8 +173,8 @@ def run(port, server_class=http.server.HTTPServer, handler_class=FreeMonHandler)
 
     httpd = server_class(server_address, handler_class)
 
-    httpd.socket = ssl.wrap_socket (httpd.socket, 
-        certfile="jstests/libs/server.pem", 
+    httpd.socket = ssl.wrap_socket (httpd.socket,
+        certfile="jstests/libs/server.pem",
         ca_certs='jstests/libs/ca.pem', server_side=True)
 
     print("Mock KMS Server Listening on %s" % (str(server_address)))
