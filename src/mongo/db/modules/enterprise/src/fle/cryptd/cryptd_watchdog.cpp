@@ -17,8 +17,7 @@
 #include "mongo/util/exit.h"
 #include "mongo/util/log.h"
 #include "mongo/util/time_support.h"
-
-#include "../../watchdog/watchdog.h"
+#include "mongo/watchdog/watchdog.h"
 
 namespace mongo {
 namespace {

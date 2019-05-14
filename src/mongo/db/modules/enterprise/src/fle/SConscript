@@ -42,7 +42,7 @@ mongocryptd_core = env.Library(
         '$BUILD_DIR/mongo/util/options_parser/options_parser_init',
         '$BUILD_DIR/mongo/util/signal_handlers',
         '$BUILD_DIR/mongo/util/version_impl',
-        '../watchdog/watchdog',
+        '$BUILD_DIR/mongo/watchdog/watchdog',
     ],
 )
 

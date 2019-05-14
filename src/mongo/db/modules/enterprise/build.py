@@ -30,7 +30,6 @@ def configure(conf, env):
         "queryable",
         "sasl",
         "snmp",
-        "watchdog",
     ]
 
     selected_features = []
@@ -47,18 +46,11 @@ def configure(conf, env):
             else:
                 env.ConfError("Bad --enterprise-feature choice '{}'; choose from {} or '*'".format(choice, ", ".join(all_features)))
 
-        if 'watchdog' in selected_features and not 'audit' in selected_features:
-            env.ConfError("the watchdog enterprise feature depends on the audit enterprise feature")
         if 'sasl' in selected_features and not 'ldap' in selected_features:
             env.ConfError("the sasl enterprise feature depends on the ldap enterprise feature")
         if 'search_beta' in selected_features and not 'fle' in selected_features:
             env.ConfError("the search_beta enterprise feature depends on the fle enterprise "
                           "feature")
-        if 'snmp' in selected_features and not 'watchdog' in selected_features:
-            env.ConfError("the snmp enterprise feature depends on the watchdog enterprise feature")
-        if 'fle' in selected_features and not 'watchdog' in selected_features:
-            env.ConfError("the fle enterprise feature depends on the watchdog enterprise feature")
-
         configured_modules.extend(selected_features)
 
     env['MONGO_ENTERPRISE_FEATURES'] = selected_features
