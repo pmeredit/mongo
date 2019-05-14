@@ -11,6 +11,7 @@
 #include "mongo/executor/non_auth_task_executor.h"
 #include "mongo/executor/remote_command_request.h"
 #include "mongo/executor/task_executor_cursor.h"
+#include "mongo/transport/transport_layer.h"
 #include "mongot_options.h"
 
 namespace mongo {
@@ -49,6 +50,7 @@ void DocumentSourceInternalSearchBetaMongotRemote::populateCursor() {
                                                   pExpCtx->ns.db().toString(),
                                                   commandObject(_searchBetaQuery, pExpCtx),
                                                   pExpCtx->opCtx));
+    rcr.sslMode = transport::ConnectSSLMode::kDisableSSL;
 
     _cursor.emplace(executor::getNonAuthTaskExecutor(pExpCtx->opCtx->getServiceContext()), rcr);
 }
