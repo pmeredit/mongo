@@ -35,6 +35,7 @@ env.CppUnitTest(
     source='kms_test.cpp',
     LIBDEPS=[
         'kms',
+        '$BUILD_DIR/mongo/base/secure_allocator',
     ]
 )
 
