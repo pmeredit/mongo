@@ -12,6 +12,7 @@
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/document.h"
 #include "mongo/db/pipeline/document_source_mock.h"
+#include "mongo/db/pipeline/document_source_project.h"
 #include "mongo/db/pipeline/document_value_test_util.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/stub_mongo_process_interface_lookup_single_document.h"
@@ -50,6 +51,41 @@ TEST_F(InternalSearchBetaIdLookupTest, ShouldSkipResultsWhenIdNotFound) {
     auto next = idLookupStage->getNext();
     ASSERT_TRUE(next.isAdvanced());
     ASSERT_DOCUMENT_EQ(next.releaseDocument(), (Document{{"_id", 0}, {"color", "red"_sd}}));
+
+    ASSERT_TRUE(idLookupStage->getNext().isEOF());
+    ASSERT_TRUE(idLookupStage->getNext().isEOF());
+}
+
+TEST_F(InternalSearchBetaIdLookupTest, ShouldNotRemoveMetadata) {
+    auto expCtx = getExpCtx();
+    expCtx->uuid = UUID::gen();
+
+    // Create a mock data source.
+    MutableDocument docOne(Document({{"_id", 0}}));
+    docOne.setSearchScore(0.123);
+    DocumentSourceMock mockLocalSource({docOne.freeze()}, expCtx);
+
+    // Set up the idLookup stage.
+    auto specObj = BSON("$_internalSearchBetaIdLookup" << BSONObj());
+    auto spec = specObj.firstElement();
+    auto idLookupStage = DocumentSourceInternalSearchBetaIdLookUp::createFromBson(spec, expCtx);
+    idLookupStage->setSource(&mockLocalSource);
+
+    // Set up a project stage that asks for metadata.
+    auto projectSpec = fromjson("{$project: {score: {$meta: \"searchScore\"}, _id: 1, color: 1}}");
+    auto projectStage = DocumentSourceProject::createFromBson(projectSpec.firstElement(), expCtx);
+    projectStage->setSource(idLookupStage.get());
+
+    // Mock documents for this namespace.
+    deque<DocumentSource::GetNextResult> mockDbContents{
+        Document{{"_id", 0}, {"color", "red"_sd}, {"something else", "will be projected out"_sd}}};
+    expCtx->mongoProcessInterface = stdx::make_unique<MockMongoInterface>(mockDbContents);
+
+    // We should find one document here with _id = 0.
+    auto next = projectStage->getNext();
+    ASSERT_TRUE(next.isAdvanced());
+    ASSERT_DOCUMENT_EQ(next.releaseDocument(),
+                       (Document{{"_id", 0}, {"color", "red"_sd}, {"score", 0.123}}));
 
     ASSERT_TRUE(idLookupStage->getNext().isEOF());
     ASSERT_TRUE(idLookupStage->getNext().isEOF());

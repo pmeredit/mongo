@@ -17,8 +17,6 @@ namespace mongo {
  *
  * Work slated and not handled yet:
  * - TODO Handle sharded sort merging properly (SERVER-40015)
- * - TODO Handle searchScore metadata (SERVER-40016)
- * - TODO Handle searchSnippet metadata (SERVER-40555)
  */
 class DocumentSourceInternalSearchBetaMongotRemote final : public DocumentSource {
 public:

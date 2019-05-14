@@ -20,7 +20,7 @@ namespace mongo {
  *
  * Work slated and not handled yet:
  * - TODO Ensure this handles sharded sort correctly (SERVER-40015)
- * - TODO Properly handle searchScore and snippet metadata (SERVER-40016, SERVER-40555)
+ * - TODO Handle searchSnippet metadata (SERVER-40555)
  */
 class DocumentSourceInternalSearchBetaIdLookUp final : public DocumentSource {
 public:

@@ -65,7 +65,8 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchBetaIdLookUp::getNext(
     invariant(result);
     MutableDocument output(*result);
 
-    // TODO (SERVER-40016): Add correct metadata handling.
+    // Transfer searchScore metadata from inputDoc to the result.
+    output.copyMetaDataFrom(inputDoc);
 
     return output.freeze();
 }

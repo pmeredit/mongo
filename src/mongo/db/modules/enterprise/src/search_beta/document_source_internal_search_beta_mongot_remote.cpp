@@ -70,7 +70,7 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchBetaMongotRemote::getN
         return DocumentSource::GetNextResult::makeEOF();
     }
 
-    return Document(response.get());
+    return Document::fromBsonWithMetaData(response.get());
 }
 
 intrusive_ptr<DocumentSource> DocumentSourceInternalSearchBetaMongotRemote::createFromBson(
