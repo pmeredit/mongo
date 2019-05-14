@@ -669,4 +669,48 @@ clonable_traits<EncryptionSchemaTreeNode>::clone_factory_type::operator()(
     return input.clone();
 }
 
+bool EncryptionSchemaTreeNode::operator==(const EncryptionSchemaTreeNode& other) const {
+    // If either node is encrypted, make sure the other node has the same metadata.
+    if (auto myMetadata = getEncryptionMetadata()) {
+        if (auto otherMetadata = other.getEncryptionMetadata()) {
+            return myMetadata == otherMetadata;
+        } else {
+            return false;
+        }
+    } else if (other.getEncryptionMetadata()) {
+        return false;
+    }
+
+    // Make sure the other node does not have more children than this node.
+    if (_propertiesChildren.size() != other._propertiesChildren.size()) {
+        return false;
+    }
+    // Make sure the other node has all of the children this node has.
+    for (const auto & [ path, child ] : _propertiesChildren) {
+        auto key = FieldRef{path};
+        if (!other.getNode(key)) {
+            return false;
+        }
+        if (*child != *other.getNode(key)) {
+            return false;
+        }
+    }
+
+    if (auto myAddition = _additionalPropertiesChild.get()) {
+        if (auto otherAddition = other._additionalPropertiesChild.get()) {
+            if (*myAddition != *otherAddition) {
+                return false;
+            }
+        } else {
+            return false;
+        }
+    } else if (other._additionalPropertiesChild.get()) {
+        return false;
+    }
+
+    if (_patternPropertiesChildren != other._patternPropertiesChildren) {
+        return false;
+    }
+    return true;
+}
 }  // namespace mongo

@@ -96,6 +96,35 @@ struct clonable_traits<EncryptionSchemaTreeNode> {
  */
 class EncryptionSchemaTreeNode {
 public:
+    struct PatternPropertiesChild {
+        PatternPropertiesChild(StringData regexStringData,
+                               std::unique_ptr<EncryptionSchemaTreeNode> child)
+            : regex(regexStringData.toString()), child(std::move(child)) {
+            const auto& errorStr = regex.error();
+            uassert(51141,
+                    str::stream() << "Invalid regular expression in 'patternProperties': "
+                                  << regexStringData
+                                  << " PCRE error string: "
+                                  << errorStr,
+                    errorStr.empty());
+        }
+
+        pcrecpp::RE regex;
+        clonable_ptr<EncryptionSchemaTreeNode> child;
+
+        bool operator==(const PatternPropertiesChild& other) const {
+            return regex.pattern() == other.regex.pattern() && *child == *other.child;
+        }
+
+        bool operator!=(const PatternPropertiesChild& other) const {
+            return !(*this == other);
+        }
+
+        bool operator<(const PatternPropertiesChild& other) const {
+            return (regex.pattern() < other.regex.pattern());
+        }
+    };
+
     /**
      * Converts a JSON schema, represented as BSON, into an encryption schema tree. Returns a
      * pointer to the root of the tree or throws an exception if either the schema is invalid or is
@@ -182,7 +211,7 @@ public:
      */
     void addPatternPropertiesChild(StringData regex,
                                    std::unique_ptr<EncryptionSchemaTreeNode> node) {
-        _patternPropertiesChildren.emplace_back(regex, std::move(node));
+        _patternPropertiesChildren.insert(PatternPropertiesChild{regex, std::move(node)});
     }
 
     /**
@@ -219,24 +248,13 @@ public:
      */
     bool removeNode(FieldRef path);
 
+    bool operator==(const EncryptionSchemaTreeNode& other) const;
+
+    bool operator!=(const EncryptionSchemaTreeNode& other) const {
+        return !(*this == other);
+    }
+
 private:
-    struct PatternPropertiesChild {
-        PatternPropertiesChild(StringData regexStringData,
-                               std::unique_ptr<EncryptionSchemaTreeNode> child)
-            : regex(regexStringData.toString()), child(std::move(child)) {
-            const auto& errorStr = regex.error();
-            uassert(51141,
-                    str::stream() << "Invalid regular expression in 'patternProperties': "
-                                  << regexStringData
-                                  << " PCRE error string: "
-                                  << errorStr,
-                    errorStr.empty());
-        }
-
-        pcrecpp::RE regex;
-        clonable_ptr<EncryptionSchemaTreeNode> child;
-    };
-
     static boost::optional<ResolvedEncryptionInfo> getEncryptionMetadataForNode(
         const EncryptionSchemaTreeNode* node) {
         if (node) {
@@ -300,7 +318,7 @@ private:
     StringMap<clonable_ptr<EncryptionSchemaTreeNode>> _propertiesChildren;
 
     // Holds any children which are associated with a regex rather than a specific field name.
-    std::vector<PatternPropertiesChild> _patternPropertiesChildren;
+    std::set<PatternPropertiesChild> _patternPropertiesChildren;
 
     // If non-null, this special child is used when no applicable child is found by name in
     // '_propertiesChildren' or by regex in '_patternPropertiesChildren'. Used to implement
