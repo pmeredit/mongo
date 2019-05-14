@@ -230,9 +230,20 @@ TEST(EncryptionSchemaTreeTest, ReturnsNotEncryptedForPathWithNonEncryptedPrefix)
 }
 
 TEST(EncryptionSchemaTreeTest, ThrowsAnErrorIfPathContainsPrefixToEncryptedAdditionalProperties) {
-    BSONObj schema = fromjson(
-        R"({type: "object", properties: {blah: {}}, additionalProperties: {encrypt: {}}})");
-    ASSERT_THROWS_CODE(extractMetadata(schema, "path.extends.encrypt"), AssertionException, 51099);
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            blah: {}
+        },
+        additionalProperties: {
+            encrypt: {
+                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
+                bsonType: "int"
+            }
+        }
+    })");
+    ASSERT_THROWS_CODE(extractMetadata(schema, "path.extends.encrypt"), AssertionException, 51102);
 }
 
 TEST(EncryptionSchemaTreeTest,
@@ -697,8 +708,9 @@ TEST(EncryptionSchemaTreeTest, AdditionalPropertiesAllPropertiesCorrectlyReporte
         type: "object",
         additionalProperties: {
             encrypt: {
-                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
-                keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
+                bsonType: "int"
             }
         }
     })");
@@ -776,8 +788,9 @@ TEST(EncryptionSchemaTreeTest, AdditionalPropertiesWorksWithNestedPropertiesSubs
                 a: {type: "string"},
                 b: {
                     encrypt: {
-                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
-                        keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                        keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
+                        bsonType: "int"
                     }
                 }
             }
@@ -797,8 +810,9 @@ TEST(EncryptionSchemaTreeTest, AdditionalPropertiesWorksWithNestedAdditionalProp
             type: "object",
             additionalProperties: {
                 encrypt: {
-                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
-                    keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                    keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
+                    bsonType: "int"
                 }
             }
         }})");
@@ -1053,8 +1067,9 @@ TEST(EncryptionSchemaTreeTest,
         },
         additionalProperties: {
             encrypt: {
-                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
-                keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}],
+                bsonType: "int"
             }
         }
     })");
@@ -1546,8 +1561,9 @@ TEST(EncryptionSchemaTreeTest, ContainsEncryptReturnsTrueIfAdditionalPropertiesH
         },
         additionalProperties: {
             encrypt: {
-                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
-                keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}],
+                bsonType: "int"
             }
         }
     })");
@@ -2274,6 +2290,163 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithSingleValueBSONTypeInEncryptObjec
                   << "properties"
                   << BSON("foo" << encrypt));
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31041);
+}
+
+TEST(EncryptionSchemaTreeTest, IdEncryptedWithDeterministicAlgorithmSucceeds) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            _id: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                    keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}],
+                    bsonType: "string"
+                }
+            }
+        }
+    })");
+    EncryptionSchemaTreeNode::parse(schema);
+}
+
+TEST(EncryptionSchemaTreeTest, NestedIdEncryptedWithRandomAlgorithmSucceeds) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            foo: {
+                type: "object",
+                properties: {
+                    _id: {
+                        encrypt: {
+                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                            keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                        }
+                    }
+                }
+            }
+        }
+    })");
+    EncryptionSchemaTreeNode::parse(schema);
+}
+
+TEST(EncryptionSchemaTreeTest, IdEncryptedWithRandomAlgorithmFails) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            _id: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                }
+            }
+        }
+    })");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51194);
+}
+
+TEST(EncryptionSchemaTreeTest, IdDescendantEncryptedWithRandomAlgorithmFails) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            _id: {
+                type: "object",
+                properties: {
+                    b: {
+                        encrypt: {
+                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                            keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                        }}
+                    }
+            }
+        }
+    })");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51194);
+}
+
+TEST(EncryptionSchemaTreeTest,
+     TopLevelAdditionalPropertiesEncryptedWithRandomAlgorithmExcludingIdSucceeds) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            _id: {
+                type: "string"
+            }
+        },
+        additionalProperties: {
+            encrypt: {
+                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+            }
+        }
+    })");
+    EncryptionSchemaTreeNode::parse(schema);
+}
+
+TEST(EncryptionSchemaTreeTest,
+     TopLevelAdditionalPropertiesEncryptedWithRandomAlgorithmIncludingIdFails) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        additionalProperties: {
+            encrypt: {
+                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+            }
+        }
+    })");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51194);
+}
+
+TEST(EncryptionSchemaTreeTest,
+     NestedPatternPropertiesMatchingIdEncryptedWithRandomAlgorithmSucceeds) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            foo: {
+                type: "object",
+                patternProperties: {
+                    "^_": {
+                        encrypt: {
+                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                            keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                        }
+                    }
+                }
+            }
+        }
+    })");
+    EncryptionSchemaTreeNode::parse(schema);
+}
+
+TEST(EncryptionSchemaTreeTest,
+     TopLevelPatternPropertiesMatchingIdEncryptedWithDeterministicAlgorithmSucceeds) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        patternProperties: {
+            "^_": {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                    keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}],
+                    bsonType: "string"
+                }
+            }
+        }
+    })");
+    EncryptionSchemaTreeNode::parse(schema);
+}
+
+TEST(EncryptionSchemaTreeTest,
+     TopLevelPatternPropertiesMatchingIdEncryptedWithRandomAlgorithmFails) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        patternProperties: {
+            "^_": {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                }
+            }
+        }
+    })");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51194);
 }
 
 }  // namespace

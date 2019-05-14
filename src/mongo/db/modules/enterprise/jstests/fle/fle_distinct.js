@@ -109,6 +109,7 @@
         key: "ssn",
         jsonSchema: {
             type: "object",
+            properties: {_id: {type: "string"}},
             patternProperties: {
                 "^s.*": {
                     encrypt: {
@@ -128,6 +129,7 @@
         key: "anyField",
         jsonSchema: {
             type: "object",
+            properties: {_id: {type: "string"}},
             additionalProperties: {
                 encrypt: {
                     algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
