@@ -162,7 +162,8 @@
     ];
 
     const testDb = conn.getDB("test");
-    let updateCommand = {findAndModify: "test", query: {}, update: {}, jsonSchema: {}};
+    let updateCommand =
+        {findAndModify: "test", query: {}, update: {}, jsonSchema: {}, isRemoteSchema: false};
 
     for (let test of testCases) {
         updateCommand.jsonSchema = test.schema;

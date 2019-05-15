@@ -15,9 +15,8 @@
 #include "mongo/unittest/unittest.h"
 #include "query_analysis.h"
 
-namespace mongo {
+namespace mongo::cryptd_query_analysis {
 namespace {
-
 static const uint8_t uuidBytes[] = {0, 0, 0, 0, 0, 0, 0x40, 0, 0x80, 0, 0, 0, 0, 0, 0, 0};
 static const BSONObj randomEncryptObj =
     BSON("encrypt" << BSON("algorithm"
@@ -106,7 +105,7 @@ TEST(ReplaceEncryptedFieldsTest, ReplacesTopLevelFieldCorrectly) {
     auto schema = buildBasicSchema(randomEncryptObj);
     auto doc = BSON("foo"
                     << "toEncrypt");
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto replaceRes = replaceEncryptedFields(
         doc, schemaTree.get(), EncryptionPlaceholderContext::kWrite, {}, boost::none, nullptr);
     BSONElement encryptedElem = replaceRes.result["foo"];
@@ -126,7 +125,7 @@ TEST(ReplaceEncryptedFieldsTest, ReplacesSecondLevelFieldCorrectly) {
                                 << "foo")
                         << "c"
                         << "bar");
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto replaceRes = replaceEncryptedFields(
         doc, schemaTree.get(), EncryptionPlaceholderContext::kWrite, {}, boost::none, nullptr);
     BSONElement encryptedElem = replaceRes.result["a"]["b"];
@@ -144,7 +143,7 @@ TEST(ReplaceEncryptedFieldsTest, NumericPathComponentTreatedAsFieldName) {
                                              << "properties"
                                              << BSON(0 << randomEncryptObj))));
     auto doc = BSON("foo" << BSON(0 << "encrypted"));
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto replaceRes = replaceEncryptedFields(
         doc, schemaTree.get(), EncryptionPlaceholderContext::kWrite, {}, boost::none, nullptr);
     BSONElement encryptedElem = replaceRes.result["foo"][0];
@@ -159,7 +158,7 @@ TEST(ReplaceEncryptedFieldsTest, NumericPathComponentNotTreatedAsArrayIndex) {
                                              << "object"
                                              << "properties"
                                              << BSON(0 << randomEncryptObj))));
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto doc = BSON("foo" << BSON_ARRAY("notEncrypted"));
     ASSERT_THROWS_CODE(
         replaceEncryptedFields(
@@ -184,7 +183,7 @@ TEST(ReplaceEncryptedFieldsTest, ObjectInArrayWithSameNameNotEncrypted) {
                                              << BSON("bar" << randomEncryptObj))));
     auto doc = BSON("foo" << BSON_ARRAY("bar"
                                         << "notEncrypted"));
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT_THROWS_CODE(
         replaceEncryptedFields(
             doc, schemaTree.get(), EncryptionPlaceholderContext::kWrite, {}, boost::none, nullptr),
@@ -198,7 +197,7 @@ TEST(ReplaceEncryptedFieldsTest, FailIfSchemaHasKeyIdWithEmptyOrigDoc) {
                     << "bar"
                     << "key"
                     << "string");
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT_THROWS_CODE(
         replaceEncryptedFields(
             doc, schemaTree.get(), EncryptionPlaceholderContext::kWrite, {}, boost::none, nullptr),
@@ -289,7 +288,7 @@ TEST(BuildEncryptPlaceholderValueTest, SucceedsForDeterministicEncryptionWithSca
 
 TEST(BuildEncryptPlaceholderTest, JSONPointerResolvesCorrectly) {
     auto schema = buildBasicSchema(pointerEncryptObj);
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
 
     auto doc = BSON("foo"
                     << "encrypt"
@@ -315,7 +314,7 @@ TEST(BuildEncryptPlaceholderTest, JSONPointerResolvesCorrectlyThroughArray) {
                                                   << "keyId"
                                                   << "/key/0"));
     auto schema = buildBasicSchema(localEncryptObj);
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto doc = BSON("foo"
                     << "encrypt"
                     << "key"
@@ -336,7 +335,7 @@ TEST(BuildEncryptPlaceholderTest, JSONPointerResolvesCorrectlyThroughArray) {
 
 TEST(BuildEncryptPlaceholderTest, UAssertIfPointerPointsToObject) {
     auto schema = buildBasicSchema(pointerEncryptObj);
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto doc = BSON("foo"
                     << "encrypt"
                     << "key"
@@ -356,7 +355,7 @@ TEST(BuildEncryptPlaceholderTest, UAssertIfPointerPointsToObject) {
 
 TEST(BuildEncryptPlaceholderTest, UAssertIfPointerPointsToArray) {
     auto schema = buildBasicSchema(pointerEncryptObj);
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     BSONObjBuilder builder;
     builder.append("foo", "encrypt");
     builder.appendCodeWScope("key",
@@ -378,7 +377,7 @@ TEST(BuildEncryptPlaceholderTest, UAssertIfPointerPointsToArray) {
 
 TEST(BuildEncryptPlaceholderTest, UAssertIfPointerPointsToCode) {
     auto schema = buildBasicSchema(pointerEncryptObj);
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto doc = BSON("foo"
                     << "encrypt"
                     << "key"
@@ -398,7 +397,7 @@ TEST(BuildEncryptPlaceholderTest, UAssertIfPointerPointsToCode) {
 
 TEST(BuildEncryptPlaceholderTest, UAssertIfPointerDoesNotEvaluate) {
     auto schema = buildBasicSchema(pointerEncryptObj);
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto doc = BSON("foo"
                     << "encrypt");
     EncryptionPlaceholder expected(FleAlgorithmInt::kRandom, EncryptSchemaAnyType(doc["foo"]));
@@ -420,7 +419,7 @@ TEST(BuildEncryptPlaceholderTest, UAssertIfPointerPointsToEncryptedField) {
                        << "object"
                        << "properties"
                        << BSON("foo" << pointerEncryptObj << "key" << randomEncryptObj));
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto doc = BSON("foo"
                     << "encrypt"
                     << "key"
@@ -442,7 +441,7 @@ TEST(BuildEncryptPlaceholderTest, UAssertIfPointerPointsToBinDataSubtypeSix) {
                        << "object"
                        << "properties"
                        << BSON("foo" << pointerEncryptObj));
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     BSONObjBuilder bob;
     bob.append("foo", "encrypt");
     bob.appendBinData("key", 6, BinDataType::Encrypt, "123456");
@@ -461,7 +460,7 @@ TEST(BuildEncryptPlaceholderTest, UAssertIfPointerPointsToBinDataSubtypeSix) {
 
 TEST(BuildEncryptPlaceholderTest, FailsOnPointedToUUID) {
     auto schema = buildBasicSchema(pointerEncryptObj);
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto uuid = UUID::gen();
     BSONObjBuilder bob;
     bob.append("foo", "encrypt");
@@ -587,7 +586,7 @@ TEST(BuildEncryptPlaceholderTest, SucceedsForStringWithSimpleCollationInComparis
 
 TEST(BuildEncryptPlaceholderTest, FailsIfPointerPointsToNonString) {
     auto schema = buildBasicSchema(pointerEncryptObj);
-    const auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    const auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto docToEncrypt = BSON("foo"
                              << "test"
                              << "key"
@@ -631,7 +630,7 @@ TEST(EncryptionUpdateVisitorTest, ReplaceSingleFieldCorrectly) {
 
     auto schema = buildBasicSchema(randomEncryptObj);
 
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto updateVisitor = EncryptionUpdateVisitor(*schemaTree.get());
 
     driver.visitRoot(&updateVisitor);
@@ -664,7 +663,7 @@ TEST(EncryptionUpdateVisitorTest, ReplaceMultipleFieldsCorrectly) {
                                              << BSON("bar" << randomEncryptObj))
                                      << "baz"
                                      << randomEncryptObj));
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto updateVisitor = EncryptionUpdateVisitor(*schemaTree.get());
 
     driver.visitRoot(&updateVisitor);
@@ -694,7 +693,7 @@ TEST(EncryptionUpdateVisitorTest, FieldMarkedForEncryptionInRightHandSetObject) 
                                              << "object"
                                              << "properties"
                                              << BSON("bar" << randomEncryptObj))));
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto updateVisitor = EncryptionUpdateVisitor(*schemaTree.get());
     driver.visitRoot(&updateVisitor);
     auto newUpdate = driver.serialize().getDocument().toBson();
@@ -715,7 +714,7 @@ TEST(EncryptionUpdateVisitorTest, RenameWithEncryptedTargetOnlyFails) {
 
     auto schema = buildBasicSchema(randomEncryptObj);
 
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto updateVisitor = EncryptionUpdateVisitor(*schemaTree.get());
 
     ASSERT_THROWS_CODE(driver.visitRoot(&updateVisitor), AssertionException, 51160);
@@ -731,7 +730,7 @@ TEST(EncryptionUpdateVisitorTest, RenameWithEncryptedSourceOnlyFails) {
 
     auto schema = buildBasicSchema(randomEncryptObj);
 
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto updateVisitor = EncryptionUpdateVisitor(*schemaTree.get());
 
     ASSERT_THROWS_CODE(driver.visitRoot(&updateVisitor), AssertionException, 51160);
@@ -752,7 +751,7 @@ TEST(EncryptionUpdateVisitorTest, RenameWithNestedTargetEncryptFails) {
                                              << "object"
                                              << "properties"
                                              << BSON("bar" << randomEncryptObj))));
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto updateVisitor = EncryptionUpdateVisitor(*schemaTree.get());
     ASSERT_THROWS_CODE(driver.visitRoot(&updateVisitor), AssertionException, 51160);
 }
@@ -772,10 +771,10 @@ TEST(EncryptionUpdateVisitorTest, RenameWithNestedSourceEncryptFails) {
                                              << "object"
                                              << "properties"
                                              << BSON("bar" << randomEncryptObj))));
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto updateVisitor = EncryptionUpdateVisitor(*schemaTree.get());
 
     ASSERT_THROWS_CODE(driver.visitRoot(&updateVisitor), AssertionException, 51160);
 }
 }  // namespace
-}  // namespace mongo
+}  // namespace mongo::cryptd_query_analysis

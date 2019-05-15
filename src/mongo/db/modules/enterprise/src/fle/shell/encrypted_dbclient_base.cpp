@@ -151,7 +151,9 @@ public:
         BSONObjBuilder schemaInfoBuilder;
 
         BSONObjBuilder commandBuilder;
-        commandBuilder.append("jsonSchema"_sd, schema);
+        commandBuilder.append(cryptd_query_analysis::kJsonSchema, schema);
+        commandBuilder.append(cryptd_query_analysis::kIsRemoteSchema,
+                              _encryptionOptions.getUseRemoteSchemas().value_or(false));
         commandBuilder.appendElementsUnique(request.body);
         BSONObj cmdObj = commandBuilder.obj();
         request.body = cmdObj;
@@ -160,19 +162,23 @@ public:
         auto opCtx = uniqueOpContext.get();
 
         if (commandName == "find"_sd) {
-            processFindCommand(opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder);
+            cryptd_query_analysis::processFindCommand(
+                opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder);
         } else if (commandName == "aggregate"_sd) {
-            processAggregateCommand(opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder);
+            cryptd_query_analysis::processAggregateCommand(
+                opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder);
         } else if (commandName == "findandmodify"_sd || commandName == "findAndModify"_sd) {
-            processFindAndModifyCommand(opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder);
+            cryptd_query_analysis::processFindAndModifyCommand(
+                opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder);
         } else if (commandName == "count"_sd) {
-            processCountCommand(opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder);
+            cryptd_query_analysis::processCountCommand(
+                opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder);
         } else if (commandName == "update"_sd) {
-            processUpdateCommand(opCtx, request, &schemaInfoBuilder);
+            cryptd_query_analysis::processUpdateCommand(opCtx, request, &schemaInfoBuilder);
         } else if (commandName == "insert"_sd) {
-            processInsertCommand(opCtx, request, &schemaInfoBuilder);
+            cryptd_query_analysis::processInsertCommand(opCtx, request, &schemaInfoBuilder);
         } else if (commandName == "delete"_sd) {
-            processDeleteCommand(opCtx, request, &schemaInfoBuilder);
+            cryptd_query_analysis::processDeleteCommand(opCtx, request, &schemaInfoBuilder);
         }
 
         return schemaInfoBuilder.obj();

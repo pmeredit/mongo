@@ -39,10 +39,12 @@
             }
         }],
         cursor: {},
-        jsonSchema: {}
+        jsonSchema: {},
+        isRemoteSchema: false,
     };
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     delete command.jsonSchema;
+    delete command.isRemoteSchema;
     delete cmdRes.result.lsid;
     assert.eq(command, cmdRes.result, cmdRes);
     assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
@@ -65,9 +67,11 @@
         }],
         cursor: {},
         jsonSchema: {type: "object", properties: {foo: encryptedStringSpec}},
+        isRemoteSchema: false,
     };
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     delete command.jsonSchema;
+    delete command.isRemoteSchema;
     delete cmdRes.result.lsid;
     assert.eq(command, cmdRes.result, cmdRes);
     assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
@@ -89,7 +93,8 @@
             }
         }],
         cursor: {},
-        jsonSchema: {type: "object", properties: {category: encryptedStringSpec}}
+        jsonSchema: {type: "object", properties: {category: encryptedStringSpec}},
+        isRemoteSchema: false,
     };
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
@@ -117,7 +122,8 @@
         jsonSchema: {
             type: "object",
             properties: {category: {type: "object", properties: {group: encryptedStringSpec}}}
-        }
+        },
+        isRemoteSchema: false,
     };
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
@@ -143,7 +149,8 @@
             }
         }],
         cursor: {},
-        jsonSchema: {type: "object", patternProperties: {cat: encryptedStringSpec}}
+        jsonSchema: {type: "object", patternProperties: {cat: encryptedStringSpec}},
+        isRemoteSchema: false,
     };
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
@@ -167,7 +174,8 @@
             }
         }],
         cursor: {},
-        jsonSchema: {type: "object", properties: {}, additionalProperties: encryptedStringSpec}
+        jsonSchema: {type: "object", properties: {}, additionalProperties: encryptedStringSpec},
+        isRemoteSchema: false,
     };
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
@@ -188,7 +196,8 @@
             }
         }],
         cursor: {},
-        jsonSchema: {type: "object", properties: {location: encryptedStringSpec}}
+        jsonSchema: {type: "object", properties: {location: encryptedStringSpec}},
+        isRemoteSchema: false,
     }),
                                  51200);
 
@@ -207,7 +216,8 @@
         jsonSchema: {
             type: "object",
             properties: {location: {type: "object", properties: {city: encryptedStringSpec}}}
-        }
+        },
+        isRemoteSchema: false,
     }),
                                  51200);
 
@@ -226,7 +236,8 @@
         jsonSchema: {
             type: "object",
             properties: {location: {type: "object", properties: {city: encryptedStringSpec}}}
-        }
+        },
+        isRemoteSchema: false,
     }),
                                  51102);
 

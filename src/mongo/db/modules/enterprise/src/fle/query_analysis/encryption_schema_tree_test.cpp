@@ -46,7 +46,7 @@ namespace {
  * 'path'.
  */
 ResolvedEncryptionInfo extractMetadata(BSONObj schema, std::string path) {
-    auto result = EncryptionSchemaTreeNode::parse(schema);
+    auto result = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto metadata = result->getEncryptionMetadataForPath(FieldRef(path));
     ASSERT(metadata);
     return metadata.get();
@@ -56,7 +56,7 @@ ResolvedEncryptionInfo extractMetadata(BSONObj schema, std::string path) {
  * Parses 'schema' into an encryption schema tree and verifies that 'path' is not encrypted.
  */
 void assertNotEncrypted(BSONObj schema, std::string path) {
-    auto result = EncryptionSchemaTreeNode::parse(schema);
+    auto result = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT_FALSE(result->getEncryptionMetadataForPath(FieldRef(path)));
 }
 
@@ -107,7 +107,7 @@ TEST(EncryptionSchemaTreeTest, MarksNestedFieldsAsEncrypted) {
                 }
             }
         }})");
-    auto result = EncryptionSchemaTreeNode::parse(schema);
+    auto result = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT(extractMetadata(schema, "user.ssn") == metadata);
     assertNotEncrypted(schema, "user");
     assertNotEncrypted(schema, "user.name");
@@ -275,8 +275,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseEncryptAlongsideAnotherTypeKeyword) {
                 type: "object"
             }
         }})");
-    ASSERT_THROWS_CODE(
-        EncryptionSchemaTreeNode::parse(schema), AssertionException, ErrorCodes::FailedToParse);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       ErrorCodes::FailedToParse);
 
     schema = fromjson(R"({
         type: "object",
@@ -289,8 +290,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseEncryptAlongsideAnotherTypeKeyword) {
                 bsonType: "BinData"
             }
         }})");
-    ASSERT_THROWS_CODE(
-        EncryptionSchemaTreeNode::parse(schema), AssertionException, ErrorCodes::FailedToParse);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       ErrorCodes::FailedToParse);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseEncryptWithSiblingKeywords) {
@@ -305,7 +307,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseEncryptWithSiblingKeywords) {
                 properties: {invalid: {}}
             }
         }})");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51078);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51078);
 
     schema = fromjson(R"({
         type: "object",
@@ -318,7 +322,24 @@ TEST(EncryptionSchemaTreeTest, FailsToParseEncryptWithSiblingKeywords) {
                 items: {}
             }
         }})");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51078);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51078);
+
+    schema = fromjson(R"({
+            type: "object",
+            properties: {
+                ssn: {
+                    encrypt: {
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                        keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
+                    },
+                    minItems: 1
+                }
+            }})");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kRemote),
+                       AssertionException,
+                       51078);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseIfConflictingEncryptKeywords) {
@@ -343,7 +364,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfConflictingEncryptKeywords) {
                 }
             }
         }})");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51077);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptWithinItems) {
@@ -360,7 +383,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptWithinItems) {
                 }
             }
         }})");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51077);
 
     schema = fromjson(R"({
         type: "object",
@@ -380,7 +405,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptWithinItems) {
                 }
             }
         }})");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51077);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptMetadataWithinItems) {
@@ -396,7 +423,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptMetadataWithinItems) {
                 }
             }
         }})");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31077);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       31077);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptWithinAdditionalItems) {
@@ -414,7 +443,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptWithinAdditionalItems) {
                 }
             }
         }})");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51077);
 
     schema = fromjson(R"({
         type: "object",
@@ -428,7 +459,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptWithinAdditionalItems) {
                 }
             }
         }})");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51077);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptMetadataWithinAdditionalItems) {
@@ -445,7 +478,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptMetadataWithinAdditionalItem
                 }
             }
         }})");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31077);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       31077);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptParentIsNotTypeRestricted) {
@@ -458,7 +493,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptParentIsNotTypeRestricted) {
                 }
             }
         }})");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51077);
 
     schema = fromjson(R"({
         type: "object",
@@ -474,7 +511,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptParentIsNotTypeRestricted) {
                 }
             }
         }})");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51077);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptParentIsTypeRestrictedWithMultipleTypes) {
@@ -493,7 +532,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptParentIsTypeRestrictedWithMu
                 }
             }
         }})");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51077);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseIfPropertyHasDot) {
@@ -507,7 +548,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfPropertyHasDot) {
                 }
             }
         }})");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51077);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseIfParentPropertyHasDot) {
@@ -526,7 +569,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfParentPropertyHasDot) {
                 }
             }
         }})");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51077);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseIfDottedPropertyNestedInPatternProperties) {
@@ -545,7 +590,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfDottedPropertyNestedInPatternProper
                 }
             }
         }})");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51077);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseIfDottedPropertyNestedInAdditionalProperties) {
@@ -562,7 +609,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfDottedPropertyNestedInAdditionalPro
                 }
             }
         }})");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51077);
 }
 
 TEST(EncryptionSchemaTreeTest, AllowDottedNonEncryptProperties) {
@@ -579,7 +628,7 @@ TEST(EncryptionSchemaTreeTest, AllowDottedNonEncryptProperties) {
                 }
             }
         }})");
-    auto result = EncryptionSchemaTreeNode::parse(schema);
+    auto result = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     assertNotEncrypted(schema, "dotted.non.encrypt");
     ASSERT(result->getEncryptionMetadataForPath(FieldRef{"secret"}));
 }
@@ -595,15 +644,16 @@ TEST(EncryptionSchemaTreeTest, DottedPropertiesNotEncryptedWithMatchingPatternPr
                 }
             }
         }})");
-    auto result = EncryptionSchemaTreeNode::parse(schema);
+    auto result = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     assertNotEncrypted(schema, "a.c");
     ASSERT(result->getEncryptionMetadataForPath(FieldRef{"abc"}));
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseInvalidSchema) {
     BSONObj schema = fromjson(R"({properties: "invalid"})");
-    ASSERT_THROWS_CODE(
-        EncryptionSchemaTreeNode::parse(schema), AssertionException, ErrorCodes::TypeMismatch);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       ErrorCodes::TypeMismatch);
 
     schema = fromjson(R"({
         type: "object",
@@ -612,8 +662,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseInvalidSchema) {
                 encrypt: "invalid"
             }
         }})");
-    ASSERT_THROWS_CODE(
-        EncryptionSchemaTreeNode::parse(schema), AssertionException, ErrorCodes::TypeMismatch);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       ErrorCodes::TypeMismatch);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseUnknownFieldInEncrypt) {
@@ -624,7 +675,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseUnknownFieldInEncrypt) {
                 encrypt: {unknownField: {}}
             }
         }})");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 40415);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       40415);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseInvalidAlgorithm) {
@@ -638,8 +691,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseInvalidAlgorithm) {
                 }
             }
         }})");
-    ASSERT_THROWS_CODE(
-        EncryptionSchemaTreeNode::parse(schema), AssertionException, ErrorCodes::BadValue);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       ErrorCodes::BadValue);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseInvalidKeyIdUUID) {
@@ -649,7 +703,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseInvalidKeyIdUUID) {
              << "properties"
              << BSON("ssn" << BSON("encrypt" << BSON("keyId" << BSON_ARRAY(BSONBinData(
                                                          nullptr, 0, BinDataType::MD5Type))))));
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51084);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51084);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptBelowAdditionalPropertiesWithoutTypeObject) {
@@ -660,7 +716,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfEncryptBelowAdditionalPropertiesWit
                 keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}]
             }
         }})");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51077);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseIfIllegalSubschemaUnderAdditionalProperties) {
@@ -673,14 +731,16 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfIllegalSubschemaUnderAdditionalProp
             },
             illegal: 1
         }})");
-    ASSERT_THROWS_CODE(
-        EncryptionSchemaTreeNode::parse(schema), AssertionException, ErrorCodes::FailedToParse);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       ErrorCodes::FailedToParse);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseIfAdditionalPropertiesIsWrongType) {
     BSONObj schema = fromjson("{additionalProperties: [{type: 'string'}]}");
-    ASSERT_THROWS_CODE(
-        EncryptionSchemaTreeNode::parse(schema), AssertionException, ErrorCodes::TypeMismatch);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       ErrorCodes::TypeMismatch);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseIfAdditionalPropertiesWithEncryptInsideItems) {
@@ -700,7 +760,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfAdditionalPropertiesWithEncryptInsi
                 }
             }
         }})");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51077);
 }
 
 TEST(EncryptionSchemaTreeTest, AdditionalPropertiesAllPropertiesCorrectlyReportedAsEncrypted) {
@@ -714,7 +776,7 @@ TEST(EncryptionSchemaTreeTest, AdditionalPropertiesAllPropertiesCorrectlyReporte
             }
         }
     })");
-    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo"}));
     ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"bar"}));
     ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"baz"}));
@@ -735,7 +797,7 @@ TEST(EncryptionSchemaTreeTest,
                 }
             }
         }})");
-    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"obj.foo"}));
     ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"obj.bar"}));
     ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"obj.baz"}));
@@ -767,7 +829,7 @@ TEST(EncryptionSchemaTreeTest, AdditionalPropertiesOnlyAppliesToFieldsNotNamedBy
                 }
             }
         }})");
-    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"obj.foo"}));
     ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"obj.bar"}));
     ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"obj.baz"}));
@@ -795,7 +857,7 @@ TEST(EncryptionSchemaTreeTest, AdditionalPropertiesWorksWithNestedPropertiesSubs
                 }
             }
         }})");
-    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo.b"}));
     ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"bar.b"}));
     ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo.a"}));
@@ -816,7 +878,7 @@ TEST(EncryptionSchemaTreeTest, AdditionalPropertiesWorksWithNestedAdditionalProp
                 }
             }
         }})");
-    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo"}));
     ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"bar"}));
     ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"baz"}));
@@ -833,7 +895,7 @@ TEST(EncryptionSchemaTreeTest, CanSuccessfullyParseAdditionalItemsWhenBoolean) {
                 additionalItems: true
             }
         }})");
-    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"arr"}));
 }
 
@@ -846,7 +908,7 @@ TEST(EncryptionSchemaTreeTest, CanSuccessfullyParseAdditionalPropertiesWhenBoole
                 additionalProperties: false
             }
         }})");
-    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"obj"}));
     ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"obj.foo"}));
     ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"obj.bar"}));
@@ -951,7 +1013,9 @@ TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataMissingAlgorithm) {
                 }
             }
         }})");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51099);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51099);
 }
 
 TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataMissingKeyId) {
@@ -968,7 +1032,9 @@ TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataMissingKeyId) {
                 }
             }
         }})");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51097);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51097);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseIfPatternPropertiesIsNotAnObject) {
@@ -976,8 +1042,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfPatternPropertiesIsNotAnObject) {
         type: "object",
         patternProperties: true
     })");
-    ASSERT_THROWS_CODE(
-        EncryptionSchemaTreeNode::parse(schema), AssertionException, ErrorCodes::TypeMismatch);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       ErrorCodes::TypeMismatch);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseIfPatternPropertiesHasNonObjectProperty) {
@@ -987,8 +1054,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfPatternPropertiesHasNonObjectProper
             foo: true
         }
     })");
-    ASSERT_THROWS_CODE(
-        EncryptionSchemaTreeNode::parse(schema), AssertionException, ErrorCodes::TypeMismatch);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       ErrorCodes::TypeMismatch);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseIfPatternPropertiesHasAnIllFormedRegex) {
@@ -998,8 +1066,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseIfPatternPropertiesHasAnIllFormedRege
             "(": {}
         }
     })");
-    ASSERT_THROWS_CODE(
-        EncryptionSchemaTreeNode::parse(schema), AssertionException, ErrorCodes::BadValue);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       ErrorCodes::BadValue);
 }
 
 TEST(EncryptionSchemaTreeTest, LegalPatternPropertiesParsesSuccessfully) {
@@ -1011,7 +1080,7 @@ TEST(EncryptionSchemaTreeTest, LegalPatternPropertiesParsesSuccessfully) {
         }
     })");
 
-    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo"}));
     ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"bar"}));
     ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"baz"}));
@@ -1031,7 +1100,7 @@ TEST(EncryptionSchemaTreeTest, FieldNamesMatchingPatternPropertiesReportEncrypte
         }
     })");
 
-    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo"}));
     ASSERT_THROWS_CODE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo.quux"}),
                        AssertionException,
@@ -1074,7 +1143,7 @@ TEST(EncryptionSchemaTreeTest,
         }
     })");
 
-    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"a"}));
     ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"b"}));
     ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo"}));
@@ -1102,7 +1171,7 @@ TEST(EncryptionSchemaTreeTest, PatternPropertiesErrorIfMultiplePatternsMatchButO
         }
     })");
 
-    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT_THROWS_CODE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foobar"}),
                        AssertionException,
                        51142);
@@ -1128,7 +1197,7 @@ TEST(EncryptionSchemaTreeTest,
         }
     })");
 
-    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo"}));
     ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"bar"}));
     ASSERT_THROWS_CODE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foobar"}),
@@ -1156,7 +1225,7 @@ TEST(EncryptionSchemaTreeTest,
         }
     })");
 
-    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo"}));
     ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"bar"}));
     ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foobar"}));
@@ -1178,7 +1247,7 @@ TEST(EncryptionSchemaTreeTest, PatternPropertiesErrorIfInconsistentWithPropertie
         }
     })");
 
-    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT_THROWS_CODE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foobar"}),
                        AssertionException,
                        51142);
@@ -1206,7 +1275,7 @@ TEST(EncryptionSchemaTreeTest,
         }
     })");
 
-    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT_THROWS_CODE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foobar"}),
                        AssertionException,
                        51142);
@@ -1233,7 +1302,7 @@ TEST(EncryptionSchemaTreeTest, PatternPropertiesSuccessIfAlsoInPropertiesButSame
         }
     })");
 
-    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foobar"}));
 }
 
@@ -1249,7 +1318,9 @@ TEST(EncryptionSchemaTreeTest, PatternPropertiesFailsIfTypeObjectNotSpecified) {
         }
     })");
 
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51077);
 }
 
 TEST(EncryptionSchemaTreeTest, NestedPatternPropertiesFailsIfTypeObjectNotSpecified) {
@@ -1269,7 +1340,9 @@ TEST(EncryptionSchemaTreeTest, NestedPatternPropertiesFailsIfTypeObjectNotSpecif
         }
     })");
 
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51077);
 }
 
 TEST(EncryptionSchemaTreeTest, PatternPropertiesNestedBelowProperties) {
@@ -1290,7 +1363,7 @@ TEST(EncryptionSchemaTreeTest, PatternPropertiesNestedBelowProperties) {
         }
     })");
 
-    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo"}));
     ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"baz"}));
     ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"baz.x.y"}));
@@ -1317,7 +1390,7 @@ TEST(EncryptionSchemaTreeTest, PatternPropertiesNestedBelowPatternProperties) {
         }
     })");
 
-    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foo"}));
     ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"foobar"}));
     ASSERT_FALSE(encryptionTree->getEncryptionMetadataForPath(FieldRef{"baz.x.y"}));
@@ -1369,7 +1442,7 @@ TEST(EncryptionSchemaTreeTest, FourMatchingEncryptSpecifiersSucceedsIfAllEncrypt
         }
     })");
 
-    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"aa.xx"}));
     ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"aa.yy"}));
     ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"aa.xy"}));
@@ -1420,7 +1493,7 @@ TEST(EncryptionSchemaTreeTest, FourMatchingEncryptSpecifiersFailsIfOneEncryptOpt
         }
     })");
 
-    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"aa.xx"}));
     ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"aa.yy"}));
     ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"aa.xy"}));
@@ -1455,7 +1528,7 @@ TEST(EncryptionSchemaTreeTest,
         additionalProperties: {type: "string"}
     })");
 
-    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT(encryptionTree->getEncryptionMetadataForPath(FieldRef{"ab"}));
 }
 
@@ -1482,7 +1555,7 @@ TEST(EncryptionSchemaTreeTest, PatternPropertiesInheritsParentEncryptMetadata) {
         }
     })");
 
-    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema);
+    auto encryptionTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto foundMetadata = encryptionTree->getEncryptionMetadataForPath(FieldRef{"a.bb"});
     ASSERT(foundMetadata == expectedMetadata);
 }
@@ -1500,7 +1573,8 @@ TEST(EncryptionSchemaTreeTest, ContainsEncryptReturnsTrueIfPropertyContainsEncry
         }
     })");
 
-    ASSERT(EncryptionSchemaTreeNode::parse(schema)->containsEncryptedNode());
+    ASSERT(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal)
+               ->containsEncryptedNode());
 }
 
 TEST(EncryptionSchemaTreeTest, ContainsEncryptReturnsTrueIfNestedPropertyContainsEncryptedNode) {
@@ -1521,7 +1595,8 @@ TEST(EncryptionSchemaTreeTest, ContainsEncryptReturnsTrueIfNestedPropertyContain
         }
     })");
 
-    ASSERT(EncryptionSchemaTreeNode::parse(schema)->containsEncryptedNode());
+    ASSERT(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal)
+               ->containsEncryptedNode());
 }
 
 TEST(EncryptionSchemaTreeTest, ContainsEncryptReturnsFalseIfPropertyDoesNotContainEncryptedNode) {
@@ -1532,7 +1607,8 @@ TEST(EncryptionSchemaTreeTest, ContainsEncryptReturnsFalseIfPropertyDoesNotConta
         }
     })");
 
-    ASSERT_FALSE(EncryptionSchemaTreeNode::parse(schema)->containsEncryptedNode());
+    ASSERT_FALSE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal)
+                     ->containsEncryptedNode());
 }
 
 
@@ -1550,7 +1626,8 @@ TEST(EncryptionSchemaTreeTest,
         }
     })");
 
-    ASSERT_FALSE(EncryptionSchemaTreeNode::parse(schema)->containsEncryptedNode());
+    ASSERT_FALSE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal)
+                     ->containsEncryptedNode());
 }
 
 TEST(EncryptionSchemaTreeTest, ContainsEncryptReturnsTrueIfAdditionalPropertiesHasEncryptNode) {
@@ -1568,7 +1645,8 @@ TEST(EncryptionSchemaTreeTest, ContainsEncryptReturnsTrueIfAdditionalPropertiesH
         }
     })");
 
-    ASSERT_TRUE(EncryptionSchemaTreeNode::parse(schema)->containsEncryptedNode());
+    ASSERT_TRUE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal)
+                    ->containsEncryptedNode());
 }
 
 TEST(EncryptionSchemaTreeTest,
@@ -1583,7 +1661,8 @@ TEST(EncryptionSchemaTreeTest,
         }
     })");
 
-    ASSERT_FALSE(EncryptionSchemaTreeNode::parse(schema)->containsEncryptedNode());
+    ASSERT_FALSE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal)
+                     ->containsEncryptedNode());
 }
 
 TEST(EncryptionSchemaTreeTest, ContainsEncryptReturnsTrueIfPatternPropertiesHasEncryptNode) {
@@ -1605,7 +1684,8 @@ TEST(EncryptionSchemaTreeTest, ContainsEncryptReturnsTrueIfPatternPropertiesHasE
         }
     })");
 
-    ASSERT_TRUE(EncryptionSchemaTreeNode::parse(schema)->containsEncryptedNode());
+    ASSERT_TRUE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal)
+                    ->containsEncryptedNode());
 }
 
 TEST(EncryptionSchemaTreeTest, EncryptedBelowPrefixReturnsTrueOnShortPrefix) {
@@ -1624,8 +1704,8 @@ TEST(EncryptionSchemaTreeTest, EncryptedBelowPrefixReturnsTrueOnShortPrefix) {
             }
         }
     })");
-    ASSERT_TRUE(
-        EncryptionSchemaTreeNode::parse(schema)->containsEncryptedNodeBelowPrefix(FieldRef("a")));
+    ASSERT_TRUE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal)
+                    ->containsEncryptedNodeBelowPrefix(FieldRef("a")));
 }
 
 TEST(EncryptionSchemaTreeTest, EncryptedBelowPrefixReturnsFalseOnMissingPath) {
@@ -1644,8 +1724,8 @@ TEST(EncryptionSchemaTreeTest, EncryptedBelowPrefixReturnsFalseOnMissingPath) {
             }
         }
     })");
-    ASSERT_FALSE(
-        EncryptionSchemaTreeNode::parse(schema)->containsEncryptedNodeBelowPrefix(FieldRef("c")));
+    ASSERT_FALSE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal)
+                     ->containsEncryptedNodeBelowPrefix(FieldRef("c")));
 }
 
 
@@ -1662,7 +1742,8 @@ DEATH_TEST(EncryptionSchemaTreeTest, EncryptedBelowPrefixInvariantOnEncryptedPat
         }
     })");
 
-    EncryptionSchemaTreeNode::parse(schema)->containsEncryptedNodeBelowPrefix(FieldRef("foo"));
+    EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal)
+        ->containsEncryptedNodeBelowPrefix(FieldRef("foo"));
 }
 
 TEST(EncryptionSchemaTreeTest,
@@ -1679,7 +1760,8 @@ TEST(EncryptionSchemaTreeTest,
         }
     })");
 
-    ASSERT_FALSE(EncryptionSchemaTreeNode::parse(schema)->containsEncryptedNode());
+    ASSERT_FALSE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal)
+                     ->containsEncryptedNode());
 }
 
 TEST(EncryptionSchemaTreeTest, EncryptedBelowPrefixReturnsTrueOnLongPrefix) {
@@ -1709,7 +1791,7 @@ TEST(EncryptionSchemaTreeTest, EncryptedBelowPrefixReturnsTrueOnLongPrefix) {
             }
         }
     })");
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT_TRUE(schemaTree->containsEncryptedNodeBelowPrefix(FieldRef("a")));
     ASSERT_TRUE(schemaTree->containsEncryptedNodeBelowPrefix(FieldRef("a.b")));
     ASSERT_TRUE(schemaTree->containsEncryptedNodeBelowPrefix(FieldRef("a.b.c")));
@@ -1725,7 +1807,9 @@ TEST(EncryptionSchemaTreeTest, ParseFailsIfDeterministicAndNoBSONType) {
                        << "object"
                        << "properties"
                        << BSON("foo" << encryptObj));
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31051);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       31051);
 }
 
 TEST(EncryptionSchemaTreeTest, ParseFailsIfDeterministicAndMultipleBSONType) {
@@ -1741,7 +1825,9 @@ TEST(EncryptionSchemaTreeTest, ParseFailsIfDeterministicAndMultipleBSONType) {
                        << "object"
                        << "properties"
                        << BSON("foo" << encryptObj));
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31051);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       31051);
 }
 
 TEST(EncryptionSchemaTreeTest, ParseSucceedsIfLengthOneTypeArray) {
@@ -1757,7 +1843,7 @@ TEST(EncryptionSchemaTreeTest, ParseSucceedsIfLengthOneTypeArray) {
                        << "properties"
                        << BSON("foo" << encryptObj));
     // Just making sure the parse succeeds, don't care about the result.
-    EncryptionSchemaTreeNode::parse(schema);
+    EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
 }
 
 TEST(EncryptionSchemaTreeTest, AllOfKeywordSubschemaWithoutEncryptSucceeds) {
@@ -1782,7 +1868,7 @@ TEST(EncryptionSchemaTreeTest, AllOfKeywordSubschemaWithoutEncryptSucceeds) {
             }
         }
     })");
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT_FALSE(schemaTree->getEncryptionMetadataForPath(FieldRef("foo")));
     ASSERT_FALSE(schemaTree->getEncryptionMetadataForPath(FieldRef("foo.bar")));
     ASSERT_FALSE(schemaTree->getEncryptionMetadataForPath(FieldRef("foo.baz")));
@@ -1815,7 +1901,9 @@ TEST(EncryptionSchemaTreeTest, AllOfKeywordSubschemaWithEncryptFails) {
             }
         }
     })");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51077);
 }
 
 TEST(EncryptionSchemaTreeTest, AllOfKeywordSubschemaWithEncryptMetadataFails) {
@@ -1844,7 +1932,9 @@ TEST(EncryptionSchemaTreeTest, AllOfKeywordSubschemaWithEncryptMetadataFails) {
             }
         }
     })");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31077);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       31077);
 }
 
 TEST(EncryptionSchemaTreeTest, AnyOfKeywordSubschemaWithoutEncryptSucceeds) {
@@ -1869,7 +1959,7 @@ TEST(EncryptionSchemaTreeTest, AnyOfKeywordSubschemaWithoutEncryptSucceeds) {
             }
         }
     })");
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT_FALSE(schemaTree->getEncryptionMetadataForPath(FieldRef("foo")));
     ASSERT_FALSE(schemaTree->getEncryptionMetadataForPath(FieldRef("foo.bar")));
     ASSERT_FALSE(schemaTree->getEncryptionMetadataForPath(FieldRef("foo.baz")));
@@ -1902,7 +1992,9 @@ TEST(EncryptionSchemaTreeTest, AnyOfKeywordSubschemaWithEncryptFails) {
             }
         }
     })");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51077);
 }
 
 TEST(EncryptionSchemaTreeTest, AnyOfKeywordSubschemaWithEncryptMetadataFails) {
@@ -1931,7 +2023,9 @@ TEST(EncryptionSchemaTreeTest, AnyOfKeywordSubschemaWithEncryptMetadataFails) {
             }
         }
     })");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31077);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       31077);
 }
 
 TEST(EncryptionSchemaTreeTest, OneOfKeywordSubschemaWithoutEncryptSucceeds) {
@@ -1956,7 +2050,7 @@ TEST(EncryptionSchemaTreeTest, OneOfKeywordSubschemaWithoutEncryptSucceeds) {
             }
         }
     })");
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT_FALSE(schemaTree->getEncryptionMetadataForPath(FieldRef("foo")));
     ASSERT_FALSE(schemaTree->getEncryptionMetadataForPath(FieldRef("foo.bar")));
     ASSERT_FALSE(schemaTree->getEncryptionMetadataForPath(FieldRef("foo.baz")));
@@ -1989,7 +2083,9 @@ TEST(EncryptionSchemaTreeTest, OneOfKeywordSubschemaWithEncryptFails) {
             }
         }
     })");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51077);
 }
 
 TEST(EncryptionSchemaTreeTest, OneOfKeywordSubschemaWithEncryptMetadataFails) {
@@ -2018,7 +2114,9 @@ TEST(EncryptionSchemaTreeTest, OneOfKeywordSubschemaWithEncryptMetadataFails) {
             }
         }
     })");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31077);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       31077);
 }
 
 TEST(EncryptionSchemaTreeTest, NotKeywordSubschemaWithoutEncryptSucceeds) {
@@ -2035,7 +2133,7 @@ TEST(EncryptionSchemaTreeTest, NotKeywordSubschemaWithoutEncryptSucceeds) {
             }
         }
     })");
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT_FALSE(schemaTree->getEncryptionMetadataForPath(FieldRef("foo")));
     ASSERT_FALSE(schemaTree->getEncryptionMetadataForPath(FieldRef("foo.bar")));
     ASSERT_FALSE(schemaTree->getEncryptionMetadataForPath(FieldRef("foo.baz")));
@@ -2060,7 +2158,9 @@ TEST(EncryptionSchemaTreeTest, NotKeywordSubschemaWithEncryptFails) {
             }
         }
     })");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51077);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51077);
 }
 
 TEST(EncryptionSchemaTreeTest, NotKeywordSubschemaWithEncryptMetadataFails) {
@@ -2081,7 +2181,9 @@ TEST(EncryptionSchemaTreeTest, NotKeywordSubschemaWithEncryptMetadataFails) {
             }
         }
     })");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31077);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       31077);
 }
 
 TEST(EncryptionSchemaTreeTest, EncryptMetadataWithoutExplicitTypeObjectSpecificationFails) {
@@ -2094,74 +2196,160 @@ TEST(EncryptionSchemaTreeTest, EncryptMetadataWithoutExplicitTypeObjectSpecifica
             }
         }
     })");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31077);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       31077);
 }
 
-// TODO SERVER-40837 Relax the restrictions on these JSON Schema keywords.
-TEST(EncryptionSchemaTreeNode, UnsupportedJSONSchemaKeywords) {
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(fromjson(
-                           "{dependencies: {foo: {properties: {bar: {type: 'string'}}}}}")),
-                       AssertionException,
-                       31068);
+void verifySchemaKeywordWorksOnlyForRemoteSchema(StringData schema, bool hasEncryptedNode) {
     ASSERT_THROWS_CODE(
-        EncryptionSchemaTreeNode::parse(fromjson("{properties: {foo: {enum: [1, 2, 3]}}}")),
+        EncryptionSchemaTreeNode::parse(fromjson(schema.rawData()), EncryptionSchemaType::kLocal),
         AssertionException,
         31068);
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(
-                           fromjson("{properties: {foo: {exclusiveMaximum: true, maximum: 1}}}")),
-                       AssertionException,
-                       31068);
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(
-                           fromjson("{properties: {foo: {exclusiveMinimum: true, minimum: 1}}}")),
-                       AssertionException,
-                       31068);
-    ASSERT_THROWS_CODE(
-        EncryptionSchemaTreeNode::parse(fromjson("{properties: {foo: {maxItems: 1}}}")),
-        AssertionException,
-        31068);
-    ASSERT_THROWS_CODE(
-        EncryptionSchemaTreeNode::parse(fromjson("{properties: {foo: {maxLength: 1}}}")),
-        AssertionException,
-        31068);
-    ASSERT_THROWS_CODE(
-        EncryptionSchemaTreeNode::parse(fromjson("{maxProperties: 1}")), AssertionException, 31068);
-    ASSERT_THROWS_CODE(
-        EncryptionSchemaTreeNode::parse(fromjson("{properties: {foo: {maximum: 1}}}")),
-        AssertionException,
-        31068);
-    ASSERT_THROWS_CODE(
-        EncryptionSchemaTreeNode::parse(fromjson("{properties: {foo: {minItems: 1}}}")),
-        AssertionException,
-        31068);
-    ASSERT_THROWS_CODE(
-        EncryptionSchemaTreeNode::parse(fromjson("{properties: {foo: {minLength: 1}}}")),
-        AssertionException,
-        31068);
-    ASSERT_THROWS_CODE(
-        EncryptionSchemaTreeNode::parse(fromjson("{minProperties: 1}")), AssertionException, 31068);
-    ASSERT_THROWS_CODE(
-        EncryptionSchemaTreeNode::parse(fromjson("{minProperties: 1}")), AssertionException, 31068);
-    ASSERT_THROWS_CODE(
-        EncryptionSchemaTreeNode::parse(fromjson("{properties: {foo: {minimum: 1}}}")),
-        AssertionException,
-        31068);
-    ASSERT_THROWS_CODE(
-        EncryptionSchemaTreeNode::parse(fromjson("{properties: {foo: {multipleOf: 2}}}")),
-        AssertionException,
-        31068);
-    ASSERT_THROWS_CODE(
-        EncryptionSchemaTreeNode::parse(fromjson("{properties: {foo: {pattern: 'bar'}}}")),
-        AssertionException,
-        31068);
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(fromjson("{required: ['a', 'b']}")),
-                       AssertionException,
-                       31068);
-    ASSERT_THROWS_CODE(
-        EncryptionSchemaTreeNode::parse(fromjson("{title: 'title'}")), AssertionException, 31068);
-    ASSERT_THROWS_CODE(
-        EncryptionSchemaTreeNode::parse(fromjson("{properties: {foo: {uniqueItems: true}}}")),
-        AssertionException,
-        31068);
+    ASSERT_EQ(
+        EncryptionSchemaTreeNode::parse(fromjson(schema.rawData()), EncryptionSchemaType::kRemote)
+            ->containsEncryptedNode(),
+        hasEncryptedNode);
+};
+
+TEST(EncryptionSchemaTreeTest, VerifyRemoteSchemaKeywordsAreAllowed) {
+    verifySchemaKeywordWorksOnlyForRemoteSchema("{properties: {foo: {enum: [1, 2, 3]}}}", false);
+    verifySchemaKeywordWorksOnlyForRemoteSchema(
+        "{properties: {foo: {exclusiveMaximum: true, maximum: 1}}}", false);
+    verifySchemaKeywordWorksOnlyForRemoteSchema(
+        "{properties: {foo: {exclusiveMinimum: true, minimum: 1}}}", false);
+    verifySchemaKeywordWorksOnlyForRemoteSchema("{properties: {foo: {maxItems: 1}}}", false);
+    verifySchemaKeywordWorksOnlyForRemoteSchema("{properties: {foo: {minItems: 1}}}", false);
+    verifySchemaKeywordWorksOnlyForRemoteSchema("{properties: {foo: {maxLength: 1}}}", false);
+    verifySchemaKeywordWorksOnlyForRemoteSchema("{properties: {foo: {minLength: 1}}}", false);
+    verifySchemaKeywordWorksOnlyForRemoteSchema("{maxProperties: 1}", false);
+    verifySchemaKeywordWorksOnlyForRemoteSchema("{minProperties: 1}", false);
+    verifySchemaKeywordWorksOnlyForRemoteSchema("{properties: {foo: {maximum: 1}}}", false);
+    verifySchemaKeywordWorksOnlyForRemoteSchema("{properties: {foo: {minimum: 1}}}", false);
+    verifySchemaKeywordWorksOnlyForRemoteSchema("{properties: {foo: {multipleOf: 2}}}", false);
+    verifySchemaKeywordWorksOnlyForRemoteSchema("{properties: {foo: {pattern: '^bar'}}}", false);
+    verifySchemaKeywordWorksOnlyForRemoteSchema("{required: ['a', 'b']}", false);
+    verifySchemaKeywordWorksOnlyForRemoteSchema("{properties: {foo: {uniqueItems: true}}}", false);
+}
+
+TEST(EncryptionSchemaTreeTest, VerifyRemoteSchemaKeywordsInNestedObjectAreAllowed) {
+    StringData schemaWithKeywordsInNestedObject = R"({
+            type: "object",
+            title: "title",
+            minProperties: 4,
+            maxProperties: 3,
+            properties: {
+                user: {
+                    type: "object",
+                    minProperties: 4,
+                    maxProperties: 3,
+                    properties: {}
+                },
+                a: {type: "string", minLength: 1}
+            },
+            patternProperties: {
+                "^b": {
+                    encrypt: {
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                        keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                    }
+                }
+            }
+        })";
+    verifySchemaKeywordWorksOnlyForRemoteSchema(schemaWithKeywordsInNestedObject, true);
+}
+
+TEST(EncryptionSchemaTreeTest, VerifyRemoteSchemaKeywordsInsideArrayAreAllowed) {
+    StringData schemaWithKeywordsInArray = R"({
+            type: "object",
+            properties: {
+                user: {
+                    type: "object",
+                    properties: {
+                        arr: {
+                            type: "array",
+                            "minItems": 2,
+                            "maxItems": 3,
+                            items: {
+                            }
+                        }, 
+                        ssn : {
+                            encrypt: {
+                                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                                keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                            }
+                        }
+                    }
+                }
+
+            }
+            })";
+    verifySchemaKeywordWorksOnlyForRemoteSchema(schemaWithKeywordsInArray, true);
+}
+
+TEST(EncryptionSchemaTreeTest, VerifyTitleAndDescriptionKeywordsAlwaysPermitted) {
+    const auto verifySchemaKeywordWorks = [](StringData schema, bool hasEncryptedNode) {
+        ASSERT_EQ(EncryptionSchemaTreeNode::parse(fromjson(schema.rawData()),
+                                                  EncryptionSchemaType::kLocal)
+                      ->containsEncryptedNode(),
+                  hasEncryptedNode);
+        ASSERT_EQ(EncryptionSchemaTreeNode::parse(fromjson(schema.rawData()),
+                                                  EncryptionSchemaType::kRemote)
+                      ->containsEncryptedNode(),
+                  hasEncryptedNode);
+    };
+    verifySchemaKeywordWorks("{description: 'description'}", false);
+    verifySchemaKeywordWorks("{title: 'title'}", false);
+
+    StringData schema = R"({
+                type: "object",
+                title: "title",
+                description: "description",
+                properties: {
+                    a: {type: "string", title: "title"}
+                },
+                patternProperties: {
+                    "^b": {
+                        encrypt: {
+                            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                            keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}]
+                        }
+                    }
+                }
+            })";
+    verifySchemaKeywordWorks(schema, true);
+}
+
+TEST(EncryptionSchemaTreeTest, VerifyIllegalSchemaRejected) {
+    const auto verifyIllegalSchemaRejected = [](StringData schema, int errorCode) {
+        ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(fromjson(schema.rawData()),
+                                                           EncryptionSchemaType::kLocal),
+                           AssertionException,
+                           errorCode);
+        ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(fromjson(schema.rawData()),
+                                                           EncryptionSchemaType::kRemote),
+                           AssertionException,
+                           errorCode);
+    };
+    verifyIllegalSchemaRejected("{unsupportedKeyword: {foo: {pattern: '(bar[bar'}}}",
+                                ErrorCodes::FailedToParse);
+
+    // Negative number of items.
+    verifyIllegalSchemaRejected("{properties: {foo: {maxItems: -10}}}", ErrorCodes::FailedToParse);
+    verifyIllegalSchemaRejected("{properties: {foo: {minItems: -10}}}", ErrorCodes::FailedToParse);
+
+    // Type mismatch.
+    verifyIllegalSchemaRejected("{properties: {foo: {enum: {invalid: 'field'}}}}",
+                                ErrorCodes::TypeMismatch);
+    verifyIllegalSchemaRejected("{properties: {foo: {uniqueItems: 1}}}", ErrorCodes::TypeMismatch);
+
+    // Invalid regex.
+    verifyIllegalSchemaRejected("{properties: {foo: {pattern: '(bar[bar'}}}", 51091);
+
+    // mongocryptd currently doesn't support 'dependencies'. This can be removed when SERVER-41288
+    // is completed.
+    verifyIllegalSchemaRejected("{dependencies: {foo: {properties: {bar: {type: 'string'}}}}}",
+                                31126);
 }
 
 TEST(EncryptionSchemaTreeTest, SchemaTreeHoldsBsonTypeSetWithMultipleTypes) {
@@ -2178,7 +2366,7 @@ TEST(EncryptionSchemaTreeTest, SchemaTreeHoldsBsonTypeSetWithMultipleTypes) {
         }
     })");
 
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto resolvedMetadata = schemaTree->getEncryptionMetadataForPath(FieldRef{"foo"});
     ASSERT(resolvedMetadata);
     MatcherTypeSet typeSet;
@@ -2192,7 +2380,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithNoBSONTypeInDeterministicEncrypt)
                                             << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
                                             << "keyId"
                                             << BSON_ARRAY(uuid)));
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31051);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       31051);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseWithBSONTypeObjectInDeterministicEncrypt) {
@@ -2203,7 +2393,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithBSONTypeObjectInDeterministicEncr
                                             << BSON_ARRAY(uuid)
                                             << "bsonType"
                                             << "object"));
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31122);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       31122);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseWithEmptyArrayBSONTypeInDeterministicEncrypt) {
@@ -2214,7 +2406,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithEmptyArrayBSONTypeInDeterministic
                                             << BSON_ARRAY(uuid)
                                             << "bsonType"
                                             << BSONArray()));
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31051);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       31051);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseWithMultipleElementArrayBSONTypeInDeterministicEncrypt) {
@@ -2226,7 +2420,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithMultipleElementArrayBSONTypeInDet
                                             << "bsonType"
                                             << BSON_ARRAY("int"
                                                           << "string")));
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31051);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       31051);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseWithObjectInArrayBSONTypeInDeterministicEncrypt) {
@@ -2237,7 +2433,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithObjectInArrayBSONTypeInDeterminis
                                             << BSON_ARRAY(uuid)
                                             << "bsonType"
                                             << BSON_ARRAY("object")));
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31122);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       31122);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseWithSingleValueBSONTypeInEncryptObject) {
@@ -2253,7 +2451,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithSingleValueBSONTypeInEncryptObjec
                           << "object"
                           << "properties"
                           << BSON("foo" << encrypt));
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31041);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       31041);
     // Test MaxKey
     encrypt = BSON("encrypt" << BSON("algorithm"
                                      << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
@@ -2265,7 +2465,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithSingleValueBSONTypeInEncryptObjec
                   << "object"
                   << "properties"
                   << BSON("foo" << encrypt));
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31041);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       31041);
     // Test Undefined
     encrypt = BSON("encrypt" << BSON("algorithm"
                                      << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
@@ -2277,7 +2479,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithSingleValueBSONTypeInEncryptObjec
                   << "object"
                   << "properties"
                   << BSON("foo" << encrypt));
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31041);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       31041);
     // Test Null
     encrypt = BSON("encrypt" << BSON("algorithm"
                                      << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
@@ -2289,7 +2493,9 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithSingleValueBSONTypeInEncryptObjec
                   << "object"
                   << "properties"
                   << BSON("foo" << encrypt));
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31041);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       31041);
 }
 
 TEST(EncryptionSchemaTreeTest, IdEncryptedWithDeterministicAlgorithmSucceeds) {
@@ -2305,7 +2511,7 @@ TEST(EncryptionSchemaTreeTest, IdEncryptedWithDeterministicAlgorithmSucceeds) {
             }
         }
     })");
-    EncryptionSchemaTreeNode::parse(schema);
+    EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
 }
 
 TEST(EncryptionSchemaTreeTest, NestedIdEncryptedWithRandomAlgorithmSucceeds) {
@@ -2325,7 +2531,7 @@ TEST(EncryptionSchemaTreeTest, NestedIdEncryptedWithRandomAlgorithmSucceeds) {
             }
         }
     })");
-    EncryptionSchemaTreeNode::parse(schema);
+    EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
 }
 
 TEST(EncryptionSchemaTreeTest, IdEncryptedWithRandomAlgorithmFails) {
@@ -2340,7 +2546,9 @@ TEST(EncryptionSchemaTreeTest, IdEncryptedWithRandomAlgorithmFails) {
             }
         }
     })");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51194);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51194);
 }
 
 TEST(EncryptionSchemaTreeTest, IdDescendantEncryptedWithRandomAlgorithmFails) {
@@ -2359,7 +2567,9 @@ TEST(EncryptionSchemaTreeTest, IdDescendantEncryptedWithRandomAlgorithmFails) {
             }
         }
     })");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51194);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51194);
 }
 
 TEST(EncryptionSchemaTreeTest,
@@ -2378,7 +2588,7 @@ TEST(EncryptionSchemaTreeTest,
             }
         }
     })");
-    EncryptionSchemaTreeNode::parse(schema);
+    EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
 }
 
 TEST(EncryptionSchemaTreeTest,
@@ -2392,7 +2602,9 @@ TEST(EncryptionSchemaTreeTest,
             }
         }
     })");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51194);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51194);
 }
 
 TEST(EncryptionSchemaTreeTest,
@@ -2413,7 +2625,7 @@ TEST(EncryptionSchemaTreeTest,
             }
         }
     })");
-    EncryptionSchemaTreeNode::parse(schema);
+    EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
 }
 
 TEST(EncryptionSchemaTreeTest,
@@ -2430,7 +2642,7 @@ TEST(EncryptionSchemaTreeTest,
             }
         }
     })");
-    EncryptionSchemaTreeNode::parse(schema);
+    EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
 }
 
 TEST(EncryptionSchemaTreeTest,
@@ -2446,7 +2658,9 @@ TEST(EncryptionSchemaTreeTest,
             }
         }
     })");
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 51194);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       51194);
 }
 
 }  // namespace

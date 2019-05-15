@@ -35,7 +35,8 @@
     cmdRes = assert.commandWorked(testDb.runCommand({
         insert: coll.getName(),
         documents: [{"foo": "bar"}],
-        jsonSchema: multipleTypesRandomEncryptionSchema
+        jsonSchema: multipleTypesRandomEncryptionSchema,
+        isRemoteSchema: false
     }));
     assert.eq(cmdRes.hasEncryptionPlaceholders, true, cmdRes);
     assert.eq(cmdRes.schemaRequiresEncryption, true, cmdRes);
@@ -45,7 +46,8 @@
     cmdRes = assert.commandWorked(testDb.runCommand({
         insert: coll.getName(),
         documents: [{"foo": 3}],
-        jsonSchema: multipleTypesRandomEncryptionSchema
+        jsonSchema: multipleTypesRandomEncryptionSchema,
+        isRemoteSchema: false
     }));
     assert.eq(cmdRes.hasEncryptionPlaceholders, true, cmdRes);
     assert.eq(cmdRes.schemaRequiresEncryption, true, cmdRes);
@@ -55,7 +57,8 @@
     assert.commandFailedWithCode(testDb.runCommand({
         insert: coll.getName(),
         documents: [{"foo": NumberInt(3)}],
-        jsonSchema: multipleTypesRandomEncryptionSchema
+        jsonSchema: multipleTypesRandomEncryptionSchema,
+        isRemoteSchema: false
     }),
                                  31118);
 
@@ -63,7 +66,8 @@
     cmdRes = assert.commandWorked(testDb.runCommand({
         update: coll.getName(),
         updates: [{q: {}, u: {$set: {"foo": "bar"}}}],
-        jsonSchema: multipleTypesRandomEncryptionSchema
+        jsonSchema: multipleTypesRandomEncryptionSchema,
+        isRemoteSchema: false
     }));
     assert.eq(cmdRes.hasEncryptionPlaceholders, true, cmdRes);
     assert.eq(cmdRes.schemaRequiresEncryption, true, cmdRes);
@@ -73,7 +77,8 @@
     assert.commandFailedWithCode(testDb.runCommand({
         update: coll.getName(),
         updates: [{q: {}, u: {$set: {"foo": NumberInt(3)}}}],
-        jsonSchema: multipleTypesRandomEncryptionSchema
+        jsonSchema: multipleTypesRandomEncryptionSchema,
+        isRemoteSchema: false
     }),
                                  31118);
 
@@ -81,7 +86,8 @@
     cmdRes = assert.commandWorked(testDb.runCommand({
         update: coll.getName(),
         updates: [{q: {}, u: {"foo": "bar"}}],
-        jsonSchema: multipleTypesRandomEncryptionSchema
+        jsonSchema: multipleTypesRandomEncryptionSchema,
+        isRemoteSchema: false
     }));
     assert.eq(cmdRes.hasEncryptionPlaceholders, true, cmdRes);
     assert.eq(cmdRes.schemaRequiresEncryption, true, cmdRes);
@@ -91,7 +97,8 @@
     assert.commandFailedWithCode(testDb.runCommand({
         update: coll.getName(),
         updates: [{q: {}, u: {"foo": NumberInt(3)}}],
-        jsonSchema: multipleTypesRandomEncryptionSchema
+        jsonSchema: multipleTypesRandomEncryptionSchema,
+        isRemoteSchema: false
     }),
                                  31118);
 
@@ -101,7 +108,8 @@
         findAndModify: coll.getName(),
         query: {},
         update: {$set: {foo: NumberInt(3)}},
-        jsonSchema: multipleTypesRandomEncryptionSchema
+        jsonSchema: multipleTypesRandomEncryptionSchema,
+        isRemoteSchema: false
     }),
                                  31118);
 
@@ -110,7 +118,8 @@
     assert.commandFailedWithCode(testDb.runCommand({
         find: coll.getName(),
         filter: {foo: {$eq: NumberInt(3)}},
-        jsonSchema: multipleTypesRandomEncryptionSchema
+        jsonSchema: multipleTypesRandomEncryptionSchema,
+        isRemoteSchema: false
     }),
                                  51158);
 
@@ -133,7 +142,8 @@
     cmdRes = assert.commandWorked(testDb.runCommand({
         insert: coll.getName(),
         documents: [{"foo": NumberLong(3)}],
-        jsonSchema: deterministicEncryptionSchema
+        jsonSchema: deterministicEncryptionSchema,
+        isRemoteSchema: false
     }));
     assert.eq(cmdRes.hasEncryptionPlaceholders, true, cmdRes);
     assert.eq(cmdRes.schemaRequiresEncryption, true, cmdRes);
@@ -143,7 +153,8 @@
     assert.commandFailedWithCode(testDb.runCommand({
         insert: coll.getName(),
         documents: [{"foo": NumberInt(3)}],
-        jsonSchema: deterministicEncryptionSchema
+        jsonSchema: deterministicEncryptionSchema,
+        isRemoteSchema: false
     }),
                                  31118);
 
@@ -151,7 +162,8 @@
     cmdRes = assert.commandWorked(testDb.runCommand({
         update: coll.getName(),
         updates: [{q: {}, u: {$set: {"foo": NumberLong(3)}}}],
-        jsonSchema: deterministicEncryptionSchema
+        jsonSchema: deterministicEncryptionSchema,
+        isRemoteSchema: false
     }));
     assert.eq(cmdRes.hasEncryptionPlaceholders, true, cmdRes);
     assert.eq(cmdRes.schemaRequiresEncryption, true, cmdRes);
@@ -161,7 +173,8 @@
     assert.commandFailedWithCode(testDb.runCommand({
         update: coll.getName(),
         updates: [{q: {}, u: {$set: {"foo": NumberInt(3)}}}],
-        jsonSchema: deterministicEncryptionSchema
+        jsonSchema: deterministicEncryptionSchema,
+        isRemoteSchema: false
     }),
                                  31118);
 
@@ -169,7 +182,8 @@
     cmdRes = assert.commandWorked(testDb.runCommand({
         find: coll.getName(),
         filter: {foo: {$eq: NumberLong(3)}},
-        jsonSchema: deterministicEncryptionSchema
+        jsonSchema: deterministicEncryptionSchema,
+        isRemoteSchema: false
     }));
     assert.eq(cmdRes.hasEncryptionPlaceholders, true, cmdRes);
     assert.eq(cmdRes.schemaRequiresEncryption, true, cmdRes);
@@ -179,7 +193,8 @@
     assert.commandFailedWithCode(testDb.runCommand({
         find: coll.getName(),
         filter: {foo: {$eq: NumberInt(3)}},
-        jsonSchema: deterministicEncryptionSchema
+        jsonSchema: deterministicEncryptionSchema,
+        isRemoteSchema: false
     }),
                                  31118);
 
@@ -187,7 +202,8 @@
     assert.commandFailedWithCode(testDb.runCommand({
         count: coll.getName(),
         query: {foo: {$eq: NumberInt(3)}},
-        jsonSchema: deterministicEncryptionSchema
+        jsonSchema: deterministicEncryptionSchema,
+        isRemoteSchema: false
     }),
                                  31118);
 
@@ -196,7 +212,8 @@
         distinct: coll.getName(),
         key: "key",
         query: {foo: {$eq: NumberInt(3)}},
-        jsonSchema: deterministicEncryptionSchema
+        jsonSchema: deterministicEncryptionSchema,
+        isRemoteSchema: false
     }),
                                  31118);
 
@@ -205,7 +222,8 @@
         aggregate: coll.getName(),
         pipeline: [{$match: {foo: {$eq: NumberInt(3)}}}],
         cursor: {},
-        jsonSchema: deterministicEncryptionSchema
+        jsonSchema: deterministicEncryptionSchema,
+        isRemoteSchema: false
     }),
                                  31118);
 
@@ -213,7 +231,8 @@
     assert.commandFailedWithCode(testDb.runCommand({
         update: coll.getName(),
         updates: [{q: {foo: {$eq: NumberInt(3)}}, u: {$set: {other: 1}}}],
-        jsonSchema: deterministicEncryptionSchema
+        jsonSchema: deterministicEncryptionSchema,
+        isRemoteSchema: false
     }),
                                  31118);
 
@@ -221,7 +240,8 @@
     assert.commandFailedWithCode(testDb.runCommand({
         delete: coll.getName(),
         deletes: [{q: {foo: {$eq: NumberInt(3)}}, limit: 1}],
-        jsonSchema: deterministicEncryptionSchema
+        jsonSchema: deterministicEncryptionSchema,
+        isRemoteSchema: false
     }),
                                  31118);
 
@@ -230,7 +250,8 @@
         findAndModify: coll.getName(),
         query: {foo: {$eq: NumberInt(3)}},
         update: {$set: {other: 1}},
-        jsonSchema: deterministicEncryptionSchema
+        jsonSchema: deterministicEncryptionSchema,
+        isRemoteSchema: false
     }),
                                  31118);
 
@@ -250,7 +271,8 @@
     assert.commandFailedWithCode(testDb.runCommand({
         find: coll.getName(),
         filter: {foobar: {$eq: NumberInt(3)}},
-        jsonSchema: deterministicEncryptionPatternPropertiesSchema
+        jsonSchema: deterministicEncryptionPatternPropertiesSchema,
+        isRemoteSchema: false
     }),
                                  31118);
 
@@ -258,7 +280,8 @@
     cmdRes = assert.commandWorked(testDb.runCommand({
         find: coll.getName(),
         filter: {foobar: {$eq: NumberLong(3)}},
-        jsonSchema: deterministicEncryptionPatternPropertiesSchema
+        jsonSchema: deterministicEncryptionPatternPropertiesSchema,
+        isRemoteSchema: false
     }));
     assert.eq(cmdRes.hasEncryptionPlaceholders, true, cmdRes);
     assert.eq(cmdRes.schemaRequiresEncryption, true, cmdRes);
@@ -268,7 +291,8 @@
     assert.commandFailedWithCode(testDb.runCommand({
         find: coll.getName(),
         filter: {barfoo: {$eq: NumberLong(3)}},
-        jsonSchema: deterministicEncryptionPatternPropertiesSchema
+        jsonSchema: deterministicEncryptionPatternPropertiesSchema,
+        isRemoteSchema: false
     }),
                                  31118);
 
@@ -276,7 +300,8 @@
     cmdRes = assert.commandWorked(testDb.runCommand({
         find: coll.getName(),
         filter: {barfoo: {$eq: "string"}},
-        jsonSchema: deterministicEncryptionPatternPropertiesSchema
+        jsonSchema: deterministicEncryptionPatternPropertiesSchema,
+        isRemoteSchema: false
     }));
     assert.eq(cmdRes.hasEncryptionPlaceholders, true, cmdRes);
     assert.eq(cmdRes.schemaRequiresEncryption, true, cmdRes);

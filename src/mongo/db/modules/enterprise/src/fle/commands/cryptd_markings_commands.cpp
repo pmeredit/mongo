@@ -96,7 +96,7 @@ public:
                         const std::string& dbname,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        processFindCommand(opCtx, dbname, cmdObj, result);
+        cryptd_query_analysis::processFindCommand(opCtx, dbname, cmdObj, result);
     }
 } cmdCryptDFind;
 
@@ -109,7 +109,7 @@ public:
                         const std::string& dbname,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        processAggregateCommand(opCtx, dbname, cmdObj, result);
+        cryptd_query_analysis::processAggregateCommand(opCtx, dbname, cmdObj, result);
     }
 } cmdCryptDAggregate;
 
@@ -122,7 +122,7 @@ public:
                         const std::string& dbname,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        processDistinctCommand(opCtx, dbname, cmdObj, result);
+        cryptd_query_analysis::processDistinctCommand(opCtx, dbname, cmdObj, result);
     }
 } cmdCryptDDistinct;
 
@@ -134,7 +134,7 @@ public:
                         const std::string& dbname,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        processCountCommand(opCtx, dbname, cmdObj, result);
+        cryptd_query_analysis::processCountCommand(opCtx, dbname, cmdObj, result);
     }
 } cmdCryptDCount;
 
@@ -147,7 +147,7 @@ public:
                         const std::string& dbname,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        processFindAndModifyCommand(opCtx, dbname, cmdObj, result);
+        cryptd_query_analysis::processFindAndModifyCommand(opCtx, dbname, cmdObj, result);
     }
 } cmdCryptDFindAndModify;
 
@@ -267,7 +267,7 @@ public:
         void processWriteCommand(OperationContext* opCtx,
                                  const OpMsgRequest& request,
                                  BSONObjBuilder* builder) final {
-            processInsertCommand(opCtx, request, builder);
+            cryptd_query_analysis::processInsertCommand(opCtx, request, builder);
         }
     };
 
@@ -294,7 +294,7 @@ public:
         void processWriteCommand(OperationContext* opCtx,
                                  const OpMsgRequest& request,
                                  BSONObjBuilder* builder) final {
-            processUpdateCommand(opCtx, request, builder);
+            cryptd_query_analysis::processUpdateCommand(opCtx, request, builder);
         }
     };
 
@@ -321,7 +321,7 @@ public:
         void processWriteCommand(OperationContext* opCtx,
                                  const OpMsgRequest& request,
                                  BSONObjBuilder* builder) final {
-            processDeleteCommand(opCtx, request, builder);
+            cryptd_query_analysis::processDeleteCommand(opCtx, request, builder);
         }
     };
 
@@ -430,9 +430,17 @@ std::unique_ptr<CommandInvocation> CryptdExplainCmd::parse(OperationContext* opC
     uassert(30050,
             "In an explain command the jsonSchema field must be top-level and not inside the "
             "command being explained.",
-            !explainedObj.hasField("jsonSchema"));
-    if (auto cmdSchema = cmdObj["jsonSchema"]) {
+            !explainedObj.hasField(cryptd_query_analysis::kJsonSchema));
+    if (auto cmdSchema = cmdObj[cryptd_query_analysis::kJsonSchema]) {
         explainedObj = explainedObj.addField(cmdSchema);
+    }
+
+    uassert(31103,
+            "In an explain command the isRemoteSchema field must be top-level and not inside the "
+            "command being explained.",
+            !explainedObj.hasField(cryptd_query_analysis::kIsRemoteSchema));
+    if (auto isRemoteSchema = cmdObj[cryptd_query_analysis::kIsRemoteSchema]) {
+        explainedObj = explainedObj.addField(isRemoteSchema);
     }
     if (auto innerDb = explainedObj["$db"]) {
         uassert(ErrorCodes::InvalidNamespace,

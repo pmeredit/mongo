@@ -99,11 +99,7 @@
     };
 
     const testDb = conn.getDB("test");
-    let insertCommand = {
-        insert: "test.foo",
-        documents: [],
-        jsonSchema: {},
-    };
+    let insertCommand = {insert: "test.foo", documents: [], jsonSchema: {}, isRemoteSchema: false};
     for (let test of testCases) {
         insertCommand["jsonSchema"] = test["schema"];
         insertCommand["documents"] = test["docs"];
@@ -135,6 +131,7 @@
         insert: "test.foo",
         documents: [{"foo": "bar"}],
         jsonSchema: {type: "object", properties: {bar: encryptDoc}},
+        isRemoteSchema: false
     };
 
     let res = assert.commandWorked(testDb.runCommand(insertCommand));
@@ -148,6 +145,7 @@
         insert: "test.foo",
         documents: [{"foo": "bar"}],
         jsonSchema: {type: "object", properties: {bar: encryptDoc}},
+        isRemoteSchema: false,
         ordered: false,
         bypassDocumentValidation: true,
     };
@@ -160,7 +158,8 @@
     assert.commandFailedWithCode(testDb.runCommand({
         insert: "test.foo",
         documents: [{"foo": "bar"}],
-        jsonSchema: {type: "object", properties: {"_id": encryptDoc}}
+        jsonSchema: {type: "object", properties: {"_id": encryptDoc}},
+        isRemoteSchema: false
     }),
                                  51130);
 
@@ -168,7 +167,8 @@
     assert.commandFailedWithCode(testDb.runCommand({
         insert: "test.foo",
         documents: [{"foo": Timestamp(0, 0)}],
-        jsonSchema: {type: "object", properties: {"foo": encryptDoc}}
+        jsonSchema: {type: "object", properties: {"foo": encryptDoc}},
+        isRemoteSchema: false
     }),
                                  51129);
 
@@ -179,7 +179,8 @@
         jsonSchema: {
             type: "object",
             properties: {"_id": {type: "object", properties: {"nested": encryptDoc}}}
-        }
+        },
+        isRemoteSchema: false
     }));
 
     // Test that an insert is rejected if a pointer points to an encrypted field.
@@ -189,7 +190,8 @@
     assert.commandFailedWithCode(testDb.runCommand({
         insert: "test.foo",
         documents: [{"foo": "bar", "key": "test"}],
-        jsonSchema: {type: "object", properties: {"foo": pointerDoc, "key": encryptDoc}}
+        jsonSchema: {type: "object", properties: {"foo": pointerDoc, "key": encryptDoc}},
+        isRemoteSchema: false
     }),
                                  30017);
     mongocryptd.stop();

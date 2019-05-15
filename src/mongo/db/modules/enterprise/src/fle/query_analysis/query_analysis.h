@@ -14,7 +14,9 @@
 #include "mongo/rpc/op_msg.h"
 #include "resolved_encryption_info.h"
 
-namespace mongo {
+namespace mongo::cryptd_query_analysis {
+constexpr auto kJsonSchema = "jsonSchema"_sd;
+constexpr auto kIsRemoteSchema = "isRemoteSchema"_sd;
 
 /**
  * Struct to hold information about placeholder results returned to client.
@@ -162,4 +164,4 @@ BSONObj buildEncryptPlaceholder(
     const boost::optional<BSONObj>& origDoc = boost::none,
     const boost::optional<const EncryptionSchemaTreeNode&> schema = boost::none);
 
-}  // namespace mongo
+}  // namespace mongo::cryptd_query_analysis

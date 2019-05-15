@@ -39,6 +39,11 @@
 #include "resolved_encryption_info.h"
 
 namespace mongo {
+/**
+ * 'kRemote' represents the validation schema from mongod and 'kLocal' represents the schema
+ * generated using the drivers.
+ */
+enum class EncryptionSchemaType { kRemote, kLocal };
 
 class EncryptionSchemaTreeNode;
 
@@ -95,8 +100,12 @@ public:
      * Converts a JSON schema, represented as BSON, into an encryption schema tree. Returns a
      * pointer to the root of the tree or throws an exception if either the schema is invalid or is
      * valid but illegal from an encryption analysis perspective.
+     *
+     * If 'schemaType' is kRemote, allows schema validation keywords which have no implication on
+     * encryption since they are used for schema enforcement on mongod.
      */
-    static std::unique_ptr<EncryptionSchemaTreeNode> parse(BSONObj schema);
+    static std::unique_ptr<EncryptionSchemaTreeNode> parse(BSONObj schema,
+                                                           EncryptionSchemaType schemaType);
 
     virtual ~EncryptionSchemaTreeNode() = default;
 

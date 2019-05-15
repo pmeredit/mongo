@@ -45,13 +45,15 @@
     assert.commandFailedWithCode(testDb.runCommand({
         insert: coll.getName(),
         documents: [{_id: 1, foo: [1, 2, 3]}],
-        jsonSchema: fooEncryptedSchema
+        jsonSchema: fooEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  31118);
     assert.commandFailedWithCode(testDb.runCommand({
         insert: coll.getName(),
         documents: [{_id: 1, foo: [{bar: 1}, {bar: 2}, {bar: 3}]}],
-        jsonSchema: fooEncryptedSchema
+        jsonSchema: fooEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  31118);
 
@@ -60,13 +62,15 @@
     assert.commandFailedWithCode(testDb.runCommand({
         insert: coll.getName(),
         documents: [{_id: 1, foo: {bar: [1, 2, 3]}}],
-        jsonSchema: fooDotBarEncryptedSchema
+        jsonSchema: fooDotBarEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  31118);
     assert.commandFailedWithCode(testDb.runCommand({
         insert: coll.getName(),
         documents: [{_id: 1, foo: {bar: [{baz: 1}, {baz: 2}, {baz: 3}]}}],
-        jsonSchema: fooDotBarEncryptedSchema
+        jsonSchema: fooDotBarEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  31118);
 
@@ -75,7 +79,8 @@
     assert.commandFailedWithCode(testDb.runCommand({
         insert: coll.getName(),
         documents: [{_id: 1, foo: [{bar: 1}, {bar: 2}, {bar: 3}]}],
-        jsonSchema: fooDotBarEncryptedSchema
+        jsonSchema: fooDotBarEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  31006);
 
@@ -84,7 +89,8 @@
     assert.commandFailedWithCode(testDb.runCommand({
         insert: coll.getName(),
         documents: [{_id: 1, foo: [{a: 1}, 2, {b: 3}]}],
-        jsonSchema: fooDotBarEncryptedSchema
+        jsonSchema: fooDotBarEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  31006);
 
@@ -93,7 +99,8 @@
     assert.commandFailedWithCode(testDb.runCommand({
         insert: coll.getName(),
         documents: [{_id: 1, foo: [{bar: {baz: 1}}, {bar: {baz: 2}}]}],
-        jsonSchema: fooDotBarDotBazEncryptedSchema
+        jsonSchema: fooDotBarDotBazEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  31006);
 
@@ -102,7 +109,8 @@
     assert.commandFailedWithCode(testDb.runCommand({
         insert: coll.getName(),
         documents: [{_id: 1, foo: {bar: [{baz: 1}, {baz: 2}]}}],
-        jsonSchema: fooDotBarDotBazEncryptedSchema
+        jsonSchema: fooDotBarDotBazEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  31006);
 
@@ -110,19 +118,22 @@
     assert.commandFailedWithCode(testDb.runCommand({
         update: coll.getName(),
         updates: [{q: {}, u: {$set: {foo: [1, 2, 3]}}}],
-        jsonSchema: fooEncryptedSchema
+        jsonSchema: fooEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  31118);
     assert.commandFailedWithCode(testDb.runCommand({
         update: coll.getName(),
         updates: [{q: {}, u: {$set: {foo: {bar: [1, 2, 3]}}}}],
-        jsonSchema: fooDotBarEncryptedSchema
+        jsonSchema: fooDotBarEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  31118);
     assert.commandFailedWithCode(testDb.runCommand({
         update: coll.getName(),
         updates: [{q: {}, u: {$set: {foo: [{bar: 1}]}}}],
-        jsonSchema: fooDotBarEncryptedSchema
+        jsonSchema: fooDotBarEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  51159);
 
@@ -131,13 +142,15 @@
     assert.commandFailedWithCode(testDb.runCommand({
         update: coll.getName(),
         updates: [{q: {}, u: {$set: {foo: {bar: [1, 2, 3]}}}, upsert: true}],
-        jsonSchema: fooDotBarEncryptedSchema
+        jsonSchema: fooDotBarEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  31118);
     assert.commandFailedWithCode(testDb.runCommand({
         update: coll.getName(),
         updates: [{q: {}, u: {$set: {foo: [{bar: 1}]}}, upsert: true}],
-        jsonSchema: fooDotBarEncryptedSchema
+        jsonSchema: fooDotBarEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  51159);
 
@@ -145,19 +158,22 @@
     assert.commandFailedWithCode(testDb.runCommand({
         update: coll.getName(),
         updates: [{q: {}, u: {foo: [1, 2, 3]}}],
-        jsonSchema: fooEncryptedSchema
+        jsonSchema: fooEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  31118);
     assert.commandFailedWithCode(testDb.runCommand({
         update: coll.getName(),
         updates: [{q: {}, u: {foo: {bar: [1, 2, 3]}}}],
-        jsonSchema: fooDotBarEncryptedSchema
+        jsonSchema: fooDotBarEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  31118);
     assert.commandFailedWithCode(testDb.runCommand({
         update: coll.getName(),
         updates: [{q: {}, u: {foo: [{bar: 1}]}}],
-        jsonSchema: fooDotBarEncryptedSchema
+        jsonSchema: fooDotBarEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  31006);
 
@@ -166,13 +182,15 @@
     assert.commandFailedWithCode(testDb.runCommand({
         update: coll.getName(),
         updates: [{q: {foo: {$eq: {bar: {baz: [1, 2, 3]}}}}, u: {$set: {notEncrypted: 1}}}],
-        jsonSchema: fooDotBarDotBazEncryptedSchema
+        jsonSchema: fooDotBarDotBazEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  31118);
     assert.commandFailedWithCode(testDb.runCommand({
         update: coll.getName(),
         updates: [{q: {foo: {$eq: {bar: [{baz: 1}]}}}, u: {$set: {notEncrypted: 1}}}],
-        jsonSchema: fooDotBarDotBazEncryptedSchema
+        jsonSchema: fooDotBarDotBazEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  31006);
 
@@ -181,13 +199,15 @@
     assert.commandFailedWithCode(testDb.runCommand({
         find: coll.getName(),
         filter: {foo: {$eq: {bar: {baz: [1, 2, 3]}}}},
-        jsonSchema: fooDotBarDotBazEncryptedSchema
+        jsonSchema: fooDotBarDotBazEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  31118);
     assert.commandFailedWithCode(testDb.runCommand({
         find: coll.getName(),
         filter: {foo: {$eq: {bar: [{baz: 1}, {baz: 2}]}}},
-        jsonSchema: fooDotBarDotBazEncryptedSchema
+        jsonSchema: fooDotBarDotBazEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  31006);
 
@@ -196,13 +216,15 @@
     assert.commandFailedWithCode(testDb.runCommand({
         delete: coll.getName(),
         deletes: [{q: {foo: {$eq: {bar: {baz: [1, 2, 3]}}}}, limit: 1}],
-        jsonSchema: fooDotBarDotBazEncryptedSchema
+        jsonSchema: fooDotBarDotBazEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  31118);
     assert.commandFailedWithCode(testDb.runCommand({
         delete: coll.getName(),
         deletes: [{q: {foo: {$eq: {bar: [{baz: 1}, {baz: 2}]}}}, limit: 1}],
-        jsonSchema: fooDotBarDotBazEncryptedSchema
+        jsonSchema: fooDotBarDotBazEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  31006);
 
@@ -211,13 +233,15 @@
     assert.commandFailedWithCode(testDb.runCommand({
         find: coll.getName(),
         filter: {foo: {$eq: [{bar: 1}, {bar: 2}]}},
-        jsonSchema: fooDotBarEncryptedSchema
+        jsonSchema: fooDotBarEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  31007);
     assert.commandFailedWithCode(testDb.runCommand({
         update: coll.getName(),
         updates: [{q: {foo: {$eq: [{bar: 1}, {bar: 2}]}}, u: {$set: {notEncrypted: 1}}}],
-        jsonSchema: fooDotBarEncryptedSchema
+        jsonSchema: fooDotBarEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  31007);
 
@@ -226,13 +250,15 @@
     assert.commandFailedWithCode(testDb.runCommand({
         find: coll.getName(),
         filter: {foo: {$in: [1, [{bar: 2}]]}},
-        jsonSchema: fooDotBarEncryptedSchema
+        jsonSchema: fooDotBarEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  31008);
     assert.commandFailedWithCode(testDb.runCommand({
         update: coll.getName(),
         updates: [{q: {foo: {$in: [1, [{bar: 2}]]}}, u: {$set: {notEncrypted: 1}}}],
-        jsonSchema: fooDotBarEncryptedSchema
+        jsonSchema: fooDotBarEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  31008);
 
@@ -240,13 +266,15 @@
     assert.commandFailedWithCode(testDb.runCommand({
         find: coll.getName(),
         filter: {foo: {$eq: [1, 2, 3]}},
-        jsonSchema: fooEncryptedSchema
+        jsonSchema: fooEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  31118);
     assert.commandFailedWithCode(testDb.runCommand({
         find: coll.getName(),
         filter: {foo: {$in: [[1, 2, 3]]}},
-        jsonSchema: fooEncryptedSchema
+        jsonSchema: fooEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  31118);
 
@@ -255,7 +283,8 @@
     assert.commandFailedWithCode(testDb.runCommand({
         insert: coll.getName(),
         documents: [{_id: 1, foo: {bar: [1, 2, 3]}}],
-        jsonSchema: fooEncryptedSchema
+        jsonSchema: fooEncryptedSchema,
+        isRemoteSchema: false
     }),
                                  31118);
 
@@ -275,7 +304,8 @@
     assert.commandWorked(testDb.runCommand({
         insert: coll.getName(),
         documents: [{_id: 1, foo: {bar: [1, 2, 3]}}],
-        jsonSchema: fooEncryptedRandomSchema
+        jsonSchema: fooEncryptedRandomSchema,
+        isRemoteSchema: false
     }));
 
     // Cannot evaluate an $eq-to-object predicate when the object is encrypted with the random
@@ -283,7 +313,8 @@
     assert.commandFailedWithCode(testDb.runCommand({
         find: coll.getName(),
         filter: {foo: {$eq: {bar: [1, 2, 3]}}},
-        jsonSchema: fooEncryptedRandomSchema
+        jsonSchema: fooEncryptedRandomSchema,
+        isRemoteSchema: false
     }),
                                  51158);
 
@@ -303,7 +334,8 @@
                     }
                 }
             }
-        }
+        },
+        isRemoteSchema: false
     }),
                                  31122);
 
@@ -322,7 +354,8 @@
                     }
                 }
             }
-        }
+        },
+        isRemoteSchema: false
     }));
 
     const fooRandomEncryptedSchema = {
@@ -340,13 +373,15 @@
     assert.commandWorked(testDb.runCommand({
         insert: coll.getName(),
         documents: [{_id: 1, foo: [1, 2, 3]}],
-        jsonSchema: fooRandomEncryptedSchema
+        jsonSchema: fooRandomEncryptedSchema,
+        isRemoteSchema: false
     }));
 
     assert.commandWorked(testDb.runCommand({
         insert: coll.getName(),
         documents: [{_id: 1, foo: [{bar: 1}, {bar: 2}, {bar: 3}]}],
-        jsonSchema: fooRandomEncryptedSchema
+        jsonSchema: fooRandomEncryptedSchema,
+        isRemoteSchema: false
     }));
 
     mongocryptd.stop();

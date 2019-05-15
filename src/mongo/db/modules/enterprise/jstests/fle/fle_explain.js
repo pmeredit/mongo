@@ -39,30 +39,34 @@
 
     cmds.forEach(element => {
         // Make sure no json schema fails when explaining
-        const explain_bad = {explain: 1, explain: element};  // eslint-disable-line no-dupe-keys
-        assert.commandFailed(testDB.runCommand(explain_bad));
+        const explainBad = {explain: 1, explain: element};  // eslint-disable-line no-dupe-keys
+        assert.commandFailed(testDB.runCommand(explainBad));
 
-        const explain_cmd = {
+        const explainCmd = {
             explain: element,
             jsonSchema: basicEncryptSchema,
+            isRemoteSchema: false,
             verbosity: "executionStats"
         };
 
-        const explain_ret = assert.commandWorked(testDB.runCommand(explain_cmd));
+        const explainRes = assert.commandWorked(testDB.runCommand(explainCmd));
 
-        // NOTE: This mutates element so it now has jsonSchema
-        Object.extend(element, {jsonSchema: basicEncryptSchema});
-        const normal_ret = assert.commandWorked(testDB.runCommand(element));
+        Object.extend(element, {jsonSchema: basicEncryptSchema, isRemoteSchema: false});
+        const normalRes = assert.commandWorked(testDB.runCommand(element));
         // Added by the shell.
-        delete normal_ret["result"]["lsid"];
-        assert.eq(explain_ret.hasEncryptionPlaceholders, normal_ret.hasEncryptionPlaceholders);
-        assert.eq(explain_ret.schemaRequiresEncryption, normal_ret.schemaRequiresEncryption);
-        assert.eq(explain_ret["result"]["explain"], normal_ret["result"]);
-        assert.eq(explain_ret["result"]["verbosity"], "executionStats");
+        delete normalRes["result"]["lsid"];
+        assert.eq(explainRes.hasEncryptionPlaceholders, normalRes.hasEncryptionPlaceholders);
+        assert.eq(explainRes.schemaRequiresEncryption, normalRes.schemaRequiresEncryption);
+        assert.eq(explainRes["result"]["explain"], normalRes["result"]);
+        assert.eq(explainRes["result"]["verbosity"], "executionStats");
 
         // Test that an explain with the schema in the explained object fails.
-        const misplaced_schema = {explain: element, jsonSchema: basicEncryptSchema};
-        assert.commandFailedWithCode(testDB.runCommand(misplaced_schema), 30050);
+        const misplacedSchema = {
+            explain: element,
+            jsonSchema: basicEncryptSchema,
+            isRemoteSchema: false
+        };
+        assert.commandFailedWithCode(testDB.runCommand(misplacedSchema), 30050);
     });
 
     mongocryptd.stop();

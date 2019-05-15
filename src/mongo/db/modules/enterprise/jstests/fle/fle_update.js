@@ -74,7 +74,7 @@
     ];
 
     const testDb = conn.getDB("test");
-    let updateCommand = {update: "test", updates: [], jsonSchema: {}};
+    let updateCommand = {update: "test", updates: [], jsonSchema: {}, isRemoteSchema: false};
 
     for (let test of testCases) {
         updateCommand["jsonSchema"] = test["schema"];

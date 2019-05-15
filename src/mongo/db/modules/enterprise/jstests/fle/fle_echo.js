@@ -56,7 +56,7 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
         assert.commandFailed(testDB.runCommand(element.cmd));
 
         // NOTE: This mutates element so it now has jsonSchema
-        Object.extend(element.cmd, {jsonSchema: basicJSONSchema});
+        Object.extend(element.cmd, {jsonSchema: basicJSONSchema, isRemoteSchema: false});
 
         // Make sure json schema works
         const ret1 = assert.commandWorked(testDB.runCommand(element.cmd));

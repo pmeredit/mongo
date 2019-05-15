@@ -48,7 +48,8 @@
         find: coll.getName(),
         filter: {"foo.bar": "string"},
         collation: {locale: "fr_CA"},
-        jsonSchema: encryptedStringSchema
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
     }),
                                  31054);
 
@@ -58,7 +59,8 @@
         find: coll.getName(),
         filter: {"foo.bar": NumberInt(4)},
         collation: {locale: "fr_CA"},
-        jsonSchema: encryptedIntSchema
+        jsonSchema: encryptedIntSchema,
+        isRemoteSchema: false
     }));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
     assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
@@ -70,7 +72,8 @@
         find: coll.getName(),
         filter: {"foo.bar": {$in: ["string1", "string2"]}},
         collation: {locale: "fr_CA"},
-        jsonSchema: encryptedStringSchema
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
     }),
                                  31054);
 
@@ -80,7 +83,8 @@
         find: coll.getName(),
         filter: {"foo.bar": {$in: [NumberInt(1), NumberInt(2), NumberInt(3), NumberInt(4)]}},
         collation: {locale: "fr_CA"},
-        jsonSchema: encryptedIntSchema
+        jsonSchema: encryptedIntSchema,
+        isRemoteSchema: false
     }));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
     assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
@@ -94,7 +98,8 @@
         find: coll.getName(),
         filter: {foo: {bar: "string"}},
         collation: {locale: "fr_CA"},
-        jsonSchema: encryptedStringSchema
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
     }),
                                  31054);
 
@@ -104,7 +109,8 @@
         find: coll.getName(),
         filter: {foo: {$in: [1, {bar: "string"}, 3]}},
         collation: {locale: "fr_CA"},
-        jsonSchema: encryptedStringSchema
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
     }),
                                  31054);
 
@@ -115,7 +121,8 @@
         key: "baz",
         query: {"foo.bar": "string"},
         collation: {locale: "fr_CA"},
-        jsonSchema: encryptedStringSchema
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
     }),
                                  31054);
 
@@ -125,7 +132,8 @@
         distinct: coll.getName(),
         key: "foo.bar",
         collation: {locale: "fr_CA"},
-        jsonSchema: encryptedStringSchema
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
     }),
                                  31058);
 
@@ -135,7 +143,8 @@
         distinct: coll.getName(),
         key: "foo.bar",
         collation: {locale: "simple"},
-        jsonSchema: encryptedStringSchema
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
     }));
     assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
     assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
@@ -147,7 +156,8 @@
         deletes: [
             {q: {"foo.bar": "string"}, limit: 1, collation: {locale: "fr_CA"}},
         ],
-        jsonSchema: encryptedStringSchema
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
     }),
                                  31054);
 
@@ -160,7 +170,8 @@
             {q: {"foo.bar": "string"}, limit: 1},
             {q: {}, limit: 1, collation: {locale: "fr_CA"}},
         ],
-        jsonSchema: encryptedStringSchema
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
     }));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
     assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
@@ -172,7 +183,8 @@
         updates: [
             {q: {"foo.bar": "string"}, u: {$set: {other: 1}}, collation: {locale: "fr_CA"}},
         ],
-        jsonSchema: encryptedStringSchema
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
     }),
                                  31054);
 
@@ -185,7 +197,8 @@
             {q: {"foo.bar": "string"}, u: {$set: {other: 1}}},
             {q: {}, u: {$set: {other: 1}}, collation: {locale: "fr_CA"}},
         ],
-        jsonSchema: encryptedStringSchema
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
     }));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
     assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
@@ -196,7 +209,8 @@
         updates: [
             {q: {}, u: {$set: {"foo.bar": "string"}}, collation: {locale: "fr_CA"}},
         ],
-        jsonSchema: encryptedStringSchema
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
     }));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
     assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
@@ -208,7 +222,8 @@
         updates: [
             {q: {}, u: {foo: {bar: "string"}}, collation: {locale: "fr_CA"}},
         ],
-        jsonSchema: encryptedStringSchema
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
     }));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
     assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
@@ -219,7 +234,8 @@
         updates: [
             {q: {}, u: {$set: {"foo.bar": "string"}}, collation: {locale: "fr_CA"}},
         ],
-        jsonSchema: encryptedStringSchema
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
     }));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
     assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
@@ -231,7 +247,8 @@
         updates: [
             {q: {}, u: {$set: {foo: {bar: "string"}}}, collation: {locale: "fr_CA"}},
         ],
-        jsonSchema: encryptedStringSchema
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
     }));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
     assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
@@ -242,7 +259,8 @@
         count: coll.getName(),
         query: {"foo.bar": "string"},
         collation: {locale: "fr_CA"},
-        jsonSchema: encryptedStringSchema
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
     }),
                                  31054);
 
@@ -252,7 +270,8 @@
         count: coll.getName(),
         query: {"foo.bar": NumberInt(1)},
         collation: {locale: "fr_CA"},
-        jsonSchema: encryptedIntSchema
+        jsonSchema: encryptedIntSchema,
+        isRemoteSchema: false
     }));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
     assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
@@ -262,7 +281,8 @@
     assert.commandFailedWithCode(testDb.runCommand({
         explain:
             {find: coll.getName(), filter: {"foo.bar": "string"}, collation: {locale: "fr_CA"}},
-        jsonSchema: encryptedStringSchema
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
     }),
                                  31054);
 
@@ -271,7 +291,8 @@
     cmdRes = assert.commandWorked(testDb.runCommand({
         explain:
             {find: coll.getName(), filter: {"foo.bar": NumberInt(1)}, collation: {locale: "fr_CA"}},
-        jsonSchema: encryptedIntSchema
+        jsonSchema: encryptedIntSchema,
+        isRemoteSchema: false
     }));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
     assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
@@ -283,7 +304,8 @@
         query: {"foo.bar": "string"},
         update: {$set: {baz: "other"}},
         collation: {locale: "fr_CA"},
-        jsonSchema: encryptedStringSchema
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
     }),
                                  31054);
 
@@ -294,7 +316,8 @@
         query: {"foo.bar": NumberInt(1)},
         update: {$set: {baz: "other"}},
         collation: {locale: "fr_CA"},
-        jsonSchema: encryptedIntSchema
+        jsonSchema: encryptedIntSchema,
+        isRemoteSchema: false
     }));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
     assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
@@ -306,7 +329,8 @@
         query: {},
         update: {$set: {"foo.bar": "string"}},
         collation: {locale: "fr_CA"},
-        jsonSchema: encryptedStringSchema
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
     }));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
     assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
@@ -318,7 +342,8 @@
         pipeline: [{$match: {"foo.bar": "string"}}],
         cursor: {},
         collation: {locale: "fr_CA"},
-        jsonSchema: encryptedStringSchema
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
     }),
                                  31054);
 
@@ -329,37 +354,46 @@
         pipeline: [{$match: {"foo.bar": NumberInt(1)}}],
         cursor: {},
         collation: {locale: "fr_CA"},
-        jsonSchema: encryptedIntSchema
+        jsonSchema: encryptedIntSchema,
+        isRemoteSchema: false
     }));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
     assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
 
     // Test that mongocryptd returns an error when the collation parameter is not an object.
-    assert.commandFailedWithCode(
-        testDb.runCommand({find: coll.getName(), collation: 1, jsonSchema: encryptedStringSchema}),
-        31084);
+    assert.commandFailedWithCode(testDb.runCommand({
+        find: coll.getName(),
+        collation: 1,
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
+    }),
+                                 31084);
     assert.commandFailedWithCode(testDb.runCommand({
         distinct: coll.getName(),
         key: "baz",
         collation: 1,
-        jsonSchema: encryptedStringSchema
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
     }),
                                  31084);
     assert.commandFailed(testDb.runCommand({
         update: coll.getName(),
         updates: [{q: {}, u: {$set: {other: 1}}, collation: 1}],
-        jsonSchema: encryptedStringSchema
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
     }));
     assert.commandFailed(testDb.runCommand({
         delete: coll.getName(),
         deletes: [{q: {}, limit: 1, collation: 1}],
-        jsonSchema: encryptedStringSchema
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
     }));
     assert.commandFailedWithCode(testDb.runCommand({
         count: coll.getName(),
         query: {"foo.bar": "string"},
         collation: 1,
-        jsonSchema: encryptedStringSchema
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
     }),
                                  31084);
     assert.commandFailedWithCode(testDb.runCommand({
@@ -367,7 +401,8 @@
         query: {"foo.bar": "string"},
         update: {$set: {baz: "other"}},
         collation: 1,
-        jsonSchema: encryptedStringSchema
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
     }),
                                  31084);
 
@@ -377,13 +412,15 @@
         update: coll.getName(),
         updates: [{q: {}, u: {$set: {other: 1}}}],
         collation: {locale: "simple"},
-        jsonSchema: encryptedStringSchema
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
     }));
     assert.commandFailed(testDb.runCommand({
         delete: coll.getName(),
         deletes: [{q: {}, limit: 1}],
         collation: {locale: "simple"},
-        jsonSchema: encryptedStringSchema
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
     }));
 
     // Mongocryptd does not actually understand the collation specification, and is not expected to
@@ -392,12 +429,21 @@
     assert.commandWorked(testDb.runCommand({
         find: coll.getName(),
         collation: {locale: "unknown_locale"},
-        jsonSchema: encryptedStringSchema
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
     }));
-    assert.commandWorked(testDb.runCommand(
-        {find: coll.getName(), collation: {}, jsonSchema: encryptedStringSchema}));
-    assert.commandWorked(testDb.runCommand(
-        {find: coll.getName(), collation: {unknown: 1}, jsonSchema: encryptedStringSchema}));
+    assert.commandWorked(testDb.runCommand({
+        find: coll.getName(),
+        collation: {},
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
+    }));
+    assert.commandWorked(testDb.runCommand({
+        find: coll.getName(),
+        collation: {unknown: 1},
+        jsonSchema: encryptedStringSchema,
+        isRemoteSchema: false
+    }));
 
     mongocryptd.stop();
 }());

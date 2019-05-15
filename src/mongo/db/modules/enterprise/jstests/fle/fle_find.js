@@ -37,8 +37,8 @@
     };
 
     function assertEncryptedFieldInResponse({filter, path = "", requiresEncryption}) {
-        const res = assert.commandWorked(
-            testDB.runCommand({find: "test", filter: filter, jsonSchema: sampleSchema}));
+        const res = assert.commandWorked(testDB.runCommand(
+            {find: "test", filter: filter, jsonSchema: sampleSchema, isRemoteSchema: false}));
 
         assert(res.result.find == "test", tojson(res));
         assert(res.hasEncryptionPlaceholders == requiresEncryption, tojson(res));
@@ -54,14 +54,22 @@
         {filter: {"user.account": "secret"}, path: "user.account", requiresEncryption: true});
 
     // Elements within $in array correctly marked for encryption.
-    let res = assert.commandWorked(testDB.runCommand(
-        {find: "test", filter: {ssn: {"$in": [NumberLong(1234)]}}, jsonSchema: sampleSchema}));
+    let res = assert.commandWorked(testDB.runCommand({
+        find: "test",
+        filter: {ssn: {"$in": [NumberLong(1234)]}},
+        jsonSchema: sampleSchema,
+        isRemoteSchema: false
+    }));
     assert(res.hasEncryptionPlaceholders, tojson(res));
     assert(res.result.filter["ssn"]["$in"][0] instanceof BinData, tojson(res));
 
     // Elements within object in $in array correctly marked for encryption.
-    res = assert.commandWorked(testDB.runCommand(
-        {find: "test", filter: {user: {"$in": [{account: "1234"}]}}, jsonSchema: sampleSchema}));
+    res = assert.commandWorked(testDB.runCommand({
+        find: "test",
+        filter: {user: {"$in": [{account: "1234"}]}},
+        jsonSchema: sampleSchema,
+        isRemoteSchema: false
+    }));
     assert(res.hasEncryptionPlaceholders, tojson(res));
     assert(res.result.filter["user"]["$in"][0]["account"] instanceof BinData, tojson(res));
 
@@ -69,7 +77,8 @@
     res = assert.commandWorked(testDB.runCommand({
         find: "test",
         filter: {ssn: {"$in": [NumberLong(1), NumberLong(2), NumberLong(3)]}},
-        jsonSchema: sampleSchema
+        jsonSchema: sampleSchema,
+        isRemoteSchema: false
     }));
     assert(res.hasEncryptionPlaceholders, tojson(res));
     assert(res.result.filter["ssn"]["$in"][0] instanceof BinData, tojson(res));
@@ -80,7 +89,8 @@
     res = assert.commandWorked(testDB.runCommand({
         find: "test",
         filter: {user: {"$in": ["notEncrypted", {also: "notEncrypted"}, {account: "encrypted"}]}},
-        jsonSchema: sampleSchema
+        jsonSchema: sampleSchema,
+        isRemoteSchema: false
     }));
     assert(res.hasEncryptionPlaceholders, tojson(res));
     assert(res.result.filter["user"]["$in"][0] === "notEncrypted", tojson(res));
@@ -95,57 +105,99 @@
         {filter: {user: {"$in": [{notSecure: 1}]}}, requiresEncryption: false});
 
     // Invalid operators should fail with an appropriate error code.
-    assert.commandFailedWithCode(
-        testDB.runCommand({find: "test", filter: {ssn: {$gt: 5}}, jsonSchema: sampleSchema}),
-        51118);
-    assert.commandFailedWithCode(
-        testDB.runCommand({find: "test", filter: {ssn: /\d/}, jsonSchema: sampleSchema}), 51092);
-    assert.commandFailedWithCode(
-        testDB.runCommand({find: "test", filter: {ssn: {$in: [/\d/]}}, jsonSchema: sampleSchema}),
-        51015);
-
-    // Invalid operators with encrypted fields in RHS object should fail.
+    assert.commandFailedWithCode(testDB.runCommand({
+        find: "test",
+        filter: {ssn: {$gt: 5}},
+        jsonSchema: sampleSchema,
+        isRemoteSchema: false
+    }),
+                                 51118);
     assert.commandFailedWithCode(
         testDB.runCommand(
-            {find: "test", filter: {user: {$gt: {account: "5"}}}, jsonSchema: sampleSchema}),
-        51119);
+            {find: "test", filter: {ssn: /\d/}, jsonSchema: sampleSchema, isRemoteSchema: false}),
+        51092);
+    assert.commandFailedWithCode(testDB.runCommand({
+        find: "test",
+        filter: {ssn: {$in: [/\d/]}},
+        jsonSchema: sampleSchema,
+        isRemoteSchema: false
+    }),
+                                 51015);
+
+    // Invalid operators with encrypted fields in RHS object should fail.
+    assert.commandFailedWithCode(testDB.runCommand({
+        find: "test",
+        filter: {user: {$gt: {account: "5"}}},
+        jsonSchema: sampleSchema,
+        isRemoteSchema: false
+    }),
+                                 51119);
 
     // Comparison to a null value correctly fails.
     assert.commandFailedWithCode(
-        testDB.runCommand({find: "test", filter: {ssn: null}, jsonSchema: sampleSchema}), 51095);
-    assert.commandFailedWithCode(
-        testDB.runCommand({find: "test", filter: {ssn: {$in: [null]}}, jsonSchema: sampleSchema}),
-        51120);
+        testDB.runCommand(
+            {find: "test", filter: {ssn: null}, jsonSchema: sampleSchema, isRemoteSchema: false}),
+        51095);
+    assert.commandFailedWithCode(testDB.runCommand({
+        find: "test",
+        filter: {ssn: {$in: [null]}},
+        jsonSchema: sampleSchema,
+        isRemoteSchema: false
+    }),
+                                 51120);
 
     // Queries on paths which contain an encrypted prefixed field should fail.
-    assert.commandFailedWithCode(
-        testDB.runCommand({find: "test", filter: {'ssn.illegal': 5}, jsonSchema: sampleSchema}),
-        51102);
+    assert.commandFailedWithCode(testDB.runCommand({
+        find: "test",
+        filter: {'ssn.illegal': 5},
+        jsonSchema: sampleSchema,
+        isRemoteSchema: false
+    }),
+                                 51102);
 
     // Queries on paths which aren't described in the schema AND don't contain an encrypted prefix
     // should not fail.
-    assert.doesNotThrow(
-        () => testDB.runCommand(
-            {find: "test", filter: {'user.nonexistent': 5}, jsonSchema: sampleSchema}));
+    assert.doesNotThrow(() => testDB.runCommand({
+        find: "test",
+        filter: {'user.nonexistent': 5},
+        jsonSchema: sampleSchema,
+        isRemoteSchema: false
+    }));
 
     // Invalid expressions correctly fail to parse.
-    assert.commandFailedWithCode(
-        testDB.runCommand({find: "test", filter: {$cantDoThis: 5}, jsonSchema: sampleSchema}),
-        ErrorCodes.BadValue);
+    assert.commandFailedWithCode(testDB.runCommand({
+        find: "test",
+        filter: {$cantDoThis: 5},
+        jsonSchema: sampleSchema,
+        isRemoteSchema: false
+    }),
+                                 ErrorCodes.BadValue);
 
     // Unknown fields correctly result in an error.
-    assert.commandFailedWithCode(
-        testDB.runCommand({find: "test", filter: {}, jsonSchema: sampleSchema, whatIsThis: 1}),
-        ErrorCodes.FailedToParse);
+    assert.commandFailedWithCode(testDB.runCommand({
+        find: "test",
+        filter: {},
+        jsonSchema: sampleSchema,
+        isRemoteSchema: false,
+        whatIsThis: 1
+    }),
+                                 ErrorCodes.FailedToParse);
 
     // Invalid type for command parameters correctly result in an error.
-    assert.commandFailedWithCode(testDB.runCommand({find: 5, filter: {}, jsonSchema: sampleSchema}),
-                                 ErrorCodes.InvalidNamespace);
     assert.commandFailedWithCode(
-        testDB.runCommand({find: "test", filter: "not an object", jsonSchema: sampleSchema}),
-        ErrorCodes.FailedToParse);
+        testDB.runCommand({find: 5, filter: {}, jsonSchema: sampleSchema, isRemoteSchema: false}),
+        ErrorCodes.InvalidNamespace);
+    assert.commandFailedWithCode(testDB.runCommand({
+        find: "test",
+        filter: "not an object",
+        jsonSchema: sampleSchema,
+        isRemoteSchema: false
+    }),
+                                 ErrorCodes.FailedToParse);
     assert.commandFailedWithCode(
-        testDB.runCommand({find: "test", filter: {}, jsonSchema: "same here"}), 51090);
+        testDB.runCommand(
+            {find: "test", filter: {}, jsonSchema: "same here", isRemoteSchema: false}),
+        51090);
 
     // Verify that a schema with 'patternProperties' is supported by mongocryptd for the find
     // command.
@@ -163,7 +215,8 @@
                     }
                 }
             }
-        }
+        },
+        isRemoteSchema: false
     }));
     assert(cmdRes.result.filter.userSsn.$eq instanceof BinData, tojson(cmdRes));
 
@@ -182,7 +235,8 @@
                     }
                 }
             }
-        }
+        },
+        isRemoteSchema: false
     }),
                                  51093);
 
@@ -200,7 +254,8 @@
                     }
                 }
             }
-        }
+        },
+        isRemoteSchema: false
     }),
                                  51158);
 

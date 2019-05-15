@@ -31,8 +31,12 @@
         properties: {a: {type: "string"}},
         additionalProperties: schemaEncryptObj
     };
-    cmdRes = assert.commandWorked(testDb.runCommand(
-        {insert: coll.getName(), documents: [{_id: NumberInt(1), a: "b"}], jsonSchema: schema}));
+    cmdRes = assert.commandWorked(testDb.runCommand({
+        insert: coll.getName(),
+        documents: [{_id: NumberInt(1), a: "b"}],
+        jsonSchema: schema,
+        isRemoteSchema: false
+    }));
     assert.eq(true, cmdRes.schemaRequiresEncryption);
 
     // Verify that 'schemaRequiresEncryption' is set to false when there is no 'encrypt' keyword,
@@ -42,22 +46,34 @@
         properties: {a: {type: "string"}},
         additionalProperties: {type: "number"}
     };
-    cmdRes = assert.commandWorked(testDb.runCommand(
-        {insert: coll.getName(), documents: [{_id: NumberInt(1), a: "b"}], jsonSchema: schema}));
+    cmdRes = assert.commandWorked(testDb.runCommand({
+        insert: coll.getName(),
+        documents: [{_id: NumberInt(1), a: "b"}],
+        jsonSchema: schema,
+        isRemoteSchema: false
+    }));
     assert.eq(false, cmdRes.schemaRequiresEncryption);
 
     // Verify that 'schemaRequiresEncryption' is set to true when 'encrypt' is beneath
     // 'patternProperties'.
     schema = {type: "object", patternProperties: {foo: schemaEncryptObj}};
-    cmdRes = assert.commandWorked(testDb.runCommand(
-        {insert: coll.getName(), documents: [{_id: NumberInt(1), a: "b"}], jsonSchema: schema}));
+    cmdRes = assert.commandWorked(testDb.runCommand({
+        insert: coll.getName(),
+        documents: [{_id: NumberInt(1), a: "b"}],
+        jsonSchema: schema,
+        isRemoteSchema: false
+    }));
     assert.eq(true, cmdRes.schemaRequiresEncryption);
 
     // Verify that 'schemaRequiresEncryption' is false when there is no 'encrypt' keyword, but
     // 'patternProperties' is present.
     schema = {type: "object", patternProperties: {foo: {type: "string"}}};
-    cmdRes = assert.commandWorked(testDb.runCommand(
-        {insert: coll.getName(), documents: [{_id: NumberInt(1), a: "b"}], jsonSchema: schema}));
+    cmdRes = assert.commandWorked(testDb.runCommand({
+        insert: coll.getName(),
+        documents: [{_id: NumberInt(1), a: "b"}],
+        jsonSchema: schema,
+        isRemoteSchema: false
+    }));
     assert.eq(false, cmdRes.schemaRequiresEncryption);
 
     mongocryptd.stop();

@@ -60,8 +60,12 @@
     // Verify that the schema is considered legal for all supported types.
     for (const legalType of kLegalTypes) {
         schemaTemplate.properties.foo.encrypt.bsonType = legalType;
-        assert.commandWorked(testDb.runCommand(
-            {insert: coll.getName(), documents: [{_id: 1}], jsonSchema: schemaTemplate}));
+        assert.commandWorked(testDb.runCommand({
+            insert: coll.getName(),
+            documents: [{_id: 1}],
+            jsonSchema: schemaTemplate,
+            isRemoteSchema: false
+        }));
     }
 
     // Verify that the schema is prohibited for all unsupported types, even though the insert
@@ -69,10 +73,13 @@
     // deterministically encrypted field.
     for (const illegalType of kIllegalTypes) {
         schemaTemplate.properties.foo.encrypt.bsonType = illegalType.type;
-        assert.commandFailedWithCode(
-            testDb.runCommand(
-                {insert: coll.getName(), documents: [{_id: 1}], jsonSchema: schemaTemplate}),
-            illegalType.code);
+        assert.commandFailedWithCode(testDb.runCommand({
+            insert: coll.getName(),
+            documents: [{_id: 1}],
+            jsonSchema: schemaTemplate,
+            isRemoteSchema: false
+        }),
+                                     illegalType.code);
     }
 
     mongocryptd.stop();

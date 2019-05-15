@@ -42,7 +42,8 @@
             {q: {foo: NumberLong(1), barx: NumberLong(2), baz: 3}, limit: 1},
             {q: {x: 1, foobar: NumberLong(1)}, limit: 0},
         ],
-        jsonSchema: schema
+        jsonSchema: schema,
+        isRemoteSchema: false
     };
 
     let cmdRes = assert.commandWorked(testDb.runCommand(deleteCmd));
@@ -84,14 +85,15 @@
             {q: {w: 1, x: {$in: [1, 2]}}, limit: 1},
             {q: {y: 1, z: {foo: 1}}, limit: 0},
         ],
-        jsonSchema: schema
+        jsonSchema: schema,
+        isRemoteSchema: false
     };
 
     cmdRes = assert.commandWorked(testDb.runCommand(deleteCmd));
     assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
 
     // Test a delete with an empty 'deletes' array.
-    deleteCmd = {delete: coll.getName(), deletes: [], jsonSchema: schema};
+    deleteCmd = {delete: coll.getName(), deletes: [], jsonSchema: schema, isRemoteSchema: false};
     cmdRes = assert.commandWorked(testDb.runCommand(deleteCmd));
     assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
     assert.eq([], cmdRes.result.deletes, cmdRes);
@@ -111,7 +113,8 @@
     deleteCmd = {
         delete: coll.getName(),
         deletes: [{q: {foo: 1}, limit: 1}],
-        jsonSchema: randomSchema
+        jsonSchema: randomSchema,
+        isRemoteSchema: false
     };
     assert.commandFailedWithCode(testDb.runCommand(deleteCmd), 51158);
 

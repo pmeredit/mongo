@@ -85,7 +85,10 @@ protected:
     BSONObj buildEncryptElem(T value, const ResolvedEncryptionInfo& metadata) {
         auto tempObj = BSON("v" << value);
         return buildEncryptPlaceholder(
-            tempObj.firstElement(), metadata, EncryptionPlaceholderContext::kComparison, nullptr);
+            tempObj.firstElement(),
+            metadata,
+            cryptd_query_analysis::EncryptionPlaceholderContext::kComparison,
+            nullptr);
     }
 
     /**
@@ -98,7 +101,7 @@ protected:
      */
     BSONObj serializeMatchForEncryption(const BSONObj& schema, const BSONObj& matchExpression) {
         auto expCtx(new ExpressionContextForTest());
-        auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+        auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
 
         // By default, allow all features for testing.
         auto parsedMatch = uassertStatusOK(

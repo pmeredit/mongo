@@ -31,14 +31,27 @@
 #include "mongo/idl/idl_parser.h"
 #include "mongo/rpc/op_msg.h"
 
-namespace mongo {
-
+namespace mongo::cryptd_query_analysis {
 namespace {
 
-static constexpr auto kJsonSchema = "jsonSchema"_sd;
 static constexpr auto kHasEncryptionPlaceholders = "hasEncryptionPlaceholders"_sd;
 static constexpr auto kSchemaRequiresEncryption = "schemaRequiresEncryption"_sd;
 static constexpr auto kResult = "result"_sd;
+
+struct CryptdQueryAnalysisParams {
+    CryptdQueryAnalysisParams(const BSONObj& jsonSchema,
+                              const EncryptionSchemaType schemaType,
+                              BSONObj strippedObj)
+        : jsonSchema(jsonSchema), schemaType(schemaType), strippedObj(std::move(strippedObj)) {}
+
+    BSONObj jsonSchema;
+    EncryptionSchemaType schemaType;
+
+    /**
+     * Command object without 'jsonSchema' and 'isRemoteSchema' fields.
+     */
+    BSONObj strippedObj;
+};
 
 std::string typeSetToString(const MatcherTypeSet& typeSet) {
     StringBuilder sb;
@@ -54,28 +67,33 @@ std::string typeSetToString(const MatcherTypeSet& typeSet) {
 }
 
 /**
- * Extracts and returns the jsonSchema field in the command 'obj'. Populates 'stripped' with the
- * same fields as 'obj', except without the jsonSchema.
+ * Extracts and returns the 'CryptdQueryAnalysisParams' in the command 'obj'.
  *
- * Throws an AssertionException if the schema is missing or not of the correct type.
+ * Throws an AssertionException if the 'jsonSchema' or 'isRemoteSchema' fields are missing or not of
+ * the correct type.
  */
-BSONObj extractJSONSchema(BSONObj obj, BSONObjBuilder* stripped) {
-    boost::optional<BSONObj> ret;
+CryptdQueryAnalysisParams extractCryptdParameters(const BSONObj& obj) {
+    boost::optional<BSONObj> jsonSchema;
+    boost::optional<bool> isRemoteSchema;
+    BSONObjBuilder stripped;
     for (auto& e : obj) {
         if (e.fieldNameStringData() == kJsonSchema) {
             uassert(51090, "jsonSchema is expected to be a object", e.type() == Object);
-
-            ret = e.Obj();
+            jsonSchema = e.Obj();
+        } else if (e.fieldNameStringData() == kIsRemoteSchema) {
+            uassert(31102, "isRemoteSchema is expected to be a boolean", e.type() == Bool);
+            isRemoteSchema = e.Bool();
         } else {
-            stripped->append(e);
+            stripped.append(e);
         }
     }
+    uassert(51073, "jsonSchema is a required command field", jsonSchema);
+    uassert(31104, "isRemoteSchema is a required command field", isRemoteSchema);
 
-    uassert(51073, "jsonSchema is a required command field", ret);
-
-    stripped->doneFast();
-
-    return ret.get();
+    return CryptdQueryAnalysisParams(*jsonSchema,
+                                     *isRemoteSchema ? EncryptionSchemaType::kRemote
+                                                     : EncryptionSchemaType::kLocal,
+                                     stripped.obj());
 }
 
 /**
@@ -592,13 +610,12 @@ void processWriteOpCommand(OperationContext* opCtx,
                            const OpMsgRequest& request,
                            BSONObjBuilder* builder,
                            WriteOpProcessFunction func) {
-    BSONObjBuilder stripped;
-    auto schema = extractJSONSchema(request.body, &stripped);
-
-    auto newRequest = makeHybrid(request, stripped.obj());
+    auto cryptdParams = extractCryptdParameters(request.body);
+    auto newRequest = makeHybrid(request, cryptdParams.strippedObj);
 
     // Parse the JSON Schema to an encryption schema tree.
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree =
+        EncryptionSchemaTreeNode::parse(cryptdParams.jsonSchema, cryptdParams.schemaType);
 
     PlaceHolderResult placeholder = func(opCtx, newRequest, std::move(schemaTree));
 
@@ -616,16 +633,17 @@ void processQueryCommand(OperationContext* opCtx,
                          const BSONObj& cmdObj,
                          BSONObjBuilder* builder,
                          QueryProcessFunction func) {
-    BSONObjBuilder stripped;
-    auto schema = extractJSONSchema(cmdObj, &stripped);
+    auto cryptdParams = extractCryptdParameters(cmdObj);
 
     // Parse the JSON Schema to an encryption schema tree.
-    auto schemaTree = EncryptionSchemaTreeNode::parse(schema);
+    auto schemaTree =
+        EncryptionSchemaTreeNode::parse(cryptdParams.jsonSchema, cryptdParams.schemaType);
 
     auto collator = extractCollator(opCtx, cmdObj);
     boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(opCtx, collator.get()));
 
-    PlaceHolderResult placeholder = func(expCtx, dbName, stripped.obj(), std::move(schemaTree));
+    PlaceHolderResult placeholder =
+        func(expCtx, dbName, cryptdParams.strippedObj, std::move(schemaTree));
     auto fieldNames = cmdObj.getFieldNames<std::set<StringData>>();
 
     // A new camel-case name of the FindAndModify command needs to be used
@@ -823,4 +841,4 @@ Value buildEncryptPlaceholder(Value input,
                                          boost::none)[wrappingKey]);
 }
 
-}  // namespace mongo
+}  // namespace mongo::cryptd_query_analysis

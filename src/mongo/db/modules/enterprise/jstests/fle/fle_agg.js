@@ -29,9 +29,11 @@
         pipeline: [{$match: {}}],
         cursor: {},
         jsonSchema: {type: "object", properties: {ssn: encryptedStringSpec}},
+        isRemoteSchema: false,
     };
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     delete command.jsonSchema;
+    delete command.isRemoteSchema;
     delete cmdRes.result.lsid;
     assert.eq(command, cmdRes.result, cmdRes);
     assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
@@ -45,6 +47,7 @@
         pipeline: [{$match: {location: "winterfell"}}],
         cursor: {},
         jsonSchema: schema,
+        isRemoteSchema: false,
     };
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
@@ -59,6 +62,7 @@
         pipeline: [{$limit: NumberLong(1)}, {$match: {location: "kings landing"}}],
         cursor: {},
         jsonSchema: schema,
+        isRemoteSchema: false,
     };
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
@@ -78,6 +82,7 @@
         pipeline: [{$match: {"user.name": "night king"}}],
         cursor: {},
         jsonSchema: schema,
+        isRemoteSchema: false,
     };
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
@@ -93,6 +98,7 @@
         pipeline: [{$match: {location: "castle black"}}],
         cursor: {},
         jsonSchema: schema,
+        isRemoteSchema: false,
     };
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
@@ -108,6 +114,7 @@
         pipeline: [{$match: {location: "castle black"}}],
         cursor: {},
         jsonSchema: schema,
+        isRemoteSchema: false,
     };
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
@@ -123,9 +130,11 @@
         pipeline: [{$sort: {bar: 1}}],
         cursor: {},
         jsonSchema: {type: "object", properties: {foo: encryptedStringSpec}},
+        isRemoteSchema: false,
     };
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     delete command.jsonSchema;
+    delete command.isRemoteSchema;
     delete cmdRes.result.lsid;
     assert.eq(command, cmdRes.result, cmdRes);
     assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
@@ -137,6 +146,7 @@
         pipeline: [{$sort: {name: -1, ssn: 1}}],
         cursor: {},
         jsonSchema: {type: "object", properties: {ssn: encryptedStringSpec}},
+        isRemoteSchema: false,
     };
     assert.commandFailedWithCode(testDB.runCommand(command), 51201);
 
@@ -147,8 +157,9 @@
         cursor: {},
         jsonSchema: {
             type: "object",
-            properties: {identity: {type: "object", properties: {ssn: encryptedStringSpec}}}
-        }
+            properties: {identity: {type: "object", properties: {ssn: encryptedStringSpec}}},
+        },
+        isRemoteSchema: false,
     };
     assert.commandFailedWithCode(testDB.runCommand(command), 51201);
 
@@ -160,7 +171,8 @@
         jsonSchema: {
             type: "object",
             properties: {identity: {type: "object", properties: {ssn: encryptedStringSpec}}}
-        }
+        },
+        isRemoteSchema: false,
     };
     assert.commandFailedWithCode(testDB.runCommand(command), 51102);
 
@@ -180,12 +192,13 @@
             aggregate: "test",
             pipeline: pipe,
             cursor: {},
-            jsonSchema:
-                {type: "object", properties: {}, additionalProperties: encryptedStringSpec}
+            jsonSchema: {type: "object", properties: {}, additionalProperties: encryptedStringSpec},
+            isRemoteSchema: false,
         };
 
         cmdRes = assert.commandWorked(testDB.runCommand(aggCommand));
         delete aggCommand.jsonSchema;
+        delete aggCommand.isRemoteSchema;
         delete cmdRes.result.lsid;
         assert.eq(aggCommand, cmdRes.result, cmdRes);
         assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
@@ -225,6 +238,7 @@
             pipeline: [stage],
             cursor: {},
             jsonSchema: {},
+            isRemoteSchema: false,
         };
 
         assert.commandFailedWithCode(testDB.runCommand(aggCommand), 31011);
@@ -236,6 +250,7 @@
         pipeline: [{$changeStream: {}}],
         cursor: {},
         jsonSchema: {},
+        isRemoteSchema: false,
     };
     assert.commandFailedWithCode(testDB.runCommand(command), 40573);
     command = {
@@ -243,6 +258,7 @@
         pipeline: [{$listLocalSessions: {}}],
         cursor: {},
         jsonSchema: {},
+        isRemoteSchema: false,
     };
     assert.commandFailedWithCode(testDB.runCommand(command), 31106);
     command = {
@@ -250,6 +266,7 @@
         pipeline: [{$listLocalSessions: {allUsers: true}}],
         cursor: {},
         jsonSchema: {},
+        isRemoteSchema: false,
     };
     assert.commandFailedWithCode(testDB.runCommand(command), 31106);
     command = {
@@ -257,6 +274,7 @@
         pipeline: [{$listSessions: {}}],
         cursor: {},
         jsonSchema: {},
+        isRemoteSchema: false,
     };
     assert.commandFailedWithCode(testDB.runCommand(command), 31106);
     command = {
@@ -264,6 +282,7 @@
         pipeline: [{$listSessions: {allUsers: true}}],
         cursor: {},
         jsonSchema: {},
+        isRemoteSchema: false,
     };
     assert.commandFailedWithCode(testDB.runCommand(command), 31106);
 
@@ -273,6 +292,7 @@
         pipeline: [{$currentOp: {}}],
         cursor: {},
         jsonSchema: {},
+        isRemoteSchema: false,
     }),
                                  31011);
 
@@ -282,6 +302,7 @@
         pipeline: [{$unknownStage: {}}],
         cursor: {},
         jsonSchema: {},
+        isRemoteSchema: false,
     }),
                                  40324);
 
@@ -294,10 +315,12 @@
         maxTimeMS: 1,
         explain: true,
         jsonSchema: {},
+        isRemoteSchema: false,
     };
 
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     delete command.jsonSchema;
+    delete command.isRemoteSchema;
     delete cmdRes.result.lsid;
     assert.eq(command, cmdRes.result, cmdRes);
     assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
@@ -306,8 +329,10 @@
     command.allowDiskUse = false;
     command.explain = false;
     command.jsonSchema = {};
+    command.isRemoteSchema = false;
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     delete command.jsonSchema;
+    delete command.isRemoteSchema;
     delete cmdRes.result.lsid;
     assert.eq(command, cmdRes.result, cmdRes);
     assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);

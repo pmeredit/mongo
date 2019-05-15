@@ -50,7 +50,7 @@
         // Test that a count with no query still succeeds.
         {schema: sampleSchema, query: {}, encryptedPaths: [], notEncryptedPaths: []}
     ];
-    let countCommand = {count: "test", query: {}, jsonSchema: {}};
+    let countCommand = {count: "test", query: {}, jsonSchema: {}, isRemoteSchema: false};
 
     for (let test of testCases) {
         countCommand["jsonSchema"] = test["schema"];
@@ -94,6 +94,7 @@
         count: "test",
         query: {},
         jsonSchema: sampleSchema,
+        isRemoteSchema: false,
         limit: 1,
         skip: 1,
         hint: "string",
