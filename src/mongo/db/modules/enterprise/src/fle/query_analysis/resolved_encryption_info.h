@@ -20,13 +20,10 @@ namespace mongo {
  *  - Throws a user assertion if 'bsonTypeSet' is invalid in combination with kDeterministic
  *  encryption algorithm. For example, with deterministic encryption the BSON type set must contain
  *  exactly one type.
- *  - If the 'algorithm' is kDetermistic, then throws a user assertion if 'initializationVector' is
- * boost::none.
+ *  - Throws a user assertion if 'bsonTypeSet' specifies any single-valued types (e.g. null,
+ *  undefined, minKey, or maxKey).
  */
 struct ResolvedEncryptionInfo {
-    static boost::optional<std::vector<std::uint8_t>> dataRangeToVector(
-        boost::optional<ConstDataRange> dataRange);
-
     /**
      * Constructs a ResolvedEncryptionInfo, throwing a user assertion on any illegal combination of
      * options.

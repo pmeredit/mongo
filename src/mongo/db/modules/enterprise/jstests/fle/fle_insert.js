@@ -17,14 +17,14 @@
         encrypt: {
             algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
             keyId: [UUID(), UUID()],
-            bsonType: "int"
+            bsonType: "string"
         }
     };
     const testCases = [
         // Test that a top level encrypt is translated.
         {
           schema: {type: "object", properties: {foo: encryptDoc}},
-          docs: [{foo: "bar"}, {foo: "bar"}, {foo: {field: "isADoc"}}],
+          docs: [{foo: "bar"}, {foo: "bar"}],
           encryptedPaths: ["foo"],
           notEncryptedPaths: []
         },
@@ -62,8 +62,23 @@
         },
         // Test that a document with a nested Timestamp(0, 0) succeeds.
         {
-          schema:
-              {type: "object", properties: {foo: {type: "object", properties: {bar: encryptDoc}}}},
+          schema: {
+              type: "object",
+              properties: {
+                  foo: {
+                      type: "object",
+                      properties: {
+                          bar: {
+                              encrypt: {
+                                  algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                                  keyId: [UUID(), UUID()],
+                                  bsonType: "timestamp"
+                              }
+                          }
+                      }
+                  }
+              }
+          },
           docs: [{foo: {bar: Timestamp(0, 0)}}],
           encryptedPaths: ["foo.bar"],
           notEncryptedPaths: []

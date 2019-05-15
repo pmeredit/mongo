@@ -18,13 +18,17 @@ ResolvedEncryptionInfo::ResolvedEncryptionInfo(EncryptSchemaKeyId keyId,
                 "non-object type.",
                 this->bsonTypeSet && this->bsonTypeSet->isSingleType() &&
                     !this->bsonTypeSet->hasType(BSONType::Object));
+
+        uassert(31122,
+                "Cannot use deterministic encryption with element of type array",
+                !this->bsonTypeSet->hasType(BSONType::Array));
     }
 
     if (this->bsonTypeSet) {
         auto& typeSet = *this->bsonTypeSet;
         auto checkType = [&typeSet](BSONType typeToCheck) {
             uassert(31041,
-                    std::string("Cannot encrypt single-valued type").append(typeName(typeToCheck)),
+                    std::string("Cannot encrypt element of type: ").append(typeName(typeToCheck)),
                     !typeSet.hasType(typeToCheck));
         };
         checkType(BSONType::MinKey);
@@ -32,17 +36,6 @@ ResolvedEncryptionInfo::ResolvedEncryptionInfo(EncryptSchemaKeyId keyId,
         checkType(BSONType::Undefined);
         checkType(BSONType::jstNULL);
     }
-}
-
-boost::optional<std::vector<std::uint8_t>> ResolvedEncryptionInfo::dataRangeToVector(
-    boost::optional<ConstDataRange> dataRange) {
-    if (!dataRange) {
-        return boost::none;
-    }
-
-    return std::vector<std::uint8_t>(
-        reinterpret_cast<const uint8_t*>(dataRange->data()),
-        reinterpret_cast<const uint8_t*>(dataRange->data() + dataRange->length()));
 }
 
 }  // namespace mongo

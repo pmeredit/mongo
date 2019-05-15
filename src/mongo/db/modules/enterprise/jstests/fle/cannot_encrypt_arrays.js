@@ -249,20 +249,87 @@
     }),
                                  31009);
 
-    // A document can be inserted successfully if an entire object should be encrypted, and that
-    // object contains a nested array.
-    assert.commandWorked(testDb.runCommand({
+    // Deterministic encryption of an object is not legal, since the schema specifies that 'foo'
+    // must be of type "int".
+    assert.commandFailedWithCode(testDb.runCommand({
         insert: coll.getName(),
         documents: [{_id: 1, foo: {bar: [1, 2, 3]}}],
         jsonSchema: fooEncryptedSchema
+    }),
+                                 31118);
+
+    // Can insert an encrypted object, even if that object contains a nested array, when the
+    // encryption algorithm is random.
+    const fooEncryptedRandomSchema = {
+        type: "object",
+        properties: {
+            foo: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: [UUID(), UUID()],
+                }
+            }
+        }
+    };
+    assert.commandWorked(testDb.runCommand({
+        insert: coll.getName(),
+        documents: [{_id: 1, foo: {bar: [1, 2, 3]}}],
+        jsonSchema: fooEncryptedRandomSchema
     }));
 
-    // Can evaluate an $eq-to-object predicate on an encrypted field, even if the object in the
-    // query includes a nested array.
-    assert.commandWorked(testDb.runCommand({
+    // Cannot evaluate an $eq-to-object predicate when the object is encrypted with the random
+    // algorithm.
+    assert.commandFailedWithCode(testDb.runCommand({
         find: coll.getName(),
         filter: {foo: {$eq: {bar: [1, 2, 3]}}},
-        jsonSchema: fooEncryptedSchema
+        jsonSchema: fooEncryptedRandomSchema
+    }),
+                                 51158);
+
+    // Cannot insert an encrypted array with random encryption.
+    assert.commandFailedWithCode(testDb.runCommand({
+        insert: coll.getName(),
+        documents: [{_id: 1, foo: [1, 2, 3]}],
+        jsonSchema: fooEncryptedRandomSchema
+    }),
+                                 31009);
+
+    // The schema cannot specify the 'array' bsonType with deterministic encryption. Verify that
+    // this results in an error for an insert that does not involve the encrypted field.
+    assert.commandFailedWithCode(testDb.runCommand({
+        insert: coll.getName(),
+        documents: [{_id: 1}],
+        jsonSchema: {
+            type: "object",
+            properties: {
+                foo: {
+                    encrypt: {
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                        keyId: [UUID(), UUID()],
+                        bsonType: "array"
+                    }
+                }
+            }
+        }
+    }),
+                                 31122);
+
+    // The schema is allowed to specify the 'array' bsonType with random encryption.
+    assert.commandWorked(testDb.runCommand({
+        insert: coll.getName(),
+        documents: [{_id: 1}],
+        jsonSchema: {
+            type: "object",
+            properties: {
+                foo: {
+                    encrypt: {
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                        keyId: [UUID(), UUID()],
+                        bsonType: ["int", "array"]
+                    }
+                }
+            }
+        }
     }));
 
     mongocryptd.stop();

@@ -56,7 +56,7 @@
     // compare to a string, even if the command specifies a non-simple collation.
     cmdRes = assert.commandWorked(testDb.runCommand({
         find: coll.getName(),
-        filter: {"foo.bar": 4},
+        filter: {"foo.bar": NumberInt(4)},
         collation: {locale: "fr_CA"},
         jsonSchema: encryptedIntSchema
     }));
@@ -68,7 +68,7 @@
     // non-simple collation.
     assert.commandFailedWithCode(testDb.runCommand({
         find: coll.getName(),
-        filter: {"foo.bar": {$in: [1, 2, "string", 3, 4]}},
+        filter: {"foo.bar": {$in: ["string1", "string2"]}},
         collation: {locale: "fr_CA"},
         jsonSchema: encryptedStringSchema
     }),
@@ -78,7 +78,7 @@
     // non-simple collation, but none of the $in elements are strings.
     cmdRes = assert.commandWorked(testDb.runCommand({
         find: coll.getName(),
-        filter: {"foo.bar": {$in: [1, 2, 3, 4]}},
+        filter: {"foo.bar": {$in: [NumberInt(1), NumberInt(2), NumberInt(3), NumberInt(4)]}},
         collation: {locale: "fr_CA"},
         jsonSchema: encryptedIntSchema
     }));
@@ -158,7 +158,7 @@
         deletes: [
             {q: {"foo.bar": "string"}, limit: 1, collation: {locale: "simple"}},
             {q: {"foo.bar": "string"}, limit: 1},
-            {q: {"foo.bar": 1}, limit: 1, collation: {locale: "fr_CA"}},
+            {q: {}, limit: 1, collation: {locale: "fr_CA"}},
         ],
         jsonSchema: encryptedStringSchema
     }));
@@ -183,7 +183,7 @@
         updates: [
             {q: {"foo.bar": "string"}, u: {$set: {other: 1}}, collation: {locale: "simple"}},
             {q: {"foo.bar": "string"}, u: {$set: {other: 1}}},
-            {q: {"foo.bar": 1}, u: {$set: {other: 1}}, collation: {locale: "fr_CA"}},
+            {q: {}, u: {$set: {other: 1}}, collation: {locale: "fr_CA"}},
         ],
         jsonSchema: encryptedStringSchema
     }));
@@ -250,7 +250,7 @@
     // using a non-simple collation.
     cmdRes = assert.commandWorked(testDb.runCommand({
         count: coll.getName(),
-        query: {"foo.bar": 1},
+        query: {"foo.bar": NumberInt(1)},
         collation: {locale: "fr_CA"},
         jsonSchema: encryptedIntSchema
     }));
@@ -269,7 +269,8 @@
     // Test that explain of a find command succeeds when the find command makes a comparison to an
     // encrypted field and has a non-simple collation, but the encrypted field is not a string.
     cmdRes = assert.commandWorked(testDb.runCommand({
-        explain: {find: coll.getName(), filter: {"foo.bar": 1}, collation: {locale: "fr_CA"}},
+        explain:
+            {find: coll.getName(), filter: {"foo.bar": NumberInt(1)}, collation: {locale: "fr_CA"}},
         jsonSchema: encryptedIntSchema
     }));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
@@ -290,7 +291,7 @@
     // non-string using a non-simple collation.
     cmdRes = assert.commandWorked(testDb.runCommand({
         findAndModify: coll.getName(),
-        query: {"foo.bar": 1},
+        query: {"foo.bar": NumberInt(1)},
         update: {$set: {baz: "other"}},
         collation: {locale: "fr_CA"},
         jsonSchema: encryptedIntSchema
@@ -325,7 +326,7 @@
     // non-string using a non-simple collation.
     cmdRes = assert.commandWorked(testDb.runCommand({
         aggregate: coll.getName(),
-        pipeline: [{$match: {"foo.bar": 1}}],
+        pipeline: [{$match: {"foo.bar": NumberInt(1)}}],
         cursor: {},
         collation: {locale: "fr_CA"},
         jsonSchema: encryptedIntSchema

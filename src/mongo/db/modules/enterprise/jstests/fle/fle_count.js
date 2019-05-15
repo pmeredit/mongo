@@ -43,7 +43,7 @@
         // Test that a count with an encrypted field in filter succeeds.
         {
           schema: sampleSchema,
-          query: {"ssn": 4, "foo": 7},
+          query: {"ssn": NumberInt(4), "foo": 7},
           encryptedPaths: ["ssn"],
           notEncryptedPaths: ["foo"]
         },
@@ -79,7 +79,7 @@
 
     // Test that a nested encrypted field in a query succeeds.
     countCommand["jsonSchema"] = sampleSchema;
-    countCommand["query"] = {user: {account: 5}};
+    countCommand["query"] = {user: {account: "5"}};
     let result = assert.commandWorked(testDB.runCommand(countCommand));
     let docResult = result["result"];
     assert(docResult["query"]["user"]["$eq"]["account"] instanceof BinData, docResult);

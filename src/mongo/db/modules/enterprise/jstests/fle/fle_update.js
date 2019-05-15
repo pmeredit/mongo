@@ -42,7 +42,7 @@
               type: "object",
               properties: {foo: {type: "object", properties: {bar: encryptDoc}}, baz: encryptDoc}
           },
-          updates: [{q: {}, u: {"$set": {"foo.bar": "2", "baz": 5, "plain": 7}}}],
+          updates: [{q: {}, u: {"$set": {"foo.bar": "2", "baz": "5", "plain": 7}}}],
           encryptedPaths: ["foo.bar", "baz"],
           notEncryptedPaths: ["plain"]
         },
@@ -52,14 +52,14 @@
         {
           schema:
               {type: "object", properties: {foo: {type: "object", properties: {1: encryptDoc}}}},
-          updates: [{q: {}, u: {"$set": {"foo.1": 3}}}],
+          updates: [{q: {}, u: {"$set": {"foo.1": "3"}}}],
           encryptedPaths: ["foo.1"],
           notEncryptedPaths: []
         },
         // Test a basic multi-statement update.
         {
           schema: {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}},
-          updates: [{q: {}, u: {"$set": {"foo": 3}}}, {q: {}, u: {"$set": {"bar": 2}}}],
+          updates: [{q: {}, u: {"$set": {"foo": "3"}}}, {q: {}, u: {"$set": {"bar": "2"}}}],
           encryptedPaths: ["foo", "bar"],
           notEncryptedPaths: []
         },
@@ -67,7 +67,7 @@
         // for encryption.
         {
           schema: {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}},
-          updates: [{q: {foo: 2}, u: {foo: 2, baz: 3}}, {q: {}, u: {foo: 4, bar: 3}}],
+          updates: [{q: {foo: "2"}, u: {foo: "2", baz: 3}}, {q: {}, u: {foo: "4", bar: "3"}}],
           encryptedPaths: ["foo", "bar"],
           notEncryptedPaths: ["baz"]
         }
@@ -106,25 +106,25 @@
     // Test that 'multi' and 'upsert' fields are passed through.
     updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}};
     updateCommand["updates"] =
-        [{q: {bar: 5}, u: {"$set": {"foo": "2"}}, upsert: true, multi: true}];
+        [{q: {bar: "5"}, u: {"$set": {"foo": "2"}}, upsert: true, multi: true}];
     let result = assert.commandWorked(testDb.runCommand(updateCommand));
     assert(result["result"]["updates"][0]["upsert"], result);
     assert(result["result"]["updates"][0]["multi"], result);
 
     // Test that fields in q get replaced.
     updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}};
-    updateCommand["updates"] = [{q: {bar: 5}, u: {"$set": {"foo": "2"}}}];
+    updateCommand["updates"] = [{q: {bar: "5"}, u: {"$set": {"foo": "2"}}}];
     result = assert.commandWorked(testDb.runCommand(updateCommand));
     assert(result["result"]["updates"][0]["q"]["bar"]["$eq"] instanceof BinData, tojson(result));
 
     // Test that q is correctly marked for encryption.
     updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}};
-    updateCommand["updates"] = [{q: {bar: {"$eq": 5}}, u: {"$set": {"foo": "2"}}}];
+    updateCommand["updates"] = [{q: {bar: {$eq: "5"}}, u: {"$set": {"foo": "2"}}}];
     result = assert.commandWorked(testDb.runCommand(updateCommand));
     assert(result["result"]["updates"][0]["q"]["bar"]["$eq"] instanceof BinData, tojson(result));
 
     updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}};
-    updateCommand["updates"] = [{q: {bar: {"$in": [1, 5]}}, u: {"$set": {"foo": "2"}}}];
+    updateCommand["updates"] = [{q: {bar: {$in: ["1", "5"]}}, u: {$set: {foo: "2"}}}];
     result = assert.commandWorked(testDb.runCommand(updateCommand));
     assert(result["result"]["updates"][0]["q"]["bar"]["$in"][0] instanceof BinData, tojson(result));
     assert(result["result"]["updates"][0]["q"]["bar"]["$in"][1] instanceof BinData, tojson(result));
@@ -143,7 +143,7 @@
         }
     };
     updateCommand["updates"] =
-        [{q: {}, u: {"$set": {"foo": {"bar": 5, "baz": {"encrypted": 2}, "boo": 2}}}}];
+        [{q: {}, u: {$set: {foo: {bar: "5", baz: {encrypted: "2"}, boo: 2}}}}];
     result = assert.commandWorked(testDb.runCommand(updateCommand));
     assert(result["result"]["updates"][0]["u"]["$set"]["foo"]["bar"] instanceof BinData,
            tojson(result));
@@ -221,7 +221,7 @@
         type: "object",
         properties: {a: {type: "object", properties: {b: encryptDoc}}}
     };
-    updateCommand["updates"] = [{q: {"a.b": 4}, u: {$set: {"a.$": 5}}}];
+    updateCommand["updates"] = [{q: {"a.b": "4"}, u: {$set: {"a.$": "5"}}}];
     result = assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51149);
 
     // Test that an invalid q fails.
@@ -273,7 +273,7 @@
 
     // Test that a $set path with an encrypted field in its prefix fails.
     updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}};
-    updateCommand["updates"] = [{q: {bar: 5}, u: {"$set": {"foo.baz": "2"}}}];
+    updateCommand["updates"] = [{q: {bar: "5"}, u: {$set: {"foo.baz": "2"}}}];
     assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51102);
 
     // Test that an update command with a field encrypted with a JSON Pointer keyId fails.
@@ -289,7 +289,7 @@
             }
         }
     };
-    updateCommand["updates"] = [{q: {}, u: {"$set": {foo: 5}}}];
+    updateCommand["updates"] = [{q: {}, u: {$set: {foo: NumberInt(5)}}}];
     assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51093);
 
     // Test that an update command with a q field encrypted with the random algorithm fails.
@@ -319,7 +319,7 @@
 
     // Test that an $unset with a q field gets encrypted.
     updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc}};
-    updateCommand["updates"] = [{q: {foo: 4}, u: {"$unset": {"bar": 1}}}];
+    updateCommand["updates"] = [{q: {foo: "4"}, u: {$unset: {bar: 1}}}];
     result = assert.commandWorked(testDb.runCommand(updateCommand));
     assert(result["result"]["updates"][0]["q"]["foo"]["$eq"] instanceof BinData, tojson(result));
 
@@ -337,7 +337,7 @@
 
     // Test that an update with an encrypted _id and upsert succeeds.
     updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc, _id: encryptDoc}};
-    updateCommand["updates"] = [{q: {}, u: {_id: 7, foo: 5}, upsert: true}];
+    updateCommand["updates"] = [{q: {}, u: {_id: "7", foo: "5"}, upsert: true}];
     assert.commandWorked(testDb.runCommand(updateCommand));
 
     // Test that an update with a missing encrypted _id and upsert fails.
@@ -347,8 +347,19 @@
 
     // Test that a $set with an encrypted Timestamp(0,0) and upsert succeeds since the server does
     // not autogenerate the current time in this case.
-    updateCommand["jsonSchema"] = {type: "object", properties: {foo: encryptDoc}};
-    updateCommand["updates"] = [{q: {}, u: {"$set": {foo: Timestamp(0, 0)}}, upsert: true}];
+    updateCommand["jsonSchema"] = {
+        type: "object",
+        properties: {
+            foo: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                    keyId: [UUID(), UUID()],
+                    bsonType: "timestamp"
+                }
+            }
+        }
+    };
+    updateCommand["updates"] = [{q: {}, u: {$set: {foo: Timestamp(0, 0)}}, upsert: true}];
     assert.commandWorked(testDb.runCommand(updateCommand));
 
     // Test that arrayFilters on a non-encrypted field is allowed.

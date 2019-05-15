@@ -138,24 +138,25 @@ TEST_F(FLEPipelineTest, LimitStageTreatedAsNoop) {
 }
 
 TEST_F(FLEPipelineTest, MatchWithSingleTopLevelEncryptedField) {
-    auto result = translatePipeline({fromjson("{$match: {ssn: 5}}")}, kDefaultSsnSchema);
-    auto expectedMatch = serializeMatchForEncryption(kDefaultSsnSchema, fromjson("{ssn: 5}"));
+    auto result = translatePipeline({fromjson("{$match: {ssn: '5'}}")}, kDefaultSsnSchema);
+    auto expectedMatch = serializeMatchForEncryption(kDefaultSsnSchema, fromjson("{ssn: '5'}"));
     ASSERT_EQ(1UL, result.size());
     ASSERT_BSONOBJ_EQ(result[0]["$match"].Obj(), expectedMatch);
 }
 
 TEST_F(FLEPipelineTest, MatchPrecededByNoopStageCorrectlyMarksTopLevelField) {
-    auto result = translatePipeline({fromjson("{$limit: 1}"), fromjson("{$match: {ssn: 5}}")},
+    auto result = translatePipeline({fromjson("{$limit: 1}"), fromjson("{$match: {ssn: '5'}}")},
                                     kDefaultSsnSchema);
-    auto expectedMatch = serializeMatchForEncryption(kDefaultSsnSchema, fromjson("{ssn: 5}"));
+    auto expectedMatch = serializeMatchForEncryption(kDefaultSsnSchema, fromjson("{ssn: '5'}"));
     ASSERT_EQ(2UL, result.size());
     ASSERT_BSONOBJ_EQ(result[1]["$match"].Obj(), expectedMatch);
 }
 
 TEST_F(FLEPipelineTest, MatchWithSingleDottedPathEncryptedField) {
-    auto result = translatePipeline({fromjson("{$match: {'user.ssn': 5}}")}, kDefaultNestedSchema);
+    auto result =
+        translatePipeline({fromjson("{$match: {'user.ssn': '5'}}")}, kDefaultNestedSchema);
     auto expectedMatch =
-        serializeMatchForEncryption(kDefaultNestedSchema, fromjson("{'user.ssn': 5}"));
+        serializeMatchForEncryption(kDefaultNestedSchema, fromjson("{'user.ssn': '5'}"));
     ASSERT_EQ(1UL, result.size());
     ASSERT_BSONOBJ_EQ(result[0]["$match"].Obj(), expectedMatch);
 }

@@ -66,7 +66,7 @@
 
     // Multiple elements inside $in array correctly marked for encryption.
     res = assert.commandWorked(testDB.runCommand(
-        {find: "test", filter: {ssn: {"$in": [1, 2, {"3": 4}]}}, jsonSchema: sampleSchema}));
+        {find: "test", filter: {ssn: {"$in": [1, 2, 3]}}, jsonSchema: sampleSchema}));
     assert(res.hasEncryptionPlaceholders, tojson(res));
     assert(res.result.filter["ssn"]["$in"][0] instanceof BinData, tojson(res));
     assert(res.result.filter["ssn"]["$in"][1] instanceof BinData, tojson(res));
@@ -103,7 +103,7 @@
     // Invalid operators with encrypted fields in RHS object should fail.
     assert.commandFailedWithCode(
         testDB.runCommand(
-            {find: "test", filter: {user: {$gt: {account: 5}}}, jsonSchema: sampleSchema}),
+            {find: "test", filter: {user: {$gt: {account: "5"}}}, jsonSchema: sampleSchema}),
         51119);
 
     // Comparison to a null value correctly fails.

@@ -46,7 +46,7 @@
     // Test that encrypted fields in the query are correctly replaced with an encryption
     // placeholder.
     let res = assert.commandWorked(testDB.runCommand(
-        {distinct: "test", key: "a", query: {ssn: {$eq: 5}}, jsonSchema: sampleSchema}));
+        {distinct: "test", key: "a", query: {ssn: {$eq: NumberInt(5)}}, jsonSchema: sampleSchema}));
     assert.eq(res.result.distinct, "test", tojson(res));
     assert.eq(res.hasEncryptionPlaceholders, true, tojson(res));
     assert(res.result.query.ssn.$eq instanceof BinData, tojson(res));
@@ -78,7 +78,7 @@
     assert.commandFailedWithCode(testDB.runCommand({
         distinct: "test",
         key: "a",
-        query: {ssnWithPointer: {$eq: 5}},
+        query: {ssnWithPointer: {$eq: NumberInt(5)}},
         jsonSchema: sampleSchema
     }),
                                  51093);

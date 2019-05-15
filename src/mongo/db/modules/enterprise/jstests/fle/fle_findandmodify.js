@@ -25,7 +25,7 @@
         // Test that the query using the 'remove' form of findAndModify gets encrypted.
         {
           schema: {type: "object", properties: {bar: encryptDoc}},
-          query: {bar: 2},
+          query: {bar: "2"},
           remove: true,
           encryptedPaths: ["bar"],
           notEncryptedPaths: [],
@@ -34,7 +34,7 @@
         // Test that a findAndModify using the pipeline form of an update fails with NotImplemented.
         {
           schema: {type: "object", properties: {bar: encryptDoc}},
-          query: {bar: 2},
+          query: {bar: "2"},
           update: [{$addFields: {newThing: "new"}}],
           encryptedPaths: ["bar"],
           notEncryptedPaths: [],
@@ -66,7 +66,7 @@
               properties: {foo: {type: "object", properties: {bar: encryptDoc}}, baz: encryptDoc}
           },
           query: {},
-          update: {"$set": {"foo.bar": "2", "baz": 5, "plain": 7}},
+          update: {"$set": {"foo.bar": "2", "baz": "5", "plain": 7}},
           encryptedPaths: ["foo.bar", "baz"],
           notEncryptedPaths: ["plain"],
           errorCode: 0
@@ -78,7 +78,7 @@
           schema:
               {type: "object", properties: {foo: {type: "object", properties: {1: encryptDoc}}}},
           query: {},
-          update: {"$set": {"foo.1": 3}},
+          update: {"$set": {"foo.1": "3"}},
           encryptedPaths: ["foo.1"],
           notEncryptedPaths: [],
           errorCode: 0
@@ -86,7 +86,7 @@
         // Test that encrypted fields referenced in a query are correctly marked for encryption.
         {
           schema: {type: "object", properties: {bar: encryptDoc}},
-          query: {bar: 2},
+          query: {bar: "2"},
           update: {foo: 2, baz: 3},
           encryptedPaths: ["bar"],
           notEncryptedPaths: ["foo", "baz"],
@@ -96,8 +96,8 @@
         // encryption.
         {
           schema: {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}},
-          query: {bar: 2},
-          update: {foo: 2, baz: 3},
+          query: {bar: "2"},
+          update: {foo: "2", baz: 3},
           encryptedPaths: ["foo", "bar"],
           notEncryptedPaths: ["baz"],
           errorCode: 0
@@ -105,7 +105,7 @@
         // Test that an $unset with a q field gets encrypted.
         {
           schema: {type: "object", properties: {foo: encryptDoc}},
-          query: {foo: 2},
+          query: {foo: "2"},
           update: {"$unset": {"bar": 1}},
           encryptedPaths: ["foo"],
           notEncryptedPaths: ["bar"],
@@ -135,7 +135,7 @@
               }
           },
           query: {},
-          update: {"$set": {foo: 5}},
+          update: {$set: {foo: 5}},
           encryptedPaths: [],
           notEncryptedPaths: [],
           errorCode: 51093
@@ -219,8 +219,8 @@
 
     // Test that a query with set membership is correctly marked for encryption.
     updateCommand.jsonSchema = {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}};
-    updateCommand.query = {bar: {"$in": [1, 5]}};
-    updateCommand.update = {"$set": {"foo": "2"}};
+    updateCommand.query = {bar: {$in: ["1", "5"]}};
+    updateCommand.update = {$set: {foo: "2"}};
     const result = assert.commandWorked(testDb.runCommand(updateCommand));
     assert(result.result.query.bar.$in[0] instanceof BinData, tojson(result));
     assert(result.result.query.bar.$in[1] instanceof BinData, tojson(result));
@@ -283,7 +283,7 @@
     // Test that an update with an encrypted _id and upsert succeeds.
     updateCommand.jsonSchema = {type: "object", properties: {foo: encryptDoc, _id: encryptDoc}};
     updateCommand.query = {};
-    updateCommand.update = {_id: 7, foo: 5};
+    updateCommand.update = {_id: "7", foo: "5"};
     updateCommand.upsert = true;
     assert.commandWorked(testDb.runCommand(updateCommand));
 
@@ -296,7 +296,18 @@
 
     // Test that a $set with an encrypted Timestamp(0,0) and upsert succeeds since the server does
     // not autogenerate the current time in this case.
-    updateCommand.jsonSchema = {type: "object", properties: {foo: encryptDoc}};
+    updateCommand.jsonSchema = {
+        type: "object",
+        properties: {
+            foo: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                    keyId: [UUID(), UUID()],
+                    bsonType: "timestamp"
+                }
+            }
+        }
+    };
     updateCommand.query = {};
     updateCommand.update = {"$set": {foo: Timestamp(0, 0)}};
     updateCommand.upsert = true;

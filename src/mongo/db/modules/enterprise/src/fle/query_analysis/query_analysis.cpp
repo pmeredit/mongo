@@ -40,6 +40,19 @@ static constexpr auto kHasEncryptionPlaceholders = "hasEncryptionPlaceholders"_s
 static constexpr auto kSchemaRequiresEncryption = "schemaRequiresEncryption"_sd;
 static constexpr auto kResult = "result"_sd;
 
+std::string typeSetToString(const MatcherTypeSet& typeSet) {
+    StringBuilder sb;
+    sb << "[ ";
+    if (typeSet.allNumbers) {
+        sb << "number ";
+    }
+    for (auto&& type : typeSet.bsonTypes) {
+        sb << typeName(type) << " ";
+    }
+    sb << "]";
+    return sb.str();
+}
+
 /**
  * Extracts and returns the jsonSchema field in the command 'obj'. Populates 'stripped' with the
  * same fields as 'obj', except without the jsonSchema.
@@ -731,6 +744,14 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
     uassert(31009,
             str::stream() << "Cannot encrypt a field containing an array: " << elem,
             elem.type() != BSONType::Array);
+
+    if (metadata.bsonTypeSet) {
+        uassert(31118,
+                str::stream() << "Cannot encrypt element of type " << typeName(elem.type())
+                              << " because schema requires that type is one of: "
+                              << typeSetToString(*metadata.bsonTypeSet),
+                metadata.bsonTypeSet->hasType(elem.type()));
+    }
 
     FleAlgorithmInt integerAlgorithm = metadata.algorithm == FleAlgorithmEnum::kDeterministic
         ? FleAlgorithmInt::kDeterministic

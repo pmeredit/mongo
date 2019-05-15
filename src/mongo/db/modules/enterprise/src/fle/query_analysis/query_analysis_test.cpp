@@ -63,7 +63,7 @@ void verifyBinData(const char* rawBuffer, int length) {
     ASSERT_BSONOBJ_EQ(placeholderBSON, fromjson(R"({
     	        a: 1,
     	        ki: {$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"},
-    	        v: 5
+                v: '5'
     	    })"));
 }
 
@@ -208,7 +208,9 @@ TEST(ReplaceEncryptedFieldsTest, FailIfSchemaHasKeyIdWithEmptyOrigDoc) {
 
 
 TEST_F(FLETestFixture, VerifyCorrectBinaryFormatForGeneratedPlaceholder) {
-    BSONObj placeholder = buildEncryptPlaceholder(BSON("foo" << 5).firstElement(),
+    BSONObj placeholder = buildEncryptPlaceholder(BSON("foo"
+                                                       << "5")
+                                                      .firstElement(),
                                                   kDefaultMetadata,
                                                   EncryptionPlaceholderContext::kComparison,
                                                   nullptr);
@@ -223,7 +225,7 @@ TEST_F(FLETestFixture, VerifyCorrectBinaryFormatForGeneratedPlaceholder) {
 
 TEST_F(FLETestFixture, VerifyCorrectBinaryFormatForGeneratedPlaceholderWithValue) {
     Value binData = buildEncryptPlaceholder(
-        Value(5), kDefaultMetadata, EncryptionPlaceholderContext::kComparison, nullptr);
+        Value("5"_sd), kDefaultMetadata, EncryptionPlaceholderContext::kComparison, nullptr);
 
     ASSERT_EQ(binData.getType(), BSONType::BinData);
     auto binDataElem = binData.getBinData();
@@ -243,15 +245,13 @@ TEST(BuildEncryptPlaceholderValueTest, FailsForJSONPointerEncryption) {
 }
 
 TEST(BuildEncryptPlaceholderValueTest, FailsForArray) {
-    ResolvedEncryptionInfo metadata{EncryptSchemaKeyId{"/key"},
-                                    FleAlgorithmEnum::kDeterministic,
-                                    MatcherTypeSet{BSONType::Array}};
-    ASSERT_THROWS_CODE(buildEncryptPlaceholder(Value(BSON_ARRAY("value")),
-                                               metadata,
-                                               EncryptionPlaceholderContext::kComparison,
-                                               nullptr),
-                       AssertionException,
-                       31009);
+    ResolvedEncryptionInfo metadata{
+        EncryptSchemaKeyId{"/key"}, FleAlgorithmEnum::kRandom, boost::none};
+    ASSERT_THROWS_CODE(
+        buildEncryptPlaceholder(
+            Value(BSON_ARRAY("value")), metadata, EncryptionPlaceholderContext::kWrite, nullptr),
+        AssertionException,
+        31009);
 }
 
 TEST(BuildEncryptPlaceholderValueTest, FailsForRandomEncryption) {
@@ -604,6 +604,21 @@ TEST(BuildEncryptPlaceholderTest, FailsIfPointerPointsToNonString) {
                                                *schemaTree.get()),
                        AssertionException,
                        51115);
+}
+
+TEST(BuildEncryptPlaceholderTest, ResolvedEncryptionInfoCannotIncludeTypeArrayWithDeterministic) {
+    ASSERT_THROWS_CODE(ResolvedEncryptionInfo(EncryptSchemaKeyId{{UUID::fromCDR(uuidBytes)}},
+                                              FleAlgorithmEnum::kDeterministic,
+                                              MatcherTypeSet{BSONType::Array}),
+                       AssertionException,
+                       31122);
+}
+
+TEST(BuildEncryptPlaceholderTest, ResolvedEncryptionInfoCanIncludeTypeArrayWithRandom) {
+    ResolvedEncryptionInfo resolvedEncryptionInfo{EncryptSchemaKeyId{{UUID::fromCDR(uuidBytes)}},
+                                                  FleAlgorithmEnum::kRandom,
+                                                  MatcherTypeSet{BSONType::Array}};
+    ASSERT(resolvedEncryptionInfo.bsonTypeSet->hasType(BSONType::Array));
 }
 
 TEST(EncryptionUpdateVisitorTest, ReplaceSingleFieldCorrectly) {

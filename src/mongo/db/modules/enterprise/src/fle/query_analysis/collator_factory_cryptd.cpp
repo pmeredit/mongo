@@ -29,7 +29,10 @@ public:
     int compare(StringData left, StringData right) const final {
         // This collator interface is only used for static query analysis and should never be used
         // to make runtime collation-aware comparisons.
-        MONGO_UNREACHABLE;
+        //
+        // We need a real implementation, however, since comparisons can be made at parse time (e.g.
+        // for deduping during $in parsing).
+        return left.compare(right);
     }
 
     ComparisonKey getComparisonKey(StringData) const final {
