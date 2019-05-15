@@ -57,6 +57,7 @@ public:
                                      DiskUseRequirement::kNoDiskUse,
                                      FacetRequirement::kNotAllowed,
                                      TransactionRequirement::kNotAllowed,
+                                     LookupRequirement::kNotAllowed,
                                      ChangeStreamRequirement::kBlacklist);
         constraints.requiresInputDocSource = false;
 

@@ -98,7 +98,8 @@ public:
                                      HostTypeRequirement::kNone,
                                      DiskUseRequirement::kNoDiskUse,
                                      FacetRequirement::kNotAllowed,
-                                     TransactionRequirement::kAllowed);
+                                     TransactionRequirement::kAllowed,
+                                     LookupRequirement::kNotAllowed);
 
         constraints.requiresInputDocSource = false;
         return constraints;

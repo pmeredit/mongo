@@ -99,7 +99,8 @@ public:
                                      HostTypeRequirement::kAnyShard,
                                      DiskUseRequirement::kNoDiskUse,
                                      FacetRequirement::kNotAllowed,
-                                     TransactionRequirement::kNotAllowed);
+                                     TransactionRequirement::kNotAllowed,
+                                     LookupRequirement::kNotAllowed);
 
         constraints.isIndependentOfAnyCollection = true;
         constraints.requiresInputDocSource = false;
