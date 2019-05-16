@@ -29,6 +29,7 @@
 #include "mongo/util/scopeguard.h"
 
 #include "cyrus_sasl_authentication_session.h"
+#include "gssapi_helpers.h"
 
 /**
  * This test may require the hostname contained in mockHostName to canonicalize to
@@ -54,7 +55,7 @@ std::string getAbsolutePath(const char* path) {
 }
 
 /**
- * Sets up environment variables for the MIT Kerberos library.
+ * Sets up stock environment variables for the Kerberos library.
  */
 void setupEnvironment() {
     // Set kerberos config file to use.
@@ -69,14 +70,18 @@ void setupEnvironment() {
         4018,
         !setenv("KRB5_CLIENT_KTNAME", getAbsolutePath("jstests/libs/mockuser.keytab").c_str(), 1));
 
-    // Set the name of the file in which to cache the client's kerberos tickets.
-    fassert(4019, !setenv("KRB5CCNAME", ("FILE:" + getAbsolutePath(krb5ccFile)).c_str(), 1));
+    // Store cached credentials in memory
+    fassert(4019, !setenv("KRB5CCNAME", "MEMORY", 1));
 }
 
 /**
- * Initializes the client credential cache so that client can authenticate as "userName".
+ * Sets up environment for legacy Kerberos libraries that do not support new
+ * credential caches. This will preload the client credential cache with tickets so
+ * the client can authenticate as "userName".
  */
-void initializeClientCredentialCacheOrDie() {
+void setupLegacyEnvironment() {
+    fassert(51229, !setenv("KRB5CCNAME", ("FILE:" + getAbsolutePath(krb5ccFile)).c_str(), 1));
+
     const pid_t child = fork();
     fassert(4020, child >= 0);
     if (child == 0) {
@@ -104,6 +109,7 @@ void initializeClientCredentialCacheOrDie() {
         fassertFailed(4023);
     }
 }
+
 }  // namespace
 
 int main(int argc, char** argv, char** envp) {
@@ -115,7 +121,34 @@ int main(int argc, char** argv, char** envp) {
     }
     ON_BLOCK_EXIT([] { unlink(krb5ccFile); });
     setupEnvironment();
-    initializeClientCredentialCacheOrDie();
+
+    {
+        OM_uint32 minorStatus, majorStatus;
+
+        GSSName desiredName;
+        gss_buffer_desc nameBuffer;
+        nameBuffer.value = const_cast<char*>(userName.c_str());
+        nameBuffer.length = userName.size();
+        majorStatus =
+            gss_import_name(&minorStatus, &nameBuffer, GSS_C_NT_USER_NAME, desiredName.get());
+        fassert(51227, majorStatus == GSS_S_COMPLETE);
+
+        GSSCredId credentialHandle;
+        majorStatus = gss_acquire_cred(&minorStatus,
+                                       *desiredName.get(),
+                                       GSS_C_INDEFINITE,
+                                       GSS_C_NO_OID_SET,
+                                       GSS_C_INITIATE,
+                                       credentialHandle.get(),
+                                       nullptr,
+                                       nullptr);
+        if (majorStatus != GSS_S_COMPLETE) {
+            log() << "Legacy Kerberos implementation detected, falling back to kinit generated "
+                     "credential cache: "
+                  << getGssapiErrorString(majorStatus, minorStatus);
+            setupLegacyEnvironment();
+        }
+    }
 
     saslGlobalParams.authenticationMechanisms.push_back("GSSAPI");
     saslGlobalParams.serviceName = mockServiceName;

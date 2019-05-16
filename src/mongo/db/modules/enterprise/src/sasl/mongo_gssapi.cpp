@@ -16,59 +16,12 @@
 #include "mongo/util/log.h"
 #include "mongo/util/str.h"
 
+#include "gssapi_helpers.h"
+
 namespace mongo {
 namespace gssapi {
 
 namespace {
-
-/**
- * Write what the GSSAPI library considers to be the user-displayable description of "inStatus"
- * to "os".
- *
- * "statusType" indicates whether "inStatus" is a major status code (GSS_C_GSS_CODE) or minor
- * status code (GSS_C_MECH_CODE).  When it is a minor code, this function always assumes that
- * the mechanism is gss_mech_krb5.
- */
-void putGssapiStatusString(str::stream* os, OM_uint32 inStatus, int statusType) {
-    OM_uint32 majorStatus;
-    OM_uint32 minorStatus;
-    OM_uint32 context = 0;
-    gss_buffer_desc message = {0};
-
-    if (statusType == GSS_C_GSS_CODE) {
-        *os << "Major code " << inStatus << "; ";
-    } else if (statusType == GSS_C_MECH_CODE) {
-        *os << "Minor code " << inStatus << "; ";
-    }
-    do {
-        majorStatus = gss_display_status(&minorStatus,
-                                         inStatus,
-                                         statusType,
-                                         const_cast<gss_OID>(gss_mech_krb5),
-                                         &context,
-                                         &message);
-        if (!GSS_ERROR(majorStatus)) {
-            *os << (message.length > 0
-                        ? StringData(static_cast<const char*>(message.value), message.length)
-                        : StringData("(no data)"))
-                << "; ";
-            fassert(4010, !GSS_ERROR(gss_release_buffer(&minorStatus, &message)));
-        } else {
-            *os << "gss_display_status() failed on context value " << context << "; ";
-            context = 0;
-        }
-    } while (context != 0);
-}
-
-/**
- * Return a string describing the GSSAPI error described by "inMajorStatus" and "inMinorStatus."
- */
-std::string getGssapiErrorString(OM_uint32 inMajorStatus, OM_uint32 inMinorStatus) {
-    str::stream os;
-    putGssapiStatusString(&os, inMajorStatus, GSS_C_GSS_CODE);
-    putGssapiStatusString(&os, inMinorStatus, GSS_C_MECH_CODE);
-    return os;
-}
 
 /**
  * Convert the name described the "name" into the canonical for for the given "nameType".
