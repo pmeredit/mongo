@@ -1,6 +1,7 @@
 /**
  * Test that mongocryptd errors if users either:
- *  - Issue writes that would store a whole array in an encrypted field.
+ *  - Issue writes that would store a whole array in an encrypted field when
+      a deterministic algorithm is used..
  *  - Issue writes that would put an encrypted field inside of an array.
  *  - Issue reads that imply there can be a whole array stored inside an encrypted field.
  *  - Issue reads that imply encrypted fields can be nested beneath an array.
@@ -15,7 +16,7 @@
 
     const conn = mongocryptd.getConnection();
     const testDb = conn.getDB("test");
-    const coll = testDb.cannot_encrypt_arrays;
+    const coll = testDb.encrypt_with_arrays;
 
     const encryptObj = {
         encrypt: {
@@ -330,6 +331,30 @@
                 }
             }
         }
+    }));
+
+    const fooRandomEncryptedSchema = {
+        type: "object",
+        properties: {
+            foo: {
+                encrypt:
+                    {algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random", keyId: [UUID(), UUID()]}
+            }
+        }
+    };
+
+    // Verify that an insert command where 'foo' is an array succeeds when 'foo' is marked for
+    // encryption with the random algorithm.
+    assert.commandWorked(testDb.runCommand({
+        insert: coll.getName(),
+        documents: [{_id: 1, foo: [1, 2, 3]}],
+        jsonSchema: fooRandomEncryptedSchema
+    }));
+
+    assert.commandWorked(testDb.runCommand({
+        insert: coll.getName(),
+        documents: [{_id: 1, foo: [{bar: 1}, {bar: 2}, {bar: 3}]}],
+        jsonSchema: fooRandomEncryptedSchema
     }));
 
     mongocryptd.stop();
