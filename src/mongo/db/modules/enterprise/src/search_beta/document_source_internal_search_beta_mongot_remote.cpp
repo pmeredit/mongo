@@ -6,8 +6,10 @@
 
 #include "document_source_internal_search_beta_mongot_remote.h"
 
+#include "mongo/db/curop.h"
 #include "mongo/db/pipeline/document.h"
 #include "mongo/db/pipeline/value.h"
+#include "mongo/db/service_context.h"
 #include "mongo/executor/non_auth_task_executor.h"
 #include "mongo/executor/remote_command_request.h"
 #include "mongo/executor/task_executor_cursor.h"
@@ -72,6 +74,20 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchBetaMongotRemote::getN
     }
 
     auto response = _cursor->getNext(pExpCtx->opCtx);
+    auto& opDebug = CurOp::get(pExpCtx->opCtx)->debug();
+
+    if (opDebug.msWaitingForMongot) {
+        *opDebug.msWaitingForMongot += durationCount<Milliseconds>(_cursor->resetWaitingTime());
+    } else {
+        opDebug.msWaitingForMongot = durationCount<Milliseconds>(_cursor->resetWaitingTime());
+    }
+    // The TaskExecutorCursor will store '0' as its CursorId if the cursor to mongot is exhausted.
+    // If we already have a cursorId from a previous call, just use that.
+    if (!_cursorId) {
+        _cursorId = _cursor->getCursorId();
+    }
+    opDebug.mongotCursorId = _cursorId;
+
     if (!response) {
         return DocumentSource::GetNextResult::makeEOF();
     }

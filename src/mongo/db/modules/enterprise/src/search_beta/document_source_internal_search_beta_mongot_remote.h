@@ -88,6 +88,11 @@ private:
     const BSONObj _searchBetaQuery;
 
     boost::optional<executor::TaskExecutorCursor> _cursor;
+
+    // Store the cursorId. We need to store it on the document source because the id on the
+    // TaskExecutorCursor will be set to zero after the final getMore after the cursor is
+    // exhausted.
+    boost::optional<CursorId> _cursorId{boost::none};
 };
 
 }  // namespace mongo
