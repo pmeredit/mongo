@@ -87,7 +87,9 @@ intrusive_ptr<DocumentSource> DocumentSourceInternalSearchBetaMongotRemote::crea
 
 BSONObj DocumentSourceInternalSearchBetaMongotRemote::commandObject(
     const BSONObj& query, const intrusive_ptr<ExpressionContext>& expCtx) {
-    return BSON("searchBeta" << expCtx->uuid.get() << "query" << query);
+    return BSON("searchBeta" << expCtx->ns.coll() << "collectionUUID" << expCtx->uuid.get()
+                             << "query"
+                             << query);
 }
 
 }  // namespace mongo
