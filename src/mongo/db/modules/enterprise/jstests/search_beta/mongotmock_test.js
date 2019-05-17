@@ -69,6 +69,11 @@
         assert.commandWorked(
             testDB.runCommand({setMockResponses: 1, cursorId: cursorId, history: history}));
 
+        // Run setMockResponses on cursor id of 0.
+        assert.commandFailedWithCode(
+            testDB.runCommand({setMockResponses: 1, cursorId: NumberLong(0), history: history}),
+            ErrorCodes.InvalidOptions);
+
         // Run getMore on cursor id before it's ready.
         assert.commandFailedWithCode(
             testDB.runCommand({getMore: NumberLong(123), collection: "abc"}), 31088);

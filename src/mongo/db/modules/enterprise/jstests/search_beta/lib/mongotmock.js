@@ -1,6 +1,33 @@
 /**
  * Control mongotmock.
  */
+
+/**
+ * Helper to create an expected command for mongot.
+ *
+ * @param {Object} query - The query to be recieved by mongot.
+ * @param {String} collName - The collection name.
+ * @param {String} db - The database name.
+ * @param {BinaryType} collectionUUID - the binary representation of a collection's UUID.
+ */
+function mongotCommandForQuery(query, collName, db, collectionUUID) {
+    // Note - this will change with the imminent merge of SERVER-41076, the command format change.
+    // It will eventually be {searchBeta: collName, $db: db, collectionUUID, query}.
+    return {searchBeta: collectionUUID, $db: db, query};
+}
+
+/**
+ * Helper to create an expected response from mongot with a batch of results.
+ *
+ * @param {Array} nextBatch - Array of documents to be returned in this response.
+ * @param {Number} id - The mongot cursor ID.
+ * @param {String} ns - The namespace of the collection our response is for.
+ * @param {Boolean} ok - True when this response is not from an error.
+ */
+function mongotResponseForBatch(nextBatch, id, ns, ok) {
+    return {ok, cursor: {id, ns, nextBatch}};
+}
+
 class MongotMock {
     /**
     * Create a new mongotmock.
@@ -78,5 +105,22 @@ class MongotMock {
      */
     getConnection() {
         return this.conn;
+    }
+
+    /**
+     * Convenience function to set expected commands and responses for the mock mongot.
+     *
+     * @param {Array} expectedMongotMockCmdsAndResponses - Array of [expectedCommand, response]
+     * pairs for the mock mongot.
+     * @param {Number} cursorId - The mongot cursor ID.
+     */
+    setMockResponses(expectedMongotMockCmdsAndResponses, cursorId) {
+        const connection = this.getConnection();
+        const setMockResponsesCommand = {
+            setMockResponses: 1,
+            cursorId: NumberLong(cursorId),
+            history: expectedMongotMockCmdsAndResponses,
+        };
+        assert.commandWorked(connection.getDB("mongotmock").runCommand(setMockResponsesCommand));
     }
 }

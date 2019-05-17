@@ -191,6 +191,7 @@ public:
                 "cursorId should be type NumberLong",
                 cmdObj["cursorId"].type() == BSONType::NumberLong);
         const CursorId id = cmdObj["cursorId"].Long();
+        uassert(ErrorCodes::InvalidOptions, "cursorId may not equal 0", id != 0);
 
         uassert(ErrorCodes::InvalidOptions,
                 "'history' should be of type Array",
