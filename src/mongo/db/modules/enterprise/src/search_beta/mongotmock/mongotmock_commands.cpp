@@ -83,8 +83,9 @@ public:
 
         CursorState* state = stateGuard->claimAvailableState();
         uassert(31094,
-                "Cannot run searchBeta as there are no remaining unclaimed mock "
-                "cursor states",
+                str::stream() << "Cannot run searchBeta as there are no remaining unclaimed mock "
+                                 "cursor states. Received command: "
+                              << cmdObj,
                 state);
 
         // We should not have allowed an empty 'history'.
