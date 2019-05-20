@@ -365,6 +365,4 @@ if "search_beta" in env['MONGO_ENTERPRISE_FEATURES']:
     )
 
     if not hygienic:
-        env.Install("#/", mongotmock)
-
-    env.Alias("all", mongotmock)
+        env.Alias("core", env.Install("#/", mongotmock))

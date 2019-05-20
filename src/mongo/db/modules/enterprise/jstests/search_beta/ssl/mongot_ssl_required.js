@@ -29,7 +29,8 @@
     // Give mongotmock some stuff to return.
     {
         const cursorId = NumberLong(123);
-        const searchBetaCmd = {searchBeta: collUUID, query: searchBetaQuery, $db: "test"};
+        const searchBetaCmd =
+            {searchBeta: collName, collectionUUID: collUUID, query: searchBetaQuery, $db: "test"};
         const history = [
             {
               expectedCommand: searchBetaCmd,
