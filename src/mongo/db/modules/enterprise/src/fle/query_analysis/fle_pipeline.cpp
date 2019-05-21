@@ -32,6 +32,7 @@
 #include "fle_pipeline.h"
 
 #include "fle_match_expression.h"
+#include "mongo/db/pipeline/document_source_geo_near.h"
 #include "mongo/db/pipeline/document_source_limit.h"
 
 namespace mongo {
@@ -76,6 +77,38 @@ void analyzeForMatch(FLEPipeline* flePipe,
     }());
 }
 
+void analyzeForGeoNear(FLEPipeline* flePipe,
+                       const EncryptionSchemaTreeNode& schema,
+                       DocumentSourceGeoNear* source) {
+    // Build a FLEMatchExpression from the MatchExpression within the $geoNear stage, replacing any
+    // constants with their appropriate intent-to-encrypt markings.
+    auto queryExpression =
+        uassertStatusOK(MatchExpressionParser::parse(source->getQuery(),
+                                                     flePipe->getPipeline().getContext(),
+                                                     ExtensionsCallbackNoop(),
+                                                     Pipeline::kGeoNearMatcherFeatures));
+    FLEMatchExpression fleMatch{std::move(queryExpression), schema};
+    flePipe->hasEncryptedPlaceholders =
+        flePipe->hasEncryptedPlaceholders || fleMatch.containsEncryptedPlaceholders();
+
+    if (auto key = source->getKeyField()) {
+        FieldRef keyField(key->fullPath());
+        uassert(51200,
+                str::stream() << "Key field '" << key->fullPath()
+                              << "' in the $geoNear aggregation stage cannot be encrypted.",
+                !schema.getEncryptionMetadataForPath(keyField) &&
+                    !schema.containsEncryptedNodeBelowPrefix(keyField));
+    }
+
+    // Update the query in the DocumentSourceGeoNear using the serialized MatchExpression
+    // after replacing encrypted values.
+    source->setQuery([&]() {
+        BSONObjBuilder bob;
+        fleMatch.getMatchExpression()->serialize(&bob);
+        return bob.obj();
+    }());
+}
+
 // The 'schemaPropagatorMap' is a map of the typeid of a concrete DocumentSource class to the
 // appropriate dispatch function for schema modification.
 static stdx::unordered_map<
@@ -113,6 +146,9 @@ static stdx::unordered_map<
 
 // Whitelisted set of DocumentSource classes which are supported and/or require action for
 // encryption with callbacks for schema propagation and encryption analysis, respectively.
+REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceGeoNear,
+                                      propagateSchemaNoop,
+                                      analyzeForGeoNear);
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceMatch, propagateSchemaNoop, analyzeForMatch);
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceLimit, propagateSchemaNoop, analyzeStageNoop);
 

@@ -154,7 +154,6 @@
         {$redact: "$$DESCEND"},
         {$bucketAuto: {groupBy: "$_id", buckets: 2}},
         {$planCacheStats: {}},
-        {$geoNear: {near: [0.0, 0.0], distanceField: "dist"}},
         {$sample: {size: 1}},
         {$_internalInhibitOptimization: {}},
         {$skip: 1},
