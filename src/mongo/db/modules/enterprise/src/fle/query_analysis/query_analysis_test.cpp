@@ -244,14 +244,12 @@ TEST(BuildEncryptPlaceholderValueTest, FailsForJSONPointerEncryption) {
                        51093);
 }
 
-TEST(BuildEncryptPlaceholderValueTest, FailsForArray) {
+TEST(BuildEncryptPlaceholderValueTest, SucceedsForArrayWithRandomEncryption) {
     ResolvedEncryptionInfo metadata{
-        EncryptSchemaKeyId{"/key"}, FleAlgorithmEnum::kRandom, boost::none};
-    ASSERT_THROWS_CODE(
-        buildEncryptPlaceholder(
-            Value(BSON_ARRAY("value")), metadata, EncryptionPlaceholderContext::kWrite, nullptr),
-        AssertionException,
-        31009);
+        EncryptSchemaKeyId{{UUID::fromCDR(uuidBytes)}}, FleAlgorithmEnum::kRandom, boost::none};
+    auto placeholder = buildEncryptPlaceholder(
+        Value(BSON_ARRAY("value")), metadata, EncryptionPlaceholderContext::kWrite, nullptr);
+    ASSERT_EQ(placeholder.getType(), BSONType::BinData);
 }
 
 TEST(BuildEncryptPlaceholderValueTest, FailsForRandomEncryption) {
