@@ -742,9 +742,8 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
     }
 
     uassert(31009,
-            str::stream() << "Cannot encrypt a field containing an array: " << elem << " with the "
-                          << FleAlgorithm_serializer(metadata.algorithm)
-                          << " algorithm.",
+            str::stream() << "Cannot encrypt a field containing an array: " << elem
+                          << " with the deterministic algorithm.",
             elem.type() != BSONType::Array || metadata.algorithm == FleAlgorithmEnum::kRandom);
 
     if (metadata.bsonTypeSet) {
