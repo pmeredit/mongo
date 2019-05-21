@@ -10,6 +10,10 @@
 
 namespace mongo {
 
+namespace search_beta_constants {
+const BSONObj kSortSpec = BSON("$searchScore" << -1);
+}  // namespace search_beta_constants
+
 /**
  * Queries local collection for _id equality matches. Intended for use with
  * $_internalSearchBetaMongotRemote (see $searchBeta) as part of the SearchBeta project.
@@ -17,10 +21,6 @@ namespace mongo {
  * Input documents will be ignored and skipped if they do not have a value at field "_id".
  * Input documents will be ignored and skipped if no document with key specified at "_id"
  * is locally-stored.
- *
- * Work slated and not handled yet:
- * - TODO Ensure this handles sharded sort correctly (SERVER-40015)
- * - TODO Handle searchSnippet metadata (SERVER-40555)
  */
 class DocumentSourceInternalSearchBetaIdLookUp final : public DocumentSource {
 public:
@@ -60,7 +60,13 @@ public:
      * will merge by searchScore.
      */
     boost::optional<DistributedPlanLogic> distributedPlanLogic() final {
-        return boost::none;  // TODO handle sharded sort correctly (SERVER-40015)
+        DistributedPlanLogic logic;
+
+        logic.mergingStage = nullptr;
+        logic.shardsStage = this;
+        logic.inputSortPattern = search_beta_constants::kSortSpec;
+
+        return logic;
     }
 };
 

@@ -30,11 +30,13 @@ class MongotMock {
     /**
     * Create a new mongotmock.
     */
-    constructor() {
+    constructor(options) {
         this.mongotMock = "mongotmock";
         this.pid = undefined;
         this.port = -1;
         this.conn = undefined;
+        this.dataDir = (options && options.dataDir) || MongoRunner.dataDir + "/mongotmock";
+        resetDbpath(this.dataDir);
     }
 
     /**
@@ -44,18 +46,18 @@ class MongotMock {
         this.port = allocatePort();
         print("mongotmock: " + this.port);
 
-        const conn_str = MongoRunner.dataDir + "/mongocryptd.sock";
+        const conn_str = this.dataDir + "/mongocryptd.sock";
         const args = [this.mongotMock];
 
         args.push("--port=" + this.port);
         // mongotmock uses mongocryptd.sock.
-        args.push("--unixSocketPrefix=" + MongoRunner.dataDir);
+        args.push("--unixSocketPrefix=" + this.dataDir);
 
         args.push("--setParameter");
         args.push("enableTestCommands=1");
         args.push("-vvv");
 
-        args.push("--pidfilepath=" + MongoRunner.dataDir + "/cryptd.pid");
+        args.push("--pidfilepath=" + this.dataDir + "/cryptd.pid");
 
         this.pid = _startMongoProgram({args: args});
 

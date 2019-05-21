@@ -56,8 +56,27 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchBetaIdLookUp::getNext(
             uassert(31052,
                     "Collection must have a UUID to use $_internalSearchBetaIdLookup.",
                     pExpCtx->uuid.has_value());
-            result = pExpCtx->mongoProcessInterface->lookupSingleDocument(
-                pExpCtx, pExpCtx->ns, pExpCtx->uuid.get(), documentKey, boost::none);
+
+            // Find the document by performing a local read.
+            MongoProcessInterface::MakePipelineOptions pipelineOpts;
+            pipelineOpts.attachCursorSource = false;
+            auto pipeline = pExpCtx->mongoProcessInterface->makePipeline(
+                {BSON("$match" << documentKey)}, pExpCtx, pipelineOpts);
+
+            pipeline = pExpCtx->mongoProcessInterface->attachCursorSourceToPipelineForLocalRead(
+                pExpCtx, pipeline.release());
+
+            result = pipeline->getNext();
+            if (auto next = pipeline->getNext()) {
+                uasserted(ErrorCodes::TooManyMatchingDocuments,
+                          str::stream() << "found more than one document with document key "
+                                        << documentKey.toString()
+                                        << ": ["
+                                        << result->toString()
+                                        << ", "
+                                        << next->toString()
+                                        << "]");
+            }
         }
     }
 
@@ -67,6 +86,10 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchBetaIdLookUp::getNext(
 
     // Transfer searchScore metadata from inputDoc to the result.
     output.copyMetaDataFrom(inputDoc);
+
+    if (pExpCtx->needsMerge) {
+        output.setSortKeyMetaField(BSON("" << inputDoc.getSearchScore()));
+    }
 
     return output.freeze();
 }
