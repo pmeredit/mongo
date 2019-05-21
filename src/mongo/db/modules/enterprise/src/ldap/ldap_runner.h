@@ -61,7 +61,7 @@ public:
     virtual std::string getBindDN() const = 0;
     virtual void setBindDN(const std::string& bindDN) = 0;
 
-    virtual void setBindPassword(SecureString pwd) = 0;
+    virtual void setBindPasswords(std::vector<SecureString> pwd) = 0;
 
     virtual void setUseConnectionPool(bool which) = 0;
 };

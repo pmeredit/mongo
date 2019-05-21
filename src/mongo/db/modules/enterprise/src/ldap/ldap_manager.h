@@ -71,9 +71,9 @@ public:
     virtual void setBindDN(const std::string& bindDN) = 0;
 
     /**
-     * Sets the LDAP server bind password.
+     * Sets the LDAP server bind password(s).
      */
-    virtual void setBindPassword(SecureString pwd) = 0;
+    virtual void setBindPasswords(std::vector<SecureString> pwds) = 0;
 
     /**
      * Gets/sets the LDAP user to DN mapping.

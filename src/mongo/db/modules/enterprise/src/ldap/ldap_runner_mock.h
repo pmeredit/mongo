@@ -61,7 +61,7 @@ public:
     }
     void setBindDN(const std::string& bindDN) final {}
 
-    void setBindPassword(SecureString pwd) final {}
+    void setBindPasswords(std::vector<SecureString> pwd) final {}
 
     void setUseConnectionPool(bool) final {}
 

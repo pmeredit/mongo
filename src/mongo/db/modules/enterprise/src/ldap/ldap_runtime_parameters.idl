@@ -21,7 +21,9 @@ server_parameters:
     ldapQueryPassword:
         description: "Password for ldapQueryUser authentication"
         set_at: runtime
-        cpp_class: LDAPBindPasswordSetting
+        cpp_class:
+            name: LDAPBindPasswordSetting
+            override_set: true
         redact: true
     ldapUserToDNMapping:
         description: "LDAP user to DN mapping"

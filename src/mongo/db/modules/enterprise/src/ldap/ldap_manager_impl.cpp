@@ -105,8 +105,8 @@ void LDAPManagerImpl::setBindDN(const std::string& bindDN) {
     return _runner->setBindDN(bindDN);
 }
 
-void LDAPManagerImpl::setBindPassword(SecureString pwd) {
-    return _runner->setBindPassword(std::move(pwd));
+void LDAPManagerImpl::setBindPasswords(std::vector<SecureString> pwds) {
+    return _runner->setBindPasswords(std::move(pwds));
 }
 
 std::string LDAPManagerImpl::getUserToDNMapping() const {

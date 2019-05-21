@@ -55,10 +55,12 @@ Status LDAPRunnerImpl::bindAsUser(const std::string& user, const SecureString& p
 StatusWith<LDAPEntityCollection> LDAPRunnerImpl::runQuery(const LDAPQuery& query) {
     LDAPBindOptions bindOptions;
     LDAPConnectionOptions connectionOptions;
+    std::vector<SecureString> bindPasswords;
     {
         stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
         bindOptions = _defaultBindOptions;
         connectionOptions = _options;
+        bindPasswords = _bindPasswords;
     }
     auto swConnection = _factory.create(std::move(connectionOptions));
     if (!swConnection.isOK()) {
@@ -69,9 +71,21 @@ StatusWith<LDAPEntityCollection> LDAPRunnerImpl::runQuery(const LDAPQuery& query
     const auto boundUser = connection->currentBoundUser();
     // If a user has been provided, bind to it.
     if (bindOptions.shouldBind() && (!boundUser || *boundUser != bindOptions.bindDN)) {
-        Status status = connection->bindAsUser(std::move(bindOptions));
-        if (!status.isOK()) {
-            return status;
+        Status bindStatus = Status::OK();
+        if (!bindPasswords.empty()) {
+            for (const auto& pwd : bindPasswords) {
+                bindOptions.password = pwd;
+                bindStatus = connection->bindAsUser(bindOptions);
+                if (bindStatus.isOK()) {
+                    break;
+                }
+            }
+        } else {
+            bindStatus = connection->bindAsUser(bindOptions);
+        }
+
+        if (!bindStatus.isOK()) {
+            return bindStatus;
         }
     }
 
@@ -110,9 +124,9 @@ void LDAPRunnerImpl::setBindDN(const std::string& bindDN) {
     _defaultBindOptions.bindDN = bindDN;
 }
 
-void LDAPRunnerImpl::setBindPassword(SecureString pwd) {
+void LDAPRunnerImpl::setBindPasswords(std::vector<SecureString> pwds) {
     stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
-    _defaultBindOptions.password = std::move(pwd);
+    _bindPasswords = std::move(pwds);
 }
 
 void LDAPRunnerImpl::setUseConnectionPool(bool val) {

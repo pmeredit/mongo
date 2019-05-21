@@ -60,6 +60,13 @@
                   ret.ldapQueryPassword,
                   "Unexpected getParameter return for ldapQueryPassword: " + ret.ldapQueryPassword);
 
+        executeCommand(
+            {setParameter: 1, "ldapQueryPassword": ["Admin001", "BadPasswordThatIsn'tUsed"]});
+        ret = executeCommand({getParameter: 1, "ldapQueryPassword": 1});
+        assert.eq("###",
+                  ret.ldapQueryPassword,
+                  "Unexpected getParameter return for ldapQueryPassword: " + ret.ldapQueryPassword);
+
         var ldapUserToDNMapping =
             "{match: \"(.+)\", substitution: \"cn={0}," + defaultUserDNSuffix + "\"}";
         executeCommand({setParameter: 1, "ldapUserToDNMapping": ldapUserToDNMapping});

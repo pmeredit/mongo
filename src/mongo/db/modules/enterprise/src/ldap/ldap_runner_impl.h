@@ -38,7 +38,7 @@ public:
     std::string getBindDN() const final;
     void setBindDN(const std::string& bindDN) final;
 
-    void setBindPassword(SecureString pwd) final;
+    void setBindPasswords(std::vector<SecureString> pwd) final;
 
     void setUseConnectionPool(bool val) final;
 
@@ -51,6 +51,7 @@ private:
      */
     mutable stdx::mutex _memberAccessMutex;
 
+    std::vector<SecureString> _bindPasswords;
     LDAPBindOptions _defaultBindOptions;
     LDAPConnectionOptions _options;
 };

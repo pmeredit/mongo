@@ -52,7 +52,7 @@ public:
     std::string getBindDN() const final;
     void setBindDN(const std::string& bindDN) final;
 
-    void setBindPassword(SecureString pwd) final;
+    void setBindPasswords(std::vector<SecureString> pwds) final;
 
     std::string getUserToDNMapping() const final;
     void setUserNameMapper(InternalToLDAPUserNameMapper nameMapper) final;

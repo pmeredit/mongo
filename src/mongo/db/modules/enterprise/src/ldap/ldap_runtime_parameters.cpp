@@ -81,8 +81,30 @@ Status LDAPBindDNSetting::setFromString(const std::string& str) {
     return Status::OK();
 }
 
+Status LDAPBindPasswordSetting::set(const BSONElement& newValueElement) {
+    static const Status badTypeStatus(ErrorCodes::BadValue,
+                                      "LDAP bind password must be a string or array of strings"_sd);
+    if (newValueElement.type() == String) {
+        return setFromString(newValueElement.String());
+    } else if (newValueElement.type() == Array) {
+        std::vector<SecureString> passwords;
+        for (const auto& elem : newValueElement.Obj()) {
+            if (elem.type() != String) {
+                return badTypeStatus;
+            }
+
+            passwords.emplace_back(elem.checkAndGetStringData().rawData());
+        }
+
+        LDAPManager::get(getGlobalServiceContext())->setBindPasswords(std::move(passwords));
+        return Status::OK();
+    }
+
+    return badTypeStatus;
+}
+
 Status LDAPBindPasswordSetting::setFromString(const std::string& str) {
-    LDAPManager::get(getGlobalServiceContext())->setBindPassword(SecureString(str.c_str()));
+    LDAPManager::get(getGlobalServiceContext())->setBindPasswords({SecureString(str.c_str())});
     return Status::OK();
 }
 
