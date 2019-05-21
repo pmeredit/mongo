@@ -1,7 +1,7 @@
 /**
  * Test that mongocryptd errors if users either:
  *  - Issue writes that would store a whole array in an encrypted field when
-      a deterministic algorithm is used..
+      a deterministic algorithm is used.
  *  - Issue writes that would put an encrypted field inside of an array.
  *  - Issue reads that imply there can be a whole array stored inside an encrypted field.
  *  - Issue reads that imply encrypted fields can be nested beneath an array.
