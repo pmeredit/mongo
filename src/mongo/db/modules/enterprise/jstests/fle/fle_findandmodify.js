@@ -129,13 +129,13 @@
                       encrypt: {
                           algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
                           keyId: "/key",
-                          bsonType: "double"
+                          bsonType: "long"
                       }
                   }
               }
           },
           query: {},
-          update: {$set: {foo: 5}},
+          update: {$set: {foo: NumberLong(5)}},
           encryptedPaths: [],
           notEncryptedPaths: [],
           errorCode: 51093

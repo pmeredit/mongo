@@ -18,7 +18,7 @@
                 encrypt: {
                     algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
                     keyId: [UUID()],
-                    bsonType: "double"
+                    bsonType: "long"
                 }
             },
             user: {
@@ -46,7 +46,8 @@
     }
 
     // Basic top-level field in equality correctly marked for encryption.
-    assertEncryptedFieldInResponse({filter: {ssn: 5}, path: "ssn", requiresEncryption: true});
+    assertEncryptedFieldInResponse(
+        {filter: {ssn: NumberLong(5)}, path: "ssn", requiresEncryption: true});
 
     // Nested field in equality correctly marked for encryption.
     assertEncryptedFieldInResponse(
@@ -54,7 +55,7 @@
 
     // Elements within $in array correctly marked for encryption.
     let res = assert.commandWorked(testDB.runCommand(
-        {find: "test", filter: {ssn: {"$in": [1234]}}, jsonSchema: sampleSchema}));
+        {find: "test", filter: {ssn: {"$in": [NumberLong(1234)]}}, jsonSchema: sampleSchema}));
     assert(res.hasEncryptionPlaceholders, tojson(res));
     assert(res.result.filter["ssn"]["$in"][0] instanceof BinData, tojson(res));
 
@@ -65,8 +66,11 @@
     assert(res.result.filter["user"]["$in"][0]["account"] instanceof BinData, tojson(res));
 
     // Multiple elements inside $in array correctly marked for encryption.
-    res = assert.commandWorked(testDB.runCommand(
-        {find: "test", filter: {ssn: {"$in": [1, 2, 3]}}, jsonSchema: sampleSchema}));
+    res = assert.commandWorked(testDB.runCommand({
+        find: "test",
+        filter: {ssn: {"$in": [NumberLong(1), NumberLong(2), NumberLong(3)]}},
+        jsonSchema: sampleSchema
+    }));
     assert(res.hasEncryptionPlaceholders, tojson(res));
     assert(res.result.filter["ssn"]["$in"][0] instanceof BinData, tojson(res));
     assert(res.result.filter["ssn"]["$in"][1] instanceof BinData, tojson(res));

@@ -20,7 +20,7 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
                 encrypt: {
                     algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
                     keyId: [UUID("4edee966-03cc-4525-bfa8-de8acd6746fa")],
-                    bsonType: "double"
+                    bsonType: "long"
                 }
             }
         }
@@ -32,17 +32,23 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
         {cmdName: "count", cmd: {count: "foo", query: {_id: 1}}},
         {
           cmdName: "findAndModify",
-          cmd: {findAndModify: "foo", query: {foo: 1}, update: {$inc: {score: 1.0}}}
+          cmd: {findAndModify: "foo", query: {foo: NumberLong(1)}, update: {$inc: {score: 1.0}}}
         },
         // old name
         {
           cmdName: "findAndModify",
-          cmd: {findandmodify: "foo", query: {foo: 1}, update: {$inc: {score: 1.0}}}
+          cmd: {findandmodify: "foo", query: {foo: NumberLong(1)}, update: {$inc: {score: 1.0}}}
         },
-        {cmdName: "aggregate", cmd: {aggregate: "foo", pipeline: [{$match: {foo: 1}}], cursor: {}}},
-        {cmdName: "insert", cmd: {insert: "foo", documents: [{foo: 1}]}},
-        {cmdName: "update", cmd: {update: "foo", updates: [{q: {foo: 1}, u: {"$set": {a: 2}}}]}},
-        {cmdName: "delete", cmd: {delete: "foo", deletes: [{q: {foo: 1}, limit: 1}]}}
+        {
+          cmdName: "aggregate",
+          cmd: {aggregate: "foo", pipeline: [{$match: {foo: NumberLong(1)}}], cursor: {}}
+        },
+        {cmdName: "insert", cmd: {insert: "foo", documents: [{foo: NumberLong(1)}]}},
+        {
+          cmdName: "update",
+          cmd: {update: "foo", updates: [{q: {foo: NumberLong(1)}, u: {"$set": {a: 2}}}]}
+        },
+        {cmdName: "delete", cmd: {delete: "foo", deletes: [{q: {foo: NumberLong(1)}, limit: 1}]}}
     ];
 
     cmds.forEach(element => {

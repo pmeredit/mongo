@@ -2203,7 +2203,7 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithBSONTypeObjectInDeterministicEncr
                                             << BSON_ARRAY(uuid)
                                             << "bsonType"
                                             << "object"));
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31051);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31122);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseWithEmptyArrayBSONTypeInDeterministicEncrypt) {
@@ -2237,7 +2237,7 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithObjectInArrayBSONTypeInDeterminis
                                             << BSON_ARRAY(uuid)
                                             << "bsonType"
                                             << BSON_ARRAY("object")));
-    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31051);
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema), AssertionException, 31122);
 }
 
 TEST(EncryptionSchemaTreeTest, FailsToParseWithSingleValueBSONTypeInEncryptObject) {

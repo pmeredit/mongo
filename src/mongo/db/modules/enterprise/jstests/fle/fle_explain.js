@@ -18,23 +18,23 @@
                 encrypt: {
                     algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
                     keyId: [UUID()],
-                    bsonType: "double"
+                    bsonType: "long"
                 }
             }
         }
     };
 
     let cmds = [
-        {find: "test", filter: {foo: 1}},
-        {distinct: "test", query: {foo: 1}, key: "foo"},
-        {count: "test", query: {foo: 1}},
-        {findAndModify: "test", query: {foo: 1.0}, update: {$inc: {score: 1.0}}},
+        {find: "test", filter: {foo: NumberLong(1)}},
+        {distinct: "test", query: {foo: NumberLong(1)}, key: "foo"},
+        {count: "test", query: {foo: NumberLong(1)}},
+        {findAndModify: "test", query: {foo: NumberLong(1)}, update: {$inc: {score: 1.0}}},
         // old name
-        {findandmodify: "test", query: {foo: 1.0}, update: {$inc: {score: 1.0}}},
-        {aggregate: "test", pipeline: [{$match: {foo: 1}}], cursor: {}},
-        {insert: "test", documents: [{foo: 1}]},
-        {update: "test", updates: [{q: {foo: 1}, u: {"$set": {a: 2}}}]},
-        {delete: "test", deletes: [{q: {foo: 1}, limit: 1}]},
+        {findandmodify: "test", query: {foo: NumberLong(1)}, update: {$inc: {score: 1.0}}},
+        {aggregate: "test", pipeline: [{$match: {foo: NumberLong(1)}}], cursor: {}},
+        {insert: "test", documents: [{foo: NumberLong(1)}]},
+        {update: "test", updates: [{q: {foo: NumberLong(1)}, u: {"$set": {a: 2}}}]},
+        {delete: "test", deletes: [{q: {foo: NumberLong(1)}, limit: 1}]},
     ];
 
     cmds.forEach(element => {

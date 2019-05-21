@@ -20,7 +20,7 @@
                 encrypt: {
                     algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
                     keyId: [UUID()],
-                    bsonType: "double"
+                    bsonType: "long"
                 }
             }
         },
@@ -29,7 +29,7 @@
                 encrypt: {
                     algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
                     keyId: [UUID()],
-                    bsonType: "double"
+                    bsonType: "long"
                 }
             }
         }
@@ -39,8 +39,8 @@
     let deleteCmd = {
         delete: coll.getName(),
         deletes: [
-            {q: {foo: 1, barx: 2, baz: 3}, limit: 1},
-            {q: {x: 1, foobar: 1}, limit: 0},
+            {q: {foo: NumberLong(1), barx: NumberLong(2), baz: 3}, limit: 1},
+            {q: {x: 1, foobar: NumberLong(1)}, limit: 0},
         ],
         jsonSchema: schema
     };

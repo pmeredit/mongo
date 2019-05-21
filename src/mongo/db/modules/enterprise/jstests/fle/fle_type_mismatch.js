@@ -114,7 +114,7 @@
     }),
                                  51158);
 
-    // A schema where the 'foo' field must be double and is encrypted with the deterministic
+    // A schema where the 'foo' field must be a long and is encrypted with the deterministic
     // encryption algorithm.
     const deterministicEncryptionSchema = {
         type: "object",
@@ -123,16 +123,16 @@
                 encrypt: {
                     algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
                     keyId: [UUID()],
-                    bsonType: ["double"],
+                    bsonType: ["long"],
                 }
             }
         }
     };
 
-    // Can successfully mark a double element for encryption on insert.
+    // Can successfully mark a long for encryption on insert.
     cmdRes = assert.commandWorked(testDb.runCommand({
         insert: coll.getName(),
-        documents: [{"foo": 3}],
+        documents: [{"foo": NumberLong(3)}],
         jsonSchema: deterministicEncryptionSchema
     }));
     assert.eq(cmdRes.hasEncryptionPlaceholders, true, cmdRes);
@@ -147,10 +147,10 @@
     }),
                                  31118);
 
-    // Can successfully mark a double for encryption on $set-style update.
+    // Can successfully mark a long for encryption on $set-style update.
     cmdRes = assert.commandWorked(testDb.runCommand({
         update: coll.getName(),
-        updates: [{q: {}, u: {$set: {"foo": 3}}}],
+        updates: [{q: {}, u: {$set: {"foo": NumberLong(3)}}}],
         jsonSchema: deterministicEncryptionSchema
     }));
     assert.eq(cmdRes.hasEncryptionPlaceholders, true, cmdRes);
@@ -165,10 +165,10 @@
     }),
                                  31118);
 
-    // Can successfully compare the encrypted field to a double in a find command.
+    // Can successfully compare the encrypted field to a long in a find command.
     cmdRes = assert.commandWorked(testDb.runCommand({
         find: coll.getName(),
-        filter: {foo: {$eq: 3}},
+        filter: {foo: {$eq: NumberLong(3)}},
         jsonSchema: deterministicEncryptionSchema
     }));
     assert.eq(cmdRes.hasEncryptionPlaceholders, true, cmdRes);
@@ -234,7 +234,7 @@
     }),
                                  31118);
 
-    // A schema where fields beginning with "foo" are deterministically encrypted doubles, and all
+    // A schema where fields beginning with "foo" are deterministically encrypted longs, and all
     // other fields are deterministically encrypted strings.
     const deterministicEncryptionPatternPropertiesSchema = {
         type: "object",
@@ -242,7 +242,7 @@
             algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
             keyId: [UUID()],
         },
-        patternProperties: {"^foo": {encrypt: {bsonType: "double"}}},
+        patternProperties: {"^foo": {encrypt: {bsonType: "long"}}},
         additionalProperties: {encrypt: {bsonType: "string"}}
     };
 
@@ -254,20 +254,20 @@
     }),
                                  31118);
 
-    // Can compare a field beginning with "foo" to a double.
+    // Can compare a field beginning with "foo" to a long.
     cmdRes = assert.commandWorked(testDb.runCommand({
         find: coll.getName(),
-        filter: {foobar: {$eq: 3}},
+        filter: {foobar: {$eq: NumberLong(3)}},
         jsonSchema: deterministicEncryptionPatternPropertiesSchema
     }));
     assert.eq(cmdRes.hasEncryptionPlaceholders, true, cmdRes);
     assert.eq(cmdRes.schemaRequiresEncryption, true, cmdRes);
     assert(cmdRes.result.filter.foobar.$eq instanceof BinData, cmdRes);
 
-    // Cannot compare a field which does not begin with "foo" to a double.
+    // Cannot compare a field which does not begin with "foo" to a long.
     assert.commandFailedWithCode(testDb.runCommand({
         find: coll.getName(),
-        filter: {barfoo: {$eq: 3}},
+        filter: {barfoo: {$eq: NumberLong(3)}},
         jsonSchema: deterministicEncryptionPatternPropertiesSchema
     }),
                                  31118);
