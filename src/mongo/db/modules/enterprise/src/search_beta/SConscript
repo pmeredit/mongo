@@ -74,3 +74,30 @@ env.Library(
         '$BUILD_DIR/mongo/util/version_impl',
     ],
 )
+
+env.Library(
+    target='mongot_task_executor',
+    source=[
+        'mongot_task_executor.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/executor/task_executor_interface',
+        '$BUILD_DIR/mongo/executor/network_interface_factory',
+        '$BUILD_DIR/mongo/executor/network_interface_thread_pool',
+        '$BUILD_DIR/mongo/executor/thread_pool_task_executor',
+        '$BUILD_DIR/mongo/util/concurrency/thread_pool',
+    ],
+)
+
+env.CppIntegrationTest(
+    target='mongot_task_executor_integration_test',
+    source=[
+        'mongot_task_executor_integration_test.cpp',
+    ],
+    LIBDEPS=[
+        'mongot_task_executor',
+        '$BUILD_DIR/mongo/db/wire_version',
+        '$BUILD_DIR/mongo/transport/transport_layer_egress_init',
+        '$BUILD_DIR/mongo/util/version_impl',
+    ],
+)
