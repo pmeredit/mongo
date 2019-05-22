@@ -10,7 +10,7 @@
 
     const conn = mongocryptd.getConnection();
     const testDb = conn.getDB("test");
-    const coll = testDb.illegal_types_dor_deterministic;
+    const coll = testDb.illegal_types_for_deterministic;
 
     const kLegalTypes = [
         "binData",

@@ -25,6 +25,17 @@ namespace mongo {
  */
 struct ResolvedEncryptionInfo {
     /**
+     * Throws an exception if 'bsonType' is never permitted to be encrypted by the client,
+     * regardless of the encryption algorithm or any other encryption options.
+     */
+    static void throwIfIllegalTypeForEncryption(BSONType bsonType);
+
+    /**
+     * Returns true if 'bsonType' is allowed in combination with deterministic encryption.
+     */
+    static bool isTypeLegalWithDeterministic(BSONType bsonType);
+
+    /**
      * Constructs a ResolvedEncryptionInfo, throwing a user assertion on any illegal combination of
      * options.
      */

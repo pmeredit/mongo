@@ -716,6 +716,10 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
                                 const CollatorInterface* collator,
                                 const boost::optional<BSONObj>& origDoc,
                                 const boost::optional<const EncryptionSchemaTreeNode&> schema) {
+    // Some types are unconditionally banned. Make sure we're not trying to mark any such type for
+    // encryption.
+    ResolvedEncryptionInfo::throwIfIllegalTypeForEncryption(elem.type());
+
     // There are more stringent requirements for which encryption placeholders are legal in the
     // context of a query which makes a comparison to an encrypted field. For instance, comparisons
     // are only possible against deterministically encrypted fields, whereas either the random or
@@ -741,11 +745,6 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
         }
     }
 
-    uassert(31009,
-            str::stream() << "Cannot encrypt a field containing an array: " << elem
-                          << " with the deterministic algorithm.",
-            elem.type() != BSONType::Array || metadata.algorithm == FleAlgorithmEnum::kRandom);
-
     if (metadata.bsonTypeSet) {
         uassert(31118,
                 str::stream() << "Cannot encrypt element of type " << typeName(elem.type())
@@ -753,6 +752,19 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
                               << typeSetToString(*metadata.bsonTypeSet),
                 metadata.bsonTypeSet->hasType(elem.type()));
     }
+
+    // At this point we know the following:
+    //  - The caller has provided a valid ResolvedEncryptionInfo, which enforces that there is
+    //  exactly one type specified in combination with the deterministic encryption algorithm.
+    //  - The caller also has verified that this type is valid in combination with the deterministic
+    //  encryption algorithm. For instance, we ban deterministic encryption of objects and arrays.
+    //  - If the schema specifies 'bsonType', then the type which we're marking for encryption
+    //  is of a matching type.
+    //
+    // Together, these conditions imply that if the encryption algorithm is deterministic, then the
+    // type of 'elem' is known to be valid for deterministic encryption. Check that assumption here.
+    invariant(metadata.algorithm == FleAlgorithmEnum::kRandom ||
+              ResolvedEncryptionInfo::isTypeLegalWithDeterministic(elem.type()));
 
     FleAlgorithmInt integerAlgorithm = metadata.algorithm == FleAlgorithmEnum::kDeterministic
         ? FleAlgorithmInt::kDeterministic

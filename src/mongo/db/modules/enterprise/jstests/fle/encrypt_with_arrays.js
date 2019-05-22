@@ -47,13 +47,13 @@
         documents: [{_id: 1, foo: [1, 2, 3]}],
         jsonSchema: fooEncryptedSchema
     }),
-                                 31009);
+                                 31118);
     assert.commandFailedWithCode(testDb.runCommand({
         insert: coll.getName(),
         documents: [{_id: 1, foo: [{bar: 1}, {bar: 2}, {bar: 3}]}],
         jsonSchema: fooEncryptedSchema
     }),
-                                 31009);
+                                 31118);
 
     // Verify that an insert command where 'foo.bar' is an array fails when 'foo.bar' is marked for
     // encryption.
@@ -62,13 +62,13 @@
         documents: [{_id: 1, foo: {bar: [1, 2, 3]}}],
         jsonSchema: fooDotBarEncryptedSchema
     }),
-                                 31009);
+                                 31118);
     assert.commandFailedWithCode(testDb.runCommand({
         insert: coll.getName(),
         documents: [{_id: 1, foo: {bar: [{baz: 1}, {baz: 2}, {baz: 3}]}}],
         jsonSchema: fooDotBarEncryptedSchema
     }),
-                                 31009);
+                                 31118);
 
     // Verify that an insert command where 'foo' is an array fails when 'foo.bar' is marked for
     // encryption.
@@ -112,13 +112,13 @@
         updates: [{q: {}, u: {$set: {foo: [1, 2, 3]}}}],
         jsonSchema: fooEncryptedSchema
     }),
-                                 31009);
+                                 31118);
     assert.commandFailedWithCode(testDb.runCommand({
         update: coll.getName(),
         updates: [{q: {}, u: {$set: {foo: {bar: [1, 2, 3]}}}}],
         jsonSchema: fooDotBarEncryptedSchema
     }),
-                                 31009);
+                                 31118);
     assert.commandFailedWithCode(testDb.runCommand({
         update: coll.getName(),
         updates: [{q: {}, u: {$set: {foo: [{bar: 1}]}}}],
@@ -133,7 +133,7 @@
         updates: [{q: {}, u: {$set: {foo: {bar: [1, 2, 3]}}}, upsert: true}],
         jsonSchema: fooDotBarEncryptedSchema
     }),
-                                 31009);
+                                 31118);
     assert.commandFailedWithCode(testDb.runCommand({
         update: coll.getName(),
         updates: [{q: {}, u: {$set: {foo: [{bar: 1}]}}, upsert: true}],
@@ -147,13 +147,13 @@
         updates: [{q: {}, u: {foo: [1, 2, 3]}}],
         jsonSchema: fooEncryptedSchema
     }),
-                                 31009);
+                                 31118);
     assert.commandFailedWithCode(testDb.runCommand({
         update: coll.getName(),
         updates: [{q: {}, u: {foo: {bar: [1, 2, 3]}}}],
         jsonSchema: fooDotBarEncryptedSchema
     }),
-                                 31009);
+                                 31118);
     assert.commandFailedWithCode(testDb.runCommand({
         update: coll.getName(),
         updates: [{q: {}, u: {foo: [{bar: 1}]}}],
@@ -168,7 +168,7 @@
         updates: [{q: {foo: {$eq: {bar: {baz: [1, 2, 3]}}}}, u: {$set: {notEncrypted: 1}}}],
         jsonSchema: fooDotBarDotBazEncryptedSchema
     }),
-                                 31009);
+                                 31118);
     assert.commandFailedWithCode(testDb.runCommand({
         update: coll.getName(),
         updates: [{q: {foo: {$eq: {bar: [{baz: 1}]}}}, u: {$set: {notEncrypted: 1}}}],
@@ -183,7 +183,7 @@
         filter: {foo: {$eq: {bar: {baz: [1, 2, 3]}}}},
         jsonSchema: fooDotBarDotBazEncryptedSchema
     }),
-                                 31009);
+                                 31118);
     assert.commandFailedWithCode(testDb.runCommand({
         find: coll.getName(),
         filter: {foo: {$eq: {bar: [{baz: 1}, {baz: 2}]}}},
@@ -198,7 +198,7 @@
         deletes: [{q: {foo: {$eq: {bar: {baz: [1, 2, 3]}}}}, limit: 1}],
         jsonSchema: fooDotBarDotBazEncryptedSchema
     }),
-                                 31009);
+                                 31118);
     assert.commandFailedWithCode(testDb.runCommand({
         delete: coll.getName(),
         deletes: [{q: {foo: {$eq: {bar: [{baz: 1}, {baz: 2}]}}}, limit: 1}],
@@ -242,13 +242,13 @@
         filter: {foo: {$eq: [1, 2, 3]}},
         jsonSchema: fooEncryptedSchema
     }),
-                                 31009);
+                                 31118);
     assert.commandFailedWithCode(testDb.runCommand({
         find: coll.getName(),
         filter: {foo: {$in: [[1, 2, 3]]}},
         jsonSchema: fooEncryptedSchema
     }),
-                                 31009);
+                                 31118);
 
     // Deterministic encryption of an object is not legal, since the schema specifies that 'foo'
     // must be of type "int".
