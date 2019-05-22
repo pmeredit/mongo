@@ -287,14 +287,6 @@
     }),
                                  51158);
 
-    // Cannot insert an encrypted array with random encryption.
-    assert.commandFailedWithCode(testDb.runCommand({
-        insert: coll.getName(),
-        documents: [{_id: 1, foo: [1, 2, 3]}],
-        jsonSchema: fooEncryptedRandomSchema
-    }),
-                                 31009);
-
     // The schema cannot specify the 'array' bsonType with deterministic encryption. Verify that
     // this results in an error for an insert that does not involve the encrypted field.
     assert.commandFailedWithCode(testDb.runCommand({
