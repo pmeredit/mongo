@@ -108,12 +108,7 @@ TEST_F(FLEPipelineTest, ThrowsOnInvalidOrUnsupportedStage) {
         fromjson("{$redact: '$$DESCEND'}"),
         fromjson("{$bucketAuto: {groupBy: '$_id', buckets: 2}}"),
         fromjson("{$planCacheStats: {}}"),
-        fromjson("{$sample: {size: 1}}"),
         fromjson("{$_internalInhibitOptimization: {}}"),
-        fromjson("{$skip: 1}"),
-        fromjson("{$sort: {ssn: 1}}"),
-        fromjson("{$indexStats: {}}"),
-        fromjson("{$collStats: {}}"),
         fromjson("{$out: 'other'}"),
     };
 

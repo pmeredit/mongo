@@ -22,21 +22,6 @@
 
     let command, cmdRes, schema;
 
-    // Test that stages which cannot contain senstive data are correctly reflected back from
-    // mongocryptd.
-    command = {
-        aggregate: coll.getName(),
-        pipeline: [{$limit: NumberLong(1)}],
-        cursor: {},
-        jsonSchema: {},
-    };
-    cmdRes = assert.commandWorked(testDB.runCommand(command));
-    delete command.jsonSchema;
-    delete cmdRes.result.lsid;
-    assert.eq(command, cmdRes.result, cmdRes);
-    assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
-    assert.eq(false, cmdRes.schemaRequiresEncryption, cmdRes);
-
     // Test that a $match stage which does not reference an encrypted field is correctly reflected
     // back from mongocryptd.
     command = {
@@ -131,6 +116,82 @@
     assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
     assert(cmdRes.result.pipeline[0].$match.location.$eq instanceof BinData, cmdRes);
 
+    // Test that a $sort stage which does not reference an encrypted field is correctly reflected
+    // back from mongocryptd.
+    command = {
+        aggregate: coll.getName(),
+        pipeline: [{$sort: {bar: 1}}],
+        cursor: {},
+        jsonSchema: {type: "object", properties: {foo: encryptedStringSpec}},
+    };
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    delete command.jsonSchema;
+    delete cmdRes.result.lsid;
+    assert.eq(command, cmdRes.result, cmdRes);
+    assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+
+    // Test that a $sort stage that references an encrypted field fails.
+    command = {
+        aggregate: coll.getName(),
+        pipeline: [{$sort: {name: -1, ssn: 1}}],
+        cursor: {},
+        jsonSchema: {type: "object", properties: {ssn: encryptedStringSpec}},
+    };
+    assert.commandFailedWithCode(testDB.runCommand(command), 51201);
+
+    // Test that a $sort stage that references a prefix of an encrypted field fails.
+    command = {
+        aggregate: coll.getName(),
+        pipeline: [{$sort: {identity: -1}}],
+        cursor: {},
+        jsonSchema: {
+            type: "object",
+            properties: {identity: {type: "object", properties: {ssn: encryptedStringSpec}}}
+        }
+    };
+    assert.commandFailedWithCode(testDB.runCommand(command), 51201);
+
+    // Test that a $sort stage that references a path with an encrypted prefix fails.
+    command = {
+        aggregate: coll.getName(),
+        pipeline: [{$sort: {"identity.ssn.number": -1}}],
+        cursor: {},
+        jsonSchema: {
+            type: "object",
+            properties: {identity: {type: "object", properties: {ssn: encryptedStringSpec}}}
+        }
+    };
+    assert.commandFailedWithCode(testDB.runCommand(command), 51102);
+
+    // Test that stages which cannot contain sensitive data are correctly reflected back from
+    // mongocryptd. For stages that output fields, we additionally verify if subsequent $match
+    // has unencrypted constants.
+    const pipelinesForNotAffectedStages = [
+        [{$collStats: {count: {}}}, {$match: {count: {$gt: "10000"}}}],
+        [{$indexStats: {}}, {$match: {host: {"$eq": "examplehost.local:27017"}}}],
+        [{$limit: NumberLong(1)}],
+        [{$sample: {size: NumberLong(1)}}],
+        [{$skip: NumberLong(1)}]
+    ];
+
+    for (let pipe of pipelinesForNotAffectedStages) {
+        const aggCommand = {
+            aggregate: "test",
+            pipeline: pipe,
+            cursor: {},
+            jsonSchema:
+                {type: "object", properties: {}, additionalProperties: encryptedStringSpec}
+        };
+
+        cmdRes = assert.commandWorked(testDB.runCommand(aggCommand));
+        delete aggCommand.jsonSchema;
+        delete cmdRes.result.lsid;
+        assert.eq(aggCommand, cmdRes.result, cmdRes);
+        assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
+        assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+    }
+
     // Correctly fail for unsupported aggregation stages.
     const invalidStages = [
         {$lookup: {from: "other", localField: "ssn", foreignField: "sensitive", as: "res"}},
@@ -154,14 +215,8 @@
         {$redact: "$$DESCEND"},
         {$bucketAuto: {groupBy: "$_id", buckets: 2}},
         {$planCacheStats: {}},
-        {$sample: {size: 1}},
         {$_internalInhibitOptimization: {}},
-        {$skip: 1},
-        {$sort: {ssn: 1}},
-        {$indexStats: {}},
-        {$collStats: {}},
         {$out: "other"},
-        {$changeStream: {}},
     ];
 
     for (let stage of invalidStages) {
@@ -172,7 +227,7 @@
             jsonSchema: {},
         };
 
-        assert.commandFailed(testDB.runCommand(aggCommand));
+        assert.commandFailedWithCode(testDB.runCommand(aggCommand), 31011);
     }
 
     // Test that all collection-less aggregations result in a failure.
@@ -193,6 +248,20 @@
     command = {
         aggregate: 1,
         pipeline: [{$listLocalSessions: {allUsers: true}}],
+        cursor: {},
+        jsonSchema: {},
+    };
+    assert.commandFailedWithCode(testDB.runCommand(command), 31106);
+    command = {
+        aggregate: 1,
+        pipeline: [{$listSessions: {}}],
+        cursor: {},
+        jsonSchema: {},
+    };
+    assert.commandFailedWithCode(testDB.runCommand(command), 31106);
+    command = {
+        aggregate: 1,
+        pipeline: [{$listSessions: {allUsers: true}}],
         cursor: {},
         jsonSchema: {},
     };

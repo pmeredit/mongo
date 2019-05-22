@@ -32,8 +32,13 @@
 #include "fle_pipeline.h"
 
 #include "fle_match_expression.h"
+#include "mongo/db/pipeline/document_source_coll_stats.h"
 #include "mongo/db/pipeline/document_source_geo_near.h"
+#include "mongo/db/pipeline/document_source_index_stats.h"
 #include "mongo/db/pipeline/document_source_limit.h"
+#include "mongo/db/pipeline/document_source_sample.h"
+#include "mongo/db/pipeline/document_source_skip.h"
+#include "mongo/db/pipeline/document_source_sort.h"
 
 namespace mongo {
 
@@ -48,6 +53,14 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaNoop(
     const std::vector<clonable_ptr<EncryptionSchemaTreeNode>>& children,
     const DocumentSource& source) {
     return prevSchema->clone();
+}
+
+clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaNoEncryption(
+    const clonable_ptr<EncryptionSchemaTreeNode>& prevSchema,
+    const std::vector<clonable_ptr<EncryptionSchemaTreeNode>>& children,
+    const DocumentSource& source) {
+    return clonable_ptr<EncryptionSchemaTreeNode>(
+        std::make_unique<EncryptionSchemaNotEncryptedNode>());
 }
 
 //
@@ -109,6 +122,26 @@ void analyzeForGeoNear(FLEPipeline* flePipe,
     }());
 }
 
+void analyzeForSort(FLEPipeline* flePipe,
+                    const EncryptionSchemaTreeNode& schema,
+                    DocumentSourceSort* source) {
+    // Sort pattern cannot have encrypted fields. 'Expression' key parts are currently only used by
+    // $meta sort, which does not involve encrypted fields.
+    for (const auto& part : source->getSortKeyPattern()) {
+        if (part.fieldPath) {
+            // Note that positional path components will be handled correctly as they could only be
+            // problematic if they refer to an array index. However, it is not allowed to have
+            // arrays with encrypted paths.
+            FieldRef keyField(part.fieldPath->fullPath());
+            uassert(51201,
+                    str::stream() << "Sorting on key " << part.fieldPath->fullPath()
+                                  << " is not allowed due to encryption.",
+                    !schema.getEncryptionMetadataForPath(keyField) &&
+                        !schema.containsEncryptedNodeBelowPrefix(keyField));
+        }
+    }
+}
+
 // The 'schemaPropagatorMap' is a map of the typeid of a concrete DocumentSource class to the
 // appropriate dispatch function for schema modification.
 static stdx::unordered_map<
@@ -146,11 +179,20 @@ static stdx::unordered_map<
 
 // Whitelisted set of DocumentSource classes which are supported and/or require action for
 // encryption with callbacks for schema propagation and encryption analysis, respectively.
+REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceCollStats,
+                                      propagateSchemaNoEncryption,
+                                      analyzeStageNoop);
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceGeoNear,
                                       propagateSchemaNoop,
                                       analyzeForGeoNear);
-REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceMatch, propagateSchemaNoop, analyzeForMatch);
+REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceIndexStats,
+                                      propagateSchemaNoEncryption,
+                                      analyzeStageNoop);
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceLimit, propagateSchemaNoop, analyzeStageNoop);
+REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceMatch, propagateSchemaNoop, analyzeForMatch);
+REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceSample, propagateSchemaNoop, analyzeStageNoop);
+REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceSkip, propagateSchemaNoop, analyzeStageNoop);
+REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceSort, propagateSchemaNoop, analyzeForSort);
 
 }  // namespace
 
