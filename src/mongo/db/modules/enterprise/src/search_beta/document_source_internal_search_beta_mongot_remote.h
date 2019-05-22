@@ -85,6 +85,8 @@ private:
 
     void populateCursor();
 
+    boost::optional<BSONObj> _getNext();
+
     const BSONObj _searchBetaQuery;
 
     boost::optional<executor::TaskExecutorCursor> _cursor;

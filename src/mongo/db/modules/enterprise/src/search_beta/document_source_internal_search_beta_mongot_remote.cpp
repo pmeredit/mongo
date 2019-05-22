@@ -60,6 +60,18 @@ void DocumentSourceInternalSearchBetaMongotRemote::populateCursor() {
 }
 
 /**
+ * Gets the next result from mongot using a TaskExecutorCursor and add an error context if any.
+ */
+boost::optional<BSONObj> DocumentSourceInternalSearchBetaMongotRemote::_getNext() {
+    try {
+        return _cursor->getNext(pExpCtx->opCtx);
+    } catch (DBException& ex) {
+        ex.addContext("Remote error from mongot");
+        throw;
+    }
+}
+
+/**
  * Gets the next result from mongot using a TaskExecutorCursor.
  */
 DocumentSource::GetNextResult DocumentSourceInternalSearchBetaMongotRemote::getNext() {
@@ -79,7 +91,7 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchBetaMongotRemote::getN
         populateCursor();
     }
 
-    auto response = _cursor->getNext(pExpCtx->opCtx);
+    auto response = _getNext();
     auto& opDebug = CurOp::get(pExpCtx->opCtx)->debug();
 
     if (opDebug.msWaitingForMongot) {
