@@ -21,9 +21,9 @@ void initializeEnvelope(AuditEventEnvelope* envelope,
     envelope->timestamp = Date_t::now();
     auto session = client->session();
     if (session) {
-        invariant(session->local().sockAddr() && session->remote().sockAddr());
-        envelope->localAddr = *session->local().sockAddr();
-        envelope->remoteAddr = *session->remote().sockAddr();
+        invariant(session->localAddr().isValid() && session->remoteAddr().isValid());
+        envelope->localAddr = session->localAddr();
+        envelope->remoteAddr = session->remoteAddr();
     }
     envelope->authenticatedUserNames =
         AuthorizationSession::get(client)->getAuthenticatedUserNames();
