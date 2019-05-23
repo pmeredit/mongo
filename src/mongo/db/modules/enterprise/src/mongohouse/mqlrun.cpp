@@ -109,7 +109,7 @@ public:
         return this;
     }
 
-    boost::optional<MergingLogic> mergingLogic() override {
+    boost::optional<DistributedPlanLogic> distributedPlanLogic() override {
         return boost::none;
     }
 };

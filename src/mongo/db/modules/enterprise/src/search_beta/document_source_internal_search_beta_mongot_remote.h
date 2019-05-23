@@ -68,7 +68,7 @@ public:
 
     const char* getSourceName() const override;
 
-    boost::optional<MergingLogic> mergingLogic() {
+    boost::optional<DistributedPlanLogic> distributedPlanLogic() {
         return boost::none;
     }
 

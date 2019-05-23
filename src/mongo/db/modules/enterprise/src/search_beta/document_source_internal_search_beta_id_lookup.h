@@ -59,7 +59,7 @@ public:
      * This stage must be run on each shard and will cause the pipeline to split. mongos
      * will merge by searchScore.
      */
-    boost::optional<MergingLogic> mergingLogic() final {
+    boost::optional<DistributedPlanLogic> distributedPlanLogic() final {
         return boost::none;  // TODO handle sharded sort correctly (SERVER-40015)
     }
 };

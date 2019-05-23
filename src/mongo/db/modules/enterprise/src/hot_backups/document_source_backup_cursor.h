@@ -88,7 +88,7 @@ public:
         return kStageName;
     }
 
-    boost::optional<MergingLogic> mergingLogic() {
+    boost::optional<DistributedPlanLogic> distributedPlanLogic() {
         return boost::none;
     }
 
