@@ -157,6 +157,12 @@
         assert.commandFailedWithCode(err, ErrorCodes.InternalError);
     }
 
+    // Run $searchBeta on an empty collection.
+    {
+        const cursor = db.doesNotExit.aggregate([{$searchBeta: searchBetaQuery}]);
+        assert.eq(cursor.toArray(), []);
+    }
+
     // Fail on non-local read concern.
     const err = assert.throws(
         () => coll.aggregate([{$searchBeta: {}}], {readConcern: {level: "majority"}}));

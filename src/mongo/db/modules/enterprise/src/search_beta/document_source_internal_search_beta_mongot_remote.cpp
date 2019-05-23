@@ -69,6 +69,12 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchBetaMongotRemote::getN
         return DocumentSource::GetNextResult::makeEOF();
     }
 
+    // Return EOF if pExpCtx->uuid is unset here; the collection we are searching over has not been
+    // created yet.
+    if (!pExpCtx->uuid) {
+        return DocumentSource::GetNextResult::makeEOF();
+    }
+
     if (!_cursor) {
         populateCursor();
     }

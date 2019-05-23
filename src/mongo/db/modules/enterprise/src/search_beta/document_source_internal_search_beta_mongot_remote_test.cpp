@@ -33,5 +33,19 @@ TEST_F(InternalSearchBetaMongotRemoteTest, SearchBetaMongotRemoteNotAllowedInTra
     ASSERT_EQ(pipeline.getStatus(), ErrorCodes::OperationNotSupportedInTransaction);
 }
 
+TEST_F(InternalSearchBetaMongotRemoteTest, SearchBetaMongotRemoteReturnsEOFWhenCollDoesNotExist) {
+    auto expCtx = getExpCtx();
+    globalMongotParams.host = "localhost:27027";
+    globalMongotParams.enabled = true;
+
+    auto specObj = BSON("$_internalSearchBetaMongotRemote" << BSONObj());
+    auto spec = specObj.firstElement();
+
+    // Set up the mongotRemote stage.
+    auto mongotRemoteStage =
+        DocumentSourceInternalSearchBetaMongotRemote::createFromBson(spec, expCtx);
+    ASSERT_TRUE(mongotRemoteStage->getNext().isEOF());
+}
+
 }  // namespace
 }  // namespace mongo
