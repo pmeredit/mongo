@@ -184,6 +184,59 @@
     assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
     assert(cmdRes.result.pipeline[0].$geoNear.query.category.$eq instanceof BinData, cmdRes);
 
+    // Test that $geoNear with distanceField that overrides an encrypted schema subtree, marks
+    // this field as not encrypted.
+    command = {
+        aggregate: coll.getName(),
+        pipeline: [
+            {
+              $geoNear: {
+                  near: {type: "Point", coordinates: [-73.99279, 40.719296]},
+                  distanceField: "dist.calculated",
+                  minDistance: 2,
+                  spherical: true
+              }
+            },
+            {$match: {"dist.calculated": "winterfell"}}
+        ],
+        cursor: {},
+        jsonSchema: {type: "object", properties: {}, additionalProperties: encryptedStringSpec},
+        isRemoteSchema: false
+    };
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+    assert(cmdRes.hasOwnProperty("result"), cmdRes);
+    assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
+    assert.eq(cmdRes.result.pipeline[1].$match["dist.calculated"].$eq, "winterfell", cmdRes);
+
+    // Test that $geoNear with includeLocs that overrides an encrypted schema subtree, marks this
+    // field as not encrypted.
+    command = {
+        aggregate: coll.getName(),
+        pipeline: [
+            {
+              $geoNear: {
+                  near: {type: "Point", coordinates: [-73.99279, 40.719296]},
+                  distanceField: "dist.calculated",
+                  minDistance: 2,
+                  spherical: true,
+                  includeLocs: "location"
+              },
+            },
+            {$match: {"location": {$gt: "winterfell"}}}
+        ],
+        cursor: {},
+        jsonSchema: {type: "object", properties: {}, additionalProperties: encryptedStringSpec},
+        isRemoteSchema: false
+    };
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+    assert(cmdRes.hasOwnProperty("result"), cmdRes);
+    assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
+    assert.eq(cmdRes.result.pipeline[1].$match["location"].$gt, "winterfell", cmdRes);
+
     // Test that $geoNear with an encrypted key field fails.
     assert.commandFailedWithCode(testDB.runCommand({
         aggregate: coll.getName(),
@@ -199,7 +252,7 @@
         jsonSchema: {type: "object", properties: {location: encryptedStringSpec}},
         isRemoteSchema: false,
     }),
-                                 51200);
+                                 51212);
 
     // Test that $geoNear with a simple key field that is a prefix of an encrypted field fails.
     assert.commandFailedWithCode(testDB.runCommand({
@@ -219,7 +272,7 @@
         },
         isRemoteSchema: false,
     }),
-                                 51200);
+                                 51212);
 
     // Test that $geoNear with a nested key field that is a prefix of an encrypted field fails.
     assert.commandFailedWithCode(testDB.runCommand({

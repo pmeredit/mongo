@@ -100,6 +100,22 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForExclusion(
 // DocumentSource schema propagation
 //
 
+clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGeoNear(
+    const clonable_ptr<EncryptionSchemaTreeNode>& prevSchema,
+    const std::vector<clonable_ptr<EncryptionSchemaTreeNode>>& children,
+    const DocumentSourceGeoNear& source) {
+    clonable_ptr<EncryptionSchemaTreeNode> newSchema = prevSchema->clone();
+
+    // Mark projected paths as unencrypted.
+    newSchema->addChild(FieldRef(source.getDistanceField().fullPath()),
+                        std::make_unique<EncryptionSchemaNotEncryptedNode>());
+    if (source.getLocationField()) {
+        newSchema->addChild(FieldRef(source.getLocationField()->fullPath()),
+                            std::make_unique<EncryptionSchemaNotEncryptedNode>());
+    }
+    return newSchema;
+}
+
 clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForLookUp(
     const clonable_ptr<EncryptionSchemaTreeNode>& prevSchema,
     const std::vector<clonable_ptr<EncryptionSchemaTreeNode>>& children,
@@ -327,7 +343,7 @@ REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceCollStats,
                                       propagateSchemaNoEncryption,
                                       analyzeStageNoop);
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceGeoNear,
-                                      propagateSchemaNoop,
+                                      propagateSchemaForGeoNear,
                                       analyzeForGeoNear);
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceIndexStats,
                                       propagateSchemaNoEncryption,
