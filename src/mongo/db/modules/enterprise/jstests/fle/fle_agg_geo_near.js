@@ -228,7 +228,7 @@
             properties: {location: {type: "object", properties: {city: encryptedStringSpec}}}
         }
     }),
-                                 51200);
+                                 51102);
 
     mongocryptd.stop();
 })();
