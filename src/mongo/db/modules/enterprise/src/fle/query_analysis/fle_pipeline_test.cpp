@@ -109,15 +109,10 @@ private:
 TEST_F(FLEPipelineTest, ThrowsOnInvalidOrUnsupportedStage) {
     // Setup involved namespaces to avoid crashing on pipeline parse.
     NamespaceString fromNs("test", "other");
+    getExpCtx()->ns = fromNs;
     getExpCtx()->setResolvedNamespaces(
         {{fromNs.coll().toString(), {fromNs, std::vector<BSONObj>{}}}});
     std::vector<BSONObj> stageSpecs = {
-        fromjson(R"({$lookup: {
-            from: "other", 
-            localField: "ssn", 
-            foreignField: "sensitive", 
-            as: "res"
-        }})"),
         fromjson(R"({$graphLookup: {
             from: "other",
             startWith: "$reportsTo",

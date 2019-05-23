@@ -36,6 +36,7 @@
 #include "mongo/db/pipeline/document_source_geo_near.h"
 #include "mongo/db/pipeline/document_source_index_stats.h"
 #include "mongo/db/pipeline/document_source_limit.h"
+#include "mongo/db/pipeline/document_source_lookup.h"
 #include "mongo/db/pipeline/document_source_sample.h"
 #include "mongo/db/pipeline/document_source_single_document_transformation.h"
 #include "mongo/db/pipeline/document_source_skip.h"
@@ -98,6 +99,72 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForExclusion(
 //
 // DocumentSource schema propagation
 //
+
+clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForLookUp(
+    const clonable_ptr<EncryptionSchemaTreeNode>& prevSchema,
+    const std::vector<clonable_ptr<EncryptionSchemaTreeNode>>& children,
+    const DocumentSourceLookUp& source) {
+    uassert(51208,
+            "Non-empty 'let' field is not allowed in the $lookup aggregation stage over an "
+            "encrypted collection.",
+            source.getLetVariables().empty());
+
+    if (source.wasConstructedWithPipelineSyntax()) {
+        invariant(children.size() == 1);
+        // In order to support looking up encrypted data, encrypting arrays would need to be
+        // supported.
+        uassert(51205,
+                str::stream() << "Looking up encrypted fields is not allowed. Consider restricting "
+                                 "output of the subpipeline.",
+                !children[0]->containsEncryptedNode());
+    } else {
+        invariant(source.getLocalField() && source.getForeignField());
+
+        auto localField = source.getLocalField();
+        FieldRef localRef(localField->fullPath());
+        auto localMetadata = prevSchema->getEncryptionMetadataForPath(localRef);
+        uassert(
+            51206,
+            str::stream() << "'Local field' '" << localField->fullPath()
+                          << "' in the $lookup aggregation stage cannot have an encrypted child.",
+            localMetadata || !prevSchema->containsEncryptedNodeBelowPrefix(localRef));
+
+        auto foreignField = source.getForeignField();
+        FieldRef foreignRef(foreignField->fullPath());
+        auto foreignMetadata = prevSchema->getEncryptionMetadataForPath(foreignRef);
+        uassert(
+            51207,
+            str::stream() << "'Foreign field' '" << foreignField->fullPath()
+                          << "' in the $lookup aggregation stage cannot have an encrypted child.",
+            foreignMetadata || !prevSchema->containsEncryptedNodeBelowPrefix(foreignRef));
+
+        uassert(51210,
+                str::stream() << "'Local field' '" << localField->fullPath()
+                              << " and 'foreign field' '"
+                              << foreignField->fullPath()
+                              << "' in the $lookup aggregation stage need to be both unencypted or "
+                                 "be encrypted with the same bsonType.",
+                (!localMetadata && !foreignMetadata) || localMetadata == foreignMetadata);
+        uassert(51211,
+                str::stream() << "'Local field' '" << localField->fullPath()
+                              << " and 'foreign field' '"
+                              << foreignField->fullPath()
+                              << "' in the $lookup aggregation stage need to be both encrypted "
+                                 " the with deterministic algorithm.",
+                (!localMetadata && !foreignMetadata) ||
+                    localMetadata->algorithm == FleAlgorithmEnum::kDeterministic);
+    }
+
+    // Mark modified paths as unencrypted. We only expect a finite set of paths without renames.
+    clonable_ptr<EncryptionSchemaTreeNode> newSchema = prevSchema->clone();
+    const auto& modifiedPaths = source.getModifiedPaths();
+    invariant(modifiedPaths.type == DocumentSource::GetModPathsReturn::Type::kFiniteSet);
+    invariant(modifiedPaths.renames.empty());
+    for (const auto& path : modifiedPaths.paths) {
+        newSchema->addChild(FieldRef(path), std::make_unique<EncryptionSchemaNotEncryptedNode>());
+    }
+    return newSchema;
+}
 
 clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaNoop(
     const clonable_ptr<EncryptionSchemaTreeNode>& prevSchema,
@@ -183,7 +250,7 @@ void analyzeForGeoNear(FLEPipeline* flePipe,
 
     if (auto key = source->getKeyField()) {
         FieldRef keyField(key->fullPath());
-        uassert(51200,
+        uassert(51212,
                 str::stream() << "Key field '" << key->fullPath()
                               << "' in the $geoNear aggregation stage cannot be encrypted.",
                 !schema.getEncryptionMetadataForPath(keyField) &&
@@ -266,6 +333,9 @@ REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceIndexStats,
                                       propagateSchemaNoEncryption,
                                       analyzeStageNoop);
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceLimit, propagateSchemaNoop, analyzeStageNoop);
+REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceLookUp,
+                                      propagateSchemaForLookUp,
+                                      analyzeStageNoop);
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceMatch, propagateSchemaNoop, analyzeForMatch);
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceSample, propagateSchemaNoop, analyzeStageNoop);
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceSkip, propagateSchemaNoop, analyzeStageNoop);
@@ -292,21 +362,31 @@ FLEPipeline::FLEPipeline(std::unique_ptr<Pipeline, PipelineDeleter> pipeline,
             return schemaPropagatorMap[typeid(source)](prevSchema, subPipelineSchemas, source);
         };
 
+    // Currently, drivers provide the schema only for the main collection, hence, sub-pipelines
+    // cannot reference other collections.
+    auto referencedCollections = _parsedPipeline->getInvolvedCollections();
+    referencedCollections.insert(_parsedPipeline->getContext()->ns);
+    uassert(51204,
+            "Pipeline over an encrypted collection cannot reference additional collections.",
+            referencedCollections.size() == 1);
+
     auto[metadataTree, finalSchema] =
         pipeline_metadata_tree::makeTree<clonable_ptr<EncryptionSchemaTreeNode>>(
-            {schema.clone()}, *_parsedPipeline.get(), propagateSchemaFunction);
+            {{_parsedPipeline->getContext()->ns, schema.clone()}},
+            *_parsedPipeline.get(),
+            propagateSchemaFunction);
 
     _finalSchema = std::move(finalSchema);
 
-    // If 'metadataTree' is not set, then this implies that the pipeline is empty and we can return
-    // early here.
+    // If 'metadataTree' is not set, then this implies that the pipeline is empty and we can
+    // return early here.
     if (!metadataTree)
         return;
 
     // Method for analyzing a DocumentSource alongside it's stage in the pipeline metadata tree.
-    // Replaces any constants with intent-to-encrypt markings based on the schema held in 'stage',
-    // or throws an assertion if 'source' contains an invalid expression/operation over an encrypted
-    // field.
+    // Replaces any constants with intent-to-encrypt markings based on the schema held in
+    // 'stage', or throws an assertion if 'source' contains an invalid expression/operation over
+    // an encrypted field.
     const auto& stageAnalysisFunction = [&](auto* stage, auto* source) {
         // The assumption is that every stage which has a registered propagator, also has a
         // registered analyzer.
