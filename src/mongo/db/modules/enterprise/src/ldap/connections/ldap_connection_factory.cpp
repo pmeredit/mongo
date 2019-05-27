@@ -185,7 +185,7 @@ private:
 
 void PooledLDAPConnection::setup(Milliseconds timeout, SetupCallback cb) {
     _options.timeout = timeout;
-    _executor->schedule([this, cb](auto execStatus) {
+    _executor->schedule([ this, cb = std::move(cb) ](auto execStatus) {
         if (!execStatus.isOK()) {
             cb(this, execStatus);
             return;
@@ -202,7 +202,7 @@ void PooledLDAPConnection::setup(Milliseconds timeout, SetupCallback cb) {
 }
 
 void PooledLDAPConnection::refresh(Milliseconds timeout, RefreshCallback cb) {
-    _executor->schedule([this, cb](auto execStatus) {
+    _executor->schedule([ this, cb = std::move(cb) ](auto execStatus) {
         if (!execStatus.isOK()) {
             cb(this, execStatus);
             return;
@@ -393,8 +393,9 @@ std::shared_ptr<executor::ConnectionPool::ConnectionInterface> LDAPTypeFactory::
 }
 
 LDAPConnectionFactory::LDAPConnectionFactory(Milliseconds poolSetupTimeout)
-    : _pool(std::make_shared<executor::ConnectionPool>(
-          std::make_shared<LDAPTypeFactory>(), "LDAP", makePoolOptions(poolSetupTimeout))) {}
+    : _typeFactory(std::make_shared<LDAPTypeFactory>()),
+      _pool(std::make_shared<executor::ConnectionPool>(
+          _typeFactory, "LDAP", makePoolOptions(poolSetupTimeout))) {}
 
 struct LDAPCompletionState {
     LDAPCompletionState(int outstandingSources_, Promise<std::unique_ptr<LDAPConnection>> promise_)
@@ -446,6 +447,7 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
     auto state = std::make_shared<LDAPCompletionState>(options.hosts.size(), std::move(pf.promise));
     for (const auto& server : hosts) {
         _pool->get(server, sslMode, options.timeout)
+            .thenRunOn(_typeFactory->getExecutor())
             .getAsync([state,
                        server](StatusWith<executor::ConnectionPool::ConnectionHandle> swHandle) {
                 stdx::lock_guard<stdx::mutex> lk(state->mutex);

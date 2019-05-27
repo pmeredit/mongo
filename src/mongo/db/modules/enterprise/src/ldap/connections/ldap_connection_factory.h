@@ -13,6 +13,7 @@ namespace mongo {
 template <class T>
 class StatusWith;
 
+class LDAPTypeFactory;
 class LDAPConnection;
 struct LDAPConnectionOptions;
 
@@ -34,6 +35,7 @@ public:
     StatusWith<std::unique_ptr<LDAPConnection>> create(const LDAPConnectionOptions& options);
 
 private:
+    std::shared_ptr<LDAPTypeFactory> _typeFactory;
     std::shared_ptr<executor::ConnectionPool> _pool;
 };
 
