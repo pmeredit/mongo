@@ -474,13 +474,13 @@ public:
 
         uassert(ErrorCodes::BadValue, "Third parameter must be a string", args.get(2).isString());
         auto algorithmStr = mozjs::ValueWriter(cx, args.get(2)).toString();
-        int32_t algorithm;
+        FleAlgorithmInt algorithm;
 
         if (StringData(algorithmStr) == FleAlgorithm_serializer(FleAlgorithmEnum::kRandom)) {
-            algorithm = FleAlgorithmInt_serializer(FleAlgorithmInt::kRandom);
+            algorithm = FleAlgorithmInt::kRandom;
         } else if (StringData(algorithmStr) ==
                    FleAlgorithm_serializer(FleAlgorithmEnum::kDeterministic)) {
-            algorithm = FleAlgorithmInt_serializer(FleAlgorithmInt::kDeterministic);
+            algorithm = FleAlgorithmInt::kDeterministic;
         } else {
             uasserted(ErrorCodes::BadValue, "Third parameter must be the FLE Algorithm type");
         }
@@ -495,12 +495,20 @@ public:
             JS::RootedObject rootedObj(cx, &args.get(1).toObject());
             auto jsclass = JS_GetClass(rootedObj);
 
-            if (strcmp(jsclass->name, "Object") == 0) {
+            if (strcmp(jsclass->name, "Object") == 0 || strcmp(jsclass->name, "Array") == 0) {
+                uassert(ErrorCodes::BadValue,
+                        "Cannot deterministically encrypt object or array types.",
+                        algorithm != FleAlgorithmInt::kDeterministic);
+
                 // If it is a JS Object, then we can extract all the information by simply calling
                 // ValueWriter.toBSON and setting the type bit, which is what is happening below.
                 BSONObj valueObj = mozjs::ValueWriter(cx, args.get(1)).toBSON();
                 plaintext.appendBuf(valueObj.objdata(), valueObj.objsize());
-                bsonType = BSONType::Object;
+                if (strcmp(jsclass->name, "Array") == 0) {
+                    bsonType = BSONType::Array;
+                } else {
+                    bsonType = BSONType::Object;
+                }
 
             } else if (scope->getProto<mozjs::MinKeyInfo>().getJSClass() == jsclass ||
                        scope->getProto<mozjs::MaxKeyInfo>().getJSClass() == jsclass ||
@@ -508,6 +516,18 @@ public:
                 uasserted(ErrorCodes::BadValue,
                           "Second parameter cannot be MinKey, MaxKey, or DBRef");
             } else {
+                if (scope->getProto<mozjs::NumberDecimalInfo>().getJSClass() == jsclass) {
+                    uassert(ErrorCodes::BadValue,
+                            "Cannot deterministically encrypt NumberDecimal type objects.",
+                            algorithm != FleAlgorithmInt::kDeterministic);
+                }
+
+                if (scope->getProto<mozjs::CodeInfo>().getJSClass() == jsclass) {
+                    uassert(ErrorCodes::BadValue,
+                            "Cannot deterministically encrypt Code type objects.",
+                            algorithm != FleAlgorithmInt::kDeterministic);
+                }
+
                 // If it is one of our Mongo defined types, then we have to use the ValueWriter
                 // writeThis function, which takes in a set of WriteFieldRecursionFrames (setting
                 // a limit on how many times we can recursively dig into an object's nested
@@ -539,10 +559,18 @@ public:
             bsonType = BSONType::String;
 
         } else if (args.get(1).isNumber()) {
+            uassert(ErrorCodes::BadValue,
+                    "Cannot deterministically encrypt Floating Point numbers.",
+                    algorithm != FleAlgorithmInt::kDeterministic);
+
             double valueNum = mozjs::ValueWriter(cx, args.get(1)).toNumber();
             plaintext.appendNum(valueNum);
             bsonType = BSONType::NumberDouble;
         } else if (args.get(1).isBoolean()) {
+            uassert(ErrorCodes::BadValue,
+                    "Cannot deterministically encrypt booleans.",
+                    algorithm != FleAlgorithmInt::kDeterministic);
+
             bool boolean = mozjs::ValueWriter(cx, args.get(1)).toBoolean();
             if (boolean) {
                 plaintext.appendChar(0x01);
@@ -556,8 +584,8 @@ public:
         ConstDataRange plaintextRange(plaintext.buf(), plaintext.len());
 
         auto key = getDataKey(uuid);
-        std::vector<uint8_t> fleBlob =
-            encryptWithKey(uuid, key, plaintextRange, bsonType, algorithm);
+        std::vector<uint8_t> fleBlob = encryptWithKey(
+            uuid, key, plaintextRange, bsonType, FleAlgorithmInt_serializer(algorithm));
 
         // Prepare the return value
         std::string blobStr =

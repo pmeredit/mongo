@@ -24,7 +24,7 @@ load('jstests/ssl/libs/ssl_helpers.js');
         url: mock_kms.getURL(),
     };
 
-    var localKMS = {
+    let localKMS = {
         key: BinData(
             0,
             "/i8ytmWQuCe1zt3bIuVa4taPGKhqasVp0/0yI4Iy0ixQPNmeDF1J5qPUbBYoueVUJHMqj350eRTwztAWXuBdSQ=="),
@@ -46,23 +46,28 @@ load('jstests/ssl/libs/ssl_helpers.js');
 
     const passTestCases = [
         "mongo",
-        {"value": "mongo"},
-        12,
         NumberLong(13),
         NumberInt(23),
-        NumberDecimal(0.1234),
         UUID(),
         ISODate(),
         new Date('December 17, 1995 03:24:00'),
         BinData(2, '1234'),
-        true,
-        false,
-        Code("function() { return true; }"),
         new Timestamp(1, 2),
         new ObjectId(),
         new DBPointer("mongo", new ObjectId()),
         /test/
     ];
+
+    const failDeterministic = [
+        true,
+        false,
+        12,
+        NumberDecimal(0.1234),
+        ["this is an array"],
+        {"value": "mongo"},
+        Code("function() { return true; }")
+    ];
+
     const failTestCases = [null, undefined, MinKey(), MaxKey(), DBRef("test", "test", "test")];
 
     // Testing for every combination of (kmsType, algorithm, javascriptVariable)
@@ -76,17 +81,27 @@ load('jstests/ssl/libs/ssl_helpers.js');
                 keyStore.createKey(kmsType, "arn:aws:kms:us-east-1:fake:fake:fake", ['mongoKey']));
             const keyId = keyStore.getKeyByAltName("mongoKey").toArray()[0]._id;
 
-            for (const passTestCase of passTestCases) {
+            let pass;
+            let fail;
+            if (encryptionAlgorithm === randomAlgorithm) {
+                pass = [...passTestCases, ...failDeterministic];
+                fail = failTestCases;
+            } else if (encryptionAlgorithm === deterministicAlgorithm) {
+                pass = passTestCases;
+                fail = [...failTestCases, ...failDeterministic];
+            }
+
+            for (const passTestCase of pass) {
                 const encPassTestCase = shell.encrypt(keyId, passTestCase, encryptionAlgorithm);
                 assert.eq(passTestCase, shell.decrypt(encPassTestCase));
 
-                if (encryptionAlgorithm == deterministicAlgorithm) {
+                if (encryptionAlgorithm === deterministicAlgorithm) {
                     assert.eq(encPassTestCase,
                               shell.encrypt(keyId, passTestCase, encryptionAlgorithm));
                 }
             }
 
-            for (const failTestCase of failTestCases) {
+            for (const failTestCase of fail) {
                 assert.throws(shell.encrypt, [keyId, failTestCase, encryptionAlgorithm]);
             }
         }
