@@ -37,12 +37,63 @@
 #include "mongo/db/pipeline/document_source_index_stats.h"
 #include "mongo/db/pipeline/document_source_limit.h"
 #include "mongo/db/pipeline/document_source_sample.h"
+#include "mongo/db/pipeline/document_source_single_document_transformation.h"
 #include "mongo/db/pipeline/document_source_skip.h"
 #include "mongo/db/pipeline/document_source_sort.h"
+#include "mongo/db/pipeline/parsed_exclusion_projection.h"
+#include "mongo/db/pipeline/parsed_inclusion_projection.h"
+#include "mongo/db/pipeline/transformer_interface.h"
 
 namespace mongo {
 
 namespace {
+
+clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForInclusion(
+    const EncryptionSchemaTreeNode& prevSchema,
+    const parsed_aggregation_projection::ParsedInclusionProjection& includer) {
+    const auto& root = includer.getRoot();
+    std::set<std::string> preservedPaths;
+    root.reportProjectedPaths(&preservedPaths);
+    std::unique_ptr<EncryptionSchemaTreeNode> futureSchema =
+        std::make_unique<EncryptionSchemaNotEncryptedNode>();
+    // Each string is a projected, included path.
+    for (auto& projection : preservedPaths) {
+        FieldRef path(projection);
+        if (auto includedNode = prevSchema.getNode(path)) {
+            futureSchema->addChild(path, includedNode->clone());
+        }
+    }
+
+    std::set<std::string> computedPaths;
+    StringMap<std::string> renamedPaths;
+    root.reportComputedPaths(&computedPaths, &renamedPaths);
+    // TODO SERVER-40828: Propagate schema for computed paths.
+    uassert(30037,
+            "Cannot project with computed or renamed paths",
+            computedPaths.size() == 0 && renamedPaths.size() == 0);
+
+    return std::move(futureSchema);
+}
+
+clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForExclusion(
+    const EncryptionSchemaTreeNode& prevSchema,
+    const parsed_aggregation_projection::ParsedExclusionProjection& excluder) {
+    const auto& root = excluder.getRoot();
+    std::set<std::string> removedPaths;
+    root.reportProjectedPaths(&removedPaths);
+    std::unique_ptr<EncryptionSchemaTreeNode> futureSchema = prevSchema.clone();
+    // Each string is a projected, included path.
+    for (auto& projection : removedPaths) {
+        futureSchema->removeNode(FieldRef(projection));
+    }
+
+    std::set<std::string> computedPaths;
+    StringMap<std::string> renamedPaths;
+    root.reportComputedPaths(&computedPaths, &renamedPaths);
+    invariant(computedPaths.size() == 0);
+    invariant(renamedPaths.size() == 0);
+    return std::move(futureSchema);
+}
 
 //
 // DocumentSource schema propagation
@@ -61,6 +112,32 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaNoEncryption(
     const DocumentSource& source) {
     return clonable_ptr<EncryptionSchemaTreeNode>(
         std::make_unique<EncryptionSchemaNotEncryptedNode>());
+}
+
+clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForProject(
+    const clonable_ptr<EncryptionSchemaTreeNode>& prevSchema,
+    const std::vector<clonable_ptr<EncryptionSchemaTreeNode>>& children,
+    const DocumentSourceSingleDocumentTransformation& source) {
+    const auto& transformer = source.getTransformer();
+    switch (transformer.getType()) {
+        case TransformerInterface::TransformerType::kInclusionProjection: {
+            const auto& includer =
+                static_cast<const parsed_aggregation_projection::ParsedInclusionProjection&>(
+                    transformer);
+            return propagateSchemaForInclusion(*prevSchema, includer);
+        }
+        case TransformerInterface::TransformerType::kExclusionProjection: {
+            const auto& excluder =
+                static_cast<const parsed_aggregation_projection::ParsedExclusionProjection&>(
+                    transformer);
+            return propagateSchemaForExclusion(*prevSchema, excluder);
+        }
+        case TransformerInterface::TransformerType::kComputedProjection:
+        case TransformerInterface::TransformerType::kReplaceRoot:
+        case TransformerInterface::TransformerType::kGroupFromFirstDocument:
+            uasserted(ErrorCodes::CommandNotSupported, "Agg stage not yet supported");
+    }
+    MONGO_UNREACHABLE;
 }
 
 //
@@ -193,6 +270,9 @@ REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceMatch, propagateSchemaNoop, 
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceSample, propagateSchemaNoop, analyzeStageNoop);
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceSkip, propagateSchemaNoop, analyzeStageNoop);
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceSort, propagateSchemaNoop, analyzeForSort);
+REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceSingleDocumentTransformation,
+                                      propagateSchemaForProject,
+                                      analyzeStageNoop);
 
 }  // namespace
 

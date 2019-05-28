@@ -40,6 +40,37 @@ namespace mongo {
 
 namespace {
 
+static const uint8_t uuidBytes[] = {0, 0, 0, 0, 0, 0, 0x40, 0, 0x80, 0, 0, 0, 0, 0, 0, 0};
+const BSONObj encryptObj = BSON("encrypt" << BSON("algorithm"
+                                                  << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
+                                                  << "keyId"
+                                                  << BSON_ARRAY(BSONBinData(uuidBytes, 16, newUUID))
+                                                  << "bsonType"
+                                                  << "string"));
+const BSONObj kAdditionalPropertiesSchema = BSON("type"
+                                                 << "object"
+                                                 << "additionalProperties"
+                                                 << encryptObj);
+
+const BSONObj kPatternPropertiesSchema = BSON("type"
+                                              << "object"
+                                              << "patternProperties"
+                                              << BSON("foo" << encryptObj));
+
+const BSONObj kMultiEncryptSchema = BSON(
+    "type"
+    << "object"
+    << "properties"
+    << BSON("person" << encryptObj << "user"
+                     << BSON("type"
+                             << "object"
+                             << "properties"
+                             << BSON("ssn" << encryptObj << "address" << encryptObj << "accounts"
+                                           << BSON("type"
+                                                   << "object"
+                                                   << "properties"
+                                                   << BSON("bank" << encryptObj))))));
+
 class FLEPipelineTest : public FLETestFixture {
 public:
     /**
@@ -169,10 +200,163 @@ TEST_F(FLEPipelineTest, MatchWithInvalidComparisonToEncryptedFieldCorrectlyFails
         51118);
 }
 
+TEST_F(FLEPipelineTest, InclusionProjectionWithNoEncryptedFieldsSucceeds) {
+    BSONObj projection = BSON("$project" << BSON("_id" << 1));
+    auto& schema = getSchemaForStage({projection}, kMultiEncryptSchema);
+    ASSERT_FALSE(schema.containsEncryptedNode());
+}
+
+TEST_F(FLEPipelineTest, InclusionProjectionWithOneEncryptedFieldHasOneEncryptedPath) {
+    BSONObj projection = BSON("$project" << BSON("person" << 1));
+    auto& schema = getSchemaForStage({projection}, kMultiEncryptSchema);
+    ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("person")));
+    ASSERT_FALSE(schema.getEncryptionMetadataForPath(FieldRef("user.ssn")));
+    ASSERT_FALSE(schema.getEncryptionMetadataForPath(FieldRef("user.address")));
+}
+
+TEST_F(FLEPipelineTest, InclusionProjectionPreservesTwoEncryptedPaths) {
+    BSONObj projection = BSON("$project" << BSON("person" << 1 << "user" << BSON("address" << 1)));
+    const auto& schema = getSchemaForStage({projection}, kMultiEncryptSchema);
+    ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("person")));
+    ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("user.address")));
+    ASSERT_FALSE(schema.getEncryptionMetadataForPath(FieldRef("user.ssn")));
+}
+
+TEST_F(FLEPipelineTest, InclusionProjectionPreservesAllEncryptedPaths) {
+    BSONObj projection =
+        BSON("$project" << BSON("person" << 1 << "user" << BSON("ssn" << 1 << "address" << 1)));
+    auto& schema = getSchemaForStage({projection}, kMultiEncryptSchema);
+    ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("person")));
+    ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("user.address")));
+    ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("user.ssn")));
+}
+
+TEST_F(FLEPipelineTest, InclusionProjectionPreservesIncludedSubtrees) {
+    BSONObj projection = BSON("$project" << BSON("user" << 1));
+    auto& schema = getSchemaForStage({projection}, kMultiEncryptSchema);
+    ASSERT_FALSE(schema.getEncryptionMetadataForPath(FieldRef("person")));
+    ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("user.address")));
+    ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("user.ssn")));
+    ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("user.accounts.bank")));
+}
+
+TEST_F(FLEPipelineTest, ExclusionWithNoEncryptedFieldsSucceeds) {
+    BSONObj projection = BSON("$project" << BSON("test" << 0));
+    auto& schema = getSchemaForStage({projection}, kMultiEncryptSchema);
+    ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("person")));
+    ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("user.address")));
+    ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("user.ssn")));
+    ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("user.accounts.bank")));
+}
+
+TEST_F(FLEPipelineTest, ExclusionWithOneEncryptedTopLevelFieldSucceeds) {
+    BSONObj projection = BSON("$project" << BSON("person" << 0));
+    auto& schema = getSchemaForStage({projection}, kMultiEncryptSchema);
+    ASSERT_FALSE(schema.getEncryptionMetadataForPath(FieldRef("person")));
+    ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("user.address")));
+    ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("user.ssn")));
+    ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("user.accounts.bank")));
+}
+
+TEST_F(FLEPipelineTest, ExclusionWithOneEncryptedSecondLevelFieldSucceeds) {
+    BSONObj projection = BSON("$project" << BSON("user" << BSON("address" << 0)));
+    auto& schema = getSchemaForStage({projection}, kMultiEncryptSchema);
+    ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("person")));
+    ASSERT_FALSE(schema.getEncryptionMetadataForPath(FieldRef("user.address")));
+    ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("user.ssn")));
+    ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("user.accounts.bank")));
+}
+
+TEST_F(FLEPipelineTest, ExclusionWithMultipleEncryptedSecondLevelFieldsSucceeds) {
+    BSONObj projection = BSON("$project" << BSON("user" << BSON("address" << 0 << "ssn" << 0)));
+    auto& schema = getSchemaForStage({projection}, kMultiEncryptSchema);
+    ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("person")));
+    ASSERT_FALSE(schema.getEncryptionMetadataForPath(FieldRef("user.address")));
+    ASSERT_FALSE(schema.getEncryptionMetadataForPath(FieldRef("user.ssn")));
+    ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("user.accounts.bank")));
+}
+
+TEST_F(FLEPipelineTest, ExclusionWithManyEncryptedFieldsSucceeds) {
+    BSONObj projection =
+        BSON("$project" << BSON("person" << 0 << "user" << BSON("address" << 0 << "ssn" << 0)));
+    auto& schema = getSchemaForStage({projection}, kMultiEncryptSchema);
+    ASSERT_FALSE(schema.getEncryptionMetadataForPath(FieldRef("person")));
+    ASSERT_FALSE(schema.getEncryptionMetadataForPath(FieldRef("user.address")));
+    ASSERT_FALSE(schema.getEncryptionMetadataForPath(FieldRef("user.ssn")));
+    ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("user.accounts.bank")));
+}
+
+TEST_F(FLEPipelineTest, ExclusionOfTopLevelFieldRemovesAllSubFields) {
+    BSONObj projection = BSON("$project" << BSON("user" << 0));
+    auto& schema = getSchemaForStage({projection}, kMultiEncryptSchema);
+    ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("person")));
+    ASSERT_FALSE(schema.getEncryptionMetadataForPath(FieldRef("user.address")));
+    ASSERT_FALSE(schema.getEncryptionMetadataForPath(FieldRef("user.ssn")));
+    ASSERT_FALSE(schema.getEncryptionMetadataForPath(FieldRef("user.accounts.bank")));
+}
+
+TEST_F(FLEPipelineTest, ExclusionOfAllFieldsSucceeds) {
+    BSONObj projection =
+        BSON("$project" << BSON("person" << 0 << "user"
+                                         << BSON("address" << 0 << "ssn" << 0 << "accounts"
+                                                           << BSON("bank" << 0))));
+    auto& schema = getSchemaForStage({projection}, kMultiEncryptSchema);
+    ASSERT_FALSE(schema.getEncryptionMetadataForPath(FieldRef("person")));
+    ASSERT_FALSE(schema.getEncryptionMetadataForPath(FieldRef("user.address")));
+    ASSERT_FALSE(schema.getEncryptionMetadataForPath(FieldRef("user.ssn")));
+    ASSERT_FALSE(schema.getEncryptionMetadataForPath(FieldRef("user.accounts.bank")));
+    ASSERT_FALSE(schema.containsEncryptedNode());
+}
+
+TEST_F(FLEPipelineTest, InclusionOfAdditionalPropertiesSucceeds) {
+    BSONObj projection = BSON("$project" << BSON("add" << 1));
+    auto& schema = getSchemaForStage({projection}, kAdditionalPropertiesSchema);
+    ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("add")));
+}
+
+TEST_F(FLEPipelineTest, InclusionOfPatternPropertiesSucceeds) {
+    BSONObj projection = BSON("$project" << BSON("foo" << 1));
+    auto& schema = getSchemaForStage({projection}, kPatternPropertiesSchema);
+    ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("foo")));
+}
+
 TEST_F(FLEPipelineTest, EmptyPipelineCorrectlyPropagatesInputSchema) {
     const auto& outputSchema = getSchemaForStage({}, kDefaultSsnSchema);
     ASSERT_TRUE(outputSchema.getEncryptionMetadataForPath(FieldRef("ssn")));
     ASSERT_FALSE(outputSchema.getEncryptionMetadataForPath(FieldRef("notSsn")));
+}
+
+TEST_F(FLEPipelineTest, InclusionIncludesIDEvenIfNotSpecified) {
+    BSONObj projection = BSON("$project" << BSON("user" << 1));
+    auto jsonSchema = fromjson(R"({
+             type: "object",
+             properties: {
+                 _id: {
+                     encrypt: {
+                         algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                         keyId: [{'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
+                         bsonType: "string"
+                     }
+                 }
+            }
+        })");
+
+    auto& schema = getSchemaForStage({projection}, jsonSchema);
+    ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("_id")));
+}
+
+TEST_F(FLEPipelineTest, ExclusionWithPatternPropertiesKeepsNonNamedProperties) {
+    BSONObj projection = BSON("$project" << BSON("foo" << 0));
+    const auto& outputSchema = getSchemaForStage({projection}, kPatternPropertiesSchema);
+    ASSERT_TRUE(outputSchema.containsEncryptedNode());
+    ASSERT_TRUE(outputSchema.getEncryptionMetadataForPath(FieldRef{"foo"}));
+}
+
+TEST_F(FLEPipelineTest, ExclusionWithAdditionalPropertiesKeepsNonNamedProperties) {
+    BSONObj projection = BSON("$project" << BSON("user" << 0));
+    const auto& outputSchema = getSchemaForStage({projection}, kAdditionalPropertiesSchema);
+    ASSERT_TRUE(outputSchema.containsEncryptedNode());
+    ASSERT_TRUE(outputSchema.getEncryptionMetadataForPath(FieldRef{"user"}));
 }
 
 }  // namespace

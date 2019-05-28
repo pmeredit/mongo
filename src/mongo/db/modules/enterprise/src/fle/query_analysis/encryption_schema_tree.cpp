@@ -366,7 +366,7 @@ std::unique_ptr<EncryptionSchemaTreeNode> parseObjectKeywords(
                     encryptAllowedSetForField &= ~EncryptAllowed::kRandom;
                 }
             }
-            node->addChild(fieldName.rawData(),
+            node->addChild(FieldRef{fieldName.toString()},
                            _parse(property.embeddedObject(),
                                   encryptAllowedSetForField,
                                   false,
@@ -563,11 +563,47 @@ std::vector<EncryptionSchemaTreeNode*> EncryptionSchemaTreeNode::getChildrenForP
     return matchingChildren;
 }
 
-boost::optional<ResolvedEncryptionInfo> EncryptionSchemaTreeNode::_getEncryptionMetadataForPath(
-    const FieldRef& path, size_t index) const {
+clonable_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::addChild(
+    FieldRef path, std::unique_ptr<EncryptionSchemaTreeNode> node) {
+    auto nextChild = path.getPart(0);
+    if (path.numParts() == 1) {
+        clonable_ptr<EncryptionSchemaTreeNode> returnedChild = nullptr;
+        if (auto replacedChild = getNamedChild(nextChild)) {
+            returnedChild = replacedChild->clone();
+        }
+        _propertiesChildren[nextChild.toString()] = std::move(node);
+        return returnedChild;
+    }
+    if (!getNamedChild(nextChild)) {
+        _propertiesChildren[nextChild.toString()] =
+            std::make_unique<EncryptionSchemaNotEncryptedNode>();
+    }
+    auto nextChildNode = getNamedChild(nextChild);
+    path.removeFirstPart();
+    return nextChildNode->addChild(std::move(path), std::move(node));
+}
+
+bool EncryptionSchemaTreeNode::removeNode(FieldRef path) {
+    if (path.numParts() == 0) {
+        return false;
+    }
+    // If the node is encrypted, it does not have children.
+    const auto nextPart = path.getPart(0);
+    if (path.numParts() == 1) {
+        return _propertiesChildren.erase(nextPart);
+    }
+    if (auto child = getNamedChild(nextPart)) {
+        path.removeFirstPart();
+        return child->removeNode(std::move(path));
+    }
+    return false;
+}
+
+const EncryptionSchemaTreeNode* EncryptionSchemaTreeNode::_getNode(const FieldRef& path,
+                                                                   size_t index) const {
     // If we've ended on this node, then return whether its an encrypted node.
     if (index >= path.numParts()) {
-        return getEncryptionMetadata();
+        return this;
     }
 
     auto children = getChildrenForPathComponent(path[index]);
@@ -583,27 +619,28 @@ boost::optional<ResolvedEncryptionInfo> EncryptionSchemaTreeNode::_getEncryption
                               << "' which contains an encrypted path prefix.",
                 !getEncryptionMetadata());
 
-        return boost::none;
+        return nullptr;
     }
 
-    // There is at least one relevant child. Recursively get the encryption metadata from this child
-    // schema.
-    auto metadata = children[0]->_getEncryptionMetadataForPath(path, index + 1);
+    // There is at least one relevant child. Recursively traverse the path starting from this
+    // child.
+    auto childNode = children[0]->_getNode(path, index + 1);
 
     // Verify that all additional child schemas report the same encryption metadata as the first.
     auto it = children.begin();
     ++it;
     for (; it != children.end(); ++it) {
         auto nextChild = *it;
-        auto additionalMetadata = nextChild->_getEncryptionMetadataForPath(path, index + 1);
+        auto additionalMetadata =
+            getEncryptionMetadataForNode(nextChild->_getNode(path, index + 1));
         uassert(51142,
                 str::stream() << "Found conflicting encryption metadata for path: '"
                               << path.dottedField()
                               << "'",
-                additionalMetadata == metadata);
+                additionalMetadata == getEncryptionMetadataForNode(childNode));
     }
 
-    return metadata;
+    return childNode;
 };
 
 bool EncryptionSchemaTreeNode::containsEncryptedNode() const {

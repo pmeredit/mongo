@@ -122,9 +122,14 @@ public:
      */
     virtual bool containsEncryptedNode() const;
 
-    void addChild(std::string path, std::unique_ptr<EncryptionSchemaTreeNode> node) {
-        _propertiesChildren[std::move(path)] = std::move(node);
-    }
+    /**
+     * Adds 'node' at 'path' under this node. Adds unencrypted nodes as neccessary to
+     * reach the final component of 'path'. Returns a pointer to a node that was overwritten or
+     * nullptr if there did not already exist a node with the given path. It is invalid to call
+     * this function with an empty FieldRef.
+     */
+    clonable_ptr<EncryptionSchemaTreeNode> addChild(FieldRef path,
+                                                    std::unique_ptr<EncryptionSchemaTreeNode> node);
 
     /**
      * Adds 'node' as a special "wildcard" child which is used for all field names that don't have
@@ -187,7 +192,8 @@ public:
      */
     boost::optional<ResolvedEncryptionInfo> getEncryptionMetadataForPath(
         const FieldRef& path) const {
-        return _getEncryptionMetadataForPath(path, 0);
+        auto node = getNode(path);
+        return getEncryptionMetadataForNode(node);
     }
 
     /**
@@ -197,6 +203,21 @@ public:
     bool containsEncryptedNodeBelowPrefix(const FieldRef& prefix) const {
         return _containsEncryptedNodeBelowPrefix(prefix, 0);
     }
+
+    /**
+     * Returns the node at a given path if it exists. Returns nullptr if no such path exists in the
+     * tree. Respects additional and pattern properties. Throws an exception if there are multiple
+     * matching nodes with conflicting metadata.
+     */
+    const EncryptionSchemaTreeNode* getNode(FieldRef path) const {
+        return _getNode(path, 0);
+    }
+
+    /**
+     * Remove the specified node from the schema. Does nothing if path does not exist. Returns true
+     * if a node was removed. Ignores additional and pattern properties.
+     */
+    bool removeNode(FieldRef path);
 
 private:
     struct PatternPropertiesChild {
@@ -215,6 +236,34 @@ private:
         pcrecpp::RE regex;
         clonable_ptr<EncryptionSchemaTreeNode> child;
     };
+
+    static boost::optional<ResolvedEncryptionInfo> getEncryptionMetadataForNode(
+        const EncryptionSchemaTreeNode* node) {
+        if (node) {
+            return node->getEncryptionMetadata();
+        }
+        return boost::none;
+    }
+
+    /**
+     * Returns a const pointer to the child if it exists. Ignores additionalProperties and
+     * patternProperties children.
+     */
+    const EncryptionSchemaTreeNode* getNamedChild(const StringData& name) const {
+        auto childrenIt = _propertiesChildren.find(name);
+        if (childrenIt != _propertiesChildren.end()) {
+            return childrenIt->second.get();
+        }
+        return nullptr;
+    }
+
+    EncryptionSchemaTreeNode* getNamedChild(const StringData& name) {
+        auto childrenIt = _propertiesChildren.find(name);
+        if (childrenIt != _propertiesChildren.end()) {
+            return childrenIt->second.get();
+        }
+        return nullptr;
+    }
 
     /**
      * Given the property name 'name', returns a list of child nodes for the subschemas that are
@@ -244,8 +293,7 @@ private:
      * happen for 'patternProperties', since we may need to descend the subtrees for multiple
      * matching patterns.
      */
-    boost::optional<ResolvedEncryptionInfo> _getEncryptionMetadataForPath(const FieldRef& path,
-                                                                          size_t index = 0) const;
+    const EncryptionSchemaTreeNode* _getNode(const FieldRef& path, size_t index = 0) const;
 
     bool _containsEncryptedNodeBelowPrefix(const FieldRef& prefix, size_t level) const;
 
