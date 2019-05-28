@@ -57,7 +57,7 @@ class ShardingTestWithMongotMock {
                 this.st["rs" + i].restart(j, {
                     setParameter:
                         {mongotHost: this._mongotMocks[mongotMocksIdx++].getConnection().host}
-                })
+                });
             }
 
             this.st["rs" + i].waitForMaster();
