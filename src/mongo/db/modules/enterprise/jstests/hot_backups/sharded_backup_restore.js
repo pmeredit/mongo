@@ -361,7 +361,6 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
                       "(inclusive), starting from oplog: " + tojson(firstOplogToRemove));
 
             localDb.replset.election.drop();
-            localDb.replset.minValid.drop();
             assert.commandWorked(localDb.system.replset.update({}, {
                 $set:
                     {members: [{_id: NumberInt(0), host: "localhost:" + restoredNodePorts[i]}]}
