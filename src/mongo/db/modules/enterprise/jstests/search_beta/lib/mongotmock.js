@@ -59,6 +59,11 @@ class MongotMock {
 
         args.push("--pidfilepath=" + this.dataDir + "/cryptd.pid");
 
+        if (TestData.auth) {
+            args.push("--clusterAuthMode=keyFile");
+            args.push("--keyFile=" + TestData.keyFile);
+        }
+
         this.pid = _startMongoProgram({args: args});
 
         assert(checkProgram(this.pid));

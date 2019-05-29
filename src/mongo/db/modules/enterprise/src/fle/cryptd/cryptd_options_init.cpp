@@ -41,7 +41,10 @@ MONGO_STARTUP_OPTIONS_VALIDATE(MongoCryptDOptions)(InitializerContext* context) 
     return Status::OK();
 }
 
-MONGO_STARTUP_OPTIONS_STORE(MongoCryptDOptions)(InitializerContext* context) {
+MONGO_INITIALIZER_GENERAL(CoreOptions_Store,
+                          ("BeginStartupOptionStorage"),
+                          ("EndStartupOptionStorage"))
+(InitializerContext* context) {
     Status ret = storeMongoCryptDOptions(moe::startupOptionsParsed, context->args());
     if (!ret.isOK()) {
         std::cerr << ret.toString() << std::endl;

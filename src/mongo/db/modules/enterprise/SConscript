@@ -360,7 +360,7 @@ if "search_beta" in env['MONGO_ENTERPRISE_FEATURES']:
         ],
         LIBDEPS_PRIVATE=[
             'src/fle/mongocryptd_core',
-            'src/search_beta/mongotmock_commands'
+            'src/search_beta/mongotmock_core',
         ],
     )
 
