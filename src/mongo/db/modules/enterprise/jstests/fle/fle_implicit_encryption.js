@@ -19,7 +19,6 @@ load('jstests/ssl/libs/ssl_helpers.js');
 
     const conn = MongoRunner.runMongod(x509_options);
     const unencryptedDatabase = conn.getDB("test");
-    const collection = unencryptedDatabase.keystore;
 
     const awsKMS = {
         accessKeyId: "access",
@@ -38,19 +37,19 @@ load('jstests/ssl/libs/ssl_helpers.js');
             aws: awsKMS,
             local: localKMS,
         },
-        keyVaultCollection: collection,
-        useRemoteSchemas: true,
+        keyVaultNamespace: "test.keystore",
+        schemaMap: {},
     };
 
     var encryptedShell = Mongo(conn.host, clientSideRemoteSchemaFLEOptions);
-    var keyStore = encryptedShell.getKeyStore();
+    var keyVault = encryptedShell.getKeyVault();
 
-    assert.writeOK(keyStore.createKey(
+    assert.writeOK(keyVault.createKey(
         "aws", "arn:aws:mongo1:us-east-1:123456789:environment", ['studentsKey']));
-    assert.writeOK(keyStore.createKey(
+    assert.writeOK(keyVault.createKey(
         "local", "arn:aws:mongo2:us-east-1:123456789:environment", ['teachersKey']));
-    const studentsKeyId = keyStore.getKeyByAltName("studentsKey").toArray()[0]._id;
-    const teachersKeyId = keyStore.getKeyByAltName("teachersKey").toArray()[0]._id;
+    const studentsKeyId = keyVault.getKeyByAltName("studentsKey").toArray()[0]._id;
+    const teachersKeyId = keyVault.getKeyByAltName("teachersKey").toArray()[0]._id;
 
     var encryptedDatabase = encryptedShell.getDB("test");
 
@@ -165,12 +164,12 @@ load('jstests/ssl/libs/ssl_helpers.js');
 
     testDeterministicCollection(teachersKeyId, encryptedShell, conn, "teachers");
 
-    assert.writeOK(keyStore.createKey(
+    assert.writeOK(keyVault.createKey(
         "local", "arn:aws:mongo2:us-east-1:123456789:environment", ['staffKey']));
     assert.writeOK(
-        keyStore.createKey("aws", "arn:aws:mongo1:us-east-1:123456789:environment", ['adminKey']));
-    const staffKeyId = keyStore.getKeyByAltName("staffKey").toArray()[0]._id;
-    const adminKeyId = keyStore.getKeyByAltName("adminKey").toArray()[0]._id;
+        keyVault.createKey("aws", "arn:aws:mongo1:us-east-1:123456789:environment", ['adminKey']));
+    const staffKeyId = keyVault.getKeyByAltName("staffKey").toArray()[0]._id;
+    const adminKeyId = keyVault.getKeyByAltName("adminKey").toArray()[0]._id;
 
     const staffSchema = {
         bsonType: "object",
@@ -211,15 +210,15 @@ load('jstests/ssl/libs/ssl_helpers.js');
             aws: awsKMS,
             local: localKMS,
         },
-        keyVaultCollection: collection,
-        schemas: {
+        keyVaultNamespace: "test.keystore",
+        schemaMap: {
             "test.staff": staffSchema,
             "test.admin": adminSchema,
         }
     };
 
     encryptedShell = Mongo(conn.host, clientSideLocalSchemaFLEOptions);
-    keyStore = encryptedShell.getKeyStore();
+    keyVault = encryptedShell.getKeyVault();
     encryptedDatabase = encryptedShell.getDB("test");
 
     testRandomizedCollection(staffKeyId, encryptedShell, conn, "staff");

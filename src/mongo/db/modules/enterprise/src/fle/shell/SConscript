@@ -57,7 +57,7 @@ env.Library(
 env.JSHeader(
     target="kms-shell-server.cpp",
     source=[
-        "keystore.js",
+        "keyvault.js",
     ],
 )
 

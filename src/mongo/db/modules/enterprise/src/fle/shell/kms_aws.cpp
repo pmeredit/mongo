@@ -170,7 +170,7 @@ void AWSKMSService::initRequest(kms_request_t* request, StringData region) {
     uassertKmsRequest(kms_request_set_access_key_id(request, _config.accessKeyId.c_str()));
     uassertKmsRequest(kms_request_set_secret_key(request, _config.secretAccessKey->c_str()));
 
-    if (_config.sessionToken && !_config.sessionToken.get().empty()) {
+    if (!_config.sessionToken.value_or("").empty()) {
         // TODO: move this into kms-message
         uassertKmsRequest(kms_request_add_header_field(
             request, "X-Amz-Security-Token", _config.sessionToken.get().c_str()));
@@ -375,13 +375,7 @@ std::unique_ptr<KMSService> AWSKMSService::create(const AwsKMS& config) {
     params.sslPEMKeyPassword = "";
     params.sslClusterFile = "";
     params.sslClusterPassword = "";
-
-    // Leave the CA file empty so we default to system CA but for local testing allow it to inherit
-    // the CA file.
     params.sslCAFile = "";
-    if (config.getUrl()) {
-        params.sslCAFile = sslGlobalParams.sslCAFile;
-    }
 
     params.sslCRLFile = "";
 
@@ -395,11 +389,14 @@ std::unique_ptr<KMSService> AWSKMSService::create(const AwsKMS& config) {
     params.sslDisabledProtocols =
         std::vector({SSLParams::Protocols::TLS1_0, SSLParams::Protocols::TLS1_1});
 
-    awsKMS->_sslManager = SSLManagerInterface::create(params, false);
-
-    if (config.getUrl()) {
+    // Leave the CA file empty so we default to system CA but for local testing allow it to inherit
+    // the CA file.
+    if (!config.getUrl().value_or("").empty()) {
+        params.sslCAFile = sslGlobalParams.sslCAFile;
         awsKMS->_server = parseUrl(config.getUrl().get());
     }
+
+    awsKMS->_sslManager = SSLManagerInterface::create(params, false);
 
     awsKMS->_config.accessKeyId = config.getAccessKeyId().toString();
 

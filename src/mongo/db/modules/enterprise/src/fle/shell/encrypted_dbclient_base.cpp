@@ -53,6 +53,14 @@ constexpr uint8_t kRandomEncryptionBit = 0x02;
 
 class EncryptedDBClientBase final : public DBClientBase, public mozjs::EncryptionCallbacks {
 
+private:
+    // This struct is used for the LRU Schema cache.
+    struct SchemaInfo {
+        BSONObj schema;
+        Date_t ts;    // Used to mark when the schema was stored in this struct.
+        bool remote;  // True if the schema is from the server. Else false.
+    };
+
 public:
     EncryptedDBClientBase(std::unique_ptr<DBClientBase> conn,
                           ClientSideFLEOptions encryptionOptions,
@@ -84,11 +92,20 @@ public:
 
     using DBClientBase::runCommandWithTarget;
     std::pair<rpc::UniqueReply, DBClientBase*> runCommandWithTarget(OpMsgRequest request) final {
+        if (_encryptionOptions.getBypassAutoEncryption().value_or(false)) {
+            return _conn->runCommandWithTarget(std::move(request));
+        }
         return handleEncryptionRequest(std::move(request));
     }
 
-    BSONObj getRemoteOrInputSchema(const OpMsgRequest& request, NamespaceString ns) {
-        if (_encryptionOptions.getUseRemoteSchemas().value_or(false)) {
+    SchemaInfo getRemoteOrInputSchema(const OpMsgRequest& request, NamespaceString ns) {
+        BSONElement schemaElem = _encryptionOptions.getSchemaMap().getField(ns.toString());
+        if (!schemaElem.eoo()) {
+            uassert(ErrorCodes::BadValue,
+                    "Invalid Schema object in Client Side FLE Options",
+                    schemaElem.isABSONObj());
+            return SchemaInfo{schemaElem.Obj().getOwned(), Date_t::now(), false};
+        } else {
             BSONObj filter = BSON("name" << ns.coll());
             auto collectionInfos = _conn->getCollectionInfos(ns.db().toString(), filter);
 
@@ -101,58 +118,40 @@ public:
                     !options.getObjectField("validator").getObjectField("$jsonSchema").isEmpty()) {
                     BSONObj validator = options.getObjectField("validator");
                     BSONObj schema = validator.getObjectField("$jsonSchema");
-                    return schema.getOwned();
+                    return SchemaInfo{schema.getOwned(), Date_t::now(), true};
                 }
             }
-        } else if (_encryptionOptions.getSchemas()) {
-            BSONObj schemas = _encryptionOptions.getSchemas().get();
-            auto names = ns.toString();
-            BSONElement schemaElem = schemas.getField(names);
-
-            if (!schemaElem.eoo()) {
-                uassert(ErrorCodes::BadValue,
-                        "Invalid Schema object in Client Side FLE Options",
-                        schemaElem.isABSONObj());
-                return schemaElem.Obj().getOwned();
-            }
-        } else {
-            uasserted(ErrorCodes::BadValue,
-                      "Client Side FLE Options requires either getUseRemoteSchemas or a schema "
-                      "provided.");
         }
-        return BSONObj();
+        return SchemaInfo{BSONObj(), Date_t::now(), true};
     }
 
-    BSONObj getSchema(const OpMsgRequest& request, NamespaceString ns) {
+    SchemaInfo getSchema(const OpMsgRequest& request, NamespaceString ns) {
         if (_schemaCache.hasKey(ns)) {
-            auto[schema, ts] = _schemaCache.find(ns)->second;
+            auto schemaInfo = _schemaCache.find(ns)->second;
             auto ts_new = Date_t::now();
 
-            if ((ts_new - ts) < kCacheInvalidationTime) {
-                return schema;
+            if ((ts_new - schemaInfo.ts) < kCacheInvalidationTime) {
+                return schemaInfo;
             }
 
             _schemaCache.erase(ns);
         }
 
-        BSONObj schema = getRemoteOrInputSchema(request, ns);
+        auto schemaInfo = getRemoteOrInputSchema(request, ns);
+        _schemaCache.add(ns, schemaInfo);
 
-        auto ts_new = Date_t::now();
-        _schemaCache.add(ns, std::make_pair(schema, ts_new));
-
-        return schema;
+        return schemaInfo;
     }
 
     BSONObj runQueryAnalysis(OpMsgRequest request,
-                             const BSONObj& schema,
+                             const SchemaInfo& schemaInfo,
                              const NamespaceString& ns,
                              const StringData& commandName) {
         BSONObjBuilder schemaInfoBuilder;
 
         BSONObjBuilder commandBuilder;
-        commandBuilder.append(cryptd_query_analysis::kJsonSchema, schema);
-        commandBuilder.append(cryptd_query_analysis::kIsRemoteSchema,
-                              _encryptionOptions.getUseRemoteSchemas().value_or(false));
+        commandBuilder.append(cryptd_query_analysis::kJsonSchema, schemaInfo.schema);
+        commandBuilder.append(cryptd_query_analysis::kIsRemoteSchema, schemaInfo.remote);
         commandBuilder.appendElementsUnique(request.body);
         BSONObj cmdObj = commandBuilder.obj();
         request.body = cmdObj;
@@ -193,13 +192,14 @@ public:
 
         auto databaseName = request.getDatabase().toString();
         NamespaceString ns = CommandHelpers::parseNsCollectionRequired(databaseName, request.body);
-        BSONObj schema = getSchema(request, ns);
+        auto schemaInfoObject = getSchema(request, ns);
 
-        if (schema.isEmpty()) {
+        if (schemaInfoObject.schema.isEmpty()) {
             return _conn->runCommandWithTarget(std::move(request));
         }
 
-        BSONObj schemaInfo = runQueryAnalysis(std::move(request), schema, ns, commandName);
+        BSONObj schemaInfo =
+            runQueryAnalysis(std::move(request), schemaInfoObject, ns, commandName);
 
         if (!schemaInfo.getBoolField("hasEncryptionPlaceholders") &&
             !schemaInfo.getBoolField("schemaRequiresEncryption")) {
@@ -837,7 +837,7 @@ private:
         return outputBuffer;
     }
 
-    LRUCache<NamespaceString, std::pair<BSONObj, Date_t>> _schemaCache{kEncryptedDBCacheSize};
+    LRUCache<NamespaceString, SchemaInfo> _schemaCache{kEncryptedDBCacheSize};
     LRUCache<UUID, std::pair<std::shared_ptr<SymmetricKey>, Date_t>, UUID::Hash> _datakeyCache{
         kEncryptedDBCacheSize};
     std::unique_ptr<DBClientBase> _conn;
@@ -846,6 +846,46 @@ private:
     JSContext* _cx;
 };  // class EncryptedDBClientBase
 
+/**
+ * Constructs a collection object from a namespace, passed in to the nsString parameter.
+ * The client is the connection to a database in which you want to create the collection.
+ * The collection parameter gets set to a javascript collection object.
+ */
+void createCollectionObject(JSContext* cx,
+                            JS::HandleValue client,
+                            StringData nsString,
+                            JS::MutableHandleValue collection) {
+    invariant(!client.isNull() && !client.isUndefined());
+
+    auto ns = NamespaceString(nsString);
+    uassert(ErrorCodes::BadValue,
+            "Invalid keystore namespace.",
+            ns.isValid() && NamespaceString::validCollectionName(ns.coll()));
+
+    auto scope = mozjs::getScope(cx);
+
+    // The collection object requires a database object to be constructed as well.
+    JS::RootedValue databaseRV(cx);
+    JS::AutoValueArray<2> databaseArgs(cx);
+
+    databaseArgs[0].setObject(client.toObject());
+    mozjs::ValueReader(cx, databaseArgs[1]).fromStringData(ns.db());
+    scope->getProto<mozjs::DBInfo>().newInstance(databaseArgs, &databaseRV);
+
+    invariant(databaseRV.isObject());
+    auto databaseObj = databaseRV.toObjectOrNull();
+
+    JS::AutoValueArray<4> collectionArgs(cx);
+    collectionArgs[0].setObject(client.toObject());
+    collectionArgs[1].setObject(*databaseObj);
+    mozjs::ValueReader(cx, collectionArgs[2]).fromStringData(ns.coll());
+    mozjs::ValueReader(cx, collectionArgs[3]).fromStringData(ns.ns());
+
+    scope->getProto<mozjs::DBCollectionInfo>().newInstance(collectionArgs, collection);
+}
+
+// The parameters required to start FLE on the shell. The current connection is passed in as a
+// parameter to create the keyvault collection object if one is not provided.
 std::unique_ptr<DBClientBase> createEncryptedDBClientBase(std::unique_ptr<DBClientBase> conn,
                                                           JS::HandleValue arg,
                                                           JS::HandleObject mongoConnection,
@@ -854,55 +894,41 @@ std::unique_ptr<DBClientBase> createEncryptedDBClientBase(std::unique_ptr<DBClie
     uassert(
         31038, "Invalid Client Side Encryption parameters.", arg.isObject() || arg.isUndefined());
 
-    static constexpr auto keyVaultCollectionFieldId = "keyVaultCollection"_sd;
+    static constexpr auto keyVaultClientFieldId = "keyVaultClient";
 
     if (!arg.isObject() && encryptedShellGlobalParams.awsAccessKeyId.empty()) {
         return conn;
     }
 
     ClientSideFLEOptions encryptionOptions;
+    JS::RootedValue client(cx);
     JS::RootedValue collection(cx);
 
     if (!arg.isObject()) {
+        // If arg is not an object, but one of the required encryptedShellGlobalParams
+        // is defined, the user is trying to start an encrypted client with command line
+        // parameters.
+
         AwsKMS awsKms = AwsKMS(encryptedShellGlobalParams.awsAccessKeyId,
                                encryptedShellGlobalParams.awsSecretAccessKey);
 
-        boost::optional<StringData> awsSessionToken(encryptedShellGlobalParams.awsSessionToken);
-        awsKms.setSessionToken(awsSessionToken);
+        awsKms.setUrl(StringData(encryptedShellGlobalParams.awsKmsURL));
 
-        auto ns = NamespaceString(encryptedShellGlobalParams.keystoreNamespace);
-        uassert(ErrorCodes::BadValue,
-                "Invalid keystore namespace.",
-                ns.isValid() && NamespaceString::validCollectionName(ns.coll()));
-
-        auto scope = mozjs::getScope(cx);
-
-        JS::RootedValue databaseRV(cx);
-        JS::AutoValueArray<2> databaseArgs(cx);
-
-        databaseArgs[0].setObject(*mongoConnection.get());
-        mozjs::ValueReader(cx, databaseArgs[1]).fromStringData(ns.db());
-        scope->getProto<mozjs::DBInfo>().newInstance(databaseArgs, &databaseRV);
-
-        invariant(databaseRV.isObject());
-        auto databaseObj = databaseRV.toObjectOrNull();
-
-        JS::AutoValueArray<4> collectionArgs(cx);
-        collectionArgs[0].setObject(*mongoConnection.get());
-        collectionArgs[1].setObject(*databaseObj);
-        mozjs::ValueReader(cx, collectionArgs[2]).fromStringData(ns.coll());
-        mozjs::ValueReader(cx, collectionArgs[3]).fromStringData(ns.ns());
-
-        scope->getProto<mozjs::DBCollectionInfo>().newInstance(collectionArgs, &collection);
+        awsKms.setSessionToken(StringData(encryptedShellGlobalParams.awsSessionToken));
 
         KmsProviders kmsProviders;
         kmsProviders.setAws(awsKms);
 
-        encryptionOptions = ClientSideFLEOptions(std::move(kmsProviders));
-        // Because we cannot add a schema object through the command line, we set the
-        // schema object in ClientSideFLEOptions to be null so we know to always use
+        // The mongoConnection object will never be null.
+        // If the encrypted shell is started through command line parameters, then the user must
+        // default to the implicit connection for the keyvault collection.
+        client.setObjectOrNull(mongoConnection.get());
+
+        // Because we cannot add a schemaMap object through the command line, we set the
+        // schemaMap object in ClientSideFLEOptions to be null so we know to always use
         // remote schemas.
-        encryptionOptions.setSchemas(BSONObj());
+        encryptionOptions = ClientSideFLEOptions(
+            encryptedShellGlobalParams.keyVaultNamespace, std::move(kmsProviders), BSONObj());
     } else {
         uassert(ErrorCodes::BadValue,
                 "Collection object must be passed to Field Level Encryption Options",
@@ -911,14 +937,22 @@ std::unique_ptr<DBClientBase> createEncryptedDBClientBase(std::unique_ptr<DBClie
         const BSONObj obj = mozjs::ValueWriter(cx, arg).toBSON();
         encryptionOptions = encryptionOptions.parse(IDLParserErrorContext("root"), obj);
 
-        if (encryptionOptions.getSchemas()) {
-            encryptionOptions.setSchemas(encryptionOptions.getSchemas().get().getOwned());
-        }
+        // IDL does not perform a deep copy of BSONObjs when parsing, so we must get an
+        // owned copy of the schemaMap.
+        encryptionOptions.setSchemaMap(encryptionOptions.getSchemaMap().getOwned());
 
-        // TODO SERVER-39897 Parse and validate that the collection exists.
+        // This logic tries to extract the client from the args. If the connection object is defined
+        // in the ClientSideFLEOptions struct, then the client will extract it and set itself to be
+        // that. Else, the client will default to the implicit connection.
         JS::RootedObject handleObject(cx, &arg.toObject());
-        JS_GetProperty(cx, handleObject, keyVaultCollectionFieldId.rawData(), &collection);
+        JS_GetProperty(cx, handleObject, keyVaultClientFieldId, &client);
+        if (client.isNull() || client.isUndefined()) {
+            client.setObjectOrNull(mongoConnection.get());
+        }
     }
+
+    createCollectionObject(cx, client, encryptionOptions.getKeyVaultNamespace(), &collection);
+
     std::unique_ptr<EncryptedDBClientBase> base =
         std::make_unique<EncryptedDBClientBase>(std::move(conn), encryptionOptions, collection, cx);
     return std::move(base);

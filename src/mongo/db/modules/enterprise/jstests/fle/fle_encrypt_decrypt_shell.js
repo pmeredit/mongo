@@ -1,6 +1,6 @@
 /**
 * Check the functionality of encrypt and decrypt
-* functions in KeyStore.js
+* functions in KeyVault.js
 */
 
 load("src/mongo/db/modules/enterprise/jstests/fle/lib/mock_kms.js");
@@ -35,7 +35,8 @@ load('jstests/ssl/libs/ssl_helpers.js');
             aws: awsKMS,
             local: localKMS,
         },
-        keyVaultCollection: collection,
+        keyVaultNamespace: "test.coll",
+        schemaMap: {}
     };
 
     const kmsTypes = ["aws", "local"];
@@ -70,16 +71,17 @@ load('jstests/ssl/libs/ssl_helpers.js');
 
     const failTestCases = [null, undefined, MinKey(), MaxKey(), DBRef("test", "test", "test")];
 
+    const shell = Mongo(conn.host, clientSideFLEOptions);
+    const keyVault = shell.getKeyVault();
+
     // Testing for every combination of (kmsType, algorithm, javascriptVariable)
     for (const kmsType of kmsTypes) {
         for (const encryptionAlgorithm of encryptionAlgorithms) {
             collection.drop();
-            const shell = Mongo(conn.host, clientSideFLEOptions);
-            const keyStore = shell.getKeyStore();
 
             assert.writeOK(
-                keyStore.createKey(kmsType, "arn:aws:kms:us-east-1:fake:fake:fake", ['mongoKey']));
-            const keyId = keyStore.getKeyByAltName("mongoKey").toArray()[0]._id;
+                keyVault.createKey(kmsType, "arn:aws:kms:us-east-1:fake:fake:fake", ['mongoKey']));
+            const keyId = keyVault.getKeyByAltName("mongoKey").toArray()[0]._id;
 
             let pass;
             let fail;

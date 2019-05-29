@@ -58,15 +58,16 @@ structs:
     clientSideFLEOptions:
         description: "FLE Options inputted through the Mongo constructor in the shell"
         fields:
-          keyVaultCollection: #Parsed as a JSHandleValue, not through IDL
+          keyVaultClient: #Parsed as a JSHandleValue, not through IDL
             type: void
             ignore: true
+          keyVaultNamespace:
+            type: string
           kmsProviders: kmsProviders
-          useRemoteSchemas:
-            type: bool
-            optional: true
-          schemas:
+          schemaMap:
             type: object
+          bypassAutoEncryption:
+            type: bool
             optional: true
 
     awsEncryptResponse:

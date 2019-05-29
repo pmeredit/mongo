@@ -29,7 +29,17 @@ load('jstests/ssl/libs/ssl_helpers.js');
           kmsProviders: {
               aws: awsKMS,
           },
-          useRemoteSchemas: true,
+          schemaMap: {},
+        },
+        {
+          kmsProviders: {
+              aws: awsKMS,
+          },
+          keyVaultNamespace: "test.keystore",
+        },
+        {
+          keyVaultNamespace: "test.keystore",
+          schemaMap: {},
         },
     ];
 
@@ -42,8 +52,8 @@ load('jstests/ssl/libs/ssl_helpers.js');
           kmsProviders: {
               aws: awsKMS,
           },
-          keyVaultCollection: collection,
-          useRemoteSchemas: true,
+          keyVaultNamespace: "test.keystore",
+          schemaMap: {},
         },
     ];
 

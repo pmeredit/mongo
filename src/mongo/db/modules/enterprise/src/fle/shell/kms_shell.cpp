@@ -9,16 +9,16 @@
 namespace mongo {
 
 namespace JSFiles {
-extern const JSFile keystore;
+extern const JSFile keyvault;
 }
 
 namespace {
 
 void callback_fn(Scope& scope) {
-    scope.execSetup(JSFiles::keystore);
+    scope.execSetup(JSFiles::keyvault);
 }
 
-MONGO_INITIALIZER(setKeystoreCallback)(InitializerContext*) {
+MONGO_INITIALIZER(setKeyvaultCallback)(InitializerContext*) {
     shell_utils::setEnterpriseShellCallback(mongo::callback_fn);
     return Status::OK();
 }

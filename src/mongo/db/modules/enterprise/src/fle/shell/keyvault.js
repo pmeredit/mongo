@@ -1,11 +1,11 @@
-//  Class that allows the mongo shell to talk to the mongodb KeyStore.
+//  Class that allows the mongo shell to talk to the mongodb KeyVault.
 //  Loaded only into the enterprise module.
 
-Mongo.prototype.getKeyStore = function() {
-    return new KeyStore(this);
+Mongo.prototype.getKeyVault = function() {
+    return new KeyVault(this);
 };
 
-class KeyStore {
+class KeyVault {
     constructor(mongo) {
         this.mongo = mongo;
         var collection = mongo.getDataKeyCollection();
