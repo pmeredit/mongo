@@ -1,0 +1,117 @@
+/**
+ * Tests that the _id lookups performed by $searchBeta have a shard filter applied to them so that
+ * orphans are not returned.
+ */
+(function() {
+    "use strict";
+
+    load('jstests/libs/uuid_util.js');                 // For getUUIDFromListCollections.
+    load("jstests/libs/collection_drop_recreate.js");  // For assertCreateCollection.
+    load("src/mongo/db/modules/enterprise/jstests/search_beta/lib/mongotmock.js");
+    load("src/mongo/db/modules/enterprise/jstests/search_beta/lib/shardingtest_with_mongotmock.js");
+
+    const dbName = "test";
+    const collName = "internal_search_beta_mongot_remote";
+
+    const stWithMock = new ShardingTestWithMongotMock({
+        name: "sharded_search_beta",
+        shards: {
+            rs0: {nodes: 1},
+            rs1: {nodes: 1},
+        },
+        mongos: 1,
+    });
+    stWithMock.start();
+    const st = stWithMock.st;
+
+    const mongos = st.s;
+    const testDB = mongos.getDB(dbName);
+    const testColl = testDB.getCollection(collName);
+    const collNS = testColl.getFullName();
+
+    // Documents that end up on shard0.
+    assert.commandWorked(testColl.insert({_id: 1, shardKey: 0, x: "ow"}));
+    assert.commandWorked(testColl.insert({_id: 2, shardKey: 0, x: "now", y: "lorem"}));
+    assert.commandWorked(testColl.insert({_id: 3, shardKey: 0, x: "brown", y: "ipsum"}));
+    assert.commandWorked(testColl.insert({_id: 4, shardKey: 0, x: "cow", y: "lorem ipsum"}));
+    // Documents that end up on shard1.
+    assert.commandWorked(testColl.insert({_id: 11, shardKey: 100, x: "brown", y: "ipsum"}));
+    assert.commandWorked(testColl.insert({_id: 12, shardKey: 100, x: "cow", y: "lorem ipsum"}));
+    assert.commandWorked(testColl.insert({_id: 13, shardKey: 100, x: "brown", y: "ipsum"}));
+    assert.commandWorked(testColl.insert({_id: 14, shardKey: 100, x: "cow", y: "lorem ipsum"}));
+
+    // Shard the test collection, split it at {shardKey: 10}, and move the higher chunk to shard1.
+    assert.commandWorked(testColl.createIndex({shardKey: 1}));
+    assert.commandWorked(testDB.adminCommand({enableSharding: dbName}));
+    st.ensurePrimaryShard(dbName, st.shard0.name);
+    st.shardColl(testColl, {shardKey: 1}, {shardKey: 10}, {shardKey: 10 + 1});
+
+    const shard0Conn = st.rs0.getPrimary();
+    const shard1Conn = st.rs1.getPrimary();
+
+    // Insert a document into shard 0 which is not owned by that shard.
+    assert.commandWorked(shard0Conn.getDB(dbName)[collName].insert(
+        {_id: 15, shardKey: 100, x: "_should be filtered out"}));
+
+    // Insert a document into shard 0 which doesn't have a shard key. This document should just be
+    // skipped when mongot returns a result indicating that it matched the text query. The server
+    // should not crash and the operation should not fail.
+    assert.commandWorked(shard0Conn.getDB(dbName)[collName].insert({_id: 16}));
+
+    const collUUID0 = getUUIDFromListCollections(st.rs0.getPrimary().getDB(dbName), collName);
+    const collUUID1 = getUUIDFromListCollections(st.rs1.getPrimary().getDB(dbName), collName);
+
+    const mongotQuery = {};
+    const responseOk = 1;
+
+    const mongot0ResponseBatch = [
+        // Mongot will act "stale": it will have an index entry for a document not owned by shard
+        // 0.
+        {_id: 15, $searchScore: 102},
+
+        // The document with _id 16 has no shard key. (Perhaps it was inserted manually). Although
+        // mongot reports this document as matching the query, mongod should filter it out when
+        // doing shard filtering.
+        {_id: 16, $searchScore: 101},
+
+        // The remaining documents rightfully belong to shard 0.
+        {_id: 3, $searchScore: 100},
+        {_id: 2, $searchScore: 10},
+        {_id: 4, $searchScore: 1},
+        {_id: 1, $searchScore: 0.99},
+    ];
+    const history0 = [{
+        expectedCommand: mongotCommandForQuery(mongotQuery, collName, dbName, collUUID0),
+        response: mongotResponseForBatch(mongot0ResponseBatch, NumberLong(0), collNS, responseOk),
+    }];
+    const s0Mongot = stWithMock.getMockConnectedToHost(shard0Conn);
+    s0Mongot.setMockResponses(history0, NumberLong(123));
+
+    const mongot1ResponseBatch = [
+        {_id: 11, $searchScore: 111},
+        {_id: 13, $searchScore: 30},
+        {_id: 12, $searchScore: 29},
+        {_id: 14, $searchScore: 28},
+    ];
+    const history1 = [{
+        expectedCommand: mongotCommandForQuery(mongotQuery, collName, dbName, collUUID1),
+        response: mongotResponseForBatch(mongot1ResponseBatch, NumberLong(0), collNS, responseOk),
+    }];
+    const s1Mongot = stWithMock.getMockConnectedToHost(shard1Conn);
+    s1Mongot.setMockResponses(history1, NumberLong(456));
+
+    const expectedDocs = [
+        {_id: 11, shardKey: 100, x: "brown", y: "ipsum"},
+        {_id: 3, shardKey: 0, x: "brown", y: "ipsum"},
+        {_id: 13, shardKey: 100, x: "brown", y: "ipsum"},
+        {_id: 12, shardKey: 100, x: "cow", y: "lorem ipsum"},
+        {_id: 14, shardKey: 100, x: "cow", y: "lorem ipsum"},
+        {_id: 2, shardKey: 0, x: "now", y: "lorem"},
+        {_id: 4, shardKey: 0, x: "cow", y: "lorem ipsum"},
+        {_id: 1, shardKey: 0, x: "ow"},
+    ];
+
+    assert.eq(testColl.aggregate([{$searchBeta: mongotQuery}]).toArray(), expectedDocs);
+
+    stWithMock.stop();
+})();

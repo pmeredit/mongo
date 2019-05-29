@@ -7,6 +7,7 @@
 #include "document_source_internal_search_beta_id_lookup.h"
 
 #include "mongo/db/pipeline/document.h"
+#include "mongo/db/pipeline/document_source_internal_shard_filter.h"
 
 namespace mongo {
 
@@ -20,14 +21,21 @@ DocumentSourceInternalSearchBetaIdLookUp::DocumentSourceInternalSearchBetaIdLook
     const intrusive_ptr<ExpressionContext>& pExpCtx)
     : DocumentSource(pExpCtx) {}
 
-intrusive_ptr<DocumentSource> DocumentSourceInternalSearchBetaIdLookUp::createFromBson(
+std::list<intrusive_ptr<DocumentSource>> DocumentSourceInternalSearchBetaIdLookUp::createFromBson(
     BSONElement elem, const intrusive_ptr<ExpressionContext>& pExpCtx) {
     uassert(31016,
             str::stream() << "$_internalSearchBetaIdLookup value must be an empty object. Found: "
                           << typeName(elem.type()),
             elem.type() == BSONType::Object && elem.embeddedObject().isEmpty());
 
-    return new DocumentSourceInternalSearchBetaIdLookUp(pExpCtx);
+    std::list<boost::intrusive_ptr<DocumentSource>> list = {
+        new DocumentSourceInternalSearchBetaIdLookUp(pExpCtx)};
+
+    if (auto shardFilterer = pExpCtx->mongoProcessInterface->getShardFilterer(pExpCtx)) {
+        list.push_back(new DocumentSourceInternalShardFilter(pExpCtx, std::move(shardFilterer)));
+    }
+
+    return list;
 }
 
 Value DocumentSourceInternalSearchBetaIdLookUp::serialize(

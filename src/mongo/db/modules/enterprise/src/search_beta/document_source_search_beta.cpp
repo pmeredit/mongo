@@ -9,6 +9,7 @@
 #include "document_source_internal_search_beta_id_lookup.h"
 #include "document_source_internal_search_beta_mongot_remote.h"
 #include "mongo/db/pipeline/document_source.h"
+#include "mongo/db/pipeline/document_source_internal_shard_filter.h"
 #include "mongo/db/pipeline/expression_context.h"
 
 namespace mongo {
@@ -24,7 +25,7 @@ const char* DocumentSourceSearchBeta::getSourceName() const {
     return "$searchBeta";
 }
 
-list<intrusive_ptr<DocumentSource>> DocumentSourceSearchBeta::createFromBson(
+std::list<intrusive_ptr<DocumentSource>> DocumentSourceSearchBeta::createFromBson(
     BSONElement elem, const intrusive_ptr<ExpressionContext>& pExpCtx) {
 
     uassert(ErrorCodes::FailedToParse,
@@ -32,8 +33,10 @@ list<intrusive_ptr<DocumentSource>> DocumentSourceSearchBeta::createFromBson(
                           << typeName(elem.type()),
             elem.type() == BSONType::Object);
 
-    return {DocumentSourceInternalSearchBetaMongotRemote::createFromBson(elem, pExpCtx),
-            new DocumentSourceInternalSearchBetaIdLookUp(pExpCtx)};
+    return {
+        DocumentSourceInternalSearchBetaMongotRemote::createFromBson(elem, pExpCtx),
+        new DocumentSourceInternalSearchBetaIdLookUp(pExpCtx),
+    };
 }
 
 }  // namespace mongo

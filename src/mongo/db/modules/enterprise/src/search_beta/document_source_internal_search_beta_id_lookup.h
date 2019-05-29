@@ -27,7 +27,7 @@ public:
     /**
      * Creates an $_internalSearchBetaIdLookup stage. "elem" must be an empty object.
      */
-    static boost::intrusive_ptr<DocumentSource> createFromBson(
+    static std::list<boost::intrusive_ptr<DocumentSource>> createFromBson(
         BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& pExpCtx);
 
     DocumentSourceInternalSearchBetaIdLookUp(
