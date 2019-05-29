@@ -46,7 +46,7 @@ load('jstests/ssl/libs/ssl_helpers.js');
             keyVaultCollection: collection,
             useRemoteSchemas: true,
           },
-        ]
+        ];
 
         clientSideFLEOptionsPass.forEach(element => {
             assert.doesNotThrow(() => {
