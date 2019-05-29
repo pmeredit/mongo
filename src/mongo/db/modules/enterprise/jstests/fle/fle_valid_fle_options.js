@@ -37,22 +37,21 @@ load('jstests/ssl/libs/ssl_helpers.js');
         assert.throws(Mongo, [conn.host, element]);
     });
 
-    const clientSideFLEOptionsPass =
-        [
-          {
-            kmsProviders: {
-                aws: awsKMS,
-            },
-            keyVaultCollection: collection,
-            useRemoteSchemas: true,
+    const clientSideFLEOptionsPass = [
+        {
+          kmsProviders: {
+              aws: awsKMS,
           },
-        ];
+          keyVaultCollection: collection,
+          useRemoteSchemas: true,
+        },
+    ];
 
-        clientSideFLEOptionsPass.forEach(element => {
-            assert.doesNotThrow(() => {
-                Mongo(conn.host, element);
-            });
+    clientSideFLEOptionsPass.forEach(element => {
+        assert.doesNotThrow(() => {
+            Mongo(conn.host, element);
         });
+    });
 
     MongoRunner.stopMongod(conn);
     mock_kms.stop();
