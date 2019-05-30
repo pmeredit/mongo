@@ -9,6 +9,7 @@ env.Library(
     source=[
         'collator_factory_cryptd.cpp',
         'encryption_schema_tree.cpp',
+        'expression_schema_walker.cpp',
         'fle_match_expression.cpp',
         'fle_pipeline.cpp',
         'query_analysis.cpp',
@@ -31,6 +32,7 @@ env.CppUnitTest(
     target='query_analysis_test',
     source=[
         'encryption_schema_tree_test.cpp',
+        'expression_analysis_test.cpp',
         'fle_match_expression_test.cpp',
         'fle_pipeline_test.cpp',
         'query_analysis_test.cpp',
