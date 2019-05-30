@@ -166,7 +166,8 @@
     // Fail on non-local read concern.
     const err = assert.throws(
         () => coll.aggregate([{$searchBeta: {}}], {readConcern: {level: "majority"}}));
-    assert.commandFailedWithCode(err, ErrorCodes.InvalidOptions);
+    assert.commandFailedWithCode(
+        err, [ErrorCodes.InvalidOptions, ErrorCodes.ReadConcernMajorityNotEnabled]);
 
     MongoRunner.stopMongod(conn);
     mongotmock.stop();
