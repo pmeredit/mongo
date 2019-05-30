@@ -6,9 +6,11 @@
 // These faults must match the list of faults in kms_http_server.py, see the
 // SUPPORTED_FAULT_TYPES list in kms_http_server.py
 const FAULT_ENCRYPT = "fault_encrypt";
+const FAULT_ENCRYPT_CORRECT_FORMAT = "fault_encrypt_correct_format";
 const FAULT_ENCRYPT_WRONG_FIELDS = "fault_encrypt_wrong_fields";
 const FAULT_ENCRYPT_BAD_BASE64 = "fault_encrypt_bad_base64";
 const FAULT_DECRYPT = "fault_decrypt";
+const FAULT_DECRYPT_CORRECT_FORMAT = "fault_decrypt_correct_format";
 const FAULT_DECRYPT_WRONG_KEY = "fault_decrypt_wrong_key";
 
 const DISABLE_FAULTS = "disable_faults";

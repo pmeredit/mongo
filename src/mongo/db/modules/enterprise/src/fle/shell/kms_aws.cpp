@@ -238,6 +238,16 @@ std::vector<uint8_t> AWSKMSService::encrypt(ConstDataRange cdr, StringData kmsKe
 
     BSONObj obj = fromjson(body);
 
+    auto field = obj["__type"];
+
+    if (!field.eoo()) {
+        auto awsResponse = AwsKMSError::parse(IDLParserErrorContext("root"), obj);
+
+        uasserted(51203,
+                  str::stream() << "AWS KMS failed to encrypt: " << awsResponse.getType() << " : "
+                                << awsResponse.getMessage());
+    }
+
     auto awsResponse = AwsEncryptResponse::parse(IDLParserErrorContext("root"), obj);
 
     auto blobStr = base64::decode(awsResponse.getCiphertextBlob().toString());
@@ -280,6 +290,16 @@ SecureVector<uint8_t> AWSKMSService::decrypt(ConstDataRange cdr, BSONObj masterK
     auto body = kms_response_get_body(response.get());
 
     BSONObj obj = fromjson(body);
+
+    auto field = obj["__type"];
+
+    if (!field.eoo()) {
+        auto awsResponse = AwsKMSError::parse(IDLParserErrorContext("root"), obj);
+
+        uasserted(51204,
+                  str::stream() << "AWS KMS failed to decrypt: " << awsResponse.getType() << " : "
+                                << awsResponse.getMessage());
+    }
 
     auto awsResponse = AwsDecryptResponse::parse(IDLParserErrorContext("root"), obj);
 

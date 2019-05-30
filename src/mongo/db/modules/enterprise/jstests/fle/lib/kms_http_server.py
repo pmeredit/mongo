@@ -26,6 +26,9 @@ fault_type = None
 """Fault which causes encrypt to return 500."""
 FAULT_ENCRYPT = "fault_encrypt"
 
+"""Fault which causes encrypt to return an error that contains a type and message"""
+FAULT_ENCRYPT_CORRECT_FORMAT = "fault_encrypt_correct_format"
+
 """Fault which causes encrypt to return wrong fields in JSON."""
 FAULT_ENCRYPT_WRONG_FIELDS = "fault_encrypt_wrong_fields"
 
@@ -35,6 +38,9 @@ FAULT_ENCRYPT_BAD_BASE64 = "fault_encrypt_bad_base64"
 """Fault which causes decrypt to return 500."""
 FAULT_DECRYPT = "fault_decrypt"
 
+"""Fault which causes decrypt to return an error that contains a type and message"""
+FAULT_DECRYPT_CORRECT_FORMAT = "fault_decrypt_correct_format"
+
 """Fault which causes decrypt to return wrong key."""
 FAULT_DECRYPT_WRONG_KEY = "fault_decrypt_wrong_key"
 
@@ -42,9 +48,11 @@ FAULT_DECRYPT_WRONG_KEY = "fault_decrypt_wrong_key"
 # List of supported fault types
 SUPPORTED_FAULT_TYPES = [
     FAULT_ENCRYPT,
+    FAULT_ENCRYPT_CORRECT_FORMAT,
     FAULT_ENCRYPT_WRONG_FIELDS,
     FAULT_ENCRYPT_BAD_BASE64,
     FAULT_DECRYPT,
+    FAULT_DECRYPT_CORRECT_FORMAT,
     FAULT_DECRYPT_WRONG_KEY,
 ]
 
@@ -156,6 +164,14 @@ class AwsKmsHandler(http.server.BaseHTTPRequestHandler):
 
             self._send_reply(json.dumps(response).encode('utf-8'))
             return
+        elif fault_type == FAULT_ENCRYPT_CORRECT_FORMAT:
+            response = {
+                "__type" : "NotFoundException",
+                "message" : "Error encrypting message",
+            }
+
+            self._send_reply(json.dumps(response).encode('utf-8'))
+            return
 
         raise ValueError("Unknown Fault Type: " + fault_type)
 
@@ -191,6 +207,14 @@ class AwsKmsHandler(http.server.BaseHTTPRequestHandler):
             response = {
                 "Plaintext" : "ta7DXE7J0OiCRw03dYMJSeb8nVF5qxTmZ9zWmjuX4zW/SOorSCaY8VMTWG+cRInMx/rr/+QeVw2WjU2IpOSvMg==",
                 "KeyId" : "Not a clue",
+            }
+
+            self._send_reply(json.dumps(response).encode('utf-8'))
+            return
+        elif fault_type == FAULT_DECRYPT_CORRECT_FORMAT:
+            response = {
+                "__type" : "NotFoundException",
+                "message" : "Error decrypting message",
             }
 
             self._send_reply(json.dumps(response).encode('utf-8'))

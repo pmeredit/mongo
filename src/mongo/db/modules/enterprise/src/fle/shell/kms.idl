@@ -17,6 +17,14 @@ enums:
             local: "local"
 
 structs:
+    awsKMSError:
+        description: "AWS KMS error"
+        fields:
+          __type:
+            type: string
+            cpp_name: type
+          message: string
+
     # Options passed to Mongo() javascript constructor
     awsKMS:
         description: "AWS KMS config"

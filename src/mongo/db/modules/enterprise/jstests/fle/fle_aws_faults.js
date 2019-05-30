@@ -58,6 +58,24 @@ load('jstests/ssl/libs/ssl_helpers.js');
     testBadEncryptResult(FAULT_ENCRYPT_WRONG_FIELDS);
     testBadEncryptResult(FAULT_ENCRYPT_BAD_BASE64);
 
+    function testBadEncryptError() {
+        const mock_kms = new MockKMSServer(FAULT_ENCRYPT_CORRECT_FORMAT, false);
+
+        runKMS(mock_kms, (shell) => {
+            const keyStore = shell.getKeyStore();
+
+            let error =
+                assert.throws(() => keyStore.createKey(
+                                  "aws", "arn:aws:kms:us-east-1:fake:fake:fake", ["mongoKey"]));
+            assert.commandFailedWithCode(error, [51203]);
+            assert.eq(
+                error,
+                "Error: AWS KMS failed to encrypt: NotFoundException : Error encrypting message");
+        });
+    }
+
+    testBadEncryptError();
+
     function testBadDecryptResult(fault) {
         const mock_kms = new MockKMSServer(fault, false);
 
@@ -97,6 +115,27 @@ load('jstests/ssl/libs/ssl_helpers.js');
     }
 
     testBadDecryptKeyResult(FAULT_DECRYPT_WRONG_KEY);
+
+    function testBadDecryptError() {
+        const mock_kms = new MockKMSServer(FAULT_DECRYPT_CORRECT_FORMAT, false);
+
+        runKMS(mock_kms, (shell) => {
+            const keyStore = shell.getKeyStore();
+            assert.writeOK(
+                keyStore.createKey("aws", "arn:aws:kms:us-east-1:fake:fake:fake", ["mongoKey"]));
+            const keyId = keyStore.getKeys("mongoKey").toArray()[0]._id;
+            const str = "mongo";
+            let error = assert.throws(() => {
+                const encStr = shell.encrypt(keyId, str, randomAlgorithm);
+            });
+            assert.commandFailedWithCode(error, [51204]);
+            assert.eq(
+                error,
+                "Error: AWS KMS failed to decrypt: NotFoundException : Error decrypting message");
+        });
+    }
+
+    testBadDecryptError();
 
     MongoRunner.stopMongod(conn);
 }());
