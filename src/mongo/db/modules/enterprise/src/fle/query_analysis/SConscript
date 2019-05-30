@@ -7,7 +7,6 @@ env = env.Clone()
 env.Library(
     target='cryptd_query_analysis',
     source=[
-        'aggregate_expression_intender.cpp',
         'collator_factory_cryptd.cpp',
         'encryption_schema_tree.cpp',
         'fle_match_expression.cpp',
@@ -35,7 +34,6 @@ env.CppUnitTest(
         'fle_match_expression_test.cpp',
         'fle_pipeline_test.cpp',
         'query_analysis_test.cpp',
-        'aggregate_expression_intender_test.cpp',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/db/query/query_test_service_context',
