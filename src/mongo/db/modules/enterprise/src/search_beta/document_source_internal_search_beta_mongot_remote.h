@@ -80,14 +80,18 @@ private:
                                  const boost::intrusive_ptr<ExpressionContext>& expCtx);
 
     DocumentSourceInternalSearchBetaMongotRemote(
-        const BSONObj& query, const boost::intrusive_ptr<ExpressionContext>& expCtx)
-        : DocumentSource(expCtx), _searchBetaQuery(query.getOwned()){};
+        const BSONObj& query,
+        const boost::intrusive_ptr<ExpressionContext>& expCtx,
+        executor::TaskExecutor* taskExecutor)
+        : DocumentSource(expCtx), _searchBetaQuery(query.getOwned()), _taskExecutor(taskExecutor) {}
 
     void populateCursor();
 
     boost::optional<BSONObj> _getNext();
 
     const BSONObj _searchBetaQuery;
+
+    executor::TaskExecutor* _taskExecutor;
 
     boost::optional<executor::TaskExecutorCursor> _cursor;
 

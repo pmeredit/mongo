@@ -10,11 +10,11 @@
 #include "mongo/db/pipeline/document.h"
 #include "mongo/db/pipeline/value.h"
 #include "mongo/db/service_context.h"
-#include "mongo/executor/non_auth_task_executor.h"
 #include "mongo/executor/remote_command_request.h"
 #include "mongo/executor/task_executor_cursor.h"
 #include "mongo/transport/transport_layer.h"
 #include "mongot_options.h"
+#include "mongot_task_executor.h"
 
 namespace mongo {
 
@@ -56,7 +56,7 @@ void DocumentSourceInternalSearchBetaMongotRemote::populateCursor() {
                                                   pExpCtx->opCtx));
     rcr.sslMode = transport::ConnectSSLMode::kDisableSSL;
 
-    _cursor.emplace(executor::getNonAuthTaskExecutor(pExpCtx->opCtx->getServiceContext()), rcr);
+    _cursor.emplace(_taskExecutor, rcr);
 }
 
 /**
@@ -114,9 +114,11 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchBetaMongotRemote::getN
 }
 
 intrusive_ptr<DocumentSource> DocumentSourceInternalSearchBetaMongotRemote::createFromBson(
-    BSONElement elem, const intrusive_ptr<ExpressionContext>& pExpCtx) {
+    BSONElement elem, const intrusive_ptr<ExpressionContext>& expCtx) {
     uassert(31067, "SearchBeta argument must be an object.", elem.type() == BSONType::Object);
-    return new DocumentSourceInternalSearchBetaMongotRemote(elem.embeddedObject(), pExpCtx);
+    auto serviceContext = expCtx->opCtx->getServiceContext();
+    return new DocumentSourceInternalSearchBetaMongotRemote(
+        elem.embeddedObject(), expCtx, executor::getMongotTaskExecutor(serviceContext));
 }
 
 BSONObj DocumentSourceInternalSearchBetaMongotRemote::commandObject(

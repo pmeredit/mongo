@@ -15,10 +15,9 @@ env.Library(
         '$BUILD_DIR/mongo/db/pipeline/pipeline',
     ],
     LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/executor/non_auth_task_executor',
         '$BUILD_DIR/mongo/executor/task_executor_cursor',
-        '$BUILD_DIR/mongo/executor/task_executor_interface',
         'mongot_options',
+        'mongot_task_executor',
     ],
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/db/mongodandmongos',
