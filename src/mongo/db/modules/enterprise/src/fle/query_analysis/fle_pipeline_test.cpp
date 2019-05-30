@@ -354,5 +354,163 @@ TEST_F(FLEPipelineTest, ExclusionWithAdditionalPropertiesKeepsNonNamedProperties
     ASSERT_TRUE(outputSchema.getEncryptionMetadataForPath(FieldRef{"user"}));
 }
 
+TEST_F(FLEPipelineTest, InclusionRenameMovesEncryptionMetadata) {
+    BSONObj projection = BSON("$project" << BSON("user"
+                                                 << "$ssn"));
+    const auto& outputSchema = getSchemaForStage({projection}, kDefaultSsnSchema);
+
+    ASSERT(outputSchema.getEncryptionMetadataForPath(FieldRef{"user"}) == kDefaultMetadata);
+    ASSERT_FALSE(outputSchema.getEncryptionMetadataForPath(FieldRef{"ssn"}));
+}
+
+TEST_F(FLEPipelineTest, InclusionRenameOverwritesEncryptionMetadata) {
+    BSONObj projection = BSON("$project" << BSON("user"
+                                                 << "$ssn"));
+    const BSONObj secondEncryptObj =
+        BSON("encrypt" << BSON("algorithm"
+                               << "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
+                               << "keyId"
+                               << BSON_ARRAY(BSONBinData(uuidBytes, 16, newUUID))
+                               << "bsonType"
+                               << "string"));
+    const auto inputSchema = BSON("type"
+                                  << "object"
+                                  << "properties"
+                                  << BSON("user" << encryptObj << "ssn" << secondEncryptObj));
+    const auto& outputSchema = getSchemaForStage({projection}, inputSchema);
+    auto inputTree = EncryptionSchemaTreeNode::parse(inputSchema, EncryptionSchemaType::kLocal);
+    ASSERT(outputSchema.getEncryptionMetadataForPath(FieldRef{"user"}) ==
+           inputTree->getEncryptionMetadataForPath(FieldRef("ssn")));
+}
+
+TEST_F(FLEPipelineTest, RenameFromPrefixOfEncryptedFieldWorks) {
+    BSONObj projection = BSON("$project" << BSON("newName"
+                                                 << "$user"));
+    const auto inputSchema =
+        EncryptionSchemaTreeNode::parse(kMultiEncryptSchema, EncryptionSchemaType::kLocal);
+    const auto& outputSchema = getSchemaForStage({projection}, kMultiEncryptSchema);
+    ASSERT(*outputSchema.getNode(FieldRef("newName")) == *inputSchema->getNode(FieldRef("user")));
+}
+
+TEST_F(FLEPipelineTest, RenameFromPatternPropertiesKeepsEncryptionMetadata) {
+    BSONObj projection = BSON("$project" << BSON("newName"
+                                                 << "$foo"));
+    const auto inputSchema =
+        EncryptionSchemaTreeNode::parse(kPatternPropertiesSchema, EncryptionSchemaType::kLocal);
+    const auto& outputSchema = getSchemaForStage({projection}, kPatternPropertiesSchema);
+    ASSERT(*outputSchema.getNode(FieldRef("newName")) == *inputSchema->getNode(FieldRef("foo")));
+    ASSERT(outputSchema.getNode(FieldRef("newName"))->getEncryptionMetadata());
+}
+
+TEST_F(FLEPipelineTest, RenameFromAdditionalPropertiesKeepsEncryptionMetadata) {
+    BSONObj projection = BSON("$project" << BSON("newName"
+                                                 << "$foo"));
+    const auto inputSchema =
+        EncryptionSchemaTreeNode::parse(kPatternPropertiesSchema, EncryptionSchemaType::kLocal);
+    const auto& outputSchema = getSchemaForStage({projection}, kAdditionalPropertiesSchema);
+    ASSERT(*outputSchema.getNode(FieldRef("newName")) == *inputSchema->getNode(FieldRef("foo")));
+    ASSERT(outputSchema.getNode(FieldRef("newName"))->getEncryptionMetadata());
+}
+
+TEST_F(FLEPipelineTest, InclusionEvaluatedExpressionReturnsNotEncrypted) {
+    BSONObj projection =
+        BSON("$project" << BSON("newField" << BSON("$add" << BSON_ARRAY("$oldOne"
+                                                                        << "$oldTwo"))));
+    const auto& outputSchema = getSchemaForStage({projection}, kDefaultSsnSchema);
+    ASSERT_FALSE(outputSchema.containsEncryptedNode());
+}
+
+TEST_F(FLEPipelineTest, InclusionWithExpressionProperlyBuildsSchema) {
+    BSONObj projection = BSON("$project" << BSON("person" << 1 << "newField"
+                                                          << "$user.ssn"
+                                                          << "unEncrypted"
+                                                          << 1));
+    const auto& outputSchema = getSchemaForStage({projection}, kMultiEncryptSchema);
+    const auto inputSchema =
+        EncryptionSchemaTreeNode::parse(kMultiEncryptSchema, EncryptionSchemaType::kLocal);
+    ASSERT(outputSchema.getEncryptionMetadataForPath(FieldRef{"person"}) ==
+           *inputSchema->getEncryptionMetadataForPath(FieldRef{"person"}));
+    ASSERT(outputSchema.getEncryptionMetadataForPath(FieldRef{"newField"}) ==
+           *inputSchema->getEncryptionMetadataForPath(FieldRef{"user.ssn"}));
+    ASSERT_FALSE(outputSchema.getEncryptionMetadataForPath(FieldRef{"unEncrypted"}));
+}
+
+TEST_F(FLEPipelineTest, InclusionWithExpressionAtNestedPathThrows) {
+    BSONObj projection = BSON("$project" << BSON("person" << 1 << "newField.secondary"
+                                                          << "$user.ssn"
+                                                          << "unEncrypted"
+                                                          << 1));
+    ASSERT_THROWS_CODE(
+        getSchemaForStage({projection}, kMultiEncryptSchema), AssertionException, 31140);
+}
+
+TEST_F(FLEPipelineTest, InclusionWithUnEncryptedExpressionAtNestedPathReturnsNotEncrypted) {
+    BSONObj projection = BSON("$project" << BSON("person" << 1 << "newField.secondary"
+                                                          << "$user.notEncrypted"
+                                                          << "unEncrypted"
+                                                          << 1));
+    const auto& outputSchema = getSchemaForStage({projection}, kMultiEncryptSchema);
+    ASSERT_FALSE(outputSchema.getEncryptionMetadataForPath(FieldRef{"newField.secondary"}));
+}
+
+TEST_F(FLEPipelineTest, AddFieldsRenameMovesEncryptionMetadataWorks) {
+    BSONObj projection = BSON("$addFields" << BSON("person"
+                                                   << "$ssn"));
+    auto& schema = getSchemaForStage({projection}, kDefaultSsnSchema);
+    ASSERT(schema.getEncryptionMetadataForPath(FieldRef("person")) == kDefaultMetadata);
+}
+
+TEST_F(FLEPipelineTest, AddFieldToDottedPathThrows) {
+    BSONObj projection = BSON("$addFields" << BSON("person.subObj"
+                                                   << "$ssn"));
+    ASSERT_THROWS_CODE(
+        getSchemaForStage({projection}, kDefaultSsnSchema), AssertionException, 31139);
+}
+
+TEST_F(FLEPipelineTest, AddFieldsFromPrefixOfEncryptedField) {
+    BSONObj projection = BSON("$addFields" << BSON("newName"
+                                                   << "$user"));
+    const auto inputSchema =
+        EncryptionSchemaTreeNode::parse(kMultiEncryptSchema, EncryptionSchemaType::kLocal);
+    const auto& outputSchema = getSchemaForStage({projection}, kMultiEncryptSchema);
+    ASSERT(*outputSchema.getNode(FieldRef("newName")) == *inputSchema->getNode(FieldRef("user")));
+}
+
+TEST_F(FLEPipelineTest, AddFieldsFromPatternPropertiesKeepsEncryptionMetadata) {
+    BSONObj projection = BSON("$addFields" << BSON("newName"
+                                                   << "$foo"));
+    const auto inputSchema =
+        EncryptionSchemaTreeNode::parse(kPatternPropertiesSchema, EncryptionSchemaType::kLocal);
+    const auto& outputSchema = getSchemaForStage({projection}, kPatternPropertiesSchema);
+    ASSERT(*outputSchema.getNode(FieldRef("newName")) == *inputSchema->getNode(FieldRef("foo")));
+    ASSERT(outputSchema.getNode(FieldRef("newName"))->getEncryptionMetadata());
+}
+
+TEST_F(FLEPipelineTest, AddFieldsFromAdditionalPropertiesKeepsEncryptionMetadata) {
+    BSONObj projection = BSON("$addFields" << BSON("newName"
+                                                   << "$foo"));
+    const auto inputSchema =
+        EncryptionSchemaTreeNode::parse(kPatternPropertiesSchema, EncryptionSchemaType::kLocal);
+    const auto& outputSchema = getSchemaForStage({projection}, kAdditionalPropertiesSchema);
+    ASSERT(*outputSchema.getNode(FieldRef("newName")) == *inputSchema->getNode(FieldRef("foo")));
+    ASSERT(outputSchema.getNode(FieldRef("newName"))->getEncryptionMetadata());
+}
+
+TEST_F(FLEPipelineTest, AddFieldsOverwritesPrefixOfEncryptedField) {
+    BSONObj projection = BSON("$addFields" << BSON("user"
+                                                   << "randomString"
+                                                   << "person"
+                                                   << "secondString"));
+    const auto& outputSchema = getSchemaForStage({projection}, kMultiEncryptSchema);
+    ASSERT_FALSE(outputSchema.containsEncryptedNode());
+}
+
+TEST_F(FLEPipelineTest, AddFieldsCannotExtendAnEncryptedField) {
+    BSONObj projection = BSON("$addFields" << BSON("ssn.notAllowed"
+                                                   << "randomString"));
+    ASSERT_THROWS_CODE(
+        getSchemaForStage({projection}, kDefaultSsnSchema), AssertionException, 51096);
+}
+
 }  // namespace
 }  // namespace mongo

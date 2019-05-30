@@ -31,6 +31,7 @@
 
 #include "fle_pipeline.h"
 
+#include "aggregate_expression_intender.h"
 #include "fle_match_expression.h"
 #include "mongo/db/pipeline/document_source_coll_stats.h"
 #include "mongo/db/pipeline/document_source_geo_near.h"
@@ -41,6 +42,7 @@
 #include "mongo/db/pipeline/document_source_single_document_transformation.h"
 #include "mongo/db/pipeline/document_source_skip.h"
 #include "mongo/db/pipeline/document_source_sort.h"
+#include "mongo/db/pipeline/parsed_add_fields.h"
 #include "mongo/db/pipeline/parsed_exclusion_projection.h"
 #include "mongo/db/pipeline/parsed_inclusion_projection.h"
 #include "mongo/db/pipeline/transformer_interface.h"
@@ -49,16 +51,20 @@ namespace mongo {
 
 namespace {
 
-clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForInclusion(
+/*
+ * This function handles propagating the schema through an inclusion projection and an $addFields
+ * stage. It takes in the schema before this stage, the inclusion to be performed, and the output
+ * schema to append to. It returns the schema that is
+ * created by performing all the operations contained in 'root' on the given 'futureSchema'.
+ */
+clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForInclusionNode(
     const EncryptionSchemaTreeNode& prevSchema,
-    const parsed_aggregation_projection::ParsedInclusionProjection& includer) {
-    const auto& root = includer.getRoot();
+    const parsed_aggregation_projection::InclusionNode& root,
+    std::unique_ptr<EncryptionSchemaTreeNode> futureSchema) {
     std::set<std::string> preservedPaths;
     root.reportProjectedPaths(&preservedPaths);
-    std::unique_ptr<EncryptionSchemaTreeNode> futureSchema =
-        std::make_unique<EncryptionSchemaNotEncryptedNode>();
     // Each string is a projected, included path.
-    for (auto& projection : preservedPaths) {
+    for (const auto& projection : preservedPaths) {
         FieldRef path(projection);
         if (auto includedNode = prevSchema.getNode(path)) {
             futureSchema->addChild(path, includedNode->clone());
@@ -68,18 +74,39 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForInclusion(
     std::set<std::string> computedPaths;
     StringMap<std::string> renamedPaths;
     root.reportComputedPaths(&computedPaths, &renamedPaths);
-    // TODO SERVER-40828: Propagate schema for computed paths.
-    uassert(30037,
-            "Cannot project with computed or renamed paths",
-            computedPaths.size() == 0 && renamedPaths.size() == 0);
+    for (const auto& path : computedPaths) {
+        auto fullPath = FieldRef{path};
+        if (auto expr = root.getExpressionForPath(FieldPath(path))) {
+            auto expressionSchema =
+                aggregate_expression_intender::getOutputSchema(prevSchema, expr.get());
+            // If the schema has no encrypted values, it doesn't matter if we insert it into the
+            // tree.
+            uassert(31140,
+                    "Cannot assign encrypted value to dotted path " + fullPath.dottedField(0),
+                    !expressionSchema->containsEncryptedNode() || fullPath.numParts() < 2);
+            futureSchema->addChild(fullPath, std::move(expressionSchema));
+        }
+    }
+    for (const auto & [ newName, oldName ] : renamedPaths) {
+        auto targetField = FieldRef{newName};
+        if (auto oldEncryptionInfo = prevSchema.getNode(FieldRef{oldName})) {
+            // If the schema has no encrypted values, it doesn't matter if we insert it into the
+            // tree.
+            uassert(
+                31139,
+                "Cannot assign encrypted field or prefix of an encrypted field to dotted path " +
+                    targetField.dottedField(0),
+                !oldEncryptionInfo->containsEncryptedNode() || targetField.numParts() < 2);
+            futureSchema->addChild(targetField, oldEncryptionInfo->clone());
+        }
+    }
 
     return std::move(futureSchema);
 }
 
 clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForExclusion(
     const EncryptionSchemaTreeNode& prevSchema,
-    const parsed_aggregation_projection::ParsedExclusionProjection& excluder) {
-    const auto& root = excluder.getRoot();
+    const parsed_aggregation_projection::ExclusionNode& root) {
     std::set<std::string> removedPaths;
     root.reportProjectedPaths(&removedPaths);
     std::unique_ptr<EncryptionSchemaTreeNode> futureSchema = prevSchema.clone();
@@ -197,7 +224,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaNoEncryption(
         std::make_unique<EncryptionSchemaNotEncryptedNode>());
 }
 
-clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForProject(
+clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForSingleDocumentTransformation(
     const clonable_ptr<EncryptionSchemaTreeNode>& prevSchema,
     const std::vector<clonable_ptr<EncryptionSchemaTreeNode>>& children,
     const DocumentSourceSingleDocumentTransformation& source) {
@@ -207,15 +234,23 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForProject(
             const auto& includer =
                 static_cast<const parsed_aggregation_projection::ParsedInclusionProjection&>(
                     transformer);
-            return propagateSchemaForInclusion(*prevSchema, includer);
+            return propagateSchemaForInclusionNode(
+                *prevSchema,
+                includer.getRoot(),
+                std::make_unique<EncryptionSchemaNotEncryptedNode>());
         }
         case TransformerInterface::TransformerType::kExclusionProjection: {
             const auto& excluder =
                 static_cast<const parsed_aggregation_projection::ParsedExclusionProjection&>(
                     transformer);
-            return propagateSchemaForExclusion(*prevSchema, excluder);
+            return propagateSchemaForExclusion(*prevSchema, excluder.getRoot());
         }
-        case TransformerInterface::TransformerType::kComputedProjection:
+        case TransformerInterface::TransformerType::kComputedProjection: {
+            const auto& projector =
+                static_cast<const parsed_aggregation_projection::ParsedAddFields&>(transformer);
+            return propagateSchemaForInclusionNode(
+                *prevSchema, projector.getRoot(), prevSchema->clone());
+        }
         case TransformerInterface::TransformerType::kReplaceRoot:
         case TransformerInterface::TransformerType::kGroupFromFirstDocument:
             uasserted(ErrorCodes::CommandNotSupported, "Agg stage not yet supported");
@@ -230,6 +265,47 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForProject(
 void analyzeStageNoop(FLEPipeline* flePipe,
                       const EncryptionSchemaTreeNode& schema,
                       DocumentSource* source) {}
+
+void analyzeForInclusionNode(FLEPipeline* flePipe,
+                             const EncryptionSchemaTreeNode& schema,
+                             const parsed_aggregation_projection::InclusionNode& root) {
+    std::set<std::string> computedPaths;
+    StringMap<std::string> renamedPaths;
+    root.reportComputedPaths(&computedPaths, &renamedPaths);
+    for (const auto& path : computedPaths) {
+        if (auto expr = root.getExpressionForPath(FieldPath(path))) {
+            aggregate_expression_intender::mark(
+                *(flePipe->getPipeline().getContext().get()), schema, expr.get());
+        }
+    }
+    // TODO: SERVER-41491 return whether this has encrypted placeholders.
+}
+
+void analyzeForSingleDocumentTransformation(FLEPipeline* flePipe,
+                                            const EncryptionSchemaTreeNode& schema,
+                                            DocumentSourceSingleDocumentTransformation* source) {
+    const auto& transformer = source->getTransformer();
+    switch (transformer.getType()) {
+        case TransformerInterface::TransformerType::kInclusionProjection: {
+            const auto& includer =
+                static_cast<const parsed_aggregation_projection::ParsedInclusionProjection&>(
+                    transformer);
+            analyzeForInclusionNode(flePipe, schema, includer.getRoot());
+        }
+        case TransformerInterface::TransformerType::kExclusionProjection: {
+            break;
+        }
+        case TransformerInterface::TransformerType::kComputedProjection: {
+            const auto& projector =
+                static_cast<const parsed_aggregation_projection::ParsedAddFields&>(transformer);
+            analyzeForInclusionNode(flePipe, schema, projector.getRoot());
+            break;
+        }
+        case TransformerInterface::TransformerType::kReplaceRoot:
+        case TransformerInterface::TransformerType::kGroupFromFirstDocument:
+            uasserted(ErrorCodes::CommandNotSupported, "Agg stage not yet supported");
+    }
+}
 
 void analyzeForMatch(FLEPipeline* flePipe,
                      const EncryptionSchemaTreeNode& schema,
@@ -357,8 +433,8 @@ REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceSample, propagateSchemaNoop,
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceSkip, propagateSchemaNoop, analyzeStageNoop);
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceSort, propagateSchemaNoop, analyzeForSort);
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceSingleDocumentTransformation,
-                                      propagateSchemaForProject,
-                                      analyzeStageNoop);
+                                      propagateSchemaForSingleDocumentTransformation,
+                                      analyzeForSingleDocumentTransformation);
 
 }  // namespace
 
