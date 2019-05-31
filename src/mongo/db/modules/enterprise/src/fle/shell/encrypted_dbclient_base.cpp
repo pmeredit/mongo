@@ -13,7 +13,6 @@
 #include "mongo/crypto/symmetric_crypto.h"
 #include "mongo/db/client.h"
 #include "mongo/db/commands.h"
-#include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/rpc/object_check.h"
 #include "mongo/rpc/op_msg_rpc_impls.h"
@@ -35,6 +34,7 @@
 namespace mongo {
 
 namespace {
+constexpr std::size_t kEncryptedDBCacheSize = 50;
 constexpr Duration kCacheInvalidationTime = Minutes(1);
 
 class ImplicitEncryptedDBClientBase final : public EncryptedDBClientBase {
@@ -274,32 +274,29 @@ public:
         }
 
         EncryptSchemaAnyType value = toEncrypt.getValue();
-        BSONElement valueElem = value.getElement();
 
+        BSONElement valueElem = value.getElement();
         BSONType bsonType = valueElem.type();
         ConstDataRange plaintext(valueElem.value(), valueElem.valuesize());
-        std::vector<uint8_t> encData;
+
+        FLEEncryptionFrame dataFrame;
 
         if (toEncrypt.getKeyId()) {
             UUID uuid = toEncrypt.getKeyId().get();
-            auto key = getDataKey(uuid);
-            encData = encryptWithKey(uuid,
-                                     key,
-                                     plaintext,
-                                     bsonType,
-                                     FleAlgorithmInt_serializer(toEncrypt.getAlgorithm()));
+            dataFrame = createEncryptionFrame(
+                getDataKey(uuid), toEncrypt.getAlgorithm(), uuid, bsonType, plaintext);
         } else {
             auto keyAltName = toEncrypt.getKeyAltName().get();
             UUID uuid = getUUIDByDataKeyAltName(keyAltName);
-            auto key = getDataKey(uuid);
-            encData = encryptWithKey(uuid,
-                                     key,
-                                     plaintext,
-                                     bsonType,
-                                     FleAlgorithmInt_serializer(toEncrypt.getAlgorithm()));
+            dataFrame = createEncryptionFrame(
+                getDataKey(uuid), toEncrypt.getAlgorithm(), uuid, bsonType, plaintext);
         };
 
-        builder->appendBinData(elemName, encData.size(), BinDataType::Encrypt, encData.data());
+        ConstDataRange ciphertextBlob(dataFrame.get());
+        builder->appendBinData(elemName,
+                               ciphertextBlob.length(),
+                               BinDataType::Encrypt,
+                               ciphertextBlob.data<uint8_t>());
     }
 
 private:
