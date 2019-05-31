@@ -46,21 +46,17 @@ TEST_F(ExpressionAnalysisTest, ExpressionFieldPathCorrectlyReturnsEncryptedState
     ASSERT(outSchema->getEncryptionMetadata() == kDefaultMetadata);
 }
 
-TEST_F(ExpressionAnalysisTest, ExpressionFieldPathPrefixOfEncryptedReturnsCorrectSchema) {
+TEST_F(ExpressionAnalysisTest, ExpressionFieldPathPrefixOfEncryptedCorrectlyFails) {
     auto exprObj = fromjson("{encryptedPrefix: '$user'}");
     auto expCtx = new ExpressionContextForTest();
     auto parsedExpr =
         Expression::parseOperand(expCtx, exprObj["encryptedPrefix"], expCtx->variablesParseState);
     auto schema =
         EncryptionSchemaTreeNode::parse(kDefaultNestedSchema, EncryptionSchemaType::kLocal);
-    auto outSchema =
-        aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get());
-    ASSERT_FALSE(outSchema->getEncryptionMetadata());
-    ASSERT_TRUE(outSchema->containsEncryptedNode());
-
-    // The original schema has the path 'user.ssn' as encrypted, so the output schema from the
-    // rename should have 'ssn' encrypted.
-    ASSERT(outSchema->getEncryptionMetadataForPath(FieldRef("ssn")) == kDefaultMetadata);
+    ASSERT_THROWS_CODE(
+        aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get()),
+        AssertionException,
+        31129);
 }
 
 TEST_F(ExpressionAnalysisTest, ExpressionFieldPathWhosePrefixIsEncryptedShouldFail) {
@@ -114,8 +110,50 @@ TEST_F(ExpressionAnalysisTest, VariablesNotSupported) {
         31127);
 }
 
-TEST_F(ExpressionAnalysisTest, ExpressionCondNotSupported) {
-    auto exprObj = fromjson("{expr: {$cond: {if: true, then: '$ssn', else: null}}}");
+TEST_F(ExpressionAnalysisTest, CondReturnsCorrectSchemaIfBothBranchesNotEncrypted) {
+    auto exprObj = fromjson("{expr: {$cond: {if: true, then: '$notEncrypted', else: 42}}}");
+    auto expCtx = new ExpressionContextForTest();
+    auto parsedExpr =
+        Expression::parseOperand(expCtx, exprObj["expr"], expCtx->variablesParseState);
+    auto schema = EncryptionSchemaTreeNode::parse(kDefaultSsnSchema, EncryptionSchemaType::kLocal);
+    auto outSchema =
+        aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get());
+    ASSERT_FALSE(outSchema->getEncryptionMetadata());
+    ASSERT_FALSE(outSchema->containsEncryptedNode());
+}
+
+TEST_F(ExpressionAnalysisTest, CondReturnsCorrectSchemaIfBothBranchesEncrypted) {
+    auto ssnAndUserSchema = fromjson(R"({
+            type: "object",
+            properties: {
+                ssn: {
+                    encrypt: {
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                        keyId: [{'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
+                        bsonType: "string"
+                    }
+                },
+                user: {
+                    encrypt: {
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                        keyId: [{'$binary': "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
+                        bsonType: "string"
+                    }
+                }
+            }
+        })");
+    auto exprObj = fromjson("{expr: {$cond: {if: true, then: '$ssn', else: '$user'}}}");
+    auto expCtx = new ExpressionContextForTest();
+    auto parsedExpr =
+        Expression::parseOperand(expCtx, exprObj["expr"], expCtx->variablesParseState);
+    auto schema = EncryptionSchemaTreeNode::parse(ssnAndUserSchema, EncryptionSchemaType::kLocal);
+    auto outSchema =
+        aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get());
+    ASSERT(outSchema->getEncryptionMetadata() == kDefaultMetadata);
+}
+
+TEST_F(ExpressionAnalysisTest, CondFailsIfBranchesHaveConflictingEncryptionProperties) {
+    auto exprObj = fromjson("{expr: {$cond: {if: true, then: '$ssn', else: 42}}}");
     auto expCtx = new ExpressionContextForTest();
     auto parsedExpr =
         Expression::parseOperand(expCtx, exprObj["expr"], expCtx->variablesParseState);
@@ -123,36 +161,353 @@ TEST_F(ExpressionAnalysisTest, ExpressionCondNotSupported) {
     ASSERT_THROWS_CODE(
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get()),
         AssertionException,
-        31128);
+        51203);
 }
 
-TEST_F(ExpressionAnalysisTest, ExpressionSwitchNotSupported) {
+TEST_F(ExpressionAnalysisTest, CondWithEvaluatedSubtreeReturnsNotEncrypted) {
     auto exprObj =
-        fromjson("{expr: {$switch: {branches: [{case: 1, then: '$ssn'}, {case: 2, then: null}]}}}");
+        fromjson("{expr: {$cond: {if: true, then: '$notEncrypted', else: {$add: [42, 5]}}}}");
     auto expCtx = new ExpressionContextForTest();
     auto parsedExpr =
         Expression::parseOperand(expCtx, exprObj["expr"], expCtx->variablesParseState);
     auto schema = EncryptionSchemaTreeNode::parse(kDefaultSsnSchema, EncryptionSchemaType::kLocal);
+    auto outSchema =
+        aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get());
+    ASSERT_FALSE(outSchema->getEncryptionMetadata());
+    ASSERT_FALSE(outSchema->containsEncryptedNode());
+
+    exprObj = fromjson("{expr: {$cond: {if: true, then: '$ssn', else: {$add: ['$b', 5]}}}}");
+    parsedExpr = Expression::parseOperand(expCtx, exprObj["expr"], expCtx->variablesParseState);
     ASSERT_THROWS_CODE(
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get()),
         AssertionException,
-        31128);
+        51203);
 }
 
-TEST_F(ExpressionAnalysisTest, ExpressionObjectNotSupported) {
-    auto exprObj = fromjson("{expr: {newSsn: '$ssn'}}");
+TEST_F(ExpressionAnalysisTest, CondFailsIfBranchesHaveMismatchedEncryptionTrees) {
+    auto userSchema = fromjson(R"({
+            type: "object",
+            properties: {
+                user: {
+                    type: "object",
+                    properties: {
+                        ssn: {
+                            encrypt: {
+                                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                                keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
+                                bsonType: "string"
+                            }
+                        }
+                    }
+                },
+                insecureUser: {
+                    type: "object",
+                    properties: {
+                        ssn: {type: "string"}
+                    }
+                }
+            }
+        })");
+    auto exprObj = fromjson("{expr: {$cond: {if: true, then: '$user', else: '$insecureUser'}}}");
     auto expCtx = new ExpressionContextForTest();
     auto parsedExpr =
         Expression::parseOperand(expCtx, exprObj["expr"], expCtx->variablesParseState);
-    auto schema = EncryptionSchemaTreeNode::parse(kDefaultSsnSchema, EncryptionSchemaType::kLocal);
+    auto schema = EncryptionSchemaTreeNode::parse(userSchema, EncryptionSchemaType::kLocal);
     ASSERT_THROWS_CODE(
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get()),
         AssertionException,
-        31128);
+        31129);
 }
 
-TEST_F(ExpressionAnalysisTest, ExpressionLetNotSupported) {
-    auto exprObj = fromjson("{expr: {$let: {vars: {ssn: 1}, in: {$eq: ['$ssn', 1]}}}}");
+TEST_F(ExpressionAnalysisTest, NestedCondCorrectlyReturnsOutputSchema) {
+    auto everythingEncrypted = fromjson(R"({
+            type: "object",
+            properties: {},
+            additionalProperties: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                    keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
+                    bsonType: "string"
+                }
+            }
+        })");
+    auto exprObj = fromjson(R"({
+        expr: {
+            $cond: {
+                if: true, 
+                then: {
+                    $cond: {
+                        if: false, 
+                        then: '$a',
+                        else: '$b'
+                    }
+                },
+                else: '$c'
+            }
+        }
+    })");
+    auto expCtx = new ExpressionContextForTest();
+    auto parsedExpr =
+        Expression::parseOperand(expCtx, exprObj["expr"], expCtx->variablesParseState);
+    auto schema =
+        EncryptionSchemaTreeNode::parse(everythingEncrypted, EncryptionSchemaType::kLocal);
+    auto outSchema =
+        aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get());
+    ASSERT(outSchema->getEncryptionMetadata() == kDefaultMetadata);
+}
+
+TEST_F(ExpressionAnalysisTest, NestedCondCorrectlyFailsOnMixedEncryption) {
+    auto everythingEncrypted = fromjson(R"({
+            type: "object",
+            properties: {},
+            additionalProperties: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                    keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
+                    bsonType: "string"
+                }
+            }
+        })");
+    auto exprObj = fromjson(R"({
+        expr: {
+            $cond: {
+                if: true, 
+                then: {
+                    $cond: {
+                        if: false, 
+                        then: '$a',
+                        else: '$b'
+                    }
+                },
+                else: 42
+            }
+        }
+    })");
+    auto expCtx = new ExpressionContextForTest();
+    auto parsedExpr =
+        Expression::parseOperand(expCtx, exprObj["expr"], expCtx->variablesParseState);
+    auto schema =
+        EncryptionSchemaTreeNode::parse(everythingEncrypted, EncryptionSchemaType::kLocal);
+    ASSERT_THROWS_CODE(
+        aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get()),
+        AssertionException,
+        51203);
+}
+
+TEST_F(ExpressionAnalysisTest, CondInEvaluationContextDoesNotFailIfMixedEncryption) {
+    auto everythingEncrypted = fromjson(R"({
+        type: "object",
+        properties: {},
+        additionalProperties: {
+            encrypt: {
+                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
+                bsonType: "string"
+            }
+        }
+    })");
+
+    auto exprObj = fromjson(R"({
+        expr: {
+            $eq: [
+                {$cond: {
+                    if: true, 
+                    then: {
+                        $cond: {
+                            if: false, 
+                            then: '$a',
+                            else: '$notSafe'
+                        }
+                    },
+                    else: 42
+                }},
+                42
+            ]
+        }
+    })");
+    auto expCtx = new ExpressionContextForTest();
+    auto parsedExpr =
+        Expression::parseOperand(expCtx, exprObj["expr"], expCtx->variablesParseState);
+    auto schema =
+        EncryptionSchemaTreeNode::parse(everythingEncrypted, EncryptionSchemaType::kLocal);
+    auto outSchema =
+        aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get());
+    ASSERT_FALSE(outSchema->getEncryptionMetadata());
+    ASSERT_FALSE(outSchema->containsEncryptedNode());
+}
+
+TEST_F(ExpressionAnalysisTest, SwitchReturnsNotEncryptedIfAllBranchesReturnNotEncrypted) {
+    auto exprObj = fromjson(R"({expr: {
+        $switch: {
+            branches: [
+                {case: {$eq: ['$ssn', 1]}, then: '$notEncrypted'}, 
+                {case: {$eq: ['$ssn', 2]}, then: '$alsoNotEncrypted'}
+            ],
+            default: 42
+        }
+    }})");
+    auto expCtx = new ExpressionContextForTest();
+    auto parsedExpr =
+        Expression::parseOperand(expCtx, exprObj["expr"], expCtx->variablesParseState);
+    auto schema = EncryptionSchemaTreeNode::parse(kDefaultSsnSchema, EncryptionSchemaType::kLocal);
+    auto outSchema =
+        aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get());
+    ASSERT_FALSE(outSchema->getEncryptionMetadata());
+    ASSERT_FALSE(outSchema->containsEncryptedNode());
+}
+
+TEST_F(ExpressionAnalysisTest, SwitchReturnsEncryptedIfAllBranchesReturnEncrypted) {
+    auto everythingEncrypted = fromjson(R"({
+        type: "object",
+        properties: {},
+        additionalProperties: {
+            encrypt: {
+                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
+                bsonType: "string"
+            }
+        }
+    })");
+
+    auto exprObj = fromjson(R"({expr: {
+        $switch: {
+            branches: [
+                {case: {$eq: ['$a', 1]}, then: '$b'}, 
+                {case: {$eq: ['$a', 2]}, then: '$c'}
+            ],
+            default: '$d'
+        }
+    }})");
+    auto expCtx = new ExpressionContextForTest();
+    auto parsedExpr =
+        Expression::parseOperand(expCtx, exprObj["expr"], expCtx->variablesParseState);
+    auto schema =
+        EncryptionSchemaTreeNode::parse(everythingEncrypted, EncryptionSchemaType::kLocal);
+    auto outSchema =
+        aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get());
+    ASSERT(outSchema->getEncryptionMetadata() == kDefaultMetadata);
+}
+
+TEST_F(ExpressionAnalysisTest, SwitchThrowsIfConflictingEncryptionInBranches) {
+    auto everythingEncrypted = fromjson(R"({
+        type: "object",
+        properties: {},
+        additionalProperties: {
+            encrypt: {
+                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
+                bsonType: "string"
+            }
+        }
+    })");
+
+    auto exprObj = fromjson(R"({expr: {
+        $switch: {
+            branches: [
+                {case: {$eq: ['$a', 1]}, then: '$notSafe'}, 
+                {case: {$eq: ['$a', 2]}, then: '$c'},
+                {case: {$eq: ['$a', 3]}, then: '42'}
+            ],
+            default: '$d'
+        }
+    }})");
+    auto expCtx = new ExpressionContextForTest();
+    auto parsedExpr =
+        Expression::parseOperand(expCtx, exprObj["expr"], expCtx->variablesParseState);
+    auto schema =
+        EncryptionSchemaTreeNode::parse(everythingEncrypted, EncryptionSchemaType::kLocal);
+    ASSERT_THROWS_CODE(
+        aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get()),
+        AssertionException,
+        51203);
+}
+
+TEST_F(ExpressionAnalysisTest, SwitchThrowsIfDefaultConflictsWithBranches) {
+    auto everythingEncrypted = fromjson(R"({
+        type: "object",
+        properties: {},
+        additionalProperties: {
+            encrypt: {
+                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
+                bsonType: "string"
+            }
+        }
+    })");
+
+    auto exprObj = fromjson(R"({expr: {
+        $switch: {
+            branches: [
+                {case: {$eq: ['$a', 1]}, then: '$b'}, 
+                {case: {$eq: ['$a', 2]}, then: '$c'}
+            ],
+            default: {$add: [40, 2]}
+        }
+    }})");
+    auto expCtx = new ExpressionContextForTest();
+    auto parsedExpr =
+        Expression::parseOperand(expCtx, exprObj["expr"], expCtx->variablesParseState);
+    auto schema =
+        EncryptionSchemaTreeNode::parse(everythingEncrypted, EncryptionSchemaType::kLocal);
+    ASSERT_THROWS_CODE(
+        aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get()),
+        AssertionException,
+        51203);
+}
+
+TEST_F(ExpressionAnalysisTest, IfNullReturnsEncryptedIfBothBranchesAreEncrypted) {
+    auto everythingEncrypted = fromjson(R"({
+        type: "object",
+        properties: {},
+        additionalProperties: {
+            encrypt: {
+                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
+                bsonType: "string"
+            }
+        }
+    })");
+
+    auto exprObj = fromjson(R"({expr: {
+        $ifNull: [
+            '$ssn',
+            '$alsoEncrypted'
+        ]
+    }})");
+    auto expCtx = new ExpressionContextForTest();
+    auto parsedExpr =
+        Expression::parseOperand(expCtx, exprObj["expr"], expCtx->variablesParseState);
+    auto schema =
+        EncryptionSchemaTreeNode::parse(everythingEncrypted, EncryptionSchemaType::kLocal);
+    auto outSchema =
+        aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get());
+    ASSERT(outSchema->getEncryptionMetadata() == kDefaultMetadata);
+}
+
+TEST_F(ExpressionAnalysisTest, IfNullReturnsNotEncryptedIfBothBranchedAreNotEncrypted) {
+    auto exprObj = fromjson(R"({expr: {
+        $ifNull: [
+            '$a',
+            '$notSsn'
+        ]
+    }})");
+    auto expCtx = new ExpressionContextForTest();
+    auto parsedExpr =
+        Expression::parseOperand(expCtx, exprObj["expr"], expCtx->variablesParseState);
+    auto schema = EncryptionSchemaTreeNode::parse(kDefaultSsnSchema, EncryptionSchemaType::kLocal);
+    auto outSchema =
+        aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get());
+    ASSERT_FALSE(outSchema->getEncryptionMetadata());
+    ASSERT_FALSE(outSchema->containsEncryptedNode());
+}
+
+TEST_F(ExpressionAnalysisTest, IfNullThrowsIfConflictingEncryptionProperties) {
+    auto exprObj = fromjson(R"({expr: {
+        $ifNull: [
+            '$ssn',
+            '$notSsn'
+        ]
+    }})");
     auto expCtx = new ExpressionContextForTest();
     auto parsedExpr =
         Expression::parseOperand(expCtx, exprObj["expr"], expCtx->variablesParseState);
@@ -160,7 +515,7 @@ TEST_F(ExpressionAnalysisTest, ExpressionLetNotSupported) {
     ASSERT_THROWS_CODE(
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get()),
         AssertionException,
-        31128);
+        51203);
 }
 
 TEST_F(ExpressionAnalysisTest, EvaluatedExpressionsCorrectlyReturnNotEncrypted) {
@@ -191,7 +546,6 @@ TEST_F(ExpressionAnalysisTest, EvaluatedExpressionsCorrectlyReturnNotEncrypted) 
         fromjson("{$gt: [5, '$ssn']}"),
         fromjson("{$gte: ['$a', '$ssn']}"),
         fromjson("{$hour: '$ssn'}"),
-        fromjson("{$ifNull: ['$user', '$ssn']}"),
         fromjson("{$in: ['$ssn', [1, 2, 3]]}"),
         fromjson("{$indexOfArray: ['$ssn', 42.0]}"),
         fromjson("{$indexOfBytes: ['$ssn', '1234']}"),
@@ -264,6 +618,30 @@ TEST_F(ExpressionAnalysisTest, EvaluatedExpressionsCorrectlyReturnNotEncrypted) 
         ASSERT_FALSE(outSchema->getEncryptionMetadata());
         ASSERT_FALSE(outSchema->containsEncryptedNode());
     }
+}
+
+TEST_F(ExpressionAnalysisTest, ExpressionObjectNotSupported) {
+    auto exprObj = fromjson("{expr: {newSsn: '$ssn'}}");
+    auto expCtx = new ExpressionContextForTest();
+    auto parsedExpr =
+        Expression::parseOperand(expCtx, exprObj["expr"], expCtx->variablesParseState);
+    auto schema = EncryptionSchemaTreeNode::parse(kDefaultSsnSchema, EncryptionSchemaType::kLocal);
+    ASSERT_THROWS_CODE(
+        aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get()),
+        AssertionException,
+        31128);
+}
+
+TEST_F(ExpressionAnalysisTest, ExpressionLetNotSupported) {
+    auto exprObj = fromjson("{expr: {$let: {vars: {ssn: 1}, in: {$eq: ['$ssn', 1]}}}}");
+    auto expCtx = new ExpressionContextForTest();
+    auto parsedExpr =
+        Expression::parseOperand(expCtx, exprObj["expr"], expCtx->variablesParseState);
+    auto schema = EncryptionSchemaTreeNode::parse(kDefaultSsnSchema, EncryptionSchemaType::kLocal);
+    ASSERT_THROWS_CODE(
+        aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get()),
+        AssertionException,
+        31128);
 }
 
 }  // namespace
