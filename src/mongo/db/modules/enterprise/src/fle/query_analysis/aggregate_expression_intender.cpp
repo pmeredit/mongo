@@ -79,7 +79,7 @@ struct Subtree {
          *     "...encryption algorithm for field a does not match the algorithm of b c"
          * This vector will contain the FieldPaths 'b' and 'c'.
          **/
-        std::vector<std::reference_wrapper<const FieldPath>> fields;
+        std::vector<FieldPath> fields;
         /**
          * We also store strings naming any evaluated values we've seen feeding into this Subtree.
          */
@@ -109,7 +109,7 @@ struct Subtree {
          * encryption type is available through the included member.
          */
         struct Encrypted {
-            std::reference_wrapper<const ResolvedEncryptionInfo> type;
+            ResolvedEncryptionInfo type;
         };
 
         stdx::variant<Unknown, NotEncrypted, Encrypted> state;
@@ -160,68 +160,65 @@ void exitSubtree(const ExpressionContext& expCtx, std::stack<Subtree>& subtreeSt
 
 [[noreturn]] void uassertedEncryptedUnencryptedMismatch(
     const FieldPath& currentField,
-    const std::vector<std::reference_wrapper<const FieldPath>>& comparedFields,
+    const std::vector<FieldPath>& comparedFields,
     const std::vector<StringData> comparedEvaluations) {
-    uasserted(31098,
-              "Comparison disallowed between encrypted fields and unencrypted fields; '"s +
-                  currentField.fullPath() + "' is encrypted but is compared to" +
-                  std::accumulate(
-                      comparedFields.begin(),
-                      comparedFields.end(),
-                      ""s,
-                      [](auto&& l, auto&& r) { return l + " '" + r.get().fullPath() + "'"; }) +
-                  std::accumulate(comparedEvaluations.begin(),
-                                  comparedEvaluations.end(),
-                                  ""s,
-                                  [](auto&& l, auto&& r) { return l + " result of " + r; }));
+    uasserted(
+        31098,
+        "Comparison disallowed between encrypted fields and unencrypted fields; '"s +
+            currentField.fullPath() + "' is encrypted but is compared to" +
+            std::accumulate(comparedFields.begin(),
+                            comparedFields.end(),
+                            ""s,
+                            [](auto&& l, auto&& r) { return l + " '" + r.fullPath() + "'"; }) +
+            std::accumulate(comparedEvaluations.begin(),
+                            comparedEvaluations.end(),
+                            ""s,
+                            [](auto&& l, auto&& r) { return l + " result of " + r; }));
 }
 
 [[noreturn]] void uassertedUnencryptedEncryptedMismatch(
-    const FieldPath& currentField,
-    const std::vector<std::reference_wrapper<const FieldPath>>& comparedFields) {
+    const FieldPath& currentField, const std::vector<FieldPath>& comparedFields) {
     uasserted(31099,
               "Comparison disallowed between unencrypted fields and encrypted fields; '"s +
                   currentField.fullPath() + "' is unencrypted but is compared to" +
                   std::accumulate(
                       comparedFields.begin(), comparedFields.end(), ""s, [](auto&& l, auto&& r) {
-                          return l + " '" + r.get().fullPath() + "'";
+                          return l + " '" + r.fullPath() + "'";
                       }));
 }
 
 [[noreturn]] void uassertedEncryptedEncryptedMismatch(
-    const FieldPath& currentField,
-    const std::vector<std::reference_wrapper<const FieldPath>>& comparedFields) {
+    const FieldPath& currentField, const std::vector<FieldPath>& comparedFields) {
     uasserted(31100,
               "Comparison disallowed between fields with different encryption algorithms; "
               "encryption algorithm for field '"s +
                   currentField.fullPath() + "' does not match the algorithm of" +
                   std::accumulate(
                       comparedFields.begin(), comparedFields.end(), ""s, [](auto&& l, auto&& r) {
-                          return l + " '" + r.get().fullPath() + "'";
+                          return l + " '" + r.fullPath() + "'";
                       }));
 }
 
 [[noreturn]] void uassertedEvaluationInComparedEncryptedSubtree(
-    const StringData evaluation,
-    const std::vector<std::reference_wrapper<const FieldPath>>& comparedFields) {
+    const StringData evaluation, const std::vector<FieldPath>& comparedFields) {
     uasserted(31117,
               "Result of evaluating "s + evaluation +
                   " forbidden from being compared to encrypted fields but is compared to" +
                   std::accumulate(
                       comparedFields.begin(), comparedFields.end(), ""s, [](auto&& l, auto&& r) {
-                          return l + " '" + r.get().fullPath() + "'";
+                          return l + " '" + r.fullPath() + "'";
                       }));
 }
 
 auto getEncryptionTypeForPathEnsureNotPrefix(const EncryptionSchemaTreeNode& schema,
                                              const ExpressionFieldPath& fieldPath) {
-    const auto& pathString = fieldPath.getFieldPath().fullPath();
-    auto encryptedType = schema.getEncryptionMetadataForPath(FieldRef(pathString));
+    const auto path = fieldPath.getFieldPathWithoutCurrentPrefix();
+    auto encryptedType = schema.getEncryptionMetadataForPath(FieldRef(path.fullPath()));
     // TODO SERVER-41337: Handle the case where a field reference points to the prefix of an
     // encrypted field in a more accepting manner.
     uassert(31131,
-            "Found forbidden reference to prefix of encrypted field "s + pathString,
-            !schema.containsEncryptedNodeBelowPrefix(FieldRef(pathString)));
+            "Found forbidden reference to prefix of encrypted field "s + path.fullPath(),
+            encryptedType || !schema.containsEncryptedNodeBelowPrefix(FieldRef(path.fullPath())));
     return encryptedType;
 }
 
@@ -229,7 +226,7 @@ decltype(Subtree::Compared::state) reconcileAgainstUnknownEncryption(
     const EncryptionSchemaTreeNode& schema, const ExpressionFieldPath& fieldPath) {
     if (auto encryptedType = getEncryptionTypeForPathEnsureNotPrefix(schema, fieldPath))
         // The examined field is encrypted so the current subtree gains our encryption type.
-        return Subtree::Compared::Encrypted{*encryptedType};
+        return Subtree::Compared::Encrypted{std::move(*encryptedType)};
     else
         // The field is unencrypted so we've determined that this Subtree has no encryption. There
         // is no special error case so leave the reasoning empty.
@@ -239,12 +236,12 @@ decltype(Subtree::Compared::state) reconcileAgainstUnknownEncryption(
 decltype(Subtree::Compared::state) attemptReconcilingAgainstNoEncryption(
     const EncryptionSchemaTreeNode& schema,
     const ExpressionFieldPath& fieldPath,
-    const std::vector<std::reference_wrapper<const FieldPath>>& comparedFields,
+    const std::vector<FieldPath>& comparedFields,
     const std::vector<StringData> comparedEvaluations) {
     if (getEncryptionTypeForPathEnsureNotPrefix(schema, fieldPath))
         // The examined field is encrypted but the current Subtree is unencrypted.
         uassertedEncryptedUnencryptedMismatch(
-            fieldPath.getFieldPath(), comparedFields, comparedEvaluations);
+            fieldPath.getFieldPathWithoutCurrentPrefix(), comparedFields, comparedEvaluations);
     else
         // The examined field is unencrypted and so is the current Subtree.
         return Subtree::Compared::NotEncrypted{};
@@ -253,26 +250,29 @@ decltype(Subtree::Compared::state) attemptReconcilingAgainstNoEncryption(
 decltype(Subtree::Compared::state) attemptReconcilingAgainstEncryption(
     const EncryptionSchemaTreeNode& schema,
     const ExpressionFieldPath& fieldPath,
-    const std::vector<std::reference_wrapper<const FieldPath>>& comparedFields,
+    const std::vector<FieldPath>& comparedFields,
     const ResolvedEncryptionInfo& currentEncryptedType) {
     if (auto encryptedType = getEncryptionTypeForPathEnsureNotPrefix(schema, fieldPath)) {
         // The examined field is encrypted and so is the current Subtree. The two
         // ResolvedEncryptionInfo instances need to be checked for equality.
-        if (encryptedType == currentEncryptedType)
-            uassertedEncryptedEncryptedMismatch(fieldPath.getFieldPath(), comparedFields);
-        return Subtree::Compared::Encrypted{currentEncryptedType};
+        if (encryptedType != currentEncryptedType)
+            uassertedEncryptedEncryptedMismatch(fieldPath.getFieldPathWithoutCurrentPrefix(),
+                                                comparedFields);
+        return Subtree::Compared::Encrypted{std::move(*encryptedType)};
     } else {
-        uassertedUnencryptedEncryptedMismatch(fieldPath.getFieldPath(), comparedFields);
+        uassertedUnencryptedEncryptedMismatch(fieldPath.getFieldPathWithoutCurrentPrefix(),
+                                              comparedFields);
     }
 }
 
-void errorIfInEncryptedFieldFoundInEvaluatedState(const EncryptionSchemaTreeNode& schema,
-                                                  const ExpressionFieldPath& fieldPath,
-                                                  Subtree::Evaluated* evaluated) {
+void errorIfEncryptedFieldFoundInEvaluatedState(const EncryptionSchemaTreeNode& schema,
+                                                const ExpressionFieldPath& fieldPath,
+                                                Subtree::Evaluated* evaluated) {
     if (getEncryptionTypeForPathEnsureNotPrefix(schema, fieldPath))
         // The examined field is encrypted and the output type of the current Subtree disallows any
         // encrypted fields.
-        uassertedEncryptedInEvaluatedContext(fieldPath.getFieldPath(), evaluated->by);
+        uassertedEncryptedInEvaluatedContext(fieldPath.getFieldPathWithoutCurrentPrefix(),
+                                             evaluated->by);
 }
 
 void attemptReconcilingFieldEncryptionInComparedState(const EncryptionSchemaTreeNode& schema,
@@ -324,11 +324,11 @@ void attemptReconcilingFieldEncryption(const EncryptionSchemaTreeNode& schema,
             else if
                 constexpr(std::is_same_v<OutputType, Subtree::Compared>)
                     attemptReconcilingFieldEncryptionInComparedState(schema, fieldPath, &output);
-            // Executed output type requires to strictly check for errors, There is no need to keep
+            // Evaluated output type requires to strictly check for errors, There is no need to keep
             // track of fields since the pressence of any encrypted fields is an immediate error.
             else if
-                constexpr(std::is_same_v<OutputType, Subtree::Compared>)
-                    errorIfInEncryptedFieldFoundInEvaluatedState(schema, fieldPath & output);
+                constexpr(std::is_same_v<OutputType, Subtree::Evaluated>)
+                    errorIfEncryptedFieldFoundInEvaluatedState(schema, fieldPath, &output);
         },
         subtreeStack.top().output);
 }
@@ -368,10 +368,11 @@ void ensureNotEncryptedEnterEval(const StringData evaluation, std::stack<Subtree
 
 void reconcileVariableAccess(const ExpressionFieldPath& variableFieldPath,
                              std::stack<Subtree>& subtreeStack) {
-    // We currently have no support for variable access of any kind.
-    uasserted(31121,
-              "Variable access disallowed. Found " +
-                  variableFieldPath.getFieldPath().getFieldName(0));
+    if (stdx::holds_alternative<Subtree::Compared>(subtreeStack.top().output))
+        // We currently have no support for variable access of any kind.
+        uasserted(31121,
+                  "Variable access disallowed. Found " +
+                      variableFieldPath.getFieldPath().getFieldName(0));
 }
 
 /**
@@ -455,7 +456,7 @@ private:
     }
     void visit(ExpressionCond*) final {
         // We need to enter an Evaluated Subtree for the first child of the $cond (if).
-        ensureNotEncryptedEnterEval("a boolean conditional", subtreeStack);
+        enterSubtree(Subtree::Evaluated{}, subtreeStack);
     }
     void visit(ExpressionDateFromString*) final {
         ensureNotEncryptedEnterEval("date from string function", subtreeStack);
@@ -485,7 +486,7 @@ private:
             // Indicate that we've seen this field to improve error messages if we see an
             // incompatible field later.
             if (auto compared = stdx::get_if<Subtree::Compared>(&subtreeStack.top().output))
-                compared->fields.push_back(fieldPath->getFieldPath());
+                compared->fields.push_back(fieldPath->getFieldPathWithoutCurrentPrefix());
         }
     }
     void visit(ExpressionFilter*) final {
@@ -495,7 +496,8 @@ private:
         ensureNotEncryptedEnterEval("a floor calculation", subtreeStack);
     }
     void visit(ExpressionIfNull*) final {
-        // Here we're in the same same situation as the if child of a $cond.
+        // Here we're in the same situation as the if child of a $cond except that we need to ensure
+        // not encrypted since the result of the condition might be returned.
         ensureNotEncryptedEnterEval("a null determination", subtreeStack);
     }
     void visit(ExpressionIn*) final {
@@ -613,7 +615,7 @@ private:
     }
     void visit(ExpressionSwitch*) final {
         // We need to enter an Evaluated output Subtree for each case child.
-        ensureNotEncryptedEnterEval("a switch case boolean conditional", subtreeStack);
+        enterSubtree(Subtree::Evaluated{}, subtreeStack);
     }
     void visit(ExpressionToLower*) final {
         ensureNotEncryptedEnterEval("a string lowercase conversion", subtreeStack);
@@ -842,7 +844,7 @@ private:
             // child.
             if (numChildrenVisited % 2ull == 0ull)
                 // We need to enter an Evaluated output Subtree for each case child.
-                ensureNotEncryptedEnterEval("a switch case boolean conditional", subtreeStack);
+                enterSubtree(Subtree::Evaluated{}, subtreeStack);
             else
                 // After every odd child we need to exit the above Subtree.
                 exitSubtree(expCtx, subtreeStack);
@@ -916,9 +918,7 @@ public:
         : expCtx(expCtx), schema(schema), subtreeStack(subtreeStack) {}
 
 private:
-    void visit(ExpressionConstant*) final {
-        exitSubtree(expCtx, subtreeStack);
-    }
+    void visit(ExpressionConstant*) final {}
     void visit(ExpressionAbs*) final {
         exitSubtree(expCtx, subtreeStack);
     }
@@ -961,9 +961,7 @@ private:
     void visit(ExpressionConcatArrays*) final {
         exitSubtree(expCtx, subtreeStack);
     }
-    void visit(ExpressionCond*) final {
-        exitSubtree(expCtx, subtreeStack);
-    }
+    void visit(ExpressionCond*) final {}
     void visit(ExpressionDateFromString*) final {
         exitSubtree(expCtx, subtreeStack);
     }
@@ -982,18 +980,14 @@ private:
     void visit(ExpressionExp*) final {
         exitSubtree(expCtx, subtreeStack);
     }
-    void visit(ExpressionFieldPath*) final {
-        exitSubtree(expCtx, subtreeStack);
-    }
+    void visit(ExpressionFieldPath*) final {}
     void visit(ExpressionFilter*) final {
         exitSubtree(expCtx, subtreeStack);
     }
     void visit(ExpressionFloor*) final {
         exitSubtree(expCtx, subtreeStack);
     }
-    void visit(ExpressionIfNull*) final {
-        exitSubtree(expCtx, subtreeStack);
-    }
+    void visit(ExpressionIfNull*) final {}
     void visit(ExpressionIn*) final {
         exitSubtree(expCtx, subtreeStack);
     }

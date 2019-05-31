@@ -52,9 +52,9 @@ struct ResolvedEncryptionInfo {
         return !(*this == other);
     }
 
-    const EncryptSchemaKeyId keyId;
-    const FleAlgorithmEnum algorithm;
-    const boost::optional<MatcherTypeSet> bsonTypeSet;
+    EncryptSchemaKeyId keyId;
+    FleAlgorithmEnum algorithm;
+    boost::optional<MatcherTypeSet> bsonTypeSet;
 };
 
 }  // namespace mongo
