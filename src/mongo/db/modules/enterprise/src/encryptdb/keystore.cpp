@@ -177,6 +177,12 @@ std::unique_ptr<Keystore> KeystoreImplV0::makeKeystore(const boost::filesystem::
     WTDataStore keystore(path, params);
 
     auto session = keystore.makeSession();
+
+    if (params->repair && !session.verifyTable()) {
+        LOG(1) << "Failed to verify the table, attempting to salvage";
+        session.salvage();
+    }
+
     auto cursor = session.begin();
 
     if (cursor == session.end()) {
@@ -376,6 +382,11 @@ std::unique_ptr<Keystore> KeystoreImplV1::makeKeystore(const boost::filesystem::
     StringMap<SymmetricKeyId::id_type> dbNameToKeyIdCurrent, dbNameToKeyIdOldest;
     auto session = keystore.makeSession();
     uint32_t rolloverId = 0;
+
+    if (params->repair && !session.verifyTable()) {
+        LOG(1) << "Failed to verify the table, attempting to salvage";
+        session.salvage();
+    }
 
     // If we don't have any schema yet, create the table and checkpoint the session
     if (session.begin() == session.end()) {

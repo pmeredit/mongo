@@ -274,6 +274,13 @@ public:
         uassertWTOK(_session->checkpoint(_session.get(), nullptr));
     }
 
+    // Returns true if the table is not corrupted and successfully verified, returns false
+    // otherwise.
+    bool verifyTable();
+
+    // If salvage fails, the server will fassert.
+    void salvage();
+
 protected:
     friend class WTDataStore;
     WTDataStoreSession(UniqueWTSession session) : _session(std::move(session)) {}

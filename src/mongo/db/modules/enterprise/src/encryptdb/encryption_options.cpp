@@ -111,6 +111,10 @@ MONGO_STARTUP_OPTIONS_STORE(EncryptionOptions)(InitializerContext* context) {
         encryptionGlobalParams.readOnlyMode = params["storage.queryableBackupMode"].as<bool>();
     }
 
+    if (params.count("storage.repair")) {
+        encryptionGlobalParams.repair = params["storage.repair"].as<bool>();
+    }
+
     return Status::OK();
 }
 

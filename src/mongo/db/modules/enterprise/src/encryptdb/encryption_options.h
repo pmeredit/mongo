@@ -27,6 +27,9 @@ struct EncryptionGlobalParams {
     bool rotateDatabaseKeys = false;
     std::string kmipKeyIdentifierRot;
 
+    // StorageGlobalParams.repair option
+    bool repair;
+
     // Whether the keystore should be opened read only.
     // This is distinct from the global readOnly flag which can be toggled
     // after startup. If this occurs, writes may still occur in the storage layer.

@@ -6,6 +6,8 @@
 
 #include "mongo/platform/basic.h"
 
+#include "boost/filesystem.hpp"
+
 #include <boost/optional/optional_io.hpp>
 
 #include "encryption_key_manager_noop.h"
@@ -84,9 +86,36 @@ protected:
         return stdx::make_unique<SymmetricKey>(crypto::aesGenerate(crypto::sym256KeySize, name));
     }
 
+    void testSalvageFixKeystore(Keystore::Version version);
+
 private:
     unittest::TempDir _keystorePath;
 };
+
+void KeystoreFixture::testSalvageFixKeystore(Keystore::Version version) {
+    encryptionGlobalParams.encryptionCipherMode = "AES256-GCM";
+    encryptionGlobalParams.repair = true;
+
+    auto ks = makeKeystoreAndSession(version);
+    auto newKey = makeKey("a");
+
+    ks.session->insert(newKey);
+    ks.session->end();
+    ks.reset();
+
+    boost::filesystem::path keystoreTablePath = keystorePath() / "keystore.wt";
+
+    ASSERT_TRUE(boost::filesystem::remove(keystoreTablePath));
+
+    std::ofstream myfile;
+    myfile.open(keystoreTablePath.string());
+    myfile << "";
+    myfile.close();
+
+    // This is expected to fail as salvage() should fail to recover the corrupted keystore table
+    auto ks1 = Keystore::makeKeystore(
+        boost::filesystem::path(keystorePath()), version, &encryptionGlobalParams);
+}
 
 // Check the basic create/read/update functionality of the v0 keystore.
 TEST_F(KeystoreFixture, V0KeystoreCRUTest) {
@@ -194,6 +223,14 @@ TEST_F(KeystoreFixture, V1RolloverTest) {
     auto secondIt = ks.session->find(aKey->getKeyId(), FindMode::kIdOrCurrent);
     ASSERT_FALSE(it == secondIt);
     ASSERT_FALSE(secondIt == ks.session->end());
+}
+
+DEATH_TEST_F(KeystoreFixture, V1SalvageFixKeystore, "Fatal assertion 51226") {
+    KeystoreFixture::testSalvageFixKeystore(Keystore::Version::k1);
+}
+
+DEATH_TEST_F(KeystoreFixture, V0SalvageFixKeystore, "Fatal assertion 51226") {
+    KeystoreFixture::testSalvageFixKeystore(Keystore::Version::k0);
 }
 
 // Rolling over a V0 keystore should be fatal
