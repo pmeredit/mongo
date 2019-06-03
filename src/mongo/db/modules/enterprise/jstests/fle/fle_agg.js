@@ -207,16 +207,6 @@
 
     // Correctly fail for unsupported aggregation stages.
     const invalidStages = [
-        {$lookup: {from: "other", localField: "ssn", foreignField: "sensitive", as: "res"}},
-        {
-          $graphLookup: {
-              from: "other",
-              startWith: "$reportsTo",
-              connectFromField: "reportsTo",
-              connectToField: "name",
-              as: "reportingHierarchy"
-          }
-        },
         {
           $facet: {
               "pipeline1": [{$unwind: "$tags"}, {$sortByCount: "$tags"}],
@@ -243,6 +233,33 @@
 
         assert.commandFailedWithCode(testDB.runCommand(aggCommand), 31011);
     }
+
+    // Correctly fail for stages which reference additional collections.
+    command = {
+        aggregate: "test",
+        pipeline: [{
+            $graphLookup: {
+                from: "other",
+                startWith: "$reportsTo",
+                connectFromField: "reportsTo",
+                connectToField: "name",
+                as: "reportingHierarchy"
+            }
+        }],
+        cursor: {},
+        jsonSchema: {},
+        isRemoteSchema: false,
+    };
+    assert.commandFailedWithCode(testDB.runCommand(command), 51204);
+    command = {
+        aggregate: "test",
+        pipeline:
+            [{$lookup: {from: "other", localField: "ssn", foreignField: "sensitive", as: "res"}}],
+        cursor: {},
+        jsonSchema: {},
+        isRemoteSchema: false,
+    };
+    assert.commandFailedWithCode(testDB.runCommand(command), 51204);
 
     // Test that all collection-less aggregations result in a failure.
     command = {
