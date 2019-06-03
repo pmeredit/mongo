@@ -67,7 +67,7 @@ load('jstests/ssl/libs/ssl_helpers.js');
             let error =
                 assert.throws(() => keyStore.createKey(
                                   "aws", "arn:aws:kms:us-east-1:fake:fake:fake", ["mongoKey"]));
-            assert.commandFailedWithCode(error, [51203]);
+            assert.commandFailedWithCode(error, [51224]);
             assert.eq(
                 error,
                 "Error: AWS KMS failed to encrypt: NotFoundException : Error encrypting message");
@@ -128,7 +128,7 @@ load('jstests/ssl/libs/ssl_helpers.js');
             let error = assert.throws(() => {
                 const encStr = shell.encrypt(keyId, str, randomAlgorithm);
             });
-            assert.commandFailedWithCode(error, [51204]);
+            assert.commandFailedWithCode(error, [51225]);
             assert.eq(
                 error,
                 "Error: AWS KMS failed to decrypt: NotFoundException : Error decrypting message");
