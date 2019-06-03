@@ -77,7 +77,7 @@
     assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
     assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
 
-    // Test that $geoNear with a query on a top-level encrypted field is correctly
+    // Test that $geoNear with a 'query' on a top-level encrypted field is correctly
     // marked for encryption.
     command = {
         aggregate: coll.getName(),
@@ -103,7 +103,7 @@
     assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
     assert(cmdRes.result.pipeline[0].$geoNear.query.category.$eq instanceof BinData, cmdRes);
 
-    // Test that $geoNear with a query on a nested encrypted field is correctly marked for
+    // Test that $geoNear with a 'query' on a nested encrypted field is correctly marked for
     // encryption.
     command = {
         aggregate: coll.getName(),
@@ -133,7 +133,7 @@
     assert(cmdRes.result.pipeline[0].$geoNear.query["category.group"].$eq instanceof BinData,
            cmdRes);
 
-    // Test that $geoNear with a query on a matching patternProperty is correctly marked for
+    // Test that $geoNear with a 'query' on a matching patternProperty is correctly marked for
     // encryption.
     command = {
         aggregate: coll.getName(),
@@ -159,7 +159,8 @@
     assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
     assert(cmdRes.result.pipeline[0].$geoNear.query.category.$eq instanceof BinData, cmdRes);
 
-    // Test that $geoNear with a query on an additionalProperty is correctly marked for encryption.
+    // Test that $geoNear with a 'query' on an additionalProperty is correctly marked for
+    // encryption.
     command = {
         aggregate: coll.getName(),
         pipeline: [{
@@ -184,7 +185,7 @@
     assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
     assert(cmdRes.result.pipeline[0].$geoNear.query.category.$eq instanceof BinData, cmdRes);
 
-    // Test that $geoNear with distanceField that overrides an encrypted schema subtree, marks
+    // Test that $geoNear with 'distanceField' that overrides an encrypted schema subtree, marks
     // this field as not encrypted.
     command = {
         aggregate: coll.getName(),
@@ -210,7 +211,7 @@
     assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
     assert.eq(cmdRes.result.pipeline[1].$match["dist.calculated"].$eq, "winterfell", cmdRes);
 
-    // Test that $geoNear with includeLocs that overrides an encrypted schema subtree, marks this
+    // Test that $geoNear with 'includeLocs' that overrides an encrypted schema subtree, marks this
     // field as not encrypted.
     command = {
         aggregate: coll.getName(),
@@ -237,7 +238,7 @@
     assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
     assert.eq(cmdRes.result.pipeline[1].$match["location"].$gt, "winterfell", cmdRes);
 
-    // Test that $geoNear with an encrypted key field fails.
+    // Test that $geoNear with an encrypted 'key' field fails.
     assert.commandFailedWithCode(testDB.runCommand({
         aggregate: coll.getName(),
         pipeline: [{
@@ -254,7 +255,7 @@
     }),
                                  51212);
 
-    // Test that $geoNear with a simple key field that is a prefix of an encrypted field fails.
+    // Test that $geoNear with a simple 'key' field that is a prefix of an encrypted field fails.
     assert.commandFailedWithCode(testDB.runCommand({
         aggregate: coll.getName(),
         pipeline: [{
@@ -274,7 +275,7 @@
     }),
                                  51212);
 
-    // Test that $geoNear with a nested key field that is a prefix of an encrypted field fails.
+    // Test that $geoNear with a nested 'key' field that is a prefix of an encrypted field fails.
     assert.commandFailedWithCode(testDB.runCommand({
         aggregate: coll.getName(),
         pipeline: [{

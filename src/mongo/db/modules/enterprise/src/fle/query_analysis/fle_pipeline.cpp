@@ -141,7 +141,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForLookUp(
         auto localMetadata = prevSchema->getEncryptionMetadataForPath(localRef);
         uassert(
             51206,
-            str::stream() << "'Local field' '" << localField->fullPath()
+            str::stream() << "'localField' '" << localField->fullPath()
                           << "' in the $lookup aggregation stage cannot have an encrypted child.",
             localMetadata || !prevSchema->containsEncryptedNodeBelowPrefix(localRef));
 
@@ -150,20 +150,20 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForLookUp(
         auto foreignMetadata = prevSchema->getEncryptionMetadataForPath(foreignRef);
         uassert(
             51207,
-            str::stream() << "'Foreign field' '" << foreignField->fullPath()
+            str::stream() << "'foreignField' '" << foreignField->fullPath()
                           << "' in the $lookup aggregation stage cannot have an encrypted child.",
             foreignMetadata || !prevSchema->containsEncryptedNodeBelowPrefix(foreignRef));
 
         uassert(51210,
-                str::stream() << "'Local field' '" << localField->fullPath()
-                              << " and 'foreign field' '"
+                str::stream() << "'localField' '" << localField->fullPath()
+                              << " and 'foreignField' '"
                               << foreignField->fullPath()
                               << "' in the $lookup aggregation stage need to be both unencypted or "
                                  "be encrypted with the same bsonType.",
                 (!localMetadata && !foreignMetadata) || localMetadata == foreignMetadata);
         uassert(51211,
-                str::stream() << "'Local field' '" << localField->fullPath()
-                              << " and 'foreign field' '"
+                str::stream() << "'localField' '" << localField->fullPath()
+                              << " and 'foreignField' '"
                               << foreignField->fullPath()
                               << "' in the $lookup aggregation stage need to be both encrypted "
                                  " the with deterministic algorithm.",
@@ -267,7 +267,7 @@ void analyzeForGeoNear(FLEPipeline* flePipe,
     if (auto key = source->getKeyField()) {
         FieldRef keyField(key->fullPath());
         uassert(51212,
-                str::stream() << "Key field '" << key->fullPath()
+                str::stream() << "'key' field '" << key->fullPath()
                               << "' in the $geoNear aggregation stage cannot be encrypted.",
                 !schema.getEncryptionMetadataForPath(keyField) &&
                     !schema.containsEncryptedNodeBelowPrefix(keyField));
@@ -294,8 +294,8 @@ void analyzeForSort(FLEPipeline* flePipe,
             // arrays with encrypted paths.
             FieldRef keyField(part.fieldPath->fullPath());
             uassert(51201,
-                    str::stream() << "Sorting on key " << part.fieldPath->fullPath()
-                                  << " is not allowed due to encryption.",
+                    str::stream() << "Sorting on key '" << part.fieldPath->fullPath()
+                                  << "' is not allowed due to encryption.",
                     !schema.getEncryptionMetadataForPath(keyField) &&
                         !schema.containsEncryptedNodeBelowPrefix(keyField));
         }

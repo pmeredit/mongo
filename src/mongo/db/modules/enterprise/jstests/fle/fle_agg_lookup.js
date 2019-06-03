@@ -73,6 +73,26 @@
     assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
     assert.eq(false, cmdRes.schemaRequiresEncryption, cmdRes);
 
+    // Test that self-lookup with equality match fields encrypted with a deterministic algorithm
+    // and matching bsonTypes and bringing unencrypted fields succeeds.
+    command = {
+        aggregate: coll.getName(),
+        pipeline: [
+            {$lookup: {from: coll.getName(), as: "docs", localField: "item", foreignField: "sku"}}
+        ],
+        cursor: {},
+        jsonSchema:
+            {type: "object", properties: {item: encryptedStringSpec, sku: encryptedStringSpec}},
+        isRemoteSchema: false,
+    };
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    delete command.jsonSchema;
+    delete command.isRemoteSchema;
+    delete cmdRes.result.lsid;
+    assert.eq(command, cmdRes.result, cmdRes);
+    assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+
     // Test that $lookup with 'as' that overrides an encrypted schema subtree, marks this
     // field as not encrypted.
     command = {
