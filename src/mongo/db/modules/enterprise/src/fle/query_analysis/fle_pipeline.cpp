@@ -35,6 +35,7 @@
 #include "fle_match_expression.h"
 #include "mongo/db/pipeline/document_source_coll_stats.h"
 #include "mongo/db/pipeline/document_source_geo_near.h"
+#include "mongo/db/pipeline/document_source_graph_lookup.h"
 #include "mongo/db/pipeline/document_source_index_stats.h"
 #include "mongo/db/pipeline/document_source_limit.h"
 #include "mongo/db/pipeline/document_source_lookup.h"
@@ -143,6 +144,63 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGeoNear(
     return newSchema;
 }
 
+clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGraphLookUp(
+    const clonable_ptr<EncryptionSchemaTreeNode>& prevSchema,
+    const std::vector<clonable_ptr<EncryptionSchemaTreeNode>>& children,
+    const DocumentSourceGraphLookUp& source) {
+    auto connectFromField = source.getConnectFromField();
+    FieldRef connectFromRef(connectFromField.fullPath());
+    auto connectFromMetadata = prevSchema->getEncryptionMetadataForPath(connectFromRef);
+    uassert(
+        51230,
+        str::stream() << "'connectFromField' '" << connectFromField.fullPath()
+                      << "' in the $graphLookup aggregation stage cannot have an encrypted child.",
+        connectFromMetadata || !prevSchema->containsEncryptedNodeBelowPrefix(connectFromRef));
+
+    auto connectToField = source.getConnectToField();
+    FieldRef connectToRef(connectToField.fullPath());
+    auto connectToMetadata = prevSchema->getEncryptionMetadataForPath(connectToRef);
+    uassert(
+        51231,
+        str::stream() << "'connectToField' '" << connectToField.fullPath()
+                      << "' in the $graphLookup aggregation stage cannot have an encrypted child.",
+        connectToMetadata || !prevSchema->containsEncryptedNodeBelowPrefix(connectToRef));
+
+    uassert(
+        51232,
+        str::stream() << "'connectFromField' '" << connectFromField.fullPath()
+                      << "' and 'connectToField' '"
+                      << connectToField.fullPath()
+                      << "' in the $graphLookup aggregation stage need to be both unencypted or "
+                         "be encrypted with the same encryption properties.",
+        (!connectFromMetadata && !connectToMetadata) || connectFromMetadata == connectToMetadata);
+    uassert(51233,
+            str::stream() << "'connectFromField' '" << connectFromField.fullPath()
+                          << " and 'connectToField' '"
+                          << connectToField.fullPath()
+                          << "' in the $graphLookup aggregation stage need to be both encrypted "
+                             " the with the deterministic algorithm.",
+            (!connectFromMetadata && !connectToMetadata) ||
+                connectFromMetadata->algorithm == FleAlgorithmEnum::kDeterministic);
+
+    clonable_ptr<EncryptionSchemaTreeNode> newSchema = prevSchema->clone();
+    // Mark modified paths with unknown encryption, which ensures an exception if a field is
+    // referenced in a query. Also, we only expect a finite set of paths without renames.
+    const auto& modifiedPaths = source.getModifiedPaths();
+    invariant(modifiedPaths.type == DocumentSource::GetModPathsReturn::Type::kFiniteSet);
+    invariant(modifiedPaths.renames.empty());
+    for (const auto& path : modifiedPaths.paths) {
+        if (prevSchema->containsEncryptedNode()) {
+            newSchema->addChild(FieldRef(path),
+                                std::make_unique<EncryptionSchemaStateUnknownNode>());
+        } else {
+            newSchema->addChild(FieldRef(path),
+                                std::make_unique<EncryptionSchemaNotEncryptedNode>());
+        }
+    }
+    return newSchema;
+}
+
 clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForLookUp(
     const clonable_ptr<EncryptionSchemaTreeNode>& prevSchema,
     const std::vector<clonable_ptr<EncryptionSchemaTreeNode>>& children,
@@ -152,14 +210,24 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForLookUp(
             "encrypted collection.",
             source.getLetVariables().empty());
 
+    clonable_ptr<EncryptionSchemaTreeNode> newSchema = prevSchema->clone();
+    const auto& modifiedPaths = source.getModifiedPaths();
+    invariant(modifiedPaths.type == DocumentSource::GetModPathsReturn::Type::kFiniteSet);
+    invariant(modifiedPaths.renames.empty());
+
     if (source.wasConstructedWithPipelineSyntax()) {
+        // Mark modified paths with unknown encryption, which ensures an exception if a field is
+        // referenced in a query. Also, we only expect a finite set of paths without renames.
         invariant(children.size() == 1);
-        // In order to support looking up encrypted data, encrypting arrays would need to be
-        // supported.
-        uassert(51205,
-                str::stream() << "Looking up encrypted fields is not allowed. Consider restricting "
-                                 "output of the subpipeline.",
-                !children[0]->containsEncryptedNode());
+        for (const auto& path : modifiedPaths.paths) {
+            if (children[0]->containsEncryptedNode()) {
+                newSchema->addChild(FieldRef(path),
+                                    std::make_unique<EncryptionSchemaStateUnknownNode>());
+            } else {
+                newSchema->addChild(FieldRef(path),
+                                    std::make_unique<EncryptionSchemaNotEncryptedNode>());
+            }
+        }
     } else {
         invariant(source.getLocalField() && source.getForeignField());
 
@@ -186,7 +254,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForLookUp(
                               << " and 'foreignField' '"
                               << foreignField->fullPath()
                               << "' in the $lookup aggregation stage need to be both unencypted or "
-                                 "be encrypted with the same bsonType.",
+                                 "be encrypted with the same encryption properties.",
                 (!localMetadata && !foreignMetadata) || localMetadata == foreignMetadata);
         uassert(51211,
                 str::stream() << "'localField' '" << localField->fullPath()
@@ -196,15 +264,10 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForLookUp(
                                  " the with deterministic algorithm.",
                 (!localMetadata && !foreignMetadata) ||
                     localMetadata->algorithm == FleAlgorithmEnum::kDeterministic);
-    }
-
-    // Mark modified paths as unencrypted. We only expect a finite set of paths without renames.
-    clonable_ptr<EncryptionSchemaTreeNode> newSchema = prevSchema->clone();
-    const auto& modifiedPaths = source.getModifiedPaths();
-    invariant(modifiedPaths.type == DocumentSource::GetModPathsReturn::Type::kFiniteSet);
-    invariant(modifiedPaths.renames.empty());
-    for (const auto& path : modifiedPaths.paths) {
-        newSchema->addChild(FieldRef(path), std::make_unique<EncryptionSchemaNotEncryptedNode>());
+        for (const auto& path : modifiedPaths.paths) {
+            newSchema->addChild(FieldRef(path),
+                                std::make_unique<EncryptionSchemaStateUnknownNode>());
+        }
     }
     return newSchema;
 }
@@ -358,6 +421,35 @@ void analyzeForGeoNear(FLEPipeline* flePipe,
     }());
 }
 
+void analyzeForGraphLookUp(FLEPipeline* flePipe,
+                           const EncryptionSchemaTreeNode& schema,
+                           DocumentSourceGraphLookUp* source) {
+    // Replace contants with their appropriate intent-to-encrypt markings in the 'startWith' field.
+    aggregate_expression_intender::mark(
+        *flePipe->getPipeline().getContext(), schema, source->getStartWithField());
+
+    // Build a FLEMatchExpression from the MatchExpression for the additional filter, replacing any
+    // constants with their appropriate intent-to-encrypt markings.
+    if (source->getAdditionalFilter()) {
+        auto queryExpression =
+            uassertStatusOK(MatchExpressionParser::parse(*source->getAdditionalFilter(),
+                                                         flePipe->getPipeline().getContext(),
+                                                         ExtensionsCallbackNoop(),
+                                                         Pipeline::kAllowedMatcherFeatures));
+        FLEMatchExpression fleMatch{std::move(queryExpression), schema};
+        flePipe->hasEncryptedPlaceholders =
+            flePipe->hasEncryptedPlaceholders || fleMatch.containsEncryptedPlaceholders();
+
+        // Update the query in the DocumentSourceGraphLookUp using the serialized MatchExpression
+        // after replacing encrypted values.
+        source->setAdditionalFilter([&]() {
+            BSONObjBuilder bob;
+            fleMatch.getMatchExpression()->serialize(&bob);
+            return bob.obj();
+        }());
+    }
+}
+
 void analyzeForSort(FLEPipeline* flePipe,
                     const EncryptionSchemaTreeNode& schema,
                     DocumentSourceSort* source) {
@@ -421,6 +513,9 @@ REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceCollStats,
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceGeoNear,
                                       propagateSchemaForGeoNear,
                                       analyzeForGeoNear);
+REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceGraphLookUp,
+                                      propagateSchemaForGraphLookUp,
+                                      analyzeForGraphLookUp);
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceIndexStats,
                                       propagateSchemaNoEncryption,
                                       analyzeStageNoop);

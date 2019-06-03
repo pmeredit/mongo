@@ -74,7 +74,7 @@
     assert.eq(false, cmdRes.schemaRequiresEncryption, cmdRes);
 
     // Test that self-lookup with equality match fields encrypted with a deterministic algorithm
-    // and matching bsonTypes and bringing unencrypted fields succeeds.
+    // and matching bsonTypes succeeds.
     command = {
         aggregate: coll.getName(),
         pipeline: [
@@ -93,9 +93,8 @@
     assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
     assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
 
-    // Test that $lookup with 'as' that overrides an encrypted schema subtree, marks this
-    // field as not encrypted.
-    command = {
+    // Test that referencing 'as' field from $graphLookup in subsequent stages fails.
+    assert.commandFailedWithCode(testDB.runCommand({
         aggregate: coll.getName(),
         pipeline: [
             {$lookup: {from: coll.getName(), as: "docs", localField: "item", foreignField: "sku"}},
@@ -104,26 +103,51 @@
         cursor: {},
         jsonSchema: {type: "object", properties: {}, additionalProperties: encryptedStringSpec},
         isRemoteSchema: false
-    };
-    cmdRes = assert.commandWorked(testDB.runCommand(command));
-    assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
-    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
-    assert(cmdRes.hasOwnProperty("result"), cmdRes);
-    assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
-    assert(!(cmdRes.result.pipeline[1].$match["docs"].$gt instanceof BinData), cmdRes);
+    }),
+                                 31133);
 
-    // Test that self-lookup over an encrypted collection bringing unencrypted fields from a
-    // subpipeline succeeds.
+    // Test that self-lookup over an encrypted collection bringing encrypted fields from a
+    // subpipeline succeeds as long as they are not referenced afterwards. If encrypted arrays
+    // are supported, subsequent references will be possible as well.
     command = {
         aggregate: coll.getName(),
-        pipeline: [{
-            $lookup: {
-                from: coll.getName(),
-                as: "docs",
-                let : {},
-                pipeline: [{$project: {notEncrypted: 1}}]
+        pipeline: [
+            {
+                $lookup: {
+                    from: coll.getName(),
+                    as: "docs",
+                    let : {},
+                    pipeline: [{$match: {bob: 1}}]
+                }
             }
-        }],
+        ],
+        cursor: {},
+        jsonSchema: {type: "object", properties: {foo: encryptedStringSpec}},
+        isRemoteSchema: false,
+    };
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    delete command.jsonSchema;
+    delete command.isRemoteSchema;
+    delete cmdRes.result.lsid;
+    assert.eq(command, cmdRes.result, cmdRes);
+    assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+
+    // Test that self-lookup over an encrypted collection bringing unencrypted fields from a
+    // subpipeline succeeds and the 'as' field can be referenced afterwards.
+    command = {
+        aggregate: coll.getName(),
+        pipeline: [
+            {
+                $lookup: {
+                    from: coll.getName(),
+                    as: "docs",
+                    let : {},
+                    pipeline: [{$project: {notEncrypted: 1}}]
+                }
+            },
+            {$match: {docs: {$eq: "winterfell"}}}
+        ],
         cursor: {},
         jsonSchema: {type: "object", properties: {foo: encryptedStringSpec}},
         isRemoteSchema: false,
@@ -235,20 +259,6 @@
         isRemoteSchema: false,
     }),
                                  51211);
-
-    // Test that self-lookup specified with a pipeline bringing encrypted data fails. In the future
-    // we could support bringing encrypted data, as long as we allow encrypting arrays.
-    assert.commandFailedWithCode(testDB.runCommand({
-        aggregate: coll.getName(),
-        pipeline: [{
-            $lookup:
-                {from: coll.getName(), as: "docs", let : {}, pipeline: [{$match: {name: "bob"}}]}
-        }],
-        cursor: {},
-        jsonSchema: {type: "object", properties: {foo: encryptedStringSpec}},
-        isRemoteSchema: false,
-    }),
-                                 51205);
 
     // Test that self-lookup specified with a non-empty 'let' field fails.
     assert.commandFailedWithCode(testDB.runCommand({

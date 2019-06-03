@@ -109,13 +109,6 @@ TEST_F(FLEPipelineTest, ThrowsOnInvalidOrUnsupportedStage) {
     getExpCtx()->setResolvedNamespaces(
         {{fromNs.coll().toString(), {fromNs, std::vector<BSONObj>{}}}});
     std::vector<BSONObj> stageSpecs = {
-        fromjson(R"({$graphLookup: {
-            from: "other",
-            startWith: "$reportsTo",
-            connectFromField: "reportsTo",
-            connectToField: "name",
-            as: "reportingHierarchy"
-        }})"),
         fromjson(R"({$facet: {
             "pipeline1": [
                 { $unwind: "$tags" },
