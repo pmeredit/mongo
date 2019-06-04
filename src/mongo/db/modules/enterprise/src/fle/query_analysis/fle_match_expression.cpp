@@ -29,8 +29,10 @@
 
 #include "mongo/platform/basic.h"
 
+#include "aggregate_expression_intender.h"
 #include "fle_match_expression.h"
 
+#include "mongo/db/matcher/expression_expr.h"
 #include "mongo/db/matcher/expression_leaf.h"
 #include "mongo/db/matcher/schema/expression_internal_schema_eq.h"
 #include "query_analysis.h"
@@ -51,6 +53,7 @@ BSONElement FLEMatchExpression::allocateEncryptedElement(const BSONElement& elem
                                                          const CollatorInterface* collator) {
     _encryptedElements.push_back(buildEncryptPlaceholder(
         elem, metadata, EncryptionPlaceholderContext::kComparison, collator));
+    _didMark = aggregate_expression_intender::Intention::Marked;
     return _encryptedElements.back().firstElement();
 }
 
@@ -165,6 +168,14 @@ void FLEMatchExpression::replaceEncryptedElements(const EncryptionSchemaTreeNode
             replaceElementsInEqExpression(schemaTree, static_cast<EqualityMatchExpression*>(root));
             break;
         }
+
+        case MatchType::EXPRESSION: {
+            auto expr = static_cast<ExprMatchExpression*>(root);
+            _didMark = aggregate_expression_intender::mark(
+                *expr->getExpressionContext(), schemaTree, expr->getExpression().get(), false);
+            break;
+        }
+
         case MatchType::MATCH_IN: {
             replaceElementsInInExpression(schemaTree, static_cast<InMatchExpression*>(root));
             break;
@@ -182,7 +193,6 @@ void FLEMatchExpression::replaceEncryptedElements(const EncryptionSchemaTreeNode
         // These expressions could contain constants which need to be marked for encryption, but the
         // FLE query analyzer does not understand them. Error unconditionally if we encounter any of
         // the node types in this list.
-        case MatchType::EXPRESSION:
         case MatchType::INTERNAL_SCHEMA_ALLOWED_PROPERTIES:
         case MatchType::INTERNAL_SCHEMA_MAX_PROPERTIES:
         case MatchType::INTERNAL_SCHEMA_MIN_PROPERTIES:

@@ -29,9 +29,11 @@
 
 #pragma once
 
+#include "aggregate_expression_intender.h"
 #include "encryption_schema_tree.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/matcher/expression.h"
+#include "mongo/db/matcher/expression_expr.h"
 #include "mongo/db/matcher/expression_leaf.h"
 
 namespace mongo {
@@ -58,7 +60,7 @@ public:
      * Returns true if the underlying MatchExpression contains any EncryptionPlaceholders.
      */
     bool containsEncryptedPlaceholders() const {
-        return _encryptedElements.size() > 0;
+        return _didMark == aggregate_expression_intender::Intention::Marked;
     }
 
 private:
@@ -87,6 +89,7 @@ private:
      */
     BSONElement allocateEncryptedObject(BSONObj encryptedObj) {
         _encryptedElements.push_back(BSON("" << encryptedObj));
+        _didMark = aggregate_expression_intender::Intention::Marked;
         return _encryptedElements.back().firstElement();
     }
 
@@ -102,6 +105,10 @@ private:
     // encryption.
     std::vector<BSONObj> _encryptedElements;
     std::unique_ptr<MatchExpression> _expression;
+
+    // Keeps track of whether or not this expression has any placeholders marked for encryption.
+    aggregate_expression_intender::Intention _didMark =
+        aggregate_expression_intender::Intention::NotMarked;
 };
 
 }  // namespace mongo
