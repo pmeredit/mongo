@@ -403,11 +403,19 @@ PlaceHolderResult addPlaceHoldersForDistinct(const boost::intrusive_ptr<Expressi
                 "encryption algorithm",
                 keyMetadata->algorithm != FleAlgorithmEnum::kRandom);
 
-        // TODO SERVER-40798: Relax this check if the schema indicates that the encrypted distinct
-        // key is not a string.
-        uassert(31058,
-                "Distinct key cannot be an encrypted field if the collation is non-simple",
-                !expCtx->getCollator());
+        // Raise an error if the non-simple collation has been specified, but only do it if the
+        // schema indicates that the field type is a string.
+        if (expCtx->getCollator()) {
+            invariant(keyMetadata->bsonTypeSet);
+            invariant(keyMetadata->bsonTypeSet->isSingleType());
+            // We've already checked while constructing 'keyMetadata' that a deterministically
+            // encrypted field must have exactly one specified type, so we'll check just for the
+            // field type here.
+            uassert(31058,
+                    "Distinct key cannot be an encrypted string field if the collation is "
+                    "non-simple",
+                    !keyMetadata->bsonTypeSet->hasType(BSONType::String));
+        }
     } else {
         uassert(31027,
                 "Distinct key is not allowed to be a prefix of an encrypted field",

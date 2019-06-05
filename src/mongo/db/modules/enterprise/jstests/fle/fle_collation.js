@@ -126,8 +126,8 @@
     }),
                                  31054);
 
-    // Distinct should throw if the distinct key is an encrypted field and there is a non-simple
-    // collation.
+    // Distinct should throw if the distinct key is an encrypted field, there is a non-simple
+    // collation, and the schema indicates that the distinct key type is a string.
     assert.commandFailedWithCode(testDb.runCommand({
         distinct: coll.getName(),
         key: "foo.bar",
@@ -136,6 +136,18 @@
         isRemoteSchema: false
     }),
                                  31058);
+
+    // Distinct should not throw if the distinct key is an encrypted field and there is a non-simple
+    // collation, but the schema indicates that the distinct key type is not a string.
+    cmdRes = assert.commandWorked(testDb.runCommand({
+        distinct: coll.getName(),
+        key: "foo.bar",
+        collation: {locale: "fr_CA"},
+        jsonSchema: encryptedIntSchema,
+        isRemoteSchema: false
+    }));
+    assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
 
     // Distinct should not throw if the distinct key is an encrypted field but the collation is
     // simple.
