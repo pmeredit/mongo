@@ -3026,5 +3026,86 @@ TEST(EncryptionSchemaTreeTest, MissingNestedPatternPropertiesAreNotEqual) {
     auto secondSchema = EncryptionSchemaTreeNode::parse(secondBSON, EncryptionSchemaType::kLocal);
     ASSERT_FALSE(*firstSchema == *secondSchema);
 }
+
+TEST(EncryptionSchemaTreeTest, StateUnknownNodeGetEncryptionMetadataFails) {
+    EncryptionSchemaStateUnknownNode node{};
+    ASSERT_THROWS_CODE(node.getEncryptionMetadata(), AssertionException, 31133);
+}
+
+TEST(EncryptionSchemaTreeTest, StateUnknownNodeContainsEncryptedNodeFails) {
+    EncryptionSchemaStateUnknownNode node{};
+    ASSERT_THROWS_CODE(node.containsEncryptedNode(), AssertionException, 31134);
+}
+
+TEST(EncryptionSchemaTreeTest, GetEncryptionMetadataFailsIfPathHitsStateUnknownNode) {
+    BSONObj schema = fromjson(R"({
+            type: "object",
+            properties: {
+                ssn: {
+                    encrypt: {
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                        keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}],
+                        bsonType: ["string", "int", "long"]
+                    }
+                
+                },
+                name: {
+                    type: "string"
+                }
+            }
+        })");
+    auto root = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
+    root->addChild(FieldRef("ticker"), std::make_unique<EncryptionSchemaStateUnknownNode>());
+    ASSERT_THROWS_CODE(
+        root->getEncryptionMetadataForPath(FieldRef("ticker")), AssertionException, 31133);
+    ASSERT_THROWS_CODE(root->containsEncryptedNode(), AssertionException, 31134);
+    ASSERT(root->getEncryptionMetadataForPath(FieldRef("ssn")));
+    ASSERT_FALSE(root->getEncryptionMetadataForPath(FieldRef("name")));
+}
+
+TEST(EncryptionSchemaTreeTest, StateUnknownNodeGetMetadataForStateUnknownNodeNestedCorrectlyFails) {
+    auto root = std::make_unique<EncryptionSchemaNotEncryptedNode>();
+    root->addChild(FieldRef("name.ticker"), std::make_unique<EncryptionSchemaStateUnknownNode>());
+    ASSERT_THROWS_CODE(
+        root->getEncryptionMetadataForPath(FieldRef("name.ticker")), AssertionException, 31133);
+    ASSERT_THROWS_CODE(root->containsEncryptedNode(), AssertionException, 31134);
+}
+
+TEST(EncryptionSchemaTreeTest, StateUnknownNodeInAdditionalPropertiesFailsOnUndefinedFieldPath) {
+    BSONObj schema = fromjson(R"({
+            type: "object",
+            properties: {
+                ssn: {
+                    encrypt: {
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                        keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}],
+                        bsonType: ["string", "int", "long"]
+                    }
+                
+                },
+                name: {
+                    type: "string"
+                }
+            }
+        })");
+    auto root = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
+    root->addAdditionalPropertiesChild(std::make_unique<EncryptionSchemaStateUnknownNode>());
+    ASSERT(root->getEncryptionMetadataForPath(FieldRef("ssn")));
+    ASSERT_FALSE(root->getEncryptionMetadataForPath(FieldRef("name")));
+    ASSERT_THROWS_CODE(
+        root->getEncryptionMetadataForPath(FieldRef("undefinedField")), AssertionException, 31133);
+    ASSERT_THROWS_CODE(root->containsEncryptedNode(), AssertionException, 31134);
+}
+
+TEST(EncryptionSchemaTreeTest, StateUnknownNodeInPatternPropertiesMetadataFailOnMatchedProperty) {
+    auto root = std::make_unique<EncryptionSchemaNotEncryptedNode>();
+    root->addPatternPropertiesChild(R"(tickers+)",
+                                    std::make_unique<EncryptionSchemaStateUnknownNode>());
+    ASSERT_FALSE(root->getEncryptionMetadataForPath(FieldRef("some.path")));
+    ASSERT_THROWS_CODE(
+        root->getEncryptionMetadataForPath(FieldRef("tickerssss")), AssertionException, 31133);
+    ASSERT_THROWS_CODE(root->containsEncryptedNode(), AssertionException, 31134);
+}
+
 }  // namespace
 }  // namespace mongo

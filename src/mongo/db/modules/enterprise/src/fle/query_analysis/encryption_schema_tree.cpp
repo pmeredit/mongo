@@ -644,23 +644,26 @@ const EncryptionSchemaTreeNode* EncryptionSchemaTreeNode::_getNode(const FieldRe
 };
 
 bool EncryptionSchemaTreeNode::containsEncryptedNode() const {
+    bool foundEncryptedNode = false;
     for (auto && [ path, child ] : _propertiesChildren) {
         if (child->containsEncryptedNode()) {
-            return true;
+            foundEncryptedNode = true;
         }
     }
 
     for (auto&& patternPropertiesChild : _patternPropertiesChildren) {
         if (patternPropertiesChild.child->containsEncryptedNode()) {
-            return true;
+            foundEncryptedNode = true;
         }
     }
 
     if (_additionalPropertiesChild) {
-        return _additionalPropertiesChild->containsEncryptedNode();
+        if (_additionalPropertiesChild->containsEncryptedNode()) {
+            foundEncryptedNode = true;
+        }
     }
 
-    return false;
+    return foundEncryptedNode;
 }
 
 std::unique_ptr<EncryptionSchemaTreeNode>

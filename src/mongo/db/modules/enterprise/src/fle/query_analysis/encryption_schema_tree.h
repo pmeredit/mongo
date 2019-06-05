@@ -248,6 +248,9 @@ public:
      */
     bool removeNode(FieldRef path);
 
+
+    // Note that comparing EncryptionSchemaStateUnknownNodes for equality will fail, since their
+    // encryption metadata isn't know until a query is run.
     bool operator==(const EncryptionSchemaTreeNode& other) const;
 
     bool operator!=(const EncryptionSchemaTreeNode& other) const {
@@ -363,6 +366,30 @@ public:
 
 private:
     const ResolvedEncryptionInfo _metadata;
+};
+
+/**
+ * Node which represents a field which may or may not be encrypted. Since the actual state of the
+ * node can't be known before the query is actually executed, attempting to get the encryption
+ * metadata of this node will throw an exception.
+ */
+class EncryptionSchemaStateUnknownNode final : public EncryptionSchemaTreeNode {
+public:
+    boost::optional<ResolvedEncryptionInfo> getEncryptionMetadata() const final {
+        uasserted(31133,
+                  "Cannot get metadata for path whose encryption properties are not known until "
+                  "runtime.");
+    }
+
+    bool containsEncryptedNode() const final {
+        uasserted(
+            31134,
+            "Whether or not this tree contains an encrypted node is not known until runtime.");
+    }
+
+    std::unique_ptr<EncryptionSchemaTreeNode> clone() const final {
+        return std::make_unique<EncryptionSchemaStateUnknownNode>(*this);
+    }
 };
 
 }  // namespace mongo
