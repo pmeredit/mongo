@@ -565,6 +565,7 @@ std::vector<EncryptionSchemaTreeNode*> EncryptionSchemaTreeNode::getChildrenForP
 
 clonable_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::addChild(
     FieldRef path, std::unique_ptr<EncryptionSchemaTreeNode> node) {
+    uassert(51096, "Cannot add a field to an existing encrypted field", !getEncryptionMetadata());
     auto nextChild = path.getPart(0);
     if (path.numParts() == 1) {
         clonable_ptr<EncryptionSchemaTreeNode> returnedChild = nullptr;

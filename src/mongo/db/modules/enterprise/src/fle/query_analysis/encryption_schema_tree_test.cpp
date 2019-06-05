@@ -3107,5 +3107,28 @@ TEST(EncryptionSchemaTreeTest, StateUnknownNodeInPatternPropertiesMetadataFailOn
     ASSERT_THROWS_CODE(root->containsEncryptedNode(), AssertionException, 31134);
 }
 
+TEST(EncryptionSchemaTreeTest, AddChildThrowsIfAddingToEncryptedNode) {
+    BSONObj schema = fromjson(R"({
+            type: "object",
+            properties: {
+                ssn: {
+                    encrypt: {
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                        keyId: [{$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"}],
+                        bsonType: ["string", "int", "long"]
+                    }
+                },
+                name: {
+                    type: "string"
+                }
+            }
+        })");
+    auto root = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
+    ASSERT_THROWS_CODE(
+        root->addChild(FieldRef{"ssn.test"}, std::make_unique<EncryptionSchemaNotEncryptedNode>()),
+        AssertionException,
+        51096);
+}
+
 }  // namespace
 }  // namespace mongo
