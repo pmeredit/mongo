@@ -72,6 +72,18 @@ protected:
                 }
             }
         })");
+
+        kAllEncryptedSchema = fromjson(R"({
+            type: "object",
+            properties: {},
+            additionalProperties: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                    keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
+                    bsonType: "string"
+                }
+            }
+        })");
     }
 
     /**
@@ -122,6 +134,9 @@ protected:
 
     // Schema which defines a 'user' object with a nested 'ssn' encrypted field.
     BSONObj kDefaultNestedSchema;
+
+    // Schema where every field is an encrypted string.
+    BSONObj kAllEncryptedSchema;
 
     std::vector<std::uint8_t> kInitializationVector{0x6D, 0x6F, 0x6E, 0x67, 0x6F};
 

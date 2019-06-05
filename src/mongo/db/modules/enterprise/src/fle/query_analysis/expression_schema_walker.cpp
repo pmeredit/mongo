@@ -51,9 +51,7 @@ public:
             uassert(51203,
                     "Cannot mix an expression which evaluates to an encrypted value with one that "
                     "evaluates to a non-encrypted value",
-                    !_outputSchema ||
-                        _outputSchema->getEncryptionMetadata() ==
-                            newSchema->getEncryptionMetadata());
+                    !_outputSchema || *_outputSchema == *newSchema);
             if (!_outputSchema)
                 _outputSchema = std::move(newSchema);
         }
@@ -190,9 +188,6 @@ public:
     }
     void visit(ExpressionNot*) {
         _tracker.enterEvaluateOrCompare();
-    }
-    void visit(ExpressionObject*) {
-        throwNotSupported("Object expressions");
     }
     void visit(ExpressionOr*) {
         _tracker.enterEvaluateOrCompare();
@@ -436,8 +431,20 @@ public:
     }
 
     void visit(ExpressionIfNull*) {
-        // Do not enter an evaluation context for $ifNull since either of the two children could be
+        // Do not enter an evaluation subtree for $ifNull since either of the two children could be
         // returned depending on the evaluated result of the first.
+    }
+
+    void visit(ExpressionObject* expr) {
+        auto newSchema = std::make_unique<EncryptionSchemaNotEncryptedNode>();
+        for (auto[field, childExpr] : expr->getChildExpressions()) {
+            newSchema->addChild(FieldRef(field), getOutputSchema(_schema, childExpr.get()));
+        }
+        _tracker.reconcileSchema(std::move(newSchema));
+
+        // We enter an evaluate subtree here to avoid reconciling the schemas of each of the
+        // object's fields.
+        _tracker.enterEvaluateOrCompare();
     }
 
 private:
@@ -568,7 +575,7 @@ public:
     void visit(ExpressionCond*) {
         // If the visited children count is 1, then this implies we've already visited the 'if'
         // child (0) and are about to visit the 'then' child (1). We should currently be in an
-        // evaluated context due to the 'if' expression, and should exit this context before
+        // evaluated subtree due to the 'if' expression, and should exit this subtree before
         // visiting the 'then' and 'else' branches.
         if (numChildrenVisited == 1) {
             // Manually decrement the evaluated subtree count as we don't want to set the output
@@ -715,9 +722,6 @@ public:
     }
     void visit(ExpressionNot*) {
         _tracker.exitEvaluateOrCompare();
-    }
-    void visit(ExpressionObject*) {
-        invariant(0);
     }
     void visit(ExpressionOr*) {
         _tracker.exitEvaluateOrCompare();
@@ -931,6 +935,11 @@ public:
     void visit(ExpressionCond*) {}
     void visit(ExpressionSwitch*) {}
     void visit(ExpressionIfNull*) {}
+    void visit(ExpressionObject*) {
+        // Manually call 'decrementEvaluate' instead of 'exitEvaluateOrCompare' to avoid the
+        // implicit assumption that an evaluated expression results in a not encrypted schema.
+        _tracker.decrementEvaluate();
+    }
 
 private:
     const EncryptionSchemaTreeNode& _schema;

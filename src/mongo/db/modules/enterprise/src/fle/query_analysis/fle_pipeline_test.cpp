@@ -47,10 +47,6 @@ const BSONObj encryptObj = BSON("encrypt" << BSON("algorithm"
                                                   << BSON_ARRAY(BSONBinData(uuidBytes, 16, newUUID))
                                                   << "bsonType"
                                                   << "string"));
-const BSONObj kAdditionalPropertiesSchema = BSON("type"
-                                                 << "object"
-                                                 << "additionalProperties"
-                                                 << encryptObj);
 
 const BSONObj kPatternPropertiesSchema = BSON("type"
                                               << "object"
@@ -305,7 +301,7 @@ TEST_F(FLEPipelineTest, ExclusionOfAllFieldsSucceeds) {
 
 TEST_F(FLEPipelineTest, InclusionOfAdditionalPropertiesSucceeds) {
     BSONObj projection = BSON("$project" << BSON("add" << 1));
-    auto& schema = getSchemaForStage({projection}, kAdditionalPropertiesSchema);
+    auto& schema = getSchemaForStage({projection}, kAllEncryptedSchema);
     ASSERT_TRUE(schema.getEncryptionMetadataForPath(FieldRef("add")));
 }
 
@@ -349,7 +345,7 @@ TEST_F(FLEPipelineTest, ExclusionWithPatternPropertiesKeepsNonNamedProperties) {
 
 TEST_F(FLEPipelineTest, ExclusionWithAdditionalPropertiesKeepsNonNamedProperties) {
     BSONObj projection = BSON("$project" << BSON("user" << 0));
-    const auto& outputSchema = getSchemaForStage({projection}, kAdditionalPropertiesSchema);
+    const auto& outputSchema = getSchemaForStage({projection}, kAllEncryptedSchema);
     ASSERT_TRUE(outputSchema.containsEncryptedNode());
     ASSERT_TRUE(outputSchema.getEncryptionMetadataForPath(FieldRef{"user"}));
 }
@@ -406,8 +402,8 @@ TEST_F(FLEPipelineTest, RenameFromAdditionalPropertiesKeepsEncryptionMetadata) {
     BSONObj projection = BSON("$project" << BSON("newName"
                                                  << "$foo"));
     const auto inputSchema =
-        EncryptionSchemaTreeNode::parse(kPatternPropertiesSchema, EncryptionSchemaType::kLocal);
-    const auto& outputSchema = getSchemaForStage({projection}, kAdditionalPropertiesSchema);
+        EncryptionSchemaTreeNode::parse(kAllEncryptedSchema, EncryptionSchemaType::kLocal);
+    const auto& outputSchema = getSchemaForStage({projection}, kAllEncryptedSchema);
     ASSERT(*outputSchema.getNode(FieldRef("newName")) == *inputSchema->getNode(FieldRef("foo")));
     ASSERT(outputSchema.getNode(FieldRef("newName"))->getEncryptionMetadata());
 }
@@ -490,8 +486,8 @@ TEST_F(FLEPipelineTest, AddFieldsFromAdditionalPropertiesKeepsEncryptionMetadata
     BSONObj projection = BSON("$addFields" << BSON("newName"
                                                    << "$foo"));
     const auto inputSchema =
-        EncryptionSchemaTreeNode::parse(kPatternPropertiesSchema, EncryptionSchemaType::kLocal);
-    const auto& outputSchema = getSchemaForStage({projection}, kAdditionalPropertiesSchema);
+        EncryptionSchemaTreeNode::parse(kAllEncryptedSchema, EncryptionSchemaType::kLocal);
+    const auto& outputSchema = getSchemaForStage({projection}, kAllEncryptedSchema);
     ASSERT(*outputSchema.getNode(FieldRef("newName")) == *inputSchema->getNode(FieldRef("foo")));
     ASSERT(outputSchema.getNode(FieldRef("newName"))->getEncryptionMetadata());
 }
