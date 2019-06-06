@@ -8,6 +8,7 @@
 #include "mongo/platform/basic.h"
 
 #include "ldap/ldap_runtime_parameters_gen.h"
+#include "mongo/base/parse_number.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logger/logger.h"
 #include "mongo/logger/parse_log_component_settings.h"
@@ -56,7 +57,7 @@ Status LDAPTimeoutSetting::set(const BSONElement& newValueElement) {
 
 Status LDAPTimeoutSetting::setFromString(const std::string& str) {
     int newValue;
-    Status status = parseNumberFromString(str, &newValue);
+    Status status = NumberParser{}(str, &newValue);
     if (!status.isOK()) {
         return status;
     }

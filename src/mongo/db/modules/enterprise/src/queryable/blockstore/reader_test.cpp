@@ -8,6 +8,7 @@
 #include <memory>
 #include <sstream>
 
+#include "mongo/base/parse_number.h"
 #include "mongo/unittest/integration_test.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/str.h"
@@ -35,8 +36,15 @@ public:
         const char* offsetP = strstr(urlString.c_str(), "&offset=");
         const char* lengthP = strstr(urlString.c_str(), "&length=");
         invariant(offsetP && lengthP);
-        auto offset = std::atoi(offsetP + strlen("&offset="));
-        auto length = std::atoi(lengthP + strlen("&length="));
+        int offset;
+        auto parser = NumberParser::strToAny(10);
+        auto s = parser(offsetP + strlen("&offset="), &offset);
+        if (!s.isOK())
+            offset = 0;
+        int length;
+        s = parser(lengthP + strlen("&length="), &length);
+        if (!s.isOK())
+            length = 0;
 
         // Block of 256 characters suitable for writing.
         std::array<char, 256> buffer;

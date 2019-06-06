@@ -19,6 +19,7 @@
 #include "encryption_key_acquisition.h"
 #include "mongo/base/checked_cast.h"
 #include "mongo/base/init.h"
+#include "mongo/base/parse_number.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/bsontypes.h"
@@ -94,7 +95,7 @@ void KeystoreSchemaVersionServerParameter::append(OperationContext* opCtx,
 
 Status KeystoreSchemaVersionServerParameter::setFromString(const std::string& value) {
     std::int32_t version;
-    auto status = parseNumberFromString(value, &version);
+    auto status = NumberParser{}(value, &version);
     if (!status.isOK()) {
         return status;
     }

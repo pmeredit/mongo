@@ -10,6 +10,7 @@
 
 #include "ldap/ldap_user_cache_invalidator_job_gen.h"
 #include "mongo/base/init.h"
+#include "mongo/base/parse_number.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/client.h"
 #include "mongo/db/operation_context.h"
@@ -37,7 +38,7 @@ void LDAPUserCacheInvalidationIntervalParameter::append(OperationContext*,
 
 Status LDAPUserCacheInvalidationIntervalParameter::setFromString(const std::string& str) {
     int value;
-    auto status = parseNumberFromString(str, &value);
+    auto status = NumberParser{}(str, &value);
     if (!status.isOK()) {
         return {ErrorCodes::BadValue,
                 str::stream() << name() << " must be a numeric value, '" << str << "' provided"};

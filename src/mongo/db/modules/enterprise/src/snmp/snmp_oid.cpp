@@ -20,6 +20,7 @@
 // clang-format on
 #pragma warning(pop)
 
+#include "mongo/base/parse_number.h"
 #include "mongo/db/server_options.h"
 
 #include "snmp.h"
@@ -63,6 +64,16 @@ void OIDManager::init() {
     }
 }
 
+namespace {
+void parseOidAndAppendInt(const std::string& str, std::vector<oid>& vec, int base = 10) {
+    int num;
+    Status parsed = NumberParser().base(base)(str, &num);
+    if (parsed != mongo::Status::OK())
+        num = 0;  // same behavior as std::atoi
+    vec.push_back(num);
+}
+}
+
 oid* OIDManager::getoid(string suffix) {
     oid*& it = _oids[suffix];
     if (it)
@@ -76,9 +87,9 @@ oid* OIDManager::getoid(string suffix) {
     while ((pos = suffix.find(',')) != string::npos) {
         string x = suffix.substr(0, pos);
         suffix = suffix.substr(pos + 1);
-        l.push_back(atoi(x.c_str()));
+        parseOidAndAppendInt(x, l);
     }
-    l.push_back(atoi(suffix.c_str()));
+    parseOidAndAppendInt(suffix, l);
 
     for (uint32_t i = 0; i < _endName.size(); i++)
         l.push_back(_endName[i]);
