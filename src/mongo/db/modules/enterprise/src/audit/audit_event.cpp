@@ -35,12 +35,12 @@ void AuditEvent::generateBSON() const {
     {
         BSONObjBuilder localIpBuilder(builder.subobjStart("local"));
         builder.append("ip", getLocalAddr().getAddr());
-        builder.append("port", getLocalAddr().getPort());
+        builder.append("port", static_cast<int>(getLocalAddr().getPort()));
     }
     {
         BSONObjBuilder remoteIpBuilder(builder.subobjStart("remote"));
         builder.append("ip", getRemoteAddr().getAddr());
-        builder.append("port", getRemoteAddr().getPort());
+        builder.append("port", static_cast<int>(getRemoteAddr().getPort()));
     }
     {
         UserNameIterator userNames = getImpersonatedUserNames();

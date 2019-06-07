@@ -108,8 +108,8 @@ enum class SchemaTypeRestriction {
  * If not restricted, returns kNone.
  */
 SchemaTypeRestriction getTypeRestriction(StringMap<BSONElement>& keywordMap) {
-    auto getRestriction = [](BSONElement elem, const StringMap<BSONType>& aliasMap) {
-        auto typeSet = uassertStatusOK(JSONSchemaParser::parseTypeSet(elem, aliasMap));
+    auto getRestriction = [](BSONElement elem, const auto& finder) {
+        auto typeSet = uassertStatusOK(JSONSchemaParser::parseTypeSet(elem, finder));
 
         // Check if the type element restricts the schema to an object. Note that 'type' can be an
         // array of string aliases including 'object'.
@@ -119,9 +119,9 @@ SchemaTypeRestriction getTypeRestriction(StringMap<BSONElement>& keywordMap) {
     };
 
     if (auto typeElem = keywordMap[JSONSchemaParser::kSchemaTypeKeyword]) {
-        return getRestriction(typeElem, MatcherTypeSet::kJsonSchemaTypeAliasMap);
+        return getRestriction(typeElem, MatcherTypeSet::findJsonSchemaTypeAlias);
     } else if (auto bsonTypeElem = keywordMap[JSONSchemaParser::kSchemaBsonTypeKeyword]) {
-        return getRestriction(bsonTypeElem, kTypeAliasMap);
+        return getRestriction(bsonTypeElem, findBSONTypeAlias);
     } else {
         return SchemaTypeRestriction::kNone;
     }

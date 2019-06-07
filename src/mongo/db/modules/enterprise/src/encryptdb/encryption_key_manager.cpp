@@ -90,7 +90,7 @@ void KeystoreSchemaVersionServerParameter::append(OperationContext* opCtx,
     b << name << BSON("version" << keyMgr->getKeystoreVersion() << "systemKeyId"
                                 << (systemKeyId ? std::to_string(*systemKeyId) : std::string())
                                 << "rolloverId"
-                                << keyMgr->getRolloverId());
+                                << static_cast<int32_t>(keyMgr->getRolloverId()));
 }
 
 Status KeystoreSchemaVersionServerParameter::setFromString(const std::string& value) {

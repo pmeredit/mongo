@@ -259,7 +259,7 @@ public:
             arrBuilder.doneFast();
         }
 
-        result->append("numRemainingResponses", static_cast<unsigned>(remainingQueuedResponses));
+        result->append("numRemainingResponses", static_cast<int>(remainingQueuedResponses));
     }
 } cmdMongotMockGetQueuedResponses;
 
