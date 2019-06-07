@@ -160,7 +160,7 @@ private:
      */
     boost::filesystem::path _dbPath;
     boost::filesystem::path _keystoreBasePath;
-    boost::filesystem::path _wtConnPath;
+    boost::filesystem::path _keystorePath;
 
     /**
      * The master system key, provided via KMIP or a keyfile.

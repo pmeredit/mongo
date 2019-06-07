@@ -21,21 +21,25 @@
 #include "mongo/unittest/temp_dir.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/log.h"
-
+#include "mongo/util/str.h"
 
 namespace mongo {
 namespace {
+
+template <typename ManagerImpl, typename... Args>
+void setupEncryption(ServiceContext* service, Args... args) {
+    auto configHooks =
+        stdx::make_unique<EncryptionWiredTigerCustomizationHooks>(&encryptionGlobalParams);
+    WiredTigerCustomizationHooks::set(service, std::move(configHooks));
+    auto keyManager = stdx::make_unique<ManagerImpl>(args...);
+    EncryptionHooks::set(service, std::move(keyManager));
+    WiredTigerExtensions::get(service)->addExtension(mongo::kEncryptionEntrypointConfig);
+}
+
 ServiceContext::ConstructorActionRegisterer registerEncryptionWiredTigerCustomizationHooks{
     "CreateEncryptionWiredTigerCustomizationHooks",
     {"SetWiredTigerCustomizationHooks", "SecureAllocator", "CreateKeyEntropySource"},
-    [](ServiceContext* service) {
-        auto configHooks =
-            stdx::make_unique<EncryptionWiredTigerCustomizationHooks>(&encryptionGlobalParams);
-        WiredTigerCustomizationHooks::set(service, std::move(configHooks));
-        auto keyManager = stdx::make_unique<EncryptionKeyManagerNoop>();
-        EncryptionHooks::set(service, std::move(keyManager));
-        WiredTigerExtensions::get(service)->addExtension(mongo::kEncryptionEntrypointConfig);
-    }};
+    [](ServiceContext* service) { setupEncryption<EncryptionKeyManagerNoop>(service); }};
 
 
 class KeystoreFixture : public ServiceContextTest {
@@ -243,6 +247,77 @@ DEATH_TEST_F(KeystoreFixture, V0RolloverTest, "Fatal Assertion 51168") {
 DEATH_TEST_F(KeystoreFixture, V1CBCTest, "Fatal Assertion 51165") {
     encryptionGlobalParams.encryptionCipherMode = "AES256-CBC";
     auto ks = makeKeystoreAndSession(Keystore::Version::k1);
+}
+
+TEST(EncryptionKeyManager, HotBackupValidation) {
+    // First set up the dbpath we're going to use.
+    unittest::TempDir dbPath("keystoreHotBackups");
+    boost::filesystem::path dbPathObj(dbPath.path());
+
+    // Make sure it's absolute!
+    ASSERT_TRUE(dbPathObj.is_absolute());
+
+    // Create a key. This is the contents of jstests/encryptdb/libs/ekf
+    boost::filesystem::path keyPath = dbPathObj / "keyFile";
+    {
+        std::ofstream keyPathOut(keyPath.c_str());
+        keyPathOut << "YW1hbGlhaXNzb2Nvb2x5b2FtYWxpYWlzc29jb29seW8=";
+    }
+
+#ifndef _WIN32
+    // Make sure the permissions are correct.
+    boost::filesystem::permissions(keyPath, boost::filesystem::owner_read);
+#endif
+
+    // Setup the encryption params and create a ServiceContext to instantiate the storage
+    // engine and everything else we need.
+    encryptionGlobalParams.enableEncryption = true;
+    encryptionGlobalParams.encryptionKeyFile = keyPath.string();
+
+    setGlobalServiceContext(ServiceContext::make());
+    const auto serviceContextCleanup = makeGuard([&] { setGlobalServiceContext({}); });
+
+    auto const service = getGlobalServiceContext();
+    // Override the Noop encryption manager with the real encryption manager.
+    setupEncryption<EncryptionKeyManager>(
+        service, dbPath.path(), &encryptionGlobalParams, &sslGlobalParams);
+
+    auto const encryptionManager = EncryptionKeyManager::get(service);
+
+    // Make sure we can actually get some keys and that we've done some writes.
+    auto systemKey = unittest::assertGet(encryptionManager->getKey(kSystemKeyId));
+    auto tmpKey = unittest::assertGet(encryptionManager->getKey(kTmpDataKeyId));
+    systemKey.reset();
+    tmpKey.reset();
+
+    // Get the list of files to backup.
+    auto backupFiles = unittest::assertGet(encryptionManager->beginNonBlockingBackup());
+
+    // Make sure the paths are absolute.
+    stdx::unordered_set<std::string> expectedFiles;
+    for (const auto& file : {"local/WiredTiger.backup",
+                             "local/keystore.wt",
+                             "local/WiredTiger",
+                             "keystore.metadata"}) {
+        auto filePath = dbPathObj / "key.store" / file;
+        expectedFiles.insert(filePath.string());
+    }
+
+    for (const auto& file : backupFiles) {
+        log() << "Hot backups would back up " << file;
+        ASSERT_TRUE(str::startsWith(file, dbPath.path()));
+        ASSERT_TRUE(boost::filesystem::exists(file));
+        expectedFiles.erase(file);
+    }
+
+    for (const auto& missingFile : expectedFiles) {
+        error() << "Expected to find: " << missingFile;
+    }
+    ASSERT_TRUE(expectedFiles.empty());
+
+    ASSERT_OK(encryptionManager->endNonBlockingBackup());
+
+    ASSERT_FALSE(boost::filesystem::exists(dbPathObj / "key.store/local/WiredTiger.backup"));
 }
 
 }  // namespace

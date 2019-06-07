@@ -111,7 +111,7 @@ EncryptionKeyManager::EncryptionKeyManager(const std::string& dbPath,
                                            EncryptionGlobalParams* encryptionParams,
                                            SSLParams* sslParams)
     : _dbPath(fs::path(dbPath)),
-      _keystoreBasePath(fs::path(dbPath) / "key.store"),
+      _keystoreBasePath(_dbPath / "key.store"),
       _masterKeyRequested(false),
       _keyRotationAllowed(false),
       _tmpDataKey(crypto::aesGenerate(crypto::sym256KeySize, kTmpDataKeyId)),
@@ -207,8 +207,7 @@ StatusWith<std::vector<std::string>> EncryptionKeyManager::beginNonBlockingBacku
 
     std::vector<std::string> filesToCopy;
     filesToCopy.push_back(_metadataPath(PathMode::kValid).string());
-
-    const auto keystorePath = boost::filesystem::path(_wtConnPath);
+    const auto keystorePath = boost::filesystem::path(_keystorePath);
     for (; cursor != dataStoreSession->end(); ++cursor) {
         StringData filename = cursor.getKey<const char*>();
         const auto filePath = keystorePath / filename.toString();
@@ -471,7 +470,7 @@ Status EncryptionKeyManager::_initLocalKeystore() {
         return swMasterKey.getStatus();
     }
     _masterKey = std::move(swMasterKey.getValue());
-    fs::path keystorePath = _keystoreBasePath / _masterKey->getKeyId().name();
+    _keystorePath = _keystoreBasePath / _masterKey->getKeyId().name();
 
     auto swMetadata =
         KeystoreMetadataFile::load(_metadataPath(PathMode::kValid), _masterKey, *_encryptionParams);
@@ -494,14 +493,14 @@ Status EncryptionKeyManager::_initLocalKeystore() {
 
     // Open the local WT key store, create it if it doesn't exist.
     try {
-        _keystore = Keystore::makeKeystore(keystorePath, _keystoreMetadata, _encryptionParams);
+        _keystore = Keystore::makeKeystore(_keystorePath, _keystoreMetadata, _encryptionParams);
         if (_keystoreMetadata.getDirty() || _encryptionParams->rotateDatabaseKeys) {
             const auto kKeystoreSchemaVersionForRotate = 1;
             if (_keystoreMetadata.getVersion() < kKeystoreSchemaVersionForRotate) {
                 log() << "Detected keystore schema version " << _keystoreMetadata.getVersion()
                       << " upgrading to schema version " << kKeystoreSchemaVersionForRotate;
 
-                auto tmppath = keystorePath;
+                auto tmppath = _keystorePath;
                 tmppath += kUpgradingKeyword;
 
                 // Upgrading is similar to master key rotation,
@@ -515,11 +514,11 @@ Status EncryptionKeyManager::_initLocalKeystore() {
                 // If the first of these renames succeed and the second fails,
                 // we will end up in a state where the server is without a valid keystore
                 // and cannot start. This can be resolved by manually renaming the old keystore.
-                auto keystoreBak = keystorePath;
+                auto keystoreBak = _keystorePath;
                 keystoreBak += kInvalidatedKeyword;
                 keystoreBak += terseCurrentTime(false);
-                fs::rename(keystorePath, keystoreBak);
-                fs::rename(tmppath, keystorePath);
+                fs::rename(_keystorePath, keystoreBak);
+                fs::rename(tmppath, _keystorePath);
                 _keystoreMetadata.setVersion(kKeystoreSchemaVersionForRotate);
                 uassertStatusOK(_keystoreMetadata.store(
                     _metadataPath(PathMode::kValid), _masterKey, *_encryptionParams));
@@ -527,7 +526,7 @@ Status EncryptionKeyManager::_initLocalKeystore() {
                 // Reopen keystore with new schema.
                 _masterKeyRequested = false;
                 _keystore =
-                    Keystore::makeKeystore(keystorePath, _keystoreMetadata, _encryptionParams);
+                    Keystore::makeKeystore(_keystorePath, _keystoreMetadata, _encryptionParams);
             }
 
             if (_keystoreMetadata.getDirty()) {

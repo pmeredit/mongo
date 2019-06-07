@@ -89,6 +89,9 @@ void uassertWTOK(int ret) {
 bool WTDataStoreCursor::advance() {
     invariant(_cursor);
     int ret;
+    if (_atEnd) {
+        return false;
+    }
     switch (_direction) {
         case CursorDirection::kForward:
             ret = _cursor->next(_cursor.get());
@@ -100,6 +103,7 @@ bool WTDataStoreCursor::advance() {
             MONGO_UNREACHABLE;
     }
     if (ret == WT_NOTFOUND) {
+        _atEnd = true;
         return false;
     } else {
         uassertStatusOK(wtRCToStatus(ret));
@@ -112,9 +116,7 @@ WTDataStoreCursor& WTDataStoreCursor::operator++() {
     if (!_cursor) {
         return *this;
     }
-    if (!advance()) {
-        _cursor.reset();
-    }
+    advance();
     return *this;
 }
 
@@ -143,6 +145,8 @@ bool WTDataStoreCursor::operator==(const WTDataStoreCursor& other) const {
         return (equal == 1);
     } else if (!_cursor && !other._cursor) {
         return true;
+    } else if (_cursor || other._cursor) {
+        return _atEnd == other._atEnd;
     } else {
         return false;
     }

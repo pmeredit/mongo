@@ -72,9 +72,12 @@ class WTDataStoreCursor {
 public:
     // This type is copyable - it will duplicate the cursor so the copy will have its own cursor
     // state.
-    WTDataStoreCursor(WTDataStoreCursor& other) : _cursor(_duplicate(other._cursor)) {}
+    WTDataStoreCursor(WTDataStoreCursor& other)
+        : _cursor(_duplicate(other._cursor)), _direction(other._direction), _atEnd(other._atEnd) {}
     WTDataStoreCursor& operator=(WTDataStoreCursor& other) {
         _cursor = _duplicate(other._cursor);
+        _direction = other._direction;
+        _atEnd = other._atEnd;
         return *this;
     }
 
@@ -137,7 +140,7 @@ protected:
     enum class CursorDirection { kForward, kReverse };
     explicit WTDataStoreCursor(UniqueWTCursor cursor,
                                CursorDirection direction = CursorDirection::kForward)
-        : _cursor(std::move(cursor)), _direction(direction) {}
+        : _cursor(std::move(cursor)), _direction(direction), _atEnd(false) {}
 
     WT_CURSOR* operator->() const {
         return _cursor.get();
@@ -175,6 +178,7 @@ private:
 
     UniqueWTCursor _cursor;
     CursorDirection _direction = CursorDirection::kForward;
+    bool _atEnd = true;
 };
 
 /*
