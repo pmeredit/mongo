@@ -338,6 +338,141 @@ TEST_F(AggregateExpressionIntenderTest, LetForbidsBindingToEncryptedValue) {
         31110);
 }
 
+TEST_F(AggregateExpressionIntenderTest, ComparisonsWithInExpression) {
+    // Everything unencrypted.
+    ASSERT_IDENTITY(
+        "{ \"$in\" : [ { \"$const\" : \"hello\" }, [ { \"$const\" : \"hello\" }, \"$unsafeString\" "
+        "] ] }",
+        stateIntention);
+    ASSERT_IDENTITY(
+        "{ \"$in\" : [ { \"$const\" : \"hello\" }, [ { \"$const\" : \"hello\" }, "
+        "\"$unsafeString\", "
+        "{ \"$add\" : [ { \"$const\" : 1 }, { \"$const\" : 2 } ] } ] ] }",
+        stateIntention);
+
+    // Everything encrypted.
+    ASSERT_IDENTITY(
+        "{ \"$in\" : [ \"$safeString\", [ \"$otherSafeString\", \"$otherSafeString\" ] ] }",
+        stateIntention);
+
+    // Mix of encrypted and unencrypted
+    ASSERT_THROWS_CODE(
+        stateIntention(
+            "{ \"$in\" : [ \"$safeString\", [ \"$unsafeString\", \"$otherSafeString\" ] ] }"),
+        AssertionException,
+        31099);
+
+    // If the second argument will resolve to an array at runtime then we must fail if that
+    // expression is encrypted. We won't be able to look into an encrypted array at runtime.
+    ASSERT_THROWS_CODE(stateIntention("{ \"$in\" : [ \"$safeString\", \"$otherSafeString\" ] }"),
+                       AssertionException,
+                       31110);
+
+    // Equality comparison needing mark on the left-hand side.
+    ASSERT_EQ(stateIntention("{ \"$in\" : [ { \"$const\" : \"hello\" }, [ \"$safeString\" ] ] }"),
+              "{ \"$in\" : [ { \"$const\" : { \"$binary\" : "
+              "\"ADIAAAAQYQABAAAABWtpABAAAAAEASNFZ4mrze/ty6mHZUMhAQJ2AAYAAABoZWxsbwAA\", \"$type\" "
+              ": \"06\" } }, [ \"$safeString\" ] ] }");
+
+    // Equality comparison needing mark within the array literal.
+    ASSERT_EQ(stateIntention("{ \"$in\" : [ \"$safeString\", [ \"$otherSafeString\", { \"$const\" "
+                             ": \"hello\" } ] ] }"),
+              "{ \"$in\" : [ \"$safeString\", [ \"$otherSafeString\", { \"$const\" : { \"$binary\" "
+              ": \"ADIAAAAQYQABAAAABWtpABAAAAAEASNFZ4mrze/ty6mHZUMhAQJ2AAYAAABoZWxsbwAA\", "
+              "\"$type\" : \"06\" } } ] ] }");
+}
+
+TEST_F(AggregateExpressionIntenderTest,
+       EqualityComparisonsAreNotAllowedInComparedContextWithEncryption) {
+    // Everything unencrypted.
+    ASSERT_IDENTITY(
+        "{ \"$eq\" : [ { \"$const\" : true }, { \"$eq\" : [ { \"$const\" : \"hello\" }, { "
+        "\"$const\" : \"hello\" } ] } ] }",
+        stateIntention);
+    ASSERT_IDENTITY(
+        "{ \"$ne\" : [ { \"$const\" : true }, { \"$ne\" : [ { \"$const\" : \"hello\" }, { "
+        "\"$const\" : \"hello\" } ] } ] }",
+        stateIntention);
+
+    // Comparing an unencrypted value to the result of comparing two encrypted values should be
+    // allowed
+    // since "the result of comparing two encrypted values" will always be unencrypted.
+    ASSERT_IDENTITY(
+        "{ \"$eq\" : [ { \"$const\" : false }, { \"$eq\" : [ \"$safeString\", \"$otherSafeString\" "
+        "] } ] }",
+        stateIntention);
+    ASSERT_IDENTITY(
+        "{ \"$ne\" : [ { \"$const\" : false }, { \"$ne\" : [ \"$safeString\", \"$otherSafeString\" "
+        "] } ] }",
+        stateIntention);
+
+    // Comparing an encrypted value to the result of an equality comparison should not be allowed.
+    ASSERT_THROWS_CODE(stateIntention("{ \"$eq\" : [ \"$safeString\", { \"$eq\" : [ "
+                                      "\"$safeString\", \"$otherSafeString\" ] } ] }"),
+                       AssertionException,
+                       31117);
+    ASSERT_THROWS_CODE(stateIntention("{ \"$ne\" : [ \"$safeString\", { \"$ne\" : [ "
+                                      "\"$safeString\", \"$otherSafeString\" ] } ] }"),
+                       AssertionException,
+                       31117);
+}
+
+TEST_F(AggregateExpressionIntenderTest, InIsNotAllowedInComparedContextWithEncyption) {
+    // Everything unencrypted.
+    ASSERT_IDENTITY(
+        "{ \"$eq\" : [ { \"$const\" : true }, { \"$in\" : [ { \"$const\" : \"hello\" }, [ { "
+        "\"$const\" : \"hello\" }, \"$unsafeString\" "
+        "] ] } ] }",
+        stateIntention);
+
+    // Comparing an unencrypted value to the result of comparing two encrypted values should be
+    // allowed since "the result of comparing two encrypted values" will always be unencrypted.
+    ASSERT_IDENTITY(
+        "{ \"$eq\" : [ { \"$const\" : false }, { \"$in\" : [ \"$safeString\", [ "
+        "\"$otherSafeString\", \"$otherSafeString\" ] ] } ] }",
+        stateIntention);
+
+    // Comparing an encrypted value to the result of an $in comparison should not be allowed.
+    ASSERT_THROWS_CODE(
+        stateIntention("{ \"$eq\" : [ \"$safeString\", { \"$in\" : [ \"$safeString\", [ "
+                       "\"$otherSafeString\", \"$yetAnotherSafeString\" ] ] } ] }"),
+        AssertionException,
+        31117);
+
+    ASSERT_THROWS_CODE(stateIntention("{ \"$eq\" : [ \"$safeString\", { \"$in\" : [ "
+                                      "\"$safeString\", \"$nonArrayLiteral\" ] } ] }"),
+                       AssertionException,
+                       31117);
+}
+
+TEST_F(AggregateExpressionIntenderTest, ArrayLiteralShouldFailIfMisplacedWithinIn) {
+    ASSERT_THROWS_CODE(stateIntention("{ \"$in\" : [ [ \"$safeString\" ] , [ \"hello\" ] ] }"),
+                       AssertionException,
+                       31110);
+    // Note the double brackets around the $in array argument.
+    ASSERT_THROWS_CODE(stateIntention("{ \"$in\" : [ \"$safeString\", [ [ \"hello\" ] ] ] }"),
+                       AssertionException,
+                       31117);
+}
+
+TEST_F(AggregateExpressionIntenderTest, ArrayLiteralShouldFailWithinEqualityComparison) {
+    ASSERT_THROWS_CODE(stateIntention("{ \"$eq\" : [ \"$safeString\", [ \"hello\" ] ] }"),
+                       AssertionException,
+                       31117);
+
+    ASSERT_THROWS_CODE(
+        stateIntention("{ \"$eq\" : [ [ \"$safeString\",  \"$otherSafeString\" ], \"hello\" ] }"),
+        AssertionException,
+        31110);
+
+    ASSERT_THROWS_CODE(
+        stateIntention("{ \"$eq\" : [ \"hello\", { \"$cond\" : [ { \"$eq\": [ \"$unsafeString1\", "
+                       "\"$unsafeString2\" ] }, [ \"$safeString\",  \"$otherSafeString\" ], "
+                       "\"hello\" ] } ] }"),
+        AssertionException,
+        31110);
+}
+
 TEST_F(AggregateExpressionIntenderTest, MarkReportsExistenceOfEncryptedPlaceholder) {
     auto query = R"({
         "$eq": [
@@ -391,6 +526,31 @@ TEST_F(AggregateExpressionIntenderTest, ComparisonFailsWithPrefixOfRandom) {
         stateIntention(R"({"$eq": ["$nestedRandom", "literal"]})"), AssertionException, 31131);
 }
 
+
+TEST_F(AggregateExpressionIntenderTest, ArrayLiteralShouldSucceedWhenEverythingIsUnencrypted) {
+    ASSERT_IDENTITY(
+        "{ \"$cond\" : [ { \"$eq\" : [ \"$unsafeString\", { \"$const\" : \"hello\" } ] }, "
+        "[ { \"$const\" : 3 } ], [ { \"$const\" : 4 } ] ] }",
+        stateIntention);
+
+    ASSERT_IDENTITY(
+        "{ \"$cond\" : [ { \"$eq\" : [ \"$unsafeString\", { \"$const\" : \"hello\" } ] }, "
+        "[ { \"$const\" : 3 } ], [ { \"$add\" : [ { \"$const\" : 4 }, { \"$const\" : 5 } ] } ] ] }",
+        stateIntention);
+
+    ASSERT_IDENTITY(
+        "{ \"$eq\" : [ \"$unsafeString\", { \"$arrayElemAt\" : ["
+        " [ { \"$const\" : \"hello\" } ], { \"$const\" : 0 } ] } ] }",
+        stateIntention);
+
+    ASSERT_IDENTITY(
+        "{ \"$cond\" : [ { \"$eq\" : [ \"$unsafeString\", { \"$const\" : \"hello\" } ] }, "
+        "[ { \"$const\" : 3 } ], { \"$cond\" : ["
+        " { \"$eq\" : [ \"$otherUnsafeString\", { \"$const\" : \"world\" } ] },"
+        " [ { \"$const\" : 4 } ],"
+        " [ { \"$const\" : 5 } ] ] } ] }",
+        stateIntention);
+}
 
 }  // namespace
 }  // namespace mongo

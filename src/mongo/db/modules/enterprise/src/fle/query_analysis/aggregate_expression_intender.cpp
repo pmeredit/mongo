@@ -29,6 +29,7 @@
 
 #include "mongo/platform/basic.h"
 
+#include <fmt/format.h>
 #include <functional>
 #include <numeric>
 #include <stack>
@@ -41,6 +42,7 @@
 #include "mongo/db/pipeline/expression_visitor.h"
 #include "mongo/db/pipeline/expression_walker.h"
 #include "mongo/stdx/variant.h"
+#include "mongo/util/if_constexpr.h"
 #include "query_analysis.h"
 #include "resolved_encryption_info.h"
 
@@ -48,7 +50,9 @@ namespace mongo::aggregate_expression_intender {
 
 namespace {
 
+using namespace fmt::literals;
 using namespace std::string_literals;
+
 /**
  * A struct representing a collection of Expression nodes in a tree. Note that each node belongs to
  * at most one Subtree. This means that the children of any given Expression might belong to the
@@ -91,6 +95,14 @@ struct Subtree {
          */
         std::vector<ExpressionConstant*> literals;
 
+        // Whether or not an array literal is allowed in the expression tree is unfortunately
+        // context-specific. We use this member variable to track whether or not we are in a special
+        // circumstance where we can allow an array literal. For example, this is set when visiting
+        // the second argument of an $in expression. Because this is so specific, we use a pointer
+        // to the specific ExpressionArray we know is allowed to add an extra layer of defense
+        // against accidentally allowing arrays where we did not intend to do so.
+        ExpressionArray* temporarilyPermittedArrayLiteral{nullptr};
+
         // The following structs are state types. Each Compared Subtree starts in the Unkown state
         // and transitions into the NotEncrypted or Encrypted state.
 
@@ -128,6 +140,36 @@ struct Subtree {
     stdx::variant<Forwarded, Compared, Evaluated> output;
 };
 
+std::string toString(const decltype(Subtree::output)& outputType) {
+    return stdx::visit(
+        [&](auto&& outputType) {
+            using OutputType = std::decay_t<decltype(outputType)>;
+            IF_CONSTEXPR(std::is_same_v<OutputType, Subtree::Forwarded>) {
+                return "Subtree::Forwarded";
+            }
+            else if constexpr(std::is_same_v<OutputType, Subtree::Compared>) {
+                return "Subtree::Compared";
+            }
+            else if constexpr(std::is_same_v<OutputType, Subtree::Evaluated>) {
+                return "Subtree::Evaluated";
+            }
+        },
+        outputType);
+}
+
+template <typename T>
+std::string toString() {
+    IF_CONSTEXPR(std::is_same_v<T, Subtree::Forwarded>) {
+        return "Subtree::Forwarded";
+    }
+    else if constexpr(std::is_same_v<T, Subtree::Evaluated>) {
+        return "Subtree::Evaluated";
+    }
+    else if constexpr(std::is_same_v<T, Subtree::Compared>) {
+        return "Subtree::Compared";
+    }
+}
+
 void rewriteLiteralToIntent(const ExpressionContext& expCtx,
                             const ResolvedEncryptionInfo& encryptedType,
                             ExpressionConstant* literal) {
@@ -142,6 +184,7 @@ void enterSubtree(decltype(Subtree::output) outputType, std::stack<Subtree>& sub
     subtreeStack.push({outputType});
 }
 
+template <typename Out>
 Intention exitSubtree(const ExpressionContext& expCtx, std::stack<Subtree>& subtreeStack) {
     bool literalRewritten = false;
     if (auto compared = stdx::get_if<Subtree::Compared>(&subtreeStack.top().output))
@@ -150,6 +193,25 @@ Intention exitSubtree(const ExpressionContext& expCtx, std::stack<Subtree>& subt
                 rewriteLiteralToIntent(expCtx, encrypted->type, literal);
             literalRewritten = compared->literals.size() > 0;
         }
+
+    // It's really easy to push and forget to pop (enter but not exit). As a layer of safety we
+    // verify that you are popping off the stack the type you expect to be popping.
+    stdx::visit(
+        [](auto&& output) {
+            using OutputType = std::decay_t<decltype(output)>;
+            IF_CONSTEXPR(!std::is_same_v<OutputType, Out>) {
+                // Due to a bug in gcc we can't inline 'msg' into the invariant statement below:
+                // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=86969
+                // This is a workaround, once we upgrade to a version of gcc which has a fix for
+                // that bug (e.g. gcc 9.1), we can move 'msg' inline.
+                std::string msg =
+                    "exiting a subtree of an unexpected type. Expected {}, found {}"_format(
+                        toString<Out>(), toString(output));
+                invariant(false, msg);
+            }
+
+        },
+        subtreeStack.top().output);
 
     subtreeStack.pop();
 
@@ -242,7 +304,7 @@ decltype(Subtree::Compared::state) reconcileAgainstUnknownEncryption(
         // The examined field is encrypted so the current subtree gains our encryption type.
         return Subtree::Compared::Encrypted{std::move(*encryptedType)};
     else
-        // The field is unencrypted so we've determined that this Subtree has no encryption. There
+        // The field is unencrypted so we've determined that this Subtree has no encryption.  There
         // is no special error case so leave the reasoning empty.
         return Subtree::Compared::NotEncrypted{};
 }
@@ -301,31 +363,17 @@ void attemptReconcilingFieldEncryptionInCompared(const EncryptionSchemaTreeNode&
     compared->state = stdx::visit(
         [&](auto&& state) -> decltype(Subtree::Compared::state) {
             using StateType = std::decay_t<decltype(state)>;
-            if
-                constexpr(std::is_same_v<
-                          StateType,
-                          Subtree::Compared::
-                              Unknown>) return reconcileAgainstUnknownEncryption(schema, fieldPath);
-            else if
-                constexpr(
-                    std::is_same_v<
-                        StateType,
-                        Subtree::Compared::
-                            NotEncrypted>) return attemptReconcilingAgainstNoEncryption(schema,
-                                                                                        fieldPath,
-                                                                                        compared
-                                                                                            ->fields,
-                                                                                        compared
-                                                                                            ->evaluated);
-            else if
-                constexpr(
-                    std::is_same_v<
-                        StateType,
-                        Subtree::Compared::
-                            Encrypted>) return attemptReconcilingAgainstEncryption(schema,
-                                                                                   fieldPath,
-                                                                                   compared->fields,
-                                                                                   state.type);
+            IF_CONSTEXPR(std::is_same_v<StateType, Subtree::Compared::Unknown>) {
+                return reconcileAgainstUnknownEncryption(schema, fieldPath);
+            }
+            else if constexpr(std::is_same_v<StateType, Subtree::Compared::NotEncrypted>) {
+                return attemptReconcilingAgainstNoEncryption(
+                    schema, fieldPath, compared->fields, compared->evaluated);
+            }
+            else if constexpr(std::is_same_v<StateType, Subtree::Compared::Encrypted>) {
+                return attemptReconcilingAgainstEncryption(
+                    schema, fieldPath, compared->fields, state.type);
+            }
         },
         compared->state);
 }
@@ -337,18 +385,15 @@ void attemptReconcilingFieldEncryption(const EncryptionSchemaTreeNode& schema,
         [&](auto&& output) {
             using OutputType = std::decay_t<decltype(output)>;
             // We don't keep records and everything is admissible if output is Forwarded.
-            if
-                constexpr(std::is_same_v<OutputType, Subtree::Forwarded>);
+            IF_CONSTEXPR(std::is_same_v<OutputType, Subtree::Forwarded>);
             // If output is Compared, we need to keep track of the fields referenced and potentially
             // throw an error.
-            else if
-                constexpr(std::is_same_v<OutputType, Subtree::Compared>)
-                    attemptReconcilingFieldEncryptionInCompared(schema, fieldPath, &output);
+            else if constexpr(std::is_same_v<OutputType, Subtree::Compared>)
+                attemptReconcilingFieldEncryptionInCompared(schema, fieldPath, &output);
             // Evaluated output type requires to strictly check for errors, There is no need to keep
             // track of fields since the pressence of any encrypted fields is an immediate error.
-            else if
-                constexpr(std::is_same_v<OutputType, Subtree::Evaluated>)
-                    errorIfEncryptedFieldFoundInEvaluated(schema, fieldPath, &output);
+            else if constexpr(std::is_same_v<OutputType, Subtree::Evaluated>)
+                errorIfEncryptedFieldFoundInEvaluated(schema, fieldPath, &output);
         },
         subtreeStack.top().output);
 }
@@ -365,10 +410,10 @@ void ensureNotEncrypted(const StringData reason, std::stack<Subtree>& subtreeSta
         stdx::visit(
             [&](auto&& state) {
                 using StateType = std::decay_t<decltype(state)>;
-                if
-                    constexpr(!std::is_same_v<StateType, Subtree::Compared::Unknown> &&
-                              !std::is_same_v<StateType, Subtree::Compared::NotEncrypted>)
-                        uassertedEvaluationInComparedEncryptedSubtree(reason, compared->fields);
+                IF_CONSTEXPR(!std::is_same_v<StateType, Subtree::Compared::Unknown> &&
+                             !std::is_same_v<StateType, Subtree::Compared::NotEncrypted>) {
+                    uassertedEvaluationInComparedEncryptedSubtree(reason, compared->fields);
+                }
             },
             compared->state);
         compared->state = Subtree::Compared::NotEncrypted{};
@@ -414,7 +459,8 @@ void reconcileVariableAccess(const ExpressionFieldPath& variableFieldPath,
 }
 
 /**
- * We prefer front-loading work and doing as much as possible in the PreVisitor for organization.
+ * We prefer front-loading work and doing as much as possible in the PreVisitor for
+ * organization.
  */
 class IntentionPreVisitor final : public ExpressionVisitor {
 public:
@@ -443,9 +489,20 @@ private:
     void visit(ExpressionAnyElementTrue*) final {
         ensureNotEncryptedEnterEval("an 'any elements true' expression", subtreeStack);
     }
-    void visit(ExpressionArray*) final {
-        // Arguably this isn't evaluation but it has the same semantics for now. We could support
-        // this with effort.
+    void visit(ExpressionArray* array) final {
+        // Most of the time it is illegal to use an array in an encrypted context. For example it
+        // would not make sense to allow {$eq: ["$ssn", [<anything>, <anything>]]}. However, there
+        // are some exceptions to this rule such as in the second argument to an $in expression,
+        // e.g.  {$in: ["$ssn", ["123-45-6789", "012-34-5678"]]}). To determine whether a literal is
+        // allowed in the current context we must examine the Subtree stack and check if a
+        // previously vistied expression determined it was ok.
+        if (auto comparedSubtree = stdx::get_if<Subtree::Compared>(&subtreeStack.top().output);
+            comparedSubtree && comparedSubtree->temporarilyPermittedArrayLiteral) {
+            invariant(array == comparedSubtree->temporarilyPermittedArrayLiteral,
+                      "Attempted to allow an array expression but visited a different array first");
+            comparedSubtree->temporarilyPermittedArrayLiteral = nullptr;
+            return;
+        }
         ensureNotEncryptedEnterEval("formation of an array literal", subtreeStack);
     }
     void visit(ExpressionArrayElemAt*) final {
@@ -467,6 +524,12 @@ private:
         switch (compare->getOp()) {
             case ExpressionCompare::EQ:
             case ExpressionCompare::NE:
+                // The result of this comparison will be either true or false, never encrypted. So
+                // if the Subtree above us is comparing to an encrypted value that has to be an
+                // error.
+                ensureNotEncrypted("an equality comparison", subtreeStack);
+                // Now that we're sure our result won't be compared to encrypted values, enter a new
+                // Subtree to provide a new context for our children - this is a fresh start.
                 enterSubtree(Subtree::Compared{}, subtreeStack);
                 return;
             case ExpressionCompare::GT:
@@ -538,10 +601,31 @@ private:
         // not encrypted since the result of the condition might be returned.
         ensureNotEncryptedEnterEval("a null determination", subtreeStack);
     }
-    void visit(ExpressionIn*) final {
-        // This isn't going to work at the moment because we cannot descend into arrays in a
-        // Compared context but there is no harm in setting it up.
-        enterSubtree(Subtree::Compared{}, subtreeStack);
+    void visit(ExpressionIn* in) final {
+        // Regardless of the below analysis, an $in expression is going to output an unencrypted
+        // boolean. So if the result of this expression is being compared to encrypted values, it's
+        // not going to work.
+        ensureNotEncrypted("an $in expression", subtreeStack);
+
+        // In most cases we can't work with arrays in this visitor, but $in is an interesting
+        // exception.
+        //     If the second argument to $in is an array literal, we know that the things inside
+        // that array are going to be compared to the first argument and so by walking "through" the
+        // ExpressionArray in a Compared Subtree we can correctly perform the encryption analysis.
+        // We use a special flag on the Compared Subtree to communicate to the ExpressionArray that
+        // it is allowed in this case. This state is set during 'inVisit()' to make sure we don't
+        // change any analysis of the first child.
+        //     If however the second argument is not an array literal then we must fail if it
+        // contains anything encrypted. For example, if we have
+        // {$in: ["xx-yyy-zzz", "$whitelistedSSNs"]} and 'whitelistedSSNs' is encrypted, we won't be
+        // able to look within the array to evaluate the $in. So in these cases we add an
+        // 'Evaluated' Subtree to make sure none of the arguments are encrypted.
+        if (dynamic_cast<ExpressionArray*>(in->getOperandList()[1].get())) {
+            enterSubtree(Subtree::Compared{}, subtreeStack);
+        } else {
+            enterSubtree(Subtree::Evaluated{"an $in comparison without an array literal"},
+                         subtreeStack);
+        }
     }
     void visit(ExpressionIndexOfArray*) final {
         ensureNotEncryptedEnterEval("an array find", subtreeStack);
@@ -828,7 +912,8 @@ private:
     void visit(ExpressionCond*) final {
         if (numChildrenVisited == 1ull)
             // We need to exit the Evaluated output Subtree for if child.
-            didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+            didSetIntention =
+                exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
         // The then and else children should be part of the parent Subtree.
     }
     void visit(ExpressionDateFromString*) final {}
@@ -842,16 +927,27 @@ private:
     void visit(ExpressionFloor*) final {}
     void visit(ExpressionIfNull*) final {
         // This mirrors $cond.
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionIn*) final {}
+    void visit(ExpressionIn* in) final {
+        if (auto arrayLiteral = dynamic_cast<ExpressionArray*>(in->getOperandList()[1].get())) {
+            // There must be a subtree with Compared output type at the top since we just put it
+            // there.
+            auto comparedSubtree = stdx::get_if<Subtree::Compared>(&subtreeStack.top().output);
+            invariant(comparedSubtree,
+                      "$in expected to find the Subtree::Compared that it pushed onto the stack. "
+                      "Perhaps a subtree forgot to pop off the stack before exiting postVisit()?");
+            comparedSubtree->temporarilyPermittedArrayLiteral = arrayLiteral;
+        }
+    }
     void visit(ExpressionIndexOfArray*) final {}
     void visit(ExpressionIndexOfBytes*) final {}
     void visit(ExpressionIndexOfCP*) final {}
     void visit(ExpressionLet* let) final {
         // The final child of a let Expression is part of the parent Subtree.
         if (numChildrenVisited == let->getChildren().size() - 1)
-            didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+            didSetIntention =
+                exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionLn*) final {}
     void visit(ExpressionLog*) final {}
@@ -868,7 +964,8 @@ private:
     void visit(ExpressionReduce* reduce) final {
         // As with ExpressionLet the final child here is part of the parent Subtree.
         if (numChildrenVisited == reduce->getChildren().size() - 1)
-            didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+            didSetIntention =
+                exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionSetDifference*) final {}
     void visit(ExpressionSetEquals*) final {}
@@ -898,7 +995,8 @@ private:
                 enterSubtree(Subtree::Evaluated{"a switch case"}, subtreeStack);
             else
                 // After every odd child we need to exit the above Subtree.
-                didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+                didSetIntention =
+                    exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
         }
     }
     void visit(ExpressionToLower*) final {}
@@ -975,314 +1073,342 @@ public:
 private:
     void visit(ExpressionConstant*) final {}
     void visit(ExpressionAbs*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionAdd*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionAllElementsTrue*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionAnd*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionAnyElementTrue*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionArray*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        // As documented in the PreVisitor we only sometimes push an Evaluated output type Subtree
+        // onto the stack. If we did, we should find it on top and exit our Subtree. If we did
+        // not, we should find a Compared output type Subtree on top since the Compared struct is
+        // the mechanism for communicating when this special behavior should be triggered.
+        if (stdx::get_if<Subtree::Evaluated>(&subtreeStack.top().output)) {
+            didSetIntention =
+                exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+        } else {
+            invariant(stdx::get_if<Subtree::Compared>(&subtreeStack.top().output));
+        }
     }
     void visit(ExpressionArrayElemAt*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionObjectToArray*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionArrayToObject*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionCeil*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionCoerceToBool*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
-    void visit(ExpressionCompare*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+    void visit(ExpressionCompare* compare) final {
+        switch (compare->getOp()) {
+            case ExpressionCompare::EQ:
+            case ExpressionCompare::NE: {
+                didSetIntention =
+                    exitSubtree<Subtree::Compared>(expCtx, subtreeStack) || didSetIntention;
+                return;
+            }
+            default: {
+                didSetIntention =
+                    exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+                return;
+            }
+        }
     }
     void visit(ExpressionConcat*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionConcatArrays*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionCond*) final {}
     void visit(ExpressionDateFromString*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionDateFromParts*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionDateToParts*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionDateToString*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionDivide*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionExp*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionFieldPath*) final {}
     void visit(ExpressionFilter*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionFloor*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionIfNull*) final {}
-    void visit(ExpressionIn*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+    void visit(ExpressionIn* in) final {
+        // See the comment in the PreVisitor about why we have to special case an array literal.
+        if (dynamic_cast<ExpressionArray*>(in->getOperandList()[1].get())) {
+            didSetIntention =
+                exitSubtree<Subtree::Compared>(expCtx, subtreeStack) || didSetIntention;
+        } else {
+            didSetIntention =
+                exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+        }
     }
     void visit(ExpressionIndexOfArray*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionIndexOfBytes*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionIndexOfCP*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionLet*) final {}
     void visit(ExpressionLn*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionLog*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionLog10*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionMap*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionMeta*) final {}
     void visit(ExpressionMod*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionMultiply*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionNot*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionObject*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionOr*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionPow*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionRange*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionReduce*) final {}
     void visit(ExpressionSetDifference*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionSetEquals*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionSetIntersection*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionSetIsSubset*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionSetUnion*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionSize*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionReverseArray*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionSlice*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionIsArray*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionRound*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionSplit*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionSqrt*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionStrcasecmp*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionSubstrBytes*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionSubstrCP*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionStrLenBytes*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionStrLenCP*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionSubtract*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionSwitch*) final {
         // We are exiting the default branch which is part of the parent Subtree so no work is
         // required here.
     }
     void visit(ExpressionToLower*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionToUpper*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionTrim*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionTrunc*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionType*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionZip*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionConvert*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionRegexFind*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionRegexFindAll*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionRegexMatch*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionCosine*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionSine*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionTangent*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionArcCosine*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionArcSine*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionArcTangent*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionArcTangent2*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionHyperbolicArcTangent*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionHyperbolicArcCosine*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionHyperbolicArcSine*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionHyperbolicTangent*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionHyperbolicCosine*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionHyperbolicSine*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionDegreesToRadians*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionRadiansToDegrees*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionDayOfMonth*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionDayOfWeek*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionDayOfYear*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionHour*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionMillisecond*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionMinute*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionMonth*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionSecond*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionWeek*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionIsoWeekYear*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionIsoDayOfWeek*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionIsoWeek*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionYear*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionFromAccumulator<AccumulatorAvg>*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionFromAccumulator<AccumulatorMax>*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionFromAccumulator<AccumulatorMin>*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionFromAccumulator<AccumulatorStdDevPop>*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionFromAccumulator<AccumulatorStdDevSamp>*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionFromAccumulator<AccumulatorSum>*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionFromAccumulator<AccumulatorMergeObjects>*) final {
-        didSetIntention = exitSubtree(expCtx, subtreeStack) || didSetIntention;
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionTests::Testable*) final {}
 
@@ -1302,12 +1428,16 @@ public:
                                                 : Subtree::Forwarded{},
                      subtreeStack);
     }
-    Intention exitOutermostSubtree() {
+    Intention exitOutermostSubtree(bool expressionOutputIsCompared) {
         // When walking is complete, exit the outermost Subtree and report whether any fields were
         // marked in the execution of the walker.
-        return exitSubtree(expCtx, subtreeStack) || intentionPostVisitor.didSetIntention ||
+        auto rootSubtreeSetIntention = expressionOutputIsCompared
+            ? exitSubtree<Subtree::Compared>(expCtx, subtreeStack)
+            : exitSubtree<Subtree::Forwarded>(expCtx, subtreeStack);
+        return rootSubtreeSetIntention || intentionPostVisitor.didSetIntention ||
             intentionInVisitor.didSetIntention;
     }
+
     void preVisit(Expression* expression) {
         expression->acceptVisitor(&intentionPreVisitor);
     }
@@ -1338,7 +1468,7 @@ Intention mark(const ExpressionContext& expCtx,
                bool expressionOutputIsCompared) {
     IntentionWalker walker{expCtx, schema, expressionOutputIsCompared};
     expression_walker::walk(&walker, expression);
-    return walker.exitOutermostSubtree();
+    return walker.exitOutermostSubtree(expressionOutputIsCompared);
 }
 
 }  // namespace mongo::aggregate_expression_intender
