@@ -68,9 +68,13 @@
     // Call killCursors on the mongod cursor.
     cursor.close();
 
-    // Make sure killCursors was called on mongot.
-    let resp = assert.commandWorked(mongotTestDB.runCommand({getQueuedResponses: 1}));
-    assert.eq(resp.numRemainingResponses, 0);
+    // Make sure killCursors was called on mongot. We cannot assume that this happens immediately
+    // after cursor.close() since mongod's killCursors command to mongot may race with the shell's
+    // getQueuedResponses command to mongot.
+    assert.soon(function() {
+        let resp = assert.commandWorked(mongotTestDB.runCommand({getQueuedResponses: 1}));
+        return resp.numRemainingResponses === 0;
+    });
 
     mongotMock.stop();
     MongoRunner.stopMongod(conn);
