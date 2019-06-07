@@ -398,9 +398,7 @@
     }];
     result = assert.commandWorked(testDb.runCommand(updateCommand));
     assert.eq(true, result.schemaRequiresEncryption, result);
-    // TODO SERVER-41491: Agg expressions should indicate whether a constant was marked for
-    // encryption.
-    assert.eq(false, result.hasEncryptionPlaceholders, result);
+    assert.eq(true, result.hasEncryptionPlaceholders, result);
     assert(
         result.result.updates[0].u[0]["$addFields"].bar["$cond"][0]["$eq"][1]["$const"] instanceof
             BinData,

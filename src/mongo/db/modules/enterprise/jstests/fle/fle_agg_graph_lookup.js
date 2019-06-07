@@ -232,8 +232,7 @@
         isRemoteSchema: false
     };
     cmdRes = assert.commandWorked(testDB.runCommand(command));
-    // The following will be fixed by SERVER-41491.
-    assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
     assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
     assert(cmdRes.hasOwnProperty("result"), cmdRes);
     assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);

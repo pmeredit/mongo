@@ -81,6 +81,12 @@ public:
         return _flePipe->getOutputSchema();
     }
 
+    bool doesHavePlaceholders(const std::vector<BSONObj>& pipeline, BSONObj inputSchema) {
+        auto parsedPipeline = uassertStatusOK(Pipeline::parse(pipeline, getExpCtx()));
+        auto schema = EncryptionSchemaTreeNode::parse(inputSchema, EncryptionSchemaType::kLocal);
+        return FLEPipeline(std::move(parsedPipeline), *schema.get()).hasEncryptedPlaceholders;
+    }
+
     /**
      * Given a pipeline and an input schema, returns a new serialized pipeline with encrypted fields
      * replaced by their appropriate intent-to-encrypt markings.
@@ -500,6 +506,27 @@ TEST_F(FLEPipelineTest, AddFieldsCannotExtendAnEncryptedField) {
     ASSERT_THROWS_CODE(
         getSchemaForStage({projection}, kDefaultSsnSchema), AssertionException, 51096);
 }
+
+TEST_F(FLEPipelineTest, MarkingPlaceholdersSetsFlagToTrue) {
+    BSONObj project = fromjson(R"(
+        {
+            "$addFields": {"newfield": {"$eq": ["$ssn", "abc123"]}}
+        }
+    )");
+
+    ASSERT_TRUE(doesHavePlaceholders({project}, kDefaultSsnSchema));
+}
+
+TEST_F(FLEPipelineTest, NoEncryptedFieldSetsFlagToFalse) {
+    BSONObj project = fromjson(R"(
+        {
+            "$addFields": {"newfield": {"$eq": ["$foo", "abc123"]}}
+        }
+    )");
+
+    ASSERT_FALSE(doesHavePlaceholders({project}, kDefaultSsnSchema));
+}
+
 
 }  // namespace
 }  // namespace mongo

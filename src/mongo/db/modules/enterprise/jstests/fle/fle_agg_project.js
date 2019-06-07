@@ -176,5 +176,33 @@
     assert(cmdRes.result.pipeline[1].$match.ssn.$eq instanceof BinData,
            cmdRes.result.pipeline[1].$match.ssn.$eq);
 
+    // Test that hasEncryptionPlaceholders is properly set without a $match stage.
+    command = {
+        aggregate: coll.getName(),
+        pipeline: [
+            {$addFields: {"userIs123": {"$eq": ["$ssn", "1234"]}}},
+        ],
+        cursor: {},
+        jsonSchema: {type: "object", properties: {ssn: encryptedStringSpec}},
+        isRemoteSchema: false,
+    };
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    delete cmdRes.result.lsid;
+    assert(cmdRes.schemaRequiresEncryption, cmdRes);
+    assert(cmdRes.hasEncryptionPlaceholders);
+
+    command = {
+        aggregate: coll.getName(),
+        pipeline: [
+            {$addFields: {"userIs123": {"$eq": ["$foo", "1234"]}}},
+        ],
+        cursor: {},
+        jsonSchema: {type: "object", properties: {ssn: encryptedStringSpec}},
+        isRemoteSchema: false,
+    };
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    delete cmdRes.result.lsid;
+    assert(cmdRes.schemaRequiresEncryption, cmdRes);
+    assert(!cmdRes.hasEncryptionPlaceholders, cmdRes);
     mongocryptd.stop();
 })();

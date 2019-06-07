@@ -37,14 +37,29 @@
 namespace mongo::aggregate_expression_intender {
 
 /**
+ * Indicates whether or not mark() actually inserted any intent-to-encrypt markers, since they are
+ * not always necessary.
+ */
+enum class[[nodiscard]] Intention : bool{Marked = true, NotMarked = false};
+
+inline Intention operator||(Intention a, Intention b) {
+    if (a == Intention::Marked || b == Intention::Marked) {
+        return Intention::Marked;
+    } else {
+        return Intention::NotMarked;
+    }
+}
+/**
  * Replace literals in the input query with intent-to-encrypt markings where needed. Throw
  * exceptions if a reference to an encrypted field occurs in a place where we need to take its value
  * for any purpose other than equality comparison to one or more literals or other encrypted fields
  * of like encryption type.
+ *
+ * Returns an Intention enum indicating whether or not intent-to-encrypt markers were inserted.
  */
-void mark(const ExpressionContext& expCtx,
-          const EncryptionSchemaTreeNode& schema,
-          Expression* expression);
+Intention mark(const ExpressionContext& expCtx,
+               const EncryptionSchemaTreeNode& schema,
+               Expression* expression);
 
 /**
  * Given an input 'expression' and 'schema', returns the output schema associated with the evaluated

@@ -325,60 +325,65 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForSingleDocumentTransform
 // DocumentSource encryption analysis
 //
 
-void analyzeStageNoop(FLEPipeline* flePipe,
-                      const EncryptionSchemaTreeNode& schema,
-                      DocumentSource* source) {}
+aggregate_expression_intender::Intention analyzeStageNoop(FLEPipeline* flePipe,
+                                                          const EncryptionSchemaTreeNode& schema,
+                                                          DocumentSource* source) {
+    return aggregate_expression_intender::Intention::NotMarked;
+}
 
-void analyzeForInclusionNode(FLEPipeline* flePipe,
-                             const EncryptionSchemaTreeNode& schema,
-                             const parsed_aggregation_projection::InclusionNode& root) {
+aggregate_expression_intender::Intention analyzeForInclusionNode(
+    FLEPipeline* flePipe,
+    const EncryptionSchemaTreeNode& schema,
+    const parsed_aggregation_projection::InclusionNode& root) {
+    auto didMark = aggregate_expression_intender::Intention::NotMarked;
     std::set<std::string> computedPaths;
     StringMap<std::string> renamedPaths;
     root.reportComputedPaths(&computedPaths, &renamedPaths);
     for (const auto& path : computedPaths) {
         if (auto expr = root.getExpressionForPath(FieldPath(path))) {
-            aggregate_expression_intender::mark(
-                *(flePipe->getPipeline().getContext().get()), schema, expr.get());
+            if (aggregate_expression_intender::mark(
+                    *(flePipe->getPipeline().getContext().get()), schema, expr.get()) ==
+                aggregate_expression_intender::Intention::Marked) {
+                didMark = aggregate_expression_intender::Intention::Marked;
+            }
         }
     }
-    // TODO: SERVER-41491 return whether this has encrypted placeholders.
+    return didMark;
 }
 
-void analyzeForSingleDocumentTransformation(FLEPipeline* flePipe,
-                                            const EncryptionSchemaTreeNode& schema,
-                                            DocumentSourceSingleDocumentTransformation* source) {
+aggregate_expression_intender::Intention analyzeForSingleDocumentTransformation(
+    FLEPipeline* flePipe,
+    const EncryptionSchemaTreeNode& schema,
+    DocumentSourceSingleDocumentTransformation* source) {
     const auto& transformer = source->getTransformer();
     switch (transformer.getType()) {
         case TransformerInterface::TransformerType::kInclusionProjection: {
             const auto& includer =
                 static_cast<const parsed_aggregation_projection::ParsedInclusionProjection&>(
                     transformer);
-            analyzeForInclusionNode(flePipe, schema, includer.getRoot());
+            return analyzeForInclusionNode(flePipe, schema, includer.getRoot());
         }
         case TransformerInterface::TransformerType::kExclusionProjection: {
-            break;
+            return aggregate_expression_intender::Intention::NotMarked;
         }
         case TransformerInterface::TransformerType::kComputedProjection: {
             const auto& projector =
                 static_cast<const parsed_aggregation_projection::ParsedAddFields&>(transformer);
-            analyzeForInclusionNode(flePipe, schema, projector.getRoot());
-            break;
+            return analyzeForInclusionNode(flePipe, schema, projector.getRoot());
         }
         case TransformerInterface::TransformerType::kReplaceRoot:
         case TransformerInterface::TransformerType::kGroupFromFirstDocument:
             uasserted(ErrorCodes::CommandNotSupported, "Agg stage not yet supported");
     }
+    return aggregate_expression_intender::Intention::NotMarked;
 }
 
-void analyzeForMatch(FLEPipeline* flePipe,
-                     const EncryptionSchemaTreeNode& schema,
-                     DocumentSourceMatch* source) {
+aggregate_expression_intender::Intention analyzeForMatch(FLEPipeline* flePipe,
+                                                         const EncryptionSchemaTreeNode& schema,
+                                                         DocumentSourceMatch* source) {
     // Build a FLEMatchExpression from the MatchExpression within the $match stage, replacing any
     // constants with their appropriate intent-to-encrypt markings.
     FLEMatchExpression fleMatch{source->getMatchExpression()->shallowClone(), schema};
-
-    flePipe->hasEncryptedPlaceholders =
-        flePipe->hasEncryptedPlaceholders || fleMatch.containsEncryptedPlaceholders();
 
     // Rebuild the DocumentSourceMatch using the serialized MatchExpression after replacing
     // encrypted values.
@@ -387,11 +392,16 @@ void analyzeForMatch(FLEPipeline* flePipe,
         fleMatch.getMatchExpression()->serialize(&bob);
         return bob.obj();
     }());
+    if (fleMatch.containsEncryptedPlaceholders()) {
+        return aggregate_expression_intender::Intention::Marked;
+    } else {
+        return aggregate_expression_intender::Intention::NotMarked;
+    }
 }
 
-void analyzeForGeoNear(FLEPipeline* flePipe,
-                       const EncryptionSchemaTreeNode& schema,
-                       DocumentSourceGeoNear* source) {
+aggregate_expression_intender::Intention analyzeForGeoNear(FLEPipeline* flePipe,
+                                                           const EncryptionSchemaTreeNode& schema,
+                                                           DocumentSourceGeoNear* source) {
     // Build a FLEMatchExpression from the MatchExpression within the $geoNear stage, replacing any
     // constants with their appropriate intent-to-encrypt markings.
     auto queryExpression =
@@ -400,8 +410,6 @@ void analyzeForGeoNear(FLEPipeline* flePipe,
                                                      ExtensionsCallbackNoop(),
                                                      Pipeline::kGeoNearMatcherFeatures));
     FLEMatchExpression fleMatch{std::move(queryExpression), schema};
-    flePipe->hasEncryptedPlaceholders =
-        flePipe->hasEncryptedPlaceholders || fleMatch.containsEncryptedPlaceholders();
 
     if (auto key = source->getKeyField()) {
         FieldRef keyField(key->fullPath());
@@ -419,13 +427,19 @@ void analyzeForGeoNear(FLEPipeline* flePipe,
         fleMatch.getMatchExpression()->serialize(&bob);
         return bob.obj();
     }());
+    if (fleMatch.containsEncryptedPlaceholders()) {
+        return aggregate_expression_intender::Intention::Marked;
+    } else {
+        return aggregate_expression_intender::Intention::NotMarked;
+    }
 }
 
-void analyzeForGraphLookUp(FLEPipeline* flePipe,
-                           const EncryptionSchemaTreeNode& schema,
-                           DocumentSourceGraphLookUp* source) {
+aggregate_expression_intender::Intention analyzeForGraphLookUp(
+    FLEPipeline* flePipe,
+    const EncryptionSchemaTreeNode& schema,
+    DocumentSourceGraphLookUp* source) {
     // Replace contants with their appropriate intent-to-encrypt markings in the 'startWith' field.
-    aggregate_expression_intender::mark(
+    auto didMark = aggregate_expression_intender::mark(
         *flePipe->getPipeline().getContext(), schema, source->getStartWithField());
 
     // Build a FLEMatchExpression from the MatchExpression for the additional filter, replacing any
@@ -437,8 +451,6 @@ void analyzeForGraphLookUp(FLEPipeline* flePipe,
                                                          ExtensionsCallbackNoop(),
                                                          Pipeline::kAllowedMatcherFeatures));
         FLEMatchExpression fleMatch{std::move(queryExpression), schema};
-        flePipe->hasEncryptedPlaceholders =
-            flePipe->hasEncryptedPlaceholders || fleMatch.containsEncryptedPlaceholders();
 
         // Update the query in the DocumentSourceGraphLookUp using the serialized MatchExpression
         // after replacing encrypted values.
@@ -447,12 +459,16 @@ void analyzeForGraphLookUp(FLEPipeline* flePipe,
             fleMatch.getMatchExpression()->serialize(&bob);
             return bob.obj();
         }());
+        if (fleMatch.containsEncryptedPlaceholders()) {
+            didMark = aggregate_expression_intender::Intention::Marked;
+        }
     }
+    return didMark;
 }
 
-void analyzeForSort(FLEPipeline* flePipe,
-                    const EncryptionSchemaTreeNode& schema,
-                    DocumentSourceSort* source) {
+aggregate_expression_intender::Intention analyzeForSort(FLEPipeline* flePipe,
+                                                        const EncryptionSchemaTreeNode& schema,
+                                                        DocumentSourceSort* source) {
     // Sort pattern cannot have encrypted fields. 'Expression' key parts are currently only used by
     // $meta sort, which does not involve encrypted fields.
     for (const auto& part : source->getSortKeyPattern()) {
@@ -468,6 +484,7 @@ void analyzeForSort(FLEPipeline* flePipe,
                         !schema.containsEncryptedNodeBelowPrefix(keyField));
         }
     }
+    return aggregate_expression_intender::Intention::NotMarked;
 }
 
 // The 'schemaPropagatorMap' is a map of the typeid of a concrete DocumentSource class to the
@@ -500,7 +517,10 @@ static stdx::unordered_map<
                                                                                               \
         invariant(stageAnalyzerMap.find(typeid(className)) == stageAnalyzerMap.end());        \
         stageAnalyzerMap[typeid(className)] = [&](auto* flePipe, auto* stage, auto* source) { \
-            return analyzeFunc(flePipe, *stage->contents, static_cast<className*>(source));   \
+            aggregate_expression_intender::Intention markStatus =                             \
+                analyzeFunc(flePipe, *stage->contents, static_cast<className*>(source));      \
+            flePipe->hasEncryptedPlaceholders = flePipe->hasEncryptedPlaceholders ||          \
+                markStatus == aggregate_expression_intender::Intention::Marked;               \
         };                                                                                    \
         return Status::OK();                                                                  \
     }
