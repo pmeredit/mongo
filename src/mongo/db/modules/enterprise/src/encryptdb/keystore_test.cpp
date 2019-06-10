@@ -14,6 +14,7 @@
 #include "encryption_key_manager_noop.h"
 #include "encryption_options.h"
 #include "keystore.h"
+#include "mongo/config.h"
 #include "mongo/db/operation_context_noop.h"
 #include "mongo/db/service_context_test_fixture.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_extensions.h"
@@ -91,14 +92,15 @@ protected:
         return std::make_unique<SymmetricKey>(crypto::aesGenerate(crypto::sym256KeySize, name));
     }
 
-    void testSalvageFixKeystore(Keystore::Version version);
+    void testSalvageFixKeystore(Keystore::Version version, std::string encryptionCipherMode);
 
 private:
     unittest::TempDir _keystorePath;
 };
 
-void KeystoreFixture::testSalvageFixKeystore(Keystore::Version version) {
-    encryptionGlobalParams.encryptionCipherMode = "AES256-GCM";
+void KeystoreFixture::testSalvageFixKeystore(Keystore::Version version,
+                                             std::string encryptionCipherMode) {
+    encryptionGlobalParams.encryptionCipherMode = encryptionCipherMode;
     encryptionGlobalParams.repair = true;
 
     auto ks = makeKeystoreAndSession(version);
@@ -230,12 +232,15 @@ TEST_F(KeystoreFixture, V1RolloverTest) {
     ASSERT_FALSE(secondIt == ks.session->end());
 }
 
-DEATH_TEST_F(KeystoreFixture, V1SalvageFixKeystore, "Fatal assertion 51226") {
-    KeystoreFixture::testSalvageFixKeystore(Keystore::Version::k1);
+// We require "AES256-GCM" to pass this test
+#if MONGO_CONFIG_SSL_PROVIDER == MONGO_CONFIG_SSL_PROVIDER_OPENSSL
+DEATH_TEST_F(KeystoreFixture, V1SalvageFixKeystore2, "Fatal assertion 51226") {
+    KeystoreFixture::testSalvageFixKeystore(Keystore::Version::k1, "AES256-GCM");
 }
+#endif
 
 DEATH_TEST_F(KeystoreFixture, V0SalvageFixKeystore, "Fatal assertion 51226") {
-    KeystoreFixture::testSalvageFixKeystore(Keystore::Version::k0);
+    KeystoreFixture::testSalvageFixKeystore(Keystore::Version::k0, "AES256-CBC");
 }
 
 // Rolling over a V0 keystore should be fatal
