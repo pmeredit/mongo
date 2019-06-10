@@ -16,6 +16,8 @@
 #include <winber.h>  // winldap.h must be included before
 // clang-format on
 
+#include <memory>
+
 #include "../ldap_connection_options.h"
 #include "../ldap_query.h"
 #include "ldap_connection_helpers.h"
@@ -23,7 +25,6 @@
 #include "mongo/base/status_with.h"
 #include "mongo/base/string_data.h"
 #include "mongo/client/cyrus_sasl_client_session.h"
-#include "mongo/stdx/memory.h"
 #include "mongo/util/log.h"
 #include "mongo/util/str.h"
 #include "mongo/util/scopeguard.h"
@@ -80,7 +81,7 @@ class WindowsLDAPConnection::WindowsLDAPConnectionPIMPL
     : public LDAPSessionHolder<WindowsLDAPSessionParams> {};
 
 WindowsLDAPConnection::WindowsLDAPConnection(LDAPConnectionOptions options)
-    : LDAPConnection(std::move(options)), _pimpl(stdx::make_unique<WindowsLDAPConnectionPIMPL>()) {
+    : LDAPConnection(std::move(options)), _pimpl(std::make_unique<WindowsLDAPConnectionPIMPL>()) {
     _timeoutSeconds = durationCount<Seconds>(_options.timeout);
 }
 

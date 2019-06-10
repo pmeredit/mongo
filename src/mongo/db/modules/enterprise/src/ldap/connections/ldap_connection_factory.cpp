@@ -8,9 +8,10 @@
 
 #include "ldap_connection_factory.h"
 
+#include <memory>
+
 #include "mongo/base/status_with.h"
 #include "mongo/executor/connection_pool.h"
-#include "mongo/stdx/memory.h"
 #include "mongo/util/alarm.h"
 #include "mongo/util/alarm_runner_background_thread.h"
 #include "mongo/util/concurrency/thread_pool.h"
@@ -52,9 +53,9 @@ Status runEmptyQuery(LDAPConnection* conn) {
 
 std::unique_ptr<LDAPConnection> makeNativeLDAPConn(const LDAPConnectionOptions& opts) {
 #ifndef _WIN32
-    return stdx::make_unique<OpenLDAPConnection>(opts);
+    return std::make_unique<OpenLDAPConnection>(opts);
 #else
-    return stdx::make_unique<WindowsLDAPConnection>(opts);
+    return std::make_unique<WindowsLDAPConnection>(opts);
 #endif
 }
 

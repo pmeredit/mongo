@@ -4,13 +4,13 @@
 
 #include "mongo/platform/basic.h"
 
+#include <memory>
 #include <sstream>
 #include <vector>
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/util/bson_extract.h"
-#include "mongo/stdx/memory.h"
 #include "mongo/unittest/integration_test.h"
 #include "mongo/unittest/unittest.h"
 

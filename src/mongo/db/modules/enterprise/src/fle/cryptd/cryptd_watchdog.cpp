@@ -7,12 +7,12 @@
 #include "mongo/platform/basic.h"
 
 #include <cstdint>
+#include <memory>
 
 #include "cryptd_watchdog.h"
 
 #include "mongo/db/service_context.h"
 #include "mongo/platform/atomic_word.h"
-#include "mongo/stdx/memory.h"
 #include "mongo/transport/service_entry_point.h"
 #include "mongo/util/exit.h"
 #include "mongo/util/log.h"
@@ -120,7 +120,7 @@ void startIdleWatchdog(ServiceContext* serviceContext,
         return;
     }
 
-    auto watchdog = stdx::make_unique<IdleWatchdogThread>(timeout, entryPoint);
+    auto watchdog = std::make_unique<IdleWatchdogThread>(timeout, entryPoint);
 
     watchdog->start();
 

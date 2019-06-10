@@ -8,10 +8,10 @@
 
 #include "blockstore_fs.h"
 
+#include <memory>
 #include <string.h>
 
 #include "mongo/base/string_data.h"
-#include "mongo/stdx/memory.h"
 #include "mongo/util/allocator.h"
 #include "mongo/util/log.h"
 
@@ -142,7 +142,7 @@ MONGO_COMPILER_API_EXPORT int queryableWtFsCreate(WT_CONNECTION* conn, WT_CONFIG
         exit(1);
     }
 
-    auto blockstoreFs = mongo::stdx::make_unique<mongo::queryable::BlockstoreFileSystem>(
+    auto blockstoreFs = std::make_unique<mongo::queryable::BlockstoreFileSystem>(
         std::move(apiUri), mongo::OID(snapshotId), std::move(dbpath), wtext);
 
     for (const auto& file : swFiles.getValue()) {
@@ -270,9 +270,9 @@ int BlockstoreFileSystem::open(const char* name, BlockstoreFileHandle** fileHand
 
     auto file = getFile(name);
 
-    auto ret = stdx::make_unique<BlockstoreFileHandle>(
+    auto ret = std::make_unique<BlockstoreFileHandle>(
         this,
-        stdx::make_unique<Reader>(
+        std::make_unique<Reader>(
             BlockstoreHTTP(_apiUri, _snapshotId), file.filename, file.fileSize, file.blockSize),
         file.fileSize,
         file.blockSize);

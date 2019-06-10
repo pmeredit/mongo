@@ -15,7 +15,6 @@
 #include "mongo/base/init.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/util/bson_extract.h"
-#include "mongo/stdx/memory.h"
 #include "mongo/util/log.h"
 #include "mongo/util/scopeguard.h"
 
@@ -47,7 +46,7 @@ StatusWith<std::size_t> Reader::readBlockInto(DataRange buf, std::size_t blockId
 }
 
 Status Reader::readInto(std::ostream* writer) const {
-    auto buf = stdx::make_unique<char[]>(_blockSize);
+    auto buf = std::make_unique<char[]>(_blockSize);
     DataRange bufRange(buf.get(), _blockSize);
     for (std::size_t blockIdx = 0; blockIdx < getNumBlocks(); ++blockIdx) {
         auto swBytesRead = readBlockInto(bufRange, blockIdx);

@@ -17,7 +17,6 @@
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
-#include "mongo/stdx/memory.h"
 #include "mongo/unittest/unittest.h"
 #include "regex_rewrite_rule.h"
 #include "rewrite_rule.h"
@@ -40,12 +39,12 @@ T assertCreateOK(Args&&... args) {
 
 template <typename T, typename... Args>
 std::unique_ptr<T> assertCreateOKPtr(Args&&... args) {
-    return stdx::make_unique<T>(assertCreateOK<T>(std::forward<Args>(args)...));
+    return std::make_unique<T>(assertCreateOK<T>(std::forward<Args>(args)...));
 }
 
 class LDAPTransformContext : public unittest::Test {
 public:
-    LDAPTransformContext() : runner(stdx::make_unique<LDAPRunnerMock>()) {}
+    LDAPTransformContext() : runner(std::make_unique<LDAPRunnerMock>()) {}
 
 protected:
     std::unique_ptr<LDAPRunnerMock> runner;

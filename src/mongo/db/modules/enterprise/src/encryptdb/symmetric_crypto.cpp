@@ -8,12 +8,13 @@
 
 #include "symmetric_crypto.h"
 
+#include <memory>
+
 #include "encryption_options.h"
 #include "mongo/base/data_cursor.h"
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
 #include "mongo/platform/random.h"
-#include "mongo/stdx/memory.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
 #include "mongo/util/net/ssl_manager.h"

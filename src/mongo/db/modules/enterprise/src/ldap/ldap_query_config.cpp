@@ -6,11 +6,11 @@
 
 #include "ldap_query_config.h"
 
+#include <functional>
 #include <limits>
 #include <pcrecpp.h>
 
 #include "mongo/base/status_with.h"
-#include "mongo/stdx/functional.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/str.h"
 
@@ -179,7 +179,7 @@ namespace {
  * specify what makes tokens valid.
  */
 Status findAndValidateTokens(const std::string& input,
-                             stdx::function<Status(StringData)> validatorFunction) {
+                             std::function<Status(StringData)> validatorFunction) {
     size_t braceStart = input.find('{');
     while (braceStart != std::string::npos) {
         size_t braceEnd = input.find('}', braceStart);

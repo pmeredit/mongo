@@ -54,7 +54,7 @@ namespace {
 MONGO_FAIL_POINT_DEFINE(backupCursorErrorAfterOpen);
 
 std::unique_ptr<BackupCursorService> constructBackupCursorService(StorageEngine* storageEngine) {
-    return stdx::make_unique<BackupCursorService>(storageEngine);
+    return std::make_unique<BackupCursorService>(storageEngine);
 }
 
 ServiceContext::ConstructorActionRegisterer registerBackupCursorHooks{

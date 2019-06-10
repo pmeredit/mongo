@@ -5,6 +5,7 @@
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kAccessControl
 
 #include <cstdlib>
+#include <memory>
 #include <string>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -21,7 +22,6 @@
 #include "mongo/db/auth/sasl_mechanism_registry.h"
 #include "mongo/db/auth/sasl_options.h"
 #include "mongo/db/service_context_test_fixture.h"
-#include "mongo/stdx/memory.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/errno_util.h"
@@ -172,7 +172,7 @@ SaslConversationGssapi::SaslConversationGssapi()
 
     client.reset(SaslClientSession::create(mechanism));
 
-    server = stdx::make_unique<CyrusGSSAPIServerMechanism>("$external");
+    server = std::make_unique<CyrusGSSAPIServerMechanism>("$external");
 }
 
 void SaslConversationGssapi::assertConversationFailure() {

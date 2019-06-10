@@ -8,12 +8,14 @@
 #include "mongo/platform/basic.h"
 
 #include "encryption_key_manager.h"
+
+#include <memory>
+
 #include "encryption_options.h"
 #include "mongo/base/init.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_extensions.h"
-#include "mongo/stdx/memory.h"
 #include "mongo/util/net/ssl_options.h"
 #include "symmetric_crypto_smoke.h"
 
@@ -34,7 +36,7 @@ ServiceContext::ConstructorActionRegisterer registerEncryptionWiredTigerCustomiz
             return;
         }
         auto configHooks =
-            stdx::make_unique<EncryptionWiredTigerCustomizationHooks>(&encryptionGlobalParams);
+            std::make_unique<EncryptionWiredTigerCustomizationHooks>(&encryptionGlobalParams);
         WiredTigerCustomizationHooks::set(service, std::move(configHooks));
         const auto cipherMode =
             crypto::getCipherModeFromString(encryptionGlobalParams.encryptionCipherMode);

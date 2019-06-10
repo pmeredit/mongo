@@ -11,6 +11,7 @@
 
 #include <boost/filesystem.hpp>
 #include <fstream>
+#include <memory>
 #include <tuple>
 
 #include "encryptdb/encryption_key_manager_gen.h"
@@ -28,7 +29,6 @@
 #include "mongo/db/storage/encryption_hooks.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_customization_hooks.h"
-#include "mongo/stdx/memory.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
 #include "mongo/util/net/ssl_manager.h"
@@ -167,7 +167,7 @@ Status EncryptionKeyManager::protectTmpData(
 }
 
 std::unique_ptr<DataProtector> EncryptionKeyManager::getDataProtector() {
-    return stdx::make_unique<EncryptedDataProtector>(_masterKey.get(), crypto::aesMode::cbc);
+    return std::make_unique<EncryptedDataProtector>(_masterKey.get(), crypto::aesMode::cbc);
 }
 
 boost::filesystem::path EncryptionKeyManager::getProtectedPathSuffix() {
@@ -281,11 +281,11 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_getMasterKey() 
         // Make a single copy of the master key for the storage engine layer.
         _masterKeyRequested = true;
         auto symmetricKey =
-            stdx::make_unique<SymmetricKey>(reinterpret_cast<const uint8_t*>(_masterKey->getKey()),
-                                            _masterKey->getKeySize(),
-                                            crypto::aesAlgorithm,
-                                            _masterKey->getKeyId(),
-                                            _masterKey->getInitializationCount());
+            std::make_unique<SymmetricKey>(reinterpret_cast<const uint8_t*>(_masterKey->getKey()),
+                                           _masterKey->getKeySize(),
+                                           crypto::aesAlgorithm,
+                                           _masterKey->getKeyId(),
+                                           _masterKey->getInitializationCount());
         return std::move(symmetricKey);
     }
     // Check that key rotation is enabled
@@ -338,7 +338,7 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_readKey(
 
     // There is no key corresponding to keyId yet so create one
     auto symmetricKey =
-        stdx::make_unique<SymmetricKey>(crypto::aesGenerate(crypto::sym256KeySize, keyId.name()));
+        std::make_unique<SymmetricKey>(crypto::aesGenerate(crypto::sym256KeySize, keyId.name()));
 
     session->insert(symmetricKey);
 
@@ -654,7 +654,7 @@ std::int32_t EncryptionKeyManager::getKeystoreVersion() const {
 }
 
 void initializeEncryptionKeyManager(ServiceContext* service) {
-    auto keyManager = stdx::make_unique<EncryptionKeyManager>(
+    auto keyManager = std::make_unique<EncryptionKeyManager>(
         storageGlobalParams.dbpath, &encryptionGlobalParams, &sslGlobalParams);
     EncryptionHooks::set(service, std::move(keyManager));
 }

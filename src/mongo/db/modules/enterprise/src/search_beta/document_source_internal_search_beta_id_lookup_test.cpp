@@ -41,7 +41,7 @@ public:
         _expCtx->tempDir = tempDir.path();
 
         _expCtx->mongoProcessInterface =
-            stdx::make_unique<MockMongoInterface>(std::deque<DocumentSource::GetNextResult>());
+            std::make_unique<MockMongoInterface>(std::deque<DocumentSource::GetNextResult>());
     }
 
     boost::intrusive_ptr<ExpressionContext> getExpCtx() {
@@ -71,7 +71,7 @@ TEST_F(InternalSearchBetaIdLookupTest, ShouldSkipResultsWhenIdNotFound) {
     // Mock documents for this namespace.
     deque<DocumentSource::GetNextResult> mockDbContents{Document{{"_id", 0}, {"color", "red"_sd}}};
     expCtx->mongoProcessInterface =
-        stdx::make_unique<StubMongoProcessInterfaceLookupSingleDocument>(mockDbContents);
+        std::make_unique<StubMongoProcessInterfaceLookupSingleDocument>(mockDbContents);
 
     // We should find one document here with _id = 0.
     auto next = idLookupStage->getNext();
@@ -107,7 +107,7 @@ TEST_F(InternalSearchBetaIdLookupTest, ShouldNotRemoveMetadata) {
     // Mock documents for this namespace.
     deque<DocumentSource::GetNextResult> mockDbContents{
         Document{{"_id", 0}, {"color", "red"_sd}, {"something else", "will be projected out"_sd}}};
-    expCtx->mongoProcessInterface = stdx::make_unique<MockMongoInterface>(mockDbContents);
+    expCtx->mongoProcessInterface = std::make_unique<MockMongoInterface>(mockDbContents);
 
     // We should find one document here with _id = 0.
     auto next = projectStage->getNext();
@@ -202,7 +202,7 @@ TEST_F(InternalSearchBetaIdLookupTest, ShouldAllowStringOrObjectIdValues) {
     deque<DocumentSource::GetNextResult> mockDbContents{
         Document{{"_id", "tango"_sd}, {"color", "red"_sd}},
         Document{{"_id", Document{{"number", 42}, {"irrelevant", "something"_sd}}}}};
-    expCtx->mongoProcessInterface = stdx::make_unique<MockMongoInterface>(mockDbContents);
+    expCtx->mongoProcessInterface = std::make_unique<MockMongoInterface>(mockDbContents);
 
     // Find documents when _id is a string or document.
     auto next = idLookupStage->getNext();
@@ -236,7 +236,7 @@ TEST_F(InternalSearchBetaIdLookupTest, ShouldNotErrorOnEmptyResult) {
 
     // Mock documents for this namespace.
     deque<DocumentSource::GetNextResult> mockDbContents{Document{{"_id", 0}, {"color", "red"_sd}}};
-    expCtx->mongoProcessInterface = stdx::make_unique<MockMongoInterface>(mockDbContents);
+    expCtx->mongoProcessInterface = std::make_unique<MockMongoInterface>(mockDbContents);
 
     ASSERT_TRUE(idLookupStage->getNext().isEOF());
     ASSERT_TRUE(idLookupStage->getNext().isEOF());
@@ -265,7 +265,7 @@ TEST_F(InternalSearchBetaIdLookupTest, NoShardFilterOnMongos) {
     auto spec = specObj.firstElement();
 
     expCtx->mongoProcessInterface =
-        stdx::make_unique<MockMongoInterface>(std::deque<DocumentSource::GetNextResult>());
+        std::make_unique<MockMongoInterface>(std::deque<DocumentSource::GetNextResult>());
 
     // We should be able to parse this stage on mongos, though no shard filter will be added.
     auto idLookupStages = DocumentSourceInternalSearchBetaIdLookUp::createFromBson(spec, expCtx);

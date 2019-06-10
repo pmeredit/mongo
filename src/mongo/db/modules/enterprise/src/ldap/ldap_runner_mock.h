@@ -4,7 +4,8 @@
 
 #pragma once
 
-#include "mongo/stdx/memory.h"
+#include <memory>
+
 #include "mongo/unittest/unittest.h"
 
 #include "ldap_runner.h"
@@ -35,7 +36,7 @@ public:
         auto swQueryParameters = LDAPQueryConfig::createLDAPQueryConfig(queryString);
         ASSERT_OK(swQueryParameters.getStatus());
         std::unique_ptr<LDAPQueryConfig> parameters =
-            stdx::make_unique<LDAPQueryConfig>(std::move(swQueryParameters.getValue()));
+            std::make_unique<LDAPQueryConfig>(std::move(swQueryParameters.getValue()));
 
         auto swLDAPQuery = LDAPQuery::instantiateQuery(*parameters);
         ASSERT_OK(swLDAPQuery.getStatus());

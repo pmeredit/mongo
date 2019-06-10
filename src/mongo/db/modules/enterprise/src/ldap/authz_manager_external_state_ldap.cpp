@@ -8,6 +8,9 @@
 
 #include "authz_manager_external_state_ldap.h"
 
+#include <functional>
+#include <memory>
+
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
 #include "mongo/base/status_with.h"
@@ -19,8 +22,6 @@
 #include "mongo/db/auth/user_name.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
-#include "mongo/stdx/functional.h"
-#include "mongo/stdx/memory.h"
 #include "mongo/util/log.h"
 #include "mongo/util/str.h"
 

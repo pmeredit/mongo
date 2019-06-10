@@ -4,13 +4,14 @@
 
 #include "mongo/platform/basic.h"
 
+#include <memory>
+
 #include "mongo/base/init.h"
 #include "mongo/base/initializer.h"
 #include "mongo/db/auth/role_name.h"
 #include "mongo/db/auth/user_name.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logger/logger.h"
-#include "mongo/stdx/memory.h"
 #include "mongo/util/invariant.h"
 #include "mongo/util/quick_exit.h"
 #include "mongo/util/signal_handlers.h"
@@ -39,11 +40,11 @@ namespace {
 enum class FailType { kFatalFailure, kNonFatalFailure, kNonFatalInfo };
 
 struct ResultsAssertion {
-    using Conditional = stdx::function<bool()>;
+    using Conditional = std::function<bool()>;
 
     ResultsAssertion(Conditional assertedCondition,
                      std::string failureMessage,
-                     stdx::function<std::vector<std::string>()> failureBulletGenerator,
+                     std::function<std::vector<std::string>()> failureBulletGenerator,
                      FailType isFatal = FailType::kFatalFailure)
         : assertedCondition(std::move(assertedCondition)),
           failureMessage(std::move(failureMessage)),
@@ -60,7 +61,7 @@ struct ResultsAssertion {
 
     Conditional assertedCondition;
     std::string failureMessage;
-    stdx::function<std::vector<std::string>()> failureBulletGenerator;
+    std::function<std::vector<std::string>()> failureBulletGenerator;
     FailType isFatal;
 };
 
@@ -88,7 +89,7 @@ public:
         std::cout << testName << "..." << std::endl;
     }
 
-    void printItemList(stdx::function<std::vector<std::string>()> infoBulletGenerator) {
+    void printItemList(std::function<std::vector<std::string>()> infoBulletGenerator) {
         if (_nonFatalAssertTriggered) {
             return;
         }
@@ -210,7 +211,7 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
                                             globalLDAPParams->serverHosts,
                                             globalLDAPParams->transportSecurity);
     std::unique_ptr<LDAPRunner> runner =
-        stdx::make_unique<LDAPRunnerImpl>(bindOptions, connectionOptions);
+        std::make_unique<LDAPRunnerImpl>(bindOptions, connectionOptions);
 
     auto swRootDSEQuery =
         LDAPQueryConfig::createLDAPQueryConfig("?supportedSASLMechanisms?base?(objectclass=*)");

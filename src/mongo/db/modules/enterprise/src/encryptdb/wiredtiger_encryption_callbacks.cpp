@@ -7,6 +7,7 @@
 #include "mongo/platform/basic.h"
 
 #include <iostream>
+#include <memory>
 #include <string>
 #include <wiredtiger.h>
 #include <wiredtiger_ext.h>
@@ -14,7 +15,6 @@
 #include "encryption_key_manager.h"
 #include "encryption_options.h"
 #include "mongo/db/service_context.h"
-#include "mongo/stdx/memory.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
 #include "mongo/util/net/ssl_manager.h"

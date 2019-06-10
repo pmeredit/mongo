@@ -10,9 +10,9 @@
 
 #include <boost/algorithm/string/join.hpp>
 #include <ldap.h>
+#include <memory>
 #include <sasl/sasl.h>
 
-#include "mongo/stdx/memory.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/util/log.h"
 #include "mongo/util/net/sockaddr.h"
@@ -299,7 +299,7 @@ class OpenLDAPConnection::OpenLDAPConnectionPIMPL
 
 OpenLDAPConnection::OpenLDAPConnection(LDAPConnectionOptions options)
     : LDAPConnection(std::move(options)),
-      _pimpl(stdx::make_unique<OpenLDAPConnectionPIMPL>()),
+      _pimpl(std::make_unique<OpenLDAPConnectionPIMPL>()),
       _callback{&LDAPConnectCallbackFunction, &LDAPConnectCallbackDelete, nullptr} {
     Seconds seconds = duration_cast<Seconds>(_options.timeout);
     _timeout.tv_sec = seconds.count();

@@ -6,9 +6,10 @@
 
 #include "ldap_manager.h"
 
+#include <memory>
+
 #include "mongo/base/init.h"
 #include "mongo/db/service_context.h"
-#include "mongo/stdx/memory.h"
 
 namespace mongo {
 

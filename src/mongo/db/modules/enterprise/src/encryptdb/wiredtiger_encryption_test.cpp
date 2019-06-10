@@ -4,6 +4,7 @@
 
 #include "mongo/platform/basic.h"
 
+#include <memory>
 #include <string>
 
 #include "encryption_key_manager_noop.h"
@@ -16,7 +17,6 @@
 #include "mongo/db/storage/wiredtiger/wiredtiger_recovery_unit.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_session_cache.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
-#include "mongo/stdx/memory.h"
 #include "mongo/unittest/temp_dir.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/system_clock_source.h"
@@ -29,9 +29,9 @@ ServiceContext::ConstructorActionRegisterer createEncryptionKeyManager{
     {"CreateKeyEntropySource", "SecureAllocator", "SetWiredTigerCustomizationHooks"},
     [](ServiceContext* service) {
         // Setup the custom hooks required to enable encryption
-        auto configHooks = stdx::make_unique<WiredTigerCustomizationHooks>();
+        auto configHooks = std::make_unique<WiredTigerCustomizationHooks>();
         WiredTigerCustomizationHooks::set(service, std::move(configHooks));
-        auto keyManager = stdx::make_unique<EncryptionKeyManagerNoop>();
+        auto keyManager = std::make_unique<EncryptionKeyManagerNoop>();
         EncryptionHooks::set(service, std::move(keyManager));
         encryptionGlobalParams.enableEncryption = true;
     }};
@@ -45,7 +45,7 @@ public:
         ss << "extensions=[local=(entry=mongo_addWiredTigerEncryptors)],";
         ss << "encryption=(name=" << cipherName << ",keyid=system),";
         std::string config = ss.str();
-        _fastClockSource = stdx::make_unique<SystemClockSource>();
+        _fastClockSource = std::make_unique<SystemClockSource>();
         int ret = wiredtiger_open(dbpath.toString().c_str(), NULL, config.c_str(), &_conn);
 
         ASSERT_OK(wtRCToStatus(ret));

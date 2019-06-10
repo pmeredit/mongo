@@ -8,6 +8,8 @@
 
 #include "cyrus_sasl_authentication_session.h"
 
+#include <memory>
+
 #include "mongo/base/checked_cast.h"
 #include "mongo/base/init.h"
 #include "mongo/base/string_data.h"
@@ -22,7 +24,6 @@
 #include "mongo/db/auth/sasl_options.h"
 #include "mongo/db/commands/authentication_commands.h"
 #include "mongo/db/operation_context_noop.h"
-#include "mongo/stdx/memory.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
 #include "mongo/util/sequence_util.h"

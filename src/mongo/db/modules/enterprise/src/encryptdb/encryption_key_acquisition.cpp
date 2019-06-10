@@ -8,12 +8,13 @@
 
 #include "encryption_key_acquisition.h"
 
+#include <memory>
+
 #include "encryption_options.h"
 #include "kmip_service.h"
 #include "mongo/base/string_data.h"
 #include "mongo/config.h"
 #include "mongo/db/auth/security_file.h"
-#include "mongo/stdx/memory.h"
 #include "mongo/util/base64.h"
 #include "mongo/util/log.h"
 #include "mongo/util/net/ssl_options.h"
@@ -54,11 +55,11 @@ StatusWith<std::unique_ptr<SymmetricKey>> getKeyFromKeyFile(StringData encryptio
                               << " bit."};
     }
 
-    return stdx::make_unique<SymmetricKey>(reinterpret_cast<const uint8_t*>(decodedKey.data()),
-                                           keyLength,
-                                           crypto::aesAlgorithm,
-                                           "local",
-                                           0);
+    return std::make_unique<SymmetricKey>(reinterpret_cast<const uint8_t*>(decodedKey.data()),
+                                          keyLength,
+                                          crypto::aesAlgorithm,
+                                          "local",
+                                          0);
 }
 
 StatusWith<std::unique_ptr<SymmetricKey>> getKeyFromKMIPServer(const KMIPParams& kmipParams,

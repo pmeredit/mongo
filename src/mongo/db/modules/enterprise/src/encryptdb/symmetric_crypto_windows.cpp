@@ -6,12 +6,12 @@
 
 #include "mongo/platform/basic.h"
 
+#include <memory>
 #include <vector>
 
 #include "mongo/base/secure_allocator.h"
 #include "mongo/base/status.h"
 #include "mongo/platform/shared_library.h"
-#include "mongo/stdx/memory.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
 #include "mongo/util/str.h"
@@ -282,7 +282,7 @@ StatusWith<std::unique_ptr<SymmetricEncryptor>> SymmetricEncryptor::create(const
 
     try {
         std::unique_ptr<SymmetricEncryptor> encryptor =
-            stdx::make_unique<SymmetricEncryptorWindows>(key, mode, iv, ivLen);
+            std::make_unique<SymmetricEncryptorWindows>(key, mode, iv, ivLen);
         return std::move(encryptor);
     } catch (const DBException& e) {
         return e.toStatus();

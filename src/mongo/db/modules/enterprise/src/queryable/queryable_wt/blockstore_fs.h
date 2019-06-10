@@ -5,11 +5,11 @@
 #include "mongo/platform/basic.h"
 
 #include <boost/filesystem.hpp>
+#include <memory>
 
 #include "mongo/base/data_range.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/jsobj.h"
-#include "mongo/stdx/memory.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/util/str.h"
 

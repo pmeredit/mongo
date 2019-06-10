@@ -4,11 +4,12 @@
 
 #include "mongo/platform/basic.h"
 
+#include <memory>
+
 #include "mongo/unittest/unittest.h"
 
 #include "ldap_connection_options.h"
 #include "ldap_query.h"
-#include "mongo/stdx/memory.h"
 
 namespace mongo {
 
@@ -177,7 +178,7 @@ std::unique_ptr<LDAPQueryConfig> createLDAPQueryConfig(std::string queryString,
         return std::unique_ptr<LDAPQueryConfig>(nullptr);
     }
     ASSERT_OK(swQueryParameters.getStatus());
-    return stdx::make_unique<LDAPQueryConfig>(std::move(swQueryParameters.getValue()));
+    return std::make_unique<LDAPQueryConfig>(std::move(swQueryParameters.getValue()));
 }
 
 }  // namespace

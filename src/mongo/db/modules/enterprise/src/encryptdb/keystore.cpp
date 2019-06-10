@@ -9,9 +9,9 @@
 #include "keystore.h"
 
 #include <boost/filesystem.hpp>
+#include <memory>
 
 #include "mongo/base/string_data.h"
-#include "mongo/stdx/memory.h"
 #include "mongo/util/log.h"
 #include "mongo/util/string_map.h"
 #include "symmetric_crypto.h"
@@ -164,11 +164,11 @@ public:
 protected:
     UniqueSymmetricKey extractSymmetricKey(WTDataStoreCursor& cursor) override {
         KeystoreRecordViewV0 view(cursor);
-        return stdx::make_unique<SymmetricKey>(reinterpret_cast<const uint8_t*>(view.key.data),
-                                               view.key.size,
-                                               crypto::aesAlgorithm,
-                                               view.id,
-                                               view.initializationCount);
+        return std::make_unique<SymmetricKey>(reinterpret_cast<const uint8_t*>(view.key.data),
+                                              view.key.size,
+                                              crypto::aesAlgorithm,
+                                              view.id,
+                                              view.initializationCount);
     }
 };
 
@@ -190,7 +190,7 @@ std::unique_ptr<Keystore> KeystoreImplV0::makeKeystore(const boost::filesystem::
         session.checkpoint();
     }
 
-    return stdx::make_unique<KeystoreImplV0>(std::move(keystore));
+    return std::make_unique<KeystoreImplV0>(std::move(keystore));
 }
 
 void KeystoreImplV0::rollOverKeys() {
@@ -206,7 +206,7 @@ std::uint32_t KeystoreImplV0::getRolloverId() const {
 }
 
 std::unique_ptr<Keystore::Session> KeystoreImplV0::makeSession() {
-    return stdx::make_unique<SessionImplV0>(_datastore.makeSession());
+    return std::make_unique<SessionImplV0>(_datastore.makeSession());
 }
 
 class KeystoreImplV1 final : public Keystore {
@@ -329,11 +329,11 @@ public:
 protected:
     UniqueSymmetricKey extractSymmetricKey(WTDataStoreCursor& cursor) override {
         KeystoreRecordViewV1 view(cursor);
-        return stdx::make_unique<SymmetricKey>(reinterpret_cast<const uint8_t*>(view.key.data),
-                                               view.key.size,
-                                               crypto::aesAlgorithm,
-                                               SymmetricKeyId(view.database, view.id),
-                                               view.initializationCount);
+        return std::make_unique<SymmetricKey>(reinterpret_cast<const uint8_t*>(view.key.data),
+                                              view.key.size,
+                                              crypto::aesAlgorithm,
+                                              SymmetricKeyId(view.database, view.id),
+                                              view.initializationCount);
     }
 
 private:
@@ -433,10 +433,10 @@ std::unique_ptr<Keystore> KeystoreImplV1::makeKeystore(const boost::filesystem::
         }
     }
 
-    return stdx::make_unique<KeystoreImplV1>(std::move(keystore),
-                                             rolloverId,
-                                             std::move(dbNameToKeyIdCurrent),
-                                             std::move(dbNameToKeyIdOldest));
+    return std::make_unique<KeystoreImplV1>(std::move(keystore),
+                                            rolloverId,
+                                            std::move(dbNameToKeyIdCurrent),
+                                            std::move(dbNameToKeyIdOldest));
 }
 
 void KeystoreImplV1::rollOverKeys() {
@@ -451,7 +451,7 @@ std::uint32_t KeystoreImplV1::getRolloverId() const {
 }
 
 std::unique_ptr<Keystore::Session> KeystoreImplV1::makeSession() {
-    return stdx::make_unique<SessionImplV1>(_datastore.makeSession(), this);
+    return std::make_unique<SessionImplV1>(_datastore.makeSession(), this);
 }
 
 std::unique_ptr<Keystore> Keystore::makeKeystore(const boost::filesystem::path& path,

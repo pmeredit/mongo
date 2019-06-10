@@ -8,6 +8,7 @@
 
 #include "kmip_service.h"
 
+#include <memory>
 #include <vector>
 
 #include "encryption_options.h"
@@ -18,7 +19,6 @@
 #include "mongo/base/data_type_endian.h"
 #include "mongo/base/init.h"
 #include "mongo/base/status_with.h"
-#include "mongo/stdx/memory.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/util/log.h"
 #include "mongo/util/net/ssl_manager.h"
@@ -50,7 +50,7 @@ KMIPService::KMIPService(const HostAndPort& server,
                          std::unique_ptr<SSLManagerInterface> sslManager)
     : _sslManager(std::move(sslManager)),
       _server(server),
-      _socket(stdx::make_unique<Socket>(10, logger::LogSeverity::Log())) {}
+      _socket(std::make_unique<Socket>(10, logger::LogSeverity::Log())) {}
 
 StatusWith<std::string> KMIPService::createExternalKey() {
     StatusWith<KMIPResponse> swResponse = _sendRequest(_generateKMIPCreateRequest());

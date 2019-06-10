@@ -127,7 +127,7 @@ ServiceContext::ConstructorActionRegisterer registerInMemoryEngineInit{
         registerStorageEngine(service, std::make_unique<InMemoryFactory>());
         if (storageGlobalParams.engine == "inMemory") {
             auto optionManager =
-                stdx::make_unique<InMemoryConfigManager>(storageGlobalParams.dbpath);
+                std::make_unique<InMemoryConfigManager>(storageGlobalParams.dbpath);
             WiredTigerCustomizationHooks::set(service, std::move(optionManager));
         }
     }};

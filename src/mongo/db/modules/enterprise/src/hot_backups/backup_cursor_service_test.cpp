@@ -49,12 +49,12 @@ public:
         : ServiceContextMongoDTest("devnull"),
           _opCtx(cc().makeOperationContext()),
           _storageEngine(getServiceContext()->getStorageEngine()),
-          _backupCursorService(stdx::make_unique<BackupCursorService>(_storageEngine)) {
+          _backupCursorService(std::make_unique<BackupCursorService>(_storageEngine)) {
         repl::ReplicationCoordinator::set(
             getServiceContext(),
-            stdx::make_unique<repl::ReplicationCoordinatorMock>(getServiceContext()));
+            std::make_unique<repl::ReplicationCoordinatorMock>(getServiceContext()));
         repl::StorageInterface::set(getServiceContext(),
-                                    stdx::make_unique<repl::StorageInterfaceMock>());
+                                    std::make_unique<repl::StorageInterfaceMock>());
     }
 
 protected:

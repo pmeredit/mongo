@@ -21,7 +21,7 @@ public:
     public:
         static std::unique_ptr<LiteParsed> parse(const AggregationRequest& request,
                                                  const BSONElement& spec) {
-            return stdx::make_unique<LiteParsed>(request.getNamespaceString());
+            return std::make_unique<LiteParsed>(request.getNamespaceString());
         }
 
         stdx::unordered_set<NamespaceString> getInvolvedNamespaces() const override {

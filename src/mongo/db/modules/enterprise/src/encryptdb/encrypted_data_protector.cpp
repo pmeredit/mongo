@@ -6,9 +6,9 @@
 #include "encrypted_data_protector.h"
 
 #include <cstring>
+#include <memory>
 
 #include "mongo/base/status.h"
-#include "mongo/stdx/memory.h"
 #include "mongo/util/net/ssl_manager.h"
 #include "mongo/util/str.h"
 

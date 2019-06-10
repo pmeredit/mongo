@@ -457,11 +457,11 @@ std::unique_ptr<CommandInvocation> CryptdExplainCmd::parse(OperationContext* opC
             explainedCommand);
 
     auto innerRequest =
-        stdx::make_unique<OpMsgRequest>(OpMsgRequest::fromDBAndBody(dbname, explainedObj));
+        std::make_unique<OpMsgRequest>(OpMsgRequest::fromDBAndBody(dbname, explainedObj));
 
     auto innerInvocation = explainedCommand->parse(opCtx, *innerRequest);
 
-    return stdx::make_unique<Invocation>(
+    return std::make_unique<Invocation>(
         this, request, std::move(verbosity), std::move(innerRequest), std::move(innerInvocation));
 }
 

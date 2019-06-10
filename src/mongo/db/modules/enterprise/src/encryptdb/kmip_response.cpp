@@ -8,6 +8,7 @@
 
 #include "kmip_response.h"
 
+#include <memory>
 #include <string>
 #include <time.h>
 #include <vector>
@@ -17,7 +18,6 @@
 #include "mongo/base/error_codes.h"
 #include "mongo/base/status.h"
 #include "mongo/base/status_with.h"
-#include "mongo/stdx/memory.h"
 #include "mongo/util/log.h"
 #include "mongo/util/str.h"
 #include "symmetric_crypto.h"
@@ -256,7 +256,7 @@ StatusWith<std::unique_ptr<SymmetricKey>> KMIPResponse::_parseSymmetricKeyPayloa
                                     << paddedKeyLen);
     }
 
-    return stdx::make_unique<SymmetricKey>(key, keySize, algorithm, _uid, 0);
+    return std::make_unique<SymmetricKey>(key, keySize, algorithm, _uid, 0);
 }
 
 Status KMIPResponse::_parseBatchItem(ConstDataRangeCursor* cdrc) {

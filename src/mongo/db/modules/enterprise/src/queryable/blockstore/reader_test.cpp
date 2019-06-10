@@ -5,9 +5,9 @@
 #include "mongo/platform/basic.h"
 
 #include <iostream>
+#include <memory>
 #include <sstream>
 
-#include "mongo/stdx/memory.h"
 #include "mongo/unittest/integration_test.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/str.h"

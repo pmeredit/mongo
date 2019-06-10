@@ -9,6 +9,7 @@
 #include "boost/filesystem.hpp"
 
 #include <boost/optional/optional_io.hpp>
+#include <memory>
 
 #include "encryption_key_manager_noop.h"
 #include "encryption_options.h"
@@ -16,7 +17,6 @@
 #include "mongo/db/operation_context_noop.h"
 #include "mongo/db/service_context_test_fixture.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_extensions.h"
-#include "mongo/stdx/memory.h"
 #include "mongo/unittest/death_test.h"
 #include "mongo/unittest/temp_dir.h"
 #include "mongo/unittest/unittest.h"
@@ -29,9 +29,9 @@ namespace {
 template <typename ManagerImpl, typename... Args>
 void setupEncryption(ServiceContext* service, Args... args) {
     auto configHooks =
-        stdx::make_unique<EncryptionWiredTigerCustomizationHooks>(&encryptionGlobalParams);
+        std::make_unique<EncryptionWiredTigerCustomizationHooks>(&encryptionGlobalParams);
     WiredTigerCustomizationHooks::set(service, std::move(configHooks));
-    auto keyManager = stdx::make_unique<ManagerImpl>(args...);
+    auto keyManager = std::make_unique<ManagerImpl>(args...);
     EncryptionHooks::set(service, std::move(keyManager));
     WiredTigerExtensions::get(service)->addExtension(mongo::kEncryptionEntrypointConfig);
 }
@@ -87,7 +87,7 @@ protected:
     }
 
     std::unique_ptr<SymmetricKey> makeKey(StringData name) {
-        return stdx::make_unique<SymmetricKey>(crypto::aesGenerate(crypto::sym256KeySize, name));
+        return std::make_unique<SymmetricKey>(crypto::aesGenerate(crypto::sym256KeySize, name));
     }
 
     void testSalvageFixKeystore(Keystore::Version version);

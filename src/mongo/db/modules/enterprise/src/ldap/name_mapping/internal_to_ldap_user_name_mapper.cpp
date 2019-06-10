@@ -8,13 +8,14 @@
 
 #include "internal_to_ldap_user_name_mapper.h"
 
+#include <memory>
+
 #include "mongo/base/status.h"
 #include "mongo/base/status_with.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/json.h"
-#include "mongo/stdx/memory.h"
 #include "mongo/util/log.h"
 #include "mongo/util/str.h"
 
@@ -124,7 +125,7 @@ StatusWith<InternalToLDAPUserNameMapper> InternalToLDAPUserNameMapper::createNam
                 }
 
                 transforms.emplace_back(
-                    stdx::make_unique<RegexRewriteRule>(std::move(swRegexRewriteRule.getValue())));
+                    std::make_unique<RegexRewriteRule>(std::move(swRegexRewriteRule.getValue())));
                 break;
             }
             case RuleType::LDAP: {
@@ -141,7 +142,7 @@ StatusWith<InternalToLDAPUserNameMapper> InternalToLDAPUserNameMapper::createNam
                 }
 
                 transforms.emplace_back(
-                    stdx::make_unique<LDAPRewriteRule>(std::move(swLDAPRewriteRule.getValue())));
+                    std::make_unique<LDAPRewriteRule>(std::move(swLDAPRewriteRule.getValue())));
                 break;
             }
             case RuleType::Invalid:

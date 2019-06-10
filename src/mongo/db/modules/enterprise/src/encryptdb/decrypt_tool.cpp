@@ -7,6 +7,7 @@
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/fstream.hpp>
 #include <iostream>
+#include <memory>
 #include <vector>
 
 #include "decrypt_tool_options.h"
@@ -16,7 +17,6 @@
 #include "mongo/base/initializer.h"
 #include "mongo/base/secure_allocator.h"
 #include "mongo/base/status_with.h"
-#include "mongo/stdx/memory.h"
 #include "mongo/util/exit_code.h"
 #include "mongo/util/net/ssl_options.h"
 #include "mongo/util/quick_exit.h"
