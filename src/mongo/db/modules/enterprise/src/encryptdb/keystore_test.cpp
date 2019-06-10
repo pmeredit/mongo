@@ -22,6 +22,7 @@
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/log.h"
 #include "mongo/util/str.h"
+#include "mongo/util/text.h"
 
 namespace mongo {
 namespace {
@@ -251,14 +252,20 @@ DEATH_TEST_F(KeystoreFixture, V1CBCTest, "Fatal Assertion 51165") {
 
 TEST(EncryptionKeyManager, HotBackupValidation) {
     // First set up the dbpath we're going to use.
-    unittest::TempDir dbPath("keystoreHotBackups");
-    boost::filesystem::path dbPathObj(dbPath.path());
+    unittest::TempDir dbPathTempDir("keystoreHotBackups");
+    boost::filesystem::path dbPath(dbPathTempDir.path());
 
     // Make sure it's absolute!
-    ASSERT_TRUE(dbPathObj.is_absolute());
+    if (!dbPath.is_absolute()) {
+        dbPath = boost::filesystem::absolute(dbPath);
+        ASSERT_TRUE(boost::filesystem::exists(dbPath));
+    }
+
+    const auto dbPathStr = dbPath.string();
+    log() << "dbpath is " << dbPathStr;
 
     // Create a key. This is the contents of jstests/encryptdb/libs/ekf
-    boost::filesystem::path keyPath = dbPathObj / "keyFile";
+    boost::filesystem::path keyPath = dbPath / "keyFile";
     {
         std::ofstream keyPathOut(keyPath.c_str());
         keyPathOut << "YW1hbGlhaXNzb2Nvb2x5b2FtYWxpYWlzc29jb29seW8=";
@@ -280,7 +287,7 @@ TEST(EncryptionKeyManager, HotBackupValidation) {
     auto const service = getGlobalServiceContext();
     // Override the Noop encryption manager with the real encryption manager.
     setupEncryption<EncryptionKeyManager>(
-        service, dbPath.path(), &encryptionGlobalParams, &sslGlobalParams);
+        service, dbPathStr, &encryptionGlobalParams, &sslGlobalParams);
 
     auto const encryptionManager = EncryptionKeyManager::get(service);
 
@@ -299,13 +306,13 @@ TEST(EncryptionKeyManager, HotBackupValidation) {
                              "local/keystore.wt",
                              "local/WiredTiger",
                              "keystore.metadata"}) {
-        auto filePath = dbPathObj / "key.store" / file;
+        auto filePath = dbPath / "key.store" / boost::filesystem::path(file).make_preferred();
         expectedFiles.insert(filePath.string());
     }
 
     for (const auto& file : backupFiles) {
         log() << "Hot backups would back up " << file;
-        ASSERT_TRUE(str::startsWith(file, dbPath.path()));
+        ASSERT_TRUE(str::startsWith(file, dbPathStr));
         ASSERT_TRUE(boost::filesystem::exists(file));
         expectedFiles.erase(file);
     }
@@ -317,7 +324,7 @@ TEST(EncryptionKeyManager, HotBackupValidation) {
 
     ASSERT_OK(encryptionManager->endNonBlockingBackup());
 
-    ASSERT_FALSE(boost::filesystem::exists(dbPathObj / "key.store/local/WiredTiger.backup"));
+    ASSERT_FALSE(boost::filesystem::exists(dbPath / "key.store/local/WiredTiger.backup"));
 }
 
 }  // namespace
