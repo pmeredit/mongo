@@ -63,7 +63,7 @@ Status storeMongoCryptDOptions(const moe::Environment& params,
     }
 
     if (!params.count("net.port")) {
-        mongoCryptDGlobalParams.port = 27020;
+        mongoCryptDGlobalParams.port = ServerGlobalParams::CryptDServerPort;
     } else {
         mongoCryptDGlobalParams.port = params["net.port"].as<int>();
     }

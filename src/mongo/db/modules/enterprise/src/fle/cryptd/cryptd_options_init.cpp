@@ -7,6 +7,7 @@
 #include <iostream>
 
 #include "mongo/base/status.h"
+#include "mongo/db/server_options.h"
 #include "mongo/util/exit_code.h"
 #include "mongo/util/options_parser/startup_option_init.h"
 #include "mongo/util/options_parser/startup_options.h"
@@ -15,6 +16,8 @@
 namespace mongo {
 namespace {
 MONGO_GENERAL_STARTUP_OPTIONS_REGISTER(MongoCryptDOptions)(InitializerContext* context) {
+    serverGlobalParams.port = ServerGlobalParams::CryptDServerPort;
+
     return addMongoCryptDOptions(&moe::startupOptions);
 }
 
