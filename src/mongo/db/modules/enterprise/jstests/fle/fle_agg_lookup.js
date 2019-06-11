@@ -111,16 +111,9 @@
     // are supported, subsequent references will be possible as well.
     command = {
         aggregate: coll.getName(),
-        pipeline: [
-            {
-                $lookup: {
-                    from: coll.getName(),
-                    as: "docs",
-                    let : {},
-                    pipeline: [{$match: {bob: 1}}]
-                }
-            }
-        ],
+        pipeline: [{
+            $lookup: {from: coll.getName(), as: "docs", let : {}, pipeline: [{$match: {bob: 1}}]}
+        }],
         cursor: {},
         jsonSchema: {type: "object", properties: {foo: encryptedStringSpec}},
         isRemoteSchema: false,
@@ -139,12 +132,12 @@
         aggregate: coll.getName(),
         pipeline: [
             {
-                $lookup: {
-                    from: coll.getName(),
-                    as: "docs",
-                    let : {},
-                    pipeline: [{$project: {notEncrypted: 1}}]
-                }
+              $lookup: {
+                  from: coll.getName(),
+                  as: "docs",
+                  let : {},
+                  pipeline: [{$project: {notEncrypted: 1}}]
+              }
             },
             {$match: {docs: {$eq: "winterfell"}}}
         ],
