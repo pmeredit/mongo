@@ -31,15 +31,6 @@
           notEncryptedPaths: [],
           errorCode: 0
         },
-        // Test that a findAndModify using the pipeline form of an update fails with NotImplemented.
-        {
-          schema: {type: "object", properties: {bar: encryptDoc}},
-          query: {bar: "2"},
-          update: [{$addFields: {newThing: "new"}}],
-          encryptedPaths: ["bar"],
-          notEncryptedPaths: [],
-          errorCode: ErrorCodes.NotImplemented,
-        },
         // Test that a top level field is encrypted.
         {
           schema: {type: "object", properties: {foo: encryptDoc}},
@@ -222,7 +213,7 @@
     updateCommand.jsonSchema = {type: "object", properties: {foo: encryptDoc, bar: encryptDoc}};
     updateCommand.query = {bar: {$in: ["1", "5"]}};
     updateCommand.update = {$set: {foo: "2"}};
-    const result = assert.commandWorked(testDb.runCommand(updateCommand));
+    let result = assert.commandWorked(testDb.runCommand(updateCommand));
     assert(result.result.query.bar.$in[0] instanceof BinData, tojson(result));
     assert(result.result.query.bar.$in[1] instanceof BinData, tojson(result));
 
@@ -325,6 +316,63 @@
     updateCommand.update = {"$set": {"foo.$[i]": 1}};
     updateCommand.arrayFilters = [{i: 0}];
     assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51150);
+
+    // Test that pipelines in findAndModify are allowed if the schema of the document flowing out of
+    // the pipeline matches the schema of the collection.
+    delete updateCommand.arrayFilters;
+    delete updateCommand.upsert;
+    updateCommand.jsonSchema = {
+        type: "object",
+        properties: {foo: encryptDoc, bar: {type: "string"}}
+    };
+    updateCommand.update = [{$addFields: {bar: "good afternoon"}}];
+    result = assert.commandWorked(testDb.runCommand(updateCommand));
+    assert.eq(true, result.schemaRequiresEncryption, result);
+    assert.eq(false, result.hasEncryptionPlaceholders, result);
+
+    // Pipelines with illegal stages for findAndModify correctly fail.
+    updateCommand.update = [{$match: {foo: "good afternoon"}}];
+    assert.commandFailedWithCode(testDb.runCommand(updateCommand), ErrorCodes.InvalidOptions);
+
+    // Pipelines which perform a comparison against an encrypted field are correctly marked for
+    // encryption.
+    updateCommand.update = [{
+        $addFields: {bar: {$cond: {if: {$eq: ["$foo", "afternoon"]}, then: "good", else: "bad"}}}
+    }];
+    result = assert.commandWorked(testDb.runCommand(updateCommand));
+    assert.eq(true, result.schemaRequiresEncryption, result);
+    // TODO SERVER-41491: Agg expressions should correctly indicate whether a constant was marked
+    // for encryption.
+    assert.eq(false, result.hasEncryptionPlaceholders, result);
+    assert(result.result.update[0]["$addFields"]["bar"]["$cond"][0]["$eq"][1]["$const"] instanceof
+               BinData,
+           tojson(result));
+
+    // Pipelines which produce an output schema that does not match the original schema for the
+    // collection correctly fail.
+    updateCommand.update = [{$addFields: {newField: 5}}];
+    assert.commandFailedWithCode(testDb.runCommand(updateCommand), 31146);
+
+    updateCommand.update = [{$addFields: {foo: 5}}];
+    assert.commandFailedWithCode(testDb.runCommand(updateCommand), 31146);
+
+    updateCommand.update = [{$project: {bar: 1}}];
+    assert.commandFailedWithCode(testDb.runCommand(updateCommand), 31146);
+
+    updateCommand.jsonSchema = {type: "object", additionalProperties: encryptDoc};
+    updateCommand.update = [{$addFields: {newField: "$foo"}}];
+    assert.commandFailedWithCode(testDb.runCommand(updateCommand), 31146);
+
+    updateCommand.jsonSchema = {type: "object", patternProperties: {foo: encryptDoc}};
+    updateCommand.update = [{$addFields: {newField: "$foo"}}];
+    assert.commandFailedWithCode(testDb.runCommand(updateCommand), 31146);
+
+    // Pipelines in findAndModify are not allowed if _id is marked for encryption and upsert is set
+    // to true.
+    updateCommand.jsonSchema = {type: "object", properties: {_id: encryptDoc}};
+    updateCommand.update = [{}];
+    updateCommand.upsert = true;
+    assert.commandFailedWithCode(testDb.runCommand(updateCommand), 31151);
 
     mongocryptd.stop();
 }());

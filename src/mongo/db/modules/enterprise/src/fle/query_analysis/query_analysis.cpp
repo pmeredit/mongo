@@ -243,7 +243,7 @@ PlaceHolderResult replaceEncryptedFieldsInFilter(
 }
 
 /**
- * Parses the update object given by 'update' and replaces encrypted fields with their appropriate
+ * Parses the update given by 'updateMod' and replaces encrypted fields with their appropriate
  * EncryptionPlaceholder according to the schema.
  *
  * Returns a PlaceHolderResult containing the new update object and a boolean to indicate whether
@@ -253,14 +253,14 @@ PlaceHolderResult replaceEncryptedFieldsInFilter(
 PlaceHolderResult replaceEncryptedFieldsInUpdate(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const EncryptionSchemaTreeNode& schemaTree,
-    BSONObj update,
+    const write_ops::UpdateModification& updateMod,
     const std::vector<mongo::BSONObj>& arrayFilters) {
     UpdateDriver driver(expCtx);
     // Although arrayFilters cannot contain encrypted fields, pass them through to the UpdateDriver
     // to prevent parsing errors for arrayFilters on a non-encrypted field path.
     auto parsedArrayFilters = uassertStatusOK(ParsedUpdate::parseArrayFilters(
         arrayFilters, expCtx->opCtx, const_cast<CollatorInterface*>(expCtx->getCollator())));
-    driver.parse(update, parsedArrayFilters);
+    driver.parse(updateMod, parsedArrayFilters);
 
     // 'updateVisitor' must live through driver serialization.
     auto updateVisitor = EncryptionUpdateVisitor(schemaTree);
@@ -289,8 +289,34 @@ PlaceHolderResult replaceEncryptedFieldsInUpdate(
             }
             break;
         }
-        case UpdateDriver::UpdateType::kPipeline:
-            MONGO_UNREACHABLE;
+        case UpdateDriver::UpdateType::kPipeline: {
+            // Build a FLEPipeline which will replace encrypted fields with intent-to-encrypt
+            // markings.
+            FLEPipeline flePipe{
+                uassertStatusOK(Pipeline::parse(updateMod.getUpdatePipeline(), expCtx)),
+                schemaTree};
+
+            // The current pipeline analysis assumes that the document coming out of the pipeline is
+            // being returned to the user but for pipelines in an update it is being written to a
+            // collection. For instance, a simple {$addFields: {a: 5}} will
+            // never mark 'a' for encryption as it's treated as a new field in the returned
+            // doc.
+            //
+            // However, in an update, the 5 may need to be marked for encryption if the
+            // schema indicates that 'a' is encrypted. For now, assert that the pipeline
+            // does not alter the schema and handle marking literals in examples like the
+            // one above in SERVER-41485.
+            uassert(31146,
+                    "Pipelines in updates are not allowed to modify encrypted fields or "
+                    "add fields which are not present in the schema",
+                    flePipe.getOutputSchema() == schemaTree);
+
+            BSONArrayBuilder arr;
+            flePipe.serialize(&arr);
+
+            return PlaceHolderResult{
+                flePipe.hasEncryptedPlaceholders, schemaTree.containsEncryptedNode(), arr.obj()};
+        }
     }
 
     return PlaceHolderResult{hasEncryptionPlaceholder,
@@ -358,10 +384,7 @@ PlaceHolderResult addPlaceHoldersForAggregate(
     for (auto&& elem : cmdObj) {
         if (elem.fieldNameStringData() == "pipeline"_sd) {
             BSONArrayBuilder arr(bob.subarrayStart("pipeline"));
-            for (auto&& stage : flePipe.getPipeline().serialize()) {
-                invariant(stage.getType() == BSONType::Object);
-                arr.append(stage.getDocument().toBson());
-            }
+            flePipe.serialize(&arr);
         } else {
             bob.append(elem);
         }
@@ -469,34 +492,33 @@ PlaceHolderResult addPlaceHoldersForFindAndModify(
     auto request(uassertStatusOK(FindAndModifyRequest::parseFromBSON(
         CommandHelpers::parseNsCollectionRequired(dbName, cmdObj), cmdObj)));
 
-    auto newQuery = replaceEncryptedFieldsInFilter(expCtx, *schemaTree.get(), request.getQuery());
-
     bool anythingEncrypted = false;
     if (auto updateMod = request.getUpdate()) {
-        uassert(ErrorCodes::NotImplemented,
-                "Pipeline updates not yet supported on mongocryptd",
-                updateMod->type() == write_ops::UpdateModification::Type::kClassic);
+        uassert(
+            31151,
+            "Pipelines in findAndModify are not allowed with an encrypted '_id' and 'upsert: true'",
+            !(updateMod->type() == write_ops::UpdateModification::Type::kPipeline &&
+              schemaTree->getEncryptionMetadataForPath(FieldRef("_id")) && request.isUpsert()));
 
-        if (request.isUpsert()) {
+        if (request.isUpsert() &&
+            updateMod->type() == write_ops::UpdateModification::Type::kClassic) {
             verifyNoGeneratedEncryptedFields(updateMod->getUpdateClassic(), *schemaTree.get());
         }
 
         auto newUpdate = replaceEncryptedFieldsInUpdate(
-            expCtx, *schemaTree.get(), updateMod->getUpdateClassic(), request.getArrayFilters());
-        if (newUpdate.hasEncryptionPlaceholders) {
-            request.setUpdateObj(newUpdate.result);
-            anythingEncrypted = true;
-        }
+            expCtx, *schemaTree.get(), updateMod.get(), request.getArrayFilters());
+        request.setUpdateObj(newUpdate.result);
+        anythingEncrypted = newUpdate.hasEncryptionPlaceholders;
     }
 
+    auto newQuery = replaceEncryptedFieldsInFilter(expCtx, *schemaTree.get(), request.getQuery());
     if (newQuery.hasEncryptionPlaceholders) {
         request.setQuery(newQuery.result);
         anythingEncrypted = true;
     }
 
-    return PlaceHolderResult{anythingEncrypted,
-                             schemaTree->containsEncryptedNode(),
-                             anythingEncrypted ? request.toBSON(cmdObj) : cmdObj};
+    return PlaceHolderResult{
+        anythingEncrypted, schemaTree->containsEncryptedNode(), request.toBSON(cmdObj)};
 }
 
 PlaceHolderResult addPlaceHoldersForInsert(OperationContext* opCtx,
@@ -539,17 +561,20 @@ PlaceHolderResult addPlaceHoldersForUpdate(OperationContext* opCtx,
         boost::intrusive_ptr<ExpressionContext> expCtx(
             new ExpressionContext(opCtx, collator.get()));
 
-        uassert(ErrorCodes::NotImplemented,
-                "Pipeline updates not yet supported on mongocryptd",
-                updateMod.type() == write_ops::UpdateModification::Type::kClassic);
-        if (update.getUpsert()) {
+        uassert(31150,
+                "Pipelines in update are not allowed with an encrypted '_id' and 'upsert: true'",
+                !(updateMod.type() == write_ops::UpdateModification::Type::kPipeline &&
+                  schemaTree->getEncryptionMetadataForPath(FieldRef("_id")) && update.getUpsert()));
+
+        if (update.getUpsert() &&
+            updateMod.type() == write_ops::UpdateModification::Type::kClassic) {
             verifyNoGeneratedEncryptedFields(updateMod.getUpdateClassic(), *schemaTree.get());
         }
+
         auto newFilter = replaceEncryptedFieldsInFilter(expCtx, *schemaTree.get(), update.getQ());
-        auto newUpdate = replaceEncryptedFieldsInUpdate(expCtx,
-                                                        *schemaTree.get(),
-                                                        updateMod.getUpdateClassic(),
-                                                        write_ops::arrayFiltersOf(update));
+        auto newUpdate = replaceEncryptedFieldsInUpdate(
+            expCtx, *schemaTree.get(), updateMod, write_ops::arrayFiltersOf(update));
+
         // Create a non-const copy.
         auto newEntry = update;
         newEntry.setQ(newFilter.result);

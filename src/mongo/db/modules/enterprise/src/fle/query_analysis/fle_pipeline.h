@@ -55,6 +55,13 @@ public:
         return *_parsedPipeline.get();
     }
 
+    void serialize(BSONArrayBuilder* arr) {
+        for (auto&& stage : _parsedPipeline->serialize()) {
+            invariant(stage.getType() == BSONType::Object);
+            arr->append(stage.getDocument().toBson());
+        }
+    }
+
     /**
      * Boolean to indicate whether any constants in the pipeline were replaced with their
      * intent-to-encrypt markings. The per-stage analyzers are responsible for setting this bit when
