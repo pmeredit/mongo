@@ -61,6 +61,8 @@ public:
         auto snapshotId = *queryable::queryableGlobalOptions.getSnapshotId();
 
         size_t cacheMB = WiredTigerUtil::getCacheSizeMB(wiredTigerGlobalOptions.cacheSizeGB);
+        const auto maxCacheOverflowMB =
+            static_cast<size_t>(1024 * wiredTigerGlobalOptions.maxCacheOverflowFileSizeGB);
         const bool kEphemeral = false;
 
         uassert(ErrorCodes::InvalidOptions,
@@ -90,6 +92,7 @@ public:
                                    getGlobalServiceContext()->getFastClockSource(),
                                    wiredTigerGlobalOptions.engineConfig,
                                    cacheMB,
+                                   maxCacheOverflowMB,
                                    params.dur,
                                    kEphemeral,
                                    params.repair,
@@ -101,6 +104,10 @@ public:
         auto* param = new WiredTigerEngineRuntimeConfigParameter("wiredTigerEngineRuntimeConfig",
                                                                  ServerParameterType::kRuntimeOnly);
         param->_data.second = kv;
+
+        auto* maxCacheOverflowParam = new WiredTigerMaxCacheOverflowSizeGBParameter(
+            "wiredTigerMaxCacheOverflowSizeGB", ServerParameterType::kRuntimeOnly);
+        maxCacheOverflowParam->_data = {wiredTigerGlobalOptions.maxCacheOverflowFileSizeGB, kv};
 
         KVStorageEngineOptions options;
         options.directoryPerDB = params.directoryperdb;

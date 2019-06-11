@@ -78,6 +78,9 @@ public:
                                    getGlobalServiceContext()->getFastClockSource(),
                                    engineConfig,
                                    cacheMB,
+                                   // inMemory configurations ignore the maxCacheOverflowFileSize
+                                   // so leave as 0 (unbounded)
+                                   0,
                                    durable,
                                    ephemeral,
                                    repair,
