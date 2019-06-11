@@ -213,7 +213,6 @@
               "pipeline2": [{$match: {ssn: 5}}]
           }
         },
-        {$unwind: "$ssn"},
         {$redact: "$$DESCEND"},
         {$bucketAuto: {groupBy: "$_id", buckets: 2}},
         {$planCacheStats: {}},

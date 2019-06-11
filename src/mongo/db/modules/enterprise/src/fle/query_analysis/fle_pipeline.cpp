@@ -46,6 +46,7 @@
 #include "mongo/db/pipeline/document_source_single_document_transformation.h"
 #include "mongo/db/pipeline/document_source_skip.h"
 #include "mongo/db/pipeline/document_source_sort.h"
+#include "mongo/db/pipeline/document_source_unwind.h"
 #include "mongo/db/pipeline/parsed_add_fields.h"
 #include "mongo/db/pipeline/parsed_exclusion_projection.h"
 #include "mongo/db/pipeline/parsed_inclusion_projection.h"
@@ -375,6 +376,31 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForSingleDocumentTransform
     MONGO_UNREACHABLE;
 }
 
+clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForUnwind(
+    const clonable_ptr<EncryptionSchemaTreeNode>& prevSchema,
+    const std::vector<clonable_ptr<EncryptionSchemaTreeNode>>& children,
+    const DocumentSourceUnwind& source) {
+
+    const auto unwindPath = source.getUnwindPath();
+    const auto unwindPathMetadata = prevSchema->getEncryptionMetadataForPath(FieldRef(unwindPath));
+
+    uassert(31153,
+            "$unwind is not allowed on a field which is encrypted with the randomized algorithm",
+            !unwindPathMetadata || unwindPathMetadata->algorithm != FleAlgorithmEnum::kRandom);
+
+    std::unique_ptr<EncryptionSchemaTreeNode> newSchema = prevSchema->clone();
+
+    // If the $unwind has an "includeArrayIndex" path then we will overwrite any existing field on
+    // the same path and can consider this path to be unencrypted.
+    auto arrayIndexPath = source.indexPath();
+    if (arrayIndexPath) {
+        newSchema->addChild(FieldRef(arrayIndexPath->fullPath()),
+                            std::make_unique<EncryptionSchemaNotEncryptedNode>());
+    }
+
+    return std::move(newSchema);
+}
+
 //
 // DocumentSource encryption analysis
 //
@@ -636,6 +662,9 @@ REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceSort, propagateSchemaNoop, a
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceSingleDocumentTransformation,
                                       propagateSchemaForSingleDocumentTransformation,
                                       analyzeForSingleDocumentTransformation);
+REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceUnwind,
+                                      propagateSchemaForUnwind,
+                                      analyzeStageNoop);
 
 }  // namespace
 
