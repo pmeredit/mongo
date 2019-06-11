@@ -42,6 +42,7 @@
 #include "mongo/db/pipeline/document_source_index_stats.h"
 #include "mongo/db/pipeline/document_source_limit.h"
 #include "mongo/db/pipeline/document_source_lookup.h"
+#include "mongo/db/pipeline/document_source_replace_root.h"
 #include "mongo/db/pipeline/document_source_sample.h"
 #include "mongo/db/pipeline/document_source_single_document_transformation.h"
 #include "mongo/db/pipeline/document_source_skip.h"
@@ -369,7 +370,15 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForSingleDocumentTransform
             return propagateSchemaForInclusionNode(
                 *prevSchema, projector.getRoot(), prevSchema->clone());
         }
-        case TransformerInterface::TransformerType::kReplaceRoot:
+        case TransformerInterface::TransformerType::kReplaceRoot: {
+            const auto& replaceRoot = static_cast<const ReplaceRootTransformation&>(transformer);
+            auto outputSchema = aggregate_expression_intender::getOutputSchema(
+                *prevSchema, replaceRoot.getExpression().get());
+            uassert(31159,
+                    "$replaceRoot cannot have an encrypted field as root",
+                    !outputSchema->getEncryptionMetadata());
+            return std::move(outputSchema);
+        }
         case TransformerInterface::TransformerType::kGroupFromFirstDocument:
             uasserted(ErrorCodes::CommandNotSupported, "Agg stage not yet supported");
     }
@@ -451,7 +460,13 @@ aggregate_expression_intender::Intention analyzeForSingleDocumentTransformation(
                 static_cast<const parsed_aggregation_projection::ParsedAddFields&>(transformer);
             return analyzeForInclusionNode(flePipe, schema, projector.getRoot());
         }
-        case TransformerInterface::TransformerType::kReplaceRoot:
+        case TransformerInterface::TransformerType::kReplaceRoot: {
+            const auto& replaceRoot = static_cast<const ReplaceRootTransformation&>(transformer);
+            return aggregate_expression_intender::mark(*(flePipe->getPipeline().getContext().get()),
+                                                       schema,
+                                                       replaceRoot.getExpression().get(),
+                                                       false);
+        }
         case TransformerInterface::TransformerType::kGroupFromFirstDocument:
             uasserted(ErrorCodes::CommandNotSupported, "Agg stage not yet supported");
     }

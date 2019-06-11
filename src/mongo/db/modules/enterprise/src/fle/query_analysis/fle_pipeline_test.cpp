@@ -124,7 +124,6 @@ TEST_F(FLEPipelineTest, ThrowsOnInvalidOrUnsupportedStage) {
                 { $match: { ssn: 5}}
             ]
         }})"),
-        fromjson("{$unwind: '$ssn'}"),
         fromjson("{$redact: '$$DESCEND'}"),
         fromjson("{$bucketAuto: {groupBy: '$_id', buckets: 2}}"),
         fromjson("{$planCacheStats: {}}"),
@@ -526,6 +525,77 @@ TEST_F(FLEPipelineTest, NoEncryptedFieldSetsFlagToFalse) {
     ASSERT_FALSE(doesHavePlaceholders({project}, kDefaultSsnSchema));
 }
 
+TEST_F(FLEPipelineTest, ReplaceRootReferringToNewFields) {
+    BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot"
+                                                      << "$randomField"));
+    const auto& outputSchema = getSchemaForStage({replaceRoot}, kDefaultNestedSchema);
+    ASSERT_FALSE(outputSchema.containsEncryptedNode());
+}
+
+// TODO SERVER-41337: Support expressions which reference prefixes of encrypted fields.
+TEST_F(FLEPipelineTest, ReplaceRootReferringToEncryptedSubFieldFails) {
+    BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot"
+                                                      << "$user"));
+    ASSERT_THROWS_CODE(
+        getSchemaForStage({replaceRoot}, kDefaultNestedSchema), AssertionException, 31129);
+}
+
+TEST_F(FLEPipelineTest, ReplaceRootReferringToEncryptedFieldFails) {
+    BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot"
+                                                      << "$user.ssn"));
+    ASSERT_THROWS_CODE(
+        getSchemaForStage({replaceRoot}, kDefaultNestedSchema), AssertionException, 31159);
+}
+
+TEST_F(FLEPipelineTest, ReplaceRootReferringToEncryptedFieldMatchingPatternPropertiesFails) {
+    BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot"
+                                                      << "$matchingFieldfoo"));
+    ASSERT_THROWS_CODE(
+        getSchemaForStage({replaceRoot}, kPatternPropertiesSchema), AssertionException, 31159);
+}
+
+TEST_F(FLEPipelineTest, ReplaceRootReferringToNonEncryptedFieldWithPatternProperties) {
+    BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot"
+                                                      << "$nonMatchingField"));
+    const auto& outputSchema = getSchemaForStage({replaceRoot}, kPatternPropertiesSchema);
+    ASSERT_FALSE(outputSchema.containsEncryptedNode());
+}
+
+TEST_F(FLEPipelineTest, ReplaceRootReferringToEncryptedFieldAdditionalPropertiesFails) {
+    BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot"
+                                                      << "$additionalField"));
+    ASSERT_THROWS_CODE(
+        getSchemaForStage({replaceRoot}, kAllEncryptedSchema), AssertionException, 31159);
+}
+
+TEST_F(FLEPipelineTest, ReplaceRootWithCustomObjectReferringToLiteral) {
+    BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot" << BSON("ssn"
+                                                                        << "value")));
+    const auto& outputSchema = getSchemaForStage({replaceRoot}, kDefaultNestedSchema);
+    ASSERT_FALSE(outputSchema.containsEncryptedNode());
+}
+
+TEST_F(FLEPipelineTest, ReplaceRootWithCustomObjectReferringToEncryptFieldFails) {
+    BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot" << BSON("newField"
+                                                                        << "$user.ssn")));
+    ASSERT_THROWS_CODE(
+        getSchemaForStage({replaceRoot}, kDefaultNestedSchema), AssertionException, 31110);
+}
+
+TEST_F(FLEPipelineTest, ReplaceRootWithCustomObjectReferringToEncryptAdditionalFieldFails) {
+    BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot" << BSON("newField"
+                                                                        << "$additionalField")));
+    ASSERT_THROWS_CODE(
+        getSchemaForStage({replaceRoot}, kAllEncryptedSchema), AssertionException, 31110);
+}
+
+// TODO SERVER-41337: Support expressions which reference prefixes of encrypted fields.
+TEST_F(FLEPipelineTest, ReplaceRootWithCustomObjectReferringToEncryptedSubFieldFails) {
+    BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot" << BSON("newField"
+                                                                        << "$user")));
+    ASSERT_THROWS_CODE(
+        getSchemaForStage({replaceRoot}, kDefaultNestedSchema), AssertionException, 31129);
+}
 
 }  // namespace
 }  // namespace mongo
