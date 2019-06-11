@@ -78,33 +78,36 @@ TEST_F(ExpressionAnalysisTest, ExpressionConstantCorrectlyReturnsNotEncrypted) {
     ASSERT_FALSE(outSchema->containsEncryptedNode());
 }
 
-TEST_F(ExpressionAnalysisTest, VariablesNotSupported) {
+TEST_F(ExpressionAnalysisTest, VariablesSupportedInOutput) {
     auto exprObj = fromjson("{a: '$$NOW'}");
     auto parsedExpr =
         Expression::parseOperand(getExpCtx(), exprObj["a"], getExpCtx()->variablesParseState);
     auto schema = EncryptionSchemaTreeNode::parse(kDefaultSsnSchema, EncryptionSchemaType::kLocal);
-    ASSERT_THROWS_CODE(
-        aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get()),
-        AssertionException,
-        31127);
+    auto outSchema =
+        aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get());
+    ASSERT_FALSE(outSchema->getEncryptionMetadata());
+    ASSERT_FALSE(outSchema->containsEncryptedNode());
 
-    exprObj = fromjson("{a: {$filter: {input: '$ssn', as: 'num', cond: {$eq: ['$$num', 0]}}}}");
-    parsedExpr =
-        Expression::parseOperand(getExpCtx(), exprObj["a"], getExpCtx()->variablesParseState);
-    ASSERT_THROWS_CODE(
-        aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get()),
-        AssertionException,
-        31127);
+    exprObj =
+        fromjson("{a: {$filter: {input: ['a', 'b', 'c'], as: 'num', cond: {$eq: ['$$num', 0]}}}}");
+    parsedExpr = Expression::parseOperand(expCtx, exprObj["a"], expCtx->variablesParseState);
+    outSchema = aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get());
+    ASSERT_FALSE(outSchema->getEncryptionMetadata());
+    ASSERT_FALSE(outSchema->containsEncryptedNode());
 
     exprObj = fromjson(
         "{a: {$reduce: {input: ['a', 'b', 'c'], initialValue: '', in: {$concat: ['$$value', "
-        "'$ssn']}}}}");
-    parsedExpr =
-        Expression::parseOperand(getExpCtx(), exprObj["a"], getExpCtx()->variablesParseState);
-    ASSERT_THROWS_CODE(
-        aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get()),
-        AssertionException,
-        31127);
+        "'$$this']}}}}");
+    parsedExpr = Expression::parseOperand(expCtx, exprObj["a"], expCtx->variablesParseState);
+    outSchema = aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get());
+    ASSERT_FALSE(outSchema->getEncryptionMetadata());
+    ASSERT_FALSE(outSchema->containsEncryptedNode());
+
+    exprObj = fromjson("{expr: {$let: {vars: {not_ssn: 1}, in: {$eq: ['$not_ssn', 1]}}}}");
+    parsedExpr = Expression::parseOperand(expCtx, exprObj["a"], expCtx->variablesParseState);
+    outSchema = aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get());
+    ASSERT_FALSE(outSchema->getEncryptionMetadata());
+    ASSERT_FALSE(outSchema->containsEncryptedNode());
 }
 
 TEST_F(ExpressionAnalysisTest, CondReturnsCorrectSchemaIfBothBranchesNotEncrypted) {
@@ -616,18 +619,6 @@ TEST_F(ExpressionAnalysisTest, EvaluatedExpressionsCorrectlyReturnNotEncrypted) 
         ASSERT_FALSE(outSchema->getEncryptionMetadata());
         ASSERT_FALSE(outSchema->containsEncryptedNode());
     }
-}
-
-TEST_F(ExpressionAnalysisTest, ExpressionLetNotSupported) {
-    auto exprObj = fromjson("{expr: {$let: {vars: {ssn: 1}, in: {$eq: ['$ssn', 1]}}}}");
-
-    auto parsedExpr =
-        Expression::parseOperand(getExpCtx(), exprObj["expr"], getExpCtx()->variablesParseState);
-    auto schema = EncryptionSchemaTreeNode::parse(kDefaultSsnSchema, EncryptionSchemaType::kLocal);
-    ASSERT_THROWS_CODE(
-        aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get()),
-        AssertionException,
-        31128);
 }
 
 }  // namespace

@@ -279,5 +279,42 @@ TEST_F(AggregateExpressionIntenderTest, EvaluatedSwitch) {
         31110);
 }
 
+TEST_F(AggregateExpressionIntenderTest, VariablesPermitted) {
+    // Variable allowed in Forwarded.
+    ASSERT_IDENTITY("\"$$NOW\"", stateIntention);
+    // Variable allowed in Compared.
+    ASSERT_IDENTITY("{ \"$cond\" : [ { \"$const\" : true }, \"$$REMOVE\", { \"$const\" : 33 } ] }",
+                    stateIntention);
+    // Variable allowed in Evaluated.
+    ASSERT_IDENTITY(
+        "{ \"$let\" : { \"vars\" : { \"three\" : { \"$const\" : 3 } }, \"in\" : "
+        "{ \"$subtract\" : [ \"$unsafeInt\", \"$$three\" ] } } }",
+        stateIntention);
+}
+
+TEST_F(AggregateExpressionIntenderTest, LetAndReducePreserveParentSubtree) {
+    // Test Subtree preservation by marking through a $let 'in'
+    ASSERT_EQ(stateIntention("{ \"$eq\" : [ { \"$let\" : { \"vars\" : {}, \"in\" : { \"$const\" : "
+                             "\"hello\" } } }, \"$safeString\" ] }"),
+              "{ \"$eq\" : [ { \"$let\" : { \"vars\" : {}, \"in\" : { \"$const\" : { \"$binary\" : "
+              "\"ADIAAAAQYQABAAAABWtpABAAAAAEASNFZ4mrze/ty6mHZUMhAQJ2AAYAAABoZWxsbwAA\", \"$type\" "
+              ": \"06\" } } } }, \"$safeString\" ] }");
+    // Test Subtree preservation by marking through a $reduce 'in'
+    ASSERT_EQ(stateIntention("{ \"$eq\" : [ { \"$reduce\" : { \"input\" : [], \"initialValue\" : "
+                             "{}, \"in\" : { \"$const\" : \"hello\" } } }, \"$safeString\" ] }"),
+              "{ \"$eq\" : [ { \"$reduce\" : { \"input\" : [], \"initialValue\" : {}, \"in\" : { "
+              "\"$const\" : { \"$binary\" : "
+              "\"ADIAAAAQYQABAAAABWtpABAAAAAEASNFZ4mrze/ty6mHZUMhAQJ2AAYAAABoZWxsbwAA\", \"$type\" "
+              ": \"06\" } } } }, \"$safeString\" ] }");
+}
+
+TEST_F(AggregateExpressionIntenderTest, LetForbidsBindingToEncryptedValue) {
+    ASSERT_THROWS_CODE(
+        stateIntention(
+            "{ \"$let\" : { \"vars\" : { \"dontTouchIt\" : \"$safeInt\" }, \"in\": \"opps\" } }"),
+        AssertionException,
+        31110);
+}
+
 }  // namespace
 }  // namespace mongo

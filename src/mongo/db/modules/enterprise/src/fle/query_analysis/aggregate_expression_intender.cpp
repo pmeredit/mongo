@@ -210,6 +210,10 @@ void exitSubtree(const ExpressionContext& expCtx, std::stack<Subtree>& subtreeSt
                       }));
 }
 
+[[noreturn]] void uassertedForbiddenVariable(const StringData& variableName) {
+    uasserted(31121, "Access to variable "s + variableName + " disallowed");
+}
+
 auto getEncryptionTypeForPathEnsureNotPrefix(const EncryptionSchemaTreeNode& schema,
                                              const ExpressionFieldPath& fieldPath) {
     const auto path = fieldPath.getFieldPathWithoutCurrentPrefix();
@@ -265,9 +269,9 @@ decltype(Subtree::Compared::state) attemptReconcilingAgainstEncryption(
     }
 }
 
-void errorIfEncryptedFieldFoundInEvaluatedState(const EncryptionSchemaTreeNode& schema,
-                                                const ExpressionFieldPath& fieldPath,
-                                                Subtree::Evaluated* evaluated) {
+void errorIfEncryptedFieldFoundInEvaluated(const EncryptionSchemaTreeNode& schema,
+                                           const ExpressionFieldPath& fieldPath,
+                                           Subtree::Evaluated* evaluated) {
     if (getEncryptionTypeForPathEnsureNotPrefix(schema, fieldPath))
         // The examined field is encrypted and the output type of the current Subtree disallows any
         // encrypted fields.
@@ -275,9 +279,9 @@ void errorIfEncryptedFieldFoundInEvaluatedState(const EncryptionSchemaTreeNode& 
                                              evaluated->by);
 }
 
-void attemptReconcilingFieldEncryptionInComparedState(const EncryptionSchemaTreeNode& schema,
-                                                      const ExpressionFieldPath& fieldPath,
-                                                      Subtree::Compared* compared) {
+void attemptReconcilingFieldEncryptionInCompared(const EncryptionSchemaTreeNode& schema,
+                                                 const ExpressionFieldPath& fieldPath,
+                                                 Subtree::Compared* compared) {
     compared->state = stdx::visit(
         [&](auto&& state) -> decltype(Subtree::Compared::state) {
             using StateType = std::decay_t<decltype(state)>;
@@ -323,12 +327,12 @@ void attemptReconcilingFieldEncryption(const EncryptionSchemaTreeNode& schema,
             // throw an error.
             else if
                 constexpr(std::is_same_v<OutputType, Subtree::Compared>)
-                    attemptReconcilingFieldEncryptionInComparedState(schema, fieldPath, &output);
+                    attemptReconcilingFieldEncryptionInCompared(schema, fieldPath, &output);
             // Evaluated output type requires to strictly check for errors, There is no need to keep
             // track of fields since the pressence of any encrypted fields is an immediate error.
             else if
                 constexpr(std::is_same_v<OutputType, Subtree::Evaluated>)
-                    errorIfEncryptedFieldFoundInEvaluatedState(schema, fieldPath, &output);
+                    errorIfEncryptedFieldFoundInEvaluated(schema, fieldPath, &output);
         },
         subtreeStack.top().output);
 }
@@ -366,13 +370,31 @@ void ensureNotEncryptedEnterEval(const StringData evaluation, std::stack<Subtree
     enterSubtree(Subtree::Evaluated{evaluation}, subtreeStack);
 }
 
+/**
+ * Here we attempt to reconcile against a variable access. All user-bound variables are unencrypted
+ * since their definitions were walked in an Evaluated output type. All existing system variables
+ * are also deemed unencrypted with the exception of CURRENT and ROOT which refer to the whole
+ * document (CURRENT is not rebindable in FLE).
+ */
 void reconcileVariableAccess(const ExpressionFieldPath& variableFieldPath,
                              std::stack<Subtree>& subtreeStack) {
-    if (stdx::holds_alternative<Subtree::Compared>(subtreeStack.top().output))
-        // We currently have no support for variable access of any kind.
-        uasserted(31121,
-                  "Variable access disallowed. Found " +
-                      variableFieldPath.getFieldPath().getFieldName(0));
+    stdx::visit(
+        [&](auto&& output) {
+            auto&& variableName = variableFieldPath.getFieldPath().getFieldName(0);
+            using OutputType = std::decay_t<decltype(output)>;
+            // Within Forwarded output Subtrees we have no concerns about what a variable could
+            // refer to.
+            if
+                constexpr(std::is_same_v<OutputType, Subtree::Forwarded>);
+            else if
+                constexpr(std::is_same_v<OutputType, Subtree::Compared> ||
+                          std::is_same_v<OutputType, Subtree::Evaluated>)
+                    // Forbid CURRENT and ROOT. They could be supported after support for Object
+                    // comparisons is added.
+                    if (variableName == "CURRENT" || variableName == "ROOT")
+                        uassertedForbiddenVariable(variableName);
+        },
+        subtreeStack.top().output);
 }
 
 /**
@@ -456,7 +478,7 @@ private:
     }
     void visit(ExpressionCond*) final {
         // We need to enter an Evaluated Subtree for the first child of the $cond (if).
-        enterSubtree(Subtree::Evaluated{}, subtreeStack);
+        enterSubtree(Subtree::Evaluated{"a boolean conditional"}, subtreeStack);
     }
     void visit(ExpressionDateFromString*) final {
         ensureNotEncryptedEnterEval("date from string function", subtreeStack);
@@ -514,9 +536,14 @@ private:
     void visit(ExpressionIndexOfCP*) final {
         ensureNotEncryptedEnterEval("a code-point-based string find", subtreeStack);
     }
-    void visit(ExpressionLet*) final {
-        // There is work here to update the variable definitions when we handle variables. There
-        // is no need to do anything now.
+    void visit(ExpressionLet* let) final {
+        for (auto && [ unused, nameAndExpression ] : let->getVariableMap())
+            if (auto && [ name, unused ] = nameAndExpression; name == "CURRENT")
+                uasserted(31152, "Rebinding of CURRENT disallowed");
+        // It's possible for a $let to have no bindings, so entering a Subtree is conditional on
+        // having at least one.
+        if (let->getChildren().size() > 1)
+            enterSubtree(Subtree::Evaluated{"a let binding"}, subtreeStack);
     }
     void visit(ExpressionLn*) final {
         ensureNotEncryptedEnterEval("a natural logarithm calculation", subtreeStack);
@@ -557,7 +584,7 @@ private:
         ensureNotEncryptedEnterEval("a numeric sequence generator", subtreeStack);
     }
     void visit(ExpressionReduce*) final {
-        ensureNotEncryptedEnterEval("a reduce function", subtreeStack);
+        enterSubtree(Subtree::Evaluated{"a reduce initializer"}, subtreeStack);
     }
     void visit(ExpressionSetDifference*) final {
         ensureNotEncryptedEnterEval("a set difference operation", subtreeStack);
@@ -615,7 +642,7 @@ private:
     }
     void visit(ExpressionSwitch*) final {
         // We need to enter an Evaluated output Subtree for each case child.
-        enterSubtree(Subtree::Evaluated{}, subtreeStack);
+        enterSubtree(Subtree::Evaluated{"a switch case"}, subtreeStack);
     }
     void visit(ExpressionToLower*) final {
         ensureNotEncryptedEnterEval("a string lowercase conversion", subtreeStack);
@@ -805,7 +832,11 @@ private:
     void visit(ExpressionIndexOfArray*) final {}
     void visit(ExpressionIndexOfBytes*) final {}
     void visit(ExpressionIndexOfCP*) final {}
-    void visit(ExpressionLet*) final {}
+    void visit(ExpressionLet* let) final {
+        // The final child of a let Expression is part of the parent Subtree.
+        if (numChildrenVisited == let->getChildren().size() - 1)
+            exitSubtree(expCtx, subtreeStack);
+    }
     void visit(ExpressionLn*) final {}
     void visit(ExpressionLog*) final {}
     void visit(ExpressionLog10*) final {}
@@ -818,7 +849,11 @@ private:
     void visit(ExpressionOr*) final {}
     void visit(ExpressionPow*) final {}
     void visit(ExpressionRange*) final {}
-    void visit(ExpressionReduce*) final {}
+    void visit(ExpressionReduce* reduce) final {
+        // As with ExpressionLet the final child here is part of the parent Subtree.
+        if (numChildrenVisited == reduce->getChildren().size() - 1)
+            exitSubtree(expCtx, subtreeStack);
+    }
     void visit(ExpressionSetDifference*) final {}
     void visit(ExpressionSetEquals*) final {}
     void visit(ExpressionSetIntersection*) final {}
@@ -844,7 +879,7 @@ private:
             // child.
             if (numChildrenVisited % 2ull == 0ull)
                 // We need to enter an Evaluated output Subtree for each case child.
-                enterSubtree(Subtree::Evaluated{}, subtreeStack);
+                enterSubtree(Subtree::Evaluated{"a switch case"}, subtreeStack);
             else
                 // After every odd child we need to exit the above Subtree.
                 exitSubtree(expCtx, subtreeStack);
@@ -1000,9 +1035,7 @@ private:
     void visit(ExpressionIndexOfCP*) final {
         exitSubtree(expCtx, subtreeStack);
     }
-    void visit(ExpressionLet*) final {
-        exitSubtree(expCtx, subtreeStack);
-    }
+    void visit(ExpressionLet*) final {}
     void visit(ExpressionLn*) final {
         exitSubtree(expCtx, subtreeStack);
     }
@@ -1037,9 +1070,7 @@ private:
     void visit(ExpressionRange*) final {
         exitSubtree(expCtx, subtreeStack);
     }
-    void visit(ExpressionReduce*) final {
-        exitSubtree(expCtx, subtreeStack);
-    }
+    void visit(ExpressionReduce*) final {}
     void visit(ExpressionSetDifference*) final {
         exitSubtree(expCtx, subtreeStack);
     }

@@ -163,7 +163,7 @@ public:
         _tracker.enterEvaluateOrCompare();
     }
     void visit(ExpressionLet*) {
-        throwNotSupported("$let");
+        // aggregate_expression_intender::mark() handles disallowing rebinding CURRENT.
     }
     void visit(ExpressionLn*) {
         _tracker.enterEvaluateOrCompare();
@@ -406,23 +406,32 @@ public:
     }
 
     void visit(ExpressionFieldPath* expr) {
-        auto fieldPath = expr->getFieldPath();
-        uassert(31127,
-                str::stream() << "Variables in aggregation expressions are not supported with "
-                                 "client-side encryption",
-                fieldPath.getFieldName(0) == "CURRENT" && fieldPath.getPathLength() > 1);
-
-        FieldRef path{fieldPath.tail().fullPath()};
-
-        // TODO SERVER-41337 Support field paths which are prefixes of encrypted fields.
-        uassert(31129,
-                "Referencing a prefix of an encrypted field is not supported",
-                _schema.getEncryptionMetadataForPath(path) ||
-                    !_schema.containsEncryptedNodeBelowPrefix(path));
-        if (auto node = _schema.getNode(path)) {
-            _tracker.reconcileSchema(node->clone());
-        } else {
+        // The FieldPath is a variable.
+        if (const auto& prefixedPath = expr->getFieldPath();
+            prefixedPath.getFieldName(0) != "CURRENT" || prefixedPath.getPathLength() <= 1) {
+            // Forbid CURRENT and ROOT. They could be supported after support for Object
+            // comparisons is added.
+            uassert(31127,
+                    str::stream() << "Access to variable " + prefixedPath.getFieldName(0) +
+                            " disallowed",
+                    prefixedPath.getFieldName(0) != "CURRENT" &&
+                        prefixedPath.getFieldName(0) != "ROOT");
             _tracker.reconcileSchema(std::make_unique<EncryptionSchemaNotEncryptedNode>());
+            // The FieldPath is a field reference.
+        } else {
+
+            FieldRef path{expr->getFieldPathWithoutCurrentPrefix().fullPath()};
+
+            // TODO SERVER-41337 Support field paths which are prefixes of encrypted fields.
+            uassert(31129,
+                    "Referencing a prefix of an encrypted field is not supported",
+                    _schema.getEncryptionMetadataForPath(path) ||
+                        !_schema.containsEncryptedNodeBelowPrefix(path));
+            if (auto node = _schema.getNode(path)) {
+                _tracker.reconcileSchema(node->clone());
+            } else {
+                _tracker.reconcileSchema(std::make_unique<EncryptionSchemaNotEncryptedNode>());
+            }
         }
     }
 
@@ -696,9 +705,7 @@ public:
     void visit(ExpressionIndexOfCP*) {
         _tracker.exitEvaluateOrCompare();
     }
-    void visit(ExpressionLet*) {
-        _tracker.exitEvaluateOrCompare();
-    }
+    void visit(ExpressionLet*) {}
     void visit(ExpressionLn*) {
         _tracker.exitEvaluateOrCompare();
     }
