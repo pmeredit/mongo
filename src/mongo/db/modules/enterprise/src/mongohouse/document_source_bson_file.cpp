@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2018 MongoDB, Inc.  All Rights Reserved.
+ * Copyright (C) 2019 MongoDB, Inc.  All Rights Reserved.
  */
 
 #include "mongo/platform/basic.h"
@@ -24,10 +24,9 @@
 namespace mongo {
 
 using boost::intrusive_ptr;
-using std::deque;
 
 DocumentSourceBSONFile::DocumentSourceBSONFile(const intrusive_ptr<ExpressionContext>& pCtx,
-                                               const char* fileName)
+                                               StringData fileName)
     : DocumentSource(pCtx),
       _fileName(fileName),
 #ifdef _WIN32
@@ -63,7 +62,7 @@ DocumentSourceBSONFile::DocumentSourceBSONFile(const intrusive_ptr<ExpressionCon
                           << errnoWithDescription(GetLastError()),
             _mapped != nullptr);
 #else
-    _fd = open(fileName, O_RDONLY);
+    _fd = open(_fileName.c_str(), O_RDONLY);
     uassert(ErrorCodes::FileNotOpen,
             str::stream() << "Failed to open " << _fileName << ": " << strerror(errno),
             _fd >= 0);
@@ -83,6 +82,12 @@ DocumentSourceBSONFile::DocumentSourceBSONFile(const intrusive_ptr<ExpressionCon
 }
 
 DocumentSourceBSONFile::~DocumentSourceBSONFile() {
+    // The owner of a DocumentSource* object should call dispose() on it before destroying it.
+    invariant(_fileSize == 0);
+    invariant(_offset == 0);
+}
+
+void DocumentSourceBSONFile::doDispose() {
 #ifdef _WIN32
     if (_mapped != nullptr) {
         UnmapViewOfFile(_mapped);
@@ -108,23 +113,23 @@ DocumentSourceBSONFile::~DocumentSourceBSONFile() {
         (void)close(_fd);
     }
 #endif
+
+    // This will ensure that future getNext() calls return EOF.
+    _fileSize = 0;
+    _offset = 0;
 }
 
 const char* DocumentSourceBSONFile::getSourceName() const {
-    return "BSONFile";
+    return "bsonFile";
 }
 
 Value DocumentSourceBSONFile::serialize(boost::optional<ExplainOptions::Verbosity> explain) const {
-    return Value(Document{{getSourceName(), Document()}});
-}
-
-void DocumentSourceBSONFile::doDispose() {
-    isDisposed = true;
+    return Value(Document{{getSourceName(), Value(_fileName)}});
 }
 
 intrusive_ptr<DocumentSourceBSONFile> DocumentSourceBSONFile::create(
-    const intrusive_ptr<ExpressionContext>& pCtx, const char* fileName) {
-    return new DocumentSourceBSONFile(pCtx, fileName);
+    const intrusive_ptr<ExpressionContext>& pExpCtx, StringData fileName) {
+    return new DocumentSourceBSONFile(pExpCtx, fileName);
 }
 
 DocumentSource::GetNextResult DocumentSourceBSONFile::getNext() {

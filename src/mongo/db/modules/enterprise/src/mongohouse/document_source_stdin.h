@@ -8,15 +8,15 @@
 
 namespace mongo {
 
-class DocumentSourceBSONFile final : public DocumentSource {
+class DocumentSourceStdin final : public DocumentSource {
 public:
-    ~DocumentSourceBSONFile() final;
+    ~DocumentSourceStdin() final {}
 
     GetNextResult getNext() final;
     const char* getSourceName() const final;
-    Value serialize(boost::optional<ExplainOptions::Verbosity> explain = boost::none) const final;
+    Value serialize(boost::optional<ExplainOptions::Verbosity> explain) const final;
 
-    StageConstraints constraints(Pipeline::SplitState pipeState) const final {
+    StageConstraints constraints(Pipeline::SplitState pipeState) const override {
         StageConstraints constraints(StreamType::kStreaming,
                                      PositionRequirement::kFirst,
                                      HostTypeRequirement::kNone,
@@ -29,31 +29,16 @@ public:
         return constraints;
     }
 
-    static boost::intrusive_ptr<DocumentSourceBSONFile> create(
-        const boost::intrusive_ptr<ExpressionContext>& pExpCtx, StringData fileName);
+    static boost::intrusive_ptr<DocumentSourceStdin> create(
+        const boost::intrusive_ptr<ExpressionContext>& pExpCtx);
 
     boost::optional<DistributedPlanLogic> distributedPlanLogic() final {
         return boost::none;
     }
 
-protected:
-    void doDispose() final;
-
 private:
-    DocumentSourceBSONFile(const boost::intrusive_ptr<ExpressionContext>& pExpCtx,
-                           StringData fileName);
-
-    std::string _fileName;
-
-#ifdef _WIN32
-    HANDLE _file = nullptr;
-    HANDLE _fileMapping = nullptr;
-#else
-    int _fd = -1;
-#endif
-    size_t _fileSize = 0;
-    void* _mapped;
-    off_t _offset = 0;
+    DocumentSourceStdin(const boost::intrusive_ptr<ExpressionContext>& pExpCtx)
+        : DocumentSource(pExpCtx) {}
 };
 
 }  // namespace mongo

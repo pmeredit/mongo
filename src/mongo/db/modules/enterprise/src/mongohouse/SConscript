@@ -6,9 +6,10 @@ hygienic = get_option('install-mode') == 'hygienic'
 env = env.Clone()
 
 env.Library(
-    target='document_source_bson_file',
+    target='document_source_bson_input',
     source=[
         'document_source_bson_file.cpp',
+        'document_source_stdin.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/pipeline/pipeline',
@@ -23,7 +24,7 @@ mqlrun = env.Program(
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/exec/working_set',
         '$BUILD_DIR/mongo/db/query_exec',
-        'document_source_bson_file',
+        'document_source_bson_input',
     ],
     INSTALL_ALIAS=[
         'mongohouse',

@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2018 MongoDB, Inc.  All Rights Reserved.
+ * Copyright (C) 2019 MongoDB, Inc.  All Rights Reserved.
  */
 
 #include "mongo/platform/basic.h"
@@ -20,101 +20,9 @@
 #include "mongo/db/service_context.h"
 
 #include "document_source_bson_file.h"
-
-#ifdef _WIN32
-typedef SSIZE_T ssize_t;
-#endif
+#include "document_source_stdin.h"
 
 namespace mongo {
-
-namespace {
-
-ssize_t readStdin(void* buf, size_t count) {
-#ifdef _WIN32
-    unsigned long bytesRead;
-    HANDLE hFile = GetStdHandle(STD_INPUT_HANDLE);
-    if (!ReadFile(hFile, buf, static_cast<unsigned long>(count), &bytesRead, nullptr)) {
-        return GetLastError() == ERROR_BROKEN_PIPE ? 0 : -1;
-    }
-    return static_cast<ssize_t>(bytesRead);
-#else
-    return read(0, buf, count);
-#endif
-}
-
-class StdinDocumentSource : public DocumentSource {
-public:
-    StdinDocumentSource(const boost::intrusive_ptr<ExpressionContext>& pCtx)
-        : DocumentSource(pCtx) {}
-    virtual ~StdinDocumentSource() {}
-
-    virtual GetNextResult getNext() override {
-        int size = 0;
-        auto n = readStdin(&size, 4);
-        if (n == -1) {
-            std::cerr << "error reading from stdin" << std::endl;
-            return GetNextResult::makeEOF();
-        }
-        if (n == 0) {
-            return GetNextResult::makeEOF();
-        }
-
-        auto buf = SharedBuffer::allocate(size);
-        invariant(buf.get());
-
-        memcpy(buf.get(), &size, 4);
-        int totalRead = 4;
-        while ((n = readStdin(buf.get() + totalRead, size - totalRead)) > 0) {
-            totalRead += n;
-            if (totalRead == size) {
-                break;
-            }
-        }
-        if (n == -1) {
-            std::cerr << "error reading from stdin" << std::endl;
-            return GetNextResult::makeEOF();
-        }
-        if (n == 0) {
-            std::cerr << "unexpected end of document" << std::endl;
-            return GetNextResult::makeEOF();
-        }
-        invariant(totalRead == size);
-
-        BSONObj obj(buf);
-        return GetNextResult(Document(obj));
-    }
-
-    const char* getSourceName() const override {
-        return "StdinDocumentSource";
-    }
-
-    Value serialize(boost::optional<ExplainOptions::Verbosity> explain) const override {
-        return Value(Document{{getSourceName(), Document()}});
-    }
-
-    StageConstraints constraints(Pipeline::SplitState pipeState) const override {
-        StageConstraints constraints(StreamType::kStreaming,
-                                     PositionRequirement::kFirst,
-                                     HostTypeRequirement::kNone,
-                                     DiskUseRequirement::kNoDiskUse,
-                                     FacetRequirement::kNotAllowed,
-                                     TransactionRequirement::kAllowed,
-                                     LookupRequirement::kNotAllowed);
-
-        constraints.requiresInputDocSource = false;
-        return constraints;
-    }
-
-    boost::intrusive_ptr<DocumentSource> optimize() override {
-        return this;
-    }
-
-    boost::optional<DistributedPlanLogic> distributedPlanLogic() override {
-        return boost::none;
-    }
-};
-
-}  // namespace
 
 enum class OutputType {
     kJSON,
@@ -147,6 +55,7 @@ BSONArray createPipelineArray(const char* pipelineStr) {
         boost::intrusive_ptr<ExpressionContext> expCtx;
 
         auto in = DocumentSourceBSONFile::create(expCtx, pipelineStr);
+        ON_BLOCK_EXIT([in] { in->dispose(); });
 
         while (1) {
             auto next = in->getNext();
@@ -230,7 +139,8 @@ int mqlrunMain(const char* pipelineStr,
 
     try {
         if (strlen(fileName) == 1 && fileName[0] == '-') {
-            pipeline->addInitialSource(new StdinDocumentSource(expCtx));
+            auto stdinSource = DocumentSourceStdin::create(expCtx);
+            pipeline->addInitialSource(stdinSource);
         } else {
             auto bsonSource = DocumentSourceBSONFile::create(expCtx, fileName);
             pipeline->addInitialSource(bsonSource);
