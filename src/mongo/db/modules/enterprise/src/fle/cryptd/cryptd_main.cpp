@@ -186,11 +186,15 @@ ExitCode initAndListen() {
 
     auto tl =
         transport::TransportLayerManager::createWithConfig(&serverGlobalParams, serviceContext);
-    uassertStatusOK(tl->setup());
+    Status status = tl->setup();
+    if (!status.isOK()) {
+        error() << "Failed to setup the transport layer: " << redact(status);
+        return EXIT_NET_ERROR;
+    }
 
     serviceContext->setTransportLayer(std::move(tl));
 
-    Status status = serviceContext->getServiceExecutor()->start();
+    status = serviceContext->getServiceExecutor()->start();
     if (!status.isOK()) {
         error() << "Failed to start the service executor: " << redact(status);
         return EXIT_NET_ERROR;
