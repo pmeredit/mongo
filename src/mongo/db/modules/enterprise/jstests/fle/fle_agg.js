@@ -220,7 +220,6 @@
         {$planCacheStats: {}},
         {$_internalInhibitOptimization: {}},
         {$out: "other"},
-        {$searchBeta: {}}
     ];
 
     for (let stage of invalidStages) {
