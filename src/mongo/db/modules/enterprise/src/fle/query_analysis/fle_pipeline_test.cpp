@@ -124,7 +124,6 @@ TEST_F(FLEPipelineTest, ThrowsOnInvalidOrUnsupportedStage) {
                 { $match: { ssn: 5}}
             ]
         }})"),
-        fromjson("{$group: {_id: null}}"),
         fromjson("{$unwind: '$ssn'}"),
         fromjson("{$redact: '$$DESCEND'}"),
         fromjson("{$bucketAuto: {groupBy: '$_id', buckets: 2}}"),

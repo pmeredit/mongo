@@ -645,26 +645,45 @@ const EncryptionSchemaTreeNode* EncryptionSchemaTreeNode::_getNode(const FieldRe
 };
 
 bool EncryptionSchemaTreeNode::containsEncryptedNode() const {
-    bool foundEncryptedNode = false;
+    // The lack of short-circuiting is purposeful to ensure 'unknown' nodes assert.
+    bool found = false;
     for (auto && [ path, child ] : _propertiesChildren) {
         if (child->containsEncryptedNode()) {
-            foundEncryptedNode = true;
+            found = true;
         }
     }
-
     for (auto&& patternPropertiesChild : _patternPropertiesChildren) {
         if (patternPropertiesChild.child->containsEncryptedNode()) {
-            foundEncryptedNode = true;
+            found = true;
         }
     }
-
     if (_additionalPropertiesChild) {
         if (_additionalPropertiesChild->containsEncryptedNode()) {
-            foundEncryptedNode = true;
+            found = true;
         }
     }
+    return found;
+}
 
-    return foundEncryptedNode;
+bool EncryptionSchemaTreeNode::containsRandomlyEncryptedNode() const {
+    // The lack of short-circuiting is purposeful to ensure 'unknown' nodes assert.
+    bool found = false;
+    for (auto && [ path, child ] : _propertiesChildren) {
+        if (child->containsRandomlyEncryptedNode()) {
+            found = true;
+        }
+    }
+    for (auto&& patternPropertiesChild : _patternPropertiesChildren) {
+        if (patternPropertiesChild.child->containsRandomlyEncryptedNode()) {
+            found = true;
+        }
+    }
+    if (_additionalPropertiesChild) {
+        if (_additionalPropertiesChild->containsRandomlyEncryptedNode()) {
+            found = true;
+        }
+    }
+    return found;
 }
 
 std::unique_ptr<EncryptionSchemaTreeNode>

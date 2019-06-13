@@ -109,8 +109,8 @@ protected:
             Expression::parseOperand(getExpCtx(),
                                      mongo::fromjson(addObjectWrapper(expression))[""],
                                      getExpCtx()->variablesParseState);
-        auto intention =
-            aggregate_expression_intender::mark(*getExpCtx(), *makeSchema(), expressionPtr.get());
+        auto intention = aggregate_expression_intender::mark(
+            *getExpCtx(), *makeSchema(), expressionPtr.get(), false);
         ASSERT(intention == aggregate_expression_intender::Intention::Marked ||
                intention == aggregate_expression_intender::Intention::NotMarked);
         expressionPtr->serialize(false).addToBsonObj(&bob, "");
@@ -330,9 +330,9 @@ TEST_F(AggregateExpressionIntenderTest, MarkReportsExistenceOfEncryptedPlacehold
     auto expressionPtr = Expression::parseOperand(getExpCtx(),
                                                   mongo::fromjson(addObjectWrapper(query))[""],
                                                   getExpCtx()->variablesParseState);
-    ASSERT_TRUE(
-        aggregate_expression_intender::mark(*getExpCtx(), *makeSchema(), expressionPtr.get()) ==
-        aggregate_expression_intender::Intention::Marked);
+    ASSERT_TRUE(aggregate_expression_intender::mark(
+                    *getExpCtx(), *makeSchema(), expressionPtr.get(), false) ==
+                aggregate_expression_intender::Intention::Marked);
 }
 
 TEST_F(AggregateExpressionIntenderTest, MarkReportsNoEncryptedPlaceholders) {
@@ -346,9 +346,9 @@ TEST_F(AggregateExpressionIntenderTest, MarkReportsNoEncryptedPlaceholders) {
     auto expressionPtr = Expression::parseOperand(getExpCtx(),
                                                   mongo::fromjson(addObjectWrapper(query))[""],
                                                   getExpCtx()->variablesParseState);
-    ASSERT_TRUE(
-        aggregate_expression_intender::mark(*getExpCtx(), *makeSchema(), expressionPtr.get()) ==
-        aggregate_expression_intender::Intention::NotMarked);
+    ASSERT_TRUE(aggregate_expression_intender::mark(
+                    *getExpCtx(), *makeSchema(), expressionPtr.get(), false) ==
+                aggregate_expression_intender::Intention::NotMarked);
 }
 }  // namespace
 }  // namespace mongo

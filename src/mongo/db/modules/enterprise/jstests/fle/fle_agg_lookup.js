@@ -1,5 +1,5 @@
 /**
- * Test that mongocrypt can correctly mark the $lookup agg stage with intent-to-encrypt
+ * Test that mongocryptd can correctly mark the $lookup agg stage with intent-to-encrypt
  * placeholders.
  */
 (function() {

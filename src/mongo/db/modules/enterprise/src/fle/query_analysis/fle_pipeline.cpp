@@ -36,6 +36,7 @@
 #include "mongo/db/pipeline/document_source_coll_stats.h"
 #include "mongo/db/pipeline/document_source_geo_near.h"
 #include "mongo/db/pipeline/document_source_graph_lookup.h"
+#include "mongo/db/pipeline/document_source_group.h"
 #include "mongo/db/pipeline/document_source_index_stats.h"
 #include "mongo/db/pipeline/document_source_limit.h"
 #include "mongo/db/pipeline/document_source_lookup.h"
@@ -133,13 +134,62 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGeoNear(
     const std::vector<clonable_ptr<EncryptionSchemaTreeNode>>& children,
     const DocumentSourceGeoNear& source) {
     clonable_ptr<EncryptionSchemaTreeNode> newSchema = prevSchema->clone();
-
     // Mark projected paths as unencrypted.
     newSchema->addChild(FieldRef(source.getDistanceField().fullPath()),
                         std::make_unique<EncryptionSchemaNotEncryptedNode>());
     if (source.getLocationField()) {
         newSchema->addChild(FieldRef(source.getLocationField()->fullPath()),
                             std::make_unique<EncryptionSchemaNotEncryptedNode>());
+    }
+    return newSchema;
+}
+
+clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGroup(
+    const clonable_ptr<EncryptionSchemaTreeNode>& prevSchema,
+    const std::vector<clonable_ptr<EncryptionSchemaTreeNode>>& children,
+    const DocumentSourceGroup& source) {
+    clonable_ptr<EncryptionSchemaTreeNode> newSchema =
+        std::make_unique<EncryptionSchemaNotEncryptedNode>();
+
+    for (const auto & [ pathStr, expression ] : source.getIdFields()) {
+        auto fieldPath = FieldRef{pathStr};
+        auto expressionSchema =
+            aggregate_expression_intender::getOutputSchema(*prevSchema, expression.get());
+        uassert(51222,
+                str::stream() << "'" << pathStr << "' cannot have fields encrypted with the random "
+                                                   "algorithm when used for grouping.",
+                !expressionSchema->containsRandomlyEncryptedNode());
+        newSchema->addChild(fieldPath, std::move(expressionSchema));
+    }
+    for (const auto& accuStmt : source.getAccumulatedFields()) {
+        boost::intrusive_ptr<Accumulator> accu = accuStmt.makeAccumulator(source.getContext());
+        auto expressionSchema =
+            aggregate_expression_intender::getOutputSchema(*prevSchema, accuStmt.expression.get());
+        if (accu->getOpName() == "$addToSet" || accu->getOpName() == "$push") {
+            if (expressionSchema->containsEncryptedNode()) {
+                newSchema->addChild(FieldRef(accuStmt.fieldName),
+                                    std::make_unique<EncryptionSchemaStateUnknownNode>());
+            } else {
+                newSchema->addChild(FieldRef(accuStmt.fieldName),
+                                    std::make_unique<EncryptionSchemaNotEncryptedNode>());
+            }
+            if (accu->getOpName() == "$addToSet") {
+                uassert(51223,
+                        str::stream() << "'" << accuStmt.fieldName
+                                      << "' cannot have fields encrypted with the random algorithm "
+                                         "when used in an $addToSet accumulator.",
+                        !expressionSchema->containsRandomlyEncryptedNode());
+            }
+        } else if (accu->getOpName() == "$first" || accu->getOpName() == "$last") {
+            newSchema->addChild(FieldRef{accuStmt.fieldName}, std::move(expressionSchema));
+        } else {
+            uassert(51221,
+                    str::stream() << "Accumulator '" << accu->getOpName()
+                                  << "' cannot aggregate encrypted fields.",
+                    !expressionSchema->containsEncryptedNode());
+            newSchema->addChild(FieldRef(accuStmt.fieldName),
+                                std::make_unique<EncryptionSchemaNotEncryptedNode>());
+        }
     }
     return newSchema;
 }
@@ -342,7 +392,7 @@ aggregate_expression_intender::Intention analyzeForInclusionNode(
     for (const auto& path : computedPaths) {
         if (auto expr = root.getExpressionForPath(FieldPath(path))) {
             if (aggregate_expression_intender::mark(
-                    *(flePipe->getPipeline().getContext().get()), schema, expr.get()) ==
+                    *(flePipe->getPipeline().getContext().get()), schema, expr.get(), false) ==
                 aggregate_expression_intender::Intention::Marked) {
                 didMark = aggregate_expression_intender::Intention::Marked;
             }
@@ -440,7 +490,7 @@ aggregate_expression_intender::Intention analyzeForGraphLookUp(
     DocumentSourceGraphLookUp* source) {
     // Replace contants with their appropriate intent-to-encrypt markings in the 'startWith' field.
     auto didMark = aggregate_expression_intender::mark(
-        *flePipe->getPipeline().getContext(), schema, source->getStartWithField());
+        *flePipe->getPipeline().getContext(), schema, source->getStartWithField(), false);
 
     // Build a FLEMatchExpression from the MatchExpression for the additional filter, replacing any
     // constants with their appropriate intent-to-encrypt markings.
@@ -462,6 +512,35 @@ aggregate_expression_intender::Intention analyzeForGraphLookUp(
         if (fleMatch.containsEncryptedPlaceholders()) {
             didMark = aggregate_expression_intender::Intention::Marked;
         }
+    }
+    return didMark;
+}
+
+aggregate_expression_intender::Intention analyzeForGroup(FLEPipeline* flePipe,
+                                                         const EncryptionSchemaTreeNode& schema,
+                                                         DocumentSourceGroup* source) {
+    aggregate_expression_intender::Intention didMark =
+        aggregate_expression_intender::Intention::NotMarked;
+    for (const auto & [ fieldName, expression ] : source->getIdFields()) {
+        // The expressions here are used for grouping things together, which is an equality
+        // comparison.
+        const bool expressionResultCompared = true;
+        didMark = didMark ||
+            aggregate_expression_intender::mark(*(flePipe->getPipeline().getContext().get()),
+                                                schema,
+                                                expression.get(),
+                                                expressionResultCompared);
+    }
+    for (auto& accuStmt : source->getAccumulatedFields()) {
+        // The expressions here are used for adding things to a set requires an equality
+        // comparison.
+        boost::intrusive_ptr<Accumulator> accu = accuStmt.makeAccumulator(source->getContext());
+        const bool expressionResultCompared = accu->getOpName() == "$addToSet";
+        didMark = didMark ||
+            aggregate_expression_intender::mark(*(flePipe->getPipeline().getContext().get()),
+                                                schema,
+                                                accuStmt.expression.get(),
+                                                expressionResultCompared);
     }
     return didMark;
 }
@@ -536,6 +615,9 @@ REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceGeoNear,
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceGraphLookUp,
                                       propagateSchemaForGraphLookUp,
                                       analyzeForGraphLookUp);
+REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceGroup,
+                                      propagateSchemaForGroup,
+                                      analyzeForGroup);
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceIndexStats,
                                       propagateSchemaNoEncryption,
                                       analyzeStageNoop);

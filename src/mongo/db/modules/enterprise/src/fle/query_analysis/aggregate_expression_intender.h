@@ -55,11 +55,16 @@ inline Intention operator||(Intention a, Intention b) {
  * for any purpose other than equality comparison to one or more literals or other encrypted fields
  * of like encryption type.
  *
+ * Pass 'true' for 'expressionOutputIsCompared' if the owner of this Expression is going to use the
+ * output to perform equality comparisons. For example, if this expression tree is used as the
+ * group keys in a $group stage.
+ *
  * Returns an Intention enum indicating whether or not intent-to-encrypt markers were inserted.
  */
 Intention mark(const ExpressionContext& expCtx,
                const EncryptionSchemaTreeNode& schema,
-               Expression* expression);
+               Expression* expression,
+               bool expressionOutputIsCompared);
 
 /**
  * Given an input 'expression' and 'schema', returns the output schema associated with the evaluated

@@ -1282,10 +1282,14 @@ private:
 
 class IntentionWalker final {
 public:
-    IntentionWalker(const ExpressionContext& expCtx, const EncryptionSchemaTreeNode& schema)
+    IntentionWalker(const ExpressionContext& expCtx,
+                    const EncryptionSchemaTreeNode& schema,
+                    bool expressionOutputIsCompared)
         : expCtx(expCtx), schema(schema) {
         // Before walking, enter the outermost Subtree.
-        enterSubtree(Subtree::Forwarded{}, subtreeStack);
+        enterSubtree(expressionOutputIsCompared ? decltype(Subtree::output)(Subtree::Compared{})
+                                                : Subtree::Forwarded{},
+                     subtreeStack);
     }
     Intention exitOutermostSubtree() {
         // When walking is complete, exit the outermost Subtree and report whether any fields were
@@ -1319,8 +1323,9 @@ private:
 
 Intention mark(const ExpressionContext& expCtx,
                const EncryptionSchemaTreeNode& schema,
-               Expression* expression) {
-    IntentionWalker walker{expCtx, schema};
+               Expression* expression,
+               bool expressionOutputIsCompared) {
+    IntentionWalker walker{expCtx, schema, expressionOutputIsCompared};
     expression_walker::walk(&walker, expression);
     return walker.exitOutermostSubtree();
 }

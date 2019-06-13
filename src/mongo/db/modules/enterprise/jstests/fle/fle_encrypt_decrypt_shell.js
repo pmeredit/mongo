@@ -1,6 +1,5 @@
 /**
-* Check the functionality of encrypt and decrypt
-* functions in KeyVault.js
+* Check the functionality of encrypt and decrypt functions in KeyStore.js.
 */
 
 load("src/mongo/db/modules/enterprise/jstests/fle/lib/mock_kms.js");

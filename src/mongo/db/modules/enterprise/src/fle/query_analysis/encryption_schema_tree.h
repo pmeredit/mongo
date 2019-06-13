@@ -152,6 +152,12 @@ public:
     virtual bool containsEncryptedNode() const;
 
     /**
+     * Returns true if this tree contains at least one EncryptionSchemaEncryptedNode with the
+     * random algorithm.
+     */
+    virtual bool containsRandomlyEncryptedNode() const;
+
+    /**
      * Adds 'node' at 'path' under this node. Adds unencrypted nodes as neccessary to
      * reach the final component of 'path'. Returns a pointer to a node that was overwritten or
      * nullptr if there did not already exist a node with the given path. It is invalid to call
@@ -360,6 +366,10 @@ public:
         return true;
     }
 
+    bool containsRandomlyEncryptedNode() const final {
+        return _metadata.algorithm == FleAlgorithmEnum::kRandom;
+    }
+
     std::unique_ptr<EncryptionSchemaTreeNode> clone() const final {
         return std::make_unique<EncryptionSchemaEncryptedNode>(*this);
     }
@@ -384,6 +394,12 @@ public:
     bool containsEncryptedNode() const final {
         uasserted(
             31134,
+            "Whether or not this tree contains an encrypted node is not known until runtime.");
+    }
+
+    bool containsRandomlyEncryptedNode() const final {
+        uasserted(
+            51234,
             "Whether or not this tree contains an encrypted node is not known until runtime.");
     }
 

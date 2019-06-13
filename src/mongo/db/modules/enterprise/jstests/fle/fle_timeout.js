@@ -1,4 +1,4 @@
-// Validate fle shuts down after timeout
+// Validate fle shuts down after timeout.
 //
 load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
 

@@ -1,5 +1,5 @@
 /**
- * Test that mongocrypt can correctly mark the delete command with intent-to-encrypt placeholders.
+ * Test that mongocryptd can correctly mark the delete command with intent-to-encrypt placeholders.
  */
 (function() {
     "use strict";

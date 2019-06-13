@@ -1,5 +1,5 @@
 /**
- * Test that mongocrypt's analysis works correctly for collation.
+ * Test that mongocryptd's analysis works correctly for collation.
  */
 (function() {
     "use strict";
