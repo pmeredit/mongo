@@ -80,6 +80,7 @@ TEST_F(ExpressionAnalysisTest, ExpressionConstantCorrectlyReturnsNotEncrypted) {
 
 TEST_F(ExpressionAnalysisTest, VariablesSupportedInOutput) {
     auto exprObj = fromjson("{a: '$$NOW'}");
+    auto expCtx = getExpCtx();
     auto parsedExpr =
         Expression::parseOperand(getExpCtx(), exprObj["a"], getExpCtx()->variablesParseState);
     auto schema = EncryptionSchemaTreeNode::parse(kDefaultSsnSchema, EncryptionSchemaType::kLocal);
