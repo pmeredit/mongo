@@ -112,13 +112,12 @@ protected:
      * field.
      */
     BSONObj serializeMatchForEncryption(const BSONObj& schema, const BSONObj& matchExpression) {
-        auto expCtx(new ExpressionContextForTest());
         auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
 
         // By default, allow all features for testing.
         auto parsedMatch = uassertStatusOK(
             MatchExpressionParser::parse(matchExpression,
-                                         expCtx,
+                                         getExpCtx(),
                                          ExtensionsCallbackNoop(),
                                          MatchExpressionParser::kAllowAllSpecialFeatures));
         FLEMatchExpression fleMatchExpression{std::move(parsedMatch), *schemaTree};
