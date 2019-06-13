@@ -31,6 +31,7 @@
 
 #include "encryption_schema_tree.h"
 
+#include "fle_test_fixture.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/json.h"
 #include "mongo/db/bson/bson_helper.h"
@@ -74,6 +75,8 @@ void assertNotEncrypted(BSONObj schema, std::string path) {
     auto result = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT_FALSE(result->getEncryptionMetadataForPath(FieldRef(path)));
 }
+
+class EncryptionSchemaTreeTest : public FLETestFixture {};
 
 TEST(EncryptionSchemaTreeTest, MarksTopLevelFieldAsEncrypted) {
     const auto uuid = UUID::gen();
@@ -3027,17 +3030,17 @@ TEST(EncryptionSchemaTreeTest, MissingNestedPatternPropertiesAreNotEqual) {
     ASSERT_FALSE(*firstSchema == *secondSchema);
 }
 
-TEST(EncryptionSchemaTreeTest, StateUnknownNodeGetEncryptionMetadataFails) {
-    EncryptionSchemaStateUnknownNode node{};
+TEST(EncryptionSchemaTreeTest, StateMixedNodeGetEncryptionMetadataFails) {
+    EncryptionSchemaStateMixedNode node{};
     ASSERT_THROWS_CODE(node.getEncryptionMetadata(), AssertionException, 31133);
 }
 
-TEST(EncryptionSchemaTreeTest, StateUnknownNodeContainsEncryptedNodeFails) {
-    EncryptionSchemaStateUnknownNode node{};
+TEST(EncryptionSchemaTreeTest, StateMixedNodeContainsEncryptedNodeFails) {
+    EncryptionSchemaStateMixedNode node{};
     ASSERT_THROWS_CODE(node.containsEncryptedNode(), AssertionException, 31134);
 }
 
-TEST(EncryptionSchemaTreeTest, GetEncryptionMetadataFailsIfPathHitsStateUnknownNode) {
+TEST(EncryptionSchemaTreeTest, GetEncryptionMetadataFailsIfPathHitsStateMixedNode) {
     BSONObj schema = fromjson(R"({
             type: "object",
             properties: {
@@ -3055,7 +3058,7 @@ TEST(EncryptionSchemaTreeTest, GetEncryptionMetadataFailsIfPathHitsStateUnknownN
             }
         })");
     auto root = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
-    root->addChild(FieldRef("ticker"), std::make_unique<EncryptionSchemaStateUnknownNode>());
+    root->addChild(FieldRef("ticker"), std::make_unique<EncryptionSchemaStateMixedNode>());
     ASSERT_THROWS_CODE(
         root->getEncryptionMetadataForPath(FieldRef("ticker")), AssertionException, 31133);
     ASSERT_THROWS_CODE(root->containsEncryptedNode(), AssertionException, 31134);
@@ -3063,15 +3066,15 @@ TEST(EncryptionSchemaTreeTest, GetEncryptionMetadataFailsIfPathHitsStateUnknownN
     ASSERT_FALSE(root->getEncryptionMetadataForPath(FieldRef("name")));
 }
 
-TEST(EncryptionSchemaTreeTest, StateUnknownNodeGetMetadataForStateUnknownNodeNestedCorrectlyFails) {
+TEST(EncryptionSchemaTreeTest, StateMixedNodeGetMetadataForStateMixedNodeNestedCorrectlyFails) {
     auto root = std::make_unique<EncryptionSchemaNotEncryptedNode>();
-    root->addChild(FieldRef("name.ticker"), std::make_unique<EncryptionSchemaStateUnknownNode>());
+    root->addChild(FieldRef("name.ticker"), std::make_unique<EncryptionSchemaStateMixedNode>());
     ASSERT_THROWS_CODE(
         root->getEncryptionMetadataForPath(FieldRef("name.ticker")), AssertionException, 31133);
     ASSERT_THROWS_CODE(root->containsEncryptedNode(), AssertionException, 31134);
 }
 
-TEST(EncryptionSchemaTreeTest, StateUnknownNodeInAdditionalPropertiesFailsOnUndefinedFieldPath) {
+TEST(EncryptionSchemaTreeTest, StateMixedNodeInAdditionalPropertiesFailsOnUndefinedFieldPath) {
     BSONObj schema = fromjson(R"({
             type: "object",
             properties: {
@@ -3089,7 +3092,7 @@ TEST(EncryptionSchemaTreeTest, StateUnknownNodeInAdditionalPropertiesFailsOnUnde
             }
         })");
     auto root = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
-    root->addAdditionalPropertiesChild(std::make_unique<EncryptionSchemaStateUnknownNode>());
+    root->addAdditionalPropertiesChild(std::make_unique<EncryptionSchemaStateMixedNode>());
     ASSERT(root->getEncryptionMetadataForPath(FieldRef("ssn")));
     ASSERT_FALSE(root->getEncryptionMetadataForPath(FieldRef("name")));
     ASSERT_THROWS_CODE(
@@ -3097,10 +3100,10 @@ TEST(EncryptionSchemaTreeTest, StateUnknownNodeInAdditionalPropertiesFailsOnUnde
     ASSERT_THROWS_CODE(root->containsEncryptedNode(), AssertionException, 31134);
 }
 
-TEST(EncryptionSchemaTreeTest, StateUnknownNodeInPatternPropertiesMetadataFailOnMatchedProperty) {
+TEST(EncryptionSchemaTreeTest, StateMixedNodeInPatternPropertiesMetadataFailOnMatchedProperty) {
     auto root = std::make_unique<EncryptionSchemaNotEncryptedNode>();
     root->addPatternPropertiesChild(R"(tickers+)",
-                                    std::make_unique<EncryptionSchemaStateUnknownNode>());
+                                    std::make_unique<EncryptionSchemaStateMixedNode>());
     ASSERT_FALSE(root->getEncryptionMetadataForPath(FieldRef("some.path")));
     ASSERT_THROWS_CODE(
         root->getEncryptionMetadataForPath(FieldRef("tickerssss")), AssertionException, 31133);
@@ -3128,6 +3131,31 @@ TEST(EncryptionSchemaTreeTest, AddChildThrowsIfAddingToEncryptedNode) {
         root->addChild(FieldRef{"ssn.test"}, std::make_unique<EncryptionSchemaNotEncryptedNode>()),
         AssertionException,
         51096);
+}
+
+TEST_F(EncryptionSchemaTreeTest, CanAffixLiteralsToEncryptedNodesButNotToNotEncryptedNodes) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            a: {
+                    encrypt: {
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                        keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
+                        bsonType: "int"
+                    }
+                }
+            }
+        }
+    })");
+    // EncryptionSchemaNotEncryptedNodes have no space for literals.
+    auto root = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
+    ASSERT(root->literals() == boost::none);
+    // EncryptionSchemaEncryptedNodes allow access to mutable space for literals.
+    auto* leaf = root->getNode(FieldRef{"a"});
+    ASSERT(leaf->literals() != boost::none);
+    auto literal = ExpressionConstant::create(getExpCtx(), Value{23});
+    leaf->literals()->push_back(*literal);
+    ASSERT_FALSE(leaf->literals()->empty());
 }
 
 }  // namespace

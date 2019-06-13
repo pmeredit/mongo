@@ -29,12 +29,15 @@
 
 #pragma once
 
+#include <functional>
 #include <pcrecpp.h>
+#include <type_traits>
 
 #include "mongo/base/clonable_ptr.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/field_ref.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
+#include "mongo/db/pipeline/expression.h"
 #include "mongo/util/str.h"
 #include "resolved_encryption_info.h"
 
@@ -158,6 +161,17 @@ public:
     virtual bool containsRandomlyEncryptedNode() const;
 
     /**
+     * Certain EncryptionSchemaTreeNode derived classes may contain literals, stored in-place to
+     * mark for encryption. This function returns a vector for holding them or boost::none if the
+     * derived class type does not support attached literals.
+     *
+     * This method does not return literals from any of this node's descendants in the tree.
+     */
+    virtual boost::optional<std::vector<std::reference_wrapper<ExpressionConstant>>&> literals() {
+        return boost::none;
+    }
+
+    /**
      * Adds 'node' at 'path' under this node. Adds unencrypted nodes as neccessary to
      * reach the final component of 'path'. Returns a pointer to a node that was overwritten or
      * nullptr if there did not already exist a node with the given path. It is invalid to call
@@ -247,6 +261,10 @@ public:
     const EncryptionSchemaTreeNode* getNode(FieldRef path) const {
         return _getNode(path, 0);
     }
+    EncryptionSchemaTreeNode* getNode(FieldRef path) {
+        return const_cast<std::remove_const_t<decltype(this)>>(
+            const_cast<std::add_const_t<decltype(this)>>(this)->_getNode(path, 0));
+    }
 
     /**
      * Remove the specified node from the schema. Does nothing if path does not exist. Returns true
@@ -254,8 +272,7 @@ public:
      */
     bool removeNode(FieldRef path);
 
-
-    // Note that comparing EncryptionSchemaStateUnknownNodes for equality will fail, since their
+    // Note that comparing EncryptionSchemaStateMixedNodes for equality will fail, since their
     // encryption metadata isn't know until a query is run.
     bool operator==(const EncryptionSchemaTreeNode& other) const;
 
@@ -374,8 +391,14 @@ public:
         return std::make_unique<EncryptionSchemaEncryptedNode>(*this);
     }
 
+    boost::optional<std::vector<std::reference_wrapper<ExpressionConstant>>&> literals() final {
+        return _literals;
+    }
+
 private:
     const ResolvedEncryptionInfo _metadata;
+
+    std::vector<std::reference_wrapper<ExpressionConstant>> _literals;
 };
 
 /**
@@ -383,7 +406,7 @@ private:
  * node can't be known before the query is actually executed, attempting to get the encryption
  * metadata of this node will throw an exception.
  */
-class EncryptionSchemaStateUnknownNode final : public EncryptionSchemaTreeNode {
+class EncryptionSchemaStateMixedNode final : public EncryptionSchemaTreeNode {
 public:
     boost::optional<ResolvedEncryptionInfo> getEncryptionMetadata() const final {
         uasserted(31133,
@@ -392,20 +415,54 @@ public:
     }
 
     bool containsEncryptedNode() const final {
-        uasserted(
-            31134,
-            "Whether or not this tree contains an encrypted node is not known until runtime.");
+        uasserted(31134,
+                  "Cannot attempt to reference a path whose encryption properties are not known "
+                  "until runtime");
     }
 
     bool containsRandomlyEncryptedNode() const final {
-        uasserted(
-            51234,
-            "Whether or not this tree contains an encrypted node is not known until runtime.");
+        uasserted(51234,
+                  "Cannot attempt to reference a path whose encryption properties are not known "
+                  "until runtime");
     }
 
     std::unique_ptr<EncryptionSchemaTreeNode> clone() const final {
-        return std::make_unique<EncryptionSchemaStateUnknownNode>(*this);
+        return std::make_unique<EncryptionSchemaStateMixedNode>(*this);
     }
+};
+
+/**
+ * Node which represents a field for which we can choose an encryption status and type at a later
+ * time. When this node exists in a schema tree, it indicates a referenceable path which does not
+ * yet have an ResolvedEncryptionInfo assigned but could support one.
+ *
+ * This node has two possible futures. Either an encryption info will be chosen for it when it is
+ * compared to an encrypted node of that type and it will be converted into an
+ * EncryptionSchemaEncryptedNode. At that time, the attached literals would be marked for
+ * encryption.
+ *
+ * Alternatively, it may be compared to something unencrypted or be staged for evaluation by the
+ * server. If this is the case, it must become an EncryptionSchemaNotEncryptedNode and any attached
+ * literals should be left alone and forgotten. If a schema tree reaches its final state and one of
+ * these nodes still exists, the effect is the same as manually converting it to an
+ * EncryptionSchemaNotEncryptedNode.
+ */
+class EncryptionSchemaUnknownNode final : public EncryptionSchemaTreeNode {
+public:
+    boost::optional<ResolvedEncryptionInfo> getEncryptionMetadata() const final {
+        return boost::none;
+    }
+
+    std::unique_ptr<EncryptionSchemaTreeNode> clone() const final {
+        return std::make_unique<EncryptionSchemaUnknownNode>(*this);
+    }
+
+    boost::optional<std::vector<std::reference_wrapper<ExpressionConstant>>&> literals() final {
+        return _literals;
+    }
+
+private:
+    std::vector<std::reference_wrapper<ExpressionConstant>> _literals;
 };
 
 }  // namespace mongo

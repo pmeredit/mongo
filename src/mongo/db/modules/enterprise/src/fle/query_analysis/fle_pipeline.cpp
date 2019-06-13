@@ -174,7 +174,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGroup(
         if (accu->getOpName() == "$addToSet"s || accu->getOpName() == "$push"s) {
             if (expressionSchema->containsEncryptedNode()) {
                 newSchema->addChild(FieldRef(accuStmt.fieldName),
-                                    std::make_unique<EncryptionSchemaStateUnknownNode>());
+                                    std::make_unique<EncryptionSchemaStateMixedNode>());
             } else {
                 newSchema->addChild(FieldRef(accuStmt.fieldName),
                                     std::make_unique<EncryptionSchemaNotEncryptedNode>());
@@ -247,8 +247,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGraphLookUp(
     invariant(modifiedPaths.renames.empty());
     for (const auto& path : modifiedPaths.paths) {
         if (prevSchema->containsEncryptedNode()) {
-            newSchema->addChild(FieldRef(path),
-                                std::make_unique<EncryptionSchemaStateUnknownNode>());
+            newSchema->addChild(FieldRef(path), std::make_unique<EncryptionSchemaStateMixedNode>());
         } else {
             newSchema->addChild(FieldRef(path),
                                 std::make_unique<EncryptionSchemaNotEncryptedNode>());
@@ -278,7 +277,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForLookUp(
         for (const auto& path : modifiedPaths.paths) {
             if (children[0]->containsEncryptedNode()) {
                 newSchema->addChild(FieldRef(path),
-                                    std::make_unique<EncryptionSchemaStateUnknownNode>());
+                                    std::make_unique<EncryptionSchemaStateMixedNode>());
             } else {
                 newSchema->addChild(FieldRef(path),
                                     std::make_unique<EncryptionSchemaNotEncryptedNode>());
@@ -321,8 +320,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForLookUp(
                 (!localMetadata && !foreignMetadata) ||
                     localMetadata->algorithm == FleAlgorithmEnum::kDeterministic);
         for (const auto& path : modifiedPaths.paths) {
-            newSchema->addChild(FieldRef(path),
-                                std::make_unique<EncryptionSchemaStateUnknownNode>());
+            newSchema->addChild(FieldRef(path), std::make_unique<EncryptionSchemaStateMixedNode>());
         }
     }
     return newSchema;

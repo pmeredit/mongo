@@ -34,7 +34,7 @@ public:
     /**
      * Entering an "evaluation" expression means that the result is always not-encrypted. However,
      * we still keep track of the current nesting level to make sure that we only set the output
-     * schema when exiting the outermost evaluated expression.
+     * schema when exiting the outermost evaluated or compared expression.
      */
     void enterEvaluateOrCompare() {
         ++_evaluateSubtreeCount;
@@ -43,8 +43,8 @@ public:
     /**
      * Attempts to reconcile the 'newSchema' with the current output schema stored in _outputSchema.
      *
-     * If called within an evaluated expression (_evaluateSubtreeCount > 0), then this method does
-     * nothing.
+     * If called within an evaluated or compared expression (_evaluateSubtreeCount > 0), then this
+     * method does nothing.
      */
     void reconcileSchema(std::unique_ptr<EncryptionSchemaTreeNode> newSchema) {
         if (_evaluateSubtreeCount == 0) {
