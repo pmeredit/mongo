@@ -203,6 +203,11 @@ Intention exitSubtree(const ExpressionContext& expCtx, std::stack<Subtree>& subt
                           return l + " '" + r.fullPath() + "'";
                       }));
 }
+[[noreturn]] void uassertedComparisonOfRandomlyEncrypted(const FieldPath& currentField) {
+    uasserted(31158,
+              "Comparison disallowed between fields where one is randomly encrypted; field '"s +
+                  currentField.fullPath() + "' is randomly encrypted.");
+}
 
 [[noreturn]] void uassertedEvaluationInComparedEncryptedSubtree(
     const StringData evaluation, const std::vector<FieldPath>& comparedFields) {
@@ -287,6 +292,12 @@ void errorIfEncryptedFieldFoundInEvaluated(const EncryptionSchemaTreeNode& schem
 void attemptReconcilingFieldEncryptionInCompared(const EncryptionSchemaTreeNode& schema,
                                                  const ExpressionFieldPath& fieldPath,
                                                  Subtree::Compared* compared) {
+    // Any reference to a randomly encrypted field within a comparison subtree will fail.
+    auto metadata = schema.getEncryptionMetadataForPath(
+        FieldRef(fieldPath.getFieldPathWithoutCurrentPrefix().fullPath()));
+    if (metadata && metadata->algorithm == FleAlgorithmEnum::kRandom) {
+        uassertedComparisonOfRandomlyEncrypted(fieldPath.getFieldPathWithoutCurrentPrefix());
+    }
     compared->state = stdx::visit(
         [&](auto&& state) -> decltype(Subtree::Compared::state) {
             using StateType = std::decay_t<decltype(state)>;

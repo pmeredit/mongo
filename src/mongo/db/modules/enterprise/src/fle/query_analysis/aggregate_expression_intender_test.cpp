@@ -91,6 +91,25 @@ protected:
                             keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
                             bsonType: "int"
                     }
+                },
+                randomString: {
+                    encrypt: {
+                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                        keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
+                        bsonType: "string"
+                    }
+                },
+                nestedRandom: {
+                    type: "object",
+                    properties: {
+                        randomString: {
+                            encrypt: {
+                                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                                keyId: [{$binary: "ASNFZ4mrze/ty6mHZUMhAQ==", $type: "04"}],
+                                bsonType: "string"
+                            }
+                        }
+                    }
                 }
             }
         })";
@@ -350,5 +369,28 @@ TEST_F(AggregateExpressionIntenderTest, MarkReportsNoEncryptedPlaceholders) {
                     *getExpCtx(), *makeSchema(), expressionPtr.get(), false) ==
                 aggregate_expression_intender::Intention::NotMarked);
 }
+
+TEST_F(AggregateExpressionIntenderTest, ComparisonFailsOnRandomToDeterministic) {
+    ASSERT_THROWS_CODE(
+        stateIntention(R"({"$eq": ["$randomString", "$safeString"]})"), AssertionException, 31158);
+}
+
+TEST_F(AggregateExpressionIntenderTest, ComparisonFailsOnRandomToLiteral) {
+    ASSERT_THROWS_CODE(
+        stateIntention(R"({"$eq": ["$randomString", "helloworld"]})"), AssertionException, 31158);
+}
+
+TEST_F(AggregateExpressionIntenderTest, ComparisonFailsOnRandomToRandom) {
+    ASSERT_THROWS_CODE(stateIntention(R"({"$eq": ["$randomString", "$randomString"]})"),
+                       AssertionException,
+                       31158);
+}
+
+TEST_F(AggregateExpressionIntenderTest, ComparisonFailsWithPrefixOfRandom) {
+    ASSERT_THROWS_CODE(
+        stateIntention(R"({"$eq": ["$nestedRandom", "literal"]})"), AssertionException, 31131);
+}
+
+
 }  // namespace
 }  // namespace mongo
