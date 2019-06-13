@@ -19,6 +19,8 @@ namespace {
  */
 class SchemaTracker {
 public:
+    explicit SchemaTracker(bool outputIsCompared) : _outputIsCompared(outputIsCompared){};
+
     /**
      * Exits the current evaluation state. If exitting the outermost evaluated expression, then this
      * method will also populate the output schema as not encrypted under the assumption that the
@@ -48,13 +50,28 @@ public:
      */
     void reconcileSchema(std::unique_ptr<EncryptionSchemaTreeNode> newSchema) {
         if (_evaluateSubtreeCount == 0) {
-            uassert(51203,
-                    "Cannot mix an expression which evaluates to an encrypted value with one that "
-                    "evaluates to a non-encrypted value",
-                    !_outputSchema || *_outputSchema == *newSchema);
-            if (!_outputSchema)
+            // If attempting to reconcile against a conflicting output schema, then instead return
+            // an "unknown" node since the encryption schema is not known until runtime.
+            if (_outputSchema) {
+                // If the current reconciled schema is already unknown, then keep as-is since
+                // comparing against it will result in an assertion.
+                if (typeid(*_outputSchema) != typeid(EncryptionSchemaStateMixedNode) &&
+                    *_outputSchema != *newSchema) {
+                    _outputSchema = std::make_unique<EncryptionSchemaStateMixedNode>();
+                }
+            } else
                 _outputSchema = std::move(newSchema);
         }
+    }
+
+    /**
+     * Reconciling a literal is typically treated as unencrypted, unless the expression is being
+     * used in a comparison between documents (e.g. $group key). In that case, do not attempt to
+     * reconcile the schema as it may be compared to an encrypted field.
+     */
+    void reconcileLiteral() {
+        if (!_outputIsCompared)
+            reconcileSchema(std::make_unique<EncryptionSchemaNotEncryptedNode>());
     }
 
     void decrementEvaluate() {
@@ -63,7 +80,8 @@ public:
     }
 
     std::unique_ptr<EncryptionSchemaTreeNode> releaseOutputSchema() {
-        return std::move(_outputSchema);
+        return _outputSchema ? std::move(_outputSchema)
+                             : std::make_unique<EncryptionSchemaNotEncryptedNode>();
     }
 
 private:
@@ -74,6 +92,10 @@ private:
     unsigned long long _evaluateSubtreeCount{0};
 
     std::unique_ptr<EncryptionSchemaTreeNode> _outputSchema;
+
+    // Indicates whether the output of the expression will be used in comparison between documents,
+    // for instance as the key in a $group.
+    bool _outputIsCompared;
 };
 
 /**
@@ -436,7 +458,7 @@ public:
     }
 
     void visit(ExpressionConstant*) {
-        _tracker.reconcileSchema(std::make_unique<EncryptionSchemaNotEncryptedNode>());
+        _tracker.reconcileLiteral();
     }
 
     void visit(ExpressionIfNull*) {
@@ -447,7 +469,7 @@ public:
     void visit(ExpressionObject* expr) {
         auto newSchema = std::make_unique<EncryptionSchemaNotEncryptedNode>();
         for (auto[field, childExpr] : expr->getChildExpressions()) {
-            newSchema->addChild(FieldRef(field), getOutputSchema(_schema, childExpr.get()));
+            newSchema->addChild(FieldRef(field), getOutputSchema(_schema, childExpr.get(), false));
         }
         _tracker.reconcileSchema(std::move(newSchema));
 
@@ -959,8 +981,9 @@ private:
  */
 class ExpressionWalkerSchema {
 public:
-    ExpressionWalkerSchema(const EncryptionSchemaTreeNode& schema)
+    ExpressionWalkerSchema(const EncryptionSchemaTreeNode& schema, bool expressionOutputIsCompared)
         : _schema(schema),
+          _tracker(expressionOutputIsCompared),
           _preVisitor(_schema, _tracker),
           _inVisitor(_schema, _tracker),
           _postVisitor(_schema, _tracker) {}
@@ -995,8 +1018,9 @@ private:
 }  // namespace
 
 std::unique_ptr<EncryptionSchemaTreeNode> getOutputSchema(const EncryptionSchemaTreeNode& schema,
-                                                          Expression* expression) {
-    ExpressionWalkerSchema schemaWalker{schema};
+                                                          Expression* expression,
+                                                          bool expressionOutputIsCompared) {
+    ExpressionWalkerSchema schemaWalker{schema, expressionOutputIsCompared};
     expression_walker::walk(&schemaWalker, expression);
     return schemaWalker.releaseOutputSchema();
 }

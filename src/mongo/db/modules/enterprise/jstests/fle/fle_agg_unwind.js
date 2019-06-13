@@ -158,8 +158,6 @@
 
         // Encryption of a $unwind stage that references a potentially encrypted field fails on
         // subsequent match.
-        // TODO SERVER-41715: This test should fail on the match due to a potentially encrypted
-        // matched field, rather than encounter error code 51203.
         command = {
             aggregate: coll.getName(),
             pipeline: [
@@ -176,7 +174,7 @@
             jsonSchema: {type: "object", properties: {ssnArray: encryptedStringSpec}},
             isRemoteSchema: false,
         };
-        assert.commandFailedWithCode(testDB.runCommand(command), 51203);
+        assert.commandFailedWithCode(testDB.runCommand(command), 31134);
     })();
 
     mongocryptd.stop();

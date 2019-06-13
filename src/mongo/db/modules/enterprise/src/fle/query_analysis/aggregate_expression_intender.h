@@ -75,10 +75,15 @@ Intention mark(const ExpressionContext& expCtx,
  * method with the expression '$a' would result in a pointer to a schema tree with a single
  * EncryptionSchemaEncryptedNode at the root.
  *
+ * Pass 'true' for 'expressionOutputIsCompared' if the owner of this Expression is going to use the
+ * output to perform equality comparisons. For example, if this expression tree is used as the
+ * group keys in a $group stage.
+ *
  * Throws an assertion if the schema of the evaluated result cannot be statically determined at
  * parse time or if the expression is invalid for client-side encryption.
  */
 std::unique_ptr<EncryptionSchemaTreeNode> getOutputSchema(const EncryptionSchemaTreeNode& schema,
-                                                          Expression* expression);
+                                                          Expression* expression,
+                                                          bool expressionOutputIsCompared);
 
 }  // namespace mongo::aggregate_expression_intender

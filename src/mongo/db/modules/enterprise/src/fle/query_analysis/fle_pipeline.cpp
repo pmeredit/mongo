@@ -86,7 +86,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForInclusionNode(
         auto fullPath = FieldRef{path};
         if (auto expr = root.getExpressionForPath(FieldPath(path))) {
             auto expressionSchema =
-                aggregate_expression_intender::getOutputSchema(prevSchema, expr.get());
+                aggregate_expression_intender::getOutputSchema(prevSchema, expr.get(), false);
             // If the schema has no encrypted values, it doesn't matter if we insert it into the
             // tree.
             uassert(31140,
@@ -159,8 +159,12 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGroup(
 
     for (const auto & [ pathStr, expression ] : source.getIdFields()) {
         auto fieldPath = FieldRef{pathStr};
-        auto expressionSchema =
-            aggregate_expression_intender::getOutputSchema(*prevSchema, expression.get());
+        // The expressions here are used for grouping things together, which is an equality
+        // comparison.
+        const bool expressionResultCompared = true;
+
+        auto expressionSchema = aggregate_expression_intender::getOutputSchema(
+            *prevSchema, expression.get(), expressionResultCompared);
         // This must be external to the usassert invocation to satisfy clang since it references a
         // structured binding.
         std::string errorMessage = str::stream()
@@ -171,8 +175,10 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGroup(
     }
     for (const auto& accuStmt : source.getAccumulatedFields()) {
         boost::intrusive_ptr<Accumulator> accu = accuStmt.makeAccumulator(source.getContext());
-        auto expressionSchema =
-            aggregate_expression_intender::getOutputSchema(*prevSchema, accuStmt.expression.get());
+        const bool expressionResultCompared = accu->getOpName() == "$addToSet"s;
+        auto expressionSchema = aggregate_expression_intender::getOutputSchema(
+            *prevSchema, accuStmt.expression.get(), expressionResultCompared);
+
         if (accu->getOpName() == "$addToSet"s || accu->getOpName() == "$push"s) {
             if (expressionSchema->containsEncryptedNode()) {
                 newSchema->addChild(FieldRef(accuStmt.fieldName),
@@ -373,7 +379,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForSingleDocumentTransform
         case TransformerInterface::TransformerType::kReplaceRoot: {
             const auto& replaceRoot = static_cast<const ReplaceRootTransformation&>(transformer);
             auto outputSchema = aggregate_expression_intender::getOutputSchema(
-                *prevSchema, replaceRoot.getExpression().get());
+                *prevSchema, replaceRoot.getExpression().get(), false);
             uassert(31159,
                     "$replaceRoot cannot have an encrypted field as root",
                     !outputSchema->getEncryptionMetadata());

@@ -165,21 +165,26 @@
         jsonSchema: {type: "object", properties: {qty: encryptedStringSpec}},
         isRemoteSchema: false
     };
-    assert.commandFailedWithCode(testDB.runCommand(command), 51203);
+    assert.commandFailedWithCode(testDB.runCommand(command), 51234);
 
-    // Test that $group with an expression in '_id' requires a stable output type across documents
-    // to allow for comparisons. The encryption properties of $qty and the constant are different.
+    // Test that $group with an expression in '_id' correctly marks literals since the evaluated
+    // result of the expression will be used in comparison across documents.
     command = {
         aggregate: coll.getName(),
         pipeline: [{
-            $group:
-                {_id: {$cond: [{$eq: ["$value", {$const: "thousand"}]}, {$const: 5}, "$qty"]}}
+            $group: {
+                _id:
+                    {$cond: [{$eq: ["$value", {$const: "thousand"}]}, {$const: "1000"}, "$qty"]}
+            }
         }],
         cursor: {},
         jsonSchema: {type: "object", properties: {qty: encryptedStringSpec}},
         isRemoteSchema: false
     };
-    assert.commandFailedWithCode(testDB.runCommand(command), 51203);
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+    assert(cmdRes.result.pipeline[0].$group._id.$cond[1].$const instanceof BinData, cmdRes);
 
     // Test that the $group succeeds if _id expression is a deterministically encrypted field.
     command = {
@@ -237,6 +242,32 @@
     };
     assertCommandUnchanged(command, false, true);
 
+    // Test that the $addToSet accumulator in $group successfully marks constants if added along
+    // with an encrypted field.
+    command = {
+        aggregate: coll.getName(),
+        pipeline: [{
+            $group: {
+                _id: null,
+                totalQuantity: {
+                    $addToSet: {
+                        $cond:
+                            [{$eq: ["$qty", {$const: "thousand"}]}, "$qty", "defaultQuantity"]
+                    }
+                }
+            }
+        }],
+        cursor: {},
+        jsonSchema: {type: "object", properties: {qty: encryptedStringSpec}},
+        isRemoteSchema: false,
+    };
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+    assert(
+        cmdRes.result.pipeline[0].$group.totalQuantity.$addToSet.$cond[2].$const instanceof BinData,
+        cmdRes);
+
     // Test that the $addToSet accumulator in $group fails if the output type is unstable.
     command = {
         aggregate: coll.getName(),
@@ -253,7 +284,7 @@
         jsonSchema: {type: "object", properties: {qty: encryptedStringSpec}},
         isRemoteSchema: false,
     };
-    assert.commandFailedWithCode(testDB.runCommand(command), 51203);
+    assert.commandFailedWithCode(testDB.runCommand(command), 31134);
 
     // Test that the $addToSet accumulator in $group fails if its expression outputs schema with
     // any fields encrypted with the random algorithm.
