@@ -30,7 +30,7 @@ env.Library(
 )
 
 env.CppUnitTest(
-    target='query_analysis_test',
+    target='enterprise_fle_query_analysis_test',
     source=[
         'encryption_schema_tree_test.cpp',
         'expression_analysis_test.cpp',

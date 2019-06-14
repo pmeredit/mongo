@@ -75,26 +75,6 @@ env.Library(
     ],
 )
 
-env.CppUnitTest(
-    target='ldap_query_test',
-    source=[
-        'ldap_query_test.cpp',
-    ],
-    LIBDEPS=[
-        'ldap_query',
-    ],
-)
-
-env.CppUnitTest(
-    target='ldap_connection_options_test',
-    source=[
-        'ldap_connection_options_test.cpp',
-    ],
-    LIBDEPS=[
-        'ldap_query',
-    ],
-)
-
 ldap_connection_sources = [
     'connections/ldap_connection_factory.cpp',
     'connections/ldap_connection_helpers.cpp',
@@ -163,13 +143,16 @@ env.Library(
 )
 
 env.CppUnitTest(
-    target='rewrite_rule_test',
+    target='enterprise_ldap_test',
     source=[
+        'ldap_connection_options_test.cpp',
+        'ldap_query_test.cpp',
         'name_mapping/rewrite_rule_test.cpp',
     ],
     LIBDEPS=[
         'ldap_manager',
         'ldap_name_map',
+        'ldap_query',
         '$BUILD_DIR/mongo/db/auth/auth',
         '$BUILD_DIR/mongo/db/service_context',
     ],

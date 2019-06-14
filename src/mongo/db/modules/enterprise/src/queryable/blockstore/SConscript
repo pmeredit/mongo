@@ -19,18 +19,9 @@ env.Library(
 )
 
 env.CppIntegrationTest(
-    target='list_dir_test',
+    target='enterprise_blockstore_test',
     source=[
         'list_dir_test.cpp',
-    ],
-    LIBDEPS=[
-        'blockstore',
-    ],
-)
-
-env.CppIntegrationTest(
-    target='reader_test',
-    source=[
         'reader_test.cpp',
     ],
     LIBDEPS=[

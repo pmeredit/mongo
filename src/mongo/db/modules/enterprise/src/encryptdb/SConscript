@@ -50,16 +50,6 @@ env.Library(
     ]
 )
 
-env.CppUnitTest(
-    target='keystore_metadata_test',
-    source=[
-        'keystore_metadata_test.cpp',
-    ],
-    LIBDEPS=[
-        'keystore_metadata',
-    ],
-)
-
 wtEnv.Library(target='encryptdb',
               source=[
                    'keystore_data_store.cpp',
@@ -84,19 +74,6 @@ wtEnv.Library(target='encryptdb',
                    '$BUILD_DIR/mongo/db/storage/storage_options',
                    '$BUILD_DIR/mongo/idl/server_parameter',
               ],
-)
-
-wtEnv.CppUnitTest(
-    target='keystore_test',
-    source=[
-        'keystore_test.cpp',
-    ],
-    LIBDEPS=[
-        'encryptdb',
-        'symmetric_crypto_enterprise',
-        '$BUILD_DIR/mongo/db/service_context_test_fixture',
-        '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_mock',
-    ],
 )
 
 env.Library(target='log_redact_options',
@@ -134,20 +111,6 @@ env.Library(target='symmetric_crypto_enterprise',
             ]
 )
 
-cryptoTest = env.Clone()
-cryptoTest.InjectThirdParty(libraries=['wiredtiger'])
-if env.TargetOSIs('darwin', 'macOS'):
-    cryptoTest.Append(CPPDEFINES=["DISABLE_GCM_TESTVECTORS"]);
-
-cryptoTest.CppUnitTest(target='symmetric_crypto_test',
-                source='symmetric_crypto_test.cpp',
-                LIBDEPS=[
-                    'symmetric_crypto_enterprise',
-                    '$BUILD_DIR/mongo/db/storage/storage_options',
-                    '$BUILD_DIR/mongo/util/net/network',
-                ])
-
-
 env.Library(target='kmip',
             source=[
                 'kmip_request.cpp',
@@ -172,35 +135,41 @@ env.Library(
     ]
 )
 
-env.CppUnitTest(target='kmip_response_test',
-                source='kmip_response_test.cpp',
-                LIBDEPS=[
-                    'kmip',
-                    'symmetric_crypto_enterprise',
-                    '$BUILD_DIR/mongo/util/net/network',
-                ])
-
-env.CppUnitTest(target='kmip_request_test',
-                source='kmip_request_test.cpp',
-                LIBDEPS=[
-                    'kmip',
-                    'symmetric_crypto_enterprise',
-                    '$BUILD_DIR/mongo/util/net/network',
-                ])
+wtEnv.CppUnitTest(
+    target='enterprise_encryptdb_test',
+    source=[
+        'keystore_metadata_test.cpp',
+        'keystore_test.cpp',
+        'kmip_request_test.cpp',
+        'kmip_response_test.cpp',
+        'symmetric_crypto_test.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/db/service_context_test_fixture',
+        '$BUILD_DIR/mongo/db/storage/storage_options',
+        '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_mock',
+        '$BUILD_DIR/mongo/util/net/network',
+        'encryptdb',
+        'keystore_metadata',
+        'kmip',
+        'symmetric_crypto_enterprise',
+    ],
+)
 
 if not using_ubsan:
-    wtEnv.CppUnitTest(target='wiredtiger_encryption_test',
-                    source='wiredtiger_encryption_test.cpp',
-                    LIBDEPS=[
-                        'symmetric_crypto_enterprise',
-                        '$BUILD_DIR/mongo/db/auth/security_file',
-                        '$BUILD_DIR/mongo/db/service_context',
-                        '$BUILD_DIR/mongo/db/service_context_test_fixture',
-                        '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_mock',
-                        '$BUILD_DIR/mongo/util/net/network',
-                        'encryptdb',
-                    ],
-                    LIBDEPS_PRIVATE=[
-                        'symmetric_crypto_enterprise',
-                        '$BUILD_DIR/mongo/db/auth/authmocks',
-                    ])
+    wtEnv.CppUnitTest(
+        target='enterprise_encryptdb_noubsan_test',
+        source=[
+            'wiredtiger_encryption_test.cpp',
+        ],
+        LIBDEPS=[
+            '$BUILD_DIR/mongo/db/auth/authmocks',
+            '$BUILD_DIR/mongo/db/auth/security_file',
+            '$BUILD_DIR/mongo/db/service_context',
+            '$BUILD_DIR/mongo/db/service_context_test_fixture',
+            '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_mock',
+            '$BUILD_DIR/mongo/util/net/network',
+            'encryptdb',
+            'symmetric_crypto_enterprise',
+        ],
+    )

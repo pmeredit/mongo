@@ -44,10 +44,11 @@ env.Library(
     ],
 )
 
-
 env.CppUnitTest(
-    target='backup_cursor_service_test',
-    source='backup_cursor_service_test.cpp',
+    target='enterprise_hot_backups_test',
+    source=[
+        'backup_cursor_service_test.cpp',
+    ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/auth/authmocks',
         '$BUILD_DIR/mongo/db/repl/replmocks',
