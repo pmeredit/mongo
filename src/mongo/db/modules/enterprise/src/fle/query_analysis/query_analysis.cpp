@@ -352,9 +352,6 @@ PlaceHolderResult addPlaceHoldersForAggregate(
     const std::string& dbName,
     const BSONObj& cmdObj,
     std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
-    uassert(ErrorCodes::NotImplemented,
-            "Aggregate command is not supported with encryption",
-            getTestCommandsEnabled());
     // Parse the command to an AggregationRequest to verify that there no unknown fields.
     auto request = uassertStatusOK(AggregationRequest::parseFromBSON(dbName, cmdObj, boost::none));
 
