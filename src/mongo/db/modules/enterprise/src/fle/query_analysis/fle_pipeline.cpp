@@ -159,10 +159,12 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGroup(
         auto fieldPath = FieldRef{pathStr};
         auto expressionSchema =
             aggregate_expression_intender::getOutputSchema(*prevSchema, expression.get());
-        uassert(51222,
-                str::stream() << "'" << pathStr << "' cannot have fields encrypted with the random "
-                                                   "algorithm when used for grouping.",
-                !expressionSchema->containsRandomlyEncryptedNode());
+        // This must be external to the usassert invocation to satisfy clang since it references a
+        // structured binding.
+        std::string errorMessage = str::stream()
+            << "'" << pathStr << "' cannot have fields encrypted with the random algorithm when "
+                                 "used for grouping.";
+        uassert(51222, errorMessage, !expressionSchema->containsRandomlyEncryptedNode());
         newSchema->addChild(fieldPath, std::move(expressionSchema));
     }
     for (const auto& accuStmt : source.getAccumulatedFields()) {
