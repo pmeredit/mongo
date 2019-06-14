@@ -29,6 +29,8 @@
 
 #include "mongo/platform/basic.h"
 
+#include <string>
+
 #include "fle_pipeline.h"
 
 #include "aggregate_expression_intender.h"
@@ -52,6 +54,8 @@
 namespace mongo {
 
 namespace {
+
+using namespace std::string_literals;
 
 /*
  * This function handles propagating the schema through an inclusion projection and an $addFields
@@ -165,7 +169,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGroup(
         boost::intrusive_ptr<Accumulator> accu = accuStmt.makeAccumulator(source.getContext());
         auto expressionSchema =
             aggregate_expression_intender::getOutputSchema(*prevSchema, accuStmt.expression.get());
-        if (accu->getOpName() == "$addToSet" || accu->getOpName() == "$push") {
+        if (accu->getOpName() == "$addToSet"s || accu->getOpName() == "$push"s) {
             if (expressionSchema->containsEncryptedNode()) {
                 newSchema->addChild(FieldRef(accuStmt.fieldName),
                                     std::make_unique<EncryptionSchemaStateUnknownNode>());
@@ -173,14 +177,14 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGroup(
                 newSchema->addChild(FieldRef(accuStmt.fieldName),
                                     std::make_unique<EncryptionSchemaNotEncryptedNode>());
             }
-            if (accu->getOpName() == "$addToSet") {
+            if (accu->getOpName() == "$addToSet"s) {
                 uassert(51223,
                         str::stream() << "'" << accuStmt.fieldName
                                       << "' cannot have fields encrypted with the random algorithm "
                                          "when used in an $addToSet accumulator.",
                         !expressionSchema->containsRandomlyEncryptedNode());
             }
-        } else if (accu->getOpName() == "$first" || accu->getOpName() == "$last") {
+        } else if (accu->getOpName() == "$first"s || accu->getOpName() == "$last"s) {
             newSchema->addChild(FieldRef{accuStmt.fieldName}, std::move(expressionSchema));
         } else {
             uassert(51221,
@@ -535,7 +539,7 @@ aggregate_expression_intender::Intention analyzeForGroup(FLEPipeline* flePipe,
         // The expressions here are used for adding things to a set requires an equality
         // comparison.
         boost::intrusive_ptr<Accumulator> accu = accuStmt.makeAccumulator(source->getContext());
-        const bool expressionResultCompared = accu->getOpName() == "$addToSet";
+        const bool expressionResultCompared = accu->getOpName() == "$addToSet"s;
         didMark = didMark ||
             aggregate_expression_intender::mark(*(flePipe->getPipeline().getContext().get()),
                                                 schema,
