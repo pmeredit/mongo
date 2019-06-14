@@ -363,7 +363,7 @@
         assert.commandFailedWithCode(testDB.runCommand(command), 31133);
     }
 
-    // Test that numeric accumulator expression aggregating encrypted fields fails.
+    // Test that numeric accumulator expressions aggregating encrypted fields fail.
     command = {
         aggregate: coll.getName(),
         pipeline: [{$group: {_id: null, totalPrice: {}}}],

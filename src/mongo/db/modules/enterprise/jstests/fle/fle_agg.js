@@ -213,7 +213,6 @@
               "pipeline2": [{$match: {ssn: 5}}]
           }
         },
-        {$bucketAuto: {groupBy: "$_id", buckets: 2}},
         {$planCacheStats: {}},
         {$_internalInhibitOptimization: {}},
         {$out: "other"},

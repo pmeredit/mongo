@@ -124,7 +124,6 @@ TEST_F(FLEPipelineTest, ThrowsOnInvalidOrUnsupportedStage) {
                 { $match: { ssn: 5}}
             ]
         }})"),
-        fromjson("{$bucketAuto: {groupBy: '$_id', buckets: 2}}"),
         fromjson("{$planCacheStats: {}}"),
         fromjson("{$_internalInhibitOptimization: {}}"),
         fromjson("{$out: 'other'}"),
