@@ -26,7 +26,7 @@ wtEnv.Library(
         '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger',
         '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core',
         '$BUILD_DIR/mongo/db/storage/kv/kv_engine_core',
-        '$BUILD_DIR/mongo/db/storage/kv/kv_storage_engine',
+        '$BUILD_DIR/mongo/db/storage/kv/storage_engine',
         '$BUILD_DIR/mongo/db/storage/storage_engine_lock_file',
         '$BUILD_DIR/mongo/db/storage/storage_engine_metadata',
     ],
