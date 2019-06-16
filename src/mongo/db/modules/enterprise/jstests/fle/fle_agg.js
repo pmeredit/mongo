@@ -213,7 +213,6 @@
               "pipeline2": [{$match: {ssn: 5}}]
           }
         },
-        {$group: {_id: null}},
         {$unwind: "$ssn"},
         {$redact: "$$DESCEND"},
         {$bucketAuto: {groupBy: "$_id", buckets: 2}},
