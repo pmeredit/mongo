@@ -47,7 +47,7 @@ const std::string userName = "mockuser@LDAPTEST.10GEN.CC";
 char krb5ccFile[] = "mongotest-krb5cc-XXXXXX";
 
 std::string getAbsolutePath(const char* path) {
-    char* absolutePath = realpath(path, NULL);
+    char* absolutePath = realpath(path, nullptr);
     fassert(4016, absolutePath);
     std::string result = absolutePath;
     free(absolutePath);
@@ -93,7 +93,7 @@ void setupLegacyEnvironment() {
                         "-c",
                         krb5ccFile,
                         userName.c_str(),
-                        NULL);
+                        nullptr);
         Status s = Status::OK();
         if (er != 0) {
             s = Status(ErrorCodes::InternalError, errnoWithPrefix("cannot execute \"kinit\""));

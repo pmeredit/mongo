@@ -47,22 +47,22 @@ Status tryAcquireServerCredential(const std::string& principalName) {
         AcquireCredentialsHandleW(const_cast<wchar_t*>(utf16principalName.c_str()),
                                   const_cast<LPWSTR>(L"kerberos"),
                                   SECPKG_CRED_INBOUND,
-                                  NULL,  // LOGON id
-                                  NULL,  // auth data
-                                  NULL,  // get key fn
-                                  NULL,  // get key arg
+                                  nullptr,  // LOGON id
+                                  nullptr,  // auth data
+                                  nullptr,  // get key fn
+                                  nullptr,  // get key arg
                                   &cred,
                                   &ignored);
     if (status != SEC_E_OK) {
         char* err;
         if (!FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
                                 FORMAT_MESSAGE_IGNORE_INSERTS,
-                            NULL,
+                            nullptr,
                             status,
                             MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
                             (LPSTR)&err,
                             0,
-                            NULL)) {
+                            nullptr)) {
             return Status(ErrorCodes::UnknownError, "sspi could not translate error message");
         }
         ON_BLOCK_EXIT([&] { LocalFree(err); });
@@ -113,12 +113,12 @@ void HandleLastError(const sasl_utils_t* utils, DWORD errCode, const char* msg) 
     char* err;
     if (!FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
                             FORMAT_MESSAGE_IGNORE_INSERTS,
-                        NULL,
+                        nullptr,
                         errCode,
                         MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
                         (LPSTR)&err,
                         0,
-                        NULL)) {
+                        nullptr)) {
         return;
     }
 
@@ -141,7 +141,7 @@ int sspiServerMechNew(void* glob_context,
     std::unique_ptr<SspiConnContext> pcctx(new SspiConnContext());
 
     // Compose principal name
-    if (sparams->serverFQDN == NULL || strlen(sparams->serverFQDN) == 0) {
+    if (sparams->serverFQDN == nullptr || strlen(sparams->serverFQDN) == 0) {
         setSaslError(sparams->utils, "SSPI: no serverFQDN");
         return SASL_FAIL;
     }
@@ -154,10 +154,10 @@ int sspiServerMechNew(void* glob_context,
     SECURITY_STATUS status = AcquireCredentialsHandle(const_cast<wchar_t*>(principalName.c_str()),
                                                       const_cast<LPWSTR>(L"kerberos"),
                                                       SECPKG_CRED_INBOUND,
-                                                      NULL,  // LOGON id
-                                                      NULL,  // auth data
-                                                      NULL,  // get key fn
-                                                      NULL,  // get key arg
+                                                      nullptr,  // LOGON id
+                                                      nullptr,  // auth data
+                                                      nullptr,  // get key fn
+                                                      nullptr,  // get key arg
                                                       &pcctx->cred,
                                                       &ignored);
     if (status != SEC_E_OK) {
@@ -249,10 +249,10 @@ int setAuthIdAndAuthzId(SspiConnContext* pcctx,
     oparams->doneflag = 1;
     oparams->mech_ssf = 0;
     oparams->maxoutbuf = 0;
-    oparams->encode_context = NULL;
-    oparams->encode = NULL;
-    oparams->decode_context = NULL;
-    oparams->decode = NULL;
+    oparams->encode_context = nullptr;
+    oparams->encode = nullptr;
+    oparams->decode_context = nullptr;
+    oparams->decode = nullptr;
     oparams->param_version = 0;
 
     // Fetch the name that we authenticated out of the context
@@ -292,7 +292,7 @@ int setAuthIdAndAuthzId(SspiConnContext* pcctx,
 
     wrapBufs[1].cbBuffer = 0;
     wrapBufs[1].BufferType = SECBUFFER_DATA;
-    wrapBufs[1].pvBuffer = NULL;
+    wrapBufs[1].pvBuffer = nullptr;
 
     ULONG pfQOP = 0;
     status = DecryptMessage(&pcctx->ctx, &wrapBufDesc, 0, &pfQOP);
@@ -344,7 +344,7 @@ int sspiServerMechStep(void* conn_context,
                        unsigned* serveroutlen,
                        sasl_out_params_t* oparams) throw() {
     SspiConnContext* pcctx = static_cast<SspiConnContext*>(conn_context);
-    *serverout = NULL;
+    *serverout = nullptr;
     *serveroutlen = 0;
 
     // There are three phases of the GSSAPI mechanism here.  Each time we receive a response
@@ -386,21 +386,21 @@ int sspiServerMechStep(void* conn_context,
     outbuf.ulVersion = SECBUFFER_VERSION;
     outbuf.cBuffers = 1;
     outbuf.pBuffers = outBufs;
-    outBufs[0].pvBuffer = NULL;
+    outBufs[0].pvBuffer = nullptr;
     outBufs[0].cbBuffer = 0;
     outBufs[0].BufferType = SECBUFFER_TOKEN;
 
     ULONG contextAttr = 0;
     SECURITY_STATUS status =
         AcceptSecurityContext(&pcctx->cred,
-                              pcctx->haveCtxt ? &pcctx->ctx : NULL,
+                              pcctx->haveCtxt ? &pcctx->ctx : nullptr,
                               &inbuf,
                               ASC_REQ_ALLOCATE_MEMORY | ASC_REQ_INTEGRITY | ASC_REQ_MUTUAL_AUTH,
                               SECURITY_NETWORK_DREP,
                               &pcctx->ctx,
                               &outbuf,
                               &contextAttr,
-                              NULL);
+                              nullptr);
     if (status != SEC_E_OK && status != SEC_I_CONTINUE_NEEDED) {
         HandleLastError(sparams->utils, status, "AcceptSecurityContext");
         return SASL_FAIL;
@@ -444,16 +444,16 @@ sasl_server_plug_t sspiServerPlugin[] = {
          SASL_SEC_PASS_CREDENTIALS,
      SASL_FEAT_WANT_CLIENT_FIRST | SASL_FEAT_ALLOWS_PROXY |
          SASL_FEAT_DONTUSE_USERPASSWD, /* features */
-     NULL,                             /* global state for mechanism */
+     nullptr,                          /* global state for mechanism */
      sspiServerMechNew,
      sspiServerMechStep,
      sspiServerMechDispose,
      sspiServerMechFree,
-     NULL,
-     NULL,
-     NULL,
-     NULL,
-     NULL}};
+     nullptr,
+     nullptr,
+     nullptr,
+     nullptr,
+     nullptr}};
 
 int sspiServerPluginInit(const sasl_utils_t* utils,
                          int maxversion,
@@ -483,7 +483,7 @@ MONGO_INITIALIZER_GENERAL(SaslSspiServerPlugin,
         return Status(ErrorCodes::UnknownError,
                       str::stream() << "Could not add SASL Server SSPI plugin " << sspiPluginName
                                     << ": "
-                                    << sasl_errstring(ret, NULL, NULL));
+                                    << sasl_errstring(ret, nullptr, nullptr));
     }
 
     return Status::OK();
@@ -498,7 +498,7 @@ MONGO_INITIALIZER_GENERAL(SaslPlainServerPlugin,
         return Status(ErrorCodes::UnknownError,
                       str::stream() << "Could not add SASL Server PLAIN plugin " << sspiPluginName
                                     << ": "
-                                    << sasl_errstring(ret, NULL, NULL));
+                                    << sasl_errstring(ret, nullptr, nullptr));
     }
 
     return Status::OK();

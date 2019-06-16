@@ -83,7 +83,7 @@ bool ServerStatusClient::loadIfNeeded() {
     bool cachingEnabled = _cacheExpireSecs > 0;
 
     if (cachingEnabled) {
-        time_t now = time(0);
+        time_t now = time(nullptr);
         time_t secsFromLastRefresh = now - _lastRefresh;
 
         if (secsFromLastRefresh < _cacheExpireSecs) {
@@ -94,7 +94,7 @@ bool ServerStatusClient::loadIfNeeded() {
     bool ok = load();
 
     if (ok && cachingEnabled) {
-        _lastRefresh = time(0);  // represents serverStatus completion
+        _lastRefresh = time(nullptr);  // represents serverStatus completion
     }
 
     return ok;

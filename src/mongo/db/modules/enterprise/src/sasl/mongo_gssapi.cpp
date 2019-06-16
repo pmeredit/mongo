@@ -53,7 +53,7 @@ Status canonicalizeName(gss_OID nameType, StringData name, std::string* canonica
     if (GSS_ERROR(majorStatus))
         goto error;
 
-    majorStatus = gss_display_name(&minorStatus, gssNameCanonical, &bufFullName, NULL);
+    majorStatus = gss_display_name(&minorStatus, gssNameCanonical, &bufFullName, nullptr);
     if (GSS_ERROR(majorStatus))
         goto error;
 
@@ -117,8 +117,8 @@ Status tryAcquireServerCredential(const std::string& principalName) {
                                    GSS_C_NULL_OID_SET,  // desired_mechs
                                    GSS_C_ACCEPT,        // cred_usage
                                    &credential,         // output_cred_handle
-                                   NULL,                // actual_mechs
-                                   NULL);               // time_rec
+                                   nullptr,             // actual_mechs
+                                   nullptr);            // time_rec
     if (GSS_ERROR(majorStatus)) {
         status = Status(ErrorCodes::UnknownError,
                         str::stream() << "gssapi could not acquire server credential for "

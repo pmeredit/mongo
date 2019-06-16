@@ -218,7 +218,7 @@ std::vector<uint8_t> AWSKMSService::encrypt(ConstDataRange cdr, StringData kmsKe
         UniqueKmsRequest(kms_encrypt_request_new(reinterpret_cast<const uint8_t*>(cdr.data()),
                                                  cdr.length(),
                                                  kmsKeyId.toString().c_str(),
-                                                 NULL));
+                                                 nullptr));
 
     auto region = parseCMK(kmsKeyId);
 

@@ -100,7 +100,7 @@ MONGO_INITIALIZER_GENERAL(SaslAuxpropMongodbInternal,
                       str::stream() << "Could not add sasl auxprop plugin "
                                     << auxpropMongoDBInternal.name
                                     << ": "
-                                    << sasl_errstring(ret, NULL, NULL));
+                                    << sasl_errstring(ret, nullptr, nullptr));
     }
 
     return Status::OK();

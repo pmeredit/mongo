@@ -16,21 +16,21 @@ namespace mongo {
 namespace audit {
 
 namespace {
-AuditManager* globalAuditManager = NULL;
+AuditManager* globalAuditManager = nullptr;
 }
 
 void setGlobalAuditManager(AuditManager* auditManager) {
-    fassert(17186, globalAuditManager == NULL);
+    fassert(17186, globalAuditManager == nullptr);
     globalAuditManager = auditManager;
 }
 
 void clearGlobalAuditManager() {
-    fassert(17187, globalAuditManager != NULL);
-    globalAuditManager = NULL;
+    fassert(17187, globalAuditManager != nullptr);
+    globalAuditManager = nullptr;
 }
 
 AuditManager* getGlobalAuditManager() {
-    fassert(17188, globalAuditManager != NULL);
+    fassert(17188, globalAuditManager != nullptr);
     return globalAuditManager;
 }
 

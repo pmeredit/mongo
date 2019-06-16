@@ -24,7 +24,7 @@ enum AuditFormat {
  */
 class AuditManager {
 public:
-    AuditManager() : auditFilter(NULL), enabled(false) {}
+    AuditManager() : auditFilter(nullptr), enabled(false) {}
 
     // Global filter describing what the admin desires to audit
     MatchExpression* auditFilter;

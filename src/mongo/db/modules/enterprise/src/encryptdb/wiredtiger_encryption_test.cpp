@@ -38,7 +38,7 @@ ServiceContext::ConstructorActionRegisterer createEncryptionKeyManager{
 
 class WiredTigerConnection {
 public:
-    WiredTigerConnection(StringData dbpath, StringData cipherName) : _conn(NULL) {
+    WiredTigerConnection(StringData dbpath, StringData cipherName) : _conn(nullptr) {
         encryptionGlobalParams.encryptionCipherMode = cipherName.toString();
         std::stringstream ss;
         ss << "create,cache_size=100MB,";
@@ -46,13 +46,13 @@ public:
         ss << "encryption=(name=" << cipherName << ",keyid=system),";
         std::string config = ss.str();
         _fastClockSource = std::make_unique<SystemClockSource>();
-        int ret = wiredtiger_open(dbpath.toString().c_str(), NULL, config.c_str(), &_conn);
+        int ret = wiredtiger_open(dbpath.toString().c_str(), nullptr, config.c_str(), &_conn);
 
         ASSERT_OK(wtRCToStatus(ret));
         ASSERT(_conn);
     }
     ~WiredTigerConnection() {
-        _conn->close(_conn, NULL);
+        _conn->close(_conn, nullptr);
     }
     WT_CONNECTION* getConnection() const {
         return _conn;
@@ -109,8 +109,10 @@ public:
                                                                    "key_format=S,value_format=S")
                                              .c_str())));
         WT_CURSOR *c1, *c2;
-        ASSERT_OK(wtRCToStatus(session->open_cursor(session, "table:crypto1", NULL, NULL, &c1)));
-        ASSERT_OK(wtRCToStatus(session->open_cursor(session, "table:crypto2", NULL, NULL, &c2)));
+        ASSERT_OK(
+            wtRCToStatus(session->open_cursor(session, "table:crypto1", nullptr, nullptr, &c1)));
+        ASSERT_OK(
+            wtRCToStatus(session->open_cursor(session, "table:crypto2", nullptr, nullptr, &c2)));
 
         /*
         * Insert a set of keys and values.  Insert the same data into
@@ -143,8 +145,10 @@ public:
         WT_SESSION* session = mongoSession->getSession();
 
         WT_CURSOR *c1, *c2;
-        ASSERT_OK(wtRCToStatus(session->open_cursor(session, "table:crypto1", NULL, NULL, &c1)));
-        ASSERT_OK(wtRCToStatus(session->open_cursor(session, "table:crypto2", NULL, NULL, &c2)));
+        ASSERT_OK(
+            wtRCToStatus(session->open_cursor(session, "table:crypto1", nullptr, nullptr, &c1)));
+        ASSERT_OK(
+            wtRCToStatus(session->open_cursor(session, "table:crypto2", nullptr, nullptr, &c2)));
 
         char *key1, *val1, *key2, *val2;
         int ret;

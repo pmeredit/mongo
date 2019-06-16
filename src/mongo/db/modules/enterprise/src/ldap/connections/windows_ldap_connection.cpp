@@ -141,7 +141,7 @@ Status WindowsLDAPConnection::connect() {
     // be able to make that work using LDAP_OPT_REFERRAL_CALLBACK.
 
     // Open the connection
-    auto connectSuccess = ldap_connect(_pimpl->getSession(), NULL);
+    auto connectSuccess = ldap_connect(_pimpl->getSession(), nullptr);
     return _pimpl->resultCodeToStatus(connectSuccess, "ldap_connect", "connect to LDAP server");
 }
 

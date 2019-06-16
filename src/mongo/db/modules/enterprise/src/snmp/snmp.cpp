@@ -964,7 +964,7 @@ public:
         fassert(4032,
                 SNMPERR_SUCCESS ==
                     snmp_register_callback(
-                        SNMP_CALLBACK_LIBRARY, SNMP_CALLBACK_LOGGING, snmpLogCallback, NULL));
+                        SNMP_CALLBACK_LIBRARY, SNMP_CALLBACK_LOGGING, snmpLogCallback, nullptr));
         snmp_enable_calllog();
 
         if (snmpGlobalParams.subagent) {
@@ -1009,7 +1009,7 @@ public:
         for (unsigned i = 0; i < _callbacks.size(); i++)
             if (*_callbacks[i] == var)
                 return _callbacks[i];
-        return 0;
+        return nullptr;
     }
 
 private:
@@ -1126,7 +1126,7 @@ static int snmpLogCallback(int majorID, int minorID, void* serverArg, void* clie
     using logger::LogSeverity;
     fassert(4033, majorID == SNMP_CALLBACK_LIBRARY);
     fassert(4034, minorID == SNMP_CALLBACK_LOGGING);
-    fassert(4035, clientArg == NULL);
+    fassert(4035, clientArg == nullptr);
 
     const snmp_log_message* slm = static_cast<const snmp_log_message*>(serverArg);
     LogSeverity severity = LogSeverity::Log();

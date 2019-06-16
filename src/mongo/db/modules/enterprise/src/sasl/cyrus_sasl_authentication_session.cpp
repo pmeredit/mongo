@@ -184,15 +184,15 @@ CyrusSaslMechShim<Policy>::CyrusSaslMechShim(std::string authenticationDatabase)
 
     int result = sasl_server_new(saslGlobalParams.serviceName.c_str(),  // service
                                  saslGlobalParams.hostName.c_str(),     // serviceFQDN
-                                 NULL,                                  // user_realm
-                                 NULL,                                  // iplocalport
-                                 NULL,                                  // ipremoteport
+                                 nullptr,                               // user_realm
+                                 nullptr,                               // iplocalport
+                                 nullptr,                               // ipremoteport
                                  _callbacks,                            // callbacks
                                  0,                                     // flags
                                  &_saslConnection);                     // pconn
     if (SASL_OK != result) {
-        uassertStatusOK(
-            Status(ErrorCodes::UnknownError, str::stream() << sasl_errstring(result, NULL, NULL)));
+        uassertStatusOK(Status(ErrorCodes::UnknownError,
+                               str::stream() << sasl_errstring(result, nullptr, nullptr)));
     }
 }
 
@@ -311,13 +311,13 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(CyrusSaslServerCore,
                                      ("CyrusSaslAllocatorsAndMutexes", "CyrusSaslClientContext"))
 (InitializerContext* context) {
     static const sasl_callback_t saslServerGlobalCallbacks[] = {
-        {SASL_CB_LOG, SaslCallbackFn(saslServerGlobalLog), NULL}, {SASL_CB_LIST_END}};
+        {SASL_CB_LOG, SaslCallbackFn(saslServerGlobalLog), nullptr}, {SASL_CB_LIST_END}};
 
     int result = sasl_server_init(saslServerGlobalCallbacks, "mongodb");
     if (result != SASL_OK) {
         return Status(ErrorCodes::UnknownError,
                       str::stream() << "Could not initialize sasl server components ("
-                                    << sasl_errstring(result, NULL, NULL)
+                                    << sasl_errstring(result, nullptr, nullptr)
                                     << ")");
     }
 

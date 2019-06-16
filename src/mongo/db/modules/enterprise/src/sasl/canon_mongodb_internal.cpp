@@ -88,14 +88,14 @@ int canonUserServer(void* glob_context,
 sasl_canonuser_plug_t canonMongoDBInternal = {
     0,                // features MBZ
     0,                // spare_int1 MBZ
-    NULL,             // glob_context
-    NULL,             // name
-    NULL,             // canon_user_free
+    nullptr,          // glob_context
+    nullptr,          // name
+    nullptr,          // canon_user_free
     canonUserServer,  // canon_user_server
-    NULL,             // canon_user_client
-    NULL,             // spare_fptr1
-    NULL,             // spare_fptr2
-    NULL,             // spare_fptr3
+    nullptr,          // canon_user_client
+    nullptr,          // spare_fptr1
+    nullptr,          // spare_fptr2
+    nullptr,          // spare_fptr3
 };
 
 /**
@@ -131,7 +131,7 @@ MONGO_INITIALIZER_GENERAL(SaslCanonMongodbInternal,
                       str::stream() << "Could not add sasl canonuser plugin "
                                     << canonMongoDBInternal.name
                                     << ": "
-                                    << sasl_errstring(ret, NULL, NULL));
+                                    << sasl_errstring(ret, nullptr, nullptr));
     }
 
     return Status::OK();

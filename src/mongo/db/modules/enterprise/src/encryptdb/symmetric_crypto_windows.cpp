@@ -144,7 +144,7 @@ public:
         std::copy(key.getKey(), key.getKey() + key.getKeySize(), std::back_inserter(*keyBlob));
 
         NTSTATUS status = BCryptImportKey(algo.algo,
-                                          NULL,
+                                          nullptr,
                                           BCRYPT_KEY_DATA_BLOB,
                                           &_keyHandle,
                                           _keyObjectBuf->data(),
@@ -192,7 +192,7 @@ public:
         NTSTATUS status = BCryptEncrypt(_keyHandle,
                                         const_cast<PUCHAR>(in),
                                         inLen,
-                                        NULL,
+                                        nullptr,
                                         _iv.data(),
                                         _iv.size(),
                                         out,
@@ -229,7 +229,7 @@ public:
         NTSTATUS status = BCryptDecrypt(_keyHandle,
                                         const_cast<PUCHAR>(in),
                                         inLen,
-                                        NULL,
+                                        nullptr,
                                         _iv.data(),
                                         _iv.size(),
                                         out,

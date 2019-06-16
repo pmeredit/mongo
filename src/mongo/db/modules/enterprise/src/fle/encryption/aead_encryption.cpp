@@ -94,7 +94,7 @@ Status aeadEncrypt(const SymmetricKey& key,
         return Status(ErrorCodes::BadValue, "Invalid algorithm for key.");
     }
 
-    ConstDataRange hmacCDR(nullptr, 0);
+    ConstDataRange hmacCDR(nullptr, nullptr);
     SHA512Block hmacOutput;
     if (static_cast<int>(associatedData[0]) ==
         FleAlgorithmInt_serializer(FleAlgorithmInt::kDeterministic)) {
