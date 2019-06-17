@@ -44,7 +44,7 @@ class MongoCryptD {
         args.push("enableTestCommands=1");
         args.push("-vvv");
 
-        this.pidFile =  MongoRunner.dataDir + "/cryptd.pid"
+        this.pidFile = MongoRunner.dataDir + "/cryptd.pid";
         args.push("--pidfilepath=" + this.pidFile);
 
         if (idleTimeoutSecs > 0) {
@@ -131,5 +131,4 @@ class MongoCryptD {
     getPort() {
         return this.port;
     }
-
 }

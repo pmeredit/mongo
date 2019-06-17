@@ -13,7 +13,7 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
     const conn = mongocryptd.getConnection();
 
     // Validate that mongocryptd writes a valid json file as a pid file.
-    const pidObj = mongocryptd.readPidFile()
+    const pidObj = mongocryptd.readPidFile();
     assert.eq(pidObj.port, mongocryptd.getPort());
     assert.eq(pidObj.pid, mongocryptd.getPid());
 
