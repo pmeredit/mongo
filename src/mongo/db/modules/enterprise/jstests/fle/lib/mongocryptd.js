@@ -10,6 +10,7 @@ class MongoCryptD {
         if (_isWindows()) {
             this.mongocryptd = "mongocryptd.exe";
         }
+
         this.pid = undefined;
         this.port = -1;
         this.conn = undefined;
@@ -43,7 +44,8 @@ class MongoCryptD {
         args.push("enableTestCommands=1");
         args.push("-vvv");
 
-        args.push("--pidfilepath=" + MongoRunner.dataDir + "/cryptd.pid");
+        this.pidFile =  MongoRunner.dataDir + "/cryptd.pid"
+        args.push("--pidfilepath=" + this.pidFile);
 
         if (idleTimeoutSecs > 0) {
             args.push("--idleShutdownTimeoutSecs=" + idleTimeoutSecs);
@@ -95,4 +97,39 @@ class MongoCryptD {
     getConnection() {
         return this.conn;
     }
+
+    /**
+     * Read the pid file as JSON
+     *
+     * @return {Object} a JSON object
+     */
+    readPidFile() {
+        const result = cat(this.pidFile);
+
+        try {
+            return JSON.parse(result);
+        } catch (e) {
+            jsTestLog("Failed to parse: " + result + "\n" + result);
+            throw e;
+        }
+    }
+
+    /**
+     * Get the PID
+     *
+     * @return {integer} process id
+     */
+    getPid() {
+        return this.pid;
+    }
+
+    /**
+     * Get the Port
+     *
+     * @return {integer} port
+     */
+    getPort() {
+        return this.port;
+    }
+
 }

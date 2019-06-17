@@ -10,6 +10,7 @@
 
 #include "mongo/base/init.h"
 #include "mongo/base/initializer.h"
+#include "mongo/bson/json.h"
 #include "mongo/db/client.h"
 #include "mongo/db/initialize_server_global_state.h"
 #include "mongo/db/log_process_details.h"
@@ -36,6 +37,7 @@
 #include "cryptd_options.h"
 #include "cryptd_service_entry_point.h"
 #include "cryptd_watchdog.h"
+#include "fle/cryptd/cryptd_options_gen.h"
 
 
 namespace mongo {
@@ -76,13 +78,19 @@ void createLockFile(ServiceContext* serviceContext) {
 
     const auto openStatus = lockFile->open();
     if (!openStatus.isOK()) {
-        error() << "Failed to open pid file, exiting";
+        error() << "Failed to open pid file, exiting: " << openStatus;
         _exit(EXIT_FAILURE);
     }
 
-    const auto writeStatus = lockFile->writePid();
+    CryptdPidFile pidFile;
+    pidFile.setPort(serverGlobalParams.port);
+    pidFile.setPid(ProcessId::getCurrent().asInt64());
+
+    auto str = tojson(pidFile.toBSON());
+
+    const auto writeStatus = lockFile->writeString(str);
     if (!writeStatus.isOK()) {
-        error() << "Failed to write pid file, exiting";
+        error() << "Failed to write pid file, exiting: " << writeStatus;
         _exit(EXIT_FAILURE);
     }
 }
@@ -263,7 +271,7 @@ int CryptDMain(int argc, char** argv, char** envp) {
 
     cmdline_utils::censorArgvArray(argc, argv);
 
-    if (!initializeServerGlobalState(serviceContext))
+    if (!initializeServerGlobalState(serviceContext, PidFileWrite::kNoWrite))
         quickExit(EXIT_FAILURE);
 
     // Per SERVER-7434, startSignalProcessingThread must run after any forks (i.e.

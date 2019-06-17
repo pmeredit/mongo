@@ -19,3 +19,13 @@ configs:
     short_name: idleShutdownTimeoutSecs
     arg_vartype: Int
     default: 0
+
+structs:
+  cryptdPidFile:
+    description: "Pid File JSON Format"
+    fields:
+      port: int
+      domainSocket:
+        type: string
+        optional: true
+      pid: int
