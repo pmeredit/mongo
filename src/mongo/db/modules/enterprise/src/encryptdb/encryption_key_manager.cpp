@@ -413,8 +413,9 @@ Status EncryptionKeyManager::_initLocalKeystore() {
         }
     }
 
-    int defaultKeystoreSchemaVersion =
-        _encryptionParams->encryptionCipherMode == crypto::aes256GCMName ? 1 : 0;
+    const auto gcmModeEnabled = (_encryptionParams->encryptionCipherMode == crypto::aes256GCMName);
+
+    int defaultKeystoreSchemaVersion = gcmModeEnabled ? 1 : 0;
     if (gInitialKeystoreSchemaVersion) {
         // test-only setParameter override.
         defaultKeystoreSchemaVersion =
@@ -494,7 +495,8 @@ Status EncryptionKeyManager::_initLocalKeystore() {
     // Open the local WT key store, create it if it doesn't exist.
     try {
         _keystore = Keystore::makeKeystore(_keystorePath, _keystoreMetadata, _encryptionParams);
-        if (_keystoreMetadata.getDirty() || _encryptionParams->rotateDatabaseKeys) {
+        if ((_keystoreMetadata.getDirty() || _encryptionParams->rotateDatabaseKeys) &&
+            gcmModeEnabled) {
             const auto kKeystoreSchemaVersionForRotate = 1;
             if (_keystoreMetadata.getVersion() < kKeystoreSchemaVersionForRotate) {
                 log() << "Detected keystore schema version " << _keystoreMetadata.getVersion()
@@ -544,6 +546,13 @@ Status EncryptionKeyManager::_initLocalKeystore() {
             uassertStatusOK(_getSystemKey(kSystemKeyId, FindMode::kIdOrCurrent));
             uassertStatusOK(_keystoreMetadata.store(
                 _metadataPath(PathMode::kValid), _masterKey, *_encryptionParams));
+        } else if (!gcmModeEnabled) {
+            if (_keystoreMetadata.getDirty()) {
+                LOG(1) << "Detected an unclean shutdown of the encrypted storage engine";
+                _keystoreMetadata.setDirty(false);
+                uassertStatusOK(_keystoreMetadata.store(
+                    _metadataPath(PathMode::kValid), _masterKey, *_encryptionParams));
+            }
         }
     } catch (const DBException& e) {
         _keystore.reset();

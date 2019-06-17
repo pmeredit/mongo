@@ -332,5 +332,70 @@ TEST(EncryptionKeyManager, HotBackupValidation) {
     ASSERT_FALSE(boost::filesystem::exists(dbPath / "key.store/local/WiredTiger.backup"));
 }
 
+// This checks that opening a backup cursor when CBC mode is in use doesn't cause a
+// rollover attempt on startup.
+TEST(EncryptionKeyManager, DirtyCBCIsNoOp) {
+    // First set up the dbpath we're going to use.
+    unittest::TempDir dbPathTempDir("keystoreHotBackups");
+    boost::filesystem::path dbPath(dbPathTempDir.path());
+
+    // Make sure it's absolute!
+    if (!dbPath.is_absolute()) {
+        dbPath = boost::filesystem::absolute(dbPath);
+        ASSERT_TRUE(boost::filesystem::exists(dbPath));
+    }
+
+    const auto dbPathStr = dbPath.string();
+    log() << "dbpath is " << dbPathStr;
+
+    // Create a key. This is the contents of jstests/encryptdb/libs/ekf
+    boost::filesystem::path keyPath = dbPath / "keyFile";
+    {
+        std::ofstream keyPathOut(keyPath.c_str());
+        keyPathOut << "YW1hbGlhaXNzb2Nvb2x5b2FtYWxpYWlzc29jb29seW8=";
+    }
+
+#ifndef _WIN32
+    // Make sure the permissions are correct.
+    boost::filesystem::permissions(keyPath, boost::filesystem::owner_read);
+#endif
+
+    // Setup the encryption params and create a ServiceContext to instantiate the storage
+    // engine and everything else we need.
+    encryptionGlobalParams.enableEncryption = true;
+    encryptionGlobalParams.encryptionKeyFile = keyPath.string();
+    encryptionGlobalParams.encryptionCipherMode = "AES256-CBC";
+
+    setGlobalServiceContext(ServiceContext::make());
+    const auto serviceContextCleanup = makeGuard([&] { setGlobalServiceContext({}); });
+
+    auto const service = getGlobalServiceContext();
+    // Override the Noop encryption manager with the real encryption manager.
+    setupEncryption<EncryptionKeyManager>(
+        service, dbPathStr, &encryptionGlobalParams, &sslGlobalParams);
+
+    auto encryptionManager = EncryptionKeyManager::get(service);
+
+    // Make sure we can actually get some keys and that we've done some writes.
+    auto systemKey = unittest::assertGet(encryptionManager->getKey(kSystemKeyId));
+    auto tmpKey = unittest::assertGet(encryptionManager->getKey(kTmpDataKeyId));
+    systemKey.reset();
+    tmpKey.reset();
+
+    // Get the list of files to backup. This will also mark the keystore as "dirty" which
+    // would trigger a rollover if GCM were enabled.
+    auto backupFiles = unittest::assertGet(encryptionManager->beginNonBlockingBackup());
+
+    // Set up the encryption manager again so the old one gets destroyed and a new one
+    // has to go through the initialization process.
+    setupEncryption<EncryptionKeyManager>(
+        service, dbPathStr, &encryptionGlobalParams, &sslGlobalParams);
+
+    encryptionManager = EncryptionKeyManager::get(service);
+
+    // Getting a key should work fine.
+    systemKey = unittest::assertGet(encryptionManager->getKey(kSystemKeyId));
+}
+
 }  // namespace
 }  // namespace mongo
