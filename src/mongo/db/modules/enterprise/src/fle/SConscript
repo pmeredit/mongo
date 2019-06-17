@@ -51,6 +51,7 @@ env.Library(
     source=[
         "commands/cryptd_buildinfo.cpp",
         "commands/cryptd_ismaster.cpp",
+        "commands/cryptd_shutdown.cpp",
         "commands/cryptd_markings_commands.cpp",
     ],
     LIBDEPS_PRIVATE=[
