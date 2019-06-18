@@ -14,7 +14,7 @@
 #include "mongo/base/status.h"
 
 #include "kmip_options.h"
-#include "symmetric_crypto.h"
+#include "mongo/crypto/symmetric_crypto.h"
 
 namespace mongo {
 

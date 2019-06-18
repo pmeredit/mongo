@@ -11,6 +11,7 @@
 #include "encryption_options.h"
 #include "mongo/base/init.h"
 #include "mongo/base/string_data.h"
+#include "mongo/crypto/symmetric_crypto.h"
 #include "mongo/db/operation_context_noop.h"
 #include "mongo/db/service_context_test_fixture.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_kv_engine.h"
@@ -20,7 +21,6 @@
 #include "mongo/unittest/temp_dir.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/system_clock_source.h"
-#include "symmetric_crypto.h"
 
 namespace mongo {
 namespace {

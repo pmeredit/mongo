@@ -2,7 +2,7 @@
 * Check the functionality of query functions with encryption.
 */
 
-load("src/mongo/db/modules/enterprise/jstests/fle/lib/mock_kms.js");
+load("jstests/client_encrypt/lib/mock_kms.js");
 load('jstests/ssl/libs/ssl_helpers.js');
 
 (function() {

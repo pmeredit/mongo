@@ -10,7 +10,7 @@
 #include "encryption_options.h"
 #include "keystore_data_store.h"
 #include "keystore_metadata.h"
-#include "symmetric_key.h"
+#include "mongo/crypto/symmetric_key.h"
 
 namespace mongo {
 

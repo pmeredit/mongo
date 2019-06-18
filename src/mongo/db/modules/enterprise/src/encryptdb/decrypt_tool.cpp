@@ -24,8 +24,8 @@
 #include "mongo/util/text.h"
 
 #include "encryption_key_acquisition.h"
-#include "symmetric_crypto.h"
-#include "symmetric_key.h"
+#include "mongo/crypto/symmetric_crypto.h"
+#include "mongo/crypto/symmetric_key.h"
 
 namespace mongo {
 

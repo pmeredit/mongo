@@ -15,10 +15,7 @@ if not wiredtiger:
 
 wtEnv = env.Clone()
 wtEnv.InjectThirdParty(libraries=['wiredtiger'])
-# Ubuntu1204 exposes GCM symbols, but they do not work. We have to detect the platform and disable
-# that portion of the symmetric_crypto test. Apple does not support GCM with native crypto, so
-# we disable GCM, and its tests, when using OpenSSL.
-if wtEnv['MONGO_DISTMOD'] == "ubuntu1204" or env.TargetOSIs('darwin', 'macOS'):
+if env.TargetOSIs('darwin', 'macOS'):
     wtEnv.Append(CPPDEFINES=["DISABLE_GCM_TESTVECTORS"]);
 
 
@@ -29,7 +26,7 @@ wtEnv.Library(target='encryption_key_manager_aux',
             ],
             LIBDEPS=[
                 'encryptdb',
-                'symmetric_crypto'
+                'symmetric_crypto_enterprise',
             ],
             LIBDEPS_PRIVATE=[
                 '$BUILD_DIR/mongo/db/commands/server_status',
@@ -45,7 +42,8 @@ env.Library(
         'keystore_metadata.cpp',
     ],
     LIBDEPS=[
-        'symmetric_crypto',
+        'symmetric_crypto_enterprise',
+        '$BUILD_DIR/mongo/crypto/symmetric_crypto',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/db/storage/storage_engine_metadata',
@@ -72,8 +70,8 @@ wtEnv.Library(target='encryptdb',
                    env.Idlc('encryption_key_manager.idl')[0],
               ],
               LIBDEPS=[
-                   'symmetric_crypto',
                    '$BUILD_DIR/mongo/base',
+                   '$BUILD_DIR/mongo/crypto/symmetric_crypto',
                    '$BUILD_DIR/mongo/db/storage/encryption_hooks',
                    '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core',
                    '$BUILD_DIR/third_party/shim_wiredtiger',
@@ -81,6 +79,7 @@ wtEnv.Library(target='encryptdb',
               LIBDEPS_PRIVATE=[
                    'key_acquisition',
                    'keystore_metadata',
+                   'symmetric_crypto_enterprise',
                    '$BUILD_DIR/mongo/db/catalog/catalog_impl',
                    '$BUILD_DIR/mongo/db/storage/storage_options',
                    '$BUILD_DIR/mongo/idl/server_parameter',
@@ -94,6 +93,7 @@ wtEnv.CppUnitTest(
     ],
     LIBDEPS=[
         'encryptdb',
+        'symmetric_crypto_enterprise',
         '$BUILD_DIR/mongo/db/service_context_test_fixture',
         '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_mock',
     ],
@@ -113,12 +113,10 @@ env.Library(target='log_redact_options',
             ],
 )
 
-env.Library(target='symmetric_crypto',
+env.Library(target='symmetric_crypto_enterprise',
             source=[
                 'symmetric_crypto.cpp',
                 'symmetric_crypto_smoke.cpp',
-                'symmetric_crypto_${MONGO_CRYPTO}.cpp',
-                'symmetric_key.cpp',
                 'encryption_options.cpp',
                 'kmip_options.cpp',
                 env.Idlc('encryption_options.idl')[0],
@@ -128,12 +126,27 @@ env.Library(target='symmetric_crypto',
                 '$BUILD_DIR/mongo/base/secure_allocator',
                 '$BUILD_DIR/mongo/util/net/ssl_manager',
                 '$BUILD_DIR/mongo/util/secure_zero_memory',
+                '$BUILD_DIR/mongo/crypto/symmetric_crypto',
             ],
             LIBDEPS_PRIVATE=[
                 '$BUILD_DIR/mongo/util/options_parser/options_parser',
                 'log_redact_options'
             ]
 )
+
+cryptoTest = env.Clone()
+cryptoTest.InjectThirdParty(libraries=['wiredtiger'])
+if env.TargetOSIs('darwin', 'macOS'):
+    cryptoTest.Append(CPPDEFINES=["DISABLE_GCM_TESTVECTORS"]);
+
+cryptoTest.CppUnitTest(target='symmetric_crypto_test',
+                source='symmetric_crypto_test.cpp',
+                LIBDEPS=[
+                    'symmetric_crypto_enterprise',
+                    '$BUILD_DIR/mongo/db/storage/storage_options',
+                    '$BUILD_DIR/mongo/util/net/network',
+                ])
+
 
 env.Library(target='kmip',
             source=[
@@ -143,8 +156,9 @@ env.Library(target='kmip',
             ],
             LIBDEPS=[
                 '$BUILD_DIR/mongo/base',
+                '$BUILD_DIR/mongo/crypto/symmetric_crypto',
+                'symmetric_crypto_enterprise',
                 '$BUILD_DIR/mongo/util/net/network',
-                'symmetric_crypto',
             ])
 
 env.Library(
@@ -158,19 +172,11 @@ env.Library(
     ]
 )
 
-wtEnv.CppUnitTest(target='symmetric_crypto_test',
-                source='symmetric_crypto_test.cpp',
-                LIBDEPS=[
-                    'symmetric_crypto',
-                    '$BUILD_DIR/mongo/db/storage/storage_options',
-                    '$BUILD_DIR/mongo/util/net/network',
-                ])
-
 env.CppUnitTest(target='kmip_response_test',
                 source='kmip_response_test.cpp',
                 LIBDEPS=[
                     'kmip',
-                    'symmetric_crypto',
+                    'symmetric_crypto_enterprise',
                     '$BUILD_DIR/mongo/util/net/network',
                 ])
 
@@ -178,7 +184,7 @@ env.CppUnitTest(target='kmip_request_test',
                 source='kmip_request_test.cpp',
                 LIBDEPS=[
                     'kmip',
-                    'symmetric_crypto',
+                    'symmetric_crypto_enterprise',
                     '$BUILD_DIR/mongo/util/net/network',
                 ])
 
@@ -186,14 +192,15 @@ if not using_ubsan:
     wtEnv.CppUnitTest(target='wiredtiger_encryption_test',
                     source='wiredtiger_encryption_test.cpp',
                     LIBDEPS=[
+                        'symmetric_crypto_enterprise',
                         '$BUILD_DIR/mongo/db/auth/security_file',
                         '$BUILD_DIR/mongo/db/service_context',
                         '$BUILD_DIR/mongo/db/service_context_test_fixture',
                         '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_mock',
                         '$BUILD_DIR/mongo/util/net/network',
                         'encryptdb',
-                        'symmetric_crypto',
                     ],
                     LIBDEPS_PRIVATE=[
+                        'symmetric_crypto_enterprise',
                         '$BUILD_DIR/mongo/db/auth/authmocks',
                     ])

@@ -14,14 +14,13 @@
 #include "kmip_service.h"
 #include "mongo/base/string_data.h"
 #include "mongo/config.h"
+#include "mongo/crypto/symmetric_crypto.h"
+#include "mongo/crypto/symmetric_key.h"
 #include "mongo/db/auth/security_file.h"
 #include "mongo/util/base64.h"
 #include "mongo/util/log.h"
 #include "mongo/util/net/ssl_options.h"
 #include "mongo/util/str.h"
-#include "symmetric_crypto.h"
-#include "symmetric_crypto.h"
-#include "symmetric_key.h"
 
 using namespace mongo::kmip;
 

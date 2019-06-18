@@ -64,22 +64,3 @@ env.Library(
     ],
 )
 
-env.Library(
-    target="aead_encryption",
-    source=[
-        "encryption/aead_encryption.cpp",
-    ],
-    LIBDEPS=[
-        '../encryptdb/symmetric_crypto',
-        # TODO: SERVER-41305 extract FLE related IDL definitions into their own library
-        '$BUILD_DIR/mongo/db/matcher/expressions',
-    ],
-)
-
-env.CppUnitTest(
-    target='aead_encryption_test',
-    source='encryption/aead_encryption_test.cpp',
-    LIBDEPS=[
-        'aead_encryption',
-    ]
-)

@@ -296,12 +296,13 @@ if "encryptdb" in env['MONGO_ENTERPRISE_FEATURES']:
         ] + env.WindowsResourceFile("src/encryptdb/decrypt_tool.rc"),
         LIBDEPS=[
             "$BUILD_DIR/mongo/base",
+            "$BUILD_DIR/mongo/crypto/symmetric_crypto",
             "$BUILD_DIR/mongo/db/log_process_details",
             "$BUILD_DIR/mongo/util/options_parser/options_parser_init",
             "$BUILD_DIR/mongo/util/signal_handlers",
             "$BUILD_DIR/mongo/util/version_impl",
             "src/encryptdb/key_acquisition",
-            "src/encryptdb/symmetric_crypto",
+            "src/encryptdb/symmetric_crypto_enterprise",
         ],
     )
 

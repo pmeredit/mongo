@@ -9,7 +9,7 @@
 
 #include "kmip_consts.h"
 #include "mongo/base/status.h"
-#include "symmetric_key.h"
+#include "mongo/crypto/symmetric_key.h"
 
 namespace mongo {
 class ConstDataRangeCursor;

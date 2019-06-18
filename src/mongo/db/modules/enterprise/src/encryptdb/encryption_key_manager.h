@@ -11,12 +11,12 @@
 #include "encryption_options.h"
 #include "keystore.h"
 #include "keystore_metadata.h"
+#include "mongo/crypto/symmetric_key.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/storage/encryption_hooks.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_customization_hooks.h"
 #include "symmetric_crypto.h"
-#include "symmetric_key.h"
 
 namespace mongo {
 

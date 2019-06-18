@@ -10,8 +10,8 @@
 
 #include "mongo/base/status.h"
 
+#include "mongo/crypto/symmetric_key.h"
 #include "symmetric_crypto.h"
-#include "symmetric_key.h"
 
 namespace mongo {
 

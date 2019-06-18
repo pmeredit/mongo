@@ -9,11 +9,11 @@
 #include <memory>
 
 #include "mongo/base/status.h"
+#include "mongo/crypto/symmetric_key.h"
 #include "mongo/util/net/ssl_manager.h"
 #include "mongo/util/str.h"
 
 #include "symmetric_crypto.h"
-#include "symmetric_key.h"
 
 namespace mongo {
 

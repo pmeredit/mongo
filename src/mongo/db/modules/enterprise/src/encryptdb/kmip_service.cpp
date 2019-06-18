@@ -19,12 +19,12 @@
 #include "mongo/base/data_type_endian.h"
 #include "mongo/base/init.h"
 #include "mongo/base/status_with.h"
+#include "mongo/crypto/symmetric_crypto.h"
 #include "mongo/stdx/mutex.h"
 #include "mongo/util/log.h"
 #include "mongo/util/net/ssl_manager.h"
 #include "mongo/util/net/ssl_options.h"
 #include "mongo/util/secure_zero_memory.h"
-#include "symmetric_crypto.h"
 
 namespace mongo {
 namespace kmip {

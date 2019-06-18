@@ -8,8 +8,8 @@
 
 #include "encryption_options.h"
 #include "keystore_metadata.h"
+#include "mongo/crypto/symmetric_key.h"
 #include "symmetric_crypto.h"
-#include "symmetric_key.h"
 
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/scopeguard.h"

@@ -14,44 +14,15 @@
 #include "mongo/base/data_cursor.h"
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
+#include "mongo/crypto/symmetric_key.h"
 #include "mongo/platform/random.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
 #include "mongo/util/net/ssl_manager.h"
 #include "mongo/util/str.h"
-#include "symmetric_key.h"
 
 namespace mongo {
 namespace crypto {
-
-namespace {
-std::unique_ptr<SecureRandom> random;
-}  // namespace
-
-MONGO_INITIALIZER(CreateKeyEntropySource)(InitializerContext* context) {
-    random = std::unique_ptr<SecureRandom>(SecureRandom::create());
-    return Status::OK();
-}
-
-aesMode getCipherModeFromString(const std::string& mode) {
-    if (mode == aes256CBCName) {
-        return aesMode::cbc;
-    } else if (mode == aes256GCMName) {
-        return aesMode::gcm;
-    } else {
-        MONGO_UNREACHABLE;
-    }
-}
-
-std::string getStringFromCipherMode(aesMode mode) {
-    if (mode == aesMode::cbc) {
-        return aes256CBCName;
-    } else if (mode == aesMode::gcm) {
-        return aes256GCMName;
-    } else {
-        MONGO_UNREACHABLE;
-    }
-}
 
 size_t aesGetTagSize(crypto::aesMode mode) {
     if (mode == crypto::aesMode::gcm) {
@@ -60,16 +31,6 @@ size_t aesGetTagSize(crypto::aesMode mode) {
     return 0;
 }
 
-size_t aesGetIVSize(crypto::aesMode mode) {
-    switch (mode) {
-        case crypto::aesMode::cbc:
-            return crypto::aesCBCIVSize;
-        case crypto::aesMode::gcm:
-            return crypto::aesGCMIVSize;
-        default:
-            fassertFailed(4053);
-    }
-}
 
 std::pair<PageSchema, SymmetricKeyId::id_type> parseGCMPageSchema(const std::uint8_t* ptr,
                                                                   std::size_t len) {
@@ -378,21 +339,6 @@ Status aesDecrypt(const SymmetricKey& key,
             return _doAESDecrypt(key, std::move(layout), out, outLen, resultLen);
         }
     }
-}
-
-SymmetricKey aesGenerate(size_t keySize, SymmetricKeyId keyId) {
-    invariant(keySize == sym256KeySize);
-
-    SecureVector<uint8_t> key(keySize);
-
-    size_t offset = 0;
-    while (offset < keySize) {
-        std::uint64_t randomValue = random->nextInt64();
-        memcpy(key->data() + offset, &randomValue, sizeof(randomValue));
-        offset += sizeof(randomValue);
-    }
-
-    return SymmetricKey(std::move(key), aesAlgorithm, std::move(keyId));
 }
 
 }  // namespace crypto

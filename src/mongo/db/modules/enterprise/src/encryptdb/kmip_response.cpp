@@ -18,9 +18,9 @@
 #include "mongo/base/error_codes.h"
 #include "mongo/base/status.h"
 #include "mongo/base/status_with.h"
+#include "mongo/crypto/symmetric_crypto.h"
 #include "mongo/util/log.h"
 #include "mongo/util/str.h"
-#include "symmetric_crypto.h"
 
 namespace mongo {
 namespace kmip {
