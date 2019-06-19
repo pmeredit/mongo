@@ -18,6 +18,7 @@
 #include "mongo/util/functional.h"
 #include "mongo/util/log.h"
 #include "mongo/util/net/hostandport.h"
+#include "mongo/util/strong_weak_finish_line.h"
 #include "mongo/util/system_clock_source.h"
 
 #include "../ldap_connection_options.h"
@@ -400,13 +401,10 @@ LDAPConnectionFactory::LDAPConnectionFactory(Milliseconds poolSetupTimeout)
 
 struct LDAPCompletionState {
     LDAPCompletionState(int outstandingSources_, Promise<std::unique_ptr<LDAPConnection>> promise_)
-        : outstandingSources(outstandingSources_), promise(std::move(promise_)) {}
+        : finishLine(outstandingSources_), promise(std::move(promise_)) {}
 
-    stdx::mutex mutex;
-    bool done = false;
-    int outstandingSources;
+    StrongWeakFinishLine finishLine;
     Promise<std::unique_ptr<LDAPConnection>> promise;
-    std::vector<Status> errors;
 };
 
 StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
@@ -445,45 +443,34 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
     }
 
     auto pf = makePromiseFuture<std::unique_ptr<LDAPConnection>>();
-    auto state = std::make_shared<LDAPCompletionState>(options.hosts.size(), std::move(pf.promise));
-    for (const auto& server : hosts) {
-        _pool->get(server, sslMode, options.timeout)
-            .thenRunOn(_typeFactory->getExecutor())
-            .getAsync([state,
-                       server](StatusWith<executor::ConnectionPool::ConnectionHandle> swHandle) {
-                stdx::lock_guard<stdx::mutex> lk(state->mutex);
-                if (state->done) {
-                    return;
+    auto state = std::make_shared<LDAPCompletionState>(hosts.size(), std::move(pf.promise));
+    for (auto it = hosts.begin(); it != hosts.end() && !state->finishLine.isReady(); ++it) {
+        const auto& server = *it;
+
+        auto onConnect = [state,
+                          server](StatusWith<executor::ConnectionPool::ConnectionHandle> swHandle) {
+            if (swHandle.isOK()) {
+                if (state->finishLine.arriveStrongly()) {
+                    LOG(1) << "Using LDAP server " << server;
+                    state->promise.emplaceValue(
+                        pooledConnToWrappedConn(std::move(swHandle.getValue())));
+                } else {
+                    swHandle.getValue()->indicateSuccess();
                 }
-
-                state->outstandingSources--;
-                if (!swHandle.isOK()) {
-                    log() << "Got error connecting to " << server << ": " << swHandle.getStatus();
-                    state->errors.push_back(swHandle.getStatus().withContext(server.toString()));
-                    if (state->outstandingSources) {
-                        return;
-                    }
-
-                    StringBuilder sb;
-                    sb << "Could not establish LDAP connection: ";
-                    bool isFirst = true;
-                    for (const auto& error : state->errors) {
-                        sb << error.toString();
-                        if (isFirst) {
-                            sb << ", ";
-                            isFirst = false;
-                        }
-                    }
-
-                    state->done = true;
-                    state->promise.setError({ErrorCodes::OperationFailed, sb.str()});
-                    return;
+            } else {
+                log() << "Got error connecting to " << server << ": " << swHandle.getStatus();
+                if (state->finishLine.arriveWeakly()) {
+                    state->promise.setError(
+                        swHandle.getStatus().withContext("Could not establish LDAP connection"));
                 }
-
-                state->done = true;
-                auto handle = std::move(swHandle.getValue());
-                state->promise.emplaceValue(pooledConnToWrappedConn(std::move(handle)));
-            });
+            }
+        };
+        auto semi = _pool->get(server, sslMode, options.timeout);
+        if (semi.isReady()) {
+            onConnect(std::move(semi).getNoThrow());
+        } else {
+            std::move(semi).thenRunOn(_typeFactory->getExecutor()).getAsync(std::move(onConnect));
+        }
     }
 
     return std::move(pf.future).getNoThrow();
