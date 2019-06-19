@@ -60,6 +60,7 @@ configs:
         description: 'Password to use while binding to the LDAP server to perform queries'
         short_name: ldapQueryPassword
         arg_vartype: String
+        redact: true
     "security.ldap.userToDNMapping":
         description: 'Tranformation from MongoDB users to LDAP user DNs'
         short_name: ldapUserToDNMapping
