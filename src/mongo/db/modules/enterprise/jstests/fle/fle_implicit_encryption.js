@@ -59,11 +59,12 @@ load('jstests/ssl/libs/ssl_helpers.js');
         // Performing CRUD on a collection encrypted with randomized algorithm.
         assert.writeOK(encryptedCollection.insert({name: "Shreyas", "ssn": NumberInt(123456789)}));
         assert.eq(0, unencryptedCollection.count({
-            "ssn": encryptedShell.encrypt(keyId, NumberInt(123456789), randomAlgorithm)
+            "ssn": encryptedShell.getClientEncryption().encrypt(
+                keyId, NumberInt(123456789), randomAlgorithm)
         }));
 
         const ssn_bin = unencryptedCollection.find({name: "Shreyas"})[0].ssn;
-        assert.eq(NumberInt(123456789), encryptedShell.decrypt(ssn_bin));
+        assert.eq(NumberInt(123456789), encryptedShell.getClientEncryption().decrypt(ssn_bin));
     };
 
     let testDeterministicCollection = (keyId, encryptedShell, unencryptedShell, collectionName) => {
@@ -107,8 +108,8 @@ load('jstests/ssl/libs/ssl_helpers.js');
         assert.eq(3, encryptedCollection.count({"ssn": NumberInt(987654321)}));
 
         // Testing that deterministic encryption works
-        const encryptedDeterministicSSN =
-            encryptedShell.encrypt(keyId, NumberInt(987654321), deterministicAlgorithm);
+        const encryptedDeterministicSSN = encryptedShell.getClientEncryption().encrypt(
+            keyId, NumberInt(987654321), deterministicAlgorithm);
         assert.eq(3, unencryptedCollection.count({"ssn": encryptedDeterministicSSN}));
 
         unencryptedCollection.deleteMany({"ssn": encryptedDeterministicSSN});

@@ -71,29 +71,35 @@ public:
 
 
     SchemaInfo getRemoteOrInputSchema(const OpMsgRequest& request, NamespaceString ns) {
-        BSONElement schemaElem = _encryptionOptions.getSchemaMap().getField(ns.toString());
-        if (!schemaElem.eoo()) {
-            uassert(ErrorCodes::BadValue,
-                    "Invalid Schema object in Client Side FLE Options",
-                    schemaElem.isABSONObj());
-            return SchemaInfo{schemaElem.Obj().getOwned(), Date_t::now(), false};
-        } else {
-            BSONObj filter = BSON("name" << ns.coll());
-            auto collectionInfos = _conn->getCollectionInfos(ns.db().toString(), filter);
-
-            invariant(collectionInfos.size() <= 1);
-            if (collectionInfos.size() == 1) {
-                BSONObj highLevelSchema = collectionInfos.front();
-
-                BSONObj options = highLevelSchema.getObjectField("options");
-                if (!options.isEmpty() && !options.getObjectField("validator").isEmpty() &&
-                    !options.getObjectField("validator").getObjectField("$jsonSchema").isEmpty()) {
-                    BSONObj validator = options.getObjectField("validator");
-                    BSONObj schema = validator.getObjectField("$jsonSchema");
-                    return SchemaInfo{schema.getOwned(), Date_t::now(), true};
-                }
+        // Check for a client provided schema first
+        if (_encryptionOptions.getSchemaMap()) {
+            BSONElement schemaElem =
+                _encryptionOptions.getSchemaMap().get().getField(ns.toString());
+            if (!schemaElem.eoo()) {
+                uassert(ErrorCodes::BadValue,
+                        "Invalid Schema object in Client Side FLE Options",
+                        schemaElem.isABSONObj());
+                return SchemaInfo{schemaElem.Obj().getOwned(), Date_t::now(), false};
             }
         }
+
+        // Since there is no local schema, try remote
+        BSONObj filter = BSON("name" << ns.coll());
+        auto collectionInfos = _conn->getCollectionInfos(ns.db().toString(), filter);
+
+        invariant(collectionInfos.size() <= 1);
+        if (collectionInfos.size() == 1) {
+            BSONObj highLevelSchema = collectionInfos.front();
+
+            BSONObj options = highLevelSchema.getObjectField("options");
+            if (!options.isEmpty() && !options.getObjectField("validator").isEmpty() &&
+                !options.getObjectField("validator").getObjectField("$jsonSchema").isEmpty()) {
+                BSONObj validator = options.getObjectField("validator");
+                BSONObj schema = validator.getObjectField("$jsonSchema");
+                return SchemaInfo{schema.getOwned(), Date_t::now(), true};
+            }
+        }
+
         return SchemaInfo{BSONObj(), Date_t::now(), true};
     }
 
