@@ -597,9 +597,9 @@ private:
         ensureNotEncryptedEnterEval("a floor calculation", subtreeStack);
     }
     void visit(ExpressionIfNull*) final {
-        // Here we're in the same situation as the if child of a $cond except that we need to ensure
-        // not encrypted since the result of the condition might be returned.
-        ensureNotEncryptedEnterEval("a null determination", subtreeStack);
+        // If $ifNull appears under a comparison subtree, then both arguments to $ifNull should be
+        // marked or assert just as if they were the direct descendant of the grandparent
+        // comparison.
     }
     void visit(ExpressionIn* in) final {
         // Regardless of the below analysis, an $in expression is going to output an unencrypted
@@ -925,10 +925,7 @@ private:
     void visit(ExpressionFieldPath*) final {}
     void visit(ExpressionFilter*) final {}
     void visit(ExpressionFloor*) final {}
-    void visit(ExpressionIfNull*) final {
-        // This mirrors $cond.
-        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
-    }
+    void visit(ExpressionIfNull*) final {}
     void visit(ExpressionIn* in) final {
         if (auto arrayLiteral = dynamic_cast<ExpressionArray*>(in->getOperandList()[1].get())) {
             // There must be a subtree with Compared output type at the top since we just put it

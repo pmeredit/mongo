@@ -170,5 +170,27 @@
     assertEncryptedFieldAtPath(res, '$expr.$switch.branches.0.case.$eq.1.$const');
     assertEncryptedFieldAtPath(res, '$expr.$switch.branches.1.case.$eq.1.$const');
 
+    // $ifNull properly marks constants for encryption.
+    command.filter = {$expr: {$eq: ['$ssn', {$ifNull: ['$ssn', NumberLong(123456)]}]}};
+    res = assert.commandWorked(testDB.runCommand(command));
+    assertEncryptedFieldAtPath(res, '$expr.$eq.1.$ifNull.1.$const');
+
+    // Make sure that even non-sensical but syntactically correct $ifNulls correctly mark literals
+    // for encryption.
+    command.filter = {$expr: {$eq: ['$ssn', {$ifNull: [NumberLong(123456), NumberLong(19234)]}]}};
+    res = assert.commandWorked(testDB.runCommand(command));
+    assertEncryptedFieldAtPath(res, '$expr.$eq.1.$ifNull.0.$const');
+    assertEncryptedFieldAtPath(res, '$expr.$eq.1.$ifNull.1.$const');
+
+    // Literals should be marked even when the encrypted field is inside of $ifNull.
+    command.filter = {$expr: {$eq: [NumberLong(1234), {$ifNull: ['$ssn', NumberLong(1234)]}]}};
+    res = assert.commandWorked(testDB.runCommand(command));
+    assertEncryptedFieldAtPath(res, '$expr.$eq.0.$const');
+    assertEncryptedFieldAtPath(res, '$expr.$eq.1.$ifNull.1.$const');
+
+    // Conflicts in encryption between fields should result in an error.
+    command.filter = {$expr: {$eq: ['$foo', {$ifNull: ['$ssn', '$foo2']}]}};
+    res = assert.commandFailedWithCode(testDB.runCommand(command), 31098);
+
     mongocryptd.stop();
 })();

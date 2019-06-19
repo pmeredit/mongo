@@ -204,5 +204,22 @@
     delete cmdRes.result.lsid;
     assert(cmdRes.schemaRequiresEncryption, cmdRes);
     assert(!cmdRes.hasEncryptionPlaceholders, cmdRes);
+
+    command = {
+        aggregate: coll.getName(),
+        pipeline: [
+            {$addFields: {"cleanedSSN": {$ifNull: ["$ssn", "$otherSsn"]}}},
+            {$match: {cleanedSSN: "1234"}}
+        ],
+        cursor: {},
+        jsonSchema:
+            {type: "object", properties: {ssn: encryptedStringSpec, otherSsn: encryptedStringSpec}},
+        isRemoteSchema: false,
+    };
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    assert(cmdRes.hasEncryptionPlaceholders);
+    assert(cmdRes.schemaRequiresEncryption);
+    assert(cmdRes.result.pipeline[1].$match.cleanedSSN.$eq instanceof BinData, cmdRes);
+
     mongocryptd.stop();
 })();

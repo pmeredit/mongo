@@ -186,6 +186,19 @@
     assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
     assert(cmdRes.result.pipeline[0].$group._id.$cond[1].$const instanceof BinData, cmdRes);
 
+    // Test that literals are properly marked when $ifNull is used in the _id field.
+    command = {
+        aggregate: coll.getName(),
+        pipeline: [{$group: {_id: {$ifNull: ["$ssn", "no-ssn"]}}}],
+        cursor: {},
+        jsonSchema: {type: "object", properties: {ssn: encryptedStringSpec}},
+        isRemoteSchema: false
+    };
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+    assert(cmdRes.result.pipeline[0].$group._id.$ifNull[1].$const instanceof BinData, cmdRes);
+
     // Test that the $group succeeds if _id expression is a deterministically encrypted field.
     command = {
         aggregate: coll.getName(),
