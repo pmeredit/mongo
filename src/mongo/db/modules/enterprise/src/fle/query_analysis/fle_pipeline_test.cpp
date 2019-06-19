@@ -124,7 +124,6 @@ TEST_F(FLEPipelineTest, ThrowsOnInvalidOrUnsupportedStage) {
                 { $match: { ssn: 5}}
             ]
         }})"),
-        fromjson("{$redact: '$$DESCEND'}"),
         fromjson("{$bucketAuto: {groupBy: '$_id', buckets: 2}}"),
         fromjson("{$planCacheStats: {}}"),
         fromjson("{$_internalInhibitOptimization: {}}"),
@@ -595,6 +594,13 @@ TEST_F(FLEPipelineTest, ReplaceRootWithCustomObjectReferringToEncryptedSubFieldF
                                                                         << "$user")));
     ASSERT_THROWS_CODE(
         getSchemaForStage({replaceRoot}, kDefaultNestedSchema), AssertionException, 31129);
+}
+
+TEST_F(FLEPipelineTest, RedactDoesntChangeSchema) {
+    BSONObj redact = BSON("$redact"
+                          << "$$PRUNE");
+    auto& schema = getSchemaForStage({redact}, kDefaultSsnSchema);
+    ASSERT(schema.getEncryptionMetadataForPath(FieldRef("ssn")) == kDefaultMetadata);
 }
 
 }  // namespace
