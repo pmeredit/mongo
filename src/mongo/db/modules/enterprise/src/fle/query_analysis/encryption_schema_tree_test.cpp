@@ -1592,7 +1592,7 @@ TEST(EncryptionSchemaTreeTest, ContainsEncryptReturnsTrueIfPropertyContainsEncry
     })");
 
     ASSERT(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal)
-               ->containsEncryptedNode());
+               ->mayContainEncryptedNode());
 }
 
 TEST(EncryptionSchemaTreeTest, ContainsEncryptReturnsTrueIfNestedPropertyContainsEncryptedNode) {
@@ -1614,7 +1614,7 @@ TEST(EncryptionSchemaTreeTest, ContainsEncryptReturnsTrueIfNestedPropertyContain
     })");
 
     ASSERT(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal)
-               ->containsEncryptedNode());
+               ->mayContainEncryptedNode());
 }
 
 TEST(EncryptionSchemaTreeTest, ContainsEncryptReturnsFalseIfPropertyDoesNotContainEncryptedNode) {
@@ -1626,7 +1626,7 @@ TEST(EncryptionSchemaTreeTest, ContainsEncryptReturnsFalseIfPropertyDoesNotConta
     })");
 
     ASSERT_FALSE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal)
-                     ->containsEncryptedNode());
+                     ->mayContainEncryptedNode());
 }
 
 
@@ -1645,7 +1645,7 @@ TEST(EncryptionSchemaTreeTest,
     })");
 
     ASSERT_FALSE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal)
-                     ->containsEncryptedNode());
+                     ->mayContainEncryptedNode());
 }
 
 TEST(EncryptionSchemaTreeTest, ContainsEncryptReturnsTrueIfAdditionalPropertiesHasEncryptNode) {
@@ -1664,7 +1664,7 @@ TEST(EncryptionSchemaTreeTest, ContainsEncryptReturnsTrueIfAdditionalPropertiesH
     })");
 
     ASSERT_TRUE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal)
-                    ->containsEncryptedNode());
+                    ->mayContainEncryptedNode());
 }
 
 TEST(EncryptionSchemaTreeTest,
@@ -1680,7 +1680,7 @@ TEST(EncryptionSchemaTreeTest,
     })");
 
     ASSERT_FALSE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal)
-                     ->containsEncryptedNode());
+                     ->mayContainEncryptedNode());
 }
 
 TEST(EncryptionSchemaTreeTest, ContainsEncryptReturnsTrueIfPatternPropertiesHasEncryptNode) {
@@ -1703,7 +1703,7 @@ TEST(EncryptionSchemaTreeTest, ContainsEncryptReturnsTrueIfPatternPropertiesHasE
     })");
 
     ASSERT_TRUE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal)
-                    ->containsEncryptedNode());
+                    ->mayContainEncryptedNode());
 }
 
 TEST(EncryptionSchemaTreeTest, EncryptedBelowPrefixReturnsTrueOnShortPrefix) {
@@ -1723,7 +1723,7 @@ TEST(EncryptionSchemaTreeTest, EncryptedBelowPrefixReturnsTrueOnShortPrefix) {
         }
     })");
     ASSERT_TRUE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal)
-                    ->containsEncryptedNodeBelowPrefix(FieldRef("a")));
+                    ->mayContainEncryptedNodeBelowPrefix(FieldRef("a")));
 }
 
 TEST(EncryptionSchemaTreeTest, EncryptedBelowPrefixReturnsFalseOnMissingPath) {
@@ -1743,7 +1743,7 @@ TEST(EncryptionSchemaTreeTest, EncryptedBelowPrefixReturnsFalseOnMissingPath) {
         }
     })");
     ASSERT_FALSE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal)
-                     ->containsEncryptedNodeBelowPrefix(FieldRef("c")));
+                     ->mayContainEncryptedNodeBelowPrefix(FieldRef("c")));
 }
 
 
@@ -1761,7 +1761,7 @@ DEATH_TEST(EncryptionSchemaTreeTest, EncryptedBelowPrefixInvariantOnEncryptedPat
     })");
 
     EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal)
-        ->containsEncryptedNodeBelowPrefix(FieldRef("foo"));
+        ->mayContainEncryptedNodeBelowPrefix(FieldRef("foo"));
 }
 
 TEST(EncryptionSchemaTreeTest,
@@ -1779,7 +1779,7 @@ TEST(EncryptionSchemaTreeTest,
     })");
 
     ASSERT_FALSE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal)
-                     ->containsEncryptedNode());
+                     ->mayContainEncryptedNode());
 }
 
 TEST(EncryptionSchemaTreeTest, EncryptedBelowPrefixReturnsTrueOnLongPrefix) {
@@ -1810,9 +1810,9 @@ TEST(EncryptionSchemaTreeTest, EncryptedBelowPrefixReturnsTrueOnLongPrefix) {
         }
     })");
     auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
-    ASSERT_TRUE(schemaTree->containsEncryptedNodeBelowPrefix(FieldRef("a")));
-    ASSERT_TRUE(schemaTree->containsEncryptedNodeBelowPrefix(FieldRef("a.b")));
-    ASSERT_TRUE(schemaTree->containsEncryptedNodeBelowPrefix(FieldRef("a.b.c")));
+    ASSERT_TRUE(schemaTree->mayContainEncryptedNodeBelowPrefix(FieldRef("a")));
+    ASSERT_TRUE(schemaTree->mayContainEncryptedNodeBelowPrefix(FieldRef("a.b")));
+    ASSERT_TRUE(schemaTree->mayContainEncryptedNodeBelowPrefix(FieldRef("a.b.c")));
 }
 
 TEST(EncryptionSchemaTreeTest, ParseFailsIfDeterministicAndNoBSONType) {
@@ -2226,7 +2226,7 @@ void verifySchemaKeywordWorksOnlyForRemoteSchema(StringData schema, bool hasEncr
         31068);
     ASSERT_EQ(
         EncryptionSchemaTreeNode::parse(fromjson(schema.rawData()), EncryptionSchemaType::kRemote)
-            ->containsEncryptedNode(),
+            ->mayContainEncryptedNode(),
         hasEncryptedNode);
 };
 
@@ -2309,11 +2309,11 @@ TEST(EncryptionSchemaTreeTest, VerifyTitleAndDescriptionKeywordsAlwaysPermitted)
     const auto verifySchemaKeywordWorks = [](StringData schema, bool hasEncryptedNode) {
         ASSERT_EQ(EncryptionSchemaTreeNode::parse(fromjson(schema.rawData()),
                                                   EncryptionSchemaType::kLocal)
-                      ->containsEncryptedNode(),
+                      ->mayContainEncryptedNode(),
                   hasEncryptedNode);
         ASSERT_EQ(EncryptionSchemaTreeNode::parse(fromjson(schema.rawData()),
                                                   EncryptionSchemaType::kRemote)
-                      ->containsEncryptedNode(),
+                      ->mayContainEncryptedNode(),
                   hasEncryptedNode);
     };
     verifySchemaKeywordWorks("{description: 'description'}", false);
@@ -3035,9 +3035,14 @@ TEST(EncryptionSchemaTreeTest, StateMixedNodeGetEncryptionMetadataFails) {
     ASSERT_THROWS_CODE(node.getEncryptionMetadata(), AssertionException, 31133);
 }
 
-TEST(EncryptionSchemaTreeTest, StateMixedNodeContainsEncryptedNodeFails) {
+TEST(EncryptionSchemaTreeTest, StateMixedNodeContainsEncryptedNodeReturnsTrue) {
     EncryptionSchemaStateMixedNode node{};
-    ASSERT_THROWS_CODE(node.containsEncryptedNode(), AssertionException, 31134);
+    ASSERT_TRUE(node.mayContainEncryptedNode());
+}
+
+TEST(EncryptionSchemaTreeTest, StateMixedNodeContainsRandomEncryptedNodeReturnsTrue) {
+    EncryptionSchemaStateMixedNode node{};
+    ASSERT_TRUE(node.mayContainRandomlyEncryptedNode());
 }
 
 TEST(EncryptionSchemaTreeTest, GetEncryptionMetadataFailsIfPathHitsStateMixedNode) {
@@ -3061,7 +3066,7 @@ TEST(EncryptionSchemaTreeTest, GetEncryptionMetadataFailsIfPathHitsStateMixedNod
     root->addChild(FieldRef("ticker"), std::make_unique<EncryptionSchemaStateMixedNode>());
     ASSERT_THROWS_CODE(
         root->getEncryptionMetadataForPath(FieldRef("ticker")), AssertionException, 31133);
-    ASSERT_THROWS_CODE(root->containsEncryptedNode(), AssertionException, 31134);
+    ASSERT_TRUE(root->mayContainEncryptedNode());
     ASSERT(root->getEncryptionMetadataForPath(FieldRef("ssn")));
     ASSERT_FALSE(root->getEncryptionMetadataForPath(FieldRef("name")));
 }
@@ -3071,7 +3076,6 @@ TEST(EncryptionSchemaTreeTest, StateMixedNodeGetMetadataForStateMixedNodeNestedC
     root->addChild(FieldRef("name.ticker"), std::make_unique<EncryptionSchemaStateMixedNode>());
     ASSERT_THROWS_CODE(
         root->getEncryptionMetadataForPath(FieldRef("name.ticker")), AssertionException, 31133);
-    ASSERT_THROWS_CODE(root->containsEncryptedNode(), AssertionException, 31134);
 }
 
 TEST(EncryptionSchemaTreeTest, StateMixedNodeInAdditionalPropertiesFailsOnUndefinedFieldPath) {
@@ -3095,9 +3099,9 @@ TEST(EncryptionSchemaTreeTest, StateMixedNodeInAdditionalPropertiesFailsOnUndefi
     root->addAdditionalPropertiesChild(std::make_unique<EncryptionSchemaStateMixedNode>());
     ASSERT(root->getEncryptionMetadataForPath(FieldRef("ssn")));
     ASSERT_FALSE(root->getEncryptionMetadataForPath(FieldRef("name")));
+    ASSERT_TRUE(root->mayContainEncryptedNode());
     ASSERT_THROWS_CODE(
         root->getEncryptionMetadataForPath(FieldRef("undefinedField")), AssertionException, 31133);
-    ASSERT_THROWS_CODE(root->containsEncryptedNode(), AssertionException, 31134);
 }
 
 TEST(EncryptionSchemaTreeTest, StateMixedNodeInPatternPropertiesMetadataFailOnMatchedProperty) {
@@ -3105,9 +3109,9 @@ TEST(EncryptionSchemaTreeTest, StateMixedNodeInPatternPropertiesMetadataFailOnMa
     root->addPatternPropertiesChild(R"(tickers+)",
                                     std::make_unique<EncryptionSchemaStateMixedNode>());
     ASSERT_FALSE(root->getEncryptionMetadataForPath(FieldRef("some.path")));
+    ASSERT_TRUE(root->mayContainEncryptedNode());
     ASSERT_THROWS_CODE(
         root->getEncryptionMetadataForPath(FieldRef("tickerssss")), AssertionException, 31133);
-    ASSERT_THROWS_CODE(root->containsEncryptedNode(), AssertionException, 31134);
 }
 
 TEST(EncryptionSchemaTreeTest, AddChildThrowsIfAddingToEncryptedNode) {

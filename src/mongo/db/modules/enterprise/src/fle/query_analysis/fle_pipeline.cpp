@@ -64,8 +64,8 @@ using namespace std::string_literals;
 /*
  * This function handles propagating the schema through an inclusion projection and an $addFields
  * stage. It takes in the schema before this stage, the inclusion to be performed, and the output
- * schema to append to. It returns the schema that is
- * created by performing all the operations contained in 'root' on the given 'futureSchema'.
+ * schema to append to. It returns the schema that is created by performing all the operations
+ * contained in 'root' on the given 'futureSchema'.
  */
 clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForInclusionNode(
     const EncryptionSchemaTreeNode& prevSchema,
@@ -89,25 +89,38 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForInclusionNode(
         if (auto expr = root.getExpressionForPath(FieldPath(path))) {
             auto expressionSchema =
                 aggregate_expression_intender::getOutputSchema(prevSchema, expr.get(), false);
-            // If the schema has no encrypted values, it doesn't matter if we insert it into the
-            // tree.
-            uassert(31140,
-                    "Cannot assign encrypted value to dotted path " + fullPath.dottedField(0),
-                    !expressionSchema->containsEncryptedNode() || fullPath.numParts() < 2);
-            futureSchema->addChild(fullPath, std::move(expressionSchema));
+            // Dotted path projections can implicitly traverse arrays to access fields of an object
+            // within an array. For instance, if 'a' is an array in the incoming document, then
+            // projecting the path 'a.b' will refer to the field 'b' within an object in the array
+            // 'a'.
+            //
+            // For encryption, this means that we may end up with encrypted fields within an
+            // array for dotted path projections, so mark the first path component with an
+            // EncryptionSchemaStateMixedNode in the schema tree.
+            if (expressionSchema->mayContainEncryptedNode() && fullPath.numParts() > 1) {
+                futureSchema->addChild(FieldRef(fullPath[0]),
+                                       std::make_unique<EncryptionSchemaStateMixedNode>());
+            } else {
+                // Output schema for the expression does not contain any encrypted fields OR the
+                // projected field is not a dotted path.
+                futureSchema->addChild(fullPath, std::move(expressionSchema));
+            }
         }
     }
     for (const auto & [ newName, oldName ] : renamedPaths) {
         auto targetField = FieldRef{newName};
         if (auto oldEncryptionInfo = prevSchema.getNode(FieldRef{oldName})) {
-            // If the schema has no encrypted values, it doesn't matter if we insert it into the
-            // tree.
-            uassert(
-                31139,
-                "Cannot assign encrypted field or prefix of an encrypted field to dotted path " +
-                    targetField.dottedField(0),
-                !oldEncryptionInfo->containsEncryptedNode() || targetField.numParts() < 2);
-            futureSchema->addChild(targetField, oldEncryptionInfo->clone());
+            // Similar to the comment in computed projections above, if the target field is a dotted
+            // path then we need to make sure not to have any encrypted nodes since it may reference
+            // an array.
+            if (oldEncryptionInfo->mayContainEncryptedNode() && targetField.numParts() > 1) {
+                futureSchema->addChild(FieldRef(targetField[0]),
+                                       std::make_unique<EncryptionSchemaStateMixedNode>());
+            } else {
+                // Output schema for the expression does not contain any encrypted fields OR the
+                // projected field is not a dotted path.
+                futureSchema->addChild(targetField, oldEncryptionInfo->clone());
+            }
         }
     }
 
@@ -144,7 +157,7 @@ void propagateAccumulatedFieldsToSchema(const clonable_ptr<EncryptionSchemaTreeN
             *prevSchema, accuStmt.expression.get(), expressionResultCompared);
 
         if (accu->getOpName() == "$addToSet"s || accu->getOpName() == "$push"s) {
-            if (expressionSchema->containsEncryptedNode()) {
+            if (expressionSchema->mayContainEncryptedNode()) {
                 newSchema->addChild(FieldRef(accuStmt.fieldName),
                                     std::make_unique<EncryptionSchemaStateMixedNode>());
             } else {
@@ -155,8 +168,9 @@ void propagateAccumulatedFieldsToSchema(const clonable_ptr<EncryptionSchemaTreeN
                 uassert(51223,
                         str::stream() << "'" << accuStmt.fieldName
                                       << "' cannot have fields encrypted with the random algorithm "
-                                         "when used in an $addToSet accumulator.",
-                        !expressionSchema->containsRandomlyEncryptedNode());
+                                         "or whose encryption properties are not known until "
+                                         "runtime when used in an $addToSet accumulator.",
+                        !expressionSchema->mayContainRandomlyEncryptedNode());
             }
         } else if (accu->getOpName() == "$first"s || accu->getOpName() == "$last"s) {
             newSchema->addChild(FieldRef{accuStmt.fieldName}, std::move(expressionSchema));
@@ -164,7 +178,7 @@ void propagateAccumulatedFieldsToSchema(const clonable_ptr<EncryptionSchemaTreeN
             uassert(51221,
                     str::stream() << "Accumulator '" << accu->getOpName()
                                   << "' cannot aggregate encrypted fields.",
-                    !expressionSchema->containsEncryptedNode());
+                    !expressionSchema->mayContainEncryptedNode());
             newSchema->addChild(FieldRef(accuStmt.fieldName),
                                 std::make_unique<EncryptionSchemaNotEncryptedNode>());
         }
@@ -189,7 +203,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForBucketAuto(
         *prevSchema, source.getGroupByExpression().get(), expressionResultCompared);
     uassert(51238,
             "'groupBy' expression cannot reference encrypted fields or their prefixes.",
-            !expressionSchema->containsEncryptedNode());
+            !expressionSchema->mayContainEncryptedNode());
 
     // Always project a not encrypted '_id' field.
     newSchema->addChild(FieldRef{"_id"}, std::make_unique<EncryptionSchemaNotEncryptedNode>());
@@ -231,9 +245,10 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGroup(
         // This must be external to the usassert invocation to satisfy clang since it references a
         // structured binding.
         std::string errorMessage = str::stream()
-            << "'" << pathStr << "' cannot have fields encrypted with the random algorithm when "
-                                 "used for grouping.";
-        uassert(51222, errorMessage, !expressionSchema->containsRandomlyEncryptedNode());
+            << "Cannot group on field '" << pathStr
+            << "' which is encrypted with the random algorithm or whose encryption properties are "
+               "not known until runtime";
+        uassert(51222, errorMessage, !expressionSchema->mayContainRandomlyEncryptedNode());
         newSchema->addChild(fieldPath, std::move(expressionSchema));
     }
 
@@ -253,7 +268,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGraphLookUp(
         51230,
         str::stream() << "'connectFromField' '" << connectFromField.fullPath()
                       << "' in the $graphLookup aggregation stage cannot have an encrypted child.",
-        connectFromMetadata || !prevSchema->containsEncryptedNodeBelowPrefix(connectFromRef));
+        connectFromMetadata || !prevSchema->mayContainEncryptedNodeBelowPrefix(connectFromRef));
 
     auto connectToField = source.getConnectToField();
     FieldRef connectToRef(connectToField.fullPath());
@@ -262,7 +277,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGraphLookUp(
         51231,
         str::stream() << "'connectToField' '" << connectToField.fullPath()
                       << "' in the $graphLookup aggregation stage cannot have an encrypted child.",
-        connectToMetadata || !prevSchema->containsEncryptedNodeBelowPrefix(connectToRef));
+        connectToMetadata || !prevSchema->mayContainEncryptedNodeBelowPrefix(connectToRef));
 
     uassert(
         51232,
@@ -288,7 +303,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGraphLookUp(
     invariant(modifiedPaths.type == DocumentSource::GetModPathsReturn::Type::kFiniteSet);
     invariant(modifiedPaths.renames.empty());
     for (const auto& path : modifiedPaths.paths) {
-        if (prevSchema->containsEncryptedNode()) {
+        if (prevSchema->mayContainEncryptedNode()) {
             newSchema->addChild(FieldRef(path), std::make_unique<EncryptionSchemaStateMixedNode>());
         } else {
             newSchema->addChild(FieldRef(path),
@@ -317,7 +332,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForLookUp(
         // referenced in a query. Also, we only expect a finite set of paths without renames.
         invariant(children.size() == 1);
         for (const auto& path : modifiedPaths.paths) {
-            if (children[0]->containsEncryptedNode()) {
+            if (children[0]->mayContainEncryptedNode()) {
                 newSchema->addChild(FieldRef(path),
                                     std::make_unique<EncryptionSchemaStateMixedNode>());
             } else {
@@ -335,7 +350,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForLookUp(
             51206,
             str::stream() << "'localField' '" << localField->fullPath()
                           << "' in the $lookup aggregation stage cannot have an encrypted child.",
-            localMetadata || !prevSchema->containsEncryptedNodeBelowPrefix(localRef));
+            localMetadata || !prevSchema->mayContainEncryptedNodeBelowPrefix(localRef));
 
         auto foreignField = source.getForeignField();
         FieldRef foreignRef(foreignField->fullPath());
@@ -344,7 +359,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForLookUp(
             51207,
             str::stream() << "'foreignField' '" << foreignField->fullPath()
                           << "' in the $lookup aggregation stage cannot have an encrypted child.",
-            foreignMetadata || !prevSchema->containsEncryptedNodeBelowPrefix(foreignRef));
+            foreignMetadata || !prevSchema->mayContainEncryptedNodeBelowPrefix(foreignRef));
 
         uassert(51210,
                 str::stream() << "'localField' '" << localField->fullPath()
@@ -577,7 +592,7 @@ aggregate_expression_intender::Intention analyzeForGeoNear(FLEPipeline* flePipe,
                 str::stream() << "'key' field '" << key->fullPath()
                               << "' in the $geoNear aggregation stage cannot be encrypted.",
                 !schema.getEncryptionMetadataForPath(keyField) &&
-                    !schema.containsEncryptedNodeBelowPrefix(keyField));
+                    !schema.mayContainEncryptedNodeBelowPrefix(keyField));
     }
 
     // Update the query in the DocumentSourceGeoNear using the serialized MatchExpression
@@ -670,7 +685,7 @@ aggregate_expression_intender::Intention analyzeForSort(FLEPipeline* flePipe,
                     str::stream() << "Sorting on key '" << part.fieldPath->fullPath()
                                   << "' is not allowed due to encryption.",
                     !schema.getEncryptionMetadataForPath(keyField) &&
-                        !schema.containsEncryptedNodeBelowPrefix(keyField));
+                        !schema.mayContainEncryptedNodeBelowPrefix(keyField));
         }
     }
     return aggregate_expression_intender::Intention::NotMarked;

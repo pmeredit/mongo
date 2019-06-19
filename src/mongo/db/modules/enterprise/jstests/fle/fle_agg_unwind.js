@@ -174,7 +174,7 @@
             jsonSchema: {type: "object", properties: {ssnArray: encryptedStringSpec}},
             isRemoteSchema: false,
         };
-        assert.commandFailedWithCode(testDB.runCommand(command), 31134);
+        assert.commandFailedWithCode(testDB.runCommand(command), 31133);
     })();
 
     mongocryptd.stop();

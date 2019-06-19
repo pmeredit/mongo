@@ -448,7 +448,7 @@ public:
             uassert(31129,
                     "Referencing a prefix of an encrypted field is not supported",
                     _schema.getEncryptionMetadataForPath(path) ||
-                        !_schema.containsEncryptedNodeBelowPrefix(path));
+                        !_schema.mayContainEncryptedNodeBelowPrefix(path));
             if (auto node = _schema.getNode(path)) {
                 _tracker.reconcileSchema(node->clone());
             } else {

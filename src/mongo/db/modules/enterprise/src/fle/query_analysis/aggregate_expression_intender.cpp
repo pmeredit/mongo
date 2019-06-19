@@ -294,7 +294,7 @@ auto getEncryptionTypeForPathEnsureNotPrefix(const EncryptionSchemaTreeNode& sch
     // encrypted field in a more accepting manner.
     uassert(31131,
             "Found forbidden reference to prefix of encrypted field "s + path.fullPath(),
-            encryptedType || !schema.containsEncryptedNodeBelowPrefix(FieldRef(path.fullPath())));
+            encryptedType || !schema.mayContainEncryptedNodeBelowPrefix(FieldRef(path.fullPath())));
     return encryptedType;
 }
 

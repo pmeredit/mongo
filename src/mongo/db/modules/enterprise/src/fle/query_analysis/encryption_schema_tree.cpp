@@ -511,15 +511,15 @@ std::unique_ptr<EncryptionSchemaTreeNode> _parse(BSONObj schema,
 
 }  // namespace
 
-bool EncryptionSchemaTreeNode::_containsEncryptedNodeBelowPrefix(const FieldRef& prefix,
-                                                                 size_t level) const {
+bool EncryptionSchemaTreeNode::_mayContainEncryptedNodeBelowPrefix(const FieldRef& prefix,
+                                                                   size_t level) const {
     invariant(!getEncryptionMetadata());
     if (level >= prefix.numParts()) {
-        return containsEncryptedNode();
+        return mayContainEncryptedNode();
     }
     auto matchingChildren = getChildrenForPathComponent(prefix.getPart(level));
     for (auto const& child : matchingChildren) {
-        if (child->_containsEncryptedNodeBelowPrefix(prefix, level + 1)) {
+        if (child->_mayContainEncryptedNodeBelowPrefix(prefix, level + 1)) {
             return true;
         }
     }
@@ -644,42 +644,42 @@ const EncryptionSchemaTreeNode* EncryptionSchemaTreeNode::_getNode(const FieldRe
     return childNode;
 };
 
-bool EncryptionSchemaTreeNode::containsEncryptedNode() const {
+bool EncryptionSchemaTreeNode::mayContainEncryptedNode() const {
     // The lack of short-circuiting is purposeful to ensure 'unknown' nodes assert.
     bool found = false;
     for (auto && [ path, child ] : _propertiesChildren) {
-        if (child->containsEncryptedNode()) {
+        if (child->mayContainEncryptedNode()) {
             found = true;
         }
     }
     for (auto&& patternPropertiesChild : _patternPropertiesChildren) {
-        if (patternPropertiesChild.child->containsEncryptedNode()) {
+        if (patternPropertiesChild.child->mayContainEncryptedNode()) {
             found = true;
         }
     }
     if (_additionalPropertiesChild) {
-        if (_additionalPropertiesChild->containsEncryptedNode()) {
+        if (_additionalPropertiesChild->mayContainEncryptedNode()) {
             found = true;
         }
     }
     return found;
 }
 
-bool EncryptionSchemaTreeNode::containsRandomlyEncryptedNode() const {
+bool EncryptionSchemaTreeNode::mayContainRandomlyEncryptedNode() const {
     // The lack of short-circuiting is purposeful to ensure 'unknown' nodes assert.
     bool found = false;
     for (auto && [ path, child ] : _propertiesChildren) {
-        if (child->containsRandomlyEncryptedNode()) {
+        if (child->mayContainRandomlyEncryptedNode()) {
             found = true;
         }
     }
     for (auto&& patternPropertiesChild : _patternPropertiesChildren) {
-        if (patternPropertiesChild.child->containsRandomlyEncryptedNode()) {
+        if (patternPropertiesChild.child->mayContainRandomlyEncryptedNode()) {
             found = true;
         }
     }
     if (_additionalPropertiesChild) {
-        if (_additionalPropertiesChild->containsRandomlyEncryptedNode()) {
+        if (_additionalPropertiesChild->mayContainRandomlyEncryptedNode()) {
             found = true;
         }
     }

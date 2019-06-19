@@ -78,8 +78,8 @@ public:
                 sourceMetadata == destinationMetadata);
         uassert(51161,
                 "$rename is not allowed on an object containing encrypted fields",
-                sourceMetadata || (!_schemaTree.containsEncryptedNodeBelowPrefix(sourcePath) &&
-                                   !_schemaTree.containsEncryptedNodeBelowPrefix(
+                sourceMetadata || (!_schemaTree.mayContainEncryptedNodeBelowPrefix(sourcePath) &&
+                                   !_schemaTree.mayContainEncryptedNodeBelowPrefix(
                                        FieldRef{host->getValue().String()})));
     }
 
@@ -97,7 +97,7 @@ public:
         // If the prefix is encrypted, or has no encrypted nodes below it in the tree, this path is
         // not removing any encrypted fields.
         if (_schemaTree.getEncryptionMetadataForPath(prefix) ||
-            !_schemaTree.containsEncryptedNodeBelowPrefix(prefix)) {
+            !_schemaTree.mayContainEncryptedNodeBelowPrefix(prefix)) {
             return;
         }
         uassert(51159,
@@ -166,7 +166,7 @@ public:
                 "Cannot encrypt fields below '$' positional update operator",
                 !host->getChild("$") ||
                     !(_schemaTree.getEncryptionMetadataForPath(_currentPath) ||
-                      _schemaTree.containsEncryptedNodeBelowPrefix(_currentPath)));
+                      _schemaTree.mayContainEncryptedNodeBelowPrefix(_currentPath)));
 
         for (const auto & [ pathSuffix, child ] : host->getChildren()) {
             FieldRef::FieldRefTempAppend tempAppend(_currentPath, pathSuffix);

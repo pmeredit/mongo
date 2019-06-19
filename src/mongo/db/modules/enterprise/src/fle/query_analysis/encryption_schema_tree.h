@@ -150,15 +150,16 @@ public:
     virtual boost::optional<ResolvedEncryptionInfo> getEncryptionMetadata() const = 0;
 
     /**
-     * Returns true if this tree contains at least one EncryptionSchemaEncryptedNode.
+     * Returns true if this tree contains at least one EncryptionSchemaEncryptedNode or
+     * EncryptionSchemaStateMixedNode.
      */
-    virtual bool containsEncryptedNode() const;
+    virtual bool mayContainEncryptedNode() const;
 
     /**
      * Returns true if this tree contains at least one EncryptionSchemaEncryptedNode with the
-     * random algorithm.
+     * random algorithm or at least one EncryptionSchemaStateMixedNode.
      */
-    virtual bool containsRandomlyEncryptedNode() const;
+    virtual bool mayContainRandomlyEncryptedNode() const;
 
     /**
      * Certain EncryptionSchemaTreeNode derived classes may contain literals, stored in-place to
@@ -249,8 +250,8 @@ public:
      * Returns true if the prefix passed in is the prefix of an encrypted path. Returns false if
      * the prefix does not exist. Should not be called if any part of the prefix is encrypted.
      */
-    bool containsEncryptedNodeBelowPrefix(const FieldRef& prefix) const {
-        return _containsEncryptedNodeBelowPrefix(prefix, 0);
+    bool mayContainEncryptedNodeBelowPrefix(const FieldRef& prefix) const {
+        return _mayContainEncryptedNodeBelowPrefix(prefix, 0);
     }
 
     /**
@@ -339,7 +340,7 @@ private:
      */
     const EncryptionSchemaTreeNode* _getNode(const FieldRef& path, size_t index = 0) const;
 
-    bool _containsEncryptedNodeBelowPrefix(const FieldRef& prefix, size_t level) const;
+    bool _mayContainEncryptedNodeBelowPrefix(const FieldRef& prefix, size_t level) const;
 
     StringMap<clonable_ptr<EncryptionSchemaTreeNode>> _propertiesChildren;
 
@@ -379,11 +380,11 @@ public:
         return _metadata;
     }
 
-    bool containsEncryptedNode() const final {
+    bool mayContainEncryptedNode() const final {
         return true;
     }
 
-    bool containsRandomlyEncryptedNode() const final {
+    bool mayContainRandomlyEncryptedNode() const final {
         return _metadata.algorithm == FleAlgorithmEnum::kRandom;
     }
 
@@ -414,16 +415,13 @@ public:
                   "runtime.");
     }
 
-    bool containsEncryptedNode() const final {
-        uasserted(31134,
-                  "Cannot attempt to reference a path whose encryption properties are not known "
-                  "until runtime");
+    bool mayContainEncryptedNode() const final {
+        // The field may be encrypted at runtime, safest option is to return true.
+        return true;
     }
 
-    bool containsRandomlyEncryptedNode() const final {
-        uasserted(51234,
-                  "Cannot attempt to reference a path whose encryption properties are not known "
-                  "until runtime");
+    bool mayContainRandomlyEncryptedNode() const final {
+        return true;
     }
 
     std::unique_ptr<EncryptionSchemaTreeNode> clone() const final {

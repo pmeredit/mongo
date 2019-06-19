@@ -176,7 +176,7 @@ BSONObj replaceEncryptedFieldsRecursive(const EncryptionSchemaTreeNode* schema,
             uassert(31006,
                     str::stream() << "An array at path '" << leadingPath->dottedField()
                                   << "' would violate the schema",
-                    !schema->containsEncryptedNodeBelowPrefix(*leadingPath));
+                    !schema->mayContainEncryptedNodeBelowPrefix(*leadingPath));
             builder.append(element);
         } else {
             builder.append(element);
@@ -238,7 +238,7 @@ PlaceHolderResult replaceEncryptedFieldsInFilter(
     fleMatchExpr.getMatchExpression()->serialize(&bob);
 
     return {fleMatchExpr.containsEncryptedPlaceholders(),
-            schemaTree.containsEncryptedNode(),
+            schemaTree.mayContainEncryptedNode(),
             bob.obj()};
 }
 
@@ -315,12 +315,12 @@ PlaceHolderResult replaceEncryptedFieldsInUpdate(
             flePipe.serialize(&arr);
 
             return PlaceHolderResult{
-                flePipe.hasEncryptedPlaceholders, schemaTree.containsEncryptedNode(), arr.obj()};
+                flePipe.hasEncryptedPlaceholders, schemaTree.mayContainEncryptedNode(), arr.obj()};
         }
     }
 
     return PlaceHolderResult{hasEncryptionPlaceholder,
-                             schemaTree.containsEncryptedNode(),
+                             schemaTree.mayContainEncryptedNode(),
                              driver.serialize().getDocument().toBson()};
 }
 
@@ -387,7 +387,7 @@ PlaceHolderResult addPlaceHoldersForAggregate(
         }
     }
 
-    return {flePipe.hasEncryptedPlaceholders, schemaTree->containsEncryptedNode(), bob.obj()};
+    return {flePipe.hasEncryptedPlaceholders, schemaTree->mayContainEncryptedNode(), bob.obj()};
 }
 
 PlaceHolderResult addPlaceHoldersForCount(const boost::intrusive_ptr<ExpressionContext>& expCtx,
@@ -403,7 +403,7 @@ PlaceHolderResult addPlaceHoldersForCount(const boost::intrusive_ptr<ExpressionC
 
     return PlaceHolderResult{newQueryPlaceholder.hasEncryptionPlaceholders,
                              newQueryPlaceholder.schemaRequiresEncryption ||
-                                 schemaTree->containsEncryptedNode(),
+                                 schemaTree->mayContainEncryptedNode(),
                              countCmd.toBSON(cmdObj)};
 }
 
@@ -439,7 +439,7 @@ PlaceHolderResult addPlaceHoldersForDistinct(const boost::intrusive_ptr<Expressi
     } else {
         uassert(31027,
                 "Distinct key is not allowed to be a prefix of an encrypted field",
-                !schemaTree->containsEncryptedNodeBelowPrefix(FieldRef(parsedDistinct.getKey())));
+                !schemaTree->mayContainEncryptedNodeBelowPrefix(FieldRef(parsedDistinct.getKey())));
     }
 
     PlaceHolderResult placeholder;
@@ -454,7 +454,7 @@ PlaceHolderResult addPlaceHoldersForDistinct(const boost::intrusive_ptr<Expressi
     // Serialize the parsed distinct command. Passing the original command object to 'serialize()'
     // allows the IDL to merge generic fields which the command does not specifically handle.
     return PlaceHolderResult{placeholder.hasEncryptionPlaceholders,
-                             schemaTree->containsEncryptedNode(),
+                             schemaTree->mayContainEncryptedNode(),
                              parsedDistinct.serialize(cmdObj).body};
 }
 
@@ -515,7 +515,7 @@ PlaceHolderResult addPlaceHoldersForFindAndModify(
     }
 
     return PlaceHolderResult{
-        anythingEncrypted, schemaTree->containsEncryptedNode(), request.toBSON(cmdObj)};
+        anythingEncrypted, schemaTree->mayContainEncryptedNode(), request.toBSON(cmdObj)};
 }
 
 PlaceHolderResult addPlaceHoldersForInsert(OperationContext* opCtx,
@@ -540,7 +540,7 @@ PlaceHolderResult addPlaceHoldersForInsert(OperationContext* opCtx,
     std::set<StringData> fieldNames = request.body.getFieldNames<std::set<StringData>>();
     fieldNames.insert("documents"_sd);
     retPlaceholder.result = removeExtraFields(fieldNames, batch.toBSON(request.body));
-    retPlaceholder.schemaRequiresEncryption = schemaTree->containsEncryptedNode();
+    retPlaceholder.schemaRequiresEncryption = schemaTree->mayContainEncryptedNode();
     return retPlaceholder;
 }
 
@@ -585,7 +585,7 @@ PlaceHolderResult addPlaceHoldersForUpdate(OperationContext* opCtx,
     std::set<StringData> fieldNames = request.body.getFieldNames<std::set<StringData>>();
     fieldNames.insert("updates"_sd);
     phr.result = removeExtraFields(fieldNames, updateOp.toBSON(request.body));
-    phr.schemaRequiresEncryption = schemaTree->containsEncryptedNode();
+    phr.schemaRequiresEncryption = schemaTree->mayContainEncryptedNode();
     return phr;
 }
 
@@ -614,7 +614,7 @@ PlaceHolderResult addPlaceHoldersForDelete(OperationContext* opCtx,
     std::set<StringData> fieldNames = request.body.getFieldNames<std::set<StringData>>();
     fieldNames.insert("deletes"_sd);
     placeHolderResult.result = removeExtraFields(fieldNames, deleteRequest.toBSON(request.body));
-    placeHolderResult.schemaRequiresEncryption = schemaTree->containsEncryptedNode();
+    placeHolderResult.schemaRequiresEncryption = schemaTree->mayContainEncryptedNode();
     return placeHolderResult;
 }
 

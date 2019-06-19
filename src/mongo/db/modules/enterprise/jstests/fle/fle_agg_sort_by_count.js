@@ -83,7 +83,7 @@
         jsonSchema: {type: "object", properties: {qty: encryptedStringSpec}},
         isRemoteSchema: false
     };
-    assert.commandFailedWithCode(testDB.runCommand(command), 51234);
+    assert.commandFailedWithCode(testDB.runCommand(command), 51222);
 
     // Test that $sortByCount succeeds if it is specified with a deterministically encrypted
     // field.

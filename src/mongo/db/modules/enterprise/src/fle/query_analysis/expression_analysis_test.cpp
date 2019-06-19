@@ -36,7 +36,7 @@ TEST_F(ExpressionAnalysisTest, ExpressionFieldPathCorrectlyReturnsEncryptedState
     auto outSchema =
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false);
     ASSERT_FALSE(outSchema->getEncryptionMetadata());
-    ASSERT_FALSE(outSchema->containsEncryptedNode());
+    ASSERT_FALSE(outSchema->mayContainEncryptedNode());
 
     parsedExpr = Expression::parseOperand(
         getExpCtx(), exprObj["encrypted"], getExpCtx()->variablesParseState);
@@ -76,7 +76,7 @@ TEST_F(ExpressionAnalysisTest, ExpressionConstantCorrectlyReturnsNotEncrypted) {
     auto outSchema =
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false);
     ASSERT_FALSE(outSchema->getEncryptionMetadata());
-    ASSERT_FALSE(outSchema->containsEncryptedNode());
+    ASSERT_FALSE(outSchema->mayContainEncryptedNode());
 }
 
 TEST_F(ExpressionAnalysisTest, VariablesSupportedInOutput) {
@@ -88,7 +88,7 @@ TEST_F(ExpressionAnalysisTest, VariablesSupportedInOutput) {
     auto outSchema =
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false);
     ASSERT_FALSE(outSchema->getEncryptionMetadata());
-    ASSERT_FALSE(outSchema->containsEncryptedNode());
+    ASSERT_FALSE(outSchema->mayContainEncryptedNode());
 
     exprObj =
         fromjson("{a: {$filter: {input: ['a', 'b', 'c'], as: 'num', cond: {$eq: ['$$num', 0]}}}}");
@@ -96,7 +96,7 @@ TEST_F(ExpressionAnalysisTest, VariablesSupportedInOutput) {
     outSchema =
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false);
     ASSERT_FALSE(outSchema->getEncryptionMetadata());
-    ASSERT_FALSE(outSchema->containsEncryptedNode());
+    ASSERT_FALSE(outSchema->mayContainEncryptedNode());
 
     exprObj = fromjson(
         "{a: {$reduce: {input: ['a', 'b', 'c'], initialValue: '', in: {$concat: ['$$value', "
@@ -105,14 +105,14 @@ TEST_F(ExpressionAnalysisTest, VariablesSupportedInOutput) {
     outSchema =
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false);
     ASSERT_FALSE(outSchema->getEncryptionMetadata());
-    ASSERT_FALSE(outSchema->containsEncryptedNode());
+    ASSERT_FALSE(outSchema->mayContainEncryptedNode());
 
     exprObj = fromjson("{expr: {$let: {vars: {not_ssn: 1}, in: {$eq: ['$not_ssn', 1]}}}}");
     parsedExpr = Expression::parseOperand(expCtx, exprObj["a"], expCtx->variablesParseState);
     outSchema =
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false);
     ASSERT_FALSE(outSchema->getEncryptionMetadata());
-    ASSERT_FALSE(outSchema->containsEncryptedNode());
+    ASSERT_FALSE(outSchema->mayContainEncryptedNode());
 }
 
 TEST_F(ExpressionAnalysisTest, CondReturnsCorrectSchemaIfBothBranchesNotEncrypted) {
@@ -123,7 +123,7 @@ TEST_F(ExpressionAnalysisTest, CondReturnsCorrectSchemaIfBothBranchesNotEncrypte
     auto outSchema =
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false);
     ASSERT_FALSE(outSchema->getEncryptionMetadata());
-    ASSERT_FALSE(outSchema->containsEncryptedNode());
+    ASSERT_FALSE(outSchema->mayContainEncryptedNode());
 }
 
 TEST_F(ExpressionAnalysisTest, CondReturnsCorrectSchemaIfBothBranchesEncrypted) {
@@ -174,7 +174,7 @@ TEST_F(ExpressionAnalysisTest, CondWithEvaluatedSubtreeReturnsNotEncrypted) {
     auto outSchema =
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false);
     ASSERT_FALSE(outSchema->getEncryptionMetadata());
-    ASSERT_FALSE(outSchema->containsEncryptedNode());
+    ASSERT_FALSE(outSchema->mayContainEncryptedNode());
 
     exprObj = fromjson("{expr: {$cond: {if: true, then: '$ssn', else: {$add: ['$b', 5]}}}}");
     parsedExpr =
@@ -304,7 +304,7 @@ TEST_F(ExpressionAnalysisTest, CondInEvaluationContextDoesNotFailIfMixedEncrypti
     auto outSchema =
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false);
     ASSERT_FALSE(outSchema->getEncryptionMetadata());
-    ASSERT_FALSE(outSchema->containsEncryptedNode());
+    ASSERT_FALSE(outSchema->mayContainEncryptedNode());
 }
 
 TEST_F(ExpressionAnalysisTest, SwitchReturnsNotEncryptedIfAllBranchesReturnNotEncrypted) {
@@ -324,7 +324,7 @@ TEST_F(ExpressionAnalysisTest, SwitchReturnsNotEncryptedIfAllBranchesReturnNotEn
     auto outSchema =
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false);
     ASSERT_FALSE(outSchema->getEncryptionMetadata());
-    ASSERT_FALSE(outSchema->containsEncryptedNode());
+    ASSERT_FALSE(outSchema->mayContainEncryptedNode());
 }
 
 TEST_F(ExpressionAnalysisTest, SwitchReturnsEncryptedIfAllBranchesReturnEncrypted) {
@@ -433,7 +433,7 @@ TEST_F(ExpressionAnalysisTest, IfNullReturnsNotEncryptedIfBothBranchedAreNotEncr
     auto outSchema =
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false);
     ASSERT_FALSE(outSchema->getEncryptionMetadata());
-    ASSERT_FALSE(outSchema->containsEncryptedNode());
+    ASSERT_FALSE(outSchema->mayContainEncryptedNode());
 }
 
 TEST_F(ExpressionAnalysisTest, IfNullReturnsUnknownIfConflictingEncryptionProperties) {
@@ -472,7 +472,7 @@ TEST_F(ExpressionAnalysisTest, ExpressionObjectWithSingleTopLevelEncryptedField)
     auto exprObj = fromjson("{newSsn: '$ssn'}");
     auto outSchema = getSchemaFromExpression(exprObj, kDefaultSsnSchema);
     ASSERT_FALSE(outSchema->getEncryptionMetadata());
-    ASSERT_TRUE(outSchema->containsEncryptedNode());
+    ASSERT_TRUE(outSchema->mayContainEncryptedNode());
     ASSERT(outSchema->getEncryptionMetadataForPath(FieldRef("newSsn")) == kDefaultMetadata);
     ASSERT_FALSE(outSchema->getEncryptionMetadataForPath(FieldRef("nonExistent")));
 }
@@ -481,7 +481,7 @@ TEST_F(ExpressionAnalysisTest, ExpressionObjectWithMultipleTopLevelEncryptedFiel
     auto exprObj = fromjson("{newSsn: '$ssn', newUser: '$user'}");
     auto outSchema = getSchemaFromExpression(exprObj, kAllEncryptedSchema);
     ASSERT_FALSE(outSchema->getEncryptionMetadata());
-    ASSERT_TRUE(outSchema->containsEncryptedNode());
+    ASSERT_TRUE(outSchema->mayContainEncryptedNode());
     ASSERT(outSchema->getEncryptionMetadataForPath(FieldRef("newSsn")) == kDefaultMetadata);
     ASSERT(outSchema->getEncryptionMetadataForPath(FieldRef("newUser")) == kDefaultMetadata);
     ASSERT_FALSE(outSchema->getEncryptionMetadataForPath(FieldRef("nonExistent")));
@@ -491,14 +491,14 @@ TEST_F(ExpressionAnalysisTest, ExpressionObjectWithNoEncryptedFields) {
     auto exprObj = fromjson("{answer: 42, to: 'life'}");
     auto outSchema = getSchemaFromExpression(exprObj, kDefaultSsnSchema);
     ASSERT_FALSE(outSchema->getEncryptionMetadataForPath(FieldRef("ssn")));
-    ASSERT_FALSE(outSchema->containsEncryptedNode());
+    ASSERT_FALSE(outSchema->mayContainEncryptedNode());
 }
 
 TEST_F(ExpressionAnalysisTest, ExpressionObjectWithEvaluatedExpressionsReturnsNoEncryption) {
     auto exprObj = fromjson("{answer: {$add: [40, 2]}, to: {$concat: ['li', 'fe']}}");
     auto outSchema = getSchemaFromExpression(exprObj, kDefaultSsnSchema);
     ASSERT_FALSE(outSchema->getEncryptionMetadataForPath(FieldRef("ssn")));
-    ASSERT_FALSE(outSchema->containsEncryptedNode());
+    ASSERT_FALSE(outSchema->mayContainEncryptedNode());
 }
 
 TEST_F(ExpressionAnalysisTest, ExpressionObjectWithReferencesToEncryptedPrefixFails) {
@@ -511,7 +511,7 @@ TEST_F(ExpressionAnalysisTest, ExpressionObjectInceptionCorrectlyReturnsOutSchem
     auto exprObj = fromjson("{newUser: {name: '$user', ssn: '$ssn'}}");
     auto outSchema = getSchemaFromExpression(exprObj, kAllEncryptedSchema);
     ASSERT_FALSE(outSchema->getEncryptionMetadata());
-    ASSERT_TRUE(outSchema->containsEncryptedNode());
+    ASSERT_TRUE(outSchema->mayContainEncryptedNode());
     ASSERT(outSchema->getEncryptionMetadataForPath(FieldRef("newUser.name")) == kDefaultMetadata);
     ASSERT(outSchema->getEncryptionMetadataForPath(FieldRef("newUser.ssn")) == kDefaultMetadata);
     ASSERT_FALSE(outSchema->getEncryptionMetadataForPath(FieldRef("nonExistent")));
@@ -615,7 +615,7 @@ TEST_F(ExpressionAnalysisTest, EvaluatedExpressionsCorrectlyReturnNotEncrypted) 
     for (auto&& expr : evaluateExpressions) {
         auto outSchema = getSchemaFromExpression(expr, kDefaultSsnSchema);
         ASSERT_FALSE(outSchema->getEncryptionMetadata());
-        ASSERT_FALSE(outSchema->containsEncryptedNode());
+        ASSERT_FALSE(outSchema->mayContainEncryptedNode());
     }
 }
 

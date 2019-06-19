@@ -165,7 +165,7 @@
         jsonSchema: {type: "object", properties: {qty: encryptedStringSpec}},
         isRemoteSchema: false
     };
-    assert.commandFailedWithCode(testDB.runCommand(command), 51234);
+    assert.commandFailedWithCode(testDB.runCommand(command), 51222);
 
     // Test that $group with an expression in '_id' correctly marks literals since the evaluated
     // result of the expression will be used in comparison across documents.
@@ -297,7 +297,7 @@
         jsonSchema: {type: "object", properties: {qty: encryptedStringSpec}},
         isRemoteSchema: false,
     };
-    assert.commandFailedWithCode(testDB.runCommand(command), 31134);
+    assert.commandFailedWithCode(testDB.runCommand(command), 51223);
 
     // Test that the $addToSet accumulator in $group fails if its expression outputs schema with
     // any fields encrypted with the random algorithm.

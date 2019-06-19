@@ -81,6 +81,46 @@
     assert(cmdRes.hasEncryptionPlaceholders, cmdRes);
     assert(cmdRes.result.pipeline[1].$match.newUser.$eq instanceof BinData, cmdRes);
 
+    // Test that renaming an encrypted field to a new dotted field is allowed as long as the field
+    // is not referenced in subsequent stages.
+    command = {
+        aggregate: coll.getName(),
+        pipeline: [{$project: {"newUser.ssn": "$ssn"}}],
+        cursor: {},
+        jsonSchema: {type: "object", properties: {ssn: encryptedStringSpec}},
+        isRemoteSchema: false,
+    };
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    assert(cmdRes.schemaRequiresEncryption, cmdRes);
+    assert(!cmdRes.hasEncryptionPlaceholders, cmdRes);
+
+    // Test that adding a new dotted path which is computed from an encrypted is allowed as long as
+    // the field is not referenced in subsequent stages.
+    command = {
+        aggregate: coll.getName(),
+        pipeline: [{$project: {"newUser.ssn": {$cond: [true, "$ssn", "$otherSsn"]}}}],
+        cursor: {},
+        jsonSchema:
+            {type: "object", properties: {ssn: encryptedStringSpec, otherSsn: encryptedStringSpec}},
+        isRemoteSchema: false,
+    };
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    assert(cmdRes.schemaRequiresEncryption, cmdRes);
+    assert(!cmdRes.hasEncryptionPlaceholders, cmdRes);
+
+    // Test that accessing a dotted path which is the target of a rename from an encrypted field is
+    // not allowed. This is because projecting a dotted path *could* access a sub-document within an
+    // array. In this example, if 'newUser' was an array then we would end up with an encrypted
+    // field within an object in that array.
+    command = {
+        aggregate: coll.getName(),
+        pipeline: [{$project: {"newUser.ssn": "$ssn"}}, {$match: {newUser: {ssn: "1234"}}}],
+        cursor: {},
+        jsonSchema: {type: "object", properties: {ssn: encryptedStringSpec}},
+        isRemoteSchema: false,
+    };
+    assert.commandFailedWithCode(testDB.runCommand(command), 31133);
+
     // Basic exclusion test.
     command = {
         aggregate: coll.getName(),

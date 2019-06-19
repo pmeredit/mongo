@@ -189,7 +189,7 @@ TEST_F(FLEPipelineTest, MatchWithInvalidComparisonToEncryptedFieldCorrectlyFails
 TEST_F(FLEPipelineTest, InclusionProjectionWithNoEncryptedFieldsSucceeds) {
     BSONObj projection = BSON("$project" << BSON("_id" << 1));
     auto& schema = getSchemaForStage({projection}, kMultiEncryptSchema);
-    ASSERT_FALSE(schema.containsEncryptedNode());
+    ASSERT_FALSE(schema.mayContainEncryptedNode());
 }
 
 TEST_F(FLEPipelineTest, InclusionProjectionWithOneEncryptedFieldHasOneEncryptedPath) {
@@ -291,7 +291,7 @@ TEST_F(FLEPipelineTest, ExclusionOfAllFieldsSucceeds) {
     ASSERT_FALSE(schema.getEncryptionMetadataForPath(FieldRef("user.address")));
     ASSERT_FALSE(schema.getEncryptionMetadataForPath(FieldRef("user.ssn")));
     ASSERT_FALSE(schema.getEncryptionMetadataForPath(FieldRef("user.accounts.bank")));
-    ASSERT_FALSE(schema.containsEncryptedNode());
+    ASSERT_FALSE(schema.mayContainEncryptedNode());
 }
 
 TEST_F(FLEPipelineTest, InclusionOfAdditionalPropertiesSucceeds) {
@@ -334,14 +334,14 @@ TEST_F(FLEPipelineTest, InclusionIncludesIDEvenIfNotSpecified) {
 TEST_F(FLEPipelineTest, ExclusionWithPatternPropertiesKeepsNonNamedProperties) {
     BSONObj projection = BSON("$project" << BSON("foo" << 0));
     const auto& outputSchema = getSchemaForStage({projection}, kPatternPropertiesSchema);
-    ASSERT_TRUE(outputSchema.containsEncryptedNode());
+    ASSERT_TRUE(outputSchema.mayContainEncryptedNode());
     ASSERT_TRUE(outputSchema.getEncryptionMetadataForPath(FieldRef{"foo"}));
 }
 
 TEST_F(FLEPipelineTest, ExclusionWithAdditionalPropertiesKeepsNonNamedProperties) {
     BSONObj projection = BSON("$project" << BSON("user" << 0));
     const auto& outputSchema = getSchemaForStage({projection}, kAllEncryptedSchema);
-    ASSERT_TRUE(outputSchema.containsEncryptedNode());
+    ASSERT_TRUE(outputSchema.mayContainEncryptedNode());
     ASSERT_TRUE(outputSchema.getEncryptionMetadataForPath(FieldRef{"user"}));
 }
 
@@ -408,7 +408,7 @@ TEST_F(FLEPipelineTest, InclusionEvaluatedExpressionReturnsNotEncrypted) {
         BSON("$project" << BSON("newField" << BSON("$add" << BSON_ARRAY("$oldOne"
                                                                         << "$oldTwo"))));
     const auto& outputSchema = getSchemaForStage({projection}, kDefaultSsnSchema);
-    ASSERT_FALSE(outputSchema.containsEncryptedNode());
+    ASSERT_FALSE(outputSchema.mayContainEncryptedNode());
 }
 
 TEST_F(FLEPipelineTest, InclusionWithExpressionProperlyBuildsSchema) {
@@ -426,13 +426,21 @@ TEST_F(FLEPipelineTest, InclusionWithExpressionProperlyBuildsSchema) {
     ASSERT_FALSE(outputSchema.getEncryptionMetadataForPath(FieldRef{"unEncrypted"}));
 }
 
-TEST_F(FLEPipelineTest, InclusionWithExpressionAtNestedPathThrows) {
-    BSONObj projection = BSON("$project" << BSON("person" << 1 << "newField.secondary"
-                                                          << "$user.ssn"
-                                                          << "unEncrypted"
-                                                          << 1));
-    ASSERT_THROWS_CODE(
-        getSchemaForStage({projection}, kMultiEncryptSchema), AssertionException, 31140);
+TEST_F(FLEPipelineTest,
+       InclusionWithEncryptedExpressionAtNestedPathReturnsEncryptionSchemaStateMixedNode) {
+    BSONObj projection = BSON("$project" << BSON("newField.secondary"
+                                                 << "$user.ssn"));
+    ASSERT_THROWS_CODE(getSchemaForStage({projection}, kMultiEncryptSchema)
+                           .getEncryptionMetadataForPath(FieldRef("newField")),
+                       AssertionException,
+                       31133);
+
+    projection = BSON("$project" << BSON("a.very.deep.path"
+                                         << "$user.ssn"));
+    ASSERT_THROWS_CODE(getSchemaForStage({projection}, kMultiEncryptSchema)
+                           .getEncryptionMetadataForPath(FieldRef("a")),
+                       AssertionException,
+                       31133);
 }
 
 TEST_F(FLEPipelineTest, InclusionWithUnEncryptedExpressionAtNestedPathReturnsNotEncrypted) {
@@ -451,11 +459,21 @@ TEST_F(FLEPipelineTest, AddFieldsRenameMovesEncryptionMetadataWorks) {
     ASSERT(schema.getEncryptionMetadataForPath(FieldRef("person")) == kDefaultMetadata);
 }
 
-TEST_F(FLEPipelineTest, AddFieldToDottedPathThrows) {
+TEST_F(FLEPipelineTest, AddFieldsRenameEncryptedToDottedPathCreatesEncryptionSchemaStateMixedNode) {
     BSONObj projection = BSON("$addFields" << BSON("person.subObj"
                                                    << "$ssn"));
+    auto& schema = getSchemaForStage({projection}, kDefaultSsnSchema);
     ASSERT_THROWS_CODE(
-        getSchemaForStage({projection}, kDefaultSsnSchema), AssertionException, 31139);
+        schema.getEncryptionMetadataForPath(FieldRef("person")), AssertionException, 31133);
+}
+
+TEST_F(FLEPipelineTest,
+       AddFieldsComputedEncryptedToDottedPathCreatesEncryptionSchemaStateMixedNode) {
+    BSONObj projection = BSON("$addFields" << BSON("person.subObj"
+                                                   << "$user.ssn"));
+    auto& schema = getSchemaForStage({projection}, kMultiEncryptSchema);
+    ASSERT_THROWS_CODE(
+        schema.getEncryptionMetadataForPath(FieldRef("person")), AssertionException, 31133);
 }
 
 TEST_F(FLEPipelineTest, AddFieldsFromPrefixOfEncryptedField) {
@@ -493,7 +511,7 @@ TEST_F(FLEPipelineTest, AddFieldsOverwritesPrefixOfEncryptedField) {
                                                    << "person"
                                                    << "secondString"));
     const auto& outputSchema = getSchemaForStage({projection}, kMultiEncryptSchema);
-    ASSERT_FALSE(outputSchema.containsEncryptedNode());
+    ASSERT_FALSE(outputSchema.mayContainEncryptedNode());
 }
 
 TEST_F(FLEPipelineTest, AddFieldsCannotExtendAnEncryptedField) {
@@ -527,7 +545,7 @@ TEST_F(FLEPipelineTest, ReplaceRootReferringToNewFields) {
     BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot"
                                                       << "$randomField"));
     const auto& outputSchema = getSchemaForStage({replaceRoot}, kDefaultNestedSchema);
-    ASSERT_FALSE(outputSchema.containsEncryptedNode());
+    ASSERT_FALSE(outputSchema.mayContainEncryptedNode());
 }
 
 // TODO SERVER-41337: Support expressions which reference prefixes of encrypted fields.
@@ -556,7 +574,7 @@ TEST_F(FLEPipelineTest, ReplaceRootReferringToNonEncryptedFieldWithPatternProper
     BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot"
                                                       << "$nonMatchingField"));
     const auto& outputSchema = getSchemaForStage({replaceRoot}, kPatternPropertiesSchema);
-    ASSERT_FALSE(outputSchema.containsEncryptedNode());
+    ASSERT_FALSE(outputSchema.mayContainEncryptedNode());
 }
 
 TEST_F(FLEPipelineTest, ReplaceRootReferringToEncryptedFieldAdditionalPropertiesFails) {
@@ -570,7 +588,7 @@ TEST_F(FLEPipelineTest, ReplaceRootWithCustomObjectReferringToLiteral) {
     BSONObj replaceRoot = BSON("$replaceRoot" << BSON("newRoot" << BSON("ssn"
                                                                         << "value")));
     const auto& outputSchema = getSchemaForStage({replaceRoot}, kDefaultNestedSchema);
-    ASSERT_FALSE(outputSchema.containsEncryptedNode());
+    ASSERT_FALSE(outputSchema.mayContainEncryptedNode());
 }
 
 TEST_F(FLEPipelineTest, ReplaceRootWithCustomObjectReferringToEncryptFieldFails) {

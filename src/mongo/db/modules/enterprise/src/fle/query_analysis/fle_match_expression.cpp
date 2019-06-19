@@ -92,7 +92,7 @@ void FLEMatchExpression::replaceElementsInEqExpression(const EncryptionSchemaTre
                 31007,
                 str::stream() << "$eq to array predicate is illegal for prefix of encrypted path: "
                               << eqExpr->toString(),
-                !schemaTree.containsEncryptedNodeBelowPrefix(FieldRef{eqExpr->path()}));
+                !schemaTree.mayContainEncryptedNodeBelowPrefix(FieldRef{eqExpr->path()}));
         }
     }
 }
@@ -147,7 +147,7 @@ void FLEMatchExpression::replaceElementsInInExpression(const EncryptionSchemaTre
                         str::stream() << "Illegal $in element for prefix '" << inExpr->path()
                                       << "' of encrypted path: "
                                       << elem,
-                        !schemaTree.containsEncryptedNodeBelowPrefix(FieldRef{inExpr->path()}));
+                        !schemaTree.mayContainEncryptedNodeBelowPrefix(FieldRef{inExpr->path()}));
                 replacedElements.push_back(elem);
             } else {
                 replacedElements.push_back(elem);
