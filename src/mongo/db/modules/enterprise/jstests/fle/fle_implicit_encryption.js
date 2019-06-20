@@ -29,7 +29,7 @@ load('jstests/ssl/libs/ssl_helpers.js');
     const localKMS = {
         key: BinData(
             0,
-            "/i8ytmWQuCe1zt3bIuVa4taPGKhqasVp0/0yI4Iy0ixQPNmeDF1J5qPUbBYoueVUJHMqj350eRTwztAWXuBdSQ=="),
+            "tu9jUCBqZdwCelwE/EAm/4WqdxrSMi04B8e9uAV+m30rI1J2nhKZZtQjdvsSCwuI4erR6IEcEK+5eGUAODv43NDNIR9QheT2edWFewUfHKsl9cnzTc86meIzOmYl6drp"),
     };
 
     const clientSideRemoteSchemaFLEOptions = {
@@ -223,9 +223,12 @@ load('jstests/ssl/libs/ssl_helpers.js');
     assert.writeOK(keyVault.createKey(
         "local", "arn:aws:mongo2:us-east-1:123456789:environment", ['staffKey']));
     assert.writeOK(
+        keyVault.createKey("local", "arn:aws:mongo1:us-east-1:123456789:environment", ['Shreyas']));
+    assert.writeOK(
         keyVault.createKey("aws", "arn:aws:mongo1:us-east-1:123456789:environment", ['adminKey']));
     const staffKeyId = keyVault.getKeyByAltName("staffKey").toArray()[0]._id;
     const adminKeyId = keyVault.getKeyByAltName("adminKey").toArray()[0]._id;
+    const bureaucracyKeyId = keyVault.getKeyByAltName("Shreyas").toArray()[0]._id;
 
     const staffSchema = {
         bsonType: "object",
@@ -239,6 +242,23 @@ load('jstests/ssl/libs/ssl_helpers.js');
                     bsonType: "int",
                     algorithm: randomAlgorithm,
                     keyId: [staffKeyId],
+                }
+            }
+        }
+    };
+
+    const bureaucracySchema = {
+        bsonType: "object",
+        properties: {
+            name: {
+                bsonType: "string",
+                description: "must be a string and is required",
+            },
+            ssn: {
+                encrypt: {
+                    bsonType: "int",
+                    algorithm: randomAlgorithm,
+                    keyId: "/name",
                 }
             }
         }
@@ -270,6 +290,7 @@ load('jstests/ssl/libs/ssl_helpers.js');
         schemaMap: {
             "test.staff": staffSchema,
             "test.admin": adminSchema,
+            "test.bureaucracy": bureaucracySchema,
         }
     };
 
@@ -279,6 +300,7 @@ load('jstests/ssl/libs/ssl_helpers.js');
 
     testRandomizedCollection(staffKeyId, encryptedShell, conn, "staff");
     testDeterministicCollection(adminKeyId, encryptedShell, conn, "admin");
+    testRandomizedCollection(bureaucracyKeyId, encryptedShell, conn, "bureaucracy");
 
     MongoRunner.stopMongod(conn);
     mock_kms.stop();
