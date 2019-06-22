@@ -528,7 +528,7 @@ aggregate_expression_intender::Intention analyzeForBucketAuto(
         // The expressions here are used for adding things to a set requires an equality
         // comparison.
         boost::intrusive_ptr<Accumulator> accu = accuStmt.makeAccumulator(source->getContext());
-        const bool expressionResultCompared = accu->getOpName() == "$addToSet";
+        const bool expressionResultCompared = accu->getOpName() == "$addToSet"s;
         didMark = didMark ||
             aggregate_expression_intender::mark(*(flePipe->getPipeline().getContext().get()),
                                                 schema,
