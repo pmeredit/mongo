@@ -136,6 +136,13 @@ Status WindowsLDAPConnection::connect() {
         return Status(ErrorCodes::OperationFailed, "Failed to set LDAP network timeout");
     }
 
+    // We use querying the root DSE to check server health, so we need to disable cacheing this
+    // info.
+    if (ldap_set_option(_pimpl->getSession(), LDAP_OPT_ROOTDSE_CACHE, LDAP_OPT_OFF) !=
+        LDAP_SUCCESS) {
+        return {ErrorCodes::OperationFailed, "Failed to disable root DSE cache"};
+    }
+
     // TODO: Microsoft doesn't support LDAP_OPT_REBIND_FN, which
     // we'd need to rebind to new servers on referals. We might
     // be able to make that work using LDAP_OPT_REFERRAL_CALLBACK.

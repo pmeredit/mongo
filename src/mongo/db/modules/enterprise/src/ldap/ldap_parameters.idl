@@ -38,3 +38,55 @@ server_parameters:
     set_at: startup
     cpp_vartype: bool
     cpp_varname: ldapUseConnectionPool
+
+  ldapConnectionPoolUseLatencyForHostPriority:
+    description: >
+        Whether the LDAP connection pool should track and use latency when deciding the order
+        of LDAP hosts to connect to
+    default: true
+    set_at: startup
+    cpp_vartype: bool
+    cpp_varname: ldapConnectionPoolUseLatencyForHostPriority
+
+  ldapConnectionPoolMinimumConnectionsPerHost:
+    description: >
+        The number of connections to keep open to each LDAP host
+    default: 1
+    set_at: startup
+    cpp_vartype: int
+    cpp_varname: ldapConnectionPoolMinimumConnectionsPerHost
+
+  ldapConnectionPoolMaximumConnectionsPerHost:
+    description: >
+        The maximum number of connections to keep open to each LDAP host
+    default:
+      expr: std::numeric_limits<int>::max()
+    set_at: startup
+    cpp_vartype: int
+    cpp_varname: ldapConnectionPoolMaximumConnectionsPerHost
+
+  ldapConnectionPoolMaximumConnectionsInProgressPerHost:
+    description: >
+        The maximum number of in-progress connect operations (to prevent connection storms)
+    default:
+      expr: std::numeric_limits<int>::max()
+    set_at: startup
+    cpp_vartype: int
+    cpp_varname: ldapConnectionPoolMaximumConnectionsInProgressPerHost
+
+  ldapConnectionPoolHostRefreshIntervalMillis:
+    description: >
+        The amount of time (in milliseconds) between checking the health of pooled LDAP connections
+    default: 60000
+    set_at: startup
+    cpp_vartype: int 
+    cpp_varname: ldapConnectionPoolRefreshInterval
+
+  ldapConnectionPoolIdleHostTimeoutSecs:
+    description: >
+        The amount of time (in seconds) after there are no requests to an LDAP server to keep
+        pooled connections open to it.
+    default: 300
+    set_at: startup
+    cpp_vartype: int
+    cpp_varname: ldapConnectionPoolIdleHostTimeoutSecs

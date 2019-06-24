@@ -6,6 +6,7 @@
 
 #include <memory>
 
+#include "mongo/db/commands/server_status.h"
 #include "mongo/executor/connection_pool.h"
 
 namespace mongo {
@@ -16,7 +17,6 @@ class StatusWith;
 class LDAPTypeFactory;
 class LDAPConnection;
 struct LDAPConnectionOptions;
-
 /**
  * Interface for factories which produce LDAPConnection objects.
  */
@@ -35,8 +35,11 @@ public:
     StatusWith<std::unique_ptr<LDAPConnection>> create(const LDAPConnectionOptions& options);
 
 private:
+    friend class LDAPConnectionFactoryServerStatus;
+
     std::shared_ptr<LDAPTypeFactory> _typeFactory;
     std::shared_ptr<executor::ConnectionPool> _pool;
+    std::unique_ptr<ServerStatusSection> _serverStatusSection;
 };
 
 }  // namespace mongo

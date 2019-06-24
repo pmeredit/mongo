@@ -5,14 +5,26 @@ Import('env')
 env = env.Clone()
 
 env.Library(
-    target='ldap_manager_init',
+    target='ldap_parameters',
     source=[
         env.Idlc("ldap_parameters.idl")[0],
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/idl/server_parameter',
+    ],
+)
+
+env.Library(
+    target='ldap_manager_init',
+    source=[
         'ldap_manager_init.cpp'
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/service_context',
-        'ldap_manager',
+        'ldap_manager_impl',
+    ],
+    LIBDEPS_PRIVATE=[
+        'ldap_parameters',
     ],
     PROGDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/mongod',
@@ -24,20 +36,32 @@ env.Library(
     target='ldap_manager',
     source=[
         'ldap_manager.cpp',
-        'ldap_manager_impl.cpp',
+        env.Idlc('ldap_options.idl')[0],
         'ldap_options.cpp',
+    ],
+    LIBDEPS_PRIVATE=[
+        'ldap_query',
+        '$BUILD_DIR/mongo/base/secure_allocator',
+        '$BUILD_DIR/mongo/db/service_context',
+        '$BUILD_DIR/mongo/util/options_parser/options_parser',
+    ],
+)
+
+env.Library(
+    target='ldap_manager_impl',
+    source=[
+        'ldap_manager_impl.cpp',
         'ldap_runtime_parameters.cpp',
         'ldap_runner_impl.cpp',
-        env.Idlc('ldap_options.idl')[0],
         env.Idlc('ldap_runtime_parameters.idl')[0],
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/idl/server_parameter',
-        '$BUILD_DIR/mongo/util/options_parser/options_parser',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/auth/auth',
         'ldap_connection',
+        'ldap_manager',
         'ldap_name_map',
         'ldap_query',
     ],
@@ -49,7 +73,7 @@ env.Library(
         env.Idlc('ldap_options_mongod.idl')[0],
     ],
     LIBDEPS=[
-        'ldap_manager',
+        'ldap_manager_impl',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/util/options_parser/options_parser',
@@ -93,6 +117,9 @@ env.Library(
         '$BUILD_DIR/mongo/base',
     ],
     LIBDEPS_PRIVATE=[
+        'ldap_manager',
+        'ldap_parameters',
+        '$BUILD_DIR/mongo/db/commands/server_status',
         '$BUILD_DIR/mongo/executor/connection_pool_executor',
         '$BUILD_DIR/mongo/util/alarm',
         '$BUILD_DIR/mongo/util/concurrency/thread_pool',
@@ -114,7 +141,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/auth/authmongod',
         '$BUILD_DIR/mongo/db/initialize_server_security_state',
         '$BUILD_DIR/mongo/util/background_job',
-        'ldap_manager',
+        'ldap_manager_impl',
         'ldap_name_map',
         'ldap_query',
     ],
@@ -150,7 +177,7 @@ env.CppUnitTest(
         'name_mapping/rewrite_rule_test.cpp',
     ],
     LIBDEPS=[
-        'ldap_manager',
+        'ldap_manager_impl',
         'ldap_name_map',
         'ldap_query',
         '$BUILD_DIR/mongo/db/auth/auth',

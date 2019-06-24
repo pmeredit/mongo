@@ -104,6 +104,11 @@ void LDAPRunnerImpl::setHosts(std::vector<std::string> hosts) {
     _options.hosts = std::move(hosts);
 }
 
+bool LDAPRunnerImpl::hasHosts() const {
+    stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
+    return !_options.hosts.empty();
+}
+
 Milliseconds LDAPRunnerImpl::getTimeout() const {
     stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
     return _options.timeout;

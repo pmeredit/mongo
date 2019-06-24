@@ -54,6 +54,7 @@ public:
 
     virtual std::vector<std::string> getHosts() const = 0;
     virtual void setHosts(std::vector<std::string> hosts) = 0;
+    virtual bool hasHosts() const = 0;
 
     virtual Milliseconds getTimeout() const = 0;
     virtual void setTimeout(Milliseconds timeout) = 0;

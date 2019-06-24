@@ -57,6 +57,7 @@ public:
      */
     virtual std::vector<std::string> getHosts() const = 0;
     virtual void setHosts(std::vector<std::string> hostURIs) = 0;
+    virtual bool hasHosts() const = 0;
 
     /**
      * Gets/sets the LDAP server connection timeout.

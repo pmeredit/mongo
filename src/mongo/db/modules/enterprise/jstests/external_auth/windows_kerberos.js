@@ -1,4 +1,5 @@
 // Validate that Mongo can authenticate against mongod with kerberos
+// @tags: [requires_domain_controller]
 (function() {
     'use strict';
 

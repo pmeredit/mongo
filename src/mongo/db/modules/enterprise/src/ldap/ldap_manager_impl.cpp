@@ -89,6 +89,10 @@ void LDAPManagerImpl::LDAPManagerImpl::setHosts(std::vector<std::string> hosts) 
     _runner->setHosts(hosts);
 }
 
+bool LDAPManagerImpl::hasHosts() const {
+    return _runner->hasHosts();
+}
+
 Milliseconds LDAPManagerImpl::getTimeout() const {
     return _runner->getTimeout();
 }

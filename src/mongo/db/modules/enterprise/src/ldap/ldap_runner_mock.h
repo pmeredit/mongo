@@ -50,6 +50,11 @@ public:
     std::vector<std::string> getHosts() const final {
         return {};
     }
+
+    bool hasHosts() const final {
+        return false;
+    }
+
     void setHosts(std::vector<std::string> hosts) final {}
 
     Milliseconds getTimeout() const final {

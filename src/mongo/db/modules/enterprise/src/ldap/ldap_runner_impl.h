@@ -31,6 +31,7 @@ public:
 
     std::vector<std::string> getHosts() const final;
     void setHosts(std::vector<std::string> hosts) final;
+    bool hasHosts() const final;
 
     Milliseconds getTimeout() const final;
     void setTimeout(Milliseconds timeout) final;

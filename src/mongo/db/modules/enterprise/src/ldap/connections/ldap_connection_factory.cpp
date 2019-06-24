@@ -11,7 +11,11 @@
 #include <memory>
 
 #include "mongo/base/status_with.h"
+#include "mongo/db/commands/server_status.h"
 #include "mongo/executor/connection_pool.h"
+#include "mongo/executor/connection_pool_stats.h"
+#include "mongo/stdx/mutex.h"
+#include "mongo/stdx/unordered_map.h"
 #include "mongo/util/alarm.h"
 #include "mongo/util/alarm_runner_background_thread.h"
 #include "mongo/util/concurrency/thread_pool.h"
@@ -20,10 +24,13 @@
 #include "mongo/util/net/hostandport.h"
 #include "mongo/util/strong_weak_finish_line.h"
 #include "mongo/util/system_clock_source.h"
+#include "mongo/util/timer.h"
 
 #include "../ldap_connection_options.h"
+#include "../ldap_manager.h"
 #include "../ldap_options.h"
 #include "../ldap_query.h"
+#include "ldap/ldap_parameters_gen.h"
 #ifndef _WIN32
 #include "openldap_connection.h"
 #else
@@ -33,6 +40,48 @@
 namespace mongo {
 namespace {
 using namespace executor;
+
+class LDAPHostTimingData {
+public:
+    void markFailed() {
+        stdx::lock_guard<stdx::mutex> lk(_mutex);
+        _failed = true;
+    }
+
+    void updateLatency(Milliseconds millis) {
+        stdx::lock_guard<stdx::mutex> lk(_mutex);
+        if (_failed) {
+            _latency = millis;
+            _failed = false;
+        } else {
+            // This calculates a moving average of the round trip time - this formula was taken from
+            // https://github.com/mongodb/specifications/blob/master/source/server-selection/server-selection.rst#calculation-of-average-round-trip-times
+            constexpr double alpha = 0.2;
+            double newLatency = alpha * millis.count() + (1 - alpha) * _latency.count();
+            _latency = Milliseconds(static_cast<int64_t>(std::nearbyint(newLatency)));
+        }
+    }
+
+    Milliseconds getLatency() const {
+        stdx::lock_guard<stdx::mutex> lk(_mutex);
+        return _failed ? Milliseconds::max() : _latency;
+    }
+
+    AtomicWord<int64_t>& uses() {
+        return _uses;
+    }
+
+private:
+    mutable stdx::mutex _mutex;
+    Milliseconds _latency{0};
+    bool _failed = true;
+    AtomicWord<int64_t> _uses{0};
+};
+
+struct LDAPPoolTimingData {
+    stdx::mutex mutex;
+    stdx::unordered_map<HostAndPort, std::shared_ptr<LDAPHostTimingData>> timingData;
+};
 
 static inline LDAPQuery makeRootDSEQuery() {
     auto swRootDSEQuery =
@@ -73,6 +122,11 @@ static inline bool isNativeImplThreadSafe() {
 ConnectionPool::Options makePoolOptions(Milliseconds timeout) {
     ConnectionPool::Options opts;
     opts.refreshTimeout = timeout;
+    opts.minConnections = ldapConnectionPoolMinimumConnectionsPerHost;
+    opts.maxConnections = ldapConnectionPoolMaximumConnectionsPerHost;
+    opts.maxConnecting = ldapConnectionPoolMaximumConnectionsInProgressPerHost;
+    opts.refreshRequirement = Milliseconds(ldapConnectionPoolRefreshInterval);
+    opts.hostTimeout = Seconds(ldapConnectionPoolIdleHostTimeoutSecs);
     return opts;
 }
 
@@ -135,7 +189,8 @@ public:
                                   const std::shared_ptr<AlarmScheduler>& alarmScheduler,
                                   const HostAndPort& host,
                                   LDAPConnectionOptions options,
-                                  size_t generation);
+                                  size_t generation,
+                                  std::shared_ptr<LDAPHostTimingData>);
 
     virtual ~PooledLDAPConnection() = default;
 
@@ -144,7 +199,7 @@ public:
     }
 
     bool isHealthy() final {
-        return runEmptyQuery(_conn.get()).isOK();
+        return true;
     }
 
     void setTimeout(Milliseconds timeout, TimeoutCallback cb) final {
@@ -173,6 +228,10 @@ public:
         return _options;
     }
 
+    void incrementUsesCounter() {
+        _timingData->uses().addAndFetch(1);
+    }
+
 private:
     void setup(Milliseconds timeout, SetupCallback cb) final;
     void refresh(Milliseconds timeout, RefreshCallback cb) final;
@@ -183,6 +242,7 @@ private:
     LDAPConnectionOptions _options;
     std::unique_ptr<LDAPConnection> _conn;
     HostAndPort _target;
+    std::shared_ptr<LDAPHostTimingData> _timingData;
 };
 
 void PooledLDAPConnection::setup(Milliseconds timeout, SetupCallback cb) {
@@ -194,12 +254,22 @@ void PooledLDAPConnection::setup(Milliseconds timeout, SetupCallback cb) {
         }
 
         _conn = makeNativeLDAPConn(_options);
-        Status status = _conn->connect();
+        auto status = _conn->connect();
         if (!status.isOK()) {
-            return cb(this, status);
+            return cb(this, std::move(status));
         }
 
-        cb(this, runEmptyQuery(_conn.get()));
+        Timer queryTimer;
+        auto emptyQueryStatus = runEmptyQuery(_conn.get());
+        auto elapsed = duration_cast<Milliseconds>(queryTimer.elapsed());
+
+        if (emptyQueryStatus.isOK()) {
+            LOG(1) << "Connecting to LDAP server " << _target << " took " << elapsed;
+            _timingData->updateLatency(elapsed);
+        } else {
+            _timingData->markFailed();
+        }
+        cb(this, std::move(emptyQueryStatus));
     });
 }
 
@@ -210,10 +280,17 @@ void PooledLDAPConnection::refresh(Milliseconds timeout, RefreshCallback cb) {
             return;
         }
 
+        Timer queryTimer;
         auto status = runEmptyQuery(_conn.get());
+        auto elapsed = duration_cast<Milliseconds>(queryTimer.elapsed());
+        LOG(1) << "Refreshed LDAP connection in " << elapsed;
+
         if (status.isOK()) {
+            _timingData->updateLatency(elapsed);
             indicateSuccess();
+            indicateUsed();
         } else {
+            _timingData->markFailed();
             indicateFailure(status);
         }
         cb(this, status);
@@ -225,13 +302,15 @@ PooledLDAPConnection::PooledLDAPConnection(std::shared_ptr<OutOfLineExecutor> ex
                                            const std::shared_ptr<AlarmScheduler>& alarmScheduler,
                                            const HostAndPort& host,
                                            LDAPConnectionOptions options,
-                                           size_t generation)
+                                           size_t generation,
+                                           std::shared_ptr<LDAPHostTimingData> timingData)
     : ConnectionInterface(generation),
       _executor(std::move(executor)),
       _timer(clockSource, alarmScheduler),
       _options(std::move(options)),
       _conn(nullptr),
-      _target(host) {}
+      _target(host),
+      _timingData(std::move(timingData)) {}
 
 // This is the actual LDAP connection that will be handed out of the factory, it keeps
 // a shared_ptr reference to this connection pool type alive and calls the appropriate
@@ -269,7 +348,6 @@ Status WrappedConnection::connect() {
         _conn->indicateFailure(status);
     } else {
         _conn->indicateSuccess();
-        _conn->indicateUsed();
     }
     return status;
 }
@@ -280,7 +358,6 @@ Status WrappedConnection::bindAsUser(const LDAPBindOptions& options) {
         _conn->indicateFailure(status);
     } else {
         _conn->indicateSuccess();
-        _conn->indicateUsed();
     }
     return status;
 }
@@ -295,7 +372,6 @@ StatusWith<LDAPEntityCollection> WrappedConnection::query(LDAPQuery query) {
         _conn->indicateFailure(swResults.getStatus());
     } else {
         _conn->indicateSuccess();
-        _conn->indicateUsed();
     }
 
     return swResults;
@@ -322,7 +398,8 @@ public:
         : _clockSource(SystemClockSource::get()),
           _executor(std::make_shared<ThreadPool>(_makeThreadPoolOptions())),
           _timerScheduler(std::make_shared<AlarmSchedulerPrecise>(_clockSource)),
-          _timerRunner({_timerScheduler}) {}
+          _timerRunner({_timerScheduler}),
+          _timingData(std::make_shared<LDAPPoolTimingData>()) {}
 
     std::shared_ptr<ConnectionPool::ConnectionInterface> makeConnection(const HostAndPort&,
                                                                         transport::ConnectSSLMode,
@@ -352,6 +429,19 @@ public:
         pool->join();
     }
 
+protected:
+    friend class LDAPConnectionFactory;
+    friend class LDAPConnectionFactoryServerStatus;
+
+    const std::shared_ptr<LDAPPoolTimingData>& getTimingData() const {
+        return _timingData;
+    }
+
+    ThreadPool::Stats getThreadPoolStats() const {
+        auto threadPool = static_cast<ThreadPool*>(_executor.get());
+        return threadPool->getStats();
+    }
+
 private:
     void _start() {
         if (_running)
@@ -378,7 +468,9 @@ private:
     std::shared_ptr<AlarmScheduler> _timerScheduler;
     bool _running = false;
     AlarmRunnerBackgroundThread _timerRunner;
+    std::shared_ptr<LDAPPoolTimingData> _timingData;
 };
+
 
 std::shared_ptr<executor::ConnectionPool::ConnectionInterface> LDAPTypeFactory::makeConnection(
     const HostAndPort& host, transport::ConnectSSLMode sslMode, size_t generation) {
@@ -390,14 +482,103 @@ std::shared_ptr<executor::ConnectionPool::ConnectionInterface> LDAPTypeFactory::
                                       ? LDAPTransportSecurityType::kTLS
                                       : LDAPTransportSecurityType::kNone);
 
-    return std::make_shared<PooledLDAPConnection>(
-        _executor, _clockSource, _timerScheduler, host, std::move(options), generation);
+    auto timingData = [&] {
+        stdx::lock_guard<stdx::mutex> lk(_timingData->mutex);
+        auto it = _timingData->timingData.find(host);
+        if (it != _timingData->timingData.end()) {
+            return it->second;
+        }
+
+        bool inserted;
+        std::tie(it, inserted) =
+            _timingData->timingData.insert({host, std::make_shared<LDAPHostTimingData>()});
+        invariant(inserted);
+
+        return it->second;
+    }();
+
+    return std::make_shared<PooledLDAPConnection>(_executor,
+                                                  _clockSource,
+                                                  _timerScheduler,
+                                                  host,
+                                                  std::move(options),
+                                                  generation,
+                                                  std::move(timingData));
+}
+
+class LDAPConnectionFactoryServerStatus : public ServerStatusSection {
+public:
+    LDAPConnectionFactoryServerStatus(LDAPConnectionFactory* factory)
+        : ServerStatusSection("ldapConnPool"), _factory(factory) {}
+
+    bool includeByDefault() const override {
+        // Include this section by default if there are any LDAP servers defined.
+        return LDAPManager::get(getGlobalServiceContext())->hasHosts();
+    }
+
+    BSONObj generateSection(OperationContext* opCtx,
+                            const BSONElement& configElement) const override;
+
+private:
+    LDAPConnectionFactory* const _factory;
+};
+
+BSONObj LDAPConnectionFactoryServerStatus::generateSection(OperationContext* opCtx,
+                                                           const BSONElement& configElement) const {
+    BSONObjBuilder out;
+
+    {
+        const auto threadPoolStats = _factory->_typeFactory->getThreadPoolStats();
+        BSONObjBuilder threadPoolStatsSection(out.subobjStart("threadPool"));
+        threadPoolStatsSection << "numThreads" << static_cast<int>(threadPoolStats.numThreads)
+                               << "numIdleThreads"
+                               << static_cast<int>(threadPoolStats.numIdleThreads)
+                               << "numPendingTasks"
+                               << static_cast<int>(threadPoolStats.numPendingTasks)
+                               << "lastFullUtilizationDate"
+                               << threadPoolStats.lastFullUtilizationDate;
+    }
+
+    ConnectionPoolStats connPoolStats;
+    _factory->_pool->appendConnectionStats(&connPoolStats);
+    const auto timingData = [&] {
+        const auto& timingData = _factory->_typeFactory->getTimingData();
+        stdx::lock_guard<stdx::mutex> lk(timingData->mutex);
+        return timingData->timingData;
+    }();
+
+    {
+        BSONArrayBuilder timingDataSection(out.subarrayStart("ldapServerStats"));
+
+        for (const auto& kv : connPoolStats.statsByHost) {
+            BSONObjBuilder perHost(timingDataSection.subobjStart());
+            auto it = timingData.find(kv.first);
+            Milliseconds latency = Milliseconds::max();
+            int64_t uses = 0;
+            if (it != timingData.end()) {
+                latency = it->second->getLatency();
+                uses = it->second->uses().loadRelaxed();
+            }
+
+            perHost << "host" << kv.first.toString() << "connectionsInUse"
+                    << static_cast<int64_t>(kv.second.inUse) << "connectionsAvailable"
+                    << static_cast<int64_t>(kv.second.available) << "connectionsCreated"
+                    << static_cast<int64_t>(kv.second.created) << "connectionsRefreshing"
+                    << static_cast<int64_t>(kv.second.refreshing) << "uses" << uses;
+            if (latency != Milliseconds::max()) {
+                perHost << "latencyMillis" << latency.count();
+            }
+        }
+    }
+
+    return out.obj();
 }
 
 LDAPConnectionFactory::LDAPConnectionFactory(Milliseconds poolSetupTimeout)
     : _typeFactory(std::make_shared<LDAPTypeFactory>()),
       _pool(std::make_shared<executor::ConnectionPool>(
-          _typeFactory, "LDAP", makePoolOptions(poolSetupTimeout))) {}
+          _typeFactory, "LDAP", makePoolOptions(poolSetupTimeout))),
+      _serverStatusSection(std::make_unique<LDAPConnectionFactoryServerStatus>(this)) {}
 
 struct LDAPCompletionState {
     LDAPCompletionState(int outstandingSources_, Promise<std::unique_ptr<LDAPConnection>> promise_)
@@ -442,6 +623,21 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
         return e.toStatus();
     }
 
+    if (ldapConnectionPoolUseLatencyForHostPriority) {
+        const auto& timingData = _typeFactory->getTimingData();
+        stdx::lock_guard<stdx::mutex> lk(timingData->mutex);
+        const auto getLatencyFor = [&](const HostAndPort& hp) {
+            auto it = timingData->timingData.find(hp);
+            return it == timingData->timingData.end() ? Milliseconds::max()
+                                                      : it->second->getLatency();
+        };
+
+        std::stable_sort(
+            hosts.begin(), hosts.end(), [&](const HostAndPort& a, const HostAndPort& b) {
+                return getLatencyFor(a) < getLatencyFor(b);
+            });
+    }
+
     auto pf = makePromiseFuture<std::unique_ptr<LDAPConnection>>();
     auto state = std::make_shared<LDAPCompletionState>(hosts.size(), std::move(pf.promise));
     for (auto it = hosts.begin(); it != hosts.end() && !state->finishLine.isReady(); ++it) {
@@ -452,6 +648,9 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
             if (swHandle.isOK()) {
                 if (state->finishLine.arriveStrongly()) {
                     LOG(1) << "Using LDAP server " << server;
+                    auto implPtr = static_cast<PooledLDAPConnection*>(swHandle.getValue().get());
+                    implPtr->incrementUsesCounter();
+
                     state->promise.emplaceValue(
                         pooledConnToWrappedConn(std::move(swHandle.getValue())));
                 } else {
