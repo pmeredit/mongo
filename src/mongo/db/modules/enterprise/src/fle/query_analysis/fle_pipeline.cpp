@@ -43,7 +43,6 @@
 #include "mongo/db/pipeline/document_source_index_stats.h"
 #include "mongo/db/pipeline/document_source_limit.h"
 #include "mongo/db/pipeline/document_source_lookup.h"
-#include "mongo/db/pipeline/document_source_redact.h"
 #include "mongo/db/pipeline/document_source_replace_root.h"
 #include "mongo/db/pipeline/document_source_sample.h"
 #include "mongo/db/pipeline/document_source_single_document_transformation.h"
@@ -691,13 +690,6 @@ aggregate_expression_intender::Intention analyzeForSort(FLEPipeline* flePipe,
     return aggregate_expression_intender::Intention::NotMarked;
 }
 
-aggregate_expression_intender::Intention analyzeForRedact(FLEPipeline* flePipe,
-                                                          const EncryptionSchemaTreeNode& schema,
-                                                          DocumentSourceRedact* source) {
-    return aggregate_expression_intender::mark(
-        *(flePipe->getPipeline().getContext().get()), schema, source->getExpression().get(), false);
-}
-
 // The 'schemaPropagatorMap' is a map of the typeid of a concrete DocumentSource class to the
 // appropriate dispatch function for schema modification.
 static stdx::unordered_map<
@@ -761,7 +753,6 @@ REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceLookUp,
                                       propagateSchemaForLookUp,
                                       analyzeStageNoop);
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceMatch, propagateSchemaNoop, analyzeForMatch);
-REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceRedact, propagateSchemaNoop, analyzeForRedact);
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceSample, propagateSchemaNoop, analyzeStageNoop);
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceSkip, propagateSchemaNoop, analyzeStageNoop);
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceSort, propagateSchemaNoop, analyzeForSort);

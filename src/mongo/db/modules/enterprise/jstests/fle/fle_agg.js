@@ -213,6 +213,7 @@
               "pipeline2": [{$match: {ssn: 5}}]
           }
         },
+        {$redact: "$$DESCEND"},
         {$planCacheStats: {}},
         {$_internalInhibitOptimization: {}},
         {$out: "other"},
