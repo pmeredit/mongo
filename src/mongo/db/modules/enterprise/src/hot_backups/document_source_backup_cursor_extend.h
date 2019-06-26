@@ -66,7 +66,7 @@ public:
             return true;
         }
 
-        bool allowedToForwardFromMongos() const final {
+        bool allowedToPassthroughFromMongos() const final {
             return false;
         }
 
