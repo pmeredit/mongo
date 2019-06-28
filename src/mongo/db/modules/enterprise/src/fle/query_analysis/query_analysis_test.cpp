@@ -237,16 +237,6 @@ TEST_F(FLETestFixture, VerifyCorrectBinaryFormatForGeneratedPlaceholderWithValue
     verifyBinData(static_cast<const char*>(binDataElem.data), binDataElem.length);
 }
 
-TEST(BuildEncryptPlaceholderValueTest, FailsForJSONPointerEncryption) {
-    ResolvedEncryptionInfo metadata{EncryptSchemaKeyId{"/key"},
-                                    FleAlgorithmEnum::kDeterministic,
-                                    MatcherTypeSet{BSONType::NumberInt}};
-    ASSERT_THROWS_CODE(buildEncryptPlaceholder(
-                           Value(1), metadata, EncryptionPlaceholderContext::kComparison, nullptr),
-                       AssertionException,
-                       51093);
-}
-
 TEST(BuildEncryptPlaceholderValueTest, SucceedsForArrayWithRandomEncryption) {
     ResolvedEncryptionInfo metadata{
         EncryptSchemaKeyId{{UUID::fromCDR(uuidBytes)}}, FleAlgorithmEnum::kRandom, boost::none};

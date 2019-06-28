@@ -129,7 +129,7 @@
           update: {$set: {foo: NumberLong(5)}},
           encryptedPaths: [],
           notEncryptedPaths: [],
-          errorCode: 51093
+          errorCode: 31169
         },
         // Test that an update command with a q field encrypted with the random algorithm fails.
         {

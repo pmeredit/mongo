@@ -33,13 +33,7 @@
                 type: "object",
                 additionalProperties: {type: "object", properties: {encryptField: encryptObj}}
             },
-            ssnWithPointer: {
-                encrypt: {
-                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                    keyId: "/whoKnows",
-                    bsonType: "int"
-                }
-            }
+
         }
     };
 
@@ -60,16 +54,6 @@
     assert.commandFailedWithCode(
         testDB.runCommand({distinct: "test", jsonSchema: sampleSchema, isRemoteSchema: false}),
         40414);
-
-    // Test that the command fails if the distinct key is an encrypted field with a JSON Pointer
-    // keyId.
-    assert.commandFailedWithCode(testDB.runCommand({
-        distinct: "test",
-        key: "ssnWithPointer",
-        jsonSchema: sampleSchema,
-        isRemoteSchema: false
-    }),
-                                 51131);
 
     // Test that invalid generic command arguments are ignored. The rationale for this is that there
     // is no sensitive/encrypted data within these options.
@@ -97,16 +81,6 @@
         isRemoteSchema: false
     }),
                                  40415);
-
-    // Test that a distinct command with a field encrypted with a JSON Pointer keyId fails.
-    assert.commandFailedWithCode(testDB.runCommand({
-        distinct: "test",
-        key: "a",
-        query: {ssnWithPointer: {$eq: NumberInt(5)}},
-        jsonSchema: sampleSchema,
-        isRemoteSchema: false
-    }),
-                                 51093);
 
     // Test that the command fails if the distinct key is a field encrypted with a randomized
     // algorithm.

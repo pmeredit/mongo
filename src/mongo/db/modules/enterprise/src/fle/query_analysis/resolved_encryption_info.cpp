@@ -25,6 +25,11 @@ ResolvedEncryptionInfo::ResolvedEncryptionInfo(EncryptSchemaKeyId keyId,
                                   << typeName(type),
                     isTypeLegalWithDeterministic(type));
         }
+
+        uassert(
+            31169,
+            "A deterministically encrypted field cannot have a keyId represented by a JSON pointer",
+            this->keyId.type() != EncryptSchemaKeyId::Type::kJSONPointer);
     }
 
     // Check for types that are prohibited for all encryption algorithms.

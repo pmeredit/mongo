@@ -238,7 +238,7 @@
         },
         isRemoteSchema: false
     }),
-                                 51093);
+                                 31169);
 
     // Verify that a find with a randomized algorithm fails.
     assert.commandFailedWithCode(testDB.runCommand({

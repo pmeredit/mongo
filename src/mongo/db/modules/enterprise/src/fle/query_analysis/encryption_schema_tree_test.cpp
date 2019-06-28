@@ -1848,6 +1848,62 @@ TEST(EncryptionSchemaTreeTest, ParseFailsIfDeterministicAndMultipleBSONType) {
                        31051);
 }
 
+TEST(EncryptionSchemaTreeTest, ParseFailsIfDeterministicAndPointerKey) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            ssn: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                    bsonType: "string",
+                    keyId: "/customKey"
+                }
+            },
+            customKey: {bsonType: "string"}
+        }
+    })");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       31169);
+}
+
+TEST(EncryptionSchemaTreeTest, ParseFailsIfInheritedDeterministicAndPointerKey) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        encryptMetadata: {
+            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
+        },
+        properties: {
+             ssn: {
+                encrypt: {
+                    bsonType: "string",
+                    keyId: "/customKey"
+                }
+            },
+            customKey: {bsonType: "string"}
+        }
+    })");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
+                       AssertionException,
+                       31169);
+}
+
+TEST(EncryptionSchemaTreeTest, ParseSucceedsIfRandomAndPointerKey) {
+    BSONObj schema = fromjson(R"({
+        type: "object",
+        properties: {
+            ssn: {
+                encrypt: {
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    keyId: "/customKey"
+                }
+            },
+            customKey: {bsonType: "string"}
+        }
+    })");
+    ASSERT(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal));
+}
+
 TEST(EncryptionSchemaTreeTest, ParseSucceedsIfLengthOneTypeArray) {
     const auto uuid = UUID::gen();
     auto encryptObj = BSON("encrypt" << BSON("algorithm"

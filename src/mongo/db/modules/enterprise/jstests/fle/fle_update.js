@@ -284,7 +284,7 @@
         }
     };
     updateCommand.updates = [{q: {}, u: {$set: {foo: NumberInt(5)}}}];
-    assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51093);
+    assert.commandFailedWithCode(testDb.runCommand(updateCommand), 31169);
 
     // Test that an update command with a q field encrypted with the random algorithm fails.
     updateCommand.jsonSchema = {
