@@ -92,6 +92,10 @@ TEST_F(AESRoundTrip, CBC) {
                            plaintext.end(),
                            plainBuffer.begin(),
                            plainBuffer.begin() + plaintext.size()));
+
+    // Changing the key should result in decryption failure.
+    key = crypto::aesGenerate(crypto::sym256KeySize, "testID");
+    ASSERT_NOT_OK(decrypt(crypto::aesMode::cbc));
 }
 
 DEATH_TEST_F(AESRoundTrip,

@@ -297,6 +297,25 @@ Status _doAESDecrypt(const SymmetricKey& key,
                               << *resultLen};
     }
 
+    /* Check that padding was removed in CBC mode.
+     *
+     * PKCS7 padding guarantees that the encrypted payload has
+     * between 1 and blocksize bytes of padding which should be
+     * removed during the decrypt process.
+     *
+     * If resultLen is the same as the payload len,
+     * that means no padding was removed.
+     *
+     * macOS CommonCrypto will return such payloads when either the
+     * key or ciphertext are corrupted and its unable to find any
+     * expected padding.  It fails open by returning whatever it can.
+     */
+    if ((mode == aesMode::cbc) && (*resultLen >= layout.getDataSize())) {
+        return {ErrorCodes::BadValue,
+                "Decrypt error, plaintext is as large or larger than "
+                "the ciphertext. This usually indicates an invalid key."};
+    }
+
     return Status::OK();
 } catch (const AssertionException& ex) {
     return ex.toStatus();
