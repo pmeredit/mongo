@@ -37,12 +37,13 @@ namespace mongo {
 namespace {
 constexpr Duration kCacheInvalidationTime = Minutes(1);
 
-constexpr std::array<StringData, 8> kEncryptedCommands = {"aggregate"_sd,
+constexpr std::array<StringData, 9> kEncryptedCommands = {"aggregate"_sd,
                                                           "count"_sd,
                                                           "delete"_sd,
                                                           "find"_sd,
                                                           "findandmodify"_sd,
                                                           "findAndModify"_sd,
+                                                          "getMore"_sd,
                                                           "insert"_sd,
                                                           "update"_sd};
 
@@ -169,6 +170,13 @@ public:
         }
 
         auto databaseName = request.getDatabase().toString();
+
+        // getMore has nothing to encrypt in the request but the response may have to be decrypted.
+        if (commandName == "getMore"_sd) {
+            auto result = _conn->runCommandWithTarget(request).first;
+            return processResponse(std::move(result), databaseName);
+        }
+
         NamespaceString ns = CommandHelpers::parseNsCollectionRequired(databaseName, request.body);
         auto schemaInfoObject = getSchema(request, ns);
 

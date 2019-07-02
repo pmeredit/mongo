@@ -118,6 +118,20 @@ load('jstests/ssl/libs/ssl_helpers.js');
         unencryptedCollection.insert({"name": "Shreyas", "ssn": encryptedDeterministicSSN});
         assert.eq(1, encryptedCollection.count({"ssn": NumberInt(987654321)}));
 
+        // Test GetMore works
+        for (let i = 0; i < 128; i++) {
+            unencryptedCollection.insertOne({
+                name: 'Davis' + i,
+                'ssn': encryptedShell.getClientEncryption().encrypt(
+                    keyId, NumberInt(i), deterministicAlgorithm)
+            });
+        }
+
+        let results = encryptedCollection.aggregate([]).toArray();
+        for (let i = 0; i < results.length; i++) {
+            assert.eq(false, results[i].ssn instanceof BinData, results[i]);
+        }
+
         // Will add tests for aggregate once query implements it.
         // TODO : File ticket if this goes in before query work is finished.
     };
