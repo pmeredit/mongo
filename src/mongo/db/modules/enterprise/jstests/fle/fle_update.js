@@ -276,7 +276,7 @@
         properties: {
             foo: {
                 encrypt: {
-                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
                     keyId: "/key",
                     bsonType: "int"
                 }
@@ -284,7 +284,7 @@
         }
     };
     updateCommand.updates = [{q: {}, u: {$set: {foo: NumberInt(5)}}}];
-    assert.commandFailedWithCode(testDb.runCommand(updateCommand), 31169);
+    assert.commandFailedWithCode(testDb.runCommand(updateCommand), 51093);
 
     // Test that an update command with a q field encrypted with the random algorithm fails.
     updateCommand.jsonSchema = {

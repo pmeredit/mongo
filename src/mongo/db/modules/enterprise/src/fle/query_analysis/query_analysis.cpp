@@ -824,7 +824,7 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
     if (keyId.type() == EncryptSchemaKeyId::Type::kUUIDs) {
         marking.setKeyId(keyId.uuids()[0]);
     } else {
-        invariant(origDoc);
+        uassert(51093, "A non-static (JSONPointer) keyId is not supported.", origDoc);
         auto pointer = keyId.jsonPointer();
         auto resolvedKey = pointer.evaluate(origDoc.get());
         uassert(51114,
