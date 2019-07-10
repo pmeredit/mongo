@@ -198,6 +198,9 @@ public:
         return _target;
     }
 
+    // This cannot block under any circumstances because the ConnectionPool is holding
+    // a mutex while calling isHealthy(). Since we don't have a good way of knowing whether
+    // the connection is healthy, just return true here.
     bool isHealthy() final {
         return true;
     }
