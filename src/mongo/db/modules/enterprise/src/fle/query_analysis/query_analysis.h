@@ -34,6 +34,16 @@ struct PlaceHolderResult {
 };
 
 /**
+ * Serialize a placeholder result to BSON.
+ */
+void serializePlaceholderResult(const PlaceHolderResult& placeholder, BSONObjBuilder* builder);
+
+/**
+ * Deserialize BSON to a placeholder result.
+ */
+PlaceHolderResult parsePlaceholderResult(BSONObj obj);
+
+/**
  * Indicates whether we are creating intent-to-encrypt placeholders in the context of performing
  * equality comparisons to encrypted fields or in the context of writing encrypted data.
  *

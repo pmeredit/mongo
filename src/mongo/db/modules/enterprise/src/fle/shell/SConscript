@@ -5,8 +5,6 @@ Import([
     'get_option'
 ])
 
-env.Alias("generated-sources", "kms-shell-server.cpp")
-
 scriptingEnv = env.Clone()
 scriptingEnv.InjectMozJS()
 

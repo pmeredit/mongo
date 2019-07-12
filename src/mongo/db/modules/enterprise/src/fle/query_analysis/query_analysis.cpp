@@ -618,12 +618,6 @@ PlaceHolderResult addPlaceHoldersForDelete(OperationContext* opCtx,
     return placeHolderResult;
 }
 
-void serializePlaceholderResult(const PlaceHolderResult& placeholder, BSONObjBuilder* builder) {
-    builder->append(kHasEncryptionPlaceholders, placeholder.hasEncryptionPlaceholders);
-    builder->append(kSchemaRequiresEncryption, placeholder.schemaRequiresEncryption);
-    builder->append(kResult, placeholder.result);
-}
-
 OpMsgRequest makeHybrid(const OpMsgRequest& request, BSONObj body) {
     OpMsgRequest newRequest;
     newRequest.body = body;
@@ -687,6 +681,28 @@ void processQueryCommand(OperationContext* opCtx,
 }
 
 }  // namespace
+
+PlaceHolderResult parsePlaceholderResult(BSONObj obj) {
+    PlaceHolderResult placeholder;
+
+    for (const auto& el : obj) {
+        if (el.fieldNameStringData() == kHasEncryptionPlaceholders) {
+            placeholder.hasEncryptionPlaceholders = el.Bool();
+        } else if (el.fieldNameStringData() == kSchemaRequiresEncryption) {
+            placeholder.schemaRequiresEncryption = el.Bool();
+        } else if (el.fieldNameStringData() == kResult) {
+            placeholder.result = el.Obj();
+        }
+    }
+
+    return placeholder;
+}
+
+void serializePlaceholderResult(const PlaceHolderResult& placeholder, BSONObjBuilder* builder) {
+    builder->append(kHasEncryptionPlaceholders, placeholder.hasEncryptionPlaceholders);
+    builder->append(kSchemaRequiresEncryption, placeholder.schemaRequiresEncryption);
+    builder->append(kResult, placeholder.result);
+}
 
 PlaceHolderResult replaceEncryptedFields(BSONObj doc,
                                          const EncryptionSchemaTreeNode* schema,

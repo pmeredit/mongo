@@ -82,20 +82,38 @@ load('jstests/ssl/libs/ssl_helpers.js');
         // Testing count
         assert.eq(6, encryptedCollection.count());
         assert.eq(2, encryptedCollection.count({"name": "Sara"}));
+        assert.eq(0,
+                  encryptedCollection.explain().count({"name": "Sara"}).executionStats.nReturned);
         assert.eq(2, encryptedCollection.count({"ssn": NumberInt(300000000)}));
         assert.eq(1, encryptedCollection.count({"ssn": NumberInt(123456789)}));
 
         // Testing update
+        assert.eq(1,
+                  encryptedCollection.explain()
+                      .update({"ssn": NumberInt(987654321)},
+                              {name: "Spencer", "ssn": NumberInt(123456789)})
+                      .executionStats.executionStages.nWouldModify);
         assert.writeOK(encryptedCollection.update({"ssn": NumberInt(987654321)},
                                                   {name: "Spencer", "ssn": NumberInt(123456789)}));
         assert.eq(2, encryptedCollection.count({"ssn": NumberInt(123456789)}));
 
         // Testing delete
+        assert.eq(1,
+                  encryptedCollection.explain()
+                      .remove({"ssn": NumberInt(300000000)})
+                      .queryPlanner.plannerVersion);
         encryptedCollection.deleteMany({"ssn": NumberInt(300000000)});
         assert.eq(0, encryptedCollection.count({"ssn": NumberInt(300000000)}));
         assert.eq(4, encryptedCollection.count());
 
         // Testing findAndModify
+        assert.eq(1,
+                  encryptedCollection.explain()
+                      .findAndModify({
+                          query: {name: "Shreyas"},
+                          update: {"name": "Shreyas", "ssn": NumberInt(987654321)}
+                      })
+                      .executionStats.executionStages.nWouldModify);
         let prevData = encryptedCollection.findAndModify(
             {query: {name: "Shreyas"}, update: {"name": "Shreyas", "ssn": NumberInt(987654321)}});
         assert.eq(prevData.ssn, NumberInt(123456789));
@@ -132,8 +150,31 @@ load('jstests/ssl/libs/ssl_helpers.js');
             assert.eq(false, results[i].ssn instanceof BinData, results[i]);
         }
 
-        // Will add tests for aggregate once query implements it.
-        // TODO : File ticket if this goes in before query work is finished.
+        // Test distinct
+        assert.sameMembers(encryptedCollection.distinct("name", {"ssn": NumberInt(987654321)}),
+                           ["Shreyas"]);
+        assert.eq(1,
+                  encryptedCollection.explain()
+                      .distinct("name", {"ssn": NumberInt(987654321)})
+                      .executionStats.nReturned);
+        assert.sameMembers(unencryptedCollection.distinct("name", {"ssn": NumberInt(987654321)}),
+                           []);
+
+        // Test explain
+        const encryptedExplainObj =
+            encryptedCollection.find({"ssn": NumberInt(987654321)}).explain();
+        assert.eq(encryptedExplainObj.executionStats.nReturned, 1);
+        const unencryptedExplainObj =
+            unencryptedCollection.find({"ssn": NumberInt(987654321)}).explain();
+        assert.eq(unencryptedExplainObj.executionStats, undefined);
+
+        // Test find
+        assert.eq(1, encryptedCollection.find({"ssn": NumberInt(987654321)}).itcount());
+
+        // Test aggregation
+        assert.eq(1,
+                  encryptedCollection.aggregate({$match: {ssn: NumberInt(987654321)}}).itcount());
+
     };
 
     encryptedDatabase.createCollection("students", {

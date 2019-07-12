@@ -37,15 +37,19 @@ namespace mongo {
 namespace {
 constexpr Duration kCacheInvalidationTime = Minutes(1);
 
-constexpr std::array<StringData, 9> kEncryptedCommands = {"aggregate"_sd,
-                                                          "count"_sd,
-                                                          "delete"_sd,
-                                                          "find"_sd,
-                                                          "findandmodify"_sd,
-                                                          "findAndModify"_sd,
-                                                          "getMore"_sd,
-                                                          "insert"_sd,
-                                                          "update"_sd};
+static constexpr auto kExplain = "explain"_sd;
+
+constexpr std::array<StringData, 11> kEncryptedCommands = {"aggregate"_sd,
+                                                           "count"_sd,
+                                                           "delete"_sd,
+                                                           "distinct"_sd,
+                                                           kExplain,
+                                                           "find"_sd,
+                                                           "findandmodify"_sd,
+                                                           "findAndModify"_sd,
+                                                           "getMore"_sd,
+                                                           "insert"_sd,
+                                                           "update"_sd};
 
 class ImplicitEncryptedDBClientBase final : public EncryptedDBClientBase {
     // This struct is used for the LRU Schema cache.
@@ -122,11 +126,54 @@ public:
         return schemaInfo;
     }
 
+    BSONObj processExplainCommand(OpMsgRequest request,
+                                  const SchemaInfo& schemaInfo,
+                                  const NamespaceString& ns) {
+        // 1. Take an explain command:
+        //    explain : {
+        //      innerCommand : ns,
+        //      ...
+        //    }
+        //    extract the "inner" command to do query analysis on that.
+        // 2. Then re-wrap with "explain" so that it can sent over the wire
+        // 3. Finally output the BSON as if query analysis returned it
+        //
+        auto explainedObj = request.body.firstElement().Obj();
+        auto explainedCommand = explainedObj.firstElementFieldName();
+
+        uassert(51242, "Cannot explain the explain command", explainedCommand != kExplain);
+        uassert(51243, "Explained command cannot have $db", explainedObj["$db"_sd].eoo());
+
+        OpMsgRequest requestInner;
+        {
+            BSONObjBuilder builder;
+            builder.appendElements(explainedObj);
+            builder.append(request.body["$db"_sd]);
+            requestInner.body = builder.obj();
+        }
+
+        auto obj = runQueryAnalysis(requestInner, schemaInfo, ns, explainedCommand);
+
+        auto placeholder = cryptd_query_analysis::parsePlaceholderResult(obj);
+
+        {
+            BSONObjBuilder explainBuilder;
+            explainBuilder.append(kExplain, placeholder.result);
+            placeholder.result = explainBuilder.obj();
+        }
+
+        BSONObjBuilder builder;
+        cryptd_query_analysis::serializePlaceholderResult(placeholder, &builder);
+        return builder.obj();
+    }
+
     BSONObj runQueryAnalysis(OpMsgRequest request,
                              const SchemaInfo& schemaInfo,
                              const NamespaceString& ns,
                              const StringData& commandName) {
-        BSONObjBuilder schemaInfoBuilder;
+        if (commandName == kExplain) {
+            return processExplainCommand(request, schemaInfo, ns);
+        }
 
         BSONObjBuilder commandBuilder;
         commandBuilder.append(cryptd_query_analysis::kJsonSchema, schemaInfo.schema);
@@ -138,6 +185,7 @@ public:
         auto uniqueOpContext = client->makeOperationContext();
         auto opCtx = uniqueOpContext.get();
 
+        BSONObjBuilder schemaInfoBuilder;
         if (commandName == "find"_sd) {
             cryptd_query_analysis::processFindCommand(
                 opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder);
@@ -149,6 +197,9 @@ public:
                 opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder);
         } else if (commandName == "count"_sd) {
             cryptd_query_analysis::processCountCommand(
+                opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder);
+        } else if (commandName == "distinct"_sd) {
+            cryptd_query_analysis::processDistinctCommand(
                 opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder);
         } else if (commandName == "update"_sd) {
             cryptd_query_analysis::processUpdateCommand(opCtx, request, &schemaInfoBuilder);
@@ -177,7 +228,18 @@ public:
             return processResponse(std::move(result), databaseName);
         }
 
-        NamespaceString ns = CommandHelpers::parseNsCollectionRequired(databaseName, request.body);
+        NamespaceString ns;
+        if (commandName == kExplain) {
+            uassert(ErrorCodes::BadValue,
+                    "explain command requires a nested object",
+                    request.body.firstElement().type() == Object);
+
+            ns = CommandHelpers::parseNsCollectionRequired(databaseName,
+                                                           request.body.firstElement().Obj());
+        } else {
+            ns = CommandHelpers::parseNsCollectionRequired(databaseName, request.body);
+        }
+
         auto schemaInfoObject = getSchema(request, ns);
 
         if (schemaInfoObject.schema.isEmpty()) {
