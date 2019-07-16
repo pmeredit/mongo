@@ -229,7 +229,9 @@ public:
         auto schemaInfoObject = getSchema(request, ns);
 
         if (schemaInfoObject.schema.isEmpty()) {
-            return _conn->runCommandWithTarget(std::move(request));
+            // Always attempt to decrypt - could have encrypted data
+            auto result = _conn->runCommandWithTarget(request).first;
+            return processResponse(std::move(result), databaseName);
         }
 
         BSONObj schemaInfo =
