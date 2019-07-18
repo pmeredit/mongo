@@ -663,7 +663,26 @@ Status runAggregate(OperationContext* opCtx,
                 PipelineD::buildInnerQueryExecutor(collection, nss, &request, pipeline.get());
         }
 
-        if (canOptimizeAwayPipeline(pipeline.get(),
+		auto coll = nss.coll();
+		if (coll.startsWith("sql_")) {
+			std::cout << "SQL!" << std::endl;
+            pipeline->optimizePipeline();
+			pipeline->setSQLLiteTable(coll.substr(4, coll.size()).toString());
+            auto pipelines =
+                createExchangePipelinesIfNeeded(opCtx, expCtx, request, std::move(pipeline), uuid);
+            for (auto&& pipelineIt : pipelines) {
+                execs.emplace_back(createOuterPipelineProxyExecutor(
+                    opCtx, nss, std::move(pipelineIt), liteParsedPipeline.hasChangeStream()));
+            }
+
+            // With the pipelines created, we can relinquish locks as they will manage the locks
+            // internally further on. We still need to keep the lock for an optimized away pipeline
+            // though, as we will be changing its lock policy to 'kLockExternally' (see details
+            // below), and in order to execute the initial getNext() call in 'handleCursorCommand',
+            // we need to hold the collection lock.
+            ctx.reset();
+
+		} else if (canOptimizeAwayPipeline(pipeline.get(),
                                     attachExecutorCallback.second.get(),
                                     request,
                                     hasGeoNearStage,

@@ -468,7 +468,14 @@ void Pipeline::stitch() {
     }
 }
 
+void Pipeline::setSQLLiteTable(const string &name) {
+ 	stmt = reinterpret_cast<sqlite3_stmt *>(23);
+}
+
 boost::optional<Document> Pipeline::getNext() {
+	if(stmt != nullptr) {
+		std::cout << "NOT NULL!" << std::endl;
+	}
     invariant(!_sources.empty());
     auto nextResult = _sources.back()->getNext();
     while (nextResult.isPaused()) {

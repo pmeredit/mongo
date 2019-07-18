@@ -124,6 +124,8 @@ public:
     static Timestamp getLatestOplogTimestamp(const Pipeline* pipeline);
 
 private:
+	bool _isSQLLiteSourced = false;
+
     PipelineD();  // does not exist:  prevent instantiation
 
     /**

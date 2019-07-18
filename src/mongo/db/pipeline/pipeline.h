@@ -33,6 +33,8 @@
 #include <list>
 #include <vector>
 
+#include <sqlite3.h>
+
 #include <boost/intrusive_ptr.hpp>
 
 #include "mongo/db/matcher/expression_parser.h"
@@ -235,6 +237,8 @@ public:
 
     void addFinalSource(boost::intrusive_ptr<DocumentSource> source);
 
+	void setSQLLiteTable(const std::string &name);
+
     /**
      * Returns the next result from the pipeline, or boost::none if there are no more results.
      */
@@ -384,6 +388,7 @@ private:
     SplitState _splitState = SplitState::kUnsplit;
     boost::intrusive_ptr<ExpressionContext> pCtx;
     bool _disposed = false;
+	sqlite3_stmt *stmt = nullptr;
 };
 
 /**
