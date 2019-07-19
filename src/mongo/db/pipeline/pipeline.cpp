@@ -33,6 +33,9 @@
 
 #include <algorithm>
 
+#include <stdio.h>
+#include <stdlib.h>
+
 #include "mongo/base/error_codes.h"
 #include "mongo/db/bson/dotted_path_support.h"
 #include "mongo/db/catalog/document_validation.h"
@@ -473,8 +476,9 @@ void Pipeline::setSQLite(const string &name, const std::vector<BSONObj>& pipelin
 	const char *tail;
 	int error = sqlite3_open(db, &conn);
 	if (error) {
-		std::cerr << "Cannot open database file " << db << std::endl;
+		std::cout << "Cannot open database file " << db << std::endl;
 		conn = nullptr;
+		stmt = reinterpret_cast<sqlite3_stmt *>(-1);
 		return;
 	}
 	std::string pipeStr = "[";
@@ -484,15 +488,27 @@ void Pipeline::setSQLite(const string &name, const std::vector<BSONObj>& pipelin
 	}
 	pipeStr += pipeline[pipeline.size() - 1].jsonString();
 	pipeStr += "]";
-	std::cout << pipeStr << std::endl;
-	error = sqlite3_prepare_v2(conn, (std::string("select * from ") + name).c_str(), 1000, &stmt, &tail);
-	if (error) {
-		stmt = nullptr;
-		std::cerr << "query failed" << std::endl;
+	std::string cmd = "./aggsql translate --table ";
+	cmd += name + " --pipeline '" + pipeStr + "'";
+    std::cout << cmd << std::endl;
+	FILE *fp = popen(cmd.c_str(), "r");
+	char sql[8192];
+	if (fgets(sql, sizeof(sql)-1, fp) != NULL) {
+	    error = sqlite3_prepare_v2(conn, &sql[0], 1000, &stmt, &tail);
+	    if (error) {
+		    std::cout << "query failed:" << &sql[0] << std::endl;
+		    stmt = reinterpret_cast<sqlite3_stmt *>(-1);
+		}
+        return;
 	}
+	std::cout << "could not translate" << std::endl;
+	stmt = reinterpret_cast<sqlite3_stmt *>(-1);
 }
 
 boost::optional<Document> Pipeline::getNext() {
+	if(stmt == reinterpret_cast<sqlite3_stmt *>(-1)) {
+		return boost::none;
+	}
 	if(stmt != nullptr) {
 		if (sqlite3_step(stmt) == SQLITE_ROW) {
 			BSONObjBuilder builder;
