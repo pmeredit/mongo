@@ -237,7 +237,7 @@ public:
 
     void addFinalSource(boost::intrusive_ptr<DocumentSource> source);
 
-	void setSQLLiteTable(const std::string &name);
+	void setSQLite(const std::string &name, const std::vector<BSONObj>& pipeline);
 
     /**
      * Returns the next result from the pipeline, or boost::none if there are no more results.
@@ -390,7 +390,7 @@ private:
     bool _disposed = false;
 	sqlite3_stmt *stmt = nullptr;
 	sqlite3 *conn = nullptr;
-	std::vector<std::string> sql_column_names;
+	std::vector<BSONObj> pipeline;
 };
 
 /**

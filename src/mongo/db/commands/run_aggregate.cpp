@@ -665,8 +665,7 @@ Status runAggregate(OperationContext* opCtx,
 
 		auto coll = nss.coll();
 		if (coll.startsWith("sql_")) {
-            pipeline->optimizePipeline();
-			pipeline->setSQLLiteTable(coll.substr(4, coll.size()).toString());
+			pipeline->setSQLite(coll.substr(4, coll.size()).toString(), request.getPipeline());
             auto pipelines =
                 createExchangePipelinesIfNeeded(opCtx, expCtx, request, std::move(pipeline), uuid);
             for (auto&& pipelineIt : pipelines) {

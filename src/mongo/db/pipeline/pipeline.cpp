@@ -468,7 +468,7 @@ void Pipeline::stitch() {
     }
 }
 
-void Pipeline::setSQLLiteTable(const string &name) {
+void Pipeline::setSQLite(const string &name, const std::vector<BSONObj>& pipeline) {
 	auto db = "skunkworks.db";
 	const char *tail;
 	int error = sqlite3_open(db, &conn);
@@ -477,6 +477,14 @@ void Pipeline::setSQLLiteTable(const string &name) {
 		conn = nullptr;
 		return;
 	}
+	std::string pipeStr = "[";
+	for(unsigned long i = 0; i < pipeline.size()-1; ++i) {
+		pipeStr += pipeline[i].jsonString();
+		pipeStr += ",";
+	}
+	pipeStr += pipeline[pipeline.size() - 1].jsonString();
+	pipeStr += "]";
+	std::cout << pipeStr << std::endl;
 	error = sqlite3_prepare_v2(conn, (std::string("select * from ") + name).c_str(), 1000, &stmt, &tail);
 	if (error) {
 		stmt = nullptr;
@@ -490,8 +498,27 @@ boost::optional<Document> Pipeline::getNext() {
 			BSONObjBuilder builder;
 			for(int i = 0; i < sqlite3_column_count(stmt); ++i) {
 			    auto name = sqlite3_column_name(stmt, i);
-			    auto result = reinterpret_cast<const char *>(sqlite3_column_text(stmt, i));
-			    builder.append(StringData(name), result);
+				switch (sqlite3_column_type(stmt, i)) {
+					case SQLITE_TEXT: {
+					    auto result = reinterpret_cast<const char *>(sqlite3_column_text(stmt, i));
+			            builder.append(StringData(name), result);
+						break;
+					}
+					case SQLITE_INTEGER: {
+					    auto result = sqlite3_column_int64(stmt, i);
+			            builder.appendNumber(StringData(name), result);
+						break;
+					}
+					case SQLITE_FLOAT: {
+					    auto result = sqlite3_column_double(stmt, i);
+			            builder.appendNumber(StringData(name), result);
+						break;
+					}
+					case SQLITE_NULL: {
+			            builder.appendNull(StringData(name));
+						break;
+					}
+				}
 			}
 			return boost::optional<Document>{builder.obj()};
 		}
