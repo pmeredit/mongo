@@ -270,7 +270,7 @@ env.Library(
 )
 
 pipelineeEnv = env.Clone()
-pipelineeEnv.InjectThirdParty(libraries=['snappy'])
+pipelineeEnv.InjectThirdParty(libraries=['snappy', 'sqlite'])
 pipelineeEnv.Library(
     target='pipeline',
     source=[
@@ -349,6 +349,7 @@ pipelineeEnv.Library(
         '$BUILD_DIR/mongo/db/storage/storage_options',
         '$BUILD_DIR/mongo/s/is_mongos',
         '$BUILD_DIR/third_party/shim_snappy',
+        '$BUILD_DIR/third_party/shim_sqlite',
         'accumulator',
         'dependencies',
         'document_sources_idl',

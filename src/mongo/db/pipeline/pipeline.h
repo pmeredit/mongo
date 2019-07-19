@@ -389,6 +389,7 @@ private:
     boost::intrusive_ptr<ExpressionContext> pCtx;
     bool _disposed = false;
 	sqlite3_stmt *stmt = nullptr;
+	sqlite3 *conn = nullptr;
 };
 
 /**

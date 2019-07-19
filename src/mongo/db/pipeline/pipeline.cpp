@@ -469,12 +469,33 @@ void Pipeline::stitch() {
 }
 
 void Pipeline::setSQLLiteTable(const string &name) {
- 	stmt = reinterpret_cast<sqlite3_stmt *>(23);
+	auto db = "skunkworks.db";
+	const char *tail;
+	int error = sqlite3_open(db, &conn);
+	if (error) {
+		std::cerr << "Cannot open database file " << db << std::endl;
+		conn = nullptr;
+		return;
+	}
+	error = sqlite3_prepare_v2(conn, "pragma table_info(foo)", 1000, &stmt, &tail);
+	if (error) {
+		stmt = nullptr;
+		std::cerr << "pragma failed" << std::endl;
+	}
 }
 
 boost::optional<Document> Pipeline::getNext() {
 	if(stmt != nullptr) {
-		std::cout << "NOT NULL!" << std::endl;
+		if (sqlite3_step(stmt) == SQLITE_ROW) {
+			BSONObjBuilder builder;
+			auto result = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
+			std::cout << "COL" <<  result << std::endl;
+			builder.appendNumber(StringData(result), 42);
+			return boost::optional<Document>{builder.obj()};
+		}
+		sqlite3_finalize(stmt);
+		sqlite3_close(conn);
+		return boost::none;
 	}
     invariant(!_sources.empty());
     auto nextResult = _sources.back()->getNext();

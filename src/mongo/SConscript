@@ -330,6 +330,7 @@ mongod = env.Program(
     ] + env.WindowsResourceFile("db/db.rc"),
     LIBDEPS=[
         '$BUILD_DIR/third_party/shim_snappy',
+        '$BUILD_DIR/third_party/shim_sqlite',
         'base',
         'db/auth/auth_op_observer',
         'db/auth/authmongod',
