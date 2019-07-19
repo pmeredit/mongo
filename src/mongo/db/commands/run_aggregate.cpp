@@ -665,7 +665,6 @@ Status runAggregate(OperationContext* opCtx,
 
 		auto coll = nss.coll();
 		if (coll.startsWith("sql_")) {
-			std::cout << "SQL!" << std::endl;
             pipeline->optimizePipeline();
 			pipeline->setSQLLiteTable(coll.substr(4, coll.size()).toString());
             auto pipelines =

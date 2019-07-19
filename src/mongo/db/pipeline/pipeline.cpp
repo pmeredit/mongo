@@ -477,20 +477,6 @@ void Pipeline::setSQLLiteTable(const string &name) {
 		conn = nullptr;
 		return;
 	}
-	error = sqlite3_prepare_v2(conn, (std::string("pragma table_info(") + name + ")").c_str(), 1000, &stmt, &tail);
-	if (error) {
-		stmt = nullptr;
-		std::cerr << "pragma failed" << std::endl;
-	}
-	while (sqlite3_step(stmt) == SQLITE_ROW) {
-		auto result = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
-		sql_column_names.push_back(result);
-	}
-	for (auto& name: sql_column_names) {
-	    std::cout << "!!!!" << name << std::endl;
-    }
-
-	sqlite3_finalize(stmt);
 	error = sqlite3_prepare_v2(conn, (std::string("select * from ") + name).c_str(), 1000, &stmt, &tail);
 	if (error) {
 		stmt = nullptr;
@@ -502,9 +488,9 @@ boost::optional<Document> Pipeline::getNext() {
 	if(stmt != nullptr) {
 		if (sqlite3_step(stmt) == SQLITE_ROW) {
 			BSONObjBuilder builder;
-			int i = 0;
-			for( auto& name : sql_column_names) {
-			    auto result = reinterpret_cast<const char *>(sqlite3_column_text(stmt, i++));
+			for(int i = 0; i < sqlite3_column_count(stmt); ++i) {
+			    auto name = sqlite3_column_name(stmt, i);
+			    auto result = reinterpret_cast<const char *>(sqlite3_column_text(stmt, i));
 			    builder.append(StringData(name), result);
 			}
 			return boost::optional<Document>{builder.obj()};
