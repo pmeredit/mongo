@@ -390,6 +390,7 @@ private:
     bool _disposed = false;
 	sqlite3_stmt *stmt = nullptr;
 	sqlite3 *conn = nullptr;
+	std::vector<std::string> sql_column_names;
 };
 
 /**
