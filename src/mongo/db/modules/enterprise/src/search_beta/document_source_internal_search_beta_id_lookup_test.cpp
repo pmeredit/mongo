@@ -88,7 +88,7 @@ TEST_F(InternalSearchBetaIdLookupTest, ShouldNotRemoveMetadata) {
 
     // Create a mock data source.
     MutableDocument docOne(Document({{"_id", 0}}));
-    docOne.setSearchScore(0.123);
+    docOne.metadata().setSearchScore(0.123);
     DocumentSourceMock mockLocalSource({docOne.freeze()}, expCtx);
 
     // Set up the idLookup stage.
