@@ -76,6 +76,13 @@ public:
     }
 
 protected:
+    bool plainTextMatch() const {
+        return std::equal(plaintext.begin(),
+                          plaintext.end(),
+                          plainBuffer.begin(),
+                          plainBuffer.begin() + plaintext.size());
+    }
+
     SymmetricKey key = crypto::aesGenerate(crypto::sym256KeySize, "testID");
     static constexpr std::array<std::uint8_t, 10> plaintext{"plaintext"};
     std::array<std::uint8_t, 1024> cryptoBuffer;
@@ -88,14 +95,13 @@ constexpr std::array<std::uint8_t, 10> AESRoundTrip::plaintext;
 TEST_F(AESRoundTrip, CBC) {
     ASSERT_OK(encrypt(crypto::aesMode::cbc));
     ASSERT_OK(decrypt(crypto::aesMode::cbc));
-    ASSERT_TRUE(std::equal(plaintext.begin(),
-                           plaintext.end(),
-                           plainBuffer.begin(),
-                           plainBuffer.begin() + plaintext.size()));
+    ASSERT_TRUE(plainTextMatch());
 
-    // Changing the key should result in decryption failure.
+    // Changing the key should result in decryption failure or bad plain text.
     key = crypto::aesGenerate(crypto::sym256KeySize, "testID");
-    ASSERT_NOT_OK(decrypt(crypto::aesMode::cbc));
+    if (decrypt(crypto::aesMode::cbc).isOK()) {
+        ASSERT_FALSE(plainTextMatch());
+    }
 }
 
 DEATH_TEST_F(AESRoundTrip,
@@ -108,10 +114,7 @@ DEATH_TEST_F(AESRoundTrip,
 
     ASSERT_OK(decrypt(crypto::aesMode::cbc));
 
-    ASSERT_TRUE(std::equal(plaintext.begin(),
-                           plaintext.end(),
-                           plainBuffer.begin(),
-                           plainBuffer.begin() + plaintext.size()));
+    ASSERT_TRUE(plainTextMatch());
 
     encrypt(crypto::aesMode::cbc).ignore();
 }
@@ -128,10 +131,7 @@ TEST_F(AESRoundTrip, GCM) {
     }
     ASSERT_OK(encrypt(crypto::aesMode::gcm));
     ASSERT_OK(decrypt(crypto::aesMode::gcm));
-    ASSERT_TRUE(std::equal(plaintext.begin(),
-                           plaintext.end(),
-                           plainBuffer.begin(),
-                           plainBuffer.begin() + plaintext.size()));
+    ASSERT_TRUE(plainTextMatch());
 }
 
 DEATH_TEST_F(AESRoundTrip,
@@ -144,10 +144,7 @@ DEATH_TEST_F(AESRoundTrip,
 
     ASSERT_OK(decrypt(crypto::aesMode::gcm));
 
-    ASSERT_TRUE(std::equal(plaintext.begin(),
-                           plaintext.end(),
-                           plainBuffer.begin(),
-                           plainBuffer.begin() + plaintext.size()));
+    ASSERT_TRUE(plainTextMatch());
 
     encrypt(crypto::aesMode::gcm).ignore();
 }
