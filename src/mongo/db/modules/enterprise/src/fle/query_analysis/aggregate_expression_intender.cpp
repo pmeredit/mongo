@@ -628,6 +628,9 @@ private:
     void visit(ExpressionIndexOfCP*) final {
         ensureNotEncryptedEnterEval("a code-point-based string find", subtreeStack);
     }
+    void visit(ExpressionIsNumber*) final {
+        ensureNotEncryptedEnterEval("a numeric-type checker", subtreeStack);
+    }
     void visit(ExpressionLet* let) final {
         for (auto&& [unused, nameAndExpression] : let->getVariableMap())
             if (auto&& [name, unused] = nameAndExpression; name == "CURRENT")
@@ -932,6 +935,7 @@ private:
     void visit(ExpressionIndexOfArray*) final {}
     void visit(ExpressionIndexOfBytes*) final {}
     void visit(ExpressionIndexOfCP*) final {}
+    void visit(ExpressionIsNumber*) final {}
     void visit(ExpressionLet* let) final {
         // The final child of a let Expression is part of the parent Subtree.
         if (numChildrenVisited == let->getChildren().size() - 1)
@@ -1165,6 +1169,9 @@ private:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionIndexOfBytes*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionIsNumber*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionIndexOfCP*) final {

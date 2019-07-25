@@ -526,6 +526,9 @@ TEST_F(AggregateExpressionIntenderTest, ComparisonFailsWithPrefixOfRandom) {
         stateIntention(R"({"$eq": ["$nestedRandom", "literal"]})"), AssertionException, 31131);
 }
 
+TEST_F(AggregateExpressionIntenderTest, IsNumberFailsOnEncryptedField) {
+    ASSERT_THROWS_CODE(stateIntention(R"({"$isNumber": "$safeInt"})"), AssertionException, 31110);
+}
 
 TEST_F(AggregateExpressionIntenderTest, ArrayLiteralShouldSucceedWhenEverythingIsUnencrypted) {
     ASSERT_IDENTITY(

@@ -184,6 +184,10 @@ public:
     void visit(ExpressionIndexOfCP*) {
         _tracker.enterEvaluateOrCompare();
     }
+    void visit(ExpressionIsNumber*) {
+        _tracker.enterEvaluateOrCompare();
+    }
+
     void visit(ExpressionLet*) {
         // aggregate_expression_intender::mark() handles disallowing rebinding CURRENT.
     }
@@ -523,6 +527,7 @@ public:
     void visit(ExpressionIndexOfArray*) {}
     void visit(ExpressionIndexOfBytes*) {}
     void visit(ExpressionIndexOfCP*) {}
+    void visit(ExpressionIsNumber*) {}
     void visit(ExpressionLet*) {}
     void visit(ExpressionLn*) {}
     void visit(ExpressionLog*) {}
@@ -725,6 +730,9 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(ExpressionIndexOfCP*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(ExpressionIsNumber*) {
         _tracker.exitEvaluateOrCompare();
     }
     void visit(ExpressionLet*) {}
