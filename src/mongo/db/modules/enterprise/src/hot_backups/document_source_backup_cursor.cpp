@@ -91,10 +91,10 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursor::createFromBson(
     // in the event the calling process crashes, the cursors should eventually be timed out.
     pExpCtx->tailableMode = TailableModeEnum::kTailable;
 
-    uassert(
-        ErrorCodes::FailedToParse,
-        str::stream() << kStageName << " value must be an object. Found: " << typeName(spec.type()),
-        spec.type() == BSONType::Object);
+    uassert(ErrorCodes::FailedToParse,
+            str::stream() << kStageName
+                          << " value must be an object. Found: " << typeName(spec.type()),
+            spec.type() == BSONType::Object);
 
     uassert(ErrorCodes::CannotBackup,
             str::stream() << kStageName << " cannot be executed against a MongoS.",

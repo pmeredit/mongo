@@ -1,18 +1,18 @@
 // Verify logApplicationMessage is sent to audit log
 
 (function() {
-    'use strict';
+'use strict';
 
-    load('src/mongo/db/modules/enterprise/jstests/audit/audit.js');
-    print("START audit-log-application-message.js");
+load('src/mongo/db/modules/enterprise/jstests/audit/audit.js');
+print("START audit-log-application-message.js");
 
-    var m = MongoRunner.runMongodAuditLogger({});
-    var audit = m.auditSpooler();
-    var db = m.getDB("test");
+var m = MongoRunner.runMongodAuditLogger({});
+var audit = m.auditSpooler();
+var db = m.getDB("test");
 
-    assert.commandWorked(db.runCommand({logApplicationMessage: "Hello World"}));
-    audit.assertEntry("applicationMessage", {msg: "Hello World"});
+assert.commandWorked(db.runCommand({logApplicationMessage: "Hello World"}));
+audit.assertEntry("applicationMessage", {msg: "Hello World"});
 
-    MongoRunner.stopMongod(m);
-    print("SUCCESS audit-log-application-message.js");
+MongoRunner.stopMongod(m);
+print("SUCCESS audit-log-application-message.js");
 })();

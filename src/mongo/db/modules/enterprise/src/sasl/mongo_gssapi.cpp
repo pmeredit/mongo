@@ -122,8 +122,7 @@ Status tryAcquireServerCredential(const std::string& principalName) {
     if (GSS_ERROR(majorStatus)) {
         status = Status(ErrorCodes::UnknownError,
                         str::stream() << "gssapi could not acquire server credential for "
-                                      << canonicalPrincipalName
-                                      << "; "
+                                      << canonicalPrincipalName << "; "
                                       << getGssapiErrorString(majorStatus, minorStatus));
         goto done;
     }

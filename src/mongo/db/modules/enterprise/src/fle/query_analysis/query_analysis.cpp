@@ -799,8 +799,7 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
                 uassert(31054,
                         str::stream()
                             << "cannot apply non-simple collation when comparing to element "
-                            << elem
-                            << " with client-side encryption",
+                            << elem << " with client-side encryption",
                         !collator);
                 break;
             }

@@ -106,9 +106,7 @@ public:
             const auto& errorStr = regex.error();
             uassert(51141,
                     str::stream() << "Invalid regular expression in 'patternProperties': "
-                                  << regexStringData
-                                  << " PCRE error string: "
-                                  << errorStr,
+                                  << regexStringData << " PCRE error string: " << errorStr,
                     errorStr.empty());
         }
 

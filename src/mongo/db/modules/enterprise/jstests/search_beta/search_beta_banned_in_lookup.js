@@ -3,18 +3,18 @@
  */
 
 (function() {
-    "use strict";
+"use strict";
 
-    function checkLookupBanned(conn) {
-        const db = conn.getDB("test");
-        const coll = db["internal_search_beta_banned_in_lookup"];
-        const foreignColl = db[coll.getName() + "_foreign"];
+function checkLookupBanned(conn) {
+    const db = conn.getDB("test");
+    const coll = db["internal_search_beta_banned_in_lookup"];
+    const foreignColl = db[coll.getName() + "_foreign"];
 
-        assert.commandWorked(foreignColl.insert({a: 1}));
-        assert.commandWorked(coll.insert({a: 1}));
+    assert.commandWorked(foreignColl.insert({a: 1}));
+    assert.commandWorked(coll.insert({a: 1}));
 
-        {
-            const pipeline = [
+    {
+        const pipeline = [
                 {
                   $lookup: {
                       let : {},
@@ -26,13 +26,13 @@
                   }
                 },
             ];
-            const err = assert.throws(() => coll.aggregate(pipeline));
-            assert.commandFailedWithCode(err, 51047);
-        }
+        const err = assert.throws(() => coll.aggregate(pipeline));
+        assert.commandFailedWithCode(err, 51047);
+    }
 
-        // $searchBeta within a $lookup within a $lookup.
-        {
-            const nestedPipeline = [
+    // $searchBeta within a $lookup within a $lookup.
+    {
+        const nestedPipeline = [
                 {
                   $lookup: {
                       pipeline: [{
@@ -49,20 +49,20 @@
                   }
                 },
             ];
-            const err = assert.throws(() => coll.aggregate(nestedPipeline));
-            assert.commandFailedWithCode(err, 51047);
-        }
+        const err = assert.throws(() => coll.aggregate(nestedPipeline));
+        assert.commandFailedWithCode(err, 51047);
     }
+}
 
-    {
-        const conn = MongoRunner.runMongod();
-        checkLookupBanned(conn);
-        MongoRunner.stopMongod(conn);
-    }
+{
+    const conn = MongoRunner.runMongod();
+    checkLookupBanned(conn);
+    MongoRunner.stopMongod(conn);
+}
 
-    {
-        const st = new ShardingTest({shards: 2});
-        checkLookupBanned(st.s);
-        st.stop();
-    }
+{
+    const st = new ShardingTest({shards: 2});
+    checkLookupBanned(st.s);
+    st.stop();
+}
 })();

@@ -91,4 +91,4 @@ bool CmdLogApplicationMessage::errmsgRun(OperationContext* opCtx,
 
     return true;
 }
-}
+}  // namespace mongo

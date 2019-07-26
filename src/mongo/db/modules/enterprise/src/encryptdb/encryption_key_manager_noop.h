@@ -26,4 +26,4 @@ public:
     }
 };
 
-}  // mongo
+}  // namespace mongo

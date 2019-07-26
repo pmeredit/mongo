@@ -317,8 +317,7 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(CyrusSaslServerCore,
     if (result != SASL_OK) {
         return Status(ErrorCodes::UnknownError,
                       str::stream() << "Could not initialize sasl server components ("
-                                    << sasl_errstring(result, nullptr, nullptr)
-                                    << ")");
+                                    << sasl_errstring(result, nullptr, nullptr) << ")");
     }
 
     return Status::OK();
@@ -333,8 +332,8 @@ ServiceContext::ConstructorActionRegisterer cyrusSaslServerMechanismRegisterMech
             CyrusGSSAPIServerFactory factory;
             fassert(50743,
                     gssapi::tryAcquireServerCredential(static_cast<std::string>(
-                        str::stream() << saslGlobalParams.serviceName << "@"
-                                      << saslGlobalParams.hostName)));
+                        str::stream()
+                        << saslGlobalParams.serviceName << "@" << saslGlobalParams.hostName)));
             auto mech = factory.create("test");
         }
 

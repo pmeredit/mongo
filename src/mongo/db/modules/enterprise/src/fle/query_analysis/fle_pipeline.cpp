@@ -106,7 +106,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForInclusionNode(
             }
         }
     }
-    for (const auto & [ newName, oldName ] : renamedPaths) {
+    for (const auto& [newName, oldName] : renamedPaths) {
         auto targetField = FieldRef{newName};
         if (auto oldEncryptionInfo = prevSchema.getNode(FieldRef{oldName})) {
             // Similar to the comment in computed projections above, if the target field is a dotted
@@ -234,7 +234,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGroup(
     clonable_ptr<EncryptionSchemaTreeNode> newSchema =
         std::make_unique<EncryptionSchemaNotEncryptedNode>();
 
-    for (const auto & [ pathStr, expression ] : source.getIdFields()) {
+    for (const auto& [pathStr, expression] : source.getIdFields()) {
         auto fieldPath = FieldRef{pathStr};
         // The expressions here are used for grouping things together, which is an equality
         // comparison.
@@ -281,15 +281,13 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGraphLookUp(
     uassert(
         51232,
         str::stream() << "'connectFromField' '" << connectFromField.fullPath()
-                      << "' and 'connectToField' '"
-                      << connectToField.fullPath()
+                      << "' and 'connectToField' '" << connectToField.fullPath()
                       << "' in the $graphLookup aggregation stage need to be both unencypted or "
                          "be encrypted with the same encryption properties.",
         (!connectFromMetadata && !connectToMetadata) || connectFromMetadata == connectToMetadata);
     uassert(51233,
             str::stream() << "'connectFromField' '" << connectFromField.fullPath()
-                          << " and 'connectToField' '"
-                          << connectToField.fullPath()
+                          << " and 'connectToField' '" << connectToField.fullPath()
                           << "' in the $graphLookup aggregation stage need to be both encrypted "
                              " the with the deterministic algorithm.",
             (!connectFromMetadata && !connectToMetadata) ||
@@ -362,15 +360,13 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForLookUp(
 
         uassert(51210,
                 str::stream() << "'localField' '" << localField->fullPath()
-                              << " and 'foreignField' '"
-                              << foreignField->fullPath()
+                              << " and 'foreignField' '" << foreignField->fullPath()
                               << "' in the $lookup aggregation stage need to be both unencypted or "
                                  "be encrypted with the same encryption properties.",
                 (!localMetadata && !foreignMetadata) || localMetadata == foreignMetadata);
         uassert(51211,
                 str::stream() << "'localField' '" << localField->fullPath()
-                              << " and 'foreignField' '"
-                              << foreignField->fullPath()
+                              << " and 'foreignField' '" << foreignField->fullPath()
                               << "' in the $lookup aggregation stage need to be both encrypted "
                                  " the with deterministic algorithm.",
                 (!localMetadata && !foreignMetadata) ||
@@ -645,7 +641,7 @@ aggregate_expression_intender::Intention analyzeForGroup(FLEPipeline* flePipe,
                                                          DocumentSourceGroup* source) {
     aggregate_expression_intender::Intention didMark =
         aggregate_expression_intender::Intention::NotMarked;
-    for (const auto & [ fieldName, expression ] : source->getIdFields()) {
+    for (const auto& [fieldName, expression] : source->getIdFields()) {
         // The expressions here are used for grouping things together, which is an equality
         // comparison.
         const bool expressionResultCompared = true;
@@ -789,7 +785,7 @@ FLEPipeline::FLEPipeline(std::unique_ptr<Pipeline, PipelineDeleter> pipeline,
             "Pipeline over an encrypted collection cannot reference additional collections.",
             referencedCollections.size() == 1);
 
-    auto[metadataTree, finalSchema] =
+    auto [metadataTree, finalSchema] =
         pipeline_metadata_tree::makeTree<clonable_ptr<EncryptionSchemaTreeNode>>(
             {{_parsedPipeline->getContext()->ns, schema.clone()}},
             *_parsedPipeline.get(),

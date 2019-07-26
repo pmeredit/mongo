@@ -55,17 +55,16 @@ ResolvedEncryptionInfo extractMetadata(BSONObj schema, std::string path) {
 }
 
 static const uint8_t uuidBytes[] = {0, 0, 0, 0, 0, 0, 0x40, 0, 0x80, 0, 0, 0, 0, 0, 0, 0};
-const BSONObj encryptObj = BSON("encrypt" << BSON("algorithm"
-                                                  << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
-                                                  << "keyId"
-                                                  << BSON_ARRAY(BSONBinData(uuidBytes, 16, newUUID))
-                                                  << "bsonType"
-                                                  << "string"));
+const BSONObj encryptObj =
+    BSON("encrypt" << BSON("algorithm"
+                           << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
+                           << "keyId" << BSON_ARRAY(BSONBinData(uuidBytes, 16, newUUID))
+                           << "bsonType"
+                           << "string"));
 const BSONObj encryptObjNumber =
     BSON("encrypt" << BSON("algorithm"
                            << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
-                           << "keyId"
-                           << BSON_ARRAY(BSONBinData(uuidBytes, 16, newUUID))
+                           << "keyId" << BSON_ARRAY(BSONBinData(uuidBytes, 16, newUUID))
                            << "bsonType"
                            << "int"));
 /**
@@ -142,17 +141,16 @@ TEST(EncryptionSchemaTreeTest, MarksNumericFieldNameAsEncrypted) {
 
     BSONObj schema = BSON("type"
                           << "object"
-                          << "properties"
-                          << BSON("0" << BSON("encrypt" << encryptObj)));
+                          << "properties" << BSON("0" << BSON("encrypt" << encryptObj)));
     ASSERT(extractMetadata(schema, "0") == metadata);
 
-    schema = BSON("type"
-                  << "object"
-                  << "properties"
-                  << BSON("nested" << BSON("type"
-                                           << "object"
-                                           << "properties"
-                                           << BSON("0" << BSON("encrypt" << encryptObj)))));
+    schema = BSON(
+        "type"
+        << "object"
+        << "properties"
+        << BSON("nested" << BSON("type"
+                                 << "object"
+                                 << "properties" << BSON("0" << BSON("encrypt" << encryptObj)))));
     ASSERT(extractMetadata(schema, "nested.0") == metadata);
 }
 
@@ -225,12 +223,10 @@ TEST(EncryptionSchemaTreeTest, ExtractsCorrectMetadataOptions) {
                            << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
                            << "bsonType"
                            << "string"
-                           << "keyId"
-                           << BSON_ARRAY(uuid));
+                           << "keyId" << BSON_ARRAY(uuid));
     BSONObj schema = BSON("type"
                           << "object"
-                          << "properties"
-                          << BSON("ssn" << BSON("encrypt" << encryptObj)));
+                          << "properties" << BSON("ssn" << BSON("encrypt" << encryptObj)));
     ASSERT(extractMetadata(schema, "ssn") == ssnMetadata);
 }
 
@@ -1819,12 +1815,10 @@ TEST(EncryptionSchemaTreeTest, ParseFailsIfDeterministicAndNoBSONType) {
     const auto uuid = UUID::gen();
     auto encryptObj = BSON("encrypt" << BSON("algorithm"
                                              << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
-                                             << "keyId"
-                                             << BSON_ARRAY(uuid)));
+                                             << "keyId" << BSON_ARRAY(uuid)));
     auto schema = BSON("type"
                        << "object"
-                       << "properties"
-                       << BSON("foo" << encryptObj));
+                       << "properties" << BSON("foo" << encryptObj));
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
                        AssertionException,
                        31051);
@@ -1837,12 +1831,10 @@ TEST(EncryptionSchemaTreeTest, ParseFailsIfDeterministicAndMultipleBSONType) {
                                              << "bsonType"
                                              << BSON_ARRAY("string"
                                                            << "int")
-                                             << "keyId"
-                                             << BSON_ARRAY(uuid)));
+                                             << "keyId" << BSON_ARRAY(uuid)));
     auto schema = BSON("type"
                        << "object"
-                       << "properties"
-                       << BSON("foo" << encryptObj));
+                       << "properties" << BSON("foo" << encryptObj));
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
                        AssertionException,
                        31051);
@@ -1908,14 +1900,11 @@ TEST(EncryptionSchemaTreeTest, ParseSucceedsIfLengthOneTypeArray) {
     const auto uuid = UUID::gen();
     auto encryptObj = BSON("encrypt" << BSON("algorithm"
                                              << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
-                                             << "bsonType"
-                                             << BSON_ARRAY("string")
-                                             << "keyId"
+                                             << "bsonType" << BSON_ARRAY("string") << "keyId"
                                              << BSON_ARRAY(uuid)));
     auto schema = BSON("type"
                        << "object"
-                       << "properties"
-                       << BSON("foo" << encryptObj));
+                       << "properties" << BSON("foo" << encryptObj));
     // Just making sure the parse succeeds, don't care about the result.
     EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
 }
@@ -2452,8 +2441,7 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithNoBSONTypeInDeterministicEncrypt)
     auto uuid = UUID::gen();
     BSONObj schema = BSON("encrypt" << BSON("algorithm"
                                             << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
-                                            << "keyId"
-                                            << BSON_ARRAY(uuid)));
+                                            << "keyId" << BSON_ARRAY(uuid)));
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
                        AssertionException,
                        31051);
@@ -2463,9 +2451,7 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithBSONTypeObjectInDeterministicEncr
     auto uuid = UUID::gen();
     BSONObj schema = BSON("encrypt" << BSON("algorithm"
                                             << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
-                                            << "keyId"
-                                            << BSON_ARRAY(uuid)
-                                            << "bsonType"
+                                            << "keyId" << BSON_ARRAY(uuid) << "bsonType"
                                             << "object"));
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
                        AssertionException,
@@ -2474,12 +2460,10 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithBSONTypeObjectInDeterministicEncr
 
 TEST(EncryptionSchemaTreeTest, FailsToParseWithEmptyArrayBSONTypeInDeterministicEncrypt) {
     auto uuid = UUID::gen();
-    BSONObj schema = BSON("encrypt" << BSON("algorithm"
-                                            << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
-                                            << "keyId"
-                                            << BSON_ARRAY(uuid)
-                                            << "bsonType"
-                                            << BSONArray()));
+    BSONObj schema =
+        BSON("encrypt" << BSON("algorithm"
+                               << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
+                               << "keyId" << BSON_ARRAY(uuid) << "bsonType" << BSONArray()));
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
                        AssertionException,
                        31051);
@@ -2489,9 +2473,7 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithMultipleElementArrayBSONTypeInDet
     auto uuid = UUID::gen();
     BSONObj schema = BSON("encrypt" << BSON("algorithm"
                                             << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
-                                            << "keyId"
-                                            << BSON_ARRAY(uuid)
-                                            << "bsonType"
+                                            << "keyId" << BSON_ARRAY(uuid) << "bsonType"
                                             << BSON_ARRAY("int"
                                                           << "string")));
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
@@ -2503,9 +2485,7 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithObjectInArrayBSONTypeInDeterminis
     auto uuid = UUID::gen();
     BSONObj schema = BSON("encrypt" << BSON("algorithm"
                                             << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
-                                            << "keyId"
-                                            << BSON_ARRAY(uuid)
-                                            << "bsonType"
+                                            << "keyId" << BSON_ARRAY(uuid) << "bsonType"
                                             << BSON_ARRAY("object")));
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
                        AssertionException,
@@ -2519,12 +2499,10 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithSingleValueBSONTypeInEncryptObjec
                                              << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
                                              << "bsonType"
                                              << "minKey"
-                                             << "keyId"
-                                             << BSON_ARRAY(uuid)));
+                                             << "keyId" << BSON_ARRAY(uuid)));
     BSONObj schema = BSON("type"
                           << "object"
-                          << "properties"
-                          << BSON("foo" << encrypt));
+                          << "properties" << BSON("foo" << encrypt));
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
                        AssertionException,
                        31041);
@@ -2533,12 +2511,10 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithSingleValueBSONTypeInEncryptObjec
                                      << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
                                      << "bsonType"
                                      << "maxKey"
-                                     << "keyId"
-                                     << BSON_ARRAY(uuid)));
+                                     << "keyId" << BSON_ARRAY(uuid)));
     schema = BSON("type"
                   << "object"
-                  << "properties"
-                  << BSON("foo" << encrypt));
+                  << "properties" << BSON("foo" << encrypt));
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
                        AssertionException,
                        31041);
@@ -2547,12 +2523,10 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithSingleValueBSONTypeInEncryptObjec
                                      << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
                                      << "bsonType"
                                      << "undefined"
-                                     << "keyId"
-                                     << BSON_ARRAY(uuid)));
+                                     << "keyId" << BSON_ARRAY(uuid)));
     schema = BSON("type"
                   << "object"
-                  << "properties"
-                  << BSON("foo" << encrypt));
+                  << "properties" << BSON("foo" << encrypt));
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
                        AssertionException,
                        31041);
@@ -2561,12 +2535,10 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithSingleValueBSONTypeInEncryptObjec
                                      << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
                                      << "bsonType"
                                      << "null"
-                                     << "keyId"
-                                     << BSON_ARRAY(uuid)));
+                                     << "keyId" << BSON_ARRAY(uuid)));
     schema = BSON("type"
                   << "object"
-                  << "properties"
-                  << BSON("foo" << encrypt));
+                  << "properties" << BSON("foo" << encrypt));
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
                        AssertionException,
                        31041);
@@ -2751,8 +2723,7 @@ TEST(EncryptionSchemaTreeTest, SingleUnencryptedPropertySchemasAreEqual) {
 TEST(EncryptionSchemaTreeTest, SingleEncryptedPropertySchemasAreEqual) {
     BSONObj BSONSchema = BSON("type"
                               << "object"
-                              << "properties"
-                              << BSON("user" << encryptObj));
+                              << "properties" << BSON("user" << encryptObj));
     auto firstSchema = EncryptionSchemaTreeNode::parse(BSONSchema, EncryptionSchemaType::kLocal);
     auto secondSchema = EncryptionSchemaTreeNode::parse(BSONSchema, EncryptionSchemaType::kLocal);
     ASSERT_TRUE(*firstSchema == *secondSchema);
@@ -2775,12 +2746,10 @@ TEST(EncryptionSchemaTreeTest, OutOfOrderSchemasAreEqual) {
 TEST(EncryptionSchemaTreeTest, DifferentEncryptionMetadataAreNotEqual) {
     BSONObj firstBSON = BSON("type"
                              << "object"
-                             << "properties"
-                             << BSON("user" << encryptObj));
+                             << "properties" << BSON("user" << encryptObj));
     BSONObj secondBSON = BSON("type"
                               << "object"
-                              << "properties"
-                              << BSON("user" << encryptObjNumber));
+                              << "properties" << BSON("user" << encryptObjNumber));
     auto firstSchema = EncryptionSchemaTreeNode::parse(firstBSON, EncryptionSchemaType::kLocal);
     auto secondSchema = EncryptionSchemaTreeNode::parse(secondBSON, EncryptionSchemaType::kLocal);
     ASSERT_FALSE(*firstSchema == *secondSchema);
@@ -2789,12 +2758,10 @@ TEST(EncryptionSchemaTreeTest, DifferentEncryptionMetadataAreNotEqual) {
 TEST(EncryptionSchemaTreeTest, DifferentFieldNamesAreNotEqual) {
     BSONObj firstBSON = BSON("type"
                              << "object"
-                             << "properties"
-                             << BSON("user" << encryptObj));
+                             << "properties" << BSON("user" << encryptObj));
     BSONObj secondBSON = BSON("type"
                               << "object"
-                              << "properties"
-                              << BSON("person" << encryptObj));
+                              << "properties" << BSON("person" << encryptObj));
     auto firstSchema = EncryptionSchemaTreeNode::parse(firstBSON, EncryptionSchemaType::kLocal);
     auto secondSchema = EncryptionSchemaTreeNode::parse(secondBSON, EncryptionSchemaType::kLocal);
     ASSERT_FALSE(*firstSchema == *secondSchema);
@@ -2803,53 +2770,51 @@ TEST(EncryptionSchemaTreeTest, DifferentFieldNamesAreNotEqual) {
 TEST(EncryptionSchemaTreeTest, ExtraUnencryptedLeafNodeAreNotEqual) {
     BSONObj firstBSON = BSON("type"
                              << "object"
-                             << "properties"
-                             << BSON("user" << encryptObj));
+                             << "properties" << BSON("user" << encryptObj));
     BSONObj secondBSON = BSON("type"
                               << "object"
                               << "properties"
-                              << BSON("user" << encryptObj << "extra" << BSON("type"
-                                                                              << "string")));
+                              << BSON("user" << encryptObj << "extra"
+                                             << BSON("type"
+                                                     << "string")));
     auto firstSchema = EncryptionSchemaTreeNode::parse(firstBSON, EncryptionSchemaType::kLocal);
     auto secondSchema = EncryptionSchemaTreeNode::parse(secondBSON, EncryptionSchemaType::kLocal);
     ASSERT_FALSE(*firstSchema == *secondSchema);
 }
 
 TEST(EncryptionSchemaTreeTest, IdenticalNestedSchemaAreEqual) {
-    const BSONObj BSONSchema =
-        BSON("type"
-             << "object"
-             << "properties"
-             << BSON("person" << encryptObj << "user"
-                              << BSON("type"
-                                      << "object"
-                                      << "properties"
-                                      << BSON("ssn" << encryptObj << "address" << encryptObj
-                                                    << "accounts"
-                                                    << BSON("type"
-                                                            << "object"
-                                                            << "properties"
-                                                            << BSON("bank" << encryptObj))))));
+    const BSONObj BSONSchema = BSON(
+        "type"
+        << "object"
+        << "properties"
+        << BSON("person" << encryptObj << "user"
+                         << BSON("type"
+                                 << "object"
+                                 << "properties"
+                                 << BSON("ssn"
+                                         << encryptObj << "address" << encryptObj << "accounts"
+                                         << BSON("type"
+                                                 << "object"
+                                                 << "properties" << BSON("bank" << encryptObj))))));
     auto firstSchema = EncryptionSchemaTreeNode::parse(BSONSchema, EncryptionSchemaType::kLocal);
     auto secondSchema = EncryptionSchemaTreeNode::parse(BSONSchema, EncryptionSchemaType::kLocal);
     ASSERT_TRUE(*firstSchema == *secondSchema);
 }
 
 TEST(EncryptionSchemaTreeTest, DifferentMetadataNestedSchemaAreNotEqual) {
-    const BSONObj firstBSON =
-        BSON("type"
-             << "object"
-             << "properties"
-             << BSON("person" << encryptObj << "user"
-                              << BSON("type"
-                                      << "object"
-                                      << "properties"
-                                      << BSON("ssn" << encryptObj << "address" << encryptObj
-                                                    << "accounts"
-                                                    << BSON("type"
-                                                            << "object"
-                                                            << "properties"
-                                                            << BSON("bank" << encryptObj))))));
+    const BSONObj firstBSON = BSON(
+        "type"
+        << "object"
+        << "properties"
+        << BSON("person" << encryptObj << "user"
+                         << BSON("type"
+                                 << "object"
+                                 << "properties"
+                                 << BSON("ssn"
+                                         << encryptObj << "address" << encryptObj << "accounts"
+                                         << BSON("type"
+                                                 << "object"
+                                                 << "properties" << BSON("bank" << encryptObj))))));
     const BSONObj secondBSON =
         BSON("type"
              << "object"
@@ -2870,34 +2835,32 @@ TEST(EncryptionSchemaTreeTest, DifferentMetadataNestedSchemaAreNotEqual) {
 }
 
 TEST(EncryptionSchemaTreeTest, DifferentPathNestedSchemaAreNotEqual) {
-    const BSONObj firstBSON =
-        BSON("type"
-             << "object"
-             << "properties"
-             << BSON("person" << encryptObj << "user"
-                              << BSON("type"
-                                      << "object"
-                                      << "properties"
-                                      << BSON("ssn" << encryptObj << "address" << encryptObj
-                                                    << "accounts"
-                                                    << BSON("type"
-                                                            << "object"
-                                                            << "properties"
-                                                            << BSON("bank" << encryptObj))))));
-    const BSONObj secondBSON =
-        BSON("type"
-             << "object"
-             << "properties"
-             << BSON("person" << encryptObj << "user"
-                              << BSON("type"
-                                      << "object"
-                                      << "properties"
-                                      << BSON("ssn" << encryptObj << "homeLocation" << encryptObj
-                                                    << "accounts"
-                                                    << BSON("type"
-                                                            << "object"
-                                                            << "properties"
-                                                            << BSON("bank" << encryptObj))))));
+    const BSONObj firstBSON = BSON(
+        "type"
+        << "object"
+        << "properties"
+        << BSON("person" << encryptObj << "user"
+                         << BSON("type"
+                                 << "object"
+                                 << "properties"
+                                 << BSON("ssn"
+                                         << encryptObj << "address" << encryptObj << "accounts"
+                                         << BSON("type"
+                                                 << "object"
+                                                 << "properties" << BSON("bank" << encryptObj))))));
+    const BSONObj secondBSON = BSON(
+        "type"
+        << "object"
+        << "properties"
+        << BSON("person" << encryptObj << "user"
+                         << BSON("type"
+                                 << "object"
+                                 << "properties"
+                                 << BSON("ssn"
+                                         << encryptObj << "homeLocation" << encryptObj << "accounts"
+                                         << BSON("type"
+                                                 << "object"
+                                                 << "properties" << BSON("bank" << encryptObj))))));
     auto firstSchema = EncryptionSchemaTreeNode::parse(firstBSON, EncryptionSchemaType::kLocal);
     auto secondSchema = EncryptionSchemaTreeNode::parse(secondBSON, EncryptionSchemaType::kLocal);
     ASSERT_FALSE(*firstSchema == *secondSchema);
@@ -2922,25 +2885,23 @@ TEST(EncryptionSchemaTreeTest, ExtraNestedAdditionalPropertiesAreNotEqual) {
                                       << "object"
                                       << "properties"
                                       << BSON("ssn" << encryptObj << "address" << encryptObj)
-                                      << "additionalProperties"
-                                      << encryptObjNumber)));
+                                      << "additionalProperties" << encryptObjNumber)));
     auto firstSchema = EncryptionSchemaTreeNode::parse(firstBSON, EncryptionSchemaType::kLocal);
     auto secondSchema = EncryptionSchemaTreeNode::parse(secondBSON, EncryptionSchemaType::kLocal);
     ASSERT_FALSE(*firstSchema == *secondSchema);
 }
 
 TEST(EncryptionSchemaTreeTest, DifferentNestedAdditionalPropertiesAreNotEqual) {
-    const BSONObj firstBSON = BSON("type"
-                                   << "object"
-                                   << "properties"
-                                   << BSON("person" << encryptObj << "user"
-                                                    << BSON("type"
-                                                            << "object"
-                                                            << "properties"
-                                                            << BSON("ssn" << encryptObj << "address"
-                                                                          << encryptObj)
-                                                            << "additionalProperties"
-                                                            << encryptObj)));
+    const BSONObj firstBSON =
+        BSON("type"
+             << "object"
+             << "properties"
+             << BSON("person" << encryptObj << "user"
+                              << BSON("type"
+                                      << "object"
+                                      << "properties"
+                                      << BSON("ssn" << encryptObj << "address" << encryptObj)
+                                      << "additionalProperties" << encryptObj)));
     const BSONObj secondBSON =
         BSON("type"
              << "object"
@@ -2950,8 +2911,7 @@ TEST(EncryptionSchemaTreeTest, DifferentNestedAdditionalPropertiesAreNotEqual) {
                                       << "object"
                                       << "properties"
                                       << BSON("ssn" << encryptObj << "address" << encryptObj)
-                                      << "additionalProperties"
-                                      << encryptObjNumber)));
+                                      << "additionalProperties" << encryptObjNumber)));
     auto firstSchema = EncryptionSchemaTreeNode::parse(firstBSON, EncryptionSchemaType::kLocal);
     auto secondSchema = EncryptionSchemaTreeNode::parse(secondBSON, EncryptionSchemaType::kLocal);
     ASSERT_FALSE(*firstSchema == *secondSchema);
@@ -2967,8 +2927,7 @@ TEST(EncryptionSchemaTreeTest, IdenticalNestedAdditionalPropertiesAreEqual) {
                                       << "object"
                                       << "properties"
                                       << BSON("ssn" << encryptObj << "address" << encryptObj)
-                                      << "additionalProperties"
-                                      << encryptObj)));
+                                      << "additionalProperties" << encryptObj)));
     auto firstSchema = EncryptionSchemaTreeNode::parse(BSONSchema, EncryptionSchemaType::kLocal);
     auto secondSchema = EncryptionSchemaTreeNode::parse(BSONSchema, EncryptionSchemaType::kLocal);
     ASSERT_TRUE(*firstSchema == *secondSchema);
@@ -2997,25 +2956,23 @@ TEST(EncryptionSchemaTreeTest, IdenticalNestedPatternPropertiesAreEqual) {
                                       << "object"
                                       << "properties"
                                       << BSON("ssn" << encryptObj << "address" << encryptObj)
-                                      << "patternProperties"
-                                      << BSON("foo" << encryptObj))));
+                                      << "patternProperties" << BSON("foo" << encryptObj))));
     auto firstSchema = EncryptionSchemaTreeNode::parse(BSONSchema, EncryptionSchemaType::kLocal);
     auto secondSchema = EncryptionSchemaTreeNode::parse(BSONSchema, EncryptionSchemaType::kLocal);
     ASSERT_TRUE(*firstSchema == *secondSchema);
 }
 
 TEST(EncryptionSchemaTreeTest, DifferentNameNestedPatternPropertiesAreNotEqual) {
-    const BSONObj firstBSON = BSON("type"
-                                   << "object"
-                                   << "properties"
-                                   << BSON("person" << encryptObj << "user"
-                                                    << BSON("type"
-                                                            << "object"
-                                                            << "properties"
-                                                            << BSON("ssn" << encryptObj << "address"
-                                                                          << encryptObj)
-                                                            << "patternProperties"
-                                                            << BSON("foo" << encryptObj))));
+    const BSONObj firstBSON =
+        BSON("type"
+             << "object"
+             << "properties"
+             << BSON("person" << encryptObj << "user"
+                              << BSON("type"
+                                      << "object"
+                                      << "properties"
+                                      << BSON("ssn" << encryptObj << "address" << encryptObj)
+                                      << "patternProperties" << BSON("foo" << encryptObj))));
     const BSONObj secondBSON =
         BSON("type"
              << "object"
@@ -3025,25 +2982,23 @@ TEST(EncryptionSchemaTreeTest, DifferentNameNestedPatternPropertiesAreNotEqual) 
                                       << "object"
                                       << "properties"
                                       << BSON("ssn" << encryptObj << "address" << encryptObj)
-                                      << "patternProperties"
-                                      << BSON("bar" << encryptObj))));
+                                      << "patternProperties" << BSON("bar" << encryptObj))));
     auto firstSchema = EncryptionSchemaTreeNode::parse(firstBSON, EncryptionSchemaType::kLocal);
     auto secondSchema = EncryptionSchemaTreeNode::parse(secondBSON, EncryptionSchemaType::kLocal);
     ASSERT_FALSE(*firstSchema == *secondSchema);
 }
 
 TEST(EncryptionSchemaTreeTest, DifferentMetadataNestedPatternPropertiesAreNotEqual) {
-    const BSONObj firstBSON = BSON("type"
-                                   << "object"
-                                   << "properties"
-                                   << BSON("person" << encryptObj << "user"
-                                                    << BSON("type"
-                                                            << "object"
-                                                            << "properties"
-                                                            << BSON("ssn" << encryptObj << "address"
-                                                                          << encryptObj)
-                                                            << "patternProperties"
-                                                            << BSON("foo" << encryptObj))));
+    const BSONObj firstBSON =
+        BSON("type"
+             << "object"
+             << "properties"
+             << BSON("person" << encryptObj << "user"
+                              << BSON("type"
+                                      << "object"
+                                      << "properties"
+                                      << BSON("ssn" << encryptObj << "address" << encryptObj)
+                                      << "patternProperties" << BSON("foo" << encryptObj))));
     const BSONObj secondBSON =
         BSON("type"
              << "object"
@@ -3053,25 +3008,23 @@ TEST(EncryptionSchemaTreeTest, DifferentMetadataNestedPatternPropertiesAreNotEqu
                                       << "object"
                                       << "properties"
                                       << BSON("ssn" << encryptObj << "address" << encryptObj)
-                                      << "patternProperties"
-                                      << BSON("foo" << encryptObjNumber))));
+                                      << "patternProperties" << BSON("foo" << encryptObjNumber))));
     auto firstSchema = EncryptionSchemaTreeNode::parse(firstBSON, EncryptionSchemaType::kLocal);
     auto secondSchema = EncryptionSchemaTreeNode::parse(secondBSON, EncryptionSchemaType::kLocal);
     ASSERT_FALSE(*firstSchema == *secondSchema);
 }
 
 TEST(EncryptionSchemaTreeTest, MissingNestedPatternPropertiesAreNotEqual) {
-    const BSONObj firstBSON = BSON("type"
-                                   << "object"
-                                   << "properties"
-                                   << BSON("person" << encryptObj << "user"
-                                                    << BSON("type"
-                                                            << "object"
-                                                            << "properties"
-                                                            << BSON("ssn" << encryptObj << "address"
-                                                                          << encryptObj)
-                                                            << "patternProperties"
-                                                            << BSON("foo" << encryptObj))));
+    const BSONObj firstBSON =
+        BSON("type"
+             << "object"
+             << "properties"
+             << BSON("person" << encryptObj << "user"
+                              << BSON("type"
+                                      << "object"
+                                      << "properties"
+                                      << BSON("ssn" << encryptObj << "address" << encryptObj)
+                                      << "patternProperties" << BSON("foo" << encryptObj))));
     const BSONObj secondBSON =
         BSON("type"
              << "object"

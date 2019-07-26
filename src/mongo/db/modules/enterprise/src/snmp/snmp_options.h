@@ -12,4 +12,4 @@ struct SnmpGlobalParams {
 };
 
 extern SnmpGlobalParams snmpGlobalParams;
-}
+}  // namespace mongo

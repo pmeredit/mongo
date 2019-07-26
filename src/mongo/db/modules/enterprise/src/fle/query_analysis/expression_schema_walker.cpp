@@ -468,7 +468,7 @@ public:
 
     void visit(ExpressionObject* expr) {
         auto newSchema = std::make_unique<EncryptionSchemaNotEncryptedNode>();
-        for (auto[field, childExpr] : expr->getChildExpressions()) {
+        for (auto [field, childExpr] : expr->getChildExpressions()) {
             newSchema->addChild(FieldRef(field), getOutputSchema(_schema, childExpr.get(), false));
         }
         _tracker.reconcileSchema(std::move(newSchema));

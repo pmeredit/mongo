@@ -21,8 +21,7 @@ static const uint8_t uuidBytes[] = {0, 0, 0, 0, 0, 0, 0x40, 0, 0x80, 0, 0, 0, 0,
 static const BSONObj randomEncryptObj =
     BSON("encrypt" << BSON("algorithm"
                            << "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
-                           << "keyId"
-                           << BSON_ARRAY(BSONBinData(uuidBytes, 16, newUUID))));
+                           << "keyId" << BSON_ARRAY(BSONBinData(uuidBytes, 16, newUUID))));
 static const BSONObj pointerEncryptObj =
     BSON("encrypt" << BSON("algorithm"
                            << "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
@@ -37,8 +36,7 @@ static const BSONObj pointerEncryptObjUsingDeterministicAlgo =
 static const BSONObj encryptMetadataDeterministicObj =
     BSON("encrypt" << BSON("algorithm"
                            << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
-                           << "keyId"
-                           << BSON_ARRAY(BSONBinData(uuidBytes, 16, newUUID))));
+                           << "keyId" << BSON_ARRAY(BSONBinData(uuidBytes, 16, newUUID))));
 
 /**
  * Builds a schema with a single encrypted field using the passed in 'encrypt'
@@ -113,14 +111,13 @@ TEST(ReplaceEncryptedFieldsTest, ReplacesTopLevelFieldCorrectly) {
 }
 
 TEST(ReplaceEncryptedFieldsTest, ReplacesSecondLevelFieldCorrectly) {
-    auto schema = BSON("properties" << BSON("a" << BSON("type"
-                                                        << "object"
-                                                        << "properties"
-                                                        << BSON("b" << randomEncryptObj))
-                                                << "c"
-                                                << BSONObj())
-                                    << "type"
-                                    << "object");
+    auto schema =
+        BSON("properties" << BSON("a" << BSON("type"
+                                              << "object"
+                                              << "properties" << BSON("b" << randomEncryptObj))
+                                      << "c" << BSONObj())
+                          << "type"
+                          << "object");
     auto doc = BSON("a" << BSON("b"
                                 << "foo")
                         << "c"
@@ -140,8 +137,7 @@ TEST(ReplaceEncryptedFieldsTest, NumericPathComponentTreatedAsFieldName) {
                        << "properties"
                        << BSON("foo" << BSON("type"
                                              << "object"
-                                             << "properties"
-                                             << BSON("0" << randomEncryptObj))));
+                                             << "properties" << BSON("0" << randomEncryptObj))));
     auto doc = BSON("foo" << BSON("0"
                                   << "encrypted"));
     auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
@@ -157,8 +153,7 @@ TEST(ReplaceEncryptedFieldsTest, NumericPathComponentNotTreatedAsArrayIndex) {
                        << "properties"
                        << BSON("foo" << BSON("type"
                                              << "object"
-                                             << "properties"
-                                             << BSON("0" << randomEncryptObj))));
+                                             << "properties" << BSON("0" << randomEncryptObj))));
     auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto doc = BSON("foo" << BSON_ARRAY("notEncrypted"));
     ASSERT_THROWS_CODE(
@@ -183,8 +178,7 @@ TEST(ReplaceEncryptedFieldsTest, ObjectInArrayWithSameNameNotEncrypted) {
                        << "properties"
                        << BSON("foo" << BSON("type"
                                              << "object"
-                                             << "properties"
-                                             << BSON("bar" << randomEncryptObj))));
+                                             << "properties" << BSON("bar" << randomEncryptObj))));
     auto doc = BSON("foo" << BSON_ARRAY("bar"
                                         << "notEncrypted"));
     auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
@@ -311,8 +305,7 @@ TEST(BuildEncryptPlaceholderTest, JSONPointerResolvesCorrectlyThroughArray) {
     auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto doc = BSON("foo"
                     << "encrypt"
-                    << "key"
-                    << BSON_ARRAY("value"));
+                    << "key" << BSON_ARRAY("value"));
     EncryptionPlaceholder expected(FleAlgorithmInt::kRandom, EncryptSchemaAnyType(doc["foo"]));
     expected.setKeyAltName("value"_sd);
     ResolvedEncryptionInfo metadata{
@@ -409,10 +402,10 @@ TEST(BuildEncryptPlaceholderTest, UAssertIfPointerDoesNotEvaluate) {
 }
 
 TEST(BuildEncryptPlaceholderTest, UAssertIfPointerPointsToEncryptedField) {
-    auto schema = BSON("type"
-                       << "object"
-                       << "properties"
-                       << BSON("foo" << pointerEncryptObj << "key" << randomEncryptObj));
+    auto schema =
+        BSON("type"
+             << "object"
+             << "properties" << BSON("foo" << pointerEncryptObj << "key" << randomEncryptObj));
     auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto doc = BSON("foo"
                     << "encrypt"
@@ -433,8 +426,7 @@ TEST(BuildEncryptPlaceholderTest, UAssertIfPointerPointsToEncryptedField) {
 TEST(BuildEncryptPlaceholderTest, UAssertIfPointerPointsToBinDataSubtypeSix) {
     auto schema = BSON("type"
                        << "object"
-                       << "properties"
-                       << BSON("foo" << pointerEncryptObj));
+                       << "properties" << BSON("foo" << pointerEncryptObj));
     auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     BSONObjBuilder bob;
     bob.append("foo", "encrypt");
@@ -583,8 +575,7 @@ TEST(BuildEncryptPlaceholderTest, FailsIfPointerPointsToNonString) {
     const auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto docToEncrypt = BSON("foo"
                              << "test"
-                             << "key"
-                             << 5);
+                             << "key" << 5);
     ResolvedEncryptionInfo metadata{
         EncryptSchemaKeyId{"/key"}, FleAlgorithmEnum::kRandom, boost::none};
     ASSERT_THROWS_CODE(buildEncryptPlaceholder(docToEncrypt["foo"],
@@ -635,8 +626,7 @@ TEST(EncryptionUpdateVisitorTest, ReplaceSingleFieldCorrectly) {
         entry["$set"]["foo"], metadata, EncryptionPlaceholderContext::kWrite, nullptr, entry);
     auto correctBSON = BSON("$set" << BSON("baz"
                                            << "boo"
-                                           << "foo"
-                                           << correctField["foo"]));
+                                           << "foo" << correctField["foo"]));
     ASSERT_BSONOBJ_EQ(correctBSON, newUpdate);
 }
 
@@ -653,10 +643,8 @@ TEST(EncryptionUpdateVisitorTest, ReplaceMultipleFieldsCorrectly) {
                        << "properties"
                        << BSON("foo" << BSON("type"
                                              << "object"
-                                             << "properties"
-                                             << BSON("bar" << randomEncryptObj))
-                                     << "baz"
-                                     << randomEncryptObj));
+                                             << "properties" << BSON("bar" << randomEncryptObj))
+                                     << "baz" << randomEncryptObj));
     auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto updateVisitor = EncryptionUpdateVisitor(*schemaTree.get());
 
@@ -685,8 +673,7 @@ TEST(EncryptionUpdateVisitorTest, FieldMarkedForEncryptionInRightHandSetObject) 
                        << "properties"
                        << BSON("foo" << BSON("type"
                                              << "object"
-                                             << "properties"
-                                             << BSON("bar" << randomEncryptObj))));
+                                             << "properties" << BSON("bar" << randomEncryptObj))));
     auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto updateVisitor = EncryptionUpdateVisitor(*schemaTree.get());
     driver.visitRoot(&updateVisitor);
@@ -743,8 +730,7 @@ TEST(EncryptionUpdateVisitorTest, RenameWithNestedTargetEncryptFails) {
                        << "properties"
                        << BSON("foo" << BSON("type"
                                              << "object"
-                                             << "properties"
-                                             << BSON("bar" << randomEncryptObj))));
+                                             << "properties" << BSON("bar" << randomEncryptObj))));
     auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto updateVisitor = EncryptionUpdateVisitor(*schemaTree.get());
     ASSERT_THROWS_CODE(driver.visitRoot(&updateVisitor), AssertionException, 51160);
@@ -763,8 +749,7 @@ TEST(EncryptionUpdateVisitorTest, RenameWithNestedSourceEncryptFails) {
                        << "properties"
                        << BSON("foo" << BSON("type"
                                              << "object"
-                                             << "properties"
-                                             << BSON("bar" << randomEncryptObj))));
+                                             << "properties" << BSON("bar" << randomEncryptObj))));
     auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto updateVisitor = EncryptionUpdateVisitor(*schemaTree.get());
 

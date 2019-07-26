@@ -53,8 +53,7 @@ StatusWith<std::string> InternalToLDAPUserNameMapper::transform(LDAPRunner* runn
                   str::stream() << "Failed to transform user '" << input
                                 << "'. No matching transformation out of "
                                 << _transformations.size()
-                                << " available transformations. Results: "
-                                << errorStack.str());
+                                << " available transformations. Results: " << errorStack.str());
 }
 
 StatusWith<InternalToLDAPUserNameMapper> InternalToLDAPUserNameMapper::createNameMapper(

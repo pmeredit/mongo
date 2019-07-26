@@ -91,23 +91,23 @@ public:
         WT_SESSION* session = mongoSession->getSession();
 
         /*
-        * Create and open some encrypted and not encrypted tables.
-        */
+         * Create and open some encrypted and not encrypted tables.
+         */
         const std::string encryptionConfigPrefix = std::string("encryption=(name=") + _cipherName;
-        ASSERT_OK(
-            wtRCToStatus(session->create(session,
-                                         "table:crypto1",
-                                         (encryptionConfigPrefix + ",keyid=abc),"
-                                                                   "columns=(key0,value0),"
-                                                                   "key_format=S,value_format=S")
-                                             .c_str())));
-        ASSERT_OK(
-            wtRCToStatus(session->create(session,
-                                         "table:crypto2",
-                                         (encryptionConfigPrefix + ",keyid=efg),"
-                                                                   "columns=(key0,value0),"
-                                                                   "key_format=S,value_format=S")
-                                             .c_str())));
+        ASSERT_OK(wtRCToStatus(session->create(session,
+                                               "table:crypto1",
+                                               (encryptionConfigPrefix +
+                                                ",keyid=abc),"
+                                                "columns=(key0,value0),"
+                                                "key_format=S,value_format=S")
+                                                   .c_str())));
+        ASSERT_OK(wtRCToStatus(session->create(session,
+                                               "table:crypto2",
+                                               (encryptionConfigPrefix +
+                                                ",keyid=efg),"
+                                                "columns=(key0,value0),"
+                                                "key_format=S,value_format=S")
+                                                   .c_str())));
         WT_CURSOR *c1, *c2;
         ASSERT_OK(
             wtRCToStatus(session->open_cursor(session, "table:crypto1", nullptr, nullptr, &c1)));
@@ -115,10 +115,10 @@ public:
             wtRCToStatus(session->open_cursor(session, "table:crypto2", nullptr, nullptr, &c2)));
 
         /*
-        * Insert a set of keys and values.  Insert the same data into
-        * all tables so that we can verify they're all the same after
-        * we decrypt on read.
-        */
+         * Insert a set of keys and values.  Insert the same data into
+         * all tables so that we can verify they're all the same after
+         * we decrypt on read.
+         */
         for (int i = 0; i < 10; i++) {
             std::stringstream keyBuf;
             keyBuf << "key" << i;
@@ -159,10 +159,10 @@ public:
             ret = c2->get_key(c2, &key2);
             ret = c2->get_value(c2, &val2);
 
-            ASSERT(strcmp(key1, key2) == 0) << "Key1 " << key1 << " and Key2 " << key2
-                                            << " do not match";
-            ASSERT(strcmp(val1, val2) == 0) << "Val1 " << val1 << " and Val2 " << val2
-                                            << " do not match";
+            ASSERT(strcmp(key1, key2) == 0)
+                << "Key1 " << key1 << " and Key2 " << key2 << " do not match";
+            ASSERT(strcmp(val1, val2) == 0)
+                << "Val1 " << val1 << " and Val2 " << val2 << " do not match";
         }
     }
 

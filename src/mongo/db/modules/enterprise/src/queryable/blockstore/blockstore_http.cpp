@@ -79,8 +79,8 @@ StatusWith<DataBuilder> BlockstoreHTTP::listDirectory() const {
     Status status(ErrorCodes::InternalError,
                   "BlockstoreHTTP::listDirectory() returned an invalid error");
 
-    const std::string url = str::stream() << "http://" << _apiUrl
-                                          << "/os_list?snapshotId=" << _snapshotId;
+    const std::string url = str::stream()
+        << "http://" << _apiUrl << "/os_list?snapshotId=" << _snapshotId;
 
     for (const auto& secs : kBackoffSleepSecondsList) {
         try {

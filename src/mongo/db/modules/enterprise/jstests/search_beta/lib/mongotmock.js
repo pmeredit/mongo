@@ -28,8 +28,8 @@ function mongotResponseForBatch(nextBatch, id, ns, ok) {
 
 class MongotMock {
     /**
-    * Create a new mongotmock.
-    */
+     * Create a new mongotmock.
+     */
     constructor(options) {
         this.mongotMock = "mongotmock";
         this.pid = undefined;

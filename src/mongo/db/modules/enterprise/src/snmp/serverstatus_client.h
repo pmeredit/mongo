@@ -63,4 +63,4 @@ private:
     bool loadIfNeeded();
     BSONElement getElement(StringData name);
 };
-}
+}  // namespace mongo

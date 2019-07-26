@@ -56,8 +56,7 @@ StatusWith<size_t> KMIPResponse::_parseTag(ConstDataRangeCursor* cdrc,
             // Reached the end of the buffer without finding the tag
             return Status(ErrorCodes::FailedToParse,
                           str::stream() << "KMIP response message invalid, looking for " << tagName
-                                        << " tag. "
-                                        << adv.reason());
+                                        << " tag. " << adv.reason());
         }
 
         // Read out the length of the section labeled by the tag
@@ -70,12 +69,10 @@ StatusWith<size_t> KMIPResponse::_parseTag(ConstDataRangeCursor* cdrc,
         if (memcmp(data, tag, 3) == 0) {
             if (data[3] != static_cast<char>(itemType)) {
                 return Status(ErrorCodes::FailedToParse,
-                              str::stream() << "Response message was malformed: expected "
-                                            << tagName
-                                            << " to be of type "
-                                            << static_cast<uint8_t>(itemType)
-                                            << " but found "
-                                            << static_cast<uint8_t>(data[3]));
+                              str::stream()
+                                  << "Response message was malformed: expected " << tagName
+                                  << " to be of type " << static_cast<uint8_t>(itemType)
+                                  << " but found " << static_cast<uint8_t>(data[3]));
             }
             // Success
             return static_cast<size_t>(len);
@@ -252,8 +249,8 @@ StatusWith<std::unique_ptr<SymmetricKey>> KMIPResponse::_parseSymmetricKeyPayloa
     size_t keySize = static_cast<size_t>(swKeySize.getValue()) / 8;
     if (keySize > paddedKeyLen) {
         return Status(ErrorCodes::FailedToParse,
-                      str::stream() << "Symmetric key size mismatch, " << keySize << " > "
-                                    << paddedKeyLen);
+                      str::stream()
+                          << "Symmetric key size mismatch, " << keySize << " > " << paddedKeyLen);
     }
 
     return std::make_unique<SymmetricKey>(key, keySize, algorithm, _uid, 0);
@@ -367,8 +364,8 @@ StatusWith<std::string> KMIPResponse::_parseString(ConstDataRangeCursor* cdrc,
     const char* data = cdrc->data();
     if (len > std::numeric_limits<size_t>::max() - 8) {
         return Status(ErrorCodes::FailedToParse,
-                      str::stream() << "Response message was malformed, invalid length " << len
-                                    << " found.");
+                      str::stream()
+                          << "Response message was malformed, invalid length " << len << " found.");
     }
     Status adv = cdrc->advanceNoThrow(len + (8 - (len % 8)) % 8);
     if (!adv.isOK()) {

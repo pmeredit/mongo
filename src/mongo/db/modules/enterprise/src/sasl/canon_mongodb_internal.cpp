@@ -128,10 +128,9 @@ MONGO_INITIALIZER_GENERAL(SaslCanonMongodbInternal,
     int ret = sasl_canonuser_add_plugin(canonMongoDBInternal.name, canonMongoDBInternalPluginInit);
     if (SASL_OK != ret) {
         return Status(ErrorCodes::UnknownError,
-                      str::stream() << "Could not add sasl canonuser plugin "
-                                    << canonMongoDBInternal.name
-                                    << ": "
-                                    << sasl_errstring(ret, nullptr, nullptr));
+                      str::stream()
+                          << "Could not add sasl canonuser plugin " << canonMongoDBInternal.name
+                          << ": " << sasl_errstring(ret, nullptr, nullptr));
     }
 
     return Status::OK();

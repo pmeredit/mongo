@@ -19,15 +19,15 @@
 #include "../ldap_type_aliases.h"
 
 // We must redefine our log macro, because the original LOG isn't intended to be used from headers
-#define MONGO_LDAPLOG(DLEVEL)                                                                  \
-    if (!(::mongo::logger::globalLogDomain())                                                  \
-             ->shouldLog(::mongo::logger::LogComponent::kAccessControl,                        \
-                         ::mongo::logger::LogstreamBuilder::severityCast(DLEVEL))) {           \
-    } else                                                                                     \
-    ::mongo::logger::LogstreamBuilder(::mongo::logger::globalLogDomain(),                      \
-                                      ::mongo::getThreadName(),                                \
-                                      ::mongo::logger::LogstreamBuilder::severityCast(DLEVEL), \
-                                      ::mongo::logger::LogComponent::kAccessControl)
+#define MONGO_LDAPLOG(DLEVEL)                                                                      \
+    if (!(::mongo::logger::globalLogDomain())                                                      \
+             ->shouldLog(::mongo::logger::LogComponent::kAccessControl,                            \
+                         ::mongo::logger::LogstreamBuilder::severityCast(DLEVEL))) {               \
+    } else                                                                                         \
+        ::mongo::logger::LogstreamBuilder(::mongo::logger::globalLogDomain(),                      \
+                                          ::mongo::getThreadName(),                                \
+                                          ::mongo::logger::LogstreamBuilder::severityCast(DLEVEL), \
+                                          ::mongo::logger::LogComponent::kAccessControl)
 
 
 namespace mongo {
@@ -131,16 +131,12 @@ public:
         const typename S::ErrorCodeType errorWhileGettingOption =
             S::ldap_get_option(_session, OptionSpec::Code, &inParam);
         if (errorWhileGettingOption != S::LDAP_success) {
-            uasserted(
-                ErrorCodes::UnknownError,
-                str::stream() << "Unable to get error code after LDAP operation <" << functionName
-                              << ">. \"Failed to "
-                              << failureHint
-                              << "\". ("
-                              << errorWhileGettingOption
-                              << "/"
-                              << S::toNativeString(S::ldap_err2string(errorWhileGettingOption))
-                              << ")");
+            uasserted(ErrorCodes::UnknownError,
+                      str::stream()
+                          << "Unable to get error code after LDAP operation <" << functionName
+                          << ">. \"Failed to " << failureHint << "\". (" << errorWhileGettingOption
+                          << "/" << S::toNativeString(S::ldap_err2string(errorWhileGettingOption))
+                          << ")");
         }
 
         return OptionSpec(inParam);
@@ -182,9 +178,8 @@ public:
     class LDAPOptionErrorString {
     public:
         using Type = typename S::LibraryCharType*;
-        using MemoryManagedType = typename std::conditional<S::kLDAP_OPT_ERROR_STRINGNeedsFree,
-                                                            UniqueMemFreed<Type>,
-                                                            Type>::type;
+        using MemoryManagedType = typename std::
+            conditional<S::kLDAP_OPT_ERROR_STRINGNeedsFree, UniqueMemFreed<Type>, Type>::type;
         constexpr static auto Code = S::LDAP_OPT_error_string;
 
         std::string getErrorString() && {
@@ -233,12 +228,11 @@ public:
         Status result(resultCodeToStatus(functionName, failureHint));
 
         if (result.isOK()) {
-            return Status(
-                ErrorCodes::UnknownError,
-                str::stream() << functionName << "encountered a fatal condition, but the LDAP "
+            return Status(ErrorCodes::UnknownError,
+                          str::stream()
+                              << functionName << "encountered a fatal condition, but the LDAP "
                               << "session handle reports the last operation was successful. "
-                              << "Failed to "
-                              << failureHint);
+                              << "Failed to " << failureHint);
         }
 
         return result;
@@ -265,13 +259,10 @@ public:
             getOption<LDAPOptionErrorString>(functionName, failureHint);
 
         return Status(ErrorCodes::OperationFailed,
-                      str::stream() << "LDAP operation <" << functionName << ">, " << failureHint
-                                    << "\". ("
-                                    << statusCode
-                                    << "/"
-                                    << S::toNativeString(S::ldap_err2string(statusCode))
-                                    << "): "
-                                    << errorStr);
+                      str::stream()
+                          << "LDAP operation <" << functionName << ">, " << failureHint << "\". ("
+                          << statusCode << "/" << S::toNativeString(S::ldap_err2string(statusCode))
+                          << "): " << errorStr);
     }
 
     StatusWith<LDAPEntityCollection> query(LDAPQuery query, typename S::TimeoutType* timeout) {

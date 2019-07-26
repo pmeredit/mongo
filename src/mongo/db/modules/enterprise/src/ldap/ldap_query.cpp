@@ -156,9 +156,7 @@ StatusWith<LDAPQuery> LDAPQuery::instantiateQuery(
                 ErrorCodes::FailedToParse,
                 str::stream()
                     << "Failed to substitute component into filter. Every capture group must "
-                    << "be consumed, token #"
-                    << i
-                    << " is missing.");
+                    << "be consumed, token #" << i << " is missing.");
         }
     }
 

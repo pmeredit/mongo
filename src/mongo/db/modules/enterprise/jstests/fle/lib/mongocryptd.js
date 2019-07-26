@@ -3,8 +3,8 @@
  */
 class MongoCryptD {
     /**
-    * Create a new mongocryptd.
-    */
+     * Create a new mongocryptd.
+     */
     constructor() {
         this.mongocryptd = "mongocryptd";
         if (_isWindows()) {

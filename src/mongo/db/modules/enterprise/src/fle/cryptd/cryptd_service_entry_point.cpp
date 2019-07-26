@@ -89,8 +89,8 @@ DbResponse ServiceEntryPointCryptD::handleRequest(OperationContext* opCtx, const
         // we restrict the log message to the name of the unrecognized command.
         // However, the complete command object will still be echoed to the client.
         if (!(c = CommandHelpers::findCommand(request.getCommandName()))) {
-            std::string msg = str::stream() << "no such command: '" << request.getCommandName()
-                                            << "'";
+            std::string msg = str::stream()
+                << "no such command: '" << request.getCommandName() << "'";
             LOG(2) << msg;
             uasserted(ErrorCodes::CommandNotFound, str::stream() << msg);
         }

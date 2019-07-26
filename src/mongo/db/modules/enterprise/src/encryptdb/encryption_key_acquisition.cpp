@@ -48,9 +48,7 @@ StatusWith<std::unique_ptr<SymmetricKey>> getKeyFromKeyFile(StringData encryptio
     if (keyLength != crypto::sym256KeySize) {
         return {ErrorCodes::BadValue,
                 str::stream() << "Encryption key in " << encryptionKeyFile << " is "
-                              << keyLength * 8
-                              << " bit, must be "
-                              << crypto::sym256KeySize * 8
+                              << keyLength * 8 << " bit, must be " << crypto::sym256KeySize * 8
                               << " bit."};
     }
 

@@ -97,10 +97,9 @@ MONGO_INITIALIZER_GENERAL(SaslAuxpropMongodbInternal,
         sasl_auxprop_add_plugin(auxpropMongoDBInternal.name, auxpropMongoDBInternalPluginInit);
     if (SASL_OK != ret) {
         return Status(ErrorCodes::UnknownError,
-                      str::stream() << "Could not add sasl auxprop plugin "
-                                    << auxpropMongoDBInternal.name
-                                    << ": "
-                                    << sasl_errstring(ret, nullptr, nullptr));
+                      str::stream()
+                          << "Could not add sasl auxprop plugin " << auxpropMongoDBInternal.name
+                          << ": " << sasl_errstring(ret, nullptr, nullptr));
     }
 
     return Status::OK();

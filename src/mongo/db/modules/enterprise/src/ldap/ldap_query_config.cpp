@@ -83,12 +83,7 @@ StatusWith<LDAPQueryScope> getLDAPQueryScope(StringData scope) {
     } else {
         return Status{ErrorCodes::FailedToParse,
                       str::stream() << "Unrecognized query scope '" << scope << "'. Options are '"
-                                    << kBase
-                                    << "', '"
-                                    << kOne
-                                    << "', and '"
-                                    << kSub
-                                    << "'"};
+                                    << kBase << "', '" << kOne << "', and '" << kSub << "'"};
     }
 }
 
@@ -238,8 +233,8 @@ LDAPQueryConfig::createLDAPQueryConfigWithComponents(const std::string& input) {
         for (const char& tokenChar : token) {
             if (!isdigit(tokenChar)) {
                 return Status(ErrorCodes::FailedToParse,
-                              str::stream() << "Expected numeric in token, but found '" << tokenChar
-                                            << "'");
+                              str::stream()
+                                  << "Expected numeric in token, but found '" << tokenChar << "'");
             }
         }
 

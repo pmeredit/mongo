@@ -26,4 +26,4 @@ struct LDAPToolOptions {
 
 extern LDAPToolOptions* globalLDAPToolOptions;
 
-}  // mongo
+}  // namespace mongo

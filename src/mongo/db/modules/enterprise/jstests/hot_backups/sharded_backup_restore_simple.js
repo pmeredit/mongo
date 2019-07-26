@@ -8,18 +8,18 @@
 load("src/mongo/db/modules/enterprise/jstests/hot_backups/sharded_backup_restore.js");
 
 (function() {
-    "use strict";
+"use strict";
 
-    let NoopWorker = function() {
-        this.setup = function() {};
+let NoopWorker = function() {
+    this.setup = function() {};
 
-        this.runBeforeExtend = function(mongos) {};
+    this.runBeforeExtend = function(mongos) {};
 
-        this.runAfterExtend = function(mongos) {};
+    this.runAfterExtend = function(mongos) {};
 
-        this.teardown = function() {};
-    };
+    this.teardown = function() {};
+};
 
-    let msg = new ShardedBackupRestoreTest(new NoopWorker()).run();
-    assert.eq(msg, "Test succeeded.");
+let msg = new ShardedBackupRestoreTest(new NoopWorker()).run();
+assert.eq(msg, "Test succeeded.");
 }());

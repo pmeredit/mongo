@@ -20,9 +20,7 @@ Status makeError(StringData action,
                  ErrorCodes::Error err = ErrorCodes::InternalError) {
     return Status(err,
                   str::stream() << "Failed to " << action << " keystore metadata file ("
-                                << path.string()
-                                << "): "
-                                << errnoWithDescription());
+                                << path.string() << "): " << errnoWithDescription());
 }
 
 }  // namespace
@@ -52,8 +50,7 @@ StatusWith<KeystoreMetadataFile> KeystoreMetadataFile::load(const boost::filesys
         if (fileSize > BSONObjMaxInternalSize) {
             return {ErrorCodes::BadValue,
                     str::stream() << "Keystore meta data file " << path.string() << " is "
-                                  << fileSize
-                                  << " bytes, but the maximum size is "
+                                  << fileSize << " bytes, but the maximum size is "
                                   << BSONObjMaxInternalSize};
         }
 
@@ -149,8 +146,7 @@ Status KeystoreMetadataFile::store(const boost::filesystem::path& path,
     } catch (const std::exception& ex) {
         return Status(ErrorCodes::InternalError,
                       str::stream() << "Failed to flush keystore metadata file (" << path.string()
-                                    << "): "
-                                    << ex.what());
+                                    << "): " << ex.what());
     }
 
     return Status::OK();

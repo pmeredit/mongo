@@ -133,8 +133,8 @@ BSONElement ServerStatusClient::getElement(StringData name) {
     BSONElement elem = dps::extractElementAtPath(_serverStatusData, name);
 
     massert(28534,
-            str::stream() << "field '" << name << "' does not exist in serverStatus doc: "
-                          << _serverStatusData,
+            str::stream() << "field '" << name
+                          << "' does not exist in serverStatus doc: " << _serverStatusData,
             elem.ok());
 
     return elem;

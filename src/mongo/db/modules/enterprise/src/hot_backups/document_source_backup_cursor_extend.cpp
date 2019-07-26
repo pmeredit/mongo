@@ -71,10 +71,10 @@ DocumentSource::GetNextResult DocumentSourceBackupCursorExtend::getNext() {
 
 boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursorExtend::createFromBson(
     BSONElement spec, const boost::intrusive_ptr<ExpressionContext>& pExpCtx) {
-    uassert(
-        ErrorCodes::FailedToParse,
-        str::stream() << kStageName << " value must be an object. Found: " << typeName(spec.type()),
-        spec.type() == BSONType::Object);
+    uassert(ErrorCodes::FailedToParse,
+            str::stream() << kStageName
+                          << " value must be an object. Found: " << typeName(spec.type()),
+            spec.type() == BSONType::Object);
 
     uassert(ErrorCodes::CannotBackup,
             str::stream() << kStageName << " cannot be executed against a MongoS.",
@@ -89,8 +89,7 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursorExtend::createFro
             uassert(ErrorCodes::FailedToParse,
                     str::stream() << "The '" << kBackupIdFieldName << "' parameter of the "
                                   << kStageName
-                                  << " stage must be a BinData value, but found: "
-                                  << elem.type(),
+                                  << " stage must be a BinData value, but found: " << elem.type(),
                     elem.type() == BSONType::BinData);
             uassert(ErrorCodes::FailedToParse,
                     str::stream() << "The '" << kBackupIdFieldName << "' parameter of the "
@@ -102,15 +101,13 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursorExtend::createFro
         } else if (fieldName == kTimestampFieldName) {
             uassert(ErrorCodes::FailedToParse,
                     str::stream() << "The '" << kTimestampFieldName << "' parameter of the "
-                                  << kStageName
-                                  << " stage must be a Timestamp value, but found: "
+                                  << kStageName << " stage must be a Timestamp value, but found: "
                                   << typeName(elem.type()),
                     elem.type() == BSONType::bsonTimestamp);
             extendTo = elem.timestamp();
             uassert(ErrorCodes::FailedToParse,
                     str::stream() << "The '" << kTimestampFieldName << "' parameter of the "
-                                  << kStageName
-                                  << " must not be Timestamp(0, 0).",
+                                  << kStageName << " must not be Timestamp(0, 0).",
                     !extendTo->isNull());
         } else {
             uasserted(ErrorCodes::FailedToParse,

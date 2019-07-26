@@ -34,30 +34,30 @@ const keyvaultDataLocal = [{
 
 const keyvaultDataDecryption = [
     {
-      "status": NumberInt(1),
-      "_id": BinData(4, "LOCALAAAAAAAAAAAAAAAAA=="),
-      "masterKey": {"provider": "local"},
-      "updateDate": ISODate(),
-      "keyMaterial": BinData(
-          0,
-          "Ce9HSz/HKKGkIt4uyy+jDuKGA+rLC2cycykMo6vc8jXxqa1UVDYHWq1r+vZKbnnSRBfB981akzRKZCFpC05CTyFqDhXv6OnMjpG97OZEREGIsHEYiJkBW0jJJvfLLgeLsEpBzsro9FztGGXASxyxFRZFhXvHxyiLOKrdWfs7X1O/iK3pEoHMx6uSNSfUOgbebLfIqW7TO++iQS5g1xovXA=="),
-      "creationDate": ISODate(),
-      "keyAltNames": ["local"]
+        "status": NumberInt(1),
+        "_id": BinData(4, "LOCALAAAAAAAAAAAAAAAAA=="),
+        "masterKey": {"provider": "local"},
+        "updateDate": ISODate(),
+        "keyMaterial": BinData(
+            0,
+            "Ce9HSz/HKKGkIt4uyy+jDuKGA+rLC2cycykMo6vc8jXxqa1UVDYHWq1r+vZKbnnSRBfB981akzRKZCFpC05CTyFqDhXv6OnMjpG97OZEREGIsHEYiJkBW0jJJvfLLgeLsEpBzsro9FztGGXASxyxFRZFhXvHxyiLOKrdWfs7X1O/iK3pEoHMx6uSNSfUOgbebLfIqW7TO++iQS5g1xovXA=="),
+        "creationDate": ISODate(),
+        "keyAltNames": ["local"]
     },
     {
-      "status": NumberInt(1),
-      "_id": BinData(4, "AWSAAAAAAAAAAAAAAAAAAA=="),
-      "masterKey": {
-          "region": "us-east-1",
-          "key": "arn:aws:kms:us-east-1:579766882180:key/89fcc2c4-08b0-4bd9-9f25-e3687b580d0",
-          "provider": "aws"
-      },
-      "updateDate": ISODate(),
-      "keyMaterial": BinData(
-          0,
-          "AQICAHhQNmWG2CzOm1dq3kWLM+iDUZhEqnhJwH9wZVpuZ94A8gEqnsxXlR51T5EbEVezUqqKAAAAwjCBvwYJKoZIhvcNAQcGoIGxMIGuAgEAMIGoBgkqhkiG9w0BBwEwHgYJYIZIAWUDBAEuMBEEDHa4jo6yp0Z18KgbUgIBEIB74sKxWtV8/YHje5lv5THTl0HIbhSwM6EqRlmBiFFatmEWaeMk4tO4xBX65eq670I5TWPSLMzpp8ncGHMmvHqRajNBnmFtbYxN3E3/WjxmdbOOe+OXpnGJPcGsftc7cB2shRfA4lICPnE26+oVNXT6p0Lo20nY5XC7jyCO"),
-      "creationDate": ISODate(),
-      "keyAltNames": ["aws"],
+        "status": NumberInt(1),
+        "_id": BinData(4, "AWSAAAAAAAAAAAAAAAAAAA=="),
+        "masterKey": {
+            "region": "us-east-1",
+            "key": "arn:aws:kms:us-east-1:579766882180:key/89fcc2c4-08b0-4bd9-9f25-e3687b580d0",
+            "provider": "aws"
+        },
+        "updateDate": ISODate(),
+        "keyMaterial": BinData(
+            0,
+            "AQICAHhQNmWG2CzOm1dq3kWLM+iDUZhEqnhJwH9wZVpuZ94A8gEqnsxXlR51T5EbEVezUqqKAAAAwjCBvwYJKoZIhvcNAQcGoIGxMIGuAgEAMIGoBgkqhkiG9w0BBwEwHgYJYIZIAWUDBAEuMBEEDHa4jo6yp0Z18KgbUgIBEIB74sKxWtV8/YHje5lv5THTl0HIbhSwM6EqRlmBiFFatmEWaeMk4tO4xBX65eq670I5TWPSLMzpp8ncGHMmvHqRajNBnmFtbYxN3E3/WjxmdbOOe+OXpnGJPcGsftc7cB2shRfA4lICPnE26+oVNXT6p0Lo20nY5XC7jyCO"),
+        "creationDate": ISODate(),
+        "keyAltNames": ["aws"],
     }
 ];
 
@@ -92,16 +92,16 @@ const providerObj = {
 
 const findDataAWS = [
     {
-      "_id": 1,
-      "encrypted_string": BinData(
-          6,
-          "AQAAAAAAAAAAAAAAAAAAAAACwj+3zkv2VM+aTfk60RqhXq6a/77WlLwu/BxXFkL7EppGsju/m8f0x5kBDD3EZTtGALGXlym5jnpZAoSIkswHoA=="),
+        "_id": 1,
+        "encrypted_string": BinData(
+            6,
+            "AQAAAAAAAAAAAAAAAAAAAAACwj+3zkv2VM+aTfk60RqhXq6a/77WlLwu/BxXFkL7EppGsju/m8f0x5kBDD3EZTtGALGXlym5jnpZAoSIkswHoA=="),
     },
     {
-      "_id": 2,
-      "encrypted_string": BinData(
-          6,
-          "AQAAAAAAAAAAAAAAAAAAAAACDdw4KFz3ZLquhsbt7RmDjD0N67n0uSXx7IGnQNCLeIKvot6s/ouI21Eo84IOtb6lhwUNPlSEBNY0/hbszWAKJg=="),
+        "_id": 2,
+        "encrypted_string": BinData(
+            6,
+            "AQAAAAAAAAAAAAAAAAAAAAACDdw4KFz3ZLquhsbt7RmDjD0N67n0uSXx7IGnQNCLeIKvot6s/ouI21Eo84IOtb6lhwUNPlSEBNY0/hbszWAKJg=="),
     }
 ];
 
@@ -266,7 +266,9 @@ const binDataDecryption = [
     BinData(
         6,
         'AgFkgAAAAAAAAAAAAAAAAAAJaYuqsns8/54YUWOir9Al8AtETOH3jui4piLAeAZVKZJPjJjyUqLjUTFrpqAuAGxugJRk381UoZ/rOcXhkPc+Gw=='),
-    BinData(6, 'AgFkgAAAAAAAAAAAAAAAAAAJfy4dyoYb+f4gdoin0mWBzsibZtvC76Q3rn3/mVjIaceAeIlp8b23l0g8cOiWHCI1lgu6CZhwpG/mMGVb/H77rQ=='),
+    BinData(
+        6,
+        'AgFkgAAAAAAAAAAAAAAAAAAJfy4dyoYb+f4gdoin0mWBzsibZtvC76Q3rn3/mVjIaceAeIlp8b23l0g8cOiWHCI1lgu6CZhwpG/mMGVb/H77rQ=='),
     BinData(
         6,
         'AQFkgAAAAAAAAAAAAAAAAAAJEEpQNsiqMWPqD4lhMkiOJHGE8FxOeYrKPiiAp/bZTrLKyCSS0ZL1WT9H3cGzxWPm5veihCjKqWhjatC/pjtzbQ=='),
@@ -557,9 +559,8 @@ const binDataDecryption = [
     BinData(
         6,
         'AizggCwAAAAAAAAAAAAAAAAFINmvibUNjhJJc44opxWMqjXzKxzYZor7VbZ3Edx+f8wQ0iHAwMeLGMTMBK1YWbnd52CPxGChoL+g6ZNqG0kM6zQhnnR5pmWINxvJvf5OdbA='),
-    BinData(
-        6,
-        'AizggCwAAAAAAAAAAAAAAAAF1BVFZay3E2uddcBcvq2vAhPOQPocuKJyP9bDs8TaRkM9REUmxrVPDwrAeCMMDNvaeyjLZEagJJjMUEKbUB2JKCdUIxFx8uIRfXtmZIsIC7o='),
+    BinData(6,
+            'AizggCwAAAAAAAAAAAAAAAAF1BVFZay3E2uddcBcvq2vAhPOQPocuKJyP9bDs8TaRkM9REUmxrVPDwrAeCMMDNvaeyjLZEagJJjMUEKbUB2JKCdUIxFx8uIRfXtmZIsIC7o='),
     BinData(
         6,
         'AizggCwAAAAAAAAAAAAAAAAFvGF57yU4rdsN5WD7NKxPFPu93PAfsJSHXusgsI8WUWFLx5JZKVVVmlbtgi+EYBoLwO3W/MYsYaBzH1jxTSIhWsPDWi4BMKXpVhVVWFTb/zU='),
@@ -707,7 +708,9 @@ const binDataDecryption = [
     BinData(
         6,
         'ASzggCwAAAAAAAAAAAAAAAANmQsg9E/BzGJVNVhSNyunS/TH0332oVFdPS6gjX0Cp/JC0YhB97DLz3N4e/q8ECaz7tTdQt9JacNUgxo+YCULUA=='),
-    BinData(6, 'ASzggCwAAAAAAAAAAAAAAAANmQsg9E/BzGJVNVhSNyunS/TH0332oVFdPS6gjX0Cp/JC0YhB97DLz3N4e/q8ECaz7tTdQt9JacNUgxo+YCULUA=='),
+    BinData(
+        6,
+        'ASzggCwAAAAAAAAAAAAAAAANmQsg9E/BzGJVNVhSNyunS/TH0332oVFdPS6gjX0Cp/JC0YhB97DLz3N4e/q8ECaz7tTdQt9JacNUgxo+YCULUA=='),
     BinData(
         6,
         'AizggCwAAAAAAAAAAAAAAAAOxMUOVXQrSgvyzgD+xBAn3p3xxzQf8olvi+QqsL50loXdt3rL16liFJzo19m4Aw9usFMVtdxKxoka+/94Jdl24Uh9yHh4lNy3DfGi0esX8WA='),

@@ -117,9 +117,7 @@ Status _validateModeSchema(aesMode mode, PageSchema schema) {
 
     return {ErrorCodes::BadValue,
             str::stream() << "Invalid schema version " << static_cast<int>(schema)
-                          << " for encryption mode '"
-                          << getStringFromCipherMode(mode)
-                          << "'"};
+                          << " for encryption mode '" << getStringFromCipherMode(mode) << "'"};
 }
 
 template <typename T>
@@ -185,9 +183,7 @@ Status _doAESEncrypt(const SymmetricKey& key,
     if (len != layout.expectedCiphertextLen(inLen)) {
         return {ErrorCodes::BadValue,
                 str::stream() << "Encrypt error, expected cipher text of length "
-                              << layout.expectedCiphertextLen(inLen)
-                              << " but found "
-                              << len};
+                              << layout.expectedCiphertextLen(inLen) << " but found " << len};
     }
 
     return Status::OK();
@@ -258,8 +254,7 @@ Status _doAESDecrypt(const SymmetricKey& key,
     if (upperBound > outLen) {
         return {ErrorCodes::BadValue,
                 str::stream() << "Cleartext buffer of size " << outLen
-                              << " too small for output which can be as large as "
-                              << upperBound
+                              << " too small for output which can be as large as " << upperBound
                               << "]"};
     }
 
@@ -288,13 +283,8 @@ Status _doAESDecrypt(const SymmetricKey& key,
     if (*resultLen < lowerBound || *resultLen > upperBound) {
         return {ErrorCodes::BadValue,
                 str::stream() << "Decrypt error, expected clear text length in interval"
-                              << "["
-                              << lowerBound
-                              << ","
-                              << upperBound
-                              << "]"
-                              << "but found "
-                              << *resultLen};
+                              << "[" << lowerBound << "," << upperBound << "]"
+                              << "but found " << *resultLen};
     }
 
     /* Check that padding was removed in CBC mode.

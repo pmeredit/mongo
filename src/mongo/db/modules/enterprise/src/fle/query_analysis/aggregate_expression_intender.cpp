@@ -147,10 +147,10 @@ std::string toString(const decltype(Subtree::output)& outputType) {
             IF_CONSTEXPR(std::is_same_v<OutputType, Subtree::Forwarded>) {
                 return "Subtree::Forwarded";
             }
-            else if constexpr(std::is_same_v<OutputType, Subtree::Compared>) {
+            else if constexpr (std::is_same_v<OutputType, Subtree::Compared>) {
                 return "Subtree::Compared";
             }
-            else if constexpr(std::is_same_v<OutputType, Subtree::Evaluated>) {
+            else if constexpr (std::is_same_v<OutputType, Subtree::Evaluated>) {
                 return "Subtree::Evaluated";
             }
         },
@@ -162,10 +162,10 @@ std::string toString() {
     IF_CONSTEXPR(std::is_same_v<T, Subtree::Forwarded>) {
         return "Subtree::Forwarded";
     }
-    else if constexpr(std::is_same_v<T, Subtree::Evaluated>) {
+    else if constexpr (std::is_same_v<T, Subtree::Evaluated>) {
         return "Subtree::Evaluated";
     }
-    else if constexpr(std::is_same_v<T, Subtree::Compared>) {
+    else if constexpr (std::is_same_v<T, Subtree::Compared>) {
         return "Subtree::Compared";
     }
 }
@@ -209,7 +209,6 @@ Intention exitSubtree(const ExpressionContext& expCtx, std::stack<Subtree>& subt
                         toString<Out>(), toString(output));
                 invariant(false, msg);
             }
-
         },
         subtreeStack.top().output);
 
@@ -366,11 +365,11 @@ void attemptReconcilingFieldEncryptionInCompared(const EncryptionSchemaTreeNode&
             IF_CONSTEXPR(std::is_same_v<StateType, Subtree::Compared::Unknown>) {
                 return reconcileAgainstUnknownEncryption(schema, fieldPath);
             }
-            else if constexpr(std::is_same_v<StateType, Subtree::Compared::NotEncrypted>) {
+            else if constexpr (std::is_same_v<StateType, Subtree::Compared::NotEncrypted>) {
                 return attemptReconcilingAgainstNoEncryption(
                     schema, fieldPath, compared->fields, compared->evaluated);
             }
-            else if constexpr(std::is_same_v<StateType, Subtree::Compared::Encrypted>) {
+            else if constexpr (std::is_same_v<StateType, Subtree::Compared::Encrypted>) {
                 return attemptReconcilingAgainstEncryption(
                     schema, fieldPath, compared->fields, state.type);
             }
@@ -388,11 +387,11 @@ void attemptReconcilingFieldEncryption(const EncryptionSchemaTreeNode& schema,
             IF_CONSTEXPR(std::is_same_v<OutputType, Subtree::Forwarded>);
             // If output is Compared, we need to keep track of the fields referenced and potentially
             // throw an error.
-            else if constexpr(std::is_same_v<OutputType, Subtree::Compared>)
+            else if constexpr (std::is_same_v<OutputType, Subtree::Compared>)
                 attemptReconcilingFieldEncryptionInCompared(schema, fieldPath, &output);
             // Evaluated output type requires to strictly check for errors, There is no need to keep
             // track of fields since the pressence of any encrypted fields is an immediate error.
-            else if constexpr(std::is_same_v<OutputType, Subtree::Evaluated>)
+            else if constexpr (std::is_same_v<OutputType, Subtree::Evaluated>)
                 errorIfEncryptedFieldFoundInEvaluated(schema, fieldPath, &output);
         },
         subtreeStack.top().output);
@@ -445,15 +444,14 @@ void reconcileVariableAccess(const ExpressionFieldPath& variableFieldPath,
             using OutputType = std::decay_t<decltype(output)>;
             // Within Forwarded output Subtrees we have no concerns about what a variable could
             // refer to.
-            if
-                constexpr(std::is_same_v<OutputType, Subtree::Forwarded>);
-            else if
-                constexpr(std::is_same_v<OutputType, Subtree::Compared> ||
-                          std::is_same_v<OutputType, Subtree::Evaluated>)
-                    // Forbid CURRENT and ROOT. They could be supported after support for Object
-                    // comparisons is added.
-                    if (variableName == "CURRENT" || variableName == "ROOT")
-                        uassertedForbiddenVariable(variableName);
+            if constexpr (std::is_same_v<OutputType, Subtree::Forwarded>)
+                ;
+            else if constexpr (std::is_same_v<OutputType, Subtree::Compared> ||
+                               std::is_same_v<OutputType, Subtree::Evaluated>)
+                // Forbid CURRENT and ROOT. They could be supported after support for Object
+                // comparisons is added.
+                if (variableName == "CURRENT" || variableName == "ROOT")
+                    uassertedForbiddenVariable(variableName);
         },
         subtreeStack.top().output);
 }
@@ -637,8 +635,8 @@ private:
         ensureNotEncryptedEnterEval("a code-point-based string find", subtreeStack);
     }
     void visit(ExpressionLet* let) final {
-        for (auto && [ unused, nameAndExpression ] : let->getVariableMap())
-            if (auto && [ name, unused ] = nameAndExpression; name == "CURRENT")
+        for (auto&& [unused, nameAndExpression] : let->getVariableMap())
+            if (auto&& [name, unused] = nameAndExpression; name == "CURRENT")
                 uasserted(31152, "Rebinding of CURRENT disallowed");
         // It's possible for a $let to have no bindings, so entering a Subtree is conditional on
         // having at least one.

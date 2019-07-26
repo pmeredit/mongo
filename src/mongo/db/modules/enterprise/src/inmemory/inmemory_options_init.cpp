@@ -63,4 +63,4 @@ std::string InMemoryConfigManager::getTableCreateConfig(StringData tableName) {
 bool InMemoryConfigManager::enabled() const {
     return true;
 }
-}
+}  // namespace mongo

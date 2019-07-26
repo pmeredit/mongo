@@ -72,4 +72,4 @@ private:
     oid* _oid;
     unsigned _len;
 };
-}
+}  // namespace mongo

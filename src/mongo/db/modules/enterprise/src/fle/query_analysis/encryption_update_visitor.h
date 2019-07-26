@@ -78,9 +78,10 @@ public:
                 sourceMetadata == destinationMetadata);
         uassert(51161,
                 "$rename is not allowed on an object containing encrypted fields",
-                sourceMetadata || (!_schemaTree.mayContainEncryptedNodeBelowPrefix(sourcePath) &&
-                                   !_schemaTree.mayContainEncryptedNodeBelowPrefix(
-                                       FieldRef{host->getValue().String()})));
+                sourceMetadata ||
+                    (!_schemaTree.mayContainEncryptedNodeBelowPrefix(sourcePath) &&
+                     !_schemaTree.mayContainEncryptedNodeBelowPrefix(
+                         FieldRef{host->getValue().String()})));
     }
 
     /**
@@ -168,7 +169,7 @@ public:
                     !(_schemaTree.getEncryptionMetadataForPath(_currentPath) ||
                       _schemaTree.mayContainEncryptedNodeBelowPrefix(_currentPath)));
 
-        for (const auto & [ pathSuffix, child ] : host->getChildren()) {
+        for (const auto& [pathSuffix, child] : host->getChildren()) {
             FieldRef::FieldRefTempAppend tempAppend(_currentPath, pathSuffix);
             child->acceptVisitor(this);
         }

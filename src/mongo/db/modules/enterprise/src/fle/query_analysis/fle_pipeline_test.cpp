@@ -41,17 +41,16 @@ namespace mongo {
 namespace {
 
 static const uint8_t uuidBytes[] = {0, 0, 0, 0, 0, 0, 0x40, 0, 0x80, 0, 0, 0, 0, 0, 0, 0};
-const BSONObj encryptObj = BSON("encrypt" << BSON("algorithm"
-                                                  << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
-                                                  << "keyId"
-                                                  << BSON_ARRAY(BSONBinData(uuidBytes, 16, newUUID))
-                                                  << "bsonType"
-                                                  << "string"));
+const BSONObj encryptObj =
+    BSON("encrypt" << BSON("algorithm"
+                           << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
+                           << "keyId" << BSON_ARRAY(BSONBinData(uuidBytes, 16, newUUID))
+                           << "bsonType"
+                           << "string"));
 
 const BSONObj kPatternPropertiesSchema = BSON("type"
                                               << "object"
-                                              << "patternProperties"
-                                              << BSON("foo" << encryptObj));
+                                              << "patternProperties" << BSON("foo" << encryptObj));
 
 const BSONObj kMultiEncryptSchema = BSON(
     "type"
@@ -61,11 +60,11 @@ const BSONObj kMultiEncryptSchema = BSON(
                      << BSON("type"
                              << "object"
                              << "properties"
-                             << BSON("ssn" << encryptObj << "address" << encryptObj << "accounts"
-                                           << BSON("type"
-                                                   << "object"
-                                                   << "properties"
-                                                   << BSON("bank" << encryptObj))))));
+                             << BSON("ssn"
+                                     << encryptObj << "address" << encryptObj << "accounts"
+                                     << BSON("type"
+                                             << "object"
+                                             << "properties" << BSON("bank" << encryptObj))))));
 
 class FLEPipelineTest : public FLETestFixture {
 public:
@@ -361,8 +360,7 @@ TEST_F(FLEPipelineTest, InclusionRenameOverwritesEncryptionMetadata) {
     const BSONObj secondEncryptObj =
         BSON("encrypt" << BSON("algorithm"
                                << "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
-                               << "keyId"
-                               << BSON_ARRAY(BSONBinData(uuidBytes, 16, newUUID))
+                               << "keyId" << BSON_ARRAY(BSONBinData(uuidBytes, 16, newUUID))
                                << "bsonType"
                                << "string"));
     const auto inputSchema = BSON("type"
@@ -415,8 +413,7 @@ TEST_F(FLEPipelineTest, InclusionEvaluatedExpressionReturnsNotEncrypted) {
 TEST_F(FLEPipelineTest, InclusionWithExpressionProperlyBuildsSchema) {
     BSONObj projection = BSON("$project" << BSON("person" << 1 << "newField"
                                                           << "$user.ssn"
-                                                          << "unEncrypted"
-                                                          << 1));
+                                                          << "unEncrypted" << 1));
     const auto& outputSchema = getSchemaForStage({projection}, kMultiEncryptSchema);
     const auto inputSchema =
         EncryptionSchemaTreeNode::parse(kMultiEncryptSchema, EncryptionSchemaType::kLocal);
@@ -447,8 +444,7 @@ TEST_F(FLEPipelineTest,
 TEST_F(FLEPipelineTest, InclusionWithUnEncryptedExpressionAtNestedPathReturnsNotEncrypted) {
     BSONObj projection = BSON("$project" << BSON("person" << 1 << "newField.secondary"
                                                           << "$user.notEncrypted"
-                                                          << "unEncrypted"
-                                                          << 1));
+                                                          << "unEncrypted" << 1));
     const auto& outputSchema = getSchemaForStage({projection}, kMultiEncryptSchema);
     ASSERT_FALSE(outputSchema.getEncryptionMetadataForPath(FieldRef{"newField.secondary"}));
 }

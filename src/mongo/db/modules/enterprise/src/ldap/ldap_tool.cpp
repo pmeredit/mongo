@@ -340,9 +340,9 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
         Status authRes = manager.verifyLDAPCredentials(globalLDAPToolOptions->user,
                                                        globalLDAPToolOptions->password);
         report.checkAssert(ResultsAssertion([&] { return authRes.isOK(); },
-                                            str::stream() << "Failed to authenticate "
-                                                          << globalLDAPToolOptions->user
-                                                          << " to LDAP server",
+                                            str::stream()
+                                                << "Failed to authenticate "
+                                                << globalLDAPToolOptions->user << " to LDAP server",
                                             {authRes.toString()}));
         report.closeSection("Successful authentication performed");
     }
@@ -380,13 +380,13 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
         report.openSection("Executing query against LDAP server");
         StatusWith<std::vector<RoleName>> swRoles =
             manager.getUserRoles(UserName(globalLDAPToolOptions->user, "$external"));
-        report.checkAssert(
-            ResultsAssertion([&] { return swRoles.isOK(); },
-                             "Unable to acquire roles",
-                             [&] {
-                                 return std::vector<std::string>{
-                                     str::stream() << "Error: " << swRoles.getStatus().toString()};
-                             }));
+        report.checkAssert(ResultsAssertion([&] { return swRoles.isOK(); },
+                                            "Unable to acquire roles",
+                                            [&] {
+                                                return std::vector<std::string>{
+                                                    str::stream()
+                                                    << "Error: " << swRoles.getStatus().toString()};
+                                            }));
         report.closeSection("Successfully acquired the following roles on the 'admin' database:");
         report.printItemList([&] {
             std::vector<std::string> roleStrings;

@@ -932,7 +932,7 @@ private:
 
 std::map<std::string, std::shared_ptr<ServerStatusClient>>
     ServerStatusCallback::_serverStatusClientMap;
-}
+}  // namespace callbacks
 
 
 class SNMPAgent : public BackgroundJob {
@@ -1083,8 +1083,8 @@ int my_snmp_callback(netsnmp_mib_handler* handler,
                 } else {
                     try {
                         if (cb->respond(var) != SNMPCallBack::RESPOND_OK) {
-                            warning() << "error retrieving: " << oidManager.toString(var->name)
-                                      << endl;
+                            warning()
+                                << "error retrieving: " << oidManager.toString(var->name) << endl;
                         }
                     } catch (std::exception& e) {
                         warning() << "exception on retrieval of " << oidManager.toString(var->name)
@@ -1159,4 +1159,4 @@ static int snmpLogCallback(int majorID, int minorID, void* serverArg, void* clie
     }
     return 1;
 }
-}
+}  // namespace mongo

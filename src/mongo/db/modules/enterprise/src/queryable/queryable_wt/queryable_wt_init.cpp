@@ -53,8 +53,7 @@ public:
 
         uassert(ErrorCodes::InvalidOptions,
                 str::stream() << "Cannot start queryable_wt without setting the "
-                              << queryable::kSecretKeyEnvVar
-                              << " environment variable",
+                              << queryable::kSecretKeyEnvVar << " environment variable",
                 std::getenv(queryable::kSecretKeyEnvVar) != nullptr);
 
         auto apiUri = *queryable::queryableGlobalOptions.getApiUri();

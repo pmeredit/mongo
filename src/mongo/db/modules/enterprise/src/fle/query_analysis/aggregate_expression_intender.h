@@ -40,7 +40,7 @@ namespace mongo::aggregate_expression_intender {
  * Indicates whether or not mark() actually inserted any intent-to-encrypt markers, since they are
  * not always necessary.
  */
-enum class[[nodiscard]] Intention : bool{Marked = true, NotMarked = false};
+enum class [[nodiscard]] Intention : bool{Marked = true, NotMarked = false};
 
 inline Intention operator||(Intention a, Intention b) {
     if (a == Intention::Marked || b == Intention::Marked) {

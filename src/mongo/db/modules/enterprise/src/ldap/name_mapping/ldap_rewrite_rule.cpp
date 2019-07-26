@@ -64,12 +64,12 @@ StatusWith<std::string> LDAPRewriteRule::resolve(LDAPRunner* runner, StringData 
 
     if (ldapResults.empty()) {
         return Status(ErrorCodes::UserNotFound,
-                      str::stream() << "LDAP query '" << query.toString()
-                                    << "' returned no results");
+                      str::stream()
+                          << "LDAP query '" << query.toString() << "' returned no results");
     } else if (ldapResults.size() > 1) {
         return Status(ErrorCodes::UserDataInconsistent,
-                      str::stream() << "LDAP query '" << query.toString()
-                                    << "' returned multiple results");
+                      str::stream()
+                          << "LDAP query '" << query.toString() << "' returned multiple results");
     }
 
     return ldapResults.begin()->first;

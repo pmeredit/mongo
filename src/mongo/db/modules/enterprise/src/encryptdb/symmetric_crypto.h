@@ -107,11 +107,9 @@ public:
      * vary depending on the ciphermode.
      */
     size_t expectedCiphertextLen(size_t plaintextLen) const {
-        if
-            constexpr(Header::kMode == aesMode::cbc) {
-                return crypto::aesBlockSize * (1 + plaintextLen / crypto::aesBlockSize);
-            }
-        else {
+        if constexpr (Header::kMode == aesMode::cbc) {
+            return crypto::aesBlockSize * (1 + plaintextLen / crypto::aesBlockSize);
+        } else {
             invariant(Header::kMode == aesMode::gcm);
             return plaintextLen;
         }

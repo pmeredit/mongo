@@ -43,8 +43,7 @@ ServiceContext::ConstructorActionRegisterer registerEncryptionWiredTigerCustomiz
         uassertStatusOKWithContext(
             crypto::smokeTestAESCipherMode(cipherMode, crypto::PageSchema::k0),
             str::stream() << "Validation of cryptographic functions for "
-                          << encryptionGlobalParams.encryptionCipherMode
-                          << " failed");
+                          << encryptionGlobalParams.encryptionCipherMode << " failed");
 
         initializeEncryptionKeyManager(service);
         WiredTigerExtensions::get(service)->addExtension(mongo::kEncryptionEntrypointConfig);

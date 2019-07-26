@@ -40,8 +40,7 @@ private:
         BSONArrayBuilder roleArray(builder.subarrayStart("roles"));
         for (const auto& role : _roles) {
             roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME
-                                  << role.getRole()
-                                  << AuthorizationManager::ROLE_DB_FIELD_NAME
+                                  << role.getRole() << AuthorizationManager::ROLE_DB_FIELD_NAME
                                   << role.getDB()));
         }
         roleArray.doneFast();
@@ -67,8 +66,7 @@ private:
         BSONArrayBuilder roleArray(builder.subarrayStart("roles"));
         for (const auto& role : _roles) {
             roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME
-                                  << role.getRole()
-                                  << AuthorizationManager::ROLE_DB_FIELD_NAME
+                                  << role.getRole() << AuthorizationManager::ROLE_DB_FIELD_NAME
                                   << role.getDB()));
         }
         roleArray.doneFast();
@@ -100,8 +98,7 @@ private:
         for (std::vector<RoleName>::const_iterator role = _roles.begin(); role != _roles.end();
              role++) {
             roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME
-                                  << role->getRole()
-                                  << AuthorizationManager::ROLE_DB_FIELD_NAME
+                                  << role->getRole() << AuthorizationManager::ROLE_DB_FIELD_NAME
                                   << role->getDB()));
         }
         roleArray.doneFast();
@@ -149,8 +146,7 @@ private:
                  role != _roles->end();
                  role++) {
                 roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME
-                                      << role->getRole()
-                                      << AuthorizationManager::ROLE_DB_FIELD_NAME
+                                      << role->getRole() << AuthorizationManager::ROLE_DB_FIELD_NAME
                                       << role->getDB()));
             }
             roleArray.doneFast();
@@ -229,8 +225,7 @@ private:
         for (std::vector<RoleName>::const_iterator role = _roles.begin(); role != _roles.end();
              role++) {
             roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME
-                                  << role->getRole()
-                                  << AuthorizationManager::ROLE_DB_FIELD_NAME
+                                  << role->getRole() << AuthorizationManager::ROLE_DB_FIELD_NAME
                                   << role->getDB()));
         }
         roleArray.doneFast();
@@ -256,8 +251,7 @@ private:
         for (std::vector<RoleName>::const_iterator role = _roles.begin(); role != _roles.end();
              role++) {
             roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME
-                                  << role->getRole()
-                                  << AuthorizationManager::ROLE_DB_FIELD_NAME
+                                  << role->getRole() << AuthorizationManager::ROLE_DB_FIELD_NAME
                                   << role->getDB()));
         }
         roleArray.doneFast();

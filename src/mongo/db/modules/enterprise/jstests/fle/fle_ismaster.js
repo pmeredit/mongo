@@ -3,18 +3,18 @@
 load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
 
 (function() {
-    'use strict';
+'use strict';
 
-    const mongocryptd = new MongoCryptD();
+const mongocryptd = new MongoCryptD();
 
-    mongocryptd.start();
+mongocryptd.start();
 
-    const conn = mongocryptd.getConnection();
+const conn = mongocryptd.getConnection();
 
-    const isMaster = assert.commandWorked(conn.adminCommand({isMaster: 1}));
+const isMaster = assert.commandWorked(conn.adminCommand({isMaster: 1}));
 
-    assert.eq(isMaster.iscryptd, true);
-    assert.eq(isMaster.ismaster, true);
+assert.eq(isMaster.iscryptd, true);
+assert.eq(isMaster.ismaster, true);
 
-    mongocryptd.stop();
+mongocryptd.stop();
 })();

@@ -78,12 +78,8 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchBetaIdLookUp::getNext(
             if (auto next = pipeline->getNext()) {
                 uasserted(ErrorCodes::TooManyMatchingDocuments,
                           str::stream() << "found more than one document with document key "
-                                        << documentKey.toString()
-                                        << ": ["
-                                        << result->toString()
-                                        << ", "
-                                        << next->toString()
-                                        << "]");
+                                        << documentKey.toString() << ": [" << result->toString()
+                                        << ", " << next->toString() << "]");
             }
         }
     }

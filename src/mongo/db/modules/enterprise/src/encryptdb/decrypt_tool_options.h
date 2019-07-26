@@ -40,4 +40,4 @@ struct DecryptToolOptions {
 
 extern DecryptToolOptions globalDecryptToolOptions;
 
-}  // mongo
+}  // namespace mongo

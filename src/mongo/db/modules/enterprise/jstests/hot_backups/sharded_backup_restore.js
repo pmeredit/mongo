@@ -362,8 +362,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
 
             localDb.replset.election.drop();
             assert.commandWorked(localDb.system.replset.update({}, {
-                $set:
-                    {members: [{_id: NumberInt(0), host: "localhost:" + restoredNodePorts[i]}]}
+                $set: {members: [{_id: NumberInt(0), host: "localhost:" + restoredNodePorts[i]}]}
             }));
 
             MongoRunner.stopMongod(conn, {noCleanData: true});

@@ -87,10 +87,10 @@ void KeystoreSchemaVersionServerParameter::append(OperationContext* opCtx,
     auto keyMgr = EncryptionKeyManager::get(opCtx->getServiceContext());
     auto systemKeyId =
         uassertStatusOK(keyMgr->getKey(SymmetricKeyId(kSystemKeyId)))->getKeyId().id();
-    b << name << BSON("version" << keyMgr->getKeystoreVersion() << "systemKeyId"
-                                << (systemKeyId ? std::to_string(*systemKeyId) : std::string())
-                                << "rolloverId"
-                                << static_cast<int32_t>(keyMgr->getRolloverId()));
+    b << name
+      << BSON("version" << keyMgr->getKeystoreVersion() << "systemKeyId"
+                        << (systemKeyId ? std::to_string(*systemKeyId) : std::string())
+                        << "rolloverId" << static_cast<int32_t>(keyMgr->getRolloverId()));
 }
 
 Status KeystoreSchemaVersionServerParameter::setFromString(const std::string& value) {
@@ -353,8 +353,8 @@ boost::filesystem::path EncryptionKeyManager::_metadataPath(PathMode mode) {
         case PathMode::kValid:
             return _keystoreBasePath / kKeystoreMetadataFilename;
         case PathMode::kInvalid: {
-            std::string filename = str::stream() << kKeystoreMetadataFilename << kInvalidatedKeyword
-                                                 << terseCurrentTime(false);
+            std::string filename = str::stream()
+                << kKeystoreMetadataFilename << kInvalidatedKeyword << terseCurrentTime(false);
             return _keystoreBasePath / filename;
         }
         case PathMode::kInitializing:
@@ -443,12 +443,11 @@ Status EncryptionKeyManager::_initLocalKeystore() {
 
     if (!existingKeyId.empty() && !_encryptionParams->kmipParams.kmipKeyIdentifier.empty() &&
         existingKeyId != _encryptionParams->kmipParams.kmipKeyIdentifier) {
-        return Status(
-            ErrorCodes::BadValue,
-            str::stream() << "The KMIP key id " << _encryptionParams->kmipParams.kmipKeyIdentifier
+        return Status(ErrorCodes::BadValue,
+                      str::stream()
+                          << "The KMIP key id " << _encryptionParams->kmipParams.kmipKeyIdentifier
                           << " was provided, but the system is already configured with key id "
-                          << existingKeyId
-                          << ".");
+                          << existingKeyId << ".");
     }
 
     StatusWith<std::unique_ptr<SymmetricKey>> swMasterKey =

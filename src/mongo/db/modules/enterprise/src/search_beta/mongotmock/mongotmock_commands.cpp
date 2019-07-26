@@ -14,9 +14,9 @@
 namespace mongo {
 namespace {
 
-using mongotmock::MongotMockStateGuard;
 using mongotmock::CursorState;
 using mongotmock::getMongotMockState;
+using mongotmock::MongotMockStateGuard;
 
 // Do a "loose" check that every field in 'expectedCmd' is in 'userCmd'. Does not check in the
 // other direction.

@@ -38,5 +38,5 @@ public:
     // Format of the output, either text or BSON
     AuditFormat auditFormat;
 };
-}
-}
+}  // namespace audit
+}  // namespace mongo

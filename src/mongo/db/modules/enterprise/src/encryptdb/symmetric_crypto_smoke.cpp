@@ -187,8 +187,7 @@ Status _doSmokeTestAESCipherMode(const aesTest& test) {
     if (expectedSize != resultLen - layout.getHeaderSize()) {
         return {ErrorCodes::OperationFailed,
                 str::stream() << "aesEncrypt produced " << layout.getDataSize() << " but "
-                              << expectedSize
-                              << " were expected"};
+                              << expectedSize << " were expected"};
     }
 
     if (0 != memcmp(test.ct, layout.getData(), test.ptLen)) {

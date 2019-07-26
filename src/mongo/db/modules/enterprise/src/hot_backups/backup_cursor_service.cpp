@@ -272,8 +272,7 @@ void BackupCursorService::_closeBackupCursor(OperationContext* opCtx,
     uassert(50880, "There is no backup cursor to close.", _state == kBackupCursorOpened);
     uassert(50879,
             str::stream() << "Can only close the running backup cursor. To close: " << backupId
-                          << " Running: "
-                          << *_activeBackupId,
+                          << " Running: " << *_activeBackupId,
             backupId == *_activeBackupId);
     _storageEngine->endNonBlockingBackup(opCtx);
     auto encHooks = EncryptionHooks::get(opCtx->getServiceContext());

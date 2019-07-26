@@ -180,7 +180,6 @@ function LDAPTestConfigGenerator() {
         config.other = other;
 
         return config;
-
     };
 }
 

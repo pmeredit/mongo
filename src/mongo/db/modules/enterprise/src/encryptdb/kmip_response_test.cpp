@@ -1315,18 +1315,18 @@ TEST(KMIPResponseParsing, GetSymmetricKey) {
     std::unique_ptr<SymmetricKey> key = r.getSymmetricKey();
     ASSERT(memcmp(expectedKey, key.get()->getKey(), key.get()->getKeySize()) == 0)
         << "Symmetric key mismatch";
-    ASSERT(key.get()->getAlgorithm() == 0x02) << "Algorithm mismatch, expected 0x02, found "
-                                              << key.get()->getAlgorithm();
-    ASSERT(key.get()->getKeySize() == 21) << "Key size mismatch, expexted 21, found "
-                                          << key.get()->getKeySize();
+    ASSERT(key.get()->getAlgorithm() == 0x02)
+        << "Algorithm mismatch, expected 0x02, found " << key.get()->getAlgorithm();
+    ASSERT(key.get()->getKeySize() == 21)
+        << "Key size mismatch, expexted 21, found " << key.get()->getKeySize();
 }
 
 TEST(KMIPResponseParsing, DestroyKey) {
     // Destroy key response
     StatusWith<KMIPResponse> swDestroyResponse =
         KMIPResponse::create(reinterpret_cast<const char*>(destroyKey), sizeof(destroyKey));
-    ASSERT(swDestroyResponse.isOK()) << "Failed to parse destroy response"
-                                     << swDestroyResponse.getStatus().toString();
+    ASSERT(swDestroyResponse.isOK())
+        << "Failed to parse destroy response" << swDestroyResponse.getStatus().toString();
 
     KMIPResponse r = std::move(swDestroyResponse.getValue());
     const std::string expectedUID = "fc8833de-70d2-4ece-b063-fede3a3c59fe";
@@ -1351,8 +1351,8 @@ TEST(KMIPResponseParsing, KeyNotFound) {
     ASSERT(r.getResultStatus() != kmip::statusSuccess) << "Expected command to fail";
     ASSERT(r.getResultReason() == 0x01 /* Item not found */)
         << "Expected error code 0x01 (Item not found), found: " << r.getResultReason();
-    ASSERT(r.getResultMsg() == "NOT_FOUND") << "Expected result msg \"NOT_FOUND\", found: "
-                                            << r.getResultMsg();
+    ASSERT(r.getResultMsg() == "NOT_FOUND")
+        << "Expected result msg \"NOT_FOUND\", found: " << r.getResultMsg();
 }
 
 TEST(KMIPResponseParsing, NegativeTests) {

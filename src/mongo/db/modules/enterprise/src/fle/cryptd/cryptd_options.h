@@ -47,4 +47,4 @@ Status canonicalizeMongoCryptDOptions(moe::Environment* params);
 
 Status storeMongoCryptDOptions(const moe::Environment& params,
                                const std::vector<std::string>& args);
-}
+}  // namespace mongo

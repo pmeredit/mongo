@@ -75,7 +75,7 @@ public:
         return toWideString(str);
     }
 };
-}
+}  // namespace
 
 class WindowsLDAPConnection::WindowsLDAPConnectionPIMPL
     : public LDAPSessionHolder<WindowsLDAPSessionParams> {};
@@ -178,8 +178,8 @@ Status WindowsLDAPConnection::bindAsUser(const LDAPBindOptions& options) {
 
     ULONG result;
     Status resultStatus(ErrorCodes::OperationFailed,
-                        str::stream() << "Unknown bind operation requested: "
-                                      << options.toCleanString());
+                        str::stream()
+                            << "Unknown bind operation requested: " << options.toCleanString());
     if (options.authenticationChoice == LDAPBindType::kSimple) {
         if (options.useLDAPConnectionDefaults) {
             return Status(ErrorCodes::IllegalOperation,
@@ -254,4 +254,4 @@ Status WindowsLDAPConnection::disconnect() {
     return _pimpl->resultCodeToStatus(
         ldap_unbind_s(_pimpl->getSession()), "ldap_unbind_s", "unbind from LDAP");
 }
-}
+}  // namespace mongo

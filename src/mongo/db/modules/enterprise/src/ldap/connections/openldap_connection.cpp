@@ -357,8 +357,7 @@ Status OpenLDAPConnection::connect() {
     if (err != LDAP_SUCCESS) {
         return Status(ErrorCodes::OperationFailed,
                       str::stream() << "Failed to initialize ldap session to \"" << hostURIs
-                                    << "\". Received LDAP error: "
-                                    << ldap_err2string(err));
+                                    << "\". Received LDAP error: " << ldap_err2string(err));
     }
 
     // Upgrade connection to LDAPv3
@@ -442,8 +441,8 @@ Status OpenLDAPConnection::bindAsUser(const LDAPBindOptions& bindOptions) {
     err = ldap_set_rebind_proc(_pimpl->getSession(), &openLDAPBindFunction, (void*)&bindOptions);
     if (err != LDAP_SUCCESS) {
         return Status(ErrorCodes::OperationFailed,
-                      str::stream() << "Unable to set rebind proc, with error: "
-                                    << ldap_err2string(err));
+                      str::stream()
+                          << "Unable to set rebind proc, with error: " << ldap_err2string(err));
     }
     _boundUser = bindOptions.bindDN;
 

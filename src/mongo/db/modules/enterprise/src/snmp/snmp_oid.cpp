@@ -72,7 +72,7 @@ void parseOidAndAppendInt(const std::string& str, std::vector<oid>& vec, int bas
         num = 0;  // same behavior as std::atoi
     vec.push_back(num);
 }
-}
+}  // namespace
 
 oid* OIDManager::getoid(string suffix) {
     oid*& it = _oids[suffix];
@@ -135,4 +135,4 @@ bool SOID::operator==(const netsnmp_variable_list* var) const {
 
     return true;
 }
-}
+}  // namespace mongo

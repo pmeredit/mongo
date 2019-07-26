@@ -230,8 +230,7 @@ std::unique_ptr<EncryptionSchemaEncryptedNode> parseEncrypt(
     const EncryptMetadataChainMemento& metadataChain) {
     uassert(51077,
             str::stream() << "Invalid schema containing the '"
-                          << JSONSchemaParser::kSchemaEncryptKeyword
-                          << "' keyword.",
+                          << JSONSchemaParser::kSchemaEncryptKeyword << "' keyword.",
             encryptAllowedSet != kNoEncryptAllowed);
 
     uassert(51078,
@@ -248,8 +247,7 @@ std::unique_ptr<EncryptionSchemaEncryptedNode> parseEncrypt(
     const bool deterministic = metadata.algorithm == FleAlgorithmEnum::kDeterministic;
     uassert(51194,
             str::stream() << "Invalid schema containing the '"
-                          << JSONSchemaParser::kSchemaEncryptKeyword
-                          << "' keyword, "
+                          << JSONSchemaParser::kSchemaEncryptKeyword << "' keyword, "
                           << FleAlgorithm_serializer(metadata.algorithm)
                           << " encryption algorithm not allowed.",
             (deterministic || (encryptAllowedSet & EncryptAllowed::kRandom)) &&
@@ -496,8 +494,7 @@ std::unique_ptr<EncryptionSchemaTreeNode> _parse(BSONObj schema,
             cryptdSupportedKeywords[JSONSchemaParser::kSchemaEncryptMetadataKeyword]) {
         uassert(31077,
                 str::stream() << "Invalid schema containing the '"
-                              << JSONSchemaParser::kSchemaEncryptMetadataKeyword
-                              << "' keyword.",
+                              << JSONSchemaParser::kSchemaEncryptMetadataKeyword << "' keyword.",
                 encryptAllowedSet != kNoEncryptAllowed);
         IDLParserErrorContext ctxt("encryptMetadata");
         const auto& metadata = EncryptionMetadata::parse(ctxt, encryptMetadataElt.embeddedObject());
@@ -548,7 +545,7 @@ std::vector<EncryptionSchemaTreeNode*> EncryptionSchemaTreeNode::getChildrenForP
         matchingChildren.push_back(it->second.get());
     }
 
-    for (auto && [ regex, child ] : _patternPropertiesChildren) {
+    for (auto&& [regex, child] : _patternPropertiesChildren) {
         if (regex.PartialMatch(
                 pcrecpp::StringPiece{name.rawData(), static_cast<int>(name.size())})) {
             matchingChildren.push_back(child.get());
@@ -636,8 +633,7 @@ const EncryptionSchemaTreeNode* EncryptionSchemaTreeNode::_getNode(const FieldRe
             getEncryptionMetadataForNode(nextChild->_getNode(path, index + 1));
         uassert(51142,
                 str::stream() << "Found conflicting encryption metadata for path: '"
-                              << path.dottedField()
-                              << "'",
+                              << path.dottedField() << "'",
                 additionalMetadata == getEncryptionMetadataForNode(childNode));
     }
 
@@ -647,7 +643,7 @@ const EncryptionSchemaTreeNode* EncryptionSchemaTreeNode::_getNode(const FieldRe
 bool EncryptionSchemaTreeNode::mayContainEncryptedNode() const {
     // The lack of short-circuiting is purposeful to ensure 'unknown' nodes assert.
     bool found = false;
-    for (auto && [ path, child ] : _propertiesChildren) {
+    for (auto&& [path, child] : _propertiesChildren) {
         if (child->mayContainEncryptedNode()) {
             found = true;
         }
@@ -668,7 +664,7 @@ bool EncryptionSchemaTreeNode::mayContainEncryptedNode() const {
 bool EncryptionSchemaTreeNode::mayContainRandomlyEncryptedNode() const {
     // The lack of short-circuiting is purposeful to ensure 'unknown' nodes assert.
     bool found = false;
-    for (auto && [ path, child ] : _propertiesChildren) {
+    for (auto&& [path, child] : _propertiesChildren) {
         if (child->mayContainRandomlyEncryptedNode()) {
             found = true;
         }
@@ -709,7 +705,7 @@ bool EncryptionSchemaTreeNode::operator==(const EncryptionSchemaTreeNode& other)
         return false;
     }
     // Make sure the other node has all of the children this node has.
-    for (const auto & [ path, child ] : _propertiesChildren) {
+    for (const auto& [path, child] : _propertiesChildren) {
         auto key = FieldRef{path};
         if (!other.getNode(key)) {
             return false;

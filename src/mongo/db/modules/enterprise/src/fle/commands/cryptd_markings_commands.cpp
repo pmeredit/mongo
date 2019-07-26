@@ -24,12 +24,11 @@ void buildExplainReturnMessage(BSONObjBuilder* responseBuilder,
               innerObj.getField("result").type() == BSONType::Object);
     for (auto&& elem : innerObj) {
         if (elem.fieldNameStringData() == "result") {
-            responseBuilder->append(
-                "result",
-                // TODO: SERVER-40354 Only send back verbosity if it was sent in the original
-                // message.
-                BSON("explain" << elem.Obj() << "verbosity"
-                               << ExplainOptions::verbosityString(verbosity)));
+            responseBuilder->append("result",
+                                    // TODO: SERVER-40354 Only send back verbosity if it was sent in
+                                    // the original message.
+                                    BSON("explain" << elem.Obj() << "verbosity"
+                                                   << ExplainOptions::verbosityString(verbosity)));
         } else {
             responseBuilder->append(elem);
         }
@@ -445,8 +444,7 @@ std::unique_ptr<CommandInvocation> CryptdExplainCmd::parse(OperationContext* opC
     if (auto innerDb = explainedObj["$db"]) {
         uassert(ErrorCodes::InvalidNamespace,
                 str::stream() << "Mismatched $db in explain command. Expected " << dbname
-                              << " but got "
-                              << innerDb.checkAndGetStringData(),
+                              << " but got " << innerDb.checkAndGetStringData(),
                 innerDb.checkAndGetStringData() == dbname);
     }
 

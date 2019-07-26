@@ -1,6 +1,6 @@
 /**
-*    Copyright (C) 2016 MongoDB Inc.
-*/
+ *    Copyright (C) 2016 MongoDB Inc.
+ */
 
 #pragma once
 
