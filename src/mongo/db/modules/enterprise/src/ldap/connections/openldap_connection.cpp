@@ -11,12 +11,12 @@
 #include <boost/algorithm/string/join.hpp>
 #include <ldap.h>
 #include <memory>
+#include <netinet/in.h>
 #include <sasl/sasl.h>
 
 #include "mongo/stdx/mutex.h"
 #include "mongo/util/log.h"
 #include "mongo/util/net/sockaddr.h"
-#include "mongo/util/scopeguard.h"
 #include "mongo/util/str.h"
 #include "mongo/util/time_support.h"
 
@@ -273,7 +273,19 @@ int LDAPConnectCallbackFunction(
     try {
         LOG(3) << [=]() -> std::string {
             struct sockaddr_storage* ss = reinterpret_cast<struct sockaddr_storage*>(addr);
-            SockAddr sa(*ss, sizeof(*addr));
+            // Socket address size is manually derived based on IPv4 or IPv6 classification
+            SockAddr sa(*ss, [&]() {
+                switch (addr->sa_family) {
+                    case AF_INET:
+                        return sizeof(sockaddr_in);
+                    case AF_INET6:
+                        return sizeof(sockaddr_in6);
+                    default:
+                        uasserted(31233,
+                                  str::stream() << "Socket Address family is not IPv4 or IPv6: "
+                                                << addr->sa_family);
+                }
+            }());
             StringBuilder builder;
             builder << "Connected to LDAP server at " << sa.toString();
             std::unique_ptr<char, decltype(&ldap_memfree)> url(ldap_url_desc2str(srv),

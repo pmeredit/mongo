@@ -100,5 +100,6 @@ if __name__ == "__main__":
         return proto
 
     factory.protocol = buildProtocol
-    reactor.listenTCP(int(config['port']), factory)
+    reactor.listenTCP(int(config['port']), factory, interface="::1")
+    reactor.listenTCP(int(config['port']), factory, interface="127.0.0.1")
     reactor.run()
