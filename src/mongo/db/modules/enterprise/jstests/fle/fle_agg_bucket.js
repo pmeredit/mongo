@@ -165,15 +165,8 @@
     assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
     assert(cmdRes.hasOwnProperty("result"), cmdRes);
     assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
-    assert(cmdRes.result.pipeline[0]
-                   .$group._id.$switch.branches[0]
-                   .case.$and[0]
-                   .$gte[0]
-                   .$cond[0]
-                   .$eq[1]
-                   .$const instanceof
-               BinData,
-           cmdRes);
+    var branch = cmdRes.result.pipeline[0].$group._id.$switch.branches[0];
+    assert(branch.case.$and[0].$gte[0].$cond[0].$eq[1].$const instanceof BinData, cmdRes);
 
     // Test that $bucket with 'groupBy' on an encrypted field fails.
     command = {
