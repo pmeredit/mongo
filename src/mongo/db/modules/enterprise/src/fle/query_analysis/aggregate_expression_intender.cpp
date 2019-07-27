@@ -42,7 +42,6 @@
 #include "mongo/db/pipeline/expression_visitor.h"
 #include "mongo/db/pipeline/expression_walker.h"
 #include "mongo/stdx/variant.h"
-#include "mongo/util/if_constexpr.h"
 #include "query_analysis.h"
 #include "resolved_encryption_info.h"
 
@@ -144,13 +143,11 @@ std::string toString(const decltype(Subtree::output)& outputType) {
     return stdx::visit(
         [&](auto&& outputType) {
             using OutputType = std::decay_t<decltype(outputType)>;
-            IF_CONSTEXPR(std::is_same_v<OutputType, Subtree::Forwarded>) {
+            if constexpr (std::is_same_v<OutputType, Subtree::Forwarded>) {
                 return "Subtree::Forwarded";
-            }
-            else if constexpr (std::is_same_v<OutputType, Subtree::Compared>) {
+            } else if constexpr (std::is_same_v<OutputType, Subtree::Compared>) {
                 return "Subtree::Compared";
-            }
-            else if constexpr (std::is_same_v<OutputType, Subtree::Evaluated>) {
+            } else if constexpr (std::is_same_v<OutputType, Subtree::Evaluated>) {
                 return "Subtree::Evaluated";
             }
         },
@@ -159,13 +156,11 @@ std::string toString(const decltype(Subtree::output)& outputType) {
 
 template <typename T>
 std::string toString() {
-    IF_CONSTEXPR(std::is_same_v<T, Subtree::Forwarded>) {
+    if constexpr (std::is_same_v<T, Subtree::Forwarded>) {
         return "Subtree::Forwarded";
-    }
-    else if constexpr (std::is_same_v<T, Subtree::Evaluated>) {
+    } else if constexpr (std::is_same_v<T, Subtree::Evaluated>) {
         return "Subtree::Evaluated";
-    }
-    else if constexpr (std::is_same_v<T, Subtree::Compared>) {
+    } else if constexpr (std::is_same_v<T, Subtree::Compared>) {
         return "Subtree::Compared";
     }
 }
@@ -199,7 +194,7 @@ Intention exitSubtree(const ExpressionContext& expCtx, std::stack<Subtree>& subt
     stdx::visit(
         [](auto&& output) {
             using OutputType = std::decay_t<decltype(output)>;
-            IF_CONSTEXPR(!std::is_same_v<OutputType, Out>) {
+            if constexpr (!std::is_same_v<OutputType, Out>) {
                 // Due to a bug in gcc we can't inline 'msg' into the invariant statement below:
                 // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=86969
                 // This is a workaround, once we upgrade to a version of gcc which has a fix for
@@ -362,14 +357,12 @@ void attemptReconcilingFieldEncryptionInCompared(const EncryptionSchemaTreeNode&
     compared->state = stdx::visit(
         [&](auto&& state) -> decltype(Subtree::Compared::state) {
             using StateType = std::decay_t<decltype(state)>;
-            IF_CONSTEXPR(std::is_same_v<StateType, Subtree::Compared::Unknown>) {
+            if constexpr (std::is_same_v<StateType, Subtree::Compared::Unknown>) {
                 return reconcileAgainstUnknownEncryption(schema, fieldPath);
-            }
-            else if constexpr (std::is_same_v<StateType, Subtree::Compared::NotEncrypted>) {
+            } else if constexpr (std::is_same_v<StateType, Subtree::Compared::NotEncrypted>) {
                 return attemptReconcilingAgainstNoEncryption(
                     schema, fieldPath, compared->fields, compared->evaluated);
-            }
-            else if constexpr (std::is_same_v<StateType, Subtree::Compared::Encrypted>) {
+            } else if constexpr (std::is_same_v<StateType, Subtree::Compared::Encrypted>) {
                 return attemptReconcilingAgainstEncryption(
                     schema, fieldPath, compared->fields, state.type);
             }
@@ -384,7 +377,8 @@ void attemptReconcilingFieldEncryption(const EncryptionSchemaTreeNode& schema,
         [&](auto&& output) {
             using OutputType = std::decay_t<decltype(output)>;
             // We don't keep records and everything is admissible if output is Forwarded.
-            IF_CONSTEXPR(std::is_same_v<OutputType, Subtree::Forwarded>);
+            if constexpr (std::is_same_v<OutputType, Subtree::Forwarded>)
+                ;
             // If output is Compared, we need to keep track of the fields referenced and potentially
             // throw an error.
             else if constexpr (std::is_same_v<OutputType, Subtree::Compared>)
@@ -409,8 +403,8 @@ void ensureNotEncrypted(const StringData reason, std::stack<Subtree>& subtreeSta
         stdx::visit(
             [&](auto&& state) {
                 using StateType = std::decay_t<decltype(state)>;
-                IF_CONSTEXPR(!std::is_same_v<StateType, Subtree::Compared::Unknown> &&
-                             !std::is_same_v<StateType, Subtree::Compared::NotEncrypted>) {
+                if constexpr (!std::is_same_v<StateType, Subtree::Compared::Unknown> &&
+                              !std::is_same_v<StateType, Subtree::Compared::NotEncrypted>) {
                     uassertedEvaluationInComparedEncryptedSubtree(reason, compared->fields);
                 }
             },
