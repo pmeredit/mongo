@@ -92,6 +92,24 @@ private:
     bool _unique;
 };
 
+class RefineCollectionShardKeyEvent : public AuditEvent {
+public:
+    RefineCollectionShardKeyEvent(const AuditEventEnvelope& envelope,
+                                  StringData ns,
+                                  const BSONObj& keyPattern)
+        : AuditEvent(envelope), _ns(ns), _keyPattern(keyPattern) {}
+
+private:
+    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
+        builder.append("ns", _ns);
+        builder.append("key", _keyPattern);
+        return builder;
+    }
+
+    StringData _ns;
+    const BSONObj& _keyPattern;
+};
+
 }  // namespace
 }  // namespace audit
 
@@ -143,6 +161,18 @@ void audit::logRemoveShard(Client* client, StringData shardname) {
 
     RemoveShardEvent event(makeEnvelope(client, ActionType::removeShard, ErrorCodes::OK),
                            shardname);
+    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+    }
+}
+
+void audit::logRefineCollectionShardKey(Client* client, StringData ns, const BSONObj& keyPattern) {
+    if (!getGlobalAuditManager()->enabled) {
+        return;
+    }
+
+    RefineCollectionShardKeyEvent event(
+        makeEnvelope(client, ActionType::refineCollectionShardKey, ErrorCodes::OK), ns, keyPattern);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         uassertStatusOK(getGlobalAuditLogDomain()->append(event));
     }
