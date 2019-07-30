@@ -235,12 +235,76 @@ public:
         _timingData->uses().addAndFetch(1);
     }
 
+
+    template <typename ResultType>
+    Future<ResultType> runFuncWithTimeout(std::string context,
+                                          unique_function<StatusOrStatusWith<ResultType>()> func) {
+        auto pf = makePromiseFuture<ResultType>();
+        auto alarm = _alarmScheduler->alarmFromNow(_options.timeout);
+        auto state = std::make_shared<FunctionWithTimeoutState<ResultType>>(
+            std::move(context), std::move(alarm.handle), std::move(pf.promise));
+
+        std::move(alarm.future).getAsync([state](Status status) {
+            if (!status.isOK() || state->done.swap(true)) {
+                return;
+            }
+
+            state->promise.setError({ErrorCodes::OperationFailed, "Operation timed out"});
+        });
+
+        _executor->schedule([this, state, func = std::move(func)](Status status) {
+            if (!status.isOK()) {
+                return;
+            }
+
+            auto result = func();
+            // If we timed out in the meantime, throw away the result and return immediately
+            if (state->done.swap(true)) {
+                LOG(1) << "LDAP operation " << state->context
+                       << " completed after timeout: " << _resultToString(result);
+                return;
+            }
+
+            // Cancel the alarm - we don't care if it's actually canceled or not, just trying to
+            // prevent the function from firing when it's not going to do anything useful.
+            state->alarmHandle->cancel().ignore();
+            state->promise.setWith([&] { return std::move(result); });
+        });
+
+        return std::move(pf.future);
+    }
+
 private:
     void setup(Milliseconds timeout, SetupCallback cb) final;
     void refresh(Milliseconds timeout, RefreshCallback cb) final;
 
 private:
+    template <typename T>
+    std::string _resultToString(const StatusWith<T>& sw) {
+        return sw.getStatus().toString();
+    }
+
+    std::string _resultToString(const Status& s) {
+        return s.toString();
+    }
+
+    template <typename ResultType>
+    struct FunctionWithTimeoutState {
+        FunctionWithTimeoutState(std::string context_,
+                                 AlarmScheduler::SharedHandle alarmHandle_,
+                                 Promise<ResultType> promise_)
+            : context(std::move(context_)),
+              alarmHandle(std::move(alarmHandle_)),
+              promise(std::move(promise_)) {}
+
+        AtomicWord<bool> done{false};
+        std::string context;
+        AlarmScheduler::SharedHandle alarmHandle;
+        Promise<ResultType> promise;
+    };
+
     std::shared_ptr<OutOfLineExecutor> _executor;
+    std::shared_ptr<AlarmScheduler> _alarmScheduler;
     LDAPTimer _timer;
     LDAPConnectionOptions _options;
     std::unique_ptr<LDAPConnection> _conn;
@@ -309,6 +373,7 @@ PooledLDAPConnection::PooledLDAPConnection(std::shared_ptr<OutOfLineExecutor> ex
                                            std::shared_ptr<LDAPHostTimingData> timingData)
     : ConnectionInterface(generation),
       _executor(std::move(executor)),
+      _alarmScheduler(alarmScheduler),
       _timer(clockSource, alarmScheduler),
       _options(std::move(options)),
       _conn(nullptr),
@@ -336,6 +401,13 @@ private:
         return checked_cast<PooledLDAPConnection*>(_conn.get())->getConn();
     }
 
+    template <typename ResultType>
+    Future<ResultType> _runFuncWithTimeout(std::string context,
+                                           unique_function<StatusOrStatusWith<ResultType>()> func) {
+        const auto ptr = checked_cast<PooledLDAPConnection*>(_conn.get());
+        return ptr->runFuncWithTimeout<ResultType>(std::move(context), std::move(func));
+    }
+
     ConnectionPool::ConnectionHandle _conn;
 };
 
@@ -356,7 +428,9 @@ Status WrappedConnection::connect() {
 }
 
 Status WrappedConnection::bindAsUser(const LDAPBindOptions& options) {
-    auto status = _getConn()->bindAsUser(options);
+    auto status = _runFuncWithTimeout<void>(options.toCleanString(),
+                                            [&] { return _getConn()->bindAsUser(options); })
+                      .getNoThrow();
     if (!status.isOK()) {
         _conn->indicateFailure(status);
     } else {
@@ -370,7 +444,9 @@ boost::optional<std::string> WrappedConnection::currentBoundUser() const {
 }
 
 StatusWith<LDAPEntityCollection> WrappedConnection::query(LDAPQuery query) {
-    auto swResults = _getConn()->query(std::move(query));
+    auto swResults = _runFuncWithTimeout<LDAPEntityCollection>(
+                         query.toString(), [&] { return _getConn()->query(std::move(query)); })
+                         .getNoThrow();
     if (!swResults.isOK()) {
         _conn->indicateFailure(swResults.getStatus());
     } else {
