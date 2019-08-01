@@ -389,7 +389,7 @@ if hygienic:
     # 
     # SNMP doc files
     env.AutoInstall(
-        target='$INSTALL_DIR/snmp',
+        target='$DESTDIR/snmp',
         source=env.Glob("docs/*"),
         AIB_COMPONENT='snmp',
         AIB_COMPONENTS_EXTRA=['dist'],
@@ -412,7 +412,7 @@ if hygienic:
                 full_file_name = os.path.join(os.path.normpath(path.lower()), file_name)
                 if os.path.exists(full_file_name):
                     env.AutoInstall(
-                        target='$PREFIX_BIN_DIR',
+                        target='$PREFIX_BINDIR',
                         source=[full_file_name],
                         AIB_COMPONENT='dist',
                         AIB_ROLE="debug" if full_file_name.endswith(".pdb") else "runtime",
@@ -443,7 +443,7 @@ if hygienic:
                     
             redist_file_name = os.path.join(redist_path.decode('utf-8'), "vcredist_x64.exe")
             env.AutoInstall(
-                target='$PREFIX_BIN_DIR',
+                target='$PREFIX_BINDIR',
                 source=[redist_file_name],
                 AIB_COMPONENT="dist",
                 AIB_ROLE="runtime",
