@@ -8,6 +8,7 @@
 #include "encryption_schema_tree.h"
 #include "fle_test_fixture.h"
 #include "mongo/bson/bsonobj.h"
+#include "mongo/db/commands/test_commands_enabled.h"
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/unittest/unittest.h"
 
@@ -518,6 +519,7 @@ TEST_F(ExpressionAnalysisTest, ExpressionObjectInceptionCorrectlyReturnsOutSchem
 }
 
 TEST_F(ExpressionAnalysisTest, EvaluatedExpressionsCorrectlyReturnNotEncrypted) {
+    setTestCommandsEnabled(true);
     auto evaluateExpressions = {
         fromjson("{$abs: -1}"),
         fromjson("{$add: ['$ssn', 5]}"),
@@ -549,6 +551,9 @@ TEST_F(ExpressionAnalysisTest, EvaluatedExpressionsCorrectlyReturnNotEncrypted) 
         fromjson("{$indexOfArray: ['$ssn', 42.0]}"),
         fromjson("{$indexOfBytes: ['$ssn', '1234']}"),
         fromjson("{$indexOfCP: ['$ssn', '1234']}"),
+        BSON("$_internalJsEmit" << BSON("this"
+                                        << "{}"
+                                        << "eval" << BSONCode("function(){}"))),
         fromjson("{$isArray: '$ssn'}"),
         fromjson("{$isoDayOfWeek: '$ssn'}"),
         fromjson("{$isoWeek: '$ssn'}"),
