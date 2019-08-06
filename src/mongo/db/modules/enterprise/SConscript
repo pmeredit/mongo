@@ -398,6 +398,9 @@ if hygienic:
 
     if env.TargetOSIs("windows"):
         import os
+        import winreg
+        import re
+        import subprocess
 
         extra_files = [
             'libsasl.dll',
