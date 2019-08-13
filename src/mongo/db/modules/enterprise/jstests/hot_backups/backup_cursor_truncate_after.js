@@ -17,7 +17,7 @@
 "use strict";
 
 load("jstests/libs/backup_utils.js");
-load("jstests/libs/parallelTester.js");  // for ScopedThread.
+load("jstests/libs/parallelTester.js");  // for Thread.
 
 Random.setRandomSeed();
 // Returns true iff opTime <= threshold. In other words, when reading at `threshold`, is
@@ -91,7 +91,7 @@ let primary = rst.getPrimary();
 let secondary = rst.getSecondary();
 
 function writerFunc(host, collFn, backupCollFn) {
-    // Redefine constants for ScopedThread use.
+    // Redefine constants for Thread use.
     const preBackupCursor = false;
     const postBackupCursor = true;
     const largePayload = 'a'.repeat(100 * 1024);
@@ -127,9 +127,9 @@ function writerFunc(host, collFn, backupCollFn) {
     return sampledOpTimes;
 }
 
-const readyWriterOne = new ScopedThread(writerFunc, primary.host, getAlphaColl, getBackupColl);
+const readyWriterOne = new Thread(writerFunc, primary.host, getAlphaColl, getBackupColl);
 readyWriterOne.start();
-const readyWriterTwo = new ScopedThread(writerFunc, primary.host, getBetaColl, getBackupColl);
+const readyWriterTwo = new Thread(writerFunc, primary.host, getBetaColl, getBackupColl);
 readyWriterTwo.start();
 
 // Wait a little bit to perform writes before opening the $backupCursor.
