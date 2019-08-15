@@ -631,6 +631,9 @@ private:
     void visit(ExpressionInternalJsEmit*) final {
         ensureNotEncryptedEnterEval("an internal JS emit expression", subtreeStack);
     }
+    void visit(ExpressionInternalJs*) final {
+        ensureNotEncryptedEnterEval("an internal JS expression", subtreeStack);
+    }
     void visit(ExpressionIsNumber*) final {
         ensureNotEncryptedEnterEval("a numeric-type checker", subtreeStack);
     }
@@ -939,6 +942,7 @@ private:
     void visit(ExpressionIndexOfBytes*) final {}
     void visit(ExpressionIndexOfCP*) final {}
     void visit(ExpressionInternalJsEmit*) final {}
+    void visit(ExpressionInternalJs*) final {}
     void visit(ExpressionIsNumber*) final {}
     void visit(ExpressionLet* let) final {
         // The final child of a let Expression is part of the parent Subtree.
@@ -1182,6 +1186,9 @@ private:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionInternalJsEmit*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionInternalJs*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionLet*) final {}

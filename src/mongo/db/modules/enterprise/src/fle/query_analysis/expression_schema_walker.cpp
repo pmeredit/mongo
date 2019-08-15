@@ -187,6 +187,9 @@ public:
     void visit(ExpressionInternalJsEmit*) {
         _tracker.enterEvaluateOrCompare();
     }
+    void visit(ExpressionInternalJs*) {
+        _tracker.enterEvaluateOrCompare();
+    }
     void visit(ExpressionIsNumber*) {
         _tracker.enterEvaluateOrCompare();
     }
@@ -531,6 +534,7 @@ public:
     void visit(ExpressionIndexOfBytes*) {}
     void visit(ExpressionIndexOfCP*) {}
     void visit(ExpressionInternalJsEmit*) {}
+    void visit(ExpressionInternalJs*) {}
     void visit(ExpressionIsNumber*) {}
     void visit(ExpressionLet*) {}
     void visit(ExpressionLn*) {}
@@ -737,6 +741,9 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(ExpressionInternalJsEmit*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(ExpressionInternalJs*) {
         _tracker.exitEvaluateOrCompare();
     }
     void visit(ExpressionIsNumber*) {

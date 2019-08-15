@@ -554,6 +554,9 @@ TEST_F(ExpressionAnalysisTest, EvaluatedExpressionsCorrectlyReturnNotEncrypted) 
         BSON("$_internalJsEmit" << BSON("this"
                                         << "{}"
                                         << "eval" << BSONCode("function(){}"))),
+        BSON("$_internalJs" << BSON("args"
+                                    << "[]"
+                                    << "eval" << BSONCode("function(){}"))),
         fromjson("{$isArray: '$ssn'}"),
         fromjson("{$isoDayOfWeek: '$ssn'}"),
         fromjson("{$isoWeek: '$ssn'}"),
