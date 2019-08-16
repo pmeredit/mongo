@@ -45,21 +45,17 @@ REGISTER_DOCUMENT_SOURCE(backupCursorExtend,
                          DocumentSourceBackupCursorExtend::LiteParsed::parse,
                          DocumentSourceBackupCursorExtend::createFromBson);
 
-const char* DocumentSourceBackupCursorExtend::kStageName = "$backupCursorExtend";
-
 DocumentSourceBackupCursorExtend::DocumentSourceBackupCursorExtend(
     const boost::intrusive_ptr<ExpressionContext>& pExpCtx,
     const UUID& backupId,
     const Timestamp& extendTo)
-    : DocumentSource(pExpCtx),
+    : DocumentSource(kStageName, pExpCtx),
       _backupId(backupId),
       _extendTo(extendTo),
       _backupCursorExtendState(
           pExpCtx->mongoProcessInterface->extendBackupCursor(pExpCtx->opCtx, backupId, extendTo)) {}
 
-DocumentSource::GetNextResult DocumentSourceBackupCursorExtend::getNext() {
-    pExpCtx->checkForInterrupt();
-
+DocumentSource::GetNextResult DocumentSourceBackupCursorExtend::doGetNext() {
     if (!_backupCursorExtendState.filenames.empty()) {
         Document doc = {{"filename", _backupCursorExtendState.filenames.back()}};
         _backupCursorExtendState.filenames.pop_back();
@@ -115,7 +111,6 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursorExtend::createFro
                                     << "' in $backupCursorExtend stage.");
         }
     }
-
 
     uassert(ErrorCodes::FailedToParse,
             str::stream() << "'" << kBackupIdFieldName << "' parameter is missing",

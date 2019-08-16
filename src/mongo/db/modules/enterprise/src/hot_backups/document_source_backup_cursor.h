@@ -46,7 +46,7 @@ namespace mongo {
  */
 class DocumentSourceBackupCursor final : public DocumentSource {
 public:
-    static const char* kStageName;
+    static constexpr StringData kStageName = "$backupCursor"_sd;
 
     class LiteParsed final : public LiteParsedDocumentSource {
     public:
@@ -73,7 +73,7 @@ public:
 
         void assertSupportsReadConcern(const repl::ReadConcernArgs& readConcern) const {
             uassert(ErrorCodes::InvalidOptions,
-                    str::stream() << "Aggregation stage " << kStageName
+                    str::stream() << "Aggregation stage " << DocumentSourceBackupCursor::kStageName
                                   << " requires read concern local but found "
                                   << readConcern.toString(),
                     readConcern.getLevel() == repl::ReadConcernLevel::kLocalReadConcern);
@@ -82,10 +82,8 @@ public:
 
     virtual ~DocumentSourceBackupCursor();
 
-    GetNextResult getNext() final;
-
     const char* getSourceName() const final {
-        return kStageName;
+        return DocumentSourceBackupCursor::kStageName.rawData();
     }
 
     boost::optional<DistributedPlanLogic> distributedPlanLogic() {
@@ -115,6 +113,8 @@ public:
 
 private:
     DocumentSourceBackupCursor(const boost::intrusive_ptr<ExpressionContext>& pExpCtx);
+
+    GetNextResult doGetNext() final;
 
     BackupCursorState _backupCursorState;
 };

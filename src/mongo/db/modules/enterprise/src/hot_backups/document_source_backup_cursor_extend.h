@@ -45,7 +45,7 @@ namespace mongo {
  */
 class DocumentSourceBackupCursorExtend final : public DocumentSource {
 public:
-    static const char* kStageName;
+    static constexpr StringData kStageName = "$backupCursorExtend"_sd;
 
     class LiteParsed final : public LiteParsedDocumentSource {
     public:
@@ -72,17 +72,16 @@ public:
 
         void assertSupportsReadConcern(const repl::ReadConcernArgs& readConcern) const {
             uassert(ErrorCodes::InvalidOptions,
-                    str::stream() << "Aggregation stage " << kStageName
+                    str::stream() << "Aggregation stage "
+                                  << DocumentSourceBackupCursorExtend::kStageName
                                   << " requires read concern local but found "
                                   << readConcern.toString(),
                     readConcern.getLevel() == repl::ReadConcernLevel::kLocalReadConcern);
         }
     };
 
-    GetNextResult getNext() final;
-
     const char* getSourceName() const final {
-        return kStageName;
+        return DocumentSourceBackupCursorExtend::kStageName.rawData();
     }
 
     boost::optional<DistributedPlanLogic> distributedPlanLogic() {
@@ -114,6 +113,8 @@ private:
     DocumentSourceBackupCursorExtend(const boost::intrusive_ptr<ExpressionContext>& pExpCtx,
                                      const UUID& backupId,
                                      const Timestamp& extendTo);
+
+    GetNextResult doGetNext() final;
 
     const UUID _backupId;
     const Timestamp _extendTo;

@@ -43,13 +43,10 @@ REGISTER_DOCUMENT_SOURCE(backupCursor,
                          DocumentSourceBackupCursor::LiteParsed::parse,
                          DocumentSourceBackupCursor::createFromBson);
 
-const char* DocumentSourceBackupCursor::kStageName = "$backupCursor";
-
 DocumentSourceBackupCursor::DocumentSourceBackupCursor(
     const boost::intrusive_ptr<ExpressionContext>& pExpCtx)
-    : DocumentSource(pExpCtx),
+    : DocumentSource(kStageName, pExpCtx),
       _backupCursorState(pExpCtx->mongoProcessInterface->openBackupCursor(pExpCtx->opCtx)) {}
-
 
 DocumentSourceBackupCursor::~DocumentSourceBackupCursor() {
     try {
@@ -61,9 +58,7 @@ DocumentSourceBackupCursor::~DocumentSourceBackupCursor() {
     }
 }
 
-DocumentSource::GetNextResult DocumentSourceBackupCursor::getNext() {
-    pExpCtx->checkForInterrupt();
-
+DocumentSource::GetNextResult DocumentSourceBackupCursor::doGetNext() {
     if (_backupCursorState.preamble) {
         Document doc = _backupCursorState.preamble.get();
         _backupCursorState.preamble = boost::none;

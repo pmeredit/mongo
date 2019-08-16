@@ -14,6 +14,8 @@ namespace mongo {
  */
 class DocumentSourceSearchBeta final {
 public:
+    static constexpr StringData kStageName = "$searchBeta"_sd;
+
     static std::list<boost::intrusive_ptr<DocumentSource>> createFromBson(
         BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& pExpCtx);
 

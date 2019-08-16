@@ -22,7 +22,7 @@ REGISTER_MULTI_STAGE_ALIAS(searchBeta,
                            DocumentSourceSearchBeta::createFromBson);
 
 const char* DocumentSourceSearchBeta::getSourceName() const {
-    return "$searchBeta";
+    return kStageName.rawData();
 }
 
 std::list<intrusive_ptr<DocumentSource>> DocumentSourceSearchBeta::createFromBson(

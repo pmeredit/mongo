@@ -27,7 +27,7 @@ using boost::intrusive_ptr;
 
 DocumentSourceBSONFile::DocumentSourceBSONFile(const intrusive_ptr<ExpressionContext>& pCtx,
                                                StringData fileName)
-    : DocumentSource(pCtx),
+    : DocumentSource(kStageName, pCtx),
       _fileName(fileName),
 #ifdef _WIN32
       _mapped(nullptr) {
@@ -120,7 +120,7 @@ void DocumentSourceBSONFile::doDispose() {
 }
 
 const char* DocumentSourceBSONFile::getSourceName() const {
-    return "bsonFile";
+    return kStageName.rawData();
 }
 
 Value DocumentSourceBSONFile::serialize(boost::optional<ExplainOptions::Verbosity> explain) const {
@@ -132,7 +132,7 @@ intrusive_ptr<DocumentSourceBSONFile> DocumentSourceBSONFile::create(
     return new DocumentSourceBSONFile(pExpCtx, fileName);
 }
 
-DocumentSource::GetNextResult DocumentSourceBSONFile::getNext() {
+DocumentSource::GetNextResult DocumentSourceBSONFile::doGetNext() {
     if (static_cast<size_t>(_offset) == _fileSize) {
         return GetNextResult::makeEOF();
     }

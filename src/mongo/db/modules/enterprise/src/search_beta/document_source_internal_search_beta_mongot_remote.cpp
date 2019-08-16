@@ -29,7 +29,7 @@ REGISTER_DOCUMENT_SOURCE(_internalSearchBetaMongotRemote,
 MONGO_FAIL_POINT_DEFINE(searchBetaReturnEofImmediately);
 
 const char* DocumentSourceInternalSearchBetaMongotRemote::getSourceName() const {
-    return "$_internalSearchBetaMongotRemote";
+    return kStageName.rawData();
 }
 
 Value DocumentSourceInternalSearchBetaMongotRemote::serialize(
@@ -74,9 +74,7 @@ boost::optional<BSONObj> DocumentSourceInternalSearchBetaMongotRemote::_getNext(
 /**
  * Gets the next result from mongot using a TaskExecutorCursor.
  */
-DocumentSource::GetNextResult DocumentSourceInternalSearchBetaMongotRemote::getNext() {
-    pExpCtx->checkForInterrupt();
-
+DocumentSource::GetNextResult DocumentSourceInternalSearchBetaMongotRemote::doGetNext() {
     if (MONGO_FAIL_POINT(searchBetaReturnEofImmediately)) {
         return DocumentSource::GetNextResult::makeEOF();
     }

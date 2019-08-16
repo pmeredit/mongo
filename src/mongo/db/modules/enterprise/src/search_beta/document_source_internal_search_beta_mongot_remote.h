@@ -20,6 +20,8 @@ namespace mongo {
  */
 class DocumentSourceInternalSearchBetaMongotRemote final : public DocumentSource {
 public:
+    static constexpr StringData kStageName = "$_internalSearchBetaMongotRemote"_sd;
+
     class LiteParsed final : public LiteParsedDocumentSource {
     public:
         static std::unique_ptr<LiteParsed> parse(const AggregationRequest& request,
@@ -64,8 +66,6 @@ public:
         return constraints;
     }
 
-    GetNextResult getNext() override;
-
     const char* getSourceName() const override;
 
     boost::optional<DistributedPlanLogic> distributedPlanLogic() {
@@ -79,11 +79,15 @@ private:
     static BSONObj commandObject(const BSONObj& query,
                                  const boost::intrusive_ptr<ExpressionContext>& expCtx);
 
+    GetNextResult doGetNext() override;
+
     DocumentSourceInternalSearchBetaMongotRemote(
         const BSONObj& query,
         const boost::intrusive_ptr<ExpressionContext>& expCtx,
         executor::TaskExecutor* taskExecutor)
-        : DocumentSource(expCtx), _searchBetaQuery(query.getOwned()), _taskExecutor(taskExecutor) {}
+        : DocumentSource(kStageName, expCtx),
+          _searchBetaQuery(query.getOwned()),
+          _taskExecutor(taskExecutor) {}
 
     void populateCursor();
 

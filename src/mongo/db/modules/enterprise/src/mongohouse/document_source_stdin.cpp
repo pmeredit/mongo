@@ -34,7 +34,7 @@ ssize_t readStdin(void* buf, size_t count) {
 
 }  // namespace
 
-DocumentSource::GetNextResult DocumentSourceStdin::getNext() {
+DocumentSource::GetNextResult DocumentSourceStdin::doGetNext() {
     char sizeBuf[4];
     auto n = readStdin(&sizeBuf, sizeof(sizeBuf));
     if (n == 0) {
@@ -76,7 +76,7 @@ DocumentSource::GetNextResult DocumentSourceStdin::getNext() {
 }
 
 const char* DocumentSourceStdin::getSourceName() const {
-    return "stdin";
+    return kStageName.rawData();
 }
 
 Value DocumentSourceStdin::serialize(boost::optional<ExplainOptions::Verbosity> explain) const {

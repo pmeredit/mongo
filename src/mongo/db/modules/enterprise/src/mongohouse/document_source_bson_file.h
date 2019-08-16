@@ -10,9 +10,9 @@ namespace mongo {
 
 class DocumentSourceBSONFile final : public DocumentSource {
 public:
+    static constexpr StringData kStageName = "$bsonFile"_sd;
     ~DocumentSourceBSONFile() final;
 
-    GetNextResult getNext() final;
     const char* getSourceName() const final;
     Value serialize(boost::optional<ExplainOptions::Verbosity> explain = boost::none) const final;
 
@@ -37,6 +37,7 @@ public:
     }
 
 protected:
+    GetNextResult doGetNext() final;
     void doDispose() final;
 
 private:

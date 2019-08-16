@@ -24,6 +24,7 @@ const BSONObj kSortSpec = BSON("$searchScore" << -1);
  */
 class DocumentSourceInternalSearchBetaIdLookUp final : public DocumentSource {
 public:
+    static constexpr StringData kStageName = "$_internalSearchBetaIdLookup"_sd;
     /**
      * Creates an $_internalSearchBetaIdLookup stage. "elem" must be an empty object.
      */
@@ -34,8 +35,6 @@ public:
         const boost::intrusive_ptr<ExpressionContext>& pExpCtx);
 
     const char* getSourceName() const final;
-
-    GetNextResult getNext() final;
 
     StageConstraints constraints(Pipeline::SplitState pipeState) const override {
         StageConstraints constraints(StreamType::kStreaming,
@@ -68,6 +67,9 @@ public:
 
         return logic;
     }
+
+private:
+    DocumentSource::GetNextResult doGetNext() final;
 };
 
 }  // namespace mongo

@@ -10,9 +10,9 @@ namespace mongo {
 
 class DocumentSourceStdin final : public DocumentSource {
 public:
+    static constexpr StringData kStageName = "$stdin"_sd;
     ~DocumentSourceStdin() final {}
 
-    GetNextResult getNext() final;
     const char* getSourceName() const final;
     Value serialize(boost::optional<ExplainOptions::Verbosity> explain) const final;
 
@@ -38,7 +38,9 @@ public:
 
 private:
     DocumentSourceStdin(const boost::intrusive_ptr<ExpressionContext>& pExpCtx)
-        : DocumentSource(pExpCtx) {}
+        : DocumentSource(DocumentSourceStdin::kStageName, pExpCtx) {}
+
+    DocumentSource::GetNextResult doGetNext() final;
 };
 
 }  // namespace mongo

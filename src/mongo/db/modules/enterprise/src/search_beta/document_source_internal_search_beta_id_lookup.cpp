@@ -19,7 +19,7 @@ REGISTER_DOCUMENT_SOURCE(_internalSearchBetaIdLookup,
 
 DocumentSourceInternalSearchBetaIdLookUp::DocumentSourceInternalSearchBetaIdLookUp(
     const intrusive_ptr<ExpressionContext>& pExpCtx)
-    : DocumentSource(pExpCtx) {}
+    : DocumentSource(kStageName, pExpCtx) {}
 
 std::list<intrusive_ptr<DocumentSource>> DocumentSourceInternalSearchBetaIdLookUp::createFromBson(
     BSONElement elem, const intrusive_ptr<ExpressionContext>& pExpCtx) {
@@ -43,9 +43,7 @@ Value DocumentSourceInternalSearchBetaIdLookUp::serialize(
     return Value(DOC(getSourceName() << Document()));
 }
 
-DocumentSource::GetNextResult DocumentSourceInternalSearchBetaIdLookUp::getNext() {
-    pExpCtx->checkForInterrupt();
-
+DocumentSource::GetNextResult DocumentSourceInternalSearchBetaIdLookUp::doGetNext() {
     boost::optional<Document> result;
     Document inputDoc;
 
@@ -99,7 +97,7 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchBetaIdLookUp::getNext(
 }
 
 const char* DocumentSourceInternalSearchBetaIdLookUp::getSourceName() const {
-    return "$_internalSearchBetaIdLookup";
+    return kStageName.rawData();
 }
 
 }  // namespace mongo
