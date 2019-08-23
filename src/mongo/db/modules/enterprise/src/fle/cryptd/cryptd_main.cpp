@@ -154,7 +154,8 @@ ExitCode initAndListen() {
         l << (is32bit ? " 32" : " 64") << "-bit host=" << getHostNameCached();
     }
 
-    DEV log(logger::LogComponent::kControl) << "DEBUG build (which is slower)";
+    if (kDebugBuild)
+        log(logger::LogComponent::kControl) << "DEBUG build (which is slower)";
 
 #ifdef _WIN32
     VersionInfoInterface::instance().logTargetMinOS();
