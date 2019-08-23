@@ -243,7 +243,7 @@ BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext
 
     // Wait 3: Force a journal flush because having opTime `extendTo` available for read does not
     // guarantee the persistency of the oplog with timestamp `extendTo`.
-    opCtx->recoveryUnit()->waitUntilDurable();
+    opCtx->recoveryUnit()->waitUntilDurable(opCtx);
 
     auto filesToBackup = uassertStatusOK(_storageEngine->extendBackupCursor(opCtx));
     log() << "Backup cursor has been extended. backupId: " << backupId
