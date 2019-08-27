@@ -48,10 +48,8 @@ const clientSideRemoteSchemaFLEOptions = {
 var encryptedShell = Mongo(conn.host, clientSideRemoteSchemaFLEOptions);
 var keyVault = encryptedShell.getKeyVault();
 
-assert.writeOK(
-    keyVault.createKey("aws", "arn:aws:mongo1:us-east-1:123456789:environment", ['studentsKey']));
-assert.writeOK(
-    keyVault.createKey("local", "arn:aws:mongo2:us-east-1:123456789:environment", ['teachersKey']));
+keyVault.createKey("aws", "arn:aws:mongo1:us-east-1:123456789:environment", ['studentsKey']);
+keyVault.createKey("local", "arn:aws:mongo2:us-east-1:123456789:environment", ['teachersKey']);
 const studentsKeyId = keyVault.getKeyByAltName("studentsKey").toArray()[0]._id;
 const teachersKeyId = keyVault.getKeyByAltName("teachersKey").toArray()[0]._id;
 
@@ -213,12 +211,9 @@ encryptedDatabase.createCollection("teachers", {
 
 testDeterministicCollection(teachersKeyId, encryptedShell, conn, "teachers");
 
-assert.writeOK(
-    keyVault.createKey("local", "arn:aws:mongo2:us-east-1:123456789:environment", ['staffKey']));
-assert.writeOK(
-    keyVault.createKey("local", "arn:aws:mongo1:us-east-1:123456789:environment", ['Shreyas']));
-assert.writeOK(
-    keyVault.createKey("aws", "arn:aws:mongo1:us-east-1:123456789:environment", ['adminKey']));
+keyVault.createKey("local", "arn:aws:mongo2:us-east-1:123456789:environment", ['staffKey']);
+keyVault.createKey("aws", "arn:aws:mongo1:us-east-1:123456789:environment", ['adminKey']);
+keyVault.createKey("local", "arn:aws:mongo1:us-east-1:123456789:environment", ['Shreyas']);
 const staffKeyId = keyVault.getKeyByAltName("staffKey").toArray()[0]._id;
 const adminKeyId = keyVault.getKeyByAltName("adminKey").toArray()[0]._id;
 const bureaucracyKeyId = keyVault.getKeyByAltName("Shreyas").toArray()[0]._id;

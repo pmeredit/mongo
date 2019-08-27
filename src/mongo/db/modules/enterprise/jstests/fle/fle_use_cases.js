@@ -48,10 +48,8 @@ const clientSideRemoteSchemaFLEOptions = {
 var encryptedShell = Mongo(conn.host, clientSideRemoteSchemaFLEOptions);
 var keyVault = encryptedShell.getKeyVault();
 
-assert.writeOK(
-    keyVault.createKey("aws", "arn:aws:mongo1:us-east-1:123456789:environment", ['key1']));
-assert.writeOK(
-    keyVault.createKey("local", "arn:aws:mongo2:us-east-1:123456789:environment", ['key2']));
+keyVault.createKey("aws", "arn:aws:mongo1:us-east-1:123456789:environment", ['key1']);
+keyVault.createKey("local", "arn:aws:mongo2:us-east-1:123456789:environment", ['key2']);
 const defaultKeyId = keyVault.getKeyByAltName("key1").toArray()[0]._id;
 const insuranceKeyId = keyVault.getKeyByAltName("key2").toArray()[0]._id;
 
