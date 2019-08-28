@@ -37,7 +37,6 @@ AuditManager* getGlobalAuditManager() {
 
 MONGO_INITIALIZER(CreateAuditManager)(InitializerContext* context) {
     setGlobalAuditManager(new AuditManager());
-    return Status::OK();
 }
 
 MONGO_INITIALIZER_WITH_PREREQUISITES(InitializeGlobalAuditManager,
@@ -60,7 +59,7 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(InitializeGlobalAuditManager,
                                          ExtensionsCallbackNoop(),
                                          MatchExpressionParser::kBanAllSpecialFeatures);
         if (!parseResult.isOK()) {
-            return Status(ErrorCodes::BadValue, "failed to parse auditFilter");
+            uasserted(ErrorCodes::BadValue, "failed to parse auditFilter");
         }
         AuditManager* am = audit::getGlobalAuditManager();
         am->auditFilter = parseResult.getValue().release();
@@ -69,8 +68,6 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(InitializeGlobalAuditManager,
 
         am->auditFormat = auditGlobalParams.auditFormat;
     }
-
-    return Status::OK();
 }
 
 }  // namespace audit

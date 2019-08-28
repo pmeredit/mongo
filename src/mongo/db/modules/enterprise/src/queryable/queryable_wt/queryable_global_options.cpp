@@ -38,7 +38,7 @@ Status QueryableGlobalOptions::store() {
 
 namespace {
 MONGO_STARTUP_OPTIONS_STORE(QueryableOptions)(InitializerContext* context) {
-    return queryable::queryableGlobalOptions.store();
+    uassertStatusOK(queryable::queryableGlobalOptions.store());
 }
 }  // namespace
 

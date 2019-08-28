@@ -130,17 +130,13 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(InitializeAWSServer, ("EndStartupOptionStor
     StringData str(awsIam::saslAWSGlobalParams.awsSTSUrl);
     if (!getTestCommandsEnabled()) {
         if (!str.empty() && !str.startsWith("https://")) {
-            return Status(ErrorCodes::BadValue, "STS URL must start with https://");
+            uasserted(ErrorCodes::BadValue, "STS URL must start with https://");
         }
     }
 
     auto swHost = getHostFromURL(str);
-    if (!swHost.isOK()) {
-        return swHost.getStatus();
-    }
-
+    uassertStatusOK(swHost);
     awsIam::saslAWSGlobalParams.awsSTSHost = swHost.getValue();
-    return Status::OK();
 }
 
 GlobalSASLMechanismRegisterer<AWSServerFactory> awsRegisterer;

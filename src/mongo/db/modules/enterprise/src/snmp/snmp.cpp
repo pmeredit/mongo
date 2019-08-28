@@ -1073,7 +1073,6 @@ void enterpriseThreadInit() {
 MONGO_INITIALIZER(InitializeSnmp)(InitializerContext* context) {
     oidManager.init();
     registerSNMPInitializer(&enterpriseThreadInit);
-    return Status::OK();
 }
 
 int my_snmp_callback(netsnmp_mib_handler* handler,

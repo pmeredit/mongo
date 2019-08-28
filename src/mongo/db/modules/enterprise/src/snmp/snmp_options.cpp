@@ -23,8 +23,6 @@ MONGO_STARTUP_OPTIONS_STORE(SnmpOptions)(InitializerContext*) {
         snmpGlobalParams.subagent = false;
         snmpGlobalParams.enabled = true;
     }
-
-    return Status::OK();
 }
 }  // namespace
 

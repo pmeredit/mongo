@@ -57,17 +57,17 @@ MONGO_STARTUP_OPTIONS_STORE(AuditOptions)(InitializerContext* context) {
                 } else if (auditFormat == "BSON") {
                     auditGlobalParams.auditFormat = AuditFormatBsonFile;
                 } else {
-                    return Status(ErrorCodes::BadValue, "Invalid value for auditLog.format");
+                    uasserted(ErrorCodes::BadValue, "Invalid value for auditLog.format");
                 }
             } else {
-                return Status(ErrorCodes::BadValue,
-                              "auditLog.format must be specified when "
-                              "auditLog.destination is to a file");
+                uasserted(ErrorCodes::BadValue,
+                          "auditLog.format must be specified when "
+                          "auditLog.destination is to a file");
             }
             if (!params.count("auditLog.path")) {
-                return Status(ErrorCodes::BadValue,
-                              "auditLog.path must be specified when "
-                              "auditLog.destination is to a file");
+                uasserted(ErrorCodes::BadValue,
+                          "auditLog.path must be specified when "
+                          "auditLog.destination is to a file");
             }
 
 #ifdef _WIN32
@@ -75,9 +75,8 @@ MONGO_STARTUP_OPTIONS_STORE(AuditOptions)(InitializerContext* context) {
                 if (params.count("auditLog.path") &&
                     !boost::filesystem::path(params["auditLog.path"].as<std::string>())
                          .is_absolute()) {
-                    return Status(
-                        ErrorCodes::BadValue,
-                        "auditLog.path requires an absolute file path with Windows services");
+                    uasserted(ErrorCodes::BadValue,
+                              "auditLog.path requires an absolute file path with Windows services");
                 }
             }
 #endif
@@ -85,20 +84,20 @@ MONGO_STARTUP_OPTIONS_STORE(AuditOptions)(InitializerContext* context) {
             auditGlobalParams.auditPath = params["auditLog.path"].as<std::string>();
         } else {
             if (params.count("auditLog.format") || params.count("auditLog.path")) {
-                return Status(ErrorCodes::BadValue,
-                              "auditLog.format and auditLog.path are only allowed when "
-                              "auditLog.destination is 'file'");
+                uasserted(ErrorCodes::BadValue,
+                          "auditLog.format and auditLog.path are only allowed when "
+                          "auditLog.destination is 'file'");
             }
             if (auditDestination == "syslog") {
 #ifdef _WIN32
-                return Status(ErrorCodes::BadValue, "syslog not available on Windows");
+                uasserted(ErrorCodes::BadValue, "syslog not available on Windows");
 #else
                 auditGlobalParams.auditFormat = AuditFormatSyslog;
 #endif  // ifdef _WIN32
             } else if (auditDestination == "console") {
                 auditGlobalParams.auditFormat = AuditFormatConsole;
             } else {
-                return Status(ErrorCodes::BadValue, "invalid auditLog destination");
+                uasserted(ErrorCodes::BadValue, "invalid auditLog destination");
             }
         }
     }
@@ -107,11 +106,9 @@ MONGO_STARTUP_OPTIONS_STORE(AuditOptions)(InitializerContext* context) {
         try {
             auditGlobalParams.auditFilter = fromjson(params["auditLog.filter"].as<std::string>());
         } catch (const DBException& e) {
-            return Status(ErrorCodes::BadValue, str::stream() << "bad auditFilter:" << e.what());
+            uasserted(ErrorCodes::BadValue, str::stream() << "bad auditFilter:" << e.what());
         }
     }
-
-    return Status::OK();
 }
 
 }  // namespace audit

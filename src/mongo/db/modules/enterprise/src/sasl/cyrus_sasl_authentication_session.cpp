@@ -308,7 +308,7 @@ namespace {
 
 // This group is used to ensure that all the plugins are registered before we attempt
 // the smoke test in SaslCommands.
-MONGO_INITIALIZER_GROUP(CyrusSaslAllPluginsRegistered, MONGO_NO_PREREQUISITES, MONGO_NO_DEPENDENTS);
+MONGO_INITIALIZER_GROUP(CyrusSaslAllPluginsRegistered, (), ());
 
 MONGO_INITIALIZER_WITH_PREREQUISITES(CyrusSaslServerCore,
                                      ("CyrusSaslAllocatorsAndMutexes", "CyrusSaslClientContext"))
@@ -318,12 +318,10 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(CyrusSaslServerCore,
 
     int result = sasl_server_init(saslServerGlobalCallbacks, "mongodb");
     if (result != SASL_OK) {
-        return Status(ErrorCodes::UnknownError,
-                      str::stream() << "Could not initialize sasl server components ("
-                                    << sasl_errstring(result, nullptr, nullptr) << ")");
+        uasserted(ErrorCodes::UnknownError,
+                  str::stream() << "Could not initialize sasl server components ("
+                                << sasl_errstring(result, nullptr, nullptr) << ")");
     }
-
-    return Status::OK();
 };
 
 ServiceContext::ConstructorActionRegisterer cyrusSaslServerMechanismRegisterMechanisms{

@@ -715,7 +715,6 @@ static stdx::unordered_map<
             flePipe->hasEncryptedPlaceholders = flePipe->hasEncryptedPlaceholders ||          \
                 markStatus == aggregate_expression_intender::Intention::Marked;               \
         };                                                                                    \
-        return Status::OK();                                                                  \
     }
 
 // Whitelisted set of DocumentSource classes which are supported and/or require action for

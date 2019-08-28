@@ -28,7 +28,6 @@ MONGO_INITIALIZER_GENERAL(LDAPToolUseStrict,
                           ("BeginStartupOptionParsing"))
 (InitializerContext* context) {
     moe::OptionsParser::useStrict = shouldUseStrict;
-    return Status::OK();
 }
 
 MONGO_STARTUP_OPTIONS_VALIDATE(MongoLDAPToolOptions)(InitializerContext* context) {
@@ -43,10 +42,8 @@ MONGO_STARTUP_OPTIONS_VALIDATE(MongoLDAPToolOptions)(InitializerContext* context
     }
 
     if (!params.count("user")) {
-        return {ErrorCodes::BadValue, "Missing required option: \"--user\""};
+        uasserted(ErrorCodes::BadValue, "Missing required option: \"--user\"");
     }
-
-    return Status::OK();
 }
 
 MONGO_STARTUP_OPTIONS_STORE(MongoLDAPToolOptions)(InitializerContext* context) {
@@ -56,14 +53,11 @@ MONGO_STARTUP_OPTIONS_STORE(MongoLDAPToolOptions)(InitializerContext* context) {
         globalLDAPToolOptions->password =
             SecureString(params["password"].as<std::string>().c_str());
     }
-
-    return Status::OK();
 }
 
 MONGO_INITIALIZER_GENERAL(MongoLDAPToolOptions, ("SecureAllocator"), ("BeginStartupOptionStorage"))
 (InitializerContext* context) {
     globalLDAPToolOptions = new LDAPToolOptions();
-    return Status::OK();
 }
 
 }  // namespace

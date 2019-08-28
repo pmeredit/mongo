@@ -487,12 +487,10 @@ MONGO_INITIALIZER_GENERAL(SaslSspiServerPlugin,
 (InitializerContext*) {
     int ret = sasl_server_add_plugin(sspiPluginName, sspiServerPluginInit);
     if (SASL_OK != ret) {
-        return Status(ErrorCodes::UnknownError,
-                      str::stream() << "Could not add SASL Server SSPI plugin " << sspiPluginName
-                                    << ": " << sasl_errstring(ret, nullptr, nullptr));
+        uasserted(ErrorCodes::UnknownError,
+                  str::stream() << "Could not add SASL Server SSPI plugin " << sspiPluginName
+                                << ": " << sasl_errstring(ret, nullptr, nullptr));
     }
-
-    return Status::OK();
 }
 
 MONGO_INITIALIZER_GENERAL(SaslPlainServerPlugin,
@@ -501,12 +499,10 @@ MONGO_INITIALIZER_GENERAL(SaslPlainServerPlugin,
 (InitializerContext*) {
     int ret = sasl_server_add_plugin("PLAIN", plain_server_plug_init);
     if (SASL_OK != ret) {
-        return Status(ErrorCodes::UnknownError,
-                      str::stream() << "Could not add SASL Server PLAIN plugin " << sspiPluginName
-                                    << ": " << sasl_errstring(ret, nullptr, nullptr));
+        uasserted(ErrorCodes::UnknownError,
+                  str::stream() << "Could not add SASL Server PLAIN plugin " << sspiPluginName
+                                << ": " << sasl_errstring(ret, nullptr, nullptr));
     }
-
-    return Status::OK();
 }
 
 

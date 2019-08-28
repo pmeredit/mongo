@@ -19,8 +19,6 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(RegisterAuditWatchdog, ("EndStartupOptionHa
         auto auditPath = auditFile.parent_path();
         registerWatchdogPath(auditPath.generic_string());
     }
-
-    return Status::OK();
 }
 
 }  // namespace mongo

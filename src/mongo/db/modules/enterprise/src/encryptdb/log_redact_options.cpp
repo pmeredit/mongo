@@ -53,8 +53,6 @@ MONGO_STARTUP_OPTIONS_STORE(LogRedactOptions)(InitializerContext* context) {
     if (params.count("security.redactClientLogData")) {
         logv2::setShouldRedactLogs(params["security.redactClientLogData"].as<bool>());
     }
-
-    return Status::OK();
 }
 
 }  // namespace mongo

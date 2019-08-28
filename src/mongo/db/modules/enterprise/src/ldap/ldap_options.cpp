@@ -24,10 +24,7 @@ MONGO_STARTUP_OPTIONS_STORE(LDAPOptions)(InitializerContext* context) {
     if (params.count("security.ldap.servers")) {
         StatusWith<std::vector<std::string>> swHosts =
             LDAPConnectionOptions::parseHostURIs(params["security.ldap.servers"].as<std::string>());
-        if (!swHosts.isOK()) {
-            return swHosts.getStatus();
-        }
-
+        uassertStatusOK(swHosts);
         globalLDAPParams->serverHosts = std::move(swHosts.getValue());
     }
 
@@ -38,18 +35,16 @@ MONGO_STARTUP_OPTIONS_STORE(LDAPOptions)(InitializerContext* context) {
         } else if (transportSecurity == "tls") {
             globalLDAPParams->transportSecurity = LDAPTransportSecurityType::kTLS;
         } else {
-            return Status(ErrorCodes::FailedToParse,
-                          str::stream() << "Unrecognized transport security mechanism: "
-                                        << transportSecurity);
+            uasserted(ErrorCodes::FailedToParse,
+                      str::stream()
+                          << "Unrecognized transport security mechanism: " << transportSecurity);
         }
     }
 
     if (params.count("security.ldap.bind.method")) {
         auto swLDAPBindType =
             getLDAPBindType(params["security.ldap.bind.method"].as<std::string>());
-        if (!swLDAPBindType.isOK()) {
-            return swLDAPBindType.getStatus();
-        }
+        uassertStatusOK(swLDAPBindType);
         globalLDAPParams->bindMethod = swLDAPBindType.getValue();
     }
 
@@ -62,15 +57,12 @@ MONGO_STARTUP_OPTIONS_STORE(LDAPOptions)(InitializerContext* context) {
         globalLDAPParams->bindPassword =
             SecureString(params["security.ldap.bind.queryPassword"].as<std::string>().c_str());
     }
-
-    return Status::OK();
 }
 
 
 MONGO_INITIALIZER_GENERAL(LDAPOptions, ("SecureAllocator"), ("BeginStartupOptionStorage"))
 (InitializerContext* context) {
     globalLDAPParams = new LDAPOptions();
-    return Status::OK();
 }
 
 }  // namespace

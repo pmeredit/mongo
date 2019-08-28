@@ -56,8 +56,6 @@ MONGO_STARTUP_OPTIONS_STORE(InMemoryOptions)(InitializerContext*) {
               "Index custom option: {inMemoryGlobalOptions_indexConfig}",
               "inMemoryGlobalOptions_indexConfig"_attr = inMemoryGlobalOptions.indexConfig);
     }
-
-    return Status::OK();
 }
 }  // namespace
 

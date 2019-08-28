@@ -353,7 +353,6 @@ std::unique_ptr<DBClientBase> createImplicitEncryptedDBClientBase(
 
 MONGO_INITIALIZER(setCallbacksForImplicitEncryptedDBClientBase)(InitializerContext*) {
     setImplicitEncryptedDBClientCallback(createImplicitEncryptedDBClientBase);
-    return Status::OK();
 }
 
 }  // namespace

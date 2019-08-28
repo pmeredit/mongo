@@ -38,8 +38,6 @@ MONGO_STARTUP_OPTIONS_VALIDATE(MongoDecryptToolOptions)(InitializerContext* cont
                   << moe::startupOptions.helpString() << std::flush;
         quickExit(EXIT_SUCCESS);
     }
-
-    return Status::OK();
 }
 
 Status storeDecryptToolOptions(const moe::Environment& params) {
@@ -87,7 +85,6 @@ MONGO_STARTUP_OPTIONS_STORE(MongoDecryptToolOptions)(InitializerContext* context
         std::cerr << "try '" << context->args()[0] << " --help' for more information" << std::endl;
         quickExit(EXIT_BADOPTIONS);
     }
-    return Status::OK();
 }
 
 }  // namespace

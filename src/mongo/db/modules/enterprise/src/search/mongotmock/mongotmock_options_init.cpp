@@ -13,11 +13,8 @@ namespace mongo {
 namespace {
 
 MONGO_GENERAL_STARTUP_OPTIONS_REGISTER(MongotMockOptions)(InitializerContext* context) {
-    auto status = addKeyfileServerOption(&optionenvironment::startupOptions);
-    if (!status.isOK()) {
-        return status;
-    }
-    return addClusterAuthModeServerOption(&optionenvironment::startupOptions);
+    uassertStatusOK(addKeyfileServerOption(&optionenvironment::startupOptions));
+    uassertStatusOK(addClusterAuthModeServerOption(&optionenvironment::startupOptions));
 }
 
 }  // namespace

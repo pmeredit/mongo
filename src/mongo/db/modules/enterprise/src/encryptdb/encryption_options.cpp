@@ -74,16 +74,10 @@ Status validateEncryptionOptions(const moe::Environment& params) {
 
 MONGO_STARTUP_OPTIONS_STORE(EncryptionOptions)(InitializerContext* context) {
     const auto& params = moe::startupOptionsParsed;
-
-    Status validate = validateEncryptionOptions(params);
-    if (!validate.isOK()) {
-        return validate;
-    }
+    uassertStatusOK(validateEncryptionOptions(params));
 
     auto swKmipParams = parseKMIPOptions(params);
-    if (!swKmipParams.isOK()) {
-        return swKmipParams.getStatus();
-    }
+    uassertStatusOK(swKmipParams);
     encryptionGlobalParams.kmipParams = std::move(swKmipParams.getValue());
 
     if (params.count("security.encryptionKeyFile")) {
@@ -110,8 +104,6 @@ MONGO_STARTUP_OPTIONS_STORE(EncryptionOptions)(InitializerContext* context) {
     if (params.count("storage.repair")) {
         encryptionGlobalParams.repair = params["storage.repair"].as<bool>();
     }
-
-    return Status::OK();
 }
 
 }  // namespace mongo

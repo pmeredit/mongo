@@ -127,7 +127,7 @@ std::unique_ptr<logger::Appender<AuditEvent>> auditLogAppender;
 MONGO_INITIALIZER_WITH_PREREQUISITES(AuditDomain, ("InitializeGlobalAuditManager"))
 (InitializerContext*) {
     if (!auditGlobalParams.enabled) {
-        return Status::OK();
+        return;
     }
 
     const auto format = getGlobalAuditManager()->auditFormat;
@@ -150,9 +150,7 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(AuditDomain, ("InitializeGlobalAuditManager
             auto writer = std::make_unique<logger::RotatableFileWriter>();
             auto status = logger::RotatableFileWriter::Use(writer.get())
                               .setFileName(auditLogPath, true /* append */);
-            if (!status.isOK()) {
-                return status;
-            }
+            uassertStatusOK(status);
 
             if (format == AuditFormatJsonFile) {
                 auditLogAppender.reset(new JSONAppender(std::move(writer)));
@@ -168,10 +166,8 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(AuditDomain, ("InitializeGlobalAuditManager
             break;
         }
         default:
-            return Status(ErrorCodes::InternalError, "Audit format misconfigured");
+            uasserted(ErrorCodes::InternalError, "Audit format misconfigured");
     }
-
-    return Status::OK();
 }
 
 }  // namespace

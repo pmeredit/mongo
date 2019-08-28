@@ -10,6 +10,7 @@
 
 #include "mongo/base/status.h"
 #include "mongo/db/server_options.h"
+#include "mongo/util/assert_util.h"
 #include "mongo/util/exit_code.h"
 #include "mongo/util/options_parser/startup_option_init.h"
 #include "mongo/util/options_parser/startup_options.h"
@@ -19,39 +20,24 @@ namespace mongo {
 namespace {
 MONGO_GENERAL_STARTUP_OPTIONS_REGISTER(MongoCryptDOptions)(InitializerContext* context) {
     serverGlobalParams.port = ServerGlobalParams::CryptDServerPort;
-
-    return addMongoCryptDOptions(&moe::startupOptions);
+    uassertStatusOK(addMongoCryptDOptions(&moe::startupOptions));
 }
 
 MONGO_STARTUP_OPTIONS_VALIDATE(MongoCryptDOptions)(InitializerContext* context) {
     if (!handlePreValidationMongoCryptDOptions(moe::startupOptionsParsed)) {
         quickExit(EXIT_SUCCESS);
     }
-
-    Status ret = validateMongoCryptDOptions(moe::startupOptionsParsed);
-    if (!ret.isOK()) {
-        return ret;
-    }
-
-    ret = canonicalizeMongoCryptDOptions(&moe::startupOptionsParsed);
-    if (!ret.isOK()) {
-        return ret;
-    }
-
-    ret = moe::startupOptionsParsed.validate();
-    if (!ret.isOK()) {
-        return ret;
-    }
-
-    return Status::OK();
+    uassertStatusOK(validateMongoCryptDOptions(moe::startupOptionsParsed));
+    uassertStatusOK(canonicalizeMongoCryptDOptions(&moe::startupOptionsParsed));
+    uassertStatusOK(moe::startupOptionsParsed.validate());
 }
 
 MONGO_INITIALIZER_GENERAL(CoreOptions_Store,
                           ("BeginStartupOptionStorage"),
                           ("EndStartupOptionStorage"))
 (InitializerContext* context) {
-    Status ret = storeMongoCryptDOptions(moe::startupOptionsParsed, context->args());
-    if (!ret.isOK()) {
+    if (Status ret = storeMongoCryptDOptions(moe::startupOptionsParsed, context->args());
+        !ret.isOK()) {
         std::cerr << ret.toString() << std::endl;
         std::cerr << "try '" << context->args()[0] << " --help' for more information" << std::endl;
         quickExit(EXIT_BADOPTIONS);
@@ -81,8 +67,6 @@ MONGO_INITIALIZER_GENERAL(CoreOptions_Store,
         serverGlobalParams.noUnixSocket = true;
     }
 #endif
-
-    return Status::OK();
 }
 }  // namespace
 }  // namespace mongo

@@ -5,7 +5,6 @@
 #include "kerberos_tool_options.h"
 
 #include "mongo/base/init.h"
-#include "mongo/base/initializer_context.h"
 #include "mongo/util/net/socket_utils.h"
 #include "mongo/util/options_parser/options_parser.h"
 #include "mongo/util/options_parser/startup_option_init.h"
@@ -30,7 +29,6 @@ MONGO_INITIALIZER_GENERAL(KerberosToolUseStrict,
                           ("BeginStartupOptionParsing"))
 (InitializerContext*) {
     moe::OptionsParser::useStrict = shouldUseStrict;
-    return Status::OK();
 }
 
 MONGO_STARTUP_OPTIONS_VALIDATE(MongoKerberosToolOptions)(InitializerContext*) {
@@ -44,16 +42,11 @@ MONGO_STARTUP_OPTIONS_VALIDATE(MongoKerberosToolOptions)(InitializerContext*) {
                   << moe::startupOptions.helpString() << std::flush;
         quickExit(EXIT_SUCCESS);
     }
-    Status ret = params.validate();
-    if (!ret.isOK()) {
-        return ret;
-    }
+    uassertStatusOK(params.validate());
     // check for required --client|--server parameter
     if (!params.count("client") && !params.count("server")) {
-        return {ErrorCodes::BadValue, "Missing required option: \"--client|--server\""};
+        uasserted(ErrorCodes::BadValue, "Missing required option: \"--client|--server\"");
     }
-
-    return Status::OK();
 }
 
 MONGO_STARTUP_OPTIONS_STORE(MongoKerberosToolOptions)(InitializerContext*) {
@@ -66,8 +59,6 @@ MONGO_STARTUP_OPTIONS_STORE(MongoKerberosToolOptions)(InitializerContext*) {
     if (globalKerberosToolOptions->host.empty()) {
         globalKerberosToolOptions->host = getHostNameCached();
     }
-
-    return Status::OK();
 }
 
 MONGO_INITIALIZER_GENERAL(MongoKerberosToolOptions,
@@ -75,7 +66,6 @@ MONGO_INITIALIZER_GENERAL(MongoKerberosToolOptions,
                           ("BeginStartupOptionStorage"))
 (InitializerContext*) {
     globalKerberosToolOptions = new KerberosToolOptions();
-    return Status::OK();
 }
 
 }  // namespace

@@ -61,7 +61,6 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(WireSpec, ("EndStartupOptionHandling"))(Ini
     spec.isInternalClient = true;
 
     WireSpec::instance().initialize(std::move(spec));
-    return Status::OK();
 }
 
 void createLockFile(ServiceContext* serviceContext) {
@@ -222,7 +221,6 @@ ExitCode initService() {
 MONGO_INITIALIZER_GENERAL(ForkServer, ("EndStartupOptionHandling"), ("default"))
 (InitializerContext* context) {
     mongo::forkServerOrDie();
-    return Status::OK();
 }
 
 MONGO_INITIALIZER_WITH_PREREQUISITES(SetFeatureCompatibilityVersionLatest,
@@ -233,7 +231,6 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(SetFeatureCompatibilityVersionLatest,
     // (Generic FCV reference): This FCV reference should exist across LTS binary versions.
     serverGlobalParams.mutableFeatureCompatibility.setVersion(
         ServerGlobalParams::FeatureCompatibility::kLatest);
-    return Status::OK();
 }
 
 int CryptDMain(int argc, char** argv) {

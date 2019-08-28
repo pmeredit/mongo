@@ -126,15 +126,14 @@ MONGO_INITIALIZER_GENERAL(SaslCanonMongodbInternal,
                           ("CyrusSaslAllPluginsRegistered"))
 (InitializerContext*) {
     canonMongoDBInternal.name = canonMongoDBInternalPluginName;
-    int ret = sasl_canonuser_add_plugin(canonMongoDBInternal.name, canonMongoDBInternalPluginInit);
-    if (SASL_OK != ret) {
-        return Status(ErrorCodes::UnknownError,
-                      str::stream()
-                          << "Could not add sasl canonuser plugin " << canonMongoDBInternal.name
-                          << ": " << sasl_errstring(ret, nullptr, nullptr));
+    if (int ret =
+            sasl_canonuser_add_plugin(canonMongoDBInternal.name, canonMongoDBInternalPluginInit);
+        ret != SASL_OK) {
+        uasserted(ErrorCodes::UnknownError,
+                  str::stream() << "Could not add sasl canonuser plugin "
+                                << canonMongoDBInternal.name << ": "
+                                << sasl_errstring(ret, nullptr, nullptr));
     }
-
-    return Status::OK();
 }
 
 }  // namespace
