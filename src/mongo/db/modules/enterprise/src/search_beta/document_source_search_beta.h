@@ -40,11 +40,11 @@ public:
         }
 
         void assertSupportsReadConcern(const repl::ReadConcernArgs& readConcern) const {
-            uassert(ErrorCodes::InvalidOptions,
-                    str::stream() << "Aggregation stage $searchBeta"
-                                  << " requires read concern local but found "
-                                  << readConcern.toString(),
-                    readConcern.getLevel() == repl::ReadConcernLevel::kLocalReadConcern);
+            onlyReadConcernLocalSupported(kStageName, readConcern);
+        }
+
+        void assertSupportsMultiDocumentTransaction() const {
+            transactionNotSupported(kStageName);
         }
 
         explicit LiteParsed(NamespaceString nss) : _nss(std::move(nss)) {}

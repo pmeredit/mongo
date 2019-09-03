@@ -72,11 +72,11 @@ public:
         }
 
         void assertSupportsReadConcern(const repl::ReadConcernArgs& readConcern) const {
-            uassert(ErrorCodes::InvalidOptions,
-                    str::stream() << "Aggregation stage " << DocumentSourceBackupCursor::kStageName
-                                  << " requires read concern local but found "
-                                  << readConcern.toString(),
-                    readConcern.getLevel() == repl::ReadConcernLevel::kLocalReadConcern);
+            onlyReadConcernLocalSupported(DocumentSourceBackupCursor::kStageName, readConcern);
+        }
+
+        void assertSupportsMultiDocumentTransaction() const {
+            transactionNotSupported(DocumentSourceBackupCursor::kStageName);
         }
     };
 
