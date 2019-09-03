@@ -2,6 +2,9 @@
  *    Copyright (C) 2015 MongoDB Inc.
  */
 
+#include "boost/algorithm/string/split.hpp"
+#include "boost/algorithm/string/trim.hpp"
+
 #include "mongo/platform/basic.h"
 
 #include "kmip_options.h"
@@ -19,7 +22,18 @@ StatusWith<KMIPParams> parseKMIPOptions(const optionenvironment::Environment& pa
     }
 
     if (params.count("security.kmip.serverName")) {
-        kmipParams.kmipServerName = params["security.kmip.serverName"].as<std::string>();
+        // the input parameter is a comma-separated list (string) of KMIP server names
+        auto kmipServerNamesStr = params["security.kmip.serverName"].as<std::string>();
+        // split the list, delimited by commas, into a vector of strings, trimming whitespace
+        std::vector<std::string> kmipServerNames;
+        boost::split(kmipServerNames,
+                     kmipServerNamesStr,
+                     std::bind(std::equal_to<char>(), std::placeholders::_1, ','),
+                     boost::token_compress_on);
+        for (std::string& kmipServerName : kmipServerNames) {
+            boost::trim(kmipServerName);
+        }
+        kmipParams.kmipServerName = kmipServerNames;
     }
 
     if (params.count("security.kmip.port")) {

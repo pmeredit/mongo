@@ -28,7 +28,7 @@ function runTest(cipherMode) {
             defaultParams.kmipClientCertificateFile = "jstests/libs/client.pem";
         }
 
-        return MongoRunner.runMongod(Object.merge(params, defaultParams));
+        return MongoRunner.runMongod(Object.merge(defaultParams, params));
     }
 
     function assertFind(md) {
@@ -87,6 +87,25 @@ function runTest(cipherMode) {
     // do a key rotation and explicitly specify the keyID "1"
     runEncryptedMongod({restart: md, kmipRotateMasterKey: "", kmipKeyIdentifier: "1"});
     assertKeyId(md, 1);
+
+    jsTestLog("Test running mongod's with multiple KMIP servers provided");
+
+    // start mongod with default keyID of "1", and multiple KMIP servers, of which 1 works
+    md = runEncryptedMongod({
+        kmipServerName: "10.0.0.1, 127.0.0.1, 192.168.1.1",
+        restart: md,
+    });
+    testDB = md.getDB("test0");
+    testDB.test.insert({b: 0});
+    MongoRunner.stopMongod(md);
+    assertKeyId(md, 1);
+
+    // start mongod with default keyID of "1", and multiple KMIP servers, of which 0 work
+    md = runEncryptedMongod({
+        kmipServerName: "10.0.0.1,192.168.1.1",
+        restart: md,
+    });
+    assert.isnull(md, "Ran mongod with invalid KMIP server address");
 
     stopMongoProgramByPid(kmipServerPid);
 }

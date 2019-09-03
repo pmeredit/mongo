@@ -87,8 +87,16 @@ StatusWith<std::unique_ptr<SymmetricKey>> getKeyFromKMIPServer(const KMIPParams&
     sslKMIPParams.sslAllowInvalidHostnames = false;
     sslKMIPParams.sslCRLFile = "";
 
+    // iterate through the list of provided KMIP servers until a valid one is found
+    auto kmipServerName = kmipParams.kmipServerName.begin();
     StatusWith<KMIPService> swKMIPService = KMIPService::createKMIPService(
-        HostAndPort(kmipParams.kmipServerName, kmipParams.kmipPort), sslKMIPParams);
+        HostAndPort(*kmipServerName, kmipParams.kmipPort), sslKMIPParams);
+    while (!swKMIPService.isOK() && ++kmipServerName != kmipParams.kmipServerName.end()) {
+        log() << "Connection to KMIP server at " << *(kmipServerName - 1)
+              << " failed. Trying again at " << *kmipServerName << '.';
+        swKMIPService = KMIPService::createKMIPService(
+            HostAndPort(*kmipServerName, kmipParams.kmipPort), sslKMIPParams);
+    }
 
     if (!swKMIPService.isOK()) {
         return swKMIPService.getStatus();

@@ -15,7 +15,7 @@ namespace mongo {
 struct KMIPParams {
     int kmipPort = 5696;
     std::string kmipKeyIdentifier;
-    std::string kmipServerName;
+    std::vector<std::string> kmipServerName;
     std::string kmipClientCertificateFile;
     std::string kmipClientCertificatePassword;
     std::string kmipServerCAFile;
