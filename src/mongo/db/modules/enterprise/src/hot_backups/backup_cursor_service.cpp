@@ -148,7 +148,7 @@ BackupCursorState BackupCursorService::openBackupCursor(OperationContext* opCtx)
 
     uassert(50919,
             "Failpoint hit after opening the backup cursor.",
-            !MONGO_FAIL_POINT(backupCursorErrorAfterOpen));
+            MONGO_unlikely(backupCursorErrorAfterOpen.shouldFail()));
 
     // Ensure the checkpointTimestamp hasn't moved. A subtle case to catch is the first stable
     // checkpoint coming out of initial sync racing with opening the backup cursor.

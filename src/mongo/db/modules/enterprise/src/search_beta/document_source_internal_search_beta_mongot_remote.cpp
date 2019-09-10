@@ -75,7 +75,7 @@ boost::optional<BSONObj> DocumentSourceInternalSearchBetaMongotRemote::_getNext(
  * Gets the next result from mongot using a TaskExecutorCursor.
  */
 DocumentSource::GetNextResult DocumentSourceInternalSearchBetaMongotRemote::doGetNext() {
-    if (MONGO_FAIL_POINT(searchBetaReturnEofImmediately)) {
+    if (MONGO_unlikely(searchBetaReturnEofImmediately.shouldFail())) {
         return DocumentSource::GetNextResult::makeEOF();
     }
 
