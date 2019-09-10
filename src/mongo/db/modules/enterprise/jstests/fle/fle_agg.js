@@ -279,7 +279,7 @@ command = {
     jsonSchema: {},
     isRemoteSchema: false,
 };
-assert.commandFailedWithCode(testDB.runCommand(command), 40573);
+assert.commandFailedWithCode(testDB.runCommand(command), 31011);
 command = {
     aggregate: 1,
     pipeline: [{$listLocalSessions: {}}],

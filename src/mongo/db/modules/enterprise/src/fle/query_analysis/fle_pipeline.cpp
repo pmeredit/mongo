@@ -772,7 +772,7 @@ FLEPipeline::FLEPipeline(std::unique_ptr<Pipeline, PipelineDeleter> pipeline,
         [&](const auto& prevSchema, const auto& subPipelineSchemas, const auto& source) {
             uassert(31011,
                     str::stream() << "Aggregation stage " << source.getSourceName()
-                                  << " is not allowed or supported with encryption.",
+                                  << " is not allowed or supported with automatic encryption.",
                     schemaPropagatorMap.find(typeid(source)) != schemaPropagatorMap.end());
             return schemaPropagatorMap[typeid(source)](prevSchema, subPipelineSchemas, source);
         };

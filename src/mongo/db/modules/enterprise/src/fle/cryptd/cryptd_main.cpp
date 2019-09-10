@@ -7,6 +7,7 @@
 #include "mongo/platform/basic.h"
 
 #include <boost/filesystem.hpp>
+#include <memory>
 
 #include "mongo/base/init.h"
 #include "mongo/base/initializer.h"
@@ -35,6 +36,7 @@
 #include "mongo/util/version.h"
 
 #include "cryptd_options.h"
+#include "cryptd_replication_coordinator.h"
 #include "cryptd_service_entry_point.h"
 #include "cryptd_watchdog.h"
 #include "fle/cryptd/cryptd_options_gen.h"
@@ -168,6 +170,18 @@ ExitCode initAndListen() {
     startIdleWatchdog(serviceContext,
                       mongoCryptDGlobalParams.idleShutdownTimeout,
                       serviceContext->getServiceEntryPoint());
+
+    // Aggregations which include a $changeStream stage must read the current FCV during parsing. If
+    // the FCV is not initialized, this will hit an invariant. We therefore initialize it here.
+    serverGlobalParams.featureCompatibility.setVersion(
+        ServerGlobalParams::FeatureCompatibility::Version::kFullyUpgradedTo44);
+
+    // $changeStream aggregations also check for the presence of a ReplicationCoordinator at parse
+    // time, since change streams can only run on a replica set. If no such co-ordinator is present,
+    // then $changeStream will assume that it is running on a standalone mongoD, and will return a
+    // non-sequitur error to the user.
+    repl::ReplicationCoordinator::set(
+        serviceContext, std::make_unique<repl::CryptDReplicationCoordinatorNoOp>(serviceContext));
 
     serverGlobalParams.serviceExecutor = "synchronous";
 
