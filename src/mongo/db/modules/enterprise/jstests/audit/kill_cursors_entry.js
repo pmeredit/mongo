@@ -2,7 +2,7 @@
 (function() {
 "use strict";
 
-load('src/mongo/db/modules/enterprise/jstests/audit/audit.js');
+load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
 
 const standalone = MongoRunner.runMongodAuditLogger({});
 const audit = standalone.auditSpooler();

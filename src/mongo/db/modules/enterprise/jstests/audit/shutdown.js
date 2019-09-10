@@ -3,7 +3,7 @@
 (function() {
 'use strict';
 
-load('src/mongo/db/modules/enterprise/jstests/audit/audit.js');
+load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
 print("START audit-shutdown.js");
 
 var m = MongoRunner.runMongodAuditLogger({});

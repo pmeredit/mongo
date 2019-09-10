@@ -3,7 +3,7 @@
 (function() {
 'use strict';
 
-load('src/mongo/db/modules/enterprise/jstests/audit/audit.js');
+load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
 print("START audit-authenticate.js");
 
 // Be specific about the mechanism in case the default changes

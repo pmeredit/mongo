@@ -77,7 +77,7 @@ class AuditEventBsonEncoder {
 public:
     static std::string encode(const AuditEvent& event) {
         BSONObj toWrite(event.toBSON());
-        return toWrite.objdata();
+        return std::string(toWrite.objdata(), toWrite.objsize());
     }
 };
 

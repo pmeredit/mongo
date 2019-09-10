@@ -2,7 +2,7 @@
 
 (function() {
 'use strict';
-load('src/mongo/db/modules/enterprise/jstests/audit/audit.js');
+load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
 
 var m = MongoRunner.runMongodAuditLogger({replSet: "foo"});
 var audit = m.auditSpooler();

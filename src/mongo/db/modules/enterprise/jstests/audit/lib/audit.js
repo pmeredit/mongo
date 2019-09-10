@@ -8,8 +8,9 @@
  * about the audit events a server emitted into it.
  */
 class AuditSpooler {
-    constructor(auditFile) {
+    constructor(auditFile, isBSON = false) {
         this._auditLine = 0;
+        this._isBSON = isBSON;
         this.auditFile = auditFile;
     }
 
@@ -17,7 +18,15 @@ class AuditSpooler {
      * Return all lines in the audit log.
      */
     getAllLines() {
-        return cat(this.auditFile).trim().split("\n");
+        if (this._isBSON) {
+            let tmpJSONFile = this.auditFile + "_tmp.json";
+            let exitCode = MongoRunner.runMongoTool(
+                "bsondump", {outFile: tmpJSONFile, bsonFile: this.auditFile});
+            assert.eq(exitCode, 0, "bsondump failed to parse the bson audit file");
+            return cat(tmpJSONFile).trim().split("\n");
+        } else {
+            return cat(this.auditFile).trim().split("\n");
+        }
     }
 
     /**
@@ -219,12 +228,16 @@ class AuditSpooler {
  * Instantiate a variant of MongoRunnner.runMongod(), which provides a custom assertion method
  * for tailing the audit log looking for particular atype entries with matching param objects.
  */
-MongoRunner.runMongodAuditLogger = function(opts) {
+MongoRunner.runMongodAuditLogger = function(opts, isBSON = false) {
     opts = MongoRunner.mongodOptions(opts);
     opts.auditDestination = opts.auditDestination || "file";
     if (opts.auditDestination === "file") {
         opts.auditPath = opts.auditPath || (opts.dbpath + "/audit.log");
-        opts.auditFormat = opts.auditFormat || "JSON";
+        if (isBSON) {
+            opts.auditFormat = opts.auditFormat || "BSON";
+        } else {
+            opts.auditFormat = opts.auditFormat || "JSON";
+        }
     }
     let mongo = MongoRunner.runMongod(opts);
 
@@ -233,7 +246,7 @@ MongoRunner.runMongodAuditLogger = function(opts) {
      * by the spawned mongod.
      */
     mongo.auditSpooler = function() {
-        return new AuditSpooler(mongo.fullOptions.auditPath);
+        return new AuditSpooler(mongo.fullOptions.auditPath, isBSON);
     };
 
     return mongo;

@@ -1,7 +1,7 @@
 // Verify {create,update}{User,Role} is sent to audit log
 
 (function() {
-load('src/mongo/db/modules/enterprise/jstests/audit/audit.js');
+load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
 print("START audit-create-update-user-role.js");
 
 m = MongoRunner.runMongodAuditLogger({setParameter: {auditAuthorizationSuccess: true}});
