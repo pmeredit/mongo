@@ -84,10 +84,18 @@ if (_isWindows()) {
     // FIXME: Enable support for GSSAPI on Windows builders with SERVER-24671.
     // testConfiguration("GSSAPI", true);
 } else {
-    testConfiguration("GSSAPI", false);
+    testConfiguration(
+        "GSSAPI", false, {setParameter: {authenticationMechanisms: "PLAIN,SCRAM-SHA-1"}});
 
     testConfiguration("GSSAPI", true, {
-        setParameter: {saslauthdPath: "fdhflkjsadhf"},
+        setParameter: {
+            saslauthdPath: "fdhflkjsadhf",
+        },
+        env: new LDAPTestConfigGenerator().generateEnvConfig()
+    });
+
+    testConfiguration("GSSAPI", true, {
+        setParameter: {authenticationMechanisms: "SCRAM-SHA-1,MONGODB-X509"},
         env: new LDAPTestConfigGenerator().generateEnvConfig()
     });
 

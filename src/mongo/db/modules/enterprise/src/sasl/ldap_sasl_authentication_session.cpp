@@ -136,14 +136,15 @@ StatusWith<std::tuple<bool, std::string>> LDAPPLAINServerMechanism::stepImpl(
     return std::make_tuple(true, std::string());
 }
 
-
 struct LDAPPLAINServerFactory : MakeServerFactory<LDAPPLAINServerMechanism> {
+    using MakeServerFactory<LDAPPLAINServerMechanism>::MakeServerFactory;
     static constexpr bool isInternal = false;
     bool canMakeMechanismForUser(const User* user) const final {
         auto credentials = user->getCredentials();
         return credentials.isExternal;
     }
-} ldapPLAINServerFactory;
+};
+
 
 /**
  * The PLAIN mechanism will somtimes use the LDAP implementation,
@@ -151,11 +152,21 @@ struct LDAPPLAINServerFactory : MakeServerFactory<LDAPPLAINServerMechanism> {
  *
  * Shim this proxy factory into place to dispatch as appropriate.
  */
-struct PLAINServerFactoryProxy : ServerFactoryBase {
+class PLAINServerFactoryProxy : public ServerFactoryBase {
+public:
     using policy_type = LDAPPLAINServerFactory::policy_type;
     static constexpr bool isInternal = LDAPPLAINServerFactory::isInternal;
 
-    static bool useCyrus(ServiceContext* service = getGlobalServiceContext()) {
+    explicit PLAINServerFactoryProxy(ServiceContext* svcCtx)
+        : ServerFactoryBase(svcCtx), _svcCtx(svcCtx), _cyrus(_svcCtx), _ldap(_svcCtx) {
+        // Supported configuration will be evaluated later during authentication.
+        // This catches incorrect configurations at startup.
+        if (!useCyrus(_svcCtx)) {
+            uassertStatusOK(supportedBindConfiguration());
+        }
+    }
+
+    static bool useCyrus(ServiceContext* service) {
         // This proxy assumes the targets have matching policy/mechanism types.
         static_assert(std::is_same<LDAPPLAINServerFactory::policy_type,
                                    CyrusPlainServerFactory::policy_type>::value,
@@ -183,10 +194,10 @@ struct PLAINServerFactoryProxy : ServerFactoryBase {
     }
 
     bool canMakeMechanismForUser(const User* user) const final {
-        if (useCyrus()) {
-            return cyrusPlainServerFactory.canMakeMechanismForUser(user);
+        if (useCyrus(_svcCtx)) {
+            return _cyrus.canMakeMechanismForUser(user);
         } else {
-            return ldapPLAINServerFactory.canMakeMechanismForUser(user);
+            return _ldap.canMakeMechanismForUser(user);
         }
     }
 
@@ -195,13 +206,19 @@ struct PLAINServerFactoryProxy : ServerFactoryBase {
     }
 
     ServerMechanismBase* createImpl(std::string authenticationDatabase) final {
-        if (useCyrus()) {
-            return cyrusPlainServerFactory.createImpl(std::move(authenticationDatabase));
+        if (useCyrus(_svcCtx)) {
+            return _cyrus.createImpl(std::move(authenticationDatabase));
         } else {
-            return ldapPLAINServerFactory.createImpl(std::move(authenticationDatabase));
+            return _ldap.createImpl(std::move(authenticationDatabase));
         }
     }
+
+private:
+    ServiceContext* _svcCtx = nullptr;
+    CyrusPlainServerFactory _cyrus;
+    LDAPPLAINServerFactory _ldap;
 };
+
 
 namespace {
 
@@ -210,11 +227,6 @@ ServiceContext::ConstructorActionRegisterer ldapRegisterer{
     {"CreateSASLServerMechanismRegistry", "SetLDAPManagerImpl"},
     [](ServiceContext* service) {
         auto& registry = SASLServerMechanismRegistry::get(service);
-        if (!PLAINServerFactoryProxy::useCyrus(service)) {
-            // Supported configuration will later be evaluated at runtime.
-            // This catches incorrect configurations at startup.
-            uassertStatusOK(supportedBindConfiguration());
-        }
         registry.registerFactory<PLAINServerFactoryProxy>();
     }};
 

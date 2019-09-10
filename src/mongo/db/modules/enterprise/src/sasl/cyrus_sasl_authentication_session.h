@@ -45,13 +45,13 @@ extern template struct CyrusSaslMechShim<GSSAPIPolicy>;
 using CyrusPLAINServerMechanism = CyrusSaslMechShim<PLAINPolicy>;
 
 struct CyrusPlainServerFactory : MakeServerFactory<CyrusPLAINServerMechanism> {
+    using MakeServerFactory<CyrusPLAINServerMechanism>::MakeServerFactory;
     static constexpr bool isInternal = false;
     bool canMakeMechanismForUser(const User* user) const final {
         auto credentials = user->getCredentials();
         return credentials.isExternal;
     }
 };
-extern CyrusPlainServerFactory cyrusPlainServerFactory;
 
 struct CyrusGSSAPIServerMechanism : public CyrusSaslMechShim<GSSAPIPolicy> {
     explicit CyrusGSSAPIServerMechanism(std::string authenticationDatabase)
@@ -68,6 +68,7 @@ struct CyrusGSSAPIServerMechanism : public CyrusSaslMechShim<GSSAPIPolicy> {
 };
 
 struct CyrusGSSAPIServerFactory : MakeServerFactory<CyrusGSSAPIServerMechanism> {
+    using MakeServerFactory<CyrusGSSAPIServerMechanism>::MakeServerFactory;
     static constexpr bool isInternal = false;
     bool canMakeMechanismForUser(const User* user) const final {
         auto credentials = user->getCredentials();

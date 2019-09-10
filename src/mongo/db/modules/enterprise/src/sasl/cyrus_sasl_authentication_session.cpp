@@ -299,8 +299,6 @@ int saslServerGlobalLog(void* context, int level, const char* message) throw() {
     return SASL_OK;
 }
 
-CyrusPlainServerFactory cyrusPlainServerFactory;
-
 namespace {
 
 // This group is used to ensure that all the plugins are registered before we attempt
@@ -337,9 +335,9 @@ ServiceContext::ConstructorActionRegisterer cyrusSaslServerMechanismRegisterMech
             auto mech = factory.create("test");
         }
 
-        // The PLAIN variant of Cyrus is not registered direcly.
-        // Rather, it is dispatched to by PLAINServerFactoryProxy in
-        // ldap_sasl_authentication_session.cpp
+        // The PLAIN variant of Cyrus is registered in ldap_sasl_authentication_session.cpp
+        // if the LDAP backed PLAIN mechanism is disabled.
+        CyrusPlainServerFactory cyrusPlainServerFactory;
         cyrusPlainServerFactory.create("test");
     }};
 }  // namespace
