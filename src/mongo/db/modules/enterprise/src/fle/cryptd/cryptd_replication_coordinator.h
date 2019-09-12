@@ -266,6 +266,8 @@ public:
 
     void attemptToAdvanceStableTimestamp() final;
 
+    void finishRecoveryIfEligible(OperationContext* opCtx) final;
+
 private:
     ServiceContext* const _service;
 };

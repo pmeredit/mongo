@@ -472,5 +472,9 @@ void CryptDReplicationCoordinatorNoOp::attemptToAdvanceStableTimestamp() {
     MONGO_UNREACHABLE;
 }
 
+void CryptDReplicationCoordinatorNoOp::finishRecoveryIfEligible(OperationContext* opCtx) {
+    MONGO_UNREACHABLE;
+}
+
 }  // namespace repl
 }  // namespace mongo
