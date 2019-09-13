@@ -190,6 +190,15 @@ public:
     void visit(ExpressionInternalJs*) {
         _tracker.enterEvaluateOrCompare();
     }
+    void visit(ExpressionInternalFindElemMatch*) {
+        _tracker.enterEvaluateOrCompare();
+    }
+    void visit(ExpressionInternalFindPositional*) {
+        _tracker.enterEvaluateOrCompare();
+    }
+    void visit(ExpressionInternalFindSlice*) {
+        _tracker.enterEvaluateOrCompare();
+    }
     void visit(ExpressionIsNumber*) {
         _tracker.enterEvaluateOrCompare();
     }
@@ -535,6 +544,9 @@ public:
     void visit(ExpressionIndexOfCP*) {}
     void visit(ExpressionInternalJsEmit*) {}
     void visit(ExpressionInternalJs*) {}
+    void visit(ExpressionInternalFindElemMatch*) {}
+    void visit(ExpressionInternalFindPositional*) {}
+    void visit(ExpressionInternalFindSlice*) {}
     void visit(ExpressionIsNumber*) {}
     void visit(ExpressionLet*) {}
     void visit(ExpressionLn*) {}
@@ -744,6 +756,15 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(ExpressionInternalJs*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(ExpressionInternalFindElemMatch*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(ExpressionInternalFindPositional*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(ExpressionInternalFindSlice*) {
         _tracker.exitEvaluateOrCompare();
     }
     void visit(ExpressionIsNumber*) {

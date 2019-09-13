@@ -634,6 +634,15 @@ private:
     void visit(ExpressionInternalJs*) final {
         ensureNotEncryptedEnterEval("an internal JS expression", subtreeStack);
     }
+    void visit(ExpressionInternalFindElemMatch*) {
+        ensureNotEncryptedEnterEval("an internal find $elemMatch expression", subtreeStack);
+    }
+    void visit(ExpressionInternalFindPositional*) {
+        ensureNotEncryptedEnterEval("an internal find positional expression", subtreeStack);
+    }
+    void visit(ExpressionInternalFindSlice*) {
+        ensureNotEncryptedEnterEval("an internal find $slice expression", subtreeStack);
+    }
     void visit(ExpressionIsNumber*) final {
         ensureNotEncryptedEnterEval("a numeric-type checker", subtreeStack);
     }
@@ -943,6 +952,9 @@ private:
     void visit(ExpressionIndexOfCP*) final {}
     void visit(ExpressionInternalJsEmit*) final {}
     void visit(ExpressionInternalJs*) final {}
+    void visit(ExpressionInternalFindElemMatch*) final {}
+    void visit(ExpressionInternalFindPositional*) final {}
+    void visit(ExpressionInternalFindSlice*) final {}
     void visit(ExpressionIsNumber*) final {}
     void visit(ExpressionLet* let) final {
         // The final child of a let Expression is part of the parent Subtree.
@@ -1189,6 +1201,15 @@ private:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionInternalJs*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionInternalFindElemMatch*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionInternalFindPositional*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionInternalFindSlice*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionLet*) final {}
