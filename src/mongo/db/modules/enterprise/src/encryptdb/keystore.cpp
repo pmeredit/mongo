@@ -12,6 +12,7 @@
 #include <memory>
 
 #include "mongo/base/string_data.h"
+#include "mongo/platform/mutex.h"
 #include "mongo/util/log.h"
 #include "mongo/util/string_map.h"
 #include "symmetric_crypto.h"
@@ -250,7 +251,8 @@ private:
     // all the databases in the current rollover set.
     // *Current contains the most recent keys for a given name and is suitable for new writes.
     // *Oldest contains the original keys for a given name and are suitable for reads from v0 pages.
-    stdx::mutex _dbNameToKeyIdCurrentMutex;
+    Mutex _dbNameToKeyIdCurrentMutex =
+        MONGO_MAKE_LATCH("KeystoreImplV1::_dbNameToKeyIdCurrentMutex");
     StringMap<SymmetricKeyId::id_type> _dbNameToKeyIdCurrent;
 
     const StringMap<SymmetricKeyId::id_type> _dbNameToKeyIdOldest;
@@ -300,7 +302,7 @@ public:
         const auto& keyId = key->getKeyId();
         bool inserted;
         {
-            stdx::lock_guard<stdx::mutex> lk(_parent->_dbNameToKeyIdCurrentMutex);
+            stdx::lock_guard<Latch> lk(_parent->_dbNameToKeyIdCurrentMutex);
             std::tie(std::ignore, inserted) =
                 _parent->_dbNameToKeyIdCurrent.insert({keyId.name(), keyId.id().get()});
         }
@@ -349,7 +351,7 @@ private:
                 }
             /* fallthrough */
             case FindMode::kCurrent: {
-                stdx::lock_guard<stdx::mutex> lk(_parent->_dbNameToKeyIdCurrentMutex);
+                stdx::lock_guard<Latch> lk(_parent->_dbNameToKeyIdCurrentMutex);
                 auto it = _parent->_dbNameToKeyIdCurrent.find(keyId.name());
                 if (it == _parent->_dbNameToKeyIdCurrent.end()) {
                     return {boost::none};
@@ -440,7 +442,7 @@ std::unique_ptr<Keystore> KeystoreImplV1::makeKeystore(const boost::filesystem::
 }
 
 void KeystoreImplV1::rollOverKeys() {
-    stdx::lock_guard<stdx::mutex> lk(_dbNameToKeyIdCurrentMutex);
+    stdx::lock_guard<Latch> lk(_dbNameToKeyIdCurrentMutex);
 
     _rolloverId++;
     _dbNameToKeyIdCurrent.clear();

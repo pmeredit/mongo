@@ -177,7 +177,8 @@ private:
     /**
      * Metadata file containing schema version and whether they keystore is dirty.
      */
-    mutable stdx::mutex _keystoreMetadataMutex;
+    mutable Mutex _keystoreMetadataMutex =
+        MONGO_MAKE_LATCH("EncryptionKeyManager::_keystoreMetadataMutex");
     KeystoreMetadataFile _keystoreMetadata;
 
     /**

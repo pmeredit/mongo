@@ -14,7 +14,7 @@
 #include <netinet/in.h>
 #include <sasl/sasl.h>
 
-#include "mongo/stdx/mutex.h"
+#include "mongo/platform/mutex.h"
 #include "mongo/util/log.h"
 #include "mongo/util/net/sockaddr.h"
 #include "mongo/util/str.h"
@@ -76,7 +76,7 @@ public:
  * state, like those which create new sessions, are not threadsafe. Therefore, we must
  * wrap session creation with a mutex.
  */
-static stdx::mutex libldapGlobalMutex;
+static Mutex libldapGlobalMutex = MONGO_MAKE_LATCH();
 
 /**
  * This C-like callback function is used to acquire SASL authentication parameters.
@@ -362,7 +362,7 @@ Status OpenLDAPConnection::connect() {
     int err;
     {
 
-        stdx::lock_guard<stdx::mutex> lock(libldapGlobalMutex);
+        stdx::lock_guard<Latch> lock(libldapGlobalMutex);
         err = ldap_initialize(&_pimpl->getSession(), hostURIs.c_str());
     }
 

@@ -14,8 +14,8 @@
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/client.h"
 #include "mongo/db/operation_context.h"
-#include "mongo/stdx/condition_variable.h"
-#include "mongo/stdx/mutex.h"
+#include "mongo/platform/condition_variable.h"
+#include "mongo/platform/mutex.h"
 #include "mongo/util/exit.h"
 #include "mongo/util/log.h"
 #include "mongo/util/time_support.h"
@@ -26,7 +26,7 @@ namespace mongo {
 namespace {
 AtomicWord<int> ldapUserCacheInvalidationInterval(
     LDAPUserCacheInvalidationIntervalParameter::kDataDefault);  // seconds
-stdx::mutex invalidationIntervalMutex;
+Mutex invalidationIntervalMutex = MONGO_MAKE_LATCH();
 stdx::condition_variable invalidationIntervalChanged;
 }  // namespace
 
@@ -49,7 +49,7 @@ Status LDAPUserCacheInvalidationIntervalParameter::setFromString(const std::stri
                 str::stream() << name() << " must be between 1 and 86400 (24 hours)"};
     }
 
-    stdx::unique_lock<stdx::mutex> lock(invalidationIntervalMutex);
+    stdx::unique_lock<Latch> lock(invalidationIntervalMutex);
     ldapUserCacheInvalidationInterval.store(value);
     invalidationIntervalChanged.notify_all();
 
@@ -66,7 +66,7 @@ void LDAPUserCacheInvalidator::run() {
         Date_t start = Date_t::now();
         Date_t wakeupTime;
         do {
-            stdx::unique_lock<stdx::mutex> lock(invalidationIntervalMutex);
+            stdx::unique_lock<Latch> lock(invalidationIntervalMutex);
             wakeupTime = start + Seconds(ldapUserCacheInvalidationInterval.load());
             invalidationIntervalChanged.wait_until(lock, wakeupTime.toSystemTimePoint());
         } while (wakeupTime > Date_t::now());

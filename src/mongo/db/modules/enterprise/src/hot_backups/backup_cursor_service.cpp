@@ -76,7 +76,7 @@ std::vector<std::string> deduplicateFiles(const std::vector<std::string>& newFil
 }  // namespace
 
 void BackupCursorService::fsyncLock(OperationContext* opCtx) {
-    stdx::lock_guard<stdx::mutex> lk(_mutex);
+    stdx::lock_guard<Latch> lk(_mutex);
     uassert(50885, "The node is already fsyncLocked.", _state != kFsyncLocked);
     uassert(50884,
             "The existing backup cursor must be closed before fsyncLock can succeed.",
@@ -86,7 +86,7 @@ void BackupCursorService::fsyncLock(OperationContext* opCtx) {
 }
 
 void BackupCursorService::fsyncUnlock(OperationContext* opCtx) {
-    stdx::lock_guard<stdx::mutex> lk(_mutex);
+    stdx::lock_guard<Latch> lk(_mutex);
     uassert(50888, "The node is not fsyncLocked.", _state == kFsyncLocked);
     _storageEngine->endBackup(opCtx);
     _state = kInactive;
@@ -121,7 +121,7 @@ BackupCursorState BackupCursorService::openBackupCursor(OperationContext* opCtx)
         storageInterface->waitForAllEarlierOplogWritesToBeVisible(opCtx);
     }
 
-    stdx::lock_guard<stdx::mutex> lk(_mutex);
+    stdx::lock_guard<Latch> lk(_mutex);
     uassert(50887, "The node is currently fsyncLocked.", _state != kFsyncLocked);
     uassert(50886,
             "The existing backup cursor must be closed before $backupCursor can succeed.",
@@ -208,14 +208,14 @@ BackupCursorState BackupCursorService::openBackupCursor(OperationContext* opCtx)
 }
 
 void BackupCursorService::closeBackupCursor(OperationContext* opCtx, const UUID& backupId) {
-    stdx::lock_guard<stdx::mutex> lk(_mutex);
+    stdx::lock_guard<Latch> lk(_mutex);
     _closeBackupCursor(opCtx, backupId, lk);
 }
 
 BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext* opCtx,
                                                                 const UUID& backupId,
                                                                 const Timestamp& extendTo) {
-    stdx::lock_guard<stdx::mutex> lk(_mutex);
+    stdx::lock_guard<Latch> lk(_mutex);
     uassert(51011,
             str::stream() << "Cannot extend backup cursor, backupId was not found. BackupId: "
                           << backupId,
@@ -262,7 +262,7 @@ BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext
 }
 
 bool BackupCursorService::isBackupCursorOpen() const {
-    stdx::lock_guard<stdx::mutex> lk(_mutex);
+    stdx::lock_guard<Latch> lk(_mutex);
     return _state == State::kBackupCursorOpened;
 }
 

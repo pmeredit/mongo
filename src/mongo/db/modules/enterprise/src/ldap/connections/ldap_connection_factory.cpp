@@ -14,7 +14,7 @@
 #include "mongo/db/commands/server_status.h"
 #include "mongo/executor/connection_pool.h"
 #include "mongo/executor/connection_pool_stats.h"
-#include "mongo/stdx/mutex.h"
+#include "mongo/platform/mutex.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/util/alarm.h"
 #include "mongo/util/alarm_runner_background_thread.h"
@@ -44,12 +44,12 @@ using namespace executor;
 class LDAPHostTimingData {
 public:
     void markFailed() {
-        stdx::lock_guard<stdx::mutex> lk(_mutex);
+        stdx::lock_guard<Latch> lk(_mutex);
         _failed = true;
     }
 
     void updateLatency(Milliseconds millis) {
-        stdx::lock_guard<stdx::mutex> lk(_mutex);
+        stdx::lock_guard<Latch> lk(_mutex);
         if (_failed) {
             _latency = millis;
             _failed = false;
@@ -63,7 +63,7 @@ public:
     }
 
     Milliseconds getLatency() const {
-        stdx::lock_guard<stdx::mutex> lk(_mutex);
+        stdx::lock_guard<Latch> lk(_mutex);
         return _failed ? Milliseconds::max() : _latency;
     }
 
@@ -72,14 +72,14 @@ public:
     }
 
 private:
-    mutable stdx::mutex _mutex;
+    mutable Mutex _mutex = MONGO_MAKE_LATCH("LDAPHostTimingData::_mutex");
     Milliseconds _latency{0};
     bool _failed = true;
     AtomicWord<int64_t> _uses{0};
 };
 
 struct LDAPPoolTimingData {
-    stdx::mutex mutex;
+    Mutex mutex = MONGO_MAKE_LATCH("LDAPPoolTimingData::mutex");
     stdx::unordered_map<HostAndPort, std::shared_ptr<LDAPHostTimingData>> timingData;
 };
 
@@ -562,7 +562,7 @@ std::shared_ptr<executor::ConnectionPool::ConnectionInterface> LDAPTypeFactory::
                                       : LDAPTransportSecurityType::kNone);
 
     auto timingData = [&] {
-        stdx::lock_guard<stdx::mutex> lk(_timingData->mutex);
+        stdx::lock_guard<Latch> lk(_timingData->mutex);
         auto it = _timingData->timingData.find(host);
         if (it != _timingData->timingData.end()) {
             return it->second;
@@ -622,7 +622,7 @@ BSONObj LDAPConnectionFactoryServerStatus::generateSection(OperationContext* opC
     _factory->_pool->appendConnectionStats(&connPoolStats);
     const auto timingData = [&] {
         const auto& timingData = _factory->_typeFactory->getTimingData();
-        stdx::lock_guard<stdx::mutex> lk(timingData->mutex);
+        stdx::lock_guard<Latch> lk(timingData->mutex);
         return timingData->timingData;
     }();
 
@@ -704,7 +704,7 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
 
     if (ldapConnectionPoolUseLatencyForHostPriority) {
         const auto& timingData = _typeFactory->getTimingData();
-        stdx::lock_guard<stdx::mutex> lk(timingData->mutex);
+        stdx::lock_guard<Latch> lk(timingData->mutex);
         const auto getLatencyFor = [&](const HostAndPort& hp) {
             auto it = timingData->timingData.find(hp);
             return it == timingData->timingData.end() ? Milliseconds::max()

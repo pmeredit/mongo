@@ -8,6 +8,7 @@
 
 #include "mongo/base/init.h"
 #include "mongo/db/service_context.h"
+#include "mongo/platform/mutex.h"
 
 #include "ldap/ldap_parameters_gen.h"
 #include "ldap_manager_impl.h"

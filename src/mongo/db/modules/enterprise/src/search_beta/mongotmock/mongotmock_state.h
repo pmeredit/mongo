@@ -10,7 +10,7 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/cursor_id.h"
 #include "mongo/db/service_context.h"
-#include "mongo/stdx/mutex.h"
+#include "mongo/platform/mutex.h"
 
 namespace mongo {
 namespace mongotmock {
@@ -118,7 +118,7 @@ private:
     CursorMap _cursorStates;
 
     // Protects access to all members. Should be acquired using a MongotMockStateGuard.
-    stdx::mutex _lock;
+    Mutex _lock = MONGO_MAKE_LATCH("MongotMockState::_lock");
 
     friend class MongotMockStateGuard;
 };
@@ -132,7 +132,7 @@ public:
     }
 
 private:
-    stdx::lock_guard<stdx::mutex> lk;
+    stdx::lock_guard<Latch> lk;
     MongotMockState* state;
 };
 

@@ -5,7 +5,7 @@
 #pragma once
 
 #include "mongo/base/secure_allocator.h"
-#include "mongo/stdx/mutex.h"
+#include "mongo/platform/mutex.h"
 
 #include "ldap_manager.h"
 #include "ldap_query_config.h"
@@ -82,7 +82,7 @@ private:
     /**
      * Protects access to the _queryConfig and _userToDN member variables.
      */
-    mutable stdx::mutex _memberAccessMutex;
+    mutable Mutex _memberAccessMutex = MONGO_MAKE_LATCH("LDAPManagerImpl::_memberAccessMutex");
 
     /**
      * Template containing a query, in which authenticated user's DN will replace

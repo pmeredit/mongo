@@ -13,6 +13,7 @@
 #include "mongo/db/auth/role_name.h"
 #include "mongo/db/auth/user_name.h"
 #include "mongo/db/operation_context.h"
+#include "mongo/platform/mutex.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
 
@@ -34,7 +35,7 @@ LDAPManagerImpl::~LDAPManagerImpl() = default;
 Status LDAPManagerImpl::verifyLDAPCredentials(const std::string& user, const SecureString& pwd) {
     std::shared_ptr<InternalToLDAPUserNameMapper> userToDN;
     {
-        stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
+        stdx::lock_guard<Latch> lock(_memberAccessMutex);
         userToDN = _userToDN;
     }
     auto swUser = userToDN->transform(_runner.get(), user);
@@ -49,7 +50,7 @@ Status LDAPManagerImpl::verifyLDAPCredentials(const std::string& user, const Sec
 StatusWith<std::vector<RoleName>> LDAPManagerImpl::getUserRoles(const UserName& userName) {
     std::shared_ptr<InternalToLDAPUserNameMapper> userToDN;
     {
-        stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
+        stdx::lock_guard<Latch> lock(_memberAccessMutex);
         userToDN = _userToDN;
     }
     auto swUser = userToDN->transform(_runner.get(), userName.getUser());
@@ -59,7 +60,7 @@ StatusWith<std::vector<RoleName>> LDAPManagerImpl::getUserRoles(const UserName& 
 
     StatusWith<LDAPQuery> swQuery(ErrorCodes::InternalError, "Not initialized");
     {
-        stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
+        stdx::lock_guard<Latch> lock(_memberAccessMutex);
         swQuery = LDAPQuery::instantiateQuery(_queryConfig, swUser.getValue(), userName.getUser());
     }
     if (!swQuery.isOK()) {
@@ -114,22 +115,22 @@ void LDAPManagerImpl::setBindPasswords(std::vector<SecureString> pwds) {
 }
 
 std::string LDAPManagerImpl::getUserToDNMapping() const {
-    stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
+    stdx::lock_guard<Latch> lock(_memberAccessMutex);
     return _userToDN->toString();
 }
 
 void LDAPManagerImpl::setUserNameMapper(InternalToLDAPUserNameMapper nameMapper) {
-    stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
+    stdx::lock_guard<Latch> lock(_memberAccessMutex);
     _userToDN = std::make_shared<InternalToLDAPUserNameMapper>(std::move(nameMapper));
 }
 
 std::string LDAPManagerImpl::getQueryTemplate() const {
-    stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
+    stdx::lock_guard<Latch> lock(_memberAccessMutex);
     return _queryConfig.toString();
 }
 
 void LDAPManagerImpl::setQueryConfig(UserNameSubstitutionLDAPQueryConfig queryConfig) {
-    stdx::lock_guard<stdx::mutex> lock(_memberAccessMutex);
+    stdx::lock_guard<Latch> lock(_memberAccessMutex);
     _queryConfig = std::move(queryConfig);
 }
 

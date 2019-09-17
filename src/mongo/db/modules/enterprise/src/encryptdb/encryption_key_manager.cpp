@@ -198,7 +198,7 @@ StatusWith<std::vector<std::string>> EncryptionKeyManager::beginNonBlockingBacku
     auto dataStoreSession = backupSession->dataStoreSession();
     auto cursor = dataStoreSession->beginBackup();
 
-    stdx::lock_guard<stdx::mutex> lk(_keystoreMetadataMutex);
+    stdx::lock_guard<Latch> lk(_keystoreMetadataMutex);
     _keystoreMetadata.setDirty(true);
     auto status =
         _keystoreMetadata.store(_metadataPath(PathMode::kValid), _masterKey, *_encryptionParams);
@@ -233,7 +233,7 @@ Status EncryptionKeyManager::endNonBlockingBackup() {
         _backupSession.reset();
     }
 
-    stdx::lock_guard<stdx::mutex> lk(_keystoreMetadataMutex);
+    stdx::lock_guard<Latch> lk(_keystoreMetadataMutex);
     _keystoreMetadata.setDirty(false);
     auto status =
         _keystoreMetadata.store(_metadataPath(PathMode::kValid), _masterKey, *_encryptionParams);
@@ -489,7 +489,7 @@ Status EncryptionKeyManager::_initLocalKeystore() {
         }
     }
 
-    stdx::lock_guard<stdx::mutex> lk(_keystoreMetadataMutex);
+    stdx::lock_guard<Latch> lk(_keystoreMetadataMutex);
     _keystoreMetadata = std::move(swMetadata.getValue());
 
     // Open the local WT key store, create it if it doesn't exist.
@@ -582,7 +582,7 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) try {
     }
     _rotMasterKey = std::move(swRotMasterKey.getValue());
 
-    stdx::lock_guard<stdx::mutex> lk(_keystoreMetadataMutex);
+    stdx::lock_guard<Latch> lk(_keystoreMetadataMutex);
     auto status = _keystoreMetadata.store(
         _metadataPath(PathMode::kInitializing), _rotMasterKey, *_encryptionParams);
     if (!status.isOK()) {
@@ -658,7 +658,7 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) try {
 }
 
 std::int32_t EncryptionKeyManager::getKeystoreVersion() const {
-    stdx::lock_guard<stdx::mutex> lk(_keystoreMetadataMutex);
+    stdx::lock_guard<Latch> lk(_keystoreMetadataMutex);
     return _keystoreMetadata.getVersion();
 }
 

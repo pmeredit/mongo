@@ -34,7 +34,7 @@
 
 #include "mongo/db/pipeline/document.h"
 #include "mongo/db/storage/backup_cursor_hooks.h"
-#include "mongo/stdx/mutex.h"
+#include "mongo/platform/mutex.h"
 #include "mongo/util/concurrency/with_lock.h"
 #include "mongo/util/uuid.h"
 
@@ -118,7 +118,7 @@ private:
     enum State { kInactive, kFsyncLocked, kBackupCursorOpened };
 
     // This mutex serializes all access into this class.
-    mutable stdx::mutex _mutex;
+    mutable Mutex _mutex = MONGO_MAKE_LATCH("BackupCursorService::_mutex");
     State _state = kInactive;
     // When state is `kBackupCursorOpened`, _activeBackupId contains an UUID which uniquely
     // identifies the active backup cursor. Otherwise it is boost::none.
