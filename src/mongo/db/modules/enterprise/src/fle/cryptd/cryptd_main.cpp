@@ -15,6 +15,7 @@
 #include "mongo/db/client.h"
 #include "mongo/db/initialize_server_global_state.h"
 #include "mongo/db/log_process_details.h"
+#include "mongo/db/repl/replication_coordinator_noop.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/storage/storage_engine_lock_file.h"
 #include "mongo/db/storage/storage_options.h"
@@ -36,7 +37,6 @@
 #include "mongo/util/version.h"
 
 #include "cryptd_options.h"
-#include "cryptd_replication_coordinator.h"
 #include "cryptd_service_entry_point.h"
 #include "cryptd_watchdog.h"
 #include "fle/cryptd/cryptd_options_gen.h"
@@ -181,7 +181,7 @@ ExitCode initAndListen() {
     // then $changeStream will assume that it is running on a standalone mongoD, and will return a
     // non-sequitur error to the user.
     repl::ReplicationCoordinator::set(
-        serviceContext, std::make_unique<repl::CryptDReplicationCoordinatorNoOp>(serviceContext));
+        serviceContext, std::make_unique<repl::ReplicationCoordinatorNoOp>(serviceContext));
 
     serverGlobalParams.serviceExecutor = "synchronous";
 
