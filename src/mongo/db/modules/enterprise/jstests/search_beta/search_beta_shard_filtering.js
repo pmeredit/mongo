@@ -53,7 +53,7 @@ const shard1Conn = st.rs1.getPrimary();
 assert.commandWorked(shard0Conn.getDB(dbName)[collName].insert(
     {_id: 15, shardKey: 100, x: "_should be filtered out"}));
 
-// Insert a document into shard 0 which doesn't have a shard key. This document should just be
+// Insert a document into shard 0 which doesn't have a shard key. This document should not be
 // skipped when mongot returns a result indicating that it matched the text query. The server
 // should not crash and the operation should not fail.
 assert.commandWorked(shard0Conn.getDB(dbName)[collName].insert({_id: 16}));
@@ -69,9 +69,9 @@ const mongot0ResponseBatch = [
     // 0.
     {_id: 15, $searchScore: 102},
 
-    // The document with _id 16 has no shard key. (Perhaps it was inserted manually). Although
-    // mongot reports this document as matching the query, mongod should filter it out when
-    // doing shard filtering.
+    // The document with _id 16 has no shard key. (Perhaps it was inserted manually). This should
+    // not be filtered out, because documents with missing shard key values will be placed on the
+    // chunk that they would be placed at if there were null values for the shard key fields.
     {_id: 16, $searchScore: 101},
 
     // The remaining documents rightfully belong to shard 0.
@@ -102,6 +102,7 @@ s1Mongot.setMockResponses(history1, NumberLong(456));
 
 const expectedDocs = [
     {_id: 11, shardKey: 100, x: "brown", y: "ipsum"},
+    {_id: 16},
     {_id: 3, shardKey: 0, x: "brown", y: "ipsum"},
     {_id: 13, shardKey: 100, x: "brown", y: "ipsum"},
     {_id: 12, shardKey: 100, x: "cow", y: "lorem ipsum"},
