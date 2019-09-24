@@ -13,6 +13,7 @@ feature_dirs = [
     "search_beta",
     "encryptdb",
     "hot_backups",
+    "kerberos",
     "inmemory",
     "ldap",
     "mongohouse",
@@ -343,6 +344,28 @@ if "ldap" in env['MONGO_ENTERPRISE_FEATURES']:
     if not hygienic:
         env.Install("#/", mongoldap)
 
+if "kerberos" in env['MONGO_ENTERPRISE_FEATURES']:
+    mongokerberos = env.Program(
+        target="mongokerberos",
+        source=[
+            "src/kerberos/kerberos_tool.cpp",
+        ],
+        AIB_COMPONENT="mongokerberos",
+        AIB_COMPONENTS_EXTRA=["dist", "tools"],
+        LIBDEPS=[
+            "$BUILD_DIR/mongo/base",
+            "$BUILD_DIR/mongo/base/secure_allocator",
+            "$BUILD_DIR/mongo/util/options_parser/options_parser_init",
+            "$BUILD_DIR/mongo/util/signal_handlers",
+            "$BUILD_DIR/mongo/util/version_impl",
+            "src/kerberos/kerberos_tool_options",
+        ]
+    )
+
+    env.Alias("all", mongokerberos)
+
+    if not hygienic:
+        env.Install("#/", mongokerberos)
 
 if "fle" in env['MONGO_ENTERPRISE_FEATURES']:
     mongocryptd = env.Program(
@@ -431,7 +454,7 @@ if hygienic:
             vsinstall_path = subprocess.check_output([os.path.join(programfilesx86, "Microsoft Visual Studio", "Installer", "vswhere.exe"), "-version", "[15.0,16.0)", "-property", "installationPath", "-nologo"]).strip()
             vsruntime_key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x64")
             vslib_version, vslib_version_type = winreg.QueryValueEx(vsruntime_key, "Version")
-            
+
             # Get library version from registry and fallback to directory search if not found as expected on disk
             redist_root = os.path.join(vsinstall_path, b"VC", b"Redist", b"MSVC")
             redist_path = os.path.join(redist_root, re.match("v(\d+\.\d+\.\d+)\.\d+", vslib_version).group(1).encode('utf-8'))
@@ -443,7 +466,7 @@ if hygienic:
                     if os.path.isdir(candidate):
                         redist_path = candidate
                         break
-                    
+
             redist_file_name = os.path.join(redist_path.decode('utf-8'), "vcredist_x64.exe")
             env.AutoInstall(
                 target='$PREFIX_BINDIR',

@@ -29,6 +29,7 @@ def configure(conf, env):
         "mongohouse",
         "queryable",
         "sasl",
+        "kerberos",
         "snmp",
     ]
 
@@ -139,6 +140,8 @@ def configure(conf, env):
         env.Append(DIST_BINARIES=[ "enterprise/mongoldap" ])
     if 'fle' in env['MONGO_ENTERPRISE_FEATURES']:
         env.Append(DIST_BINARIES=[ "enterprise/mongocryptd" ])
+    if 'kerberos' in env['MONGO_ENTERPRISE_FEATURES']:
+        env.Append(DIST_BINARIES=[ "enterprise/mongokerberos" ])
 
     def addFileInExtraPath(file_name):
         # We look for libraries in the peer 'bin' directory of each path in the libpath.

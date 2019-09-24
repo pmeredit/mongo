@@ -1,0 +1,55 @@
+# Copyright (C) 2019-present MongoDB, Inc.
+
+global:
+    cpp_namespace: "mongo"
+    cpp_includes: "kerberos/kerberos_tool_options.h"
+    configs:
+        source: [ cli, yaml ]
+
+configs:
+    help:
+        description: 'Produce help message'
+        arg_vartype: Switch
+    verbose:
+        description: 'Produce more detailed log messages'
+        arg_vartype: Switch
+        cpp_varname: 'globalKerberosToolOptions->verbose'
+
+    host:
+        section: 'Client Options'
+        description: 'mongodb server to connect to'
+        default: 'localhost'
+        arg_vartype: String
+    username:
+        section: 'Client Options'
+        description: 'username for authentication'
+        arg_vartype: String
+        single_name: u
+    gssapiServiceName:
+        section: 'Client Options'
+        description: 'Service name to use when authenticating using GSSAPI/Kerberos'
+        default: 'mongodb'
+        arg_vartype: String
+    "setParameter.saslHostName":
+        section: 'Client Options'
+        description: 'Remote host name to use for purpose of GSSAPI/Kerberos authentication'
+        short_name: gssapiHostName
+        arg_vartype: String
+    "setParameter":
+        section: 'Client Options'
+        description: 'Set a configurable parameter'
+        short_name: setParameter
+        arg_vartype: String
+
+    client:
+        section: 'Commands'
+        description: 'validate a client connection'
+        source: cli
+        arg_vartype: Switch
+        conflicts: server
+    server:
+        section: 'Commands'
+        description: 'validate a server setup'
+        source: cli
+        arg_vartype: Switch
+        conflicts: client
