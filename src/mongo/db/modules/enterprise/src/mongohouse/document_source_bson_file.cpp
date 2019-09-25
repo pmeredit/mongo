@@ -147,7 +147,7 @@ DocumentSource::GetNextResult DocumentSourceBSONFile::doGetNext() {
             static_cast<off_t>(_fileSize) - _offset >= obj.objsize());
 
     _offset += obj.objsize();
-    return GetNextResult(Document(obj));
+    return GetNextResult(Document(obj.getOwned()));
 }
 
 }  // namespace mongo

@@ -72,7 +72,7 @@ DocumentSource::GetNextResult DocumentSourceStdin::doGetNext() {
     invariant(totalRead == size);
 
     BSONObj obj(buf);
-    return GetNextResult(Document(obj));
+    return GetNextResult(Document(obj.getOwned()));
 }
 
 const char* DocumentSourceStdin::getSourceName() const {

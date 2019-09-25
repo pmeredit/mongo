@@ -122,8 +122,10 @@ int mqlrunMain(const char* pipelineStr,
     auto opCtx = client->makeOperationContext();
     boost::intrusive_ptr<ExpressionContext> expCtx;
     expCtx.reset(new ExpressionContext(opCtx.get(), nullptr));
-    expCtx->allowDiskUse = true;  // For large sorts.
+    expCtx->allowDiskUse = false;
     if (tempDir) {
+        // Spill to disk if needed for a large sort.
+        expCtx->allowDiskUse = true;
         expCtx->tempDir = tempDir;
     }
 
