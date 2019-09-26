@@ -157,7 +157,7 @@ int mqlrunMain(const char* pipelineStr,
 
     NamespaceString nss("db.data"_sd);
     auto planExec = PlanExecutor::make(
-        opCtx.get(), std::move(ws), std::move(proxy), nss, PlanExecutor::NO_YIELD);
+        opCtx.get(), std::move(ws), std::move(proxy), nullptr, PlanExecutor::NO_YIELD, nss);
 
     BSONObj outObj;
 

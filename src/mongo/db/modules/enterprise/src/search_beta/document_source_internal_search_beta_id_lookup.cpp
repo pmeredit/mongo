@@ -90,7 +90,9 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchBetaIdLookUp::doGetNex
     output.copyMetaDataFrom(inputDoc);
 
     if (pExpCtx->needsMerge) {
-        output.metadata().setSortKey(BSON("" << inputDoc.metadata().getSearchScore()));
+        auto isSingleElementKey = true;
+        output.metadata().setSortKey(Value{inputDoc.metadata().getSearchScore()},
+                                     isSingleElementKey);
     }
 
     return output.freeze();
