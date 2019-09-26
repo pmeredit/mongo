@@ -3,10 +3,13 @@
  * $backupCursorExtend returns, oplog with T should be majority committed and
  * persisent on the disk of that node.
  *
- * @tags: [requires_sharding,
- *         requires_wiredtiger,
- *         requires_journaling,
- *         requires_persistence]
+ * @tags: [
+ *   requires_journaling,
+ *   requires_persistence,
+ *   requires_sharding,
+ *   requires_wiredtiger,
+ *   two_phase_index_builds_unsupported,
+ * ]
  */
 (function() {
 "use strict";
