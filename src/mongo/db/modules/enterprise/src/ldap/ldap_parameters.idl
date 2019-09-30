@@ -59,8 +59,7 @@ server_parameters:
   ldapConnectionPoolMaximumConnectionsPerHost:
     description: >
         The maximum number of connections to keep open to each LDAP host
-    default:
-      expr: std::numeric_limits<int>::max()
+    default: 2
     set_at: startup
     cpp_vartype: int
     cpp_varname: ldapConnectionPoolMaximumConnectionsPerHost
