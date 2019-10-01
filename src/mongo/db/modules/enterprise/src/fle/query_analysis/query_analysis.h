@@ -6,10 +6,10 @@
 
 #include "encryption_schema_tree.h"
 #include "mongo/bson/bsonobj.h"
+#include "mongo/db/exec/document_value/value.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/db/matcher/schema/encrypt_schema_types.h"
 #include "mongo/db/operation_context.h"
-#include "mongo/db/pipeline/value.h"
 #include "mongo/db/query/collation/collator_interface.h"
 #include "mongo/rpc/op_msg.h"
 #include "resolved_encryption_info.h"

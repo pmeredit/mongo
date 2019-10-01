@@ -6,7 +6,7 @@
 
 #include "document_source_internal_search_beta_id_lookup.h"
 
-#include "mongo/db/pipeline/document.h"
+#include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/pipeline/document_source_internal_shard_filter.h"
 
 namespace mongo {

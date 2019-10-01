@@ -7,8 +7,8 @@
 #include "document_source_internal_search_beta_mongot_remote.h"
 
 #include "mongo/db/curop.h"
-#include "mongo/db/pipeline/document.h"
-#include "mongo/db/pipeline/value.h"
+#include "mongo/db/exec/document_value/document.h"
+#include "mongo/db/exec/document_value/value.h"
 #include "mongo/db/service_context.h"
 #include "mongo/executor/remote_command_request.h"
 #include "mongo/executor/task_executor_cursor.h"
