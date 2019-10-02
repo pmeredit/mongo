@@ -405,14 +405,14 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForSingleDocumentTransform
                     transformer);
             return propagateSchemaForInclusionNode(
                 *prevSchema,
-                includer.getRoot(),
+                *includer.getRoot(),
                 std::make_unique<EncryptionSchemaNotEncryptedNode>());
         }
         case TransformerInterface::TransformerType::kExclusionProjection: {
             const auto& excluder =
                 static_cast<const parsed_aggregation_projection::ParsedExclusionProjection&>(
                     transformer);
-            return propagateSchemaForExclusion(*prevSchema, excluder.getRoot());
+            return propagateSchemaForExclusion(*prevSchema, *excluder.getRoot());
         }
         case TransformerInterface::TransformerType::kComputedProjection: {
             const auto& projector =
@@ -500,7 +500,7 @@ aggregate_expression_intender::Intention analyzeForSingleDocumentTransformation(
             const auto& includer =
                 static_cast<const parsed_aggregation_projection::ParsedInclusionProjection&>(
                     transformer);
-            return analyzeForInclusionNode(flePipe, schema, includer.getRoot());
+            return analyzeForInclusionNode(flePipe, schema, *includer.getRoot());
         }
         case TransformerInterface::TransformerType::kExclusionProjection: {
             return aggregate_expression_intender::Intention::NotMarked;
