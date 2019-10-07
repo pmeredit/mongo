@@ -10,10 +10,15 @@ configs:
     help:
         description: 'Produce help message'
         arg_vartype: Switch
-    verbose:
+    debug:
         description: 'Produce more detailed log messages'
         arg_vartype: Switch
-        cpp_varname: 'globalKerberosToolOptions->verbose'
+        cpp_varname: 'globalKerberosToolOptions->debug'
+        conflicts: debug
+    color:
+        description: 'Enable colored output'
+        arg_vartype: Bool
+        cpp_varname: 'globalKerberosToolOptions->color'
 
     host:
         section: 'Client Options'

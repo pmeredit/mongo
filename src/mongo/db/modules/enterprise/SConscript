@@ -75,7 +75,7 @@ env = conf.Finish()
 env.SConscript(
     dirs=[
         "src/%s" % feature for feature in feature_dirs if feature in env['MONGO_ENTERPRISE_FEATURES']
-    ],
+    ] + ['src/util'],
     exports=[
         'env',
     ],
@@ -336,6 +336,7 @@ if "ldap" in env['MONGO_ENTERPRISE_FEATURES']:
             "$BUILD_DIR/mongo/util/version_impl",
             "src/ldap/ldap_manager",
             "src/ldap/ldap_options_mongod",
+            "src/util/utils",
         ],
     )
 
@@ -359,6 +360,7 @@ if "kerberos" in env['MONGO_ENTERPRISE_FEATURES']:
             "$BUILD_DIR/mongo/util/signal_handlers",
             "$BUILD_DIR/mongo/util/version_impl",
             "src/kerberos/kerberos_tool_options",
+            "src/util/utils",
         ]
     )
 
@@ -401,7 +403,6 @@ if "search_beta" in env['MONGO_ENTERPRISE_FEATURES']:
     if not hygienic:
         env.Alias("core", env.Install("#/", mongotmock))
 
-
 if hygienic:
     # These are all the files added in ARCHIVE_ADDITIONS
     #
@@ -409,7 +410,7 @@ if hygienic:
     # it cannot exist there since there is a dependency ordering
     # issue. When hygienic is the default we can clean this up and
     # remove the duplication in the build.py
-    # 
+    #
     # SNMP doc files
     env.AutoInstall(
         target='$DESTDIR/snmp',
