@@ -8,7 +8,6 @@
  *   requires_persistence,
  *   requires_sharding,
  *   requires_wiredtiger,
- *   two_phase_index_builds_unsupported,
  * ]
  */
 (function() {
