@@ -26,135 +26,11 @@
 #include "ldap_query_config.h"
 #include "ldap_runner_impl.h"
 
+#include "util/report.h"
+
 namespace mongo {
 
 namespace {
-
-/**
- * Tracks the assertion failure state for ldap authorization and authentication
- * There are three possible options, which are represented by this enum:
- * kFatalFailure, fatal failure (resulting in program termination), logged with the string '[FAIL]'
- * kNonFatalFailure, non-fatal failure, logged with the string '[FAIL]'
- * kNonFatalInfo, non-fatal failure, logged with the string '[INFO]'
- */
-enum class FailType { kFatalFailure, kNonFatalFailure, kNonFatalInfo };
-
-struct ResultsAssertion {
-    using Conditional = std::function<bool()>;
-
-    ResultsAssertion(Conditional assertedCondition,
-                     std::string failureMessage,
-                     std::function<std::vector<std::string>()> failureBulletGenerator,
-                     FailType isFatal = FailType::kFatalFailure)
-        : assertedCondition(std::move(assertedCondition)),
-          failureMessage(std::move(failureMessage)),
-          failureBulletGenerator(std::move(failureBulletGenerator)),
-          isFatal(isFatal) {}
-    ResultsAssertion(Conditional assertedCondition,
-                     std::string failureMessage,
-                     std::vector<std::string> failureBullets = std::vector<std::string>{},
-                     FailType isFatal = FailType::kFatalFailure)
-        : ResultsAssertion(std::move(assertedCondition),
-                           std::move(failureMessage),
-                           [failureBullets] { return failureBullets; },
-                           isFatal) {}
-
-    Conditional assertedCondition;
-    std::string failureMessage;
-    std::function<std::vector<std::string>()> failureBulletGenerator;
-    FailType isFatal;
-};
-
-/**
- * A segment of a formatted report. This segment will have a Title, and optionally some
- * informational bullet points. An object of this class will execute a series of tests. If any
- * test fails, the segment in the report will conclude with a failure message, and informational
- * bullet points describing the problem and suggesting possible solutions. If all tests pass,
- * the segment in the report will conclude with an affirmative message.
- *
- * Example:
- *
- * Title...
- *     * Informational
- *     * Bullet Points
- * [FAIL] Test failed
- *     * Here's why:
- *     * Advice about how to fix the problem
- *
- */
-class Report {
-public:
-    void openSection(std::string testName) {
-        _nonFatalAssertTriggered = false;
-        std::cout << testName << "..." << std::endl;
-    }
-
-    void printItemList(std::function<std::vector<std::string>()> infoBulletGenerator) {
-        if (_nonFatalAssertTriggered) {
-            return;
-        }
-        auto infoBullets = infoBulletGenerator();
-        for (const std::string& infoBullet : infoBullets) {
-            std::cout << "\t* " << infoBullet << std::endl;
-        }
-    }
-
-    void checkAssert(ResultsAssertion&& assert) {
-        if (_nonFatalAssertTriggered || assert.assertedCondition()) {
-            return;
-        }
-
-        StringData errorString =
-            (assert.isFatal == FailType::kNonFatalInfo) ? infoString() : failString();
-
-        std::cout << errorString << assert.failureMessage << std::endl;
-        auto failureBullets = assert.failureBulletGenerator();
-        for (const std::string& bullet : failureBullets) {
-            std::cout << "\t* " << bullet << std::endl;
-        }
-        std::cout << std::endl;
-
-        if (assert.isFatal == FailType::kFatalFailure) {
-            // Fatal assertion failures are logged and the test program terminates immediately
-            quickExit(-1);
-        } else {
-            // Non fatal failures will prevent the rest of the section from being executed
-            _nonFatalAssertTriggered = true;
-        }
-    }
-
-    void closeSection(StringData successMessage) {
-        if (!_nonFatalAssertTriggered) {
-            std::cout << okString() << successMessage << std::endl << std::endl;
-        }
-    }
-
-private:
-    StringData okString() {
-        if (globalLDAPToolOptions->color) {
-            return "[\x1b[32mOK\x1b[0m] ";
-        }
-        return "[OK] ";
-    }
-
-    StringData failString() {
-        if (globalLDAPToolOptions->color) {
-            return "[\x1b[31mFAIL\x1b[0m] ";
-        }
-        return "[FAIL] ";
-    }
-
-    StringData infoString() {
-        if (globalLDAPToolOptions->color) {
-            return "[\x1b[33mINFO\x1b[0m] ";
-        }
-        return "[INFO] ";
-    }
-
-    // Tracks whether an error has occurred which should short circuit
-    // the remainder of the assert checks for the current section.
-    bool _nonFatalAssertTriggered = false;
-};
 
 int ldapToolMain(int argc, char* argv[], char** envp) {
     setupSignalHandlers();
@@ -169,12 +45,13 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
               << "Version: " << mongo::VersionInfoInterface::instance().version() << std::endl
               << std::endl;
 
-    Report report;
+    Report report(globalLDAPToolOptions->color);
 
 
     report.openSection("Checking that an LDAP server has been specified");
-    report.checkAssert(ResultsAssertion([] { return !globalLDAPParams->serverHosts.empty(); },
-                                        "No LDAP servers have been provided"));
+    report.checkAssert(
+        Report::ResultsAssertion([] { return !globalLDAPParams->serverHosts.empty(); },
+                                 "No LDAP servers have been provided"));
     report.closeSection("LDAP server(s) provided in configuration");
 
 
@@ -182,7 +59,7 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
     // produce warning if either:
     // 1) connection to LDAP server is not using TLS and the bind method is simple OR
     // 2) connection to LDAP server is not using TLS and the bind method is SASL PLAIN
-    report.checkAssert(ResultsAssertion(
+    report.checkAssert(Report::ResultsAssertion(
         [] {
             return !((globalLDAPParams->transportSecurity != LDAPTransportSecurityType::kTLS) &&
                      (globalLDAPParams->bindMethod == LDAPBindType::kSimple));
@@ -190,8 +67,8 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
         "Attempted to bind to LDAP server without TLS with a plaintext password.",
         {"Sending a password over a network in plaintext is insecure.",
          "To fix this issue, enable TLS or switch to a different LDAP bind mechanism."},
-        FailType::kNonFatalFailure));
-    report.checkAssert(ResultsAssertion(
+        Report::FailType::kNonFatalFailure));
+    report.checkAssert(Report::ResultsAssertion(
         [] {
             return !(((globalLDAPParams->transportSecurity != LDAPTransportSecurityType::kTLS) &&
                       globalLDAPParams->bindMethod == LDAPBindType::kSasl) &&
@@ -200,7 +77,7 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
         "Attempted to bind to LDAP server without TLS using SASL PLAIN.",
         {"Sending a password over a network in plaintext is insecure.",
          "To fix this issue, remove the PLAIN mechanism from SASL bind mechanisms, or enable TLS."},
-        FailType::kNonFatalFailure));
+        Report::FailType::kNonFatalFailure));
 
     LDAPBindOptions bindOptions(globalLDAPParams->bindUser,
                                 std::move(globalLDAPParams->bindPassword),
@@ -224,7 +101,7 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
 
     // TODO: Determine if the query failed because of LDAP error 50, LDAP_INSUFFICIENT_ACCESS. If
     // no, we don't need to mention that the server might not be allowing anonymous access.
-    report.checkAssert(ResultsAssertion(
+    report.checkAssert(Report::ResultsAssertion(
         [&] {
             if (swResult.isOK()) {
                 results = std::move(swResult.getValue());
@@ -253,7 +130,7 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
         LDAPAttributeKeyValuesMap::iterator supportedSASLMechanisms;
         std::vector<std::string> remoteMechanismVector;
 
-        report.checkAssert(ResultsAssertion(
+        report.checkAssert(Report::ResultsAssertion(
             [&] {
                 if (rootDSE != results.end()) {
                     supportedSASLMechanisms = rootDSE->second.find("supportedSASLMechanisms");
@@ -264,9 +141,9 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
             },
             "Was unable to acquire a RootDSE, so couldn't compare SASL mechanisms",
             std::vector<std::string>{},
-            FailType::kNonFatalFailure));
+            Report::FailType::kNonFatalFailure));
 
-        report.checkAssert(ResultsAssertion(
+        report.checkAssert(Report::ResultsAssertion(
             [&] {
                 if (supportedSASLMechanisms != rootDSE->second.end()) {
                     remoteMechanismVector = supportedSASLMechanisms->second;
@@ -277,7 +154,7 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
             },
             "Server did not return supportedSASLMechanisms in its RootDSE",
             std::vector<std::string>{},
-            FailType::kNonFatalFailure));
+            Report::FailType::kNonFatalFailure));
 
         report.printItemList([&] {
             std::vector<std::string> results{"Server supports the following SASL mechanisms: "};
@@ -295,7 +172,7 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
         });
 
 
-        report.checkAssert(ResultsAssertion(
+        report.checkAssert(Report::ResultsAssertion(
             [&] {
                 return std::find_first_of(requestedSASLMechanisms.begin(),
                                           requestedSASLMechanisms.end(),
@@ -320,7 +197,7 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
         swMapper =
             InternalToLDAPUserNameMapper::createNameMapper(globalLDAPParams->userToDNMapping);
 
-        report.checkAssert(ResultsAssertion(
+        report.checkAssert(Report::ResultsAssertion(
             [&] { return swMapper.isOK(); },
             "Unable to parse the MongoDB username to LDAP DN map",
             [&] {
@@ -339,26 +216,26 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
         report.openSection("Attempting to authenticate against the LDAP server");
         Status authRes = manager.verifyLDAPCredentials(globalLDAPToolOptions->user,
                                                        globalLDAPToolOptions->password);
-        report.checkAssert(ResultsAssertion([&] { return authRes.isOK(); },
-                                            str::stream()
-                                                << "Failed to authenticate "
-                                                << globalLDAPToolOptions->user << " to LDAP server",
-                                            {authRes.toString()}));
+        report.checkAssert(Report::ResultsAssertion([&] { return authRes.isOK(); },
+                                                    str::stream() << "Failed to authenticate "
+                                                                  << globalLDAPToolOptions->user
+                                                                  << " to LDAP server",
+                                                    {authRes.toString()}));
         report.closeSection("Successful authentication performed");
     }
 
     report.openSection("Checking if LDAP authorization has been enabled by configuration");
-    report.checkAssert(ResultsAssertion(
+    report.checkAssert(Report::ResultsAssertion(
         [] { return globalLDAPParams->isLDAPAuthzEnabled(); },
         "LDAP authorization is not enabled, the configuration will require internal users to be "
         "maintained",
         {"Make sure you have 'security.ldap.authz.queryTemplate' in your configuration"},
-        FailType::kNonFatalInfo));
+        Report::FailType::kNonFatalInfo));
     report.closeSection("LDAP authorization enabled");
 
     if (globalLDAPParams->isLDAPAuthzEnabled()) {
         report.openSection("Parsing LDAP query template");
-        report.checkAssert(ResultsAssertion(
+        report.checkAssert(Report::ResultsAssertion(
             [&] { return swQueryParameters.isOK(); },
             "Unable to parse the LDAP query configuration template",
             [&] {
@@ -380,13 +257,13 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
         report.openSection("Executing query against LDAP server");
         StatusWith<std::vector<RoleName>> swRoles =
             manager.getUserRoles(UserName(globalLDAPToolOptions->user, "$external"));
-        report.checkAssert(ResultsAssertion([&] { return swRoles.isOK(); },
-                                            "Unable to acquire roles",
-                                            [&] {
-                                                return std::vector<std::string>{
-                                                    str::stream()
-                                                    << "Error: " << swRoles.getStatus().toString()};
-                                            }));
+        report.checkAssert(Report::ResultsAssertion(
+            [&] { return swRoles.isOK(); },
+            "Unable to acquire roles",
+            [&] {
+                return std::vector<std::string>{str::stream()
+                                                << "Error: " << swRoles.getStatus().toString()};
+            }));
         report.closeSection("Successfully acquired the following roles on the 'admin' database:");
         report.printItemList([&] {
             std::vector<std::string> roleStrings;

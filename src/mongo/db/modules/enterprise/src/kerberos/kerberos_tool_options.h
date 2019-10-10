@@ -9,7 +9,12 @@
 namespace mongo {
 
 struct KerberosToolOptions {
-    bool verbose = false;
+    bool debug = false;
+#ifdef _WIN32
+    bool color = false;
+#else
+    bool color = true;
+#endif
     enum ConnectionType { kClient = 0, kServer = 1 };
     ConnectionType connectionType;
     std::string host;
