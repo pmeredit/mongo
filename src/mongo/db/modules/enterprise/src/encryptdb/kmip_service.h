@@ -7,7 +7,9 @@
 #include <vector>
 
 #include "kmip_consts.h"
+#include "kmip_options.h"
 #include "mongo/base/status_with.h"
+#include "mongo/util/duration.h"
 #include "mongo/util/net/hostandport.h"
 #include "mongo/util/net/sock.h"
 #include "mongo/util/net/ssl_manager.h"
@@ -15,7 +17,6 @@
 namespace mongo {
 
 class SSLManager;
-struct SSLParams;
 class SymmetricKey;
 
 namespace kmip {
@@ -32,8 +33,7 @@ public:
     KMIPService(const KMIPService&) = delete;
     KMIPService& operator=(const KMIPService&) = delete;
 
-    static StatusWith<KMIPService> createKMIPService(const HostAndPort& server,
-                                                     const SSLParams& sslKMIPParams);
+    static StatusWith<KMIPService> createKMIPService(const KMIPParams& kmipParams, bool fipsMode);
 
     /**
      * Communicates with the KMIP server that a key should be
@@ -47,14 +47,15 @@ public:
     StatusWith<std::unique_ptr<SymmetricKey>> getExternalKey(const std::string& uid);
 
 private:
-    KMIPService(const HostAndPort& server,
-                const SSLParams& sslKMIPParams,
-                std::unique_ptr<SSLManagerInterface> sslManager);
+    KMIPService(const HostAndPort& server, std::unique_ptr<SSLManagerInterface> sslManager);
+    static StatusWith<KMIPService> createKMIPService(const HostAndPort& server,
+                                                     const SSLParams& sslKMIPParams,
+                                                     Milliseconds connectTimeout);
 
     /**
      * Initialize a connection to the KMIP server
      */
-    Status _initServerConnection();
+    Status _initServerConnection(Milliseconds connectTimeout);
 
     /**
      * Send a request to the KMIP server.

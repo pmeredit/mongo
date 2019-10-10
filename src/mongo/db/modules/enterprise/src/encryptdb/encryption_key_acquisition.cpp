@@ -67,37 +67,7 @@ StatusWith<std::unique_ptr<SymmetricKey>> getKeyFromKMIPServer(const KMIPParams&
                       "Encryption at rest enabled but no key server specified");
     }
 
-    SSLParams sslKMIPParams;
-
-    // KMIP specific parameters.
-    sslKMIPParams.sslPEMKeyFile = kmipParams.kmipClientCertificateFile;
-    sslKMIPParams.sslPEMKeyPassword = kmipParams.kmipClientCertificatePassword;
-    sslKMIPParams.sslClusterFile = "";
-    sslKMIPParams.sslClusterPassword = "";
-    sslKMIPParams.sslCAFile = kmipParams.kmipServerCAFile;
-#ifdef MONGO_CONFIG_SSL_CERTIFICATE_SELECTORS
-    sslKMIPParams.sslCertificateSelector = kmipParams.kmipClientCertificateSelector;
-#endif
-
-    // Copy the rest from the global SSL manager options.
-    sslKMIPParams.sslFIPSMode = sslParams.sslFIPSMode;
-
-    // KMIP servers never should have invalid certificates
-    sslKMIPParams.sslAllowInvalidCertificates = false;
-    sslKMIPParams.sslAllowInvalidHostnames = false;
-    sslKMIPParams.sslCRLFile = "";
-
-    // iterate through the list of provided KMIP servers until a valid one is found
-    auto kmipServerName = kmipParams.kmipServerName.begin();
-    StatusWith<KMIPService> swKMIPService = KMIPService::createKMIPService(
-        HostAndPort(*kmipServerName, kmipParams.kmipPort), sslKMIPParams);
-    while (!swKMIPService.isOK() && ++kmipServerName != kmipParams.kmipServerName.end()) {
-        log() << "Connection to KMIP server at " << *(kmipServerName - 1)
-              << " failed. Trying again at " << *kmipServerName << '.';
-        swKMIPService = KMIPService::createKMIPService(
-            HostAndPort(*kmipServerName, kmipParams.kmipPort), sslKMIPParams);
-    }
-
+    auto swKMIPService = KMIPService::createKMIPService(kmipParams, sslParams.sslFIPSMode);
     if (!swKMIPService.isOK()) {
         return swKMIPService.getStatus();
     }

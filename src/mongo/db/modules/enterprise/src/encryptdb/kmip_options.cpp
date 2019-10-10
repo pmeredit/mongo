@@ -40,6 +40,14 @@ StatusWith<KMIPParams> parseKMIPOptions(const optionenvironment::Environment& pa
         kmipParams.kmipPort = params["security.kmip.port"].as<int>();
     }
 
+    if (params.count("security.kmip.connectTimeoutMS")) {
+        kmipParams.kmipConnectTimeoutMS = params["security.kmip.connectTimeoutMS"].as<int>();
+    }
+
+    if (params.count("security.kmip.connectRetries")) {
+        kmipParams.kmipConnectRetries = params["security.kmip.connectRetries"].as<int>();
+    }
+
     if (params.count("security.kmip.clientCertificateFile")) {
         kmipParams.kmipClientCertificateFile =
             params["security.kmip.clientCertificateFile"].as<std::string>();

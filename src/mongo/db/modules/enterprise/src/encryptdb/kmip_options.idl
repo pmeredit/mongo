@@ -22,6 +22,20 @@ configs:
         short_name: kmipPort
         arg_vartype: Int
         requires: "security.kmip.serverName"
+    "security.kmip.connectTimeoutMS":
+        description: 'KMIP server connect timeout (milliseconds)'
+        short_name: kmipConnectTimeoutMS
+        arg_vartype: Int
+        default: 5000
+        validator:
+            gte: 1000
+    "security.kmip.connectRetries":
+        description: 'If connecting to a KMIP server times out, how many times should we retry.'
+        short_name: kmipConnectRetries
+        arg_vartype: Int
+        default: 0
+        validator:
+            gte: 0
     "security.kmip.clientCertificateFile":
         description: 'Client certificate for authenticating to KMIP server'
         short_name: kmipClientCertificateFile
@@ -46,4 +60,3 @@ configs:
             - "security.kmip.clientCertificatePassword"
         condition:
             preprocessor: 'defined(MONGO_CONFIG_SSL_CERTIFICATE_SELECTORS)'
-

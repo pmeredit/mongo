@@ -19,6 +19,7 @@
 #include "mongo/base/data_type_endian.h"
 #include "mongo/base/init.h"
 #include "mongo/base/status_with.h"
+#include "mongo/config.h"
 #include "mongo/crypto/symmetric_crypto.h"
 #include "mongo/platform/mutex.h"
 #include "mongo/util/log.h"
@@ -30,12 +31,13 @@ namespace mongo {
 namespace kmip {
 
 StatusWith<KMIPService> KMIPService::createKMIPService(const HostAndPort& server,
-                                                       const SSLParams& sslKMIPParams) {
+                                                       const SSLParams& sslKMIPParams,
+                                                       Milliseconds connectTimeout) {
     try {
         std::unique_ptr<SSLManagerInterface> sslManager =
             SSLManagerInterface::create(sslKMIPParams, false);
-        KMIPService kmipService(server, sslKMIPParams, std::move(sslManager));
-        Status status = kmipService._initServerConnection();
+        KMIPService kmipService(server, std::move(sslManager));
+        Status status = kmipService._initServerConnection(connectTimeout);
         if (!status.isOK()) {
             return status;
         }
@@ -45,9 +47,57 @@ StatusWith<KMIPService> KMIPService::createKMIPService(const HostAndPort& server
     }
 }
 
-KMIPService::KMIPService(const HostAndPort& server,
-                         const SSLParams& sslKMIPParams,
-                         std::unique_ptr<SSLManagerInterface> sslManager)
+StatusWith<KMIPService> KMIPService::createKMIPService(const KMIPParams& kmipParams,
+                                                       bool sslFIPSMode) {
+    SSLParams sslKMIPParams;
+
+    // KMIP specific parameters.
+    sslKMIPParams.sslPEMKeyFile = kmipParams.kmipClientCertificateFile;
+    sslKMIPParams.sslPEMKeyPassword = kmipParams.kmipClientCertificatePassword;
+    sslKMIPParams.sslClusterFile = "";
+    sslKMIPParams.sslClusterPassword = "";
+    sslKMIPParams.sslCAFile = kmipParams.kmipServerCAFile;
+#ifdef MONGO_CONFIG_SSL_CERTIFICATE_SELECTORS
+    sslKMIPParams.sslCertificateSelector = kmipParams.kmipClientCertificateSelector;
+#endif
+    sslKMIPParams.sslFIPSMode = sslFIPSMode;
+
+    // KMIP servers never should have invalid certificates
+    sslKMIPParams.sslAllowInvalidCertificates = false;
+    sslKMIPParams.sslAllowInvalidHostnames = false;
+    sslKMIPParams.sslCRLFile = "";
+
+    Milliseconds connectTimeout(kmipParams.kmipConnectTimeoutMS);
+
+    // Repeat iteration through the list one or more times.
+    auto retries = kmipParams.kmipConnectRetries;
+    do {
+        // iterate through the list of provided KMIP servers until a valid one is found
+        for (auto it = kmipParams.kmipServerName.begin(); it != kmipParams.kmipServerName.end();
+             ++it) {
+            HostAndPort hp(*it, kmipParams.kmipPort);
+            auto swService = createKMIPService(hp, sslKMIPParams, connectTimeout);
+            if (swService.isOK()) {
+                return std::move(swService.getValue());
+            }
+            if ((it + 1) != kmipParams.kmipServerName.end()) {
+                warning() << "Connection to KMIP server at " << hp << " failed. "
+                          << "Trying again at " << HostAndPort(*(it + 1), kmipParams.kmipPort)
+                          << '.';
+            } else if (retries) {
+                warning() << "Connection to KMIP server at " << hp << " failed. "
+                          << "Restarting connect attempt(s) " << retries << " more time(s).";
+            } else {
+                return swService.getStatus();
+            }
+        }
+    } while (retries--);
+
+    // Only reachable if the server name list is empty.
+    return {ErrorCodes::BadValue, "No KMIP server specified."};
+}
+
+KMIPService::KMIPService(const HostAndPort& server, std::unique_ptr<SSLManagerInterface> sslManager)
     : _sslManager(std::move(sslManager)),
       _server(server),
       _socket(std::make_unique<Socket>(10, logger::LogSeverity::Log())) {}
@@ -95,7 +145,7 @@ StatusWith<std::unique_ptr<SymmetricKey>> KMIPService::getExternalKey(const std:
     return std::move(key);
 }
 
-Status KMIPService::_initServerConnection() {
+Status KMIPService::_initServerConnection(Milliseconds connectTimeout) {
     SockAddr server(_server.host().c_str(), _server.port(), AF_UNSPEC);
 
     if (!server.isValid()) {
@@ -103,7 +153,7 @@ Status KMIPService::_initServerConnection() {
                       str::stream() << "KMIP server address " << _server.host() << " is invalid.");
     }
 
-    if (!_socket->connect(server)) {
+    if (!_socket->connect(server, connectTimeout)) {
         return Status(ErrorCodes::BadValue,
                       str::stream() << "Could not connect to KMIP server " << server.toString());
     }
