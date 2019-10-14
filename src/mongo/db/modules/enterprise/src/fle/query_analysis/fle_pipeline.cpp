@@ -147,10 +147,9 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForExclusion(
 
 void propagateAccumulatedFieldsToSchema(const clonable_ptr<EncryptionSchemaTreeNode>& prevSchema,
                                         const std::vector<AccumulationStatement>& accumulatedFields,
-                                        const boost::intrusive_ptr<ExpressionContext>& context,
                                         clonable_ptr<EncryptionSchemaTreeNode>& newSchema) {
     for (const auto& accuStmt : accumulatedFields) {
-        boost::intrusive_ptr<Accumulator> accu = accuStmt.makeAccumulator(context);
+        boost::intrusive_ptr<Accumulator> accu = accuStmt.makeAccumulator();
         const bool expressionResultCompared = accu->getOpName() == "$addToSet"s;
         auto expressionSchema = aggregate_expression_intender::getOutputSchema(
             *prevSchema, accuStmt.expression.get(), expressionResultCompared);
@@ -207,8 +206,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForBucketAuto(
     // Always project a not encrypted '_id' field.
     newSchema->addChild(FieldRef{"_id"}, std::make_unique<EncryptionSchemaNotEncryptedNode>());
 
-    propagateAccumulatedFieldsToSchema(
-        prevSchema, source.getAccumulatedFields(), source.getContext(), newSchema);
+    propagateAccumulatedFieldsToSchema(prevSchema, source.getAccumulatedFields(), newSchema);
     return newSchema;
 }
 
@@ -251,8 +249,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGroup(
         newSchema->addChild(fieldPath, std::move(expressionSchema));
     }
 
-    propagateAccumulatedFieldsToSchema(
-        prevSchema, source.getAccumulatedFields(), source.getContext(), newSchema);
+    propagateAccumulatedFieldsToSchema(prevSchema, source.getAccumulatedFields(), newSchema);
     return newSchema;
 }
 
@@ -537,7 +534,7 @@ aggregate_expression_intender::Intention analyzeForBucketAuto(
     for (auto& accuStmt : source->getAccumulatedFields()) {
         // The expressions here are used for adding things to a set requires an equality
         // comparison.
-        boost::intrusive_ptr<Accumulator> accu = accuStmt.makeAccumulator(source->getContext());
+        boost::intrusive_ptr<Accumulator> accu = accuStmt.makeAccumulator();
         const bool expressionResultCompared = accu->getOpName() == "$addToSet"s;
         didMark = didMark ||
             aggregate_expression_intender::mark(*(flePipe->getPipeline().getContext().get()),
@@ -654,7 +651,7 @@ aggregate_expression_intender::Intention analyzeForGroup(FLEPipeline* flePipe,
     for (auto& accuStmt : source->getAccumulatedFields()) {
         // The expressions here are used for adding things to a set requires an equality
         // comparison.
-        boost::intrusive_ptr<Accumulator> accu = accuStmt.makeAccumulator(source->getContext());
+        boost::intrusive_ptr<Accumulator> accu = accuStmt.makeAccumulator();
         const bool expressionResultCompared = accu->getOpName() == "$addToSet"s;
         didMark = didMark ||
             aggregate_expression_intender::mark(*(flePipe->getPipeline().getContext().get()),
