@@ -29,7 +29,8 @@ enum class OutputType {
     kBSON,
 };
 
-BSONArray createPipelineArray(const char* pipelineStr) {
+BSONArray createPipelineArray(boost::intrusive_ptr<ExpressionContext> expCtx,
+                              const char* pipelineStr) {
     if (strstr(pipelineStr, ".json")) {
         // assume it's a file
         // this is ugly, fix it
@@ -52,7 +53,6 @@ BSONArray createPipelineArray(const char* pipelineStr) {
         // this is ugly, fix it
 
         BSONArrayBuilder arr;
-        boost::intrusive_ptr<ExpressionContext> expCtx;
 
         auto in = DocumentSourceBSONFile::create(expCtx, pipelineStr);
         ON_BLOCK_EXIT([in] { in->dispose(); });
@@ -99,9 +99,20 @@ int mqlrunMain(const char* pipelineStr,
             MONGO_UNREACHABLE;
     }
 
+    auto client = getGlobalServiceContext()->makeClient("mqlrun");
+    auto opCtx = client->makeOperationContext();
+    boost::intrusive_ptr<ExpressionContext> expCtx;
+    expCtx.reset(new ExpressionContext(opCtx.get(), nullptr));
+    expCtx->allowDiskUse = false;
+    if (tempDir) {
+        // Spill to disk if needed for a large sort.
+        expCtx->allowDiskUse = true;
+        expCtx->tempDir = tempDir;
+    }
+
     BSONObj pipelineArray;
     try {
-        pipelineArray = BSON("pipeline" << createPipelineArray(pipelineStr));
+        pipelineArray = BSON("pipeline" << createPipelineArray(expCtx, pipelineStr));
     } catch (AssertionException& e) {
         std::cerr << "Invalid JSON in pipeline: " << e.reason() << std::endl;
         return 1;
@@ -116,17 +127,6 @@ int mqlrunMain(const char* pipelineStr,
     } catch (AssertionException& e) {
         std::cerr << "Failed to parse pipeline from file: " << e.reason() << std::endl;
         return 1;
-    }
-
-    auto client = getGlobalServiceContext()->makeClient("mqlrun");
-    auto opCtx = client->makeOperationContext();
-    boost::intrusive_ptr<ExpressionContext> expCtx;
-    expCtx.reset(new ExpressionContext(opCtx.get(), nullptr));
-    expCtx->allowDiskUse = false;
-    if (tempDir) {
-        // Spill to disk if needed for a large sort.
-        expCtx->allowDiskUse = true;
-        expCtx->tempDir = tempDir;
     }
 
     std::unique_ptr<Pipeline, PipelineDeleter> pipeline;
