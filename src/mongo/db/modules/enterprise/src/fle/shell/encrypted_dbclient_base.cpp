@@ -55,7 +55,9 @@ public:
     using DBClientBase::runCommandWithTarget;
     std::pair<rpc::UniqueReply, DBClientBase*> runCommandWithTarget(OpMsgRequest request) final {
         if (_encryptionOptions.getBypassAutoEncryption().value_or(false)) {
-            return _conn->runCommandWithTarget(std::move(request));
+            auto databaseName = request.getDatabase().toString();
+            auto result = _conn->runCommandWithTarget(request).first;
+            return processResponse(std::move(result), databaseName);
         }
         return handleEncryptionRequest(std::move(request));
     }
