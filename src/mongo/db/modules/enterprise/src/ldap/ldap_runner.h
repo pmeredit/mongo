@@ -46,6 +46,10 @@ public:
      */
     virtual StatusWith<LDAPEntityCollection> runQuery(const LDAPQuery& query) = 0;
 
+    /** Ping the remote LDAP server to make certain communication works.
+     */
+    virtual Status checkLiveness() = 0;
+
     ////////////////////////////////////////////////////////////
     //
     // State inspection and manipulation methods.

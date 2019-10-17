@@ -24,6 +24,10 @@ public:
         return Status::OK();
     }
 
+    Status checkLiveness() final {
+        return Status::OK();
+    }
+
     StatusWith<LDAPEntityCollection> runQuery(const LDAPQuery& query) final {
         ASSERT_FALSE(_stored.empty());
         auto next = std::move(_stored.back());

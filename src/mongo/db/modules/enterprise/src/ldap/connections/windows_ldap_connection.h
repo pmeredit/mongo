@@ -26,6 +26,7 @@ public:
     Status connect() final;
     Status bindAsUser(const LDAPBindOptions& options) final;
     boost::optional<std::string> currentBoundUser() const final;
+    Status checkLiveness() final;
     StatusWith<LDAPEntityCollection> query(LDAPQuery query) final;
     Status disconnect() final;
 

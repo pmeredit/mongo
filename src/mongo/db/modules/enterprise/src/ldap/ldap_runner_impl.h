@@ -28,6 +28,7 @@ public:
 
     Status bindAsUser(const std::string& user, const SecureString& pwd) final;
     StatusWith<LDAPEntityCollection> runQuery(const LDAPQuery& query) final;
+    Status checkLiveness() final;
 
     std::vector<std::string> getHosts() const final;
     void setHosts(std::vector<std::string> hosts) final;
@@ -44,6 +45,8 @@ public:
     void setUseConnectionPool(bool val) final;
 
 private:
+    StatusWith<std::unique_ptr<LDAPConnection>> getConnection();
+
     LDAPConnectionFactory _factory;
 
     /**

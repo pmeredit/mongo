@@ -9,6 +9,7 @@ from ldaptor.protocols.ldap.ldapclient import LDAPClient
 from ldaptor.protocols.ldap.ldapconnector import connectToLDAPEndpoint, LDAPClientCreator
 from ldaptor.protocols.ldap.ldapsyntax import LDAPEntry
 from ldaptor.protocols.ldap.proxybase import ProxyBase
+from ldaptor.protocols.pureldap import LDAPSearchRequest, LDAPResult
 from twisted.internet import defer, protocol, reactor, task
 from twisted.internet.endpoints import serverFromString, clientFromString, connectProtocol
 from twisted.python import log, usage
@@ -20,7 +21,15 @@ class LDAPProxy(ProxyBase):
         self.delay = float(config['delay'])
         self.msgID = 0
         self.port = config['port']
+        self.unauthorizedRootDSE = config['unauthorizedRootDSE']
         ProxyBase.__init__(self)
+
+    def handleBeforeForwardRequest(self, request, controls, reply):
+        if self.unauthorizedRootDSE and isinstance(request, LDAPSearchRequest) and (not request.baseObject) and (request.attributes == [b'supportedSASLMechanisms']):
+            log.msg("Proxy port {}: Failing on RootDSE query. Request was: {}".format(self.port, repr(request)))
+            reply(LDAPResult(resultCode=50)) # 50 == LDAP_INSUFFICIENT_PRIVILEGES
+            return None
+        return super().handleBeforeForwardRequest(request, controls, reply)
 
     def handleProxiedResponse(self, response, request, controls):
         myMsgID = self.msgID
@@ -39,6 +48,7 @@ class Options(usage.Options):
     optFlags = [
         [ "testClient", "t", "Test connecting to an LDAP server and running a root DSE query" ],
         [ "useTLS", "s", "Whether to connect with SSL" ],
+        [ "unauthorizedRootDSE", "D", "Return INSUFFICIENT_PRIVILEGES for RootDSE queries" ],
     ]
 
     optParameters = [

@@ -60,6 +60,11 @@ public:
     virtual StatusWith<LDAPEntityCollection> query(LDAPQuery query) = 0;
 
     /**
+     * Validate that the remote LDAP server is alive and answering our requests.
+     */
+    virtual Status checkLiveness() = 0;
+
+    /**
      * Disconnect from the database.
      *
      *  @return Any errors arising from disconnecting.

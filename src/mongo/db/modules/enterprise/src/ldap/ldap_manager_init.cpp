@@ -37,13 +37,11 @@ ServiceContext::ConstructorActionRegisterer setLDAPManagerImpl{
 
         // Perform smoke test of the connection parameters.
         if (!globalLDAPParams->serverHosts.empty() && globalLDAPParams->smokeTestOnStartup) {
-            StatusWith<LDAPEntityCollection> swRes =
-                runner->runQuery(LDAPQuery::instantiateQuery(LDAPQueryConfig()).getValue());
-
-            if (!swRes.isOK()) {
-                uasserted(ErrorCodes::FailedToParse,
+            auto status = runner->checkLiveness();
+            if (!status.isOK()) {
+                uasserted(status.code(),
                           str::stream() << "Can't connect to the specified LDAP servers, error: "
-                                        << swRes.getStatus().reason());
+                                        << status.reason());
             }
         }
 

@@ -83,24 +83,6 @@ struct LDAPPoolTimingData {
     stdx::unordered_map<HostAndPort, std::shared_ptr<LDAPHostTimingData>> timingData;
 };
 
-static inline LDAPQuery makeRootDSEQuery() {
-    auto swRootDSEQuery =
-        LDAPQueryConfig::createLDAPQueryConfig("?supportedSASLMechanisms?base?(objectclass=*)");
-    invariant(swRootDSEQuery.isOK());  // This isn't user configurable, so should never fail
-
-    auto swQuery = LDAPQuery::instantiateQuery(swRootDSEQuery.getValue());
-    invariant(swQuery);
-
-    return std::move(swQuery.getValue());
-}
-
-Status runEmptyQuery(LDAPConnection* conn) {
-    // This creates a query that queries the RootDSE, which should always be readable
-    // without auth.
-    static const auto query = makeRootDSEQuery();
-    return conn->query(query).getStatus();
-}
-
 std::unique_ptr<LDAPConnection> makeNativeLDAPConn(const LDAPConnectionOptions& opts) {
 #ifndef _WIN32
     return std::make_unique<OpenLDAPConnection>(opts);
@@ -327,7 +309,7 @@ void PooledLDAPConnection::setup(Milliseconds timeout, SetupCallback cb) {
         }
 
         Timer queryTimer;
-        auto emptyQueryStatus = runEmptyQuery(_conn.get());
+        auto emptyQueryStatus = _conn->checkLiveness();
         auto elapsed = duration_cast<Milliseconds>(queryTimer.elapsed());
 
         if (emptyQueryStatus.isOK()) {
@@ -348,7 +330,7 @@ void PooledLDAPConnection::refresh(Milliseconds timeout, RefreshCallback cb) {
         }
 
         Timer queryTimer;
-        auto status = runEmptyQuery(_conn.get());
+        auto status = _conn->checkLiveness();
         auto elapsed = duration_cast<Milliseconds>(queryTimer.elapsed());
         LOG(1) << "Refreshed LDAP connection in " << elapsed;
 
@@ -392,6 +374,7 @@ public:
 
     Status connect() final;
     Status bindAsUser(const LDAPBindOptions&) final;
+    Status checkLiveness() final;
     StatusWith<LDAPEntityCollection> query(LDAPQuery query) final;
     Status disconnect() final;
     boost::optional<std::string> currentBoundUser() const final;
@@ -441,6 +424,10 @@ Status WrappedConnection::bindAsUser(const LDAPBindOptions& options) {
 
 boost::optional<std::string> WrappedConnection::currentBoundUser() const {
     return _getConn()->currentBoundUser();
+}
+
+Status WrappedConnection::checkLiveness() {
+    return _getConn()->checkLiveness();
 }
 
 StatusWith<LDAPEntityCollection> WrappedConnection::query(LDAPQuery query) {

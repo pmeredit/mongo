@@ -52,6 +52,7 @@ public:
     static const bool kLDAP_OPT_ERROR_STRINGNeedsFree = false;
 
     static const auto LDAP_success = LDAP_SUCCESS;
+    static const auto LDAP_insufficient_access = LDAP_INSUFFICIENT_RIGHTS;
     static const auto LDAP_OPT_error_code = LDAP_OPT_ERROR_NUMBER;
     static const auto LDAP_OPT_error_string = LDAP_OPT_ERROR_STRING;
 
@@ -239,6 +240,11 @@ Status WindowsLDAPConnection::bindAsUser(const LDAPBindOptions& options) {
 
 boost::optional<std::string> WindowsLDAPConnection::currentBoundUser() const {
     return _boundUser;
+}
+
+Status WindowsLDAPConnection::checkLiveness() {
+    l_timeval timeout{static_cast<LONG>(_timeoutSeconds), 0};
+    return _pimpl->checkLiveness(&timeout);
 }
 
 StatusWith<LDAPEntityCollection> WindowsLDAPConnection::query(LDAPQuery query) {

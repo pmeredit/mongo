@@ -52,7 +52,7 @@ Status LDAPRunnerImpl::bindAsUser(const std::string& user, const SecureString& p
     return swConnection.getValue()->bindAsUser(std::move(bindOptions));
 }
 
-StatusWith<LDAPEntityCollection> LDAPRunnerImpl::runQuery(const LDAPQuery& query) {
+StatusWith<std::unique_ptr<LDAPConnection>> LDAPRunnerImpl::getConnection() {
     LDAPBindOptions bindOptions;
     LDAPConnectionOptions connectionOptions;
     std::vector<SecureString> bindPasswords;
@@ -89,8 +89,25 @@ StatusWith<LDAPEntityCollection> LDAPRunnerImpl::runQuery(const LDAPQuery& query
         }
     }
 
-    // We now have a connection. Run the query, accumulating a result.
-    return connection->query(query);
+    return std::move(connection);
+}
+
+StatusWith<LDAPEntityCollection> LDAPRunnerImpl::runQuery(const LDAPQuery& query) {
+    auto swConnection = getConnection();
+    if (!swConnection.isOK()) {
+        return swConnection.getStatus();
+    }
+
+    return swConnection.getValue()->query(query);
+}
+
+Status LDAPRunnerImpl::checkLiveness() {
+    auto swConnection = getConnection();
+    if (!swConnection.isOK()) {
+        return swConnection.getStatus();
+    }
+
+    return swConnection.getValue()->checkLiveness();
 }
 
 std::vector<std::string> LDAPRunnerImpl::getHosts() const {

@@ -21,6 +21,7 @@ public:
     Status connect() final;
     Status bindAsUser(const LDAPBindOptions& params) final;
     StatusWith<LDAPEntityCollection> query(LDAPQuery query) final;
+    Status checkLiveness() final;
     Status disconnect() final;
     boost::optional<std::string> currentBoundUser() const final;
     static bool isThreadSafe();

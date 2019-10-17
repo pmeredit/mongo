@@ -45,6 +45,7 @@ public:
     static const bool kLDAP_OPT_ERROR_STRINGNeedsFree = true;
 
     static const auto LDAP_success = LDAP_SUCCESS;
+    static const auto LDAP_insufficient_access = LDAP_INSUFFICIENT_ACCESS;
     static const auto LDAP_OPT_error_code = LDAP_OPT_RESULT_CODE;
     static const auto LDAP_OPT_error_string = LDAP_OPT_ERROR_STRING;
 
@@ -463,6 +464,12 @@ Status OpenLDAPConnection::bindAsUser(const LDAPBindOptions& bindOptions) {
 
 boost::optional<std::string> OpenLDAPConnection::currentBoundUser() const {
     return _boundUser;
+}
+
+Status OpenLDAPConnection::checkLiveness() {
+    stdx::lock_guard<OpenLDAPGlobalMutex> lock(_conditionalMutex);
+
+    return _pimpl->checkLiveness(&_timeout);
 }
 
 StatusWith<LDAPEntityCollection> OpenLDAPConnection::query(LDAPQuery query) {

@@ -265,52 +265,31 @@ public:
                           << "): " << errorStr);
     }
 
-    StatusWith<LDAPEntityCollection> query(LDAPQuery query, typename S::TimeoutType* timeout) {
-        MONGO_LDAPLOG(3) << "Performing LDAP query: " << query;
-        LDAPEntityCollection queryResults;
+    Status checkLiveness(typename S::TimeoutType* timeout) {
+        // This creates a query that queries the RootDSE, which should always be readable
+        // without auth.
+        static const auto query = makeRootDSEQuery();
+        typename S::ErrorCodeType err;
+        issueQuery(query, timeout, &err);
 
-        // Convert the attribute vector to a mutable null terminated array of char* strings
-        // libldap wants a non-const copy, so prevent it from breaking our configuration data
-        size_t requestedAttributesSize = query.getAttributes().size();
-        std::vector<LibraryCharPtr> requestedAttributes;
-        const auto requestedAttributesGuard = makeGuard([&] {
-            for (LibraryCharPtr attribute : requestedAttributes) {
-                delete[] attribute;
-            }
-        });
-
-        requestedAttributes.reserve(requestedAttributesSize + 1);
-        for (size_t i = 0; i < requestedAttributesSize; ++i) {
-            requestedAttributes.push_back(
-                new typename S::LibraryCharType[query.getAttributes()[i].size() + 1]);
-
-            std::memcpy(requestedAttributes.back(),
-                        S::toLibraryString(query.getAttributes()[i].c_str()).c_str(),
-                        sizeof(typename S::LibraryCharType) *
-                            (query.getAttributes()[i].size() + 1));
+        if (err == S::LDAP_insufficient_access) {
+            // Some LDAP servers do not permit any basic queries pre-auth.
+            // Treat an LDAP_INSUFFICIENT_ACCESS as a good enough signal that we can communicate.
+            return Status::OK();
         }
-        requestedAttributes.push_back(nullptr);
 
+        return resultCodeToStatus(err,
+                                  "ldap_search_ext_s",
+                                  std::string("Failed to perform liveness check: ") +
+                                      S::toNativeString(S::ldap_err2string(err)));
+    }
+
+    StatusWith<LDAPEntityCollection> query(LDAPQuery query, typename S::TimeoutType* timeout) {
         // ldap_msgfree is a no-op on nullptr. The result from ldap_search_ext_s must be freed
         // with ldap_msgfree, reguardless of the return code.
-        typename S::MessageType* queryResult = nullptr;
-        const auto queryResultGuard = makeGuard([&] { S::ldap_msgfree(queryResult); });
+        typename S::ErrorCodeType err;
+        auto queryResult = issueQuery(query, timeout, &err);
 
-        // Perform the actual query
-        typename S::ErrorCodeType err = S::ldap_search_ext_s(
-            _session,
-            const_cast<LibraryCharPtr>(S::toLibraryString(query.getBaseDN().c_str()).c_str()),
-            mapScopeToLDAP(query.getScope()),
-            query.getFilter().empty()
-                ? nullptr
-                : const_cast<LibraryCharPtr>(S::toLibraryString(query.getFilter().c_str()).c_str()),
-            requestedAttributes.data(),
-            0,
-            nullptr,
-            nullptr,
-            timeout,
-            0,
-            &queryResult);
         Status status = resultCodeToStatus(err,
                                            "ldap_search_ext_s",
                                            std::string("Failed to perform query: ") +
@@ -322,7 +301,8 @@ public:
 
         // ldap_count_entries returns the number of entries contained in the result.
         // On error, it returns -1 and sets an error code.
-        int entryCount = S::ldap_count_entries(_session, queryResult);
+        LDAPEntityCollection queryResults;
+        int entryCount = S::ldap_count_entries(_session, queryResult.get());
         if (entryCount < 0) {
             return obtainFatalResultCodeAsStatus(
                 "ldap_count_entries", "getting number of entries returned from LDAP query");
@@ -336,7 +316,7 @@ public:
         // the first entry, ldap_next_entry takes a pointer to an entry and returns a pointer to the
         // subsequent entry. These pointers are owned by the queryResult. If there are no remaining
         // results, ldap_next_entry returns NULL.
-        typename S::MessageType* entry = S::ldap_first_entry(_session, queryResult);
+        typename S::MessageType* entry = S::ldap_first_entry(_session, queryResult.get());
         if (!entry) {
             return obtainFatalResultCodeAsStatus("ldap_first_entry",
                                                  "getting LDAP entry from results");
@@ -422,6 +402,69 @@ public:
     }
 
 private:
+    static LDAPQuery makeRootDSEQuery() {
+        auto swRootDSEQuery =
+            LDAPQueryConfig::createLDAPQueryConfig("?supportedSASLMechanisms?base?(objectclass=*)");
+        invariant(swRootDSEQuery.isOK());  // This isn't user configurable, so should never fail
+
+        auto swQuery = LDAPQuery::instantiateQuery(swRootDSEQuery.getValue());
+        invariant(swQuery);
+
+        return std::move(swQuery.getValue());
+    }
+
+    struct LDAPMessageDeleter {
+        void operator()(typename S::MessageType* ptr) {
+            S::ldap_msgfree(ptr);
+        }
+    };
+
+    auto issueQuery(LDAPQuery query,
+                    typename S::TimeoutType* timeout,
+                    typename S::ErrorCodeType* err) {
+        MONGO_LDAPLOG(3) << "Performing LDAP query: " << query;
+
+        // Convert the attribute vector to a mutable null terminated array of char* strings
+        // libldap wants a non-const copy, so prevent it from breaking our configuration data
+        size_t requestedAttributesSize = query.getAttributes().size();
+        std::vector<LibraryCharPtr> requestedAttributes;
+        const auto requestedAttributesGuard = makeGuard([&] {
+            for (LibraryCharPtr attribute : requestedAttributes) {
+                delete[] attribute;
+            }
+        });
+
+        requestedAttributes.reserve(requestedAttributesSize + 1);
+        for (size_t i = 0; i < requestedAttributesSize; ++i) {
+            requestedAttributes.push_back(
+                new typename S::LibraryCharType[query.getAttributes()[i].size() + 1]);
+
+            std::memcpy(requestedAttributes.back(),
+                        S::toLibraryString(query.getAttributes()[i].c_str()).c_str(),
+                        sizeof(typename S::LibraryCharType) *
+                            (query.getAttributes()[i].size() + 1));
+        }
+        requestedAttributes.push_back(nullptr);
+
+        // Perform the actual query
+        typename S::MessageType* queryResult = nullptr;
+        *err = S::ldap_search_ext_s(
+            _session,
+            const_cast<LibraryCharPtr>(S::toLibraryString(query.getBaseDN().c_str()).c_str()),
+            mapScopeToLDAP(query.getScope()),
+            query.getFilter().empty()
+                ? nullptr
+                : const_cast<LibraryCharPtr>(S::toLibraryString(query.getFilter().c_str()).c_str()),
+            requestedAttributes.data(),
+            0,
+            nullptr,
+            nullptr,
+            timeout,
+            0,
+            &queryResult);
+        return std::unique_ptr<typename S::MessageType, LDAPMessageDeleter>(queryResult);
+    }
+
     using LibraryCharPtr = typename S::LibraryCharType*;
 
     typename S::SessionType* _session;
