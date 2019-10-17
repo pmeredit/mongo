@@ -66,9 +66,12 @@ DocumentSource::GetNextResult DocumentSourceBackupCursor::doGetNext() {
         return std::move(doc);
     }
 
-    if (!_backupCursorState.filenames.empty()) {
-        Document doc = {{"filename", _backupCursorState.filenames.back()}};
-        _backupCursorState.filenames.pop_back();
+    if (!_backupCursorState.blocksToCopy.empty()) {
+        const StorageEngine::BackupBlock& block = _backupCursorState.blocksToCopy.back();
+        Document doc = {{"filename", block.filename},
+                        {"offset", static_cast<long long>(block.offset)},
+                        {"length", static_cast<long long>(block.length)}};
+        _backupCursorState.blocksToCopy.pop_back();
 
         return std::move(doc);
     }

@@ -32,6 +32,9 @@
 
 #include "backup_cursor_service.h"
 
+#include <boost/filesystem.hpp>
+#include <fmt/format.h>
+
 #include "mongo/db/concurrency/replication_state_transition_lock_guard.h"
 #include "mongo/db/db_raii.h"
 #include "mongo/db/dbhelpers.h"
@@ -65,7 +68,7 @@ ServiceContext::ConstructorActionRegisterer registerBackupCursorHooks{
 std::vector<std::string> deduplicateFiles(const std::vector<std::string>& newFiles,
                                           const std::set<std::string>& oldFiles) {
     std::vector<std::string> result;
-    for (auto file : newFiles) {
+    for (auto& file : newFiles) {
         if (oldFiles.find(file) == oldFiles.end()) {
             result.push_back(file);
         }
@@ -134,7 +137,8 @@ BackupCursorState BackupCursorService::openBackupCursor(OperationContext* opCtx)
         checkpointTimestamp = _storageEngine->getLastStableRecoveryTimestamp();
     };
 
-    auto filesToBackup = uassertStatusOK(_storageEngine->beginNonBlockingBackup(opCtx));
+    std::vector<StorageEngine::BackupBlock> blocksToBackup =
+        uassertStatusOK(_storageEngine->beginNonBlockingBackup(opCtx));
     _state = kBackupCursorOpened;
     _activeBackupId = UUID::gen();
     _replTermOfActiveBackup = replCoord->getTerm();
@@ -183,8 +187,22 @@ BackupCursorState BackupCursorService::openBackupCursor(OperationContext* opCtx)
 
     auto encHooks = EncryptionHooks::get(opCtx->getServiceContext());
     if (encHooks->enabled()) {
-        auto eseFiles = uassertStatusOK(encHooks->beginNonBlockingBackup());
-        filesToBackup.insert(filesToBackup.end(), eseFiles.begin(), eseFiles.end());
+        std::vector<std::string> eseFiles = uassertStatusOK(encHooks->beginNonBlockingBackup());
+        for (std::string& filename : eseFiles) {
+            boost::system::error_code errorCode;
+            const std::uint64_t filesize = boost::filesystem::file_size(filename, errorCode);
+
+            using namespace fmt::literals;
+            uassert(31318,
+                    "Failed to get a file's size. Filename: {} Error: {}"_format(
+                        filename, errorCode.message()),
+                    !errorCode);
+
+            // The database instance backing the encryption at rest data simply returns filenames
+            // that need to be copied whole. The assumption is these files are small so the cost is
+            // negligible.
+            blocksToBackup.push_back({filename, 0, filesize});
+        }
     }
 
     BSONObjBuilder builder;
@@ -201,10 +219,12 @@ BackupCursorState BackupCursorService::openBackupCursor(OperationContext* opCtx)
     }
 
     Document preamble{{"metadata", builder.obj()}};
-    _backupFiles = std::set<std::string>(filesToBackup.begin(), filesToBackup.end());
+    for (auto&& block : blocksToBackup) {
+        _backupFiles.insert(block.filename);
+    }
 
     closeCursorGuard.dismiss();
-    return {*_activeBackupId, preamble, filesToBackup};
+    return {*_activeBackupId, preamble, blocksToBackup};
 }
 
 void BackupCursorService::closeBackupCursor(OperationContext* opCtx, const UUID& backupId) {
@@ -245,7 +265,8 @@ BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext
     // guarantee the persistency of the oplog with timestamp `extendTo`.
     opCtx->recoveryUnit()->waitUntilDurable(opCtx);
 
-    auto filesToBackup = uassertStatusOK(_storageEngine->extendBackupCursor(opCtx));
+    std::vector<std::string> filesToBackup =
+        uassertStatusOK(_storageEngine->extendBackupCursor(opCtx));
     log() << "Backup cursor has been extended. backupId: " << backupId
           << " extendedTo: " << extendTo;
 

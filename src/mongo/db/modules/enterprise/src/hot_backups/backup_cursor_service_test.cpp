@@ -93,14 +93,18 @@ TEST_F(BackupCursorServiceTest, TestDoubleUnlock) {
 
 TEST_F(BackupCursorServiceTest, TestTypicalCursorLifetime) {
     auto backupCursorState = _backupCursorService->openBackupCursor(_opCtx.get());
-    ASSERT_EQUALS(1u, backupCursorState.filenames.size());
-    ASSERT_EQUALS("filename.wt", backupCursorState.filenames[0]);
+    ASSERT_EQUALS(1u, backupCursorState.blocksToCopy.size());
+    ASSERT_EQUALS("filename.wt", backupCursorState.blocksToCopy[0].filename);
+    ASSERT_EQUALS(0U, backupCursorState.blocksToCopy[0].offset);
+    ASSERT_EQUALS(0U, backupCursorState.blocksToCopy[0].length);
 
     _backupCursorService->closeBackupCursor(_opCtx.get(), backupCursorState.backupId);
 
     backupCursorState = _backupCursorService->openBackupCursor(_opCtx.get());
-    ASSERT_EQUALS(1u, backupCursorState.filenames.size());
-    ASSERT_EQUALS("filename.wt", backupCursorState.filenames[0]);
+    ASSERT_EQUALS(1u, backupCursorState.blocksToCopy.size());
+    ASSERT_EQUALS("filename.wt", backupCursorState.blocksToCopy[0].filename);
+    ASSERT_EQUALS(0U, backupCursorState.blocksToCopy[0].offset);
+    ASSERT_EQUALS(0U, backupCursorState.blocksToCopy[0].length);
 
     _backupCursorService->closeBackupCursor(_opCtx.get(), backupCursorState.backupId);
 }
