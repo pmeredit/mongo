@@ -39,6 +39,8 @@ configs:
         section: 'Client Options'
         description: 'Remote host name to use for purpose of GSSAPI/Kerberos authentication'
         short_name: gssapiHostName
+        default: 'localhost'
+        cpp_varname: 'globalKerberosToolOptions->gssapiHostName'
         arg_vartype: String
     "setParameter":
         section: 'Client Options'

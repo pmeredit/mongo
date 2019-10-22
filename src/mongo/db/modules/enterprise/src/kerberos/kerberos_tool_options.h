@@ -6,6 +6,10 @@
 
 #include <string>
 
+#if !defined(_WIN32)
+#include <unistd.h>
+#endif
+
 namespace mongo {
 
 struct KerberosToolOptions {
@@ -13,7 +17,7 @@ struct KerberosToolOptions {
 #ifdef _WIN32
     bool color = false;
 #else
-    bool color = true;
+    bool color = isatty(STDOUT_FILENO);
 #endif
     enum ConnectionType { kClient = 0, kServer = 1 };
     ConnectionType connectionType;
