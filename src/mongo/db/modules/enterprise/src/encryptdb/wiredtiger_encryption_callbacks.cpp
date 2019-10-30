@@ -62,10 +62,16 @@ int sizing(WT_ENCRYPTOR* encryptor, WT_SESSION* session, size_t* expansionConsta
     return 0;
 }
 
+// Guard access to customize with a mutex
+// It must be a recursive mutext since this code can call back in to WT itself.
+stdx::recursive_mutex encryptedCustomizeMutex;
+
 int customize(WT_ENCRYPTOR* encryptor,
               WT_SESSION* session,
               WT_CONFIG_ARG* encryptConfig,
               WT_ENCRYPTOR** customEncryptor) noexcept {
+    stdx::lock_guard<stdx::recursive_mutex> lock(encryptedCustomizeMutex);
+
     WT_EXTENSION_API* extApi = session->connection->get_extension_api(session->connection);
 
     const auto* origEncryptor = reinterpret_cast<const ExtendedWTEncryptor*>(encryptor);
