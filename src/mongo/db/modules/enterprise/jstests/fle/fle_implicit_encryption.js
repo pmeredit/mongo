@@ -49,7 +49,7 @@ var encryptedShell = Mongo(conn.host, clientSideRemoteSchemaFLEOptions);
 var keyVault = encryptedShell.getKeyVault();
 
 keyVault.createKey("aws", "arn:aws:mongo1:us-east-1:123456789:environment", ['studentsKey']);
-keyVault.createKey("local", "arn:aws:mongo2:us-east-1:123456789:environment", ['teachersKey']);
+keyVault.createKey("local", ['teachersKey']);
 const studentsKeyId = keyVault.getKeyByAltName("studentsKey").toArray()[0]._id;
 const teachersKeyId = keyVault.getKeyByAltName("teachersKey").toArray()[0]._id;
 
