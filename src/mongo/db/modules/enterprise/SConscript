@@ -398,9 +398,14 @@ if "search_beta" in env['MONGO_ENTERPRISE_FEATURES']:
             'src/fle/mongocryptd_core',
             'src/search_beta/mongotmock_core',
         ],
+        AIB_COMPONENT="core",
     )
 
-    if not hygienic:
+    if hygienic:
+        # TODO: remove this once we are no longer constructing the archive.tgz
+        # with evergreen.
+        env.Alias("install-core", env.Install("#/", mongotmock))
+    else:
         env.Alias("core", env.Install("#/", mongotmock))
 
 if hygienic:

@@ -26,9 +26,7 @@ mqlrun = env.Program(
         '$BUILD_DIR/mongo/db/query_exec',
         'document_source_bson_input',
     ],
-    INSTALL_ALIAS=[
-        'mongohouse',
-    ],
+    AIB_COMPONENT='mh',
 )
 
 if not hygienic:
