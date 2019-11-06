@@ -155,10 +155,10 @@ public:
         return builder.obj();
     }
 
-    BSONObj runQueryAnalysis(OpMsgRequest request,
-                             const SchemaInfo& schemaInfo,
-                             const NamespaceString& ns,
-                             const StringData& commandName) {
+    BSONObj runQueryAnalysisInt(OpMsgRequest request,
+                                const SchemaInfo& schemaInfo,
+                                const NamespaceString& ns,
+                                const StringData& commandName) {
         if (commandName == kExplain) {
             return processExplainCommand(request, schemaInfo, ns);
         }
@@ -198,6 +198,23 @@ public:
         }
 
         return schemaInfoBuilder.obj();
+    }
+
+    BSONObj runQueryAnalysis(OpMsgRequest request,
+                             const SchemaInfo& schemaInfo,
+                             const NamespaceString& ns,
+                             const StringData& commandName) {
+        try {
+            return runQueryAnalysisInt(request, schemaInfo, ns, commandName);
+        } catch (const DBException& e) {
+            // Wrap exceptions from query analysis with prefix to make it clear to users that it is
+            // coming from the shell
+            uassertStatusOK(
+                Status(e.code(),
+                       str::stream() << "Client Side Field Level Encryption Error:" << e.reason()));
+        }
+
+        MONGO_UNREACHABLE;
     }
 
     std::pair<rpc::UniqueReply, DBClientBase*> handleEncryptionRequest(OpMsgRequest request) {
