@@ -12,6 +12,7 @@
 #include <memory>
 
 #include "mongo/base/init.h"
+#include "mongo/base/shim.h"
 #include "mongo/base/status.h"
 #include "mongo/base/status_with.h"
 #include "mongo/bson/bsonobj.h"
@@ -106,13 +107,19 @@ Status AuthzManagerExternalStateLDAP::getUserDescription(OperationContext* opCtx
     return Status::OK();
 }
 
-MONGO_OVERRIDE_SHIM(AuthzManagerExternalState::create)
-()->std::unique_ptr<AuthzManagerExternalState> {
-    if (globalLDAPParams->isLDAPAuthzEnabled()) {
-        return std::make_unique<AuthzManagerExternalStateLDAP>(
-            std::make_unique<AuthzManagerExternalStateMongod>());
+namespace {
+
+std::unique_ptr<AuthzManagerExternalState> authzManagerExternalStateCreateImpl() {
+    auto localState = std::make_unique<AuthzManagerExternalStateMongod>();
+    if (!globalLDAPParams->isLDAPAuthzEnabled()) {
+        return localState;
     }
-    return std::make_unique<AuthzManagerExternalStateMongod>();
+    return std::make_unique<AuthzManagerExternalStateLDAP>(std::move(localState));
 }
+
+auto authzManagerExternalStateCreateRegistration = MONGO_WEAK_FUNCTION_REGISTRATION_WITH_PRIORITY(
+    AuthzManagerExternalState::create, authzManagerExternalStateCreateImpl, 1);
+
+}  // namespace
 
 }  // namespace mongo
