@@ -88,7 +88,10 @@ public:
         BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& pExpCtx);
 
 private:
-    DocumentSourceBackupCursor(const boost::intrusive_ptr<ExpressionContext>& pExpCtx);
+    DocumentSourceBackupCursor(const boost::intrusive_ptr<ExpressionContext>& pExpCtx,
+                               bool incrementalBackup,
+                               boost::optional<std::string> thisBackupName,
+                               boost::optional<std::string> srcBackupName);
 
     GetNextResult doGetNext() final;
 

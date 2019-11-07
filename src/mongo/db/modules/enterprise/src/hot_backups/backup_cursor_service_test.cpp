@@ -68,7 +68,8 @@ TEST_F(BackupCursorServiceTest, TestDoubleUnlock) {
 }
 
 TEST_F(BackupCursorServiceTest, TestTypicalCursorLifetime) {
-    auto backupCursorState = _backupCursorService->openBackupCursor(_opCtx.get());
+    auto backupCursorState =
+        _backupCursorService->openBackupCursor(_opCtx.get(), false, boost::none, boost::none);
     ASSERT_EQUALS(1u, backupCursorState.blocksToCopy.size());
     ASSERT_EQUALS("filename.wt", backupCursorState.blocksToCopy[0].filename);
     ASSERT_EQUALS(0U, backupCursorState.blocksToCopy[0].offset);
@@ -76,7 +77,8 @@ TEST_F(BackupCursorServiceTest, TestTypicalCursorLifetime) {
 
     _backupCursorService->closeBackupCursor(_opCtx.get(), backupCursorState.backupId);
 
-    backupCursorState = _backupCursorService->openBackupCursor(_opCtx.get());
+    backupCursorState =
+        _backupCursorService->openBackupCursor(_opCtx.get(), false, boost::none, boost::none);
     ASSERT_EQUALS(1u, backupCursorState.blocksToCopy.size());
     ASSERT_EQUALS("filename.wt", backupCursorState.blocksToCopy[0].filename);
     ASSERT_EQUALS(0U, backupCursorState.blocksToCopy[0].offset);
@@ -86,9 +88,10 @@ TEST_F(BackupCursorServiceTest, TestTypicalCursorLifetime) {
 }
 
 TEST_F(BackupCursorServiceTest, TestDoubleOpenCursor) {
-    auto backupCursorState = _backupCursorService->openBackupCursor(_opCtx.get());
+    auto backupCursorState =
+        _backupCursorService->openBackupCursor(_opCtx.get(), false, boost::none, boost::none);
     ASSERT_THROWS_WHAT(
-        _backupCursorService->openBackupCursor(_opCtx.get()),
+        _backupCursorService->openBackupCursor(_opCtx.get(), false, boost::none, boost::none),
         DBException,
         "The existing backup cursor must be closed before $backupCursor can succeed.");
     _backupCursorService->closeBackupCursor(_opCtx.get(), backupCursorState.backupId);
@@ -99,7 +102,8 @@ TEST_F(BackupCursorServiceTest, TestDoubleCloseCursor) {
                        DBException,
                        "There is no backup cursor to close.");
 
-    auto backupCursorState = _backupCursorService->openBackupCursor(_opCtx.get());
+    auto backupCursorState =
+        _backupCursorService->openBackupCursor(_opCtx.get(), false, boost::none, boost::none);
     _backupCursorService->closeBackupCursor(_opCtx.get(), backupCursorState.backupId);
     ASSERT_THROWS_WHAT(
         _backupCursorService->closeBackupCursor(_opCtx.get(), backupCursorState.backupId),
@@ -108,7 +112,8 @@ TEST_F(BackupCursorServiceTest, TestDoubleCloseCursor) {
 }
 
 TEST_F(BackupCursorServiceTest, TestCloseWrongCursor) {
-    auto backupCursorState = _backupCursorService->openBackupCursor(_opCtx.get());
+    auto backupCursorState =
+        _backupCursorService->openBackupCursor(_opCtx.get(), false, boost::none, boost::none);
 
     auto wrongCursor = UUID::gen();
     ASSERT_THROWS_WITH_CHECK(_backupCursorService->closeBackupCursor(_opCtx.get(), wrongCursor),
@@ -123,15 +128,17 @@ TEST_F(BackupCursorServiceTest, TestCloseWrongCursor) {
 
 TEST_F(BackupCursorServiceTest, TestMixingFsyncAndCursors) {
     _backupCursorService->fsyncLock(_opCtx.get());
-    ASSERT_THROWS_WHAT(_backupCursorService->openBackupCursor(_opCtx.get()),
-                       DBException,
-                       "The node is currently fsyncLocked.");
+    ASSERT_THROWS_WHAT(
+        _backupCursorService->openBackupCursor(_opCtx.get(), false, boost::none, boost::none),
+        DBException,
+        "The node is currently fsyncLocked.");
     ASSERT_THROWS_WHAT(_backupCursorService->closeBackupCursor(_opCtx.get(), UUID::gen()),
                        DBException,
                        "There is no backup cursor to close.");
     _backupCursorService->fsyncUnlock(_opCtx.get());
 
-    auto backupCursorState = _backupCursorService->openBackupCursor(_opCtx.get());
+    auto backupCursorState =
+        _backupCursorService->openBackupCursor(_opCtx.get(), false, boost::none, boost::none);
     ASSERT_THROWS_WHAT(_backupCursorService->fsyncLock(_opCtx.get()),
                        DBException,
                        "The existing backup cursor must be closed before fsyncLock can succeed.");
@@ -142,7 +149,8 @@ TEST_F(BackupCursorServiceTest, TestMixingFsyncAndCursors) {
 }
 
 TEST_F(BackupCursorServiceTest, TestSuccessfulExtend) {
-    auto backupCursorState = _backupCursorService->openBackupCursor(_opCtx.get());
+    auto backupCursorState =
+        _backupCursorService->openBackupCursor(_opCtx.get(), false, boost::none, boost::none);
     auto backupId = backupCursorState.backupId;
     auto extendTo = Timestamp(100, 1);
     auto backupCursorExtendState =

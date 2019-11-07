@@ -71,7 +71,11 @@ void BackupCursorService::fsyncUnlock(OperationContext* opCtx) {
     _state = kInactive;
 }
 
-BackupCursorState BackupCursorService::openBackupCursor(OperationContext* opCtx) {
+BackupCursorState BackupCursorService::openBackupCursor(
+    OperationContext* opCtx,
+    bool incrementalBackup,
+    boost::optional<std::string> thisBackupName,
+    boost::optional<std::string> srcBackupName) {
     // Prevent rollback
     repl::ReplicationStateTransitionLockGuard rstl(opCtx, MODE_IX);
 
@@ -112,6 +116,34 @@ BackupCursorState BackupCursorService::openBackupCursor(OperationContext* opCtx)
     if (isReplSet) {
         checkpointTimestamp = _storageEngine->getLastStableRecoveryTimestamp();
     };
+
+    // Cannot take an incremental backup on a non-existent srcBackupName or non-unique
+    // thisBackupName.
+    // TODO: SERVER-44407 Remove this code when we hook up WT for incremental backups.
+    if (incrementalBackup && srcBackupName) {
+        const std::string doesNotExistErr = str::stream()
+            << "Cannot take an incremental backup on '" << *srcBackupName
+            << "' because it does not exist";
+        uassert(ErrorCodes::InvalidOptions, doesNotExistErr, _mostRecentIncrementalBackup);
+
+        const std::string uniqueNameErr = str::stream()
+            << "'thisBackupName' (" << *thisBackupName << ") already exists, use a unique name";
+        uassert(ErrorCodes::InvalidOptions,
+                uniqueNameErr,
+                _mostRecentIncrementalBackup->thisBackupName != *thisBackupName);
+        if (_mostRecentIncrementalBackup->src) {
+            uassert(ErrorCodes::InvalidOptions,
+                    uniqueNameErr,
+                    _mostRecentIncrementalBackup->src->thisBackupName != *thisBackupName);
+        }
+
+        if (_mostRecentIncrementalBackup->thisBackupName != *srcBackupName) {
+            uassert(ErrorCodes::InvalidOptions, doesNotExistErr, _mostRecentIncrementalBackup->src);
+            uassert(ErrorCodes::InvalidOptions,
+                    doesNotExistErr,
+                    _mostRecentIncrementalBackup->src->thisBackupName == *srcBackupName);
+        }
+    }
 
     std::vector<StorageEngine::BackupBlock> blocksToBackup =
         uassertStatusOK(_storageEngine->beginNonBlockingBackup(opCtx));
@@ -197,6 +229,35 @@ BackupCursorState BackupCursorService::openBackupCursor(OperationContext* opCtx)
     Document preamble{{"metadata", builder.obj()}};
     for (auto&& block : blocksToBackup) {
         _backupFiles.insert(block.filename);
+    }
+
+    // TODO: SERVER-44407 Remove this code when we hook up WT for incremental backups.
+    if (!incrementalBackup) {
+        // Taking a full backup removes all prior incremental backups.
+        _mostRecentIncrementalBackup.reset();
+    }
+
+    // TODO: SERVER-44407 Remove this code when we hook up WT for incremental backups.
+    if (incrementalBackup && !srcBackupName) {
+        // A missing source name for incremental backups indicates that a full backup should be
+        // taken. This will remove any previous incremental backups.
+        _mostRecentIncrementalBackup = std::make_unique<IncrementalBackupHistory>(*thisBackupName);
+    }
+
+    // TODO: SERVER-44407 Remove this code when we hook up WT for incremental backups.
+    if (incrementalBackup && srcBackupName) {
+        // We've already opened the backup cursor and validated that 'srcBackupName' exists, so add
+        // it to the list of recent incremental backups.
+        std::unique_ptr<IncrementalBackupHistory> inc =
+            std::make_unique<IncrementalBackupHistory>(*thisBackupName);
+        inc->srcBackupName = srcBackupName;
+
+        if (_mostRecentIncrementalBackup->thisBackupName == *srcBackupName) {
+            inc->src = std::move(_mostRecentIncrementalBackup);
+        } else {
+            inc->src = std::move(_mostRecentIncrementalBackup->src);
+        }
+        _mostRecentIncrementalBackup = std::move(inc);
     }
 
     closeCursorGuard.dismiss();

@@ -31,6 +31,7 @@ env.Library(
     source=[
         'document_source_backup_cursor.cpp',
         'document_source_backup_cursor_extend.cpp',
+        env.Idlc('backup_cursor_parameters.idl')[0]
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',

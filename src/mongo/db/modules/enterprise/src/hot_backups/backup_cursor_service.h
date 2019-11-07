@@ -64,7 +64,10 @@ public:
      * relative to the server's `dbpath` that must be copied by the application to complete a
      * backup.
      */
-    BackupCursorState openBackupCursor(OperationContext* opCtx) override;
+    BackupCursorState openBackupCursor(OperationContext* opCtx,
+                                       bool incrementalBackup,
+                                       boost::optional<std::string> thisBackupName,
+                                       boost::optional<std::string> srcBackupName) override;
 
     /**
      * This method will uassert if `_state` is not `kBackupCursorOpened`, or the `backupId` input
@@ -101,6 +104,17 @@ private:
     boost::optional<UUID> _activeBackupId = boost::none;
     boost::optional<long long> _replTermOfActiveBackup = boost::none;
     std::set<std::string> _backupFiles;
+
+    struct IncrementalBackupHistory {
+        IncrementalBackupHistory(std::string thisBackupName) : thisBackupName(thisBackupName) {}
+
+        std::string thisBackupName;
+        // boost::none when this is the full backup.
+        boost::optional<std::string> srcBackupName;
+        // nullptr when this is the full backup.
+        std::unique_ptr<IncrementalBackupHistory> src;
+    };
+    std::unique_ptr<IncrementalBackupHistory> _mostRecentIncrementalBackup;
 };
 
 }  // namespace mongo
