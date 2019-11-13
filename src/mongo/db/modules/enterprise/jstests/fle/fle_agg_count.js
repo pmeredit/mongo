@@ -37,7 +37,7 @@ expectedResult = {
     aggregate: coll.getName(),
     pipeline: [
         {$group: {"_id": {"$const": null}, "foo": {"$sum": {"$const": 1}}}},
-        {$project: {"_id": false, "foo": true}},
+        {$project: {"foo": true, "_id": false}},
         {$match: {foo: {$eq: "winterfell"}}}
     ],
     cursor: {}
@@ -61,7 +61,7 @@ expectedResult = {
     aggregate: coll.getName(),
     pipeline: [
         {$group: {"_id": {"$const": null}, "bar": {"$sum": {"$const": 1}}}},
-        {$project: {"_id": false, "bar": true}},
+        {$project: {"bar": true, "_id": false}},
         {$match: {foo: {$eq: "winterfell"}}}
     ],
     cursor: {}
