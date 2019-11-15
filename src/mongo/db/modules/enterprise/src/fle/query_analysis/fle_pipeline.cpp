@@ -10,6 +10,9 @@
 
 #include "aggregate_expression_intender.h"
 #include "fle_match_expression.h"
+#include "mongo/db/exec/add_fields_projection_executor.h"
+#include "mongo/db/exec/exclusion_projection_executor.h"
+#include "mongo/db/exec/inclusion_projection_executor.h"
 #include "mongo/db/pipeline/document_source_bucket_auto.h"
 #include "mongo/db/pipeline/document_source_coll_stats.h"
 #include "mongo/db/pipeline/document_source_geo_near.h"
@@ -24,9 +27,6 @@
 #include "mongo/db/pipeline/document_source_skip.h"
 #include "mongo/db/pipeline/document_source_sort.h"
 #include "mongo/db/pipeline/document_source_unwind.h"
-#include "mongo/db/pipeline/parsed_add_fields.h"
-#include "mongo/db/pipeline/parsed_exclusion_projection.h"
-#include "mongo/db/pipeline/parsed_inclusion_projection.h"
 #include "mongo/db/pipeline/transformer_interface.h"
 
 namespace mongo {
@@ -43,7 +43,7 @@ using namespace std::string_literals;
  */
 clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForInclusionNode(
     const EncryptionSchemaTreeNode& prevSchema,
-    const parsed_aggregation_projection::InclusionNode& root,
+    const projection_executor::InclusionNode& root,
     std::unique_ptr<EncryptionSchemaTreeNode> futureSchema) {
     std::set<std::string> preservedPaths;
     root.reportProjectedPaths(&preservedPaths);
@@ -102,8 +102,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForInclusionNode(
 }
 
 clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForExclusion(
-    const EncryptionSchemaTreeNode& prevSchema,
-    const parsed_aggregation_projection::ExclusionNode& root) {
+    const EncryptionSchemaTreeNode& prevSchema, const projection_executor::ExclusionNode& root) {
     std::set<std::string> removedPaths;
     root.reportProjectedPaths(&removedPaths);
     std::unique_ptr<EncryptionSchemaTreeNode> futureSchema = prevSchema.clone();
@@ -373,8 +372,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForSingleDocumentTransform
     switch (transformer.getType()) {
         case TransformerInterface::TransformerType::kInclusionProjection: {
             const auto& includer =
-                static_cast<const parsed_aggregation_projection::ParsedInclusionProjection&>(
-                    transformer);
+                static_cast<const projection_executor::InclusionProjectionExecutor&>(transformer);
             return propagateSchemaForInclusionNode(
                 *prevSchema,
                 *includer.getRoot(),
@@ -382,13 +380,12 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForSingleDocumentTransform
         }
         case TransformerInterface::TransformerType::kExclusionProjection: {
             const auto& excluder =
-                static_cast<const parsed_aggregation_projection::ParsedExclusionProjection&>(
-                    transformer);
+                static_cast<const projection_executor::ExclusionProjectionExecutor&>(transformer);
             return propagateSchemaForExclusion(*prevSchema, *excluder.getRoot());
         }
         case TransformerInterface::TransformerType::kComputedProjection: {
             const auto& projector =
-                static_cast<const parsed_aggregation_projection::ParsedAddFields&>(transformer);
+                static_cast<const projection_executor::AddFieldsProjectionExecutor&>(transformer);
             return propagateSchemaForInclusionNode(
                 *prevSchema, projector.getRoot(), prevSchema->clone());
         }
@@ -445,7 +442,7 @@ aggregate_expression_intender::Intention analyzeStageNoop(FLEPipeline* flePipe,
 aggregate_expression_intender::Intention analyzeForInclusionNode(
     FLEPipeline* flePipe,
     const EncryptionSchemaTreeNode& schema,
-    const parsed_aggregation_projection::InclusionNode& root) {
+    const projection_executor::InclusionNode& root) {
     auto didMark = aggregate_expression_intender::Intention::NotMarked;
     std::set<std::string> computedPaths;
     StringMap<std::string> renamedPaths;
@@ -470,8 +467,7 @@ aggregate_expression_intender::Intention analyzeForSingleDocumentTransformation(
     switch (transformer.getType()) {
         case TransformerInterface::TransformerType::kInclusionProjection: {
             const auto& includer =
-                static_cast<const parsed_aggregation_projection::ParsedInclusionProjection&>(
-                    transformer);
+                static_cast<const projection_executor::InclusionProjectionExecutor&>(transformer);
             return analyzeForInclusionNode(flePipe, schema, *includer.getRoot());
         }
         case TransformerInterface::TransformerType::kExclusionProjection: {
@@ -479,7 +475,7 @@ aggregate_expression_intender::Intention analyzeForSingleDocumentTransformation(
         }
         case TransformerInterface::TransformerType::kComputedProjection: {
             const auto& projector =
-                static_cast<const parsed_aggregation_projection::ParsedAddFields&>(transformer);
+                static_cast<const projection_executor::AddFieldsProjectionExecutor&>(transformer);
             return analyzeForInclusionNode(flePipe, schema, projector.getRoot());
         }
         case TransformerInterface::TransformerType::kReplaceRoot: {
