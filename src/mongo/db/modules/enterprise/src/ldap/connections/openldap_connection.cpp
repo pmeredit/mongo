@@ -22,6 +22,7 @@
 
 #include "../ldap_connection_options.h"
 #include "../ldap_query.h"
+#include "ldap/ldap_parameters_gen.h"
 #include "ldap_connection_helpers.h"
 
 namespace mongo {
@@ -333,6 +334,10 @@ OpenLDAPConnection::~OpenLDAPConnection() {
 // session object.
 bool OpenLDAPConnection::isThreadSafe() {
     static const bool threadsafeExtension = []() -> bool {
+        if (ldapForceMultiThreadMode) {
+            return true;
+        }
+
         auto pimpl = std::make_unique<OpenLDAPConnectionPIMPL>();
         LDAPOptionAPIInfo info =
             pimpl->getOption<LDAPOptionAPIInfo>("OpenLDAPConnection::connect", "Getting API info");

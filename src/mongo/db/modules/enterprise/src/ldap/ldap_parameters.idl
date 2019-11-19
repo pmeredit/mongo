@@ -55,7 +55,7 @@ server_parameters:
         The amount of time (in milliseconds) between checking the health of pooled LDAP connections
     default: 60000
     set_at: startup
-    cpp_vartype: int 
+    cpp_vartype: int
     cpp_varname: ldapConnectionPoolRefreshInterval
 
   ldapConnectionPoolIdleHostTimeoutSecs:
@@ -66,3 +66,13 @@ server_parameters:
     set_at: startup
     cpp_vartype: int
     cpp_varname: ldapConnectionPoolIdleHostTimeoutSecs
+
+  ldapForceMultiThreadMode:
+    description: >
+        MongoDB detects if OpenLDAP is not thread safe unless this flag is set.
+    default: false
+    set_at: startup
+    cpp_vartype: bool
+    cpp_varname: ldapForceMultiThreadMode
+    condition:
+      preprocessor: '!defined(_WIN32)'
