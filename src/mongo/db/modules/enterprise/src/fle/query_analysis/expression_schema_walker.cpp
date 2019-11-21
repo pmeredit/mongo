@@ -290,6 +290,9 @@ public:
     void visit(ExpressionStrLenBytes*) {
         _tracker.enterEvaluateOrCompare();
     }
+    void visit(ExpressionBinarySize*) {
+        _tracker.enterEvaluateOrCompare();
+    }
     void visit(ExpressionStrLenCP*) {
         _tracker.enterEvaluateOrCompare();
     }
@@ -578,6 +581,7 @@ public:
     void visit(ExpressionSubstrBytes*) {}
     void visit(ExpressionSubstrCP*) {}
     void visit(ExpressionStrLenBytes*) {}
+    void visit(ExpressionBinarySize*) {}
     void visit(ExpressionStrLenCP*) {}
     void visit(ExpressionSubtract*) {}
     void visit(ExpressionToLower*) {}
@@ -853,6 +857,9 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(ExpressionStrLenBytes*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(ExpressionBinarySize*) {
         _tracker.exitEvaluateOrCompare();
     }
     void visit(ExpressionStrLenCP*) {

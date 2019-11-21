@@ -719,6 +719,10 @@ private:
     void visit(ExpressionStrLenBytes*) final {
         ensureNotEncryptedEnterEval("a byte-based string length determination", subtreeStack);
     }
+    void visit(ExpressionBinarySize*) final {
+        ensureNotEncryptedEnterEval("a byte-based string or BinData length determination",
+                                    subtreeStack);
+    }
     void visit(ExpressionStrLenCP*) final {
         ensureNotEncryptedEnterEval("a code-point-based string length determination", subtreeStack);
     }
@@ -971,6 +975,7 @@ private:
     void visit(ExpressionSubstrBytes*) final {}
     void visit(ExpressionSubstrCP*) final {}
     void visit(ExpressionStrLenBytes*) final {}
+    void visit(ExpressionBinarySize*) final {}
     void visit(ExpressionStrLenCP*) final {}
     void visit(ExpressionSubtract*) final {}
     void visit(ExpressionSwitch* switchExpr) final {
@@ -1269,6 +1274,9 @@ private:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionStrLenBytes*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionBinarySize*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionStrLenCP*) final {
