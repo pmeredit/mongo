@@ -95,12 +95,8 @@ class BlockstoreFileHandle : private WT_FILE_HANDLE {
 public:
     BlockstoreFileHandle(BlockstoreFileSystem* blockstoreFs,
                          std::unique_ptr<Reader> reader,
-                         std::int64_t fileSize,
-                         std::int32_t blockSize)
-        : _blockstoreFs(blockstoreFs),
-          _reader(std::move(reader)),
-          _fileSize(fileSize),
-          _blockSize(blockSize) {}
+                         std::int64_t fileSize)
+        : _blockstoreFs(blockstoreFs), _reader(std::move(reader)), _fileSize(fileSize) {}
 
     WT_FILE_HANDLE* getWtFileHandle() {
         WT_FILE_HANDLE* ret = static_cast<WT_FILE_HANDLE*>(this);
@@ -112,10 +108,6 @@ public:
         return _fileSize;
     }
 
-    std::int32_t getBlockSize() const {
-        return _blockSize;
-    }
-
     /**
      * return 0 on success, non-zero on error. As per WT expectations.
      */
@@ -125,7 +117,6 @@ private:
     BlockstoreFileSystem* _blockstoreFs;
     std::unique_ptr<Reader> _reader;
     std::int64_t _fileSize;
-    std::int32_t _blockSize;
 };
 
 }  // namespace queryable

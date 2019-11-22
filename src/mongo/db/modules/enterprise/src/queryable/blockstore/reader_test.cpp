@@ -86,75 +86,12 @@ public:
     void setTimeout(Seconds timeout) final {}
 };
 
-TEST_F(ReaderTest, TestReadInto) {
-    const std::size_t fileSize = 44 * 1000;
-    // Test when the blockSize (relative to the fileSize):
-    // 1) is small and evenly divides the file
-    // 2) is small and leaves a remainder
-    // 3) is the same size as the file
-    // 4) is larger than the file
-    for (auto blockSize : std::vector<std::size_t>{4 * 1000, 10 * 1000, 44 * 1000, 50 * 1000}) {
-        BlockstoreHTTP blockstore("", mongo::OID(), std::make_unique<MockedHttpClient>());
-        Reader reader(std::move(blockstore), "file", fileSize, blockSize);
-        std::ostringstream buf;
-        auto status = reader.readInto(&buf);
-        ASSERT_EQ(Status::OK(), status);
-        std::string res = buf.str();
-        ASSERT_EQ(fileSize, res.size());
-        for (std::size_t idx = 0; idx < res.size(); ++idx) {
-            ASSERT_EQ(static_cast<char>(idx % 256), res[idx]);
-        }
-    }
-}
-
-TEST_F(ReaderTest, TestReadBlockInto) {
-    const std::size_t fileSize = 9400;
-    const std::size_t blockSize = 1000;
-    std::array<char, blockSize> data;
-
-    BlockstoreHTTP blockstore("", mongo::OID(), std::make_unique<MockedHttpClient>());
-    Reader reader(std::move(blockstore), "file", fileSize, blockSize);
-    // For each of the first nine full blocks:
-    for (std::size_t blockIdx = 0; blockIdx < fileSize / blockSize; ++blockIdx) {
-        DataRange buf(data.data(), data.data() + blockSize);
-        auto swBytesRead = reader.readBlockInto(buf, blockIdx);
-        ASSERT_EQ(Status::OK(), swBytesRead.getStatus());
-        ASSERT_EQ(blockSize, swBytesRead.getValue());
-        for (std::size_t idx = 0; idx < blockSize; ++idx) {
-            const std::size_t offset = (blockIdx * blockSize) + idx;
-            ASSERT_EQ(static_cast<char>(offset % 256), data[idx]);
-        }
-    }
-
-    // The last block should only read 400 bytes
-    DataRange buf(data.data(), data.data() + 1000);
-    const auto lastBlockIdx = fileSize / blockSize;
-    auto swBytesRead = reader.readBlockInto(buf, lastBlockIdx);
-    ASSERT_EQ(Status::OK(), swBytesRead.getStatus());
-    ASSERT_EQ(fileSize % blockSize, swBytesRead.getValue());
-    for (std::size_t idx = 0; idx < swBytesRead.getValue(); ++idx) {
-        const std::size_t offset = (lastBlockIdx * blockSize) + idx;
-        ASSERT_EQ(static_cast<char>(offset % 256), data[idx]);
-    }
-
-    // Test the case where a buffer smaller than a full block is still sufficient for a small block.
-    buf = DataRange(data.data(), data.data() + 500);
-    swBytesRead = reader.readBlockInto(buf, lastBlockIdx);
-    ASSERT_EQ(Status::OK(), swBytesRead.getStatus());
-    ASSERT_EQ(fileSize % blockSize, swBytesRead.getValue());
-    for (std::size_t idx = 0; idx < swBytesRead.getValue(); ++idx) {
-        const std::size_t offset = (lastBlockIdx * blockSize) + idx;
-        ASSERT_EQ(static_cast<char>(offset % 256), data[idx]);
-    }
-}
-
 TEST_F(ReaderTest, TestRead) {
     const std::size_t fileSize = 9400;
-    const std::size_t blockSize = 1000;
     std::array<char, fileSize> data;
 
     BlockstoreHTTP blockstore("", mongo::OID(), std::make_unique<MockedHttpClient>());
-    Reader reader(std::move(blockstore), "file", fileSize, blockSize);
+    Reader reader(std::move(blockstore), "file", fileSize);
     for (auto bytesToRead : std::vector<std::size_t>{400, 1000, 1400, 2000, 2700}) {
         for (auto fileOffset : std::vector<std::size_t>{0, 400, 1000, 1400}) {
             DataRange buf(data.data(), data.data() + fileSize);

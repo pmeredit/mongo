@@ -273,9 +273,8 @@ int BlockstoreFileSystem::open(const char* name, BlockstoreFileHandle** fileHand
     auto ret = std::make_unique<BlockstoreFileHandle>(
         this,
         std::make_unique<Reader>(
-            BlockstoreHTTP(_apiUri, _snapshotId), file.filename, file.fileSize, file.blockSize),
-        file.fileSize,
-        file.blockSize);
+            BlockstoreHTTP(_apiUri, _snapshotId), file.filename, file.fileSize),
+        file.fileSize);
     if (ret == nullptr) {
         return ENOMEM;
     }
