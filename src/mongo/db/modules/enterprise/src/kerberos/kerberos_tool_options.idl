@@ -14,7 +14,6 @@ configs:
         description: 'Produce more detailed log messages'
         arg_vartype: Switch
         cpp_varname: 'globalKerberosToolOptions->debug'
-        conflicts: debug
     color:
         description: 'Enable colored output'
         arg_vartype: Bool
@@ -30,11 +29,14 @@ configs:
         description: 'username for authentication'
         arg_vartype: String
         single_name: u
+        requires: client
+        cpp_varname: 'globalKerberosToolOptions->username'
     gssapiServiceName:
         section: 'Client Options'
         description: 'Service name to use when authenticating using GSSAPI/Kerberos'
         default: 'mongodb'
         arg_vartype: String
+        cpp_varname: 'globalKerberosToolOptions->gssapiServiceName'
     "setParameter.saslHostName":
         section: 'Client Options'
         description: 'Remote host name to use for purpose of GSSAPI/Kerberos authentication'
@@ -54,6 +56,7 @@ configs:
         source: cli
         arg_vartype: Switch
         conflicts: server
+        requires: username
     server:
         section: 'Commands'
         description: 'validate a server setup'

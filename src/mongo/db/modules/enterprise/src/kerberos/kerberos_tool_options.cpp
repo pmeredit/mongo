@@ -33,7 +33,7 @@ MONGO_INITIALIZER_GENERAL(KerberosToolUseStrict,
 }
 
 MONGO_STARTUP_OPTIONS_VALIDATE(MongoKerberosToolOptions)(InitializerContext*) {
-    const auto& params = moe::startupOptionsParsed;
+    auto& params = moe::startupOptionsParsed;
 
     if (params.count("help")) {
         std::cout << "Usage: mongokerberos [options] <--client|--server> <additional_options>"
@@ -43,7 +43,10 @@ MONGO_STARTUP_OPTIONS_VALIDATE(MongoKerberosToolOptions)(InitializerContext*) {
                   << moe::startupOptions.helpString() << std::flush;
         quickExit(EXIT_SUCCESS);
     }
-
+    Status ret = params.validate();
+    if (!ret.isOK()) {
+        return ret;
+    }
     // check for required --client|--server parameter
     if (!params.count("client") && !params.count("server")) {
         return {ErrorCodes::BadValue, "Missing required option: \"--client|--server\""};

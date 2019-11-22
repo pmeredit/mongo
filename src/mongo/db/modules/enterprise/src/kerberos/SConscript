@@ -5,7 +5,7 @@ Import('env')
 env = env.Clone()
 
 env.Library(
-    target='kerberos_tool_options',
+    target='kerberos_tool',
     source=[
         "kerberos_tool_options.cpp",
         env.Idlc('kerberos_tool_options.idl')[0],
@@ -13,5 +13,6 @@ env.Library(
     LIBDEPS_PRIVATE=[
         "$BUILD_DIR/mongo/base",
         "$BUILD_DIR/mongo/util/options_parser/options_parser_init",
-    ]
+    ],
+    SYSLIBDEPS=['krb5'] if not env.TargetOSIs('windows') else [],
 )
