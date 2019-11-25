@@ -475,6 +475,12 @@ private:
     void visit(ExpressionArrayElemAt*) final {
         ensureNotEncryptedEnterEval("array indexing", subtreeStack);
     }
+    void visit(ExpressionFirst*) final {
+        ensureNotEncryptedEnterEval("array indexing (first element)", subtreeStack);
+    }
+    void visit(ExpressionLast*) final {
+        ensureNotEncryptedEnterEval("array indexing (last element)", subtreeStack);
+    }
     void visit(ExpressionObjectToArray*) final {
         ensureNotEncryptedEnterEval("an object to array conversion", subtreeStack);
     }
@@ -891,6 +897,8 @@ private:
     void visit(ExpressionAnyElementTrue*) final {}
     void visit(ExpressionArray*) final {}
     void visit(ExpressionArrayElemAt*) final {}
+    void visit(ExpressionFirst*) final {}
+    void visit(ExpressionLast*) final {}
     void visit(ExpressionObjectToArray*) final {}
     void visit(ExpressionArrayToObject*) final {}
     void visit(ExpressionCeil*) final {}
@@ -1093,6 +1101,12 @@ private:
         }
     }
     void visit(ExpressionArrayElemAt*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionFirst*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionLast*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionObjectToArray*) final {
