@@ -47,8 +47,8 @@ public:
             return false;
         }
 
-        void assertSupportsReadConcern(const repl::ReadConcernArgs& readConcern) const {
-            onlyReadConcernLocalSupported(DocumentSourceBackupCursor::kStageName, readConcern);
+        ReadConcernSupportResult supportsReadConcern(repl::ReadConcernLevel level) const {
+            return onlyReadConcernLocalSupported(kStageName, level);
         }
 
         void assertSupportsMultiDocumentTransaction() const {
