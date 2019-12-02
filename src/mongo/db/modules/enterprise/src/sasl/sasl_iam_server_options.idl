@@ -1,0 +1,13 @@
+# Copyright (C) 2019-present MongoDB, Inc.
+
+global:
+    cpp_namespace: "mongo"
+    cpp_includes:
+        - "sasl/sasl_iam_server_protocol.h"
+
+server_parameters:
+    awsSTSUrl:
+        description: "Parameter to override AWS STS HTTP Url"
+        set_at: startup
+        default: "https://sts.amazonaws.com"
+        cpp_varname: "iam::saslIAMGlobalParams.awsSTSUrl"

@@ -243,9 +243,15 @@ if "sasl" in env['MONGO_ENTERPRISE_FEATURES']:
             'src/sasl/canon_mongodb_internal.cpp',
             'src/sasl/mongo_${MONGO_GSSAPI_IMPL}.cpp',
             'src/sasl/gssapi_helpers.cpp' if not env.TargetOSIs("windows") else [],
+            env.Idlc('src/sasl/sasl_iam_server_options.idl')[0],
+            'src/sasl/sasl_iam_server_conversation.cpp',
         ],
         LIBDEPS=[
+            'sasl_iam_server',
             '$BUILD_DIR/mongo/db/auth/saslauth',
+        ],
+        LIBDEPS_PRIVATE=[
+            '$BUILD_DIR/mongo/util/net/http_client',
         ],
         SYSLIBDEPS=['sasl2'] + [env['MONGO_GSSAPI_LIB']],
     )

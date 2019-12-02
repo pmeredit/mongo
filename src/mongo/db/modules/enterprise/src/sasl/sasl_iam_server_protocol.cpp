@@ -18,8 +18,6 @@
 #include "mongo/util/base64.h"
 #include "mongo/util/str.h"
 
-#include "sasl/sasl_iam_server_protocol_gen.h"
-
 namespace mongo {
 
 namespace iam {
@@ -44,6 +42,7 @@ constexpr auto kStsPrefix = "arn:aws:sts::"_sd;
 constexpr auto kAssumedRole = "assumed-role/"_sd;
 constexpr auto kUser = "user/"_sd;
 constexpr auto signedHeadersStr = "SignedHeaders="_sd;
+constexpr auto credentialStr = "Credential="_sd;
 
 /**
  * Validate the SignedHeaders list of the Authorization header of AWS Sig V4
@@ -100,6 +99,17 @@ void validateSignedHeaders(StringData authHeader) {
     uassert(51288, "The x-mongodb-server-nonce header is missing", hasMongoDBServerNonce);
 }
 
+std::string extractAwsAccountId(StringData authHeader) {
+    size_t pos = authHeader.find(credentialStr);
+    uassert(51742, "Credential missing from Authorization Header", pos != std::string::npos);
+
+    size_t trailingSlash = authHeader.find('/', pos);
+    uassert(51743, "Credential missing trailing comma", trailingSlash != std::string::npos);
+
+    return authHeader.substr(pos + credentialStr.size(), trailingSlash - pos - credentialStr.size())
+        .toString();
+}
+
 }  // namespace
 
 std::array<char, 32> iam::generateServerNonce() {
@@ -145,10 +155,14 @@ std::string iam::generateServerFirst(StringData clientFirstBase64,
 }
 
 std::tuple<std::vector<std::string>, std::string> iam::parseClientSecond(
-    StringData clientSecondStr, const std::vector<char>& serverNonce, char cbFlag) {
+    StringData clientSecondStr,
+    const std::vector<char>& serverNonce,
+    char cbFlag,
+    std::string* awsAccountId) {
     auto clientSecond = iam::convertFromByteString<IamClientSecond>(clientSecondStr);
 
     validateSignedHeaders(clientSecond.getAuthHeader());
+    *awsAccountId = extractAwsAccountId(clientSecond.getAuthHeader());
 
     /* Retrieve arguments */
     constexpr auto requestBody = "Action=GetCallerIdentity&Version=2011-06-15"_sd;

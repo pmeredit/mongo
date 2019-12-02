@@ -52,7 +52,10 @@ std::string generateServerFirst(StringData clientFirst,
  * to contact STS.
  */
 std::tuple<std::vector<std::string>, std::string> parseClientSecond(
-    StringData clientSecond, const std::vector<char>& serverNonce, char cbFlag);
+    StringData clientSecond,
+    const std::vector<char>& serverNonce,
+    char cbFlag,
+    std::string* awsAccountId);
 
 /**
  * Example of a typical response

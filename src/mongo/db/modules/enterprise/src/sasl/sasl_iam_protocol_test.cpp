@@ -28,12 +28,13 @@ TEST(SaslIamProtocol, Basic_Success) {
     auto clientFirst = iam::generateClientFirst(&clientNonce);
     std::vector<char> serverNonce;
     char cbFlag;
+    std::string principalName;
 
     auto serverFirst = iam::generateServerFirst(clientFirst, &serverNonce, &cbFlag);
 
     auto clientSecond = iam::generateClientSecond(serverFirst, clientNonce, defaultCredentials);
 
-    auto httpTuple = iam::parseClientSecond(clientSecond, serverNonce, cbFlag);
+    auto httpTuple = iam::parseClientSecond(clientSecond, serverNonce, cbFlag, &principalName);
 }
 
 // Positive: Test the ARN is extracted correctly from XML
@@ -188,6 +189,7 @@ void parseWithCustomAuthHeader(StringData authHeader) {
     auto clientFirst = iam::generateClientFirst(&clientNonce);
     std::vector<char> serverNonce;
     char cbFlag;
+    std::string principalName;
 
     auto serverFirst = iam::generateServerFirst(clientFirst, &serverNonce, &cbFlag);
 
@@ -197,14 +199,15 @@ void parseWithCustomAuthHeader(StringData authHeader) {
 
     second.setXAmzDate("FAKE");
 
-    auto httpTuple = iam::parseClientSecond(iam::convertToByteString(second), serverNonce, cbFlag);
+    auto httpTuple = iam::parseClientSecond(
+        iam::convertToByteString(second), serverNonce, cbFlag, &principalName);
 }
 
 // Negative: Missing basic, required HTTP headers
 TEST(SaslIamProtocol, ClientSecond_BadAuth_MissingSignedHeaders) {
     ASSERT_THROWS_CODE(
         parseWithCustomAuthHeader(
-            "FAKEFAKEFAKE/20191107/us-east-1/sts/aws4_request, "
+            "Actual: AWS4-HMAC-SHA256 Credential=FAKEFAKEFAKE/20191107/us-east-1/sts/aws4_request, "
             "Signature=ab62ce1c75f19c4c8b918b2ed63b46512765ed9b8bb5d79b374ae83eeac11f55"),
         AssertionException,
         51293);
@@ -214,7 +217,7 @@ TEST(SaslIamProtocol, ClientSecond_BadAuth_MissingSignedHeaders) {
 TEST(SaslIamProtocol, ClientSecond_BadAuth_MissingTrailingComma) {
     ASSERT_THROWS_CODE(
         parseWithCustomAuthHeader(
-            "FAKEFAKEFAKE/20191107/us-east-1/sts/aws4_request, "
+            "Actual: AWS4-HMAC-SHA256 Credential=FAKEFAKEFAKE/20191107/us-east-1/sts/aws4_request, "
             "SignedHeaders=content-length;content-type;host;x-amz-date;x-mongodb-gs2-cb-flag "
             "Signature=ab62ce1c75f19c4c8b918b2ed63b46512765ed9b8bb5d79b374ae83eeac11f55"),
         AssertionException,
@@ -225,7 +228,7 @@ TEST(SaslIamProtocol, ClientSecond_BadAuth_MissingTrailingComma) {
 TEST(SaslIamProtocol, ClientSecond_BadAuth_MissingRequiredField) {
     ASSERT_THROWS_CODE(
         parseWithCustomAuthHeader(
-            "FAKEFAKEFAKE/20191107/us-east-1/sts/aws4_request, "
+            "Actual: AWS4-HMAC-SHA256 Credential=FAKEFAKEFAKE/20191107/us-east-1/sts/aws4_request, "
             "SignedHeaders=content-length;content-type;host;x-amz-date;x-mongodb-server-nonce, "
             "Signature=ab62ce1c75f19c4c8b918b2ed63b46512765ed9b8bb5d79b374ae83eeac11f55"),
         AssertionException,
@@ -233,7 +236,7 @@ TEST(SaslIamProtocol, ClientSecond_BadAuth_MissingRequiredField) {
 
     ASSERT_THROWS_CODE(
         parseWithCustomAuthHeader(
-            "FAKEFAKEFAKE/20191107/us-east-1/sts/aws4_request, "
+            "Actual: AWS4-HMAC-SHA256 Credential=FAKEFAKEFAKE/20191107/us-east-1/sts/aws4_request, "
             "SignedHeaders=content-length;content-type;host;x-amz-date;x-mongodb-gs2-cb-flag, "
             "Signature=ab62ce1c75f19c4c8b918b2ed63b46512765ed9b8bb5d79b374ae83eeac11f55"),
         AssertionException,
@@ -244,7 +247,7 @@ TEST(SaslIamProtocol, ClientSecond_BadAuth_MissingRequiredField) {
 TEST(SaslIamProtocol, ClientSecond_BadAuth_ExtraHeader) {
     ASSERT_THROWS_CODE(
         parseWithCustomAuthHeader(
-            "FAKEFAKEFAKE/20191107/us-east-1/sts/aws4_request, "
+            "Actual: AWS4-HMAC-SHA256 Credential=FAKEFAKEFAKE/20191107/us-east-1/sts/aws4_request, "
             "SignedHeaders=content-length;content-type;host;x-amz-date;x-fake-field;x-mongodb-gs2-"
             "cb-flag;x-mongodb-server-nonce, "
             "Signature=ab62ce1c75f19c4c8b918b2ed63b46512765ed9b8bb5d79b374ae83eeac11f55"),
@@ -257,7 +260,7 @@ TEST(SaslIamProtocol, ClientSecond_BadAuth_ExtraHeader) {
 TEST(SaslIamProtocol, ClientSecond_BadAuth_ExtraHeaderAtEnd) {
     ASSERT_THROWS_CODE(
         parseWithCustomAuthHeader(
-            "FAKEFAKEFAKE/20191107/us-east-1/sts/aws4_request, "
+            "Actual: AWS4-HMAC-SHA256 Credential=FAKEFAKEFAKE/20191107/us-east-1/sts/aws4_request, "
             "SignedHeaders=content-length;content-type;host;x-amz-date;x-mongodb-gs2-"
             "cb-flag;x-mongodb-server-nonce;x-trailing-fake-field, "
             "Signature=ab62ce1c75f19c4c8b918b2ed63b46512765ed9b8bb5d79b374ae83eeac11f55"),
@@ -270,7 +273,7 @@ TEST(SaslIamProtocol, ClientSecond_BadAuth_ExtraHeaderAtEnd) {
 TEST(SaslIamProtocol, ClientSecond_BadAuth_WrongBindings) {
     ASSERT_THROWS_CODE(
         parseWithCustomAuthHeader(
-            "FAKEFAKEFAKE/20191107/us-east-1/sts/aws4_request, "
+            "Actual: AWS4-HMAC-SHA256 Credential=FAKEFAKEFAKE/20191107/us-east-1/sts/aws4_request, "
             "SignedHeaders=content-length;content-type;host;x-amz-date;x-mongodb-channel-type-"
             "prefix;x-mongodb-gs2-cb-flag;x-mongodb-server-nonce, "
             "Signature=ab62ce1c75f19c4c8b918b2ed63b46512765ed9b8bb5d79b374ae83eeac11f55"),
@@ -279,13 +282,39 @@ TEST(SaslIamProtocol, ClientSecond_BadAuth_WrongBindings) {
 
     ASSERT_THROWS_CODE(
         parseWithCustomAuthHeader(
-            "FAKEFAKEFAKE/20191107/us-east-1/sts/aws4_request, "
+            "Actual: AWS4-HMAC-SHA256 Credential=FAKEFAKEFAKE/20191107/us-east-1/sts/aws4_request, "
             "SignedHeaders=content-length;content-type;host;x-amz-date;x-mongodb-channel-binding-"
             "data;x-mongodb-gs2-cb-flag;x-mongodb-server-nonce, "
             "Signature=ab62ce1c75f19c4c8b918b2ed63b46512765ed9b8bb5d79b374ae83eeac11f55"),
         AssertionException,
         51290);
 }
+
+
+// Negative: Credential is missing
+TEST(SaslIamProtocol, ClientSecond_BadCredential_Missing) {
+    ASSERT_THROWS_CODE(
+        parseWithCustomAuthHeader(
+            "Actual: AWS4-HMAC-SHA256 "
+            "SignedHeaders=content-length;content-type;host;x-amz-date;"
+            "x-mongodb-gs2-cb-flag;x-mongodb-server-nonce, "
+            "Signature=ab62ce1c75f19c4c8b918b2ed63b46512765ed9b8bb5d79b374ae83eeac11f55"),
+        AssertionException,
+        51742);
+}
+
+// Negative: Credential lacks a /
+TEST(SaslIamProtocol, ClientSecond_BadCredential_MissingSlash) {
+    ASSERT_THROWS_CODE(
+        parseWithCustomAuthHeader(
+            "Actual: AWS4-HMAC-SHA256 Credential=FAKEFAKEFAKE,"
+            "SignedHeaders=content-length;content-type;host;x-amz-date;"
+            "x-mongodb-gs2-cb-flag;x-mongodb-server-nonce, "
+            "Signature=ab62ce1c75f19c4c8b918b2ed63b46512765ed9b8bb5d79b374ae83eeac11f55"),
+        AssertionException,
+        51743);
+}
+
 
 // Positive: EC2 instance metadata returns a valid string
 TEST(SaslIAMClientProtocolUtil, ParseRole_Basic) {
