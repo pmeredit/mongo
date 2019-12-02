@@ -206,6 +206,37 @@ if not env.TargetOSIs("darwin") and "snmp" in env['MONGO_ENTERPRISE_FEATURES']:
 
 if "sasl" in env['MONGO_ENTERPRISE_FEATURES']:
     env.Library(
+        target=[
+            'sasl_iam_server',
+        ],
+        source=[
+            'src/sasl/sasl_iam_server_protocol.cpp',
+        ],
+        LIBDEPS_PRIVATE=[
+            '$BUILD_DIR/mongo/base',
+            '$BUILD_DIR/mongo/client/sasl_iam_common',
+            '$BUILD_DIR/mongo/db/server_options_core', # For object_check.h
+        ],
+    )
+
+    kmsEnv = env.Clone()
+
+    kmsEnv.InjectThirdParty(libraries=['kms-message'])
+
+    kmsEnv.CppUnitTest(
+        target='sasl_iam_protocol_test',
+        source=[
+            'src/sasl/sasl_iam_protocol_test.cpp',
+        ],
+        LIBDEPS=[
+            '$BUILD_DIR/mongo/client/sasl_iam_common',
+            '$BUILD_DIR/mongo/client/sasl_iam_client',
+            'sasl_iam_server',
+            '$BUILD_DIR/third_party/shim_kms_message',
+        ],
+    )
+
+    env.Library(
         target='mongosaslserversession',
         source=[
             'src/sasl/auxprop_mongodb_internal.cpp' if env.TargetOSIs("windows") else [],
