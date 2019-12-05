@@ -677,6 +677,12 @@ private:
     void visit(ExpressionReduce*) final {
         enterSubtree(Subtree::Evaluated{"a reduce initializer"}, subtreeStack);
     }
+    void visit(ExpressionReplaceOne*) final {
+        ensureNotEncryptedEnterEval("a string replaceOne operation", subtreeStack);
+    }
+    void visit(ExpressionReplaceAll*) final {
+        ensureNotEncryptedEnterEval("a string replaceAll operation", subtreeStack);
+    }
     void visit(ExpressionSetDifference*) final {
         ensureNotEncryptedEnterEval("a set difference operation", subtreeStack);
     }
@@ -967,6 +973,8 @@ private:
             didSetIntention =
                 exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
+    void visit(ExpressionReplaceOne*) final {}
+    void visit(ExpressionReplaceAll*) final {}
     void visit(ExpressionSetDifference*) final {}
     void visit(ExpressionSetEquals*) final {}
     void visit(ExpressionSetIntersection*) final {}
@@ -1242,6 +1250,12 @@ private:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionReduce*) final {}
+    void visit(ExpressionReplaceOne*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionReplaceAll*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
     void visit(ExpressionSetDifference*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }

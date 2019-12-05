@@ -248,6 +248,12 @@ public:
     void visit(ExpressionReduce*) {
         _tracker.enterEvaluateOrCompare();
     }
+    void visit(ExpressionReplaceOne*) {
+        _tracker.enterEvaluateOrCompare();
+    }
+    void visit(ExpressionReplaceAll*) {
+        _tracker.enterEvaluateOrCompare();
+    }
     void visit(ExpressionSetDifference*) {
         _tracker.enterEvaluateOrCompare();
     }
@@ -573,6 +579,8 @@ public:
     void visit(ExpressionPow*) {}
     void visit(ExpressionRange*) {}
     void visit(ExpressionReduce*) {}
+    void visit(ExpressionReplaceOne*) {}
+    void visit(ExpressionReplaceAll*) {}
     void visit(ExpressionSetDifference*) {}
     void visit(ExpressionSetEquals*) {}
     void visit(ExpressionSetIntersection*) {}
@@ -823,6 +831,12 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(ExpressionReduce*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(ExpressionReplaceOne*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(ExpressionReplaceAll*) {
         _tracker.exitEvaluateOrCompare();
     }
     void visit(ExpressionSetDifference*) {
