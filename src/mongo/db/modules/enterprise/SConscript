@@ -490,15 +490,22 @@ if hygienic:
         import re
         import subprocess
 
-        extra_files = [
-            'libsasl.dll',
-            'libsasl.pdb',
-            'netsnmp.dll',
-            'netsnmp.pdb',
-        ]
+        extra_files = []
+
+        if 'sasl' in env['MONGO_ENTERPRISE_FEATURES']:
+            extra_files.extend([
+                'libsasl.dll',
+                'libsasl.pdb',
+            ])
+
+        if 'snmp' in env['MONGO_ENTERPRISE_FEATURES']:
+            extra_files.extend([
+                'netsnmp.dll',
+                'netsnmp.pdb',
+            ])
 
         for file_name in extra_files:
-            paths = [str(env.Dir(libpath).Dir('..').Dir('bin')) for libpath in env['LIBPATH']]
+            paths = [str(env.Dir(libpath).Dir('..').Dir('bin')) for libpath in env.get('LIBPATH', [])]
             for path in paths:
                 full_file_name = os.path.join(os.path.normpath(path.lower()), file_name)
                 if os.path.exists(full_file_name):
@@ -510,32 +517,15 @@ if hygienic:
                     )
 
 
+        redist_file = env['MSVS'].get('VCREDISTEXE', None)
+        if not redist_file:
+            env.FatalError('Required CRT redistributable not found; cannot build distribution package')
 
-        # This magic on how to locate vcredist_x64.exe is taken from
-        # src/mongo/installer/msi/SConscript in the community repo
-        programfilesx86 = os.environ.get('ProgramFiles(x86)')
-        if programfilesx86 is None:
-            programfilesx86 = "C:\\Program Files (x86)"
-            vsinstall_path = subprocess.check_output([os.path.join(programfilesx86, "Microsoft Visual Studio", "Installer", "vswhere.exe"), "-version", "[15.0,16.0)", "-property", "installationPath", "-nologo"]).strip()
-            vsruntime_key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x64")
-            vslib_version, vslib_version_type = winreg.QueryValueEx(vsruntime_key, "Version")
-
-            # Get library version from registry and fallback to directory search if not found as expected on disk
-            redist_root = os.path.join(vsinstall_path, b"VC", b"Redist", b"MSVC")
-            redist_path = os.path.join(redist_root, re.match("v(\d+\.\d+\.\d+)\.\d+", vslib_version).group(1).encode('utf-8'))
-            if not os.path.isdir(redist_path):
-                dirs = os.listdir(redist_root)
-                dirs.sort()
-                for dir in reversed(dirs):
-                    candidate = os.path.join(redist_root, dir)
-                    if os.path.isdir(candidate):
-                        redist_path = candidate
-                        break
-
-            redist_file_name = os.path.join(redist_path.decode('utf-8'), "vcredist_x64.exe")
-            env.AutoInstall(
-                target='$PREFIX_BINDIR',
-                source=[redist_file_name],
-                AIB_COMPONENT="dist",
-                AIB_ROLE="runtime",
-            )
+        env.AutoInstall(
+            target='$PREFIX_BINDIR',
+            source=[
+                "${MSVS['VCREDISTEXE']}"
+            ],
+            AIB_COMPONENT="dist",
+            AIB_ROLE="runtime",
+        )
