@@ -71,15 +71,17 @@ int kerberosToolMain(int argc, char* argv[], char** envp) {
 
     Report report(globalKerberosToolOptions->color);
     // check that the DNS name resolves to an IP address
-    const std::string& kerbHost = globalKerberosToolOptions->gssapiHostName;
+    const std::string& kerbHost = globalKerberosToolOptions->gssapiHostName.empty()
+        ? globalKerberosToolOptions->host
+        : globalKerberosToolOptions->gssapiHostName;
     report.openSection(
         str::stream() << "Verifying "
                       << formatOutput("forward and reverse DNS resolution ", OutputType::kHighlight)
                       << "works with Kerberos service "
                       << formatOutput(kerbHost, OutputType::kImportant));
-    std::vector<std::string> kerberosFQDNs =
+    std::vector<std::string> serviceFQDNs =
         getHostFQDNs(kerbHost, HostnameCanonicalizationMode::kForward);
-    report.checkAssert({[&kerberosFQDNs] { return !kerberosFQDNs.empty(); },
+    report.checkAssert({[&serviceFQDNs] { return !serviceFQDNs.empty(); },
                         str::stream()
                             << "Hostname " << formatOutput(kerbHost, OutputType::kImportant)
                             << formatOutput(" could not be canonicalized.", OutputType::kHighlight),
@@ -88,18 +90,22 @@ int kerberosToolMain(int argc, char* argv[], char** envp) {
                                       "krb5.conf with flag canonicalize=false.",
                                       OutputType::kSolution)},
                         Report::FailType::kNonFatalFailure});
-    std::transform(kerberosFQDNs.begin(),
-                   kerberosFQDNs.end(),
-                   kerberosFQDNs.begin(),
-                   [&](std::string& addr) -> std::string {
-                       return formatOutput(addr, OutputType::kImportant);
-                   });
     std::cout << "Performing " << formatOutput("reverse DNS lookup ", OutputType::kHighlight)
               << "of the following FQDNs:" << std::endl;
-    report.printItemList([&kerberosFQDNs] { return kerberosFQDNs; });
-    kerberosFQDNs = getHostFQDNs(kerbHost, HostnameCanonicalizationMode::kForwardAndReverse);
+    report.printItemList([&serviceFQDNs] {
+        std::vector<std::string> formattedFQDNs;
+        std::transform(serviceFQDNs.begin(),
+                       serviceFQDNs.end(),
+                       std::back_inserter(formattedFQDNs),
+                       [&](std::string& addr) -> std::string {
+                           return formatOutput(addr, OutputType::kImportant);
+                       });
+        return formattedFQDNs;
+    });
+    std::vector<std::string> serviceFQDNsReverse =
+        getHostFQDNs(kerbHost, HostnameCanonicalizationMode::kForwardAndReverse);
     report.checkAssert(
-        {[&kerberosFQDNs] { return !kerberosFQDNs.empty(); },
+        {[&serviceFQDNsReverse] { return !serviceFQDNsReverse.empty(); },
          str::stream() << "Hostname " << formatOutput(kerbHost, OutputType::kImportant)
                        << " resolves to IP address, but "
                        << formatOutput(
@@ -220,8 +226,8 @@ int kerberosToolMain(int argc, char* argv[], char** envp) {
         for (const auto& entry : mongoDBEntries) {
             auto principalFQDNs = getHostFQDNs(entry->getPrincipalHost().toString(),
                                                HostnameCanonicalizationMode::kForward);
-            if (!std::includes(kerberosFQDNs.begin(),
-                               kerberosFQDNs.end(),
+            if (!std::includes(serviceFQDNs.begin(),
+                               serviceFQDNs.end(),
                                principalFQDNs.begin(),
                                principalFQDNs.end())) {
                 problemPrincipals.emplace_back(entry);
@@ -233,7 +239,7 @@ int kerberosToolMain(int argc, char* argv[], char** envp) {
              str::stream() << "Found "
                            << formatOutput("service principals ", OutputType::kHighlight)
                            << "in keytab with hosts that "
-                           << formatOutput("do not resolve to same FQDN as provided --host",
+                           << formatOutput("do not resolve to same FQDN as provided service host",
                                            OutputType::kHighlight)
                            << ":",
              [&problemPrincipals]() -> std::vector<std::string> {

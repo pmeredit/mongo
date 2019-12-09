@@ -24,6 +24,7 @@ configs:
         description: 'mongodb server to connect to'
         default: 'localhost'
         arg_vartype: String
+        cpp_varname: 'globalKerberosToolOptions->host'
     username:
         section: 'Client Options'
         description: 'username for authentication'
@@ -41,7 +42,6 @@ configs:
         section: 'Client Options'
         description: 'Remote host name to use for purpose of GSSAPI/Kerberos authentication'
         short_name: gssapiHostName
-        default: 'localhost'
         cpp_varname: 'globalKerberosToolOptions->gssapiHostName'
         arg_vartype: String
     "setParameter":
