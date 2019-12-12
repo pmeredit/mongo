@@ -139,6 +139,9 @@ public:
     void visit(ExpressionArrayToObject*) {
         _tracker.enterEvaluateOrCompare();
     }
+    void visit(ExpressionBsonSize*) {
+        _tracker.enterEvaluateOrCompare();
+    }
     void visit(ExpressionCeil*) {
         _tracker.enterEvaluateOrCompare();
     }
@@ -540,6 +543,7 @@ public:
     void visit(ExpressionLast*) {}
     void visit(ExpressionObjectToArray*) {}
     void visit(ExpressionArrayToObject*) {}
+    void visit(ExpressionBsonSize*) {}
     void visit(ExpressionCeil*) {}
     void visit(ExpressionCoerceToBool*) {}
     void visit(ExpressionCompare*) {}
@@ -725,6 +729,9 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(ExpressionArrayToObject*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(ExpressionBsonSize*) {
         _tracker.exitEvaluateOrCompare();
     }
     void visit(ExpressionCeil*) {

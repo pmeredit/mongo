@@ -487,6 +487,9 @@ private:
     void visit(ExpressionArrayToObject*) final {
         ensureNotEncryptedEnterEval("an array to object conversion", subtreeStack);
     }
+    void visit(ExpressionBsonSize*) final {
+        ensureNotEncryptedEnterEval("an object bsonSize calculation", subtreeStack);
+    }
     void visit(ExpressionCeil*) final {
         ensureNotEncryptedEnterEval("a ceiling calculation", subtreeStack);
     }
@@ -907,6 +910,7 @@ private:
     void visit(ExpressionLast*) final {}
     void visit(ExpressionObjectToArray*) final {}
     void visit(ExpressionArrayToObject*) final {}
+    void visit(ExpressionBsonSize*) final {}
     void visit(ExpressionCeil*) final {}
     void visit(ExpressionCoerceToBool*) final {}
     void visit(ExpressionCompare*) final {}
@@ -1121,6 +1125,9 @@ private:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionArrayToObject*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionBsonSize*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionCeil*) final {
