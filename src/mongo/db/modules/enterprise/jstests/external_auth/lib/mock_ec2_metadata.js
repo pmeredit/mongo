@@ -1,21 +1,12 @@
 /**
- * Starts a mock AWS STS Server
+ * Starts a mock AWS EC2 Metadata Server
  */
 
 // These faults must match the list of faults in sts_http_server.py, see the
-// SUPPORTED_FAULT_TYPES list in sts_http_server.py
-const STS_FAULT_403 = "fault_403";
+// SUPPORTED_FAULT_TYPES list in ec2_metadata_http_server.py
+const EC2_FAULT_500 = "fault_500";
 
-const MOCK_AWS_ACCOUNT_ARN = 'arn:aws:iam::123456789012:user/Alice';
-const MOCK_AWS_ACCOUNT_ID = 'permanentuser';
-const MOCK_AWS_ACCOUNT_SECRET_KEY = 'FAKEFAKEFAKEFAKEFAKEfakefakefakefakefake';
-
-const MOCK_AWS_TEMP_ACCOUNT_ARN = 'arn:aws:iam::123456789012:user/Bob';
-const MOCK_AWS_TEMP_ACCOUNT_ID = 'tempuser';
-const MOCK_AWS_TEMP_ACCOUNT_SECRET_KEY = 'fakefakefakefakefakeFAKEFAKEFAKEFAKEFAKE';
-const MOCK_AWS_TEMP_ACCOUNT_SESSION_TOKEN = 'FAKETEMPORARYSESSIONTOKENfaketemporarysessiontoken';
-
-class MockSTSServer {
+class MockEC2MetadataServer {
     /**
      * Create a new webserver.
      *
@@ -32,7 +23,7 @@ class MockSTSServer {
         print("Using python interpreter: " + this.python);
 
         this.web_server_py =
-            "src/mongo/db/modules/enterprise/jstests/external_auth/lib/sts_http_server.py";
+            "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ec2_metadata_http_server.py";
         this.port = -1;
     }
 
@@ -41,7 +32,7 @@ class MockSTSServer {
      */
     start() {
         this.port = allocatePort();
-        print("Mock STS Web server is listening on port: " + this.port);
+        print("Mock EC2 Metadata Web server is listening on port: " + this.port);
 
         let args = [
             this.python,
@@ -58,10 +49,11 @@ class MockSTSServer {
         assert(checkProgram(this.pid));
 
         assert.soon(function() {
-            return rawMongoProgramOutput().search("Mock STS Web Server Listening") !== -1;
+            return rawMongoProgramOutput().search(
+                       "Mock EC2 Instance Metadata Web Server Listening") !== -1;
         });
         sleep(1000);
-        print("Mock KMS Server successfully started");
+        print("Mock EC2 Metadata Server successfully started");
     }
 
     /**

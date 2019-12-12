@@ -16,6 +16,8 @@ from botocore.auth import SigV4Auth, S3SigV4Auth
 from botocore.awsrequest import AWSRequest
 from botocore.credentials import Credentials
 
+import aws_common
+
 fault_type = None
 
 """Fault which causes sts::getCallerIdentity to return 403"""
@@ -25,14 +27,6 @@ FAULT_403 = "fault_403"
 SUPPORTED_FAULT_TYPES = [
     FAULT_403,
 ]
-
-MOCK_AWS_ACCOUNT_ARN = 'arn:aws:iam::123456789012:user/Alice'
-MOCK_AWS_ACCOUNT_ID = 'permanentuser'
-MOCK_AWS_ACCOUNT_SECRET_KEY = 'FAKEFAKEFAKEFAKEFAKEfakefakefakefakefake'
-
-MOCK_AWS_TEMP_ACCOUNT_ARN = 'arn:aws:iam::123456789012:user/Bob'
-MOCK_AWS_TEMP_ACCOUNT_ID = 'tempuser'
-MOCK_AWS_TEMP_ACCOUNT_SECRET_KEY = 'fakefakefakefakefakeFAKEFAKEFAKEFAKEFAKE'
 
 
 def get_dict_subset(headers, subset):
@@ -100,24 +94,29 @@ class AwsStsHandler(http.server.BaseHTTPRequestHandler):
         signed_headers_start = auth_header.find("SignedHeaders")
         signed_headers = auth_header[signed_headers_start:auth_header.find(",", signed_headers_start)]
         signed_headers_dict = get_dict_subset(headers, signed_headers)
+        print("HEADERS: " + str(headers))
         print("DIC: " + str(signed_headers_dict))
 
         request = AWSRequest(method="POST", url="/", data=raw_input, headers=signed_headers_dict)
         # SigV4Auth assumes this header exists even though it is not required by the algorithm
         request.context['timestamp'] = headers['X-Amz-Date']
 
-        if MOCK_AWS_ACCOUNT_ID in auth_header:
-            account = MOCK_AWS_ACCOUNT_ID
-            secret = MOCK_AWS_ACCOUNT_SECRET_KEY
-        elif MOCK_AWS_TEMP_ACCOUNT_ID in auth_header:
-            account = MOCK_AWS_TEMP_ACCOUNT_ID
-            secret = MOCK_AWS_TEMP_ACCOUNT_SECRET_KEY
+        if aws_common.MOCK_AWS_ACCOUNT_ID in auth_header:
+            account = aws_common.MOCK_AWS_ACCOUNT_ID
+            secret = aws_common.MOCK_AWS_ACCOUNT_SECRET_KEY
+            if "x-amz-security-token" in auth_header:
+                print("BAD SIGNATURE - extraneous x-amz-security-token")
+                return False
+
+        elif aws_common.MOCK_AWS_TEMP_ACCOUNT_ID in auth_header:
+            account = aws_common.MOCK_AWS_TEMP_ACCOUNT_ID
+            secret = aws_common.MOCK_AWS_TEMP_ACCOUNT_SECRET_KEY
 
             if "x-amz-security-token" not in auth_header:
                 print("BAD SIGNATURE - missing x-amz-security-token")
                 return False
         else:
-            raise "Unkown user in auth header: " + auth_header
+            raise ValueError("Unkown user in auth header: " + auth_header)
 
         credentials = Credentials(account, secret)
 
@@ -140,10 +139,10 @@ class AwsStsHandler(http.server.BaseHTTPRequestHandler):
 
     def _do_get_caller_identity(self, auth_header):
 
-        if MOCK_AWS_ACCOUNT_ID in auth_header:
-            arn = MOCK_AWS_ACCOUNT_ARN
+        if aws_common.MOCK_AWS_ACCOUNT_ID in auth_header:
+            arn = aws_common.MOCK_AWS_ACCOUNT_ARN
         else:
-            arn = MOCK_AWS_TEMP_ACCOUNT_ARN
+            arn = aws_common.MOCK_AWS_TEMP_ACCOUNT_ARN
 
         if fault_type == FAULT_403:
             return self._do_get_caller_identity_faults()
