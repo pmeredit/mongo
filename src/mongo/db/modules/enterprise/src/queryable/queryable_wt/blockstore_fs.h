@@ -81,7 +81,7 @@ public:
     /**
      * `fileHandle` is an out-parameter
      */
-    int open(const char* filename, BlockstoreFileHandle** fileHandle);
+    int open(const char* filename, uint32_t flags, BlockstoreFileHandle** fileHandle);
 
 private:
     std::string _apiUri;

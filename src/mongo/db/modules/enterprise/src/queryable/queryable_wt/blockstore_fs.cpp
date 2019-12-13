@@ -184,7 +184,7 @@ static int queryableWtFsFileOpen(WT_FILE_SYSTEM* file_system,
     auto blockstoreFs = reinterpret_cast<mongo::queryable::BlockstoreFileSystem*>(file_system);
 
     return blockstoreFs->open(
-        name, reinterpret_cast<mongo::queryable::BlockstoreFileHandle**>(file_handlep));
+        name, flags, reinterpret_cast<mongo::queryable::BlockstoreFileHandle**>(file_handlep));
 }
 
 static int queryableWtFsFileExist(WT_FILE_SYSTEM* file_system,
@@ -268,22 +268,62 @@ bool endsWith(const std::string& value, const std::string& ending) {
 }
 }  // namespace
 
-int BlockstoreFileSystem::open(const char* name, BlockstoreFileHandle** fileHandle) {
+int BlockstoreFileSystem::open(const char* name,
+                               uint32_t flags,
+                               BlockstoreFileHandle** fileHandle) {
     std::string filename(name);
     if (endsWith(filename, "WiredTiger.lock")) {
         return ENOENT;
     }
 
-    if (!fileExists(name)) {
+    bool createFileFlagSet = flags & WT_FS_OPEN_CREATE;
+    if (!fileExists(name) && !createFileFlagSet) {
         return ENOENT;
+    }
+
+    BlockstoreHTTP blockstoreHTTP(_apiUri, _snapshotId);
+
+    // Send an API request to create the file if it doesn't already exist and add it to the list of
+    // existing files on success.
+    if (!fileExists(name) && createFileFlagSet) {
+        StatusWith<DataBuilder> swOpenFileResponse = blockstoreHTTP.openFile(name);
+        if (!swOpenFileResponse.isOK()) {
+            log() << "Bad HTTP response from the ApiServer: "
+                  << swOpenFileResponse.getStatus().reason();
+            return ENOENT;
+        }
+
+        // Verify that the file was created and add it to the in-memory structure of existing files.
+        auto swListDirResponse = listDirectory(blockstoreHTTP);
+        if (!swListDirResponse.isOK()) {
+            log() << "Bad HTTP response from the ApiServer: "
+                  << swListDirResponse.getStatus().reason();
+            return ENOENT;
+        }
+
+        bool fileExists = false;
+        for (const auto& file : swListDirResponse.getValue()) {
+            if (file.filename != filename) {
+                continue;
+            }
+
+            addFile(file);
+            fileExists = true;
+            break;
+        }
+
+        if (!fileExists) {
+            log() << "File '" << filename
+                  << "' does not exist after a successful API request to create it";
+            return ENOENT;
+        }
     }
 
     auto file = getFile(name);
 
     auto ret = std::make_unique<BlockstoreFileHandle>(
         this,
-        std::make_unique<ReaderWriter>(
-            BlockstoreHTTP(_apiUri, _snapshotId), file.filename, file.fileSize),
+        std::make_unique<ReaderWriter>(std::move(blockstoreHTTP), file.filename, file.fileSize),
         file.fileSize);
     if (ret == nullptr) {
         return ENOMEM;

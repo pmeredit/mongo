@@ -30,6 +30,7 @@ public:
     Status write(StringData path, ConstDataRange buf, std::size_t offset, std::size_t count) const;
 
     StatusWith<DataBuilder> listDirectory() const;
+    StatusWith<DataBuilder> openFile(StringData path) const;
 
 private:
     std::string _apiUrl;

@@ -94,5 +94,25 @@ StatusWith<DataBuilder> BlockstoreHTTP::listDirectory() const {
     return status;
 }
 
+StatusWith<DataBuilder> BlockstoreHTTP::openFile(StringData path) const {
+    Status status(ErrorCodes::InternalError,
+                  "BlockstoreHTTP::openFile() returned an invalid error");
+
+    const std::string url = str::stream()
+        << "http://" << _apiUrl << "/os_wt_recovery_open_file?snapshotId=" << _snapshotId
+        << "&filename=" << path;
+
+    for (const auto& secs : kBackoffSleepSecondsList) {
+        try {
+            return _client->get(url);
+        } catch (...) {
+            status = exceptionToStatus();
+        }
+        sleepsecs(secs);
+    }
+
+    return status;
+}
+
 }  // namespace queryable
 }  // namespace mongo
