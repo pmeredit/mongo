@@ -224,6 +224,16 @@ static int queryableWtFileRead(
     return fileHandle->read(buf, offset, len);
 }
 
+static int queryableWtFileWrite(WT_FILE_HANDLE* file_handle,
+                                WT_SESSION* session,
+                                wt_off_t offset,
+                                size_t len,
+                                const void* buf) {
+    auto fileHandle = reinterpret_cast<mongo::queryable::BlockstoreFileHandle*>(file_handle);
+
+    return fileHandle->write(buf, offset, len);
+}
+
 static int queryableWtFileSize(WT_FILE_HANDLE* file_handle, WT_SESSION* session, wt_off_t* sizep) {
     auto fileHandle = reinterpret_cast<mongo::queryable::BlockstoreFileHandle*>(file_handle);
 
@@ -272,7 +282,7 @@ int BlockstoreFileSystem::open(const char* name, BlockstoreFileHandle** fileHand
 
     auto ret = std::make_unique<BlockstoreFileHandle>(
         this,
-        std::make_unique<Reader>(
+        std::make_unique<ReaderWriter>(
             BlockstoreHTTP(_apiUri, _snapshotId), file.filename, file.fileSize),
         file.fileSize);
     if (ret == nullptr) {
@@ -292,6 +302,7 @@ int BlockstoreFileSystem::open(const char* name, BlockstoreFileHandle** fileHand
      */
     baseFileHandle->close = queryableWtFileClose;
     baseFileHandle->fh_read = queryableWtFileRead;
+    baseFileHandle->fh_write = queryableWtFileWrite;
     baseFileHandle->fh_size = queryableWtFileSize;
     baseFileHandle->fh_lock = queryableWtFileLock;
 
@@ -311,7 +322,7 @@ int BlockstoreFileHandle::read(void* buf, std::size_t offset, std::size_t length
     int ret;
     std::string msg;
     mongo::DataRange wrappedBuf(reinterpret_cast<char*>(buf), length);
-    auto swBytesRead = _reader->read(wrappedBuf, offset, length);
+    auto swBytesRead = _readerWriter->read(wrappedBuf, offset, length);
     if (!swBytesRead.isOK()) {
         ret = EIO;
         log() << swBytesRead.getStatus().reason();
@@ -323,6 +334,17 @@ int BlockstoreFileHandle::read(void* buf, std::size_t offset, std::size_t length
     }
 
     return ret;
+}
+
+int BlockstoreFileHandle::write(const void* buf, std::size_t offset, std::size_t length) {
+    mongo::ConstDataRange wrappedBuf(reinterpret_cast<const char*>(buf), length);
+    auto res = _readerWriter->write(wrappedBuf, offset, length);
+    if (res.isOK()) {
+        return 0;
+    }
+
+    log() << "Write failed. Reason: " << res.reason();
+    return EIO;
 }
 
 }  // namespace queryable

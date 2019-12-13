@@ -15,7 +15,7 @@
 
 #include "../blockstore/context.h"
 #include "../blockstore/list_dir.h"
-#include "../blockstore/reader.h"
+#include "../blockstore/reader_writer.h"
 #include "queryable_global_options.h"
 
 #include "third_party/wiredtiger/src/include/wiredtiger_ext.h"
@@ -94,9 +94,11 @@ private:
 class BlockstoreFileHandle : private WT_FILE_HANDLE {
 public:
     BlockstoreFileHandle(BlockstoreFileSystem* blockstoreFs,
-                         std::unique_ptr<Reader> reader,
+                         std::unique_ptr<ReaderWriter> readerWriter,
                          std::int64_t fileSize)
-        : _blockstoreFs(blockstoreFs), _reader(std::move(reader)), _fileSize(fileSize) {}
+        : _blockstoreFs(blockstoreFs),
+          _readerWriter(std::move(readerWriter)),
+          _fileSize(fileSize) {}
 
     WT_FILE_HANDLE* getWtFileHandle() {
         WT_FILE_HANDLE* ret = static_cast<WT_FILE_HANDLE*>(this);
@@ -112,10 +114,11 @@ public:
      * return 0 on success, non-zero on error. As per WT expectations.
      */
     int read(void* buf, std::size_t offset, std::size_t length);
+    int write(const void* buf, std::size_t offset, std::size_t length);
 
 private:
     BlockstoreFileSystem* _blockstoreFs;
-    std::unique_ptr<Reader> _reader;
+    std::unique_ptr<ReaderWriter> _readerWriter;
     std::int64_t _fileSize;
 };
 

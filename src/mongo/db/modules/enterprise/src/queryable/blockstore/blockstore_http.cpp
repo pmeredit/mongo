@@ -51,6 +51,30 @@ StatusWith<std::size_t> BlockstoreHTTP::read(StringData path,
     return status;
 }
 
+Status BlockstoreHTTP::write(StringData path,
+                             ConstDataRange buf,
+                             std::size_t offset,
+                             std::size_t count) const {
+    Status error(ErrorCodes::InternalError, "BlockstoreHTTP::write() returned an invalid error");
+
+    const std::string url = str::stream()
+        << "http://" << _apiUrl << "/os_wt_recovery_write?snapshotId=" << _snapshotId
+        << "&filename=" << path << "&offset=" << offset << "&length=" << count;
+
+    for (const auto& secs : kBackoffSleepSecondsRead) {
+        try {
+            auto result = _client->post(url, buf);
+            return Status::OK();
+        } catch (...) {
+            error = exceptionToStatus();
+        }
+        sleepsecs(secs);
+    }
+
+    return error;
+}
+
+
 StatusWith<DataBuilder> BlockstoreHTTP::listDirectory() const {
     Status status(ErrorCodes::InternalError,
                   "BlockstoreHTTP::listDirectory() returned an invalid error");
