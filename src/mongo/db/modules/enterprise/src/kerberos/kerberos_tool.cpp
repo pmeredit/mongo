@@ -30,16 +30,6 @@ namespace mongo {
 
 namespace {
 
-std::string getEnvironmentValue(StringData variable) {
-    char* value;
-    value = getenv(variable.rawData());
-    if (value == nullptr) {
-        return "not set.";
-    } else {
-        return value;
-    }
-}
-
 enum class OutputType { kImportant, kSolution, kHighlight };
 std::string formatOutput(StringData value, OutputType outputType) {
     constexpr StringData csiSequence = "\x1b["_sd;
@@ -70,15 +60,35 @@ int kerberosToolMain(int argc, char* argv[], char** envp) {
     startSignalProcessingThread();
 
     Report report(globalKerberosToolOptions->color);
+    // set up variables for kerberos API
+    report.openSection("Resolving kerberos environment");
+    const std::string& serviceName = globalKerberosToolOptions->gssapiServiceName;
+    StatusWith<KerberosEnvironment> swKrb5Env =
+        KerberosEnvironment::create(globalKerberosToolOptions->connectionType);
+    report.checkAssert({[&swKrb5Env]() { return swKrb5Env.isOK(); },
+                        "Could not initialize Kerberos context.",
+                        {swKrb5Env.getStatus().toString()},
+                        Report::FailType::kFatalFailure});
+    KerberosEnvironment krb5Env = std::move(swKrb5Env.getValue());
+#ifndef _WIN32
+    boost::optional<bool> rdnsState = krb5Env.getProfile().rdnsState();
+#else
+    boost::optional<bool> rdnsState = boost::none;
+#endif
+
+    report.closeSection("Kerberos environment resolved without errors.");
+
     // check that the DNS name resolves to an IP address
     const std::string& kerbHost = globalKerberosToolOptions->gssapiHostName.empty()
         ? globalKerberosToolOptions->host
         : globalKerberosToolOptions->gssapiHostName;
-    report.openSection(
-        str::stream() << "Verifying "
-                      << formatOutput("forward and reverse DNS resolution ", OutputType::kHighlight)
-                      << "works with Kerberos service "
-                      << formatOutput(kerbHost, OutputType::kImportant));
+    report.openSection(str::stream() << "Verifying "
+                                     << formatOutput(rdnsState == boost::none || *rdnsState == true
+                                                         ? "forward and reverse DNS resolution "
+                                                         : "DNS resolution ",
+                                                     OutputType::kHighlight)
+                                     << "works with Kerberos service at "
+                                     << formatOutput(kerbHost, OutputType::kImportant));
     std::vector<std::string> serviceFQDNs =
         getHostFQDNs(kerbHost, HostnameCanonicalizationMode::kForward);
     report.checkAssert({[&serviceFQDNs] { return !serviceFQDNs.empty(); },
@@ -90,41 +100,38 @@ int kerberosToolMain(int argc, char* argv[], char** envp) {
                                       "krb5.conf with flag canonicalize=false.",
                                       OutputType::kSolution)},
                         Report::FailType::kNonFatalFailure});
-    std::cout << "Performing " << formatOutput("reverse DNS lookup ", OutputType::kHighlight)
-              << "of the following FQDNs:" << std::endl;
-    report.printItemList([&serviceFQDNs] {
-        std::vector<std::string> formattedFQDNs;
-        std::transform(serviceFQDNs.begin(),
-                       serviceFQDNs.end(),
-                       std::back_inserter(formattedFQDNs),
-                       [&](std::string& addr) -> std::string {
-                           return formatOutput(addr, OutputType::kImportant);
-                       });
-        return formattedFQDNs;
-    });
-    std::vector<std::string> serviceFQDNsReverse =
-        getHostFQDNs(kerbHost, HostnameCanonicalizationMode::kForwardAndReverse);
-    report.checkAssert(
-        {[&serviceFQDNsReverse] { return !serviceFQDNsReverse.empty(); },
-         str::stream() << "Hostname " << formatOutput(kerbHost, OutputType::kImportant)
-                       << " resolves to IP address, but "
-                       << formatOutput(
-                              "could not find hostname in reverse lookup of host's IP address.",
-                              OutputType::kHighlight),
-         {formatOutput(
-             "Please update your DNS records so that the PTR records for the host's IP address "
-             "refer back to the same host's FQDN. \n\tIf reverse dns checks are disabled in "
-             "krb5.conf (i.e. rdns=false), then please disregard this warning.",
-             OutputType::kSolution)},
-         Report::FailType::kNonFatalFailure});
-    report.closeSection(
-        "Each IP address to which host resolves can be reverse-associated back to a valid "
-        "hostname");
+    if (rdnsState == boost::none || *rdnsState == true) {
+        std::cout << "Performing " << formatOutput("reverse DNS lookup ", OutputType::kHighlight)
+                  << "of the following FQDNs:" << std::endl;
+        report.printItemList([&serviceFQDNs] {
+            std::vector<std::string> formattedFQDNs;
+            std::transform(serviceFQDNs.begin(),
+                           serviceFQDNs.end(),
+                           std::back_inserter(formattedFQDNs),
+                           [&](std::string& addr) -> std::string {
+                               return formatOutput(addr, OutputType::kImportant);
+                           });
+            return formattedFQDNs;
+        });
+        std::vector<std::string> serviceFQDNsReverse =
+            getHostFQDNs(kerbHost, HostnameCanonicalizationMode::kForwardAndReverse);
+        report.checkAssert(
+            {[&serviceFQDNsReverse] { return !serviceFQDNsReverse.empty(); },
+             str::stream() << "Hostname " << formatOutput(kerbHost, OutputType::kImportant)
+                           << " resolves to IP address, but "
+                           << formatOutput(
+                                  "could not find hostname in reverse lookup of host's IP address.",
+                                  OutputType::kHighlight),
+             {formatOutput(rdnsState.value_or(false) == true
+                               ? "Please update your DNS records so that the PTR records for the "
+                                 "host's IP address "
+                                 "refer back to the same host's FQDN."
+                               : "Consider disabling hostname canonicalization.",
+                           OutputType::kSolution)},
+             Report::FailType::kNonFatalFailure});
+    }
 
-    // set up variables for kerberos API
-    report.openSection("Resolving kerberos environment");
-    const std::string& serviceName = globalKerberosToolOptions->gssapiServiceName;
-    KerberosEnvironment krb5Env(globalKerberosToolOptions->connectionType);
+    report.closeSection("DNS test successful.");
 
     if (globalKerberosToolOptions->debug) {
         logger::globalLogDomain()->setMinimumLoggedSeverity(logger::LogSeverity::Debug(255));
@@ -191,8 +198,6 @@ int kerberosToolMain(int argc, char* argv[], char** envp) {
             "Kerberos does not understand client keytabs, and user has not specified one.");
 #endif
     }
-
-    report.closeSection("Kerberos environment resolved without errors.");
 
     // check that keytab has valid principal(s)
     report.openSection(str::stream()
@@ -267,6 +272,10 @@ int kerberosToolMain(int argc, char* argv[], char** envp) {
                         str::stream()
                             << "Deduced KRB5 Config location as " << krb5ConfigPath
                             << " but file at location either doesn't exist or is empty."});
+    std::cout << formatOutput("KRB5 config profile ", OutputType::kHighlight)
+              << "resolved as: " << std::endl;
+    std::cout << formatOutput(krb5Env.getProfile().toString(), OutputType::kImportant);
+
     StringData ktraceLogPath = krb5Env.getTraceLocation();
     if (!ktraceLogPath.empty() && ktraceLogPath != "/dev/stdout") {
         std::ifstream ktraceLog(ktraceLogPath.toString());
@@ -284,24 +293,22 @@ int kerberosToolMain(int argc, char* argv[], char** envp) {
     return 0;
 }
 
-KerberosEnvironment::KerberosEnvironment(KerberosToolOptions::ConnectionType connectionType)
-#ifdef _WIN32
-    : _connectionType(connectionType) {
-}
-#else
-    : _variables{}, _connectionType(connectionType) {
+}  // namespace
+
+#ifndef _WIN32
+KerberosEnvironment::KerberosEnvironment(krb5_context krb5Context,
+                                         KerberosToolOptions::ConnectionType connectionType)
+    : _variables{},
+      _krb5Context(krb5Context),
+      _krb5Profile(KRB5Profile::create(_krb5Context)),
+      _keytab(_krb5Context, connectionType),
+      _credentialsCache(krb5Context),
+      _connectionType(connectionType) {
 
     for (const StringData& envVar :
          {kKRB5CCNAME, kKRB5_KTNAME, kKRB5_CONFIG, kKRB5_TRACE, kKRB5_CLIENT_KTNAME}) {
         _variables.insert_or_assign(envVar, getEnvironmentValue(envVar));
     }
-
-    // set up KRB5 API stuff
-    krb5_init_context(&_krb5Context);
-
-    _keytab = std::make_unique<KRB5Keytab>(_krb5Context, _connectionType);
-
-    _credentialsCache = std::make_unique<KRB5CredentialsCache>(_krb5Context);
 }
 
 KRB5Keytab::KRB5Keytab(krb5_context krb5Context, KerberosToolOptions::ConnectionType connectionType)
@@ -343,7 +350,6 @@ KRB5Keytab::KRB5Keytab(krb5_context krb5Context, KerberosToolOptions::Connection
 }
 #endif
 
-}  // namespace
 }  // namespace mongo
 
 #if defined(_WIN32)

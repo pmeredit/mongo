@@ -15,16 +15,37 @@
 
 #if !defined(_WIN32)
 #include <krb5.h>
+#include <profile.h>
 #endif
 
 #include "mongo/base/error_codes.h"
 #include "mongo/base/string_data.h"
+#include "mongo/bson/util/builder.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/scopeguard.h"
 
 namespace mongo {
 
-namespace {
+class UniqueCStringPointer {
+public:
+    ~UniqueCStringPointer() {
+        std::free(p);
+    }
+    UniqueCStringPointer() = default;
+    UniqueCStringPointer& operator=(UniqueCStringPointer) = delete;
+    UniqueCStringPointer& operator=(UniqueCStringPointer&&) = delete;
+    UniqueCStringPointer(UniqueCStringPointer&) = delete;
+    UniqueCStringPointer(UniqueCStringPointer&&) = delete;
+    char* get() const {
+        return p;
+    }
+    char** getPtr() {
+        return &p;
+    }
+
+private:
+    char* p = nullptr;
+};
 
 // constants for looking up environment variables
 constexpr StringData kKRB5CCNAME = "KRB5CCNAME"_sd;
@@ -32,6 +53,10 @@ constexpr StringData kKRB5_KTNAME = "KRB5_KTNAME"_sd;
 constexpr StringData kKRB5_CONFIG = "KRB5_CONFIG"_sd;
 constexpr StringData kKRB5_TRACE = "KRB5_TRACE"_sd;
 constexpr StringData kKRB5_CLIENT_KTNAME = "KRB5_CLIENT_KTNAME"_sd;
+
+// KRB5 Macros that didn't make their way into the lib headers...
+constexpr StringData KRB5_CONF_LIBDEFAULTS = "libdefaults"_sd;
+constexpr StringData KRB5_CONF_RDNS = "rdns"_sd;
 
 /**
  * Represents an easy-to-digest interface to a KRB5 keytab entry
@@ -44,6 +69,12 @@ class KRB5KeytabEntry {
 public:
     KRB5KeytabEntry(krb5_context krb5Context, krb5_keytab_entry rawEntry)
         : _rawEntry(rawEntry), _krb5Context(krb5Context) {}
+
+    KRB5KeytabEntry(KRB5KeytabEntry&& other) noexcept
+        : _rawEntry(other._rawEntry), _krb5Context(other._krb5Context) {
+        other._krb5Context = nullptr;
+    }
+
     ~KRB5KeytabEntry() {
         krb5_error_code error = 0;
         if (_krb5Context != nullptr) {
@@ -110,6 +141,14 @@ public:
     KRB5Keytab(krb5_context krb5Context, KerberosToolOptions::ConnectionType connectionType);
 
     KRB5Keytab() = default;
+
+    KRB5Keytab(KRB5Keytab&& other) noexcept
+        : _krb5Context(other._krb5Context),
+          _krb5Keytab(other._krb5Keytab),
+          _keytabEntries(std::move(other._keytabEntries)) {
+        other._krb5Keytab = nullptr;
+        other._krb5Context = nullptr;
+    }
 
     ~KRB5Keytab() {
         if (_krb5Keytab != nullptr) {
@@ -182,8 +221,16 @@ class KRB5Credentials {
 public:
     KRB5Credentials(krb5_context krb5Context, krb5_creds rawCreds)
         : _rawCreds(rawCreds), _krb5Context(krb5Context) {}
+
+    KRB5Credentials(KRB5Credentials&& other) noexcept
+        : _rawCreds(other._rawCreds), _krb5Context(other._krb5Context) {
+        other._krb5Context = nullptr;
+    }
+
     ~KRB5Credentials() {
-        krb5_free_cred_contents(_krb5Context, &_rawCreds);
+        if (_krb5Context != nullptr) {
+            krb5_free_cred_contents(_krb5Context, &_rawCreds);
+        }
     }
 
     /**
@@ -271,6 +318,11 @@ public:
         ccClose.dismiss();
     }
 
+    KRB5CredentialsCache(KRB5CredentialsCache&& other) noexcept
+        : _credentialSet(std::move(other._credentialSet)), _krb5Context(other._krb5Context) {
+        other._krb5Context = nullptr;
+    }
+
     auto begin() const {
         return _credentialSet.begin();
     }
@@ -291,6 +343,214 @@ private:
     // _krb5Context is NOT owned by this class
     krb5_context _krb5Context = nullptr;
 };
+
+/**
+ * This class is used to represent a KRB5 configuration profile (i.e. information from krb5.conf) as
+ * a tree.
+ */
+class KRB5Profile {
+public:
+    static KRB5Profile create(krb5_context krb5Context) {
+        profile_t profile;
+        krb5_get_profile(krb5Context, &profile);
+        return KRB5Profile(profile, ProfileTree::create(profile));
+    }
+
+    KRB5Profile(KRB5Profile&& other) noexcept
+        : _profile(other._profile), _profileTree(std::move(other._profileTree)) {
+        other._profile = nullptr;
+    }
+
+    ~KRB5Profile() {
+        if (_profile != nullptr) {
+            profile_release(_profile);
+        }
+    }
+
+    std::string toString() const {
+        StringBuilder sb;
+        _profileTree.toString(&sb);
+        return sb.str();
+    }
+
+    /**
+     * Returns: true = enabled, false = disabled, boost::none = not set in krb5.conf
+     * Note that MIT Kerberos defines the default state of rdns to be enabled, but we define this
+     * ternary state to know when the user has not explicitly set this option in their config.
+     */
+    boost::optional<bool> rdnsState() const {
+        constexpr int DEFAULT_RDNS_LOOKUP = -1;
+        int state;
+        profile_get_boolean(_profile,
+                            KRB5_CONF_LIBDEFAULTS.rawData(),
+                            KRB5_CONF_RDNS.rawData(),
+                            nullptr,
+                            DEFAULT_RDNS_LOOKUP,
+                            &state);
+        if (state == DEFAULT_RDNS_LOOKUP) {
+            return boost::none;
+        }
+        return state;
+    }
+
+private:
+    /**
+     * Describes a subsection or relation in the KRB5 profile, including support for nested
+     * subsections.
+     *
+     * profile: a KRB5 profile returned by krb5_get_profile, not owned by this class.
+     * path: describes the path through the tree to reach this node, ending with its key.
+     * value: the value associated with the key i.e. the right side of the equals sign.
+     */
+    class ProfileNode {
+    public:
+        explicit ProfileNode(profile_t profile, std::vector<std::string> path, std::string value)
+            : _key(path.back()), _value(std::move(value)), _profile(profile) {
+            KRB5Profile::resolveProfileNode(
+                profile, path, [this](std::vector<std::string> childPath, const char* value) {
+                    addChildNode(std::move(childPath), value == nullptr ? "" : value);
+                });
+        }
+
+        ProfileNode() = default;
+
+        void toString(StringBuilder* sb, std::string padding = "") const {
+            // if in top-level section
+            if (padding.empty()) {
+                sb->append("[");
+                sb->append(_key);
+                sb->append("]\n");
+                padding.push_back('\t');
+                for (auto& subsectionPair : _subsections) {
+                    subsectionPair.second.toString(sb, padding);
+                }
+                padding.pop_back();
+                sb->append(padding);
+            } else {
+                sb->append(padding);
+                sb->append(_key);
+                sb->append(" = ");
+                if (!hasSubsections()) {
+                    sb->append(_value);
+                    sb->append("\n");
+                } else {
+                    sb->append("{\n");
+                    padding.push_back('\t');
+                    for (auto& subsectionPair : _subsections) {
+                        subsectionPair.second.toString(sb, padding);
+                    }
+                    padding.pop_back();
+                    padding.append("}\n");
+                    sb->append(padding);
+                }
+            }
+        }
+
+    private:
+        /**
+         * Adds a new subsection to this node
+         */
+        void addChildNode(std::vector<std::string> path, std::string value) {
+            _subsections.try_emplace(path.back(), _profile, path, std::move(value));
+        }
+
+        /**
+         * Tells if this node in the KRB5 profile has any nested subsections as children
+         */
+        bool hasSubsections() const {
+            return !_subsections.empty();
+        }
+
+        std::string _key;
+        std::string _value;
+        std::map<std::string, ProfileNode> _subsections;
+        profile_t _profile{};
+    };
+
+    /**
+     * Provides an interface into a KRB5 profile by section
+     */
+    class ProfileTree {
+    public:
+        static ProfileTree create(profile_t profile) {
+            return ProfileTree(profile);
+        }
+
+        void addSection(std::string sectionName) {
+            std::vector<std::string> path{sectionName};
+            _sections.try_emplace(sectionName, _profile, path, "");
+        }
+
+        void toString(StringBuilder* sb) const {
+            for (const auto& section : _sections) {
+                section.second.toString(sb);
+                sb->append("\n");
+            }
+        }
+
+    private:
+        explicit ProfileTree(profile_t profile) : _profile(profile) {
+            std::vector<std::string> emptyPath{};
+            KRB5Profile::resolveProfileNode(
+                profile, emptyPath, [&](std::vector<std::string> path, const char* unused) {
+                    addSection(path.back());
+                });
+        }
+
+        std::map<std::string, ProfileNode> _sections;
+        profile_t _profile;
+    };
+
+    KRB5Profile(profile_t profile, ProfileTree profileTree)
+        : _profile(profile), _profileTree(std::move(profileTree)) {}
+
+    /**
+     * Given a path to a section, or subsection, in a KRB5 profile, this function will crawl the
+     * provided path on the KRB5 profile, fetch the value for the relation at the end of the path
+     * (or "" if there is actually a subsection there) and call the provided callback with this
+     * information so a node can be constructed in the ProfileTree
+     *
+     * childAdder is a functor that describes what function should be used to emplace the
+     * ProfileNode. It takes in a path to a child, and the value of the relation at that path. If
+     * the path leads to a subsection, the value should be an empty string.
+     */
+    template <typename Functor>
+    static void resolveProfileNode(profile_t profile,
+                                   std::vector<std::string>& path,
+                                   Functor childAdder) {
+        std::vector<char*> names;
+        for (const auto& subsection : path) {
+            names.emplace_back(const_cast<char*>(subsection.c_str()));
+        }
+        names.emplace_back(nullptr);
+
+        void* iter = nullptr;
+        auto iterGuard = makeGuard([&iter]() {
+            if (iter != nullptr) {
+                profile_iterator_free(&iter);
+            }
+        });
+        profile_iterator_create(profile, names.data(), PROFILE_ITER_LIST_SECTION, &iter);
+        long ret = 0;
+        while (ret == 0) {
+            UniqueCStringPointer name;
+            UniqueCStringPointer value;
+            // iterate to the next item in the profile
+            // nullptr has to be passed to receive the name of a top-level section
+            ret = profile_iterator(&iter, name.getPtr(), (path.empty() ? nullptr : value.getPtr()));
+            // if we are not at a leaf
+            if (name.get() != nullptr) {
+                // store subsection as child
+                path.emplace_back(name.get());
+                ON_BLOCK_EXIT([&path]() { path.pop_back(); });
+                childAdder(path, value.get());
+            }
+        }
+    }
+
+    profile_t _profile{};
+    ProfileTree _profileTree;
+};
 #endif
 
 /**
@@ -300,9 +560,36 @@ private:
 class KerberosEnvironment {
 
 public:
-    explicit KerberosEnvironment(KerberosToolOptions::ConnectionType connectionType);
+#ifdef _WIN32
+    static StatusWith<KerberosEnvironment> create(
+        KerberosToolOptions::ConnectionType connectionType) {
+        return KerberosEnvironment(connectionType);
+    }
 
-#ifndef _WIN32
+#else
+    static StatusWith<KerberosEnvironment> create(
+        KerberosToolOptions::ConnectionType connectionType) {
+        krb5_context context;
+        krb5_error_code error = krb5_init_context(&context);
+        if (error != 0) {
+            const char* rawError = krb5_get_error_message(context, error);
+            ON_BLOCK_EXIT([&]() { krb5_free_error_message(context, rawError); });
+            std::string errorMessage = rawError;
+            return Status(ErrorCodes::BadValue, errorMessage);
+        }
+        return KerberosEnvironment(context, connectionType);
+    }
+
+    KerberosEnvironment(KerberosEnvironment&& other) noexcept
+        : _variables(std::move(other._variables)),
+          _krb5Context(other._krb5Context),
+          _krb5Profile(std::move(other._krb5Profile)),
+          _keytab(std::move(other._keytab)),
+          _credentialsCache(std::move(other._credentialsCache)),
+          _connectionType(other._connectionType) {
+        other._krb5Context = nullptr;
+    }
+
     ~KerberosEnvironment() {
         if (_krb5Context != nullptr) {
             krb5_free_context(_krb5Context);
@@ -314,7 +601,11 @@ public:
     }
 
     boost::optional<std::string> getKeytabName() const {
-        return _keytab->getName();
+        return _keytab.getName();
+    }
+
+    const KRB5Profile& getProfile() const {
+        return _krb5Profile;
     }
 
     StringData getConfigPath() const {
@@ -326,7 +617,7 @@ public:
     }
 
     bool keytabExistsAndIsPopulated() const {
-        return _keytab->existsAndIsPopulated();
+        return _keytab.existsAndIsPopulated();
     }
 
     /**
@@ -334,10 +625,9 @@ public:
      * The principal is in the format service/name@REALM
      */
     bool keytabContainsPrincipalWithName(StringData name) const {
-        return std::any_of(
-            _keytab->begin(), _keytab->end(), [&name](const KRB5KeytabEntry& ktEntry) {
-                return ktEntry.getPrincipalName() == name;
-            });
+        return std::any_of(_keytab.begin(), _keytab.end(), [&name](const KRB5KeytabEntry& ktEntry) {
+            return ktEntry.getPrincipalName() == name;
+        });
     }
 
     /**
@@ -345,8 +635,8 @@ public:
      * parameter name the principal is in the format service/hostname@REALM
      */
     bool credentialsCacheContainsClientPrincipalName(StringData name) const {
-        return std::any_of(_credentialsCache->begin(),
-                           _credentialsCache->end(),
+        return std::any_of(_credentialsCache.begin(),
+                           _credentialsCache.end(),
                            [&name](const KRB5Credentials& creds) {
                                return creds.getClientPrincipalName() == name;
                            });
@@ -360,7 +650,7 @@ public:
     std::vector<const KRB5KeytabEntry*> keytabGetMongoDBEntries(
         StringData mongodbServiceName) const {
         std::vector<const KRB5KeytabEntry*> users;
-        for (const auto& entry : *_keytab) {
+        for (const auto& entry : _keytab) {
             if (entry.getPrincipalName() == mongodbServiceName) {
                 users.emplace_back(&entry);
             }
@@ -378,7 +668,10 @@ public:
 #endif
 
 private:
-#ifndef _WIN32
+#ifdef _WIN32
+    explicit KerberosEnvironment(KerberosToolOptions::ConnectionType connectionType)
+        : _connectionType(connectionType) {}
+#endif
     // looks up the value of a given environment variable
     // returns empty string if the variable is not set
     static std::string getEnvironmentValue(StringData variable) {
@@ -391,22 +684,28 @@ private:
         }
     }
 
+#ifndef _WIN32
+    explicit KerberosEnvironment(krb5_context krb5Context,
+                                 KerberosToolOptions::ConnectionType connectionType);
+
     // stores environment variables and maps them to their value
     std::map<StringData, std::string> _variables;
 
-    // interface for keytab
-    std::unique_ptr<KRB5Keytab> _keytab;
-
-    // interface for credentials cache
-    std::unique_ptr<KRB5CredentialsCache> _credentialsCache;
-
     // required for interacting with the KRB5 API
     krb5_context _krb5Context = nullptr;
+
+    // interface for configuration profile
+    KRB5Profile _krb5Profile;
+
+    // interface for keytab
+    KRB5Keytab _keytab;
+
+    // interface for credentials cache
+    KRB5CredentialsCache _credentialsCache;
 #endif
 
     // tells if this environment is for a client or server connection
     KerberosToolOptions::ConnectionType _connectionType;
 };
 
-}  // namespace
 }  // namespace mongo
