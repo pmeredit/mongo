@@ -179,7 +179,7 @@ std::tuple<std::vector<std::string>, std::string> iam::parseClientSecond(
     }
 
     headers.push_back(iam::kMongoServerNonceHeader + ":" +
-                      base64::encode(serverNonce.data(), serverNonce.size()));
+                      base64::encode(StringData(serverNonce.data(), serverNonce.size())));
     headers.push_back(str::stream() << iam::kMongoGS2CBHeader << ':' << cbFlag);
 
     headers.push_back("Authorization:" + clientSecond.getAuthHeader());
