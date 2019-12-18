@@ -65,7 +65,8 @@ TEST(EncryptionSchemaTreeTest, MarksTopLevelFieldAsEncrypted) {
                     encrypt: {
                         algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
                         keyId: [)" +
-        uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::ExtendedCanonicalV2_0_0, false) +
+        uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::ExtendedCanonicalV2_0_0,
+                                                  false) +
         R"(]
                     }
                 },
@@ -94,7 +95,8 @@ TEST(EncryptionSchemaTreeTest, MarksNestedFieldsAsEncrypted) {
                         encrypt: {
                             algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
                             keyId: [)" +
-        uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::ExtendedCanonicalV2_0_0, false) +
+        uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::ExtendedCanonicalV2_0_0,
+                                                  false) +
         R"(]
                         }
                     }
@@ -115,7 +117,8 @@ TEST(EncryptionSchemaTreeTest, MarksNumericFieldNameAsEncrypted) {
         R"({
         algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
         keyId: [)" +
-        uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::ExtendedCanonicalV2_0_0, false) +
+        uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::ExtendedCanonicalV2_0_0,
+                                                  false) +
         R"(]})");
 
     BSONObj schema = BSON("type"
@@ -924,7 +927,8 @@ TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataWithOverriding) {
         encryptMetadata: {
             algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
             keyId: [)" +
-        uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::ExtendedCanonicalV2_0_0, false) +
+        uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::ExtendedCanonicalV2_0_0,
+                                                  false) +
         R"(]
         },
         type: "object",
@@ -968,7 +972,8 @@ TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataMultipleLevels) {
                 encryptMetadata: {
                     algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
                     keyId: [)" +
-        uuid1.toBSON().getField("uuid").jsonString(JsonStringFormat::ExtendedCanonicalV2_0_0, false) +
+        uuid1.toBSON().getField("uuid").jsonString(JsonStringFormat::ExtendedCanonicalV2_0_0,
+                                                   false) +
         R"(]
                 },
                 type: "object",
@@ -982,7 +987,8 @@ TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataMultipleLevels) {
                     mystery: {
                         encrypt: {
                             keyId: [)" +
-        uuid2.toBSON().getField("uuid").jsonString(JsonStringFormat::ExtendedCanonicalV2_0_0, false) +
+        uuid2.toBSON().getField("uuid").jsonString(JsonStringFormat::ExtendedCanonicalV2_0_0,
+                                                   false) +
         R"(]
                         }
                     }
@@ -1000,7 +1006,8 @@ TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataMissingAlgorithm) {
         R"({
         encryptMetadata: {
             keyId: [)" +
-        uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::ExtendedCanonicalV2_0_0, false) +
+        uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::ExtendedCanonicalV2_0_0,
+                                                  false) +
         R"(]
         },
         type: "object",
