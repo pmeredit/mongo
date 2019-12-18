@@ -108,7 +108,7 @@ protected:
         ASSERT(intention == aggregate_expression_intender::Intention::Marked ||
                intention == aggregate_expression_intender::Intention::NotMarked);
         expressionPtr->serialize(false).addToBsonObj(&bob, "");
-        return removeObjectWrapper(tojson(bob.obj()));
+        return removeObjectWrapper(tojson(bob.obj(), JsonStringFormat::LegacyStrict));
     }
 };
 

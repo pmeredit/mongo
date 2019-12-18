@@ -57,15 +57,16 @@ TEST(EncryptionSchemaTreeTest, MarksTopLevelFieldAsEncrypted) {
     ResolvedEncryptionInfo metadata{
         EncryptSchemaKeyId{std::vector<UUID>{uuid}}, FleAlgorithmEnum::kRandom, boost::none};
 
-    BSONObj schema =
-        fromjson(R"({
+    BSONObj schema = fromjson(
+        R"({
             type: "object",
             properties: {
                 ssn: {
                     encrypt: {
                         algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
                         keyId: [)" +
-                 uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::Strict, false) + R"(]
+        uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::ExtendedCanonicalV2_0_0, false) +
+        R"(]
                     }
                 },
                 name: {
@@ -82,8 +83,8 @@ TEST(EncryptionSchemaTreeTest, MarksNestedFieldsAsEncrypted) {
     ResolvedEncryptionInfo metadata{
         EncryptSchemaKeyId{std::vector<UUID>{uuid}}, FleAlgorithmEnum::kRandom, boost::none};
 
-    BSONObj schema =
-        fromjson(R"({
+    BSONObj schema = fromjson(
+        R"({
         type: "object",
         properties: {
             user: {
@@ -93,7 +94,8 @@ TEST(EncryptionSchemaTreeTest, MarksNestedFieldsAsEncrypted) {
                         encrypt: {
                             algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
                             keyId: [)" +
-                 uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::Strict, false) + R"(]
+        uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::ExtendedCanonicalV2_0_0, false) +
+        R"(]
                         }
                     }
                 }
@@ -109,10 +111,12 @@ TEST(EncryptionSchemaTreeTest, MarksNumericFieldNameAsEncrypted) {
     const auto uuid = UUID::gen();
     ResolvedEncryptionInfo metadata{
         EncryptSchemaKeyId{std::vector<UUID>{uuid}}, FleAlgorithmEnum::kRandom, boost::none};
-    BSONObj encryptObj = fromjson(R"({
+    BSONObj encryptObj = fromjson(
+        R"({
         algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
-        keyId: [)" + uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::Strict, false) +
-                                  R"(]})");
+        keyId: [)" +
+        uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::ExtendedCanonicalV2_0_0, false) +
+        R"(]})");
 
     BSONObj schema = BSON("type"
                           << "object"
@@ -131,7 +135,8 @@ TEST(EncryptionSchemaTreeTest, MarksNumericFieldNameAsEncrypted) {
 
 TEST(EncryptionSchemaTreeTest, MarksMultipleFieldsAsEncrypted) {
     const auto uuid = UUID::gen();
-    const auto uuidStr = uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::Strict, false);
+    const auto uuidStr =
+        uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::ExtendedCanonicalV2_0_0, false);
     ResolvedEncryptionInfo metadata{
         EncryptSchemaKeyId{std::vector<UUID>{uuid}}, FleAlgorithmEnum::kRandom, boost::none};
 
@@ -173,7 +178,8 @@ TEST(EncryptionSchemaTreeTest, MarksMultipleFieldsAsEncrypted) {
 
 TEST(EncryptionSchemaTreeTest, TopLevelEncryptMarksEmptyPathAsEncrypted) {
     const auto uuid = UUID::gen();
-    const auto uuidStr = uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::Strict, false);
+    const auto uuidStr =
+        uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::ExtendedCanonicalV2_0_0, false);
     ResolvedEncryptionInfo metadata{
         EncryptSchemaKeyId{std::vector<UUID>{uuid}}, FleAlgorithmEnum::kRandom, boost::none};
 
@@ -913,12 +919,13 @@ TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataWithOverriding) {
                                        FleAlgorithmEnum::kDeterministic,
                                        MatcherTypeSet{BSONType::String}};
 
-    BSONObj schema =
-        fromjson(R"({
+    BSONObj schema = fromjson(
+        R"({
         encryptMetadata: {
             algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
             keyId: [)" +
-                 uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::Strict, false) + R"(]
+        uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::ExtendedCanonicalV2_0_0, false) +
+        R"(]
         },
         type: "object",
         properties: {
@@ -950,8 +957,8 @@ TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataMultipleLevels) {
     ResolvedEncryptionInfo mysteryMetadata{
         EncryptSchemaKeyId{{uuid2}}, FleAlgorithmEnum::kRandom, boost::none};
 
-    BSONObj schema =
-        fromjson(R"({
+    BSONObj schema = fromjson(
+        R"({
         encryptMetadata: {
             algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random"
         },
@@ -961,7 +968,8 @@ TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataMultipleLevels) {
                 encryptMetadata: {
                     algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
                     keyId: [)" +
-                 uuid1.toBSON().getField("uuid").jsonString(JsonStringFormat::Strict, false) + R"(]
+        uuid1.toBSON().getField("uuid").jsonString(JsonStringFormat::ExtendedCanonicalV2_0_0, false) +
+        R"(]
                 },
                 type: "object",
                 properties: {
@@ -974,7 +982,8 @@ TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataMultipleLevels) {
                     mystery: {
                         encrypt: {
                             keyId: [)" +
-                 uuid2.toBSON().getField("uuid").jsonString(JsonStringFormat::Strict, false) + R"(]
+        uuid2.toBSON().getField("uuid").jsonString(JsonStringFormat::ExtendedCanonicalV2_0_0, false) +
+        R"(]
                         }
                     }
                 }
@@ -987,11 +996,12 @@ TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataMultipleLevels) {
 TEST(EncryptionSchemaTreeTest, InheritEncryptMetadataMissingAlgorithm) {
     const auto uuid = UUID::gen();
 
-    BSONObj schema =
-        fromjson(R"({
+    BSONObj schema = fromjson(
+        R"({
         encryptMetadata: {
             keyId: [)" +
-                 uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::Strict, false) + R"(]
+        uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::ExtendedCanonicalV2_0_0, false) +
+        R"(]
         },
         type: "object",
         properties: {
@@ -1526,7 +1536,8 @@ TEST(EncryptionSchemaTreeTest, PatternPropertiesInheritsParentEncryptMetadata) {
     ResolvedEncryptionInfo expectedMetadata{
         EncryptSchemaKeyId{std::vector<UUID>{uuid}}, FleAlgorithmEnum::kRandom, boost::none};
 
-    auto uuidJsonStr = uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::Strict, false);
+    auto uuidJsonStr =
+        uuid.toBSON().getField("uuid").jsonString(JsonStringFormat::ExtendedCanonicalV2_0_0, false);
     BSONObj schema = fromjson(R"({
         type: "object",
         encryptMetadata: {

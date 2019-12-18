@@ -88,7 +88,7 @@ void createLockFile(ServiceContext* serviceContext) {
     pidFile.setPort(serverGlobalParams.port);
     pidFile.setPid(ProcessId::getCurrent().asInt64());
 
-    auto str = tojson(pidFile.toBSON());
+    auto str = tojson(pidFile.toBSON(), JsonStringFormat::LegacyStrict);
 
     const auto writeStatus = lockFile->writeString(str);
     if (!writeStatus.isOK()) {

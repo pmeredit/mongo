@@ -47,7 +47,7 @@ public:
 private:
     virtual std::ostream& encode(const AuditEvent& event, std::ostream& os) {
         BSONObj eventAsBson(event.toBSON());
-        std::string toWrite = eventAsBson.jsonString();
+        std::string toWrite = eventAsBson.jsonString(JsonStringFormat::LegacyStrict);
         return os.write(toWrite.c_str(), toWrite.length());
     }
 };
@@ -59,7 +59,7 @@ public:
 private:
     virtual std::ostream& encode(const AuditEvent& event, std::ostream& os) {
         BSONObj eventAsBson(event.toBSON());
-        std::string toWrite = eventAsBson.jsonString() + '\n';
+        std::string toWrite = eventAsBson.jsonString(JsonStringFormat::LegacyStrict) + '\n';
         return os.write(toWrite.c_str(), toWrite.length());
     }
 };
@@ -69,7 +69,7 @@ class AuditEventJsonEncoder {
 public:
     static std::string encode(const AuditEvent& event) {
         BSONObj eventAsBson(event.toBSON());
-        return eventAsBson.jsonString() + '\n';
+        return eventAsBson.jsonString(JsonStringFormat::LegacyStrict) + '\n';
     }
 };
 
