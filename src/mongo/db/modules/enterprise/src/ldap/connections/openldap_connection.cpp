@@ -274,9 +274,8 @@ int LDAPConnectCallbackFunction(
     LDAP* ld, Sockbuf* sb, LDAPURLDesc* srv, struct sockaddr* addr, struct ldap_conncb* ctx) {
     try {
         LOG(3) << [=]() -> std::string {
-            struct sockaddr_storage* ss = reinterpret_cast<struct sockaddr_storage*>(addr);
             // Socket address size is manually derived based on IPv4 or IPv6 classification
-            SockAddr sa(*ss, [&]() {
+            SockAddr sa(addr, [&]() {
                 switch (addr->sa_family) {
                     case AF_INET:
                         return sizeof(sockaddr_in);
