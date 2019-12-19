@@ -174,7 +174,7 @@ int main(int argc, char** argv, char** envp) {
         return EXIT_FAILURE;
     }
 
-    return unittest::Suite::run(std::vector<std::string>(), "", 1);
+    return unittest::Suite::run(std::vector<std::string>(), "", "", 1);
 }
 
 namespace mongo {
