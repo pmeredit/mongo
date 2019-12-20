@@ -119,6 +119,10 @@ public:
         return parsed;
     }
 
+    krb5_kvno getKvno() const {
+        return _rawEntry.vno;
+    }
+
     /**
      * Returns the host name used by the principal contained in this keytab entry
      */

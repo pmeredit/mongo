@@ -58,6 +58,191 @@ std::string formatOutput(StringData value, OutputType outputType) {
     }
 }
 
+/**
+ *  Reads a GSSAPI/KRB5 status code and determines what advice should be given to the user
+ *  in order to fix the problem. This advice is enqueued to adviceBullets. If no advice is
+ *  available for the given status, this function returns an empty vector.
+ */
+#if !defined(_WIN32)
+std::vector<std::string> getAdviceForStatus(OM_uint32 majorStatus,
+                                            OM_uint32 minorStatus,
+                                            KerberosToolOptions::ConnectionType connectionType) {
+    bool isClientConnection = connectionType == KerberosToolOptions::ConnectionType::kClient;
+    std::vector<std::string> adviceBullets;
+    auto advise = [&adviceBullets](const std::string& s) {
+        adviceBullets.emplace_back(formatOutput(s, OutputType::kSolution));
+    };
+    adviceBullets.emplace_back(getGssapiErrorString(majorStatus, minorStatus));
+    signed long code =
+        (minorStatus - static_cast<OM_uint32>(ERROR_TABLE_BASE_krb5)) + ERROR_TABLE_BASE_krb5;
+    switch (code) {
+        case KRB5_NO_TKT_SUPPLIED:
+            if (isClientConnection) {
+                advise("Try creating a new ticket for the desired user with kinit.");
+            } else {
+                advise("Try creating a new ticket for the desired service with kinit.");
+            }
+            break;
+        case KRB5KDC_ERR_S_PRINCIPAL_UNKNOWN:
+            advise(
+                "Make sure the KDC has a record for the desired service "
+                "principal.");
+            break;
+        case KRB5_KDC_UNREACH:
+            advise(
+                "Ensure that the desired realm's KDC is running, and that "
+                "this computer "
+                "is able to ping the KDC.");
+            break;
+        case KRB5KRB_AP_ERR_SKEW:
+            if (isClientConnection) {
+                advise(
+                    "Ensure the difference between client and KDC's clock is less than defined "
+                    "clock skew (default 300 seconds).");
+            } else {
+                advise(
+                    "Ensure the difference between service and KDC's clock is less than defined "
+                    "clock skew (default 300 seconds).");
+            }
+            break;
+        case KRB5KDC_ERR_ETYPE_NOSUPP:
+            advise("Ensure the client is using a cipher supported by the KDC.");
+            break;
+        case KRB5KRB_AP_ERR_TKT_EXPIRED:
+            advise("Try refreshing your credentials with kinit.");
+            break;
+        case KRB5KRB_AP_ERR_BAD_INTEGRITY:
+            if (isClientConnection) {
+                advise(
+                    "Ensure that the current password being used by the client is known by the "
+                    "KDC.");
+            } else {
+                advise(
+                    "Ensure that the keytab file contains an up-to-date key for the service. Check "
+                    "that its kvno matches that which is tracked by the KDC.");
+                advise(
+                    str::stream()
+                    << "Please run the following command on the service host and verify that the "
+                       "output kvno is the same as the latest kvno on the KDC:\n\t\t"
+                    << "kvno -S " << globalKerberosToolOptions->gssapiServiceName << " "
+                    << globalKerberosToolOptions->gssapiHostName);
+            }
+
+            break;
+        default:
+            break;
+    }
+    return adviceBullets;
+}
+#endif
+
+#if !defined(_WIN32)
+void performGSSAPIHandshake(Report& report,
+                            KerberosToolOptions::ConnectionType connectionType,
+                            std::string initiatorName) {
+    OM_uint32 minorStatus;
+    OM_uint32 majorStatus;
+    OM_uint32 retFlags;
+    OM_uint32 timeRec = GSS_C_INDEFINITE;
+    GSSBufferDesc outputToken;
+    GSSCredId initiatorCredHandle;
+    GSSContextID contextHandle;
+    std::string& serviceName = globalKerberosToolOptions->gssapiServiceName;
+    gss_buffer_desc serviceNameBuffer;
+    serviceNameBuffer.length = serviceName.size();
+    serviceNameBuffer.value = const_cast<char*>(serviceName.c_str());
+    GSSName gssServiceName;
+    std::vector<std::string> gssapiErrorBullets;
+    auto errorBulletCallback = [&gssapiErrorBullets] { return gssapiErrorBullets; };
+
+    report.checkAssert({[&] {
+                            majorStatus = gss_import_name(&minorStatus,
+                                                          &serviceNameBuffer,
+                                                          GSS_C_NT_HOSTBASED_SERVICE,
+                                                          gssServiceName.get());
+                            gssapiErrorBullets =
+                                getAdviceForStatus(majorStatus,
+                                                   minorStatus,
+                                                   globalKerberosToolOptions->connectionType);
+                            return majorStatus == GSS_S_COMPLETE;
+                        },
+                        "Could not import GSSAPI target name.",
+                        errorBulletCallback,
+                        Report::FailType::kFatalFailure});
+
+    gss_buffer_desc initiatorNameBuffer;
+    initiatorNameBuffer.length = initiatorName.size();
+    initiatorNameBuffer.value = const_cast<char*>(initiatorName.c_str());
+    GSSName gssInitiatorName;
+    gss_OID nameType = connectionType == KerberosToolOptions::ConnectionType::kClient
+        ? GSS_C_NT_USER_NAME
+        : GSS_C_NT_HOSTBASED_SERVICE;
+    report.checkAssert(
+        {[&] {
+             majorStatus = gss_import_name(
+                 &minorStatus, &initiatorNameBuffer, nameType, gssInitiatorName.get());
+             gssapiErrorBullets = getAdviceForStatus(
+                 majorStatus, minorStatus, globalKerberosToolOptions->connectionType);
+             return majorStatus == GSS_S_COMPLETE;
+         },
+         "Could not import GSSAPI user name.",
+         errorBulletCallback,
+         Report::FailType::kFatalFailure});
+
+    report.checkAssert({[&] {
+                            majorStatus = gss_acquire_cred(&minorStatus,
+                                                           *gssInitiatorName.get(),
+                                                           GSS_C_INDEFINITE,
+                                                           GSS_C_NO_OID_SET,
+                                                           GSS_C_INITIATE,
+                                                           initiatorCredHandle.get(),
+                                                           nullptr,
+                                                           nullptr);
+                            gssapiErrorBullets =
+                                getAdviceForStatus(majorStatus,
+                                                   minorStatus,
+                                                   globalKerberosToolOptions->connectionType);
+                            return majorStatus == GSS_S_COMPLETE;
+                        },
+                        "Could not acquire credentials.",
+                        errorBulletCallback,
+                        Report::FailType::kFatalFailure});
+
+    report.checkAssert(
+        {[&] {
+             // mech_type has to be const_cast for older versions of GSSAPI in which
+             // gss_mech_krb5 was * const
+             majorStatus =
+                 gss_init_sec_context(&minorStatus,                       /* minor_status */
+                                      *initiatorCredHandle.get(),         /* claimant_cred_handle */
+                                      contextHandle.get(),                /* context_handle */
+                                      *gssServiceName.get(),              /* target_name */
+                                      const_cast<gss_OID>(gss_mech_krb5), /* mech_type */
+                                      GSS_C_INTEG_FLAG | GSS_C_MUTUAL_FLAG | GSS_C_REPLAY_FLAG |
+                                          GSS_C_CONF_FLAG, /* req_flags */
+                                      false,               /* time_req */
+                                      nullptr,             /* input_chan_bindings */
+                                      GSS_C_NO_BUFFER,     /* input_token */
+                                      nullptr,             /* actual_mech_type */
+                                      outputToken.get(),   /* output_token */
+                                      &retFlags,           /* ret_flags */
+                                      &timeRec);           /* time_rec */
+
+             if (GSS_ERROR(majorStatus) && !(majorStatus & GSS_S_CONTINUE_NEEDED)) {
+                 gssapiErrorBullets = getAdviceForStatus(
+                     majorStatus, minorStatus, globalKerberosToolOptions->connectionType);
+                 // this will only be reached if there is a fatal error
+                 return false;
+             }
+             return true;
+         },
+         "GSSAPI client handshake failed",
+         errorBulletCallback,
+         Report::FailType::kFatalFailure});
+}
+#else
+#endif
+
 int kerberosToolMain(int argc, char* argv[], char** envp) {
     setupSignalHandlers();
     runGlobalInitializersOrDie(argc, argv, envp);
@@ -207,6 +392,10 @@ int kerberosToolMain(int argc, char* argv[], char** envp) {
     report.openSection(str::stream()
                        << "Checking " << formatOutput("principal(s) ", OutputType::kHighlight)
                        << "in " << formatOutput("KRB5 keytab", OutputType::kHighlight));
+    auto mongoDBEntries = krb5Env.keytabGetMongoDBEntries(serviceName);
+    report.checkAssert({[&mongoDBEntries]() { return !mongoDBEntries.empty(); },
+                        str::stream() << "Keytab does not contain any entries for provided service "
+                                      << formatOutput(serviceName, OutputType::kImportant)});
     if (krb5Env.isClientConnection()) {
         // on client connection, check that at at least one principal listed in the client keytab or
         // the credentials cache has the same name as the one specified as --user
@@ -221,7 +410,6 @@ int kerberosToolMain(int argc, char* argv[], char** envp) {
     } else {
         // on server connection, check for users with specified gssapiServiceName and wrong DNS name
         std::vector<const KRB5KeytabEntry*> problemPrincipals;
-        auto mongoDBEntries = krb5Env.keytabGetMongoDBEntries(serviceName);
         std::cout << "Found the following principals for MongoDB service "
                   << formatOutput(serviceName, OutputType::kImportant) << ":" << std::endl;
         report.printItemList([&]() {
@@ -261,6 +449,20 @@ int kerberosToolMain(int argc, char* argv[], char** envp) {
              },
              Report::FailType::kFatalFailure});
     }
+
+    std::cout << "Found the following " << formatOutput("kvnos", OutputType::kHighlight)
+              << " in keytab entries for service "
+              << formatOutput(serviceName, OutputType::kImportant) << std::endl;
+    report.printItemList([&mongoDBEntries]() {
+        std::vector<std::string> kvnos;
+        std::transform(
+            mongoDBEntries.begin(),
+            mongoDBEntries.end(),
+            std::back_inserter(kvnos),
+            [](const KRB5KeytabEntry* entry) { return std::to_string(entry->getKvno()); });
+        return kvnos;
+    });
+
     report.closeSection("KRB5 keytab is valid.");
 
     report.openSection("Fetching KRB5 Config and log");
@@ -294,130 +496,19 @@ int kerberosToolMain(int argc, char* argv[], char** envp) {
     report.closeSection("");
 
     if (krb5Env.isClientConnection()) {
-        report.openSection("Attempting client half of GSSAPI conversation.");
-        OM_uint32 minorStatus;
-        OM_uint32 majorStatus;
-        OM_uint32 retFlags;
-        OM_uint32 timeRec = GSS_C_INDEFINITE;
-        GSSBufferDesc outputToken;
-        GSSCredId initiatorCredHandle;
-        GSSContextID contextHandle;
-        gss_buffer_desc serviceNameBuffer;
-        serviceNameBuffer.length = serviceName.size();
-        serviceNameBuffer.value = const_cast<char*>(serviceName.c_str());
-        GSSName gssServiceName;
-        report.checkAssert({[&] {
-                                majorStatus = gss_import_name(&minorStatus,
-                                                              &serviceNameBuffer,
-                                                              GSS_C_NT_HOSTBASED_SERVICE,
-                                                              gssServiceName.get());
-                                return majorStatus == GSS_S_COMPLETE;
-                            },
-                            "Could not import GSSAPI target name."});
-
-        gss_buffer_desc userNameBuffer;
-        userNameBuffer.length = globalKerberosToolOptions->username.size();
-        userNameBuffer.value = const_cast<char*>(globalKerberosToolOptions->username.c_str());
-        GSSName gssUserName;
-        report.checkAssert({[&] {
-                                majorStatus = gss_import_name(&minorStatus,
-                                                              &userNameBuffer,
-                                                              GSS_C_NT_USER_NAME,
-                                                              gssUserName.get());
-                                return majorStatus == GSS_S_COMPLETE;
-                            },
-                            "Could not import GSSAPI user name."});
-
-        report.checkAssert({[&] {
-                                majorStatus = gss_acquire_cred(&minorStatus,
-                                                               *gssUserName.get(),
-                                                               GSS_C_INDEFINITE,
-                                                               GSS_C_NO_OID_SET,
-                                                               GSS_C_INITIATE,
-                                                               initiatorCredHandle.get(),
-                                                               nullptr,
-                                                               nullptr);
-                                return majorStatus == GSS_S_COMPLETE;
-                            },
-                            "Could not acquire credentials."});
-
-        std::vector<std::string> gssapiErrorBullets;
-
-        report.checkAssert(
-            {[&] {
-                 // mech_type has to be const_cast for older versions of GSSAPI in which
-                 // gss_mech_krb5 was * const
-                 majorStatus =
-                     gss_init_sec_context(&minorStatus,               /* minor_status */
-                                          *initiatorCredHandle.get(), /* claimant_cred_handle */
-                                          contextHandle.get(),        /* context_handle */
-                                          *gssServiceName.get(),      /* target_name */
-                                          const_cast<gss_OID>(gss_mech_krb5), /* mech_type */
-                                          GSS_C_INTEG_FLAG | GSS_C_MUTUAL_FLAG | GSS_C_REPLAY_FLAG |
-                                              GSS_C_CONF_FLAG, /* req_flags */
-                                          false,               /* time_req */
-                                          nullptr,             /* input_chan_bindings */
-                                          GSS_C_NO_BUFFER,     /* input_token */
-                                          nullptr,             /* actual_mech_type */
-                                          outputToken.get(),   /* output_token */
-                                          &retFlags,           /* ret_flags */
-                                          &timeRec);           /* time_rec */
-
-                 if (GSS_ERROR(majorStatus) && !(majorStatus & GSS_S_CONTINUE_NEEDED)) {
-                     gssapiErrorBullets.emplace_back(
-                         getGssapiErrorString(majorStatus, minorStatus));
-                     auto advise = [&gssapiErrorBullets](const std::string& s) {
-                         gssapiErrorBullets.emplace_back(formatOutput(s, OutputType::kSolution));
-                     };
-
-                     // If GSSAPI doesn't just need us to continue, we have an actual error.
-                     // Error code constants hold actual error code in least-significant 32 bits
-                     // of a 64-bit int. Here, we represent it as an offset from the default
-                     // KRB5 error code: ERROR_TABLE_BASE_krb5
-                     signed long code =
-                         (minorStatus - static_cast<OM_uint32>(ERROR_TABLE_BASE_krb5)) +
-                         ERROR_TABLE_BASE_krb5;
-                     switch (code) {
-                         case KRB5_NO_TKT_SUPPLIED:
-                             advise("Try creating a new ticket for the desired user with kinit.");
-                             break;
-                         case KRB5KDC_ERR_S_PRINCIPAL_UNKNOWN:
-                             advise(
-                                 "Make sure the KDC has a record for the desired service "
-                                 "principal.");
-                             break;
-                         case KRB5_KDC_UNREACH:
-                             advise(
-                                 "Ensure that the desired realm's KDC is running, and that "
-                                 "this client "
-                                 "is able to ping the KDC.");
-                             break;
-                         case KRB5KRB_AP_ERR_SKEW:
-                             advise(
-                                 "Ensure that difference between client and KDC's clock is less "
-                                 "than defined clock skew (default 300 seconds).");
-                             break;
-                         case KRB5KDC_ERR_ETYPE_NOSUPP:
-                             advise(
-                                 "Make sure the client is using a cipher supported by the "
-                                 "KDC.");
-                             break;
-                         case KRB5KRB_AP_ERR_TKT_EXPIRED:
-                             advise("Try refreshing your credentials with kinit.");
-                             break;
-                         default:
-                             break;
-                     }
-                     // this will only be reached if there is a fatal error
-                     return false;
-                 }
-                 return true;
-             },
-             "GSSAPI client handshake failed",
-             [&] { return gssapiErrorBullets; },
-             Report::FailType::kFatalFailure});
-
+        report.openSection("Attempting client half of GSSAPI conversation");
+    } else {
+        report.openSection("Attempting to initiate security context with service credentials");
+    }
+    performGSSAPIHandshake(report,
+                           globalKerberosToolOptions->connectionType,
+                           krb5Env.isClientConnection()
+                               ? globalKerberosToolOptions->username
+                               : globalKerberosToolOptions->gssapiServiceName);
+    if (krb5Env.isClientConnection()) {
         report.closeSection("Client half of GSSAPI conversation completed successfully.");
+    } else {
+        report.closeSection("Security context initiated successfully.");
     }
 
 #endif
