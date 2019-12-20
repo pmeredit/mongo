@@ -23,6 +23,7 @@
 #include "mongo/logger/rotatable_file_manager.h"
 #include "mongo/logger/rotatable_file_writer.h"
 #include "mongo/logger/syslog_appender.h"
+#include "mongo/util/log.h"
 
 namespace mongo {
 
@@ -95,13 +96,35 @@ public:
     ~RotatableAuditFileAppender() final {}
 
     Status append(const Event& event) final {
-        std::string toWrite = Encoder::encode(event);
-        logger::RotatableFileWriter::Use useWriter(_writer.get());
-        Status status = useWriter.status();
-        if (!status.isOK())
-            return status;
-        useWriter.stream().write(toWrite.c_str(), toWrite.length()).flush();
-        return useWriter.status();
+        Status status = Status::OK();
+        try {
+            std::string toWrite = Encoder::encode(event);
+            logger::RotatableFileWriter::Use useWriter(_writer.get());
+
+            status = useWriter.status();
+            if (!status.isOK()) {
+                warning() << "Failure acquiring audit logger: " << status;
+                return status;
+            }
+
+            useWriter.stream().write(toWrite.c_str(), toWrite.length()).flush();
+
+            status = useWriter.status();
+        } catch (...) {
+            status = exceptionToStatus();
+        }
+
+        if (!status.isOK()) {
+            try {
+                warning() << "Failure writing to audit log: " << status;
+            } catch (...) {
+                // If neither audit subsystem can write,
+                // then just eat the standard logging exception,
+                // and return audit's bad status.
+            }
+        }
+
+        return status;
     }
 
 private:
