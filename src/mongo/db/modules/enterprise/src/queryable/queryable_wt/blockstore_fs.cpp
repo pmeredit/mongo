@@ -28,7 +28,27 @@ static int queryableWtFsDirectoryList(WT_FILE_SYSTEM* file_system,
                                       const char* prefix,
                                       char*** dirlistp,
                                       uint32_t* countp) {
-    // Actually not needed in readonly mode
+    auto blockstoreFs = reinterpret_cast<mongo::queryable::BlockstoreFileSystem*>(file_system);
+    std::vector<std::string> files = blockstoreFs->getFiles(directory, prefix);
+    if (files.empty()) {
+        return 0;
+    }
+
+    *dirlistp = new char*[files.size()];
+    if (*dirlistp == nullptr) {
+        return ENOMEM;
+    }
+
+    for (size_t i = 0; i < files.size(); i++) {
+        const std::string fileName = files[i];
+        *dirlistp[i] = new char[fileName.size() + 1];
+        if (*dirlistp[i] == nullptr) {
+            return ENOMEM;
+        }
+        strcpy(*dirlistp[i], fileName.c_str());
+    }
+
+    *countp = files.size();
     return 0;
 }
 
@@ -36,7 +56,10 @@ static int queryableWtFsDirectoryListFree(WT_FILE_SYSTEM* file_system,
                                           WT_SESSION* session,
                                           char** dirlist,
                                           uint32_t count) {
-    // Actually not needed in readonly mode
+    for (size_t i = 0; i < count; i++) {
+        free(dirlist[i]);
+    }
+    free(dirlist);
     return 0;
 }
 
@@ -48,6 +71,8 @@ static int queryableWtFsFileOpen(
 static int queryableWtFsFileExist(WT_FILE_SYSTEM*, WT_SESSION*, const char*, bool*);
 static int queryableWtFsFileSize(WT_FILE_SYSTEM*, WT_SESSION*, const char*, wt_off_t*);
 static int queryableWtFsTerminate(WT_FILE_SYSTEM*, WT_SESSION*);
+static int queryableWtFsRemove(WT_FILE_SYSTEM*, WT_SESSION*, const char*, uint32_t);
+static int queryableWtFsRename(WT_FILE_SYSTEM*, WT_SESSION*, const char*, const char*, uint32_t);
 
 /*
  * Forward function declarations for file handle API implementation
@@ -56,6 +81,7 @@ static int queryableWtFileRead(WT_FILE_HANDLE*, WT_SESSION*, wt_off_t, size_t, v
 static int queryableWtFileSize(WT_FILE_HANDLE*, WT_SESSION*, wt_off_t*);
 static int queryableWtFileLock(WT_FILE_HANDLE*, WT_SESSION*, bool);
 static int queryableWtFileClose(WT_FILE_HANDLE*, WT_SESSION*);
+static int queryableWtFileSync(WT_FILE_HANDLE*, WT_SESSION*);
 
 /*
  * queryableWtFsCreate --
@@ -160,6 +186,8 @@ MONGO_COMPILER_API_EXPORT int queryableWtFsCreate(WT_CONNECTION* conn, WT_CONFIG
 
     wtFileSystem->fs_directory_list = queryableWtFsDirectoryList;
     wtFileSystem->fs_directory_list_free = queryableWtFsDirectoryListFree;
+    wtFileSystem->fs_remove = queryableWtFsRemove;
+    wtFileSystem->fs_rename = queryableWtFsRename;
 
     if ((ret = conn->set_file_system(conn, wtFileSystem, nullptr)) != 0) {
         (void)wtext->err_printf(wtext,
@@ -217,6 +245,23 @@ static int queryableWtFsTerminate(WT_FILE_SYSTEM* file_system, WT_SESSION* sessi
     return 0;
 }
 
+static int queryableWtFsRemove(WT_FILE_SYSTEM* file_system,
+                               WT_SESSION* session,
+                               const char* name,
+                               uint32_t flags) {
+    // Not needed for queryable backup mode.
+    MONGO_UNREACHABLE;
+}
+
+static int queryableWtFsRename(WT_FILE_SYSTEM* file_system,
+                               WT_SESSION* session,
+                               const char* from,
+                               const char* to,
+                               uint32_t flags) {
+    // Not needed for queryable backup mode.
+    MONGO_UNREACHABLE;
+}
+
 static int queryableWtFileRead(
     WT_FILE_HANDLE* file_handle, WT_SESSION* session, wt_off_t offset, size_t len, void* buf) {
     auto fileHandle = reinterpret_cast<mongo::queryable::BlockstoreFileHandle*>(file_handle);
@@ -253,6 +298,11 @@ static int queryableWtFileClose(WT_FILE_HANDLE* baseFileHandle, WT_SESSION* sess
         reinterpret_cast<mongo::queryable::BlockstoreFileHandle*>(baseFileHandle);
     delete blockstoreFileHandle;
 
+    return 0;
+}
+
+static int queryableWtFileSync(WT_FILE_HANDLE* baseFileHandle, WT_SESSION* session) {
+    // Files are considered durable when the write HTTP POST request returns successfully.
     return 0;
 }
 }
@@ -345,6 +395,7 @@ int BlockstoreFileSystem::open(const char* name,
     baseFileHandle->fh_write = queryableWtFileWrite;
     baseFileHandle->fh_size = queryableWtFileSize;
     baseFileHandle->fh_lock = queryableWtFileLock;
+    baseFileHandle->fh_sync = queryableWtFileSync;
 
     *fileHandle = ret.release();
     return 0;

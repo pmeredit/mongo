@@ -81,21 +81,6 @@ TEST_F(AESRoundTrip, CBC) {
     }
 }
 
-DEATH_TEST_F(AESRoundTrip,
-             CBCReadOnlyCanDecrypt,
-             "Invariant failure !encryptionGlobalParams.readOnlyMode") {
-    ASSERT_OK(encrypt(crypto::aesMode::cbc));
-
-    encryptionGlobalParams.readOnlyMode = true;
-    auto guard = makeGuard([]() { encryptionGlobalParams.readOnlyMode = false; });
-
-    ASSERT_OK(decrypt(crypto::aesMode::cbc));
-
-    ASSERT_TRUE(plainTextMatch());
-
-    encrypt(crypto::aesMode::cbc).ignore();
-}
-
 #ifndef DISABLE_GCM_TESTVECTORS
 TEST(AES, GCMTestVectors) {
     ASSERT_OK(crypto::smokeTestAESCipherMode(crypto::aesMode::gcm, crypto::PageSchema::k0));
@@ -109,21 +94,6 @@ TEST_F(AESRoundTrip, GCM) {
     ASSERT_OK(encrypt(crypto::aesMode::gcm));
     ASSERT_OK(decrypt(crypto::aesMode::gcm));
     ASSERT_TRUE(plainTextMatch());
-}
-
-DEATH_TEST_F(AESRoundTrip,
-             GCMReadOnlyCanDecrypt,
-             "Invariant failure !encryptionGlobalParams.readOnlyMode") {
-    ASSERT_OK(encrypt(crypto::aesMode::gcm));
-
-    encryptionGlobalParams.readOnlyMode = true;
-    auto guard = makeGuard([]() { encryptionGlobalParams.readOnlyMode = false; });
-
-    ASSERT_OK(decrypt(crypto::aesMode::gcm));
-
-    ASSERT_TRUE(plainTextMatch());
-
-    encrypt(crypto::aesMode::gcm).ignore();
 }
 #endif
 

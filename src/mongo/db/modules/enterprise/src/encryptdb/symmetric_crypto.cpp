@@ -81,7 +81,6 @@ void aesGenerateIV(const SymmetricKey* key,
                    crypto::aesMode mode,
                    uint8_t* buffer,
                    size_t bufferLen) {
-    invariant(!encryptionGlobalParams.readOnlyMode);
     uint32_t initializationCount = key->getInitializationCount();
     invariant(bufferLen >= aesGetIVSize(mode));
     if (mode == crypto::aesMode::gcm && initializationCount != 0) {

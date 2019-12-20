@@ -79,6 +79,30 @@ public:
     }
 
     /**
+     * Returns a list of files that match 'prefix' in 'directory'.
+     */
+    std::vector<std::string> getFiles(const char* directory, const char* prefix) {
+        boost::filesystem::path directoryWithFilePrefix = directory;
+        directoryWithFilePrefix /= prefix;
+
+        std::vector<std::string> files;
+        for (const auto& file : _files) {
+            if (file.first.find(directoryWithFilePrefix.string()) == std::string::npos) {
+                // File prefix not matched in directory.
+                continue;
+            }
+
+            // Need to pull out the file name.
+            std::size_t pos = file.first.rfind(boost::filesystem::path::preferred_separator);
+            invariant(pos != std::string::npos);
+
+            const std::string fileName = file.first.substr(pos + 1, std::string::npos);
+            files.push_back(fileName);
+        }
+        return files;
+    }
+
+    /**
      * `fileHandle` is an out-parameter
      */
     int open(const char* filename, uint32_t flags, BlockstoreFileHandle** fileHandle);
