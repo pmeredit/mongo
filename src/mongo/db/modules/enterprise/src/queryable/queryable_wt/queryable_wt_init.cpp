@@ -100,13 +100,6 @@ public:
         kv->setSortedDataInterfaceExtraOptions(wiredTigerGlobalOptions.indexConfig);
         // Intentionally leaked.
         new WiredTigerServerStatusSection(kv);
-        auto* param = new WiredTigerEngineRuntimeConfigParameter("wiredTigerEngineRuntimeConfig",
-                                                                 ServerParameterType::kRuntimeOnly);
-        param->_data.second = kv;
-
-        auto* maxCacheOverflowParam = new WiredTigerMaxCacheOverflowSizeGBParameter(
-            "wiredTigerMaxCacheOverflowSizeGB", ServerParameterType::kRuntimeOnly);
-        maxCacheOverflowParam->_data = {wiredTigerGlobalOptions.maxCacheOverflowFileSizeGB, kv};
 
         StorageEngineOptions options;
         options.directoryPerDB = params.directoryperdb;

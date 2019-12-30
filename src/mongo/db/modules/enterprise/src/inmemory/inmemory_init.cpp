@@ -64,9 +64,6 @@ public:
         kv->setSortedDataInterfaceExtraOptions(inMemoryGlobalOptions.indexConfig);
         // Intentionally leaked.
         new WiredTigerServerStatusSection(kv);
-        auto* param = new WiredTigerEngineRuntimeConfigParameter("wiredTigerEngineRuntimeConfig",
-                                                                 ServerParameterType::kRuntimeOnly);
-        param->_data.second = kv;
 
         StorageEngineOptions options;
         options.directoryPerDB = false;
