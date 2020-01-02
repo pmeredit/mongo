@@ -62,6 +62,11 @@ public:
         MONGO_UNREACHABLE;
     }
 
+    virtual DataBuilder put(StringData, ConstDataRange) const {
+        invariant(false);
+        return DataBuilder();
+    }
+
     // Ignore client configs.
     virtual void allowInsecureHTTP(bool) {}
     virtual void setHeaders(const std::vector<std::string>& headers) {}

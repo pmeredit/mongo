@@ -24,15 +24,38 @@ SUPPORTED_FAULT_TYPES = [
     FAULT_500,
 ]
 
+IMDS_API_TOKEN = "SECRET_API_TOKEN"
+IMDS_METADATA_TOKEN_HEADER = "x-aws-ec2-metadata-token"
+
 class AwsEC2MetadataHandler(http.server.BaseHTTPRequestHandler):
     """
     Handle requests from AWS EC2 Metadata Monitoring and test commands
     """
 
+    def do_PUT(self):
+        """Serve a Test PUT request."""
+        parts = urllib.parse.urlsplit(self.path)
+        path = parts[2]
+
+        if path == "/latest/api/token":
+            self._do_api_token()
+        else:
+            self.send_response(http.HTTPStatus.NOT_FOUND)
+            self.end_headers()
+            self.wfile.write("Unknown URL".encode())
+
     def do_GET(self):
         """Serve a Test GET request."""
         parts = urllib.parse.urlsplit(self.path)
         path = parts[2]
+
+        api_token = self.headers.get(IMDS_METADATA_TOKEN_HEADER)
+        print(f"API TOKEN: {api_token}")
+        if api_token != IMDS_API_TOKEN:
+            self.send_response(http.HTTPStatus.FORBIDDEN)
+            self.end_headers()
+            self.wfile.write("Missing API Token".encode())
+            return
 
         if path == "/latest/meta-data/iam/security-credentials/":
             self._do_security_credentials()
@@ -60,10 +83,15 @@ class AwsEC2MetadataHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("content-type", "application/octet-stream")
         self.end_headers()
 
+    def _do_api_token(self):
+        self._send_header()
+
+        self.wfile.write(IMDS_API_TOKEN.encode('utf-8'))
+
     def _do_security_credentials(self):
         self._send_header()
 
-        self.wfile.write(str("mock_role\n").encode('utf-8'))
+        self.wfile.write(str("mock_role").encode('utf-8'))
 
     def _do_security_credentials_mock_role(self):
         if fault_type == FAULT_500:

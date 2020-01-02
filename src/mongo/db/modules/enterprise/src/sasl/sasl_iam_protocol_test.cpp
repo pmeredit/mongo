@@ -321,10 +321,9 @@ TEST(SaslIAMClientProtocolUtil, ParseRole_Basic) {
     ASSERT_EQUALS("foo", iam::parseRoleFromEC2IamSecurityCredentials("foo\n"));
 }
 
-// Negative: EC2 instance metadata does not return a valid string
-TEST(SaslIAMClientProtocolUtil, ParseRole_Bad) {
-    ASSERT_THROWS_CODE(
-        iam::parseRoleFromEC2IamSecurityCredentials("foo"), AssertionException, 51294);
+// Positive: EC2 instance metadata does not end with newline
+TEST(SaslIAMClientProtocolUtil, ParseRole_Good) {
+    ASSERT_EQUALS("foo", iam::parseRoleFromEC2IamSecurityCredentials("foo"));
 }
 
 // Positive: EC2 instance role metadata returns a valid json document

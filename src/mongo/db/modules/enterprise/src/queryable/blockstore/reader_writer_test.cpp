@@ -105,6 +105,11 @@ public:
         return {};
     }
 
+    virtual DataBuilder put(StringData, ConstDataRange) const {
+        invariant(false);
+        return DataBuilder();
+    }
+
     // Ignore client config.
     void allowInsecureHTTP(bool) final {}
     void setHeaders(const std::vector<std::string>&) final {}

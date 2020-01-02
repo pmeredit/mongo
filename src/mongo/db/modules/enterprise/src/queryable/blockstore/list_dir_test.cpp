@@ -29,6 +29,11 @@ public:
         return DataBuilder();
     }
 
+    virtual DataBuilder put(StringData, ConstDataRange) const {
+        invariant(false);
+        return DataBuilder();
+    }
+
     virtual DataBuilder get(StringData) const {
         BSONObjBuilder objBuilder;
         objBuilder.append("ok", true);
