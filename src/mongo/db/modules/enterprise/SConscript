@@ -295,34 +295,25 @@ if "sasl" in env['MONGO_ENTERPRISE_FEATURES']:
         if hasFlag != 1:
             env.FatalError("You must enable dynamic CRT --dynamic-windows to build the "
                 "enterprise version")
-
-        sspi_test = env.Program('sasl_authentication_session_sspi_test',
-                                ['src/sasl/sasl_authentication_session_sspi_test.cpp'],
-                                LIBDEPS=[
-                                    'mongosaslserversession',
-                                    '$BUILD_DIR/mongo/db/auth/authmocks',
-                                ])
-    # SERVER-10700
-    #    env.RegisterUnitTest(sspi_test[0])
     else:
-        gssapi_test = env.Program('sasl_authentication_session_gssapi_test',
-                                  ['src/sasl/sasl_authentication_session_gssapi_test.cpp'],
-                                  LIBDEPS=['mongosaslserversession',
-                                           'mongosaslservercommon',
-                                           'src/ldap/ldap_manager_init',
-                                           '$BUILD_DIR/mongo/base',
-                                           '$BUILD_DIR/mongo/util/net/network',
-                                           '$BUILD_DIR/mongo/db/auth/auth',
-                                           '$BUILD_DIR/mongo/db/auth/authmocks',
-                                           '$BUILD_DIR/mongo/db/auth/saslauth',
-                                           '$BUILD_DIR/mongo/client/clientdriver_network',
-                                           '$BUILD_DIR/mongo/client/sasl_client',
-                                           '$BUILD_DIR/mongo/db/service_context_test_fixture',
-                                           '$BUILD_DIR/mongo/executor/thread_pool_task_executor',
-                                           '$BUILD_DIR/mongo/executor/network_interface_thread_pool',
-                                           '$BUILD_DIR/mongo/executor/network_interface_factory',
-                                           '$BUILD_DIR/mongo/unittest/unittest'])
-        env.RegisterUnitTest(gssapi_test[0])
+        gssapi_test = env.CppUnitTest('sasl_authentication_session_gssapi_test',
+                                      ['src/sasl/sasl_authentication_session_gssapi_test.cpp'],
+                                      UNITTEST_HAS_CUSTOM_MAINLINE=True,
+                                      LIBDEPS=['mongosaslserversession',
+                                               'mongosaslservercommon',
+                                               'src/ldap/ldap_manager_init',
+                                               '$BUILD_DIR/mongo/base',
+                                               '$BUILD_DIR/mongo/util/net/network',
+                                               '$BUILD_DIR/mongo/db/auth/auth',
+                                               '$BUILD_DIR/mongo/db/auth/authmocks',
+                                               '$BUILD_DIR/mongo/db/auth/saslauth',
+                                               '$BUILD_DIR/mongo/client/clientdriver_network',
+                                               '$BUILD_DIR/mongo/client/sasl_client',
+                                               '$BUILD_DIR/mongo/db/service_context_test_fixture',
+                                               '$BUILD_DIR/mongo/executor/thread_pool_task_executor',
+                                               '$BUILD_DIR/mongo/executor/network_interface_thread_pool',
+                                               '$BUILD_DIR/mongo/executor/network_interface_factory',
+                                               '$BUILD_DIR/mongo/unittest/unittest'])
 
 if "encryptdb" in env['MONGO_ENTERPRISE_FEATURES']:
     mongodecrypt = env.Program(
@@ -335,6 +326,7 @@ if "encryptdb" in env['MONGO_ENTERPRISE_FEATURES']:
         AIB_COMPONENT="mongodecrypt",
         AIB_COMPONENTS_EXTRA=[
             "dist",
+            "dist-test",
             "tools",
         ],
         LIBDEPS=[
@@ -363,7 +355,11 @@ if "ldap" in env['MONGO_ENTERPRISE_FEATURES']:
             env.Idlc('src/ldap/ldap_tool_options.idl')[0],
         ] +  env.WindowsResourceFile("src/ldap/ldap_tool.rc"),
         AIB_COMPONENT="mongoldap",
-        AIB_COMPONENTS_EXTRA=["dist", "tools"],
+        AIB_COMPONENTS_EXTRA=[
+            "dist",
+            "dist-test",
+            "tools",
+        ],
         LIBDEPS=[
             "$BUILD_DIR/mongo/base",
             "$BUILD_DIR/mongo/base/secure_allocator",
@@ -410,7 +406,11 @@ if "kerberos" in env['MONGO_ENTERPRISE_FEATURES']:
             "src/kerberos/kerberos_tool.cpp",
         ],
         AIB_COMPONENT="mongokerberos",
-        AIB_COMPONENTS_EXTRA=["dist", "tools"],
+        AIB_COMPONENTS_EXTRA=[
+            "dist",
+            "dist-test",
+            "tools",
+        ],
         LIBDEPS=[
             "$BUILD_DIR/mongo/base",
             "$BUILD_DIR/mongo/base/secure_allocator",
@@ -438,7 +438,11 @@ if "fle" in env['MONGO_ENTERPRISE_FEATURES']:
             'src/fle/cryptd_commands',
         ],
         AIB_COMPONENT="mongocryptd",
-        AIB_COMPONENTS_EXTRA=["dist", "tools"],
+        AIB_COMPONENTS_EXTRA=[
+            "dist",
+            "dist-test",
+            "tools",
+        ],
     )
 
     if not hygienic:
@@ -456,14 +460,11 @@ if "search" in env['MONGO_ENTERPRISE_FEATURES']:
             'src/fle/mongocryptd_core',
             'src/search/mongotmock_core',
         ],
-        AIB_COMPONENT="core",
+        AIB_COMPONENT="mongotmock",
+        AIB_COMPONENTS_EXTRA=["dist-test"],
     )
 
-    if hygienic:
-        # TODO: remove this once we are no longer constructing the archive.tgz
-        # with evergreen.
-        env.Alias("install-core", env.Install("#/", mongotmock[0]))
-    else:
+    if not hygienic:
         env.Alias("core", env.Install("#/", mongotmock))
 
 if hygienic:
@@ -479,7 +480,10 @@ if hygienic:
         target='$DESTDIR/snmp',
         source=env.Glob("docs/*"),
         AIB_COMPONENT='snmp',
-        AIB_COMPONENTS_EXTRA=['dist'],
+        AIB_COMPONENTS_EXTRA=[
+            'dist',
+            'dist-test',
+        ],
         AIB_ROLE="base",
     )
 
@@ -512,6 +516,9 @@ if hygienic:
                         target='$PREFIX_BINDIR',
                         source=[full_file_name],
                         AIB_COMPONENT='dist',
+                        AIB_COMPONENTS_EXTRA=[
+                            'dist-test',
+                        ],
                         AIB_ROLE="debug" if full_file_name.endswith(".pdb") else "runtime",
                     )
 
