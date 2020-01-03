@@ -437,13 +437,10 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         localDb.replset.minvalid.drop();
 
         /**
-         * 5. Insert the proper document into `local.replset.oplogTruncateAfterPoint`
-         *    This example simply adds one to the "Inc" of the timestamp but we should check for
-         *    32-bit unsigned integer overflow. In that unlikely case, we should choose
-         *    Timestamp(snapshotTime.getTime() + 1, 1).
+         * 5. Insert the proper document into `local.replset.oplogTruncateAfterPoint`.
          */
         const truncateAfterPoint =
-            Timestamp(backupPointInTime.getTime(), backupPointInTime.getInc() + 1);
+            Timestamp(backupPointInTime.getTime(), backupPointInTime.getInc());
         assert.commandWorked(localDb.replset.oplogTruncateAfterPoint.insert(
             {_id: "oplogTruncateAfterPoint", "oplogTruncateAfterPoint": truncateAfterPoint}));
         const firstOplogToRemove = localDb.oplog.rs.find({ts: {$gte: truncateAfterPoint}})
@@ -451,7 +448,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
                                        .limit(1)
                                        .toArray()[0];
         jsTestLog(restorePath + ": Truncating all the oplog after " + truncateAfterPoint +
-                  " (inclusive), starting from oplog: " + tojson(firstOplogToRemove));
+                  " (not inclusive), starting after oplog entry: " + tojson(firstOplogToRemove));
 
         /**
          * 6. Insert the minValid document.

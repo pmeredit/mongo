@@ -30,6 +30,10 @@ function isLessThan(opTime1, opTime2) {
     return timestampCmp(opTime1, opTime2) < 0;
 }
 
+function isLessThanOrEqual(opTime1, opTime2) {
+    return timestampCmp(opTime1, opTime2) <= 0;
+}
+
 // Gets the collection writer 1 (Alpha) writes to. Before Alpha observes the backup cursor, it
 // writes to `preBackupCursor=true`. After observing the backup cursor was opened, it writes
 // to `preBackupCursor=false`.
@@ -64,6 +68,8 @@ function getBackupColl(conn) {
 // `backupDir` should start with later truncation points and follow up with earlier truncation
 // points.
 function manipulateOplogTruncateAfterPoint(backupDir, truncatePoint) {
+    jsTestLog("Starting up a standalone to set the oplogTruncateAfterPoint to " + truncatePoint);
+
     let conn = MongoRunner.runMongod({dbpath: backupDir, noCleanData: true});
     assert.neq(null, conn);
 
@@ -72,7 +78,9 @@ function manipulateOplogTruncateAfterPoint(backupDir, truncatePoint) {
         {_id: "oplogTruncateAfterPoint"},
         {$set: {"oplogTruncateAfterPoint": truncatePoint}},
         upsert));
-    assert(resp["nUpserted"] === 1 || resp["nModified"] === 1);
+    assert(resp["nUpserted"] === 1 || resp["nModified"] === 1,
+           "Failed to find expected update response: " + tojson(resp) +
+               ", truncate point: " + tojson(truncatePoint));
     MongoRunner.stopMongod(conn, {noCleanData: true});
 }
 
@@ -177,13 +185,13 @@ function assertData(backupDir, metadata, writerOneOpTimes, writerTwoOpTimes) {
         let candidates = [];
         for (let docOpTime of opTimes1) {
             let ts = docOpTime["opTime"];
-            if (isLessThan(ckptTime, ts) && isLessThan(ts, oplogEnd)) {
+            if (isLessThan(ckptTime, ts) && isLessThanOrEqual(ts, oplogEnd)) {
                 candidates.push(ts);
             }
         }
         for (let docOpTime of opTimes2) {
             let ts = docOpTime["opTime"];
-            if (isLessThan(ckptTime, ts) && isLessThan(ts, oplogEnd)) {
+            if (isLessThan(ckptTime, ts) && isLessThanOrEqual(ts, oplogEnd)) {
                 candidates.push(ts);
             }
         }
@@ -205,18 +213,14 @@ function assertData(backupDir, metadata, writerOneOpTimes, writerTwoOpTimes) {
 
     // Then start up with oplog recovery. This will also set the truncate after point to the
     // visibleTime. Add tests in reverse visibleTime order such that later scenarios only need
-    // a subset of the oplog of the previous scenario. Note that the `oplogTruncateAfterPoint`
-    // is inclusive. It's possible for the end of the oplog to be equal to the
-    // `checkpointTimestamp`. In that case, the scenario cannot be tested.
-    if (isLessThan(metadata["checkpointTimestamp"], metadata["oplogEnd"]["ts"])) {
-        scenarios.push({
-            visibleTime: metadata["oplogEnd"]["ts"],
-            // Note the `oplogEnd` is a minimum guarantee. It's likely the data contains more
-            // oplog entries than this value. `recoverOplog: true` will call set a
-            // truncateAfterPoint which will result in deleting those excess entries.
-            recoverOplog: true,
-        });
-    }
+    // a subset of the oplog of the previous scenario.
+    scenarios.push({
+        visibleTime: metadata["oplogEnd"]["ts"],
+        // Note the `oplogEnd` is a minimum guarantee. It's likely the data contains more oplog
+        // entries than this value. `recoverOplog: true` will cause a oplogTruncateAfterPoint to be
+        // set that will result in deleting those excess entries.
+        recoverOplog: true,
+    });
 
     // If we find a usable optime that splits the checkpoint timestamp and the end of oplog,
     // add it as a scenario.
@@ -245,16 +249,6 @@ function assertData(backupDir, metadata, writerOneOpTimes, writerTwoOpTimes) {
             // If we're recovering oplog, temporarily startup mongod to manipulate the
             // `oplogTruncateAfterPoint`.
             manipulateOplogTruncateAfterPoint(backupDir, scenario["visibleTime"]);
-
-            // The `oplogTruncateAfterPoint` is inclusive. Using the `visibleTime` as the
-            // `oplogTruncateAfterPoint` will delete the update at the `visibleTime`. Peel
-            // back visibility by one tick to compensate. The `inc` field should always be >=
-            // 1. Decrementing to 0 will suffice for visibility calculations. Fail if some
-            // future version of MongoDB can generate times with an inc of 0 and deal with
-            // underflow more thoroughly then.
-            assert(scenario["visibleTime"].i >= 1);
-            scenario["visibleTime"].i -= 1;
-            jsTestLog({"Adjusted visibility time": scenario["visibleTime"]});
 
             conn = MongoRunner.runMongod({
                 dbpath: backupDir,
