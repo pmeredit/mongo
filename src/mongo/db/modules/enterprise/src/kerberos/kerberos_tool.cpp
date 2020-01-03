@@ -267,11 +267,11 @@ int kerberosToolMain(int argc, char* argv[], char** envp) {
         std::ifstream krb5Config(krb5ConfigPath.toString());
         krb5ConfigContents = std::string(std::istreambuf_iterator<char>(krb5Config),
                                          std::istreambuf_iterator<char>());
+        report.checkAssert({[&] { return !krb5ConfigContents.empty(); },
+                            str::stream()
+                                << "Deduced KRB5 Config location as " << krb5ConfigPath
+                                << " but file at location either doesn't exist or is empty."});
     }
-    report.checkAssert({[&] { return !krb5ConfigContents.empty(); },
-                        str::stream()
-                            << "Deduced KRB5 Config location as " << krb5ConfigPath
-                            << " but file at location either doesn't exist or is empty."});
     std::cout << formatOutput("KRB5 config profile ", OutputType::kHighlight)
               << "resolved as: " << std::endl;
     std::cout << formatOutput(krb5Env.getProfile().toString(), OutputType::kImportant);
