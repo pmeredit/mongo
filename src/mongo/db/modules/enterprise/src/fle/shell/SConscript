@@ -9,9 +9,9 @@ scriptingEnv = env.Clone()
 scriptingEnv.InjectMozJS()
 
 scriptingEnv.Library(
-    target="implicit_encrypted_dbclient",
+    target='implicit_encrypted_dbclient',
     source=[
-        "encrypted_dbclient_base.cpp",
+        'implicit_encrypted_dbclient.cpp',
     ],
     LIBDEPS_PRIVATE=[
         '../query_analysis/cryptd_query_analysis',

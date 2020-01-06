@@ -12,6 +12,7 @@
 #include "mongo/db/auth/user_set.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/db/matcher/expression.h"
+#include "mongo/db/matcher/matchable.h"
 #include "mongo/logger/log_severity.h"
 
 namespace mongo {

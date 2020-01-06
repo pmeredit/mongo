@@ -2,15 +2,17 @@
  *    Copyright (C) 2013 10gen Inc.
  */
 
-#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kAccessControl
+#include "mongo/platform/basic.h"
 
 #include "audit_event.h"
-#include "mongo/db/matcher/matchable.h"
+
+#include "mongo/db/auth/authorization_manager.h"
 
 namespace mongo {
 namespace audit {
+namespace {
 
-static void putRoleNamesBSON(RoleNameIterator roles, BSONArrayBuilder& builder) {
+void putRoleNamesBSON(RoleNameIterator roles, BSONArrayBuilder& builder) {
     while (roles.more()) {
         const RoleName& role = roles.next();
         BSONObjBuilder roleNameBuilder(builder.subobjStart());
@@ -19,7 +21,7 @@ static void putRoleNamesBSON(RoleNameIterator roles, BSONArrayBuilder& builder) 
     }
 }
 
-static void putUserNamesBSON(UserNameIterator users, BSONArrayBuilder& builder) {
+void putUserNamesBSON(UserNameIterator users, BSONArrayBuilder& builder) {
     while (users.more()) {
         const UserName& user = users.next();
         BSONObjBuilder userNameBuilder(builder.subobjStart());
@@ -27,6 +29,8 @@ static void putUserNamesBSON(UserNameIterator users, BSONArrayBuilder& builder) 
         userNameBuilder.append(AuthorizationManager::USER_DB_FIELD_NAME, user.getDB());
     }
 }
+
+}  // namespace
 
 void AuditEvent::generateBSON() const {
     BSONObjBuilder builder;
