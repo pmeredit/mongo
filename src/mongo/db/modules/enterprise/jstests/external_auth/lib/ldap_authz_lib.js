@@ -329,6 +329,11 @@ function runTests(testCallback, configGenerator, callbackOptions) {
     rst.stopSet();
 
     // sharded
+
+    // TODO (SERVER-45108): authutil.asCluster() only works with a keyFile and we are not
+    // currently threading the x509 options through to the check indexes hook.
+    TestData.skipCheckingIndexesConsistentAcrossCluster = true;
+
     var st = new ShardingTest(configGenerator.generateShardingConfig());
     setupTest(st.s0);
     testCallback({conn: st.s0, shardingTest: st, options: callbackOptions});
