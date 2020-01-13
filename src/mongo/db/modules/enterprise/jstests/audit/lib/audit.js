@@ -19,11 +19,8 @@ class AuditSpooler {
      */
     getAllLines() {
         if (this._isBSON) {
-            let tmpJSONFile = this.auditFile + "_tmp.json";
-            let exitCode = MongoRunner.runMongoTool(
-                "bsondump", {outFile: tmpJSONFile, bsonFile: this.auditFile});
-            assert.eq(exitCode, 0, "bsondump failed to parse the bson audit file");
-            return cat(tmpJSONFile).trim().split("\n");
+            const auditFileContents = _readDumpFile(this.auditFile);
+            return auditFileContents.map(JSON.stringify);
         } else {
             return cat(this.auditFile).trim().split("\n");
         }
