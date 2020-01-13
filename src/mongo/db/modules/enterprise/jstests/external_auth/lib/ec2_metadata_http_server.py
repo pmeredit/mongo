@@ -37,6 +37,13 @@ class AwsEC2MetadataHandler(http.server.BaseHTTPRequestHandler):
         parts = urllib.parse.urlsplit(self.path)
         path = parts[2]
 
+        expect = self.headers.get("expect")
+        if expect:
+            self.send_response(http.HTTPStatus.EXPECTATION_FAILED)
+            self.end_headers()
+            self.wfile.write("Do not send the Expect header, AWS does not handle it".encode())
+            return
+
         if path == "/latest/api/token":
             self._do_api_token()
         else:
