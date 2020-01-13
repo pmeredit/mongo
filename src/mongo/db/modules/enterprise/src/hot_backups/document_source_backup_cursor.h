@@ -89,9 +89,7 @@ public:
 
 private:
     DocumentSourceBackupCursor(const boost::intrusive_ptr<ExpressionContext>& pExpCtx,
-                               bool incrementalBackup,
-                               boost::optional<std::string> thisBackupName,
-                               boost::optional<std::string> srcBackupName);
+                               const BackupOptions& options);
 
     GetNextResult doGetNext() final;
 

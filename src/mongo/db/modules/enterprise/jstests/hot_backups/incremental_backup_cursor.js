@@ -91,6 +91,33 @@ try {
         primary.getDB("admin").aggregate(
             [{$backupCursor: {incrementalBackup: true, thisBackupName: 'foo', srcBackupName: {}}}]);
     });
+    assert.throws(() => {
+        // Cannot specify both 'incrementalBackup' and 'disableIncrementalBackup' as true.
+        primary.getDB("admin").aggregate(
+            [{$backupCursor: {incrementalBackup: true, disableIncrementalBackup: true}}]);
+    });
+    assert.throws(() => {
+        // Cannot specify 'thisBackupName' when 'disableIncrementalBackup' is true.
+        primary.getDB("admin").aggregate(
+            [{$backupCursor: {disableIncrementalBackup: true, thisBackupName: 'foo'}}]);
+    });
+    assert.throws(() => {
+        // Cannot specify 'srcBackupName' when 'disableIncrementalBackup' is true.
+        primary.getDB("admin").aggregate(
+            [{$backupCursor: {disableIncrementalBackup: true, srcBackupName: 'foo'}}]);
+    });
+
+    // Test that users can forcefully disable incremental backups.
+    assert.doesNotThrow(() => {
+        backupCursor =
+            primary.getDB("admin").aggregate([{$backupCursor: {disableIncrementalBackup: true}}]);
+
+        assert.eq(true, backupCursor.hasNext());
+        assert.eq("Close the cursor to release all incremental information and resources.",
+                  backupCursor.next().metadata.message);
+        assert.eq(false, backupCursor.hasNext());
+        backupCursor.close();
+    });
 
     // Test that incremental backup information is not removed when taking a normal full backup.
     assert.doesNotThrow(() => {

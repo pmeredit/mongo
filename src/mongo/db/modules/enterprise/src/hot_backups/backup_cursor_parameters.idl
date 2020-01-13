@@ -52,3 +52,8 @@ structs:
                 optional: true
                 description: "Source name of an existing incremental backup to take an incremental
                               backup of."
+            disableIncrementalBackup:
+                cpp_name: disableIncrementalBackup
+                type: bool
+                default: false
+                description: "Disables the storage of incremental backup history."

@@ -22,13 +22,10 @@ REGISTER_DOCUMENT_SOURCE(backupCursor,
                          DocumentSourceBackupCursor::createFromBson);
 
 DocumentSourceBackupCursor::DocumentSourceBackupCursor(
-    const boost::intrusive_ptr<ExpressionContext>& pExpCtx,
-    bool incrementalBackup,
-    boost::optional<std::string> thisBackupName,
-    boost::optional<std::string> srcBackupName)
+    const boost::intrusive_ptr<ExpressionContext>& pExpCtx, const BackupOptions& options)
     : DocumentSource(kStageName, pExpCtx),
-      _backupCursorState(pExpCtx->mongoProcessInterface->openBackupCursor(
-          pExpCtx->opCtx, incrementalBackup, thisBackupName, srcBackupName)) {}
+      _backupCursorState(
+          pExpCtx->mongoProcessInterface->openBackupCursor(pExpCtx->opCtx, options)) {}
 
 DocumentSourceBackupCursor::~DocumentSourceBackupCursor() {
     try {
@@ -84,38 +81,48 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursor::createFromBson(
     BackupCursorParameters params =
         BackupCursorParameters::parse(IDLParserErrorContext(""), spec.Obj());
 
-    bool incrementalBackup = params.getIncrementalBackup();
-    boost::optional<std::string> thisBackupName;
-    boost::optional<std::string> srcBackupName;
+    BackupOptions options;
+
+    options.disableIncrementalBackup = params.getDisableIncrementalBackup();
+    options.incrementalBackup = params.getIncrementalBackup();
     if (params.getThisBackupName()) {
-        thisBackupName.emplace(params.getThisBackupName()->toString());
+        options.thisBackupName.emplace(params.getThisBackupName()->toString());
     }
     if (params.getSrcBackupName()) {
-        srcBackupName.emplace(params.getSrcBackupName()->toString());
+        options.srcBackupName.emplace(params.getSrcBackupName()->toString());
     }
 
-    if (!incrementalBackup) {
+    if (options.disableIncrementalBackup) {
+        uassert(ErrorCodes::InvalidOptions,
+                str::stream() << "Cannot have 'thisBackupName' or 'srcBackupName' when "
+                              << "disableIncrementalBackup=false",
+                !options.thisBackupName && !options.srcBackupName);
+    }
+
+    if (!options.incrementalBackup) {
         uassert(
             ErrorCodes::InvalidOptions,
             str::stream()
                 << "Cannot have 'thisBackupName' or 'srcBackupName' when incrementalBackup=false",
-            !thisBackupName && !srcBackupName);
+            !options.thisBackupName && !options.srcBackupName);
     } else {
         uassert(ErrorCodes::InvalidOptions,
+                "Cannot specify both 'incrementalBackup' and 'disableIncrementalBackup' as true.",
+                !options.disableIncrementalBackup);
+        uassert(ErrorCodes::InvalidOptions,
                 "'thisBackupName' needs to exist when incrementalBackup=true",
-                thisBackupName);
+                options.thisBackupName);
         uassert(ErrorCodes::InvalidOptions,
                 "'thisBackupName' needs to be a non-empty string",
-                !thisBackupName->empty());
-        if (srcBackupName) {
+                !options.thisBackupName->empty());
+        if (options.srcBackupName) {
             uassert(ErrorCodes::InvalidOptions,
                     "'srcBackupName' needs to be a non-empty string",
-                    !srcBackupName->empty());
+                    !options.srcBackupName->empty());
         }
     }
 
-    return new DocumentSourceBackupCursor(
-        pExpCtx, incrementalBackup, thisBackupName, srcBackupName);
+    return new DocumentSourceBackupCursor(pExpCtx, options);
 }
 
 Value DocumentSourceBackupCursor::serialize(

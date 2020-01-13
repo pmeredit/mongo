@@ -71,11 +71,8 @@ void BackupCursorService::fsyncUnlock(OperationContext* opCtx) {
     _state = kInactive;
 }
 
-BackupCursorState BackupCursorService::openBackupCursor(
-    OperationContext* opCtx,
-    bool incrementalBackup,
-    boost::optional<std::string> thisBackupName,
-    boost::optional<std::string> srcBackupName) {
+BackupCursorState BackupCursorService::openBackupCursor(OperationContext* opCtx,
+                                                        const BackupOptions& options) {
     // Prevent rollback
     repl::ReplicationStateTransitionLockGuard rstl(opCtx, MODE_IX);
 
@@ -117,9 +114,14 @@ BackupCursorState BackupCursorService::openBackupCursor(
         checkpointTimestamp = _storageEngine->getLastStableRecoveryTimestamp();
     };
 
-    std::vector<StorageEngine::BackupBlock> blocksToBackup =
-        uassertStatusOK(_storageEngine->beginNonBlockingBackup(
-            opCtx, incrementalBackup, thisBackupName, srcBackupName));
+    std::vector<StorageEngine::BackupBlock> blocksToBackup;
+    if (options.disableIncrementalBackup) {
+        uassertStatusOK(_storageEngine->disableIncrementalBackup(opCtx));
+    } else {
+        blocksToBackup = uassertStatusOK(_storageEngine->beginNonBlockingBackup(
+            opCtx, options.incrementalBackup, options.thisBackupName, options.srcBackupName));
+    }
+
     _state = kBackupCursorOpened;
     _activeBackupId = UUID::gen();
     _replTermOfActiveBackup = replCoord->getTerm();
@@ -167,7 +169,7 @@ BackupCursorState BackupCursorService::openBackupCursor(
     }
 
     auto encHooks = EncryptionHooks::get(opCtx->getServiceContext());
-    if (encHooks->enabled()) {
+    if (encHooks->enabled() && !options.disableIncrementalBackup) {
         std::vector<std::string> eseFiles = uassertStatusOK(encHooks->beginNonBlockingBackup());
         for (std::string& filename : eseFiles) {
             boost::system::error_code errorCode;
@@ -192,6 +194,11 @@ BackupCursorState BackupCursorService::openBackupCursor(
     if (!oplogStart.isNull()) {
         builder << "oplogStart" << oplogStart.toBSON();
         builder << "oplogEnd" << oplogEnd.toBSON();
+    }
+
+    if (options.disableIncrementalBackup) {
+        builder << "message"
+                << "Close the cursor to release all incremental information and resources.";
     }
 
     // Notably during initial sync, a node may have an oplog without a stable checkpoint.

@@ -65,9 +65,7 @@ public:
      * backup.
      */
     BackupCursorState openBackupCursor(OperationContext* opCtx,
-                                       bool incrementalBackup,
-                                       boost::optional<std::string> thisBackupName,
-                                       boost::optional<std::string> srcBackupName) override;
+                                       const BackupOptions& options) override;
 
     /**
      * This method will uassert if `_state` is not `kBackupCursorOpened`, or the `backupId` input
