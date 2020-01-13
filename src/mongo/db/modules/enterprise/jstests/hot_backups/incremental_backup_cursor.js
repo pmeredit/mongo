@@ -92,8 +92,7 @@ try {
             [{$backupCursor: {incrementalBackup: true, thisBackupName: 'foo', srcBackupName: {}}}]);
     });
 
-    // Test that incremental backups are removed when taking a full backup with
-    // {incrementalBackup: false}.
+    // Test that incremental backup information is not removed when taking a normal full backup.
     assert.doesNotThrow(() => {
         backupCursor = primary.getDB("admin").aggregate(
             [{$backupCursor: {incrementalBackup: true, thisBackupName: 'foo'}}]);
@@ -102,18 +101,34 @@ try {
             {$backupCursor: {incrementalBackup: true, thisBackupName: 'bar', srcBackupName: 'foo'}}
         ]);
         backupCursor.close();
+
         backupCursor =
             primary.getDB("admin").aggregate([{$backupCursor: {incrementalBackup: false}}]);
         backupCursor.close();
+
+        backupCursor = primary.getDB("admin").aggregate([
+            {$backupCursor: {incrementalBackup: true, thisBackupName: 'baz', srcBackupName: 'bar'}}
+        ]);
+        backupCursor.close();
     });
+
+    // Test that incremental backup information is removed when taking a full backup that is the
+    // basis for future incremental backups.
+    assert.doesNotThrow(() => {
+        backupCursor = primary.getDB("admin").aggregate(
+            [{$backupCursor: {incrementalBackup: true, thisBackupName: 'new'}}]);
+        backupCursor.close();
+    });
+
     assert.throws(() => {
         primary.getDB("admin").aggregate([
-            {$backupCursor: {incrementalBackup: true, thisBackupName: 'bad', srcBackupName: 'foo'}}
+            {$backupCursor: {incrementalBackup: false, thisBackupName: 'bad', srcBackupName: 'bar'}}
         ]);
     });
+
     assert.throws(() => {
         primary.getDB("admin").aggregate([
-            {$backupCursor: {incrementalBackup: true, thisBackupName: 'bad', srcBackupName: 'bar'}}
+            {$backupCursor: {incrementalBackup: false, thisBackupName: 'bad', srcBackupName: 'baz'}}
         ]);
     });
 

@@ -104,17 +104,6 @@ private:
     boost::optional<UUID> _activeBackupId = boost::none;
     boost::optional<long long> _replTermOfActiveBackup = boost::none;
     std::set<std::string> _backupFiles;
-
-    struct IncrementalBackupHistory {
-        IncrementalBackupHistory(std::string thisBackupName) : thisBackupName(thisBackupName) {}
-
-        std::string thisBackupName;
-        // boost::none when this is the full backup.
-        boost::optional<std::string> srcBackupName;
-        // nullptr when this is the full backup.
-        std::unique_ptr<IncrementalBackupHistory> src;
-    };
-    std::unique_ptr<IncrementalBackupHistory> _mostRecentIncrementalBackup;
 };
 
 }  // namespace mongo
