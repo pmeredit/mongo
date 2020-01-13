@@ -1,0 +1,89 @@
+/**
+ * Verify the AWS IAM Auth works by using environment variables.
+ *
+ * Environment variables are used by AWS lambda.
+ */
+
+load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/mock_sts.js");
+
+(function() {
+"use strict";
+
+function runWithEnv(args, env) {
+    const pid = _startMongoProgram({args: args, env: env});
+    return waitProgram(pid);
+}
+
+function testAuthWithEnv(env) {
+    // Try the command line
+    const smoke = runWithEnv(
+        [
+            "mongo",
+            "--host",
+            "localhost",
+            "--port",
+            conn.port,
+            '--authenticationMechanism',
+            'MONGODB-IAM',
+            '--authenticationDatabase',
+            '$external',
+            "--eval",
+            "1"
+        ],
+        env);
+    assert.eq(smoke, 0, "Could not auth with smoke user");
+
+    // // Try via db.auth()
+    const smoke_auth = runWithEnv(
+        [
+            "mongo",
+            "--host",
+            "localhost",
+            "--port",
+            conn.port,
+            '-authenticationDatabase',
+            '$external',
+            "--eval",
+            "assert(db.getSiblingDB('$external').auth({mechanism: 'MONGODB-IAM'}))"
+        ],
+        env);
+    assert.eq(smoke_auth, 0, "Could not auth with smoke_auth user");
+}
+
+const mock_sts = new MockSTSServer();
+mock_sts.start();
+
+const conn = MongoRunner.runMongod({
+    setParameter: {
+        "awsSTSUrl": mock_sts.getURL(),
+        "authenticationMechanisms": "MONGODB-IAM,SCRAM-SHA-256",
+    },
+    auth: "",
+});
+
+const external = conn.getDB("$external");
+const admin = conn.getDB("admin");
+assert.commandWorked(admin.runCommand({createUser: "admin", pwd: "pwd", roles: ['root']}));
+assert(admin.auth("admin", "pwd"));
+
+assert.commandWorked(external.runCommand({createUser: MOCK_AWS_ACCOUNT_ARN, roles: []}));
+
+// Test with regular creds
+testAuthWithEnv({
+    AWS_ACCESS_KEY_ID: MOCK_AWS_ACCOUNT_ID,
+    AWS_SECRET_ACCESS_KEY: MOCK_AWS_ACCOUNT_SECRET_KEY,
+});
+
+assert.commandWorked(external.runCommand({createUser: MOCK_AWS_TEMP_ACCOUNT_ARN, roles: []}));
+
+// Test with temporary creds
+testAuthWithEnv({
+    AWS_ACCESS_KEY_ID: MOCK_AWS_TEMP_ACCOUNT_ID,
+    AWS_SECRET_ACCESS_KEY: MOCK_AWS_TEMP_ACCOUNT_SECRET_KEY,
+    AWS_SESSION_TOKEN: MOCK_AWS_TEMP_ACCOUNT_SESSION_TOKEN,
+});
+
+mock_sts.stop();
+
+MongoRunner.stopMongod(conn);
+}());
