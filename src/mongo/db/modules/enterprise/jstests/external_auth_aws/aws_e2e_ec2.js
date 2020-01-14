@@ -7,7 +7,7 @@ load("src/mongo/db/modules/enterprise/jstests/external_auth_aws/lib/aws_e2e_lib.
 "use strict";
 
 // This varies based on hosting EC2 as the account id and role name can vary
-const AWS_ACCOUNT_ARN = "arn:aws:sts::557821124784:assumed-role/authtest_instance_profile_role/*"
+const AWS_ACCOUNT_ARN = "arn:aws:sts::557821124784:assumed-role/authtest_instance_profile_role/*";
 
 function assignInstanceProfile() {
     const config = readSetupJson();
@@ -15,7 +15,7 @@ function assignInstanceProfile() {
     const env = {
         AWS_ACCESS_KEY_ID: config["iam_auth_ec2_instance_account"],
         AWS_SECRET_ACCESS_KEY: config["iam_auth_ec2_instance_secret_access_key"],
-    }
+    };
 
     const instanceProfileName = config["iam_auth_ec2_instance_profile"];
     const python_command = getPython3Binary() +
@@ -23,7 +23,7 @@ function assignInstanceProfile() {
         ` --instance_profile_arn=${instanceProfileName}`;
 
     const ret = runShellCmdWithEnv(python_command, env);
-    assert.eq(ret, 0, "Failed to assign an instance profile to the current machine")
+    assert.eq(ret, 0, "Failed to assign an instance profile to the current machine");
 }
 
 assignInstanceProfile();

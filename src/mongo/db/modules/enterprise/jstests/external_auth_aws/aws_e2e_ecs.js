@@ -51,7 +51,7 @@ const run_test_command = base_command + " -d -v run_e2e_test" +
 const env = {
     AWS_ACCESS_KEY_ID: config["iam_auth_ecs_account"],
     AWS_SECRET_ACCESS_KEY: config["iam_auth_ecs_secret_access_key"],
-}
+};
 
 // Prune other containers
 let ret = runWithEnv(['/bin/sh', '-c', run_prune_command], env);

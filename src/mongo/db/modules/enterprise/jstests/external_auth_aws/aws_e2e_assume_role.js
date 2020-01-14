@@ -15,7 +15,7 @@ function getAssumeCredentials() {
     const env = {
         AWS_ACCESS_KEY_ID: config["iam_auth_assume_aws_account"],
         AWS_SECRET_ACCESS_KEY: config["iam_auth_assume_aws_secret_access_key"],
-    }
+    };
 
     const role_name = config["iam_auth_assume_role_name"];
 
@@ -24,7 +24,7 @@ function getAssumeCredentials() {
         ` --role_name=${role_name} > creds.json`;
 
     const ret = runShellCmdWithEnv(python_command, env);
-    assert.eq(ret, 0, "Failed to assume role on the current machine")
+    assert.eq(ret, 0, "Failed to assume role on the current machine");
 
     const result = cat("creds.json");
     try {
