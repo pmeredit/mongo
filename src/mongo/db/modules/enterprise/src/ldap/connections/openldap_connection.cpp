@@ -98,17 +98,18 @@ static Mutex libldapGlobalMutex = MONGO_MAKE_LATCH();
 int saslInteract(LDAP* session, unsigned flags, void* defaults, void* interact) {
     try {
         sasl_interact_t* request = static_cast<sasl_interact_t*>(interact);
-        const LDAPBindOptions* bindOptions = static_cast<LDAPBindOptions*>(defaults);
+        auto* conn = static_cast<OpenLDAPConnection*>(defaults);
+        invariant(conn->bindOptions());
 
         while (request && request->id != SASL_CB_LIST_END) {
             switch (request->id) {
                 case SASL_CB_AUTHNAME:
-                    request->result = bindOptions->bindDN.c_str();
-                    request->len = bindOptions->bindDN.size();
+                    request->result = conn->bindOptions()->bindDN.c_str();
+                    request->len = conn->bindOptions()->bindDN.size();
                     break;
                 case SASL_CB_PASS:
-                    request->result = bindOptions->password->c_str();
-                    request->len = bindOptions->password->size();
+                    request->result = conn->bindOptions()->password->c_str();
+                    request->len = conn->bindOptions()->password->size();
                     break;
                 default:
                     break;
@@ -135,7 +136,9 @@ int openLDAPBindFunction(
     LDAP* session, LDAP_CONST char* url, ber_tag_t request, ber_int_t msgid, void* params) {
     try {
         LDAPSessionHolder<OpenLDAPSessionParams> sessionHolder(session);
-        LDAPBindOptions* bindOptions = static_cast<LDAPBindOptions*>(params);
+        auto* conn = static_cast<OpenLDAPConnection*>(params);
+        const auto& bindOptions = conn->bindOptions();
+        invariant(bindOptions);
 
         LOG(3) << "Binding to LDAP server \"" << url
                << "\" with bind parameters: " << bindOptions->toCleanString();
@@ -152,7 +155,7 @@ int openLDAPBindFunction(
                                                nullptr,
                                                LDAP_SASL_QUIET,
                                                &saslInteract,
-                                               static_cast<void*>(bindOptions));
+                                               conn);
             status =
                 sessionHolder.resultCodeToStatus(ret, "ldap_sasl_interactive_bind_s", failureHint);
         } else if (bindOptions->authenticationChoice == LDAPBindType::kSimple) {
@@ -448,14 +451,15 @@ Status OpenLDAPConnection::connect() {
 Status OpenLDAPConnection::bindAsUser(const LDAPBindOptions& bindOptions) {
     stdx::lock_guard<OpenLDAPGlobalMutex> lock(_conditionalMutex);
 
-    int err = openLDAPBindFunction(_pimpl->getSession(), "default", 0, 0, (void*)&bindOptions);
+    _bindOptions = bindOptions;
+    int err = openLDAPBindFunction(_pimpl->getSession(), "default", 0, 0, this);
     if (err != LDAP_SUCCESS) {
         return Status(ErrorCodes::OperationFailed,
                       str::stream() << "LDAP bind failed with error: " << ldap_err2string(err));
     }
     // OpenLDAP needs to know how to bind to strange servers it gets referals to from the
     // target server.
-    err = ldap_set_rebind_proc(_pimpl->getSession(), &openLDAPBindFunction, (void*)&bindOptions);
+    err = ldap_set_rebind_proc(_pimpl->getSession(), &openLDAPBindFunction, this);
     if (err != LDAP_SUCCESS) {
         return Status(ErrorCodes::OperationFailed,
                       str::stream()
