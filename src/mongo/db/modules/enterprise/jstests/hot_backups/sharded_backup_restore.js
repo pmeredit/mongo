@@ -220,7 +220,10 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
                     [{}, {rsConfig: {priority: 0, votes: 0}}, {rsConfig: {priority: 0, votes: 0}}],
                 syncdelay: 1,
                 oplogSize: 1,
-                setParameter: {writePeriodicNoops: true}
+                setParameter: {
+                    writePeriodicNoops: true,
+                    logComponentVerbosity: "{command: 0, replication: 0, query: 0}",
+                }
             }
         });
 
