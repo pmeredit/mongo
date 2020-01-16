@@ -296,8 +296,8 @@ int setAuthIdAndAuthzId(SspiConnContext* pcctx,
     status = DecryptMessage(&pcctx->ctx, &wrapBufDesc, 0, &pfQOP);
     LOG(4) << "SSPI encrypted size: " << wrapBufs[0].cbBuffer
            << " decrypted size: " << wrapBufs[1].cbBuffer
-           << " encrypted msg pointer: " << wrapBufs[0].pvBuffer
-           << " decrypted msg pointer: " << wrapBufs[1].pvBuffer;
+           << " encrypted msg pointer: " << reinterpret_cast<uint64_t>(wrapBufs[0].pvBuffer)
+           << " decrypted msg pointer: " << reinterpret_cast<uint64_t>(wrapBufs[1].pvBuffer);
 
     if (status != SEC_E_OK) {
         HandleLastError(sparams->utils, status, "DecryptMessage");
