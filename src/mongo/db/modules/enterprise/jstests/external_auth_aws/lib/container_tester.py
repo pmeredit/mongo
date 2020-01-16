@@ -375,6 +375,13 @@ def main() -> None:
 
     print("AWS_SHARED_CREDENTIALS_FILE: %s" % (os.getenv("AWS_SHARED_CREDENTIALS_FILE")))
 
+    if os.getenv("LSAN_OPTIONS") or os.getenv("ASAN_OPTIONS"):
+        # ECS containers do not have the required Linux capability enabled to call ptrace.
+        # LSAN uses ptrace to attach back to the process during process shutdown and therefore will not work.
+        # See https://github.com/aws/containers-roadmap/issues/409
+        print("WARNING: LSAN/ASAN is not supported in ECS containers due to the missing support for ptrace")
+        return
+
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
     elif args.verbose:
