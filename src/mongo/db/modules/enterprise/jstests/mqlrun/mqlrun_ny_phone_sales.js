@@ -51,7 +51,7 @@ function mqlrunExec(inputFileName, pipeline, {outputBson = false} = {}) {
     // Each line has a prefix like "sh2311702|" which needs to be stripped.
     return outputByLine.map(function(textOfLine) {
         return textOfLine.substr(textOfLine.indexOf("|") + 1).trim();
-    })
+    });
 }
 
 // Test that mqlrun correctly executes a query to find the 5 most common tags, by quantity of items
@@ -107,4 +107,3 @@ assert.eq(output, [
 // Verify that mqlrun succeeds when running the same query and returning BSON.
 mqlrunExec(kInputBsonFile, pipeline, {outputBson: true});
 }());
-
