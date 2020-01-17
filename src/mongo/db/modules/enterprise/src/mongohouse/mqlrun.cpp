@@ -188,6 +188,7 @@ const char* usage =
     "Options: -b Output BSON (default)\n"
     "         -j Output JSON text\n\n"
     "         -t [DIRECTORY] Path to a temp directory (required for large sorts)\n"
+    "         -h Output help text and exit\n"
     "Examples:\n"
     "Write out the contents of a BSON file as JSON.\n"
     "mqlrun -j -e '[]' input.bson\n\n"
@@ -255,11 +256,15 @@ int main(int argc, char* argv[], char** envp) {
 
     if (pipelineStr == nullptr) {
         std::cerr << "Must specify a pipeline expression with -e" << std::endl;
+        std::cerr << std::endl;
+        std::cerr << usage;
         return 1;
     }
 
     if (inputFileIndex != argc - 1) {
         std::cerr << "Must specify exactly one input file" << std::endl;
+        std::cerr << std::endl;
+        std::cerr << usage;
         return 1;
     }
 
