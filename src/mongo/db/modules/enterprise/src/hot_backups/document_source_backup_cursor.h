@@ -91,6 +91,27 @@ private:
     DocumentSourceBackupCursor(const boost::intrusive_ptr<ExpressionContext>& pExpCtx,
                                const StorageEngine::BackupOptions& options);
 
+    /**
+     * The first call will return the metadata about the backup.
+     * Subsequent cursor calls return a document with one of the following formats.
+     *
+     * For non-incremental backups and for incremental backups where the file had no changed blocks:
+     * {
+     *     filename: String,
+     *     fileSize: Number,
+     * }
+     * Additionally, for incremental backups, if no changes were made but the fileSize decreased,
+     * then the file can be safely truncated to the new size.
+     *
+     * For incremental backups where the file had changed blocks:
+     * {
+     *     filename: String,
+     *     fileSize: Number,
+     *     offset: Number,
+     *     length: Number,
+     * }
+     * If the file had multiple changed blocks, then there will be one document per changed block.
+     */
     GetNextResult doGetNext() final;
 
     BackupCursorState _backupCursorState;

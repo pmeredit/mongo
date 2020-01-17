@@ -46,14 +46,40 @@ DocumentSource::GetNextResult DocumentSourceBackupCursor::doGetNext() {
         return std::move(doc);
     }
 
-    if (!_backupCursorState.blocksToCopy.empty()) {
-        const StorageEngine::BackupBlock& block = _backupCursorState.blocksToCopy.back();
-        Document doc = {{"filename", block.filename},
-                        {"offset", static_cast<long long>(block.offset)},
-                        {"length", static_cast<long long>(block.length)}};
-        _backupCursorState.blocksToCopy.pop_back();
+    if (!_backupCursorState.backupInformation.empty()) {
+        const auto fileItr = _backupCursorState.backupInformation.begin();
 
-        return std::move(doc);
+        BSONObjBuilder objBuilder;
+        objBuilder.append("filename", fileItr->first);
+        objBuilder.append("fileSize", static_cast<long long>(fileItr->second.fileSize));
+
+        // Non-incremental backups and unchanged files for incremental backups do not have block
+        // information.
+        if (fileItr->second.blocksToCopy.empty()) {
+            _backupCursorState.backupInformation.erase(fileItr);
+            return Document(objBuilder.obj());
+        }
+
+        const auto blockItr = fileItr->second.blocksToCopy.begin();
+        if (blockItr->offset > static_cast<uint64_t>(std::numeric_limits<long long>::max()) ||
+            blockItr->length > static_cast<uint64_t>(std::numeric_limits<long long>::max())) {
+            std::stringstream ss;
+            ss << "Offset " << blockItr->offset << " or length " << blockItr->length
+               << " is too large to convert from uint64_t to long long";
+            uasserted(ErrorCodes::Overflow, ss.str());
+        }
+
+        objBuilder.append("offset", static_cast<long long>(blockItr->offset));
+        objBuilder.append("length", static_cast<long long>(blockItr->length));
+
+        fileItr->second.blocksToCopy.erase(blockItr);
+
+        // If this was the last block to copy, remove the file from the map.
+        if (fileItr->second.blocksToCopy.empty()) {
+            _backupCursorState.backupInformation.erase(fileItr);
+        }
+
+        return Document(objBuilder.obj());
     }
 
     return GetNextResult::makeEOF();

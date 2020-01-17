@@ -72,19 +72,19 @@ TEST_F(BackupCursorServiceTest, TestDoubleUnlock) {
 TEST_F(BackupCursorServiceTest, TestTypicalCursorLifetime) {
     auto backupCursorState = _backupCursorService->openBackupCursor(
         _opCtx.get(), {false, false, kBlockSizeMB, boost::none, boost::none});
-    ASSERT_EQUALS(1u, backupCursorState.blocksToCopy.size());
-    ASSERT_EQUALS("filename.wt", backupCursorState.blocksToCopy[0].filename);
-    ASSERT_EQUALS(0U, backupCursorState.blocksToCopy[0].offset);
-    ASSERT_EQUALS(0U, backupCursorState.blocksToCopy[0].length);
+    ASSERT_EQUALS(1u, backupCursorState.backupInformation.size());
+    ASSERT_EQUALS("filename.wt", backupCursorState.backupInformation.begin()->first);
+    ASSERT_EQUALS(0, backupCursorState.backupInformation.begin()->second.fileSize);
+    ASSERT_EQUALS(0, backupCursorState.backupInformation.begin()->second.blocksToCopy.size());
 
     _backupCursorService->closeBackupCursor(_opCtx.get(), backupCursorState.backupId);
 
     backupCursorState = _backupCursorService->openBackupCursor(
         _opCtx.get(), {false, false, kBlockSizeMB, boost::none, boost::none});
-    ASSERT_EQUALS(1u, backupCursorState.blocksToCopy.size());
-    ASSERT_EQUALS("filename.wt", backupCursorState.blocksToCopy[0].filename);
-    ASSERT_EQUALS(0U, backupCursorState.blocksToCopy[0].offset);
-    ASSERT_EQUALS(0U, backupCursorState.blocksToCopy[0].length);
+    ASSERT_EQUALS(1u, backupCursorState.backupInformation.size());
+    ASSERT_EQUALS("filename.wt", backupCursorState.backupInformation.begin()->first);
+    ASSERT_EQUALS(0, backupCursorState.backupInformation.begin()->second.fileSize);
+    ASSERT_EQUALS(0, backupCursorState.backupInformation.begin()->second.blocksToCopy.size());
 
     _backupCursorService->closeBackupCursor(_opCtx.get(), backupCursorState.backupId);
 }
