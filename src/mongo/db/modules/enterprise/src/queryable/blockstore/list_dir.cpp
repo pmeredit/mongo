@@ -87,19 +87,6 @@ StatusWith<std::vector<struct File>> listDirectory(const BlockstoreHTTP& blockst
                 str::stream() << "Negative file size. File: " << fileStruct.filename,
                 fileStruct.fileSize >= 0);
 
-        std::int32_t blockSize;
-        BSONElement blockSizeElem;
-        status = bsonExtractField(file, "blockSize", &blockSizeElem);
-        if (!status.isOK()) {
-            return {ErrorCodes::OperationFailed,
-                    str::stream() << "Malformed 'blockSize' element. Message: " << status.reason()};
-        }
-        blockSizeElem.coerce(&blockSize);
-        fileStruct.blockSize = static_cast<std::int32_t>(blockSize);
-        uassert(ErrorCodes::OperationFailed,
-                str::stream() << "Negative block size. File: " << fileStruct.filename,
-                fileStruct.blockSize >= 0);
-
         ret.push_back(std::move(fileStruct));
     }
 

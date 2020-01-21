@@ -42,13 +42,11 @@ public:
         BSONObjBuilder file0;
         file0.append("filename", "test.0");
         file0.append("fileSize", 10000);
-        file0.append("blockSize", 1000);
         files.emplace_back(file0.obj());
 
         BSONObjBuilder file1;
         file1.append("filename", "index-1323-8358821207107156793.wt");
         file1.append("fileSize", 20480);
-        file1.append("blockSize", 64 * 1024);
         files.emplace_back(file1.obj());
 
         objBuilder.append("files", files);
@@ -81,7 +79,6 @@ public:
             BSONObjBuilder file;
             file.append("filename", "index-1323-8358821207107156793.wt");
             file.append("fileSize", 3 * GB);
-            file.append("blockSize", 16 * 1024 * 1024);
 
             bsonSize += file.len();
             files.emplace_back(file.obj());
@@ -119,12 +116,10 @@ TEST_F(ListDirTest, ListDirs) {
     struct File file = swFiles.getValue()[0];
     ASSERT_EQ("test.0", file.filename);
     ASSERT_EQ(static_cast<int64_t>(10000), file.fileSize);
-    ASSERT_EQ(static_cast<int32_t>(1000), file.blockSize);
 
     file = swFiles.getValue()[1];
     ASSERT_EQ("index-1323-8358821207107156793.wt", file.filename);
     ASSERT_EQ(static_cast<int64_t>(20480), file.fileSize);
-    ASSERT_EQ(static_cast<int32_t>(64 * 1024), file.blockSize);
 }
 
 TEST_F(ListDirTest, LargeListDir) {

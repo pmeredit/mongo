@@ -16,7 +16,6 @@ namespace queryable {
 struct File {
     std::string filename;
     std::int64_t fileSize;
-    std::int32_t blockSize;
 };
 
 StatusWith<std::vector<File>> listDirectory(const BlockstoreHTTP& blockstore);

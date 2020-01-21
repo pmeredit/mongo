@@ -48,7 +48,6 @@ public:
             BSONObjBuilder file;
             file.append("filename", filename);
             file.append("fileSize", 10000);
-            file.append("blockSize", 1000);
 
             const BSONObj obj = file.done();
             DataBuilder copy(obj.objsize());
@@ -92,7 +91,6 @@ TEST_F(CreateFileTest, CreateFile) {
     struct File file = swFiles.getValue()[0];
     ASSERT_EQ("test_file", file.filename);
     ASSERT_EQ(static_cast<int64_t>(10000), file.fileSize);
-    ASSERT_EQ(static_cast<int32_t>(1000), file.blockSize);
 
     ASSERT_TRUE(blockstore.openFile("test_file_2").isOK());
 
@@ -103,7 +101,6 @@ TEST_F(CreateFileTest, CreateFile) {
     file = swFiles.getValue()[1];
     ASSERT_EQ("test_file_2", file.filename);
     ASSERT_EQ(static_cast<int64_t>(10000), file.fileSize);
-    ASSERT_EQ(static_cast<int32_t>(1000), file.blockSize);
 }
 
 }  // namespace
