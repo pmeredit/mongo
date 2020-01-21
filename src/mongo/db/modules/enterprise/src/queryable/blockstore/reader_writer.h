@@ -30,7 +30,7 @@ public:
     /**
      * Writes `count` from `buf` to the file starting at `offset`.
      */
-    Status write(ConstDataRange buf, std::size_t offset, std::size_t count) const;
+    StatusWith<DataBuilder> write(ConstDataRange buf, std::size_t offset, std::size_t count) const;
 
     const std::string& getFileName() const {
         return _path;
@@ -38,6 +38,10 @@ public:
 
     std::size_t getFileSize() const {
         return _fileSize;
+    }
+
+    void addToFileSize(size_t bytes) {
+        _fileSize += bytes;
     }
 
 private:

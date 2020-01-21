@@ -56,13 +56,22 @@ public:
     }
 
     void addFile(struct File file) {
-        boost::filesystem::path fullPath = _dbpath;
-        fullPath /= file.filename;
-        _files[fullPath.string()] = file;
+        _files[getPathForFileName(file.filename)] = file;
     }
 
     bool fileExists(const char* filename) {
         return _files.count(filename) > 0;
+    }
+
+    const std::string getFileNameFromPath(const std::string& path) {
+        boost::filesystem::path fullPath(path);
+        return fullPath.filename().string();
+    }
+
+    const std::string getPathForFileName(const std::string& filename) {
+        boost::filesystem::path fullPath = _dbpath;
+        fullPath /= filename;
+        return fullPath.string();
     }
 
     struct File getFile(const char* filename) {
@@ -74,8 +83,12 @@ public:
         return ret->second;
     }
 
-    std::int64_t getFileSize(const char* filename) {
+    std::int64_t getFileSize(const std::string& filename) {
         return _files[filename].fileSize;
+    }
+
+    void addToFileSize(const std::string& filename, size_t sizeToAdd) {
+        _files[filename].fileSize += sizeToAdd;
     }
 
     /**
@@ -92,12 +105,7 @@ public:
                 continue;
             }
 
-            // Need to pull out the file name.
-            std::size_t pos = file.first.rfind(boost::filesystem::path::preferred_separator);
-            invariant(pos != std::string::npos);
-
-            const std::string fileName = file.first.substr(pos + 1, std::string::npos);
-            files.push_back(fileName);
+            files.push_back(getFileNameFromPath(file.first));
         }
         return files;
     }
@@ -106,6 +114,8 @@ public:
      * `fileHandle` is an out-parameter
      */
     int open(const char* filename, uint32_t flags, BlockstoreFileHandle** fileHandle);
+
+    int rename(const char* from, const char* to);
 
 private:
     std::string _apiUri;

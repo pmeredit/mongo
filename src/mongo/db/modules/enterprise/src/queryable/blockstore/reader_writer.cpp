@@ -21,7 +21,9 @@ StatusWith<std::size_t> ReaderWriter::read(DataRange buf,
     return _blockstore.read(_path, buf, offset, count);
 }
 
-Status ReaderWriter::write(ConstDataRange buf, std::size_t offset, std::size_t count) const {
+StatusWith<DataBuilder> ReaderWriter::write(ConstDataRange buf,
+                                            std::size_t offset,
+                                            std::size_t count) const {
     invariant(count <= buf.length());
 
     return _blockstore.write(_path, buf, offset, count);

@@ -22,7 +22,12 @@ BlockstoreHTTP::BlockstoreHTTP(StringData apiUrl,
         _client = HttpClient::create();
     }
     _client->allowInsecureHTTP(true);
-    _client->setHeaders({str::stream() << "Secret: " << std::getenv(kSecretKeyEnvVar)});
+
+    // The empty "Expect:" header is included for misconfigured webservers that require for the
+    // header to be present.
+    _client->setHeaders({"Content-Type: application/binary",
+                         "Expect:",
+                         str::stream() << "Secret: " << std::getenv(kSecretKeyEnvVar)});
 }
 
 StatusWith<std::size_t> BlockstoreHTTP::read(StringData path,
@@ -51,10 +56,10 @@ StatusWith<std::size_t> BlockstoreHTTP::read(StringData path,
     return status;
 }
 
-Status BlockstoreHTTP::write(StringData path,
-                             ConstDataRange buf,
-                             std::size_t offset,
-                             std::size_t count) const {
+StatusWith<DataBuilder> BlockstoreHTTP::write(StringData path,
+                                              ConstDataRange buf,
+                                              std::size_t offset,
+                                              std::size_t count) const {
     Status error(ErrorCodes::InternalError, "BlockstoreHTTP::write() returned an invalid error");
 
     const std::string url = str::stream()
@@ -63,8 +68,7 @@ Status BlockstoreHTTP::write(StringData path,
 
     for (const auto& secs : kBackoffSleepSecondsRead) {
         try {
-            auto result = _client->post(url, buf);
-            return Status::OK();
+            return _client->post(url, buf);
         } catch (...) {
             error = exceptionToStatus();
         }
@@ -101,6 +105,26 @@ StatusWith<DataBuilder> BlockstoreHTTP::openFile(StringData path) const {
     const std::string url = str::stream()
         << "http://" << _apiUrl << "/os_wt_recovery_open_file?snapshotId=" << _snapshotId
         << "&filename=" << path;
+
+    for (const auto& secs : kBackoffSleepSecondsList) {
+        try {
+            return _client->get(url);
+        } catch (...) {
+            status = exceptionToStatus();
+        }
+        sleepsecs(secs);
+    }
+
+    return status;
+}
+
+StatusWith<DataBuilder> BlockstoreHTTP::renameFile(StringData from, StringData to) const {
+    Status status(ErrorCodes::InternalError,
+                  "BlockstoreHTTP::renameFile() returned an invalid error");
+
+    const std::string url = str::stream()
+        << "http://" << _apiUrl << "/os_wt_rename_file?snapshotId=" << _snapshotId
+        << "&from=" << from << "&to=" << to;
 
     for (const auto& secs : kBackoffSleepSecondsList) {
         try {

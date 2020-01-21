@@ -249,8 +249,9 @@ static int queryableWtFsRemove(WT_FILE_SYSTEM* file_system,
                                WT_SESSION* session,
                                const char* name,
                                uint32_t flags) {
-    // Not needed for queryable backup mode.
-    MONGO_UNREACHABLE;
+    // WiredTiger creates and removes metadata files during its initialization, but we don't really
+    // need to remove these files.
+    return 0;
 }
 
 static int queryableWtFsRename(WT_FILE_SYSTEM* file_system,
@@ -258,8 +259,8 @@ static int queryableWtFsRename(WT_FILE_SYSTEM* file_system,
                                const char* from,
                                const char* to,
                                uint32_t flags) {
-    // Not needed for queryable backup mode.
-    MONGO_UNREACHABLE;
+    auto blockstoreFs = reinterpret_cast<mongo::queryable::BlockstoreFileSystem*>(file_system);
+    return blockstoreFs->rename(from, to);
 }
 
 static int queryableWtFileRead(
@@ -322,9 +323,6 @@ int BlockstoreFileSystem::open(const char* name,
                                uint32_t flags,
                                BlockstoreFileHandle** fileHandle) {
     std::string filename(name);
-    if (endsWith(filename, "WiredTiger.lock")) {
-        return ENOENT;
-    }
 
     bool createFileFlagSet = flags & WT_FS_OPEN_CREATE;
     if (!fileExists(name) && !createFileFlagSet) {
@@ -336,37 +334,19 @@ int BlockstoreFileSystem::open(const char* name,
     // Send an API request to create the file if it doesn't already exist and add it to the list of
     // existing files on success.
     if (!fileExists(name) && createFileFlagSet) {
-        StatusWith<DataBuilder> swOpenFileResponse = blockstoreHTTP.openFile(name);
+        StatusWith<DataBuilder> swOpenFileResponse =
+            blockstoreHTTP.openFile(getFileNameFromPath(filename));
         if (!swOpenFileResponse.isOK()) {
-            log() << "Bad HTTP response from the ApiServer: "
-                  << swOpenFileResponse.getStatus().reason();
+            error() << "Bad HTTP response from the ApiServer: "
+                    << swOpenFileResponse.getStatus().reason();
             return ENOENT;
         }
 
-        // Verify that the file was created and add it to the in-memory structure of existing files.
-        auto swListDirResponse = listDirectory(blockstoreHTTP);
-        if (!swListDirResponse.isOK()) {
-            log() << "Bad HTTP response from the ApiServer: "
-                  << swListDirResponse.getStatus().reason();
-            return ENOENT;
-        }
+        struct File file;
+        file.filename = getFileNameFromPath(filename);
+        file.fileSize = 0;
 
-        bool fileExists = false;
-        for (const auto& file : swListDirResponse.getValue()) {
-            if (file.filename != filename) {
-                continue;
-            }
-
-            addFile(file);
-            fileExists = true;
-            break;
-        }
-
-        if (!fileExists) {
-            log() << "File '" << filename
-                  << "' does not exist after a successful API request to create it";
-            return ENOENT;
-        }
+        addFile(std::move(file));
     }
 
     auto file = getFile(name);
@@ -427,15 +407,54 @@ int BlockstoreFileHandle::read(void* buf, std::size_t offset, std::size_t length
     return ret;
 }
 
-int BlockstoreFileHandle::write(const void* buf, std::size_t offset, std::size_t length) {
-    mongo::ConstDataRange wrappedBuf(reinterpret_cast<const char*>(buf), length);
-    auto res = _readerWriter->write(wrappedBuf, offset, length);
-    if (res.isOK()) {
-        return 0;
+int BlockstoreFileSystem::rename(const char* from, const char* to) {
+    auto search = _files.find(from);
+    if (search == _files.end()) {
+        error() << "Cannot find file " << from << ". Renaming it to " << to << " failed.";
+        return EINVAL;
     }
 
-    log() << "Write failed. Reason: " << res.reason();
-    return EIO;
+    BlockstoreHTTP blockstoreHTTP(_apiUri, _snapshotId);
+    StatusWith<DataBuilder> swRenameResponse =
+        blockstoreHTTP.renameFile(getFileNameFromPath(from), getFileNameFromPath(to));
+    if (!swRenameResponse.isOK()) {
+        error() << "Bad HTTP response from the ApiServer: "
+                << swRenameResponse.getStatus().reason();
+        return EINVAL;
+    }
+
+    struct File file = getFile(from);
+    file.filename = getFileNameFromPath(to);
+
+    // Updating our internal file map.
+    _files.erase(from);
+    addFile(file);
+
+    return 0;
+}
+
+int BlockstoreFileHandle::write(const void* buf, std::size_t offset, std::size_t length) {
+    mongo::ConstDataRange wrappedBuf(reinterpret_cast<const char*>(buf), length);
+    auto swWrite = _readerWriter->write(wrappedBuf, offset, length);
+    if (!swWrite.isOK()) {
+        error() << "Failed to write " << length << " to file: " << swWrite.getStatus().reason();
+        return EIO;
+    }
+
+    std::string filename = _readerWriter->getFileName();
+    std::string path = _blockstoreFs->getPathForFileName(filename);
+
+    // Calculate how many new bytes were written based on the offset.
+    size_t newBytesWritten = 0;
+    if (offset + length > static_cast<size_t>(_fileSize)) {
+        newBytesWritten = length + offset - static_cast<size_t>(_fileSize);
+    }
+
+    _readerWriter->addToFileSize(newBytesWritten);
+    _blockstoreFs->addToFileSize(path, newBytesWritten);
+    _fileSize += newBytesWritten;
+
+    return 0;
 }
 
 }  // namespace queryable

@@ -163,7 +163,7 @@ TEST_F(ReaderWriterTest, TestWrite) {
 
     // Write five bytes at the beginning of the file.
     std::array<char, 5> toWrite{5, 4, 3, 2, 1};
-    ASSERT_OK(readerWriter.write(ConstDataRange(toWrite), offset, toWrite.size()));
+    ASSERT_OK(readerWriter.write(ConstDataRange(toWrite), offset, toWrite.size()).getStatus());
 
     std::vector<char> mockFile = httpClient->getMockFile();
     for (std::size_t idx = 0; idx < toWrite.size(); ++idx) {
@@ -174,7 +174,7 @@ TEST_F(ReaderWriterTest, TestWrite) {
     // file.
     offset += 3;
     toWrite = {6, 6, 6, 6, 6};
-    ASSERT_OK(readerWriter.write(ConstDataRange(toWrite), offset, toWrite.size()));
+    ASSERT_OK(readerWriter.write(ConstDataRange(toWrite), offset, toWrite.size()).getStatus());
 
     mockFile = httpClient->getMockFile();
     std::array<char, 8> expectedContents{5, 4, 3, 6, 6, 6, 6, 6};
