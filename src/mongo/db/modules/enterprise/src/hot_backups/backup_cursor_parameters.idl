@@ -52,6 +52,14 @@ structs:
                 optional: true
                 description: "Source name of an existing incremental backup to take an incremental
                               backup of."
+            blockSize:
+                cpp_name: blockSizeMB
+                type: int
+                default: 16
+                description: "Specifies the block size granularity to use for incremental backup in
+                              MB. This is only an upper bound for the block size. The default block
+                              size is 16 MB."
+                validator: { gte: 1, lte: 2048 }
             disableIncrementalBackup:
                 cpp_name: disableIncrementalBackup
                 type: bool

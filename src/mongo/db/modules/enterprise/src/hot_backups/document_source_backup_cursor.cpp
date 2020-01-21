@@ -22,7 +22,8 @@ REGISTER_DOCUMENT_SOURCE(backupCursor,
                          DocumentSourceBackupCursor::createFromBson);
 
 DocumentSourceBackupCursor::DocumentSourceBackupCursor(
-    const boost::intrusive_ptr<ExpressionContext>& pExpCtx, const BackupOptions& options)
+    const boost::intrusive_ptr<ExpressionContext>& pExpCtx,
+    const StorageEngine::BackupOptions& options)
     : DocumentSource(kStageName, pExpCtx),
       _backupCursorState(
           pExpCtx->mongoProcessInterface->openBackupCursor(pExpCtx->opCtx, options)) {}
@@ -81,10 +82,11 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursor::createFromBson(
     BackupCursorParameters params =
         BackupCursorParameters::parse(IDLParserErrorContext(""), spec.Obj());
 
-    BackupOptions options;
+    StorageEngine::BackupOptions options;
 
     options.disableIncrementalBackup = params.getDisableIncrementalBackup();
     options.incrementalBackup = params.getIncrementalBackup();
+    options.blockSizeMB = params.getBlockSizeMB();
     if (params.getThisBackupName()) {
         options.thisBackupName.emplace(params.getThisBackupName()->toString());
     }

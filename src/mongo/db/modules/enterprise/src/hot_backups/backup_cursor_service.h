@@ -65,7 +65,7 @@ public:
      * backup.
      */
     BackupCursorState openBackupCursor(OperationContext* opCtx,
-                                       const BackupOptions& options) override;
+                                       const StorageEngine::BackupOptions& options) override;
 
     /**
      * This method will uassert if `_state` is not `kBackupCursorOpened`, or the `backupId` input

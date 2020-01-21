@@ -71,8 +71,8 @@ void BackupCursorService::fsyncUnlock(OperationContext* opCtx) {
     _state = kInactive;
 }
 
-BackupCursorState BackupCursorService::openBackupCursor(OperationContext* opCtx,
-                                                        const BackupOptions& options) {
+BackupCursorState BackupCursorService::openBackupCursor(
+    OperationContext* opCtx, const StorageEngine::BackupOptions& options) {
     // Prevent rollback
     repl::ReplicationStateTransitionLockGuard rstl(opCtx, MODE_IX);
 
@@ -118,8 +118,7 @@ BackupCursorState BackupCursorService::openBackupCursor(OperationContext* opCtx,
     if (options.disableIncrementalBackup) {
         uassertStatusOK(_storageEngine->disableIncrementalBackup(opCtx));
     } else {
-        blocksToBackup = uassertStatusOK(_storageEngine->beginNonBlockingBackup(
-            opCtx, options.incrementalBackup, options.thisBackupName, options.srcBackupName));
+        blocksToBackup = uassertStatusOK(_storageEngine->beginNonBlockingBackup(opCtx, options));
     }
 
     _state = kBackupCursorOpened;
