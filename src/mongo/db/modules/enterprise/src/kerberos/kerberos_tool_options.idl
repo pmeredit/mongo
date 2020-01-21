@@ -22,7 +22,6 @@ configs:
     host:
         section: 'Client Options'
         description: 'mongodb server to connect to'
-        default: 'localhost'
         arg_vartype: String
         cpp_varname: 'globalKerberosToolOptions->host'
     username:
@@ -62,4 +61,4 @@ configs:
         description: 'validate a server setup'
         source: cli
         arg_vartype: Switch
-        conflicts: client
+        conflicts: [client, host]

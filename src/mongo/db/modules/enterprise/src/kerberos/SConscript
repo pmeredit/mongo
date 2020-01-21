@@ -12,6 +12,7 @@ env.Library(
     ],
     LIBDEPS_PRIVATE=[
         "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/util/net/network",
         "$BUILD_DIR/mongo/util/options_parser/options_parser_init",
     ],
     SYSLIBDEPS=['krb5', 'gssapi_krb5'] if not env.TargetOSIs('windows') else [],

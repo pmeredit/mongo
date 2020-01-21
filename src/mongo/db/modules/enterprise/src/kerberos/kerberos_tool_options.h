@@ -25,6 +25,8 @@ struct KerberosToolOptions {
     std::string username;
     std::string gssapiServiceName;
     std::string gssapiHostName;
+    std::string getGSSAPIHost() const;
+    std::string getHostbasedService() const;
 };
 
 extern KerberosToolOptions* globalKerberosToolOptions;

@@ -125,7 +125,7 @@ std::vector<std::string> getAdviceForStatus(OM_uint32 majorStatus,
                     << "Please run the following command on the service host and verify that the "
                        "output kvno is the same as the latest kvno on the KDC:\n\t\t"
                     << "kvno -S " << globalKerberosToolOptions->gssapiServiceName << " "
-                    << globalKerberosToolOptions->gssapiHostName);
+                    << globalKerberosToolOptions->getGSSAPIHost());
             }
 
             break;
@@ -147,17 +147,17 @@ void performGSSAPIHandshake(Report& report,
     GSSBufferDesc outputToken;
     GSSCredId initiatorCredHandle;
     GSSContextID contextHandle;
-    std::string& serviceName = globalKerberosToolOptions->gssapiServiceName;
-    gss_buffer_desc serviceNameBuffer;
-    serviceNameBuffer.length = serviceName.size();
-    serviceNameBuffer.value = const_cast<char*>(serviceName.c_str());
+    std::string hostBasedService = globalKerberosToolOptions->getHostbasedService();
+    gss_buffer_desc hostBasedServiceBuffer;
+    hostBasedServiceBuffer.length = hostBasedService.size();
+    hostBasedServiceBuffer.value = const_cast<char*>(hostBasedService.c_str());
     GSSName gssServiceName;
     std::vector<std::string> gssapiErrorBullets;
     auto errorBulletCallback = [&gssapiErrorBullets] { return gssapiErrorBullets; };
 
     report.checkAssert({[&] {
                             majorStatus = gss_import_name(&minorStatus,
-                                                          &serviceNameBuffer,
+                                                          &hostBasedServiceBuffer,
                                                           GSS_C_NT_HOSTBASED_SERVICE,
                                                           gssServiceName.get());
                             gssapiErrorBullets =
@@ -268,9 +268,7 @@ int kerberosToolMain(int argc, char* argv[], char** envp) {
     report.closeSection("Kerberos environment resolved without errors.");
 
     // check that the DNS name resolves to an IP address
-    const std::string& kerbHost = globalKerberosToolOptions->gssapiHostName.empty()
-        ? globalKerberosToolOptions->host
-        : globalKerberosToolOptions->gssapiHostName;
+    const std::string& kerbHost = globalKerberosToolOptions->getGSSAPIHost();
     report.openSection(str::stream() << "Verifying "
                                      << formatOutput(rdnsState == boost::none || *rdnsState == true
                                                          ? "forward and reverse DNS resolution "
@@ -392,16 +390,12 @@ int kerberosToolMain(int argc, char* argv[], char** envp) {
     report.openSection(str::stream()
                        << "Checking " << formatOutput("principal(s) ", OutputType::kHighlight)
                        << "in " << formatOutput("KRB5 keytab", OutputType::kHighlight));
-    auto mongoDBEntries = krb5Env.keytabGetMongoDBEntries(serviceName);
-    report.checkAssert({[&mongoDBEntries]() { return !mongoDBEntries.empty(); },
-                        str::stream() << "Keytab does not contain any entries for provided service "
-                                      << formatOutput(serviceName, OutputType::kImportant)});
     if (krb5Env.isClientConnection()) {
         // on client connection, check that at at least one principal listed in the client keytab or
         // the credentials cache has the same name as the one specified as --user
         const std::string& user = globalKerberosToolOptions->username;
         report.checkAssert({[&] {
-                                return krb5Env.keytabContainsPrincipalWithName(serviceName) ||
+                                return krb5Env.keytabContainsPrincipalWithName(user) ||
                                     krb5Env.credentialsCacheContainsClientPrincipalName(user);
                             },
                             str::stream() << "Neither client keytab nor credentials cache contains "
@@ -409,6 +403,11 @@ int kerberosToolMain(int argc, char* argv[], char** envp) {
                                           << formatOutput(user, OutputType::kImportant) << '.'});
     } else {
         // on server connection, check for users with specified gssapiServiceName and wrong DNS name
+        auto mongoDBEntries = krb5Env.keytabGetMongoDBEntries(serviceName);
+        report.checkAssert({[&mongoDBEntries]() { return !mongoDBEntries.empty(); },
+                            str::stream()
+                                << "Keytab does not contain any entries for provided service "
+                                << formatOutput(serviceName, OutputType::kImportant)});
         std::vector<const KRB5KeytabEntry*> problemPrincipals;
         std::cout << "Found the following principals for MongoDB service "
                   << formatOutput(serviceName, OutputType::kImportant) << ":" << std::endl;
@@ -448,24 +447,24 @@ int kerberosToolMain(int argc, char* argv[], char** envp) {
                  return formattedPrincipals;
              },
              Report::FailType::kFatalFailure});
-    }
 
-    std::cout << "Found the following " << formatOutput("kvnos", OutputType::kHighlight)
-              << " in keytab entries for service "
-              << formatOutput(serviceName, OutputType::kImportant) << std::endl;
-    report.printItemList([&mongoDBEntries]() {
-        std::vector<std::string> kvnos;
-        std::transform(
-            mongoDBEntries.begin(),
-            mongoDBEntries.end(),
-            std::back_inserter(kvnos),
-            [](const KRB5KeytabEntry* entry) { return std::to_string(entry->getKvno()); });
-        return kvnos;
-    });
+        std::cout << "Found the following " << formatOutput("kvnos", OutputType::kHighlight)
+                  << " in keytab entries for service "
+                  << formatOutput(serviceName, OutputType::kImportant) << std::endl;
+        report.printItemList([&mongoDBEntries]() {
+            std::vector<std::string> kvnos;
+            std::transform(
+                mongoDBEntries.begin(),
+                mongoDBEntries.end(),
+                std::back_inserter(kvnos),
+                [](const KRB5KeytabEntry* entry) { return std::to_string(entry->getKvno()); });
+            return kvnos;
+        });
+    }
 
     report.closeSection("KRB5 keytab is valid.");
 
-    report.openSection("Fetching KRB5 Config and log");
+    report.openSection("Fetching KRB5 Config");
     std::string krb5ConfigContents;
     std::string ktraceLogContents;
     StringData krb5ConfigPath = krb5Env.getConfigPath();
@@ -481,9 +480,11 @@ int kerberosToolMain(int argc, char* argv[], char** envp) {
     std::cout << formatOutput("KRB5 config profile ", OutputType::kHighlight)
               << "resolved as: " << std::endl;
     std::cout << formatOutput(krb5Env.getProfile().toString(), OutputType::kImportant);
+    report.closeSection("KRB5 config profile resolved without errors.");
 
     StringData ktraceLogPath = krb5Env.getTraceLocation();
     if (!ktraceLogPath.empty() && ktraceLogPath != "/dev/stdout") {
+        report.openSection("Fetching KRB5 Log");
         std::ifstream ktraceLog(ktraceLogPath.toString());
         ktraceLogContents = std::string(std::istreambuf_iterator<char>(ktraceLog),
                                         std::istreambuf_iterator<char>());
@@ -492,19 +493,18 @@ int kerberosToolMain(int argc, char* argv[], char** envp) {
         }
         std::cout << "Displaying contents of KRB5_TRACE file from '" << ktraceLogPath << "'\n"
                   << ktraceLogContents << std::endl;
+        report.closeSection("");
     }
-    report.closeSection("");
 
     if (krb5Env.isClientConnection()) {
         report.openSection("Attempting client half of GSSAPI conversation");
     } else {
         report.openSection("Attempting to initiate security context with service credentials");
     }
-    performGSSAPIHandshake(report,
-                           globalKerberosToolOptions->connectionType,
-                           krb5Env.isClientConnection()
-                               ? globalKerberosToolOptions->username
-                               : globalKerberosToolOptions->gssapiServiceName);
+    std::string initiator = krb5Env.isClientConnection()
+        ? globalKerberosToolOptions->username
+        : globalKerberosToolOptions->getHostbasedService();
+    performGSSAPIHandshake(report, globalKerberosToolOptions->connectionType, initiator);
     if (krb5Env.isClientConnection()) {
         report.closeSection("Client half of GSSAPI conversation completed successfully.");
     } else {

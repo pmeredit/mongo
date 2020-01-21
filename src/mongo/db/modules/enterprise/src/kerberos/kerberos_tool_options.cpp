@@ -6,6 +6,7 @@
 
 #include "mongo/base/init.h"
 #include "mongo/base/initializer_context.h"
+#include "mongo/util/net/socket_utils.h"
 #include "mongo/util/options_parser/options_parser.h"
 #include "mongo/util/options_parser/startup_option_init.h"
 #include "mongo/util/options_parser/startup_options.h"
@@ -62,6 +63,10 @@ MONGO_STARTUP_OPTIONS_STORE(MongoKerberosToolOptions)(InitializerContext*) {
         ? KerberosToolOptions::ConnectionType::kServer
         : KerberosToolOptions::ConnectionType::kClient;
 
+    if (globalKerberosToolOptions->host.empty()) {
+        globalKerberosToolOptions->host = getHostNameCached();
+    }
+
     return Status::OK();
 }
 
@@ -74,4 +79,17 @@ MONGO_INITIALIZER_GENERAL(MongoKerberosToolOptions,
 }
 
 }  // namespace
+
+std::string KerberosToolOptions::getGSSAPIHost() const {
+    if (!gssapiHostName.empty()) {
+        return gssapiHostName;
+    } else {
+        return host;
+    }
+}
+
+std::string KerberosToolOptions::getHostbasedService() const {
+    return str::stream() << gssapiServiceName << "@" << getGSSAPIHost();
+}
+
 }  // namespace mongo
