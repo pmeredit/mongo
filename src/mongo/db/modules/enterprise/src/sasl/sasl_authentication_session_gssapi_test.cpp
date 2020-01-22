@@ -29,7 +29,7 @@
 #include "mongo/util/scopeguard.h"
 
 #include "cyrus_sasl_authentication_session.h"
-#include "gssapi_helpers.h"
+#include "util/gssapi_helpers.h"
 
 /**
  * This test may require the hostname contained in mockHostName to canonicalize to

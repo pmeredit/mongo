@@ -12,14 +12,18 @@
 #include "kerberos_tool.h"
 #include "kerberos_tool_options.h"
 
+#if !defined(_WIN32)
+#include "util/gssapi_helpers.h"
+#include <gssapi.h>
+#include <gssapi/gssapi_krb5.h>
+#endif
+
 #include "mongo/base/initializer.h"
 #include "mongo/logger/logger.h"
 #include "mongo/util/log.h"
 #include "mongo/util/net/hostname_canonicalization.h"
 #include "mongo/util/quick_exit.h"
 #include "mongo/util/signal_handlers.h"
-
-#include "sasl/mongo_gssapi.h"
 #include "util/report.h"
 
 #if defined(_WIN32)
@@ -288,6 +292,133 @@ int kerberosToolMain(int argc, char* argv[], char** envp) {
                   << ktraceLogContents << std::endl;
     }
     report.closeSection("");
+
+    if (krb5Env.isClientConnection()) {
+        report.openSection("Attempting client half of GSSAPI conversation.");
+        OM_uint32 minorStatus;
+        OM_uint32 majorStatus;
+        OM_uint32 retFlags;
+        OM_uint32 timeRec = GSS_C_INDEFINITE;
+        GSSBufferDesc outputToken;
+        GSSCredId initiatorCredHandle;
+        GSSContextID contextHandle;
+        gss_buffer_desc serviceNameBuffer;
+        serviceNameBuffer.length = serviceName.size();
+        serviceNameBuffer.value = const_cast<char*>(serviceName.c_str());
+        GSSName gssServiceName;
+        report.checkAssert({[&] {
+                                majorStatus = gss_import_name(&minorStatus,
+                                                              &serviceNameBuffer,
+                                                              GSS_C_NT_HOSTBASED_SERVICE,
+                                                              gssServiceName.get());
+                                return majorStatus == GSS_S_COMPLETE;
+                            },
+                            "Could not import GSSAPI target name."});
+
+        gss_buffer_desc userNameBuffer;
+        userNameBuffer.length = globalKerberosToolOptions->username.size();
+        userNameBuffer.value = const_cast<char*>(globalKerberosToolOptions->username.c_str());
+        GSSName gssUserName;
+        report.checkAssert({[&] {
+                                majorStatus = gss_import_name(&minorStatus,
+                                                              &userNameBuffer,
+                                                              GSS_C_NT_USER_NAME,
+                                                              gssUserName.get());
+                                return majorStatus == GSS_S_COMPLETE;
+                            },
+                            "Could not import GSSAPI user name."});
+
+        report.checkAssert({[&] {
+                                majorStatus = gss_acquire_cred(&minorStatus,
+                                                               *gssUserName.get(),
+                                                               GSS_C_INDEFINITE,
+                                                               GSS_C_NO_OID_SET,
+                                                               GSS_C_INITIATE,
+                                                               initiatorCredHandle.get(),
+                                                               nullptr,
+                                                               nullptr);
+                                return majorStatus == GSS_S_COMPLETE;
+                            },
+                            "Could not acquire credentials."});
+
+        std::vector<std::string> gssapiErrorBullets;
+
+        report.checkAssert(
+            {[&] {
+                 // mech_type has to be const_cast for older versions of GSSAPI in which
+                 // gss_mech_krb5 was * const
+                 majorStatus =
+                     gss_init_sec_context(&minorStatus,               /* minor_status */
+                                          *initiatorCredHandle.get(), /* claimant_cred_handle */
+                                          contextHandle.get(),        /* context_handle */
+                                          *gssServiceName.get(),      /* target_name */
+                                          const_cast<gss_OID>(gss_mech_krb5), /* mech_type */
+                                          GSS_C_INTEG_FLAG | GSS_C_MUTUAL_FLAG | GSS_C_REPLAY_FLAG |
+                                              GSS_C_CONF_FLAG, /* req_flags */
+                                          false,               /* time_req */
+                                          nullptr,             /* input_chan_bindings */
+                                          GSS_C_NO_BUFFER,     /* input_token */
+                                          nullptr,             /* actual_mech_type */
+                                          outputToken.get(),   /* output_token */
+                                          &retFlags,           /* ret_flags */
+                                          &timeRec);           /* time_rec */
+
+                 if (GSS_ERROR(majorStatus) && !(majorStatus & GSS_S_CONTINUE_NEEDED)) {
+                     gssapiErrorBullets.emplace_back(
+                         getGssapiErrorString(majorStatus, minorStatus));
+                     auto advise = [&gssapiErrorBullets](const std::string& s) {
+                         gssapiErrorBullets.emplace_back(formatOutput(s, OutputType::kSolution));
+                     };
+
+                     // If GSSAPI doesn't just need us to continue, we have an actual error.
+                     // Error code constants hold actual error code in least-significant 32 bits
+                     // of a 64-bit int. Here, we represent it as an offset from the default
+                     // KRB5 error code: ERROR_TABLE_BASE_krb5
+                     signed long code =
+                         (minorStatus - static_cast<OM_uint32>(ERROR_TABLE_BASE_krb5)) +
+                         ERROR_TABLE_BASE_krb5;
+                     switch (code) {
+                         case KRB5_NO_TKT_SUPPLIED:
+                             advise("Try creating a new ticket for the desired user with kinit.");
+                             break;
+                         case KRB5KDC_ERR_S_PRINCIPAL_UNKNOWN:
+                             advise(
+                                 "Make sure the KDC has a record for the desired service "
+                                 "principal.");
+                             break;
+                         case KRB5_KDC_UNREACH:
+                             advise(
+                                 "Ensure that the desired realm's KDC is running, and that "
+                                 "this client "
+                                 "is able to ping the KDC.");
+                             break;
+                         case KRB5KRB_AP_ERR_SKEW:
+                             advise(
+                                 "Ensure that difference between client and KDC's clock is less "
+                                 "than defined clock skew (default 300 seconds).");
+                             break;
+                         case KRB5KDC_ERR_ETYPE_NOSUPP:
+                             advise(
+                                 "Make sure the client is using a cipher supported by the "
+                                 "KDC.");
+                             break;
+                         case KRB5KRB_AP_ERR_TKT_EXPIRED:
+                             advise("Try refreshing your credentials with kinit.");
+                             break;
+                         default:
+                             break;
+                     }
+                     // this will only be reached if there is a fatal error
+                     return false;
+                 }
+                 return true;
+             },
+             "GSSAPI client handshake failed",
+             [&] { return gssapiErrorBullets; },
+             Report::FailType::kFatalFailure});
+
+        report.closeSection("Client half of GSSAPI conversation completed successfully.");
+    }
 
 #endif
     return 0;

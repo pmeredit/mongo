@@ -16,7 +16,7 @@
 #include "mongo/util/log.h"
 #include "mongo/util/str.h"
 
-#include "gssapi_helpers.h"
+#include "util/gssapi_helpers.h"
 
 namespace mongo {
 namespace gssapi {
