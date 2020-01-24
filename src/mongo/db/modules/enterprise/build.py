@@ -105,7 +105,7 @@ def configure(conf, env):
                     env['SNMP_SYSLIBDEPS'] = ['netsnmp','netsnmpagent','netsnmpmibs']
                     env.Append(CPPDEFINES=["NETSNMP_NO_INLINE"])
                 elif not env.TargetOSIs("darwin"):
-                    env['SNMP_SYSLIBDEPS'] = snmpFlags['LIBS']
+                    env['SNMP_SYSLIBDEPS'] = [lib for lib in snmpFlags['LIBS'] if lib != "pci"]
                     env.Append(LIBPATH=snmpFlags['LIBPATH'])
                     env.Append(CPPDEFINES=["NETSNMP_NO_INLINE"])
         return env
