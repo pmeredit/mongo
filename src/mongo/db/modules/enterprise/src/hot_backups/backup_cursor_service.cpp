@@ -114,11 +114,11 @@ BackupCursorState BackupCursorService::openBackupCursor(
         checkpointTimestamp = _storageEngine->getLastStableRecoveryTimestamp();
     };
 
-    std::vector<StorageEngine::BackupBlock> blocksToBackup;
+    StorageEngine::BackupInformation backupInformation;
     if (options.disableIncrementalBackup) {
         uassertStatusOK(_storageEngine->disableIncrementalBackup(opCtx));
     } else {
-        blocksToBackup = uassertStatusOK(_storageEngine->beginNonBlockingBackup(opCtx, options));
+        backupInformation = uassertStatusOK(_storageEngine->beginNonBlockingBackup(opCtx, options));
     }
 
     _state = kBackupCursorOpened;
@@ -172,7 +172,7 @@ BackupCursorState BackupCursorService::openBackupCursor(
         std::vector<std::string> eseFiles = uassertStatusOK(encHooks->beginNonBlockingBackup());
         for (std::string& filename : eseFiles) {
             boost::system::error_code errorCode;
-            const std::uint64_t filesize = boost::filesystem::file_size(filename, errorCode);
+            const std::uint64_t fileSize = boost::filesystem::file_size(filename, errorCode);
 
             using namespace fmt::literals;
             uassert(31318,
@@ -183,7 +183,9 @@ BackupCursorState BackupCursorService::openBackupCursor(
             // The database instance backing the encryption at rest data simply returns filenames
             // that need to be copied whole. The assumption is these files are small so the cost is
             // negligible.
-            blocksToBackup.push_back({filename, 0, filesize});
+            StorageEngine::BackupFile backupFile(fileSize);
+            backupInformation.insert({filename, backupFile});
+            backupInformation.at(filename).blocksToCopy.push_back({0, fileSize});
         }
     }
 
@@ -206,12 +208,12 @@ BackupCursorState BackupCursorService::openBackupCursor(
     }
 
     Document preamble{{"metadata", builder.obj()}};
-    for (auto&& block : blocksToBackup) {
-        _backupFiles.insert(block.filename);
+    for (const auto& entry : backupInformation) {
+        _backupFiles.insert(entry.first);
     }
 
     closeCursorGuard.dismiss();
-    return {*_activeBackupId, preamble, blocksToBackup};
+    return {*_activeBackupId, preamble, backupInformation};
 }
 
 void BackupCursorService::closeBackupCursor(OperationContext* opCtx, const UUID& backupId) {

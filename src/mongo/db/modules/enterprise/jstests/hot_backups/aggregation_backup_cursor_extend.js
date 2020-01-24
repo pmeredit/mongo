@@ -81,7 +81,7 @@ assertFailedToParse({backupId: backupId, timestamp: 1});              // Wrong t
 assertFailedToParse({backupId: backupId, timestamp: nullTimestamp});  // Invalid timestamp.
 
 // With extraneous unknown parameter.
-assertFailedToParse({bakcupId: backupId, timestamp: extendTo, extraParam: 1});
+assertFailedToParse({backupId: backupId, timestamp: extendTo, extraParam: 1});
 
 // 3. Successful extend.
 assertSuccessfulExtend({backupId: backupId, timestamp: extendTo});
