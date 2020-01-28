@@ -5,10 +5,10 @@
  *         requires_journaling,
  *         requires_persistence]
  */
-load("src/mongo/db/modules/enterprise/jstests/hot_backups/sharded_backup_restore.js");
 
 (function() {
 "use strict";
+load("src/mongo/db/modules/enterprise/jstests/hot_backups/sharded_backup_restore.js");
 
 let NoopWorker = function() {
     this.setup = function() {};
