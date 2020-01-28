@@ -13,7 +13,7 @@ mock_sts.start();
 const conn = MongoRunner.runMongod({
     setParameter: {
         "awsSTSUrl": mock_sts.getURL(),
-        "authenticationMechanisms": "MONGODB-IAM,SCRAM-SHA-256",
+        "authenticationMechanisms": "MONGODB-AWS,SCRAM-SHA-256",
     },
     auth: "",
 });
@@ -31,7 +31,7 @@ const smoke = runMongoProgram("mongo",
                               "--port",
                               conn.port,
                               '--authenticationMechanism',
-                              'MONGODB-IAM',
+                              'MONGODB-AWS',
                               '--authenticationDatabase',
                               '$external',
                               '-u',
@@ -48,7 +48,7 @@ assert(external.auth({
     user: MOCK_AWS_TEMP_ACCOUNT_ID,
     pwd: MOCK_AWS_TEMP_ACCOUNT_SECRET_KEY,
     awsIamSessionToken: MOCK_AWS_TEMP_ACCOUNT_SESSION_TOKEN,
-    mechanism: 'MONGODB-IAM'
+    mechanism: 'MONGODB-AWS'
 }));
 
 mock_sts.stop();

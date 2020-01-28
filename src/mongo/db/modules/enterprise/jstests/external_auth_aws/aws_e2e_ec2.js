@@ -30,7 +30,7 @@ assignInstanceProfile();
 
 const conn = MongoRunner.runMongod({
     setParameter: {
-        "authenticationMechanisms": "MONGODB-IAM,SCRAM-SHA-256",
+        "authenticationMechanisms": "MONGODB-AWS,SCRAM-SHA-256",
     },
     auth: "",
 });
@@ -50,7 +50,7 @@ const smoke = runMongoProgram("mongo",
                               "--port",
                               conn.port,
                               '--authenticationMechanism',
-                              'MONGODB-IAM',
+                              'MONGODB-AWS',
                               '--authenticationDatabase',
                               '$external',
                               "--eval",
@@ -58,7 +58,7 @@ const smoke = runMongoProgram("mongo",
 assert.eq(smoke, 0, "Could not auth with smoke user");
 
 // Try the auth function
-assert(external.auth({mechanism: 'MONGODB-IAM'}));
+assert(external.auth({mechanism: 'MONGODB-AWS'}));
 
 MongoRunner.stopMongod(conn);
 }());

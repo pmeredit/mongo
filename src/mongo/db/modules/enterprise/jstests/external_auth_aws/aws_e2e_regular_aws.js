@@ -9,7 +9,7 @@ load("src/mongo/db/modules/enterprise/jstests/external_auth_aws/lib/aws_e2e_lib.
 
 const conn = MongoRunner.runMongod({
     setParameter: {
-        "authenticationMechanisms": "MONGODB-IAM,SCRAM-SHA-256",
+        "authenticationMechanisms": "MONGODB-AWS,SCRAM-SHA-256",
     },
     auth: "",
 });
@@ -27,7 +27,7 @@ assert.commandWorked(
 assert(external.auth({
     user: config["iam_auth_ecs_account"],
     pwd: config["iam_auth_ecs_secret_access_key"],
-    mechanism: 'MONGODB-IAM'
+    mechanism: 'MONGODB-AWS'
 }));
 
 MongoRunner.stopMongod(conn);

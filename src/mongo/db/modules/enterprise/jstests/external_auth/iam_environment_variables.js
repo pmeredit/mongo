@@ -24,7 +24,7 @@ function testAuthWithEnv(env) {
             "--port",
             conn.port,
             '--authenticationMechanism',
-            'MONGODB-IAM',
+            'MONGODB-AWS',
             '--authenticationDatabase',
             '$external',
             "--eval",
@@ -44,7 +44,7 @@ function testAuthWithEnv(env) {
             '-authenticationDatabase',
             '$external',
             "--eval",
-            "assert(db.getSiblingDB('$external').auth({mechanism: 'MONGODB-IAM'}))"
+            "assert(db.getSiblingDB('$external').auth({mechanism: 'MONGODB-AWS'}))"
         ],
         env);
     assert.eq(smoke_auth, 0, "Could not auth with smoke_auth user");
@@ -56,7 +56,7 @@ mock_sts.start();
 const conn = MongoRunner.runMongod({
     setParameter: {
         "awsSTSUrl": mock_sts.getURL(),
-        "authenticationMechanisms": "MONGODB-IAM,SCRAM-SHA-256",
+        "authenticationMechanisms": "MONGODB-AWS,SCRAM-SHA-256",
     },
     auth: "",
 });

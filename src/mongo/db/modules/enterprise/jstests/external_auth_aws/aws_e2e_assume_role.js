@@ -39,7 +39,7 @@ const credentials = getAssumeCredentials();
 
 const conn = MongoRunner.runMongod({
     setParameter: {
-        "authenticationMechanisms": "MONGODB-IAM,SCRAM-SHA-256",
+        "authenticationMechanisms": "MONGODB-AWS,SCRAM-SHA-256",
     },
     auth: "",
 });
@@ -55,7 +55,7 @@ assert(external.auth({
     user: credentials["AccessKeyId"],
     pwd: credentials["SecretAccessKey"],
     awsIamSessionToken: credentials["SessionToken"],
-    mechanism: 'MONGODB-IAM'
+    mechanism: 'MONGODB-AWS'
 }));
 
 MongoRunner.stopMongod(conn);

@@ -2,7 +2,7 @@
  * Copyright (C) 2019 MongoDB, Inc.  All Rights Reserved.
  */
 
-#include "sasl_iam_server_protocol.h"
+#include "sasl_aws_server_protocol.h"
 
 #include <boost/algorithm/string/finder.hpp>
 #include <boost/algorithm/string/split.hpp>
@@ -20,23 +20,23 @@
 
 namespace mongo {
 
-namespace iam {
-SaslIAMGlobalParams saslIAMGlobalParams;
-}  // namespace iam
+namespace awsIam {
+SaslAWSGlobalParams saslAWSGlobalParams;
+}  // namespace awsIam
 
 namespace {
 // Secure Random for SASL IAM Nonce generation
-Mutex saslIAMServerMutex = MONGO_MAKE_LATCH("IAMServerMutex");
-SecureRandom saslIAMServerGen;
+Mutex saslAWSServerMutex = MONGO_MAKE_LATCH("AWSServerMutex");
+SecureRandom saslAWSServerGen;
 
 std::array<StringData, 10> allowedHeaders = {"content-length"_sd,
                                              "content-type"_sd,
                                              "host"_sd,
                                              "x-amz-date"_sd,
                                              "x-amz-security-token"_sd,
-                                             iam::kMongoGS2CBHeader,
+                                             awsIam::kMongoGS2CBHeader,
                                              "x-mongodb-optional-data"_sd,
-                                             iam::kMongoServerNonceHeader};
+                                             awsIam::kMongoServerNonceHeader};
 
 constexpr auto kStsPrefix = "arn:aws:sts::"_sd;
 constexpr auto kAssumedRole = "assumed-role/"_sd;
@@ -75,9 +75,9 @@ void validateSignedHeaders(StringData authHeader) {
         StringData header(partIt->begin(), partIt->end());
         uassert(51291, "Too many headers", headerIndex < allowedHeaders.size());
 
-        if (header == iam::kMongoGS2CBHeader) {
+        if (header == awsIam::kMongoGS2CBHeader) {
             hasMongoDBGS2CbFlag = true;
-        } else if (header == iam::kMongoServerNonceHeader) {
+        } else if (header == awsIam::kMongoServerNonceHeader) {
             hasMongoDBServerNonce = true;
         }
 
@@ -112,26 +112,26 @@ std::string extractAwsAccountId(StringData authHeader) {
 
 }  // namespace
 
-std::array<char, 32> iam::generateServerNonce() {
+std::array<char, 32> awsIam::generateServerNonce() {
 
-    std::array<char, iam::kServerFirstNoncePieceLength> ret;
+    std::array<char, awsIam::kServerFirstNoncePieceLength> ret;
 
     {
-        stdx::lock_guard<Latch> lk(saslIAMServerMutex);
-        saslIAMServerGen.fill(&ret, ret.size());
+        stdx::lock_guard<Latch> lk(saslAWSServerMutex);
+        saslAWSServerGen.fill(&ret, ret.size());
     }
 
     return ret;
 }
 
-std::string iam::generateServerFirst(StringData clientFirstBase64,
-                                     std::vector<char>* serverNonce,
-                                     char* cbFlag) {
-    auto clientFirst = iam::convertFromByteString<IamClientFirst>(clientFirstBase64);
+std::string awsIam::generateServerFirst(StringData clientFirstBase64,
+                                        std::vector<char>* serverNonce,
+                                        char* cbFlag) {
+    auto clientFirst = awsIam::convertFromByteString<AwsClientFirst>(clientFirstBase64);
 
     uassert(51285,
             "Nonce must be 32 bytes",
-            clientFirst.getNonce().length() == iam::kClientFirstNonceLength);
+            clientFirst.getNonce().length() == awsIam::kClientFirstNonceLength);
     uassert(51284,
             "Channel Binding Prefix must not be 'p'",
             clientFirst.getGs2_cb_flag() == 'n' || clientFirst.getGs2_cb_flag() == 'y');
@@ -140,26 +140,26 @@ std::string iam::generateServerFirst(StringData clientFirstBase64,
 
     auto serverNoncePiece = generateServerNonce();
 
-    IamServerFirst first;
+    AwsServerFirst first;
 
-    serverNonce->reserve(iam::kServerFirstNonceLength);
+    serverNonce->reserve(awsIam::kServerFirstNonceLength);
 
     auto cdr = clientFirst.getNonce();
     std::copy(cdr.data(), cdr.data() + cdr.length(), std::back_inserter(*serverNonce));
     std::copy(serverNoncePiece.begin(), serverNoncePiece.end(), std::back_inserter(*serverNonce));
 
     first.setServerNonce(*serverNonce);
-    first.setStsHost(saslIAMGlobalParams.awsSTSHost);
+    first.setStsHost(saslAWSGlobalParams.awsSTSHost);
 
-    return iam::convertToByteString(first);
+    return awsIam::convertToByteString(first);
 }
 
-std::tuple<std::vector<std::string>, std::string> iam::parseClientSecond(
+std::tuple<std::vector<std::string>, std::string> awsIam::parseClientSecond(
     StringData clientSecondStr,
     const std::vector<char>& serverNonce,
     char cbFlag,
     std::string* awsAccountId) {
-    auto clientSecond = iam::convertFromByteString<IamClientSecond>(clientSecondStr);
+    auto clientSecond = awsIam::convertFromByteString<AwsClientSecond>(clientSecondStr);
 
     validateSignedHeaders(clientSecond.getAuthHeader());
     *awsAccountId = extractAwsAccountId(clientSecond.getAuthHeader());
@@ -171,23 +171,23 @@ std::tuple<std::vector<std::string>, std::string> iam::parseClientSecond(
     static_assert(requestBody.size() == 43);
     headers.push_back("Content-Length:43");
     headers.push_back("Content-Type:application/x-www-form-urlencoded");
-    headers.push_back("Host:" + saslIAMGlobalParams.awsSTSHost);
+    headers.push_back("Host:" + saslAWSGlobalParams.awsSTSHost);
     headers.push_back("X-Amz-Date:" + clientSecond.getXAmzDate());
 
     if (clientSecond.getXAmzSecurityToken()) {
         headers.push_back("X-Amz-Security-Token:" + clientSecond.getXAmzSecurityToken().get());
     }
 
-    headers.push_back(iam::kMongoServerNonceHeader + ":" +
+    headers.push_back(awsIam::kMongoServerNonceHeader + ":" +
                       base64::encode(StringData(serverNonce.data(), serverNonce.size())));
-    headers.push_back(str::stream() << iam::kMongoGS2CBHeader << ':' << cbFlag);
+    headers.push_back(str::stream() << awsIam::kMongoGS2CBHeader << ':' << cbFlag);
 
     headers.push_back("Authorization:" + clientSecond.getAuthHeader());
 
     return {headers, requestBody.toString()};
 }
 
-std::string iam::getUserId(StringData request) {
+std::string awsIam::getUserId(StringData request) {
     std::stringstream istr(request.toString());
 
     boost::property_tree::ptree tree;
@@ -202,7 +202,7 @@ std::string iam::getUserId(StringData request) {
     return getSimplifiedARN(arnStr.get());
 }
 
-std::string iam::getSimplifiedARN(StringData arn) {
+std::string awsIam::getSimplifiedARN(StringData arn) {
     bool sts = arn.startsWith(kStsPrefix);
     bool iam = arn.startsWith("arn:aws:iam::");
     uassert(51282, "Incorrect ARN", sts || iam);

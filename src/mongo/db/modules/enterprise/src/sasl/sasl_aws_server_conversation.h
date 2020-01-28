@@ -9,12 +9,12 @@
 
 namespace mongo {
 
-class SaslIAMServerMechanism : public MakeServerMechanism<IAMPolicy> {
+class SaslAWSServerMechanism : public MakeServerMechanism<AWSIAMPolicy> {
 public:
-    explicit SaslIAMServerMechanism(std::string authenticationDatabase)
-        : MakeServerMechanism<IAMPolicy>(std::move(authenticationDatabase)) {}
+    explicit SaslAWSServerMechanism(std::string authenticationDatabase)
+        : MakeServerMechanism<AWSIAMPolicy>(std::move(authenticationDatabase)) {}
 
-    ~SaslIAMServerMechanism() final = default;
+    ~SaslAWSServerMechanism() final = default;
 
     StatusWith<std::tuple<bool, std::string>> stepImpl(OperationContext* opCtx,
                                                        StringData inputData);
@@ -41,9 +41,9 @@ private:
     char _cbFlag;
 };
 
-class IAMServerFactory : public MakeServerFactory<SaslIAMServerMechanism> {
+class AWSServerFactory : public MakeServerFactory<SaslAWSServerMechanism> {
 public:
-    using MakeServerFactory<SaslIAMServerMechanism>::MakeServerFactory;
+    using MakeServerFactory<SaslAWSServerMechanism>::MakeServerFactory;
     static constexpr bool isInternal = false;
     bool canMakeMechanismForUser(const User* user) const final {
         auto credentials = user->getCredentials();

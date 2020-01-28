@@ -1,5 +1,5 @@
 /**
- * Validate that MONGODB-IAM auth works from ECS temporary credentials.
+ * Validate that MONGODB-AWS auth works from ECS temporary credentials.
  */
 load("src/mongo/db/modules/enterprise/jstests/external_auth_aws/lib/aws_e2e_lib.js");
 

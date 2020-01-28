@@ -3,11 +3,11 @@
 global:
     cpp_namespace: "mongo"
     cpp_includes:
-        - "sasl/sasl_iam_server_protocol.h"
+        - "sasl/sasl_aws_server_protocol.h"
 
 server_parameters:
     awsSTSUrl:
         description: "Parameter to override AWS STS HTTP Url"
         set_at: startup
         default: "https://sts.amazonaws.com"
-        cpp_varname: "iam::saslIAMGlobalParams.awsSTSUrl"
+        cpp_varname: "awsIam::saslAWSGlobalParams.awsSTSUrl"

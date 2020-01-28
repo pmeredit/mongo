@@ -17,7 +17,7 @@ mock_ec2.start();
 const conn = MongoRunner.runMongod({
     setParameter: {
         "awsSTSUrl": mock_sts.getURL(),
-        "authenticationMechanisms": "MONGODB-IAM,SCRAM-SHA-256",
+        "authenticationMechanisms": "MONGODB-AWS,SCRAM-SHA-256",
     },
     auth: "",
 });
@@ -36,7 +36,7 @@ const smoke = runMongoProgram("mongo",
                               "--port",
                               conn.port,
                               '--authenticationMechanism',
-                              'MONGODB-IAM',
+                              'MONGODB-AWS',
                               '--authenticationDatabase',
                               '$external',
                               '--setShellParameter',

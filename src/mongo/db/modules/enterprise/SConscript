@@ -207,14 +207,14 @@ if not env.TargetOSIs("darwin") and "snmp" in env['MONGO_ENTERPRISE_FEATURES']:
 if "sasl" in env['MONGO_ENTERPRISE_FEATURES']:
     env.Library(
         target=[
-            'sasl_iam_server',
+            'sasl_aws_server',
         ],
         source=[
-            'src/sasl/sasl_iam_server_protocol.cpp',
+            'src/sasl/sasl_aws_server_protocol.cpp',
         ],
         LIBDEPS_PRIVATE=[
             '$BUILD_DIR/mongo/base',
-            '$BUILD_DIR/mongo/client/sasl_iam_common',
+            '$BUILD_DIR/mongo/client/sasl_aws_common',
             '$BUILD_DIR/mongo/db/server_options_core', # For object_check.h
         ],
     )
@@ -224,14 +224,14 @@ if "sasl" in env['MONGO_ENTERPRISE_FEATURES']:
     kmsEnv.InjectThirdParty(libraries=['kms-message'])
 
     kmsEnv.CppUnitTest(
-        target='sasl_iam_protocol_test',
+        target='sasl_aws_protocol_test',
         source=[
-            'src/sasl/sasl_iam_protocol_test.cpp',
+            'src/sasl/sasl_aws_protocol_test.cpp',
         ],
         LIBDEPS=[
-            '$BUILD_DIR/mongo/client/sasl_iam_common',
-            '$BUILD_DIR/mongo/client/sasl_iam_client',
-            'sasl_iam_server',
+            '$BUILD_DIR/mongo/client/sasl_aws_common',
+            '$BUILD_DIR/mongo/client/sasl_aws_client',
+            'sasl_aws_server',
             '$BUILD_DIR/third_party/shim_kms_message',
         ],
     )
@@ -242,11 +242,11 @@ if "sasl" in env['MONGO_ENTERPRISE_FEATURES']:
             'src/sasl/auxprop_mongodb_internal.cpp' if env.TargetOSIs("windows") else [],
             'src/sasl/canon_mongodb_internal.cpp',
             'src/sasl/mongo_${MONGO_GSSAPI_IMPL}.cpp',
-            env.Idlc('src/sasl/sasl_iam_server_options.idl')[0],
-            'src/sasl/sasl_iam_server_conversation.cpp',
+            env.Idlc('src/sasl/sasl_aws_server_options.idl')[0],
+            'src/sasl/sasl_aws_server_conversation.cpp',
         ],
         LIBDEPS=[
-            'sasl_iam_server',
+            'sasl_aws_server',
             '$BUILD_DIR/mongo/db/auth/saslauth',
         ] + (['src/util/gssapi_helpers'] if not env.TargetOSIs("windows") else []),
         LIBDEPS_PRIVATE=[

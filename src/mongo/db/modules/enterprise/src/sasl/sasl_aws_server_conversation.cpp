@@ -4,7 +4,7 @@
 
 #include "mongo/platform/basic.h"
 
-#include "sasl_iam_server_conversation.h"
+#include "sasl_aws_server_conversation.h"
 
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
@@ -17,15 +17,15 @@
 #include "mongo/util/net/http_client.h"
 #include "mongo/util/text.h"
 
-#include "sasl/sasl_iam_server_protocol.h"
+#include "sasl/sasl_aws_server_protocol.h"
 
 namespace mongo {
 
-StatusWith<std::tuple<bool, std::string>> SaslIAMServerMechanism::stepImpl(OperationContext* opCtx,
+StatusWith<std::tuple<bool, std::string>> SaslAWSServerMechanism::stepImpl(OperationContext* opCtx,
                                                                            StringData inputData) {
     if (_step > 2) {
         return Status(ErrorCodes::AuthenticationFailed,
-                      str::stream() << "Invalid IAM authentication step: " << _step);
+                      str::stream() << "Invalid AWS authentication step: " << _step);
     }
 
     _step++;
@@ -41,21 +41,21 @@ StatusWith<std::tuple<bool, std::string>> SaslIAMServerMechanism::stepImpl(Opera
     }
 }
 
-StatusWith<std::tuple<bool, std::string>> SaslIAMServerMechanism::_firstStep(
+StatusWith<std::tuple<bool, std::string>> SaslAWSServerMechanism::_firstStep(
     OperationContext* opCtx, StringData inputData) {
 
-    std::string outputData = iam::generateServerFirst(inputData, &_serverNonce, &_cbFlag);
+    std::string outputData = awsIam::generateServerFirst(inputData, &_serverNonce, &_cbFlag);
 
     return std::make_tuple(false, std::move(outputData));
 }
 
-StatusWith<std::tuple<bool, std::string>> SaslIAMServerMechanism::_secondStep(
+StatusWith<std::tuple<bool, std::string>> SaslAWSServerMechanism::_secondStep(
     OperationContext* opCtx, StringData inputData) {
 
     // Set the principal name to the AWS Account ID so that if sts::getCallerIdentity fails,
     // we give the user a hint to which account failed.
     auto [headers, requestBody] =
-        iam::parseClientSecond(inputData, _serverNonce, _cbFlag, &_principalName);
+        awsIam::parseClientSecond(inputData, _serverNonce, _cbFlag, &_principalName);
 
     std::unique_ptr<HttpClient> request = HttpClient::create();
 
@@ -66,14 +66,14 @@ StatusWith<std::tuple<bool, std::string>> SaslIAMServerMechanism::_secondStep(
         request->allowInsecureHTTP(true);
     }
 
-    DataBuilder result = request->post(iam::saslIAMGlobalParams.awsSTSUrl, body);
+    DataBuilder result = request->post(awsIam::saslAWSGlobalParams.awsSTSUrl, body);
 
     ConstDataRange cdr = result.getCursor();
     StringData output;
     cdr.readInto<StringData>(&output);
 
     // Set the principal name to the ARN from AWS.
-    ServerMechanismBase::_principalName = iam::getUserId(output);
+    ServerMechanismBase::_principalName = awsIam::getUserId(output);
 
     return std::make_tuple(true, std::string());
 }
@@ -105,9 +105,9 @@ StatusWith<std::string> getHostFromURL(StringData str) {
     return host;
 }
 
-MONGO_INITIALIZER_WITH_PREREQUISITES(InitializeIAMServer, ("EndStartupOptionStorage"))
+MONGO_INITIALIZER_WITH_PREREQUISITES(InitializeAWSServer, ("EndStartupOptionStorage"))
 (InitializerContext* context) {
-    StringData str(iam::saslIAMGlobalParams.awsSTSUrl);
+    StringData str(awsIam::saslAWSGlobalParams.awsSTSUrl);
     if (!getTestCommandsEnabled()) {
         if (!str.empty() && !str.startsWith("https://")) {
             return Status(ErrorCodes::BadValue, "STS URL must start with https://");
@@ -119,14 +119,14 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(InitializeIAMServer, ("EndStartupOptionStor
         return swHost.getStatus();
     }
 
-    iam::saslIAMGlobalParams.awsSTSHost = swHost.getValue();
+    awsIam::saslAWSGlobalParams.awsSTSHost = swHost.getValue();
     return Status::OK();
 }
 
 ServiceContext::ConstructorActionRegisterer ldapRegisterer{
-    "IAMServerMechanismProxy", {"CreateSASLServerMechanismRegistry"}, [](ServiceContext* service) {
+    "AWSServerMechanismProxy", {"CreateSASLServerMechanismRegistry"}, [](ServiceContext* service) {
         auto& registry = SASLServerMechanismRegistry::get(service);
-        registry.registerFactory<IAMServerFactory>();
+        registry.registerFactory<AWSServerFactory>();
     }};
 
 }  // namespace

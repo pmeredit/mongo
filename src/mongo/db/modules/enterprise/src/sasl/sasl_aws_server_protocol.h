@@ -10,15 +10,15 @@
 #include <vector>
 
 #include "mongo/base/string_data.h"
-#include "mongo/client/sasl_iam_protocol_common.h"
+#include "mongo/client/sasl_aws_protocol_common.h"
 
 namespace mongo {
-namespace iam {
+namespace awsIam {
 
 /**
  * Server-side global parameters to control IAM Auth
  */
-struct SaslIAMGlobalParams {
+struct SaslAWSGlobalParams {
     /**
      * URL of Amazon STS Endpoint. Used to connect to STS.
      * Must start with https://
@@ -31,12 +31,12 @@ struct SaslIAMGlobalParams {
     std::string awsSTSHost;
 };
 
-extern SaslIAMGlobalParams saslIAMGlobalParams;
+extern SaslAWSGlobalParams saslAWSGlobalParams;
 
 /**
  * Generate server nonce. Used by unit tests.
  */
-std::array<char, iam::kServerFirstNoncePieceLength> generateServerNonce();
+std::array<char, awsIam::kServerFirstNoncePieceLength> generateServerNonce();
 
 /**
  * Parse the IAM Auth client first message and then generate the server first message.
@@ -92,5 +92,5 @@ std::string getUserId(StringData request);
  */
 std::string getSimplifiedARN(StringData arn);
 
-}  // namespace iam
+}  // namespace awsIam
 }  // namespace mongo

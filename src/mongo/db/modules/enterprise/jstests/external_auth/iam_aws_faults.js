@@ -13,7 +13,7 @@ mock_sts.start();
 const conn = MongoRunner.runMongod({
     setParameter: {
         "awsSTSUrl": mock_sts.getURL(),
-        "authenticationMechanisms": "MONGODB-IAM,SCRAM-SHA-256",
+        "authenticationMechanisms": "MONGODB-AWS,SCRAM-SHA-256",
     },
     auth: "",
 });
@@ -27,7 +27,7 @@ assert.commandWorked(external.runCommand({createUser: MOCK_AWS_ACCOUNT_ARN, role
 
 assert(
     external.auth(
-        {user: MOCK_AWS_ACCOUNT_ID, pwd: MOCK_AWS_ACCOUNT_SECRET_KEY, mechanism: 'MONGODB-IAM'}) ==
+        {user: MOCK_AWS_ACCOUNT_ID, pwd: MOCK_AWS_ACCOUNT_SECRET_KEY, mechanism: 'MONGODB-AWS'}) ==
     0);
 
 mock_sts.stop();

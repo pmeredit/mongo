@@ -17,7 +17,7 @@ mock_ec2.start();
 const conn = MongoRunner.runMongod({
     setParameter: {
         "awsSTSUrl": mock_sts.getURL(),
-        "authenticationMechanisms": "MONGODB-IAM,SCRAM-SHA-256",
+        "authenticationMechanisms": "MONGODB-AWS,SCRAM-SHA-256",
     },
     auth: "",
 });
@@ -36,7 +36,7 @@ const smoke = runMongoProgram("mongo",
                               "--port",
                               conn.port,
                               '--authenticationMechanism',
-                              'MONGODB-IAM',
+                              'MONGODB-AWS',
                               '--authenticationDatabase',
                               '$external',
                               '--setShellParameter',
@@ -53,13 +53,13 @@ const smoke_auth =
                     "--port",
                     conn.port,
                     '--authenticationMechanism',
-                    'MONGODB-IAM',
+                    'MONGODB-AWS',
                     '-authenticationDatabase',
                     '$external',
                     '--setShellParameter',
                     "awsEC2InstanceMetadataUrl=" + mock_ec2.getURL(),
                     "--eval",
-                    "assert(db.getSiblingDB('$external').auth({mechanism: 'MONGODB-IAM'}))");
+                    "assert(db.getSiblingDB('$external').auth({mechanism: 'MONGODB-AWS'}))");
 assert.eq(smoke_auth, 0, "Could not auth with smoke_auth user");
 
 mock_ec2.stop();
