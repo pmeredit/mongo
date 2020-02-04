@@ -2,6 +2,7 @@
 # which is required for some encrypted storage engine tests
 
 import logging
+import sys
 
 from kmip.services.kmip_server import KMIPServer
 
@@ -9,9 +10,18 @@ def main():
 
     logger = logging.getLogger(__name__)
 
+    kmip_port = 6666
+    print(sys.argv)
+    if len(sys.argv) >= 2:
+        try:
+            kmip_port = int(sys.argv[1])
+        except ValueError:
+            print("KMIP port must be an integer")
+            sys.exit(1)
+
     server = KMIPServer(
         host="127.0.0.1",
-        port=6666,
+        port=kmip_port,
         keyfile="jstests/libs/server.pem",
         certfile="jstests/libs/server.pem",
         cert_reqs="CERT_REQUIRED",

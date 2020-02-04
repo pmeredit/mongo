@@ -17,6 +17,7 @@
 #include "mongo/base/initializer.h"
 #include "mongo/base/secure_allocator.h"
 #include "mongo/base/status_with.h"
+#include "mongo/db/service_context.h"
 #include "mongo/util/exit_code.h"
 #include "mongo/util/net/ssl_options.h"
 #include "mongo/util/quick_exit.h"
@@ -33,6 +34,8 @@ int decryptToolMain(int argc, char* argv[], char** envp) {
     setupSignalHandlers();
     runGlobalInitializersOrDie(argc, argv, envp);
     startSignalProcessingThread();
+
+    setGlobalServiceContext(ServiceContext::make());
 
     StatusWith<std::unique_ptr<SymmetricKey>> swDecryptKey =
         Status(ErrorCodes::InternalError, "Failed to find a valid source of keys");
