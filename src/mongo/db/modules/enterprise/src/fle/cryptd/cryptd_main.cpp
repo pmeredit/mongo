@@ -74,8 +74,8 @@ void createLockFile(ServiceContext* serviceContext) {
         lockFile.emplace(file.parent_path().generic_string(), file.filename().generic_string());
     } catch (const std::exception& ex) {
         error() << "Unable to determine status of lock file in the data directory "
-                << file.generic_string() << ": " << ex.what(),
-            _exit(EXIT_FAILURE);
+                << file.generic_string() << ": " << ex.what();
+        _exit(EXIT_FAILURE);
     }
 
     const auto openStatus = lockFile->open();
