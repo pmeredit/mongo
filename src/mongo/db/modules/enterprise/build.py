@@ -22,7 +22,7 @@ def configure(conf, env):
         "audit",
         "encryptdb",
         "fle",
-        "search_beta",
+        "search",
         "hot_backups",
         "inmemory",
         "ldap",
@@ -49,8 +49,8 @@ def configure(conf, env):
 
         if 'sasl' in selected_features and not 'ldap' in selected_features:
             env.ConfError("the sasl enterprise feature depends on the ldap enterprise feature")
-        if 'search_beta' in selected_features and not 'fle' in selected_features:
-            env.ConfError("the search_beta enterprise feature depends on the fle enterprise "
+        if 'search' in selected_features and not 'fle' in selected_features:
+            env.ConfError("the search enterprise feature depends on the fle enterprise "
                           "feature")
         configured_modules.extend(selected_features)
 

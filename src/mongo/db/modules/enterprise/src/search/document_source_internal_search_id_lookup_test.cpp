@@ -8,7 +8,7 @@
 #include <deque>
 #include <vector>
 
-#include "document_source_internal_search_beta_id_lookup.h"
+#include "document_source_internal_search_id_lookup.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
@@ -29,12 +29,12 @@ using std::vector;
 
 using MockMongoInterface = StubLookupSingleDocumentProcessInterface;
 
-class InternalSearchBetaIdLookupTest : public ServiceContextTest {
+class InternalSearchIdLookupTest : public ServiceContextTest {
 public:
-    InternalSearchBetaIdLookupTest()
-        : InternalSearchBetaIdLookupTest(NamespaceString("unittests.pipeline_test")) {}
+    InternalSearchIdLookupTest()
+        : InternalSearchIdLookupTest(NamespaceString("unittests.pipeline_test")) {}
 
-    InternalSearchBetaIdLookupTest(NamespaceString nss) {
+    InternalSearchIdLookupTest(NamespaceString nss) {
         _expCtx = new ExpressionContext(_opCtx.get(), nullptr);
         _expCtx->ns = std::move(nss);
         unittest::TempDir tempDir("AggregationContextFixture");
@@ -53,14 +53,14 @@ private:
     boost::intrusive_ptr<ExpressionContext> _expCtx;
 };
 
-TEST_F(InternalSearchBetaIdLookupTest, ShouldSkipResultsWhenIdNotFound) {
+TEST_F(InternalSearchIdLookupTest, ShouldSkipResultsWhenIdNotFound) {
     auto expCtx = getExpCtx();
     expCtx->uuid = UUID::gen();
-    auto specObj = BSON("$_internalSearchBetaIdLookup" << BSONObj());
+    auto specObj = BSON("$_internalSearchIdLookup" << BSONObj());
     auto spec = specObj.firstElement();
 
     // Set up the idLookup stage.
-    auto idLookupStages = DocumentSourceInternalSearchBetaIdLookUp::createFromBson(spec, expCtx);
+    auto idLookupStages = DocumentSourceInternalSearchIdLookUp::createFromBson(spec, expCtx);
     auto idLookupStage = idLookupStages.front();
 
     // Mock its input.
@@ -82,7 +82,7 @@ TEST_F(InternalSearchBetaIdLookupTest, ShouldSkipResultsWhenIdNotFound) {
     ASSERT_TRUE(idLookupStage->getNext().isEOF());
 }
 
-TEST_F(InternalSearchBetaIdLookupTest, ShouldNotRemoveMetadata) {
+TEST_F(InternalSearchIdLookupTest, ShouldNotRemoveMetadata) {
     auto expCtx = getExpCtx();
     expCtx->uuid = UUID::gen();
 
@@ -92,10 +92,10 @@ TEST_F(InternalSearchBetaIdLookupTest, ShouldNotRemoveMetadata) {
     DocumentSourceMock mockLocalSource({docOne.freeze()}, expCtx);
 
     // Set up the idLookup stage.
-    auto specObj = BSON("$_internalSearchBetaIdLookup" << BSONObj());
+    auto specObj = BSON("$_internalSearchIdLookup" << BSONObj());
     auto spec = specObj.firstElement();
 
-    auto idLookupStages = DocumentSourceInternalSearchBetaIdLookUp::createFromBson(spec, expCtx);
+    auto idLookupStages = DocumentSourceInternalSearchIdLookUp::createFromBson(spec, expCtx);
     auto idLookupStage = idLookupStages.front();
     idLookupStage->setSource(&mockLocalSource);
 
@@ -119,11 +119,11 @@ TEST_F(InternalSearchBetaIdLookupTest, ShouldNotRemoveMetadata) {
     ASSERT_TRUE(idLookupStage->getNext().isEOF());
 }
 
-TEST_F(InternalSearchBetaIdLookupTest, ShouldParseFromSerialized) {
+TEST_F(InternalSearchIdLookupTest, ShouldParseFromSerialized) {
     auto expCtx = getExpCtx();
     expCtx->uuid = UUID::gen();
 
-    DocumentSourceInternalSearchBetaIdLookUp idLookupStage(expCtx);
+    DocumentSourceInternalSearchIdLookUp idLookupStage(expCtx);
 
     // Serialize the idLookup stage, as we would on mongos.
     vector<Value> serialization;
@@ -131,65 +131,65 @@ TEST_F(InternalSearchBetaIdLookupTest, ShouldParseFromSerialized) {
     ASSERT_EQ(serialization.size(), 1UL);
     ASSERT_EQ(serialization[0].getType(), BSONType::Object);
 
-    BSONObj spec = BSON("$_internalSearchBetaIdLookup" << BSONObj());
+    BSONObj spec = BSON("$_internalSearchIdLookup" << BSONObj());
     ASSERT_BSONOBJ_EQ(serialization[0].getDocument().toBson(), spec);
 
     // On mongod we should be able to re-parse it.
     expCtx->inMongos = false;
     auto idLookupStages =
-        DocumentSourceInternalSearchBetaIdLookUp::createFromBson(spec.firstElement(), expCtx);
+        DocumentSourceInternalSearchIdLookUp::createFromBson(spec.firstElement(), expCtx);
 
     // Mongod will add the shard filter here. See other tests for more specific coverage for
     // that behavior.
     ASSERT_EQ(idLookupStages.size(), 2u);
 }
 
-TEST_F(InternalSearchBetaIdLookupTest, ShouldFailParsingWhenSpecNotEmptyObject) {
+TEST_F(InternalSearchIdLookupTest, ShouldFailParsingWhenSpecNotEmptyObject) {
     auto expCtx = getExpCtx();
     expCtx->uuid = UUID::gen();
 
     ASSERT_THROWS_CODE(
-        DocumentSourceInternalSearchBetaIdLookUp::createFromBson(BSON("$_internalSearchBetaIdLookup"
-                                                                      << "string spec")
-                                                                     .firstElement(),
-                                                                 expCtx),
+        DocumentSourceInternalSearchIdLookUp::createFromBson(BSON("$_internalSearchIdLookup"
+                                                                  << "string spec")
+                                                                 .firstElement(),
+                                                             expCtx),
         AssertionException,
         31016);
 
-    ASSERT_THROWS_CODE(DocumentSourceInternalSearchBetaIdLookUp::createFromBson(
-                           BSON("$_internalSearchBetaIdLookup" << 42).firstElement(), expCtx),
+    ASSERT_THROWS_CODE(DocumentSourceInternalSearchIdLookUp::createFromBson(
+                           BSON("$_internalSearchIdLookup" << 42).firstElement(), expCtx),
                        AssertionException,
                        31016);
 
-    ASSERT_THROWS_CODE(DocumentSourceInternalSearchBetaIdLookUp::createFromBson(
-                           BSON("$_internalSearchBetaIdLookup" << BSON("not"
-                                                                       << "empty"))
+    ASSERT_THROWS_CODE(DocumentSourceInternalSearchIdLookUp::createFromBson(
+                           BSON("$_internalSearchIdLookup" << BSON("not"
+                                                                   << "empty"))
                                .firstElement(),
                            expCtx),
                        AssertionException,
                        31016);
 
-    ASSERT_THROWS_CODE(DocumentSourceInternalSearchBetaIdLookUp::createFromBson(
-                           BSON("$_internalSearchBetaIdLookup" << true).firstElement(), expCtx),
+    ASSERT_THROWS_CODE(DocumentSourceInternalSearchIdLookUp::createFromBson(
+                           BSON("$_internalSearchIdLookup" << true).firstElement(), expCtx),
                        AssertionException,
                        31016);
 
     ASSERT_THROWS_CODE(
-        DocumentSourceInternalSearchBetaIdLookUp::createFromBson(
-            BSON("$_internalSearchBetaIdLookup" << OID("54651022bffebc03098b4567")).firstElement(),
+        DocumentSourceInternalSearchIdLookUp::createFromBson(
+            BSON("$_internalSearchIdLookup" << OID("54651022bffebc03098b4567")).firstElement(),
             expCtx),
         AssertionException,
         31016);
 }
 
-TEST_F(InternalSearchBetaIdLookupTest, ShouldAllowStringOrObjectIdValues) {
+TEST_F(InternalSearchIdLookupTest, ShouldAllowStringOrObjectIdValues) {
     auto expCtx = getExpCtx();
     expCtx->uuid = UUID::gen();
-    auto specObj = BSON("$_internalSearchBetaIdLookup" << BSONObj());
+    auto specObj = BSON("$_internalSearchIdLookup" << BSONObj());
     auto spec = specObj.firstElement();
 
     // Set up the idLookup stage.
-    auto idLookupStages = DocumentSourceInternalSearchBetaIdLookUp::createFromBson(spec, expCtx);
+    auto idLookupStages = DocumentSourceInternalSearchIdLookUp::createFromBson(spec, expCtx);
     auto idLookupStage = idLookupStages.front();
 
     // Mock its input.
@@ -220,14 +220,14 @@ TEST_F(InternalSearchBetaIdLookupTest, ShouldAllowStringOrObjectIdValues) {
     ASSERT_TRUE(idLookupStage->getNext().isEOF());
 }
 
-TEST_F(InternalSearchBetaIdLookupTest, ShouldNotErrorOnEmptyResult) {
+TEST_F(InternalSearchIdLookupTest, ShouldNotErrorOnEmptyResult) {
     auto expCtx = getExpCtx();
     expCtx->uuid = UUID::gen();
-    auto specObj = BSON("$_internalSearchBetaIdLookup" << BSONObj());
+    auto specObj = BSON("$_internalSearchIdLookup" << BSONObj());
     auto spec = specObj.firstElement();
 
     // Set up the idLookup stage.
-    auto idLookupStages = DocumentSourceInternalSearchBetaIdLookUp::createFromBson(spec, expCtx);
+    auto idLookupStages = DocumentSourceInternalSearchIdLookUp::createFromBson(spec, expCtx);
     auto idLookupStage = idLookupStages.front();
 
     // Mock its input.
@@ -242,33 +242,33 @@ TEST_F(InternalSearchBetaIdLookupTest, ShouldNotErrorOnEmptyResult) {
     ASSERT_TRUE(idLookupStage->getNext().isEOF());
 }
 
-TEST_F(InternalSearchBetaIdLookupTest, IncludesShardFilterOnMongod) {
+TEST_F(InternalSearchIdLookupTest, IncludesShardFilterOnMongod) {
     auto expCtx = getExpCtx();
     expCtx->uuid = UUID::gen();
     expCtx->inMongos = false;
-    auto specObj = BSON("$_internalSearchBetaIdLookup" << BSONObj());
+    auto specObj = BSON("$_internalSearchIdLookup" << BSONObj());
     auto spec = specObj.firstElement();
 
     // Parsing the _id lookup stage should resolve to an _id lookup stage followed by a shard
     // filter.
-    auto idLookupStages = DocumentSourceInternalSearchBetaIdLookUp::createFromBson(spec, expCtx);
+    auto idLookupStages = DocumentSourceInternalSearchIdLookUp::createFromBson(spec, expCtx);
     ASSERT_EQ(idLookupStages.size(), 2u);
     ASSERT(dynamic_cast<DocumentSourceInternalShardFilter*>(idLookupStages.back().get()) !=
            nullptr);
 }
 
-TEST_F(InternalSearchBetaIdLookupTest, NoShardFilterOnMongos) {
+TEST_F(InternalSearchIdLookupTest, NoShardFilterOnMongos) {
     auto expCtx = getExpCtx();
     expCtx->uuid = UUID::gen();
     expCtx->inMongos = true;
-    auto specObj = BSON("$_internalSearchBetaIdLookup" << BSONObj());
+    auto specObj = BSON("$_internalSearchIdLookup" << BSONObj());
     auto spec = specObj.firstElement();
 
     expCtx->mongoProcessInterface =
         std::make_unique<MockMongoInterface>(std::deque<DocumentSource::GetNextResult>());
 
     // We should be able to parse this stage on mongos, though no shard filter will be added.
-    auto idLookupStages = DocumentSourceInternalSearchBetaIdLookUp::createFromBson(spec, expCtx);
+    auto idLookupStages = DocumentSourceInternalSearchIdLookUp::createFromBson(spec, expCtx);
     ASSERT_EQ(idLookupStages.size(), 1u);
 }
 

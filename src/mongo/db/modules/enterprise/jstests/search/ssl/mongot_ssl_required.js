@@ -3,7 +3,7 @@
  */
 (function() {
 "use strict";
-load("src/mongo/db/modules/enterprise/jstests/search_beta/lib/mongotmock.js");
+load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
 load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
 
 // Set up mongotmock and point the mongod to it.
@@ -19,12 +19,12 @@ const conn = MongoRunner.runMongod({
 });
 
 const db = conn.getDB("test");
-const collName = "search_beta";
+const collName = "search";
 db[collName].drop();
 assert.commandWorked(db[collName].insert({"_id": 1, "title": "cakes"}));
 
 const collUUID = getUUIDFromListCollections(db, collName);
-const searchBetaQuery = {
+const searchQuery = {
     query: "cakes",
     path: "title"
 };
@@ -32,11 +32,11 @@ const searchBetaQuery = {
 // Give mongotmock some stuff to return.
 {
     const cursorId = NumberLong(123);
-    const searchBetaCmd =
-        {searchBeta: collName, collectionUUID: collUUID, query: searchBetaQuery, $db: "test"};
+    const searchCmd =
+        {searchBeta: collName, collectionUUID: collUUID, query: searchQuery, $db: "test"};
     const history = [
         {
-            expectedCommand: searchBetaCmd,
+            expectedCommand: searchCmd,
             response: {
                 cursor: {
                     id: NumberLong(0),
@@ -52,8 +52,8 @@ const searchBetaQuery = {
         mongotConn.adminCommand({setMockResponses: 1, cursorId: cursorId, history: history}));
 }
 
-// Perform a $searchBeta query.
-let cursor = db[collName].aggregate([{$searchBeta: searchBetaQuery}]);
+// Perform a $search query.
+let cursor = db[collName].aggregate([{$search: searchQuery}]);
 
 const expected = [
     {"_id": 1, "title": "cakes"},

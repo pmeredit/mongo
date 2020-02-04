@@ -7,9 +7,9 @@
 #include <boost/intrusive_ptr.hpp>
 #include <vector>
 
-#include "document_source_internal_search_beta_id_lookup.h"
-#include "document_source_internal_search_beta_mongot_remote.h"
-#include "document_source_search_beta.h"
+#include "document_source_internal_search_id_lookup.h"
+#include "document_source_internal_search_mongot_remote.h"
+#include "document_source_search.h"
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/exec/document_value/value.h"
@@ -26,25 +26,25 @@ using boost::intrusive_ptr;
 using std::list;
 using std::vector;
 
-using SearchBetaTest = AggregationContextFixture;
+using SearchTest = AggregationContextFixture;
 
-TEST_F(SearchBetaTest, ShouldSerializeAndExplainAtQueryPlannerVerbosity) {
+TEST_F(SearchTest, ShouldSerializeAndExplainAtQueryPlannerVerbosity) {
     const auto mongotQuery = fromjson("{term: 'asdf'}");
-    const auto stageObj = BSON("$searchBeta" << mongotQuery);
+    const auto stageObj = BSON("$search" << mongotQuery);
 
     auto expCtx = getExpCtx();
     expCtx->uuid = UUID::gen();
 
     list<intrusive_ptr<DocumentSource>> results =
-        DocumentSourceSearchBeta::createFromBson(stageObj.firstElement(), expCtx);
+        DocumentSourceSearch::createFromBson(stageObj.firstElement(), expCtx);
     ASSERT_EQUALS(results.size(), 2UL);
 
     const auto* mongotRemoteStage =
-        dynamic_cast<DocumentSourceInternalSearchBetaMongotRemote*>(results.front().get());
+        dynamic_cast<DocumentSourceInternalSearchMongotRemote*>(results.front().get());
     ASSERT(mongotRemoteStage);
 
     const auto* idLookupStage =
-        dynamic_cast<DocumentSourceInternalSearchBetaIdLookUp*>(results.back().get());
+        dynamic_cast<DocumentSourceInternalSearchIdLookUp*>(results.back().get());
     ASSERT(idLookupStage);
 
     auto explain = ExplainOptions::Verbosity::kQueryPlanner;
@@ -55,30 +55,30 @@ TEST_F(SearchBetaTest, ShouldSerializeAndExplainAtQueryPlannerVerbosity) {
 
     auto mongotRemoteExplain = explainedStages[0];
     ASSERT_DOCUMENT_EQ(mongotRemoteExplain.getDocument(),
-                       Document({{"$_internalSearchBetaMongotRemote", Document(mongotQuery)}}));
+                       Document({{"$_internalSearchMongotRemote", Document(mongotQuery)}}));
 
     auto idLookupExplain = explainedStages[1];
     ASSERT_DOCUMENT_EQ(idLookupExplain.getDocument(),
-                       Document({{"$_internalSearchBetaIdLookup", Document()}}));
+                       Document({{"$_internalSearchIdLookup", Document()}}));
 }
 
-TEST_F(SearchBetaTest, ShouldSerializeAndExplainAtUnspecifiedVerbosity) {
+TEST_F(SearchTest, ShouldSerializeAndExplainAtUnspecifiedVerbosity) {
     const auto mongotQuery = fromjson("{term: 'asdf'}");
-    const auto stageObj = BSON("$searchBeta" << mongotQuery);
+    const auto stageObj = BSON("$search" << mongotQuery);
 
     auto expCtx = getExpCtx();
     expCtx->uuid = UUID::gen();
 
     list<intrusive_ptr<DocumentSource>> results =
-        DocumentSourceSearchBeta::createFromBson(stageObj.firstElement(), expCtx);
+        DocumentSourceSearch::createFromBson(stageObj.firstElement(), expCtx);
     ASSERT_EQUALS(results.size(), 2UL);
 
     const auto* mongotRemoteStage =
-        dynamic_cast<DocumentSourceInternalSearchBetaMongotRemote*>(results.front().get());
+        dynamic_cast<DocumentSourceInternalSearchMongotRemote*>(results.front().get());
     ASSERT(mongotRemoteStage);
 
     const auto* idLookupStage =
-        dynamic_cast<DocumentSourceInternalSearchBetaIdLookUp*>(results.back().get());
+        dynamic_cast<DocumentSourceInternalSearchIdLookUp*>(results.back().get());
     ASSERT(idLookupStage);
 
     auto explain = boost::none;
@@ -89,19 +89,18 @@ TEST_F(SearchBetaTest, ShouldSerializeAndExplainAtUnspecifiedVerbosity) {
 
     auto mongotRemoteExplain = explainedStages[0];
     ASSERT_DOCUMENT_EQ(mongotRemoteExplain.getDocument(),
-                       Document({{"$_internalSearchBetaMongotRemote", Document(mongotQuery)}}));
+                       Document({{"$_internalSearchMongotRemote", Document(mongotQuery)}}));
 
     auto idLookupExplain = explainedStages[1];
     ASSERT_DOCUMENT_EQ(idLookupExplain.getDocument(),
-                       Document({{"$_internalSearchBetaIdLookup", Document()}}));
+                       Document({{"$_internalSearchIdLookup", Document()}}));
 }
 
-TEST_F(SearchBetaTest, ShouldFailToParseIfSpecIsNotObject) {
-    const auto specObj = fromjson("{$searchBeta: 1}");
-    ASSERT_THROWS_CODE(
-        DocumentSourceSearchBeta::createFromBson(specObj.firstElement(), getExpCtx()),
-        AssertionException,
-        ErrorCodes::FailedToParse);
+TEST_F(SearchTest, ShouldFailToParseIfSpecIsNotObject) {
+    const auto specObj = fromjson("{$search: 1}");
+    ASSERT_THROWS_CODE(DocumentSourceSearch::createFromBson(specObj.firstElement(), getExpCtx()),
+                       AssertionException,
+                       ErrorCodes::FailedToParse);
 }
 
 }  // namespace

@@ -4,7 +4,7 @@
 
 #include "mongo/platform/basic.h"
 
-#include "document_source_internal_search_beta_mongot_remote.h"
+#include "document_source_internal_search_mongot_remote.h"
 
 #include "mongo/db/curop.h"
 #include "mongo/db/exec/document_value/document.h"
@@ -22,27 +22,27 @@ using boost::intrusive_ptr;
 using executor::RemoteCommandRequest;
 using executor::TaskExecutorCursor;
 
-REGISTER_DOCUMENT_SOURCE(_internalSearchBetaMongotRemote,
-                         DocumentSourceInternalSearchBetaMongotRemote::LiteParsed::parse,
-                         DocumentSourceInternalSearchBetaMongotRemote::createFromBson);
+REGISTER_DOCUMENT_SOURCE(_internalSearchMongotRemote,
+                         DocumentSourceInternalSearchMongotRemote::LiteParsed::parse,
+                         DocumentSourceInternalSearchMongotRemote::createFromBson);
 
-MONGO_FAIL_POINT_DEFINE(searchBetaReturnEofImmediately);
+MONGO_FAIL_POINT_DEFINE(searchReturnEofImmediately);
 
-const char* DocumentSourceInternalSearchBetaMongotRemote::getSourceName() const {
+const char* DocumentSourceInternalSearchMongotRemote::getSourceName() const {
     return kStageName.rawData();
 }
 
-Value DocumentSourceInternalSearchBetaMongotRemote::serialize(
+Value DocumentSourceInternalSearchMongotRemote::serialize(
     boost::optional<ExplainOptions::Verbosity> explain) const {
-    return Value(DOC(getSourceName() << Document(_searchBetaQuery)));
+    return Value(DOC(getSourceName() << Document(_searchQuery)));
 }
 
-void DocumentSourceInternalSearchBetaMongotRemote::populateCursor() {
+void DocumentSourceInternalSearchMongotRemote::populateCursor() {
     invariant(!_cursor);
 
     uassert(31082,
-            str::stream() << "$searchBeta not enabled! "
-                          << "Enable SearchBeta by setting serverParameter mongotHost to a valid "
+            str::stream() << "$search not enabled! "
+                          << "Enable Search by setting serverParameter mongotHost to a valid "
                           << "\"host:port\" string",
             globalMongotParams.enabled);
     auto swHostAndPort = HostAndPort::parse(globalMongotParams.host);
@@ -52,7 +52,7 @@ void DocumentSourceInternalSearchBetaMongotRemote::populateCursor() {
 
     RemoteCommandRequest rcr(RemoteCommandRequest(swHostAndPort.getValue(),
                                                   pExpCtx->ns.db().toString(),
-                                                  commandObject(_searchBetaQuery, pExpCtx),
+                                                  commandObject(_searchQuery, pExpCtx),
                                                   pExpCtx->opCtx));
     rcr.sslMode = transport::ConnectSSLMode::kDisableSSL;
 
@@ -62,7 +62,7 @@ void DocumentSourceInternalSearchBetaMongotRemote::populateCursor() {
 /**
  * Gets the next result from mongot using a TaskExecutorCursor and add an error context if any.
  */
-boost::optional<BSONObj> DocumentSourceInternalSearchBetaMongotRemote::_getNext() {
+boost::optional<BSONObj> DocumentSourceInternalSearchMongotRemote::_getNext() {
     try {
         return _cursor->getNext(pExpCtx->opCtx);
     } catch (DBException& ex) {
@@ -74,8 +74,8 @@ boost::optional<BSONObj> DocumentSourceInternalSearchBetaMongotRemote::_getNext(
 /**
  * Gets the next result from mongot using a TaskExecutorCursor.
  */
-DocumentSource::GetNextResult DocumentSourceInternalSearchBetaMongotRemote::doGetNext() {
-    if (MONGO_unlikely(searchBetaReturnEofImmediately.shouldFail())) {
+DocumentSource::GetNextResult DocumentSourceInternalSearchMongotRemote::doGetNext() {
+    if (MONGO_unlikely(searchReturnEofImmediately.shouldFail())) {
         return DocumentSource::GetNextResult::makeEOF();
     }
 
@@ -111,16 +111,18 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchBetaMongotRemote::doGe
     return Document::fromBsonWithMetaData(response.get());
 }
 
-intrusive_ptr<DocumentSource> DocumentSourceInternalSearchBetaMongotRemote::createFromBson(
+intrusive_ptr<DocumentSource> DocumentSourceInternalSearchMongotRemote::createFromBson(
     BSONElement elem, const intrusive_ptr<ExpressionContext>& expCtx) {
-    uassert(31067, "SearchBeta argument must be an object.", elem.type() == BSONType::Object);
+    uassert(31067, "Search argument must be an object.", elem.type() == BSONType::Object);
     auto serviceContext = expCtx->opCtx->getServiceContext();
-    return new DocumentSourceInternalSearchBetaMongotRemote(
+    return new DocumentSourceInternalSearchMongotRemote(
         elem.embeddedObject(), expCtx, executor::getMongotTaskExecutor(serviceContext));
 }
 
-BSONObj DocumentSourceInternalSearchBetaMongotRemote::commandObject(
+BSONObj DocumentSourceInternalSearchMongotRemote::commandObject(
     const BSONObj& query, const intrusive_ptr<ExpressionContext>& expCtx) {
+    // TODO SERVER-46003: Once mongot supports the "search" command, we should switch to using
+    //  "search" instead of "searchBeta" for communication with mongot.
     return BSON("searchBeta" << expCtx->ns.coll() << "collectionUUID" << expCtx->uuid.get()
                              << "query" << query);
 }

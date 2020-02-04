@@ -71,9 +71,9 @@ public:
                                 BSONObjBuilder* result) const = 0;
 };
 
-class MongotMockSearchBeta final : public MongotMockBaseCmd {
+class MongotMockSearch final : public MongotMockBaseCmd {
 public:
-    MongotMockSearchBeta() : MongotMockBaseCmd("searchBeta") {}
+    MongotMockSearch() : MongotMockBaseCmd("searchBeta") {}
 
     void processCommand(OperationContext* opCtx,
                         const std::string& dbname,
@@ -83,7 +83,7 @@ public:
 
         CursorState* state = stateGuard->claimAvailableState();
         uassert(31094,
-                str::stream() << "Cannot run searchBeta as there are no remaining unclaimed mock "
+                str::stream() << "Cannot run search as there are no remaining unclaimed mock "
                                  "cursor states. Received command: "
                               << cmdObj,
                 state);
@@ -100,7 +100,7 @@ public:
         // Pop the first response.
         state->popNextCommandResponsePair();
     }
-} cmdMongotMockSearchBeta;
+} cmdMongotMockSearch;
 
 
 class MongotMockGetMore final : public MongotMockBaseCmd {
@@ -126,7 +126,7 @@ public:
                 cursorState->hasNextCursorResponse());
         uassert(31088,
                 str::stream() << "Cannot run getMore on cursor id " << cursorId
-                              << "without having run searchBeta",
+                              << "without having run search",
                 cursorState->claimed());
 
         auto cmdResponsePair = cursorState->peekNextCommandResponsePair();
@@ -164,7 +164,7 @@ public:
                 cursorState);
         uassert(31093,
                 str::stream() << "Cannot run killCursors on cursor id " << cursorId
-                              << "without having run searchBeta",
+                              << "without having run search",
                 cursorState->claimed());
 
         auto cmdResponsePair = cursorState->peekNextCommandResponsePair();

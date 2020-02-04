@@ -1,5 +1,5 @@
 /**
- * Test error conditions for the `$searchBeta` and `$_internalSearchBetaMongotRemote` aggregation
+ * Test error conditions for the `$search` and `$_internalSearchMongotRemote` aggregation
  * pipeline stages.
  */
 
@@ -11,7 +11,7 @@ rst.startSet();
 rst.initiate();
 
 const dbName = "test";
-const collName = "search_beta_error_cases";
+const collName = "search_error_cases";
 const testDB = rst.getPrimary().getDB(dbName);
 testDB.dropDatabase();
 
@@ -19,42 +19,42 @@ assert.commandWorked(testDB[collName].insert({_id: 0}));
 assert.commandWorked(testDB[collName].insert({_id: 1}));
 assert.commandWorked(testDB[collName].insert({_id: 2}));
 
-// $_internalSearchBetaMongotRemote cannot be used inside a transaction.
+// $_internalSearchMongotRemote cannot be used inside a transaction.
 let session = testDB.getMongo().startSession({readConcern: {level: "local"}});
 let sessionDb = session.getDatabase(dbName);
 
 session.startTransaction();
 assert.commandFailedWithCode(
     sessionDb.runCommand(
-        {aggregate: collName, pipeline: [{$_internalSearchBetaMongotRemote: {}}], cursor: {}}),
+        {aggregate: collName, pipeline: [{$_internalSearchMongotRemote: {}}], cursor: {}}),
     ErrorCodes.OperationNotSupportedInTransaction);
 session.endSession();
 
-// $_internalSearchBetaMongotRemote cannot be used inside a $facet subpipeline.
-let pipeline = [{$facet: {originalPipeline: [{$_internalSearchBetaMongotRemote: {}}]}}];
+// $_internalSearchMongotRemote cannot be used inside a $facet subpipeline.
+let pipeline = [{$facet: {originalPipeline: [{$_internalSearchMongotRemote: {}}]}}];
 let cmdObj = {aggregate: collName, pipeline: pipeline, cursor: {}};
 
 assert.commandFailedWithCode(testDB.runCommand(cmdObj), 40600);
 
-// $_internalSearchBetaMongotRemote is only valid as the first stage in a pipeline.
+// $_internalSearchMongotRemote is only valid as the first stage in a pipeline.
 assert.commandFailedWithCode(testDB.runCommand({
     aggregate: collName,
-    pipeline: [{$match: {}}, {$_internalSearchBetaMongotRemote: {}}],
+    pipeline: [{$match: {}}, {$_internalSearchMongotRemote: {}}],
     cursor: {},
 }),
                              40602);
 
-// $searchBeta cannot be used inside a transaction.
+// $search cannot be used inside a transaction.
 session = testDB.getMongo().startSession({readConcern: {level: "local"}});
 sessionDb = session.getDatabase(dbName);
 session.startTransaction();
 assert.commandFailedWithCode(
-    sessionDb.runCommand({aggregate: collName, pipeline: [{$searchBeta: {}}], cursor: {}}),
+    sessionDb.runCommand({aggregate: collName, pipeline: [{$search: {}}], cursor: {}}),
     ErrorCodes.OperationNotSupportedInTransaction);
 session.endSession();
 
-// $searchBeta cannot be used inside a $facet subpipeline.
-pipeline = [{$facet: {originalPipeline: [{$searchBeta: {}}]}}];
+// $search cannot be used inside a $facet subpipeline.
+pipeline = [{$facet: {originalPipeline: [{$search: {}}]}}];
 cmdObj = {
     aggregate: collName,
     pipeline: pipeline,
@@ -63,10 +63,10 @@ cmdObj = {
 
 assert.commandFailedWithCode(testDB.runCommand(cmdObj), 40600);
 
-// $searchBeta is only valid as the first stage in a pipeline.
+// $search is only valid as the first stage in a pipeline.
 assert.commandFailedWithCode(testDB.runCommand({
     aggregate: collName,
-    pipeline: [{$match: {}}, {$searchBeta: {}}],
+    pipeline: [{$match: {}}, {$search: {}}],
     cursor: {},
 }),
                              40602);

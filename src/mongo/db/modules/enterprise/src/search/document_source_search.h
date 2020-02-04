@@ -9,12 +9,12 @@
 namespace mongo {
 
 /**
- * The $searchBeta stage is an alias for [$_internalSearchBetaMongotRemote,
- * $_internalSearchBetaIdLookup] stages associated with an $searchBeta query.
+ * The $search stage is an alias for [$_internalSearchMongotRemote,
+ * $_internalSearchIdLookup] stages associated with an $search query.
  */
-class DocumentSourceSearchBeta final {
+class DocumentSourceSearch final {
 public:
-    static constexpr StringData kStageName = "$searchBeta"_sd;
+    static constexpr StringData kStageName = "$search"_sd;
 
     static std::list<boost::intrusive_ptr<DocumentSource>> createFromBson(
         BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& pExpCtx);
@@ -57,9 +57,9 @@ public:
     const char* getSourceName() const;
 
 private:
-    // It is illegal to construct a DocumentSourceSearchBeta directly, use createFromBson()
+    // It is illegal to construct a DocumentSourceSearch directly, use createFromBson()
     // instead.
-    DocumentSourceSearchBeta() = default;
+    DocumentSourceSearch() = default;
 };
 
 }  // namespace mongo

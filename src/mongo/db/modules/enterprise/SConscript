@@ -11,7 +11,7 @@ hygienic = get_option('install-mode') == 'hygienic'
 
 feature_dirs = [
     "fle",
-    "search_beta",
+    "search",
     "encryptdb",
     "hot_backups",
     "kerberos",
@@ -446,15 +446,15 @@ if "fle" in env['MONGO_ENTERPRISE_FEATURES']:
 
     env.Alias("all", mongocryptd)
 
-if "search_beta" in env['MONGO_ENTERPRISE_FEATURES']:
+if "search" in env['MONGO_ENTERPRISE_FEATURES']:
     mongotmock = env.Program(
         target="mongotmock",
         source=[
-            "src/search_beta/mongotmock/mongotmock_main_shim.cpp"
+            "src/search/mongotmock/mongotmock_main_shim.cpp"
         ],
         LIBDEPS_PRIVATE=[
             'src/fle/mongocryptd_core',
-            'src/search_beta/mongotmock_core',
+            'src/search/mongotmock_core',
         ],
         AIB_COMPONENT="core",
     )

@@ -1,5 +1,5 @@
 /**
- * Test that $searchBeta is banned in a $lookup subpipeline.
+ * Test that $search is banned in a $lookup subpipeline.
  */
 
 (function() {
@@ -7,7 +7,7 @@
 
 function checkLookupBanned(conn) {
     const db = conn.getDB("test");
-    const coll = db["internal_search_beta_banned_in_lookup"];
+    const coll = db["internal_search_banned_in_lookup"];
     const foreignColl = db[coll.getName() + "_foreign"];
 
     assert.commandWorked(foreignColl.insert({a: 1}));
@@ -19,7 +19,7 @@ function checkLookupBanned(conn) {
                   $lookup: {
                       let : {},
                       pipeline: [
-                          {$searchBeta: {}},
+                          {$search: {}},
                       ],
                       from: foreignColl.getName(),
                       as: "c",
@@ -30,7 +30,7 @@ function checkLookupBanned(conn) {
         assert.commandFailedWithCode(err, 51047);
     }
 
-    // $searchBeta within a $lookup within a $lookup.
+    // $search within a $lookup within a $lookup.
     {
         const nestedPipeline = [
                 {
@@ -38,7 +38,7 @@ function checkLookupBanned(conn) {
                       pipeline: [{
                           $lookup: {
                               pipeline: [
-                                  {$searchBeta: {}},
+                                  {$search: {}},
                               ],
                               from: foreignColl.getName(),
                               as: "c",

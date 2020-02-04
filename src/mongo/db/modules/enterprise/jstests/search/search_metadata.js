@@ -1,12 +1,12 @@
 /**
  * Tests that "searchScore" and "searchHighlights" metadata is properly plumbed through the
- * $searchBeta agg stage.
+ * $search agg stage.
  */
 (function() {
 "use strict";
 
 load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
-load("src/mongo/db/modules/enterprise/jstests/search_beta/lib/mongotmock.js");
+load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
 
 const dbName = "test";
 
@@ -20,7 +20,7 @@ const conn = MongoRunner.runMongod({
     setParameter: {mongotHost: mockConn.host},
 });
 const testDB = conn.getDB(dbName);
-const coll = testDB.search_beta_metadata;
+const coll = testDB.search_metadata;
 
 assert.commandWorked(coll.insert({_id: 0, foo: 1, bar: "projected out"}));
 assert.commandWorked(coll.insert({_id: 1, foo: 2, bar: "projected out"}));
@@ -29,12 +29,12 @@ assert.commandWorked(coll.insert({_id: 11, foo: 4, bar: "projected out"}));
 assert.commandWorked(coll.insert({_id: 20, foo: 5, bar: "projected out"}));
 const collUUID = getUUIDFromListCollections(testDB, coll.getName());
 
-// $searchBeta populates {$meta: "searchScore"} and {$meta: "searchHighlights"}.
+// $search populates {$meta: "searchScore"} and {$meta: "searchHighlights"}.
 {
     const mongotQuery = {};
     const cursorId = NumberLong(123);
     const pipeline = [
-        {$searchBeta: mongotQuery},
+        {$search: mongotQuery},
         {
             $project: {
                 _id: 1,
@@ -64,7 +64,7 @@ const collUUID = getUUIDFromListCollections(testDB, coll.getName());
     const mongotQuery = {};
     const cursorId = NumberLong(123);
     const pipeline = [
-        {$searchBeta: mongotQuery},
+        {$search: mongotQuery},
         {
             $project: {
                 _id: 1,

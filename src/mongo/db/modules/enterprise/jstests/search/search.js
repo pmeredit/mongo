@@ -1,9 +1,9 @@
 /**
- * Test the basic operation of a `$searchBeta` aggregation stage.
+ * Test the basic operation of a `$search` aggregation stage.
  */
 (function() {
 "use strict";
-load("src/mongo/db/modules/enterprise/jstests/search_beta/lib/mongotmock.js");
+load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
 load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
 
 // Set up mongotmock and point the mongod to it.
@@ -13,7 +13,7 @@ const mongotConn = mongotmock.getConnection();
 
 const conn = MongoRunner.runMongod({setParameter: {mongotHost: mongotConn.host}});
 const db = conn.getDB("test");
-const coll = db.search_beta;
+const coll = db.search;
 coll.drop();
 
 assert.commandWorked(coll.insert({"_id": 1, "title": "cakes"}));
@@ -26,14 +26,14 @@ assert.commandWorked(coll.insert({"_id": 7, "title": "apples"}));
 assert.commandWorked(coll.insert({"_id": 8, "title": "cakes and kale"}));
 
 const collUUID = getUUIDFromListCollections(db, coll.getName());
-const searchBetaQuery = {
+const searchQuery = {
     query: "cakes",
     path: "title"
 };
-const searchBetaCmd = {
+const searchCmd = {
     searchBeta: coll.getName(),
     collectionUUID: collUUID,
-    query: searchBetaQuery,
+    query: searchQuery,
     $db: "test"
 };
 
@@ -42,7 +42,7 @@ const searchBetaCmd = {
     const cursorId = NumberLong(123);
     const history = [
         {
-            expectedCommand: searchBetaCmd,
+            expectedCommand: searchCmd,
             response: {
                 cursor: {
                     id: cursorId,
@@ -77,10 +77,10 @@ const searchBetaCmd = {
         mongotConn.adminCommand({setMockResponses: 1, cursorId: cursorId, history: history}));
 }
 
-// Perform a $searchBeta query.
+// Perform a $search query.
 // Note that the 'batchSize' provided here only applies to the cursor between the driver and
 // mongod, and has no effect on the cursor between mongod and mongotmock.
-let cursor = coll.aggregate([{$searchBeta: searchBetaQuery}], {cursor: {batchSize: 2}});
+let cursor = coll.aggregate([{$search: searchQuery}], {cursor: {batchSize: 2}});
 
 const expected = [
     {"_id": 1, "title": "cakes"},
@@ -91,11 +91,11 @@ const expected = [
 ];
 assert.eq(expected, cursor.toArray());
 
-// Simulate a case where mongot produces as an error after getting a searchBeta command.
+// Simulate a case where mongot produces as an error after getting a search command.
 {
     const history = [
         {
-            expectedCommand: searchBetaCmd,
+            expectedCommand: searchCmd,
             response: {
                 ok: 0,
                 errmsg: "mongot error",
@@ -107,7 +107,7 @@ assert.eq(expected, cursor.toArray());
 
     assert.commandWorked(mongotConn.adminCommand(
         {setMockResponses: 1, cursorId: NumberLong(123), history: history}));
-    const err = assert.throws(() => coll.aggregate([{$searchBeta: searchBetaQuery}]));
+    const err = assert.throws(() => coll.aggregate([{$search: searchQuery}]));
     assert.commandFailedWithCode(err, ErrorCodes.InternalError);
 }
 
@@ -116,7 +116,7 @@ assert.eq(expected, cursor.toArray());
     const cursorId = NumberLong(123);
     const history = [
         {
-            expectedCommand: searchBetaCmd,
+            expectedCommand: searchCmd,
             response: {
                 cursor: {
                     id: cursorId,
@@ -145,33 +145,33 @@ assert.eq(expected, cursor.toArray());
     assert.commandWorked(
         mongotConn.adminCommand({setMockResponses: 1, cursorId: cursorId, history: history}));
 
-    // The aggregate() (and searchBeta command) should succeed.
+    // The aggregate() (and search command) should succeed.
     // Note that 'batchSize' here only tells mongod how many docs to return per batch and has
     // no effect on the batches between mongod and mongotmock.
     const kBatchSize = 4;
-    const cursor = coll.aggregate([{$searchBeta: searchBetaQuery}], {batchSize: kBatchSize});
+    const cursor = coll.aggregate([{$search: searchQuery}], {batchSize: kBatchSize});
 
     // Iterate the first batch until it is exhausted.
     for (let i = 0; i < kBatchSize; i++) {
         cursor.next();
     }
 
-    // The next call to next() will result in a 'getMore' being sent to mongod. $searchBeta's
+    // The next call to next() will result in a 'getMore' being sent to mongod. $search's
     // internal cursor to mongot will have no results left, and thus, a 'getMore' will be sent
     // to mongot. The error should propagate back to the client.
     const err = assert.throws(() => cursor.next());
     assert.commandFailedWithCode(err, ErrorCodes.InternalError);
 }
 
-// Run $searchBeta on an empty collection.
+// Run $search on an empty collection.
 {
-    const cursor = db.doesNotExit.aggregate([{$searchBeta: searchBetaQuery}]);
+    const cursor = db.doesNotExit.aggregate([{$search: searchQuery}]);
     assert.eq(cursor.toArray(), []);
 }
 
 // Fail on non-local read concern.
 const err =
-    assert.throws(() => coll.aggregate([{$searchBeta: {}}], {readConcern: {level: "majority"}}));
+    assert.throws(() => coll.aggregate([{$search: {}}], {readConcern: {level: "majority"}}));
 assert.commandFailedWithCode(err,
                              [ErrorCodes.InvalidOptions, ErrorCodes.ReadConcernMajorityNotEnabled]);
 

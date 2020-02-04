@@ -1,9 +1,9 @@
 /**
- * Test the debug information of the internal search beta document source.
+ * Test the debug information of the internal $search document source.
  */
 (function() {
 "use strict";
-load("src/mongo/db/modules/enterprise/jstests/search_beta/lib/mongotmock.js");
+load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
 load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
 
 // Set up mongotmock and point the mongod to it.
@@ -15,7 +15,7 @@ const conn = MongoRunner.runMongod({setParameter: {mongotHost: mongotConn.host}}
 const db = conn.getDB("test");
 db.setLogLevel(1);
 db.setProfilingLevel(2);
-const coll = db.search_beta;
+const coll = db.search;
 coll.drop();
 
 assert.commandWorked(coll.insert({"_id": 1, "title": "cakes"}));
@@ -28,14 +28,14 @@ assert.commandWorked(coll.insert({"_id": 7, "title": "apples"}));
 assert.commandWorked(coll.insert({"_id": 8, "title": "cakes and kale"}));
 
 const collUUID = getUUIDFromListCollections(db, coll.getName());
-const searchBetaQuery = {
+const searchQuery = {
     query: "cakes",
     path: "title"
 };
-const searchBetaCmd = {
+const searchCmd = {
     searchBeta: coll.getName(),
     collectionUUID: collUUID,
-    query: searchBetaQuery,
+    query: searchQuery,
     $db: "test"
 };
 
@@ -44,7 +44,7 @@ const searchBetaCmd = {
     const cursorId = NumberLong(123);
     const history = [
         {
-            expectedCommand: searchBetaCmd,
+            expectedCommand: searchCmd,
             response: {
                 cursor: {
                     id: cursorId,
@@ -79,10 +79,10 @@ const searchBetaCmd = {
         mongotConn.adminCommand({setMockResponses: 1, cursorId: cursorId, history: history}));
 }
 
-// Perform a $searchBeta query.
+// Perform a $search query.
 // Note that the 'batchSize' provided here only applies to the cursor between the driver and
 // mongod, and has no effect on the cursor between mongod and mongotmock.
-let cursor = coll.aggregate([{$searchBeta: searchBetaQuery}], {cursor: {batchSize: 2}});
+let cursor = coll.aggregate([{$search: searchQuery}], {cursor: {batchSize: 2}});
 
 const expected = [
     {"_id": 1, "title": "cakes"},

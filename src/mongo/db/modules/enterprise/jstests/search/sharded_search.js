@@ -1,19 +1,19 @@
 /**
- * Sharding tests for the `$searchBeta` aggregation pipeline stage.
+ * Sharding tests for the `$search` aggregation pipeline stage.
  */
 (function() {
 "use strict";
 
 load('jstests/libs/uuid_util.js');                 // For getUUIDFromListCollections.
 load("jstests/libs/collection_drop_recreate.js");  // For assertCreateCollection.
-load("src/mongo/db/modules/enterprise/jstests/search_beta/lib/mongotmock.js");
-load("src/mongo/db/modules/enterprise/jstests/search_beta/lib/shardingtest_with_mongotmock.js");
+load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
+load("src/mongo/db/modules/enterprise/jstests/search/lib/shardingtest_with_mongotmock.js");
 
 const dbName = "test";
-const collName = "internal_search_beta_mongot_remote";
+const collName = "internal_search_mongot_remote";
 
 const stWithMock = new ShardingTestWithMongotMock({
-    name: "sharded_search_beta",
+    name: "sharded_search",
     shards: {
         rs0: {nodes: 2},
         rs1: {nodes: 2},
@@ -51,7 +51,7 @@ const collUUID1 = getUUIDFromListCollections(st.rs1.getPrimary().getDB(dbName), 
 const mongotQuery = {};
 const cursorId = NumberLong(123);
 const pipeline = [
-    {$searchBeta: mongotQuery},
+    {$search: mongotQuery},
 ];
 
 function runTestOnPrimaries(testFn) {
@@ -64,7 +64,7 @@ function runTestOnSecondaries(testFn) {
     testFn(st.rs0.getSecondary(), st.rs1.getSecondary());
 }
 
-// Tests that $searchBeta returns documents in descending $meta: searchScore.
+// Tests that $search returns documents in descending $meta: searchScore.
 function testBasicCase(shard0Conn, shard1Conn) {
     const responseOk = 1;
 
@@ -256,9 +256,9 @@ function testMisbehavingMongot(shard0Conn, shard1Conn) {
 runTestOnPrimaries(testMisbehavingMongot);
 runTestOnSecondaries(testMisbehavingMongot);
 
-// Tests that correct results are returned when $searchBeta is followed by a $sort on a
+// Tests that correct results are returned when $search is followed by a $sort on a
 // different key.
-function testSearchBetaFollowedBySortOnDifferentKey(shard0Conn, shard1Conn) {
+function testSearchFollowedBySortOnDifferentKey(shard0Conn, shard1Conn) {
     const responseOk = 1;
 
     const mongot0ResponseBatch = [
@@ -300,8 +300,8 @@ function testSearchBetaFollowedBySortOnDifferentKey(shard0Conn, shard1Conn) {
 
     assert.eq(testColl.aggregate(pipeline.concat([{$sort: {_id: 1}}])).toArray(), expectedDocs);
 }
-runTestOnPrimaries(testSearchBetaFollowedBySortOnDifferentKey);
-runTestOnSecondaries(testSearchBetaFollowedBySortOnDifferentKey);
+runTestOnPrimaries(testSearchFollowedBySortOnDifferentKey);
+runTestOnSecondaries(testSearchFollowedBySortOnDifferentKey);
 
 stWithMock.stop();
 })();

@@ -4,7 +4,7 @@
 
 #include "mongo/platform/basic.h"
 
-#include "document_source_internal_search_beta_id_lookup.h"
+#include "document_source_internal_search_id_lookup.h"
 
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/pipeline/document_source_internal_shard_filter.h"
@@ -13,23 +13,23 @@ namespace mongo {
 
 using boost::intrusive_ptr;
 
-REGISTER_DOCUMENT_SOURCE(_internalSearchBetaIdLookup,
+REGISTER_DOCUMENT_SOURCE(_internalSearchIdLookup,
                          LiteParsedDocumentSourceDefault::parse,
-                         DocumentSourceInternalSearchBetaIdLookUp::createFromBson);
+                         DocumentSourceInternalSearchIdLookUp::createFromBson);
 
-DocumentSourceInternalSearchBetaIdLookUp::DocumentSourceInternalSearchBetaIdLookUp(
+DocumentSourceInternalSearchIdLookUp::DocumentSourceInternalSearchIdLookUp(
     const intrusive_ptr<ExpressionContext>& pExpCtx)
     : DocumentSource(kStageName, pExpCtx) {}
 
-std::list<intrusive_ptr<DocumentSource>> DocumentSourceInternalSearchBetaIdLookUp::createFromBson(
+std::list<intrusive_ptr<DocumentSource>> DocumentSourceInternalSearchIdLookUp::createFromBson(
     BSONElement elem, const intrusive_ptr<ExpressionContext>& pExpCtx) {
     uassert(31016,
-            str::stream() << "$_internalSearchBetaIdLookup value must be an empty object. Found: "
+            str::stream() << "$_internalSearchIdLookup value must be an empty object. Found: "
                           << typeName(elem.type()),
             elem.type() == BSONType::Object && elem.embeddedObject().isEmpty());
 
     std::list<boost::intrusive_ptr<DocumentSource>> list = {
-        new DocumentSourceInternalSearchBetaIdLookUp(pExpCtx)};
+        new DocumentSourceInternalSearchIdLookUp(pExpCtx)};
 
     if (auto shardFilterer = pExpCtx->mongoProcessInterface->getShardFilterer(pExpCtx)) {
         list.push_back(new DocumentSourceInternalShardFilter(pExpCtx, std::move(shardFilterer)));
@@ -38,12 +38,12 @@ std::list<intrusive_ptr<DocumentSource>> DocumentSourceInternalSearchBetaIdLookU
     return list;
 }
 
-Value DocumentSourceInternalSearchBetaIdLookUp::serialize(
+Value DocumentSourceInternalSearchIdLookUp::serialize(
     boost::optional<ExplainOptions::Verbosity> explain) const {
     return Value(DOC(getSourceName() << Document()));
 }
 
-DocumentSource::GetNextResult DocumentSourceInternalSearchBetaIdLookUp::doGetNext() {
+DocumentSource::GetNextResult DocumentSourceInternalSearchIdLookUp::doGetNext() {
     boost::optional<Document> result;
     Document inputDoc;
 
@@ -60,7 +60,7 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchBetaIdLookUp::doGetNex
             auto documentKey = Document({{"_id", documentId}});
 
             uassert(31052,
-                    "Collection must have a UUID to use $_internalSearchBetaIdLookup.",
+                    "Collection must have a UUID to use $_internalSearchIdLookup.",
                     pExpCtx->uuid.has_value());
 
             // Find the document by performing a local read.
@@ -98,7 +98,7 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchBetaIdLookUp::doGetNex
     return output.freeze();
 }
 
-const char* DocumentSourceInternalSearchBetaIdLookUp::getSourceName() const {
+const char* DocumentSourceInternalSearchIdLookUp::getSourceName() const {
     return kStageName.rawData();
 }
 

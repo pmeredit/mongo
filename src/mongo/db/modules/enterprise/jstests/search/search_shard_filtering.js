@@ -1,5 +1,5 @@
 /**
- * Tests that the _id lookups performed by $searchBeta have a shard filter applied to them so that
+ * Tests that the _id lookups performed by $search have a shard filter applied to them so that
  * orphans are not returned.
  */
 (function() {
@@ -7,14 +7,14 @@
 
 load('jstests/libs/uuid_util.js');                 // For getUUIDFromListCollections.
 load("jstests/libs/collection_drop_recreate.js");  // For assertCreateCollection.
-load("src/mongo/db/modules/enterprise/jstests/search_beta/lib/mongotmock.js");
-load("src/mongo/db/modules/enterprise/jstests/search_beta/lib/shardingtest_with_mongotmock.js");
+load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
+load("src/mongo/db/modules/enterprise/jstests/search/lib/shardingtest_with_mongotmock.js");
 
 const dbName = "test";
-const collName = "internal_search_beta_mongot_remote";
+const collName = "internal_search_mongot_remote";
 
 const stWithMock = new ShardingTestWithMongotMock({
-    name: "sharded_search_beta",
+    name: "sharded_search",
     shards: {
         rs0: {nodes: 1},
         rs1: {nodes: 1},
@@ -112,7 +112,7 @@ const expectedDocs = [
     {_id: 1, shardKey: 0, x: "ow"},
 ];
 
-assert.eq(testColl.aggregate([{$searchBeta: mongotQuery}]).toArray(), expectedDocs);
+assert.eq(testColl.aggregate([{$search: mongotQuery}]).toArray(), expectedDocs);
 
 stWithMock.stop();
 })();

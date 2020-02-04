@@ -11,7 +11,7 @@
 namespace mongo {
 
 /**
- * Mongot (searchBeta) configuration options
+ * Mongot (search) configuration options
  */
 struct MongotParams {
     static Status onSetHost(const std::string&);

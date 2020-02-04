@@ -1,15 +1,15 @@
 /**
- * Tests for the `$_internalSearchBetaMongotRemote` aggregation pipeline stage.
+ * Tests for the `$_internalSearchMongotRemote` aggregation pipeline stage.
  */
 (function() {
 "use strict";
 
 load('jstests/libs/uuid_util.js');                 // For getUUIDFromListCollections.
 load("jstests/libs/collection_drop_recreate.js");  // For assertCreateCollection.
-load("src/mongo/db/modules/enterprise/jstests/search_beta/lib/mongotmock.js");
+load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
 
 const dbName = "test";
-const collName = "internal_search_beta_mongot_remote";
+const collName = "internal_search_mongot_remote";
 const collNS = dbName + "." + collName;
 
 // Start mock mongot.
@@ -26,11 +26,11 @@ const testDB = conn.getDB(dbName);
 assertCreateCollection(testDB, collName);
 const collUUID = getUUIDFromListCollections(testDB, collName);
 
-// $_internalSearchBetaMongotRemote can query mongot and correctly pass along results.
+// $_internalSearchMongotRemote can query mongot and correctly pass along results.
 {
     const mongotQuery = {};
     const cursorId = NumberLong(123);
-    const pipeline = [{$_internalSearchBetaMongotRemote: mongotQuery}];
+    const pipeline = [{$_internalSearchMongotRemote: mongotQuery}];
     const mongotResponseBatch = [{_id: 0}];
     const responseOk = 1;
     const expectedDocs = [{_id: 0}];
@@ -43,12 +43,12 @@ const collUUID = getUUIDFromListCollections(testDB, collName);
     assert.eq(testDB[collName].aggregate(pipeline).toArray(), expectedDocs);
 }
 
-// $_internalSearchBetaMongotRemote populates {$meta: searchScore}.
+// $_internalSearchMongotRemote populates {$meta: searchScore}.
 {
     const mongotQuery = {};
     const cursorId = NumberLong(123);
     const pipeline = [
-        {$_internalSearchBetaMongotRemote: mongotQuery},
+        {$_internalSearchMongotRemote: mongotQuery},
         {$project: {_id: 1, score: {$meta: "searchScore"}}}
     ];
     const mongotResponseBatch = [{_id: 0, $searchScore: 1.234}];
@@ -63,12 +63,12 @@ const collUUID = getUUIDFromListCollections(testDB, collName);
     assert.eq(testDB[collName].aggregate(pipeline).toArray(), expectedDocs);
 }
 
-// $_internalSearchBetaMongotRemote handles multiple documents and batches correctly.
+// $_internalSearchMongotRemote handles multiple documents and batches correctly.
 {
     const mongotQuery = {};
     const cursorId = NumberLong(123);
     const pipeline = [
-        {$_internalSearchBetaMongotRemote: mongotQuery},
+        {$_internalSearchMongotRemote: mongotQuery},
         {$project: {_id: 1, score: {$meta: "searchScore"}}}
     ];
 

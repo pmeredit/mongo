@@ -1,5 +1,5 @@
 /**
- * Sharding test for the `$searchBeta` aggregation pipeline stage. This test uses a somewhat
+ * Sharding test for the `$search` aggregation pipeline stage. This test uses a somewhat
  * random data set.
  */
 (function() {
@@ -7,14 +7,14 @@
 
 load('jstests/libs/uuid_util.js');                 // For getUUIDFromListCollections.
 load("jstests/libs/collection_drop_recreate.js");  // For assertCreateCollection.
-load("src/mongo/db/modules/enterprise/jstests/search_beta/lib/mongotmock.js");
-load("src/mongo/db/modules/enterprise/jstests/search_beta/lib/shardingtest_with_mongotmock.js");
+load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
+load("src/mongo/db/modules/enterprise/jstests/search/lib/shardingtest_with_mongotmock.js");
 
 const dbName = "test";
-const collName = "internal_search_beta_mongot_remote";
+const collName = "internal_search_mongot_remote";
 
 const stWithMock = new ShardingTestWithMongotMock({
-    name: "sharded_search_beta",
+    name: "sharded_search",
     shards: {
         rs0: {nodes: 1},
         rs1: {nodes: 1},
@@ -71,7 +71,7 @@ const collUUID1 = getUUIDFromListCollections(st.rs1.getPrimary().getDB(dbName), 
 const mongotQuery = {};
 const cursorId = NumberLong(123);
 const pipeline = [
-    {$searchBeta: mongotQuery},
+    {$search: mongotQuery},
 ];
 
 // Given an array of ids and a range, create an array of the form:

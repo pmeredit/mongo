@@ -10,29 +10,28 @@
 
 namespace mongo {
 
-namespace search_beta_constants {
+namespace search_constants {
 const BSONObj kSortSpec = BSON("$searchScore" << -1);
-}  // namespace search_beta_constants
+}  // namespace search_constants
 
 /**
  * Queries local collection for _id equality matches. Intended for use with
- * $_internalSearchBetaMongotRemote (see $searchBeta) as part of the SearchBeta project.
+ * $_internalSearchMongotRemote (see $search) as part of the Search project.
  *
  * Input documents will be ignored and skipped if they do not have a value at field "_id".
  * Input documents will be ignored and skipped if no document with key specified at "_id"
  * is locally-stored.
  */
-class DocumentSourceInternalSearchBetaIdLookUp final : public DocumentSource {
+class DocumentSourceInternalSearchIdLookUp final : public DocumentSource {
 public:
-    static constexpr StringData kStageName = "$_internalSearchBetaIdLookup"_sd;
+    static constexpr StringData kStageName = "$_internalSearchIdLookup"_sd;
     /**
-     * Creates an $_internalSearchBetaIdLookup stage. "elem" must be an empty object.
+     * Creates an $_internalSearchIdLookup stage. "elem" must be an empty object.
      */
     static std::list<boost::intrusive_ptr<DocumentSource>> createFromBson(
         BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& pExpCtx);
 
-    DocumentSourceInternalSearchBetaIdLookUp(
-        const boost::intrusive_ptr<ExpressionContext>& pExpCtx);
+    DocumentSourceInternalSearchIdLookUp(const boost::intrusive_ptr<ExpressionContext>& pExpCtx);
 
     const char* getSourceName() const final;
 
@@ -51,7 +50,7 @@ public:
     }
 
     /**
-     * Serialize this stage - return is of the form { $_internalSearchBetaIdLookup: {} }
+     * Serialize this stage - return is of the form { $_internalSearchIdLookup: {} }
      */
     Value serialize(boost::optional<ExplainOptions::Verbosity> explain) const;
 
@@ -64,7 +63,7 @@ public:
 
         logic.mergingStage = nullptr;
         logic.shardsStage = this;
-        logic.inputSortPattern = search_beta_constants::kSortSpec;
+        logic.inputSortPattern = search_constants::kSortSpec;
 
         return logic;
     }

@@ -4,7 +4,7 @@
 (function() {
 "use strict";
 
-load("src/mongo/db/modules/enterprise/jstests/search_beta/lib/mongotmock.js");
+load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
 
 const mongotMock = new MongotMock();
 mongotMock.start();
@@ -16,9 +16,9 @@ const testDB = conn.getDB("test");
     // Ensure the mock returns the correct responses and validates the 'expected' commands.
     // These examples do not obey the find/getMore protocol.
     const cursorId = NumberLong(123);
-    const searchBetaCmd = {searchBeta: "a UUID"};
+    const searchCmd = {searchBeta: "a UUID"};
     const history = [
-        {expectedCommand: searchBetaCmd, response: {ok: 1, foo: 1}},
+        {expectedCommand: searchCmd, response: {ok: 1, foo: 1}},
         {expectedCommand: {getMore: cursorId, collection: "abc"}, response: {ok: 1, foo: 2}},
         {expectedCommand: {getMore: cursorId, collection: "abc"}, response: {ok: 1, foo: 3}},
     ];
@@ -26,8 +26,8 @@ const testDB = conn.getDB("test");
     assert.commandWorked(
         testDB.runCommand({setMockResponses: 1, cursorId: cursorId, history: history}));
 
-    // Now run a searchBeta command.
-    let resp = assert.commandWorked(testDB.runCommand(searchBetaCmd));
+    // Now run a search command.
+    let resp = assert.commandWorked(testDB.runCommand(searchCmd));
     assert.eq(resp, {ok: 1, foo: 1});
 
     // Run a getMore which succeeds.
@@ -55,9 +55,9 @@ const testDB = conn.getDB("test");
 {
     // Test some edge and error cases.
     const cursorId = NumberLong(123);
-    const searchBetaCmd = {searchBeta: "a UUID"};
+    const searchCmd = {searchBeta: "a UUID"};
     const history = [
-        {expectedCommand: searchBetaCmd, response: {ok: 1}},
+        {expectedCommand: searchCmd, response: {ok: 1}},
     ];
 
     assert.commandWorked(
@@ -80,15 +80,15 @@ const testDB = conn.getDB("test");
     assert.commandFailedWithCode(testDB.runCommand({getMore: NumberLong(777), collection: "abc"}),
                                  31089);
 
-    // Run a searchBeta which doesn't match its 'expectedCommand'.
+    // Run a search which doesn't match its 'expectedCommand'.
     assert.commandFailedWithCode(testDB.runCommand({searchBeta: "a different UUID"}), 31086);
 
-    // Reset the state associated with the cursor id and run a searchBeta command which
+    // Reset the state associated with the cursor id and run a search command which
     // succeeds.
     assert.commandWorked(
         testDB.runCommand({setMockResponses: 1, cursorId: cursorId, history: history}));
     assert.commandWorked(testDB.runCommand({searchBeta: "a UUID"}));
-    // Run another searchBeta command. We did not set up any state on the mock for another
+    // Run another search command. We did not set up any state on the mock for another
     // client, though, so this should fail.
     assert.commandFailedWithCode(testDB.runCommand({searchBeta: "a UUID"}), 31094);
 }
@@ -101,10 +101,10 @@ const testDB = conn.getDB("test");
 // Open a cursor and exhaust it.
 {
     const cursorId = NumberLong(123);
-    const searchBetaCmd = {searchBeta: "a UUID"};
+    const searchCmd = {searchBeta: "a UUID"};
     const cursorHistory = [
         {
-            expectedCommand: searchBetaCmd,
+            expectedCommand: searchCmd,
             response:
                 {ok: 1, cursor: {firstBatch: [{_id: 0}, {_id: 1}], id: cursorId, ns: "testColl"}}
         },
@@ -139,7 +139,7 @@ const testDB = conn.getDB("test");
 
     assert.commandWorked(
         testDB.runCommand({setMockResponses: 1, cursorId: cursorId, history: cursorHistory}));
-    let resp = assert.commandWorked(testDB.runCommand(searchBetaCmd));
+    let resp = assert.commandWorked(testDB.runCommand(searchCmd));
 
     const cursor = new DBCommandCursor(testDB, resp);
     const arr = cursor.toArray();
@@ -153,10 +153,10 @@ const testDB = conn.getDB("test");
 // Open a cursor, but don't exhaust it, checking the 'killCursors' functionality of mongotmock.
 {
     const cursorId = NumberLong(123);
-    const searchBetaCmd = {searchBeta: "a UUID"};
+    const searchCmd = {searchBeta: "a UUID"};
     const cursorHistory = [
         {
-            expectedCommand: searchBetaCmd,
+            expectedCommand: searchCmd,
             response:
                 {ok: 1, cursor: {firstBatch: [{_id: 0}, {_id: 1}], id: cursorId, ns: "testColl"}}
         },
@@ -175,7 +175,7 @@ const testDB = conn.getDB("test");
     assert.commandWorked(
         testDB.runCommand({setMockResponses: 1, cursorId: cursorId, history: cursorHistory}));
 
-    let resp = assert.commandWorked(testDB.runCommand(searchBetaCmd));
+    let resp = assert.commandWorked(testDB.runCommand(searchCmd));
 
     {
         const cursor = new DBCommandCursor(testDB, resp);
@@ -195,12 +195,12 @@ const testDB = conn.getDB("test");
 
 // Test with multiple clients.
 {
-    const searchBetaCmd = {searchBeta: "a UUID"};
+    const searchCmd = {searchBeta: "a UUID"};
 
     const cursorIdA = NumberLong(123);
     const cursorAHistory = [
         {
-            expectedCommand: searchBetaCmd,
+            expectedCommand: searchCmd,
             response: {
                 ok: 1,
                 cursor: {firstBatch: [{_id: "cursor A"}, {_id: 1}], id: cursorIdA, ns: "testColl"}
@@ -225,7 +225,7 @@ const testDB = conn.getDB("test");
     const cursorIdB = NumberLong(456);
     const cursorBHistory = [
         {
-            expectedCommand: searchBetaCmd,
+            expectedCommand: searchCmd,
             response: {
                 ok: 1,
                 cursor: {firstBatch: [{_id: "cursor B"}, {_id: 1}], id: cursorIdB, ns: "testColl"}
@@ -253,8 +253,8 @@ const testDB = conn.getDB("test");
         testDB.runCommand({setMockResponses: 1, cursorId: cursorIdB, history: cursorBHistory}));
 
     let responses = [
-        assert.commandWorked(testDB.runCommand(searchBetaCmd)),
-        assert.commandWorked(testDB.runCommand(searchBetaCmd))
+        assert.commandWorked(testDB.runCommand(searchCmd)),
+        assert.commandWorked(testDB.runCommand(searchCmd))
     ];
 
     const cursors =

@@ -267,8 +267,8 @@ command = {
 };
 assert.commandFailedWithCode(testDB.runCommand(command), 51204);
 
-// Correctly fail for the $searchBeta stage.
-command.pipeline = [{$searchBeta: {}}];
+// Correctly fail for the $search stage.
+command.pipeline = [{$search: {}}];
 assert.commandFailedWithCode(testDB.runCommand(command), 40324);
 
 // Test that all collection-less aggregations result in a failure.

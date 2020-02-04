@@ -1,5 +1,5 @@
 /**
- * Test the basic operation of a `$_internalSearchBetaIdLookup` aggregation stage.
+ * Test the basic operation of a `$_internalSearchIdLookup` aggregation stage.
  */
 
 (function() {
@@ -7,7 +7,7 @@
 
 let conn = MongoRunner.runMongod();
 let db = conn.getDB("test");
-const collName = "internal_search_beta_id_lookup";
+const collName = "internal_search_id_lookup";
 db[collName].drop();
 
 assert.writeOK(db[collName].insert({_id: 1, x: "ow"}));
@@ -19,14 +19,14 @@ assert.writeOK(db[collName].insert({_id: 6, x: "cow", y: "lorem ipsum"}));
 assert.writeOK(db[collName].insert({_id: 7, x: "brown", y: "ipsum"}));
 assert.writeOK(db[collName].insert({_id: 8, x: "cow", y: "lorem ipsum"}));
 
-// Demonstrate that $_internalSearchBeta skips `_id`s it cannot find.
+// Demonstrate that $_internalSearch skips `_id`s it cannot find.
 assert.eq(4,
           db[collName]
               .aggregate([
                   {$match: {}},
                   {$addFields: {idToLookFor: {$toInt: "$_id"}}},
                   {$project: {'_id': {$multiply: ['$idToLookFor', 2]}}},
-                  {$_internalSearchBetaIdLookup: {}}
+                  {$_internalSearchIdLookup: {}}
               ])
               .itcount());
 
@@ -43,30 +43,30 @@ assert.eq(expectedEvenIdDocs,
                   {$match: {}},
                   {$addFields: {idToLookFor: {$toInt: "$_id"}}},
                   {$project: {'_id': {$multiply: ['$idToLookFor', 2]}}},
-                  {$_internalSearchBetaIdLookup: {}},
+                  {$_internalSearchIdLookup: {}},
                   {$sort: {'_id': 1}}
               ])
               .toArray());
 
-// Check that $_internalSearchBetaIdLookup works as expected when the collection does not exist.
+// Check that $_internalSearchIdLookup works as expected when the collection does not exist.
 assert.eq([],
           db["nonexistentColl"]
               .aggregate([
                   {$match: {}},
                   {$addFields: {idToLookFor: {$toInt: "$_id"}}},
                   {$project: {'_id': {$multiply: ['$idToLookFor', 2]}}},
-                  {$_internalSearchBetaIdLookup: {}}
+                  {$_internalSearchIdLookup: {}}
               ])
               .toArray());
 
-// $_internalSearchBeta should uassert when a collection is unspecified and the source stage
+// $_internalSearch should uassert when a collection is unspecified and the source stage
 // provides documents with `_id` populated.
 assert.commandFailedWithCode(db.runCommand({
     aggregate: 1,
     pipeline: [
         {$listLocalSessions: {allUsers: true}},
         {$addFields: {"_id": ObjectId("5ab9cbfa31c2ab715d42129e")}},
-        {$_internalSearchBetaIdLookup: {}}
+        {$_internalSearchIdLookup: {}}
     ],
     cursor: {}
 }),

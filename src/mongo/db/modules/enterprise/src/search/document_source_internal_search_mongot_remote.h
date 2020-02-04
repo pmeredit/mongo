@@ -13,14 +13,14 @@
 namespace mongo {
 
 /**
- * A class to retrieve $searchBeta results from a mongot process.
+ * A class to retrieve $search results from a mongot process.
  *
  * Work slated and not handled yet:
  * - TODO Handle sharded sort merging properly (SERVER-40015)
  */
-class DocumentSourceInternalSearchBetaMongotRemote final : public DocumentSource {
+class DocumentSourceInternalSearchMongotRemote final : public DocumentSource {
 public:
-    static constexpr StringData kStageName = "$_internalSearchBetaMongotRemote"_sd;
+    static constexpr StringData kStageName = "$_internalSearchMongotRemote"_sd;
 
     class LiteParsed final : public LiteParsedDocumentSource {
     public:
@@ -51,7 +51,7 @@ public:
     static boost::intrusive_ptr<DocumentSource> createFromBson(
         BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& pExpCtx);
 
-    virtual ~DocumentSourceInternalSearchBetaMongotRemote() = default;
+    virtual ~DocumentSourceInternalSearchMongotRemote() = default;
 
     StageConstraints constraints(Pipeline::SplitState pipeState) const override {
         StageConstraints constraints(StreamType::kStreaming,
@@ -83,19 +83,18 @@ private:
 
     GetNextResult doGetNext() override;
 
-    DocumentSourceInternalSearchBetaMongotRemote(
-        const BSONObj& query,
-        const boost::intrusive_ptr<ExpressionContext>& expCtx,
-        executor::TaskExecutor* taskExecutor)
+    DocumentSourceInternalSearchMongotRemote(const BSONObj& query,
+                                             const boost::intrusive_ptr<ExpressionContext>& expCtx,
+                                             executor::TaskExecutor* taskExecutor)
         : DocumentSource(kStageName, expCtx),
-          _searchBetaQuery(query.getOwned()),
+          _searchQuery(query.getOwned()),
           _taskExecutor(taskExecutor) {}
 
     void populateCursor();
 
     boost::optional<BSONObj> _getNext();
 
-    const BSONObj _searchBetaQuery;
+    const BSONObj _searchQuery;
 
     executor::TaskExecutor* _taskExecutor;
 
