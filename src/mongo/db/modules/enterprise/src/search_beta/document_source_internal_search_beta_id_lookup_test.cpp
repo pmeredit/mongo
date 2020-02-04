@@ -16,7 +16,7 @@
 #include "mongo/db/pipeline/document_source_mock.h"
 #include "mongo/db/pipeline/document_source_project.h"
 #include "mongo/db/pipeline/expression_context.h"
-#include "mongo/db/pipeline/stub_mongo_process_interface_lookup_single_document.h"
+#include "mongo/db/pipeline/process_interface/stub_lookup_single_document_process_interface.h"
 #include "mongo/unittest/unittest.h"
 
 namespace mongo {
@@ -27,7 +27,7 @@ using boost::intrusive_ptr;
 using std::deque;
 using std::vector;
 
-using MockMongoInterface = StubMongoProcessInterfaceLookupSingleDocument;
+using MockMongoInterface = StubLookupSingleDocumentProcessInterface;
 
 class InternalSearchBetaIdLookupTest : public ServiceContextTest {
 public:
@@ -71,7 +71,7 @@ TEST_F(InternalSearchBetaIdLookupTest, ShouldSkipResultsWhenIdNotFound) {
     // Mock documents for this namespace.
     deque<DocumentSource::GetNextResult> mockDbContents{Document{{"_id", 0}, {"color", "red"_sd}}};
     expCtx->mongoProcessInterface =
-        std::make_unique<StubMongoProcessInterfaceLookupSingleDocument>(mockDbContents);
+        std::make_unique<StubLookupSingleDocumentProcessInterface>(mockDbContents);
 
     // We should find one document here with _id = 0.
     auto next = idLookupStage->getNext();
