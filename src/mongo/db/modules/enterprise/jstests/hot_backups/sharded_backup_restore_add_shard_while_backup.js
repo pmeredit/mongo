@@ -9,7 +9,7 @@
 
 (function() {
 "use strict";
-load("src/mongo/db/modules/enterprise/jstests/hot_backups/sharded_backup_restore.js");
+load("src/mongo/db/modules/enterprise/jstests/hot_backups/libs/sharded_backup_restore.js");
 
 let AddShardWorker = function() {
     this.setup = function() {
