@@ -75,7 +75,8 @@ public:
                                      DiskUseRequirement::kNoDiskUse,
                                      FacetRequirement::kNotAllowed,
                                      TransactionRequirement::kNotAllowed,
-                                     LookupRequirement::kNotAllowed);
+                                     LookupRequirement::kNotAllowed,
+                                     UnionRequirement::kNotAllowed);
 
         constraints.isIndependentOfAnyCollection = true;
         constraints.requiresInputDocSource = false;
