@@ -127,7 +127,8 @@ void propagateAccumulatedFieldsToSchema(const clonable_ptr<EncryptionSchemaTreeN
         boost::intrusive_ptr<AccumulatorState> accu = accuStmt.makeAccumulator();
 
         const bool perDocExprResultCompared = accu->getOpName() == "$addToSet"s;
-        auto perDocExprSchema = aggregate_expression_intender::getOutputSchema(*prevSchema, accuStmt.rightHandSide.perDocExpression.get(), perDocExprResultCompared);
+        auto perDocExprSchema = aggregate_expression_intender::getOutputSchema(
+            *prevSchema, accuStmt.rightHandSide.perDocExpression.get(), perDocExprResultCompared);
 
         if (accu->getOpName() == "$addToSet"s || accu->getOpName() == "$push"s) {
             if (perDocExprSchema->mayContainEncryptedNode()) {
@@ -157,11 +158,12 @@ void propagateAccumulatedFieldsToSchema(const clonable_ptr<EncryptionSchemaTreeN
             // Conservatively, just ban a non-$const perGroupExpression when the group key might
             // contain any encrypted data.
             if (groupKeyMayContainEncryptedFields) {
-                uassert(0,
+                uassert(51808,
                         str::stream() << "Accumulator '" << accu->getOpName()
                                       << "' must have a constant per-group argument (initArgs) "
                                       << "when the group key might contain encrypted fields.",
-                        ExpressionConstant::isNullOrConstant(accuStmt.rightHandSide.perGroupExpression));
+                        ExpressionConstant::isNullOrConstant(
+                            accuStmt.rightHandSide.perGroupExpression));
             }
 
             newSchema->addChild(FieldRef(accuStmt.fieldName),
@@ -194,7 +196,8 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForBucketAuto(
     newSchema->addChild(FieldRef{"_id"}, std::make_unique<EncryptionSchemaNotEncryptedNode>());
 
     const bool groupKeyMayContainEncryptedFields = false;
-    propagateAccumulatedFieldsToSchema(prevSchema, source.getAccumulatedFields(), newSchema, groupKeyMayContainEncryptedFields);
+    propagateAccumulatedFieldsToSchema(
+        prevSchema, source.getAccumulatedFields(), newSchema, groupKeyMayContainEncryptedFields);
     return newSchema;
 }
 
@@ -240,7 +243,8 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGroup(
         newSchema->addChild(fieldPath, std::move(expressionSchema));
     }
 
-    propagateAccumulatedFieldsToSchema(prevSchema, source.getAccumulatedFields(), newSchema, groupKeyMayContainEncryptedFields);
+    propagateAccumulatedFieldsToSchema(
+        prevSchema, source.getAccumulatedFields(), newSchema, groupKeyMayContainEncryptedFields);
     return newSchema;
 }
 
