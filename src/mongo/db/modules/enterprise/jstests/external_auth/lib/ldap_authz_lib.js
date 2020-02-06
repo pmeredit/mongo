@@ -334,6 +334,10 @@ function runTests(testCallback, configGenerator, callbackOptions) {
     // currently threading the x509 options through to the check indexes hook.
     TestData.skipCheckingIndexesConsistentAcrossCluster = true;
 
+    // Needs proper x509 setup so connections from shell can talk to shards directly.
+    // Tests don't do any migration anyway, so no need to run the hook.
+    TestData.skipCheckOrphans = true;
+
     var st = new ShardingTest(configGenerator.generateShardingConfig());
     setupTest(st.s0);
     testCallback({conn: st.s0, shardingTest: st, options: callbackOptions});
