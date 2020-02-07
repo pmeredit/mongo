@@ -181,6 +181,9 @@ public:
     void visit(ExpressionFloor*) {
         _tracker.enterEvaluateOrCompare();
     }
+    void visit(ExpressionFunction*) {
+        _tracker.enterEvaluateOrCompare();
+    }
     void visit(ExpressionIn*) {
         _tracker.enterEvaluateOrCompare();
     }
@@ -194,9 +197,6 @@ public:
         _tracker.enterEvaluateOrCompare();
     }
     void visit(ExpressionInternalJsEmit*) {
-        _tracker.enterEvaluateOrCompare();
-    }
-    void visit(ExpressionInternalJs*) {
         _tracker.enterEvaluateOrCompare();
     }
     void visit(ExpressionInternalFindElemMatch*) {
@@ -558,13 +558,13 @@ public:
     void visit(ExpressionExp*) {}
     void visit(ExpressionFilter*) {}
     void visit(ExpressionFloor*) {}
+    void visit(ExpressionFunction*) {}
     void visit(ExpressionIfNull*) {}
     void visit(ExpressionIn*) {}
     void visit(ExpressionIndexOfArray*) {}
     void visit(ExpressionIndexOfBytes*) {}
     void visit(ExpressionIndexOfCP*) {}
     void visit(ExpressionInternalJsEmit*) {}
-    void visit(ExpressionInternalJs*) {}
     void visit(ExpressionInternalFindElemMatch*) {}
     void visit(ExpressionInternalFindPositional*) {}
     void visit(ExpressionInternalFindSlice*) {}
@@ -773,6 +773,9 @@ public:
     void visit(ExpressionFloor*) {
         _tracker.exitEvaluateOrCompare();
     }
+    void visit(ExpressionFunction*) {
+        _tracker.exitEvaluateOrCompare();
+    }
     void visit(ExpressionIn*) {
         _tracker.exitEvaluateOrCompare();
     }
@@ -786,9 +789,6 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(ExpressionInternalJsEmit*) {
-        _tracker.exitEvaluateOrCompare();
-    }
-    void visit(ExpressionInternalJs*) {
         _tracker.exitEvaluateOrCompare();
     }
     void visit(ExpressionInternalFindElemMatch*) {
