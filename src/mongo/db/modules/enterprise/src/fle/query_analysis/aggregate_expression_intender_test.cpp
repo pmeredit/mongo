@@ -530,28 +530,5 @@ TEST_F(AggregateExpressionIntenderTest, ArrayLiteralShouldSucceedWhenEverythingI
         stateIntention);
 }
 
-TEST_F(AggregateExpressionIntenderTest, FunctionFailsOnEncryptedField) {
-    ASSERT_THROWS_CODE(
-        stateIntention(
-            "{$function: {body: 'function() { return true; }', args: ['$safeInt'], lang: 'js'}}"),
-        AssertionException,
-        31110);
-}
-
-TEST_F(AggregateExpressionIntenderTest, FunctionFailsWithPrefixOfRandom) {
-    ASSERT_THROWS_CODE(stateIntention("{$function: {body: 'function() { return true; }', args: "
-                                      "['$nestedRandom'], lang: 'js'}}"),
-                       AssertionException,
-                       31131);
-}
-
-TEST_F(AggregateExpressionIntenderTest, FunctionFailsWithCurrentDocument) {
-    ASSERT_THROWS_CODE(
-        stateIntention(
-            "{$function: {body: 'function() { return true; }', args: ['$$CURRENT'], lang: 'js'}}"),
-        AssertionException,
-        31121);
-}
-
 }  // namespace
 }  // namespace mongo
