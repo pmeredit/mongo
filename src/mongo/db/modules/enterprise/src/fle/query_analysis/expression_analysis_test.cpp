@@ -544,6 +544,7 @@ TEST_F(ExpressionAnalysisTest, EvaluatedExpressionsCorrectlyReturnNotEncrypted) 
         fromjson("{$eq: ['$ssn', '8675309']}"),
         fromjson("{$exp: '$ssn'}"),
         fromjson("{$floor: '$ssn'}"),
+        fromjson("{$function: {body: 'function(){}', args: ['$ssn'], lang: 'js'}}"),
         fromjson("{$gt: [5, '$ssn']}"),
         fromjson("{$gte: ['$a', '$ssn']}"),
         fromjson("{$hour: '$ssn'}"),
@@ -554,9 +555,6 @@ TEST_F(ExpressionAnalysisTest, EvaluatedExpressionsCorrectlyReturnNotEncrypted) 
         BSON("$_internalJsEmit" << BSON("this"
                                         << "{}"
                                         << "eval" << BSONCode("function(){}"))),
-        BSON("$_internalJs" << BSON("args"
-                                    << "[]"
-                                    << "eval" << BSONCode("function(){}"))),
         fromjson("{$isArray: '$ssn'}"),
         fromjson("{$isoDayOfWeek: '$ssn'}"),
         fromjson("{$isoWeek: '$ssn'}"),

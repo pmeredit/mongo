@@ -572,6 +572,9 @@ private:
     void visit(ExpressionFloor*) final {
         ensureNotEncryptedEnterEval("a floor calculation", subtreeStack);
     }
+    void visit(ExpressionFunction*) final {
+        ensureNotEncryptedEnterEval("a $function expression", subtreeStack);
+    }
     void visit(ExpressionIfNull*) final {
         // If $ifNull appears under a comparison subtree, then both arguments to $ifNull should be
         // marked or assert just as if they were the direct descendant of the grandparent
@@ -614,9 +617,6 @@ private:
     }
     void visit(ExpressionInternalJsEmit*) final {
         ensureNotEncryptedEnterEval("an internal JS emit expression", subtreeStack);
-    }
-    void visit(ExpressionInternalJs*) final {
-        ensureNotEncryptedEnterEval("an internal JS expression", subtreeStack);
     }
     void visit(ExpressionInternalFindElemMatch*) {
         ensureNotEncryptedEnterEval("an internal find $elemMatch expression", subtreeStack);
@@ -932,6 +932,7 @@ private:
     void visit(ExpressionFieldPath*) final {}
     void visit(ExpressionFilter*) final {}
     void visit(ExpressionFloor*) final {}
+    void visit(ExpressionFunction*) final {}
     void visit(ExpressionIfNull*) final {}
     void visit(ExpressionIn* in) final {
         if (auto arrayLiteral = dynamic_cast<ExpressionArray*>(in->getOperandList()[1].get())) {
@@ -948,7 +949,6 @@ private:
     void visit(ExpressionIndexOfBytes*) final {}
     void visit(ExpressionIndexOfCP*) final {}
     void visit(ExpressionInternalJsEmit*) final {}
-    void visit(ExpressionInternalJs*) final {}
     void visit(ExpressionInternalFindElemMatch*) final {}
     void visit(ExpressionInternalFindPositional*) final {}
     void visit(ExpressionInternalFindSlice*) final {}
@@ -1183,6 +1183,9 @@ private:
     void visit(ExpressionFloor*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
+    void visit(ExpressionFunction*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
     void visit(ExpressionIfNull*) final {}
     void visit(ExpressionIn* in) final {
         // See the comment in the PreVisitor about why we have to special case an array literal.
@@ -1207,9 +1210,6 @@ private:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionInternalJsEmit*) final {
-        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
-    }
-    void visit(ExpressionInternalJs*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionInternalFindElemMatch*) final {
