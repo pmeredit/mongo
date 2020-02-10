@@ -74,13 +74,10 @@ function manipulateOplogTruncateAfterPoint(backupDir, truncatePoint) {
     assert.neq(null, conn);
 
     const upsert = true;
-    let resp = assert.commandWorked(conn.getDB("local").replset.oplogTruncateAfterPoint.update(
+    assert.commandWorked(conn.getDB("local").replset.oplogTruncateAfterPoint.update(
         {_id: "oplogTruncateAfterPoint"},
         {$set: {"oplogTruncateAfterPoint": truncatePoint}},
         upsert));
-    assert(resp["nUpserted"] === 1 || resp["nModified"] === 1,
-           "Failed to find expected update response: " + tojson(resp) +
-               ", truncate point: " + tojson(truncatePoint));
     MongoRunner.stopMongod(conn, {noCleanData: true});
 }
 
