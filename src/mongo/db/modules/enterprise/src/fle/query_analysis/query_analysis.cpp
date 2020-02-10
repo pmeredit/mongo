@@ -21,7 +21,6 @@
 #include "mongo/db/ops/parsed_update.h"
 #include "mongo/db/ops/write_ops.h"
 #include "mongo/db/ops/write_ops_gen.h"
-#include "mongo/db/pipeline/process_interface/stub_mongo_process_interface.h"
 #include "mongo/db/query/collation/collator_factory_interface.h"
 #include "mongo/db/query/count_command_gen.h"
 #include "mongo/db/query/distinct_command_gen.h"
@@ -258,8 +257,11 @@ PlaceHolderResult replaceEncryptedFieldsInUpdate(
     UpdateDriver driver(expCtx);
     // Although arrayFilters cannot contain encrypted fields, pass them through to the UpdateDriver
     // to prevent parsing errors for arrayFilters on a non-encrypted field path.
-    auto parsedArrayFilters = uassertStatusOK(ParsedUpdate::parseArrayFilters(
-        arrayFilters, expCtx->opCtx, const_cast<CollatorInterface*>(expCtx->getCollator())));
+    auto parsedArrayFilters = uassertStatusOK(
+        ParsedUpdate::parseArrayFilters(arrayFilters,
+                                        expCtx->opCtx,
+                                        const_cast<CollatorInterface*>(expCtx->getCollator()),
+                                        NamespaceString("")));
     driver.parse(updateMod, parsedArrayFilters);
 
     // 'updateVisitor' must live through driver serialization.
@@ -547,6 +549,7 @@ PlaceHolderResult addPlaceHoldersForInsert(OperationContext* opCtx,
 PlaceHolderResult addPlaceHoldersForUpdate(OperationContext* opCtx,
                                            const OpMsgRequest& request,
                                            std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
+    auto updateDBName = request.getDatabase();
     auto updateOp = UpdateOp::parse(request);
     auto updates = updateOp.getUpdates();
     std::vector<write_ops::UpdateOpEntry> updateVector;
@@ -556,7 +559,7 @@ PlaceHolderResult addPlaceHoldersForUpdate(OperationContext* opCtx,
         auto& updateMod = update.getU();
         auto collator = parseCollator(opCtx, update.getCollation());
         boost::intrusive_ptr<ExpressionContext> expCtx(
-            new ExpressionContext(opCtx, collator.get()));
+            new ExpressionContext(opCtx, collator.get(), NamespaceString(updateDBName)));
 
         uassert(31150,
                 "Pipelines in update are not allowed with an encrypted '_id' and 'upsert: true'",
@@ -595,6 +598,7 @@ PlaceHolderResult addPlaceHoldersForDelete(OperationContext* opCtx,
     invariant(schemaTree);
     PlaceHolderResult placeHolderResult{};
 
+    auto updateDBName = request.getDatabase();
     auto deleteRequest = write_ops::Delete::parse(IDLParserErrorContext("delete"), request);
     std::vector<write_ops::DeleteOpEntry> markedDeletes;
     for (auto&& op : deleteRequest.getDeletes()) {
@@ -602,7 +606,7 @@ PlaceHolderResult addPlaceHoldersForDelete(OperationContext* opCtx,
         auto& opToMark = markedDeletes.back();
         auto collator = parseCollator(opCtx, op.getCollation());
         boost::intrusive_ptr<ExpressionContext> expCtx(
-            new ExpressionContext(opCtx, collator.get()));
+            new ExpressionContext(opCtx, collator.get(), NamespaceString(updateDBName)));
 
         auto resultForOp = replaceEncryptedFieldsInFilter(expCtx, *schemaTree, opToMark.getQ());
         placeHolderResult.hasEncryptionPlaceholders =
@@ -664,7 +668,8 @@ void processQueryCommand(OperationContext* opCtx,
         EncryptionSchemaTreeNode::parse(cryptdParams.jsonSchema, cryptdParams.schemaType);
 
     auto collator = extractCollator(opCtx, cmdObj);
-    boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(opCtx, collator.get()));
+    boost::intrusive_ptr<ExpressionContext> expCtx(
+        new ExpressionContext(opCtx, collator.get(), NamespaceString(dbName)));
 
     PlaceHolderResult placeholder =
         func(expCtx, dbName, cryptdParams.strippedObj, std::move(schemaTree));

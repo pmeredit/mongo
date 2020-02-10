@@ -99,10 +99,11 @@ int mqlrunMain(const char* pipelineStr,
             MONGO_UNREACHABLE;
     }
 
+    NamespaceString nss("db.data"_sd);
     auto client = getGlobalServiceContext()->makeClient("mqlrun");
     auto opCtx = client->makeOperationContext();
     boost::intrusive_ptr<ExpressionContext> expCtx;
-    expCtx.reset(new ExpressionContext(opCtx.get(), nullptr));
+    expCtx.reset(new ExpressionContext(opCtx.get(), nullptr, nss));
     expCtx->allowDiskUse = false;
     if (tempDir) {
         // Spill to disk if needed for a large sort.
@@ -155,7 +156,6 @@ int mqlrunMain(const char* pipelineStr,
     auto ws = std::make_unique<WorkingSet>();
     auto proxy = std::make_unique<PipelineProxyStage>(opCtx.get(), std::move(pipeline), ws.get());
 
-    NamespaceString nss("db.data"_sd);
     auto planExec = PlanExecutor::make(
         opCtx.get(), std::move(ws), std::move(proxy), nullptr, PlanExecutor::NO_YIELD, nss);
 

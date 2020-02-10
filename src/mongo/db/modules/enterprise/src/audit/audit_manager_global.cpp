@@ -53,7 +53,8 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(InitializeGlobalAuditManager,
         // OperationContext. MatchExpressionParser::parse() only requires an OperationContext for
         // parsing $expr, which we explicitly disallow here.
         OperationContext* opCtx = nullptr;
-        boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(opCtx, collator));
+        boost::intrusive_ptr<ExpressionContext> expCtx(
+            new ExpressionContext(opCtx, collator, NamespaceString("")));
         StatusWithMatchExpression parseResult =
             MatchExpressionParser::parse(auditGlobalParams.auditFilter,
                                          std::move(expCtx),

@@ -28,14 +28,15 @@ using std::deque;
 using std::vector;
 
 using MockMongoInterface = StubLookupSingleDocumentProcessInterface;
+const NamespaceString kTestNss = NamespaceString("unittests.pipeline_test");
 
 class InternalSearchIdLookupTest : public ServiceContextTest {
 public:
     InternalSearchIdLookupTest()
-        : InternalSearchIdLookupTest(NamespaceString("unittests.pipeline_test")) {}
+        : InternalSearchIdLookupTest(NamespaceString(kTestNss)) {}
 
     InternalSearchIdLookupTest(NamespaceString nss) {
-        _expCtx = new ExpressionContext(_opCtx.get(), nullptr);
+        _expCtx = new ExpressionContext(_opCtx.get(), nullptr, kTestNss);
         _expCtx->ns = std::move(nss);
         unittest::TempDir tempDir("AggregationContextFixture");
         _expCtx->tempDir = tempDir.path();
