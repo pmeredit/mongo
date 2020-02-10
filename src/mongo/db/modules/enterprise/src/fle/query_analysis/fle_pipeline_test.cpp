@@ -49,14 +49,14 @@ public:
      */
     const EncryptionSchemaTreeNode& getSchemaForStage(const std::vector<BSONObj>& pipeline,
                                                       BSONObj inputSchema) {
-        auto parsedPipeline = uassertStatusOK(Pipeline::parse(pipeline, getExpCtx()));
+        auto parsedPipeline = Pipeline::parse(pipeline, getExpCtx());
         auto schema = EncryptionSchemaTreeNode::parse(inputSchema, EncryptionSchemaType::kLocal);
         _flePipe = std::make_unique<FLEPipeline>(std::move(parsedPipeline), *schema.get());
         return _flePipe->getOutputSchema();
     }
 
     bool doesHavePlaceholders(const std::vector<BSONObj>& pipeline, BSONObj inputSchema) {
-        auto parsedPipeline = uassertStatusOK(Pipeline::parse(pipeline, getExpCtx()));
+        auto parsedPipeline = Pipeline::parse(pipeline, getExpCtx());
         auto schema = EncryptionSchemaTreeNode::parse(inputSchema, EncryptionSchemaType::kLocal);
         return FLEPipeline(std::move(parsedPipeline), *schema.get()).hasEncryptedPlaceholders;
     }
@@ -68,7 +68,7 @@ public:
     std::vector<BSONObj> translatePipeline(const std::vector<BSONObj>& pipeline,
                                            BSONObj inputSchema) {
         auto schema = EncryptionSchemaTreeNode::parse(inputSchema, EncryptionSchemaType::kLocal);
-        FLEPipeline flePipe(uassertStatusOK(Pipeline::parse(pipeline, getExpCtx())), *schema.get());
+        FLEPipeline flePipe(Pipeline::parse(pipeline, getExpCtx()), *schema.get());
         std::vector<BSONObj> serialized;
         for (const auto& stage : flePipe.getPipeline().serialize()) {
             ASSERT(stage.getType() == BSONType::Object);

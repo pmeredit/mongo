@@ -132,9 +132,7 @@ int mqlrunMain(const char* pipelineStr,
 
     std::unique_ptr<Pipeline, PipelineDeleter> pipeline;
     try {
-        auto statusWithPipeline = Pipeline::parse(pipelineVector, expCtx);
-        uassertStatusOK(statusWithPipeline.getStatus());
-        pipeline = std::move(statusWithPipeline.getValue());
+        pipeline = Pipeline::parse(pipelineVector, expCtx);
     } catch (AssertionException& e) {
         std::cerr << "Failed to parse pipeline: " << e.reason() << std::endl;
         return 1;

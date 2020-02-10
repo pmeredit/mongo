@@ -27,9 +27,9 @@ TEST_F(InternalSearchMongotRemoteTest, SearchMongotRemoteNotAllowedInTransaction
 
     // Set up the mongotRemote stage.
     auto mongotRemoteStage = DocumentSourceInternalSearchMongotRemote::createFromBson(spec, expCtx);
-    auto pipeline = Pipeline::create({mongotRemoteStage}, expCtx);
-    ASSERT_NOT_OK(pipeline.getStatus());
-    ASSERT_EQ(pipeline.getStatus(), ErrorCodes::OperationNotSupportedInTransaction);
+    ASSERT_THROWS_CODE(Pipeline::create({mongotRemoteStage}, expCtx),
+                       AssertionException,
+                       ErrorCodes::OperationNotSupportedInTransaction);
 }
 
 TEST_F(InternalSearchMongotRemoteTest, SearchMongotRemoteReturnsEOFWhenCollDoesNotExist) {

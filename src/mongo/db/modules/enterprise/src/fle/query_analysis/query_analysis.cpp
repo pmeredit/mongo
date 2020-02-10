@@ -294,9 +294,7 @@ PlaceHolderResult replaceEncryptedFieldsInUpdate(
         case UpdateDriver::UpdateType::kPipeline: {
             // Build a FLEPipeline which will replace encrypted fields with intent-to-encrypt
             // markings.
-            FLEPipeline flePipe{
-                uassertStatusOK(Pipeline::parse(updateMod.getUpdatePipeline(), expCtx)),
-                schemaTree};
+            FLEPipeline flePipe{Pipeline::parse(updateMod.getUpdatePipeline(), expCtx), schemaTree};
 
             // The current pipeline analysis assumes that the document coming out of the pipeline is
             // being returned to the user but for pipelines in an update it is being written to a
@@ -373,8 +371,7 @@ PlaceHolderResult addPlaceHoldersForAggregate(
 
     // Build a FLEPipeline which will replace encrypted fields with intent-to-encrypt markings, then
     // update the AggregationRequest with the new pipeline if there were any replaced fields.
-    FLEPipeline flePipe{uassertStatusOK(Pipeline::parse(request.getPipeline(), expCtx)),
-                        *schemaTree.get()};
+    FLEPipeline flePipe{Pipeline::parse(request.getPipeline(), expCtx), *schemaTree.get()};
 
     // Serialize the translated command by manually appending each field that was present in the
     // original command, replacing the pipeline with the translated version containing
