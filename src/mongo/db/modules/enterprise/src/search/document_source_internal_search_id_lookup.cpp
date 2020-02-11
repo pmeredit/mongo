@@ -64,10 +64,10 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchIdLookUp::doGetNext() 
                     pExpCtx->uuid.has_value());
 
             // Find the document by performing a local read.
-            MongoProcessInterface::MakePipelineOptions pipelineOpts;
+            MakePipelineOptions pipelineOpts;
             pipelineOpts.attachCursorSource = false;
-            auto pipeline = pExpCtx->mongoProcessInterface->makePipeline(
-                {BSON("$match" << documentKey)}, pExpCtx, pipelineOpts);
+            auto pipeline =
+                Pipeline::makePipeline({BSON("$match" << documentKey)}, pExpCtx, pipelineOpts);
 
             pipeline = pExpCtx->mongoProcessInterface->attachCursorSourceToPipelineForLocalRead(
                 pExpCtx, pipeline.release());
