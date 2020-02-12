@@ -16,7 +16,7 @@ const testDB = conn.getDB("test");
     // Ensure the mock returns the correct responses and validates the 'expected' commands.
     // These examples do not obey the find/getMore protocol.
     const cursorId = NumberLong(123);
-    const searchCmd = {searchBeta: "a UUID"};
+    const searchCmd = {search: "a UUID"};
     const history = [
         {expectedCommand: searchCmd, response: {ok: 1, foo: 1}},
         {expectedCommand: {getMore: cursorId, collection: "abc"}, response: {ok: 1, foo: 2}},
@@ -55,7 +55,7 @@ const testDB = conn.getDB("test");
 {
     // Test some edge and error cases.
     const cursorId = NumberLong(123);
-    const searchCmd = {searchBeta: "a UUID"};
+    const searchCmd = {search: "a UUID"};
     const history = [
         {expectedCommand: searchCmd, response: {ok: 1}},
     ];
@@ -81,16 +81,16 @@ const testDB = conn.getDB("test");
                                  31089);
 
     // Run a search which doesn't match its 'expectedCommand'.
-    assert.commandFailedWithCode(testDB.runCommand({searchBeta: "a different UUID"}), 31086);
+    assert.commandFailedWithCode(testDB.runCommand({search: "a different UUID"}), 31086);
 
     // Reset the state associated with the cursor id and run a search command which
     // succeeds.
     assert.commandWorked(
         testDB.runCommand({setMockResponses: 1, cursorId: cursorId, history: history}));
-    assert.commandWorked(testDB.runCommand({searchBeta: "a UUID"}));
+    assert.commandWorked(testDB.runCommand({search: "a UUID"}));
     // Run another search command. We did not set up any state on the mock for another
     // client, though, so this should fail.
-    assert.commandFailedWithCode(testDB.runCommand({searchBeta: "a UUID"}), 31094);
+    assert.commandFailedWithCode(testDB.runCommand({search: "a UUID"}), 31094);
 }
 
 //
@@ -101,7 +101,7 @@ const testDB = conn.getDB("test");
 // Open a cursor and exhaust it.
 {
     const cursorId = NumberLong(123);
-    const searchCmd = {searchBeta: "a UUID"};
+    const searchCmd = {search: "a UUID"};
     const cursorHistory = [
         {
             expectedCommand: searchCmd,
@@ -153,7 +153,7 @@ const testDB = conn.getDB("test");
 // Open a cursor, but don't exhaust it, checking the 'killCursors' functionality of mongotmock.
 {
     const cursorId = NumberLong(123);
-    const searchCmd = {searchBeta: "a UUID"};
+    const searchCmd = {search: "a UUID"};
     const cursorHistory = [
         {
             expectedCommand: searchCmd,
@@ -195,7 +195,7 @@ const testDB = conn.getDB("test");
 
 // Test with multiple clients.
 {
-    const searchCmd = {searchBeta: "a UUID"};
+    const searchCmd = {search: "a UUID"};
 
     const cursorIdA = NumberLong(123);
     const cursorAHistory = [

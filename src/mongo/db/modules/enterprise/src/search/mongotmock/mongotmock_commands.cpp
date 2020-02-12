@@ -73,7 +73,7 @@ public:
 
 class MongotMockSearch final : public MongotMockBaseCmd {
 public:
-    MongotMockSearch() : MongotMockBaseCmd("searchBeta") {}
+    MongotMockSearch() : MongotMockBaseCmd("search") {}
 
     void processCommand(OperationContext* opCtx,
                         const std::string& dbname,

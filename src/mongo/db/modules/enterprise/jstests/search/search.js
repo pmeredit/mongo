@@ -31,7 +31,7 @@ const searchQuery = {
     path: "title"
 };
 const searchCmd = {
-    searchBeta: coll.getName(),
+    search: coll.getName(),
     collectionUUID: collUUID,
     query: searchQuery,
     $db: "test"

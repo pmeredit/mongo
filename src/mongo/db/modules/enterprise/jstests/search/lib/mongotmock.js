@@ -11,7 +11,7 @@
  * @param {BinaryType} collectionUUID - the binary representation of a collection's UUID.
  */
 function mongotCommandForQuery(query, collName, db, collectionUUID) {
-    return {searchBeta: collName, $db: db, collectionUUID, query};
+    return {search: collName, $db: db, collectionUUID, query};
 }
 
 /**

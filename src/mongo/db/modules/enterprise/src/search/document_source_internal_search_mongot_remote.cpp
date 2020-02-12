@@ -121,10 +121,8 @@ intrusive_ptr<DocumentSource> DocumentSourceInternalSearchMongotRemote::createFr
 
 BSONObj DocumentSourceInternalSearchMongotRemote::commandObject(
     const BSONObj& query, const intrusive_ptr<ExpressionContext>& expCtx) {
-    // TODO SERVER-46003: Once mongot supports the "search" command, we should switch to using
-    //  "search" instead of "searchBeta" for communication with mongot.
-    return BSON("searchBeta" << expCtx->ns.coll() << "collectionUUID" << expCtx->uuid.get()
-                             << "query" << query);
+    return BSON("search" << expCtx->ns.coll() << "collectionUUID" << expCtx->uuid.get() << "query"
+                         << query);
 }
 
 }  // namespace mongo
