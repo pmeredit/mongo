@@ -198,7 +198,7 @@ protected:
 SaslConversationGssapi::SaslConversationGssapi()
     : opCtx(makeOperationContext()), mechanism("GSSAPI") {
 
-    auto tmpAuthManager = AuthorizationManager::create();
+    auto tmpAuthManager = AuthorizationManager::create(getServiceContext());
     authSession = tmpAuthManager->makeAuthorizationSession();
     authManager = tmpAuthManager.get();
     AuthorizationManager::set(getServiceContext(), std::move(tmpAuthManager));
