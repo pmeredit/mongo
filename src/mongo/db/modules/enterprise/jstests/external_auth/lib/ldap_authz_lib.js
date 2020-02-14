@@ -303,6 +303,15 @@ function runTests(testCallback, configGenerator, callbackOptions) {
         wcMajorityJournalDefault = true;
     }
 
+    function userExists(node) {
+        assert.soon(() => {
+            const admin = node.getDB("admin");
+            const res = admin.auth("siteRootAdmin", "secret");
+            admin.logout();
+            return res;
+        }, "cannot authenticate on replica set node " + node.host);
+    }
+
     // replset
     var rst = new ReplSetTest(configGenerator.generateReplicaSetConfig());
     rst.startSet();
@@ -316,6 +325,8 @@ function runTests(testCallback, configGenerator, callbackOptions) {
 
     var primary = rst.getPrimary();
     setupTest(primary);
+    rst.nodes.forEach(userExists);
+
     // TODO: run test on secondary as well?
     testCallback({conn: primary, replSetTest: rst, options: callbackOptions});
     // Authenticate in an assert.soon because the created siteRootAdmin user may
@@ -340,6 +351,8 @@ function runTests(testCallback, configGenerator, callbackOptions) {
 
     var st = new ShardingTest(configGenerator.generateShardingConfig());
     setupTest(st.s0);
+    st.configRS.nodes.forEach(userExists);
+
     testCallback({conn: st.s0, shardingTest: st, options: callbackOptions});
     if (st.configRS) {
         st.configRS.nodes.forEach((node) => {
