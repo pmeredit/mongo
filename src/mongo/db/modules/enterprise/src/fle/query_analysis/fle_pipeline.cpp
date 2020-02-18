@@ -128,7 +128,7 @@ void propagateAccumulatedFieldsToSchema(const clonable_ptr<EncryptionSchemaTreeN
 
         const bool perDocExprResultCompared = accu->getOpName() == "$addToSet"s;
         auto perDocExprSchema = aggregate_expression_intender::getOutputSchema(
-            *prevSchema, accuStmt.rightHandSide.perDocExpression.get(), perDocExprResultCompared);
+            *prevSchema, accuStmt.expr.argument.get(), perDocExprResultCompared);
 
         if (accu->getOpName() == "$addToSet"s || accu->getOpName() == "$push"s) {
             if (perDocExprSchema->mayContainEncryptedNode()) {
@@ -153,9 +153,9 @@ void propagateAccumulatedFieldsToSchema(const clonable_ptr<EncryptionSchemaTreeN
                     str::stream() << "Accumulator '" << accu->getOpName()
                                   << "' cannot aggregate encrypted fields.",
                     !perDocExprSchema->mayContainEncryptedNode());
-            // Similarly, we don't want to allow the perGroupExpression to contain encrypted fields.
-            // For almost all accumulators, the perGroupExpression is a trivial {$const: null}.
-            // Conservatively, just ban a non-$const perGroupExpression when the group key might
+            // Similarly, we don't want to allow the initializer to contain encrypted fields.
+            // For almost all accumulators, the initializer is a trivial {$const: null}.
+            // Conservatively, just ban a non-$const initializer when the group key might
             // contain any encrypted data.
             if (groupKeyMayContainEncryptedFields) {
                 uassert(51808,
@@ -163,7 +163,7 @@ void propagateAccumulatedFieldsToSchema(const clonable_ptr<EncryptionSchemaTreeN
                                       << "' must have a constant per-group argument (initArgs) "
                                       << "when the group key might contain encrypted fields.",
                         ExpressionConstant::isNullOrConstant(
-                            accuStmt.rightHandSide.perGroupExpression));
+                            accuStmt.expr.initializer));
             }
 
             newSchema->addChild(FieldRef(accuStmt.fieldName),
@@ -531,11 +531,11 @@ aggregate_expression_intender::Intention analyzeForBucketAuto(
         didMark = didMark ||
             aggregate_expression_intender::mark(*(flePipe->getPipeline().getContext().get()),
                                                 schema,
-                                                accuStmt.rightHandSide.perDocExpression.get(),
+                                                accuStmt.expr.argument.get(),
                                                 expressionResultCompared);
-        // In bucketAuto we only allow constants for perGroupExpression (after optimization),
+        // In bucketAuto we only allow constants for initializer (after optimization),
         // so we shouldn't need to analyze this.
-        invariant(ExpressionConstant::isNullOrConstant(accuStmt.rightHandSide.perGroupExpression));
+        invariant(ExpressionConstant::isNullOrConstant(accuStmt.expr.initializer));
     }
     return didMark;
 }
@@ -651,10 +651,10 @@ aggregate_expression_intender::Intention analyzeForGroup(FLEPipeline* flePipe,
         didMark = didMark ||
             aggregate_expression_intender::mark(*(flePipe->getPipeline().getContext().get()),
                                                 schema,
-                                                accuStmt.rightHandSide.perDocExpression.get(),
+                                                accuStmt.expr.argument.get(),
                                                 expressionResultCompared);
 
-        // In propagateSchemaForGroup we require the perGroupExpression to be constant if the group
+        // In propagateSchemaForGroup we require the initializer to be constant if the group
         // key might contain any encrypted fields, so here we shouldn't need to analyze it.
     }
     return didMark;
