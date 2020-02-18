@@ -160,8 +160,8 @@ void propagateAccumulatedFieldsToSchema(const clonable_ptr<EncryptionSchemaTreeN
             if (groupKeyMayContainEncryptedFields) {
                 uassert(51808,
                         str::stream() << "Accumulator '" << accu->getOpName()
-                                      << "' must have a constant per-group argument (initArgs) "
-                                      << "when the group key might contain encrypted fields.",
+                                      << "' must have a constant initializer (initArgs) "
+                                      << "when the group key contains encrypted fields.",
                         ExpressionConstant::isNullOrConstant(
                             accuStmt.expr.initializer));
             }
