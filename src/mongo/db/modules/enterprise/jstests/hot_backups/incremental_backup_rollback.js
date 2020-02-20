@@ -1,7 +1,7 @@
 /**
  * Tests that incremental backups remain viable across replication rollback on the backup source.
  *
- * @tags: [requires_replication, requires_wiredtiger]
+ * @tags: [requires_replication, requires_wiredtiger, requires_persistence]
  */
 (function() {
 "use strict";
