@@ -162,8 +162,7 @@ void propagateAccumulatedFieldsToSchema(const clonable_ptr<EncryptionSchemaTreeN
                         str::stream() << "Accumulator '" << accu->getOpName()
                                       << "' must have a constant initializer (initArgs) "
                                       << "when the group key contains encrypted fields.",
-                        ExpressionConstant::isNullOrConstant(
-                            accuStmt.expr.initializer));
+                        ExpressionConstant::isNullOrConstant(accuStmt.expr.initializer));
             }
 
             newSchema->addChild(FieldRef(accuStmt.fieldName),
