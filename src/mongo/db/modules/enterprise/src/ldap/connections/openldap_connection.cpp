@@ -426,7 +426,7 @@ Status OpenLDAPConnection::connect() {
     }
 
     // Log LDAP API information
-    if (shouldLog(LogstreamBuilder::severityCast(3))) {
+    if (shouldLog(logger::LogSeverity::Debug(3))) {
         try {
             LDAPOptionAPIInfo info = _pimpl->getOption<LDAPOptionAPIInfo>(
                 "OpenLDAPConnection::connect", "Getting API info");

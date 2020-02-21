@@ -33,6 +33,7 @@
 #include "mongo/db/server_options.h"
 #include "mongo/db/stats/counters.h"
 #include "mongo/db/storage/storage_options.h"
+#include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/background.h"
 #include "mongo/util/exit.h"
@@ -1123,40 +1124,33 @@ int my_snmp_callback(netsnmp_mib_handler* handler,
  * Callback invoked by snmp library to log messages.
  */
 static int snmpLogCallback(int majorID, int minorID, void* serverArg, void* clientArg) throw() {
-    using logger::LogSeverity;
     fassert(4033, majorID == SNMP_CALLBACK_LIBRARY);
     fassert(4034, minorID == SNMP_CALLBACK_LOGGING);
     fassert(4035, clientArg == nullptr);
 
     const snmp_log_message* slm = static_cast<const snmp_log_message*>(serverArg);
-    LogSeverity severity = LogSeverity::Log();
     switch (slm->priority) {
         case LOG_EMERG:
         case LOG_ALERT:
         case LOG_CRIT:
-            severity = LogSeverity::Severe();
+            LOGV2_FATAL(4615642, "{message}", "message"_attr = slm->msg);
             break;
         case LOG_ERR:
-            severity = LogSeverity::Error();
+            LOGV2_ERROR(4615643, "{message}", "message"_attr = slm->msg);
             break;
         case LOG_WARNING:
-            severity = LogSeverity::Warning();
+            LOGV2_WARNING(4615644, "{message}", "message"_attr = slm->msg);
+            break;
+        case LOG_DEBUG:
+            LOGV2_DEBUG(4615645, 1, "{message}", "message"_attr = slm->msg);
             break;
         case LOG_NOTICE:
         case LOG_INFO:
-            severity = LogSeverity::Log();
-            break;
-        case LOG_DEBUG:
-            severity = LogSeverity::Debug(1);
-            break;
         default:
-            severity = LogSeverity::Log();
+            LOGV2(4615646, "{message}", "message"_attr = slm->msg);
             break;
     }
 
-    if (shouldLog(severity)) {
-        logger::LogstreamBuilder(logger::globalLogDomain(), getThreadName(), severity) << slm->msg;
-    }
     return 1;
 }
 }  // namespace mongo

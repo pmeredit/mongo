@@ -8,9 +8,7 @@
 
 #include <cstdint>
 
-#include "mongo/logger/log_component.h"
-#include "mongo/logger/logger.h"
-#include "mongo/logger/logstream_builder.h"
+#include "mongo/logv2/log_detail.h"
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/str.h"
 
@@ -19,16 +17,12 @@
 #include "../ldap_type_aliases.h"
 
 // We must redefine our log macro, because the original LOG isn't intended to be used from headers
-#define MONGO_LDAPLOG(DLEVEL)                                                                      \
-    if (!(::mongo::logger::globalLogDomain())                                                      \
-             ->shouldLog(::mongo::logger::LogComponent::kAccessControl,                            \
-                         ::mongo::logger::LogstreamBuilder::severityCast(DLEVEL))) {               \
-    } else                                                                                         \
-        ::mongo::logger::LogstreamBuilder(::mongo::logger::globalLogDomain(),                      \
-                                          ::mongo::getThreadName(),                                \
-                                          ::mongo::logger::LogstreamBuilder::severityCast(DLEVEL), \
-                                          ::mongo::logger::LogComponent::kAccessControl)
-
+#define LOGV2_LDAPLOG(ID, DLEVEL, MESSAGE, ...)                 \
+    logv2::detail::doLog(ID,                                    \
+                         logv2::LogSeverity::Debug(DLEVEL),     \
+                         {logv2::LogComponent::kAccessControl}, \
+                         MESSAGE,                               \
+                         ##__VA_ARGS__)
 
 namespace mongo {
 
@@ -333,8 +327,10 @@ public:
                                                      "getting DN for a result from the LDAP query");
             }
 
-            MONGO_LDAPLOG(3) << "From LDAP query result, got an entry with DN: "
-                             << S::toNativeString(entryDN);
+            LOGV2_LDAPLOG(4615664,
+                          3,
+                          "From LDAP query result, got an entry with DN: {entryDN}",
+                          "entryDN"_attr = S::toNativeString(entryDN));
             LDAPAttributeKeyValuesMap attributeValueMap;
 
             // For each entity in the response, parse each attribute it contained.
@@ -354,8 +350,11 @@ public:
                 // This takes attribute by value, so we can safely set it to ldap_next_attribute
                 // later, and the old ON_BLOCK_EXIT will free the old attribute.
                 const auto attributeGuard = makeGuard([attribute] { S::ldap_memfree(attribute); });
-                MONGO_LDAPLOG(3) << "From LDAP entry with DN " << S::toNativeString(entryDN)
-                                 << ", got attribute " << S::toNativeString(attribute);
+                LOGV2_LDAPLOG(4615665,
+                              3,
+                              "From LDAP entry with DN {entryDN}, got attribute {attribute}",
+                              "entryDN"_attr = S::toNativeString(entryDN),
+                              "attribute"_attr = S::toNativeString(attribute));
 
                 // Attributes in LDAP are multi-valued.  For each attribute contained by the entity,
                 // we must parse each value it contained.  ldap_get_values_len returns an owned
@@ -422,7 +421,7 @@ private:
     auto issueQuery(LDAPQuery query,
                     typename S::TimeoutType* timeout,
                     typename S::ErrorCodeType* err) {
-        MONGO_LDAPLOG(3) << "Performing LDAP query: " << query;
+        LOGV2_LDAPLOG(4615666, 3, "Performing LDAP query: {query}", "query"_attr = query);
 
         // Convert the attribute vector to a mutable null terminated array of char* strings
         // libldap wants a non-const copy, so prevent it from breaking our configuration data

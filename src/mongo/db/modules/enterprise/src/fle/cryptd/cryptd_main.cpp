@@ -20,6 +20,7 @@
 #include "mongo/db/storage/storage_engine_lock_file.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/db/wire_version.h"
+#include "mongo/logv2/log.h"
 #include "mongo/transport/transport_layer.h"
 #include "mongo/transport/transport_layer_manager.h"
 #include "mongo/util/assert_util.h"
@@ -143,17 +144,22 @@ ExitCode initAndListen() {
     auto serviceContext = getGlobalServiceContext();
     {
         ProcessId pid = ProcessId::getCurrent();
-        LogstreamBuilder l = log(logger::LogComponent::kControl);
-        l << "MongoCryptD starting : pid=" << pid;
-        l << " port=" << serverGlobalParams.port;
+        logv2::DynamicAttributes attrs;
+
+        attrs.add("pid", pid.toNative());
+        attrs.add("port", serverGlobalParams.port);
 #ifndef _WIN32
+        std::string socketFileStr;
         if (!serverGlobalParams.noUnixSocket) {
-            l << " socketFile=" << socketFile.generic_string();
+            socketFileStr = socketFile.generic_string();
+            attrs.add("socketFile", socketFileStr);
         }
 #endif
-
         const bool is32bit = sizeof(int*) == 4;
-        l << (is32bit ? " 32" : " 64") << "-bit host=" << getHostNameCached();
+        attrs.add("architecture", is32bit ? "32-bit"_sd : "64-bit"_sd);
+        std::string hostName = getHostNameCached();
+        attrs.add("host", hostName);
+        LOGV2_OPTIONS(4615669, {logv2::LogComponent::kControl}, "MongoCryptD starting", attrs);
     }
 
     if (kDebugBuild)

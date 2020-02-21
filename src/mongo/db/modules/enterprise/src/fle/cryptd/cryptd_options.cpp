@@ -12,6 +12,9 @@
 #include "mongo/db/server_options.h"
 #include "mongo/db/server_options_base.h"
 #include "mongo/db/server_options_server_helpers.h"
+#include "mongo/logv2/log.h"
+#include "mongo/logv2/log_domain_global.h"
+#include "mongo/logv2/log_manager.h"
 #include "mongo/util/log.h"
 #include "mongo/util/options_parser/startup_options.h"
 #include "mongo/util/version.h"
@@ -36,9 +39,12 @@ bool handlePreValidationMongoCryptDOptions(const moe::Environment& params) {
     }
 
     if (params.count("version") && params["version"].as<bool>() == true) {
-        setPlainConsoleLogger();
+        auto& globalDomain = logv2::LogManager::global().getGlobalDomainInternal();
+        logv2::LogDomainGlobal::ConfigurationOptions config = globalDomain.config();
+        config.format = logv2::LogFormat::kPlain;
+        invariant(globalDomain.configure(config).isOK());
         auto&& vii = VersionInfoInterface::instance();
-        log() << mongodVersion(vii);
+        LOGV2(4615668, "{version}", "version"_attr = mongosVersion(vii));
         vii.logBuildInfo();
         return false;
     }
