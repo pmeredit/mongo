@@ -207,6 +207,18 @@ BackupCursorState BackupCursorService::openBackupCursor(
         builder << "checkpointTimestamp" << checkpointTimestamp.get();
     }
 
+    builder << "disableIncrementalBackup" << options.disableIncrementalBackup;
+    builder << "incrementalBackup" << options.incrementalBackup;
+    builder << "blockSize" << options.blockSizeMB;
+
+    if (options.thisBackupName) {
+        builder << "thisBackupName" << *options.thisBackupName;
+    }
+
+    if (options.srcBackupName) {
+        builder << "srcBackupName" << *options.srcBackupName;
+    }
+
     Document preamble{{"metadata", builder.obj()}};
     for (const auto& entry : backupInformation) {
         _backupFiles.insert(entry.first);

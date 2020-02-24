@@ -62,6 +62,12 @@ try {
 
         if (isFirstDoc) {
             assert.eq(true, doc.hasOwnProperty("metadata"));
+            assert.eq(false, doc.metadata.disableIncrementalBackup);
+            assert.eq(false, doc.metadata.incrementalBackup);
+            assert.eq(16, doc.metadata.blockSize);
+            assert.eq(false, doc.metadata.hasOwnProperty("thisBackupName"));
+            assert.eq(false, doc.metadata.hasOwnProperty("srcBackupName"));
+
             assert.eq(false, doc.hasOwnProperty("filename"));
             assert.eq(false, doc.hasOwnProperty("fileSize"));
             assert.eq(false, doc.hasOwnProperty("offset"));
@@ -90,6 +96,13 @@ try {
 
         if (isFirstDoc) {
             assert.eq(true, doc.hasOwnProperty("metadata"));
+            assert.eq(false, doc.metadata.disableIncrementalBackup);
+            assert.eq(true, doc.metadata.incrementalBackup);
+            assert.eq(16, doc.metadata.blockSize);
+            assert.eq(true, doc.metadata.hasOwnProperty("thisBackupName"));
+            assert.eq("foo", doc.metadata.thisBackupName);
+            assert.eq(false, doc.metadata.hasOwnProperty("srcBackupName"));
+
             assert.eq(false, doc.hasOwnProperty("filename"));
             assert.eq(false, doc.hasOwnProperty("fileSize"));
             assert.eq(false, doc.hasOwnProperty("offset"));
@@ -124,6 +137,14 @@ try {
 
         if (isFirstDoc) {
             assert.eq(true, doc.hasOwnProperty("metadata"));
+            assert.eq(false, doc.metadata.disableIncrementalBackup);
+            assert.eq(true, doc.metadata.incrementalBackup);
+            assert.eq(16, doc.metadata.blockSize);
+            assert.eq(true, doc.metadata.hasOwnProperty("thisBackupName"));
+            assert.eq("bar", doc.metadata.thisBackupName);
+            assert.eq(true, doc.metadata.hasOwnProperty("srcBackupName"));
+            assert.eq("foo", doc.metadata.srcBackupName);
+
             assert.eq(false, doc.hasOwnProperty("filename"));
             assert.eq(false, doc.hasOwnProperty("fileSize"));
             assert.eq(false, doc.hasOwnProperty("offset"));
