@@ -120,8 +120,10 @@ int saslInteract(LDAP* session, unsigned flags, void* defaults, void* interact) 
 
         return LDAP_SUCCESS;
     } catch (...) {
-        error() << "Unexpected exception caught in OpenLDAPConnection's saslInteract: "
-                << exceptionToStatus();
+        LOGV2_ERROR(
+            24053,
+            "Unexpected exception caught in OpenLDAPConnection's saslInteract: {exceptionToStatus}",
+            "exceptionToStatus"_attr = exceptionToStatus());
         return LDAP_OPERATIONS_ERROR;
     }
 }
@@ -141,8 +143,12 @@ int openLDAPBindFunction(
         const auto& bindOptions = conn->bindOptions();
         invariant(bindOptions);
 
-        LOG(3) << "Binding to LDAP server \"" << url
-               << "\" with bind parameters: " << bindOptions->toCleanString();
+        LOGV2_DEBUG(
+            24050,
+            3,
+            "Binding to LDAP server \"{url}\" with bind parameters: {bindOptions_toCleanString}",
+            "url"_attr = url,
+            "bindOptions_toCleanString"_attr = bindOptions->toCleanString());
 
         int ret;
         const std::string failureHint = str::stream() << "failed to bind to LDAP server at " << url;
@@ -178,18 +184,27 @@ int openLDAPBindFunction(
             status = sessionHolder.resultCodeToStatus(ret, "ldap_sasl_bind_s", failureHint);
 
         } else {
-            error() << "Attempted to bind to LDAP server with unrecognized bind type: "
-                    << authenticationChoiceToString(bindOptions->authenticationChoice);
+            LOGV2_ERROR(24054,
+                        "Attempted to bind to LDAP server with unrecognized bind type: "
+                        "{authenticationChoiceToString_bindOptions_authenticationChoice}",
+                        "authenticationChoiceToString_bindOptions_authenticationChoice"_attr =
+                            authenticationChoiceToString(bindOptions->authenticationChoice));
             return LDAP_OPERATIONS_ERROR;
         }
 
         if (!status.isOK()) {
-            error() << status << ". Bind parameters were: " << bindOptions->toCleanString();
+            LOGV2_ERROR(24055,
+                        "{status}. Bind parameters were: {bindOptions_toCleanString}",
+                        "status"_attr = status,
+                        "bindOptions_toCleanString"_attr = bindOptions->toCleanString());
         }
         return ret;
     } catch (...) {
         Status status = exceptionToStatus();
-        error() << "Failed to bind to LDAP server at " << url << " : " << status;
+        LOGV2_ERROR(24056,
+                    "Failed to bind to LDAP server at {url} : {status}",
+                    "url"_attr = url,
+                    "status"_attr = status);
         return LDAP_OPERATIONS_ERROR;
     }
 }
@@ -277,32 +292,30 @@ private:
 int LDAPConnectCallbackFunction(
     LDAP* ld, Sockbuf* sb, LDAPURLDesc* srv, struct sockaddr* addr, struct ldap_conncb* ctx) {
     try {
-        LOG(3) << [=]() -> std::string {
-            // Socket address size is manually derived based on IPv4 or IPv6 classification
-            SockAddr sa(addr, [&]() {
-                switch (addr->sa_family) {
-                    case AF_INET:
-                        return sizeof(sockaddr_in);
-                    case AF_INET6:
-                        return sizeof(sockaddr_in6);
-                    default:
-                        uasserted(31233,
-                                  str::stream() << "Socket Address family is not IPv4 or IPv6: "
-                                                << addr->sa_family);
-                }
-            }());
-            StringBuilder builder;
-            builder << "Connected to LDAP server at " << sa.toString();
-            std::unique_ptr<char, decltype(&ldap_memfree)> url(ldap_url_desc2str(srv),
-                                                               &ldap_memfree);
-            if (url.get() != nullptr) {
-                builder << " with LDAP URL: " << url.get();
-            }
-            return builder.str();
-        }();
+        LOGV2_DEBUG(20163,
+                    3,
+                    "Connected to LDAP server at {sa} with LDAP URL: {url}",
+                    "sa"_attr = SockAddr(
+                        addr,
+                        [&]() {
+                            switch (addr->sa_family) {
+                                case AF_INET:
+                                    return sizeof(sockaddr_in);
+                                case AF_INET6:
+                                    return sizeof(sockaddr_in6);
+                                default:
+                                    uasserted(31233,
+                                              str::stream()
+                                                  << "Socket Address family is not IPv4 or IPv6: "
+                                                  << addr->sa_family);
+                            }
+                        }()),
+                    "url"_attr = std::unique_ptr<char, decltype(&ldap_memfree)>(
+                                     ldap_url_desc2str(srv), &ldap_memfree)
+                                     .get());
         return 0;
     } catch (const std::exception& e) {
-        error() << "Failed LDAPConnectCallback with: " << e.what();
+        LOGV2_ERROR(24057, "Failed LDAPConnectCallback with: {e_what}", "e_what"_attr = e.what());
         return LDAP_OPERATIONS_ERROR;
     }
 }
@@ -326,7 +339,7 @@ OpenLDAPConnection::OpenLDAPConnection(LDAPConnectionOptions options)
 OpenLDAPConnection::~OpenLDAPConnection() {
     Status status = disconnect();
     if (!status.isOK()) {
-        error() << "LDAP unbind failed: " << status;
+        LOGV2_ERROR(24058, "LDAP unbind failed: {status}", "status"_attr = status);
     }
 }
 
@@ -350,9 +363,10 @@ bool OpenLDAPConnection::isThreadSafe() {
             (std::find(extensions.begin(), extensions.end(), "THREAD_SAFE") != extensions.end());
 
         if (!isThreadSafe) {
-            warning() << "LDAP library does not advertise support for thread safety. All access "
-                         "will be serialized and connection pooling will be disabled. "
-                         "Link mongod against libldap_r to enable concurrent use of LDAP.";
+            LOGV2_WARNING(24052,
+                          "LDAP library does not advertise support for thread safety. All access "
+                          "will be serialized and connection pooling will be disabled. "
+                          "Link mongod against libldap_r to enable concurrent use of LDAP.");
         }
 
         return isThreadSafe;
@@ -432,17 +446,25 @@ Status OpenLDAPConnection::connect() {
             LDAPOptionAPIInfo info = _pimpl->getOption<LDAPOptionAPIInfo>(
                 "OpenLDAPConnection::connect", "Getting API info");
 
-            LOG(3) << "LDAPAPIInfo: { "
-                   << "ldapai_info_version: " << info.getInfoVersion() << ", "
-                   << "ldapai_api_version: " << info.getAPIVersion() << ", "
-                   << "ldap_protocol_version: " << info.getProtocolVersion() << ", "
-                   << "ldapai_extensions: [" << boost::algorithm::join(info.getExtensions(), ", ")
-                   << "], "
-                   << "ldapai_vendor_name: " << info.getVendorName() << ", "
-                   << "ldapai_vendor_version: " << info.getVendorVersion() << "}";
+            LOGV2_DEBUG(24051,
+                        3,
+                        "LDAPAPIInfo: {{ ldapai_info_version: {info_getInfoVersion}, "
+                        "ldapai_api_version: {info_getAPIVersion}, ldap_protocol_version: "
+                        "{info_getProtocolVersion}, ldapai_extensions: "
+                        "[{boost_algorithm_join_info_getExtensions}], ldapai_vendor_name: "
+                        "{info_getVendorName}, ldapai_vendor_version: {info_getVendorVersion}}}",
+                        "info_getInfoVersion"_attr = info.getInfoVersion(),
+                        "info_getAPIVersion"_attr = info.getAPIVersion(),
+                        "info_getProtocolVersion"_attr = info.getProtocolVersion(),
+                        "boost_algorithm_join_info_getExtensions"_attr =
+                            boost::algorithm::join(info.getExtensions(), ", "),
+                        "info_getVendorName"_attr = info.getVendorName(),
+                        "info_getVendorVersion"_attr = info.getVendorVersion());
         } catch (...) {
             Status status = exceptionToStatus();
-            error() << "Attempted to get LDAPAPIInfo. Received error: " << status;
+            LOGV2_ERROR(24059,
+                        "Attempted to get LDAPAPIInfo. Received error: {status}",
+                        "status"_attr = status);
         }
     }
 

@@ -958,7 +958,7 @@ public:
 
     void run() {
         if (!snmpGlobalParams.enabled) {
-            LOG(1) << "SNMPAgent not enabled";
+            LOGV2_DEBUG(23993, 1, "SNMPAgent not enabled");
             return;
         }
 
@@ -971,7 +971,7 @@ public:
         if (snmpGlobalParams.subagent) {
             if (netsnmp_ds_set_boolean(NETSNMP_DS_APPLICATION_ID, NETSNMP_DS_AGENT_ROLE, 1) !=
                 SNMPERR_SUCCESS) {
-                log() << "SNMPAgent faild setting subagent" << endl;
+                LOGV2(23994, "SNMPAgent faild setting subagent");
                 return;
             }
         }
@@ -981,19 +981,20 @@ public:
         init_agent(_agentName.c_str());
 
         _init();
-        LOG(1) << "SNMPAgent num things: " << _numThings;
+        LOGV2_DEBUG(23995, 1, "SNMPAgent num things: {numThings}", "numThings"_attr = _numThings);
 
         init_snmp(_agentName.c_str());
 
         if (!snmpGlobalParams.subagent) {
             int res = init_master_agent();
             if (res) {
-                warning() << "error starting SNMPAgent as master err:" << res << endl;
+                LOGV2_WARNING(
+                    24002, "error starting SNMPAgent as master err:{res}", "res"_attr = res);
                 return;
             }
-            log() << "SNMPAgent running as master" << endl;
+            LOGV2(23996, "SNMPAgent running as master");
         } else {
-            log() << "SNMPAgent running as subagent" << endl;
+            LOGV2(23997, "SNMPAgent running as subagent");
         }
 
         while (snmpGlobalParams.enabled && !globalInShutdownDeprecated()) {
@@ -1001,7 +1002,7 @@ public:
             agent_check_and_process(1);
         }
 
-        log() << "SNMPAgent shutting down" << endl;
+        LOGV2(23998, "SNMPAgent shutting down");
         snmp_shutdown(_agentName.c_str());
         SOCK_CLEANUP;
     }
@@ -1021,11 +1022,11 @@ private:
         }
 
         if (x == MIB_REGISTRATION_FAILED) {
-            log() << "SNMPAgent MIB_REGISTRATION_FAILED!" << endl;
+            LOGV2(23999, "SNMPAgent MIB_REGISTRATION_FAILED!");
         } else if (x == MIB_DUPLICATE_REGISTRATION) {
-            log() << "SNMPAgent MIB_DUPLICATE_REGISTRATION!" << endl;
+            LOGV2(24000, "SNMPAgent MIB_DUPLICATE_REGISTRATION!");
         } else {
-            log() << "SNMPAgent unknown registration failure" << endl;
+            LOGV2(24001, "SNMPAgent unknown registration failure");
         }
     }
 
@@ -1080,16 +1081,22 @@ int my_snmp_callback(netsnmp_mib_handler* handler,
             case MODE_GET: {
                 SNMPCallBack* cb = snmpAgent.getCallBack(var);
                 if (!cb) {
-                    warning() << "no callback for: " << oidManager.toString(var->name) << endl;
+                    LOGV2_WARNING(24003,
+                                  "no callback for: {oidManager_var_name}",
+                                  "oidManager_var_name"_attr = oidManager.toString(var->name));
                 } else {
                     try {
                         if (cb->respond(var) != SNMPCallBack::RESPOND_OK) {
-                            warning()
-                                << "error retrieving: " << oidManager.toString(var->name) << endl;
+                            LOGV2_WARNING(24004,
+                                          "error retrieving: {oidManager_var_name}",
+                                          "oidManager_var_name"_attr =
+                                              oidManager.toString(var->name));
                         }
                     } catch (std::exception& e) {
-                        warning() << "exception on retrieval of " << oidManager.toString(var->name)
-                                  << ": " << e.what() << endl;
+                        LOGV2_WARNING(24005,
+                                      "exception on retrieval of {oidManager_var_name}: {e_what}",
+                                      "oidManager_var_name"_attr = oidManager.toString(var->name),
+                                      "e_what"_attr = e.what());
                     }
                 }
 
@@ -1106,8 +1113,11 @@ int my_snmp_callback(netsnmp_mib_handler* handler,
                     return SNMP_ERR_NOERROR;
                 }
                 */
-                warning() << "i have no idea what i'm supposed to do with MODE_GETNEXT " << __FILE__
-                          << ":" << __LINE__ << endl;
+                LOGV2_WARNING(
+                    24006,
+                    "i have no idea what i'm supposed to do with MODE_GETNEXT {FILE_}:{LINE_}",
+                    "FILE_"_attr = __FILE__,
+                    "LINE_"_attr = __LINE__);
                 break;
             }
             default:

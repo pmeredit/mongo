@@ -14,6 +14,7 @@
 #include "mongo/db/commands/server_status.h"
 #include "mongo/executor/connection_pool.h"
 #include "mongo/executor/connection_pool_stats.h"
+#include "mongo/logv2/log.h"
 #include "mongo/platform/mutex.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/util/alarm.h"
@@ -242,8 +243,12 @@ public:
             auto result = func();
             // If we timed out in the meantime, throw away the result and return immediately
             if (state->done.swap(true)) {
-                LOG(1) << "LDAP operation " << state->context
-                       << " completed after timeout: " << _resultToString(result);
+                LOGV2_DEBUG(24060,
+                            1,
+                            "LDAP operation {state_context} completed after timeout: "
+                            "{resultToString_result}",
+                            "state_context"_attr = state->context,
+                            "resultToString_result"_attr = _resultToString(result));
                 return;
             }
 
@@ -313,7 +318,11 @@ void PooledLDAPConnection::setup(Milliseconds timeout, SetupCallback cb) {
         auto elapsed = duration_cast<Milliseconds>(queryTimer.elapsed());
 
         if (emptyQueryStatus.isOK()) {
-            LOG(1) << "Connecting to LDAP server " << _target << " took " << elapsed;
+            LOGV2_DEBUG(24061,
+                        1,
+                        "Connecting to LDAP server {target} took {elapsed}",
+                        "target"_attr = _target,
+                        "elapsed"_attr = elapsed);
             _timingData->updateLatency(elapsed);
         } else {
             _timingData->markFailed();
@@ -332,7 +341,7 @@ void PooledLDAPConnection::refresh(Milliseconds timeout, RefreshCallback cb) {
         Timer queryTimer;
         auto status = _conn->checkLiveness();
         auto elapsed = duration_cast<Milliseconds>(queryTimer.elapsed());
-        LOG(1) << "Refreshed LDAP connection in " << elapsed;
+        LOGV2_DEBUG(24062, 1, "Refreshed LDAP connection in {elapsed}", "elapsed"_attr = elapsed);
 
         if (status.isOK()) {
             _timingData->updateLatency(elapsed);
@@ -713,7 +722,7 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
                           server](StatusWith<executor::ConnectionPool::ConnectionHandle> swHandle) {
             if (swHandle.isOK()) {
                 if (state->finishLine.arriveStrongly()) {
-                    LOG(1) << "Using LDAP server " << server;
+                    LOGV2_DEBUG(24063, 1, "Using LDAP server {server}", "server"_attr = server);
                     auto implPtr = static_cast<PooledLDAPConnection*>(swHandle.getValue().get());
                     implPtr->incrementUsesCounter();
 
@@ -723,7 +732,10 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
                     swHandle.getValue()->indicateSuccess();
                 }
             } else {
-                log() << "Got error connecting to " << server << ": " << swHandle.getStatus();
+                LOGV2(24064,
+                      "Got error connecting to {server}: {swHandle_getStatus}",
+                      "server"_attr = server,
+                      "swHandle_getStatus"_attr = swHandle.getStatus());
                 if (state->finishLine.arriveWeakly()) {
                     state->promise.setError(
                         swHandle.getStatus().withContext("Could not establish LDAP connection"));

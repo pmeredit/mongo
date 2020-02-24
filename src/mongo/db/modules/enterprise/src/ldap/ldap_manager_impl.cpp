@@ -13,6 +13,7 @@
 #include "mongo/db/auth/role_name.h"
 #include "mongo/db/auth/user_name.h"
 #include "mongo/db/operation_context.h"
+#include "mongo/logv2/log.h"
 #include "mongo/platform/mutex.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
@@ -150,7 +151,7 @@ StatusWith<LDAPDNVector> LDAPManagerImpl::_getGroupDNsFromServer(LDAPQuery& quer
     // the most common configuration, and so are what we support.
     LDAPDNVector results;
     if (isAcquiringAttributes) {
-        LOG(2) << "Acquiring group DNs from attributes on a single entity";
+        LOGV2_DEBUG(24033, 2, "Acquiring group DNs from attributes on a single entity");
         // If we've requested attributes in our LDAP query, we assume that we're querying for a
         // single LDAP entity, which lists its group memberships as values on the requested
         // attributes. The values of these attributes are used as the DNs of the groups that the
@@ -160,7 +161,10 @@ StatusWith<LDAPDNVector> LDAPManagerImpl::_getGroupDNsFromServer(LDAPQuery& quer
             const std::string msg =
                 "Expected exactly one LDAP entity from which to parse "
                 "attributes.";
-            error() << msg << " Found " << queryResults.size() << ".";
+            LOGV2_ERROR(24035,
+                        "{msg} Found {queryResults_size}.",
+                        "msg"_attr = msg,
+                        "queryResults_size"_attr = queryResults.size());
             return Status{ErrorCodes::UserDataInconsistent, msg};
         }
 
@@ -175,7 +179,7 @@ StatusWith<LDAPDNVector> LDAPManagerImpl::_getGroupDNsFromServer(LDAPQuery& quer
         // all group objects which profess to contain the user as a member. We use the DNs of the
         // acquired group objects as DNs of the groups the user is a member of.
 
-        LOG(2) << "Acquiring group DNs from entities which possess user as attribute";
+        LOGV2_DEBUG(24034, 2, "Acquiring group DNs from entities which possess user as attribute");
         // We are returning a set of entities which claim the user in their attributes
         for (auto it = queryResults.begin(); it != queryResults.end(); ++it) {
             results.emplace_back(std::move(it->first));

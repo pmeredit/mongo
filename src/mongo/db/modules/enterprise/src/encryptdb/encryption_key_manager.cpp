@@ -30,6 +30,7 @@
 #include "mongo/db/storage/encryption_hooks.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_customization_hooks.h"
+#include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
 #include "mongo/util/net/ssl_manager.h"
@@ -70,7 +71,9 @@ bool hasExistingDatafiles(const fs::path& path) {
     try {
         hasDatafiles = fs::exists(metadataPath) || fs::exists(wtDatafilePath);
     } catch (const std::exception& e) {
-        severe() << "Caught exception when checking for existence of data files: " << e.what();
+        LOGV2_FATAL(24048,
+                    "Caught exception when checking for existence of data files: {e_what}",
+                    "e_what"_attr = e.what());
     }
     return hasDatafiles;
 }
@@ -137,18 +140,23 @@ bool EncryptionKeyManager::restartRequired() {
     if (_encryptionParams->rotateMasterKey) {
         Status status = _rotateMasterKey(_encryptionParams->kmipKeyIdentifierRot);
         if (!status.isOK()) {
-            severe() << "Failed to rotate master key: " << status.reason();
+            LOGV2_FATAL(24049,
+                        "Failed to rotate master key: {status_reason}",
+                        "status_reason"_attr = status.reason());
         }
         // The server should always exit after a key rotation.
         return true;
     }
 
     if (_encryptionParams->encryptionKeyFile.empty()) {
-        log() << "Encryption key manager initialized using KMIP key with id: "
-              << _masterKey->getKeyId() << ".";
+        LOGV2(24038,
+              "Encryption key manager initialized using KMIP key with id: {masterKey_getKeyId}.",
+              "masterKey_getKeyId"_attr = _masterKey->getKeyId());
     } else {
-        log() << "Encryption key manager initialized with key file: "
-              << _encryptionParams->encryptionKeyFile;
+        LOGV2(24039,
+              "Encryption key manager initialized with key file: "
+              "{encryptionParams_encryptionKeyFile}",
+              "encryptionParams_encryptionKeyFile"_attr = _encryptionParams->encryptionKeyFile);
     }
 
     return false;
@@ -433,9 +441,11 @@ Status EncryptionKeyManager::_initLocalKeystore() {
         // The key store exists
         if (!_encryptionParams->encryptionKeyFile.empty() && existingKeyId != "local") {
             // Warn if the the server has been started with a KMIP key before.
-            warning() << "It looks like the data files were previously encrypted using an "
-                      << "external key with id " << existingKeyId
-                      << ". Attempting to use the provided key file.";
+            LOGV2_WARNING(
+                24046,
+                "It looks like the data files were previously encrypted using an external key with "
+                "id {existingKeyId}. Attempting to use the provided key file.",
+                "existingKeyId"_attr = existingKeyId);
         }
         _keyRotationAllowed = true;
         defaultKeystoreSchemaVersion = 0;
@@ -499,8 +509,11 @@ Status EncryptionKeyManager::_initLocalKeystore() {
             gcmModeEnabled) {
             const auto kKeystoreSchemaVersionForRotate = 1;
             if (_keystoreMetadata.getVersion() < kKeystoreSchemaVersionForRotate) {
-                log() << "Detected keystore schema version " << _keystoreMetadata.getVersion()
-                      << " upgrading to schema version " << kKeystoreSchemaVersionForRotate;
+                LOGV2(24040,
+                      "Detected keystore schema version {keystoreMetadata_getVersion} upgrading to "
+                      "schema version {kKeystoreSchemaVersionForRotate}",
+                      "keystoreMetadata_getVersion"_attr = _keystoreMetadata.getVersion(),
+                      "kKeystoreSchemaVersionForRotate"_attr = kKeystoreSchemaVersionForRotate);
 
                 auto tmppath = _keystorePath;
                 tmppath += kUpgradingKeyword;
@@ -532,10 +545,11 @@ Status EncryptionKeyManager::_initLocalKeystore() {
             }
 
             if (_keystoreMetadata.getDirty()) {
-                log() << "Detected an unclean shutdown of the encrypted storage engine - "
-                      << "rolling over all database keys.";
+                LOGV2(24041,
+                      "Detected an unclean shutdown of the encrypted storage engine - rolling over "
+                      "all database keys.");
             } else {
-                log() << "Database key rollover for encrypted storage engine was requested.";
+                LOGV2(24042, "Database key rollover for encrypted storage engine was requested.");
             }
 
             _keystore->rollOverKeys();
@@ -548,7 +562,8 @@ Status EncryptionKeyManager::_initLocalKeystore() {
                 _metadataPath(PathMode::kValid), _masterKey, *_encryptionParams));
         } else if (!gcmModeEnabled) {
             if (_keystoreMetadata.getDirty()) {
-                LOG(1) << "Detected an unclean shutdown of the encrypted storage engine";
+                LOGV2_DEBUG(
+                    24043, 1, "Detected an unclean shutdown of the encrypted storage engine");
                 _keystoreMetadata.setDirty(false);
                 uassertStatusOK(_keystoreMetadata.store(
                     _metadataPath(PathMode::kValid), _masterKey, *_encryptionParams));
@@ -634,9 +649,12 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) try {
             if (fileName.find(kInvalidatedKeyword) != std::string::npos &&
                 filePath != rotKeystorePath) {
                 if (fs::remove_all(filePath) > 0) {
-                    LOG(1) << "Removing old keystore " << fileName << ".";
+                    LOGV2_DEBUG(
+                        24044, 1, "Removing old keystore {fileName}.", "fileName"_attr = fileName);
                 } else {
-                    warning() << "Failed to remove the invalidated keystore " << filePath << ".";
+                    LOGV2_WARNING(24047,
+                                  "Failed to remove the invalidated keystore {filePath}.",
+                                  "filePath"_attr = filePath);
                 }
             }
         }
@@ -649,8 +667,10 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) try {
                                     << e.what());
     }
 
-    log() << "Rotated master encryption key from id " << oldMasterKeyId << " to id "
-          << rotMasterKeyId << ".";
+    LOGV2(24045,
+          "Rotated master encryption key from id {oldMasterKeyId} to id {rotMasterKeyId}.",
+          "oldMasterKeyId"_attr = oldMasterKeyId,
+          "rotMasterKeyId"_attr = rotMasterKeyId);
 
     return Status::OK();
 } catch (const DBException& e) {

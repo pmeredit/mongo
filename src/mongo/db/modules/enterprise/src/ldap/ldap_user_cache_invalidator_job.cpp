@@ -14,6 +14,7 @@
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/client.h"
 #include "mongo/db/operation_context.h"
+#include "mongo/logv2/log.h"
 #include "mongo/platform/mutex.h"
 #include "mongo/stdx/condition_variable.h"
 #include "mongo/util/exit.h"
@@ -71,14 +72,16 @@ void LDAPUserCacheInvalidator::run() {
             invalidationIntervalChanged.wait_until(lock, wakeupTime.toSystemTimePoint());
         } while (wakeupTime > Date_t::now());
 
-        LOG(1) << "Invalidating user cache entries of external users";
+        LOGV2_DEBUG(24036, 1, "Invalidating user cache entries of external users");
 
         auto opCtx = Client::getCurrent()->makeOperationContext();
         try {
             AuthorizationManager::get(opCtx->getServiceContext())
                 ->invalidateUsersFromDB(opCtx.get(), "$external");
         } catch (const DBException& e) {
-            warning() << "Error invalidating user cache: " << e.toStatus();
+            LOGV2_WARNING(24037,
+                          "Error invalidating user cache: {e_toStatus}",
+                          "e_toStatus"_attr = e.toStatus());
         }
     }
 }

@@ -8,6 +8,7 @@
 
 #include "mongo/db/commands.h"
 #include "mongo/db/dbmessage.h"
+#include "mongo/logv2/log.h"
 #include "mongo/rpc/factory.h"
 #include "mongo/rpc/message.h"
 #include "mongo/rpc/reply_builder_interface.h"
@@ -72,7 +73,7 @@ DbResponse ServiceEntryPointCryptD::handleRequest(OperationContext* opCtx, const
         // Otherwise, reply with the parse error. This is useful for cases where parsing fails
         // due to user-supplied input, such as the document too deep error. Since we failed
         // during parsing, we can't log anything about the command.
-        log() << "assertion while parsing command: " << ex.toString();
+        LOGV2(24066, "assertion while parsing command: {ex}", "ex"_attr = ex.toString());
 
         BSONObjBuilder metadataBob;
 
@@ -91,20 +92,29 @@ DbResponse ServiceEntryPointCryptD::handleRequest(OperationContext* opCtx, const
         if (!(c = CommandHelpers::findCommand(request.getCommandName()))) {
             std::string msg = str::stream()
                 << "no such command: '" << request.getCommandName() << "'";
-            LOG(2) << msg;
+            LOGV2_DEBUG(24067, 2, "{msg}", "msg"_attr = msg);
             uasserted(ErrorCodes::CommandNotFound, str::stream() << msg);
         }
 
-        LOG(2) << "run command " << request.getDatabase() << " cmd " << redact(request.body);
+        LOGV2_DEBUG(24068,
+                    2,
+                    "run command {request_getDatabase} cmd {request_body}",
+                    "request_getDatabase"_attr = request.getDatabase(),
+                    "request_body"_attr = redact(request.body));
 
         runComand(opCtx, c, request, replyBuilder.get());
 
     } catch (const DBException& ex) {
         BSONObjBuilder metadataBob;
 
-        LOG(1) << "assertion while executing command '" << request.getCommandName() << "' "
-               << "on database '" << request.getDatabase() << "' "
-               << "with arguments '" << redact(request.body) << "': " << redact(ex.toString());
+        LOGV2_DEBUG(24069,
+                    1,
+                    "assertion while executing command '{request_getCommandName}' on database "
+                    "'{request_getDatabase}' with arguments '{request_body}': {ex}",
+                    "request_getCommandName"_attr = request.getCommandName(),
+                    "request_getDatabase"_attr = request.getDatabase(),
+                    "request_body"_attr = redact(request.body),
+                    "ex"_attr = redact(ex.toString()));
 
         generateErrorResponse(opCtx, replyBuilder.get(), ex, metadataBob.obj(), BSONObj());
 

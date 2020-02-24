@@ -24,6 +24,7 @@
 #include "mongo/db/auth/sasl_options.h"
 #include "mongo/db/commands/authentication_commands.h"
 #include "mongo/db/operation_context_noop.h"
+#include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
 #include "mongo/util/sequence_util.h"
@@ -106,7 +107,9 @@ int saslServerConnGetOpt(void* context,
 
         return SASL_FAIL;
     } catch (...) {
-        error() << "Unexpected exception in saslServerConnGetOpt: " << exceptionToStatus().reason();
+        LOGV2_ERROR(24029,
+                    "Unexpected exception in saslServerConnGetOpt: {exceptionToStatus_reason}",
+                    "exceptionToStatus_reason"_attr = exceptionToStatus().reason());
         return SASL_FAIL;
     }
 }
@@ -202,14 +205,18 @@ StringData CyrusSaslMechShim<Policy>::getPrincipalName() const {
 
     int result = sasl_getprop(_saslConnection, SASL_USERNAME, &principalId);
     if (SASL_NOTDONE == result) {
-        LOG(1) << "Was not able to acquire authorization username from Cyrus SASL. "
-               << "Falling back to authentication name.";
+        LOGV2_DEBUG(24024,
+                    1,
+                    "Was not able to acquire authorization username from Cyrus SASL. Falling back "
+                    "to authentication name.");
         result = sasl_getprop(_saslConnection, SASL_AUTHUSER, &principalId);
     }
 
     // If either case was successful, we can return the Id that was found
     if (SASL_OK != result) {
-        error() << "Was not able to acquire principal id from Cyrus SASL: " << result;
+        LOGV2_ERROR(24030,
+                    "Was not able to acquire principal id from Cyrus SASL: {result}",
+                    "result"_attr = result);
         return "";
     }
 
@@ -275,25 +282,25 @@ int saslServerGlobalLog(void* context, int level, const char* message) throw() {
             break;
         case SASL_LOG_ERR:
         case SASL_LOG_FAIL:
-            error() << message;
+            LOGV2_ERROR(24031, "{message}", "message"_attr = message);
             break;
         case SASL_LOG_WARN:
-            warning() << message;
+            LOGV2_WARNING(24028, "{message}", "message"_attr = message);
             break;
         case SASL_LOG_NOTE:
-            log() << message;
+            LOGV2(24025, "{message}", "message"_attr = message);
             break;
         case SASL_LOG_DEBUG:
-            LOG(1) << message;
+            LOGV2_DEBUG(24026, 1, "{message}", "message"_attr = message);
             break;
         case SASL_LOG_TRACE:
-            LOG(3) << message;
+            LOGV2_DEBUG(24027, 3, "{message}", "message"_attr = message);
             break;
         case SASL_LOG_PASS:
             // Don't log trace data that includes passwords.
             break;
         default:
-            error() << "Unexpected sasl log level " << level;
+            LOGV2_ERROR(24032, "Unexpected sasl log level {level}", "level"_attr = level);
             break;
     }
     return SASL_OK;

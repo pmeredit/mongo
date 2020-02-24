@@ -12,6 +12,7 @@
 #include <memory>
 
 #include "mongo/base/string_data.h"
+#include "mongo/logv2/log.h"
 #include "mongo/platform/mutex.h"
 #include "mongo/util/log.h"
 #include "mongo/util/string_map.h"
@@ -180,7 +181,7 @@ std::unique_ptr<Keystore> KeystoreImplV0::makeKeystore(const boost::filesystem::
     auto session = keystore.makeSession();
 
     if (params->repair && !session.verifyTable()) {
-        LOG(1) << "Failed to verify the table, attempting to salvage";
+        LOGV2_DEBUG(24018, 1, "Failed to verify the table, attempting to salvage");
         session.salvage();
     }
 
@@ -196,8 +197,9 @@ std::unique_ptr<Keystore> KeystoreImplV0::makeKeystore(const boost::filesystem::
 
 void KeystoreImplV0::rollOverKeys() {
     // EncryptionKeyManager should have upgraded to KeystoreV1 before calling rollover.
-    severe() << "The encrypted storage engine must be configured with AES256-GCM mode to "
-             << "support database key rollover";
+    LOGV2_FATAL(24023,
+                "The encrypted storage engine must be configured with AES256-GCM mode to support "
+                "database key rollover");
     fassertFailedNoTrace(51168);
 }
 
@@ -310,7 +312,11 @@ public:
         // We don't worry about dbNameToKeyIdOldest mapping here because this key
         // will never have been used in a V0 page.
 
-        LOG(1) << "Cached encryption key mapping: " << view.database << " -> " << keyId.id().get();
+        LOGV2_DEBUG(24019,
+                    1,
+                    "Cached encryption key mapping: {view_database} -> {keyId_id_get}",
+                    "view_database"_attr = view.database,
+                    "keyId_id_get"_attr = keyId.id().get());
         fassert(51172, inserted);
     }
 
@@ -386,7 +392,7 @@ std::unique_ptr<Keystore> KeystoreImplV1::makeKeystore(const boost::filesystem::
     uint32_t rolloverId = 0;
 
     if (params->repair && !session.verifyTable()) {
-        LOG(1) << "Failed to verify the table, attempting to salvage";
+        LOGV2_DEBUG(24020, 1, "Failed to verify the table, attempting to salvage");
         session.salvage();
     }
 
@@ -412,7 +418,11 @@ std::unique_ptr<Keystore> KeystoreImplV1::makeKeystore(const boost::filesystem::
                 bool inserted;
                 std::tie(std::ignore, inserted) =
                     dbNameToKeyIdOldest.insert({view.database.toString(), view.id});
-                LOG(1) << "Cached possible v0 key mapping: " << view.database << " -> " << view.id;
+                LOGV2_DEBUG(24021,
+                            1,
+                            "Cached possible v0 key mapping: {view_database} -> {view_id}",
+                            "view_database"_attr = view.database,
+                            "view_id"_attr = view.id);
                 fassert(51167, inserted);
             } while (++cursor != session.end());
         }
@@ -429,7 +439,11 @@ std::unique_ptr<Keystore> KeystoreImplV1::makeKeystore(const boost::filesystem::
                 bool inserted;
                 std::tie(std::ignore, inserted) =
                     dbNameToKeyIdCurrent.insert({view.database.toString(), view.id});
-                LOG(1) << "Cached encryption key mapping: " << view.database << " -> " << view.id;
+                LOGV2_DEBUG(24022,
+                            1,
+                            "Cached encryption key mapping: {view_database} -> {view_id}",
+                            "view_database"_attr = view.database,
+                            "view_id"_attr = view.id);
                 fassert(51133, inserted);
             } while (++cursor != session.rend());
         }

@@ -8,6 +8,7 @@
 #include <iostream>
 
 #include "inmemory_options_init.h"
+#include "mongo/logv2/log.h"
 
 //#include "mongo/db/storage/data_protector.h"
 #include "mongo/util/log.h"
@@ -29,7 +30,10 @@ std::string InMemoryConfigManager::getTableCreateConfig(StringData tableName) {
     // or index creation.
     std::size_t dotIndex = tableName.find(".");
     if (dotIndex == std::string::npos && tableName != StringData("system")) {
-        LOG(2) << "Adding custom table create config for: " << tableName;
+        LOGV2_DEBUG(24013,
+                    2,
+                    "Adding custom table create config for: {tableName}",
+                    "tableName"_attr = tableName);
         config += "ignore_in_memory_cache_size=true,";
     }
 

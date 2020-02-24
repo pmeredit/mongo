@@ -16,6 +16,7 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/json.h"
+#include "mongo/logv2/log.h"
 #include "mongo/util/log.h"
 #include "mongo/util/str.h"
 
@@ -41,7 +42,10 @@ StatusWith<std::string> InternalToLDAPUserNameMapper::transform(LDAPRunner* runn
         StatusWith<std::string> result = transform->resolve(runner, input);
 
         if (result.isOK()) {
-            LOG(3) << "Transformed username to: " << result.getValue();
+            LOGV2_DEBUG(24065,
+                        3,
+                        "Transformed username to: {result_getValue}",
+                        "result_getValue"_attr = result.getValue());
             return result;
         }
 
