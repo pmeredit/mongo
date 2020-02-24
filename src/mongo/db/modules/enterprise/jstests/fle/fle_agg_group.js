@@ -463,22 +463,18 @@ assert.commandFailedWithCode(testDB.runCommand(command), 51221);
 // It's allowed to reference the group key.
 command = {
     aggregate: coll.getName(),
-    pipeline: [{
-        $group: {
-            _id: {x: "$nonSecretString", y: {$const: "qwer"}},
-            abc: {
-                $accumulator: {
-                    init: 'function() {}',
-                    initArgs: {$add: ["$x", "$y"]},
-                    accumulate: 'function() {}',
-                    accumulateArgs: "$nonSecretString",
-                    merge: 'function() {}',
-                    finalize: 'function() {}',
-                    lang: 'js',
-                }
-            },
-        }
-    }],
+    pipeline: [{$group: {
+        _id: {x: "$nonSecretString", y: {$const: "qwer"}},
+        abc: {$accumulator: {
+            init: 'function() {}',
+            initArgs: {$add: ["$x", "$y"]},
+            accumulate: 'function() {}',
+            accumulateArgs: "$nonSecretString",
+            merge: 'function() {}',
+            finalize: 'function() {}',
+            lang: 'js',
+        }},
+    }}],
     cursor: {},
     jsonSchema: {type: "object", properties: {secretString: encryptedStringSpec}},
     isRemoteSchema: false,
@@ -488,21 +484,17 @@ assertCommandUnchanged(command, false, true);
 // Test that $accumulator is not allowed to reference encrypted or possibly-encrypted fields.
 command = {
     aggregate: coll.getName(),
-    pipeline: [{
-        $group: {
-            _id: {$const: null},
-            abc: {
-                $accumulator: {
-                    init: 'function() {}',
-                    accumulate: 'function() {}',
-                    accumulateArgs: {$cond: ["$unknownBool", "a public string", "$secretString"]},
-                    merge: 'function() {}',
-                    finalize: 'function() {}',
-                    lang: 'js',
-                }
-            },
-        }
-    }],
+    pipeline: [{$group: {
+        _id: {$const: null},
+        abc: {$accumulator: {
+            init: 'function() {}',
+            accumulate: 'function() {}',
+            accumulateArgs: {$cond: ["$unknownBool", "a public string", "$secretString"]},
+            merge: 'function() {}',
+            finalize: 'function() {}',
+            lang: 'js',
+        }},
+    }}],
     cursor: {},
     jsonSchema: {type: "object", properties: {secretString: encryptedStringSpec}},
     isRemoteSchema: false,
@@ -513,23 +505,18 @@ assert.commandFailedWithCode(testDB.runCommand(command), 51221);
 // reference them.
 command = {
     aggregate: coll.getName(),
-    pipeline: [{
-        $group: {
-            _id: {secretStringInGroupKey: "$secretString"},
-            abc: {
-                $accumulator: {
-                    init: 'function() {}',
-                    initArgs:
-                        [{$cond: ["$unknownBool", "a public string", "$secretStringInGroupKey"]}],
-                    accumulate: 'function() {}',
-                    accumulateArgs: [],
-                    merge: 'function() {}',
-                    finalize: 'function() {}',
-                    lang: 'js',
-                }
-            },
-        }
-    }],
+    pipeline: [{$group: {
+        _id: {secretStringInGroupKey: "$secretString"},
+        abc: {$accumulator: {
+            init: 'function() {}',
+            initArgs: [{$cond: ["$unknownBool", "a public string", "$secretStringInGroupKey"]}],
+            accumulate: 'function() {}',
+            accumulateArgs: [],
+            merge: 'function() {}',
+            finalize: 'function() {}',
+            lang: 'js',
+        }},
+    }}],
     cursor: {},
     jsonSchema: {type: "object", properties: {secretString: encryptedStringSpec}},
     isRemoteSchema: false,
