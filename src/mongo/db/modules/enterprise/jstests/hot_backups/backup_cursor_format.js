@@ -112,8 +112,8 @@ try {
             assert.eq(false, doc.hasOwnProperty("metadata"));
             assert.eq(true, doc.hasOwnProperty("filename"));
             assert.eq(true, doc.hasOwnProperty("fileSize"));
-            assert.eq(false, doc.hasOwnProperty("offset"));
-            assert.eq(false, doc.hasOwnProperty("length"));
+            assert.eq(true, doc.hasOwnProperty("offset"));
+            assert.eq(true, doc.hasOwnProperty("length"));
         }
     }
 
