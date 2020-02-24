@@ -534,7 +534,7 @@ command = {
     jsonSchema: {type: "object", properties: {secretString: encryptedStringSpec}},
     isRemoteSchema: false,
 };
-assert.commandFailedWithCode(testDB.runCommand(command), 4544715);
+assert.commandFailedWithCode(testDB.runCommand(command), 51808);
 
 mongocryptd.stop();
 })();
