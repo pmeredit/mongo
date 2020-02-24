@@ -158,7 +158,7 @@ void propagateAccumulatedFieldsToSchema(const clonable_ptr<EncryptionSchemaTreeN
             // Conservatively, just ban a non-$const initializer when the group key might
             // contain any encrypted data.
             if (groupKeyMayContainEncryptedFields) {
-                uassert(4544715,
+                uassert(51808,
                         str::stream() << "Accumulator '" << accu->getOpName()
                                       << "' must have a constant initializer (initArgs) "
                                       << "when the group key contains encrypted fields.",
