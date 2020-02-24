@@ -461,6 +461,7 @@ assert.commandFailedWithCode(testDB.runCommand(command), 51221);
 
 // Test that $accumulator is allowed as long as it doesn't touch any encrypted fields.
 // It's allowed to reference the group key.
+// The result is not encrypted.
 command = {
     aggregate: coll.getName(),
     pipeline: [{$group: {
