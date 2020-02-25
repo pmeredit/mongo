@@ -234,23 +234,23 @@ TEST_F(KeystoreFixture, V1RolloverTest) {
 
 // We require "AES256-GCM" to pass this test
 #if MONGO_CONFIG_SSL_PROVIDER == MONGO_CONFIG_SSL_PROVIDER_OPENSSL
-DEATH_TEST_F(KeystoreFixture, V1SalvageFixKeystore2, "Fatal assertion 51226") {
+DEATH_TEST_REGEX_F(KeystoreFixture, V1SalvageFixKeystore2, "Fatal assertion.*51226") {
     KeystoreFixture::testSalvageFixKeystore(Keystore::Version::k1, "AES256-GCM");
 }
 #endif
 
-DEATH_TEST_F(KeystoreFixture, V0SalvageFixKeystore, "Fatal assertion 51226") {
+DEATH_TEST_REGEX_F(KeystoreFixture, V0SalvageFixKeystore, "Fatal assertion.*51226") {
     KeystoreFixture::testSalvageFixKeystore(Keystore::Version::k0, "AES256-CBC");
 }
 
 // Rolling over a V0 keystore should be fatal
-DEATH_TEST_F(KeystoreFixture, V0RolloverTest, "Fatal Assertion 51168") {
+DEATH_TEST_REGEX_F(KeystoreFixture, V0RolloverTest, "Fatal Assertion.*51168") {
     encryptionGlobalParams.encryptionCipherMode = "AES256-CBC";
     auto ks = makeKeystoreAndSession(Keystore::Version::k0);
     ks.keystore->rollOverKeys();
 }
 
-DEATH_TEST_F(KeystoreFixture, V1CBCTest, "Fatal Assertion 51165") {
+DEATH_TEST_REGEX_F(KeystoreFixture, V1CBCTest, "Fatal Assertion.*51165") {
     encryptionGlobalParams.encryptionCipherMode = "AES256-CBC";
     auto ks = makeKeystoreAndSession(Keystore::Version::k1);
 }
