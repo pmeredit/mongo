@@ -31,6 +31,9 @@
  *    changes).
  *
  * For any functions that are not defined in this file, please see `jstests/libs/backup_utils.js`.
+ *
+ * NOTE: Any changes to this file should be reviewed by someone on the cloud automation and/or
+ *       backup teams.
  */
 var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
     "use strict";
@@ -53,6 +56,9 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
     function _shardName(shardNum) {
         return jsTestName() + "-rs" + shardNum;
     }
+
+    // Port unused by any of the nodes, to be set after we allocate ports.
+    let tmpPort = -1;
 
     //////////////////////////////////////////////////////////////////////////////////////
     /////////// Helper functions for checking causal consistency of the backup ///////////
@@ -147,6 +153,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         assert.gt(total, 0, "There is no doc.");
         jsTestLog("There are " + total + " documents in total.");
 
+        // Confirm that each document has a unique 'docId' between '0' and 'total-1'.
         const docSet = docs.map((v) => v.docId);
         for (let i = 0; i < total; i++) {
             assert(docSet.includes(i), function() {
@@ -163,9 +170,12 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
                 return "Doc " + i + " is missing";
             });
         }
+        return total;
     }
 
-    function _checkDataConsistency(restoredNodePorts) {
+    // lastDocID is the largest docID inserted in the restored oplog entries. This ensures that the
+    // data reflects the point in time the user requested (if PIT restore is specified).
+    function _checkDataConsistency(restoredNodePorts, lastDocID) {
         jsTestLog("Checking data consistency");
 
         const configRS = new ReplSetTest({
@@ -183,7 +193,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
 
         jsTestLog("Starting restored Config Server with data from " +
                   restorePaths[configServerIdx] + " at port " + restoredNodePorts[configServerIdx]);
-        configRS.startSet({journal: "", configsvr: ""});
+        configRS.startSet({configsvr: ""});
 
         let restoredShards = [];
         for (let i = 0; i < numShards; i++) {
@@ -198,7 +208,11 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
 
         const mongos = MongoRunner.runMongos({configdb: configRS.getURL()});
 
-        _verifyDataIsCausallyConsistent(mongos, restoredShards);
+        const totalDocs = _verifyDataIsCausallyConsistent(mongos, restoredShards);
+        if (lastDocID !== undefined) {
+            // 'docId's start at 0 so we subtract 1 from 'totalDocs'.
+            assert.eq(totalDocs - 1, lastDocID, "PIT Restore did not restore to correct PIT");
+        }
 
         jsTestLog("Stopping cluster after checking data consistency");
         MongoRunner.stopMongos(mongos);
@@ -206,6 +220,26 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
             restoredShards[i].stopSet();
         }
         configRS.stopSet();
+    }
+
+    function _getLastDocID(restoreOplogEntries) {
+        if (!restoreOplogEntries) {
+            return undefined;
+        }
+
+        let lastEntryList = [];
+        let maxDocID = -1;
+        for (let entryList of Object.values(restoreOplogEntries)) {
+            const lastEntry = entryList[entryList.length - 1];
+            assert(lastEntry, () => tojson(restoreOplogEntries));
+            lastEntryList.push(lastEntry);
+            if (lastEntry.hasOwnProperty("o") && lastEntry.o.hasOwnProperty("docId")) {
+                maxDocID = Math.max(maxDocID, lastEntry.o.docId);
+            }
+        }
+
+        jsTestLog("Last docID: " + maxDocID + ", lastEntries: " + tojson(lastEntryList));
+        return maxDocID;
     }
 
     //////////////////////////////////////////////////////////////////////////////////////
@@ -227,7 +261,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         /**
          *  7.a. After the backup cursor on the config server has been extended, read
          *       "config.shards" with readConcern {level: "majority", afterClusterTime:
-         *        maxTimestamp}.
+         *        restorePIT}.
          */
         const newTopologyInfo = _getTopologyInfo(configServer, restorePIT);
         jsTestLog("New Topology Information: " + tojson(newTopologyInfo));
@@ -250,10 +284,10 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
 
         /**
          *  7.c. If "newTopologyInfo" matches with "oldTopologyInfo", it is still possible a shard
-         *       was added before the "restorePIT" and removed after it.  If this is the case, the
-         *       topology at the "oldTopologyInfo" time is a subset of the topology at the
-         *       "restorePIT" (do not match).  We again conservatively assume that any presence
-         *       of "removeShard" operations between "restorePIT" and now indicates this happened.
+         *       was added before the "restorePIT" and removed after it.  If this is the
+         *       case, the topology at the "oldTopologyInfo" time is a subset of the topology at the
+         *       "restorePIT" (do not match).  We again conservatively assume that any presence of
+         *       "removeShard" operations between "restorePIT" and now indicates this happened.
          *       Invalidate the backup if there was a "removeShard" operation.
          */
         const oplogEntries =
@@ -293,6 +327,49 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
     }
 
     //////////////////////////////////////////////////////////////////////////////////////
+    //////////////////////// Helper functions for PIT Restores ///////////////////////////
+    //////////////////////////////////////////////////////////////////////////////////////
+
+    function _getTopOfOplogTS(conn) {
+        return conn.getDB('local').oplog.rs.find().sort({$natural: -1}).limit(-1).next()["ts"];
+    }
+
+    function _pickArbitraryRestorePointInTime(st, backupPointInTime) {
+        let minTimestamp = _getTopOfOplogTS(st.configRS.getPrimary());
+        jsTestLog("Top of configRS oplog: " + minTimestamp);
+        for (let i = 0; i < numShards; i++) {
+            const oplogTop = _getTopOfOplogTS(st["rs" + i].getPrimary());
+            jsTestLog("Top of rs" + i + " oplog: " + oplogTop);
+            if (timestampCmp(oplogTop, minTimestamp) < 0) {
+                minTimestamp = oplogTop;
+            }
+        }
+        jsTestLog("Minimum top of oplog is " + minTimestamp);
+
+        assert.gte(minTimestamp, backupPointInTime);
+        return minTimestamp;
+    }
+
+    function _getRestoreOplogEntriesForSet(replSet, backupPointInTime, restorePointInTime) {
+        return replSet.getPrimary()
+            .getDB('local')
+            .oplog.rs.find({ts: {$gt: backupPointInTime, $lte: restorePointInTime}})
+            .sort({$natural: 1})
+            .toArray();
+    }
+
+    function _getRestoreOplogEntries(st, backupPointInTime, restorePointInTime) {
+        let restoreOplogEntries = {};
+        for (let i = 0; i < numShards; i++) {
+            restoreOplogEntries[st["rs" + i].name] =
+                _getRestoreOplogEntriesForSet(st["rs" + i], backupPointInTime, restorePointInTime);
+        }
+        restoreOplogEntries[st.configRS.name] =
+            _getRestoreOplogEntriesForSet(st.configRS, backupPointInTime, restorePointInTime);
+        return restoreOplogEntries;
+    }
+
+    //////////////////////////////////////////////////////////////////////////////////////
     //////////////////////////////// Backup Specification ////////////////////////////////
     //////////////////////////////////////////////////////////////////////////////////////
 
@@ -312,7 +389,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         let backupCursors = [];
         let dbpaths = [];
         let backupIds = [];
-        let maxTimestamp = Timestamp();
+        let maxCheckpointTimestamp = Timestamp();
         let stopCounter = new CountDownLatch(1);
         for (let i = 0; i < numShards + 1; i++) {
             jsTestLog("Backing up shard" + i);
@@ -336,12 +413,12 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
             backupIds[i] = metadata.backupId;
 
             /**
-             *  4. Get the `maxTimestamp` given all the checkpoint timestamps returned by
+             *  4. Get the `maxCheckpointTImestamp` given all the checkpoint timestamps returned by
              *     $backupCursor.
              */
             let checkpointTimestamp = metadata.checkpointTimestamp;
-            if (timestampCmp(checkpointTimestamp, maxTimestamp) > 0) {
-                maxTimestamp = checkpointTimestamp;
+            if (timestampCmp(checkpointTimestamp, maxCheckpointTimestamp) > 0) {
+                maxCheckpointTimestamp = checkpointTimestamp;
             }
             copyWorkers.push(copyThread);
             heartbeaters.push(startHeartbeatThread(nodesToBackup[i].host,
@@ -358,7 +435,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
          */
         for (let i = 0; i < numShards + 1; i++) {
             jsTestLog("Extending backup cursor for shard" + i);
-            let cursor = extendBackupCursor(nodesToBackup[i], backupIds[i], maxTimestamp);
+            let cursor = extendBackupCursor(nodesToBackup[i], backupIds[i], maxCheckpointTimestamp);
             let thread = copyBackupCursorExtendFiles(cursor, dbpaths[i], restorePaths[i], true);
             copyWorkers.push(thread);
             cursor.close();
@@ -383,7 +460,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         /**
          *  7. Check if the backup must be invalidated due to a topology change.
          */
-        if (_isTopologyChanged(st.config1, initialTopology, maxTimestamp)) {
+        if (_isTopologyChanged(st.config1, initialTopology, maxCheckpointTimestamp)) {
             throw "Sharding topology has been changed during backup.";
         }
 
@@ -397,22 +474,31 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
             cursor.close();
         });
 
-        jsTestLog("The data of sharded cluster at timestamp " + maxTimestamp +
+        jsTestLog("The data of sharded cluster at timestamp " + maxCheckpointTimestamp +
                   " has been successfully backed up at " + tojson(restorePaths));
-        return maxTimestamp;
+        return {maxCheckpointTimestamp, initialTopology};
     }
 
     //////////////////////////////////////////////////////////////////////////////////////
     /////////////////////////////// Restore Specification ////////////////////////////////
     //////////////////////////////////////////////////////////////////////////////////////
 
-    function _restoreReplicaSet(restorePath, restoredNodePort, backupPointInTime) {
+    function _restoreReplicaSet(restorePath,
+                                setName,
+                                restoredNodePort,
+                                backupPointInTime,
+                                restorePointInTime,
+                                restoreOplogEntries) {
+        const isCSRS = (setName === csrsName);
+
         /**
-         * 2. Start each shard member as a standalone on an ephemeral port,
+         * 2. Start each replica set member as a standalone on an ephemeral port,
          *      - without auth
          *      - with setParameter.ttlMonitorEnabled=false
          *      - with no sharding.clusterRole value
          *      - with setParameter.disableLogicalSessionCacheRefresh=true
+         * These settings may not actually be necessary, but this matches what Cloud does today and
+         * could be re-evaluated in the future.
          *
          * For simplicity, we restore to a single node replica set. In practice we'd want to
          * do the same procedure on each shard server in the destination cluster.
@@ -471,49 +557,131 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         assert.commandWorked(localDb.system.replset.insert(newConfig));
 
         /**
-         * Steps 8+ are for shard and CSRS members only. Restoring a single replica set should
-         * stop here.
+         * 8. Safely shut down the node.
+         */
+        MongoRunner.stopMongod(conn, {noCleanData: true});
+
+        if (restorePointInTime) {
+            /**
+             * PIT-1. Restart node as a single node replica set on an ephemeral port.
+             */
+            jsTestLog(restorePath + ": Restarting node on temporary port " + tmpPort);
+            const tmpSet = new ReplSetTest({
+                name: setName,
+                nodes: [{noCleanData: true, dbpath: restorePath, port: tmpPort}],
+            });
+            if (isCSRS) {
+                tmpSet.startSet({configsvr: ""});
+            } else {
+                // Do not start as a 'shardsvr' so it does not attempt to connect to the CSRS.
+                tmpSet.startSet();
+            }
+
+            /**
+             * PIT-2. Safely shut down the node.
+             */
+            tmpSet.stopSet(15, true);
+
+            jsTestLog(restorePath + ": Restarting node to insert oplog entries up to " +
+                      restorePointInTime);
+            /**
+             * PIT-3. Start up the member as a standalone on an ephemeral port
+             *      - without auth
+             *      - with setParameter.ttlMonitorEnabled=false
+             *      - with no sharding.clusterRole value
+             *      - with setParameter.disableLogicalSessionCacheRefresh=true
+             * These settings may not actually be necessary, but this matches what Cloud does today
+             * and could be re-evaluated in the future.
+             */
+            conn = MongoRunner.runMongod({
+                dbpath: restorePath,
+                noCleanData: true,
+                setParameter: {ttlMonitorEnabled: false, disableLogicalSessionCacheRefresh: true}
+            });
+
+            /**
+             * PIT-4. Insert the desired oplog entries from the snapshot time until the desired time
+             *        into the node’s `local.oplog.rs` collection
+             */
+            for (let entry of restoreOplogEntries) {
+                assert.commandWorked(conn.getDB('local').oplog.rs.insert(entry));
+            }
+
+            /**
+             * PIT-5. Safely shut down the node.
+             */
+            MongoRunner.stopMongod(conn, {noCleanData: true});
+        }
+
+        /**
+         * Steps 9-10 is for shard and CSRS members if it's a snapshot restore, and only CSRS
+         * members if it's a PIT restore.
+         *
+         * Restoring a single replica set should stop here.
          * -----------------------------------------------------------------------------------
          */
+        if (isCSRS || !restorePointInTime) {
+            /**
+             * 9. Restart each node again as a standalone with `recoverFromOplogAsStandalone`
+             *    and `takeUnstableCheckpointOnShutdown`.
+             */
+            jsTestLog(restorePath + ": Replaying oplog");
+            conn = MongoRunner.runMongod({
+                dbpath: restorePath,
+                noCleanData: true,
+                setParameter:
+                    {recoverFromOplogAsStandalone: true, takeUnstableCheckpointOnShutdown: true}
+            });
+            assert.neq(conn, null);
+
+            /**
+             * 10. Once the mongod is up and accepting connections, safely shut down the node.
+             */
+            MongoRunner.stopMongod(conn, {noCleanData: true});
+        }
 
         /**
-         * 8. Restart each node again as a standalone with `recoverFromOplogAsStandalone`
-         *    and `takeUnstableCheckpointOnShutdown`.
+         * 11. Start each replica set member as a standalone on an ephemeral port,
+         *      - without auth
+         *      - with setParameter.ttlMonitorEnabled=false
+         *      - with no sharding.clusterRole value
+         *      - with setParameter.disableLogicalSessionCacheRefresh=true
+         * These settings may not actually be necessary, but this matches what Cloud does today and
+         * could be re-evaluated in the future.
          */
-        MongoRunner.stopMongod(conn, {noCleanData: true});
-
-        jsTestLog(restorePath + ": Replaying oplog to timestamp " + backupPointInTime);
-        conn = MongoRunner.runMongod({
+        return MongoRunner.runMongod({
             dbpath: restorePath,
             noCleanData: true,
-            setParameter:
-                {recoverFromOplogAsStandalone: true, takeUnstableCheckpointOnShutdown: true}
+            setParameter: {ttlMonitorEnabled: false, disableLogicalSessionCacheRefresh: true}
         });
-        assert.neq(conn, null);
-
-        /**
-         * 9. Once the mongod is up and accepting connections, shut down via the normal mechanism,
-         *    and then restart as a standalone without the two flags above.
-         */
-        MongoRunner.stopMongod(conn, {noCleanData: true});
-        return MongoRunner.runMongod({dbpath: restorePath, noCleanData: true});
     }
 
-    function _restoreCSRS(restorePath, restoredCSRSPort, restoredNodePorts, backupPointInTime) {
-        jsTestLog("Restoring CSRS at " + restorePath + " for port " + restoredCSRSPort);
+    function _restoreCSRS(restorePath,
+                          restoredCSRSPort,
+                          restoredNodePorts,
+                          backupPointInTime,
+                          restorePointInTime,
+                          restoreOplogEntries) {
+        jsTestLog("Restoring CSRS at " + restorePath + " for port " + restoredCSRSPort +
+                  " at PIT " + restorePointInTime + " from " + backupPointInTime);
 
-        const conn = _restoreReplicaSet(restorePath, restoredCSRSPort, backupPointInTime);
+        const conn = _restoreReplicaSet(restorePath,
+                                        csrsName,
+                                        restoredCSRSPort,
+                                        backupPointInTime,
+                                        restorePointInTime,
+                                        restoreOplogEntries);
         const configDb = conn.getDB("config");
 
         /**
-         * 10. Remove all documents from `config.mongos`.
+         * 12. Remove all documents from `config.mongos`.
          *     Remove all documents from `config.lockpings`.
          */
         assert.commandWorked(configDb.mongos.remove({}));
         assert.commandWorked(configDb.lockpings.remove({}));
 
         /**
-         * 11. For every sourceShardName document in `config.shards`:
+         * 13. For every sourceShardName document in `config.shards`:
          *      - For every document in `config.databases` with {primary: sourceShardName}:
          *          - Set primary from sourceShardName to destShardName
          *      - For every document in `config.chunks` with {shard: sourceShardName}:
@@ -563,7 +731,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         jsTestLog("ClusterId doc: " + tojson(clusterId));
 
         /**
-         * 12. Shut down the mongod process cleanly via a shutdown command.
+         * 14. Shut down the mongod process cleanly via a shutdown command.
          *     Start the process as a replica set/shard member on regular port.
          */
         MongoRunner.stopMongod(conn, {noCleanData: true});
@@ -574,21 +742,28 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
     function _restoreShard(restorePath,
                            restoredNodePort,
                            backupPointInTime,
+                           restorePointInTime,
+                           restoreOplogEntries,
                            clusterId,
                            shardNum,
                            configsvrConnectionString) {
         jsTestLog("Restoring shard at " + restorePath + " for port " + restoredNodePort);
 
-        const conn = _restoreReplicaSet(restorePath, restoredNodePort, backupPointInTime);
+        const conn = _restoreReplicaSet(restorePath,
+                                        _shardName(shardNum),
+                                        restoredNodePort,
+                                        backupPointInTime,
+                                        restorePointInTime,
+                                        restoreOplogEntries);
 
         /**
-         * 10. Remove the {_id: "minOpTimeRecovery"} from the `admin.system.version` collection.
+         * 12. Remove the {_id: "minOpTimeRecovery"} from the `admin.system.version` collection.
          */
         const adminDb = conn.getDB("admin");
         assert.commandWorked(adminDb.system.version.remove({_id: "minOpTimeRecovery"}));
 
         /**
-         * 11. Update the {"_id": "shardIdentity"} in `admin.system.version`:
+         * 13. Update the {"_id": "shardIdentity"} in `admin.system.version`:
          * "$set": {
          *              "clusterId":                 clusterId,
          *              "shardName":                 destShardName,
@@ -612,7 +787,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         }));
 
         /**
-         * 11. Drop `config.cache.collections`.
+         * 14. Drop `config.cache.collections`.
          *     Drop `config.cache.chunks.*` collections.
          *     Drop `config.cache.databases`.
          */
@@ -627,14 +802,16 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         });
 
         /**
-         * 12. Shut down the mongod process cleanly via a shutdown command.
+         * 15. Shut down the mongod process cleanly via a shutdown command.
          *     Start the process as a replica set/shard member on regular port.
          */
         MongoRunner.stopMongod(conn, {noCleanData: true});
     }
 
-    function _restoreFromBackup(restoredNodePorts, backupPointInTime) {
-        jsTestLog("Restoring from backup");
+    function _restoreFromBackup(
+        restoredNodePorts, backupPointInTime, restorePointInTime, restoreOplogEntries) {
+        jsTestLog("Restoring from backup. Backup PIT: " + backupPointInTime +
+                  ", Restore PIT: " + restorePointInTime);
 
         /**
          * The following procedure is used regardless of whether or not the source cluster and the
@@ -651,19 +828,27 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
          * the destination dbpath.
          */
 
+        const csrsRestoreOplogEntries =
+            restoreOplogEntries ? restoreOplogEntries[csrsName] : undefined;
         const clusterId = _restoreCSRS(restorePaths[configServerIdx],
                                        restoredNodePorts[configServerIdx],
                                        restoredNodePorts,
-                                       backupPointInTime);
+                                       backupPointInTime,
+                                       restorePointInTime,
+                                       csrsRestoreOplogEntries);
 
         const configsvrConnectionString =
             csrsName + "/localhost:" + restoredNodePorts[configServerIdx];
         jsTestLog("configsvrConnectionString: " + configsvrConnectionString);
 
         for (let i = 0; i < numShards; i++) {
+            const shardRestoreOplogEntries =
+                restoreOplogEntries ? restoreOplogEntries[_shardName(i)] : undefined;
             _restoreShard(restorePaths[i],
                           restoredNodePorts[i],
                           backupPointInTime,
+                          restorePointInTime,
+                          shardRestoreOplogEntries,
                           clusterId,
                           i,
                           configsvrConnectionString);
@@ -674,7 +859,9 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
     /////////////////////////////////// Runs the test ////////////////////////////////////
     //////////////////////////////////////////////////////////////////////////////////////
 
-    this.run = function() {
+    // If 'isPitRestore' is specified, does a PIT restore to an arbitrary PIT and checks that the
+    // data is consistent.
+    this.run = function(isPitRestore) {
         /**
          *  Setup for backup
          */
@@ -687,7 +874,6 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
                     // stepping down.
                     [{}, {rsConfig: {priority: 0, votes: 0}}, {rsConfig: {priority: 0, votes: 0}}],
                 syncdelay: 1,
-
                 oplogSize: 1,
                 setParameter: {writePeriodicNoops: true}
             }
@@ -704,11 +890,27 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
          */
         let failureMessage;
         let backupPointInTime;
+        let restorePointInTime;
+        let restoreOplogEntries;
         try {
-            backupPointInTime = _createBackup(st);
+            const result = _createBackup(st);
+            const initialTopology = result.initialTopology;
+            backupPointInTime = result.maxCheckpointTimestamp;
+
+            if (isPitRestore) {
+                restorePointInTime = _pickArbitraryRestorePointInTime(st, backupPointInTime);
+                restoreOplogEntries =
+                    _getRestoreOplogEntries(st, backupPointInTime, restorePointInTime);
+
+                if (_isTopologyChanged(st.config1, initialTopology, restorePointInTime)) {
+                    throw "Sharding topology has been changed while getting PIT restore oplog " +
+                        "entries.";
+                }
+            }
+
         } catch (e) {
             failureMessage = "Failed to backup: " + e;
-            jsTestLog(failureMessage);
+            jsTestLog(failureMessage + "\n\n" + e.stack);
         } finally {
             concurrentWorkWhileBackup.teardown();
             _stopWriterClient(writerPid);
@@ -722,12 +924,14 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
          *  Restore
          */
         const restoredNodePorts = allocatePorts(numShards + 1);
-        _restoreFromBackup(restoredNodePorts, backupPointInTime);
+        tmpPort = Math.max(...restoredNodePorts) + 1;
+        _restoreFromBackup(
+            restoredNodePorts, backupPointInTime, restorePointInTime, restoreOplogEntries);
 
         /**
          *  Check data consistency
          */
-        _checkDataConsistency(restoredNodePorts);
+        _checkDataConsistency(restoredNodePorts, _getLastDocID(restoreOplogEntries));
 
         jsTestLog("Test succeeded");
         return "Test succeeded.";
