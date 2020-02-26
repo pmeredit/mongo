@@ -175,7 +175,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
 
     // lastDocID is the largest docID inserted in the restored oplog entries. This ensures that the
     // data reflects the point in time the user requested (if PIT restore is specified).
-    function _checkDataConsistency(restoredNodePorts, lastDocID) {
+    function _checkDataConsistency(restoredNodePorts, lastDocID, isLastStableBackup) {
         jsTestLog("Checking data consistency");
 
         const configRS = new ReplSetTest({
@@ -191,9 +191,13 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         // always set by itself.
         configRS.ports = [restoredNodePorts[numShards]];
 
+        const expectedFCV = isLastStableBackup ? lastStableFCV : latestFCV;
+
         jsTestLog("Starting restored Config Server with data from " +
                   restorePaths[configServerIdx] + " at port " + restoredNodePorts[configServerIdx]);
         configRS.startSet({configsvr: ""});
+
+        checkFCV(configRS.getPrimary().getDB('admin'), expectedFCV);
 
         let restoredShards = [];
         for (let i = 0; i < numShards; i++) {
@@ -204,6 +208,8 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
                 nodes: [{noCleanData: true, dbpath: restorePaths[i], port: restoredNodePorts[i]}],
             });
             restoredShards[i].startSet({shardsvr: ""});
+
+            checkFCV(restoredShards[i].getPrimary().getDB('admin'), expectedFCV);
         }
 
         const mongos = MongoRunner.runMongos({configdb: configRS.getURL()});
@@ -392,7 +398,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         let maxCheckpointTimestamp = Timestamp();
         let stopCounter = new CountDownLatch(1);
         for (let i = 0; i < numShards + 1; i++) {
-            jsTestLog("Backing up shard" + i);
+            jsTestLog("Backing up shard" + i + " with node " + nodesToBackup[i].host);
 
             let metadata;
             /**
@@ -861,10 +867,11 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
 
     // If 'isPitRestore' is specified, does a PIT restore to an arbitrary PIT and checks that the
     // data is consistent.
-    this.run = function(isPitRestore) {
+    this.run = function({isPitRestore = false, isLastStableBackup = false} = {}) {
         /**
          *  Setup for backup
          */
+        const backupBinVersion = isLastStableBackup ? "last-stable" : "latest";
         const st = new ShardingTest({
             name: jsTestName(),
             shards: numShards,
@@ -876,7 +883,12 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
                 syncdelay: 1,
                 oplogSize: 1,
                 setParameter: {writePeriodicNoops: true}
-            }
+            },
+            other: {
+                mongosOptions: {binVersion: backupBinVersion},
+                configOptions: {binVersion: backupBinVersion},
+                rsOptions: {binVersion: backupBinVersion},
+            },
         });
 
         _setupShardedCollectionForCausalWrites(st, dbName, collName);
@@ -931,7 +943,8 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         /**
          *  Check data consistency
          */
-        _checkDataConsistency(restoredNodePorts, _getLastDocID(restoreOplogEntries));
+        _checkDataConsistency(
+            restoredNodePorts, _getLastDocID(restoreOplogEntries), isLastStableBackup);
 
         jsTestLog("Test succeeded");
         return "Test succeeded.";

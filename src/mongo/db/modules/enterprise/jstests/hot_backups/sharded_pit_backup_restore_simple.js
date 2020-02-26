@@ -20,6 +20,7 @@ let NoopWorker = function() {
     this.teardown = function() {};
 };
 
-let msg = new ShardedBackupRestoreTest(new NoopWorker()).run(true);
+let msg = new ShardedBackupRestoreTest(new NoopWorker())
+              .run({isPitRestore: true, isLastStableBackup: false});
 assert.eq(msg, "Test succeeded.");
 }());

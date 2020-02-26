@@ -1,5 +1,6 @@
 /**
- * A simple case of sharded snapshot backup/restore.
+ * A simple case of sharded PIT backup/restore where the backup was taken with a 'last-stable'
+ * binary version.
  *
  * @tags: [requires_wiredtiger,
  *         requires_journaling,
@@ -21,6 +22,6 @@ let NoopWorker = function() {
 };
 
 let msg = new ShardedBackupRestoreTest(new NoopWorker())
-              .run({isPitRestore: false, isLastStableBackup: false});
+              .run({isPitRestore: true, isLastStableBackup: true});
 assert.eq(msg, "Test succeeded.");
 }());
