@@ -121,17 +121,15 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForExclusion(
 
 void propagateAccumulatedFieldsToSchema(const clonable_ptr<EncryptionSchemaTreeNode>& prevSchema,
                                         const std::vector<AccumulationStatement>& accumulatedFields,
-                                        clonable_ptr<EncryptionSchemaTreeNode>& newSchema,
-                                        bool groupKeyMayContainEncryptedFields) {
+                                        clonable_ptr<EncryptionSchemaTreeNode>& newSchema) {
     for (const auto& accuStmt : accumulatedFields) {
-        boost::intrusive_ptr<AccumulatorState> accu = accuStmt.makeAccumulator();
-
-        const bool perDocExprResultCompared = accu->getOpName() == "$addToSet"s;
-        auto perDocExprSchema = aggregate_expression_intender::getOutputSchema(
-            *prevSchema, accuStmt.expr.argument.get(), perDocExprResultCompared);
+        boost::intrusive_ptr<Accumulator> accu = accuStmt.makeAccumulator();
+        const bool expressionResultCompared = accu->getOpName() == "$addToSet"s;
+        auto expressionSchema = aggregate_expression_intender::getOutputSchema(
+            *prevSchema, accuStmt.expression.get(), expressionResultCompared);
 
         if (accu->getOpName() == "$addToSet"s || accu->getOpName() == "$push"s) {
-            if (perDocExprSchema->mayContainEncryptedNode()) {
+            if (expressionSchema->mayContainEncryptedNode()) {
                 newSchema->addChild(FieldRef(accuStmt.fieldName),
                                     std::make_unique<EncryptionSchemaStateMixedNode>());
             } else {
@@ -144,27 +142,15 @@ void propagateAccumulatedFieldsToSchema(const clonable_ptr<EncryptionSchemaTreeN
                                       << "' cannot have fields encrypted with the random algorithm "
                                          "or whose encryption properties are not known until "
                                          "runtime when used in an $addToSet accumulator.",
-                        !perDocExprSchema->mayContainRandomlyEncryptedNode());
+                        !expressionSchema->mayContainRandomlyEncryptedNode());
             }
         } else if (accu->getOpName() == "$first"s || accu->getOpName() == "$last"s) {
-            newSchema->addChild(FieldRef{accuStmt.fieldName}, std::move(perDocExprSchema));
+            newSchema->addChild(FieldRef{accuStmt.fieldName}, std::move(expressionSchema));
         } else {
             uassert(51221,
                     str::stream() << "Accumulator '" << accu->getOpName()
                                   << "' cannot aggregate encrypted fields.",
-                    !perDocExprSchema->mayContainEncryptedNode());
-            // Similarly, we don't want to allow the initializer to contain encrypted fields.
-            // For almost all accumulators, the initializer is a trivial {$const: null}.
-            // Conservatively, just ban a non-$const initializer when the group key might
-            // contain any encrypted data.
-            if (groupKeyMayContainEncryptedFields) {
-                uassert(4544715,
-                        str::stream() << "Accumulator '" << accu->getOpName()
-                                      << "' must have a constant initializer (initArgs) "
-                                      << "when the group key contains encrypted fields.",
-                        ExpressionConstant::isNullOrConstant(accuStmt.expr.initializer));
-            }
-
+                    !expressionSchema->mayContainEncryptedNode());
             newSchema->addChild(FieldRef(accuStmt.fieldName),
                                 std::make_unique<EncryptionSchemaNotEncryptedNode>());
         }
@@ -194,9 +180,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForBucketAuto(
     // Always project a not encrypted '_id' field.
     newSchema->addChild(FieldRef{"_id"}, std::make_unique<EncryptionSchemaNotEncryptedNode>());
 
-    const bool groupKeyMayContainEncryptedFields = false;
-    propagateAccumulatedFieldsToSchema(
-        prevSchema, source.getAccumulatedFields(), newSchema, groupKeyMayContainEncryptedFields);
+    propagateAccumulatedFieldsToSchema(prevSchema, source.getAccumulatedFields(), newSchema);
     return newSchema;
 }
 
@@ -222,7 +206,6 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGroup(
     clonable_ptr<EncryptionSchemaTreeNode> newSchema =
         std::make_unique<EncryptionSchemaNotEncryptedNode>();
 
-    bool groupKeyMayContainEncryptedFields = false;
     for (const auto& [pathStr, expression] : source.getIdFields()) {
         auto fieldPath = FieldRef{pathStr};
         // The expressions here are used for grouping things together, which is an equality
@@ -237,13 +220,10 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGroup(
             << "' which is encrypted with the random algorithm or whose encryption properties are "
                "not known until runtime";
         uassert(51222, errorMessage, !expressionSchema->mayContainRandomlyEncryptedNode());
-        if (expressionSchema->mayContainEncryptedNode())
-            groupKeyMayContainEncryptedFields = true;
         newSchema->addChild(fieldPath, std::move(expressionSchema));
     }
 
-    propagateAccumulatedFieldsToSchema(
-        prevSchema, source.getAccumulatedFields(), newSchema, groupKeyMayContainEncryptedFields);
+    propagateAccumulatedFieldsToSchema(prevSchema, source.getAccumulatedFields(), newSchema);
     return newSchema;
 }
 
@@ -525,16 +505,13 @@ aggregate_expression_intender::Intention analyzeForBucketAuto(
     for (auto& accuStmt : source->getAccumulatedFields()) {
         // The expressions here are used for adding things to a set requires an equality
         // comparison.
-        boost::intrusive_ptr<AccumulatorState> accu = accuStmt.makeAccumulator();
+        boost::intrusive_ptr<Accumulator> accu = accuStmt.makeAccumulator();
         const bool expressionResultCompared = accu->getOpName() == "$addToSet"s;
         didMark = didMark ||
             aggregate_expression_intender::mark(*(flePipe->getPipeline().getContext().get()),
                                                 schema,
-                                                accuStmt.expr.argument.get(),
+                                                accuStmt.expression.get(),
                                                 expressionResultCompared);
-        // In bucketAuto we only allow constants for initializer (after optimization),
-        // so we shouldn't need to analyze this.
-        invariant(ExpressionConstant::isNullOrConstant(accuStmt.expr.initializer));
     }
     return didMark;
 }
@@ -645,16 +622,13 @@ aggregate_expression_intender::Intention analyzeForGroup(FLEPipeline* flePipe,
     for (auto& accuStmt : source->getAccumulatedFields()) {
         // The expressions here are used for adding things to a set requires an equality
         // comparison.
-        boost::intrusive_ptr<AccumulatorState> accu = accuStmt.makeAccumulator();
+        boost::intrusive_ptr<Accumulator> accu = accuStmt.makeAccumulator();
         const bool expressionResultCompared = accu->getOpName() == "$addToSet"s;
         didMark = didMark ||
             aggregate_expression_intender::mark(*(flePipe->getPipeline().getContext().get()),
                                                 schema,
-                                                accuStmt.expr.argument.get(),
+                                                accuStmt.expression.get(),
                                                 expressionResultCompared);
-
-        // In propagateSchemaForGroup we require the initializer to be constant if the group
-        // key might contain any encrypted fields, so here we shouldn't need to analyze it.
     }
     return didMark;
 }
