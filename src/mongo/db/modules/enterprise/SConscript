@@ -23,6 +23,47 @@ feature_dirs = [
 
 env = env.Clone()
 
+
+if get_option('lint-scope') == 'changed':
+    patch_file = env.Command(
+        target="$BUILD_DIR/current.enterprise.git.patch",
+        source=[env.WhereIs("git"), env.Dir(".").srcnode().get_abspath()],
+        action="cd ${SOURCES[1]} && ${SOURCES[0]} diff $GITDIFFFLAGS > ${TARGET.abspath}"
+    )
+
+    env.AlwaysBuild(patch_file)
+
+    pylinters = env.Command(
+        target="#lint-pylinters-enteprise",
+        source=[
+            "#buildscripts/pylinters.py",
+            patch_file,
+        ],
+        action="$PYTHON ${SOURCES[0]} lint-patch ${SOURCES[1]}"
+    )
+
+    clang_format = env.Command(
+        target="#lint-clang-format-enterprise",
+        source=[
+            "#buildscripts/clang_format.py",
+            patch_file,
+        ],
+        action="$PYTHON ${SOURCES[0]} lint-patch ${SOURCES[1]}"
+    )
+
+    eslint = env.Command(
+        target="#lint-eslint-enterprise",
+        source=[
+            "#buildscripts/eslint.py",
+            patch_file,
+        ],
+        action="$PYTHON ${SOURCES[0]} lint-patch ${SOURCES[1]}"
+    )
+
+    env.Alias( "lint-fast" , [ eslint, clang_format, pylinters ] )
+    env.Alias( "lint" , [ eslint, clang_format, pylinters ] )
+
+
 if get_option( "ssl" ) != "on":
     env.FatalError("SSL not enabled. Enterprise MongoDB must be built with --ssl specified")
 
