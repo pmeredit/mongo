@@ -44,7 +44,11 @@ audit.assertEntryRelaxed("replSetReconfig", {
             "getLastErrorDefaults": {"w": 1, "wtimeout": 0}
         }
     },
-    "new": {"_id": "foo", "protocolVersion": 1, "members": [{"_id": 0, "host": m.name}]}
+    "new": {
+        "_id": "foo",
+        "protocolVersion": {"$numberLong": "1"},
+        "members": [{"_id": 0, "host": m.name}]
+    }
 });
 
 MongoRunner.stopMongod(m);
