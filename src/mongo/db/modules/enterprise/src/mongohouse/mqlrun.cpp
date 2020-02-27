@@ -152,7 +152,7 @@ int mqlrunMain(const char* pipelineStr,
     }
 
     auto ws = std::make_unique<WorkingSet>();
-    auto proxy = std::make_unique<PipelineProxyStage>(opCtx.get(), std::move(pipeline), ws.get());
+    auto proxy = std::make_unique<PipelineProxyStage>(expCtx.get(), std::move(pipeline), ws.get());
 
     auto planExec = PlanExecutor::make(
         opCtx.get(), std::move(ws), std::move(proxy), nullptr, PlanExecutor::NO_YIELD, nss);

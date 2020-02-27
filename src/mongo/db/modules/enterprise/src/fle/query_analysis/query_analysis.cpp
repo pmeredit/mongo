@@ -257,11 +257,8 @@ PlaceHolderResult replaceEncryptedFieldsInUpdate(
     UpdateDriver driver(expCtx);
     // Although arrayFilters cannot contain encrypted fields, pass them through to the UpdateDriver
     // to prevent parsing errors for arrayFilters on a non-encrypted field path.
-    auto parsedArrayFilters = uassertStatusOK(
-        ParsedUpdate::parseArrayFilters(arrayFilters,
-                                        expCtx->opCtx,
-                                        const_cast<CollatorInterface*>(expCtx->getCollator()),
-                                        NamespaceString("")));
+    auto parsedArrayFilters =
+        uassertStatusOK(ParsedUpdate::parseArrayFilters(expCtx, arrayFilters, NamespaceString("")));
     driver.parse(updateMod, parsedArrayFilters);
 
     // 'updateVisitor' must live through driver serialization.
@@ -556,7 +553,7 @@ PlaceHolderResult addPlaceHoldersForUpdate(OperationContext* opCtx,
         auto& updateMod = update.getU();
         auto collator = parseCollator(opCtx, update.getCollation());
         boost::intrusive_ptr<ExpressionContext> expCtx(
-            new ExpressionContext(opCtx, collator.get(), NamespaceString(updateDBName)));
+            new ExpressionContext(opCtx, std::move(collator), NamespaceString(updateDBName)));
 
         uassert(31150,
                 "Pipelines in update are not allowed with an encrypted '_id' and 'upsert: true'",
@@ -603,7 +600,7 @@ PlaceHolderResult addPlaceHoldersForDelete(OperationContext* opCtx,
         auto& opToMark = markedDeletes.back();
         auto collator = parseCollator(opCtx, op.getCollation());
         boost::intrusive_ptr<ExpressionContext> expCtx(
-            new ExpressionContext(opCtx, collator.get(), NamespaceString(updateDBName)));
+            new ExpressionContext(opCtx, std::move(collator), NamespaceString(updateDBName)));
 
         auto resultForOp = replaceEncryptedFieldsInFilter(expCtx, *schemaTree, opToMark.getQ());
         placeHolderResult.hasEncryptionPlaceholders =
@@ -666,7 +663,7 @@ void processQueryCommand(OperationContext* opCtx,
 
     auto collator = extractCollator(opCtx, cmdObj);
     boost::intrusive_ptr<ExpressionContext> expCtx(
-        new ExpressionContext(opCtx, collator.get(), NamespaceString(dbName)));
+        new ExpressionContext(opCtx, std::move(collator), NamespaceString(dbName)));
 
     PlaceHolderResult placeholder =
         func(expCtx, dbName, cryptdParams.strippedObj, std::move(schemaTree));

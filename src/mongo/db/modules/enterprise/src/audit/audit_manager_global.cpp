@@ -48,13 +48,12 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(InitializeGlobalAuditManager,
     audit::getGlobalAuditManager()->enabled = auditGlobalParams.enabled;
 
     if (auditGlobalParams.enabled) {
-        const CollatorInterface* collator = nullptr;
         // We pass in a null OperationContext pointer here, since we do not have access to an
         // OperationContext. MatchExpressionParser::parse() only requires an OperationContext for
         // parsing $expr, which we explicitly disallow here.
         OperationContext* opCtx = nullptr;
-        boost::intrusive_ptr<ExpressionContext> expCtx(
-            new ExpressionContext(opCtx, collator, NamespaceString("")));
+        boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(
+            opCtx, std::unique_ptr<CollatorInterface>(nullptr), NamespaceString("")));
         StatusWithMatchExpression parseResult =
             MatchExpressionParser::parse(auditGlobalParams.auditFilter,
                                          std::move(expCtx),
