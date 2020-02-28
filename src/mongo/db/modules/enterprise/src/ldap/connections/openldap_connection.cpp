@@ -14,6 +14,7 @@
 #include <netinet/in.h>
 #include <sasl/sasl.h>
 
+#include "mongo/logv2/log.h"
 #include "mongo/platform/mutex.h"
 #include "mongo/util/log.h"
 #include "mongo/util/net/sockaddr.h"
@@ -426,7 +427,7 @@ Status OpenLDAPConnection::connect() {
     }
 
     // Log LDAP API information
-    if (shouldLog(logger::LogSeverity::Debug(3))) {
+    if (shouldLog(logv2::LogSeverity::Debug(3))) {
         try {
             LDAPOptionAPIInfo info = _pimpl->getOption<LDAPOptionAPIInfo>(
                 "OpenLDAPConnection::connect", "Getting API info");
