@@ -28,3 +28,13 @@ env.Library(
         '$BUILD_DIR/mongo/util/options_parser/options_parser',
     ],
 )
+
+env.CppIntegrationTest(
+    target='enterprise_queryable_wt_test',
+    source=[
+        'blockstore_fs_test.cpp',
+    ],
+    LIBDEPS=[
+        'queryable_wt',
+    ],
+)

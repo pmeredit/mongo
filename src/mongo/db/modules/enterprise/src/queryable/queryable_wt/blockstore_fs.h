@@ -21,6 +21,18 @@
 #include "third_party/wiredtiger/src/include/wiredtiger_ext.h"
 #include <wiredtiger.h>
 
+extern "C" int queryableWtFsDirectoryList(WT_FILE_SYSTEM* file_system,
+                                          WT_SESSION* session,
+                                          const char* directory,
+                                          const char* prefix,
+                                          char*** dirlistp,
+                                          uint32_t* countp);
+
+extern "C" int queryableWtFsDirectoryListFree(WT_FILE_SYSTEM* file_system,
+                                              WT_SESSION* session,
+                                              char** dirlist,
+                                              uint32_t count);
+
 namespace mongo {
 namespace queryable {
 
@@ -56,21 +68,32 @@ public:
     }
 
     void addFile(struct File file) {
-        _files[getPathForFileName(file.filename)] = file;
+        _files[getFileAbsolutePathFromRelativePath(file.filename)] = file;
     }
 
     bool fileExists(const char* filename) {
         return _files.count(filename) > 0;
     }
 
-    const std::string getFileNameFromPath(const std::string& path) {
+    /**
+     * Given _dbPath = "/data/db" and path = "/data/db/journal/WiredTigerLog.001", this returns
+     * "journal/WiredTigerLog.001".
+     */
+    const std::string getFileRelativePath(const std::string& path) {
+        boost::filesystem::path dbPath(_dbpath);
         boost::filesystem::path fullPath(path);
-        return fullPath.filename().string();
+
+        boost::filesystem::path relativePath = boost::filesystem::relative(fullPath, dbPath);
+        return relativePath.string();
     }
 
-    const std::string getPathForFileName(const std::string& filename) {
+    /**
+     * Given _dbPath = "/data/db" and relativePath = "journal/WiredTigerLog.001", this returns
+     * "/data/db/journal/WiredTigerLog.001".
+     */
+    const std::string getFileAbsolutePathFromRelativePath(const std::string& relativePath) {
         boost::filesystem::path fullPath = _dbpath;
-        fullPath /= filename;
+        fullPath /= relativePath;
         return fullPath.string();
     }
 
@@ -95,17 +118,42 @@ public:
      * Returns a list of files that match 'prefix' in 'directory'.
      */
     std::vector<std::string> getFiles(const char* directory, const char* prefix) {
-        boost::filesystem::path directoryWithFilePrefix = directory;
-        directoryWithFilePrefix /= prefix;
+        boost::filesystem::path directoryPath = directory;
+        const std::string prefixToMatch(prefix);
 
         std::vector<std::string> files;
+        if (directoryPath.string().rfind(_dbpath, 0) != 0) {
+            // Cannot search outside of db path;
+            return files;
+        }
+
         for (const auto& file : _files) {
-            if (file.first.find(directoryWithFilePrefix.string()) == std::string::npos) {
-                // File prefix not matched in directory.
+            if (file.first.rfind(directoryPath.string(), 0) != 0) {
+                // File not contained in directory.
                 continue;
             }
 
-            files.push_back(getFileNameFromPath(file.first));
+            boost::filesystem::path fullPath = file.first;
+            boost::filesystem::path relativePath =
+                boost::filesystem::relative(fullPath, directoryPath);
+
+            auto relativePathIt = relativePath.begin();
+            if (relativePathIt == relativePath.end()) {
+                continue;
+            }
+
+            std::string fileName = relativePathIt->string();
+
+            if (prefixToMatch.size() == 0) {
+                files.push_back(fileName);
+                continue;
+            }
+
+            if (fileName.rfind(prefixToMatch, 0) != 0) {
+                continue;
+            }
+
+            files.push_back(fileName);
         }
         return files;
     }

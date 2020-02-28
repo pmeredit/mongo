@@ -22,40 +22,40 @@ extern "C" {
 /*
  * Extension initialization function.
  */
-static int queryableWtFsDirectoryList(WT_FILE_SYSTEM* file_system,
-                                      WT_SESSION* session,
-                                      const char* directory,
-                                      const char* prefix,
-                                      char*** dirlistp,
-                                      uint32_t* countp) {
+int queryableWtFsDirectoryList(WT_FILE_SYSTEM* file_system,
+                               WT_SESSION* session,
+                               const char* directory,
+                               const char* prefix,
+                               char*** dirlistp,
+                               uint32_t* countp) {
     auto blockstoreFs = reinterpret_cast<mongo::queryable::BlockstoreFileSystem*>(file_system);
     std::vector<std::string> files = blockstoreFs->getFiles(directory, prefix);
     if (files.empty()) {
+        *countp = 0;
         return 0;
     }
 
-    *dirlistp = new char*[files.size()];
-    if (*dirlistp == nullptr) {
+    *dirlistp = static_cast<char**>(malloc(sizeof(char*) * files.size()));
+    if (*dirlistp == NULL) {
         return ENOMEM;
     }
 
     for (size_t i = 0; i < files.size(); i++) {
         const std::string fileName = files[i];
-        *dirlistp[i] = new char[fileName.size() + 1];
-        if (*dirlistp[i] == nullptr) {
+        (*dirlistp)[i] = strdup(fileName.c_str());
+        if ((*dirlistp)[i] == NULL) {
             return ENOMEM;
         }
-        strcpy(*dirlistp[i], fileName.c_str());
     }
 
     *countp = files.size();
     return 0;
 }
 
-static int queryableWtFsDirectoryListFree(WT_FILE_SYSTEM* file_system,
-                                          WT_SESSION* session,
-                                          char** dirlist,
-                                          uint32_t count) {
+int queryableWtFsDirectoryListFree(WT_FILE_SYSTEM* file_system,
+                                   WT_SESSION* session,
+                                   char** dirlist,
+                                   uint32_t count) {
     for (size_t i = 0; i < count; i++) {
         free(dirlist[i]);
     }
@@ -324,18 +324,13 @@ int BlockstoreFileSystem::open(const char* name,
                                BlockstoreFileHandle** fileHandle) {
     std::string filename(name);
 
-    bool createFileFlagSet = flags & WT_FS_OPEN_CREATE;
-    if (!fileExists(name) && !createFileFlagSet) {
-        return ENOENT;
-    }
-
     BlockstoreHTTP blockstoreHTTP(_apiUri, _snapshotId);
 
     // Send an API request to create the file if it doesn't already exist and add it to the list of
     // existing files on success.
-    if (!fileExists(name) && createFileFlagSet) {
+    if (!fileExists(name)) {
         StatusWith<DataBuilder> swOpenFileResponse =
-            blockstoreHTTP.openFile(getFileNameFromPath(filename));
+            blockstoreHTTP.openFile(getFileRelativePath(filename));
         if (!swOpenFileResponse.isOK()) {
             error() << "Bad HTTP response from the ApiServer: "
                     << swOpenFileResponse.getStatus().reason();
@@ -343,7 +338,7 @@ int BlockstoreFileSystem::open(const char* name,
         }
 
         struct File file;
-        file.filename = getFileNameFromPath(filename);
+        file.filename = getFileRelativePath(filename);
         file.fileSize = 0;
 
         addFile(std::move(file));
@@ -416,7 +411,7 @@ int BlockstoreFileSystem::rename(const char* from, const char* to) {
 
     BlockstoreHTTP blockstoreHTTP(_apiUri, _snapshotId);
     StatusWith<DataBuilder> swRenameResponse =
-        blockstoreHTTP.renameFile(getFileNameFromPath(from), getFileNameFromPath(to));
+        blockstoreHTTP.renameFile(getFileRelativePath(from), getFileRelativePath(to));
     if (!swRenameResponse.isOK()) {
         error() << "Bad HTTP response from the ApiServer: "
                 << swRenameResponse.getStatus().reason();
@@ -424,7 +419,7 @@ int BlockstoreFileSystem::rename(const char* from, const char* to) {
     }
 
     struct File file = getFile(from);
-    file.filename = getFileNameFromPath(to);
+    file.filename = getFileRelativePath(to);
 
     // Updating our internal file map.
     _files.erase(from);
@@ -442,7 +437,7 @@ int BlockstoreFileHandle::write(const void* buf, std::size_t offset, std::size_t
     }
 
     std::string filename = _readerWriter->getFileName();
-    std::string path = _blockstoreFs->getPathForFileName(filename);
+    std::string path = _blockstoreFs->getFileAbsolutePathFromRelativePath(filename);
 
     // Calculate how many new bytes were written based on the offset.
     size_t newBytesWritten = 0;
