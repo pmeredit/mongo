@@ -71,10 +71,11 @@ Status AuthzManagerExternalStateLDAP::initialize(OperationContext* opCtx) {
 }
 
 Status AuthzManagerExternalStateLDAP::getUserDescription(OperationContext* opCtx,
-                                                         const UserName& userName,
+                                                         const UserRequest& userReq,
                                                          BSONObj* result) {
-    if (userName.getDB() != "$external" || shouldUseRolesFromConnection(opCtx, userName)) {
-        return _wrappedExternalState->getUserDescription(opCtx, userName, result);
+    const UserName& userName = userReq.name;
+    if (userName.getDB() != "$external" || userReq.roles) {
+        return _wrappedExternalState->getUserDescription(opCtx, userReq, result);
     }
 
     StatusWith<std::vector<RoleName>> swRoles =

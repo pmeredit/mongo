@@ -57,7 +57,7 @@ public:
      * and return a description of the requested user possessing all necessary permissions.
      */
     Status getUserDescription(OperationContext* opCtx,
-                              const UserName& userName,
+                              const UserRequest& userReq,
                               BSONObj* result) final;
 
     /**
