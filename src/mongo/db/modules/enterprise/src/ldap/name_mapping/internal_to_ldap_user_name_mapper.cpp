@@ -42,10 +42,8 @@ StatusWith<std::string> InternalToLDAPUserNameMapper::transform(LDAPRunner* runn
         StatusWith<std::string> result = transform->resolve(runner, input);
 
         if (result.isOK()) {
-            LOGV2_DEBUG(24065,
-                        3,
-                        "Transformed username to: {result_getValue}",
-                        "result_getValue"_attr = result.getValue());
+            LOGV2_DEBUG(
+                24065, 3, "Transformed username to: {user}", "user"_attr = result.getValue());
             return result;
         }
 

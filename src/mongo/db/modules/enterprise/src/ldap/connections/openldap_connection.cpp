@@ -120,10 +120,9 @@ int saslInteract(LDAP* session, unsigned flags, void* defaults, void* interact) 
 
         return LDAP_SUCCESS;
     } catch (...) {
-        LOGV2_ERROR(
-            24053,
-            "Unexpected exception caught in OpenLDAPConnection's saslInteract: {exceptionToStatus}",
-            "exceptionToStatus"_attr = exceptionToStatus());
+        LOGV2_ERROR(24053,
+                    "Unexpected exception caught in OpenLDAPConnection's saslInteract: {status}",
+                    "status"_attr = exceptionToStatus());
         return LDAP_OPERATIONS_ERROR;
     }
 }
@@ -143,12 +142,12 @@ int openLDAPBindFunction(
         const auto& bindOptions = conn->bindOptions();
         invariant(bindOptions);
 
-        LOGV2_DEBUG(
-            24050,
-            3,
-            "Binding to LDAP server \"{url}\" with bind parameters: {bindOptions_toCleanString}",
-            "url"_attr = url,
-            "bindOptions_toCleanString"_attr = bindOptions->toCleanString());
+        LOGV2_DEBUG(24050,
+                    3,
+                    "Binding to LDAP server \"{ldapURL}\" with bind parameters: {bindOptions}",
+                    "Binding to LDAP server",
+                    "ldapURL"_attr = url,
+                    "bindOptions"_attr = bindOptions->toCleanString());
 
         int ret;
         const std::string failureHint = str::stream() << "failed to bind to LDAP server at " << url;
@@ -186,24 +185,25 @@ int openLDAPBindFunction(
         } else {
             LOGV2_ERROR(24054,
                         "Attempted to bind to LDAP server with unrecognized bind type: "
-                        "{authenticationChoiceToString_bindOptions_authenticationChoice}",
-                        "authenticationChoiceToString_bindOptions_authenticationChoice"_attr =
+                        "{unrecognizedBindType}",
+                        "unrecognizedBindType"_attr =
                             authenticationChoiceToString(bindOptions->authenticationChoice));
             return LDAP_OPERATIONS_ERROR;
         }
 
         if (!status.isOK()) {
             LOGV2_ERROR(24055,
-                        "{status}. Bind parameters were: {bindOptions_toCleanString}",
+                        "{status}. Bind parameters were: {bindOptions}",
                         "status"_attr = status,
-                        "bindOptions_toCleanString"_attr = bindOptions->toCleanString());
+                        "bindOptions"_attr = bindOptions->toCleanString());
         }
         return ret;
     } catch (...) {
         Status status = exceptionToStatus();
         LOGV2_ERROR(24056,
-                    "Failed to bind to LDAP server at {url} : {status}",
-                    "url"_attr = url,
+                    "Failed to bind to LDAP server at {ldapURL} : {status}",
+                    "Failed to bind to LDAP server",
+                    "ldapURL"_attr = url,
                     "status"_attr = status);
         return LDAP_OPERATIONS_ERROR;
     }
@@ -294,8 +294,9 @@ int LDAPConnectCallbackFunction(
     try {
         LOGV2_DEBUG(20163,
                     3,
-                    "Connected to LDAP server at {sa} with LDAP URL: {url}",
-                    "sa"_attr = SockAddr(
+                    "Connected to LDAP server at {serverAddress} with LDAP URL: {ldapURL}",
+                    "Connected to LDAP server",
+                    "serverAddress"_attr = SockAddr(
                         addr,
                         [&]() {
                             switch (addr->sa_family) {
@@ -310,12 +311,12 @@ int LDAPConnectCallbackFunction(
                                                   << addr->sa_family);
                             }
                         }()),
-                    "url"_attr = std::unique_ptr<char, decltype(&ldap_memfree)>(
-                                     ldap_url_desc2str(srv), &ldap_memfree)
-                                     .get());
+                    "ldapURL"_attr = std::unique_ptr<char, decltype(&ldap_memfree)>(
+                                         ldap_url_desc2str(srv), &ldap_memfree)
+                                         .get());
         return 0;
     } catch (const std::exception& e) {
-        LOGV2_ERROR(24057, "Failed LDAPConnectCallback with: {e_what}", "e_what"_attr = e.what());
+        LOGV2_ERROR(24057, "Failed LDAPConnectCallback with: {reason}", "reason"_attr = e.what());
         return LDAP_OPERATIONS_ERROR;
     }
 }
@@ -448,18 +449,20 @@ Status OpenLDAPConnection::connect() {
 
             LOGV2_DEBUG(24051,
                         3,
-                        "LDAPAPIInfo: {{ ldapai_info_version: {info_getInfoVersion}, "
-                        "ldapai_api_version: {info_getAPIVersion}, ldap_protocol_version: "
-                        "{info_getProtocolVersion}, ldapai_extensions: "
-                        "[{boost_algorithm_join_info_getExtensions}], ldapai_vendor_name: "
-                        "{info_getVendorName}, ldapai_vendor_version: {info_getVendorVersion}}}",
-                        "info_getInfoVersion"_attr = info.getInfoVersion(),
-                        "info_getAPIVersion"_attr = info.getAPIVersion(),
-                        "info_getProtocolVersion"_attr = info.getProtocolVersion(),
-                        "boost_algorithm_join_info_getExtensions"_attr =
-                            boost::algorithm::join(info.getExtensions(), ", "),
-                        "info_getVendorName"_attr = info.getVendorName(),
-                        "info_getVendorVersion"_attr = info.getVendorVersion());
+                        "LDAPAPIInfo: {{ "
+                        "ldapai_info_version: {infoVersion}, "
+                        "ldapai_api_version: {apiVersion}, "
+                        "ldap_protocol_version: {protocolVersion}, "
+                        "ldapai_extensions: [{extensions}], "
+                        "ldapai_vendor_name: {vendorName}, "
+                        "ldapai_vendor_version: {vendorVersion} }}",
+                        "LDAPAPIInfo",
+                        "infoVersion"_attr = info.getInfoVersion(),
+                        "apiVersion"_attr = info.getAPIVersion(),
+                        "protocolVersion"_attr = info.getProtocolVersion(),
+                        "extensions"_attr = boost::algorithm::join(info.getExtensions(), ", "),
+                        "vendorName"_attr = info.getVendorName(),
+                        "vendorVersion"_attr = info.getVendorVersion());
         } catch (...) {
             Status status = exceptionToStatus();
             LOGV2_ERROR(24059,

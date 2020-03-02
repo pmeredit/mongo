@@ -80,8 +80,9 @@ void LDAPUserCacheInvalidator::run() {
                 ->invalidateUsersFromDB(opCtx.get(), "$external");
         } catch (const DBException& e) {
             LOGV2_WARNING(24037,
-                          "Error invalidating user cache: {e_toStatus}",
-                          "e_toStatus"_attr = e.toStatus());
+                          "Error invalidating user cache: {status}",
+                          "Error invalidating user cache",
+                          "status"_attr = e.toStatus());
         }
     }
 }

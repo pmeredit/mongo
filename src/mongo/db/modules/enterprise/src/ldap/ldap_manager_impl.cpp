@@ -158,14 +158,10 @@ StatusWith<LDAPDNVector> LDAPManagerImpl::_getGroupDNsFromServer(LDAPQuery& quer
         // user is a member of.
         if (queryResults.size() != 1) {
             // We wanted exactly one result. Something went wrong.
-            const std::string msg =
-                "Expected exactly one LDAP entity from which to parse "
-                "attributes.";
-            LOGV2_ERROR(24035,
-                        "{msg} Found {queryResults_size}.",
-                        "msg"_attr = msg,
-                        "queryResults_size"_attr = queryResults.size());
-            return Status{ErrorCodes::UserDataInconsistent, msg};
+#define EXPECTED_ONE_LDAP_ENTRY "Expected exactly one LDAP entity from which to parse attributes"
+            LOGV2_ERROR(24035, EXPECTED_ONE_LDAP_ENTRY, "numResults"_attr = queryResults.size());
+            return Status{ErrorCodes::UserDataInconsistent, EXPECTED_ONE_LDAP_ENTRY};
+#undef EXPECTED_ONE_LDAP_ENTRY
         }
 
         // Take every attribute value, and move it to the results.
