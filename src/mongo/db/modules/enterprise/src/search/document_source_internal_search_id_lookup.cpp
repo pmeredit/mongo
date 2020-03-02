@@ -70,7 +70,7 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchIdLookUp::doGetNext() 
                 Pipeline::makePipeline({BSON("$match" << documentKey)}, pExpCtx, pipelineOpts);
 
             pipeline = pExpCtx->mongoProcessInterface->attachCursorSourceToPipelineForLocalRead(
-                pExpCtx, pipeline.release());
+                pipeline.release());
 
             result = pipeline->getNext();
             if (auto next = pipeline->getNext()) {
