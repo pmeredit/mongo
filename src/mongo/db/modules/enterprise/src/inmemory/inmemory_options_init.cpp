@@ -11,7 +11,6 @@
 #include "mongo/logv2/log.h"
 
 //#include "mongo/db/storage/data_protector.h"
-#include "mongo/util/log.h"
 
 namespace mongo {
 

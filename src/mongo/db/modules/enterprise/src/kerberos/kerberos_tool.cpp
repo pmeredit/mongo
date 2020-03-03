@@ -20,7 +20,7 @@
 
 #include "mongo/base/initializer.h"
 #include "mongo/logger/logger.h"
-#include "mongo/util/log.h"
+#include "mongo/logv2/log.h"
 #include "mongo/util/net/hostname_canonicalization.h"
 #include "mongo/util/quick_exit.h"
 #include "mongo/util/signal_handlers.h"
@@ -557,7 +557,7 @@ KRB5Keytab::KRB5Keytab(krb5_context krb5Context, KerberosToolOptions::Connection
         auto endSeq = makeGuard([&]() {
             if (ktCursor != nullptr) {
                 if (krb5_kt_end_seq_get(_krb5Context, _krb5Keytab, &ktCursor) != 0) {
-                    warning() << "Could not end keytab iteration sequence properly.";
+                    LOGV2_WARNING(24242, "Could not end keytab iteration sequence properly.");
                 }
             }
         });

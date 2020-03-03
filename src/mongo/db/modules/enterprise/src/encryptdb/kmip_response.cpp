@@ -19,7 +19,7 @@
 #include "mongo/base/status.h"
 #include "mongo/base/status_with.h"
 #include "mongo/crypto/symmetric_crypto.h"
-#include "mongo/util/log.h"
+#include "mongo/logv2/log.h"
 #include "mongo/util/str.h"
 
 namespace mongo {
@@ -160,7 +160,7 @@ Status KMIPResponse::_parseResponseHeader(ConstDataRangeCursor* cdrc) {
 StatusWith<std::string> KMIPResponse::_parseUIDPayload(ConstDataRangeCursor* cdrc) {
     auto swObjectType = _parseInteger(cdrc, objectTypeTag, ItemType::enumeration, "object type");
     if (!swObjectType.isOK()) {
-        warning() << "Object type missing from batch item, attempting to parse anyway";
+        LOGV2_WARNING(24238, "Object type missing from batch item, attempting to parse anyway");
     }
 
     return _parseString(cdrc, uniqueIdentifierTag, "UID");
@@ -342,7 +342,9 @@ Status KMIPResponse::_parseResponse(ConstDataRangeCursor* cdrc) {
 
     // Read the header length
     if (_batchCount > 1) {
-        warning() << "KMIP Response contains " << _batchCount << " items, expected 1.";
+        LOGV2_WARNING(24239,
+                      "KMIP Response contains {batchCount} items, expected 1.",
+                      "batchCount"_attr = _batchCount);
     }
     // Parse the first (and only) batch item
     return _parseBatchItem(cdrc);

@@ -18,7 +18,6 @@
 #include "mongo/platform/mutex.h"
 #include "mongo/stdx/condition_variable.h"
 #include "mongo/util/exit.h"
-#include "mongo/util/log.h"
 #include "mongo/util/time_support.h"
 
 #include "ldap_options.h"

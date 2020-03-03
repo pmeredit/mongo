@@ -5,6 +5,7 @@
 
 #include "mongo/platform/basic.h"
 
+#include "mongo/logv2/log.h"
 #include "windows_ldap_connection.h"
 
 // clang-format off
@@ -25,7 +26,6 @@
 #include "mongo/base/status_with.h"
 #include "mongo/base/string_data.h"
 #include "mongo/client/cyrus_sasl_client_session.h"
-#include "mongo/util/log.h"
 #include "mongo/util/str.h"
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/text.h"
@@ -89,7 +89,7 @@ WindowsLDAPConnection::WindowsLDAPConnection(LDAPConnectionOptions options)
 WindowsLDAPConnection::~WindowsLDAPConnection() {
     Status status = disconnect();
     if (!status.isOK()) {
-        error() << "LDAP unbind failed: " << status;
+        LOGV2_ERROR(24256, "LDAP unbind failed: {status}", "status"_attr = status);
     }
 }
 

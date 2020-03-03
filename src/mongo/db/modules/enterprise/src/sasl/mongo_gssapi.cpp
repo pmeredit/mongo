@@ -13,7 +13,6 @@
 #include <gssapi/gssapi_krb5.h>
 
 #include "mongo/util/assert_util.h"
-#include "mongo/util/log.h"
 #include "mongo/util/str.h"
 
 #include "util/gssapi_helpers.h"

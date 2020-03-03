@@ -12,10 +12,10 @@
 #include "cryptd_watchdog.h"
 
 #include "mongo/db/service_context.h"
+#include "mongo/logv2/log.h"
 #include "mongo/platform/atomic_word.h"
 #include "mongo/transport/service_entry_point.h"
 #include "mongo/util/exit.h"
-#include "mongo/util/log.h"
 #include "mongo/util/time_support.h"
 #include "mongo/watchdog/watchdog.h"
 
@@ -76,8 +76,9 @@ private:
 
         // If we have seen the generation count bump in N runs, exit
         if (_missedCounter >= kMissedCounts) {
-            log() << "Mongocryptd has not received a command for at least " << _userTimeout
-                  << ", exiting.";
+            LOGV2(24237,
+                  "Mongocryptd has not received a command for at least {userTimeout}, exiting.",
+                  "userTimeout"_attr = _userTimeout);
             _inShutdown.store(true);
             exitCleanly(EXIT_KILL);
         }

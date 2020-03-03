@@ -16,7 +16,6 @@
 
 #include "mongo/logv2/log.h"
 #include "mongo/platform/mutex.h"
-#include "mongo/util/log.h"
 #include "mongo/util/net/sockaddr.h"
 #include "mongo/util/str.h"
 #include "mongo/util/time_support.h"

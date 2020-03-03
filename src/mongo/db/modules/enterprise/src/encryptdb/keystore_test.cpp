@@ -18,10 +18,10 @@
 #include "mongo/db/operation_context_noop.h"
 #include "mongo/db/service_context_test_fixture.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_extensions.h"
+#include "mongo/logv2/log.h"
 #include "mongo/unittest/death_test.h"
 #include "mongo/unittest/temp_dir.h"
 #include "mongo/unittest/unittest.h"
-#include "mongo/util/log.h"
 #include "mongo/util/str.h"
 #include "mongo/util/text.h"
 
@@ -152,7 +152,7 @@ TEST_F(KeystoreFixture, V0KeystoreCRUTest) {
 // Check the basic create/read/update functionality of the v1 keystore.
 TEST_F(KeystoreFixture, V1KeystoreCRUTest) {
     if (!gcmSupported()) {
-        log() << "Test requires GCM";
+        LOGV2(24193, "Test requires GCM");
         return;
     }
 
@@ -180,7 +180,7 @@ TEST_F(KeystoreFixture, V1KeystoreCRUTest) {
 
 TEST_F(KeystoreFixture, V1RolloverTest) {
     if (!gcmSupported()) {
-        log() << "Test requires GCM";
+        LOGV2(24194, "Test requires GCM");
         return;
     }
 
@@ -267,7 +267,7 @@ TEST(EncryptionKeyManager, HotBackupValidation) {
     }
 
     const auto dbPathStr = dbPath.string();
-    log() << "dbpath is " << dbPathStr;
+    LOGV2(24195, "dbpath is {dbPathStr}", "dbPathStr"_attr = dbPathStr);
 
     // Create a key. This is the contents of jstests/encryptdb/libs/ekf
     boost::filesystem::path keyPath = dbPath / "keyFile";
@@ -316,14 +316,14 @@ TEST(EncryptionKeyManager, HotBackupValidation) {
     }
 
     for (const auto& file : backupFiles) {
-        log() << "Hot backups would back up " << file;
+        LOGV2(24196, "Hot backups would back up {file}", "file"_attr = file);
         ASSERT_TRUE(str::startsWith(file, dbPathStr));
         ASSERT_TRUE(boost::filesystem::exists(file));
         expectedFiles.erase(file);
     }
 
     for (const auto& missingFile : expectedFiles) {
-        error() << "Expected to find: " << missingFile;
+        LOGV2_ERROR(24198, "Expected to find: {missingFile}", "missingFile"_attr = missingFile);
     }
     ASSERT_TRUE(expectedFiles.empty());
 
@@ -346,7 +346,7 @@ TEST(EncryptionKeyManager, DirtyCBCIsNoOp) {
     }
 
     const auto dbPathStr = dbPath.string();
-    log() << "dbpath is " << dbPathStr;
+    LOGV2(24197, "dbpath is {dbPathStr}", "dbPathStr"_attr = dbPathStr);
 
     // Create a key. This is the contents of jstests/encryptdb/libs/ekf
     boost::filesystem::path keyPath = dbPath / "keyFile";

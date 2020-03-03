@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "mongo/bson/bsonmisc.h"
-#include "mongo/util/log.h"
+#include "mongo/logv2/log.h"
 
 #include "hot_backups/backup_cursor_parameters_gen.h"
 
@@ -33,7 +33,10 @@ DocumentSourceBackupCursor::~DocumentSourceBackupCursor() {
         pExpCtx->mongoProcessInterface->closeBackupCursor(pExpCtx->opCtx,
                                                           _backupCursorState.backupId);
     } catch (DBException& exc) {
-        severe() << exc.toStatus("Error closing a backup cursor.");
+        LOGV2_FATAL(24245,
+                    "{exc_toStatus_Error_closing_a_backup_cursor}",
+                    "exc_toStatus_Error_closing_a_backup_cursor"_attr =
+                        exc.toStatus("Error closing a backup cursor."));
         fassertFailed(50909);
     }
 }

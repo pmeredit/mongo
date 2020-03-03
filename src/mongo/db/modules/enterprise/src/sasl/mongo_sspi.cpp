@@ -17,7 +17,6 @@
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
 #include "mongo/logv2/log.h"
-#include "mongo/util/log.h"
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/str.h"
 #include "mongo/util/text.h"

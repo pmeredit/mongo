@@ -14,8 +14,8 @@
 #include "mongo/base/data_builder.h"
 #include "mongo/base/status.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
+#include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
-#include "mongo/util/log.h"
 #include "mongo/util/str.h"
 
 namespace mongo {
@@ -26,7 +26,10 @@ int keystore_handle_error(WT_EVENT_HANDLER* handler,
                           int errorCode,
                           const char* message) {
     try {
-        error() << "WiredTiger keystore (" << errorCode << ") " << message;
+        LOGV2_ERROR(24208,
+                    "WiredTiger keystore ({errorCode}) {message}",
+                    "errorCode"_attr = errorCode,
+                    "message"_attr = message);
         fassert(4051, errorCode != WT_PANIC);
     } catch (...) {
         std::terminate();
@@ -36,7 +39,7 @@ int keystore_handle_error(WT_EVENT_HANDLER* handler,
 
 int keystore_handle_message(WT_EVENT_HANDLER* handler, WT_SESSION* session, const char* message) {
     try {
-        log() << "WiredTiger keystore " << message;
+        LOGV2(24205, "WiredTiger keystore {message}", "message"_attr = message);
     } catch (...) {
         std::terminate();
     }
@@ -48,7 +51,10 @@ int keystore_handle_progress(WT_EVENT_HANDLER* handler,
                              const char* operation,
                              uint64_t progress) {
     try {
-        log() << "WiredTiger keystore progress " << operation << " " << progress;
+        LOGV2(24206,
+              "WiredTiger keystore progress {operation} {progress}",
+              "operation"_attr = operation,
+              "progress"_attr = progress);
     } catch (...) {
         std::terminate();
     }
@@ -202,10 +208,11 @@ bool WTDataStoreSession::verifyTable() {
         // SERVER-16457: verify and salvage are occasionally failing with EBUSY. For now we
         // lie and return OK to avoid breaking tests. This block should go away when that ticket
         // is resolved.
-        error()
-            << "Verify on " << kKeystoreTableName << " failed with EBUSY. "
-            << "This means the keystore was being accessed. No repair is necessary unless other "
-               "errors are reported.";
+        LOGV2_ERROR(24209,
+                    "Verify on {kKeystoreTableName} failed with EBUSY. This means the keystore was "
+                    "being accessed. No repair is necessary unless other "
+                    "errors are reported.",
+                    "kKeystoreTableName"_attr = kKeystoreTableName);
         return true;
     } else if (ret == ENOENT || ret == 0) {
         return true;
@@ -221,10 +228,11 @@ void WTDataStoreSession::salvage() {
         // SERVER-16457: verify and salvage are occasionally failing with EBUSY. For now we
         // lie and return OK to avoid breaking tests. This block should go away when that ticket
         // is resolved.
-        error()
-            << "Verify on " << kKeystoreTableName << " failed with EBUSY. "
-            << "This means the keystore was being accessed. No repair is necessary unless other "
-               "errors are reported.";
+        LOGV2_ERROR(24210,
+                    "Verify on {kKeystoreTableName} failed with EBUSY. This means the keystore was "
+                    "being accessed. No repair is necessary unless other "
+                    "errors are reported.",
+                    "kKeystoreTableName"_attr = kKeystoreTableName);
     } else {
         fassertFailedWithStatusNoTrace(51226, wtRCToStatus(ret));
     }
@@ -252,7 +260,9 @@ WTDataStore::WTDataStore(const boost::filesystem::path& path,
         wtConfig << "readonly=true,";
     }
 
-    log() << "Opening WiredTiger keystore. Config: " << wtConfig.str();
+    LOGV2(24207,
+          "Opening WiredTiger keystore. Config: {wtConfig_str}",
+          "wtConfig_str"_attr = wtConfig.str());
 
     WT_CONNECTION* connPtr = nullptr;
     auto rc = wiredtiger_open(

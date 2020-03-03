@@ -16,7 +16,6 @@
 #include "mongo/db/client.h"
 #include "mongo/db/dbdirectclient.h"
 #include "mongo/logv2/log.h"
-#include "mongo/util/log.h"
 #include "mongo/util/time_support.h"
 #include "mongo/util/timer.h"
 

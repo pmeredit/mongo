@@ -9,7 +9,6 @@
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/client.h"
 #include "mongo/transport/session.h"
-#include "mongo/util/log.h"
 
 namespace mongo {
 namespace audit {

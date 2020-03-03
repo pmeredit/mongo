@@ -21,8 +21,8 @@
 #include "mongo/base/status_with.h"
 #include "mongo/config.h"
 #include "mongo/crypto/symmetric_crypto.h"
+#include "mongo/logv2/log.h"
 #include "mongo/platform/mutex.h"
-#include "mongo/util/log.h"
 #include "mongo/util/net/ssl_manager.h"
 #include "mongo/util/net/ssl_options.h"
 #include "mongo/util/secure_zero_memory.h"
@@ -81,12 +81,18 @@ StatusWith<KMIPService> KMIPService::createKMIPService(const KMIPParams& kmipPar
                 return std::move(swService.getValue());
             }
             if ((it + 1) != kmipParams.kmipServerName.end()) {
-                warning() << "Connection to KMIP server at " << hp << " failed. "
-                          << "Trying again at " << HostAndPort(*(it + 1), kmipParams.kmipPort)
-                          << '.';
+                LOGV2_WARNING(24240,
+                              "Connection to KMIP server at {hp} failed. Trying again at "
+                              "{HostAndPort_it_1_kmipParams_kmipPort}.",
+                              "hp"_attr = hp,
+                              "HostAndPort_it_1_kmipParams_kmipPort"_attr =
+                                  HostAndPort(*(it + 1), kmipParams.kmipPort));
             } else if (retries) {
-                warning() << "Connection to KMIP server at " << hp << " failed. "
-                          << "Restarting connect attempt(s) " << retries << " more time(s).";
+                LOGV2_WARNING(24241,
+                              "Connection to KMIP server at {hp} failed. Restarting connect "
+                              "attempt(s) {retries} more time(s).",
+                              "hp"_attr = hp,
+                              "retries"_attr = retries);
             } else {
                 return swService.getStatus();
             }

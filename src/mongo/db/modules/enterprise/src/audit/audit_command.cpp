@@ -19,7 +19,6 @@
 #include "mongo/db/commands.h"
 #include "mongo/db/commands/authentication_commands.h"
 #include "mongo/util/base64.h"
-#include "mongo/util/log.h"
 #include "mongo/util/sequence_util.h"
 #include "mongo/util/str.h"
 

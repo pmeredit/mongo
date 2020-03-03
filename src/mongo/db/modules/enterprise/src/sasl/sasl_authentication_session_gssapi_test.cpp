@@ -22,10 +22,10 @@
 #include "mongo/db/auth/sasl_mechanism_registry.h"
 #include "mongo/db/auth/sasl_options.h"
 #include "mongo/db/service_context_test_fixture.h"
+#include "mongo/logv2/log.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/errno_util.h"
-#include "mongo/util/log.h"
 #include "mongo/util/scopeguard.h"
 
 #include "cyrus_sasl_authentication_session.h"
@@ -115,8 +115,12 @@ void setupLegacyEnvironment() {
 int main(int argc, char** argv, char** envp) {
     // Set up *nix-based kerberos.
     if (!mkstemp(krb5ccFile)) {
-        log() << "Failed to make credential cache with template " << krb5ccFile << "; "
-              << strerror(errno) << " (" << errno << ')';
+        LOGV2(24211,
+              "Failed to make credential cache with template {krb5ccFile}; {strerror_errno} "
+              "({errno})",
+              "krb5ccFile"_attr = krb5ccFile,
+              "strerror_errno"_attr = strerror(errno),
+              "errno"_attr = errno);
         return EXIT_FAILURE;
     }
     ON_BLOCK_EXIT([] { unlink(krb5ccFile); });
@@ -143,9 +147,11 @@ int main(int argc, char** argv, char** envp) {
                                        nullptr,
                                        nullptr);
         if (majorStatus != GSS_S_COMPLETE) {
-            log() << "Legacy Kerberos implementation detected, falling back to kinit generated "
-                     "credential cache: "
-                  << getGssapiErrorString(majorStatus, minorStatus);
+            LOGV2(24212,
+                  "Legacy Kerberos implementation detected, falling back to kinit generated "
+                  "credential cache: {getGssapiErrorString_majorStatus_minorStatus}",
+                  "getGssapiErrorString_majorStatus_minorStatus"_attr =
+                      getGssapiErrorString(majorStatus, minorStatus));
             setupLegacyEnvironment();
         }
     }
@@ -162,7 +168,9 @@ int main(int argc, char** argv, char** envp) {
         auto swMechanism = registry.getServerMechanism("GSSAPI", "$external");
 
         if (!swMechanism.isOK()) {
-            log() << "Failed to smoke server mechanism from registry.  " << swMechanism.getStatus();
+            LOGV2(24213,
+                  "Failed to smoke server mechanism from registry.  {swMechanism_getStatus}",
+                  "swMechanism_getStatus"_attr = swMechanism.getStatus());
             return EXIT_FAILURE;
         }
     }
@@ -170,7 +178,9 @@ int main(int argc, char** argv, char** envp) {
     try {
         CyrusGSSAPIServerMechanism mechanism("$external");
     } catch (...) {
-        log() << "Failed to directly smoke server mechanism.  " << exceptionToStatus();
+        LOGV2(24214,
+              "Failed to directly smoke server mechanism.  {exceptionToStatus}",
+              "exceptionToStatus"_attr = exceptionToStatus());
         return EXIT_FAILURE;
     }
 

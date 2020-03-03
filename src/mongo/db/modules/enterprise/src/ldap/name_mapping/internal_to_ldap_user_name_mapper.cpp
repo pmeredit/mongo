@@ -17,7 +17,6 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/json.h"
 #include "mongo/logv2/log.h"
-#include "mongo/util/log.h"
 #include "mongo/util/str.h"
 
 #include "../ldap_runner.h"

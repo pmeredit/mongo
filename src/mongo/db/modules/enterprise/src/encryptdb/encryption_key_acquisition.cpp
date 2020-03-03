@@ -17,8 +17,8 @@
 #include "mongo/crypto/symmetric_crypto.h"
 #include "mongo/crypto/symmetric_key.h"
 #include "mongo/db/auth/security_file.h"
+#include "mongo/logv2/log.h"
 #include "mongo/util/base64.h"
-#include "mongo/util/log.h"
 #include "mongo/util/net/ssl_options.h"
 #include "mongo/util/str.h"
 
@@ -85,7 +85,7 @@ StatusWith<std::unique_ptr<SymmetricKey>> getKeyFromKMIPServer(const KMIPParams&
     }
 
     std::string newKeyId = swCreateKey.getValue();
-    log() << "Created KMIP key with id: " << newKeyId;
+    LOGV2(24199, "Created KMIP key with id: {newKeyId}", "newKeyId"_attr = newKeyId);
     return kmipService.getExternalKey(newKeyId);
 }
 

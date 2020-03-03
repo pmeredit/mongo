@@ -21,7 +21,6 @@
 #include "mongo/util/alarm_runner_background_thread.h"
 #include "mongo/util/concurrency/thread_pool.h"
 #include "mongo/util/functional.h"
-#include "mongo/util/log.h"
 #include "mongo/util/net/hostandport.h"
 #include "mongo/util/strong_weak_finish_line.h"
 #include "mongo/util/system_clock_source.h"

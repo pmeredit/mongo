@@ -12,8 +12,8 @@
 #include <string.h>
 
 #include "mongo/base/string_data.h"
+#include "mongo/logv2/log.h"
 #include "mongo/util/allocator.h"
-#include "mongo/util/log.h"
 
 using mongo::operator""_sd;
 
@@ -332,8 +332,11 @@ int BlockstoreFileSystem::open(const char* name,
         StatusWith<DataBuilder> swOpenFileResponse =
             blockstoreHTTP.openFile(getFileRelativePath(filename));
         if (!swOpenFileResponse.isOK()) {
-            error() << "Bad HTTP response from the ApiServer: "
-                    << swOpenFileResponse.getStatus().reason();
+            LOGV2_ERROR(
+                24220,
+                "Bad HTTP response from the ApiServer: {swOpenFileResponse_getStatus_reason}",
+                "swOpenFileResponse_getStatus_reason"_attr =
+                    swOpenFileResponse.getStatus().reason());
             return ENOENT;
         }
 
@@ -391,10 +394,15 @@ int BlockstoreFileHandle::read(void* buf, std::size_t offset, std::size_t length
     auto swBytesRead = _readerWriter->read(wrappedBuf, offset, length);
     if (!swBytesRead.isOK()) {
         ret = EIO;
-        log() << swBytesRead.getStatus().reason();
+        LOGV2(24218,
+              "{swBytesRead_getStatus_reason}",
+              "swBytesRead_getStatus_reason"_attr = swBytesRead.getStatus().reason());
     } else if (swBytesRead.getValue() != length) {
         ret = EAGAIN;
-        log() << "Read < Length. Read: " << swBytesRead.getValue() << "Length: " << length;
+        LOGV2(24219,
+              "Read < Length. Read: {swBytesRead_getValue}Length: {length}",
+              "swBytesRead_getValue"_attr = swBytesRead.getValue(),
+              "length"_attr = length);
     } else {
         ret = 0;
     }
@@ -405,7 +413,10 @@ int BlockstoreFileHandle::read(void* buf, std::size_t offset, std::size_t length
 int BlockstoreFileSystem::rename(const char* from, const char* to) {
     auto search = _files.find(from);
     if (search == _files.end()) {
-        error() << "Cannot find file " << from << ". Renaming it to " << to << " failed.";
+        LOGV2_ERROR(24221,
+                    "Cannot find file {from}. Renaming it to {to} failed.",
+                    "from"_attr = from,
+                    "to"_attr = to);
         return EINVAL;
     }
 
@@ -413,8 +424,10 @@ int BlockstoreFileSystem::rename(const char* from, const char* to) {
     StatusWith<DataBuilder> swRenameResponse =
         blockstoreHTTP.renameFile(getFileRelativePath(from), getFileRelativePath(to));
     if (!swRenameResponse.isOK()) {
-        error() << "Bad HTTP response from the ApiServer: "
-                << swRenameResponse.getStatus().reason();
+        LOGV2_ERROR(24222,
+                    "Bad HTTP response from the ApiServer: {swRenameResponse_getStatus_reason}",
+                    "swRenameResponse_getStatus_reason"_attr =
+                        swRenameResponse.getStatus().reason());
         return EINVAL;
     }
 
@@ -432,7 +445,10 @@ int BlockstoreFileHandle::write(const void* buf, std::size_t offset, std::size_t
     mongo::ConstDataRange wrappedBuf(reinterpret_cast<const char*>(buf), length);
     auto swWrite = _readerWriter->write(wrappedBuf, offset, length);
     if (!swWrite.isOK()) {
-        error() << "Failed to write " << length << " to file: " << swWrite.getStatus().reason();
+        LOGV2_ERROR(24223,
+                    "Failed to write {length} to file: {swWrite_getStatus_reason}",
+                    "length"_attr = length,
+                    "swWrite_getStatus_reason"_attr = swWrite.getStatus().reason());
         return EIO;
     }
 

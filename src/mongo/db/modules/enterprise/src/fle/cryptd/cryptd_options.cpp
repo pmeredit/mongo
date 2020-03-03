@@ -15,7 +15,6 @@
 #include "mongo/logv2/log.h"
 #include "mongo/logv2/log_domain_global.h"
 #include "mongo/logv2/log_manager.h"
-#include "mongo/util/log.h"
 #include "mongo/util/options_parser/startup_options.h"
 #include "mongo/util/version.h"
 

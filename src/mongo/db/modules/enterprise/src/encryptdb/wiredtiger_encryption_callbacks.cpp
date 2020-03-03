@@ -16,8 +16,8 @@
 #include "encryption_options.h"
 #include "mongo/crypto/symmetric_crypto.h"
 #include "mongo/db/service_context.h"
+#include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
-#include "mongo/util/log.h"
 #include "mongo/util/net/ssl_manager.h"
 
 namespace mongo {
@@ -81,7 +81,7 @@ int customize(WT_ENCRYPTOR* encryptor,
     WT_CONFIG_ITEM keyIdItem;
     if (0 != extApi->config_get(extApi, session, encryptConfig, "keyid", &keyIdItem) ||
         keyIdItem.len == 0) {
-        error() << "Unable to retrieve keyid when customizing encryptor";
+        LOGV2_ERROR(24246, "Unable to retrieve keyid when customizing encryptor");
         return EINVAL;
     }
     std::string keyId(keyIdItem.str, keyIdItem.len);
@@ -90,14 +90,18 @@ int customize(WT_ENCRYPTOR* encryptor,
     WT_CONFIG_ITEM encryptorNameItem;
     if (0 != extApi->config_get(extApi, session, encryptConfig, "name", &encryptorNameItem) ||
         encryptorNameItem.len == 0) {
-        error() << "Unable to retrieve name when customizing encryptor";
+        LOGV2_ERROR(24247, "Unable to retrieve name when customizing encryptor");
         return EINVAL;
     }
 
     std::string encryptorName(encryptorNameItem.str, encryptorNameItem.len);
     if (mongo::encryptionGlobalParams.encryptionCipherMode != encryptorName) {
-        severe() << "Invalid cipher mode '" << mongo::encryptionGlobalParams.encryptionCipherMode
-                 << "', expected '" << encryptorName << "'";
+        LOGV2_FATAL(24250,
+                    "Invalid cipher mode '{mongo_encryptionGlobalParams_encryptionCipherMode}', "
+                    "expected '{encryptorName}'",
+                    "mongo_encryptionGlobalParams_encryptionCipherMode"_attr =
+                        mongo::encryptionGlobalParams.encryptionCipherMode,
+                    "encryptorName"_attr = encryptorName);
         return EINVAL;
     }
 
@@ -106,16 +110,21 @@ int customize(WT_ENCRYPTOR* encryptor,
     try {
         auto swSymmetricKey = EncryptionKeyManager::get(getGlobalServiceContext())->getKey(keyId);
         if (!swSymmetricKey.isOK()) {
-            error() << "Unable to retrieve key " << keyId
-                    << ", error: " << swSymmetricKey.getStatus().reason();
+            LOGV2_ERROR(24248,
+                        "Unable to retrieve key {keyId}, error: {swSymmetricKey_getStatus_reason}",
+                        "keyId"_attr = keyId,
+                        "swSymmetricKey_getStatus_reason"_attr =
+                            swSymmetricKey.getStatus().reason());
             return EINVAL;
         }
         myEncryptor->encryptor = origEncryptor->encryptor;
         myEncryptor->dbKey = std::move(swSymmetricKey.getValue());
         myEncryptor->cipherMode = crypto::getCipherModeFromString(encryptorName);
     } catch (const ExceptionForCat<ErrorCategory::NetworkError>&) {
-        error() << "Socket/network exception in WT_ENCRYPTOR::customize on getKey to KMIP server:"
-                << exceptionToStatus();
+        LOGV2_ERROR(24249,
+                    "Socket/network exception in WT_ENCRYPTOR::customize on getKey to KMIP "
+                    "server:{exceptionToStatus}",
+                    "exceptionToStatus"_attr = exceptionToStatus());
         return EINVAL;
     }
 
@@ -147,7 +156,8 @@ int encrypt(WT_ENCRYPTOR* encryptor,
 
     Status ret = crypto::aesEncrypt(*key, mode, schema, src, srcLen, dst, dstLen, resultLen);
     if (!ret.isOK()) {
-        severe() << "Encrypt error for key " << keyId << ": " << ret;
+        LOGV2_FATAL(
+            24251, "Encrypt error for key {keyId}: {ret}", "keyId"_attr = keyId, "ret"_attr = ret);
         return EINVAL;
     }
 
@@ -190,8 +200,10 @@ int decrypt(WT_ENCRYPTOR* encryptor,
             auto swPageKey =
                 EncryptionKeyManager::get(getGlobalServiceContext())->getKey(pageKeyId, findMode);
             if (!swPageKey.isOK()) {
-                severe() << "Unable to retrieve encryption key for page: "
-                         << swPageKey.getStatus().reason();
+                LOGV2_FATAL(
+                    24252,
+                    "Unable to retrieve encryption key for page: {swPageKey_getStatus_reason}",
+                    "swPageKey_getStatus_reason"_attr = swPageKey.getStatus().reason());
                 return EINVAL;
             }
 
@@ -204,9 +216,13 @@ int decrypt(WT_ENCRYPTOR* encryptor,
 
     if (!ret.isOK()) {
         if (key->getKeyId().name() == kSystemKeyId) {
-            severe() << "Decryption failed, invalid encryption master key or keystore encountered.";
+            LOGV2_FATAL(
+                24253, "Decryption failed, invalid encryption master key or keystore encountered.");
         } else {
-            severe() << "Decrypt error for key " << key->getKeyId() << ": " << ret;
+            LOGV2_FATAL(24254,
+                        "Decrypt error for key {key_getKeyId}: {ret}",
+                        "key_getKeyId"_attr = key->getKeyId(),
+                        "ret"_attr = ret);
         }
         return EINVAL;
     }
@@ -244,7 +260,7 @@ int destroyEncryptor(WT_ENCRYPTOR* encryptor, WT_SESSION* session) noexcept {
  */
 int mongo_addWiredTigerEncryptors_impl(WT_CONNECTION* connection) noexcept {
     if (!mongo::encryptionGlobalParams.enableEncryption) {
-        mongo::severe() << "Encrypted data files detected, please enable encryption";
+        LOGV2_FATAL(24255, "Encrypted data files detected, please enable encryption");
         return EINVAL;
     }
 

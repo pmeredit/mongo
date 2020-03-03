@@ -7,8 +7,8 @@
 #include "mongo/platform/basic.h"
 
 #include "mongo/db/commands.h"
+#include "mongo/logv2/log.h"
 #include "mongo/util/exit.h"
-#include "mongo/util/log.h"
 #include "mongo/util/ntservice.h"
 
 namespace mongo {
@@ -42,7 +42,7 @@ public:
         ShutdownTaskArgs shutdownArgs;
         shutdownArgs.isUserInitiated = true;
 
-        log() << "terminating, shutdown command received " << jsobj;
+        LOGV2(24224, "terminating, shutdown command received {jsobj}", "jsobj"_attr = jsobj);
 
 #if defined(_WIN32)
         // Signal the ServiceMain thread to shutdown.

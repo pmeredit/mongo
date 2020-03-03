@@ -27,7 +27,6 @@
 #include "mongo/util/cmdline_utils/censor_cmdline.h"
 #include "mongo/util/concurrency/idle_thread_block.h"
 #include "mongo/util/exit.h"
-#include "mongo/util/log.h"
 #include "mongo/util/net/socket_utils.h"
 #include "mongo/util/ntservice.h"
 #include "mongo/util/options_parser/startup_options.h"
@@ -70,18 +69,25 @@ void createLockFile(ServiceContext* serviceContext) {
     boost::filesystem::path orig_file(serverGlobalParams.pidFile);
     boost::filesystem::path file(boost::filesystem::absolute(orig_file));
 
-    log() << "Using lock file: " << file.generic_string();
+    LOGV2(24225,
+          "Using lock file: {file_generic_string}",
+          "file_generic_string"_attr = file.generic_string());
     try {
         lockFile.emplace(file.parent_path().generic_string(), file.filename().generic_string());
     } catch (const std::exception& ex) {
-        error() << "Unable to determine status of lock file in the data directory "
-                << file.generic_string() << ": " << ex.what();
+        LOGV2_ERROR(24230,
+                    "Unable to determine status of lock file in the data directory "
+                    "{file_generic_string}: {ex_what}",
+                    "file_generic_string"_attr = file.generic_string(),
+                    "ex_what"_attr = ex.what());
         _exit(EXIT_FAILURE);
     }
 
     const auto openStatus = lockFile->open();
     if (!openStatus.isOK()) {
-        error() << "Failed to open pid file, exiting: " << openStatus;
+        LOGV2_ERROR(24231,
+                    "Failed to open pid file, exiting: {openStatus}",
+                    "openStatus"_attr = openStatus);
         _exit(EXIT_FAILURE);
     }
 
@@ -93,7 +99,9 @@ void createLockFile(ServiceContext* serviceContext) {
 
     const auto writeStatus = lockFile->writeString(str);
     if (!writeStatus.isOK()) {
-        error() << "Failed to write pid file, exiting: " << writeStatus;
+        LOGV2_ERROR(24232,
+                    "Failed to write pid file, exiting: {writeStatus}",
+                    "writeStatus"_attr = writeStatus);
         _exit(EXIT_FAILURE);
     }
 }
@@ -114,7 +122,9 @@ void shutdownTask() {
 
     // Shutdown the TransportLayer so that new connections aren't accepted
     if (auto tl = serviceContext->getTransportLayer()) {
-        log(logger::LogComponent::kNetwork) << "shutdown: going to close listening sockets...";
+        LOGV2_OPTIONS(24226,
+                      {logComponentV1toV2(logger::LogComponent::kNetwork)},
+                      "shutdown: going to close listening sockets...");
         tl->shutdown();
     }
 
@@ -130,7 +140,7 @@ void shutdownTask() {
         lockFile->clearPidAndUnlock();
     }
 
-    log(logger::LogComponent::kControl) << "now exiting";
+    LOGV2_OPTIONS(24227, {logComponentV1toV2(logger::LogComponent::kControl)}, "now exiting");
 }
 
 ExitCode initAndListen() {
@@ -163,7 +173,9 @@ ExitCode initAndListen() {
     }
 
     if (kDebugBuild)
-        log(logger::LogComponent::kControl) << "DEBUG build (which is slower)";
+        LOGV2_OPTIONS(24228,
+                      {logComponentV1toV2(logger::LogComponent::kControl)},
+                      "DEBUG build (which is slower)");
 
 #ifdef _WIN32
     VersionInfoInterface::instance().logTargetMinOS();
@@ -217,7 +229,8 @@ ExitCode initAndListen() {
         transport::TransportLayerManager::createWithConfig(&serverGlobalParams, serviceContext);
     Status status = tl->setup();
     if (!status.isOK()) {
-        error() << "Failed to setup the transport layer: " << redact(status);
+        LOGV2_ERROR(
+            24233, "Failed to setup the transport layer: {status}", "status"_attr = redact(status));
         return EXIT_NET_ERROR;
     }
 
@@ -225,19 +238,24 @@ ExitCode initAndListen() {
 
     status = serviceContext->getServiceExecutor()->start();
     if (!status.isOK()) {
-        error() << "Failed to start the service executor: " << redact(status);
+        LOGV2_ERROR(24234,
+                    "Failed to start the service executor: {status}",
+                    "status"_attr = redact(status));
         return EXIT_NET_ERROR;
     }
 
     status = serviceContext->getServiceEntryPoint()->start();
     if (!status.isOK()) {
-        error() << "Failed to start the service entry point: " << redact(status);
+        LOGV2_ERROR(24235,
+                    "Failed to start the service entry point: {status}",
+                    "status"_attr = redact(status));
         return EXIT_NET_ERROR;
     }
 
     status = serviceContext->getTransportLayer()->start();
     if (!status.isOK()) {
-        error() << "Failed to start the transport layer: " << redact(status);
+        LOGV2_ERROR(
+            24236, "Failed to start the transport layer: {status}", "status"_attr = redact(status));
         return EXIT_NET_ERROR;
     }
 
@@ -248,7 +266,7 @@ ExitCode initAndListen() {
 #else
     if (ntservice::shouldStartService()) {
         ntservice::reportStatus(SERVICE_RUNNING);
-        log() << "Service running";
+        LOGV2(24229, "Service running");
     }
 #endif
 

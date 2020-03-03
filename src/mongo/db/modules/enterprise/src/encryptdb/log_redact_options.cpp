@@ -10,6 +10,7 @@
 
 #include "encryptdb/log_redact_options_gen.h"
 #include "mongo/base/status.h"
+// TODO SERVER-46585 remove this util/log.h include
 #include "mongo/util/log.h"
 #include "mongo/util/options_parser/option_section.h"
 #include "mongo/util/options_parser/startup_option_init.h"

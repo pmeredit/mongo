@@ -23,8 +23,8 @@
 #include "mongo/db/storage/encryption_hooks.h"
 #include "mongo/db/storage/storage_engine.h"
 #include "mongo/db/storage/storage_options.h"
+#include "mongo/logv2/log.h"
 #include "mongo/util/fail_point.h"
-#include "mongo/util/log.h"
 #include "mongo/util/scopeguard.h"
 
 namespace mongo {
@@ -124,8 +124,10 @@ BackupCursorState BackupCursorService::openBackupCursor(
     _state = kBackupCursorOpened;
     _activeBackupId = UUID::gen();
     _replTermOfActiveBackup = replCoord->getTerm();
-    log() << "Opened backup cursor. ID: " << *_activeBackupId
-          << " Term: " << *_replTermOfActiveBackup;
+    LOGV2(24200,
+          "Opened backup cursor. ID: {activeBackupId} Term: {replTermOfActiveBackup}",
+          "activeBackupId"_attr = *_activeBackupId,
+          "replTermOfActiveBackup"_attr = *_replTermOfActiveBackup);
 
     // A backup cursor is open. Any exception code path must leave the BackupCursorService in an
     // inactive state.
@@ -142,8 +144,11 @@ BackupCursorState BackupCursorService::openBackupCursor(
         auto requeriedCheckpointTimestamp = _storageEngine->getLastStableRecoveryTimestamp();
         if (!requeriedCheckpointTimestamp ||
             requeriedCheckpointTimestamp.get() < checkpointTimestamp.get()) {
-            severe() << "The checkpoint timestamp went backwards. Original: "
-                     << checkpointTimestamp.get() << " Found: " << requeriedCheckpointTimestamp;
+            LOGV2_FATAL(24204,
+                        "The checkpoint timestamp went backwards. Original: "
+                        "{checkpointTimestamp_get} Found: {requeriedCheckpointTimestamp}",
+                        "checkpointTimestamp_get"_attr = checkpointTimestamp.get(),
+                        "requeriedCheckpointTimestamp"_attr = requeriedCheckpointTimestamp);
             fassertFailed(50916);
         }
 
@@ -251,7 +256,10 @@ BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext
 
     // This waiting can block for an arbitrarily long time. Clients making an `$backupCursorExtend`
     // call are recommended to pass in a `maxTimeMS`, which is obeyed in this waiting logic.
-    log() << "Extending backup cursor. backupId: " << backupId << " extendingTo: " << extendTo;
+    LOGV2(24201,
+          "Extending backup cursor. backupId: {backupId} extendingTo: {extendTo}",
+          "backupId"_attr = backupId,
+          "extendTo"_attr = extendTo);
 
     // Wait 1: This wait guarantees that the local lastApplied timestamp has reached at least the
     // `extendTo` timestamp.
@@ -270,8 +278,10 @@ BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext
 
     std::vector<std::string> filesToBackup =
         uassertStatusOK(_storageEngine->extendBackupCursor(opCtx));
-    log() << "Backup cursor has been extended. backupId: " << backupId
-          << " extendedTo: " << extendTo;
+    LOGV2(24202,
+          "Backup cursor has been extended. backupId: {backupId} extendedTo: {extendTo}",
+          "backupId"_attr = backupId,
+          "extendTo"_attr = extendTo);
 
     if (!_storageEngine->supportsReadConcernMajority()) {
         auto currentTerm = replCoord->getTerm();
@@ -303,7 +313,7 @@ void BackupCursorService::_closeBackupCursor(OperationContext* opCtx,
     if (encHooks->enabled()) {
         fassert(50934, encHooks->endNonBlockingBackup());
     }
-    log() << "Closed backup cursor. ID: " << backupId;
+    LOGV2(24203, "Closed backup cursor. ID: {backupId}", "backupId"_attr = backupId);
     _state = kInactive;
     _activeBackupId = boost::none;
     _replTermOfActiveBackup = boost::none;

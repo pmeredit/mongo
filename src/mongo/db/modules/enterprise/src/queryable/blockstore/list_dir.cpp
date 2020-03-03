@@ -15,7 +15,6 @@
 #include "mongo/base/init.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/util/bson_extract.h"
-#include "mongo/util/log.h"
 #include "mongo/util/scopeguard.h"
 
 namespace mongo {

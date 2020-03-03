@@ -16,7 +16,6 @@
 #include "mongo/logv2/log.h"
 #include "mongo/platform/mutex.h"
 #include "mongo/util/assert_util.h"
-#include "mongo/util/log.h"
 
 #include "connections/ldap_connection_factory.h"
 #include "ldap_options.h"

@@ -27,7 +27,6 @@
 #include "mongo/db/storage/wiredtiger/wiredtiger_server_status.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
 #include "mongo/util/exit.h"
-#include "mongo/util/log.h"
 
 #include "../blockstore/blockstore_http.h"
 #include "queryable_global_options.h"

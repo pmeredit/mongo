@@ -13,7 +13,6 @@
 #include "mongo/rpc/message.h"
 #include "mongo/rpc/reply_builder_interface.h"
 #include "mongo/util/assert_util.h"
-#include "mongo/util/log.h"
 #include "mongo/util/str.h"
 
 #include "cryptd_service_entry_point.h"

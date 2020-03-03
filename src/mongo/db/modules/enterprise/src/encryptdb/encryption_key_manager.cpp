@@ -32,7 +32,6 @@
 #include "mongo/db/storage/wiredtiger/wiredtiger_customization_hooks.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
-#include "mongo/util/log.h"
 #include "mongo/util/net/ssl_manager.h"
 #include "mongo/util/net/ssl_options.h"
 #include "mongo/util/scopeguard.h"

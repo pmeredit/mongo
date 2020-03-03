@@ -23,7 +23,7 @@
 #include "mongo/logger/rotatable_file_manager.h"
 #include "mongo/logger/rotatable_file_writer.h"
 #include "mongo/logger/syslog_appender.h"
-#include "mongo/util/log.h"
+#include "mongo/logv2/log.h"
 
 namespace mongo {
 
@@ -103,7 +103,8 @@ public:
 
             status = useWriter.status();
             if (!status.isOK()) {
-                warning() << "Failure acquiring audit logger: " << status;
+                LOGV2_WARNING(
+                    24243, "Failure acquiring audit logger: {status}", "status"_attr = status);
                 return status;
             }
 
@@ -116,7 +117,8 @@ public:
 
         if (!status.isOK()) {
             try {
-                warning() << "Failure writing to audit log: " << status;
+                LOGV2_WARNING(
+                    24244, "Failure writing to audit log: {status}", "status"_attr = status);
             } catch (...) {
                 // If neither audit subsystem can write,
                 // then just eat the standard logging exception,
