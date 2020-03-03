@@ -185,7 +185,9 @@ BackupCursorState BackupCursorService::openBackupCursor(
             // negligible.
             StorageEngine::BackupFile backupFile(fileSize);
             backupInformation.insert({filename, backupFile});
-            backupInformation.at(filename).blocksToCopy.push_back({0, fileSize});
+            if (options.incrementalBackup) {
+                backupInformation.at(filename).blocksToCopy.push_back({0, fileSize});
+            }
         }
     }
 
