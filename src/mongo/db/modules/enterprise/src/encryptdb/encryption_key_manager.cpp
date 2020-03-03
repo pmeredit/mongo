@@ -72,8 +72,8 @@ bool hasExistingDatafiles(const fs::path& path) {
         hasDatafiles = fs::exists(metadataPath) || fs::exists(wtDatafilePath);
     } catch (const std::exception& e) {
         LOGV2_FATAL(24048,
-                    "Caught exception when checking for existence of data files: {e_what}",
-                    "e_what"_attr = e.what());
+                    "Caught exception when checking for existence of data files",
+                    "error"_attr = e.what());
     }
     return hasDatafiles;
 }
@@ -140,23 +140,19 @@ bool EncryptionKeyManager::restartRequired() {
     if (_encryptionParams->rotateMasterKey) {
         Status status = _rotateMasterKey(_encryptionParams->kmipKeyIdentifierRot);
         if (!status.isOK()) {
-            LOGV2_FATAL(24049,
-                        "Failed to rotate master key: {status_reason}",
-                        "status_reason"_attr = status.reason());
+            LOGV2_FATAL(24049, "Failed to rotate master key", "reason"_attr = status.reason());
         }
         // The server should always exit after a key rotation.
         return true;
     }
 
     if (_encryptionParams->encryptionKeyFile.empty()) {
-        LOGV2(24038,
-              "Encryption key manager initialized using KMIP key with id: {masterKey_getKeyId}.",
-              "masterKey_getKeyId"_attr = _masterKey->getKeyId());
+        LOGV2(
+            24038, "Encryption key manager initialized", "kmipKeyID"_attr = _masterKey->getKeyId());
     } else {
         LOGV2(24039,
-              "Encryption key manager initialized with key file: "
-              "{encryptionParams_encryptionKeyFile}",
-              "encryptionParams_encryptionKeyFile"_attr = _encryptionParams->encryptionKeyFile);
+              "Encryption key manager initialized",
+              "keyFile"_attr = _encryptionParams->encryptionKeyFile);
     }
 
     return false;
@@ -444,8 +440,8 @@ Status EncryptionKeyManager::_initLocalKeystore() {
             LOGV2_WARNING(
                 24046,
                 "It looks like the data files were previously encrypted using an external key with "
-                "id {existingKeyId}. Attempting to use the provided key file.",
-                "existingKeyId"_attr = existingKeyId);
+                "id {keyId}. Attempting to use the provided key file.",
+                "keyId"_attr = existingKeyId);
         }
         _keyRotationAllowed = true;
         defaultKeystoreSchemaVersion = 0;
@@ -510,10 +506,9 @@ Status EncryptionKeyManager::_initLocalKeystore() {
             const auto kKeystoreSchemaVersionForRotate = 1;
             if (_keystoreMetadata.getVersion() < kKeystoreSchemaVersionForRotate) {
                 LOGV2(24040,
-                      "Detected keystore schema version {keystoreMetadata_getVersion} upgrading to "
-                      "schema version {kKeystoreSchemaVersionForRotate}",
-                      "keystoreMetadata_getVersion"_attr = _keystoreMetadata.getVersion(),
-                      "kKeystoreSchemaVersionForRotate"_attr = kKeystoreSchemaVersionForRotate);
+                      "Upgrading keystore schema version",
+                      "oldSchemaVersion"_attr = _keystoreMetadata.getVersion(),
+                      "newSchemaVersion"_attr = kKeystoreSchemaVersionForRotate);
 
                 auto tmppath = _keystorePath;
                 tmppath += kUpgradingKeyword;
@@ -649,11 +644,10 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) try {
             if (fileName.find(kInvalidatedKeyword) != std::string::npos &&
                 filePath != rotKeystorePath) {
                 if (fs::remove_all(filePath) > 0) {
-                    LOGV2_DEBUG(
-                        24044, 1, "Removing old keystore {fileName}.", "fileName"_attr = fileName);
+                    LOGV2_DEBUG(24044, 1, "Removing old keystore", "fileName"_attr = fileName);
                 } else {
                     LOGV2_WARNING(24047,
-                                  "Failed to remove the invalidated keystore {filePath}.",
+                                  "Failed to remove the invalidated keystore",
                                   "filePath"_attr = filePath);
                 }
             }
@@ -668,9 +662,9 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) try {
     }
 
     LOGV2(24045,
-          "Rotated master encryption key from id {oldMasterKeyId} to id {rotMasterKeyId}.",
+          "Rotated master encryption key",
           "oldMasterKeyId"_attr = oldMasterKeyId,
-          "rotMasterKeyId"_attr = rotMasterKeyId);
+          "newMasterKeyId"_attr = rotMasterKeyId);
 
     return Status::OK();
 } catch (const DBException& e) {
