@@ -2,7 +2,7 @@
  *    Copyright (C) 2016 MongoDB Inc.
  */
 
-#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kControl
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kControl
 
 #include "mongo/platform/basic.h"
 
@@ -10,8 +10,7 @@
 
 #include "encryptdb/log_redact_options_gen.h"
 #include "mongo/base/status.h"
-// TODO SERVER-46585 remove this util/log.h include
-#include "mongo/util/log.h"
+#include "mongo/logv2/log_util.h"
 #include "mongo/util/options_parser/option_section.h"
 #include "mongo/util/options_parser/startup_option_init.h"
 #include "mongo/util/options_parser/startup_options.h"
@@ -21,7 +20,7 @@ namespace mongo {
 void RedactClientLogDataSetting::append(OperationContext* opCtx,
                                         BSONObjBuilder& b,
                                         const std::string& name) {
-    b << name << logger::globalLogDomain()->shouldRedactLogs();
+    b << name << logv2::shouldRedactLogs();
 }
 
 Status RedactClientLogDataSetting::set(const BSONElement& newValueElement) {
@@ -31,15 +30,15 @@ Status RedactClientLogDataSetting::set(const BSONElement& newValueElement) {
                 str::stream() << "Invalid value for redactClientLogData: " << newValueElement};
     }
 
-    logger::globalLogDomain()->setShouldRedactLogs(newValue);
+    logv2::setShouldRedactLogs(newValue);
     return Status::OK();
 }
 
 Status RedactClientLogDataSetting::setFromString(const std::string& str) {
     if (str == "true" || str == "1") {
-        logger::globalLogDomain()->setShouldRedactLogs(true);
+        logv2::setShouldRedactLogs(true);
     } else if (str == "false" || str == "0") {
-        logger::globalLogDomain()->setShouldRedactLogs(false);
+        logv2::setShouldRedactLogs(false);
     } else {
         return {ErrorCodes::BadValue,
                 str::stream() << "Invalid value for redactClientLogData: " << str};
@@ -52,8 +51,7 @@ MONGO_STARTUP_OPTIONS_STORE(LogRedactOptions)(InitializerContext* context) {
     const auto& params = moe::startupOptionsParsed;
 
     if (params.count("security.redactClientLogData")) {
-        logger::globalLogDomain()->setShouldRedactLogs(
-            params["security.redactClientLogData"].as<bool>());
+        logv2::setShouldRedactLogs(params["security.redactClientLogData"].as<bool>());
     }
 
     return Status::OK();
