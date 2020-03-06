@@ -26,6 +26,11 @@ public:
                    std::size_t outLen,
                    std::size_t* bytesWritten) override;
     Status finalize(std::uint8_t* out, std::size_t outLen, std::size_t* bytesWritten) override;
+
+    /**
+     * Bytes reserved for tag is inclusive of the file's leading version byte
+     * All modes will therefore be at least 1.
+     */
     std::size_t getNumberOfBytesReservedForTag() const override;
     Status finalizeTag(std::uint8_t* out, std::size_t outLen, std::size_t* bytesWritten) override;
 

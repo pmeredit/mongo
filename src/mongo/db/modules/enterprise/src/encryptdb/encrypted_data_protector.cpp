@@ -42,27 +42,17 @@ Status EncryptedDataProtector::protect(const std::uint8_t* in,
                                        std::size_t* bytesWritten) {
     *bytesWritten = 0;
     if (!_encryptor) {
-        // Add a 1 byte version token
-        if (outLen < *bytesWritten + 1) {
+        // Allocate space for a version and (for GCM) a tag
+        const auto tagLen = getNumberOfBytesReservedForTag();
+        if (outLen < *bytesWritten + tagLen) {
             return Status(ErrorCodes::InvalidLength,
-                          "EncryptedDataProtector attempted to reserve version field in "
-                          "insufficiently sized buffer");
+                          "EncryptedDataProtector attempted to reserve tag in insufficiently "
+                          "sized buffer");
         }
-        *out = DATA_PROTECTOR_VERSION_0;
-        *bytesWritten += sizeof(DATA_PROTECTOR_VERSION_0);
-        out += sizeof(DATA_PROTECTOR_VERSION_0);
+        memset(out, 0xFF, tagLen);
+        *bytesWritten += tagLen;
+        out += tagLen;
 
-        // Allocate space for a tag
-        if (_mode == crypto::aesMode::gcm) {
-            if (outLen < *bytesWritten + crypto::aesGCMTagSize) {
-                return Status(ErrorCodes::InvalidLength,
-                              "EncryptedDataProtector attempted to reserve tag in insufficiently "
-                              "sized buffer");
-            }
-            memset(out, 0xFF, crypto::aesGCMTagSize);
-            *bytesWritten += crypto::aesGCMTagSize;
-            out += crypto::aesGCMTagSize;
-        }
         // Generate a new IV, and populate the buffer with it
         auto* iv = out;
         const auto ivLen = aesGetIVSize(_mode);
@@ -71,6 +61,7 @@ Status EncryptedDataProtector::protect(const std::uint8_t* in,
                 ErrorCodes::InvalidLength,
                 "EncryptedDataProtector attempted to write IV in insufficiently sized buffer");
         }
+
         aesGenerateIV(_key, _mode, out, outLen - *bytesWritten);
         out += ivLen;
         *bytesWritten += ivLen;
@@ -113,20 +104,30 @@ Status EncryptedDataProtector::finalize(std::uint8_t* out,
 
 std::size_t EncryptedDataProtector::getNumberOfBytesReservedForTag() const {
     if (_mode == crypto::aesMode::gcm) {
-        return crypto::aesGCMTagSize;
+        return sizeof(DATA_PROTECTOR_VERSION_0) + crypto::aesGCMTagSize;
     } else {
-        return 0;
+        return sizeof(DATA_PROTECTOR_VERSION_0);
     }
 }
 
 Status EncryptedDataProtector::finalizeTag(std::uint8_t* out,
                                            std::size_t outLen,
                                            std::size_t* bytesWritten) {
-    *bytesWritten = 0;
+    static_assert(sizeof(DATA_PROTECTOR_VERSION_0) == 1, "Unexpected data protector version size");
+    if (outLen < sizeof(DATA_PROTECTOR_VERSION_0)) {
+        return {ErrorCodes::BadValue, "Insufficient space to write data protector version"};
+    }
+
+    out[0] = DATA_PROTECTOR_VERSION_0;
+    out += sizeof(DATA_PROTECTOR_VERSION_0);
+    outLen -= sizeof(DATA_PROTECTOR_VERSION_0);
+    *bytesWritten = sizeof(DATA_PROTECTOR_VERSION_0);
+
     if (_mode != crypto::aesMode::gcm) {
         // Nothing to do.
         return Status::OK();
     }
+
     if (!_encryptor) {
         return {ErrorCodes::UnknownError, "Encryptor not initialized"};
     }
@@ -135,7 +136,8 @@ Status EncryptedDataProtector::finalizeTag(std::uint8_t* out,
     if (!swTag.isOK()) {
         return swTag.getStatus();
     }
-    *bytesWritten = swTag.getValue();
+
+    *bytesWritten += swTag.getValue();
     return Status::OK();
 }
 
