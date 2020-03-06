@@ -147,10 +147,8 @@ int sspiServerMechNew(void* glob_context,
 
     std::wstring principalName = toWideString(
         std::string(str::stream() << sparams->service << "/" << sparams->serverFQDN).c_str());
-    LOGV2_DEBUG(24014,
-                2,
-                "SSPI principal name: {toUtf8String_principalName}",
-                "toUtf8String_principalName"_attr = toUtf8String(principalName));
+    LOGV2_DEBUG(
+        24014, 2, "SSPI principal name", "principalName"_attr = toUtf8String(principalName));
 
     SECURITY_STATUS status = AcquireCredentialsHandle(const_cast<wchar_t*>(principalName.c_str()),
                                                       const_cast<LPWSTR>(L"kerberos"),
@@ -269,8 +267,8 @@ int setAuthIdAndAuthzId(SspiConnContext* pcctx,
 
     LOGV2_DEBUG(24015,
                 2,
-                "SSPI authenticated name: {toUtf8String_namesx_sClientName}",
-                "toUtf8String_namesx_sClientName"_attr = toUtf8String(namesx.sClientName));
+                "SSPI authenticated name",
+                "principalName"_attr = toUtf8String(namesx.sClientName));
 
     int ret = sparams->canon_user(
         sparams->utils->conn, toUtf8String(namesx.sClientName).c_str(), 0, SASL_CU_AUTHID, oparams);
@@ -302,15 +300,13 @@ int setAuthIdAndAuthzId(SspiConnContext* pcctx,
     status = DecryptMessage(&pcctx->ctx, &wrapBufDesc, 0, &pfQOP);
     LOGV2_DEBUG(24016,
                 4,
-                "SSPI encrypted size: {wrapBufs_0_cbBuffer} decrypted size: {wrapBufs_1_cbBuffer} "
-                "encrypted msg pointer: {reinterpret_cast_uint64_t_wrapBufs_0_pvBuffer} decrypted "
-                "msg pointer: {reinterpret_cast_uint64_t_wrapBufs_1_pvBuffer}",
-                "wrapBufs_0_cbBuffer"_attr = wrapBufs[0].cbBuffer,
-                "wrapBufs_1_cbBuffer"_attr = wrapBufs[1].cbBuffer,
-                "reinterpret_cast_uint64_t_wrapBufs_0_pvBuffer"_attr =
-                    reinterpret_cast<uint64_t>(wrapBufs[0].pvBuffer),
-                "reinterpret_cast_uint64_t_wrapBufs_1_pvBuffer"_attr =
-                    reinterpret_cast<uint64_t>(wrapBufs[1].pvBuffer));
+                "SSPI encrypted size: {originalBuffer} decrypted size: {decryptedBuffer} "
+                "encrypted msg pointer: {encryptedMsgPointer} decrypted "
+                "msg pointer: {msgPointer}",
+                "originalBuffer"_attr = wrapBufs[0].cbBuffer,
+                "decryptedBuffer"_attr = wrapBufs[1].cbBuffer,
+                "encryptedMsgPointer"_attr = reinterpret_cast<uint64_t>(wrapBufs[0].pvBuffer),
+                "msgPointer"_attr = reinterpret_cast<uint64_t>(wrapBufs[1].pvBuffer));
 
     if (status != SEC_E_OK) {
         HandleLastError(sparams->utils, status, "DecryptMessage");

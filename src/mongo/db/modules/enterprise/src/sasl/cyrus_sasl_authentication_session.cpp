@@ -107,8 +107,8 @@ int saslServerConnGetOpt(void* context,
         return SASL_FAIL;
     } catch (...) {
         LOGV2_ERROR(24029,
-                    "Unexpected exception in saslServerConnGetOpt: {exceptionToStatus_reason}",
-                    "exceptionToStatus_reason"_attr = exceptionToStatus().reason());
+                    "Unexpected exception in saslServerConnGetOpt",
+                    "status"_attr = exceptionToStatus());
         return SASL_FAIL;
     }
 }
@@ -213,9 +213,8 @@ StringData CyrusSaslMechShim<Policy>::getPrincipalName() const {
 
     // If either case was successful, we can return the Id that was found
     if (SASL_OK != result) {
-        LOGV2_ERROR(24030,
-                    "Was not able to acquire principal id from Cyrus SASL: {result}",
-                    "result"_attr = result);
+        LOGV2_ERROR(
+            24030, "Was not able to acquire principal id from Cyrus SASL", "result"_attr = result);
         return "";
     }
 
@@ -299,7 +298,7 @@ int saslServerGlobalLog(void* context, int level, const char* message) throw() {
             // Don't log trace data that includes passwords.
             break;
         default:
-            LOGV2_ERROR(24032, "Unexpected sasl log level {level}", "level"_attr = level);
+            LOGV2_ERROR(24032, "Unexpected sasl log level", "level"_attr = level);
             break;
     }
     return SASL_OK;
