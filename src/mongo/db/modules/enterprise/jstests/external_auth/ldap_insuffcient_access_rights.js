@@ -16,7 +16,13 @@ const proxy = enterprise + '/jstests/external_auth/lib/ldapproxy.py';
 const port = allocatePort();
 const pid = startMongoProgramNoConnect(
     'python', proxy, '--port', port, '--delay', 0, '--unauthorizedRootDSE');
-sleep(3000);
+
+// Wait for the proxy to actually start up and accept connections.
+assert.soon(function() {
+    return 0 ===
+        runNonMongoProgram(
+               'python', proxy, '--testClient', '--targetHost', '127.0.0.1', '--targetPort', port);
+});
 
 const configGenerator = new LDAPTestConfigGenerator();
 configGenerator.ldapServers = ['localhost:' + port];
