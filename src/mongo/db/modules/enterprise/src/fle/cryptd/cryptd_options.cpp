@@ -38,13 +38,9 @@ bool handlePreValidationMongoCryptDOptions(const moe::Environment& params) {
     }
 
     if (params.count("version") && params["version"].as<bool>() == true) {
-        auto& globalDomain = logv2::LogManager::global().getGlobalDomainInternal();
-        logv2::LogDomainGlobal::ConfigurationOptions config = globalDomain.config();
-        config.format = logv2::LogFormat::kPlain;
-        invariant(globalDomain.configure(config).isOK());
         auto&& vii = VersionInfoInterface::instance();
-        LOGV2(4615668, "{version}", "version"_attr = mongosVersion(vii));
-        vii.logBuildInfo();
+        std::cout << mongosVersion(vii) << std::endl;
+        vii.logBuildInfo(&std::cout);
         return false;
     }
 
