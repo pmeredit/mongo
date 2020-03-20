@@ -340,7 +340,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         return conn.getDB('local').oplog.rs.find().sort({$natural: -1}).limit(-1).next()["ts"];
     }
 
-    function _pickArbitraryRestorePointInTime(st, backupPointInTime) {
+    function _getEarliestTopOfOplog(st, backupPointInTime) {
         let minTimestamp = _getTopOfOplogTS(st.configRS.getPrimary());
         jsTestLog("Top of configRS oplog: " + minTimestamp);
         for (let i = 0; i < numShards; i++) {
@@ -398,7 +398,8 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         let maxCheckpointTimestamp = Timestamp();
         let stopCounter = new CountDownLatch(1);
         for (let i = 0; i < numShards + 1; i++) {
-            jsTestLog("Backing up shard" + i + " with node " + nodesToBackup[i].host);
+            const shardNum = (i === numShards) ? "CSRS" : ("shard" + i);
+            jsTestLog("Backing up " + shardNum + " with node " + nodesToBackup[i].host);
 
             let metadata;
             /**
@@ -886,7 +887,10 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
             },
             other: {
                 mongosOptions: {binVersion: backupBinVersion},
-                configOptions: {binVersion: backupBinVersion},
+                configOptions: {
+                    binVersion: backupBinVersion,
+                    setParameter: {writePeriodicNoops: true, periodicNoopIntervalSecs: 1}
+                },
                 rsOptions: {binVersion: backupBinVersion},
             },
         });
@@ -904,15 +908,25 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         let backupPointInTime;
         let restorePointInTime;
         let restoreOplogEntries;
+        let lastDocID;
         try {
             const result = _createBackup(st);
             const initialTopology = result.initialTopology;
             backupPointInTime = result.maxCheckpointTimestamp;
 
             if (isPitRestore) {
-                restorePointInTime = _pickArbitraryRestorePointInTime(st, backupPointInTime);
-                restoreOplogEntries =
-                    _getRestoreOplogEntries(st, backupPointInTime, restorePointInTime);
+                // The common reason for a retry is for the config server to generate an oplog entry
+                // after the test client's inserts have begun. The noop writer ensures this will
+                // occur.
+                assert.soonNoExcept(function() {
+                    jsTestLog("Attempting to prepare for PIT restore");
+                    restorePointInTime = _getEarliestTopOfOplog(st, backupPointInTime);
+                    restoreOplogEntries =
+                        _getRestoreOplogEntries(st, backupPointInTime, restorePointInTime);
+                    lastDocID = _getLastDocID(restoreOplogEntries);
+
+                    return lastDocID !== undefined;
+                }, "PIT restore prepare failed", ReplSetTest.kDefaultTimeoutMS, 1000);
 
                 if (_isTopologyChanged(st.config1, initialTopology, restorePointInTime)) {
                     throw "Sharding topology has been changed while getting PIT restore oplog " +
@@ -943,8 +957,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         /**
          *  Check data consistency
          */
-        _checkDataConsistency(
-            restoredNodePorts, _getLastDocID(restoreOplogEntries), isLastStableBackup);
+        _checkDataConsistency(restoredNodePorts, lastDocID, isLastStableBackup);
 
         jsTestLog("Test succeeded");
         return "Test succeeded.";
