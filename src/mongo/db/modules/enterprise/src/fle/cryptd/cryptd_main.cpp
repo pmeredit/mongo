@@ -181,7 +181,7 @@ ExitCode initAndListen() {
     VersionInfoInterface::instance().logTargetMinOS();
 #endif
 
-    logProcessDetails();
+    logProcessDetails(nullptr);
 
     createLockFile(serviceContext);
 
