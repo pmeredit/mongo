@@ -1142,7 +1142,7 @@ static int snmpLogCallback(int majorID, int minorID, void* serverArg, void* clie
         case LOG_EMERG:
         case LOG_ALERT:
         case LOG_CRIT:
-            LOGV2_FATAL(4615642, "{message}", "message"_attr = slm->msg);
+            LOGV2_FATAL_CONTINUE(4615642, "{message}", "message"_attr = slm->msg);
             break;
         case LOG_ERR:
             LOGV2_ERROR(4615643, "{message}", "message"_attr = slm->msg);

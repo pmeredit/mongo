@@ -144,12 +144,11 @@ BackupCursorState BackupCursorService::openBackupCursor(
         auto requeriedCheckpointTimestamp = _storageEngine->getLastStableRecoveryTimestamp();
         if (!requeriedCheckpointTimestamp ||
             requeriedCheckpointTimestamp.get() < checkpointTimestamp.get()) {
-            LOGV2_FATAL(24204,
+            LOGV2_FATAL(50916,
                         "The checkpoint timestamp went backwards. Original: "
                         "{checkpointTimestamp_get} Found: {requeriedCheckpointTimestamp}",
                         "checkpointTimestamp_get"_attr = checkpointTimestamp.get(),
                         "requeriedCheckpointTimestamp"_attr = requeriedCheckpointTimestamp);
-            fassertFailed(50916);
         }
 
         uassert(50915,

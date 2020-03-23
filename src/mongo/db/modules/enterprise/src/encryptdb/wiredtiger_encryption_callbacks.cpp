@@ -96,12 +96,13 @@ int customize(WT_ENCRYPTOR* encryptor,
 
     std::string encryptorName(encryptorNameItem.str, encryptorNameItem.len);
     if (mongo::encryptionGlobalParams.encryptionCipherMode != encryptorName) {
-        LOGV2_FATAL(24250,
-                    "Invalid cipher mode '{mongo_encryptionGlobalParams_encryptionCipherMode}', "
-                    "expected '{encryptorName}'",
-                    "mongo_encryptionGlobalParams_encryptionCipherMode"_attr =
-                        mongo::encryptionGlobalParams.encryptionCipherMode,
-                    "encryptorName"_attr = encryptorName);
+        LOGV2_FATAL_CONTINUE(
+            24250,
+            "Invalid cipher mode '{mongo_encryptionGlobalParams_encryptionCipherMode}', "
+            "expected '{encryptorName}'",
+            "mongo_encryptionGlobalParams_encryptionCipherMode"_attr =
+                mongo::encryptionGlobalParams.encryptionCipherMode,
+            "encryptorName"_attr = encryptorName);
         return EINVAL;
     }
 
@@ -156,7 +157,7 @@ int encrypt(WT_ENCRYPTOR* encryptor,
 
     Status ret = crypto::aesEncrypt(*key, mode, schema, src, srcLen, dst, dstLen, resultLen);
     if (!ret.isOK()) {
-        LOGV2_FATAL(
+        LOGV2_FATAL_CONTINUE(
             24251, "Encrypt error for key {keyId}: {ret}", "keyId"_attr = keyId, "ret"_attr = ret);
         return EINVAL;
     }
@@ -200,7 +201,7 @@ int decrypt(WT_ENCRYPTOR* encryptor,
             auto swPageKey =
                 EncryptionKeyManager::get(getGlobalServiceContext())->getKey(pageKeyId, findMode);
             if (!swPageKey.isOK()) {
-                LOGV2_FATAL(
+                LOGV2_FATAL_CONTINUE(
                     24252,
                     "Unable to retrieve encryption key for page: {swPageKey_getStatus_reason}",
                     "swPageKey_getStatus_reason"_attr = swPageKey.getStatus().reason());
@@ -216,13 +217,13 @@ int decrypt(WT_ENCRYPTOR* encryptor,
 
     if (!ret.isOK()) {
         if (key->getKeyId().name() == kSystemKeyId) {
-            LOGV2_FATAL(
+            LOGV2_FATAL_CONTINUE(
                 24253, "Decryption failed, invalid encryption master key or keystore encountered.");
         } else {
-            LOGV2_FATAL(24254,
-                        "Decrypt error for key {key_getKeyId}: {ret}",
-                        "key_getKeyId"_attr = key->getKeyId(),
-                        "ret"_attr = ret);
+            LOGV2_FATAL_CONTINUE(24254,
+                                 "Decrypt error for key {key_getKeyId}: {ret}",
+                                 "key_getKeyId"_attr = key->getKeyId(),
+                                 "ret"_attr = ret);
         }
         return EINVAL;
     }
@@ -260,7 +261,7 @@ int destroyEncryptor(WT_ENCRYPTOR* encryptor, WT_SESSION* session) noexcept {
  */
 int mongo_addWiredTigerEncryptors_impl(WT_CONNECTION* connection) noexcept {
     if (!mongo::encryptionGlobalParams.enableEncryption) {
-        LOGV2_FATAL(24255, "Encrypted data files detected, please enable encryption");
+        LOGV2_FATAL_CONTINUE(24255, "Encrypted data files detected, please enable encryption");
         return EINVAL;
     }
 

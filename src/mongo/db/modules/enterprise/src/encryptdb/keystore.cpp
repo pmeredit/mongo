@@ -196,10 +196,10 @@ std::unique_ptr<Keystore> KeystoreImplV0::makeKeystore(const boost::filesystem::
 
 void KeystoreImplV0::rollOverKeys() {
     // EncryptionKeyManager should have upgraded to KeystoreV1 before calling rollover.
-    LOGV2_FATAL(24023,
-                "The encrypted storage engine must be configured with AES256-GCM mode to support "
-                "database key rollover");
-    fassertFailedNoTrace(51168);
+    LOGV2_FATAL_NOTRACE(
+        51168,
+        "The encrypted storage engine must be configured with AES256-GCM mode to support "
+        "database key rollover");
 }
 
 std::uint32_t KeystoreImplV0::getRolloverId() const {

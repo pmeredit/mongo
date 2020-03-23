@@ -70,9 +70,9 @@ bool hasExistingDatafiles(const fs::path& path) {
     try {
         hasDatafiles = fs::exists(metadataPath) || fs::exists(wtDatafilePath);
     } catch (const std::exception& e) {
-        LOGV2_FATAL(24048,
-                    "Caught exception when checking for existence of data files",
-                    "error"_attr = e.what());
+        LOGV2_FATAL_CONTINUE(24048,
+                             "Caught exception when checking for existence of data files",
+                             "error"_attr = e.what());
     }
     return hasDatafiles;
 }
@@ -139,7 +139,8 @@ bool EncryptionKeyManager::restartRequired() {
     if (_encryptionParams->rotateMasterKey) {
         Status status = _rotateMasterKey(_encryptionParams->kmipKeyIdentifierRot);
         if (!status.isOK()) {
-            LOGV2_FATAL(24049, "Failed to rotate master key", "reason"_attr = status.reason());
+            LOGV2_FATAL_CONTINUE(
+                24049, "Failed to rotate master key", "reason"_attr = status.reason());
         }
         // The server should always exit after a key rotation.
         return true;
