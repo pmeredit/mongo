@@ -104,7 +104,7 @@ std::string extractAwsAccountId(StringData authHeader) {
     uassert(51742, "Credential missing from Authorization Header", pos != std::string::npos);
 
     size_t trailingSlash = authHeader.find('/', pos);
-    uassert(51743, "Credential missing trailing comma", trailingSlash != std::string::npos);
+    uassert(51743, "Credential missing trailing slash", trailingSlash != std::string::npos);
 
     return authHeader.substr(pos + credentialStr.size(), trailingSlash - pos - credentialStr.size())
         .toString();
