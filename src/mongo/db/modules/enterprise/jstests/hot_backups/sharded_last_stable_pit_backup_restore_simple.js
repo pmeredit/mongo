@@ -2,7 +2,8 @@
  * A simple case of sharded PIT backup/restore where the backup was taken with a 'last-stable'
  * binary version.
  *
- * @tags: [requires_wiredtiger,
+ * @tags: [fix_for_fcv_46,
+ *         requires_wiredtiger,
  *         requires_journaling,
  *         requires_persistence]
  */
