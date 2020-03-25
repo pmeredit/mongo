@@ -29,6 +29,7 @@ class LDAPProxy(ProxyBase):
             log.msg("Proxy port {}: Failing on RootDSE query. Request was: {}".format(self.port, repr(request)))
             reply(LDAPResult(resultCode=50)) # 50 == LDAP_INSUFFICIENT_PRIVILEGES
             return None
+        log.msg("Proxy port {}: got request for {}".format(self.port, repr(request)))
         return super().handleBeforeForwardRequest(request, controls, reply)
 
     def handleProxiedResponse(self, response, request, controls):

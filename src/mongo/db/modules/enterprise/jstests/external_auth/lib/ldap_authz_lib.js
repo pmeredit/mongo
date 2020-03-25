@@ -136,7 +136,8 @@ function LDAPTestConfigGenerator() {
         var setParameter = {
             authenticationMechanisms: this.authenticationMechanisms,
             saslHostName: saslHostName,
-            saslServiceName: "mockservice"
+            saslServiceName: "mockservice",
+            logComponentVerbosity: '{"accessControl":{"verbosity":5}}',
         };
         if (this.useSaslauthd === true) {
             setParameter.saslauthdPath = saslauthdPath + "/mux";
