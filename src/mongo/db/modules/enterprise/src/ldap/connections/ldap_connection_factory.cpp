@@ -659,14 +659,6 @@ LDAPConnectionFactory::LDAPConnectionFactory(Milliseconds poolSetupTimeout)
           _typeFactory, "LDAP", makePoolOptions(poolSetupTimeout))),
       _serverStatusSection(std::make_unique<LDAPConnectionFactoryServerStatus>(this)) {}
 
-struct LDAPCompletionState {
-    LDAPCompletionState(int outstandingSources_, Promise<std::unique_ptr<LDAPConnection>> promise_)
-        : finishLine(outstandingSources_), promise(std::move(promise_)) {}
-
-    StrongWeakFinishLine finishLine;
-    Promise<std::unique_ptr<LDAPConnection>> promise;
-};
-
 StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
     const LDAPConnectionOptions& options) {
 
@@ -717,16 +709,31 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
             });
     }
 
+    struct LDAPCompletionState {
+        LDAPCompletionState(std::vector<HostAndPort>&& hosts_,
+                            Promise<std::unique_ptr<LDAPConnection>> promise_)
+            : hosts(std::move(hosts_)), finishLine(hosts.size()), promise(std::move(promise_)) {}
+
+        std::vector<HostAndPort> hosts;
+        StrongWeakFinishLine finishLine;
+        Promise<std::unique_ptr<LDAPConnection>> promise;
+    };
+
     auto pf = makePromiseFuture<std::unique_ptr<LDAPConnection>>();
-    auto state = std::make_shared<LDAPCompletionState>(hosts.size(), std::move(pf.promise));
-    for (auto it = hosts.begin(); it != hosts.end() && !state->finishLine.isReady(); ++it) {
+    auto state = std::make_shared<LDAPCompletionState>(std::move(hosts), std::move(pf.promise));
+    for (auto it = state->hosts.begin(); it != state->hosts.end() && !state->finishLine.isReady();
+         ++it) {
         const auto& server = *it;
 
         auto onConnect = [state,
                           server](StatusWith<executor::ConnectionPool::ConnectionHandle> swHandle) {
             if (swHandle.isOK()) {
                 if (state->finishLine.arriveStrongly()) {
-                    LOGV2_DEBUG(24063, 1, "Using LDAP server {host}", "host"_attr = server);
+                    LOGV2_DEBUG(24063,
+                                1,
+                                "Using LDAP server {host}",
+                                "Acquired connection to LDAP server",
+                                "host"_attr = server);
                     auto implPtr = static_cast<PooledLDAPConnection*>(swHandle.getValue().get());
                     implPtr->incrementUsesCounter();
 
@@ -738,9 +745,9 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
             } else {
                 LOGV2(24064,
                       "Got error connecting to {host}: {status},",
-                      "Connection error",
+                      "LDAP connection error",
                       "host"_attr = server,
-                      "status"_attr = swHandle.getStatus());
+                      "error"_attr = swHandle.getStatus());
                 if (state->finishLine.arriveWeakly()) {
                     state->promise.setError(
                         swHandle.getStatus().withContext("Could not establish LDAP connection"));
