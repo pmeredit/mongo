@@ -4,6 +4,12 @@ This is a simple LDAP proxy that lets you simulate slow LDAP servers and test co
 to LDAP servers for use in our LDAP tests.
 """
 
+import platform
+if platform.system() == "Windows":
+    from twisted.internet import iocpreactor
+    iocpreactor.install()
+
+
 from ldaptor.protocols import pureldap
 from ldaptor.protocols.ldap.ldapclient import LDAPClient
 from ldaptor.protocols.ldap.ldapconnector import connectToLDAPEndpoint, LDAPClientCreator
@@ -74,6 +80,7 @@ def testClientConnect(config):
     print("Got root DSE!")
 
 if __name__ == "__main__":
+    print("Starting LDAP Proxy with {} reactor".format(type(reactor).__name__))
     config = Options()
     try:
         config.parseOptions()
