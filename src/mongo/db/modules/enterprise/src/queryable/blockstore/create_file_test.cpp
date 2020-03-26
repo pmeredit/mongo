@@ -22,11 +22,9 @@ class CreateFileTest : public unittest::Test {};
 
 class MockedHttpClient : public HttpClient {
 public:
-    virtual DataBuilder post(StringData, ConstDataRange) const {
-        MONGO_UNREACHABLE;
-    }
+    HttpReply request(HttpMethod method, StringData url, ConstDataRange) const final {
+        uassert(ErrorCodes::BadValue, "Unsupported HTTP Method", method == HttpMethod::kGET);
 
-    virtual DataBuilder get(StringData url) const {
         std::string urlStr(url);
         if (urlStr.find("/os_list") != std::string::npos) {
             BSONObjBuilder objBuilder;
@@ -37,7 +35,7 @@ public:
             DataBuilder copy(obj.objsize());
             uassertStatusOK(copy.write(ConstDataRange(obj.objdata(), obj.objsize())));
 
-            return copy;
+            return HttpReply(200, {}, std::move(copy));
         } else if (urlStr.find("/os_wt_recovery_open_file") != std::string::npos) {
             // This would be better with a proper URI parser, but we're tightly coupled to
             // blockstore http so just pull out the filename the hard way.
@@ -55,15 +53,10 @@ public:
 
             _files.emplace_back(obj.getOwned());
 
-            return copy;
+            return HttpReply(200, {}, std::move(copy));
         }
 
         MONGO_UNREACHABLE;
-    }
-
-    virtual DataBuilder put(StringData, ConstDataRange) const {
-        invariant(false);
-        return DataBuilder();
     }
 
     // Ignore client configs.

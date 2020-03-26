@@ -24,17 +24,9 @@ class ListDirTest : public unittest::Test {};
 
 class MockedHttpClient : public HttpClient {
 public:
-    virtual DataBuilder post(StringData, ConstDataRange) const {
-        invariant(false);
-        return DataBuilder();
-    }
+    HttpReply request(HttpMethod method, StringData, ConstDataRange) const override {
+        uassert(ErrorCodes::BadValue, "Unsupported HTTP Method", method == HttpMethod::kGET);
 
-    virtual DataBuilder put(StringData, ConstDataRange) const {
-        invariant(false);
-        return DataBuilder();
-    }
-
-    virtual DataBuilder get(StringData) const {
         BSONObjBuilder objBuilder;
         objBuilder.append("ok", true);
         std::vector<BSONObj> files;
@@ -55,7 +47,7 @@ public:
         DataBuilder copy(obj.objsize());
         uassertStatusOK(copy.write(ConstDataRange(obj.objdata(), obj.objsize())));
 
-        return copy;
+        return HttpReply(200, {}, std::move(copy));
     }
 
     // Ignore client configs.
@@ -67,7 +59,9 @@ public:
 
 class LargeListDir : public MockedHttpClient {
 public:
-    virtual DataBuilder get(StringData) const {
+    HttpReply request(HttpMethod method, StringData, ConstDataRange) const final {
+        uassert(ErrorCodes::BadValue, "Unsupported HTTP Method", method == HttpMethod::kGET);
+
         BSONObjBuilder builder;
         builder.append("ok", true);
 
@@ -92,7 +86,7 @@ public:
         _numBytesInResponse = obj.objsize();
         uassertStatusOK(copy.write(ConstDataRange(obj.objdata(), obj.objsize())));
 
-        return copy;
+        return HttpReply(200, {}, std::move(copy));
     }
 
     virtual std::size_t getNumFilesInResponse() {

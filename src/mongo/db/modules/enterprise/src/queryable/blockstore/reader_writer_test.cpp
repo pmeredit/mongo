@@ -28,7 +28,13 @@ public:
         _writeFileMock = std::vector<char>(1024);
     }
 
-    DataBuilder get(StringData url) const final {
+    HttpReply request(HttpMethod method,
+                      StringData url,
+                      ConstDataRange data = {nullptr, 0}) const final {
+        uassert(ErrorCodes::BadValue,
+                "Unsupported HTTP method",
+                (method == HttpMethod::kGET) || (method == HttpMethod::kPOST));
+
         // This would be better with a proper URI parser,
         // but we're tightly coupled to blockstore http,
         // so just pull out the values the hard way.
@@ -39,12 +45,23 @@ public:
         int offset;
         auto parser = NumberParser::strToAny(10);
         auto s = parser(offsetP + strlen("&offset="), &offset);
-        if (!s.isOK())
+        if (!s.isOK()) {
             offset = 0;
+        }
         int length;
         s = parser(lengthP + strlen("&length="), &length);
-        if (!s.isOK())
+        if (!s.isOK()) {
             length = 0;
+        }
+
+        if (method == HttpMethod::kPOST) {
+            ASSERT_EQ(length, data.length());
+            for (std::size_t idx = 0; idx < data.length(); ++idx) {
+                _writeFileMock[idx + offset] = data.data()[idx];
+            }
+            return HttpReply(200, {}, {});
+        }
+        invariant(method == HttpMethod::kGET);
 
         // Block of 256 characters suitable for writing.
         std::array<char, 256> buffer;
@@ -76,38 +93,7 @@ public:
             uassertStatusOK(builder.writeAndAdvance(remain));
         }
 
-        return builder;
-    }
-
-    DataBuilder post(StringData url, ConstDataRange toPost) const final {
-        // This would be better with a proper URI parser,
-        // but we're tightly coupled to blockstore http,
-        // so just pull out the values the hard way.
-        const auto urlString = url.toString();
-        const char* offsetP = strstr(urlString.c_str(), "&offset=");
-        const char* lengthP = strstr(urlString.c_str(), "&length=");
-        invariant(offsetP && lengthP);
-        int offset;
-        auto parser = NumberParser::strToAny(10);
-        auto s = parser(offsetP + strlen("&offset="), &offset);
-        if (!s.isOK())
-            offset = 0;
-        int length;
-        s = parser(lengthP + strlen("&length="), &length);
-        if (!s.isOK())
-            length = 0;
-
-        ASSERT_EQ(length, toPost.length());
-        for (std::size_t idx = 0; idx < toPost.length(); ++idx) {
-            _writeFileMock[idx + offset] = toPost.data()[idx];
-        }
-
-        return {};
-    }
-
-    virtual DataBuilder put(StringData, ConstDataRange) const {
-        invariant(false);
-        return DataBuilder();
+        return HttpReply(200, {}, std::move(builder));
     }
 
     // Ignore client config.
