@@ -50,9 +50,12 @@ class AwsStsHandler(http.server.BaseHTTPRequestHandler):
         if path == "/":
             self._do_post()
         else:
+            msg = "Unknown URL".encode()
             self.send_response(http.HTTPStatus.NOT_FOUND)
+            self.send_header("Content-Type", "text/plain");
+            self.send_header("Content-Length", str(len(msg)))
             self.end_headers()
-            self.wfile.write("Unknown URL".encode())
+            self.wfile.write(msg)
 
     def _send_reply(self, data, status=http.HTTPStatus.OK):
         print("Sending Response: " + data.decode())

@@ -2,6 +2,8 @@
  * Copyright (C) 2019 MongoDB, Inc.  All Rights Reserved.
  */
 
+#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kAccessControl
+
 #include "mongo/platform/basic.h"
 
 #include "sasl_aws_server_conversation.h"
@@ -14,6 +16,7 @@
 #include "mongo/db/auth/sasl_options.h"
 #include "mongo/db/auth/user.h"
 #include "mongo/db/commands/test_commands_enabled.h"
+#include "mongo/logv2/log.h"
 #include "mongo/util/net/http_client.h"
 #include "mongo/util/text.h"
 
@@ -66,14 +69,31 @@ StatusWith<std::tuple<bool, std::string>> SaslAWSServerMechanism::_secondStep(
         request->allowInsecureHTTP(true);
     }
 
-    DataBuilder result = request->post(awsIam::saslAWSGlobalParams.awsSTSUrl, body);
+    auto result = request->request(
+        HttpClient::HttpMethod::kPOST, awsIam::saslAWSGlobalParams.awsSTSUrl, body);
 
-    ConstDataRange cdr = result.getCursor();
-    StringData output;
-    cdr.readInto<StringData>(&output);
+    auto cdrcBody = result.body.getCursor();
+    StringData httpBody;
+    cdrcBody.readInto<StringData>(&httpBody);
+
+    if (result.code != 200) {
+        auto cdrcHeader = result.header.getCursor();
+        StringData httpHeader;
+        cdrcHeader.readInto<StringData>(&httpHeader);
+
+        LOGV2_WARNING(4690900,
+                      "Failed connecting to AWS STS",
+                      "awsSTSURL"_attr = awsIam::saslAWSGlobalParams.awsSTSUrl,
+                      "HTTPReply"_attr = BSON("code" << result.code << "header" << httpHeader
+                                                     << "body" << httpBody));
+
+        uasserted(ErrorCodes::OperationFailed,
+                  str::stream() << "Failed connecting to AWS STS. HTTP Status Code: "
+                                << result.code);
+    }
 
     // Set the principal name to the ARN from AWS.
-    ServerMechanismBase::_principalName = awsIam::getUserId(output);
+    ServerMechanismBase::_principalName = awsIam::getUserId(httpBody);
 
     return std::make_tuple(true, std::string());
 }
