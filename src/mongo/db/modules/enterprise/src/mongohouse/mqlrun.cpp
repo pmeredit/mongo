@@ -155,7 +155,7 @@ int mqlrunMain(const char* pipelineStr,
     auto proxy = std::make_unique<PipelineProxyStage>(expCtx.get(), std::move(pipeline), ws.get());
 
     auto planExec = PlanExecutor::make(
-        opCtx.get(), std::move(ws), std::move(proxy), nullptr, PlanExecutor::NO_YIELD, nss);
+        expCtx, std::move(ws), std::move(proxy), nullptr, PlanExecutor::NO_YIELD, nss);
 
     BSONObj outObj;
 
