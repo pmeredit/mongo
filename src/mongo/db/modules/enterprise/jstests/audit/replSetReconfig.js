@@ -10,6 +10,11 @@ var audit = m.auditSpooler();
 var admin = m.getDB("admin");
 assert.commandWorked(admin.runCommand({replSetInitiate: {}}));
 
+// Verify that the node is primary before running the reconfig. If the node goes
+// through an election during the reconfig, the reconfig will fail with an
+// InterruptedDueToReplStateChange error.
+assert.soon(() => admin.runCommand({isMaster: 1}).primary);
+
 assert.commandWorked(admin.runCommand({
     replSetReconfig:
         {_id: "foo", version: 2, protocolVersion: 1, members: [{_id: 0, host: m.name}]},
