@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "encrypted_data_protector.h"
 #include "encryption_key_manager.h"
 
 #include <memory>
@@ -16,7 +17,9 @@ class SymmetricKey;
 
 class EncryptionKeyManagerNoop : public EncryptionKeyManager {
 public:
-    EncryptionKeyManagerNoop() : EncryptionKeyManager("", nullptr, nullptr) {}
+    EncryptionKeyManagerNoop()
+        : EncryptionKeyManager("", nullptr, nullptr),
+          _testMasterKey(std::move(getKey("test", FindMode::kCurrent).getValue())) {}
 
     StatusWith<std::unique_ptr<SymmetricKey>> getKey(const SymmetricKeyId& keyID,
                                                      FindMode) override {
@@ -24,6 +27,13 @@ public:
                          0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5};
         return std::make_unique<SymmetricKey>(key, sizeof(key), crypto::aesAlgorithm, "test", 0);
     }
+
+    std::unique_ptr<DataProtector> getDataProtector() final {
+        return std::make_unique<EncryptedDataProtector>(_testMasterKey.get(), crypto::aesMode::cbc);
+    }
+
+private:
+    UniqueSymmetricKey _testMasterKey;
 };
 
 }  // namespace mongo

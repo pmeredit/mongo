@@ -177,6 +177,115 @@ TEST(EncryptedMemoryLayout, PlaintextLen) {
     ASSERT_TRUE(expected == layoutGCM.expectedPlaintextLen());
 }
 
+// The following tests are meant to test behavior of SymmetricEncryptorWindows, who grapples with
+// some peculiar (but by design) behavior with Windows BCrypt padding incomplete blocks before
+// finalize is called. These tests should pass just fine on Windows and non-Windows encryptors.
+TEST(SymmetricEncryptor, PaddingLogic) {
+    SymmetricKey key = crypto::aesGenerate(crypto::sym256KeySize, "SymmetricEncryptorWindowsTest");
+    const std::array<uint8_t, 16> iv = {};
+    std::array<std::uint8_t, 1024> cryptoBuffer;
+    DataRange cryptoRange(cryptoBuffer.data(), cryptoBuffer.size());
+    // This array defines a series of different test cases. Each sub-array defines a series of calls
+    // to encryptor->update(). Each number represents the number of bytes to pass to update in a
+    // single call
+    const std::vector<std::vector<uint8_t>> testData = {
+        // Pre-condition: blockBuffer is empty
+        {
+            // Update is invoked with 1 byte. We should get 0 bytes back
+            // Post-condition: 1 byte is in the blockBuffer. 15 more bytes are required to fill it.
+            0x01,
+            // Update is invoked with 16 bytes
+            // One block is written out, 1 byte remains in blockBuffer
+            0x10
+            // Finalize is then called, filling out the buffer with 15 bytes of padding.
+        },
+        {
+            // Update is invoked with 16 bytes. We should get 16 bytes back
+            // Post-condition: 0 bytes in the block buffer, 16 bytes returned
+            0x10
+            // Finalize is called, providing no padding and encrypting nothing
+        },
+        {
+            // Update is invoked with 32 bytes. We should get 32 bytes back
+            // Post-condition: 0 bytes in the block buffer, 16 bytes returned
+            0x20
+            // Finalize is called, providing no padding and encrypting nothing
+        },
+        {
+            // Update is invoked with 5 bytes. We should get 0 bytes back.
+            // Post-condition: 5 bytes in the blockBuffer. 11 more bytes are required to fill it.
+            0x05,
+            // Update is invoked with 48 bytes.
+            // 3 blocks are written out. 5 bytes remain in blockBuffer.
+            0x30
+            // Finalize is called, filling out the buffer with 11 bytes of padding
+        },
+        {
+            // Update is invoked with 2 bytes. We should get 0 bytes back
+            // Post-condition: 2 bytes in the blockBuffer. 14 more bytes are required to fill it.
+            0x02,
+            // Update is invoked with 7 bytes. We should get 0 bytes back
+            // Post-condition: 9 bytes in the blockBuffer. 7 more bytes are required to fill it.
+            0x07,
+            // Finalize is called, filling out the buffer with 7 bytes of padding.
+        },
+        {
+            // Update is invoked with 11 bytes. We should get 0 bytes back.
+            // Post-condition: 11 bytes in the blockBuffer. 5 more bytes are required to fill it.
+            0x0B,
+            // Finalize is called, filling out the buffer with 5 bytes of padding.
+        },
+        {
+            // Update is invoked with 21 bytes. We should get 16 bytes back.
+            // Post-condition: 5 bytes in the blockBuffer. 11 more bytes are required to fill it.
+            0x15,
+            // Update is invoked with 38 bytes. We should get 32 bytes vback
+            // Post-condition: 11 bytes in the blockBuffer. 5 more bytes are required to fill it.
+            0x26,
+            // Finalize is called, filling out the buffer with 5 bytes of padding.
+        },
+    };
+
+    // We will loop through all of the test cases, ensuring no fatal errors,
+    // and ensuring correct encryption and decryption.
+    for (auto& testCase : testData) {
+        auto swEnc =
+            crypto::SymmetricEncryptor::create(key, crypto::aesMode::cbc, iv.data(), iv.size());
+        ASSERT_OK(swEnc.getStatus());
+        auto encryptor = std::move(swEnc.getValue());
+        uint8_t blockBufferSize = 0;
+        DataRangeCursor cryptoCursor(cryptoRange);
+        // Make subsequent calls to encryptor->update() as defined by the test data
+        for (auto& updateBytes : testCase) {
+            std::vector<uint8_t> plainText(updateBytes, updateBytes);
+            auto swSize = encryptor->update(plainText.data(),
+                                            plainText.size(),
+                                            const_cast<uint8_t*>(cryptoCursor.data<uint8_t>()),
+                                            cryptoCursor.length());
+            ASSERT_OK(swSize);
+            cryptoCursor.advance(swSize.getValue());
+            size_t totalBytes = updateBytes + blockBufferSize;
+            // Assert that number of bytes written is correct
+            if (totalBytes < 16) {
+                // If we didn't fill a block with the last call to update,
+                // ensure nothing was encrypted.
+                ASSERT_EQ(swSize.getValue(), 0);
+            } else {
+                // If we did fill at least one block, ensure the highest available multiple of 16
+                // bytes was encrypted
+                ASSERT_EQ(swSize.getValue(), (totalBytes - (totalBytes % 16)));
+            }
+            blockBufferSize = totalBytes % 16;
+        }
+        auto swSize = encryptor->finalize(const_cast<uint8_t*>(cryptoCursor.data<uint8_t>()),
+                                          cryptoCursor.length());
+        ASSERT_OK(swSize);
+        // finalize is guaranteed to encrypt 16 bytes, as there can never be more than 15 bytes left
+        // in the blockBuffer from the last update, and it will always pad to an exact value of 16
+        ASSERT_EQ(swSize.getValue(), 16);
+    }
+}
+
 SymmetricKey aesGeneratePredictableKey256(StringData stringKey, StringData keyId) {
     const size_t keySize = crypto::sym256KeySize;
     ASSERT_EQ(keySize, stringKey.size());

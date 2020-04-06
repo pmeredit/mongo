@@ -36,9 +36,7 @@ function runTest(cipherMode, keyID) {
     let testParams = Object.merge(kmipParams, {encryptionCipherMode: cipherMode});
     const md = MongoRunner.runMongod(testParams);
     MongoRunner.stopMongod(md);
-    testParams = Object.merge(testParams, {
-        kmipKeyIdentifier: keyID,
-    });
+    testParams = Object.merge(testParams, {kmipKeyIdentifier: keyID});
 
     const replSet = new ReplSetTest({
         name: "decryptToolTest",

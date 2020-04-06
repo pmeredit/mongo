@@ -143,12 +143,17 @@ wtEnv.CppUnitTest(
         'kmip_request_test.cpp',
         'kmip_response_test.cpp',
         'symmetric_crypto_test.cpp',
+        'remove_saver_test.cpp'
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/service_context_test_fixture',
         '$BUILD_DIR/mongo/db/storage/storage_options',
         '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core',
         '$BUILD_DIR/mongo/util/net/network',
+        "$BUILD_DIR/mongo/db/storage/remove_saver",
+        '$BUILD_DIR/mongo/base',
+        "$BUILD_DIR/mongo/db/server_options_core",
+        "$BUILD_DIR/mongo/rpc/rpc",
         'encryptdb',
         'keystore_metadata',
         'kmip',
