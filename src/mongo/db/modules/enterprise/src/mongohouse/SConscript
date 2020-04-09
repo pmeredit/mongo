@@ -28,6 +28,9 @@ mqlrun = env.Program(
         'document_source_bson_input',
     ],
     AIB_COMPONENT='mh',
+    AIB_COMPONENTS_EXTRA=[
+        'dist-test',
+    ]
 )
 
 if not hygienic:
