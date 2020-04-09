@@ -334,10 +334,10 @@ ServiceContext::ConstructorActionRegisterer cyrusSaslServerMechanismRegisterMech
         auto& registry = SASLServerMechanismRegistry::get(service);
         if (registry.registerFactory<CyrusGSSAPIServerFactory>()) {
             CyrusGSSAPIServerFactory factory;
-            fassert(50743,
-                    gssapi::tryAcquireServerCredential(static_cast<std::string>(
-                        str::stream()
-                        << saslGlobalParams.serviceName << "@" << saslGlobalParams.hostName)));
+            fassertNoTrace(50743,
+                           gssapi::tryAcquireServerCredential(static_cast<std::string>(
+                               str::stream() << saslGlobalParams.serviceName << "@"
+                                             << saslGlobalParams.hostName)));
             auto mech = factory.create("test");
         }
 
