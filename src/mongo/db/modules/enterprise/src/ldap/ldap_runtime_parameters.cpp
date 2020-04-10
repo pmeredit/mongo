@@ -10,8 +10,6 @@
 #include "ldap/ldap_runtime_parameters_gen.h"
 #include "mongo/base/parse_number.h"
 #include "mongo/db/service_context.h"
-#include "mongo/logger/logger.h"
-#include "mongo/logger/parse_log_component_settings.h"
 #include "mongo/util/str.h"
 #include "mongo/util/text.h"
 
