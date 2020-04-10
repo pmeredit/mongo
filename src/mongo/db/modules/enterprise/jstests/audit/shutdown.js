@@ -14,7 +14,7 @@ var admin = m.getDB("admin");
 // since the connection closes immediately.
 // So interpret an undefined result as OK.
 // The audit entry ensures it was processed correctly.
-assert(admin.shutdownServer({timeout: 3}) === undefined);
+assert(admin.shutdownServer({timeoutSecs: 3}) === undefined);
 audit.assertEntry("shutdown", {});
 waitProgram(m.pid);
 
