@@ -51,6 +51,8 @@ std::ostream& operator<<(std::ostream& os, LDAPQueryScope scope);
 class UserNameSubstitutionLDAPQueryConfig;
 class ComponentSubstitutionLDAPQueryConfig;
 
+constexpr StringData kLDAPDNAttribute = "dn"_sd;
+
 /**
  * Contains the fields contained in a RFC4516 encoded string, potentially with tokens which must
  * be substituted out, to be instantiated by an LDAPQuery.
@@ -83,9 +85,12 @@ public:
      * Constructs a set of QueryParameters from an RFC4516 encoded string.
      * This query may contain tokens of the form '{USER}', which will be later substituted with the
      * username. The query may not contain curly brackets containing any other content.
+     *
+     * If no attributes are requested, then 'dn' will be specified as the only attribute
+     * in order to minimize the size of the returned results.
      */
-    static StatusWith<UserNameSubstitutionLDAPQueryConfig> createLDAPQueryConfigWithUserName(
-        const std::string& input);
+    static StatusWith<UserNameSubstitutionLDAPQueryConfig>
+    createLDAPQueryConfigWithUserNameAndAttributeTranform(const std::string& input);
 
     /**
      * Constructs a set of QueryParameters from an RFC4516 encoded string.

@@ -206,16 +206,15 @@ StringData removeBraces(StringData input) {
 
 }  // namespace
 
-StatusWith<UserNameSubstitutionLDAPQueryConfig> LDAPQueryConfig::createLDAPQueryConfigWithUserName(
-    const std::string& input) {
+StatusWith<UserNameSubstitutionLDAPQueryConfig>
+LDAPQueryConfig::createLDAPQueryConfigWithUserNameAndAttributeTranform(const std::string& input) {
     Status tokensValidated = findAndValidateTokens(input, [](StringData token) {
         if (token != removeBraces(kUserNameMatchToken) &&
             token != removeBraces(kProvidedUserNameMatchToken)) {
-            static const std::string errPrefix = []() -> std::string {
-                return str::stream() << "Expected token '" << kUserNameMatchToken << "' or '"
-                                     << kProvidedUserNameMatchToken << "', but found '";
-            }();
-            return Status(ErrorCodes::FailedToParse, str::stream() << errPrefix << token << "'");
+            return Status(ErrorCodes::FailedToParse,
+                          str::stream()
+                              << "Expected token '" << kUserNameMatchToken << "' or '"
+                              << kProvidedUserNameMatchToken << "', but found '" << token << "'");
         }
         return Status::OK();
     });
@@ -223,8 +222,26 @@ StatusWith<UserNameSubstitutionLDAPQueryConfig> LDAPQueryConfig::createLDAPQuery
         return tokensValidated;
     }
 
-    return LDAPQueryConfig::createDerivedLDAPQueryConfig<UserNameSubstitutionLDAPQueryConfig>(
-        input);
+    auto swLDAPConfig =
+        LDAPQueryConfig::createDerivedLDAPQueryConfig<UserNameSubstitutionLDAPQueryConfig>(input);
+    if (!swLDAPConfig.isOK()) {
+        return swLDAPConfig.getStatus();
+    }
+
+    auto config = std::move(swLDAPConfig.getValue());
+    if (config.attributes.empty()) {
+        /* DN Mappings only require a single value.
+         * Either the attribute as requested,
+         * or the element's own DN value.
+         *
+         * If we're not requested specific attributes,
+         * then limit the results to just the object name
+         * to avoid wasting time on data we'll ignore.
+         */
+        config.attributes.push_back(kLDAPDNAttribute.toString());
+    }
+
+    return config;
 }
 
 StatusWith<ComponentSubstitutionLDAPQueryConfig>

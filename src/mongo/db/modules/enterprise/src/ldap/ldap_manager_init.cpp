@@ -29,8 +29,9 @@ ServiceContext::ConstructorActionRegisterer setLDAPManagerImpl{
                                                 globalLDAPParams->serverHosts,
                                                 globalLDAPParams->transportSecurity);
 
-        auto queryParameters = uassertStatusOK(LDAPQueryConfig::createLDAPQueryConfigWithUserName(
-            globalLDAPParams->userAcquisitionQueryTemplate));
+        auto queryParameters =
+            uassertStatusOK(LDAPQueryConfig::createLDAPQueryConfigWithUserNameAndAttributeTranform(
+                globalLDAPParams->userAcquisitionQueryTemplate));
         auto mapper = uassertStatusOK(
             InternalToLDAPUserNameMapper::createNameMapper(globalLDAPParams->userToDNMapping));
         auto runner = std::make_unique<LDAPRunnerImpl>(bindOptions, connectionOptions);

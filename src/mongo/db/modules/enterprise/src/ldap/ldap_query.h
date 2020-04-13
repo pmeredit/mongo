@@ -57,6 +57,14 @@ public:
         return _templatedQuery.attributes;
     }
 
+    /* If only "dn" is specified as an attribute,
+     * then assume we're still using the object name.
+     */
+    bool isAcquiringAttributes() const {
+        const auto& attrs = getAttributes();
+        return (attrs.size() > 1) || ((attrs.size() == 1) && (attrs[0] != kLDAPDNAttribute));
+    }
+
 protected:
     LDAPQuery(const LDAPQueryConfig& templatedQuery)
         : _baseDN(templatedQuery.baseDN),

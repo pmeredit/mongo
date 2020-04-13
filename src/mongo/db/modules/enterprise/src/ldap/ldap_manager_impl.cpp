@@ -144,7 +144,7 @@ void LDAPManagerImpl::setQueryConfig(UserNameSubstitutionLDAPQueryConfig queryCo
 }
 
 StatusWith<LDAPDNVector> LDAPManagerImpl::_getGroupDNsFromServer(LDAPQuery& query) {
-    bool isAcquiringAttributes = !query.getAttributes().empty();
+    const bool isAcquiringAttributes = query.isAcquiringAttributes();
 
     // Perform the query specified in ldapLDAPQuery against the server.
     StatusWith<LDAPEntityCollection> queryResultStatus = _runner->runQuery(query);

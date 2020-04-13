@@ -9,15 +9,28 @@
  */
 
 (function() {
+'use strict';
+
 load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
 
-var authOptions = {user: adminUserDN, pwd: defaultPwd, mechanism: "PLAIN", digestPassword: false};
+const authOptions = {
+    user: adminUserDN,
+    pwd: defaultPwd,
+    mechanism: "PLAIN",
+    digestPassword: false
+};
 
 // Test a query for users which are listed as attributes on groups
 // FIXME: This should be merged into the lib configuration somehow
-var configGenerator = new LDAPTestConfigGenerator();
+const configGenerator = new LDAPTestConfigGenerator();
 configGenerator.ldapAuthzQueryTemplate = "ou=Groups,dc=10gen,dc=cc" +
     "??one?(&(objectClass=groupOfNames)(member={USER}))";
+
+runTests(authAndVerify, configGenerator, {authOptions: authOptions, user: adminUserDN});
+
+// Variant on the above, explicitly requesting 'dn' attribute.
+configGenerator.ldapAuthzQueryTemplate = "ou=Groups,dc=10gen,dc=cc" +
+    "?dn?one?(&(objectClass=groupOfNames)(member={USER}))";
 
 runTests(authAndVerify, configGenerator, {authOptions: authOptions, user: adminUserDN});
 

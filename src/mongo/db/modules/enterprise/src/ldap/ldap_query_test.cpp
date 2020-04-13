@@ -27,9 +27,8 @@ TEST(LDAPQueryInstantiate, InstantiationFromRawStringAlwaysSucceed) {
     ASSERT_EQ("cn=sajack,dc=mongodb,dc=com", swQuery.getValue().getBaseDN());
 }
 
-
 TEST(LDAPQueryInstantiate, POSIXGroupSchema) {
-    auto swQueryParameters = LDAPQueryConfig::createLDAPQueryConfigWithUserName(
+    auto swQueryParameters = LDAPQueryConfig::createLDAPQueryConfigWithUserNameAndAttributeTranform(
         "dc=mongodb,dc=com??base?(&(objectClass=posixGroup)(memberUid={PROVIDED_USER}))");
     ASSERT_OK(swQueryParameters.getStatus());
 
@@ -40,8 +39,8 @@ TEST(LDAPQueryInstantiate, POSIXGroupSchema) {
 }
 
 TEST(LDAPQueryInstantiate, InstantiationFromUserConfigAndUserNameSucceeds) {
-    auto swQueryParameters =
-        LDAPQueryConfig::createLDAPQueryConfigWithUserName("cn={USER},dc=mongodb,dc=com?");
+    auto swQueryParameters = LDAPQueryConfig::createLDAPQueryConfigWithUserNameAndAttributeTranform(
+        "cn={USER},dc=mongodb,dc=com?");
     ASSERT_OK(swQueryParameters.getStatus());
 
     auto swQuery = LDAPQuery::instantiateQuery(swQueryParameters.getValue(), "sajack", "");
@@ -50,8 +49,8 @@ TEST(LDAPQueryInstantiate, InstantiationFromUserConfigAndUserNameSucceeds) {
 }
 
 TEST(LDAPQueryInstantiate, InstantiationFromUserConfigAndUserNameWithBackslashSucceeds) {
-    auto swQueryParameters =
-        LDAPQueryConfig::createLDAPQueryConfigWithUserName("cn={USER},dc=mongodb,dc=com?");
+    auto swQueryParameters = LDAPQueryConfig::createLDAPQueryConfigWithUserNameAndAttributeTranform(
+        "cn={USER},dc=mongodb,dc=com?");
     ASSERT_OK(swQueryParameters.getStatus());
 
     auto swQuery = LDAPQuery::instantiateQuery(swQueryParameters.getValue(), "jack\\,sa", "");
@@ -60,8 +59,8 @@ TEST(LDAPQueryInstantiate, InstantiationFromUserConfigAndUserNameWithBackslashSu
 }
 
 TEST(LDAPQueryInstantiate, InstantiationFromUserConfigAndSpacePaddedUserNameSucceeds) {
-    auto swQueryParameters =
-        LDAPQueryConfig::createLDAPQueryConfigWithUserName("dc=ACME,dc=QA??sub?{USER}");
+    auto swQueryParameters = LDAPQueryConfig::createLDAPQueryConfigWithUserNameAndAttributeTranform(
+        "dc=ACME,dc=QA??sub?{USER}");
     ASSERT_OK(swQueryParameters.getStatus());
 
     auto swQuery = LDAPQuery::instantiateQuery(
@@ -71,8 +70,8 @@ TEST(LDAPQueryInstantiate, InstantiationFromUserConfigAndSpacePaddedUserNameSucc
 }
 
 TEST(LDAPQueryInstantiate, InstantiationFromUserConfigAndNameWithLDAPqueryLanguageSucceeds) {
-    auto swQueryParameters =
-        LDAPQueryConfig::createLDAPQueryConfigWithUserName("dc=ACME,dc=QA??sub?{USER}");
+    auto swQueryParameters = LDAPQueryConfig::createLDAPQueryConfigWithUserNameAndAttributeTranform(
+        "dc=ACME,dc=QA??sub?{USER}");
     ASSERT_OK(swQueryParameters.getStatus());
 
     auto swQuery =
@@ -82,8 +81,8 @@ TEST(LDAPQueryInstantiate, InstantiationFromUserConfigAndNameWithLDAPqueryLangua
 }
 
 TEST(LDAPQueryInstantiate, InstantiationFromUserConfigAndNameWithSpecialCharactersSucceeds) {
-    auto swQueryParameters =
-        LDAPQueryConfig::createLDAPQueryConfigWithUserName("dc=ACME,dc=QA??sub?{USER}");
+    auto swQueryParameters = LDAPQueryConfig::createLDAPQueryConfigWithUserNameAndAttributeTranform(
+        "dc=ACME,dc=QA??sub?{USER}");
     ASSERT_OK(swQueryParameters.getStatus());
 
     auto swQuery = LDAPQuery::instantiateQuery(
@@ -94,8 +93,8 @@ TEST(LDAPQueryInstantiate, InstantiationFromUserConfigAndNameWithSpecialCharacte
 }
 
 TEST(LDAPQueryInstantiate, InstantiationFromUserConfigAndNameWithInternationalCharactersSucceeds) {
-    auto swQueryParameters =
-        LDAPQueryConfig::createLDAPQueryConfigWithUserName("dc=ACME,dc=QA??sub?{USER}");
+    auto swQueryParameters = LDAPQueryConfig::createLDAPQueryConfigWithUserNameAndAttributeTranform(
+        "dc=ACME,dc=QA??sub?{USER}");
     ASSERT_OK(swQueryParameters.getStatus());
 
     auto swQuery = LDAPQuery::instantiateQuery(
@@ -180,8 +179,6 @@ std::unique_ptr<LDAPQueryConfig> createLDAPQueryConfig(std::string queryString,
     ASSERT_OK(swQueryParameters.getStatus());
     return std::make_unique<LDAPQueryConfig>(std::move(swQueryParameters.getValue()));
 }
-
-}  // namespace
 
 TEST(LDAPQueryConfigParseTest, parseldapDN) {
     auto ldapQueryParameters = createLDAPQueryConfig(userDN);
@@ -298,47 +295,77 @@ TEST(LDAPQueryConfigParseTest, parsePercentEncodedAttribute) {
 
 
 TEST(UserLDAPQueryConfigParseTest, parseUserNameQueryConfigFailsWithEmptyToken) {
-    auto swQueryConfig =
-        LDAPQueryConfig::createLDAPQueryConfigWithUserName("cn={},dc=mongodb,dc=com?email,uid?ONE");
+    auto swQueryConfig = LDAPQueryConfig::createLDAPQueryConfigWithUserNameAndAttributeTranform(
+        "cn={},dc=mongodb,dc=com?email,uid?ONE");
     ASSERT_NOT_OK(swQueryConfig.getStatus());
 }
 
 TEST(UserLDAPQueryConfigParseTest, parseUserNameQueryConfigFailsWithNumericToken) {
-    auto swQueryConfig = LDAPQueryConfig::createLDAPQueryConfigWithUserName(
+    auto swQueryConfig = LDAPQueryConfig::createLDAPQueryConfigWithUserNameAndAttributeTranform(
         "cn={0},dc=mongodb,dc=com?email,uid?ONE");
     ASSERT_NOT_OK(swQueryConfig.getStatus());
 }
 
 TEST(UserLDAPQueryConfigParseTest, parseUserNameQueryConfigSucceedsWithNoToken) {
-    auto swQueryConfig = LDAPQueryConfig::createLDAPQueryConfigWithUserName(
+    auto swQueryConfig = LDAPQueryConfig::createLDAPQueryConfigWithUserNameAndAttributeTranform(
         "cn=sajack,dc=mongodb,dc=com?email,uid?ONE");
     ASSERT_OK(swQueryConfig.getStatus());
 }
 
 TEST(UserLDAPQueryConfigParseTest, parseUserNameQueryConfigFailsWithBrokenToken) {
-    auto swQueryConfig = LDAPQueryConfig::createLDAPQueryConfigWithUserName(
+    auto swQueryConfig = LDAPQueryConfig::createLDAPQueryConfigWithUserNameAndAttributeTranform(
         "cn={USER,dc=mongodb,dc=com?email,uid?ONE");
     ASSERT_NOT_OK(swQueryConfig.getStatus());
 }
 
 TEST(UserLDAPQueryConfigParseTest, parseUserNameQueryConfigSucceedsWithUserToken) {
-    auto swQueryConfig = LDAPQueryConfig::createLDAPQueryConfigWithUserName(
+    auto swQueryConfig = LDAPQueryConfig::createLDAPQueryConfigWithUserNameAndAttributeTranform(
         "cn={USER},dc=mongodb,dc=com?email,uid?ONE");
     ASSERT_OK(swQueryConfig.getStatus());
 }
 
 TEST(UserLDAPQueryConfigParseTest, parseUserNameQueryConfigSucceedsWithTwoUserTokens) {
-    auto swQueryConfig = LDAPQueryConfig::createLDAPQueryConfigWithUserName(
+    auto swQueryConfig = LDAPQueryConfig::createLDAPQueryConfigWithUserNameAndAttributeTranform(
         "cn={USER},dc=mongodb,dc=com?email,uid?ONE?(cn={USER})");
     ASSERT_OK(swQueryConfig.getStatus());
 }
 
 TEST(UserLDAPQueryConfigParseTest, parseUserNameQueryConfigFailsWithInvalidTokenAfterUserToken) {
-    auto swQueryConfig = LDAPQueryConfig::createLDAPQueryConfigWithUserName(
+    auto swQueryConfig = LDAPQueryConfig::createLDAPQueryConfigWithUserNameAndAttributeTranform(
         "cn={USER},dc=mongodb,dc=com?email,uid?ONE?(cn={0})");
     ASSERT_NOT_OK(swQueryConfig.getStatus());
 }
 
+void testCreateLDAPQueryConfigForDNMapping(StringData queryAttr, StringData expAttr) {
+    const auto queryStr = std::string("cn={USER},dc=mongodb,dc=com?") + queryAttr;
+    auto swQueryParameters =
+        LDAPQueryConfig::createLDAPQueryConfigWithUserNameAndAttributeTranform(queryStr);
+    ASSERT_OK(swQueryParameters.getStatus());
+
+    auto swQuery = LDAPQuery::instantiateQuery(swQueryParameters.getValue(), userDN, "sajack");
+    ASSERT_OK(swQuery.getStatus());
+    auto query = std::move(swQuery.getValue());
+    ASSERT_EQ(expAttr != kLDAPDNAttribute, query.isAcquiringAttributes());
+
+    const auto& queryAttributes = query.getAttributes();
+    ASSERT_EQ(1, queryAttributes.size());
+    ASSERT_EQ(expAttr, queryAttributes[0]);
+}
+
+TEST(UserLDAPQueryConfigParseTest, WithoutAttributes) {
+    // *ForDNMapping injects the "dn" attribute on non-attribute queries.
+    testCreateLDAPQueryConfigForDNMapping("", kLDAPDNAttribute);
+}
+
+TEST(UserLDAPQueryConfigParseTest, WithDNAttribute) {
+    // Check for double-injection of "dn" when it's already present.
+    testCreateLDAPQueryConfigForDNMapping("dn?", kLDAPDNAttribute);
+}
+
+TEST(UserLDAPQueryConfigParseTest, WithMemberOfAttribute) {
+    // Check for unwanted injection of "dn" when other attribute is present.
+    testCreateLDAPQueryConfigForDNMapping("memberOf?", "memberOf");
+}
 
 TEST(ComponentLDAPQueryConfigParseTest, parseConfigFailsWithEmptyToken) {
     auto swQueryConfig = LDAPQueryConfig::createLDAPQueryConfigWithComponents(
@@ -404,5 +431,5 @@ TEST(LDAPQueryConfigParsePercentTest, twoPercentEncodedCharacters) {
     ASSERT_EQ("aa", ldapQueryParameters->baseDN);
 }
 
-
+}  // namespace
 }  // namespace mongo

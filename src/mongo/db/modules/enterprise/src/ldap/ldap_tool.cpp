@@ -186,7 +186,7 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
     }
 
 
-    auto swQueryParameters = LDAPQueryConfig::createLDAPQueryConfigWithUserName(
+    auto swQueryParameters = LDAPQueryConfig::createLDAPQueryConfigWithUserNameAndAttributeTranform(
         globalLDAPParams->userAcquisitionQueryTemplate);
 
     // TODO: Maybe change how the userToDNMapping is parsed so we can just check for empty?

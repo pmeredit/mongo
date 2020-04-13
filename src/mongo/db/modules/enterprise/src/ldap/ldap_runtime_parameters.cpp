@@ -130,7 +130,8 @@ void LDAPQueryTemplateSetting::append(OperationContext* opCtx,
 }
 
 Status LDAPQueryTemplateSetting::setFromString(const std::string& str) {
-    auto swQueryParameters = LDAPQueryConfig::createLDAPQueryConfigWithUserName(str);
+    auto swQueryParameters =
+        LDAPQueryConfig::createLDAPQueryConfigWithUserNameAndAttributeTranform(str);
     if (swQueryParameters.getStatus() != Status::OK()) {
         return swQueryParameters.getStatus();
     }
