@@ -524,10 +524,12 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         assert.commandWorked(localDb.system.replset.remove({}));
 
         /**
-         * 4. Drop `local.replset.oplogTruncateAfterPoint` and `local.replset.minvalid`.
+         * 4. Drop `local.replset.oplogTruncateAfterPoint`, `local.replset.minvalid`, and
+         *    `local.replset.initialSyncId`.
          */
         localDb.replset.oplogTruncateAfterPoint.drop();
         localDb.replset.minvalid.drop();
+        localDb.replset.initialSyncId.drop();
 
         /**
          * 5. Insert the proper document into `local.replset.oplogTruncateAfterPoint`.
