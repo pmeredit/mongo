@@ -449,6 +449,9 @@ public:
     void visit(ExpressionFromAccumulator<AccumulatorMergeObjects>*) {
         _tracker.enterEvaluateOrCompare();
     }
+    void visit(ExpressionInternalRemoveFieldTombstones*) {
+        _tracker.enterEvaluateOrCompare();
+    }
     void visit(ExpressionTests::Testable*) {
         _tracker.enterEvaluateOrCompare();
     }
@@ -651,6 +654,8 @@ public:
     void visit(ExpressionFromAccumulator<AccumulatorMergeObjects>*) {}
     void visit(ExpressionTests::Testable*) {}
     void visit(ExpressionFieldPath*) {}
+    void visit(ExpressionInternalRemoveFieldTombstones*) {}
+
 
     void visit(ExpressionCond*) {
         // If the visited children count is 1, then this implies we've already visited the 'if'
@@ -1039,6 +1044,9 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(ExpressionTests::Testable*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(ExpressionInternalRemoveFieldTombstones*) {
         _tracker.exitEvaluateOrCompare();
     }
 
