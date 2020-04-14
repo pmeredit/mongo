@@ -43,12 +43,14 @@ public:
     using LibraryCharType = char;
     using TimeoutType = struct timeval;
 
-    static const bool kLDAP_OPT_ERROR_STRINGNeedsFree = true;
+    static constexpr bool kLDAP_OPT_ERROR_STRINGNeedsFree = true;
 
-    static const auto LDAP_success = LDAP_SUCCESS;
-    static const auto LDAP_insufficient_access = LDAP_INSUFFICIENT_ACCESS;
-    static const auto LDAP_OPT_error_code = LDAP_OPT_RESULT_CODE;
-    static const auto LDAP_OPT_error_string = LDAP_OPT_ERROR_STRING;
+    static constexpr auto LDAP_success = LDAP_SUCCESS;
+    static constexpr auto LDAP_insufficient_access = LDAP_INSUFFICIENT_ACCESS;
+    static constexpr auto LDAP_NO_SUCH_attribute = LDAP_NO_SUCH_ATTRIBUTE;
+    static constexpr auto LDAP_NO_SUCH_object = LDAP_NO_SUCH_OBJECT;
+    static constexpr auto LDAP_OPT_error_code = LDAP_OPT_RESULT_CODE;
+    static constexpr auto LDAP_OPT_error_string = LDAP_OPT_ERROR_STRING;
 
     static constexpr auto ldap_err2string = ::ldap_err2string;
     static constexpr auto ldap_get_option = ::ldap_get_option;

@@ -252,11 +252,18 @@ public:
         LDAPOptionErrorString errorStr =
             getOption<LDAPOptionErrorString>(functionName, failureHint);
 
-        return Status(ErrorCodes::OperationFailed,
-                      str::stream()
-                          << "LDAP operation <" << functionName << ">, " << failureHint << "\". ("
-                          << statusCode << "/" << S::toNativeString(S::ldap_err2string(statusCode))
-                          << "): " << errorStr);
+        auto code = ErrorCodes::OperationFailed;
+        if ((statusCode == S::LDAP_NO_SUCH_object) || (statusCode == S::LDAP_NO_SUCH_attribute)) {
+            // Query succeeded, but found no results due to
+            // asking for non-existant parts of the schema
+            code = ErrorCodes::UserNotFound;
+        }
+
+        return {code,
+                str::stream() << "LDAP operation <" << functionName << ">, " << failureHint
+                              << "\". (" << statusCode << "/"
+                              << S::toNativeString(S::ldap_err2string(statusCode))
+                              << "): " << errorStr};
     }
 
     Status checkLiveness(typename S::TimeoutType* timeout) {

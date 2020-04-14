@@ -163,6 +163,7 @@ env.Library(
         'name_mapping/regex_rewrite_rule.cpp',
     ],
     LIBDEPS=[
+        'ldap_parameters',
         'ldap_query',
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/db/service_context',

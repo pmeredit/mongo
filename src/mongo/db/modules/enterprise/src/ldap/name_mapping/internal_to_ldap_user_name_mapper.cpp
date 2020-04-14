@@ -19,7 +19,8 @@
 #include "mongo/logv2/log.h"
 #include "mongo/util/str.h"
 
-#include "../ldap_runner.h"
+#include "ldap/ldap_parameters_gen.h"
+#include "ldap/ldap_runner.h"
 #include "ldap_rewrite_rule.h"
 #include "regex_rewrite_rule.h"
 
@@ -44,10 +45,26 @@ StatusWith<std::string> InternalToLDAPUserNameMapper::transform(LDAPRunner* runn
             LOGV2_DEBUG(
                 24065, 3, "Transformed username to: {user}", "user"_attr = result.getValue());
             return result;
+        } else {
+            LOGV2_DEBUG(4478600,
+                        3,
+                        "Transformation failed",
+                        "rule"_attr = transform->toStringData(),
+                        "error"_attr = result.getStatus());
         }
 
-        errorStack << "{ rule: " << transform->toStringData() << " error: \""
-                   << result.getStatus().toString() << "\" }, ";
+        auto status = result.getStatus();
+        errorStack << "{ rule: " << transform->toStringData() << " error: \"" << status.toString()
+                   << "\" }, ";
+
+        if (ldapAbortOnNameMappingFailure && (status.code() == ErrorCodes::OperationFailed)) {
+            // OperationFailed indicates we tried to talk to LDAP,
+            // but the server was unreachable/unauthenticated/etc...
+            // It does not necessarily mean the rule would not have matched.
+            return {status.code(),
+                    str::stream() << "Username mapping operation failed, aborting transformation. "
+                                  << errorStack.str()};
+        }
     }
 
     return Status(ErrorCodes::FailedToParse,

@@ -76,3 +76,11 @@ server_parameters:
     cpp_varname: ldapForceMultiThreadMode
     condition:
       preprocessor: '!defined(_WIN32)'
+
+  ldapAbortOnNameMappingFailure:
+    description: >
+        Abort user to DN mapping transformation if the LDAP server returns an error.
+    default: true
+    set_at: startup
+    cpp_vartype: bool
+    cpp_varname: ldapAbortOnNameMappingFailure

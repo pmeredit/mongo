@@ -15,7 +15,7 @@ from ldaptor.protocols.ldap.ldapclient import LDAPClient
 from ldaptor.protocols.ldap.ldapconnector import connectToLDAPEndpoint, LDAPClientCreator
 from ldaptor.protocols.ldap.ldapsyntax import LDAPEntry
 from ldaptor.protocols.ldap.proxybase import ProxyBase
-from ldaptor.protocols.pureldap import LDAPSearchRequest, LDAPResult
+from ldaptor.protocols.pureldap import LDAPSearchRequest, LDAPResult, LDAPFilter_equalityMatch
 from twisted.internet import defer, protocol, reactor, task
 from twisted.internet.endpoints import serverFromString, clientFromString, connectProtocol
 from twisted.python import log, usage
@@ -31,10 +31,23 @@ class LDAPProxy(ProxyBase):
         ProxyBase.__init__(self)
 
     def handleBeforeForwardRequest(self, request, controls, reply):
-        if self.unauthorizedRootDSE and isinstance(request, LDAPSearchRequest) and (not request.baseObject) and (request.attributes == [b'supportedSASLMechanisms']):
-            log.msg("Proxy port {}: Failing on RootDSE query. Request was: {}".format(self.port, repr(request)))
-            reply(LDAPResult(resultCode=50)) # 50 == LDAP_INSUFFICIENT_PRIVILEGES
-            return None
+        if isinstance(request, LDAPSearchRequest):
+            if self.unauthorizedRootDSE and (not request.baseObject) and (request.attributes == [b'supportedSASLMechanisms']):
+                log.msg("Proxy port {}: Failing on RootDSE query. Request was: {}".format(self.port, repr(request)))
+                reply(LDAPResult(resultCode=50)) # 50 == LDAP_INSUFFICIENT_PRIVILEGES
+                return None
+
+            if isinstance(request.filter, LDAPFilter_equalityMatch) and (request.filter.attributeDesc.value == b'description'):
+                assertionValue = request.filter.assertionValue.value
+                if assertionValue[:12] == b'FailureCode:':
+                    try:
+                        failureCode = int(assertionValue[12:])
+                        log.msg("Proxy port {}: Failing intentionally with code {} on filter {}".format(self.port, failureCode, repr(request.filter)))
+                        reply(LDAPResult(resultCode=failureCode))
+                        return None
+                    except ValueError:
+                        pass
+
         log.msg("Proxy port {}: got request for {}".format(self.port, repr(request)))
         return super().handleBeforeForwardRequest(request, controls, reply)
 

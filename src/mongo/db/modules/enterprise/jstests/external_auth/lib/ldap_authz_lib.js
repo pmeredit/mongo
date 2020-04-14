@@ -66,6 +66,9 @@ function LDAPTestConfigGenerator() {
     this.ldapQueryUser = undefined;
     this.ldapQueryPassword = "Admin001";
     this.ldapUserToDNMapping = undefined;
+    this.ldapAbortOnNameMappingFailure = true;
+
+    this.useLogFiles = false;
 
     this.generateEnvConfig = function() {
         const defaultLdapConfig = {
@@ -138,12 +141,14 @@ function LDAPTestConfigGenerator() {
             saslHostName: saslHostName,
             saslServiceName: "mockservice",
             logComponentVerbosity: '{"accessControl":{"verbosity":5}}',
+            ldapAbortOnNameMappingFailure: (this.ldapAbortOnNameMappingFailure ? 'true' : 'false'),
         };
         if (this.useSaslauthd === true) {
             setParameter.saslauthdPath = saslauthdPath + "/mux";
         }
         config.setParameter = setParameter;
         config.env = this.generateEnvConfig();
+        config.useLogFiles = this.useLogFiles;
 
         print(tojson(config));
         return config;
@@ -287,10 +292,15 @@ function setupTest(m) {
 // Individual tests should implement the testCallback function
 function runTests(testCallback, configGenerator, callbackOptions) {
     // single mongod
-    var m = MongoRunner.runMongod(configGenerator.generateMongodConfig());
-    setupTest(m);
-    testCallback({conn: m, options: callbackOptions});
-    MongoRunner.stopMongod(m);
+    var config = MongoRunner.mongodOptions(configGenerator.generateMongodConfig());
+    var m = MongoRunner.runMongod(config);
+    assert(m);
+    try {
+        setupTest(m);
+        testCallback({conn: m, mongodConfig: config, options: callbackOptions});
+    } finally {
+        MongoRunner.stopMongod(m);
+    }
 
     // The mongo shell cannot authenticate as the internal __system user in tests that use x509 for
     // cluster authentication. Choosing the default value for wcMajorityJournalDefault in
