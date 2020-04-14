@@ -6,6 +6,8 @@
 
 #include "ldap_connection.h"
 
+#include "mongo/util/net/sockaddr.h"
+
 #include <boost/optional.hpp>
 #include <ldap.h>
 #include <memory>
@@ -30,6 +32,8 @@ public:
     const boost::optional<LDAPBindOptions>& bindOptions() const {
         return _bindOptions;
     }
+
+    SockAddr getPeerSockAddr() const;
 
 private:
     class OpenLDAPConnectionPIMPL;

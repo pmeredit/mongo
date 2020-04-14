@@ -186,7 +186,8 @@ int openLDAPBindFunction(
                         "Attempted to bind to LDAP server with unrecognized bind type: "
                         "{unrecognizedBindType}",
                         "unrecognizedBindType"_attr =
-                            authenticationChoiceToString(bindOptions->authenticationChoice));
+                            authenticationChoiceToString(bindOptions->authenticationChoice),
+                        "peerAddr"_attr = conn->getPeerSockAddr());
             return LDAP_OPERATIONS_ERROR;
         }
 
@@ -194,16 +195,19 @@ int openLDAPBindFunction(
             LOGV2_ERROR(24055,
                         "{status}. Bind parameters were: {bindOptions}",
                         "status"_attr = status,
-                        "bindOptions"_attr = bindOptions->toCleanString());
+                        "bindOptions"_attr = bindOptions->toCleanString(),
+                        "peerAddr"_attr = conn->getPeerSockAddr());
         }
         return ret;
     } catch (...) {
         Status status = exceptionToStatus();
+        auto* conn = static_cast<OpenLDAPConnection*>(params);
         LOGV2_ERROR(24056,
                     "Failed to bind to LDAP server at {ldapURL} : {status}",
                     "Failed to bind to LDAP server",
                     "ldapURL"_attr = url,
-                    "status"_attr = status);
+                    "status"_attr = status,
+                    "peerAddr"_attr = conn->getPeerSockAddr());
         return LDAP_OPERATIONS_ERROR;
     }
 }
@@ -288,28 +292,33 @@ private:
     decltype(LDAPAPIInfo::ldapai_protocol_version) protocolVersion;
 };
 
-int LDAPConnectCallbackFunction(
-    LDAP* ld, Sockbuf* sb, LDAPURLDesc* srv, struct sockaddr* addr, struct ldap_conncb* ctx) {
-    try {
+SockAddr inferSockAddr(const struct sockaddr* addr) {
+    if (addr->sa_family == AF_INET) {
+        return SockAddr(addr, sizeof(sockaddr_in));
+    }
+    if (addr->sa_family == AF_INET6) {
+        return SockAddr(addr, sizeof(sockaddr_in6));
+    }
+    uasserted(31233,
+              str::stream() << "Socket Address family is not IPv4 or IPv6: " << addr->sa_family);
+}
+}  // namespace
+
+class OpenLDAPConnection::OpenLDAPConnectionPIMPL
+    : public LDAPSessionHolder<OpenLDAPSessionParams> {
+public:
+    static int LDAPConnectCallbackFunction(LDAP* ld,
+                                           Sockbuf* sb,
+                                           LDAPURLDesc* srv,
+                                           struct sockaddr* addr,
+                                           struct ldap_conncb* ctx) try {
+        auto* this_ = reinterpret_cast<OpenLDAPConnection::OpenLDAPConnectionPIMPL*>(ctx->lc_arg);
+        this_->_peer = inferSockAddr(addr);
         LOGV2_DEBUG(20163,
                     3,
                     "Connected to LDAP server at {serverAddress} with LDAP URL: {ldapURL}",
                     "Connected to LDAP server",
-                    "serverAddress"_attr = SockAddr(
-                        addr,
-                        [&]() {
-                            switch (addr->sa_family) {
-                                case AF_INET:
-                                    return sizeof(sockaddr_in);
-                                case AF_INET6:
-                                    return sizeof(sockaddr_in6);
-                                default:
-                                    uasserted(31233,
-                                              str::stream()
-                                                  << "Socket Address family is not IPv4 or IPv6: "
-                                                  << addr->sa_family);
-                            }
-                        }()),
+                    "serverAddress"_attr = this_->_peer,
                     "ldapURL"_attr = std::unique_ptr<char, decltype(&ldap_memfree)>(
                                          ldap_url_desc2str(srv), &ldap_memfree)
                                          .get());
@@ -318,19 +327,20 @@ int LDAPConnectCallbackFunction(
         LOGV2_ERROR(24057, "Failed LDAPConnectCallback with: {reason}", "reason"_attr = e.what());
         return LDAP_OPERATIONS_ERROR;
     }
-}
 
-void LDAPConnectCallbackDelete(LDAP* ld, Sockbuf* sb, struct ldap_conncb* ctx) {}
+    static void LDAPConnectCallbackDelete(LDAP* ld, Sockbuf* sb, struct ldap_conncb* ctx) {}
 
-}  // namespace
+    struct ldap_conncb getCallbacks() {
+        return {&LDAPConnectCallbackFunction, &LDAPConnectCallbackDelete, this};
+    }
 
-class OpenLDAPConnection::OpenLDAPConnectionPIMPL
-    : public LDAPSessionHolder<OpenLDAPSessionParams> {};
+    SockAddr _peer;
+};
 
 OpenLDAPConnection::OpenLDAPConnection(LDAPConnectionOptions options)
     : LDAPConnection(std::move(options)),
       _pimpl(std::make_unique<OpenLDAPConnectionPIMPL>()),
-      _callback{&LDAPConnectCallbackFunction, &LDAPConnectCallbackDelete, nullptr} {
+      _callback(_pimpl->getCallbacks()) {
     Seconds seconds = duration_cast<Seconds>(_options.timeout);
     _timeout.tv_sec = seconds.count();
     _timeout.tv_usec = durationCount<Microseconds>(_options.timeout - seconds);
@@ -341,6 +351,10 @@ OpenLDAPConnection::~OpenLDAPConnection() {
     if (!status.isOK()) {
         LOGV2_ERROR(24058, "LDAP unbind failed: {status}", "status"_attr = status);
     }
+}
+
+SockAddr OpenLDAPConnection::getPeerSockAddr() const {
+    return _pimpl->_peer;
 }
 
 // Identify whether we need to serialize access to libldap via a global mutex.
