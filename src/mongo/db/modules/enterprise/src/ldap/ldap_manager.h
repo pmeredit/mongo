@@ -34,6 +34,12 @@ public:
     static LDAPManager* get(ServiceContext* service);
 
     /**
+     * Examine LDAP configuration to determine if Cyrus should be used
+     * instead of native implementation for SASL authentication.
+     */
+    bool useCyrusForAuthN() const;
+
+    /**
      * For a given user, acquires its roles from LDAP.
      */
     virtual StatusWith<std::vector<RoleName>> getUserRoles(const UserName& userName) = 0;

@@ -9,6 +9,7 @@
 #include <memory>
 
 #include "mongo/base/init.h"
+#include "mongo/db/auth/sasl_options.h"
 #include "mongo/db/service_context.h"
 
 namespace mongo {
@@ -25,5 +26,13 @@ void LDAPManager::set(ServiceContext* service, std::unique_ptr<LDAPManager> ldap
 
 LDAPManager* LDAPManager::get(ServiceContext* service) {
     return getLDAPManager(service).get();
+}
+
+bool LDAPManager::useCyrusForAuthN() const {
+    if (!saslGlobalParams.authdPath.empty()) {
+        return true;
+    }
+
+    return getHosts().empty();
 }
 }  // namespace mongo

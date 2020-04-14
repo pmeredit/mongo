@@ -17,9 +17,9 @@
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/sasl_mechanism_policies.h"
 #include "mongo/db/auth/sasl_mechanism_registry.h"
-#include "mongo/db/auth/sasl_options.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/service_context.h"
+#include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/str.h"
 
@@ -158,26 +158,25 @@ public:
 
     explicit PLAINServerFactoryProxy(ServiceContext* svcCtx)
         : ServerFactoryBase(svcCtx), _svcCtx(svcCtx), _cyrus(_svcCtx), _ldap(_svcCtx) {
-        // Supported configuration will be evaluated later during authentication.
-        // This catches incorrect configurations at startup.
-        if (!useCyrus(_svcCtx)) {
-            uassertStatusOK(supportedBindConfiguration());
-        }
-    }
-
-    static bool useCyrus(ServiceContext* service) {
         // This proxy assumes the targets have matching policy/mechanism types.
         static_assert(std::is_same<LDAPPLAINServerFactory::policy_type,
                                    CyrusPlainServerFactory::policy_type>::value,
                       "PLAINServerFactoryProxy targets have differing policy types");
         static_assert(LDAPPLAINServerFactory::isInternal == CyrusPlainServerFactory::isInternal,
                       "PLAINServerFactoryProxy targets have differing externality");
-        if (!saslGlobalParams.authdPath.empty()) {
-            return true;
-        }
 
-        const auto* ldapManager = LDAPManager::get(service);
-        return ldapManager->getHosts().empty();
+        // Supported configuration will be evaluated later during authentication.
+        // This catches incorrect configurations at startup.
+        const bool cyrus = useCyrus(_svcCtx);
+        LOGV2_DEBUG(4492600, 2, "Registering LDAP PLAIN SASL factory", "useCyrus"_attr = cyrus);
+
+        if (!cyrus) {
+            uassertStatusOK(supportedBindConfiguration());
+        }
+    }
+
+    static bool useCyrus(ServiceContext* service) {
+        return LDAPManager::get(service)->useCyrusForAuthN();
     }
 
     StringData mechanismName() const final {

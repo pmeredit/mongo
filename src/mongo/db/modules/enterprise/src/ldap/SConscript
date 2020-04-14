@@ -42,6 +42,7 @@ env.Library(
     LIBDEPS_PRIVATE=[
         'ldap_query',
         '$BUILD_DIR/mongo/base/secure_allocator',
+        '$BUILD_DIR/mongo/db/auth/sasl_options',
         '$BUILD_DIR/mongo/db/service_context',
         '$BUILD_DIR/mongo/util/options_parser/options_parser',
     ],

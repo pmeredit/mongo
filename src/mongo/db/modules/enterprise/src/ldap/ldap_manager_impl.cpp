@@ -87,7 +87,16 @@ std::vector<std::string> LDAPManagerImpl::getHosts() const {
 }
 
 void LDAPManagerImpl::LDAPManagerImpl::setHosts(std::vector<std::string> hosts) {
+    const bool wasUsingCyrus = useCyrusForAuthN();
     _runner->setHosts(hosts);
+    const bool nowUsingCyrus = useCyrusForAuthN();
+    if (wasUsingCyrus != nowUsingCyrus) {
+        LOGV2_DEBUG(4492601,
+                    2,
+                    "Altering LDAP PLAIN SASL factory",
+                    "useCyrus"_attr = nowUsingCyrus,
+                    "previousValue"_attr = wasUsingCyrus);
+    }
 }
 
 bool LDAPManagerImpl::hasHosts() const {
