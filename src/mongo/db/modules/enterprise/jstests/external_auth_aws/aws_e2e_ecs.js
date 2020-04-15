@@ -38,12 +38,13 @@ const base_command = getPython3Binary() + ` -u  ${container_tester}`;
 const run_prune_command = base_command + " -v remote_gc_services " +
     " --cluster " + config["iam_auth_ecs_cluster"];
 
+const install_dir = _getEnv("INSTALL_DIR");
+
 const run_test_command = base_command + " -d -v run_e2e_test" +
     " --cluster " + config["iam_auth_ecs_cluster"] + " --task_definition " +
     config["iam_auth_ecs_task_definition"] + " --subnets " + config["iam_auth_ecs_subnet_a"] +
     " --subnets " + config["iam_auth_ecs_subnet_b"] + " --security_group " +
-    config["iam_auth_ecs_security_group"] +
-    " --files dist-test/bin/mongod:/root/mongod dist-test/bin/mongo:/root/mongo " +
+    config["iam_auth_ecs_security_group"] + ` --files ${install_dir}/:/root/install_dir ` +
     ` ${lib_dir}/ecs_hosted_test.js:/root/ecs_hosted_test.js ` +
     ` --script ${lib_dir}/ecs_hosted_test.sh`;
 

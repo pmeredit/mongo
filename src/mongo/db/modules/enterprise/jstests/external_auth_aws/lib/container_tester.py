@@ -63,6 +63,8 @@ def _userandhostandport(endpoint):
 def _scp(endpoint, src, dest):
     (user, host, port) = _userandhostandport(endpoint)
     cmd = ["scp", "-o", "StrictHostKeyChecking=no", "-P", port, src, "%s@%s:%s" % (user, host, dest) ]
+    if os.path.isdir(src):
+        cmd.insert(5, "-r")
     _run_process(cmd)
 
 def _ssh(endpoint, cmd):
