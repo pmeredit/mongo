@@ -85,13 +85,22 @@ void validateSignedHeaders(StringData authHeader) {
             // The header is expected, advance one and continue
             headerIndex++;
         } else {
+            auto origHeaderIndex = headerIndex;
+
             // The header is not expected, advance one and check again until we find a match
             // or we run out of allowed headers
             for (; headerIndex < (allowedHeaders.size()) && header != allowedHeaders[headerIndex];
                  headerIndex++) {
             }
 
-            uassert(51290, "Did not find expected header", headerIndex < allowedHeaders.size());
+            uassert(
+                51290,
+                str::stream() << "Did not find an expected header in its expected position. "
+                                 "Only certain headers are permitted "
+                                 "and headers must be sorted lexographically. Expected header: '"
+                              << allowedHeaders[origHeaderIndex] << "', Actual header: '" << header
+                              << "'",
+                headerIndex < allowedHeaders.size());
         }
     }
 
