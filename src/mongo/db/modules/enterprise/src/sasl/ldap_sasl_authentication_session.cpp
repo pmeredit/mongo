@@ -223,6 +223,7 @@ namespace {
 ServiceContext::ConstructorActionRegisterer ldapRegisterer{
     "PLAINServerMechanismProxy",
     {"CreateSASLServerMechanismRegistry", "SetLDAPManagerImpl"},
+    {"ValidateSASLServerMechanismRegistry"},
     [](ServiceContext* service) {
         auto& registry = SASLServerMechanismRegistry::get(service);
         registry.registerFactory<PLAINServerFactoryProxy>();

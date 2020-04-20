@@ -143,11 +143,7 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(InitializeAWSServer, ("EndStartupOptionStor
     return Status::OK();
 }
 
-ServiceContext::ConstructorActionRegisterer ldapRegisterer{
-    "AWSServerMechanismProxy", {"CreateSASLServerMechanismRegistry"}, [](ServiceContext* service) {
-        auto& registry = SASLServerMechanismRegistry::get(service);
-        registry.registerFactory<AWSServerFactory>();
-    }};
+GlobalSASLMechanismRegisterer<AWSServerFactory> awsRegisterer;
 
 }  // namespace
 }  // namespace mongo
