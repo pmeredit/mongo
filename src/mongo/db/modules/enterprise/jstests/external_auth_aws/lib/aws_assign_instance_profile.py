@@ -31,7 +31,7 @@ def _has_instance_profile():
 def _wait_instance_profile():
     retry = 60
     while not _has_instance_profile() and retry:
-        time.sleep(1)
+        time.sleep(5)
         retry -= 1
 
     if retry == 0:
