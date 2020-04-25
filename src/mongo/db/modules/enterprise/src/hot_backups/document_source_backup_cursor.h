@@ -96,29 +96,49 @@ private:
                                const StorageEngine::BackupOptions& options);
 
     /**
-     * The first call will return the metadata about the backup.
-     * Subsequent cursor calls return a document with one of the following formats.
+     * The first call to doGetNext() will return the metadata about the backup. Subsequent calls
+     * return documents with the following formats.
      *
-     * For non-incremental backups and for incremental backups where the file had no changed blocks:
-     * {
-     *     filename: String,
-     *     fileSize: Number,
-     * }
-     * Additionally, for incremental backups, if no changes were made but the fileSize decreased,
-     * then the file can be safely truncated to the new size.
+     * 1. Non-incremental (i.e. full) backups return one document per file with the format:
      *
-     * For incremental backups where the file had changed blocks:
-     * {
-     *     filename: String,
-     *     fileSize: Number,
-     *     offset: Number,
-     *     length: Number,
-     * }
-     * If the file had multiple changed blocks, then there will be one document per changed block.
+     *    {
+     *        filename: String,
+     *        fileSize: Number
+     *    }
+     *
+     * 2. The first full backup used as the basis for future incremental backups returns one
+     *    document per file with the format:
+     *
+     *    {
+     *        filename: String,
+     *        fileSize: Number,
+     *        offset: 0,
+     *        length: fileSize
+     *    }
+     *
+     * 3. Incremental backups return one document per unchanged file with the format:
+     *
+     *    {
+     *        filename: String,
+     *        fileSize: Number
+     *    }
+     *
+     * 4. Incremental backups return multiple documents (one document per block, where each block
+     *    has a maximum size of 'options.blockSizeMB') per changed file with the format:
+     *
+     *    {
+     *        filename: String,
+     *        fileSize: Number,
+     *        offset: Number,
+     *        length: Number
+     *    }
+     *
+     * TODO (SERVER-47939): Improve/consolidate the format of documents returned by doGetNext().
      */
     GetNextResult doGetNext() final;
 
     BackupCursorState _backupCursorState;
+    std::vector<StorageEngine::BackupBlock> _backupBlocks;
 };
 
 }  // namespace mongo

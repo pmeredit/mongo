@@ -41,47 +41,50 @@ DocumentSourceBackupCursor::~DocumentSourceBackupCursor() {
 }
 
 DocumentSource::GetNextResult DocumentSourceBackupCursor::doGetNext() {
+    const std::size_t kBatchSize = 1000;
+
     if (_backupCursorState.preamble) {
         Document doc = _backupCursorState.preamble.get();
         _backupCursorState.preamble = boost::none;
-
         return std::move(doc);
     }
 
-    if (!_backupCursorState.backupInformation.empty()) {
-        const auto fileItr = _backupCursorState.backupInformation.begin();
+    if (!_backupCursorState.otherBackupBlocks.empty()) {
+        invariant(_backupBlocks.empty());
+        _backupBlocks = std::move(_backupCursorState.otherBackupBlocks);
+        _backupCursorState.otherBackupBlocks.clear();
+    }
 
-        BSONObjBuilder objBuilder;
-        objBuilder.append("filename", fileItr->first);
-        objBuilder.append("fileSize", static_cast<long long>(fileItr->second.fileSize));
+    if (_backupBlocks.empty() && _backupCursorState.streamingCursor) {
+        _backupBlocks =
+            uassertStatusOK(_backupCursorState.streamingCursor->getNextBatch(kBatchSize));
+    }
 
-        // Non-incremental backups and unchanged files for incremental backups do not have block
-        // information.
-        if (fileItr->second.blocksToCopy.empty()) {
-            _backupCursorState.backupInformation.erase(fileItr);
-            return Document(objBuilder.obj());
-        }
+    if (!_backupBlocks.empty()) {
+        const StorageEngine::BackupBlock& backupBlock = _backupBlocks.back();
 
-        const auto blockItr = fileItr->second.blocksToCopy.begin();
-        if (blockItr->offset > static_cast<uint64_t>(std::numeric_limits<long long>::max()) ||
-            blockItr->length > static_cast<uint64_t>(std::numeric_limits<long long>::max())) {
+        if (backupBlock.offset > static_cast<uint64_t>(std::numeric_limits<long long>::max()) ||
+            backupBlock.length > static_cast<uint64_t>(std::numeric_limits<long long>::max()) ||
+            backupBlock.fileSize > static_cast<uint64_t>(std::numeric_limits<long long>::max())) {
             std::stringstream ss;
-            ss << "Offset " << blockItr->offset << " or length " << blockItr->length
-               << " is too large to convert from uint64_t to long long";
+            ss << "Offset " << backupBlock.offset << ", length " << backupBlock.length << ", or "
+               << backupBlock.fileSize << " is too large to convert from uint64_t to long long";
             uasserted(ErrorCodes::Overflow, ss.str());
         }
 
-        objBuilder.append("offset", static_cast<long long>(blockItr->offset));
-        objBuilder.append("length", static_cast<long long>(blockItr->length));
-
-        fileItr->second.blocksToCopy.erase(blockItr);
-
-        // If this was the last block to copy, remove the file from the map.
-        if (fileItr->second.blocksToCopy.empty()) {
-            _backupCursorState.backupInformation.erase(fileItr);
+        Document doc;
+        if (backupBlock.offset == 0 && backupBlock.length == 0) {
+            doc = {{"filename", backupBlock.filename},
+                   {"fileSize", static_cast<long long>(backupBlock.fileSize)}};
+        } else {
+            doc = {{"filename", backupBlock.filename},
+                   {"fileSize", static_cast<long long>(backupBlock.fileSize)},
+                   {"offset", static_cast<long long>(backupBlock.offset)},
+                   {"length", static_cast<long long>(backupBlock.length)}};
         }
 
-        return Document(objBuilder.obj());
+        _backupBlocks.pop_back();
+        return std::move(doc);
     }
 
     return GetNextResult::makeEOF();
@@ -130,11 +133,10 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursor::createFromBson(
     }
 
     if (!options.incrementalBackup) {
-        uassert(
-            ErrorCodes::InvalidOptions,
-            str::stream()
-                << "Cannot have 'thisBackupName' or 'srcBackupName' when incrementalBackup=false",
-            !options.thisBackupName && !options.srcBackupName);
+        uassert(ErrorCodes::InvalidOptions,
+                str::stream() << "Cannot have 'thisBackupName' or 'srcBackupName' when "
+                                 "incrementalBackup=false",
+                !options.thisBackupName && !options.srcBackupName);
     } else {
         uassert(ErrorCodes::InvalidOptions,
                 "Cannot specify both 'incrementalBackup' and 'disableIncrementalBackup' as true.",
@@ -159,4 +161,5 @@ Value DocumentSourceBackupCursor::serialize(
     boost::optional<ExplainOptions::Verbosity> explain) const {
     return Value(BSON(kStageName << 1));
 }
+
 }  // namespace mongo

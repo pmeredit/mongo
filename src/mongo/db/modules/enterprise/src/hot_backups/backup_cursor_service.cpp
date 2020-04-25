@@ -41,17 +41,6 @@ ServiceContext::ConstructorActionRegisterer registerBackupCursorHooks{
         BackupCursorHooks::registerInitializer(constructBackupCursorService);
     }};
 
-std::vector<std::string> deduplicateFiles(const std::vector<std::string>& newFiles,
-                                          const std::set<std::string>& oldFiles) {
-    std::vector<std::string> result;
-    for (auto& file : newFiles) {
-        if (oldFiles.find(file) == oldFiles.end()) {
-            result.push_back(file);
-        }
-    }
-    return result;
-}
-
 }  // namespace
 
 void BackupCursorService::fsyncLock(OperationContext* opCtx) {
@@ -114,11 +103,11 @@ BackupCursorState BackupCursorService::openBackupCursor(
         checkpointTimestamp = _storageEngine->getLastStableRecoveryTimestamp();
     };
 
-    StorageEngine::BackupInformation backupInformation;
+    std::unique_ptr<StorageEngine::StreamingCursor> streamingCursor;
     if (options.disableIncrementalBackup) {
         uassertStatusOK(_storageEngine->disableIncrementalBackup(opCtx));
     } else {
-        backupInformation = uassertStatusOK(_storageEngine->beginNonBlockingBackup(opCtx, options));
+        streamingCursor = uassertStatusOK(_storageEngine->beginNonBlockingBackup(opCtx, options));
     }
 
     _state = kBackupCursorOpened;
@@ -171,6 +160,7 @@ BackupCursorState BackupCursorService::openBackupCursor(
                 oplogStart < oplogEnd);
     }
 
+    std::vector<StorageEngine::BackupBlock> eseBackupBlocks;
     auto encHooks = EncryptionHooks::get(opCtx->getServiceContext());
     if (encHooks->enabled() && !options.disableIncrementalBackup) {
         std::vector<std::string> eseFiles = uassertStatusOK(encHooks->beginNonBlockingBackup());
@@ -187,11 +177,7 @@ BackupCursorState BackupCursorService::openBackupCursor(
             // The database instance backing the encryption at rest data simply returns filenames
             // that need to be copied whole. The assumption is these files are small so the cost is
             // negligible.
-            StorageEngine::BackupFile backupFile(fileSize);
-            backupInformation.insert({filename, backupFile});
-            if (options.incrementalBackup) {
-                backupInformation.at(filename).blocksToCopy.push_back({0, fileSize});
-            }
+            eseBackupBlocks.push_back({filename, 0 /* offset */, fileSize, fileSize});
         }
     }
 
@@ -226,12 +212,9 @@ BackupCursorState BackupCursorService::openBackupCursor(
     }
 
     Document preamble{{"metadata", builder.obj()}};
-    for (const auto& entry : backupInformation) {
-        _backupFiles.insert(entry.first);
-    }
 
     closeCursorGuard.dismiss();
-    return {*_activeBackupId, preamble, backupInformation};
+    return {*_activeBackupId, preamble, std::move(streamingCursor), eseBackupBlocks};
 }
 
 void BackupCursorService::closeBackupCursor(OperationContext* opCtx, const UUID& backupId) {
@@ -291,7 +274,7 @@ BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext
                 currentTerm == _replTermOfActiveBackup);
     }
 
-    return BackupCursorExtendState{deduplicateFiles(filesToBackup, _backupFiles)};
+    return {filesToBackup};
 }
 
 bool BackupCursorService::isBackupCursorOpen() const {

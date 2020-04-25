@@ -26,7 +26,11 @@ const nullTimestamp = Timestamp();
     MongoRunner.stopMongod(conn);
 })();
 
-let rst = new ReplSetTest({name: "aggBackupCursor", nodes: 1});
+let rst = new ReplSetTest({
+    name: "aggBackupCursor",
+    nodes: 1,
+    nodeOptions: {wiredTigerEngineConfigString: "log=(file_max=100K)"}
+});
 rst.startSet();
 rst.initiate();
 let db = rst.getPrimary().getDB("test");
