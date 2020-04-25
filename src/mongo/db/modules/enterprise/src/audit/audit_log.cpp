@@ -140,16 +140,14 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(AuditDomain, ("InitializeGlobalAuditManager
 
     switch (getGlobalAuditManager()->auditFormat) {
         case AuditFormatConsole: {
-            domain.attachAppender(
-                std::make_unique<logger::ConsoleAppender<AuditEvent>>(
-                    std::make_unique<AuditEventTextEncoder>()));
+            domain.attachAppender(std::make_unique<logger::ConsoleAppender<AuditEvent>>(
+                std::make_unique<AuditEventTextEncoder>()));
             break;
         }
 #ifndef _WIN32
         case AuditFormatSyslog: {
-            domain.attachAppender(
-                std::make_unique<logger::SyslogAppender<AuditEvent>>(
-                    std::make_unique<AuditEventSyslogEncoder>()));
+            domain.attachAppender(std::make_unique<logger::SyslogAppender<AuditEvent>>(
+                std::make_unique<AuditEventSyslogEncoder>()));
             break;
         }
 #endif  // ndef _WIN32
