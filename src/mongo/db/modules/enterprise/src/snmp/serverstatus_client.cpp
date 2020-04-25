@@ -2,7 +2,7 @@
  * Copyright (C) 2013 MongoDB, Inc.  All Rights Reserved.
  */
 
-#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kNetwork
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kNetwork
 
 #include "serverstatus_client.h"
 

@@ -2,7 +2,7 @@
  *  Copyright (C) 2019 MongoDB Inc.
  */
 
-#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kDefault
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
 
 #include "mongo/platform/basic.h"
 
@@ -19,8 +19,11 @@
 #endif
 
 #include "mongo/base/initializer.h"
-#include "mongo/logger/logger.h"
 #include "mongo/logv2/log.h"
+#include "mongo/logv2/log_component.h"
+#include "mongo/logv2/log_component_settings.h"
+#include "mongo/logv2/log_manager.h"
+#include "mongo/logv2/log_severity.h"
 #include "mongo/util/net/hostname_canonicalization.h"
 #include "mongo/util/quick_exit.h"
 #include "mongo/util/signal_handlers.h"
@@ -321,7 +324,9 @@ int kerberosToolMain(int argc, char* argv[], char** envp) {
     report.closeSection("DNS test successful.");
 
     if (globalKerberosToolOptions->debug) {
-        logger::globalLogDomain()->setMinimumLoggedSeverity(logger::LogSeverity::Debug(255));
+        logv2::LogManager::global().getGlobalSettings().setMinimumLoggedSeverity(
+            logv2::LogComponent::kDefault,
+            logv2::LogSeverity::Debug(logv2::LogSeverity::kMaxDebugLevel));
 #ifndef _WIN32
         int result = setenv("KRB5_TRACE", "/dev/stdout", 1);
         if (result != 0) {

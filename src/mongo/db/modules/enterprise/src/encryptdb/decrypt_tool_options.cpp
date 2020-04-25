@@ -9,7 +9,10 @@
 #include <iostream>
 
 #include "mongo/base/status.h"
-#include "mongo/logger/logger.h"
+#include "mongo/logv2/log_component.h"
+#include "mongo/logv2/log_component_settings.h"
+#include "mongo/logv2/log_manager.h"
+#include "mongo/logv2/log_severity.h"
 #include "mongo/util/exit_code.h"
 #include "mongo/util/options_parser/startup_option_init.h"
 #include "mongo/util/options_parser/startup_options.h"
@@ -66,7 +69,8 @@ Status storeDecryptToolOptions(const moe::Environment& params) {
     globalDecryptToolOptions.kmipParams = std::move(swKmipParams.getValue());
 
     if (params.count("verbose")) {
-        logger::globalLogDomain()->setMinimumLoggedSeverity(logger::LogSeverity::Debug(1));
+        logv2::LogManager::global().getGlobalSettings().setMinimumLoggedSeverity(
+            logv2::LogComponent::kDefault, logv2::LogSeverity::Debug(1));
     }
 
     if (params.count("noConfirm")) {

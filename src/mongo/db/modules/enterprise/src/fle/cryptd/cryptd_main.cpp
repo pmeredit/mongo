@@ -2,7 +2,7 @@
  * Copyright (C) 2019 MongoDB, Inc.  All Rights Reserved.
  */
 
-#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kControl
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kControl
 
 #include "mongo/platform/basic.h"
 
@@ -123,7 +123,7 @@ void shutdownTask() {
     // Shutdown the TransportLayer so that new connections aren't accepted
     if (auto tl = serviceContext->getTransportLayer()) {
         LOGV2_OPTIONS(24226,
-                      {logComponentV1toV2(logger::LogComponent::kNetwork)},
+                      {logv2::LogComponent::kNetwork},
                       "shutdown: going to close listening sockets...");
         tl->shutdown();
     }
@@ -140,7 +140,7 @@ void shutdownTask() {
         lockFile->clearPidAndUnlock();
     }
 
-    LOGV2_OPTIONS(24227, {logComponentV1toV2(logger::LogComponent::kControl)}, "now exiting");
+    LOGV2(24227, "now exiting");
 }
 
 ExitCode initAndListen() {
@@ -169,13 +169,11 @@ ExitCode initAndListen() {
         attrs.add("architecture", is32bit ? "32-bit"_sd : "64-bit"_sd);
         std::string hostName = getHostNameCached();
         attrs.add("host", hostName);
-        LOGV2_OPTIONS(4615669, {logv2::LogComponent::kControl}, "MongoCryptD starting", attrs);
+        LOGV2(4615669, "MongoCryptD starting", attrs);
     }
 
     if (kDebugBuild)
-        LOGV2_OPTIONS(24228,
-                      {logComponentV1toV2(logger::LogComponent::kControl)},
-                      "DEBUG build (which is slower)");
+        LOGV2(24228, "DEBUG build (which is slower)");
 
 #ifdef _WIN32
     VersionInfoInterface::instance().logTargetMinOS();

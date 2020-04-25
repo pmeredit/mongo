@@ -2,7 +2,7 @@
  * Copyright (C) 2015 MongoDB Inc.
  */
 
-#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
 
 #include "mongo/platform/basic.h"
 
@@ -106,7 +106,7 @@ StatusWith<KMIPService> KMIPService::createKMIPService(const KMIPParams& kmipPar
 KMIPService::KMIPService(const HostAndPort& server, std::unique_ptr<SSLManagerInterface> sslManager)
     : _sslManager(std::move(sslManager)),
       _server(server),
-      _socket(std::make_unique<Socket>(10, logger::LogSeverity::Log())) {}
+      _socket(std::make_unique<Socket>(10, logv2::LogSeverity::Log())) {}
 
 StatusWith<std::string> KMIPService::createExternalKey() {
     StatusWith<KMIPResponse> swResponse = _sendRequest(_generateKMIPCreateRequest());

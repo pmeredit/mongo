@@ -13,7 +13,7 @@
 #include "mongo/db/jsobj.h"
 #include "mongo/db/matcher/expression.h"
 #include "mongo/db/matcher/matchable.h"
-#include "mongo/logger/log_severity.h"
+#include "mongo/logv2/log_severity.h"
 
 namespace mongo {
 namespace audit {
@@ -81,8 +81,8 @@ public:
     /**
      * Audit messages get classed as Info when written to syslog
      */
-    logger::LogSeverity getSeverity() const {
-        return logger::LogSeverity::Info();
+    logv2::LogSeverity getSeverity() const {
+        return logv2::LogSeverity::Info();
     }
 
 protected:
