@@ -7,7 +7,7 @@
 #include "mongo/platform/basic.h"
 
 #include "audit_event.h"
-#include "audit_log_domain.h"
+#include "audit_log.h"
 #include "audit_manager_global.h"
 #include "audit_private.h"
 #include "mongo/base/status.h"
@@ -146,7 +146,7 @@ void audit::logCreateIndex(Client* client,
                            indexname,
                            nsname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 
@@ -158,7 +158,7 @@ void audit::logCreateCollection(Client* client, StringData nsname) {
     CreateCollectionEvent event(makeEnvelope(client, ActionType::createCollection, ErrorCodes::OK),
                                 nsname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 
@@ -170,7 +170,7 @@ void audit::logCreateDatabase(Client* client, StringData dbname) {
     CreateDatabaseEvent event(makeEnvelope(client, ActionType::createDatabase, ErrorCodes::OK),
                               dbname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 
@@ -182,7 +182,7 @@ void audit::logDropIndex(Client* client, StringData indexname, StringData nsname
     DropIndexEvent event(
         makeEnvelope(client, ActionType::dropIndex, ErrorCodes::OK), indexname, nsname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 
@@ -194,7 +194,7 @@ void audit::logDropCollection(Client* client, StringData nsname) {
     DropCollectionEvent event(makeEnvelope(client, ActionType::dropCollection, ErrorCodes::OK),
                               nsname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 
@@ -205,7 +205,7 @@ void audit::logDropDatabase(Client* client, StringData dbname) {
 
     DropDatabaseEvent event(makeEnvelope(client, ActionType::dropDatabase, ErrorCodes::OK), dbname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 
@@ -217,7 +217,7 @@ void audit::logRenameCollection(Client* client, StringData source, StringData ta
     RenameCollectionEvent event(
         makeEnvelope(client, ActionType::renameCollection, ErrorCodes::OK), source, target);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 

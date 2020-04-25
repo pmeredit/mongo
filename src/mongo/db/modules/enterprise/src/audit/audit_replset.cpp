@@ -7,7 +7,7 @@
 #include "mongo/platform/basic.h"
 
 #include "audit_event.h"
-#include "audit_log_domain.h"
+#include "audit_log.h"
 #include "audit_manager_global.h"
 #include "audit_private.h"
 #include "mongo/base/status.h"
@@ -53,7 +53,7 @@ void audit::logReplSetReconfig(Client* client, const BSONObj* oldConfig, const B
     ReplSetReconfigEvent event(
         makeEnvelope(client, ActionType::replSetReconfig, ErrorCodes::OK), oldConfig, newConfig);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 

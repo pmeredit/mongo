@@ -7,7 +7,7 @@
 #include "mongo/platform/basic.h"
 
 #include "audit_event.h"
-#include "audit_log_domain.h"
+#include "audit_log.h"
 #include "audit_manager_global.h"
 #include "audit_private.h"
 #include "mongo/base/status.h"
@@ -168,7 +168,7 @@ void audit::logCreateUser(Client* client,
                           roles,
                           restrictions);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 
@@ -179,7 +179,7 @@ void audit::logDropUser(Client* client, const UserName& username) {
 
     DropUserEvent event(makeEnvelope(client, ActionType::dropUser, ErrorCodes::OK), username);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 
@@ -191,7 +191,7 @@ void audit::logDropAllUsersFromDatabase(Client* client, StringData dbname) {
     DropAllUsersFromDatabaseEvent event(
         makeEnvelope(client, ActionType::dropAllUsersFromDatabase, ErrorCodes::OK), dbname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 
@@ -212,7 +212,7 @@ void audit::logUpdateUser(Client* client,
                           roles,
                           restrictions);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 

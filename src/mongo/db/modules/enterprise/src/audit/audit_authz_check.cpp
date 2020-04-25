@@ -7,7 +7,7 @@
 #include "mongo/platform/basic.h"
 
 #include "audit_event.h"
-#include "audit_log_domain.h"
+#include "audit_log.h"
 #include "audit_manager_global.h"
 #include "audit_options.h"
 #include "audit_private.h"
@@ -87,7 +87,7 @@ void _logAuthzCheck(Client* client,
                              std::move(generator));
 
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 

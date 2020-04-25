@@ -7,7 +7,7 @@
 #include "mongo/platform/basic.h"
 
 #include "audit_event.h"
-#include "audit_log_domain.h"
+#include "audit_log.h"
 #include "audit_manager_global.h"
 #include "audit_private.h"
 #include "mongo/base/status.h"
@@ -334,7 +334,7 @@ void audit::logGrantRolesToUser(Client* client,
     GrantRolesToUserEvent event(
         makeEnvelope(client, ActionType::grantRolesToUser, ErrorCodes::OK), username, roles);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 
@@ -348,7 +348,7 @@ void audit::logRevokeRolesFromUser(Client* client,
     RevokeRolesFromUserEvent event(
         makeEnvelope(client, ActionType::revokeRolesFromUser, ErrorCodes::OK), username, roles);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 
@@ -367,7 +367,7 @@ void audit::logCreateRole(Client* client,
                           privileges,
                           restrictions);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 
@@ -386,7 +386,7 @@ void audit::logUpdateRole(Client* client,
                           privileges,
                           restrictions);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 
@@ -397,7 +397,7 @@ void audit::logDropRole(Client* client, const RoleName& role) {
 
     DropRoleEvent event(makeEnvelope(client, ActionType::dropRole, ErrorCodes::OK), role);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 
@@ -409,7 +409,7 @@ void audit::logDropAllRolesFromDatabase(Client* client, StringData dbname) {
     DropAllRolesFromDatabaseEvent event(
         makeEnvelope(client, ActionType::dropAllRolesFromDatabase, ErrorCodes::OK), dbname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 
@@ -423,7 +423,7 @@ void audit::logGrantRolesToRole(Client* client,
     GrantRolesToRoleEvent event(
         makeEnvelope(client, ActionType::grantRolesToRole, ErrorCodes::OK), role, roles);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 
@@ -437,7 +437,7 @@ void audit::logRevokeRolesFromRole(Client* client,
     RevokeRolesFromRoleEvent event(
         makeEnvelope(client, ActionType::revokeRolesFromRole, ErrorCodes::OK), role, roles);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 
@@ -451,7 +451,7 @@ void audit::logGrantPrivilegesToRole(Client* client,
     GrantPrivilegesToRoleEvent event(
         makeEnvelope(client, ActionType::grantPrivilegesToRole, ErrorCodes::OK), role, privileges);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 
@@ -467,7 +467,7 @@ void audit::logRevokePrivilegesFromRole(Client* client,
         role,
         privileges);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 

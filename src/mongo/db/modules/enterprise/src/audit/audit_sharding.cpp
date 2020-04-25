@@ -7,7 +7,7 @@
 #include "mongo/platform/basic.h"
 
 #include "audit_event.h"
-#include "audit_log_domain.h"
+#include "audit_log.h"
 #include "audit_manager_global.h"
 #include "audit_private.h"
 #include "mongo/base/status.h"
@@ -121,7 +121,7 @@ void audit::logEnableSharding(Client* client, StringData dbname) {
     EnableShardingEvent event(makeEnvelope(client, ActionType::enableSharding, ErrorCodes::OK),
                               dbname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 
@@ -136,7 +136,7 @@ void audit::logAddShard(Client* client,
     AddShardEvent event(
         makeEnvelope(client, ActionType::addShard, ErrorCodes::OK), name, servers, maxSize);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 
@@ -151,7 +151,7 @@ void audit::logShardCollection(Client* client,
     ShardCollectionEvent event(
         makeEnvelope(client, ActionType::shardCollection, ErrorCodes::OK), ns, keyPattern, unique);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 
@@ -162,7 +162,7 @@ void audit::logRemoveShard(Client* client, StringData shardname) {
     RemoveShardEvent event(makeEnvelope(client, ActionType::removeShard, ErrorCodes::OK),
                            shardname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 
@@ -174,7 +174,7 @@ void audit::logRefineCollectionShardKey(Client* client, StringData ns, const BSO
     RefineCollectionShardKeyEvent event(
         makeEnvelope(client, ActionType::refineCollectionShardKey, ErrorCodes::OK), ns, keyPattern);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 

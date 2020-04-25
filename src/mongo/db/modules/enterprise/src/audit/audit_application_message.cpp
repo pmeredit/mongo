@@ -7,7 +7,7 @@
 #include "mongo/platform/basic.h"
 
 #include "audit_event.h"
-#include "audit_log_domain.h"
+#include "audit_log.h"
 #include "audit_manager_global.h"
 #include "audit_private.h"
 #include "mongo/base/status.h"
@@ -45,7 +45,7 @@ void audit::logApplicationMessage(Client* client, StringData msg) {
     ApplicationMessageEvent event(
         makeEnvelope(client, ActionType::applicationMessage, ErrorCodes::OK), msg);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        uassertStatusOK(getGlobalAuditLogDomain()->append(event));
+        logEvent(event);
     }
 }
 

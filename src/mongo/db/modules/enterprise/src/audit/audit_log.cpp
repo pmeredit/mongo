@@ -4,7 +4,7 @@
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
-#include "audit_log_domain.h"
+#include "audit_log.h"
 
 #include <boost/filesystem.hpp>
 
@@ -25,21 +25,14 @@
 #include "mongo/logger/syslog_appender.h"
 #include "mongo/logv2/log.h"
 
-namespace mongo {
-
-namespace logger {
-template class LogDomain<audit::AuditEvent>;
-}  // namespace logger
-
-namespace audit {
-
-static AuditLogDomain globalAuditLogDomain;
-
-AuditLogDomain* getGlobalAuditLogDomain() {
-    return &globalAuditLogDomain;
-}
+namespace mongo::audit {
 
 namespace {
+
+auto& getLogDomain() {
+    static auto& p = *new logger::LogDomain<AuditEvent>();
+    return p;
+}
 
 class AuditEventSyslogEncoder : public logger::Encoder<AuditEvent> {
 public:
@@ -140,19 +133,21 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(AuditDomain, ("InitializeGlobalAuditManager
         return Status::OK();
     }
 
+    auto& domain = getLogDomain();
+
     // On any audit log failure, abort.
-    getGlobalAuditLogDomain()->setAbortOnFailure(true);
+    domain.setAbortOnFailure(true);
 
     switch (getGlobalAuditManager()->auditFormat) {
         case AuditFormatConsole: {
-            getGlobalAuditLogDomain()->attachAppender(
+            domain.attachAppender(
                 std::make_unique<logger::ConsoleAppender<AuditEvent>>(
                     std::make_unique<AuditEventTextEncoder>()));
             break;
         }
 #ifndef _WIN32
         case AuditFormatSyslog: {
-            getGlobalAuditLogDomain()->attachAppender(
+            domain.attachAppender(
                 std::make_unique<logger::SyslogAppender<AuditEvent>>(
                     std::make_unique<AuditEventSyslogEncoder>()));
             break;
@@ -182,10 +177,10 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(AuditDomain, ("InitializeGlobalAuditManager
             }
 
             if (getGlobalAuditManager()->auditFormat == AuditFormatJsonFile) {
-                getGlobalAuditLogDomain()->attachAppender(
+                domain.attachAppender(
                     std::make_unique<RotatableAuditFileAppender<AuditEventJsonEncoder>>(writer));
             } else if (getGlobalAuditManager()->auditFormat == AuditFormatBsonFile) {
-                getGlobalAuditLogDomain()->attachAppender(
+                domain.attachAppender(
                     std::make_unique<RotatableAuditFileAppender<AuditEventBsonEncoder>>(writer));
             } else {
                 return Status(ErrorCodes::InternalError, "invalid format");
@@ -201,5 +196,8 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(AuditDomain, ("InitializeGlobalAuditManager
 
 }  // namespace
 
-}  // namespace audit
-}  // namespace mongo
+void logEvent(const AuditEvent& event) {
+    uassertStatusOK(getLogDomain().append(event));
+}
+
+}  // namespace mongo::audit
