@@ -518,7 +518,7 @@ if hygienic:
     #
     # SNMP doc files
     env.AutoInstall(
-        target='$DESTDIR/snmp',
+        target='$PREFIX/snmp',
         source=env.Glob("docs/*"),
         AIB_COMPONENT='snmp',
         AIB_COMPONENTS_EXTRA=[
