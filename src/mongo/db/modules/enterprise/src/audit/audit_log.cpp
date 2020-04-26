@@ -16,7 +16,7 @@
 #include "mongo/db/server_options.h"
 #include "mongo/logger/console_appender.h"
 #include "mongo/logger/encoder.h"
-#include "mongo/logger/log_domain-impl.h"
+#include "mongo/logger/log_domain.h"
 #include "mongo/logger/logger.h"
 #include "mongo/logger/message_event_utf8_encoder.h"
 #include "mongo/logger/rotatable_file_appender.h"
