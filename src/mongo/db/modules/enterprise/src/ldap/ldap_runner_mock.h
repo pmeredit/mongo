@@ -42,7 +42,7 @@ public:
         std::unique_ptr<LDAPQueryConfig> parameters =
             std::make_unique<LDAPQueryConfig>(std::move(swQueryParameters.getValue()));
 
-        auto swLDAPQuery = LDAPQuery::instantiateQuery(*parameters);
+        auto swLDAPQuery = LDAPQuery::instantiateQuery(*parameters, LDAPQueryContext::kUnitTest);
         ASSERT_OK(swLDAPQuery.getStatus());
 
         MockQueryEntry savedQuery{

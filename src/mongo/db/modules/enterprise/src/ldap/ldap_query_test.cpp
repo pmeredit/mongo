@@ -22,7 +22,8 @@ TEST(LDAPQueryInstantiate, InstantiationFromRawStringAlwaysSucceed) {
     auto swQueryParameters = LDAPQueryConfig::createLDAPQueryConfig(userDN);
     ASSERT_OK(swQueryParameters.getStatus());
 
-    auto swQuery = LDAPQuery::instantiateQuery(swQueryParameters.getValue());
+    auto swQuery =
+        LDAPQuery::instantiateQuery(swQueryParameters.getValue(), LDAPQueryContext::kUnitTest);
     ASSERT_OK(swQuery.getStatus());
     ASSERT_EQ("cn=sajack,dc=mongodb,dc=com", swQuery.getValue().getBaseDN());
 }
@@ -32,7 +33,8 @@ TEST(LDAPQueryInstantiate, POSIXGroupSchema) {
         "dc=mongodb,dc=com??base?(&(objectClass=posixGroup)(memberUid={PROVIDED_USER}))");
     ASSERT_OK(swQueryParameters.getStatus());
 
-    auto swQuery = LDAPQuery::instantiateQuery(swQueryParameters.getValue(), userDN, "sajack");
+    auto swQuery = LDAPQuery::instantiateQuery(
+        swQueryParameters.getValue(), userDN, "sajack", LDAPQueryContext::kUnitTest);
     ASSERT_OK(swQuery.getStatus());
     auto filter = swQuery.getValue().getFilter();
     ASSERT_EQ("(&(objectClass=posixGroup)(memberUid=sajack))", filter);
@@ -43,7 +45,8 @@ TEST(LDAPQueryInstantiate, InstantiationFromUserConfigAndUserNameSucceeds) {
         "cn={USER},dc=mongodb,dc=com?");
     ASSERT_OK(swQueryParameters.getStatus());
 
-    auto swQuery = LDAPQuery::instantiateQuery(swQueryParameters.getValue(), "sajack", "");
+    auto swQuery = LDAPQuery::instantiateQuery(
+        swQueryParameters.getValue(), "sajack", "", LDAPQueryContext::kUnitTest);
     ASSERT_OK(swQuery.getStatus());
     ASSERT_EQ("cn=sajack,dc=mongodb,dc=com", swQuery.getValue().getBaseDN());
 }
@@ -53,7 +56,8 @@ TEST(LDAPQueryInstantiate, InstantiationFromUserConfigAndUserNameWithBackslashSu
         "cn={USER},dc=mongodb,dc=com?");
     ASSERT_OK(swQueryParameters.getStatus());
 
-    auto swQuery = LDAPQuery::instantiateQuery(swQueryParameters.getValue(), "jack\\,sa", "");
+    auto swQuery = LDAPQuery::instantiateQuery(
+        swQueryParameters.getValue(), "jack\\,sa", "", LDAPQueryContext::kUnitTest);
     ASSERT_OK(swQuery.getStatus());
     ASSERT_EQ("cn=jack\\,sa,dc=mongodb,dc=com", swQuery.getValue().getBaseDN());
 }
@@ -63,8 +67,10 @@ TEST(LDAPQueryInstantiate, InstantiationFromUserConfigAndSpacePaddedUserNameSucc
         "dc=ACME,dc=QA??sub?{USER}");
     ASSERT_OK(swQueryParameters.getStatus());
 
-    auto swQuery = LDAPQuery::instantiateQuery(
-        swQueryParameters.getValue(), "CN=\\ jack\\ ,DC=ACME,DC=QA", "");
+    auto swQuery = LDAPQuery::instantiateQuery(swQueryParameters.getValue(),
+                                               "CN=\\ jack\\ ,DC=ACME,DC=QA",
+                                               "",
+                                               LDAPQueryContext::kUnitTest);
     ASSERT_OK(swQuery.getStatus());
     ASSERT_EQ("CN=\\5c jack\\5c ,DC=ACME,DC=QA", swQuery.getValue().getFilter());
 }
@@ -74,8 +80,8 @@ TEST(LDAPQueryInstantiate, InstantiationFromUserConfigAndNameWithLDAPqueryLangua
         "dc=ACME,dc=QA??sub?{USER}");
     ASSERT_OK(swQueryParameters.getStatus());
 
-    auto swQuery =
-        LDAPQuery::instantiateQuery(swQueryParameters.getValue(), "cn=jack (*),DC=ACME,DC=QA", "");
+    auto swQuery = LDAPQuery::instantiateQuery(
+        swQueryParameters.getValue(), "cn=jack (*),DC=ACME,DC=QA", "", LDAPQueryContext::kUnitTest);
     ASSERT_OK(swQuery.getStatus());
     ASSERT_EQ("cn=jack \\28\\2a\\29,DC=ACME,DC=QA", swQuery.getValue().getFilter());
 }
@@ -85,8 +91,10 @@ TEST(LDAPQueryInstantiate, InstantiationFromUserConfigAndNameWithSpecialCharacte
         "dc=ACME,dc=QA??sub?{USER}");
     ASSERT_OK(swQueryParameters.getStatus());
 
-    auto swQuery = LDAPQuery::instantiateQuery(
-        swQueryParameters.getValue(), "CN=jack\\\"\\#\\+\\;\\<\\=\\>\\\\,DC=ACME,DC=QA", "");
+    auto swQuery = LDAPQuery::instantiateQuery(swQueryParameters.getValue(),
+                                               "CN=jack\\\"\\#\\+\\;\\<\\=\\>\\\\,DC=ACME,DC=QA",
+                                               "",
+                                               LDAPQueryContext::kUnitTest);
     ASSERT_OK(swQuery.getStatus());
     ASSERT_EQ("CN=jack\\5c\"\\5c#\\5c+\\5c;\\5c<\\5c=\\5c>\\5c\\5c,DC=ACME,DC=QA",
               swQuery.getValue().getFilter());
@@ -97,8 +105,10 @@ TEST(LDAPQueryInstantiate, InstantiationFromUserConfigAndNameWithInternationalCh
         "dc=ACME,dc=QA??sub?{USER}");
     ASSERT_OK(swQueryParameters.getStatus());
 
-    auto swQuery = LDAPQuery::instantiateQuery(
-        swQueryParameters.getValue(), "CN=\\ Пётр Иванов (*)\\ ,DC=ACME,DC=QA", "");
+    auto swQuery = LDAPQuery::instantiateQuery(swQueryParameters.getValue(),
+                                               "CN=\\ Пётр Иванов (*)\\ ,DC=ACME,DC=QA",
+                                               "",
+                                               LDAPQueryContext::kUnitTest);
     ASSERT_OK(swQuery.getStatus());
     ASSERT_EQ("CN=\\5c Пётр Иванов \\28\\2a\\29\\5c ,DC=ACME,DC=QA",
               swQuery.getValue().getFilter());
@@ -109,7 +119,8 @@ TEST(LDAPQueryInstantiate, InstantiationFromEmptyComponentsConfigAndNoTokensSucc
         LDAPQueryConfig::createLDAPQueryConfigWithComponents("cn=sajack,dc=mongodb,dc=com?");
     ASSERT_OK(swQueryParameters.getStatus());
 
-    auto swQuery = LDAPQuery::instantiateQuery(swQueryParameters.getValue(), {});
+    auto swQuery =
+        LDAPQuery::instantiateQuery(swQueryParameters.getValue(), {}, LDAPQueryContext::kUnitTest);
     ASSERT_OK(swQuery.getStatus());
     ASSERT_EQ("cn=sajack,dc=mongodb,dc=com", swQuery.getValue().getBaseDN());
 }
@@ -119,7 +130,8 @@ TEST(LDAPQueryInstantiate, InstantiationFromComponentConfigAndTokenSucceeds) {
         LDAPQueryConfig::createLDAPQueryConfigWithComponents("cn={0},dc=mongodb,dc=com?");
     ASSERT_OK(swQueryParameters.getStatus());
 
-    auto swQuery = LDAPQuery::instantiateQuery(swQueryParameters.getValue(), {"sajack"});
+    auto swQuery = LDAPQuery::instantiateQuery(
+        swQueryParameters.getValue(), {"sajack"}, LDAPQueryContext::kUnitTest);
     ASSERT_OK(swQuery.getStatus());
     ASSERT_EQ("cn=sajack,dc=mongodb,dc=com", swQuery.getValue().getBaseDN());
 }
@@ -129,8 +141,8 @@ TEST(LDAPQueryInstantiate, InstantiationFromComponentConfigWithMoreComponentsTha
         LDAPQueryConfig::createLDAPQueryConfigWithComponents("cn={0},dc=mongodb,dc=com?");
     ASSERT_OK(swQueryParameters.getStatus());
 
-    ASSERT_NOT_OK(
-        LDAPQuery::instantiateQuery(swQueryParameters.getValue(), {"sajack", "tooMuchData"}));
+    ASSERT_NOT_OK(LDAPQuery::instantiateQuery(
+        swQueryParameters.getValue(), {"sajack", "tooMuchData"}, LDAPQueryContext::kUnitTest));
 }
 
 TEST(LDAPQueryInstantiate, InstantiationFromComponentConfigWithMoreTokensThanComponentsSucceeds) {
@@ -138,7 +150,8 @@ TEST(LDAPQueryInstantiate, InstantiationFromComponentConfigWithMoreTokensThanCom
         LDAPQueryConfig::createLDAPQueryConfigWithComponents("cn={0},dc={1},dc=com?");
     ASSERT_OK(swQueryParameters.getStatus());
 
-    ASSERT_OK(LDAPQuery::instantiateQuery(swQueryParameters.getValue(), {"sajack"}));
+    ASSERT_OK(LDAPQuery::instantiateQuery(
+        swQueryParameters.getValue(), {"sajack"}, LDAPQueryContext::kUnitTest));
 }
 
 TEST(LDAPQueryInstantiate, InstantiationFromComponentConfigWithComponentAndRepeatedTokenSucceeds) {
@@ -146,7 +159,8 @@ TEST(LDAPQueryInstantiate, InstantiationFromComponentConfigWithComponentAndRepea
         LDAPQueryConfig::createLDAPQueryConfigWithComponents("cn={0},dc={0},dc=com?");
     ASSERT_OK(swQueryParameters.getStatus());
 
-    auto swQuery = LDAPQuery::instantiateQuery(swQueryParameters.getValue(), {"sajack"});
+    auto swQuery = LDAPQuery::instantiateQuery(
+        swQueryParameters.getValue(), {"sajack"}, LDAPQueryContext::kUnitTest);
     ASSERT_OK(swQuery.getStatus());
     ASSERT_EQ("cn=sajack,dc=sajack,dc=com", swQuery.getValue().getBaseDN());
 }
@@ -156,7 +170,8 @@ TEST(LDAPQueryInstantiate, InstantiationFromComponentConfigWithMissingTokenFails
         LDAPQueryConfig::createLDAPQueryConfigWithComponents("cn={0},dc={2},dc=com?");
     ASSERT_OK(swQueryParameters.getStatus());
 
-    ASSERT_NOT_OK(LDAPQuery::instantiateQuery(swQueryParameters.getValue(), {"sajack", "mongodb"}));
+    ASSERT_NOT_OK(LDAPQuery::instantiateQuery(
+        swQueryParameters.getValue(), {"sajack", "mongodb"}, LDAPQueryContext::kUnitTest));
 }
 
 TEST(LDAPQueryInstantiate, InstantiationFromComponentConfigWithEscapedBackslashSucceeds) {
@@ -164,7 +179,8 @@ TEST(LDAPQueryInstantiate, InstantiationFromComponentConfigWithEscapedBackslashS
         LDAPQueryConfig::createLDAPQueryConfigWithComponents("cn={0},dc=mongodb,dc=com");
     ASSERT_OK(swQueryParameters.getStatus());
 
-    auto swQuery = LDAPQuery::instantiateQuery(swQueryParameters.getValue(), {"jack\\,sa"});
+    auto swQuery = LDAPQuery::instantiateQuery(
+        swQueryParameters.getValue(), {"jack\\,sa"}, LDAPQueryContext::kUnitTest);
     ASSERT_OK(swQuery.getStatus());
     ASSERT_EQ("cn=jack\\,sa,dc=mongodb,dc=com", swQuery.getValue().getBaseDN());
 }
@@ -342,7 +358,8 @@ void testCreateLDAPQueryConfigForDNMapping(StringData queryAttr, StringData expA
         LDAPQueryConfig::createLDAPQueryConfigWithUserNameAndAttributeTranform(queryStr);
     ASSERT_OK(swQueryParameters.getStatus());
 
-    auto swQuery = LDAPQuery::instantiateQuery(swQueryParameters.getValue(), userDN, "sajack");
+    auto swQuery = LDAPQuery::instantiateQuery(
+        swQueryParameters.getValue(), userDN, "sajack", LDAPQueryContext::kUnitTest);
     ASSERT_OK(swQuery.getStatus());
     auto query = std::move(swQuery.getValue());
     ASSERT_EQ(expAttr != kLDAPDNAttribute, query.isAcquiringAttributes());

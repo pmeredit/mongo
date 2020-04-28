@@ -413,7 +413,8 @@ private:
             LDAPQueryConfig::createLDAPQueryConfig("?supportedSASLMechanisms?base?(objectclass=*)");
         invariant(swRootDSEQuery.isOK());  // This isn't user configurable, so should never fail
 
-        auto swQuery = LDAPQuery::instantiateQuery(swRootDSEQuery.getValue());
+        auto swQuery = LDAPQuery::instantiateQuery(swRootDSEQuery.getValue(),
+                                                   LDAPQueryContext::kLivenessCheck);
         invariant(swQuery);
 
         return std::move(swQuery.getValue());

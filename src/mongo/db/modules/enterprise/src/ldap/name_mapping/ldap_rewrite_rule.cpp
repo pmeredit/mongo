@@ -49,8 +49,8 @@ StatusWith<std::string> LDAPRewriteRule::resolve(LDAPRunner* runner, StringData 
         return swExtractedMatches.getStatus();
     }
 
-    StatusWith<LDAPQuery> swQuery =
-        LDAPQuery::instantiateQuery(_queryConfig, swExtractedMatches.getValue());
+    StatusWith<LDAPQuery> swQuery = LDAPQuery::instantiateQuery(
+        _queryConfig, swExtractedMatches.getValue(), LDAPQueryContext::kUserToDNMapping);
     if (!swQuery.isOK()) {
         return swQuery.getStatus();
     }

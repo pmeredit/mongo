@@ -95,12 +95,14 @@ int ldapToolMain(int argc, char* argv[], char** envp) {
     std::unique_ptr<LDAPRunner> runner =
         std::make_unique<LDAPRunnerImpl>(bindOptions, connectionOptions);
 
+
     auto swRootDSEQuery =
         LDAPQueryConfig::createLDAPQueryConfig("?supportedSASLMechanisms?base?(objectclass=*)");
     invariant(swRootDSEQuery.isOK());  // This isn't user configurable, so should never fail
 
-    StatusWith<LDAPEntityCollection> swResult =
-        runner->runQuery(LDAPQuery::instantiateQuery(swRootDSEQuery.getValue()).getValue());
+    StatusWith<LDAPEntityCollection> swResult = runner->runQuery(
+        LDAPQuery::instantiateQuery(swRootDSEQuery.getValue(), LDAPQueryContext::kLivenessCheck)
+            .getValue());
 
     LDAPEntityCollection results;
 
