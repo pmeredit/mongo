@@ -214,6 +214,27 @@ int openLDAPBindFunction(
     }
 }
 
+// Spec for returning a general LDAP_OPT.
+template <int optNum, typename T, T def>
+class LDAPOptionGeneric {
+public:
+    using Type = T;
+    static constexpr int Code = optNum;
+
+    LDAPOptionGeneric(T val) : _val(val) {}
+
+    T getValue() const {
+        return _val;
+    }
+
+    static T makeDefaultInParam() {
+        return def;
+    }
+
+private:
+    T _val;
+};
+
 // Spec for how to process a request for API version information from ldap_get_option.
 class LDAPOptionAPIInfo {
 public:
@@ -318,8 +339,8 @@ public:
         this_->_peer = inferSockAddr(addr);
         LOGV2_DEBUG(20163,
                     3,
-                    "Connected to LDAP server at {serverAddress} with LDAP URL: {ldapURL}",
-                    "Connected to LDAP server",
+                    "Connecting to LDAP server at {serverAddress} with LDAP URL: {ldapURL}",
+                    "Connecting to LDAP server",
                     "serverAddress"_attr = this_->_peer,
                     "ldapURL"_attr = std::unique_ptr<char, decltype(&ldap_memfree)>(
                                          ldap_url_desc2str(srv), &ldap_memfree)
@@ -462,6 +483,14 @@ Status OpenLDAPConnection::connect() {
             LDAPOptionAPIInfo info = _pimpl->getOption<LDAPOptionAPIInfo>(
                 "OpenLDAPConnection::connect", "Getting API info");
 
+            BSONObjBuilder options;
+            using LDAPOptionConnectAsync = LDAPOptionGeneric<LDAP_OPT_CONNECT_ASYNC, int, 0>;
+            options.append("async",
+                           _pimpl
+                               ->getOption<LDAPOptionConnectAsync>("OpenLDAPConnection::connect",
+                                                                   "LDAP_OPT_CONNECT_ASYNC")
+                               .getValue());
+
             LOGV2_DEBUG(24051,
                         3,
                         "LDAPAPIInfo: {{ "
@@ -477,7 +506,8 @@ Status OpenLDAPConnection::connect() {
                         "protocolVersion"_attr = info.getProtocolVersion(),
                         "extensions"_attr = boost::algorithm::join(info.getExtensions(), ", "),
                         "vendorName"_attr = info.getVendorName(),
-                        "vendorVersion"_attr = info.getVendorVersion());
+                        "vendorVersion"_attr = info.getVendorVersion(),
+                        "options"_attr = options.obj());
         } catch (...) {
             Status status = exceptionToStatus();
             LOGV2_ERROR(24059,

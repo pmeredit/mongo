@@ -3,6 +3,11 @@
 (function() {
 'use strict';
 
+if (_isWindows()) {
+    jsTest.log('Skipping test on WinLDAP');
+    return;
+}
+
 const ENTERPRISE = 'src/mongo/db/modules/enterprise';
 
 const proxy = (function() {
@@ -110,19 +115,16 @@ function assertTestsFail() {
 configGenerator.ldapUserToDNMapping = createMapping();
 assertTestsSucceed();
 
-// WinLDAP treats these as protocol errors.
-if (!_isWindows()) {
-    // Tests queries for which the proxy will generate error codes.
-    // These codes should result in "soft" errors which translate to success.
-    const successCodes = [
-        0x10,  // LDAP_NO_SUCH_ATTRIBUTE
-        0x20,  // LDAP_NO_SUCH_OBJECT
-    ];
-    successCodes.forEach(function(code) {
-        configGenerator.ldapUserToDNMapping = createMapping('FailureCode:' + code);
-        assertTestsSucceed();
-    });
-}
+// Tests queries for which the proxy will generate error codes.
+// These codes should result in "soft" errors which translate to success.
+const successCodes = [
+    0x10,  // LDAP_NO_SUCH_ATTRIBUTE
+    0x20,  // LDAP_NO_SUCH_OBJECT
+];
+successCodes.forEach(function(code) {
+    configGenerator.ldapUserToDNMapping = createMapping('FailureCode:' + code);
+    assertTestsSucceed();
+});
 
 // Check for hard failure when requsting other result codes.
 // These codes will result in an assertion being thrown,
