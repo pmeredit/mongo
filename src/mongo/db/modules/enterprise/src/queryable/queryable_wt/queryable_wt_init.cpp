@@ -59,8 +59,6 @@ public:
         auto snapshotId = *queryable::queryableGlobalOptions.getSnapshotId();
 
         size_t cacheMB = WiredTigerUtil::getCacheSizeMB(wiredTigerGlobalOptions.cacheSizeGB);
-        const auto maxCacheOverflowMB =
-            static_cast<size_t>(1024 * wiredTigerGlobalOptions.maxCacheOverflowFileSizeGB);
         const bool kEphemeral = false;
 
         uassert(ErrorCodes::InvalidOptions,
@@ -90,7 +88,7 @@ public:
                                    getGlobalServiceContext()->getFastClockSource(),
                                    wiredTigerGlobalOptions.engineConfig,
                                    cacheMB,
-                                   maxCacheOverflowMB,
+                                   wiredTigerGlobalOptions.getMaxHistoryFileSizeMB(),
                                    params.dur,
                                    kEphemeral,
                                    params.repair,
