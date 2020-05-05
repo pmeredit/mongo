@@ -12,7 +12,11 @@ load('src/mongo/db/modules/enterprise/jstests/fle/lib/drivers_data.js');
 const x509_options = {
     sslMode: "requireSSL",
     sslPEMKeyFile: SERVER_CERT,
-    sslCAFile: CA_CERT
+    sslCAFile: CA_CERT,
+    setParameter: {
+        tlsOCSPVerifyTimeoutSecs: 5,
+        tlsOCSPStaplingTimeoutSecs: 10,
+    }
 };
 
 const conn = MongoRunner.runMongod(x509_options);
