@@ -38,8 +38,7 @@ public:
     }
 
 private:
-    DocumentSourceStdin(const boost::intrusive_ptr<ExpressionContext>& pExpCtx)
-        : DocumentSource(DocumentSourceStdin::kStageName, pExpCtx) {}
+    DocumentSourceStdin(const boost::intrusive_ptr<ExpressionContext>& pExpCtx);
 
     DocumentSource::GetNextResult doGetNext() final;
 };

@@ -5,8 +5,7 @@
 #include "mongo/platform/basic.h"
 
 #ifndef _WIN32
-#include <stdio.h>  // For STDIN_FILENO
-#include <unistd.h>
+#include <cstdio>
 #endif
 
 #include "document_source_stdin.h"
@@ -28,11 +27,37 @@ ssize_t readStdin(void* buf, size_t count) {
     }
     return static_cast<ssize_t>(bytesRead);
 #else
-    return read(STDIN_FILENO, buf, count);
+    auto n = std::fread(buf, 1, count, stdin);
+
+    if (n > 0)
+        return n;
+
+    if (std::feof(stdin))
+        return 0;
+
+    return -1;
 #endif
 }
 
 }  // namespace
+
+DocumentSourceStdin::DocumentSourceStdin(const boost::intrusive_ptr<ExpressionContext>& pExpCtx)
+    : DocumentSource(DocumentSourceStdin::kStageName, pExpCtx) {
+
+#ifndef _WIN32
+    // Reopen stdin in binary mode.
+    FILE* fh = std::freopen(nullptr, "rb", stdin);
+    uassert(ErrorCodes::FileNotOpen,
+            str::stream() << "Failed to reopen stdin for binary data: " << strerror(errno),
+            fh != nullptr);
+
+    // Set buffer size to default pipe buffer size on Linux.
+    int ok = std::setvbuf(stdin, nullptr, _IOFBF, 65536);
+    uassert(ErrorCodes::FileNotOpen,
+            str::stream() << "Failed to resize stdin buffer: " << strerror(errno),
+            ok == 0);
+#endif
+}
 
 DocumentSource::GetNextResult DocumentSourceStdin::doGetNext() {
     char sizeBuf[4];
