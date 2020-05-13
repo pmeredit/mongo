@@ -3159,7 +3159,7 @@ TEST_F(EncryptionSchemaTreeTest, CanAffixLiteralsToEncryptedNodesButNotToNotEncr
     // EncryptionSchemaEncryptedNodes allow access to mutable space for literals.
     auto* leaf = root->getNode(FieldRef{"a"});
     ASSERT(leaf->literals() != boost::none);
-    auto literal = ExpressionConstant::create(getExpCtx(), Value{23});
+    auto literal = ExpressionConstant::create(getExpCtxRaw(), Value{23});
     leaf->literals()->push_back(*literal);
     ASSERT_FALSE(leaf->literals()->empty());
 }

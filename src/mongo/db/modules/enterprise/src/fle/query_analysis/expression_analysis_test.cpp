@@ -21,8 +21,8 @@ public:
     std::unique_ptr<EncryptionSchemaTreeNode> getSchemaFromExpression(BSONObj exprObj,
                                                                       BSONObj schema) {
         auto expr = BSON("expr" << exprObj);
-        auto parsedExpr =
-            Expression::parseOperand(getExpCtx(), expr["expr"], getExpCtx()->variablesParseState);
+        auto parsedExpr = Expression::parseOperand(
+            getExpCtxRaw(), expr["expr"], getExpCtx()->variablesParseState);
         auto parsedSchema = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
         return aggregate_expression_intender::getOutputSchema(
             *parsedSchema.get(), parsedExpr.get(), false);
@@ -32,7 +32,7 @@ public:
 TEST_F(ExpressionAnalysisTest, ExpressionFieldPathCorrectlyReturnsEncryptedState) {
     auto exprObj = fromjson("{notEncrypted: '$b', encrypted: '$ssn'}");
     auto parsedExpr = Expression::parseOperand(
-        getExpCtx(), exprObj["notEncrypted"], getExpCtx()->variablesParseState);
+        getExpCtxRaw(), exprObj["notEncrypted"], getExpCtx()->variablesParseState);
     auto schema = EncryptionSchemaTreeNode::parse(kDefaultSsnSchema, EncryptionSchemaType::kLocal);
     auto outSchema =
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false);
@@ -40,7 +40,7 @@ TEST_F(ExpressionAnalysisTest, ExpressionFieldPathCorrectlyReturnsEncryptedState
     ASSERT_FALSE(outSchema->mayContainEncryptedNode());
 
     parsedExpr = Expression::parseOperand(
-        getExpCtx(), exprObj["encrypted"], getExpCtx()->variablesParseState);
+        getExpCtxRaw(), exprObj["encrypted"], getExpCtx()->variablesParseState);
     outSchema =
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false);
     ASSERT(outSchema->getEncryptionMetadata() == kDefaultMetadata);
@@ -49,7 +49,7 @@ TEST_F(ExpressionAnalysisTest, ExpressionFieldPathCorrectlyReturnsEncryptedState
 TEST_F(ExpressionAnalysisTest, ExpressionFieldPathPrefixOfEncryptedCorrectlyFails) {
     auto exprObj = fromjson("{encryptedPrefix: '$user'}");
     auto parsedExpr = Expression::parseOperand(
-        getExpCtx(), exprObj["encryptedPrefix"], getExpCtx()->variablesParseState);
+        getExpCtxRaw(), exprObj["encryptedPrefix"], getExpCtx()->variablesParseState);
     auto schema =
         EncryptionSchemaTreeNode::parse(kDefaultNestedSchema, EncryptionSchemaType::kLocal);
     ASSERT_THROWS_CODE(
@@ -60,8 +60,8 @@ TEST_F(ExpressionAnalysisTest, ExpressionFieldPathPrefixOfEncryptedCorrectlyFail
 
 TEST_F(ExpressionAnalysisTest, ExpressionFieldPathWhosePrefixIsEncryptedShouldFail) {
     auto exprObj = fromjson("{invalid: '$ssn.non_existent'}");
-    auto parsedExpr =
-        Expression::parseOperand(getExpCtx(), exprObj["invalid"], getExpCtx()->variablesParseState);
+    auto parsedExpr = Expression::parseOperand(
+        getExpCtxRaw(), exprObj["invalid"], getExpCtx()->variablesParseState);
     auto schema = EncryptionSchemaTreeNode::parse(kDefaultSsnSchema, EncryptionSchemaType::kLocal);
     ASSERT_THROWS_CODE(
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false),
@@ -72,7 +72,7 @@ TEST_F(ExpressionAnalysisTest, ExpressionFieldPathWhosePrefixIsEncryptedShouldFa
 TEST_F(ExpressionAnalysisTest, ExpressionConstantCorrectlyReturnsNotEncrypted) {
     auto exprObj = fromjson("{constant: 5}");
     auto parsedExpr = Expression::parseOperand(
-        getExpCtx(), exprObj["constant"], getExpCtx()->variablesParseState);
+        getExpCtxRaw(), exprObj["constant"], getExpCtx()->variablesParseState);
     auto schema = EncryptionSchemaTreeNode::parse(kDefaultSsnSchema, EncryptionSchemaType::kLocal);
     auto outSchema =
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false);
@@ -82,9 +82,8 @@ TEST_F(ExpressionAnalysisTest, ExpressionConstantCorrectlyReturnsNotEncrypted) {
 
 TEST_F(ExpressionAnalysisTest, VariablesSupportedInOutput) {
     auto exprObj = fromjson("{a: '$$NOW'}");
-    auto expCtx = getExpCtx();
     auto parsedExpr =
-        Expression::parseOperand(getExpCtx(), exprObj["a"], getExpCtx()->variablesParseState);
+        Expression::parseOperand(getExpCtxRaw(), exprObj["a"], getExpCtx()->variablesParseState);
     auto schema = EncryptionSchemaTreeNode::parse(kDefaultSsnSchema, EncryptionSchemaType::kLocal);
     auto outSchema =
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false);
@@ -93,7 +92,8 @@ TEST_F(ExpressionAnalysisTest, VariablesSupportedInOutput) {
 
     exprObj =
         fromjson("{a: {$filter: {input: ['a', 'b', 'c'], as: 'num', cond: {$eq: ['$$num', 0]}}}}");
-    parsedExpr = Expression::parseOperand(expCtx, exprObj["a"], expCtx->variablesParseState);
+    parsedExpr =
+        Expression::parseOperand(getExpCtxRaw(), exprObj["a"], getExpCtx()->variablesParseState);
     outSchema =
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false);
     ASSERT_FALSE(outSchema->getEncryptionMetadata());
@@ -102,14 +102,16 @@ TEST_F(ExpressionAnalysisTest, VariablesSupportedInOutput) {
     exprObj = fromjson(
         "{a: {$reduce: {input: ['a', 'b', 'c'], initialValue: '', in: {$concat: ['$$value', "
         "'$$this']}}}}");
-    parsedExpr = Expression::parseOperand(expCtx, exprObj["a"], expCtx->variablesParseState);
+    parsedExpr =
+        Expression::parseOperand(getExpCtxRaw(), exprObj["a"], getExpCtx()->variablesParseState);
     outSchema =
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false);
     ASSERT_FALSE(outSchema->getEncryptionMetadata());
     ASSERT_FALSE(outSchema->mayContainEncryptedNode());
 
     exprObj = fromjson("{expr: {$let: {vars: {not_ssn: 1}, in: {$eq: ['$not_ssn', 1]}}}}");
-    parsedExpr = Expression::parseOperand(expCtx, exprObj["a"], expCtx->variablesParseState);
+    parsedExpr =
+        Expression::parseOperand(getExpCtxRaw(), exprObj["a"], getExpCtx()->variablesParseState);
     outSchema =
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false);
     ASSERT_FALSE(outSchema->getEncryptionMetadata());
@@ -119,7 +121,7 @@ TEST_F(ExpressionAnalysisTest, VariablesSupportedInOutput) {
 TEST_F(ExpressionAnalysisTest, CondReturnsCorrectSchemaIfBothBranchesNotEncrypted) {
     auto exprObj = fromjson("{expr: {$cond: {if: true, then: '$notEncrypted', else: 42}}}");
     auto parsedExpr =
-        Expression::parseOperand(getExpCtx(), exprObj["expr"], getExpCtx()->variablesParseState);
+        Expression::parseOperand(getExpCtxRaw(), exprObj["expr"], getExpCtx()->variablesParseState);
     auto schema = EncryptionSchemaTreeNode::parse(kDefaultSsnSchema, EncryptionSchemaType::kLocal);
     auto outSchema =
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false);
@@ -149,7 +151,7 @@ TEST_F(ExpressionAnalysisTest, CondReturnsCorrectSchemaIfBothBranchesEncrypted) 
         })");
     auto exprObj = fromjson("{expr: {$cond: {if: true, then: '$ssn', else: '$user'}}}");
     auto parsedExpr =
-        Expression::parseOperand(getExpCtx(), exprObj["expr"], getExpCtx()->variablesParseState);
+        Expression::parseOperand(getExpCtxRaw(), exprObj["expr"], getExpCtx()->variablesParseState);
     auto schema = EncryptionSchemaTreeNode::parse(ssnAndUserSchema, EncryptionSchemaType::kLocal);
     auto outSchema =
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false);
@@ -159,7 +161,7 @@ TEST_F(ExpressionAnalysisTest, CondReturnsCorrectSchemaIfBothBranchesEncrypted) 
 TEST_F(ExpressionAnalysisTest, CondReturnsUnknownIfBranchesHaveConflictingEncryptionProperties) {
     auto exprObj = fromjson("{expr: {$cond: {if: true, then: '$ssn', else: 42}}}");
     auto parsedExpr =
-        Expression::parseOperand(getExpCtx(), exprObj["expr"], getExpCtx()->variablesParseState);
+        Expression::parseOperand(getExpCtxRaw(), exprObj["expr"], getExpCtx()->variablesParseState);
     auto schema = EncryptionSchemaTreeNode::parse(kDefaultSsnSchema, EncryptionSchemaType::kLocal);
     auto outSchema =
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false);
@@ -170,7 +172,7 @@ TEST_F(ExpressionAnalysisTest, CondWithEvaluatedSubtreeReturnsNotEncrypted) {
     auto exprObj =
         fromjson("{expr: {$cond: {if: true, then: '$notEncrypted', else: {$add: [42, 5]}}}}");
     auto parsedExpr =
-        Expression::parseOperand(getExpCtx(), exprObj["expr"], getExpCtx()->variablesParseState);
+        Expression::parseOperand(getExpCtxRaw(), exprObj["expr"], getExpCtx()->variablesParseState);
     auto schema = EncryptionSchemaTreeNode::parse(kDefaultSsnSchema, EncryptionSchemaType::kLocal);
     auto outSchema =
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false);
@@ -179,7 +181,7 @@ TEST_F(ExpressionAnalysisTest, CondWithEvaluatedSubtreeReturnsNotEncrypted) {
 
     exprObj = fromjson("{expr: {$cond: {if: true, then: '$ssn', else: {$add: ['$b', 5]}}}}");
     parsedExpr =
-        Expression::parseOperand(getExpCtx(), exprObj["expr"], getExpCtx()->variablesParseState);
+        Expression::parseOperand(getExpCtxRaw(), exprObj["expr"], getExpCtx()->variablesParseState);
     outSchema =
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false);
     ASSERT_THROWS_CODE(outSchema->getEncryptionMetadata(), AssertionException, 31133);
@@ -211,7 +213,7 @@ TEST_F(ExpressionAnalysisTest, CondFailsIfBranchReferencesPrefixOfEncryptedField
         })");
     auto exprObj = fromjson("{expr: {$cond: {if: true, then: '$user', else: '$insecureUser'}}}");
     auto parsedExpr =
-        Expression::parseOperand(getExpCtx(), exprObj["expr"], getExpCtx()->variablesParseState);
+        Expression::parseOperand(getExpCtxRaw(), exprObj["expr"], getExpCtx()->variablesParseState);
     auto schema = EncryptionSchemaTreeNode::parse(userSchema, EncryptionSchemaType::kLocal);
     ASSERT_THROWS_CODE(
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false),
@@ -244,7 +246,7 @@ TEST_F(ExpressionAnalysisTest, NestedCondCorrectlyReturnsOutputSchema) {
     })");
 
     auto parsedExpr =
-        Expression::parseOperand(getExpCtx(), exprObj["expr"], getExpCtx()->variablesParseState);
+        Expression::parseOperand(getExpCtxRaw(), exprObj["expr"], getExpCtx()->variablesParseState);
     auto schema =
         EncryptionSchemaTreeNode::parse(kAllEncryptedSchema, EncryptionSchemaType::kLocal);
     auto outSchema =
@@ -270,7 +272,7 @@ TEST_F(ExpressionAnalysisTest, NestedCondReturnsUnknownOnMixedEncryption) {
     })");
 
     auto parsedExpr =
-        Expression::parseOperand(getExpCtx(), exprObj["expr"], getExpCtx()->variablesParseState);
+        Expression::parseOperand(getExpCtxRaw(), exprObj["expr"], getExpCtx()->variablesParseState);
     auto schema =
         EncryptionSchemaTreeNode::parse(kAllEncryptedSchema, EncryptionSchemaType::kLocal);
     auto outSchema =
@@ -299,7 +301,7 @@ TEST_F(ExpressionAnalysisTest, CondInEvaluationContextDoesNotFailIfMixedEncrypti
     })");
 
     auto parsedExpr =
-        Expression::parseOperand(getExpCtx(), exprObj["expr"], getExpCtx()->variablesParseState);
+        Expression::parseOperand(getExpCtxRaw(), exprObj["expr"], getExpCtx()->variablesParseState);
     auto schema =
         EncryptionSchemaTreeNode::parse(kAllEncryptedSchema, EncryptionSchemaType::kLocal);
     auto outSchema =
@@ -320,7 +322,7 @@ TEST_F(ExpressionAnalysisTest, SwitchReturnsNotEncryptedIfAllBranchesReturnNotEn
     }})");
 
     auto parsedExpr =
-        Expression::parseOperand(getExpCtx(), exprObj["expr"], getExpCtx()->variablesParseState);
+        Expression::parseOperand(getExpCtxRaw(), exprObj["expr"], getExpCtx()->variablesParseState);
     auto schema = EncryptionSchemaTreeNode::parse(kDefaultSsnSchema, EncryptionSchemaType::kLocal);
     auto outSchema =
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false);
@@ -340,7 +342,7 @@ TEST_F(ExpressionAnalysisTest, SwitchReturnsEncryptedIfAllBranchesReturnEncrypte
     }})");
 
     auto parsedExpr =
-        Expression::parseOperand(getExpCtx(), exprObj["expr"], getExpCtx()->variablesParseState);
+        Expression::parseOperand(getExpCtxRaw(), exprObj["expr"], getExpCtx()->variablesParseState);
     auto schema =
         EncryptionSchemaTreeNode::parse(kAllEncryptedSchema, EncryptionSchemaType::kLocal);
     auto outSchema =
@@ -361,7 +363,7 @@ TEST_F(ExpressionAnalysisTest, SwitchReturnsUnknownIfConflictingEncryptionInBran
     }})");
 
     auto parsedExpr =
-        Expression::parseOperand(getExpCtx(), exprObj["expr"], getExpCtx()->variablesParseState);
+        Expression::parseOperand(getExpCtxRaw(), exprObj["expr"], getExpCtx()->variablesParseState);
     auto schema =
         EncryptionSchemaTreeNode::parse(kAllEncryptedSchema, EncryptionSchemaType::kLocal);
     auto outSchema =
@@ -395,7 +397,7 @@ TEST_F(ExpressionAnalysisTest, SwitchReturnsUnknownIfDefaultConflictsWithBranche
     }})");
 
     auto parsedExpr =
-        Expression::parseOperand(getExpCtx(), exprObj["expr"], getExpCtx()->variablesParseState);
+        Expression::parseOperand(getExpCtxRaw(), exprObj["expr"], getExpCtx()->variablesParseState);
     auto schema =
         EncryptionSchemaTreeNode::parse(kAllEncryptedSchema, EncryptionSchemaType::kLocal);
     auto outSchema =
@@ -412,7 +414,7 @@ TEST_F(ExpressionAnalysisTest, IfNullReturnsEncryptedIfBothBranchesAreEncrypted)
     }})");
 
     auto parsedExpr =
-        Expression::parseOperand(getExpCtx(), exprObj["expr"], getExpCtx()->variablesParseState);
+        Expression::parseOperand(getExpCtxRaw(), exprObj["expr"], getExpCtx()->variablesParseState);
     auto schema =
         EncryptionSchemaTreeNode::parse(kAllEncryptedSchema, EncryptionSchemaType::kLocal);
     auto outSchema =
@@ -428,8 +430,8 @@ TEST_F(ExpressionAnalysisTest, IfNullReturnsNotEncryptedIfBothBranchedAreNotEncr
         ]
     }})");
 
-    auto parsedExpr =
-        Expression::parseOperand(getExpCtx(), exprObj["expr"], getExpCtx()->variablesParseState);
+    auto parsedExpr = Expression::parseOperand(
+        getExpCtx().get(), exprObj["expr"], getExpCtx()->variablesParseState);
     auto schema = EncryptionSchemaTreeNode::parse(kDefaultSsnSchema, EncryptionSchemaType::kLocal);
     auto outSchema =
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false);
@@ -446,7 +448,7 @@ TEST_F(ExpressionAnalysisTest, IfNullReturnsUnknownIfConflictingEncryptionProper
     }})");
 
     auto parsedExpr =
-        Expression::parseOperand(getExpCtx(), exprObj["expr"], getExpCtx()->variablesParseState);
+        Expression::parseOperand(getExpCtxRaw(), exprObj["expr"], getExpCtx()->variablesParseState);
     auto schema = EncryptionSchemaTreeNode::parse(kDefaultSsnSchema, EncryptionSchemaType::kLocal);
     auto outSchema =
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false);
@@ -462,7 +464,7 @@ TEST_F(ExpressionAnalysisTest, IfNullReturnsUnknownIfConflictingObjectSchemas) {
     }})");
 
     auto parsedExpr =
-        Expression::parseOperand(getExpCtx(), exprObj["expr"], getExpCtx()->variablesParseState);
+        Expression::parseOperand(getExpCtxRaw(), exprObj["expr"], getExpCtx()->variablesParseState);
     auto schema = EncryptionSchemaTreeNode::parse(kDefaultSsnSchema, EncryptionSchemaType::kLocal);
     auto outSchema =
         aggregate_expression_intender::getOutputSchema(*schema.get(), parsedExpr.get(), false);

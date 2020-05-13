@@ -100,7 +100,7 @@ protected:
     auto stateIntention(StringData expression) {
         BSONObjBuilder bob;
         auto expressionPtr =
-            Expression::parseOperand(getExpCtx(),
+            Expression::parseOperand(getExpCtxRaw(),
                                      mongo::fromjson(addObjectWrapper(expression))[""],
                                      getExpCtx()->variablesParseState);
         auto intention = aggregate_expression_intender::mark(
@@ -456,7 +456,7 @@ TEST_F(AggregateExpressionIntenderTest, MarkReportsExistenceOfEncryptedPlacehold
         ]
     })";
     BSONObjBuilder bob;
-    auto expressionPtr = Expression::parseOperand(getExpCtx(),
+    auto expressionPtr = Expression::parseOperand(getExpCtxRaw(),
                                                   mongo::fromjson(addObjectWrapper(query))[""],
                                                   getExpCtx()->variablesParseState);
     ASSERT_TRUE(aggregate_expression_intender::mark(
@@ -472,7 +472,7 @@ TEST_F(AggregateExpressionIntenderTest, MarkReportsNoEncryptedPlaceholders) {
         ]
     })";
     BSONObjBuilder bob;
-    auto expressionPtr = Expression::parseOperand(getExpCtx(),
+    auto expressionPtr = Expression::parseOperand(getExpCtxRaw(),
                                                   mongo::fromjson(addObjectWrapper(query))[""],
                                                   getExpCtx()->variablesParseState);
     ASSERT_TRUE(aggregate_expression_intender::mark(
