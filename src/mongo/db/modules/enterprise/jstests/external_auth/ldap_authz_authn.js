@@ -138,11 +138,11 @@ function testX509() {
     configGenerator.ldapAuthzQueryTemplate = "{USER}?memberOf";
     configGenerator.ldapUserToDNMapping = [
         {
-            match: "C=US,ST=New York,L=New York City,O=MongoDB,OU=KernelUser,(CN=ldapz_x509_1)",
+            match: "(CN=ldapz_x509_1),OU=KernelUser,O=MongoDB,L=New York City,ST=New York,C=US",
             substitution: "CN=ldapz_x509_1," + defaultUserDNSuffix
         },
         {
-            match: "C=US,ST=New York,L=New York City,O=MongoDB,OU=KernelUser,CN=(ldapz_x509_2)",
+            match: "CN=(ldapz_x509_2),OU=KernelUser,O=MongoDB,L=New York City,ST=New York,C=US",
             ldapQuery: defaultUserDNSuffix + "??one?(cn={0})"
         }
     ];
@@ -160,8 +160,7 @@ function testX509Callback({conn}) {
 
     var authCmd1 =
         "\
-        var user1 = \"C=US,ST=New York,L=New York City,O=MongoDB,OU=KernelUser," +
-        "CN=ldapz_x509_1\";\
+        var user1 = \"CN=ldapz_x509_1,OU=KernelUser,O=MongoDB,L=New York City,ST=New York,C=US\";\
         \
         var authOptions = {\
             mechanism: \"MONGODB-X509\",\
@@ -173,8 +172,7 @@ function testX509Callback({conn}) {
 
     var authCmd2 =
         "\
-        var user2 = \"C=US,ST=New York,L=New York City,O=MongoDB,OU=KernelUser," +
-        "CN=ldapz_x509_2\";\
+        var user2 = \"CN=ldapz_x509_2,OU=KernelUser,O=MongoDB,L=New York City,ST=New York,C=US\";\
         \
         var authOptions = {\
             mechanism: \"MONGODB-X509\",\

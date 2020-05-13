@@ -1,0 +1,27 @@
+# Definition for testing certificates used by external_auth tests
+
+global:
+  output_path: 'src/mongo/db/modules/enterprise/jstests/external_auth/assets/'
+
+certs:
+- name: 'ldapz_x509_1.pem'
+  description: X.509 LDAP Auth Test Cert.
+  Subject:
+    C: 'US'
+    ST: 'New York'
+    L: 'New York City'
+    O: 'MongoDB'
+    OU: 'KernelUser'
+    CN: 'ldapz_x509_1'
+  Issuer: 'jstests/libs/ca.pem'
+
+- name: 'ldapz_x509_2.pem'
+  description: X.509 LDAP Auth Test Cert.
+  Subject:
+    C: 'US'
+    ST: 'New York'
+    L: 'New York City'
+    O: 'MongoDB'
+    OU: 'KernelUser'
+    CN: 'ldapz_x509_2'
+  Issuer: 'jstests/libs/ca.pem'
