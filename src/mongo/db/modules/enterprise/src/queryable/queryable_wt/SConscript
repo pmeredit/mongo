@@ -12,8 +12,8 @@ env.Library(
         'queryable_global_options.cpp',
         env.Idlc('queryable_global_options.idl')[0],
     ],
-    PROGDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/mongod',
+    LIBDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/mongod_initializers',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/service_context',

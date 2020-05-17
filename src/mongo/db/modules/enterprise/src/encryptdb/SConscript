@@ -31,8 +31,8 @@ wtEnv.Library(target='encryption_key_manager_aux',
             LIBDEPS_PRIVATE=[
                 '$BUILD_DIR/mongo/db/commands/server_status',
             ],
-            PROGDEPS_DEPENDENTS=[
-                '$BUILD_DIR/mongo/mongod',
+            LIBDEPS_DEPENDENTS=[
+                '$BUILD_DIR/mongo/mongod_initializers',
             ])
 
 env.Library(
@@ -85,8 +85,8 @@ env.Library(target='log_redact_options',
                 '$BUILD_DIR/mongo/util/options_parser/options_parser',
                 '$BUILD_DIR/mongo/idl/server_parameter',
             ],
-            PROGDEPS_DEPENDENTS=[
-                '$BUILD_DIR/mongo/mongos'
+            LIBDEPS_DEPENDENTS=[
+                '$BUILD_DIR/mongo/mongos_initializers',
             ],
 )
 

@@ -26,10 +26,11 @@ env.Library(
     LIBDEPS_PRIVATE=[
         'ldap_parameters',
     ],
-    PROGDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/mongod',
-        '$BUILD_DIR/mongo/mongos',
+    LIBDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/mongod_initializers',
+        '$BUILD_DIR/mongo/mongos_initializers',
     ]
+
 )
 
 env.Library(
@@ -79,8 +80,8 @@ env.Library(
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/util/options_parser/options_parser',
     ],
-    PROGDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/mongod',
+    LIBDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/mongod_initializers',
     ],
 )
 
@@ -149,8 +150,8 @@ env.Library(
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/idl/server_parameter',
     ],
-    PROGDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/mongod',
+    LIBDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/mongod_initializers',
     ],
 )
 
