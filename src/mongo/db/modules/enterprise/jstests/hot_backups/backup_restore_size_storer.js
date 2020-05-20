@@ -1,6 +1,6 @@
 /**
  * Test that the 'sizeStorer.wt' file gets flushed the most up-to-date information before beginning
- * a nonblocking backup.
+ * a nonblocking backup, including when a backup cursor is extended.
  *
  * @tags: [requires_fsync, requires_persistence]
  */
@@ -22,41 +22,61 @@ function addDocuments(db, starting) {
 const dbName = "test";
 const collName = "coll";
 
-const rst = new ReplSetTest({nodes: 2});
-rst.startSet();
-rst.initiate();
+function testBackup(extend) {
+    const rst = new ReplSetTest({nodes: 2});
+    rst.startSet();
+    rst.initiate();
 
-const primary = rst.getPrimary();
-const primaryDB = primary.getDB(dbName);
+    const primary = rst.getPrimary();
+    const primaryDB = primary.getDB(dbName);
 
-// Add some documents and force a checkpoint to have an initial sizeStorer file to backup.
-addDocuments(primaryDB, 0);
-rst.awaitLastOpCommitted();
-assert.commandWorked(primaryDB.adminCommand({fsync: 1}));
+    // Add some documents and force a checkpoint to have an initial sizeStorer file to backup.
+    addDocuments(primaryDB, 0);
+    rst.awaitLastOpCommitted();
+    assert.commandWorked(primaryDB.adminCommand({fsync: 1}));
 
-const backupPath = MongoRunner.dataPath + 'backup_restore';
+    const backupPath = MongoRunner.dataPath + 'backup_restore';
 
-// Add more documents and begin a backup immediately after, before another checkpoint can run.
-addDocuments(primaryDB, 100);
-rst.awaitLastOpCommitted();
+    // Add more documents and begin a backup immediately after, before another checkpoint can run.
+    addDocuments(primaryDB, 100);
+    rst.awaitLastOpCommitted();
 
-let numRecords = primaryDB.getCollection(collName).find({}).count();
-assert.eq(200, numRecords);
+    let numRecords = primaryDB.getCollection(collName).find({}).count();
+    assert.eq(200, numRecords);
 
-backupData(primary, backupPath);
+    const backupCursor = openBackupCursor(primary);
+    const metadata = getBackupCursorMetadata(backupCursor);
+    copyBackupCursorFiles(backupCursor, metadata.dbpath, backupPath, false /* async */);
 
-let copiedFiles = ls(backupPath);
-assert.gt(copiedFiles.length, 0);
+    // Add more documents after backing up the previously inserted documents. These will not be
+    // backed up unless we are testing with backup cursor extension.
+    addDocuments(primaryDB, 200);
+    rst.awaitLastOpCommitted();
 
-rst.stopSet();
+    const res = assert.commandWorked(primaryDB.runCommand({count: collName}));
+    assert.eq(300, res.n);
 
-const conn = MongoRunner.runMongod({dbpath: backupPath, noCleanData: true});
-assert.neq(conn, null);
+    if (extend) {
+        const extendedCursor = extendBackupCursor(primary, metadata.backupId, res.operationTime);
+        copyBackupCursorExtendFiles(extendedCursor, metadata.dbpath, backupPath, false /* async */);
+    }
 
-// Check that the size information is correct for the collection.
-const db = conn.getDB(dbName);
-numRecords = db.getCollection(collName).find({}).count();
-assert.eq(200, numRecords);
+    let copiedFiles = ls(backupPath);
+    assert.gt(copiedFiles.length, 0);
 
-MongoRunner.stopMongod(conn);
+    rst.stopSet();
+
+    const conn = MongoRunner.runMongod({dbpath: backupPath, noCleanData: true});
+    assert.neq(conn, null);
+
+    // Check that the size information is correct for the collection.
+    const db = conn.getDB(dbName);
+    numRecords = db.getCollection(collName).find({}).count();
+    assert.eq(extend ? 300 : 200, numRecords);
+
+    MongoRunner.stopMongod(conn);
+}
+
+testBackup(false /* extend */);
+testBackup(true /* extend */);
 }());
