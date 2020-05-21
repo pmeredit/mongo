@@ -168,9 +168,6 @@ int mqlrunMain(const char* pipelineStr,
                     break;
                 case PlanExecutor::IS_EOF:
                     return 0;  // Success
-                case PlanExecutor::FAILURE:
-                    std::cerr << "Failure: " << std::endl;
-                    return 1;
             }
         } catch (AssertionException& e) {
             std::cerr << "Failure: " << e.reason() << std::endl;
