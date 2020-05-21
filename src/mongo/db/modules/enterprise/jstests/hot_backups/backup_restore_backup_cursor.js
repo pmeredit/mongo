@@ -23,6 +23,11 @@ if (_isWindows()) {
     return;
 }
 
+// It is possible for more documents to be inserted between persisting the size storer info to disk
+// and the backup cursor being created, causing the fast count to be inaccurate upon restore.
+// TODO (SERVER-48370): Once the persisted size storer info is always up-to-date, remove this guard.
+TestData.skipEnforceFastCountOnValidate = true;
+
 // Run the fsyncLock test. Will return before testing for any engine that doesn't
 // support fsyncLock
 new BackupRestoreTest({backup: 'backupCursor'}).run();
