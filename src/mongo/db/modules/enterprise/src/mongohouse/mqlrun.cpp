@@ -200,9 +200,10 @@ const char* usage =
     "Unsupported aggregations stages: $collStags, $currentOp, $geoNear,\n"
     "$graphLookup, $indexStats, $listLocalSessions, $lookup, $out\n";
 
-int main(int argc, char* argv[], char** envp) {
+int main(int argc, char* argv[]) {
 
-    mongo::Status status = mongo::runGlobalInitializers(argc, argv, envp);
+    mongo::Status status =
+        mongo::runGlobalInitializers(std::vector<std::string>(argv, argv + argc));
 
     if (!status.isOK()) {
         std::cerr << "Failed global initialization: " << status << std::endl;

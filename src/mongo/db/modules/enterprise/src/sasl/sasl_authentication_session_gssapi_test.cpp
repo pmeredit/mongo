@@ -112,7 +112,7 @@ void setupLegacyEnvironment() {
 
 }  // namespace
 
-int main(int argc, char** argv, char** envp) {
+int main(int argc, char** argv) {
     // Set up *nix-based kerberos.
     if (!mkstemp(krb5ccFile)) {
         LOGV2(24211,
@@ -160,7 +160,7 @@ int main(int argc, char** argv, char** envp) {
     saslGlobalParams.serviceName = mockServiceName;
     saslGlobalParams.hostName = mockHostName;
 
-    runGlobalInitializersOrDie(argc, argv, envp);
+    runGlobalInitializersOrDie(std::vector<std::string>(argv, argv + argc));
 
     {
         auto service = ServiceContext::make();
