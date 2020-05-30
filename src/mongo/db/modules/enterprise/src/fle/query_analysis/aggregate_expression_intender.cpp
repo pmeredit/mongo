@@ -674,6 +674,9 @@ private:
     void visit(ExpressionPow*) final {
         ensureNotEncryptedEnterEval("an exponentiation calculation", subtreeStack);
     }
+    void visit(ExpressionRandom*) final {
+        ensureNotEncryptedEnterEval("a $rand expression", subtreeStack);
+    }
     void visit(ExpressionRange*) final {
         ensureNotEncryptedEnterEval("a numeric sequence generator", subtreeStack);
     }
@@ -973,6 +976,7 @@ private:
     void visit(ExpressionObject*) final {}
     void visit(ExpressionOr*) final {}
     void visit(ExpressionPow*) final {}
+    void visit(ExpressionRandom*) final {}
     void visit(ExpressionRange*) final {}
     void visit(ExpressionReduce* reduce) final {
         // As with ExpressionLet the final child here is part of the parent Subtree.
@@ -1255,6 +1259,9 @@ private:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionPow*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionRandom*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionRange*) final {
