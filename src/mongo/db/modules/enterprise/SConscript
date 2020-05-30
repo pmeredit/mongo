@@ -7,8 +7,6 @@ Import("http_client")
 
 import libdeps
 
-hygienic = get_option('install-mode') == 'hygienic'
-
 feature_dirs = [
     "fle",
     "search",
@@ -386,11 +384,6 @@ if "encryptdb" in env['MONGO_ENTERPRISE_FEATURES']:
         ],
     )
 
-    env.Alias("all", mongodecrypt)
-
-    if not hygienic:
-        env.Install("#/", mongodecrypt)
-
 if "ldap" in env['MONGO_ENTERPRISE_FEATURES']:
     mongoldap = env.Program(
         target="mongoldap",
@@ -417,11 +410,6 @@ if "ldap" in env['MONGO_ENTERPRISE_FEATURES']:
             "src/util/report_tool",
         ],
     )
-
-    env.Alias("all", mongoldap)
-
-    if not hygienic:
-        env.Install("#/", mongoldap)
 
 if "kerberos" in env['MONGO_ENTERPRISE_FEATURES']:
     def CheckKRB5Features(context):
@@ -467,11 +455,6 @@ if "kerberos" in env['MONGO_ENTERPRISE_FEATURES']:
         ] + (["src/util/gssapi_helpers"] if not env.TargetOSIs("windows") else []),
     )
 
-    env.Alias("all", mongokerberos)
-
-    if not hygienic:
-        env.Install("#/", mongokerberos)
-
 if "fle" in env['MONGO_ENTERPRISE_FEATURES']:
     mongocryptd = env.Program(
         target="mongocryptd",
@@ -490,11 +473,6 @@ if "fle" in env['MONGO_ENTERPRISE_FEATURES']:
         ],
     )
 
-    if not hygienic:
-        env.Install("#/", mongocryptd)
-
-    env.Alias("all", mongocryptd)
-
 if "search" in env['MONGO_ENTERPRISE_FEATURES']:
     mongotmock = env.Program(
         target="mongotmock",
@@ -509,61 +487,49 @@ if "search" in env['MONGO_ENTERPRISE_FEATURES']:
         AIB_COMPONENTS_EXTRA=["dist-test"],
     )
 
-    if not hygienic:
-        env.Alias("core", env.Install("#/", mongotmock))
+# SNMP doc files
+env.AutoInstall(
+    target='$PREFIX/snmp',
+    source=env.Glob("docs/*"),
+    AIB_COMPONENT='snmp',
+    AIB_COMPONENTS_EXTRA=[
+        'dist',
+        'dist-test',
+    ],
+    AIB_ROLE="base",
+)
 
-if hygienic:
-    # These are all the files added in ARCHIVE_ADDITIONS
-    #
-    # Much of this is duplicated from the build.py, in hygienic mode
-    # it cannot exist there since there is a dependency ordering
-    # issue. When hygienic is the default we can clean this up and
-    # remove the duplication in the build.py
-    #
-    # SNMP doc files
-    env.AutoInstall(
-        target='$PREFIX/snmp',
-        source=env.Glob("docs/*"),
-        AIB_COMPONENT='snmp',
-        AIB_COMPONENTS_EXTRA=[
-            'dist',
-            'dist-test',
-        ],
-        AIB_ROLE="base",
-    )
+if env.TargetOSIs("windows"):
+    import os
+    import winreg
+    import re
+    import subprocess
 
-    if env.TargetOSIs("windows"):
-        import os
-        import winreg
-        import re
-        import subprocess
+    extra_files = []
 
-        extra_files = []
+    if 'sasl' in env['MONGO_ENTERPRISE_FEATURES']:
+        extra_files.extend([
+            'libsasl.dll',
+            'libsasl.pdb',
+        ])
 
-        if 'sasl' in env['MONGO_ENTERPRISE_FEATURES']:
-            extra_files.extend([
-                'libsasl.dll',
-                'libsasl.pdb',
-            ])
+    if 'snmp' in env['MONGO_ENTERPRISE_FEATURES']:
+        extra_files.extend([
+            'netsnmp.dll',
+            'netsnmp.pdb',
+        ])
 
-        if 'snmp' in env['MONGO_ENTERPRISE_FEATURES']:
-            extra_files.extend([
-                'netsnmp.dll',
-                'netsnmp.pdb',
-            ])
-
-        for file_name in extra_files:
-            paths = [str(env.Dir(libpath).Dir('..').Dir('bin')) for libpath in env.get('LIBPATH', [])]
-            for path in paths:
-                full_file_name = os.path.join(os.path.normpath(path.lower()), file_name)
-                if os.path.exists(full_file_name):
-                    env.AutoInstall(
-                        target='$PREFIX_BINDIR',
-                        source=[full_file_name],
-                        AIB_COMPONENT='dist',
-                        AIB_COMPONENTS_EXTRA=[
-                            'dist-test',
-                        ],
-                        AIB_ROLE="debug" if full_file_name.endswith(".pdb") else "runtime",
-                    )
-
+    for file_name in extra_files:
+        paths = [str(env.Dir(libpath).Dir('..').Dir('bin')) for libpath in env.get('LIBPATH', [])]
+        for path in paths:
+            full_file_name = os.path.join(os.path.normpath(path.lower()), file_name)
+            if os.path.exists(full_file_name):
+                env.AutoInstall(
+                    target='$PREFIX_BINDIR',
+                    source=[full_file_name],
+                    AIB_COMPONENT='dist',
+                    AIB_COMPONENTS_EXTRA=[
+                        'dist-test',
+                    ],
+                    AIB_ROLE="debug" if full_file_name.endswith(".pdb") else "runtime",
+                )
