@@ -30,8 +30,8 @@ class InMemoryFactory final : public StorageEngine::Factory {
 public:
     virtual ~InMemoryFactory() {}
 
-    StorageEngine* create(const StorageGlobalParams& params,
-                          const StorageEngineLockFile* lockFile) const final {
+    std::unique_ptr<StorageEngine> create(const StorageGlobalParams& params,
+                                          const StorageEngineLockFile* lockFile) const final {
         boost::filesystem::path dbpath = params.dbpath;
         dbpath /= "/inmem";
         boost::filesystem::remove_all(dbpath);
@@ -47,30 +47,30 @@ public:
         const bool ephemeral = true;
         const bool repair = false;
         const bool readOnly = false;
-        WiredTigerKVEngine* kv =
-            new WiredTigerKVEngine(getCanonicalName().toString(),
-                                   dbpath.string(),
-                                   getGlobalServiceContext()->getFastClockSource(),
-                                   engineConfig,
-                                   cacheMB,
-                                   // inMemory configurations ignore the maxCacheOverflowFileSize
-                                   // so leave as 0 (unbounded)
-                                   0,
-                                   durable,
-                                   ephemeral,
-                                   repair,
-                                   readOnly);
+        auto kv = std::make_unique<WiredTigerKVEngine>(
+            getCanonicalName().toString(),
+            dbpath.string(),
+            getGlobalServiceContext()->getFastClockSource(),
+            engineConfig,
+            cacheMB,
+            // inMemory configurations ignore the maxCacheOverflowFileSize
+            // so leave as 0 (unbounded)
+            0,
+            durable,
+            ephemeral,
+            repair,
+            readOnly);
         kv->setRecordStoreExtraOptions(inMemoryGlobalOptions.collectionConfig);
         kv->setSortedDataInterfaceExtraOptions(inMemoryGlobalOptions.indexConfig);
         // Intentionally leaked.
-        new WiredTigerServerStatusSection(kv);
+        new WiredTigerServerStatusSection(kv.get());
 
         StorageEngineOptions options;
         options.directoryPerDB = false;
         options.directoryForIndexes = false;
         options.forRepair = false;
 
-        return new StorageEngineImpl(kv, options);
+        return std::make_unique<StorageEngineImpl>(std::move(kv), options);
     }
 
     virtual StringData getCanonicalName() const final {

@@ -38,8 +38,8 @@ namespace {
 class QueryableWtFactory final : public StorageEngine::Factory {
 public:
     ~QueryableWtFactory() override {}
-    StorageEngine* create(const StorageGlobalParams& params,
-                          const StorageEngineLockFile* lockFile) const override {
+    std::unique_ptr<StorageEngine> create(const StorageGlobalParams& params,
+                                          const StorageEngineLockFile* lockFile) const override {
         uassert(ErrorCodes::InvalidOptions,
                 "Queryable restores must be started with --queryableBackupMode",
                 params.readOnly);
@@ -82,27 +82,27 @@ public:
 
         WiredTigerExtensions::get(getGlobalServiceContext())->addExtension(fsOptions);
 
-        WiredTigerKVEngine* kv =
-            new WiredTigerKVEngine(getCanonicalName().toString(),
-                                   dbpath,
-                                   getGlobalServiceContext()->getFastClockSource(),
-                                   wiredTigerGlobalOptions.engineConfig,
-                                   cacheMB,
-                                   wiredTigerGlobalOptions.getMaxHistoryFileSizeMB(),
-                                   params.dur,
-                                   kEphemeral,
-                                   params.repair,
-                                   params.readOnly);
+        auto kv =
+            std::make_unique<WiredTigerKVEngine>(getCanonicalName().toString(),
+                                                 dbpath,
+                                                 getGlobalServiceContext()->getFastClockSource(),
+                                                 wiredTigerGlobalOptions.engineConfig,
+                                                 cacheMB,
+                                                 wiredTigerGlobalOptions.getMaxHistoryFileSizeMB(),
+                                                 params.dur,
+                                                 kEphemeral,
+                                                 params.repair,
+                                                 params.readOnly);
         kv->setRecordStoreExtraOptions(wiredTigerGlobalOptions.collectionConfig);
         kv->setSortedDataInterfaceExtraOptions(wiredTigerGlobalOptions.indexConfig);
         // Intentionally leaked.
-        new WiredTigerServerStatusSection(kv);
+        new WiredTigerServerStatusSection(kv.get());
 
         StorageEngineOptions options;
         options.directoryPerDB = params.directoryperdb;
         options.directoryForIndexes = wiredTigerGlobalOptions.directoryForIndexes;
         options.forRepair = params.repair;
-        return new StorageEngineImpl(kv, options);
+        return std::make_unique<StorageEngineImpl>(std::move(kv), options);
     }
 
     StringData getCanonicalName() const override {
