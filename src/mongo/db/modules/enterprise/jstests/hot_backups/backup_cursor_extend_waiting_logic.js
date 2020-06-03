@@ -70,7 +70,7 @@ function assertLaggedSecondaryGetBlocked() {
     resetDbpath(restorePath);
     let rst = new ReplSetTest({name: "backupCursorExtendWaitingLogic", nodes: 3});
     rst.startSet();
-    rst.initiate();
+    rst.initiateWithHighElectionTimeout();
     const primaryDB = rst.getPrimary().getDB(dbName);
     const secondaryDB = rst.getSecondary().getDB(dbName);
 
