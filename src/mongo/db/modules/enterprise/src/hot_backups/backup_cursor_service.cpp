@@ -114,9 +114,10 @@ BackupCursorState BackupCursorService::openBackupCursor(
     _activeBackupId = UUID::gen();
     _replTermOfActiveBackup = replCoord->getTerm();
     LOGV2(24200,
-          "Opened backup cursor. ID: {activeBackupId} Term: {replTermOfActiveBackup}",
-          "activeBackupId"_attr = *_activeBackupId,
-          "replTermOfActiveBackup"_attr = *_replTermOfActiveBackup);
+          "Opened backup cursor. ID: {backupId} Term: {term}",
+          "Opened backup cursor",
+          "backupId"_attr = *_activeBackupId,
+          "term"_attr = *_replTermOfActiveBackup);
 
     // A backup cursor is open. Any exception code path must leave the BackupCursorService in an
     // inactive state.
@@ -135,9 +136,10 @@ BackupCursorState BackupCursorService::openBackupCursor(
             requeriedCheckpointTimestamp.get() < checkpointTimestamp.get()) {
             LOGV2_FATAL(50916,
                         "The checkpoint timestamp went backwards. Original: "
-                        "{checkpointTimestamp_get} Found: {requeriedCheckpointTimestamp}",
-                        "checkpointTimestamp_get"_attr = checkpointTimestamp.get(),
-                        "requeriedCheckpointTimestamp"_attr = requeriedCheckpointTimestamp);
+                        "{checkpointTimestamp} Found: {lastStableTimestamp}",
+                        "The checkpoint timestamp went backwards",
+                        "checkpointTimestamp"_attr = checkpointTimestamp.get(),
+                        "lastStableTimestamp"_attr = requeriedCheckpointTimestamp);
         }
 
         uassert(50915,
@@ -240,6 +242,7 @@ BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext
     // call are recommended to pass in a `maxTimeMS`, which is obeyed in this waiting logic.
     LOGV2(24201,
           "Extending backup cursor. backupId: {backupId} extendingTo: {extendTo}",
+          "Extending backup cursor",
           "backupId"_attr = backupId,
           "extendTo"_attr = extendTo);
 
@@ -262,6 +265,7 @@ BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext
         uassertStatusOK(_storageEngine->extendBackupCursor(opCtx));
     LOGV2(24202,
           "Backup cursor has been extended. backupId: {backupId} extendedTo: {extendTo}",
+          "Backup cursor has been extended",
           "backupId"_attr = backupId,
           "extendTo"_attr = extendTo);
 
@@ -295,7 +299,10 @@ void BackupCursorService::_closeBackupCursor(OperationContext* opCtx,
     if (encHooks->enabled()) {
         fassert(50934, encHooks->endNonBlockingBackup());
     }
-    LOGV2(24203, "Closed backup cursor. ID: {backupId}", "backupId"_attr = backupId);
+    LOGV2(24203,
+          "Closed backup cursor. ID: {backupId}",
+          "Closed backup cursor",
+          "backupId"_attr = backupId);
     _state = kInactive;
     _activeBackupId = boost::none;
     _replTermOfActiveBackup = boost::none;
