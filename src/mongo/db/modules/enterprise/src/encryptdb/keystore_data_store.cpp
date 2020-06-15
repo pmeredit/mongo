@@ -254,9 +254,6 @@ WTDataStore::WTDataStore(const boost::filesystem::path& path,
     wtConfig << "log=(enabled,file_max=3MB),transaction_sync=(enabled=true,method=fsync),";
     wtConfig << "extensions=[" << kEncryptionEntrypointConfig << "],";
     wtConfig << _keystoreConfig;
-    if (encryptionParams->readOnlyMode) {
-        wtConfig << "readonly=true,";
-    }
 
     LOGV2(24207, "Opening WiredTiger keystore", "config"_attr = wtConfig.str());
 

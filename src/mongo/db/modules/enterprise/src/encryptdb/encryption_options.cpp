@@ -107,10 +107,6 @@ MONGO_STARTUP_OPTIONS_STORE(EncryptionOptions)(InitializerContext* context) {
             params["security.eseDatabaseKeyRollover"].as<bool>();
     }
 
-    if (params.count("storage.queryableBackupMode")) {
-        encryptionGlobalParams.readOnlyMode = params["storage.queryableBackupMode"].as<bool>();
-    }
-
     if (params.count("storage.repair")) {
         encryptionGlobalParams.repair = params["storage.repair"].as<bool>();
     }

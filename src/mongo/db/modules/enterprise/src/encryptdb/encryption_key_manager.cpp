@@ -333,10 +333,7 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_readKey(
 
         auto symmetricKey = std::move(*cursor);
 
-        if (!_encryptionParams->readOnlyMode) {
-            session->update(std::move(cursor), symmetricKey);
-        }
-
+        session->update(std::move(cursor), symmetricKey);
         return std::move(symmetricKey);
     }
 
