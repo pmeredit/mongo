@@ -96,13 +96,11 @@ int customize(WT_ENCRYPTOR* encryptor,
 
     std::string encryptorName(encryptorNameItem.str, encryptorNameItem.len);
     if (mongo::encryptionGlobalParams.encryptionCipherMode != encryptorName) {
-        LOGV2_FATAL_CONTINUE(
-            24250,
-            "Invalid cipher mode '{mongo_encryptionGlobalParams_encryptionCipherMode}', "
-            "expected '{encryptorName}'",
-            "mongo_encryptionGlobalParams_encryptionCipherMode"_attr =
-                mongo::encryptionGlobalParams.encryptionCipherMode,
-            "encryptorName"_attr = encryptorName);
+        LOGV2_FATAL_CONTINUE(24250,
+                             "Invalid cipher mode",
+                             "actualCipherMode"_attr =
+                                 mongo::encryptionGlobalParams.encryptionCipherMode,
+                             "expectedCipherMode"_attr = encryptorName);
         return EINVAL;
     }
 
@@ -112,10 +110,9 @@ int customize(WT_ENCRYPTOR* encryptor,
         auto swSymmetricKey = EncryptionKeyManager::get(getGlobalServiceContext())->getKey(keyId);
         if (!swSymmetricKey.isOK()) {
             LOGV2_ERROR(24248,
-                        "Unable to retrieve key {keyId}, error: {swSymmetricKey_getStatus_reason}",
+                        "Unable to retrieve key",
                         "keyId"_attr = keyId,
-                        "swSymmetricKey_getStatus_reason"_attr =
-                            swSymmetricKey.getStatus().reason());
+                        "error"_attr = swSymmetricKey.getStatus());
             return EINVAL;
         }
         myEncryptor->encryptor = origEncryptor->encryptor;
@@ -124,8 +121,8 @@ int customize(WT_ENCRYPTOR* encryptor,
     } catch (const ExceptionForCat<ErrorCategory::NetworkError>&) {
         LOGV2_ERROR(24249,
                     "Socket/network exception in WT_ENCRYPTOR::customize on getKey to KMIP "
-                    "server:{exceptionToStatus}",
-                    "exceptionToStatus"_attr = exceptionToStatus());
+                    "server",
+                    "error"_attr = exceptionToStatus());
         return EINVAL;
     }
 
@@ -158,7 +155,7 @@ int encrypt(WT_ENCRYPTOR* encryptor,
     Status ret = crypto::aesEncrypt(*key, mode, schema, src, srcLen, dst, dstLen, resultLen);
     if (!ret.isOK()) {
         LOGV2_FATAL_CONTINUE(
-            24251, "Encrypt error for key {keyId}: {ret}", "keyId"_attr = keyId, "ret"_attr = ret);
+            24251, "Encrypt error for key", "keyId"_attr = keyId, "error"_attr = ret);
         return EINVAL;
     }
 
@@ -201,10 +198,9 @@ int decrypt(WT_ENCRYPTOR* encryptor,
             auto swPageKey =
                 EncryptionKeyManager::get(getGlobalServiceContext())->getKey(pageKeyId, findMode);
             if (!swPageKey.isOK()) {
-                LOGV2_FATAL_CONTINUE(
-                    24252,
-                    "Unable to retrieve encryption key for page: {swPageKey_getStatus_reason}",
-                    "swPageKey_getStatus_reason"_attr = swPageKey.getStatus().reason());
+                LOGV2_FATAL_CONTINUE(24252,
+                                     "Unable to retrieve encryption key for page",
+                                     "error"_attr = swPageKey.getStatus());
                 return EINVAL;
             }
 
@@ -218,12 +214,10 @@ int decrypt(WT_ENCRYPTOR* encryptor,
     if (!ret.isOK()) {
         if (key->getKeyId().name() == kSystemKeyId) {
             LOGV2_FATAL_CONTINUE(
-                24253, "Decryption failed, invalid encryption master key or keystore encountered.");
+                24253, "Decryption failed, invalid encryption master key or keystore encountered");
         } else {
-            LOGV2_FATAL_CONTINUE(24254,
-                                 "Decrypt error for key {key_getKeyId}: {ret}",
-                                 "key_getKeyId"_attr = key->getKeyId(),
-                                 "ret"_attr = ret);
+            LOGV2_FATAL_CONTINUE(
+                24254, "Decrypt error for key", "keyId"_attr = key->getKeyId(), "error"_attr = ret);
         }
         return EINVAL;
     }

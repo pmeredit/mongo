@@ -147,8 +147,7 @@ bool EncryptionKeyManager::restartRequired() {
     }
 
     if (_encryptionParams->encryptionKeyFile.empty()) {
-        LOGV2(
-            24038, "Encryption key manager initialized", "kmipKeyID"_attr = _masterKey->getKeyId());
+        LOGV2(24038, "Encryption key manager initialized", "keyId"_attr = _masterKey->getKeyId());
     } else {
         LOGV2(24039,
               "Encryption key manager initialized",
@@ -437,11 +436,10 @@ Status EncryptionKeyManager::_initLocalKeystore() {
         // The key store exists
         if (!_encryptionParams->encryptionKeyFile.empty() && existingKeyId != "local") {
             // Warn if the the server has been started with a KMIP key before.
-            LOGV2_WARNING(
-                24046,
-                "It looks like the data files were previously encrypted using an external key with "
-                "id {keyId}. Attempting to use the provided key file.",
-                "keyId"_attr = existingKeyId);
+            LOGV2_WARNING(24046,
+                          "It looks like the data files were previously encrypted using an "
+                          "external key. Attempting to use the provided key file",
+                          "keyId"_attr = existingKeyId);
         }
         _keyRotationAllowed = true;
         defaultKeystoreSchemaVersion = 0;
@@ -542,9 +540,9 @@ Status EncryptionKeyManager::_initLocalKeystore() {
             if (_keystoreMetadata.getDirty()) {
                 LOGV2(24041,
                       "Detected an unclean shutdown of the encrypted storage engine - rolling over "
-                      "all database keys.");
+                      "all database keys");
             } else {
-                LOGV2(24042, "Database key rollover for encrypted storage engine was requested.");
+                LOGV2(24042, "Database key rollover for encrypted storage engine was requested");
             }
 
             _keystore->rollOverKeys();

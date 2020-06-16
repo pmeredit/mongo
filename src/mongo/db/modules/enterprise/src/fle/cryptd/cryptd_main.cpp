@@ -69,25 +69,20 @@ void createLockFile(ServiceContext* serviceContext) {
     boost::filesystem::path orig_file(serverGlobalParams.pidFile);
     boost::filesystem::path file(boost::filesystem::absolute(orig_file));
 
-    LOGV2(24225,
-          "Using lock file: {file_generic_string}",
-          "file_generic_string"_attr = file.generic_string());
+    LOGV2(24225, "Using lock file", "file"_attr = file.generic_string());
     try {
         lockFile.emplace(file.parent_path().generic_string(), file.filename().generic_string());
     } catch (const std::exception& ex) {
         LOGV2_ERROR(24230,
-                    "Unable to determine status of lock file in the data directory "
-                    "{file_generic_string}: {ex_what}",
-                    "file_generic_string"_attr = file.generic_string(),
-                    "ex_what"_attr = ex.what());
+                    "Unable to determine status of lock file in the data directory",
+                    "file"_attr = file.generic_string(),
+                    "error"_attr = ex.what());
         _exit(EXIT_FAILURE);
     }
 
     const auto openStatus = lockFile->open();
     if (!openStatus.isOK()) {
-        LOGV2_ERROR(24231,
-                    "Failed to open pid file, exiting: {openStatus}",
-                    "openStatus"_attr = openStatus);
+        LOGV2_ERROR(24231, "Failed to open pid file, exiting", "error"_attr = openStatus);
         _exit(EXIT_FAILURE);
     }
 
@@ -99,9 +94,7 @@ void createLockFile(ServiceContext* serviceContext) {
 
     const auto writeStatus = lockFile->writeString(str);
     if (!writeStatus.isOK()) {
-        LOGV2_ERROR(24232,
-                    "Failed to write pid file, exiting: {writeStatus}",
-                    "writeStatus"_attr = writeStatus);
+        LOGV2_ERROR(24232, "Failed to write pid file, exiting", "error"_attr = writeStatus);
         _exit(EXIT_FAILURE);
     }
 }
@@ -227,8 +220,7 @@ ExitCode initAndListen() {
         transport::TransportLayerManager::createWithConfig(&serverGlobalParams, serviceContext);
     Status status = tl->setup();
     if (!status.isOK()) {
-        LOGV2_ERROR(
-            24233, "Failed to setup the transport layer: {status}", "status"_attr = redact(status));
+        LOGV2_ERROR(24233, "Failed to setup the transport layer", "error"_attr = redact(status));
         return EXIT_NET_ERROR;
     }
 
@@ -236,24 +228,20 @@ ExitCode initAndListen() {
 
     status = serviceContext->getServiceExecutor()->start();
     if (!status.isOK()) {
-        LOGV2_ERROR(24234,
-                    "Failed to start the service executor: {status}",
-                    "status"_attr = redact(status));
+        LOGV2_ERROR(24234, "Failed to start the service executor", "error"_attr = redact(status));
         return EXIT_NET_ERROR;
     }
 
     status = serviceContext->getServiceEntryPoint()->start();
     if (!status.isOK()) {
-        LOGV2_ERROR(24235,
-                    "Failed to start the service entry point: {status}",
-                    "status"_attr = redact(status));
+        LOGV2_ERROR(
+            24235, "Failed to start the service entry point", "error"_attr = redact(status));
         return EXIT_NET_ERROR;
     }
 
     status = serviceContext->getTransportLayer()->start();
     if (!status.isOK()) {
-        LOGV2_ERROR(
-            24236, "Failed to start the transport layer: {status}", "status"_attr = redact(status));
+        LOGV2_ERROR(24236, "Failed to start the transport layer", "error"_attr = redact(status));
         return EXIT_NET_ERROR;
     }
 

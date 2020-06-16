@@ -85,7 +85,7 @@ StatusWith<std::unique_ptr<SymmetricKey>> getKeyFromKMIPServer(const KMIPParams&
     }
 
     std::string newKeyId = swCreateKey.getValue();
-    LOGV2(24199, "Created KMIP key with id: {newKeyId}", "newKeyId"_attr = newKeyId);
+    LOGV2(24199, "Created KMIP key", "keyId"_attr = newKeyId);
     return kmipService.getExternalKey(newKeyId);
 }
 

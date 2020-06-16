@@ -77,7 +77,7 @@ private:
         // If we have seen the generation count bump in N runs, exit
         if (_missedCounter >= kMissedCounts) {
             LOGV2(24237,
-                  "Mongocryptd has not received a command for at least {userTimeout}, exiting.",
+                  "Mongocryptd has not received a command in the expected timeout window, exiting",
                   "userTimeout"_attr = _userTimeout);
             _inShutdown.store(true);
             exitCleanly(EXIT_KILL);

@@ -980,15 +980,14 @@ public:
         init_agent(_agentName.c_str());
 
         _init();
-        LOGV2_DEBUG(23995, 1, "SNMPAgent num things: {numThings}", "numThings"_attr = _numThings);
+        LOGV2_DEBUG(23995, 1, "SNMPAgent entries", "count"_attr = _numThings);
 
         init_snmp(_agentName.c_str());
 
         if (!snmpGlobalParams.subagent) {
             int res = init_master_agent();
             if (res) {
-                LOGV2_WARNING(
-                    24002, "error starting SNMPAgent as master err:{res}", "res"_attr = res);
+                LOGV2_WARNING(24002, "Error starting SNMPAgent as master", "result"_attr = res);
                 return;
             }
             LOGV2(23996, "SNMPAgent running as master");
@@ -1081,21 +1080,20 @@ int my_snmp_callback(netsnmp_mib_handler* handler,
                 SNMPCallBack* cb = snmpAgent.getCallBack(var);
                 if (!cb) {
                     LOGV2_WARNING(24003,
-                                  "no callback for: {oidManager_var_name}",
-                                  "oidManager_var_name"_attr = oidManager.toString(var->name));
+                                  "No callback for variable",
+                                  "variable"_attr = oidManager.toString(var->name));
                 } else {
                     try {
                         if (cb->respond(var) != SNMPCallBack::RESPOND_OK) {
                             LOGV2_WARNING(24004,
-                                          "error retrieving: {oidManager_var_name}",
-                                          "oidManager_var_name"_attr =
-                                              oidManager.toString(var->name));
+                                          "Error retrieving",
+                                          "variable"_attr = oidManager.toString(var->name));
                         }
                     } catch (std::exception& e) {
                         LOGV2_WARNING(24005,
-                                      "exception on retrieval of {oidManager_var_name}: {e_what}",
-                                      "oidManager_var_name"_attr = oidManager.toString(var->name),
-                                      "e_what"_attr = e.what());
+                                      "Exception on retrieval of variable",
+                                      "variable"_attr = oidManager.toString(var->name),
+                                      "error"_attr = e.what());
                     }
                 }
 
@@ -1112,11 +1110,7 @@ int my_snmp_callback(netsnmp_mib_handler* handler,
                     return SNMP_ERR_NOERROR;
                 }
                 */
-                LOGV2_WARNING(
-                    24006,
-                    "i have no idea what i'm supposed to do with MODE_GETNEXT {FILE_}:{LINE_}",
-                    "FILE_"_attr = __FILE__,
-                    "LINE_"_attr = __LINE__);
+                LOGV2_WARNING(24006, "MODE_GETNEXT unsupported");
                 break;
             }
             default:
@@ -1142,21 +1136,21 @@ static int snmpLogCallback(int majorID, int minorID, void* serverArg, void* clie
         case LOG_EMERG:
         case LOG_ALERT:
         case LOG_CRIT:
-            LOGV2_FATAL_CONTINUE(4615642, "{message}", "message"_attr = slm->msg);
+            LOGV2_FATAL_CONTINUE(4615642, "SNMP critical", "message"_attr = slm->msg);
             break;
         case LOG_ERR:
-            LOGV2_ERROR(4615643, "{message}", "message"_attr = slm->msg);
+            LOGV2_ERROR(4615643, "SNMP error", "message"_attr = slm->msg);
             break;
         case LOG_WARNING:
-            LOGV2_WARNING(4615644, "{message}", "message"_attr = slm->msg);
+            LOGV2_WARNING(4615644, "SNMP warning", "message"_attr = slm->msg);
             break;
         case LOG_DEBUG:
-            LOGV2_DEBUG(4615645, 1, "{message}", "message"_attr = slm->msg);
+            LOGV2_DEBUG(4615645, 1, "SNMP debug", "message"_attr = slm->msg);
             break;
         case LOG_NOTICE:
         case LOG_INFO:
         default:
-            LOGV2(4615646, "{message}", "message"_attr = slm->msg);
+            LOGV2(4615646, "SNMP info", "message"_attr = slm->msg);
             break;
     }
 

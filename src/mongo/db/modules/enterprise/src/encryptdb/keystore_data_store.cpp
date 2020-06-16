@@ -27,7 +27,7 @@ int keystore_handle_error(WT_EVENT_HANDLER* handler,
                           const char* message) {
     try {
         LOGV2_ERROR(24208,
-                    "WiredTiger keystore ({errorCode}) {message}",
+                    "WiredTiger keystore error",
                     "errorCode"_attr = errorCode,
                     "message"_attr = message);
         fassert(4051, errorCode != WT_PANIC);
@@ -39,7 +39,7 @@ int keystore_handle_error(WT_EVENT_HANDLER* handler,
 
 int keystore_handle_message(WT_EVENT_HANDLER* handler, WT_SESSION* session, const char* message) {
     try {
-        LOGV2(24205, "WiredTiger keystore {message}", "message"_attr = message);
+        LOGV2(24205, "WiredTiger keystore message", "message"_attr = message);
     } catch (...) {
         std::terminate();
     }
@@ -52,7 +52,7 @@ int keystore_handle_progress(WT_EVENT_HANDLER* handler,
                              uint64_t progress) {
     try {
         LOGV2(24206,
-              "WiredTiger keystore progress {operation} {progress}",
+              "WiredTiger keystore progress",
               "operation"_attr = operation,
               "progress"_attr = progress);
     } catch (...) {
@@ -209,10 +209,9 @@ bool WTDataStoreSession::verifyTable() {
         // lie and return OK to avoid breaking tests. This block should go away when that ticket
         // is resolved.
         LOGV2_ERROR(24209,
-                    "Verify on {kKeystoreTableName} failed with EBUSY. This means the keystore was "
+                    "Verify on 'table:keystore' failed with EBUSY. This means the keystore was "
                     "being accessed. No repair is necessary unless other "
-                    "errors are reported.",
-                    "kKeystoreTableName"_attr = kKeystoreTableName);
+                    "errors are reported");
         return true;
     } else if (ret == ENOENT || ret == 0) {
         return true;
@@ -229,10 +228,9 @@ void WTDataStoreSession::salvage() {
         // lie and return OK to avoid breaking tests. This block should go away when that ticket
         // is resolved.
         LOGV2_ERROR(24210,
-                    "Verify on {kKeystoreTableName} failed with EBUSY. This means the keystore was "
+                    "Verify on 'table:keystore' failed with EBUSY. This means the keystore was "
                     "being accessed. No repair is necessary unless other "
-                    "errors are reported.",
-                    "kKeystoreTableName"_attr = kKeystoreTableName);
+                    "errors are reported");
     } else {
         fassertFailedWithStatusNoTrace(51226, wtRCToStatus(ret));
     }
@@ -260,9 +258,7 @@ WTDataStore::WTDataStore(const boost::filesystem::path& path,
         wtConfig << "readonly=true,";
     }
 
-    LOGV2(24207,
-          "Opening WiredTiger keystore. Config: {wtConfig_str}",
-          "wtConfig_str"_attr = wtConfig.str());
+    LOGV2(24207, "Opening WiredTiger keystore", "config"_attr = wtConfig.str());
 
     WT_CONNECTION* connPtr = nullptr;
     auto rc = wiredtiger_open(

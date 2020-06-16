@@ -16,6 +16,7 @@
 #include "mongo/db/client.h"
 #include "mongo/db/dbdirectclient.h"
 #include "mongo/logv2/log.h"
+#include "mongo/util/duration.h"
 #include "mongo/util/time_support.h"
 #include "mongo/util/timer.h"
 
@@ -111,17 +112,16 @@ bool ServerStatusClient::load() {
         ok = dbClient.runCommand("admin", _serverStatusCmd, response);
         LOGV2_DEBUG(24007,
                     5,
-                    "serverStatus cmd for {sectionName} took {timer_micros} micros",
+                    "serverStatus command complete",
                     "sectionName"_attr = _sectionName,
-                    "timer_micros"_attr = timer.micros());
+                    "duration"_attr = duration_cast<Milliseconds>(Microseconds(timer.micros())));
     }
 
     if (ok) {
-        LOGV2_DEBUG(24008, 5, "ServerStatusClient::load {response}", "response"_attr = response);
+        LOGV2_DEBUG(24008, 5, "ServerStatusClient::load", "response"_attr = response);
         _serverStatusData = response;
     } else {
-        LOGV2_WARNING(
-            24010, "serverStatus call failed: {response}", "response"_attr = response.toString());
+        LOGV2_WARNING(24010, "serverStatus call failed", "response"_attr = response.toString());
         _serverStatusData = BSONObj();
     }
 
@@ -129,7 +129,7 @@ bool ServerStatusClient::load() {
 }
 
 BSONElement ServerStatusClient::getElement(StringData name) {
-    LOGV2_DEBUG(24009, 5, "ServerStatusClient::getElement: {name}", "name"_attr = name);
+    LOGV2_DEBUG(24009, 5, "ServerStatusClient::getElement", "name"_attr = name);
 
     // no need to handle return - fields will not be found in empty BSONObj
     loadIfNeeded();
@@ -222,7 +222,7 @@ void ServerStatusClient::getStringField(StringData name, char* o_value, int o_va
 
     BSONElement elem = getElement(name);
     if (elem.type() != mongo::String) {
-        LOGV2_WARNING(24011, "{name} is not a string", "name"_attr = name);
+        LOGV2_WARNING(24011, "Field is not a string", "field"_attr = name);
         o_value[0] = '\0';
         return;
     }
@@ -233,10 +233,10 @@ void ServerStatusClient::getStringField(StringData name, char* o_value, int o_va
     // if the value was larger than our buffer
     if (size > o_valueLen) {
         LOGV2_WARNING(24012,
-                      "{name} value size {size} is larger than buffer size {o_valueLen}",
-                      "name"_attr = name,
+                      "Field value size is larger than buffer size",
+                      "field"_attr = name,
                       "size"_attr = size,
-                      "o_valueLen"_attr = o_valueLen);
+                      "bufferSize"_attr = o_valueLen);
         o_value[o_valueLen - 1] = '\0';
     }
 }

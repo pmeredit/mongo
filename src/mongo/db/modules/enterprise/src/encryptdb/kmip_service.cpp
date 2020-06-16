@@ -82,17 +82,15 @@ StatusWith<KMIPService> KMIPService::createKMIPService(const KMIPParams& kmipPar
             }
             if ((it + 1) != kmipParams.kmipServerName.end()) {
                 LOGV2_WARNING(24240,
-                              "Connection to KMIP server at {hp} failed. Trying again at "
-                              "{HostAndPort_it_1_kmipParams_kmipPort}.",
-                              "hp"_attr = hp,
-                              "HostAndPort_it_1_kmipParams_kmipPort"_attr =
-                                  HostAndPort(*(it + 1), kmipParams.kmipPort));
+                              "Connection to KMIP server failed. Trying next server",
+                              "failedHost"_attr = hp,
+                              "nextHost"_attr = HostAndPort(*(it + 1), kmipParams.kmipPort));
             } else if (retries) {
                 LOGV2_WARNING(24241,
-                              "Connection to KMIP server at {hp} failed. Restarting connect "
-                              "attempt(s) {retries} more time(s).",
-                              "hp"_attr = hp,
-                              "retries"_attr = retries);
+                              "Connection to KMIP server failed. Restarting connect "
+                              "attempt(s) with remaining retries",
+                              "host"_attr = hp,
+                              "retryCount"_attr = retries);
             } else {
                 return swService.getStatus();
             }

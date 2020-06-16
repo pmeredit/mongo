@@ -342,9 +342,8 @@ Status KMIPResponse::_parseResponse(ConstDataRangeCursor* cdrc) {
 
     // Read the header length
     if (_batchCount > 1) {
-        LOGV2_WARNING(24239,
-                      "KMIP Response contains {batchCount} items, expected 1.",
-                      "batchCount"_attr = _batchCount);
+        LOGV2_WARNING(
+            24239, "KMIP Response contains too many items, expected 1", "count"_attr = _batchCount);
     }
     // Parse the first (and only) batch item
     return _parseBatchItem(cdrc);

@@ -313,9 +313,9 @@ public:
 
         LOGV2_DEBUG(24019,
                     1,
-                    "Cached encryption key mapping: {keyDatabase} -> {keyID}",
+                    "Cached encryption key mapping",
                     "keyDatabase"_attr = view.database,
-                    "keyID"_attr = keyId.id().get());
+                    "keyId"_attr = keyId.id().get());
         fassert(51172, inserted);
     }
 
@@ -419,9 +419,9 @@ std::unique_ptr<Keystore> KeystoreImplV1::makeKeystore(const boost::filesystem::
                     dbNameToKeyIdOldest.insert({view.database.toString(), view.id});
                 LOGV2_DEBUG(24021,
                             1,
-                            "Cached possible v0 key mapping: {keyDatabase} -> {viewID}",
+                            "Cached possible v0 key mapping",
                             "keyDatabase"_attr = view.database,
-                            "viewID"_attr = view.id);
+                            "keyId"_attr = view.id);
                 fassert(51167, inserted);
             } while (++cursor != session.end());
         }
@@ -440,9 +440,9 @@ std::unique_ptr<Keystore> KeystoreImplV1::makeKeystore(const boost::filesystem::
                     dbNameToKeyIdCurrent.insert({view.database.toString(), view.id});
                 LOGV2_DEBUG(24022,
                             1,
-                            "Cached encryption key mapping: {keyDatabase} -> {viewID}",
+                            "Cached encryption key mapping",
                             "keyDatabase"_attr = view.database,
-                            "viewID"_attr = view.id);
+                            "keyId"_attr = view.id);
                 fassert(51133, inserted);
             } while (++cursor != session.rend());
         }
