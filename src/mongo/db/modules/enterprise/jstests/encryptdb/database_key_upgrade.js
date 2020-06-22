@@ -96,8 +96,12 @@ function runMongod(cipher, opts = {}, features = {}) {
         }
     }
 
+    // Give the cursor a variable name so that it doesn't fall out of scope and die
+    // before the MongoD shuts down.
+    var cursor;
+
     if (features.openBackupCursor) {
-        mongod.getDB('admin').aggregate([{$backupCursor: {}}]);
+        cursor = mongod.getDB('admin').aggregate([{$backupCursor: {}}]);
     }
 
     ++startCount;
