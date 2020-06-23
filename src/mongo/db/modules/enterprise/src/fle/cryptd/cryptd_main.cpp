@@ -192,8 +192,6 @@ ExitCode initAndListen() {
     repl::ReplicationCoordinator::set(
         serviceContext, std::make_unique<repl::ReplicationCoordinatorNoOp>(serviceContext));
 
-    serverGlobalParams.serviceExecutor = "synchronous";
-
     // Enable local TCP/IP by default since some drivers (i.e. C#), do not support unix domain
     // sockets
     // Bind only to localhost, ignore any defaults or command line options
