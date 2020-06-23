@@ -886,9 +886,6 @@ private:
     void visit(ExpressionFromAccumulator<AccumulatorMergeObjects>*) final {
         ensureNotEncryptedEnterEval("a merge objects aggregation", subtreeStack);
     }
-    void visit(ExpressionInternalRemoveFieldTombstones*) {
-        ensureNotEncryptedEnterEval("an internal expression for removing tombstones", subtreeStack);
-    }
     void visit(ExpressionTests::Testable*) final {}
 
     const ExpressionContext& expCtx;
@@ -1065,7 +1062,6 @@ private:
     void visit(ExpressionFromAccumulator<AccumulatorSum>*) final {}
     void visit(ExpressionFromAccumulator<AccumulatorMergeObjects>*) final {}
     void visit(ExpressionTests::Testable*) final {}
-    void visit(ExpressionInternalRemoveFieldTombstones*) final {}
 
 public:
     /**
@@ -1468,9 +1464,6 @@ private:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionFromAccumulator<AccumulatorMergeObjects>*) final {
-        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
-    }
-    void visit(ExpressionInternalRemoveFieldTombstones*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
 

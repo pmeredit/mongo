@@ -449,9 +449,6 @@ public:
     void visit(ExpressionFromAccumulator<AccumulatorMergeObjects>*) {
         _tracker.enterEvaluateOrCompare();
     }
-    void visit(ExpressionInternalRemoveFieldTombstones*) {
-        _tracker.enterEvaluateOrCompare();
-    }
     void visit(ExpressionTests::Testable*) {
         _tracker.enterEvaluateOrCompare();
     }
@@ -657,7 +654,6 @@ public:
     void visit(ExpressionFromAccumulator<AccumulatorMergeObjects>*) {}
     void visit(ExpressionTests::Testable*) {}
     void visit(ExpressionFieldPath*) {}
-    void visit(ExpressionInternalRemoveFieldTombstones*) {}
     void visit(ExpressionRandom*) {}
 
 
@@ -1048,9 +1044,6 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(ExpressionTests::Testable*) {
-        _tracker.exitEvaluateOrCompare();
-    }
-    void visit(ExpressionInternalRemoveFieldTombstones*) {
         _tracker.exitEvaluateOrCompare();
     }
     void visit(ExpressionRandom*) {
