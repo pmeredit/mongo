@@ -17,6 +17,7 @@
 #include "mongo/db/pipeline/aggregation_request.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/pipeline.h"
+#include "mongo/db/query/plan_executor_factory.h"
 #include "mongo/db/service_context.h"
 
 #include "document_source_bson_file.h"
@@ -154,12 +155,12 @@ int mqlrunMain(const char* pipelineStr,
     auto ws = std::make_unique<WorkingSet>();
     auto proxy = std::make_unique<PipelineProxyStage>(expCtx.get(), std::move(pipeline), ws.get());
 
-    auto planExec = PlanExecutor::make(expCtx,
-                                       std::move(ws),
-                                       std::move(proxy),
-                                       nullptr,
-                                       PlanYieldPolicy::YieldPolicy::NO_YIELD,
-                                       nss);
+    auto planExec = plan_executor_factory::make(expCtx,
+                                                std::move(ws),
+                                                std::move(proxy),
+                                                nullptr,
+                                                PlanYieldPolicy::YieldPolicy::NO_YIELD,
+                                                nss);
 
     BSONObj outObj;
 
