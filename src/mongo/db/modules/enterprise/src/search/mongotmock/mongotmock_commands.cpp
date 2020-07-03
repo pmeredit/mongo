@@ -8,7 +8,7 @@
 #include "mongo/bson/simple_bsonelement_comparator.h"
 #include "mongo/db/commands.h"
 #include "mongo/db/query/getmore_request.h"
-#include "mongo/db/query/killcursors_request.h"
+#include "mongo/db/query/kill_cursors_gen.h"
 #include "mongotmock_state.h"
 
 namespace mongo {
@@ -146,9 +146,9 @@ public:
                         const std::string& dbname,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        auto request = uassertStatusOK(KillCursorsRequest::parseFromBSON(dbname, cmdObj));
+        auto request = KillCursorsRequest::parse(IDLParserErrorContext("killCursors"), cmdObj);
 
-        const auto& cursorList = request.cursorIds;
+        const auto& cursorList = request.getCursorIds();
         MongotMockStateGuard stateGuard = getMongotMockState(opCtx->getServiceContext());
 
         uassert(31090,
