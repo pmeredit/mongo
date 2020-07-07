@@ -183,7 +183,7 @@ ExitCode initAndListen() {
     // Aggregations which include a $changeStream stage must read the current FCV during parsing. If
     // the FCV is not initialized, this will hit an invariant. We therefore initialize it here.
     serverGlobalParams.featureCompatibility.setVersion(
-        ServerGlobalParams::FeatureCompatibility::Version::kFullyUpgradedTo46);
+        ServerGlobalParams::FeatureCompatibility::kLatest);
 
     // $changeStream aggregations also check for the presence of a ReplicationCoordinator at parse
     // time, since change streams can only run on a replica set. If no such co-ordinator is present,
