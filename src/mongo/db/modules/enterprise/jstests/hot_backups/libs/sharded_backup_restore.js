@@ -300,9 +300,13 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
             configServer.getDB("local").oplog.rs.find({"ts": {$gt: restorePIT}}).toArray();
         jsTestLog("Oplog entries after restorePIT " + restorePIT + ": " + tojson(oplogEntries));
         for (let oplog of oplogEntries) {
-            if (oplog.ns === "config.shards" && oplog.op === "d") {
-                jsTestLog("A 'removeShard' oplog entry has been detected: " + oplog);
-                return true;
+            if (oplog.ns === "config.$cmd" && oplog.op === "c") {
+                for (let appliedOp of oplog.o.applyOps) {
+                    if (appliedOp.ns === 'config.shards' && appliedOp.op === "d") {
+                        jsTestLog("A 'removeShard' oplog entry has been detected: " + appliedOp);
+                        return true;
+                    }
+                }
             }
         }
         return false;
