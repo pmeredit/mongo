@@ -18,7 +18,7 @@
 #include "mongo/db/matcher/expression_parser.h"
 #include "mongo/db/matcher/expression_type.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
-#include "mongo/db/ops/parsed_update.h"
+#include "mongo/db/ops/parsed_update_array_filters.h"
 #include "mongo/db/ops/write_ops.h"
 #include "mongo/db/ops/write_ops_gen.h"
 #include "mongo/db/query/collation/collator_factory_interface.h"
@@ -258,7 +258,7 @@ PlaceHolderResult replaceEncryptedFieldsInUpdate(
     // Although arrayFilters cannot contain encrypted fields, pass them through to the UpdateDriver
     // to prevent parsing errors for arrayFilters on a non-encrypted field path.
     auto parsedArrayFilters =
-        uassertStatusOK(ParsedUpdate::parseArrayFilters(expCtx, arrayFilters, NamespaceString("")));
+        uassertStatusOK(parsedUpdateArrayFilters(expCtx, arrayFilters, NamespaceString("")));
     driver.parse(updateMod, parsedArrayFilters);
 
     // 'updateVisitor' must live through driver serialization.
