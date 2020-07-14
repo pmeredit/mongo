@@ -82,6 +82,8 @@ private:
     static BSONObj commandObject(const BSONObj& query,
                                  const boost::intrusive_ptr<ExpressionContext>& expCtx);
 
+    GetNextResult doGetNext() override;
+
     DocumentSourceInternalSearchMongotRemote(const BSONObj& query,
                                              const boost::intrusive_ptr<ExpressionContext>& expCtx,
                                              executor::TaskExecutor* taskExecutor)
@@ -89,23 +91,11 @@ private:
           _searchQuery(query.getOwned()),
           _taskExecutor(taskExecutor) {}
 
-    executor::RemoteCommandRequest getRemoteCommandRequest() const;
-
-    /**
-     * Gets the explain information by issuing an explain command to mongot and blocking
-     * until the response is retrieved. Throws an exception on failure.
-     */
-    BSONObj getExplainResponse() const;
+    void populateCursor();
 
     boost::optional<BSONObj> _getNext();
 
-    GetNextResult doGetNext() override;
-
     const BSONObj _searchQuery;
-
-    // If this is an explain of a $search at execution-level verbosity, then the explain
-    // results are held here. Otherwise, this is an empty object.
-    BSONObj _explainResponse;
 
     executor::TaskExecutor* _taskExecutor;
 
