@@ -11,8 +11,6 @@
 #include <unistd.h>
 #endif
 
-#include "mongo/db/exec/pipeline_proxy.h"
-#include "mongo/db/exec/working_set.h"
 #include "mongo/db/json.h"
 #include "mongo/db/pipeline/aggregation_request.h"
 #include "mongo/db/pipeline/expression_context.h"
@@ -152,21 +150,14 @@ int mqlrunMain(const char* pipelineStr,
         return false;
     }
 
-    auto ws = std::make_unique<WorkingSet>();
-    auto proxy = std::make_unique<PipelineProxyStage>(expCtx.get(), std::move(pipeline), ws.get());
-
-    auto planExec = plan_executor_factory::make(expCtx,
-                                                std::move(ws),
-                                                std::move(proxy),
-                                                nullptr,
-                                                PlanYieldPolicy::YieldPolicy::NO_YIELD,
-                                                nss);
+    auto planExec =
+        plan_executor_factory::make(expCtx, std::move(pipeline), /* isChangeStream */ false);
 
     BSONObj outObj;
 
     while (1) {
         try {
-            auto result = planExec.getValue()->getNext(&outObj, nullptr);
+            auto result = planExec->getNext(&outObj, nullptr);
             switch (result) {
                 case PlanExecutor::ADVANCED:
                     bsonWriter(outObj);
