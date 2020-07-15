@@ -182,6 +182,7 @@ ExitCode initAndListen() {
 
     // Aggregations which include a $changeStream stage must read the current FCV during parsing. If
     // the FCV is not initialized, this will hit an invariant. We therefore initialize it here.
+    // (Generic FCV reference): This FCV reference should exist across LTS binary versions.
     serverGlobalParams.featureCompatibility.setVersion(
         ServerGlobalParams::FeatureCompatibility::kLatest);
 
