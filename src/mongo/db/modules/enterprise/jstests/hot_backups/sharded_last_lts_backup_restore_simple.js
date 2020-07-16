@@ -1,5 +1,5 @@
 /**
- * A simple case of sharded PIT backup/restore where the backup was taken with a 'last-stable'
+ * A simple case of sharded snapshot backup/restore where the backup was taken with a 'last-lts'
  * binary version.
  *
  * @tags: [fix_for_fcv_46,
@@ -23,6 +23,6 @@ let NoopWorker = function() {
 };
 
 let msg = new ShardedBackupRestoreTest(new NoopWorker())
-              .run({isPitRestore: true, isLastStableBackup: true});
+              .run({isPitRestore: false, isLastLTSBackup: true});
 assert.eq(msg, "Test succeeded.");
 }());
