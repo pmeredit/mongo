@@ -139,6 +139,8 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
             'src/audit/audit_sharding.cpp',
             'src/audit/audit_shutdown.cpp',
             'src/audit/audit_user_management.cpp',
+            'src/audit/logger/console.cpp',
+            'src/audit/logger/rotatable_file_writer.cpp',
         ],
         LIBDEPS=[
             '$BUILD_DIR/mongo/base',
@@ -211,6 +213,33 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
         ],
         LIBDEPS_TAGS=[
             'lint-allow-nonprivate-on-deps-dependents',
+        ],
+    )
+
+    # writes multi-byte sequences to console
+    # to support manual testing of console stream under Windows
+    # output should be visually verified under Command Prompt or Power Shell
+    env.Program(
+        target='console_test',
+        source=[
+            'src/audit/logger/console_test.cpp',
+        ],
+        LIBDEPS=[
+            'audit_enterprise',
+            '$BUILD_DIR/mongo/base',
+            '$BUILD_DIR/mongo/unittest/unittest_main'
+        ],
+        AIB_COMPONENT="standalone-console-test",
+    )
+
+    env.CppUnitTest(
+        target='logger_test',
+        source=[
+            'src/audit/logger/rotatable_file_writer_test.cpp',
+        ],
+        LIBDEPS=[
+            'audit_enterprise',
+            '$BUILD_DIR/mongo/base',
         ],
     )
 

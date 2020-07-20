@@ -78,13 +78,6 @@ public:
     virtual ElementIterator* allocateIterator(const ElementPath* path) const;
     virtual void releaseIterator(ElementIterator* iterator) const;
 
-    /**
-     * Audit messages get classed as Info when written to syslog
-     */
-    logv2::LogSeverity getSeverity() const {
-        return logv2::LogSeverity::Info();
-    }
-
 protected:
     explicit AuditEvent(const AuditEventEnvelope& envelope)
         : _envelope(envelope), _bsonGenerated(false), _iteratorUsed(false) {}
