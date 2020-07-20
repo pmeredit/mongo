@@ -13,7 +13,7 @@ env.Library(
         env.Idlc('queryable_global_options.idl')[0],
     ],
     LIBDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/mongod_initializers',
+        '$BUILD_DIR/mongo/db/mongod_initializers',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/service_context',

@@ -23,6 +23,6 @@ scriptingEnv.Library(
         '$BUILD_DIR/third_party/shim_mozjs',
     ],
     LIBDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/mongo_initializers'
+        '$BUILD_DIR/mongo/shell/mongo_initializers'
     ]
 )
