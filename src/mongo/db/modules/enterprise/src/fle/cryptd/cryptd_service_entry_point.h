@@ -14,7 +14,8 @@ public:
 
     void startSession(transport::SessionHandle session) final;
 
-    DbResponse handleRequest(OperationContext* opCtx, const Message& request) final;
+    Future<DbResponse> handleRequest(OperationContext* opCtx,
+                                     const Message& request) noexcept final;
 };
 
 }  // namespace mongo

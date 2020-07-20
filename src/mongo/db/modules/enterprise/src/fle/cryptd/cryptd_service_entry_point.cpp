@@ -58,7 +58,8 @@ void ServiceEntryPointCryptD::startSession(transport::SessionHandle session) {
     signalIdleWatchdog();
 }
 
-DbResponse ServiceEntryPointCryptD::handleRequest(OperationContext* opCtx, const Message& message) {
+Future<DbResponse> ServiceEntryPointCryptD::handleRequest(OperationContext* opCtx,
+                                                          const Message& message) noexcept try {
     auto replyBuilder = rpc::makeReplyBuilder(rpc::protocolForMessage(message));
 
     OpMsgRequest request;
@@ -67,7 +68,7 @@ DbResponse ServiceEntryPointCryptD::handleRequest(OperationContext* opCtx, const
     } catch (const DBException& ex) {
         // If this error needs to fail the connection, propagate it out.
         if (ErrorCodes::isConnectionFatalMessageParseError(ex.code()))
-            throw;
+            return ex.toStatus();
 
         // Otherwise, reply with the parse error. This is useful for cases where parsing fails
         // due to user-supplied input, such as the document too deep error. Since we failed
@@ -79,7 +80,7 @@ DbResponse ServiceEntryPointCryptD::handleRequest(OperationContext* opCtx, const
         generateErrorResponse(opCtx, replyBuilder.get(), ex, metadataBob.obj(), BSONObj());
 
         auto response = replyBuilder->done();
-        return DbResponse{std::move(response)};
+        return Future<DbResponse>::makeReady({std::move(response)});
     }
 
     try {
@@ -120,7 +121,10 @@ DbResponse ServiceEntryPointCryptD::handleRequest(OperationContext* opCtx, const
     }
 
     auto response = replyBuilder->done();
-    return DbResponse{std::move(response)};
+    return Future<DbResponse>::makeReady({std::move(response)});
+} catch (const DBException& ex) {
+    LOGV2(4879801, "Assertion while handling request", "error"_attr = redact(ex));
+    return ex.toStatus();
 }
 
 }  // namespace mongo
