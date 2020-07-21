@@ -11,6 +11,7 @@
 
 #include "mongo/base/init.h"
 #include "mongo/base/initializer.h"
+#include "mongo/base/status.h"
 #include "mongo/bson/json.h"
 #include "mongo/db/client.h"
 #include "mongo/db/initialize_server_global_state.h"
@@ -50,17 +51,17 @@ const ntservice::NtServiceDefaultStrings defaultServiceStrings = {
     L"MongoCryptD", L"MongoDB FLE Crypto", L"MongoDB Field Level Encryption Daemon"};
 #endif
 
-void initWireSpec() {
-    WireSpec& spec = WireSpec::instance();
-
+MONGO_INITIALIZER_WITH_PREREQUISITES(WireSpec, ("EndStartupOptionHandling"))(InitializerContext*) {
     // For MongoCryptd, we set the minimum wire version to be 4.2
+    WireSpec::Specification spec;
     spec.incomingInternalClient.minWireVersion = SHARDED_TRANSACTIONS;
     spec.incomingInternalClient.maxWireVersion = LATEST_WIRE_VERSION;
-
     spec.outgoing.minWireVersion = SHARDED_TRANSACTIONS;
     spec.outgoing.maxWireVersion = LATEST_WIRE_VERSION;
-
     spec.isInternalClient = true;
+
+    WireSpec::instance().initialize(std::move(spec));
+    return Status::OK();
 }
 
 void createLockFile(ServiceContext* serviceContext) {
@@ -272,14 +273,11 @@ MONGO_INITIALIZER_GENERAL(ForkServer, ("EndStartupOptionHandling"), ("default"))
 }
 
 int CryptDMain(int argc, char** argv) {
-
     registerShutdownTask(shutdownTask);
 
     setupSignalHandlers();
     runGlobalInitializersOrDie(std::vector<std::string>(argv, argv + argc));
     startSignalProcessingThread(LogFileStatus::kNoLogFileToRotate);
-
-    initWireSpec();
 
     setGlobalServiceContext(ServiceContext::make());
     auto serviceContext = getGlobalServiceContext();

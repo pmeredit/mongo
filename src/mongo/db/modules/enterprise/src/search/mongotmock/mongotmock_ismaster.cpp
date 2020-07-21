@@ -40,8 +40,9 @@ public:
         result.appendNumber("maxMessageSizeBytes", MaxMessageSizeBytes);
         result.appendDate("localTime", jsTime());
 
-        result.append("maxWireVersion", WireSpec::instance().incomingExternalClient.maxWireVersion);
-        result.append("minWireVersion", WireSpec::instance().incomingExternalClient.minWireVersion);
+        auto wireSpec = WireSpec::instance().get();
+        result.append("maxWireVersion", wireSpec->incomingExternalClient.maxWireVersion);
+        result.append("minWireVersion", wireSpec->incomingExternalClient.minWireVersion);
 
         // The mongod paired with a mongotmock should be able to auth as the __system user with
         // the SCRAM-SHA-1 authentication mechanism.
