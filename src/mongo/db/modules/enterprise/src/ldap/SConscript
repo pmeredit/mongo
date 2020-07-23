@@ -29,8 +29,11 @@ env.Library(
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/db/mongod_initializers',
         '$BUILD_DIR/mongo/s/mongos_initializers',
-    ]
-
+    ],
+    LIBDEPS_TAGS=[
+        'lint-allow-nonprivate-on-deps-dependents',
+        'lint-allow-bidirectional-edges',
+    ],
 )
 
 env.Library(
@@ -82,6 +85,10 @@ env.Library(
     ],
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/db/mongod_initializers',
+    ],
+    LIBDEPS_TAGS=[
+        'lint-allow-nonprivate-on-deps-dependents',
+        'lint-allow-bidirectional-edges',
     ],
 )
 
@@ -152,6 +159,9 @@ env.Library(
     ],
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/db/mongod_initializers',
+    ],
+    LIBDEPS_TAGS=[
+        'lint-allow-nonprivate-on-deps-dependents',
     ],
 )
 

@@ -27,6 +27,10 @@ env.Library(
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/util/options_parser/options_parser',
     ],
+    LIBDEPS_TAGS=[
+        'lint-allow-nonprivate-on-deps-dependents',
+        'lint-allow-bidirectional-edges',
+    ],
 )
 
 env.CppIntegrationTest(

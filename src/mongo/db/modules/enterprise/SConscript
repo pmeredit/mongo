@@ -155,6 +155,10 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
         LIBDEPS_DEPENDENTS=[
             ('$BUILD_DIR/mongo/db/audit', libdeps.dependency.Public),
         ],
+        LIBDEPS_TAGS=[
+            'lint-allow-nonprivate-on-deps-dependents',
+            'lint-allow-bidirectional-edges',
+        ],
     )
 
     env.Library(
@@ -173,6 +177,9 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
         ],
         LIBDEPS_DEPENDENTS=[
             '$BUILD_DIR/mongo/db/commands/mongod',
+        ],
+        LIBDEPS_TAGS=[
+            'lint-allow-nonprivate-on-deps-dependents',
         ],
     )
 
@@ -201,8 +208,10 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
         LIBDEPS_DEPENDENTS=[
             '$BUILD_DIR/mongo/db/mongod_initializers',
             '$BUILD_DIR/mongo/s/mongos_initializers',
-        ]
-
+        ],
+        LIBDEPS_TAGS=[
+            'lint-allow-nonprivate-on-deps-dependents',
+        ],
     )
 
 if not env.TargetOSIs("darwin") and "snmp" in env['MONGO_ENTERPRISE_FEATURES']:
@@ -243,6 +252,9 @@ if not env.TargetOSIs("darwin") and "snmp" in env['MONGO_ENTERPRISE_FEATURES']:
         ],
         LIBDEPS_DEPENDENTS=['$BUILD_DIR/mongo/db/mongod_initializers'],
         SYSLIBDEPS=snmpEnv.get('SNMP_SYSLIBDEPS', []),
+        LIBDEPS_TAGS=[
+            'lint-allow-nonprivate-on-deps-dependents',
+        ],
     )
 
 if "sasl" in env['MONGO_ENTERPRISE_FEATURES']:
@@ -309,7 +321,9 @@ if "sasl" in env['MONGO_ENTERPRISE_FEATURES']:
             '$BUILD_DIR/mongo/db/mongod_initializers',
             '$BUILD_DIR/mongo/s/mongos_initializers',
         ],
-
+        LIBDEPS_TAGS=[
+            'lint-allow-nonprivate-on-deps-dependents',
+        ],
     )
 
     env.Library(
@@ -325,7 +339,10 @@ if "sasl" in env['MONGO_ENTERPRISE_FEATURES']:
             '$BUILD_DIR/mongo/db/mongod_initializers',
             '$BUILD_DIR/mongo/s/mongos_initializers',
         ],
-
+        LIBDEPS_TAGS=[
+            'lint-allow-nonprivate-on-deps-dependents',
+            'lint-allow-bidirectional-edges',
+        ],
     )
 
     if env.TargetOSIs("windows"):
@@ -461,7 +478,7 @@ if "fle" in env['MONGO_ENTERPRISE_FEATURES']:
         source=[
             "src/fle/cryptd/cryptd_main_shim.cpp"
         ],
-        LIBDEPS_PRIVATE=[
+        LIBDEPS=[
             'src/fle/mongocryptd_core',
             'src/fle/cryptd_commands',
         ],
@@ -479,7 +496,7 @@ if "search" in env['MONGO_ENTERPRISE_FEATURES']:
         source=[
             "src/search/mongotmock/mongotmock_main_shim.cpp"
         ],
-        LIBDEPS_PRIVATE=[
+        LIBDEPS=[
             'src/fle/mongocryptd_core',
             'src/search/mongotmock_core',
         ],

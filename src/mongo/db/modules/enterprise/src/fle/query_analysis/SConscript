@@ -40,7 +40,7 @@ env.CppUnitTest(
         'query_analysis_test.cpp',
         'aggregate_expression_intender_test.cpp',
     ],
-    LIBDEPS_PRIVATE=[
+    LIBDEPS=[
         '$BUILD_DIR/mongo/db/query/query_test_service_context',
         '$BUILD_DIR/mongo/db/service_context_test_fixture',
         'cryptd_query_analysis',

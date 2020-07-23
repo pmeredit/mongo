@@ -24,5 +24,10 @@ scriptingEnv.Library(
     ],
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/shell/mongo_initializers'
-    ]
+    ],
+    # TODO: this tag must be used because the tcmalloc library is added
+    # as public dependency for each Library: https://jira.mongodb.org/browse/SERVER-49788
+    LIBDEPS_TAGS=[
+        'lint-allow-nonprivate-on-deps-dependents',
+    ],
 )

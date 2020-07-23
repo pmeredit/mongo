@@ -21,6 +21,10 @@ env.Library(
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/db/initialize_server_security_state',
     ],
+    LIBDEPS_TAGS=[
+        'lint-allow-nonprivate-on-deps-dependents',
+        'lint-allow-bidirectional-edges',
+    ]
 )
 
 env.Library(
@@ -100,8 +104,6 @@ env.CppUnitTest(
         '$BUILD_DIR/mongo/db/pipeline/document_source_mock',
         '$BUILD_DIR/mongo/db/service_context_test_fixture',
         'document_source_search',
-    ],
-    LIBDEPS_PRIVATE=[
         'mongot_options',
     ]
 )
