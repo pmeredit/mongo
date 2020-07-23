@@ -575,6 +575,9 @@ private:
     void visit(ExpressionFunction*) final {
         ensureNotEncryptedEnterEval("a $function expression", subtreeStack);
     }
+    void visit(ExpressionToHashedIndexKey*) final {
+        ensureNotEncryptedEnterEval("a $hash expression", subtreeStack);
+    }
     void visit(ExpressionIfNull*) final {
         // If $ifNull appears under a comparison subtree, then both arguments to $ifNull should be
         // marked or assert just as if they were the direct descendant of the grandparent
@@ -936,6 +939,7 @@ private:
     void visit(ExpressionFilter*) final {}
     void visit(ExpressionFloor*) final {}
     void visit(ExpressionFunction*) final {}
+    void visit(ExpressionToHashedIndexKey*) final {}
     void visit(ExpressionIfNull*) final {}
     void visit(ExpressionIn* in) final {
         if (auto arrayLiteral = dynamic_cast<ExpressionArray*>(in->getOperandList()[1].get())) {
@@ -1188,6 +1192,9 @@ private:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionFunction*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionToHashedIndexKey*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionIfNull*) final {}

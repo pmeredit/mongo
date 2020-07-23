@@ -455,6 +455,9 @@ public:
     void visit(ExpressionRandom*) {
         _tracker.enterEvaluateOrCompare();
     }
+    void visit(ExpressionToHashedIndexKey*) {
+        _tracker.enterEvaluateOrCompare();
+    }
 
     void visit(ExpressionCond*) {
         // We enter evaluate on the first child (if branch), since the result of the expression is
@@ -655,6 +658,7 @@ public:
     void visit(ExpressionTests::Testable*) {}
     void visit(ExpressionFieldPath*) {}
     void visit(ExpressionRandom*) {}
+    void visit(ExpressionToHashedIndexKey*) {}
 
 
     void visit(ExpressionCond*) {
@@ -1047,6 +1051,9 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(ExpressionRandom*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(ExpressionToHashedIndexKey*) {
         _tracker.exitEvaluateOrCompare();
     }
 
