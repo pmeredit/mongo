@@ -9,6 +9,9 @@
 
 load('jstests/libs/backup_utils.js');
 
+// TODO (SERVER-49862): Re-enable fast count validation if possible.
+TestData.skipEnforceFastCountOnValidate = true;
+
 function addDocuments(db, starting) {
     let size = 100;
     jsTest.log("Creating " + size + " test documents.");

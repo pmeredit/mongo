@@ -19,6 +19,9 @@
 load("jstests/libs/backup_utils.js");
 load("jstests/libs/parallelTester.js");  // for Thread.
 
+// TODO (SERVER-49862): Re-enable fast count validation if possible.
+TestData.skipEnforceFastCountOnValidate = true;
+
 Random.setRandomSeed();
 // Returns true iff opTime <= threshold. In other words, when reading at `threshold`, is
 // `opTime` visible?
