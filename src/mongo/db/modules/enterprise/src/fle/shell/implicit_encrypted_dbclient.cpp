@@ -253,8 +253,7 @@ public:
             return processResponse(std::move(result), databaseName);
         }
 
-        BSONObj schemaInfo =
-            runQueryAnalysis(std::move(request), schemaInfoObject, ns, commandName);
+        BSONObj schemaInfo = runQueryAnalysis(request, schemaInfoObject, ns, commandName);
 
         if (!schemaInfo.getBoolField("hasEncryptionPlaceholders") &&
             !schemaInfo.getBoolField("schemaRequiresEncryption")) {
