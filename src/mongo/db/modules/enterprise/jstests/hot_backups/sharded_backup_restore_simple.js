@@ -24,6 +24,6 @@ let NoopWorker = function() {
 };
 
 let msg = new ShardedBackupRestoreTest(new NoopWorker())
-              .run({isPitRestore: false, isLastLTSBackup: false});
+              .run({isPitRestore: false, backupBinaryVersion: "latest"});
 assert.eq(msg, "Test succeeded.");
 }());

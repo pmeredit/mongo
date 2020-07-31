@@ -175,7 +175,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
 
     // lastDocID is the largest docID inserted in the restored oplog entries. This ensures that the
     // data reflects the point in time the user requested (if PIT restore is specified).
-    function _checkDataConsistency(restoredNodePorts, lastDocID, isLastLTSBackup) {
+    function _checkDataConsistency(restoredNodePorts, lastDocID, backupBinaryVersion) {
         jsTestLog("Checking data consistency");
 
         const configRS = new ReplSetTest({
@@ -191,7 +191,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         // always set by itself.
         configRS.ports = [restoredNodePorts[numShards]];
 
-        const expectedFCV = isLastLTSBackup ? lastLTSFCV : latestFCV;
+        const expectedFCV = binVersionToFCV(backupBinaryVersion);
 
         jsTestLog("Starting restored Config Server with data from " +
                   restorePaths[configServerIdx] + " at port " + restoredNodePorts[configServerIdx]);
@@ -876,11 +876,10 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
 
     // If 'isPitRestore' is specified, does a PIT restore to an arbitrary PIT and checks that the
     // data is consistent.
-    this.run = function({isPitRestore = false, isLastLTSBackup = false} = {}) {
+    this.run = function({isPitRestore = false, backupBinaryVersion = "latest"} = {}) {
         /**
          *  Setup for backup
          */
-        const backupBinVersion = isLastLTSBackup ? "last-lts" : "latest";
         const st = new ShardingTest({
             name: jsTestName(),
             shards: numShards,
@@ -894,12 +893,12 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
                 setParameter: {writePeriodicNoops: true}
             },
             other: {
-                mongosOptions: {binVersion: backupBinVersion},
+                mongosOptions: {binVersion: backupBinaryVersion},
                 configOptions: {
-                    binVersion: backupBinVersion,
+                    binVersion: backupBinaryVersion,
                     setParameter: {writePeriodicNoops: true, periodicNoopIntervalSecs: 1}
                 },
-                rsOptions: {binVersion: backupBinVersion},
+                rsOptions: {binVersion: backupBinaryVersion},
             },
         });
 
@@ -965,7 +964,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         /**
          *  Check data consistency
          */
-        _checkDataConsistency(restoredNodePorts, lastDocID, isLastLTSBackup);
+        _checkDataConsistency(restoredNodePorts, lastDocID, backupBinaryVersion);
 
         jsTestLog("Test succeeded");
         return "Test succeeded.";
