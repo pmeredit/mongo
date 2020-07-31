@@ -71,7 +71,8 @@ function getBackupColl(conn) {
 // `backupDir` should start with later truncation points and follow up with earlier truncation
 // points.
 function manipulateOplogTruncateAfterPoint(backupDir, truncatePoint) {
-    jsTestLog("Starting up a standalone to set the oplogTruncateAfterPoint to " + truncatePoint);
+    jsTestLog("Starting up a standalone to set the oplogTruncateAfterPoint to " +
+              tojson(truncatePoint));
 
     let conn = MongoRunner.runMongod({dbpath: backupDir, noCleanData: true});
     assert.neq(null, conn);

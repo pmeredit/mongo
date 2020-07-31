@@ -69,7 +69,7 @@ const runTest = function(cipherMode) {
         }
     }
 
-    jsTest.log("backupId: " + backupId + ", checkpointTimestamp: " + checkpointTimestamp);
+    jsTest.log("backupId: " + backupId + ", checkpointTimestamp: " + tojson(checkpointTimestamp));
 
     jsTest.log("Creating a new database and inserting a document");
     let newPrimaryDB = primary.getDB("second");
@@ -77,7 +77,8 @@ const runTest = function(cipherMode) {
         assert.commandWorked(newPrimaryDB.runCommand({insert: "second", documents: [{x: "B"}]}))
             .operationTime;
 
-    jsTest.log("Calling $backupCursorExtend with insert operation timestamp: " + operationTime);
+    jsTest.log("Calling $backupCursorExtend with insert operation timestamp: " +
+               tojson(operationTime));
 
     let cursorExtend = primaryDB.aggregate(
         [{$backupCursorExtend: {backupId: backupId, timestamp: operationTime}}]);

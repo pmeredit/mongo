@@ -40,7 +40,8 @@ function verifyData(backupPointInTime, numContinuousDocs) {
     let local = conn.getDB("local");
     let oplogTop =
         local.getCollection("oplog.rs").find().sort({$natural: -1}).limit(-1).next()["ts"];
-    jsTestLog("Top of oplog: " + oplogTop + ", backupPointInTime: " + backupPointInTime);
+    jsTestLog("Top of oplog: " + tojson(oplogTop) +
+              ", backupPointInTime: " + tojson(backupPointInTime));
     assert(timestampCmp(oplogTop, backupPointInTime) >= 0);
 
     // Verify the existence of the continuous docs.
@@ -104,7 +105,7 @@ function assertLaggedSecondaryGetBlocked() {
     // Do another write in order to update the committedSnapshot value.
     clusterTime = insertDoc(primaryDB, collName, {a: numDocs - 1});
 
-    jsTestLog("Extend backup cursor to " + clusterTime + " on secondary");
+    jsTestLog("Extend backup cursor to " + tojson(clusterTime) + " on secondary");
     let now = (new Date()).getTime();
     let extendCursor = extendBackupCursor(rst.getSecondary(), backupId, clusterTime);
     let timeElapsed = (new Date()).getTime() - now;
@@ -152,7 +153,7 @@ function assertLaggedShardCatchUpWithNoopWrites() {
 
     // Since all writes go to shard A, shard B does not have a valid opTime equal to or greater
     // than `clusterTime` until the noop writer moves the opTime forward.
-    jsTestLog("Extend backup cursor to " + clusterTime + " on shard B");
+    jsTestLog("Extend backup cursor to " + tojson(clusterTime) + " on shard B");
     let now = (new Date()).getTime();
     let extendCursor = extendBackupCursor(shardB, backupId, clusterTime);
     let timeElapsed = (new Date()).getTime() - now;

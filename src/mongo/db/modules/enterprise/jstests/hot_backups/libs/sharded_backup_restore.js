@@ -298,7 +298,11 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
          */
         const oplogEntries =
             configServer.getDB("local").oplog.rs.find({"ts": {$gt: restorePIT}}).toArray();
-        jsTestLog("Oplog entries after restorePIT " + restorePIT + ": " + tojson(oplogEntries));
+        jsTestLog({
+            msg: "Oplog entries after restorePIT ",
+            restorePIT: restorePIT,
+            "oplogEntries": oplogEntries
+        });
         for (let oplog of oplogEntries) {
             if (oplog.ns === "config.$cmd" && oplog.op === "c" && oplog.o &&
                 Object.keys(oplog.o)[0] === "applyOps" && Array.isArray(oplog.o.applyOps)) {
@@ -348,15 +352,15 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
 
     function _getEarliestTopOfOplog(st, backupPointInTime) {
         let minTimestamp = _getTopOfOplogTS(st.configRS.getPrimary());
-        jsTestLog("Top of configRS oplog: " + minTimestamp);
+        jsTestLog("Top of configRS oplog: " + tojson(minTimestamp));
         for (let i = 0; i < numShards; i++) {
             const oplogTop = _getTopOfOplogTS(st["rs" + i].getPrimary());
-            jsTestLog("Top of rs" + i + " oplog: " + oplogTop);
+            jsTestLog("Top of rs" + i + " oplog: " + tojson(oplogTop));
             if (timestampCmp(oplogTop, minTimestamp) < 0) {
                 minTimestamp = oplogTop;
             }
         }
-        jsTestLog("Minimum top of oplog is " + minTimestamp);
+        jsTestLog("Minimum top of oplog is " + tojson(minTimestamp));
 
         assert.gte(minTimestamp, backupPointInTime);
         return minTimestamp;
@@ -487,8 +491,11 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
             cursor.close();
         });
 
-        jsTestLog("The data of sharded cluster at timestamp " + maxCheckpointTimestamp +
-                  " has been successfully backed up at " + tojson(restorePaths));
+        jsTestLog({
+            msg: "Sharded cluster has been successfully backed up.",
+            maxCheckpointTimestamp: maxCheckpointTimestamp,
+            restorePaths: restorePaths
+        });
         return {maxCheckpointTimestamp, initialTopology};
     }
 
@@ -548,7 +555,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
                                        .sort({ts: 1})
                                        .limit(1)
                                        .toArray()[0];
-        jsTestLog(restorePath + ": Truncating all the oplog after " + truncateAfterPoint +
+        jsTestLog(restorePath + ": Truncating all the oplog after " + tojson(truncateAfterPoint) +
                   " (not inclusive), starting after oplog entry: " + tojson(firstOplogToRemove));
 
         /**
@@ -598,7 +605,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
             tmpSet.stopSet(15, true);
 
             jsTestLog(restorePath + ": Restarting node to insert oplog entries up to " +
-                      restorePointInTime);
+                      tojson(restorePointInTime));
             /**
              * PIT-3. Start up the member as a standalone on an ephemeral port
              *      - without auth
@@ -677,8 +684,13 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
                           backupPointInTime,
                           restorePointInTime,
                           restoreOplogEntries) {
-        jsTestLog("Restoring CSRS at " + restorePath + " for port " + restoredCSRSPort +
-                  " at PIT " + restorePointInTime + " from " + backupPointInTime);
+        jsTestLog({
+            msg: "Restoring CSRS.",
+            restorePath: restorePath,
+            port: restoredCSRSPort,
+            restorePIT: restorePointInTime,
+            backupPointInTime: backupPointInTime
+        });
 
         const conn = _restoreReplicaSet(restorePath,
                                         csrsName,
@@ -825,22 +837,25 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
 
     function _restoreFromBackup(
         restoredNodePorts, backupPointInTime, restorePointInTime, restoreOplogEntries) {
-        jsTestLog("Restoring from backup. Backup PIT: " + backupPointInTime +
-                  ", Restore PIT: " + restorePointInTime);
+        jsTestLog({
+            msg: "Restoring from backup.",
+            "Backup PIT": backupPointInTime,
+            "Restore PIT": restorePointInTime
+        });
 
         /**
-         * The following procedure is used regardless of whether or not the source cluster and the
-         * destination cluster are different clusters. The source cluster is the one on which the
-         * backups were taken. The destination cluster is the one where the backups are being
-         * restored.
+         * The following procedure is used regardless of whether or not the source cluster
+         * and the destination cluster are different clusters. The source cluster is the
+         * one on which the backups were taken. The destination cluster is the one where
+         * the backups are being restored.
          *
          * 1. For every node in the destination cluster,
          *      1.a. Shut down the node, wait until all nodes are down.
          *      1.b. Delete the contents of the dbpath.
          *      1.c. Download and extract the contents of the snapshot.
          *
-         * For simplicity, this spec-test skips this step. The backup procedure puts the backups in
-         * the destination dbpath.
+         * For simplicity, this spec-test skips this step. The backup procedure puts the
+         * backups in the destination dbpath.
          */
 
         const csrsRestoreOplogEntries =
