@@ -63,6 +63,13 @@ public:
     /**
      * Passthrough to AuthorizationManagerExternalStateMongod
      */
+    Status rolesExist(OperationContext* opCtx, const std::vector<RoleName>& roleNames) final {
+        return _wrappedExternalState->rolesExist(opCtx, roleNames);
+    }
+
+    /**
+     * Passthrough to AuthorizationManagerExternalStateMongod
+     */
     Status getRoleDescription(OperationContext* opCtx,
                               const RoleName& roleName,
                               PrivilegeFormat showPrivileges,
