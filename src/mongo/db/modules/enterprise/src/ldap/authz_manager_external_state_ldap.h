@@ -70,13 +70,10 @@ public:
     /**
      * Passthrough to AuthorizationManagerExternalStateMongod
      */
-    Status getRoleDescription(OperationContext* opCtx,
-                              const RoleName& roleName,
-                              PrivilegeFormat showPrivileges,
-                              AuthenticationRestrictionsFormat showRestrictions,
-                              BSONObj* result) final {
-        return _wrappedExternalState->getRoleDescription(
-            opCtx, roleName, showPrivileges, showRestrictions, result);
+    StatusWith<ResolvedRoleData> resolveRoles(OperationContext* opCtx,
+                                              const std::vector<RoleName>& roleNames,
+                                              ResolveRoleOption option) final {
+        return _wrappedExternalState->resolveRoles(opCtx, roleNames, option);
     }
 
     /**
@@ -99,7 +96,7 @@ public:
                                     PrivilegeFormat showPrivileges,
                                     AuthenticationRestrictionsFormat showRestrictions,
                                     bool showBuiltinRoles,
-                                    std::vector<BSONObj>* result) final {
+                                    BSONArrayBuilder* result) final {
         return _wrappedExternalState->getRoleDescriptionsForDB(
             opCtx, dbname, showPrivileges, showRestrictions, showBuiltinRoles, result);
     }
