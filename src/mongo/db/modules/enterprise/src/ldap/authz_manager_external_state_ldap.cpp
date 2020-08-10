@@ -72,6 +72,25 @@ Status AuthzManagerExternalStateLDAP::initialize(OperationContext* opCtx) {
     return Status::OK();
 }
 
+namespace {
+StatusWith<UserRequest> queryLDAPRolesForUserRequest(OperationContext* opCtx,
+                                                     const UserRequest& userReq) {
+    auto swRoles = LDAPManager::get(opCtx->getServiceContext())->getUserRoles(userReq.name);
+    if (!swRoles.isOK()) {
+        // Log failing Status objects produced from role acquisition, but because they may contain
+        // sensitive information, do not propagate them to the client.
+        LOGV2_ERROR(24217,
+                    "LDAP authorization failed: {swRoles_getStatus}",
+                    "swRoles_getStatus"_attr = swRoles.getStatus());
+        return {ErrorCodes::OperationFailed, "Failed to acquire LDAP group membership"};
+    }
+
+    auto newRequest = userReq;
+    newRequest.roles = std::set<RoleName>(swRoles.getValue().cbegin(), swRoles.getValue().cend());
+    return newRequest;
+}
+}  // namespace
+
 Status AuthzManagerExternalStateLDAP::getUserDescription(OperationContext* opCtx,
                                                          const UserRequest& userReq,
                                                          BSONObj* result) {
@@ -80,36 +99,27 @@ Status AuthzManagerExternalStateLDAP::getUserDescription(OperationContext* opCtx
         return _wrappedExternalState->getUserDescription(opCtx, userReq, result);
     }
 
-    StatusWith<std::vector<RoleName>> swRoles =
-        LDAPManager::get(opCtx->getServiceContext())->getUserRoles(userName);
-    if (!swRoles.isOK()) {
-        // Log failing Status objects produced from role acquisition, but because they may contain
-        // sensitive information, do not propagate them to the client.
-        LOGV2_ERROR(24217,
-                    "LDAP authorization failed: {swRoles_getStatus}",
-                    "swRoles_getStatus"_attr = swRoles.getStatus());
-        return Status{ErrorCodes::OperationFailed, "Failed to acquire LDAP group membership"};
-    }
-    BSONArrayBuilder roleArr;
-    for (RoleName role : swRoles.getValue()) {
-        roleArr << BSON("role" << role.getRole() << "db" << role.getDB());
+    auto swReq = queryLDAPRolesForUserRequest(opCtx, userReq);
+    if (!swReq.isOK()) {
+        return swReq.getStatus();
     }
 
-    BSONObjBuilder builder;
-    // clang-format off
-    builder << "user" << userName.getUser()
-            << "db" << "$external"
-            << "credentials" << BSON("external" << true)
-            << "roles" << roleArr.arr();
-    // clang-format on
-    BSONObj unresolvedUserDocument = builder.obj();
+    return _wrappedExternalState->getUserDescription(opCtx, swReq.getValue(), result);
+}
 
-    mutablebson::Document resultDoc(unresolvedUserDocument,
-                                    mutablebson::Document::kInPlaceDisabled);
-    _wrappedExternalState->resolveUserRoles(&resultDoc, swRoles.getValue());
-    *result = resultDoc.getObject();
+StatusWith<User> AuthzManagerExternalStateLDAP::getUserObject(OperationContext* opCtx,
+                                                              const UserRequest& userReq) {
+    const UserName& userName = userReq.name;
+    if (userName.getDB() != "$external" || userReq.roles) {
+        return _wrappedExternalState->getUserObject(opCtx, userReq);
+    }
 
-    return Status::OK();
+    auto swReq = queryLDAPRolesForUserRequest(opCtx, userReq);
+    if (!swReq.isOK()) {
+        return swReq.getStatus();
+    }
+
+    return _wrappedExternalState->getUserObject(opCtx, swReq.getValue());
 }
 
 namespace {

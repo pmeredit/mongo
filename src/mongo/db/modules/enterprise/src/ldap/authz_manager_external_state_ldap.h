@@ -61,6 +61,11 @@ public:
                               BSONObj* result) final;
 
     /**
+     * As getUserDescription() above, but optimized for direct User object synthesis.
+     */
+    StatusWith<User> getUserObject(OperationContext* opCtx, const UserRequest& userReq) final;
+
+    /**
      * Passthrough to AuthorizationManagerExternalStateMongod
      */
     Status rolesExist(OperationContext* opCtx, const std::vector<RoleName>& roleNames) final {
@@ -113,7 +118,7 @@ public:
      */
     void logOp(OperationContext* opCtx,
                AuthorizationManagerImpl* authzManager,
-               const char* op,
+               StringData op,
                const NamespaceString& ns,
                const BSONObj& o,
                const BSONObj* o2) final {
