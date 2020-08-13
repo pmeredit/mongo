@@ -34,7 +34,7 @@ StatusWith<KMIPService> KMIPService::createKMIPService(const HostAndPort& server
                                                        const SSLParams& sslKMIPParams,
                                                        Milliseconds connectTimeout) {
     try {
-        std::unique_ptr<SSLManagerInterface> sslManager =
+        std::shared_ptr<SSLManagerInterface> sslManager =
             SSLManagerInterface::create(sslKMIPParams, false);
         KMIPService kmipService(server, std::move(sslManager));
         Status status = kmipService._initServerConnection(connectTimeout);
@@ -101,7 +101,7 @@ StatusWith<KMIPService> KMIPService::createKMIPService(const KMIPParams& kmipPar
     return {ErrorCodes::BadValue, "No KMIP server specified."};
 }
 
-KMIPService::KMIPService(const HostAndPort& server, std::unique_ptr<SSLManagerInterface> sslManager)
+KMIPService::KMIPService(const HostAndPort& server, std::shared_ptr<SSLManagerInterface> sslManager)
     : _sslManager(std::move(sslManager)),
       _server(server),
       _socket(std::make_unique<Socket>(10, logv2::LogSeverity::Log())) {}

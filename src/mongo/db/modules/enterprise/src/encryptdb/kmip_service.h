@@ -47,7 +47,7 @@ public:
     StatusWith<std::unique_ptr<SymmetricKey>> getExternalKey(const std::string& uid);
 
 private:
-    KMIPService(const HostAndPort& server, std::unique_ptr<SSLManagerInterface> sslManager);
+    KMIPService(const HostAndPort& server, std::shared_ptr<SSLManagerInterface> sslManager);
     static StatusWith<KMIPService> createKMIPService(const HostAndPort& server,
                                                      const SSLParams& sslKMIPParams,
                                                      Milliseconds connectTimeout);
@@ -66,7 +66,7 @@ private:
 
     std::vector<uint8_t> _generateKMIPCreateRequest();
 
-    std::unique_ptr<SSLManagerInterface> _sslManager;
+    std::shared_ptr<SSLManagerInterface> _sslManager;
     HostAndPort _server;
     std::unique_ptr<Socket> _socket;
 };
