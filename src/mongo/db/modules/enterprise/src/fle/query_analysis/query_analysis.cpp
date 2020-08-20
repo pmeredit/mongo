@@ -575,7 +575,7 @@ PlaceHolderResult addPlaceHoldersForUpdate(OperationContext* opCtx,
         // Create a non-const copy.
         auto newEntry = update;
         newEntry.setQ(newFilter.result);
-        newEntry.setU(newUpdate.result);
+        newEntry.setU(write_ops::UpdateModification::parseFromClassicUpdate(newUpdate.result));
         updateVector.push_back(newEntry);
         phr.hasEncryptionPlaceholders = phr.hasEncryptionPlaceholders ||
             newUpdate.hasEncryptionPlaceholders || newFilter.hasEncryptionPlaceholders;

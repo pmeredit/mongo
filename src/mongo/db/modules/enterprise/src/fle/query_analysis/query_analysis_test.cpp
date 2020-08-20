@@ -615,7 +615,7 @@ TEST(EncryptionUpdateVisitorTest, ReplaceSingleFieldCorrectly) {
         new ExpressionContext(nullptr, nullptr, kTestEmptyNss));
     UpdateDriver driver(expCtx);
     std::map<StringData, std::unique_ptr<ExpressionWithPlaceholder>> arrayFilters;
-    driver.parse(entry, arrayFilters);
+    driver.parse(write_ops::UpdateModification::parseFromClassicUpdate(entry), arrayFilters);
 
     auto schema = buildBasicSchema(randomEncryptObj);
 
@@ -641,7 +641,7 @@ TEST(EncryptionUpdateVisitorTest, ReplaceMultipleFieldsCorrectly) {
         new ExpressionContext(nullptr, nullptr, kTestEmptyNss));
     UpdateDriver driver(expCtx);
     std::map<StringData, std::unique_ptr<ExpressionWithPlaceholder>> arrayFilters;
-    driver.parse(entry, arrayFilters);
+    driver.parse(write_ops::UpdateModification::parseFromClassicUpdate(entry), arrayFilters);
 
     auto schema = BSON("type"
                        << "object"
@@ -672,7 +672,7 @@ TEST(EncryptionUpdateVisitorTest, FieldMarkedForEncryptionInRightHandSetObject) 
         new ExpressionContext(nullptr, nullptr, kTestEmptyNss));
     UpdateDriver driver(expCtx);
     std::map<StringData, std::unique_ptr<ExpressionWithPlaceholder>> arrayFilters;
-    driver.parse(entry, arrayFilters);
+    driver.parse(write_ops::UpdateModification::parseFromClassicUpdate(entry), arrayFilters);
 
     auto schema = BSON("type"
                        << "object"
@@ -698,7 +698,7 @@ TEST(EncryptionUpdateVisitorTest, RenameWithEncryptedTargetOnlyFails) {
         new ExpressionContext(nullptr, nullptr, kTestEmptyNss));
     UpdateDriver driver(expCtx);
     std::map<StringData, std::unique_ptr<ExpressionWithPlaceholder>> arrayFilters;
-    driver.parse(entry, arrayFilters);
+    driver.parse(write_ops::UpdateModification::parseFromClassicUpdate(entry), arrayFilters);
 
     auto schema = buildBasicSchema(randomEncryptObj);
 
@@ -715,7 +715,7 @@ TEST(EncryptionUpdateVisitorTest, RenameWithEncryptedSourceOnlyFails) {
         new ExpressionContext(nullptr, nullptr, kTestEmptyNss));
     UpdateDriver driver(expCtx);
     std::map<StringData, std::unique_ptr<ExpressionWithPlaceholder>> arrayFilters;
-    driver.parse(entry, arrayFilters);
+    driver.parse(write_ops::UpdateModification::parseFromClassicUpdate(entry), arrayFilters);
 
     auto schema = buildBasicSchema(randomEncryptObj);
 
@@ -732,7 +732,7 @@ TEST(EncryptionUpdateVisitorTest, RenameWithNestedTargetEncryptFails) {
         new ExpressionContext(nullptr, nullptr, kTestEmptyNss));
     UpdateDriver driver(expCtx);
     std::map<StringData, std::unique_ptr<ExpressionWithPlaceholder>> arrayFilters;
-    driver.parse(entry, arrayFilters);
+    driver.parse(write_ops::UpdateModification::parseFromClassicUpdate(entry), arrayFilters);
 
     auto schema = BSON("type"
                        << "object"
@@ -752,7 +752,7 @@ TEST(EncryptionUpdateVisitorTest, RenameWithNestedSourceEncryptFails) {
         new ExpressionContext(nullptr, nullptr, kTestEmptyNss));
     UpdateDriver driver(expCtx);
     std::map<StringData, std::unique_ptr<ExpressionWithPlaceholder>> arrayFilters;
-    driver.parse(entry, arrayFilters);
+    driver.parse(write_ops::UpdateModification::parseFromClassicUpdate(entry), arrayFilters);
 
     auto schema = BSON("type"
                        << "object"
