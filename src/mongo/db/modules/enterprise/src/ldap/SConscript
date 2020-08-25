@@ -44,11 +44,11 @@ env.Library(
         'ldap_options.cpp',
     ],
     LIBDEPS_PRIVATE=[
-        'ldap_query',
         '$BUILD_DIR/mongo/base/secure_allocator',
         '$BUILD_DIR/mongo/db/auth/sasl_options',
         '$BUILD_DIR/mongo/db/service_context',
         '$BUILD_DIR/mongo/util/options_parser/options_parser',
+        'ldap_query',
     ],
 )
 
@@ -122,17 +122,17 @@ env.Library(
     target='ldap_connection',
     source=ldap_connection_sources,
     LIBDEPS=[
-        'ldap_query',
         '$BUILD_DIR/mongo/base',
+        'ldap_query',
     ],
     LIBDEPS_PRIVATE=[
-        'ldap_manager',
-        'ldap_parameters',
         '$BUILD_DIR/mongo/db/commands/server_status',
         '$BUILD_DIR/mongo/executor/connection_pool_executor',
         '$BUILD_DIR/mongo/util/alarm',
         '$BUILD_DIR/mongo/util/concurrency/thread_pool',
         '$BUILD_DIR/mongo/util/net/network',
+        'ldap_manager',
+        'ldap_parameters',
     ],
     SYSLIBDEPS=env.get("MONGO_LDAP_LIB", [])
 )
@@ -174,11 +174,11 @@ env.Library(
         'name_mapping/regex_rewrite_rule.cpp',
     ],
     LIBDEPS=[
-        'ldap_parameters',
-        'ldap_query',
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/db/service_context',
         '$BUILD_DIR/third_party/shim_pcrecpp',
+        'ldap_parameters',
+        'ldap_query',
     ],
 )
 
@@ -190,10 +190,10 @@ env.CppUnitTest(
         'name_mapping/rewrite_rule_test.cpp',
     ],
     LIBDEPS=[
+        '$BUILD_DIR/mongo/db/auth/auth',
+        '$BUILD_DIR/mongo/db/service_context',
         'ldap_manager_impl',
         'ldap_name_map',
         'ldap_query',
-        '$BUILD_DIR/mongo/db/auth/auth',
-        '$BUILD_DIR/mongo/db/service_context',
     ],
 )

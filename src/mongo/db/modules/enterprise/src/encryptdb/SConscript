@@ -47,8 +47,8 @@ env.Library(
         'keystore_metadata.cpp',
     ],
     LIBDEPS=[
-        'symmetric_crypto_enterprise',
         '$BUILD_DIR/mongo/crypto/symmetric_crypto',
+        'symmetric_crypto_enterprise',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/db/storage/storage_engine_metadata',
@@ -73,12 +73,12 @@ wtEnv.Library(
         '$BUILD_DIR/third_party/shim_wiredtiger',
     ],
     LIBDEPS_PRIVATE=[
-        'key_acquisition',
-        'keystore_metadata',
-        'symmetric_crypto_enterprise',
         '$BUILD_DIR/mongo/db/catalog/catalog_impl',
         '$BUILD_DIR/mongo/db/storage/storage_options',
         '$BUILD_DIR/mongo/idl/server_parameter',
+        'key_acquisition',
+        'keystore_metadata',
+        'symmetric_crypto_enterprise',
     ],
 )
 
@@ -89,8 +89,8 @@ env.Library(
         env.Idlc('log_redact_options.idl')[0],
     ],
     LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/util/options_parser/options_parser',
         '$BUILD_DIR/mongo/idl/server_parameter',
+        '$BUILD_DIR/mongo/util/options_parser/options_parser',
     ],
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/s/mongos_initializers',
@@ -113,9 +113,9 @@ env.Library(
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base/secure_allocator',
+        '$BUILD_DIR/mongo/crypto/symmetric_crypto',
         '$BUILD_DIR/mongo/util/net/ssl_manager',
         '$BUILD_DIR/mongo/util/secure_zero_memory',
-        '$BUILD_DIR/mongo/crypto/symmetric_crypto',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/util/options_parser/options_parser',
@@ -134,8 +134,8 @@ env.Library(
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/crypto/symmetric_crypto',
-        'symmetric_crypto_enterprise',
         '$BUILD_DIR/mongo/util/net/network',
+        'symmetric_crypto_enterprise',
     ],
 )
 
@@ -161,14 +161,14 @@ wtEnv.CppUnitTest(
         'remove_saver_test.cpp'
     ],
     LIBDEPS=[
-        '$BUILD_DIR/mongo/db/service_context_test_fixture',
-        '$BUILD_DIR/mongo/db/storage/storage_options',
-        '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core',
-        '$BUILD_DIR/mongo/util/net/network',
-        "$BUILD_DIR/mongo/db/storage/remove_saver",
         '$BUILD_DIR/mongo/base',
         "$BUILD_DIR/mongo/db/server_options_core",
+        '$BUILD_DIR/mongo/db/service_context_test_fixture',
+        "$BUILD_DIR/mongo/db/storage/remove_saver",
+        '$BUILD_DIR/mongo/db/storage/storage_options',
+        '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core',
         "$BUILD_DIR/mongo/rpc/rpc",
+        '$BUILD_DIR/mongo/util/net/network',
         'encryptdb',
         'keystore_metadata',
         'kmip',

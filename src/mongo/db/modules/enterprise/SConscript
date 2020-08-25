@@ -169,8 +169,8 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
             'src/audit/audit_command.cpp',
         ],
         LIBDEPS=[
-            '$BUILD_DIR/mongo/db/auth/auth',
             '$BUILD_DIR/mongo/db/audit',
+            '$BUILD_DIR/mongo/db/auth/auth',
             '$BUILD_DIR/mongo/db/commands',
             '$BUILD_DIR/mongo/db/service_context',
         ],
@@ -203,8 +203,8 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
             'audit_enterprise',
         ],
         LIBDEPS_PRIVATE=[
-            '$BUILD_DIR/mongo/util/options_parser/options_parser',
             '$BUILD_DIR/mongo/idl/server_parameter',
+            '$BUILD_DIR/mongo/util/options_parser/options_parser',
             '$BUILD_DIR/mongo/watchdog/watchdog_register',
         ],
         LIBDEPS_DEPENDENTS=[
@@ -225,9 +225,9 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
             'src/audit/logger/console_test.cpp',
         ],
         LIBDEPS=[
-            'audit_enterprise',
             '$BUILD_DIR/mongo/base',
-            '$BUILD_DIR/mongo/unittest/unittest_main'
+            '$BUILD_DIR/mongo/unittest/unittest_main',
+            'audit_enterprise',
         ],
         AIB_COMPONENT="standalone-console-test",
     )
@@ -238,8 +238,8 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
             'src/audit/logger/rotatable_file_writer_test.cpp',
         ],
         LIBDEPS=[
-            'audit_enterprise',
             '$BUILD_DIR/mongo/base',
+            'audit_enterprise',
         ],
     )
 
@@ -311,10 +311,10 @@ if "sasl" in env['MONGO_ENTERPRISE_FEATURES']:
             'src/sasl/sasl_aws_protocol_test.cpp',
         ],
         LIBDEPS=[
-            '$BUILD_DIR/mongo/client/sasl_aws_common',
             '$BUILD_DIR/mongo/client/sasl_aws_client',
-            'sasl_aws_server',
+            '$BUILD_DIR/mongo/client/sasl_aws_common',
             '$BUILD_DIR/third_party/shim_kms_message',
+            'sasl_aws_server',
         ],
     )
 
@@ -328,8 +328,8 @@ if "sasl" in env['MONGO_ENTERPRISE_FEATURES']:
             'src/sasl/sasl_aws_server_conversation.cpp',
         ],
         LIBDEPS=[
-            'sasl_aws_server',
             '$BUILD_DIR/mongo/db/auth/saslauth',
+            'sasl_aws_server',
         ] + (['src/util/gssapi_helpers'] if not env.TargetOSIs("windows") else []),
         LIBDEPS_PRIVATE=[
             '$BUILD_DIR/mongo/util/net/http_client',
@@ -361,9 +361,11 @@ if "sasl" in env['MONGO_ENTERPRISE_FEATURES']:
             'src/sasl/cyrus_sasl_authentication_session.cpp',
             'src/sasl/ldap_sasl_authentication_session.cpp'
         ],
-        LIBDEPS=['src/ldap/ldap_manager',
-                 'src/ldap/ldap_name_map',
-                 'mongosaslserversession'],
+        LIBDEPS=[
+            'mongosaslserversession',
+            'src/ldap/ldap_manager',
+            'src/ldap/ldap_name_map',
+        ],
         LIBDEPS_DEPENDENTS=[
             '$BUILD_DIR/mongo/db/mongod_initializers',
             '$BUILD_DIR/mongo/s/mongos_initializers',
@@ -385,24 +387,30 @@ if "sasl" in env['MONGO_ENTERPRISE_FEATURES']:
             env.FatalError("You must enable dynamic CRT --dynamic-windows to build the "
                 "enterprise version")
     else:
-        gssapi_test = env.CppUnitTest('sasl_authentication_session_gssapi_test',
-                                      ['src/sasl/sasl_authentication_session_gssapi_test.cpp'],
-                                      UNITTEST_HAS_CUSTOM_MAINLINE=True,
-                                      LIBDEPS=['mongosaslserversession',
-                                               'mongosaslservercommon',
-                                               'src/ldap/ldap_manager_init',
-                                               '$BUILD_DIR/mongo/base',
-                                               '$BUILD_DIR/mongo/util/net/network',
-                                               '$BUILD_DIR/mongo/db/auth/auth',
-                                               '$BUILD_DIR/mongo/db/auth/authmocks',
-                                               '$BUILD_DIR/mongo/db/auth/saslauth',
-                                               '$BUILD_DIR/mongo/client/clientdriver_network',
-                                               '$BUILD_DIR/mongo/client/sasl_client',
-                                               '$BUILD_DIR/mongo/db/service_context_test_fixture',
-                                               '$BUILD_DIR/mongo/executor/thread_pool_task_executor',
-                                               '$BUILD_DIR/mongo/executor/network_interface_thread_pool',
-                                               '$BUILD_DIR/mongo/executor/network_interface_factory',
-                                               '$BUILD_DIR/mongo/unittest/unittest'])
+        gssapi_test = env.CppUnitTest(
+            target='sasl_authentication_session_gssapi_test',
+            source=[
+                'src/sasl/sasl_authentication_session_gssapi_test.cpp'
+            ],
+            UNITTEST_HAS_CUSTOM_MAINLINE=True,
+            LIBDEPS=[
+                '$BUILD_DIR/mongo/base',
+                '$BUILD_DIR/mongo/client/clientdriver_network',
+                '$BUILD_DIR/mongo/client/sasl_client',
+                '$BUILD_DIR/mongo/db/auth/auth',
+                '$BUILD_DIR/mongo/db/auth/authmocks',
+                '$BUILD_DIR/mongo/db/auth/saslauth',
+                '$BUILD_DIR/mongo/db/service_context_test_fixture',
+                '$BUILD_DIR/mongo/executor/network_interface_factory',
+                '$BUILD_DIR/mongo/executor/network_interface_thread_pool',
+                '$BUILD_DIR/mongo/executor/thread_pool_task_executor',
+                '$BUILD_DIR/mongo/unittest/unittest',
+                '$BUILD_DIR/mongo/util/net/network',
+                'mongosaslservercommon',
+                'mongosaslserversession',
+                'src/ldap/ldap_manager_init',
+            ]
+        )
 
 if "encryptdb" in env['MONGO_ENTERPRISE_FEATURES']:
     mongodecrypt = env.Program(
@@ -497,8 +505,9 @@ if "kerberos" in env['MONGO_ENTERPRISE_FEATURES']:
             "$BUILD_DIR/mongo/util/signal_handlers",
             "$BUILD_DIR/mongo/util/version_impl",
             "src/kerberos/kerberos_tool",
+            "src/util/gssapi_helpers" if not env.TargetOSIs("windows") else [],
             "src/util/report_tool",
-        ] + (["src/util/gssapi_helpers"] if not env.TargetOSIs("windows") else []),
+        ]
     )
 
 if "fle" in env['MONGO_ENTERPRISE_FEATURES']:
@@ -508,8 +517,8 @@ if "fle" in env['MONGO_ENTERPRISE_FEATURES']:
             "src/fle/cryptd/cryptd_main_shim.cpp"
         ],
         LIBDEPS=[
-            'src/fle/mongocryptd_core',
             'src/fle/cryptd_commands',
+            'src/fle/mongocryptd_core',
         ],
         AIB_COMPONENT="mongocryptd",
         AIB_COMPONENTS_EXTRA=[
