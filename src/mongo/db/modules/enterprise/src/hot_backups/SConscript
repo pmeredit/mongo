@@ -19,6 +19,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/repl/repl_coordinator_interface',
         '$BUILD_DIR/mongo/db/repl/storage_interface',
         '$BUILD_DIR/mongo/db/storage/encryption_hooks',
+        '$BUILD_DIR/mongo/db/storage/journal_flusher',
         '$BUILD_DIR/mongo/db/storage/storage_options',
     ],
     LIBDEPS_DEPENDENTS=[

@@ -20,6 +20,7 @@
 #include "mongo/db/repl/replication_coordinator.h"
 #include "mongo/db/repl/storage_interface.h"
 #include "mongo/db/service_context.h"
+#include "mongo/db/storage/control/journal_flusher.h"
 #include "mongo/db/storage/encryption_hooks.h"
 #include "mongo/db/storage/storage_engine.h"
 #include "mongo/db/storage/storage_options.h"
@@ -259,7 +260,7 @@ BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext
 
     // Wait 3: Force a journal flush because having opTime `extendTo` available for read does not
     // guarantee the persistency of the oplog with timestamp `extendTo`.
-    opCtx->recoveryUnit()->waitUntilDurable(opCtx);
+    JournalFlusher::get(opCtx)->waitForJournalFlush();
 
     std::vector<std::string> filesToBackup =
         uassertStatusOK(_storageEngine->extendBackupCursor(opCtx));
