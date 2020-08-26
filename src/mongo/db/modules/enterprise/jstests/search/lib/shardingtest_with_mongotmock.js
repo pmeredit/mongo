@@ -60,7 +60,7 @@ class ShardingTestWithMongotMock {
                 });
             }
 
-            this.st["rs" + i].waitForMaster();
+            this.st["rs" + i].waitForPrimary();
         }
     }
 
