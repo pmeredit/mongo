@@ -1,0 +1,24 @@
+# Copyright (C) 2020-present MongoDB, Inc.  All Rights Reserved.
+
+# importCollection IDL File.
+
+global:
+  cpp_namespace: "mongo"
+
+imports:
+  - "mongo/idl/basic_types.idl"
+
+commands:
+  importCollection:
+    cpp_name: ImportCollection
+    description: "An enterprise-only mongod command for live import of collection files"
+    namespace: concatenate_with_db
+    strict: true
+    fields:
+      collectionProperties:
+        type: object
+        description: "Collection metadata from the exportCollection command"
+      force:
+        description: "Skip waiting for the dry run phase"
+        type: safeBool
+        default: false

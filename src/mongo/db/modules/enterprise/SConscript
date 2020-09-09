@@ -15,6 +15,7 @@ feature_dirs = [
     "kerberos",
     "inmemory",
     "ldap",
+    "live_import",
     "mongohouse",
     "queryable",
 ]
