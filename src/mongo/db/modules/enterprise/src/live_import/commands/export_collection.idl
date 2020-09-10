@@ -1,0 +1,16 @@
+# Copyright (C) 2020-present MongoDB, Inc.  All Rights Reserved.
+
+# exportCollection IDL File.
+
+global:
+  cpp_namespace: "mongo"
+
+imports:
+  - "mongo/idl/basic_types.idl"
+
+commands:
+  exportCollection:
+    cpp_name: ExportCollection
+    description: "An enterprise-only mongod command for live exportation of collection files"
+    namespace: concatenate_with_db
+    strict: true

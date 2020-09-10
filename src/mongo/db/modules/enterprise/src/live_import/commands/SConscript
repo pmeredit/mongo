@@ -20,3 +20,24 @@ env.Library(
         'lint-allow-nonprivate-on-deps-dependents',
     ],
 )
+
+env.Library(
+    target='export_collection_command',
+    source=[
+        'export_collection_command.cpp',
+        env.Idlc('export_collection.idl')[0],
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/db/auth/auth',
+        '$BUILD_DIR/mongo/db/commands',
+        '$BUILD_DIR/mongo/db/global_settings',
+        '$BUILD_DIR/mongo/db/service_context',
+        '$BUILD_DIR/mongo/db/storage/storage_options',
+    ],
+    LIBDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/db/commands/mongod',
+    ],
+    LIBDEPS_TAGS=[
+        'lint-allow-nonprivate-on-deps-dependents',
+    ],
+)
