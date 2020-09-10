@@ -12,14 +12,20 @@
 namespace mongo {
 namespace {
 
+constexpr auto kHelloString = "hello"_sd;
+// Aliases for the hello command in order to provide backwards compatibility.
+constexpr auto kCamelCaseIsMasterString = "isMaster"_sd;
+constexpr auto kLowerCaseIsMasterString = "ismaster"_sd;
+
 /**
- * Implements { isMaster : 1} for mongocryptd
+ * Implements { hello : 1} for mongocryptd
  *
  * NOTE: The only method called is run(), the rest exist simply to ensure the code compiles.
  */
-class CrytpDCmdIsMaster final : public BasicCommand {
+class CrytpDCmdHello final : public BasicCommand {
 public:
-    CrytpDCmdIsMaster() : BasicCommand("isMaster", "ismaster") {}
+    CrytpDCmdHello()
+        : BasicCommand(kHelloString, {kCamelCaseIsMasterString, kLowerCaseIsMasterString}) {}
 
     AllowedOnSecondary secondaryAllowed(ServiceContext*) const final {
         return AllowedOnSecondary::kAlways;
@@ -31,7 +37,7 @@ public:
 
     std::string help() const final {
         return "Check if this server is primary for a replica set\n"
-               "{ isMaster : 1 }";
+               "{ hello : 1 }";
     }
 
     bool run(OperationContext* opCtx,
@@ -39,7 +45,17 @@ public:
              const BSONObj& jsobj,
              BSONObjBuilder& result) final {
 
-        result.appendBool("ismaster", true);
+        // Parse the command name, which should be one of the following: hello, isMaster, or
+        // ismaster. If the command is "hello", we must attach an "isWritablePrimary" response field
+        // instead of "ismaster".
+        bool useLegacyResponseFields = (jsobj.firstElementFieldNameStringData() != kHelloString);
+
+        if (useLegacyResponseFields) {
+            result.appendBool("ismaster", true);
+        } else {
+            result.appendBool("isWritablePrimary", true);
+        }
+
         result.appendBool("iscryptd", true);
         result.appendNumber("maxBsonObjectSize", BSONObjMaxUserSize);
         result.appendNumber("maxMessageSizeBytes", MaxMessageSizeBytes);
@@ -52,7 +68,7 @@ public:
         result.append("minWireVersion", wireSpec->incomingExternalClient.minWireVersion);
         return true;
     }
-} cmdCryptDIsMaster;
+} cmdCryptDHello;
 
 }  // namespace
 }  // namespace mongo
