@@ -1,0 +1,30 @@
+# Copyright (C) 2020-present MongoDB, Inc.  All Rights Reserved.
+
+# voteCommitImportCollection IDL File.
+
+global:
+  cpp_namespace: "mongo"
+
+imports:
+  - "mongo/idl/basic_types.idl"
+  - "mongo/util/net/hostandport.idl"
+
+commands:
+  voteCommitImportCollection:
+    cpp_name: VoteCommitImportCollection
+    description: "An internal mongod command to coordinate live import of collection files in a
+                  replica set"
+    strict: true
+    namespace: type
+    type: namespacestring
+    fields:
+      from:
+        type: HostAndPort
+        description: "Replica set member identification"
+      dryRunSuccess:
+        description: "Result of the dryRun phase"
+        type: safeBool
+      reason:
+        description: "Optional failure reason string"
+        type: string
+        optional: true
