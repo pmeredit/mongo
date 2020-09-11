@@ -353,8 +353,8 @@ boost::filesystem::path EncryptionKeyManager::_metadataPath(PathMode mode) {
         case PathMode::kValid:
             return _keystoreBasePath / kKeystoreMetadataFilename;
         case PathMode::kInvalid: {
-            std::string filename = str::stream()
-                << kKeystoreMetadataFilename << kInvalidatedKeyword << terseCurrentTime(false);
+            std::string filename = str::stream() << kKeystoreMetadataFilename << kInvalidatedKeyword
+                                                 << terseCurrentTimeForFilename();
             return _keystoreBasePath / filename;
         }
         case PathMode::kInitializing:
@@ -521,7 +521,7 @@ Status EncryptionKeyManager::_initLocalKeystore() {
                 // and cannot start. This can be resolved by manually renaming the old keystore.
                 auto keystoreBak = _keystorePath;
                 keystoreBak += kInvalidatedKeyword;
-                keystoreBak += terseCurrentTime(false);
+                keystoreBak += terseCurrentTimeForFilename();
                 fs::rename(_keystorePath, keystoreBak);
                 fs::rename(tmppath, _keystorePath);
                 _keystoreMetadata.setVersion(kKeystoreSchemaVersionForRotate);
@@ -619,7 +619,7 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) try {
     // Rename the old keystore path to keyid-invalidated-date.
     fs::path oldKeystorePath = _keystoreBasePath / oldMasterKeyId.name();
     fs::path invalidatedKeystorePath = oldKeystorePath;
-    invalidatedKeystorePath += kInvalidatedKeyword + terseCurrentTime(false);
+    invalidatedKeystorePath += kInvalidatedKeyword + terseCurrentTimeForFilename();
     try {
         // If the first of these renames succeed and the second fails, we will end up in a state
         // where the server is without a valid keystore and cannot start. This can be resolved by
