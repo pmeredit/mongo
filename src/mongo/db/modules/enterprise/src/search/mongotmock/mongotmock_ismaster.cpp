@@ -10,12 +10,18 @@
 namespace mongo {
 namespace {
 
+constexpr auto kHelloString = "hello"_sd;
+// Aliases for the hello command in order to provide backwards compatibility.
+constexpr auto kCamelCaseIsMasterString = "isMaster"_sd;
+constexpr auto kLowerCaseIsMasterString = "ismaster"_sd;
+
 /**
- * Implements { isMaster : 1} for mock_mongot.
+ * Implements { hello : 1} for mock_mongot.
  */
-class MongotMockIsMaster final : public BasicCommand {
+class MongotMockHello final : public BasicCommand {
 public:
-    MongotMockIsMaster() : BasicCommand("isMaster", "ismaster") {}
+    MongotMockHello()
+        : BasicCommand(kHelloString, {kCamelCaseIsMasterString, kLowerCaseIsMasterString}) {}
 
     AllowedOnSecondary secondaryAllowed(ServiceContext*) const final {
         MONGO_UNREACHABLE;
@@ -27,14 +33,24 @@ public:
 
     std::string help() const final {
         return "Check if this server is primary for a replica set\n"
-               "{ isMaster : 1 }";
+               "{ hello : 1 }";
     }
 
     bool run(OperationContext* opCtx,
              const std::string& dbname,
              const BSONObj& jsobj,
              BSONObjBuilder& result) final {
-        result.appendBool("ismaster", true);
+        // Parse the command name, which should be one of the following: hello, isMaster, or
+        // ismaster. If the command is "hello", we must attach an "isWritablePrimary" response field
+        // instead of "ismaster".
+        bool useLegacyResponseFields = (jsobj.firstElementFieldNameStringData() != kHelloString);
+
+        if (useLegacyResponseFields) {
+            result.appendBool("ismaster", true);
+        } else {
+            result.appendBool("isWriteablePrimary", true);
+        }
+
         result.appendBool("ismongot", true);
         result.appendNumber("maxBsonObjectSize", BSONObjMaxUserSize);
         result.appendNumber("maxMessageSizeBytes", MaxMessageSizeBytes);
@@ -49,7 +65,7 @@ public:
         result.append("saslSupportedMechs", BSON_ARRAY("SCRAM-SHA-1"));
         return true;
     }
-} cmdMongotMockIsMaster;
+} cmdMongotMockHello;
 
 }  // namespace
 }  // namespace mongo
