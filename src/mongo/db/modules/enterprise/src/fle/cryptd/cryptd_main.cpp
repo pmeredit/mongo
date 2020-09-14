@@ -226,6 +226,12 @@ ExitCode initAndListen() {
 
     serviceContext->setTransportLayer(std::move(tl));
 
+    status = serviceContext->getServiceExecutor()->start();
+    if (!status.isOK()) {
+        LOGV2_ERROR(24234, "Failed to start the service executor", "error"_attr = redact(status));
+        return EXIT_NET_ERROR;
+    }
+
     status = serviceContext->getServiceEntryPoint()->start();
     if (!status.isOK()) {
         LOGV2_ERROR(
