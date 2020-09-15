@@ -1,6 +1,5 @@
 // Helper library for testing auditing infrastructure in Mongod
 
-(function() {
 'use strict';
 
 /**
@@ -91,12 +90,12 @@ class AuditSpooler {
      * the desired atype, and if every field in param is equal to a matching field in the entry.
      */
     assertEntryRelaxed(atype, param) {
+        let line;
         assert.soon(
             () => {
                 const log = this.getAllLines().slice(this._auditLine);
                 for (let idx in log) {
                     const entry = log[idx];
-                    let line;
                     try {
                         line = JSON.parse(entry);
                     } catch (e) {
@@ -111,20 +110,39 @@ class AuditSpooler {
                               JSON.stringify(source) + "'");
                         for (let property in source) {
                             if (source.hasOwnProperty(property)) {
-                                print(property);
                                 if (target[property] === undefined) {
                                     print("Target missing property: " + property);
                                     return false;
                                 }
 
-                                if (typeof source[property] !== "object") {
+                                if (typeof source[property] === "function") {
+                                    /* { foo: (v) => (v > 5) } */
+                                    const res = source[property](target[property]);
+                                    if (!res) {
+                                        print(property + " does not satisfy callback: " +
+                                              tojson(source[property]) + "(" +
+                                              tojson(target[property]) + ") == false");
+                                        return false;
+                                    }
+                                } else if (typeof source[property] !== "object") {
+                                    /* { foo: 'bar' } */
                                     const res = source[property] === target[property];
                                     if (!res) {
                                         print(property + " not equal. " + source[property] +
                                               " != " + target[property]);
                                         return false;
                                     }
+                                } else if (source[property] instanceof RegExp) {
+                                    /* { foo: /bar.*baz/ } */
+                                    const res = source[property].test(target[property]);
+                                    if (!res) {
+                                        print(property + " does not match pattern " +
+                                              source[property].toString() +
+                                              " != " + target[property]);
+                                        return false;
+                                    }
                                 } else {
+                                    /* { foo: {bar: 'baz'} } */
                                     if (!deepPartialEquals(target[property], source[property])) {
                                         return false;
                                     }
@@ -145,68 +163,9 @@ class AuditSpooler {
                 "Search started on line number: " + this._auditLine + "\n" +
                 "Log File Contents\n==============================\n" + this.getAllLines() +
                 "\n==============================\n");
-    }
 
-    /**
-     * Poll the audit logfile for a matching entry
-     * beginning with the current line.
-     * This method returns true if an entry in the audit file exists after "now" which has
-     * the desired atype, and if every field in param is equal to a matching field in the entry.
-     */
-    assertEntryRelaxed(atype, param) {
-        assert.soon(
-            () => {
-                const log = this.getAllLines().slice(this._auditLine);
-                for (let idx in log) {
-                    const entry = log[idx];
-                    let line;
-                    try {
-                        line = JSON.parse(entry);
-                    } catch (e) {
-                        continue;
-                    }
-                    if (line.atype !== atype) {
-                        continue;
-                    }
-
-                    let deepPartialEquals = function(target, source) {
-                        print("Checking '" + JSON.stringify(target) + "' vs '" +
-                              JSON.stringify(source) + "'");
-                        for (let property in source) {
-                            if (source.hasOwnProperty(property)) {
-                                if (target[property] === undefined) {
-                                    print("Target missing property: " + property);
-                                    return false;
-                                }
-
-                                if (typeof source[property] !== "object") {
-                                    const res = source[property] === target[property];
-                                    if (!res) {
-                                        print(property + " not equal. " + source[property] +
-                                              " != " + target[property]);
-                                        return false;
-                                    }
-                                } else {
-                                    if (!deepPartialEquals(target[property], source[property])) {
-                                        return false;
-                                    }
-                                }
-                            }
-                        }
-                        return true;
-                    };
-
-                    if (deepPartialEquals(line.param, param)) {
-                        this._auditLine += Number(idx) + 1;
-                        return true;
-                    }
-                }
-                return false;
-            },
-            "audit logfile should contain entry within default timeout.\n" +
-                "Search started on line number: " + this._auditLine + "\n" +
-                "Log File Contents\n==============================\n" + this.getAllLines() +
-                "\n==============================\n");
+        // Success if we got here, return the matched record.
+        return line;
     }
 
     /**
@@ -248,4 +207,3 @@ MongoRunner.runMongodAuditLogger = function(opts, isBSON = false) {
 
     return mongo;
 };
-})();
