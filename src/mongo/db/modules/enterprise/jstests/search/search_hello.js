@@ -22,17 +22,17 @@ function checkResponseFields(commandString) {
         assert.eq(commandResponse.ismaster,
                   undefined,
                   "ismaster is not undefined, command response: " + tojson(commandResponse));
-        assert.eq(commandResponse.isWriteablePrimary,
+        assert.eq(commandResponse.isWritablePrimary,
                   true,
-                  "isWriteablePrimary is not true, command response: " + tojson(commandResponse));
+                  "isWritablePrimary is not true, command response: " + tojson(commandResponse));
     } else {
         assert.eq(commandResponse.ismaster,
                   true,
                   "ismaster is not true, command response: " + tojson(commandResponse));
         assert.eq(
-            commandResponse.isWriteablePrimary,
+            commandResponse.isWritablePrimary,
             undefined,
-            "isWriteablePrimary is not undefined, command response: " + tojson(commandResponse));
+            "isWritablePrimary is not undefined, command response: " + tojson(commandResponse));
     }
 }
 

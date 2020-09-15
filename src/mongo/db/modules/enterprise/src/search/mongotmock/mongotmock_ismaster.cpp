@@ -48,7 +48,7 @@ public:
         if (useLegacyResponseFields) {
             result.appendBool("ismaster", true);
         } else {
-            result.appendBool("isWriteablePrimary", true);
+            result.appendBool("isWritablePrimary", true);
         }
 
         result.appendBool("ismongot", true);
