@@ -12,3 +12,15 @@ env.SConscript(
         'env',
     ],
 )
+
+env.Library(
+    target='import_export_options',
+    source=[
+        env.Idlc('import_export_options.idl')[0],
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/idl/idl_parser',
+        '$BUILD_DIR/mongo/idl/server_parameter',
+    ],
+)

@@ -7,6 +7,7 @@
 #include "mongo/platform/basic.h"
 
 #include "live_import/commands/export_collection_gen.h"
+#include "live_import/import_export_options_gen.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/commands.h"
 #include "mongo/db/global_settings.h"
@@ -56,6 +57,9 @@ public:
         }
 
         void run(OperationContext* opCtx, rpc::ReplyBuilderInterface* result) override {
+            uassert(ErrorCodes::CommandNotSupported,
+                    "exportCollection command not enabled",
+                    feature_flags::gLiveImportExport);
             uassert(5070400,
                     str::stream() << "This command only works with the WiredTiger storage engine. "
                                      "The current storage engine is: "

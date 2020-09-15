@@ -32,7 +32,7 @@ function testParsing(db) {
 
 // Test standalone.
 jsTestLog("Testing standalone");
-const standalone = MongoRunner.runMongod();
+const standalone = MongoRunner.runMongod({setParameter: "featureFlagLiveImportExport=true"});
 const testDB = standalone.getDB("test");
 testParsing(testDB);
 
@@ -43,7 +43,11 @@ MongoRunner.stopMongod(standalone);
 
 // Test replica set.
 jsTestLog("Testing replica set");
-const rst = new ReplSetTest({nodes: 2, nodeOptions: {auth: ""}, keyFile: "jstests/libs/key1"});
+const rst = new ReplSetTest({
+    nodes: 2,
+    nodeOptions: {auth: "", setParameter: "featureFlagLiveImportExport=true"},
+    keyFile: "jstests/libs/key1"
+});
 rst.startSet();
 rst.initiateWithHighElectionTimeout();
 const primary = rst.getPrimary();

@@ -7,6 +7,7 @@
 #include "mongo/platform/basic.h"
 
 #include "live_import/commands/import_collection_gen.h"
+#include "live_import/import_export_options_gen.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/commands.h"
 #include "mongo/db/repl/replication_coordinator.h"
@@ -41,6 +42,9 @@ public:
         using InvocationBase::InvocationBase;
 
         void typedRun(OperationContext* opCtx) {
+            uassert(ErrorCodes::CommandNotSupported,
+                    "importCollection command not enabled",
+                    feature_flags::gLiveImportExport);
             BSONObjBuilder result;
             uassertStatusOK(
                 repl::ReplicationCoordinator::get(opCtx)->checkReplEnabledForCommand(&result));

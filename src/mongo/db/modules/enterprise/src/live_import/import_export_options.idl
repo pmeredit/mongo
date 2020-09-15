@@ -1,0 +1,10 @@
+# Copyright (C) 2020-present MongoDB, Inc.  All Rights Reserved.
+
+global:
+  cpp_namespace: "mongo::feature_flags"
+
+feature_flags:
+  featureFlagLiveImportExport:
+    description: "When true, allow live import/export of collection files"
+    cpp_varname: gLiveImportExport
+    default: false
