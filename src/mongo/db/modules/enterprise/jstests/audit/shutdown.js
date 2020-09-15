@@ -1,4 +1,5 @@
 // Verify shutdown is sent to audit log
+// @tags: [live_record_incompatible]
 
 (function() {
 'use strict';
