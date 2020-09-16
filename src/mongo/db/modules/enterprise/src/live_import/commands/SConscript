@@ -34,6 +34,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/global_settings',
         '$BUILD_DIR/mongo/db/service_context',
         '$BUILD_DIR/mongo/db/storage/storage_options',
+        '../export_collection',
         '../import_export_options'
     ],
     LIBDEPS_DEPENDENTS=[

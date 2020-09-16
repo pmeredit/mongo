@@ -7,6 +7,7 @@
 #include "mongo/platform/basic.h"
 
 #include "live_import/commands/export_collection_gen.h"
+#include "live_import/export_collection.h"
 #include "live_import/import_export_options_gen.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/commands.h"
@@ -74,7 +75,8 @@ public:
                   "Received exportCollection request",
                   "namespace"_attr = cmd.getNamespace());
 
-            result->getBodyBuilder().append("collectionProperties", BSONObj());
+            auto bodyBuilder = result->getBodyBuilder();
+            exportCollection(opCtx, cmd.getNamespace(), &bodyBuilder);
         }
     };
 

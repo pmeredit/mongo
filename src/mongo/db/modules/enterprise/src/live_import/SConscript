@@ -24,3 +24,16 @@ env.Library(
         '$BUILD_DIR/mongo/idl/server_parameter',
     ],
 )
+
+env.Library(
+    target='export_collection',
+    source=[
+        'export_collection.cpp'
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/db_raii',
+        '$BUILD_DIR/mongo/db/service_context',
+        '$BUILD_DIR/mongo/db/storage/durable_catalog_impl',
+    ],
+)
