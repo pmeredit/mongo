@@ -94,13 +94,21 @@ function runTests(mode, mongo, audit) {
 
     //// Create View
     assert.commandWorked(test.createView('implicitView', 'implicitCollection', []));
-    // TODO: SERVER-50992 createCollection audit entry for views should include viewOn and pipeline.
-    audit.assertEntryForAdmin('createCollection', {ns: 'test.implicitView'});
+    audit.assertEntryForAdmin(
+        'createCollection',
+        {ns: 'test.implicitView', viewOn: 'test.implicitCollection', pipeline: []});
     assert.commandWorked(
         test.createView('addZedView', 'implicitCollection', [{'$addFields': {z: 1}}]));
+    audit.assertEntryForAdmin('createCollection', {
+        ns: 'test.addZedView',
+        viewOn: 'test.implicitCollection',
+        pipeline: [{'$addFields': {z: 1}}]
+    });
 
     assert.commandWorked(test.createView('explicitView', 'explicitCollection', []));
-    audit.assertEntryForAdmin('createCollection', {ns: 'test.explicitView'});
+    audit.assertEntryForAdmin(
+        'createCollection',
+        {ns: 'test.explicitView', viewOn: 'test.explicitCollection', pipeline: []});
     test.explicitView.drop();
     // TODO: SERVER-50993 Audit dropCollection for views.
 

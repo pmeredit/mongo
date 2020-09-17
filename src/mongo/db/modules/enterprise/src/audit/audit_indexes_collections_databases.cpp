@@ -47,13 +47,28 @@ public:
     CreateCollectionEvent(const AuditEventEnvelope& envelope, StringData nsname)
         : AuditEvent(envelope), _nsname(nsname) {}
 
+    /* Used for creating views. */
+    CreateCollectionEvent(const AuditEventEnvelope& envelope,
+                          StringData nsname,
+                          StringData viewOn,
+                          BSONArray pipeline)
+        : AuditEvent(envelope), _nsname(nsname), _viewOn(viewOn), _pipeline(pipeline) {
+        dassert(!_viewOn.empty());
+    }
+
 private:
     BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
         builder.append("ns", _nsname);
+        if (!_viewOn.empty()) {
+            builder.append("viewOn", _viewOn);
+            builder.append("pipeline", _pipeline);
+        }
         return builder;
     }
 
     StringData _nsname;
+    StringData _viewOn;
+    BSONArray _pipeline;
 };
 
 class CreateDatabaseEvent : public AuditEvent {
@@ -157,6 +172,23 @@ void audit::logCreateCollection(Client* client, StringData nsname) {
 
     CreateCollectionEvent event(makeEnvelope(client, ActionType::createCollection, ErrorCodes::OK),
                                 nsname);
+    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+        logEvent(event);
+    }
+}
+
+void audit::logCreateView(Client* client,
+                          StringData nsname,
+                          StringData viewOn,
+                          BSONArray pipeline,
+                          ErrorCodes::Error code) {
+    if (!getGlobalAuditManager()->enabled) {
+        return;
+    }
+
+    // Intentional: createView is audited as createCollection with viewOn/pipeline params. */
+    CreateCollectionEvent event(
+        makeEnvelope(client, ActionType::createCollection, code), nsname, viewOn, pipeline);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }
