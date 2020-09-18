@@ -691,7 +691,7 @@ public:
 
     // Used to indicate which child expression is "in visit", since expressions hold their children
     // with an index into a vector.
-    unsigned long long numChildrenVisited;
+    unsigned long long numChildrenVisited = 0;
 
 private:
     const EncryptionSchemaTreeNode& _schema;
