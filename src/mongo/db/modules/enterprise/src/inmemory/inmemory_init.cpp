@@ -30,7 +30,8 @@ class InMemoryFactory final : public StorageEngine::Factory {
 public:
     virtual ~InMemoryFactory() {}
 
-    std::unique_ptr<StorageEngine> create(const StorageGlobalParams& params,
+    std::unique_ptr<StorageEngine> create(OperationContext* opCtx,
+                                          const StorageGlobalParams& params,
                                           const StorageEngineLockFile* lockFile) const final {
         boost::filesystem::path dbpath = params.dbpath;
         dbpath /= "/inmem";
@@ -70,7 +71,7 @@ public:
         options.directoryForIndexes = false;
         options.forRepair = false;
 
-        return std::make_unique<StorageEngineImpl>(std::move(kv), options);
+        return std::make_unique<StorageEngineImpl>(opCtx, std::move(kv), options);
     }
 
     virtual StringData getCanonicalName() const final {

@@ -38,7 +38,8 @@ namespace {
 class QueryableWtFactory final : public StorageEngine::Factory {
 public:
     ~QueryableWtFactory() override {}
-    std::unique_ptr<StorageEngine> create(const StorageGlobalParams& params,
+    std::unique_ptr<StorageEngine> create(OperationContext* opCtx,
+                                          const StorageGlobalParams& params,
                                           const StorageEngineLockFile* lockFile) const override {
         uassert(ErrorCodes::InvalidOptions,
                 "Queryable restores must be started with --queryableBackupMode",
@@ -102,7 +103,7 @@ public:
         options.directoryPerDB = params.directoryperdb;
         options.directoryForIndexes = wiredTigerGlobalOptions.directoryForIndexes;
         options.forRepair = params.repair;
-        return std::make_unique<StorageEngineImpl>(std::move(kv), options);
+        return std::make_unique<StorageEngineImpl>(opCtx, std::move(kv), options);
     }
 
     StringData getCanonicalName() const override {
