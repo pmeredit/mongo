@@ -35,7 +35,7 @@ function runTests(mode, mongo, audit) {
      * This covers both single-phase and two-phase drop strageties.
      */
     function dropTestCollNSS(collname) {
-        return new RegExp('test\.(system\.drop\.\d+i\d+t\d+\.)?' + collname);
+        return new RegExp('test\\.(system\\.drop\\.\\d+i\\d+t\\d+\\.)?' + collname);
     }
 
     jsTest.log('START audit/ddl-ops.js ' + mode);
