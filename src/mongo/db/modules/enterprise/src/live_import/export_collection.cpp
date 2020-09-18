@@ -42,8 +42,8 @@ void exportCollection(OperationContext* opCtx, const NamespaceString& nss, BSONO
     out->append("metadata", md.toBSON());
 
     // Append the size storer information.
-    out->appendNumber("numRecords", collection->numRecords(opCtx));
-    out->appendNumber("dataSize", collection->dataSize(opCtx));
+    out->appendIntOrLL("numRecords", collection->numRecords(opCtx));
+    out->appendIntOrLL("dataSize", collection->dataSize(opCtx));
 
     // Append the collection and index idents that need to be copied from disk.
     out->append("collectionIdent", collection->getSharedIdent()->getIdent() + kTableExtension);
