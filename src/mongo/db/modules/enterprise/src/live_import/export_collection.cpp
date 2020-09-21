@@ -6,6 +6,10 @@
 
 #include "mongo/platform/basic.h"
 
+#include <boost/filesystem.hpp>
+#include <boost/filesystem/operations.hpp>
+#include <boost/filesystem/path.hpp>
+
 #include "export_collection.h"
 
 #include "mongo/bson/bsonobjbuilder.h"
@@ -18,6 +22,12 @@ namespace mongo {
 namespace {
 
 const std::string kTableExtension = ".wt";
+
+std::string constructFilePath(std::string ident) {
+    boost::filesystem::path directoryPath = boost::filesystem::path(storageGlobalParams.dbpath);
+    boost::filesystem::path filePath = directoryPath /= (ident + kTableExtension);
+    return filePath.string();
+}
 
 }  // namespace
 
@@ -35,20 +45,20 @@ void exportCollection(OperationContext* opCtx, const NamespaceString& nss, BSONO
             autoCollection.getDb() && autoCollection.getCollection());
 
     const Collection* collection = autoCollection.getCollection();
+    out->append("namespace", nss.toString());
 
-    // Extract the collection's metadata.
+    // Extract the collection's catalog entry.
     DurableCatalog* durableCatalog = DurableCatalog::get(opCtx);
-    auto md = durableCatalog->getMetaData(opCtx, collection->getCatalogId());
-    out->append("metadata", md.toBSON());
+    out->append("metadata", durableCatalog->getCatalogEntry(opCtx, collection->getCatalogId()));
 
     // Append the size storer information.
     out->appendIntOrLL("numRecords", collection->numRecords(opCtx));
     out->appendIntOrLL("dataSize", collection->dataSize(opCtx));
 
-    // Append the collection and index idents that need to be copied from disk.
-    out->append("collectionIdent", collection->getSharedIdent()->getIdent() + kTableExtension);
+    // Append the collection and index paths that need to be copied from disk.
+    out->append("collectionFile", constructFilePath(collection->getSharedIdent()->getIdent()));
 
-    BSONArrayBuilder indexIdentsBuilder(out->subarrayStart("indexIdents"));
+    BSONObjBuilder indexIdentsBuilder(out->subobjStart("indexFiles"));
     const IndexCatalog* indexCatalog = collection->getIndexCatalog();
     auto it = indexCatalog->getIndexIterator(opCtx, /*includeUnfinishedIndexes=*/true);
     while (it->more()) {
@@ -59,7 +69,7 @@ void exportCollection(OperationContext* opCtx, const NamespaceString& nss, BSONO
                               << " has not finished building yet.",
                 entry->isReady(opCtx));
 
-        indexIdentsBuilder.append(BSON(indexName << entry->getIdent() + kTableExtension));
+        indexIdentsBuilder.append(indexName, constructFilePath(entry->getIdent()));
     }
 
     // TODO SERVER-50977: Append the required WiredTiger information to 'out'.
