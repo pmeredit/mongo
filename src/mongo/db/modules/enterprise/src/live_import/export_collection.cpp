@@ -32,7 +32,9 @@ std::string constructFilePath(std::string ident) {
 }  // namespace
 
 void exportCollection(OperationContext* opCtx, const NamespaceString& nss, BSONObjBuilder* out) {
-    // TODO SERVER-50886: Verify that this function is only called when running in read-only mode.
+    uassert(5088600,
+            "Exporting a collection is only permitted in read-only mode.",
+            storageGlobalParams.readOnly);
 
     // Allow fetching views to provide a well defined error below.
     AutoGetCollectionForRead autoCollection(opCtx, nss, AutoGetCollectionViewMode::kViewsPermitted);

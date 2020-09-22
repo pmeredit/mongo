@@ -10,10 +10,10 @@
 const collName = "foo";
 
 function testStandalone() {
-    const standalone = MongoRunner.runMongod(
+    let standalone = MongoRunner.runMongod(
         {auth: "", keyFile: "jstests/libs/key1", setParameter: "featureFlagLiveImportExport=true"});
-    const testDB = standalone.getDB("test");
-    const adminDB = standalone.getDB("admin");
+    let testDB = standalone.getDB("test");
+    let adminDB = standalone.getDB("admin");
 
     // exportCollection is allowed on standalone nodes, with the correct authorization.
     assert.commandFailedWithCode(testDB.runCommand({exportCollection: collName}),
@@ -22,14 +22,32 @@ function testStandalone() {
     adminDB.createUser({user: 'admin', pwd: 'pass', roles: jsTest.adminUserRoles});
     assert(adminDB.auth('admin', 'pass'));
     assert.commandWorked(testDB.createCollection(collName));
+    assert.commandWorked(testDB.createView("baz", collName, []));
+    assert.commandFailedWithCode(testDB.runCommand({exportCollection: collName}), 5088600);
+
+    adminDB.logout();
+    MongoRunner.stopMongod(standalone);
+
+    // Restart in read-only mode.
+    standalone = MongoRunner.runMongod({
+        auth: "",
+        keyFile: "jstests/libs/key1",
+        setParameter: "featureFlagLiveImportExport=true",
+        dbpath: standalone.dbpath,
+        noCleanData: true,
+        queryableBackupMode: ""
+    });
+    testDB = standalone.getDB("test");
+    adminDB = standalone.getDB("admin");
+
+    assert(adminDB.auth('admin', 'pass'));
     assert.commandWorked(testDB.runCommand({exportCollection: collName}));
 
     // Verify that the command fails to run on non-existent collections.
     assert.commandFailedWithCode(testDB.runCommand({exportCollection: "bar"}), 5091801);
 
     // Verify that the command fails to run on views.
-    assert.commandWorked(testDB.createView("bar", collName, []));
-    assert.commandFailedWithCode(testDB.runCommand({exportCollection: "bar"}), 5091800);
+    assert.commandFailedWithCode(testDB.runCommand({exportCollection: "baz"}), 5091800);
 
     adminDB.logout();
 
@@ -106,7 +124,8 @@ function testReplicaSetNodesInStandaloneMode() {
         noCleanData: true,
         auth: "",
         keyFile: "jstests/libs/key1",
-        setParameter: "featureFlagLiveImportExport=true"
+        setParameter: "featureFlagLiveImportExport=true",
+        queryableBackupMode: ""
     });
     const secondaryStandalone = MongoRunner.runMongod({
         dbpath: secondary.dbpath,
@@ -114,7 +133,8 @@ function testReplicaSetNodesInStandaloneMode() {
         noCleanData: true,
         auth: "",
         keyFile: "jstests/libs/key1",
-        setParameter: "featureFlagLiveImportExport=true"
+        setParameter: "featureFlagLiveImportExport=true",
+        queryableBackupMode: ""
     });
 
     const primaryDB = primaryStandalone.getDB("test");
