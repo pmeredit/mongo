@@ -48,7 +48,7 @@ void exportCollection(OperationContext* opCtx, const NamespaceString& nss, BSONO
             autoCollection.getDb() && autoCollection.getCollection());
 
     CollectionProperties collectionProperties;
-    const Collection* collection = autoCollection.getCollection();
+    const auto& collection = autoCollection.getCollection();
     collectionProperties.setNs(nss);
 
     // Extract the collection's catalog entry.
