@@ -38,7 +38,7 @@ private:
     std::vector<char> _serverNonce;
 
     // Client provided Channel Binding Flag
-    char _cbFlag;
+    char _cbFlag{0};
 };
 
 class AWSServerFactory : public MakeServerFactory<SaslAWSServerMechanism> {
