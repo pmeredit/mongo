@@ -32,13 +32,25 @@ function testParsing(db) {
 
 // Test standalone.
 jsTestLog("Testing standalone");
-const standalone = MongoRunner.runMongod({setParameter: "featureFlagLiveImportExport=true"});
-const testDB = standalone.getDB("test");
+let standalone = MongoRunner.runMongod({setParameter: "featureFlagLiveImportExport=true"});
+let testDB = standalone.getDB("test");
 testParsing(testDB);
 
 // importCollection is not allowed on standalone.
 assert.commandFailedWithCode(testDB.runCommand({importCollection: "foo", collectionProperties: {}}),
                              ErrorCodes.NoReplicationEnabled);
+assert.commandWorked(testDB.createCollection("foo"));
+MongoRunner.stopMongod(standalone);
+
+// Get a sample output of the exportCollection command for the replica set test.
+standalone = MongoRunner.runMongod({
+    setParameter: "featureFlagLiveImportExport=true",
+    dbpath: standalone.dbpath,
+    noCleanData: true,
+    queryableBackupMode: ""
+});
+testDB = standalone.getDB("test");
+const collectionProperties = assert.commandWorked(testDB.runCommand({exportCollection: "foo"}));
 MongoRunner.stopMongod(standalone);
 
 // Test replica set.
@@ -60,6 +72,13 @@ primaryAdmin.createUser({user: 'admin', pwd: 'pass', roles: jsTest.adminUserRole
 assert(primaryAdmin.auth('admin', 'pass'));
 assert(secondaryAdmin.auth('admin', 'pass'));
 
+// Noop the importCollection command because we don't need to actually import the collection for
+// this sanity test.
+assert.commandWorked(
+    primaryAdmin.runCommand({configureFailPoint: "noopImportCollectionCommand", mode: "alwaysOn"}));
+assert.commandWorked(secondaryAdmin.runCommand(
+    {configureFailPoint: "noopImportCollectionCommand", mode: "alwaysOn"}));
+
 const primaryDB = primary.getDB("test");
 const secondaryDB = secondary.getDB("test");
 primaryDB.createUser({user: 'rw', pwd: 'pass', roles: jsTest.basicUserRoles}, {w: 2});
@@ -80,11 +99,19 @@ assert(secondaryAdmin.logout());
 // importCollection should work with readWrite access.
 jsTestLog("Testing with readWrite access");
 assert(primaryDB.auth('rw', 'pass'));
-assert.commandWorked(primaryDB.runCommand({importCollection: "foo", collectionProperties: {}}));
+
+// Namespace in the command doesn't match namespace in collectionProperties.
+assert.commandFailedWithCode(
+    primaryDB.runCommand({importCollection: "bar", collectionProperties: collectionProperties}),
+    ErrorCodes.BadValue);
+
+// Working cases.
 assert.commandWorked(
-    primaryDB.runCommand({importCollection: "foo", collectionProperties: {}, force: false}));
-assert.commandWorked(
-    primaryDB.runCommand({importCollection: "foo", collectionProperties: {}, force: true}));
+    primaryDB.runCommand({importCollection: "foo", collectionProperties: collectionProperties}));
+assert.commandWorked(primaryDB.runCommand(
+    {importCollection: "foo", collectionProperties: collectionProperties, force: false}));
+assert.commandWorked(primaryDB.runCommand(
+    {importCollection: "foo", collectionProperties: collectionProperties, force: true}));
 assert(primaryDB.logout());
 
 // importCollection is not allowed with read-only access.

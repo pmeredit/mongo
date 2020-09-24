@@ -7,6 +7,7 @@
 #include "mongo/platform/basic.h"
 
 #include "live_import/commands/import_collection_gen.h"
+#include "live_import/import_collection.h"
 #include "live_import/import_export_options_gen.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/commands.h"
@@ -55,6 +56,8 @@ public:
                   "namespace"_attr = cmd.getNamespace(),
                   "collectionProperties"_attr = redact(cmd.getCollectionProperties()),
                   "force"_attr = cmd.getForce());
+            runImportCollectionCommand(
+                opCtx, cmd.getNamespace(), cmd.getCollectionProperties(), cmd.getForce());
         }
 
     private:

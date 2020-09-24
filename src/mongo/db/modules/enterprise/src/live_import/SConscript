@@ -26,6 +26,17 @@ env.Library(
 )
 
 env.Library(
+    target='collection_properties',
+    source=[
+        env.Idlc('collection_properties.idl')[0],
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/idl/idl_parser',
+    ],
+)
+
+env.Library(
     target='export_collection',
     source=[
         'export_collection.cpp'
@@ -35,5 +46,29 @@ env.Library(
         '$BUILD_DIR/mongo/db/db_raii',
         '$BUILD_DIR/mongo/db/service_context',
         '$BUILD_DIR/mongo/db/storage/durable_catalog_impl',
+        'collection_properties',
+    ],
+)
+
+env.Library(
+    target='import_collection',
+    source=[
+        'import_collection.cpp'
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/audit',
+        '$BUILD_DIR/mongo/db/catalog/collection',
+        '$BUILD_DIR/mongo/db/catalog/collection_options',
+        '$BUILD_DIR/mongo/db/catalog/database_holder',
+        '$BUILD_DIR/mongo/db/concurrency/write_conflict_exception',
+        '$BUILD_DIR/mongo/db/db_raii',
+        '$BUILD_DIR/mongo/db/op_observer',
+        '$BUILD_DIR/mongo/db/repl/oplog',
+        '$BUILD_DIR/mongo/db/repl/repl_coordinator_interface',
+        '$BUILD_DIR/mongo/db/service_context',
+        '$BUILD_DIR/mongo/db/storage/durable_catalog_impl',
+        '$BUILD_DIR/mongo/db/storage/storage_engine_impl',
+        'collection_properties',
     ],
 )

@@ -12,6 +12,7 @@
 
 #include "export_collection.h"
 
+#include "live_import/collection_properties_gen.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/db_raii.h"
 #include "mongo/db/operation_context.h"
@@ -46,21 +47,24 @@ void exportCollection(OperationContext* opCtx, const NamespaceString& nss, BSONO
             str::stream() << "Collection with namespace " << nss << " does not exist.",
             autoCollection.getDb() && autoCollection.getCollection());
 
+    CollectionProperties collectionProperties;
     const Collection* collection = autoCollection.getCollection();
-    out->append("namespace", nss.toString());
+    collectionProperties.setNs(nss);
 
     // Extract the collection's catalog entry.
     DurableCatalog* durableCatalog = DurableCatalog::get(opCtx);
-    out->append("metadata", durableCatalog->getCatalogEntry(opCtx, collection->getCatalogId()));
+    collectionProperties.setMetadata(
+        durableCatalog->getCatalogEntry(opCtx, collection->getCatalogId()));
 
     // Append the size storer information.
-    out->appendIntOrLL("numRecords", collection->numRecords(opCtx));
-    out->appendIntOrLL("dataSize", collection->dataSize(opCtx));
+    collectionProperties.setNumRecords(collection->numRecords(opCtx));
+    collectionProperties.setDataSize(collection->dataSize(opCtx));
 
     // Append the collection and index paths that need to be copied from disk.
-    out->append("collectionFile", constructFilePath(collection->getSharedIdent()->getIdent()));
+    collectionProperties.setCollectionFile(
+        constructFilePath(collection->getSharedIdent()->getIdent()));
 
-    BSONObjBuilder indexIdentsBuilder(out->subobjStart("indexFiles"));
+    BSONObjBuilder indexIdentsBuilder;
     const IndexCatalog* indexCatalog = collection->getIndexCatalog();
     auto it = indexCatalog->getIndexIterator(opCtx, /*includeUnfinishedIndexes=*/true);
     while (it->more()) {
@@ -73,6 +77,8 @@ void exportCollection(OperationContext* opCtx, const NamespaceString& nss, BSONO
 
         indexIdentsBuilder.append(indexName, constructFilePath(entry->getIdent()));
     }
+    collectionProperties.setIndexFiles(indexIdentsBuilder.obj());
+    collectionProperties.serialize(out);
 
     // TODO SERVER-50977: Append the required WiredTiger information to 'out'.
 }

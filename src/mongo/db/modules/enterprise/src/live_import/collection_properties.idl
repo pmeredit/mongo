@@ -1,0 +1,31 @@
+# Copyright (C) 2020-present MongoDB, Inc.  All Rights Reserved.
+
+global:
+  cpp_namespace: "mongo"
+
+imports:
+  - "mongo/idl/basic_types.idl"
+
+structs:
+  CollectionProperties:
+    description: "A document representing the metadata of the collection being exported"
+    strict: false
+    fields:
+      ns:
+        description: "Namespace of the collection"
+        type: namespacestring
+      metadata:
+        description: "Catalog entry corresponding to the collection"
+        type: object
+      numRecords:
+        description: "Number of records in the collection"
+        type: long
+      dataSize:
+        description: "Date size of the collection"
+        type: long
+      collectionFile:
+        description: "Path to the collection file"
+        type: string
+      indexFiles:
+        description: "Document representing paths to index files"
+        type: object
