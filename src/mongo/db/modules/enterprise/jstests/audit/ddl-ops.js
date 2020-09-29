@@ -25,8 +25,20 @@ function runTests(mode, mongo, audit) {
         }
 
         assert.eq(entry.users.length, 1);
-        assert.eq(entry.users[0].db, 'admin');
-        assert.eq(entry.users[0].user, 'admin');
+        const user = entry.users[0];
+        if ((atype === 'dropIndex') && entry.param.ns.startsWith('test.system.drop.')) {
+            // Indirect drops (via db.system.drop) are handled out of band
+            // from the client connection and thus do not have context of who requested it.
+            // In this test, we see this during calls to dropDatabase and dropCollection,
+            // however the initiating drop is proprerly attributed, and we do test for this.
+            if ((user.db + '.' + user.user) === 'local.__system') {
+                // Make just a tiny bit of noise in the log.
+                print('WARNING: Misattribution in indirect dropIndex: ' + entry.param.ns);
+                return;
+            }
+        }
+        assert.eq(user.db, 'admin');
+        assert.eq(user.user, 'admin');
     };
 
     /**
@@ -118,10 +130,17 @@ function runTests(mode, mongo, audit) {
     audit.assertEntryForAdmin('createCollection', {ns: 'test.origCollection'});
     assert.commandWorked(test.origCollection.renameCollection('newCollection', true));
     audit.assertEntryForAdmin('dropCollection', {ns: 'test.newCollection'});
-    audit.assertEntryForAdmin('dropIndex',
-                              {ns: dropTestCollNSS('newCollection'), indexName: '_id_'});
-    audit.assertEntryForAdmin('renameCollection',
-                              {old: 'test.origCollection', new: 'test.newCollection'});
+    {
+        // Due to deferred drop via system.drop rename,
+        // the order of these two entries is not guaranteed.
+        // Rewind partially to allow arbitrary ordering.
+        const dropCollPos = audit._auditLine;
+        audit.assertEntryForAdmin('dropIndex',
+                                  {ns: dropTestCollNSS('newCollection'), indexName: '_id_'});
+        audit._auditLine = dropCollPos;
+        audit.assertEntryForAdmin('renameCollection',
+                                  {old: 'test.origCollection', new: 'test.newCollection'});
+    }
     assert.eq(test.newCollection.count({}), 1);
     assert.eq(test.newCollection.count({x: 2}), 1);
 
