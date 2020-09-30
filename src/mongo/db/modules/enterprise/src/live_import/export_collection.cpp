@@ -17,6 +17,7 @@
 #include "mongo/db/db_raii.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/storage/durable_catalog.h"
+#include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
 
 namespace mongo {
 
@@ -28,6 +29,18 @@ std::string constructFilePath(std::string ident) {
     boost::filesystem::path directoryPath = boost::filesystem::path(storageGlobalParams.dbpath);
     boost::filesystem::path filePath = directoryPath /= (ident + kTableExtension);
     return filePath.string();
+}
+
+void appendWiredTigerMetadata(OperationContext* opCtx,
+                              const std::string& ident,
+                              BSONObjBuilder* out) {
+    const std::string tableUri = "table:" + ident;
+    const std::string fileUri = "file:" + ident + kTableExtension;
+
+    auto tableMetadata = uassertStatusOK(WiredTigerUtil::getMetadata(opCtx, tableUri));
+    auto fileMetadata = uassertStatusOK(WiredTigerUtil::getMetadata(opCtx, fileUri));
+
+    out->append(ident, BSON("tableMetadata" << tableMetadata << "fileMetadata" << fileMetadata));
 }
 
 }  // namespace
@@ -60,9 +73,13 @@ void exportCollection(OperationContext* opCtx, const NamespaceString& nss, BSONO
     collectionProperties.setNumRecords(collection->numRecords(opCtx));
     collectionProperties.setDataSize(collection->dataSize(opCtx));
 
+    // This will contain the WiredTiger file and table metadata for each ident being exported.
+    BSONObjBuilder wtMetadataBuilder;
+
     // Append the collection and index paths that need to be copied from disk.
     collectionProperties.setCollectionFile(
         constructFilePath(collection->getSharedIdent()->getIdent()));
+    appendWiredTigerMetadata(opCtx, collection->getSharedIdent()->getIdent(), &wtMetadataBuilder);
 
     BSONObjBuilder indexIdentsBuilder;
     const IndexCatalog* indexCatalog = collection->getIndexCatalog();
@@ -76,11 +93,11 @@ void exportCollection(OperationContext* opCtx, const NamespaceString& nss, BSONO
                 entry->isReady(opCtx));
 
         indexIdentsBuilder.append(indexName, constructFilePath(entry->getIdent()));
+        appendWiredTigerMetadata(opCtx, entry->getIdent(), &wtMetadataBuilder);
     }
     collectionProperties.setIndexFiles(indexIdentsBuilder.obj());
+    collectionProperties.setWiredTigerMetadata(wtMetadataBuilder.obj());
     collectionProperties.serialize(out);
-
-    // TODO SERVER-50977: Append the required WiredTiger information to 'out'.
 }
 
 }  // namespace mongo
