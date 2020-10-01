@@ -53,9 +53,10 @@ struct KeystoreRecordViewV1 {
             cursor.getValues<const char*, uint32_t, WT_ITEM, uint32_t>();
     }
 
-    KeystoreRecordViewV1(const std::unique_ptr<SymmetricKey>& key)
+    KeystoreRecordViewV1(const std::unique_ptr<SymmetricKey>& key, uint32_t rid)
         : id(key->getKeyId().id().value_or(0)),
           database(key->getKeyId().name()),
+          rolloverId(rid),
           key{key->getKey(), key->getKeySize()},
           initializationCount{key->getInitializationCount()} {
         invariant(!database.empty());
@@ -285,10 +286,7 @@ public:
         // Make sure the key ID of the input key has a name but hasn't been assigned an ID yet
         invariant(!key->getKeyId().name().empty());
 
-        KeystoreRecordViewV1 view(key);
-        // Set the rollover id and insert it into WT
-        view.rolloverId = _parent->_rolloverId;
-
+        KeystoreRecordViewV1 view(key, _parent->_rolloverId);
         if (key->getKeyId().id()) {
             dataStoreSession()->insert(view.id, view.toTuple());
         } else {
