@@ -29,8 +29,16 @@
 #include "mongo/util/fail_point.h"
 
 namespace mongo {
+namespace {
 
 MONGO_FAIL_POINT_DEFINE(noopImportCollectionCommand);
+
+ServiceContext::ConstructorActionRegisterer registerApplyImportCollectionFn{
+    "ApplyImportCollection", [](ServiceContext* serviceContext) {
+        repl::registerApplyImportCollectionFn(importCollection);
+    }};
+
+}  // namespace
 
 void importCollection(OperationContext* opCtx,
                       const UUID& importUUID,
@@ -92,21 +100,28 @@ void importCollection(OperationContext* opCtx,
         // other operations are present in the same storage transaction, we reserve an opTime before
         // the collection import, then pass it to the opObserver. Reserving the optime automatically
         // sets the storage timestamp for future writes.
-        OplogSlot createOplogSlot;
+        // TODO SERVER-51254: Support or ban importing unreplicated collections.
+        OplogSlot importOplogSlot;
         auto replCoord = repl::ReplicationCoordinator::get(opCtx);
-        if (replCoord->canAcceptWritesForDatabase(opCtx, nss.db()) &&
-            !replCoord->isOplogDisabledFor(opCtx, nss)) {
-            createOplogSlot = repl::getNextOpTime(opCtx);
+        if (opCtx->writesAreReplicated() && !replCoord->isOplogDisabledFor(opCtx, nss)) {
+            importOplogSlot = repl::getNextOpTime(opCtx);
         }
 
         // TODO SERVER-51140: Investigate how importCollection interacts with movePrimary.
-        audit::logCreateCollection(&cc(), nss.ns());
+        // TODO SERVER-51241: Audit importCollection.
+
+        // If this is from secondary application, we keep the collection UUID in the
+        // catalog entry. If this is a dryRun, we don't bother generating a new UUID (which requires
+        // correcting the catalog entry metadata). Otherwise, we generate a new collection UUID for
+        // the import as a primary.
+        DurableCatalog::ImportCollectionUUIDOption uuidOption = importOplogSlot.isNull() || isDryRun
+            ? DurableCatalog::ImportCollectionUUIDOption::kKeepOld
+            : DurableCatalog::ImportCollectionUUIDOption::kGenerateNew;
 
         // Create Collection object
         auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
-
         auto importResult = uassertStatusOK(
-            storageEngine->getCatalog()->importCollection(opCtx, nss, catalogEntry));
+            storageEngine->getCatalog()->importCollection(opCtx, nss, catalogEntry, uuidOption));
         std::shared_ptr<Collection> ownedCollection = Collection::Factory::get(opCtx)->make(
             opCtx, nss, importResult.catalogId, importResult.uuid, std::move(importResult.rs));
         ownedCollection->init(opCtx);
@@ -120,7 +135,11 @@ void importCollection(OperationContext* opCtx,
             return;
         }
 
-        // TODO SERVER-51142: log an oplog entry.
+        // Fetch the catalog entry for the imported collection and log an oplog entry.
+        auto importedCatalogEntry =
+            storageEngine->getCatalog()->getCatalogEntry(opCtx, importResult.catalogId);
+        opCtx->getServiceContext()->getOpObserver()->onImportCollection(
+            opCtx, importUUID, nss, numRecords, dataSize, importedCatalogEntry, /*dryRun=*/false);
 
         wunit.commit();
     });
@@ -153,12 +172,24 @@ void runImportCollectionCommand(OperationContext* opCtx,
                          collectionProperties.getNumRecords(),
                          collectionProperties.getDataSize(),
                          collectionProperties.getMetadata(),
-                         true);
+                         /*dryRun=*/true);
 
         // TODO SERVER-51060: Register an import dryRun waiter with the importUUID.
 
         invariant(!opCtx->lockState()->inAWriteUnitOfWork());
-        // TODO SERVER-51142: Log an import oplog entry with a dryRun flag in a new WUOW.
+        writeConflictRetry(opCtx, "onImportCollection", nss.ns(), [&] {
+            Lock::GlobalLock lk(opCtx, MODE_IX);
+            WriteUnitOfWork wunit(opCtx);
+            opCtx->getServiceContext()->getOpObserver()->onImportCollection(
+                opCtx,
+                importUUID,
+                nss,
+                collectionProperties.getNumRecords(),
+                collectionProperties.getDataSize(),
+                collectionProperties.getMetadata(),
+                /*dryRun=*/true);
+            wunit.commit();
+        });
 
         // TODO SERVER-51060: Implement voteCommitImportCollection command and wait for commit
         // votes.
@@ -171,7 +202,7 @@ void runImportCollectionCommand(OperationContext* opCtx,
                      collectionProperties.getNumRecords(),
                      collectionProperties.getDataSize(),
                      collectionProperties.getMetadata(),
-                     false);
+                     /*dryRun=*/false);
 }
 
 }  // namespace mongo

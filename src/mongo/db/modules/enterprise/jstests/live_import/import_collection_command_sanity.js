@@ -7,6 +7,8 @@
 (function() {
 "use strict";
 
+load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_helpers.js");
+
 function testParsing(db) {
     // Missing 'collectionProperties' field.
     assert.commandFailedWithCode(db.runCommand({importCollection: "foo"}), 40414);
@@ -39,19 +41,10 @@ testParsing(testDB);
 // importCollection is not allowed on standalone.
 assert.commandFailedWithCode(testDB.runCommand({importCollection: "foo", collectionProperties: {}}),
                              ErrorCodes.NoReplicationEnabled);
-assert.commandWorked(testDB.createCollection("foo"));
 MongoRunner.stopMongod(standalone);
 
 // Get a sample output of the exportCollection command for the replica set test.
-standalone = MongoRunner.runMongod({
-    setParameter: "featureFlagLiveImportExport=true",
-    dbpath: standalone.dbpath,
-    noCleanData: true,
-    queryableBackupMode: ""
-});
-testDB = standalone.getDB("test");
-const collectionProperties = assert.commandWorked(testDB.runCommand({exportCollection: "foo"}));
-MongoRunner.stopMongod(standalone);
+const collectionProperties = exportEmptyCollectionFromStandalone("test", "foo");
 
 // Test replica set.
 jsTestLog("Testing replica set");
