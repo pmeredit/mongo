@@ -12,6 +12,7 @@
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/commands.h"
 #include "mongo/db/repl/replication_coordinator.h"
+#include "mongo/db/storage/storage_options.h"
 #include "mongo/logv2/log.h"
 
 namespace mongo {
@@ -46,6 +47,11 @@ public:
             uassert(ErrorCodes::CommandNotSupported,
                     "importCollection command not enabled",
                     feature_flags::gLiveImportExport);
+            uassert(5114100,
+                    str::stream() << "This command only works with the WiredTiger storage engine. "
+                                     "The current storage engine is: "
+                                  << storageGlobalParams.engine,
+                    storageGlobalParams.engine == "wiredTiger");
             BSONObjBuilder result;
             uassertStatusOK(
                 repl::ReplicationCoordinator::get(opCtx)->checkReplEnabledForCommand(&result));

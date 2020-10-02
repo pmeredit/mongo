@@ -58,7 +58,7 @@ wtEnv.Library(
     ],
 )
 
-env.Library(
+wtEnv.Library(
     target='import_collection',
     source=[
         'import_collection.cpp'
@@ -77,6 +77,21 @@ env.Library(
         '$BUILD_DIR/mongo/db/service_context',
         '$BUILD_DIR/mongo/db/storage/durable_catalog_impl',
         '$BUILD_DIR/mongo/db/storage/storage_engine_impl',
+        '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core',
         'collection_properties',
     ],
 )
+
+env.CppUnitTest(
+    target='import_export_collection_test',
+    source=[
+        'import_export_collection_test.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/db/catalog/catalog_test_fixture',
+        '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger',
+        'export_collection',
+        'import_collection',
+    ],
+)
+

@@ -24,6 +24,7 @@
 #include "mongo/db/stats/top.h"
 #include "mongo/db/storage/durable_catalog.h"
 #include "mongo/db/storage/recovery_unit.h"
+#include "mongo/db/storage/wiredtiger/wiredtiger_record_store.h"
 #include "mongo/db/views/view_catalog.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/fail_point.h"
@@ -37,6 +38,22 @@ ServiceContext::ConstructorActionRegisterer registerApplyImportCollectionFn{
     "ApplyImportCollection", [](ServiceContext* serviceContext) {
         repl::registerApplyImportCollectionFn(importCollection);
     }};
+
+class CountsChange : public RecoveryUnit::Change {
+public:
+    CountsChange(WiredTigerRecordStore* rs, long long numRecords, long long dataSize)
+        : _rs(rs), _numRecords(numRecords), _dataSize(dataSize) {}
+    void commit(boost::optional<Timestamp>) {
+        _rs->setNumRecords(_numRecords);
+        _rs->setDataSize(_dataSize);
+    }
+    void rollback() {}
+
+private:
+    WiredTigerRecordStore* _rs;
+    long long _numRecords;
+    long long _dataSize;
+};
 
 }  // namespace
 
@@ -126,9 +143,14 @@ void importCollection(OperationContext* opCtx,
             opCtx, nss, importResult.catalogId, importResult.uuid, std::move(importResult.rs));
         ownedCollection->init(opCtx);
         ownedCollection->setCommitted(false);
-        UncommittedCollections::addToTxn(opCtx, std::move(ownedCollection));
 
-        // TODO SERVER-51141: Make use of numRecords and dataSize.
+        // Update the number of records and data size appropriately on commit.
+        opCtx->recoveryUnit()->registerChange(std::make_unique<CountsChange>(
+            static_cast<WiredTigerRecordStore*>(ownedCollection->getRecordStore()),
+            numRecords,
+            dataSize));
+
+        UncommittedCollections::addToTxn(opCtx, std::move(ownedCollection));
 
         if (isDryRun) {
             // This aborts the WUOW and rolls back the import.
