@@ -42,6 +42,9 @@ env.Library(
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/db/commands/mongod',
     ],
+    LIBDEPS_TYPEINFO=[
+        '$BUILD_DIR/mongo/rpc/rpc',
+    ],
     LIBDEPS_TAGS=[
         'lint-allow-nonprivate-on-deps-dependents',
     ],
