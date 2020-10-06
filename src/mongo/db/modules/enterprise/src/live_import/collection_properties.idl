@@ -29,6 +29,6 @@ structs:
       indexFiles:
         description: "Document representing paths to index files"
         type: object
-      wiredTigerMetadata:
-        description: "Contains the WiredTiger file and table metadata for each ident"
+      storageMetadata:
+        description: "Contains the storage engines file and table metadata for each ident"
         type: object

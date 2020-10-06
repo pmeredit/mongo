@@ -43,6 +43,7 @@ void applyImportCollection(OperationContext* opCtx,
                            long long numRecords,
                            long long dataSize,
                            const BSONObj& catalogEntry,
+                           const BSONObj& storageMetadata,
                            bool isDryRun,
                            repl::OplogApplication::Mode mode) {
     // Skip applying dry run unless we are in steady state replication.
@@ -56,7 +57,14 @@ void applyImportCollection(OperationContext* opCtx,
                           "failImportCollectionApplication fail point enabled");
         }
         try {
-            importCollection(opCtx, importUUID, nss, numRecords, dataSize, catalogEntry, isDryRun);
+            importCollection(opCtx,
+                             importUUID,
+                             nss,
+                             numRecords,
+                             dataSize,
+                             catalogEntry,
+                             storageMetadata,
+                             isDryRun);
             return Status::OK();
         } catch (const DBException& e) {
             return e.toStatus();
@@ -138,6 +146,7 @@ void importCollection(OperationContext* opCtx,
                       long long numRecords,
                       long long dataSize,
                       const BSONObj& catalogEntry,
+                      const BSONObj& storageMetadata,
                       bool isDryRun) {
     LOGV2(5095100,
           "import collection",
@@ -146,6 +155,7 @@ void importCollection(OperationContext* opCtx,
           "numRecords"_attr = numRecords,
           "dataSize"_attr = dataSize,
           "catalogEntry"_attr = redact(catalogEntry),
+          "storageMetadata"_attr = storageMetadata,
           "isDryRun"_attr = isDryRun);
 
     // Since a global IX lock is taken during the import, the opCtx is already guaranteed to be
@@ -219,8 +229,8 @@ void importCollection(OperationContext* opCtx,
 
         // Create Collection object
         auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
-        auto importResult = uassertStatusOK(
-            storageEngine->getCatalog()->importCollection(opCtx, nss, catalogEntry, uuidOption));
+        auto importResult = uassertStatusOK(storageEngine->getCatalog()->importCollection(
+            opCtx, nss, catalogEntry, storageMetadata, uuidOption));
         std::shared_ptr<Collection> ownedCollection = Collection::Factory::get(opCtx)->make(
             opCtx, nss, importResult.catalogId, importResult.uuid, std::move(importResult.rs));
         ownedCollection->init(opCtx);
@@ -242,8 +252,14 @@ void importCollection(OperationContext* opCtx,
         // Fetch the catalog entry for the imported collection and log an oplog entry.
         auto importedCatalogEntry =
             storageEngine->getCatalog()->getCatalogEntry(opCtx, importResult.catalogId);
-        opCtx->getServiceContext()->getOpObserver()->onImportCollection(
-            opCtx, importUUID, nss, numRecords, dataSize, importedCatalogEntry, /*dryRun=*/false);
+        opCtx->getServiceContext()->getOpObserver()->onImportCollection(opCtx,
+                                                                        importUUID,
+                                                                        nss,
+                                                                        numRecords,
+                                                                        dataSize,
+                                                                        importedCatalogEntry,
+                                                                        storageMetadata,
+                                                                        /*dryRun=*/false);
 
         wunit.commit();
     });
@@ -276,6 +292,7 @@ void runImportCollectionCommand(OperationContext* opCtx,
                          collectionProperties.getNumRecords(),
                          collectionProperties.getDataSize(),
                          collectionProperties.getMetadata(),
+                         collectionProperties.getStorageMetadata(),
                          /*dryRun=*/true);
 
         auto importCoord = ImportCollectionCoordinator::get(opCtx);
@@ -301,6 +318,7 @@ void runImportCollectionCommand(OperationContext* opCtx,
                 collectionProperties.getNumRecords(),
                 collectionProperties.getDataSize(),
                 collectionProperties.getMetadata(),
+                collectionProperties.getStorageMetadata(),
                 /*dryRun=*/true);
             wunit.commit();
         });
@@ -318,6 +336,7 @@ void runImportCollectionCommand(OperationContext* opCtx,
                      collectionProperties.getNumRecords(),
                      collectionProperties.getDataSize(),
                      collectionProperties.getMetadata(),
+                     collectionProperties.getStorageMetadata(),
                      /*dryRun=*/false);
 }
 

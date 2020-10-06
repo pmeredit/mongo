@@ -49,6 +49,7 @@ TEST_F(ImportExportCollectionTest, SizeInfoDryRun) {
                      numRecords,
                      dataSize,
                      exportObj.getField("metadata").Obj(),
+                     exportObj.getField("storageMetadata").Obj(),
                      isDryRun);
 
     // Because this was a dry run, the collection should not exist.
@@ -75,6 +76,7 @@ TEST_F(ImportExportCollectionTest, SizeInfoNoDryRun) {
                      numRecords,
                      dataSize,
                      exportObj.getField("metadata").Obj(),
+                     exportObj.getField("storageMetadata").Obj(),
                      isDryRun);
 
     // Verify the number of records and data size.

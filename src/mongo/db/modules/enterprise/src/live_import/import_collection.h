@@ -28,6 +28,7 @@ void importCollection(OperationContext* opCtx,
                       long long numRecords,
                       long long dataSize,
                       const BSONObj& catalogEntry,
+                      const BSONObj& storageMetadata,
                       bool isDryRun);
 /**
  * Implementation of the importCollection command.

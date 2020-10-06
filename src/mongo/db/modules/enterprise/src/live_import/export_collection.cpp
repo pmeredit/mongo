@@ -31,9 +31,7 @@ std::string constructFilePath(std::string ident) {
     return filePath.string();
 }
 
-void appendWiredTigerMetadata(OperationContext* opCtx,
-                              const std::string& ident,
-                              BSONObjBuilder* out) {
+void appendStorageMetadata(OperationContext* opCtx, const std::string& ident, BSONObjBuilder* out) {
     const std::string tableUri = "table:" + ident;
     const std::string fileUri = "file:" + ident + kTableExtension;
 
@@ -79,7 +77,7 @@ void exportCollection(OperationContext* opCtx, const NamespaceString& nss, BSONO
     // Append the collection and index paths that need to be copied from disk.
     collectionProperties.setCollectionFile(
         constructFilePath(collection->getSharedIdent()->getIdent()));
-    appendWiredTigerMetadata(opCtx, collection->getSharedIdent()->getIdent(), &wtMetadataBuilder);
+    appendStorageMetadata(opCtx, collection->getSharedIdent()->getIdent(), &wtMetadataBuilder);
 
     BSONObjBuilder indexIdentsBuilder;
     const IndexCatalog* indexCatalog = collection->getIndexCatalog();
@@ -93,10 +91,10 @@ void exportCollection(OperationContext* opCtx, const NamespaceString& nss, BSONO
                 entry->isReady(opCtx));
 
         indexIdentsBuilder.append(indexName, constructFilePath(entry->getIdent()));
-        appendWiredTigerMetadata(opCtx, entry->getIdent(), &wtMetadataBuilder);
+        appendStorageMetadata(opCtx, entry->getIdent(), &wtMetadataBuilder);
     }
     collectionProperties.setIndexFiles(indexIdentsBuilder.obj());
-    collectionProperties.setWiredTigerMetadata(wtMetadataBuilder.obj());
+    collectionProperties.setStorageMetadata(wtMetadataBuilder.obj());
     collectionProperties.serialize(out);
 }
 
