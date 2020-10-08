@@ -58,6 +58,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/commands',
         '$BUILD_DIR/mongo/db/repl/repl_coordinator_interface',
         '$BUILD_DIR/mongo/db/service_context',
+        '../import_collection_coordinator',
         '../import_export_options'
     ],
     LIBDEPS_DEPENDENTS=[

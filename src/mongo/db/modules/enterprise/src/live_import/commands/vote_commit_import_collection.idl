@@ -16,7 +16,7 @@ commands:
                   replica set"
     strict: true
     namespace: type
-    type: namespacestring
+    type: uuid
     fields:
       from:
         type: HostAndPort

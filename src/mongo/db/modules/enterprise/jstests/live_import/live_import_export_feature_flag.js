@@ -17,10 +17,11 @@ assert.commandFailedWithCode(testDB.runCommand({exportCollection: "foo"}),
 assert.commandFailedWithCode(testDB.runCommand({importCollection: "foo", collectionProperties: {}}),
                              ErrorCodes.CommandNotSupported);
 
+const importUUID = UUID();
 // voteCommitImportCollection command is not allowed when the feature flag is off.
 assert.commandFailedWithCode(
     adminDB.runCommand(
-        {voteCommitImportCollection: "test.foo", from: "localhost:27017", dryRunSuccess: true}),
+        {voteCommitImportCollection: importUUID, from: "localhost:27017", dryRunSuccess: true}),
     ErrorCodes.CommandNotSupported);
 
 MongoRunner.stopMongod(standalone);

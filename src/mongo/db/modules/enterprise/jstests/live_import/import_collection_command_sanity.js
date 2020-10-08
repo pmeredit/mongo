@@ -1,7 +1,12 @@
 /**
  * Test sanity of the importCollection command.
  *
- * @tags: [requires_persistence, requires_replication, requires_wiredtiger]
+ * @tags: [
+ *   requires_majority_read_concern,
+ *   requires_persistence,
+ *   requires_replication,
+ *   requires_wiredtiger,
+ * ]
  */
 
 (function() {

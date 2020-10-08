@@ -9,6 +9,7 @@
 #include "import_collection.h"
 
 #include "live_import/collection_properties_gen.h"
+#include "live_import/import_collection_coordinator.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/catalog/database_holder.h"
@@ -32,11 +33,79 @@
 namespace mongo {
 namespace {
 
+MONGO_FAIL_POINT_DEFINE(failImportCollectionApplication);
+MONGO_FAIL_POINT_DEFINE(hangBeforeWaitingForImportDryRunVotes);
 MONGO_FAIL_POINT_DEFINE(noopImportCollectionCommand);
+
+void applyImportCollection(OperationContext* opCtx,
+                           const UUID& importUUID,
+                           const NamespaceString& nss,
+                           long long numRecords,
+                           long long dataSize,
+                           const BSONObj& catalogEntry,
+                           bool isDryRun) {
+    auto status = [&] {
+        if (MONGO_unlikely(failImportCollectionApplication.shouldFail())) {
+            return Status(ErrorCodes::OperationFailed,
+                          "failImportCollectionApplication fail point enabled");
+        }
+        try {
+            importCollection(opCtx, importUUID, nss, numRecords, dataSize, catalogEntry, isDryRun);
+            return Status::OK();
+        } catch (const DBException& e) {
+            return e.toStatus();
+        }
+    }();
+    LOGV2(5106000,
+          "Finished applying importCollection",
+          "importUUID"_attr = importUUID,
+          "nss"_attr = nss,
+          "numRecords"_attr = numRecords,
+          "dataSize"_attr = dataSize,
+          "catalogEntry"_attr = redact(catalogEntry),
+          "isDryRun"_attr = isDryRun,
+          "status"_attr = status);
+    if (isDryRun) {
+        // Vote for the import.
+        auto replCoord = repl::ReplicationCoordinator::get(opCtx);
+        auto const voteCmdRequest =
+            BSON("voteCommitImportCollection"
+                 << importUUID << "from" << replCoord->getMyHostAndPort().toString()
+                 << "dryRunSuccess" << status.isOK() << "reason" << status.reason());
+
+        auto oldDeadline = opCtx->getDeadline();
+        // This is a best-effort vote and this hard-coded 5s represents the maximum time we are
+        // willing to spend on voting.
+        opCtx->setDeadlineAfterNowBy(Seconds{5}, opCtx->getTimeoutError());
+
+        try {
+            auto onRemoteCmdScheduled = [](executor::TaskExecutor::CallbackHandle handle) {};
+            auto onRemoteCmdComplete = [](executor::TaskExecutor::CallbackHandle handle) {};
+            auto voteCmdResponse = replCoord->runCmdOnPrimaryAndAwaitResponse(
+                opCtx, "admin", voteCmdRequest, onRemoteCmdScheduled, onRemoteCmdComplete);
+            LOGV2(5106001,
+                  "Voted for importCollection",
+                  "voteCmdRequest"_attr = voteCmdRequest,
+                  "voteCmdResponse"_attr = voteCmdResponse);
+        } catch (const DBException& e) {
+            // As this is a best-effort vote, ignore all errors.
+            LOGV2_ERROR(5106002,
+                        "Failed to run voteCommitImportCollection against the primary",
+                        "error"_attr = e.toStatus());
+        }
+
+        // Reset the deadline.
+        opCtx->setDeadlineByDate(oldDeadline, opCtx->getTimeoutError());
+
+        // Always return OK for dryRun.
+        return;
+    }
+    uassertStatusOK(status);
+}
 
 ServiceContext::ConstructorActionRegisterer registerApplyImportCollectionFn{
     "ApplyImportCollection", [](ServiceContext* serviceContext) {
-        repl::registerApplyImportCollectionFn(importCollection);
+        repl::registerApplyImportCollectionFn(applyImportCollection);
     }};
 
 class CountsChange : public RecoveryUnit::Change {
@@ -72,6 +141,10 @@ void importCollection(OperationContext* opCtx,
           "dataSize"_attr = dataSize,
           "catalogEntry"_attr = redact(catalogEntry),
           "isDryRun"_attr = isDryRun);
+
+    // Since a global IX lock is taken during the import, the opCtx is already guaranteed to be
+    // killed during stepDown/stepUp. But it is better to make this explicit for clarity.
+    opCtx->setAlwaysInterruptAtStepDownOrUp();
 
     return writeConflictRetry(opCtx, "importCollection", nss.ns(), [&] {
         AutoGetOrCreateDb autoDb(opCtx, nss.db(), MODE_IX);
@@ -196,8 +269,18 @@ void runImportCollectionCommand(OperationContext* opCtx,
                          collectionProperties.getMetadata(),
                          /*dryRun=*/true);
 
-        // TODO SERVER-51060: Register an import dryRun waiter with the importUUID.
+        auto importCoord = ImportCollectionCoordinator::get(opCtx);
 
+        // Register the current import.
+        auto future = importCoord->registerImport(importUUID);
+        ON_BLOCK_EXIT([&] { importCoord->unregisterImport(importUUID); });
+
+        // Vote success for this node itself.
+        importCoord->voteForImport(importUUID,
+                                   repl::ReplicationCoordinator::get(opCtx)->getMyHostAndPort(),
+                                   /*success=*/true);
+
+        // Write an import oplog entry for the dryRun.
         invariant(!opCtx->lockState()->inAWriteUnitOfWork());
         writeConflictRetry(opCtx, "onImportCollection", nss.ns(), [&] {
             Lock::GlobalLock lk(opCtx, MODE_IX);
@@ -213,8 +296,10 @@ void runImportCollectionCommand(OperationContext* opCtx,
             wunit.commit();
         });
 
-        // TODO SERVER-51060: Implement voteCommitImportCollection command and wait for commit
-        // votes.
+        hangBeforeWaitingForImportDryRunVotes.pauseWhileSet();
+
+        // Wait for votes of the dryRun.
+        uassertStatusOK(future.getNoThrow(opCtx));
     }
 
     // Run the actual import.

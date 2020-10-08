@@ -1,19 +1,34 @@
 /**
  * Test sanity of the voteCommitImportCollection command.
  *
- * @tags: [requires_persistence, requires_replication, requires_wiredtiger]
+ * @tags: [
+ *   requires_majority_read_concern,
+ *   requires_persistence,
+ *   requires_replication,
+ *   requires_wiredtiger,
+ * ]
  */
 
 (function() {
 "use strict";
 
+const importUUID = UUID();
+
 function testInvalidUsages(db) {
     // Missing fields.
-    assert.commandFailedWithCode(db.runCommand({voteCommitImportCollection: "test.foo"}), 40414);
+    assert.commandFailedWithCode(db.runCommand({voteCommitImportCollection: importUUID}), 40414);
+
+    // Invalid import UUID.
+    assert.commandFailedWithCode(db.runCommand({
+        voteCommitImportCollection: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        from: "localhost:27017",
+        dryRunSuccess: true
+    }),
+                                 ErrorCodes.TypeMismatch);
 
     // Invalid hostAndPort.
     assert.commandFailedWithCode(db.runCommand({
-        voteCommitImportCollection: "test.foo",
+        voteCommitImportCollection: importUUID,
         from: "localhost:27017:1",
         dryRunSuccess: true
     }),
@@ -21,7 +36,7 @@ function testInvalidUsages(db) {
 
     // Invalid vote.
     assert.commandFailedWithCode(db.runCommand({
-        voteCommitImportCollection: "test.foo",
+        voteCommitImportCollection: importUUID,
         from: "localhost:27017",
         dryRunSuccess: "yes"
     }),
@@ -29,7 +44,7 @@ function testInvalidUsages(db) {
 
     // Invalid reason.
     assert.commandFailedWithCode(db.runCommand({
-        voteCommitImportCollection: "test.foo",
+        voteCommitImportCollection: importUUID,
         from: "localhost:27017",
         dryRunSuccess: false,
         reason: 12345
@@ -38,7 +53,7 @@ function testInvalidUsages(db) {
 
     // Unknown field.
     assert.commandFailedWithCode(db.runCommand({
-        voteCommitImportCollection: "test.foo",
+        voteCommitImportCollection: importUUID,
         from: "localhost:27017",
         dryRunSuccess: false,
         foo: "foo"
@@ -55,7 +70,7 @@ testInvalidUsages(adminDB);
 // voteCommitImportCollection is not allowed on standalone.
 assert.commandFailedWithCode(
     adminDB.runCommand(
-        {voteCommitImportCollection: "test.foo", from: "localhost:27017", dryRunSuccess: true}),
+        {voteCommitImportCollection: importUUID, from: "localhost:27017", dryRunSuccess: true}),
     ErrorCodes.NoReplicationEnabled);
 MongoRunner.stopMongod(standalone);
 
@@ -85,11 +100,11 @@ testInvalidUsages(secondaryAdmin);
 // voteCommitImportCollection is not allowed even with admin role.
 assert.commandFailedWithCode(
     primaryAdmin.runCommand(
-        {voteCommitImportCollection: "test.foo", from: "localhost:27017", dryRunSuccess: true}),
+        {voteCommitImportCollection: importUUID, from: "localhost:27017", dryRunSuccess: true}),
     ErrorCodes.Unauthorized);
 assert.commandFailedWithCode(
     secondaryAdmin.runCommand(
-        {voteCommitImportCollection: "test.foo", from: "localhost:27017", dryRunSuccess: true}),
+        {voteCommitImportCollection: importUUID, from: "localhost:27017", dryRunSuccess: true}),
     ErrorCodes.Unauthorized);
 
 assert(primaryAdmin.logout());
@@ -100,18 +115,18 @@ authutil.asCluster(primary, kKeyFile, () => {
     // voteCommitImportCollection is admin-only.
     assert.commandFailedWithCode(
         primary.getDB("test").runCommand(
-            {voteCommitImportCollection: "test.foo", from: "localhost:27017", dryRunSuccess: true}),
+            {voteCommitImportCollection: importUUID, from: "localhost:27017", dryRunSuccess: true}),
         ErrorCodes.Unauthorized);
     // voteCommitImportCollection is only allowed against admin database with internal privilege.
     assert.commandWorked(primary.getDB("admin").runCommand(
-        {voteCommitImportCollection: "test.foo", from: "localhost:27017", dryRunSuccess: true}));
+        {voteCommitImportCollection: importUUID, from: "localhost:27017", dryRunSuccess: true}));
 });
 
 authutil.asCluster(secondary, kKeyFile, () => {
     // voteCommitImportCollection is not allowed on secondary.
     assert.commandFailedWithCode(
         secondary.getDB("admin").runCommand(
-            {voteCommitImportCollection: "test.foo", from: "localhost:27017", dryRunSuccess: true}),
+            {voteCommitImportCollection: importUUID, from: "localhost:27017", dryRunSuccess: true}),
         ErrorCodes.NotWritablePrimary);
 });
 

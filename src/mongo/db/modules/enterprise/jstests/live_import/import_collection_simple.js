@@ -2,7 +2,12 @@
  * Test running importCollection in a live replica set and make sure the import operation is
  * replicated correctly.
  *
- * @tags: [requires_persistence, requires_replication, requires_wiredtiger]
+ * @tags: [
+ *   requires_majority_read_concern,
+ *   requires_persistence,
+ *   requires_replication,
+ *   requires_wiredtiger,
+ * ]
  */
 
 (function() {

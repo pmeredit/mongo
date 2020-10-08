@@ -7,14 +7,18 @@
 #include "mongo/platform/basic.h"
 
 #include "live_import/commands/vote_commit_import_collection_gen.h"
+#include "live_import/import_collection_coordinator.h"
 #include "live_import/import_export_options_gen.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/commands.h"
 #include "mongo/db/repl/replication_coordinator.h"
 #include "mongo/logv2/log.h"
+#include "mongo/util/fail_point.h"
 
 namespace mongo {
 namespace {
+
+MONGO_FAIL_POINT_DEFINE(hangVoteCommitImportCollectionCommand);
 
 /**
  * Vote commit of an ongoing live import.
@@ -60,15 +64,18 @@ public:
             const auto& cmd = request();
             LOGV2(5085500,
                   "Received voteCommitImportCollection request",
-                  "namespace"_attr = cmd.getCommandParameter().ns(),
+                  "uuid"_attr = cmd.getCommandParameter(),
                   "from"_attr = cmd.getFrom(),
                   "dryRunSuccess"_attr = cmd.getDryRunSuccess(),
                   "reason"_attr = cmd.getReason());
+            hangVoteCommitImportCollectionCommand.pauseWhileSet();
+            ImportCollectionCoordinator::get(opCtx)->voteForImport(
+                cmd.getCommandParameter(), cmd.getFrom(), cmd.getDryRunSuccess(), cmd.getReason());
         }
 
     private:
         NamespaceString ns() const override {
-            return request().getCommandParameter();
+            return NamespaceString(request().getDbName(), "");
         }
 
         bool supportsWriteConcern() const override {

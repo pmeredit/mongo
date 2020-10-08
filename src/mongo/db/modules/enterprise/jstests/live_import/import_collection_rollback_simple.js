@@ -1,7 +1,12 @@
 /**
  * Test rollback of importCollection.
  *
- * @tags: [requires_persistence, requires_replication, requires_wiredtiger]
+ * @tags: [
+ *   requires_majority_read_concern,
+ *   requires_persistence,
+ *   requires_replication,
+ *   requires_wiredtiger,
+ * ]
  */
 
 (function() {
@@ -32,8 +37,9 @@ const rollbackDB = rollbackNode.getDB(dbName);
 
 jsTestLog("Importing collection to a live replica set, collectionProperties: " +
           tojson(collectionProperties));
+// Use {force: true} for the import so that we don't block on the dryRun phase.
 assert.commandWorked(rollbackDB.runCommand(
-    {importCollection: collName, collectionProperties: collectionProperties}));
+    {importCollection: collName, collectionProperties: collectionProperties, force: true}));
 assertCollectionExists(rollbackDB, collName);
 assert.commandWorked(rollbackDB.runCommand({insert: collName, documents: [{x: 1}]}));
 assert.eq(rollbackDB[collName].count(), 1);
