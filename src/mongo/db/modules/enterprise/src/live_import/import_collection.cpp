@@ -204,7 +204,10 @@ void importCollection(OperationContext* opCtx,
         }
 
         // TODO SERVER-51140: Investigate how importCollection interacts with movePrimary.
-        // TODO SERVER-51241: Audit importCollection.
+
+        if (!isDryRun) {
+            audit::logImportCollection(&cc(), nss.ns());
+        }
 
         // If this is from secondary application, we keep the collection UUID in the
         // catalog entry. If this is a dryRun, we don't bother generating a new UUID (which requires

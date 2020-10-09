@@ -194,6 +194,19 @@ void audit::logCreateView(Client* client,
     }
 }
 
+void audit::logImportCollection(Client* client, StringData nsname) {
+    if (!getGlobalAuditManager()->enabled) {
+        return;
+    }
+
+    // An import is similar to a create, except that we use an importCollection action type.
+    CreateCollectionEvent event(makeEnvelope(client, ActionType::importCollection, ErrorCodes::OK),
+                                nsname);
+    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+        logEvent(event);
+    }
+}
+
 void audit::logCreateDatabase(Client* client, StringData dbname) {
     if (!getGlobalAuditManager()->enabled) {
         return;
