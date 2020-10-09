@@ -43,7 +43,13 @@ void applyImportCollection(OperationContext* opCtx,
                            long long numRecords,
                            long long dataSize,
                            const BSONObj& catalogEntry,
-                           bool isDryRun) {
+                           bool isDryRun,
+                           repl::OplogApplication::Mode mode) {
+    // Skip applying dry run unless we are in steady state replication.
+    if (isDryRun && mode != repl::OplogApplication::Mode::kSecondary) {
+        return;
+    }
+
     auto status = [&] {
         if (MONGO_unlikely(failImportCollectionApplication.shouldFail())) {
             return Status(ErrorCodes::OperationFailed,
