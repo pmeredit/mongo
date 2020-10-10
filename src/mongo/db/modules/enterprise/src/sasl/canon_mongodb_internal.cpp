@@ -22,6 +22,7 @@
 #include <sasl/saslplug.h>
 
 #include "mongo/base/init.h"
+#include "mongo/util/ctype.h"
 #include "mongo/util/str.h"
 
 namespace mongo {
@@ -53,12 +54,12 @@ int canonUserServer(void* glob_context,
         StringData user(userRaw, userRawLen ? userRawLen : strlen(userRaw));
         size_t firstNonWhitespace = 0;
         for (; firstNonWhitespace < user.size(); ++firstNonWhitespace) {
-            if (!isspace(static_cast<unsigned char>(user[firstNonWhitespace])))
+            if (!ctype::isSpace(user[firstNonWhitespace]))
                 break;
         }
         size_t lastWhitespaceOrEnd = user.size();
         for (; lastWhitespaceOrEnd > firstNonWhitespace; --lastWhitespaceOrEnd) {
-            if (!isspace(static_cast<unsigned char>(user[lastWhitespaceOrEnd - 1])))
+            if (!ctype::isSpace(user[lastWhitespaceOrEnd - 1]))
                 break;
         }
 

@@ -12,6 +12,7 @@
 
 #include "mongo/base/status_with.h"
 #include "mongo/util/assert_util.h"
+#include "mongo/util/ctype.h"
 #include "mongo/util/str.h"
 
 namespace mongo {
@@ -248,7 +249,7 @@ StatusWith<ComponentSubstitutionLDAPQueryConfig>
 LDAPQueryConfig::createLDAPQueryConfigWithComponents(const std::string& input) {
     Status tokensValidated = findAndValidateTokens(input, [](StringData token) {
         for (const char& tokenChar : token) {
-            if (!isdigit(tokenChar)) {
+            if (!ctype::isDigit(tokenChar)) {
                 return Status(ErrorCodes::FailedToParse,
                               str::stream()
                                   << "Expected numeric in token, but found '" << tokenChar << "'");
