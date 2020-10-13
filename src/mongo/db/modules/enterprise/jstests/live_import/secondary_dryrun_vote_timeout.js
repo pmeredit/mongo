@@ -15,12 +15,16 @@
 
 load("jstests/libs/fail_point_util.js");
 load("jstests/libs/parallel_shell_helpers.js");
-load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_helpers.js");
+load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
+
+if (_isWindows()) {
+    return;
+}
 
 const dbName = "test";
 const collName = "foo";
 
-const collectionProperties = exportEmptyCollectionFromStandalone(dbName, collName);
+const collectionProperties = exportCollection(dbName, collName);
 jsTestLog("Testing with collectionProperties: " + tojson(collectionProperties));
 
 jsTestLog("Starting a replica set");
@@ -28,6 +32,9 @@ const rst = new ReplSetTest({nodes: 2});
 const nodes = rst.startSet({setParameter: "featureFlagLiveImportExport=true"});
 rst.initiateWithHighElectionTimeout();
 const primary = rst.getPrimary();
+
+// Copy the exported files into the path of each replica set node.
+nodes.forEach(node => copyFilesForExport(collectionProperties, rst.getDbPath(node)));
 
 // Set a fail point on primary to hang the voteCommitImportCollection command.
 let failPoint = configureFailPoint(primary, "hangVoteCommitImportCollectionCommand");

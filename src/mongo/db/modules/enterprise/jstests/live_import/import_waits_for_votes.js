@@ -13,12 +13,12 @@
 "use strict";
 
 load("jstests/libs/write_concern_util.js");  // For stopReplicationOnSecondaries.
-load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_helpers.js");
+load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
 
 const dbName = "test";
 const collName = "foo";
 
-const collectionProperties = exportEmptyCollectionFromStandalone(dbName, collName);
+const collectionProperties = exportCollection(dbName, collName);
 jsTestLog("Testing with collectionProperties: " + tojson(collectionProperties));
 
 jsTestLog("Starting a replica set");
@@ -27,6 +27,9 @@ const nodes = rst.startSet({setParameter: "featureFlagLiveImportExport=true"});
 rst.initiateWithHighElectionTimeout();
 const primary = rst.getPrimary();
 const primaryDB = primary.getDB(dbName);
+
+// Copy the exported files into the path of each replica set node.
+nodes.forEach(node => copyFilesForExport(collectionProperties, rst.getDbPath(node)));
 
 // Stop replication on a data-bearing voting member and the dryRun should timeout.
 stopServerReplication(nodes[1]);

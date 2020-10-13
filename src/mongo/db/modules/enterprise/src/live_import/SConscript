@@ -95,17 +95,3 @@ env.Library(
         '$BUILD_DIR/mongo/db/service_context',
     ],
 )
-
-env.CppUnitTest(
-    target='import_export_collection_test',
-    source=[
-        'import_export_collection_test.cpp',
-    ],
-    LIBDEPS=[
-        '$BUILD_DIR/mongo/db/catalog/catalog_test_fixture',
-        '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger',
-        'export_collection',
-        'import_collection',
-    ],
-)
-

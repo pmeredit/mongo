@@ -15,12 +15,16 @@
 load("jstests/libs/fail_point_util.js");
 load("jstests/libs/parallel_shell_helpers.js");
 load("jstests/libs/write_concern_util.js");  // For stopReplicationOnSecondaries.
-load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_helpers.js");
+load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
+
+if (_isWindows()) {
+    return;
+}
 
 const dbName = "test";
 const collName = "foo";
 
-const collectionProperties = exportEmptyCollectionFromStandalone(dbName, collName);
+const collectionProperties = exportCollection(dbName, collName);
 jsTestLog("Testing with collectionProperties: " + tojson(collectionProperties));
 
 jsTestLog("Starting a replica set");
@@ -29,6 +33,9 @@ const nodes = rst.startSet({setParameter: "featureFlagLiveImportExport=true"});
 rst.initiate();
 const primary = rst.getPrimary();
 const secondary = rst.getSecondary();
+
+// Copy the exported files into the path of each replica set node.
+nodes.forEach(node => copyFilesForExport(collectionProperties, rst.getDbPath(node)));
 
 // Set a fail point to hang importCollection before waiting for votes and stop all replications.
 let failPoint = configureFailPoint(primary, "hangBeforeWaitingForImportDryRunVotes");

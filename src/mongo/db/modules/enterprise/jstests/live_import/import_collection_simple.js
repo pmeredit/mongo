@@ -13,22 +13,25 @@
 (function() {
 "use strict";
 
-load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_helpers.js");
+load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
 
 const dbName = "test";
 const collName = "foo";
 
-const collectionProperties = exportEmptyCollectionFromStandalone(dbName, collName);
+const collectionProperties = exportCollection(dbName, collName);
 
 // Test replica set.
 jsTestLog("Starting a replica set");
 const rst = new ReplSetTest({nodes: 2});
-rst.startSet({setParameter: "featureFlagLiveImportExport=true"});
+const nodes = rst.startSet({setParameter: "featureFlagLiveImportExport=true"});
 rst.initiateWithHighElectionTimeout();
 const primary = rst.getPrimary();
 const secondary = rst.getSecondary();
 const primaryDB = primary.getDB(dbName);
 const secondaryDB = secondary.getDB(dbName);
+
+// Copy the exported files into the path of each replica set node.
+nodes.forEach(node => copyFilesForExport(collectionProperties, rst.getDbPath(node)));
 
 jsTestLog("Importing collection to a live replica set, collectionProperties: " +
           tojson(collectionProperties));

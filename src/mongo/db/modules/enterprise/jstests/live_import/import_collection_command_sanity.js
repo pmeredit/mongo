@@ -12,7 +12,7 @@
 (function() {
 "use strict";
 
-load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_helpers.js");
+load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
 
 function testParsing(db) {
     // Missing 'collectionProperties' field.
@@ -49,7 +49,7 @@ assert.commandFailedWithCode(testDB.runCommand({importCollection: "foo", collect
 MongoRunner.stopMongod(standalone);
 
 // Get a sample output of the exportCollection command for the replica set test.
-const collectionProperties = exportEmptyCollectionFromStandalone("test", "foo");
+const collectionProperties = exportCollection("test", "foo");
 
 // Test replica set.
 jsTestLog("Testing replica set");

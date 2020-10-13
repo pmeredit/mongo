@@ -14,12 +14,12 @@
 "use strict";
 
 load("jstests/libs/fail_point_util.js");
-load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_helpers.js");
+load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
 
 const dbName = "test";
 const collName = "foo";
 
-const collectionProperties = exportEmptyCollectionFromStandalone(dbName, collName);
+const collectionProperties = exportCollection(dbName, collName);
 jsTestLog("Testing with collectionProperties: " + tojson(collectionProperties));
 
 jsTestLog("Starting a replica set");
@@ -32,6 +32,9 @@ const replSetConfig = rst.getReplSetConfig();
 replSetConfig.members[1].priority = 0;
 replSetConfig.members[1].votes = 0;
 rst.initiate(replSetConfig);
+
+// Copy the exported files into the path of each replica set node.
+nodes.forEach(node => copyFilesForExport(collectionProperties, rst.getDbPath(node)));
 
 const primary = rst.getPrimary();
 const primaryDB = primary.getDB(dbName);

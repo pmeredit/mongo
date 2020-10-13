@@ -13,13 +13,13 @@
 "use strict";
 
 load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
-load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_helpers.js");
+load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
 
 const replSetName = "rs";
 const dbName = "test";
 const collName = "foo";
 
-const collectionProperties = exportEmptyCollectionFromStandalone(dbName, collName);
+const collectionProperties = exportCollection(dbName, collName);
 
 // Start the node with the "replSet" command line option and enable the audit of CRUD ops.
 const mongo = MongoRunner.runMongodAuditLogger({
@@ -33,6 +33,9 @@ const testDB = mongo.getDB(dbName);
 let config = {_id: replSetName, protocolVersion: 1};
 config.members = [{_id: 0, host: mongo.host}];
 assert.commandWorked(testDB.adminCommand({replSetInitiate: config}));
+
+// Copy the exported files into the path of the replica set node.
+copyFilesForExport(collectionProperties, mongo.dbpath);
 
 // Wait until the single node becomes primary.
 assert.soon(() => testDB.runCommand({hello: 1}).isWritablePrimary);

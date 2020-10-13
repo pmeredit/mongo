@@ -13,12 +13,12 @@
 "use strict";
 
 load("jstests/replsets/libs/rollback_test.js");
-load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_helpers.js");
+load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
 
 const dbName = "test";
 const collName = "foo";
 
-const collectionProperties = exportEmptyCollectionFromStandalone(dbName, collName);
+const collectionProperties = exportCollection(dbName, collName);
 
 // Test rollback.
 jsTestLog("Starting a rollback test");
@@ -30,6 +30,9 @@ config.settings = {
     chainingAllowed: false
 };
 rst.initiateWithHighElectionTimeout(config);
+
+// Copy the exported files into the path of each replica set node.
+nodes.forEach(node => copyFilesForExport(collectionProperties, rst.getDbPath(node)));
 
 const rollbackTest = new RollbackTest(jsTestName(), rst);
 const rollbackNode = rollbackTest.transitionToRollbackOperations();
