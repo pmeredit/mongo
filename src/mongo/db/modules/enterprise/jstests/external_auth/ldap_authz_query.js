@@ -37,7 +37,7 @@ runTests(authAndVerify, configGenerator, {authOptions: authOptions, user: adminU
 // Test a query which contains UTF-8 characters
 configGenerator.ldapAuthzQueryTemplate = "{USER}?memberOf";
 configGenerator.ldapUserToDNMapping =
-    [{match: ".*", ldapQuery: defaultUserDNSuffix + "??one?(description=\\u25A0 \\u25A0)"}];
+    [{match: ".*", ldapQuery: defaultUserDNSuffix + "??one?(description=\u25A0 \u25A0)"}];
 
 runTests(authAndVerify, configGenerator, {authOptions: authOptions, user: adminUserDN});
 })();

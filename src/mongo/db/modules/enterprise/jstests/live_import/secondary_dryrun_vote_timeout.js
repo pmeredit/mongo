@@ -17,10 +17,6 @@ load("jstests/libs/fail_point_util.js");
 load("jstests/libs/parallel_shell_helpers.js");
 load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
 
-if (_isWindows()) {
-    return;
-}
-
 const dbName = "test";
 const collName = "foo";
 
