@@ -250,8 +250,6 @@ void importCollection(OperationContext* opCtx,
             importOplogSlot = repl::getNextOpTime(opCtx);
         }
 
-        // TODO SERVER-51140: Investigate how importCollection interacts with movePrimary.
-
         if (!isDryRun) {
             audit::logImportCollection(&cc(), nss.ns());
         }

@@ -121,4 +121,31 @@ assert.commandFailedWithCode(
 assert(primaryDB.logout());
 
 rst.stopSet();
+
+jsTestLog("Testing sharded cluster");
+const nodeOptions = {
+    setParameter: {featureFlagLiveImportExport: true}
+};
+const st = new ShardingTest({
+    shards: 1,
+    rs: {nodes: 1},
+    config: 1,
+    other: {rsOptions: nodeOptions, configOptions: nodeOptions},
+});
+// There is no importCollection command on mongos.
+assert.commandFailedWithCode(
+    st.getDB("test").runCommand(
+        {importCollection: "foo", collectionProperties: collectionProperties}),
+    ErrorCodes.CommandNotFound);
+// importCollection is not supported on shard servers.
+assert.commandFailedWithCode(
+    st.shard0.getDB("test").runCommand(
+        {importCollection: "foo", collectionProperties: collectionProperties}),
+    ErrorCodes.CommandNotSupported);
+// importCollection is not supported on config servers.
+assert.commandFailedWithCode(
+    st.config0.getDB("test").runCommand(
+        {importCollection: "foo", collectionProperties: collectionProperties}),
+    ErrorCodes.CommandNotSupported);
+st.stop();
 }());

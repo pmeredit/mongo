@@ -12,6 +12,7 @@
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/commands.h"
 #include "mongo/db/repl/replication_coordinator.h"
+#include "mongo/db/server_options.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/logv2/log.h"
 
@@ -52,6 +53,9 @@ public:
                                      "The current storage engine is: "
                                   << storageGlobalParams.engine,
                     storageGlobalParams.engine == "wiredTiger");
+            uassert(ErrorCodes::CommandNotSupported,
+                    "importCollection command not supported on sharded clusters",
+                    serverGlobalParams.clusterRole == ClusterRole::None);
             BSONObjBuilder result;
             uassertStatusOK(
                 repl::ReplicationCoordinator::get(opCtx)->checkReplEnabledForCommand(&result));
