@@ -37,26 +37,20 @@ MONGO_FAIL_POINT_DEFINE(failImportCollectionApplication);
 MONGO_FAIL_POINT_DEFINE(hangBeforeWaitingForImportDryRunVotes);
 MONGO_FAIL_POINT_DEFINE(noopImportCollectionCommand);
 
-void applyImportCollection(OperationContext* opCtx,
-                           const UUID& importUUID,
-                           const NamespaceString& nss,
-                           long long numRecords,
-                           long long dataSize,
-                           const BSONObj& catalogEntry,
-                           const BSONObj& storageMetadata,
-                           bool isDryRun,
-                           repl::OplogApplication::Mode mode) {
-    // Skip applying dry run unless we are in steady state replication.
-    if (isDryRun && mode != repl::OplogApplication::Mode::kSecondary) {
-        return;
-    }
-
-    auto status = [&] {
-        if (MONGO_unlikely(failImportCollectionApplication.shouldFail())) {
-            return Status(ErrorCodes::OperationFailed,
-                          "failImportCollectionApplication fail point enabled");
-        }
+Status applyImportCollectionNoThrow(OperationContext* opCtx,
+                                    const UUID& importUUID,
+                                    const NamespaceString& nss,
+                                    long long numRecords,
+                                    long long dataSize,
+                                    const BSONObj& catalogEntry,
+                                    const BSONObj& storageMetadata,
+                                    bool isDryRun) noexcept {
+    auto status = [&]() {
         try {
+            if (MONGO_unlikely(failImportCollectionApplication.shouldFail())) {
+                return Status(ErrorCodes::OperationFailed,
+                              "failImportCollectionApplication fail point enabled");
+            }
             importCollection(opCtx,
                              importUUID,
                              nss,
@@ -77,44 +71,87 @@ void applyImportCollection(OperationContext* opCtx,
           "numRecords"_attr = numRecords,
           "dataSize"_attr = dataSize,
           "catalogEntry"_attr = redact(catalogEntry),
+          "storageMetadata"_attr = redact(storageMetadata),
           "isDryRun"_attr = isDryRun,
           "status"_attr = status);
-    if (isDryRun) {
-        // Vote for the import.
-        auto replCoord = repl::ReplicationCoordinator::get(opCtx);
-        auto const voteCmdRequest =
-            BSON("voteCommitImportCollection"
-                 << importUUID << "from" << replCoord->getMyHostAndPort().toString()
-                 << "dryRunSuccess" << status.isOK() << "reason" << status.reason());
+    return status;
+}
 
-        auto oldDeadline = opCtx->getDeadline();
-        // This is a best-effort vote and this hard-coded 5s represents the maximum time we are
-        // willing to spend on voting.
-        opCtx->setDeadlineAfterNowBy(Seconds{5}, opCtx->getTimeoutError());
-
-        try {
-            auto onRemoteCmdScheduled = [](executor::TaskExecutor::CallbackHandle handle) {};
-            auto onRemoteCmdComplete = [](executor::TaskExecutor::CallbackHandle handle) {};
-            auto voteCmdResponse = replCoord->runCmdOnPrimaryAndAwaitResponse(
-                opCtx, "admin", voteCmdRequest, onRemoteCmdScheduled, onRemoteCmdComplete);
-            LOGV2(5106001,
-                  "Voted for importCollection",
-                  "voteCmdRequest"_attr = voteCmdRequest,
-                  "voteCmdResponse"_attr = voteCmdResponse);
-        } catch (const DBException& e) {
-            // As this is a best-effort vote, ignore all errors.
-            LOGV2_ERROR(5106002,
-                        "Failed to run voteCommitImportCollection against the primary",
-                        "error"_attr = e.toStatus());
-        }
-
-        // Reset the deadline.
-        opCtx->setDeadlineByDate(oldDeadline, opCtx->getTimeoutError());
-
-        // Always return OK for dryRun.
+void applyImportCollection(OperationContext* opCtx,
+                           const UUID& importUUID,
+                           const NamespaceString& nss,
+                           long long numRecords,
+                           long long dataSize,
+                           const BSONObj& catalogEntry,
+                           const BSONObj& storageMetadata,
+                           bool isDryRun,
+                           repl::OplogApplication::Mode mode) {
+    // Skip applying dry run unless we are in steady state replication.
+    if (isDryRun && mode != repl::OplogApplication::Mode::kSecondary) {
         return;
     }
-    uassertStatusOK(status);
+
+    if (isDryRun) {
+        // Apply the dry run asynchronously to avoid blocking replication because it could take a
+        // long time to dropIdent after the dry run if a checkpoint is running. And voting also
+        // takes time.
+        stdx::thread([=,
+                      catalogEntry = catalogEntry.getOwned(),
+                      storageMetadata = storageMetadata.getOwned()] {
+            Client::initThread("ImportDryRun");
+            auto client = Client::getCurrent();
+            {
+                stdx::lock_guard<Client> lk(*client);
+                // Mark this system client killable by replication state transitions.
+                client->setSystemOperationKillableByStepdown(lk);
+            }
+            auto opCtx = cc().makeOperationContext();
+            opCtx->setShouldParticipateInFlowControl(false);
+            repl::UnreplicatedWritesBlock uwb(opCtx.get());
+            ShouldNotConflictWithSecondaryBatchApplicationBlock shouldNotConflictBlock(
+                opCtx->lockState());
+
+            auto status = applyImportCollectionNoThrow(opCtx.get(),
+                                                       importUUID,
+                                                       nss,
+                                                       numRecords,
+                                                       dataSize,
+                                                       catalogEntry,
+                                                       storageMetadata,
+                                                       isDryRun);
+
+            // Vote for the import.
+            auto replCoord = repl::ReplicationCoordinator::get(opCtx.get());
+            auto const voteCmdRequest =
+                BSON("voteCommitImportCollection"
+                     << importUUID << "from" << replCoord->getMyHostAndPort().toString()
+                     << "dryRunSuccess" << status.isOK() << "reason" << status.reason());
+            try {
+                auto onRemoteCmdScheduled = [](executor::TaskExecutor::CallbackHandle handle) {};
+                auto onRemoteCmdComplete = [](executor::TaskExecutor::CallbackHandle handle) {};
+                auto voteCmdResponse =
+                    replCoord->runCmdOnPrimaryAndAwaitResponse(opCtx.get(),
+                                                               "admin",
+                                                               voteCmdRequest,
+                                                               onRemoteCmdScheduled,
+                                                               onRemoteCmdComplete);
+                LOGV2(5106001,
+                      "Voted for importCollection",
+                      "voteCmdRequest"_attr = voteCmdRequest,
+                      "voteCmdResponse"_attr = voteCmdResponse);
+            } catch (const DBException& e) {
+                // As this is a best-effort vote, ignore all errors.
+                LOGV2_ERROR(5106002,
+                            "Failed to run voteCommitImportCollection against the primary",
+                            "error"_attr = e.toStatus());
+            }
+        })
+            .detach();
+    } else {
+        // Not a dry run.
+        uassertStatusOK(applyImportCollectionNoThrow(
+            opCtx, importUUID, nss, numRecords, dataSize, catalogEntry, storageMetadata, isDryRun));
+    }
 }
 
 ServiceContext::ConstructorActionRegisterer registerApplyImportCollectionFn{
