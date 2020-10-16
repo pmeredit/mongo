@@ -5,6 +5,6 @@ global:
 
 feature_flags:
   featureFlagLiveImportExport:
-    description: "When true, allow live import/export of collection files"
+    description: "When enabled, allow live import/export of collection files"
     cpp_varname: gLiveImportExport
     default: false

@@ -60,7 +60,7 @@ public:
         void run(OperationContext* opCtx, rpc::ReplyBuilderInterface* result) override {
             uassert(ErrorCodes::CommandNotSupported,
                     "exportCollection command not enabled",
-                    feature_flags::gLiveImportExport);
+                    feature_flags::gLiveImportExport.isEnabledAndIgnoreFCV());
             uassert(5070400,
                     str::stream() << "This command only works with the WiredTiger storage engine. "
                                      "The current storage engine is: "

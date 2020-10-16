@@ -55,7 +55,7 @@ public:
         void typedRun(OperationContext* opCtx) {
             uassert(ErrorCodes::CommandNotSupported,
                     "voteCommitImportCollection command not enabled",
-                    feature_flags::gLiveImportExport);
+                    feature_flags::gLiveImportExport.isEnabledAndIgnoreFCV());
 
             BSONObjBuilder result;
             uassertStatusOK(

@@ -47,7 +47,7 @@ public:
         void typedRun(OperationContext* opCtx) {
             uassert(ErrorCodes::CommandNotSupported,
                     "importCollection command not enabled",
-                    feature_flags::gLiveImportExport);
+                    feature_flags::gLiveImportExport.isEnabledAndIgnoreFCV());
             uassert(5114100,
                     str::stream() << "This command only works with the WiredTiger storage engine. "
                                      "The current storage engine is: "
