@@ -50,6 +50,8 @@ MongoRunner.stopMongod(standalone);
 
 // Get a sample output of the exportCollection command for the replica set test.
 const collectionProperties = exportCollection("test", "foo");
+const systemProfileProperties = exportCollection("test", "system.profile");
+const localCollectionProperties = exportCollection("local", "foo");
 
 // Test replica set.
 jsTestLog("Testing replica set");
@@ -90,6 +92,16 @@ jsTestLog("Testing on secondary");
 assert.commandFailedWithCode(
     secondaryDB.runCommand({importCollection: "foo", collectionProperties: {}}),
     ErrorCodes.NotWritablePrimary);
+
+// Importing unreplicated collection is not supported.
+assert.commandFailedWithCode(
+    primaryDB.runCommand(
+        {importCollection: "system.profile", collectionProperties: systemProfileProperties}),
+    ErrorCodes.CommandNotSupported);
+assert.commandFailedWithCode(
+    primary.getDB("local").runCommand(
+        {importCollection: "foo", collectionProperties: localCollectionProperties}),
+    ErrorCodes.CommandNotSupported);
 
 assert(primaryAdmin.logout());
 assert(secondaryAdmin.logout());

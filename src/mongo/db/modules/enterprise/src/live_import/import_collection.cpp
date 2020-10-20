@@ -243,15 +243,22 @@ void importCollection(OperationContext* opCtx,
         // other operations are present in the same storage transaction, we reserve an opTime before
         // the collection import, then pass it to the opObserver. Reserving the optime automatically
         // sets the storage timestamp for future writes.
-        // TODO SERVER-51254: Support or ban importing unreplicated collections.
         OplogSlot importOplogSlot;
         auto replCoord = repl::ReplicationCoordinator::get(opCtx);
-        if (opCtx->writesAreReplicated() && !replCoord->isOplogDisabledFor(opCtx, nss)) {
+        if (opCtx->writesAreReplicated()) {
+            uassert(ErrorCodes::CommandNotSupported,
+                    "Importing unreplicated collections is not supported",
+                    !replCoord->isOplogDisabledFor(opCtx, nss));
             importOplogSlot = repl::getNextOpTime(opCtx);
         }
 
         if (!isDryRun) {
             audit::logImportCollection(&cc(), nss.ns());
+        }
+
+        // Skip the actual import for the noopImportCollectionCommand fail point.
+        if (MONGO_unlikely(noopImportCollectionCommand.shouldFail())) {
+            return;
         }
 
         // If this is from secondary application, we keep the collection UUID in the
@@ -314,10 +321,6 @@ void runImportCollectionCommand(OperationContext* opCtx,
             nss == collectionProperties.getNs());
 
     auto importUUID = UUID::gen();
-
-    if (MONGO_unlikely(noopImportCollectionCommand.shouldFail())) {
-        return;
-    }
 
     if (!force) {
         // Run dryRun and wait for commit votes.
