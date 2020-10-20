@@ -4,6 +4,7 @@
 
 - [High Level Overview](#high-level-overview)
   - [Symmetric Cryptography](#symmetric-cryptography)
+    - [Cipher Modes](#cipher-modes)
 - [Page Format](#page-format)
 - [Key Management](#key-management)
 
@@ -36,6 +37,89 @@ and
 [__wt_bt_read](https://www.github.com/mongodb/mongo/tree/master/src/third_party/wiredtiger/src/btree/bt_io.c#L62)).
 
 ### Symmetric Cryptography
+
+MongoDB uses the [Advanced Encryption Standard (AES)](https://en.wikipedia.org/wiki/Advanced_Encryption_Standard) to 
+perform symmetric cryptography in the encrypted storage engine. AES uses 
+[block ciphers](https://en.wikipedia.org/wiki/Block_cipher) with a symmetric key. This means that AES will encrypt
+and decrypt data in small chunks, called blocks. AES _always_ uses 128-bit blocks. AES has multiple steps of encryption, 
+which involve generating new keys and performing transformations on the block of data being encrypted. The operations
+of these steps are defined by the [cipher mode.](#cipher-modes)
+There are three types of AES that all use different-length symmetric secret keys: 
+
+- AES-128: 128-bit keys 
+- AES-192: 192-bit keys
+- AES-256: 256-bit keys 
+
+The secret key is used for _both_ encryption and decryption. If one were to look at AES as a black box, it 
+receives a symmetric secret key, a plain text buffer, and sometimes an Initialization Vector (IV) as input, and outputs 
+an encrypted ciphertext. The secret key should be generated with a random key generator tool, although we leave key 
+generation up to our users. We do generate the IV, which is non-deterministic. The IV functions in a similar way as a 
+password salt, in that it adds more layers of entropy to the final ciphertext. The cipher text is deterministic based 
+off of the IV, meaning that if the same plain text is encrypted with the same key and the same IV, the ciphertext will 
+always be the same. This also means that cipher modes that don't use IVs will always have a one-to-one correspondence 
+between plain text and ciphertext. We don't use these cipher modes, and we never reuse IVs, so our ciphertexts will 
+always be different.
+
+#### Cipher Modes
+
+AES always uses a block cipher to encrypt data, but there are many unique cipher modes available to it. A cipher mode 
+describes how data is moved and transformed between each step of AES. Of all of these cipher modes, the Encrypted 
+Storage Engine only uses two of them: [CBC](#cbc-cipher-block-chaining) and [GCM](#gcm-galoiscounter-mode). Those modes
+are described below, as well as two others that predicate CBC and GCM in order to provide background information on 
+their implementation and design.
+
+##### ECB (Electronic Code Book)
+
+ECB is the simplest cipher mode available to AES. ECB divides the plain text input into even blocks of 128 bits, and 
+will pad the last block until it fits evenly. Every block is encrypted independently with the same key and the same 
+algorithm. Because of this, blocks in ECB do not depend on each other, so they can be encrypted and decrypted in 
+parallel, and the ciphertext is resistent to complete corruption. ECB also does _not_ take an IV as input. ECB is much 
+easier to reverse-engineer since it has no elements of non-determinism, and leaks lots of information into the 
+ciphertext. As such, **_ECB is not used by the Encrypted Storage Engine._**
+
+##### CBC (Cipher Block Chaining)
+
+CBC Adds non-determinism to the mix by use of an IV. The IV is generated randomly using 
+[`aesGenerateIV`](https://github.com/10gen/mongo-enterprise-modules/blob/v4.4/src/encryptdb/symmetric_crypto.h#L24), 
+which, for CBC mode, just fills a block-sized buffer (128 bits, or 16 bytes) with random bytes. Like ECB, data is 
+divided into 128-bit  blocks and is padded to fill all blocks evenly. CBC Will then execute the following steps for 
+encryption:
+
+1. XOR the first plain text block with the IV
+2. The result of step 1 is then encrypted into a new block
+3. That new ciphertext block is then XOR'd against the next plain text block
+4. The result is then encrypted
+5. Repeat steps 3-4 until all plain text blocks have been encrypted
+
+CBC is the default cipher mode for the Encrypted Storage Engine.
+
+##### CTR (Counter) 
+
+CTR functions by turning a block cipher into a [stream cipher](https://en.wikipedia.org/wiki/Stream_cipher). It 
+generates the next keystream block by incrementing a counter and encrypting that value. The counter can be any function
+that produces a sequence of numbers that is guaranteed to not repeat for a very long time. This means that the counter
+has to be deterministic. Encryption on each block can be performed in parallel, as they are independent. The steps for
+encryption on each block are as follows:
+
+1. XOR the IV with the current value of the counter
+2. Encrypt the result from step 1 with the secret key
+3. XOR the result from step 2 with the plain text input to produce the ciphertext
+
+**_CTR mode is not used by the Encrypted Strage Engine_**.
+
+##### GCM (Galois/Counter Mode)
+
+GCM uses CTR to produce a ciphertext for each block, and then embeds cryptographically secure authentication data into
+the ciphertext, which hardens the data against tampering. The counter function that ESE uses for GCM is a simple 
+incremental counter. It is 96 bits long, divided into a 64-bit integer and a 32-bit integer. The 64-bit integer is 
+incremented every time an encrypted write is performed, and the 32-bit integer is incremented every time the server is
+booted. We chose this model of counter for the following reasons:
+
+- The counter has to be deterministic and non-repeating (at least for an insurmountable amount of time)
+- In order to avoid repeated use of IVs in the event of sudden shutdown, the counter has to be "persisted" in some way
+- The counter has to exist in memory, as writing it to disk for every encrypted write would be very slow
+
+**_GCM is only available on Linux, since OpenSSL is the only crypto library we use that implements it._**
 
 ## Page Format
 
