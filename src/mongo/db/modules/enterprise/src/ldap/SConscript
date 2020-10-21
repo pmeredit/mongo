@@ -7,7 +7,7 @@ env = env.Clone()
 env.Library(
     target='ldap_parameters',
     source=[
-        env.Idlc("ldap_parameters.idl")[0],
+        'ldap_parameters.idl',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/idl/server_parameter',
@@ -40,7 +40,7 @@ env.Library(
     target='ldap_manager',
     source=[
         'ldap_manager.cpp',
-        env.Idlc('ldap_options.idl')[0],
+        'ldap_options.idl',
         'ldap_options.cpp',
     ],
     LIBDEPS_PRIVATE=[
@@ -58,7 +58,7 @@ env.Library(
         'ldap_manager_impl.cpp',
         'ldap_runtime_parameters.cpp',
         'ldap_runner_impl.cpp',
-        env.Idlc('ldap_runtime_parameters.idl')[0],
+        'ldap_runtime_parameters.idl',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/idl/server_parameter',
@@ -75,7 +75,7 @@ env.Library(
 env.Library(
     target='ldap_options_mongod',
     source=[
-        env.Idlc('ldap_options_mongod.idl')[0],
+        'ldap_options_mongod.idl',
     ],
     LIBDEPS=[
         'ldap_manager_impl',
@@ -142,7 +142,7 @@ env.Library(
     source=[
         'authz_manager_external_state_ldap.cpp',
         'ldap_user_cache_invalidator_job.cpp',
-        env.Idlc('ldap_user_cache_invalidator_job.idl')[0],
+        'ldap_user_cache_invalidator_job.idl',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/bson/mutable/mutable_bson',

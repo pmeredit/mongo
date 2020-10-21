@@ -200,7 +200,7 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
     env.Library(
         target='audit_configuration',
         source=[
-            env.Idlc('src/audit/audit_options.idl')[0],
+            'src/audit/audit_options.idl',
             'src/audit/audit_watchdog.cpp',
         ],
         LIBDEPS=[
@@ -268,7 +268,7 @@ if not env.TargetOSIs("darwin") and "snmp" in env['MONGO_ENTERPRISE_FEATURES']:
             'src/snmp/snmp.cpp',
             'src/snmp/snmp_oid.cpp',
             'src/snmp/snmp_options.cpp',
-            snmpEnv.Idlc('src/snmp/snmp_options.idl')[0],
+            'src/snmp/snmp_options.idl',
         ],
         LIBDEPS=[
             '$BUILD_DIR/mongo/base',
@@ -328,7 +328,7 @@ if "sasl" in env['MONGO_ENTERPRISE_FEATURES']:
             'src/sasl/auxprop_mongodb_internal.cpp' if env.TargetOSIs("windows") else [],
             'src/sasl/canon_mongodb_internal.cpp',
             'src/sasl/mongo_${MONGO_GSSAPI_IMPL}.cpp',
-            env.Idlc('src/sasl/sasl_aws_server_options.idl')[0],
+            'src/sasl/sasl_aws_server_options.idl',
             'src/sasl/sasl_aws_server_conversation.cpp',
         ],
         LIBDEPS=[
@@ -344,7 +344,7 @@ if "sasl" in env['MONGO_ENTERPRISE_FEATURES']:
     env.Library(
         target='auth_delay',
         source=[
-            env.Idlc('src/sasl/auth_delay.idl')[0],
+            'src/sasl/auth_delay.idl',
         ],
         LIBDEPS_PRIVATE=[
             '$BUILD_DIR/mongo/db/auth/sasl_options',
@@ -422,7 +422,7 @@ if "encryptdb" in env['MONGO_ENTERPRISE_FEATURES']:
         source=[
             "src/encryptdb/decrypt_tool.cpp",
             "src/encryptdb/decrypt_tool_options.cpp",
-            env.Idlc('src/encryptdb/decrypt_tool_options.idl')[0],
+            'src/encryptdb/decrypt_tool_options.idl',
         ] + env.WindowsResourceFile("src/encryptdb/decrypt_tool.rc"),
         AIB_COMPONENT="mongodecrypt",
         AIB_COMPONENTS_EXTRA=[
@@ -448,7 +448,7 @@ if "ldap" in env['MONGO_ENTERPRISE_FEATURES']:
         source=[
             "src/ldap/ldap_tool.cpp",
             "src/ldap/ldap_tool_options.cpp",
-            env.Idlc('src/ldap/ldap_tool_options.idl')[0],
+            'src/ldap/ldap_tool_options.idl',
         ] +  env.WindowsResourceFile("src/ldap/ldap_tool.rc"),
         AIB_COMPONENT="mongoldap",
         AIB_COMPONENTS_EXTRA=[

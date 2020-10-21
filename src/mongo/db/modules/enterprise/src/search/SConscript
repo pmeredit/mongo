@@ -31,7 +31,7 @@ env.Library(
     target='mongot_options',
     source=[
         'mongot_options.cpp',
-        env.Idlc('mongot_options.idl')[0],
+        'mongot_options.idl',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/base',
