@@ -32,3 +32,9 @@ structs:
       storageMetadata:
         description: "Contains the storage engines file and table metadata for each ident"
         type: object
+      directoryPerDB:
+        description: "Whether the exporting node was running with the directoryPerDB option"
+        type: bool
+      directoryForIndexes:
+        description: "Whether the exporting node was running with the directoryForIndexes option"
+        type: bool

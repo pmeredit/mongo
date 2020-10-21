@@ -17,6 +17,7 @@
 #include "mongo/db/db_raii.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/storage/durable_catalog.h"
+#include "mongo/db/storage/wiredtiger/wiredtiger_global_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
 
 namespace mongo {
@@ -95,6 +96,8 @@ void exportCollection(OperationContext* opCtx, const NamespaceString& nss, BSONO
     }
     collectionProperties.setIndexFiles(indexIdentsBuilder.obj());
     collectionProperties.setStorageMetadata(wtMetadataBuilder.obj());
+    collectionProperties.setDirectoryPerDB(storageGlobalParams.directoryperdb);
+    collectionProperties.setDirectoryForIndexes(wiredTigerGlobalOptions.directoryForIndexes);
     collectionProperties.serialize(out);
 }
 

@@ -25,6 +25,7 @@
 #include "mongo/db/stats/top.h"
 #include "mongo/db/storage/durable_catalog.h"
 #include "mongo/db/storage/recovery_unit.h"
+#include "mongo/db/storage/wiredtiger/wiredtiger_global_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_record_store.h"
 #include "mongo/db/views/view_catalog.h"
 #include "mongo/logv2/log.h"
@@ -316,8 +317,16 @@ void runImportCollectionCommand(OperationContext* opCtx,
     auto collectionProperties = CollectionProperties::parse(
         IDLParserErrorContext("collectionProperties"), collectionPropertiesObj);
 
+    uassert(ErrorCodes::InvalidOptions,
+            "This collection was exported from a system with a different directoryPerDB setting",
+            collectionProperties.getDirectoryPerDB() == storageGlobalParams.directoryperdb);
+    uassert(
+        ErrorCodes::InvalidOptions,
+        "This collection was exported from a system with a different directoryForIndexes setting",
+        collectionProperties.getDirectoryForIndexes() ==
+            wiredTigerGlobalOptions.directoryForIndexes);
     uassert(ErrorCodes::BadValue,
-            "Namespace in collectionProperties doesn't match with the import namesapce",
+            "Namespace in collectionProperties doesn't match with the import namespace",
             nss == collectionProperties.getNs());
 
     auto importUUID = UUID::gen();
