@@ -25,12 +25,18 @@ function testStandalone() {
                                  ErrorCodes.Unauthorized);
 
     adminDB.createUser({user: 'admin', pwd: 'pass', roles: jsTest.adminUserRoles});
+
     assert(adminDB.auth('admin', 'pass'));
+
+    adminDB.createUser({user: 'clusterAdmin', pwd: 'pass', roles: ["clusterAdmin"]});
+    testDB.createUser({user: 'dbOwner', pwd: 'pass', roles: ["dbOwner"]});
+
     assert.commandWorked(testDB.createCollection(collName));
     assert.commandWorked(testDB.createView("baz", collName, []));
     assert.commandFailedWithCode(testDB.runCommand({exportCollection: collName}), 5088600);
 
     adminDB.logout();
+
     MongoRunner.stopMongod(standalone);
 
     // Restart in read-only mode.
@@ -45,6 +51,7 @@ function testStandalone() {
     testDB = standalone.getDB("test");
     adminDB = standalone.getDB("admin");
 
+    // 'admin' should include all 'clusterAdmin' privileges.
     assert(adminDB.auth('admin', 'pass'));
     assert.commandWorked(testDB.runCommand({exportCollection: collName}));
 
@@ -55,6 +62,17 @@ function testStandalone() {
     assert.commandFailedWithCode(testDB.runCommand({exportCollection: "baz"}), 5091800);
 
     adminDB.logout();
+
+    // Export should work with clusterAdmin access.
+    assert(adminDB.auth('clusterAdmin', 'pass'));
+    assert.commandWorked(testDB.runCommand({exportCollection: collName}));
+    adminDB.logout();
+
+    // Export should fail with dbOwner only access.
+    assert(testDB.auth('dbOwner', 'pass'));
+    assert.commandFailedWithCode(testDB.runCommand({exportCollection: collName}),
+                                 ErrorCodes.Unauthorized);
+    testDB.logout();
 
     MongoRunner.stopMongod(standalone);
 }

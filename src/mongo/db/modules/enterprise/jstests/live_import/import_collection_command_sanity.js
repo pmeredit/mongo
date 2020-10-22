@@ -81,8 +81,8 @@ assert.commandWorked(secondaryAdmin.runCommand(
 
 const primaryDB = primary.getDB("test");
 const secondaryDB = secondary.getDB("test");
-primaryDB.createUser({user: 'rw', pwd: 'pass', roles: jsTest.basicUserRoles}, {w: 2});
-primaryDB.createUser({user: 'r', pwd: 'pass', roles: jsTest.readOnlyUserRoles}, {w: 2});
+primaryAdmin.createUser({user: 'clusterAdmin', pwd: 'pass', roles: ['clusterAdmin']}, {w: 2});
+primaryDB.createUser({user: 'dbOwner', pwd: 'pass', roles: ["dbOwner"]}, {w: 2});
 
 testParsing(primaryDB);
 testParsing(secondaryDB);
@@ -106,9 +106,9 @@ assert.commandFailedWithCode(
 assert(primaryAdmin.logout());
 assert(secondaryAdmin.logout());
 
-// importCollection should work with readWrite access.
-jsTestLog("Testing with readWrite access");
-assert(primaryDB.auth('rw', 'pass'));
+// importCollection should work with clusterAdmin access.
+jsTestLog("Testing with clusterAdmin access");
+assert(primaryAdmin.auth('clusterAdmin', 'pass'));
 
 // Namespace in the command doesn't match namespace in collectionProperties.
 assert.commandFailedWithCode(
@@ -122,11 +122,11 @@ assert.commandWorked(primaryDB.runCommand(
     {importCollection: "foo", collectionProperties: collectionProperties, force: false}));
 assert.commandWorked(primaryDB.runCommand(
     {importCollection: "foo", collectionProperties: collectionProperties, force: true}));
-assert(primaryDB.logout());
+assert(primaryAdmin.logout());
 
-// importCollection is not allowed with read-only access.
-jsTestLog("Testing with read-only access");
-assert(primaryDB.auth('r', 'pass'));
+// importCollection is not allowed with dbOwner access.
+jsTestLog("Testing with dbOwner access");
+assert(primaryDB.auth('dbOwner', 'pass'));
 assert.commandFailedWithCode(
     primaryDB.runCommand({importCollection: "foo", collectionProperties: {}}),
     ErrorCodes.Unauthorized);
