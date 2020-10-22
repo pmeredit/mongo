@@ -312,8 +312,6 @@ void runImportCollectionCommand(OperationContext* opCtx,
                                 const NamespaceString& nss,
                                 const BSONObj& collectionPropertiesObj,
                                 bool force) {
-    // TODO SERVER-51143: Additional sanity check on the input if necessary.
-
     auto collectionProperties = CollectionProperties::parse(
         IDLParserErrorContext("collectionProperties"), collectionPropertiesObj);
 
