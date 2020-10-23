@@ -671,11 +671,6 @@ public:
     }
 #endif
 
-private:
-#ifdef _WIN32
-    explicit KerberosEnvironment(KerberosToolOptions::ConnectionType connectionType)
-        : _connectionType(connectionType) {}
-#endif
     // looks up the value of a given environment variable
     // returns empty string if the variable is not set
     static std::string getEnvironmentValue(StringData variable) {
@@ -687,6 +682,12 @@ private:
             return value;
         }
     }
+
+private:
+#ifdef _WIN32
+    explicit KerberosEnvironment(KerberosToolOptions::ConnectionType connectionType)
+        : _connectionType(connectionType) {}
+#endif
 
 #ifndef _WIN32
     explicit KerberosEnvironment(krb5_context krb5Context,

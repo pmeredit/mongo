@@ -20,6 +20,11 @@ const defaultEnv = {
 // assert that running mongokerberos with given arguments causes an exit with failure exit code
 // return output of running program
 function assertError(failureMessage, environment, ...args) {
+    // clear, then populate the credentials cache
+    if (!_isWindows()) {
+        run("kdestroy", "-A");
+        run("kinit", "-k", "-t", defaultEnv.KRB5_KTNAME, kerbPrinc);
+    }
     const pid =
         _startMongoProgram({args: ["mongokerberos", "--debug"].concat(args), env: environment});
     return assert.neq("0", waitProgram(pid), failureMessage);
@@ -28,12 +33,22 @@ function assertError(failureMessage, environment, ...args) {
 // assert that running mongokerberos with given arguments cause an exit with success exit code
 // return output of running program
 function assertSuccess(failureMessage, environment, ...args) {
+    // clear, then populate the credentials cache
+    if (!_isWindows()) {
+        run("kdestroy", "-A");
+        run("kinit", "-k", "-t", defaultEnv.KRB5_KTNAME, kerbPrinc);
+    }
     const pid =
         _startMongoProgram({args: ["mongokerberos", "--debug"].concat(args), env: environment});
     return assert.eq("0", waitProgram(pid), failureMessage);
 }
 
 function assertCorrectErrorMessage(failureMessage, expectedErrorMessage, environment, ...args) {
+    // clear, then populate the credentials cache
+    if (!_isWindows()) {
+        run("kdestroy", "-A");
+        run("kinit", "-k", "-t", defaultEnv.KRB5_KTNAME, kerbPrinc);
+    }
     const pid =
         _startMongoProgram({args: ["mongokerberos", "--debug"].concat(args), env: environment});
     waitProgram(pid);
@@ -60,12 +75,6 @@ function normalizeConfig(configContents) {
         .sort();
 }
 
-// clear, then populate the credentials cache
-if (!_isWindows()) {
-    run("kdestroy");
-    run("kinit", "-k", "-t", defaultEnv.KRB5_KTNAME, kerbPrinc);
-}
-
 jsTestLog("Running mongokerberos in basic client configuration");
 assertSuccess("mongokerberos could not run successfully in client mode.",
               defaultEnv,
@@ -81,6 +90,18 @@ jsTestLog("Running mongokerberos in basic server configuration");
 // make sure to use keytab for mockservice keytab (has service principals in it)
 assertSuccess("mongokerberos could not run successfully in server mode.",
               Object.merge(defaultEnv, {KRB5_KTNAME: "jstests/libs/mockservice.keytab"}),
+              "--server",
+              "--gssapiServiceName",
+              kerbService,
+              "--gssapiHostName",
+              saslHostName);
+
+jsTestLog("Ensuring value of KRB5_CLIENT_KTNAME does not affect server mode");
+assertSuccess("mongokerberos failed in server mode as a result of a bad client keytab.",
+              Object.merge(defaultEnv, {
+                  KRB5_KTNAME: "jstests/libs/mockservice.keytab",
+                  KRB5_CLIENT_KTNAME: "/var/NotAKeytabFile"
+              }),
               "--server",
               "--gssapiServiceName",
               kerbService,

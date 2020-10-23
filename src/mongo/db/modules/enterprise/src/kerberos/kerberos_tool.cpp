@@ -6,6 +6,7 @@
 
 #include "mongo/platform/basic.h"
 
+#include <cstdlib>
 #include <fstream>
 #include <vector>
 
@@ -31,6 +32,7 @@
 
 #if defined(_WIN32)
 #include "mongo/util/text.h"
+#include <windows.h>
 #endif
 
 namespace mongo {
@@ -501,15 +503,42 @@ int kerberosToolMain(int argc, char* argv[]) {
         report.closeSection("");
     }
 
+    auto resetEnv = makeGuard([&krb5Env]() {
+        // Since we set the KRB5_CLIENT_KTNAME to the same value as KRB5_KTNAME in server mode, we
+        // should set it back here
+        int result = setenv(kKRB5_CLIENT_KTNAME.rawData(),
+                            krb5Env.getEnvironmentValue(kKRB5_CLIENT_KTNAME).c_str(),
+                            1);
+        if (result != 0) {
+            std::cout << "Could not set environment variable kKRB5_CLIENT_KTNMAE back to global "
+                         "environment value."
+                      << std::endl;
+        }
+    });
+
     if (krb5Env.isClientConnection()) {
+        resetEnv.dismiss();
         report.openSection("Attempting client half of GSSAPI conversation");
     } else {
+        // We override the client keytab on server mode so that GSSAPI will be tricked into using it
+        // when trying to obtain credentials. This is done after collecting the environment
+        // variables to avoid confusing the user. See SERVER-50633 for more context.
+        int result = setenv(
+            kKRB5_CLIENT_KTNAME.rawData(), krb5Env.getEnvironmentValue(kKRB5_KTNAME).c_str(), 1);
+        if (result != 0) {
+            std::cout << "Could not set environment variable KRB5_CLIENT_KTNAME to test GSSAPI "
+                         "handshake as service connection."
+                      << std::endl;
+        }
         report.openSection("Attempting to initiate security context with service credentials");
     }
+
     std::string initiator = krb5Env.isClientConnection()
         ? globalKerberosToolOptions->username
         : globalKerberosToolOptions->getHostbasedService();
+
     performGSSAPIHandshake(report, globalKerberosToolOptions->connectionType, initiator);
+
     if (krb5Env.isClientConnection()) {
         report.closeSection("Client half of GSSAPI conversation completed successfully.");
     } else {
