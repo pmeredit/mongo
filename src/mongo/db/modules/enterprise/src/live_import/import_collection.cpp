@@ -35,6 +35,7 @@ namespace mongo {
 namespace {
 
 MONGO_FAIL_POINT_DEFINE(failImportCollectionApplication);
+MONGO_FAIL_POINT_DEFINE(hangAfterImportDryRun);
 MONGO_FAIL_POINT_DEFINE(hangBeforeWaitingForImportDryRunVotes);
 MONGO_FAIL_POINT_DEFINE(noopImportCollectionCommand);
 
@@ -372,6 +373,8 @@ void runImportCollectionCommand(OperationContext* opCtx,
 
         // Wait for votes of the dryRun.
         uassertStatusOK(future.getNoThrow(opCtx));
+
+        hangAfterImportDryRun.pauseWhileSet();
     }
 
     // Run the actual import.

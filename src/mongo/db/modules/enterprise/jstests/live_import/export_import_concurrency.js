@@ -11,31 +11,35 @@
 (function() {
 "use strict";
 
-load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
+load("jstests/libs/parallel_shell_helpers.js");
 
 const dbName = "crud";
 
-function exportCollections(numCollections) {
+function exportCollections(numImportThreads, numImportsPerThread) {
     let standalone = MongoRunner.runMongod({setParameter: "featureFlagLiveImportExport=true"});
     let db = standalone.getDB(dbName);
 
-    jsTest.log("Creating " + numCollections + " collections");
-    for (let i = 0; i < numCollections; i++) {
-        const collName = "importCollection-" + i;
-        assert.commandWorked(db.createCollection(collName));
+    let collections = [];
+    jsTestLog("Creating " + (numImportThreads * numImportsPerThread) + " collections");
+    for (let tid = 0; tid < numImportThreads; tid++) {
+        for (let i = 0; i < numImportsPerThread; i++) {
+            const collName = `importCollection-t${tid}-${i}`;
+            assert.commandWorked(db.createCollection(collName));
 
-        const coll = db.getCollection(collName);
-        const numIndexesToBuild = Number.parseInt(Math.random() * 5);
-        for (let j = 0; j < numIndexesToBuild; j++) {
-            let key = Object.create({});
-            key[j.toString()] = 1;
-            assert.commandWorked(coll.createIndex(key));
+            const coll = db.getCollection(collName);
+            const numIndexesToBuild = Number.parseInt(Math.random() * 5);
+            for (let j = 0; j < numIndexesToBuild; j++) {
+                let key = Object.create({});
+                key[j.toString()] = 1;
+                assert.commandWorked(coll.createIndex(key));
+            }
+            collections.push({tid: tid, name: collName});
         }
     }
 
     MongoRunner.stopMongod(standalone);
 
-    jsTest.log("Exporting " + numCollections + " collections");
+    jsTestLog("Exporting" + (numImportThreads * numImportsPerThread) + " collections");
     standalone = MongoRunner.runMongod({
         setParameter: "featureFlagLiveImportExport=true",
         dbpath: standalone.dbpath,
@@ -45,29 +49,13 @@ function exportCollections(numCollections) {
 
     db = standalone.getDB(dbName);
 
-    let exportedCollections = [];
-    for (let i = 0; i < numCollections; i++) {
-        const collName = "importCollection-" + i;
-        exportedCollections.push(assert.commandWorked(db.runCommand({exportCollection: collName})));
-    }
+    collections.forEach((coll) => {
+        coll.collectionProperties =
+            assert.commandWorked(db.runCommand({exportCollection: coll.name}));
+    });
 
     MongoRunner.stopMongod(standalone);
-    return exportedCollections;
-}
-
-function importRandomCollection(primaryDB, nodes, collName, collectionProperties) {
-    // Copy the exported files into the path of each replica set node.
-    nodes.forEach(node => copyFilesForExport(collectionProperties, rst.getDbPath(node)));
-
-    // Import and validate the collection on the replica set.
-    assert.commandWorked(primaryDB.runCommand({
-        importCollection: collName,
-        collectionProperties: collectionProperties,
-        force: Math.random() >= 0.5,
-        writeConcern: {w: 3}
-    }));
-
-    validateImportCollection(primaryDB.getCollection(collName), collectionProperties);
+    return collections;
 }
 
 /**
@@ -85,22 +73,71 @@ function fsmClient(host) {
     return _startMongoProgram({args: resmokeCmd.split(' ')});
 }
 
-let numCollections = 500;
-let collectionsToImport = exportCollections(numCollections);
+const numImportThreads = 10;
+const numImportsPerThread = 50;
+// This returns an array of {tid, name, collectionProperties};
+const collectionsToImport = exportCollections(numImportThreads, numImportsPerThread);
 
 jsTestLog("Starting a replica set for import");
 const rst = new ReplSetTest({nodes: 3});
 const nodes = rst.startSet({setParameter: "featureFlagLiveImportExport=true"});
 rst.initiateWithHighElectionTimeout();
 const primary = rst.getPrimary();
-const primaryDB = primary.getDB(dbName);
+
+// Insert the 'collectionsToImport' metadata to the database to avoid getting "Argument list too
+// long" error when passing a large array to parallel shells as an argument.
+assert.commandWorked(primary.getDB(dbName).runCommand({
+    insert: "collectionsToImport",
+    documents: collectionsToImport,
+}));
 
 // Start running FSM workloads against the primary.
 const fsmPid = fsmClient(primary.host);
 
-for (let i = 0; i < numCollections; i++) {
-    importRandomCollection(primaryDB, nodes, "importCollection-" + i, collectionsToImport[i]);
+const importFn = function(dbName, tid, dbPaths) {
+    load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
+    const testDB = db.getMongo().getDB(dbName);
+
+    if (_isWindows()) {
+        // Correct double-escaping of '\' when passing dbPaths through the parallel shell.
+        dbPaths = dbPaths.map((dbPath) => dbPath.replace(/\\/g, "\\"));
+    }
+
+    function importCollection(collName, collectionProperties) {
+        jsTestLog("Thread " + tid + ": importing " + collName);
+        // Copy the exported files into the path of each replica set node.
+        dbPaths.forEach((dbPath) => copyFilesForExport(collectionProperties, dbPath));
+
+        // Import and validate the collection on the replica set.
+        assert.commandWorked(testDB.runCommand({
+            importCollection: collName,
+            collectionProperties: collectionProperties,
+            force: Math.random() >= 0.5,
+            writeConcern: {w: 3}
+        }));
+
+        validateImportCollection(testDB.getCollection(collName), collectionProperties);
+    }
+
+    // Get the collections to import for this thread.
+    const collectionsToImport =
+        testDB.getCollection("collectionsToImport").find({tid: tid}).sort({name: 1}).toArray();
+    collectionsToImport.forEach((coll) => importCollection(coll.name, coll.collectionProperties));
+};
+
+jsTestLog("Starting " + numImportThreads + " import threads");
+let importThreads = [];
+for (let tid = 0; tid < numImportThreads; tid++) {
+    importThreads.push(startParallelShell(
+        funWithArgs(importFn, dbName, tid, nodes.map((node) => rst.getDbPath(node))),
+        primary.port));
 }
+
+importThreads.forEach((waitForThread, tid) => {
+    jsTestLog("Joining thread " + tid);
+    waitForThread();
+});
+jsTestLog("Finished importing collections");
 
 const fsmStatus = checkProgram(fsmPid);
 assert(fsmStatus.alive,
