@@ -35,11 +35,8 @@ nodes.forEach(node => copyFilesForExport(collectionProperties, rst.getDbPath(nod
 
 jsTestLog("Importing collection to a live replica set, collectionProperties: " +
           tojson(collectionProperties));
-assert.commandWorked(primaryDB.runCommand({
-    importCollection: collName,
-    collectionProperties: collectionProperties,
-    writeConcern: {w: 2}
-}));
+assert.commandWorked(
+    primaryDB.runCommand({importCollection: collectionProperties, writeConcern: {w: 2}}));
 
 // Test that the collection exists after the import>
 assertCollectionExists(primaryDB, collName);

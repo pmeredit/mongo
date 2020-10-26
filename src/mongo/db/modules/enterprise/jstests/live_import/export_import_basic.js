@@ -36,11 +36,8 @@ const primaryDB = primary.getDB(dbName);
 nodes.forEach(node => copyFilesForExport(collectionProperties, rst.getDbPath(node)));
 
 // Import and validate the collection on the replica set.
-assert.commandWorked(primaryDB.runCommand({
-    importCollection: collName,
-    collectionProperties: collectionProperties,
-    writeConcern: {w: 3}
-}));
+assert.commandWorked(
+    primaryDB.runCommand({importCollection: collectionProperties, writeConcern: {w: 3}}));
 
 const collection = primaryDB.getCollection(collName);
 validateImportCollection(collection, collectionProperties);

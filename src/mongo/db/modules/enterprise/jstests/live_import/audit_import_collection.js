@@ -44,10 +44,7 @@ assert.soon(() => testDB.runCommand({hello: 1}).isWritablePrimary);
 assert.commandWorked(testDB.runCommand({create: "anotherCollection"}));
 
 audit.fastForward();
-assert.commandWorked(testDB.runCommand({
-    importCollection: collName,
-    collectionProperties: collectionProperties,
-}));
+assert.commandWorked(testDB.runCommand({importCollection: collectionProperties}));
 assertCollectionExists(testDB, collName);
 
 // Test that importCollection is in the aduit log.

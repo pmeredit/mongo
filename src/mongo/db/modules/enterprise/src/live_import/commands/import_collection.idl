@@ -7,17 +7,16 @@ global:
 
 imports:
   - "mongo/idl/basic_types.idl"
+  - "mongo/db/modules/enterprise/src/live_import/collection_properties.idl"
 
 commands:
   importCollection:
     cpp_name: ImportCollection
     description: "An enterprise-only mongod command for live import of collection files"
-    namespace: concatenate_with_db
+    namespace: type
+    type: CollectionProperties
     strict: true
     fields:
-      collectionProperties:
-        type: object
-        description: "Collection metadata from the exportCollection command"
       force:
         description: "Skip waiting for the dry run phase"
         type: safeBool

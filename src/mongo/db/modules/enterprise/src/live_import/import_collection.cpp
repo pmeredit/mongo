@@ -8,7 +8,6 @@
 
 #include "import_collection.h"
 
-#include "live_import/collection_properties_gen.h"
 #include "live_import/import_collection_coordinator.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/audit.h"
@@ -310,12 +309,8 @@ void importCollection(OperationContext* opCtx,
 }
 
 void runImportCollectionCommand(OperationContext* opCtx,
-                                const NamespaceString& nss,
-                                const BSONObj& collectionPropertiesObj,
+                                const CollectionProperties& collectionProperties,
                                 bool force) {
-    auto collectionProperties = CollectionProperties::parse(
-        IDLParserErrorContext("collectionProperties"), collectionPropertiesObj);
-
     uassert(ErrorCodes::InvalidOptions,
             "This collection was exported from a system with a different directoryPerDB setting",
             collectionProperties.getDirectoryPerDB() == storageGlobalParams.directoryperdb);
@@ -324,9 +319,6 @@ void runImportCollectionCommand(OperationContext* opCtx,
         "This collection was exported from a system with a different directoryForIndexes setting",
         collectionProperties.getDirectoryForIndexes() ==
             wiredTigerGlobalOptions.directoryForIndexes);
-    uassert(ErrorCodes::BadValue,
-            "Namespace in collectionProperties doesn't match with the import namespace",
-            nss == collectionProperties.getNs());
 
     auto importUUID = UUID::gen();
 
@@ -354,13 +346,13 @@ void runImportCollectionCommand(OperationContext* opCtx,
 
         // Write an import oplog entry for the dryRun.
         invariant(!opCtx->lockState()->inAWriteUnitOfWork());
-        writeConflictRetry(opCtx, "onImportCollection", nss.ns(), [&] {
+        writeConflictRetry(opCtx, "onImportCollection", collectionProperties.getNs().ns(), [&] {
             Lock::GlobalLock lk(opCtx, MODE_IX);
             WriteUnitOfWork wunit(opCtx);
             opCtx->getServiceContext()->getOpObserver()->onImportCollection(
                 opCtx,
                 importUUID,
-                nss,
+                collectionProperties.getNs(),
                 collectionProperties.getNumRecords(),
                 collectionProperties.getDataSize(),
                 collectionProperties.getMetadata(),

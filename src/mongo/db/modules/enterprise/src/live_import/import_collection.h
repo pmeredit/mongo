@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "live_import/collection_properties_gen.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/catalog/collection_options.h"
 #include "mongo/db/namespace_string.h"
@@ -42,8 +43,7 @@ void importCollection(OperationContext* opCtx,
  * When force is true, this function performs an actual import directly.
  */
 void runImportCollectionCommand(OperationContext* opCtx,
-                                const NamespaceString& nss,
-                                const BSONObj& collectionPropertiesObj,
+                                const CollectionProperties& collectionProperties,
                                 bool force);
 
 }  // namespace mongo

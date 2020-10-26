@@ -39,8 +39,7 @@ function testImport(collectionProperties, mongodOptions) {
     // Copy the exported files into the path of each replica set node.
     nodes.forEach(node => copyFilesForExport(collectionProperties, rst.getDbPath(node)));
 
-    const res = primaryDB.runCommand(
-        {importCollection: collName, collectionProperties: collectionProperties});
+    const res = primaryDB.runCommand({importCollection: collectionProperties});
 
     rst.stopSet();
     return res;

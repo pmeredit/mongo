@@ -23,8 +23,7 @@ namespace {
  * Live import collection files.
  *
  * {
- *     importCollection: <name>,
- *     collectionProperties: <metadata object>,
+ *     importCollection: <CollectionProperties object>,
  *     force: <bool>
  * }
  */
@@ -63,16 +62,14 @@ public:
             const auto& cmd = request();
             LOGV2(5070501,
                   "Received importCollection request",
-                  "namespace"_attr = cmd.getNamespace(),
-                  "collectionProperties"_attr = redact(cmd.getCollectionProperties()),
+                  "collectionProperties"_attr = redact(cmd.getCommandParameter().toBSON()),
                   "force"_attr = cmd.getForce());
-            runImportCollectionCommand(
-                opCtx, cmd.getNamespace(), cmd.getCollectionProperties(), cmd.getForce());
+            runImportCollectionCommand(opCtx, cmd.getCommandParameter(), cmd.getForce());
         }
 
     private:
         NamespaceString ns() const override {
-            return request().getNamespace();
+            return request().getCommandParameter().getNs();
         }
 
         bool supportsWriteConcern() const override {
@@ -83,7 +80,7 @@ public:
             uassert(ErrorCodes::Unauthorized,
                     "unauthorized",
                     AuthorizationSession::get(opCtx->getClient())
-                        ->isAuthorizedForActionsOnNamespace(request().getNamespace(),
+                        ->isAuthorizedForActionsOnNamespace(request().getCommandParameter().getNs(),
                                                             ActionType::importCollection));
         }
     };

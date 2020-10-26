@@ -14,27 +14,23 @@
 
 load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
 
+// Get sample outputs of the exportCollection command for the tests.
+const collectionProperties = exportCollection("test", "foo");
+const systemProfileProperties = exportCollection("test", "system.profile");
+const localCollectionProperties = exportCollection("local", "foo");
+
 function testParsing(db) {
-    // Missing 'collectionProperties' field.
-    assert.commandFailedWithCode(db.runCommand({importCollection: "foo"}), 40414);
-
-    // Invalid collection name.
-    assert.commandFailedWithCode(db.runCommand({importCollection: 1, collectionProperties: {}}),
-                                 ErrorCodes.BadValue);
-
-    // Invalid 'collectionProperties' field type.
-    assert.commandFailedWithCode(
-        db.runCommand({importCollection: "foo", collectionProperties: "bar"}),
-        ErrorCodes.TypeMismatch);
+    // Invalid command parameter.
+    assert.commandFailedWithCode(db.runCommand({importCollection: "foo"}), ErrorCodes.TypeMismatch);
 
     // Invalid 'force' field type.
     assert.commandFailedWithCode(
-        db.runCommand({importCollection: "foo", collectionProperties: {}, force: "bar"}),
+        db.runCommand({importCollection: collectionProperties, force: "bar"}),
         ErrorCodes.TypeMismatch);
 
     // Unknown field.
     assert.commandFailedWithCode(
-        db.runCommand({importCollection: "foo", collectionProperties: {}, foo: "unknown"}), 40415);
+        db.runCommand({importCollection: collectionProperties, foo: "unknown"}), 40415);
 }
 
 // Test standalone.
@@ -44,14 +40,9 @@ let testDB = standalone.getDB("test");
 testParsing(testDB);
 
 // importCollection is not allowed on standalone.
-assert.commandFailedWithCode(testDB.runCommand({importCollection: "foo", collectionProperties: {}}),
+assert.commandFailedWithCode(testDB.runCommand({importCollection: collectionProperties}),
                              ErrorCodes.NoReplicationEnabled);
 MongoRunner.stopMongod(standalone);
-
-// Get a sample output of the exportCollection command for the replica set test.
-const collectionProperties = exportCollection("test", "foo");
-const systemProfileProperties = exportCollection("test", "system.profile");
-const localCollectionProperties = exportCollection("local", "foo");
 
 // Test replica set.
 jsTestLog("Testing replica set");
@@ -89,18 +80,14 @@ testParsing(secondaryDB);
 
 // importCollection is not allowed on secondary.
 jsTestLog("Testing on secondary");
-assert.commandFailedWithCode(
-    secondaryDB.runCommand({importCollection: "foo", collectionProperties: {}}),
-    ErrorCodes.NotWritablePrimary);
+assert.commandFailedWithCode(secondaryDB.runCommand({importCollection: collectionProperties}),
+                             ErrorCodes.NotWritablePrimary);
 
 // Importing unreplicated collection is not supported.
+assert.commandFailedWithCode(primaryDB.runCommand({importCollection: systemProfileProperties}),
+                             ErrorCodes.CommandNotSupported);
 assert.commandFailedWithCode(
-    primaryDB.runCommand(
-        {importCollection: "system.profile", collectionProperties: systemProfileProperties}),
-    ErrorCodes.CommandNotSupported);
-assert.commandFailedWithCode(
-    primary.getDB("local").runCommand(
-        {importCollection: "foo", collectionProperties: localCollectionProperties}),
+    primary.getDB("local").runCommand({importCollection: localCollectionProperties}),
     ErrorCodes.CommandNotSupported);
 
 assert(primaryAdmin.logout());
@@ -110,26 +97,17 @@ assert(secondaryAdmin.logout());
 jsTestLog("Testing with clusterAdmin access");
 assert(primaryAdmin.auth('clusterAdmin', 'pass'));
 
-// Namespace in the command doesn't match namespace in collectionProperties.
-assert.commandFailedWithCode(
-    primaryDB.runCommand({importCollection: "bar", collectionProperties: collectionProperties}),
-    ErrorCodes.BadValue);
-
 // Working cases.
-assert.commandWorked(
-    primaryDB.runCommand({importCollection: "foo", collectionProperties: collectionProperties}));
-assert.commandWorked(primaryDB.runCommand(
-    {importCollection: "foo", collectionProperties: collectionProperties, force: false}));
-assert.commandWorked(primaryDB.runCommand(
-    {importCollection: "foo", collectionProperties: collectionProperties, force: true}));
+assert.commandWorked(primaryDB.runCommand({importCollection: collectionProperties}));
+assert.commandWorked(primaryDB.runCommand({importCollection: collectionProperties, force: false}));
+assert.commandWorked(primaryDB.runCommand({importCollection: collectionProperties, force: true}));
 assert(primaryAdmin.logout());
 
 // importCollection is not allowed with dbOwner access.
 jsTestLog("Testing with dbOwner access");
 assert(primaryDB.auth('dbOwner', 'pass'));
-assert.commandFailedWithCode(
-    primaryDB.runCommand({importCollection: "foo", collectionProperties: {}}),
-    ErrorCodes.Unauthorized);
+assert.commandFailedWithCode(primaryDB.runCommand({importCollection: collectionProperties}),
+                             ErrorCodes.Unauthorized);
 assert(primaryDB.logout());
 
 rst.stopSet();
@@ -145,19 +123,15 @@ const st = new ShardingTest({
     other: {rsOptions: nodeOptions, configOptions: nodeOptions},
 });
 // There is no importCollection command on mongos.
-assert.commandFailedWithCode(
-    st.getDB("test").runCommand(
-        {importCollection: "foo", collectionProperties: collectionProperties}),
-    ErrorCodes.CommandNotFound);
+assert.commandFailedWithCode(st.getDB("test").runCommand({importCollection: collectionProperties}),
+                             ErrorCodes.CommandNotFound);
 // importCollection is not supported on shard servers.
 assert.commandFailedWithCode(
-    st.shard0.getDB("test").runCommand(
-        {importCollection: "foo", collectionProperties: collectionProperties}),
+    st.shard0.getDB("test").runCommand({importCollection: collectionProperties}),
     ErrorCodes.CommandNotSupported);
 // importCollection is not supported on config servers.
 assert.commandFailedWithCode(
-    st.config0.getDB("test").runCommand(
-        {importCollection: "foo", collectionProperties: collectionProperties}),
+    st.config0.getDB("test").runCommand({importCollection: collectionProperties}),
     ErrorCodes.CommandNotSupported);
 st.stop();
 }());

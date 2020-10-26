@@ -38,16 +38,13 @@ let failPoint = configureFailPoint(primary, "hangBeforeWaitingForImportDryRunVot
 stopReplicationOnSecondaries(rst);
 
 // Run importCollection on primary in a parallel shell.
-const importFn = function(dbName, collName, collectionProperties) {
+const importFn = function(dbName, collectionProperties) {
     const testDB = db.getMongo().getDB(dbName);
-    assert.commandFailedWithCode(testDB.runCommand({
-        importCollection: collName,
-        collectionProperties: collectionProperties,
-    }),
+    assert.commandFailedWithCode(testDB.runCommand({importCollection: collectionProperties}),
                                  ErrorCodes.InterruptedDueToReplStateChange);
 };
 const waitForImportShell =
-    startParallelShell(funWithArgs(importFn, dbName, collName, collectionProperties), primary.port);
+    startParallelShell(funWithArgs(importFn, dbName, collectionProperties), primary.port);
 
 // The dryRun of the import should be waiting for votes after turning off the fail point.
 failPoint.wait();

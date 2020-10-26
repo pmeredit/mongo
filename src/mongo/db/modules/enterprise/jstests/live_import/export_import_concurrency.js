@@ -110,8 +110,7 @@ const importFn = function(dbName, tid, dbPaths) {
 
         // Import and validate the collection on the replica set.
         assert.commandWorked(testDB.runCommand({
-            importCollection: collName,
-            collectionProperties: collectionProperties,
+            importCollection: collectionProperties,
             force: Math.random() >= 0.5,
             writeConcern: {w: 3}
         }));

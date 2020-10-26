@@ -68,10 +68,7 @@ assert.commandWorked(secondary.adminCommand({
 // Initial sync is stopped right before 'listCollections' on the test database. We now run
 // importCollection on the primary.
 jsTestLog("Importing collection on primary");
-assert.commandWorked(primaryDB.runCommand({
-    importCollection: collName,
-    collectionProperties: collectionProperties,
-}));
+assert.commandWorked(primaryDB.runCommand({importCollection: collectionProperties}));
 
 // Resume the database cloner on the secondary. Initial sync is then able to clone the imported
 // collection.

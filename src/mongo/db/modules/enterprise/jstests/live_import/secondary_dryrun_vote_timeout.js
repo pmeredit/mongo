@@ -36,17 +36,14 @@ nodes.forEach(node => copyFilesForExport(collectionProperties, rst.getDbPath(nod
 let failPoint = configureFailPoint(primary, "hangVoteCommitImportCollectionCommand");
 
 // Run importCollection on primary in a parallel shell.
-const importFn = function(dbName, collName, collectionProperties) {
+const importFn = function(dbName, collectionProperties) {
     const testDB = db.getMongo().getDB(dbName);
-    assert.commandFailedWithCode(testDB.runCommand({
-        importCollection: collName,
-        collectionProperties: collectionProperties,
-        maxTimeMS: 10000,
-    }),
-                                 ErrorCodes.MaxTimeMSExpired);
+    assert.commandFailedWithCode(
+        testDB.runCommand({importCollection: collectionProperties, maxTimeMS: 10000}),
+        ErrorCodes.MaxTimeMSExpired);
 };
 const waitForImportShell =
-    startParallelShell(funWithArgs(importFn, dbName, collName, collectionProperties), primary.port);
+    startParallelShell(funWithArgs(importFn, dbName, collectionProperties), primary.port);
 
 // The voteCommitImportCollection should have been blocked by now.
 failPoint.wait();

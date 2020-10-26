@@ -35,12 +35,11 @@ nodes.forEach(node => copyFilesForExport(collectionProperties, rst.getDbPath(nod
 let failPoint = configureFailPoint(primary, "hangAfterImportDryRun");
 
 // Function to run importCollection on primary in a parallel shell.
-const importFn = function(dbName, collName, collectionProperties) {
+const importFn = function(dbName, collectionProperties) {
     const testDB = db.getMongo().getDB(dbName);
     // The import should either succeed or lose to the other thread.
     assert.commandWorkedOrFailedWithCode(testDB.runCommand({
-        importCollection: collName,
-        collectionProperties: collectionProperties,
+        importCollection: collectionProperties,
         writeConcern: {w: 2},
     }),
                                          ErrorCodes.NamespaceExists);
@@ -48,9 +47,9 @@ const importFn = function(dbName, collName, collectionProperties) {
 
 // Run import in two parallel threads with the same namespace.
 const importThread1 =
-    startParallelShell(funWithArgs(importFn, dbName, collName, collectionProperties), primary.port);
+    startParallelShell(funWithArgs(importFn, dbName, collectionProperties), primary.port);
 const importThread2 =
-    startParallelShell(funWithArgs(importFn, dbName, collName, collectionProperties), primary.port);
+    startParallelShell(funWithArgs(importFn, dbName, collectionProperties), primary.port);
 
 // Both threads should be able to succeed the dry run.
 assert.commandWorked(primary.adminCommand(
