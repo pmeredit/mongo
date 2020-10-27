@@ -88,9 +88,20 @@ public:
                                const std::vector<RoleName>& roleName,
                                PrivilegeFormat showPrivileges,
                                AuthenticationRestrictionsFormat showRestrictions,
-                               BSONObj* result) final {
+                               std::vector<BSONObj>* result) final {
         return _wrappedExternalState->getRolesDescription(
             opCtx, roleName, showPrivileges, showRestrictions, result);
+    }
+
+    /**
+     * Passthrough to AuthorizationManagerExternalStateMongod
+     */
+    Status getRolesAsUserFragment(OperationContext* opCtx,
+                                  const std::vector<RoleName>& roleName,
+                                  AuthenticationRestrictionsFormat showRestrictions,
+                                  BSONObj* result) final {
+        return _wrappedExternalState->getRolesAsUserFragment(
+            opCtx, roleName, showRestrictions, result);
     }
 
     /**
@@ -101,7 +112,7 @@ public:
                                     PrivilegeFormat showPrivileges,
                                     AuthenticationRestrictionsFormat showRestrictions,
                                     bool showBuiltinRoles,
-                                    BSONArrayBuilder* result) final {
+                                    std::vector<BSONObj>* result) final {
         return _wrappedExternalState->getRoleDescriptionsForDB(
             opCtx, dbname, showPrivileges, showRestrictions, showBuiltinRoles, result);
     }
