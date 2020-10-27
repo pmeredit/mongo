@@ -10,6 +10,7 @@ imports:
 
 commands:
   exportCollection:
+    command_name: exportCollection
     cpp_name: ExportCollection
     description: "An enterprise-only mongod command for live exportation of collection files"
     namespace: concatenate_with_db

@@ -11,6 +11,7 @@ imports:
 
 commands:
   importCollection:
+    command_name: importCollection
     cpp_name: ImportCollection
     description: "An enterprise-only mongod command for live import of collection files"
     namespace: type
