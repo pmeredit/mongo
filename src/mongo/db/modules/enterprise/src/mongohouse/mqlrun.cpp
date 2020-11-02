@@ -12,7 +12,7 @@
 #endif
 
 #include "mongo/db/json.h"
-#include "mongo/db/pipeline/aggregation_request.h"
+#include "mongo/db/pipeline/aggregation_request_helper.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/pipeline.h"
 #include "mongo/db/query/plan_executor_factory.h"
@@ -120,10 +120,7 @@ int mqlrunMain(const char* pipelineStr,
 
     std::vector<BSONObj> pipelineVector;
     try {
-        auto statusWithPipeline =
-            AggregationRequest::parsePipelineFromBSON(pipelineArray["pipeline"]);
-        uassertStatusOK(statusWithPipeline.getStatus());
-        pipelineVector = std::move(statusWithPipeline.getValue());
+        pipelineVector = parsePipelineFromBSON(pipelineArray["pipeline"]);
     } catch (AssertionException& e) {
         std::cerr << "Failed to parse pipeline from file: " << e.reason() << std::endl;
         return 1;

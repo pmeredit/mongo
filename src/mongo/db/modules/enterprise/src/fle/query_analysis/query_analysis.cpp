@@ -22,6 +22,7 @@
 #include "mongo/db/ops/parsed_update_array_filters.h"
 #include "mongo/db/ops/write_ops.h"
 #include "mongo/db/ops/write_ops_gen.h"
+#include "mongo/db/pipeline/aggregation_request_helper.h"
 #include "mongo/db/query/collation/collator_factory_interface.h"
 #include "mongo/db/query/count_command_gen.h"
 #include "mongo/db/query/distinct_command_gen.h"
@@ -353,12 +354,13 @@ PlaceHolderResult addPlaceHoldersForAggregate(
     const std::string& dbName,
     const BSONObj& cmdObj,
     std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
-    // Parse the command to an AggregationRequest to verify that there no unknown fields.
-    auto request = uassertStatusOK(AggregationRequest::parseFromBSON(dbName, cmdObj, boost::none));
+    // Parse the command to an AggregateCommand to verify that there no unknown fields.
+    auto request =
+        uassertStatusOK(aggregation_request_helper::parseFromBSON(dbName, cmdObj, boost::none));
 
     // Add the populated list of involved namespaces to the expression context, needed at parse time
     // by stages such as $lookup and $out.
-    expCtx->ns = request.getNamespaceString();
+    expCtx->ns = request.getNamespace();
     expCtx->setResolvedNamespaces([&]() {
         const LiteParsedPipeline liteParsedPipeline(request);
         const auto& pipelineInvolvedNamespaces = liteParsedPipeline.getInvolvedNamespaces();
@@ -371,7 +373,7 @@ PlaceHolderResult addPlaceHoldersForAggregate(
     }());
 
     // Build a FLEPipeline which will replace encrypted fields with intent-to-encrypt markings, then
-    // update the AggregationRequest with the new pipeline if there were any replaced fields.
+    // update the AggregateCommand with the new pipeline if there were any replaced fields.
     FLEPipeline flePipe{Pipeline::parse(request.getPipeline(), expCtx), *schemaTree.get()};
 
     // Serialize the translated command by manually appending each field that was present in the
