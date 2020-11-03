@@ -289,15 +289,15 @@ function assertData(backupDir, metadata, writerOneOpTimes, writerTwoOpTimes) {
                 // checkpointTimestamp. We expect visibilityTime's to be exact, thus we expect
                 // every sample to precisely be in or not in the dataset.
                 if (isVisible(opTime, scenario["visibleTime"])) {
-                    assert.eq(
-                        1,
-                        collFn(conn, preBackupCursor).find({docNum: doc}).itcount(),
-                        "Expected document not found. Doc: " + doc + " OperationTime: " + opTime);
+                    assert.eq(1,
+                              collFn(conn, preBackupCursor).find({docNum: doc}).itcount(),
+                              "Expected document not found. Doc: " + doc +
+                                  " OperationTime: " + tojson(opTime));
                 } else {
-                    assert.eq(
-                        0,
-                        collFn(conn, preBackupCursor).find({docNum: doc}).itcount(),
-                        "Unexpected document found. Doc: " + doc + " OperationTime: " + opTime);
+                    assert.eq(0,
+                              collFn(conn, preBackupCursor).find({docNum: doc}).itcount(),
+                              "Unexpected document found. Doc: " + doc +
+                                  " OperationTime: " + tojson(opTime));
                 }
             }
         }
