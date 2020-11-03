@@ -4,7 +4,9 @@ global:
   cpp_namespace: "mongo::feature_flags"
 
 feature_flags:
+  # TODO (SERVER-52605): Remove featureFlagLiveImportExport.
   featureFlagLiveImportExport:
     description: "When enabled, allow live import/export of collection files"
     cpp_varname: gLiveImportExport
-    default: false
+    default: true
+    version: 4.9
