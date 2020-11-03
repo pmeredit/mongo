@@ -272,10 +272,36 @@ void importCollection(OperationContext* opCtx,
 
         // Create Collection object
         auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
-        auto importResult = uassertStatusOK(storageEngine->getCatalog()->importCollection(
+        auto durableCatalog = storageEngine->getCatalog();
+        auto importResult = uassertStatusOK(durableCatalog->importCollection(
             opCtx, nss, catalogEntry, storageMetadata, uuidOption));
         std::shared_ptr<Collection> ownedCollection = Collection::Factory::get(opCtx)->make(
             opCtx, nss, importResult.catalogId, importResult.uuid, std::move(importResult.rs));
+
+        {
+            // Validate index spec.
+            StringMap<bool> seenIndex;
+            auto md = durableCatalog->getMetaData(opCtx, importResult.catalogId);
+            for (const auto& index : md.indexes) {
+                uassert(ErrorCodes::BadValue, "Cannot import non-ready indexes", index.ready);
+                auto swValidatedSpec = ownedCollection->getIndexCatalog()->prepareSpecForCreate(
+                    opCtx, index.spec, boost::none);
+                if (!swValidatedSpec.isOK()) {
+                    uasserted(ErrorCodes::BadValue, swValidatedSpec.getStatus().reason());
+                }
+                auto validatedSpec = swValidatedSpec.getValue();
+                uassert(ErrorCodes::BadValue,
+                        str::stream() << "Validated index spec " << validatedSpec
+                                      << " does not match original " << index.spec,
+                        index.spec.woCompare(validatedSpec) == 0);
+                uassert(ErrorCodes::BadValue,
+                        str::stream() << "Duplicate index name found in spec list: "
+                                      << md.toBSON()["indexes"],
+                        !seenIndex[index.name()]);
+                seenIndex[index.name()] = true;
+            }
+        }
+
         ownedCollection->init(opCtx);
         ownedCollection->setCommitted(false);
 
