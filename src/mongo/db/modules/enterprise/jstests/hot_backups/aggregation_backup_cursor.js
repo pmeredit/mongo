@@ -9,6 +9,10 @@
 let conn = MongoRunner.runMongod();
 let db = conn.getDB("test");
 
+// Cursor timeout only occurs outside of sessions. Disabling implicit session use to allow for
+// cursor timeout testing.
+TestData.disableImplicitSessions = true;
+
 assert(db.serverStatus()["storageEngine"].hasOwnProperty("backupCursorOpen"));
 assert(!db.serverStatus()["storageEngine"]["backupCursorOpen"]);
 
@@ -84,6 +88,7 @@ assert.commandWorked(db.adminCommand({setParameter: 1, cursorTimeoutMillis: 1}))
 assert.soon(() => {
     return db.runCommand({aggregate: 1, pipeline: [{$backupCursor: {}}], cursor: {}})['ok'] == 1;
 });
+TestData.disableImplicitSessions = false;
 
 MongoRunner.stopMongod(conn);
 
