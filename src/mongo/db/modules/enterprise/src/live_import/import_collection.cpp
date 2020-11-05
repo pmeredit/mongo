@@ -208,6 +208,7 @@ void importCollection(OperationContext* opCtx,
         // control of importCollection.
         Lock::CollectionLock collLock(opCtx, nss, MODE_X);
 
+        auto catalog = CollectionCatalog::get(opCtx);
         uassert(ErrorCodes::NotWritablePrimary,
                 str::stream() << "Not primary while importing collection " << nss,
                 !opCtx->writesAreReplicated() ||
@@ -219,7 +220,7 @@ void importCollection(OperationContext* opCtx,
 
         uassert(ErrorCodes::NamespaceExists,
                 str::stream() << "Collection already exists. NS: " << nss,
-                !CollectionCatalog::get(opCtx).lookupCollectionByNamespace(opCtx, nss));
+                !catalog->lookupCollectionByNamespace(opCtx, nss));
 
         uassert(ErrorCodes::NamespaceExists,
                 str::stream() << "A view already exists. NS: " << nss,
@@ -227,12 +228,11 @@ void importCollection(OperationContext* opCtx,
 
         WriteUnitOfWork wunit(opCtx);
 
-        AutoStatsTracker statsTracker(
-            opCtx,
-            nss,
-            Top::LockType::NotLocked,
-            AutoStatsTracker::LogMode::kUpdateTopAndCurOp,
-            CollectionCatalog::get(opCtx).getDatabaseProfileLevel(nss.db()));
+        AutoStatsTracker statsTracker(opCtx,
+                                      nss,
+                                      Top::LockType::NotLocked,
+                                      AutoStatsTracker::LogMode::kUpdateTopAndCurOp,
+                                      catalog->getDatabaseProfileLevel(nss.db()));
 
         // If the collection creation rolls back, ensure that the Top entry created for the
         // collection is deleted.
