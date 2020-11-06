@@ -14,6 +14,7 @@
 #include "ldap_rewrite_rule.h"
 #include "mongo/base/init.h"
 #include "mongo/base/status_with.h"
+#include "mongo/base/string_data.h"
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
@@ -100,6 +101,61 @@ TEST_F(RegexTransformTest, substitutesMultidigitCaptureGroups) {
     auto result = regex.resolve(runner.get(), regexInput.str());
     ASSERT_OK(result);
     ASSERT_EQ(regexOutput.str(), result.getValue());
+}
+
+TEST_F(RegexTransformTest, backslashesInSubstitutionDefaultPattern) {
+    // The default rewrite should be a 100% passthrough without mutation.
+    // Make sure backslashes don't break this assumption.
+    constexpr auto kPrefix = "CN="_sd;
+    constexpr auto kSuffix = ",OU=Irregular,O=MongoDB"_sd;
+    auto regex = assertCreateOK<RegexRewriteRule>("(.+)", "{0}");
+
+    {
+        std::string spacePadded = str::stream() << kPrefix << "\\ Padded\\ " << kSuffix;
+        auto result = regex.resolve(runner.get(), spacePadded);
+        ASSERT_OK(result);
+        ASSERT_EQ(spacePadded, result.getValue());
+    }
+
+    for (const char ch : {' ', '\\', '#', '+', '<', '>', ',', ';', '"', '='}) {
+        std::string DN = str::stream() << kPrefix << "[\\" << ch << "] Name" << kSuffix;
+        auto result = regex.resolve(runner.get(), DN);
+        ASSERT_OK(result);
+        ASSERT_EQ(DN, result.getValue());
+    }
+}
+
+TEST_F(RegexTransformTest, nonCaptureGroupBraces) {
+    // Test braces occuring in substitution not as part of capture group.
+    const auto transform =
+        [this](const std::string& pattern, std::string substitution, const std::string& input) {
+            auto regex = assertCreateOK<RegexRewriteRule>(pattern, std::move(substitution));
+            auto result = regex.resolve(this->runner.get(), input);
+            ASSERT_OK(result);
+            return result.getValue();
+        };
+
+    // Non-numeric group placeholders are ignored.
+    ASSERT_EQ(transform("(.+)", "{foo}{0}{bar}", " test "), "{foo} test {bar}");
+
+    // Unavailable capture group placeholders are ignored.
+    ASSERT_EQ(transform("(.+) (.+)", "A: {0}, B: {1}, C: {2}", "Hello World"),
+              "A: Hello, B: World, C: {2}");
+
+    // Unmatched braces are ignored.
+    ASSERT_EQ(transform("(.+)", "}{{0}} { {0} }{", "test"), "}{test} { test }{");
+
+    // Check for std::numeric_limits<std::size_t>::max wraparound.
+    ASSERT_EQ(transform("(A)(B)(C)(D)(E)", "{4}{3}{2}{1}{0} {-1} {9223372036854775809}", "ABCDE"),
+              "EDCBA {-1} {9223372036854775809}");
+
+    // Space padding around numeric groups.
+    ASSERT_EQ(transform("(.+)", "{ 0}", "test"), "{ 0}");
+    ASSERT_EQ(transform("(.+)", "{0 }", "test"), "{0 }");
+    ASSERT_EQ(transform("(.+)", "{ 0 }", "test"), "{ 0 }");
+
+    // Backslashes prior to group identifier braces don't bind.
+    ASSERT_EQ(transform("(.+)", "\\{0}", "test"), "\\test");
 }
 
 TEST_F(LDAPTransformTest, stringSubstitutionFailureReturnsBadStatus) {
