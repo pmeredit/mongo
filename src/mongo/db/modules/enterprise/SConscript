@@ -5,7 +5,10 @@ Import("env has_option")
 Import("get_option")
 Import("http_client")
 
-import libdeps
+if get_option('build-tools') == 'next':
+    from libdeps_next import deptype
+else:
+    from libdeps import dependency as deptype
 
 feature_dirs = [
     "fle",
@@ -156,7 +159,7 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
             '$BUILD_DIR/mongo/util/options_parser/options_parser',
         ],
         LIBDEPS_DEPENDENTS=[
-            ('$BUILD_DIR/mongo/db/audit', libdeps.dependency.Public),
+            ('$BUILD_DIR/mongo/db/audit', deptype.Public),
         ],
         LIBDEPS_TAGS=[
             'lint-allow-nonprivate-on-deps-dependents',
