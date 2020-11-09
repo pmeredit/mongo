@@ -1072,7 +1072,7 @@ public:
      * The number of child nodes which have already been visited for a given parent node. This is
      * set by the Walker before inVisit is called.
      */
-    unsigned long long numChildrenVisited;
+    unsigned long long numChildrenVisited = 0ull;
 
     Intention didSetIntention = Intention::NotMarked;
 
