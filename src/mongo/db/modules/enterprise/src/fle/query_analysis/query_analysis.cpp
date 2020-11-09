@@ -332,8 +332,7 @@ PlaceHolderResult addPlaceHoldersForFind(const boost::intrusive_ptr<ExpressionCo
                                          std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     // Parse to a QueryRequest to ensure the command syntax is valid. We can use a temporary
     // database name however the collection name will be used when serializing back to BSON.
-    auto qr = uassertStatusOK(QueryRequest::makeFromFindCommand(
-        CommandHelpers::parseNsCollectionRequired(dbName, cmdObj), cmdObj, false));
+    auto qr = QueryRequest::makeFromFindCommand(cmdObj, false);
 
     auto placeholder = replaceEncryptedFieldsInFilter(expCtx, *schemaTree, qr->getFilter());
 

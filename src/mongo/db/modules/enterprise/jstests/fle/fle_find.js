@@ -171,16 +171,16 @@ assert.commandFailedWithCode(
 assert.commandFailedWithCode(
     testDB.runCommand(
         {find: "test", filter: {}, jsonSchema: sampleSchema, isRemoteSchema: false, whatIsThis: 1}),
-    ErrorCodes.FailedToParse);
+    40415);
 
 // Invalid type for command parameters correctly result in an error.
 assert.commandFailedWithCode(
     testDB.runCommand({find: 5, filter: {}, jsonSchema: sampleSchema, isRemoteSchema: false}),
-    ErrorCodes.InvalidNamespace);
+    ErrorCodes.BadValue);
 assert.commandFailedWithCode(
     testDB.runCommand(
         {find: "test", filter: "not an object", jsonSchema: sampleSchema, isRemoteSchema: false}),
-    ErrorCodes.FailedToParse);
+    ErrorCodes.TypeMismatch);
 assert.commandFailedWithCode(
     testDB.runCommand({find: "test", filter: {}, jsonSchema: "same here", isRemoteSchema: false}),
     51090);
