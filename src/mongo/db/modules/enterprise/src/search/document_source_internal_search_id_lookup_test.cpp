@@ -89,6 +89,9 @@ TEST_F(InternalSearchIdLookupTest, ShouldNotRemoveMetadata) {
     // Create a mock data source.
     MutableDocument docOne(Document({{"_id", 0}}));
     docOne.metadata().setSearchScore(0.123);
+    auto searchScoreDetails = BSON("scoreDetails"
+                                   << "foo");
+    docOne.metadata().setSearchScoreDetails(searchScoreDetails);
     DocumentSourceMock mockLocalSource({docOne.freeze()}, expCtx);
 
     // Set up the idLookup stage.
@@ -100,7 +103,10 @@ TEST_F(InternalSearchIdLookupTest, ShouldNotRemoveMetadata) {
     idLookupStage->setSource(&mockLocalSource);
 
     // Set up a project stage that asks for metadata.
-    auto projectSpec = fromjson("{$project: {score: {$meta: \"searchScore\"}, _id: 1, color: 1}}");
+    auto projectSpec = fromjson(
+        "{$project: {score: {$meta: \"searchScore\"}, "
+        "scoreInfo: {$meta: \"searchScoreDetails\"},"
+        " _id: 1, color: 1}}");
     auto projectStage = DocumentSourceProject::createFromBson(projectSpec.firstElement(), expCtx);
     projectStage->setSource(idLookupStage.get());
 
@@ -112,8 +118,10 @@ TEST_F(InternalSearchIdLookupTest, ShouldNotRemoveMetadata) {
     // We should find one document here with _id = 0.
     auto next = projectStage->getNext();
     ASSERT_TRUE(next.isAdvanced());
-    ASSERT_DOCUMENT_EQ(next.releaseDocument(),
-                       (Document{{"_id", 0}, {"color", "red"_sd}, {"score", 0.123}}));
+    ASSERT_DOCUMENT_EQ(
+        next.releaseDocument(),
+        (Document{
+            {"_id", 0}, {"color", "red"_sd}, {"score", 0.123}, {"scoreInfo", searchScoreDetails}}));
 
     ASSERT_TRUE(idLookupStage->getNext().isEOF());
     ASSERT_TRUE(idLookupStage->getNext().isEOF());

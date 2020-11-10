@@ -63,6 +63,49 @@ const collUUID = getUUIDFromListCollections(testDB, collName);
     assert.eq(testDB[collName].aggregate(pipeline).toArray(), expectedDocs);
 }
 
+// $_internalSearchMongotRemote populates {$meta: searchScoreDetails}.
+{
+    const mongotQuery = {scoreDetails: true};
+    const cursorId = NumberLong(123);
+    const searchScoreDetails = {scoreDetails: "great score"};
+    const pipeline = [
+        {$_internalSearchMongotRemote: mongotQuery},
+        {$project: {_id: 1, scoreInfo: {$meta: "searchScoreDetails"}}}
+    ];
+    const mongotResponseBatch = [{_id: 0, $searchScoreDetails: searchScoreDetails}];
+    const responseOk = 1;
+    const expectedDocs = [{_id: 0, scoreInfo: searchScoreDetails}];
+
+    const history = [{
+        expectedCommand: mongotCommandForQuery(mongotQuery, collName, dbName, collUUID),
+        response: mongotResponseForBatch(mongotResponseBatch, NumberLong(0), collNS, responseOk),
+    }];
+    mongotMock.setMockResponses(history, cursorId);
+    assert.eq(testDB[collName].aggregate(pipeline).toArray(), expectedDocs);
+}
+
+// mongod fails cleanly when a non-object value is provided to $searchScoreDetails.
+{
+    const mongotQuery = {scoreDetails: true};
+    const cursorId = NumberLong(123);
+    const pipeline = [
+        {$_internalSearchMongotRemote: mongotQuery},
+        {$project: {_id: 1, scoreInfo: {$meta: "searchScoreDetails"}}}
+    ];
+    const mongotResponseBatch = [{_id: 0, $searchScoreDetails: "great score"}];
+    const responseOk = 1;
+
+    const history = [{
+        expectedCommand: mongotCommandForQuery(mongotQuery, collName, dbName, collUUID),
+        response: mongotResponseForBatch(mongotResponseBatch, NumberLong(0), collNS, responseOk),
+    }];
+    mongotMock.setMockResponses(history, cursorId);
+    const res = assert.throws(() => testDB[collName].aggregate(pipeline));
+
+    // The aggregate should fail ($searchScoreDetails only accepts objects).
+    assert.commandFailedWithCode(res, 10065);
+}
+
 // $_internalSearchMongotRemote handles multiple documents and batches correctly.
 {
     const mongotQuery = {};
