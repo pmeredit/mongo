@@ -140,11 +140,6 @@ void shutdownTask() {
 ExitCode initAndListen() {
     Client::initThread("initandlisten");
 
-#ifndef _WIN32
-    boost::filesystem::path socketFile(serverGlobalParams.socket);
-    socketFile /= "mongocryptd.sock";
-#endif
-
     auto serviceContext = getGlobalServiceContext();
     {
         ProcessId pid = ProcessId::getCurrent();
@@ -153,10 +148,9 @@ ExitCode initAndListen() {
         attrs.add("pid", pid.toNative());
         attrs.add("port", serverGlobalParams.port);
 #ifndef _WIN32
-        std::string socketFileStr;
         if (!serverGlobalParams.noUnixSocket) {
-            socketFileStr = socketFile.generic_string();
-            attrs.add("socketFile", socketFileStr);
+            // The unix socket is always appended to the back of our list of bind_ips.
+            attrs.add("socketFile", serverGlobalParams.bind_ips.back());
         }
 #endif
         const bool is32bit = sizeof(int*) == 4;
@@ -181,12 +175,6 @@ ExitCode initAndListen() {
                       mongoCryptDGlobalParams.idleShutdownTimeout,
                       serviceContext->getServiceEntryPoint());
 
-    // Aggregations which include a $changeStream stage must read the current FCV during parsing. If
-    // the FCV is not initialized, this will hit an invariant. We therefore initialize it here.
-    // (Generic FCV reference): This FCV reference should exist across LTS binary versions.
-    serverGlobalParams.mutableFeatureCompatibility.setVersion(
-        ServerGlobalParams::FeatureCompatibility::kLatest);
-
     // $changeStream aggregations also check for the presence of a ReplicationCoordinator at parse
     // time, since change streams can only run on a replica set. If no such co-ordinator is present,
     // then $changeStream will assume that it is running on a standalone mongoD, and will return a
@@ -194,47 +182,18 @@ ExitCode initAndListen() {
     repl::ReplicationCoordinator::set(
         serviceContext, std::make_unique<repl::ReplicationCoordinatorNoOp>(serviceContext));
 
-    // Enable local TCP/IP by default since some drivers (i.e. C#), do not support unix domain
-    // sockets
-    // Bind only to localhost, ignore any defaults or command line options
-    serverGlobalParams.bind_ips.clear();
-    serverGlobalParams.bind_ips.push_back("127.0.0.1");
-
-    // Not all machines have ipv6 so users have to opt-in.
-    if (serverGlobalParams.enableIPv6) {
-        serverGlobalParams.bind_ips.push_back("::1");
-    }
-
-    serverGlobalParams.port = mongoCryptDGlobalParams.port;
-
-#ifndef _WIN32
-    if (!serverGlobalParams.noUnixSocket) {
-        serverGlobalParams.bind_ips.push_back(socketFile.generic_string());
-        // Set noUnixSocket so that TransportLayer does not create a unix domain socket by default
-        // and instead just uses the one we tell it to use.
-        serverGlobalParams.noUnixSocket = true;
-    }
-#endif
-
-    auto tl =
-        transport::TransportLayerManager::createWithConfig(&serverGlobalParams, serviceContext);
-    Status status = tl->setup();
-    if (!status.isOK()) {
+    if (auto status = serviceContext->getTransportLayer()->setup(); !status.isOK()) {
         LOGV2_ERROR(24233, "Failed to setup the transport layer", "error"_attr = redact(status));
         return EXIT_NET_ERROR;
     }
 
-    serviceContext->setTransportLayer(std::move(tl));
-
-    status = serviceContext->getServiceEntryPoint()->start();
-    if (!status.isOK()) {
+    if (auto status = serviceContext->getServiceEntryPoint()->start(); !status.isOK()) {
         LOGV2_ERROR(
             24235, "Failed to start the service entry point", "error"_attr = redact(status));
         return EXIT_NET_ERROR;
     }
 
-    status = serviceContext->getTransportLayer()->start();
-    if (!status.isOK()) {
+    if (auto status = serviceContext->getTransportLayer()->start(); !status.isOK()) {
         LOGV2_ERROR(24236, "Failed to start the transport layer", "error"_attr = redact(status));
         return EXIT_NET_ERROR;
     }
@@ -266,6 +225,17 @@ MONGO_INITIALIZER_GENERAL(ForkServer, ("EndStartupOptionHandling"), ("default"))
     return Status::OK();
 }
 
+MONGO_INITIALIZER_WITH_PREREQUISITES(SetFeatureCompatibilityVersionLatest,
+                                     ("EndStartupOptionStorage"))
+(InitializerContext* context) {
+    // Aggregations which include a $changeStream stage must read the current FCV during parsing. If
+    // the FCV is not initialized, this will hit an invariant. We therefore initialize it here.
+    // (Generic FCV reference): This FCV reference should exist across LTS binary versions.
+    serverGlobalParams.mutableFeatureCompatibility.setVersion(
+        ServerGlobalParams::FeatureCompatibility::kLatest);
+    return Status::OK();
+}
+
 int CryptDMain(int argc, char** argv) {
     registerShutdownTask(shutdownTask);
 
@@ -275,7 +245,12 @@ int CryptDMain(int argc, char** argv) {
 
     setGlobalServiceContext(ServiceContext::make());
     auto serviceContext = getGlobalServiceContext();
+
     serviceContext->setServiceEntryPoint(std::make_unique<ServiceEntryPointCryptD>(serviceContext));
+
+    auto tl =
+        transport::TransportLayerManager::createWithConfig(&serverGlobalParams, serviceContext);
+    serviceContext->setTransportLayer(std::move(tl));
 
 #ifdef _WIN32
     ntservice::configureService(initService,
