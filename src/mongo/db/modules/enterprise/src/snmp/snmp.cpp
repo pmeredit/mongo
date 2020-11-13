@@ -147,62 +147,62 @@ public:
                                              "1,3,1,1",
                                              ServerStatusClient::OPCOUNTERS,
                                              "opcounters.insert",
-                                             VT_CNT32));
+                                             VT_CNT64_32));
         v.push_back(new ServerStatusCallback("globalOpQuery",
                                              "1,3,1,2",
                                              ServerStatusClient::OPCOUNTERS,
                                              "opcounters.query",
-                                             VT_CNT32));
+                                             VT_CNT64_32));
         v.push_back(new ServerStatusCallback("globalOpUpdate",
                                              "1,3,1,3",
                                              ServerStatusClient::OPCOUNTERS,
                                              "opcounters.update",
-                                             VT_CNT32));
+                                             VT_CNT64_32));
         v.push_back(new ServerStatusCallback("globalOpDelete",
                                              "1,3,1,4",
                                              ServerStatusClient::OPCOUNTERS,
                                              "opcounters.delete",
-                                             VT_CNT32));
+                                             VT_CNT64_32));
         v.push_back(new ServerStatusCallback("globalOpGetMore",
                                              "1,3,1,5",
                                              ServerStatusClient::OPCOUNTERS,
                                              "opcounters.getmore",
-                                             VT_CNT32));
+                                             VT_CNT64_32));
         v.push_back(new ServerStatusCallback("globalOpCommand",
                                              "1,3,1,6",
                                              ServerStatusClient::OPCOUNTERS,
                                              "opcounters.command",
-                                             VT_CNT32));
+                                             VT_CNT64_32));
         v.push_back(new ServerStatusCallback("replOpInsert",
                                              "1,3,2,1",
                                              ServerStatusClient::OPCOUNTERS_REPL,
                                              "opcountersRepl.insert",
-                                             VT_CNT32));
+                                             VT_CNT64_32));
         v.push_back(new ServerStatusCallback("replOpQuery",
                                              "1,3,2,2",
                                              ServerStatusClient::OPCOUNTERS_REPL,
                                              "opcountersRepl.query",
-                                             VT_CNT32));
+                                             VT_CNT64_32));
         v.push_back(new ServerStatusCallback("replOpUpdate",
                                              "1,3,2,3",
                                              ServerStatusClient::OPCOUNTERS_REPL,
                                              "opcountersRepl.update",
-                                             VT_CNT32));
+                                             VT_CNT64_32));
         v.push_back(new ServerStatusCallback("replOpDelete",
                                              "1,3,2,4",
                                              ServerStatusClient::OPCOUNTERS_REPL,
                                              "opcountersRepl.delete",
-                                             VT_CNT32));
+                                             VT_CNT64_32));
         v.push_back(new ServerStatusCallback("replOpGetMore",
                                              "1,3,2,5",
                                              ServerStatusClient::OPCOUNTERS_REPL,
                                              "opcountersRepl.getmore",
-                                             VT_CNT32));
+                                             VT_CNT64_32));
         v.push_back(new ServerStatusCallback("replOpCommand",
                                              "1,3,2,6",
                                              ServerStatusClient::OPCOUNTERS_REPL,
                                              "opcountersRepl.command",
-                                             VT_CNT32));
+                                             VT_CNT64_32));
 
         {
             ServerStatusCallback* sscb = new ServerStatusCallback(
@@ -418,7 +418,7 @@ public:
                                              "1,10,3",
                                              ServerStatusClient::EXTRA_INFO,
                                              "extra_info.page_faults",
-                                             VT_CNT32));
+                                             VT_CNT64_32));
         v.push_back(new ServerStatusCallback("indexCounterAccesses",
                                              "1,11,1",
                                              ServerStatusClient::INDEX_COUNTERS,
@@ -715,6 +715,9 @@ public:
                 case VT_CNT32:
                     val = ssClient.getIntField(_serverStatusMetric);
                     break;
+                case VT_CNT64_32:
+                    val = ssClient.getInt64Field(_serverStatusMetric);
+                    break;
                 case VT_DURATION:
                     uval = ssClient.getDurationField(_serverStatusMetric);
                     break;
@@ -781,6 +784,10 @@ private:
         VT_CNT32,
         VT_BOOL,
         VT_INT64,
+        // SERVER-48567 - read a 64-bit value from serverStatus but write a 32-bit SNMP value for
+        // backwards compatibility.
+        // TODO SERVER-52729 - Remove this hack once these counters are exported as 64-bit values.
+        VT_CNT64_32,
         VT_CNT64,
         VT_STRING,
         VT_DATE,
@@ -810,6 +817,7 @@ private:
                 _snmpType = ASN_COUNTER64;
                 break;
             case VT_CNT32:
+            case VT_CNT64_32:
                 _snmpType = ASN_COUNTER;
                 break;
             case VT_STRING:
