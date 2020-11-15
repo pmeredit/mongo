@@ -129,7 +129,7 @@ public:
 
     int respond(netsnmp_variable_list* var) {
         int val = repl::ReplicationCoordinator::get(getGlobalServiceContext())
-                      ->isMasterForReportingPurposes();
+                      ->isWritablePrimaryForReportingPurposes();
 
         return snmp_set_var_typed_value(
             var, ASN_INTEGER, reinterpret_cast<u_char*>(&val), sizeof(val));
