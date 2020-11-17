@@ -159,7 +159,7 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(AuditDomain, ("InitializeGlobalAuditManager
                 auditLogAppender.reset(new BSONAppender(std::move(writer)));
             }
 
-            logv2::addLogRotator([](bool renameFiles, StringData suffix) {
+            logv2::addLogRotator(logv2::kAuditLogTag, [](bool renameFiles, StringData suffix) {
                 return auditLogAppender->rotate(renameFiles, suffix);
             });
 

@@ -33,6 +33,13 @@ class AuditSpooler {
     }
 
     /**
+     * Reset the AuditSpooler. Useful for rotating logs.
+     */
+    resetAuditLine() {
+        this._auditLine = 0;
+    }
+
+    /**
      * Skip forward in the log file to "now"
      * Call this prior to an audit producing command to
      * ensure that old entries don't cause false-positives.
@@ -53,6 +60,10 @@ class AuditSpooler {
         return JSON.parse(line);
     }
 
+    assertNoEntry(atype, param) {
+        assert(!this.findEntry(this.getAllLines(), atype, param));
+    }
+
     /**
      * Poll the audit logfile for a matching entry
      * beginning with the current line.
@@ -62,24 +73,8 @@ class AuditSpooler {
         assert.soon(
             () => {
                 const log = this.getAllLines().slice(this._auditLine);
-                for (var idx in log) {
-                    const entry = log[idx];
-                    try {
-                        line = JSON.parse(entry);
-                    } catch (e) {
-                        continue;
-                    }
-                    if (line.atype !== atype) {
-                        continue;
-                    }
-
-                    // Warning: Requires that the subkey/element orders match
-                    if (JSON.stringify(line.param) === JSON.stringify(param)) {
-                        this._auditLine += Number(idx) + 1;
-                        return true;
-                    }
-                }
-                return false;
+                line = this.findEntry(log, atype, param);
+                return null !== line;
             },
             "audit logfile should contain entry within default timeout.\n" +
                 "Search started on line number: " + this._auditLine + "\n" +
@@ -88,6 +83,34 @@ class AuditSpooler {
 
         // Success if we got here, return the matched record.
         return line;
+    }
+
+    /**
+     *  This function is called by the functions above.
+     *
+     *  It takes a list of log lines, an audit type, and a search parameter and searches the log
+     *  lines for the actionType / param combination. Returns the line if found, else returns null.
+     */
+    findEntry(log, atype, param) {
+        let line;
+        for (var idx in log) {
+            const entry = log[idx];
+            try {
+                line = JSON.parse(entry);
+            } catch (e) {
+                continue;
+            }
+            if (line.atype !== atype) {
+                continue;
+            }
+
+            // Warning: Requires that the subkey/element orders match
+            if (JSON.stringify(line.param) === JSON.stringify(param)) {
+                this._auditLine += Number(idx) + 1;
+                return line;
+            }
+        }
+        return null;
     }
 
     /**
