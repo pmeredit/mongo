@@ -18,13 +18,13 @@
 #include "mongo/db/matcher/expression_parser.h"
 #include "mongo/db/matcher/expression_type.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
+#include "mongo/db/ops/find_and_modify_command_gen.h"
 #include "mongo/db/ops/parsed_update_array_filters.h"
 #include "mongo/db/ops/write_ops.h"
 #include "mongo/db/ops/write_ops_gen.h"
 #include "mongo/db/query/collation/collator_factory_interface.h"
 #include "mongo/db/query/count_command_gen.h"
 #include "mongo/db/query/distinct_command_gen.h"
-#include "mongo/db/query/find_and_modify_request.h"
 #include "mongo/db/query/query_request.h"
 #include "mongo/db/update/update_driver.h"
 #include "mongo/idl/basic_types.h"
@@ -486,8 +486,8 @@ PlaceHolderResult addPlaceHoldersForFindAndModify(
     const std::string& dbName,
     const BSONObj& cmdObj,
     std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
-    auto request(uassertStatusOK(FindAndModifyRequest::parseFromBSON(
-        CommandHelpers::parseNsCollectionRequired(dbName, cmdObj), cmdObj)));
+    auto request(
+        write_ops::FindAndModifyCommand::parse(IDLParserErrorContext("findAndModify"), cmdObj));
 
     bool anythingEncrypted = false;
     if (auto updateMod = request.getUpdate()) {
@@ -495,16 +495,21 @@ PlaceHolderResult addPlaceHoldersForFindAndModify(
             31151,
             "Pipelines in findAndModify are not allowed with an encrypted '_id' and 'upsert: true'",
             !(updateMod->type() == write_ops::UpdateModification::Type::kPipeline &&
-              schemaTree->getEncryptionMetadataForPath(FieldRef("_id")) && request.isUpsert()));
+              schemaTree->getEncryptionMetadataForPath(FieldRef("_id")) &&
+              request.getUpsert().value_or(false)));
 
-        if (request.isUpsert() &&
+        if (request.getUpsert().value_or(false) &&
             updateMod->type() == write_ops::UpdateModification::Type::kClassic) {
             verifyNoGeneratedEncryptedFields(updateMod->getUpdateClassic(), *schemaTree.get());
         }
 
         auto newUpdate = replaceEncryptedFieldsInUpdate(
-            expCtx, *schemaTree.get(), updateMod.get(), request.getArrayFilters());
-        request.setUpdateObj(newUpdate.result);
+            expCtx,
+            *schemaTree.get(),
+            updateMod.get(),
+            request.getArrayFilters().value_or(std::vector<BSONObj>()));
+        request.setUpdate(
+            write_ops::UpdateModification::parseFromClassicUpdate(newUpdate.result.getOwned()));
         anythingEncrypted = newUpdate.hasEncryptionPlaceholders;
     }
 
@@ -675,8 +680,8 @@ void processQueryCommand(OperationContext* opCtx,
 
     // A new camel-case name of the FindAndModify command needs to be used
     // in place of the legacy one.
-    if (fieldNames.count(FindAndModifyRequest::kLegacyCommandName)) {
-        fieldNames.insert(FindAndModifyRequest::kCommandName);
+    if (fieldNames.count("findandmodify")) {
+        fieldNames.insert(write_ops::FindAndModifyCommand::kCommandName);
     }
     placeholder.result = removeExtraFields(fieldNames, placeholder.result);
 
