@@ -13,6 +13,7 @@
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/query/collation/collator_interface_mock.h"
 #include "mongo/db/update/update_driver.h"
+#include "mongo/idl/basic_types.h"
 #include "mongo/unittest/unittest.h"
 #include "query_analysis.h"
 
@@ -285,7 +286,7 @@ TEST(BuildEncryptPlaceholderTest, JSONPointerResolvesCorrectly) {
                     << "encrypt"
                     << "key"
                     << "value");
-    EncryptionPlaceholder expected(FleAlgorithmInt::kRandom, EncryptSchemaAnyType(doc["foo"]));
+    EncryptionPlaceholder expected(FleAlgorithmInt::kRandom, IDLAnyType(doc["foo"]));
     expected.setKeyAltName("value"_sd);
     ResolvedEncryptionInfo metadata{
         EncryptSchemaKeyId{"/key"}, FleAlgorithmEnum::kRandom, boost::none};
@@ -309,7 +310,7 @@ TEST(BuildEncryptPlaceholderTest, JSONPointerResolvesCorrectlyThroughArray) {
     auto doc = BSON("foo"
                     << "encrypt"
                     << "key" << BSON_ARRAY("value"));
-    EncryptionPlaceholder expected(FleAlgorithmInt::kRandom, EncryptSchemaAnyType(doc["foo"]));
+    EncryptionPlaceholder expected(FleAlgorithmInt::kRandom, IDLAnyType(doc["foo"]));
     expected.setKeyAltName("value"_sd);
     ResolvedEncryptionInfo metadata{
         EncryptSchemaKeyId{"/key/0"}, FleAlgorithmEnum::kRandom, boost::none};
@@ -390,7 +391,7 @@ TEST(BuildEncryptPlaceholderTest, UAssertIfPointerDoesNotEvaluate) {
     auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto doc = BSON("foo"
                     << "encrypt");
-    EncryptionPlaceholder expected(FleAlgorithmInt::kRandom, EncryptSchemaAnyType(doc["foo"]));
+    EncryptionPlaceholder expected(FleAlgorithmInt::kRandom, IDLAnyType(doc["foo"]));
     expected.setKeyAltName("value"_sd);
     ResolvedEncryptionInfo metadata{
         EncryptSchemaKeyId{"/key"}, FleAlgorithmEnum::kRandom, boost::none};
@@ -456,7 +457,7 @@ TEST(BuildEncryptPlaceholderTest, FailsOnPointedToUUID) {
     uuid.appendToBuilder(&bob, "key");
     auto doc = bob.obj();
 
-    EncryptionPlaceholder expected(FleAlgorithmInt::kRandom, EncryptSchemaAnyType(doc["foo"]));
+    EncryptionPlaceholder expected(FleAlgorithmInt::kRandom, IDLAnyType(doc["foo"]));
     expected.setKeyId(uuid);
     ResolvedEncryptionInfo metadata{
         EncryptSchemaKeyId{"/key"}, FleAlgorithmEnum::kRandom, boost::none};

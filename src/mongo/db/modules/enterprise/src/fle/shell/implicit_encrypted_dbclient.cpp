@@ -14,6 +14,7 @@
 #include "mongo/db/client.h"
 #include "mongo/db/commands.h"
 #include "mongo/db/namespace_string.h"
+#include "mongo/idl/basic_types.h"
 #include "mongo/rpc/object_check.h"
 #include "mongo/rpc/op_msg_rpc_impls.h"
 #include "mongo/scripting/mozjs/bindata.h"
@@ -291,7 +292,7 @@ public:
                       "exactly one of either keyId or keyAltName must be specified.");
         }
 
-        EncryptSchemaAnyType value = toEncrypt.getValue();
+        IDLAnyType value = toEncrypt.getValue();
 
         BSONElement valueElem = value.getElement();
         BSONType bsonType = valueElem.type();

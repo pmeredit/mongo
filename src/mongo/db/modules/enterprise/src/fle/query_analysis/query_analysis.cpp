@@ -27,6 +27,7 @@
 #include "mongo/db/query/find_and_modify_request.h"
 #include "mongo/db/query/query_request.h"
 #include "mongo/db/update/update_driver.h"
+#include "mongo/idl/basic_types.h"
 #include "mongo/idl/idl_parser.h"
 #include "mongo/rpc/op_msg.h"
 
@@ -835,7 +836,7 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
         ? FleAlgorithmInt::kDeterministic
         : FleAlgorithmInt::kRandom;
 
-    EncryptionPlaceholder marking(integerAlgorithm, EncryptSchemaAnyType(elem));
+    EncryptionPlaceholder marking(integerAlgorithm, IDLAnyType(elem));
 
     const auto& keyId = metadata.keyId;
     if (keyId.type() == EncryptSchemaKeyId::Type::kUUIDs) {
