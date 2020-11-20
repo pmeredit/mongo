@@ -7,7 +7,7 @@ global:
 
 imports:
   - "mongo/idl/basic_types.idl"
-  - "mongo/db/modules/enterprise/src/live_import/collection_properties.idl"
+  - "live_import/collection_properties.idl"
 
 commands:
   importCollection:

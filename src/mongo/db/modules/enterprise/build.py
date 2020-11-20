@@ -92,6 +92,10 @@ def configure(conf, env):
         # Inject an include path so that idl generated files can be included
         env.Append(CPPPATH=[src_include_path])
 
+        # Inject an import path so that idl files can import other idl files in the enterprise repo
+        # Computes: src/mongo/db/modules/<enterprise_module_name>/src
+        env.Append(IDLCFLAGS=["--include", str(env.Dir(root).Dir('src'))])
+        
         if consumer:
             if 'MONGO_ENTERPRISE_VERSION' in env:
                 env.Append(CPPDEFINES=[("MONGO_ENTERPRISE_VERSION", 1)])
