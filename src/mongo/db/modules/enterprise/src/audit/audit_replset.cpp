@@ -51,7 +51,9 @@ void audit::logReplSetReconfig(Client* client, const BSONObj* oldConfig, const B
     }
 
     ReplSetReconfigEvent event(
-        makeEnvelope(client, ActionType::replSetReconfig, ErrorCodes::OK), oldConfig, newConfig);
+        makeEnvelope(client, AuditEventType::replSetReconfig, ErrorCodes::OK),
+        oldConfig,
+        newConfig);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }

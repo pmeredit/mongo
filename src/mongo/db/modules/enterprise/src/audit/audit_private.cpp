@@ -15,7 +15,7 @@ namespace audit {
 
 void initializeEnvelope(AuditEventEnvelope* envelope,
                         Client* client,
-                        ActionType actionType,
+                        AuditEventType auditEventType,
                         ErrorCodes::Error result) {
     envelope->timestamp = Date_t::now();
     auto session = client->session();
@@ -30,7 +30,7 @@ void initializeEnvelope(AuditEventEnvelope* envelope,
         AuthorizationSession::get(client)->getAuthenticatedRoleNames();
     envelope->impersonatedUserNames = AuthorizationSession::get(client)->getImpersonatedUserNames();
     envelope->impersonatedRoleNames = AuthorizationSession::get(client)->getImpersonatedRoleNames();
-    envelope->actionType = actionType;
+    envelope->auditEventType = auditEventType;
     envelope->result = result;
 }
 

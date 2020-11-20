@@ -6,9 +6,9 @@
 
 #include <cstdint>
 
+#include "audit_event_type.h"
 #include "mongo/base/error_codes.h"
 #include "mongo/bson/oid.h"
-#include "mongo/db/auth/action_type.h"
 #include "mongo/db/auth/user_set.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/db/matcher/expression.h"
@@ -26,7 +26,7 @@ struct AuditEventEnvelope {
     RoleNameIterator authenticatedRoleNames;
     UserNameIterator impersonatedUserNames;
     RoleNameIterator impersonatedRoleNames;
-    ActionType actionType;
+    AuditEventType auditEventType;
     ErrorCodes::Error result;
 };
 
@@ -63,8 +63,8 @@ public:
     const SockAddr& getRemoteAddr() const {
         return _envelope.remoteAddr;
     }
-    ActionType getActionType() const {
-        return _envelope.actionType;
+    AuditEventType getAuditEventType() const {
+        return _envelope.auditEventType;
     }
     ErrorCodes::Error getResultCode() const {
         return _envelope.result;

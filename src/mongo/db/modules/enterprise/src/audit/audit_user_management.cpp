@@ -161,7 +161,7 @@ void audit::logCreateUser(Client* client,
         return;
     }
 
-    CreateUserEvent event(makeEnvelope(client, ActionType::createUser, ErrorCodes::OK),
+    CreateUserEvent event(makeEnvelope(client, AuditEventType::createUser, ErrorCodes::OK),
                           username,
                           password,
                           customData,
@@ -177,7 +177,7 @@ void audit::logDropUser(Client* client, const UserName& username) {
         return;
     }
 
-    DropUserEvent event(makeEnvelope(client, ActionType::dropUser, ErrorCodes::OK), username);
+    DropUserEvent event(makeEnvelope(client, AuditEventType::dropUser, ErrorCodes::OK), username);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }
@@ -189,7 +189,7 @@ void audit::logDropAllUsersFromDatabase(Client* client, StringData dbname) {
     }
 
     DropAllUsersFromDatabaseEvent event(
-        makeEnvelope(client, ActionType::dropAllUsersFromDatabase, ErrorCodes::OK), dbname);
+        makeEnvelope(client, AuditEventType::dropAllUsersFromDatabase, ErrorCodes::OK), dbname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }
@@ -205,7 +205,7 @@ void audit::logUpdateUser(Client* client,
         return;
     }
 
-    UpdateUserEvent event(makeEnvelope(client, ActionType::updateUser, ErrorCodes::OK),
+    UpdateUserEvent event(makeEnvelope(client, AuditEventType::updateUser, ErrorCodes::OK),
                           username,
                           password,
                           customData,

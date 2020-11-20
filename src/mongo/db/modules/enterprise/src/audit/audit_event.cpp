@@ -34,7 +34,7 @@ void putUserNamesBSON(UserNameIterator users, BSONArrayBuilder& builder) {
 
 void AuditEvent::generateBSON() const {
     BSONObjBuilder builder;
-    builder.append("atype", toString(getActionType()));
+    builder.append("atype", toString(getAuditEventType()));
     builder.appendDate("ts", getTimestamp());
     {
         BSONObjBuilder localIpBuilder(builder.subobjStart("local"));

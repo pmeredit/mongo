@@ -156,7 +156,7 @@ void audit::logCreateIndex(Client* client,
         return;
     }
 
-    CreateIndexEvent event(makeEnvelope(client, ActionType::createIndex, ErrorCodes::OK),
+    CreateIndexEvent event(makeEnvelope(client, AuditEventType::createIndex, ErrorCodes::OK),
                            indexSpec,
                            indexname,
                            nsname);
@@ -170,8 +170,8 @@ void audit::logCreateCollection(Client* client, StringData nsname) {
         return;
     }
 
-    CreateCollectionEvent event(makeEnvelope(client, ActionType::createCollection, ErrorCodes::OK),
-                                nsname);
+    CreateCollectionEvent event(
+        makeEnvelope(client, AuditEventType::createCollection, ErrorCodes::OK), nsname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }
@@ -188,7 +188,7 @@ void audit::logCreateView(Client* client,
 
     // Intentional: createView is audited as createCollection with viewOn/pipeline params. */
     CreateCollectionEvent event(
-        makeEnvelope(client, ActionType::createCollection, code), nsname, viewOn, pipeline);
+        makeEnvelope(client, AuditEventType::createCollection, code), nsname, viewOn, pipeline);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }
@@ -200,8 +200,8 @@ void audit::logImportCollection(Client* client, StringData nsname) {
     }
 
     // An import is similar to a create, except that we use an importCollection action type.
-    CreateCollectionEvent event(makeEnvelope(client, ActionType::importCollection, ErrorCodes::OK),
-                                nsname);
+    CreateCollectionEvent event(
+        makeEnvelope(client, AuditEventType::importCollection, ErrorCodes::OK), nsname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }
@@ -212,7 +212,7 @@ void audit::logCreateDatabase(Client* client, StringData dbname) {
         return;
     }
 
-    CreateDatabaseEvent event(makeEnvelope(client, ActionType::createDatabase, ErrorCodes::OK),
+    CreateDatabaseEvent event(makeEnvelope(client, AuditEventType::createDatabase, ErrorCodes::OK),
                               dbname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
@@ -225,7 +225,7 @@ void audit::logDropIndex(Client* client, StringData indexname, StringData nsname
     }
 
     DropIndexEvent event(
-        makeEnvelope(client, ActionType::dropIndex, ErrorCodes::OK), indexname, nsname);
+        makeEnvelope(client, AuditEventType::dropIndex, ErrorCodes::OK), indexname, nsname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }
@@ -236,7 +236,7 @@ void audit::logDropCollection(Client* client, StringData nsname) {
         return;
     }
 
-    DropCollectionEvent event(makeEnvelope(client, ActionType::dropCollection, ErrorCodes::OK),
+    DropCollectionEvent event(makeEnvelope(client, AuditEventType::dropCollection, ErrorCodes::OK),
                               nsname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
@@ -248,7 +248,8 @@ void audit::logDropDatabase(Client* client, StringData dbname) {
         return;
     }
 
-    DropDatabaseEvent event(makeEnvelope(client, ActionType::dropDatabase, ErrorCodes::OK), dbname);
+    DropDatabaseEvent event(makeEnvelope(client, AuditEventType::dropDatabase, ErrorCodes::OK),
+                            dbname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }
@@ -260,7 +261,7 @@ void audit::logRenameCollection(Client* client, StringData source, StringData ta
     }
 
     RenameCollectionEvent event(
-        makeEnvelope(client, ActionType::renameCollection, ErrorCodes::OK), source, target);
+        makeEnvelope(client, AuditEventType::renameCollection, ErrorCodes::OK), source, target);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }

@@ -7,6 +7,7 @@
 #include "mongo/platform/basic.h"
 
 #include "audit_event.h"
+#include "audit_event_type.h"
 #include "audit_log.h"
 #include "audit_manager_global.h"
 #include "audit_private.h"
@@ -58,7 +59,7 @@ void audit::logAuthentication(Client* client,
     }
 
     AuthenticationEvent event(
-        makeEnvelope(client, ActionType::authenticate, result), mechanism, user);
+        makeEnvelope(client, AuditEventType::authenticate, result), mechanism, user);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }

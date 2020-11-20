@@ -21,22 +21,22 @@ namespace audit {
 
 /**
  * Initializes the given "envelope" based on information in "client", plus
- * the "actionType" and "result" codes.
+ * the "auditEventType" and "result" codes.
  */
 void initializeEnvelope(AuditEventEnvelope* envelope,
                         Client* client,
-                        ActionType actionType,
+                        AuditEventType auditEventType,
                         ErrorCodes::Error result);
 
 /**
- * Returns an AuditEventEnvelope initialized with information from "client", "actionType" and
+ * Returns an AuditEventEnvelope initialized with information from "client", "auditEventType" and
  * "result".
  */
 inline AuditEventEnvelope makeEnvelope(Client* client,
-                                       ActionType actionType,
+                                       AuditEventType auditEventType,
                                        ErrorCodes::Error result) {
     AuditEventEnvelope envelope;
-    initializeEnvelope(&envelope, client, actionType, result);
+    initializeEnvelope(&envelope, client, auditEventType, result);
     return envelope;
 }
 

@@ -80,7 +80,7 @@ void _logAuthzCheck(Client* client,
                     bool redactArgs,
                     G&& generator,
                     ErrorCodes::Error result) {
-    AuthzCheckEvent<G> event(makeEnvelope(client, ActionType::authCheck, result),
+    AuthzCheckEvent<G> event(makeEnvelope(client, AuditEventType::authCheck, result),
                              ns,
                              commandName,
                              redactArgs,

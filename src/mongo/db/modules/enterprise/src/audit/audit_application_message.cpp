@@ -43,7 +43,7 @@ void audit::logApplicationMessage(Client* client, StringData msg) {
         return;
 
     ApplicationMessageEvent event(
-        makeEnvelope(client, ActionType::applicationMessage, ErrorCodes::OK), msg);
+        makeEnvelope(client, AuditEventType::applicationMessage, ErrorCodes::OK), msg);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }

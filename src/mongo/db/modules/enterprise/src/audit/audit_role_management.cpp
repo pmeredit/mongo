@@ -332,7 +332,7 @@ void audit::logGrantRolesToUser(Client* client,
     }
 
     GrantRolesToUserEvent event(
-        makeEnvelope(client, ActionType::grantRolesToUser, ErrorCodes::OK), username, roles);
+        makeEnvelope(client, AuditEventType::grantRolesToUser, ErrorCodes::OK), username, roles);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }
@@ -346,7 +346,7 @@ void audit::logRevokeRolesFromUser(Client* client,
     }
 
     RevokeRolesFromUserEvent event(
-        makeEnvelope(client, ActionType::revokeRolesFromUser, ErrorCodes::OK), username, roles);
+        makeEnvelope(client, AuditEventType::revokeRolesFromUser, ErrorCodes::OK), username, roles);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }
@@ -361,7 +361,7 @@ void audit::logCreateRole(Client* client,
         return;
     }
 
-    CreateRoleEvent event(makeEnvelope(client, ActionType::createRole, ErrorCodes::OK),
+    CreateRoleEvent event(makeEnvelope(client, AuditEventType::createRole, ErrorCodes::OK),
                           role,
                           roles,
                           privileges,
@@ -380,7 +380,7 @@ void audit::logUpdateRole(Client* client,
         return;
     }
 
-    UpdateRoleEvent event(makeEnvelope(client, ActionType::updateRole, ErrorCodes::OK),
+    UpdateRoleEvent event(makeEnvelope(client, AuditEventType::updateRole, ErrorCodes::OK),
                           role,
                           roles,
                           privileges,
@@ -395,7 +395,7 @@ void audit::logDropRole(Client* client, const RoleName& role) {
         return;
     }
 
-    DropRoleEvent event(makeEnvelope(client, ActionType::dropRole, ErrorCodes::OK), role);
+    DropRoleEvent event(makeEnvelope(client, AuditEventType::dropRole, ErrorCodes::OK), role);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }
@@ -407,7 +407,7 @@ void audit::logDropAllRolesFromDatabase(Client* client, StringData dbname) {
     }
 
     DropAllRolesFromDatabaseEvent event(
-        makeEnvelope(client, ActionType::dropAllRolesFromDatabase, ErrorCodes::OK), dbname);
+        makeEnvelope(client, AuditEventType::dropAllRolesFromDatabase, ErrorCodes::OK), dbname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }
@@ -421,7 +421,7 @@ void audit::logGrantRolesToRole(Client* client,
     }
 
     GrantRolesToRoleEvent event(
-        makeEnvelope(client, ActionType::grantRolesToRole, ErrorCodes::OK), role, roles);
+        makeEnvelope(client, AuditEventType::grantRolesToRole, ErrorCodes::OK), role, roles);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }
@@ -435,7 +435,7 @@ void audit::logRevokeRolesFromRole(Client* client,
     }
 
     RevokeRolesFromRoleEvent event(
-        makeEnvelope(client, ActionType::revokeRolesFromRole, ErrorCodes::OK), role, roles);
+        makeEnvelope(client, AuditEventType::revokeRolesFromRole, ErrorCodes::OK), role, roles);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }
@@ -449,7 +449,9 @@ void audit::logGrantPrivilegesToRole(Client* client,
     }
 
     GrantPrivilegesToRoleEvent event(
-        makeEnvelope(client, ActionType::grantPrivilegesToRole, ErrorCodes::OK), role, privileges);
+        makeEnvelope(client, AuditEventType::grantPrivilegesToRole, ErrorCodes::OK),
+        role,
+        privileges);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }
@@ -463,7 +465,7 @@ void audit::logRevokePrivilegesFromRole(Client* client,
     }
 
     RevokePrivilegesFromRoleEvent event(
-        makeEnvelope(client, ActionType::revokePrivilegesFromRole, ErrorCodes::OK),
+        makeEnvelope(client, AuditEventType::revokePrivilegesFromRole, ErrorCodes::OK),
         role,
         privileges);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {

@@ -39,7 +39,7 @@ void audit::logShutdown(Client* client) {
         return;
     }
 
-    ShutdownEvent event(makeEnvelope(client, ActionType::shutdown, ErrorCodes::OK));
+    ShutdownEvent event(makeEnvelope(client, AuditEventType::shutdown, ErrorCodes::OK));
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }

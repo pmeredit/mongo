@@ -118,7 +118,7 @@ void audit::logEnableSharding(Client* client, StringData dbname) {
         return;
     }
 
-    EnableShardingEvent event(makeEnvelope(client, ActionType::enableSharding, ErrorCodes::OK),
+    EnableShardingEvent event(makeEnvelope(client, AuditEventType::enableSharding, ErrorCodes::OK),
                               dbname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
@@ -134,7 +134,7 @@ void audit::logAddShard(Client* client,
     }
 
     AddShardEvent event(
-        makeEnvelope(client, ActionType::addShard, ErrorCodes::OK), name, servers, maxSize);
+        makeEnvelope(client, AuditEventType::addShard, ErrorCodes::OK), name, servers, maxSize);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }
@@ -149,7 +149,10 @@ void audit::logShardCollection(Client* client,
     }
 
     ShardCollectionEvent event(
-        makeEnvelope(client, ActionType::shardCollection, ErrorCodes::OK), ns, keyPattern, unique);
+        makeEnvelope(client, AuditEventType::shardCollection, ErrorCodes::OK),
+        ns,
+        keyPattern,
+        unique);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }
@@ -159,7 +162,7 @@ void audit::logRemoveShard(Client* client, StringData shardname) {
     if (!getGlobalAuditManager()->enabled)
         return;
 
-    RemoveShardEvent event(makeEnvelope(client, ActionType::removeShard, ErrorCodes::OK),
+    RemoveShardEvent event(makeEnvelope(client, AuditEventType::removeShard, ErrorCodes::OK),
                            shardname);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
@@ -172,7 +175,9 @@ void audit::logRefineCollectionShardKey(Client* client, StringData ns, const BSO
     }
 
     RefineCollectionShardKeyEvent event(
-        makeEnvelope(client, ActionType::refineCollectionShardKey, ErrorCodes::OK), ns, keyPattern);
+        makeEnvelope(client, AuditEventType::refineCollectionShardKey, ErrorCodes::OK),
+        ns,
+        keyPattern);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }
