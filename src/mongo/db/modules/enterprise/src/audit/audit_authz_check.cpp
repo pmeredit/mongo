@@ -80,6 +80,10 @@ void _logAuthzCheck(Client* client,
                     bool redactArgs,
                     G&& generator,
                     ErrorCodes::Error result) {
+    if (client->isInDirectClient()) {
+        return;
+    }
+
     AuthzCheckEvent<G> event(makeEnvelope(client, AuditEventType::authCheck, result),
                              ns,
                              commandName,

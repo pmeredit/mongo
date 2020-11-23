@@ -21,7 +21,14 @@ class AuditSpooler {
             const auditFileContents = _readDumpFile(this.auditFile);
             return auditFileContents.map(JSON.stringify);
         } else {
-            return cat(this.auditFile).trim().split("\n");
+            const lines = cat(this.auditFile).trim().split("\n");
+
+            // When reading an empty file, cat reads in a single newline
+            // which throws off the audit spooler when trying to fast forward.
+            if (lines.length === 1 && lines[0] === "") {
+                return [];
+            }
+            return lines;
         }
     }
 
@@ -171,10 +178,27 @@ class AuditSpooler {
     /**
      * Assert that no new audit events, optionally of a give type, have been emitted
      * since the last event observed via the Spooler.
+     *
+     * paramPartial is a partial match on the param field of the audit log. If the param field
+     * in the log line contains all the keys from paramPartial and the values match the values
+     * from param partial, then the log line fits the search and will be considered a new entry.
      */
-    assertNoNewEntries(atype = undefined) {
+    assertNoNewEntries(atype = undefined, paramPartial = undefined) {
+        // We want lines to return false. True means there is a match which we do not want.
         const log = this.getAllLines().slice(this._auditLine).filter(function(line) {
-            return (atype === undefined) || (JSON.parse(line).atype === atype);
+            let parsedLine = JSON.parse(line);
+            if (atype !== undefined && parsedLine.atype !== atype) {
+                return false;
+            }
+
+            if (paramPartial !== undefined) {
+                for (let key of Object.keys(paramPartial)) {
+                    if (parsedLine.param[key] !== paramPartial[key]) {
+                        return false;
+                    }
+                }
+            }
+            return true;
         });
         assert.eq(log.length, 0, "Log contained new entries: " + tojson(log));
     }
