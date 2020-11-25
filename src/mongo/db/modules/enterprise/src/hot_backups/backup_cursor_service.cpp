@@ -80,7 +80,7 @@ BackupCursorState BackupCursorService::openBackupCursor(
     // This procedure can block, do it before acquiring the mutex to allow fsyncLock requests to
     // succeed.
     auto replCoord = repl::ReplicationCoordinator::get(opCtx);
-    bool isReplSet = replCoord &&
+    bool isReplSet =
         replCoord->getReplicationMode() == repl::ReplicationCoordinator::Mode::modeReplSet;
 
     if (isReplSet) {
