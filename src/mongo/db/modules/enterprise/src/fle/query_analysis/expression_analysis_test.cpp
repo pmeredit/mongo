@@ -536,8 +536,6 @@ TEST_F(ExpressionAnalysisTest, EvaluatedExpressionsCorrectlyReturnNotEncrypted) 
         fromjson("{$concat: ['str', '$ssn']}"),
         fromjson("{$concatArrays: [[], '$ssn']}"),
         fromjson("{$convert: {input: '$ssn', to: 'double'}}"),
-        fromjson(
-            "{$dateDiff: {startDate: '$ssn', endDate: '$ssn', unit: '$ssn', timezone: '$ssn'}}"),
         fromjson("{$dateFromParts: {year: '$ssn'}}"),
         fromjson("{$dateToParts: {date: '$ssn'}}"),
         fromjson("{$dateFromString: {dateString: '$ssn'}}"),

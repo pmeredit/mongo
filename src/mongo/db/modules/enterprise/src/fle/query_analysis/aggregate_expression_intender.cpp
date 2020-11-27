@@ -535,9 +535,6 @@ private:
         // We need to enter an Evaluated Subtree for the first child of the $cond (if).
         enterSubtree(Subtree::Evaluated{"a boolean conditional"}, subtreeStack);
     }
-    void visit(ExpressionDateDiff*) final {
-        ensureNotEncryptedEnterEval("date diff function", subtreeStack);
-    }
     void visit(ExpressionDateFromString*) final {
         ensureNotEncryptedEnterEval("date from string function", subtreeStack);
     }
@@ -932,7 +929,6 @@ private:
                 exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
         // The then and else children should be part of the parent Subtree.
     }
-    void visit(ExpressionDateDiff*) final {}
     void visit(ExpressionDateFromString*) final {}
     void visit(ExpressionDateFromParts*) final {}
     void visit(ExpressionDateToParts*) final {}
@@ -1171,9 +1167,6 @@ private:
     }
     void visit(ExpressionCond*) final {}
     void visit(ExpressionDateFromString*) final {
-        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
-    }
-    void visit(ExpressionDateDiff*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionDateFromParts*) final {
