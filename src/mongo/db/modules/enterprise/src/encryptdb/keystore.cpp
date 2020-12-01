@@ -312,7 +312,7 @@ public:
         LOGV2_DEBUG(24019,
                     1,
                     "Cached encryption key mapping",
-                    "keyDatabase"_attr = view.database,
+                    "keyDatabase"_attr = key->getKeyId().name(),
                     "keyId"_attr = keyId.id().get());
         fassert(51172, inserted);
     }
