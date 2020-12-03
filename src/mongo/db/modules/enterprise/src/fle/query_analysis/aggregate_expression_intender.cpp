@@ -535,6 +535,9 @@ private:
         // We need to enter an Evaluated Subtree for the first child of the $cond (if).
         enterSubtree(Subtree::Evaluated{"a boolean conditional"}, subtreeStack);
     }
+    void visit(ExpressionDateAdd*) final {
+        ensureNotEncryptedEnterEval("date add function", subtreeStack);
+    }
     void visit(ExpressionDateDiff*) final {
         ensureNotEncryptedEnterEval("date diff function", subtreeStack);
     }
@@ -543,6 +546,9 @@ private:
     }
     void visit(ExpressionDateFromParts*) final {
         ensureNotEncryptedEnterEval("date from parts function", subtreeStack);
+    }
+    void visit(ExpressionDateSubtract*) final {
+        ensureNotEncryptedEnterEval("date subtract function", subtreeStack);
     }
     void visit(ExpressionDateToParts*) final {
         ensureNotEncryptedEnterEval("date to parts function", subtreeStack);
@@ -935,9 +941,11 @@ private:
                 exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
         // The then and else children should be part of the parent Subtree.
     }
+    void visit(ExpressionDateAdd*) final {}
     void visit(ExpressionDateDiff*) final {}
     void visit(ExpressionDateFromString*) final {}
     void visit(ExpressionDateFromParts*) final {}
+    void visit(ExpressionDateSubtract*) final {}
     void visit(ExpressionDateToParts*) final {}
     void visit(ExpressionDateToString*) final {}
     void visit(ExpressionDivide*) final {}
@@ -1174,13 +1182,19 @@ private:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionCond*) final {}
-    void visit(ExpressionDateFromString*) final {
+    void visit(ExpressionDateAdd*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionDateDiff*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionDateFromParts*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionDateFromString*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionDateSubtract*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionDateToParts*) final {

@@ -157,6 +157,9 @@ public:
     void visit(ExpressionConcatArrays*) {
         _tracker.enterEvaluateOrCompare();
     }
+    void visit(ExpressionDateAdd*) {
+        _tracker.enterEvaluateOrCompare();
+    }
     void visit(ExpressionDateDiff*) {
         _tracker.enterEvaluateOrCompare();
     }
@@ -164,6 +167,9 @@ public:
         _tracker.enterEvaluateOrCompare();
     }
     void visit(ExpressionDateFromParts*) {
+        _tracker.enterEvaluateOrCompare();
+    }
+    void visit(ExpressionDateSubtract*) {
         _tracker.enterEvaluateOrCompare();
     }
     void visit(ExpressionDateToParts*) {
@@ -562,9 +568,11 @@ public:
     void visit(ExpressionConcat*) {}
     void visit(ExpressionConcatArrays*) {}
     void visit(ExpressionConstant*) {}
+    void visit(ExpressionDateAdd*) {}
     void visit(ExpressionDateDiff*) {}
     void visit(ExpressionDateFromString*) {}
     void visit(ExpressionDateFromParts*) {}
+    void visit(ExpressionDateSubtract*) {}
     void visit(ExpressionDateToParts*) {}
     void visit(ExpressionDateToString*) {}
     void visit(ExpressionDivide*) {}
@@ -766,6 +774,9 @@ public:
     void visit(ExpressionConcatArrays*) {
         _tracker.exitEvaluateOrCompare();
     }
+    void visit(ExpressionDateAdd*) {
+        _tracker.exitEvaluateOrCompare();
+    }
     void visit(ExpressionDateDiff*) {
         _tracker.exitEvaluateOrCompare();
     }
@@ -773,6 +784,9 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(ExpressionDateFromParts*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(ExpressionDateSubtract*) {
         _tracker.exitEvaluateOrCompare();
     }
     void visit(ExpressionDateToParts*) {
