@@ -21,6 +21,11 @@ assert.commandWorked(admin.runCommand({
     force: true
 }));
 
+const useSecondaryDelaySecs =
+    admin.runCommand({getParameter: 1, featureFlagUseSecondaryDelaySecs: 1})
+        .featureFlagUseSecondaryDelaySecs.value;
+const delayFieldName = useSecondaryDelaySecs ? "secondaryDelaySecs" : "slaveDelay";
+
 audit.assertEntryRelaxed("replSetReconfig", {
     "old": {
         "_id": "foo",
@@ -35,7 +40,7 @@ audit.assertEntryRelaxed("replSetReconfig", {
             "hidden": false,
             "priority": 1,
             "tags": {},
-            "slaveDelay": {"$numberLong": "0"},
+            [delayFieldName]: {"$numberLong": "0"},
             "votes": 1
         }],
         "settings": {
