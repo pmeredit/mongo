@@ -317,6 +317,9 @@ public:
     void visit(ExpressionSubtract*) {
         _tracker.enterEvaluateOrCompare();
     }
+    void visit(ExpressionTestApiVersion*) {
+        _tracker.enterEvaluateOrCompare();
+    }
     void visit(ExpressionToLower*) {
         _tracker.enterEvaluateOrCompare();
     }
@@ -614,6 +617,7 @@ public:
     void visit(ExpressionBinarySize*) {}
     void visit(ExpressionStrLenCP*) {}
     void visit(ExpressionSubtract*) {}
+    void visit(ExpressionTestApiVersion*) {}
     void visit(ExpressionToLower*) {}
     void visit(ExpressionToUpper*) {}
     void visit(ExpressionTrim*) {}
@@ -917,6 +921,9 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(ExpressionSubtract*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(ExpressionTestApiVersion*) {
         _tracker.exitEvaluateOrCompare();
     }
     void visit(ExpressionToLower*) {

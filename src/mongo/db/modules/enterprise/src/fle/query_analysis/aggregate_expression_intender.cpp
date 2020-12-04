@@ -757,6 +757,9 @@ private:
         // We need to enter an Evaluated output Subtree for each case child.
         enterSubtree(Subtree::Evaluated{"a switch case"}, subtreeStack);
     }
+    void visit(ExpressionTestApiVersion*) final {
+        enterSubtree(Subtree::Evaluated{"an API version evaluation"}, subtreeStack);
+    }
     void visit(ExpressionToLower*) final {
         ensureNotEncryptedEnterEval("a string lowercase conversion", subtreeStack);
     }
@@ -943,6 +946,7 @@ private:
     void visit(ExpressionFilter*) final {}
     void visit(ExpressionFloor*) final {}
     void visit(ExpressionFunction*) final {}
+    void visit(ExpressionTestApiVersion*) final {}
     void visit(ExpressionToHashedIndexKey*) final {}
     void visit(ExpressionIfNull*) final {}
     void visit(ExpressionIn* in) final {
@@ -1199,6 +1203,9 @@ private:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionFunction*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionTestApiVersion*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionToHashedIndexKey*) final {
