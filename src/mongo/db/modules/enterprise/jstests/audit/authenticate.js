@@ -59,7 +59,7 @@ audit.assertNoNewEntries("authenticate");
 audit.fastForward();
 assert.commandFailed(db.runCommand({saslStart: 1, mechanism: "HAXX", payload: ""}));
 const mechFailure = audit.assertEntry("authenticate", {user: "", db: "test", mechanism: "HAXX"});
-assert.eq(mechFailure.result, ErrorCodes.BadValue);
+assert.eq(mechFailure.result, ErrorCodes.MechanismUnavailable);
 audit.assertNoNewEntries("authenticate");
 
 MongoRunner.stopMongod(m);
