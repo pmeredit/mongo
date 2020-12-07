@@ -421,9 +421,9 @@ std::unique_ptr<CommandInvocation> CryptdExplainCmd::parse(OperationContext* opC
     const BSONObj& cmdObj = request.body;
 
     // We must remove the FLE meta-data fields before attempting to parse the explain command.
-    ExplainOptions::Verbosity verbosity = uassertStatusOK(ExplainOptions::parseCmdBSON(
-        cmdObj.removeFields({cryptd_query_analysis::kJsonSchema.toString(),
-                             cryptd_query_analysis::kIsRemoteSchema.toString()})));
+    ExplainOptions::Verbosity verbosity =
+        uassertStatusOK(ExplainOptions::parseCmdBSON(cmdObj.removeFields(StringDataSet{
+            cryptd_query_analysis::kJsonSchema, cryptd_query_analysis::kIsRemoteSchema})));
     uassert(ErrorCodes::BadValue,
             "explain command requires a nested object",
             cmdObj.firstElement().type() == Object);
