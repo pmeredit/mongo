@@ -235,10 +235,6 @@ std::string awsIam::getSimplifiedARN(StringData arn) {
     size_t starSuffixPos = suffix.find('/', kAssumedRole.size());
     uassert(51278, "Missing /", starSuffixPos != std::string::npos);
 
-    // Check there are no other slashes
-    size_t extraStarSuffixPos = suffix.find('/', starSuffixPos + 1);
-    uassert(51277, "Extra /", extraStarSuffixPos == std::string::npos);
-
     // Build the final string to return
     size_t lastSlash = arn.rfind('/');
     auto ret = arn.substr(0, lastSlash + 1).toString();
