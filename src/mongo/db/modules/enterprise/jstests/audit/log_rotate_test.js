@@ -64,6 +64,8 @@ print("Testing functionality of rotating both logs.");
     MongoRunner.stopMongod(conn);
 }
 
+sleep(2000);
+
 print("Testing functionality of rotating just the server log.");
 {
     const {conn, audit, admin} = startProcess();
@@ -83,6 +85,8 @@ print("Testing functionality of rotating just the server log.");
 
     MongoRunner.stopMongod(conn);
 }
+
+sleep(2000);
 
 print("Testing functionality of rotating just the audit log.");
 {
