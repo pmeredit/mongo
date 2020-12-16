@@ -44,6 +44,7 @@ namespace mongo {
     X(removeShard)                 \
     X(refineCollectionShardKey)    \
     X(shutdown)                    \
+    X(startup)                     \
     X(createUser)                  \
     X(dropUser)                    \
     X(dropAllUsersFromDatabase)    \
