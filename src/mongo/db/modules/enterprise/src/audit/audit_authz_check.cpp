@@ -106,11 +106,12 @@ void logCommandAuthzCheck(Client* client,
 
 
     auto cmdObjEventBuilder = [&](BSONObjBuilder& builder) {
-        StringData sensitiveField = command.sensitiveFieldName();
+        auto sensitiveFields = command.sensitiveFieldNames();
 
         for (const BSONElement& element : cmdObj.body) {
-            if (!sensitiveField.empty() && sensitiveField == element.fieldNameStringData()) {
-                builder.append(sensitiveField, "xxx"_sd);
+            auto field = element.fieldNameStringData();
+            if (!sensitiveFields.empty() && sensitiveFields.find(field) != sensitiveFields.end()) {
+                builder.append(field, "xxx"_sd);
             } else {
                 builder.append(element);
             }
