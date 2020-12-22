@@ -40,6 +40,22 @@ class AuditSpooler {
     }
 
     /**
+     * Get the current audit line. Useful for rewinding a specified
+     * amount.
+     */
+    getCurrentAuditLine() {
+        return this._auditLine;
+    }
+
+    /**
+     * Set the audit line to some specific value. Best to use with
+     * getCurrentAuditLine().
+     */
+    setCurrentAuditLine(lineNum) {
+        this._auditLine = lineNum;
+    }
+
+    /**
      * Skip forward in the log file to "now"
      * Call this prior to an audit producing command to
      * ensure that old entries don't cause false-positives.
@@ -135,54 +151,7 @@ class AuditSpooler {
                         continue;
                     }
 
-                    let deepPartialEquals = function(target, source) {
-                        print("Checking '" + JSON.stringify(target) + "' vs '" +
-                              JSON.stringify(source) + "'");
-                        for (let property in source) {
-                            if (source.hasOwnProperty(property)) {
-                                if (target[property] === undefined) {
-                                    print("Target missing property: " + property);
-                                    return false;
-                                }
-
-                                if (typeof source[property] === "function") {
-                                    /* { foo: (v) => (v > 5) } */
-                                    const res = source[property](target[property]);
-                                    if (!res) {
-                                        print(property + " does not satisfy callback: " +
-                                              tojson(source[property]) + "(" +
-                                              tojson(target[property]) + ") == false");
-                                        return false;
-                                    }
-                                } else if (typeof source[property] !== "object") {
-                                    /* { foo: 'bar' } */
-                                    const res = source[property] === target[property];
-                                    if (!res) {
-                                        print(property + " not equal. " + source[property] +
-                                              " != " + target[property]);
-                                        return false;
-                                    }
-                                } else if (source[property] instanceof RegExp) {
-                                    /* { foo: /bar.*baz/ } */
-                                    const res = source[property].test(target[property]);
-                                    if (!res) {
-                                        print(property + " does not match pattern " +
-                                              source[property].toString() +
-                                              " != " + target[property]);
-                                        return false;
-                                    }
-                                } else {
-                                    /* { foo: {bar: 'baz'} } */
-                                    if (!deepPartialEquals(target[property], source[property])) {
-                                        return false;
-                                    }
-                                }
-                            }
-                        }
-                        return true;
-                    };
-
-                    if (deepPartialEquals(line.param, param)) {
+                    if (this._deepPartialEquals(line.param, param)) {
                         this._auditLine += Number(idx) + 1;
                         return true;
                     }
@@ -213,17 +182,58 @@ class AuditSpooler {
             if (atype !== undefined && parsedLine.atype !== atype) {
                 return false;
             }
-
             if (paramPartial !== undefined) {
-                for (let key of Object.keys(paramPartial)) {
-                    if (parsedLine.param[key] !== paramPartial[key]) {
+                if (!this._deepPartialEquals(parsedLine.param, paramPartial)) {
+                    return false;
+                }
+            }
+            return true;
+        }, this);
+        assert.eq(log.length, 0, "Log contained new entries: " + tojson(log));
+    }
+
+    _deepPartialEquals(target, source) {
+        print("Checking '" + JSON.stringify(target) + "' vs '" + JSON.stringify(source) + "'");
+        for (let property in source) {
+            if (source.hasOwnProperty(property)) {
+                if (target[property] === undefined) {
+                    print("Target missing property: " + property);
+                    return false;
+                }
+
+                if (typeof source[property] === "function") {
+                    /* { foo: (v) => (v > 5) } */
+                    const res = source[property](target[property]);
+                    if (!res) {
+                        print(property + " does not satisfy callback: " + tojson(source[property]) +
+                              "(" + tojson(target[property]) + ") == false");
+                        return false;
+                    }
+                } else if (typeof source[property] !== "object") {
+                    /* { foo: 'bar' } */
+                    const res = source[property] === target[property];
+                    if (!res) {
+                        print(property + " not equal. " + source[property] +
+                              " != " + target[property]);
+                        return false;
+                    }
+                } else if (source[property] instanceof RegExp) {
+                    /* { foo: /bar.*baz/ } */
+                    const res = source[property].test(target[property]);
+                    if (!res) {
+                        print(property + " does not match pattern " + source[property].toString() +
+                              " != " + target[property]);
+                        return false;
+                    }
+                } else {
+                    /* { foo: {bar: 'baz'} } */
+                    if (!this._deepPartialEquals(target[property], source[property])) {
                         return false;
                     }
                 }
             }
-            return true;
-        });
-        assert.eq(log.length, 0, "Log contained new entries: " + tojson(log));
+        }
+        return true;
     }
 }
 

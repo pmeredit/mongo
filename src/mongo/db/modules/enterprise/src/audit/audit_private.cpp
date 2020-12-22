@@ -18,18 +18,22 @@ void initializeEnvelope(AuditEventEnvelope* envelope,
                         AuditEventType auditEventType,
                         ErrorCodes::Error result) {
     envelope->timestamp = Date_t::now();
-    auto session = client->session();
-    if (session) {
-        invariant(session->localAddr().isValid() && session->remoteAddr().isValid());
-        envelope->localAddr = session->localAddr();
-        envelope->remoteAddr = session->remoteAddr();
+    if (client) {
+        auto session = client->session();
+        if (session) {
+            invariant(session->localAddr().isValid() && session->remoteAddr().isValid());
+            envelope->localAddr = session->localAddr();
+            envelope->remoteAddr = session->remoteAddr();
+        }
+        if (AuthorizationSession::exists(client)) {
+            auto authzSession = AuthorizationSession::get(client);
+            envelope->authenticatedUserNames = authzSession->getAuthenticatedUserNames();
+            envelope->authenticatedRoleNames = authzSession->getAuthenticatedRoleNames();
+            envelope->impersonatedUserNames = authzSession->getImpersonatedUserNames();
+            envelope->impersonatedRoleNames = authzSession->getImpersonatedRoleNames();
+        }
     }
-    envelope->authenticatedUserNames =
-        AuthorizationSession::get(client)->getAuthenticatedUserNames();
-    envelope->authenticatedRoleNames =
-        AuthorizationSession::get(client)->getAuthenticatedRoleNames();
-    envelope->impersonatedUserNames = AuthorizationSession::get(client)->getImpersonatedUserNames();
-    envelope->impersonatedRoleNames = AuthorizationSession::get(client)->getImpersonatedRoleNames();
+
     envelope->auditEventType = auditEventType;
     envelope->result = result;
 }
