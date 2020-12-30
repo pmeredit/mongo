@@ -7,83 +7,92 @@
 #include "audit_event.h"
 
 #include "mongo/db/auth/authorization_manager.h"
+#include "mongo/db/auth/authorization_session.h"
 
 namespace mongo {
 namespace audit {
+
 namespace {
-
-void putRoleNamesBSON(RoleNameIterator roles, BSONArrayBuilder& builder) {
-    while (roles.more()) {
-        const RoleName& role = roles.next();
-        BSONObjBuilder roleNameBuilder(builder.subobjStart());
-        roleNameBuilder.append(AuthorizationManager::ROLE_NAME_FIELD_NAME, role.getRole());
-        roleNameBuilder.append(AuthorizationManager::ROLE_DB_FIELD_NAME, role.getDB());
+template <typename Iter>
+void serializeNamesToBSON(Iter names, BSONObjBuilder* builder, StringData nameType) {
+    BSONArrayBuilder namesBuilder(builder->subarrayStart(nameType));
+    while (names.more()) {
+        const auto& name = names.next();
+        name.serializeToBSON(&namesBuilder);
     }
 }
 
-void putUserNamesBSON(UserNameIterator users, BSONArrayBuilder& builder) {
-    while (users.more()) {
-        const UserName& user = users.next();
-        BSONObjBuilder userNameBuilder(builder.subobjStart());
-        userNameBuilder.append(AuthorizationManager::USER_NAME_FIELD_NAME, user.getUser());
-        userNameBuilder.append(AuthorizationManager::USER_DB_FIELD_NAME, user.getDB());
-    }
-}
-
+constexpr auto kATypeField = "atype"_sd;
+constexpr auto kTimestampField = "ts"_sd;
+constexpr auto kLocalEndpointField = "local"_sd;
+constexpr auto kRemoteEndpointField = "remote"_sd;
+constexpr auto kUsersField = "users"_sd;
+constexpr auto kRolesField = "roles"_sd;
+constexpr auto kParamField = "param"_sd;
+constexpr auto kResultField = "result"_sd;
 }  // namespace
 
-void AuditEvent::generateBSON() const {
+AuditEvent::AuditEvent(Client* client,
+                       AuditEventType aType,
+                       Serializer serializer,
+                       ErrorCodes::Error result) {
     BSONObjBuilder builder;
-    builder.append("atype", toString(getAuditEventType()));
-    builder.appendDate("ts", getTimestamp());
-    {
-        BSONObjBuilder localIpBuilder(builder.subobjStart("local"));
-        builder.append("ip", getLocalAddr().getAddr());
-        builder.append("port", static_cast<int>(getLocalAddr().getPort()));
-    }
-    {
-        BSONObjBuilder remoteIpBuilder(builder.subobjStart("remote"));
-        builder.append("ip", getRemoteAddr().getAddr());
-        builder.append("port", static_cast<int>(getRemoteAddr().getPort()));
-    }
-    {
-        UserNameIterator userNames = getImpersonatedUserNames();
-        RoleNameIterator roleNames = getImpersonatedRoleNames();
 
-        if (!userNames.more()) {
-            userNames = getAuthenticatedUserNames();
-            roleNames = getAuthenticatedRoleNames();
-        }
+    builder.append(kATypeField, toStringData(aType));
+    builder.append(kTimestampField, Date_t::now());
+    if (client) {
+        serializeClient(client, &builder);
+    }
 
-        BSONArrayBuilder usersBuilder(builder.subarrayStart("users"));
-        putUserNamesBSON(userNames, usersBuilder);
-        usersBuilder.done();
-        BSONArrayBuilder rolesBuilder(builder.subarrayStart("roles"));
-        putRoleNamesBSON(roleNames, rolesBuilder);
-        rolesBuilder.done();
+    BSONObjBuilder paramBuilder(builder.subobjStart(kParamField));
+    if (serializer) {
+        serializer(&paramBuilder);
     }
-    {
-        BSONObjBuilder paramBuilder(builder.subobjStart("param"));
-        putParamsBSON(paramBuilder);
-    }
-    builder.appendIntOrLL("result", getResultCode());
-    _obj = builder.obj<BSONObj::LargeSizeTrait>();
-    _bsonGenerated = true;
+    paramBuilder.doneFast();
+
+    builder.append(kResultField, result);
+
+    _obj = builder.obj();
 }
 
-BSONObj AuditEvent::toBSON() const {
-    if (!_bsonGenerated) {
-        generateBSON();
+void AuditEvent::serializeClient(Client* client, BSONObjBuilder* builder) {
+    invariant(client);
+
+    auto session = client->session();
+    if (session) {
+        auto local = session->localAddr();
+        auto remote = session->remoteAddr();
+        invariant(local.isValid() && remote.isValid());
+        // local: {ip: '127.0.0.1', port: 27017} or {unix: '/var/run/mongodb.sock'}
+        local.serializeToBSON(kLocalEndpointField, builder);
+        // remote: {ip: '::1', port: 12345} or {unix: '/var/run/mongodb.sock'}
+        remote.serializeToBSON(kRemoteEndpointField, builder);
     }
-    return _obj;
+
+    if (AuthorizationSession::exists(client)) {
+        auto as = AuthorizationSession::get(client);
+        UserNameIterator userNames = as->getImpersonatedUserNames();
+        RoleNameIterator roleNames;
+
+        if (userNames.more()) {
+            roleNames = as->getImpersonatedRoleNames();
+        } else {
+            userNames = as->getAuthenticatedUserNames();
+            roleNames = as->getAuthenticatedRoleNames();
+        }
+
+        // users: [{db: dbnane, user: username}, ...]
+        serializeNamesToBSON(userNames, builder, kUsersField);
+        // roles: [{db: dbname, role: rolename}, ...]
+        serializeNamesToBSON(roleNames, builder, kRolesField);
+    }
 }
 
 ElementIterator* AuditEvent::allocateIterator(const ElementPath* path) const {
-    if (!_bsonGenerated) {
-        generateBSON();
-    }
-    if (_iteratorUsed)
+    if (_iteratorUsed) {
         return new BSONElementIterator(path, _obj);
+    }
+
     _iteratorUsed = true;
     _iterator.reset(path, _obj);
     return &_iterator;

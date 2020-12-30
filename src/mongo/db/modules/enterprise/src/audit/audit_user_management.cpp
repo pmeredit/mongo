@@ -2,152 +2,68 @@
  *    Copyright (C) 2013 10gen Inc.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
-
 #include "mongo/platform/basic.h"
 
 #include "audit_event.h"
+#include "audit_event_type.h"
 #include "audit_log.h"
 #include "audit_manager_global.h"
-#include "audit_private.h"
-#include "mongo/base/status.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/address_restriction.h"
-#include "mongo/db/auth/authorization_manager.h"
-#include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/client.h"
-#include "mongo/db/namespace_string.h"
 
 namespace mongo {
 
 namespace audit {
 namespace {
 
-class CreateUserEvent : public AuditEvent {
-public:
-    CreateUserEvent(const AuditEventEnvelope& envelope,
-                    const UserName& username,
-                    bool password,
-                    const BSONObj* customData,
-                    const std::vector<RoleName>& roles,
-                    const boost::optional<BSONArray>& restrictions)
-        : AuditEvent(envelope),
-          _username(username),
-          _password(password),
-          _customData(customData),
-          _roles(roles),
-          _restrictions(restrictions) {}
+constexpr auto kPasswordChangedField = "passwordChanged"_sd;
+constexpr auto kCustomDataField = "customData"_sd;
+constexpr auto kRolesField = "roles"_sd;
+constexpr auto kAuthenticationRestrictionsField = "authenticationRestrictions"_sd;
+constexpr auto kDBField = "db"_sd;
 
-private:
-    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
-        builder.append(AuthorizationManager::USER_NAME_FIELD_NAME, _username.getUser());
-        builder.append(AuthorizationManager::USER_DB_FIELD_NAME, _username.getDB());
-
-        if (_customData) {
-            builder.append("customData", *_customData);
-        }
-
-        BSONArrayBuilder roleArray(builder.subarrayStart("roles"));
-        for (std::vector<RoleName>::const_iterator role = _roles.begin(); role != _roles.end();
-             role++) {
-            roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME
-                                  << role->getRole() << AuthorizationManager::ROLE_DB_FIELD_NAME
-                                  << role->getDB()));
-        }
-        roleArray.done();
-
-        if (_restrictions && !_restrictions->isEmpty()) {
-            builder.append("authenticationRestrictions", _restrictions.get());
-        }
-        return builder;
+void logCreateUpdateUser(Client* client,
+                         const UserName& username,
+                         bool password,
+                         const BSONObj* customData,
+                         const std::vector<RoleName>* roles,
+                         const boost::optional<BSONArray>& restrictions,
+                         AuditEventType aType) {
+    if (!getGlobalAuditManager()->enabled) {
+        return;
     }
 
+    AuditEvent event(client, aType, [&](BSONObjBuilder* builder) {
+        const bool isCreate = aType == AuditEventType::createUser;
+        username.appendToBSON(builder);
 
-    const UserName _username;
-    bool _password;
-    const BSONObj* _customData;
-    const std::vector<RoleName> _roles;
-    const boost::optional<BSONArray> _restrictions;
-};
-
-class DropUserEvent : public AuditEvent {
-public:
-    DropUserEvent(const AuditEventEnvelope& envelope, const UserName& username)
-        : AuditEvent(envelope), _username(username) {}
-
-private:
-    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
-        builder.append(AuthorizationManager::USER_NAME_FIELD_NAME, _username.getUser());
-        builder.append(AuthorizationManager::USER_DB_FIELD_NAME, _username.getDB());
-        return builder;
-    }
-
-    const UserName _username;
-};
-
-class DropAllUsersFromDatabaseEvent : public AuditEvent {
-public:
-    DropAllUsersFromDatabaseEvent(const AuditEventEnvelope& envelope, StringData dbname)
-        : AuditEvent(envelope), _dbname(dbname) {}
-
-private:
-    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
-        builder.append("db", _dbname);
-        return builder;
-    }
-
-    StringData _dbname;
-};
-
-
-class UpdateUserEvent : public AuditEvent {
-public:
-    UpdateUserEvent(const AuditEventEnvelope& envelope,
-                    const UserName& username,
-                    bool password,
-                    const BSONObj* customData,
-                    const std::vector<RoleName>* roles,
-                    const boost::optional<BSONArray>& restrictions)
-        : AuditEvent(envelope),
-          _username(username),
-          _password(password),
-          _customData(customData),
-          _roles(roles),
-          _restrictions(restrictions) {}
-
-private:
-    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
-        builder.append(AuthorizationManager::USER_NAME_FIELD_NAME, _username.getUser());
-        builder.append(AuthorizationManager::USER_DB_FIELD_NAME, _username.getDB());
-
-        builder.append("passwordChanged", _password);
-        if (_customData) {
-            builder.append("customData", *_customData);
+        if (!isCreate) {
+            builder->append(kPasswordChangedField, password);
         }
-        if (_roles && !_roles->empty()) {
-            BSONArrayBuilder roleArray(builder.subarrayStart("roles"));
-            for (std::vector<RoleName>::const_iterator role = _roles->begin();
-                 role != _roles->end();
-                 role++) {
-                roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME
-                                      << role->getRole() << AuthorizationManager::ROLE_DB_FIELD_NAME
-                                      << role->getDB()));
+
+        if (customData) {
+            builder->append(kCustomDataField, *customData);
+        }
+
+        if (roles && (isCreate || !roles->empty())) {
+            BSONArrayBuilder roleArray(builder->subarrayStart(kRolesField));
+            for (const auto& role : *roles) {
+                BSONObjBuilder roleBuilder(roleArray.subobjStart());
+                role.appendToBSON(&roleBuilder);
             }
             roleArray.done();
         }
-        if (_restrictions && !_restrictions->isEmpty()) {
-            builder.append("authenticationRestrictions", _restrictions.get());
+
+        if (restrictions && !restrictions->isEmpty()) {
+            builder->append(kAuthenticationRestrictionsField, restrictions.get());
         }
-        return builder;
+    });
+
+    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+        logEvent(event);
     }
-
-    const UserName _username;
-    bool _password;
-    const BSONObj* _customData;
-    const std::vector<RoleName>* _roles;
-    const boost::optional<BSONArray> _restrictions;
-};
-
+}
 }  // namespace
 }  // namespace audit
 
@@ -157,19 +73,8 @@ void audit::logCreateUser(Client* client,
                           const BSONObj* customData,
                           const std::vector<RoleName>& roles,
                           const boost::optional<BSONArray>& restrictions) {
-    if (!getGlobalAuditManager()->enabled) {
-        return;
-    }
-
-    CreateUserEvent event(makeEnvelope(client, AuditEventType::createUser, ErrorCodes::OK),
-                          username,
-                          password,
-                          customData,
-                          roles,
-                          restrictions);
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        logEvent(event);
-    }
+    logCreateUpdateUser(
+        client, username, password, customData, &roles, restrictions, AuditEventType::createUser);
 }
 
 void audit::logDropUser(Client* client, const UserName& username) {
@@ -177,7 +82,10 @@ void audit::logDropUser(Client* client, const UserName& username) {
         return;
     }
 
-    DropUserEvent event(makeEnvelope(client, AuditEventType::dropUser, ErrorCodes::OK), username);
+    AuditEvent event(client, AuditEventType::dropUser, [&](BSONObjBuilder* builder) {
+        username.appendToBSON(builder);
+    });
+
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }
@@ -188,8 +96,10 @@ void audit::logDropAllUsersFromDatabase(Client* client, StringData dbname) {
         return;
     }
 
-    DropAllUsersFromDatabaseEvent event(
-        makeEnvelope(client, AuditEventType::dropAllUsersFromDatabase, ErrorCodes::OK), dbname);
+    AuditEvent event(client,
+                     AuditEventType::dropAllUsersFromDatabase,
+                     [dbname](BSONObjBuilder* builder) { builder->append(kDBField, dbname); });
+
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }
@@ -201,19 +111,8 @@ void audit::logUpdateUser(Client* client,
                           const BSONObj* customData,
                           const std::vector<RoleName>* roles,
                           const boost::optional<BSONArray>& restrictions) {
-    if (!getGlobalAuditManager()->enabled) {
-        return;
-    }
-
-    UpdateUserEvent event(makeEnvelope(client, AuditEventType::updateUser, ErrorCodes::OK),
-                          username,
-                          password,
-                          customData,
-                          roles,
-                          restrictions);
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        logEvent(event);
-    }
+    logCreateUpdateUser(
+        client, username, password, customData, roles, restrictions, AuditEventType::updateUser);
 }
 
 }  // namespace mongo

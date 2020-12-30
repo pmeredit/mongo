@@ -2,44 +2,23 @@
  *    Copyright (C) 2013 10gen Inc.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
-
 #include "mongo/platform/basic.h"
 
 #include "audit_event.h"
+#include "audit_event_type.h"
 #include "audit_log.h"
 #include "audit_manager_global.h"
-#include "audit_private.h"
-#include "mongo/base/status.h"
 #include "mongo/db/audit.h"
-#include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/client.h"
-#include "mongo/db/namespace_string.h"
 
 namespace mongo {
-
-namespace audit {
-namespace {
-
-class ShutdownEvent : public AuditEvent {
-public:
-    ShutdownEvent(const AuditEventEnvelope& envelope) : AuditEvent(envelope) {}
-
-private:
-    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
-        return builder;
-    }
-};
-
-}  // namespace
-}  // namespace audit
 
 void audit::logShutdown(Client* client) {
     if (!getGlobalAuditManager()->enabled) {
         return;
     }
 
-    ShutdownEvent event(makeEnvelope(client, AuditEventType::shutdown, ErrorCodes::OK));
+    AuditEvent event(client, AuditEventType::shutdown);
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }

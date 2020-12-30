@@ -2,324 +2,146 @@
  *    Copyright (C) 2013 10gen Inc.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
-
 #include "mongo/platform/basic.h"
 
 #include "audit_event.h"
 #include "audit_log.h"
 #include "audit_manager_global.h"
-#include "audit_private.h"
-#include "mongo/base/status.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/address_restriction.h"
 #include "mongo/db/auth/authorization_manager.h"
-#include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/privilege_parser.h"
-#include "mongo/db/auth/user.h"
+#include "mongo/db/auth/role_name.h"
+#include "mongo/db/auth/user_name.h"
 #include "mongo/db/client.h"
-#include "mongo/db/namespace_string.h"
 
 namespace mongo {
-
 namespace audit {
+
 namespace {
+constexpr auto kRolesField = "roles"_sd;
+constexpr auto kPrivilegesField = "privileges"_sd;
+constexpr auto kAuthenticationRestrictionsField = "authenticationRestrictions"_sd;
+constexpr auto kDBField = "db"_sd;
 
-class GrantRolesToUserEvent : public AuditEvent {
-public:
-    GrantRolesToUserEvent(const AuditEventEnvelope& envelope,
-                          const UserName& username,
-                          const std::vector<RoleName>& roles)
-        : AuditEvent(envelope), _username(username), _roles(roles) {}
-
-private:
-    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
-        builder.append(AuthorizationManager::USER_NAME_FIELD_NAME, _username.getUser());
-        builder.append(AuthorizationManager::USER_DB_FIELD_NAME, _username.getDB());
-
-        BSONArrayBuilder roleArray(builder.subarrayStart("roles"));
-        for (const auto& role : _roles) {
-            roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME
-                                  << role.getRole() << AuthorizationManager::ROLE_DB_FIELD_NAME
-                                  << role.getDB()));
-        }
-        roleArray.doneFast();
-        return builder;
+void logGrantRevokeRolesToFromUser(Client* client,
+                                   const UserName& username,
+                                   const std::vector<RoleName>& roles,
+                                   AuditEventType aType) {
+    if (!getGlobalAuditManager()->enabled) {
+        return;
     }
 
-    const UserName _username;
-    const std::vector<RoleName> _roles;
-};
+    AuditEvent event(client, aType, [&](BSONObjBuilder* builder) {
+        username.appendToBSON(builder);
 
-class RevokeRolesFromUserEvent : public AuditEvent {
-public:
-    RevokeRolesFromUserEvent(const AuditEventEnvelope& envelope,
-                             const UserName& username,
-                             const std::vector<RoleName>& roles)
-        : AuditEvent(envelope), _username(username), _roles(roles) {}
-
-private:
-    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
-        builder.append(AuthorizationManager::USER_NAME_FIELD_NAME, _username.getUser());
-        builder.append(AuthorizationManager::USER_DB_FIELD_NAME, _username.getDB());
-
-        BSONArrayBuilder roleArray(builder.subarrayStart("roles"));
-        for (const auto& role : _roles) {
-            roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME
-                                  << role.getRole() << AuthorizationManager::ROLE_DB_FIELD_NAME
-                                  << role.getDB()));
+        BSONArrayBuilder roleArray(builder->subarrayStart(kRolesField));
+        for (const auto& role : roles) {
+            BSONObjBuilder roleBuilder(roleArray.subobjStart());
+            role.appendToBSON(&roleBuilder);
         }
         roleArray.doneFast();
-        return builder;
+    });
+
+    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+        logEvent(event);
+    }
+}
+
+void logCreateUpdateRole(Client* client,
+                         const RoleName& role,
+                         const std::vector<RoleName>* roles,
+                         const PrivilegeVector* privileges,
+                         const boost::optional<BSONArray>& restrictions,
+                         AuditEventType aType) {
+    if (!getGlobalAuditManager()->enabled) {
+        return;
     }
 
-    const UserName _username;
-    const std::vector<RoleName> _roles;
-};
+    AuditEvent event(client, aType, [&](BSONObjBuilder* builder) {
+        const bool isCreate = aType == AuditEventType::createRole;
+        role.appendToBSON(builder);
 
-class CreateRoleEvent : public AuditEvent {
-public:
-    CreateRoleEvent(const AuditEventEnvelope& envelope,
-                    const RoleName& role,
-                    const std::vector<RoleName>& roles,
-                    const PrivilegeVector& privileges,
-                    const boost::optional<BSONArray>& restrictions)
-        : AuditEvent(envelope),
-          _role(role),
-          _roles(roles),
-          _privileges(privileges),
-          _restrictions(restrictions) {}
-
-private:
-    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
-        builder.append(AuthorizationManager::ROLE_NAME_FIELD_NAME, _role.getRole());
-        builder.append(AuthorizationManager::ROLE_DB_FIELD_NAME, _role.getDB());
-        BSONArrayBuilder roleArray(builder.subarrayStart("roles"));
-        for (std::vector<RoleName>::const_iterator role = _roles.begin(); role != _roles.end();
-             role++) {
-            roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME
-                                  << role->getRole() << AuthorizationManager::ROLE_DB_FIELD_NAME
-                                  << role->getDB()));
-        }
-        roleArray.doneFast();
-        BSONArrayBuilder privilegeArray(builder.subarrayStart("privileges"));
-        ParsedPrivilege printable;
-        std::string trash;
-        for (const auto& privilege : _privileges) {
-            fassert(4024,
-                    ParsedPrivilege::privilegeToParsedPrivilege(privilege, &printable, &trash));
-            privilegeArray.append(printable.toBSON());
-        }
-        privilegeArray.doneFast();
-        if (_restrictions && !_restrictions->isEmpty()) {
-            builder.append("authenticationRestrictions", _restrictions.get());
-        }
-        return builder;
-    }
-
-    const RoleName _role;
-    const std::vector<RoleName> _roles;
-    const PrivilegeVector _privileges;
-    const boost::optional<BSONArray> _restrictions;
-};
-
-class UpdateRoleEvent : public AuditEvent {
-public:
-    UpdateRoleEvent(const AuditEventEnvelope& envelope,
-                    const RoleName& role,
-                    const std::vector<RoleName>* roles,
-                    const PrivilegeVector* privileges,
-                    const boost::optional<BSONArray>& restrictions)
-        : AuditEvent(envelope),
-          _role(role),
-          _roles(roles),
-          _privileges(privileges),
-          _restrictions(restrictions) {}
-
-private:
-    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
-        builder.append(AuthorizationManager::ROLE_NAME_FIELD_NAME, _role.getRole());
-        builder.append(AuthorizationManager::ROLE_DB_FIELD_NAME, _role.getDB());
-        if (_roles && !_roles->empty()) {
-            BSONArrayBuilder roleArray(builder.subarrayStart("roles"));
-            for (std::vector<RoleName>::const_iterator role = _roles->begin();
-                 role != _roles->end();
-                 role++) {
-                roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME
-                                      << role->getRole() << AuthorizationManager::ROLE_DB_FIELD_NAME
-                                      << role->getDB()));
+        if (roles && (isCreate || !roles->empty())) {
+            BSONArrayBuilder roleArray(builder->subarrayStart(kRolesField));
+            for (const auto& roleName : *roles) {
+                BSONObjBuilder roleBuilder(roleArray.subobjStart());
+                roleName.appendToBSON(&roleBuilder);
             }
             roleArray.doneFast();
         }
-        if (_privileges && !_privileges->empty()) {
-            BSONArrayBuilder privilegeArray(builder.subarrayStart("privileges"));
+
+        if (privileges && (isCreate || !privileges->empty())) {
+            BSONArrayBuilder privilegeArray(builder->subarrayStart(kPrivilegesField));
             ParsedPrivilege printable;
             std::string trash;
-            for (PrivilegeVector::const_iterator privilege = _privileges->begin();
-                 privilege != _privileges->end();
-                 privilege++) {
-                fassert(
-                    4026,
-                    ParsedPrivilege::privilegeToParsedPrivilege(*privilege, &printable, &trash));
+            for (const auto& privilege : *privileges) {
+                fassert(4024,
+                        ParsedPrivilege::privilegeToParsedPrivilege(privilege, &printable, &trash));
                 privilegeArray.append(printable.toBSON());
             }
             privilegeArray.doneFast();
         }
 
-        if (_restrictions && !_restrictions->isEmpty()) {
-            builder.append("authenticationRestrictions", _restrictions.get());
+        if (restrictions && !restrictions->isEmpty()) {
+            builder->append("authenticationRestrictions", restrictions.get());
         }
+    });
 
-        return builder;
+    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+        logEvent(event);
+    }
+}
+
+void logGrantRevokeRolesToFromRole(Client* client,
+                                   const RoleName& role,
+                                   const std::vector<RoleName>& roles,
+                                   AuditEventType aType) {
+    if (!getGlobalAuditManager()->enabled) {
+        return;
     }
 
-    const RoleName _role;
-    const std::vector<RoleName>* _roles;
-    const PrivilegeVector* _privileges;
-    const boost::optional<BSONArray> _restrictions;
-};
-
-
-class DropRoleEvent : public AuditEvent {
-public:
-    DropRoleEvent(const AuditEventEnvelope& envelope, const RoleName& role)
-        : AuditEvent(envelope), _role(role) {}
-
-private:
-    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
-        builder.append(AuthorizationManager::ROLE_NAME_FIELD_NAME, _role.getRole());
-        builder.append(AuthorizationManager::ROLE_DB_FIELD_NAME, _role.getDB());
-        return builder;
-    }
-
-    const RoleName _role;
-    const std::vector<RoleName> _roles;
-};
-
-class DropAllRolesFromDatabaseEvent : public AuditEvent {
-public:
-    DropAllRolesFromDatabaseEvent(const AuditEventEnvelope& envelope, StringData dbname)
-        : AuditEvent(envelope), _dbname(dbname) {}
-
-private:
-    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
-        builder.append("db", _dbname);
-        return builder;
-    }
-
-    StringData _dbname;
-};
-
-class GrantRolesToRoleEvent : public AuditEvent {
-public:
-    GrantRolesToRoleEvent(const AuditEventEnvelope& envelope,
-                          const RoleName& role,
-                          const std::vector<RoleName>& roles)
-        : AuditEvent(envelope), _role(role), _roles(roles) {}
-
-private:
-    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
-        builder.append(AuthorizationManager::ROLE_NAME_FIELD_NAME, _role.getRole());
-        builder.append(AuthorizationManager::ROLE_DB_FIELD_NAME, _role.getDB());
-        BSONArrayBuilder roleArray(builder.subarrayStart("roles"));
-        for (std::vector<RoleName>::const_iterator role = _roles.begin(); role != _roles.end();
-             role++) {
-            roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME
-                                  << role->getRole() << AuthorizationManager::ROLE_DB_FIELD_NAME
-                                  << role->getDB()));
+    AuditEvent event(client, aType, [&](BSONObjBuilder* builder) {
+        role.appendToBSON(builder);
+        BSONArrayBuilder rolesArray(builder->subarrayStart(kRolesField));
+        for (const auto& rolename : roles) {
+            BSONObjBuilder roleBuilder(rolesArray.subobjStart());
+            rolename.appendToBSON(&roleBuilder);
         }
-        roleArray.doneFast();
-        return builder;
+        rolesArray.doneFast();
+    });
+
+    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+        logEvent(event);
+    }
+}
+
+void logGrantRevokePrivilegesToFromRole(Client* client,
+                                        const RoleName& role,
+                                        const PrivilegeVector& privileges,
+                                        AuditEventType aType) {
+    if (!getGlobalAuditManager()->enabled) {
+        return;
     }
 
-    const RoleName _role;
-    const std::vector<RoleName> _roles;
-};
+    AuditEvent event(client, aType, [&](BSONObjBuilder* builder) {
+        role.appendToBSON(builder);
 
-class RevokeRolesFromRoleEvent : public AuditEvent {
-public:
-    RevokeRolesFromRoleEvent(const AuditEventEnvelope& envelope,
-                             const RoleName& role,
-                             const std::vector<RoleName>& roles)
-        : AuditEvent(envelope), _role(role), _roles(roles) {}
-
-private:
-    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
-        builder.append(AuthorizationManager::ROLE_NAME_FIELD_NAME, _role.getRole());
-        builder.append(AuthorizationManager::ROLE_DB_FIELD_NAME, _role.getDB());
-        BSONArrayBuilder roleArray(builder.subarrayStart("roles"));
-        for (std::vector<RoleName>::const_iterator role = _roles.begin(); role != _roles.end();
-             role++) {
-            roleArray.append(BSON(AuthorizationManager::ROLE_NAME_FIELD_NAME
-                                  << role->getRole() << AuthorizationManager::ROLE_DB_FIELD_NAME
-                                  << role->getDB()));
-        }
-        roleArray.doneFast();
-        return builder;
-    }
-
-    const RoleName _role;
-    const std::vector<RoleName> _roles;
-};
-
-class GrantPrivilegesToRoleEvent : public AuditEvent {
-public:
-    GrantPrivilegesToRoleEvent(const AuditEventEnvelope& envelope,
-                               const RoleName& role,
-                               const PrivilegeVector& privileges)
-        : AuditEvent(envelope), _role(role), _privileges(privileges) {}
-
-private:
-    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
-        builder.append(AuthorizationManager::ROLE_NAME_FIELD_NAME, _role.getRole());
-        builder.append(AuthorizationManager::ROLE_DB_FIELD_NAME, _role.getDB());
-        BSONArrayBuilder privilegeArray(builder.subarrayStart("privileges"));
+        BSONArrayBuilder privilegeArray(builder->subarrayStart(kPrivilegesField));
         ParsedPrivilege printable;
         std::string trash;
-        for (PrivilegeVector::const_iterator privilege = _privileges.begin();
-             privilege != _privileges.end();
-             privilege++) {
+        for (const auto& privilege : privileges) {
             fassert(4028,
-                    ParsedPrivilege::privilegeToParsedPrivilege(*privilege, &printable, &trash));
+                    ParsedPrivilege::privilegeToParsedPrivilege(privilege, &printable, &trash));
             privilegeArray.append(printable.toBSON());
         }
         privilegeArray.doneFast();
-        return builder;
+    });
+
+    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+        logEvent(event);
     }
-
-
-    const RoleName _role;
-    const PrivilegeVector _privileges;
-};
-
-class RevokePrivilegesFromRoleEvent : public AuditEvent {
-public:
-    RevokePrivilegesFromRoleEvent(const AuditEventEnvelope& envelope,
-                                  const RoleName& role,
-                                  const PrivilegeVector& privileges)
-        : AuditEvent(envelope), _role(role), _privileges(privileges) {}
-
-private:
-    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
-        builder.append(AuthorizationManager::ROLE_NAME_FIELD_NAME, _role.getRole());
-        builder.append(AuthorizationManager::ROLE_DB_FIELD_NAME, _role.getDB());
-        BSONArrayBuilder privilegeArray(builder.subarrayStart("privileges"));
-        ParsedPrivilege printable;
-        std::string trash;
-        for (PrivilegeVector::const_iterator privilege = _privileges.begin();
-             privilege != _privileges.end();
-             privilege++) {
-            fassert(4030,
-                    ParsedPrivilege::privilegeToParsedPrivilege(*privilege, &printable, &trash));
-            privilegeArray.append(printable.toBSON());
-        }
-        privilegeArray.doneFast();
-        return builder;
-    }
-
-    const RoleName _role;
-    const PrivilegeVector _privileges;
-};
+}
 
 }  // namespace
 }  // namespace audit
@@ -327,29 +149,13 @@ private:
 void audit::logGrantRolesToUser(Client* client,
                                 const UserName& username,
                                 const std::vector<RoleName>& roles) {
-    if (!getGlobalAuditManager()->enabled) {
-        return;
-    }
-
-    GrantRolesToUserEvent event(
-        makeEnvelope(client, AuditEventType::grantRolesToUser, ErrorCodes::OK), username, roles);
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        logEvent(event);
-    }
+    logGrantRevokeRolesToFromUser(client, username, roles, AuditEventType::grantRolesToUser);
 }
 
 void audit::logRevokeRolesFromUser(Client* client,
                                    const UserName& username,
                                    const std::vector<RoleName>& roles) {
-    if (!getGlobalAuditManager()->enabled) {
-        return;
-    }
-
-    RevokeRolesFromUserEvent event(
-        makeEnvelope(client, AuditEventType::revokeRolesFromUser, ErrorCodes::OK), username, roles);
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        logEvent(event);
-    }
+    logGrantRevokeRolesToFromUser(client, username, roles, AuditEventType::revokeRolesFromUser);
 }
 
 void audit::logCreateRole(Client* client,
@@ -357,18 +163,8 @@ void audit::logCreateRole(Client* client,
                           const std::vector<RoleName>& roles,
                           const PrivilegeVector& privileges,
                           const boost::optional<BSONArray>& restrictions) {
-    if (!getGlobalAuditManager()->enabled) {
-        return;
-    }
-
-    CreateRoleEvent event(makeEnvelope(client, AuditEventType::createRole, ErrorCodes::OK),
-                          role,
-                          roles,
-                          privileges,
-                          restrictions);
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        logEvent(event);
-    }
+    logCreateUpdateRole(
+        client, role, &roles, &privileges, restrictions, AuditEventType::createRole);
 }
 
 void audit::logUpdateRole(Client* client,
@@ -376,18 +172,7 @@ void audit::logUpdateRole(Client* client,
                           const std::vector<RoleName>* roles,
                           const PrivilegeVector* privileges,
                           const boost::optional<BSONArray>& restrictions) {
-    if (!getGlobalAuditManager()->enabled) {
-        return;
-    }
-
-    UpdateRoleEvent event(makeEnvelope(client, AuditEventType::updateRole, ErrorCodes::OK),
-                          role,
-                          roles,
-                          privileges,
-                          restrictions);
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        logEvent(event);
-    }
+    logCreateUpdateRole(client, role, roles, privileges, restrictions, AuditEventType::updateRole);
 }
 
 void audit::logDropRole(Client* client, const RoleName& role) {
@@ -395,7 +180,10 @@ void audit::logDropRole(Client* client, const RoleName& role) {
         return;
     }
 
-    DropRoleEvent event(makeEnvelope(client, AuditEventType::dropRole, ErrorCodes::OK), role);
+    AuditEvent event(client, AuditEventType::dropRole, [&](BSONObjBuilder* builder) {
+        role.appendToBSON(builder);
+    });
+
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }
@@ -406,8 +194,10 @@ void audit::logDropAllRolesFromDatabase(Client* client, StringData dbname) {
         return;
     }
 
-    DropAllRolesFromDatabaseEvent event(
-        makeEnvelope(client, AuditEventType::dropAllRolesFromDatabase, ErrorCodes::OK), dbname);
+    AuditEvent event(client,
+                     AuditEventType::dropAllRolesFromDatabase,
+                     [dbname](BSONObjBuilder* builder) { builder->append(kDBField, dbname); });
+
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }
@@ -416,61 +206,27 @@ void audit::logDropAllRolesFromDatabase(Client* client, StringData dbname) {
 void audit::logGrantRolesToRole(Client* client,
                                 const RoleName& role,
                                 const std::vector<RoleName>& roles) {
-    if (!getGlobalAuditManager()->enabled) {
-        return;
-    }
-
-    GrantRolesToRoleEvent event(
-        makeEnvelope(client, AuditEventType::grantRolesToRole, ErrorCodes::OK), role, roles);
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        logEvent(event);
-    }
+    logGrantRevokeRolesToFromRole(client, role, roles, AuditEventType::grantRolesToRole);
 }
 
 void audit::logRevokeRolesFromRole(Client* client,
                                    const RoleName& role,
                                    const std::vector<RoleName>& roles) {
-    if (!getGlobalAuditManager()->enabled) {
-        return;
-    }
-
-    RevokeRolesFromRoleEvent event(
-        makeEnvelope(client, AuditEventType::revokeRolesFromRole, ErrorCodes::OK), role, roles);
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        logEvent(event);
-    }
+    logGrantRevokeRolesToFromRole(client, role, roles, AuditEventType::revokeRolesFromRole);
 }
 
 void audit::logGrantPrivilegesToRole(Client* client,
                                      const RoleName& role,
                                      const PrivilegeVector& privileges) {
-    if (!getGlobalAuditManager()->enabled) {
-        return;
-    }
-
-    GrantPrivilegesToRoleEvent event(
-        makeEnvelope(client, AuditEventType::grantPrivilegesToRole, ErrorCodes::OK),
-        role,
-        privileges);
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        logEvent(event);
-    }
+    logGrantRevokePrivilegesToFromRole(
+        client, role, privileges, AuditEventType::grantPrivilegesToRole);
 }
 
 void audit::logRevokePrivilegesFromRole(Client* client,
                                         const RoleName& role,
                                         const PrivilegeVector& privileges) {
-    if (!getGlobalAuditManager()->enabled) {
-        return;
-    }
-
-    RevokePrivilegesFromRoleEvent event(
-        makeEnvelope(client, AuditEventType::revokePrivilegesFromRole, ErrorCodes::OK),
-        role,
-        privileges);
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        logEvent(event);
-    }
+    logGrantRevokePrivilegesToFromRole(
+        client, role, privileges, AuditEventType::revokePrivilegesFromRole);
 }
 
 }  // namespace mongo

@@ -7,13 +7,12 @@
 #include "mongo/platform/basic.h"
 
 #include "audit_event.h"
+#include "audit_event_type.h"
 #include "audit_log.h"
 #include "audit_manager_global.h"
 #include "audit_options.h"
-#include "audit_private.h"
 #include "mongo/base/status.h"
 #include "mongo/db/audit.h"
-#include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/client.h"
 #include "mongo/db/commands.h"
 #include "mongo/db/namespace_string.h"
@@ -21,37 +20,6 @@
 namespace mongo {
 namespace audit {
 namespace {
-
-template <typename Generator>
-class AuthzCheckEvent : public AuditEvent {
-public:
-    AuthzCheckEvent(const AuditEventEnvelope& envelope,
-                    const NamespaceString& ns,
-                    StringData commandName,
-                    bool redactArgs,
-                    Generator&& generator)
-        : AuditEvent(envelope),
-          _ns(ns),
-          _commandName(commandName),
-          _redactArgs(redactArgs),
-          _generator(std::move(generator)) {}
-
-private:
-    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
-        builder.append("command", _commandName);
-        builder.append("ns", _ns.ns());
-        if (!_redactArgs) {
-            BSONObjBuilder argsBuilder(builder.subobjStart("args"));
-            _generator(argsBuilder);
-        }
-        return builder;
-    }
-
-    const NamespaceString& _ns;
-    StringData _commandName;
-    bool _redactArgs;
-    const Generator _generator;
-};
 
 /**
  * Predicate that determines whether or not an authorization check should
@@ -73,6 +41,16 @@ bool _shouldLogAuthzCheck(ErrorCodes::Error result) {
     return false;
 }
 
+constexpr auto kCommandField = "command"_sd;
+constexpr auto kNSField = "ns"_sd;
+constexpr auto kArgsField = "args"_sd;
+constexpr auto kDeleteCommand = "delete"_sd;
+constexpr auto kGetMoreCommand = "getMore"_sd;
+constexpr auto kInsertCommand = "insert"_sd;
+constexpr auto kKillCursorsCommand = "killCursors"_sd;
+constexpr auto kFindCommand = "find"_sd;
+constexpr auto kUpdateCommand = "update"_sd;
+
 template <typename G>
 void _logAuthzCheck(Client* client,
                     const NamespaceString& ns,
@@ -84,11 +62,17 @@ void _logAuthzCheck(Client* client,
         return;
     }
 
-    AuthzCheckEvent<G> event(makeEnvelope(client, AuditEventType::authCheck, result),
-                             ns,
-                             commandName,
-                             redactArgs,
-                             std::move(generator));
+    AuditEvent event(client,
+                     AuditEventType::authCheck,
+                     [&](BSONObjBuilder* builder) {
+                         builder->append(kCommandField, commandName);
+                         builder->append(kNSField, ns.ns());
+                         if (!redactArgs) {
+                             BSONObjBuilder argsBuilder(builder->subobjStart(kArgsField));
+                             generator(argsBuilder);
+                         }
+                     },
+                     result);
 
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
@@ -101,9 +85,9 @@ void logCommandAuthzCheck(Client* client,
                           const OpMsgRequest& cmdObj,
                           const CommandInterface& command,
                           ErrorCodes::Error result) {
-    if (!_shouldLogAuthzCheck(result))
+    if (!_shouldLogAuthzCheck(result)) {
         return;
-
+    }
 
     auto cmdObjEventBuilder = [&](BSONObjBuilder& builder) {
         auto sensitiveFields = command.sensitiveFieldNames();
@@ -143,7 +127,7 @@ void logDeleteAuthzCheck(Client* client,
 
     _logAuthzCheck(client,
                    ns,
-                   "delete",
+                   kDeleteCommand,
                    false,
                    [&](BSONObjBuilder& builder) {
                        builder.append("delete", ns.coll());
@@ -166,7 +150,7 @@ void logGetMoreAuthzCheck(Client* client,
 
     _logAuthzCheck(client,
                    ns,
-                   "getMore",
+                   kGetMoreCommand,
                    false,
                    [&](BSONObjBuilder& builder) {
                        builder.append("getMore", ns.coll());
@@ -185,7 +169,7 @@ void logInsertAuthzCheck(Client* client,
 
     _logAuthzCheck(client,
                    ns,
-                   "insert",
+                   kInsertCommand,
                    false,
                    [&](BSONObjBuilder& builder) {
                        builder.append("insert", ns.coll());
@@ -207,7 +191,7 @@ void logKillCursorsAuthzCheck(Client* client,
 
     _logAuthzCheck(client,
                    ns,
-                   "killCursors",
+                   kKillCursorsCommand,
                    false,
                    [&](BSONObjBuilder& builder) {
                        builder.append("killCursors", ns.coll());
@@ -226,7 +210,7 @@ void logQueryAuthzCheck(Client* client,
 
     _logAuthzCheck(client,
                    ns,
-                   "find",
+                   kFindCommand,
                    false,
                    [&](BSONObjBuilder& builder) {
                        builder.append("find", ns.coll());
@@ -248,7 +232,7 @@ void logUpdateAuthzCheck(Client* client,
 
     _logAuthzCheck(client,
                    ns,
-                   "update",
+                   kUpdateCommand,
                    false,
                    [&](BSONObjBuilder& builder) {
                        builder.append("update", ns.coll());

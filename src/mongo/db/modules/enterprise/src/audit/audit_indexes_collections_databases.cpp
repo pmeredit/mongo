@@ -2,148 +2,40 @@
  *    Copyright (C) 2013 10gen Inc.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
-
 #include "mongo/platform/basic.h"
 
 #include "audit_event.h"
+#include "audit_event_type.h"
 #include "audit_log.h"
 #include "audit_manager_global.h"
-#include "audit_private.h"
-#include "mongo/base/status.h"
 #include "mongo/db/audit.h"
-#include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/client.h"
-#include "mongo/db/namespace_string.h"
 
 namespace mongo {
 
 namespace audit {
 namespace {
 
-class CreateIndexEvent : public AuditEvent {
-public:
-    CreateIndexEvent(const AuditEventEnvelope& envelope,
-                     const BSONObj* indexSpec,
-                     StringData indexname,
-                     StringData nsname)
-        : AuditEvent(envelope), _indexSpec(indexSpec), _indexname(indexname), _nsname(nsname) {}
+constexpr auto kNSField = "ns"_sd;
+constexpr auto kIndexNameField = "indexName"_sd;
+constexpr auto kIndexSpecField = "indexSpec"_sd;
+constexpr auto kViewOnField = "viewOn"_sd;
+constexpr auto kPipelineField = "pipeline"_sd;
+constexpr auto kOldField = "old"_sd;
+constexpr auto kNewField = "new"_sd;
 
-private:
-    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
-        builder.append("ns", _nsname);
-        builder.append("indexName", _indexname);
-        builder.append("indexSpec", *_indexSpec);
-        return builder;
+void logNSEvent(Client* client, StringData nsname, AuditEventType aType) {
+    if (!getGlobalAuditManager()->enabled) {
+        return;
     }
 
-    const BSONObj* _indexSpec;
-    StringData _indexname;
-    StringData _nsname;
-};
+    AuditEvent event(
+        client, aType, [nsname](BSONObjBuilder* builder) { builder->append(kNSField, nsname); });
 
-class CreateCollectionEvent : public AuditEvent {
-public:
-    CreateCollectionEvent(const AuditEventEnvelope& envelope, StringData nsname)
-        : AuditEvent(envelope), _nsname(nsname) {}
-
-    /* Used for creating views. */
-    CreateCollectionEvent(const AuditEventEnvelope& envelope,
-                          StringData nsname,
-                          StringData viewOn,
-                          BSONArray pipeline)
-        : AuditEvent(envelope), _nsname(nsname), _viewOn(viewOn), _pipeline(pipeline) {
-        dassert(!_viewOn.empty());
+    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+        logEvent(event);
     }
-
-private:
-    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
-        builder.append("ns", _nsname);
-        if (!_viewOn.empty()) {
-            builder.append("viewOn", _viewOn);
-            builder.append("pipeline", _pipeline);
-        }
-        return builder;
-    }
-
-    StringData _nsname;
-    StringData _viewOn;
-    BSONArray _pipeline;
-};
-
-class CreateDatabaseEvent : public AuditEvent {
-public:
-    CreateDatabaseEvent(const AuditEventEnvelope& envelope, StringData dbname)
-        : AuditEvent(envelope), _dbname(dbname) {}
-
-private:
-    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
-        builder.append("ns", _dbname);
-        return builder;
-    }
-
-    StringData _dbname;
-};
-
-class DropIndexEvent : public AuditEvent {
-public:
-    DropIndexEvent(const AuditEventEnvelope& envelope, StringData indexname, StringData nsname)
-        : AuditEvent(envelope), _indexname(indexname), _nsname(nsname) {}
-
-private:
-    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
-        builder.append("ns", _nsname);
-        builder.append("indexName", _indexname);
-        return builder;
-    }
-
-    StringData _indexname;
-    StringData _nsname;
-};
-
-class DropCollectionEvent : public AuditEvent {
-public:
-    DropCollectionEvent(const AuditEventEnvelope& envelope, StringData nsname)
-        : AuditEvent(envelope), _nsname(nsname) {}
-
-private:
-    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
-        builder.append("ns", _nsname);
-        return builder;
-    }
-
-    StringData _nsname;
-};
-
-class DropDatabaseEvent : public AuditEvent {
-public:
-    DropDatabaseEvent(const AuditEventEnvelope& envelope, StringData dbname)
-        : AuditEvent(envelope), _dbname(dbname) {}
-
-private:
-    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
-        builder.append("ns", _dbname);
-        return builder;
-    }
-
-    StringData _dbname;
-};
-
-class RenameCollectionEvent : public AuditEvent {
-public:
-    RenameCollectionEvent(const AuditEventEnvelope& envelope, StringData source, StringData target)
-        : AuditEvent(envelope), _source(source), _target(target) {}
-
-private:
-    BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const final {
-        builder.append("old", _source);
-        builder.append("new", _target);
-        return builder;
-    }
-
-    StringData _source;
-    StringData _target;
-};
+}
 
 }  // namespace
 }  // namespace audit
@@ -156,25 +48,19 @@ void audit::logCreateIndex(Client* client,
         return;
     }
 
-    CreateIndexEvent event(makeEnvelope(client, AuditEventType::createIndex, ErrorCodes::OK),
-                           indexSpec,
-                           indexname,
-                           nsname);
+    AuditEvent event(client, AuditEventType::createIndex, [&](BSONObjBuilder* builder) {
+        builder->append(kNSField, nsname);
+        builder->append(kIndexNameField, indexname);
+        builder->append(kIndexSpecField, *indexSpec);
+    });
+
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }
 }
 
 void audit::logCreateCollection(Client* client, StringData nsname) {
-    if (!getGlobalAuditManager()->enabled) {
-        return;
-    }
-
-    CreateCollectionEvent event(
-        makeEnvelope(client, AuditEventType::createCollection, ErrorCodes::OK), nsname);
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        logEvent(event);
-    }
+    logNSEvent(client, nsname, AuditEventType::createCollection);
 }
 
 void audit::logCreateView(Client* client,
@@ -187,36 +73,24 @@ void audit::logCreateView(Client* client,
     }
 
     // Intentional: createView is audited as createCollection with viewOn/pipeline params. */
-    CreateCollectionEvent event(
-        makeEnvelope(client, AuditEventType::createCollection, code), nsname, viewOn, pipeline);
+    AuditEvent event(client, AuditEventType::createCollection, [&](BSONObjBuilder* builder) {
+        builder->append(kNSField, nsname);
+        builder->append(kViewOnField, viewOn);
+        builder->append(kPipelineField, pipeline);
+    });
+
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }
 }
 
 void audit::logImportCollection(Client* client, StringData nsname) {
-    if (!getGlobalAuditManager()->enabled) {
-        return;
-    }
-
     // An import is similar to a create, except that we use an importCollection action type.
-    CreateCollectionEvent event(
-        makeEnvelope(client, AuditEventType::importCollection, ErrorCodes::OK), nsname);
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        logEvent(event);
-    }
+    logNSEvent(client, nsname, AuditEventType::importCollection);
 }
 
 void audit::logCreateDatabase(Client* client, StringData dbname) {
-    if (!getGlobalAuditManager()->enabled) {
-        return;
-    }
-
-    CreateDatabaseEvent event(makeEnvelope(client, AuditEventType::createDatabase, ErrorCodes::OK),
-                              dbname);
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        logEvent(event);
-    }
+    logNSEvent(client, dbname, AuditEventType::createDatabase);
 }
 
 void audit::logDropIndex(Client* client, StringData indexname, StringData nsname) {
@@ -224,35 +98,22 @@ void audit::logDropIndex(Client* client, StringData indexname, StringData nsname
         return;
     }
 
-    DropIndexEvent event(
-        makeEnvelope(client, AuditEventType::dropIndex, ErrorCodes::OK), indexname, nsname);
+    AuditEvent event(client, AuditEventType::dropIndex, [&](BSONObjBuilder* builder) {
+        builder->append(kNSField, nsname);
+        builder->append(kIndexNameField, indexname);
+    });
+
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }
 }
 
 void audit::logDropCollection(Client* client, StringData nsname) {
-    if (!getGlobalAuditManager()->enabled) {
-        return;
-    }
-
-    DropCollectionEvent event(makeEnvelope(client, AuditEventType::dropCollection, ErrorCodes::OK),
-                              nsname);
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        logEvent(event);
-    }
+    logNSEvent(client, nsname, AuditEventType::dropCollection);
 }
 
 void audit::logDropDatabase(Client* client, StringData dbname) {
-    if (!getGlobalAuditManager()->enabled) {
-        return;
-    }
-
-    DropDatabaseEvent event(makeEnvelope(client, AuditEventType::dropDatabase, ErrorCodes::OK),
-                            dbname);
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
-        logEvent(event);
-    }
+    logNSEvent(client, dbname, AuditEventType::dropDatabase);
 }
 
 void audit::logRenameCollection(Client* client, StringData source, StringData target) {
@@ -260,8 +121,11 @@ void audit::logRenameCollection(Client* client, StringData source, StringData ta
         return;
     }
 
-    RenameCollectionEvent event(
-        makeEnvelope(client, AuditEventType::renameCollection, ErrorCodes::OK), source, target);
+    AuditEvent event(client, AuditEventType::renameCollection, [&](BSONObjBuilder* builder) {
+        builder->append(kOldField, source);
+        builder->append(kNewField, target);
+    });
+
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }

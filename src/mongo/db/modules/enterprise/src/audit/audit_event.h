@@ -18,93 +18,34 @@
 namespace mongo {
 namespace audit {
 
-struct AuditEventEnvelope {
-    Date_t timestamp;
-    SockAddr localAddr;
-    SockAddr remoteAddr;
-    UserNameIterator authenticatedUserNames;
-    RoleNameIterator authenticatedRoleNames;
-    UserNameIterator impersonatedUserNames;
-    RoleNameIterator impersonatedRoleNames;
-    AuditEventType auditEventType;
-    ErrorCodes::Error result;
-};
-
 /**
  * Base class of types representing events for writing to the audit log.
- *
- * Instances of subclasses of AuditEvent will typically be ephemeral, and built on the stack for
- * immediate writing into the audit log domain.  They are not intended to be stored, and may not
- * own all of the data they refernence.
  */
 class AuditEvent : public MatchableDocument {
+public:
+    using Serializer = std::function<void(BSONObjBuilder*)>;
+    AuditEvent(Client* client,
+               AuditEventType aType,
+               Serializer serializer = nullptr,
+               ErrorCodes::Error result = ErrorCodes::OK);
+
+    BSONObj toBSON() const final {
+        return _obj;
+    }
+
+    ElementIterator* allocateIterator(const ElementPath* path) const final;
+    void releaseIterator(ElementIterator* iterator) const final;
+
+private:
+    AuditEvent() = delete;
     AuditEvent(const AuditEvent&) = delete;
     AuditEvent& operator=(const AuditEvent&) = delete;
 
-public:
-    Date_t getTimestamp() const {
-        return _envelope.timestamp;
-    }
-    const UserNameIterator getAuthenticatedUserNames() const {
-        return _envelope.authenticatedUserNames;
-    }
-    const RoleNameIterator getAuthenticatedRoleNames() const {
-        return _envelope.authenticatedRoleNames;
-    }
-    const UserNameIterator getImpersonatedUserNames() const {
-        return _envelope.impersonatedUserNames;
-    }
-    const RoleNameIterator getImpersonatedRoleNames() const {
-        return _envelope.impersonatedRoleNames;
-    }
-    const SockAddr& getLocalAddr() const {
-        return _envelope.localAddr;
-    }
-    const SockAddr& getRemoteAddr() const {
-        return _envelope.remoteAddr;
-    }
-    AuditEventType getAuditEventType() const {
-        return _envelope.auditEventType;
-    }
-    ErrorCodes::Error getResultCode() const {
-        return _envelope.result;
-    }
+    static void serializeClient(Client* client, BSONObjBuilder* builder);
 
-    /**
-     *  Virtual functions from MatchableDocument
-     */
-    virtual BSONObj toBSON() const;
-
-    virtual ElementIterator* allocateIterator(const ElementPath* path) const;
-    virtual void releaseIterator(ElementIterator* iterator) const;
-
-protected:
-    explicit AuditEvent(const AuditEventEnvelope& envelope)
-        : _envelope(envelope), _bsonGenerated(false), _iteratorUsed(false) {}
-
-    /**
-     * Destructor.  Should not be virtual.  Do not attempt to delete a pointer to AuditEvent.
-     *
-     * This destructor is virtual due to GCC 4.1.2 erroneously complaining about a non-virtual
-     * protected destructor.
-     */
-    virtual ~AuditEvent() {}
-
-
-private:
-    virtual BSONObjBuilder& putParamsBSON(BSONObjBuilder& builder) const = 0;
-
-    /**
-     * Builds BSON describing this event and store in _obj
-     */
-    void generateBSON() const;
-
-    AuditEventEnvelope _envelope;
-
-    mutable BSONObj _obj;
-    mutable bool _bsonGenerated;
+    BSONObj _obj;
     mutable BSONElementIterator _iterator;
-    mutable bool _iteratorUsed;
+    mutable bool _iteratorUsed = false;
 };
 
 }  // namespace audit
