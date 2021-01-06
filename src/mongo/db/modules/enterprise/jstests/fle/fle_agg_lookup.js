@@ -258,5 +258,88 @@ assert.commandFailedWithCode(testDB.runCommand({
     }),
                                  51208);
 
+// Test that self-lookup with unencrypted equality match fields and bringing unencrypted fields from
+// a subpipeline succeeds.
+command = {
+    aggregate: coll.getName(),
+    pipeline: [
+        {$lookup: {from: coll.getName(), as: "docs", localField: "item", foreignField: "sku",
+                    let : {}, pipeline: [{$match: {name: "bob"}}]}}
+    ],
+    cursor: {},
+    jsonSchema: {},
+    isRemoteSchema: false,
+};
+cmdRes = assert.commandWorked(testDB.runCommand(command));
+delete command.jsonSchema;
+delete command.isRemoteSchema;
+delete cmdRes.result.lsid;
+assert.eq(command, cmdRes.result, cmdRes);
+assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
+assert.eq(false, cmdRes.schemaRequiresEncryption, cmdRes);
+
+// Test that self-lookup with encrypted equality match fields bringing encrypted fields from a
+// subpipeline succeeds.
+command = {
+    aggregate: coll.getName(),
+    pipeline: [
+        {
+          $lookup: {
+              from: coll.getName(),
+              as: "docs",
+              localField: "item",
+              foreignField: "sku",
+              let : {},
+              pipeline: [{$match: {bob: 1}}]
+          }
+        }
+    ],
+    cursor: {},
+    jsonSchema: {
+        type: "object",
+        properties: {item: encryptedStringSpec, sku: encryptedStringSpec, foo: encryptedStringSpec}
+    },
+    isRemoteSchema: false,
+};
+cmdRes = assert.commandWorked(testDB.runCommand(command));
+delete command.jsonSchema;
+delete command.isRemoteSchema;
+delete cmdRes.result.lsid;
+assert.eq(command, cmdRes.result, cmdRes);
+assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
+assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+
+// Test that self-lookup with encrypted equality match fields bringing unencrypted fields from a
+// subpipeline succeeds and the 'as' field can be referenced afterwards.
+command = {
+    aggregate: coll.getName(),
+    pipeline: [
+        {
+          $lookup: {
+              from: coll.getName(),
+              as: "docs",
+              localField: "item",
+              foreignField: "sku",
+              let : {},
+              pipeline: [{$project: {notEncrypted: 1}}]
+          }
+        },
+        {$match: {docs: {$eq: "winterfell"}}}
+    ],
+    cursor: {},
+    jsonSchema: {
+        type: "object",
+        properties: {item: encryptedStringSpec, sku: encryptedStringSpec, foo: encryptedStringSpec}
+    },
+    isRemoteSchema: false,
+};
+cmdRes = assert.commandWorked(testDB.runCommand(command));
+delete command.jsonSchema;
+delete command.isRemoteSchema;
+delete cmdRes.result.lsid;
+assert.eq(command, cmdRes.result, cmdRes);
+assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
+assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+
 mongocryptd.stop();
 })();

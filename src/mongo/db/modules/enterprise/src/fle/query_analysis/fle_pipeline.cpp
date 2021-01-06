@@ -315,7 +315,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForLookUp(
     invariant(modifiedPaths.type == DocumentSource::GetModPathsReturn::Type::kFiniteSet);
     invariant(modifiedPaths.renames.empty());
 
-    if (source.wasConstructedWithPipelineSyntax()) {
+    if (source.hasPipeline() || !source.hasLocalFieldForeignFieldJoin()) {
         // Mark modified paths with unknown encryption, which ensures an exception if a field is
         // referenced in a query. Also, we only expect a finite set of paths without renames.
         invariant(children.size() == 1);
@@ -328,7 +328,9 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForLookUp(
                                     std::make_unique<EncryptionSchemaNotEncryptedNode>());
             }
         }
-    } else {
+    }
+
+    if (source.hasLocalFieldForeignFieldJoin()) {
         invariant(source.getLocalField() && source.getForeignField());
 
         auto localField = source.getLocalField();
@@ -362,8 +364,14 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForLookUp(
                                  " the with deterministic algorithm.",
                 (!localMetadata && !foreignMetadata) ||
                     localMetadata->algorithm == FleAlgorithmEnum::kDeterministic);
-        for (const auto& path : modifiedPaths.paths) {
-            newSchema->addChild(FieldRef(path), std::make_unique<EncryptionSchemaStateMixedNode>());
+
+        // Since a $lookup may be specified with both pipeline and local/foreignField syntax,
+        // we ensure here that we only add the modified paths to 'newSchema' once.
+        if (!source.hasPipeline()) {
+            for (const auto& path : modifiedPaths.paths) {
+                newSchema->addChild(FieldRef(path),
+                                    std::make_unique<EncryptionSchemaStateMixedNode>());
+            }
         }
     }
     return newSchema;
