@@ -10,7 +10,7 @@ load('jstests/ssl/libs/ssl_helpers.js');
 load('jstests/aggregation/extras/utils.js');
 
 // Set up key management and encrypted shell.
-const mock_kms = new MockKMSServer();
+const mock_kms = new MockKMSServerAWS();
 mock_kms.start();
 const randomAlgorithm = "AEAD_AES_256_CBC_HMAC_SHA_512-Random";
 const deterministicAlgorithm = "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic";
