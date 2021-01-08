@@ -52,7 +52,7 @@ AuditEvent::AuditEvent(Client* client,
 
     builder.append(kResultField, result);
 
-    _obj = builder.obj();
+    _obj = builder.obj<BSONObj::LargeSizeTrait>();
 }
 
 void AuditEvent::serializeClient(Client* client, BSONObjBuilder* builder) {
