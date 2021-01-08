@@ -4,6 +4,7 @@
 
 #include "mongo/platform/basic.h"
 
+#include "audit/audit_features_gen.h"
 #include "audit_event.h"
 #include "audit_event_type.h"
 #include "audit_log.h"
@@ -22,7 +23,8 @@ void audit::logLogout(Client* client,
                       StringData reason,
                       const BSONArray& initialUsers,
                       const BSONArray& updatedUsers) {
-    if (!getGlobalAuditManager()->enabled) {
+    if (!getGlobalAuditManager()->enabled ||
+        !gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
         return;
     }
 

@@ -264,3 +264,10 @@ MongoRunner.runMongodAuditLogger = function(opts, isBSON = false) {
 
     return mongo;
 };
+
+function isImprovedAuditingEnabled(m) {
+    return assert
+        .commandWorked(
+            m.getDB('admin').runCommand({getParameter: 1, featureFlagImprovedAuditing: 1}))
+        .featureFlagImprovedAuditing.value;
+}

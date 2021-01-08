@@ -1,0 +1,11 @@
+# Copyright (C) 2019-present MongoDB, Inc.
+
+global:
+    cpp_namespace: "mongo::audit"
+
+feature_flags:
+    featureFlagImprovedAuditing:
+        description: Enable 'Improved Auditing' semantics
+        cpp_varname: gFeatureFlagImprovedAuditing
+        default: false
+

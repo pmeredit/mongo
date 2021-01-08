@@ -4,6 +4,7 @@
 
 #include "mongo/platform/basic.h"
 
+#include "audit/audit_features_gen.h"
 #include "audit_event.h"
 #include "audit_event_type.h"
 #include "audit_log.h"
@@ -75,8 +76,10 @@ void audit::logCreateView(Client* client,
     // Intentional: createView is audited as createCollection with viewOn/pipeline params. */
     AuditEvent event(client, AuditEventType::createCollection, [&](BSONObjBuilder* builder) {
         builder->append(kNSField, nsname);
-        builder->append(kViewOnField, viewOn);
-        builder->append(kPipelineField, pipeline);
+        if (gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
+            builder->append(kViewOnField, viewOn);
+            builder->append(kPipelineField, pipeline);
+        }
     });
 
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {

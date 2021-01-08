@@ -24,7 +24,17 @@ const options = {
     keyFile: 'jstests/libs/key1',
     other: {shardAsReplicaSet: false}
 };
-var st = new ShardingTest(options);
+const st = new ShardingTest(options);
+const admin = st.s0.getDB('admin');
+assert.commandWorked(admin.runCommand({createUser: "admin", pwd: "pwd", roles: ['root']}));
+assert(admin.auth("admin", "pwd"));
+
+if (!isImprovedAuditingEnabled(st.s0)) {
+    jsTest.log('Skipping test as Improved Auditing is not enabled in this environment');
+    st.stop();
+    return;
+}
+
 const mongosAuditSpooler = new AuditSpooler(options.mongos[0].auditPath, false);
 const mongodAuditSpooler = new AuditSpooler(options.shards[0].auditPath, false);
 

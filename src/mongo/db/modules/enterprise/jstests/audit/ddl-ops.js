@@ -5,7 +5,7 @@
 
 load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
 
-function runTests(mode, mongo, audit) {
+function runTests(mode, mongo, audit, improvedAuditingEnabled) {
     /**
      * Checks that an audit entry was created for the given `atype` and `param`.
      *
@@ -94,21 +94,28 @@ function runTests(mode, mongo, audit) {
 
     //// Create View
     assert.commandWorked(test.createView('implicitView', 'implicitCollection', []));
-    audit.assertEntryForAdmin(
-        'createCollection',
-        {ns: 'test.implicitView', viewOn: 'test.implicitCollection', pipeline: []});
+    const expectImplicitView = {ns: 'test.implicitView'};
+    if (improvedAuditingEnabled) {
+        expectImplicitView.viewOn = 'test.implicitCollection';
+        expectImplicitView.pipeline = [];
+    }
+    audit.assertEntryForAdmin('createCollection', expectImplicitView);
     assert.commandWorked(
         test.createView('addZedView', 'implicitCollection', [{'$addFields': {z: 1}}]));
-    audit.assertEntryForAdmin('createCollection', {
-        ns: 'test.addZedView',
-        viewOn: 'test.implicitCollection',
-        pipeline: [{'$addFields': {z: 1}}]
-    });
+    const expectZedView = {ns: 'test.addZedView'};
+    if (improvedAuditingEnabled) {
+        expectZedView.viewOn = 'test.implicitCollection';
+        expectZedView.pipeline = [{'$addFields': {z: 1}}];
+    }
+    audit.assertEntryForAdmin('createCollection', expectZedView);
 
     assert.commandWorked(test.createView('explicitView', 'explicitCollection', []));
-    audit.assertEntryForAdmin(
-        'createCollection',
-        {ns: 'test.explicitView', viewOn: 'test.explicitCollection', pipeline: []});
+    const expectExplicitView = {ns: 'test.explicitView'};
+    if (improvedAuditingEnabled) {
+        expectExplicitView.viewOn = 'test.explicitCollection';
+        expectExplicitView.pipeline = [];
+    }
+    audit.assertEntryForAdmin('createCollection', expectExplicitView);
     test.explicitView.drop();
     // TODO: SERVER-50993 Audit dropCollection for views.
 
@@ -166,11 +173,17 @@ function runTests(mode, mongo, audit) {
     jsTest.log('SUCCESS audit/ddl-ops.js ' + mode);
 }
 
+// Establish whether or not the featureFlag has been enabled during standalone run.
+// We *should* do this independently during the sharding run,
+// but the feature flags aren't set on mongos.
+// Trust that if it's enabled for mongod here, it'll be enabled for mongod there.
+let improvedAuditingEnabled = false;
 {
     const options = {auth: null};
     jsTest.log('Starting StandaloneTest with options: ' + tojson(options));
     const mongod = MongoRunner.runMongodAuditLogger(options, false);
-    runTests('Standalone', mongod, mongod.auditSpooler());
+    improvedAuditingEnabled = isImprovedAuditingEnabled(mongod);
+    runTests('Standalone', mongod, mongod.auditSpooler(), improvedAuditingEnabled);
     MongoRunner.stopMongod(mongod);
 }
 
@@ -190,7 +203,7 @@ function runTests(mode, mongo, audit) {
     jsTest.log('Starting ShardingTest with options: ' + tojson(options));
     const st = new ShardingTest(options);
     const audit = new AuditSpooler(options.shards[0].auditPath, false);
-    runTests('Sharded', st.s0, audit);
+    runTests('Sharded', st.s0, audit, improvedAuditingEnabled);
     st.stop();
 }
 })();

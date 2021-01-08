@@ -134,6 +134,7 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
             'src/audit/audit_authz_check.cpp',
             'src/audit/audit_event.cpp',
             'src/audit/audit_event_type.cpp',
+            'src/audit/audit_features.idl',
             'src/audit/audit_indexes_collections_databases.cpp',
             'src/audit/audit_log.cpp',
             'src/audit/audit_logout.cpp',
@@ -158,6 +159,7 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
             '$BUILD_DIR/mongo/db/auth/authprivilege',
             '$BUILD_DIR/mongo/db/matcher/expressions',
             '$BUILD_DIR/mongo/db/server_options_core',
+            '$BUILD_DIR/mongo/idl/feature_flag',
             '$BUILD_DIR/mongo/util/options_parser/options_parser',
         ],
         LIBDEPS_DEPENDENTS=[

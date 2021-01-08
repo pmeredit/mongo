@@ -7,8 +7,8 @@ load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
 print('START audit-logout.js');
 print('START explicit logout');
 // Start mongod and use db admin and test.
-const port = allocatePort();
-const m = MongoRunner.runMongodAuditLogger({auth: '', port: port});
+const m = MongoRunner.runMongodAuditLogger({auth: ''});
+const port = m.port;
 const audit = m.auditSpooler();
 const admin = m.getDB("admin");
 const test1 = m.getDB("test1");
@@ -17,6 +17,12 @@ const test2 = m.getDB("test2");
 // Create users on db test1 and test2 as admin.
 assert.commandWorked(admin.runCommand({createUser: "admin", pwd: "pwd", roles: ['root']}));
 assert(admin.auth("admin", "pwd"));
+
+if (!isImprovedAuditingEnabled(m)) {
+    jsTest.log('Skipping test as Improved Auditing is not enabled in this environment');
+    MongoRunner.stopMongod(m);
+    return;
+}
 
 assert.commandWorked(test1.runCommand({createUser: "user1", pwd: "pwd1", roles: []}));
 assert.commandWorked(test2.runCommand({createUser: "user2", pwd: "pwd2", roles: []}));

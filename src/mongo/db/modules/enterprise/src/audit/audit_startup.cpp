@@ -4,6 +4,7 @@
 
 #include "mongo/platform/basic.h"
 
+#include "audit/audit_features_gen.h"
 #include "audit_event.h"
 #include "audit_event_type.h"
 #include "audit_log.h"
@@ -18,7 +19,8 @@ constexpr auto kOptionsField = "options"_sd;
 }  // namespace
 
 void audit::logStartupOptions(Client* client, const BSONObj& startupOptions) {
-    if (!getGlobalAuditManager()->enabled) {
+    if (!getGlobalAuditManager()->enabled ||
+        !gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
         return;
     }
 
