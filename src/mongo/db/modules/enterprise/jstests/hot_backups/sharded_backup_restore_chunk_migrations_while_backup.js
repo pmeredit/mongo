@@ -2,9 +2,12 @@
  * Migrate a chunk while the backup is in progress. The data copied should still
  * be causally consistent.
  *
- * @tags: [requires_wiredtiger,
- *         requires_journaling,
- *         requires_persistence]
+ * @tags: [
+ *   requires_journaling,
+ *   requires_persistence,
+ *   requires_wiredtiger,
+ *   sbe_incompatible,
+ * ]
  */
 
 (function() {

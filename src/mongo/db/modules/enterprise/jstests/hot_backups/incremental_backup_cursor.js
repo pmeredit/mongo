@@ -20,7 +20,11 @@
  *   - 'bar' will remove the incremental backup for 'foo'.
  * - Cannot take an incremental backup on 'foo' when 'foo' has not finished yet.
  *
- * @tags: [requires_persistence, requires_replication]
+ * @tags: [
+ *   requires_persistence,
+ *   requires_replication,
+ *   sbe_incompatible,
+ * ]
  */
 (function() {
 'use strict';

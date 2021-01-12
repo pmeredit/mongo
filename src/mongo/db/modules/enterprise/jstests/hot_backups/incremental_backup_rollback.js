@@ -1,7 +1,12 @@
 /**
  * Tests that incremental backups remain viable across replication rollback on the backup source.
  *
- * @tags: [requires_replication, requires_wiredtiger, requires_persistence]
+ * @tags: [
+ *   requires_persistence,
+ *   requires_replication,
+ *   requires_wiredtiger,
+ *   sbe_incompatible,
+ * ]
  */
 (function() {
 "use strict";

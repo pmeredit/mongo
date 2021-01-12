@@ -11,7 +11,12 @@
  * writes. Those are then used that to assert exactly whether data should or should not exist in
  * the backed up data when restored to a specific time.
  *
- * @tags: [requires_persistence, requires_replication, requires_wiredtiger]
+ * @tags: [
+ *   requires_persistence,
+ *   requires_replication,
+ *   requires_wiredtiger,
+ *   sbe_incompatible,
+ * ]
  */
 (function() {
 "use strict";

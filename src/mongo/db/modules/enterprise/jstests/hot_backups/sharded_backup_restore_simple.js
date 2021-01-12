@@ -1,9 +1,12 @@
 /**
  * A simple case of sharded snapshot backup/restore.
  *
- * @tags: [requires_wiredtiger,
- *         requires_journaling,
- *         requires_persistence]
+ * @tags: [
+ *   requires_journaling,
+ *   requires_persistence,
+ *   requires_wiredtiger,
+ *   sbe_incompatible,
+ * ]
  */
 
 (function() {

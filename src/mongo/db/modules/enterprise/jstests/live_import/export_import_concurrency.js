@@ -1,11 +1,12 @@
 /**
  * Concurrency workload to test importing collections on a live replica set.
  *
- *  @tags: [
+ * @tags: [
  *   requires_majority_read_concern,
  *   requires_persistence,
  *   requires_replication,
  *   requires_wiredtiger,
+ *   sbe_incompatible,
  * ]
  */
 (function() {

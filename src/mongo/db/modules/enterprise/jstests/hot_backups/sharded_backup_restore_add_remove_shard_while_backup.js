@@ -2,9 +2,12 @@
  * Add a shard and then remove it while the backup is in progress. In this case, topology changes
  * should be detected and the backup will be invalidated.
  *
- * @tags: [requires_wiredtiger,
- *         requires_journaling,
- *         requires_persistence]
+ * @tags: [
+ *   requires_journaling,
+ *   requires_persistence,
+ *   requires_wiredtiger,
+ *   sbe_incompatible,
+ * ]
  */
 
 (function() {

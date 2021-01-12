@@ -2,11 +2,12 @@
  * Basic end-to-end test that exports a non-empty collection which gets imported into a live replica
  * set.
  *
- *  @tags: [
+ * @tags: [
  *   requires_majority_read_concern,
  *   requires_persistence,
  *   requires_replication,
  *   requires_wiredtiger,
+ *   sbe_incompatible,
  * ]
  */
 (function() {

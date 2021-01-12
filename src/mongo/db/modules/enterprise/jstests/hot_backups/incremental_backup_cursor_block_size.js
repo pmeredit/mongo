@@ -2,7 +2,11 @@
  * Tests that the block size can be set when creating the first full backup to be used as a basis
  * for incremental backups. Incremental backups cannot change the block size once it has been set.
  *
- * @tags: [requires_persistence, requires_replication]
+ * @tags: [
+ *   requires_persistence,
+ *   requires_replication,
+ *   sbe_incompatible,
+ * ]
  */
 (function() {
 'use strict';

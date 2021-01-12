@@ -20,7 +20,11 @@
  * }
  * If the file had multiple changed blocks, then there will be one document per changed block.
  *
- * @tags: [requires_persistence, requires_replication]
+ * @tags: [
+ *   requires_persistence,
+ *   requires_replication,
+ *   sbe_incompatible,
+ * ]
  */
 (function() {
 'use strict';
