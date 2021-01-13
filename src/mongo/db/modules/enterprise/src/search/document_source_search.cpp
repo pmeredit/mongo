@@ -17,15 +17,15 @@ namespace mongo {
 using boost::intrusive_ptr;
 using std::list;
 
-REGISTER_MULTI_STAGE_ALIAS(search,
-                           DocumentSourceSearch::LiteParsed::parse,
-                           DocumentSourceSearch::createFromBson);
+REGISTER_DOCUMENT_SOURCE(search,
+                         DocumentSourceSearch::LiteParsed::parse,
+                         DocumentSourceSearch::createFromBson);
 
 // $searchBeta is supported as an alias for $search for compatibility with applications that used
 // search during its beta period.
-REGISTER_MULTI_STAGE_ALIAS(searchBeta,
-                           DocumentSourceSearch::LiteParsed::parse,
-                           DocumentSourceSearch::createFromBson);
+REGISTER_DOCUMENT_SOURCE(searchBeta,
+                         DocumentSourceSearch::LiteParsed::parse,
+                         DocumentSourceSearch::createFromBson);
 
 const char* DocumentSourceSearch::getSourceName() const {
     return kStageName.rawData();
