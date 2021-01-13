@@ -82,18 +82,29 @@ public:
     boost::filesystem::path getProtectedPathSuffix() override;
 
     /**
-     * Encrypt temporary data written to disk outside of the storage engine. The method uses an
-     * ephemeral key _tmpDataKey which is re-generated on each server restart.
+     * Encrypt temporary data written to disk outside of the storage engine. The method uses the
+     * key associated with the database the data comes from, which is persistent across server
+     * restarts, if dbName is provided. Otherwise, it uses the generated key _tmpKey, which is
+     * subject to change every time the server restarts.
      */
-    Status protectTmpData(
-        const uint8_t* in, size_t inLen, uint8_t* out, size_t outLen, size_t* resultLen) override;
+    Status protectTmpData(const uint8_t* in,
+                          size_t inLen,
+                          uint8_t* out,
+                          size_t outLen,
+                          size_t* resultLen,
+                          boost::optional<std::string> dbName) override;
 
     /**
-     * Decrypt temporary data previously written to disk outside of the storage engine.
+     * Decrypt temporary data written to disk outside of the storage engine. The method uses the
+     * key associated with the database the data comes from, which is persistent across server
+     * restarts.
      */
-    Status unprotectTmpData(
-        const uint8_t* in, size_t inLen, uint8_t* out, size_t outLen, size_t* resultLen) override;
-
+    Status unprotectTmpData(const uint8_t* in,
+                            size_t inLen,
+                            uint8_t* out,
+                            size_t outLen,
+                            size_t* resultLen,
+                            boost::optional<std::string> dbName) override;
     /**
      * Opens a backup cursor on the underlying WT database. Returns the list of files that need to
      * be copied by the application as part of the backup. The file paths may be absolute or

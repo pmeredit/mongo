@@ -157,8 +157,25 @@ bool EncryptionKeyManager::restartRequired() {
     return false;
 }
 
-Status EncryptionKeyManager::protectTmpData(
-    const uint8_t* in, size_t inLen, uint8_t* out, size_t outLen, size_t* resultLen) {
+Status EncryptionKeyManager::protectTmpData(const uint8_t* in,
+                                            size_t inLen,
+                                            uint8_t* out,
+                                            size_t outLen,
+                                            size_t* resultLen,
+                                            boost::optional<std::string> dbName) {
+    if (dbName) {
+        SymmetricKey dbKey =
+            std::move(*(this->getKey(dbName.get(), FindMode::kCurrent).getValue()));
+        return crypto::aesEncrypt(
+            dbKey,
+            crypto::getCipherModeFromString(_encryptionParams->encryptionCipherMode),
+            crypto::PageSchema::k0,
+            in,
+            inLen,
+            out,
+            outLen,
+            resultLen);
+    }
     return crypto::aesEncrypt(
         _tmpDataKey,
         crypto::getCipherModeFromString(_encryptionParams->encryptionCipherMode),
@@ -178,8 +195,25 @@ boost::filesystem::path EncryptionKeyManager::getProtectedPathSuffix() {
     return ".enc";
 }
 
-Status EncryptionKeyManager::unprotectTmpData(
-    const uint8_t* in, size_t inLen, uint8_t* out, size_t outLen, size_t* resultLen) {
+Status EncryptionKeyManager::unprotectTmpData(const uint8_t* in,
+                                              size_t inLen,
+                                              uint8_t* out,
+                                              size_t outLen,
+                                              size_t* resultLen,
+                                              boost::optional<std::string> dbName) {
+    if (dbName) {
+        SymmetricKey dbKey =
+            std::move(*(this->getKey(dbName.get(), FindMode::kCurrent).getValue()));
+        return crypto::aesDecrypt(
+            dbKey,
+            crypto::getCipherModeFromString(_encryptionParams->encryptionCipherMode),
+            crypto::PageSchema::k0,
+            in,
+            inLen,
+            out,
+            outLen,
+            resultLen);
+    }
     return crypto::aesDecrypt(
         _tmpDataKey,
         crypto::getCipherModeFromString(_encryptionParams->encryptionCipherMode),
