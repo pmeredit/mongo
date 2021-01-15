@@ -10,6 +10,13 @@
 #include "mongo/db/service_context.h"
 
 namespace mongo {
+namespace {
+Collation makeCollation(StringData locale, StringData version) {
+    Collation collation(locale.toString());
+    collation.setVersion(version);
+    return collation;
+}
+}  // namespace
 
 /**
  * A no-op implementation of the collator interface for mongocryptd. Some of the interfaces which
@@ -20,7 +27,7 @@ namespace mongo {
  */
 class CollatorInterfaceCryptd final : public CollatorInterface {
 public:
-    CollatorInterfaceCryptd() : CollatorInterface(CollationSpec("mock_locale", "mock_version")) {}
+    CollatorInterfaceCryptd() : CollatorInterface(makeCollation("mock_locale", "mock_version")) {}
 
     std::unique_ptr<CollatorInterface> clone() const final {
         return std::make_unique<CollatorInterfaceCryptd>();
