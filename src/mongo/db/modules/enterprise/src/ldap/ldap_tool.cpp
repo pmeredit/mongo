@@ -197,7 +197,7 @@ int ldapToolMain(int argc, char** argv) {
         globalLDAPParams->userAcquisitionQueryTemplate);
 
     // TODO: Maybe change how the userToDNMapping is parsed so we can just check for empty?
-    std::string defaultNameMapper = "[]";
+    std::string defaultNameMapper = "[{match: \"(.+)\", substitution: \"{0}\"}]";
     auto swMapper = InternalToLDAPUserNameMapper::createNameMapper(defaultNameMapper);
     if (globalLDAPParams->userToDNMapping != defaultNameMapper) {
         report.openSection("Parsing MongoDB to LDAP DN mappings");

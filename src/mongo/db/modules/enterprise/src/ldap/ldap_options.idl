@@ -66,4 +66,4 @@ configs:
         short_name: ldapUserToDNMapping
         arg_vartype: String
         cpp_varname: 'globalLDAPParams->userToDNMapping'
-        default: '[]'
+        default: '[{match: "(.+)", substitution: "{0}"}]'

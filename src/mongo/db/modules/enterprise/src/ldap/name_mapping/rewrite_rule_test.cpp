@@ -205,19 +205,7 @@ TEST_F(LDAPTransformTest, stringSubstitutionSuccess) {
 TEST_F(NameMapperTest, parseEmptyConfig) {
     auto swEngine = InternalToLDAPUserNameMapper::createNameMapper("");
     ASSERT_OK(swEngine.getStatus());
-    InternalToLDAPUserNameMapper engine{std::move(swEngine.getValue())};
-    auto map1 = engine.transform(runner.get(), "cn=alice,ou=engineering,dc=example,dc=com");
-    ASSERT_OK(map1);
-    ASSERT_EQ("cn=alice,ou=engineering,dc=example,dc=com", map1.getValue());
-}
-
-TEST_F(NameMapperTest, parseEmptyArrayConfig) {
-    auto swEngine(InternalToLDAPUserNameMapper::createNameMapper("[]"));
-    ASSERT_OK(swEngine.getStatus());
-    InternalToLDAPUserNameMapper engine{std::move(swEngine.getValue())};
-    auto map1 = engine.transform(runner.get(), "cn=alice,ou=engineering,dc=example,dc=com");
-    ASSERT_OK(map1);
-    ASSERT_EQ("cn=alice,ou=engineering,dc=example,dc=com", map1.getValue());
+    ASSERT_NOT_OK(swEngine.getValue().transform(runner.get(), "helloWorld"));
 }
 
 TEST_F(NameMapperTest, parseBadConfig) {
