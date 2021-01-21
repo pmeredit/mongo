@@ -134,7 +134,7 @@ cmdRes = assert.commandWorked(testDB.runCommand(command));
 delete cmdRes.result.lsid;
 expected = {
     aggregate: coll.getName(),
-    pipeline: [{$project: {user: false}}],
+    pipeline: [{$project: {user: false, _id: true}}],
     cursor: {}
 };
 assert.eq(expected, cmdRes.result, cmdRes.result);
