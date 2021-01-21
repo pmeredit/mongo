@@ -14,4 +14,5 @@ commands:
     cpp_name: ExportCollection
     description: "An enterprise-only mongod command for live exportation of collection files"
     namespace: concatenate_with_db
+    api_version: ""
     strict: true

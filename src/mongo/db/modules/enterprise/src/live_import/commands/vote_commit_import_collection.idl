@@ -17,6 +17,7 @@ commands:
                   replica set"
     strict: true
     namespace: type
+    api_version: ""
     type: uuid
     fields:
       from:
