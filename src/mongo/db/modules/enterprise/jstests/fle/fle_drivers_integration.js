@@ -101,6 +101,52 @@ let insert = function(conn, providerObj, keyvaultData, jsonSchema, findData) {
 
 insert(conn, providerObj, keyvaultDataAWS, jsonSchema, []);
 
+// Running the test for insert
+let insertAlt = function(conn, providerObj, keyvaultData, jsonSchema, fieldName, expectedValue) {
+    let clientSideFLEOptions = {
+        kmsProviders: providerObj,
+        keyVaultNamespace: "default.keyvault",
+        schemaMap: {}
+    };
+
+    let unencryptedCollection = conn.getDB("default").getCollection("default");
+    let encryptedShell = new Mongo(conn.host, clientSideFLEOptions);
+    let encryptedCollection = encryptedShell.getDB("default").getCollection("default");
+
+    setUpEnvironment(keyvaultData, jsonSchema, []);
+    let doc = {"_id": 1};
+    doc[fieldName] = "string0";
+    encryptedCollection.insertOne(doc);
+
+    assert.eq(1, unencryptedCollection.count());
+    // Searching for string0
+    let countDoc = {};
+    countDoc[fieldName] = BinData(6, expectedValue);
+    assert.eq(1, unencryptedCollection.count(countDoc));
+};
+
+// The driver corpus for GCP and Azure only test a single insert
+
+// Test GCP
+// https://github.com/mongodb/specifications/blob/master/source/client-side-encryption/tests/gcpKMS.json
+insertAlt(
+    conn,
+    providerObj,
+    keyvaultDataGCP,
+    jsonSchema,
+    "encrypted_string_gcp",
+    "ARgj/gAAAAAAAAAAAAAAAAACwFd+Y5Ojw45GUXNvbcIpN9YkRdoHDHkR4kssdn0tIMKlDQOLFkWFY9X07IRlXsxPD8DcTiKnl6XINK28vhcGlg==");
+
+// Test Azure
+// https://github.com/mongodb/specifications/blob/master/source/client-side-encryption/tests/azureKMS.json
+insertAlt(
+    conn,
+    providerObj,
+    keyvaultDataAzure,
+    jsonSchema,
+    "encrypted_string_azure",
+    "AQGVERPgAAAAAAAAAAAAAAAC5DbBSwPwfSlBrDtRuglvNvCXD1KzDuCKY2P+4bRFtHDjpTOE2XuytPAUaAbXf1orsPq59PVZmsbTZbt2CB8qaQ==");
+
 // Running the test for LocalKMS
 let local = function(conn, providerObj, keyvaultData, jsonSchema, findData) {
     let clientSideFLEOptions = {
@@ -133,5 +179,6 @@ let decrypt = function(conn, providerObj, keyvaultData, binData) {
 };
 
 decrypt(conn, providerObj, keyvaultDataDecryption, binDataDecryption);
+
 MongoRunner.stopMongod(conn);
 }());

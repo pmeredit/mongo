@@ -21,6 +21,40 @@ const keyvaultDataAWS = [{
     "keyAltNames": ["altname", "another_altname"]
 }];
 
+const keyvaultDataGCP = [{
+    "status": NumberInt(1),
+    "_id": BinData(4, "GCP+AAAAAAAAAAAAAAAAAA=="),
+    "masterKey": {
+        "provider": "gcp",
+        "projectId": "devprod-drivers",
+        "location": "global",
+        "keyRing": "key-ring-csfle",
+        "keyName": "key-name-csfle"
+    },
+    "updateDate": ISODate(),
+    "keyMaterial": BinData(
+        0,
+        "CiQAIgLj0WyktnB4dfYHo5SLZ41K4ASQrjJUaSzl5vvVH0G12G0SiQEAjlV8XPlbnHDEDFbdTO4QIe8ER2/172U1ouLazG0ysDtFFIlSvWX5ZnZUrRMmp/R2aJkzLXEt/zf8Mn4Lfm+itnjgo5R9K4pmPNvvPKNZX5C16lrPT+aA+rd+zXFSmlMg3i5jnxvTdLHhg3G7Q/Uv1ZIJskKt95bzLoe0tUVzRWMYXLIEcohnQg=="),
+    "creationDate": ISODate(),
+    "keyAltNames": ["altname", "gcp"]
+}];
+
+const keyvaultDataAzure = [{
+    "status": NumberInt(1),
+    "_id": BinData(4, "AZURE+AAAAAAAAAAAAAAAA=="),
+    "masterKey": {
+        "provider": "azure",
+        "keyVaultEndpoint": "key-vault-csfle.vault.azure.net",
+        "keyName": "key-name-csfle"
+    },
+    "updateDate": ISODate(),
+    "keyMaterial": BinData(
+        0,
+        "n+HWZ0ZSVOYA3cvQgP7inN4JSXfOH85IngmeQxRpQHjCCcqT3IFqEWNlrsVHiz3AELimHhX4HKqOLWMUeSIT6emUDDoQX9BAv8DR1+E1w4nGs/NyEneac78EYFkK3JysrFDOgl2ypCCTKAypkn9CkAx1if4cfgQE93LW4kczcyHdGiH36CIxrCDGv1UzAvERN5Qa47DVwsM6a+hWsF2AAAJVnF0wYLLJU07TuRHdMrrphPWXZsFgyV+lRqJ7DDpReKNO8nMPLV/mHqHBHGPGQiRdb9NoJo8CvokGz4+KE8oLwzKf6V24dtwZmRkrsDV4iOhvROAzz+Euo1ypSkL3mw=="),
+    "creationDate": ISODate(),
+    "keyAltNames": ["altname", "azure"]
+}];
+
 const keyvaultDataLocal = [{
     "status": NumberInt(0),
     "_id": BinData(4, "AAAAAAAAAAAAAAAAAAAAAA=="),
@@ -72,6 +106,21 @@ const jsonSchema = {
                         "algorithm": "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
                     }
                 },
+                "encrypted_string_azure": {
+                    "encrypt": {
+                        "keyId": [BinData(4, "AZURE+AAAAAAAAAAAAAAAA==")],
+                        "bsonType": "string",
+                        "algorithm": "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
+                    }
+                },
+
+                "encrypted_string_gcp": {
+                    "encrypt": {
+                        "keyId": [BinData(4, "GCP+AAAAAAAAAAAAAAAAAA==")],
+                        "bsonType": "string",
+                        "algorithm": "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
+                    }
+                },
             },
             "bsonType": "object"
         }
@@ -82,6 +131,15 @@ const providerObj = {
     aws: {
         accessKeyId: AWS_KMS_SECRET_ID,
         secretAccessKey: AWS_KMS_SECRET_KEY,
+    },
+    gcp: {
+        email: KMS_GCP_EMAIL,
+        privateKey: KMS_GCP_PRIVATEKEY,
+    },
+    azure: {
+        tenantId: KMS_AZURE_TENANT_ID,
+        clientId: KMS_AZURE_CLIENT_ID,
+        clientSecret: KMS_AZURE_CLIENT_SECRET,
     },
     local: {
         "key": BinData(
