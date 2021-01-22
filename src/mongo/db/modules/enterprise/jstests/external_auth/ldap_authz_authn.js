@@ -83,6 +83,36 @@ function ldapTestCallback({conn}) {
     authAndVerify({conn: conn, options: {authOptions: authOptions, user: user2}});
 }
 
+// LDAP native authentication + LDAP authorization + No DN Mapping
+function testNativeLDAPNoDNMapping() {
+    var configGenerator = new LDAPTestConfigGenerator();
+    configGenerator.ldapAuthzQueryTemplate = "{USER}?memberOf";
+    configGenerator.ldapUserToDNMapping = [];
+
+    runTests(ldapTestCallbackUsernameIsDN, configGenerator);
+}
+
+// LDAP native authentication + LDAP authorization + No DN Mapping
+function testNativeLDAPUndefinedDNMapping() {
+    var configGenerator = new LDAPTestConfigGenerator();
+    configGenerator.ldapAuthzQueryTemplate = "{USER}?memberOf";
+
+    runTests(ldapTestCallbackUsernameIsDN, configGenerator);
+}
+
+function ldapTestCallbackUsernameIsDN({conn}) {
+    var user1 = "cn=ldapz_ldap1," + defaultUserDNSuffix;
+    var user2 = "cn=ldapz_ldap2," + defaultUserDNSuffix;
+
+    var authOptions = {user: user1, pwd: defaultPwd, mechanism: "PLAIN", digestPassword: false};
+
+    authAndVerify({conn: conn, options: {authOptions: authOptions, user: user1}});
+
+    authOptions = {user: user2, pwd: defaultPwd, mechanism: "PLAIN", digestPassword: false};
+
+    authAndVerify({conn: conn, options: {authOptions: authOptions, user: user2}});
+}
+
 function testNativeAndGSSAPI() {
     let configGenerator = new LDAPTestConfigGenerator();
     configGenerator.authenticationMechanisms = ["PLAIN", "GSSAPI", "SCRAM-SHA-1"];
@@ -214,6 +244,8 @@ function testX509Callback({conn}) {
 }
 
 testNativeLDAP();
+testNativeLDAPNoDNMapping();
+testNativeLDAPUndefinedDNMapping();
 testX509();
 if (!_isWindows()) {
     // Windows machines must be a part of the Kerberos domain. Move this out with SERVER-24671.

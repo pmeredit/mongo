@@ -37,6 +37,11 @@ InternalToLDAPUserNameMapper& InternalToLDAPUserNameMapper::operator=(
 
 StatusWith<std::string> InternalToLDAPUserNameMapper::transform(LDAPRunner* runner,
                                                                 StringData input) const {
+    if (0 == _transformations.size()) {
+        LOGV2_DEBUG(5264500, 3, "Using LDAP username as is", "user"_attr = input);
+        return input.toString();
+    }
+
     StringBuilder errorStack;
     for (const auto& transform : _transformations) {
         StatusWith<std::string> result = transform->resolve(runner, input);
