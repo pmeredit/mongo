@@ -12,7 +12,7 @@ function runTests(mode, mongo, audit, improvedAuditingEnabled) {
      * Ideally, these entries should all be attributed to `admin.admin`,
      * however createIndex is currently unattributed.
      */
-    audit.assertEntryForAdmin = function(atype, param, opts = {}) {
+    audit.assertEntryForAdmin = function(atype, param, opts = {}, expectedResult) {
         const entry = this.assertEntryRelaxed(atype, param);
 
         assert.eq(Object.keys(param).length,
@@ -39,6 +39,11 @@ function runTests(mode, mongo, audit, improvedAuditingEnabled) {
         }
         assert.eq(user.db, 'admin');
         assert.eq(user.user, 'admin');
+
+        // If the expected result code is specified, check this as well.
+        if (expectedResult) {
+            assert.eq(expectedResult, entry.result);
+        }
     };
 
     /**
@@ -116,8 +121,31 @@ function runTests(mode, mongo, audit, improvedAuditingEnabled) {
         expectExplicitView.pipeline = [];
     }
     audit.assertEntryForAdmin('createCollection', expectExplicitView);
+
+    // Drop views
     test.explicitView.drop();
-    // TODO: SERVER-50993 Audit dropCollection for views.
+    audit.assertEntryForAdmin('dropCollection', expectExplicitView);
+    test.addZedView.drop();
+    audit.assertEntryForAdmin('dropCollection', expectZedView);
+    test.implicitView.drop();
+    audit.assertEntryForAdmin('dropCollection', expectImplicitView);
+
+    // In sharded environments, dropping a collection or view that doesn't exist does not return an
+    // error by design, but standalones return NamespaceNotFound. Both scenarios are audited with
+    // the NamespaceNotFound error code.
+    if (mode == 'Sharded') {
+        assert.commandWorked(test.runCommand({drop: "nonexistentView"}));
+    } else {
+        assert.commandFailedWithCode(test.runCommand({drop: "nonexistentView"}),
+                                     [ErrorCodes.NamespaceNotFound]);
+    }
+    const expectNamespaceErrorView = {ns: 'test.nonexistentView'};
+    if (improvedAuditingEnabled) {
+        expectNamespaceErrorView.viewOn = '';
+        expectNamespaceErrorView.pipeline = [];
+    }
+    audit.assertEntryForAdmin(
+        'dropCollection', expectNamespaceErrorView, ErrorCodes.NamespaceNotFound);
 
     //// Drop Collections
     test.implicitCollection.drop();
@@ -126,7 +154,6 @@ function runTests(mode, mongo, audit, improvedAuditingEnabled) {
                               {ns: dropTestCollNSS('implicitCollection'), indexName: '_id_'});
     audit.assertEntryForAdmin('dropIndex',
                               {ns: dropTestCollNSS('implicitCollection'), indexName: 'x_1'});
-    // TODO: SERVER-50993 Audit dropCollection for views.
 
     test.explicitCollection.drop();
     audit.assertEntryForAdmin('dropCollection', {ns: 'test.explicitCollection'});

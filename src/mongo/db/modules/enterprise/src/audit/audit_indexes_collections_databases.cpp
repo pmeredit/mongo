@@ -115,6 +115,32 @@ void audit::logDropCollection(Client* client, StringData nsname) {
     logNSEvent(client, nsname, AuditEventType::dropCollection);
 }
 
+void audit::logDropView(Client* client,
+                        StringData nsname,
+                        StringData viewOn,
+                        const std::vector<BSONObj>& pipeline,
+                        ErrorCodes::Error code) {
+    if (!getGlobalAuditManager()->enabled) {
+        return;
+    }
+
+    // Intentional: dropView is audited as dropCollection with viewOn/pipeline params.
+    AuditEvent event(client,
+                     AuditEventType::dropCollection,
+                     [&](BSONObjBuilder* builder) {
+                         builder->append(kNSField, nsname);
+                         if (gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
+                             builder->append(kViewOnField, viewOn);
+                             builder->append(kPipelineField, pipeline);
+                         }
+                     },
+                     code);
+
+    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+        logEvent(event);
+    }
+}
+
 void audit::logDropDatabase(Client* client, StringData dbname) {
     logNSEvent(client, dbname, AuditEventType::dropDatabase);
 }
