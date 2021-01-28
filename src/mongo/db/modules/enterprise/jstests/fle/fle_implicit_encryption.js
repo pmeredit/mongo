@@ -98,10 +98,8 @@ let testDeterministicCollection = (keyId, encryptedShell, unencryptedShell, coll
     assert.eq(2, encryptedCollection.count({"ssn": NumberInt(123456789)}));
 
     // Testing delete
-    assert.eq(1,
-              encryptedCollection.explain()
-                  .remove({"ssn": NumberInt(300000000)})
-                  .queryPlanner.plannerVersion);
+    assert.eq("1",
+              encryptedCollection.explain().remove({"ssn": NumberInt(300000000)}).explainVersion);
     encryptedCollection.deleteMany({"ssn": NumberInt(300000000)});
     assert.eq(0, encryptedCollection.count({"ssn": NumberInt(300000000)}));
     assert.eq(4, encryptedCollection.count());
