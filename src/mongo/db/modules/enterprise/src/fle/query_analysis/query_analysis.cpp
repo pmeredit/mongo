@@ -332,7 +332,11 @@ PlaceHolderResult addPlaceHoldersForFind(const boost::intrusive_ptr<ExpressionCo
                                          std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     // Parse to a QueryRequest to ensure the command syntax is valid. We can use a temporary
     // database name however the collection name will be used when serializing back to BSON.
-    auto qr = QueryRequest::makeFromFindCommand(cmdObj, false);
+    auto qr = QueryRequest::makeFromFindCommand(
+        cmdObj,
+        false,
+        boost::none,
+        APIParameters::get(expCtx->opCtx).getAPIStrict().value_or(false));
 
     auto placeholder = replaceEncryptedFieldsInFilter(expCtx, *schemaTree, qr->getFilter());
 
@@ -354,8 +358,11 @@ PlaceHolderResult addPlaceHoldersForAggregate(
     const BSONObj& cmdObj,
     std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     // Parse the command to an AggregateCommand to verify that there no unknown fields.
-    auto request =
-        uassertStatusOK(aggregation_request_helper::parseFromBSON(dbName, cmdObj, boost::none));
+    auto request = uassertStatusOK(aggregation_request_helper::parseFromBSON(
+        dbName,
+        cmdObj,
+        boost::none,
+        APIParameters::get(expCtx->opCtx).getAPIStrict().value_or(false)));
 
     // Add the populated list of involved namespaces to the expression context, needed at parse time
     // by stages such as $lookup and $out.
