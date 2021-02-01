@@ -58,7 +58,7 @@ public:
 
         result.appendBool("iscryptd", true);
         result.appendNumber("maxBsonObjectSize", BSONObjMaxUserSize);
-        result.appendNumber("maxMessageSizeBytes", MaxMessageSizeBytes);
+        result.appendNumber("maxMessageSizeBytes", static_cast<long long>(MaxMessageSizeBytes));
         result.appendDate("localTime", jsTime());
 
         // Mongos tries to keep exactly the same version range of the server for which
