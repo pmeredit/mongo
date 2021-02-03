@@ -11,12 +11,6 @@
 
 namespace mongo {
 
-Collation makeCollation(StringData locale, StringData version) {
-    Collation collation(locale.toString());
-    collation.setVersion(version);
-    return collation;
-}
-
 /**
  * A no-op implementation of the collator interface for mongocryptd. Some of the interfaces which
  * mongocryptd uses for query analysis expect a CollatorInterface pointer, where a null pointer
@@ -26,7 +20,7 @@ Collation makeCollation(StringData locale, StringData version) {
  */
 class CollatorInterfaceCryptd final : public CollatorInterface {
 public:
-    CollatorInterfaceCryptd() : CollatorInterface(makeCollation("mock_locale", "mock_version")) {}
+    CollatorInterfaceCryptd() : CollatorInterface(CollationSpec("mock_locale", "mock_version")) {}
 
     std::unique_ptr<CollatorInterface> clone() const final {
         return std::make_unique<CollatorInterfaceCryptd>();
