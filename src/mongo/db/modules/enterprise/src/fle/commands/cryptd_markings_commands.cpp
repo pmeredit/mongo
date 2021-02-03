@@ -6,6 +6,7 @@
 
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/commands.h"
+#include "mongo/db/explain_gen.h"
 
 #include "../query_analysis/query_analysis.h"
 
@@ -420,15 +421,16 @@ std::unique_ptr<CommandInvocation> CryptdExplainCmd::parse(OperationContext* opC
     std::string dbname = request.getDatabase().toString();
     const BSONObj& cmdObj = request.body;
 
-    // We must remove the FLE meta-data fields before attempting to parse the explain command.
-    ExplainOptions::Verbosity verbosity =
-        uassertStatusOK(ExplainOptions::parseCmdBSON(cmdObj.removeFields(StringDataSet{
-            cryptd_query_analysis::kJsonSchema, cryptd_query_analysis::kIsRemoteSchema})));
-    uassert(ErrorCodes::BadValue,
-            "explain command requires a nested object",
-            cmdObj.firstElement().type() == Object);
+    auto cmd = ExplainCmd::parse(
+        IDLParserErrorContext(ExplainCmd::kCommandName,
+                              APIParameters::get(opCtx).getAPIStrict().value_or(false)),
+        cmdObj.removeFields(StringDataSet{cryptd_query_analysis::kJsonSchema,
+                                          cryptd_query_analysis::kIsRemoteSchema}));
 
-    auto explainedObj = cmdObj.firstElement().Obj();
+    // We must remove the FLE meta-data fields before attempting to parse the explain command.
+    ExplainOptions::Verbosity verbosity = cmd.getVerbosity();
+
+    auto explainedObj = cmd.getCommandParameter();
     uassert(30050,
             "In an explain command the jsonSchema field must be top-level and not inside the "
             "command being explained.",
