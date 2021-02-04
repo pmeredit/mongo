@@ -12,4 +12,10 @@ namespace mongo::audit {
 // Throws a uassertStatusOK DBException on failure.
 void logEvent(const AuditEvent& event);
 
+// Logs the event when data containing privileges is changed via direct access.
+void logDirectAuthOperation(Client* client,
+                            const NamespaceString& nss,
+                            const BSONObj& doc,
+                            StringData operation);
+
 }  // namespace mongo::audit

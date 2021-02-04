@@ -49,7 +49,8 @@ namespace mongo {
     X(createUser)                  \
     X(dropUser)                    \
     X(dropAllUsersFromDatabase)    \
-    X(updateUser)
+    X(updateUser)                  \
+    X(directAuthMutation)
 
 
 enum class AuditEventType : uint32_t {

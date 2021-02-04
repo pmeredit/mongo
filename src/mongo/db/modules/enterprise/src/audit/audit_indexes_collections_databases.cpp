@@ -113,6 +113,18 @@ void audit::logDropIndex(Client* client, StringData indexname, StringData nsname
 
 void audit::logDropCollection(Client* client, StringData nsname) {
     logNSEvent(client, nsname, AuditEventType::dropCollection);
+
+    if (!gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
+        return;
+    }
+
+    NamespaceString nss(nsname);
+    if (nss.isPrivilegeCollection()) {
+        BSONObjBuilder builder;
+        builder.append("dropCollection", nsname);
+        const auto cmdObj = builder.done();
+        logDirectAuthOperation(client, nss, cmdObj, "command"_sd);
+    }
 }
 
 void audit::logDropView(Client* client,
@@ -145,19 +157,33 @@ void audit::logDropDatabase(Client* client, StringData dbname) {
     logNSEvent(client, dbname, AuditEventType::dropDatabase);
 }
 
-void audit::logRenameCollection(Client* client, StringData source, StringData target) {
+void audit::logRenameCollection(Client* client,
+                                const NamespaceString& source,
+                                const NamespaceString& target) {
     if (!getGlobalAuditManager()->enabled) {
         return;
     }
 
     AuditEvent event(client, AuditEventType::renameCollection, [&](BSONObjBuilder* builder) {
-        builder->append(kOldField, source);
-        builder->append(kNewField, target);
+        builder->append(kOldField, source.ns());
+        builder->append(kNewField, target.ns());
     });
 
     if (getGlobalAuditManager()->auditFilter->matches(&event)) {
         logEvent(event);
     }
+
+    if (!gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
+        return;
+    }
+
+    BSONObjBuilder builder;
+    builder.append("renameCollection", source.ns());
+    builder.append("to", target.ns());
+    const auto cmdObj = builder.done();
+
+    logDirectAuthOperation(client, source, cmdObj, "command"_sd);
+    logDirectAuthOperation(client, target, cmdObj, "command"_sd);
 }
 
 }  // namespace mongo

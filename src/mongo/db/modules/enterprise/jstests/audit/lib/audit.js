@@ -121,7 +121,7 @@ class AuditSpooler {
             }
 
             // Warning: Requires that the subkey/element orders match
-            if (JSON.stringify(line.param) === JSON.stringify(param)) {
+            if (param === undefined || JSON.stringify(line.param) === JSON.stringify(param)) {
                 this._auditLine += Number(idx) + 1;
                 return line;
             }
