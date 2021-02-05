@@ -25,7 +25,9 @@ function runTests(mode, mongo, audit, improvedAuditingEnabled) {
         }
 
         assert.eq(entry.users.length, 1);
+        assert.eq(entry.roles.length, 1);
         const user = entry.users[0];
+        const role = entry.roles[0];
         if ((atype === 'dropIndex') && entry.param.ns.startsWith('test.system.drop.')) {
             // Indirect drops (via db.system.drop) are handled out of band
             // from the client connection and thus do not have context of who requested it.
@@ -39,6 +41,8 @@ function runTests(mode, mongo, audit, improvedAuditingEnabled) {
         }
         assert.eq(user.db, 'admin');
         assert.eq(user.user, 'admin');
+        assert.eq(role.role, 'root');
+        assert.eq(role.db, 'admin');
 
         // If the expected result code is specified, check this as well.
         if (expectedResult) {
@@ -73,26 +77,20 @@ function runTests(mode, mongo, audit, improvedAuditingEnabled) {
 
     //// Create Index
     assert.commandWorked(test.implicitCollection.createIndex({x: 1}));
-    // TODO: SERVER-50990 Wire user attribute when auditing createIndex
-    const kMissingAttribution = {expectAttribution: false};
-    audit.assertEntryForAdmin('createIndex',
-                              {
-                                  ns: 'test.implicitCollection',
-                                  indexName: 'x_1',
-                                  indexSpec: {v: 2, key: {x: 1}, name: 'x_1'}
-                              },
-                              kMissingAttribution);
+    audit.assertEntryForAdmin('createIndex', {
+        ns: 'test.implicitCollection',
+        indexName: 'x_1',
+        indexSpec: {v: 2, key: {x: 1}, name: 'x_1'}
+    });
 
     // TODO: SERVER-50991 createIndex will not get audited if the collection is empty.
     assert.writeOK(test.explicitCollection.insert({y: 1}));
     assert.commandWorked(test.explicitCollection.createIndex({y: 1}));
-    audit.assertEntryForAdmin('createIndex',
-                              {
-                                  ns: 'test.explicitCollection',
-                                  indexName: 'y_1',
-                                  indexSpec: {v: 2, key: {y: 1}, name: 'y_1'}
-                              },
-                              kMissingAttribution);
+    audit.assertEntryForAdmin('createIndex', {
+        ns: 'test.explicitCollection',
+        indexName: 'y_1',
+        indexSpec: {v: 2, key: {y: 1}, name: 'y_1'}
+    });
 
     assert.commandWorked(test.explicitCollection.dropIndex({y: 1}));
     audit.assertEntryForAdmin('dropIndex', {ns: 'test.explicitCollection', indexName: 'y_1'});

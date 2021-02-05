@@ -6,6 +6,7 @@
 
 #include "audit_event.h"
 
+#include "mongo/db/audit.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_session.h"
 
@@ -31,6 +32,25 @@ constexpr auto kRolesField = "roles"_sd;
 constexpr auto kParamField = "param"_sd;
 constexpr auto kResultField = "result"_sd;
 }  // namespace
+
+ImpersonatedClientAttrs::ImpersonatedClientAttrs(Client* client) {
+    auto authSession = AuthorizationSession::get(client);
+
+    if (authSession) {
+        UserNameIterator userNamesIt = authSession->getImpersonatedUserNames();
+        RoleNameIterator roleNamesIt = authSession->getImpersonatedRoleNames();
+        if (!userNamesIt.more()) {
+            userNamesIt = authSession->getAuthenticatedUserNames();
+            roleNamesIt = authSession->getAuthenticatedRoleNames();
+        }
+        for (; userNamesIt.more(); userNamesIt.next()) {
+            this->userNames.emplace_back(userNamesIt.get());
+        }
+        for (; roleNamesIt.more(); roleNamesIt.next()) {
+            this->roleNames.emplace_back(roleNamesIt.get());
+        }
+    }
+}
 
 AuditEvent::AuditEvent(Client* client,
                        AuditEventType aType,
