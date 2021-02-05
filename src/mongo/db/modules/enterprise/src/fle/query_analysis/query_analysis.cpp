@@ -358,11 +358,11 @@ PlaceHolderResult addPlaceHoldersForAggregate(
     const BSONObj& cmdObj,
     std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     // Parse the command to an AggregateCommand to verify that there no unknown fields.
-    auto request = uassertStatusOK(aggregation_request_helper::parseFromBSON(
+    auto request = aggregation_request_helper::parseFromBSON(
         dbName,
         cmdObj,
         boost::none,
-        APIParameters::get(expCtx->opCtx).getAPIStrict().value_or(false)));
+        APIParameters::get(expCtx->opCtx).getAPIStrict().value_or(false));
 
     // Add the populated list of involved namespaces to the expression context, needed at parse time
     // by stages such as $lookup and $out.
