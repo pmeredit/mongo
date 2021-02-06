@@ -1,7 +1,10 @@
 Import("env")
+Import("wiredtiger")
+
+if not wiredtiger:
+    env.FatalError("queryable_wt requires WiredTiger")
 
 env = env.Clone()
-
 env.InjectThirdParty(libraries=['wiredtiger'])
 
 env.Library(
