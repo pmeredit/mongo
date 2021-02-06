@@ -26,7 +26,7 @@
 #include "mongo/db/query/collation/collator_factory_interface.h"
 #include "mongo/db/query/count_command_gen.h"
 #include "mongo/db/query/distinct_command_gen.h"
-#include "mongo/db/query/query_request.h"
+#include "mongo/db/query/query_request_helper.h"
 #include "mongo/db/update/update_driver.h"
 #include "mongo/idl/basic_types.h"
 #include "mongo/idl/idl_parser.h"
@@ -330,15 +330,13 @@ PlaceHolderResult addPlaceHoldersForFind(const boost::intrusive_ptr<ExpressionCo
                                          const std::string& dbName,
                                          const BSONObj& cmdObj,
                                          std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
-    // Parse to a QueryRequest to ensure the command syntax is valid. We can use a temporary
+    // Parse to a FindCommand to ensure the command syntax is valid. We can use a temporary
     // database name however the collection name will be used when serializing back to BSON.
-    auto qr = QueryRequest::makeFromFindCommand(
-        cmdObj,
-        false,
-        boost::none,
-        APIParameters::get(expCtx->opCtx).getAPIStrict().value_or(false));
+    auto findCommand = query_request_helper::makeFromFindCommand(
+        cmdObj, boost::none, APIParameters::get(expCtx->opCtx).getAPIStrict().value_or(false));
 
-    auto placeholder = replaceEncryptedFieldsInFilter(expCtx, *schemaTree, qr->getFilter());
+    auto placeholder =
+        replaceEncryptedFieldsInFilter(expCtx, *schemaTree, findCommand->getFilter());
 
     BSONObjBuilder bob;
     for (auto&& elem : cmdObj) {
