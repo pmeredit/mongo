@@ -11,12 +11,16 @@
 #include <unistd.h>
 #endif
 
+#include "mongo/base/initializer.h"
 #include "mongo/db/json.h"
 #include "mongo/db/pipeline/aggregation_request_helper.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/pipeline.h"
 #include "mongo/db/query/plan_executor_factory.h"
+#include "mongo/db/query/query_feature_flags_gen.h"
+#include "mongo/db/server_options.h"
 #include "mongo/db/service_context.h"
+#include "mongo/idl/server_parameter.h"
 
 #include "document_source_bson_file.h"
 #include "document_source_stdin.h"
@@ -177,6 +181,7 @@ const char* usage =
     "         -j Output JSON text\n\n"
     "         -t [DIRECTORY] Path to a temp directory (required for large sorts)\n"
     "         -h Output help text and exit\n"
+    "         -f Enable flag guarded aggregation stages\n"
     "Examples:\n"
     "Write out the contents of a BSON file as JSON.\n"
     "mqlrun -j -e '[]' input.bson\n\n"
@@ -190,8 +195,23 @@ const char* usage =
     "Supported aggregation stages: $addFields, $bucket, $bucketAuto, $count, $facet,\n"
     "$group, $match, $project, $redact, $replaceRoot, $sample, $skip, $sort,\n"
     "$sortByCount, $unwind\n\n"
+    "Supported aggregation stages with -f: $setWindowFields\n\n"
     "Unsupported aggregations stages: $collStags, $currentOp, $geoNear,\n"
     "$graphLookup, $indexStats, $listLocalSessions, $lookup, $out\n";
+
+MONGO_INITIALIZER_GENERAL(MQLRunFlagSetup,
+                          ("EndServerParameterRegistration"),
+                          ("addToDocSourceParserMap_setWindowFields",
+                           "windowFunctionExpressionMap"))
+(mongo::InitializerContext* ctx) {
+    const auto args = ctx->args();
+    if (std::find(args.begin(), args.end(), "-f") != args.end()) {
+        auto map = mongo::ServerParameterSet::getGlobal()->getMap();
+        auto paramIt = map.find("featureFlagWindowFunctions");
+        auto flagStatus = paramIt->second->setFromString("1");
+        uassert(5397907, "MQLRun failed to enable window functions", flagStatus.isOK());
+    }
+}
 
 int main(int argc, char* argv[]) {
 
@@ -220,6 +240,8 @@ int main(int argc, char* argv[]) {
             inputFileIndex = i;
             break;
         }
+        // -f is a valid argument but is dealt with by the initializers so we don't process it
+        // here.
         switch (argv[i][1]) {
             case 'h':
                 std::cout << usage;
