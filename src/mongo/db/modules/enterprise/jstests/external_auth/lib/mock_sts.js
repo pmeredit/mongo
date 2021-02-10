@@ -54,6 +54,8 @@ class MockSTSServer {
             args.push("--fault=" + this.fault_type);
         }
 
+        clearRawMongoProgramOutput();
+
         this.pid = _startMongoProgram({args: args});
         assert(checkProgram(this.pid));
 
