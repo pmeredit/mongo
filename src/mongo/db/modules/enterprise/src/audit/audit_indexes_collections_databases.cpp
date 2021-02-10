@@ -132,7 +132,8 @@ void audit::logDropView(Client* client,
                         StringData viewOn,
                         const std::vector<BSONObj>& pipeline,
                         ErrorCodes::Error code) {
-    if (!getGlobalAuditManager()->enabled) {
+    if (!getGlobalAuditManager()->enabled ||
+        !gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
         return;
     }
 
@@ -141,10 +142,8 @@ void audit::logDropView(Client* client,
                      AuditEventType::dropCollection,
                      [&](BSONObjBuilder* builder) {
                          builder->append(kNSField, nsname);
-                         if (gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
-                             builder->append(kViewOnField, viewOn);
-                             builder->append(kPipelineField, pipeline);
-                         }
+                         builder->append(kViewOnField, viewOn);
+                         builder->append(kPipelineField, pipeline);
                      },
                      code);
 

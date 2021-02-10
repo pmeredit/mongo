@@ -122,28 +122,28 @@ function runTests(mode, mongo, audit, improvedAuditingEnabled) {
 
     // Drop views
     test.explicitView.drop();
-    audit.assertEntryForAdmin('dropCollection', expectExplicitView);
     test.addZedView.drop();
-    audit.assertEntryForAdmin('dropCollection', expectZedView);
     test.implicitView.drop();
-    audit.assertEntryForAdmin('dropCollection', expectImplicitView);
 
-    // In sharded environments, dropping a collection or view that doesn't exist does not return an
-    // error by design, but standalones return NamespaceNotFound. Both scenarios are audited with
-    // the NamespaceNotFound error code.
-    if (mode == 'Sharded') {
-        assert.commandWorked(test.runCommand({drop: "nonexistentView"}));
-    } else {
-        assert.commandFailedWithCode(test.runCommand({drop: "nonexistentView"}),
-                                     [ErrorCodes.NamespaceNotFound]);
-    }
-    const expectNamespaceErrorView = {ns: 'test.nonexistentView'};
     if (improvedAuditingEnabled) {
+        audit.assertEntryForAdmin('dropCollection', expectExplicitView);
+        audit.assertEntryForAdmin('dropCollection', expectZedView);
+        audit.assertEntryForAdmin('dropCollection', expectImplicitView);
+        // In sharded environments, dropping a collection or view that doesn't exist does not return
+        // an error by design, but standalones return NamespaceNotFound. Both scenarios are audited
+        // with the NamespaceNotFound error code.
+        if (mode == 'Sharded') {
+            assert.commandWorked(test.runCommand({drop: "nonexistentView"}));
+        } else {
+            assert.commandFailedWithCode(test.runCommand({drop: "nonexistentView"}),
+                                         [ErrorCodes.NamespaceNotFound]);
+        }
+        const expectNamespaceErrorView = {ns: 'test.nonexistentView'};
         expectNamespaceErrorView.viewOn = '';
         expectNamespaceErrorView.pipeline = [];
+        audit.assertEntryForAdmin(
+            'dropCollection', expectNamespaceErrorView, ErrorCodes.NamespaceNotFound);
     }
-    audit.assertEntryForAdmin(
-        'dropCollection', expectNamespaceErrorView, ErrorCodes.NamespaceNotFound);
 
     //// Drop Collections
     test.implicitCollection.drop();
