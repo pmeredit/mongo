@@ -168,6 +168,34 @@ class AuditSpooler {
     }
 
     /**
+     * Assert that all entries in the audit log of action type @param atype have params containing
+     * all of the fields and their corresponding values as specified in @param paramPartial.
+     */
+
+    assertAllAtypeEntriesRelaxed(atypes, paramPartial) {
+        // If only one atype was provided as a string, convert it into an array.
+        if (typeof atypes === 'string') {
+            atypes = [atypes];
+        }
+        atypes.forEach((atype) => {
+            // We want log to only contain the lines in the file that match atype but don't match
+            // paramPartial.
+            const log = this.getAllLines().filter(function(line) {
+                let parsedLine = JSON.parse(line);
+                if (atype === parsedLine.atype &&
+                    !this._deepPartialEquals(parsedLine.param, paramPartial)) {
+                    return true;
+                }
+                return false;
+            }, this);
+            assert.eq(log.length,
+                      0,
+                      "Log contained entries of atype " + atype + " whose params did not match " +
+                          tojson(paramPartial) + " : " + tojson(log));
+        });
+    }
+
+    /**
      * Assert that no new audit events, optionally of a give type, have been emitted
      * since the last event observed via the Spooler.
      *

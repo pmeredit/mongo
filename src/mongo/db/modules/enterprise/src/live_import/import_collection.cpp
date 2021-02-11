@@ -254,7 +254,7 @@ void importCollection(OperationContext* opCtx,
         }
 
         if (!isDryRun) {
-            audit::logImportCollection(&cc(), nss.ns());
+            audit::logImportCollection(&cc(), nss);
         }
 
         // Skip the actual import for the noopImportCollectionCommand fail point.

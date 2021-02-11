@@ -288,8 +288,10 @@ function runTests(mode, mongo, audit, improvedAuditingEnabled) {
         }
         audit.assertEntryForAdmin('dropDatabase', {ns: 'testTwo'});
     }
+}
 
-    jsTest.log('SUCCESS audit/ddl-ops.js ' + mode);
+function unreplicatedNamespaceRegex() {
+    return new RegExp('(system.profile)|(local.*)');
 }
 
 // Establish whether or not the featureFlag has been enabled during standalone run.
@@ -304,25 +306,54 @@ let improvedAuditingEnabled = false;
     improvedAuditingEnabled = isImprovedAuditingEnabled(mongod);
     runTests('Standalone', mongod, mongod.auditSpooler(), improvedAuditingEnabled);
     MongoRunner.stopMongod(mongod);
+    jsTest.log('SUCCESS audit/ddl-ops.js Standalone');
 }
 
 {
+    const primaryOptions = {
+        auth: null,
+        auditDestination: 'file',
+        auditPath: MongoRunner.dataPath + '/set_0_audit.log',
+        auditFormat: 'JSON',
+    };
+    const secondaryOptions = {
+        auth: null,
+        auditDestination: 'file',
+        auditPath: MongoRunner.dataPath + '/set_1_audit.log',
+        auditFormat: 'JSON',
+    };
     const options = {
         mongos: [{auth: null}],
         config: [{auth: null}],
-        shards: [{
-            auth: null,
-            auditDestination: 'file',
-            auditPath: MongoRunner.dataPath + '/shard_audit.log',
-            auditFormat: 'JSON',
-        }],
+        shards: 1,
+        rs: {
+            nodes: [primaryOptions, secondaryOptions],
+        },
         keyFile: 'jstests/libs/key1',
     };
 
     jsTest.log('Starting ShardingTest with options: ' + tojson(options));
     const st = new ShardingTest(options);
-    const audit = new AuditSpooler(options.shards[0].auditPath, false);
-    runTests('Sharded', st.s0, audit, improvedAuditingEnabled);
+    const primaryAudit = new AuditSpooler(options.rs.nodes[0].auditPath, false);
+    runTests('Sharded', st.s0, primaryAudit, improvedAuditingEnabled);
+
+    if (improvedAuditingEnabled) {
+        const secondaryAudit = new AuditSpooler(options.rs.nodes[1].auditPath, false);
+        const ddlAtypes = [
+            'createDatabase',
+            'createCollection',
+            'createIndex',
+            'dropDatabase',
+            'dropCollection',
+            'dropIndex',
+            'importCollection',
+            'renameCollection'
+        ];
+        secondaryAudit.assertAllAtypeEntriesRelaxed(ddlAtypes, {ns: unreplicatedNamespaceRegex()});
+    }
+
+    jsTest.log('SUCCESS audit/ddl-ops.js Sharded');
+
     st.stop();
 }
 })();
