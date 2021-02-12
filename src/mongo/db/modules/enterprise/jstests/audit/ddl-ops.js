@@ -71,9 +71,19 @@ function runTests(mode, mongo, audit, improvedAuditingEnabled) {
     assert.writeOK(test.implicitCollection.insert({x: 1}));
     audit.assertEntryForAdmin('createDatabase', {ns: 'test'});
     audit.assertEntryForAdmin('createCollection', {ns: 'test.implicitCollection'});
+    audit.assertEntryForAdmin('createIndex', {
+        ns: 'test.implicitCollection',
+        indexName: '_id_',
+        indexSpec: {v: 2, key: {_id: 1}, name: '_id_'}
+    });
 
     assert.commandWorked(test.createCollection('explicitCollection'));
     audit.assertEntryForAdmin('createCollection', {ns: 'test.explicitCollection'});
+    audit.assertEntryForAdmin('createIndex', {
+        ns: 'test.explicitCollection',
+        indexName: '_id_',
+        indexSpec: {v: 2, key: {_id: 1}, name: '_id_'}
+    });
 
     //// Create Index
     assert.commandWorked(test.implicitCollection.createIndex({x: 1}));
@@ -83,8 +93,6 @@ function runTests(mode, mongo, audit, improvedAuditingEnabled) {
         indexSpec: {v: 2, key: {x: 1}, name: 'x_1'}
     });
 
-    // TODO: SERVER-50991 createIndex will not get audited if the collection is empty.
-    assert.writeOK(test.explicitCollection.insert({y: 1}));
     assert.commandWorked(test.explicitCollection.createIndex({y: 1}));
     audit.assertEntryForAdmin('createIndex', {
         ns: 'test.explicitCollection',
@@ -161,6 +169,12 @@ function runTests(mode, mongo, audit, improvedAuditingEnabled) {
     //// Rename
     assert.writeOK(test.origCollection.insert({x: 1}));
     audit.assertEntryForAdmin('createCollection', {ns: 'test.origCollection'});
+    audit.assertEntryForAdmin('createIndex', {
+        ns: 'test.origCollection',
+        indexName: '_id_',
+        indexSpec: {v: 2, key: {_id: 1}, name: '_id_'}
+    });
+
     assert.commandWorked(test.origCollection.renameCollection('newCollection', false));
     audit.assertEntryForAdmin('renameCollection',
                               {old: 'test.origCollection', new: 'test.newCollection'});
@@ -168,6 +182,12 @@ function runTests(mode, mongo, audit, improvedAuditingEnabled) {
     //// Rename with overwrite
     assert.writeOK(test.origCollection.insert({x: 2}));
     audit.assertEntryForAdmin('createCollection', {ns: 'test.origCollection'});
+    audit.assertEntryForAdmin('createIndex', {
+        ns: 'test.origCollection',
+        indexName: '_id_',
+        indexSpec: {v: 2, key: {_id: 1}, name: '_id_'}
+    });
+
     assert.commandWorked(test.origCollection.renameCollection('newCollection', true));
     audit.assertEntryForAdmin('dropCollection', {ns: 'test.newCollection'});
     {
