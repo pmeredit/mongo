@@ -18,7 +18,6 @@
 #include "mongo/db/matcher/expression_parser.h"
 #include "mongo/db/matcher/expression_type.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
-#include "mongo/db/ops/find_and_modify_command_gen.h"
 #include "mongo/db/ops/parsed_update_array_filters.h"
 #include "mongo/db/ops/write_ops.h"
 #include "mongo/db/ops/write_ops_gen.h"
