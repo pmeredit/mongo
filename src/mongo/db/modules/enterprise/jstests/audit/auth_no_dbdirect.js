@@ -5,26 +5,35 @@
 
 load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
 
-const m =
-    MongoRunner.runMongodAuditLogger({auth: "", setParameter: "auditAuthorizationSuccess=true"});
+let setupTest = function(auditSpoolers, admin) {
+    assert.commandWorked(
+        admin.runCommand({createUser: "user1", pwd: "pwd", roles: [{role: "root", db: "admin"}]}));
 
-const audit = m.auditSpooler();
-const admin = m.getDB("admin");
+    assert(admin.auth({user: "user1", pwd: "pwd"}));
 
-assert.commandWorked(
-    admin.runCommand({createUser: "user1", pwd: "pwd", roles: [{role: "root", db: "admin"}]}));
+    auditSpoolers.forEach(audit => audit.fastForward());
 
-admin.auth({user: "user1", pwd: "pwd"});
+    assert.commandWorked(
+        admin.runCommand({createUser: "user2", pwd: "pwd2", roles: [{role: "root", db: "admin"}]}));
+};
 
-audit.fastForward();
+let checkAuditLog = function(audit) {
+    // The DB direct client runs two commands, calling update on admin.system.version and calling
+    // insert on admin.system.users. We want to make sure these commands are not logged.
+    audit.assertNoNewEntries("authCheck", {"command": "update"});
+    audit.assertNoNewEntries("authCheck", {"command": "insert"});
+};
 
-assert.commandWorked(
-    admin.runCommand({createUser: "user2", pwd: "pwd2", roles: [{role: "root", db: "admin"}]}));
+const st = MongoRunner.runShardedClusterAuditLogger(
+    {}, {setParameter: "auditAuthorizationSuccess=true", auth: null});
+const auditMongos = st.s0.auditSpooler();
 
-// The DB direct client runs two commands, calling update on admin.system.version and calling
-// insert on admin.system.users. We want to make sure these commands are not logged.
-audit.assertNoNewEntries("authCheck", {"command": "update"});
-audit.assertNoNewEntries("authCheck", {"command": "insert"});
+const auditShard = st.rs0.nodes[0].auditSpooler();
+const admin = st.s0.getDB("admin");
 
-MongoRunner.stopMongod(m);
+setupTest([auditMongos, auditShard], admin);
+checkAuditLog(auditMongos);
+checkAuditLog(auditShard);
+
+st.stop();
 })();

@@ -8,8 +8,6 @@ load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
 load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/mock_sts.js");
 
 const SERVER_CERT = "jstests/libs/server.pem";
-const SERVER_USER = "CN=server,OU=Kernel,O=MongoDB,L=New York City,ST=New York,C=US";
-
 const CA_CERT = "jstests/libs/ca.pem";
 
 const x509_options = {
@@ -20,18 +18,29 @@ const x509_options = {
 
 const mock_sts = new MockSTSServer();
 
-const port = allocatePort();
-
-function runTest({options, func}) {
-    const mongod = MongoRunner.runMongodAuditLogger(Object.merge(options, {port: port, auth: ''}));
+function runTestMongod({options, func}) {
+    const mongod = MongoRunner.runMongodAuditLogger(Object.merge(options, {auth: ''}));
     func({conn: mongod, audit: mongod.auditSpooler()});
 
     MongoRunner.stopMongod(mongod);
 }
 
+function runTestMongos({baseOptions, options, func}) {
+    const st = MongoRunner.runShardedClusterAuditLogger(
+        Object.merge({keyFile: 'jstests/libs/key1'}, baseOptions),
+        Object.merge(options, {auth: null}));
+    func({conn: st.s0, audit: st.s0.auditSpooler()});
+
+    st.stop();
+}
+
 function checkScram({authmech, conn, audit}) {
     const admin = conn.getDB("admin");
     const db = conn.getDB("test");
+    let port = conn.port;
+    if (conn.fullOptions) {
+        port = conn.fullOptions.port;
+    }
 
     assert.commandWorked(admin.runCommand({createUser: "admin", pwd: "pwd", roles: ['root']}));
     assert(admin.auth("admin", "pwd"));
@@ -42,7 +51,7 @@ function checkScram({authmech, conn, audit}) {
     let runWithCleanAudit = function(desc, func) {
         print(`Testing audit log for ${desc}`);
         audit.fastForward();
-        func();
+        func(port);
         audit.assertNoNewEntries("authenticate");
     };
 
@@ -315,7 +324,7 @@ function checkIam({conn, audit}) {
 }
 
 // Be specific about the mechanism in case the default changes
-runTest({
+runTestMongod({
     options: {
         setParameter: {
             authenticationMechanisms: "SCRAM-SHA-1",
@@ -326,7 +335,7 @@ runTest({
     }
 });
 
-runTest({
+runTestMongod({
     options: {
         setParameter: {
             authenticationMechanisms: "SCRAM-SHA-256",
@@ -337,7 +346,7 @@ runTest({
     }
 });
 
-runTest({
+runTestMongod({
     options: Object.merge(x509_options, {
         setParameter: {
             authenticationMechanisms: "MONGODB-X509",
@@ -348,7 +357,7 @@ runTest({
     }
 });
 
-runTest({
+runTestMongod({
     options: {
         setParameter:
             {authenticationMechanisms: "MONGODB-AWS,SCRAM-SHA-256", awsSTSUrl: mock_sts.getURL()}
@@ -357,4 +366,47 @@ runTest({
         checkIam({conn: conn, audit: audit});
     }
 });
+
+// Be specific about the mechanism in case the default changes
+runTestMongos({
+    options: {
+        setParameter: "authenticationMechanisms=SCRAM-SHA-1",
+    },
+    func: function({conn, audit}) {
+        checkScram({authmech: "SCRAM-SHA-1", conn: conn, audit: audit});
+    }
+});
+
+runTestMongos({
+    options: {
+        setParameter: "authenticationMechanisms=SCRAM-SHA-256",
+    },
+    func: function({conn, audit}) {
+        checkScram({authmech: "SCRAM-SHA-256", conn: conn, audit: audit});
+    }
+});
+
+runTestMongos({
+    options: Object.merge(x509_options, {
+        setParameter: "authenticationMechanisms=MONGODB-X509",
+    }),
+    func: function({conn, audit}) {
+        checkX509({conn: conn, audit: audit});
+    }
+});
+
+// TODO SERVER-52944 - add test for AWS on sharding tests.
+//
+// const awsSetParam = "awsSTSUrl=" + mock_sts.getURL();
+// runTestMongos({
+//     options: {
+//         setParameter: {
+//             authenticationMechanisms: "MONGODB-AWS,SCRAM-SHA-256",
+//             awsSTSUrl: mock_sts.getURL(),
+//         }
+//     },
+//     func: function({conn, audit}) {
+//         checkIam({conn: conn, audit: audit});
+//     }
+// });
 })();

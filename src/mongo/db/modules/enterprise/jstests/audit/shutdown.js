@@ -5,19 +5,35 @@
 'use strict';
 
 load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
-print("START audit-shutdown.js");
 
-var m = MongoRunner.runMongodAuditLogger({});
-var audit = m.auditSpooler();
-var admin = m.getDB("admin");
+{
+    print("START audit-shutdown.js standalone");
 
-// We actually expect shutdownServer() to return undefined
-// since the connection closes immediately.
-// So interpret an undefined result as OK.
-// The audit entry ensures it was processed correctly.
-assert(admin.shutdownServer({timeoutSecs: 3}) === undefined);
-audit.assertEntry("shutdown", {});
-waitProgram(m.pid);
+    const m = MongoRunner.runMongodAuditLogger({});
+    const audit = m.auditSpooler();
+    const admin = m.getDB("admin");
 
-print("SUCCESS audit-shutdown.js");
+    // We actually expect shutdownServer() to return undefined
+    // since the connection closes immediately.
+    // So interpret an undefined result as OK.
+    // The audit entry ensures it was processed correctly.
+    assert(admin.shutdownServer({timeoutSecs: 3}) === undefined);
+    audit.assertEntry("shutdown", {});
+    waitProgram(m.pid);
+
+    print("SUCCESS audit-shutdown.js standalone");
+}
+
+{
+    print("SUCCESS audit-shutdown.js standalone");
+    const st = MongoRunner.runShardedClusterAuditLogger({});
+    const auditMongos = st.s0.auditSpooler();
+
+    st.restartMongos(0, st.s0.opts);
+    auditMongos.assertEntry("shutdown", {});
+
+    st.stop();
+
+    print("SUCCESS audit-shutdown.js standalone");
+}
 })();

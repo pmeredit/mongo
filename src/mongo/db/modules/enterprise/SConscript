@@ -187,6 +187,7 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
         ],
         LIBDEPS_DEPENDENTS=[
             '$BUILD_DIR/mongo/db/commands/mongod',
+            '$BUILD_DIR/mongo/s/commands/cluster_commands',
         ],
         LIBDEPS_TYPEINFO=[
             '$BUILD_DIR/mongo/rpc/rpc',

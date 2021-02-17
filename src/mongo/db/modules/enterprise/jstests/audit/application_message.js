@@ -5,12 +5,8 @@
 
 load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
 
-function runTest(asBSON) {
+function test(audit, db, asBSON) {
     jsTest.log("START audit-log-application-message.js " + tojson(asBSON));
-
-    const m = MongoRunner.runMongodAuditLogger({}, asBSON);
-    const audit = m.auditSpooler();
-    const db = m.getDB("test");
 
     // Test null byte separately.
     // We expect this to fail during command parsing when the message
@@ -30,11 +26,31 @@ function runTest(asBSON) {
         }
     }
 
-    MongoRunner.stopMongod(m);
     jsTest.log("SUCCESS audit-log-application-message.js " + tojson(asBSON));
 }
 
+function runMongodTest(asBSON) {
+    const m = MongoRunner.runMongodAuditLogger({}, asBSON);
+    const audit = m.auditSpooler();
+    const db = m.getDB("test");
+
+    test(audit, db, asBSON);
+    MongoRunner.stopMongod(m);
+}
+
+function runShardedTest(asBSON) {
+    const st = MongoRunner.runShardedClusterAuditLogger();
+    const auditMongos = st.s0.auditSpooler();
+    const db = st.s0.getDB("test");
+
+    test(auditMongos, db, asBSON);
+    st.stop();
+}
+
 // Test with both JSON and BSON files to ensure some coverage for each.
-runTest(true);
-runTest(false);
+runMongodTest(true);
+runMongodTest(false);
+
+runShardedTest(true);
+runShardedTest(false);
 })();

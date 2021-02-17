@@ -196,6 +196,45 @@ class AuditSpooler {
     }
 
     /**
+     * Poll the audit logfile for a matching entry beginning with the current line.
+     * This method returns true if an entry in the audit file exists after "now" which has
+     * the desired atype, and if every field in param.options is equal to a matching field
+     * in the entry.
+     */
+    assertEntryOptionsRelaxed(atype, options) {
+        let line;
+        assert.soon(
+            () => {
+                const log = this.getAllLines().slice(this._auditLine);
+                for (let idx in log) {
+                    const entry = log[idx];
+                    try {
+                        line = JSON.parse(entry);
+                    } catch (e) {
+                        continue;
+                    }
+                    if (line.atype !== atype) {
+                        continue;
+                    }
+
+                    if (line.param && line.param.options) {
+                        if (this._deepPartialEquals(line.param.options, options)) {
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            },
+            "audit logfile should contain entry within default timeout.\n" +
+                "Search started on line number: " + this._auditLine + "\n" +
+                "Log File Contents\n==============================\n" + this.getAllLines() +
+                "\n==============================\n");
+
+        // Success if we got here, return the matched record.
+        return line;
+    }
+
+    /**
      * Assert that no new audit events, optionally of a give type, have been emitted
      * since the last event observed via the Spooler.
      *
@@ -265,21 +304,28 @@ class AuditSpooler {
     }
 }
 
-/**
- * Instantiate a variant of MongoRunnner.runMongod(), which provides a custom assertion method
- * for tailing the audit log looking for particular atype entries with matching param objects.
- */
-MongoRunner.runMongodAuditLogger = function(opts, isBSON = false) {
-    opts = MongoRunner.mongodOptions(opts);
+function formatAuditOpts(opts, isBSON) {
     opts.auditDestination = opts.auditDestination || "file";
     if (opts.auditDestination === "file") {
-        opts.auditPath = opts.auditPath || (opts.dbpath + "/audit.log");
+        if (!opts.auditPath) {
+            opts.auditPath = opts.auditPath || MongoRunner.dataPath + "mongodb-$port-audit.log";
+        }
         if (isBSON) {
             opts.auditFormat = opts.auditFormat || "BSON";
         } else {
             opts.auditFormat = opts.auditFormat || "JSON";
         }
     }
+
+    return opts;
+}
+
+/**
+ * Instantiate a variant of MongoRunnner.runMongod(), which provides a custom assertion method
+ * for tailing the audit log looking for particular atype entries with matching param objects.
+ */
+MongoRunner.runMongodAuditLogger = function(opts, isBSON = false) {
+    opts = formatAuditOpts(opts, isBSON);
     let mongo = MongoRunner.runMongod(opts);
 
     /**
@@ -291,6 +337,66 @@ MongoRunner.runMongodAuditLogger = function(opts, isBSON = false) {
     };
 
     return mongo;
+};
+
+/**
+ * Instantiate a variant of new ShardingTest(), which provides a custom assertion method
+ * for tailing the audit log looking for particular atype entries with matching param objects.
+ *
+ * To use this, specify the number (n) of mongos, config servers, and shards by using the format:
+ * {mongos: n, config: n, shards: n} and specifying the options for each of these members using
+ * the format: {other: {configOptions: ..., shardOptions: ..., mongosOptions: ..., ... }}. The
+ * defaults are defined at the top of the function.
+ *
+ * The baseOptions param is for things common for auditing such as  auditAuthorizationSuccess or
+ * an audit filter, or for things like auth enabled.
+ *
+ * Returns the st object with an audit logger attached to all shards (and members of the replica
+ * set for a single shard), mongos', and config servers.
+ */
+MongoRunner.runShardedClusterAuditLogger = function(opts = {}, baseOptions = {}, isBSON = false) {
+    // We call mongo options for the mongos to allocate a port.
+    let nestedOpts = formatAuditOpts(baseOptions, isBSON);
+
+    const defaultOpts = {
+        mongos: 1,
+        config: 1,
+        shards: 1,
+        other: {
+            mongosOptions: nestedOpts,
+            configOptions: nestedOpts,
+            shardOptions: nestedOpts,
+        }
+    };
+
+    // Beware! This does not do a nested merge, so if your provided opts has an "other" field, it
+    // will completely override defaultOpts.other.
+    let clusterOptions = Object.merge(defaultOpts, opts);
+
+    const st = new ShardingTest(clusterOptions);
+
+    let attachAuditSpool = function(conn) {
+        conn.auditSpooler = function() {
+            if (conn.fullOptions.auditPath) {
+                return new AuditSpooler(conn.fullOptions.auditPath, isBSON);
+            }
+            return null;
+        };
+    };
+
+    for (const i in st._connections) {
+        let connection = st._connections[i];
+        if (connection.rs && connection.rs.nodes) {
+            connection.rs.nodes.forEach(attachAuditSpool);
+        } else {
+            attachAuditSpool(connection);
+        }
+    }
+
+    st.forEachMongos(attachAuditSpool);
+    st._configServers.forEach(attachAuditSpool);
+
+    return st;
 };
 
 function isImprovedAuditingEnabled(m) {
