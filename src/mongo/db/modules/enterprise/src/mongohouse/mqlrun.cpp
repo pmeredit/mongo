@@ -76,6 +76,30 @@ BSONArray createPipelineArray(boost::intrusive_ptr<ExpressionContext> expCtx,
     return (BSONArray)fromjson(pipelineStr);
 }
 
+// drain stdin (eg. until EOF) to prevent unnecessary broken pipes in mhouse:CopyWithContext
+void cleanUpStreams() {
+    if (std::cout.good()) {
+        fclose(stdout);
+    }
+    if (std::cerr.good()) {
+        fclose(stderr);
+    }
+
+    if (!std::cin.good()) {
+        return;
+    }
+
+    // when mhouse detects stdout/stderr closure, it will end up closing stdin,
+    // so the blocking fread() here should be safe
+    uint32_t i = 1024;
+    char buf[i];
+    while (i > 0 && !feof(stdin)) {
+        i = fread(buf, 1, sizeof(buf), stdin);
+    }
+
+    fclose(stdin);
+}
+
 int mqlrunMain(const char* pipelineStr,
                const char* fileName,
                OutputType outputType,
@@ -138,11 +162,14 @@ int mqlrunMain(const char* pipelineStr,
         return 1;
     }
 
+    bool drainOnException;
     try {
         if (strlen(fileName) == 1 && fileName[0] == '-') {
+            drainOnException = true;
             auto stdinSource = DocumentSourceStdin::create(expCtx);
             pipeline->addInitialSource(stdinSource);
         } else {
+            drainOnException = false;
             auto bsonSource = DocumentSourceBSONFile::create(expCtx, fileName);
             pipeline->addInitialSource(bsonSource);
         }
@@ -168,6 +195,11 @@ int mqlrunMain(const char* pipelineStr,
             }
         } catch (AssertionException& e) {
             std::cerr << "Failure: " << e.reason() << std::endl;
+            if (drainOnException) {
+                // drain stdin (eg. until EOF) to prevent unnecessary broken pipes in
+                // mhouse:CopyWithContext
+                cleanUpStreams();
+            }
             return 1;
         }
     }
