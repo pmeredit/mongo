@@ -91,11 +91,11 @@ void cleanUpStreams() {
 
     // when mhouse detects stdout/stderr closure, it will end up closing stdin,
     // so the blocking fread() here should be safe
-    uint32_t i = 1024;
-    char buf[i];
-    while (i > 0 && !feof(stdin)) {
+    uint32_t i = 0;
+    char buf[1024];
+    do {
         i = fread(buf, 1, sizeof(buf), stdin);
-    }
+    } while (i > 0 && !feof(stdin));
 
     fclose(stdin);
 }
