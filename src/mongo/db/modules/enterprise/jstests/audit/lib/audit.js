@@ -271,3 +271,10 @@ function isImprovedAuditingEnabled(m) {
             m.getDB('admin').runCommand({getParameter: 1, featureFlagImprovedAuditing: 1}))
         .featureFlagImprovedAuditing.value;
 }
+
+function isRuntimeAuditEnabled(m) {
+    return assert
+        .commandWorked(
+            m.getDB('admin').runCommand({getParameter: 1, featureFlagRuntimeAuditConfig: 1}))
+        .featureFlagRuntimeAuditConfig.value;
+}

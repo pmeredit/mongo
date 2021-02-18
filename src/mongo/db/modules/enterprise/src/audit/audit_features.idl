@@ -9,3 +9,7 @@ feature_flags:
         cpp_varname: gFeatureFlagImprovedAuditing
         default: false
 
+    featureFlagRuntimeAuditConfig:
+        description: Enable 'Runtime Audit Configuration'
+        cpp_varname: gFeatureFlagRuntimeAuditConfig
+        default: false
