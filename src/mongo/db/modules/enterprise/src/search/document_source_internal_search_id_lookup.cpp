@@ -15,7 +15,8 @@ using boost::intrusive_ptr;
 
 REGISTER_DOCUMENT_SOURCE(_internalSearchIdLookup,
                          LiteParsedDocumentSourceDefault::parse,
-                         DocumentSourceInternalSearchIdLookUp::createFromBson);
+                         DocumentSourceInternalSearchIdLookUp::createFromBson,
+                         LiteParsedDocumentSource::AllowedWithApiStrict::kInternal);
 
 DocumentSourceInternalSearchIdLookUp::DocumentSourceInternalSearchIdLookUp(
     const intrusive_ptr<ExpressionContext>& pExpCtx)

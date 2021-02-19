@@ -25,7 +25,8 @@ using executor::TaskExecutorCursor;
 
 REGISTER_DOCUMENT_SOURCE(_internalSearchMongotRemote,
                          DocumentSourceInternalSearchMongotRemote::LiteParsed::parse,
-                         DocumentSourceInternalSearchMongotRemote::createFromBson);
+                         DocumentSourceInternalSearchMongotRemote::createFromBson,
+                         LiteParsedDocumentSource::AllowedWithApiStrict::kAlways);
 
 MONGO_FAIL_POINT_DEFINE(searchReturnEofImmediately);
 

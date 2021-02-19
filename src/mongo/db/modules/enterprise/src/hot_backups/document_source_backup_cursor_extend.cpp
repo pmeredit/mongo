@@ -19,7 +19,8 @@ const StringData kTimestampFieldName = "timestamp"_sd;
 
 REGISTER_DOCUMENT_SOURCE(backupCursorExtend,
                          DocumentSourceBackupCursorExtend::LiteParsed::parse,
-                         DocumentSourceBackupCursorExtend::createFromBson);
+                         DocumentSourceBackupCursorExtend::createFromBson,
+                         LiteParsedDocumentSource::AllowedWithApiStrict::kAlways);
 
 DocumentSourceBackupCursorExtend::DocumentSourceBackupCursorExtend(
     const boost::intrusive_ptr<ExpressionContext>& pExpCtx,
