@@ -98,7 +98,7 @@ public:
 };
 using BSONAppender = RotatableAuditFileAppender<AuditEventBsonEncoder>;
 
-class AuditEventSyslogEncoder : public logger::Encoder<AuditEvent> {
+class AuditEventSyslogEncoder final : public logger::Encoder<AuditEvent> {
 public:
     ~AuditEventSyslogEncoder() final {}
 
@@ -110,7 +110,7 @@ private:
     }
 };
 
-class AuditEventTextEncoder : public logger::Encoder<AuditEvent> {
+class AuditEventTextEncoder final : public logger::Encoder<AuditEvent> {
 public:
     ~AuditEventTextEncoder() final {}
 

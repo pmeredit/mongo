@@ -9,7 +9,7 @@
 
 namespace mongo {
 
-class SaslAWSServerMechanism : public MakeServerMechanism<AWSIAMPolicy> {
+class SaslAWSServerMechanism final : public MakeServerMechanism<AWSIAMPolicy> {
 public:
     explicit SaslAWSServerMechanism(std::string authenticationDatabase)
         : MakeServerMechanism<AWSIAMPolicy>(std::move(authenticationDatabase)) {}

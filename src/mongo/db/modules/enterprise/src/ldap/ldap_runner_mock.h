@@ -17,7 +17,7 @@ namespace mongo {
  * queries and their results using the ``push'' method, which stores them on a stack. runQuery will
  * pop the stack, assert its query matches the caller's, and return the stored result.
  */
-class LDAPRunnerMock : public LDAPRunner {
+class LDAPRunnerMock final : public LDAPRunner {
 public:
     ~LDAPRunnerMock() final = default;
     Status bindAsUser(const std::string& user, const SecureString& pwd) final {

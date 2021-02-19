@@ -21,7 +21,7 @@ class StatusWith;
  * This implementation spawns and uses connections to remote LDAP servers.
  * It is thread safe.
  */
-class LDAPRunnerImpl : public LDAPRunner {
+class LDAPRunnerImpl final : public LDAPRunner {
 public:
     LDAPRunnerImpl(LDAPBindOptions defaultBindOptions, LDAPConnectionOptions options);
     ~LDAPRunnerImpl() final;

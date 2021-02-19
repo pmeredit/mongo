@@ -17,7 +17,7 @@ namespace mongo {
 /**
  * Implementation of LDAPConnection using libldap
  */
-class OpenLDAPConnection : public LDAPConnection {
+class OpenLDAPConnection final : public LDAPConnection {
 public:
     explicit OpenLDAPConnection(LDAPConnectionOptions options);
     ~OpenLDAPConnection() final;

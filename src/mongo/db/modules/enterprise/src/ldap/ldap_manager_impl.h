@@ -27,7 +27,7 @@ class UserName;
  * This implementation spawns and uses connections to remote LDAP servers.
  * It is thread safe.
  */
-class LDAPManagerImpl : public LDAPManager {
+class LDAPManagerImpl final : public LDAPManager {
 public:
     LDAPManagerImpl(std::unique_ptr<LDAPRunner> runner,
                     UserNameSubstitutionLDAPQueryConfig queryParameters,
