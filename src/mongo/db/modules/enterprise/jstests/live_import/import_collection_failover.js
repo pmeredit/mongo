@@ -63,6 +63,9 @@ waitForImportShell();
 // Test that the collection doesn't exist after the failover.
 nodes.forEach(node => assertCollectionNotFound(node.getDB(dbName), collName));
 
+// Make sure the previous step up has completed before calling 'stopSet'.
+rst.getPrimary();
+
 // We should pass the dbHash check as part of the stopSet()
 rst.stopSet();
 }());
