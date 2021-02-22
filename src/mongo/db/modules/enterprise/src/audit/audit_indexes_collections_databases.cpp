@@ -22,6 +22,7 @@ namespace {
 constexpr auto kNSField = "ns"_sd;
 constexpr auto kIndexNameField = "indexName"_sd;
 constexpr auto kIndexSpecField = "indexSpec"_sd;
+constexpr auto kIndexBuildStateField = "indexBuildState"_sd;
 constexpr auto kViewOnField = "viewOn"_sd;
 constexpr auto kPipelineField = "pipeline"_sd;
 constexpr auto kOldField = "old"_sd;
@@ -70,18 +71,28 @@ void logNSEvent(Client* client, const NamespaceString& nsname, AuditEventType aT
 void audit::logCreateIndex(Client* client,
                            const BSONObj* indexSpec,
                            StringData indexname,
-                           const NamespaceString& nsname) {
+                           const NamespaceString& nsname,
+                           StringData indexBuildState,
+                           ErrorCodes::Error result) {
     if (!getGlobalAuditManager()->isEnabled() ||
+        (!gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV() &&
+         indexBuildState != "IndexBuildSucceeded") ||
         (gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV() &&
          !isDDLAuditingAllowed(client, nsname))) {
         return;
     }
 
-    AuditEvent event(client, AuditEventType::kCreateIndex, [&](BSONObjBuilder* builder) {
-        builder->append(kNSField, nsname.ns());
-        builder->append(kIndexNameField, indexname);
-        builder->append(kIndexSpecField, *indexSpec);
-    });
+    AuditEvent event(client,
+                     AuditEventType::kCreateIndex,
+                     [&](BSONObjBuilder* builder) {
+                         builder->append(kNSField, nsname.ns());
+                         builder->append(kIndexNameField, indexname);
+                         builder->append(kIndexSpecField, *indexSpec);
+                         if (gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
+                             builder->append(kIndexBuildStateField, indexBuildState);
+                         }
+                     },
+                     result);
 
     if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
