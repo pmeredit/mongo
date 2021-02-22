@@ -544,6 +544,8 @@ TEST_F(ExpressionAnalysisTest, EvaluatedExpressionsCorrectlyReturnNotEncrypted) 
         fromjson("{$dateFromString: {dateString: '$ssn'}}"),
         fromjson("{$dateSubtract: {startDate : '$ssn', unit : 'day', amount : 1}}"),
         fromjson("{$dateToString: {date: '$ssn'}}"),
+        fromjson("{$dateTrunc: {date: '$ssn', unit: '$ssn', binSize: '$ssn', timezone: '$ssn', "
+                 "startOfWeek: '$ssn'}}"),
         fromjson("{$dayOfMonth: '$ssn'}"),
         fromjson("{$dayOfWeek: '$ssn'}"),
         fromjson("{$divide: ['$ssn', 42.0]}"),

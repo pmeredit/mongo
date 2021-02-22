@@ -178,6 +178,9 @@ public:
     void visit(ExpressionDateToString*) {
         _tracker.enterEvaluateOrCompare();
     }
+    void visit(ExpressionDateTrunc*) {
+        _tracker.enterEvaluateOrCompare();
+    }
     void visit(ExpressionDivide*) {
         _tracker.enterEvaluateOrCompare();
     }
@@ -575,6 +578,7 @@ public:
     void visit(ExpressionDateSubtract*) {}
     void visit(ExpressionDateToParts*) {}
     void visit(ExpressionDateToString*) {}
+    void visit(ExpressionDateTrunc*) {}
     void visit(ExpressionDivide*) {}
     void visit(ExpressionExp*) {}
     void visit(ExpressionFilter*) {}
@@ -793,6 +797,9 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(ExpressionDateToString*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(ExpressionDateTrunc*) {
         _tracker.exitEvaluateOrCompare();
     }
     void visit(ExpressionDivide*) {

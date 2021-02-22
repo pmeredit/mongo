@@ -556,6 +556,9 @@ private:
     void visit(ExpressionDateToString*) final {
         ensureNotEncryptedEnterEval("date to string function", subtreeStack);
     }
+    void visit(ExpressionDateTrunc*) final {
+        ensureNotEncryptedEnterEval("date truncation function", subtreeStack);
+    }
     void visit(ExpressionDivide*) final {
         ensureNotEncryptedEnterEval("division", subtreeStack);
     }
@@ -948,6 +951,7 @@ private:
     void visit(ExpressionDateSubtract*) final {}
     void visit(ExpressionDateToParts*) final {}
     void visit(ExpressionDateToString*) final {}
+    void visit(ExpressionDateTrunc*) final {}
     void visit(ExpressionDivide*) final {}
     void visit(ExpressionExp*) final {}
     void visit(ExpressionFieldPath*) final {}
@@ -1201,6 +1205,9 @@ private:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionDateToString*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionDateTrunc*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionDivide*) final {
