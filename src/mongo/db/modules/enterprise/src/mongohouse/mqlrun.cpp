@@ -178,8 +178,7 @@ int mqlrunMain(const char* pipelineStr,
         return false;
     }
 
-    auto planExec =
-        plan_executor_factory::make(expCtx, std::move(pipeline), /* isChangeStream */ false);
+    auto planExec = plan_executor_factory::make(expCtx, std::move(pipeline));
 
     BSONObj outObj;
 
