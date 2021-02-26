@@ -5,6 +5,8 @@
 
 load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
 
+load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/mock_sts.js");
+
 const SERVER_CERT = "jstests/libs/server.pem";
 const SERVER_USER = "CN=server,OU=Kernel,O=MongoDB,L=New York City,ST=New York,C=US";
 
@@ -15,6 +17,8 @@ const x509_options = {
     sslPEMKeyFile: SERVER_CERT,
     sslCAFile: CA_CERT
 };
+
+const mock_sts = new MockSTSServer();
 
 const port = allocatePort();
 
@@ -196,6 +200,117 @@ function checkX509({conn, audit}) {
     });
 }
 
+function checkIam({conn, audit}) {
+    const admin = conn.getDB("admin");
+
+    assert.commandWorked(admin.runCommand({createUser: "admin", pwd: "pwd", roles: ['root']}));
+    assert(admin.auth("admin", "pwd"));
+
+    const external = conn.getDB("$external");
+    assert.commandWorked(external.runCommand({createUser: MOCK_AWS_ACCOUNT_ARN, roles: []}));
+    assert.commandWorked(external.runCommand({createUser: MOCK_AWS_TEMP_ACCOUNT_ARN, roles: []}));
+    assert.commandWorked(
+        external.runCommand({createUser: MOCK_AWS_ACCOUNT_ASSUME_ROLE_GENERAL_ARN, roles: []}));
+    admin.logout();
+
+    // Localhost exception should not be in place anymore
+    const test = conn.getDB("test");
+    assert.throws(function() {
+        test.foo.findOne();
+    }, [], "read without login");
+
+    let runWithCleanAudit = function(desc, func) {
+        print(`Testing audit log for ${desc}`);
+        audit.fastForward();
+        func();
+        audit.assertNoNewEntries("authenticate");
+    };
+
+    let checkAuth = function({authObj, auditObj, code}) {
+        const authBaseObj = {mechanism: 'MONGODB-AWS'};
+        if (code === ErrorCodes.OK) {
+            assert(external.auth(Object.merge(authBaseObj, authObj)), "Authentication failed");
+        } else {
+            assert(!external.auth(Object.merge(authBaseObj, authObj)), "Authentication succeeded");
+        }
+
+        const auditBaseObj = {db: "$external", mechanism: "MONGODB-AWS"};
+        const auditResult = audit.assertEntry("authenticate", Object.merge(auditObj, auditBaseObj));
+        assert.eq(auditResult.result, code);
+    };
+
+    mock_sts.start();
+
+    runWithCleanAudit("valid-perm", function() {
+        checkAuth({
+            authObj: {user: MOCK_AWS_ACCOUNT_ID, pwd: MOCK_AWS_ACCOUNT_SECRET_KEY},
+            auditObj: {user: MOCK_AWS_ACCOUNT_ARN},
+            code: ErrorCodes.OK
+        });
+    });
+
+    runWithCleanAudit("valid-temp", function() {
+        checkAuth({
+            authObj: {
+                user: MOCK_AWS_TEMP_ACCOUNT_ID,
+                pwd: MOCK_AWS_TEMP_ACCOUNT_SECRET_KEY,
+                awsIamSessionToken: MOCK_AWS_TEMP_ACCOUNT_SESSION_TOKEN,
+            },
+            auditObj: {user: MOCK_AWS_TEMP_ACCOUNT_ARN},
+            code: ErrorCodes.OK
+        });
+    });
+
+    runWithCleanAudit("valid-assume-role", function() {
+        checkAuth({
+            authObj: {
+                user: MOCK_AWS_ACCOUNT_ASSUME_ROLE_ID,
+                pwd: MOCK_AWS_ACCOUNT_ASSUME_ROLE_SECRET_KEY,
+                awsIamSessionToken: MOCK_AWS_ACCOUNT_ASSUME_ROLE_SESSION_TOKEN,
+            },
+            auditObj: {user: MOCK_AWS_ACCOUNT_ASSUME_ROLE_GENERAL_ARN},
+            code: ErrorCodes.OK
+        });
+    });
+
+    runWithCleanAudit("invalid-user", function() {
+        const badUser = "nobody";
+        checkAuth({
+            authObj: {user: badUser, pwd: MOCK_AWS_ACCOUNT_SECRET_KEY},
+            auditObj: {
+                // We use the initial user name since we could not resolve the ARN.
+                user: badUser
+            },
+            code: ErrorCodes.AuthenticationFailed
+        });
+    });
+
+    runWithCleanAudit("invalid-key", function() {
+        const badKey = "sesame";
+        checkAuth({
+            authObj: {user: MOCK_AWS_ACCOUNT_ID, pwd: badKey},
+            auditObj: {
+                // We use the initial user name since we could not resolve the ARN.
+                user: MOCK_AWS_ACCOUNT_ID
+            },
+            code: ErrorCodes.AuthenticationFailed
+        });
+    });
+
+    mock_sts.stop();
+
+    runWithCleanAudit("valid-perm-no-server", function() {
+        checkAuth({
+            authObj: {user: MOCK_AWS_ACCOUNT_ID, pwd: MOCK_AWS_ACCOUNT_SECRET_KEY},
+            auditObj: {
+                // We use the initial user name since we could not resolve the ARN.
+                user: MOCK_AWS_ACCOUNT_ID
+            },
+            code: ErrorCodes.AuthenticationFailed
+        });
+    });
+}
+
 // Be specific about the mechanism in case the default changes
 runTest({
     options: {
@@ -227,6 +342,16 @@ runTest({
     }),
     func: function({conn, audit}) {
         checkX509({conn: conn, audit: audit});
+    }
+});
+
+runTest({
+    options: {
+        setParameter:
+            {authenticationMechanisms: "MONGODB-AWS,SCRAM-SHA-256", awsSTSUrl: mock_sts.getURL()}
+    },
+    func: function({conn, audit}) {
+        checkIam({conn: conn, audit: audit});
     }
 });
 })();

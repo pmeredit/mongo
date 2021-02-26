@@ -15,6 +15,13 @@ const MOCK_AWS_TEMP_ACCOUNT_ID = 'tempuser';
 const MOCK_AWS_TEMP_ACCOUNT_SECRET_KEY = 'fakefakefakefakefakeFAKEFAKEFAKEFAKEFAKE';
 const MOCK_AWS_TEMP_ACCOUNT_SESSION_TOKEN = 'FAKETEMPORARYSESSIONTOKENfaketemporarysessiontoken';
 
+const MOCK_AWS_ACCOUNT_ASSUME_ROLE_ARN = 'arn:aws:sts::557821124784:assumed-role/cat/Puff';
+const MOCK_AWS_ACCOUNT_ASSUME_ROLE_GENERAL_ARN = 'arn:aws:sts::557821124784:assumed-role/cat/*';
+const MOCK_AWS_ACCOUNT_ASSUME_ROLE_ID = 'assumedrole';
+const MOCK_AWS_ACCOUNT_ASSUME_ROLE_SECRET_KEY = 'FAKEFAKEFAKEFAKEFAKEfakefakefakefakeFAKE';
+const MOCK_AWS_ACCOUNT_ASSUME_ROLE_SESSION_TOKEN =
+    'FAKETEMPORARYSESSIONTOKENfaketemporarysessionTOKEN';
+
 class MockSTSServer {
     /**
      * Create a new webserver.
@@ -33,14 +40,13 @@ class MockSTSServer {
 
         this.web_server_py =
             "src/mongo/db/modules/enterprise/jstests/external_auth/lib/sts_http_server.py";
-        this.port = -1;
+        this.port = allocatePort();
     }
 
     /**
      * Start a web server
      */
     start() {
-        this.port = allocatePort();
         print("Mock STS Web server is listening on port: " + this.port);
 
         let args = [
@@ -72,8 +78,6 @@ class MockSTSServer {
      * @return {string} url of http server
      */
     getURL() {
-        assert(this.port != -1);
-
         return "http://localhost:" + this.port;
     }
 

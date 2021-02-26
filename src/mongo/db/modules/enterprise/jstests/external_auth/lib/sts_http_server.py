@@ -104,22 +104,27 @@ class AwsStsHandler(http.server.BaseHTTPRequestHandler):
         # SigV4Auth assumes this header exists even though it is not required by the algorithm
         request.context['timestamp'] = headers['X-Amz-Date']
 
+        is_temporary = False
         if aws_common.MOCK_AWS_ACCOUNT_ID in auth_header:
             account = aws_common.MOCK_AWS_ACCOUNT_ID
             secret = aws_common.MOCK_AWS_ACCOUNT_SECRET_KEY
-            if "x-amz-security-token" in auth_header:
-                print("BAD SIGNATURE - extraneous x-amz-security-token")
-                return False
-
         elif aws_common.MOCK_AWS_TEMP_ACCOUNT_ID in auth_header:
             account = aws_common.MOCK_AWS_TEMP_ACCOUNT_ID
             secret = aws_common.MOCK_AWS_TEMP_ACCOUNT_SECRET_KEY
-
-            if "x-amz-security-token" not in auth_header:
-                print("BAD SIGNATURE - missing x-amz-security-token")
-                return False
+            is_temporary = True
+        elif aws_common.MOCK_AWS_ACCOUNT_ASSUME_ROLE_ID in auth_header:
+            account = aws_common.MOCK_AWS_ACCOUNT_ASSUME_ROLE_ID
+            secret = aws_common.MOCK_AWS_ACCOUNT_ASSUME_ROLE_SECRET_KEY
+            is_temporary = True
         else:
             raise ValueError("Unkown user in auth header: " + auth_header)
+
+        if is_temporary and "x-amz-security-token" not in auth_header:
+            print("BAD SIGNATURE - missing x-amz-security-token")
+            return False
+        elif (not is_temporary) and "x-amz-security-token" in auth_header:
+            print("BAD SIGNATURE - extraneous x-amz-security-token")
+            return False
 
         credentials = Credentials(account, secret)
 
@@ -135,17 +140,23 @@ class AwsStsHandler(http.server.BaseHTTPRequestHandler):
         signature_headers_start = auth_header.find("Signature=") + len("Signature=")
         actual_signature = auth_header[signature_headers_start:]
 
-        print("Actual: %s" % (auth_header))
-        print("Expected: %s,,,,%s" % (expected_signature, string_to_sign))
+        if expected_signature != actual_signature:
+            print("Actual: %s" % (actual_signature))
+            print("Expected: %s,,,,%s" % (expected_signature, string_to_sign))
+            return False
 
-        return expected_signature == actual_signature
+        return True
 
     def _do_get_caller_identity(self, auth_header):
 
         if aws_common.MOCK_AWS_ACCOUNT_ID in auth_header:
             arn = aws_common.MOCK_AWS_ACCOUNT_ARN
-        else:
+        elif aws_common.MOCK_AWS_TEMP_ACCOUNT_ID in auth_header:
             arn = aws_common.MOCK_AWS_TEMP_ACCOUNT_ARN
+        elif aws_common.MOCK_AWS_ACCOUNT_ASSUME_ROLE_ID in auth_header:
+            arn = aws_common.MOCK_AWS_ACCOUNT_ASSUME_ROLE_ARN
+        else:
+            raise ValueError("Unkown user in auth header: " + auth_header)
 
         if fault_type == FAULT_403:
             return self._do_get_caller_identity_faults()
