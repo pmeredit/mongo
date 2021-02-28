@@ -8,7 +8,7 @@
 
 #include <boost/filesystem.hpp>
 
-#include "audit_manager_global.h"
+#include "audit_manager.h"
 #include "audit_options.h"
 #include "logger/console_appender.h"
 #include "logger/encoder.h"
@@ -26,9 +26,7 @@ namespace mongo::audit {
 namespace {
 
 std::string getAuditLogPath() {
-    return boost::filesystem::absolute(getGlobalAuditManager()->auditLogPath,
-                                       serverGlobalParams.cwd)
-        .string();
+    return getGlobalAuditManager()->getPath();
 }
 
 template <typename Encoder>
@@ -126,11 +124,11 @@ std::unique_ptr<logger::Appender<AuditEvent>> auditLogAppender;
 
 MONGO_INITIALIZER_WITH_PREREQUISITES(AuditDomain, ("InitializeGlobalAuditManager"))
 (InitializerContext*) {
-    if (!auditGlobalParams.enabled) {
+    if (!getGlobalAuditManager()->isEnabled()) {
         return;
     }
 
-    const auto format = getGlobalAuditManager()->auditFormat;
+    const auto format = getGlobalAuditManager()->getFormat();
     switch (format) {
         case AuditFormatConsole: {
             auditLogAppender.reset(

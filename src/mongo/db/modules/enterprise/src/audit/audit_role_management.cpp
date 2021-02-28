@@ -6,7 +6,7 @@
 
 #include "audit_event.h"
 #include "audit_log.h"
-#include "audit_manager_global.h"
+#include "audit_manager.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/address_restriction.h"
 #include "mongo/db/auth/authorization_manager.h"
@@ -28,7 +28,7 @@ void logGrantRevokeRolesToFromUser(Client* client,
                                    const UserName& username,
                                    const std::vector<RoleName>& roles,
                                    AuditEventType aType) {
-    if (!getGlobalAuditManager()->enabled) {
+    if (!getGlobalAuditManager()->isEnabled()) {
         return;
     }
 
@@ -43,7 +43,7 @@ void logGrantRevokeRolesToFromUser(Client* client,
         roleArray.doneFast();
     });
 
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+    if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
     }
 }
@@ -54,7 +54,7 @@ void logCreateUpdateRole(Client* client,
                          const PrivilegeVector* privileges,
                          const boost::optional<BSONArray>& restrictions,
                          AuditEventType aType) {
-    if (!getGlobalAuditManager()->enabled) {
+    if (!getGlobalAuditManager()->isEnabled()) {
         return;
     }
 
@@ -88,7 +88,7 @@ void logCreateUpdateRole(Client* client,
         }
     });
 
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+    if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
     }
 }
@@ -97,7 +97,7 @@ void logGrantRevokeRolesToFromRole(Client* client,
                                    const RoleName& role,
                                    const std::vector<RoleName>& roles,
                                    AuditEventType aType) {
-    if (!getGlobalAuditManager()->enabled) {
+    if (!getGlobalAuditManager()->isEnabled()) {
         return;
     }
 
@@ -111,7 +111,7 @@ void logGrantRevokeRolesToFromRole(Client* client,
         rolesArray.doneFast();
     });
 
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+    if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
     }
 }
@@ -120,7 +120,7 @@ void logGrantRevokePrivilegesToFromRole(Client* client,
                                         const RoleName& role,
                                         const PrivilegeVector& privileges,
                                         AuditEventType aType) {
-    if (!getGlobalAuditManager()->enabled) {
+    if (!getGlobalAuditManager()->isEnabled()) {
         return;
     }
 
@@ -138,7 +138,7 @@ void logGrantRevokePrivilegesToFromRole(Client* client,
         privilegeArray.doneFast();
     });
 
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+    if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
     }
 }
@@ -176,7 +176,7 @@ void audit::logUpdateRole(Client* client,
 }
 
 void audit::logDropRole(Client* client, const RoleName& role) {
-    if (!getGlobalAuditManager()->enabled) {
+    if (!getGlobalAuditManager()->isEnabled()) {
         return;
     }
 
@@ -184,13 +184,13 @@ void audit::logDropRole(Client* client, const RoleName& role) {
         role.appendToBSON(builder);
     });
 
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+    if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
     }
 }
 
 void audit::logDropAllRolesFromDatabase(Client* client, StringData dbname) {
-    if (!getGlobalAuditManager()->enabled) {
+    if (!getGlobalAuditManager()->isEnabled()) {
         return;
     }
 
@@ -198,7 +198,7 @@ void audit::logDropAllRolesFromDatabase(Client* client, StringData dbname) {
                      AuditEventType::dropAllRolesFromDatabase,
                      [dbname](BSONObjBuilder* builder) { builder->append(kDBField, dbname); });
 
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+    if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
     }
 }

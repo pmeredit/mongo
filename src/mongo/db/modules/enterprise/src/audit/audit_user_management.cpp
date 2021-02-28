@@ -8,7 +8,7 @@
 #include "audit_event.h"
 #include "audit_event_type.h"
 #include "audit_log.h"
-#include "audit_manager_global.h"
+#include "audit_manager.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/address_restriction.h"
 #include "mongo/db/client.h"
@@ -59,7 +59,7 @@ void logCreateUpdateUser(Client* client,
                          const std::vector<RoleName>* roles,
                          const boost::optional<BSONArray>& restrictions,
                          AuditEventType aType) {
-    if (!getGlobalAuditManager()->enabled) {
+    if (!getGlobalAuditManager()->isEnabled()) {
         return;
     }
 
@@ -89,7 +89,7 @@ void logCreateUpdateUser(Client* client,
         }
     });
 
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+    if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
     }
 }
@@ -124,7 +124,7 @@ void logDirectAuthOperation(Client* client,
                             const NamespaceString& nss,
                             const BSONObj& doc,
                             StringData operation) {
-    if (!getGlobalAuditManager()->enabled) {
+    if (!getGlobalAuditManager()->isEnabled()) {
         return;
     }
 
@@ -153,7 +153,7 @@ void logDirectAuthOperation(Client* client,
         builder->append(audit::kOperationField, operation);
     });
 
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+    if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
     }
 }
@@ -172,7 +172,7 @@ void audit::logCreateUser(Client* client,
 }
 
 void audit::logDropUser(Client* client, const UserName& username) {
-    if (!getGlobalAuditManager()->enabled) {
+    if (!getGlobalAuditManager()->isEnabled()) {
         return;
     }
 
@@ -180,7 +180,7 @@ void audit::logDropUser(Client* client, const UserName& username) {
         username.appendToBSON(builder);
     });
 
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+    if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
     }
 
@@ -188,7 +188,7 @@ void audit::logDropUser(Client* client, const UserName& username) {
 }
 
 void audit::logDropAllUsersFromDatabase(Client* client, StringData dbname) {
-    if (!getGlobalAuditManager()->enabled) {
+    if (!getGlobalAuditManager()->isEnabled()) {
         return;
     }
 
@@ -196,7 +196,7 @@ void audit::logDropAllUsersFromDatabase(Client* client, StringData dbname) {
                      AuditEventType::dropAllUsersFromDatabase,
                      [dbname](BSONObjBuilder* builder) { builder->append(kDBField, dbname); });
 
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+    if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
     }
 

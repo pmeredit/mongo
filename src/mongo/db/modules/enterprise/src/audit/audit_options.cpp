@@ -4,26 +4,11 @@
 
 #include "audit_options.h"
 
-#include <boost/filesystem.hpp>
-
-#include "audit_event.h"
+#include "audit/audit_options_gen.h"
 #include "audit_manager.h"
-#include "audit_manager_global.h"
-#include "mongo/base/status.h"
-#include "mongo/db/jsobj.h"
-#include "mongo/db/json.h"
-#include "mongo/db/matcher/expression_parser.h"
-#include "mongo/util/options_parser/environment.h"
-#include "mongo/util/options_parser/startup_option_init.h"
-#include "mongo/util/options_parser/startup_options.h"
-#include "mongo/util/str.h"
-
-namespace moe = mongo::optionenvironment;
 
 namespace mongo {
 namespace audit {
-
-AuditGlobalParams auditGlobalParams;
 
 Status validateAuditLogDestination(const std::string& strDest) {
     StringData dest(strDest);
@@ -43,72 +28,36 @@ Status validateAuditLogFormat(const std::string& strFormat) {
     return Status::OK();
 }
 
-MONGO_STARTUP_OPTIONS_STORE(AuditOptions)(InitializerContext* context) {
-    const auto& params = moe::startupOptionsParsed;
+void AuditAuthorizationSuccessSetParameter::append(OperationContext*,
+                                                   BSONObjBuilder& b,
+                                                   const std::string& name) {
+    b.append(name, getGlobalAuditManager()->getAuditAuthorizationSuccess());
+}
 
-    if (params.count("auditLog.destination")) {
-        auditGlobalParams.enabled = true;
-        std::string auditDestination = params["auditLog.destination"].as<std::string>();
-        if (auditDestination == "file") {
-            if (params.count("auditLog.format")) {
-                std::string auditFormat = params["auditLog.format"].as<std::string>();
-                if (auditFormat == "JSON") {
-                    auditGlobalParams.auditFormat = AuditFormatJsonFile;
-                } else if (auditFormat == "BSON") {
-                    auditGlobalParams.auditFormat = AuditFormatBsonFile;
-                } else {
-                    uasserted(ErrorCodes::BadValue, "Invalid value for auditLog.format");
-                }
-            } else {
-                uasserted(ErrorCodes::BadValue,
-                          "auditLog.format must be specified when "
-                          "auditLog.destination is to a file");
-            }
-            if (!params.count("auditLog.path")) {
-                uasserted(ErrorCodes::BadValue,
-                          "auditLog.path must be specified when "
-                          "auditLog.destination is to a file");
-            }
+Status AuditAuthorizationSuccessSetParameter::set(const BSONElement& value) {
+    if ((value.type() == Bool) || value.isNumber()) {
+        getGlobalAuditManager()->setAuditAuthorizationSuccess(value.trueValue());
+        return Status::OK();
+    } else {
+        return {ErrorCodes::BadValue,
+                str::stream() << "auditAuthorizationSuccess expects bool, got "
+                              << typeName(value.type())};
+    }
+}
 
-#ifdef _WIN32
-            if (params.count("install") || params.count("reinstall")) {
-                if (params.count("auditLog.path") &&
-                    !boost::filesystem::path(params["auditLog.path"].as<std::string>())
-                         .is_absolute()) {
-                    uasserted(ErrorCodes::BadValue,
-                              "auditLog.path requires an absolute file path with Windows services");
-                }
-            }
-#endif
+Status AuditAuthorizationSuccessSetParameter::setFromString(const std::string& value) {
+    auto* am = getGlobalAuditManager();
 
-            auditGlobalParams.auditPath = params["auditLog.path"].as<std::string>();
-        } else {
-            if (params.count("auditLog.format") || params.count("auditLog.path")) {
-                uasserted(ErrorCodes::BadValue,
-                          "auditLog.format and auditLog.path are only allowed when "
-                          "auditLog.destination is 'file'");
-            }
-            if (auditDestination == "syslog") {
-#ifdef _WIN32
-                uasserted(ErrorCodes::BadValue, "syslog not available on Windows");
-#else
-                auditGlobalParams.auditFormat = AuditFormatSyslog;
-#endif  // ifdef _WIN32
-            } else if (auditDestination == "console") {
-                auditGlobalParams.auditFormat = AuditFormatConsole;
-            } else {
-                uasserted(ErrorCodes::BadValue, "invalid auditLog destination");
-            }
-        }
+    if ((value == "1") || (value == "true")) {
+        am->setAuditAuthorizationSuccess(true);
+    } else if ((value == "0") || (value == "false")) {
+        am->setAuditAuthorizationSuccess(false);
+    } else {
+        return {ErrorCodes::BadValue,
+                str::stream() << "auditAuthorizationSuccess expects bool, got '" << value << "'"};
     }
 
-    if (params.count("auditLog.filter")) {
-        try {
-            auditGlobalParams.auditFilter = fromjson(params["auditLog.filter"].as<std::string>());
-        } catch (const DBException& e) {
-            uasserted(ErrorCodes::BadValue, str::stream() << "bad auditFilter:" << e.what());
-        }
-    }
+    return Status::OK();
 }
 
 }  // namespace audit

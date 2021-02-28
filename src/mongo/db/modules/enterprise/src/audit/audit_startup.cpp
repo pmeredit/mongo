@@ -8,7 +8,7 @@
 #include "audit_event.h"
 #include "audit_event_type.h"
 #include "audit_log.h"
-#include "audit_manager_global.h"
+#include "audit_manager.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/client.h"
 
@@ -19,7 +19,7 @@ constexpr auto kOptionsField = "options"_sd;
 }  // namespace
 
 void audit::logStartupOptions(Client* client, const BSONObj& startupOptions) {
-    if (!getGlobalAuditManager()->enabled ||
+    if (!getGlobalAuditManager()->isEnabled() ||
         !gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
         return;
     }
@@ -28,7 +28,7 @@ void audit::logStartupOptions(Client* client, const BSONObj& startupOptions) {
         builder->append(kOptionsField, startupOptions);
     });
 
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+    if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
     }
 }

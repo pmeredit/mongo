@@ -8,7 +8,7 @@
 #include "audit_event.h"
 #include "audit_event_type.h"
 #include "audit_log.h"
-#include "audit_manager_global.h"
+#include "audit_manager.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/client.h"
 #include "mongo/db/repl/member_state.h"
@@ -49,7 +49,7 @@ bool isDDLAuditingAllowed(Client* client,
 }
 
 void logNSEvent(Client* client, const NamespaceString& nsname, AuditEventType aType) {
-    if (!getGlobalAuditManager()->enabled ||
+    if (!getGlobalAuditManager()->isEnabled() ||
         (gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV() &&
          !isDDLAuditingAllowed(client, nsname))) {
         return;
@@ -59,7 +59,7 @@ void logNSEvent(Client* client, const NamespaceString& nsname, AuditEventType aT
         builder->append(kNSField, nsname.ns());
     });
 
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+    if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
     }
 }
@@ -71,7 +71,7 @@ void audit::logCreateIndex(Client* client,
                            const BSONObj* indexSpec,
                            StringData indexname,
                            const NamespaceString& nsname) {
-    if (!getGlobalAuditManager()->enabled ||
+    if (!getGlobalAuditManager()->isEnabled() ||
         (gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV() &&
          !isDDLAuditingAllowed(client, nsname))) {
         return;
@@ -83,7 +83,7 @@ void audit::logCreateIndex(Client* client,
         builder->append(kIndexSpecField, *indexSpec);
     });
 
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+    if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
     }
 }
@@ -97,7 +97,7 @@ void audit::logCreateView(Client* client,
                           StringData viewOn,
                           BSONArray pipeline,
                           ErrorCodes::Error code) {
-    if (!getGlobalAuditManager()->enabled ||
+    if (!getGlobalAuditManager()->isEnabled() ||
         (gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV() &&
          !isDDLAuditingAllowed(client, nsname))) {
         return;
@@ -112,7 +112,7 @@ void audit::logCreateView(Client* client,
         }
     });
 
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+    if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
     }
 }
@@ -127,7 +127,7 @@ void audit::logCreateDatabase(Client* client, StringData dbname) {
 }
 
 void audit::logDropIndex(Client* client, StringData indexname, const NamespaceString& nsname) {
-    if (!getGlobalAuditManager()->enabled ||
+    if (!getGlobalAuditManager()->isEnabled() ||
         (gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV() &&
          !isDDLAuditingAllowed(client, nsname))) {
         return;
@@ -138,7 +138,7 @@ void audit::logDropIndex(Client* client, StringData indexname, const NamespaceSt
         builder->append(kIndexNameField, indexname);
     });
 
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+    if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
     }
 }
@@ -164,7 +164,7 @@ void audit::logDropView(Client* client,
                         StringData viewOn,
                         const std::vector<BSONObj>& pipeline,
                         ErrorCodes::Error code) {
-    if (!getGlobalAuditManager()->enabled ||
+    if (!getGlobalAuditManager()->isEnabled() ||
         !gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV() ||
         !isDDLAuditingAllowed(client, nsname)) {
         return;
@@ -180,7 +180,7 @@ void audit::logDropView(Client* client,
                      },
                      code);
 
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+    if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
     }
 }
@@ -192,7 +192,7 @@ void audit::logDropDatabase(Client* client, StringData dbname) {
 void audit::logRenameCollection(Client* client,
                                 const NamespaceString& source,
                                 const NamespaceString& target) {
-    if (!getGlobalAuditManager()->enabled ||
+    if (!getGlobalAuditManager()->isEnabled() ||
         (gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV() &&
          !isDDLAuditingAllowed(client, source, target))) {
         return;
@@ -203,7 +203,7 @@ void audit::logRenameCollection(Client* client,
         builder->append(kNewField, target.ns());
     });
 
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+    if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
     }
 

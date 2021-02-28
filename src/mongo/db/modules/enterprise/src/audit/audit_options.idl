@@ -11,9 +11,11 @@ global:
 server_parameters:
     auditAuthorizationSuccess:
         description: 'Enable to audit when authentication succeeds'
-        cpp_varname: auditGlobalParams.auditAuthorizationSuccess
         set_at: [ startup, runtime ]
         default: false
+        cpp_class:
+            name: AuditAuthorizationSuccessSetParameter
+            override_set: true
 
 configs:
     "auditLog.destination":

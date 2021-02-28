@@ -2,7 +2,7 @@
  * Copyright (C) 2019 MongoDB, Inc.  All Rights Reserved.
  */
 
-#include "audit_options.h"
+#include "audit_manager.h"
 
 #include <boost/filesystem.hpp>
 
@@ -14,8 +14,9 @@ namespace mongo {
 MONGO_INITIALIZER_WITH_PREREQUISITES(RegisterAuditWatchdog, ("EndStartupOptionHandling"))
 (::mongo::InitializerContext* context) {
 
-    if (!audit::auditGlobalParams.auditPath.empty()) {
-        boost::filesystem::path auditFile(audit::auditGlobalParams.auditPath);
+    const auto& path = audit::getGlobalAuditManager()->getPath();
+    if (!path.empty()) {
+        boost::filesystem::path auditFile(path);
         auto auditPath = auditFile.parent_path();
         registerWatchdogPath(auditPath.generic_string());
     }

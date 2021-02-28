@@ -138,8 +138,7 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
             'src/audit/audit_indexes_collections_databases.cpp',
             'src/audit/audit_log.cpp',
             'src/audit/audit_logout.cpp',
-            'src/audit/audit_manager_global.cpp',
-            'src/audit/audit_options.cpp',
+            'src/audit/audit_manager.cpp',
             'src/audit/audit_replset.cpp',
             'src/audit/audit_role_management.cpp',
             'src/audit/audit_startup.cpp',
@@ -208,6 +207,7 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
     env.Library(
         target='audit_configuration',
         source=[
+            'src/audit/audit_options.cpp',
             'src/audit/audit_options.idl',
             'src/audit/audit_watchdog.cpp',
         ],

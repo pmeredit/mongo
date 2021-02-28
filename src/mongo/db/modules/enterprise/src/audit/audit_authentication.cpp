@@ -7,7 +7,7 @@
 #include "audit_event.h"
 #include "audit_event_type.h"
 #include "audit_log.h"
-#include "audit_manager_global.h"
+#include "audit_manager.h"
 #include "mongo/base/string_data.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/user_name.h"
@@ -23,7 +23,7 @@ void audit::logAuthentication(Client* client,
                               StringData mechanism,
                               const UserName& user,
                               ErrorCodes::Error result) {
-    if (!getGlobalAuditManager()->enabled) {
+    if (!getGlobalAuditManager()->isEnabled()) {
         return;
     }
 
@@ -35,7 +35,7 @@ void audit::logAuthentication(Client* client,
                      },
                      result);
 
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+    if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
     }
 }

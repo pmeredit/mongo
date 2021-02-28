@@ -7,19 +7,19 @@
 #include "audit_event.h"
 #include "audit_event_type.h"
 #include "audit_log.h"
-#include "audit_manager_global.h"
+#include "audit_manager.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/client.h"
 
 namespace mongo {
 
 void audit::logShutdown(Client* client) {
-    if (!getGlobalAuditManager()->enabled) {
+    if (!getGlobalAuditManager()->isEnabled()) {
         return;
     }
 
     AuditEvent event(client, AuditEventType::shutdown);
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+    if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
     }
 }

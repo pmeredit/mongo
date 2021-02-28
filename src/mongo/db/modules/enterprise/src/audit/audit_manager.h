@@ -5,11 +5,14 @@
 #pragma once
 
 #include <cstddef>
+#include <memory>
 #include <string>
 
-namespace mongo {
-class MatchExpression;
+#include "mongo/bson/bsonobj.h"
+#include "mongo/db/matcher/expression.h"
+#include "mongo/platform/atomic_word.h"
 
+namespace mongo {
 namespace audit {
 
 enum AuditFormat {
@@ -24,19 +27,76 @@ enum AuditFormat {
  */
 class AuditManager {
 public:
-    AuditManager() : auditFilter(nullptr), enabled(false) {}
+    ~AuditManager();
 
-    // Global filter describing what the admin desires to audit
-    MatchExpression* auditFilter;
+    bool isEnabled() const {
+        return _enabled;
+    }
 
+    /**
+     * Called by MONGO_INITIALIZER to setup AuditManager from
+     * system configuration file.
+     */
+    void initialize();
+
+    const AuditFormat getFormat() const {
+        return _format;
+    }
+
+    const std::string& getPath() const {
+        return _path;
+    }
+
+    bool getAuditAuthorizationSuccess() const {
+        return _auditAuthorizationSuccess.load();
+    }
+
+    void setAuditAuthorizationSuccess(bool val) {
+        _auditAuthorizationSuccess.store(val);
+    }
+
+    /**
+     * Check the event to be audited against the filter (if any)
+     * and return true if it should be emitted to the audit log.
+     */
+    bool shouldAudit(const MatchableDocument* event) const {
+        if (!_enabled) {
+            return false;
+        }
+        if (!_filter) {
+            return true;
+        }
+        return _filter->matches(event);
+    }
+
+private:
+    void _setDestinationFromConfig();
+    void _setFilter(BSONObj filter);
+
+private:
     // True if auditing should be done
-    bool enabled;
+    bool _enabled{false};
 
     // Path to audit log file, or :console if output to the terminal is desired
-    std::string auditLogPath;
+    std::string _path;
 
     // Format of the output, either text or BSON
-    AuditFormat auditFormat;
+    AuditFormat _format;
+
+    // Audit CRUD ops as well.
+    AtomicWord<bool> _auditAuthorizationSuccess;
+
+    // Global filter describing what the admin desires to audit
+    // MatchExpression does not keep the original BSON in scope,
+    // so we anchor it here.
+    BSONObj _filterBSON;
+    std::unique_ptr<MatchExpression> _filter;
 };
+
+/*
+ * Gets the singleton AuditManager object for this server process.
+ */
+AuditManager* getGlobalAuditManager();
+
 }  // namespace audit
 }  // namespace mongo

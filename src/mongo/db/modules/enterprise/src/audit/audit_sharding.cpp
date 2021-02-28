@@ -7,7 +7,7 @@
 #include "audit_event.h"
 #include "audit_event_type.h"
 #include "audit_log.h"
-#include "audit_manager_global.h"
+#include "audit_manager.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/client.h"
 
@@ -24,14 +24,14 @@ constexpr auto kUniqueField = "unique"_sd;
 }  // namespace
 
 void audit::logEnableSharding(Client* client, StringData dbname) {
-    if (!getGlobalAuditManager()->enabled) {
+    if (!getGlobalAuditManager()->isEnabled()) {
         return;
     }
 
     AuditEvent event(client, AuditEventType::enableSharding, [dbname](BSONObjBuilder* builder) {
         builder->append(kNSField, dbname);
     });
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+    if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
     }
 }
@@ -40,7 +40,7 @@ void audit::logAddShard(Client* client,
                         StringData name,
                         const std::string& servers,
                         long long maxSize) {
-    if (!getGlobalAuditManager()->enabled) {
+    if (!getGlobalAuditManager()->isEnabled()) {
         return;
     }
 
@@ -50,7 +50,7 @@ void audit::logAddShard(Client* client,
         builder->append(kMaxSizeField, maxSize);
     });
 
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+    if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
     }
 }
@@ -59,7 +59,7 @@ void audit::logShardCollection(Client* client,
                                StringData ns,
                                const BSONObj& keyPattern,
                                bool unique) {
-    if (!getGlobalAuditManager()->enabled) {
+    if (!getGlobalAuditManager()->isEnabled()) {
         return;
     }
 
@@ -72,26 +72,26 @@ void audit::logShardCollection(Client* client,
         }
     });
 
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+    if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
     }
 }
 
 void audit::logRemoveShard(Client* client, StringData shardname) {
-    if (!getGlobalAuditManager()->enabled)
+    if (!getGlobalAuditManager()->isEnabled())
         return;
 
     AuditEvent event(client, AuditEventType::removeShard, [shardname](BSONObjBuilder* builder) {
         builder->append(kShardField, shardname);
     });
 
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+    if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
     }
 }
 
 void audit::logRefineCollectionShardKey(Client* client, StringData ns, const BSONObj& keyPattern) {
-    if (!getGlobalAuditManager()->enabled) {
+    if (!getGlobalAuditManager()->isEnabled()) {
         return;
     }
 
@@ -101,7 +101,7 @@ void audit::logRefineCollectionShardKey(Client* client, StringData ns, const BSO
             builder->append(kKeyField, keyPattern);
         });
 
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+    if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
     }
 }

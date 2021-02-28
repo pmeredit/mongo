@@ -9,7 +9,7 @@
 #include "audit_event.h"
 #include "audit_event_type.h"
 #include "audit_log.h"
-#include "audit_manager_global.h"
+#include "audit_manager.h"
 #include "audit_options.h"
 #include "mongo/base/status.h"
 #include "mongo/db/audit.h"
@@ -27,18 +27,12 @@ namespace {
  * check.
  */
 bool _shouldLogAuthzCheck(ErrorCodes::Error result) {
-    if (!getGlobalAuditManager()->enabled) {
+    auto* am = getGlobalAuditManager();
+    if (!am->isEnabled()) {
         return false;
     }
 
-    if (auditGlobalParams.auditAuthorizationSuccess.load()) {
-        return true;
-    }
-    if (result != ErrorCodes::OK) {
-        return true;
-    }
-
-    return false;
+    return (result != ErrorCodes::OK) || am->getAuditAuthorizationSuccess();
 }
 
 constexpr auto kCommandField = "command"_sd;
@@ -74,7 +68,7 @@ void _logAuthzCheck(Client* client,
                      },
                      result);
 
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+    if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
     }
 }

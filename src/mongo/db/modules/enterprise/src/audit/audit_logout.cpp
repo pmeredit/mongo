@@ -8,7 +8,7 @@
 #include "audit_event.h"
 #include "audit_event_type.h"
 #include "audit_log.h"
-#include "audit_manager_global.h"
+#include "audit_manager.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/client.h"
 
@@ -23,7 +23,7 @@ void audit::logLogout(Client* client,
                       StringData reason,
                       const BSONArray& initialUsers,
                       const BSONArray& updatedUsers) {
-    if (!getGlobalAuditManager()->enabled ||
+    if (!getGlobalAuditManager()->isEnabled() ||
         !gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
         return;
     }
@@ -34,7 +34,7 @@ void audit::logLogout(Client* client,
         builder->append(kUpdatedUsersField, updatedUsers);
     });
 
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+    if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
     }
 }

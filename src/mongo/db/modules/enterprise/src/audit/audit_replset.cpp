@@ -6,7 +6,7 @@
 
 #include "audit_event.h"
 #include "audit_log.h"
-#include "audit_manager_global.h"
+#include "audit_manager.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/client.h"
 
@@ -18,7 +18,7 @@ constexpr auto kNewField = "new"_sd;
 }  // namespace
 
 void audit::logReplSetReconfig(Client* client, const BSONObj* oldConfig, const BSONObj* newConfig) {
-    if (!getGlobalAuditManager()->enabled) {
+    if (!getGlobalAuditManager()->isEnabled()) {
         return;
     }
 
@@ -30,7 +30,7 @@ void audit::logReplSetReconfig(Client* client, const BSONObj* oldConfig, const B
         builder->append(kNewField, *newConfig);
     });
 
-    if (getGlobalAuditManager()->auditFilter->matches(&event)) {
+    if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
     }
 }
