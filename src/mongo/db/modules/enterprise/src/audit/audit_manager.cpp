@@ -8,6 +8,7 @@
 
 #include <boost/filesystem.hpp>
 
+#include "audit/audit_features_gen.h"
 #include "mongo/base/init.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/db/json.h"
@@ -33,6 +34,15 @@ AuditManager::~AuditManager() {
         // Allow this to leak on shutdown.
         _filter.release();
     }
+}
+
+void AuditManager::setAuditAuthorizationSuccess(bool val) {
+    uassert(ErrorCodes::BadValue,
+            "auditAuthorizationSuccess may not be changed via set parameter when "
+            "runtime audit configuration is enabled",
+            !_runtimeConfiguration);
+
+    _auditAuthorizationSuccess.store(val);
 }
 
 void AuditManager::_setFilter(BSONObj filter) {
@@ -132,6 +142,28 @@ void AuditManager::initialize() {
         }
 
         _setFilter(filter);
+    }
+
+    if (params.count("auditLog.runtimeConfiguration") &&
+        params["auditLog.runtimeConfiguration"].as<bool>()) {
+        uassert(ErrorCodes::BadValue,
+                "Runtime audit configuration has not been enabled via feature flag",
+                gFeatureFlagRuntimeAuditConfig.isEnabledAndIgnoreFCV());
+
+        uassert(
+            ErrorCodes::BadValue,
+            "auditLog.filter must not be configured when runtime audit configuration is enabled",
+            !params.count("auditLog.filter"));
+
+        if (params.count("setParameter")) {
+            auto sp = params["setParameter"].as<std::map<std::string, std::string>>();
+            uassert(ErrorCodes::BadValue,
+                    "setParameter.auditAuthorizationSuccess must not be configured when runtime "
+                    "audit configuration is enabled",
+                    sp.find("auditAuthorizationSuccess") == sp.end());
+        }
+
+        _runtimeConfiguration = true;
     }
 }
 

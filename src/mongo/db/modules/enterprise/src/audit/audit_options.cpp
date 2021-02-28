@@ -34,7 +34,7 @@ void AuditAuthorizationSuccessSetParameter::append(OperationContext*,
     b.append(name, getGlobalAuditManager()->getAuditAuthorizationSuccess());
 }
 
-Status AuditAuthorizationSuccessSetParameter::set(const BSONElement& value) {
+Status AuditAuthorizationSuccessSetParameter::set(const BSONElement& value) try {
     if ((value.type() == Bool) || value.isNumber()) {
         getGlobalAuditManager()->setAuditAuthorizationSuccess(value.trueValue());
         return Status::OK();
@@ -43,11 +43,12 @@ Status AuditAuthorizationSuccessSetParameter::set(const BSONElement& value) {
                 str::stream() << "auditAuthorizationSuccess expects bool, got "
                               << typeName(value.type())};
     }
+} catch (const DBException& ex) {
+    return ex.toStatus();
 }
 
-Status AuditAuthorizationSuccessSetParameter::setFromString(const std::string& value) {
+Status AuditAuthorizationSuccessSetParameter::setFromString(const std::string& value) try {
     auto* am = getGlobalAuditManager();
-
     if ((value == "1") || (value == "true")) {
         am->setAuditAuthorizationSuccess(true);
     } else if ((value == "0") || (value == "false")) {
@@ -58,6 +59,8 @@ Status AuditAuthorizationSuccessSetParameter::setFromString(const std::string& v
     }
 
     return Status::OK();
+} catch (const DBException& ex) {
+    return ex.toStatus();
 }
 
 }  // namespace audit

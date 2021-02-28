@@ -43,6 +43,10 @@ public:
         return _format;
     }
 
+    bool getRuntimeConfiguration() const {
+        return _runtimeConfiguration;
+    }
+
     const std::string& getPath() const {
         return _path;
     }
@@ -51,9 +55,7 @@ public:
         return _auditAuthorizationSuccess.load();
     }
 
-    void setAuditAuthorizationSuccess(bool val) {
-        _auditAuthorizationSuccess.store(val);
-    }
+    void setAuditAuthorizationSuccess(bool val);
 
     /**
      * Check the event to be audited against the filter (if any)
@@ -76,6 +78,9 @@ private:
 private:
     // True if auditing should be done
     bool _enabled{false};
+
+    // Configure filter/auditAuthorizationSuccess from {setAuditConfig:...}
+    bool _runtimeConfiguration{false};
 
     // Path to audit log file, or :console if output to the terminal is desired
     std::string _path;

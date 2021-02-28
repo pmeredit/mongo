@@ -36,6 +36,11 @@ configs:
         short_name: auditPath
         arg_vartype: String
         requires: 'auditLog.destination'
+    "auditLog.runtimeConfiguration":
+        description: "Configure audit filter and auditAuthorizationSuccess via commands"
+        short_name: auditRuntimeConfiguration
+        arg_vartype: Bool
+        requires: 'auditLog.destination'
     "auditLog.filter":
         description: 'Filter spec to screen audit records'
         short_name: auditFilter
