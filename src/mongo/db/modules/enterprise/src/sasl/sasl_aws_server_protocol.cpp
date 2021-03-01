@@ -196,7 +196,7 @@ std::tuple<std::vector<std::string>, std::string> awsIam::parseClientSecond(
     return {headers, requestBody.toString()};
 }
 
-std::string awsIam::getUserId(StringData request) {
+std::string awsIam::getArn(StringData request) {
     std::stringstream istr(request.toString());
 
     boost::property_tree::ptree tree;
@@ -208,10 +208,10 @@ std::string awsIam::getUserId(StringData request) {
 
     uassert(51283, "Failed to parse GetCallerIdentityResponse", arnStr);
 
-    return getSimplifiedARN(arnStr.get());
+    return arnStr.get();
 }
 
-std::string awsIam::getSimplifiedARN(StringData arn) {
+std::string awsIam::makeSimplifiedArn(StringData arn) {
     bool sts = arn.startsWith(kStsPrefix);
     bool iam = arn.startsWith("arn:aws:iam::");
     uassert(51282, "Incorrect ARN", sts || iam);

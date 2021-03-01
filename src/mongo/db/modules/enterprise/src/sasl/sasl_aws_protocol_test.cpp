@@ -50,14 +50,14 @@ TEST(SaslAwsProtocol, Xml_Good) {
    </ResponseMetadata>
  </GetCallerIdentityResponse>)";
 
-    ASSERT_EQUALS("arn:aws:iam::NUMBER:user/USER_NAME", awsIam::getUserId(str1));
+    ASSERT_EQUALS("arn:aws:iam::NUMBER:user/USER_NAME", awsIam::getArn(str1));
 }
 
 // Negative: Fail properly on incorrect xml
 TEST(SaslAwsProtocol, Xml_Bad) {
     auto str1 = R"(Foo)";
 
-    ASSERT_THROWS(awsIam::getUserId(str1), std::exception);
+    ASSERT_THROWS(awsIam::getArn(str1), std::exception);
 }
 
 
@@ -73,7 +73,7 @@ TEST(SaslAwsProtocol, Xml_Bad_Partial) {
    </ResponseMetadata>
  </GetCallerIdentityResponse>)";
 
-    ASSERT_THROWS_CODE(awsIam::getUserId(str1), AssertionException, 51283);
+    ASSERT_THROWS_CODE(awsIam::getArn(str1), AssertionException, 51283);
 }
 
 
@@ -375,49 +375,49 @@ TEST(SaslAWSClientProtocolUtil, TestRegions) {
 // Positive: Test ARN is converted properly
 TEST(SaslAWSServerProtocolUtil, ARN_Good) {
     ASSERT_EQUALS("arn:aws:iam::123456789:user/a.user.name",
-                  awsIam::getSimplifiedARN("arn:aws:iam::123456789:user/a.user.name"));
+                  awsIam::makeSimplifiedArn("arn:aws:iam::123456789:user/a.user.name"));
     ASSERT_EQUALS(
         "arn:aws:sts::123456789:assumed-role/ROLE/*",
-        awsIam::getSimplifiedARN("arn:aws:sts::123456789:assumed-role/ROLE/i-a0912374abc"));
+        awsIam::makeSimplifiedArn("arn:aws:sts::123456789:assumed-role/ROLE/i-a0912374abc"));
     ASSERT_EQUALS("arn:aws:sts::123456789:assumed-role/ROLE/*",
-                  awsIam::getSimplifiedARN("arn:aws:sts::123456789:assumed-role/ROLE/a.session"));
+                  awsIam::makeSimplifiedArn("arn:aws:sts::123456789:assumed-role/ROLE/a.session"));
 }
 
 
 // Positive: Test ARN is converted properly with path /
 TEST(SaslAWSServerProtocolUtil, ARN_Good_With_Path) {
     ASSERT_EQUALS("arn:aws:iam::123456789012:user/division_abc/subdivision_xyz/JaneDoe",
-                  awsIam::getSimplifiedARN(
+                  awsIam::makeSimplifiedArn(
                       "arn:aws:iam::123456789012:user/division_abc/subdivision_xyz/JaneDoe"));
     ASSERT_EQUALS("arn:aws:sts::123456789:assumed-role/ROLE/WITH/PATH/*",
-                  awsIam::getSimplifiedARN(
+                  awsIam::makeSimplifiedArn(
                       "arn:aws:sts::123456789:assumed-role/ROLE/WITH/PATH/i-a0912374abc"));
     ASSERT_EQUALS(
         "arn:aws:sts::123456789:assumed-role/ROLE/WITH/PATH/*",
-        awsIam::getSimplifiedARN("arn:aws:sts::123456789:assumed-role/ROLE/WITH/PATH/a.session"));
+        awsIam::makeSimplifiedArn("arn:aws:sts::123456789:assumed-role/ROLE/WITH/PATH/a.session"));
 }
 
 
 // Negative: Bad ARN fail
 TEST(SaslAWSServerProtocolUtil, ARN_Bad) {
     // Wrong service
-    ASSERT_THROWS_CODE(awsIam::getSimplifiedARN("arn:aws:fake::123456789:role/a.user.name"),
+    ASSERT_THROWS_CODE(awsIam::makeSimplifiedArn("arn:aws:fake::123456789:role/a.user.name"),
                        AssertionException,
                        51282);
     // Runt
     ASSERT_THROWS_CODE(
-        awsIam::getSimplifiedARN("arn:aws:iam::123456789"), AssertionException, 51281);
+        awsIam::makeSimplifiedArn("arn:aws:iam::123456789"), AssertionException, 51281);
     // Wrong suffix for IAM
-    ASSERT_THROWS_CODE(awsIam::getSimplifiedARN("arn:aws:iam::123456789:role/a.user.name"),
+    ASSERT_THROWS_CODE(awsIam::makeSimplifiedArn("arn:aws:iam::123456789:role/a.user.name"),
                        AssertionException,
                        51280);
 
     // Missing / in suffix
     ASSERT_THROWS_CODE(
-        awsIam::getSimplifiedARN("arn:aws:sts::123456789:role"), AssertionException, 51279);
+        awsIam::makeSimplifiedArn("arn:aws:sts::123456789:role"), AssertionException, 51279);
 
     // Missing two /
-    ASSERT_THROWS_CODE(awsIam::getSimplifiedARN("arn:aws:sts::123456789:assumed-role/foo"),
+    ASSERT_THROWS_CODE(awsIam::makeSimplifiedArn("arn:aws:sts::123456789:assumed-role/foo"),
                        AssertionException,
                        51278);
 }

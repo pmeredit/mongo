@@ -11,6 +11,7 @@
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
+#include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/auth/sasl_mechanism_policies.h"
 #include "mongo/db/auth/sasl_mechanism_registry.h"
 #include "mongo/db/auth/sasl_options.h"
@@ -23,6 +24,20 @@
 #include "sasl/sasl_aws_server_protocol.h"
 
 namespace mongo {
+namespace {
+constexpr auto kAwsId = "awsId"_sd;
+constexpr auto kAwsArn = "awsArn"_sd;
+}  // namespace
+
+void SaslAWSServerMechanism::appendExtraInfo(BSONObjBuilder* bob) const {
+    if (!_awsId.empty()) {
+        bob->append(kAwsId, _awsId);
+    }
+
+    if (!_awsFullArn.empty()) {
+        bob->append(kAwsArn, _awsFullArn);
+    }
+}
 
 StatusWith<std::tuple<bool, std::string>> SaslAWSServerMechanism::stepImpl(OperationContext* opCtx,
                                                                            StringData inputData) {
@@ -58,7 +73,7 @@ StatusWith<std::tuple<bool, std::string>> SaslAWSServerMechanism::_secondStep(
     // Set the principal name to the AWS Account ID so that if sts::getCallerIdentity fails,
     // we give the user a hint to which account failed.
     auto [headers, requestBody] =
-        awsIam::parseClientSecond(inputData, _serverNonce, _cbFlag, &_principalName);
+        awsIam::parseClientSecond(inputData, _serverNonce, _cbFlag, &_awsId);
 
     std::unique_ptr<HttpClient> request = HttpClient::create();
 
@@ -93,7 +108,8 @@ StatusWith<std::tuple<bool, std::string>> SaslAWSServerMechanism::_secondStep(
     }
 
     // Set the principal name to the ARN from AWS.
-    ServerMechanismBase::_principalName = awsIam::getUserId(httpBody);
+    _awsFullArn = awsIam::getArn(httpBody);
+    ServerMechanismBase::_principalName = awsIam::makeSimplifiedArn(_awsFullArn);
 
     return std::make_tuple(true, std::string());
 }

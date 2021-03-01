@@ -70,7 +70,7 @@ std::tuple<std::vector<std::string>, std::string> parseClientSecond(
  *   </ResponseMetadata>
  * </GetCallerIdentityResponse>
  */
-std::string getUserId(StringData request);
+std::string getArn(StringData request);
 
 /**
  * ARNS for IAM resources come in the following forms:
@@ -90,7 +90,7 @@ std::string getUserId(StringData request);
  *   - arn:aws:sts::123456789:assumed-role/<A_ROLE_NAME>/<star>
  *  Note: "<star>" is used instead of "*" to avoid a clang/gcc warning.
  */
-std::string getSimplifiedARN(StringData arn);
+std::string makeSimplifiedArn(StringData arn);
 
 }  // namespace awsIam
 }  // namespace mongo

@@ -16,6 +16,8 @@ public:
 
     ~SaslAWSServerMechanism() final = default;
 
+    void appendExtraInfo(BSONObjBuilder* bob) const override;
+
     StatusWith<std::tuple<bool, std::string>> stepImpl(OperationContext* opCtx,
                                                        StringData inputData);
 
@@ -39,6 +41,9 @@ private:
 
     // Client provided Channel Binding Flag
     char _cbFlag{0};
+
+    std::string _awsId;
+    std::string _awsFullArn;
 };
 
 class AWSServerFactory : public MakeServerFactory<SaslAWSServerMechanism> {

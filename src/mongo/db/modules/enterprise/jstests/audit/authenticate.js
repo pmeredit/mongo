@@ -244,7 +244,11 @@ function checkIam({conn, audit}) {
     runWithCleanAudit("valid-perm", function() {
         checkAuth({
             authObj: {user: MOCK_AWS_ACCOUNT_ID, pwd: MOCK_AWS_ACCOUNT_SECRET_KEY},
-            auditObj: {user: MOCK_AWS_ACCOUNT_ARN},
+            auditObj: {
+                awsId: MOCK_AWS_ACCOUNT_ID,
+                awsArn: MOCK_AWS_ACCOUNT_ARN,
+                user: MOCK_AWS_ACCOUNT_ARN
+            },
             code: ErrorCodes.OK
         });
     });
@@ -256,7 +260,11 @@ function checkIam({conn, audit}) {
                 pwd: MOCK_AWS_TEMP_ACCOUNT_SECRET_KEY,
                 awsIamSessionToken: MOCK_AWS_TEMP_ACCOUNT_SESSION_TOKEN,
             },
-            auditObj: {user: MOCK_AWS_TEMP_ACCOUNT_ARN},
+            auditObj: {
+                awsId: MOCK_AWS_TEMP_ACCOUNT_ID,
+                awsArn: MOCK_AWS_TEMP_ACCOUNT_ARN,
+                user: MOCK_AWS_TEMP_ACCOUNT_ARN
+            },
             code: ErrorCodes.OK
         });
     });
@@ -268,7 +276,11 @@ function checkIam({conn, audit}) {
                 pwd: MOCK_AWS_ACCOUNT_ASSUME_ROLE_SECRET_KEY,
                 awsIamSessionToken: MOCK_AWS_ACCOUNT_ASSUME_ROLE_SESSION_TOKEN,
             },
-            auditObj: {user: MOCK_AWS_ACCOUNT_ASSUME_ROLE_GENERAL_ARN},
+            auditObj: {
+                awsId: MOCK_AWS_ACCOUNT_ASSUME_ROLE_ID,
+                awsArn: MOCK_AWS_ACCOUNT_ASSUME_ROLE_ARN,
+                user: MOCK_AWS_ACCOUNT_ASSUME_ROLE_GENERAL_ARN
+            },
             code: ErrorCodes.OK
         });
     });
@@ -277,10 +289,7 @@ function checkIam({conn, audit}) {
         const badUser = "nobody";
         checkAuth({
             authObj: {user: badUser, pwd: MOCK_AWS_ACCOUNT_SECRET_KEY},
-            auditObj: {
-                // We use the initial user name since we could not resolve the ARN.
-                user: badUser
-            },
+            auditObj: {awsId: badUser, user: ""},
             code: ErrorCodes.AuthenticationFailed
         });
     });
@@ -289,10 +298,7 @@ function checkIam({conn, audit}) {
         const badKey = "sesame";
         checkAuth({
             authObj: {user: MOCK_AWS_ACCOUNT_ID, pwd: badKey},
-            auditObj: {
-                // We use the initial user name since we could not resolve the ARN.
-                user: MOCK_AWS_ACCOUNT_ID
-            },
+            auditObj: {awsId: MOCK_AWS_ACCOUNT_ID, user: ""},
             code: ErrorCodes.AuthenticationFailed
         });
     });
@@ -302,10 +308,7 @@ function checkIam({conn, audit}) {
     runWithCleanAudit("valid-perm-no-server", function() {
         checkAuth({
             authObj: {user: MOCK_AWS_ACCOUNT_ID, pwd: MOCK_AWS_ACCOUNT_SECRET_KEY},
-            auditObj: {
-                // We use the initial user name since we could not resolve the ARN.
-                user: MOCK_AWS_ACCOUNT_ID
-            },
+            auditObj: {awsId: MOCK_AWS_ACCOUNT_ID, user: ""},
             code: ErrorCodes.AuthenticationFailed
         });
     });

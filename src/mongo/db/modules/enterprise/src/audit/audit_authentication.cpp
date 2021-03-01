@@ -14,15 +14,13 @@
 #include "mongo/db/client.h"
 
 namespace mongo {
-
 namespace {
-constexpr auto kMechanismField = "mechanism"_sd;
+constexpr auto kMechanism = "mechanism"_sd;
+constexpr auto kUser = "user"_sd;
+constexpr auto kDatabase = "db"_sd;
 }  // namespace
 
-void audit::logAuthentication(Client* client,
-                              StringData mechanism,
-                              const UserName& user,
-                              ErrorCodes::Error result) {
+void audit::logAuthentication(Client* client, const AuthenticateEvent& authEvent) {
     if (!getGlobalAuditManager()->isEnabled()) {
         return;
     }
@@ -30,10 +28,12 @@ void audit::logAuthentication(Client* client,
     AuditEvent event(client,
                      AuditEventType::authenticate,
                      [&](BSONObjBuilder* builder) {
-                         user.appendToBSON(builder);
-                         builder->append(kMechanismField, mechanism);
+                         authEvent.appendExtraInfo(builder);
+                         builder->append(kUser, authEvent.getUser());
+                         builder->append(kDatabase, authEvent.getDatabase());
+                         builder->append(kMechanism, authEvent.getMechanism());
                      },
-                     result);
+                     authEvent.getResult());
 
     if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
