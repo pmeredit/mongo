@@ -132,6 +132,8 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
             'src/audit/audit_application_message.cpp',
             'src/audit/audit_authentication.cpp',
             'src/audit/audit_authz_check.cpp',
+            'src/audit/audit_commands.idl',
+            'src/audit/audit_config.idl',
             'src/audit/audit_event.cpp',
             'src/audit/audit_event_type.idl',
             'src/audit/audit_features.idl',
@@ -223,6 +225,86 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
         ],
         LIBDEPS_DEPENDENTS=[
             '$BUILD_DIR/mongo/db/mongod_initializers',
+            '$BUILD_DIR/mongo/s/mongos_initializers',
+        ],
+        LIBDEPS_TAGS=[
+            'lint-allow-nonprivate-on-deps-dependents',
+        ],
+    )
+
+    env.Library(
+        target='audit_mongod',
+        source=[
+            'src/audit/audit_mongod.cpp',
+            'src/audit/audit_op_observer.cpp',
+        ],
+        LIBDEPS_PRIVATE=[
+            '$BUILD_DIR/mongo/db/auth/auth',
+            '$BUILD_DIR/mongo/db/auth/authprivilege',
+            '$BUILD_DIR/mongo/db/commands',
+            '$BUILD_DIR/mongo/db/db_raii',
+            '$BUILD_DIR/mongo/db/dbdirectclient',
+            '$BUILD_DIR/mongo/db/dbhelpers',
+            '$BUILD_DIR/mongo/s/write_ops/batch_write_types',
+            'audit_enterprise',
+        ],
+    )
+
+    env.Library(
+        # We need to reverse link audit_mongod_impl into mongod,
+        # but audit_mongod_test needs a forward link into it.
+        # Meanwhile, scons doesn't like that.
+        # So we use this proxy to link the mongod implementation back.
+        target='audit_mongod_proxy',
+        source=[
+            # macOS will refuse to link this proxy without source files.
+            # Windows will "succeed", but produce no output .lib.
+            # Work around this by declaring a dummy TU with a symbol.
+            'src/audit/audit_mongod_proxy.cpp',
+        ],
+        LIBDEPS_PRIVATE=[
+            'audit_mongod',
+        ],
+        LIBDEPS_DEPENDENTS=[
+            '$BUILD_DIR/mongo/db/mongod_initializers',
+        ],
+        LIBDEPS_TAGS=[
+            'lint-allow-nonprivate-on-deps-dependents',
+        ],
+    )
+
+    env.CppUnitTest(
+        target='audit_mongod_test',
+        source=[
+            'src/audit/audit_op_observer_test.cpp',
+        ],
+        LIBDEPS=[
+            '$BUILD_DIR/mongo/base',
+            '$BUILD_DIR/mongo/db/auth/authmocks',
+            '$BUILD_DIR/mongo/db/repl/oplog',
+            '$BUILD_DIR/mongo/db/repl/oplog_interface_local',
+            '$BUILD_DIR/mongo/db/repl/replmocks',
+            '$BUILD_DIR/mongo/db/repl/storage_interface_impl',
+            '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
+            '$BUILD_DIR/mongo/util/options_parser/options_parser',
+            'audit_enterprise',
+            'audit_mongod',
+        ],
+    )
+
+    env.Library(
+        target='audit_mongos',
+        source=[
+            'src/audit/audit_mongos.cpp',
+        ],
+        LIBDEPS_PRIVATE=[
+            '$BUILD_DIR/mongo/db/auth/auth',
+            '$BUILD_DIR/mongo/db/auth/authprivilege',
+            '$BUILD_DIR/mongo/db/commands',
+            '$BUILD_DIR/mongo/s/grid',
+            'audit_enterprise',
+        ],
+        LIBDEPS_DEPENDENTS=[
             '$BUILD_DIR/mongo/s/mongos_initializers',
         ],
         LIBDEPS_TAGS=[

@@ -26,10 +26,6 @@ namespace mongo::audit {
 namespace {
 namespace fs = boost::filesystem;
 
-std::string getAuditLogPath() {
-    return getGlobalAuditManager()->getPath();
-}
-
 template <typename Encoder>
 class RotatableAuditFileAppender : public logger::Appender<AuditEvent> {
 public:
@@ -37,7 +33,7 @@ public:
         : _writer(std::move(writer)) {}
 
     Status rotate(bool renameFiles, StringData suffix) final {
-        auto target = getAuditLogPath() + suffix.toString();
+        auto target = getGlobalAuditManager()->getPath() + suffix.toString();
         return logger::RotatableFileWriter::Use(_writer.get()).rotate(renameFiles, target);
     }
 
@@ -123,13 +119,14 @@ private:
 
 std::unique_ptr<logger::Appender<AuditEvent>> auditLogAppender;
 
-MONGO_INITIALIZER_WITH_PREREQUISITES(AuditDomain, ("InitializeGlobalAuditManager"))
-(InitializerContext*) {
-    if (!getGlobalAuditManager()->isEnabled()) {
+}  // namespace
+
+void AuditManager::_initializeAuditLog() {
+    if (!isEnabled()) {
         return;
     }
 
-    const auto format = getGlobalAuditManager()->getFormat();
+    const auto format = getFormat();
     switch (format) {
         case AuditFormatConsole: {
             auditLogAppender.reset(
@@ -145,7 +142,7 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(AuditDomain, ("InitializeGlobalAuditManager
 #endif  // ndef _WIN32
         case AuditFormatJsonFile:
         case AuditFormatBsonFile: {
-            auto auditLogPath = getAuditLogPath();
+            auto auditLogPath = getPath();
 
             try {
                 const auto auditDirectoryPath = fs::path(auditLogPath).parent_path();
@@ -180,8 +177,6 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(AuditDomain, ("InitializeGlobalAuditManager
             uasserted(ErrorCodes::InternalError, "Audit format misconfigured");
     }
 }
-
-}  // namespace
 
 void logEvent(const AuditEvent& event) {
     auto status = auditLogAppender->append(event);

@@ -37,6 +37,7 @@ enums:
         values:
             kAddShard: "addShard"
             kApplicationMessage: "applicationMessage"
+            kAuditConfigure: "auditConfigure"
             kAuthCheck: "authCheck"
             kAuthenticate: "authenticate"
             kClientMetadata: "clientMetadata"

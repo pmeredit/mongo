@@ -8,7 +8,11 @@
 
 #include <boost/filesystem.hpp>
 
+#include "audit/audit_config_gen.h"
 #include "audit/audit_features_gen.h"
+#include "audit_event.h"
+#include "audit_event_type.h"
+#include "audit_log.h"
 #include "mongo/base/init.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/db/json.h"
@@ -23,16 +27,23 @@ namespace audit {
 
 namespace {
 AuditManager globalAuditManager;
-}
+constexpr auto kPreviousParam = "previous"_sd;
+constexpr auto kConfigParam = "config"_sd;
+}  // namespace
 
 AuditManager* getGlobalAuditManager() {
     return &globalAuditManager;
 }
 
+AuditManager::AuditManager() {
+    // Make a runtime configuration be always available.
+    _config = std::make_shared<RuntimeConfiguration>();
+}
+
 AuditManager::~AuditManager() {
-    if (_filter) {
-        // Allow this to leak on shutdown.
-        _filter.release();
+    if (_config->filter) {
+        // This intentionally leaks MatchExpression on shutdown.
+        _config->filter.release();
     }
 }
 
@@ -42,29 +53,61 @@ void AuditManager::setAuditAuthorizationSuccess(bool val) {
             "runtime audit configuration is enabled",
             !_runtimeConfiguration);
 
-    _auditAuthorizationSuccess.store(val);
+    _config->auditAuthorizationSuccess.store(val);
 }
 
-void AuditManager::_setFilter(BSONObj filter) {
+void AuditManager::setConfiguration(Client* client, const AuditConfigDocument& config) {
+    uassert(ErrorCodes::RuntimeAuditConfigurationNotEnabled,
+            "Unable to update runtime audit configuration when it has not been enabled",
+            _enabled && _runtimeConfiguration);
+
+    stdx::unique_lock<Mutex> lk(_setConfigurationMutex);
+
+    auto filterBSON = config.getFilter().getOwned();
+    auto filter = parseFilter(filterBSON);
+
+    // auditConfigure events are always emitted, regardless of filter settings.
+    logEvent(AuditEvent(client, AuditEventType::kAuditConfigure, [&](BSONObjBuilder* params) {
+        BSONObjBuilder previous(params->subobjStart(kPreviousParam));
+        previous.append(AuditConfigDocument::kGenerationFieldName, _config->generation);
+        previous.append(AuditConfigDocument::kFilterFieldName, _config->filterBSON);
+        previous.append(AuditConfigDocument::kAuditAuthorizationSuccessFieldName,
+                        _config->auditAuthorizationSuccess.load());
+        previous.doneFast();
+
+        BSONObjBuilder configBuilder(params->subobjStart(kConfigParam));
+        config.serialize(&configBuilder);
+        configBuilder.doneFast();
+    }));
+
+    // Swap in the new configuration.
+    auto newConfig = std::make_shared<RuntimeConfiguration>();
+    newConfig->filterBSON = std::move(filterBSON);
+    newConfig->filter = std::move(filter);
+    newConfig->auditAuthorizationSuccess.store(config.getAuditAuthorizationSuccess());
+    newConfig->generation = config.getGeneration();
+
+    std::atomic_exchange(&_config, newConfig);  // NOLINT
+}
+
+std::unique_ptr<MatchExpression> AuditManager::parseFilter(BSONObj filter) {
+    invariant(filter.isOwned());
     // We pass in a null OperationContext pointer here, since we do not have access to an
     // OperationContext. MatchExpressionParser::parse() only requires an OperationContext for
     // parsing $expr, which we explicitly disallow here.
-    auto ownedFilter = filter.getOwned();
     boost::intrusive_ptr<ExpressionContext> expCtx(new ExpressionContext(
         nullptr /* opCtx */, std::unique_ptr<CollatorInterface>(nullptr), NamespaceString("")));
     StatusWithMatchExpression parseResult =
-        MatchExpressionParser::parse(ownedFilter,
+        MatchExpressionParser::parse(filter,
                                      std::move(expCtx),
                                      ExtensionsCallbackNoop(),
                                      MatchExpressionParser::kBanAllSpecialFeatures);
 
     uassertStatusOK(parseResult.getStatus().withContext("Failed to parse auditFilter"));
-    _filterBSON = std::move(ownedFilter);
-    _filter = std::move(parseResult.getValue());
+    return std::move(parseResult.getValue());
 }
 
-void AuditManager::_setDestinationFromConfig() {
-    const auto& params = moe::startupOptionsParsed;
+void AuditManager::_setDestinationFromConfig(const moe::Environment& params) {
 
     if (!params.count("auditLog.destination")) {
         // No destination means no auditing, period.
@@ -124,15 +167,14 @@ void AuditManager::_setDestinationFromConfig() {
     _enabled = true;
 }
 
-void AuditManager::initialize() {
+void AuditManager::initialize(const moe::Environment& params) {
     invariant(!_enabled);
 
-    _setDestinationFromConfig();
+    _setDestinationFromConfig(params);
     if (!isEnabled()) {
         return;
     }
 
-    const auto& params = moe::startupOptionsParsed;
     if (params.count("auditLog.filter")) {
         BSONObj filter;
         try {
@@ -141,7 +183,8 @@ void AuditManager::initialize() {
             uasserted(ErrorCodes::BadValue, str::stream() << "Bad auditFilter: " << e.what());
         }
 
-        _setFilter(filter);
+        _config->filter = parseFilter(filter);
+        _config->filterBSON = std::move(filter);
     }
 
     if (params.count("auditLog.runtimeConfiguration") &&
@@ -165,6 +208,8 @@ void AuditManager::initialize() {
 
         _runtimeConfiguration = true;
     }
+
+    _initializeAuditLog();
 }
 
 namespace {
@@ -173,7 +218,7 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(InitializeGlobalAuditManager,
                                       "MatchExpressionParser",
                                       "PathlessOperatorMap"))
 (InitializerContext* context) {
-    globalAuditManager.initialize();
+    globalAuditManager.initialize(moe::startupOptionsParsed);
 }
 }  // namespace
 

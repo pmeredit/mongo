@@ -134,32 +134,28 @@ class AuditSpooler {
      * This method returns true if an entry in the audit file exists after "now" which has
      * the desired atype, and if every field in param is equal to a matching field in the entry.
      */
-    assertEntryRelaxed(atype, param) {
+    assertEntryRelaxed(atype, param, timeout, interval, opts) {
         let line;
-        assert.soon(
-            () => {
-                const log = this.getAllLines().slice(this._auditLine);
-                for (let idx in log) {
-                    const entry = log[idx];
-                    try {
-                        line = JSON.parse(entry);
-                    } catch (e) {
-                        continue;
-                    }
-                    if (line.atype !== atype) {
-                        continue;
-                    }
-
-                    if (this._deepPartialEquals(line.param, param)) {
-                        this._auditLine += Number(idx) + 1;
-                        return true;
-                    }
+        assert.soon(() => {
+            const log = this.getAllLines().slice(this._auditLine);
+            for (let idx in log) {
+                const entry = log[idx];
+                try {
+                    line = JSON.parse(entry);
+                } catch (e) {
+                    continue;
                 }
-                return false;
-            },
-            () => {
-                return this._makeErrorMessage();
-            });
+                if (line.atype !== atype) {
+                    continue;
+                }
+
+                if (this._deepPartialEquals(line.param, param)) {
+                    this._auditLine += Number(idx) + 1;
+                    return true;
+                }
+            }
+            return false;
+        }, () => this._makeErrorMessage(), timeout, interval, opts);
 
         // Success if we got here, return the matched record.
         return line;
@@ -354,6 +350,32 @@ MongoRunner.runMongodAuditLogger = function(opts, isBSON = false) {
     };
 
     return mongo;
+};
+
+ReplSetTest.runReplSetAuditLogger = function(opts = {}, isBSON = false) {
+    const setOpts = Object.assign({nodes: 1}, opts);
+    if (Number.isInteger(setOpts.nodes)) {
+        // e.g. {nodes: 3}
+        const numNodes = setOpts.nodes;
+        setOpts.nodes = [];
+        for (let i = 0; i < numNodes; ++i) {
+            setOpts.nodes[i] = makeAuditOpts({}, isBSON);
+        }
+    } else if ((typeof setOpts.nodes) == 'object') {
+        // e.g. {nodes: { options for single node } }
+        setOpts.nodes = makeAuditOpts(setOpts.node, isBSON);
+    } else if (Array.isArray(setOpts.nodes)) {
+        // e.g. {nodes: [{node1Opts}, {node2Opts}, ...]}
+        setOpts.nodes = setOpts.nodes.map((node) => makeAuditOps(node, isBSON));
+    }
+
+    const rs = new ReplSetTest(setOpts);
+    rs.startSet();
+    rs.initiate();
+    rs.nodes.forEach(function(node) {
+        node.auditSpooler = (() => new AuditSpooler(node.fullOptions.auditPath, isBSON));
+    });
+    return rs;
 };
 
 /**
