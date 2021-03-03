@@ -52,6 +52,7 @@ env.Library(
         "mongotmock/mongotmock_state.cpp",
     ],
     LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/db/api_parameters',
         '$BUILD_DIR/mongo/db/auth/authmocks',
         '$BUILD_DIR/mongo/db/auth/authservercommon',
         '$BUILD_DIR/mongo/db/commands',

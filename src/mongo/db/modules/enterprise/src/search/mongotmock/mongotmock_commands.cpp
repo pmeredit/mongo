@@ -7,7 +7,7 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/simple_bsonelement_comparator.h"
 #include "mongo/db/commands.h"
-#include "mongo/db/query/getmore_request.h"
+#include "mongo/db/query/getmore_command_gen.h"
 #include "mongo/db/query/kill_cursors_gen.h"
 #include "mongotmock_state.h"
 
@@ -111,9 +111,8 @@ public:
                         const std::string& dbname,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        auto request = uassertStatusOK(GetMoreRequest::parseFromBSON(dbname, cmdObj));
-
-        const auto cursorId = request.cursorid;
+        auto cmd = GetMoreCommand::parse({"getMore"}, cmdObj);
+        const auto cursorId = cmd.getCommandParameter();
         MongotMockStateGuard stateGuard = getMongotMockState(opCtx->getServiceContext());
 
         CursorState* cursorState = stateGuard->getCursorState(cursorId);
