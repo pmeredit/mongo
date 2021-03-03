@@ -28,7 +28,7 @@ void audit::logLogout(Client* client,
         return;
     }
 
-    AuditEvent event(client, AuditEventType::logout, [&](BSONObjBuilder* builder) {
+    AuditEvent event(client, AuditEventType::kLogout, [&](BSONObjBuilder* builder) {
         builder->append(kReasonField, reason);
         builder->append(kInitialUsersField, initialUsers);
         builder->append(kUpdatedUsersField, updatedUsers);

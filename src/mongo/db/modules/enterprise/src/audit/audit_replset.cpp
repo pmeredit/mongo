@@ -22,7 +22,7 @@ void audit::logReplSetReconfig(Client* client, const BSONObj* oldConfig, const B
         return;
     }
 
-    AuditEvent event(client, AuditEventType::replSetReconfig, [&](BSONObjBuilder* builder) {
+    AuditEvent event(client, AuditEventType::kReplSetReconfig, [&](BSONObjBuilder* builder) {
         if (oldConfig) {
             builder->append(kOldField, *oldConfig);
         }

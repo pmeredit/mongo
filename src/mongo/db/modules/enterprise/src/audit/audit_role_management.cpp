@@ -59,7 +59,7 @@ void logCreateUpdateRole(Client* client,
     }
 
     AuditEvent event(client, aType, [&](BSONObjBuilder* builder) {
-        const bool isCreate = aType == AuditEventType::createRole;
+        const bool isCreate = aType == AuditEventType::kCreateRole;
         role.appendToBSON(builder);
 
         if (roles && (isCreate || !roles->empty())) {
@@ -149,13 +149,13 @@ void logGrantRevokePrivilegesToFromRole(Client* client,
 void audit::logGrantRolesToUser(Client* client,
                                 const UserName& username,
                                 const std::vector<RoleName>& roles) {
-    logGrantRevokeRolesToFromUser(client, username, roles, AuditEventType::grantRolesToUser);
+    logGrantRevokeRolesToFromUser(client, username, roles, AuditEventType::kGrantRolesToUser);
 }
 
 void audit::logRevokeRolesFromUser(Client* client,
                                    const UserName& username,
                                    const std::vector<RoleName>& roles) {
-    logGrantRevokeRolesToFromUser(client, username, roles, AuditEventType::revokeRolesFromUser);
+    logGrantRevokeRolesToFromUser(client, username, roles, AuditEventType::kRevokeRolesFromUser);
 }
 
 void audit::logCreateRole(Client* client,
@@ -164,7 +164,7 @@ void audit::logCreateRole(Client* client,
                           const PrivilegeVector& privileges,
                           const boost::optional<BSONArray>& restrictions) {
     logCreateUpdateRole(
-        client, role, &roles, &privileges, restrictions, AuditEventType::createRole);
+        client, role, &roles, &privileges, restrictions, AuditEventType::kCreateRole);
 }
 
 void audit::logUpdateRole(Client* client,
@@ -172,7 +172,7 @@ void audit::logUpdateRole(Client* client,
                           const std::vector<RoleName>* roles,
                           const PrivilegeVector* privileges,
                           const boost::optional<BSONArray>& restrictions) {
-    logCreateUpdateRole(client, role, roles, privileges, restrictions, AuditEventType::updateRole);
+    logCreateUpdateRole(client, role, roles, privileges, restrictions, AuditEventType::kUpdateRole);
 }
 
 void audit::logDropRole(Client* client, const RoleName& role) {
@@ -180,7 +180,7 @@ void audit::logDropRole(Client* client, const RoleName& role) {
         return;
     }
 
-    AuditEvent event(client, AuditEventType::dropRole, [&](BSONObjBuilder* builder) {
+    AuditEvent event(client, AuditEventType::kDropRole, [&](BSONObjBuilder* builder) {
         role.appendToBSON(builder);
     });
 
@@ -195,7 +195,7 @@ void audit::logDropAllRolesFromDatabase(Client* client, StringData dbname) {
     }
 
     AuditEvent event(client,
-                     AuditEventType::dropAllRolesFromDatabase,
+                     AuditEventType::kDropAllRolesFromDatabase,
                      [dbname](BSONObjBuilder* builder) { builder->append(kDBField, dbname); });
 
     if (getGlobalAuditManager()->shouldAudit(&event)) {
@@ -206,27 +206,27 @@ void audit::logDropAllRolesFromDatabase(Client* client, StringData dbname) {
 void audit::logGrantRolesToRole(Client* client,
                                 const RoleName& role,
                                 const std::vector<RoleName>& roles) {
-    logGrantRevokeRolesToFromRole(client, role, roles, AuditEventType::grantRolesToRole);
+    logGrantRevokeRolesToFromRole(client, role, roles, AuditEventType::kGrantRolesToRole);
 }
 
 void audit::logRevokeRolesFromRole(Client* client,
                                    const RoleName& role,
                                    const std::vector<RoleName>& roles) {
-    logGrantRevokeRolesToFromRole(client, role, roles, AuditEventType::revokeRolesFromRole);
+    logGrantRevokeRolesToFromRole(client, role, roles, AuditEventType::kRevokeRolesFromRole);
 }
 
 void audit::logGrantPrivilegesToRole(Client* client,
                                      const RoleName& role,
                                      const PrivilegeVector& privileges) {
     logGrantRevokePrivilegesToFromRole(
-        client, role, privileges, AuditEventType::grantPrivilegesToRole);
+        client, role, privileges, AuditEventType::kGrantPrivilegesToRole);
 }
 
 void audit::logRevokePrivilegesFromRole(Client* client,
                                         const RoleName& role,
                                         const PrivilegeVector& privileges) {
     logGrantRevokePrivilegesToFromRole(
-        client, role, privileges, AuditEventType::revokePrivilegesFromRole);
+        client, role, privileges, AuditEventType::kRevokePrivilegesFromRole);
 }
 
 }  // namespace mongo

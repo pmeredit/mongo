@@ -57,7 +57,7 @@ void _logAuthzCheck(Client* client,
     }
 
     AuditEvent event(client,
-                     AuditEventType::authCheck,
+                     AuditEventType::kAuthCheck,
                      [&](BSONObjBuilder* builder) {
                          builder->append(kCommandField, commandName);
                          builder->append(kNSField, ns.ns());

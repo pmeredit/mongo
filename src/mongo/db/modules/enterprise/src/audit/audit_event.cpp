@@ -58,7 +58,7 @@ AuditEvent::AuditEvent(Client* client,
                        ErrorCodes::Error result) {
     BSONObjBuilder builder;
 
-    builder.append(kATypeField, toStringData(aType));
+    builder.append(kATypeField, AuditEventType_serializer(aType));
     builder.append(kTimestampField, Date_t::now());
     if (client) {
         serializeClient(client, &builder);

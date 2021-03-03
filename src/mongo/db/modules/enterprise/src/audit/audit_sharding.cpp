@@ -28,7 +28,7 @@ void audit::logEnableSharding(Client* client, StringData dbname) {
         return;
     }
 
-    AuditEvent event(client, AuditEventType::enableSharding, [dbname](BSONObjBuilder* builder) {
+    AuditEvent event(client, AuditEventType::kEnableSharding, [dbname](BSONObjBuilder* builder) {
         builder->append(kNSField, dbname);
     });
     if (getGlobalAuditManager()->shouldAudit(&event)) {
@@ -44,7 +44,7 @@ void audit::logAddShard(Client* client,
         return;
     }
 
-    AuditEvent event(client, AuditEventType::addShard, [&](BSONObjBuilder* builder) {
+    AuditEvent event(client, AuditEventType::kAddShard, [&](BSONObjBuilder* builder) {
         builder->append(kShardField, name);
         builder->append(kConnectionStringField, servers);
         builder->append(kMaxSizeField, maxSize);
@@ -63,7 +63,7 @@ void audit::logShardCollection(Client* client,
         return;
     }
 
-    AuditEvent event(client, AuditEventType::shardCollection, [&](BSONObjBuilder* builder) {
+    AuditEvent event(client, AuditEventType::kShardCollection, [&](BSONObjBuilder* builder) {
         builder->append(kNSField, ns);
         builder->append(kKeyField, keyPattern);
         {
@@ -81,7 +81,7 @@ void audit::logRemoveShard(Client* client, StringData shardname) {
     if (!getGlobalAuditManager()->isEnabled())
         return;
 
-    AuditEvent event(client, AuditEventType::removeShard, [shardname](BSONObjBuilder* builder) {
+    AuditEvent event(client, AuditEventType::kRemoveShard, [shardname](BSONObjBuilder* builder) {
         builder->append(kShardField, shardname);
     });
 
@@ -96,7 +96,7 @@ void audit::logRefineCollectionShardKey(Client* client, StringData ns, const BSO
     }
 
     AuditEvent event(
-        client, AuditEventType::refineCollectionShardKey, [&](BSONObjBuilder* builder) {
+        client, AuditEventType::kRefineCollectionShardKey, [&](BSONObjBuilder* builder) {
             builder->append(kNSField, ns);
             builder->append(kKeyField, keyPattern);
         });

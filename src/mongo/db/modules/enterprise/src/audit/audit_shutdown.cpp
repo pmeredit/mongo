@@ -18,7 +18,7 @@ void audit::logShutdown(Client* client) {
         return;
     }
 
-    AuditEvent event(client, AuditEventType::shutdown);
+    AuditEvent event(client, AuditEventType::kShutdown);
     if (getGlobalAuditManager()->shouldAudit(&event)) {
         logEvent(event);
     }

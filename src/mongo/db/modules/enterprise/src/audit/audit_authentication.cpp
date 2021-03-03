@@ -26,7 +26,7 @@ void audit::logAuthentication(Client* client, const AuthenticateEvent& authEvent
     }
 
     AuditEvent event(client,
-                     AuditEventType::authenticate,
+                     AuditEventType::kAuthenticate,
                      [&](BSONObjBuilder* builder) {
                          authEvent.appendExtraInfo(builder);
                          builder->append(kUser, authEvent.getUser());

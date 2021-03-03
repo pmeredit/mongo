@@ -24,7 +24,7 @@ void audit::logStartupOptions(Client* client, const BSONObj& startupOptions) {
         return;
     }
 
-    AuditEvent event(client, AuditEventType::startup, [&](BSONObjBuilder* builder) {
+    AuditEvent event(client, AuditEventType::kStartup, [&](BSONObjBuilder* builder) {
         builder->append(kOptionsField, startupOptions);
     });
 

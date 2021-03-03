@@ -1,0 +1,72 @@
+# Copyright (C) 2021-present MongoDB, Inc.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the Server Side Public License, version 1,
+# as published by MongoDB, Inc.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# Server Side Public License for more details.
+#
+# You should have received a copy of the Server Side Public License
+# along with this program. If not, see
+# <http://www.mongodb.com/licensing/serversidepubliclicense>.
+#
+# As a special exception, the copyright holders give permission to link the
+# code of portions of this program with the OpenSSL library under certain
+# conditions as described in each individual source file and distribute
+# linked combinations including the program with the OpenSSL library. You
+# must comply with the Server Side Public License in all respects for
+# all of the code used other than as permitted herein. If you modify file(s)
+# with this exception, you may extend this exception to your version of the
+# file(s), but you are not obligated to do so. If you do not wish to do so,
+# delete this exception statement from your version. If you delete this
+# exception statement from all source files in the program, then also delete
+# it in the license file.
+#
+
+global:
+    cpp_namespace: "mongo::audit"
+
+# List describing the AuditEventTypes that should be created.
+enums:
+    AuditEventType:
+        description: "The type of audit event being logged"
+        type: string
+        values:
+            kAddShard: "addShard"
+            kApplicationMessage: "applicationMessage"
+            kAuthCheck: "authCheck"
+            kAuthenticate: "authenticate"
+            kCreateCollection: "createCollection"
+            kCreateDatabase: "createDatabase"
+            kCreateIndex: "createIndex"
+            kCreateRole: "createRole"
+            kCreateUser: "createUser"
+            kDirectAuthMutation: "directAuthMutation"
+            kDropAllRolesFromDatabase: "dropAllRolesFromDatabase"
+            kDropAllUsersFromDatabase: "dropAllUsersFromDatabase"
+            kDropCollection: "dropCollection"
+            kDropDatabase: "dropDatabase"
+            kDropIndex: "dropIndex"
+            kDropRole: "dropRole"
+            kDropUser: "dropUser"
+            kEnableSharding: "enableSharding"
+            kGrantPrivilegesToRole: "grantPrivilegesToRole"
+            kGrantRolesToRole: "grantRolesToRole"
+            kGrantRolesToUser: "grantRolesToUser"
+            kImportCollection: "importCollection"
+            kLogout: "logout"
+            kRefineCollectionShardKey: "refineCollectionShardKey"
+            kRemoveShard: "removeShard"
+            kRenameCollection: "renameCollection"
+            kReplSetReconfig: "replSetReconfig"
+            kRevokePrivilegesFromRole: "revokePrivilegesFromRole"
+            kRevokeRolesFromRole: "revokeRolesFromRole"
+            kRevokeRolesFromUser: "revokeRolesFromUser"
+            kShardCollection: "shardCollection"
+            kShutdown: "shutdown"
+            kStartup: "startup"
+            kUpdateRole: "updateRole"
+            kUpdateUser: "updateUser"

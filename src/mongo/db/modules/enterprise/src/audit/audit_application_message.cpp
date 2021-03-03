@@ -22,7 +22,7 @@ void audit::logApplicationMessage(Client* client, StringData msg) {
         return;
     }
 
-    AuditEvent event(client, AuditEventType::applicationMessage, [msg](BSONObjBuilder* builder) {
+    AuditEvent event(client, AuditEventType::kApplicationMessage, [msg](BSONObjBuilder* builder) {
         builder->append(kMsgField, msg);
     });
 

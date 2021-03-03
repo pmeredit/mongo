@@ -77,7 +77,7 @@ void audit::logCreateIndex(Client* client,
         return;
     }
 
-    AuditEvent event(client, AuditEventType::createIndex, [&](BSONObjBuilder* builder) {
+    AuditEvent event(client, AuditEventType::kCreateIndex, [&](BSONObjBuilder* builder) {
         builder->append(kNSField, nsname.ns());
         builder->append(kIndexNameField, indexname);
         builder->append(kIndexSpecField, *indexSpec);
@@ -89,7 +89,7 @@ void audit::logCreateIndex(Client* client,
 }
 
 void audit::logCreateCollection(Client* client, const NamespaceString& nsname) {
-    logNSEvent(client, nsname, AuditEventType::createCollection);
+    logNSEvent(client, nsname, AuditEventType::kCreateCollection);
 }
 
 void audit::logCreateView(Client* client,
@@ -104,7 +104,7 @@ void audit::logCreateView(Client* client,
     }
 
     // Intentional: createView is audited as createCollection with viewOn/pipeline params. */
-    AuditEvent event(client, AuditEventType::createCollection, [&](BSONObjBuilder* builder) {
+    AuditEvent event(client, AuditEventType::kCreateCollection, [&](BSONObjBuilder* builder) {
         builder->append(kNSField, nsname.ns());
         if (gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
             builder->append(kViewOnField, viewOn);
@@ -119,11 +119,11 @@ void audit::logCreateView(Client* client,
 
 void audit::logImportCollection(Client* client, const NamespaceString& nsname) {
     // An import is similar to a create, except that we use an importCollection action type.
-    logNSEvent(client, nsname, AuditEventType::importCollection);
+    logNSEvent(client, nsname, AuditEventType::kImportCollection);
 }
 
 void audit::logCreateDatabase(Client* client, StringData dbname) {
-    logNSEvent(client, NamespaceString(dbname), AuditEventType::createDatabase);
+    logNSEvent(client, NamespaceString(dbname), AuditEventType::kCreateDatabase);
 }
 
 void audit::logDropIndex(Client* client, StringData indexname, const NamespaceString& nsname) {
@@ -133,7 +133,7 @@ void audit::logDropIndex(Client* client, StringData indexname, const NamespaceSt
         return;
     }
 
-    AuditEvent event(client, AuditEventType::dropIndex, [&](BSONObjBuilder* builder) {
+    AuditEvent event(client, AuditEventType::kDropIndex, [&](BSONObjBuilder* builder) {
         builder->append(kNSField, nsname.ns());
         builder->append(kIndexNameField, indexname);
     });
@@ -144,7 +144,7 @@ void audit::logDropIndex(Client* client, StringData indexname, const NamespaceSt
 }
 
 void audit::logDropCollection(Client* client, const NamespaceString& nsname) {
-    logNSEvent(client, nsname, AuditEventType::dropCollection);
+    logNSEvent(client, nsname, AuditEventType::kDropCollection);
 
     if (!gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
         return;
@@ -172,7 +172,7 @@ void audit::logDropView(Client* client,
 
     // Intentional: dropView is audited as dropCollection with viewOn/pipeline params.
     AuditEvent event(client,
-                     AuditEventType::dropCollection,
+                     AuditEventType::kDropCollection,
                      [&](BSONObjBuilder* builder) {
                          builder->append(kNSField, nsname.ns());
                          builder->append(kViewOnField, viewOn);
@@ -186,7 +186,7 @@ void audit::logDropView(Client* client,
 }
 
 void audit::logDropDatabase(Client* client, StringData dbname) {
-    logNSEvent(client, NamespaceString(dbname), AuditEventType::dropDatabase);
+    logNSEvent(client, NamespaceString(dbname), AuditEventType::kDropDatabase);
 }
 
 void audit::logRenameCollection(Client* client,
@@ -198,7 +198,7 @@ void audit::logRenameCollection(Client* client,
         return;
     }
 
-    AuditEvent event(client, AuditEventType::renameCollection, [&](BSONObjBuilder* builder) {
+    AuditEvent event(client, AuditEventType::kRenameCollection, [&](BSONObjBuilder* builder) {
         builder->append(kOldField, source.ns());
         builder->append(kNewField, target.ns());
     });

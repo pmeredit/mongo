@@ -64,7 +64,7 @@ void logCreateUpdateUser(Client* client,
     }
 
     AuditEvent event(client, aType, [&](BSONObjBuilder* builder) {
-        const bool isCreate = aType == AuditEventType::createUser;
+        const bool isCreate = aType == AuditEventType::kCreateUser;
         username.appendToBSON(builder);
 
         if (!isCreate) {
@@ -144,7 +144,7 @@ void logDirectAuthOperation(Client* client,
         return;
     }
 
-    AuditEvent event(client, AuditEventType::directAuthMutation, [&](BSONObjBuilder* builder) {
+    AuditEvent event(client, AuditEventType::kDirectAuthMutation, [&](BSONObjBuilder* builder) {
         BSONObjBuilder documentObjectBuilder(builder->subobjStart(audit::kDocumentField));
         sanitizeCredentials(&documentObjectBuilder, doc);
         documentObjectBuilder.done();
@@ -167,7 +167,7 @@ void audit::logCreateUser(Client* client,
                           const std::vector<RoleName>& roles,
                           const boost::optional<BSONArray>& restrictions) {
     logCreateUpdateUser(
-        client, username, password, customData, &roles, restrictions, AuditEventType::createUser);
+        client, username, password, customData, &roles, restrictions, AuditEventType::kCreateUser);
     AuditDeduplication::markOperationAsAudited(client);
 }
 
@@ -176,7 +176,7 @@ void audit::logDropUser(Client* client, const UserName& username) {
         return;
     }
 
-    AuditEvent event(client, AuditEventType::dropUser, [&](BSONObjBuilder* builder) {
+    AuditEvent event(client, AuditEventType::kDropUser, [&](BSONObjBuilder* builder) {
         username.appendToBSON(builder);
     });
 
@@ -193,7 +193,7 @@ void audit::logDropAllUsersFromDatabase(Client* client, StringData dbname) {
     }
 
     AuditEvent event(client,
-                     AuditEventType::dropAllUsersFromDatabase,
+                     AuditEventType::kDropAllUsersFromDatabase,
                      [dbname](BSONObjBuilder* builder) { builder->append(kDBField, dbname); });
 
     if (getGlobalAuditManager()->shouldAudit(&event)) {
@@ -210,7 +210,7 @@ void audit::logUpdateUser(Client* client,
                           const std::vector<RoleName>* roles,
                           const boost::optional<BSONArray>& restrictions) {
     logCreateUpdateUser(
-        client, username, password, customData, roles, restrictions, AuditEventType::updateUser);
+        client, username, password, customData, roles, restrictions, AuditEventType::kUpdateUser);
 
     AuditDeduplication::markOperationAsAudited(client);
 }
