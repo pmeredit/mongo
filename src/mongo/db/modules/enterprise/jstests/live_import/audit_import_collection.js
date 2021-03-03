@@ -47,10 +47,8 @@ audit.fastForward();
 assert.commandWorked(testDB.runCommand({importCollection: collectionProperties}));
 assertCollectionExists(testDB, collName);
 
-// Test that importCollection is in the aduit log.
-let entry = audit.getNextEntry();
-assert.eq(entry.atype, "importCollection", () => tojson(entry));
-assert.eq(entry.param.ns, testDB[collName].getFullName(), () => tojson(entry));
+// Test that importCollection is in the audit log.
+audit.assertEntry("importCollection", {ns: testDB[collName].getFullName()});
 
 // Test that there is only one importCollection entry as the dry run should not count.
 audit.assertNoNewEntries("importCollection");
