@@ -11,7 +11,7 @@ const pipeline = [
     {
         $setWindowFields: {
             sortBy: {_id: 1},
-            output: {a: {"$sum": {input: "$first", documents: ['unbounded', 'current']}}}
+            output: {a: {"$sum": "$first", window: {documents: ['unbounded', 'current']}}}
         }
     },
 ];
