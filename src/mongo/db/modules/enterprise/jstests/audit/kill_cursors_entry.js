@@ -4,7 +4,7 @@
 
 load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
 
-const standalone = MongoRunner.runMongodAuditLogger({});
+const standalone = MongoRunner.runMongodAuditLogger({auth: ""});
 const audit = standalone.auditSpooler();
 
 const testDB = standalone.getDB("test");
