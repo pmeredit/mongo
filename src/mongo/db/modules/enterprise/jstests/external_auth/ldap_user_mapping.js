@@ -105,7 +105,7 @@ function assertTestsFail() {
         // Error may appear more than once, but all results should be the same.
         assert.eq(e.msg, 'Authentication failed');
 
-        const result = e.attr.result;
+        const result = e.attr.error;
         assert(result.includes('aborting transformation'));
         assert(!result.includes('\u25A0 \u25A0'));
     });
