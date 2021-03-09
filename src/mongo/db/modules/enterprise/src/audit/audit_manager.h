@@ -39,7 +39,7 @@ public:
      */
     void initialize();
 
-    const AuditFormat getFormat() const {
+    AuditFormat getFormat() const {
         return _format;
     }
 
