@@ -275,8 +275,11 @@ void importCollection(OperationContext* opCtx,
         auto durableCatalog = storageEngine->getCatalog();
         auto importResult = uassertStatusOK(durableCatalog->importCollection(
             opCtx, nss, catalogEntry, storageMetadata, uuidOption));
+
+        const CollectionOptions options =
+            durableCatalog->getCollectionOptions(opCtx, importResult.catalogId);
         std::shared_ptr<Collection> ownedCollection = Collection::Factory::get(opCtx)->make(
-            opCtx, nss, importResult.catalogId, importResult.uuid, std::move(importResult.rs));
+            opCtx, nss, importResult.catalogId, options, std::move(importResult.rs));
 
         {
             // Validate index spec.
