@@ -234,7 +234,8 @@ public:
             state->promise.setError({ErrorCodes::OperationFailed, "Operation timed out"});
         });
 
-        _executor->schedule([this, state, func = std::move(func)](Status status) {
+        auto anchor = shared_from_this();
+        _executor->schedule([this, anchor, state, func = std::move(func)](Status status) {
             if (!status.isOK()) {
                 return;
             }
