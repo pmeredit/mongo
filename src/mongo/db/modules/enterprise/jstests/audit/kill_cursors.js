@@ -108,5 +108,22 @@ cmdRes = assert.commandWorked(
     db.runCommand({killCursors: db.audit.getName(), cursors: [cursorId, cursorId2]}));
 audit.verifyAuditEntriesForCursors([cursorId, cursorId2], true);
 
+jsTest.log('Testing legacy mode');
+
+audit.fastForward();
+
+let out = runMongoProgram("mongo",
+                          "localhost:" + m.port + "/admin",
+                          "--username=user1",
+                          "--password=pwd",
+                          "--readMode=legacy",
+                          "--useLegacyWriteOps",
+                          "--eval",
+                          "q=db.audit.find().batchSize(1); q.next(); q.close();");
+assert.eq(out, 0, "Could not connect to mongod instance");
+
+audit.assertEntryRelaxed("authCheck",
+                         {command: "killCursors", ns: "admin.audit", args: {killCursors: "audit"}});
+
 MongoRunner.stopMongod(m);
 }());
