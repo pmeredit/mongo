@@ -308,7 +308,8 @@ function formatAuditOpts(opts, isBSON) {
     opts.auditDestination = opts.auditDestination || "file";
     if (opts.auditDestination === "file") {
         if (!opts.auditPath) {
-            opts.auditPath = opts.auditPath || MongoRunner.dataPath + "mongodb-$port-audit.log";
+            opts.auditPath =
+                opts.auditPath || MongoRunner.dataPath + `mongodb-${opts.port}-audit.log`;
         }
         if (isBSON) {
             opts.auditFormat = opts.auditFormat || "BSON";
