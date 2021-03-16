@@ -6,6 +6,8 @@
 
 #include "audit_event.h"
 
+#include "audit/audit_features_gen.h"
+
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_session.h"
@@ -31,6 +33,7 @@ constexpr auto kUsersField = "users"_sd;
 constexpr auto kRolesField = "roles"_sd;
 constexpr auto kParamField = "param"_sd;
 constexpr auto kResultField = "result"_sd;
+constexpr auto kIsSystemUser = "isSystemUser"_sd;
 }  // namespace
 
 ImpersonatedClientAttrs::ImpersonatedClientAttrs(Client* client) {
@@ -60,9 +63,7 @@ AuditEvent::AuditEvent(Client* client,
 
     builder.append(kATypeField, AuditEventType_serializer(aType));
     builder.append(kTimestampField, Date_t::now());
-    if (client) {
-        serializeClient(client, &builder);
-    }
+    serializeClient(client, &builder);
 
     BSONObjBuilder paramBuilder(builder.subobjStart(kParamField));
     if (serializer) {
@@ -78,8 +79,18 @@ AuditEvent::AuditEvent(Client* client,
 void AuditEvent::serializeClient(Client* client, BSONObjBuilder* builder) {
     invariant(client);
 
-    auto session = client->session();
-    if (session) {
+    if (client->isFromSystemConnection()) {
+        if (gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
+            {
+                auto remoteBob = BSONObjBuilder(builder->subobjStart(kRemoteEndpointField));
+                remoteBob.appendBool(kIsSystemUser, true);
+            }
+            {
+                auto localBob = BSONObjBuilder(builder->subobjStart(kLocalEndpointField));
+                localBob.appendBool(kIsSystemUser, true);
+            }
+        }
+    } else if (auto session = client->session()) {
         auto local = session->localAddr();
         auto remote = session->remoteAddr();
         invariant(local.isValid() && remote.isValid());

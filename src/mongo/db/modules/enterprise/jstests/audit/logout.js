@@ -21,6 +21,9 @@ if (!checkImprovedAuditEnabled()) {
     return;
 }
 
+const kExplicitLogoutMessage = "Logging out on user request";
+const kImplicitLogoutMessage = "Client has disconnected";
+
 let runTest = function(conn) {
     const port = conn.port;
     const audit = conn.auditSpooler();
@@ -37,10 +40,9 @@ let runTest = function(conn) {
     assert.commandWorked(admin.logout());
 
     // Check that explicit admin logout was recorded in audit log with no implicit logouts.
-    audit.assertNoNewEntries("logout",
-                             {reason: "Implicit logout due to client connection closure"});
+    audit.assertNoNewEntries("logout", {reason: kImplicitLogoutMessage});
     audit.assertEntry("logout", {
-        reason: "Explicit logout from db 'admin'",
+        reason: kExplicitLogoutMessage,
         initialUsers: [{"user": "admin", "db": "admin"}],
         updatedUsers: []
     });
@@ -54,13 +56,12 @@ let runTest = function(conn) {
     assert(test1.logout());
     let startLine = audit.getCurrentAuditLine();
     audit.assertEntry("logout", {
-        reason: "Explicit logout from db 'test1'",
+        reason: kExplicitLogoutMessage,
         initialUsers: [{"user": "user1", "db": "test1"}, {"user": "user2", "db": "test2"}],
         updatedUsers: [{"user": "user2", "db": "test2"}]
     });
     audit.setCurrentAuditLine(startLine);
-    audit.assertNoNewEntries("logout",
-                             {reason: "Implicit logout due to client connection closure"});
+    audit.assertNoNewEntries("logout", {reason: kImplicitLogoutMessage});
 
     print('SUCCESS explicit logout');
 
@@ -77,7 +78,7 @@ let runTest = function(conn) {
     runMongoProgram('mongo', uri, '--shell', '--eval', `(${cmd})();`);
     startLine = audit.getCurrentAuditLine();
     audit.assertEntry("logout", {
-        reason: "Implicit logout due to client connection closure",
+        reason: kImplicitLogoutMessage,
         initialUsers: [{"user": "user1", "db": "test1"}, {"user": "user2", "db": "test2"}],
         updatedUsers: []
     });
