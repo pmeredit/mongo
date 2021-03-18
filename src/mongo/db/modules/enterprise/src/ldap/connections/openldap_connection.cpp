@@ -478,7 +478,7 @@ Status OpenLDAPConnection::connect() {
     }
 
     // Log LDAP API information
-    if (shouldLog(logv2::LogSeverity::Debug(3))) {
+    if (shouldLog(MONGO_LOGV2_DEFAULT_COMPONENT, logv2::LogSeverity::Debug(3))) {
         try {
             LDAPOptionAPIInfo info = _pimpl->getOption<LDAPOptionAPIInfo>(
                 "OpenLDAPConnection::connect", "Getting API info");
