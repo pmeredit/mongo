@@ -17,7 +17,7 @@ const kUserTestCases = [
         code: ErrorCodes.Unauthorized,
         passOnMongos: true
     },
-    {test: [{user: 'foo', db: 'bar', unknown: 'baz'}], pass: false, passOnMongos: true},
+    {test: [{user: 'foo', db: 'bar'}], pass: false, passOnMongos: true},
 ];
 
 const kRoleTestCases = [
@@ -32,7 +32,7 @@ const kRoleTestCases = [
         code: ErrorCodes.Unauthorized,
         passOnMongos: true
     },
-    {test: [{role: 'foo', db: 'bar', unknown: 'baz'}], pass: false, passOnMongos: true},
+    {test: [{role: 'foo', db: 'bar'}], pass: false, passOnMongos: true},
 ];
 
 function setupTests(conn) {
