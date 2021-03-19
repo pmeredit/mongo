@@ -178,4 +178,23 @@ void logEvent(const AuditEvent& event) {
     }
 }
 
+bool tryLogEvent(Client* client,
+                 AuditEventType type,
+                 AuditEvent::Serializer serializer,
+                 ErrorCodes::Error code) {
+    const auto auditManager = getGlobalAuditManager();
+    if (!auditManager->isEnabled()) {
+        return false;
+    }
+
+    const auto event = AuditEvent(client, type, serializer, code);
+    if (!auditManager->shouldAudit(&event)) {
+        return false;
+    }
+
+    logEvent(event);
+
+    return true;
+}
+
 }  // namespace mongo::audit

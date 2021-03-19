@@ -4,9 +4,20 @@
 
 #pragma once
 
+#include "mongo/base/error_codes.h"
+#include "mongo/db/client.h"
+
 #include "audit_event.h"
+#include "audit_event_type.h"
 
 namespace mongo::audit {
+
+// Send the specified event to the audit log if the manager is enabled and approves the event.
+// Throws on failure, returns true if the event was logged, returns false otherwise.
+bool tryLogEvent(Client* client,
+                 AuditEventType type,
+                 AuditEvent::Serializer serializer,
+                 ErrorCodes::Error code);
 
 // Send the specified event to the audit log.
 // Throws a uassertStatusOK DBException on failure.

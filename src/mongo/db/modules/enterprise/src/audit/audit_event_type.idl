@@ -39,6 +39,7 @@ enums:
             kApplicationMessage: "applicationMessage"
             kAuthCheck: "authCheck"
             kAuthenticate: "authenticate"
+            kClientMetadata: "clientMetadata"
             kCreateCollection: "createCollection"
             kCreateDatabase: "createDatabase"
             kCreateIndex: "createIndex"

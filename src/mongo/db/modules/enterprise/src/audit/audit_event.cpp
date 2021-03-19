@@ -33,6 +33,7 @@ constexpr auto kUsersField = "users"_sd;
 constexpr auto kRolesField = "roles"_sd;
 constexpr auto kParamField = "param"_sd;
 constexpr auto kResultField = "result"_sd;
+constexpr auto kUuid = "uuid"_sd;
 constexpr auto kIsSystemUser = "isSystemUser"_sd;
 }  // namespace
 
@@ -79,25 +80,37 @@ AuditEvent::AuditEvent(Client* client,
 void AuditEvent::serializeClient(Client* client, BSONObjBuilder* builder) {
     invariant(client);
 
+    const auto hasImprovedAuditing = gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV();
+    if (hasImprovedAuditing) {
+        client->getUUID().appendToBuilder(builder, kUuid);
+    }
+
     if (client->isFromSystemConnection()) {
-        if (gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
-            {
-                auto remoteBob = BSONObjBuilder(builder->subobjStart(kRemoteEndpointField));
-                remoteBob.appendBool(kIsSystemUser, true);
-            }
+        if (hasImprovedAuditing) {
             {
                 auto localBob = BSONObjBuilder(builder->subobjStart(kLocalEndpointField));
                 localBob.appendBool(kIsSystemUser, true);
             }
+
+            {
+                auto remoteBob = BSONObjBuilder(builder->subobjStart(kRemoteEndpointField));
+                remoteBob.appendBool(kIsSystemUser, true);
+            }
         }
     } else if (auto session = client->session()) {
-        auto local = session->localAddr();
-        auto remote = session->remoteAddr();
-        invariant(local.isValid() && remote.isValid());
-        // local: {ip: '127.0.0.1', port: 27017} or {unix: '/var/run/mongodb.sock'}
-        local.serializeToBSON(kLocalEndpointField, builder);
-        // remote: {ip: '::1', port: 12345} or {unix: '/var/run/mongodb.sock'}
-        remote.serializeToBSON(kRemoteEndpointField, builder);
+        {
+            auto local = session->localAddr();
+            invariant(local.isValid());
+            // local: {ip: '127.0.0.1', port: 27017} or {unix: '/var/run/mongodb.sock'}
+            local.serializeToBSON(kLocalEndpointField, builder);
+        }
+
+        {
+            auto remote = session->remoteAddr();
+            invariant(remote.isValid());
+            // remote: {ip: '::1', port: 12345} or {unix: '/var/run/mongodb.sock'}
+            remote.serializeToBSON(kRemoteEndpointField, builder);
+        }
     }
 
     if (AuthorizationSession::exists(client)) {
