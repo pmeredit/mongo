@@ -18,17 +18,10 @@ constexpr auto kMsgField = "msg"_sd;
 }  // namespace
 
 void audit::logApplicationMessage(Client* client, StringData msg) {
-    if (!getGlobalAuditManager()->isEnabled()) {
-        return;
-    }
-
-    AuditEvent event(client, AuditEventType::kApplicationMessage, [msg](BSONObjBuilder* builder) {
-        builder->append(kMsgField, msg);
-    });
-
-    if (getGlobalAuditManager()->shouldAudit(&event)) {
-        logEvent(event);
-    }
+    tryLogEvent(client,
+                AuditEventType::kApplicationMessage,
+                [msg](BSONObjBuilder* builder) { builder->append(kMsgField, msg); },
+                ErrorCodes::OK);
 }
 
 }  // namespace mongo

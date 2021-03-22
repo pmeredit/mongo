@@ -24,86 +24,58 @@ constexpr auto kUniqueField = "unique"_sd;
 }  // namespace
 
 void audit::logEnableSharding(Client* client, StringData dbname) {
-    if (!getGlobalAuditManager()->isEnabled()) {
-        return;
-    }
-
-    AuditEvent event(client, AuditEventType::kEnableSharding, [dbname](BSONObjBuilder* builder) {
-        builder->append(kNSField, dbname);
-    });
-    if (getGlobalAuditManager()->shouldAudit(&event)) {
-        logEvent(event);
-    }
+    tryLogEvent(client,
+                AuditEventType::kEnableSharding,
+                [dbname](BSONObjBuilder* builder) { builder->append(kNSField, dbname); },
+                ErrorCodes::OK);
 }
 
 void audit::logAddShard(Client* client,
                         StringData name,
                         const std::string& servers,
                         long long maxSize) {
-    if (!getGlobalAuditManager()->isEnabled()) {
-        return;
-    }
-
-    AuditEvent event(client, AuditEventType::kAddShard, [&](BSONObjBuilder* builder) {
-        builder->append(kShardField, name);
-        builder->append(kConnectionStringField, servers);
-        builder->append(kMaxSizeField, maxSize);
-    });
-
-    if (getGlobalAuditManager()->shouldAudit(&event)) {
-        logEvent(event);
-    }
+    tryLogEvent(client,
+                AuditEventType::kAddShard,
+                [&](BSONObjBuilder* builder) {
+                    builder->append(kShardField, name);
+                    builder->append(kConnectionStringField, servers);
+                    builder->append(kMaxSizeField, maxSize);
+                },
+                ErrorCodes::OK);
 }
 
 void audit::logShardCollection(Client* client,
                                StringData ns,
                                const BSONObj& keyPattern,
                                bool unique) {
-    if (!getGlobalAuditManager()->isEnabled()) {
-        return;
-    }
-
-    AuditEvent event(client, AuditEventType::kShardCollection, [&](BSONObjBuilder* builder) {
-        builder->append(kNSField, ns);
-        builder->append(kKeyField, keyPattern);
-        {
-            BSONObjBuilder optionsBuilder(builder->subobjStart(kOptionsField));
-            optionsBuilder.append(kUniqueField, unique);
-        }
-    });
-
-    if (getGlobalAuditManager()->shouldAudit(&event)) {
-        logEvent(event);
-    }
+    tryLogEvent(client,
+                AuditEventType::kShardCollection,
+                [&](BSONObjBuilder* builder) {
+                    builder->append(kNSField, ns);
+                    builder->append(kKeyField, keyPattern);
+                    {
+                        BSONObjBuilder optionsBuilder(builder->subobjStart(kOptionsField));
+                        optionsBuilder.append(kUniqueField, unique);
+                    }
+                },
+                ErrorCodes::OK);
 }
 
 void audit::logRemoveShard(Client* client, StringData shardname) {
-    if (!getGlobalAuditManager()->isEnabled())
-        return;
-
-    AuditEvent event(client, AuditEventType::kRemoveShard, [shardname](BSONObjBuilder* builder) {
-        builder->append(kShardField, shardname);
-    });
-
-    if (getGlobalAuditManager()->shouldAudit(&event)) {
-        logEvent(event);
-    }
+    tryLogEvent(client,
+                AuditEventType::kRemoveShard,
+                [shardname](BSONObjBuilder* builder) { builder->append(kShardField, shardname); },
+                ErrorCodes::OK);
 }
 
 void audit::logRefineCollectionShardKey(Client* client, StringData ns, const BSONObj& keyPattern) {
-    if (!getGlobalAuditManager()->isEnabled()) {
-        return;
-    }
-
-    AuditEvent event(
-        client, AuditEventType::kRefineCollectionShardKey, [&](BSONObjBuilder* builder) {
-            builder->append(kNSField, ns);
-            builder->append(kKeyField, keyPattern);
-        });
-
-    if (getGlobalAuditManager()->shouldAudit(&event)) {
-        logEvent(event);
-    }
+    tryLogEvent(client,
+                AuditEventType::kRefineCollectionShardKey,
+                [&](BSONObjBuilder* builder) {
+                    builder->append(kNSField, ns);
+                    builder->append(kKeyField, keyPattern);
+                },
+                ErrorCodes::OK);
 }
 
 }  // namespace mongo

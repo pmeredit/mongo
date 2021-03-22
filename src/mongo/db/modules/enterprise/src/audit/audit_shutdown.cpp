@@ -14,14 +14,7 @@
 namespace mongo {
 
 void audit::logShutdown(Client* client) {
-    if (!getGlobalAuditManager()->isEnabled()) {
-        return;
-    }
-
-    AuditEvent event(client, AuditEventType::kShutdown);
-    if (getGlobalAuditManager()->shouldAudit(&event)) {
-        logEvent(event);
-    }
+    tryLogEvent(client, AuditEventType::kShutdown, [](auto*) {}, ErrorCodes::OK);
 }
 
 }  // namespace mongo

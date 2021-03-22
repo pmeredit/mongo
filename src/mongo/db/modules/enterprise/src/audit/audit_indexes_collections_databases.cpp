@@ -31,6 +31,11 @@ constexpr auto kNewField = "new"_sd;
 bool isDDLAuditingAllowed(Client* client,
                           const NamespaceString& nsname,
                           boost::optional<const NamespaceString&> renameTarget = boost::none) {
+    if (!gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
+        // DDL Auditing checks are always allowed without improved auditing.
+        return true;
+    }
+
     auto replCoord = repl::ReplicationCoordinator::get(client->getOperationContext());
     if (replCoord) {
         // If the collection is being renamed, audit if operating on a standalone, a primary or if
@@ -50,19 +55,14 @@ bool isDDLAuditingAllowed(Client* client,
 }
 
 void logNSEvent(Client* client, const NamespaceString& nsname, AuditEventType aType) {
-    if (!getGlobalAuditManager()->isEnabled() ||
-        (gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV() &&
-         !isDDLAuditingAllowed(client, nsname))) {
+    if (!isDDLAuditingAllowed(client, nsname)) {
         return;
     }
 
-    AuditEvent event(client, aType, [nsname](BSONObjBuilder* builder) {
-        builder->append(kNSField, nsname.ns());
-    });
-
-    if (getGlobalAuditManager()->shouldAudit(&event)) {
-        logEvent(event);
-    }
+    tryLogEvent(client,
+                aType,
+                [nsname](BSONObjBuilder* builder) { builder->append(kNSField, nsname.ns()); },
+                ErrorCodes::OK);
 }
 
 }  // namespace
@@ -74,29 +74,26 @@ void audit::logCreateIndex(Client* client,
                            const NamespaceString& nsname,
                            StringData indexBuildState,
                            ErrorCodes::Error result) {
-    if (!getGlobalAuditManager()->isEnabled() ||
-        (!gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV() &&
-         indexBuildState != "IndexBuildSucceeded") ||
-        (gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV() &&
-         !isDDLAuditingAllowed(client, nsname))) {
+    const auto hasImprovedAuditing = gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV();
+    if (!hasImprovedAuditing && indexBuildState != "IndexBuildSucceeded") {
         return;
     }
 
-    AuditEvent event(client,
-                     AuditEventType::kCreateIndex,
-                     [&](BSONObjBuilder* builder) {
-                         builder->append(kNSField, nsname.ns());
-                         builder->append(kIndexNameField, indexname);
-                         builder->append(kIndexSpecField, *indexSpec);
-                         if (gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
-                             builder->append(kIndexBuildStateField, indexBuildState);
-                         }
-                     },
-                     result);
-
-    if (getGlobalAuditManager()->shouldAudit(&event)) {
-        logEvent(event);
+    if (!isDDLAuditingAllowed(client, nsname)) {
+        return;
     }
+
+    tryLogEvent(client,
+                AuditEventType::kCreateIndex,
+                [&](BSONObjBuilder* builder) {
+                    builder->append(kNSField, nsname.ns());
+                    builder->append(kIndexNameField, indexname);
+                    builder->append(kIndexSpecField, *indexSpec);
+                    if (gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
+                        builder->append(kIndexBuildStateField, indexBuildState);
+                    }
+                },
+                result);
 }
 
 void audit::logCreateCollection(Client* client, const NamespaceString& nsname) {
@@ -108,24 +105,21 @@ void audit::logCreateView(Client* client,
                           StringData viewOn,
                           BSONArray pipeline,
                           ErrorCodes::Error code) {
-    if (!getGlobalAuditManager()->isEnabled() ||
-        (gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV() &&
-         !isDDLAuditingAllowed(client, nsname))) {
+    if (!isDDLAuditingAllowed(client, nsname)) {
         return;
     }
 
     // Intentional: createView is audited as createCollection with viewOn/pipeline params. */
-    AuditEvent event(client, AuditEventType::kCreateCollection, [&](BSONObjBuilder* builder) {
-        builder->append(kNSField, nsname.ns());
-        if (gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
-            builder->append(kViewOnField, viewOn);
-            builder->append(kPipelineField, pipeline);
-        }
-    });
-
-    if (getGlobalAuditManager()->shouldAudit(&event)) {
-        logEvent(event);
-    }
+    tryLogEvent(client,
+                AuditEventType::kCreateCollection,
+                [&](BSONObjBuilder* builder) {
+                    builder->append(kNSField, nsname.ns());
+                    if (gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
+                        builder->append(kViewOnField, viewOn);
+                        builder->append(kPipelineField, pipeline);
+                    }
+                },
+                ErrorCodes::OK);
 }
 
 void audit::logImportCollection(Client* client, const NamespaceString& nsname) {
@@ -138,20 +132,17 @@ void audit::logCreateDatabase(Client* client, StringData dbname) {
 }
 
 void audit::logDropIndex(Client* client, StringData indexname, const NamespaceString& nsname) {
-    if (!getGlobalAuditManager()->isEnabled() ||
-        (gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV() &&
-         !isDDLAuditingAllowed(client, nsname))) {
+    if (!isDDLAuditingAllowed(client, nsname)) {
         return;
     }
 
-    AuditEvent event(client, AuditEventType::kDropIndex, [&](BSONObjBuilder* builder) {
-        builder->append(kNSField, nsname.ns());
-        builder->append(kIndexNameField, indexname);
-    });
-
-    if (getGlobalAuditManager()->shouldAudit(&event)) {
-        logEvent(event);
-    }
+    tryLogEvent(client,
+                AuditEventType::kDropIndex,
+                [&](BSONObjBuilder* builder) {
+                    builder->append(kNSField, nsname.ns());
+                    builder->append(kIndexNameField, indexname);
+                },
+                ErrorCodes::OK);
 }
 
 void audit::logDropCollection(Client* client, const NamespaceString& nsname) {
@@ -175,25 +166,19 @@ void audit::logDropView(Client* client,
                         StringData viewOn,
                         const std::vector<BSONObj>& pipeline,
                         ErrorCodes::Error code) {
-    if (!getGlobalAuditManager()->isEnabled() ||
-        !gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV() ||
-        !isDDLAuditingAllowed(client, nsname)) {
+    if (!isDDLAuditingAllowed(client, nsname)) {
         return;
     }
 
     // Intentional: dropView is audited as dropCollection with viewOn/pipeline params.
-    AuditEvent event(client,
-                     AuditEventType::kDropCollection,
-                     [&](BSONObjBuilder* builder) {
-                         builder->append(kNSField, nsname.ns());
-                         builder->append(kViewOnField, viewOn);
-                         builder->append(kPipelineField, pipeline);
-                     },
-                     code);
-
-    if (getGlobalAuditManager()->shouldAudit(&event)) {
-        logEvent(event);
-    }
+    tryLogEvent(client,
+                AuditEventType::kDropCollection,
+                [&](BSONObjBuilder* builder) {
+                    builder->append(kNSField, nsname.ns());
+                    builder->append(kViewOnField, viewOn);
+                    builder->append(kPipelineField, pipeline);
+                },
+                code);
 }
 
 void audit::logDropDatabase(Client* client, StringData dbname) {
@@ -203,22 +188,20 @@ void audit::logDropDatabase(Client* client, StringData dbname) {
 void audit::logRenameCollection(Client* client,
                                 const NamespaceString& source,
                                 const NamespaceString& target) {
-    if (!getGlobalAuditManager()->isEnabled() ||
-        (gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV() &&
-         !isDDLAuditingAllowed(client, source, target))) {
+    if (!isDDLAuditingAllowed(client, source, target)) {
         return;
     }
 
-    AuditEvent event(client, AuditEventType::kRenameCollection, [&](BSONObjBuilder* builder) {
-        builder->append(kOldField, source.ns());
-        builder->append(kNewField, target.ns());
-    });
+    tryLogEvent(client,
+                AuditEventType::kRenameCollection,
+                [&](BSONObjBuilder* builder) {
+                    builder->append(kOldField, source.ns());
+                    builder->append(kNewField, target.ns());
+                },
+                ErrorCodes::OK);
 
-    if (getGlobalAuditManager()->shouldAudit(&event)) {
-        logEvent(event);
-    }
-
-    if (!gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
+    const auto hasImprovedAuditing = gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV();
+    if (!hasImprovedAuditing) {
         return;
     }
 

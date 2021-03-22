@@ -45,6 +45,16 @@ public:
         ad._auditIsDone = true;
     }
 
+    static void tryAuditEventAndMark(Client* client,
+                                     AuditEventType type,
+                                     AuditEvent::Serializer serializer,
+                                     ErrorCodes::Error code) {
+        const auto wasLogged = tryLogEvent(client, type, std::move(serializer), code);
+        if (wasLogged) {
+            markOperationAsAudited(client);
+        }
+    }
+
 private:
     bool _auditIsDone = false;
 };
@@ -59,39 +69,35 @@ void logCreateUpdateUser(Client* client,
                          const std::vector<RoleName>* roles,
                          const boost::optional<BSONArray>& restrictions,
                          AuditEventType aType) {
-    if (!getGlobalAuditManager()->isEnabled()) {
-        return;
-    }
+    AuditDeduplication::tryAuditEventAndMark(
+        client,
+        aType,
+        [&](BSONObjBuilder* builder) {
+            const bool isCreate = aType == AuditEventType::kCreateUser;
+            username.appendToBSON(builder);
 
-    AuditEvent event(client, aType, [&](BSONObjBuilder* builder) {
-        const bool isCreate = aType == AuditEventType::kCreateUser;
-        username.appendToBSON(builder);
-
-        if (!isCreate) {
-            builder->append(kPasswordChangedField, password);
-        }
-
-        if (customData) {
-            builder->append(kCustomDataField, *customData);
-        }
-
-        if (roles && (isCreate || !roles->empty())) {
-            BSONArrayBuilder roleArray(builder->subarrayStart(kRolesField));
-            for (const auto& role : *roles) {
-                BSONObjBuilder roleBuilder(roleArray.subobjStart());
-                role.appendToBSON(&roleBuilder);
+            if (!isCreate) {
+                builder->append(kPasswordChangedField, password);
             }
-            roleArray.done();
-        }
 
-        if (restrictions && !restrictions->isEmpty()) {
-            builder->append(kAuthenticationRestrictionsField, restrictions.get());
-        }
-    });
+            if (customData) {
+                builder->append(kCustomDataField, *customData);
+            }
 
-    if (getGlobalAuditManager()->shouldAudit(&event)) {
-        logEvent(event);
-    }
+            if (roles && (isCreate || !roles->empty())) {
+                BSONArrayBuilder roleArray(builder->subarrayStart(kRolesField));
+                for (const auto& role : *roles) {
+                    BSONObjBuilder roleBuilder(roleArray.subobjStart());
+                    role.appendToBSON(&roleBuilder);
+                }
+                roleArray.done();
+            }
+
+            if (restrictions && !restrictions->isEmpty()) {
+                builder->append(kAuthenticationRestrictionsField, restrictions.get());
+            }
+        },
+        ErrorCodes::OK);
 }
 
 void sanitizeCredentials(BSONObjBuilder* builder, const BSONObj& doc) {
@@ -124,10 +130,6 @@ void logDirectAuthOperation(Client* client,
                             const NamespaceString& nss,
                             const BSONObj& doc,
                             StringData operation) {
-    if (!getGlobalAuditManager()->isEnabled()) {
-        return;
-    }
-
     if (!gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
         return;
     }
@@ -144,18 +146,18 @@ void logDirectAuthOperation(Client* client,
         return;
     }
 
-    AuditEvent event(client, AuditEventType::kDirectAuthMutation, [&](BSONObjBuilder* builder) {
-        BSONObjBuilder documentObjectBuilder(builder->subobjStart(audit::kDocumentField));
-        sanitizeCredentials(&documentObjectBuilder, doc);
-        documentObjectBuilder.done();
+    AuditDeduplication::tryAuditEventAndMark(client,
+                                             AuditEventType::kDirectAuthMutation,
+                                             [&](BSONObjBuilder* builder) {
+                                                 BSONObjBuilder documentObjectBuilder(
+                                                     builder->subobjStart(audit::kDocumentField));
+                                                 sanitizeCredentials(&documentObjectBuilder, doc);
+                                                 documentObjectBuilder.done();
 
-        builder->append(audit::kNSField, nss.toString());
-        builder->append(audit::kOperationField, operation);
-    });
-
-    if (getGlobalAuditManager()->shouldAudit(&event)) {
-        logEvent(event);
-    }
+                                                 builder->append(audit::kNSField, nss.toString());
+                                                 builder->append(audit::kOperationField, operation);
+                                             },
+                                             ErrorCodes::OK);
 }
 
 }  // namespace audit
@@ -168,39 +170,22 @@ void audit::logCreateUser(Client* client,
                           const boost::optional<BSONArray>& restrictions) {
     logCreateUpdateUser(
         client, username, password, customData, &roles, restrictions, AuditEventType::kCreateUser);
-    AuditDeduplication::markOperationAsAudited(client);
 }
 
 void audit::logDropUser(Client* client, const UserName& username) {
-    if (!getGlobalAuditManager()->isEnabled()) {
-        return;
-    }
-
-    AuditEvent event(client, AuditEventType::kDropUser, [&](BSONObjBuilder* builder) {
-        username.appendToBSON(builder);
-    });
-
-    if (getGlobalAuditManager()->shouldAudit(&event)) {
-        logEvent(event);
-    }
-
-    AuditDeduplication::markOperationAsAudited(client);
+    AuditDeduplication::tryAuditEventAndMark(
+        client,
+        AuditEventType::kDropUser,
+        [&](BSONObjBuilder* builder) { username.appendToBSON(builder); },
+        ErrorCodes::OK);
 }
 
 void audit::logDropAllUsersFromDatabase(Client* client, StringData dbname) {
-    if (!getGlobalAuditManager()->isEnabled()) {
-        return;
-    }
-
-    AuditEvent event(client,
-                     AuditEventType::kDropAllUsersFromDatabase,
-                     [dbname](BSONObjBuilder* builder) { builder->append(kDBField, dbname); });
-
-    if (getGlobalAuditManager()->shouldAudit(&event)) {
-        logEvent(event);
-    }
-
-    AuditDeduplication::markOperationAsAudited(client);
+    AuditDeduplication::tryAuditEventAndMark(
+        client,
+        AuditEventType::kDropAllUsersFromDatabase,
+        [dbname](BSONObjBuilder* builder) { builder->append(kDBField, dbname); },
+        ErrorCodes::OK);
 }
 
 void audit::logUpdateUser(Client* client,
@@ -211,8 +196,6 @@ void audit::logUpdateUser(Client* client,
                           const boost::optional<BSONArray>& restrictions) {
     logCreateUpdateUser(
         client, username, password, customData, roles, restrictions, AuditEventType::kUpdateUser);
-
-    AuditDeduplication::markOperationAsAudited(client);
 }
 
 void audit::logInsertOperation(Client* client, const NamespaceString& nss, const BSONObj& doc) {

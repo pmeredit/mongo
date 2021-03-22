@@ -23,20 +23,18 @@ void audit::logLogout(Client* client,
                       StringData reason,
                       const BSONArray& initialUsers,
                       const BSONArray& updatedUsers) {
-    if (!getGlobalAuditManager()->isEnabled() ||
-        !gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
+    if (!gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
         return;
     }
 
-    AuditEvent event(client, AuditEventType::kLogout, [&](BSONObjBuilder* builder) {
-        builder->append(kReasonField, reason);
-        builder->append(kInitialUsersField, initialUsers);
-        builder->append(kUpdatedUsersField, updatedUsers);
-    });
-
-    if (getGlobalAuditManager()->shouldAudit(&event)) {
-        logEvent(event);
-    }
+    tryLogEvent(client,
+                AuditEventType::kLogout,
+                [&](BSONObjBuilder* builder) {
+                    builder->append(kReasonField, reason);
+                    builder->append(kInitialUsersField, initialUsers);
+                    builder->append(kUpdatedUsersField, updatedUsers);
+                },
+                ErrorCodes::OK);
 }
 
 }  // namespace mongo

@@ -21,23 +21,15 @@ constexpr auto kDatabase = "db"_sd;
 }  // namespace
 
 void audit::logAuthentication(Client* client, const AuthenticateEvent& authEvent) {
-    if (!getGlobalAuditManager()->isEnabled()) {
-        return;
-    }
-
-    AuditEvent event(client,
-                     AuditEventType::kAuthenticate,
-                     [&](BSONObjBuilder* builder) {
-                         authEvent.appendExtraInfo(builder);
-                         builder->append(kUser, authEvent.getUser());
-                         builder->append(kDatabase, authEvent.getDatabase());
-                         builder->append(kMechanism, authEvent.getMechanism());
-                     },
-                     authEvent.getResult());
-
-    if (getGlobalAuditManager()->shouldAudit(&event)) {
-        logEvent(event);
-    }
+    tryLogEvent(client,
+                AuditEventType::kAuthenticate,
+                [&](BSONObjBuilder* builder) {
+                    authEvent.appendExtraInfo(builder);
+                    builder->append(kUser, authEvent.getUser());
+                    builder->append(kDatabase, authEvent.getDatabase());
+                    builder->append(kMechanism, authEvent.getMechanism());
+                },
+                authEvent.getResult());
 }
 
 }  // namespace mongo

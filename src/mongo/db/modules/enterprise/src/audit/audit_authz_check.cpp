@@ -46,31 +46,31 @@ constexpr auto kFindCommand = "find"_sd;
 constexpr auto kUpdateCommand = "update"_sd;
 
 template <typename G>
-void _logAuthzCheck(Client* client,
-                    const NamespaceString& ns,
-                    StringData commandName,
-                    bool redactArgs,
-                    G&& generator,
-                    ErrorCodes::Error result) {
+void _tryLogAuthzCheck(Client* client,
+                       const NamespaceString& ns,
+                       StringData commandName,
+                       bool redactArgs,
+                       G&& generator,
+                       ErrorCodes::Error result) {
+    if (!_shouldLogAuthzCheck(result)) {
+        return;
+    }
+
     if (client->isInDirectClient()) {
         return;
     }
 
-    AuditEvent event(client,
-                     AuditEventType::kAuthCheck,
-                     [&](BSONObjBuilder* builder) {
-                         builder->append(kCommandField, commandName);
-                         builder->append(kNSField, ns.ns());
-                         if (!redactArgs) {
-                             BSONObjBuilder argsBuilder(builder->subobjStart(kArgsField));
-                             generator(argsBuilder);
-                         }
-                     },
-                     result);
-
-    if (getGlobalAuditManager()->shouldAudit(&event)) {
-        logEvent(event);
-    }
+    tryLogEvent(client,
+                AuditEventType::kAuthCheck,
+                [&](BSONObjBuilder* builder) {
+                    builder->append(kCommandField, commandName);
+                    builder->append(kNSField, ns.ns());
+                    if (!redactArgs) {
+                        BSONObjBuilder argsBuilder(builder->subobjStart(kArgsField));
+                        generator(argsBuilder);
+                    }
+                },
+                result);
 }
 
 }  // namespace
@@ -79,10 +79,6 @@ void logCommandAuthzCheck(Client* client,
                           const OpMsgRequest& cmdObj,
                           const CommandInterface& command,
                           ErrorCodes::Error result) {
-    if (!_shouldLogAuthzCheck(result)) {
-        return;
-    }
-
     auto cmdObjEventBuilder = [&](BSONObjBuilder& builder) {
         auto sensitiveFields = command.sensitiveFieldNames();
 
@@ -103,114 +99,94 @@ void logCommandAuthzCheck(Client* client,
         }
     };
 
-    _logAuthzCheck(client,
-                   command.ns(),
-                   command.getName(),
-                   command.redactArgs(),
-                   std::move(cmdObjEventBuilder),
-                   result);
+    _tryLogAuthzCheck(client,
+                      command.ns(),
+                      command.getName(),
+                      command.redactArgs(),
+                      std::move(cmdObjEventBuilder),
+                      result);
 }
 
 void logDeleteAuthzCheck(Client* client,
                          const NamespaceString& ns,
                          const BSONObj& pattern,
                          ErrorCodes::Error result) {
-    if (!_shouldLogAuthzCheck(result)) {
-        return;
-    }
-
-    _logAuthzCheck(client,
-                   ns,
-                   kDeleteCommand,
-                   false,
-                   [&](BSONObjBuilder& builder) {
-                       builder.append("delete", ns.coll());
-                       {
-                           BSONArrayBuilder deletes(builder.subarrayStart("deletes"));
-                           BSONObjBuilder deleteObj(deletes.subobjStart());
-                           deleteObj.append("q", pattern);
-                       }
-                   },
-                   result);
+    _tryLogAuthzCheck(client,
+                      ns,
+                      kDeleteCommand,
+                      false,
+                      [&](BSONObjBuilder& builder) {
+                          builder.append("delete", ns.coll());
+                          {
+                              BSONArrayBuilder deletes(builder.subarrayStart("deletes"));
+                              BSONObjBuilder deleteObj(deletes.subobjStart());
+                              deleteObj.append("q", pattern);
+                          }
+                      },
+                      result);
 }
 
 void logGetMoreAuthzCheck(Client* client,
                           const NamespaceString& ns,
                           long long cursorId,
                           ErrorCodes::Error result) {
-    if (!_shouldLogAuthzCheck(result)) {
-        return;
-    }
-
-    _logAuthzCheck(client,
-                   ns,
-                   kGetMoreCommand,
-                   false,
-                   [&](BSONObjBuilder& builder) {
-                       builder.append("getMore", ns.coll());
-                       builder.append("cursorId", cursorId);
-                   },
-                   result);
+    _tryLogAuthzCheck(client,
+                      ns,
+                      kGetMoreCommand,
+                      false,
+                      [&](BSONObjBuilder& builder) {
+                          builder.append("getMore", ns.coll());
+                          builder.append("cursorId", cursorId);
+                      },
+                      result);
 }
 
 void logInsertAuthzCheck(Client* client,
                          const NamespaceString& ns,
                          const BSONObj& insertedObj,
                          ErrorCodes::Error result) {
-    if (!_shouldLogAuthzCheck(result)) {
-        return;
-    }
-
-    _logAuthzCheck(client,
-                   ns,
-                   kInsertCommand,
-                   false,
-                   [&](BSONObjBuilder& builder) {
-                       builder.append("insert", ns.coll());
-                       {
-                           BSONArrayBuilder documents(builder.subarrayStart("documents"));
-                           documents.append(insertedObj);
-                       }
-                   },
-                   result);
+    _tryLogAuthzCheck(client,
+                      ns,
+                      kInsertCommand,
+                      false,
+                      [&](BSONObjBuilder& builder) {
+                          builder.append("insert", ns.coll());
+                          {
+                              BSONArrayBuilder documents(builder.subarrayStart("documents"));
+                              documents.append(insertedObj);
+                          }
+                      },
+                      result);
 }
 
 void logKillCursorsAuthzCheck(Client* client,
                               const NamespaceString& ns,
                               long long cursorId,
                               ErrorCodes::Error result) {
-    if (!_shouldLogAuthzCheck(result)) {
-        return;
-    }
-
-    _logAuthzCheck(client,
-                   ns,
-                   kKillCursorsCommand,
-                   false,
-                   [&](BSONObjBuilder& builder) {
-                       builder.append("killCursors", ns.coll());
-                       builder.append("cursorId", cursorId);
-                   },
-                   result);
+    _tryLogAuthzCheck(client,
+                      ns,
+                      kKillCursorsCommand,
+                      false,
+                      [&](BSONObjBuilder& builder) {
+                          builder.append("killCursors", ns.coll());
+                          builder.append("cursorId", cursorId);
+                      },
+                      result);
 }
 
 void logQueryAuthzCheck(Client* client,
                         const NamespaceString& ns,
                         const BSONObj& query,
                         ErrorCodes::Error result) {
-    if (!_shouldLogAuthzCheck(result)) {
-        return;
-    }
-
-    _logAuthzCheck(client,
-                   ns,
-                   kFindCommand,
-                   false,
-                   [&](BSONObjBuilder& builder) {
-                       builder.append("find", ns.coll());
-                       builder.append("q", query);
-                   },
-                   result);
+    _tryLogAuthzCheck(client,
+                      ns,
+                      kFindCommand,
+                      false,
+                      [&](BSONObjBuilder& builder) {
+                          builder.append("find", ns.coll());
+                          builder.append("q", query);
+                      },
+                      result);
 }
 
 void logUpdateAuthzCheck(Client* client,
@@ -220,26 +196,22 @@ void logUpdateAuthzCheck(Client* client,
                          bool isUpsert,
                          bool isMulti,
                          ErrorCodes::Error result) {
-    if (!_shouldLogAuthzCheck(result)) {
-        return;
-    }
-
-    _logAuthzCheck(client,
-                   ns,
-                   kUpdateCommand,
-                   false,
-                   [&](BSONObjBuilder& builder) {
-                       builder.append("update", ns.coll());
-                       {
-                           BSONArrayBuilder updates(builder.subarrayStart("updates"));
-                           BSONObjBuilder update(updates.subobjStart());
-                           update.append("q", query);
-                           updateMod.serializeToBSON("u", &update);
-                           update.append("upsert", isUpsert);
-                           update.append("multi", isMulti);
-                       }
-                   },
-                   result);
+    _tryLogAuthzCheck(client,
+                      ns,
+                      kUpdateCommand,
+                      false,
+                      [&](BSONObjBuilder& builder) {
+                          builder.append("update", ns.coll());
+                          {
+                              BSONArrayBuilder updates(builder.subarrayStart("updates"));
+                              BSONObjBuilder update(updates.subobjStart());
+                              update.append("q", query);
+                              updateMod.serializeToBSON("u", &update);
+                              update.append("upsert", isUpsert);
+                              update.append("multi", isMulti);
+                          }
+                      },
+                      result);
 }
 
 }  // namespace audit

@@ -19,18 +19,14 @@ constexpr auto kOptionsField = "options"_sd;
 }  // namespace
 
 void audit::logStartupOptions(Client* client, const BSONObj& startupOptions) {
-    if (!getGlobalAuditManager()->isEnabled() ||
-        !gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
+    if (!gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
         return;
     }
 
-    AuditEvent event(client, AuditEventType::kStartup, [&](BSONObjBuilder* builder) {
-        builder->append(kOptionsField, startupOptions);
-    });
-
-    if (getGlobalAuditManager()->shouldAudit(&event)) {
-        logEvent(event);
-    }
+    tryLogEvent(client,
+                AuditEventType::kStartup,
+                [&](BSONObjBuilder* builder) { builder->append(kOptionsField, startupOptions); },
+                ErrorCodes::OK);
 }
 
 }  // namespace mongo
