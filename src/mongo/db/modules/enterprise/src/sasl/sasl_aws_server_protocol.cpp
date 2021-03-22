@@ -8,6 +8,7 @@
 #include <boost/algorithm/string/split.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/xml_parser.hpp>
+#include <fmt/format.h>
 #include <iostream>
 
 #include "mongo/base/data_range_cursor.h"
@@ -25,6 +26,8 @@ SaslAWSGlobalParams saslAWSGlobalParams;
 }  // namespace awsIam
 
 namespace {
+using namespace fmt::literals;
+
 // Secure Random for SASL IAM Nonce generation
 Mutex saslAWSServerMutex = MONGO_MAKE_LATCH("AWSServerMutex");
 SecureRandom saslAWSServerGen;
@@ -38,9 +41,13 @@ std::array<StringData, 10> allowedHeaders = {"content-length"_sd,
                                              "x-mongodb-optional-data"_sd,
                                              awsIam::kMongoServerNonceHeader};
 
-constexpr auto kStsPrefix = "arn:aws:sts::"_sd;
-constexpr auto kAssumedRole = "assumed-role/"_sd;
-constexpr auto kUser = "user/"_sd;
+constexpr auto kArnSegment = "arn"_sd;
+constexpr auto kStsSegment = "sts"_sd;
+constexpr auto kIamSegment = "iam"_sd;
+
+constexpr auto kAssumedRole = "assumed-role"_sd;
+constexpr auto kUser = "user"_sd;
+
 constexpr auto signedHeadersStr = "SignedHeaders="_sd;
 constexpr auto credentialStr = "Credential="_sd;
 
@@ -212,35 +219,74 @@ std::string awsIam::getArn(StringData request) {
 }
 
 std::string awsIam::makeSimplifiedArn(StringData arn) {
-    bool sts = arn.startsWith(kStsPrefix);
-    bool iam = arn.startsWith("arn:aws:iam::");
-    uassert(51282, "Incorrect ARN", sts || iam);
+    using Range = boost::iterator_range<const char*>;
+    auto parsePathComponents = [](Range segment) {
+        std::list<Range> components;
+        boost::algorithm::split(components, segment, [](auto c) { return c == '/'; });
+        return components;
+    };
 
-    // Skip past the account number
-    size_t suffixPos = arn.find(':', kStsPrefix.size());
-    uassert(51281, "Missing colon", suffixPos != std::string::npos);
+    auto parseSegments = [](Range arn) {
+        std::list<Range> segments;
+        boost::algorithm::split(segments, arn, [](auto c) { return c == ':'; });
+        return segments;
+    };
 
-    // Extract the suffix and verify it starts with assumed-role
-    StringData suffix = arn.substr(suffixPos + 1);
+    auto coerceToStringData = [](Range range) { return StringData(range.begin(), range.size()); };
 
-    // For IAM ARNs, only user resources are permitted
-    if (iam) {
-        uassert(51280, "Suffix", suffix.startsWith(kUser));
+    const auto segments = parseSegments({arn.begin(), arn.end()});
+
+    uassert(5479900, "ARNs must consist of at least 6 segments", segments.size() >= 6);
+
+    auto segmentIt = segments.begin();
+    const auto arnSegment = coerceToStringData(*segmentIt++);
+    const auto partitionSegment = coerceToStringData(*segmentIt++);
+    const auto serviceSegment = coerceToStringData(*segmentIt++);
+    const auto regionSegment = coerceToStringData(*segmentIt++);
+    const auto accountIdSegment = coerceToStringData(*segmentIt++);
+    const auto resourceSegment = *segmentIt++;  // Skip coercing since we need to break it apart.
+
+    uassert(5479901, "ARNs must start with \"arn\"", arnSegment == kArnSegment);
+
+    if (serviceSegment == kIamSegment) {
+        // For IAM ARNs, only user resources are permitted
+        const auto resourcePathComponents = parsePathComponents(resourceSegment);
+        const auto resourceTypeSegment = coerceToStringData(resourcePathComponents.front());
+        uassert(51280, "ARN has unacceptable resource-type for IAM", resourceTypeSegment == kUser);
+
         return arn.toString();
+    } else if (serviceSegment == kStsSegment) {
+        auto resourcePathComponents = parsePathComponents(resourceSegment);
+        const auto resourceTypeSegment = coerceToStringData(resourcePathComponents.front());
+        resourcePathComponents.pop_front();
+        uassert(51279,
+                "ARN has unacceptable resource-type for STS",
+                resourceTypeSegment == kAssumedRole);
+
+        if (resourcePathComponents.empty()) {
+            uassert(5479903, "ARN lacks resource-id", segmentIt != segments.end());
+            resourcePathComponents = parsePathComponents(*segmentIt++);
+        }
+
+        uassert(51278,
+                "ARN must have at list two path components in its resource-id",
+                resourcePathComponents.size() >= 2);
+        const auto trimmedResourceId = StringData(resourcePathComponents.front().begin(),
+                                                  resourcePathComponents.back().begin() - 1);
+
+        // Build a simplified ARN.
+        return "{}:{}:{}:{}:{}:{}/{}/*"_format(arnSegment,
+                                               partitionSegment,
+                                               serviceSegment,
+                                               regionSegment,
+                                               accountIdSegment,
+                                               resourceTypeSegment,
+                                               trimmedResourceId);
+    } else {
+        uasserted(5479902, "ARN has unacceptable service");
     }
 
-    uassert(51279, "Suffix", suffix.startsWith(kAssumedRole));
-
-    // Find the second slash
-    size_t starSuffixPos = suffix.find('/', kAssumedRole.size());
-    uassert(51278, "Missing /", starSuffixPos != std::string::npos);
-
-    // Build the final string to return
-    size_t lastSlash = arn.rfind('/');
-    auto ret = arn.substr(0, lastSlash + 1).toString();
-    ret.push_back('*');
-
-    return ret;
+    MONGO_UNREACHABLE;
 }
 
 }  // namespace mongo

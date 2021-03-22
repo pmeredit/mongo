@@ -381,6 +381,17 @@ TEST(SaslAWSServerProtocolUtil, ARN_Good) {
         awsIam::makeSimplifiedArn("arn:aws:sts::123456789:assumed-role/ROLE/i-a0912374abc"));
     ASSERT_EQUALS("arn:aws:sts::123456789:assumed-role/ROLE/*",
                   awsIam::makeSimplifiedArn("arn:aws:sts::123456789:assumed-role/ROLE/a.session"));
+
+    // resource-id as segment.
+    ASSERT_EQUALS(
+        "arn:aws:sts::123456789:assumed-role/ROLE/*",
+        awsIam::makeSimplifiedArn("arn:aws:sts::123456789:assumed-role:ROLE/i-a0912374abc"));
+
+    // Alternative partitions.
+    ASSERT_EQUALS("arn:aws-us-gov:iam::123456789:user/a.user.name",
+                  awsIam::makeSimplifiedArn("arn:aws-us-gov:iam::123456789:user/a.user.name"));
+    ASSERT_EQUALS("arn:aws-cn:iam::123456789:user/a.user.name",
+                  awsIam::makeSimplifiedArn("arn:aws-cn:iam::123456789:user/a.user.name"));
 }
 
 
@@ -400,21 +411,29 @@ TEST(SaslAWSServerProtocolUtil, ARN_Good_With_Path) {
 
 // Negative: Bad ARN fail
 TEST(SaslAWSServerProtocolUtil, ARN_Bad) {
+    // Not an arn
+    ASSERT_THROWS_CODE(awsIam::makeSimplifiedArn("ran:aws:fake::123456789:role/a.user.name"),
+                       AssertionException,
+                       5479901);
     // Wrong service
     ASSERT_THROWS_CODE(awsIam::makeSimplifiedArn("arn:aws:fake::123456789:role/a.user.name"),
                        AssertionException,
-                       51282);
+                       5479902);
     // Runt
     ASSERT_THROWS_CODE(
-        awsIam::makeSimplifiedArn("arn:aws:iam::123456789"), AssertionException, 51281);
+        awsIam::makeSimplifiedArn("arn:aws:iam::123456789"), AssertionException, 5479900);
     // Wrong suffix for IAM
     ASSERT_THROWS_CODE(awsIam::makeSimplifiedArn("arn:aws:iam::123456789:role/a.user.name"),
                        AssertionException,
                        51280);
-
-    // Missing / in suffix
+    // Wrong suffix for STS
     ASSERT_THROWS_CODE(
         awsIam::makeSimplifiedArn("arn:aws:sts::123456789:role"), AssertionException, 51279);
+
+    // Missing / in suffix
+    ASSERT_THROWS_CODE(awsIam::makeSimplifiedArn("arn:aws:sts::123456789:assumed-role"),
+                       AssertionException,
+                       5479903);
 
     // Missing two /
     ASSERT_THROWS_CODE(awsIam::makeSimplifiedArn("arn:aws:sts::123456789:assumed-role/foo"),

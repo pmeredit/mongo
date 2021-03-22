@@ -6,22 +6,6 @@
 // SUPPORTED_FAULT_TYPES list in sts_http_server.py
 const STS_FAULT_403 = "fault_403";
 
-const MOCK_AWS_ACCOUNT_ARN = 'arn:aws:iam::123456789012:user/Alice';
-const MOCK_AWS_ACCOUNT_ID = 'permanentuser';
-const MOCK_AWS_ACCOUNT_SECRET_KEY = 'FAKEFAKEFAKEFAKEFAKEfakefakefakefakefake';
-
-const MOCK_AWS_TEMP_ACCOUNT_ARN = 'arn:aws:iam::123456789012:user/Bob';
-const MOCK_AWS_TEMP_ACCOUNT_ID = 'tempuser';
-const MOCK_AWS_TEMP_ACCOUNT_SECRET_KEY = 'fakefakefakefakefakeFAKEFAKEFAKEFAKEFAKE';
-const MOCK_AWS_TEMP_ACCOUNT_SESSION_TOKEN = 'FAKETEMPORARYSESSIONTOKENfaketemporarysessiontoken';
-
-const MOCK_AWS_ACCOUNT_ASSUME_ROLE_ARN = 'arn:aws:sts::557821124784:assumed-role/cat/Puff';
-const MOCK_AWS_ACCOUNT_ASSUME_ROLE_GENERAL_ARN = 'arn:aws:sts::557821124784:assumed-role/cat/*';
-const MOCK_AWS_ACCOUNT_ASSUME_ROLE_ID = 'assumedrole';
-const MOCK_AWS_ACCOUNT_ASSUME_ROLE_SECRET_KEY = 'FAKEFAKEFAKEFAKEFAKEfakefakefakefakeFAKE';
-const MOCK_AWS_ACCOUNT_ASSUME_ROLE_SESSION_TOKEN =
-    'FAKETEMPORARYSESSIONTOKENfaketemporarysessionTOKEN';
-
 class MockSTSServer {
     /**
      * Create a new webserver.
@@ -88,3 +72,7 @@ class MockSTSServer {
         stopMongoProgramByPid(this.pid);
     }
 }
+
+// Load up common variables from a json file.
+const aws_common =
+    JSON.parse(cat("src/mongo/db/modules/enterprise/jstests/external_auth/lib/aws_common.json"));

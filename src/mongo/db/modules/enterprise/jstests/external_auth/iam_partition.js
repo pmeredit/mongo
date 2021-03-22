@@ -1,5 +1,5 @@
 /**
- * Verify the AWS IAM Auth works with temporary credentials
+ * Verify the AWS IAM Auth works for non-standard partitions.
  */
 
 load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/mock_sts.js");
@@ -24,8 +24,9 @@ assert.commandWorked(admin.runCommand({createUser: "admin", pwd: "pwd", roles: [
 assert(admin.auth("admin", "pwd"));
 
 assert.commandWorked(
-    external.runCommand({createUser: aws_common.users.tempUser.simplifiedArn, roles: []}));
+    external.runCommand({createUser: aws_common.users.partitionedUser.simplifiedArn, roles: []}));
 
+// Try the command line
 const smoke = runMongoProgram("mongo",
                               "--host",
                               "localhost",
@@ -36,19 +37,17 @@ const smoke = runMongoProgram("mongo",
                               '--authenticationDatabase',
                               '$external',
                               '-u',
-                              aws_common.users.tempUser.id,
+                              aws_common.users.partitionedUser.id,
                               '-p',
-                              aws_common.users.tempUser.secretKey,
-                              '--awsIamSessionToken',
-                              aws_common.users.tempUser.sessionToken,
+                              aws_common.users.partitionedUser.secretKey,
                               "--eval",
                               "1");
 assert.eq(smoke, 0, "Could not auth with smoke user");
 
+// Try the auth function
 assert(external.auth({
-    user: aws_common.users.tempUser.id,
-    pwd: aws_common.users.tempUser.secretKey,
-    awsIamSessionToken: aws_common.users.tempUser.sessionToken,
+    user: aws_common.users.partitionedUser.id,
+    pwd: aws_common.users.partitionedUser.secretKey,
     mechanism: 'MONGODB-AWS'
 }));
 

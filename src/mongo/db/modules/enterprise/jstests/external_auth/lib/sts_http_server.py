@@ -104,22 +104,21 @@ class AwsStsHandler(http.server.BaseHTTPRequestHandler):
         # SigV4Auth assumes this header exists even though it is not required by the algorithm
         request.context['timestamp'] = headers['X-Amz-Date']
 
+        account = None
+        secret = None
         is_temporary = False
-        if aws_common.MOCK_AWS_ACCOUNT_ID in auth_header:
-            account = aws_common.MOCK_AWS_ACCOUNT_ID
-            secret = aws_common.MOCK_AWS_ACCOUNT_SECRET_KEY
-        elif aws_common.MOCK_AWS_TEMP_ACCOUNT_ID in auth_header:
-            account = aws_common.MOCK_AWS_TEMP_ACCOUNT_ID
-            secret = aws_common.MOCK_AWS_TEMP_ACCOUNT_SECRET_KEY
-            is_temporary = True
-        elif aws_common.MOCK_AWS_ACCOUNT_ASSUME_ROLE_ID in auth_header:
-            account = aws_common.MOCK_AWS_ACCOUNT_ASSUME_ROLE_ID
-            secret = aws_common.MOCK_AWS_ACCOUNT_ASSUME_ROLE_SECRET_KEY
-            is_temporary = True
-        else:
-            raise ValueError("Unkown user in auth header: " + auth_header)
+        for _, details in aws_common.get_users().items():
+            if details['id'] not in auth_header:
+                continue
+            account = details['id']
+            secret = details['secretKey']
+            is_temporary = 'sessionToken' in details
+            break
 
-        if is_temporary and "x-amz-security-token" not in auth_header:
+        if account is None:
+            print(f"BAD SIGNATURE - unknown user in auth header: {auth_header}");
+            return False
+        elif is_temporary and "x-amz-security-token" not in auth_header:
             print("BAD SIGNATURE - missing x-amz-security-token")
             return False
         elif (not is_temporary) and "x-amz-security-token" in auth_header:
@@ -149,14 +148,15 @@ class AwsStsHandler(http.server.BaseHTTPRequestHandler):
 
     def _do_get_caller_identity(self, auth_header):
 
-        if aws_common.MOCK_AWS_ACCOUNT_ID in auth_header:
-            arn = aws_common.MOCK_AWS_ACCOUNT_ARN
-        elif aws_common.MOCK_AWS_TEMP_ACCOUNT_ID in auth_header:
-            arn = aws_common.MOCK_AWS_TEMP_ACCOUNT_ARN
-        elif aws_common.MOCK_AWS_ACCOUNT_ASSUME_ROLE_ID in auth_header:
-            arn = aws_common.MOCK_AWS_ACCOUNT_ASSUME_ROLE_ARN
-        else:
-            raise ValueError("Unkown user in auth header: " + auth_header)
+        arn = None
+        for _, details in aws_common.get_users().items():
+            if details['id'] not in auth_header:
+                continue
+            arn = details['arn']
+
+        if arn is None:
+            self._send_reply("Go away.".encode(), http.HTTPStatus.UNAUTHORIZED)
+            return
 
         if fault_type == FAULT_403:
             return self._do_get_caller_identity_faults()

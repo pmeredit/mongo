@@ -1,0 +1,30 @@
+{
+    "users": {
+        "permanentUser": {
+            "id": "permanentuser",
+            "arn": "arn:aws:iam::123456789012:user/Alice",
+            "simplifiedArn": "arn:aws:iam::123456789012:user/Alice",
+            "secretKey": "FAKEFAKEFAKEFAKEFAKEfakefakefakefakefake"
+        },
+        "tempUser": {
+            "id": "tempuser",
+            "arn": "arn:aws:iam::123456789012:user/Bob",
+            "simplifiedArn": "arn:aws:iam::123456789012:user/Bob",
+            "secretKey": "fakefakefakefakefakeFAKEFAKEFAKEFAKEFAKE",
+            "sessionToken": "FAKETEMPORARYSESSIONTOKENfaketemporarysessiontoken"
+        },
+        "partitionedUser": {
+            "id": "partioneduser",
+            "arn": "arn:aws-foo:iam::123456789012:user/Carl",
+            "simplifiedArn": "arn:aws-foo:iam::123456789012:user/Carl",
+            "secretKey": "FAKEfakeFAKEFAKEFAKEfakefakefakefakefake"
+        },
+        "assumedRole": {
+            "id": "assumedrole",
+            "arn": "arn:aws:sts::557821124784:assumed-role/cat/Puff",
+            "simplifiedArn": "arn:aws:sts::557821124784:assumed-role/cat/*",
+            "secretKey": "FAKEFAKEFAKEFAKEFAKEfakefakefakefakeFAKE",
+            "sessionToken": "FAKETEMPORARYSESSIONTOKENfaketemporarysessionTOKEN"
+        }
+    }
+}

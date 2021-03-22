@@ -24,7 +24,8 @@ const admin = conn.getDB("admin");
 assert.commandWorked(admin.runCommand({createUser: "admin", pwd: "pwd", roles: ['root']}));
 assert(admin.auth("admin", "pwd"));
 
-assert.commandWorked(external.runCommand({createUser: MOCK_AWS_ACCOUNT_ARN, roles: []}));
+assert.commandWorked(
+    external.runCommand({createUser: aws_common.users.permanentUser.simplifiedArn, roles: []}));
 
 // Try the command line
 const smoke = runMongoProgram("mongo",
@@ -37,16 +38,19 @@ const smoke = runMongoProgram("mongo",
                               '--authenticationDatabase',
                               '$external',
                               '-u',
-                              MOCK_AWS_ACCOUNT_ID,
+                              aws_common.users.permanentUser.id,
                               '-p',
-                              MOCK_AWS_ACCOUNT_SECRET_KEY,
+                              aws_common.users.permanentUser.secretKey,
                               "--eval",
                               "1");
 assert.eq(smoke, 0, "Could not auth with smoke user");
 
 // Try the auth function
-assert(external.auth(
-    {user: MOCK_AWS_ACCOUNT_ID, pwd: MOCK_AWS_ACCOUNT_SECRET_KEY, mechanism: 'MONGODB-AWS'}));
+assert(external.auth({
+    user: aws_common.users.permanentUser.id,
+    pwd: aws_common.users.permanentUser.secretKey,
+    mechanism: 'MONGODB-AWS'
+}));
 
 mock_sts.stop();
 

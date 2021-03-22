@@ -216,10 +216,12 @@ function checkIam({conn, audit}) {
     assert(admin.auth("admin", "pwd"));
 
     const external = conn.getDB("$external");
-    assert.commandWorked(external.runCommand({createUser: MOCK_AWS_ACCOUNT_ARN, roles: []}));
-    assert.commandWorked(external.runCommand({createUser: MOCK_AWS_TEMP_ACCOUNT_ARN, roles: []}));
     assert.commandWorked(
-        external.runCommand({createUser: MOCK_AWS_ACCOUNT_ASSUME_ROLE_GENERAL_ARN, roles: []}));
+        external.runCommand({createUser: aws_common.users.permanentUser.simplifiedArn, roles: []}));
+    assert.commandWorked(
+        external.runCommand({createUser: aws_common.users.tempUser.simplifiedArn, roles: []}));
+    assert.commandWorked(
+        external.runCommand({createUser: aws_common.users.assumedRole.simplifiedArn, roles: []}));
     admin.logout();
 
     // Localhost exception should not be in place anymore
@@ -251,45 +253,39 @@ function checkIam({conn, audit}) {
     mock_sts.start();
 
     runWithCleanAudit("valid-perm", function() {
+        const userDetails = aws_common.users.permanentUser;
         checkAuth({
-            authObj: {user: MOCK_AWS_ACCOUNT_ID, pwd: MOCK_AWS_ACCOUNT_SECRET_KEY},
-            auditObj: {
-                awsId: MOCK_AWS_ACCOUNT_ID,
-                awsArn: MOCK_AWS_ACCOUNT_ARN,
-                user: MOCK_AWS_ACCOUNT_ARN
-            },
+            authObj: {user: userDetails.id, pwd: userDetails.secretKey},
+            auditObj:
+                {awsId: userDetails.id, awsArn: userDetails.arn, user: userDetails.simplifiedArn},
             code: ErrorCodes.OK
         });
     });
 
     runWithCleanAudit("valid-temp", function() {
+        const userDetails = aws_common.users.tempUser;
         checkAuth({
             authObj: {
-                user: MOCK_AWS_TEMP_ACCOUNT_ID,
-                pwd: MOCK_AWS_TEMP_ACCOUNT_SECRET_KEY,
-                awsIamSessionToken: MOCK_AWS_TEMP_ACCOUNT_SESSION_TOKEN,
+                user: userDetails.id,
+                pwd: userDetails.secretKey,
+                awsIamSessionToken: userDetails.sessionToken
             },
-            auditObj: {
-                awsId: MOCK_AWS_TEMP_ACCOUNT_ID,
-                awsArn: MOCK_AWS_TEMP_ACCOUNT_ARN,
-                user: MOCK_AWS_TEMP_ACCOUNT_ARN
-            },
+            auditObj:
+                {awsId: userDetails.id, awsArn: userDetails.arn, user: userDetails.simplifiedArn},
             code: ErrorCodes.OK
         });
     });
 
     runWithCleanAudit("valid-assume-role", function() {
+        const userDetails = aws_common.users.assumedRole;
         checkAuth({
             authObj: {
-                user: MOCK_AWS_ACCOUNT_ASSUME_ROLE_ID,
-                pwd: MOCK_AWS_ACCOUNT_ASSUME_ROLE_SECRET_KEY,
-                awsIamSessionToken: MOCK_AWS_ACCOUNT_ASSUME_ROLE_SESSION_TOKEN,
+                user: userDetails.id,
+                pwd: userDetails.secretKey,
+                awsIamSessionToken: userDetails.sessionToken
             },
-            auditObj: {
-                awsId: MOCK_AWS_ACCOUNT_ASSUME_ROLE_ID,
-                awsArn: MOCK_AWS_ACCOUNT_ASSUME_ROLE_ARN,
-                user: MOCK_AWS_ACCOUNT_ASSUME_ROLE_GENERAL_ARN
-            },
+            auditObj:
+                {awsId: userDetails.id, awsArn: userDetails.arn, user: userDetails.simplifiedArn},
             code: ErrorCodes.OK
         });
     });
@@ -297,7 +293,7 @@ function checkIam({conn, audit}) {
     runWithCleanAudit("invalid-user", function() {
         const badUser = "nobody";
         checkAuth({
-            authObj: {user: badUser, pwd: MOCK_AWS_ACCOUNT_SECRET_KEY},
+            authObj: {user: badUser, pwd: aws_common.users.permanentUser.secretKey},
             auditObj: {awsId: badUser, user: ""},
             code: ErrorCodes.AuthenticationFailed
         });
@@ -306,8 +302,8 @@ function checkIam({conn, audit}) {
     runWithCleanAudit("invalid-key", function() {
         const badKey = "sesame";
         checkAuth({
-            authObj: {user: MOCK_AWS_ACCOUNT_ID, pwd: badKey},
-            auditObj: {awsId: MOCK_AWS_ACCOUNT_ID, user: ""},
+            authObj: {user: aws_common.users.permanentUser.id, pwd: badKey},
+            auditObj: {awsId: aws_common.users.permanentUser.id, user: ""},
             code: ErrorCodes.AuthenticationFailed
         });
     });
@@ -316,8 +312,11 @@ function checkIam({conn, audit}) {
 
     runWithCleanAudit("valid-perm-no-server", function() {
         checkAuth({
-            authObj: {user: MOCK_AWS_ACCOUNT_ID, pwd: MOCK_AWS_ACCOUNT_SECRET_KEY},
-            auditObj: {awsId: MOCK_AWS_ACCOUNT_ID, user: ""},
+            authObj: {
+                user: aws_common.users.permanentUser.id,
+                pwd: aws_common.users.permanentUser.secretKey
+            },
+            auditObj: {awsId: aws_common.users.permanentUser.id, user: ""},
             code: ErrorCodes.AuthenticationFailed
         });
     });

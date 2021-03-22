@@ -1,16 +1,13 @@
-"""Common AWS Constants"""
+"""Loader for common AWS constants"""
 
-MOCK_AWS_ACCOUNT_ARN = 'arn:aws:iam::123456789012:user/Alice'
-MOCK_AWS_ACCOUNT_ID = 'permanentuser'
-MOCK_AWS_ACCOUNT_SECRET_KEY = 'FAKEFAKEFAKEFAKEFAKEfakefakefakefakefake'
+import json
+import os
 
-MOCK_AWS_TEMP_ACCOUNT_ARN = 'arn:aws:iam::123456789012:user/Bob'
-MOCK_AWS_TEMP_ACCOUNT_ID = 'tempuser'
-MOCK_AWS_TEMP_ACCOUNT_SECRET_KEY = 'fakefakefakefakefakeFAKEFAKEFAKEFAKEFAKE'
-MOCK_AWS_TEMP_ACCOUNT_SESSION_TOKEN = 'FAKETEMPORARYSESSIONTOKENfaketemporarysessiontoken'
+# Load up our account data and such
+_source_file = os.path.dirname(__file__) + "/aws_common.json"
+with open(_source_file) as f:
+    _details = json.load(f)
 
-MOCK_AWS_ACCOUNT_ASSUME_ROLE_ARN = 'arn:aws:sts::557821124784:assumed-role/cat/Puff'
-MOCK_AWS_ACCOUNT_ASSUME_ROLE_GENERAL_ARN = 'arn:aws:sts::557821124784:assumed-role/cat/*'
-MOCK_AWS_ACCOUNT_ASSUME_ROLE_ID = 'assumedrole'
-MOCK_AWS_ACCOUNT_ASSUME_ROLE_SECRET_KEY = 'FAKEFAKEFAKEFAKEFAKEfakefakefakefakeFAKE'
-MOCK_AWS_ACCOUNT_ASSUME_ROLE_SESSION_TOKEN = 'FAKETEMPORARYSESSIONTOKENfaketemporarysessionTOKEN'
+def get_users():
+    """Returns the users section of the caches json file"""
+    return _details['users']

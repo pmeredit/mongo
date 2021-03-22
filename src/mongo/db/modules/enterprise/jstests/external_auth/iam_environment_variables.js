@@ -66,21 +66,23 @@ const admin = conn.getDB("admin");
 assert.commandWorked(admin.runCommand({createUser: "admin", pwd: "pwd", roles: ['root']}));
 assert(admin.auth("admin", "pwd"));
 
-assert.commandWorked(external.runCommand({createUser: MOCK_AWS_ACCOUNT_ARN, roles: []}));
+assert.commandWorked(
+    external.runCommand({createUser: aws_common.users.permanentUser.simplifiedArn, roles: []}));
 
 // Test with regular creds
 testAuthWithEnv({
-    AWS_ACCESS_KEY_ID: MOCK_AWS_ACCOUNT_ID,
-    AWS_SECRET_ACCESS_KEY: MOCK_AWS_ACCOUNT_SECRET_KEY,
+    AWS_ACCESS_KEY_ID: aws_common.users.permanentUser.id,
+    AWS_SECRET_ACCESS_KEY: aws_common.users.permanentUser.secretKey,
 });
 
-assert.commandWorked(external.runCommand({createUser: MOCK_AWS_TEMP_ACCOUNT_ARN, roles: []}));
+assert.commandWorked(
+    external.runCommand({createUser: aws_common.users.tempUser.simplifiedArn, roles: []}));
 
 // Test with temporary creds
 testAuthWithEnv({
-    AWS_ACCESS_KEY_ID: MOCK_AWS_TEMP_ACCOUNT_ID,
-    AWS_SECRET_ACCESS_KEY: MOCK_AWS_TEMP_ACCOUNT_SECRET_KEY,
-    AWS_SESSION_TOKEN: MOCK_AWS_TEMP_ACCOUNT_SESSION_TOKEN,
+    AWS_ACCESS_KEY_ID: aws_common.users.tempUser.id,
+    AWS_SECRET_ACCESS_KEY: aws_common.users.tempUser.secretKey,
+    AWS_SESSION_TOKEN: aws_common.users.tempUser.sessionToken,
 });
 
 mock_sts.stop();

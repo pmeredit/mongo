@@ -23,12 +23,14 @@ const admin = conn.getDB("admin");
 assert.commandWorked(admin.runCommand({createUser: "admin", pwd: "pwd", roles: ['root']}));
 assert(admin.auth("admin", "pwd"));
 
-assert.commandWorked(external.runCommand({createUser: MOCK_AWS_ACCOUNT_ARN, roles: []}));
+assert.commandWorked(
+    external.runCommand({createUser: aws_common.users.permanentUser.simplifiedArn, roles: []}));
 
-assert(
-    external.auth(
-        {user: MOCK_AWS_ACCOUNT_ID, pwd: MOCK_AWS_ACCOUNT_SECRET_KEY, mechanism: 'MONGODB-AWS'}) ==
-    0);
+assert(external.auth({
+    user: aws_common.users.permanentUser.id,
+    pwd: aws_common.users.permanentUser.secretKey,
+    mechanism: 'MONGODB-AWS'
+}) == 0);
 
 mock_sts.stop();
 

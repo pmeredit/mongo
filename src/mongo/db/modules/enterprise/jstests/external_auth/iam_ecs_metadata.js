@@ -32,7 +32,8 @@ const admin = conn.getDB("admin");
 assert.commandWorked(admin.runCommand({createUser: "admin", pwd: "pwd", roles: ['root']}));
 assert(admin.auth("admin", "pwd"));
 
-assert.commandWorked(external.runCommand({createUser: MOCK_AWS_TEMP_ACCOUNT_ARN, roles: []}));
+assert.commandWorked(
+    external.runCommand({createUser: aws_common.users.tempUser.simplifiedArn, roles: []}));
 
 const env = {
     AWS_CONTAINER_CREDENTIALS_RELATIVE_URI: MOCK_AWS_CONTAINER_CREDENTIALS_RELATIVE_URI,

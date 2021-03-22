@@ -67,11 +67,12 @@ class AwsECSMetadataHandler(http.server.BaseHTTPRequestHandler):
 
         self._send_header()
 
+        user = aws_common.get_users()['tempUser']
         str1 = f"""{{
   "RoleArn" : "arn:aws:iam::1234567890:role/ecsTaskExecutionRole",
-  "AccessKeyId" : "{aws_common.MOCK_AWS_TEMP_ACCOUNT_ID}",
-  "SecretAccessKey" : "{aws_common.MOCK_AWS_TEMP_ACCOUNT_SECRET_KEY}",
-  "Token" : "{aws_common.MOCK_AWS_TEMP_ACCOUNT_SESSION_TOKEN}",
+  "AccessKeyId" : "{user['id']}",
+  "SecretAccessKey" : "{user['secretKey']}",
+  "Token" : "{user['sessionToken']}",
   "Expiration" : "2019-11-20T23:37:45Z"
 }}"""
 
