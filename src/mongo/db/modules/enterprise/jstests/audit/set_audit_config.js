@@ -11,6 +11,21 @@ if (!TestData.setParameters.featureFlagRuntimeAuditConfig) {
     return;
 }
 
+function assertSameOID(a, b) {
+    if (!(a instanceof ObjectId) && (a['$oid'] === undefined)) {
+        assert(false, tojson(a) + ' is not an ObjectId');
+    }
+
+    if (!(b instanceof ObjectId) && (b['$oid'] === undefined)) {
+        assert(false, tojson(b) + ' is not an ObjectId');
+    }
+
+    // Normalize ObjectId or {'$oid':...} to a hex string.
+    const astr = (a instanceof ObjectId) ? a.valueOf() : a['$oid'];
+    const bstr = (b instanceof ObjectId) ? b.valueOf() : b['$oid'];
+    assert.eq(astr, bstr, "Objects are inequal: " + tojson(a) + " != " + tojson(b));
+}
+
 const kDefaultConfig = {
     filter: {},
     auditAuthorizationSuccess: false,
@@ -21,6 +36,7 @@ class SetAuditConfigFixture {
     constructor(conn) {
         this.conn = conn;
         this.waitfunc = () => undefined;
+        this.checkConfig = () => undefined;
         this.config = kDefaultConfig;
     }
 
@@ -30,10 +46,13 @@ class SetAuditConfigFixture {
      */
     assertAuditedAll(...args) {
         this.waitfunc();
+        const matches = [];
         this.spoolers.forEach(function(audit) {
             const entry = audit.assertEntryRelaxed.apply(audit, args);
             assert(entry.result === 0, "Audit entry is not OK: " + tojson(entry));
+            matches.push(entry);
         });
+        return matches;
     }
 
     /**
@@ -76,12 +95,19 @@ class SetAuditConfigFixture {
     setAuditConfig(filter, success) {
         assert.commandWorked(this.conn.getDB('admin').runCommand(
             {setAuditConfig: 1, filter: filter, auditAuthorizationSuccess: success}));
-        const next = {
+        const expect = {
             filter: filter,
             auditAuthorizationSuccess: success,
         };
-        this.assertAuditedAll('auditConfigure', {previous: this.config, config: next});
+        const next =
+            this.assertAuditedAll('auditConfigure', {previous: this.config, config: expect})[0]
+                .param.config;
+        assert.neq(
+            bsonWoCompare(next.generation, this.config.generation), 0, "Generation did not change");
         this.config = next;
+        delete this.config._id;
+
+        this.checkConfig();
     }
 
     /**
@@ -214,6 +240,24 @@ class SetAuditConfigFixture {
     const replset = new SetAuditConfigFixture(rs.getPrimary());
     replset.waitfunc = () => rs.awaitReplication;
     replset.spoolers = rs.nodes.map((node) => node.auditSpooler());
+    replset.checkConfig = function() {
+        rs.awaitReplication();
+        rs.getSecondaries().forEach(function(node) {
+            const admin = node.getDB('admin');
+            assert(admin.auth('admin', 'admin'));
+
+            const generation =
+                assert.commandWorked(admin.runCommand({_getAuditConfigGeneration: 1})).generation;
+            assertSameOID(generation, replset.config.generation);
+
+            const config = assert.commandWorked(admin.runCommand({getAuditConfig: 1}));
+            assertSameOID(config.generation, replset.config.generation);
+            assert.eq(bsonWoCompare(config.filter, replset.config.filter),
+                      0,
+                      tojson(config.filter) + ' != ' + tojson(replset.config.filter));
+            assert.eq(config.auditAuthorizationSuccess, replset.config.auditAuthorizationSuccess);
+        });
+    };
     replset.restart = function() {
         jsTest.log('Restarting ReplSet');
         rs.awaitReplication();

@@ -3,6 +3,8 @@
  */
 
 #include "audit/audit_commands_gen.h"
+#include "audit/audit_config_command.h"
+#include "audit/audit_manager.h"
 #include "mongo/client/read_preference.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/resource_pattern.h"
@@ -17,53 +19,48 @@ namespace mongo {
 namespace audit {
 namespace {
 
-class SetAuditConfigCmd final : public TypedCommand<SetAuditConfigCmd> {
-public:
+struct SetAuditConfigCmd {
     using Request = SetAuditConfigCommand;
-
-    class Invocation final : public InvocationBase {
-    public:
-        using InvocationBase::InvocationBase;
-
-        void typedRun(OperationContext* opCtx) {
-            uassertStatusOK(Grid::get(opCtx)
-                                ->shardRegistry()
-                                ->getConfigShard()
-                                ->runCommandWithFixedRetryAttempts(
-                                    opCtx,
-                                    ReadPreferenceSetting{ReadPreference::PrimaryOnly},
-                                    request().getDbName().toString(),
-                                    request().toBSON({}),
-                                    Shard::kDefaultConfigCommandTimeout,
-                                    Shard::RetryPolicy::kNotIdempotent));
-        }
-
-    private:
-        bool supportsWriteConcern() const final {
-            return false;
-        }
-
-        void doCheckAuthorization(OperationContext* opCtx) const final {
-            auto* as = AuthorizationSession::get(opCtx->getClient());
-            uassert(ErrorCodes::Unauthorized,
-                    "Not authorized to change audit configuration",
-                    as->isAuthorizedForActionsOnResource(ResourcePattern::forClusterResource(),
-                                                         ActionType::auditConfigure));
-        }
-
-        NamespaceString ns() const final {
-            return NamespaceString(request().getDbName(), "");
-        }
-    };
-
-    AllowedOnSecondary secondaryAllowed(ServiceContext*) const final {
-        return AllowedOnSecondary::kNever;
+    using Reply = void;
+    static constexpr StringData kUnauthorizedMessage =
+        "Not authorized to change audit configuration"_sd;
+    static constexpr auto kSecondaryAllowed = BasicCommand::AllowedOnSecondary::kNever;
+    static void typedRun(OperationContext* opCtx, const Request& cmd) {
+        uassertStatusOK(
+            Grid::get(opCtx)->shardRegistry()->getConfigShard()->runCommandWithFixedRetryAttempts(
+                opCtx,
+                ReadPreferenceSetting{ReadPreference::PrimaryOnly},
+                cmd.getDbName().toString(),
+                cmd.toBSON({}),
+                Shard::kDefaultConfigCommandTimeout,
+                Shard::RetryPolicy::kNotIdempotent));
     }
+};
+AuditConfigCmd<SetAuditConfigCmd> setAuditConfigCmd;
 
-    bool adminOnly() const final {
-        return true;
+struct GetAuditConfigGenerationCmd {
+    using Request = GetAuditConfigGenerationCommand;
+    using Reply = GetAuditConfigGenerationReply;
+    static constexpr StringData kUnauthorizedMessage =
+        "Not authorized to read audit configuration"_sd;
+    static constexpr auto kSecondaryAllowed = BasicCommand::AllowedOnSecondary::kAlways;
+    static Reply typedRun(OperationContext* opCtx, const Request& cmd) {
+        return {getGlobalAuditManager()->getConfigGeneration()};
     }
-} cmdSetAuditConfig;
+};
+AuditConfigCmd<GetAuditConfigGenerationCmd> getAuditConfigGenerationCmd;
+
+struct GetAuditConfigCmd {
+    using Request = GetAuditConfigCommand;
+    using Reply = AuditConfigDocument;
+    static constexpr StringData kUnauthorizedMessage =
+        "Not authorized to read audit configuration"_sd;
+    static constexpr auto kSecondaryAllowed = BasicCommand::AllowedOnSecondary::kAlways;
+    static Reply typedRun(OperationContext* opCtx, const Request& cmd) {
+        return getGlobalAuditManager()->getAuditConfig();
+    }
+};
+AuditConfigCmd<GetAuditConfigCmd> getAuditConfigCmd;
 
 }  // namespace
 }  // namespace audit

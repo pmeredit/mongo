@@ -93,6 +93,11 @@ public:
     }
 
     /**
+     * Read the entire in-memory configuration guarded by lock.
+     */
+    AuditConfigDocument getAuditConfig() const;
+
+    /**
      * Create a MatchExpression from an owned filter object.
      */
     static std::unique_ptr<MatchExpression> parseFilter(BSONObj filter);

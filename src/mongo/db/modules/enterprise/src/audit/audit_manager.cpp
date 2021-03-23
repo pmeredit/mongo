@@ -90,6 +90,18 @@ void AuditManager::setConfiguration(Client* client, const AuditConfigDocument& c
     std::atomic_exchange(&_config, newConfig);  // NOLINT
 }
 
+AuditConfigDocument AuditManager::getAuditConfig() const {
+    // Snapshot configuration at a point in time.
+    auto current = _config;
+
+    AuditConfigDocument config;
+    config.setGeneration(current->generation);
+    config.setFilter(current->filterBSON.getOwned());
+    config.setAuditAuthorizationSuccess(current->auditAuthorizationSuccess.load());
+
+    return config;
+}
+
 std::unique_ptr<MatchExpression> AuditManager::parseFilter(BSONObj filter) {
     invariant(filter.isOwned());
     // We pass in a null OperationContext pointer here, since we do not have access to an

@@ -7,14 +7,11 @@
 #include "audit_mongod.h"
 
 #include "audit/audit_commands_gen.h"
+#include "audit/audit_config_command.h"
 #include "audit/audit_config_gen.h"
 #include "audit_manager.h"
-#include "mongo/db/auth/authorization_session.h"
-#include "mongo/db/auth/resource_pattern.h"
-#include "mongo/db/commands.h"
 #include "mongo/db/dbdirectclient.h"
-#include "mongo/db/operation_context.h"
-#include "mongo/db/service_context.h"
+#include "mongo/db/dbhelpers.h"
 #include "mongo/logv2/log.h"
 #include "mongo/s/write_ops/batched_command_response.h"
 
@@ -88,65 +85,61 @@ void upsertConfig(OperationContext* opCtx, const AuditConfigDocument& doc) {
     uassert(ErrorCodes::OperationFailed, kFailureMessage, response.getN());
 }
 
-class SetAuditConfigCmd : public TypedCommand<SetAuditConfigCmd> {
-public:
+namespace {
+struct SetAuditConfigCmd {
     using Request = SetAuditConfigCommand;
+    using Reply = void;
+    static constexpr StringData kUnauthorizedMessage =
+        "Not authorized to change audit configuration"_sd;
+    static constexpr auto kSecondaryAllowed = BasicCommand::AllowedOnSecondary::kNever;
+    static void typedRun(OperationContext* opCtx, const Request& cmd) {
+        auto* am = getGlobalAuditManager();
+        uassertSetAuditConfigAllowed(am);
 
-    class Invocation : public InvocationBase {
-    public:
-        using InvocationBase::InvocationBase;
+        uassert(ErrorCodes::NotImplemented,
+                "Command 'setAuditConfig' is not supported on shard servers",
+                serverGlobalParams.clusterRole != ClusterRole::ShardServer);
 
-        void typedRun(OperationContext* opCtx) {
-            auto* am = getGlobalAuditManager();
-            uassertSetAuditConfigAllowed(am);
+        // Validate that this filter is legal before attempting to update.
+        auto filterBSON = cmd.getFilter().getOwned();
+        am->parseFilter(filterBSON);
 
-            uassert(ErrorCodes::NotImplemented,
-                    "Command 'setAuditConfig' is not supported on shard servers",
-                    serverGlobalParams.clusterRole != ClusterRole::ShardServer);
+        AuditConfigDocument doc;
+        doc.set_id(kAuditDocID);
+        doc.setFilter(filterBSON);
+        doc.setAuditAuthorizationSuccess(cmd.getAuditAuthorizationSuccess());
+        doc.setGeneration(OID::gen());
 
-            const auto& cmd = request();
-
-            // Validate that this filter is legal before attempting to update.
-            auto filterBSON = cmd.getFilter().getOwned();
-            am->parseFilter(filterBSON);
-
-            AuditConfigDocument doc;
-            doc.set_id(kAuditDocID);
-            doc.setFilter(filterBSON);
-            doc.setAuditAuthorizationSuccess(cmd.getAuditAuthorizationSuccess());
-            doc.setGeneration(OID::gen());
-
-            // Auditing of the config change and update of AuditManager occurs in AuditOpObserver.
-            upsertConfig(opCtx, doc);
-        }
-
-    private:
-        bool supportsWriteConcern() const final {
-            return false;
-        }
-
-        void doCheckAuthorization(OperationContext* opCtx) const final {
-            auto* as = AuthorizationSession::get(opCtx->getClient());
-            uassert(ErrorCodes::Unauthorized,
-                    "Not authorized to change audit configuration",
-                    as->isAuthorizedForActionsOnResource(ResourcePattern::forClusterResource(),
-                                                         ActionType::auditConfigure));
-        }
-
-        NamespaceString ns() const final {
-            return NamespaceString(NamespaceString::kAdminDb, "");
-        }
-    };
-
-    AllowedOnSecondary secondaryAllowed(ServiceContext*) const final {
-        return AllowedOnSecondary::kNever;
+        // Auditing of the config change and update of AuditManager occurs in AuditOpObserver.
+        upsertConfig(opCtx, doc);
     }
+};
+AuditConfigCmd<SetAuditConfigCmd> setAuditConfigCmd;
 
-    bool adminOnly() const final {
-        return true;
+struct GetAuditConfigGenerationCmd {
+    using Request = GetAuditConfigGenerationCommand;
+    using Reply = GetAuditConfigGenerationReply;
+    static constexpr StringData kUnauthorizedMessage =
+        "Not authorized to read audit configuration"_sd;
+    static constexpr auto kSecondaryAllowed = BasicCommand::AllowedOnSecondary::kAlways;
+    static Reply typedRun(OperationContext* opCtx, const Request& cmd) {
+        return Reply(getGlobalAuditManager()->getConfigGeneration());
     }
+};
+AuditConfigCmd<GetAuditConfigGenerationCmd> getAuditConfigGenerationCmd;
 
-} setAuditConfigCmd;
+struct GetAuditConfigCmd {
+    using Request = GetAuditConfigCommand;
+    using Reply = AuditConfigDocument;
+    static constexpr StringData kUnauthorizedMessage =
+        "Not authorized to read audit configuration"_sd;
+    static constexpr auto kSecondaryAllowed = BasicCommand::AllowedOnSecondary::kAlways;
+    static Reply typedRun(OperationContext* opCtx, const Request& cmd) {
+        return getGlobalAuditManager()->getAuditConfig();
+    }
+};
+AuditConfigCmd<GetAuditConfigCmd> getAuditConfigCmd;
 
+}  // namespace
 }  // namespace audit
 }  // namespace mongo
