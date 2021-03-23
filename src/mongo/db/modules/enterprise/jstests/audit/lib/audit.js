@@ -304,20 +304,25 @@ class AuditSpooler {
     }
 }
 
-function formatAuditOpts(opts, isBSON) {
-    opts.auditDestination = opts.auditDestination || "file";
-    if (opts.auditDestination === "file") {
-        if (!opts.auditPath) {
-            opts.auditPath = opts.auditPath || MongoRunner.dataPath + "mongodb-$port-audit.log";
-        }
-        if (isBSON) {
-            opts.auditFormat = opts.auditFormat || "BSON";
-        } else {
-            opts.auditFormat = opts.auditFormat || "JSON";
-        }
+function makeAuditOpts(sourceOpts, isBSON) {
+    assert(sourceOpts.auditDestination === undefined || sourceOpts.auditDestination === "file",
+           '"auditDestination" must either be unset or "file"');
+
+    let auditOpts = {auditDestination: "file"};
+
+    // It would be lovely if we could pre-assign a port and use it here. Sadly, we cannot because
+    // ReplSetTest does not allow for pre-assigned ports.
+
+    auditOpts.auditPath = `${MongoRunner.dataPath}audit-logs/mongodb-${UUID().hex()}-audit.log`;
+
+    if (isBSON) {
+        auditOpts.auditFormat = "BSON";
+    } else {
+        auditOpts.auditFormat = "JSON";
     }
 
-    return opts;
+    // Extend our local object with the properties from sourceOpts.
+    return Object.extend(auditOpts, sourceOpts, /* deep = */ true);
 }
 
 /**
@@ -325,8 +330,7 @@ function formatAuditOpts(opts, isBSON) {
  * for tailing the audit log looking for particular atype entries with matching param objects.
  */
 MongoRunner.runMongodAuditLogger = function(opts, isBSON = false) {
-    opts = formatAuditOpts(opts, isBSON);
-    let mongo = MongoRunner.runMongod(opts);
+    let mongo = MongoRunner.runMongod(makeAuditOpts(opts, isBSON));
 
     /**
      * Produce a new Spooler object, which can be used to access the audit log events emitted
@@ -355,18 +359,10 @@ MongoRunner.runMongodAuditLogger = function(opts, isBSON = false) {
  * set for a single shard), mongos', and config servers.
  */
 MongoRunner.runShardedClusterAuditLogger = function(opts = {}, baseOptions = {}, isBSON = false) {
-    // We call mongo options for the mongos to allocate a port.
-    let nestedOpts = formatAuditOpts(baseOptions, isBSON);
-
     const defaultOpts = {
-        mongos: 1,
-        config: 1,
-        shards: 1,
-        other: {
-            mongosOptions: nestedOpts,
-            configOptions: nestedOpts,
-            shardOptions: nestedOpts,
-        }
+        mongos: [makeAuditOpts(baseOptions, isBSON)],
+        config: [makeAuditOpts(baseOptions, isBSON)],
+        shards: [makeAuditOpts(baseOptions, isBSON)]
     };
 
     // Beware! This does not do a nested merge, so if your provided opts has an "other" field, it

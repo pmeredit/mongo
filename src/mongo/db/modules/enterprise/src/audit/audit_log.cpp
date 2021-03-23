@@ -24,6 +24,7 @@
 namespace mongo::audit {
 
 namespace {
+namespace fs = boost::filesystem;
 
 std::string getAuditLogPath() {
     return getGlobalAuditManager()->getPath();
@@ -145,6 +146,18 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(AuditDomain, ("InitializeGlobalAuditManager
         case AuditFormatJsonFile:
         case AuditFormatBsonFile: {
             auto auditLogPath = getAuditLogPath();
+
+            try {
+                const auto auditDirectoryPath = fs::path(auditLogPath).parent_path();
+                if (!fs::exists(auditDirectoryPath)) {
+                    fs::create_directory(auditDirectoryPath);
+                }
+            } catch (const std::exception& e) {
+                auto status = Status(ErrorCodes::BadValue, "Unable to initialize audit path")
+                                  .withContext(e.what());
+                uassertStatusOK(std::move(status));
+            }
+
             auto writer = std::make_unique<logger::RotatableFileWriter>();
             auto status = logger::RotatableFileWriter::Use(writer.get())
                               .setFileName(auditLogPath, true /* append */);
