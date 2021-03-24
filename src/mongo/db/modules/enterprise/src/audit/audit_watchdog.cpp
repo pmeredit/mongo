@@ -11,7 +11,8 @@
 
 namespace mongo {
 
-MONGO_INITIALIZER_WITH_PREREQUISITES(RegisterAuditWatchdog, ("EndStartupOptionHandling"))
+MONGO_INITIALIZER_WITH_PREREQUISITES(RegisterAuditWatchdog,
+                                     ("EndStartupOptionHandling", "InitializeGlobalAuditManager"))
 (::mongo::InitializerContext* context) {
 
     const auto& path = audit::getGlobalAuditManager()->getPath();
