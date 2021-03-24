@@ -111,7 +111,7 @@ public:
                         const std::string& dbname,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        auto cmd = GetMoreCommand::parse({"getMore"}, cmdObj);
+        auto cmd = GetMoreCommandRequest::parse({"getMore"}, cmdObj);
         const auto cursorId = cmd.getCommandParameter();
         MongotMockStateGuard stateGuard = getMongotMockState(opCtx->getServiceContext());
 
@@ -145,7 +145,8 @@ public:
                         const std::string& dbname,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        auto request = KillCursorsRequest::parse(IDLParserErrorContext("killCursors"), cmdObj);
+        auto request =
+            KillCursorsCommandRequest::parse(IDLParserErrorContext("killCursors"), cmdObj);
 
         const auto& cursorList = request.getCursorIds();
         MongotMockStateGuard stateGuard = getMongotMockState(opCtx->getServiceContext());

@@ -329,7 +329,7 @@ PlaceHolderResult addPlaceHoldersForFind(const boost::intrusive_ptr<ExpressionCo
                                          const std::string& dbName,
                                          const BSONObj& cmdObj,
                                          std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
-    // Parse to a FindCommand to ensure the command syntax is valid. We can use a temporary
+    // Parse to a FindCommandRequest to ensure the command syntax is valid. We can use a temporary
     // database name however the collection name will be used when serializing back to BSON.
     auto findCommand = query_request_helper::makeFromFindCommand(
         cmdObj, boost::none, APIParameters::get(expCtx->opCtx).getAPIStrict().value_or(false));
@@ -354,7 +354,7 @@ PlaceHolderResult addPlaceHoldersForAggregate(
     const std::string& dbName,
     const BSONObj& cmdObj,
     std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
-    // Parse the command to an AggregateCommand to verify that there no unknown fields.
+    // Parse the command to an AggregateCommandRequest to verify that there no unknown fields.
     auto request = aggregation_request_helper::parseFromBSON(
         dbName,
         cmdObj,
@@ -376,7 +376,7 @@ PlaceHolderResult addPlaceHoldersForAggregate(
     }());
 
     // Build a FLEPipeline which will replace encrypted fields with intent-to-encrypt markings, then
-    // update the AggregateCommand with the new pipeline if there were any replaced fields.
+    // update the AggregateCommandRequest with the new pipeline if there were any replaced fields.
     FLEPipeline flePipe{Pipeline::parse(request.getPipeline(), expCtx), *schemaTree.get()};
 
     // Serialize the translated command by manually appending each field that was present in the
@@ -400,7 +400,7 @@ PlaceHolderResult addPlaceHoldersForCount(const boost::intrusive_ptr<ExpressionC
                                           const BSONObj& cmdObj,
                                           std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     BSONObjBuilder resultBuilder;
-    auto countCmd = CountCommand::parse(IDLParserErrorContext("count"), cmdObj);
+    auto countCmd = CountCommandRequest::parse(IDLParserErrorContext("count"), cmdObj);
     auto query = countCmd.getQuery();
 
     auto newQueryPlaceholder = replaceEncryptedFieldsInFilter(expCtx, *schemaTree, query);
@@ -416,7 +416,7 @@ PlaceHolderResult addPlaceHoldersForDistinct(const boost::intrusive_ptr<Expressi
                                              const std::string& dbName,
                                              const BSONObj& cmdObj,
                                              std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
-    auto parsedDistinct = DistinctCommand::parse(IDLParserErrorContext("distinct"), cmdObj);
+    auto parsedDistinct = DistinctCommandRequest::parse(IDLParserErrorContext("distinct"), cmdObj);
 
     if (auto keyMetadata =
             schemaTree->getEncryptionMetadataForPath(FieldRef(parsedDistinct.getKey()))) {
@@ -491,8 +491,8 @@ PlaceHolderResult addPlaceHoldersForFindAndModify(
     const std::string& dbName,
     const BSONObj& cmdObj,
     std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
-    auto request(
-        write_ops::FindAndModifyCommand::parse(IDLParserErrorContext("findAndModify"), cmdObj));
+    auto request(write_ops::FindAndModifyCommandRequest::parse(
+        IDLParserErrorContext("findAndModify"), cmdObj));
 
     bool anythingEncrypted = false;
     if (auto updateMod = request.getUpdate()) {
@@ -607,7 +607,8 @@ PlaceHolderResult addPlaceHoldersForDelete(OperationContext* opCtx,
     PlaceHolderResult placeHolderResult{};
 
     auto updateDBName = request.getDatabase();
-    auto deleteRequest = write_ops::Delete::parse(IDLParserErrorContext("delete"), request);
+    auto deleteRequest =
+        write_ops::DeleteCommandRequest::parse(IDLParserErrorContext("delete"), request);
     std::vector<write_ops::DeleteOpEntry> markedDeletes;
     for (auto&& op : deleteRequest.getDeletes()) {
         markedDeletes.push_back(op);
@@ -686,7 +687,7 @@ void processQueryCommand(OperationContext* opCtx,
     // A new camel-case name of the FindAndModify command needs to be used
     // in place of the legacy one.
     if (fieldNames.count("findandmodify")) {
-        fieldNames.insert(write_ops::FindAndModifyCommand::kCommandName);
+        fieldNames.insert(write_ops::FindAndModifyCommandRequest::kCommandName);
     }
     placeholder.result = removeExtraFields(fieldNames, placeholder.result);
 

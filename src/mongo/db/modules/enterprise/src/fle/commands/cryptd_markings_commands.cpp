@@ -422,8 +422,8 @@ std::unique_ptr<CommandInvocation> CryptdExplainCmd::parse(OperationContext* opC
 
     auto cleanedCmdObj = cmdObj.removeFields(
         StringDataSet{cryptd_query_analysis::kJsonSchema, cryptd_query_analysis::kIsRemoteSchema});
-    auto explainCmd = ExplainCmd::parse(
-        IDLParserErrorContext(ExplainCmd::kCommandName,
+    auto explainCmd = ExplainCommandRequest::parse(
+        IDLParserErrorContext(ExplainCommandRequest::kCommandName,
                               APIParameters::get(opCtx).getAPIStrict().value_or(false)),
         cleanedCmdObj);
 
