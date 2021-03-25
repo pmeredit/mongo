@@ -8,7 +8,6 @@
  *   requires_persistence,
  *   requires_sharding,
  *   requires_wiredtiger,
- *   sbe_incompatible,
  * ]
  */
 (function() {
