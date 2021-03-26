@@ -15,7 +15,7 @@
 #include "mongo/db/db_raii.h"
 #include "mongo/db/dbhelpers.h"
 #include "mongo/db/operation_context.h"
-#include "mongo/db/repl/oplog_entry.h"
+#include "mongo/db/repl/optime.h"
 #include "mongo/db/repl/read_concern_args.h"
 #include "mongo/db/repl/replication_coordinator.h"
 #include "mongo/db/repl/storage_interface.h"
@@ -156,8 +156,7 @@ BackupCursorState BackupCursorService::openBackupCursor(
                 str::stream() << "No oplog records were found.",
                 Helpers::getSingleton(
                     opCtx, NamespaceString::kRsOplogNamespace.ns().c_str(), firstEntry));
-        auto oplogEntry = fassertNoTrace(50918, repl::OplogEntry::parse(firstEntry));
-        oplogStart = oplogEntry.getOpTime();
+        oplogStart = repl::OpTime::parse(firstEntry);
         uassert(50917,
                 str::stream() << "Oplog rolled over while establishing the backup cursor.",
                 oplogStart < oplogEnd);

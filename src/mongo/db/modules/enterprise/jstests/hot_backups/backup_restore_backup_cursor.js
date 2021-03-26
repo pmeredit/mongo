@@ -31,7 +31,6 @@ if (_isWindows()) {
 // TODO (SERVER-48370): Once the persisted size storer info is always up-to-date, remove this guard.
 TestData.skipEnforceFastCountOnValidate = true;
 
-// Run the fsyncLock test. Will return before testing for any engine that doesn't
-// support fsyncLock
+// Run the backupCursor test.
 new BackupRestoreTest({backup: 'backupCursor'}).run();
 }());
