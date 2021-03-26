@@ -74,8 +74,10 @@ TEST_F(AESRoundTrip, CBC) {
     ASSERT_OK(decrypt(crypto::aesMode::cbc));
     ASSERT_TRUE(plainTextMatch());
 
-    // Changing the key should result in decryption failure or bad plain text.
+    // Changing the key should result in decryption failure or bad plain text. Make sure to
+    // reset plainBuffer before this check.
     key = crypto::aesGenerate(crypto::sym256KeySize, "testID");
+    plainBuffer.fill(0);
     if (decrypt(crypto::aesMode::cbc).isOK()) {
         ASSERT_FALSE(plainTextMatch());
     }
