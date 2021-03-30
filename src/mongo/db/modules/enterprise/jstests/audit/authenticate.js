@@ -394,18 +394,13 @@ runTestMongos({
     }
 });
 
-// TODO SERVER-52944 - add test for AWS on sharding tests.
-//
-// const awsSetParam = "awsSTSUrl=" + mock_sts.getURL();
-// runTestMongos({
-//     options: {
-//         setParameter: {
-//             authenticationMechanisms: "MONGODB-AWS,SCRAM-SHA-256",
-//             awsSTSUrl: mock_sts.getURL(),
-//         }
-//     },
-//     func: function({conn, audit}) {
-//         checkIam({conn: conn, audit: audit});
-//     }
-// });
+runTestMongos({
+    options: {
+        setParameter:
+            {authenticationMechanisms: "MONGODB-AWS,SCRAM-SHA-256", awsSTSUrl: mock_sts.getURL()}
+    },
+    func: function({conn, audit}) {
+        checkIam({conn: conn, audit: audit});
+    }
+});
 })();

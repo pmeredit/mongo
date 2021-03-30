@@ -92,10 +92,9 @@ class AuditSpooler {
                 line = this.findEntry(log, atype, param);
                 return null !== line;
             },
-            "audit logfile should contain entry within default timeout.\n" +
-                "Search started on line number: " + this._auditLine + "\n" +
-                "Log File Contents\n==============================\n" + this.getAllLines() +
-                "\n==============================\n");
+            () => {
+                return this._makeErrorMessage();
+            });
 
         // Success if we got here, return the matched record.
         return line;
@@ -158,10 +157,9 @@ class AuditSpooler {
                 }
                 return false;
             },
-            "audit logfile should contain entry within default timeout.\n" +
-                "Search started on line number: " + this._auditLine + "\n" +
-                "Log File Contents\n==============================\n" + this.getAllLines() +
-                "\n==============================\n");
+            () => {
+                return this._makeErrorMessage();
+            });
 
         // Success if we got here, return the matched record.
         return line;
@@ -225,10 +223,9 @@ class AuditSpooler {
                 }
                 return false;
             },
-            "audit logfile should contain entry within default timeout.\n" +
-                "Search started on line number: " + this._auditLine + "\n" +
-                "Log File Contents\n==============================\n" + this.getAllLines() +
-                "\n==============================\n");
+            () => {
+                return _makeErrorMessage();
+            });
 
         // Success if we got here, return the matched record.
         return line;
@@ -257,6 +254,22 @@ class AuditSpooler {
             return true;
         }, this);
         assert.eq(log.length, 0, "Log contained new entries: " + tojson(log));
+    }
+
+    _makeErrorMessage() {
+        let msg = "audit logfile should contain entry within default timeout.\n" +
+            "Search started on line number: " + this._auditLine + "\n" +
+            "Log File Contents\n==============================\n";
+
+        const log = this.getAllLines().slice(this._auditLine);
+
+        for (const idx in log) {
+            msg += log[idx] + "\n";
+        }
+
+        msg += "==============================\n";
+
+        return msg;
     }
 
     _deepPartialEquals(target, source) {
