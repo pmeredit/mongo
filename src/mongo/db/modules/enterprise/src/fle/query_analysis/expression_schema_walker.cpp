@@ -473,6 +473,9 @@ public:
     void visit(ExpressionToHashedIndexKey*) {
         _tracker.enterEvaluateOrCompare();
     }
+    void visit(ExpressionGetField*) {
+        _tracker.enterEvaluateOrCompare();
+    }
 
     void visit(ExpressionCond*) {
         // We enter evaluate on the first child (if branch), since the result of the expression is
@@ -679,6 +682,7 @@ public:
     void visit(ExpressionFieldPath*) {}
     void visit(ExpressionRandom*) {}
     void visit(ExpressionToHashedIndexKey*) {}
+    void visit(ExpressionGetField*) {}
 
 
     void visit(ExpressionCond*) {
@@ -1089,6 +1093,9 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(ExpressionToHashedIndexKey*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(ExpressionGetField*) {
         _tracker.exitEvaluateOrCompare();
     }
 

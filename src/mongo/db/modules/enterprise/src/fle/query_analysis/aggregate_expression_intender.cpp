@@ -587,6 +587,9 @@ private:
     void visit(ExpressionFunction*) final {
         ensureNotEncryptedEnterEval("a $function expression", subtreeStack);
     }
+    void visit(ExpressionGetField*) final {
+        ensureNotEncryptedEnterEval("a $getField expression", subtreeStack);
+    }
     void visit(ExpressionToHashedIndexKey*) final {
         ensureNotEncryptedEnterEval("a $hash expression", subtreeStack);
     }
@@ -958,6 +961,7 @@ private:
     void visit(ExpressionFilter*) final {}
     void visit(ExpressionFloor*) final {}
     void visit(ExpressionFunction*) final {}
+    void visit(ExpressionGetField*) final {}
     void visit(ExpressionTestApiVersion*) final {}
     void visit(ExpressionToHashedIndexKey*) final {}
     void visit(ExpressionIfNull*) final {}
@@ -1224,6 +1228,9 @@ private:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionFunction*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionGetField*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionTestApiVersion*) final {
