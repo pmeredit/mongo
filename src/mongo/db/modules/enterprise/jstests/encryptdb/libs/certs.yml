@@ -4,7 +4,7 @@ global:
   output_path: 'src/mongo/db/modules/enterprise/jstests/encryptdb/libs/'
 
 certs:
-- name: 'client_password_protected.pem'
+- name: 'trusted_client_password_protected.pem'
   description: Encrypted storage engine KMIP client certificate.
   passphrase: 'qwerty'
   Subject:
@@ -13,8 +13,8 @@ certs:
     L: 'New York City'
     O: 'MongoDB'
     OU: 'KernelUser'
-    CN: 'client_password_protected'
-  Issuer: 'jstests/libs/ca.pem'
+    CN: 'trusted_client_password_protected'
+  Issuer: 'jstests/libs/trusted-ca.pem'
   extensions:
     subjectAltName:
       DNS: ['localhost', '127.0.0.1']

@@ -22,11 +22,11 @@ def main():
     server = KMIPServer(
         host="127.0.0.1",
         port=kmip_port,
-        keyfile="jstests/libs/server.pem",
-        certfile="jstests/libs/server.pem",
+        keyfile="jstests/libs/trusted-server.pem",
+        certfile="jstests/libs/trusted-server.pem",
         cert_reqs="CERT_REQUIRED",
         ssl_version="PROTOCOL_SSLv23",
-        ca_certs="jstests/libs/ca.pem",
+        ca_certs="jstests/libs/trusted-ca.pem",
         do_handshake_on_connect=True,
         suppress_ragged_eofs=True)
 

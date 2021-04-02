@@ -27,8 +27,8 @@ const kmipParams = {
     enableEncryption: "",
     kmipServerName: "127.0.0.1",
     kmipPort: kmipServerPort,
-    kmipServerCAFile: "jstests/libs/ca.pem",
-    kmipClientCertificateFile: "jstests/libs/client.pem",
+    kmipServerCAFile: "jstests/libs/trusted-ca.pem",
+    kmipClientCertificateFile: "jstests/libs/trusted-client.pem",
 };
 
 function runTest(cipherMode, keyID) {
@@ -158,9 +158,9 @@ function runTest(cipherMode, keyID) {
                                         "--kmipPort",
                                         kmipServerPort,
                                         "--kmipServerCAFile",
-                                        "jstests/libs/ca.pem",
+                                        "jstests/libs/trusted-ca.pem",
                                         "--kmipClientCertificateFile",
-                                        "jstests/libs/client.pem",
+                                        "jstests/libs/trusted-client.pem",
                                         "--kmipKeyIdentifier",
                                         keyID,
                                         "--encryptionCipherMode",

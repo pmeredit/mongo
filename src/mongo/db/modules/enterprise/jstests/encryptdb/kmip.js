@@ -4,36 +4,43 @@
 (function() {
 "use strict";
 
+load('jstests/ssl/libs/ssl_helpers.js');
+
 const testDir = "src/mongo/db/modules/enterprise/jstests/encryptdb/";
 load(testDir + "libs/helpers.js");
 
-function runTest(cipherMode) {
+function runTest(cipherMode, extra_opts = {}) {
     let dbNameCounter = 0;
     function runEncryptedMongod(params) {
-        var defaultParams = {
+        const defaultParams = {
             enableEncryption: "",
             kmipServerName: "127.0.0.1",
             // default port is 5696, we're setting it here to test option parsing
             kmipPort: "6666",
-            kmipServerCAFile: "jstests/libs/ca.pem",
+            kmipServerCAFile: "jstests/libs/trusted-ca.pem",
             encryptionCipherMode: cipherMode,
         };
 
-        // Windows and Apple SSL providers don't support encrypted PEM files.
-        if (/OpenSSL/.test(getBuildInfo().openssl.running)) {
-            defaultParams.kmipClientCertificateFile =
-                testDir + "libs/client_password_protected.pem";
-            defaultParams.kmipClientCertificatePassword = "qwerty";
+        const opts = Object.merge(defaultParams, params, extra_opts);
+
+        if (opts.kmipClientCertificateSelector !== undefined) {
+            // Certificate selector specified,
+            // no need to specify a certificate file.
+        } else if (/OpenSSL/.test(getBuildInfo().openssl.running)) {
+            // Linux (via OpenSSL) supports encryption, use it.
+            opts.kmipClientCertificateFile = testDir + "libs/trusted_client_password_protected.pem";
+            opts.kmipClientCertificatePassword = "qwerty";
         } else {
-            defaultParams.kmipClientCertificateFile = "jstests/libs/client.pem";
+            // Windows and Apple SSL providers don't support encrypted PEM files.
+            opts.kmipClientCertificateFile = "jstests/libs/trusted-client.pem";
         }
 
-        return MongoRunner.runMongod(Object.merge(defaultParams, params));
+        return MongoRunner.runMongod(opts);
     }
 
     function assertFind(md) {
-        var testDB = md.getDB("test" + dbNameCounter);
-        var doc = testDB.test.findOne({}, {_id: 0});
+        const testDB = md.getDB("test" + dbNameCounter);
+        const doc = testDB.test.findOne({}, {_id: 0});
 
         assert.eq({"a": dbNameCounter}, doc, "Document did not have expected value");
 
@@ -62,17 +69,15 @@ function runTest(cipherMode) {
     }
 
     clearRawMongoProgramOutput();
-    var kmipServerPid = _startMongoProgram("python", testDir + "kmip_server.py");
+    const kmipServerPid = _startMongoProgram("python", testDir + "kmip_server.py");
     // Assert here that PyKMIP is compatible with the default Python version
     assert(checkProgram(kmipServerPid));
     // wait for PyKMIP, a KMIP server framework, to start
-    assert.soon(function() {
-        return rawMongoProgramOutput().search("KMIP server") !== -1;
-    });
+    assert.soon(() => rawMongoProgramOutput().search("KMIP server") !== -1);
 
     // start mongod with default keyID of "1"
-    var md = runEncryptedMongod();
-    var testDB = md.getDB("test0");
+    let md = runEncryptedMongod();
+    let testDB = md.getDB("test0");
     testDB.test.insert({a: 0});
     MongoRunner.stopMongod(md);
     assertKeyId(md, 1);
@@ -114,4 +119,27 @@ runTest("AES256-CBC");
 if (platformSupportsGCM) {
     runTest("AES256-GCM");
 }
+
+// Windows and macOS specific tests using certificate selectors.
+
+function makeTrustedClientSelector() {
+    if (!_isWindows()) {
+        return 'thumbprint=9CA511552F14D3FC2009D425873599BF77832238';
+    }
+    // SChannel backed follows Windows rules and only trusts Root in LocalMachine
+    runProgram("certutil.exe", "-addstore", "-f", "Root", "jstests\\libs\\trusted-ca.pem");
+
+    // Import a pfx file since it contains both a cert and private key and is easy to import
+    // via command line.
+    runProgram(
+        "certutil.exe", "-importpfx", "-f", "-p", "qwerty", "jstests\\libs\\trusted-client.pfx");
+}
+
+requireSSLProvider(['apple', 'windows'], function() {
+    const SELECTOR = makeTrustedClientSelector();
+    runTest('AES256-CBC', {kmipClientCertificateSelector: SELECTOR});
+    if (platformSupportsGCM) {
+        runTest('AES256-GCM', {kmipClientCertificateSelector: SELECTOR});
+    }
+});
 })();
