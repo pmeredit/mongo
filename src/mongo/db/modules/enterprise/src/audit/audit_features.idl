@@ -7,7 +7,8 @@ feature_flags:
     featureFlagImprovedAuditing:
         description: Enable 'Improved Auditing' semantics
         cpp_varname: gFeatureFlagImprovedAuditing
-        default: false
+        default: true
+        version: 5.0
 
     featureFlagRuntimeAuditConfig:
         description: Enable 'Runtime Audit Configuration'
