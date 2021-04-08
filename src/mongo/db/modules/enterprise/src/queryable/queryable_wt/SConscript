@@ -34,6 +34,9 @@ env.Library(
         'lint-allow-nonprivate-on-deps-dependents',
         'lint-allow-bidirectional-edges',
     ],
+    EXPORT_SYMBOLS=[
+        'queryableWtFsCreate',
+    ],
 )
 
 env.CppIntegrationTest(

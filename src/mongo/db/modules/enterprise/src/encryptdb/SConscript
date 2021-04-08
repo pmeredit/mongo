@@ -80,6 +80,10 @@ wtEnv.Library(
         'keystore_metadata',
         'symmetric_crypto_enterprise',
     ],
+    EXPORT_SYMBOLS=[
+        'mongo_addWiredTigerEncryptors',
+    ],
+
 )
 
 env.Library(
