@@ -233,7 +233,7 @@ const char* usage =
 MONGO_INITIALIZER_GENERAL(MQLRunFlagSetup,
                           ("EndServerParameterRegistration"),
                           ("addToDocSourceParserMap_setWindowFields",
-                           "windowFunctionExpressionMap"))
+                           "BeginWindowFunctionRegistration"))
 (mongo::InitializerContext* ctx) {
     const auto args = ctx->args();
     if (std::find(args.begin(), args.end(), "-f") != args.end()) {
