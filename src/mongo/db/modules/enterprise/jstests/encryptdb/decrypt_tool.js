@@ -1,7 +1,7 @@
 /**
  * Tests that mongodecrypt can successfully decrypt an encrypted rollback file.
  *
- * @tags: [uses_transactions, uses_prepare_transaction, requires_fcv_44, sbe_incompatible]
+ * @tags: [uses_transactions, uses_prepare_transaction, requires_fcv_44]
  */
 (function() {
 "use strict";
