@@ -4,13 +4,14 @@
  * Creates and exports the collection with namespace 'dbName.collName'. An optional 'ops' parameter
  * is provided that allows operations to be performed on the collection prior to exporting it.
  */
-const exportCollection = function(dbName, collName, ops) {
+const exportCollection = function(dbName, collName, ops, username, password) {
     ops = ops || ((coll) => {});
 
     let standalone = MongoRunner.runMongod({setParameter: "featureFlagLiveImportExport=true"});
     let db = standalone.getDB(dbName);
 
-    assert.commandWorked(db.createCollection(collName));
+    // in some tests collection already exists, so we ignore if this command fails
+    db.createCollection(collName);
 
     jsTestLog(`Running operations on collection ${dbName}.${collName}`);
     ops(db.getCollection(collName));
@@ -18,14 +19,19 @@ const exportCollection = function(dbName, collName, ops) {
 
     // After creating the collection and running operations on it, export it.
     jsTestLog(`Exporting collection ${dbName}.${collName}`);
-    standalone = MongoRunner.runMongod({
+    let params = {
         setParameter: "featureFlagLiveImportExport=true",
         dbpath: standalone.dbpath,
         noCleanData: true,
         queryableBackupMode: ""
-    });
+    };
+    standalone = MongoRunner.runMongod(params);
 
     db = standalone.getDB(dbName);
+    if (username) {
+        db.auth(username, password);
+    }
+
     const collectionProperties = assert.commandWorked(db.runCommand({exportCollection: collName}));
     MongoRunner.stopMongod(standalone);
     return collectionProperties;
