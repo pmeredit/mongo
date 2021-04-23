@@ -54,8 +54,10 @@ private:
 
     /**
      * Initialize a connection to the KMIP server
+     *
+     * Throws upon failure.
      */
-    Status _initServerConnection(Milliseconds connectTimeout);
+    void _initServerConnection(Milliseconds connectTimeout);
 
     /**
      * Send a request to the KMIP server.

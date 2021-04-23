@@ -32,19 +32,14 @@ namespace kmip {
 
 StatusWith<KMIPService> KMIPService::createKMIPService(const HostAndPort& server,
                                                        const SSLParams& sslKMIPParams,
-                                                       Milliseconds connectTimeout) {
-    try {
-        std::shared_ptr<SSLManagerInterface> sslManager =
-            SSLManagerInterface::create(sslKMIPParams, false);
-        KMIPService kmipService(server, std::move(sslManager));
-        Status status = kmipService._initServerConnection(connectTimeout);
-        if (!status.isOK()) {
-            return status;
-        }
-        return std::move(kmipService);
-    } catch (const DBException& e) {
-        return e.toStatus();
-    }
+                                                       Milliseconds connectTimeout) try {
+    std::shared_ptr<SSLManagerInterface> sslManager =
+        SSLManagerInterface::create(sslKMIPParams, false);
+    KMIPService kmipService(server, std::move(sslManager));
+    kmipService._initServerConnection(connectTimeout);
+    return std::move(kmipService);
+} catch (const DBException& e) {
+    return e.toStatus();
 }
 
 StatusWith<KMIPService> KMIPService::createKMIPService(const KMIPParams& kmipParams,
@@ -149,26 +144,28 @@ StatusWith<std::unique_ptr<SymmetricKey>> KMIPService::getExternalKey(const std:
     return std::move(key);
 }
 
-Status KMIPService::_initServerConnection(Milliseconds connectTimeout) {
-    SockAddr server(_server.host().c_str(), _server.port(), AF_UNSPEC);
+void KMIPService::_initServerConnection(Milliseconds connectTimeout) {
+    auto makeAddress = [](const auto& host) -> SockAddr {
+        try {
+            return SockAddr::create(host.host().c_str(), host.port(), AF_UNSPEC);
+        } catch (const DBException& ex) {
+            uassertStatusOK(ex.toStatus().withContext("Unable to resolve KMS server address"));
+        }
 
-    if (!server.isValid()) {
-        return Status(ErrorCodes::BadValue,
-                      str::stream() << "KMIP server address " << _server.host() << " is invalid.");
-    }
+        MONGO_UNREACHABLE;
+    };
 
-    if (!_socket->connect(server, connectTimeout)) {
-        return Status(ErrorCodes::BadValue,
-                      str::stream() << "Could not connect to KMIP server " << server.toString());
+    auto addr = makeAddress(_server);
+    if (!_socket->connect(addr, connectTimeout)) {
+        uasserted(ErrorCodes::BadValue,
+                  str::stream() << "Could not connect to KMIP server " << addr.toString());
     }
 
     if (!_socket->secure(_sslManager.get(), _server.host())) {
-        return Status(ErrorCodes::BadValue,
-                      str::stream() << "Failed to perform SSL handshake with the KMIP server "
-                                    << _server.toString());
+        uasserted(ErrorCodes::BadValue,
+                  str::stream() << "Failed to perform SSL handshake with the KMIP server "
+                                << addr.toString());
     }
-
-    return Status::OK();
 }
 
 // Sends a request message to the KMIP server and creates a KMIPResponse.
