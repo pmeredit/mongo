@@ -175,6 +175,25 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
     )
 
     env.Library(
+        # This can't be included in audit_enterprise directly
+        # since we need mongo/s/grid which
+        # depends on audit which depends on audit_enterprise.
+        # Avoid the dependency cycle by pulling this out separately.
+        target='audit_synchronize_job',
+        source=[
+            'src/audit/audit_synchronize_job.cpp',
+        ],
+        LIBDEPS=[
+            '$BUILD_DIR/mongo/base',
+        ],
+        LIBDEPS_PRIVATE=[
+            '$BUILD_DIR/mongo/db/audit',
+            '$BUILD_DIR/mongo/s/grid',
+            'audit_enterprise',
+        ],
+    )
+
+    env.Library(
         target='audit_command',
         source=[
             'src/audit/audit_command.cpp',
@@ -247,6 +266,7 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
             '$BUILD_DIR/mongo/db/dbhelpers',
             '$BUILD_DIR/mongo/s/write_ops/batch_write_types',
             'audit_enterprise',
+            'audit_synchronize_job',
         ],
     )
 
@@ -303,6 +323,7 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
             '$BUILD_DIR/mongo/db/commands',
             '$BUILD_DIR/mongo/s/grid',
             'audit_enterprise',
+            'audit_synchronize_job',
         ],
         LIBDEPS_DEPENDENTS=[
             '$BUILD_DIR/mongo/s/mongos_initializers',

@@ -216,24 +216,31 @@ void AuditOpObserver::onReplicationRollback(OperationContext* opCtx,
 namespace {
 MONGO_INITIALIZER_WITH_PREREQUISITES(AuditOpObserver, ("InitializeGlobalAuditManager"))
 (InitializerContext*) {
-    auto* am = getGlobalAuditManager();
-
-    if (am->isEnabled() && am->getRuntimeConfiguration()) {
-        // Invoked prior to storage initialization.
-        opObserverRegistrar = [](OpObserverRegistry* registry) {
-            registry->addObserver(std::make_unique<AuditOpObserver>());
-        };
-
-        // Invoked after storage is initialized.
-        initializeManager = [](OperationContext* opCtx) {
-            if (isAuditingConfigured()) {
-                // We got a configuration during opLog application, just use it.
-                return;
-            }
-
-            AuditOpObserver::updateAuditConfigFromDisk(opCtx);
-        };
+    if (serverGlobalParams.clusterRole == ClusterRole::ShardServer) {
+        // Only config servers and non-sharded configurations need run op observers.
+        return;
     }
+
+    auto* am = getGlobalAuditManager();
+    if (!am->isEnabled() || !am->getRuntimeConfiguration()) {
+        // Runtime audit configuration not enabled.
+        return;
+    }
+
+    // Invoked prior to storage initialization.
+    opObserverRegistrar = [](OpObserverRegistry* registry) {
+        registry->addObserver(std::make_unique<AuditOpObserver>());
+    };
+
+    // Invoked after storage is initialized.
+    initializeManager = [](OperationContext* opCtx) {
+        if (isAuditingConfigured()) {
+            // We got a configuration during opLog application, just use it.
+            return;
+        }
+
+        AuditOpObserver::updateAuditConfigFromDisk(opCtx);
+    };
 }
 }  // namespace
 

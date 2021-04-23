@@ -2,17 +2,14 @@
  *    Copyright (C) 2021 MongoDB Inc.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
-
-#include "audit_mongod.h"
+#include "audit/audit_mongod.h"
 
 #include "audit/audit_commands_gen.h"
 #include "audit/audit_config_command.h"
 #include "audit/audit_config_gen.h"
-#include "audit_manager.h"
+#include "audit/audit_manager.h"
 #include "mongo/db/dbdirectclient.h"
 #include "mongo/db/dbhelpers.h"
-#include "mongo/logv2/log.h"
 #include "mongo/s/write_ops/batched_command_response.h"
 
 namespace mongo {

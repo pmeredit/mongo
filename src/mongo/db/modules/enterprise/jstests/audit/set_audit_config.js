@@ -34,10 +34,49 @@ const kDefaultConfig = {
 
 class SetAuditConfigFixture {
     constructor(conn) {
+        // Primary connection to perform actions on.
+        // Either standalone, rsSet primary, or Mongos.
         this.conn = conn;
-        this.waitfunc = () => undefined;
+
+        // Potentially wait for an action to happen.
+        // On standalone there's no replication/syncing to wait for.
+        // On ReplSet we need to allow replication to hit the secondaries, then test.
+        // On Sharding we need to allow for non-config nodes to poll from config.
+        // Make sure to invoke assertion via apply to keep the fixture bound as `this`.
+        this.waitFor = (assertion) => assertion.apply(this);
+
+        // Perform extra checks against secondaries and/or non-config nodes.
         this.checkConfig = () => undefined;
+
+        // Assume we start with unconfigured audit filtering.
         this.config = kDefaultConfig;
+    }
+
+    /**
+     * Returns the set of audit spoolers where we expect to find specific entries.
+     * In sharded mode this might be config, shard, or mongos spoolers.
+     * On other types, it's just the one and only spooler list.
+     */
+    selectSpoolers(aType) {
+        if (this.spoolers !== undefined) {
+            return this.spoolers;
+        }
+
+        switch (aType) {
+            case 'createUser':
+                return this.configSpoolers;
+            case 'authenticate':
+                return this.mongosSpoolers;
+            case 'authCheck':
+                return this.shardSpoolers;
+            case 'auditConfigure':
+                return []
+                    .concat(this.mongosSpoolers)
+                    .concat(this.shardSpoolers)
+                    .concat(this.configSpoolers);
+            default:
+                throw "I don't know where to find " + aType + " audit entries";
+        }
     }
 
     /**
@@ -45,14 +84,16 @@ class SetAuditConfigFixture {
      * e.g. auditConfigure observed on all replset members
      */
     assertAuditedAll(...args) {
-        this.waitfunc();
-        const matches = [];
-        this.spoolers.forEach(function(audit) {
-            const entry = audit.assertEntryRelaxed.apply(audit, args);
-            assert(entry.result === 0, "Audit entry is not OK: " + tojson(entry));
-            matches.push(entry);
+        const spoolers = this.selectSpoolers(args[0]);
+        return this.waitFor(function() {
+            const matches = [];
+            spoolers.forEach(function(audit) {
+                const entry = audit.assertEntryRelaxed.apply(audit, args);
+                assert(entry.result === 0, "Audit entry is not OK: " + tojson(entry));
+                matches.push(entry);
+            });
+            return matches;
         });
-        return matches;
     }
 
     /**
@@ -60,31 +101,36 @@ class SetAuditConfigFixture {
      * e.g. insert authCheck on write primary
      */
     assertAuditedAny(aType, params) {
-        assert(aType !== undefined, "One arg required for assertAuditedAny");
-        assert.neq(aType, 'auditConfigure', "Use assertAuditedAll with 'auditConfigure");
+        assert(aType !== undefined, "aType required for assertAuditedAny");
+        assert.neq(aType, 'auditConfigure', "Use assertAuditedAll with 'auditConfigure'");
 
-        this.waitfunc();
-        const opts = {runHangAnalyzer: false};
-        assert(this.spoolers.some(function(audit) {
-            try {
-                // Failure is an option...
-                const entry = audit.assertEntryRelaxed(aType, params, undefined, undefined, opts);
-                assert(entry.result === 0, "Audit entry is not OK: " + tojson(entry));
-                return true;
-            } catch (e) {
-                return false;
-            }
-        }),
-               "Could not find audit entry on any node");
+        const spoolers = this.selectSpoolers(aType);
+        this.waitFor(function() {
+            assert(spoolers.some(function(audit) {
+                try {
+                    // Failure is an option...
+                    const opts = {runHangAnalyzer: false};
+                    const entry =
+                        audit.assertEntryRelaxed(aType, params, undefined, undefined, opts);
+                    assert(entry.result === 0, "Audit entry is not OK: " + tojson(entry));
+                    return true;
+                } catch (e) {
+                    return false;
+                }
+            }),
+                   "Could not find audit entry on any node");
+        });
     }
 
     /**
      * Check that none of our nodes have a given audit entry.
      */
     assertAuditedNone(...args) {
-        this.waitfunc();
-        this.spoolers.forEach(function(audit) {
-            audit.assertNoNewEntries.apply(audit, args);
+        const spoolers = this.selectSpoolers(args[0]);
+        this.waitFor(function() {
+            spoolers.forEach(function(audit) {
+                audit.assertNoNewEntries.apply(audit, args);
+            });
         });
     }
 
@@ -93,6 +139,7 @@ class SetAuditConfigFixture {
      * with the next larger generation value.
      */
     setAuditConfig(filter, success) {
+        jsTest.log('Updating configuration: ' + tojson(filter) + ', ' + tojson(success));
         assert.commandWorked(this.conn.getDB('admin').runCommand(
             {setAuditConfig: 1, filter: filter, auditAuthorizationSuccess: success}));
         const expect = {
@@ -115,7 +162,6 @@ class SetAuditConfigFixture {
      */
     runTest() {
         assert(this.conn, "No connection has been set up");
-        assert(this.spoolers, "No auditing spoolers defined");
 
         jsTest.log('BEGIN runTest');
         let admin = this.conn.getDB('admin');
@@ -159,7 +205,6 @@ class SetAuditConfigFixture {
         // Rebind collections since we have a new connection.
         admin = this.conn.getDB('admin');
         test = this.conn.getDB('test');
-        this.spoolers.forEach((spooler) => spooler.fastForward());
 
         // We should still be in a state without any auditing but auth checks.
         assert(admin.auth('admin', 'admin'));
@@ -170,8 +215,10 @@ class SetAuditConfigFixture {
         // Stop auditing success by deleting the config directly.
         const settings = this.conn.getDB('config').settings;
         assert.writeOK(settings.remove({_id: 'audit'}));
-        this.waitfunc();
-        this.assertAuditedAll('auditConfigure', {previous: this.config, config: kDefaultConfig});
+        this.waitFor(function() {
+            this.assertAuditedAll('auditConfigure',
+                                  {previous: this.config, config: kDefaultConfig});
+        });
         this.config = kDefaultConfig;
 
         assert.writeOK(test.coll.insert({x: 4}));
@@ -185,9 +232,11 @@ class SetAuditConfigFixture {
         };
         assert.writeOK(
             settings.insert(Object.assign({_id: 'audit'}, manualAuthSuccessOnlyCheckConfig)));
-        this.waitfunc();
-        this.assertAuditedAll('auditConfigure',
-                              {previous: this.config, config: manualAuthSuccessOnlyCheckConfig});
+        this.waitFor(function() {
+            this.assertAuditedAll(
+                'auditConfigure',
+                {previous: this.config, config: manualAuthSuccessOnlyCheckConfig});
+        });
         this.config = manualAuthSuccessOnlyCheckConfig;
 
         assert.writeOK(test.coll.insert({x: 5}));
@@ -225,37 +274,49 @@ class SetAuditConfigFixture {
     jsTest.log('End standalone');
 }
 
+const kKeyFile = 'jstests/libs/key1';
+const kKeyData = cat(kKeyFile).replace(/\s/g, '');
+
+// Expects caller to have authenticated.
+// Since it might need admin.admin auth or local.__system auth depending on node type.
+function checkConfigOnNode(test, node) {
+    const admin = node.getDB('admin');
+    const generation =
+        assert.commandWorked(admin.runCommand({_getAuditConfigGeneration: 1})).generation;
+    assertSameOID(generation, test.config.generation);
+
+    const config = assert.commandWorked(admin.runCommand({getAuditConfig: 1}));
+    assertSameOID(config.generation, test.config.generation);
+    assert.eq(bsonWoCompare(config.filter, test.config.filter),
+              0,
+              tojson(config.filter) + ' != ' + tojson(test.config.filter));
+    assert.eq(config.auditAuthorizationSuccess, test.config.auditAuthorizationSuccess);
+}
+
 {
     // ReplicaSets
     jsTest.log('Begin ReplSet');
 
     const rsOpts = {
         nodes: 3,
-        keyFile: 'jstests/libs/key1',
+        keyFile: kKeyFile,
         nodeOptions: {auditRuntimeConfiguration: true},
     };
 
     const rs = ReplSetTest.runReplSetAuditLogger(rsOpts);
     rs.awaitSecondaryNodes();
     const replset = new SetAuditConfigFixture(rs.getPrimary());
-    replset.waitfunc = () => rs.awaitReplication;
+    replset.waitFor = function(assertion) {
+        // Allow replication to complete, then expect success immediately.
+        rs.awaitReplication();
+        return assertion.apply(replset);
+    };
     replset.spoolers = rs.nodes.map((node) => node.auditSpooler());
     replset.checkConfig = function() {
         rs.awaitReplication();
         rs.getSecondaries().forEach(function(node) {
-            const admin = node.getDB('admin');
-            assert(admin.auth('admin', 'admin'));
-
-            const generation =
-                assert.commandWorked(admin.runCommand({_getAuditConfigGeneration: 1})).generation;
-            assertSameOID(generation, replset.config.generation);
-
-            const config = assert.commandWorked(admin.runCommand({getAuditConfig: 1}));
-            assertSameOID(config.generation, replset.config.generation);
-            assert.eq(bsonWoCompare(config.filter, replset.config.filter),
-                      0,
-                      tojson(config.filter) + ' != ' + tojson(replset.config.filter));
-            assert.eq(config.auditAuthorizationSuccess, replset.config.auditAuthorizationSuccess);
+            assert(node.getDB('local').auth('__system', kKeyData));
+            checkConfigOnNode(replset, node);
         });
     };
     replset.restart = function() {
@@ -273,6 +334,75 @@ class SetAuditConfigFixture {
 
 {
     // Sharding
-    // TODO(SERVER-54974): Add Periodic Job for polling config servers.
+    jsTest.log('Begin sharding');
+    const kPollingFrequencySecs = 1;
+
+    const opts = {
+        other: {
+            keyFile: kKeyFile,
+            shardAsReplicaSet: false,
+        },
+    };
+    const nodeOpts = {
+        auditRuntimeConfiguration: true,
+        setParameter: {
+            auditConfigPollingFrequencySecs: kPollingFrequencySecs,
+        },
+    };
+    const st = MongoRunner.runShardedClusterAuditLogger(opts, nodeOpts);
+    const sharding = new SetAuditConfigFixture(st.s);
+    sharding.waitFor = function(assertion) {
+        const kInterval = kPollingFrequencySecs * 1000;
+        const kTimeout = (kPollingFrequencySecs + 3) * 1000;
+
+        // Use a UUID in error messages to make associating them together unambiguous.
+        const kAssertionUUID = UUID();
+        let attempt = 1;
+
+        let retval;
+        assert.soon(
+            function() {
+                try {
+                    retval = assertion.apply(sharding);
+                    return true;
+                } catch (e) {
+                    print("Assertion " + kAssertionUUID + ", attempt #" + attempt +
+                          " failed: " + e);
+                    ++attempt;
+                    return false;
+                }
+            },
+            "Failing waiting for sharding assertion to succeed, see 'Assertion failed' messages above",
+            kTimeout,
+            kInterval);
+        return retval;
+    };
+    sharding.configSpoolers = st._configServers.map((node) => node.auditSpooler());
+    sharding.shardSpoolers = st._connections.map((node) => node.auditSpooler());
+    sharding.mongosSpoolers = st._mongos.map((node) => node.auditSpooler());
+    sharding.checkConfig = function() {
+        sharding.waitFor(function() {
+            st.forEachMongos(function(node) {
+                assert(node.getDB('admin').auth('admin', 'admin'));
+                checkConfigOnNode(sharding, node);
+            });
+            st.forEachConnection(function(node) {
+                // Shards don't have login DB, so use cluster auth.
+                assert(node.getDB('local').auth('__system', kKeyData));
+                checkConfigOnNode(sharding, node);
+            });
+        });
+    };
+    sharding.restart = function() {
+        jsTest.log('Restarting sharding');
+        Object.keys(st._configServers).forEach((n) => st.restartConfigServer(n));
+        Object.keys(st._connections).forEach((n) => st.restartMongod(n));
+        Object.keys(st._mongos).forEach((n) => st.restartMongos(n));
+        sharding.conn = st.s;
+    };
+
+    sharding.runTest();
+    st.stop();
+    jsTest.log('End sharding');
 }
 })();

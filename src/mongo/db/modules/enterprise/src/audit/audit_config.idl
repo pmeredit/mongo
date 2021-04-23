@@ -32,6 +32,15 @@ global:
 imports:
     - "mongo/idl/basic_types.idl"
 
+server_parameters:
+    auditConfigPollingFrequencySecs:
+        description: 'How often should mongos or non-config monogd nodes query audit config'
+        set_at: startup
+        default: 300
+        cpp_varname: gAuditConfigPollingFrequencySecs
+        cpp_vartype: int
+        validator: { gt: 0 }
+
 structs:
     AuditConfigDocument:
         description: "On-disk representation of runtime audit configuration"

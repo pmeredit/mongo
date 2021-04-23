@@ -17,6 +17,7 @@
 #include "mongo/db/jsobj.h"
 #include "mongo/db/json.h"
 #include "mongo/db/matcher/expression_parser.h"
+#include "mongo/logv2/log.h"
 #include "mongo/util/options_parser/environment.h"
 #include "mongo/util/options_parser/startup_options.h"
 
@@ -88,6 +89,7 @@ void AuditManager::setConfiguration(Client* client, const AuditConfigDocument& c
     newConfig->generation = config.getGeneration();
 
     std::atomic_exchange(&_config, newConfig);  // NOLINT
+    LOGV2(5497401, "Updated runtime audit configuration", "config"_attr = config);
 }
 
 AuditConfigDocument AuditManager::getAuditConfig() const {
