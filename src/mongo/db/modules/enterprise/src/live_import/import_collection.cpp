@@ -201,7 +201,7 @@ void importCollection(OperationContext* opCtx,
     opCtx->setAlwaysInterruptAtStepDownOrUp();
 
     return writeConflictRetry(opCtx, "importCollection", nss.ns(), [&] {
-        AutoGetOrCreateDb autoDb(opCtx, nss.db(), MODE_IX);
+        AutoGetDb autoDb(opCtx, nss.db(), MODE_IX);
         // Since we do not need to support running importCollection as part of multi-document
         // transactions and there is very little value allowing multiple imports of the same
         // namespace to run in parallel, we can take a MODE_X lock here to simplify the concurrency
@@ -214,9 +214,10 @@ void importCollection(OperationContext* opCtx,
                 !opCtx->writesAreReplicated() ||
                     repl::ReplicationCoordinator::get(opCtx)->canAcceptWritesFor(opCtx, nss));
 
+        auto db = autoDb.ensureDbExists();
         uassert(ErrorCodes::DatabaseDropPending,
                 str::stream() << "The database is in the process of being dropped " << nss.db(),
-                !autoDb.getDb()->isDropPending(opCtx));
+                !db->isDropPending(opCtx));
 
         uassert(ErrorCodes::NamespaceExists,
                 str::stream() << "Collection already exists. NS: " << nss,
@@ -224,7 +225,7 @@ void importCollection(OperationContext* opCtx,
 
         uassert(ErrorCodes::NamespaceExists,
                 str::stream() << "A view already exists. NS: " << nss,
-                !ViewCatalog::get(autoDb.getDb())->lookup(opCtx, nss.ns()));
+                !ViewCatalog::get(db)->lookup(opCtx, nss.ns()));
 
         WriteUnitOfWork wunit(opCtx);
 
