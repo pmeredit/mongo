@@ -107,6 +107,12 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursor::createFromBson(
             str::stream() << kStageName << " cannot be executed against a MongoS.",
             !pExpCtx->inMongos && !pExpCtx->fromMongos && !pExpCtx->needsMerge);
 
+    uassert(ErrorCodes::InvalidNamespace,
+            str::stream() << kStageName
+                          << " cannot be executed on an aggregation against a collection."
+                          << " Run the aggregation against the database instead.",
+            pExpCtx->ns.isCollectionlessAggregateNS());
+
     // Parse $backupCursor arguments for incremental backups.
     BackupCursorParameters params =
         BackupCursorParameters::parse(IDLParserErrorContext(""), spec.Obj());

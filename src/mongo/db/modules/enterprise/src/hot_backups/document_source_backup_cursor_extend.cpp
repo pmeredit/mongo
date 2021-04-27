@@ -53,6 +53,12 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursorExtend::createFro
             str::stream() << kStageName << " cannot be executed against a MongoS.",
             !pExpCtx->inMongos && !pExpCtx->fromMongos && !pExpCtx->needsMerge);
 
+    uassert(ErrorCodes::InvalidNamespace,
+            str::stream() << kStageName
+                          << " cannot be executed on an aggregation against a collection."
+                          << " Run the aggregation against the database instead.",
+            pExpCtx->ns.isCollectionlessAggregateNS());
+
     boost::optional<UUID> backupId = boost::none;
     boost::optional<Timestamp> extendTo = boost::none;
 
