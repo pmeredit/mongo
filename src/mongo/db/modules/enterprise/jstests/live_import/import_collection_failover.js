@@ -30,6 +30,11 @@ rst.initiate();
 const primary = rst.getPrimary();
 const secondary = rst.getSecondary();
 
+// The default WC is majority and this test can't satisfy majority writes.
+assert.commandWorked(primary.adminCommand(
+    {setDefaultRWConcern: 1, defaultWriteConcern: {w: 1}, writeConcern: {w: "majority"}}));
+rst.awaitReplication();
+
 // Copy the exported files into the path of each replica set node.
 nodes.forEach(node => copyFilesForExport(collectionProperties, rst.getDbPath(node)));
 

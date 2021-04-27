@@ -75,6 +75,11 @@ function assertLaggedSecondaryGetBlocked() {
     const primaryDB = rst.getPrimary().getDB(dbName);
     const secondaryDB = rst.getSecondary().getDB(dbName);
 
+    // The default WC is majority and this test can't satisfy majority writes.
+    assert.commandWorked(rst.getPrimary().adminCommand(
+        {setDefaultRWConcern: 1, defaultWriteConcern: {w: 1}, writeConcern: {w: "majority"}}));
+    rst.awaitReplication();
+
     let cursor = openBackupCursor(rst.getSecondary());
     let firstBatch = cursor.next();
     assert("checkpointTimestamp" in firstBatch.metadata);
