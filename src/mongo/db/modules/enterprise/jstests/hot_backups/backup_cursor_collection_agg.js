@@ -3,7 +3,7 @@
  * Aggregations against a collection will lock that collection for reading and open a storage
  * transaction as part of lock-free reads.
  *
- * @tags: [requires_replication, requires_wiredtiger]
+ * @tags: [requires_replication, requires_wiredtiger, requires_persistence]
  */
 (function() {
 "use strict";
