@@ -27,14 +27,6 @@ function assertStartupSucceeds(opts) {
 // Default condition expressed explicitly.
 assertStartupSucceeds({auditRuntimeConfiguration: false});
 
-if (!TestData.setParameters.featureFlagRuntimeAuditConfig) {
-    // Refuse to start with runtime auditing enabled if FF is off.
-    const expect = 'Runtime audit configuration has not been enabled via feature flag';
-    assertStartupFails({auditRuntimeConfiguration: true}, expect);
-    jsTest.log('Feature flag is disabled, skipping further checks');
-    return;
-}
-
 // Basic test enabling runtime audit config.
 assertStartupSucceeds({auditRuntimeConfiguration: true});
 

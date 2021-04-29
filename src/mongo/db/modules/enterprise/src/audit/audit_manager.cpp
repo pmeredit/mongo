@@ -203,10 +203,6 @@ void AuditManager::initialize(const moe::Environment& params) {
 
     if (params.count("auditLog.runtimeConfiguration") &&
         params["auditLog.runtimeConfiguration"].as<bool>()) {
-        uassert(ErrorCodes::BadValue,
-                "Runtime audit configuration has not been enabled via feature flag",
-                gFeatureFlagRuntimeAuditConfig.isEnabledAndIgnoreFCV());
-
         uassert(
             ErrorCodes::BadValue,
             "auditLog.filter must not be configured when runtime audit configuration is enabled",

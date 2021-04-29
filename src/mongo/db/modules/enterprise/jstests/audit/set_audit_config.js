@@ -6,11 +6,6 @@
 
 load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
 
-if (!TestData.setParameters.featureFlagRuntimeAuditConfig) {
-    jsTest.log('Skipping, feature flag is not enabled');
-    return;
-}
-
 function assertSameOID(a, b) {
     if (!(a instanceof ObjectId) && (a['$oid'] === undefined)) {
         assert(false, tojson(a) + ' is not an ObjectId');

@@ -216,10 +216,6 @@ private:
             return;
         }
 
-        // (Generic FCV reference): UnitTest.
-        gFeatureFlagRuntimeAuditConfig =
-            FeatureFlag(true, FeatureCompatibilityVersionParser::kLatest);
-
         moe::Environment env;
         ASSERT_OK(env.set(moe::Key("auditLog.destination"), moe::Value("console")));
         ASSERT_OK(env.set(moe::Key("auditLog.runtimeConfiguration"), moe::Value(true)));
