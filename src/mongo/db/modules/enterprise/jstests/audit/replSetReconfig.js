@@ -13,7 +13,7 @@ assert.commandWorked(admin.runCommand({replSetInitiate: {}}));
 // Verify that the node can accept writes before running the reconfig. If the node
 // goes through an election during the reconfig, the reconfig will fail with an
 // InterruptedDueToReplStateChange error.
-assert.soon(() => admin.runCommand({isMaster: 1}).ismaster);
+assert.soon(() => admin.runCommand({hello: 1}).isWritablePrimary);
 
 assert.commandWorked(admin.runCommand({
     replSetReconfig:

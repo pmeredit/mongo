@@ -23,7 +23,7 @@ let config = {_id: replSetName, protocolVersion: 1};
 config.members = [{_id: 0, host: mongo.host}];
 assert.commandWorked(testDB.adminCommand({replSetInitiate: config}));
 // Wait until the single node becomes primary.
-assert.soon(() => testDB.runCommand({ismaster: 1}).ismaster);
+assert.soon(() => testDB.runCommand({hello: 1}).isWritablePrimary);
 // Wait until the primary node generates cluster time sign keys.
 assert.soon(() => adminDB.getCollection('system.keys').count({purpose: 'HMAC'}) >= 2);
 

@@ -52,7 +52,7 @@ function runTests(conn, authenticated, isMongos = false) {
     kUserTestCases.forEach(function(user) {
         kRoleTestCases.forEach(function(role) {
             const iumd = {"$impersonatedUsers": user.test, "$impersonatedRoles": role.test};
-            const cmd = {isMaster: 1, "$audit": iumd};
+            const cmd = {hello: 1, "$audit": iumd};
 
             const pass = (user.pass || (isMongos && user.passOnMongos)) &&
                 (role.pass || (isMongos && role.passOnMongos));
