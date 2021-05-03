@@ -142,8 +142,7 @@ void AuditOpObserver::onDelete(OperationContext* opCtx,
                                const NamespaceString& nss,
                                OptionalCollectionUUID uuid,
                                StmtId stmtId,
-                               bool fromMigrate,
-                               const boost::optional<BSONObj>& deletedDoc) {
+                               const OplogDeleteEntryArgs& args) {
     if (deletingAuditConfigDecoration(opCtx)) {
         clearAuditConfig(opCtx->getClient());
     }

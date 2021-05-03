@@ -119,12 +119,9 @@ public:
     void doDelete(const NamespaceString& nss, BSONObj deletedDoc) {
         auto opCtx = cc().makeOperationContext();
         observer.aboutToDelete(opCtx.get(), nss, deletedDoc);
-        observer.onDelete(opCtx.get(),
-                          nss,
-                          boost::none /* uuid */,
-                          1 /* StmtId */,
-                          false /* fromMigrate */,
-                          deletedDoc);
+        OpObserver::OplogDeleteEntryArgs args;
+        args.deletedDoc = &deletedDoc;
+        observer.onDelete(opCtx.get(), nss, boost::none /* uuid */, 1 /* StmtId */, args);
     }
 
     void doDropDatabase(StringData dbname) {
