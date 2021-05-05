@@ -116,6 +116,13 @@ else:
 
 env = conf.Finish()
 
+# Code in the enterprise module follows the basic.h practices of the community repo.
+env.AppendUnique(
+    FORCEINCLUDES=[
+        'mongo/platform/basic.h',
+    ],
+)
+
 env.SConscript(
     dirs=[
         "src/%s" % feature for feature in feature_dirs if feature in env['MONGO_ENTERPRISE_FEATURES']
