@@ -1,5 +1,5 @@
 // Invocations of {setAuditConfig: ...}
-// @tags: [requires_fcv_49]
+// @tags: [requires_fcv_49, requires_persistence]
 
 (function() {
 'use strict';
