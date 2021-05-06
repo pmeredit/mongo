@@ -63,7 +63,7 @@ public:
                                      TransactionRequirement::kNotAllowed,
                                      LookupRequirement::kNotAllowed,
                                      UnionRequirement::kNotAllowed,
-                                     ChangeStreamRequirement::kBlacklist);
+                                     ChangeStreamRequirement::kDenylist);
         constraints.requiresInputDocSource = false;
 
         return constraints;

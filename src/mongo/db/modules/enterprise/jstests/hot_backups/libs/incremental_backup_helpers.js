@@ -22,7 +22,7 @@ const beginBackup = function(conn, options) {
             jsTestLog({"Failed to open the backup cursor, retrying.": ex});
 
             // We need to update 'thisBackupName' after a failed attempt to open a backup cursor as
-            // WiredTiger blacklists that identifier from being used again immediately. Due to the
+            // WiredTiger denylists that identifier from being used again immediately. Due to the
             // unique format of the thisBackupName, appending a character will be enough here.
             if (options.thisBackupName) {
                 options.thisBackupName += "0";
