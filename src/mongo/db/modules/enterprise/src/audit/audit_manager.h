@@ -36,7 +36,6 @@ enum AuditFormat {
 class AuditManager {
 public:
     AuditManager();
-    ~AuditManager();
 
     bool isEnabled() const {
         return _enabled;

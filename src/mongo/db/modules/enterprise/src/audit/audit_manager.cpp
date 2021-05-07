@@ -41,13 +41,6 @@ AuditManager::AuditManager() {
     _config = std::make_shared<RuntimeConfiguration>();
 }
 
-AuditManager::~AuditManager() {
-    if (_config->filter) {
-        // This intentionally leaks MatchExpression on shutdown.
-        _config->filter.release();
-    }
-}
-
 void AuditManager::setAuditAuthorizationSuccess(bool val) {
     uassert(ErrorCodes::BadValue,
             "auditAuthorizationSuccess may not be changed via set parameter when "
