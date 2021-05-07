@@ -50,8 +50,7 @@ const txnDoc = {
     _id: "txn-insert"
 };
 assert.commandWorked(sessionColl.insert(txnDoc));
-let entry = audit.getNextEntry();
-assert.eq(entry.atype, "authCheck");
+let entry = audit.assertEntry("authCheck");
 assert.eq(entry.param.command, "insert");
 assert.eq(entry.param.ns, sessionColl.getFullName());
 assert.eq(entry.param.args.insert, collName);
@@ -60,8 +59,7 @@ assert.eq(entry.param.args.startTransaction, true);
 assert.eq(entry.param.args.autocommit, false);
 
 session.commitTransaction();
-entry = audit.getNextEntry();
-assert.eq(entry.atype, "authCheck");
+entry = audit.assertEntry("authCheck");
 assert.eq(entry.param.command, "commitTransaction");
 assert.eq(entry.param.args.autocommit, false);
 
@@ -70,16 +68,14 @@ audit.fastForward();
 session.startTransaction();
 assert.docEq(sessionColl.find().toArray(), [txnDoc]);
 
-entry = audit.getNextEntry();
-assert.eq(entry.atype, "authCheck");
+entry = audit.assertEntry("authCheck");
 assert.eq(entry.param.command, "find");
 assert.eq(entry.param.ns, sessionColl.getFullName());
 assert.eq(entry.param.args.startTransaction, true);
 assert.eq(entry.param.args.autocommit, false);
 
 session.abortTransaction();
-entry = audit.getNextEntry();
-assert.eq(entry.atype, "authCheck");
+entry = audit.assertEntry("authCheck");
 assert.eq(entry.param.command, "abortTransaction");
 assert.eq(entry.param.args.autocommit, false);
 
