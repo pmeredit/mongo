@@ -617,7 +617,7 @@ private:
         // change any analysis of the first child.
         //     If however the second argument is not an array literal then we must fail if it
         // contains anything encrypted. For example, if we have
-        // {$in: ["xx-yyy-zzz", "$whitelistedSSNs"]} and 'whitelistedSSNs' is encrypted, we won't be
+        // {$in: ["xx-yyy-zzz", "$allowlistedSSNs"]} and 'allowlistedSSNs' is encrypted, we won't be
         // able to look within the array to evaluate the $in. So in these cases we add an
         // 'Evaluated' Subtree to make sure none of the arguments are encrypted.
         if (dynamic_cast<ExpressionArray*>(in->getOperandList()[1].get())) {

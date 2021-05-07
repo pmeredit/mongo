@@ -134,7 +134,7 @@ void FLEMatchExpression::replaceEncryptedElements(const EncryptionSchemaTreeNode
     invariant(root);
 
     switch (root->matchType()) {
-        // Whitelist of expressions which are allowed on encrypted fields.
+        // Allowlist of expressions which are allowed on encrypted fields.
         case MatchType::EQ: {
             replaceElementsInEqExpression(schemaTree, static_cast<EqualityMatchExpression*>(root));
             break;

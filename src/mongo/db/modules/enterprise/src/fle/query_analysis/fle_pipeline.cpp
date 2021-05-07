@@ -725,7 +725,7 @@ static stdx::unordered_map<
         };                                                                                    \
     }
 
-// Whitelisted set of DocumentSource classes which are supported and/or require action for
+// Allowlisted set of DocumentSource classes which are supported and/or require action for
 // encryption with callbacks for schema propagation and encryption analysis, respectively.
 REGISTER_DOCUMENT_SOURCE_FLE_ANALYZER(DocumentSourceCollStats,
                                       propagateSchemaNoEncryption,

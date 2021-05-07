@@ -36,7 +36,7 @@ namespace {
 // Returns a not-OK Status if MongoDB cannot use the mechanisms for accepting PLAIN
 // authentication attempts.
 Status supportedBindConfiguration() {
-    // If we are not using saslauthd, we must whitelist the authentication
+    // If we are not using saslauthd, we must allowlist the authentication
     // mechanisms we're willing to bind to LDAP servers with.
     std::set<std::string> permittedMechanisms{"DIGEST-MD5", "PLAIN"};
 #ifdef _WIN32
