@@ -277,19 +277,17 @@ void importCollection(OperationContext* opCtx,
         auto importResult = uassertStatusOK(durableCatalog->importCollection(
             opCtx, nss, catalogEntry, storageMetadata, uuidOption));
 
-        const CollectionOptions options =
-            durableCatalog->getCollectionOptions(opCtx, importResult.catalogId);
+        const auto md = durableCatalog->getMetaData(opCtx, importResult.catalogId);
         std::shared_ptr<Collection> ownedCollection = Collection::Factory::get(opCtx)->make(
-            opCtx, nss, importResult.catalogId, options, std::move(importResult.rs));
+            opCtx, nss, importResult.catalogId, md, std::move(importResult.rs));
 
         {
             // Validate index spec.
             StringMap<bool> seenIndex;
-            auto md = durableCatalog->getMetaData(opCtx, importResult.catalogId);
-            for (const auto& index : md.indexes) {
+            for (const auto& index : md->indexes) {
                 uassert(ErrorCodes::BadValue, "Cannot import non-ready indexes", index.ready);
                 auto swValidatedSpec = ownedCollection->getIndexCatalog()->prepareSpecForCreate(
-                    opCtx, index.spec, boost::none);
+                    opCtx, ownedCollection.get(), index.spec, boost::none);
                 if (!swValidatedSpec.isOK()) {
                     uasserted(ErrorCodes::BadValue, swValidatedSpec.getStatus().reason());
                 }
@@ -300,7 +298,7 @@ void importCollection(OperationContext* opCtx,
                         index.spec.woCompare(validatedSpec) == 0);
                 uassert(ErrorCodes::BadValue,
                         str::stream() << "Duplicate index name found in spec list: "
-                                      << md.toBSON()["indexes"],
+                                      << md->toBSON()["indexes"],
                         !seenIndex[index.name()]);
                 seenIndex[index.name()] = true;
             }

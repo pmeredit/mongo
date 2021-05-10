@@ -89,7 +89,7 @@ void exportCollection(OperationContext* opCtx, const NamespaceString& nss, BSONO
         uassert(5091802,
                 str::stream() << "Cannot export collection " << nss << ". Index " << indexName
                               << " has not finished building yet.",
-                entry->isReady(opCtx));
+                entry->isReady(opCtx, collection));
 
         indexIdentsBuilder.append(indexName, constructFilePath(entry->getIdent()));
         appendStorageMetadata(opCtx, entry->getIdent(), &wtMetadataBuilder);
