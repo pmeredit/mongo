@@ -5,22 +5,6 @@
 
 load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
 
-let checkImprovedAuditEnabled = function() {
-    const checkRunner = MongoRunner.runMongod();
-    let ret = true;
-    if (!isImprovedAuditingEnabled(checkRunner)) {
-        ret = false;
-    }
-
-    MongoRunner.stopMongod(checkRunner);
-    return ret;
-};
-
-if (!checkImprovedAuditEnabled()) {
-    jsTest.log('Skipping test as Improved Auditing is not enabled in this environment');
-    return;
-}
-
 const kExplicitLogoutMessage = "Logging out on user request";
 const kImplicitLogoutMessage = "Client has disconnected";
 

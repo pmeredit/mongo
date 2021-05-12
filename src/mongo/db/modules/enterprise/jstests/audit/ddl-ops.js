@@ -6,13 +6,7 @@
 load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
 load("jstests/noPassthrough/libs/index_build.js");
 
-function runTests(mode,
-                  mongo,
-                  audit,
-                  abortIndexBuildTest,
-                  authDoc,
-                  improvedAuditingEnabled,
-                  kExpectSystemUser = {}) {
+function runTests(mode, mongo, audit, abortIndexBuildTest, authDoc, kExpectSystemUser = {}) {
     /**
      * Checks that an audit entry was created for the given `atype` and `param`.
      *
@@ -81,186 +75,139 @@ function runTests(mode,
     assert.commandWorked(testOne.implicitCollection.insert({x: 1}));
     audit.assertEntryForAdmin('createDatabase', {ns: 'testOne'});
     audit.assertEntryForAdmin('createCollection', {ns: 'testOne.implicitCollection'});
-    if (improvedAuditingEnabled) {
-        audit.assertEntryForAdmin('createIndex',
-                                  {
-                                      ns: 'testOne.implicitCollection',
-                                      indexName: '_id_',
-                                      indexSpec: {v: 2, key: {_id: 1}, name: '_id_'},
-                                      indexBuildState: 'IndexBuildStarted'
-                                  },
-                                  {},
-                                  ErrorCodes.OK);
-        audit.assertEntryForAdmin('createIndex',
-                                  {
-                                      ns: 'testOne.implicitCollection',
-                                      indexName: '_id_',
-                                      indexSpec: {v: 2, key: {_id: 1}, name: '_id_'},
-                                      indexBuildState: 'IndexBuildSucceeded'
-                                  },
-                                  {},
-                                  ErrorCodes.OK);
-    } else {
-        audit.assertEntryForAdmin('createIndex',
-                                  {
-                                      ns: 'testOne.implicitCollection',
-                                      indexName: '_id_',
-                                      indexSpec: {v: 2, key: {_id: 1}, name: '_id_'}
-                                  },
-                                  {},
-                                  ErrorCodes.OK);
-    }
+    audit.assertEntryForAdmin('createIndex',
+                              {
+                                  ns: 'testOne.implicitCollection',
+                                  indexName: '_id_',
+                                  indexSpec: {v: 2, key: {_id: 1}, name: '_id_'},
+                                  indexBuildState: 'IndexBuildStarted'
+                              },
+                              {},
+                              ErrorCodes.OK);
+    audit.assertEntryForAdmin('createIndex',
+                              {
+                                  ns: 'testOne.implicitCollection',
+                                  indexName: '_id_',
+                                  indexSpec: {v: 2, key: {_id: 1}, name: '_id_'},
+                                  indexBuildState: 'IndexBuildSucceeded'
+                              },
+                              {},
+                              ErrorCodes.OK);
     assert.commandWorked(testOne.createCollection('explicitCollection'));
     audit.assertEntryForAdmin('createCollection', {ns: 'testOne.explicitCollection'});
-    if (improvedAuditingEnabled) {
-        audit.assertEntryForAdmin('createIndex',
-                                  {
-                                      ns: 'testOne.explicitCollection',
-                                      indexName: '_id_',
-                                      indexSpec: {v: 2, key: {_id: 1}, name: '_id_'},
-                                      indexBuildState: 'IndexBuildStarted'
-                                  },
-                                  {},
-                                  ErrorCodes.OK);
-        audit.assertEntryForAdmin('createIndex',
-                                  {
-                                      ns: 'testOne.explicitCollection',
-                                      indexName: '_id_',
-                                      indexSpec: {v: 2, key: {_id: 1}, name: '_id_'},
-                                      indexBuildState: 'IndexBuildSucceeded'
-                                  },
-                                  {},
-                                  ErrorCodes.OK);
-    } else {
-        audit.assertEntryForAdmin('createIndex',
-                                  {
-                                      ns: 'testOne.explicitCollection',
-                                      indexName: '_id_',
-                                      indexSpec: {v: 2, key: {_id: 1}, name: '_id_'}
-                                  },
-                                  {},
-                                  ErrorCodes.OK);
-    }
+    audit.assertEntryForAdmin('createIndex',
+                              {
+                                  ns: 'testOne.explicitCollection',
+                                  indexName: '_id_',
+                                  indexSpec: {v: 2, key: {_id: 1}, name: '_id_'},
+                                  indexBuildState: 'IndexBuildStarted'
+                              },
+                              {},
+                              ErrorCodes.OK);
+    audit.assertEntryForAdmin('createIndex',
+                              {
+                                  ns: 'testOne.explicitCollection',
+                                  indexName: '_id_',
+                                  indexSpec: {v: 2, key: {_id: 1}, name: '_id_'},
+                                  indexBuildState: 'IndexBuildSucceeded'
+                              },
+                              {},
+                              ErrorCodes.OK);
+
     //// Create Index
     assert.commandWorked(testOne.implicitCollection.createIndex({x: 1}));
-    if (improvedAuditingEnabled) {
-        audit.assertEntryForAdmin('createIndex',
-                                  {
-                                      ns: 'testOne.implicitCollection',
-                                      indexName: 'x_1',
-                                      indexSpec: {v: 2, key: {x: 1}, name: 'x_1'},
-                                      indexBuildState: 'IndexBuildStarted'
-                                  },
-                                  {},
-                                  ErrorCodes.OK);
-        audit.assertEntryForAdmin('createIndex',
-                                  {
-                                      ns: 'testOne.implicitCollection',
-                                      indexName: 'x_1',
-                                      indexSpec: {v: 2, key: {x: 1}, name: 'x_1'},
-                                      indexBuildState: 'IndexBuildSucceeded'
-                                  },
-                                  {},
-                                  ErrorCodes.OK);
-    } else {
-        audit.assertEntryForAdmin('createIndex',
-                                  {
-                                      ns: 'testOne.implicitCollection',
-                                      indexName: 'x_1',
-                                      indexSpec: {v: 2, key: {x: 1}, name: 'x_1'}
-                                  },
-                                  {},
-                                  ErrorCodes.OK);
-    }
+    audit.assertEntryForAdmin('createIndex',
+                              {
+                                  ns: 'testOne.implicitCollection',
+                                  indexName: 'x_1',
+                                  indexSpec: {v: 2, key: {x: 1}, name: 'x_1'},
+                                  indexBuildState: 'IndexBuildStarted'
+                              },
+                              {},
+                              ErrorCodes.OK);
+    audit.assertEntryForAdmin('createIndex',
+                              {
+                                  ns: 'testOne.implicitCollection',
+                                  indexName: 'x_1',
+                                  indexSpec: {v: 2, key: {x: 1}, name: 'x_1'},
+                                  indexBuildState: 'IndexBuildSucceeded'
+                              },
+                              {},
+                              ErrorCodes.OK);
 
-    if (improvedAuditingEnabled) {
-        // The following bit of code starts an index build with createIndex, pauses it during the
-        // collection scan phase, and executes dropIndex in a parallel shell in order to elicit a
-        // createIndex audit event with result code IndexBuildAborted.
+    // The following bit of code starts an index build with createIndex, pauses it during the
+    // collection scan phase, and executes dropIndex in a parallel shell in order to elicit a
+    // createIndex audit event with result code IndexBuildAborted.
 
-        // Since the failpoint to pause index builds does not exist on mongos, abortIndexBuildTest
-        // holds the connection to the test database on the shard RS primary when run in a sharded
-        // environment.
+    // Since the failpoint to pause index builds does not exist on mongos, abortIndexBuildTest
+    // holds the connection to the test database on the shard RS primary when run in a sharded
+    // environment.
 
-        IndexBuildTest.pauseIndexBuilds(abortIndexBuildTest.getMongo());
+    IndexBuildTest.pauseIndexBuilds(abortIndexBuildTest.getMongo());
 
-        const awaitIndexBuild =
-            IndexBuildTest.startIndexBuild(abortIndexBuildTest.getMongo(),
-                                           testOne.implicitCollection.getFullName(),
-                                           {y: 1},
-                                           {},
-                                           [ErrorCodes.IndexBuildAborted],
-                                           undefined,
-                                           authDoc);
-        IndexBuildTest.waitForIndexBuildToScanCollection(
-            abortIndexBuildTest, 'implicitCollection', 'y_1');
+    const awaitIndexBuild = IndexBuildTest.startIndexBuild(abortIndexBuildTest.getMongo(),
+                                                           testOne.implicitCollection.getFullName(),
+                                                           {y: 1},
+                                                           {},
+                                                           [ErrorCodes.IndexBuildAborted],
+                                                           undefined,
+                                                           authDoc);
+    IndexBuildTest.waitForIndexBuildToScanCollection(
+        abortIndexBuildTest, 'implicitCollection', 'y_1');
 
-        const awaitDropIndex = startParallelShell(() => {
-            // The drop index command will be issued against mongos in the sharded cluster, so can
-            // simply auth as the previously-created admin user.
-            assert(db.getSiblingDB('admin').auth('admin', 'admin'));
-            const testDB = db.getSiblingDB('testOne');
-            assert.commandWorked(
-                testDB.runCommand({dropIndexes: 'implicitCollection', index: 'y_1'}));
-        }, mongo.port);
+    const awaitDropIndex = startParallelShell(() => {
+        // The drop index command will be issued against mongos in the sharded cluster, so can
+        // simply auth as the previously-created admin user.
+        assert(db.getSiblingDB('admin').auth('admin', 'admin'));
+        const testDB = db.getSiblingDB('testOne');
+        assert.commandWorked(testDB.runCommand({dropIndexes: 'implicitCollection', index: 'y_1'}));
+    }, mongo.port);
 
-        audit.assertEntryForAdmin('createIndex',
-                                  {
-                                      ns: 'testOne.implicitCollection',
-                                      indexName: 'y_1',
-                                      indexSpec: {v: 2, key: {y: 1}, name: 'y_1'},
-                                      indexBuildState: 'IndexBuildStarted'
-                                  },
-                                  kExpectSystemUser,
-                                  ErrorCodes.OK);
-        audit.assertEntryForAdmin('createIndex',
-                                  {
-                                      ns: 'testOne.implicitCollection',
-                                      indexName: 'y_1',
-                                      indexSpec: {v: 2, key: {y: 1}, name: 'y_1'},
-                                      indexBuildState: 'IndexBuildAborted'
-                                  },
-                                  {},
-                                  ErrorCodes.IndexBuildAborted);
-        audit.assertEntryForAdmin('dropIndex',
-                                  {ns: 'testOne.implicitCollection', indexName: 'y_1'});
+    audit.assertEntryForAdmin('createIndex',
+                              {
+                                  ns: 'testOne.implicitCollection',
+                                  indexName: 'y_1',
+                                  indexSpec: {v: 2, key: {y: 1}, name: 'y_1'},
+                                  indexBuildState: 'IndexBuildStarted'
+                              },
+                              kExpectSystemUser,
+                              ErrorCodes.OK);
+    audit.assertEntryForAdmin('createIndex',
+                              {
+                                  ns: 'testOne.implicitCollection',
+                                  indexName: 'y_1',
+                                  indexSpec: {v: 2, key: {y: 1}, name: 'y_1'},
+                                  indexBuildState: 'IndexBuildAborted'
+                              },
+                              {},
+                              ErrorCodes.IndexBuildAborted);
+    audit.assertEntryForAdmin('dropIndex', {ns: 'testOne.implicitCollection', indexName: 'y_1'});
 
-        IndexBuildTest.resumeIndexBuilds(abortIndexBuildTest.getMongo());
+    IndexBuildTest.resumeIndexBuilds(abortIndexBuildTest.getMongo());
 
-        awaitIndexBuild();
-        awaitDropIndex();
-    }
+    awaitIndexBuild();
+    awaitDropIndex();
+
     // Create index on an empty collection
     assert.commandWorked(testOne.explicitCollection.createIndex({y: 1}));
-    if (improvedAuditingEnabled) {
-        audit.assertEntryForAdmin('createIndex',
-                                  {
-                                      ns: 'testOne.explicitCollection',
-                                      indexName: 'y_1',
-                                      indexSpec: {v: 2, key: {y: 1}, name: 'y_1'},
-                                      indexBuildState: 'IndexBuildStarted'
-                                  },
-                                  {},
-                                  ErrorCodes.OK);
-        audit.assertEntryForAdmin('createIndex',
-                                  {
-                                      ns: 'testOne.explicitCollection',
-                                      indexName: 'y_1',
-                                      indexSpec: {v: 2, key: {y: 1}, name: 'y_1'},
-                                      indexBuildState: 'IndexBuildSucceeded'
-                                  },
-                                  {},
-                                  ErrorCodes.OK);
-    } else {
-        audit.assertEntryForAdmin('createIndex',
-                                  {
-                                      ns: 'testOne.explicitCollection',
-                                      indexName: 'y_1',
-                                      indexSpec: {v: 2, key: {y: 1}, name: 'y_1'}
-                                  },
-                                  {},
-                                  ErrorCodes.OK);
-    }
+    audit.assertEntryForAdmin('createIndex',
+                              {
+                                  ns: 'testOne.explicitCollection',
+                                  indexName: 'y_1',
+                                  indexSpec: {v: 2, key: {y: 1}, name: 'y_1'},
+                                  indexBuildState: 'IndexBuildStarted'
+                              },
+                              {},
+                              ErrorCodes.OK);
+    audit.assertEntryForAdmin('createIndex',
+                              {
+                                  ns: 'testOne.explicitCollection',
+                                  indexName: 'y_1',
+                                  indexSpec: {v: 2, key: {y: 1}, name: 'y_1'},
+                                  indexBuildState: 'IndexBuildSucceeded'
+                              },
+                              {},
+                              ErrorCodes.OK);
 
     assert.commandWorked(testOne.explicitCollection.dropIndex({y: 1}));
     audit.assertEntryForAdmin('dropIndex', {ns: 'testOne.explicitCollection', indexName: 'y_1'});
@@ -268,59 +215,49 @@ function runTests(mode,
     //// Create View
     assert.commandWorked(testOne.createView('implicitView', 'implicitCollection', []));
     const expectImplicitViewTestOne = {ns: 'testOne.implicitView'};
-    if (improvedAuditingEnabled) {
-        expectImplicitViewTestOne.viewOn = 'testOne.implicitCollection';
-        expectImplicitViewTestOne.pipeline = [];
-    }
+    expectImplicitViewTestOne.viewOn = 'testOne.implicitCollection';
+    expectImplicitViewTestOne.pipeline = [];
     audit.assertEntryForAdmin('createCollection', expectImplicitViewTestOne);
 
     assert.commandWorked(
         testOne.createView('addZedView', 'implicitCollection', [{'$addFields': {z: 1}}]));
     const expectZedView = {ns: 'testOne.addZedView'};
-    if (improvedAuditingEnabled) {
-        expectZedView.viewOn = 'testOne.implicitCollection';
-        expectZedView.pipeline = [{'$addFields': {z: 1}}];
-    }
+    expectZedView.viewOn = 'testOne.implicitCollection';
+    expectZedView.pipeline = [{'$addFields': {z: 1}}];
     audit.assertEntryForAdmin('createCollection', expectZedView);
 
     assert.commandWorked(testOne.createView('explicitView', 'explicitCollection', []));
     const expectExplicitView = {ns: 'testOne.explicitView'};
-    if (improvedAuditingEnabled) {
-        expectExplicitView.viewOn = 'testOne.explicitCollection';
-        expectExplicitView.pipeline = [];
-    }
+    expectExplicitView.viewOn = 'testOne.explicitCollection';
+    expectExplicitView.pipeline = [];
     audit.assertEntryForAdmin('createCollection', expectExplicitView);
 
     assert.commandWorked(testTwo.createView('implicitView', 'implicitCollection', []));
     const expectImplicitViewTestTwo = {ns: 'testTwo.implicitView'};
-    if (improvedAuditingEnabled) {
-        expectImplicitViewTestTwo.viewOn = 'testTwo.implicitCollection';
-        expectImplicitViewTestTwo.pipeline = [];
-    }
+    expectImplicitViewTestTwo.viewOn = 'testTwo.implicitCollection';
+    expectImplicitViewTestTwo.pipeline = [];
     audit.assertEntryForAdmin('createCollection', expectImplicitViewTestTwo);
 
     //// Drop views
     testOne.explicitView.drop();
     testOne.addZedView.drop();
 
-    if (improvedAuditingEnabled) {
-        audit.assertEntryForAdmin('dropCollection', expectExplicitView);
-        audit.assertEntryForAdmin('dropCollection', expectZedView);
-        // In sharded environments, dropping a collection or view that doesn't exist does not return
-        // an error by design, but standalones return NamespaceNotFound. Both scenarios are audited
-        // with the NamespaceNotFound error code.
-        if (mode === 'Sharded') {
-            assert.commandWorked(testOne.runCommand({drop: "nonexistentView"}));
-        } else {
-            assert.commandFailedWithCode(testOne.runCommand({drop: "nonexistentView"}),
-                                         [ErrorCodes.NamespaceNotFound]);
-        }
-        const expectNamespaceErrorView = {ns: 'testOne.nonexistentView'};
-        expectNamespaceErrorView.viewOn = '';
-        expectNamespaceErrorView.pipeline = [];
-        audit.assertEntryForAdmin(
-            'dropCollection', expectNamespaceErrorView, {}, ErrorCodes.NamespaceNotFound);
+    audit.assertEntryForAdmin('dropCollection', expectExplicitView);
+    audit.assertEntryForAdmin('dropCollection', expectZedView);
+    // In sharded environments, dropping a collection or view that doesn't exist does not return
+    // an error by design, but standalones return NamespaceNotFound. Both scenarios are audited
+    // with the NamespaceNotFound error code.
+    if (mode === 'Sharded') {
+        assert.commandWorked(testOne.runCommand({drop: "nonexistentView"}));
+    } else {
+        assert.commandFailedWithCode(testOne.runCommand({drop: "nonexistentView"}),
+                                     [ErrorCodes.NamespaceNotFound]);
     }
+    const expectNamespaceErrorView = {ns: 'testOne.nonexistentView'};
+    expectNamespaceErrorView.viewOn = '';
+    expectNamespaceErrorView.pipeline = [];
+    audit.assertEntryForAdmin(
+        'dropCollection', expectNamespaceErrorView, {}, ErrorCodes.NamespaceNotFound);
 
     //// Drop Collections
     testOne.explicitCollection.drop();
@@ -331,35 +268,24 @@ function runTests(mode,
     //// Rename
     assert.writeOK(testOne.origCollection.insert({x: 1}));
     audit.assertEntryForAdmin('createCollection', {ns: 'testOne.origCollection'});
-    if (improvedAuditingEnabled) {
-        audit.assertEntryForAdmin('createIndex',
-                                  {
-                                      ns: 'testOne.origCollection',
-                                      indexName: '_id_',
-                                      indexSpec: {v: 2, key: {_id: 1}, name: '_id_'},
-                                      indexBuildState: 'IndexBuildStarted'
-                                  },
-                                  {},
-                                  ErrorCodes.OK);
-        audit.assertEntryForAdmin('createIndex',
-                                  {
-                                      ns: 'testOne.origCollection',
-                                      indexName: '_id_',
-                                      indexSpec: {v: 2, key: {_id: 1}, name: '_id_'},
-                                      indexBuildState: 'IndexBuildSucceeded'
-                                  },
-                                  {},
-                                  ErrorCodes.OK);
-    } else {
-        audit.assertEntryForAdmin('createIndex',
-                                  {
-                                      ns: 'testOne.origCollection',
-                                      indexName: '_id_',
-                                      indexSpec: {v: 2, key: {_id: 1}, name: '_id_'}
-                                  },
-                                  {},
-                                  ErrorCodes.OK);
-    }
+    audit.assertEntryForAdmin('createIndex',
+                              {
+                                  ns: 'testOne.origCollection',
+                                  indexName: '_id_',
+                                  indexSpec: {v: 2, key: {_id: 1}, name: '_id_'},
+                                  indexBuildState: 'IndexBuildStarted'
+                              },
+                              {},
+                              ErrorCodes.OK);
+    audit.assertEntryForAdmin('createIndex',
+                              {
+                                  ns: 'testOne.origCollection',
+                                  indexName: '_id_',
+                                  indexSpec: {v: 2, key: {_id: 1}, name: '_id_'},
+                                  indexBuildState: 'IndexBuildSucceeded'
+                              },
+                              {},
+                              ErrorCodes.OK);
 
     assert.commandWorked(testOne.origCollection.renameCollection('newCollection', false));
     audit.assertEntryForAdmin('renameCollection',
@@ -368,35 +294,24 @@ function runTests(mode,
     //// Rename with overwrite
     assert.writeOK(testOne.origCollection.insert({x: 2}));
     audit.assertEntryForAdmin('createCollection', {ns: 'testOne.origCollection'});
-    if (improvedAuditingEnabled) {
-        audit.assertEntryForAdmin('createIndex',
-                                  {
-                                      ns: 'testOne.origCollection',
-                                      indexName: '_id_',
-                                      indexSpec: {v: 2, key: {_id: 1}, name: '_id_'},
-                                      indexBuildState: 'IndexBuildStarted'
-                                  },
-                                  {},
-                                  ErrorCodes.OK);
-        audit.assertEntryForAdmin('createIndex',
-                                  {
-                                      ns: 'testOne.origCollection',
-                                      indexName: '_id_',
-                                      indexSpec: {v: 2, key: {_id: 1}, name: '_id_'},
-                                      indexBuildState: 'IndexBuildSucceeded'
-                                  },
-                                  {},
-                                  ErrorCodes.OK);
-    } else {
-        audit.assertEntryForAdmin('createIndex',
-                                  {
-                                      ns: 'testOne.origCollection',
-                                      indexName: '_id_',
-                                      indexSpec: {v: 2, key: {_id: 1}, name: '_id_'}
-                                  },
-                                  {},
-                                  ErrorCodes.OK);
-    }
+    audit.assertEntryForAdmin('createIndex',
+                              {
+                                  ns: 'testOne.origCollection',
+                                  indexName: '_id_',
+                                  indexSpec: {v: 2, key: {_id: 1}, name: '_id_'},
+                                  indexBuildState: 'IndexBuildStarted'
+                              },
+                              {},
+                              ErrorCodes.OK);
+    audit.assertEntryForAdmin('createIndex',
+                              {
+                                  ns: 'testOne.origCollection',
+                                  indexName: '_id_',
+                                  indexSpec: {v: 2, key: {_id: 1}, name: '_id_'},
+                                  indexBuildState: 'IndexBuildSucceeded'
+                              },
+                              {},
+                              ErrorCodes.OK);
     assert.commandWorked(testOne.origCollection.renameCollection('newCollection', true));
     audit.assertEntryForAdmin('dropCollection', {ns: 'testOne.newCollection'});
 
@@ -422,10 +337,7 @@ function runTests(mode,
         // the collections themselves. However, the order of the collections and their indexes
         // relative to each other is arbitrary, so partially rewind to account for that.
         audit.assertEntryForAdmin('dropDatabase', {ns: 'testOne'});
-        if (improvedAuditingEnabled) {
-            audit.assertEntryForAdmin('dropCollection', expectImplicitViewTestOne);
-        }
-
+        audit.assertEntryForAdmin('dropCollection', expectImplicitViewTestOne);
         {
             const startLine = audit._auditLine;
             audit.assertEntryForAdmin(
@@ -470,9 +382,7 @@ function runTests(mode,
             audit.assertEntryForAdmin('dropCollection', {ns: 'testOne.system.views'});
             audit.assertEntryForAdmin('dropIndex',
                                       {ns: dropTestCollNSS('testOne', 'views'), indexName: '_id_'});
-            if (improvedAuditingEnabled) {
-                audit.assertEntryForAdmin('dropCollection', expectImplicitViewTestOne);
-            }
+            audit.assertEntryForAdmin('dropCollection', expectImplicitViewTestOne);
         }
 
         audit.assertEntryForAdmin('dropDatabase', {ns: 'testOne'});
@@ -486,13 +396,9 @@ function runTests(mode,
     assert.commandWorked(testTwo.dropDatabase());
     if (mode === 'Standalone') {
         audit.assertEntryForAdmin('dropDatabase', {ns: 'testTwo'});
-        if (improvedAuditingEnabled) {
-            audit.assertEntryForAdmin('dropCollection', expectImplicitViewTestTwo);
-        }
+        audit.assertEntryForAdmin('dropCollection', expectImplicitViewTestTwo);
     } else {
-        if (improvedAuditingEnabled) {
-            audit.assertEntryForAdmin('dropCollection', expectImplicitViewTestTwo);
-        }
+        audit.assertEntryForAdmin('dropCollection', expectImplicitViewTestTwo);
         audit.assertEntryForAdmin('dropDatabase', {ns: 'testTwo'});
     }
 }
@@ -501,11 +407,6 @@ function unreplicatedNamespaceRegex() {
     return new RegExp('(system.profile)|(local.*)');
 }
 
-// Establish whether or not the featureFlag has been enabled during standalone run.
-// We *should* do this independently during the sharding run,
-// but the feature flags aren't set on mongos.
-// Trust that if it's enabled for mongod here, it'll be enabled for mongod there.
-let improvedAuditingEnabled = false;
 {
     const options = {auth: null};
     jsTest.log('Starting StandaloneTest with options: ' + tojson(options));
@@ -518,11 +419,10 @@ let improvedAuditingEnabled = false;
     assert(admin.auth('admin', 'admin'));
     const abortIndexBuildTest = mongod.getDB('testOne');
     const authDoc = {user: 'admin', pwd: 'admin'};
-    improvedAuditingEnabled = isImprovedAuditingEnabled(mongod);
     audit.fastForward();
 
     jsTest.log('START audit/ddl-ops.js Standalone');
-    runTests('Standalone', mongod, audit, abortIndexBuildTest, authDoc, improvedAuditingEnabled);
+    runTests('Standalone', mongod, audit, abortIndexBuildTest, authDoc);
     MongoRunner.stopMongod(mongod);
     jsTest.log('SUCCESS audit/ddl-ops.js Standalone');
 }
@@ -568,28 +468,20 @@ let improvedAuditingEnabled = false;
     primaryAudit.fastForward();
 
     jsTest.log('START audit/ddl-ops.js Sharded');
-    runTests('Sharded',
-             st.s0,
-             primaryAudit,
-             abortIndexBuildTest,
-             authDoc,
-             improvedAuditingEnabled,
-             kExpectSystemUser);
+    runTests('Sharded', st.s0, primaryAudit, abortIndexBuildTest, authDoc, kExpectSystemUser);
 
-    if (improvedAuditingEnabled) {
-        const secondaryAudit = new AuditSpooler(options.rs.nodes[1].auditPath, false);
-        const ddlAtypes = [
-            'createDatabase',
-            'createCollection',
-            'createIndex',
-            'dropDatabase',
-            'dropCollection',
-            'dropIndex',
-            'importCollection',
-            'renameCollection'
-        ];
-        secondaryAudit.assertAllAtypeEntriesRelaxed(ddlAtypes, {ns: unreplicatedNamespaceRegex()});
-    }
+    const secondaryAudit = new AuditSpooler(options.rs.nodes[1].auditPath, false);
+    const ddlAtypes = [
+        'createDatabase',
+        'createCollection',
+        'createIndex',
+        'dropDatabase',
+        'dropCollection',
+        'dropIndex',
+        'importCollection',
+        'renameCollection'
+    ];
+    secondaryAudit.assertAllAtypeEntriesRelaxed(ddlAtypes, {ns: unreplicatedNamespaceRegex()});
 
     st.stop();
     jsTest.log('SUCCESS audit/ddl-ops.js Sharded');

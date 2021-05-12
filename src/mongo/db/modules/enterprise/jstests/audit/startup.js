@@ -23,12 +23,6 @@ const runTest = function(conn) {
     });
 };
 
-if (!isImprovedAuditingEnabled(st.s0)) {
-    jsTest.log('Skipping test as Improved Auditing is not enabled in this environment');
-    st.stop();
-    return;
-}
-
 jsTest.log("Testing mongos audit startup log");
 runTest(st.s0);
 jsTest.log("SUCCESS mongos audit startup log");

@@ -4,7 +4,6 @@
 
 #include "mongo/platform/basic.h"
 
-#include "audit/audit_features_gen.h"
 #include "audit_event.h"
 #include "audit_event_type.h"
 #include "audit_log.h"
@@ -31,11 +30,6 @@ constexpr auto kNewField = "new"_sd;
 bool isDDLAuditingAllowed(Client* client,
                           const NamespaceString& nsname,
                           boost::optional<const NamespaceString&> renameTarget = boost::none) {
-    if (!gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
-        // DDL Auditing checks are always allowed without improved auditing.
-        return true;
-    }
-
     auto replCoord = repl::ReplicationCoordinator::get(client->getOperationContext());
     if (replCoord) {
         // If the collection is being renamed, audit if operating on a standalone, a primary or if
@@ -74,11 +68,6 @@ void audit::logCreateIndex(Client* client,
                            const NamespaceString& nsname,
                            StringData indexBuildState,
                            ErrorCodes::Error result) {
-    const auto hasImprovedAuditing = gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV();
-    if (!hasImprovedAuditing && indexBuildState != "IndexBuildSucceeded") {
-        return;
-    }
-
     if (!isDDLAuditingAllowed(client, nsname)) {
         return;
     }
@@ -89,9 +78,7 @@ void audit::logCreateIndex(Client* client,
                     builder->append(kNSField, nsname.ns());
                     builder->append(kIndexNameField, indexname);
                     builder->append(kIndexSpecField, *indexSpec);
-                    if (gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
-                        builder->append(kIndexBuildStateField, indexBuildState);
-                    }
+                    builder->append(kIndexBuildStateField, indexBuildState);
                 },
                 result);
 }
@@ -114,10 +101,8 @@ void audit::logCreateView(Client* client,
                 AuditEventType::kCreateCollection,
                 [&](BSONObjBuilder* builder) {
                     builder->append(kNSField, nsname.ns());
-                    if (gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
-                        builder->append(kViewOnField, viewOn);
-                        builder->append(kPipelineField, pipeline);
-                    }
+                    builder->append(kViewOnField, viewOn);
+                    builder->append(kPipelineField, pipeline);
                 },
                 ErrorCodes::OK);
 }
@@ -147,10 +132,6 @@ void audit::logDropIndex(Client* client, StringData indexname, const NamespaceSt
 
 void audit::logDropCollection(Client* client, const NamespaceString& nsname) {
     logNSEvent(client, nsname, AuditEventType::kDropCollection);
-
-    if (!gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
-        return;
-    }
 
     NamespaceString nss(nsname);
     if (nss.isPrivilegeCollection()) {
@@ -199,11 +180,6 @@ void audit::logRenameCollection(Client* client,
                     builder->append(kNewField, target.ns());
                 },
                 ErrorCodes::OK);
-
-    const auto hasImprovedAuditing = gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV();
-    if (!hasImprovedAuditing) {
-        return;
-    }
 
     BSONObjBuilder builder;
     builder.append("renameCollection", source.ns());

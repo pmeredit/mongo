@@ -4,7 +4,6 @@
 
 #include "mongo/platform/basic.h"
 
-#include "audit/audit_features_gen.h"
 #include "audit_event.h"
 #include "audit_event_type.h"
 #include "audit_log.h"
@@ -130,10 +129,6 @@ void logDirectAuthOperation(Client* client,
                             const NamespaceString& nss,
                             const BSONObj& doc,
                             StringData operation) {
-    if (!gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV()) {
-        return;
-    }
-
     if (!nss.isPrivilegeCollection()) {
         return;
     }

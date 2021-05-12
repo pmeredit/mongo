@@ -54,10 +54,6 @@ function checkAppName({appName, conn, audit}) {
 runTestMongod({
     options: {},
     func: function({conn, audit}) {
-        if (!isImprovedAuditingEnabled(conn)) {
-            return;
-        }
-
         checkAppName({appName: undefined, conn: conn, audit: audit});
         checkAppName({appName: "foo", conn: conn, audit: audit});
         checkAppName({appName: "bar", conn: conn, audit: audit});
@@ -67,10 +63,6 @@ runTestMongod({
 runTestMongos({
     options: {},
     func: function({conn, audit}) {
-        if (!isImprovedAuditingEnabled(conn)) {
-            return;
-        }
-
         checkAppName({appName: undefined, conn: conn, audit: audit});
         checkAppName({appName: "foo", conn: conn, audit: audit});
         checkAppName({appName: "bar", conn: conn, audit: audit});

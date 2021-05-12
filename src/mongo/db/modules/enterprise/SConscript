@@ -143,7 +143,6 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
             'src/audit/audit_config.idl',
             'src/audit/audit_event.cpp',
             'src/audit/audit_event_type.idl',
-            'src/audit/audit_features.idl',
             'src/audit/audit_indexes_collections_databases.cpp',
             'src/audit/audit_log.cpp',
             'src/audit/audit_logout.cpp',

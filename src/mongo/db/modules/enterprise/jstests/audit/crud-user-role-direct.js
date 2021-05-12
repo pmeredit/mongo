@@ -208,11 +208,6 @@ function runTests(db, auditPrimary, auditSecondary) {
 
 jsTest.log('Testing on a standalone server...');
 const m = MongoRunner.runMongodAuditLogger({setParameter: {auditAuthorizationSuccess: true}});
-if (!isImprovedAuditingEnabled(m)) {
-    jsTest.log('Skipping test as Improved Auditing is not enabled in this environment');
-    MongoRunner.stopMongod(m);
-    return;
-}
 
 runTests(m.getDB("admin"), m.auditSpooler());
 MongoRunner.stopMongod(m);

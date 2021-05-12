@@ -6,8 +6,6 @@
 
 #include "audit_event.h"
 
-#include "audit/audit_features_gen.h"
-
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_session.h"
@@ -80,22 +78,17 @@ AuditEvent::AuditEvent(Client* client,
 void AuditEvent::serializeClient(Client* client, BSONObjBuilder* builder) {
     invariant(client);
 
-    const auto hasImprovedAuditing = gFeatureFlagImprovedAuditing.isEnabledAndIgnoreFCV();
-    if (hasImprovedAuditing) {
-        client->getUUID().appendToBuilder(builder, kUuid);
-    }
+    client->getUUID().appendToBuilder(builder, kUuid);
 
     if (client->isFromSystemConnection()) {
-        if (hasImprovedAuditing) {
-            {
-                auto localBob = BSONObjBuilder(builder->subobjStart(kLocalEndpointField));
-                localBob.appendBool(kIsSystemUser, true);
-            }
+        {
+            auto localBob = BSONObjBuilder(builder->subobjStart(kLocalEndpointField));
+            localBob.appendBool(kIsSystemUser, true);
+        }
 
-            {
-                auto remoteBob = BSONObjBuilder(builder->subobjStart(kRemoteEndpointField));
-                remoteBob.appendBool(kIsSystemUser, true);
-            }
+        {
+            auto remoteBob = BSONObjBuilder(builder->subobjStart(kRemoteEndpointField));
+            remoteBob.appendBool(kIsSystemUser, true);
         }
     } else if (auto session = client->session()) {
         {

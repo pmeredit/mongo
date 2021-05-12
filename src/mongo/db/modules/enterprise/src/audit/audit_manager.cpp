@@ -9,7 +9,6 @@
 #include <boost/filesystem.hpp>
 
 #include "audit/audit_config_gen.h"
-#include "audit/audit_features_gen.h"
 #include "audit_event.h"
 #include "audit_event_type.h"
 #include "audit_log.h"

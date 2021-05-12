@@ -4,7 +4,6 @@
 
 #include "mongo/platform/basic.h"
 
-#include "audit/audit_features_gen.h"
 #include "audit/audit_manager.h"
 #include "audit/audit_mongod.h"
 #include "mongo/db/dbdirectclient.h"
