@@ -40,8 +40,9 @@ public:
             return true;
         }
 
-        ReadConcernSupportResult supportsReadConcern(repl::ReadConcernLevel level) const {
-            return onlyReadConcernLocalSupported(kStageName, level);
+        ReadConcernSupportResult supportsReadConcern(repl::ReadConcernLevel level,
+                                                     bool isImplicitDefault) const {
+            return onlyReadConcernLocalSupported(kStageName, level, isImplicitDefault);
         }
 
         void assertSupportsMultiDocumentTransaction() const {

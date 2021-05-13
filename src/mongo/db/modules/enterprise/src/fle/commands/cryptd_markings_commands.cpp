@@ -203,7 +203,8 @@ public:
             MONGO_UNREACHABLE;
         }
 
-        ReadConcernSupportResult supportsReadConcern(repl::ReadConcernLevel level) const final {
+        ReadConcernSupportResult supportsReadConcern(repl::ReadConcernLevel level,
+                                                     bool isImplicitDefault) const final {
             MONGO_UNREACHABLE;
         }
 
