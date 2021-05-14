@@ -67,10 +67,15 @@ public:
     }
 };
 
-// On mongocryptd, initialize the service context with a cryptd-specific collator factor. This
+// On mongocryptd, initialize the service context with a cryptd-specific collator factory. This
 // avoids depending on actual ICU sources or data files for a real collation implementation.
-ServiceContext::ConstructorActionRegisterer registerCryptdCollatorFactor{
-    "CreateCryptdCollatorFactory", [](ServiceContext* serviceContext) {
+ServiceContext::ConstructorActionRegisterer registerCryptdCollatorFactory{
+    "CreateCryptdCollatorFactory",
+    // `CreateCryptdCollatorFactory` depends on `CreateCollatorFactory` to ensure that
+    // `CreateCryptdCollatorFactory` is initialized last, as CSFLE assumes it'll use a
+    // `CollatorFactoryCryptd` instance from `CollatorFactoryInterface::get` (cf. SERVER-56906).
+    {"CreateCollatorFactory"},
+    [](ServiceContext* serviceContext) {
         CollatorFactoryInterface::set(serviceContext, std::make_unique<CollatorFactoryCryptd>());
     }};
 
