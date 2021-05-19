@@ -111,6 +111,7 @@ env.Library(
 ldap_connection_sources = [
     'connections/ldap_connection_factory.cpp',
     'connections/ldap_connection_helpers.cpp',
+    'connections/ldap_connection_reaper.cpp',
 ]
 
 if env.TargetOSIs('windows'):

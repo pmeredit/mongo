@@ -21,6 +21,7 @@
 
 #include "../ldap_connection_options.h"
 #include "../ldap_query.h"
+#include "ldap_connection_reaper.h"
 #include "ldap_connection_helpers.h"
 #include "mongo/base/status.h"
 #include "mongo/base/status_with.h"
@@ -83,8 +84,11 @@ public:
 class WindowsLDAPConnection::WindowsLDAPConnectionPIMPL
     : public LDAPSessionHolder<WindowsLDAPSessionParams> {};
 
-WindowsLDAPConnection::WindowsLDAPConnection(LDAPConnectionOptions options)
-    : LDAPConnection(std::move(options)), _pimpl(std::make_unique<WindowsLDAPConnectionPIMPL>()) {
+WindowsLDAPConnection::WindowsLDAPConnection(LDAPConnectionOptions options,
+                                             std::shared_ptr<LDAPConnectionReaper> reaper)
+    : LDAPConnection(std::move(options)),
+      _pimpl(std::make_unique<WindowsLDAPConnectionPIMPL>()),
+      _reaper(std::move(reaper)) {
     _timeoutSeconds = durationCount<Seconds>(_options.timeout);
 }
 
@@ -259,7 +263,21 @@ Status WindowsLDAPConnection::disconnect() {
         return Status::OK();
     }
 
-    return _pimpl->resultCodeToStatus(
-        ldap_unbind_s(_pimpl->getSession()), "ldap_unbind_s", "unbind from LDAP");
+    _reaper->schedule(_pimpl->getSession());
+
+    _pimpl->getSession() = nullptr;
+
+    return Status::OK();
 }
+
+void disconnectLDAPConnection(LDAP* ldap) {
+    LDAPSessionHolder<WindowsLDAPSessionParams> session(ldap);
+
+    auto status =
+        session.resultCodeToStatus(ldap_unbind_s(ldap), "ldap_unbind_s", "unbind from LDAP");
+    if (!status.isOK()) {
+        LOGV2_ERROR(5531601, "Unable to unbind from LDAP", "__error__"_attr = status);
+    }
+}
+
 }  // namespace mongo

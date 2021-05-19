@@ -15,8 +15,10 @@ template <class T>
 class StatusWith;
 
 class LDAPTypeFactory;
+class LDAPConnectionReaper;
 class LDAPConnection;
 struct LDAPConnectionOptions;
+
 /**
  * Interface for factories which produce LDAPConnection objects.
  */
@@ -37,6 +39,7 @@ public:
 private:
     friend class LDAPConnectionFactoryServerStatus;
 
+    std::shared_ptr<LDAPConnectionReaper> _reaper;
     std::shared_ptr<LDAPTypeFactory> _typeFactory;
     std::shared_ptr<executor::ConnectionPool> _pool;
     std::unique_ptr<ServerStatusSection> _serverStatusSection;

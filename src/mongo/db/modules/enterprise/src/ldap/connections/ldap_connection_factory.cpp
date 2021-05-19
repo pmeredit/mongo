@@ -31,6 +31,7 @@
 #include "../ldap_options.h"
 #include "../ldap_query.h"
 #include "ldap/ldap_parameters_gen.h"
+#include "ldap_connection_reaper.h"
 #ifndef _WIN32
 #include "openldap_connection.h"
 #else
@@ -83,11 +84,12 @@ struct LDAPPoolTimingData {
     stdx::unordered_map<HostAndPort, std::shared_ptr<LDAPHostTimingData>> timingData;
 };
 
-std::unique_ptr<LDAPConnection> makeNativeLDAPConn(const LDAPConnectionOptions& opts) {
+std::unique_ptr<LDAPConnection> makeNativeLDAPConn(const LDAPConnectionOptions& opts,
+                                                   std::shared_ptr<LDAPConnectionReaper> reaper) {
 #ifndef _WIN32
-    return std::make_unique<OpenLDAPConnection>(opts);
+    return std::make_unique<OpenLDAPConnection>(opts, reaper);
 #else
-    return std::make_unique<WindowsLDAPConnection>(opts);
+    return std::make_unique<WindowsLDAPConnection>(opts, reaper);
 #endif
 }
 
@@ -171,6 +173,7 @@ public:
                                   const std::shared_ptr<AlarmScheduler>& alarmScheduler,
                                   const HostAndPort& host,
                                   LDAPConnectionOptions options,
+                                  std::shared_ptr<LDAPConnectionReaper> reaper,
                                   size_t generation,
                                   std::shared_ptr<LDAPHostTimingData>);
 
@@ -294,6 +297,7 @@ private:
     std::shared_ptr<AlarmScheduler> _alarmScheduler;
     LDAPTimer _timer;
     LDAPConnectionOptions _options;
+    std::shared_ptr<LDAPConnectionReaper> _reaper;
     std::unique_ptr<LDAPConnection> _conn;
     HostAndPort _target;
     std::shared_ptr<LDAPHostTimingData> _timingData;
@@ -307,7 +311,7 @@ void PooledLDAPConnection::setup(Milliseconds timeout, SetupCallback cb) {
             return;
         }
 
-        _conn = makeNativeLDAPConn(_options);
+        _conn = makeNativeLDAPConn(_options, _reaper);
         auto status = _conn->connect();
         if (!status.isOK()) {
             return cb(this, std::move(status));
@@ -367,6 +371,7 @@ PooledLDAPConnection::PooledLDAPConnection(std::shared_ptr<OutOfLineExecutor> ex
                                            const std::shared_ptr<AlarmScheduler>& alarmScheduler,
                                            const HostAndPort& host,
                                            LDAPConnectionOptions options,
+                                           std::shared_ptr<LDAPConnectionReaper> reaper,
                                            size_t generation,
                                            std::shared_ptr<LDAPHostTimingData> timingData)
     : ConnectionInterface(generation),
@@ -374,6 +379,7 @@ PooledLDAPConnection::PooledLDAPConnection(std::shared_ptr<OutOfLineExecutor> ex
       _alarmScheduler(alarmScheduler),
       _timer(clockSource, alarmScheduler),
       _options(std::move(options)),
+      _reaper(std::move(reaper)),
       _conn(nullptr),
       _target(host),
       _timingData(std::move(timingData)) {}
@@ -476,11 +482,12 @@ std::unique_ptr<LDAPConnection> pooledConnToWrappedConn(ConnectionPool::Connecti
 
 class LDAPTypeFactory : public executor::ConnectionPool::DependentTypeFactoryInterface {
 public:
-    LDAPTypeFactory()
+    LDAPTypeFactory(std::shared_ptr<LDAPConnectionReaper> reaper)
         : _clockSource(SystemClockSource::get()),
           _executor(std::make_shared<ThreadPool>(_makeThreadPoolOptions())),
           _timerScheduler(std::make_shared<AlarmSchedulerPrecise>(_clockSource)),
           _timerRunner({_timerScheduler}),
+          _reaper(std::move(reaper)),
           _timingData(std::make_shared<LDAPPoolTimingData>()) {}
 
     std::shared_ptr<ConnectionPool::ConnectionInterface> makeConnection(const HostAndPort&,
@@ -550,6 +557,7 @@ private:
     std::shared_ptr<AlarmScheduler> _timerScheduler;
     bool _running = false;
     AlarmRunnerBackgroundThread _timerRunner;
+    std::shared_ptr<LDAPConnectionReaper> _reaper;
     std::shared_ptr<LDAPPoolTimingData> _timingData;
 };
 
@@ -584,6 +592,7 @@ std::shared_ptr<executor::ConnectionPool::ConnectionInterface> LDAPTypeFactory::
                                                   _timerScheduler,
                                                   host,
                                                   std::move(options),
+                                                  _reaper,
                                                   generation,
                                                   std::move(timingData));
 }
@@ -657,7 +666,8 @@ BSONObj LDAPConnectionFactoryServerStatus::generateSection(OperationContext* opC
 }
 
 LDAPConnectionFactory::LDAPConnectionFactory(Milliseconds poolSetupTimeout)
-    : _typeFactory(std::make_shared<LDAPTypeFactory>()),
+    : _reaper(std::make_shared<LDAPConnectionReaper>()),
+      _typeFactory(std::make_shared<LDAPTypeFactory>(_reaper)),
       _pool(std::make_shared<executor::ConnectionPool>(
           _typeFactory, "LDAP", makePoolOptions(poolSetupTimeout))),
       _serverStatusSection(std::make_unique<LDAPConnectionFactoryServerStatus>(this)) {}
@@ -666,7 +676,7 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
     const LDAPConnectionOptions& options) {
 
     if (!options.usePooledConnection || !isNativeImplThreadSafe()) {
-        auto conn = makeNativeLDAPConn(options);
+        auto conn = makeNativeLDAPConn(options, _reaper);
         auto connectStatus = conn->connect();
         if (!connectStatus.isOK()) {
             return connectStatus;

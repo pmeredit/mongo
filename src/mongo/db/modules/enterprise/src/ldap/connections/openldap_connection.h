@@ -6,11 +6,14 @@
 
 #include "ldap_connection.h"
 
-#include "mongo/util/net/sockaddr.h"
-
 #include <boost/optional.hpp>
 #include <ldap.h>
 #include <memory>
+
+#include "mongo/util/net/sockaddr.h"
+
+#include "ldap_connection_reaper.h"
+
 
 namespace mongo {
 
@@ -19,7 +22,8 @@ namespace mongo {
  */
 class OpenLDAPConnection final : public LDAPConnection {
 public:
-    explicit OpenLDAPConnection(LDAPConnectionOptions options);
+    explicit OpenLDAPConnection(LDAPConnectionOptions options,
+                                std::shared_ptr<LDAPConnectionReaper> reaper);
     ~OpenLDAPConnection() final;
     Status connect() final;
     Status bindAsUser(const LDAPBindOptions& params) final;
@@ -38,25 +42,13 @@ public:
 private:
     class OpenLDAPConnectionPIMPL;
     std::unique_ptr<OpenLDAPConnectionPIMPL> _pimpl;  // OpenLDAP's state
+    std::shared_ptr<LDAPConnectionReaper> _reaper;
 
     struct timeval _timeout;  // Interval of time after which OpenLDAP's connections fail
     ldap_conncb _callback;    // callback that is called on connection
 
     boost::optional<std::string> _boundUser;
     boost::optional<LDAPBindOptions> _bindOptions;
-
-    /**
-     * Locking OpenLDAPGlobalMutex locks a global mutex if setNeedsGlobalLock was called. Otherwise,
-     * it is a no-op. This is intended to synchronize access to libldap, under known thread-unsafe
-     * conditions.
-     */
-    class OpenLDAPGlobalMutex {
-    public:
-        void lock();
-        void unlock();
-    };
-
-    OpenLDAPGlobalMutex _conditionalMutex;
 };
 
 }  // namespace mongo

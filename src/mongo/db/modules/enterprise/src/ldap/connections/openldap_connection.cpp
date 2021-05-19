@@ -24,6 +24,7 @@
 #include "../ldap_query.h"
 #include "ldap/ldap_parameters_gen.h"
 #include "ldap_connection_helpers.h"
+#include "ldap_connection_reaper.h"
 
 namespace mongo {
 namespace {
@@ -81,6 +82,19 @@ public:
  * wrap session creation with a mutex.
  */
 static Mutex libldapGlobalMutex = MONGO_MAKE_LATCH();
+
+/**
+ * Locking OpenLDAPGlobalMutex locks a global mutex if setNeedsGlobalLock was called. Otherwise,
+ * it is a no-op. This is intended to synchronize access to libldap, under known thread-unsafe
+ * conditions.
+ */
+class OpenLDAPGlobalMutex {
+public:
+    void lock();
+    void unlock();
+};
+
+static OpenLDAPGlobalMutex conditionalMutex;
 
 /**
  * This C-like callback function is used to acquire SASL authentication parameters.
@@ -360,9 +374,11 @@ public:
     SockAddr _peer;
 };
 
-OpenLDAPConnection::OpenLDAPConnection(LDAPConnectionOptions options)
+OpenLDAPConnection::OpenLDAPConnection(LDAPConnectionOptions options,
+                                       std::shared_ptr<LDAPConnectionReaper> reaper)
     : LDAPConnection(std::move(options)),
       _pimpl(std::make_unique<OpenLDAPConnectionPIMPL>()),
+      _reaper(std::move(reaper)),
       _callback(_pimpl->getCallbacks()) {
     Seconds seconds = duration_cast<Seconds>(_options.timeout);
     _timeout.tv_sec = seconds.count();
@@ -520,7 +536,7 @@ Status OpenLDAPConnection::connect() {
 }
 
 Status OpenLDAPConnection::bindAsUser(const LDAPBindOptions& bindOptions) {
-    stdx::lock_guard<OpenLDAPGlobalMutex> lock(_conditionalMutex);
+    stdx::lock_guard<OpenLDAPGlobalMutex> lock(conditionalMutex);
 
     _bindOptions = bindOptions;
     int err = openLDAPBindFunction(_pimpl->getSession(), "default", 0, 0, this);
@@ -546,46 +562,49 @@ boost::optional<std::string> OpenLDAPConnection::currentBoundUser() const {
 }
 
 Status OpenLDAPConnection::checkLiveness() {
-    stdx::lock_guard<OpenLDAPGlobalMutex> lock(_conditionalMutex);
+    stdx::lock_guard<OpenLDAPGlobalMutex> lock(conditionalMutex);
 
     return _pimpl->checkLiveness(&_timeout);
 }
 
 StatusWith<LDAPEntityCollection> OpenLDAPConnection::query(LDAPQuery query) {
-    stdx::lock_guard<OpenLDAPGlobalMutex> lock(_conditionalMutex);
+    stdx::lock_guard<OpenLDAPGlobalMutex> lock(conditionalMutex);
 
     return _pimpl->query(std::move(query), &_timeout);
 }
 
 Status OpenLDAPConnection::disconnect() {
-    stdx::lock_guard<OpenLDAPGlobalMutex> lock(_conditionalMutex);
-
     if (!_pimpl->getSession()) {
         return Status::OK();
     }
 
-    // ldap_unbind_ext_s, contrary to its name, closes the connection to the server.
-    int ret = ldap_unbind_ext_s(_pimpl->getSession(), nullptr, nullptr);
-    if (ret != LDAP_SUCCESS) {
-        return Status(ErrorCodes::OperationFailed,
-                      str::stream() << "Unable to unbind from LDAP: " << ldap_err2string(ret));
-    }
+    _reaper->schedule(_pimpl->getSession());
+
     _pimpl->getSession() = nullptr;
 
     return Status::OK();
 }
 
-void OpenLDAPConnection::OpenLDAPGlobalMutex::lock() {
+void disconnectLDAPConnection(LDAP* ldap) {
+    stdx::lock_guard<OpenLDAPGlobalMutex> lock(conditionalMutex);
+
+    // ldap_unbind_ext_s, contrary to its name, closes the connection to the server.
+    int ret = ldap_unbind_ext_s(ldap, nullptr, nullptr);
+    if (ret != LDAP_SUCCESS) {
+        LOGV2_ERROR(5531602, "Unable to unbind from LDAP", "__error__"_attr = ldap_err2string(ret));
+    }
+}
+
+void OpenLDAPGlobalMutex::lock() {
     if (!OpenLDAPConnection::isThreadSafe()) {
         libldapGlobalMutex.lock();
     }
 }
 
-void OpenLDAPConnection::OpenLDAPGlobalMutex::unlock() {
+void OpenLDAPGlobalMutex::unlock() {
     if (!OpenLDAPConnection::isThreadSafe()) {
         libldapGlobalMutex.unlock();
     }
 }
-
 
 }  // namespace mongo

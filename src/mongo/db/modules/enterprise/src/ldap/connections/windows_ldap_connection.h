@@ -6,6 +6,7 @@
 
 #include "../ldap_type_aliases.h"
 #include "ldap_connection.h"
+#include "ldap_connection_reaper.h"
 
 #include <memory>
 
@@ -21,7 +22,8 @@ class StringData;
  */
 class WindowsLDAPConnection : public LDAPConnection {
 public:
-    WindowsLDAPConnection(LDAPConnectionOptions options);
+    WindowsLDAPConnection(LDAPConnectionOptions options,
+                          std::shared_ptr<LDAPConnectionReaper> reaper);
     ~WindowsLDAPConnection();
     Status connect() final;
     Status bindAsUser(const LDAPBindOptions& options) final;
@@ -33,6 +35,7 @@ public:
 private:
     class WindowsLDAPConnectionPIMPL;
     std::unique_ptr<WindowsLDAPConnectionPIMPL> _pimpl;
+    std::shared_ptr<LDAPConnectionReaper> _reaper;
     boost::optional<std::string> _boundUser;
 
     unsigned long _timeoutSeconds;
