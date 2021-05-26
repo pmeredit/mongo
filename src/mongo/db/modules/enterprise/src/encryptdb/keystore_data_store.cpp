@@ -13,6 +13,7 @@
 #include "encryption_key_manager.h"
 #include "mongo/base/data_builder.h"
 #include "mongo/base/status.h"
+#include "mongo/db/storage/storage_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
@@ -251,6 +252,7 @@ WTDataStore::WTDataStore(const boost::filesystem::path& path,
     // rotations for the keystore database are expected to be exceedingly rare; the benefits would
     // be minimal.
     wtConfig << "create,compatibility=(release=2.9),config_base=false,";
+    wtConfig << "checkpoint=(wait=" << storageGlobalParams.checkpointDelaySecs << "),";
     wtConfig << "log=(enabled,file_max=3MB),transaction_sync=(enabled=true,method=fsync),";
     wtConfig << "extensions=[" << kEncryptionEntrypointConfig << "],";
     wtConfig << _keystoreConfig;
