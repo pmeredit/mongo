@@ -105,6 +105,7 @@ public:
     virtual std::unique_ptr<Session> makeSession() = 0;
     virtual void rollOverKeys() = 0;
     virtual std::uint32_t getRolloverId() const = 0;
+    virtual bool keyStoredThisProcess(const SymmetricKeyId& keyId) const = 0;
 };
 
 }  // namespace mongo

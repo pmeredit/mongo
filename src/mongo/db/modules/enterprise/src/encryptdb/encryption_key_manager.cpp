@@ -358,16 +358,18 @@ StatusWith<std::unique_ptr<SymmetricKey>> EncryptionKeyManager::_readKey(
 
         // Keep the server from starting if all possible fixed fields have been used, rather than
         // disobey NIST's guidelines.
-        if (cursor->incrementAndGetInitializationCount() >=
-            std::numeric_limits<uint32_t>::max() - 10) {
-            return Status(
-                ErrorCodes::Overflow,
-                "Unable to allocate an IV prefix, as the server has been restarted 2^32 times.");
-        }
-
         auto symmetricKey = std::move(*cursor);
-
-        session->update(std::move(cursor), symmetricKey);
+        if (!_keystore->keyStoredThisProcess(cursor->getKeyId())) {
+            // cursor.stored() is true if we've written to storage for this key at least once.
+            // If it's not true, then we need to increment and write.
+            if (cursor->incrementAndGetInitializationCount() >=
+                std::numeric_limits<uint32_t>::max() - 10) {
+                return Status(ErrorCodes::Overflow,
+                              "Unable to allocate an IV prefix, as the server has been restarted "
+                              "2^32 times.");
+            }
+            session->update(std::move(cursor), symmetricKey);
+        }
         return std::move(symmetricKey);
     }
 

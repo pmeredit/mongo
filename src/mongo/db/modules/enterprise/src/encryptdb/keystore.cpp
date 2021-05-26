@@ -14,11 +14,17 @@
 #include "mongo/base/string_data.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/mutex.h"
+#include "mongo/util/lru_cache.h"
 #include "mongo/util/string_map.h"
 #include "symmetric_crypto.h"
 
 namespace mongo {
 namespace {
+// Symmetric key IDs which have been stored during this process instance.
+// By being stored, we know it's a new key, and not one which has been incremented.
+constexpr std::size_t kStoredKeyCacheSize = 1024;
+LRUCache<SymmetricKeyId, bool, SymmetricKeyId::Hash> storedKeys(kStoredKeyCacheSize);
+
 struct KeystoreRecordViewV0 {
     using WTKeyType = const char*;
     using WTValueType = std::tuple<WT_ITEM*, uint32_t, uint32_t>;
@@ -123,6 +129,12 @@ public:
     void rollOverKeys() override;
     std::uint32_t getRolloverId() const override;
 
+    // V0 keystores have no numeric IDs, therefore ignore it in caching storage state.
+    bool keyStoredThisProcess(const SymmetricKeyId& keyId) const final {
+        auto it = storedKeys.cfind(SymmetricKeyId(keyId.name()));
+        return (it != storedKeys.cend()) && it->second;
+    }
+
 private:
     // Create a new WT table with the following schema:
     //
@@ -156,11 +168,13 @@ public:
     void insert(const UniqueSymmetricKey& key) override {
         KeystoreRecordViewV0 view(key);
         dataStoreSession()->insert(view.id.rawData(), view.toTuple());
+        storedKeys.add(SymmetricKeyId(key->getKeyId().name()), true);
     }
 
     void update(iterator it, const UniqueSymmetricKey& key) override {
         KeystoreRecordViewV0 view(key);
         dataStoreSession()->update(it.cursor(), view.toTuple());
+        storedKeys.add(SymmetricKeyId(key->getKeyId().name()), true);
     }
 
 protected:
@@ -230,6 +244,11 @@ public:
     std::unique_ptr<Session> makeSession() override;
     void rollOverKeys() override;
     std::uint32_t getRolloverId() const override;
+
+    bool keyStoredThisProcess(const SymmetricKeyId& keyId) const final {
+        auto it = storedKeys.cfind(keyId);
+        return (it != storedKeys.cend()) && it->second;
+    }
 
 private:
     friend class SessionImplV1;
@@ -306,6 +325,8 @@ public:
                 _parent->_dbNameToKeyIdCurrent.insert({keyId.name(), keyId.id().get()});
         }
 
+        storedKeys.add(keyId, true);
+
         // We don't worry about dbNameToKeyIdOldest mapping here because this key
         // will never have been used in a V0 page.
 
@@ -320,15 +341,17 @@ public:
     void update(iterator it, const UniqueSymmetricKey& key) override {
         KeystoreRecordViewV1 view(it.cursor());
         // Check that the key is fully formed and matches the key the cursor points to
-        invariant(key->getKeyId().id());
-        invariant(view.id == key->getKeyId().id());
-        invariant(view.database == key->getKeyId().name());
+        auto keyId = key->getKeyId();
+        invariant(keyId.id());
+        invariant(view.id == keyId.id());
+        invariant(view.database == keyId.name());
 
         // The ID and key data portions of the key are immutable, we just want to update the
         // initialization count in WT.
         view.initializationCount = key->getInitializationCount();
 
         dataStoreSession()->update(it.cursor(), view.toTuple());
+        storedKeys.add(keyId, true);
     }
 
 protected:
