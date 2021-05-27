@@ -10,6 +10,7 @@
 #include "mongo/util/concurrency/thread_pool.h"
 #include "mongo/util/functional.h"
 #include "mongo/util/out_of_line_executor.h"
+#include "mongo/util/thread_safety_context.h"
 
 namespace mongo {
 namespace {
@@ -27,18 +28,25 @@ static inline ThreadPool::Options _makeThreadPoolOptions() {
 LDAPConnectionReaper::LDAPConnectionReaper()
     : _executor(std::make_shared<ThreadPool>(_makeThreadPoolOptions())) {}
 
-void LDAPConnectionReaper::scheduleReap(reapFunc reaper) {
-    _executor->schedule([r = std::move(reaper)](Status schedStatus) {
-        if (schedStatus.isOK()) {
-            r();
-        }
-        // Else if we are shutdown or running inline, leak the LDAP connection since the server is
-        // shutting down
-    });
+void LDAPConnectionReaper::scheduleReapOrDisconnectInline(reapFunc reaper) {
+    // If the LDAP connection is being reaped before it is safe to spawn multiple threads, the reap
+    // should occur inline rather than being scheduled in the executor. This scenario may occur if
+    // the LDAP smoke test fails upon server startup, before multithreading is enabled.
+    if (ThreadSafetyContext::getThreadSafetyContext()->isSingleThreaded()) {
+        reaper();
+    } else {
+        _executor->schedule([r = std::move(reaper)](Status schedStatus) {
+            if (schedStatus.isOK()) {
+                r();
+            }
+            // Else if we are shutdown or running inline, leak the LDAP connection since the server
+            // is shutting down
+        });
+    }
 }
 
-void LDAPConnectionReaper::schedule(LDAP* ldap) {
-    scheduleReap([ldap] { disconnectLDAPConnection(ldap); });
+void LDAPConnectionReaper::reap(LDAP* ldap) {
+    scheduleReapOrDisconnectInline([ldap] { disconnectLDAPConnection(ldap); });
 }
 
 }  // namespace mongo

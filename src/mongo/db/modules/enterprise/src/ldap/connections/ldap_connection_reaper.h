@@ -22,14 +22,15 @@ public:
     LDAPConnectionReaper();
 
     /**
-     * Schedule the connection reaper to disconnect/unbind a LDAP session on a background thread.
+     * Schedule the connection reaper to disconnect/unbind a LDAP session on a background thread if
+     * multithreading is safe. Otherwise, it will disconnect inline.
      */
-    void schedule(LDAP* ldap);
+    void reap(LDAP* ldap);
 
 private:
     using reapFunc = unique_function<void(void)>;
 
-    void scheduleReap(reapFunc reaper);
+    void scheduleReapOrDisconnectInline(reapFunc reaper);
 
 private:
     std::shared_ptr<OutOfLineExecutor> _executor;

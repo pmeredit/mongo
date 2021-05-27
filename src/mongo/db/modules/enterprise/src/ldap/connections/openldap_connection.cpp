@@ -578,7 +578,7 @@ Status OpenLDAPConnection::disconnect() {
         return Status::OK();
     }
 
-    _reaper->schedule(_pimpl->getSession());
+    _reaper->reap(_pimpl->getSession());
 
     _pimpl->getSession() = nullptr;
 
