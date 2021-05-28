@@ -7,6 +7,28 @@ import sys
 from kmip.services.kmip_server import KMIPServer
 
 def main():
+    logging.config.dictConfig({
+        'version': 1,
+        'disable_existing_loggers': True,
+        'formatters': { 
+            'standard': { 
+                'format': '[%(levelname)s] %(name)s: %(message)s'
+            },
+        },
+        'handlers': {
+            'default': { 
+                'level': 'DEBUG',
+                'class': 'logging.StreamHandler',
+                'formatter': 'standard'
+            },
+        },
+        'loggers': { 
+            '': {
+                'handlers': ['default'],
+                'level': 'DEBUG'
+            }
+        }
+    })
 
     logger = logging.getLogger(__name__)
 
@@ -34,6 +56,8 @@ def main():
 
     try:
         server.serve()
+    except KeyboardInterrupt as e:
+        logger.debug('Shutdown signal received')
     except Exception as e:
         logger.info('Exception received while serving: {0}'.format(e))
     finally:
