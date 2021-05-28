@@ -17,7 +17,6 @@
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/pipeline.h"
 #include "mongo/db/query/plan_executor_factory.h"
-#include "mongo/db/query/query_feature_flags_gen.h"
 #include "mongo/db/server_options.h"
 #include "mongo/db/service_context.h"
 #include "mongo/idl/server_parameter.h"
@@ -230,17 +229,11 @@ const char* usage =
     "Unsupported aggregations stages: $collStags, $currentOp, $geoNear,\n"
     "$graphLookup, $indexStats, $listLocalSessions, $lookup, $out\n";
 
-MONGO_INITIALIZER_GENERAL(MQLRunFlagSetup,
-                          ("EndServerParameterRegistration"),
-                          ("addToDocSourceParserMap_setWindowFields",
-                           "BeginWindowFunctionRegistration"))
+MONGO_INITIALIZER_GENERAL(MQLRunFlagSetup, ("EndServerParameterRegistration"), ())
 (mongo::InitializerContext* ctx) {
     const auto args = ctx->args();
     if (std::find(args.begin(), args.end(), "-f") != args.end()) {
-        auto map = mongo::ServerParameterSet::getGlobal()->getMap();
-        auto paramIt = map.find("featureFlagWindowFunctions");
-        auto flagStatus = paramIt->second->setFromString("1");
-        uassert(5397907, "MQLRun failed to enable window functions", flagStatus.isOK());
+        // Enable any relevant feature flags here.
     }
 }
 
