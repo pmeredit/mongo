@@ -14,6 +14,7 @@
 #include "mongo/db/client.h"
 #include "mongo/db/commands.h"
 #include "mongo/db/namespace_string.h"
+#include "mongo/db/repl/read_concern_args.h"
 #include "mongo/idl/basic_types.h"
 #include "mongo/rpc/object_check.h"
 #include "mongo/rpc/op_msg_rpc_impls.h"
@@ -324,7 +325,11 @@ private:
         BSONObjBuilder builder;
         builder.append("keyAltNames"_sd, altName);
         BSONObj altNameObj(builder.obj());
-        BSONObj dataKeyObj = _conn->findOne(fullNameNS.ns(), Query(altNameObj));
+        BSONObj dataKeyObj = _conn->findOne(fullNameNS.ns(),
+                                            Query(altNameObj),
+                                            nullptr,
+                                            0,
+                                            repl::ReadConcernArgs::kImplicitDefault);
         if (dataKeyObj.isEmpty()) {
             uasserted(ErrorCodes::BadValue, "Invalid keyAltName.");
         }
