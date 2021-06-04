@@ -429,7 +429,7 @@ void reconcileVariableAccess(const ExpressionFieldPath& variableFieldPath,
  * We prefer front-loading work and doing as much as possible in the PreVisitor for
  * organization.
  */
-class IntentionPreVisitor final : public ExpressionVisitor {
+class IntentionPreVisitor final : public ExpressionMutableVisitor {
 public:
     IntentionPreVisitor(const ExpressionContext& expCtx,
                         const EncryptionSchemaTreeNode& schema,
@@ -917,7 +917,7 @@ private:
     std::stack<Subtree>& subtreeStack;
 };
 
-class IntentionInVisitor final : public ExpressionVisitor {
+class IntentionInVisitor final : public ExpressionMutableVisitor {
 public:
     IntentionInVisitor(const ExpressionContext& expCtx,
                        const EncryptionSchemaTreeNode& schema,
@@ -1110,7 +1110,7 @@ private:
     std::stack<Subtree>& subtreeStack;
 };
 
-class IntentionPostVisitor final : public ExpressionVisitor {
+class IntentionPostVisitor final : public ExpressionMutableVisitor {
 public:
     IntentionPostVisitor(const ExpressionContext& expCtx,
                          const EncryptionSchemaTreeNode& schema,
@@ -1580,7 +1580,7 @@ Intention mark(const ExpressionContext& expCtx,
                Expression* expression,
                bool expressionOutputIsCompared) {
     IntentionWalker walker{expCtx, schema, expressionOutputIsCompared};
-    expression_walker::walk(&walker, expression);
+    expression_walker::walk<Expression>(expression, &walker);
     return walker.exitOutermostSubtree(expressionOutputIsCompared);
 }
 
