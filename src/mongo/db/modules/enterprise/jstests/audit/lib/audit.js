@@ -33,6 +33,17 @@ class AuditSpooler {
     }
 
     /**
+     * Prints all new lines in the audit log without advancing pointer
+     * WARNING: this function does not wait, use it for debugging only
+     */
+    printAllNewLines() {
+        const lines = this.getAllLines();
+        for (let it = this._auditLine; it < lines.length; ++it) {
+            print(lines[it]);
+        }
+    }
+
+    /**
      * Reset the AuditSpooler. Useful for rotating logs.
      */
     resetAuditLine() {

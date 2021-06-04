@@ -13,21 +13,26 @@
 "use strict";
 
 load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_helpers.js");
+load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
 
 const replSetName = "rs";
 const kAdminDB = "admin";
 const kUsersColl = "system.users";
 
-const m1 = MongoRunner.runMongod();
-const db1 = m1.getDB(kAdminDB);
-assert.commandWorked(db1.runCommand({createUser: "user1", pwd: "password1", roles: ["root"]}));
-MongoRunner.stopMongod(m1);
+const collectionProperties =
+    exportCollectionExtended(kAdminDB, kUsersColl, "user1", "password1", m1 => {
+        const db1 = m1.getDB(kAdminDB);
+        assert.commandWorked(
+            db1.runCommand({createUser: "user1", pwd: "password1", roles: ["root"]}));
+    });
 
-const collectionProperties = exportCollection(kAdminDB, kUsersColl, null, "user1", "password1");
+assert.gt(collectionProperties.numRecords, NumberLong(0));
+assert.gt(collectionProperties.dataSize, NumberLong(0));
 
 // Start the node with the "replSet" command line option and enable the audit of CRUD ops.
-const mongo = MongoRunner.runMongod(
+const mongo = MongoRunner.runMongodAuditLogger(
     {replSet: replSetName, setParameter: {featureFlagLiveImportExport: true}});
+const audit = mongo.auditSpooler();
 const testDB = mongo.getDB(kAdminDB);
 
 // Initiate the single node replset.
@@ -43,11 +48,16 @@ copyFilesForExport(collectionProperties, mongo.dbpath);
 
 // Wait until the single node becomes primary.
 assert.soon(() => testDB.runCommand({hello: 1}).isWritablePrimary);
+audit.fastForward();
 
 assert.commandWorked(testDB.adminCommand({setParameter: 1, logLevel: 5}));
 assert.commandWorked(testDB.runCommand({importCollection: collectionProperties}));
 assert.commandWorked(testDB.adminCommand({setParameter: 1, logLevel: 0}));
+
 checkLog.contains(mongo, "Invalidating user cache");
+
+audit.assertEntry("importCollection", {"ns": "admin.system.users"});
+audit.assertEntryRelaxed("directAuthMutation", {"ns": "admin.system.users", "operation": "insert"});
 
 MongoRunner.stopMongod(mongo);
 }());

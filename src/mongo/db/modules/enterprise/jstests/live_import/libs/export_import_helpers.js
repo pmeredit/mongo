@@ -2,11 +2,9 @@
 
 /**
  * Creates and exports the collection with namespace 'dbName.collName'. An optional 'ops' parameter
- * is provided that allows operations to be performed on the collection prior to exporting it.
+ * is provided that allows operations to be performed on the mongod prior to exporting it.
  */
-const exportCollection = function(dbName, collName, ops, username, password) {
-    ops = ops || ((coll) => {});
-
+const exportCollectionExtended = function(dbName, collName, username, password, ops) {
     let standalone = MongoRunner.runMongod({setParameter: "featureFlagLiveImportExport=true"});
     let db = standalone.getDB(dbName);
 
@@ -14,7 +12,9 @@ const exportCollection = function(dbName, collName, ops, username, password) {
     db.createCollection(collName);
 
     jsTestLog(`Running operations on collection ${dbName}.${collName}`);
-    ops(db.getCollection(collName));
+    if (ops) {
+        ops(standalone);
+    }
     MongoRunner.stopMongod(standalone);
 
     // After creating the collection and running operations on it, export it.
@@ -35,6 +35,19 @@ const exportCollection = function(dbName, collName, ops, username, password) {
     const collectionProperties = assert.commandWorked(db.runCommand({exportCollection: collName}));
     MongoRunner.stopMongod(standalone);
     return collectionProperties;
+};
+
+/**
+ * Creates and exports the collection with namespace 'dbName.collName'. An optional 'ops' parameter
+ * is provided that allows operations to be performed on the collection prior to exporting it.
+ */
+const exportCollection = function(dbName, collName, ops) {
+    return exportCollectionExtended(dbName, collName, null, null, mongod => {
+        if (ops) {
+            const coll = mongod.getDB(dbName).getCollection(collName);
+            ops(coll);
+        }
+    });
 };
 
 /**

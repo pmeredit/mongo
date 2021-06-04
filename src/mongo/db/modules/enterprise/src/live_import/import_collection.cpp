@@ -8,6 +8,7 @@
 
 #include "import_collection.h"
 
+#include "audit/audit_manager.h"
 #include "live_import/import_collection_coordinator.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/audit.h"
@@ -313,7 +314,8 @@ void importCollection(OperationContext* opCtx,
             numRecords,
             dataSize));
 
-        UncommittedCollections::addToTxn(opCtx, std::move(ownedCollection));
+        // don't std::move, we will need access to the records later for auditing
+        UncommittedCollections::addToTxn(opCtx, ownedCollection);
 
         if (isDryRun) {
             // This aborts the WUOW and rolls back the import.
@@ -331,6 +333,13 @@ void importCollection(OperationContext* opCtx,
                                                                         importedCatalogEntry,
                                                                         storageMetadata,
                                                                         /*dryRun=*/false);
+
+        if (audit::getGlobalAuditManager()->isEnabled() && nss.isPrivilegeCollection()) {
+            const auto cursor = ownedCollection->getCursor(opCtx);
+            while (const auto record = cursor->next()) {
+                audit::logInsertOperation(opCtx->getClient(), nss, record->data.toBson());
+            }
+        }
 
         wunit.commit();
     });
