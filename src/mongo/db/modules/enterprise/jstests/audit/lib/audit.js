@@ -345,6 +345,25 @@ function makeAuditOpts(sourceOpts, isBSON) {
     return Object.extend(auditOpts, sourceOpts, /* deep = */ true);
 }
 
+function makeReplSetAuditOpts(opts = {}, isBSON = false) {
+    const setOpts = Object.assign({nodes: 1}, opts);
+    if (Number.isInteger(setOpts.nodes)) {
+        // e.g. {nodes: 3}
+        const numNodes = setOpts.nodes;
+        setOpts.nodes = [];
+        for (let i = 0; i < numNodes; ++i) {
+            setOpts.nodes[i] = makeAuditOpts({}, isBSON);
+        }
+    } else if ((typeof setOpts.nodes) == 'object') {
+        // e.g. {nodes: { options for single node } }
+        setOpts.nodes = makeAuditOpts(setOpts.nodes, isBSON);
+    } else if (Array.isArray(setOpts.nodes)) {
+        // e.g. {nodes: [{node1Opts}, {node2Opts}, ...]}
+        setOpts.nodes = setOpts.nodes.map((node) => makeAuditOpts(node, isBSON));
+    }
+    return setOpts;
+}
+
 /**
  * Instantiate a variant of MongoRunnner.runMongod(), which provides a custom assertion method
  * for tailing the audit log looking for particular atype entries with matching param objects.
@@ -364,23 +383,8 @@ MongoRunner.runMongodAuditLogger = function(opts, isBSON = false) {
 };
 
 ReplSetTest.runReplSetAuditLogger = function(opts = {}, isBSON = false) {
-    const setOpts = Object.assign({nodes: 1}, opts);
-    if (Number.isInteger(setOpts.nodes)) {
-        // e.g. {nodes: 3}
-        const numNodes = setOpts.nodes;
-        setOpts.nodes = [];
-        for (let i = 0; i < numNodes; ++i) {
-            setOpts.nodes[i] = makeAuditOpts({}, isBSON);
-        }
-    } else if ((typeof setOpts.nodes) == 'object') {
-        // e.g. {nodes: { options for single node } }
-        setOpts.nodes = makeAuditOpts(setOpts.node, isBSON);
-    } else if (Array.isArray(setOpts.nodes)) {
-        // e.g. {nodes: [{node1Opts}, {node2Opts}, ...]}
-        setOpts.nodes = setOpts.nodes.map((node) => makeAuditOps(node, isBSON));
-    }
-
-    const rs = new ReplSetTest(setOpts);
+    const rsOpts = makeReplSetAuditOpts(opts, isBSON);
+    const rs = new ReplSetTest(rsOpts);
     rs.startSet();
     rs.initiate();
     rs.nodes.forEach(function(node) {
@@ -408,12 +412,17 @@ MongoRunner.runShardedClusterAuditLogger = function(opts = {}, baseOptions = {},
     const defaultOpts = {
         mongos: [makeAuditOpts(baseOptions, isBSON)],
         config: [makeAuditOpts(baseOptions, isBSON)],
-        shards: [makeAuditOpts(baseOptions, isBSON)]
+        shards: 1,
+        rs0: makeReplSetAuditOpts(baseOptions, isBSON),
     };
 
     // Beware! This does not do a nested merge, so if your provided opts has an "other" field, it
     // will completely override defaultOpts.other.
-    let clusterOptions = Object.merge(defaultOpts, opts);
+    const clusterOptions = Object.merge(defaultOpts, opts);
+
+    assert(clusterOptions.shards === 1,
+           'only 1 shards is supported but found shard option: ' +
+               tojsononeline(clusterOptions.shards));
 
     const st = new ShardingTest(clusterOptions);
 
@@ -426,17 +435,9 @@ MongoRunner.runShardedClusterAuditLogger = function(opts = {}, baseOptions = {},
         };
     };
 
-    for (const i in st._connections) {
-        let connection = st._connections[i];
-        if (connection.rs && connection.rs.nodes) {
-            connection.rs.nodes.forEach(attachAuditSpool);
-        } else {
-            attachAuditSpool(connection);
-        }
-    }
-
+    st.forEachConnection((conn) => conn.rs.nodes.forEach(attachAuditSpool));
     st.forEachMongos(attachAuditSpool);
-    st._configServers.forEach(attachAuditSpool);
+    st.forEachConfigServer(attachAuditSpool);
 
     return st;
 };

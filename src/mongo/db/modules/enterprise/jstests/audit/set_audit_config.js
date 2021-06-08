@@ -335,7 +335,6 @@ function checkConfigOnNode(test, node) {
     const opts = {
         other: {
             keyFile: kKeyFile,
-            shardAsReplicaSet: false,
         },
     };
     const nodeOpts = {
@@ -373,7 +372,7 @@ function checkConfigOnNode(test, node) {
         return retval;
     };
     sharding.configSpoolers = st._configServers.map((node) => node.auditSpooler());
-    sharding.shardSpoolers = st._connections.map((node) => node.auditSpooler());
+    sharding.shardSpoolers = st._connections.map((conn) => conn.rs.nodes[0].auditSpooler());
     sharding.mongosSpoolers = st._mongos.map((node) => node.auditSpooler());
     sharding.checkConfig = function() {
         sharding.waitFor(function() {
@@ -391,7 +390,7 @@ function checkConfigOnNode(test, node) {
     sharding.restart = function() {
         jsTest.log('Restarting sharding');
         Object.keys(st._configServers).forEach((n) => st.restartConfigServer(n));
-        Object.keys(st._connections).forEach((n) => st.restartMongod(n));
+        Object.keys(st._connections).forEach((n) => st.restartShardRS(n));
         Object.keys(st._mongos).forEach((n) => st.restartMongos(n));
         sharding.conn = st.s;
     };
