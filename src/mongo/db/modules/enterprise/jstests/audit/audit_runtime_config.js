@@ -10,8 +10,9 @@ function assertStartupFails(opts, expect) {
     clearRawMongoProgramOutput();
     // Default in an auditDestination just in case one isn't specified.
     const options = Object.assign({auditDestination: 'console'}, opts);
-    const m = MongoRunner.runMongod(options);
-    assert(!m, "Mongod started when it should not have with opts: " + tojson(opts));
+    assert.throws(() => MongoRunner.runMongod(options),
+                  [],
+                  "Mongod started when it should not have with opts: " + tojson(opts));
     const output = rawMongoProgramOutput();
     assert(output.includes(expect),
            "Could not find expected reason for mongod failing to start: " + expect);

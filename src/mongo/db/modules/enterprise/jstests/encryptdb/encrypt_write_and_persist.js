@@ -9,10 +9,17 @@ var runTest = function(cipherMode, expectSuccessfulStartup, readOnly) {
     var key = assetsPath + "ekf";
     run("chmod", "600", key);
 
-    var md = MongoRunner.runMongod(
-        {enableEncryption: "", encryptionKeyFile: key, encryptionCipherMode: cipherMode});
+    let md = null;
+    let err = null;
+    try {
+        md = MongoRunner.runMongod(
+            {enableEncryption: "", encryptionKeyFile: key, encryptionCipherMode: cipherMode});
+    } catch (e) {
+        err = e;
+    }
     if (!expectSuccessfulStartup) {
         assert.eq(null, md, "Was able to start mongodb with invalid cipher " + cipherMode);
+        assert(err);
         return;
     }
     assert.neq(null, md, "Unable to start mongodb with " + cipherMode);

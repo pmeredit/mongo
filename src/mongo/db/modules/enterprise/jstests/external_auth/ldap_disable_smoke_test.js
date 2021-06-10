@@ -10,8 +10,8 @@ configGenerator.ldapServers = ["192.0.2.1"];
 // Generate a config which uses an LDAP server which doesn't exist. This should fail.
 var config = configGenerator.generateMongodConfig();
 
-var conn = MongoRunner.runMongod(config);
-assert.eq(null, conn);
+assert.throws(
+    () => MongoRunner.runMongod(config), [], "Mongod started when it was expected to fail");
 
 // Edit the config, to disable the smoke test. The server should now start.
 config.ldapValidateLDAPServerConfig = false;

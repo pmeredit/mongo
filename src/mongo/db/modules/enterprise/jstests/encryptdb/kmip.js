@@ -106,11 +106,12 @@ function runTest(cipherMode, extra_opts = {}) {
     assertKeyId(md, 1);
 
     // start mongod with default keyID of "1", and multiple KMIP servers, of which 0 work
-    md = runEncryptedMongod({
-        kmipServerName: "10.0.0.1,192.168.1.1",
-        restart: md,
-    });
-    assert.isnull(md, "Ran mongod with invalid KMIP server address");
+    assert.throws(() => runEncryptedMongod({
+                      kmipServerName: "10.0.0.1,192.168.1.1",
+                      restart: md,
+                  }),
+                  [],
+                  "Ran mongod with invalid KMIP server address");
 
     const kSIGINT = 2;
     stopMongoProgramByPid(kmipServerPid, kSIGINT);

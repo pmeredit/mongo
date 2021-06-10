@@ -91,7 +91,13 @@ function testConfiguration(mechName, expect = false, extraOpts = {}) {
         ldapQueryPassword: "Admin001",
     };
 
-    var conn = MongoRunner.runMongod(Object.merge(opts, extraOpts));
+    let conn = null;
+    let err = null;
+    try {
+        conn = MongoRunner.runMongod(Object.merge(opts, extraOpts));
+    } catch (e) {
+        err = e;
+    }
     assert.eq(expect, conn !== null);
     if (conn) {
         MongoRunner.stopMongod(conn);

@@ -11,8 +11,9 @@ run("chmod", "600", ekfValid1);
 run("chmod", "600", ekfValid2);
 run("chmod", "600", ekfInvalid);
 
-var md1 = MongoRunner.runMongod({enableEncryption: "", encryptionKeyFile: ekfInvalid});
-assert.eq(null, md1, "Possible to start mongodb with an invalid encryption key file.");
+assert.throws(() => MongoRunner.runMongod({enableEncryption: "", encryptionKeyFile: ekfInvalid}),
+              [],
+              "Possible to start mongodb with an invalid encryption key file.");
 
 var md2 = MongoRunner.runMongod({enableEncryption: "", encryptionKeyFile: ekfValid1});
 assert.neq(null, md2, "Mongod did not start up with a valid key file.");
@@ -22,9 +23,11 @@ testdb["foo"].insert({x: 1});
 
 MongoRunner.stopMongod(md2);
 
-var md3 = MongoRunner.runMongod(
-    {restart: md2, remember: true, enableEncryption: "", encryptionKeyFile: ekfValid2});
-assert.eq(null, md3, "Possible to start mongodb with an encryption key file with bad key.");
+assert.throws(
+    () => MongoRunner.runMongod(
+        {restart: md2, remember: true, enableEncryption: "", encryptionKeyFile: ekfValid2}),
+    [],
+    "Possible to start mongodb with an encryption key file with bad key.");
 
 var md4 = MongoRunner.runMongod(
     {restart: md2, remember: true, enableEncryption: "", encryptionKeyFile: ekfValid1});

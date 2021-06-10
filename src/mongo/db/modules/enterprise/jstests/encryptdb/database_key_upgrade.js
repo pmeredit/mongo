@@ -37,8 +37,15 @@ function runMongod(cipher, opts = {}, features = {}) {
         opts.noCleanData = true;
     }
 
-    const mongod = MongoRunner.runMongod(opts);
+    let mongod = null;
+    let err = null;
+    try {
+        mongod = MongoRunner.runMongod(opts);
+    } catch (e) {
+        err = e;
+    }
     if (expectRollover && (cipher == 'AES256-CBC')) {
+        assert(err);
         assert(!mongod, "Mongod rolled over a CBC store.");
         return;
     }
