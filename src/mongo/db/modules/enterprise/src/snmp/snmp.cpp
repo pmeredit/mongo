@@ -998,7 +998,10 @@ public:
                 LOGV2_WARNING(24002, "Error starting SNMPAgent as master", "result"_attr = res);
                 return;
             }
-            LOGV2(23996, "SNMPAgent running as master");
+            LOGV2(1092900,
+                  "SNMPAgent running as master",
+                  "address"_attr = StringData(
+                      netsnmp_ds_get_string(NETSNMP_DS_APPLICATION_ID, NETSNMP_DS_AGENT_PORTS)));
         } else {
             LOGV2(23997, "SNMPAgent running as subagent");
         }
