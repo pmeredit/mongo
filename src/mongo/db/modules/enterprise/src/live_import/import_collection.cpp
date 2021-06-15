@@ -300,8 +300,8 @@ void importCollection(OperationContext* opCtx,
                 uassert(ErrorCodes::BadValue,
                         str::stream() << "Duplicate index name found in spec list: "
                                       << md->toBSON()["indexes"],
-                        !seenIndex[index.name()]);
-                seenIndex[index.name()] = true;
+                        !seenIndex[index.nameStringData()]);
+                seenIndex[index.nameStringData()] = true;
             }
         }
 
