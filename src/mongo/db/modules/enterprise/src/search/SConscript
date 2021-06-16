@@ -19,7 +19,8 @@ env.Library(
         'mongot_task_executor',
     ],
     LIBDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/db/initialize_server_security_state',
+        '$BUILD_DIR/mongo/db/mongod_initializers',
+        '$BUILD_DIR/mongo/s/mongos_initializers',
     ],
     LIBDEPS_TAGS=[
         'lint-allow-nonprivate-on-deps-dependents',
@@ -46,7 +47,6 @@ env.Library(
     source=[
         "mongotmock/mongotmock_buildinfo.cpp",
         "mongotmock/mongotmock_commands.cpp",
-        "mongotmock/mongotmock_initialize_security_state.cpp",
         "mongotmock/mongotmock_ismaster.cpp",
         "mongotmock/mongotmock_options_init.cpp",
         "mongotmock/mongotmock_state.cpp",
@@ -57,7 +57,6 @@ env.Library(
         '$BUILD_DIR/mongo/db/auth/authservercommon',
         '$BUILD_DIR/mongo/db/commands',
         '$BUILD_DIR/mongo/db/commands/test_commands_enabled',
-        '$BUILD_DIR/mongo/db/initialize_server_security_state',
         '$BUILD_DIR/mongo/db/query/command_request_response',
         '$BUILD_DIR/mongo/db/server_options_servers',
         '$BUILD_DIR/mongo/db/wire_version',
