@@ -910,6 +910,12 @@ private:
     void visit(ExpressionFromAccumulator<AccumulatorMergeObjects>*) final {
         ensureNotEncryptedEnterEval("a merge objects aggregation", subtreeStack);
     }
+    void visit(ExpressionTsSecond*) final {
+        ensureNotEncryptedEnterEval("a timestamp second component extractor", subtreeStack);
+    }
+    void visit(ExpressionTsIncrement*) final {
+        ensureNotEncryptedEnterEval("a timestamp increment component extractor", subtreeStack);
+    }
     void visit(ExpressionTests::Testable*) final {}
 
     const ExpressionContext& expCtx;
@@ -1093,6 +1099,8 @@ private:
     void visit(ExpressionFromAccumulator<AccumulatorStdDevSamp>*) final {}
     void visit(ExpressionFromAccumulator<AccumulatorSum>*) final {}
     void visit(ExpressionFromAccumulator<AccumulatorMergeObjects>*) final {}
+    void visit(ExpressionTsSecond*) final {}
+    void visit(ExpressionTsIncrement*) final {}
     void visit(ExpressionTests::Testable*) final {}
 
 public:
@@ -1520,6 +1528,12 @@ private:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionFromAccumulator<AccumulatorMergeObjects>*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionTsSecond*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionTsIncrement*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
 

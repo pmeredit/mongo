@@ -479,6 +479,12 @@ public:
     void visit(const ExpressionSetField*) {
         _tracker.enterEvaluateOrCompare();
     }
+    void visit(const ExpressionTsSecond*) {
+        _tracker.enterEvaluateOrCompare();
+    }
+    void visit(const ExpressionTsIncrement*) {
+        _tracker.enterEvaluateOrCompare();
+    }
 
     void visit(const ExpressionCond*) {
         // We enter evaluate on the first child (if branch), since the result of the expression is
@@ -687,6 +693,8 @@ public:
     void visit(const ExpressionToHashedIndexKey*) {}
     void visit(const ExpressionGetField*) {}
     void visit(const ExpressionSetField*) {}
+    void visit(const ExpressionTsSecond*) {}
+    void visit(const ExpressionTsIncrement*) {}
 
 
     void visit(const ExpressionCond*) {
@@ -1103,6 +1111,12 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionSetField*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(const ExpressionTsSecond*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(const ExpressionTsIncrement*) {
         _tracker.exitEvaluateOrCompare();
     }
 
