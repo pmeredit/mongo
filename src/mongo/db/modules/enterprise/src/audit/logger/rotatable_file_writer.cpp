@@ -187,6 +187,7 @@ Status RotatableFileWriter::Use::setFileName(const std::string& name, bool appen
 
 Status RotatableFileWriter::Use::rotate(bool renameOnRotate,
                                         const std::string& renameTarget,
+                                        bool append,
                                         std::function<void(Status)> onMinorError) {
     if (_writer->_stream) {
         _writer->_stream->flush();
@@ -231,7 +232,7 @@ Status RotatableFileWriter::Use::rotate(bool renameOnRotate,
             }
         }
     }
-    return _openFileStream(false);
+    return _openFileStream(append);
 }
 
 Status RotatableFileWriter::Use::status() {

@@ -40,7 +40,7 @@ TEST_F(RotatableFileWriterTest, RotationTest) {
         ASSERT_OK(writerUse.setFileName(logFileName, false));
         ASSERT_TRUE(writerUse.stream() << "Level 1 message." << std::endl);
         ASSERT_TRUE(writerUse.stream() << "Level 2 message." << std::endl);
-        ASSERT_OK(writerUse.rotate(true, logFileNameRotated, nullptr));
+        ASSERT_OK(writerUse.rotate(true, logFileNameRotated, true, nullptr));
         ASSERT_TRUE(writerUse.stream() << "Level 3 message." << std::endl);
         ASSERT_TRUE(writerUse.stream() << "Level 4 message." << std::endl);
     }

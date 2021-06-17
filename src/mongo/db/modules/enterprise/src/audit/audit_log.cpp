@@ -20,6 +20,7 @@
 #include "mongo/db/server_options.h"
 #include "mongo/logv2/log.h"
 #include "mongo/logv2/log_util.h"
+#include "mongo/util/time_support.h"
 
 namespace mongo::audit {
 
@@ -38,7 +39,7 @@ public:
         auto target = getGlobalAuditManager()->getPath() + suffix.toString();
         std::vector<Status> errors;
         Status result = logger::RotatableFileWriter::Use(_writer.get())
-                            .rotate(renameFiles, target, [&](Status s) {
+                            .rotate(renameFiles, target, true /* append */, [&](Status s) {
                                 errors.push_back(s);
                                 if (onMinorError)
                                     onMinorError(s);
@@ -168,9 +169,14 @@ void AuditManager::_initializeAuditLog() {
             }
 
             auto writer = std::make_unique<logger::RotatableFileWriter>();
-            auto status = logger::RotatableFileWriter::Use(writer.get())
-                              .setFileName(auditLogPath, true /* append */);
-            uassertStatusOK(status);
+            uassertStatusOK(logger::RotatableFileWriter::Use(writer.get())
+                                .setFileName(auditLogPath, true /* append */));
+
+            uassertStatusOK(logger::RotatableFileWriter::Use(writer.get())
+                                .rotate(serverGlobalParams.logRenameOnRotate,
+                                        auditLogPath + terseCurrentTimeForFilename(),
+                                        true /* append */,
+                                        nullptr));
 
             if (format == AuditFormatJsonFile) {
                 auditLogAppender.reset(new JSONAppender(std::move(writer)));

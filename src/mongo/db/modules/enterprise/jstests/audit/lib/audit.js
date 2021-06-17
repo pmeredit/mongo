@@ -324,6 +324,120 @@ class AuditSpooler {
     }
 }
 
+class StandaloneFixture {
+    constructor() {
+        this.logPathMongod = MongoRunner.dataPath + "mongod.log";
+        this.auditPath = MongoRunner.dataPath + "audit.log";
+    }
+
+    startProcess(opts = {}) {
+        this.opts = {
+            logpath: this.logPathMongod,
+            auth: "",
+            setParameter: "auditAuthorizationSuccess=true",
+            auditPath: this.auditPath,
+        };
+        Object.assign(this.opts, opts);
+
+        const conn = MongoRunner.runMongodAuditLogger(this.opts, false);
+
+        this.audit = conn.auditSpooler();
+        this.admin = conn.getDB("admin");
+
+        this.conn = conn;
+        this.logPath = this.conn.fullOptions.logpath;
+        return {"conn": this.conn, "audit": this.audit, "admin": this.admin};
+    }
+
+    createUserAndAuth() {
+        assert.commandWorked(this.admin.runCommand(
+            {createUser: "user1", pwd: "pwd", roles: [{role: "root", db: "admin"}]}));
+
+        assert(this.admin.auth({user: "user1", pwd: "pwd"}));
+
+        assert.commandWorked(this.admin.runCommand(
+            {createUser: "user2", pwd: "pwd", roles: [{role: "root", db: "admin"}]}));
+    }
+
+    restartMainFixtureProcess(conn, options, uncleanStop) {
+        jsTest.log('Restarting standalone fixture');
+        if (uncleanStop) {
+            MongoRunner.stopMongod(conn, 9, {allowedExitCode: MongoRunner.EXIT_SIGKILL});
+        } else {
+            MongoRunner.stopMongod(conn);
+        }
+
+        this.conn = MongoRunner.runMongod(options);
+    }
+
+    stopProcess() {
+        MongoRunner.stopMongod(this.conn);
+    }
+}
+
+// Used to test mongos in a sharded cluster
+class ShardingFixture {
+    constructor() {
+        this.logPathMongos = MongoRunner.dataPath + "mongos.log";
+        this.auditPath = MongoRunner.dataPath + "audit.log";
+    }
+
+    startProcess(opts = {}) {
+        this.opts = {
+            mongos: 1,
+            config: 1,
+            shards: 1,
+            other: {
+                mongosOptions: {
+                    logpath: this.logPathMongos,
+                    auth: null,
+                    setParameter: "auditAuthorizationSuccess=true",
+                    auditPath: this.auditPath,
+                    auditDestination: "file",
+                    auditFormat: "JSON",
+                },
+            }
+        };
+        Object.assign(this.opts, opts);
+
+        const st = MongoRunner.runShardedClusterAuditLogger(this.opts);
+
+        this.audit = st.s0.auditSpooler();
+        this.admin = st.s0.getDB("admin");
+
+        this.st = st;
+        this.logPath = this.st.s0.fullOptions.logpath;
+        return {"conn": this.st.s0, "audit": this.audit, "admin": this.admin};
+    }
+
+    createUserAndAuth() {
+        assert.commandWorked(this.admin.runCommand(
+            {createUser: "user1", pwd: "pwd", roles: [{role: "root", db: "admin"}]}));
+
+        assert(this.admin.auth({user: "user1", pwd: "pwd"}));
+
+        assert.commandWorked(this.admin.runCommand(
+            {createUser: "user2", pwd: "pwd", roles: [{role: "root", db: "admin"}]}));
+    }
+
+    restartMainFixtureProcess(conn, options, uncleanStop) {
+        jsTest.log('Restarting sharding');
+        Object.keys(this.st._mongos).forEach((n) => this.st.restartMongos(n, options));
+        this.conn = this.st.s0;
+    }
+
+    stopProcess() {
+        this.st.stop();
+    }
+}
+
+// Checks the logPath defined above for the specific ID. Does not use any system logs or joint
+// logs.
+function ContainsLogWithId(id, fixture) {
+    const logPath = fixture.logPath;
+    return cat(logPath).trim().split("\n").some((line) => JSON.parse(line).id === id);
+}
+
 function makeAuditOpts(sourceOpts, isBSON) {
     assert(sourceOpts.auditDestination === undefined || sourceOpts.auditDestination === "file",
            '"auditDestination" must either be unset or "file"');

@@ -57,7 +57,9 @@ public:
          * Rotates the currently opened file into "renameTarget", and open a new file
          * with the name previously set via setFileName().
          *
-         * renameFiles - true we rename the log file, false we expect it was renamed externally
+         * renameFile - true we rename the log file, false we expect it was renamed externally
+         *
+         * append - true we open the log file in append mode, false it is truncated
          *
          * Returns Status::OK() on success.  If the rename fails, returns
          * ErrorCodes::FileRenameFailed, and the stream continues to write to the unrotated
@@ -67,6 +69,7 @@ public:
          */
         Status rotate(bool renameFile,
                       const std::string& renameTarget,
+                      bool append,
                       std::function<void(Status)> onMinorError);
 
         /**

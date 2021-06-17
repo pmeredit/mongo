@@ -75,6 +75,25 @@ class SetAuditConfigFixture {
     }
 
     /**
+     * Reset audit line on all spooler nodes.
+     */
+    resetAuditLineAll() {
+        let spoolers;
+
+        if (this.spoolers !== undefined) {
+            spoolers = this.spoolers;
+        } else {
+            spoolers = [].concat(this.mongosSpoolers)
+                           .concat(this.shardSpoolers)
+                           .concat(this.configSpoolers);
+        }
+
+        spoolers.forEach(function(audit) {
+            audit.resetAuditLine();
+        });
+    }
+
+    /**
      * Check for an audit event on all spooler nodes.
      * e.g. auditConfigure observed on all replset members
      */
@@ -196,6 +215,9 @@ class SetAuditConfigFixture {
         this.restart(this);
         assert(this.conn, "Failed to restart");
         jsTest.log('Restarted');
+
+        // Reset audit line on all spoolers
+        this.resetAuditLineAll();
 
         // Rebind collections since we have a new connection.
         admin = this.conn.getDB('admin');

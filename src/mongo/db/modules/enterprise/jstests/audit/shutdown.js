@@ -29,8 +29,9 @@ load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
     const st = MongoRunner.runShardedClusterAuditLogger({});
     const auditMongos = st.s0.auditSpooler();
 
-    st.restartMongos(0, st.s0.opts);
+    st.stopMongos(0, st.s0.opts);
     auditMongos.assertEntry("shutdown", {});
+    st.restartMongos(0, st.s0.opts);
 
     st.stop();
 

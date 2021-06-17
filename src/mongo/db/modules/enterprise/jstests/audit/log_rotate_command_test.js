@@ -9,22 +9,12 @@ load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
 const kListeningOnID = 23015;
 const kLogRotationInitiatedID = 23166;
 
-let logPathMongod = MongoRunner.dataPath + "mongod.log";
-let logPathMongos = MongoRunner.dataPath + "mongos.log";
-let auditPath = MongoRunner.dataPath + "audit.log";
-
-// Checks the logPath defined above for the specific ID. Does not use any system logs or joint
-// logs.
-function ContainsLogWithId(id, fixture) {
-    const logPath = fixture.logPath;
-    return cat(logPath).trim().split("\n").some((line) => JSON.parse(line).id === id);
-}
-
 print("Testing functionality of rotating both logs.");
-let testRotateLogs = function(fixture) {
+function testRotateLogs(fixture) {
     {
         print("Testing functionality of rotating both the server and audit logs.");
-        var {conn, audit, admin} = fixture.startProcess();
+        const {conn, audit, admin} = fixture.startProcess();
+        fixture.createUserAndAuth();
 
         admin.auth({user: "user2", pwd: "wrong"});
 
@@ -64,7 +54,9 @@ let testRotateLogs = function(fixture) {
 
     {
         print("Testing functionality of rotating just the server log.");
-        var {conn, audit, admin} = fixture.startProcess();
+        const {conn, audit, admin} = fixture.startProcess();
+        fixture.createUserAndAuth();
+
         admin.auth({user: "user1", pwd: "wrong"});
 
         assert(ContainsLogWithId(kListeningOnID, fixture));
@@ -93,7 +85,9 @@ let testRotateLogs = function(fixture) {
 
     {
         print("Testing functionality of rotating just the audit log.");
-        var {conn, audit, admin} = fixture.startProcess();
+        const {conn, audit, admin} = fixture.startProcess();
+        fixture.createUserAndAuth();
+
         admin.auth({user: "user1", pwd: "wrong"});
 
         assert(ContainsLogWithId(kListeningOnID, fixture));
@@ -117,44 +111,10 @@ let testRotateLogs = function(fixture) {
 
         fixture.stopProcess();
     }
-};
+}
 
 {
-    class StandaloneFixture {
-        constructor() {
-        }
-
-        startProcess() {
-            const conn = MongoRunner.runMongodAuditLogger({
-                logpath: logPathMongod,
-                auth: "",
-                setParameter: "auditAuthorizationSuccess=true",
-                auditPath: auditPath,
-            },
-                                                          false);
-
-            this.audit = conn.auditSpooler();
-            this.admin = conn.getDB("admin");
-
-            assert.commandWorked(this.admin.runCommand(
-                {createUser: "user1", pwd: "pwd", roles: [{role: "root", db: "admin"}]}));
-
-            assert(this.admin.auth({user: "user1", pwd: "pwd"}));
-
-            assert.commandWorked(this.admin.runCommand(
-                {createUser: "user2", pwd: "pwd", roles: [{role: "root", db: "admin"}]}));
-
-            this.conn = conn;
-            this.logPath = logPathMongod;
-            return {"conn": this.conn, "audit": this.audit, "admin": this.admin};
-        }
-
-        stopProcess() {
-            MongoRunner.stopMongod(this.conn);
-        }
-    }
-
-    let standaloneFixture = new StandaloneFixture();
+    const standaloneFixture = new StandaloneFixture();
 
     jsTest.log("Testing rotate functionality on standalone");
     testRotateLogs(standaloneFixture);
@@ -163,49 +123,7 @@ let testRotateLogs = function(fixture) {
 sleep(2000);
 
 {
-    class ShardingFixture {
-        constructor() {
-        }
-
-        startProcess() {
-            const st = MongoRunner.runShardedClusterAuditLogger({
-                mongos: 1,
-                config: 1,
-                shards: 1,
-                other: {
-                    mongosOptions: {
-                        logpath: logPathMongos,
-                        auth: null,
-                        setParameter: "auditAuthorizationSuccess=true",
-                        auditPath: auditPath,
-                        auditDestination: "file",
-                        auditFormat: "JSON",
-                    },
-                }
-            });
-
-            this.audit = st.s0.auditSpooler();
-            this.admin = st.s0.getDB("admin");
-
-            assert.commandWorked(this.admin.runCommand(
-                {createUser: "user1", pwd: "pwd", roles: [{role: "root", db: "admin"}]}));
-
-            assert(this.admin.auth({user: "user1", pwd: "pwd"}));
-
-            assert.commandWorked(this.admin.runCommand(
-                {createUser: "user2", pwd: "pwd", roles: [{role: "root", db: "admin"}]}));
-
-            this.st = st;
-            this.logPath = logPathMongos;
-            return {"conn": this.st.s0, "audit": this.audit, "admin": this.admin};
-        }
-
-        stopProcess() {
-            this.st.stop();
-        }
-    }
-
-    let shardingFixture = new ShardingFixture();
+    const shardingFixture = new ShardingFixture();
 
     jsTest.log("Testing rotate functionality on sharded cluster");
     testRotateLogs(shardingFixture);
