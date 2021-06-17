@@ -355,10 +355,14 @@ function runTests(testCallback, configGenerator, callbackOptions) {
     TestData.skipCheckingIndexesConsistentAcrossCluster = true;
 
     // Needs proper x509 setup so connections from shell can talk to shards directly.
-    // Tests don't do any migration anyway, so no need to run the hook.
+    // Tests don't do any migration anyway, so no need to run the hooks.
     TestData.skipCheckOrphans = true;
+    TestData.skipCheckDBHashes = true;
 
-    var st = new ShardingTest(configGenerator.generateShardingConfig());
+    const stConfig = configGenerator.generateShardingConfig();
+    stConfig.other.writeConcernMajorityJournalDefault = wcMajorityJournalDefault;
+
+    var st = new ShardingTest(stConfig);
     setupTest(st.s0);
     st.configRS.nodes.forEach(userExists);
 
