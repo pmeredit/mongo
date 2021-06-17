@@ -8,6 +8,7 @@
 
 #include <boost/filesystem/operations.hpp>
 #include <cstdio>
+#include <fmt/format.h>
 #include <fstream>
 
 #include "mongo/base/string_data.h"
@@ -17,6 +18,9 @@ namespace mongo {
 namespace logger {
 
 namespace {
+
+using namespace fmt::literals;
+
 /**
  * Renames file "oldName" to "newName".
  *
@@ -181,36 +185,49 @@ Status RotatableFileWriter::Use::setFileName(const std::string& name, bool appen
     return _openFileStream(append);
 }
 
-Status RotatableFileWriter::Use::rotate(bool renameOnRotate, const std::string& renameTarget) {
+Status RotatableFileWriter::Use::rotate(bool renameOnRotate,
+                                        const std::string& renameTarget,
+                                        std::function<void(Status)> onMinorError) {
     if (_writer->_stream) {
         _writer->_stream->flush();
 
         if (renameOnRotate) {
-            try {
-                if (boost::filesystem::exists(renameTarget)) {
-                    return Status(ErrorCodes::FileRenameFailed,
-                                  str::stream()
-                                      << "Renaming file " << _writer->_fileName << " to "
-                                      << renameTarget << " failed; destination already exists");
+            auto targetExists = [&]() -> StatusWith<bool> {
+                try {
+                    return boost::filesystem::exists(renameTarget);
+                } catch (const boost::exception&) {
+                    return exceptionToStatus();
                 }
-            } catch (const std::exception& e) {
-                return Status(ErrorCodes::FileRenameFailed,
-                              str::stream() << "Renaming file " << _writer->_fileName << " to "
-                                            << renameTarget
-                                            << " failed; Cannot verify whether destination "
-                                               "already exists: "
-                                            << e.what());
+            }();
+
+            if (!targetExists.isOK()) {
+                return Status(ErrorCodes::FileRenameFailed, targetExists.getStatus().reason())
+                    .withContext("Cannot verify whether destination already exists: {}"_format(
+                        renameTarget));
+            }
+
+            if (targetExists.getValue()) {
+                if (onMinorError)
+                    onMinorError({ErrorCodes::FileRenameFailed,
+                                  "Target already exists during log rotation. Skipping this file. "
+                                  "target={}, file={}"_format(renameTarget, _writer->_fileName)});
+                return Status::OK();
             }
 
             boost::system::error_code ec;
             boost::filesystem::rename(_writer->_fileName, renameTarget, ec);
             if (ec) {
-                return Status(ErrorCodes::FileRenameFailed,
-                              str::stream()
-                                  << "Failed  to rename \"" << _writer->_fileName << "\" to \""
-                                  << renameTarget << "\": " << ec.message());
-                // TODO(schwerin): Make errnoWithDescription() available in the logger library, and
-                // use it here.
+                if (ec == boost::system::errc::no_such_file_or_directory) {
+                    if (onMinorError)
+                        onMinorError(
+                            {ErrorCodes::FileRenameFailed,
+                             "Source file was missing during log rotation. Creating a new one. "
+                             "file={}"_format(_writer->_fileName)});
+                } else {
+                    return Status(ErrorCodes::FileRenameFailed,
+                                  "Failed to rename {} to {}: {}"_format(
+                                      _writer->_fileName, renameTarget, ec.message()));
+                }
             }
         }
     }

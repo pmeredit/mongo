@@ -31,7 +31,9 @@ public:
     /**
      * Perform log rotation (if applicable)
      */
-    virtual Status rotate(bool renameFiles, StringData suffix) {
+    virtual Status rotate(bool renameFiles,
+                          StringData suffix,
+                          std::function<void(Status)> onMinorError) {
         return Status::OK();
     }
 };

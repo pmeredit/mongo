@@ -65,7 +65,9 @@ public:
          * ErrorCodes::FileNotOpen, and the stream continues to target the original file, though
          * under its new name.
          */
-        Status rotate(bool renameFile, const std::string& renameTarget);
+        Status rotate(bool renameFile,
+                      const std::string& renameTarget,
+                      std::function<void(Status)> onMinorError);
 
         /**
          * Returns the status of the stream.

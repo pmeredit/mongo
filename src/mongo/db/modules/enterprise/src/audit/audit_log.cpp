@@ -32,9 +32,21 @@ public:
     RotatableAuditFileAppender(std::unique_ptr<logger::RotatableFileWriter> writer)
         : _writer(std::move(writer)) {}
 
-    Status rotate(bool renameFiles, StringData suffix) final {
+    Status rotate(bool renameFiles,
+                  StringData suffix,
+                  std::function<void(Status)> onMinorError) final {
         auto target = getGlobalAuditManager()->getPath() + suffix.toString();
-        return logger::RotatableFileWriter::Use(_writer.get()).rotate(renameFiles, target);
+        std::vector<Status> errors;
+        Status result = logger::RotatableFileWriter::Use(_writer.get())
+                            .rotate(renameFiles, target, [&](Status s) {
+                                errors.push_back(s);
+                                if (onMinorError)
+                                    onMinorError(s);
+                            });
+        if (!errors.empty())
+            LOGV2_WARNING(
+                4719803, "Errors occurred during audit log rotate", "errors"_attr = errors);
+        return result;
     }
 
     Status append(const Event& event) final {
@@ -167,9 +179,11 @@ void AuditManager::_initializeAuditLog() {
                 auditLogAppender.reset(new BSONAppender(std::move(writer)));
             }
 
-            logv2::addLogRotator(logv2::kAuditLogTag, [](bool renameFiles, StringData suffix) {
-                return auditLogAppender->rotate(renameFiles, suffix);
-            });
+            logv2::addLogRotator(
+                logv2::kAuditLogTag,
+                [](bool renameFiles, StringData suffix, std::function<void(Status)> onMinorError) {
+                    return auditLogAppender->rotate(renameFiles, suffix, onMinorError);
+                });
 
             break;
         }
