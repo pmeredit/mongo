@@ -53,12 +53,6 @@ MONGO_STARTUP_OPTIONS_STORE(MongoLDAPToolOptions)(InitializerContext* context) {
         globalLDAPToolOptions->password =
             SecureString(params["password"].as<std::string>().c_str());
     }
-
-    int isTty = isatty(STDOUT_FILENO);
-
-    if (!isTty && !params.count("color")) {
-        globalLDAPToolOptions->color = false;
-    }
 }
 
 MONGO_INITIALIZER_GENERAL(MongoLDAPToolOptions, ("SecureAllocator"), ("BeginStartupOptionStorage"))
