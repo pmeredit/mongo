@@ -11,6 +11,11 @@
 #include "mongo/util/quick_exit.h"
 #include "mongo/util/version.h"
 
+#ifdef _WIN32
+#include <io.h>
+#include <stdio.h>
+#endif
+
 namespace mongo {
 LDAPToolOptions* globalLDAPToolOptions;
 
@@ -52,6 +57,15 @@ MONGO_STARTUP_OPTIONS_STORE(MongoLDAPToolOptions)(InitializerContext* context) {
     if (params.count("password")) {
         globalLDAPToolOptions->password =
             SecureString(params["password"].as<std::string>().c_str());
+    }
+
+#ifdef _WIN32
+    int isTty = _isatty(_fileno(stdout));
+#else
+    int isTty = isatty(STDOUT_FILENO);
+#endif
+    if (!isTty && !params.count("color")) {
+        globalLDAPToolOptions->color = false;
     }
 }
 
