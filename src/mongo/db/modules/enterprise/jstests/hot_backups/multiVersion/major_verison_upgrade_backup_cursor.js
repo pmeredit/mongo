@@ -36,7 +36,6 @@ const versions = [
     // SERVER-55070 mentions an oplog entry parsing issue because the oplog format is
     // different between 3.4 and later versions. However 3.4 is no longer officially
     // supported, so this test starts with a later version for future protection.
-    {binVersion: '3.6', featureCompatibilityVersion: '3.6', testCollection: 'three_six'},
     {binVersion: '4.0', featureCompatibilityVersion: '4.0', testCollection: 'four_zero'},
     {binVersion: '4.2', featureCompatibilityVersion: '4.2', testCollection: 'four_two'},
     {binVersion: '4.4', featureCompatibilityVersion: '4.4', testCollection: 'four_four'},
