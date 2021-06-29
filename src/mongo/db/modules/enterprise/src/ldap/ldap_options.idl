@@ -67,3 +67,8 @@ configs:
         arg_vartype: String
         cpp_varname: 'globalLDAPParams->userToDNMapping'
         default: '[]'
+    "security.ldap.serverCAFile":
+        description: 'CA File for validating connection to LDAP server'
+        short_name: ldapServerCAFile
+        arg_vartype: String
+        

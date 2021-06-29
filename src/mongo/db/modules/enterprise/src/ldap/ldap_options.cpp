@@ -57,6 +57,10 @@ MONGO_STARTUP_OPTIONS_STORE(LDAPOptions)(InitializerContext* context) {
         globalLDAPParams->bindPassword =
             SecureString(params["security.ldap.bind.queryPassword"].as<std::string>().c_str());
     }
+
+    if (params.count("security.ldap.serverCAFile")) {
+        globalLDAPParams->serverCAFile = params["security.ldap.serverCAFile"].as<std::string>();
+    }
 }
 
 

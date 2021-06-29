@@ -4,10 +4,6 @@
 
 #include "mongo/platform/basic.h"
 
-#include <memory>
-#include <string>
-#include <vector>
-
 #include "mongo/base/init.h"
 #include "mongo/base/initializer.h"
 #include "mongo/db/auth/role_name.h"
@@ -38,10 +34,88 @@ namespace mongo {
 
 namespace {
 
+void getSSLParamsForLdap(SSLParams* params) {
+    params->sslPEMKeyFile = "";
+    params->sslPEMKeyPassword = "";
+    params->sslClusterFile = "";
+    params->sslClusterPassword = "";
+    params->sslCAFile = globalLDAPParams->serverCAFile;
+
+    params->sslCRLFile = "";
+
+    // Copy the rest from the global SSL manager options.
+    params->sslFIPSMode = sslGlobalParams.sslFIPSMode;
+
+    // Not allowing invalid certificates for now
+    params->sslAllowInvalidCertificates = false;
+    params->sslAllowInvalidHostnames = false;
+
+    params->sslDisabledProtocols =
+        std::vector({SSLParams::Protocols::TLS1_0, SSLParams::Protocols::TLS1_1});
+}
+
+// parse the LDAP host string.
+// If there is an issue with the host passed in returns an empty vector
+// If there is only a host name the function will return a vector containing the host name
+// If there is a host:port the vector will contain 2 elements the first being the host name and the
+// second the port
+std::vector<std::string> parseHost(StringData host) {
+    std::vector<std::string> hostComponents;
+    auto delimiterIndex = host.find(":");
+    if (delimiterIndex == std::string::npos) {
+        hostComponents.push_back(host.toString());
+    } else {
+        hostComponents.push_back(host.toString().substr(0, delimiterIndex));
+        hostComponents.push_back(host.toString().substr(delimiterIndex + 1));
+    }
+
+    return hostComponents;
+}
+
+Status checkTlsConnectivity(StringData host) {
+    std::string hostName;
+    int port;
+    std::vector<std::string> hostComponents = parseHost(host);
+    if (hostComponents.size() == 1) {
+        hostName = hostComponents[0];
+        port = 636;
+    } else {
+        hostName = hostComponents[0];
+        port = std::stoi(hostComponents[1]);
+    }
+
+    SSLParams params;
+    getSSLParamsForLdap(&params);
+    std::shared_ptr<SSLManagerInterface> _sslManager = SSLManagerInterface::create(params, false);
+    SockAddr sockAddr = SockAddr::create(hostName, port, AF_UNSPEC);
+    Socket sock;
+    size_t attempt = 0;
+    constexpr size_t kMaxAttempts = 5;
+
+    try {
+        while (!sock.connect(sockAddr)) {
+            ++attempt;
+            if (attempt > kMaxAttempts) {
+                return Status(ErrorCodes::HostUnreachable, "Unable to establish connection");
+            }
+        }
+
+        if (!sock.secure(_sslManager.get(), hostName)) {
+            return Status(ErrorCodes::SSLHandshakeFailed, "Unable to establish TLS connection");
+        }
+
+    } catch (const DBException& e) {
+        return e.toStatus();
+    }
+
+    return Status::OK();
+}
+
 int ldapToolMain(int argc, char** argv) {
     setupSignalHandlers();
     runGlobalInitializersOrDie(std::vector<std::string>(argv, argv + argc));
     startSignalProcessingThread();
+    setGlobalServiceContext(ServiceContext::make());
 
     if (globalLDAPToolOptions->debug) {
         logv2::LogManager::global().getGlobalSettings().setMinimumLoggedSeverity(
@@ -54,7 +128,6 @@ int ldapToolMain(int argc, char** argv) {
               << std::endl;
 
     Report report(globalLDAPToolOptions->color);
-
 
     report.openSection("Checking that an LDAP server has been specified");
     report.checkAssert(
@@ -83,8 +156,29 @@ int ldapToolMain(int argc, char** argv) {
         return summary;
     });
 
-
     report.closeSection("All DNS entries resolved");
+
+    // checking information for TLS:
+    // 1) If TLS is the specified transport security
+    // 2) If a CA file has been provided for TLS usage
+    // 3) Testing the Connectivity of each LDAP host
+    if (globalLDAPParams->transportSecurity == LDAPTransportSecurityType::kTLS) {
+        report.openSection("Checking for TLS usage and connectivity");
+        report.printItemList([] {
+            std::vector<std::string> summary;
+            for (const std::string& ldapServer : globalLDAPParams->serverHosts) {
+                Status status = checkTlsConnectivity(ldapServer);
+                if (status.isOK())
+                    summary.emplace_back(ldapServer + " Sucessfully established TLS connection");
+                else
+                    summary.emplace_back(ldapServer + " " + status.codeString() + ": " +
+                                         status.reason());
+            }
+
+            return summary;
+        });
+        report.closeSection("Finshed checking TLS usage and connectivity");
+    }
 
     report.openSection("Connecting to LDAP server");
     // produce warning if either:
@@ -107,7 +201,8 @@ int ldapToolMain(int argc, char** argv) {
         },
         "Attempted to bind to LDAP server without TLS using SASL PLAIN.",
         {"Sending a password over a network in plaintext is insecure.",
-         "To fix this issue, remove the PLAIN mechanism from SASL bind mechanisms, or enable TLS."},
+         "To fix this issue, remove the PLAIN mechanism from SASL bind mechanisms, or enable "
+         "TLS."},
         Report::FailType::kNonFatalFailure));
 
     LDAPBindOptions bindOptions(globalLDAPParams->bindUser,
