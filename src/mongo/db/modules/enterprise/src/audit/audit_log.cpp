@@ -8,6 +8,7 @@
 
 #include <boost/filesystem.hpp>
 
+#include "audit/audit_feature_flag_gen.h"
 #include "audit_manager.h"
 #include "audit_options.h"
 #include "logger/console_appender.h"
@@ -51,9 +52,22 @@ public:
     }
 
     Status append(const Event& event) final {
+        auto* am = getGlobalAuditManager();
+        invariant(am->isEnabled());
+
         Status status = Status::OK();
         try {
             std::string toWrite = Encoder::encode(event);
+
+            if (am->getCompressionEnabled() &&
+                feature_flags::gFeatureFlagAtRestEncryption.isEnabledAndIgnoreFCV()) {
+                auto ac = am->getAuditEncryptionCompressionManager();
+                invariant(ac);
+
+                auto inBuff = ConstDataRange(toWrite.data(), toWrite.length());
+                toWrite = ac->compressAndEncrypt(inBuff);
+            }
+
             logger::RotatableFileWriter::Use useWriter(_writer.get());
 
             status = useWriter.status();
@@ -166,6 +180,11 @@ void AuditManager::_initializeAuditLog() {
                 auto status = Status(ErrorCodes::BadValue, "Unable to initialize audit path")
                                   .withContext(e.what());
                 uassertStatusOK(std::move(status));
+            }
+
+            if (getCompressionEnabled() &&
+                feature_flags::gFeatureFlagAtRestEncryption.isEnabledAndIgnoreFCV()) {
+                _ac = std::make_unique<AuditEncryptionCompressionManager>();
             }
 
             auto writer = std::make_unique<logger::RotatableFileWriter>();

@@ -9,6 +9,7 @@
 #include <boost/filesystem.hpp>
 
 #include "audit/audit_config_gen.h"
+#include "audit/audit_feature_flag_gen.h"
 #include "audit_event.h"
 #include "audit_event_type.h"
 #include "audit_log.h"
@@ -211,12 +212,22 @@ void AuditManager::initialize(const moe::Environment& params) {
         _runtimeConfiguration = true;
     }
 
+    if (feature_flags::gFeatureFlagAtRestEncryption.isEnabledAndIgnoreFCV() &&
+        params.count("auditLog.compressionEnabled") &&
+        params["auditLog.compressionEnabled"].as<bool>()) {
+        uassert(ErrorCodes::BadValue,
+                "auditLog.compressionEnabled is only allowed when auditLog.destination is 'file'",
+                isFileDestination());
+        _compressionEnabled = true;
+    }
+
     _initializeAuditLog();
 }
 
 namespace {
 MONGO_INITIALIZER_WITH_PREREQUISITES(InitializeGlobalAuditManager,
-                                     ("EndStartupOptionHandling",
+                                     ("AllCompressorsRegistered",
+                                      "EndStartupOptionHandling",
                                       "MatchExpressionParser",
                                       "PathlessOperatorMap"))
 (InitializerContext* context) {

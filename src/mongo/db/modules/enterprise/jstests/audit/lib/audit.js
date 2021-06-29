@@ -87,6 +87,18 @@ class AuditSpooler {
         return JSON.parse(line);
     }
 
+    /**
+     * Block until an new entry is available and return it without parsing it.
+     */
+    getNextEntryNoParsing() {
+        assert.soon(() => {
+            return this.getAllLines().length > this._auditLine;
+        }, "audit logfile should contain entry within default timeout");
+        const line = this.getAllLines()[this._auditLine];
+        this._auditLine += 1;
+        return line;
+    }
+
     assertNoEntry(atype, param) {
         assert(!this.findEntry(this.getAllLines(), atype, param));
     }
@@ -337,7 +349,7 @@ class StandaloneFixture {
             setParameter: "auditAuthorizationSuccess=true",
             auditPath: this.auditPath,
         };
-        Object.assign(this.opts, opts);
+        this.opts = mergeDeepObjects(this.opts, opts);
 
         const conn = MongoRunner.runMongodAuditLogger(this.opts, false);
 
@@ -398,7 +410,7 @@ class ShardingFixture {
                 },
             }
         };
-        Object.assign(this.opts, opts);
+        this.opts = mergeDeepObjects(this.opts, opts);
 
         const st = MongoRunner.runShardedClusterAuditLogger(this.opts);
 
@@ -476,6 +488,31 @@ function makeReplSetAuditOpts(opts = {}, isBSON = false) {
         setOpts.nodes = setOpts.nodes.map((node) => makeAuditOpts(node, isBSON));
     }
     return setOpts;
+}
+
+/**
+ * Performs a deep merge of objects and returns a new object. Does not modify
+ * objects (immutable) and merges arrays via concatenation.
+ */
+function mergeDeepObjects(...objects) {
+    const isObject = obj => obj && typeof obj === 'object';
+
+    return objects.reduce((prev, obj) => {
+        Object.keys(obj).forEach(key => {
+            const pVal = prev[key];
+            const oVal = obj[key];
+
+            if (Array.isArray(pVal) && Array.isArray(oVal)) {
+                prev[key] = pVal.concat(...oVal);
+            } else if (isObject(pVal) && isObject(oVal)) {
+                prev[key] = mergeDeepObjects(pVal, oVal);
+            } else {
+                prev[key] = oVal;
+            }
+        });
+
+        return prev;
+    }, {});
 }
 
 /**

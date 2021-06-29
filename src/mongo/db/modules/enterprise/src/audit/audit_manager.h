@@ -9,6 +9,7 @@
 #include <string>
 
 #include "audit/audit_config_gen.h"
+#include "audit_enc_comp_manager.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/oid.h"
 #include "mongo/db/matcher/expression.h"
@@ -55,12 +56,21 @@ public:
         return _runtimeConfiguration;
     }
 
+    bool getCompressionEnabled() const {
+        return _compressionEnabled;
+    }
+
     const std::string& getPath() const {
         return _path;
     }
 
     bool getAuditAuthorizationSuccess() const {
         return getConfig()->auditAuthorizationSuccess.load();
+    }
+
+    const AuditEncryptionCompressionManager* getAuditEncryptionCompressionManager() {
+        invariant(_ac);
+        return _ac.get();
     }
 
     void setAuditAuthorizationSuccess(bool val);
@@ -89,6 +99,13 @@ public:
      */
     const OID& getConfigGeneration() const {
         return getConfig()->generation;
+    }
+
+    /**
+     * Check if 'file' is set as the audit destination.
+     */
+    bool isFileDestination() const {
+        return (_format == AuditFormatJsonFile) || (_format == AuditFormatBsonFile);
     }
 
     /**
@@ -144,12 +161,18 @@ private:
     // Configure filter/auditAuthorizationSuccess from {setAuditConfig:...}
     bool _runtimeConfiguration{false};
 
+    // Configure compression/encryption of audit logs
+    bool _compressionEnabled{false};
+
     // Current audit filter and audit success settings.
     std::shared_ptr<RuntimeConfiguration> _config;
 
     // We exclusively take this mutex during setConfiguration
     // to avoid confusion in the audit log about concurrent sets.
     Mutex _setConfigurationMutex = MONGO_MAKE_LATCH("AuditManager::setConfiguration");
+
+    // Object to call encryption and compression on the audit logs.
+    std::unique_ptr<AuditEncryptionCompressionManager> _ac;
 };
 
 /*
