@@ -20,14 +20,14 @@ using std::list;
 REGISTER_DOCUMENT_SOURCE(search,
                          DocumentSourceSearch::LiteParsed::parse,
                          DocumentSourceSearch::createFromBson,
-                         LiteParsedDocumentSource::AllowedWithApiStrict::kNeverInVersion1);
+                         AllowedWithApiStrict::kNeverInVersion1);
 
 // $searchBeta is supported as an alias for $search for compatibility with applications that used
 // search during its beta period.
 REGISTER_DOCUMENT_SOURCE(searchBeta,
                          DocumentSourceSearch::LiteParsed::parse,
                          DocumentSourceSearch::createFromBson,
-                         LiteParsedDocumentSource::AllowedWithApiStrict::kNeverInVersion1);
+                         AllowedWithApiStrict::kNeverInVersion1);
 
 const char* DocumentSourceSearch::getSourceName() const {
     return kStageName.rawData();

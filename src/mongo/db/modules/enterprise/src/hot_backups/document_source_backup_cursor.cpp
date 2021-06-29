@@ -20,7 +20,7 @@ namespace mongo {
 REGISTER_DOCUMENT_SOURCE(backupCursor,
                          DocumentSourceBackupCursor::LiteParsed::parse,
                          DocumentSourceBackupCursor::createFromBson,
-                         LiteParsedDocumentSource::AllowedWithApiStrict::kAlways);
+                         AllowedWithApiStrict::kAlways);
 
 DocumentSourceBackupCursor::DocumentSourceBackupCursor(
     const boost::intrusive_ptr<ExpressionContext>& pExpCtx,
