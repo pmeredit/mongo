@@ -57,7 +57,7 @@ function runEncryptedIndexBuildTests(cipherMode) {
             }],
             1,
             ["collection scan"],
-            [{numScannedAferResume: 1}],
+            [{numScannedAfterResume: 1}],
             [],
             [],
             {enableEncryption: "", encryptionKeyFile: key, encryptionCipherMode: cipherMode});
