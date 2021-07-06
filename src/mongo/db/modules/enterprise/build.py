@@ -21,16 +21,17 @@ def configure(conf, env):
     all_features = [
         "audit",
         "encryptdb",
+        "fcbis",
         "fle",
-        "search",
         "hot_backups",
         "inmemory",
+        "kerberos",
         "ldap",
         "live_import",
         "mongohouse",
         "queryable",
         "sasl",
-        "kerberos",
+        "search",
         "snmp",
     ]
 

@@ -11,16 +11,17 @@ else:
     from libdeps import dependency as deptype
 
 feature_dirs = [
-    "fle",
-    "search",
     "encryptdb",
+    "fcbis",
+    "fle",
     "hot_backups",
-    "kerberos",
     "inmemory",
+    "kerberos",
     "ldap",
     "live_import",
     "mongohouse",
     "queryable",
+    "search",
 ]
 
 env = env.Clone()
