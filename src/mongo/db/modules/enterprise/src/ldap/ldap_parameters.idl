@@ -84,3 +84,9 @@ server_parameters:
     set_at: startup
     cpp_vartype: bool
     cpp_varname: ldapAbortOnNameMappingFailure
+
+feature_flags:
+    featureFlagReduceLdapPain:
+        description: "Enable features which reduce client pain with LDAP setup"
+        cpp_varname: gfeatureFlagReduceLdapPain
+        default: false
