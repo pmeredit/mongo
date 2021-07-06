@@ -13,6 +13,8 @@
 #include "mongo/util/options_parser/startup_options.h"
 #include "mongo/util/time_support.h"
 
+#include "ldap_host.h"
+
 namespace mongo {
 
 enum class LDAPBindType : std::uint8_t;
@@ -23,8 +25,8 @@ Status addSharedLDAPOptions(optionenvironment::OptionSection* options);
 
 class LDAPOptions {
 public:
-    Milliseconds connectionTimeout;        // Duration after which connections shall fail
-    std::vector<std::string> serverHosts;  // List of URI host components of form 'server(:port)'
+    Milliseconds connectionTimeout;     // Duration after which connections shall fail
+    std::vector<LDAPHost> serverHosts;  // List of URI host components of form 'server(:port)'
     LDAPTransportSecurityType transportSecurity;  // How connections to the LDAP server are secured
     std::string userAcquisitionQueryTemplate;     // LDAP query, with `{USER}' substitution token
     bool useOSDefaults;              // Use the OS's default user when binding to remote LDAP server

@@ -9,6 +9,7 @@
 #include "mongo/base/secure_allocator.h"
 #include "mongo/util/duration.h"
 
+#include "ldap_host.h"
 #include "ldap_type_aliases.h"
 
 namespace mongo {
@@ -61,8 +62,8 @@ public:
     /**
      * Gets/sets the list of LDAP servers to connect to.
      */
-    virtual std::vector<std::string> getHosts() const = 0;
-    virtual void setHosts(std::vector<std::string> hostURIs) = 0;
+    virtual std::vector<LDAPHost> getHosts() const = 0;
+    virtual void setHosts(std::vector<LDAPHost> hostURIs) = 0;
     virtual bool hasHosts() const = 0;
 
     /**

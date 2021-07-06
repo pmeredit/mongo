@@ -7,7 +7,9 @@
 #include "ldap_connection_options.h"
 
 #include <algorithm>
+#include <string>
 
+#include "ldap_host.h"
 #include "mongo/base/string_data.h"
 #include "mongo/util/str.h"
 #include "mongo/util/text.h"
@@ -53,21 +55,23 @@ std::string LDAPBindOptions::toCleanString() const {
     return builder.str();
 }
 
-StatusWith<std::vector<std::string>> LDAPConnectionOptions::parseHostURIs(
-    const std::string& hosts) {
+StatusWith<std::vector<LDAPHost>> LDAPConnectionOptions::parseHostURIs(const std::string& hosts,
+                                                                       bool isSSL) {
     if (hosts.find(" ") != std::string::npos) {
         return Status(ErrorCodes::FailedToParse, "Hostnames must be comma separated");
     }
 
-    std::vector<std::string> result;
+    std::vector<LDAPHost> result;
     StringSplitter splitter(hosts.c_str(), ",");
     while (splitter.more()) {
         std::string token = splitter.next();
+
         if (token.find("ldap://") == 0 || token.find("ldaps://") == 0) {
             return Status(ErrorCodes::FailedToParse,
                           "LDAP server hosts must not contain protocol 'ldap://' or 'ldaps://'");
         }
-        result.emplace_back(std::move(token));
+
+        result.emplace_back(LDAPHost(token, isSSL));
     }
 
     return result;
@@ -82,16 +86,9 @@ StatusWith<std::string> LDAPConnectionOptions::constructHostURIs() const {
         } else {
             firstLoop = false;
         }
-
-        if (transportSecurity == LDAPTransportSecurityType::kNone) {
-            hostURIBuilder << "ldap://";
-        } else if (transportSecurity == LDAPTransportSecurityType::kTLS) {
-            hostURIBuilder << "ldaps://";
-        } else {
-            return Status(ErrorCodes::FailedToParse, "Unrecognized protocol security mechanism");
-        }
-        hostURIBuilder << host;
+        hostURIBuilder << host.serializeURI();
     }
+
     return hostURIBuilder.str();
 }
 

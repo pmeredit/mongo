@@ -55,7 +55,7 @@ TEST(ParseHostURIs, SingleHost) {
     auto result = LDAPConnectionOptions::parseHostURIs("first.example");
     ASSERT_TRUE(result.isOK());
     ASSERT_EQ(size_t(1), result.getValue().size());
-    ASSERT_EQ("first.example", result.getValue()[0]);
+    ASSERT_EQ("first.example", result.getValue()[0].getName());
 }
 
 TEST(ParseHostURIs, HostWithProtocol) {
@@ -72,13 +72,64 @@ TEST(ParseHostURIs, TwoCommaSeparatedHosts) {
     auto result = LDAPConnectionOptions::parseHostURIs("first.example,second.example");
     ASSERT_TRUE(result.isOK());
     ASSERT_EQ(size_t(2), result.getValue().size());
-    ASSERT_EQ("first.example", result.getValue()[0]);
-    ASSERT_EQ("second.example", result.getValue()[1]);
+    ASSERT_EQ("first.example", result.getValue()[0].getName());
+    ASSERT_EQ("second.example", result.getValue()[1].getName());
 }
 
 TEST(ParseHostURIs, TwoCommaSeparatedHostsWithProtocol) {
     auto result = LDAPConnectionOptions::parseHostURIs("first.example,ldaps://second.example");
     ASSERT_FALSE(result.isOK());
+}
+
+TEST(SingleHostTLS, LDAPHostParsing) {
+    auto result = LDAPConnectionOptions::parseHostURIs("first.example:1234", true);
+    ASSERT_EQ(size_t(1), result.getValue().size());
+    ASSERT_EQ("first.example", result.getValue()[0].getName());
+}
+
+TEST(SingleHostTLS, LDAPHostCustomPortSSL) {
+    auto result = LDAPConnectionOptions::parseHostURIs("first.example:1234", true);
+    ASSERT_EQ(1234, result.getValue()[0].getPort());
+}
+
+TEST(SingleHostTLS, LDAPHostCustomPortNoSSL) {
+    auto result = LDAPConnectionOptions::parseHostURIs("first.example:1234", false);
+    ASSERT_EQ(1234, result.getValue()[0].getPort());
+}
+
+TEST(SingleHostTLS, LDAPHostDefaultSSLPort) {
+    auto result = LDAPConnectionOptions::parseHostURIs("first.example", true);
+    ASSERT_EQ(636, result.getValue()[0].getPort());
+}
+
+TEST(SingleHostTLS, LDAPHostDefaultNoSSLPort) {
+    auto result = LDAPConnectionOptions::parseHostURIs("first.example", false);
+    ASSERT_EQ(389, result.getValue()[0].getPort());
+}
+
+TEST(SingleHostTLS, LDAPHostURISSL) {
+    auto result = LDAPConnectionOptions::parseHostURIs("first.example:1234", true);
+    ASSERT_EQ("ldaps://first.example:1234", result.getValue()[0].serializeURI());
+}
+
+TEST(SingleHostTLS, LDAPHostURINoSSL) {
+    auto result = LDAPConnectionOptions::parseHostURIs("first.example:1234", false);
+    ASSERT_EQ("ldap://first.example:1234", result.getValue()[0].serializeURI());
+}
+
+TEST(SingleHostTLS, LDAPHostIpvSixNoPort) {
+    auto result = LDAPConnectionOptions::parseHostURIs("[1234:5678:9000:0000:0000]", false);
+    ASSERT_EQ("ldap://[1234:5678:9000:0000:0000]:389", result.getValue()[0].serializeURI());
+}
+
+TEST(SingleHostTLS, LDAPHostIpvSixPort) {
+    auto result = LDAPConnectionOptions::parseHostURIs("[1234:5678:9000:0000:0000]:1234", false);
+    ASSERT_EQ("ldap://[1234:5678:9000:0000:0000]:1234", result.getValue()[0].serializeURI());
+}
+
+TEST(SingleHostTLS, LDAPHostShortLocalhost) {
+    auto result = LDAPConnectionOptions::parseHostURIs("[::1]", false);
+    ASSERT_EQ("ldap://[::1]:389", result.getValue()[0].serializeURI());
 }
 
 // Test: Active Directory may return an array with a single null value so verify the iterator works

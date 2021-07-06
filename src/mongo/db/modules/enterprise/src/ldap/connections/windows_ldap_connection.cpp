@@ -20,15 +20,16 @@
 #include <memory>
 
 #include "../ldap_connection_options.h"
+#include "../ldap_host.h"
 #include "../ldap_query.h"
-#include "ldap_connection_reaper.h"
 #include "ldap_connection_helpers.h"
+#include "ldap_connection_reaper.h"
 #include "mongo/base/status.h"
 #include "mongo/base/status_with.h"
 #include "mongo/base/string_data.h"
 #include "mongo/client/cyrus_sasl_client_session.h"
-#include "mongo/util/str.h"
 #include "mongo/util/scopeguard.h"
+#include "mongo/util/str.h"
 #include "mongo/util/text.h"
 
 namespace mongo {
@@ -103,23 +104,21 @@ Status WindowsLDAPConnection::connect() {
     // Allocate the underlying connection object
     _pimpl->getSession() = nullptr;
 
-    std::wstring hosts = toWideString(StringSplitter::join(_options.hosts, " ").c_str());
+    std::wstring hosts = toWideString(joinLdapHostAndPort(_options.hosts, ' ').c_str());
 
-    if (_options.transportSecurity == LDAPTransportSecurityType::kNone) {
-        _pimpl->getSession() = ldap_initW(const_cast<wchar_t*>(hosts.c_str()), LDAP_PORT);
-    } else if (_options.transportSecurity == LDAPTransportSecurityType::kTLS) {
+    if (_options.hosts[0].isSSL()) {
         _pimpl->getSession() = ldap_sslinitW(const_cast<wchar_t*>(hosts.c_str()), LDAP_SSL_PORT, 1);
     } else {
-        return Status(ErrorCodes::OperationFailed, "Unrecognized protocol security mechanism");
+        _pimpl->getSession() = ldap_initW(const_cast<wchar_t*>(hosts.c_str()), LDAP_PORT);
     }
 
     if (!_pimpl->getSession()) {
         // The ldap_*initW functions don't actually make a connection to the server until
         // ldap_connect is called. Failure here should not be gracefully recovered from.
-        Status status = _pimpl->resultCodeToStatus(
-            _options.transportSecurity == LDAPTransportSecurityType::kNone ? "ldap_initW"
-                                                                           : "ldap_sslinitW",
-            "initialize LDAP session to server");
+        Status status =
+            _pimpl->resultCodeToStatus(_options.hosts[0].isSSL() ? "ldap_sslinitW" : "ldap_initW",
+                                       "initialize LDAP session to a server");
+
         if (!status.isOK()) {
             return status;
         }

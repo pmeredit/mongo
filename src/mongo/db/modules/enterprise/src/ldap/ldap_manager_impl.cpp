@@ -18,6 +18,7 @@
 #include "mongo/util/assert_util.h"
 
 #include "connections/ldap_connection_factory.h"
+#include "ldap_host.h"
 #include "ldap_options.h"
 #include "ldap_query.h"
 
@@ -83,11 +84,11 @@ StatusWith<std::vector<RoleName>> LDAPManagerImpl::getUserRoles(const UserName& 
     return roles;
 }
 
-std::vector<std::string> LDAPManagerImpl::getHosts() const {
+std::vector<LDAPHost> LDAPManagerImpl::getHosts() const {
     return _runner->getHosts();
 }
 
-void LDAPManagerImpl::LDAPManagerImpl::setHosts(std::vector<std::string> hosts) {
+void LDAPManagerImpl::LDAPManagerImpl::setHosts(std::vector<LDAPHost> hosts) {
     const bool wasUsingCyrus = useCyrusForAuthN();
     _runner->setHosts(hosts);
     const bool nowUsingCyrus = useCyrusForAuthN();

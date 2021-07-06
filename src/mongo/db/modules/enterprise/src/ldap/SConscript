@@ -94,6 +94,17 @@ env.Library(
 )
 
 env.Library(
+    target='ldap_host',
+    source=[
+        "ldap_host.cpp",
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/util/net/network',
+    ],
+)
+
+env.Library(
     target='ldap_query',
     source=[
         'ldap_connection_options.cpp',
@@ -106,6 +117,7 @@ env.Library(
         '$BUILD_DIR/mongo/util/net/network',
         '$BUILD_DIR/mongo/util/options_parser/options_parser',
         '$BUILD_DIR/third_party/shim_pcrecpp',
+        'ldap_host',
     ],
 )
 

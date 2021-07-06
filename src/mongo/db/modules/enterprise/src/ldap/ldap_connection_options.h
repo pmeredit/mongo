@@ -10,6 +10,8 @@
 #include "mongo/base/secure_allocator.h"
 #include "mongo/util/time_support.h"
 
+#include "ldap_host.h"
+
 namespace mongo {
 
 template <typename T>
@@ -76,12 +78,8 @@ struct LDAPBindOptions {
  * Contains all parameters, beyond those defining a query, needed for an LDAP session.
  */
 struct LDAPConnectionOptions {
-    LDAPConnectionOptions(Milliseconds timeout,
-                          std::vector<std::string> hosts,
-                          LDAPTransportSecurityType transportSecurity)
-        : timeout(std::move(timeout)),
-          hosts(std::move(hosts)),
-          transportSecurity(transportSecurity) {}
+    LDAPConnectionOptions(Milliseconds timeout, std::vector<LDAPHost> hosts)
+        : timeout(std::move(timeout)), hosts(std::move(hosts)) {}
 
     LDAPConnectionOptions() = default;
 
@@ -89,7 +87,8 @@ struct LDAPConnectionOptions {
      * Accepts a comma separated list of FQDNs and parses it into vector of FQDNs. FQDNs are
      * checked to ensure they do not have protocol prefixes.
      */
-    static StatusWith<std::vector<std::string>> parseHostURIs(const std::string& hosts);
+    static StatusWith<std::vector<LDAPHost>> parseHostURIs(const std::string& hosts,
+                                                           bool isSSL = false);
 
     /**
      * Returns a comma separated list of (protocol)://(fqdn)s, where the protocol is derived from
@@ -97,9 +96,8 @@ struct LDAPConnectionOptions {
      */
     StatusWith<std::string> constructHostURIs() const;
 
-    Milliseconds timeout;                         // How long to wait before timing out
-    std::vector<std::string> hosts;               // List of server URIs: (server)(:port)
-    LDAPTransportSecurityType transportSecurity;  // How to secure connections to the LDAP server
-    bool usePooledConnection = false;             // Whether to use the connection pool
+    Milliseconds timeout;              // How long to wait before timing out
+    std::vector<LDAPHost> hosts;       // List of server URIs: (server)(:port)
+    bool usePooledConnection = false;  // Whether to use the connection pool
 };
 }  // namespace mongo

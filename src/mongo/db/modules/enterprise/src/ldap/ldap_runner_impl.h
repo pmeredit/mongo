@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "ldap_host.h"
 #include "ldap_runner.h"
 
 #include "connections/ldap_connection_factory.h"
@@ -30,8 +31,8 @@ public:
     StatusWith<LDAPEntityCollection> runQuery(const LDAPQuery& query) final;
     Status checkLiveness() final;
 
-    std::vector<std::string> getHosts() const final;
-    void setHosts(std::vector<std::string> hosts) final;
+    std::vector<LDAPHost> getHosts() const final;
+    void setHosts(std::vector<LDAPHost> hosts) final;
     bool hasHosts() const final;
 
     Milliseconds getTimeout() const final;

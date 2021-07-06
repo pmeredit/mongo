@@ -8,6 +8,7 @@
 
 #include "mongo/unittest/unittest.h"
 
+#include "ldap_host.h"
 #include "ldap_runner.h"
 
 namespace mongo {
@@ -51,7 +52,7 @@ public:
         _stored.emplace_back(std::move(savedQuery));
     }
 
-    std::vector<std::string> getHosts() const final {
+    std::vector<LDAPHost> getHosts() const final {
         return {};
     }
 
@@ -59,7 +60,7 @@ public:
         return false;
     }
 
-    void setHosts(std::vector<std::string> hosts) final {}
+    void setHosts(std::vector<LDAPHost> hosts) final {}
 
     Milliseconds getTimeout() const final {
         return Milliseconds(0);

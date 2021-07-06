@@ -56,36 +56,9 @@ void getSSLParamsForLdap(SSLParams* params) {
         std::vector({SSLParams::Protocols::TLS1_0, SSLParams::Protocols::TLS1_1});
 }
 
-// parse the LDAP host string.
-// If there is an issue with the host passed in returns an empty vector
-// If there is only a host name the function will return a vector containing the host name
-// If there is a host:port the vector will contain 2 elements the first being the host name and the
-// second the port
-std::vector<std::string> parseHost(StringData host) {
-    std::vector<std::string> hostComponents;
-    auto delimiterIndex = host.find(":");
-    if (delimiterIndex == std::string::npos) {
-        hostComponents.push_back(host.toString());
-    } else {
-        hostComponents.push_back(host.toString().substr(0, delimiterIndex));
-        hostComponents.push_back(host.toString().substr(delimiterIndex + 1));
-    }
-
-    return hostComponents;
-}
-
-Status checkTlsConnectivity(StringData host) {
-    std::string hostName;
-    int port;
-    std::vector<std::string> hostComponents = parseHost(host);
-    if (hostComponents.size() == 1) {
-        hostName = hostComponents[0];
-        port = 636;
-    } else {
-        hostName = hostComponents[0];
-        port = std::stoi(hostComponents[1]);
-    }
-
+Status checkTlsConnectivity(LDAPHost& host) {
+    std::string hostName = host.getName();
+    int port = host.getPort();
     SSLParams params;
     getSSLParamsForLdap(&params);
     std::shared_ptr<SSLManagerInterface> _sslManager = SSLManagerInterface::create(params, false);
@@ -141,18 +114,19 @@ int ldapToolMain(int argc, char** argv) {
     report.openSection("Checking that the DNS names of the LDAP servers resolve");
     report.printItemList([&] {
         std::vector<std::string> summary;
-        for (const auto& ldapServer : globalLDAPParams->serverHosts) {
+        for (auto& ldapServer : globalLDAPParams->serverHosts) {
             try {
-                std::vector<std::string> res = dns::lookupARecords(ldapServer);
+                std::vector<std::string> res = dns::lookupARecords(ldapServer.getName());
                 if (!res.empty()) {
-                    summary.push_back("LDAP Host: " + ldapServer +
+                    summary.push_back("LDAP Host: " + ldapServer.getName() +
                                       " was successfully resolved to address: " + res.front());
                 } else {
-                    summary.push_back("LDAP Host: " + ldapServer +
+                    summary.push_back("LDAP Host: " + ldapServer.getName() +
                                       " was NOT successfully resolved.");
                 }
             } catch (ExceptionFor<ErrorCodes::DNSHostNotFound>&) {
-                summary.push_back("LDAP Host: " + ldapServer + " was NOT successfully resolved.");
+                summary.push_back("LDAP Host: " + ldapServer.getName() +
+                                  " was NOT successfully resolved.");
             }
         }
         return summary;
@@ -168,12 +142,13 @@ int ldapToolMain(int argc, char** argv) {
         report.openSection("Checking for TLS usage and connectivity");
         report.printItemList([] {
             std::vector<std::string> summary;
-            for (const std::string& ldapServer : globalLDAPParams->serverHosts) {
+            for (auto& ldapServer : globalLDAPParams->serverHosts) {
                 Status status = checkTlsConnectivity(ldapServer);
                 if (status.isOK())
-                    summary.emplace_back(ldapServer + " Sucessfully established TLS connection");
+                    summary.emplace_back(ldapServer.getName() +
+                                         " Sucessfully established TLS connection");
                 else
-                    summary.emplace_back(ldapServer + " " + status.codeString() + ": " +
+                    summary.emplace_back(ldapServer.getName() + " " + status.codeString() + ": " +
                                          status.reason());
             }
 
@@ -213,8 +188,7 @@ int ldapToolMain(int argc, char** argv) {
                                 globalLDAPParams->bindSASLMechanisms,
                                 globalLDAPParams->useOSDefaults);
     LDAPConnectionOptions connectionOptions(globalLDAPParams->connectionTimeout,
-                                            globalLDAPParams->serverHosts,
-                                            globalLDAPParams->transportSecurity);
+                                            globalLDAPParams->serverHosts);
     std::unique_ptr<LDAPRunner> runner =
         std::make_unique<LDAPRunnerImpl>(bindOptions, connectionOptions);
 
@@ -254,10 +228,7 @@ int ldapToolMain(int argc, char** argv) {
     report.openSection("Checking for Active Directory and Global Catalog Usage");
     bool isAdCheckNeeded = true;
     for (const auto& currHost : globalLDAPParams->serverHosts) {
-        auto parsedHost = HostAndPort::parse(currHost);
-        invariant(parsedHost.isOK());
-
-        int port = parsedHost.getValue().port();
+        int port = currHost.getPort();
         if ((port == kGlobalCatalogPortLDAP) || (port == kGlobalCatalogPortLDAPS)) {
             isAdCheckNeeded = false;
             break;

@@ -11,6 +11,7 @@
 #include "mongo/util/options_parser/startup_option_init.h"
 
 #include "ldap_connection_options.h"
+#include "ldap_host.h"
 
 namespace mongo {
 
@@ -20,13 +21,6 @@ namespace {
 
 MONGO_STARTUP_OPTIONS_STORE(LDAPOptions)(InitializerContext* context) {
     const auto& params = optionenvironment::startupOptionsParsed;
-
-    if (params.count("security.ldap.servers")) {
-        StatusWith<std::vector<std::string>> swHosts =
-            LDAPConnectionOptions::parseHostURIs(params["security.ldap.servers"].as<std::string>());
-        uassertStatusOK(swHosts);
-        globalLDAPParams->serverHosts = std::move(swHosts.getValue());
-    }
 
     if (params.count("security.ldap.transportSecurity")) {
         auto transportSecurity = params["security.ldap.transportSecurity"].as<std::string>();
@@ -39,6 +33,14 @@ MONGO_STARTUP_OPTIONS_STORE(LDAPOptions)(InitializerContext* context) {
                       str::stream()
                           << "Unrecognized transport security mechanism: " << transportSecurity);
         }
+    }
+
+    if (params.count("security.ldap.servers")) {
+        bool isSSL = (globalLDAPParams->transportSecurity == LDAPTransportSecurityType::kTLS);
+        StatusWith<std::vector<LDAPHost>> swHosts = LDAPConnectionOptions::parseHostURIs(
+            params["security.ldap.servers"].as<std::string>(), isSSL);
+        uassertStatusOK(swHosts);
+        globalLDAPParams->serverHosts = std::move(swHosts.getValue());
     }
 
     if (params.count("security.ldap.bind.method")) {

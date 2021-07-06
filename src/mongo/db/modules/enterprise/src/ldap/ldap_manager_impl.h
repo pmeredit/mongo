@@ -7,6 +7,7 @@
 #include "mongo/base/secure_allocator.h"
 #include "mongo/platform/mutex.h"
 
+#include "ldap_host.h"
 #include "ldap_manager.h"
 #include "ldap_query_config.h"
 #include "ldap_runner_impl.h"
@@ -43,8 +44,8 @@ public:
     //
     ////////////////////////////////////////////////////////////
 
-    std::vector<std::string> getHosts() const final;
-    void setHosts(std::vector<std::string> hostURIs) final;
+    std::vector<LDAPHost> getHosts() const final;
+    void setHosts(std::vector<LDAPHost> hostURIs) final;
     bool hasHosts() const final;
 
     Milliseconds getTimeout() const final;

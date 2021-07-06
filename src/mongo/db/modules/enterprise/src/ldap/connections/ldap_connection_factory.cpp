@@ -1,7 +1,6 @@
 /**
  *  Copyright (C) 2016 MongoDB Inc.
  */
-
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kConnectionPool
 
 #include "mongo/platform/basic.h"
@@ -26,6 +25,7 @@
 #include "mongo/util/system_clock_source.h"
 #include "mongo/util/timer.h"
 
+#include "..//ldap_host.h"
 #include "../ldap_connection_options.h"
 #include "../ldap_manager.h"
 #include "../ldap_options.h"
@@ -203,9 +203,7 @@ public:
     }
 
     transport::ConnectSSLMode getSslMode() const final {
-        return _options.transportSecurity == LDAPTransportSecurityType::kTLS
-            ? transport::kEnableSSL
-            : transport::kDisableSSL;
+        return _options.hosts[0].isSSL() ? transport::kEnableSSL : transport::kDisableSSL;
     }
 
     LDAPConnection* getConn() const {
@@ -568,11 +566,9 @@ std::shared_ptr<executor::ConnectionPool::ConnectionInterface> LDAPTypeFactory::
     const HostAndPort& host, transport::ConnectSSLMode sslMode, size_t generation) {
     _start();
 
-    LDAPConnectionOptions options(Milliseconds::min(),
-                                  {host.toString()},
-                                  (sslMode == transport::kEnableSSL)
-                                      ? LDAPTransportSecurityType::kTLS
-                                      : LDAPTransportSecurityType::kNone);
+    LDAPHost currentHost = LDAPHost(host, (sslMode == transport::kEnableSSL));
+
+    LDAPConnectionOptions options(Milliseconds::min(), {currentHost});
 
     auto timingData = [&] {
         stdx::lock_guard<Latch> lk(_timingData->mutex);
@@ -687,24 +683,14 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
         return StatusWith<std::unique_ptr<LDAPConnection>>(std::move(conn));
     }
 
-    auto sslMode = (options.transportSecurity == LDAPTransportSecurityType::kTLS)
-        ? transport::kEnableSSL
-        : transport::kDisableSSL;
+    auto sslMode = options.hosts[0].isSSL() ? transport::kEnableSSL : transport::kDisableSSL;
 
     std::vector<HostAndPort> hosts;
     try {
         std::transform(options.hosts.begin(),
                        options.hosts.end(),
                        std::back_inserter(hosts),
-                       [&](const std::string& server) {
-                           auto host = HostAndPort::parse(server);
-                           if (host.isOK() && !host.getValue().hasPort()) {
-                               auto port = sslMode == transport::kEnableSSL ? ":636"_sd : ":389"_sd;
-                               host = HostAndPort::parse(str::stream() << server << port);
-                           }
-
-                           return uassertStatusOK(host);
-                       });
+                       [&](const LDAPHost& server) { return server.serializeHostAndPort(); });
     } catch (const DBException& e) {
         return e.toStatus();
     }

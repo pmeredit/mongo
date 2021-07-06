@@ -12,6 +12,7 @@
 
 #include "connections/ldap_connection.h"
 #include "connections/ldap_connection_factory.h"
+#include "ldap_host.h"
 #include "ldap_options.h"
 #include "ldap_query.h"
 
@@ -110,12 +111,12 @@ Status LDAPRunnerImpl::checkLiveness() {
     return swConnection.getValue()->checkLiveness();
 }
 
-std::vector<std::string> LDAPRunnerImpl::getHosts() const {
+std::vector<LDAPHost> LDAPRunnerImpl::getHosts() const {
     stdx::lock_guard<Latch> lock(_memberAccessMutex);
     return _options.hosts;
 }
 
-void LDAPRunnerImpl::setHosts(std::vector<std::string> hosts) {
+void LDAPRunnerImpl::setHosts(std::vector<LDAPHost> hosts) {
     stdx::lock_guard<Latch> lock(_memberAccessMutex);
 
     _options.hosts = std::move(hosts);

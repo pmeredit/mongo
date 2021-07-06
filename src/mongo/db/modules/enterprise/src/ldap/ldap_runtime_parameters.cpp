@@ -20,11 +20,10 @@
 #include "name_mapping/internal_to_ldap_user_name_mapper.h"
 
 namespace mongo {
-
 void LDAPServersSetting::append(OperationContext* opCtx,
                                 BSONObjBuilder& b,
                                 const std::string& name) {
-    b << name << StringSplitter::join(LDAPManager::get(getGlobalServiceContext())->getHosts(), ",");
+    b << name << joinLdapHost(LDAPManager::get(getGlobalServiceContext())->getHosts(), ',');
 }
 
 Status LDAPServersSetting::setFromString(const std::string& str) {
@@ -140,5 +139,4 @@ Status LDAPQueryTemplateSetting::setFromString(const std::string& str) {
         ->setQueryConfig(std::move(swQueryParameters.getValue()));
     return Status::OK();
 }
-
 }  // namespace mongo
