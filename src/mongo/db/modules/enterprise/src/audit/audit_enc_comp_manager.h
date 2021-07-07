@@ -4,10 +4,11 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
 
 #include "mongo/base/data_range.h"
-#include "mongo/transport/message_compressor_registry.h"
+#include "mongo/transport/message_compressor_zstd.h"
 
 namespace mongo {
 namespace audit {
@@ -26,12 +27,14 @@ public:
 
     std::string compress(ConstDataRange toCompress) const;
 
+    std::string decompress(const std::string& line);
+
 private:
     // Store a reference to the chosen compressor on startup.
     // This assumes that the compressor's lifetime exceeds
     // the lifetime of all audit events.
     // This happens to be true, but is not guaranteed by code.
-    MessageCompressorBase* _compressor;
+    std::unique_ptr<ZstdMessageCompressor> _zstdCompressor;
 };
 
 }  // namespace audit

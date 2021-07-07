@@ -22,14 +22,14 @@ function testAuditLineBase64(fixture, isMongos, enableCompression) {
     jsTest.log("Testing: " + tojson(opts));
     const {conn, audit, admin} = fixture.startProcess(opts);
 
-    // We need to sleep to prevent race conditions
-    sleep(2000);
-
-    let base64Line = audit.getNextEntryNoParsing();
-    base64Line = base64Line.replace(/\n$/, "");
     const base64regex = /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
-    const isBase64 = base64regex.test(base64Line);
-    assert.eq(isBase64, enableCompression, "Got (or not) base64 when it was(n't) expected");
+    assert.soon(() => {
+        let base64Line = audit.getNextEntryNoParsing();
+        base64Line = base64Line.replace(/\n$/, "");
+
+        const isBase64 = base64regex.test(base64Line);
+        return isBase64 == enableCompression;
+    }, "Got (or not) base64 when it was(n't) expected");
 
     fixture.stopProcess();
 }

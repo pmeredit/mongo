@@ -1,0 +1,20 @@
+# Copyright (C) 2021-present MongoDB, Inc.
+
+global:
+    cpp_namespace: "mongo::audit"
+    configs:
+        source: cli
+
+configs:
+    help:
+        description: 'Produce help message'
+        arg_vartype: Switch
+    inputPath:
+        description: 'Path to encrypted administrative file'
+        arg_vartype: String
+    outputPath:
+        description: 'Path to where decrypted file will be placed'
+        arg_vartype: String
+    noConfirm:
+        description: 'Do not ask for confirmation before decrypting'
+        arg_vartype: Switch

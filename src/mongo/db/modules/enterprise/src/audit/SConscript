@@ -71,6 +71,41 @@ env.Library(
     ],
 )
 
+env.Program(
+    target="mongoauditdecrypt",
+    source=[
+        'audit_decryptor.cpp',
+        'audit_decryptor_options.cpp',
+        'audit_decryptor_options.idl',
+    ] + env.WindowsResourceFile("decryptor_tool.rc"),
+    AIB_COMPONENT="mongoauditdecrypt",
+    AIB_COMPONENTS_EXTRA=[
+        "dist",
+        "dist-test",
+        "tools",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/db/log_process_details",
+        "$BUILD_DIR/mongo/util/options_parser/options_parser_init",
+        "$BUILD_DIR/mongo/util/signal_handlers",
+        "$BUILD_DIR/mongo/util/version_impl",
+        'audit_enc_comp_manager',
+    ],
+)
+
+env.CppUnitTest(
+    target='audit_compress_test',
+    source=[
+        'audit_log_compress_test.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        "$BUILD_DIR/mongo/util/signal_handlers",
+        'audit_enc_comp_manager',
+    ],
+)
+
 env.Library(
     # This can't be included in audit_enterprise directly
     # since we need mongo/s/grid which

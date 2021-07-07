@@ -43,12 +43,5 @@ TEST_F(AuditLogCompressBase64Test, CheckStringIsBase64Test) {
     }
 }
 
-MONGO_INITIALIZER_GENERAL(SetCompressorNamesForRegistry,
-                          ("EndStartupOptionHandling"),
-                          ("ZstdMessageCompressorInit"))
-(InitializerContext* context) {
-    uassertStatusOK(storeMessageCompressionOptions("zstd"));
-}
-
 }  // namespace audit
 }  // namespace mongo
