@@ -182,5 +182,26 @@ TEST_F(BackupCursorServiceTest, TestExtendNonExistentBackupCursor) {
         });
 }
 
+TEST_F(BackupCursorServiceTest, TestFilenameCheckWithExtend) {
+    auto backupCursorState = _backupCursorService->openBackupCursor(
+        _opCtx.get(), {false, false, kBlockSizeMB, boost::none, boost::none});
+    auto backupId = backupCursorState.backupId;
+    auto extendTo = Timestamp(100, 1);
+    _backupCursorService->extendBackupCursor(_opCtx.get(), backupId, extendTo);
+
+    ASSERT(_backupCursorService->isFileReturnedByCursor(backupId, "journal/WiredTigerLog.999"));
+
+    // Check incorrect filename.
+    ASSERT_FALSE(
+        _backupCursorService->isFileReturnedByCursor(backupId, "journal/NotWiredTigerLog.999"));
+
+    // Check incorrect backupId.
+    auto wrongBackupId = UUID::gen();
+    ASSERT_FALSE(
+        _backupCursorService->isFileReturnedByCursor(wrongBackupId, "journal/WiredTigerLog.999"));
+
+    _backupCursorService->closeBackupCursor(_opCtx.get(), backupId);
+}
+
 }  // namespace
 }  // namespace mongo

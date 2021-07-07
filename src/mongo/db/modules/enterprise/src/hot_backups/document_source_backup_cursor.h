@@ -10,6 +10,7 @@
 #include "mongo/db/auth/action_set.h"
 #include "mongo/db/pipeline/document_source.h"
 #include "mongo/db/repl/read_concern_args.h"
+#include "mongo/db/storage/backup_cursor_hooks.h"
 #include "mongo/db/storage/backup_cursor_state.h"
 
 namespace mongo {

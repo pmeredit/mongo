@@ -81,6 +81,10 @@ DocumentSource::GetNextResult DocumentSourceBackupCursor::doGetNext() {
                    {"length", static_cast<long long>(backupBlock.length)}};
         }
 
+        auto svcCtx = pExpCtx->opCtx->getServiceContext();
+        auto backupCursorService = BackupCursorHooks::get(svcCtx);
+        backupCursorService->addFilename(_backupCursorState.backupId, backupBlock.filename);
+
         _backupBlocks.pop_back();
         return std::move(doc);
     }

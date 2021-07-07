@@ -224,6 +224,17 @@ void BackupCursorService::closeBackupCursor(OperationContext* opCtx, const UUID&
     _closeBackupCursor(opCtx, backupId, lk);
 }
 
+void BackupCursorService::addFilename(const UUID& backupId, std::string filename) {
+    stdx::lock_guard<Latch> lk(_mutex);
+    tassert(57807, "_activeBackupId should equal backupId", _activeBackupId == backupId);
+    returnedFilenames.insert(filename);
+}
+
+bool BackupCursorService::isFileReturnedByCursor(const UUID& backupId, std::string filename) {
+    stdx::lock_guard<Latch> lk(_mutex);
+    return _activeBackupId == backupId && returnedFilenames.contains(filename);
+}
+
 BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext* opCtx,
                                                                 const UUID& backupId,
                                                                 const Timestamp& extendTo) {
@@ -277,6 +288,11 @@ BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext
                 "back. Restart the sharded backup process please.",
                 currentTerm == _replTermOfActiveBackup);
     }
+
+    // Copy filenames from `filesToBackup` to `returnedFilenames`.
+    std::copy(filesToBackup.begin(),
+              filesToBackup.end(),
+              std::inserter(returnedFilenames, returnedFilenames.end()));
 
     return {filesToBackup};
 }

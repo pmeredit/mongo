@@ -85,7 +85,15 @@ public:
                                                const UUID& backupId,
                                                const Timestamp& extendTo) override;
 
+    bool isFileReturnedByCursor(const UUID& backupId, std::string filename) override;
+
+    void addFilename(const UUID& backupId, std::string filename) override;
+
     bool isBackupCursorOpen() const override;
+
+    UUID getBackupId_forTest() {
+        return _activeBackupId.get();
+    }
 
 private:
     void _closeBackupCursor(OperationContext* opCtx, const UUID& backupId, WithLock);
@@ -101,6 +109,9 @@ private:
     // identifies the active backup cursor. Otherwise it is boost::none.
     boost::optional<UUID> _activeBackupId = boost::none;
     boost::optional<long long> _replTermOfActiveBackup = boost::none;
+
+    // Tracks the filenames returned by the open backup cursor or backup cursor extension.
+    stdx::unordered_set<std::string> returnedFilenames;
 };
 
 }  // namespace mongo
