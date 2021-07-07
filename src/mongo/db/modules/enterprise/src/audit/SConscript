@@ -45,6 +45,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/matcher/expressions',
         '$BUILD_DIR/mongo/db/repl/repl_coordinator_interface',
         '$BUILD_DIR/mongo/db/server_options_core',
+        '$BUILD_DIR/mongo/transport/message_compressor',
         '$BUILD_DIR/mongo/util/options_parser/options_parser',
     ],
     LIBDEPS_DEPENDENTS=[
