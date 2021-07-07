@@ -16,6 +16,7 @@
  * @tags: [
  *   requires_persistence,
  *   requires_replication,
+ *   disabled_due_to_server_58295
  * ]
  */
 
