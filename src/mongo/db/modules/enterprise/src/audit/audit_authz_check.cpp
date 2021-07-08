@@ -107,25 +107,6 @@ void logCommandAuthzCheck(Client* client,
                       result);
 }
 
-void logDeleteAuthzCheck(Client* client,
-                         const NamespaceString& ns,
-                         const BSONObj& pattern,
-                         ErrorCodes::Error result) {
-    _tryLogAuthzCheck(client,
-                      ns,
-                      kDeleteCommand,
-                      false,
-                      [&](BSONObjBuilder& builder) {
-                          builder.append("delete", ns.coll());
-                          {
-                              BSONArrayBuilder deletes(builder.subarrayStart("deletes"));
-                              BSONObjBuilder deleteObj(deletes.subobjStart());
-                              deleteObj.append("q", pattern);
-                          }
-                      },
-                      result);
-}
-
 void logGetMoreAuthzCheck(Client* client,
                           const NamespaceString& ns,
                           long long cursorId,
@@ -137,24 +118,6 @@ void logGetMoreAuthzCheck(Client* client,
                       [&](BSONObjBuilder& builder) {
                           builder.append("getMore", ns.coll());
                           builder.append("cursorId", cursorId);
-                      },
-                      result);
-}
-
-void logInsertAuthzCheck(Client* client,
-                         const NamespaceString& ns,
-                         const BSONObj& insertedObj,
-                         ErrorCodes::Error result) {
-    _tryLogAuthzCheck(client,
-                      ns,
-                      kInsertCommand,
-                      false,
-                      [&](BSONObjBuilder& builder) {
-                          builder.append("insert", ns.coll());
-                          {
-                              BSONArrayBuilder documents(builder.subarrayStart("documents"));
-                              documents.append(insertedObj);
-                          }
                       },
                       result);
 }
@@ -185,31 +148,6 @@ void logQueryAuthzCheck(Client* client,
                       [&](BSONObjBuilder& builder) {
                           builder.append("find", ns.coll());
                           builder.append("q", query);
-                      },
-                      result);
-}
-
-void logUpdateAuthzCheck(Client* client,
-                         const NamespaceString& ns,
-                         const BSONObj& query,
-                         const write_ops::UpdateModification& updateMod,
-                         bool isUpsert,
-                         bool isMulti,
-                         ErrorCodes::Error result) {
-    _tryLogAuthzCheck(client,
-                      ns,
-                      kUpdateCommand,
-                      false,
-                      [&](BSONObjBuilder& builder) {
-                          builder.append("update", ns.coll());
-                          {
-                              BSONArrayBuilder updates(builder.subarrayStart("updates"));
-                              BSONObjBuilder update(updates.subobjStart());
-                              update.append("q", query);
-                              updateMod.serializeToBSON("u", &update);
-                              update.append("upsert", isUpsert);
-                              update.append("multi", isMulti);
-                          }
                       },
                       result);
 }

@@ -50,19 +50,10 @@ example for logCreateUser can be found
 [here](https://github.com/10gen/mongo-enterprise-modules/tree/r4.4.0/src/audit/audit_user_management.cpp#L164-L172).
 If the event being logged does not match the audit filter, the event does not get logged.
 
-Audit messages for CRUD operations live in the command dispatch layer and only fire when the event
-fails due to an authorization failure. This ensures that the audit log is not flooded with messages.
-The calls to log the audit events for legacy operations are in the service entry point. For example,
-the call to audit a delete operation is
-[here](https://github.com/mongodb/mongo/blob/r4.4.0/src/mongo/db/service_entry_point_common.cpp#L1566).
-In the enterprise module, the function for `logDeleteAuthzCheck` calls the function
-[`_shouldLogAuthzCheck`](https://github.com/10gen/mongo-enterprise-modules/tree/r4.4.0/src/audit/audit_authz_check.cpp#L61)
-to see whether a call to delete should be logged. The function
-[`_shouldLogAuthzCheck`](https://github.com/10gen/mongo-enterprise-modules/tree/r4.4.0/src/audit/audit_authz_check.cpp#L61)
-logs the message only if the set parameter `auditAuthorizationSuccess` is enabled or the
-authorization check for the delete failed. The call to log audit events for the majority of
-operations, however, run through
+Audit messages for CRUD operations live in the command dispatch layer and fire only if the set 
+parameter `auditAuthorizationSuccess` is enabled or the authorization check for the command failed.
+This ensures that the audit log is not flooded with messages. Logging of audit events is done in
 [commands.cpp](https://github.com/mongodb/mongo/blob/r4.4.0/src/mongo/db/commands.cpp#L747-L778). At
 the bottom of that function, there is a call to `auditLogAuthEvent` which calls into
 [here](https://github.com/10gen/mongo-enterprise-modules/tree/r4.4.0/src/audit/audit_authz_check.cpp#L96-L129),
-which follows the same pipeline as the legacy operations by calling `_logAuthzCheck`.
+which in turn calls `_logAuthzCheck`.
