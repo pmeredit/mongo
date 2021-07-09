@@ -217,9 +217,6 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
             '$BUILD_DIR/mongo/db/commands/mongod',
             '$BUILD_DIR/mongo/s/commands/cluster_commands',
         ],
-        LIBDEPS_TYPEINFO=[
-            '$BUILD_DIR/mongo/rpc/rpc',
-        ],
         LIBDEPS_TAGS=[
             'lint-allow-nonprivate-on-deps-dependents',
         ],
