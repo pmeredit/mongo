@@ -5,6 +5,8 @@
 #include "mongo/platform/basic.h"
 
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "mongo/base/init.h"
 #include "mongo/base/initializer.h"
@@ -15,6 +17,7 @@
 #include "mongo/logv2/log_component_settings.h"
 #include "mongo/logv2/log_manager.h"
 #include "mongo/logv2/log_severity.h"
+#include "mongo/util/dns_query.h"
 #include "mongo/util/invariant.h"
 #include "mongo/util/quick_exit.h"
 #include "mongo/util/signal_handlers.h"
@@ -59,6 +62,29 @@ int ldapToolMain(int argc, char** argv) {
                                  "No LDAP servers have been provided"));
     report.closeSection("LDAP server(s) provided in configuration");
 
+    // checking that the dns entries resolve before connecting to the LDAP server
+    report.openSection("Checking that the DNS names of the LDAP servers resolve");
+    report.printItemList([&] {
+        std::vector<std::string> summary;
+        for (const auto& ldapServer : globalLDAPParams->serverHosts) {
+            try {
+                std::vector<std::string> res = dns::lookupARecords(ldapServer);
+                if (!res.empty()) {
+                    summary.push_back("LDAP Host: " + ldapServer +
+                                      " was successfully resolved to address: " + res.front());
+                } else {
+                    summary.push_back("LDAP Host: " + ldapServer +
+                                      " was NOT successfully resolved.");
+                }
+            } catch (ExceptionFor<ErrorCodes::DNSHostNotFound>&) {
+                summary.push_back("LDAP Host: " + ldapServer + " was NOT successfully resolved.");
+            }
+        }
+        return summary;
+    });
+
+
+    report.closeSection("All DNS entries resolved");
 
     report.openSection("Connecting to LDAP server");
     // produce warning if either:
