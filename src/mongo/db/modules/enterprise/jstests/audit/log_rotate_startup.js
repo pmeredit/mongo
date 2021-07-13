@@ -23,6 +23,10 @@ function testRotateLogsOnStartup(fixture) {
 
         const options = conn.fullOptions;
 
+        // We need to sleep to prevent race conditions where the audit spooler is still reading
+        // the previous audit file
+        sleep(2000);
+
         fixture.restartMainFixtureProcess(conn, options, false);
 
         // The rotate should happen on startup and we should not

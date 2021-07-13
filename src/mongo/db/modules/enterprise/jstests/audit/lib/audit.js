@@ -100,7 +100,7 @@ class AuditSpooler {
     }
 
     assertNoEntry(atype, param) {
-        assert(!this.findEntry(this.getAllLines(), atype, param));
+        assert(!this.findEntry(this.getAllLines(), atype, param), this._makeErrorMessage());
     }
 
     /**
