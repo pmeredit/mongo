@@ -2,8 +2,6 @@
  *    Copyright (C) 2013 10gen Inc.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
-
 #include "mongo/platform/basic.h"
 
 #include "audit_event.h"
@@ -38,12 +36,7 @@ bool _shouldLogAuthzCheck(ErrorCodes::Error result) {
 constexpr auto kCommandField = "command"_sd;
 constexpr auto kNSField = "ns"_sd;
 constexpr auto kArgsField = "args"_sd;
-constexpr auto kDeleteCommand = "delete"_sd;
-constexpr auto kGetMoreCommand = "getMore"_sd;
-constexpr auto kInsertCommand = "insert"_sd;
 constexpr auto kKillCursorsCommand = "killCursors"_sd;
-constexpr auto kFindCommand = "find"_sd;
-constexpr auto kUpdateCommand = "update"_sd;
 
 template <typename G>
 void _tryLogAuthzCheck(Client* client,
@@ -107,21 +100,6 @@ void logCommandAuthzCheck(Client* client,
                       result);
 }
 
-void logGetMoreAuthzCheck(Client* client,
-                          const NamespaceString& ns,
-                          long long cursorId,
-                          ErrorCodes::Error result) {
-    _tryLogAuthzCheck(client,
-                      ns,
-                      kGetMoreCommand,
-                      false,
-                      [&](BSONObjBuilder& builder) {
-                          builder.append("getMore", ns.coll());
-                          builder.append("cursorId", cursorId);
-                      },
-                      result);
-}
-
 void logKillCursorsAuthzCheck(Client* client,
                               const NamespaceString& ns,
                               long long cursorId,
@@ -133,21 +111,6 @@ void logKillCursorsAuthzCheck(Client* client,
                       [&](BSONObjBuilder& builder) {
                           builder.append("killCursors", ns.coll());
                           builder.append("cursorId", cursorId);
-                      },
-                      result);
-}
-
-void logQueryAuthzCheck(Client* client,
-                        const NamespaceString& ns,
-                        const BSONObj& query,
-                        ErrorCodes::Error result) {
-    _tryLogAuthzCheck(client,
-                      ns,
-                      kFindCommand,
-                      false,
-                      [&](BSONObjBuilder& builder) {
-                          builder.append("find", ns.coll());
-                          builder.append("q", query);
                       },
                       result);
 }
