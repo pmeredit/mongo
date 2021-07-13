@@ -578,6 +578,14 @@ Status OpenLDAPConnection::disconnect() {
         return Status::OK();
     }
 
+    int ret = ldap_get_option(_pimpl->getSession(), LDAP_OPT_CONNECT_CB, &_callback);
+    if (ret != LDAP_SUCCESS) {
+        return Status(ErrorCodes::OperationFailed,
+                      str::stream()
+                          << "Attempted to unset the LDAP connect callback. Received error: "
+                          << ldap_err2string(ret));
+    }
+
     _reaper->reap(_pimpl->getSession());
 
     _pimpl->getSession() = nullptr;
