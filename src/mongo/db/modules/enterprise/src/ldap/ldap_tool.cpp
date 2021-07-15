@@ -33,6 +33,8 @@
 namespace mongo {
 
 namespace {
+constexpr auto kGlobalCatalogPortLDAP = 3268;
+constexpr auto kGlobalCatalogPortLDAPS = 3269;
 
 void getSSLParamsForLdap(SSLParams* params) {
     params->sslPEMKeyFile = "";
@@ -227,8 +229,8 @@ int ldapToolMain(int argc, char** argv) {
 
     LDAPEntityCollection results;
 
-    // TODO: Determine if the query failed because of LDAP error 50, LDAP_INSUFFICIENT_ACCESS. If
-    // no, we don't need to mention that the server might not be allowing anonymous access.
+    // TODO: Determine if the query failed because of LDAP error 50, LDAP_INSUFFICIENT_ACCESS.
+    // If no, we don't need to mention that the server might not be allowing anonymous access.
     report.checkAssert(Report::ResultsAssertion(
         [&] {
             if (swResult.isOK()) {
@@ -247,6 +249,79 @@ int ldapToolMain(int argc, char** argv) {
         }));
     LDAPEntityCollection::iterator rootDSE = results.find("");
     report.closeSection("Connected to LDAP server");
+
+
+    report.openSection("Checking for Active Directory and Global Catalog Usage");
+    bool isAdCheckNeeded = true;
+    for (const auto& currHost : globalLDAPParams->serverHosts) {
+        auto parsedHost = HostAndPort::parse(currHost);
+        invariant(parsedHost.isOK());
+
+        int port = parsedHost.getValue().port();
+        if ((port == kGlobalCatalogPortLDAP) || (port == kGlobalCatalogPortLDAPS)) {
+            isAdCheckNeeded = false;
+            break;
+        }
+    }
+
+    if (isAdCheckNeeded) {
+        LDAPEntityCollection forestResults;
+        bool hasForestFunctionality;
+
+        auto rootDSEForestQuery =
+            LDAPQueryConfig::createLDAPQueryConfig("?forestFunctionality?base?(objectclass=*)");
+        invariant(rootDSEForestQuery.isOK());
+
+        auto initialQueryResults = LDAPQuery::instantiateQuery(rootDSEForestQuery.getValue(),
+                                                               LDAPQueryContext::kLivenessCheck);
+        invariant(initialQueryResults.isOK());
+
+        StatusWith<LDAPEntityCollection> forestQueryResults =
+            runner->runQuery(initialQueryResults.getValue());
+
+        report.checkAssert(Report::ResultsAssertion(
+            [&] {
+                if (forestQueryResults.isOK()) {
+                    forestResults = std::move(forestQueryResults.getValue());
+                    return true;
+                }
+                return false;
+            },
+            "Could not connect to any of the specified LDAP servers",
+            [&] {
+                return std::vector<std::string>{
+                    str::stream() << "Error: " << forestQueryResults.getStatus().toString(),
+                    "The server may be down, or 'security.ldap.servers' or "
+                    "'security.ldap.transportSecurity' may be incorrectly configured.",
+                    "Alternatively the server may not allow anonymous access to the RootDSE."};
+            }));
+
+        LDAPEntityCollection::iterator forestRootDSE = forestResults.find("");
+        report.checkAssert(Report::ResultsAssertion(
+            [&] {
+                if (forestRootDSE != forestResults.end()) {
+                    hasForestFunctionality = forestRootDSE->second.find("forestFunctionality") !=
+                        forestRootDSE->second.end();
+                    return true;
+                } else {
+                    return false;
+                }
+            },
+            "Was unable to acquire a RootDSE, so could not find out if LDAP is a Microsoft Active "
+            "Directory server.",
+            std::vector<std::string>{},
+            Report::FailType::kNonFatalFailure));
+
+        report.checkAssert(Report::ResultsAssertion(
+            [&] { return !hasForestFunctionality; },
+            "The LDAP server is a Microsoft Active Directory server but it is not using the Global "
+            "Catalog port. Please change the port to 3268 for insecure or 3269 for secure TLS "
+            "connections to get better query performance.",
+            std::vector<std::string>{},
+            Report::FailType::kNonFatalInfo));
+    }
+
+    report.closeSection("Done checking for Active Directory and Global Catalog Usage");
 
 
     if (globalLDAPParams->bindMethod == LDAPBindType::kSasl) {
