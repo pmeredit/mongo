@@ -20,6 +20,7 @@ import uuid
 from typing import List
 
 import boto3
+import botocore
 
 LOGGER = logging.getLogger(__name__)
 
@@ -41,6 +42,9 @@ DEFAULT_SERVICE_NAME = 'script-test'
 # Garbage collection threshold for old/stale services
 DEFAULT_GARBAGE_COLLECTION_THRESHOLD = datetime.timedelta(hours=1)
 
+# ECS create service Retry count
+# Rarely create service fails with MISSING, so we retry a few times
+DEFAULT_ECS_CREATE_SERVICE_RETRY = 5
 ############################################################################
 
 
@@ -154,9 +158,24 @@ def remote_ps_container(cluster):
         print("{:<43}{:<9}{:<25}{:<25}{:<16}".format(task_id, lastStatus, public_ip, private_ip_address, taskDefinition_short ))
 
 def _remote_create_container_args(args):
-    remote_create_container(args.cluster, args.task_definition, args.service, args.subnets, args.security_group)
+    # Do not retry command line create
+    remote_create_container(args.cluster, args.task_definition, args.service, args.subnets, args.security_group, 1)
 
-def remote_create_container(cluster, task_definition, service_name, subnets, security_group):
+def remote_create_container(cluster, task_definition, service_name, subnets, security_group, retry_count):
+    """
+    Create a task in ECS with retry on WaiterError
+    """
+    count = 0
+    while count < retry_count:
+        try:
+            _remote_create_container(cluster, task_definition, service_name, subnets, security_group)
+            return
+        except botocore.exceptions.WaiterError as werr:
+            print("ECS error during waiting:" + werr)
+
+        count += 1
+
+def _remote_create_container(cluster, task_definition, service_name, subnets, security_group):
     """
     Create a task in ECS
     """
@@ -305,7 +324,7 @@ def _run_e2e_test(script, files, cluster, task_definition, subnets, security_gro
     """
     service_name = str(uuid.uuid4())
 
-    remote_create_container(cluster, task_definition, service_name, subnets, security_group)
+    remote_create_container(cluster, task_definition, service_name, subnets, security_group, DEFAULT_ECS_CREATE_SERVICE_RETRY)
 
     # The build account hosted ECS tasks are only available via the private ip address
     endpoint = remote_get_endpoint_str(cluster, service_name)
