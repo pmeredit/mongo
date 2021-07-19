@@ -121,7 +121,7 @@ bool ServerStatusClient::load() {
         LOGV2_DEBUG(24008, 5, "ServerStatusClient::load", "response"_attr = response);
         _serverStatusData = response;
     } else {
-        LOGV2_WARNING(24010, "serverStatus call failed", "response"_attr = response.toString());
+        LOGV2_WARNING(24010, "serverStatus call failed", "response"_attr = response);
         _serverStatusData = BSONObj();
     }
 
