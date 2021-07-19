@@ -1,0 +1,57 @@
+# -*- mode: python -*-
+
+Import('env')
+
+env = env.Clone()
+
+env.Library(
+    target='fips_mode_server',
+    source=[
+        'fips_flag_server.idl',
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/db/auth/auth_options',
+        '$BUILD_DIR/mongo/db/auth/cluster_auth_mode',
+        '$BUILD_DIR/mongo/db/server_options_core',
+        '$BUILD_DIR/mongo/util/net/ssl_options_server',
+        '$BUILD_DIR/mongo/util/options_parser/options_parser',
+    ],
+    LIBDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/db/mongod_initializers',
+        '$BUILD_DIR/mongo/s/mongos_initializers',
+    ],
+    LIBDEPS_TAGS=[
+        'lint-allow-bidirectional-edges',
+        'lint-allow-nonprivate-on-deps-dependents',
+    ],
+)
+
+env.Library(
+    target='fips_mode_client',
+    source=[
+        'fips_flag_client.idl',
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/util/net/ssl_options_client',
+        '$BUILD_DIR/mongo/util/options_parser/options_parser',
+    ],
+    LIBDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/shell/mongo_initializers',
+    ],
+    LIBDEPS_TAGS=[
+        'lint-allow-nonprivate-on-deps-dependents',
+    ],
+)
+
+env.CppUnitTest(
+    target='fips_options_test',
+    source=[
+        'fips_options_test.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/db/server_options_servers',
+        '$BUILD_DIR/mongo/util/cmdline_utils/cmdline_utils',
+        '$BUILD_DIR/mongo/util/net/ssl_options_server',
+        'fips_mode_server',
+    ],
+)

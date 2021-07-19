@@ -22,6 +22,7 @@ def configure(conf, env):
         "audit",
         "encryptdb",
         "fcbis",
+        "fips",
         "fle",
         "hot_backups",
         "inmemory",

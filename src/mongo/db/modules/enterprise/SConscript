@@ -10,6 +10,7 @@ from libdeps import deptype
 feature_dirs = [
     "encryptdb",
     "fcbis",
+    "fips",
     "fle",
     "hot_backups",
     "inmemory",
