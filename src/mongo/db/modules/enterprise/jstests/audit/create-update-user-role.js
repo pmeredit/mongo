@@ -240,7 +240,7 @@ let checkAuditDB = function(audit) {
     const st = MongoRunner.runShardedClusterAuditLogger(
         {}, {setParameter: "auditAuthorizationSuccess=true"});
     const auditMongos = st.s0.auditSpooler();
-    const auditConfig = st._configServers[0].auditSpooler();
+    const auditConfig = st.configRS.nodes[0].auditSpooler();
     const db = st.s0.getDB("test");
 
     runCommands(db);
