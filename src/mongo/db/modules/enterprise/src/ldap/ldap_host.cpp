@@ -9,10 +9,12 @@
 #include <string>
 #include <vector>
 
+
 #include "mongo/base/status_with.h"
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bsontypes.h"
 #include "mongo/util/assert_util.h"
+#include "mongo/util/net/cidr.h"
 #include "mongo/util/net/hostandport.h"
 #include "mongo/util/net/ssl_manager.h"
 
@@ -55,13 +57,14 @@ std::string LDAPHost::getNameAndPort() const {
 void LDAPHost::parse(const HostAndPort& host) {
     _hostName = host.host();
     _isIpvSix = ((int)std::count(_hostName.begin(), _hostName.end(), ':') > 1);
-
     if (host.hasPort()) {
         _port = host.port();
     } else {
         _port = _isSSL ? 636 : 389;
     }
+    _isIpvFour = _isIpvSix ? false : CIDR::parse(_hostName).isOK();
 }
+
 std::string joinLdapHost(std::vector<LDAPHost> hosts, char joinChar) {
     StringBuilder s;
     for (size_t i = 0; i < hosts.size(); i++) {

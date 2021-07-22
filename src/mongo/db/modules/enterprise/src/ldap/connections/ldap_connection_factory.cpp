@@ -668,7 +668,8 @@ LDAPConnectionFactory::LDAPConnectionFactory(Milliseconds poolSetupTimeout)
       _typeFactory(std::make_shared<LDAPTypeFactory>(_reaper)),
       _pool(std::make_shared<executor::ConnectionPool>(
           _typeFactory, "LDAP", makePoolOptions(poolSetupTimeout))),
-      _serverStatusSection(std::make_unique<LDAPConnectionFactoryServerStatus>(this)) {}
+      _serverStatusSection(std::make_unique<LDAPConnectionFactoryServerStatus>(this)),
+      _dnsCache(std::make_unique<LDAPDNSResolverCache>()) {}
 
 StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
     const LDAPConnectionOptions& options) {
@@ -690,7 +691,11 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
         std::transform(options.hosts.begin(),
                        options.hosts.end(),
                        std::back_inserter(hosts),
-                       [&](const LDAPHost& server) { return server.serializeHostAndPort(); });
+                       [&](const LDAPHost& server) {
+                           auto res = _dnsCache->resolve(server);
+                           invariant(res);
+                           return res.getValue().serializeHostAndPort();
+                       });
     } catch (const DBException& e) {
         return e.toStatus();
     }

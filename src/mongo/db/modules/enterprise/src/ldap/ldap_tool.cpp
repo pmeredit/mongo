@@ -26,6 +26,7 @@
 #include "ldap_manager_impl.h"
 #include "ldap_query.h"
 #include "ldap_query_config.h"
+#include "ldap_resolver_cache.h"
 #include "ldap_runner_impl.h"
 
 #include "util/report.h"
@@ -104,7 +105,7 @@ int ldapToolMain(int argc, char** argv) {
 
     Report report(globalLDAPToolOptions->color);
 
-    report.openSection("Checking that an LDAP server has been specified");
+    report.openSection("Checking that an server has been specified");
     report.checkAssert(
         Report::ResultsAssertion([] { return !globalLDAPParams->serverHosts.empty(); },
                                  "No LDAP servers have been provided"));
@@ -112,19 +113,16 @@ int ldapToolMain(int argc, char** argv) {
 
     // checking that the dns entries resolve before connecting to the LDAP server
     report.openSection("Checking that the DNS names of the LDAP servers resolve");
+    LDAPDNSResolverCache dnsCache;
     report.printItemList([&] {
         std::vector<std::string> summary;
-        for (auto& ldapServer : globalLDAPParams->serverHosts) {
-            try {
-                std::vector<std::string> res = dns::lookupARecords(ldapServer.getName());
-                if (!res.empty()) {
-                    summary.push_back("LDAP Host: " + ldapServer.getName() +
-                                      " was successfully resolved to address: " + res.front());
-                } else {
-                    summary.push_back("LDAP Host: " + ldapServer.getName() +
-                                      " was NOT successfully resolved.");
-                }
-            } catch (ExceptionFor<ErrorCodes::DNSHostNotFound>&) {
+        for (const auto& ldapServer : globalLDAPParams->serverHosts) {
+            auto currLookup = dnsCache.resolve(ldapServer);
+            if (currLookup.isOK()) {
+                summary.emplace_back(
+                    "LDAP Host: " + ldapServer.getName() +
+                    " was successfully resolved to address: " + currLookup.getValue().getAddress());
+            } else {
                 summary.push_back("LDAP Host: " + ldapServer.getName() +
                                   " was NOT successfully resolved.");
             }

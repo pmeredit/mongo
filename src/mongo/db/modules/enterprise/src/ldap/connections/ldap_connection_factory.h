@@ -6,6 +6,8 @@
 
 #include <memory>
 
+#include "../ldap_resolver_cache.h"
+
 #include "mongo/db/commands/server_status.h"
 #include "mongo/executor/connection_pool.h"
 
@@ -43,6 +45,7 @@ private:
     std::shared_ptr<LDAPTypeFactory> _typeFactory;
     std::shared_ptr<executor::ConnectionPool> _pool;
     std::unique_ptr<ServerStatusSection> _serverStatusSection;
+    std::unique_ptr<LDAPDNSResolverCache> _dnsCache;
 };
 
 }  // namespace mongo

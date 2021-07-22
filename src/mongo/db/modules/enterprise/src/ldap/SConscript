@@ -125,6 +125,7 @@ ldap_connection_sources = [
     'connections/ldap_connection_factory.cpp',
     'connections/ldap_connection_helpers.cpp',
     'connections/ldap_connection_reaper.cpp',
+    'ldap_resolver_cache.cpp'
 ]
 
 if env.TargetOSIs('windows'):
@@ -137,6 +138,7 @@ env.Library(
     source=ldap_connection_sources,
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
+        "$BUILD_DIR/mongo/util/dns_query",
         'ldap_query',
     ],
     LIBDEPS_PRIVATE=[

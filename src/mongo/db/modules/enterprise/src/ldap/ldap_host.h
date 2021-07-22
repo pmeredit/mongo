@@ -22,11 +22,18 @@ public:
     HostAndPort serializeHostAndPort() const;
     std::string serializeURI() const;
     std::string getName() const;
+    std::string getNameAndPort() const;
     int getPort() const;
     bool isSSL() const {
         return _isSSL;
     }
-    std::string getNameAndPort() const;
+    bool isIpvFour() const {
+        return _isIpvFour;
+    }
+    bool isIpvSix() const {
+        return _isIpvSix;
+    }
+
 
 private:
     void parse(const HostAndPort& host);
@@ -34,6 +41,7 @@ private:
     std::string _hostName;
     std::string _uriPrefix;
     bool _isSSL{false};
+    bool _isIpvFour{false};
     bool _isIpvSix{false};
     int _port{0};
 };
