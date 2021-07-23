@@ -111,7 +111,7 @@ private:
     boost::optional<long long> _replTermOfActiveBackup = boost::none;
 
     // Tracks the filenames returned by the open backup cursor or backup cursor extension.
-    stdx::unordered_set<std::string> returnedFilenames;
+    stdx::unordered_set<std::string> _returnedFilenames;
 };
 
 }  // namespace mongo

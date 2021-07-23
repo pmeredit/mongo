@@ -227,12 +227,12 @@ void BackupCursorService::closeBackupCursor(OperationContext* opCtx, const UUID&
 void BackupCursorService::addFilename(const UUID& backupId, std::string filename) {
     stdx::lock_guard<Latch> lk(_mutex);
     tassert(57807, "_activeBackupId should equal backupId", _activeBackupId == backupId);
-    returnedFilenames.insert(filename);
+    _returnedFilenames.insert(filename);
 }
 
 bool BackupCursorService::isFileReturnedByCursor(const UUID& backupId, std::string filename) {
     stdx::lock_guard<Latch> lk(_mutex);
-    return _activeBackupId == backupId && returnedFilenames.contains(filename);
+    return _activeBackupId == backupId && _returnedFilenames.contains(filename);
 }
 
 BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext* opCtx,
@@ -292,7 +292,7 @@ BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext
     // Copy filenames from `filesToBackup` to `returnedFilenames`.
     std::copy(filesToBackup.begin(),
               filesToBackup.end(),
-              std::inserter(returnedFilenames, returnedFilenames.end()));
+              std::inserter(_returnedFilenames, _returnedFilenames.end()));
 
     return {filesToBackup};
 }
@@ -322,5 +322,6 @@ void BackupCursorService::_closeBackupCursor(OperationContext* opCtx,
     _state = kInactive;
     _activeBackupId = boost::none;
     _replTermOfActiveBackup = boost::none;
+    _returnedFilenames.clear();
 }
 }  // namespace mongo

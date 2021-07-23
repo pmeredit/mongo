@@ -203,5 +203,30 @@ TEST_F(BackupCursorServiceTest, TestFilenameCheckWithExtend) {
     _backupCursorService->closeBackupCursor(_opCtx.get(), backupId);
 }
 
+TEST_F(BackupCursorServiceTest, TestFilenamesClearedOnClose) {
+    auto backupCursorState = _backupCursorService->openBackupCursor(
+        _opCtx.get(), {false, false, kBlockSizeMB, boost::none, boost::none});
+    auto backupId = backupCursorState.backupId;
+    auto extendTo = Timestamp(100, 1);
+    _backupCursorService->extendBackupCursor(_opCtx.get(), backupId, extendTo);
+
+    ASSERT(_backupCursorService->isFileReturnedByCursor(backupId, "journal/WiredTigerLog.999"));
+
+    // Closing the backup cursor should clear the tracked filenames.
+    _backupCursorService->closeBackupCursor(_opCtx.get(), backupId);
+    ASSERT(!_backupCursorService->isFileReturnedByCursor(backupId, "journal/WiredTigerLog.999"));
+
+    // Opening another backup cursor should still track filenames.
+    backupCursorState = _backupCursorService->openBackupCursor(
+        _opCtx.get(), {false, false, kBlockSizeMB, boost::none, boost::none});
+    backupId = backupCursorState.backupId;
+    extendTo = Timestamp(100, 1);
+    _backupCursorService->extendBackupCursor(_opCtx.get(), backupId, extendTo);
+
+    ASSERT(_backupCursorService->isFileReturnedByCursor(backupId, "journal/WiredTigerLog.999"));
+
+    _backupCursorService->closeBackupCursor(_opCtx.get(), backupId);
+}
+
 }  // namespace
 }  // namespace mongo
