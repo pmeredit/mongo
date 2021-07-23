@@ -126,6 +126,25 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchMongotRemote::doGetNex
     } else {
         opDebug.msWaitingForMongot = durationCount<Milliseconds>(_cursor->resetWaitingTime());
     }
+
+    // Meta variables will be constant across the query and only need to be set once.
+    if (!pExpCtx->variables.hasConstantValue(Variables::kSearchMetaId) && _cursor &&
+        _cursor->getCursorVars() &&
+        ::mongo::feature_flags::gFeatureFlagSearchMeta.isEnabled(
+            serverGlobalParams.featureCompatibility)) {
+        uassert(5858103,
+                str::stream() << "Must enable 'featureFlagSearchMeta' to access '$$"
+                              << Variables::getBuiltinVariableName(Variables::kSearchMetaId),
+                ::mongo::feature_flags::gFeatureFlagSearchMeta.isEnabled(
+                    serverGlobalParams.featureCompatibility));
+        // Variables on the cursor must be an object.
+        auto varsObj = Value(_cursor->getCursorVars().get());
+        auto metaVal = varsObj.getDocument().getField(
+            Variables::getBuiltinVariableName(Variables::kSearchMetaId));
+        if (!metaVal.missing()) {
+            pExpCtx->variables.setReservedValue(Variables::kSearchMetaId, metaVal, true);
+        }
+    }
     // The TaskExecutorCursor will store '0' as its CursorId if the cursor to mongot is exhausted.
     // If we already have a cursorId from a previous call, just use that.
     if (!_cursorId) {
