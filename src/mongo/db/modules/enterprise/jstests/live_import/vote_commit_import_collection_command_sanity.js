@@ -63,7 +63,7 @@ function testInvalidUsages(db) {
 
 // Test standalone.
 jsTestLog("Testing standalone");
-const standalone = MongoRunner.runMongod({setParameter: "featureFlagLiveImportExport=true"});
+const standalone = MongoRunner.runMongod();
 const adminDB = standalone.getDB("admin");
 testInvalidUsages(adminDB);
 
@@ -79,8 +79,8 @@ jsTestLog("Testing replica set");
 const kKeyFile = "jstests/libs/key1";
 const rst = new ReplSetTest({
     nodes: 2,
-    nodeOptions: {auth: "", setParameter: "featureFlagLiveImportExport=true"},
-    keyFile: kKeyFile
+    nodeOptions: {auth: ""},
+    keyFile: kKeyFile,
 });
 rst.startSet();
 rst.initiateWithHighElectionTimeout();

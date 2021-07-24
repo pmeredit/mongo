@@ -24,7 +24,7 @@ jsTestLog("Testing with collectionProperties: " + tojson(collectionProperties));
 
 jsTestLog("Starting a replica set");
 const rst = new ReplSetTest({nodes: 2});
-const nodes = rst.startSet({setParameter: "featureFlagLiveImportExport=true"});
+const nodes = rst.startSet();
 
 // Disallow the secondary node from voting so that the dry run of an import does not block on the
 // initial syncing node.
@@ -51,8 +51,7 @@ rst.restart(1, {
     startClean: true,
     setParameter: {
         'failpoint.hangBeforeClonerStage': failPointOptions,
-        'featureFlagLiveImportExport': true,
-        numInitialSyncAttempts: 1
+        numInitialSyncAttempts: 1,
     }
 });
 const secondary = rst.nodes[1];

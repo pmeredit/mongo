@@ -23,7 +23,7 @@ const collectionProperties = exportCollection(dbName, collName);
 // Test rollback.
 jsTestLog("Starting a rollback test");
 const rst = new ReplSetTest({name: jsTestName(), nodes: 3, useBridge: true});
-const nodes = rst.startSet({setParameter: "featureFlagLiveImportExport=true"});
+const nodes = rst.startSet();
 let config = rst.getReplSetConfig();
 config.members[2].priority = 0;
 config.settings = {

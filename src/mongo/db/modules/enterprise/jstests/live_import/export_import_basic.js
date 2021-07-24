@@ -27,7 +27,7 @@ const collectionProperties =
 // Setup a replica set that we'll import the exported collection to.
 jsTestLog("Starting a replica set for import");
 const rst = new ReplSetTest({nodes: 3});
-const nodes = rst.startSet({setParameter: "featureFlagLiveImportExport=true"});
+const nodes = rst.startSet();
 rst.initiateWithHighElectionTimeout();
 const primary = rst.getPrimary();
 const primaryDB = primary.getDB(dbName);

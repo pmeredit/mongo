@@ -24,7 +24,6 @@ const collectionProperties = exportCollection(dbName, collName);
 // Start the node with the "replSet" command line option and enable the audit of CRUD ops.
 const mongo = MongoRunner.runMongodAuditLogger({
     replSet: replSetName,
-    setParameter: {featureFlagLiveImportExport: true},
 });
 const audit = mongo.auditSpooler();
 const testDB = mongo.getDB(dbName);

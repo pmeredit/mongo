@@ -16,7 +16,7 @@ load("jstests/libs/parallel_shell_helpers.js");
 const dbName = "crud";
 
 function exportCollections(numImportThreads, numImportsPerThread) {
-    let standalone = MongoRunner.runMongod({setParameter: "featureFlagLiveImportExport=true"});
+    let standalone = MongoRunner.runMongod();
     let db = standalone.getDB(dbName);
 
     let collections = [];
@@ -41,10 +41,9 @@ function exportCollections(numImportThreads, numImportsPerThread) {
 
     jsTestLog("Exporting" + (numImportThreads * numImportsPerThread) + " collections");
     standalone = MongoRunner.runMongod({
-        setParameter: "featureFlagLiveImportExport=true",
         dbpath: standalone.dbpath,
         noCleanData: true,
-        queryableBackupMode: ""
+        queryableBackupMode: "",
     });
 
     db = standalone.getDB(dbName);
@@ -80,7 +79,7 @@ const collectionsToImport = exportCollections(numImportThreads, numImportsPerThr
 
 jsTestLog("Starting a replica set for import");
 const rst = new ReplSetTest({nodes: 3});
-const nodes = rst.startSet({setParameter: "featureFlagLiveImportExport=true"});
+const nodes = rst.startSet();
 rst.initiateWithHighElectionTimeout();
 const primary = rst.getPrimary();
 

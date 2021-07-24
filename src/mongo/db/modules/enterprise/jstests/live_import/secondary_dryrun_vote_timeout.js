@@ -25,7 +25,7 @@ jsTestLog("Testing with collectionProperties: " + tojson(collectionProperties));
 
 jsTestLog("Starting a replica set");
 const rst = new ReplSetTest({nodes: 2});
-const nodes = rst.startSet({setParameter: "featureFlagLiveImportExport=true"});
+const nodes = rst.startSet();
 rst.initiateWithHighElectionTimeout();
 const primary = rst.getPrimary();
 

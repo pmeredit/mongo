@@ -35,7 +35,7 @@ function testParsing(db) {
 
 // Test standalone.
 jsTestLog("Testing standalone");
-let standalone = MongoRunner.runMongod({setParameter: "featureFlagLiveImportExport=true"});
+let standalone = MongoRunner.runMongod();
 let testDB = standalone.getDB("test");
 testParsing(testDB);
 
@@ -48,8 +48,8 @@ MongoRunner.stopMongod(standalone);
 jsTestLog("Testing replica set");
 const rst = new ReplSetTest({
     nodes: 2,
-    nodeOptions: {auth: "", setParameter: "featureFlagLiveImportExport=true"},
-    keyFile: "jstests/libs/key1"
+    nodeOptions: {auth: ""},
+    keyFile: "jstests/libs/key1",
 });
 rst.startSet();
 rst.initiateWithHighElectionTimeout();
@@ -113,9 +113,7 @@ assert(primaryDB.logout());
 rst.stopSet();
 
 jsTestLog("Testing sharded cluster");
-const nodeOptions = {
-    setParameter: {featureFlagLiveImportExport: true}
-};
+const nodeOptions = {};
 const st = new ShardingTest({
     shards: 1,
     rs: {nodes: 1},

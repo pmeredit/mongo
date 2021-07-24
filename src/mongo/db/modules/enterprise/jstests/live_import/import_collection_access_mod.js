@@ -30,8 +30,7 @@ assert.gt(collectionProperties.numRecords, NumberLong(0));
 assert.gt(collectionProperties.dataSize, NumberLong(0));
 
 // Start the node with the "replSet" command line option and enable the audit of CRUD ops.
-const mongo = MongoRunner.runMongodAuditLogger(
-    {replSet: replSetName, setParameter: {featureFlagLiveImportExport: true}});
+const mongo = MongoRunner.runMongodAuditLogger({replSet: replSetName});
 const audit = mongo.auditSpooler();
 const testDB = mongo.getDB(kAdminDB);
 

@@ -5,7 +5,7 @@
  * is provided that allows operations to be performed on the mongod prior to exporting it.
  */
 const exportCollectionExtended = function(dbName, collName, username, password, ops) {
-    let standalone = MongoRunner.runMongod({setParameter: "featureFlagLiveImportExport=true"});
+    let standalone = MongoRunner.runMongod();
     let db = standalone.getDB(dbName);
 
     // in some tests collection already exists, so we ignore if this command fails
@@ -20,10 +20,9 @@ const exportCollectionExtended = function(dbName, collName, username, password, 
     // After creating the collection and running operations on it, export it.
     jsTestLog(`Exporting collection ${dbName}.${collName}`);
     let params = {
-        setParameter: "featureFlagLiveImportExport=true",
         dbpath: standalone.dbpath,
         noCleanData: true,
-        queryableBackupMode: ""
+        queryableBackupMode: "",
     };
     standalone = MongoRunner.runMongod(params);
 

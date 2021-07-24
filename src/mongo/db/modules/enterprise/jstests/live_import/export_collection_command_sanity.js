@@ -15,8 +15,7 @@
 const collName = "foo";
 
 function testStandalone() {
-    let standalone = MongoRunner.runMongod(
-        {auth: "", keyFile: "jstests/libs/key1", setParameter: "featureFlagLiveImportExport=true"});
+    let standalone = MongoRunner.runMongod({auth: "", keyFile: "jstests/libs/key1"});
     let testDB = standalone.getDB("test");
     let adminDB = standalone.getDB("admin");
 
@@ -43,7 +42,6 @@ function testStandalone() {
     standalone = MongoRunner.runMongod({
         auth: "",
         keyFile: "jstests/libs/key1",
-        setParameter: "featureFlagLiveImportExport=true",
         dbpath: standalone.dbpath,
         noCleanData: true,
         queryableBackupMode: ""
@@ -83,8 +81,8 @@ testStandalone();
 function testReplicaSet() {
     const rst = new ReplSetTest({
         nodes: 2,
-        nodeOptions: {auth: "", setParameter: "featureFlagLiveImportExport=true"},
-        keyFile: "jstests/libs/key1"
+        nodeOptions: {auth: ""},
+        keyFile: "jstests/libs/key1",
     });
     rst.startSet();
     rst.initiate();
@@ -147,7 +145,6 @@ function testReplicaSetNodesInStandaloneMode() {
         noCleanData: true,
         auth: "",
         keyFile: "jstests/libs/key1",
-        setParameter: "featureFlagLiveImportExport=true",
         queryableBackupMode: ""
     });
     const secondaryStandalone = MongoRunner.runMongod({
@@ -156,7 +153,6 @@ function testReplicaSetNodesInStandaloneMode() {
         noCleanData: true,
         auth: "",
         keyFile: "jstests/libs/key1",
-        setParameter: "featureFlagLiveImportExport=true",
         queryableBackupMode: ""
     });
 

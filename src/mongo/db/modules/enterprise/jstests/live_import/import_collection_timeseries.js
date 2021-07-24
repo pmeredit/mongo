@@ -36,7 +36,7 @@ Random.setRandomSeed();
 
 // Creates a time-series collection to be used for export.
 function createTimeseriesCollection() {
-    let conn = MongoRunner.runMongod({setParameter: "featureFlagLiveImportExport=true"});
+    let conn = MongoRunner.runMongod();
     assert(conn);
     let db = conn.getDB(dbName);
 
@@ -67,10 +67,9 @@ function createTimeseriesCollection() {
 // Exports the time-series collection.
 function exportTimeseriesCollection(dbpath) {
     let conn = MongoRunner.runMongod({
-        setParameter: "featureFlagLiveImportExport=true",
         dbpath: dbpath,
         noCleanData: true,
-        queryableBackupMode: ""
+        queryableBackupMode: "",
     });
     assert(conn);
 
@@ -92,7 +91,7 @@ function exportTimeseriesCollection(dbpath) {
 
 function importTimeseriesCollection(collectionsToImport) {
     const rst = new ReplSetTest({nodes: 2});
-    const nodes = rst.startSet({setParameter: "featureFlagLiveImportExport=true"});
+    const nodes = rst.startSet();
     rst.initiateWithHighElectionTimeout();
     const primary = rst.getPrimary();
     const secondary = rst.getSecondary();

@@ -26,12 +26,10 @@ const collectionProperties =
                      }));
 
 function testImport(collectionProperties, mongodOptions) {
-    const options = {setParameter: "featureFlagLiveImportExport=true"};
-
     // Set up a replica set that we'll import the exported collection to.
     jsTestLog("Starting a replica set for import with extra options: " + tojson(mongodOptions));
     const rst = new ReplSetTest({nodes: 1});
-    const nodes = rst.startSet(Object.merge(options, mongodOptions));
+    const nodes = rst.startSet(mongodOptions);
     rst.initiateWithHighElectionTimeout();
     const primary = rst.getPrimary();
     const primaryDB = primary.getDB(dbName);
