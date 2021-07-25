@@ -16,7 +16,6 @@ env.Library(
         '$BUILD_DIR/mongo/db/storage/storage_options',
         '../collection_properties',
         '../import_collection',
-        '../import_export_options'
     ],
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/db/commands/mongod',
@@ -39,7 +38,6 @@ env.Library(
         '$BUILD_DIR/mongo/db/service_context',
         '$BUILD_DIR/mongo/db/storage/storage_options',
         '../export_collection',
-        '../import_export_options'
     ],
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/db/commands/mongod',
@@ -61,7 +59,6 @@ env.Library(
         '$BUILD_DIR/mongo/db/repl/repl_coordinator_interface',
         '$BUILD_DIR/mongo/db/service_context',
         '../import_collection_coordinator',
-        '../import_export_options'
     ],
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/db/commands/mongod',
