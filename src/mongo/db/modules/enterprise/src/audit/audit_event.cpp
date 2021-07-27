@@ -9,6 +9,7 @@
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_session.h"
+#include "mongo/db/auth/security_token.h"
 
 namespace mongo {
 namespace audit {
@@ -27,6 +28,7 @@ constexpr auto kATypeField = "atype"_sd;
 constexpr auto kTimestampField = "ts"_sd;
 constexpr auto kLocalEndpointField = "local"_sd;
 constexpr auto kRemoteEndpointField = "remote"_sd;
+constexpr auto kTenantField = "tenant"_sd;
 constexpr auto kUsersField = "users"_sd;
 constexpr auto kRolesField = "roles"_sd;
 constexpr auto kParamField = "param"_sd;
@@ -62,6 +64,9 @@ AuditEvent::AuditEvent(Client* client,
 
     builder.append(kATypeField, AuditEventType_serializer(aType));
     builder.append(kTimestampField, Date_t::now());
+    if (auto token = auth::getSecurityToken(client->getOperationContext())) {
+        builder.append(kTenantField, token->getTenant());
+    }
     serializeClient(client, &builder);
 
     BSONObjBuilder paramBuilder(builder.subobjStart(kParamField));
