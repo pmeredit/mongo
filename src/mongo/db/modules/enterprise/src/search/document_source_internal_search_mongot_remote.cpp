@@ -142,6 +142,10 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchMongotRemote::doGetNex
         auto metaVal = varsObj.getDocument().getField(
             Variables::getBuiltinVariableName(Variables::kSearchMetaId));
         if (!metaVal.missing()) {
+            uassert(5858100,
+                    str::stream()
+                        << "Search queries with collectors are not supported in sharded pipelines",
+                    !pExpCtx->needsMerge);
             pExpCtx->variables.setReservedValue(Variables::kSearchMetaId, metaVal, true);
         }
     }
