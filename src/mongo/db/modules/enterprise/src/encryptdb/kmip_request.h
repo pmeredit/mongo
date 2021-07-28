@@ -49,7 +49,7 @@ struct DiscoverVersionsKMIPRequestParameters : KMIPRequestParameters {
 };
 
 struct GetKMIPRequestParameters : KMIPRequestParameters {
-    GetKMIPRequestParameters(std::vector<uint8_t> u)
+    explicit GetKMIPRequestParameters(std::vector<uint8_t> u)
         : KMIPRequestParameters(OperationType::get), uid(u) {}
 
     std::vector<uint8_t> uid;
