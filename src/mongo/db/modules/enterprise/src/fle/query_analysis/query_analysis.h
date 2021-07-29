@@ -172,6 +172,6 @@ BSONObj buildEncryptPlaceholder(
     EncryptionPlaceholderContext placeholderContext,
     const CollatorInterface* collator,
     const boost::optional<BSONObj>& origDoc = boost::none,
-    const boost::optional<const EncryptionSchemaTreeNode&> schema = boost::none);
+    boost::optional<const EncryptionSchemaTreeNode&> schema = boost::none);
 
 }  // namespace mongo::cryptd_query_analysis

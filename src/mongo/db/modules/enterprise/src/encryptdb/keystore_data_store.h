@@ -314,7 +314,7 @@ class WTDataStore {
 
 public:
     WTDataStore(const boost::filesystem::path& path,
-                const EncryptionGlobalParams* const encryptionParams);
+                const EncryptionGlobalParams* encryptionParams);
     WTDataStore() = default;
 
     WTDataStore(WTDataStore&&) = default;
