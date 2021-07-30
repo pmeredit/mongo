@@ -235,18 +235,6 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
         ],
     )
 
-    env.CppUnitTest(
-        target='audit_test',
-        source=[
-            'src/audit/audit_log_compress_base64_test.cpp',
-        ],
-        LIBDEPS=[
-            '$BUILD_DIR/mongo/base',
-            "$BUILD_DIR/mongo/util/signal_handlers",
-            'audit_enc_comp_manager',
-        ],
-    )
-
     # The auditing code needs to be built into the "coredb" library because there is code in there that
     # references audit functions.  However, the "coredb" library is also currently shared by server
     # programs, such as mongod and mongos, as well as client programs, such as mongodump and
@@ -300,7 +288,7 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
 
     env.Library(
         # We need to reverse link audit_mongod_impl into mongod,
-        # but audit_mongod_test needs a forward link into it.
+        # but audit_op_observer_test needs a forward link into it.
         # Meanwhile, scons doesn't like that.
         # So we use this proxy to link the mongod implementation back.
         target='audit_mongod_proxy',
@@ -322,12 +310,17 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
     )
 
     env.CppUnitTest(
-        target='audit_mongod_test',
+        target='audit_test',
         source=[
+            'src/audit/audit_key_manager_mock.cpp',
             'src/audit/audit_op_observer_test.cpp',
+            'src/audit/audit_log_compress_base64_test.cpp',
+            'src/audit/audit_key_manager_test.cpp',
+            'src/audit/logger/rotatable_file_writer_test.cpp',
         ],
         LIBDEPS=[
             '$BUILD_DIR/mongo/base',
+            '$BUILD_DIR/mongo/crypto/symmetric_crypto',
             '$BUILD_DIR/mongo/db/auth/authmocks',
             '$BUILD_DIR/mongo/db/repl/oplog',
             '$BUILD_DIR/mongo/db/repl/oplog_interface_local',
@@ -335,6 +328,7 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
             '$BUILD_DIR/mongo/db/repl/storage_interface_impl',
             '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
             '$BUILD_DIR/mongo/util/options_parser/options_parser',
+            '$BUILD_DIR/mongo/util/signal_handlers',
             'audit_enterprise',
             'audit_mongod',
         ],
@@ -375,17 +369,6 @@ if "audit" in env['MONGO_ENTERPRISE_FEATURES']:
             'audit_enterprise',
         ],
         AIB_COMPONENT="standalone-console-test",
-    )
-
-    env.CppUnitTest(
-        target='logger_test',
-        source=[
-            'src/audit/logger/rotatable_file_writer_test.cpp',
-        ],
-        LIBDEPS=[
-            '$BUILD_DIR/mongo/base',
-            'audit_enterprise',
-        ],
     )
 
 if not env.TargetOSIs("darwin") and "snmp" in env['MONGO_ENTERPRISE_FEATURES']:
