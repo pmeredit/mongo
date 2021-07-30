@@ -1,7 +1,6 @@
 /**
  *  Copyright (C) 2016 MongoDB Inc.
  */
-
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 #include "mongo/platform/basic.h"
@@ -11,6 +10,7 @@
 #include <boost/algorithm/string/join.hpp>
 #include <ldap.h>
 #include <memory>
+#include <mutex>
 #include <netinet/in.h>
 #include <sasl/sasl.h>
 
@@ -28,6 +28,7 @@
 
 namespace mongo {
 namespace {
+std::once_flag logFlag;
 
 /**
  * This class is used as a template argument to instantiate an LDAPSessionHolder with all the
@@ -428,6 +429,25 @@ bool OpenLDAPConnection::isThreadSafe() {
     return threadsafeExtension;
 }
 
+void startupLog(LDAPOptionAPIInfo& info, BSONObjBuilder& options) {
+    LOGV2(24051,
+          "LDAPAPIInfo: {{ "
+          "ldapai_info_version: {infoVersion}, "
+          "ldapai_api_version: {apiVersion}, "
+          "ldap_protocol_version: {protocolVersion}, "
+          "ldapai_extensions: [{extensions}], "
+          "ldapai_vendor_name: {vendorName}, "
+          "ldapai_vendor_version: {vendorVersion} }}",
+          "LDAPAPIInfo",
+          "infoVersion"_attr = info.getInfoVersion(),
+          "apiVersion"_attr = info.getAPIVersion(),
+          "protocolVersion"_attr = info.getProtocolVersion(),
+          "extensions"_attr = info.getExtensions(),
+          "vendorName"_attr = info.getVendorName(),
+          "vendorVersion"_attr = info.getVendorVersion(),
+          "options"_attr = options.obj());
+}
+
 Status OpenLDAPConnection::connect() {
     auto swHostURIs = _options.constructHostURIs();
     if (!swHostURIs.isOK()) {
@@ -494,42 +514,23 @@ Status OpenLDAPConnection::connect() {
     }
 
     // Log LDAP API information
-    if (shouldLog(MONGO_LOGV2_DEFAULT_COMPONENT, logv2::LogSeverity::Debug(3))) {
-        try {
-            LDAPOptionAPIInfo info = _pimpl->getOption<LDAPOptionAPIInfo>(
-                "OpenLDAPConnection::connect", "Getting API info");
+    try {
+        LDAPOptionAPIInfo info =
+            _pimpl->getOption<LDAPOptionAPIInfo>("OpenLDAPConnection::connect", "Getting API info");
 
-            BSONObjBuilder options;
-            using LDAPOptionConnectAsync = LDAPOptionGeneric<LDAP_OPT_CONNECT_ASYNC, int, 0>;
-            options.append("async",
-                           _pimpl
-                               ->getOption<LDAPOptionConnectAsync>("OpenLDAPConnection::connect",
-                                                                   "LDAP_OPT_CONNECT_ASYNC")
-                               .getValue());
-
-            LOGV2_DEBUG(24051,
-                        3,
-                        "LDAPAPIInfo: {{ "
-                        "ldapai_info_version: {infoVersion}, "
-                        "ldapai_api_version: {apiVersion}, "
-                        "ldap_protocol_version: {protocolVersion}, "
-                        "ldapai_extensions: [{extensions}], "
-                        "ldapai_vendor_name: {vendorName}, "
-                        "ldapai_vendor_version: {vendorVersion} }}",
-                        "LDAPAPIInfo",
-                        "infoVersion"_attr = info.getInfoVersion(),
-                        "apiVersion"_attr = info.getAPIVersion(),
-                        "protocolVersion"_attr = info.getProtocolVersion(),
-                        "extensions"_attr = boost::algorithm::join(info.getExtensions(), ", "),
-                        "vendorName"_attr = info.getVendorName(),
-                        "vendorVersion"_attr = info.getVendorVersion(),
-                        "options"_attr = options.obj());
-        } catch (...) {
-            Status status = exceptionToStatus();
-            LOGV2_ERROR(24059,
-                        "Attempted to get LDAPAPIInfo. Received error: {status}",
-                        "status"_attr = status);
-        }
+        BSONObjBuilder options;
+        using LDAPOptionConnectAsync = LDAPOptionGeneric<LDAP_OPT_CONNECT_ASYNC, int, 0>;
+        options.append("async",
+                       _pimpl
+                           ->getOption<LDAPOptionConnectAsync>("OpenLDAPConnection::connect",
+                                                               "LDAP_OPT_CONNECT_ASYNC")
+                           .getValue());
+        std::call_once(logFlag, startupLog, info, options);
+    } catch (...) {
+        Status status = exceptionToStatus();
+        LOGV2_ERROR(24059,
+                    "Attempted to get LDAPAPIInfo. Received error: {status}",
+                    "status"_attr = status);
     }
 
     return Status::OK();
