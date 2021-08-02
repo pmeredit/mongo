@@ -22,6 +22,9 @@ function testAuditLineBase64(fixture, isMongos, enableCompression) {
     jsTest.log("Testing: " + tojson(opts));
     const {conn, audit, admin} = fixture.startProcess(opts);
 
+    // We need to sleep to prevent race conditions
+    sleep(2000);
+
     let base64Line = audit.getNextEntryNoParsing();
     base64Line = base64Line.replace(/\n$/, "");
     const base64regex = /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
