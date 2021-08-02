@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "mongo/client/dbclient_connection.h"
 #include "mongo/db/repl/data_replicator_external_state.h"
 #include "mongo/db/repl/initial_syncer_interface.h"
 #include "mongo/db/repl/replication_process.h"
@@ -41,6 +42,15 @@ public:
     BSONObj getInitialSyncProgress() const final;
 
     void cancelCurrentAttempt() final;
+
+private:
+    /**
+     * Open connection to the sync source for BackupFileCloners.
+     */
+    Status _connect();
+
+    HostAndPort _syncSource;
+    std::unique_ptr<DBClientConnection> _client;
 };
 
 }  // namespace repl

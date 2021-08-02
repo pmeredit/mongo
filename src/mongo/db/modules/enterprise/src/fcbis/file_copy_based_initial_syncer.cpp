@@ -34,6 +34,11 @@ BSONObj FileCopyBasedInitialSyncer::getInitialSyncProgress() const {
 
 void FileCopyBasedInitialSyncer::cancelCurrentAttempt() {}
 
+Status FileCopyBasedInitialSyncer::_connect() {
+    _client = std::make_unique<DBClientConnection>(true /* autoReconnect */);
+    return _client->connect(_syncSource, "FileCopyBasedInitialSyncer", boost::none);
+}
+
 ServiceContext::ConstructorActionRegisterer fileCopyBasedInitialSyncerRegisterer(
     "FileCopyBasedInitialSyncerRegisterer",
     {"InitialSyncerFactoryRegisterer"}, /* dependency list */
