@@ -26,13 +26,13 @@ namespace {
  * Convert the name described the "name" into the canonical for for the given "nameType".
  *
  * For example, if the name type is GSS_C_NT_USER_NAME, the name supplied is "andy", and this
- * process is running in the "10GEN.ME" realm, the canonicalName returned will be
+ * process is running in the "10GEN.ME" realm, the canonical name returned will be
  * "andy@10GEN.ME".  However, if "andy@EXAMPLE.COM" is supplied, the canonical name will be
  * "andy@EXAMPLE.COM".
  *
- * Result stored to "canonicalName" and returns Status::OK() on success.
+ * Returns a StatusWith<std::string> containing the canonical name on success, or an error.
  */
-Status canonicalizeName(gss_OID nameType, StringData name, std::string* canonicalName) {
+StatusWith<std::string> canonicalizeName(gss_OID nameType, StringData name) {
     OM_uint32 majorStatus = 0;
     OM_uint32 minorStatus = 0;
     gss_buffer_desc nameBuffer;
@@ -41,7 +41,7 @@ Status canonicalizeName(gss_OID nameType, StringData name, std::string* canonica
     gss_name_t gssNameInput = GSS_C_NO_NAME;
     gss_name_t gssNameCanonical = GSS_C_NO_NAME;
     gss_buffer_desc bufFullName = {0};
-    Status status(ErrorCodes::InternalError, "SHOULD NEVER BE RETURNED");
+    StatusWith<std::string> status(ErrorCodes::InternalError, "SHOULD NEVER BE RETURNED");
 
     majorStatus = gss_import_name(&minorStatus, &nameBuffer, nameType, &gssNameInput);
     if (GSS_ERROR(majorStatus))
@@ -53,17 +53,19 @@ Status canonicalizeName(gss_OID nameType, StringData name, std::string* canonica
         goto error;
 
     majorStatus = gss_display_name(&minorStatus, gssNameCanonical, &bufFullName, nullptr);
-    if (GSS_ERROR(majorStatus))
+    if (GSS_ERROR(majorStatus)) {
         goto error;
-
-    *canonicalName = std::string(static_cast<const char*>(bufFullName.value), bufFullName.length);
-    status = Status::OK();
-    goto done;
+    } else {
+        auto s = std::string(static_cast<const char*>(bufFullName.value), bufFullName.length);
+        status = StatusWith<std::string>(s);
+        goto done;
+    }
 
 error:
-    status = Status(ErrorCodes::UnknownError,
-                    str::stream() << "Could not canonicalize \"" << name << "\"; "
-                                  << getGssapiErrorString(majorStatus, minorStatus));
+    status =
+        StatusWith<std::string>(ErrorCodes::UnknownError,
+                                str::stream() << "Could not canonicalize \"" << name << "\"; "
+                                              << getGssapiErrorString(majorStatus, minorStatus));
 
 done:
     if (gssNameInput != GSS_C_NO_NAME)
@@ -77,12 +79,12 @@ done:
 }
 }  // namespace
 
-Status canonicalizeUserName(StringData name, std::string* canonicalName) {
-    return canonicalizeName(GSS_C_NT_USER_NAME, name, canonicalName);
+StatusWith<std::string> canonicalizeUserName(StringData name) {
+    return canonicalizeName(GSS_C_NT_USER_NAME, name);
 }
 
-Status canonicalizeServerName(StringData name, std::string* canonicalName) {
-    return canonicalizeName(GSS_C_NT_HOSTBASED_SERVICE, name, canonicalName);
+StatusWith<std::string> canonicalizeServerName(StringData name) {
+    return canonicalizeName(GSS_C_NT_HOSTBASED_SERVICE, name);
 }
 
 Status tryAcquireServerCredential(const std::string& principalName) {
@@ -92,42 +94,41 @@ Status tryAcquireServerCredential(const std::string& principalName) {
     gss_name_t gssPrincipalName = GSS_C_NO_NAME;
     gss_cred_id_t credential = GSS_C_NO_CREDENTIAL;
 
-    std::string canonicalPrincipalName;
-    Status status = canonicalizeServerName(principalName, &canonicalPrincipalName);
-    if (!status.isOK())
-        goto done;
+    auto statusOrValue = canonicalizeServerName(principalName);
+    Status status = statusOrValue.getStatus();
 
-    nameBuffer.value = const_cast<char*>(canonicalPrincipalName.c_str());
-    nameBuffer.length = canonicalPrincipalName.size();
+    if (status.isOK()) {
+        auto& canonicalPrincipalName = statusOrValue.getValue();
+        nameBuffer.value = const_cast<char*>(canonicalPrincipalName.c_str());
+        nameBuffer.length = canonicalPrincipalName.size();
 
-    minorStatus = 0;
-    majorStatus = gss_import_name(&minorStatus, &nameBuffer, GSS_C_NT_USER_NAME, &gssPrincipalName);
-    if (GSS_ERROR(majorStatus)) {
-        status = Status(ErrorCodes::UnknownError,
-                        str::stream() << "gssapi could not import name " << principalName << "; "
-                                      << getGssapiErrorString(majorStatus, minorStatus));
-        goto done;
+        minorStatus = 0;
+        majorStatus =
+            gss_import_name(&minorStatus, &nameBuffer, GSS_C_NT_USER_NAME, &gssPrincipalName);
+        if (GSS_ERROR(majorStatus)) {
+            status =
+                Status(ErrorCodes::UnknownError,
+                       str::stream() << "gssapi could not import name " << principalName << "; "
+                                     << getGssapiErrorString(majorStatus, minorStatus));
+            goto done;
+        }
+
+        minorStatus = 0;
+        majorStatus = gss_acquire_cred(&minorStatus,        // [out] minor_status
+                                       gssPrincipalName,    // desired_name
+                                       0,                   // time_req
+                                       GSS_C_NULL_OID_SET,  // desired_mechs
+                                       GSS_C_ACCEPT,        // cred_usage
+                                       &credential,         // output_cred_handle
+                                       nullptr,             // actual_mechs
+                                       nullptr);            // time_rec
+        if (GSS_ERROR(majorStatus)) {
+            status = Status(ErrorCodes::UnknownError,
+                            str::stream() << "gssapi could not acquire server credential for "
+                                          << canonicalPrincipalName << "; "
+                                          << getGssapiErrorString(majorStatus, minorStatus));
+        }
     }
-
-    minorStatus = 0;
-    majorStatus = gss_acquire_cred(&minorStatus,        // [out] minor_status
-                                   gssPrincipalName,    // desired_name
-                                   0,                   // time_req
-                                   GSS_C_NULL_OID_SET,  // desired_mechs
-                                   GSS_C_ACCEPT,        // cred_usage
-                                   &credential,         // output_cred_handle
-                                   nullptr,             // actual_mechs
-                                   nullptr);            // time_rec
-    if (GSS_ERROR(majorStatus)) {
-        status = Status(ErrorCodes::UnknownError,
-                        str::stream() << "gssapi could not acquire server credential for "
-                                      << canonicalPrincipalName << "; "
-                                      << getGssapiErrorString(majorStatus, minorStatus));
-        goto done;
-    }
-
-    status = Status::OK();
-    goto done;
 
 done:
     if (gssPrincipalName != GSS_C_NO_NAME)

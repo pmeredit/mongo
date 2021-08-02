@@ -15,7 +15,7 @@
 #include <sspi.h>
 
 #include "mongo/base/init.h"
-#include "mongo/base/status.h"
+#include "mongo/base/status_with.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/str.h"
@@ -30,13 +30,12 @@ extern "C" int plain_server_plug_init(const sasl_utils_t* utils,
 namespace mongo {
 namespace gssapi {
 
-Status canonicalizeUserName(StringData name, std::string* canonicalName) {
-    *canonicalName = name.toString();
-    return Status::OK();
+StatusWith<std::string> canonicalizeUserName(StringData name) {
+    return StatusWith<std::string>(name.toString());
 }
 
-Status canonicalizeServerName(StringData name, std::string* canonicalName) {
-    return Status(ErrorCodes::InternalError, "do not call canonicalizeServerName");
+StatusWith<std::string> canonicalizeServerName(StringData name) {
+    return StatusWith<std::string>(ErrorCodes::InternalError, "do not call canonicalizeServerName");
 }
 
 Status tryAcquireServerCredential(const std::string& principalName) {

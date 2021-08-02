@@ -10,7 +10,7 @@
 
 #include <string>
 
-#include "mongo/base/status.h"
+#include "mongo/base/status_with.h"
 #include "mongo/base/string_data.h"
 
 namespace mongo {
@@ -19,12 +19,12 @@ namespace gssapi {
 /**
  * Canonicalize the user principal for "name".
  */
-Status canonicalizeUserName(StringData name, std::string* canonicalName);
+StatusWith<std::string> canonicalizeUserName(StringData name);
 
 /**
  * Canonicalize the server principal for "name".
  */
-Status canonicalizeServerName(StringData name, std::string* canonicalName);
+StatusWith<std::string> canonicalizeServerName(StringData name);
 
 /**
  * Returns Status::OK() if the process can acquire a GSSAPI credential for the given server

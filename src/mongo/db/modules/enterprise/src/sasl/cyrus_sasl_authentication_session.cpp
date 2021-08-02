@@ -262,12 +262,12 @@ template struct CyrusSaslMechShim<GSSAPIPolicy>;
 
 bool CyrusGSSAPIServerMechanism::isAuthorizedToActAs(StringData requestedUser,
                                                      StringData authenticatedUser) {
-    std::string canonicalAuthenticatedUser;
-    if (!gssapi::canonicalizeUserName(authenticatedUser, &canonicalAuthenticatedUser).isOK()) {
+    auto statusOrValue = gssapi::canonicalizeUserName(authenticatedUser);
+    if (!statusOrValue.isOK()) {
         return false;
     }
 
-    return requestedUser == canonicalAuthenticatedUser;
+    return requestedUser == statusOrValue.getValue();
 }
 
 
