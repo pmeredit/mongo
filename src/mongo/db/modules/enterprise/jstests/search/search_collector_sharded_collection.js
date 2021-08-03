@@ -67,10 +67,10 @@ const mongotQuery = {};
                     id: NumberLong(0),
                     ns: testColl.getFullName(),
                     nextBatch: [
-                        {_id: 2, score: 0.654},
-                        {_id: 1, score: 0.321},
-                        {_id: 3, score: .2},
-                        {_id: 4, score: .5}
+                        {_id: 2, $searchScore: 0.654},
+                        {_id: 1, $searchScore: 0.321},
+                        {_id: 3, $searchScore: .2},
+                        {_id: 4, $searchScore: .5}
                     ]
                 },
                 vars: {SEARCH_META: {value: 1}}
@@ -93,10 +93,10 @@ const mongotQuery = {};
                     id: NumberLong(0),
                     ns: testColl.getFullName(),
                     nextBatch: [
-                        {_id: 11, score: 0.654},
-                        {_id: 12, score: 0.321},
-                        {_id: 13, score: .2},
-                        {_id: 14, score: .5}
+                        {_id: 11, $searchScore: 0.654},
+                        {_id: 12, $searchScore: 0.321},
+                        {_id: 13, $searchScore: .2},
+                        {_id: 14, $searchScore: .5}
                     ]
                 },
                 vars: {SEARCH_META: {value: 1}}
@@ -107,9 +107,11 @@ const mongotQuery = {};
     const s1Mongot = stWithMock.getMockConnectedToHost(shard1Conn);
     s1Mongot.setMockResponses(shard1History, NumberLong(123));
 }
-assert.commandFailedWithCode(
-    testDB.runCommand(
-        {aggregate: testColl.getName(), pipeline: [{$search: mongotQuery}], cursor: {}}),
-    5858100);
+assert.commandFailedWithCode(testDB.runCommand({
+    aggregate: testColl.getName(),
+    pipeline: [{$search: mongotQuery}, {$project: {val: "$$SEARCH_META"}}],
+    cursor: {}
+}),
+                             5858100);
 stWithMock.stop();
 })();

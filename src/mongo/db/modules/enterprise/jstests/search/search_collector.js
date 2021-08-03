@@ -1,5 +1,6 @@
 /**
- * Verify that `$search` sets '$$SEARCH_META' variable information.
+ * Verify that `$search` sets '$$SEARCH_META' variable information. SEARCH_META is not supported on
+ * sharded collections.
  */
 (function() {
 "use strict";
