@@ -5,10 +5,7 @@ Import("env has_option")
 Import("get_option")
 Import("http_client")
 
-if get_option('build-tools') == 'next':
-    from libdeps_next import deptype
-else:
-    from libdeps import dependency as deptype
+from libdeps import deptype
 
 feature_dirs = [
     "encryptdb",
