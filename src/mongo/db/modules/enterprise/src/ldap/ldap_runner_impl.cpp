@@ -4,11 +4,15 @@
 
 #include "mongo/platform/basic.h"
 
+#include <algorithm>
 #include <memory>
 
 #include "ldap_runner_impl.h"
 
+#include "mongo/db/auth/user_acquisition_stats.h"
+#include "mongo/db/client.h"
 #include "mongo/util/assert_util.h"
+#include "mongo/util/periodic_runner.h"
 
 #include "connections/ldap_connection.h"
 #include "connections/ldap_connection_factory.h"
@@ -30,13 +34,17 @@ LDAPRunnerImpl::LDAPRunnerImpl(LDAPBindOptions defaultBindOptions, LDAPConnectio
 
 LDAPRunnerImpl::~LDAPRunnerImpl() = default;
 
-Status LDAPRunnerImpl::bindAsUser(const std::string& user, const SecureString& pwd) {
+Status LDAPRunnerImpl::bindAsUser(const std::string& user,
+                                  const SecureString& pwd,
+                                  TickSource* tickSource,
+                                  UserAcquisitionStats* userAcquisitionStats) {
     LDAPConnectionOptions connectionOptions;
     {
         stdx::lock_guard<Latch> lock(_memberAccessMutex);
         connectionOptions = _options;
     }
-    auto swConnection = _factory.create(std::move(connectionOptions));
+    auto swConnection =
+        _factory.create(std::move(connectionOptions), tickSource, userAcquisitionStats);
     if (!swConnection.isOK()) {
         return swConnection.getStatus();
     }
@@ -48,14 +56,16 @@ Status LDAPRunnerImpl::bindAsUser(const std::string& user, const SecureString& p
                                 _defaultBindOptions.authenticationChoice,
                                 _defaultBindOptions.saslMechanisms,
                                 false);
-
     // Attempt to bind to the LDAP server with the provided credentials.
-    return swConnection.getValue()->bindAsUser(std::move(bindOptions));
+    return swConnection.getValue()->bindAsUser(
+        std::move(bindOptions), tickSource, userAcquisitionStats);
 }
 
-StatusWith<std::unique_ptr<LDAPConnection>> LDAPRunnerImpl::getConnection() {
+StatusWith<std::unique_ptr<LDAPConnection>> LDAPRunnerImpl::getConnection(
+    TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) {
     LDAPBindOptions bindOptions;
     LDAPConnectionOptions connectionOptions;
+
     std::vector<SecureString> bindPasswords;
     {
         stdx::lock_guard<Latch> lock(_memberAccessMutex);
@@ -63,7 +73,8 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPRunnerImpl::getConnection() {
         connectionOptions = _options;
         bindPasswords = _bindPasswords;
     }
-    auto swConnection = _factory.create(std::move(connectionOptions));
+    auto swConnection =
+        _factory.create(std::move(connectionOptions), tickSource, userAcquisitionStats);
     if (!swConnection.isOK()) {
         return swConnection.getStatus();
     }
@@ -76,13 +87,13 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPRunnerImpl::getConnection() {
         if (!bindPasswords.empty()) {
             for (const auto& pwd : bindPasswords) {
                 bindOptions.password = pwd;
-                bindStatus = connection->bindAsUser(bindOptions);
+                bindStatus = connection->bindAsUser(bindOptions, tickSource, userAcquisitionStats);
                 if (bindStatus.isOK()) {
                     break;
                 }
             }
         } else {
-            bindStatus = connection->bindAsUser(bindOptions);
+            bindStatus = connection->bindAsUser(bindOptions, tickSource, userAcquisitionStats);
         }
 
         if (!bindStatus.isOK()) {
@@ -93,22 +104,24 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPRunnerImpl::getConnection() {
     return std::move(connection);
 }
 
-StatusWith<LDAPEntityCollection> LDAPRunnerImpl::runQuery(const LDAPQuery& query) {
-    auto swConnection = getConnection();
+StatusWith<LDAPEntityCollection> LDAPRunnerImpl::runQuery(
+    const LDAPQuery& query, TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) {
+    auto swConnection = getConnection(tickSource, userAcquisitionStats);
     if (!swConnection.isOK()) {
         return swConnection.getStatus();
     }
 
-    return swConnection.getValue()->query(query);
+    return swConnection.getValue()->query(query, tickSource, userAcquisitionStats);
 }
 
-Status LDAPRunnerImpl::checkLiveness() {
-    auto swConnection = getConnection();
+Status LDAPRunnerImpl::checkLiveness(TickSource* tickSource,
+                                     UserAcquisitionStats* userAcquisitionStats) {
+    auto swConnection = getConnection(tickSource, userAcquisitionStats);
     if (!swConnection.isOK()) {
         return swConnection.getStatus();
     }
 
-    return swConnection.getValue()->checkLiveness();
+    return swConnection.getValue()->checkLiveness(tickSource, userAcquisitionStats);
 }
 
 std::vector<LDAPHost> LDAPRunnerImpl::getHosts() const {

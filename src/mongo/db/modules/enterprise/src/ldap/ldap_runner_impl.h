@@ -7,6 +7,8 @@
 #include "ldap_host.h"
 #include "ldap_runner.h"
 
+#include "mongo/util/system_tick_source.h"
+
 #include "connections/ldap_connection_factory.h"
 #include "ldap_connection_options.h"
 
@@ -27,9 +29,14 @@ public:
     LDAPRunnerImpl(LDAPBindOptions defaultBindOptions, LDAPConnectionOptions options);
     ~LDAPRunnerImpl() final;
 
-    Status bindAsUser(const std::string& user, const SecureString& pwd) final;
-    StatusWith<LDAPEntityCollection> runQuery(const LDAPQuery& query) final;
-    Status checkLiveness() final;
+    Status bindAsUser(const std::string& user,
+                      const SecureString& pwd,
+                      TickSource* tickSource,
+                      UserAcquisitionStats* userAcquisitionStats) final;
+    StatusWith<LDAPEntityCollection> runQuery(const LDAPQuery& query,
+                                              TickSource* tickSource,
+                                              UserAcquisitionStats* userAcquisitionStats) final;
+    Status checkLiveness(TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) final;
 
     std::vector<LDAPHost> getHosts() const final;
     void setHosts(std::vector<LDAPHost> hosts) final;
@@ -46,7 +53,8 @@ public:
     void setUseConnectionPool(bool val) final;
 
 private:
-    StatusWith<std::unique_ptr<LDAPConnection>> getConnection();
+    StatusWith<std::unique_ptr<LDAPConnection>> getConnection(
+        TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats);
 
     LDAPConnectionFactory _factory;
 

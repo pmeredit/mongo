@@ -4,10 +4,13 @@
 
 #pragma once
 
+#include <boost/optional.hpp>
+#include <optional>
 #include <pcrecpp.h>
 #include <string>
 #include <vector>
 
+#include "mongo/db/auth/user_acquisition_stats.h"
 
 namespace mongo {
 class LDAPRunner;
@@ -40,7 +43,10 @@ public:
      *
      * @input The input string to transform
      */
-    virtual StatusWith<std::string> resolve(LDAPRunner* runner, StringData input) const = 0;
+    virtual StatusWith<std::string> resolve(LDAPRunner* runner,
+                                            StringData input,
+                                            TickSource* tickSource,
+                                            UserAcquisitionStats* userAcquisitionStats) const = 0;
 
     /**
      * Produce a string representation of the rule

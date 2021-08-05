@@ -6,6 +6,8 @@
 
 #include <boost/optional.hpp>
 
+#include "mongo/db/auth/user_acquisition_stats.h"
+
 #include "../ldap_connection_options.h"
 #include "../ldap_type_aliases.h"
 
@@ -46,7 +48,9 @@ public:
      *   @param options All information needed to bind
      *   @return Any errors arising from the bind attempt
      */
-    virtual Status bindAsUser(const LDAPBindOptions& options) = 0;
+    virtual Status bindAsUser(const LDAPBindOptions& options,
+                              TickSource* tickSource,
+                              UserAcquisitionStats* userAcquisitionStats) = 0;
 
     virtual boost::optional<std::string> currentBoundUser() const = 0;
 
@@ -57,19 +61,23 @@ public:
      *   @param results A map of all results returned. Consists of a map from the DN of each
      *                  returned entity to a map of its attribute key-value pairs
      */
-    virtual StatusWith<LDAPEntityCollection> query(LDAPQuery query) = 0;
+    virtual StatusWith<LDAPEntityCollection> query(LDAPQuery query,
+                                                   TickSource* tickSource,
+                                                   UserAcquisitionStats* userAcquisitionStats) = 0;
 
     /**
      * Validate that the remote LDAP server is alive and answering our requests.
      */
-    virtual Status checkLiveness() = 0;
+    virtual Status checkLiveness(TickSource* tickSource,
+                                 UserAcquisitionStats* userAcquisitionStats) = 0;
 
     /**
      * Disconnect from the database.
      *
      *  @return Any errors arising from disconnecting.
      */
-    virtual Status disconnect() = 0;
+    virtual Status disconnect(TickSource* tickSource,
+                              UserAcquisitionStats* userAcquisitionStats) = 0;
 
 protected:
     LDAPConnectionOptions _options;

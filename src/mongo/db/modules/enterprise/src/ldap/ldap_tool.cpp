@@ -4,8 +4,11 @@
 
 #include "mongo/platform/basic.h"
 
+#include <memory>
+
 #include "mongo/base/init.h"
 #include "mongo/base/initializer.h"
+#include "mongo/db/auth/cluster_auth_mode.h"
 #include "mongo/db/auth/role_name.h"
 #include "mongo/db/auth/user_name.h"
 #include "mongo/db/service_context.h"
@@ -14,10 +17,14 @@
 #include "mongo/logv2/log_manager.h"
 #include "mongo/logv2/log_severity.h"
 #include "mongo/util/dns_query.h"
+#include "mongo/util/duration.h"
 #include "mongo/util/invariant.h"
 #include "mongo/util/quick_exit.h"
 #include "mongo/util/signal_handlers.h"
+#include "mongo/util/system_tick_source.h"
 #include "mongo/util/text.h"
+#include "mongo/util/tick_source.h"
+#include "mongo/util/tick_source_mock.h"
 #include "mongo/util/version.h"
 
 #include "ldap_options.h"
@@ -32,10 +39,10 @@
 #include "util/report.h"
 
 namespace mongo {
-
 namespace {
 constexpr auto kGlobalCatalogPortLDAP = 3268;
 constexpr auto kGlobalCatalogPortLDAPS = 3269;
+
 
 void getSSLParamsForLdap(SSLParams* params) {
     params->sslPEMKeyFile = "";
@@ -92,6 +99,7 @@ int ldapToolMain(int argc, char** argv) {
     runGlobalInitializersOrDie(std::vector<std::string>(argv, argv + argc));
     startSignalProcessingThread();
     setGlobalServiceContext(ServiceContext::make());
+    UserAcquisitionStats userAcquisitionStats;
 
     if (globalLDAPToolOptions->debug) {
         logv2::LogManager::global().getGlobalSettings().setMinimumLoggedSeverity(
@@ -197,7 +205,9 @@ int ldapToolMain(int argc, char** argv) {
 
     StatusWith<LDAPEntityCollection> swResult = runner->runQuery(
         LDAPQuery::instantiateQuery(swRootDSEQuery.getValue(), LDAPQueryContext::kLivenessCheck)
-            .getValue());
+            .getValue(),
+        getGlobalServiceContext()->getTickSource(),
+        &userAcquisitionStats);
 
     LDAPEntityCollection results;
 
@@ -246,7 +256,9 @@ int ldapToolMain(int argc, char** argv) {
         invariant(initialQueryResults.isOK());
 
         StatusWith<LDAPEntityCollection> forestQueryResults =
-            runner->runQuery(initialQueryResults.getValue());
+            runner->runQuery(initialQueryResults.getValue(),
+                             getGlobalServiceContext()->getTickSource(),
+                             &userAcquisitionStats);
 
         report.checkAssert(Report::ResultsAssertion(
             [&] {
@@ -387,7 +399,9 @@ int ldapToolMain(int argc, char** argv) {
     if (!globalLDAPToolOptions->password->empty()) {
         report.openSection("Attempting to authenticate against the LDAP server");
         Status authRes = manager.verifyLDAPCredentials(globalLDAPToolOptions->user,
-                                                       globalLDAPToolOptions->password);
+                                                       globalLDAPToolOptions->password,
+                                                       getGlobalServiceContext()->getTickSource(),
+                                                       &userAcquisitionStats);
         report.checkAssert(Report::ResultsAssertion([&] { return authRes.isOK(); },
                                                     str::stream() << "Failed to authenticate "
                                                                   << globalLDAPToolOptions->user
@@ -428,7 +442,9 @@ int ldapToolMain(int argc, char** argv) {
 
         report.openSection("Executing query against LDAP server");
         StatusWith<std::vector<RoleName>> swRoles =
-            manager.getUserRoles(UserName(globalLDAPToolOptions->user, "$external"));
+            manager.getUserRoles(UserName(globalLDAPToolOptions->user, "$external"),
+                                 getGlobalServiceContext()->getTickSource(),
+                                 &userAcquisitionStats);
         report.checkAssert(Report::ResultsAssertion(
             [&] { return swRoles.isOK(); },
             "Unable to acquire roles",
@@ -446,7 +462,11 @@ int ldapToolMain(int argc, char** argv) {
             return roleStrings;
         });
     }
-    return 0;
+
+    /**
+     * We are using quickExit here to avoid bad access to userAcquisitionStats.
+     **/
+    mongo::quickExit(0);
 }
 
 }  // namespace

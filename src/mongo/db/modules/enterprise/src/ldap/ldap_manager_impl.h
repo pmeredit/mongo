@@ -35,8 +35,14 @@ public:
                     InternalToLDAPUserNameMapper nameMapper);
     ~LDAPManagerImpl() final;
 
-    StatusWith<std::vector<RoleName>> getUserRoles(const UserName& userName) final;
-    Status verifyLDAPCredentials(const std::string& user, const SecureString& pwd) final;
+    StatusWith<std::vector<RoleName>> getUserRoles(
+        const UserName& userName,
+        TickSource* tickSource,
+        UserAcquisitionStats* userAcquisitionStats) final;
+    Status verifyLDAPCredentials(const std::string& user,
+                                 const SecureString& pwd,
+                                 TickSource* tickSource,
+                                 UserAcquisitionStats* userAcquisitionStats) final;
 
     ////////////////////////////////////////////////////////////
     //
@@ -73,7 +79,9 @@ private:
      * @param query An LDAP search query to perform against the server
      * @return Errors arising from the query or the results
      */
-    StatusWith<LDAPDNVector> _getGroupDNsFromServer(LDAPQuery& query);
+    StatusWith<LDAPDNVector> _getGroupDNsFromServer(LDAPQuery& query,
+                                                    TickSource* tickSource,
+                                                    UserAcquisitionStats* userAcquisitionStats);
 
     /**
      * The LDAPRunner used to make outgoing queries to the LDAP server.

@@ -8,6 +8,7 @@
 
 #include <cstdint>
 
+#include "mongo/db/auth/user_acquisition_stats.h"
 #include "mongo/logv2/log_detail.h"
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/str.h"
@@ -266,12 +267,14 @@ public:
                               << "): " << errorStr};
     }
 
-    Status checkLiveness(typename S::TimeoutType* timeout) {
+    Status checkLiveness(typename S::TimeoutType* timeout,
+                         TickSource* tickSource,
+                         UserAcquisitionStats* userAcquisitionStats) {
         // This creates a query that queries the RootDSE, which should always be readable
         // without auth.
         static const auto query = makeRootDSEQuery();
         typename S::ErrorCodeType err;
-        issueQuery(query, timeout, &err);
+        issueQuery(query, timeout, &err, tickSource, userAcquisitionStats);
 
         if (err == S::LDAP_insufficient_access) {
             // Some LDAP servers do not permit any basic queries pre-auth.
@@ -285,11 +288,14 @@ public:
                                       S::toNativeString(S::ldap_err2string(err)));
     }
 
-    StatusWith<LDAPEntityCollection> query(LDAPQuery query, typename S::TimeoutType* timeout) {
+    StatusWith<LDAPEntityCollection> query(LDAPQuery query,
+                                           typename S::TimeoutType* timeout,
+                                           TickSource* tickSource,
+                                           UserAcquisitionStats* userAcquisitionStats) {
         // ldap_msgfree is a no-op on nullptr. The result from ldap_search_ext_s must be freed
         // with ldap_msgfree, reguardless of the return code.
         typename S::ErrorCodeType err;
-        auto queryResult = issueQuery(query, timeout, &err);
+        auto queryResult = issueQuery(query, timeout, &err, tickSource, userAcquisitionStats);
 
         Status status = resultCodeToStatus(err,
                                            "ldap_search_ext_s",
@@ -428,9 +434,12 @@ private:
 
     auto issueQuery(LDAPQuery query,
                     typename S::TimeoutType* timeout,
-                    typename S::ErrorCodeType* err) {
+                    typename S::ErrorCodeType* err,
+                    TickSource* tickSource,
+                    UserAcquisitionStats* userAcquisitionStats) {
         LOGV2_LDAPLOG(4615666, 3, "Performing LDAP query: {query}", "query"_attr = query);
-
+        UserAcquisitionStatsHandle userAcquisitionStatsHandle =
+            UserAcquisitionStatsHandle(userAcquisitionStats, tickSource, kSearch);
         // Convert the attribute vector to a mutable null terminated array of char* strings
         // libldap wants a non-const copy, so prevent it from breaking our configuration data
         size_t requestedAttributesSize = query.getAttributes().size();
@@ -469,6 +478,7 @@ private:
             timeout,
             0,
             &queryResult);
+        userAcquisitionStatsHandle.recordTimerEnd();
         return std::unique_ptr<typename S::MessageType, LDAPMessageDeleter>(queryResult);
     }
 

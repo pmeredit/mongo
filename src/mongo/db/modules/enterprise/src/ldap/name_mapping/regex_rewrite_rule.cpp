@@ -65,7 +65,11 @@ bool _parseGroup(StringData possibleNumber, std::size_t max, std::size_t* group)
     return true;
 }
 
-StatusWith<std::string> RegexRewriteRule::resolve(LDAPRunner* runner, StringData input) const {
+StatusWith<std::string> RegexRewriteRule::resolve(
+    LDAPRunner* runner,
+    StringData input,
+    TickSource* tickSource,
+    UserAcquisitionStats* userAcquisitionStats) const {
     StatusWith<std::vector<std::string>> swExtractedMatches = _extractMatches(_match, input);
     if (!swExtractedMatches.isOK()) {
         return swExtractedMatches.getStatus();

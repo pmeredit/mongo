@@ -21,15 +21,20 @@ namespace mongo {
 class LDAPRunnerMock final : public LDAPRunner {
 public:
     ~LDAPRunnerMock() final = default;
-    Status bindAsUser(const std::string& user, const SecureString& pwd) final {
+    Status bindAsUser(const std::string& user,
+                      const SecureString& pwd,
+                      TickSource* tickSource,
+                      UserAcquisitionStats* userAcquisitionStats) final {
         return Status::OK();
     }
 
-    Status checkLiveness() final {
+    Status checkLiveness(TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) final {
         return Status::OK();
     }
 
-    StatusWith<LDAPEntityCollection> runQuery(const LDAPQuery& query) final {
+    StatusWith<LDAPEntityCollection> runQuery(const LDAPQuery& query,
+                                              TickSource* tickSource,
+                                              UserAcquisitionStats* userAcquisitionStats) final {
         ASSERT_FALSE(_stored.empty());
         auto next = std::move(_stored.back());
         _stored.pop_back();

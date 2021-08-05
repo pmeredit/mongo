@@ -7,6 +7,7 @@
 #include "ldap_rewrite_rule.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "mongo/base/status_with.h"
@@ -43,7 +44,10 @@ LDAPRewriteRule::LDAPRewriteRule(pcrecpp::RE match,
       _queryConfig(std::move(queryParameters)),
       _stringRepresentation(std::move(stringRepresentation)) {}
 
-StatusWith<std::string> LDAPRewriteRule::resolve(LDAPRunner* runner, StringData input) const {
+StatusWith<std::string> LDAPRewriteRule::resolve(LDAPRunner* runner,
+                                                 StringData input,
+                                                 TickSource* tickSource,
+                                                 UserAcquisitionStats* userAcquisitionStats) const {
     StatusWith<std::vector<std::string>> swExtractedMatches = _extractMatches(_match, input);
     if (!swExtractedMatches.isOK()) {
         return swExtractedMatches.getStatus();
@@ -56,7 +60,8 @@ StatusWith<std::string> LDAPRewriteRule::resolve(LDAPRunner* runner, StringData 
     }
     LDAPQuery query = std::move(swQuery.getValue());
 
-    StatusWith<LDAPEntityCollection> swLDAPResults = runner->runQuery(query);
+    StatusWith<LDAPEntityCollection> swLDAPResults =
+        runner->runQuery(query, tickSource, userAcquisitionStats);
     if (!swLDAPResults.isOK()) {
         return swLDAPResults.getStatus();
     }

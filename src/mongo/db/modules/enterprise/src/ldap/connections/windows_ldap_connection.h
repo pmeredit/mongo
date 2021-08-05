@@ -23,14 +23,20 @@ class StringData;
 class WindowsLDAPConnection : public LDAPConnection {
 public:
     WindowsLDAPConnection(LDAPConnectionOptions options,
-                          std::shared_ptr<LDAPConnectionReaper> reaper);
+                          std::shared_ptr<LDAPConnectionReaper> reaper,
+                          TickSource* tickSource,
+                          UserAcquisitionStats* userAcquisitionStats);
     ~WindowsLDAPConnection();
     Status connect() final;
-    Status bindAsUser(const LDAPBindOptions& options) final;
+    Status bindAsUser(const LDAPBindOptions& options,
+                      TickSource* tickSource,
+                      UserAcquisitionStats* userAcquisitionStats) final;
     boost::optional<std::string> currentBoundUser() const final;
-    Status checkLiveness() final;
-    StatusWith<LDAPEntityCollection> query(LDAPQuery query) final;
-    Status disconnect() final;
+    Status checkLiveness(TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) final;
+    StatusWith<LDAPEntityCollection> query(LDAPQuery query,
+                                           TickSource* tickSource,
+                                           UserAcquisitionStats* userAcquisitionStats) final;
+    Status disconnect(TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) final;
 
 private:
     class WindowsLDAPConnectionPIMPL;
@@ -39,6 +45,10 @@ private:
     boost::optional<std::string> _boundUser;
 
     unsigned long _timeoutSeconds;
+
+    // Used to track LDAP operations in CurOp
+    TickSource* _tickSource;
+    UserAcquisitionStats* _userAcquisitionStats;
 };
 
 }  // namespace mongo

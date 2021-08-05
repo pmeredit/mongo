@@ -1,6 +1,7 @@
 /**
  *    Copyright (C) 2016 MongoDB Inc.
  */
+
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 #include "mongo/platform/basic.h"
@@ -28,9 +29,11 @@
 #include "mongo/base/status_with.h"
 #include "mongo/base/string_data.h"
 #include "mongo/client/cyrus_sasl_client_session.h"
+#include "mongo/db/auth/user_acquisition_stats.h"
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/str.h"
 #include "mongo/util/text.h"
+#include "mongo/util/tick_source.h"
 
 namespace mongo {
 
@@ -86,15 +89,19 @@ class WindowsLDAPConnection::WindowsLDAPConnectionPIMPL
     : public LDAPSessionHolder<WindowsLDAPSessionParams> {};
 
 WindowsLDAPConnection::WindowsLDAPConnection(LDAPConnectionOptions options,
-                                             std::shared_ptr<LDAPConnectionReaper> reaper)
+                                             std::shared_ptr<LDAPConnectionReaper> reaper,
+                                             TickSource* tickSource,
+                                             UserAcquisitionStats* userAcquisitionStats)
     : LDAPConnection(std::move(options)),
       _pimpl(std::make_unique<WindowsLDAPConnectionPIMPL>()),
-      _reaper(std::move(reaper)) {
+      _reaper(std::move(reaper)),
+      _tickSource(tickSource),
+      _userAcquisitionStats(userAcquisitionStats) {
     _timeoutSeconds = durationCount<Seconds>(_options.timeout);
 }
 
 WindowsLDAPConnection::~WindowsLDAPConnection() {
-    Status status = disconnect();
+    Status status = disconnect(_tickSource, _userAcquisitionStats);
     if (!status.isOK()) {
         LOGV2_ERROR(24256, "LDAP unbind failed: {status}", "status"_attr = status);
     }
@@ -158,7 +165,9 @@ Status WindowsLDAPConnection::connect() {
     return _pimpl->resultCodeToStatus(connectSuccess, "ldap_connect", "connect to LDAP server");
 }
 
-Status WindowsLDAPConnection::bindAsUser(const LDAPBindOptions& options) {
+Status WindowsLDAPConnection::bindAsUser(const LDAPBindOptions& options,
+                                         TickSource* tickSource,
+                                         UserAcquisitionStats* userAcquisitionStats) {
     // Microsoft gives us two LDAP bind functions. ldap_bind_s lets us feed in a token representing
     // the auth scheme. ldap_sasl_bind_s lets us manually run a SASL dance. ldap_sasl_bind_s would
     // let us support some more schemes, and could do true SASL proxying. But it looks like this
@@ -247,36 +256,42 @@ boost::optional<std::string> WindowsLDAPConnection::currentBoundUser() const {
     return _boundUser;
 }
 
-Status WindowsLDAPConnection::checkLiveness() {
+Status WindowsLDAPConnection::checkLiveness(TickSource* tickSource,
+                                            UserAcquisitionStats* userAcquisitionStats) {
     l_timeval timeout{static_cast<LONG>(_timeoutSeconds), 0};
-    return _pimpl->checkLiveness(&timeout);
+    return _pimpl->checkLiveness(&timeout, tickSource, userAcquisitionStats);
 }
 
-StatusWith<LDAPEntityCollection> WindowsLDAPConnection::query(LDAPQuery query) {
+StatusWith<LDAPEntityCollection> WindowsLDAPConnection::query(
+    LDAPQuery query, TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) {
     l_timeval timeout{static_cast<LONG>(_timeoutSeconds), 0};
-    return _pimpl->query(std::move(query), &timeout);
+    return _pimpl->query(std::move(query), &timeout, tickSource, userAcquisitionStats);
 }
 
-Status WindowsLDAPConnection::disconnect() {
+Status WindowsLDAPConnection::disconnect(TickSource* tickSource,
+                                         UserAcquisitionStats* userAcquisitionStats) {
     if (!_pimpl->getSession()) {
         return Status::OK();
     }
 
-    _reaper->reap(_pimpl->getSession());
+    _reaper->reap(_pimpl->getSession(), tickSource);
 
     _pimpl->getSession() = nullptr;
 
     return Status::OK();
 }
 
-void disconnectLDAPConnection(LDAP* ldap) {
+void disconnectLDAPConnection(LDAP* ldap, TickSource* tickSource) {
     LDAPSessionHolder<WindowsLDAPSessionParams> session(ldap);
-
+    UserAcquisitionStats userAcquisitionStats = UserAcquisitionStats();
+    UserAcquisitionStatsHandle userAcquisitionStatsHandle =
+        UserAcquisitionStatsHandle(&userAcquisitionStats, tickSource, kUnbind);
     auto status =
         session.resultCodeToStatus(ldap_unbind_s(ldap), "ldap_unbind_s", "unbind from LDAP");
     if (!status.isOK()) {
         LOGV2_ERROR(5531601, "Unable to unbind from LDAP", "__error__"_attr = status);
     }
+    userAcquisitionStatsHandle.recordTimerEnd();
 }
 
 }  // namespace mongo

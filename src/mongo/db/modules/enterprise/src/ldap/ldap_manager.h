@@ -7,6 +7,7 @@
 #include <memory>
 
 #include "mongo/base/secure_allocator.h"
+#include "mongo/db/auth/user_acquisition_stats.h"
 #include "mongo/util/duration.h"
 
 #include "ldap_host.h"
@@ -43,7 +44,10 @@ public:
     /**
      * For a given user, acquires its roles from LDAP.
      */
-    virtual StatusWith<std::vector<RoleName>> getUserRoles(const UserName& userName) = 0;
+    virtual StatusWith<std::vector<RoleName>> getUserRoles(
+        const UserName& userName,
+        TickSource* tickSource,
+        UserAcquisitionStats* userAcquisitionStats) = 0;
 
     /** Verifies credentials by attempting to bind to the remote LDAP server.
      *
@@ -51,7 +55,10 @@ public:
      *  @param pwd, authentication password.
      *  @return, Ok on successful authentication.
      */
-    virtual Status verifyLDAPCredentials(const std::string& user, const SecureString& pwd) = 0;
+    virtual Status verifyLDAPCredentials(const std::string& user,
+                                         const SecureString& pwd,
+                                         TickSource* tickSource,
+                                         UserAcquisitionStats* userAcquisitionStats) = 0;
 
     ////////////////////////////////////////////////////////////
     //

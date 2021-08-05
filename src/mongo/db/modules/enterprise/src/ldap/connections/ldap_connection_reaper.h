@@ -10,7 +10,9 @@
 #include <ldap.h>
 #endif
 
+#include "mongo/db/auth/user_acquisition_stats.h"
 #include "mongo/util/out_of_line_executor.h"
+#include "mongo/util/tick_source.h"
 
 namespace mongo {
 
@@ -25,7 +27,7 @@ public:
      * Schedule the connection reaper to disconnect/unbind a LDAP session on a background thread if
      * multithreading is safe. Otherwise, it will disconnect inline.
      */
-    void reap(LDAP* ldap);
+    void reap(LDAP* ldap, TickSource* tickSource);
 
 private:
     using reapFunc = unique_function<void(void)>;
@@ -39,6 +41,6 @@ private:
 /**
  * Per LDAP API that disconnects/unbinds a LDAP session.
  */
-void disconnectLDAPConnection(LDAP* ldap);
+void disconnectLDAPConnection(LDAP* ldap, TickSource* tickSource);
 
 }  // namespace mongo

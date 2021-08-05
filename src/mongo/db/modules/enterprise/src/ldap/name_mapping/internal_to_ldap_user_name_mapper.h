@@ -39,7 +39,10 @@ public:
      * If the rule does not match, the next rule will be tried. If no rules remain, the
      * transformation will fail.
      */
-    StatusWith<std::string> transform(LDAPRunner* runner, StringData input) const;
+    StatusWith<std::string> transform(LDAPRunner* runner,
+                                      StringData input,
+                                      TickSource* tickSource,
+                                      UserAcquisitionStats* userAcquisitionStats) const;
 
     /**
      * Factory function which generates a new InternalToLDAPUserNameMapper.

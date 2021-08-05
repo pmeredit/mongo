@@ -9,6 +9,7 @@
 #include "mongo/base/init.h"
 #include "mongo/db/service_context.h"
 #include "mongo/platform/mutex.h"
+#include "mongo/util/duration.h"
 
 #include "ldap/ldap_parameters_gen.h"
 #include "ldap_manager_impl.h"
@@ -37,7 +38,10 @@ ServiceContext::ConstructorActionRegisterer setLDAPManagerImpl{
 
         // Perform smoke test of the connection parameters.
         if (!globalLDAPParams->serverHosts.empty() && globalLDAPParams->smokeTestOnStartup) {
-            auto status = runner->checkLiveness();
+            std::unique_ptr<UserAcquisitionStats> userAcquisitionStats =
+                std::make_unique<UserAcquisitionStats>();
+            auto status =
+                runner->checkLiveness(service->getTickSource(), userAcquisitionStats.get());
             if (!status.isOK()) {
                 uasserted(status.code(),
                           str::stream() << "Can't connect to the specified LDAP servers, error: "

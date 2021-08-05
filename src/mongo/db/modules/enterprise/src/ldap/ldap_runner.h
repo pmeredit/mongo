@@ -7,7 +7,10 @@
 #include <memory>
 
 #include "mongo/base/secure_allocator.h"
+#include "mongo/db/auth/user_acquisition_stats.h"
+#include "mongo/db/client.h"
 #include "mongo/util/duration.h"
+#include "mongo/util/tick_source_mock.h"
 
 #include "ldap_host.h"
 #include "ldap_type_aliases.h"
@@ -38,18 +41,25 @@ public:
      *  @param pwd, bind password.
      *  @return, Ok on successful authentication.
      */
-    virtual Status bindAsUser(const std::string& user, const SecureString& pwd) = 0;
+    virtual Status bindAsUser(const std::string& user,
+                              const SecureString& pwd,
+                              TickSource* tickSource,
+                              UserAcquisitionStats* userAcquisitionStats) = 0;
 
     /** Execute the query, returning the results.
      *
      * @param query The query to run against the remote LDAP server
      * @return Either an error arising from the operation, or the results
      */
-    virtual StatusWith<LDAPEntityCollection> runQuery(const LDAPQuery& query) = 0;
+    virtual StatusWith<LDAPEntityCollection> runQuery(
+        const LDAPQuery& query,
+        TickSource* tickSource,
+        UserAcquisitionStats* userAcquisitionStats) = 0;
 
     /** Ping the remote LDAP server to make certain communication works.
      */
-    virtual Status checkLiveness() = 0;
+    virtual Status checkLiveness(TickSource* tickSource,
+                                 UserAcquisitionStats* userAcquisitionStats) = 0;
 
     ////////////////////////////////////////////////////////////
     //

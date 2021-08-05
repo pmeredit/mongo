@@ -33,28 +33,33 @@ LDAPManagerImpl::LDAPManagerImpl(std::unique_ptr<LDAPRunner> runner,
 
 LDAPManagerImpl::~LDAPManagerImpl() = default;
 
-Status LDAPManagerImpl::verifyLDAPCredentials(const std::string& user, const SecureString& pwd) {
+Status LDAPManagerImpl::verifyLDAPCredentials(const std::string& user,
+                                              const SecureString& pwd,
+                                              TickSource* tickSource,
+                                              UserAcquisitionStats* userAcquisitionStats) {
     std::shared_ptr<InternalToLDAPUserNameMapper> userToDN;
     {
         stdx::lock_guard<Latch> lock(_memberAccessMutex);
         userToDN = _userToDN;
     }
-    auto swUser = userToDN->transform(_runner.get(), user);
+    auto swUser = userToDN->transform(_runner.get(), user, tickSource, userAcquisitionStats);
     if (!swUser.getStatus().isOK()) {
         return swUser.getStatus().withContext(
             "Failed to transform authentication user name to LDAP DN");
     }
 
-    return _runner->bindAsUser(std::move(swUser.getValue()), pwd);
+    return _runner->bindAsUser(std::move(swUser.getValue()), pwd, tickSource, userAcquisitionStats);
 }
 
-StatusWith<std::vector<RoleName>> LDAPManagerImpl::getUserRoles(const UserName& userName) {
+StatusWith<std::vector<RoleName>> LDAPManagerImpl::getUserRoles(
+    const UserName& userName, TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) {
     std::shared_ptr<InternalToLDAPUserNameMapper> userToDN;
     {
         stdx::lock_guard<Latch> lock(_memberAccessMutex);
         userToDN = _userToDN;
     }
-    auto swUser = userToDN->transform(_runner.get(), userName.getUser());
+    auto swUser =
+        userToDN->transform(_runner.get(), userName.getUser(), tickSource, userAcquisitionStats);
     if (!swUser.isOK()) {
         return swUser.getStatus().withContext("Failed to transform bind user name to LDAP DN");
     }
@@ -70,7 +75,8 @@ StatusWith<std::vector<RoleName>> LDAPManagerImpl::getUserRoles(const UserName& 
     }
     LDAPQuery query = std::move(swQuery.getValue());
 
-    StatusWith<LDAPDNVector> swEntities = _getGroupDNsFromServer(query);
+    StatusWith<LDAPDNVector> swEntities =
+        _getGroupDNsFromServer(query, tickSource, userAcquisitionStats);
     if (!swEntities.isOK()) {
         return swEntities.getStatus().withContext(str::stream()
                                                   << "Failed to obtain LDAP entities for query '"
@@ -145,11 +151,13 @@ void LDAPManagerImpl::setQueryConfig(UserNameSubstitutionLDAPQueryConfig queryCo
     _queryConfig = std::move(queryConfig);
 }
 
-StatusWith<LDAPDNVector> LDAPManagerImpl::_getGroupDNsFromServer(LDAPQuery& query) {
+StatusWith<LDAPDNVector> LDAPManagerImpl::_getGroupDNsFromServer(
+    LDAPQuery& query, TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) {
     const bool isAcquiringAttributes = query.isAcquiringAttributes();
 
     // Perform the query specified in ldapLDAPQuery against the server.
-    StatusWith<LDAPEntityCollection> queryResultStatus = _runner->runQuery(query);
+    StatusWith<LDAPEntityCollection> queryResultStatus =
+        _runner->runQuery(query, tickSource, userAcquisitionStats);
     if (!queryResultStatus.isOK()) {
         return queryResultStatus.getStatus();
     }

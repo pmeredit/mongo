@@ -1,6 +1,7 @@
 /**
  *  Copyright (C) 2016 MongoDB Inc.
  */
+
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kConnectionPool
 
 #include "mongo/platform/basic.h"
@@ -10,6 +11,7 @@
 #include <memory>
 
 #include "mongo/base/status_with.h"
+#include "mongo/db/auth/user_acquisition_stats.h"
 #include "mongo/db/commands/server_status.h"
 #include "mongo/executor/connection_pool.h"
 #include "mongo/executor/connection_pool_stats.h"
@@ -85,11 +87,14 @@ struct LDAPPoolTimingData {
 };
 
 std::unique_ptr<LDAPConnection> makeNativeLDAPConn(const LDAPConnectionOptions& opts,
-                                                   std::shared_ptr<LDAPConnectionReaper> reaper) {
+                                                   std::shared_ptr<LDAPConnectionReaper> reaper,
+                                                   TickSource* tickSource,
+                                                   UserAcquisitionStats* userAcquisitionStats) {
 #ifndef _WIN32
-    return std::make_unique<OpenLDAPConnection>(opts, reaper);
+    return std::make_unique<OpenLDAPConnection>(opts, reaper, tickSource, userAcquisitionStats);
 #else
-    return std::make_unique<WindowsLDAPConnection>(opts, reaper);
+    return std::make_unique<WindowsLDAPConnection>(opts, reaper, tickSource, userAcquisitionStats);
+
 #endif
 }
 
@@ -266,6 +271,7 @@ private:
     void setup(Milliseconds timeout, SetupCallback cb, std::string) final;
     void refresh(Milliseconds timeout, RefreshCallback cb) final;
 
+
 private:
     template <typename T>
     std::string _resultToString(const StatusWith<T>& sw) {
@@ -310,15 +316,17 @@ void PooledLDAPConnection::setup(Milliseconds timeout, SetupCallback cb, std::st
             cb(this, execStatus);
             return;
         }
-
-        _conn = makeNativeLDAPConn(_options, _reaper);
+        UserAcquisitionStats userAcquisitionStats = UserAcquisitionStats();
+        _conn = makeNativeLDAPConn(
+            _options, _reaper, getGlobalServiceContext()->getTickSource(), &userAcquisitionStats);
         auto status = _conn->connect();
         if (!status.isOK()) {
             return cb(this, std::move(status));
         }
 
         Timer queryTimer;
-        auto emptyQueryStatus = _conn->checkLiveness();
+        auto emptyQueryStatus =
+            _conn->checkLiveness(getGlobalServiceContext()->getTickSource(), &userAcquisitionStats);
         auto elapsed = duration_cast<Milliseconds>(queryTimer.elapsed());
 
         if (emptyQueryStatus.isOK()) {
@@ -344,9 +352,10 @@ void PooledLDAPConnection::refresh(Milliseconds timeout, RefreshCallback cb) {
             cb(this, execStatus);
             return;
         }
-
+        UserAcquisitionStats userAcquisitionStats = UserAcquisitionStats();
         Timer queryTimer;
-        auto status = _conn->checkLiveness();
+        auto status =
+            _conn->checkLiveness(getGlobalServiceContext()->getTickSource(), &userAcquisitionStats);
         auto elapsed = duration_cast<Milliseconds>(queryTimer.elapsed());
         LOGV2_DEBUG(24062,
                     1,
@@ -395,10 +404,14 @@ public:
     ~WrappedConnection();
 
     Status connect() final;
-    Status bindAsUser(const LDAPBindOptions&) final;
-    Status checkLiveness() final;
-    StatusWith<LDAPEntityCollection> query(LDAPQuery query) final;
-    Status disconnect() final;
+    Status bindAsUser(const LDAPBindOptions&,
+                      TickSource* tickSource,
+                      UserAcquisitionStats* userAcquisitionStats) final;
+    Status checkLiveness(TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) final;
+    StatusWith<LDAPEntityCollection> query(LDAPQuery query,
+                                           TickSource* tickSource,
+                                           UserAcquisitionStats* userAcquisitionStats) final;
+    Status disconnect(TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) final;
     boost::optional<std::string> currentBoundUser() const final;
 
 private:
@@ -432,10 +445,14 @@ Status WrappedConnection::connect() {
     return status;
 }
 
-Status WrappedConnection::bindAsUser(const LDAPBindOptions& options) {
-    auto status = _runFuncWithTimeout<void>(options.toCleanString(),
-                                            [&] { return _getConn()->bindAsUser(options); })
-                      .getNoThrow();
+Status WrappedConnection::bindAsUser(const LDAPBindOptions& options,
+                                     TickSource* tickSource,
+                                     UserAcquisitionStats* userAcquisitionStats) {
+    auto status =
+        _runFuncWithTimeout<void>(
+            options.toCleanString(),
+            [&] { return _getConn()->bindAsUser(options, tickSource, userAcquisitionStats); })
+            .getNoThrow();
     if (!status.isOK()) {
         _conn->indicateFailure(status);
     } else {
@@ -448,14 +465,18 @@ boost::optional<std::string> WrappedConnection::currentBoundUser() const {
     return _getConn()->currentBoundUser();
 }
 
-Status WrappedConnection::checkLiveness() {
-    return _getConn()->checkLiveness();
+Status WrappedConnection::checkLiveness(TickSource* tickSource,
+                                        UserAcquisitionStats* userAcquisitionStats) {
+    return _getConn()->checkLiveness(tickSource, userAcquisitionStats);
 }
 
-StatusWith<LDAPEntityCollection> WrappedConnection::query(LDAPQuery query) {
-    auto swResults = _runFuncWithTimeout<LDAPEntityCollection>(
-                         query.toString(), [&] { return _getConn()->query(std::move(query)); })
-                         .getNoThrow();
+StatusWith<LDAPEntityCollection> WrappedConnection::query(
+    LDAPQuery query, TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) {
+    auto swResults =
+        _runFuncWithTimeout<LDAPEntityCollection>(
+            query.toString(),
+            [&] { return _getConn()->query(std::move(query), tickSource, userAcquisitionStats); })
+            .getNoThrow();
     if (!swResults.isOK()) {
         _conn->indicateFailure(swResults.getStatus());
     } else {
@@ -465,8 +486,9 @@ StatusWith<LDAPEntityCollection> WrappedConnection::query(LDAPQuery query) {
     return swResults;
 }
 
-Status WrappedConnection::disconnect() {
-    auto status = _getConn()->disconnect();
+Status WrappedConnection::disconnect(TickSource* tickSource,
+                                     UserAcquisitionStats* userAcquisitionStats) {
+    auto status = _getConn()->disconnect(tickSource, userAcquisitionStats);
     _conn->indicateFailure(
         {ErrorCodes::TransportSessionClosed, "LDAP connection was disconnected"});
     return status;
@@ -672,10 +694,12 @@ LDAPConnectionFactory::LDAPConnectionFactory(Milliseconds poolSetupTimeout)
       _dnsCache(std::make_unique<LDAPDNSResolverCache>()) {}
 
 StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
-    const LDAPConnectionOptions& options) {
+    const LDAPConnectionOptions& options,
+    TickSource* tickSource,
+    UserAcquisitionStats* userAcquisitionStats) {
 
     if (!options.usePooledConnection || !isNativeImplThreadSafe()) {
-        auto conn = makeNativeLDAPConn(options, _reaper);
+        auto conn = makeNativeLDAPConn(options, _reaper, tickSource, userAcquisitionStats);
         auto connectStatus = conn->connect();
         if (!connectStatus.isOK()) {
             return connectStatus;

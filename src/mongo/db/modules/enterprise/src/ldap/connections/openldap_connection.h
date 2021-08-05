@@ -11,6 +11,7 @@
 #include <memory>
 
 #include "mongo/util/net/sockaddr.h"
+#include "mongo/util/tick_source.h"
 
 #include "ldap_connection_reaper.h"
 
@@ -23,13 +24,19 @@ namespace mongo {
 class OpenLDAPConnection final : public LDAPConnection {
 public:
     explicit OpenLDAPConnection(LDAPConnectionOptions options,
-                                std::shared_ptr<LDAPConnectionReaper> reaper);
+                                std::shared_ptr<LDAPConnectionReaper> reaper,
+                                TickSource* tickSource,
+                                UserAcquisitionStats* userAcquisitionStats);
     ~OpenLDAPConnection() final;
     Status connect() final;
-    Status bindAsUser(const LDAPBindOptions& params) final;
-    StatusWith<LDAPEntityCollection> query(LDAPQuery query) final;
-    Status checkLiveness() final;
-    Status disconnect() final;
+    Status bindAsUser(const LDAPBindOptions& options,
+                      TickSource* tickSource,
+                      UserAcquisitionStats* userAcquisitionStats) final;
+    StatusWith<LDAPEntityCollection> query(LDAPQuery query,
+                                           TickSource* tickSource,
+                                           UserAcquisitionStats* userAcquisitionStats) final;
+    Status checkLiveness(TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) final;
+    Status disconnect(TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) final;
     boost::optional<std::string> currentBoundUser() const final;
     static bool isThreadSafe();
 
@@ -38,6 +45,14 @@ public:
     }
 
     SockAddr getPeerSockAddr() const;
+
+    TickSource* getTickSource() {
+        return _tickSource;
+    }
+
+    UserAcquisitionStats* getUserAcquisitionStats() {
+        return _userAcquisitionStats;
+    }
 
 private:
     class OpenLDAPConnectionPIMPL;
@@ -49,6 +64,9 @@ private:
 
     boost::optional<std::string> _boundUser;
     boost::optional<LDAPBindOptions> _bindOptions;
-};
 
+    // Used to track LDAP operations in CurOp
+    TickSource* _tickSource;
+    UserAcquisitionStats* _userAcquisitionStats;
+};
 }  // namespace mongo

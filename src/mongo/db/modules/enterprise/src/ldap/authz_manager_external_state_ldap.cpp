@@ -20,7 +20,9 @@
 #include "mongo/bson/mutable/document.h"
 #include "mongo/db/auth/authz_manager_external_state_d.h"
 #include "mongo/db/auth/role_name.h"
+#include "mongo/db/auth/user_acquisition_stats.h"
 #include "mongo/db/auth/user_name.h"
+#include "mongo/db/curop.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/logv2/log.h"
@@ -75,7 +77,10 @@ Status AuthzManagerExternalStateLDAP::initialize(OperationContext* opCtx) {
 namespace {
 StatusWith<UserRequest> queryLDAPRolesForUserRequest(OperationContext* opCtx,
                                                      const UserRequest& userReq) {
-    auto swRoles = LDAPManager::get(opCtx->getServiceContext())->getUserRoles(userReq.name);
+    auto swRoles = LDAPManager::get(opCtx->getServiceContext())
+                       ->getUserRoles(userReq.name,
+                                      opCtx->getServiceContext()->getTickSource(),
+                                      CurOp::get(opCtx)->getMutableUserAcquisitionStats());
     if (!swRoles.isOK()) {
         // Log failing Status objects produced from role acquisition, but because they may contain
         // sensitive information, do not propagate them to the client.

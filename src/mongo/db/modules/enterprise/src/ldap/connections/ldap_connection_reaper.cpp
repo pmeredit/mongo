@@ -11,6 +11,7 @@
 #include "mongo/util/functional.h"
 #include "mongo/util/out_of_line_executor.h"
 #include "mongo/util/thread_safety_context.h"
+#include "mongo/util/tick_source.h"
 
 namespace mongo {
 namespace {
@@ -45,8 +46,9 @@ void LDAPConnectionReaper::scheduleReapOrDisconnectInline(reapFunc reaper) {
     }
 }
 
-void LDAPConnectionReaper::reap(LDAP* ldap) {
-    scheduleReapOrDisconnectInline([ldap] { disconnectLDAPConnection(ldap); });
+void LDAPConnectionReaper::reap(LDAP* ldap, TickSource* tickSource) {
+    scheduleReapOrDisconnectInline(
+        [ldap, &tickSource] { disconnectLDAPConnection(ldap, tickSource); });
 }
 
 }  // namespace mongo

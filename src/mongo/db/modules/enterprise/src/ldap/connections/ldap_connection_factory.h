@@ -6,10 +6,11 @@
 
 #include <memory>
 
-#include "../ldap_resolver_cache.h"
-
+#include "mongo/db/auth/user_acquisition_stats.h"
 #include "mongo/db/commands/server_status.h"
 #include "mongo/executor/connection_pool.h"
+
+#include "../ldap_resolver_cache.h"
 
 namespace mongo {
 
@@ -36,7 +37,9 @@ public:
      *
      * @return Objects of type OpenLDAPConnection, or error
      */
-    StatusWith<std::unique_ptr<LDAPConnection>> create(const LDAPConnectionOptions& options);
+    StatusWith<std::unique_ptr<LDAPConnection>> create(const LDAPConnectionOptions& options,
+                                                       TickSource* tickSource,
+                                                       UserAcquisitionStats* userAcquisitionStats);
 
 private:
     friend class LDAPConnectionFactoryServerStatus;

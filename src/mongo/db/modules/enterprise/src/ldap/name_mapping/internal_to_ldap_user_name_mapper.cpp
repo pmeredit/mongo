@@ -16,6 +16,7 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/bson/json.h"
+#include "mongo/db/auth/user_acquisition_stats.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/str.h"
 
@@ -35,8 +36,11 @@ InternalToLDAPUserNameMapper::InternalToLDAPUserNameMapper(InternalToLDAPUserNam
 InternalToLDAPUserNameMapper& InternalToLDAPUserNameMapper::operator=(
     InternalToLDAPUserNameMapper&& other) = default;
 
-StatusWith<std::string> InternalToLDAPUserNameMapper::transform(LDAPRunner* runner,
-                                                                StringData input) const {
+StatusWith<std::string> InternalToLDAPUserNameMapper::transform(
+    LDAPRunner* runner,
+    StringData input,
+    TickSource* tickSource,
+    UserAcquisitionStats* userAcquisitionStats) const {
     if (0 == _transformations.size()) {
         LOGV2_DEBUG(5264500, 3, "Using LDAP username as is", "user"_attr = input);
         return input.toString();
@@ -44,7 +48,8 @@ StatusWith<std::string> InternalToLDAPUserNameMapper::transform(LDAPRunner* runn
 
     StringBuilder errorStack;
     for (const auto& transform : _transformations) {
-        StatusWith<std::string> result = transform->resolve(runner, input);
+        StatusWith<std::string> result =
+            transform->resolve(runner, input, tickSource, userAcquisitionStats);
 
         if (result.isOK()) {
             LOGV2_DEBUG(

@@ -6,6 +6,7 @@
 
 #include "rewrite_rule.h"
 
+#include <optional>
 #include <pcrecpp.h>
 #include <string>
 
@@ -44,7 +45,10 @@ public:
      * are substituted into 'substitution', and the result is returned. Otherwise, a non-OK Status
      * is returned.
      */
-    StatusWith<std::string> resolve(LDAPRunner* runner, StringData input) const final;
+    StatusWith<std::string> resolve(LDAPRunner* runner,
+                                    StringData input,
+                                    TickSource* tickSource,
+                                    UserAcquisitionStats* userAcquisitionStats) const final;
 
     const StringData toStringData() const final;
 

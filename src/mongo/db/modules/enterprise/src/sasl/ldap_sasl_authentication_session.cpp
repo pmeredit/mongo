@@ -17,6 +17,7 @@
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/auth/sasl_mechanism_policies.h"
 #include "mongo/db/auth/sasl_mechanism_registry.h"
+#include "mongo/db/curop.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
@@ -127,7 +128,10 @@ StatusWith<std::tuple<bool, std::string>> LDAPPLAINServerMechanism::stepImpl(
     }
 
     status = LDAPManager::get(opCtx->getServiceContext())
-                 ->verifyLDAPCredentials(ServerMechanismBase::_principalName, pwd);
+                 ->verifyLDAPCredentials(ServerMechanismBase::_principalName,
+                                         pwd,
+                                         opCtx->getServiceContext()->getTickSource(),
+                                         CurOp::get(opCtx)->getMutableUserAcquisitionStats());
     if (!status.isOK()) {
         return status;
     }
