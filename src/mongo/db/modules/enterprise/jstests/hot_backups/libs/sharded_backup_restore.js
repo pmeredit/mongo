@@ -40,6 +40,10 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
 
     load("jstests/libs/backup_utils.js");
 
+    // When opening a backup cursor, only checkpointed data is backed up. However, the most
+    // up-to-date size storer information is used. Thus the fast count may be inaccurate.
+    TestData.skipEnforceFastCountOnValidate = true;
+
     const numShards = 4;
     const dbName = "test";
     const collName = "continuous_writes";

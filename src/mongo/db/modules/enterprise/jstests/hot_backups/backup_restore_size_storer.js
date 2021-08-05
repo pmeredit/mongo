@@ -12,7 +12,8 @@
 
 load('jstests/libs/backup_utils.js');
 
-// TODO (SERVER-49862): Re-enable fast count validation if possible.
+// When opening a backup cursor, only checkpointed data is backed up. However, the most up-to-date
+// size storer information is used. Thus the fast count may be inaccurate.
 TestData.skipEnforceFastCountOnValidate = true;
 
 function addDocuments(db, starting) {
