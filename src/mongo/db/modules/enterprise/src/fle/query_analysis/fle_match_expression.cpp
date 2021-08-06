@@ -186,6 +186,7 @@ void FLEMatchExpression::replaceEncryptedElements(const EncryptionSchemaTreeNode
         case MatchType::ELEM_MATCH_VALUE:
         case MatchType::GEO:
         case MatchType::GEO_NEAR:
+        case MatchType::INTERNAL_BUCKET_GEO_WITHIN:
         case MatchType::INTERNAL_2D_POINT_IN_ANNULUS:
         case MatchType::INTERNAL_EXPR_EQ:
         case MatchType::INTERNAL_EXPR_GT:
