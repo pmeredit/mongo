@@ -898,6 +898,12 @@ private:
     void visit(ExpressionFromAccumulator<AccumulatorMin>*) final {
         ensureNotEncryptedEnterEval("a minimum aggregation", subtreeStack);
     }
+    void visit(ExpressionFromAccumulatorN<AccumulatorMaxN>*) final {
+        ensureNotEncryptedEnterEval("a maximum aggregation of up to 'n' values", subtreeStack);
+    }
+    void visit(ExpressionFromAccumulatorN<AccumulatorMinN>*) final {
+        ensureNotEncryptedEnterEval("a minimum aggregation of up to 'n' values", subtreeStack);
+    }
     void visit(ExpressionFromAccumulator<AccumulatorStdDevPop>*) final {
         ensureNotEncryptedEnterEval("a population standard deviation aggregation", subtreeStack);
     }
@@ -1095,6 +1101,8 @@ private:
     void visit(ExpressionFromAccumulator<AccumulatorAvg>*) final {}
     void visit(ExpressionFromAccumulator<AccumulatorMax>*) final {}
     void visit(ExpressionFromAccumulator<AccumulatorMin>*) final {}
+    void visit(ExpressionFromAccumulatorN<AccumulatorMaxN>*) final {}
+    void visit(ExpressionFromAccumulatorN<AccumulatorMinN>*) final {}
     void visit(ExpressionFromAccumulator<AccumulatorStdDevPop>*) final {}
     void visit(ExpressionFromAccumulator<AccumulatorStdDevSamp>*) final {}
     void visit(ExpressionFromAccumulator<AccumulatorSum>*) final {}
@@ -1516,6 +1524,12 @@ private:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionFromAccumulator<AccumulatorMin>*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionFromAccumulatorN<AccumulatorMaxN>*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionFromAccumulatorN<AccumulatorMinN>*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionFromAccumulator<AccumulatorStdDevPop>*) final {

@@ -452,6 +452,12 @@ public:
     void visit(const ExpressionFromAccumulator<AccumulatorMin>*) {
         _tracker.enterEvaluateOrCompare();
     }
+    void visit(const ExpressionFromAccumulatorN<AccumulatorMaxN>*) {
+        _tracker.enterEvaluateOrCompare();
+    }
+    void visit(const ExpressionFromAccumulatorN<AccumulatorMinN>*) {
+        _tracker.enterEvaluateOrCompare();
+    }
     void visit(const ExpressionFromAccumulator<AccumulatorStdDevPop>*) {
         _tracker.enterEvaluateOrCompare();
     }
@@ -683,6 +689,8 @@ public:
     void visit(const ExpressionFromAccumulator<AccumulatorAvg>*) {}
     void visit(const ExpressionFromAccumulator<AccumulatorMax>*) {}
     void visit(const ExpressionFromAccumulator<AccumulatorMin>*) {}
+    void visit(const ExpressionFromAccumulatorN<AccumulatorMaxN>*) {}
+    void visit(const ExpressionFromAccumulatorN<AccumulatorMinN>*) {}
     void visit(const ExpressionFromAccumulator<AccumulatorStdDevPop>*) {}
     void visit(const ExpressionFromAccumulator<AccumulatorStdDevSamp>*) {}
     void visit(const ExpressionFromAccumulator<AccumulatorSum>*) {}
@@ -1084,6 +1092,12 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionFromAccumulator<AccumulatorMin>*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(const ExpressionFromAccumulatorN<AccumulatorMaxN>*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(const ExpressionFromAccumulatorN<AccumulatorMinN>*) {
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionFromAccumulator<AccumulatorStdDevPop>*) {
