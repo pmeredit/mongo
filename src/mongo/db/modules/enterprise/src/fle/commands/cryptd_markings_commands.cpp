@@ -5,6 +5,7 @@
 #include "mongo/platform/basic.h"
 
 #include "mongo/bson/bsonobjbuilder.h"
+#include "mongo/db/api_parameters.h"
 #include "mongo/db/commands.h"
 #include "mongo/db/explain_gen.h"
 
@@ -12,24 +13,36 @@
 
 namespace mongo {
 namespace {
+constexpr auto kExplainField = "explain"_sd;
+constexpr auto kResultField = "result"_sd;
+constexpr auto kVerbosityField = "verbosity"_sd;
 
 /**
  * For explain we need to re-wrap the inner command with placeholders inside an explain
  * command.
  */
-void buildExplainReturnMessage(BSONObjBuilder* responseBuilder,
+void buildExplainReturnMessage(OperationContext* opCtx,
+                               BSONObjBuilder* responseBuilder,
                                const BSONObj& innerObj,
                                const ExplainOptions::Verbosity& verbosity) {
     // All successful commands have a result field.
-    invariant(innerObj.hasField("result") &&
-              innerObj.getField("result").type() == BSONType::Object);
+    invariant(innerObj.hasField(kResultField) &&
+              innerObj.getField(kResultField).type() == BSONType::Object);
     for (auto&& elem : innerObj) {
-        if (elem.fieldNameStringData() == "result") {
-            responseBuilder->append("result",
-                                    // TODO: SERVER-40354 Only send back verbosity if it was sent in
-                                    // the original message.
-                                    BSON("explain" << elem.Obj() << "verbosity"
-                                                   << ExplainOptions::verbosityString(verbosity)));
+        if (elem.fieldNameStringData() == kResultField) {
+            // Hoist "result" up into result.explain.
+            BSONObjBuilder result(responseBuilder->subobjStart(kResultField));
+            result.append(kExplainField, elem.Obj());
+
+            // TODO: SERVER-40354 Only send back verbosity if it was sent in the original message.
+            result.append(kVerbosityField, ExplainOptions::verbosityString(verbosity));
+
+            // Add apiVersion field to reply if it was provided by the client.
+            if (auto apiVersion = APIParameters::get(opCtx).getAPIVersion()) {
+                result.append(APIParametersFromClient::kApiVersionFieldName, apiVersion.get());
+            }
+
+            result.doneFast();
         } else {
             responseBuilder->append(elem);
         }
@@ -48,7 +61,7 @@ public:
         MONGO_UNREACHABLE;
     }
 
-    virtual bool supportsWriteConcern(const BSONObj& cmd) const final {
+    bool supportsWriteConcern(const BSONObj& cmd) const final {
         MONGO_UNREACHABLE;
     }
 
@@ -64,7 +77,7 @@ public:
             BSONObjBuilder innerBuilder;
             processCommand(opCtx, request.getDatabase().toString(), request.body, &innerBuilder);
             auto explainBuilder = result->getBodyBuilder();
-            buildExplainReturnMessage(&explainBuilder, innerBuilder.obj(), verbosity);
+            buildExplainReturnMessage(opCtx, &explainBuilder, innerBuilder.obj(), verbosity);
         } catch (...) {
             return exceptionToStatus();
         }
@@ -224,7 +237,7 @@ public:
             BSONObjBuilder innerBuilder;
             processWriteCommand(opCtx, _request, &innerBuilder);
             auto explainBuilder = result->getBodyBuilder();
-            buildExplainReturnMessage(&explainBuilder, innerBuilder.obj(), verbosity);
+            buildExplainReturnMessage(opCtx, &explainBuilder, innerBuilder.obj(), verbosity);
         }
 
 

@@ -7,7 +7,9 @@
 #include "mongo/platform/basic.h"
 
 #include "mongo/db/commands.h"
+#include "mongo/db/curop.h"
 #include "mongo/db/dbmessage.h"
+#include "mongo/db/initialize_api_parameters.h"
 #include "mongo/logv2/log.h"
 #include "mongo/rpc/factory.h"
 #include "mongo/rpc/message.h"
@@ -44,6 +46,13 @@ void runComand(OperationContext* opCtx,
     uassert(ErrorCodes::InvalidNamespace,
             str::stream() << "Invalid database name: '" << dbname << "'",
             NamespaceString::validDBName(dbname, NamespaceString::DollarInDbNameBehavior::Allow));
+
+    const auto apiParamsFromClient = initializeAPIParameters(request.body, command);
+    {
+        stdx::lock_guard<Client> lk(*opCtx->getClient());
+        CurOp::get(opCtx)->setCommand_inlock(command);
+        APIParameters::get(opCtx) = APIParameters::fromClient(apiParamsFromClient);
+    }
 
     invocation->run(opCtx, replyBuilder);
 

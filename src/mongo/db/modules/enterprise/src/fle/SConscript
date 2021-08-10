@@ -25,7 +25,9 @@ mongocryptd_core = env.Library(
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/db/commands',
+        '$BUILD_DIR/mongo/db/curop',
         '$BUILD_DIR/mongo/db/dbmessage',
+        '$BUILD_DIR/mongo/db/initialize_api_parameters',
         '$BUILD_DIR/mongo/db/repl/repl_coordinator_interface',
         '$BUILD_DIR/mongo/db/server_options_servers',
         '$BUILD_DIR/mongo/db/serverinit',
