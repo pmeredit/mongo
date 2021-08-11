@@ -206,8 +206,10 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGeoNear(
     const DocumentSourceGeoNear& source) {
     clonable_ptr<EncryptionSchemaTreeNode> newSchema = prevSchema->clone();
     // Mark projected paths as unencrypted.
-    newSchema->addChild(FieldRef(source.getDistanceField().fullPath()),
-                        std::make_unique<EncryptionSchemaNotEncryptedNode>());
+    if (source.getDistanceField()) {
+        newSchema->addChild(FieldRef(source.getDistanceField()->fullPath()),
+                            std::make_unique<EncryptionSchemaNotEncryptedNode>());
+    }
     if (source.getLocationField()) {
         newSchema->addChild(FieldRef(source.getLocationField()->fullPath()),
                             std::make_unique<EncryptionSchemaNotEncryptedNode>());
