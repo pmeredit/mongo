@@ -263,7 +263,7 @@ public:
     }
 
 private:
-    void setup(Milliseconds timeout, SetupCallback cb) final;
+    void setup(Milliseconds timeout, SetupCallback cb, std::string) final;
     void refresh(Milliseconds timeout, RefreshCallback cb) final;
 
 private:
@@ -301,7 +301,7 @@ private:
     std::shared_ptr<LDAPHostTimingData> _timingData;
 };
 
-void PooledLDAPConnection::setup(Milliseconds timeout, SetupCallback cb) {
+void PooledLDAPConnection::setup(Milliseconds timeout, SetupCallback cb, std::string) {
     auto anchor = shared_from_this();
     _options.timeout = timeout;
 
