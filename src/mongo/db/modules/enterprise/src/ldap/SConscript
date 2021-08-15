@@ -4,6 +4,35 @@ Import('env')
 
 env = env.Clone()
 
+ldapconf = Configure(env)
+
+if env.TargetOSIs('windows'):
+    ldapconf.env['MONGO_LDAP_LIB'] = ["Wldap32"]
+else:
+    have_ldap_h = ldapconf.CheckLibWithHeader(
+                "ldap",
+                ["ldap.h"], "C",
+                "ldap_is_ldap_url(\"ldap://127.0.0.1\");", autoadd=False)
+
+    have_lber_h = ldapconf.CheckLibWithHeader(
+                "lber",
+                ["lber.h"], "C",
+                "ber_free(NULL, 0);", autoadd=False)
+
+    if have_ldap_h:
+        ldapconf.env.AppendUnique(MONGO_LDAP_LIB=['ldap'])
+    else:
+        env.ConfError("Could not find <ldap.h> and ldap library from OpenLDAP, "
+                      "required for LDAP authorization in the enterprise build")
+
+    if have_lber_h:
+        ldapconf.env.AppendUnique(MONGO_LDAP_LIB=['lber'])
+    else:
+        env.ConfError("Could not find <lber.h> and lber library from OpenLDAP, "
+                      "required for LDAP authorizaton in the enterprise build")
+
+env = ldapconf.Finish()
+
 env.Library(
     target='ldap_parameters',
     source=[
@@ -210,5 +239,32 @@ env.CppUnitTest(
         'ldap_manager_impl',
         'ldap_name_map',
         'ldap_query',
+    ],
+)
+
+env.Program(
+    target="mongoldap",
+    source=[
+        "ldap_tool.cpp",
+        "ldap_tool_options.cpp",
+        'ldap_tool_options.idl',
+    ] +  env.WindowsResourceFile("ldap_tool.rc"),
+    AIB_COMPONENT="mongoldap",
+    AIB_COMPONENTS_EXTRA=[
+        "dist",
+        "dist-test",
+        "tools",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+        "$BUILD_DIR/mongo/base/secure_allocator",
+        "$BUILD_DIR/mongo/db/log_process_details",
+        "$BUILD_DIR/mongo/util/dns_query",
+        "$BUILD_DIR/mongo/util/options_parser/options_parser_init",
+        "$BUILD_DIR/mongo/util/signal_handlers",
+        "$BUILD_DIR/mongo/util/version_impl",
+        "../util/report_tool",
+        "ldap_manager",
+        "ldap_options_mongod",
     ],
 )

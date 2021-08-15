@@ -1,0 +1,250 @@
+# -*- mode: python; -*-
+
+import SCons
+
+from libdeps import deptype
+
+
+Import('env')
+
+env = env.Clone()
+
+env.Library(
+    target='audit_enterprise',
+    source=[
+        'audit_application_message.cpp',
+        'audit_authentication.cpp',
+        'audit_authz_check.cpp',
+        'audit_commands.idl',
+        'audit_config.idl',
+        'audit_event.cpp',
+        'audit_event_type.idl',
+        'audit_indexes_collections_databases.cpp',
+        'audit_log.cpp',
+        'audit_logout.cpp',
+        'audit_manager.cpp',
+        'audit_metadata.cpp',
+        'audit_replset.cpp',
+        'audit_role_management.cpp',
+        'audit_startup.cpp',
+        'audit_sharding.cpp',
+        'audit_shutdown.cpp',
+        'audit_user_management.cpp',
+        'logger/console.cpp',
+        'logger/rotatable_file_writer.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/auth/auth',
+        '$BUILD_DIR/mongo/db/ops/write_ops_parsers',
+        '$BUILD_DIR/mongo/util/net/network',
+        'audit_enc_comp_manager',
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/db/auth/authprivilege',
+        '$BUILD_DIR/mongo/db/matcher/expressions',
+        '$BUILD_DIR/mongo/db/repl/repl_coordinator_interface',
+        '$BUILD_DIR/mongo/db/server_options_core',
+        '$BUILD_DIR/mongo/util/options_parser/options_parser',
+    ],
+    LIBDEPS_DEPENDENTS=[
+        ('$BUILD_DIR/mongo/db/audit', deptype.Public),
+    ],
+    LIBDEPS_TAGS=[
+        'lint-allow-nonprivate-on-deps-dependents',
+        'lint-allow-bidirectional-edges',
+    ],
+)
+
+env.Library(
+    target='audit_enc_comp_manager',
+    source=[
+        'audit_enc_comp_manager.cpp',
+        'audit_feature_flag.idl',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/idl/feature_flag',
+        '$BUILD_DIR/mongo/transport/message_compressor',
+    ],
+)
+
+env.Library(
+    # This can't be included in audit_enterprise directly
+    # since we need mongo/s/grid which
+    # depends on audit which depends on audit_enterprise.
+    # Avoid the dependency cycle by pulling this out separately.
+    target='audit_synchronize_job',
+    source=[
+        'audit_synchronize_job.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/db/audit',
+        '$BUILD_DIR/mongo/s/grid',
+        'audit_enterprise',
+    ],
+)
+
+env.Library(
+    target='audit_command',
+    source=[
+        'audit_command.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/db/audit',
+        '$BUILD_DIR/mongo/db/auth/auth',
+        '$BUILD_DIR/mongo/db/commands',
+        '$BUILD_DIR/mongo/db/service_context',
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/db/auth/authprivilege',
+    ],
+    LIBDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/db/commands/mongod',
+        '$BUILD_DIR/mongo/s/commands/cluster_commands',
+    ],
+    LIBDEPS_TAGS=[
+        'lint-allow-nonprivate-on-deps-dependents',
+    ],
+)
+
+# The auditing code needs to be built into the "coredb" library because there is code in there that
+# references audit functions.  However, the "coredb" library is also currently shared by server
+# programs, such as mongod and mongos, as well as client programs, such as mongodump and
+# mongoexport.  For these reasons, we have no choice but to build the audit module into all of
+# these, even though it's dead code in the client programs.  To avoid actually allowing the user to
+# configure this dead code, we need to separate the option registration into this
+# "audit_configuration" library and add it to only mongod and mongos.  Because audit defaults to
+# disabled this effectively prevents this code from being run in client programs.
+env.Library(
+    target='audit_configuration',
+    source=[
+        'audit_options.cpp',
+        'audit_options.idl',
+        'audit_watchdog.cpp',
+    ],
+    LIBDEPS=[
+        'audit_enterprise',
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/idl/server_parameter',
+        '$BUILD_DIR/mongo/util/options_parser/options_parser',
+        '$BUILD_DIR/mongo/watchdog/watchdog_register',
+    ],
+    LIBDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/db/mongod_initializers',
+        '$BUILD_DIR/mongo/s/mongos_initializers',
+    ],
+    LIBDEPS_TAGS=[
+        'lint-allow-nonprivate-on-deps-dependents',
+    ],
+)
+
+env.Library(
+    target='audit_mongod',
+    source=[
+        'audit_mongod.cpp',
+        'audit_op_observer.cpp',
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/db/auth/auth',
+        '$BUILD_DIR/mongo/db/auth/authprivilege',
+        '$BUILD_DIR/mongo/db/commands',
+        '$BUILD_DIR/mongo/db/db_raii',
+        '$BUILD_DIR/mongo/db/dbdirectclient',
+        '$BUILD_DIR/mongo/db/dbhelpers',
+        '$BUILD_DIR/mongo/s/write_ops/batch_write_types',
+        'audit_enterprise',
+        'audit_synchronize_job',
+    ],
+)
+
+env.Library(
+    # We need to reverse link audit_mongod_impl into mongod,
+    # but audit_op_observer_test needs a forward link into it.
+    # Meanwhile, scons doesn't like that.
+    # So we use this proxy to link the mongod implementation back.
+    target='audit_mongod_proxy',
+    source=[
+        # macOS will refuse to link this proxy without source files.
+        # Windows will "succeed", but produce no output .lib.
+        # Work around this by declaring a dummy TU with a symbol.
+        'audit_mongod_proxy.cpp',
+    ],
+    LIBDEPS_PRIVATE=[
+        'audit_mongod',
+    ],
+    LIBDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/db/mongod_initializers',
+    ],
+    LIBDEPS_TAGS=[
+        'lint-allow-nonprivate-on-deps-dependents',
+    ],
+)
+
+env.CppUnitTest(
+    target='audit_test',
+    source=[
+        'audit_key_manager_mock.cpp',
+        'audit_op_observer_test.cpp',
+        'audit_log_compress_base64_test.cpp',
+        'audit_key_manager_test.cpp',
+        'logger/rotatable_file_writer_test.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/crypto/symmetric_crypto',
+        '$BUILD_DIR/mongo/db/auth/authmocks',
+        '$BUILD_DIR/mongo/db/repl/oplog',
+        '$BUILD_DIR/mongo/db/repl/oplog_interface_local',
+        '$BUILD_DIR/mongo/db/repl/replmocks',
+        '$BUILD_DIR/mongo/db/repl/storage_interface_impl',
+        '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
+        '$BUILD_DIR/mongo/util/options_parser/options_parser',
+        '$BUILD_DIR/mongo/util/signal_handlers',
+        'audit_enterprise',
+        'audit_mongod',
+    ],
+)
+
+env.Library(
+    target='audit_mongos',
+    source=[
+        'audit_mongos.cpp',
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/db/auth/auth',
+        '$BUILD_DIR/mongo/db/auth/authprivilege',
+        '$BUILD_DIR/mongo/db/commands',
+        '$BUILD_DIR/mongo/s/grid',
+        'audit_enterprise',
+        'audit_synchronize_job',
+    ],
+    LIBDEPS_DEPENDENTS=[
+        '$BUILD_DIR/mongo/s/mongos_initializers',
+    ],
+    LIBDEPS_TAGS=[
+        'lint-allow-nonprivate-on-deps-dependents',
+    ],
+)
+
+# writes multi-byte sequences to console
+# to support manual testing of console stream under Windows
+# output should be visually verified under Command Prompt or Power Shell
+env.Program(
+    target='console_test',
+    source=[
+        'logger/console_test.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/unittest/unittest_main',
+        'audit_enterprise',
+    ],
+    AIB_COMPONENT="standalone-console-test",
+)

@@ -3,6 +3,8 @@
 Import('env')
 Import('get_option')
 
+env = env.Clone()
+
 env.SConscript(
     dirs=[
         'query_analysis',
@@ -13,7 +15,7 @@ env.SConscript(
     ],
 )
 
-mongocryptd_core = env.Library(
+env.Library(
     target="mongocryptd_core",
     source=[
         "cryptd/cryptd_main.cpp",
@@ -67,3 +69,19 @@ env.Library(
     ],
 )
 
+env.Program(
+    target="mongocryptd",
+    source=[
+        "cryptd/cryptd_main_shim.cpp"
+    ],
+    LIBDEPS=[
+        'cryptd_commands',
+        'mongocryptd_core',
+    ],
+    AIB_COMPONENT="mongocryptd",
+    AIB_COMPONENTS_EXTRA=[
+        "dist",
+        "dist-test",
+        "tools",
+    ],
+)

@@ -1,3 +1,5 @@
+# -*- mode: python -*-
+
 Import('env')
 Import("get_option")
 
@@ -14,14 +16,14 @@ env.Library(
     ],
 )
 
-mqlrun = env.Program(
+env.Program(
     target="mqlrun",
     source=[
         "mqlrun.cpp",
     ],
     LIBDEPS=[
-	'$BUILD_DIR/mongo/db/auth/authmocks',
-	'$BUILD_DIR/mongo/db/exec/working_set',
+        '$BUILD_DIR/mongo/db/auth/authmocks',
+        '$BUILD_DIR/mongo/db/exec/working_set',
         '$BUILD_DIR/mongo/db/index/index_access_methods',
         '$BUILD_DIR/mongo/db/query_exec',
         'document_source_bson_input',
