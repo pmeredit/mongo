@@ -10,6 +10,7 @@ env.Library(
     target='document_source_search',
     source=[
         'document_source_search.cpp',
+        'document_source_search_meta.cpp',
         'document_source_internal_search_id_lookup.cpp',
         'document_source_internal_search_mongot_remote.cpp',
     ],
