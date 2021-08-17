@@ -27,6 +27,7 @@
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/mutex.h"
+#include "mongo/util/fail_point.h"
 #include "mongo/util/net/sockaddr.h"
 #include "mongo/util/str.h"
 #include "mongo/util/tick_source.h"
@@ -41,6 +42,13 @@
 
 namespace mongo {
 namespace {
+
+// These failpoints are present in both OpenLDAPConnection and WindowsLDAPConnection to simulate
+// timeouts during network operations.
+MONGO_FAIL_POINT_DEFINE(ldapConnectionTimeoutHang);
+MONGO_FAIL_POINT_DEFINE(ldapBindTimeoutHang);
+MONGO_FAIL_POINT_DEFINE(ldapSearchTimeoutHang);
+MONGO_FAIL_POINT_DEFINE(ldapLivenessCheckTimeoutHang);
 
 /**
  * ldapRebindCallbackParameters is used in the OpenLDAPConnection::bindAsUser() function to pass
@@ -576,6 +584,11 @@ Status OpenLDAPConnection::connect() {
         err = ldap_initialize(&_pimpl->getSession(), hostURIs.c_str());
     }
 
+    // If ldapConnectionTimeoutHang is set, then sleep for "delay" seconds to simulate a hang in the
+    // network call.
+    ldapConnectionTimeoutHang.execute(
+        [&](const BSONObj& data) { sleepsecs(data["delay"].numberInt()); });
+
     if (err != LDAP_SUCCESS) {
         return Status(ErrorCodes::OperationFailed,
                       str::stream() << "Failed to initialize ldap session to \"" << hostURIs
@@ -641,6 +654,11 @@ Status OpenLDAPConnection::bindAsUser(const LDAPBindOptions& bindOptions,
     params.tickSource = tickSource;
     params.userAcquisitionStats = userAcquisitionStats;
     _bindOptions = bindOptions;
+
+    // If ldapBindTimeoutHang is set, then sleep for "delay" seconds to simulate a hang in the
+    // network call.
+    ldapBindTimeoutHang.execute([&](const BSONObj& data) { sleepsecs(data["delay"].numberInt()); });
+
     int err = openLDAPBindFunction(_pimpl->getSession(), "default", 0, 0, &params);
     if (err != LDAP_SUCCESS) {
         return Status(ErrorCodes::OperationFailed,
@@ -666,12 +684,23 @@ boost::optional<std::string> OpenLDAPConnection::currentBoundUser() const {
 Status OpenLDAPConnection::checkLiveness(TickSource* tickSource,
                                          UserAcquisitionStats* userAcquisitionStats) {
     stdx::lock_guard<OpenLDAPGlobalMutex> lock(conditionalMutex);
+
+    // If ldapLivenessCheckTimeoutHang is set, then sleep for "delay" seconds to simulate a hang in
+    // the network call.
+    ldapLivenessCheckTimeoutHang.execute(
+        [&](const BSONObj& data) { sleepsecs(data["delay"].numberInt()); });
+
     return _pimpl->checkLiveness(&_timeout, tickSource, userAcquisitionStats);
 }
 
 StatusWith<LDAPEntityCollection> OpenLDAPConnection::query(
     LDAPQuery query, TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) {
     stdx::lock_guard<OpenLDAPGlobalMutex> lock(conditionalMutex);
+
+    // If ldapSearchTimeoutHang is set, then sleep for "delay" seconds to simulate a hang in the
+    // network call.
+    ldapSearchTimeoutHang.execute(
+        [&](const BSONObj& data) { sleepsecs(data["delay"].numberInt()); });
 
     return _pimpl->query(std::move(query), &_timeout, tickSource, userAcquisitionStats);
 }

@@ -56,6 +56,7 @@ function LDAPTestConfigGenerator() {
 
     this.auth = "";
     this.authenticationMechanisms = ["PLAIN", "SCRAM-SHA-1"];
+    this.authorizationManagerCacheSize = 100;
     this.useSaslauthd = false;
 
     this.ldapServers = baseLDAPUrls;
@@ -67,7 +68,11 @@ function LDAPTestConfigGenerator() {
     this.ldapQueryPassword = "Admin001";
     this.ldapUserToDNMapping = undefined;
     this.ldapAbortOnNameMappingFailure = true;
+    this.ldapUseConnectionPool = true;
     this.ldapTimeoutMS = 10000;
+    this.ldapConnectionPoolHostRefreshIntervalMillis = 60000;
+    this.ldapConnectionPoolMaximumConnectionsPerHost = 2;
+    this.ldapShouldRefreshUserCacheEntries = true;
 
     this.useLogFiles = false;
 
@@ -141,10 +146,17 @@ function LDAPTestConfigGenerator() {
 
         var setParameter = {
             authenticationMechanisms: this.authenticationMechanisms,
+            authorizationManagerCacheSize: this.authorizationManagerCacheSize,
             saslHostName: saslHostName,
             saslServiceName: "mockservice",
             logComponentVerbosity: '{"accessControl":{"verbosity":5}}',
             ldapAbortOnNameMappingFailure: (this.ldapAbortOnNameMappingFailure ? 'true' : 'false'),
+            ldapUseConnectionPool: (this.ldapUseConnectionPool ? 'true' : 'false'),
+            ldapConnectionPoolMaximumConnectionsPerHost:
+                this.ldapConnectionPoolMaximumConnectionsPerHost,
+            ldapConnectionPoolHostRefreshIntervalMillis:
+                this.ldapConnectionPoolHostRefreshIntervalMillis,
+            ldapShouldRefreshUserCacheEntries: this.ldapShouldRefreshUserCacheEntries,
         };
         if (this.useSaslauthd === true) {
             setParameter.saslauthdPath = saslauthdPath + "/mux";
@@ -184,6 +196,7 @@ function LDAPTestConfigGenerator() {
         other.useHostname = true;
         other.mongosOptions = Object.extend({}, mongodConfig, true);
         delete other.mongosOptions.ldapAuthzQueryTemplate;
+        delete other.mongosOptions.setParameter.ldapShouldRefreshUserCacheEntries;
         config.other = other;
 
         return config;
@@ -293,6 +306,7 @@ function setupTest(m) {
 // Individual tests should implement the testCallback function
 function runTests(testCallback, configGenerator, callbackOptions) {
     // single mongod
+    jsTest.log('Running LDAP test on standalone mongod');
     var config = MongoRunner.mongodOptions(configGenerator.generateMongodConfig());
     var m = MongoRunner.runMongod(config);
     assert(m);
@@ -325,6 +339,7 @@ function runTests(testCallback, configGenerator, callbackOptions) {
     }
 
     // replset
+    jsTest.log('Running LDAP test on replica set');
     var rst = new ReplSetTest(configGenerator.generateReplicaSetConfig());
     rst.startSet();
 
@@ -352,7 +367,7 @@ function runTests(testCallback, configGenerator, callbackOptions) {
     rst.stopSet();
 
     // sharded
-
+    jsTest.log('Running LDAP test on sharded cluster');
     // TODO (SERVER-45108): authutil.asCluster() only works with a keyFile and we are not
     // currently threading the x509 options through to the check indexes hook.
     TestData.skipCheckingIndexesConsistentAcrossCluster = true;

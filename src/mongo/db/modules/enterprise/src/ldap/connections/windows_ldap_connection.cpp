@@ -30,6 +30,7 @@
 #include "mongo/base/string_data.h"
 #include "mongo/client/cyrus_sasl_client_session.h"
 #include "mongo/db/auth/user_acquisition_stats.h"
+#include "mongo/util/fail_point.h"
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/str.h"
 #include "mongo/util/text.h"
@@ -38,6 +39,13 @@
 namespace mongo {
 
 namespace {
+
+// These failpoints are present in both OpenLDAPConnection and WindowsLDAPConnection to simulate
+// timeouts during network operations.
+MONGO_FAIL_POINT_DEFINE(ldapConnectionTimeoutHang);
+MONGO_FAIL_POINT_DEFINE(ldapBindTimeoutHang);
+MONGO_FAIL_POINT_DEFINE(ldapSearchTimeoutHang);
+MONGO_FAIL_POINT_DEFINE(ldapLivenessCheckTimeoutHang);
 
 /**
  * This class is used as a template argument to instantiate an LDAPSessionHolder with all the
@@ -160,6 +168,11 @@ Status WindowsLDAPConnection::connect() {
     // we'd need to rebind to new servers on referals. We might
     // be able to make that work using LDAP_OPT_REFERRAL_CALLBACK.
 
+    // If ldapConnectionTimeoutHang is set, then sleep for "delay" seconds to simulate a hang in the
+    // network call.
+    ldapConnectionTimeoutHang.execute(
+        [&](const BSONObj& data) { sleepsecs(data["delay"].numberInt()); });
+
     // Open the connection
     auto connectSuccess = ldap_connect(_pimpl->getSession(), nullptr);
     return _pimpl->resultCodeToStatus(connectSuccess, "ldap_connect", "connect to LDAP server");
@@ -198,11 +211,17 @@ Status WindowsLDAPConnection::bindAsUser(const LDAPBindOptions& options,
     Status resultStatus(ErrorCodes::OperationFailed,
                         str::stream()
                             << "Unknown bind operation requested: " << options.toCleanString());
+
     if (options.authenticationChoice == LDAPBindType::kSimple) {
         if (options.useLDAPConnectionDefaults) {
             return Status(ErrorCodes::IllegalOperation,
                           "Cannot use default username and password with simple LDAP bind");
         }
+
+        // If ldapBindTimeoutHang is set, then sleep for "delay" seconds to simulate a hang in the
+        // network call.
+        ldapBindTimeoutHang.execute(
+            [&](const BSONObj& data) { sleepsecs(data["delay"].numberInt()); });
 
         result =
             ldap_bind_sW(_pimpl->getSession(),
@@ -214,9 +233,17 @@ Status WindowsLDAPConnection::bindAsUser(const LDAPBindOptions& options,
     } else if (options.authenticationChoice == LDAPBindType::kSasl &&
                options.saslMechanisms == "DIGEST-MD5") {
         if (options.useLDAPConnectionDefaults) {
+            // If ldapBindTimeoutHang is set, then sleep for "delay" seconds to simulate a hang in
+            // the network call.
+            ldapBindTimeoutHang.execute(
+                [&](const BSONObj& data) { sleepsecs(data["delay"].numberInt()); });
             result = ldap_bind_sW(_pimpl->getSession(), nullptr, nullptr, LDAP_AUTH_DIGEST);
 
         } else {
+            // If ldapBindTimeoutHang is set, then sleep for "delay" seconds to simulate a hang in
+            // the network call.
+            ldapBindTimeoutHang.execute(
+                [&](const BSONObj& data) { sleepsecs(data["delay"].numberInt()); });
             result = ldap_bind_sW(
                 _pimpl->getSession(), nullptr, reinterpret_cast<PWCHAR>(&cred), LDAP_AUTH_DIGEST);
         }
@@ -236,8 +263,16 @@ Status WindowsLDAPConnection::bindAsUser(const LDAPBindOptions& options,
         }
 
         if (options.useLDAPConnectionDefaults) {
+            // If ldapBindTimeoutHang is set, then sleep for "delay" seconds to simulate a hang in
+            // the network call.
+            ldapBindTimeoutHang.execute(
+                [&](const BSONObj& data) { sleepsecs(data["delay"].numberInt()); });
             result = ldap_bind_sW(_pimpl->getSession(), nullptr, nullptr, LDAP_AUTH_NEGOTIATE);
         } else {
+            // If ldapBindTimeoutHang is set, then sleep for "delay" seconds to simulate a hang in
+            // the network call.
+            ldapBindTimeoutHang.execute(
+                [&](const BSONObj& data) { sleepsecs(data["delay"].numberInt()); });
             result = ldap_bind_sW(_pimpl->getSession(),
                                   nullptr,
                                   reinterpret_cast<PWCHAR>(&cred),
@@ -262,12 +297,24 @@ boost::optional<std::string> WindowsLDAPConnection::currentBoundUser() const {
 Status WindowsLDAPConnection::checkLiveness(TickSource* tickSource,
                                             UserAcquisitionStats* userAcquisitionStats) {
     l_timeval timeout{static_cast<LONG>(_timeoutSeconds), 0};
+
+    // If ldapLivenessCheckTimeoutHang is set, then sleep for "delay" seconds to simulate a hang in
+    // the network call.
+    ldapLivenessCheckTimeoutHang.execute(
+        [&](const BSONObj& data) { sleepsecs(data["delay"].numberInt()); });
+
     return _pimpl->checkLiveness(&timeout, tickSource, userAcquisitionStats);
 }
 
 StatusWith<LDAPEntityCollection> WindowsLDAPConnection::query(
     LDAPQuery query, TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) {
     l_timeval timeout{static_cast<LONG>(_timeoutSeconds), 0};
+
+    // If ldapSearchTimeoutHang is set, then sleep for "delay" seconds to simulate a hang in the
+    // network call.
+    ldapSearchTimeoutHang.execute(
+        [&](const BSONObj& data) { sleepsecs(data["delay"].numberInt()); });
+
     return _pimpl->query(std::move(query), &timeout, tickSource, userAcquisitionStats);
 }
 

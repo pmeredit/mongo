@@ -323,7 +323,8 @@ void PooledLDAPConnection::setup(Milliseconds timeout, SetupCallback cb, std::st
             cb(this, execStatus);
             return;
         }
-        UserAcquisitionStats userAcquisitionStats = UserAcquisitionStats();
+
+        UserAcquisitionStats userAcquisitionStats;
         _conn = makeNativeLDAPConn(
             _options, _reaper, getGlobalServiceContext()->getTickSource(), &userAcquisitionStats);
         auto status = _conn->connect();
@@ -332,11 +333,18 @@ void PooledLDAPConnection::setup(Milliseconds timeout, SetupCallback cb, std::st
         }
 
         Timer queryTimer;
-        auto emptyQueryStatus =
-            _conn->checkLiveness(getGlobalServiceContext()->getTickSource(), &userAcquisitionStats);
+        UserAcquisitionStatsHandle userAcquisitionStatsHandle(
+            &userAcquisitionStats, getGlobalServiceContext()->getTickSource(), kSearch);
+        auto livenessStatus =
+            runFuncWithTimeout<void>("liveness check for pooled connection setup",
+                                     [&] {
+                                         return _conn->checkLiveness(
+                                             getGlobalServiceContext()->getTickSource(), nullptr);
+                                     })
+                .getNoThrow();
         auto elapsed = duration_cast<Milliseconds>(queryTimer.elapsed());
 
-        if (emptyQueryStatus.isOK()) {
+        if (livenessStatus.isOK()) {
             LOGV2_DEBUG(24061,
                         1,
                         "Connecting to LDAP server {host} took {connectTimeElapsed}",
@@ -345,9 +353,11 @@ void PooledLDAPConnection::setup(Milliseconds timeout, SetupCallback cb, std::st
                         "connectTimeElapsed"_attr = elapsed);
             _timingData->updateLatency(elapsed);
         } else {
+            LOGV2_DEBUG(
+                5885200, 1, "Failed setting up LDAP connection", "error"_attr = livenessStatus);
             _timingData->markFailed();
         }
-        cb(this, std::move(emptyQueryStatus));
+        cb(this, std::move(livenessStatus));
     });
 }
 
@@ -359,26 +369,36 @@ void PooledLDAPConnection::refresh(Milliseconds timeout, RefreshCallback cb) {
             cb(this, execStatus);
             return;
         }
-        UserAcquisitionStats userAcquisitionStats = UserAcquisitionStats();
-        Timer queryTimer;
-        auto status =
-            _conn->checkLiveness(getGlobalServiceContext()->getTickSource(), &userAcquisitionStats);
-        auto elapsed = duration_cast<Milliseconds>(queryTimer.elapsed());
-        LOGV2_DEBUG(24062,
-                    1,
-                    "Refreshed LDAP connection in {refreshTimelapsed}",
-                    "Refreshed LDAP connection",
-                    "refreshTimeElapsed"_attr = elapsed);
 
-        if (status.isOK()) {
+        UserAcquisitionStats userAcquisitionStats;
+        Timer queryTimer;
+        UserAcquisitionStatsHandle userAcquisitionStatsHandle(
+            &userAcquisitionStats, getGlobalServiceContext()->getTickSource(), kSearch);
+        auto livenessStatus =
+            runFuncWithTimeout<void>("liveness check for pooled connection refresh",
+                                     [&] {
+                                         return _conn->checkLiveness(
+                                             getGlobalServiceContext()->getTickSource(), nullptr);
+                                     })
+                .getNoThrow();
+        auto elapsed = duration_cast<Milliseconds>(queryTimer.elapsed());
+
+        if (livenessStatus.isOK()) {
+            LOGV2_DEBUG(24062,
+                        1,
+                        "Refreshed LDAP connection in {refreshTimeElapsed}",
+                        "Refreshed LDAP connection",
+                        "refreshTimeElapsed"_attr = elapsed);
             _timingData->updateLatency(elapsed);
             indicateSuccess();
             indicateUsed();
         } else {
+            LOGV2_DEBUG(
+                5885201, 1, "Failed refreshing LDAP connection", "error"_attr = livenessStatus);
             _timingData->markFailed();
-            indicateFailure(status);
+            indicateFailure(livenessStatus);
         }
-        cb(this, status);
+        cb(this, livenessStatus);
     });
 }
 
