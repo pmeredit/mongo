@@ -16,6 +16,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 import uuid
 from typing import List
 
@@ -69,7 +70,8 @@ def _scp(endpoint, src, dest):
     cmd = ["scp", "-o", "StrictHostKeyChecking=no", "-P", port, src, "%s@%s:%s" % (user, host, dest) ]
     if os.path.isdir(src):
         cmd.insert(5, "-r")
-    _run_process(cmd)
+    if _run_process(cmd) != 0:
+        raise ValueError("failed to scp files")
 
 def _ssh(endpoint, cmd):
     (user, host, port) = _userandhostandport(endpoint)
@@ -86,12 +88,21 @@ def run_test(endpoint, script, files):
     Run a test on a machine
 
     Steps
-    1. Copy over a files which are tuples of (src, dest)
-    2. Copy over the test script to "/tmp/test.sh"
-    3. Run the test script and return the results
+    1. Wait for target to start accepting SSH connections
+    2. Copy over a files which are tuples of (src, dest)
+    3. Copy over the test script to "/tmp/test.sh"
+    4. Run the test script and return the results
     """
-    LOGGER.info("Copying files to %s", endpoint)
+    LOGGER.info("Waiting for SSH on %s", endpoint)
+    for retry in range(20):
+        if 0 == _ssh(endpoint, "/usr/bin/uptime"):
+            ssh_ready = True
+            break
+        time.sleep(5)
+    else:
+        raise ValueError(f"SSH is not operational on {endpoint}")
 
+    LOGGER.info("Copying files to %s", endpoint)
     for file in files:
         colon = file.find(":")
         (src, dest) = (file[:colon], file[colon + 1:])
