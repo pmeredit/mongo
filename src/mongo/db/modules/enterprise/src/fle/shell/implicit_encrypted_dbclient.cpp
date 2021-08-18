@@ -326,7 +326,8 @@ private:
         builder.append("keyAltNames"_sd, altName);
         BSONObj altNameObj(builder.obj());
         BSONObj dataKeyObj = _conn->findOne(fullNameNS.ns(),
-                                            Query(altNameObj),
+                                            altNameObj,
+                                            Query(),
                                             nullptr,
                                             0,
                                             repl::ReadConcernArgs::kImplicitDefault);
