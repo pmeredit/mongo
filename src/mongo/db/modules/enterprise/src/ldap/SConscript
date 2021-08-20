@@ -49,11 +49,9 @@ env.Library(
     source=[
         'ldap_manager_init.cpp'
     ],
-    LIBDEPS=[
+    LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/db/service_context',
         'ldap_manager_impl',
-    ],
-    LIBDEPS_PRIVATE=[
         'ldap_parameters',
     ],
     LIBDEPS_DEPENDENTS=[
@@ -107,11 +105,9 @@ env.Library(
     source=[
         'ldap_options_mongod.idl',
     ],
-    LIBDEPS=[
-        'ldap_manager_impl',
-    ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/util/options_parser/options_parser',
+        'ldap_manager_impl',
     ],
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/db/mongod_initializers',
@@ -123,20 +119,10 @@ env.Library(
 )
 
 env.Library(
-    target='ldap_host',
-    source=[
-        "ldap_host.cpp",
-    ],
-    LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
-        '$BUILD_DIR/mongo/util/net/network',
-    ],
-)
-
-env.Library(
     target='ldap_query',
     source=[
         'ldap_connection_options.cpp',
+        "ldap_host.cpp",
         'ldap_query.cpp',
         'ldap_query_config.cpp',
     ],
@@ -146,7 +132,6 @@ env.Library(
         '$BUILD_DIR/mongo/util/net/network',
         '$BUILD_DIR/mongo/util/options_parser/options_parser',
         '$BUILD_DIR/third_party/shim_pcrecpp',
-        'ldap_host',
     ],
 )
 
@@ -167,7 +152,6 @@ env.Library(
     source=ldap_connection_sources,
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
-        "$BUILD_DIR/mongo/util/dns_query",
         'ldap_query',
     ],
     LIBDEPS_PRIVATE=[
@@ -175,6 +159,7 @@ env.Library(
         '$BUILD_DIR/mongo/executor/connection_pool_executor',
         '$BUILD_DIR/mongo/util/alarm',
         '$BUILD_DIR/mongo/util/concurrency/thread_pool',
+        "$BUILD_DIR/mongo/util/dns_query",
         '$BUILD_DIR/mongo/util/net/network',
         'ldap_manager',
         'ldap_parameters',
@@ -189,17 +174,15 @@ env.Library(
         'ldap_user_cache_invalidator_job.cpp',
         'ldap_user_cache_invalidator_job.idl',
     ],
-    LIBDEPS=[
+    LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/bson/mutable/mutable_bson',
         '$BUILD_DIR/mongo/db/auth/auth',
         '$BUILD_DIR/mongo/db/auth/authmongod',
+        '$BUILD_DIR/mongo/idl/server_parameter',
         '$BUILD_DIR/mongo/util/background_job',
         'ldap_manager_impl',
         'ldap_name_map',
         'ldap_query',
-    ],
-    LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/idl/server_parameter',
     ],
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/db/mongod_initializers',
@@ -265,6 +248,8 @@ env.Program(
         "$BUILD_DIR/mongo/util/version_impl",
         "../util/report_tool",
         "ldap_manager",
+        "ldap_manager_impl",
         "ldap_options_mongod",
+        "ldap_query",
     ],
 )
