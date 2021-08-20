@@ -69,6 +69,10 @@ public:
     // A helper function to create a backup cursor and get the backupId to pass into the test
     // objects below.
     UUID createBackupCursorStage(const boost::intrusive_ptr<ExpressionContext>& expCtx) {
+        auto devNullEngine = static_cast<DevNullKVEngine*>(
+            _opCtx->getClient()->getServiceContext()->getStorageEngine()->getEngine());
+        devNullEngine->setBackupBlocks_forTest({{fileToBackup}});
+
         // Set up the $backupCursor stage.
         auto backupCursorSpec = fromjson("{$backupCursor: {}}");
 
@@ -95,6 +99,8 @@ public:
 protected:
     ServiceContext::UniqueOperationContext _opCtx;
     StorageEngine* _storageEngine;
+    // This file path will be returned by the backup cursor to the backupFile stage.
+    std::string fileToBackup = storageGlobalParams.dbpath + "/filename.wt";
 };
 
 const boost::intrusive_ptr<ExpressionContext> createExpressionContext(
@@ -108,8 +114,7 @@ const boost::intrusive_ptr<ExpressionContext> createExpressionContext(
 TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageParsingValidSpec) {
     auto expCtx = createExpressionContext(_opCtx);
     auto backupId = createBackupCursorStage(expCtx);
-    BSONObj spec = BSON("$backupFile" << BSON("backupId" << backupId << "file"
-                                                         << "filename.wt"));
+    BSONObj spec = BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup));
     ASSERT_DOES_NOT_THROW(testCreateFromBsonResult(spec, expCtx));
 }
 
@@ -117,9 +122,8 @@ TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageParsingValidSpecWithByte
     auto expCtx = createExpressionContext(_opCtx);
     auto backupId = createBackupCursorStage(expCtx);
     BSONObj spec =
-        BSON("$backupFile" << BSON("backupId" << backupId << "file"
-                                              << "filename.wt"
-                                              << "byteOffset" << 1LL << "length" << 1LL));
+        BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup << "byteOffset"
+                                              << 1LL << "length" << 1LL));
     ASSERT_DOES_NOT_THROW(testCreateFromBsonResult(spec, expCtx));
 }
 
@@ -132,9 +136,8 @@ TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageParsingInvalidSpecNotObj
 
 TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageParsingInvalidSpecMissingBackupId) {
     auto expCtx = createExpressionContext(_opCtx);
-    BSONObj spec = BSON("$backupFile" << BSON("file"
-                                              << "filename.wt"
-                                              << "byteOffset" << 1LL << "length" << 1LL));
+    BSONObj spec = BSON("$backupFile"
+                        << BSON("file" << fileToBackup << "byteOffset" << 1LL << "length" << 1LL));
     ASSERT_THROWS_CODE(testCreateFromBsonResult(spec, expCtx), DBException, 40414);
 }
 
@@ -142,8 +145,7 @@ TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageParsingInvalidSpecInvali
     auto expCtx = createExpressionContext(_opCtx);
     BSONObj spec = BSON("$backupFile" << BSON("backupId"
                                               << "12345"
-                                              << "file"
-                                              << "filename.wt"));
+                                              << "file" << fileToBackup));
     ASSERT_THROWS_CODE(
         testCreateFromBsonResult(spec, expCtx), DBException, ErrorCodes::TypeMismatch);
 }
@@ -176,8 +178,7 @@ TEST_F(DocumentSourceBackupFileTest,
 TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageParsingInvalidSpecInvalidByteOffsetType) {
     auto expCtx = createExpressionContext(_opCtx);
     auto backupId = createBackupCursorStage(expCtx);
-    BSONObj spec = BSON("$backupFile" << BSON("backupId" << backupId << "file"
-                                                         << "filename.wt"
+    BSONObj spec = BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup
                                                          << "byteOffset" << 1));
     ASSERT_THROWS_CODE(
         testCreateFromBsonResult(spec, expCtx), DBException, ErrorCodes::TypeMismatch);
@@ -186,9 +187,8 @@ TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageParsingInvalidSpecInvali
 TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageParsingInvalidSpecInvalidLengthType) {
     auto expCtx = createExpressionContext(_opCtx);
     auto backupId = createBackupCursorStage(expCtx);
-    BSONObj spec = BSON("$backupFile" << BSON("backupId" << backupId << "file"
-                                                         << "filename.wt"
-                                                         << "length" << 1));
+    BSONObj spec = BSON("$backupFile"
+                        << BSON("backupId" << backupId << "file" << fileToBackup << "length" << 1));
     ASSERT_THROWS_CODE(
         testCreateFromBsonResult(spec, expCtx), DBException, ErrorCodes::TypeMismatch);
 }
