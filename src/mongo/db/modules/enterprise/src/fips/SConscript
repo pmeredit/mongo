@@ -1,6 +1,9 @@
 # -*- mode: python -*-
 
-Import('env')
+Import([
+    'env',
+    'get_option'
+])
 
 env = env.Clone()
 
@@ -26,22 +29,23 @@ env.Library(
     ],
 )
 
-env.Library(
-    target='fips_mode_client',
-    source=[
-        'fips_flag_client.idl',
-    ],
-    LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/util/net/ssl_options_client',
-        '$BUILD_DIR/mongo/util/options_parser/options_parser',
-    ],
-    LIBDEPS_DEPENDENTS=[
-        '$BUILD_DIR/mongo/shell/mongo_initializers',
-    ],
-    LIBDEPS_TAGS=[
-        'lint-allow-nonprivate-on-deps-dependents',
-    ],
-)
+if get_option('js-engine') != 'none':
+    env.Library(
+        target='fips_mode_client',
+        source=[
+            'fips_flag_client.idl',
+        ],
+        LIBDEPS_PRIVATE=[
+            '$BUILD_DIR/mongo/util/net/ssl_options_client',
+            '$BUILD_DIR/mongo/util/options_parser/options_parser',
+        ],
+        LIBDEPS_DEPENDENTS=[
+            '$BUILD_DIR/mongo/shell/mongo_initializers',
+        ],
+        LIBDEPS_TAGS=[
+            'lint-allow-nonprivate-on-deps-dependents',
+        ],
+    )
 
 env.CppUnitTest(
     target='fips_options_test',
