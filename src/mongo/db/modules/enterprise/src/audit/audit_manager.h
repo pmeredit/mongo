@@ -9,7 +9,9 @@
 #include <string>
 
 #include "audit/audit_config_gen.h"
+#include "audit/audit_header_options_gen.h"
 #include "audit_enc_comp_manager.h"
+#include "audit_format.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/oid.h"
 #include "mongo/db/matcher/expression.h"
@@ -23,13 +25,6 @@ class Environment;
 }  // namespace optionenvironment
 
 namespace audit {
-
-enum AuditFormat {
-    AuditFormatJsonFile = 0,
-    AuditFormatBsonFile = 1,
-    AuditFormatConsole = 2,
-    AuditFormatSyslog = 3
-};
 
 /**
  * Contains server-wide auditing configuration.
@@ -105,13 +100,19 @@ public:
      * Check if 'file' is set as the audit destination.
      */
     bool isFileDestination() const {
-        return (_format == AuditFormatJsonFile) || (_format == AuditFormatBsonFile);
+        return (_format == AuditFormat::AuditFormatJsonFile) ||
+            (_format == AuditFormat::AuditFormatBsonFile);
     }
 
     /**
      * Read the entire in-memory configuration guarded by lock.
      */
     AuditConfigDocument getAuditConfig() const;
+
+    /**
+     * Read the entire in-memory configuration guarded by lock.
+     */
+    AuditHeaderOptionsDocument getAuditHeaderOptions() const;
 
     /**
      * Create a MatchExpression from an owned filter object.
@@ -145,7 +146,7 @@ protected:
     }
 
 private:
-    void _initializeAuditLog();
+    void _initializeAuditLog(const optionenvironment::Environment&);
     void _setDestinationFromConfig(const optionenvironment::Environment&);
 
 private:

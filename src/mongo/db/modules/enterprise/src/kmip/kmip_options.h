@@ -6,7 +6,7 @@
 
 #include <string>
 
-#include "encryptdb/kmip_options_gen.h"
+#include "kmip/kmip_options_gen.h"
 #include "mongo/base/status_with.h"
 #include "mongo/config.h"
 #include "mongo/util/net/ssl_options.h"
@@ -17,6 +17,7 @@ struct KMIPParams {
     int kmipPort = 5696;
     int kmipConnectTimeoutMS = kSecurity_kmip_connectTimeoutMSDefault;
     int kmipConnectRetries = kSecurity_kmip_connectRetriesDefault;
+    std::string kmipEncryptionKeyIdentifier;
     std::string kmipKeyIdentifier;
     std::vector<std::string> kmipServerName;
     std::string kmipClientCertificateFile;

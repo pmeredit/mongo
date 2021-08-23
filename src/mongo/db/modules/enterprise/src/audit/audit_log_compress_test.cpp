@@ -39,7 +39,8 @@ public:
     AuditLogCompressTest() {}
 
 protected:
-    AuditEncryptionCompressionManager ac;
+    AuditEncryptionCompressionManager ac =
+        AuditEncryptionCompressionManager("zstd", "testKey", "testKeyIdentifier");
 };
 
 TEST_F(AuditLogCompressTest, CompressedSizeTest) {

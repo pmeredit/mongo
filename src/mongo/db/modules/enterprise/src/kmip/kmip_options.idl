@@ -9,6 +9,14 @@ global:
         source: [ cli, ini, yaml ]
 
 configs:
+    "security.kmip.encryptionKeyIdentifier":
+        description: 'KMIP unique identifier for existing key to use for at-rest encryption of audit logs'
+        short_name: kmipEncryptionKeyIdentifier
+        arg_vartype: String
+    "security.kmip.keyStoreIdentifier":
+        description: 'KMIP key store identifier'
+        short_name: kmipKeyStoreIdentifier
+        arg_vartype: String
     "security.kmip.keyIdentifier":
         description: 'KMIP unique identifier for existing key to use'
         short_name: kmipKeyIdentifier

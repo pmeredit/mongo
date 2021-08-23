@@ -5,18 +5,37 @@
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 #include "audit_enc_comp_manager.h"
+#include "audit_file_header.h"
 
+#include "mongo/base/error_extra_info.h"
 #include "mongo/base/string_data.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/base64.h"
+#include "mongo/util/options_parser/environment.h"
+#include <string>
 
 namespace mongo {
 namespace audit {
 
-AuditEncryptionCompressionManager::AuditEncryptionCompressionManager() {
-    // Hardcoded the compressing library, in the future the library will be given
-    // in the server options
+constexpr auto AUDIT_ENCRYPTION_VERSION = "0.0"_sd;
+
+AuditEncryptionCompressionManager::AuditEncryptionCompressionManager(
+    StringData compressionMode, std::string keyStoreIdentifier, std::string encryptionKeyIdentifier)
+    : _kmipKeyStoreIdentifier(std::move(keyStoreIdentifier)),
+      _kmipEncryptionKeyIdentifier(std::move(encryptionKeyIdentifier)) {
+    // TODO -> Validate encryption key, keystore and set kmip conecction type based key
+    _fileHeader = std::make_unique<AuditFileHeader>();
+
     _zstdCompressor = std::make_unique<ZstdMessageCompressor>();
+}
+
+BSONObj AuditEncryptionCompressionManager::encodeFileHeader() const {
+    BSONObj toWriteFileHeader = _fileHeader->generateFileHeader(AUDIT_ENCRYPTION_VERSION,
+                                                                _zstdCompressor->getName(),
+                                                                _kmipKeyStoreIdentifier,
+                                                                _kmipEncryptionKeyIdentifier);
+
+    return toWriteFileHeader;
 }
 
 std::string AuditEncryptionCompressionManager::compress(ConstDataRange toCompress) const {

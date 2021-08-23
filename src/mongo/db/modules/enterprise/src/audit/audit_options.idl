@@ -46,8 +46,8 @@ configs:
         short_name: auditFilter
         arg_vartype: String
         requires: 'auditLog.destination'
-    "auditLog.compressionEnabled":
-        description: 'Compress the audit log'
-        short_name: auditCompressionEnabled
-        arg_vartype: Bool
+    "auditLog.compressionMode":
+        description: 'Mode to be used for compressing the audit log'
+        short_name: auditCompressionMode
+        arg_vartype: String
         requires: 'auditLog.destination'

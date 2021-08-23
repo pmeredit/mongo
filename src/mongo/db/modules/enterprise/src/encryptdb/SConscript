@@ -26,8 +26,8 @@ wtEnv.Library(
         'encryption_server_status.cpp',
     ],
     LIBDEPS=[
+        '$BUILD_DIR/mongo/db/modules/enterprise/symmetric_crypto_enterprise',
         'encryptdb',
-        'symmetric_crypto_enterprise',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/db/commands/server_status',
@@ -48,7 +48,7 @@ env.Library(
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/crypto/symmetric_crypto',
-        'symmetric_crypto_enterprise',
+        '$BUILD_DIR/mongo/db/modules/enterprise/symmetric_crypto_enterprise',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/db/storage/storage_engine_metadata',
@@ -74,11 +74,11 @@ wtEnv.Library(
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/db/catalog/catalog_impl',
+        '$BUILD_DIR/mongo/db/modules/enterprise/symmetric_crypto_enterprise',
         '$BUILD_DIR/mongo/db/storage/storage_options',
         '$BUILD_DIR/mongo/idl/server_parameter',
         'key_acquisition',
         'keystore_metadata',
-        'symmetric_crypto_enterprise',
     ],
     EXPORT_SYMBOLS=[
         'mongo_addWiredTigerEncryptors',
@@ -106,51 +106,13 @@ env.Library(
 )
 
 env.Library(
-    target='symmetric_crypto_enterprise',
-    source=[
-        'symmetric_crypto.cpp',
-        'symmetric_crypto_smoke.cpp',
-        'encryption_options.cpp',
-        'kmip_options.cpp',
-        'encryption_options.idl',
-        'kmip_options.idl',
-    ],
-    LIBDEPS=[
-        '$BUILD_DIR/mongo/base/secure_allocator',
-        '$BUILD_DIR/mongo/crypto/symmetric_crypto',
-        '$BUILD_DIR/mongo/util/net/ssl_manager',
-        '$BUILD_DIR/mongo/util/secure_zero_memory',
-    ],
-    LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/util/options_parser/options_parser',
-        'log_redact_options'
-    ],
-
-)
-
-env.Library(
-    target='kmip',
-    source=[
-        'kmip_request.cpp',
-        'kmip_response.cpp',
-        'kmip_service.cpp',
-    ],
-    LIBDEPS=[
-        '$BUILD_DIR/mongo/base',
-        '$BUILD_DIR/mongo/crypto/symmetric_crypto',
-        '$BUILD_DIR/mongo/util/net/network',
-        'symmetric_crypto_enterprise',
-    ],
-)
-
-env.Library(
     target='key_acquisition',
     source=[
         'encryption_key_acquisition.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/auth/security_file',
-        'kmip',
+        '$BUILD_DIR/mongo/db/modules/enterprise/kmip',
     ],
 )
 
@@ -167,6 +129,8 @@ wtEnv.CppUnitTest(
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/db/auth/authmocks',
+        '$BUILD_DIR/mongo/db/modules/enterprise/kmip',
+        '$BUILD_DIR/mongo/db/modules/enterprise/symmetric_crypto_enterprise',
         "$BUILD_DIR/mongo/db/server_options_core",
         '$BUILD_DIR/mongo/db/service_context_test_fixture',
         "$BUILD_DIR/mongo/db/storage/remove_saver",
@@ -176,8 +140,6 @@ wtEnv.CppUnitTest(
         '$BUILD_DIR/mongo/util/net/network',
         'encryptdb',
         'keystore_metadata',
-        'kmip',
-        'symmetric_crypto_enterprise',
     ],
 )
 
@@ -190,12 +152,12 @@ if not using_ubsan:
         LIBDEPS=[
             '$BUILD_DIR/mongo/db/auth/authmocks',
             '$BUILD_DIR/mongo/db/auth/security_file',
+            '$BUILD_DIR/mongo/db/modules/enterprise/symmetric_crypto_enterprise',
             '$BUILD_DIR/mongo/db/service_context',
             '$BUILD_DIR/mongo/db/service_context_test_fixture',
             '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core',
             '$BUILD_DIR/mongo/util/net/network',
             'encryptdb',
-            'symmetric_crypto_enterprise',
         ],
     )
 
@@ -216,10 +178,11 @@ env.Program(
         "$BUILD_DIR/mongo/base",
         "$BUILD_DIR/mongo/crypto/symmetric_crypto",
         "$BUILD_DIR/mongo/db/log_process_details",
+        "$BUILD_DIR/mongo/db/modules/enterprise/kmip_configuration",
+        "$BUILD_DIR/mongo/db/modules/enterprise/symmetric_crypto_enterprise",
         "$BUILD_DIR/mongo/util/options_parser/options_parser_init",
         "$BUILD_DIR/mongo/util/signal_handlers",
         "$BUILD_DIR/mongo/util/version_impl",
         "key_acquisition",
-        "symmetric_crypto_enterprise",
     ],
 )

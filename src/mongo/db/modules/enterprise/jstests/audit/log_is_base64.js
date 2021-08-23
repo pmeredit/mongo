@@ -14,13 +14,22 @@ if (!TestData.setParameters.featureFlagAtRestEncryption) {
 
 print("Testing logs being base64.");
 function testAuditLineBase64(fixture, isMongos, enableCompression) {
-    let opts = {auditCompressionEnabled: enableCompression};
+    let opts = {
+        kmipKeyStoreIdentifier: "testKey",
+        kmipEncryptionKeyIdentifier: "testKeyIdentifier",
+    };
+    if (enableCompression) {
+        opts.auditCompressionMode = "zstd";
+    }
     if (isMongos) {
         opts = {other: {mongosOptions: opts}};
     }
 
     jsTest.log("Testing: " + tojson(opts));
     const {conn, audit, admin} = fixture.startProcess(opts);
+
+    // Skips first line since it's the header
+    audit.setCurrentAuditLine(audit.getCurrentAuditLine() + 1);
 
     const base64regex = /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
     assert.soon(() => {

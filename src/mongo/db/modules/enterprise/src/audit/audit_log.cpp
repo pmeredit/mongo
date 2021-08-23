@@ -2,11 +2,13 @@
  *    Copyright (C) 2013 10gen Inc.
  */
 
+#include "mongo/base/string_data.h"
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 #include "audit_log.h"
 
 #include <boost/filesystem.hpp>
+#include <string>
 
 #include "audit/audit_feature_flag_gen.h"
 #include "audit_manager.h"
@@ -21,12 +23,21 @@
 #include "mongo/db/server_options.h"
 #include "mongo/logv2/log.h"
 #include "mongo/logv2/log_util.h"
+#include "mongo/util/options_parser/environment.h"
 #include "mongo/util/time_support.h"
 
 namespace mongo::audit {
 
 namespace {
 namespace fs = boost::filesystem;
+namespace moe = mongo::optionenvironment;
+
+void assertHaveSettingWithCompression(const moe::Environment& params, StringData required) {
+    uassert(ErrorCodes::BadValue,
+            str::stream() << required
+                          << " must be specified when auditLog.compressionEnabled is true",
+            params.count(required.toString()));
+}
 
 template <typename Encoder>
 class RotatableAuditFileAppender : public logger::Appender<AuditEvent> {
@@ -48,7 +59,60 @@ public:
         if (!errors.empty())
             LOGV2_WARNING(
                 4719803, "Errors occurred during audit log rotate", "errors"_attr = errors);
+
+        auto* am = getGlobalAuditManager();
+        invariant(am->isEnabled());
+
+        if (am->getCompressionEnabled() &&
+            feature_flags::gFeatureFlagAtRestEncryption.isEnabledAndIgnoreFCV()) {
+
+            auto ac = am->getAuditEncryptionCompressionManager();
+            invariant(ac);
+
+            BSONObj encodedHeader = ac->encodeFileHeader();
+
+            Status status = Status::OK();
+            if (am->getFormat() == AuditFormat::AuditFormatJsonFile) {
+                status = writeStream(encodedHeader.jsonString(), true /* appendNewline */);
+            } else {
+                status = writeStream(StringData(encodedHeader.objdata(), encodedHeader.objsize()));
+            }
+
+            if (!status.isOK()) {
+                try {
+                    LOGV2_WARNING(
+                        242451, "Failure writing header to audit log", "error"_attr = status);
+                } catch (...) {
+                    // If neither audit subsystem can write,
+                    // then just eat the standard logging exception,
+                    // and return audit's bad status.
+                }
+            }
+        }
+
         return result;
+    }
+
+    /**
+     * Writes to file stream, returns Status::OK() on success.
+     */
+    Status writeStream(StringData toWrite, const bool appendNewline = false) try {
+        logger::RotatableFileWriter::Use useWriter(_writer.get());
+        auto status = useWriter.status();
+        if (!status.isOK()) {
+            LOGV2_WARNING(24243, "Failure acquiring audit logger", "error"_attr = status);
+            return status;
+        }
+
+
+        constexpr auto kNewline = "\n"_sd;
+        useWriter.stream()
+            .write(toWrite.begin(), toWrite.size())
+            .write(kNewline.rawData(), appendNewline ? 1 : 0)
+            .flush();
+        return useWriter.status();
+    } catch (...) {
+        return exceptionToStatus();
     }
 
     Status append(const Event& event) final {
@@ -68,18 +132,7 @@ public:
                 toWrite = ac->compressAndEncrypt(inBuff);
             }
 
-            logger::RotatableFileWriter::Use useWriter(_writer.get());
-
-            status = useWriter.status();
-            if (!status.isOK()) {
-                LOGV2_WARNING(
-                    24243, "Failure acquiring audit logger: {status}", "status"_attr = status);
-                return status;
-            }
-
-            useWriter.stream().write(toWrite.c_str(), toWrite.length()).flush();
-
-            status = useWriter.status();
+            status = writeStream(toWrite);
         } catch (...) {
             status = exceptionToStatus();
         }
@@ -148,27 +201,27 @@ std::unique_ptr<logger::Appender<AuditEvent>> auditLogAppender;
 
 }  // namespace
 
-void AuditManager::_initializeAuditLog() {
+void AuditManager::_initializeAuditLog(const moe::Environment& params) {
     if (!isEnabled()) {
         return;
     }
 
     const auto format = getFormat();
     switch (format) {
-        case AuditFormatConsole: {
+        case AuditFormat::AuditFormatConsole: {
             auditLogAppender.reset(
                 new logger::ConsoleAppender<AuditEvent>(std::make_unique<AuditEventTextEncoder>()));
             break;
         }
 #ifndef _WIN32
-        case AuditFormatSyslog: {
+        case AuditFormat::AuditFormatSyslog: {
             auditLogAppender.reset(new logger::SyslogAppender<AuditEvent>(
                 std::make_unique<AuditEventSyslogEncoder>()));
             break;
         }
 #endif  // ndef _WIN32
-        case AuditFormatJsonFile:
-        case AuditFormatBsonFile: {
+        case AuditFormat::AuditFormatJsonFile:
+        case AuditFormat::AuditFormatBsonFile: {
             auto auditLogPath = getPath();
 
             try {
@@ -184,25 +237,36 @@ void AuditManager::_initializeAuditLog() {
 
             if (getCompressionEnabled() &&
                 feature_flags::gFeatureFlagAtRestEncryption.isEnabledAndIgnoreFCV()) {
-                _ac = std::make_unique<AuditEncryptionCompressionManager>();
+                std::string compressionMode = params["auditLog.compressionMode"].as<std::string>();
+
+                assertHaveSettingWithCompression(params, "security.kmip.keyStoreIdentifier"_sd);
+                std::string keyStoreIdentifier =
+                    params["security.kmip.keyStoreIdentifier"].as<std::string>();
+
+                assertHaveSettingWithCompression(params,
+                                                 "security.kmip.encryptionKeyIdentifier"_sd);
+                std::string encryptionKeyIdentifier =
+                    params["security.kmip.encryptionKeyIdentifier"].as<std::string>();
+
+                _ac = std::make_unique<AuditEncryptionCompressionManager>(
+                    std::move(compressionMode),
+                    std::move(keyStoreIdentifier),
+                    std::move(encryptionKeyIdentifier));
             }
 
             auto writer = std::make_unique<logger::RotatableFileWriter>();
             uassertStatusOK(logger::RotatableFileWriter::Use(writer.get())
                                 .setFileName(auditLogPath, true /* append */));
 
-            uassertStatusOK(logger::RotatableFileWriter::Use(writer.get())
-                                .rotate(serverGlobalParams.logRenameOnRotate,
-                                        auditLogPath + terseCurrentTimeForFilename(),
-                                        true /* append */,
-                                        nullptr));
-
-            if (format == AuditFormatJsonFile) {
+            if (format == AuditFormat::AuditFormatJsonFile) {
                 auditLogAppender.reset(new JSONAppender(std::move(writer)));
             } else {
-                invariant(format == AuditFormatBsonFile);
+                invariant(format == AuditFormat::AuditFormatBsonFile);
                 auditLogAppender.reset(new BSONAppender(std::move(writer)));
             }
+
+            uassertStatusOK(auditLogAppender->rotate(
+                serverGlobalParams.logRenameOnRotate, terseCurrentTimeForFilename(), nullptr));
 
             logv2::addLogRotator(
                 logv2::kAuditLogTag,

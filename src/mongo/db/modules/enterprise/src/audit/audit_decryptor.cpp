@@ -10,6 +10,7 @@
 #include "audit_decryptor_options.h"
 #include "audit_enc_comp_manager.h"
 
+#include "mongo/bson/json.h"
 #include "mongo/db/service_context.h"
 #include "mongo/util/base64.h"
 #include "mongo/util/signal_handlers.h"
@@ -17,6 +18,27 @@
 
 namespace mongo {
 namespace audit {
+
+bool isValidHeader(const std::string& header) {
+    std::string properties[] = {"ts",
+                                "version",
+                                "compressionMode",
+                                "keyStoreIdentifier",
+                                "encryptedKey",
+                                "auditRecordType"};
+    try {
+        BSONObj fileHeaderBSON = fromjson(header);
+        for (std::string prop : properties) {
+            if (!fileHeaderBSON.hasField(prop)) {
+                return false;
+            }
+        }
+    } catch (...) {
+        return false;
+    }
+
+    return true;
+}
 
 void auditDecryptorTool(int argc, char* argv[]) {
     setupSignalHandlers();
@@ -65,10 +87,19 @@ void auditDecryptorTool(int argc, char* argv[]) {
     std::vector<std::string> inputData;
     int numLine = 0;
 
-    AuditEncryptionCompressionManager ac;
-
     // Read file
     if (input.is_open()) {
+        getline(input, line);
+        uassert(ErrorCodes::FailedToParse,
+                "Audit file header has invalid format.",
+                isValidHeader(line));
+
+        inputData.push_back(line + "\n");
+
+        // TODO start AECM with header arguments
+        AuditEncryptionCompressionManager ac =
+            AuditEncryptionCompressionManager("zstd", "testKey", "testKeyIdentifier");
+
         while (getline(input, line)) {
             ++numLine;
             try {

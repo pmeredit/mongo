@@ -13,7 +13,7 @@
 
 #include "mongo/base/status.h"
 
-#include "kmip_options.h"
+#include "kmip/kmip_options.h"
 #include "mongo/crypto/symmetric_crypto.h"
 
 namespace mongo {

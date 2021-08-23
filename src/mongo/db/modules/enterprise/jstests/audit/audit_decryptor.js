@@ -29,7 +29,11 @@ function isValidJSON(json) {
 
 print("Testing audit log decryptor program");
 function testAuditLogDecryptor(fixture, isMongos) {
-    let opts = {auditCompressionEnabled: true};
+    let opts = {
+        auditCompressionMode: "zstd",
+        kmipKeyStoreIdentifier: "testKey",
+        kmipEncryptionKeyIdentifier: "testKeyIdentifier",
+    };
     if (isMongos) {
         opts = {other: {mongosOptions: opts}};
     }
@@ -37,11 +41,14 @@ function testAuditLogDecryptor(fixture, isMongos) {
     jsTest.log("Testing: " + tojson(opts));
     const {conn, audit, admin} = fixture.startProcess(opts);
 
-    const base64Line = audit.getNextEntryNoParsing();
+    // Skips first line since it's the header
+    audit.setCurrentAuditLine(audit.getCurrentAuditLine() + 1);
 
-    // Audit log was compressed and encoded as base64 so it can't be parsed
-    assert.eq(isValidJSON(base64Line), false);
-
+    assert.soon(() => {
+        const base64Line = audit.getNextEntryNoParsing();
+        // Audit log was compressed and encoded as base64 so it can't be parsed
+        return !isValidJSON(base64Line);
+    }, "Audit log was not compressed and encoded as base64");
     fixture.stopProcess();
 
     // Prevent race condition trying to read the audit file before it is written and saved

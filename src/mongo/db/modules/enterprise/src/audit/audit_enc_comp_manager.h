@@ -7,6 +7,8 @@
 #include <memory>
 #include <string>
 
+#include "audit_file_header.h"
+
 #include "mongo/base/data_range.h"
 #include "mongo/transport/message_compressor_zstd.h"
 
@@ -21,7 +23,9 @@ namespace audit {
  */
 class AuditEncryptionCompressionManager {
 public:
-    AuditEncryptionCompressionManager();
+    AuditEncryptionCompressionManager(StringData compressionMode,
+                                      std::string keyStoreIdentifier,
+                                      std::string encryptionKeyIdentifier);
 
     std::string compressAndEncrypt(ConstDataRange toCompressAndEncrypt) const;
 
@@ -29,12 +33,19 @@ public:
 
     std::string decompress(const std::string& line);
 
+    BSONObj encodeFileHeader() const;
+
 private:
-    // Store a reference to the chosen compressor on startup.
-    // This assumes that the compressor's lifetime exceeds
-    // the lifetime of all audit events.
-    // This happens to be true, but is not guaranteed by code.
     std::unique_ptr<ZstdMessageCompressor> _zstdCompressor;
+
+    // KMIP key store unique identifier
+    std::string _kmipKeyStoreIdentifier;
+
+    // KMIP unique identifier for existing key to use
+    std::string _kmipEncryptionKeyIdentifier;
+
+    // File header containing startup options
+    std::unique_ptr<AuditFileHeader> _fileHeader;
 };
 
 }  // namespace audit

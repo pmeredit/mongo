@@ -29,7 +29,8 @@ public:
     AuditLogCompressBase64Test() {}
 
 protected:
-    AuditEncryptionCompressionManager ac;
+    AuditEncryptionCompressionManager ac =
+        AuditEncryptionCompressionManager("zstd", "testKey", "testKeyIdentifier");
 };
 
 TEST_F(AuditLogCompressBase64Test, CheckStringIsBase64Test) {

@@ -6,8 +6,8 @@
 
 #include <vector>
 
+#include "kmip/kmip_options.h"
 #include "kmip_consts.h"
-#include "kmip_options.h"
 #include "mongo/base/status_with.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/net/hostandport.h"

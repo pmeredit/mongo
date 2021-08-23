@@ -142,9 +142,9 @@ void AuditManager::_setDestinationFromConfig(const moe::Environment& params) {
 #endif
 
         if (format == "JSON") {
-            _format = AuditFormatJsonFile;
+            _format = AuditFormat::AuditFormatJsonFile;
         } else if (format == "BSON") {
-            _format = AuditFormatBsonFile;
+            _format = AuditFormat::AuditFormatBsonFile;
         } else {
             uasserted(ErrorCodes::BadValue, "Invalid value for auditLog.format");
         }
@@ -163,9 +163,9 @@ void AuditManager::_setDestinationFromConfig(const moe::Environment& params) {
 #ifdef _WIN32
             uasserted(ErrorCodes::BadValue, "syslog not available on Windows");
 #endif
-            _format = AuditFormatSyslog;
+            _format = AuditFormat::AuditFormatSyslog;
         } else if (destination == "console") {
-            _format = AuditFormatConsole;
+            _format = AuditFormat::AuditFormatConsole;
         } else {
             uasserted(ErrorCodes::BadValue, "invalid auditLog destination");
         }
@@ -213,15 +213,19 @@ void AuditManager::initialize(const moe::Environment& params) {
     }
 
     if (feature_flags::gFeatureFlagAtRestEncryption.isEnabledAndIgnoreFCV() &&
-        params.count("auditLog.compressionEnabled") &&
-        params["auditLog.compressionEnabled"].as<bool>()) {
+        params.count("auditLog.compressionMode") &&
+        params["auditLog.compressionMode"].as<std::string>() != "" &&
+        params["auditLog.compressionMode"].as<std::string>() != "none") {
         uassert(ErrorCodes::BadValue,
                 "auditLog.compressionEnabled is only allowed when auditLog.destination is 'file'",
                 isFileDestination());
+        uassert(ErrorCodes::BadValue,
+                "auditLog.compressionMode must be set as zstd",
+                params["auditLog.compressionMode"].as<std::string>() == "zstd");
         _compressionEnabled = true;
     }
 
-    _initializeAuditLog();
+    _initializeAuditLog(params);
 }
 
 namespace {

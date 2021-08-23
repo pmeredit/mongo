@@ -61,10 +61,13 @@ env.Library(
     target='audit_enc_comp_manager',
     source=[
         'audit_enc_comp_manager.cpp',
+        'audit_file_header.cpp',
         'audit_feature_flag.idl',
+        'audit_header_options.idl',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/idl/basic_types',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/idl/feature_flag',
@@ -229,6 +232,7 @@ env.CppUnitTest(
         'audit_key_manager_mock.cpp',
         'audit_op_observer_test.cpp',
         'audit_log_compress_base64_test.cpp',
+        'audit_log_header_test.cpp',
         'audit_key_manager_test.cpp',
         'logger/rotatable_file_writer_test.cpp',
     ],

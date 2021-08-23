@@ -8,7 +8,7 @@
 
 #include "mongo/base/status.h"
 
-#include "kmip_options.h"
+#include "kmip/kmip_options.h"
 
 namespace mongo {
 

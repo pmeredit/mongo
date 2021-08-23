@@ -7,7 +7,7 @@
 
 #include "mongo/platform/basic.h"
 
-#include "kmip_options.h"
+#include "kmip/kmip_options.h"
 
 #include "mongo/config.h"
 #include "mongo/util/options_parser/environment.h"
@@ -16,6 +16,11 @@ namespace mongo {
 
 StatusWith<KMIPParams> parseKMIPOptions(const optionenvironment::Environment& params) {
     KMIPParams kmipParams;
+
+    if (params.count("security.kmip.encryptionKeyIdentifier")) {
+        kmipParams.kmipEncryptionKeyIdentifier =
+            params["security.kmip.encryptionKeyIdentifier"].as<std::string>();
+    }
 
     if (params.count("security.kmip.keyIdentifier")) {
         kmipParams.kmipKeyIdentifier = params["security.kmip.keyIdentifier"].as<std::string>();
