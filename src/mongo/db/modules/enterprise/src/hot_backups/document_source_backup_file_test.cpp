@@ -163,6 +163,16 @@ TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageParsingInvalidSpecInvali
         testCreateFromBsonResult(spec, expCtx), DBException, ErrorCodes::TypeMismatch);
 }
 
+TEST_F(DocumentSourceBackupFileTest,
+       TestBackupFileStageParsingInvalidSpecFilePathNotReturnedByActiveBackupCursor) {
+    auto expCtx = createExpressionContext(_opCtx);
+    auto backupId = createBackupCursorStage(expCtx);
+    BSONObj spec = BSON("$backupFile" << BSON("backupId" << backupId << "file"
+                                                         << "invalidFileName.wt"));
+    ASSERT_THROWS_CODE(
+        testCreateFromBsonResult(spec, expCtx), DBException, ErrorCodes::IllegalOperation);
+}
+
 TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageParsingInvalidSpecInvalidByteOffsetType) {
     auto expCtx = createExpressionContext(_opCtx);
     auto backupId = createBackupCursorStage(expCtx);

@@ -38,11 +38,22 @@ boost::intrusive_ptr<DocumentSourceBackupFile> DocumentSourceBackupFile::createF
     auto spec = DocumentSourceBackupFileSpec::parse(IDLParserErrorContext(kStageName),
                                                     elem.embeddedObject());
 
+
+    auto svcCtx = expCtx->opCtx->getServiceContext();
+    auto backupCursorService = BackupCursorHooks::get(svcCtx);
+
+    auto backupId = spec.getBackupId();
+    auto fileName = spec.getFile().toString();
+
+    uassert(ErrorCodes::IllegalOperation,
+            str::stream() << "File " << fileName
+                          << " must be returned by the active backup cursor with backup ID "
+                          << backupId,
+            backupCursorService->isFileReturnedByCursor(backupId, fileName));
     return DocumentSourceBackupFile::create(expCtx, spec);
 }
 
 DocumentSource::GetNextResult DocumentSourceBackupFile::doGetNext() {
-    // TODO SERVER-57810: Implement reading of filenames
     return pSource->getNext();
 }
 
