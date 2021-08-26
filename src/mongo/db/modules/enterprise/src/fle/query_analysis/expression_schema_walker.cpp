@@ -446,6 +446,12 @@ public:
     void visit(const ExpressionFromAccumulator<AccumulatorAvg>*) {
         _tracker.enterEvaluateOrCompare();
     }
+    void visit(const ExpressionFromAccumulatorN<AccumulatorFirstN>*) {
+        _tracker.enterEvaluateOrCompare();
+    }
+    void visit(const ExpressionFromAccumulatorN<AccumulatorLastN>*) {
+        _tracker.enterEvaluateOrCompare();
+    }
     void visit(const ExpressionFromAccumulator<AccumulatorMax>*) {
         _tracker.enterEvaluateOrCompare();
     }
@@ -687,6 +693,8 @@ public:
     void visit(const ExpressionIsoWeek*) {}
     void visit(const ExpressionYear*) {}
     void visit(const ExpressionFromAccumulator<AccumulatorAvg>*) {}
+    void visit(const ExpressionFromAccumulatorN<AccumulatorFirstN>*) {}
+    void visit(const ExpressionFromAccumulatorN<AccumulatorLastN>*) {}
     void visit(const ExpressionFromAccumulator<AccumulatorMax>*) {}
     void visit(const ExpressionFromAccumulator<AccumulatorMin>*) {}
     void visit(const ExpressionFromAccumulatorN<AccumulatorMaxN>*) {}
@@ -1086,6 +1094,12 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionFromAccumulator<AccumulatorAvg>*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(const ExpressionFromAccumulatorN<AccumulatorFirstN>*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(const ExpressionFromAccumulatorN<AccumulatorLastN>*) {
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionFromAccumulator<AccumulatorMax>*) {

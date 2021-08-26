@@ -892,6 +892,12 @@ private:
     void visit(ExpressionFromAccumulator<AccumulatorAvg>*) final {
         ensureNotEncryptedEnterEval("an average aggregation", subtreeStack);
     }
+    void visit(ExpressionFromAccumulatorN<AccumulatorFirstN>*) final {
+        ensureNotEncryptedEnterEval("an aggregation of the first 'n' values", subtreeStack);
+    }
+    void visit(ExpressionFromAccumulatorN<AccumulatorLastN>*) final {
+        ensureNotEncryptedEnterEval("an aggregation of the last 'n' values", subtreeStack);
+    }
     void visit(ExpressionFromAccumulator<AccumulatorMax>*) final {
         ensureNotEncryptedEnterEval("a maximum aggregation", subtreeStack);
     }
@@ -1099,6 +1105,8 @@ private:
     void visit(ExpressionIsoWeek*) final {}
     void visit(ExpressionYear*) final {}
     void visit(ExpressionFromAccumulator<AccumulatorAvg>*) final {}
+    void visit(ExpressionFromAccumulatorN<AccumulatorFirstN>*) final {}
+    void visit(ExpressionFromAccumulatorN<AccumulatorLastN>*) final {}
     void visit(ExpressionFromAccumulator<AccumulatorMax>*) final {}
     void visit(ExpressionFromAccumulator<AccumulatorMin>*) final {}
     void visit(ExpressionFromAccumulatorN<AccumulatorMaxN>*) final {}
@@ -1518,6 +1526,12 @@ private:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionFromAccumulator<AccumulatorAvg>*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionFromAccumulatorN<AccumulatorFirstN>*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionFromAccumulatorN<AccumulatorLastN>*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionFromAccumulator<AccumulatorMax>*) final {
