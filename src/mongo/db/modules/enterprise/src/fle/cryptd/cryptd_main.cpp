@@ -36,6 +36,7 @@
 #include "mongo/util/str.h"
 #include "mongo/util/text.h"
 #include "mongo/util/version.h"
+#include "mongo/util/version/releases.h"
 
 #include "cryptd_options.h"
 #include "cryptd_service_entry_point.h"
@@ -229,8 +230,7 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(SetFeatureCompatibilityVersionLatest,
     // Aggregations which include a $changeStream stage must read the current FCV during parsing. If
     // the FCV is not initialized, this will hit an invariant. We therefore initialize it here.
     // (Generic FCV reference): This FCV reference should exist across LTS binary versions.
-    serverGlobalParams.mutableFeatureCompatibility.setVersion(
-        ServerGlobalParams::FeatureCompatibility::kLatest);
+    serverGlobalParams.mutableFeatureCompatibility.setVersion(multiversion::GenericFCV::kLatest);
 }
 
 int CryptDMain(int argc, char** argv) {
