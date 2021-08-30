@@ -4,6 +4,7 @@
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kReplicationInitialSync
 
 #include "file_copy_based_initial_syncer.h"
+#include "initial_sync_file_mover.h"
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/pipeline/aggregate_command_gen.h"
@@ -812,6 +813,10 @@ ServiceContext::ConstructorActionRegisterer fileCopyBasedInitialSyncerRegisterer
                     storage,
                     replicationProcess,
                     onCompletion);
+            },
+            []() {
+                InitialSyncFileMover mover(storageGlobalParams.dbpath);
+                mover.recoverFileCopyBasedInitialSyncAtStartup();
             });
     });
 }  // namespace repl
