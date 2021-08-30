@@ -90,6 +90,12 @@ std::unique_ptr<LDAPConnection> makeNativeLDAPConn(const LDAPConnectionOptions& 
                                                    std::shared_ptr<LDAPConnectionReaper> reaper,
                                                    TickSource* tickSource,
                                                    UserAcquisitionStats* userAcquisitionStats) {
+    if (kDebugBuild) {
+        invariant(std::all_of(opts.hosts.begin(), opts.hosts.end(), [](const LDAPHost& h) {
+            return h.getType() == LDAPHost::Type::kDefault;
+        }));
+    }
+
 #ifndef _WIN32
     return std::make_unique<OpenLDAPConnection>(opts, reaper, tickSource, userAcquisitionStats);
 #else
@@ -588,7 +594,8 @@ std::shared_ptr<executor::ConnectionPool::ConnectionInterface> LDAPTypeFactory::
     const HostAndPort& host, transport::ConnectSSLMode sslMode, size_t generation) {
     _start();
 
-    LDAPHost currentHost = LDAPHost(host, (sslMode == transport::kEnableSSL));
+    LDAPHost currentHost =
+        LDAPHost(LDAPHost::Type::kDefault, host, (sslMode == transport::kEnableSSL));
 
     LDAPConnectionOptions options(Milliseconds::min(), {currentHost});
 
@@ -699,7 +706,25 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
     UserAcquisitionStats* userAcquisitionStats) {
 
     if (!options.usePooledConnection || !isNativeImplThreadSafe()) {
-        auto conn = makeNativeLDAPConn(options, _reaper, tickSource, userAcquisitionStats);
+        // Convert LDAPHost(possbily SRV) to LDAPHost without SRV
+        std::vector<LDAPHost> ldapHosts;
+        try {
+            std::transform(options.hosts.begin(),
+                           options.hosts.end(),
+                           std::back_inserter(ldapHosts),
+                           [&](const LDAPHost& server) {
+                               auto res = _dnsCache->resolve(server);
+                               uassertStatusOK(res);
+                               return res.getValue().toLDAPHost();
+                           });
+        } catch (const DBException& e) {
+            return e.toStatus();
+        }
+
+        LDAPConnectionOptions optionsCopy(options);
+        optionsCopy.hosts = std::move(ldapHosts);
+
+        auto conn = makeNativeLDAPConn(optionsCopy, _reaper, tickSource, userAcquisitionStats);
         auto connectStatus = conn->connect();
         if (!connectStatus.isOK()) {
             return connectStatus;
@@ -717,7 +742,7 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
                        std::back_inserter(hosts),
                        [&](const LDAPHost& server) {
                            auto res = _dnsCache->resolve(server);
-                           invariant(res);
+                           uassertStatusOK(res);
                            return res.getValue().serializeHostAndPort();
                        });
     } catch (const DBException& e) {

@@ -19,6 +19,9 @@ namespace mongo {
 namespace {
 const StringData kSimple("simple");
 const StringData kSasl("sasl");
+
+constexpr auto srvPrefix = "srv:"_sd;
+constexpr auto srvRawPrefix = "srv_raw:"_sd;
 }  // namespace
 
 StatusWith<LDAPBindType> getLDAPBindType(StringData type) {
@@ -71,7 +74,17 @@ StatusWith<std::vector<LDAPHost>> LDAPConnectionOptions::parseHostURIs(const std
                           "LDAP server hosts must not contain protocol 'ldap://' or 'ldaps://'");
         }
 
-        result.emplace_back(LDAPHost(token, isSSL));
+        auto type = LDAPHost::Type::kDefault;
+        auto token_sd = StringData(token);
+        if (token_sd.startsWith(srvPrefix)) {
+            type = LDAPHost::Type::kSRV;
+            token_sd = token_sd.substr(srvPrefix.size());
+        } else if (token_sd.startsWith(srvRawPrefix)) {
+            type = LDAPHost::Type::kSRVRaw;
+            token_sd = token_sd.substr(srvRawPrefix.size());
+        }
+
+        result.emplace_back(LDAPHost(type, token_sd, isSSL));
     }
 
     return result;

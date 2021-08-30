@@ -131,6 +131,38 @@ int ldapToolMain(int argc, char** argv) {
                     "LDAP Host: " + ldapServer.getName() +
                     " was successfully resolved to address: " + currLookup.getValue().getAddress());
             } else {
+                // If the host name was mpt  found, check the user specified the wrong prefix
+                if (ldapServer.getType() == LDAPHost::Type::kSRV) {
+                    LDAPHost host(
+                        LDAPHost::Type::kSRVRaw, ldapServer.getNameAndPort(), ldapServer.isSSL());
+
+                    auto srvRawLookup = dnsCache.resolve(ldapServer);
+
+                    if (srvRawLookup.isOK()) {
+                        summary.emplace_back(
+                            "LDAP Host: " + ldapServer.getName() +
+                            " for SRV was NOT successfully resolved but was resolved for "
+                            "'srv_raw'. Change the prefix before the server name to 'srv_raw'");
+                        continue;
+                    }
+                } else if (ldapServer.getType() == LDAPHost::Type::kSRVRaw) {
+                    LDAPHost host(
+                        LDAPHost::Type::kSRV, ldapServer.getNameAndPort(), ldapServer.isSSL());
+
+                    auto srvLookup = dnsCache.resolve(ldapServer);
+
+                    if (srvLookup.isOK()) {
+                        summary.emplace_back(
+                            str::stream()
+                            << "LDAP Host: " << ldapServer.getName()
+                            << " has no SRV record. A SRV record was found at _ldap._tcp."
+                            << ldapServer.getName() << " or _ldap._tcp.gc_msdcs."
+                            << ldapServer.getName()
+                            << " instead. Change the prefix before the server name to 'srv'");
+                        continue;
+                    }
+                }
+
                 summary.push_back("LDAP Host: " + ldapServer.getName() +
                                   " was NOT successfully resolved.");
             }

@@ -261,8 +261,8 @@ public:
         }
 
         return {code,
-                str::stream() << "LDAP operation <" << functionName << ">, " << failureHint
-                              << "\". (" << statusCode << "/"
+                str::stream() << "LDAP operation <" << functionName << ">, " << failureHint << ". ("
+                              << statusCode << "/"
                               << S::toNativeString(S::ldap_err2string(statusCode))
                               << "): " << errorStr};
     }

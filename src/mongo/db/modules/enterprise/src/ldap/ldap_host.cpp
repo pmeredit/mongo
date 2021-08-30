@@ -19,16 +19,24 @@
 #include "mongo/util/net/ssl_manager.h"
 
 namespace mongo {
+namespace {
 
-LDAPHost::LDAPHost(StringData host, bool isSSL) : _isSSL{isSSL} {
-    _uriPrefix = isSSL ? "ldaps://" : "ldap://";
+constexpr auto ldapUriPrefix = "ldap://"_sd;
+constexpr auto ldapSUriPrefix = "ldaps://"_sd;
+
+StringData getPrefix(bool isSSL) {
+    return isSSL ? ldapSUriPrefix : ldapUriPrefix;
+}
+
+}  // namespace
+
+LDAPHost::LDAPHost(Type type, StringData host, bool isSSL) : _isSSL{isSSL}, _type(type) {
     StatusWith<HostAndPort> hostAsHostAndPort = HostAndPort::parse(host);
     uassertStatusOK(hostAsHostAndPort);
     parse(hostAsHostAndPort.getValue());
 }
 
-LDAPHost::LDAPHost(HostAndPort host, bool isSSL) : _isSSL{isSSL} {
-    _uriPrefix = isSSL ? "ldaps://" : "ldap://";
+LDAPHost::LDAPHost(Type type, HostAndPort host, bool isSSL) : _isSSL{isSSL}, _type(type) {
     parse(host);
 }
 
@@ -37,8 +45,9 @@ HostAndPort LDAPHost::serializeHostAndPort() const {
 }
 
 std::string LDAPHost::serializeURI() const {
-    return _isIpvSix ? _uriPrefix + "[" + _hostName + "]" + ":" + std::to_string(_port)
-                     : _uriPrefix + _hostName + ":" + std::to_string(_port);
+    return _isIpvSix
+        ? str::stream() << getPrefix(_isSSL) << "[" << _hostName << "]:" << std::to_string(_port)
+        : str::stream() << getPrefix(_isSSL) << _hostName << ":" << std::to_string(_port);
 }
 
 std::string LDAPHost::getName() const {
@@ -50,13 +59,13 @@ int LDAPHost::getPort() const {
 }
 
 std::string LDAPHost::getNameAndPort() const {
-    return _isIpvSix ? "[" + _hostName + "]" + ":" + std::to_string(_port)
-                     : _hostName + ":" + std::to_string(_port);
+    return _isIpvSix ? str::stream() << "[" << _hostName << "]:" << std::to_string(_port)
+                     : str::stream() << _hostName << ":" << std::to_string(_port);
 }
 
 void LDAPHost::parse(const HostAndPort& host) {
     _hostName = host.host();
-    _isIpvSix = ((int)std::count(_hostName.begin(), _hostName.end(), ':') > 1);
+    _isIpvSix = (static_cast<int>(std::count(_hostName.begin(), _hostName.end(), ':') > 1));
     if (host.hasPort()) {
         _port = host.port();
     } else {
@@ -65,24 +74,32 @@ void LDAPHost::parse(const HostAndPort& host) {
     _isIpvFour = _isIpvSix ? false : CIDR::parse(_hostName).isOK();
 }
 
+std::string LDAPHost::toString() const {
+    return str::stream() << "(" << static_cast<int>(_type) << ", " << _hostName << ", " << _port
+                         << ")";
+}
+
+std::string joinLdapHost(std::vector<LDAPHost> hosts,
+                         char joinChar,
+                         std::function<std::string(const LDAPHost&)> func) {
+    StringBuilder s;
+    for (size_t i = 0; i < hosts.size(); i++) {
+        if (i != 0) {
+            s << joinChar;
+        }
+        s << func(hosts[i]);
+    }
+    return s.str();
+}
+
 std::string joinLdapHost(std::vector<LDAPHost> hosts, char joinChar) {
-    StringBuilder s;
-    for (size_t i = 0; i < hosts.size(); i++) {
-        if (i != 0) {
-            s << joinChar;
-        }
-        s << hosts[i].getName();
-    }
-    return s.str();
+    return joinLdapHost(hosts, joinChar, [](const LDAPHost& host) { return host.getName(); });
 }
+
 std::string joinLdapHostAndPort(std::vector<LDAPHost> hosts, char joinChar) {
-    StringBuilder s;
-    for (size_t i = 0; i < hosts.size(); i++) {
-        if (i != 0) {
-            s << joinChar;
-        }
-        s << hosts[i].getNameAndPort();
-    }
-    return s.str();
+    return joinLdapHost(
+        hosts, joinChar, [](const LDAPHost& host) { return host.getNameAndPort(); });
 }
+
+
 }  // namespace mongo

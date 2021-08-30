@@ -11,18 +11,28 @@
 #include "mongo/util/net/hostandport.h"
 
 namespace mongo {
+
+
 /**
  * LDAPHost stores host name, port, and ssl information for a LDAP host connection
  */
 class LDAPHost {
 public:
-    LDAPHost(StringData host, bool isSSL);
-    LDAPHost(HostAndPort host, bool isSSL);
+    enum class Type {
+        // TODO - add comments
+        kDefault,
+        kSRV,
+        kSRVRaw,
+    };
+
+    LDAPHost(Type type, StringData host, bool isSSL);
+    LDAPHost(Type type, HostAndPort host, bool isSSL);
 
     HostAndPort serializeHostAndPort() const;
     std::string serializeURI() const;
     std::string getName() const;
     std::string getNameAndPort() const;
+
     int getPort() const;
     bool isSSL() const {
         return _isSSL;
@@ -34,16 +44,22 @@ public:
         return _isIpvSix;
     }
 
+    Type getType() const {
+        return _type;
+    }
+
+    std::string toString() const;
 
 private:
     void parse(const HostAndPort& host);
 
+private:
     std::string _hostName;
-    std::string _uriPrefix;
     bool _isSSL{false};
     bool _isIpvFour{false};
     bool _isIpvSix{false};
     int _port{0};
+    Type _type{Type::kDefault};
 };
 
 /**
@@ -51,6 +67,7 @@ private:
  * joinChar inbetween each host
  */
 std::string joinLdapHost(std::vector<LDAPHost> hosts, char joinChar);
+
 /**
  * joinLdapHostAndPort concatenates a vector of LDAPHost objects (using LDAPHost.getNameAndPort()),
  * with the joinChar inbetween each host

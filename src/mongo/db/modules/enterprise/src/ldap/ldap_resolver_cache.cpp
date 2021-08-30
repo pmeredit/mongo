@@ -1,6 +1,10 @@
 /**
  *  Copyright (C) 2021 MongoDB Inc.
  */
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kConnectionPool
+
+
 #include "mongo/platform/basic.h"
 
 #include "ldap_resolver_cache.h"
@@ -9,34 +13,45 @@
 #include <cstdint>
 #include <vector>
 
+#include "mongo/logv2/log.h"
 #include "mongo/util/dns_query.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/time_support.h"
 
 
 namespace mongo {
+LDAPResolvedHost LDAPDNSResolverCache::_getResolvedHost(const LDAPHost& host,
+                                                        const CacheEntry& entry) {
+    return LDAPResolvedHost(host.getName(),
+                            entry.name,
+                            host.getType() == LDAPHost::Type::kDefault ? host.getPort()
+                                                                       : entry.port,
+                            host.isSSL());
+}
+
 StatusWith<LDAPResolvedHost> LDAPDNSResolverCache::resolve(const LDAPHost& host) {
     if (host.isIpvSix() || host.isIpvFour()) {
-        LDAPResolvedHost currHost = LDAPResolvedHost(
-            host.getName(), host.getName(), host.getPort(), host.isSSL(), Date_t::now());
+        LDAPResolvedHost currHost =
+            LDAPResolvedHost(host.getName(), host.getName(), host.getPort(), host.isSSL());
         return currHost;
     }
 
     {
         stdx::lock_guard<Latch> lk(_mutex);
-        auto cachedHost = _dnsCache.find(host.getNameAndPort());
-        if (cachedHost != _dnsCache.end() && !cachedHost->second.isExpired()) {
-            return cachedHost->second;
+        auto cachedHost = _dnsCache.find({host.getType(), host.getName()});
+        if (cachedHost != _dnsCache.end() && !(cachedHost->second.expiration <= Date_t::now())) {
+            return _getResolvedHost(host, cachedHost->second);
         }
     }
 
     try {
         // Drop lock while going to the network
-        LDAPResolvedHost resolvedHosts = _resolveHost(host);
+        auto resolvedHost = _resolveHost(host);
+
         {
             stdx::lock_guard<Latch> lk(_mutex);
-            _dnsCache.insert({host.getNameAndPort(), resolvedHosts});
-            return resolvedHosts;
+            _dnsCache.insert({{host.getType(), host.getName()}, resolvedHost});
+            return _getResolvedHost(host, resolvedHost);
         }
     }
 
@@ -46,14 +61,50 @@ StatusWith<LDAPResolvedHost> LDAPDNSResolverCache::resolve(const LDAPHost& host)
     }
 }
 
-LDAPResolvedHost LDAPDNSResolverCache::_resolveHost(const LDAPHost& host) {
-    std::vector<std::pair<std::string, Seconds>> dnsRecords = dns::lookupARecords(host.getName());
-    LDAPResolvedHost currResolvedHost = LDAPResolvedHost(host.getName(),
-                                                         dnsRecords.front().first,
-                                                         host.getPort(),
-                                                         host.isSSL(),
-                                                         Date_t::now() + dnsRecords.front().second);
-    return currResolvedHost;
+LDAPDNSResolverCache::CacheEntry LDAPDNSResolverCache::_resolveHost(const LDAPHost& host) {
+    if (host.getType() == LDAPHost::Type::kSRVRaw) {
+        std::vector<std::pair<dns::SRVHostEntry, Seconds>> dnsRecords =
+            dns::lookupSRVRecords(host.getName());
+        return CacheEntry{dnsRecords.front().first.host,
+                          dnsRecords.front().first.port,
+                          Date_t::now() + dnsRecords.front().second};
+    } else if (host.getType() == LDAPHost::Type::kSRV) {
+        /*
+        Under SRV mode, probe for
+        _ldap._tcp.gc_msdcs.<DNSDomainName>
+        then
+        _ldap._tcp.<DNSDomainName>
+        */
+
+        std::string gcName("_ldap._tcp.gc._msdcs." + host.getName());
+        try {
+            std::vector<std::pair<dns::SRVHostEntry, Seconds>> dnsRecords =
+                dns::lookupSRVRecords(gcName);
+            return CacheEntry{dnsRecords.front().first.host,
+                              dnsRecords.front().first.port,
+                              Date_t::now() + dnsRecords.front().second};
+        } catch (ExceptionFor<ErrorCodes::DNSHostNotFound>&) {
+            // "Could not find Active Directory Global Catalog SRV record, host {host}",
+            LOGV2_DEBUG(5904800,
+                        3,
+                        "Could not find Active Directory Global Catalog SRV record",
+                        "host"_attr = gcName);
+        }
+
+        std::vector<std::pair<dns::SRVHostEntry, Seconds>> dnsRecords =
+            dns::lookupSRVRecords("_ldap._tcp." + host.getName());
+        return CacheEntry{dnsRecords.front().first.host,
+                          dnsRecords.front().first.port,
+                          Date_t::now() + dnsRecords.front().second};
+    } else {
+        std::vector<std::pair<std::string, Seconds>> dnsRecords =
+            dns::lookupARecords(host.getName());
+        return CacheEntry{host.getName(), -1, Date_t::now() + dnsRecords.front().second};
+    }
+}
+
+LDAPHost LDAPResolvedHost::toLDAPHost() const {
+    return LDAPHost(LDAPHost::Type::kDefault, HostAndPort(_address, _port), _isSSL);
 }
 
 SockAddr LDAPResolvedHost::serializeSockAddr() const {

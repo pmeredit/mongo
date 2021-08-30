@@ -132,6 +132,18 @@ TEST(SingleHostTLS, LDAPHostShortLocalhost) {
     ASSERT_EQ("ldap://[::1]:389", result.getValue()[0].serializeURI());
 }
 
+TEST(SingleHostTLS, SRV) {
+    auto result = LDAPConnectionOptions::parseHostURIs("srv:first.example:1234", true);
+    ASSERT_EQ("ldaps://first.example:1234", result.getValue()[0].serializeURI());
+    ASSERT(LDAPHost::Type::kSRV == result.getValue()[0].getType());
+}
+
+TEST(SingleHostTLS, SRVRaw) {
+    auto result = LDAPConnectionOptions::parseHostURIs("srv_raw:first.example:1234", true);
+    ASSERT_EQ("ldaps://first.example:1234", result.getValue()[0].serializeURI());
+    ASSERT(LDAPHost::Type::kSRVRaw == result.getValue()[0].getType());
+}
+
 // Test: Active Directory may return an array with a single null value so verify the iterator works
 // and treats this case as an empty array
 TEST(LdapArrayTest, VerifyEquality) {

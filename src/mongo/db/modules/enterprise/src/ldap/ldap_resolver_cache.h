@@ -21,18 +21,15 @@ namespace mongo {
  **/
 class LDAPResolvedHost {
 public:
-    LDAPResolvedHost(
-        std::string hostName, std::string address, int port, bool isSSl, Date_t expiration)
-        : _hostName(hostName),
-          _address(address),
-          _port(port),
-          _isSSL(isSSl),
-          _expiration(expiration) {}
+    LDAPResolvedHost(std::string hostName, std::string address, int port, bool isSSl)
+        : _hostName(hostName), _address(address), _port(port), _isSSL(isSSl) {}
     /**
      * Methods to serialize as HostAndPort object and SockAddr object
      **/
     HostAndPort serializeHostAndPort() const;
     SockAddr serializeSockAddr() const;
+
+    LDAPHost toLDAPHost() const;
 
     /**
      * Getters for memebers of LDAPResolvedHost
@@ -46,16 +43,12 @@ public:
     int getPort() const {
         return _port;
     }
-    bool isExpired() const {
-        return _expiration <= Date_t::now();
-    }
 
 private:
     std::string _hostName;
     std::string _address;
     int _port;
     bool _isSSL;
-    Date_t _expiration;
 };
 
 /**
@@ -71,12 +64,42 @@ public:
      **/
     StatusWith<LDAPResolvedHost> resolve(const LDAPHost& host);
 
+public:
+    struct CacheKey {
+        LDAPHost::Type type;
+        std::string hostName;
+
+        friend bool operator==(const CacheKey& lhs, const CacheKey& rhs);
+
+        template <typename H>
+        friend H AbslHashValue(H h, const CacheKey& c) {
+            return H::combine(std::move(h), c.type, c.hostName);
+        }
+    };
+
 private:
+    struct CacheEntry {
+        std::string name;
+        // Only applicable for SRV records
+        int port{-1};
+        Date_t expiration;
+    };
+
     /**
      * Method to perform networking DNS resolution, and return resolved host as LDAPResolvedHost
      **/
-    LDAPResolvedHost _resolveHost(const LDAPHost& host);
-    stdx::unordered_map<std::string, LDAPResolvedHost> _dnsCache;
+    CacheEntry _resolveHost(const LDAPHost& host);
+
+    LDAPResolvedHost _getResolvedHost(const LDAPHost& host, const CacheEntry& entry);
+
+private:
+    stdx::unordered_map<CacheKey, CacheEntry> _dnsCache;
     Mutex _mutex = MONGO_MAKE_LATCH("WindowsLDAPInfoCache::_mutex");
 };
+
+inline bool operator==(const LDAPDNSResolverCache::CacheKey& lhs,
+                       const LDAPDNSResolverCache::CacheKey& rhs) {
+    return lhs.type == rhs.type && lhs.hostName == rhs.hostName;
+}
+
 }  // namespace mongo

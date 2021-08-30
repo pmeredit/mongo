@@ -35,7 +35,11 @@ def _run_process(params, cwd=None) -> int:
 def _run_process_capture(params, cwd=None):
     LOGGER.info("RUNNING COMMAND: %s", params)
     ret = subprocess.run(params, cwd=cwd, check=True, capture_output=True)
-    assert ret == 0
+    if ret != 0:
+        print("RUN PROCESS FAILED: %s" % (ret))
+        print("OUTPUT: %s\n%s" % (ret.stdout, ret.stderr))
+        _run_process([DOCKER, "info"])
+
     return ret.stdout
 
 
