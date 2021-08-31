@@ -13,6 +13,7 @@
 
 #include "encryption_options.h"
 #include "mongo/base/init.h"
+#include "mongo/crypto/symmetric_crypto.h"
 #include "mongo/db/service_context.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_extensions.h"
@@ -40,6 +41,12 @@ ServiceContext::ConstructorActionRegisterer registerEncryptionWiredTigerCustomiz
         WiredTigerCustomizationHooks::set(service, std::move(configHooks));
         const auto cipherMode =
             crypto::getCipherModeFromString(encryptionGlobalParams.encryptionCipherMode);
+
+#ifdef _WIN32
+        uassert(ErrorCodes::BadValue,
+                "Only AES256-CBC is supported on Windows",
+                cipherMode == crypto::aesMode::cbc);
+#endif  // _WIN32
         uassertStatusOKWithContext(
             crypto::smokeTestAESCipherMode(cipherMode, crypto::PageSchema::k0),
             str::stream() << "Validation of cryptographic functions for "

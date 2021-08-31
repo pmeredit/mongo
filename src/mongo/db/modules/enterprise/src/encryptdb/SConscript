@@ -121,7 +121,7 @@ wtEnv.CppUnitTest(
     source=[
         'keystore_metadata_test.cpp',
         'keystore_test.cpp',
-        'symmetric_crypto_test.cpp',
+        'encryption_layout_test.cpp',
         'remove_saver_test.cpp'
     ],
     LIBDEPS=[
