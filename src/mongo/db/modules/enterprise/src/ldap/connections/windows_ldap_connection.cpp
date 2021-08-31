@@ -176,6 +176,9 @@ Status WindowsLDAPConnection::bindAsUser(const LDAPBindOptions& options,
     // tigher integration with Windows. ldap_bind_s does not support async for mechanisms other than
     // simple.
 
+    UserAcquisitionStatsHandle userAcquisitionStatsHandle =
+        UserAcquisitionStatsHandle(userAcquisitionStats, tickSource, kBind);
+
     std::wstring user;
     std::wstring pwd;
     SEC_WINNT_AUTH_IDENTITY cred;

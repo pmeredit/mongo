@@ -74,19 +74,17 @@ function runTest(conn, mode) {
     hasCommandLogEntry(adminDB, logID, expectedSaslStartCommandLog, expectedCommandUserTwoAuth, 1);
     adminDB.logout();
 }
-if (!_isWindows()) {
-    // Standalone
-    var configGenerator = new LDAPTestConfigGenerator();
-    configGenerator.ldapAuthzQueryTemplate = "{USER}?memberOf";
-    configGenerator.ldapUserToDNMapping = [
-        {match: "(ldapz_ldap1)", substitution: "cn={0}," + defaultUserDNSuffix},
-        {match: "(ldapz_ldap2)", ldapQuery: defaultUserDNSuffix + "??one?(cn={0})"}
-    ];
-    var config = MongoRunner.mongodOptions(configGenerator.generateMongodConfig());
-    var m = MongoRunner.runMongod(config);
-    jsTest.log('Starting ldap_operation_stats.js Standalone');
-    runTest(m, 'Standalone');
-    jsTest.log('SUCCESS ldap_operation_stats.js Standalone');
-    MongoRunner.stopMongod(m);
-}
+// Standalone
+var configGenerator = new LDAPTestConfigGenerator();
+configGenerator.ldapAuthzQueryTemplate = "{USER}?memberOf";
+configGenerator.ldapUserToDNMapping = [
+    {match: "(ldapz_ldap1)", substitution: "cn={0}," + defaultUserDNSuffix},
+    {match: "(ldapz_ldap2)", ldapQuery: defaultUserDNSuffix + "??one?(cn={0})"}
+];
+var config = MongoRunner.mongodOptions(configGenerator.generateMongodConfig());
+var m = MongoRunner.runMongod(config);
+jsTest.log('Starting ldap_operation_stats.js Standalone');
+runTest(m, 'Standalone');
+jsTest.log('SUCCESS ldap_operation_stats.js Standalone');
+MongoRunner.stopMongod(m);
 })();
