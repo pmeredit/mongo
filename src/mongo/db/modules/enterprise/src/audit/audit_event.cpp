@@ -6,6 +6,7 @@
 
 #include "audit_event.h"
 
+#include "audit_manager.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_session.h"
@@ -59,11 +60,14 @@ ImpersonatedClientAttrs::ImpersonatedClientAttrs(Client* client) {
 AuditEvent::AuditEvent(Client* client,
                        AuditEventType aType,
                        Serializer serializer,
-                       ErrorCodes::Error result) {
+                       ErrorCodes::Error result)
+    : _ts(Date_t::now()) {
     BSONObjBuilder builder;
 
     builder.append(kATypeField, AuditEventType_serializer(aType));
-    builder.append(kTimestampField, Date_t::now());
+    if (!getGlobalAuditManager()->getCompressionEnabled()) {
+        builder.append(kTimestampField, _ts);
+    }
     if (auto token = auth::getSecurityToken(client->getOperationContext())) {
         builder.append(kTenantField, token->getTenant());
     }

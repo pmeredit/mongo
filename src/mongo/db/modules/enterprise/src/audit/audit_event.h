@@ -29,6 +29,10 @@ public:
                Serializer serializer = nullptr,
                ErrorCodes::Error result = ErrorCodes::OK);
 
+    Date_t getTimestamp() const {
+        return _ts;
+    }
+
     BSONObj toBSON() const final {
         return _obj;
     }
@@ -46,6 +50,8 @@ private:
     BSONObj _obj;
     mutable BSONElementIterator _iterator;
     mutable bool _iteratorUsed = false;
+
+    Date_t _ts;
 };
 
 }  // namespace audit

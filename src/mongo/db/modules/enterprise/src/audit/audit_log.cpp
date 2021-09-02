@@ -11,6 +11,7 @@
 #include <string>
 
 #include "audit/audit_feature_flag_gen.h"
+#include "audit_frame.h"
 #include "audit_manager.h"
 #include "audit_options.h"
 #include "logger/console_appender.h"
@@ -19,6 +20,8 @@
 #include "logger/syslog_appender.h"
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
+#include "mongo/bson/bsontypes.h"
+#include "mongo/bson/timestamp.h"
 #include "mongo/db/audit.h"
 #include "mongo/db/server_options.h"
 #include "mongo/logv2/log.h"
@@ -37,6 +40,13 @@ void assertHaveSettingWithCompression(const moe::Environment& params, StringData
             str::stream() << required
                           << " must be specified when auditLog.compressionEnabled is true",
             params.count(required.toString()));
+}
+
+AuditFrame encodeForEncrypt(const AuditEvent& event) {
+    auto payload = event.toBSON();
+    // "ts" field should have been excluded by AuditEvent ctor.
+    invariant(!payload["ts"_sd]);
+    return {event.getTimestamp(), payload};
 }
 
 template <typename Encoder>
@@ -121,18 +131,24 @@ public:
 
         Status status = Status::OK();
         try {
-            std::string toWrite = Encoder::encode(event);
-
             if (am->getCompressionEnabled() &&
                 feature_flags::gFeatureFlagAtRestEncryption.isEnabledAndIgnoreFCV()) {
+                AuditFrame toWrite = encodeForEncrypt(event);
+
                 auto ac = am->getAuditEncryptionCompressionManager();
                 invariant(ac);
 
-                auto inBuff = ConstDataRange(toWrite.data(), toWrite.length());
-                toWrite = ac->compressAndEncrypt(inBuff);
-            }
+                BSONObj obj = ac->compressAndEncrypt(toWrite);
 
-            status = writeStream(toWrite);
+                if (am->getFormat() == AuditFormat::AuditFormatJsonFile) {
+                    status = writeStream(obj.jsonString(), true);
+                } else {
+                    status = writeStream(StringData(obj.objdata(), obj.objsize()));
+                }
+            } else {
+                std::string toWrite = Encoder::encode(event);
+                status = writeStream(toWrite);
+            }
         } catch (...) {
             status = exceptionToStatus();
         }

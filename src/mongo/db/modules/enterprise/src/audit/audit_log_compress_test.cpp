@@ -71,9 +71,9 @@ TEST_F(AuditLogCompressTest, ToCompressLogSameAsToDecompressLogAfterCompress) {
 
 TEST_F(AuditLogCompressTest, ToDecompressLogSameAsToCompressLogAfterDecompress) {
     if (feature_flags::gFeatureFlagAtRestEncryption.isEnabledAndIgnoreFCV()) {
-        std::string decompressedLog = ac.decompress(toDecompressLog);
+        auto decompressedLog = ac.decompress(toDecompressLog);
 
-        ASSERT_EQUALS(toCompressLog, decompressedLog);
+        ASSERT_EQUALS(toCompressLog, decompressedLog.toString());
     }
 }
 

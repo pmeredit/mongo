@@ -27,6 +27,18 @@ function isValidJSON(json) {
     }
 }
 
+/**
+ * Returns the compressed message, will return {error: true} if fail
+ */
+function getCompressedMessage(json) {
+    try {
+        const auditLineParsed = JSON.parse(json);
+        return auditLineParsed.log;
+    } catch (e) {
+        return {error: true};
+    }
+}
+
 print("Testing audit log decryptor program");
 function testAuditLogDecryptor(fixture, isMongos) {
     let opts = {
@@ -45,7 +57,10 @@ function testAuditLogDecryptor(fixture, isMongos) {
     audit.setCurrentAuditLine(audit.getCurrentAuditLine() + 1);
 
     assert.soon(() => {
-        const base64Line = audit.getNextEntryNoParsing();
+        const auditLine = audit.getNextEntryNoParsing();
+
+        const base64Line = getCompressedMessage(auditLine);
+
         // Audit log was compressed and encoded as base64 so it can't be parsed
         return !isValidJSON(base64Line);
     }, "Audit log was not compressed and encoded as base64");

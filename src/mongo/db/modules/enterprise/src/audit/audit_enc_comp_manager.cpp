@@ -9,6 +9,7 @@
 
 #include "mongo/base/error_extra_info.h"
 #include "mongo/base/string_data.h"
+#include "mongo/bson/bson_validate.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/base64.h"
 #include "mongo/util/options_parser/environment.h"
@@ -17,6 +18,8 @@
 namespace mongo {
 namespace audit {
 
+constexpr auto kTimestampField = "ts"_sd;
+constexpr auto kLogField = "log"_sd;
 constexpr auto AUDIT_ENCRYPTION_VERSION = "0.0"_sd;
 
 AuditEncryptionCompressionManager::AuditEncryptionCompressionManager(
@@ -54,8 +57,9 @@ std::string AuditEncryptionCompressionManager::compress(ConstDataRange toCompres
     return toWriteCompressedEncoded;
 }
 
-std::string AuditEncryptionCompressionManager::decompress(const std::string& line) {
-    std::string binaryCompressed = base64::decode(line);
+BSONObj AuditEncryptionCompressionManager::decompress(ConstDataRange toDecompress) const {
+    std::string binaryCompressed =
+        base64::decode(StringData(toDecompress.data(), toDecompress.length()));
 
     size_t outBuffSize =
         _zstdCompressor->getMaxDecompressedSize(binaryCompressed.data(), binaryCompressed.length());
@@ -68,23 +72,26 @@ std::string AuditEncryptionCompressionManager::decompress(const std::string& lin
             str::stream() << "Log line is larger than the allowed size of 48MB",
             outBuffSize <= BSONObj::LargeSizeTrait::MaxSize);
 
-    std::string toWriteDecompressed;
-    toWriteDecompressed.resize(outBuffSize);
-
     auto inBuf = ConstDataRange(binaryCompressed.data(), binaryCompressed.size());
-    auto outBuf = DataRange(toWriteDecompressed.data(), toWriteDecompressed.size());
+    auto outBuf = SharedBuffer::allocate(outBuffSize);
+    invariant(outBuf.get());
 
-    auto sws = _zstdCompressor->decompressData(inBuf, outBuf);
+    auto sws = _zstdCompressor->decompressData(inBuf, {outBuf.get(), outBuf.capacity()});
     uassertStatusOK(sws.getStatus().withContext("Failed to decompress audit line"));
+    uassertStatusOK(validateBSON(outBuf.get(), sws.getValue()));
 
-    toWriteDecompressed.resize(sws.getValue());
-
-    return toWriteDecompressed;
+    return BSONObj(outBuf);
 }
 
-std::string AuditEncryptionCompressionManager::compressAndEncrypt(
-    ConstDataRange toCompressAndEncrypt) const {
-    return compress(toCompressAndEncrypt) + "\n";
+BSONObj AuditEncryptionCompressionManager::compressAndEncrypt(const AuditFrame& auditFrame) const {
+    auto inBuff = ConstDataRange(auditFrame.event.objdata(), auditFrame.event.objsize());
+    std::string compressed = compress(inBuff);
+
+    BSONObjBuilder builder;
+
+    builder.append(kTimestampField, auditFrame.ts);
+    builder.append(kLogField, compressed);
+    return builder.obj();
 }
 
 

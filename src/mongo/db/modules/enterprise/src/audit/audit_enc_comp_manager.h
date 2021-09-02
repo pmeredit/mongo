@@ -8,6 +8,7 @@
 #include <string>
 
 #include "audit_file_header.h"
+#include "audit_frame.h"
 
 #include "mongo/base/data_range.h"
 #include "mongo/transport/message_compressor_zstd.h"
@@ -27,11 +28,11 @@ public:
                                       std::string keyStoreIdentifier,
                                       std::string encryptionKeyIdentifier);
 
-    std::string compressAndEncrypt(ConstDataRange toCompressAndEncrypt) const;
+    BSONObj compressAndEncrypt(const AuditFrame& auditFrame) const;
 
     std::string compress(ConstDataRange toCompress) const;
 
-    std::string decompress(const std::string& line);
+    BSONObj decompress(ConstDataRange toDecompress) const;
 
     BSONObj encodeFileHeader() const;
 

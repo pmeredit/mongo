@@ -40,6 +40,15 @@ bool isValidHeader(const std::string& header) {
     return true;
 }
 
+StatusWith<std::string> getCompressedMessage(const std::string& line) {
+    try {
+        BSONObj fileHeaderBSON = fromjson(line);
+        return fileHeaderBSON.getStringField("log");
+    } catch (...) {
+        return Status{ErrorCodes::BadValue, str::stream() << "Could not get compressed message."};
+    }
+}
+
 void auditDecryptorTool(int argc, char* argv[]) {
     setupSignalHandlers();
     runGlobalInitializersOrDie(std::vector<std::string>(argv, argv + argc));
@@ -84,7 +93,8 @@ void auditDecryptorTool(int argc, char* argv[]) {
     // Open input file
     std::ifstream input(globalAuditDecryptorOptions.inputPath.c_str(), std::ios::in);
     std::string line;
-    std::vector<std::string> inputData;
+    std::string header;
+    std::vector<BSONObj> inputData;
     int numLine = 0;
 
     // Read file
@@ -93,8 +103,7 @@ void auditDecryptorTool(int argc, char* argv[]) {
         uassert(ErrorCodes::FailedToParse,
                 "Audit file header has invalid format.",
                 isValidHeader(line));
-
-        inputData.push_back(line + "\n");
+        header.swap(line);
 
         // TODO start AECM with header arguments
         AuditEncryptionCompressionManager ac =
@@ -103,8 +112,9 @@ void auditDecryptorTool(int argc, char* argv[]) {
         while (getline(input, line)) {
             ++numLine;
             try {
-                std::string toWriteDecompressed = ac.decompress(line);
-                inputData.push_back(toWriteDecompressed);
+                std::string toDecompress = uassertStatusOK(getCompressedMessage(line));
+                inputData.push_back(
+                    ac.decompress(ConstDataRange(toDecompress.data(), toDecompress.size())));
             } catch (...) {
                 uassert(ErrorCodes::FileStreamFailed,
                         str::stream() << "Failed to to decompress line #" << numLine
@@ -120,7 +130,8 @@ void auditDecryptorTool(int argc, char* argv[]) {
                 false);
     }
 
-    std::ofstream output(globalAuditDecryptorOptions.outputPath.c_str(), std::ios::out);
+    std::ofstream output(globalAuditDecryptorOptions.outputPath.c_str(),
+                         std::ios::out | std::ios::binary);
 
     uassert(ErrorCodes::FileOpenFailed,
             str::stream() << "Failed to open output file '"
@@ -130,9 +141,12 @@ void auditDecryptorTool(int argc, char* argv[]) {
     uassert(ErrorCodes::FileStreamFailed, "Read no data.", !inputData.empty());
 
     // Write out cleartext
-    std::copy(inputData.begin(), inputData.end(), std::ostream_iterator<std::string>(output));
+    output << header << std::endl;
+    std::for_each(inputData.begin(), inputData.end(), [&](auto& obj) {
+        output.write(obj.objdata(), obj.objsize());
+    });
 
-    std::cout << "Successfully wrote " << inputData.size() << " bytes to '"
+    std::cout << "Successfully decrypted " << numLine << " lines to '"
               << globalAuditDecryptorOptions.outputPath << "'." << std::endl;
 }
 

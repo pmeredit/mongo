@@ -12,6 +12,19 @@ if (!TestData.setParameters.featureFlagAtRestEncryption) {
     return;
 }
 
+function messageIsBase64(auditLine) {
+    const base64regex = /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
+    try {
+        const auditLineParsed = JSON.parse(auditLine);
+        let base64Line = auditLineParsed.log;
+        base64Line = base64Line.replace(/\n$/, "");
+
+        return base64regex.test(base64Line);
+    } catch (e) {
+        return false;
+    }
+}
+
 print("Testing logs being base64.");
 function testAuditLineBase64(fixture, isMongos, enableCompression) {
     let opts = {
@@ -31,13 +44,10 @@ function testAuditLineBase64(fixture, isMongos, enableCompression) {
     // Skips first line since it's the header
     audit.setCurrentAuditLine(audit.getCurrentAuditLine() + 1);
 
-    const base64regex = /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
     assert.soon(() => {
-        let base64Line = audit.getNextEntryNoParsing();
-        base64Line = base64Line.replace(/\n$/, "");
+        const auditLine = audit.getNextEntryNoParsing();
 
-        const isBase64 = base64regex.test(base64Line);
-        return isBase64 == enableCompression;
+        return messageIsBase64(auditLine) == enableCompression;
     }, "Got (or not) base64 when it was(n't) expected");
 
     fixture.stopProcess();
