@@ -7,6 +7,7 @@
 #include "backup_cursor_service.h"
 #include "hot_backups/document_source_backup_file_gen.h"
 #include "mongo/db/pipeline/document_source.h"
+#include <fstream>
 
 namespace mongo {
 
@@ -54,6 +55,13 @@ protected:
 
 private:
     DocumentSourceBackupFileSpec _backupFileSpec;
+    std::fstream _src;
+    bool _eof = false;
+    std::streamoff _offset;
+
+    // If there a length to read specified, we will store that value in '_remainingLengthToRead'. If
+    // there is no length specified, we will read until the end of the file.
+    std::streamsize _remainingLengthToRead;
 };
 
 }  // namespace mongo
