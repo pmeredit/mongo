@@ -46,11 +46,13 @@ std::list<intrusive_ptr<DocumentSource>> DocumentSourceSearchMeta::createFromBso
         DocumentSourceReplaceRoot::createFromBson(
             BSON("$replaceRoot" << BSON("newRoot" << std::string("$$SEARCH_META"))).firstElement(),
             pExpCtx),
-        // If mongot returned no documents, generate a document to return.
+        // If mongot returned no documents, generate a document to return. This depends on the
+        // current, undocumented behavior of $unionWith that the outer pipeline is iterated before
+        // the inner pipeline.
         DocumentSourceUnionWith::createFromBson(
             BSON(DocumentSourceUnionWith::kStageName
                  << BSON("pipeline" << BSON_ARRAY(BSON(DocumentSourceDocuments::kStageName
-                                                       << BSON_ARRAY("$SEARCH_META")))))
+                                                       << BSON_ARRAY("$$SEARCH_META")))))
                 .firstElement(),
             pExpCtx.get()),
         // Only return one copy of the meta results.
