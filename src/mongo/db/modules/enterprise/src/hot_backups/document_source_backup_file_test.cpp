@@ -4,13 +4,16 @@
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kTest
 
+#include <boost/filesystem.hpp>
+#include <fstream>
+#include <string.h>
+
 #include "backup_cursor_service.h"
 #include "document_source_backup_cursor.h"
 #include "document_source_backup_file.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/pipeline/document_source.h"
-#include "mongo/db/pipeline/document_source_mock.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/process_interface/stub_mongo_process_interface.h"
 #include "mongo/db/repl/replication_coordinator_mock.h"
@@ -91,9 +94,20 @@ public:
     }
 
 
-    void testCreateFromBsonResult(const BSONObj backupFileSpec,
-                                  const boost::intrusive_ptr<ExpressionContext>& expCtx) {
-        DocumentSourceBackupFile::createFromBson(backupFileSpec.firstElement(), expCtx);
+    boost::intrusive_ptr<DocumentSourceBackupFile> testCreateFromBsonResult(
+        const BSONObj backupFileSpec, const boost::intrusive_ptr<ExpressionContext>& expCtx) {
+        return DocumentSourceBackupFile::createFromBson(backupFileSpec.firstElement(), expCtx);
+    }
+
+    // A helper function write 'fileContent' to the file path 'fileToBackup'. This is used for
+    // testing file copying.
+    void createMockFileToCopy(const std::string fileContent) {
+        std::fstream f;
+        f.open(fileToBackup, std::ios_base::out);
+        ASSERT_TRUE(f.is_open());
+        f << fileContent;
+        f.close();
+        ASSERT(boost::filesystem::exists(fileToBackup));
     }
 
 protected:
@@ -192,5 +206,182 @@ TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageParsingInvalidSpecInvali
     ASSERT_THROWS_CODE(
         testCreateFromBsonResult(spec, expCtx), DBException, ErrorCodes::TypeMismatch);
 }
+
+TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageValidCopyingFile) {
+    std::string fileContent = "0123456789";
+    createMockFileToCopy(fileContent);
+
+    auto expCtx = createExpressionContext(_opCtx);
+    auto backupId = createBackupCursorStage(expCtx);
+    BSONObj spec = BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup));
+    auto backupFile = testCreateFromBsonResult(spec, expCtx);
+
+    auto next = backupFile->getNext();
+    Document expectedObj = Document{BSON("byteOffset" << 0 << "endOfFile" << true << "data"
+                                                      << BSONBinData(fileContent.data(),
+                                                                     fileContent.length(),
+                                                                     BinDataType::BinDataGeneral))};
+    ASSERT_DOCUMENT_EQ(expectedObj, next.getDocument());
+    ASSERT_TRUE(backupFile->getNext().isEOF());
+}
+
+TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageValidCopyingFileWithOffset) {
+    std::string fileContent = "0123456789";
+    createMockFileToCopy(fileContent);
+
+    auto expCtx = createExpressionContext(_opCtx);
+    auto backupId = createBackupCursorStage(expCtx);
+    BSONObj spec = BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup
+                                                         << "byteOffset" << 1L));
+    auto backupFile = testCreateFromBsonResult(spec, expCtx);
+
+    auto next = backupFile->getNext();
+    std::string expectedData = "123456789";
+    Document expectedObj = Document{BSON("byteOffset" << 1 << "endOfFile" << true << "data"
+                                                      << BSONBinData(expectedData.data(),
+                                                                     expectedData.length(),
+                                                                     BinDataType::BinDataGeneral))};
+    ASSERT_DOCUMENT_EQ(expectedObj, next.getDocument());
+    ASSERT_TRUE(backupFile->getNext().isEOF());
+}
+
+TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageValidCopyingFileWithLength) {
+    std::string fileContent = "0123456789";
+    createMockFileToCopy(fileContent);
+
+    auto expCtx = createExpressionContext(_opCtx);
+    auto backupId = createBackupCursorStage(expCtx);
+    BSONObj spec = BSON(
+        "$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup << "length" << 2L));
+    auto backupFile = testCreateFromBsonResult(spec, expCtx);
+
+    auto next = backupFile->getNext();
+    std::string expectedData = "01";
+    Document expectedObj = Document{BSON("byteOffset" << 0 << "data"
+                                                      << BSONBinData(expectedData.data(),
+                                                                     expectedData.length(),
+                                                                     BinDataType::BinDataGeneral))};
+    ASSERT_DOCUMENT_EQ(expectedObj, next.getDocument());
+    ASSERT_TRUE(backupFile->getNext().isEOF());
+}
+
+TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageValidCopyingFileWithOffsetAndLength) {
+    std::string fileContent = "0123456789";
+    createMockFileToCopy(fileContent);
+
+    auto expCtx = createExpressionContext(_opCtx);
+    auto backupId = createBackupCursorStage(expCtx);
+    BSONObj spec = BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup
+                                                         << "byteOffset" << 2LL << "length" << 2L));
+    auto backupFile = testCreateFromBsonResult(spec, expCtx);
+
+    auto next = backupFile->getNext();
+    std::string expectedData = "23";
+    Document expectedObj = Document{BSON("byteOffset" << 2 << "data"
+                                                      << BSONBinData(expectedData.data(),
+                                                                     expectedData.length(),
+                                                                     BinDataType::BinDataGeneral))};
+    ASSERT_DOCUMENT_EQ(expectedObj, next.getDocument());
+    ASSERT_TRUE(backupFile->getNext().isEOF());
+}
+
+TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageValidCopyingFileLargerThanMaxBsonSize) {
+    auto fileContent = std::string(BSONObjMaxUserSize, '0');
+    fileContent += "123456789";
+    ASSERT_EQ(fileContent.size(), BSONObjMaxUserSize + 9);
+    createMockFileToCopy(fileContent);
+
+    auto expCtx = createExpressionContext(_opCtx);
+    auto backupId = createBackupCursorStage(expCtx);
+    BSONObj spec = BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup));
+    auto backupFile = testCreateFromBsonResult(spec, expCtx);
+
+    auto next = backupFile->getNext();
+    ASSERT_EQ(next.getDocument().getField("data").getBinData().length, BSONObjMaxUserSize - 1);
+
+    next = backupFile->getNext();
+    std::string expectedData = "0123456789";
+    Document expectedObj =
+        Document{BSON("byteOffset" << BSONObjMaxUserSize - 1 << "endOfFile" << true << "data"
+                                   << BSONBinData(expectedData.data(),
+                                                  expectedData.length(),
+                                                  BinDataType::BinDataGeneral))};
+    ASSERT_DOCUMENT_EQ(expectedObj, next.getDocument());
+    ASSERT_TRUE(backupFile->getNext().isEOF());
+}
+
+TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageValidCopyingFileMultipleDocumentsUntilEOF) {
+    auto fileContent = std::string(BSONObjMaxUserSize * 3, '0');
+    fileContent += "123";
+    ASSERT_EQ(fileContent.size(), (BSONObjMaxUserSize * 3) + 3);
+    createMockFileToCopy(fileContent);
+
+    auto expCtx = createExpressionContext(_opCtx);
+    auto backupId = createBackupCursorStage(expCtx);
+    BSONObj spec = BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup));
+    auto backupFile = testCreateFromBsonResult(spec, expCtx);
+
+    auto next = backupFile->getNext();
+    ASSERT_EQ(next.getDocument().getField("data").getBinData().length, BSONObjMaxUserSize - 1);
+
+    next = backupFile->getNext();
+    ASSERT_EQ(next.getDocument().getField("data").getBinData().length, BSONObjMaxUserSize - 1);
+
+    next = backupFile->getNext();
+    ASSERT_EQ(next.getDocument().getField("data").getBinData().length, BSONObjMaxUserSize - 1);
+
+    next = backupFile->getNext();
+    std::string expectedData = "000123";
+    Document expectedObj =
+        Document{BSON("byteOffset" << (BSONObjMaxUserSize * 3) - 3 << "endOfFile" << true << "data"
+                                   << BSONBinData(expectedData.data(),
+                                                  expectedData.length(),
+                                                  BinDataType::BinDataGeneral))};
+    ASSERT_DOCUMENT_EQ(expectedObj, next.getDocument());
+    ASSERT_TRUE(backupFile->getNext().isEOF());
+}
+
+TEST_F(DocumentSourceBackupFileTest,
+       TestBackupFileStageValidCopyingFileMultipleDocumentsUntilLength) {
+    auto fileContent = std::string(BSONObjMaxUserSize, '0');
+    fileContent = fileContent + "1234";
+    ASSERT_EQ(fileContent.size(), BSONObjMaxUserSize + 4);
+    createMockFileToCopy(fileContent);
+
+    auto expCtx = createExpressionContext(_opCtx);
+    auto backupId = createBackupCursorStage(expCtx);
+    BSONObj spec =
+        BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup << "length"
+                                              << static_cast<long>(BSONObjMaxUserSize + 2)));
+    auto backupFile = testCreateFromBsonResult(spec, expCtx);
+
+    auto next = backupFile->getNext();
+    ASSERT_EQ(next.getDocument().getField("data").getBinData().length, BSONObjMaxUserSize - 1);
+
+    next = backupFile->getNext();
+    std::string expectedData = "012";
+    Document expectedObj = Document{BSON("byteOffset" << BSONObjMaxUserSize - 1 << "data"
+                                                      << BSONBinData(expectedData.data(),
+                                                                     expectedData.length(),
+                                                                     BinDataType::BinDataGeneral))};
+    ASSERT_DOCUMENT_EQ(expectedObj, next.getDocument());
+    ASSERT_TRUE(backupFile->getNext().isEOF());
+}
+
+
+TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageInvalidCopyingWithZeroLength) {
+    std::string fileContent = "0123456789";
+    createMockFileToCopy(fileContent);
+
+    auto expCtx = createExpressionContext(_opCtx);
+    auto backupId = createBackupCursorStage(expCtx);
+    BSONObj spec = BSON(
+        "$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup << "length" << 0LL));
+    auto backupFile = testCreateFromBsonResult(spec, expCtx);
+
+    ASSERT_TRUE(backupFile->getNext().isEOF());
+}
+
+
 }  // namespace
 }  // namespace mongo

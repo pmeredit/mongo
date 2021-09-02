@@ -9,6 +9,8 @@
 #include "mongo/db/repl/repl_server_parameters_gen.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/basic.h"
+#include <algorithm>
+#include <boost/filesystem.hpp>
 
 namespace mongo {
 
@@ -54,12 +56,64 @@ boost::intrusive_ptr<DocumentSourceBackupFile> DocumentSourceBackupFile::createF
 }
 
 DocumentSource::GetNextResult DocumentSourceBackupFile::doGetNext() {
-    return pSource->getNext();
+    // If we have reached the end of file, read up to the desired length, or the remaining length to
+    // read is zero, return EOF to signal that this document source is exhausted.
+    if (_eof || _offset - _backupFileSpec.getByteOffset() == _backupFileSpec.getLength() ||
+        _remainingLengthToRead == 0) {
+        _src.close();
+        return GetNextResult::makeEOF();
+    }
+
+    auto isLengthSpecified = _backupFileSpec.getLength() != -1;
+    auto lengthToRead = isLengthSpecified
+        ? std::min(_remainingLengthToRead, static_cast<long>(BSONObjMaxUserSize - 1))
+        : static_cast<long>(BSONObjMaxUserSize - 1);
+
+    BSONObjBuilder builder;
+    auto path = _backupFileSpec.getFile().toString();
+
+    if (!_src.is_open()) {
+        _src.open(path, std::ios_base::in | std::ios_base::binary);
+        uassert(ErrorCodes::FileNotOpen,
+                str::stream() << "File " << path << " failed to open",
+                _src.is_open());
+    }
+
+    std::vector<char> buf(lengthToRead);
+
+    // If there is a byte offset specified, we set the starting position of the stream to the
+    // offset.
+    _src.seekg(_offset);
+    _src.read(buf.data(), lengthToRead);
+
+    if (_src.eof()) {
+        _eof = true;
+    } else {
+        uassert(ErrorCodes::FileStreamFailed,
+                str::stream() << "Reading operation from file " << path << " failed",
+                !_src.fail());
+        _remainingLengthToRead -= _src.gcount();
+    }
+
+    if (!_eof && _remainingLengthToRead != 0) {
+        _offset = _src.tellg();
+    }
+
+    builder.append("byteOffset", _offset);
+    if (_eof) {
+        builder.appendBool("endOfFile", _eof);
+    }
+    builder.appendBinData("data", _src.gcount(), BinDataGeneral, buf.data());
+
+    return {Document{builder.obj()}};
 }
 
 DocumentSourceBackupFile::DocumentSourceBackupFile(
     const boost::intrusive_ptr<ExpressionContext>& expCtx, DocumentSourceBackupFileSpec spec)
-    : DocumentSource(kStageName, expCtx), _backupFileSpec(std::move(spec)) {}
+    : DocumentSource(kStageName, expCtx),
+      _backupFileSpec(std::move(spec)),
+      _offset(spec.getByteOffset()),
+      _remainingLengthToRead(_backupFileSpec.getLength()) {}
 
 Value DocumentSourceBackupFile::serialize(
     boost::optional<ExplainOptions::Verbosity> explain) const {
