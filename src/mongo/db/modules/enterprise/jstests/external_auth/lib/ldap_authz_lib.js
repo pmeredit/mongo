@@ -67,6 +67,7 @@ function LDAPTestConfigGenerator() {
     this.ldapQueryPassword = "Admin001";
     this.ldapUserToDNMapping = undefined;
     this.ldapAbortOnNameMappingFailure = true;
+    this.ldapTimeoutMS = 10000;
 
     this.useLogFiles = false;
 
@@ -113,6 +114,8 @@ function LDAPTestConfigGenerator() {
         config.ldapAuthzQueryTemplate = this.ldapAuthzQueryTemplate;
 
         config.ldapBindMethod = this.ldapBindMethod;
+
+        config.ldapTimeoutMS = this.ldapTimeoutMS;
         if (!(this.ldapBindMethod === "simple")) {
             config.ldapBindSaslMechanisms = this.ldapBindSaslMechanisms;
         }

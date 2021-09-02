@@ -53,6 +53,8 @@ var configGenerator = new LDAPTestConfigGenerator();
 configGenerator.ldapServers = ldapServers;
 configGenerator.ldapAuthzQueryTemplate = "ou=Groups,dc=10gen,dc=cc" +
     "??one?(&(objectClass=groupOfNames)(member={USER}))";
+// Increase timeout from default of 10 seconds to 20 seconds to account for delayed responses.
+configGenerator.ldapTimeoutMS = 20000;
 
 const mongodOptions = configGenerator.generateMongodConfig();
 const mongod = MongoRunner.runMongod(mongodOptions);
