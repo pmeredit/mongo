@@ -474,7 +474,19 @@ boost::optional<std::string> WrappedConnection::currentBoundUser() const {
 
 Status WrappedConnection::checkLiveness(TickSource* tickSource,
                                         UserAcquisitionStats* userAcquisitionStats) {
-    return _getConn()->checkLiveness(tickSource, userAcquisitionStats);
+    UserAcquisitionStatsHandle userAcquisitionStatsHandle(
+        userAcquisitionStats, tickSource, kSearch);
+    auto livenessStatus =
+        _runFuncWithTimeout<void>("liveness check",
+                                  [&] { return _getConn()->checkLiveness(tickSource, nullptr); })
+            .getNoThrow();
+    if (!livenessStatus.isOK()) {
+        _conn->indicateFailure(livenessStatus);
+    } else {
+        _conn->indicateSuccess();
+    }
+
+    return livenessStatus;
 }
 
 StatusWith<LDAPEntityCollection> WrappedConnection::query(
