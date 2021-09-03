@@ -29,7 +29,8 @@ command = {
     pipeline: [{
         $geoNear: {
             key: "location",
-            near: {type: "Point", coordinates: [-73.99279, 40.719296]},
+            near:
+                {type: {$const: "Point"}, coordinates: [{$const: -73.99279}, {$const: 40.719296}]},
             distanceField: "dist.calculated",
             maxDistance: 10,
             minDistance: 2,
@@ -56,7 +57,8 @@ command = {
     aggregate: coll.getName(),
     pipeline: [{
         $geoNear: {
-            near: {type: "Point", coordinates: [-73.99279, 40.719296]},
+            near:
+                {type: {$const: "Point"}, coordinates: [{$const: -73.99279}, {$const: 40.719296}]},
             distanceField: "dist.calculated",
             maxDistance: 10,
             minDistance: 2,
