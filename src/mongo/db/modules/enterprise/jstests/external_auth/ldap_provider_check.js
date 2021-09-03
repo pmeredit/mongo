@@ -1,0 +1,118 @@
+// Tests the bind methods and SASL bind mechanims with and without TLS
+
+'use strict';
+
+(function() {
+load("jstests/libs/log.js");  // For findMatchingLogLine, findMatchingLogLines.
+load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
+
+function getLogLine(globalLog, id) {
+    const fieldMatcher = {id: id};
+    const lines = [...findMatchingLogLines(globalLog.log, fieldMatcher)];
+    assert(lines.length <= 1);
+    return lines.length == 0 ? null : JSON.parse(lines[0]);
+}
+
+function getOSRelease() {
+    try {
+        const RE_ID = /^ID="?([^"\n]+)"?$/m;
+        const RE_VERSION_ID = /^VERSION_ID="?([^"\n]+)"?$/m;
+
+        const osRelease = cat("/etc/os-release");
+        const id = osRelease.match(RE_ID)[1];
+        const version_id = Number(osRelease.match(RE_VERSION_ID)[1]);
+        return {id: id, ver: version_id};
+    } catch (e) {
+        return {id: "unknown"};
+    }
+}
+
+function runTest(libldap, callback) {
+    opts.env.LD_PRELOAD = libldap;
+    conn = MongoRunner.runMongod(opts);
+    assert.neq(null, conn);
+    setupTest(conn);
+    var adminDB = conn.getDB("admin");
+    adminDB.auth("siteRootAdmin", "secret");
+    globalLog = assert.commandWorked(adminDB.adminCommand({getLog: 'global'}));
+    const ldapAPIInfo = getLogLine(globalLog, 24051);
+    print('LDAP API Info: ' + JSON.stringify(ldapAPIInfo));
+
+    // There is a somewhat non-intuitive decision tree involved in choosing
+    // which warnings will be shown. See SERVER-56617 for more context
+    const w24052 = getLogLine(globalLog, 24052);
+    const w5661701 = getLogLine(globalLog, 5661701);
+    const w5661702 = getLogLine(globalLog, 5661702);
+    const w5661703 = getLogLine(globalLog, 5661703);
+    callback(ldapAPIInfo, w24052, w5661701, w5661702, w5661703);
+    MongoRunner.stopMongod(conn);
+}
+
+const osRelease = getOSRelease();
+jsTest.log(osRelease);
+if (["ubuntu", "rhel", "amzn"].indexOf(osRelease.id) < 0) {
+    jsTest.log("this test only covers Ubuntu, RedHat, or Amazon linux flavors");
+    return true;
+}
+
+let conn, globalLog;
+const opts = new LDAPTestConfigGenerator().generateMongodConfig();
+
+runTest("libldap_r.so", (ldapAPIInfo, w24052, w5661701, w5661702, w5661703) => {
+    assert(ldapAPIInfo);
+    if (osRelease.id == "ubuntu") {
+        assert.eq("GnuTLS", ldapAPIInfo.attr.options.tlsPackage);
+    } else if (osRelease.id == "rhel" || osRelease.id == "amzn") {
+        assert(ldapAPIInfo.attr.options.tlsPackage == "OpenSSL" ||
+               ldapAPIInfo.attr.options.tlsPackage == "MozNSS");
+    }
+    assert.neq(-1, ldapAPIInfo.attr.extensions.indexOf("THREAD_SAFE"));
+    assert.eq(null, w24052);
+    if (ldapAPIInfo.attr.options.tlsPackage == "OpenSSL" && ldapAPIInfo.attr.options.slowLocking) {
+        assert.neq(null, w5661701, "must warn that performance would be affected by openssl<1.1.1");
+    } else {
+        assert.eq(null, w5661701);
+    }
+    assert.eq(null, w5661702);
+    assert.eq(null, w5661703);
+});
+
+runTest("libldap.so", (ldapAPIInfo, w24052, w5661701, w5661702, w5661703) => {
+    assert(ldapAPIInfo);
+    if (osRelease.id == "ubuntu") {
+        assert.eq("GnuTLS", ldapAPIInfo.attr.options.tlsPackage);
+        // On Ubuntu libldap.so is thread safe
+        assert.neq(-1, ldapAPIInfo.attr.extensions.indexOf("THREAD_SAFE"));
+        assert.eq(null, w24052);
+        assert.eq(null, w5661701);
+        assert.eq(null, w5661702);
+        assert.eq(null, w5661703);
+    } else if (osRelease.id == "rhel" || osRelease.id == "amzn") {
+        assert(ldapAPIInfo.attr.options.tlsPackage == "OpenSSL" ||
+               ldapAPIInfo.attr.options.tlsPackage == "MozNSS");
+        assert.eq(-1, ldapAPIInfo.attr.extensions.indexOf("THREAD_SAFE"));
+        if (ldapAPIInfo.attr.options.tlsPackage == "OpenSSL") {
+            assert.eq(null, w24052);
+            assert.eq(null, w5661701);
+            if (!ldapAPIInfo.attr.options.slowLocking) {
+                assert.neq(
+                    null, w5661702, "must warn that slow locking is fixed on openssl 1.1.1+");
+            } else {
+                assert.eq(null, w5661702);
+            }
+            if (ldapAPIInfo.attr.options.mozNSSCompat) {
+                assert.neq(null, w5661703, "must warn that only libldap_r is safe with NSS shim");
+            } else {
+                assert.eq(null, w5661703);
+            }
+        } else if (ldapAPIInfo.attr.options.tlsPackage == "MozNSS") {
+            assert.neq(null, w24052, "must warn that performance would be degraded");
+            assert.eq(null, w5661701);
+            assert.eq(null, w5661702);
+            assert.eq(null, w5661703);
+        } else {
+            assert(false, `Provider ${ldapAPIInfo.attr.options.tlsPackage} impossible`);
+        }
+    }
+});
+})();

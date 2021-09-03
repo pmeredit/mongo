@@ -23,6 +23,15 @@ namespace mongo {
  */
 class OpenLDAPConnection final : public LDAPConnection {
 public:
+    struct ProviderTraits {
+        std::string tlsPackage;
+        bool mozNSSCompat;
+        bool threadSafe;
+        bool slowLocking;
+        bool poolingSafe;
+    };
+
+    OpenLDAPConnection() = delete;
     explicit OpenLDAPConnection(LDAPConnectionOptions options,
                                 std::shared_ptr<LDAPConnectionReaper> reaper,
                                 TickSource* tickSource,
@@ -38,7 +47,11 @@ public:
     Status checkLiveness(TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) final;
     Status disconnect(TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) final;
     boost::optional<std::string> currentBoundUser() const final;
-    static bool isThreadSafe();
+
+    static void initTraits();
+    static const ProviderTraits& getTraits() {
+        return _traits;
+    }
 
     const boost::optional<LDAPBindOptions>& bindOptions() const {
         return _bindOptions;
@@ -64,6 +77,7 @@ private:
 
     boost::optional<std::string> _boundUser;
     boost::optional<LDAPBindOptions> _bindOptions;
+    static ProviderTraits _traits;
 
     // Used to track LDAP operations in CurOp
     TickSource* _tickSource;

@@ -13,6 +13,7 @@
 #include <memory>
 #include <mutex>
 #include <netinet/in.h>
+#include <openssl/opensslv.h>
 #include <sasl/sasl.h>
 #include <utility>
 
@@ -34,7 +35,6 @@
 
 namespace mongo {
 namespace {
-std::once_flag logFlag;
 
 /**
  * ldapRebindCallbackParameters is used in the OpenLDAPConnection::bindAsUser() function to pass
@@ -111,6 +111,11 @@ class OpenLDAPGlobalMutex {
 public:
     void lock();
     void unlock();
+
+private:
+    bool _bypassLock;
+    std::once_flag _init;
+    void initLockType();
 };
 
 static OpenLDAPGlobalMutex conditionalMutex;
@@ -278,6 +283,19 @@ private:
     T _val;
 };
 
+// Spec for returning a string LDAP_OPT.
+template <int optNum>
+class LDAPOptionString : public LDAPOptionGeneric<optNum, char*, nullptr> {
+public:
+    LDAPOptionString(char* val) : LDAPOptionGeneric<optNum, char*, nullptr>(val) {}
+    ~LDAPOptionString() {
+        char* strval = this->getValue();
+        if (nullptr != strval) {
+            OpenLDAPSessionParams::ldap_memfree(strval);
+        }
+    }
+};
+
 // Spec for how to process a request for API version information from ldap_get_option.
 class LDAPOptionAPIInfo {
 public:
@@ -403,6 +421,8 @@ public:
     SockAddr _peer;
 };
 
+OpenLDAPConnection::ProviderTraits OpenLDAPConnection::_traits;
+
 OpenLDAPConnection::OpenLDAPConnection(LDAPConnectionOptions options,
                                        std::shared_ptr<LDAPConnectionReaper> reaper,
                                        TickSource* tickSource,
@@ -413,6 +433,8 @@ OpenLDAPConnection::OpenLDAPConnection(LDAPConnectionOptions options,
       _callback(_pimpl->getCallbacks()),
       _tickSource(tickSource),
       _userAcquisitionStats(userAcquisitionStats) {
+    initTraits();
+
     Seconds seconds = duration_cast<Seconds>(_options.timeout);
     _timeout.tv_sec = seconds.count();
     _timeout.tv_usec = durationCount<Microseconds>(_options.timeout - seconds);
@@ -429,55 +451,109 @@ SockAddr OpenLDAPConnection::getPeerSockAddr() const {
     return _pimpl->_peer;
 }
 
-// Identify whether we need to serialize access to libldap via a global mutex.
-// libldap with NSS does not use correct synchronization primitives internally.
-// Neither libldap_r nor libldap with OpenSSL are affected. We can detect whether we're
-// using libldap, rather than libldap_r, by examining a list of extensions advertised by the
-// session object.
-bool OpenLDAPConnection::isThreadSafe() {
-    static const bool threadsafeExtension = []() -> bool {
-        if (ldapForceMultiThreadMode) {
-            return true;
+void OpenLDAPConnection::initTraits() {
+    static std::once_flag once;
+    std::call_once(once, [] {
+        auto& traits = OpenLDAPConnection::_traits;
+        try {
+            auto pimpl = std::make_unique<OpenLDAPConnectionPIMPL>();
+
+            LDAPOptionAPIInfo info = pimpl->getOption<LDAPOptionAPIInfo>(
+                "OpenLDAPConnection::connect", "Getting API info");
+            const auto& ext = info.getExtensions();
+
+            traits.slowLocking = OPENSSL_VERSION_NUMBER < 0x10101000L;
+            traits.poolingSafe = true;
+            traits.mozNSSCompat = false;
+            traits.threadSafe = std::any_of(
+                ext.begin(), ext.end(), [](std::string s) { return s == "THREAD_SAFE"; });
+
+            BSONObjBuilder optionsBuilder;
+            optionsBuilder.append("slowLocking", traits.slowLocking);
+
+            using LDAPOptionConnectAsync = LDAPOptionGeneric<LDAP_OPT_CONNECT_ASYNC, int, 0>;
+            const auto async = pimpl->getOption<LDAPOptionConnectAsync>(
+                "OpenLDAPConnection::initTraits", "Getting value of async");
+            optionsBuilder.append("async", async.getValue());
+
+            using LDAPOptionTLSPackage = LDAPOptionString<LDAP_OPT_X_TLS_PACKAGE>;
+            const auto tlsPackage = pimpl->getOption<LDAPOptionTLSPackage>(
+                "OpenLDAPConnection::initTraits", "Getting TLS package name");
+            if (nullptr != tlsPackage.getValue()) {
+                optionsBuilder.append("tlsPackage", tlsPackage.getValue());
+                traits.tlsPackage = tlsPackage.getValue();
+            }
+
+#ifdef HAVE_MOZNSS_COMPATIBILITY
+            using LDAPOptionMozNSSCpt =
+                LDAPOptionGeneric<LDAP_OPT_X_TLS_MOZNSS_COMPATIBILITY, int, 0>;
+            auto mozNSSCompatValue = pimpl->getOption<LDAPOptionConnectAsync>(
+                "OpenLDAPConnection::initTraits", "Getting valur of MozNSS compat");
+            traits.mozNSSCompat = mozNSSCompatValue.getValue() > 0;
+#endif
+            optionsBuilder.append("mozNSSCompat", traits.mozNSSCompat);
+
+            const auto options = optionsBuilder.obj();
+            LOGV2(24051,
+                  "LDAPAPIInfo: {{ "
+                  "ldapai_info_version: {infoVersion}, "
+                  "ldapai_api_version: {apiVersion}, "
+                  "ldap_protocol_version: {protocolVersion}, "
+                  "ldapai_extensions: [{extensions}], "
+                  "ldapai_vendor_name: {vendorName}, "
+                  "ldapai_vendor_version: {vendorVersion} }}",
+                  "LDAPAPIInfo",
+                  "infoVersion"_attr = info.getInfoVersion(),
+                  "apiVersion"_attr = info.getAPIVersion(),
+                  "protocolVersion"_attr = info.getProtocolVersion(),
+                  "extensions"_attr = info.getExtensions(),
+                  "vendorName"_attr = info.getVendorName(),
+                  "vendorVersion"_attr = info.getVendorVersion(),
+                  "options"_attr = options);
+
+            if (traits.tlsPackage == "OpenSSL") {
+                if (traits.slowLocking && traits.threadSafe) {
+                    traits.poolingSafe = false;
+                    LOGV2_WARNING(5661701,
+                                  "OpenSSL below 1.1.1 has performance impact with libldap_r. "
+                                  "Your OpenSSL version is: " OPENSSL_VERSION_TEXT);
+                }
+                if (!traits.slowLocking && !traits.threadSafe) {
+                    traits.poolingSafe = false;
+                    LOGV2_WARNING(5661702,
+                                  "OpenSSL 1.1.1 and higher has no performance impact "
+                                  "with libldap_r. Link mongod against libldap_r to enable "
+                                  "concurrent use of LDAP. "
+                                  "Your OpenSSL version is: " OPENSSL_VERSION_TEXT);
+                }
+                if (traits.mozNSSCompat && !traits.threadSafe) {
+                    traits.poolingSafe = false;
+                    LOGV2_WARNING(5661703,
+                                  "This system supports TLS_MOZNSS_COMPATIBILITY "
+                                  "and feature is turned on, which is known to cause crashes "
+                                  "unless libldap_r is used. "
+                                  "Disable TLS_MOZNSS_COMPATIBILITY in /etc/openldap/ldap.conf.");
+                }
+
+            } else if (traits.tlsPackage == "GnuTLS" || traits.tlsPackage == "MozNSS") {
+                if (!traits.threadSafe) {
+                    traits.poolingSafe = false;
+                    LOGV2_WARNING(
+                        24052,
+                        "LDAP library does not advertise support for thread safety. All access "
+                        "will be serialized and connection pooling will be disabled. "
+                        "Link mongod against libldap_r to enable concurrent use of LDAP.");
+                }
+            } else {
+                uasserted(5661704, "LDAP is using unknown TLS package: " + traits.tlsPackage);
+            }
+        } catch (...) {
+            Status status = exceptionToStatus();
+            LOGV2_ERROR(24059, "Failed to get LDAP provider traits", "status"_attr = status);
+            traits.poolingSafe = false;
+            traits.threadSafe = false;
         }
-
-        auto pimpl = std::make_unique<OpenLDAPConnectionPIMPL>();
-        LDAPOptionAPIInfo info =
-            pimpl->getOption<LDAPOptionAPIInfo>("OpenLDAPConnection::connect", "Getting API info");
-
-        const auto& extensions = info.getExtensions();
-        bool isThreadSafe =
-            (std::find(extensions.begin(), extensions.end(), "THREAD_SAFE") != extensions.end());
-
-        if (!isThreadSafe) {
-            LOGV2_WARNING(24052,
-                          "LDAP library does not advertise support for thread safety. All access "
-                          "will be serialized and connection pooling will be disabled. "
-                          "Link mongod against libldap_r to enable concurrent use of LDAP.");
-        }
-
-        return isThreadSafe;
-    }();
-
-    return threadsafeExtension;
-}
-
-void startupLog(LDAPOptionAPIInfo& info, BSONObjBuilder& options) {
-    LOGV2(24051,
-          "LDAPAPIInfo: {{ "
-          "ldapai_info_version: {infoVersion}, "
-          "ldapai_api_version: {apiVersion}, "
-          "ldap_protocol_version: {protocolVersion}, "
-          "ldapai_extensions: [{extensions}], "
-          "ldapai_vendor_name: {vendorName}, "
-          "ldapai_vendor_version: {vendorVersion} }}",
-          "LDAPAPIInfo",
-          "infoVersion"_attr = info.getInfoVersion(),
-          "apiVersion"_attr = info.getAPIVersion(),
-          "protocolVersion"_attr = info.getProtocolVersion(),
-          "extensions"_attr = info.getExtensions(),
-          "vendorName"_attr = info.getVendorName(),
-          "vendorVersion"_attr = info.getVendorVersion(),
-          "options"_attr = options.obj());
+    });
 }
 
 Status OpenLDAPConnection::connect() {
@@ -543,26 +619,6 @@ Status OpenLDAPConnection::connect() {
                       str::stream()
                           << "Attempted to set the LDAP connect callback. Received error: "
                           << ldap_err2string(ret));
-    }
-
-    // Log LDAP API information
-    try {
-        LDAPOptionAPIInfo info =
-            _pimpl->getOption<LDAPOptionAPIInfo>("OpenLDAPConnection::connect", "Getting API info");
-
-        BSONObjBuilder options;
-        using LDAPOptionConnectAsync = LDAPOptionGeneric<LDAP_OPT_CONNECT_ASYNC, int, 0>;
-        options.append("async",
-                       _pimpl
-                           ->getOption<LDAPOptionConnectAsync>("OpenLDAPConnection::connect",
-                                                               "LDAP_OPT_CONNECT_ASYNC")
-                           .getValue());
-        std::call_once(logFlag, startupLog, info, options);
-    } catch (...) {
-        Status status = exceptionToStatus();
-        LOGV2_ERROR(24059,
-                    "Attempted to get LDAPAPIInfo. Received error: {status}",
-                    "status"_attr = status);
     }
 
     return Status::OK();
@@ -651,15 +707,25 @@ void disconnectLDAPConnection(LDAP* ldap, TickSource* tickSource) {
 }
 
 void OpenLDAPGlobalMutex::lock() {
-    if (!OpenLDAPConnection::isThreadSafe()) {
+    initLockType();
+    if (!_bypassLock) {
         libldapGlobalMutex.lock();
     }
 }
 
 void OpenLDAPGlobalMutex::unlock() {
-    if (!OpenLDAPConnection::isThreadSafe()) {
+    initLockType();
+    if (!_bypassLock) {
         libldapGlobalMutex.unlock();
     }
+}
+
+void OpenLDAPGlobalMutex::initLockType() {
+    std::call_once(_init, [this]() {
+        OpenLDAPConnection::initTraits();
+        _bypassLock = ldapForceMultiThreadMode || OpenLDAPConnection::getTraits().threadSafe;
+        LOGV2_DEBUG(5661705, 2, "LDAP Global mutex", "bypassLock"_attr = _bypassLock);
+    });
 }
 
 }  // namespace mongo

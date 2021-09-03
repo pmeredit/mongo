@@ -106,9 +106,10 @@ std::unique_ptr<LDAPConnection> makeNativeLDAPConn(const LDAPConnectionOptions& 
 
 // OpenLDAP can be compiled in a non-threadsafe manner, so we call into it to check for that.
 // Windows is always thread-safe.
-static inline bool isNativeImplThreadSafe() {
+static inline bool isNativeImplPoolingSafe() {
 #ifndef _WIN32
-    return OpenLDAPConnection::isThreadSafe();
+    OpenLDAPConnection::initTraits();
+    return OpenLDAPConnection::getTraits().poolingSafe;
 #else
     return true;
 #endif
@@ -705,7 +706,7 @@ StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(
     TickSource* tickSource,
     UserAcquisitionStats* userAcquisitionStats) {
 
-    if (!options.usePooledConnection || !isNativeImplThreadSafe()) {
+    if (!options.usePooledConnection || !isNativeImplPoolingSafe()) {
         // Convert LDAPHost(possbily SRV) to LDAPHost without SRV
         std::vector<LDAPHost> ldapHosts;
         try {
