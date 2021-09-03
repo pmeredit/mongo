@@ -11,7 +11,7 @@
 #endif
 
 #include "mongo/db/auth/user_acquisition_stats.h"
-#include "mongo/util/out_of_line_executor.h"
+#include "mongo/util/concurrency/thread_pool_interface.h"
 #include "mongo/util/tick_source.h"
 
 namespace mongo {
@@ -35,7 +35,8 @@ private:
     void scheduleReapOrDisconnectInline(reapFunc reaper);
 
 private:
-    std::shared_ptr<OutOfLineExecutor> _executor;
+    std::once_flag _initExecutor;
+    std::shared_ptr<ThreadPoolInterface> _executor;
 };
 
 /**

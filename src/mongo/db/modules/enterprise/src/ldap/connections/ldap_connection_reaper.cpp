@@ -2,11 +2,14 @@
  *  Copyright (C) 2021 MongoDB Inc.
  */
 
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
+
 #include "mongo/platform/basic.h"
 
 #include "ldap_connection_reaper.h"
 
 #include "mongo/base/status_with.h"
+#include "mongo/logv2/log.h"
 #include "mongo/util/concurrency/thread_pool.h"
 #include "mongo/util/functional.h"
 #include "mongo/util/out_of_line_executor.h"
@@ -16,28 +19,31 @@
 namespace mongo {
 namespace {
 
-static inline ThreadPool::Options _makeThreadPoolOptions() {
+static inline std::shared_ptr<ThreadPoolInterface> _makeThreadPool() {
     ThreadPool::Options opts;
     opts.poolName = "LDAPConnReaper";
     opts.maxThreads = ThreadPool::Options::kUnlimited;
     opts.maxIdleThreadAge = Seconds{5};
 
-    return opts;
+    return std::make_shared<ThreadPool>(opts);
 }
+
 }  // namespace
 
-LDAPConnectionReaper::LDAPConnectionReaper()
-    : _executor(std::make_shared<ThreadPool>(_makeThreadPoolOptions())) {}
+LDAPConnectionReaper::LDAPConnectionReaper() : _executor(_makeThreadPool()) {}
 
 void LDAPConnectionReaper::scheduleReapOrDisconnectInline(reapFunc reaper) {
     // If the LDAP connection is being reaped before it is safe to spawn multiple threads, the reap
     // should occur inline rather than being scheduled in the executor. This scenario may occur if
     // the LDAP smoke test fails upon server startup, before multithreading is enabled.
     if (ThreadSafetyContext::getThreadSafetyContext()->isSingleThreaded()) {
+        LOGV2_DEBUG(5945600, 3, "Reaping connection inline");
         reaper();
     } else {
+        std::call_once(_initExecutor, [this]() { _executor->startup(); });
         _executor->schedule([r = std::move(reaper)](Status schedStatus) {
             if (schedStatus.isOK()) {
+                LOGV2_DEBUG(5945601, 3, "Reaping connection in separate thread");
                 r();
             }
             // Else if we are shutdown or running inline, leak the LDAP connection since the server
@@ -47,8 +53,10 @@ void LDAPConnectionReaper::scheduleReapOrDisconnectInline(reapFunc reaper) {
 }
 
 void LDAPConnectionReaper::reap(LDAP* ldap, TickSource* tickSource) {
-    scheduleReapOrDisconnectInline(
-        [ldap, &tickSource] { disconnectLDAPConnection(ldap, tickSource); });
+    scheduleReapOrDisconnectInline([ldap, tickSource] {
+        disconnectLDAPConnection(ldap, tickSource);
+        LOGV2_DEBUG(5945602, 2, "LDAP connection closed");
+    });
 }
 
 }  // namespace mongo
