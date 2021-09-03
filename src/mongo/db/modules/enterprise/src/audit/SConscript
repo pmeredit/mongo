@@ -229,6 +229,7 @@ env.Library(
 env.CppUnitTest(
     target='audit_test',
     source=[
+        'audit_key_manager_local.cpp',
         'audit_key_manager_mock.cpp',
         'audit_op_observer_test.cpp',
         'audit_log_compress_base64_test.cpp',
@@ -240,6 +241,8 @@ env.CppUnitTest(
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/crypto/symmetric_crypto',
         '$BUILD_DIR/mongo/db/auth/authmocks',
+        '$BUILD_DIR/mongo/db/modules/enterprise/src/encryptdb/key_acquisition',
+        '$BUILD_DIR/mongo/db/modules/enterprise/symmetric_crypto_enterprise',
         '$BUILD_DIR/mongo/db/repl/oplog',
         '$BUILD_DIR/mongo/db/repl/oplog_interface_local',
         '$BUILD_DIR/mongo/db/repl/replmocks',

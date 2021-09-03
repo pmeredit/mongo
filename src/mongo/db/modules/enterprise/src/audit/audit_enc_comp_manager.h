@@ -9,6 +9,7 @@
 
 #include "audit_file_header.h"
 #include "audit_frame.h"
+#include "audit_key_manager.h"
 
 #include "mongo/base/data_range.h"
 #include "mongo/transport/message_compressor_zstd.h"
@@ -47,6 +48,9 @@ private:
 
     // File header containing startup options
     std::unique_ptr<AuditFileHeader> _fileHeader;
+
+    // Key manager used if encryption is enabled.
+    std::unique_ptr<AuditKeyManager> _keyManager;
 };
 
 }  // namespace audit

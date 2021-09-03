@@ -22,6 +22,7 @@ namespace audit {
 class AuditKeyManager {
 public:
     AuditKeyManager() = default;
+    virtual ~AuditKeyManager() = default;
 
     using WrappedKey = std::vector<std::uint8_t>;
     struct KeyGenerationResult {

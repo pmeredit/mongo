@@ -51,3 +51,8 @@ configs:
         short_name: auditCompressionMode
         arg_vartype: String
         requires: 'auditLog.destination'
+    "auditLog.localAuditKeyFile":
+        description: 'File path of the audit log encryption key file'
+        short_name: localAuditKeyFile
+        arg_vartype: String
+        requires: 'auditLog.destination'
