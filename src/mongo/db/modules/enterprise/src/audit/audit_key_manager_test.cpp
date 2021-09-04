@@ -70,7 +70,7 @@ AuditKeyManagerLocalTest::AuditKeyManagerLocalTest() {
 }
 
 TEST_F(AuditKeyManagerLocalTest, KeysRoundTrip) {
-    keyMgr = std::make_unique<AuditKeyManagerLocal>(keyFilePath.c_str());
+    keyMgr = std::make_unique<AuditKeyManagerLocal>(keyFilePath.string());
     auto [originalKey, wrappedKey] = keyMgr->generateWrappedKey();
     ASSERT_NE(originalKey.getKeySize(), wrappedKey.size());
 
@@ -80,7 +80,7 @@ TEST_F(AuditKeyManagerLocalTest, KeysRoundTrip) {
 }
 
 TEST_F(AuditKeyManagerLocalTest, ModifiedKeysDoNotRoundTrip) {
-    keyMgr = std::make_unique<AuditKeyManagerLocal>(keyFilePath.c_str());
+    keyMgr = std::make_unique<AuditKeyManagerLocal>(keyFilePath.string());
     auto [originalKey, wrappedKey] = keyMgr->generateWrappedKey();
 
     wrappedKey.front() ^= 1;
