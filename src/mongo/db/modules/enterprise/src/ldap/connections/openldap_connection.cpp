@@ -4,6 +4,7 @@
 
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
+#include "mongo/config.h"
 #include "mongo/platform/basic.h"
 
 #include "openldap_connection.h"
@@ -13,7 +14,12 @@
 #include <memory>
 #include <mutex>
 #include <netinet/in.h>
+#if MONGO_CONFIG_SSL_PROVIDER == MONGO_CONFIG_SSL_PROVIDER_APPLE
+#define OPENSSL_VERSION_NUMBER 0
+#define OPENSSL_VERSION_TEXT "0.0.0"
+#else
 #include <openssl/opensslv.h>
+#endif  // MONGO_CONFIG_SSL_PROVIDER == MONGO_CONFIG_SSL_PROVIDER_APPLE
 #include <sasl/sasl.h>
 #include <utility>
 
