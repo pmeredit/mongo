@@ -318,6 +318,9 @@ PlaceHolderResult replaceEncryptedFieldsInUpdate(
         case UpdateDriver::UpdateType::kDelta:
             // Users cannot explicitly specify $v: 2 delta-style updates.
             MONGO_UNREACHABLE;
+        case UpdateDriver::UpdateType::kTransform:
+            // Users cannot explicitly specify transform-style updates.
+            MONGO_UNREACHABLE;
     }
 
     return PlaceHolderResult{hasEncryptionPlaceholder,
