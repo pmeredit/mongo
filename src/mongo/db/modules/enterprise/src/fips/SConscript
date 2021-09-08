@@ -8,6 +8,17 @@ Import([
 env = env.Clone()
 
 env.Library(
+    target='fips_mode_general',
+    source=[
+        'fips_flag.cpp',
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/db/auth/sasl_options',
+        '$BUILD_DIR/mongo/util/options_parser/options_parser',
+    ],
+)
+
+env.Library(
     target='fips_mode_server',
     source=[
         'fips_flag_server.idl',
@@ -18,6 +29,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/server_options_core',
         '$BUILD_DIR/mongo/util/net/ssl_options_server',
         '$BUILD_DIR/mongo/util/options_parser/options_parser',
+        'fips_mode_general',
     ],
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/db/mongod_initializers',
@@ -38,6 +50,7 @@ if get_option('js-engine') != 'none':
         LIBDEPS_PRIVATE=[
             '$BUILD_DIR/mongo/util/net/ssl_options_client',
             '$BUILD_DIR/mongo/util/options_parser/options_parser',
+            'fips_mode_general',
         ],
         LIBDEPS_DEPENDENTS=[
             '$BUILD_DIR/mongo/shell/mongo_initializers',
