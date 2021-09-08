@@ -79,13 +79,16 @@ public:
             auto ac = am->getAuditEncryptionCompressionManager();
             invariant(ac);
 
+            logger::RotatableFileWriter::Use useWriter(_writer.get());
             BSONObj encodedHeader = ac->encodeFileHeader();
 
             Status status = Status::OK();
             if (am->getFormat() == AuditFormat::AuditFormatJsonFile) {
-                status = writeStream(encodedHeader.jsonString(), true /* appendNewline */);
+                status =
+                    writeStream(useWriter, encodedHeader.jsonString(), true /* appendNewline */);
             } else {
-                status = writeStream(StringData(encodedHeader.objdata(), encodedHeader.objsize()));
+                status = writeStream(useWriter,
+                                     StringData(encodedHeader.objdata(), encodedHeader.objsize()));
             }
 
             if (!status.isOK()) {
@@ -106,14 +109,14 @@ public:
     /**
      * Writes to file stream, returns Status::OK() on success.
      */
-    Status writeStream(StringData toWrite, const bool appendNewline = false) try {
-        logger::RotatableFileWriter::Use useWriter(_writer.get());
+    Status writeStream(logger::RotatableFileWriter::Use& useWriter,
+                       StringData toWrite,
+                       const bool appendNewline = false) try {
         auto status = useWriter.status();
         if (!status.isOK()) {
             LOGV2_WARNING(24243, "Failure acquiring audit logger", "error"_attr = status);
             return status;
         }
-
 
         constexpr auto kNewline = "\n"_sd;
         useWriter.stream()
@@ -138,16 +141,18 @@ public:
                 auto ac = am->getAuditEncryptionCompressionManager();
                 invariant(ac);
 
+                logger::RotatableFileWriter::Use useWriter(_writer.get());
                 BSONObj obj = ac->compressAndEncrypt(toWrite);
 
                 if (am->getFormat() == AuditFormat::AuditFormatJsonFile) {
-                    status = writeStream(obj.jsonString(), true);
+                    status = writeStream(useWriter, obj.jsonString(), true);
                 } else {
-                    status = writeStream(StringData(obj.objdata(), obj.objsize()));
+                    status = writeStream(useWriter, StringData(obj.objdata(), obj.objsize()));
                 }
             } else {
                 std::string toWrite = Encoder::encode(event);
-                status = writeStream(toWrite);
+                logger::RotatableFileWriter::Use useWriter(_writer.get());
+                status = writeStream(useWriter, toWrite);
             }
         } catch (...) {
             status = exceptionToStatus();
