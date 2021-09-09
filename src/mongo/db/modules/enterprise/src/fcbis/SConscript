@@ -12,7 +12,8 @@ env.InjectThirdParty(libraries=['wiredtiger'])
 env.Library(
     target='file_copy_based_initial_syncer',
     source=[
-        'file_copy_based_initial_syncer.cpp'
+        'file_copy_based_initial_syncer.cpp',
+        'initial_sync_file_mover.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
@@ -52,3 +53,12 @@ env.CppUnitTest(
     ],
 )
 
+env.CppUnitTest(
+    target='initial_sync_file_mover_test',
+    source=[
+        'initial_sync_file_mover_test.cpp',
+    ],
+    LIBDEPS=[
+        'file_copy_based_initial_syncer'
+    ],
+)
