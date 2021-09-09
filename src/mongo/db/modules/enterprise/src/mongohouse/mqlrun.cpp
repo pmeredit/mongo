@@ -57,7 +57,7 @@ BSONArray createPipelineArray(boost::intrusive_ptr<ExpressionContext> expCtx,
         BSONArrayBuilder arr;
 
         auto in = DocumentSourceBSONFile::create(expCtx, pipelineStr);
-        ON_BLOCK_EXIT([in] { in->dispose(); });
+        ScopeGuard inDispose = [in] { in->dispose(); };
 
         while (1) {
             auto next = in->getNext();

@@ -123,7 +123,7 @@ int main(int argc, char** argv) {
               "errno"_attr = errno);
         return EXIT_FAILURE;
     }
-    ON_BLOCK_EXIT([] { unlink(krb5ccFile); });
+    ScopeGuard unlinkGuard = [] { unlink(krb5ccFile); };
     setupEnvironment();
 
     {

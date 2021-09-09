@@ -374,7 +374,7 @@ void runImportCollectionCommand(OperationContext* opCtx,
 
         // Register the current import.
         auto future = importCoord->registerImport(importUUID);
-        ON_BLOCK_EXIT([&] { importCoord->unregisterImport(importUUID); });
+        ScopeGuard unregisterGuard = [&] { importCoord->unregisterImport(importUUID); };
 
         // Vote success for this node itself.
         importCoord->voteForImport(importUUID,

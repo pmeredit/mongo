@@ -111,11 +111,11 @@ public:
     std::string getParsedPrincipal() const {
         char* parsed = nullptr;
         krb5_unparse_name(_krb5Context, getPrincipal(), &parsed);
-        auto guard = makeGuard([&parsed, this]() {
+        ScopeGuard guard = [&parsed, this] {
             if (parsed != nullptr) {
                 krb5_free_unparsed_name(_krb5Context, parsed);
             }
-        });
+        };
         return parsed;
     }
 
@@ -188,15 +188,15 @@ public:
         }
         krb5_error_code error;
         krb5_kt_cursor cursor = nullptr;
-        auto cursorGuard = makeGuard([&cursor, this]() {
+        ScopeGuard cursorGuard = [&cursor, this] {
             if (cursor != nullptr && _krb5Keytab != nullptr) {
                 krb5_kt_end_seq_get(_krb5Context, _krb5Keytab, &cursor);
             }
-        });
+        };
         krb5_keytab_entry entry;
-        auto entryGuard = makeGuard([&entry, this]() {
+        ScopeGuard entryGuard = [&entry, this] {
             krb5_free_data_contents(_krb5Context, reinterpret_cast<krb5_data*>(&entry));
-        });
+        };
 
         // see if it is possible to get at least one entry via iteration
         error = krb5_kt_start_seq_get(_krb5Context, _krb5Keytab, &cursor);
@@ -262,13 +262,13 @@ public:
     explicit KRB5CredentialsCache(krb5_context krb5Context) : _krb5Context(krb5Context) {
         // cursor for iterating over all available ccaches
         krb5_cccol_cursor krb5cccolCursor = nullptr;
-        auto ccolFree = makeGuard([&]() {
+        ScopeGuard ccolFree = [&] {
             if (krb5cccolCursor != nullptr) {
                 uassert(31345,
                         "Could not properly free Credentials Cache Collection cursor.",
                         krb5_cccol_cursor_free(_krb5Context, &krb5cccolCursor) == 0);
             }
-        });
+        };
         uassert(31333,
                 "Could not resolve credentials cache collection",
                 krb5_cccol_cursor_new(_krb5Context, &krb5cccolCursor) == 0);
@@ -276,34 +276,34 @@ public:
 
         // retains the current ccache being accessed during iteration
         krb5_ccache krb5CCache = nullptr;
-        auto ccClose = makeGuard([&]() {
+        ScopeGuard ccClose = [&] {
             if (krb5CCache != nullptr) {
                 uassert(31356,
                         "Could not properly close credentials cache.",
                         krb5_cc_close(_krb5Context, krb5CCache) == 0);
             }
-        });
+        };
 
         while ((krb5_cccol_cursor_next(_krb5Context, krb5cccolCursor, &krb5CCache) == 0) &&
                krb5CCache != nullptr) {
 
-            auto ccLoopClose = makeGuard([&]() {
+            ScopeGuard ccLoopClose = [&] {
                 if (krb5CCache != nullptr) {
                     uassert(31342,
                             "Could not properly close credentials cache.",
                             krb5_cc_close(_krb5Context, krb5CCache) == 0);
                 }
-            });
+            };
 
             // cursor for iterating over all entries in one ccache
             krb5_cc_cursor krb5ccCursor = nullptr;
-            auto endSeq = makeGuard([&]() {
+            ScopeGuard endSeq = [&] {
                 if (krb5ccCursor != nullptr) {
                     uassert(31355,
                             "Could not properly end sequence across credentials cache.",
                             krb5_cc_end_seq_get(_krb5Context, krb5CCache, &krb5ccCursor) == 0);
                 }
-            });
+            };
 
             // points to one credentials entry in a ccache
             krb5_creds krb5Creds;
@@ -529,11 +529,11 @@ private:
         names.emplace_back(nullptr);
 
         void* iter = nullptr;
-        auto iterGuard = makeGuard([&iter]() {
+        ScopeGuard iterGuard = [&iter] {
             if (iter != nullptr) {
                 profile_iterator_free(&iter);
             }
-        });
+        };
         profile_iterator_create(profile, names.data(), PROFILE_ITER_LIST_SECTION, &iter);
         long ret = 0;
         while (ret == 0) {
@@ -546,7 +546,7 @@ private:
             if (name.get() != nullptr) {
                 // store subsection as child
                 path.emplace_back(name.get());
-                ON_BLOCK_EXIT([&path]() { path.pop_back(); });
+                ScopeGuard pathPop = [&path] { path.pop_back(); };
                 childAdder(path, value.get());
             }
         }
@@ -577,7 +577,7 @@ public:
         krb5_error_code error = krb5_init_context(&context);
         if (error != 0) {
             const char* rawError = krb5_get_error_message(context, error);
-            ON_BLOCK_EXIT([&]() { krb5_free_error_message(context, rawError); });
+            ScopeGuard freeError = [&] { krb5_free_error_message(context, rawError); };
             std::string errorMessage = rawError;
             return Status(ErrorCodes::BadValue, errorMessage);
         }

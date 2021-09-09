@@ -122,8 +122,9 @@ BackupCursorState BackupCursorService::openBackupCursor(
 
     // A backup cursor is open. Any exception code path must leave the BackupCursorService in an
     // inactive state.
-    auto closeCursorGuard =
-        makeGuard([this, opCtx, &lk] { _closeBackupCursor(opCtx, *_activeBackupId, lk); });
+    ScopeGuard closeCursorGuard = [this, opCtx, &lk] {
+        _closeBackupCursor(opCtx, *_activeBackupId, lk);
+    };
 
     uassert(50919,
             "Failpoint hit after opening the backup cursor.",

@@ -64,7 +64,7 @@ Status tryAcquireServerCredential(const std::string& principalName) {
                             nullptr)) {
             return Status(ErrorCodes::UnknownError, "sspi could not translate error message");
         }
-        ON_BLOCK_EXIT([&] { LocalFree(err); });
+        ScopeGuard localFree = [&] { LocalFree(err); };
         return Status(ErrorCodes::UnknownError,
                       str::stream() << "sspi could not acquire server credential for "
                                     << principalName << "; " << err);
@@ -261,8 +261,8 @@ int setAuthIdAndAuthzId(SspiConnContext* pcctx,
         HandleLastError(sparams->utils, status, "QueryContextAttributes");
         return SASL_FAIL;
     }
-    ON_BLOCK_EXIT([&] { FreeContextBuffer(namesx.sClientName); });
-    ON_BLOCK_EXIT([&] { FreeContextBuffer(namesx.sServerName); });
+    ScopeGuard clientFree = [&] { FreeContextBuffer(namesx.sClientName); };
+    ScopeGuard serverFree = [&] { FreeContextBuffer(namesx.sServerName); };
 
     LOGV2_DEBUG(24015,
                 2,

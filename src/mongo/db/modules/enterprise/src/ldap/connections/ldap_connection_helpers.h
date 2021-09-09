@@ -334,7 +334,7 @@ public:
             // with ldap_memfree. If ldap_get_dn experiences an error it will return NULL and set an
             // error code.
             LibraryCharPtr entryDN = S::ldap_get_dn(_session, entry);
-            const auto entryDNGuard = makeGuard([&] { S::ldap_memfree(entryDN); });
+            const ScopeGuard entryDNGuard = [&] { S::ldap_memfree(entryDN); };
             if (!entryDN) {
                 return obtainFatalResultCodeAsStatus("ldap_get_dn",
                                                      "getting DN for a result from the LDAP query");
@@ -357,12 +357,12 @@ public:
             // an error code.  Per RFC1823, if either function have no more attributes to return,
             // they will return NULL.
             typename S::BerElementType* element = nullptr;
-            const auto elementGuard = makeGuard([&] { ber_free(element, 0); });
+            const ScopeGuard elementGuard = [&] { ber_free(element, 0); };
             LibraryCharPtr attribute = S::ldap_first_attribute(_session, entry, &element);
             for (; attribute; attribute = ldap_next_attribute(_session, entry, element)) {
                 // This takes attribute by value, so we can safely set it to ldap_next_attribute
                 // later, and the old ON_BLOCK_EXIT will free the old attribute.
-                const auto attributeGuard = makeGuard([attribute] { S::ldap_memfree(attribute); });
+                const ScopeGuard attributeGuard = [attribute] { S::ldap_memfree(attribute); };
                 LOGV2_LDAPLOG(4615665,
                               3,
                               "From LDAP entry with DN {entryDN}, got attribute {attribute}",
@@ -389,7 +389,7 @@ public:
                         return status;
                     }
                 }
-                const auto valuesGuard = makeGuard([&] { S::ldap_value_free_len(values); });
+                const ScopeGuard valuesGuard = [&] { S::ldap_value_free_len(values); };
 
                 LDAPAttributeValues valueStore;
 
@@ -444,11 +444,11 @@ private:
         // libldap wants a non-const copy, so prevent it from breaking our configuration data
         size_t requestedAttributesSize = query.getAttributes().size();
         std::vector<LibraryCharPtr> requestedAttributes;
-        const auto requestedAttributesGuard = makeGuard([&] {
+        const ScopeGuard requestedAttributesGuard = [&] {
             for (LibraryCharPtr attribute : requestedAttributes) {
                 delete[] attribute;
             }
-        });
+        };
 
         requestedAttributes.reserve(requestedAttributesSize + 1);
         for (size_t i = 0; i < requestedAttributesSize; ++i) {

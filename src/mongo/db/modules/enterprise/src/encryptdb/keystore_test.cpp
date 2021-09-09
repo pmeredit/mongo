@@ -287,7 +287,7 @@ TEST(EncryptionKeyManager, HotBackupValidation) {
     encryptionGlobalParams.encryptionKeyFile = keyPath.string();
 
     setGlobalServiceContext(ServiceContext::make());
-    const auto serviceContextCleanup = makeGuard([&] { setGlobalServiceContext({}); });
+    const ScopeGuard serviceContextCleanup = [&] { setGlobalServiceContext({}); };
 
     auto const service = getGlobalServiceContext();
     // Override the Noop encryption manager with the real encryption manager.
@@ -367,7 +367,7 @@ TEST(EncryptionKeyManager, DirtyCBCIsNoOp) {
     encryptionGlobalParams.encryptionCipherMode = "AES256-CBC";
 
     setGlobalServiceContext(ServiceContext::make());
-    const auto serviceContextCleanup = makeGuard([&] { setGlobalServiceContext({}); });
+    const ScopeGuard serviceContextCleanup = [&] { setGlobalServiceContext({}); };
 
     auto const service = getGlobalServiceContext();
     // Override the Noop encryption manager with the real encryption manager.

@@ -503,7 +503,7 @@ int kerberosToolMain(int argc, char* argv[]) {
         report.closeSection("");
     }
 
-    auto resetEnv = makeGuard([&krb5Env]() {
+    ScopeGuard resetEnv = [&krb5Env] {
         // Since we set the KRB5_CLIENT_KTNAME to the same value as KRB5_KTNAME in server mode, we
         // should set it back here
         int result = setenv(kKRB5_CLIENT_KTNAME.rawData(),
@@ -514,7 +514,7 @@ int kerberosToolMain(int argc, char* argv[]) {
                          "environment value."
                       << std::endl;
         }
-    });
+    };
 
     if (krb5Env.isClientConnection()) {
         resetEnv.dismiss();
@@ -588,13 +588,13 @@ KRB5Keytab::KRB5Keytab(krb5_context krb5Context, KerberosToolOptions::Connection
     if (existsAndIsPopulated()) {
         krb5_keytab_entry currentEntry;
         krb5_kt_cursor ktCursor;
-        auto endSeq = makeGuard([&]() {
+        ScopeGuard endSeq = [&] {
             if (ktCursor != nullptr) {
                 if (krb5_kt_end_seq_get(_krb5Context, _krb5Keytab, &ktCursor) != 0) {
                     LOGV2_WARNING(24242, "Could not end keytab iteration sequence properly.");
                 }
             }
-        });
+        };
         errorCode = krb5_kt_start_seq_get(_krb5Context, _krb5Keytab, &ktCursor);
         uassert(31343, "Malformed keytab: could not begin iteration sequence.", errorCode == 0);
         while ((errorCode = krb5_kt_next_entry(
