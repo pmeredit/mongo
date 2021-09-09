@@ -443,6 +443,7 @@ WrappedConnection::~WrappedConnection() {
 }
 
 Status WrappedConnection::connect() {
+    _conn->indicateUsed();
     auto status = _getConn()->connect();
     if (!status.isOK()) {
         _conn->indicateFailure(status);
@@ -455,6 +456,19 @@ Status WrappedConnection::connect() {
 Status WrappedConnection::bindAsUser(const LDAPBindOptions& options,
                                      TickSource* tickSource,
                                      UserAcquisitionStats* userAcquisitionStats) {
+    // Generally speaking, connections from a pool should never be reused after returning a failed
+    // Status. However, when the LDAPRunner is trying to execute a query, it will try to bind as the
+    // ldapQueryUser using the password provided in ldapQueryPassword. During password rollover,
+    // there may be more than one password specified, resulting in 1 bind attempt per password until
+    // it succeeds. In those cases, the same connection should be reused despite prior failures, and
+    // the status of the final attempt will be used to determine whether the connection is checked
+    // back into the pool. Since ConnectionPool::ConnectionInterface::indicateUsed() invariants that
+    // the connection being used must not have failed previously, it will not be called if the conn
+    // has already failed and is being reused.
+    if (_conn->getStatus() == Status::OK() ||
+        _conn->getStatus() == ConnectionPool::kConnectionStateUnknown) {
+        _conn->indicateUsed();
+    }
     auto status =
         _runFuncWithTimeout<void>(
             options.toCleanString(),
@@ -474,6 +488,7 @@ boost::optional<std::string> WrappedConnection::currentBoundUser() const {
 
 Status WrappedConnection::checkLiveness(TickSource* tickSource,
                                         UserAcquisitionStats* userAcquisitionStats) {
+    _conn->indicateUsed();
     UserAcquisitionStatsHandle userAcquisitionStatsHandle(
         userAcquisitionStats, tickSource, kSearch);
     auto livenessStatus =
@@ -491,6 +506,7 @@ Status WrappedConnection::checkLiveness(TickSource* tickSource,
 
 StatusWith<LDAPEntityCollection> WrappedConnection::query(
     LDAPQuery query, TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) {
+    _conn->indicateUsed();
     auto swResults =
         _runFuncWithTimeout<LDAPEntityCollection>(
             query.toString(),
