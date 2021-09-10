@@ -2,6 +2,7 @@
  * Test that user acquisition stats, tracked in curOp,
  * for LDAP Operations are appropriately updated through
  * the UserAcquisitionStatsHandle used in the LDAP related code.
+ * @tags: [requires_ldap_pool]
  */
 
 (function() {

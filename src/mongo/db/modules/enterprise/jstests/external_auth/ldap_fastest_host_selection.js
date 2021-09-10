@@ -1,3 +1,5 @@
+// @tags: [requires_ldap_pool]
+
 (function() {
 'use strict';
 
