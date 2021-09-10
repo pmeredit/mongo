@@ -19,7 +19,7 @@ try {
 
     const adminDB = conn.getDB("admin");
     adminDB.auth("siteRootAdmin", "secret");
-    checkLog.containsJson(adminDB, 5945602, {}, 1500);
+    checkLog.containsJson(adminDB, 5945602, {}, 15000);
     adminDB.logout();
 
     const user1 = "ldapz_ldap1";
@@ -27,7 +27,7 @@ try {
     authAndVerify({conn: conn, options: {authOptions: authOptions, user: user1}});
 
     adminDB.auth("siteRootAdmin", "secret");
-    checkLog.containsJson(adminDB, 5945601, {}, 1500);
+    checkLog.containsJson(adminDB, 5945601, {}, 30000);
 } finally {
     MongoRunner.stopMongod(conn);
 }
