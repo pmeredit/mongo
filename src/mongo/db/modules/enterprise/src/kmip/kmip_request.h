@@ -55,6 +55,22 @@ struct GetKMIPRequestParameters : KMIPRequestParameters {
     std::vector<uint8_t> uid;
 };
 
+struct EncryptKMIPRequestParameters : KMIPRequestParameters {
+    explicit EncryptKMIPRequestParameters(std::vector<uint8_t> u, std::vector<uint8_t> d)
+        : KMIPRequestParameters(OperationType::encrypt), uid(std::move(u)), data(std::move(d)) {}
+
+    std::vector<uint8_t> uid;
+    std::vector<uint8_t> data;
+};
+
+struct DecryptKMIPRequestParameters : KMIPRequestParameters {
+    explicit DecryptKMIPRequestParameters(std::vector<uint8_t> u, std::vector<uint8_t> d)
+        : KMIPRequestParameters(OperationType::decrypt), uid(std::move(u)), data(std::move(d)) {}
+
+    std::vector<uint8_t> uid;
+    std::vector<uint8_t> data;
+};
+
 /**
  * Converts a 32 bit positive integer to vector of uint8_t.
  * This function should only be called with 32 bit positive integers.

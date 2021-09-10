@@ -11,7 +11,7 @@
 #include <memory>
 
 #include "encryption_options.h"
-#include "kmip_service.h"
+#include "kmip/kmip_service.h"
 #include "mongo/base/string_data.h"
 #include "mongo/config.h"
 #include "mongo/crypto/symmetric_crypto.h"

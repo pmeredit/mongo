@@ -6,8 +6,8 @@
 
 #include <vector>
 
-#include "kmip/kmip_options.h"
 #include "kmip_consts.h"
+#include "kmip_options.h"
 #include "mongo/base/status_with.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/net/hostandport.h"
@@ -46,6 +46,22 @@ public:
      */
     StatusWith<std::unique_ptr<SymmetricKey>> getExternalKey(const std::string& uid);
 
+    /**
+     * Requests the KMIP server to perform an encryption operation on the specified data with the
+     * given key, and returns a StatusWith of the encrypted data. Note: In the future, we may want
+     * to add cryptographic parameters and IV support here.
+     */
+    StatusWith<std::vector<uint8_t>> encrypt(const std::string& uid,
+                                             const std::vector<uint8_t>& data);
+
+    /**
+     * Requests the KMIP server to perform a decryption operation on the specified data with the
+     * given key, and returns a StatusWith of the decrypted data. Note: In the future, we may want
+     * to add cryptographic parameters and IV support here.
+     */
+    StatusWith<std::vector<uint8_t>> decrypt(const std::string& uid,
+                                             const std::vector<uint8_t>& data);
+
 private:
     KMIPService(const HostAndPort& server, std::shared_ptr<SSLManagerInterface> sslManager);
     static StatusWith<KMIPService> createKMIPService(const HostAndPort& server,
@@ -67,6 +83,12 @@ private:
     std::vector<uint8_t> _generateKMIPGetRequest(const std::string& uid);
 
     std::vector<uint8_t> _generateKMIPCreateRequest();
+
+    std::vector<uint8_t> _generateKMIPEncryptRequest(const std::string& uid,
+                                                     const std::vector<uint8_t>& data);
+
+    std::vector<uint8_t> _generateKMIPDecryptRequest(const std::string& uid,
+                                                     const std::vector<uint8_t>& data);
 
     std::shared_ptr<SSLManagerInterface> _sslManager;
     HostAndPort _server;

@@ -141,6 +141,60 @@ std::vector<uint8_t> encodeGetPayload(const GetKMIPRequestParameters& requestPar
     return payload;
 }
 
+std::vector<uint8_t> encodeEncryptPayload(const EncryptKMIPRequestParameters& requestParams) {
+    std::vector<uint8_t> payload;
+
+    std::vector<uint8_t> paddedUUID = padToEightByteMultiple(requestParams.uid);
+    std::vector<uint8_t> uidSize = convertIntToBigEndianArray(requestParams.uid.size());
+
+    // Tag: Unique Identifier, Type: Text String, Size of UUID, UUID
+    payload.insert(payload.end(), std::begin(uniqueIdentifierTag), std::end(uniqueIdentifierTag));
+    payload.push_back(static_cast<uint8_t>(ItemType::textString));
+
+    payload.insert(payload.end(), std::begin(uidSize), std::end(uidSize));
+    payload.insert(payload.end(), std::begin(paddedUUID), std::end(paddedUUID));
+
+    // Note that this does add an extra copy, but we are copying anyways, and our data is small
+    // enough that it shouldn't matter.
+    std::vector<uint8_t> paddedData = padToEightByteMultiple(requestParams.data);
+    std::vector<uint8_t> dataSize = convertIntToBigEndianArray(requestParams.data.size());
+
+    // Tag: Data, Type: Byte String, Size of data, data to be encrypted
+    payload.insert(payload.end(), std::begin(dataTag), std::end(dataTag));
+    payload.push_back(static_cast<uint8_t>(ItemType::byteString));
+
+    payload.insert(payload.end(), std::begin(dataSize), std::end(dataSize));
+    payload.insert(payload.end(), std::begin(paddedData), std::end(paddedData));
+
+    return payload;
+}
+
+std::vector<uint8_t> encodeDecryptPayload(const DecryptKMIPRequestParameters& requestParams) {
+    std::vector<uint8_t> payload;
+
+    std::vector<uint8_t> paddedUUID = padToEightByteMultiple(requestParams.uid);
+    std::vector<uint8_t> uidSize = convertIntToBigEndianArray(requestParams.uid.size());
+
+    // Tag: Unique Identifier, Type: Text String, Size of UUID, UUID
+    payload.insert(payload.end(), std::begin(uniqueIdentifierTag), std::end(uniqueIdentifierTag));
+    payload.push_back(static_cast<uint8_t>(ItemType::textString));
+
+    payload.insert(payload.end(), std::begin(uidSize), std::end(uidSize));
+    payload.insert(payload.end(), std::begin(paddedUUID), std::end(paddedUUID));
+
+    std::vector<uint8_t> paddedData = padToEightByteMultiple(requestParams.data);
+    std::vector<uint8_t> dataSize = convertIntToBigEndianArray(requestParams.data.size());
+
+    // Tag: Data, Type: Byte String, Size of data, data to be decrypted
+    payload.insert(payload.end(), std::begin(dataTag), std::end(dataTag));
+    payload.push_back(static_cast<uint8_t>(ItemType::byteString));
+
+    payload.insert(payload.end(), std::begin(dataSize), std::end(dataSize));
+    payload.insert(payload.end(), std::begin(paddedData), std::end(paddedData));
+
+    return payload;
+}
+
 std::vector<uint8_t> encodeOpAndRequestPayload(const KMIPRequestParameters& requestParams) {
     std::vector<uint8_t> request;
 
@@ -169,6 +223,16 @@ std::vector<uint8_t> encodeOpAndRequestPayload(const KMIPRequestParameters& requ
                            discoverVersionsOperationTypeArray,
                            sizeof(getOperationTypeArray)) == 0) {
         // Discover Versions has no request payload.
+    } else if (std::memcmp(requestParams.operationType,
+                           encryptOperationTypeArray,
+                           sizeof(encryptOperationTypeArray)) == 0) {
+        requestPayload =
+            encodeEncryptPayload(static_cast<const EncryptKMIPRequestParameters&>(requestParams));
+    } else if (std::memcmp(requestParams.operationType,
+                           decryptOperationTypeArray,
+                           sizeof(decryptOperationTypeArray)) == 0) {
+        requestPayload =
+            encodeDecryptPayload(static_cast<const DecryptKMIPRequestParameters&>(requestParams));
     } else {
         MONGO_UNREACHABLE;
     }

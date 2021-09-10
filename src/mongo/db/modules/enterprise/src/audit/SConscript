@@ -233,6 +233,7 @@ env.Library(
 env.CppUnitTest(
     target='audit_test',
     source=[
+        'audit_key_manager_kmip.cpp', # in test for now to enable building
         'audit_op_observer_test.cpp',
         'audit_log_compress_base64_test.cpp',
         'audit_log_header_test.cpp',

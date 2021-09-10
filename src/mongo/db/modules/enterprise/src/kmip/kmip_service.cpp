@@ -11,7 +11,6 @@
 #include <memory>
 #include <vector>
 
-#include "encryption_options.h"
 #include "kmip_consts.h"
 #include "kmip_request.h"
 #include "kmip_response.h"
@@ -144,6 +143,41 @@ StatusWith<std::unique_ptr<SymmetricKey>> KMIPService::getExternalKey(const std:
     return std::move(key);
 }
 
+
+StatusWith<std::vector<uint8_t>> KMIPService::encrypt(const std::string& uid,
+                                                      const std::vector<uint8_t>& data) {
+    StatusWith<KMIPResponse> swResponse = _sendRequest(_generateKMIPEncryptRequest(uid, data));
+    if (!swResponse.isOK()) {
+        return swResponse.getStatus();
+    }
+
+    KMIPResponse response = std::move(swResponse.getValue());
+    if (response.getResultStatus() != kmip::statusSuccess) {
+        return Status(ErrorCodes::BadValue,
+                      str::stream() << "KMIP encrypt failed, code: " << response.getResultReason()
+                                    << " error: " << response.getResultMsg());
+    }
+
+    return response.getData();
+}
+
+StatusWith<std::vector<uint8_t>> KMIPService::decrypt(const std::string& uid,
+                                                      const std::vector<uint8_t>& data) {
+    StatusWith<KMIPResponse> swResponse = _sendRequest(_generateKMIPDecryptRequest(uid, data));
+    if (!swResponse.isOK()) {
+        return swResponse.getStatus();
+    }
+
+    KMIPResponse response = std::move(swResponse.getValue());
+    if (response.getResultStatus() != kmip::statusSuccess) {
+        return Status(ErrorCodes::BadValue,
+                      str::stream() << "KMIP decrypt failed, code: " << response.getResultReason()
+                                    << " error: " << response.getResultMsg());
+    }
+
+    return response.getData();
+}
+
 void KMIPService::_initServerConnection(Milliseconds connectTimeout) {
     auto makeAddress = [](const auto& host) -> SockAddr {
         try {
@@ -216,6 +250,18 @@ std::vector<uint8_t> KMIPService::_generateKMIPCreateRequest() {
 
     CreateKMIPRequestParameters createRequestParams(algorithm, length, usageMask);
     return encodeKMIPRequest(createRequestParams);
+}
+
+std::vector<uint8_t> KMIPService::_generateKMIPEncryptRequest(const std::string& uid,
+                                                              const std::vector<uint8_t>& data) {
+    EncryptKMIPRequestParameters encryptRequestParams({std::begin(uid), std::end(uid)}, data);
+    return encodeKMIPRequest(encryptRequestParams);
+}
+
+std::vector<uint8_t> KMIPService::_generateKMIPDecryptRequest(const std::string& uid,
+                                                              const std::vector<uint8_t>& data) {
+    DecryptKMIPRequestParameters decryptRequestParams({std::begin(uid), std::end(uid)}, data);
+    return encodeKMIPRequest(decryptRequestParams);
 }
 }  // namespace kmip
 }  // namespace mongo

@@ -30,6 +30,9 @@ const uint8_t batchCountTag[] = {0x42, 0x00, 0x0D};
 const uint8_t batchItemTag[] = {0x42, 0x00, 0x0F};
 const uint8_t cryptographicAlgorithmTag[] = {0x42, 0x00, 0x28};
 const uint8_t cryptographicLengthTag[] = {0x42, 0x00, 0x2A};
+const uint8_t cryptographicParametersTag[] = {0x42, 0x00, 0x2B};
+const uint8_t dataTag[] = {0x42, 0x00, 0xC2};
+const uint8_t ivTag[] = {0x42, 0x00, 0x3D};
 const uint8_t keyBlockTag[] = {0x42, 0x00, 0x40};
 const uint8_t keyFormatTypeTag[] = {0x42, 0x00, 0x42};
 const uint8_t keyMaterialTag[] = {0x42, 0x00, 0x43};
@@ -73,10 +76,18 @@ enum class ItemType : uint8_t {
 /**
  * Operation Types
  */
-enum class OperationType : uint8_t { create = 0x01, discoverVersions = 0x1E, get = 0x0A };
+enum class OperationType : uint8_t {
+    create = 0x01,
+    decrypt = 0x20,
+    discoverVersions = 0x1E,
+    encrypt = 0x1F,
+    get = 0x0A,
+};
 
 const uint8_t createOperationTypeArray[] = {0x00, 0x00, 0x00, 0x01};
+const uint8_t decryptOperationTypeArray[] = {0x00, 0x00, 0x00, 0x20};
 const uint8_t discoverVersionsOperationTypeArray[] = {0x00, 0x00, 0x00, 0x1E};
+const uint8_t encryptOperationTypeArray[] = {0x00, 0x00, 0x00, 0x1F};
 const uint8_t getOperationTypeArray[] = {0x00, 0x00, 0x00, 0x0A};
 
 /**

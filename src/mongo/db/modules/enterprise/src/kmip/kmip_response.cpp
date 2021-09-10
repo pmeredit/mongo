@@ -78,13 +78,14 @@ StatusWith<size_t> KMIPResponse::_parseTag(ConstDataRangeCursor* cdrc,
             return static_cast<size_t>(len);
         }
 
+        size_t padding = (8 - len % 8) % 8;
         // Advance to the next tag, handle 8 byte aligned padding
-        if (len > std::numeric_limits<size_t>::max() - 8) {
+        if (len > std::numeric_limits<size_t>::max() - padding) {
             return Status(ErrorCodes::FailedToParse,
                           str::stream() << "Response message was malformed, invalid length " << len
                                         << " found.");
         }
-        adv = cdrc->advanceNoThrow(len + (8 - (len % 8)) % 8);
+        adv = cdrc->advanceNoThrow(len + padding);
         if (!adv.isOK()) {
             return adv;
         }
@@ -303,6 +304,27 @@ Status KMIPResponse::_parseBatchItem(ConstDataRangeCursor* cdrc) {
             _symmetricKey = std::move(swSymmetricKey.getValue());
             break;
         }
+        case static_cast<uint8_t>(OperationType::encrypt): {
+            // Currently ignores UID (line below) and IV (silently) in response.
+            (void)_parseString(cdrc, uniqueIdentifierTag, "uid");  // Note: UID in response ignored
+            StatusWith<std::vector<uint8_t>> swData = _parseByteString(cdrc, dataTag, "data");
+            // XXX IV in response ignored
+            if (!swData.isOK()) {
+                return swData.getStatus();
+            }
+            _data = std::move(swData.getValue());
+            break;
+        }
+        case static_cast<uint8_t>(OperationType::decrypt): {
+            // Ignores UID in response.
+            (void)_parseString(cdrc, uniqueIdentifierTag, "uid");
+            StatusWith<std::vector<uint8_t>> swData = _parseByteString(cdrc, dataTag, "data");
+            if (!swData.isOK()) {
+                return swData.getStatus();
+            }
+            _data = std::move(swData.getValue());
+            break;
+        }
         default:
             return Status(ErrorCodes::FailedToParse,
                           str::stream() << "Response message was malformed: unknown operation type "
@@ -363,17 +385,46 @@ StatusWith<std::string> KMIPResponse::_parseString(ConstDataRangeCursor* cdrc,
      * there is no padding so we don't need to advance.
      */
     const char* data = cdrc->data();
-    if (len > std::numeric_limits<size_t>::max() - 8) {
+    size_t padding = (8 - len % 8) % 8;
+    if (len > std::numeric_limits<size_t>::max() - padding) {
         return Status(ErrorCodes::FailedToParse,
                       str::stream()
                           << "Response message was malformed, invalid length " << len << " found.");
     }
-    Status adv = cdrc->advanceNoThrow(len + (8 - (len % 8)) % 8);
+    Status adv = cdrc->advanceNoThrow(len + padding);
     if (!adv.isOK()) {
         return adv;
     }
 
     return std::string(data, len);
+}
+
+StatusWith<std::vector<uint8_t>> KMIPResponse::_parseByteString(ConstDataRangeCursor* cdrc,
+                                                                const uint8_t tag[],
+                                                                const std::string& tagName) {
+    StatusWith<size_t> swTag = _parseTag(cdrc, tag, ItemType::byteString, tagName);
+    if (!swTag.isOK()) {
+        return swTag.getStatus();
+    }
+    size_t len = swTag.getValue();
+
+    /**
+     * Advance to the next byte aligned value, if uidLen is a multiple of 8
+     * there is no padding so we don't need to advance.
+     */
+    const char* data = cdrc->data();
+    size_t padding = (8 - len % 8) % 8;
+    if (len > std::numeric_limits<size_t>::max() - padding) {
+        return Status(ErrorCodes::FailedToParse,
+                      str::stream()
+                          << "Response message was malformed, invalid length " << len << " found.");
+    }
+    Status adv = cdrc->advanceNoThrow(len + padding);
+    if (!adv.isOK()) {
+        return adv;
+    }
+
+    return std::vector<uint8_t>(data, data + len);
 }
 
 StatusWith<std::uint32_t> KMIPResponse::_parseInteger(ConstDataRangeCursor* cdrc,

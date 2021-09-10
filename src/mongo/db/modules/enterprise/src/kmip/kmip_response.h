@@ -72,6 +72,10 @@ public:
         return std::move(_symmetricKey);
     }
 
+    std::vector<uint8_t> getData() {
+        return _data;
+    }
+
     /**
      * Gets the unique key identifier from the parsed message
      */
@@ -104,6 +108,9 @@ private:
     StatusWith<std::string> _parseString(ConstDataRangeCursor* cdrc,
                                          const uint8_t tag[],
                                          const std::string& tagName);
+    StatusWith<std::vector<uint8_t>> _parseByteString(ConstDataRangeCursor* cdrc,
+                                                      const uint8_t tag[],
+                                                      const std::string& tagName);
     StatusWith<uint32_t> _parseInteger(ConstDataRangeCursor* cdrc,
                                        const uint8_t tag[],
                                        ItemType itemType,
@@ -122,6 +129,7 @@ private:
 
     std::unique_ptr<SymmetricKey> _symmetricKey;
     std::string _uid;
+    std::vector<uint8_t> _data;
 };
 }  // namespace kmip
 }  // namespace mongo

@@ -7,7 +7,7 @@
 
 #include "mongo/platform/basic.h"
 
-#include "kmip/kmip_options.h"
+#include "kmip_options.h"
 
 #include "mongo/config.h"
 #include "mongo/util/options_parser/environment.h"
