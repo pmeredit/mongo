@@ -9,10 +9,11 @@
 #include "initial_sync_file_mover.h"
 
 #include <boost/filesystem.hpp>
-#include <fcntl.h>
 #include <fstream>
 
+#include "mongo/db/storage/storage_file_util.h"
 #include "mongo/logv2/log.h"
+#include "mongo/util/assert_util.h"
 
 
 namespace mongo {
@@ -127,22 +128,9 @@ void InitialSyncFileMover::_writeMarker(std::vector<std::string> filenames,
         writer.write(filename.c_str(), filename.size() + 1);
     }
     writer.close();
-    int fd = open(tmpMarkerPath.native().c_str(), O_APPEND);
-    if (fd < 0) {
-        LOGV2_FATAL_NOTRACE(5783418,
-                            "Unable to open marker file for syncing",
-                            "tmpMarkerPath"_attr = tmpMarkerPath.native());
-    }
-    fsync(fd);
-    close(fd);
-
+    fassertNoTrace(5783418, fsyncFile(tmpMarkerPath));
     boost::filesystem::rename(tmpMarkerPath, markerPath);
-    fd = open(_dbpath.c_str(), O_DIRECTORY);
-    if (fd < 0) {
-        LOGV2_FATAL_NOTRACE(5783419, "Unable to open dbpath for syncing", "dbpath"_attr = _dbpath);
-    }
-    fsync(fd);
-    close(fd);
+    fassertNoTrace(5783419, fsyncParentDirectory(markerPath));
 }
 
 
