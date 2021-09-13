@@ -1,0 +1,31 @@
+# Copyright (C) 2021-present MongoDB, Inc.
+
+global:
+    cpp_namespace: "mongo"
+
+server_parameters:
+    "ldapUserCacheInvalidationInterval":
+        description: 'LDAP user cache invalidation interval (seconds)'
+        set_at: [ startup, runtime ]
+        cpp_class: LDAPUserCacheInvalidationIntervalParameter
+        default: 30
+    "ldapUserCacheRefreshInterval":
+        description: 'LDAP user cache refresh interval (seconds)'
+        set_at: [ startup, runtime ]
+        cpp_class: LDAPUserCacheRefreshIntervalParameter
+        default: 30
+    "ldapUserCacheStalenessInterval":
+        description: > 
+          Maximum amount of time the user cache will retain LDAP entries for without a fully successful
+          refresh pass before invalidating all LDAP entries (seconds).
+        set_at: [ startup, runtime ]
+        cpp_class: LDAPUserCacheStalenessIntervalParameter
+        default: 90
+    "ldapShouldRefreshUserCacheEntries":
+        description: > 
+          Controls whether or not LDAP user cache entries are refreshed or invalidated. True means
+          refreshed, false means invalidated.
+        set_at: startup
+        cpp_vartype: bool
+        cpp_varname: ldapShouldRefreshUserCacheEntries
+        default: true

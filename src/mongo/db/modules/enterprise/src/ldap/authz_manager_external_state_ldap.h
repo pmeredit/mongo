@@ -11,7 +11,7 @@
 #include "mongo/db/auth/privilege_format.h"
 #include "mongo/util/assert_util.h"
 
-#include "ldap_user_cache_invalidator_job.h"
+#include "ldap_user_cache_poller.h"
 
 namespace mongo {
 
@@ -143,9 +143,9 @@ private:
     AtomicWord<unsigned> _hasInitializedInvalidation;
 
     /**
-     * Long running job to periodically invalidate all LDAP authorized users on $external
+     * Long running job to periodically refresh or invalidate all LDAP authorized users on $external
      */
-    LDAPUserCacheInvalidator _invalidator;
+    LDAPUserCachePoller _poller;
 
     /**
      * Wrapped AuthzManagerExternalState object
