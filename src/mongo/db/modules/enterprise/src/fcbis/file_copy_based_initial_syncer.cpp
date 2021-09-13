@@ -108,6 +108,16 @@ ExecutorFuture<OpTimeAndWallTime> FileCopyBasedInitialSyncer::_startInitialSyncA
     std::shared_ptr<executor::TaskExecutor> executor,
     OperationContext* opCtx,
     const CancellationToken& token) {
+    if (storageGlobalParams.engine != "wiredTiger") {
+        LOGV2_ERROR(5952600,
+                    "File copy based initial sync requires using the WiredTiger storage engine.");
+        return future_util_details::makeExecutorFutureWith(
+            executor, []() -> StatusWith<OpTimeAndWallTime> {
+                return Status({ErrorCodes::IncompatibleServerVersion,
+                               str::stream() << "File copy based initial sync requires using the "
+                                                "WiredTiger storage engine."});
+            });
+    }
 
     _lastApplied = {OpTime(), Date_t()};
 
@@ -186,15 +196,18 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
                                                             nullptr);
                return executor->scheduleRemoteCommand(std::move(request), token)
                    .then([this, self = shared_from_this(), syncSource, kDenylistDuration](
-                             const executor::TaskExecutor::ResponseStatus& response)
-                             -> StatusWith<HostAndPort> {
+                             const executor::TaskExecutor::ResponseStatus& response) {
+                       stdx::lock_guard<Latch> lock(_mutex);
                        uassertStatusOK(response.status);
                        auto commandStatus = getStatusFromCommandResult(response.data);
                        uassertStatusOK(commandStatus);
 
-                       if (!response.data["isWritablePrimary"].booleanSafe() &&
-                           !response.data["secondary"].booleanSafe()) {
-
+                       if (!_getBSONField(
+                                response.data, "isWritablePrimary", "sync source's hello response")
+                                .booleanSafe() &&
+                           !_getBSONField(
+                                response.data, "secondary", "sync source's hello response")
+                                .booleanSafe()) {
                            _opts.syncSourceSelector->denylistSyncSource(
                                syncSource.getValue(), Date_t::now() + kDenylistDuration);
                            return Status({ErrorCodes::InvalidSyncSource,
@@ -217,13 +230,144 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
                                     << "Sync source is invalid because it does not have a "
                                        "valid wire version."});
                        }
+                       return Status::OK();
+                   })
+                   .then([this,
+                          self = shared_from_this(),
+                          opCtx,
+                          syncSource,
+                          kDenylistDuration,
+                          executor,
+                          token]() {
+                       stdx::lock_guard<Latch> lock(_mutex);
 
-                       // TODO: Validate other sync source requirements for File Copy Based Initial
-                       // Sync.
-                       return syncSource;
+                       const executor::RemoteCommandRequest request(
+                           syncSource.getValue(),
+                           "admin",
+                           BSON("getParameter" << 1 << "'storageGlobalParams.directoryperdb'" << 1
+                                               << "'wiredTigerDirectoryForIndexes'" << 1),
+                           rpc::makeEmptyMetadata(),
+                           nullptr);
+
+                       return executor->scheduleRemoteCommand(std::move(request), token)
+                           .then([this,
+                                  self = shared_from_this(),
+                                  opCtx,
+                                  syncSource,
+                                  kDenylistDuration](
+                                     const executor::TaskExecutor::ResponseStatus& response) {
+                               stdx::lock_guard<Latch> lock(_mutex);
+                               uassertStatusOK(response.status);
+                               auto commandStatus = getStatusFromCommandResult(response.data);
+                               uassertStatusOK(commandStatus);
+
+                               if (storageGlobalParams.directoryperdb !=
+                                   _getBSONField(response.data,
+                                                 "storageGlobalParams.directoryperdb",
+                                                 "sync source's getParameter response")
+                                       .booleanSafe()) {
+                                   _opts.syncSourceSelector->denylistSyncSource(
+                                       syncSource.getValue(), Date_t::now() + kDenylistDuration);
+                                   return Status(
+                                       {ErrorCodes::InvalidSyncSource,
+                                        str::stream()
+                                            << "Sync source is invalid because its directoryPerDB "
+                                               "parameter does not match the local value."});
+                               }
+
+                               if (wiredTigerGlobalOptions.directoryForIndexes !=
+                                   _getBSONField(response.data,
+                                                 "wiredTigerDirectoryForIndexes",
+                                                 "sync source's getParameter response")
+                                       .booleanSafe()) {
+                                   _opts.syncSourceSelector->denylistSyncSource(
+                                       syncSource.getValue(), Date_t::now() + kDenylistDuration);
+                                   return Status({ErrorCodes::InvalidSyncSource,
+                                                  str::stream()
+                                                      << "Sync source is invalid because its "
+                                                         "directoryForIndexes parameter does "
+                                                         "not match the local value."});
+                               }
+                               return Status::OK();
+                           });
+                   })
+                   .then([this,
+                          self = shared_from_this(),
+                          opCtx,
+                          syncSource,
+                          kDenylistDuration,
+                          executor,
+                          token]() {
+                       stdx::lock_guard<Latch> lock(_mutex);
+                       const executor::RemoteCommandRequest request(syncSource.getValue(),
+                                                                    "admin",
+                                                                    BSON("serverStatus" << 1),
+                                                                    rpc::makeEmptyMetadata(),
+                                                                    nullptr);
+
+                       return executor->scheduleRemoteCommand(std::move(request), token)
+                           .then([this,
+                                  self = shared_from_this(),
+                                  opCtx,
+                                  syncSource,
+                                  kDenylistDuration](
+                                     const executor::TaskExecutor::ResponseStatus& response)
+                                     -> StatusWith<HostAndPort> {
+                               stdx::lock_guard<Latch> lock(_mutex);
+                               uassertStatusOK(response.status);
+                               auto commandStatus = getStatusFromCommandResult(response.data);
+                               uassertStatusOK(commandStatus);
+
+                               auto syncSourceStorageEngine =
+                                   _getBSONField(
+                                       _getBSONField(response.data,
+                                                     "storageEngine",
+                                                     "sync source's serverStatus response")
+                                           .Obj(),
+                                       "name",
+                                       "sync source's storageEngine")
+                                       .valueStringDataSafe();
+                               if (syncSourceStorageEngine != "wiredTiger") {
+                                   _opts.syncSourceSelector->denylistSyncSource(
+                                       syncSource.getValue(), Date_t::now() + kDenylistDuration);
+                                   return Status({ErrorCodes::InvalidSyncSource,
+                                                  str::stream() << "Both the sync source and the "
+                                                                   "local node must be using the "
+                                                                   "WiredTiger storage engine."});
+                               }
+
+                               auto encHooks = EncryptionHooks::get(opCtx->getServiceContext());
+
+                               // If the sync source doesn't have the encryptionAtRest field, that
+                               // means it is not using the encrypted storage engine, so the local
+                               // node should not be either. Otherwise, if the sync source has the
+                               // encryptionAtRest.encryptionEnabled field, check if it matches the
+                               // local node's value.
+                               if ((!response.data.hasField("encryptionAtRest") &&
+                                    encHooks->enabled()) ||
+                                   (response.data.hasField("encryptionAtRest") &&
+                                    encHooks->enabled() !=
+                                        _getBSONField(
+                                            _getBSONField(response.data,
+                                                          "encryptionAtRest",
+                                                          "sync source's serverStatus response")
+                                                .Obj(),
+                                            "encryptionEnabled",
+                                            "sync source's serverStatus response")
+                                            .booleanSafe())) {
+                                   _opts.syncSourceSelector->denylistSyncSource(
+                                       syncSource.getValue(), Date_t::now() + kDenylistDuration);
+                                   return Status({ErrorCodes::InvalidSyncSource,
+                                                  str::stream() << "Both the sync source and the "
+                                                                   "local node must be "
+                                                                   "using the encrypted storage "
+                                                                   "engine, or neither."});
+                               }
+                               return syncSource;
+                           });
                    });
            })
-        .until([this](StatusWith<HostAndPort> status) mutable {
+        .until([this, self = shared_from_this()](StatusWith<HostAndPort> status) mutable {
             stdx::lock_guard<Latch> lock(_mutex);
             if (!status.isOK()) {
                 ++_chooseSyncSourceAttempt;
@@ -701,7 +845,7 @@ void FileCopyBasedInitialSyncer::_cancelRemainingWork(WithLock) {
 
 void FileCopyBasedInitialSyncer::join() {
     stdx::unique_lock<Latch> lk(_mutex);
-    _stateCondition.wait(lk, [this, self = shared_from_this(), &lk]() { return !_isActive(lk); });
+    _stateCondition.wait(lk, [this, &lk]() { return !_isActive(lk); });
 }
 
 bool FileCopyBasedInitialSyncer::isActive() const {

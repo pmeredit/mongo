@@ -315,6 +315,63 @@ protected:
     StatusWith<OpTimeAndWallTime> _lastApplied = Status(ErrorCodes::NotYetInitialized, "");
     InitialSyncerInterface::OnCompletionFn _onCompletion;
 
+
+    // Helper functions to test sending remote commands with the expected response.
+    void expectHelloCommandWithResponse(bool isWritablePrimary,
+                                        bool secondary,
+                                        int maxWireVersion) {
+        BSONObjBuilder helloResp;
+        helloResp.append("isWritablePrimary", isWritablePrimary);
+        helloResp.append("secondary", secondary);
+        helloResp.append("maxWireVersion", maxWireVersion);
+        helloResp.append("ok", 1);
+        _mock->expect(BSON("hello" << 1), RemoteCommandResponse({helloResp.obj(), Milliseconds()}))
+            .times(1);
+        _mock->runUntilExpectationsSatisfied();
+    }
+
+    void expectSuccessfulHelloCommand() {
+        expectHelloCommandWithResponse(true, false, static_cast<int>(WireVersion::WIRE_VERSION_51));
+    }
+
+    void expectGetParameterCommandWithResponse(bool directoryperdb, bool directoryForIndexes) {
+        BSONObjBuilder getParameterResp;
+        getParameterResp.append("storageGlobalParams.directoryperdb", directoryperdb);
+        getParameterResp.append("wiredTigerDirectoryForIndexes", directoryForIndexes);
+        getParameterResp.append("ok", 1);
+
+        // MockNetwork converts commands from BSON format to a MatchExpression, which doesn't handle
+        // '.' in field names, so we manually write the command as a MatchExpression with the
+        // $getField operator, which is able to handle '.' in field names.
+        BSONObj getParameterReq = fromjson(
+            "{$and:[{ getParameter: { $eq: 1 } },{$expr: { $eq: [{$getField: "
+            "\"\'wiredTigerDirectoryForIndexes\'\"}, 1]}},{$expr: {$eq:[{$getField: "
+            "\"\'storageGlobalParams.directoryperdb\'\"}, 1]}}]}");
+        _mock->expect(getParameterReq,
+                      RemoteCommandResponse({getParameterResp.obj(), Milliseconds()}));
+        _mock->runUntilExpectationsSatisfied();
+    }
+
+    void expectSuccessfulGetParameterCommand() {
+        expectGetParameterCommandWithResponse(false, false);
+    }
+
+    void expectServerStatusCommandWithResponse(std::string storageEngine, bool encryptionEnabled) {
+        _mock->expect(BSON("serverStatus" << 1),
+                      RemoteCommandResponse(
+                          {BSON("storageEngine"
+                                << BSON("name" << storageEngine) << "encryptionAtRest"
+                                << BSON("encryptionEnabled" << encryptionEnabled) << "ok" << 1),
+                           Milliseconds()}));
+        _mock->runUntilExpectationsSatisfied();
+    }
+
+    void expectSuccessfulSyncSourceValidation() {
+        expectSuccessfulHelloCommand();
+        expectSuccessfulGetParameterCommand();
+        expectServerStatusCommandWithResponse("wiredTiger", false);
+    }
+
 private:
     DataReplicatorExternalStateMock* _externalState;
     std::shared_ptr<FileCopyBasedInitialSyncer> _fileCopyBasedInitialSyncer;
@@ -487,14 +544,7 @@ TEST_F(FileCopyBasedInitialSyncerTest,
     executor::NetworkInterfaceMock::InNetworkGuard(getNet())->runReadyNetworkOperations();
 
     // The sync source satisfies requirements for FCBIS.
-    BSONObjBuilder bob;
-    bob.append("isWritablePrimary", true);
-    bob.append("secondary", false);
-    bob.append("maxWireVersion", static_cast<int>(WireVersion::WIRE_VERSION_51));
-    bob.append("ok", 1);
-    _mock->expect(BSON("hello" << 1), RemoteCommandResponse({bob.obj(), Milliseconds()})).times(1);
-
-    _mock->runUntilExpectationsSatisfied();
+    expectSuccessfulSyncSourceValidation();
 
     ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest(),
               Status::OK());
@@ -532,6 +582,23 @@ TEST_F(
     ASSERT_EQUALS(ErrorCodes::InitialSyncOplogSourceMissing, _lastApplied);
 }
 
+TEST_F(FileCopyBasedInitialSyncerTest, FCBISValidatesSyncSourceSuccessfully) {
+    auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
+    auto opCtx = makeOpCtx();
+
+    _syncSourceSelector->setChooseNewSyncSourceResult_forTest(HostAndPort("localhost", 12345));
+
+    ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+
+    // The sync source satisfies requirements for FCBIS.
+    expectSuccessfulSyncSourceValidation();
+    fileCopyBasedInitialSyncer->join();
+
+    ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest(),
+              Status::OK());
+    ASSERT_EQ(fileCopyBasedInitialSyncer->getSyncSource_forTest(), HostAndPort("localhost", 12345));
+}
+
 
 TEST_F(FileCopyBasedInitialSyncerTest, FCBISRetriesIfSyncSourceIsNotPrimaryOrSecondary) {
     auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
@@ -543,14 +610,9 @@ TEST_F(FileCopyBasedInitialSyncerTest, FCBISRetriesIfSyncSourceIsNotPrimaryOrSec
 
     for (std::uint32_t i = 0; i < chooseSyncSourceMaxAttempts; ++i) {
         // The sync source is not a primary or secondary.
-        BSONObjBuilder bob;
-        bob.append("isWritablePrimary", false);
-        bob.append("secondary", false);
-        bob.append("maxWireVersion", static_cast<int>(WireVersion::WIRE_VERSION_51));
-        bob.append("ok", 1);
-        _mock->expect(BSON("hello" << 1), RemoteCommandResponse({bob.obj(), Milliseconds()}))
-            .times(1);
-        _mock->runUntilExpectationsSatisfied();
+        expectHelloCommandWithResponse(false /* isWritablePrimary */,
+                                       false /* secondary */,
+                                       static_cast<int>(WireVersion::WIRE_VERSION_51));
         auto net = getNet();
         advanceClock(net, _options.syncSourceRetryWait);
     }
@@ -563,7 +625,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, FCBISRetriesIfSyncSourceIsNotPrimaryOrSec
                   _lastApplied.getStatus().reason());
 }
 
-TEST_F(FileCopyBasedInitialSyncerTest, FCBISRetriesIfSyncSourceHasInvalidWireVersion_Mock) {
+TEST_F(FileCopyBasedInitialSyncerTest, FCBISRetriesIfSyncSourceHasInvalidWireVersion) {
     auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
     auto opCtx = makeOpCtx();
 
@@ -573,14 +635,9 @@ TEST_F(FileCopyBasedInitialSyncerTest, FCBISRetriesIfSyncSourceHasInvalidWireVer
 
     for (std::uint32_t i = 0; i < chooseSyncSourceMaxAttempts; ++i) {
         // The sync source does not have a valid wire version for FCBIS.
-        BSONObjBuilder bob;
-        bob.append("isWritablePrimary", false);
-        bob.append("secondary", true);
-        bob.append("maxWireVersion", static_cast<int>(WireVersion::WIRE_VERSION_50));
-        bob.append("ok", 1);
-        _mock->expect(BSON("hello" << 1), RemoteCommandResponse({bob.obj(), Milliseconds()}))
-            .times(1);
-        _mock->runUntilExpectationsSatisfied();
+        expectHelloCommandWithResponse(false /* isWritablePrimary */,
+                                       true /* secondary */,
+                                       static_cast<int>(WireVersion::WIRE_VERSION_50));
         auto net = getNet();
         advanceClock(net, _options.syncSourceRetryWait);
     }
@@ -592,6 +649,166 @@ TEST_F(FileCopyBasedInitialSyncerTest, FCBISRetriesIfSyncSourceHasInvalidWireVer
     ASSERT_EQUALS("Sync source is invalid because it does not have a valid wire version.",
                   _lastApplied.getStatus().reason());
 }
+
+
+TEST_F(FileCopyBasedInitialSyncerTest, FCBISRetriesIfSyncSourceHasIncompatibleDirectoryPerDb) {
+    auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
+    auto opCtx = makeOpCtx();
+
+    _syncSourceSelector->setChooseNewSyncSourceResult_forTest(HostAndPort("localhost", 12345));
+
+    ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+
+    for (std::uint32_t i = 0; i < chooseSyncSourceMaxAttempts; ++i) {
+        expectSuccessfulHelloCommand();
+        // The sync source has directoryperdb set to true, while we have it set to false.
+        expectGetParameterCommandWithResponse(true /* directoryperdb */,
+                                              false /* directoryForIndexes */);
+        auto net = getNet();
+        advanceClock(net, _options.syncSourceRetryWait);
+    }
+    fileCopyBasedInitialSyncer->join();
+
+    ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest(),
+              ErrorCodes::InvalidSyncSource);
+    ASSERT_EQUALS(ErrorCodes::InvalidSyncSource, _lastApplied);
+    ASSERT_EQUALS(
+        "Sync source is invalid because its directoryPerDB parameter does not match the local "
+        "value.",
+        _lastApplied.getStatus().reason());
+}
+
+
+TEST_F(FileCopyBasedInitialSyncerTest, FCBISRetriesIfSyncSourceHasIncompatibleDirectoryForIndexes) {
+    auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
+    auto opCtx = makeOpCtx();
+
+    _syncSourceSelector->setChooseNewSyncSourceResult_forTest(HostAndPort("localhost", 12345));
+
+    ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+
+    for (std::uint32_t i = 0; i < chooseSyncSourceMaxAttempts; ++i) {
+        expectSuccessfulHelloCommand();
+        // The sync source has directoryForIndexes set to true, while we have it set to false.
+        expectGetParameterCommandWithResponse(false /* directoryperdb */,
+                                              true /* directoryForIndexes */);
+        auto net = getNet();
+        advanceClock(net, _options.syncSourceRetryWait);
+    }
+    fileCopyBasedInitialSyncer->join();
+
+    ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest(),
+              ErrorCodes::InvalidSyncSource);
+    ASSERT_EQUALS(ErrorCodes::InvalidSyncSource, _lastApplied);
+    ASSERT_EQUALS(
+        "Sync source is invalid because its directoryForIndexes parameter does not match the local "
+        "value.",
+        _lastApplied.getStatus().reason());
+}
+
+TEST_F(FileCopyBasedInitialSyncerTest, FCBISFailsIfNotUsingWiredTiger) {
+    auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
+    auto opCtx = makeOpCtx();
+    storageGlobalParams.engine = "test";
+
+    _syncSourceSelector->setChooseNewSyncSourceResult_forTest(HostAndPort("localhost", 12345));
+
+    ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+
+    fileCopyBasedInitialSyncer->join();
+
+    ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest(),
+              ErrorCodes::IncompatibleServerVersion);
+    ASSERT_EQUALS(ErrorCodes::IncompatibleServerVersion, _lastApplied);
+    ASSERT_EQUALS("File copy based initial sync requires using the WiredTiger storage engine.",
+                  _lastApplied.getStatus().reason());
+    storageGlobalParams.engine = "wiredTiger";
+}
+
+
+TEST_F(FileCopyBasedInitialSyncerTest, FCBISRetriesIfSyncSourceHasIncompatibleStorageEngine) {
+    auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
+    auto opCtx = makeOpCtx();
+
+    _syncSourceSelector->setChooseNewSyncSourceResult_forTest(HostAndPort("localhost", 12345));
+
+    ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+
+    for (std::uint32_t i = 0; i < chooseSyncSourceMaxAttempts; ++i) {
+        expectSuccessfulHelloCommand();
+        expectSuccessfulGetParameterCommand();
+        // The sync source is not using the WiredTiger storage engine.
+        expectServerStatusCommandWithResponse("testStorageEngine", false /* encryptionEnabled */);
+
+        auto net = getNet();
+        advanceClock(net, _options.syncSourceRetryWait);
+    }
+    fileCopyBasedInitialSyncer->join();
+
+    ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest(),
+              ErrorCodes::InvalidSyncSource);
+    ASSERT_EQUALS(ErrorCodes::InvalidSyncSource, _lastApplied);
+    ASSERT_EQUALS(
+        "Both the sync source and the local node must be using the WiredTiger storage engine.",
+        _lastApplied.getStatus().reason());
+}
+
+
+TEST_F(FileCopyBasedInitialSyncerTest,
+       FCBISRetriesIfSyncSourceHasIncompatibleEncryptedStorageEngine) {
+    auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
+    auto opCtx = makeOpCtx();
+
+    _syncSourceSelector->setChooseNewSyncSourceResult_forTest(HostAndPort("localhost", 12345));
+
+    ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+
+    for (std::uint32_t i = 0; i < chooseSyncSourceMaxAttempts; ++i) {
+        expectSuccessfulHelloCommand();
+        expectSuccessfulGetParameterCommand();
+        // The sync source is using the encrypted storage engine, while we are not.
+        expectServerStatusCommandWithResponse("wiredTiger", true /* encryptionEnabled */);
+        auto net = getNet();
+        advanceClock(net, _options.syncSourceRetryWait);
+    }
+    fileCopyBasedInitialSyncer->join();
+
+    ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest(),
+              ErrorCodes::InvalidSyncSource);
+    ASSERT_EQUALS(ErrorCodes::InvalidSyncSource, _lastApplied);
+    ASSERT_EQUALS(
+        "Both the sync source and the local node must be using the encrypted storage engine, or "
+        "neither.",
+        _lastApplied.getStatus().reason());
+}
+
+
+TEST_F(FileCopyBasedInitialSyncerTest, FCBISSucceedsIfBothNodesAreNotUsingEncryptedStorageEngine) {
+    auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
+    auto opCtx = makeOpCtx();
+
+    _syncSourceSelector->setChooseNewSyncSourceResult_forTest(HostAndPort("localhost", 12345));
+
+    ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+
+    expectSuccessfulHelloCommand();
+    expectSuccessfulGetParameterCommand();
+    // The sync source does not have the encryptionAtRest field, which should not cause an error.
+    // The local node is also not using the encrypted storage engine, so FCBIS should succeed.
+    _mock->expect(BSON("serverStatus" << 1),
+                  RemoteCommandResponse({BSON("storageEngine" << BSON("name"
+                                                                      << "wiredTiger")
+                                                              << "ok" << 1),
+                                         Milliseconds()}));
+    _mock->runUntilExpectationsSatisfied();
+
+    fileCopyBasedInitialSyncer->join();
+
+    ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest(),
+              Status::OK());
+    ASSERT_EQ(fileCopyBasedInitialSyncer->getSyncSource_forTest(), HostAndPort("localhost", 12345));
+}
+
 
 // Confirms that FileCopyBasedInitialSyncer keeps retrying initial sync.
 // Make every initial sync attempt fail early by having the sync source selector always return an
