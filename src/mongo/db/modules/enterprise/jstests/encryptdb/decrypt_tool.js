@@ -1,7 +1,7 @@
 /**
  * Tests that mongodecrypt can successfully decrypt an encrypted rollback file.
  *
- * @tags: [uses_transactions, uses_prepare_transaction, requires_fcv_44]
+ * @tags: [uses_transactions, uses_prepare_transaction, requires_fcv_44, uses_pykmip]
  */
 (function() {
 "use strict";
@@ -20,7 +20,7 @@ const kmipServerPid = _startMongoProgram("python", testDir + "kmip_server.py", k
 assert(checkProgram(kmipServerPid));
 // wait for PyKMIP, a KMIP server framework, to start
 assert.soon(function() {
-    return rawMongoProgramOutput().search("KMIP server") !== -1;
+    return rawMongoProgramOutput().search("Starting connection service") !== -1;
 });
 
 const kmipParams = {
@@ -184,5 +184,5 @@ runTest("AES256-CBC", "1");
 if (platformSupportsGCM) {
     runTest("AES256-GCM", "2");
 }
-stopMongoProgramByPid(kmipServerPid);
+killPyKMIPServer(kmipServerPid);
 })();

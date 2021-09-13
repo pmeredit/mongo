@@ -1,5 +1,6 @@
 // This test tests KMIP options and key rotation for encrypted storage engine
 // It assumes that PyKMIP is installed
+// @tags: [uses_pykmip]
 
 (function() {
 "use strict";
@@ -73,7 +74,7 @@ function runTest(cipherMode, extra_opts = {}) {
     // Assert here that PyKMIP is compatible with the default Python version
     assert(checkProgram(kmipServerPid));
     // wait for PyKMIP, a KMIP server framework, to start
-    assert.soon(() => rawMongoProgramOutput().search("KMIP server") !== -1);
+    assert.soon(() => rawMongoProgramOutput().search("Starting connection service") !== -1);
 
     // start mongod with default keyID of "1"
     let md = runEncryptedMongod();
@@ -113,8 +114,7 @@ function runTest(cipherMode, extra_opts = {}) {
                   [],
                   "Ran mongod with invalid KMIP server address");
 
-    const kSIGINT = 2;
-    stopMongoProgramByPid(kmipServerPid, kSIGINT);
+    killPyKMIPServer(kmipServerPid);
 }
 
 runTest("AES256-CBC");
