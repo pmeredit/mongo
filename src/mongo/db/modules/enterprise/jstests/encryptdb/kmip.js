@@ -113,8 +113,7 @@ function runTest(cipherMode, extra_opts = {}) {
                   [],
                   "Ran mongod with invalid KMIP server address");
 
-    const kSIGINT = 2;
-    stopMongoProgramByPid(kmipServerPid, kSIGINT);
+    killPyKMIPServer(kmipServerPid);
 }
 
 runTest("AES256-CBC");

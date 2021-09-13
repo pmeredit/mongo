@@ -14,3 +14,15 @@ const isWindowsSchannel =
     (hostInfo.os.type == "Windows" && /SChannel/.test(buildInfo().openssl.running));
 
 const platformSupportsGCM = !(isOSX || isWindowsSchannel);
+
+function killPyKMIPServer(pid) {
+    if (_isWindows()) {
+        // we use taskkill because we need to kill children
+        waitProgram(_startMongoProgram("taskkill", "/F", "/T", "/PID", pid));
+        // waitProgram to ignore error code
+        waitProgram(pid);
+    } else {
+        let kSIGINT = 2;
+        stopMongoProgramByPid(pid, kSIGINT);
+    }
+}
