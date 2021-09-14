@@ -43,11 +43,13 @@ public:
 
 private:
     friend class LDAPConnectionFactoryServerStatus;
+    friend class LDAPOperationsServerStatusSection;
 
     std::shared_ptr<LDAPConnectionReaper> _reaper;
     std::shared_ptr<LDAPTypeFactory> _typeFactory;
     std::shared_ptr<executor::ConnectionPool> _pool;
-    std::unique_ptr<ServerStatusSection> _serverStatusSection;
+    std::unique_ptr<ServerStatusSection> _connectionServerStatusSection;
+    std::unique_ptr<ServerStatusSection> _operationsServerStatusSection;
     std::unique_ptr<LDAPDNSResolverCache> _dnsCache;
 };
 

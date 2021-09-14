@@ -729,12 +729,35 @@ BSONObj LDAPConnectionFactoryServerStatus::generateSection(OperationContext* opC
     return out.obj();
 }
 
+class LDAPOperationsServerStatusSection : public ServerStatusSection {
+public:
+    LDAPOperationsServerStatusSection(LDAPConnectionFactory* factory)
+        : ServerStatusSection("ldapOperations") {}
+
+    bool includeByDefault() const override {
+        const auto ls = LDAPCumulativeOperationStats::get();
+        return nullptr != ls && ls->hasData();
+    }
+
+    BSONObj generateSection(OperationContext* opCtx,
+                            const BSONElement& configElement) const override {
+        const auto ls = LDAPCumulativeOperationStats::get();
+        if (nullptr == ls) {
+            return BSONObj();
+        }
+        BSONObjBuilder builder;
+        ls->report(&builder);
+        return builder.obj();
+    }
+};
+
 LDAPConnectionFactory::LDAPConnectionFactory(Milliseconds poolSetupTimeout)
     : _reaper(std::make_shared<LDAPConnectionReaper>()),
       _typeFactory(std::make_shared<LDAPTypeFactory>(_reaper)),
       _pool(std::make_shared<executor::ConnectionPool>(
           _typeFactory, "LDAP", makePoolOptions(poolSetupTimeout))),
-      _serverStatusSection(std::make_unique<LDAPConnectionFactoryServerStatus>(this)),
+      _connectionServerStatusSection(std::make_unique<LDAPConnectionFactoryServerStatus>(this)),
+      _operationsServerStatusSection(std::make_unique<LDAPOperationsServerStatusSection>(this)),
       _dnsCache(std::make_unique<LDAPDNSResolverCache>()) {}
 
 StatusWith<std::unique_ptr<LDAPConnection>> LDAPConnectionFactory::create(

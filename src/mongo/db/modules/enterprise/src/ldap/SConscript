@@ -152,6 +152,7 @@ env.Library(
     source=ldap_connection_sources,
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/auth/user_acquisition_stats',
         'ldap_query',
     ],
     LIBDEPS_PRIVATE=[

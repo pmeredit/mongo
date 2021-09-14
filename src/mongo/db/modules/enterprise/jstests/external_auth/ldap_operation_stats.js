@@ -52,13 +52,17 @@ function runTest(conn, mode) {
     let expectedCommandUserOneAuth = {
         LDAPOperations: {
             LDAPNumberOfReferrals: 0,
-            bindStats: {numOp: 1, opDuration: waitTimeRegex},
-            searchStats: {numOp: 0, opDuration: 0},
-            unbindStats: {numOp: 0, opDuration: 0}
+            bindStats: {numOp: 1, opDurationMicros: waitTimeRegex},
+            searchStats: {numOp: 0, opDurationMicros: 0},
+            unbindStats: {numOp: 0, opDurationMicros: 0}
         },
     };
     assert(adminDB.auth('admin', 'pwd'));
     hasCommandLogEntry(adminDB, logID, expectedSaslStartCommandLog, expectedCommandUserOneAuth, 1);
+    let ldapOperations = adminDB.serverStatus().ldapOperations;
+    print("Cumulative LDAP operations:" + JSON.stringify(ldapOperations));
+    assert.eq(1, ldapOperations.bindStats.numOp);
+    assert.gt(ldapOperations.bindStats.opDurationMicros, 0);
     adminDB.logout();
 
     externalDB.auth(userTwoAuthOptions);
@@ -66,13 +70,18 @@ function runTest(conn, mode) {
     let expectedCommandUserTwoAuth = {
         LDAPOperations: {
             LDAPNumberOfReferrals: 0,
-            bindStats: {numOp: 1, opDuration: waitTimeRegex},
-            searchStats: {numOp: 1, opDuration: waitTimeRegex},
-            unbindStats: {numOp: 0, opDuration: 0}
+            bindStats: {numOp: 1, opDurationMicros: waitTimeRegex},
+            searchStats: {numOp: 1, opDurationMicros: waitTimeRegex},
+            unbindStats: {numOp: 0, opDurationMicros: 0}
         },
     };
     assert(adminDB.auth('admin', 'pwd'));
     hasCommandLogEntry(adminDB, logID, expectedSaslStartCommandLog, expectedCommandUserTwoAuth, 1);
+    ldapOperations = adminDB.serverStatus().ldapOperations;
+    print("Cumulative LDAP operations:" + JSON.stringify(ldapOperations));
+    assert.eq(2, ldapOperations.bindStats.numOp);
+    assert.eq(1, ldapOperations.searchStats.numOp);
+    assert.gt(ldapOperations.searchStats.opDurationMicros, 0);
     adminDB.logout();
 }
 // Standalone
