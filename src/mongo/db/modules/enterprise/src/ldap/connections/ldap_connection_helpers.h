@@ -438,8 +438,9 @@ private:
                     TickSource* tickSource,
                     UserAcquisitionStats* userAcquisitionStats) {
         LOGV2_LDAPLOG(4615666, 3, "Performing LDAP query: {query}", "query"_attr = query);
-        UserAcquisitionStatsHandle userAcquisitionStatsHandle =
-            UserAcquisitionStatsHandle(userAcquisitionStats, tickSource, kSearch);
+        UserAcquisitionStatsHandle userAcquisitionStatsHandle(
+            userAcquisitionStats, tickSource, kSearch);
+
         // Convert the attribute vector to a mutable null terminated array of char* strings
         // libldap wants a non-const copy, so prevent it from breaking our configuration data
         size_t requestedAttributesSize = query.getAttributes().size();

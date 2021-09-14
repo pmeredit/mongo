@@ -469,11 +469,13 @@ Status WrappedConnection::bindAsUser(const LDAPBindOptions& options,
         _conn->getStatus() == ConnectionPool::kConnectionStateUnknown) {
         _conn->indicateUsed();
     }
-    auto status =
-        _runFuncWithTimeout<void>(
-            options.toCleanString(),
-            [&] { return _getConn()->bindAsUser(options, tickSource, userAcquisitionStats); })
-            .getNoThrow();
+
+    UserAcquisitionStatsHandle userAcquisitionStatsHandle(userAcquisitionStats, tickSource, kBind);
+
+    auto status = _runFuncWithTimeout<void>(
+                      options.toCleanString(),
+                      [&] { return _getConn()->bindAsUser(options, tickSource, nullptr); })
+                      .getNoThrow();
     if (!status.isOK()) {
         _conn->indicateFailure(status);
     } else {
@@ -489,8 +491,10 @@ boost::optional<std::string> WrappedConnection::currentBoundUser() const {
 Status WrappedConnection::checkLiveness(TickSource* tickSource,
                                         UserAcquisitionStats* userAcquisitionStats) {
     _conn->indicateUsed();
+
     UserAcquisitionStatsHandle userAcquisitionStatsHandle(
         userAcquisitionStats, tickSource, kSearch);
+
     auto livenessStatus =
         _runFuncWithTimeout<void>("liveness check",
                                   [&] { return _getConn()->checkLiveness(tickSource, nullptr); })
@@ -506,12 +510,16 @@ Status WrappedConnection::checkLiveness(TickSource* tickSource,
 
 StatusWith<LDAPEntityCollection> WrappedConnection::query(
     LDAPQuery query, TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) {
+
     _conn->indicateUsed();
-    auto swResults =
-        _runFuncWithTimeout<LDAPEntityCollection>(
-            query.toString(),
-            [&] { return _getConn()->query(std::move(query), tickSource, userAcquisitionStats); })
-            .getNoThrow();
+
+    UserAcquisitionStatsHandle userAcquisitionStatsHandle(
+        userAcquisitionStats, tickSource, kSearch);
+
+    auto swResults = _runFuncWithTimeout<LDAPEntityCollection>(
+                         query.toString(),
+                         [&] { return _getConn()->query(std::move(query), tickSource, nullptr); })
+                         .getNoThrow();
     if (!swResults.isOK()) {
         _conn->indicateFailure(swResults.getStatus());
     } else {
