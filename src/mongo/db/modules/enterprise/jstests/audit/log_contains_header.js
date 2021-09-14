@@ -3,7 +3,7 @@
  * when compression is enabled
  */
 
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit_encryption.js');
 load('jstests/ssl/libs/ssl_helpers.js');
 
 (function() {
@@ -25,38 +25,6 @@ if (determineSSLProvider() === "windows") {
 
 run("chmod", "600", AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE);
 
-/**
- * Tries parsing a header line and checking it contains all properties,
- * will return true if successful
- */
-function isValidHeader(json) {
-    try {
-        const fileheader = JSON.parse(json);
-        const properties = [
-            "ts",
-            "version",
-            "compressionMode",
-            "keyStoreIdentifier",
-            "encryptedKey",
-            "auditRecordType"
-        ];
-
-        for (let prop of properties) {
-            if (!fileheader.hasOwnProperty(prop)) {
-                return false;
-            }
-        }
-
-        // Verify that the audit file header contains no unknown properties.
-        if (Object.keys(fileheader).filter((k) => !properties.includes(k)).length) {
-            return false;
-        }
-        return true;
-    } catch (e) {
-        return false;
-    }
-}
-
 print("Testing audit log contains header when compression is enabled");
 function testAuditLogHeader(fixture, isMongos, enableCompression) {
     let opts = {
@@ -75,7 +43,7 @@ function testAuditLogHeader(fixture, isMongos, enableCompression) {
     assert.soon(() => {
         audit.resetAuditLine();
         const fileHeader = audit.getNextEntryNoParsing();
-        return isValidHeader(fileHeader);
+        return isValidEncryptedAuditLogHeader(fileHeader);
     }, "Audit log did not contain a valid header line on the top");
 
     fixture.stopProcess();

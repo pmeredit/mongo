@@ -63,6 +63,10 @@ public:
         return _path;
     }
 
+    const std::string& getHeaderMetadataPath() const {
+        return _headerMetadataPath;
+    }
+
     bool getAuditAuthorizationSuccess() const {
         return getConfig()->auditAuthorizationSuccess.load();
     }
@@ -159,6 +163,9 @@ private:
 
     // Path to audit log file, or :console if output to the terminal is desired
     std::string _path;
+
+    // Path to header metadata log file, empty if disabled
+    std::string _headerMetadataPath;
 
     // Format of the output, either text or BSON
     AuditFormat _format;

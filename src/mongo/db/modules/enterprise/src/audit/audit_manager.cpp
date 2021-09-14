@@ -230,6 +230,20 @@ void AuditManager::initialize(const moe::Environment& params) {
         _compressionEnabled = true;
     }
 
+    if (!gAuditEncryptionHeaderMetadataFile.empty()) {
+        uassert(ErrorCodes::BadValue,
+                "setParameter.auditEncryptionHeaderMetadataFile is only allowed if audit log "
+                "encryption is enabled!",
+                _encryptionEnabled);
+        uassert(ErrorCodes::BadValue,
+                "setParameter.auditEncryptionHeaderMetadataFile is only allowed if "
+                "auditLog.destination is 'file'",
+                isFileDestination());
+        _headerMetadataPath =
+            boost::filesystem::absolute(gAuditEncryptionHeaderMetadataFile, serverGlobalParams.cwd)
+                .string();
+    }
+
     _initializeAuditLog(params);
 }
 

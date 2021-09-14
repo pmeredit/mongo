@@ -45,8 +45,9 @@ PlainAuditFrame encodeForEncrypt(const AuditEvent& event) {
 template <typename Encoder>
 class RotatableAuditFileAppender : public logger::Appender<AuditEvent> {
 public:
-    RotatableAuditFileAppender(std::unique_ptr<logger::RotatableFileWriter> writer)
-        : _writer(std::move(writer)) {}
+    RotatableAuditFileAppender(std::unique_ptr<logger::RotatableFileWriter> writer,
+                               std::unique_ptr<logger::RotatableFileWriter> headerWriter)
+        : _writer(std::move(writer)), _headerWriter(std::move(headerWriter)) {}
 
     Status rotate(bool renameFiles,
                   StringData suffix,
@@ -71,26 +72,48 @@ public:
             auto ac = am->getAuditEncryptionCompressionManager();
             invariant(ac);
 
+            // Make sure we lock before encodeFileHeader
             logger::RotatableFileWriter::Use useWriter(_writer.get());
             BSONObj encodedHeader = ac->encodeFileHeader();
 
-            Status status = Status::OK();
-            if (am->getFormat() == AuditFormat::AuditFormatJsonFile) {
-                status =
-                    writeStream(useWriter, encodedHeader.jsonString(), true /* appendNewline */);
+            std::string toWrite;
+            bool isJson = am->getFormat() == AuditFormat::AuditFormatJsonFile;
+            if (isJson) {
+                toWrite = encodedHeader.jsonString();
             } else {
-                status = writeStream(useWriter,
-                                     StringData(encodedHeader.objdata(), encodedHeader.objsize()));
+                toWrite = std::string(encodedHeader.objdata(), encodedHeader.objsize());
             }
 
-            if (!status.isOK()) {
+            if (_headerWriter != nullptr) {
+                // Duplicate the header line
+                logger::RotatableFileWriter::Use useHeaderWriter(_headerWriter.get());
+                result = writeStream(useHeaderWriter, toWrite, isJson /* appendNewline */);
+
+                if (!result.isOK()) {
+                    try {
+                        LOGV2_WARNING(5991700,
+                                      "Failure writing header to audit header log",
+                                      "error"_attr = result);
+                    } catch (...) {
+                        // If neither audit subsystem can write,
+                        // then just eat the standard logging exception,
+                        // and return audit's bad status.
+                        return result;
+                    }
+                }
+            }
+
+            result = writeStream(useWriter, toWrite, isJson /* appendNewline */);
+
+            if (!result.isOK()) {
                 try {
                     LOGV2_WARNING(
-                        242451, "Failure writing header to audit log", "error"_attr = status);
+                        242451, "Failure writing header to audit log", "error"_attr = result);
                 } catch (...) {
                     // If neither audit subsystem can write,
                     // then just eat the standard logging exception,
                     // and return audit's bad status.
+                    return result;
                 }
             }
         }
@@ -164,7 +187,7 @@ public:
     }
 
 protected:
-    std::unique_ptr<logger::RotatableFileWriter> _writer;
+    std::unique_ptr<logger::RotatableFileWriter> _writer, _headerWriter;
 };
 
 class AuditEventJsonEncoder {
@@ -234,7 +257,7 @@ void AuditManager::_initializeAuditLog(const moe::Environment& params) {
 #endif  // ndef _WIN32
         case AuditFormat::AuditFormatJsonFile:
         case AuditFormat::AuditFormatBsonFile: {
-            auto auditLogPath = getPath();
+            const auto& auditLogPath = getPath();
 
             try {
                 const auto auditDirectoryPath = fs::path(auditLogPath).parent_path();
@@ -270,11 +293,21 @@ void AuditManager::_initializeAuditLog(const moe::Environment& params) {
             uassertStatusOK(logger::RotatableFileWriter::Use(writer.get())
                                 .setFileName(auditLogPath, true /* append */));
 
+            std::unique_ptr<logger::RotatableFileWriter> headerWriter = nullptr;
+            const auto& headerPath = getHeaderMetadataPath();
+            if (!headerPath.empty()) {
+                headerWriter = std::make_unique<logger::RotatableFileWriter>();
+                uassertStatusOK(logger::RotatableFileWriter::Use(headerWriter.get())
+                                    .setFileName(headerPath, true /* append */));
+            }
+
             if (format == AuditFormat::AuditFormatJsonFile) {
-                auditLogAppender.reset(new JSONAppender(std::move(writer)));
+                auditLogAppender.reset(
+                    new JSONAppender(std::move(writer), std::move(headerWriter)));
             } else {
                 invariant(format == AuditFormat::AuditFormatBsonFile);
-                auditLogAppender.reset(new BSONAppender(std::move(writer)));
+                auditLogAppender.reset(
+                    new BSONAppender(std::move(writer), std::move(headerWriter)));
             }
 
             uassertStatusOK(auditLogAppender->rotate(

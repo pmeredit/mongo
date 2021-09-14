@@ -40,6 +40,12 @@ server_parameters:
         cpp_varname: gAuditConfigPollingFrequencySecs
         cpp_vartype: int
         validator: { gt: 0 }
+    auditEncryptionHeaderMetadataFile:
+        description: 'File name to use for logging audit headers in addition to logging them in the audit log file'
+        set_at: startup
+        default: ""
+        cpp_varname: 'gAuditEncryptionHeaderMetadataFile'
+        cpp_vartype: 'std::string'
 
 structs:
     AuditConfigDocument:
