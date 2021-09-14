@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <memory>
+
 #include "mongo/client/dbclient_connection.h"
 #include "mongo/db/repl/data_replicator_external_state.h"
 #include "mongo/db/repl/initial_syncer_interface.h"
@@ -13,6 +15,7 @@
 #include "mongo/executor/scoped_task_executor.h"
 #include "mongo/executor/task_executor.h"
 #include "mongo/util/concurrency/thread_pool.h"
+#include "mongo/util/future_util.h"
 
 namespace mongo {
 namespace repl {
@@ -21,7 +24,9 @@ namespace repl {
  * The FileCopyBasedInitialSyncer performs initial sync through a file-copy based method rather than
  * a logical initial sync method.
  */
-class FileCopyBasedInitialSyncer final : public InitialSyncerInterface {
+class FileCopyBasedInitialSyncer final
+    : public std::enable_shared_from_this<FileCopyBasedInitialSyncer>,
+      public InitialSyncerInterface {
     FileCopyBasedInitialSyncer(const FileCopyBasedInitialSyncer&) = delete;
     FileCopyBasedInitialSyncer& operator=(const FileCopyBasedInitialSyncer&) = delete;
 
@@ -78,6 +83,14 @@ public:
      */
     HostAndPort getSyncSource_forTest();
 
+    /**
+     * Do nothing in the syncing files phase.
+     * For testing only.
+     */
+    void skipSyncingFilesPhase_ForTest() {
+        _syncingFilesState.skipSyncingFilesPhaseForTest = true;
+    }
+
 private:
     /**
      * Open connection to the sync source for BackupFileCloners.
@@ -124,6 +137,40 @@ private:
      * Invokes completion callback and transitions state to State::kComplete.
      */
     void _finishCallback(StatusWith<OpTimeAndWallTime> lastApplied);
+
+    /**
+     * Starts syncing files from the sync source.
+     */
+    ExecutorFuture<void> _startSyncingFiles(std::shared_ptr<executor::TaskExecutor> executor,
+                                            const CancellationToken& token);
+
+    /**
+     * Opens the right cursor on the sync source and gets the files to be cloned.
+     */
+    ExecutorFuture<void> _cloneFromSyncSourceCursor();
+
+    /**
+     * Opens a backup cursor on the sync source and gets the files to be cloned.
+     */
+    ExecutorFuture<void> _openBackupCursor(std::shared_ptr<StringSet> returnedFiles);
+
+    /**
+     * Extends the backup cursor on the sync source and gets the files to be cloned.
+     */
+    ExecutorFuture<void> _extendBackupCursor(std::shared_ptr<StringSet> returnedFiles);
+
+    /**
+     * Extracts the 'fieldName' from the BSON obj, and raises exception if it doesn't exist.
+     */
+    BSONElement _getBSONField(const BSONObj& obj,
+                              const std::string& fieldName,
+                              const std::string& objName);
+
+    /**
+     * Gets the 'lastAppliedOpTime' from the sync source node by sending 'replSetGetStatus' command.
+     */
+    ExecutorFuture<mongo::Timestamp> _getLastAppliedOpTimeFromSyncSource(
+        std::shared_ptr<executor::TaskExecutor> executor, const CancellationToken& token);
 
     //
     // All member variables are labeled with one of the following codes indicating the
@@ -187,6 +234,51 @@ private:
 
     // ExecutorFuture that is resolved when the initial sync has completed with success or failure.
     boost::optional<ExecutorFuture<void>> _startInitialSyncAttemptFuture;
+
+    // Holds the state for _startSyncingFiles async job.
+    struct SyncingFilesState : public std::enable_shared_from_this<SyncingFilesState> {
+        SyncingFilesState() = default;
+
+        // Keep issuing 'getMore' command to keep the backupCursor alive.
+        void keepBackupCursorAlive();
+
+        // Kills the backupCursor if it exists, and cancels backupCursorKeepAliveCancellation.
+        // Safe to be called multiple times.
+        void killBackupCursor();
+
+        void reset();
+
+        // Extended cursor sends all log files created since the backupCursor's
+        // checkpointTimestamp till the extendTo timestamp, so we need to get the
+        // difference between the files returned by the consecutive backupCursorExtend to
+        // clone only the new log files added since the previous backupCursorExtend.
+        StringSet getNewFilesToClone(const std::set<std::string>& backupCursorExtendFiles,
+                                     WithLock lk);
+
+        // The backupCursor used for initialSync, we should always have only one backupCursor opened
+        // on the syncSrc.
+        boost::optional<mongo::UUID> backupId;
+        CursorId backupCursorId;
+        StringData backupCursorCollection;
+        CancellationSource backupCursorKeepAliveCancellation;
+
+        std::shared_ptr<HostAndPort> syncSourcePtr;
+        // The last timestamp that the syncing node has caught up to.
+        mongo::Timestamp lastSyncedOpTime;
+        // The last appliedOp timestamp that the syncing node knows about the sync source node.
+        mongo::Timestamp lastAppliedOpTimeOnSyncSrc;
+        // Holds the files returned by extending the backupCursor.
+        std::set<std::string> extendedCursorFiles;
+        int fileBasedInitialSyncCycle = 1;
+
+        // The syncing file executor.
+        std::shared_ptr<executor::TaskExecutor> executor;
+
+        // The syncing file cancellation token.
+        CancellationToken token = CancellationToken::uncancelable();
+
+        bool skipSyncingFilesPhaseForTest = false;
+    } _syncingFilesState;
 };
 
 }  // namespace repl

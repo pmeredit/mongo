@@ -259,7 +259,7 @@ protected:
         };
 
         try {
-            _fileCopyBasedInitialSyncer = std::make_unique<FileCopyBasedInitialSyncer>(
+            _fileCopyBasedInitialSyncer = std::make_shared<FileCopyBasedInitialSyncer>(
                 options,
                 std::move(dataReplicatorExternalState),
                 _dbWorkThreadPool.get(),
@@ -272,6 +272,8 @@ protected:
                 return std::unique_ptr<DBClientConnection>(
                     new MockDBClientConnection(_mockServer.get()));
             });
+            // TODO (SERVER-59728): Set this flag accordingly.
+            _fileCopyBasedInitialSyncer->skipSyncingFilesPhase_ForTest();
         } catch (...) {
             ASSERT_OK(exceptionToStatus());
         }
@@ -315,7 +317,7 @@ protected:
 
 private:
     DataReplicatorExternalStateMock* _externalState;
-    std::unique_ptr<FileCopyBasedInitialSyncer> _fileCopyBasedInitialSyncer;
+    std::shared_ptr<FileCopyBasedInitialSyncer> _fileCopyBasedInitialSyncer;
     ThreadClient _threadClient;
     bool _executorThreadShutdownComplete = false;
 };
@@ -418,6 +420,18 @@ TEST_F(FileCopyBasedInitialSyncerTest, StartupReturnsShutdownInProgressIfExecuto
     // Cannot startup file copy based initial syncer again since it's in the Complete state.
     ASSERT_EQUALS(ErrorCodes::ShutdownInProgress,
                   fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+}
+
+TEST_F(FileCopyBasedInitialSyncerTest, CallbackIsCalledIfExecutorIsShutdownAfterStartup) {
+    auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
+    auto opCtx = makeOpCtx();
+    ASSERT_FALSE(fileCopyBasedInitialSyncer->isActive());
+    ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+    ASSERT_TRUE(fileCopyBasedInitialSyncer->isActive());
+    getExecutor().shutdown();
+    ASSERT_OK(fileCopyBasedInitialSyncer->shutdown());
+    fileCopyBasedInitialSyncer->join();
+    ASSERT_EQUALS(ErrorCodes::ShutdownInProgress, _lastApplied);
 }
 
 TEST_F(FileCopyBasedInitialSyncerTest, ShutdownTransitionsStateToCompleteIfCalledBeforeStartup) {

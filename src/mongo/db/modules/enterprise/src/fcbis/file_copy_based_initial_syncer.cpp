@@ -4,6 +4,9 @@
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kReplicationInitialSync
 
 #include "file_copy_based_initial_syncer.h"
+
+#include "mongo/bson/bsonobj.h"
+#include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/db/repl/initial_syncer_factory.h"
 #include "mongo/db/repl/repl_server_parameters_gen.h"
 #include "mongo/db/storage/encryption_hooks.h"
@@ -16,6 +19,9 @@
 
 namespace mongo {
 namespace repl {
+
+constexpr int kFileCopyBasedInitialSyncMaxCursorFetchAttempts = 10;
+constexpr int kFileCopyBasedInitialSyncKeepBackupCursorAliveIntervalInMin = 5;
 
 FileCopyBasedInitialSyncer::FileCopyBasedInitialSyncer(
     InitialSyncerInterface::Options opts,
@@ -104,12 +110,15 @@ ExecutorFuture<OpTimeAndWallTime> FileCopyBasedInitialSyncer::_startInitialSyncA
 
     _lastApplied = {OpTime(), Date_t()};
 
-    return AsyncTry([this, executor, opCtx, token] {
+    return AsyncTry([this, self = shared_from_this(), executor, opCtx, token] {
                stdx::lock_guard<Latch> lock(_mutex);
                return _selectAndValidateSyncSource(lock, executor, opCtx, token)
-                   .then([this](HostAndPort syncSource) { return _lastApplied; });
+                   .then([this, self = shared_from_this(), executor, token](HostAndPort) {
+                       return _startSyncingFiles(executor, token);
+                   })
+                   .then([this, self = shared_from_this()] { return _lastApplied; });
            })
-        .until([this](StatusWith<OpTimeAndWallTime> result) mutable {
+        .until([this, self = shared_from_this()](StatusWith<OpTimeAndWallTime> result) mutable {
             stdx::lock_guard<Latch> lock(_mutex);
             if (!result.isOK()) {
                 LOGV2_ERROR(5781900,
@@ -155,7 +164,7 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
     _chooseSyncSourceAttempt = 0;
     _chooseSyncSourceMaxAttempts = static_cast<std::uint32_t>(numInitialSyncConnectAttempts.load());
 
-    return AsyncTry([this, executor, opCtx, token] {
+    return AsyncTry([this, self = shared_from_this(), executor, opCtx, token] {
                stdx::lock_guard<Latch> lock(_mutex);
                auto syncSource = _chooseSyncSource(lock);
                if (!syncSource.isOK()) {
@@ -175,7 +184,7 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
                                                             rpc::makeEmptyMetadata(),
                                                             nullptr);
                return executor->scheduleRemoteCommand(std::move(request), token)
-                   .then([this, syncSource, kDenylistDuration](
+                   .then([this, self = shared_from_this(), syncSource, kDenylistDuration](
                              const executor::TaskExecutor::ResponseStatus& response)
                              -> StatusWith<HostAndPort> {
                        uassertStatusOK(response.status);
@@ -227,6 +236,420 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
         .on(executor, token);
 }
 
+void FileCopyBasedInitialSyncer::SyncingFilesState::keepBackupCursorAlive() {
+    backupCursorKeepAliveCancellation = CancellationSource(token);
+    LOGV2_DEBUG(
+        5782303,
+        2,
+        "Starting to periodically send 'getMore' requests to keep the backup cursor alive.");
+
+    return AsyncTry([this, self = shared_from_this()] {
+               if (backupId) {
+                   executor::RemoteCommandRequest request(
+                       *syncSourcePtr,
+                       NamespaceString::kAdminDb.toString(),
+                       std::move(BSON("getMore" << backupCursorId << "collection"
+                                                << backupCursorCollection)),
+                       rpc::makeEmptyMetadata(),
+                       nullptr);
+                   // We're not expecting a response, set to fire and forget
+                   request.fireAndForgetMode =
+                       executor::RemoteCommandRequest::FireAndForgetMode::kOn;
+                   return executor
+                       ->scheduleRemoteCommand(std::move(request),
+                                               backupCursorKeepAliveCancellation.token())
+                       .getAsync([](auto&&) {});  // Ignore the result Future;
+               }
+           })
+        .until([](Status) { return false; })
+        .withDelayBetweenIterations(
+            Minutes(kFileCopyBasedInitialSyncKeepBackupCursorAliveIntervalInMin))
+        .on(executor, backupCursorKeepAliveCancellation.token())
+        .getAsync([](auto&&) {});  // Ignore the result Future;
+}
+
+void FileCopyBasedInitialSyncer::SyncingFilesState::killBackupCursor() {
+    if (backupId) {
+        LOGV2_DEBUG(
+            5782305, 2, "Cancelling the 'getMore' requests that keeps the backCursor alive.");
+
+        backupCursorKeepAliveCancellation.cancel();
+
+        LOGV2_DEBUG(5782306, 2, "Trying to kill the backup cursor");
+
+        const auto cmdObj = BSON("killCursors" << backupCursorCollection << "cursors"
+                                               << BSON_ARRAY(backupCursorId));
+        executor::RemoteCommandRequest request(*syncSourcePtr,
+                                               NamespaceString::kAdminDb.toString(),
+                                               std::move(cmdObj),
+                                               rpc::makeEmptyMetadata(),
+                                               nullptr);
+
+        // We're not expecting a response, set to fire and forget
+        request.fireAndForgetMode = executor::RemoteCommandRequest::FireAndForgetMode::kOn;
+        return executor
+            ->scheduleRemoteCommand(std::move(request), CancellationToken::uncancelable())
+            .getAsync([](auto&&) {});  // Ignore the result Future;
+    }
+}
+
+StringSet FileCopyBasedInitialSyncer::SyncingFilesState::getNewFilesToClone(
+    const std::set<std::string>& backupCursorExtendFiles, WithLock lk) {
+    StringSet newFilesToClone;
+    std::set_difference(backupCursorExtendFiles.begin(),
+                        backupCursorExtendFiles.end(),
+                        extendedCursorFiles.begin(),
+                        extendedCursorFiles.end(),
+                        std::inserter(newFilesToClone, newFilesToClone.begin()));
+    extendedCursorFiles.insert(newFilesToClone.begin(), newFilesToClone.end());
+    return newFilesToClone;
+}
+
+void FileCopyBasedInitialSyncer::SyncingFilesState::reset() {
+    killBackupCursor();
+    syncSourcePtr.reset();
+    backupCursorKeepAliveCancellation = {};
+    backupId = boost::none;
+    backupCursorId = 0;
+    backupCursorCollection = {};
+    lastSyncedOpTime = {};
+    extendedCursorFiles.clear();
+    fileBasedInitialSyncCycle = 1;
+    executor.reset();
+    token = CancellationToken::uncancelable();
+}
+
+BSONElement FileCopyBasedInitialSyncer::_getBSONField(const BSONObj& obj,
+                                                      const std::string& fieldName,
+                                                      const std::string& objName) {
+    auto result = obj.getField(fieldName);
+    uassert(ErrorCodes::NoSuchKey,
+            str::stream() << "Missing '" << fieldName << "' field for " << objName << ".",
+            !result.eoo());
+    return result;
+}
+
+ExecutorFuture<mongo::Timestamp> FileCopyBasedInitialSyncer::_getLastAppliedOpTimeFromSyncSource(
+    std::shared_ptr<executor::TaskExecutor> executor, const CancellationToken& token) {
+    stdx::lock_guard<Latch> lock(_mutex);
+    executor::RemoteCommandRequest request(_syncSource,
+                                           NamespaceString::kAdminDb.toString(),
+                                           std::move(BSON("replSetGetStatus" << 1)),
+                                           rpc::makeEmptyMetadata(),
+                                           nullptr);
+    return executor->scheduleRemoteCommand(std::move(request), token)
+        .then([this, self = shared_from_this()](const auto& response) {
+            uassertStatusOK(response.status);
+            auto& reply = response.data;
+            uassertStatusOK(getStatusFromCommandResult(reply));
+            // Parsing replSetGetStatus's reply to get lastAppliedOpTime.
+            // ReplSetGetStatus's reply example:
+            // {
+            //     ...
+            //     "optimes" : {
+            //         ...
+            //         "appliedOpTime" : {
+            //             "ts" : Timestamp(1583385878, 1),
+            //             "t" : NumberLong(3)
+            //         },
+            //         ...
+            //     }
+            //     ...
+            // }
+            auto lastAppliedOpTime = _getBSONField(
+                _getBSONField(_getBSONField(reply, "optimes", "replSetGetStatus's reply").Obj(),
+                              "appliedOpTime",
+                              "replSetGetStatus's reply.optimes")
+                    .Obj(),
+                "ts",
+                "replSetGetStatus's reply.optimes.appliedOpTime");
+            return lastAppliedOpTime.timestamp();
+        });
+}
+
+ExecutorFuture<void> FileCopyBasedInitialSyncer::_openBackupCursor(
+    std::shared_ptr<StringSet> returnedFiles) {
+    LOGV2_DEBUG(
+        5782307, 2, "Trying to open backup cursor on sync source.", "SyncSrc"_attr = _syncSource);
+    const auto cmdObj = [this, self = shared_from_this()] {
+        AggregateCommandRequest aggRequest(
+            NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
+            {BSON("$backupCursor" << BSONObj())});
+        // We must set a writeConcern on internal commands.
+        aggRequest.setWriteConcern(WriteConcernOptions());
+        return aggRequest.toBSON(BSONObj());
+    }();
+
+    auto fetchStatus = std::make_shared<boost::optional<Status>>();
+    auto fetcherCallback = [this, self = shared_from_this(), fetchStatus, returnedFiles](
+                               const Fetcher::QueryResponseStatus& dataStatus,
+                               Fetcher::NextAction* nextAction,
+                               BSONObjBuilder* getMoreBob) {
+        // Throw out any accumulated results on error
+        if (!dataStatus.isOK()) {
+            *fetchStatus = dataStatus.getStatus();
+            returnedFiles->clear();
+            return;
+        }
+
+        if (_syncingFilesState.token.isCanceled()) {
+            *fetchStatus = Status(ErrorCodes::CallbackCanceled,
+                                  "Syncing files during file copy based initial sync interrupted");
+            returnedFiles->clear();
+            return;
+        }
+
+        const auto& data = dataStatus.getValue();
+        for (const BSONObj& doc : data.documents) {
+            if (!_syncingFilesState.backupId) {
+                stdx::lock_guard<Latch> lock(_mutex);
+                // First batch must contain the metadata.
+                // Parsing the metadata to get backupId and checkpointTimestamp for the
+                // the backupCursor.
+                const auto& metaData =
+                    _getBSONField(doc, "metadata", "backupCursor's first batch").Obj();
+                _syncingFilesState.backupId = UUID(uassertStatusOK(UUID::parse(
+                    _getBSONField(metaData, "backupId", "backupCursor's first batch.metadata"))));
+                _syncingFilesState.lastSyncedOpTime =
+                    _getBSONField(
+                        metaData, "checkpointTimestamp", "backupCursor's first batch.metadata")
+                        .timestamp();
+                _syncingFilesState.backupCursorId = data.cursorId;
+                _syncingFilesState.backupCursorCollection = data.nss.coll();
+                LOGV2_DEBUG(5782308,
+                            2,
+                            "Opened backup cursor on sync source.",
+                            "SyncSrc"_attr = _syncSource,
+                            "backupId"_attr = _syncingFilesState.backupId.get(),
+                            "lastSyncedOpTime"_attr = _syncingFilesState.lastSyncedOpTime,
+                            "backupCursorId"_attr = _syncingFilesState.backupCursorId,
+                            "backupCursorCollection"_attr =
+                                _syncingFilesState.backupCursorCollection);
+            } else {
+                returnedFiles->insert(
+                    _getBSONField(doc, "filename", "backupCursor's batches").str());
+            }
+        }
+
+        *fetchStatus = Status::OK();
+        if (!getMoreBob || data.documents.empty()) {
+            // Exist fetcher but keep the backupCursor alive.
+            *nextAction = Fetcher::NextAction::kExitAndKeepCursorAlive;
+            return;
+        }
+
+        getMoreBob->append("getMore", data.cursorId);
+        getMoreBob->append("collection", data.nss.coll());
+    };
+
+    auto fetcher = std::make_shared<Fetcher>(
+        _syncingFilesState.executor.get(),
+        _syncSource,
+        NamespaceString::kAdminDb.toString(),
+        cmdObj,
+        fetcherCallback,
+        ReadPreferenceSetting(ReadPreference::PrimaryPreferred).toContainingBSON(),
+        executor::RemoteCommandRequest::kNoTimeout, /* aggregateNetworkTimeout */
+        executor::RemoteCommandRequest::kNoTimeout, /* getMoreNetworkTimeout */
+        RemoteCommandRetryScheduler::makeRetryPolicy<ErrorCategory::RetriableError>(
+            kFileCopyBasedInitialSyncMaxCursorFetchAttempts,
+            executor::RemoteCommandRequest::kNoTimeout),
+        transport::kGlobalSSLMode);
+
+    uassertStatusOK(fetcher->schedule());
+
+    return fetcher->onCompletion()
+        .thenRunOn(_syncingFilesState.executor)
+        .then([fetcher, fetchStatus] {
+            // Scoping fetcher to make sure it won't get destructed until fetching is completed.
+            if (!*fetchStatus) {
+                // The callback never got invoked.
+                uasserted(5782302, "Internal error running cursor callback in command");
+            }
+            uassertStatusOK(fetchStatus->get());
+        });
+}
+
+ExecutorFuture<void> FileCopyBasedInitialSyncer::_extendBackupCursor(
+    std::shared_ptr<StringSet> returnedFiles) {
+    LOGV2_DEBUG(5782309,
+                2,
+                "Trying to extend the backup cursor on sync source.",
+                "SyncSrc"_attr = _syncSource,
+                "backupId"_attr = _syncingFilesState.backupId.get(),
+                "extendTo"_attr = _syncingFilesState.lastAppliedOpTimeOnSyncSrc);
+    const auto cmdObj = [this, self = shared_from_this()] {
+        AggregateCommandRequest aggRequest(
+            NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
+            {BSON("$backupCursorExtend"
+                  << BSON("backupId" << _syncingFilesState.backupId.get() << "timestamp"
+                                     << _syncingFilesState.lastAppliedOpTimeOnSyncSrc))});
+        // We must set a writeConcern on internal commands.
+        aggRequest.setWriteConcern(WriteConcernOptions());
+        // The command may not return immediately because it may wait for the node to have the full
+        // oplog history up to the backup point in time.
+        aggRequest.setMaxTimeMS(fileBasedInitialSyncExtendCursorTimeoutMS);
+        return aggRequest.toBSON(BSONObj());
+    }();
+
+    auto fetchStatus = std::make_shared<boost::optional<Status>>();
+    auto extendedFiles = std::make_shared<std::set<std::string>>();
+    auto fetcherCallback = [this, self = shared_from_this(), fetchStatus, extendedFiles](
+                               const Fetcher::QueryResponseStatus& dataStatus,
+                               Fetcher::NextAction* nextAction,
+                               BSONObjBuilder* getMoreBob) {
+        // Throw out any accumulated results on error
+        if (!dataStatus.isOK()) {
+            *fetchStatus = dataStatus.getStatus();
+            extendedFiles->clear();
+            return;
+        }
+
+        if (_syncingFilesState.token.isCanceled()) {
+            *fetchStatus = Status(ErrorCodes::CallbackCanceled,
+                                  "Syncing files during file copy based initial sync interrupted");
+            extendedFiles->clear();
+            return;
+        }
+
+        const auto& data = dataStatus.getValue();
+        for (const BSONObj& doc : data.documents) {
+            extendedFiles->insert(_getBSONField(doc, "filename", "backupCursor's batches").str());
+        }
+
+        *fetchStatus = Status::OK();
+        if (!getMoreBob || !data.documents.size()) {
+            // Stop the fetcher.
+            return;
+        }
+
+        getMoreBob->append("getMore", data.cursorId);
+        getMoreBob->append("collection", data.nss.coll());
+    };
+
+    auto fetcher = std::make_shared<Fetcher>(
+        _syncingFilesState.executor.get(),
+        _syncSource,
+        NamespaceString::kAdminDb.toString(),
+        cmdObj,
+        fetcherCallback,
+        ReadPreferenceSetting(ReadPreference::PrimaryPreferred).toContainingBSON(),
+        executor::RemoteCommandRequest::kNoTimeout, /* aggregateNetworkTimeout */
+        executor::RemoteCommandRequest::kNoTimeout, /* getMoreNetworkTimeout */
+        RemoteCommandRetryScheduler::makeRetryPolicy<ErrorCategory::RetriableError>(
+            kFileCopyBasedInitialSyncMaxCursorFetchAttempts,
+            executor::RemoteCommandRequest::kNoTimeout),
+        transport::kGlobalSSLMode);
+    uassertStatusOK(fetcher->schedule());
+
+    return fetcher->onCompletion()
+        .thenRunOn(_syncingFilesState.executor)
+        .then(
+            [this, self = shared_from_this(), fetcher, fetchStatus, returnedFiles, extendedFiles] {
+                stdx::lock_guard<Latch> lock(_mutex);
+                if (!*fetchStatus) {
+                    // The callback never got invoked.
+                    uasserted(5782301, "Internal error running cursor callback in command");
+                }
+                uassertStatusOK(fetchStatus->get());
+                *returnedFiles = _syncingFilesState.getNewFilesToClone(*extendedFiles, lock);
+            });
+}
+
+ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFromSyncSourceCursor() {
+    if (_syncingFilesState.fileBasedInitialSyncCycle == 1) {
+        // Open backupCursor during the first cyle.
+        invariant(!_syncingFilesState.backupId);
+        auto returnedFiles = std::make_shared<StringSet>();
+        return _openBackupCursor(returnedFiles)
+            .then([this, self = shared_from_this(), returnedFiles] {
+                stdx::lock_guard<Latch> lock(_mutex);
+                _syncingFilesState.keepBackupCursorAlive();
+                // TODO (SERVER-58776): _cloneFiles(*files);
+            });
+    }
+
+    invariant(_syncingFilesState.backupId);
+    // Extend the backupCursor opened in the first cycle.
+    auto returnedFiles = std::make_shared<StringSet>();
+    return _extendBackupCursor(returnedFiles)
+        .then([this, self = shared_from_this(), returnedFiles] {
+            stdx::lock_guard<Latch> lock(_mutex);
+            _syncingFilesState.lastSyncedOpTime = _syncingFilesState.lastAppliedOpTimeOnSyncSrc;
+            // TODO (SERVER-58776): _cloneFiles(*returnedFiles);
+        });
+}
+
+ExecutorFuture<void> FileCopyBasedInitialSyncer::_startSyncingFiles(
+    std::shared_ptr<executor::TaskExecutor> executor, const CancellationToken& token) {
+    stdx::lock_guard<Latch> lock(_mutex);
+    if (_syncingFilesState.skipSyncingFilesPhaseForTest) {
+        // Noop.
+        return ExecutorFuture<void>(executor);
+    }
+
+    // Initialize the state.
+    _syncingFilesState.reset();
+    _syncingFilesState.executor = executor;
+    _syncingFilesState.token = token;
+    _syncingFilesState.syncSourcePtr = std::make_shared<HostAndPort>(_syncSource);
+
+    return AsyncTry([this, self = shared_from_this()]() mutable {
+               return _cloneFromSyncSourceCursor()
+                   .then([this, self = shared_from_this()]() {
+                       return _getLastAppliedOpTimeFromSyncSource(_syncingFilesState.executor,
+                                                                  _syncingFilesState.token);
+                   })
+                   .then([this,
+                          self = shared_from_this()](mongo::Timestamp lastAppliedOpTimeOnSyncSrc) {
+                       stdx::lock_guard<Latch> lock(_mutex);
+                       _syncingFilesState.lastAppliedOpTimeOnSyncSrc = lastAppliedOpTimeOnSyncSrc;
+                   });
+           })
+        .until([this, self = shared_from_this()](Status cloningStatus) mutable {
+            stdx::lock_guard<Latch> lock(_mutex);
+            if (!cloningStatus.isOK()) {
+                // Make sure to kill the backupCursor on failure.
+                _syncingFilesState.killBackupCursor();
+
+                // Returns the error to the caller.
+                return true;
+            }
+
+            auto lagInSecs =
+                static_cast<int>(_syncingFilesState.lastAppliedOpTimeOnSyncSrc.getSecs() -
+                                 _syncingFilesState.lastSyncedOpTime.getSecs());
+            if (lagInSecs > fileBasedInitialSyncMaxLagSec) {
+                if (++_syncingFilesState.fileBasedInitialSyncCycle <=
+                    fileBasedInitialSyncMaxCyclesWithoutProgress) {
+                    // We need to extend the backupCursor to get the updates till
+                    // lastAppliedOpTimeOnSyncSrc.
+                    return false;
+                } else {
+                    LOGV2_WARNING(
+                        5782300,
+                        "Finishing File Copy Based initial sync with undesired lag "
+                        "({currentLagInSec} secs): "
+                        "Failed to reduce the lag between the syncing node and the syncSrc to be "
+                        "less than '(fileBasedInitialSyncMaxLagSec: "
+                        "{fileBasedInitialSyncMaxLagSec} secs)', while running for "
+                        "('fileBasedInitialSyncMaxCyclesWithoutProgress:' "
+                        "{fileBasedInitialSyncMaxCyclesWithoutProgress} cylces)'.",
+                        "Finishing File Copy Based initial sync with undesired lag",
+                        "currentLagInSec"_attr = lagInSecs,
+                        "fileBasedInitialSyncMaxLagSec"_attr = fileBasedInitialSyncMaxLagSec,
+                        "fileBasedInitialSyncMaxCyclesWithoutProgress"_attr =
+                            fileBasedInitialSyncMaxCyclesWithoutProgress);
+                }
+            }
+
+            // Make sure to kill the backupCursor on success.
+            _syncingFilesState.killBackupCursor();
+            return true;
+        })
+        .on(_syncingFilesState.executor, _syncingFilesState.token);
+}
+
 Status FileCopyBasedInitialSyncer::shutdown() {
     {
         stdx::lock_guard<Latch> lock(_mutex);
@@ -248,10 +671,15 @@ Status FileCopyBasedInitialSyncer::shutdown() {
 
     // If the initial sync attempt has been started, wait for it to be canceled (through
     // _cancelRemainingWork()) and for the onCompletion lambda to run the cleanup work on
-    // _exec before we can shut down _exec. For this reason shutdown() must be called before
-    // shutting down _exec.
+    // _exec.
     if (_startInitialSyncAttemptFuture.is_initialized()) {
-        _startInitialSyncAttemptFuture.get().wait();
+        auto status = _startInitialSyncAttemptFuture->getNoThrow();
+
+        // As we don't own the _exec, it may get shutdown before the future is finished, so we need
+        // to make sure to call _finishCallback.
+        if (_state != State::kComplete) {
+            _finishCallback(status);
+        }
     }
 
     _exec = nullptr;
@@ -262,6 +690,8 @@ void FileCopyBasedInitialSyncer::_cancelRemainingWork(WithLock) {
     // Cancel the cancellation source to stop the work being run on the executor.
     _source.cancel();
 
+    _syncingFilesState.killBackupCursor();
+
     if (_client) {
         _client->shutdownAndDisallowReconnect();
     }
@@ -270,7 +700,7 @@ void FileCopyBasedInitialSyncer::_cancelRemainingWork(WithLock) {
 
 void FileCopyBasedInitialSyncer::join() {
     stdx::unique_lock<Latch> lk(_mutex);
-    _stateCondition.wait(lk, [this, &lk]() { return !_isActive(lk); });
+    _stateCondition.wait(lk, [this, self = shared_from_this(), &lk]() { return !_isActive(lk); });
 }
 
 bool FileCopyBasedInitialSyncer::isActive() const {
