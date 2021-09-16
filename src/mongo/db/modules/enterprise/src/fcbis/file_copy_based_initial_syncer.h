@@ -224,12 +224,12 @@ private:
     bool _attemptCanceled = false;  // (X)
 
     // Used to keep track of which initial sync attempt we are on.
-    std::uint32_t _initialSyncAttempt;      // (MX)
-    std::uint32_t _initialSyncMaxAttempts;  // (MX)
+    std::uint32_t _initialSyncAttempt{0};      // (MX)
+    std::uint32_t _initialSyncMaxAttempts{0};  // (MX)
 
     // Used to keep track of which choose sync source attempt we are on.
-    std::uint32_t _chooseSyncSourceAttempt;      // (MX)
-    std::uint32_t _chooseSyncSourceMaxAttempts;  // (MX)
+    std::uint32_t _chooseSyncSourceAttempt{0};      // (MX)
+    std::uint32_t _chooseSyncSourceMaxAttempts{0};  // (MX)
 
 
     // ExecutorFuture that is resolved when the initial sync has completed with success or failure.
