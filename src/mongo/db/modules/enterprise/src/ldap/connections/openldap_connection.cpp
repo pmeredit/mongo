@@ -119,7 +119,7 @@ public:
     void unlock();
 
 private:
-    bool _bypassLock;
+    bool _bypassLock = false;
     std::once_flag _init;
     void initLockType();
 };
