@@ -26,3 +26,13 @@ env.Library(
         'gssapi_krb5',
     ],
 )
+
+env.Library(
+    target="core_options_stub",
+    source=[
+        "core_options_stub.cpp",
+    ],
+    LIBDEPS_PRIVATE=[
+        "$BUILD_DIR/mongo/base",
+    ]
+)
