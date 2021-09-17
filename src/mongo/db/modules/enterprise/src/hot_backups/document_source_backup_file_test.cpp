@@ -232,7 +232,7 @@ TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageValidCopyingFileWithOffs
     auto expCtx = createExpressionContext(_opCtx);
     auto backupId = createBackupCursorStage(expCtx);
     BSONObj spec = BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup
-                                                         << "byteOffset" << 1L));
+                                                         << "byteOffset" << 1LL));
     auto backupFile = testCreateFromBsonResult(spec, expCtx);
 
     auto next = backupFile->getNext();
@@ -252,7 +252,7 @@ TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageValidCopyingFileWithLeng
     auto expCtx = createExpressionContext(_opCtx);
     auto backupId = createBackupCursorStage(expCtx);
     BSONObj spec = BSON(
-        "$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup << "length" << 2L));
+        "$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup << "length" << 2LL));
     auto backupFile = testCreateFromBsonResult(spec, expCtx);
 
     auto next = backupFile->getNext();
@@ -271,8 +271,9 @@ TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageValidCopyingFileWithOffs
 
     auto expCtx = createExpressionContext(_opCtx);
     auto backupId = createBackupCursorStage(expCtx);
-    BSONObj spec = BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup
-                                                         << "byteOffset" << 2LL << "length" << 2L));
+    BSONObj spec =
+        BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup << "byteOffset"
+                                              << 2LL << "length" << 2LL));
     auto backupFile = testCreateFromBsonResult(spec, expCtx);
 
     auto next = backupFile->getNext();
@@ -352,7 +353,7 @@ TEST_F(DocumentSourceBackupFileTest,
     auto backupId = createBackupCursorStage(expCtx);
     BSONObj spec =
         BSON("$backupFile" << BSON("backupId" << backupId << "file" << fileToBackup << "length"
-                                              << static_cast<long>(BSONObjMaxUserSize + 2)));
+                                              << static_cast<long long>(BSONObjMaxUserSize + 2)));
     auto backupFile = testCreateFromBsonResult(spec, expCtx);
 
     auto next = backupFile->getNext();
