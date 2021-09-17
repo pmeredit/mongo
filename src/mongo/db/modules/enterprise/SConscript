@@ -163,31 +163,33 @@ env.AutoInstall(
 
 if env.TargetOSIs("windows"):
 
-    extra_files = []
+    libs = []
 
     if 'sasl' in env['MONGO_ENTERPRISE_FEATURES']:
-        extra_files.extend([
-            'libsasl.dll',
-            'libsasl.pdb',
-        ])
+        libs += [{
+            'files': ['libsasl.dll', 'libsasl.pdb'],
+            'component': 'windows-sasl-lib',
+            'components_extra': ['mongo', 'shell', 'mongod', 'mongos', 'core', 'servers', 'dist', 'dist-test']
+        }]
 
     if 'snmp' in env['MONGO_ENTERPRISE_FEATURES']:
-        extra_files.extend([
-            'netsnmp.dll',
-            'netsnmp.pdb',
-        ])
+        libs += [{
+            'files': ['netsnmp.dll', 'netsnmp.pdb'],
+            'component': 'windows-netsnmp-lib',
+            'components_extra': ['mongod', 'servers', 'core', 'dist', 'dist-test']
+        }]
 
-    for file_name in extra_files:
-        paths = [str(env.Dir(libpath).Dir('..').Dir('bin')) for libpath in env.get('LIBPATH', [])]
-        for path in paths:
-            full_file_name = os.path.join(os.path.normpath(path.lower()), file_name)
-            if os.path.exists(full_file_name):
-                env.AutoInstall(
-                    target='$PREFIX_BINDIR',
-                    source=[full_file_name],
-                    AIB_COMPONENT='dist',
-                    AIB_COMPONENTS_EXTRA=[
-                        'dist-test',
-                    ],
-                    AIB_ROLE="debug" if full_file_name.endswith(".pdb") else "runtime",
-                )
+    paths = [str(env.Dir(libpath).Dir('..').Dir('bin')) for libpath in env.get('LIBPATH', [])]
+
+    for lib in libs:
+        for lib_file in lib['files']:
+            for path in paths:
+                full_file_name = os.path.join(os.path.normpath(path.lower()), lib_file)
+                if os.path.exists(full_file_name):
+                    env.AutoInstall(
+                        target='$PREFIX_BINDIR',
+                        source=[full_file_name],
+                        AIB_COMPONENT=lib['component'],
+                        AIB_COMPONENTS_EXTRA=lib['components_extra'],
+                        AIB_ROLE="debug" if full_file_name.endswith(".pdb") else "runtime",
+                    )
