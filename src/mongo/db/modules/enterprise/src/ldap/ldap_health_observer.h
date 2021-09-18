@@ -13,7 +13,7 @@ namespace process_health {
 /**
  * Implementation of health observer for Ldap.
  */
-class LdapHealthObserver : public HealthObserver {
+class LdapHealthObserver final : public HealthObserver {
 public:
     LdapHealthObserver(ClockSource* clockSource);
     ~LdapHealthObserver() final = default;
