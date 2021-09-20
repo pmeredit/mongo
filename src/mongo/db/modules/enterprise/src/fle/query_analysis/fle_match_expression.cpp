@@ -51,7 +51,7 @@ void FLEMatchExpression::replaceElementsInEqExpression(const EncryptionSchemaTre
         // field within the RHS object.
         auto rhsElem = eqExpr->getData();
         if (rhsElem.type() == BSONType::Object) {
-            auto [hasEncrypt, _, placeholder] =
+            auto [hasEncrypt, unused, unused2, placeholder] =
                 replaceEncryptedFields(rhsElem.embeddedObject(),
                                        &schemaTree,
                                        EncryptionPlaceholderContext::kComparison,
@@ -96,7 +96,7 @@ void FLEMatchExpression::replaceElementsInInExpression(const EncryptionSchemaTre
         bool hasPlaceholders = false;
         for (auto&& elem : inExpr->getEqualities()) {
             if (elem.type() == BSONType::Object) {
-                auto [elemHasEncrypt, _, placeholder] =
+                auto [elemHasEncrypt, unused, unused2, placeholder] =
                     replaceEncryptedFields(elem.embeddedObject(),
                                            &schemaTree,
                                            EncryptionPlaceholderContext::kComparison,
@@ -228,7 +228,7 @@ void FLEMatchExpression::replaceEncryptedElements(const EncryptionSchemaTreeNode
             auto compExpr = static_cast<ComparisonMatchExpression*>(root);
             auto rhsElem = compExpr->getData();
             if (rhsElem.type() == BSONType::Object) {
-                auto [hasEncrypt, _, placeholder] =
+                auto [hasEncrypt, unused, unused2, placeholder] =
                     replaceEncryptedFields(rhsElem.embeddedObject(),
                                            &schemaTree,
                                            EncryptionPlaceholderContext::kComparison,

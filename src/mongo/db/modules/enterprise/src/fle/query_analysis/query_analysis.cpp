@@ -22,9 +22,11 @@
 #include "mongo/db/ops/write_ops.h"
 #include "mongo/db/ops/write_ops_gen.h"
 #include "mongo/db/pipeline/aggregation_request_helper.h"
+#include "mongo/db/pipeline/document_source_project.h"
 #include "mongo/db/query/collation/collator_factory_interface.h"
 #include "mongo/db/query/count_command_gen.h"
 #include "mongo/db/query/distinct_command_gen.h"
+#include "mongo/db/query/projection_parser.h"
 #include "mongo/db/query/query_request_helper.h"
 #include "mongo/db/update/update_driver.h"
 #include "mongo/idl/basic_types.h"
@@ -239,6 +241,7 @@ PlaceHolderResult replaceEncryptedFieldsInFilter(
 
     return {fleMatchExpr.containsEncryptedPlaceholders(),
             schemaTree.mayContainEncryptedNode(),
+            fleMatchExpr.releaseMatchExpression(),
             bob.obj()};
 }
 
@@ -312,8 +315,10 @@ PlaceHolderResult replaceEncryptedFieldsInUpdate(
             BSONArrayBuilder arr;
             flePipe.serialize(&arr);
 
-            return PlaceHolderResult{
-                flePipe.hasEncryptedPlaceholders, schemaTree.mayContainEncryptedNode(), arr.obj()};
+            return PlaceHolderResult{flePipe.hasEncryptedPlaceholders,
+                                     schemaTree.mayContainEncryptedNode(),
+                                     nullptr,
+                                     arr.obj()};
         }
         case UpdateDriver::UpdateType::kDelta:
             // Users cannot explicitly specify $v: 2 delta-style updates.
@@ -325,6 +330,7 @@ PlaceHolderResult replaceEncryptedFieldsInUpdate(
 
     return PlaceHolderResult{hasEncryptionPlaceholder,
                              schemaTree.mayContainEncryptedNode(),
+                             nullptr,
                              driver.serialize().getDocument().toBson()};
 }
 
@@ -337,19 +343,50 @@ PlaceHolderResult addPlaceHoldersForFind(const boost::intrusive_ptr<ExpressionCo
     auto findCommand = query_request_helper::makeFromFindCommand(
         cmdObj, boost::none, APIParameters::get(expCtx->opCtx).getAPIStrict().value_or(false));
 
-    auto placeholder =
+    auto filterPlaceholder =
         replaceEncryptedFieldsInFilter(expCtx, *schemaTree, findCommand->getFilter());
+
+    // This is an optional wrapper around a pipeline containing just the projection from the find
+    // command. With it we can reuse our pipeline analysis to determine if the projection is invalid
+    // or in need of markers.
+    const auto projectionPipeWrapper = [&] {
+        if (auto proj = findCommand->getProjection(); !proj.isEmpty())
+            return boost::optional<FLEPipeline>{FLEPipeline{
+                Pipeline::create(makeFlattenedList<boost::intrusive_ptr<DocumentSource>>(
+                                     DocumentSourceProject::create(
+                                         projection_ast::parseAndAnalyze(
+                                             expCtx,
+                                             proj,
+                                             filterPlaceholder.matchExpr.get(),
+                                             filterPlaceholder.result,
+                                             ProjectionPolicies::findProjectionPolicies()),
+                                         expCtx,
+                                         DocumentSourceProject::kStageName)),
+                                 expCtx),
+                *schemaTree.get()}};
+        else
+            return boost::optional<FLEPipeline>{};
+    }();
 
     BSONObjBuilder bob;
     for (auto&& elem : cmdObj) {
         if (elem.fieldNameStringData() == "filter") {
             BSONObjBuilder filterBob = bob.subobjStart("filter");
-            filterBob.appendElements(placeholder.result);
+            filterBob.appendElements(filterPlaceholder.result);
+        } else if (elem.fieldNameStringData() == "projection" && projectionPipeWrapper) {
+            BSONObjBuilder projectionBob = bob.subobjStart("projection");
+            projectionPipeWrapper->serializeLoneProject(&bob);
         } else {
             bob.append(elem);
         }
     }
-    return {placeholder.hasEncryptionPlaceholders, placeholder.schemaRequiresEncryption, bob.obj()};
+    return {projectionPipeWrapper.map([](auto&& pipe) { return pipe.hasEncryptedPlaceholders; })
+                    .value_or(false) ||
+                filterPlaceholder.hasEncryptionPlaceholders,
+            projectionPipeWrapper ? schemaTree->mayContainEncryptedNode()
+                                  : filterPlaceholder.schemaRequiresEncryption,
+            nullptr,
+            bob.obj()};
 }
 
 PlaceHolderResult addPlaceHoldersForAggregate(
@@ -395,7 +432,10 @@ PlaceHolderResult addPlaceHoldersForAggregate(
         }
     }
 
-    return {flePipe.hasEncryptedPlaceholders, schemaTree->mayContainEncryptedNode(), bob.obj()};
+    return {flePipe.hasEncryptedPlaceholders,
+            schemaTree->mayContainEncryptedNode(),
+            nullptr,
+            bob.obj()};
 }
 
 PlaceHolderResult addPlaceHoldersForCount(const boost::intrusive_ptr<ExpressionContext>& expCtx,
@@ -412,6 +452,7 @@ PlaceHolderResult addPlaceHoldersForCount(const boost::intrusive_ptr<ExpressionC
     return PlaceHolderResult{newQueryPlaceholder.hasEncryptionPlaceholders,
                              newQueryPlaceholder.schemaRequiresEncryption ||
                                  schemaTree->mayContainEncryptedNode(),
+                             nullptr,
                              countCmd.toBSON(cmdObj)};
 }
 
@@ -463,6 +504,7 @@ PlaceHolderResult addPlaceHoldersForDistinct(const boost::intrusive_ptr<Expressi
     // allows the IDL to merge generic fields which the command does not specifically handle.
     return PlaceHolderResult{placeholder.hasEncryptionPlaceholders,
                              schemaTree->mayContainEncryptedNode(),
+                             nullptr,
                              parsedDistinct.serialize(cmdObj).body};
 }
 
@@ -528,7 +570,7 @@ PlaceHolderResult addPlaceHoldersForFindAndModify(
     }
 
     return PlaceHolderResult{
-        anythingEncrypted, schemaTree->mayContainEncryptedNode(), request.toBSON(cmdObj)};
+        anythingEncrypted, schemaTree->mayContainEncryptedNode(), nullptr, request.toBSON(cmdObj)};
 }
 
 PlaceHolderResult addPlaceHoldersForInsert(OperationContext* opCtx,

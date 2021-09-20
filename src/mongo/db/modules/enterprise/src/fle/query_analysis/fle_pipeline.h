@@ -5,6 +5,7 @@
 #pragma once
 
 #include "encryption_schema_tree.h"
+#include "mongo/db/pipeline/document_source_single_document_transformation.h"
 #include "mongo/db/pipeline/pipeline.h"
 #include "mongo/db/pipeline/pipeline_metadata_tree.h"
 
@@ -30,11 +31,22 @@ public:
         return *_parsedPipeline.get();
     }
 
-    void serialize(BSONArrayBuilder* arr) {
+    void serialize(BSONArrayBuilder* arr) const {
         for (auto&& stage : _parsedPipeline->serialize()) {
             invariant(stage.getType() == BSONType::Object);
             arr->append(stage.getDocument().toBson());
         }
+    }
+
+    void serializeLoneProject(BSONObjBuilder* bob) const {
+        auto&& sources = _parsedPipeline->getSources();
+        invariant(sources.size() == 1);
+        auto&& loneSource = sources.front().get();
+        invariant(typeid(*loneSource) == typeid(DocumentSourceSingleDocumentTransformation));
+        bob->appendElements(static_cast<DocumentSourceSingleDocumentTransformation*>(loneSource)
+                                ->getTransformer()
+                                .serializeTransformation(boost::none)
+                                .toBson());
     }
 
     /**

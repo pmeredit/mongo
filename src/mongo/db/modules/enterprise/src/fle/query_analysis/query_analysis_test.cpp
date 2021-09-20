@@ -111,7 +111,7 @@ TEST(ReplaceEncryptedFieldsTest, ReplacesTopLevelFieldCorrectly) {
     auto replaceRes = replaceEncryptedFields(
         doc, schemaTree.get(), EncryptionPlaceholderContext::kWrite, {}, boost::none, nullptr);
     BSONElement encryptedElem = replaceRes.result["foo"];
-    assertEncryptedCorrectly(replaceRes, encryptedElem, randomEncryptObj, doc["foo"]);
+    assertEncryptedCorrectly(std::move(replaceRes), encryptedElem, randomEncryptObj, doc["foo"]);
 }
 
 TEST(ReplaceEncryptedFieldsTest, ReplacesSecondLevelFieldCorrectly) {
@@ -129,10 +129,10 @@ TEST(ReplaceEncryptedFieldsTest, ReplacesSecondLevelFieldCorrectly) {
     auto schemaTree = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     auto replaceRes = replaceEncryptedFields(
         doc, schemaTree.get(), EncryptionPlaceholderContext::kWrite, {}, boost::none, nullptr);
-    BSONElement encryptedElem = replaceRes.result["a"]["b"];
-    assertEncryptedCorrectly(replaceRes, encryptedElem, randomEncryptObj, doc["a"]["b"]);
     BSONElement notEncryptedElem = replaceRes.result["c"];
     ASSERT_FALSE(notEncryptedElem.type() == BSONType::BinData);
+    BSONElement encryptedElem = replaceRes.result["a"]["b"];
+    assertEncryptedCorrectly(std::move(replaceRes), encryptedElem, randomEncryptObj, doc["a"]["b"]);
 }
 
 TEST(ReplaceEncryptedFieldsTest, NumericPathComponentTreatedAsFieldName) {
@@ -148,7 +148,8 @@ TEST(ReplaceEncryptedFieldsTest, NumericPathComponentTreatedAsFieldName) {
     auto replaceRes = replaceEncryptedFields(
         doc, schemaTree.get(), EncryptionPlaceholderContext::kWrite, {}, boost::none, nullptr);
     BSONElement encryptedElem = replaceRes.result["foo"]["0"];
-    assertEncryptedCorrectly(replaceRes, encryptedElem, randomEncryptObj, doc["foo"]["0"]);
+    assertEncryptedCorrectly(
+        std::move(replaceRes), encryptedElem, randomEncryptObj, doc["foo"]["0"]);
 }
 
 TEST(ReplaceEncryptedFieldsTest, NumericPathComponentNotTreatedAsArrayIndex) {

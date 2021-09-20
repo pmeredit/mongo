@@ -31,6 +31,10 @@ public:
         return _expression.get();
     }
 
+    auto&& releaseMatchExpression() {
+        return std::move(_expression);
+    }
+
     /**
      * Returns true if the underlying MatchExpression contains any EncryptionPlaceholders.
      */

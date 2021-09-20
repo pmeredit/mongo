@@ -28,6 +28,12 @@ struct PlaceHolderResult {
     // Set to true if the JSON Schema contains a field which should be marked for encryption.
     bool schemaRequiresEncryption{false};
 
+    // MatchExpression representation of filter after intent-to-encrypt marking and before
+    // serialization. Sometimes null since not all analyzed query components involve a
+    // MatchExpression. This is an intermediate result only and not returned directly to the
+    // client.
+    std::unique_ptr<MatchExpression> matchExpr;
+
     // Serialized command result after replacing fields with their appropriate intent-to-encrypt
     // marking.
     BSONObj result;
