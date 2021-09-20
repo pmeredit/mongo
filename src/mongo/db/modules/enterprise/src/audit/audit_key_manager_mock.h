@@ -15,6 +15,7 @@ public:
 
     KeyGenerationResult generateWrappedKey() final;
     SymmetricKey unwrapKey(WrappedKey wrappedKey) final;
+    BSONObj getKeyStoreID() final;
 
 private:
     SymmetricKey _defaultKey;

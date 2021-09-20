@@ -7,7 +7,9 @@
 #include "audit_enc_comp_manager.h"
 
 #include "audit/audit_feature_flag_gen.h"
+#include "audit_key_manager_mock.h"
 #include "mongo/base/init.h"
+#include "mongo/bson/json.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/base64.h"
 
@@ -26,11 +28,13 @@ const std::string toCompressLog(
 
 class AuditLogCompressBase64Test : public mongo::unittest::Test {
 public:
-    AuditLogCompressBase64Test() {}
+    AuditLogCompressBase64Test() {
+        auto keyManager = std::make_unique<AuditKeyManagerMock>();
+        ac = std::make_unique<AuditEncryptionCompressionManager>(std::move(keyManager), true);
+    }
 
 protected:
-    AuditEncryptionCompressionManager ac =
-        AuditEncryptionCompressionManager("zstd", "testKey", "testKeyIdentifier");
+    std::unique_ptr<AuditEncryptionCompressionManager> ac;
 };
 
 TEST_F(AuditLogCompressBase64Test, CheckStringIsBase64Test) {
@@ -38,8 +42,13 @@ TEST_F(AuditLogCompressBase64Test, CheckStringIsBase64Test) {
         bool isBase64 = base64::validate(toCompressLog);
         ASSERT_FALSE(isBase64);
 
-        std::string compressedLog = ac.compress(toCompressLog);
-        isBase64 = base64::validate(compressedLog);
+        BSONObj auditBson = fromjson(toCompressLog);
+
+        auto compressedLog = ac->compressAndEncrypt({Date_t::now(), auditBson});
+
+        StringData logField(compressedLog.getStringField("log"_sd));
+
+        isBase64 = base64::validate(logField);
         ASSERT_TRUE(isBase64);
     }
 }

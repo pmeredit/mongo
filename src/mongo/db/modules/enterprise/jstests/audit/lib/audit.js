@@ -2,6 +2,9 @@
 
 'use strict';
 
+const AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE =
+    "src/mongo/db/modules/enterprise/jstests/audit/lib/localKey";
+
 /**
  * Parses a JSON filled audit file, and provides an interface for making assertions
  * about the audit events a server emitted into it.

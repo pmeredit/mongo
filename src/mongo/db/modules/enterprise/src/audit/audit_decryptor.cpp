@@ -7,8 +7,10 @@
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/fstream.hpp>
 
+#include "audit/audit_header_options_gen.h"
 #include "audit_decryptor_options.h"
 #include "audit_enc_comp_manager.h"
+#include "audit_key_manager_local.h"
 
 #include "mongo/bson/json.h"
 #include "mongo/db/service_context.h"
@@ -19,34 +21,40 @@
 namespace mongo {
 namespace audit {
 
-bool isValidHeader(const std::string& header) {
-    std::string properties[] = {"ts",
-                                "version",
-                                "compressionMode",
-                                "keyStoreIdentifier",
-                                "encryptedKey",
-                                "auditRecordType"};
-    try {
-        BSONObj fileHeaderBSON = fromjson(header);
-        for (std::string prop : properties) {
-            if (!fileHeaderBSON.hasField(prop)) {
-                return false;
-            }
-        }
-    } catch (...) {
-        return false;
-    }
-
-    return true;
+StatusWith<AuditHeaderOptionsDocument> parseAuditHeaderFromJSON(const std::string& header) try {
+    BSONObj fileHeaderBSON = fromjson(header);
+    IDLParserErrorContext ctx("Audit file header");
+    return AuditHeaderOptionsDocument::parse(ctx, fileHeaderBSON);
+} catch (const DBException& e) {
+    return e.toStatus().withContext("Audit file header has invalid format");
 }
 
-StatusWith<std::string> getCompressedMessage(const std::string& line) {
-    try {
-        BSONObj fileHeaderBSON = fromjson(line);
-        return fileHeaderBSON.getStringField("log");
-    } catch (...) {
-        return Status{ErrorCodes::BadValue, str::stream() << "Could not get compressed message."};
-    }
+StatusWith<EncryptedAuditFrame> getEncryptedAuditFrame(const std::string& line) try {
+    EncryptedAuditFrame frame;
+    BSONObj bson = fromjson(line);
+    frame.ts = bson.getField(EncryptedAuditFrame::kTimestampField).Date();
+    auto str = bson.getStringField(EncryptedAuditFrame::kLogField);
+    frame.payload = std::vector(reinterpret_cast<const uint8_t*>(str),
+                                reinterpret_cast<const uint8_t*>(str) + strlen(str));
+    return frame;
+} catch (...) {
+    return Status{ErrorCodes::BadValue, "Could not get compressed message."};
+}
+
+std::unique_ptr<AuditKeyManager> createKeyManagerFromHeader(
+    const AuditHeaderOptionsDocument& header) {
+    BSONObj ks = header.getKeyStoreIdentifier();
+
+    StringData type(ks.getStringField("provider"_sd));
+    uassert(ErrorCodes::BadValue,
+            "Audit file header has invalid key store identifier",
+            type == "local"_sd);
+
+    StringData file(ks.getStringField("filename"_sd));
+    uassert(ErrorCodes::BadValue,
+            "Audit file header has local key store with empty filename",
+            !file.empty());
+    return std::make_unique<AuditKeyManagerLocal>(file);
 }
 
 void auditDecryptorTool(int argc, char* argv[]) {
@@ -99,25 +107,27 @@ void auditDecryptorTool(int argc, char* argv[]) {
 
     // Read file
     if (input.is_open()) {
-        getline(input, line);
-        uassert(ErrorCodes::FailedToParse,
-                "Audit file header has invalid format.",
-                isValidHeader(line));
-        header.swap(line);
 
-        // TODO start AECM with header arguments
-        AuditEncryptionCompressionManager ac =
-            AuditEncryptionCompressionManager("zstd", "testKey", "testKeyIdentifier");
+        std::getline(input, header);
+        auto headerObj = uassertStatusOK(parseAuditHeaderFromJSON(header));
+
+        auto encKey = headerObj.getEncryptedKey();
+        AuditKeyManager::WrappedKey wrappedKey(encKey.data<std::uint8_t>(),
+                                               encKey.data<std::uint8_t>() + encKey.length());
+
+        auto keyManager = createKeyManagerFromHeader(headerObj);
+
+        AuditEncryptionCompressionManager ac = AuditEncryptionCompressionManager(
+            std::move(keyManager), headerObj.getCompressionMode() == "zstd", &wrappedKey);
 
         while (getline(input, line)) {
             ++numLine;
             try {
-                std::string toDecompress = uassertStatusOK(getCompressedMessage(line));
-                inputData.push_back(
-                    ac.decompress(ConstDataRange(toDecompress.data(), toDecompress.size())));
+                EncryptedAuditFrame frame = uassertStatusOK(getEncryptedAuditFrame(line));
+                inputData.push_back(ac.decryptAndDecompress(frame));
             } catch (...) {
                 uassert(ErrorCodes::FileStreamFailed,
-                        str::stream() << "Failed to to decompress line #" << numLine
+                        str::stream() << "Failed to decrypt line #" << numLine
                                       << ". Contents were: " << line << ".",
                         false);
             }

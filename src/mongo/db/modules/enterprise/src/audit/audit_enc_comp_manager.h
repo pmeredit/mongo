@@ -11,6 +11,7 @@
 #include "audit_frame.h"
 #include "audit_key_manager.h"
 
+#include "encryptdb/symmetric_crypto.h"
 #include "mongo/base/data_range.h"
 #include "mongo/transport/message_compressor_zstd.h"
 
@@ -25,32 +26,43 @@ namespace audit {
  */
 class AuditEncryptionCompressionManager {
 public:
-    AuditEncryptionCompressionManager(StringData compressionMode,
-                                      std::string keyStoreIdentifier,
-                                      std::string encryptionKeyIdentifier);
+    AuditEncryptionCompressionManager(std::unique_ptr<AuditKeyManager> keyManager,
+                                      bool compress,
+                                      const AuditKeyManager::WrappedKey* wrappedKey = nullptr);
 
-    BSONObj compressAndEncrypt(const AuditFrame& auditFrame) const;
+    BSONObj compressAndEncrypt(const PlainAuditFrame& frame) const;
+    BSONObj decryptAndDecompress(const EncryptedAuditFrame& frame) const;
 
-    std::string compress(ConstDataRange toCompress) const;
+    std::vector<std::uint8_t> compress(ConstDataRange toCompress) const;
+    std::vector<std::uint8_t> decompress(ConstDataRange toDecompress) const;
 
-    BSONObj decompress(ConstDataRange toDecompress) const;
+    std::vector<std::uint8_t> encrypt(ConstDataRange toEncrypt, const Date_t& ts) const;
+    std::vector<std::uint8_t> decrypt(ConstDataRange toDecrypt, const Date_t& ts) const;
 
     BSONObj encodeFileHeader() const;
 
 private:
+    std::size_t _encrypt(const Date_t& ts, ConstDataRange input, DataRange output) const;
+
     std::unique_ptr<ZstdMessageCompressor> _zstdCompressor;
-
-    // KMIP key store unique identifier
-    std::string _kmipKeyStoreIdentifier;
-
-    // KMIP unique identifier for existing key to use
-    std::string _kmipEncryptionKeyIdentifier;
 
     // File header containing startup options
     std::unique_ptr<AuditFileHeader> _fileHeader;
 
-    // Key manager used if encryption is enabled.
+    // Key manager used if encryption is enabled
     std::unique_ptr<AuditKeyManager> _keyManager;
+
+    // Key used for encrypting audit log lines
+    std::unique_ptr<SymmetricKey> _encryptKey;
+
+    // _encryptKey encrypted with the key encryption key
+    AuditKeyManager::WrappedKey _wrappedKey;
+
+    // Whether compression is performed prior to encrypt
+    bool _compress;
+
+    // Preallocated buffer for storing output of compress & encrypt
+    mutable std::vector<uint8_t> _preallocate;
 };
 
 }  // namespace audit

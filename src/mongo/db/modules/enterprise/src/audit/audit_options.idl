@@ -53,6 +53,6 @@ configs:
         requires: 'auditLog.destination'
     "auditLog.localAuditKeyFile":
         description: 'File path of the audit log encryption key file'
-        short_name: localAuditKeyFile
+        short_name: auditLocalKeyFile
         arg_vartype: String
         requires: 'auditLog.destination'

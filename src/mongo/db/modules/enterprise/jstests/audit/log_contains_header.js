@@ -4,6 +4,7 @@
  */
 
 load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+load('jstests/ssl/libs/ssl_helpers.js');
 
 (function() {
 
@@ -11,9 +12,18 @@ load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
 
 if (!TestData.setParameters.featureFlagAtRestEncryption) {
     // Don't accept option when FF not enabled.
-    assert.throws(() => MongoRunner.runMongod({auditCompressionEnabled: true}));
+    assert.throws(
+        () => MongoRunner.runMongodAuditLogger({auditCompressionMode: "zstd"}, false /* isBSON */));
     return;
 }
+
+if (determineSSLProvider() === "windows") {
+    // windows doesn't currently support GCM, so
+    // the tests below will fail.
+    return;
+}
+
+run("chmod", "600", AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE);
 
 /**
  * Tries parsing a header line and checking it contains all properties,
@@ -50,8 +60,7 @@ function isValidHeader(json) {
 print("Testing audit log contains header when compression is enabled");
 function testAuditLogHeader(fixture, isMongos, enableCompression) {
     let opts = {
-        kmipKeyStoreIdentifier: "testKey",
-        kmipEncryptionKeyIdentifier: "testKeyIdentifier",
+        auditLocalKeyFile: AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE,
     };
     if (enableCompression) {
         opts.auditCompressionMode = "zstd";
@@ -66,7 +75,7 @@ function testAuditLogHeader(fixture, isMongos, enableCompression) {
     assert.soon(() => {
         audit.resetAuditLine();
         const fileHeader = audit.getNextEntryNoParsing();
-        return isValidHeader(fileHeader) == enableCompression;
+        return isValidHeader(fileHeader);
     }, "Audit log did not contain a valid header line on the top");
 
     fixture.stopProcess();

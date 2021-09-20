@@ -10,8 +10,8 @@
 #include <boost/filesystem.hpp>
 #include <string>
 
-#include "audit/audit_feature_flag_gen.h"
 #include "audit_frame.h"
+#include "audit_key_manager_local.h"
 #include "audit_manager.h"
 #include "audit_options.h"
 #include "logger/console_appender.h"
@@ -35,14 +35,7 @@ namespace {
 namespace fs = boost::filesystem;
 namespace moe = mongo::optionenvironment;
 
-void assertHaveSettingWithCompression(const moe::Environment& params, StringData required) {
-    uassert(ErrorCodes::BadValue,
-            str::stream() << required
-                          << " must be specified when auditLog.compressionEnabled is true",
-            params.count(required.toString()));
-}
-
-AuditFrame encodeForEncrypt(const AuditEvent& event) {
+PlainAuditFrame encodeForEncrypt(const AuditEvent& event) {
     auto payload = event.toBSON();
     // "ts" field should have been excluded by AuditEvent ctor.
     invariant(!payload["ts"_sd]);
@@ -73,8 +66,7 @@ public:
         auto* am = getGlobalAuditManager();
         invariant(am->isEnabled());
 
-        if (am->getCompressionEnabled() &&
-            feature_flags::gFeatureFlagAtRestEncryption.isEnabledAndIgnoreFCV()) {
+        if (am->getEncryptionEnabled()) {
 
             auto ac = am->getAuditEncryptionCompressionManager();
             invariant(ac);
@@ -134,9 +126,8 @@ public:
 
         Status status = Status::OK();
         try {
-            if (am->getCompressionEnabled() &&
-                feature_flags::gFeatureFlagAtRestEncryption.isEnabledAndIgnoreFCV()) {
-                AuditFrame toWrite = encodeForEncrypt(event);
+            if (am->getEncryptionEnabled()) {
+                PlainAuditFrame toWrite = encodeForEncrypt(event);
 
                 auto ac = am->getAuditEncryptionCompressionManager();
                 invariant(ac);
@@ -256,23 +247,23 @@ void AuditManager::_initializeAuditLog(const moe::Environment& params) {
                 uassertStatusOK(std::move(status));
             }
 
-            if (getCompressionEnabled() &&
-                feature_flags::gFeatureFlagAtRestEncryption.isEnabledAndIgnoreFCV()) {
-                std::string compressionMode = params["auditLog.compressionMode"].as<std::string>();
+            if (getEncryptionEnabled()) {
 
-                assertHaveSettingWithCompression(params, "security.kmip.keyStoreIdentifier"_sd);
-                std::string keyStoreIdentifier =
-                    params["security.kmip.keyStoreIdentifier"].as<std::string>();
+                std::unique_ptr<AuditKeyManager> keyManager;
 
-                assertHaveSettingWithCompression(params,
-                                                 "security.kmip.encryptionKeyIdentifier"_sd);
-                std::string encryptionKeyIdentifier =
-                    params["security.kmip.encryptionKeyIdentifier"].as<std::string>();
+                if (params.count("auditLog.localAuditKeyFile")) {
+                    keyManager = std::make_unique<AuditKeyManagerLocal>(
+                        params["auditLog.localAuditKeyFile"].as<std::string>());
+                } else {
+                    // TODO (SERVER-58846): local key file is a temporary requirement until KMIP is
+                    // implemented.
+                    uasserted(ErrorCodes::BadValue,
+                              "auditLog.localAuditKeyFile must be specified if "
+                              "audit log encryption is enabled");
+                }
 
-                _ac = std::make_unique<AuditEncryptionCompressionManager>(
-                    std::move(compressionMode),
-                    std::move(keyStoreIdentifier),
-                    std::move(encryptionKeyIdentifier));
+                _ac = std::make_unique<AuditEncryptionCompressionManager>(std::move(keyManager),
+                                                                          getCompressionEnabled());
             }
 
             auto writer = std::make_unique<logger::RotatableFileWriter>();

@@ -7,6 +7,7 @@
 #include "audit_file_header.h"
 
 #include "audit/audit_feature_flag_gen.h"
+#include "audit_key_manager_mock.h"
 #include "mongo/base/error_extra_info.h"
 #include "mongo/base/init.h"
 #include "mongo/bson/json.h"
@@ -25,10 +26,11 @@ protected:
 
 TEST_F(AuditLogHeaderTest, GenerateHeaderTest) {
     if (feature_flags::gFeatureFlagAtRestEncryption.isEnabledAndIgnoreFCV()) {
+        AuditKeyManagerMock keyManager;
+        auto keys = keyManager.generateWrappedKey();
+
         std::string version = "1.0";
         std::string compressionMode = "zstd";
-        std::string kmipKeyStoreIdentifier = "testKey";
-        std::string kmipEncryptionKeyIdentifier = "testKeyIdentifier";
 
         std::string properties[] = {"ts",
                                     "version",
@@ -38,7 +40,7 @@ TEST_F(AuditLogHeaderTest, GenerateHeaderTest) {
                                     "auditRecordType"};
 
         BSONObj fileHeader = afh.generateFileHeader(
-            version, compressionMode, kmipKeyStoreIdentifier, kmipEncryptionKeyIdentifier);
+            version, compressionMode, keyManager.getKeyStoreID(), keys.wrappedKey);
 
         for (std::string prop : properties) {
             ASSERT_TRUE(fileHeader.hasField(prop));

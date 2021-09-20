@@ -65,7 +65,7 @@ AuditEvent::AuditEvent(Client* client,
     BSONObjBuilder builder;
 
     builder.append(kATypeField, AuditEventType_serializer(aType));
-    if (!getGlobalAuditManager()->getCompressionEnabled()) {
+    if (!getGlobalAuditManager()->getEncryptionEnabled()) {
         builder.append(kTimestampField, _ts);
     }
     if (auto token = auth::getSecurityToken(client->getOperationContext())) {

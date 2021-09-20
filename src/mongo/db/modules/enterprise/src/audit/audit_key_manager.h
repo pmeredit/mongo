@@ -7,6 +7,7 @@
 
 #include <vector>
 
+#include "mongo/bson/bsonobj.h"
 #include "mongo/crypto/symmetric_key.h"
 
 namespace mongo {
@@ -39,6 +40,10 @@ public:
      * Using a remote KMS, unwrap a Log Encryption Key, producing the raw key.
      */
     virtual SymmetricKey unwrapKey(WrappedKey wrappedKey) = 0;
+    /**
+     * Get details about the managed key store in BSON format
+     */
+    virtual BSONObj getKeyStoreID() = 0;
 };
 
 }  // namespace audit

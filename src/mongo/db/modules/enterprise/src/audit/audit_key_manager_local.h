@@ -15,9 +15,12 @@ public:
 
     KeyGenerationResult generateWrappedKey() final;
     SymmetricKey unwrapKey(WrappedKey wrappedKey) final;
+    BSONObj getKeyStoreID() final;
 
 private:
     UniqueSymmetricKey _keyEncryptKey;
+    std::string _keyPath;
+    BSONObj _keyStoreID;
 };
 
 }  // namespace audit

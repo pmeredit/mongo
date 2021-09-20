@@ -5,6 +5,7 @@
 #pragma once
 
 #include "audit_format.h"
+#include "audit_key_manager.h"
 
 #include "mongo/base/string_data.h"
 #include "mongo/bson/bsonobj.h"
@@ -22,8 +23,8 @@ public:
 
     BSONObj generateFileHeader(StringData version,
                                StringData compressionMode,
-                               StringData kmipKeyStoreIdentifier,
-                               StringData kmipEncryptionKeyIdentifier);
+                               BSONObj keyStoreIdentifier,
+                               const AuditKeyManager::WrappedKey& encryptedKey);
 };
 
 }  // namespace audit

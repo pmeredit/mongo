@@ -4,6 +4,7 @@
  */
 
 load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+load('jstests/ssl/libs/ssl_helpers.js');
 
 (function() {
 
@@ -11,9 +12,18 @@ load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
 
 if (!TestData.setParameters.featureFlagAtRestEncryption) {
     // Don't accept option when FF not enabled.
-    assert.throws(() => MongoRunner.runMongod({auditCompressionEnabled: true}));
+    assert.throws(
+        () => MongoRunner.runMongodAuditLogger({auditCompressionMode: "zstd"}, false /* isBSON */));
     return;
 }
+
+if (determineSSLProvider() === "windows") {
+    // windows doesn't currently support GCM, so
+    // the tests below will fail.
+    return;
+}
+
+run("chmod", "600", AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE);
 
 /**
  * Tries parsing a JSON line, will return true if successful
@@ -43,8 +53,7 @@ print("Testing audit log decryptor program");
 function testAuditLogDecryptor(fixture, isMongos) {
     let opts = {
         auditCompressionMode: "zstd",
-        kmipKeyStoreIdentifier: "testKey",
-        kmipEncryptionKeyIdentifier: "testKeyIdentifier",
+        auditLocalKeyFile: AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE,
     };
     if (isMongos) {
         opts = {other: {mongosOptions: opts}};

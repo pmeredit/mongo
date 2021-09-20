@@ -12,10 +12,17 @@
 namespace mongo {
 namespace audit {
 
+template <typename T>
 struct AuditFrame {
     Date_t ts;
-    BSONObj event;
+    T payload;
+
+    static constexpr auto kTimestampField = "ts"_sd;
+    static constexpr auto kLogField = "log"_sd;
 };
+
+using EncryptedAuditFrame = AuditFrame<std::vector<std::uint8_t>>;
+using PlainAuditFrame = AuditFrame<BSONObj>;
 
 }  // namespace audit
 }  // namespace mongo

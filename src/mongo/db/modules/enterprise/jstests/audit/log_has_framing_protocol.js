@@ -4,6 +4,7 @@
  */
 
 load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+load('jstests/ssl/libs/ssl_helpers.js');
 
 (function() {
 
@@ -11,12 +12,21 @@ load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
 
 if (!TestData.setParameters.featureFlagAtRestEncryption) {
     // Don't accept option when FF not enabled.
-    assert.throws(() => MongoRunner.runMongod({auditCompressionEnabled: true}));
+    assert.throws(
+        () => MongoRunner.runMongodAuditLogger({auditCompressionMode: "zstd"}, false /* isBSON */));
     return;
 }
 
+if (determineSSLProvider() === "windows") {
+    // windows doesn't currently support GCM, so
+    // the tests below will fail.
+    return;
+}
+
+run("chmod", "600", AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE);
+
 /**
- * Tries parsing a header line and checking it contains all properties,
+ * Tries parsing an encrypted audit line and checks that it contains all properties.
  * will return true if successful
  */
 function isValidFrame(json) {
@@ -46,8 +56,7 @@ function isValidFrame(json) {
 print("Testing audit log contains header when compression is enabled");
 function testAuditLogFrame(fixture, isMongos, enableCompression) {
     let opts = {
-        kmipKeyStoreIdentifier: "testKey",
-        kmipEncryptionKeyIdentifier: "testKeyIdentifier",
+        auditLocalKeyFile: AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE,
     };
     if (enableCompression) {
         opts.auditCompressionMode = "zstd";
@@ -61,8 +70,8 @@ function testAuditLogFrame(fixture, isMongos, enableCompression) {
 
     assert.soon(() => {
         const auditLine = audit.getNextEntryNoParsing();
-        return isValidFrame(auditLine) == enableCompression;
-    }, "Audit line does not has vaild framing protocol");
+        return isValidFrame(auditLine);
+    }, "Audit line does not have valid framing protocol");
 
     fixture.stopProcess();
 }

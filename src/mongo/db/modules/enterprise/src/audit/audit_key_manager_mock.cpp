@@ -10,6 +10,11 @@
 namespace mongo {
 namespace audit {
 
+namespace {
+constexpr auto kProviderField = "provider"_sd;
+constexpr auto kProviderValue = "mock"_sd;
+}  // namespace
+
 AuditKeyManagerMock::AuditKeyManagerMock()
     : _defaultKey(crypto::aesGenerate(crypto::sym256KeySize, "mockKey")),
       _defaultWrappedKey(crypto::sym256KeySize + 16, 0xEF) {}
@@ -32,6 +37,12 @@ SymmetricKey AuditKeyManagerMock::unwrapKey(WrappedKey wrappedKey) {
                         _defaultKey.getAlgorithm(),
                         _defaultKey.getKeyId(),
                         _defaultKey.getInitializationCount());
+}
+
+BSONObj AuditKeyManagerMock::getKeyStoreID() {
+    BSONObjBuilder builder;
+    builder.append(kProviderField, kProviderValue);
+    return builder.obj();
 }
 
 }  // namespace audit

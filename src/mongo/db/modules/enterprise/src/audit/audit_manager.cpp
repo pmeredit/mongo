@@ -212,12 +212,17 @@ void AuditManager::initialize(const moe::Environment& params) {
         _runtimeConfiguration = true;
     }
 
-    if (feature_flags::gFeatureFlagAtRestEncryption.isEnabledAndIgnoreFCV() &&
-        params.count("auditLog.compressionMode") &&
+    _encryptionEnabled = feature_flags::gFeatureFlagAtRestEncryption.isEnabledAndIgnoreFCV() &&
+        params.count("auditLog.localAuditKeyFile");
+
+    if (params.count("auditLog.compressionMode") &&
         params["auditLog.compressionMode"].as<std::string>() != "" &&
         params["auditLog.compressionMode"].as<std::string>() != "none") {
         uassert(ErrorCodes::BadValue,
-                "auditLog.compressionEnabled is only allowed when auditLog.destination is 'file'",
+                "auditLog.compressionMode is only allowed if audit log encryption is enabled",
+                _encryptionEnabled);
+        uassert(ErrorCodes::BadValue,
+                "auditLog.compressionMode is only allowed if auditLog.destination is 'file'",
                 isFileDestination());
         uassert(ErrorCodes::BadValue,
                 "auditLog.compressionMode must be set as zstd",

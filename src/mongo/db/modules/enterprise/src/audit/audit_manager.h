@@ -55,6 +55,10 @@ public:
         return _compressionEnabled;
     }
 
+    bool getEncryptionEnabled() const {
+        return _encryptionEnabled;
+    }
+
     const std::string& getPath() const {
         return _path;
     }
@@ -162,8 +166,11 @@ private:
     // Configure filter/auditAuthorizationSuccess from {setAuditConfig:...}
     bool _runtimeConfiguration{false};
 
-    // Configure compression/encryption of audit logs
+    // Configure compression of audit logs
     bool _compressionEnabled{false};
+
+    // Configure encryption of audit logs
+    bool _encryptionEnabled{false};
 
     // Current audit filter and audit success settings.
     std::shared_ptr<RuntimeConfiguration> _config;

@@ -20,11 +20,18 @@ namespace {
 constexpr std::size_t kWrappedKeyLen =
     crypto::HeaderCBCV0::kIVSize + crypto::sym256KeySize + crypto::aesBlockSize;
 constexpr auto kLocalKeyId = "localLogEncryptKey"_sd;
+constexpr auto kProviderField = "provider"_sd;
+constexpr auto kFilenameField = "filename"_sd;
+constexpr auto kProviderValue = "local"_sd;
+
 }  // namespace
 
-AuditKeyManagerLocal::AuditKeyManagerLocal(StringData keyPath) {
+AuditKeyManagerLocal::AuditKeyManagerLocal(StringData keyPath) : _keyPath(keyPath) {
     // retrieve the key encryption key from the local file
-    _keyEncryptKey = uassertStatusOK(mongo::getKeyFromKeyFile(keyPath));
+    _keyEncryptKey = uassertStatusOK(mongo::getKeyFromKeyFile(_keyPath));
+
+    // build the key store ID BSON object
+    _keyStoreID = BSON(kProviderField << kProviderValue << kFilenameField << _keyPath);
 }
 
 AuditKeyManager::KeyGenerationResult AuditKeyManagerLocal::generateWrappedKey() {
@@ -70,6 +77,10 @@ SymmetricKey AuditKeyManagerLocal::unwrapKey(WrappedKey wrappedKey) {
             outLen == crypto::sym256KeySize);
     outBuf->resize(outLen);
     return SymmetricKey(std::move(outBuf), crypto::aesAlgorithm, kLocalKeyId);
+}
+
+BSONObj AuditKeyManagerLocal::getKeyStoreID() {
+    return _keyStoreID;
 }
 
 }  // namespace audit

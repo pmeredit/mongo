@@ -16,17 +16,16 @@ AuditFileHeader::AuditFileHeader() = default;
 
 BSONObj AuditFileHeader::generateFileHeader(StringData version,
                                             StringData compressionMode,
-                                            StringData kmipKeyStoreIdentifier,
-                                            StringData kmipEncryptionKeyIdentifier) {
+                                            BSONObj keyStoreIdentifier,
+                                            const AuditKeyManager::WrappedKey& encryptedKey) {
     Date_t ts = Date_t::now();
 
-    AuditHeaderOptionsDocument opts =
-        AuditHeaderOptionsDocument(ts,
-                                   version.toString(),
-                                   compressionMode.toString(),
-                                   kmipKeyStoreIdentifier.toString(),
-                                   kmipEncryptionKeyIdentifier.toString());
-
+    AuditHeaderOptionsDocument opts;
+    opts.setTs(ts);
+    opts.setVersion(version);
+    opts.setCompressionMode(compressionMode);
+    opts.setKeyStoreIdentifier(keyStoreIdentifier);
+    opts.setEncryptedKey(encryptedKey);
     return opts.toBSON();
 }
 

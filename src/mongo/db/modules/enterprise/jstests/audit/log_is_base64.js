@@ -1,6 +1,7 @@
 // Tests the logs are being written as base64
 
 load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+load('jstests/ssl/libs/ssl_helpers.js');
 
 (function() {
 
@@ -8,9 +9,18 @@ load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
 
 if (!TestData.setParameters.featureFlagAtRestEncryption) {
     // Don't accept option when FF not enabled.
-    assert.throws(() => MongoRunner.runMongod({auditCompressionEnabled: true}));
+    assert.throws(
+        () => MongoRunner.runMongodAuditLogger({auditCompressionMode: "zstd"}, false /* isBSON */));
     return;
 }
+
+if (determineSSLProvider() === "windows") {
+    // windows doesn't currently support GCM, so
+    // the tests below will fail.
+    return;
+}
+
+run("chmod", "600", AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE);
 
 function messageIsBase64(auditLine) {
     const base64regex = /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
@@ -28,8 +38,7 @@ function messageIsBase64(auditLine) {
 print("Testing logs being base64.");
 function testAuditLineBase64(fixture, isMongos, enableCompression) {
     let opts = {
-        kmipKeyStoreIdentifier: "testKey",
-        kmipEncryptionKeyIdentifier: "testKeyIdentifier",
+        auditLocalKeyFile: AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE,
     };
     if (enableCompression) {
         opts.auditCompressionMode = "zstd";
@@ -47,8 +56,8 @@ function testAuditLineBase64(fixture, isMongos, enableCompression) {
     assert.soon(() => {
         const auditLine = audit.getNextEntryNoParsing();
 
-        return messageIsBase64(auditLine) == enableCompression;
-    }, "Got (or not) base64 when it was(n't) expected");
+        return messageIsBase64(auditLine);
+    }, "Got not base64 when it was expected");
 
     fixture.stopProcess();
 }

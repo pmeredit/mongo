@@ -35,7 +35,7 @@ imports:
 structs:
     AuditHeaderOptionsDocument:
         description: "At-rest encryption of audit log options"
-        strict: false
+        strict: true
         fields:
             ts:
                 type: date
@@ -45,10 +45,10 @@ structs:
                 description: "Library to use for compression"
                 type: string
             keyStoreIdentifier:
-                type: string
+                type: object
             encryptedKey:
-                description: "Encrypted logEncryptionKey"
-                type: string
+                description: "Encrypted log encryption key"
+                type: bindata_generic
             auditRecordType:
                 description: "Type of record log (e.g. 'header')"
                 type: string
