@@ -3,10 +3,12 @@
  */
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kTest
 
+#include "fcbis/initial_sync_file_mover.h"
 #include "file_copy_based_initial_syncer.h"
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/db/client.h"
 #include "mongo/db/index_builds_coordinator_mongod.h"
+#include "mongo/db/query/cursor_response.h"
 #include "mongo/db/query/getmore_command_gen.h"
 #include "mongo/db/repl/collection_cloner.h"
 #include "mongo/db/repl/data_replicator_external_state_mock.h"
@@ -30,6 +32,7 @@
 #include "mongo/executor/thread_pool_task_executor_test_fixture.h"
 #include "mongo/logv2/log.h"
 #include "mongo/platform/mutex.h"
+#include "mongo/unittest/log_test.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/clock_source_mock.h"
 #include "mongo/util/concurrency/thread_pool.h"
@@ -275,7 +278,7 @@ protected:
             });
             globalFailPointRegistry()
                 .find("fCBISSkipSyncingFilesPhase")
-                ->setMode(FailPoint::alwaysOn, 0);
+                ->setMode(FailPoint::alwaysOn);
         } catch (...) {
             ASSERT_OK(exceptionToStatus());
         }
@@ -404,6 +407,18 @@ protected:
         }
 
         return numOfFiles == (int)returnedFiles.size();
+    }
+
+    bool verifyCursorFiles(
+        const FileCopyBasedInitialSyncer::BackupFileMetadataCollection returnedFiles,
+        const std::vector<std::vector<std::string>>& cursorFiles) {
+        StringSet returnedFilenames;
+        std::for_each(returnedFiles.begin(),
+                      returnedFiles.end(),
+                      [&returnedFilenames](const BSONObj& metadata) {
+                          returnedFilenames.insert(metadata["filename"].str());
+                      });
+        return verifyCursorFiles(returnedFilenames, cursorFiles);
     }
 
     // Helper functions to test sending remote commands with the expected response.
@@ -553,11 +568,52 @@ protected:
         _mock->runUntilExpectationsSatisfied();
     }
 
+    void expectSuccessfulFileCloning() {
+        // This sets up the _mockServer to reply with an empty file for every file clone attempt.
+        auto response = CursorResponse(NamespaceString::makeCollectionlessAggregateNSS(
+                                           NamespaceString::kAdminDb),
+                                       0 /* cursorId */,
+                                       {BSON("byteOffset" << 0 << "endOfFile" << true << "data"
+                                                          << BSONBinData(0, 0, BinDataGeneral))})
+                            .toBSONAsInitialResponse();
+        _mockServer->setCommandReply("aggregate", response);
+    }
+
+    void mockBackupFileData(const std::vector<std::string>& backupFileData) {
+        std::vector<StatusWith<BSONObj>> responses;
+        for (const auto& data : backupFileData) {
+            BSONBinData bindata(data.data(), data.size(), BinDataGeneral);
+            responses.emplace_back(
+                CursorResponse(
+                    NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
+                    0 /* cursorId */,
+                    {BSON("byteOffset" << 0 << "endOfFile" << true << "data" << bindata)})
+                    .toBSONAsInitialResponse());
+        }
+        _mockServer->setCommandReply("aggregate", responses);
+    }
+
+    void checkFileData(const std::string& relativePath, StringData data) {
+        boost::filesystem::path filePath(storageGlobalParams.dbpath);
+        filePath.append(InitialSyncFileMover::kInitialSyncDir.toString());
+        filePath.append(relativePath);
+        ASSERT(boost::filesystem::exists(filePath))
+            << "File " << filePath.string() << " is missing";
+        ASSERT_EQ(data.size(), boost::filesystem::file_size(filePath))
+            << "File " << filePath.string() << "has the wrong size";
+        std::string actualFileData(data.size(), 0);
+        std::ifstream checkStream(filePath.string(), std::ios_base::in | std::ios_base::binary);
+        checkStream.read(actualFileData.data(), data.size());
+        ASSERT_EQ(data, actualFileData) << "File " << filePath.string() << "has the wrong contents";
+    }
+
 private:
     DataReplicatorExternalStateMock* _externalState;
     std::shared_ptr<FileCopyBasedInitialSyncer> _fileCopyBasedInitialSyncer;
     ThreadClient _threadClient;
     bool _executorThreadShutdownComplete = false;
+    unittest::MinimumLoggedSeverityGuard replLogSeverityGuard{
+        logv2::LogComponent::kReplicationInitialSync, logv2::LogSeverity::Debug(3)};
 };
 
 executor::ThreadPoolMock::Options FileCopyBasedInitialSyncerTest::makeThreadPoolMockOptions()
@@ -1052,6 +1108,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, SyncingFilesUsingBackupCursorOnly) {
     globalFailPointRegistry().find("fCBISSkipSyncingFilesPhase")->setMode(FailPoint::off);
 
     ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+    expectSuccessfulFileCloning();
     expectSuccessfulBackupCursorCall();
     // Mark the initial sync as done as long as the lag is not greater than
     // 'fileBasedInitialSyncMaxLagSec'.
@@ -1074,6 +1131,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, AlwaysKillBackupCursorOnFailure) {
     globalFailPointRegistry().find("fCBISSkipSyncingFilesPhase")->setMode(FailPoint::off);
 
     ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+    expectSuccessfulFileCloning();
     expectSuccessfulBackupCursorCall();
     // Raise failure after opening the backup cursor.
     expectFailedReplSetGetStatusCall();
@@ -1095,6 +1153,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, AlwaysKillBackupCursorOnShutdown) {
     globalFailPointRegistry().find("fCBISSkipSyncingFilesPhase")->setMode(FailPoint::off);
 
     ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+    expectSuccessfulFileCloning();
     expectSuccessfulBackupCursorCall();
     ASSERT_OK(fileCopyBasedInitialSyncer->shutdown());
     fileCopyBasedInitialSyncer->join();
@@ -1110,6 +1169,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, SyncingFilesUsingExtendedCursors) {
     globalFailPointRegistry().find("fCBISSkipSyncingFilesPhase")->setMode(FailPoint::off);
 
     ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+    expectSuccessfulFileCloning();
     expectSuccessfulBackupCursorCall();
     // Force the lag to be greater than 'fileBasedInitialSyncMaxLagSec' to extend the backupCursor.
     auto timeStamp = Timestamp(
@@ -1152,6 +1212,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, KeepingBackupCursorAlive) {
     auto timesEnteredFailPoint = hangAfterBackupCursorFailPoint->setMode(FailPoint::alwaysOn, 0);
 
     ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+    expectSuccessfulFileCloning();
     expectSuccessfulBackupCursorCall();
     hangAfterBackupCursorFailPoint->waitForTimesEntered(timesEnteredFailPoint + 1);
 
@@ -1179,6 +1240,147 @@ TEST_F(FileCopyBasedInitialSyncerTest, KeepingBackupCursorAlive) {
     fileCopyBasedInitialSyncer->join();
     ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest(),
               Status::OK());
+}
+
+TEST_F(FileCopyBasedInitialSyncerTest, ResolvesRelativePaths) {
+    /* Unix path with no separator at end of dbpath */
+    ASSERT_EQ("dirname/filename",
+              FileCopyBasedInitialSyncer::getPathRelativeTo_forTest(
+                  "/path/to/dbpath/dirname/filename", "/path/to/dbpath"));
+    /* Unix path with separator at end of dbpath */
+    ASSERT_EQ("dirname/filename",
+              FileCopyBasedInitialSyncer::getPathRelativeTo_forTest(
+                  "/path/to/dbpath/dirname/filename", "/path/to/dbpath/"));
+    /* Windows path without separator at end of dbpath */
+    ASSERT_EQ("dirname/filename",
+              FileCopyBasedInitialSyncer::getPathRelativeTo_forTest(
+                  R"(Q:\path\to\dbpath\dirname\filename)", R"(Q:\path\to\dbpath)"));
+    ASSERT_EQ("dirname/filename",
+              FileCopyBasedInitialSyncer::getPathRelativeTo_forTest(
+                  R"(Q:\path\to\dbpath\dirname\filename)", R"(Q:\path\to\dbpath\)"));
+
+    ASSERT_THROWS(FileCopyBasedInitialSyncer::getPathRelativeTo_forTest(
+                      "/path/to/elsewhere/dirname/filename", "/path/to/dbpath"),
+                  AssertionException);
+}
+
+TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromInitialSource) {
+    auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
+    globalFailPointRegistry().find("fCBISSkipSyncingFilesPhase")->setMode(FailPoint::off);
+    auto opCtx = makeOpCtx();
+
+    _syncSourceSelector->setChooseNewSyncSourceResult_forTest(HostAndPort("localhost", 12345));
+
+    ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+
+    UUID backupId = UUID::gen();
+    Timestamp checkpointTs(1, 1);
+    _mock->defaultExpect(
+        BSON("getMore" << 1 << "collection"
+                       << "$cmd.aggregate"),
+        CursorResponse(
+            NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb), 1, {})
+            .toBSON(CursorResponse::ResponseType::SubsequentResponse));
+    _mock->defaultExpect(
+        BSON("replSetGetStatus" << 1),
+        BSON("optimes" << BSON("appliedOpTime" << OpTime(checkpointTs, 1)) << "ok" << 1));
+    _mock->defaultExpect(BSON("killCursors"
+                              << "$cmd.aggregate"),
+                         BSON("ok" << 1));
+    // The sync source satisfies requirements for FCBIS.
+    expectSuccessfulSyncSourceValidation();
+
+    std::string file1Data = "ABCDEF_DATA_FOR_FILE_1";
+    std::string file2Data = "0123456789_DATA_FOR_FILE_2";
+    _mock->expect(
+        BSON("aggregate" << 1 << "pipeline" << BSON("$eq" << BSON("$backupCursor" << BSONObj()))),
+        CursorResponse(NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
+                       1 /* cursorId */,
+                       {BSON("metadata" << BSON("backupId" << backupId << "checkpointTimestamp"
+                                                           << checkpointTs << "dbpath"
+                                                           << "/path/to/dbpath")),
+                        BSON("filename"
+                             << "/path/to/dbpath/backupfile1"
+                             << "fileSize" << int64_t(file1Data.size())),
+                        BSON("filename"
+                             << "/path/to/dbpath/backupfile2"
+                             << "fileSize" << int64_t(file2Data.size()))})
+            .toBSONAsInitialResponse());
+
+
+    mockBackupFileData({file1Data, file2Data});
+    _mock->runUntilExpectationsSatisfied();
+
+    fileCopyBasedInitialSyncer->join();
+    checkFileData("backupfile1", file1Data);
+    checkFileData("backupfile2", file2Data);
+
+    ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest(),
+              Status::OK());
+    ASSERT_EQ(fileCopyBasedInitialSyncer->getSyncSource_forTest(), HostAndPort("localhost", 12345));
+}
+
+TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromExtendedCursor) {
+    auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
+    globalFailPointRegistry().find("fCBISSkipSyncingFilesPhase")->setMode(FailPoint::off);
+    auto opCtx = makeOpCtx();
+
+    _syncSourceSelector->setChooseNewSyncSourceResult_forTest(HostAndPort("localhost", 12345));
+
+    ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+
+    UUID backupId = UUID::gen();
+    Timestamp checkpointTs(1, 1);
+    // Our checkpoint will be lagged to force an extended cursor.
+    Timestamp lastAppliedTs(fileBasedInitialSyncMaxLagSec + 2, 1);
+    _mock->defaultExpect(
+        BSON("getMore" << 1 << "collection"
+                       << "$cmd.aggregate"),
+        CursorResponse(
+            NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb), 1, {})
+            .toBSON(CursorResponse::ResponseType::SubsequentResponse));
+    _mock->defaultExpect(
+        BSON("replSetGetStatus" << 1),
+        BSON("optimes" << BSON("appliedOpTime" << OpTime(lastAppliedTs, 1)) << "ok" << 1));
+    _mock->defaultExpect(BSON("killCursors"
+                              << "$cmd.aggregate"),
+                         BSON("ok" << 1));
+    // The sync source satisfies requirements for FCBIS.
+    expectSuccessfulSyncSourceValidation();
+
+    // Backup cursor query returns metadata but no files.
+    _mock->expect(
+        BSON("aggregate" << 1 << "pipeline" << BSON("$eq" << BSON("$backupCursor" << BSONObj()))),
+        CursorResponse(NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
+                       1 /* cursorId */,
+                       {BSON("metadata" << BSON("backupId" << backupId << "checkpointTimestamp"
+                                                           << checkpointTs << "dbpath"
+                                                           << "/path/to/dbpath"))})
+            .toBSONAsInitialResponse());
+
+    // Backup cursor extend query returns files
+    _mock->expect(
+        BSON("aggregate" << 1 << "pipeline.$backupCursorExtend" << BSON("$exists" << true)),
+        CursorResponse(NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
+                       1 /* cursorId */,
+                       {BSON("filename"
+                             << "/path/to/dbpath/journal/log.0001"),
+                        BSON("filename"
+                             << "/path/to/dbpath/journal/log.0002")})
+            .toBSONAsInitialResponse());
+
+    std::string file1Data = "ABCDEF_DATA_FOR_FILE_1";
+    std::string file2Data = "012345_DATA_FOR_FILE_2";
+    mockBackupFileData({file1Data, file2Data});
+    _mock->runUntilExpectationsSatisfied();
+
+    fileCopyBasedInitialSyncer->join();
+    checkFileData("journal/log.0001", file1Data);
+    checkFileData("journal/log.0002", file2Data);
+
+    ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest(),
+              Status::OK());
+    ASSERT_EQ(fileCopyBasedInitialSyncer->getSyncSource_forTest(), HostAndPort("localhost", 12345));
 }
 
 }  // namespace

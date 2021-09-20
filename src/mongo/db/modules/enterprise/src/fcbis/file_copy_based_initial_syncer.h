@@ -6,8 +6,10 @@
 
 #include <memory>
 
+#include "fcbis/backup_file_cloner.h"
 #include "mongo/client/dbclient_connection.h"
 #include "mongo/db/repl/data_replicator_external_state.h"
+#include "mongo/db/repl/initial_sync_shared_data.h"
 #include "mongo/db/repl/initial_syncer_interface.h"
 #include "mongo/db/repl/repl_server_parameters_gen.h"
 #include "mongo/db/repl/replication_process.h"
@@ -34,6 +36,8 @@ class FileCopyBasedInitialSyncer final
     FileCopyBasedInitialSyncer& operator=(const FileCopyBasedInitialSyncer&) = delete;
 
 public:
+    using BackupFileMetadataCollection = std::vector<BSONObj>;
+
     FileCopyBasedInitialSyncer(
         InitialSyncerInterface::Options opts,
         std::unique_ptr<DataReplicatorExternalState> dataReplicatorExternalState,
@@ -96,7 +100,7 @@ public:
      * Returns list of files fetched from the backupCursor.
      * For testing only.
      */
-    StringSet getBackupCursorFiles_ForTest() {
+    const BackupFileMetadataCollection& getBackupCursorFiles_ForTest() {
         return *_syncingFilesState.backupCursorFiles;
     }
 
@@ -104,18 +108,19 @@ public:
      * Returns list of files fetched from extended the backupCursor.
      * For testing only.
      */
-    StringSet getExtendedBackupCursorFiles_ForTest() {
-        StringSet files;
-        files.insert(_syncingFilesState.extendedCursorFiles.begin(),
-                     _syncingFilesState.extendedCursorFiles.end());
-        return files;
+    const StringSet getExtendedBackupCursorFiles_ForTest() {
+        return _syncingFilesState.extendedCursorFiles;
+    }
+
+    static std::string getPathRelativeTo_forTest(StringData path, StringData basePath) {
+        return _getPathRelativeTo(path, basePath);
     }
 
 private:
     /**
      * Open connection to the sync source for BackupFileCloners.
      */
-    Status _connect();
+    Status _connect(WithLock);
 
     /**
      * Start an initial sync attempt.
@@ -172,12 +177,18 @@ private:
     /**
      * Opens a backup cursor on the sync source and gets the files to be cloned.
      */
-    ExecutorFuture<void> _openBackupCursor(std::shared_ptr<StringSet> returnedFiles);
+    ExecutorFuture<void> _openBackupCursor(
+        std::shared_ptr<BackupFileMetadataCollection> returnedFiles);
 
     /**
      * Extends the backup cursor on the sync source and gets the files to be cloned.
      */
-    ExecutorFuture<void> _extendBackupCursor(std::shared_ptr<StringSet> returnedFiles);
+    ExecutorFuture<void> _extendBackupCursor(
+        std::shared_ptr<BackupFileMetadataCollection> returnedFiles);
+    /**
+     * Uses the BackupFileCloner to copy the files from the sync source.
+     */
+    ExecutorFuture<void> _cloneFiles(std::shared_ptr<BackupFileMetadataCollection> filesToClone);
 
     /**
      * Extracts the 'fieldName' from the BSON obj, and raises exception if it doesn't exist.
@@ -198,6 +209,12 @@ private:
     // Kills the backupCursor if it exists, and cancels backupCursorKeepAliveCancellation.
     // Safe to be called multiple times.
     void _killBackupCursor();
+
+    /**
+     * Computes a boost::filesystem::path generic-style relative path (always uses slashes)
+     * from a base path and a relative path.
+     */
+    static std::string _getPathRelativeTo(StringData path, StringData basePath);
 
     //
     // All member variables are labeled with one of the following codes indicating the
@@ -258,6 +275,13 @@ private:
     std::uint32_t _chooseSyncSourceAttempt{0};      // (MX)
     std::uint32_t _chooseSyncSourceMaxAttempts{0};  // (MX)
 
+    // Data for retry and error logic used by the cloners.
+    std::unique_ptr<InitialSyncSharedData> _sharedData;  // (S)
+
+    // The outage duration allowed before an initial sync fails.  Calculated as
+    // the minimum of the replication parameter 'initialSyncTransientErrorRetryPeriodSeconds' and
+    // the WiredTiger session timeout (usually 5 minutes).
+    Seconds _allowedOutageDuration;  // (X)
 
     // ExecutorFuture that is resolved when the initial sync has completed with success or failure.
     boost::optional<ExecutorFuture<void>> _startInitialSyncAttemptFuture;
@@ -272,8 +296,8 @@ private:
         // checkpointTimestamp till the extendTo timestamp, so we need to get the
         // difference between the files returned by the consecutive backupCursorExtend to
         // clone only the new log files added since the previous backupCursorExtend.
-        StringSet getNewFilesToClone(const std::set<std::string>& backupCursorExtendFiles,
-                                     WithLock lk);
+        BackupFileMetadataCollection getNewFilesToClone(
+            const BackupFileMetadataCollection& backupCursorExtendFiles, WithLock lk);
 
         // The backupCursor used for initialSync, we should always have only one backupCursor opened
         // on the sync source.
@@ -287,11 +311,16 @@ private:
         mongo::Timestamp lastSyncedOpTime;
         // The last appliedOp timestamp that the syncing node knows about the sync source node.
         mongo::Timestamp lastAppliedOpTimeOnSyncSrc;
-        // Holds the files returned by the backupCursor.
-        std::shared_ptr<StringSet> backupCursorFiles;
+        // Holds the file metadata returned by the backupCursor.
+        std::shared_ptr<BackupFileMetadataCollection> backupCursorFiles;
         // Holds the files returned by extending the backupCursor.
-        std::set<std::string> extendedCursorFiles;
+        StringSet extendedCursorFiles;
         int fileBasedInitialSyncCycle = 1;
+
+        // The dbpath on the remote host, used for computing relative paths.
+        std::string remoteDbpath;                                    // (X)
+        std::unique_ptr<BackupFileCloner> currentBackupFileCloner;   // (X)
+        std::vector<BackupFileCloner::Stats> backupFileClonerStats;  // (X)
 
         // The syncing file executor.
         std::shared_ptr<executor::TaskExecutor> executor;

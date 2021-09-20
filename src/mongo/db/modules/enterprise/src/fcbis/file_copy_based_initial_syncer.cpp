@@ -9,13 +9,19 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/db/repl/initial_syncer_factory.h"
+#include "mongo/db/repl/repl_server_parameters_gen.h"
+#include "mongo/db/repl/replication_auth.h"
 #include "mongo/db/storage/encryption_hooks.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_global_options.h"
+#include "mongo/db/storage/wiredtiger/wiredtiger_parameters_gen.h"
 #include "mongo/executor/scoped_task_executor.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/destructor_guard.h"
 #include "mongo/util/future_util.h"
+
+// Failpoint which causes the initial sync function to hang after cloning all backup files
+MONGO_FAIL_POINT_DEFINE(fileCopyBasedInitialSyncHangAfterFileCloning);
 
 namespace mongo {
 namespace repl {
@@ -441,15 +447,20 @@ void FileCopyBasedInitialSyncer::_killBackupCursor() {
         .getAsync([this, self = shared_from_this()](auto&&) {});  // Ignore the result Future;
 }
 
-StringSet FileCopyBasedInitialSyncer::SyncingFilesState::getNewFilesToClone(
-    const std::set<std::string>& backupCursorExtendFiles, WithLock lk) {
-    StringSet newFilesToClone;
-    std::set_difference(backupCursorExtendFiles.begin(),
-                        backupCursorExtendFiles.end(),
-                        extendedCursorFiles.begin(),
-                        extendedCursorFiles.end(),
-                        std::inserter(newFilesToClone, newFilesToClone.begin()));
-    extendedCursorFiles.insert(newFilesToClone.begin(), newFilesToClone.end());
+FileCopyBasedInitialSyncer::BackupFileMetadataCollection
+FileCopyBasedInitialSyncer::SyncingFilesState::getNewFilesToClone(
+    const BackupFileMetadataCollection& backupCursorExtendFiles, WithLock lk) {
+    BackupFileMetadataCollection newFilesToClone;
+    std::copy_if(backupCursorExtendFiles.begin(),
+                 backupCursorExtendFiles.end(),
+                 std::inserter(newFilesToClone, newFilesToClone.begin()),
+                 [this](const BSONObj& p) {
+                     return extendedCursorFiles.find(p["filename"].str()) ==
+                         extendedCursorFiles.end();
+                 });
+    std::for_each(newFilesToClone.begin(), newFilesToClone.end(), [this](const BSONObj& p) {
+        extendedCursorFiles.insert(p["filename"].str());
+    });
     return newFilesToClone;
 }
 
@@ -466,7 +477,10 @@ void FileCopyBasedInitialSyncer::SyncingFilesState::reset() {
     lastSyncedOpTime = {};
     extendedCursorFiles.clear();
     fileBasedInitialSyncCycle = 1;
+    currentBackupFileCloner.reset();
+    backupFileClonerStats.clear();
     executor.reset();
+
     token = CancellationToken::uncancelable();
 }
 
@@ -519,7 +533,7 @@ ExecutorFuture<mongo::Timestamp> FileCopyBasedInitialSyncer::_getLastAppliedOpTi
 }
 
 ExecutorFuture<void> FileCopyBasedInitialSyncer::_openBackupCursor(
-    std::shared_ptr<StringSet> returnedFiles) {
+    std::shared_ptr<BackupFileMetadataCollection> returnedFiles) {
     LOGV2_DEBUG(
         5782307, 2, "Trying to open backup cursor on sync source.", "SyncSrc"_attr = _syncSource);
     const auto cmdObj = [this, self = shared_from_this()] {
@@ -565,6 +579,8 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_openBackupCursor(
                     _getBSONField(
                         metaData, "checkpointTimestamp", "backupCursor's first batch.metadata")
                         .timestamp();
+                _syncingFilesState.remoteDbpath =
+                    _getBSONField(metaData, "dbpath", "remote dbpath").str();
                 _syncingFilesState.backupCursorId = data.cursorId;
                 _syncingFilesState.backupCursorCollection = data.nss.coll().toString();
                 LOGV2_DEBUG(5782308,
@@ -577,8 +593,9 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_openBackupCursor(
                             "backupCursorCollection"_attr =
                                 _syncingFilesState.backupCursorCollection);
             } else {
-                returnedFiles->insert(
-                    _getBSONField(doc, "filename", "backupCursor's batches").str());
+                // Ensure filename field exists.
+                _getBSONField(doc, "filename", "backupCursor's batches");
+                returnedFiles->emplace_back(doc.getOwned());
             }
         }
 
@@ -622,7 +639,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_openBackupCursor(
 }
 
 ExecutorFuture<void> FileCopyBasedInitialSyncer::_extendBackupCursor(
-    std::shared_ptr<StringSet> returnedFiles) {
+    std::shared_ptr<BackupFileMetadataCollection> returnedFiles) {
     LOGV2_DEBUG(5782309,
                 2,
                 "Trying to extend the backup cursor on sync source.",
@@ -644,7 +661,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_extendBackupCursor(
     }();
 
     auto fetchStatus = std::make_shared<boost::optional<Status>>();
-    auto extendedFiles = std::make_shared<std::set<std::string>>();
+    auto extendedFiles = std::make_shared<BackupFileMetadataCollection>();
     auto fetcherCallback = [this, self = shared_from_this(), fetchStatus, extendedFiles](
                                const Fetcher::QueryResponseStatus& dataStatus,
                                Fetcher::NextAction* nextAction,
@@ -665,7 +682,9 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_extendBackupCursor(
 
         const auto& data = dataStatus.getValue();
         for (const BSONObj& doc : data.documents) {
-            extendedFiles->insert(_getBSONField(doc, "filename", "backupCursor's batches").str());
+            // Ensure filename field exists.
+            _getBSONField(doc, "filename", "extended backupCursor's batches");
+            extendedFiles->emplace_back(doc.getOwned());
         }
 
         *fetchStatus = Status::OK();
@@ -711,7 +730,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFromSyncSourceCursor() {
     if (_syncingFilesState.fileBasedInitialSyncCycle == 1) {
         // Open backupCursor during the first cyle.
         invariant(!_syncingFilesState.backupId);
-        auto returnedFiles = std::make_shared<StringSet>();
+        auto returnedFiles = std::make_shared<BackupFileMetadataCollection>();
         return _openBackupCursor(returnedFiles)
             .then([this, self = shared_from_this(), returnedFiles] {
                 stdx::lock_guard<Latch> lock(_mutex);
@@ -738,19 +757,26 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFromSyncSourceCursor() {
                     // Noop.
                     return ExecutorFuture<void>(_syncingFilesState.executor);
                 }
-
-                // TODO (SERVER-58776): _cloneFiles(*files);
+            })
+            .then([this, self = shared_from_this(), returnedFiles] {
+                stdx::lock_guard lock(_mutex);
+                uassertStatusOK(_connect(lock));
+                _sharedData = std::make_unique<InitialSyncSharedData>(
+                    -1 /* Rollback ID; not used for file copy based initial sync */,
+                    _allowedOutageDuration,
+                    getGlobalServiceContext()->getFastClockSource());
+                return _cloneFiles(returnedFiles);
             });
     }
 
     invariant(_syncingFilesState.backupId);
     // Extend the backupCursor opened in the first cycle.
-    auto returnedFiles = std::make_shared<StringSet>();
+    auto returnedFiles = std::make_shared<BackupFileMetadataCollection>();
     return _extendBackupCursor(returnedFiles)
         .then([this, self = shared_from_this(), returnedFiles] {
             stdx::lock_guard<Latch> lock(_mutex);
             _syncingFilesState.lastSyncedOpTime = _syncingFilesState.lastAppliedOpTimeOnSyncSrc;
-            // TODO (SERVER-58776): _cloneFiles(*returnedFiles);
+            return _cloneFiles(returnedFiles);
         });
 }
 
@@ -761,6 +787,19 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startSyncingFiles(
         // Noop.
         return ExecutorFuture<void>(executor);
     }
+    auto retryPeriod = initialSyncTransientErrorRetryPeriodSeconds.load();
+    auto maxIdleTime = gWiredTigerSessionCloseIdleTimeSecs.load();
+    // There's no point in waiting out an outage longer than our idle time, as WT will have
+    // closed the cursor and we'll fail.
+    if (retryPeriod > maxIdleTime) {
+        LOGV2(5877602,
+              "Parameter 'initialSyncTransientErrorRetryPeriodSeconds' is set to a value larger "
+              "than the maximum idle time of a file copy based initial sync; actual retry period "
+              "will be reduced to the idle time",
+              "initialSyncTransientErrorRetryPeriodSeconds"_attr = retryPeriod,
+              "maxIdleTime"_attr = maxIdleTime);
+    }
+    _allowedOutageDuration = Seconds(retryPeriod);
 
     // Initialize the state.
     _killBackupCursor();
@@ -778,6 +817,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startSyncingFiles(
                           self = shared_from_this()](mongo::Timestamp lastAppliedOpTimeOnSyncSrc) {
                        stdx::lock_guard<Latch> lock(_mutex);
                        _syncingFilesState.lastAppliedOpTimeOnSyncSrc = lastAppliedOpTimeOnSyncSrc;
+                       fileCopyBasedInitialSyncHangAfterFileCloning.pauseWhileSet();
                    });
            })
         .until([this, self = shared_from_this()](Status cloningStatus) mutable {
@@ -822,6 +862,84 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startSyncingFiles(
             return true;
         })
         .on(_syncingFilesState.executor, _syncingFilesState.token);
+}
+
+/* static */
+std::string FileCopyBasedInitialSyncer::_getPathRelativeTo(StringData path, StringData basePath) {
+    uassert(5877601,
+            str::stream() << "The file " << path << " is not a subdirectory of " << basePath,
+            path.startsWith(basePath));
+    size_t startAt = basePath.size();
+    // skip separators at the beginning of the relative part.
+    while (startAt < path.size() && (path[startAt] == '/' || path[startAt] == '\\'))
+        startAt++;
+    std::string result(path.size() - startAt, 0);
+    const auto* srcp = path.rawData() + startAt;
+    auto* destp = result.data();
+    for (; startAt < path.size(); ++startAt, ++srcp, ++destp) {
+        if (*srcp == '\\')
+            *destp = '/';
+        else
+            *destp = *srcp;
+    }
+    return result;
+}
+
+ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFiles(
+    std::shared_ptr<BackupFileMetadataCollection> filesToClone) {
+    return AsyncTry([this, self = shared_from_this(), filesToClone, fileIndex = size_t(0)]() mutable
+                    -> Future<bool> {
+               stdx::lock_guard lock(_mutex);
+               // Returns "true" only when all files are finished cloning.
+               if (fileIndex == filesToClone->size())
+                   return coerceToFuture(true);
+               auto metadata = (*filesToClone)[fileIndex];
+               auto fileName = metadata["filename"].str();
+               LOGV2_DEBUG(5877600,
+                           1,
+                           "Attempting to clone file in FileCopyBasedInitialSyncer",
+                           "fileName"_attr = fileName,
+                           "metadata"_attr = metadata,
+                           "fileIndex"_attr = fileIndex);
+               ++fileIndex;
+               auto relativePath = _getPathRelativeTo(fileName, _syncingFilesState.remoteDbpath);
+               // Note that fileSize is not present in backup extensions.  It's only used for the
+               // progress indicator so that's OK.
+               size_t fileSize = metadata["fileSize"].safeNumberLong();
+               _syncingFilesState.currentBackupFileCloner =
+                   std::make_unique<BackupFileCloner>(*_syncingFilesState.backupId,
+                                                      fileName,
+                                                      fileSize,
+                                                      relativePath,
+                                                      _sharedData.get(),
+                                                      _syncSource,
+                                                      _client.get(),
+                                                      _storage,
+                                                      _writerPool);
+               auto [startClonerFuture, startCloner] =
+                   _syncingFilesState.currentBackupFileCloner->runOnExecutorEvent(
+                       _syncingFilesState.executor.get());
+               // runOnExecutorEvent ensures the future is not ready unless an error has occurred.
+               if (startClonerFuture.isReady()) {
+                   auto status = startClonerFuture.getNoThrow();
+                   invariant(!status.isOK());
+                   return status;
+               }
+               _syncingFilesState.executor->signalEvent(startCloner);
+               return std::move(startClonerFuture).then([this, self = shared_from_this()] {
+                   stdx::lock_guard lock(_mutex);
+                   _syncingFilesState.backupFileClonerStats.emplace_back(
+                       _syncingFilesState.currentBackupFileCloner->getStats());
+                   _syncingFilesState.currentBackupFileCloner = nullptr;
+                   return false;  // Continue the loop.
+               });
+           })
+        .until([](StatusWith<bool> result) {
+            // Stop and return on error or if result is "true".
+            return !result.isOK() || result.getValue();
+        })
+        .on(_syncingFilesState.executor, _syncingFilesState.token)
+        .then([](bool) { return; });
 }
 
 Status FileCopyBasedInitialSyncer::shutdown() {
@@ -871,6 +989,11 @@ void FileCopyBasedInitialSyncer::_cancelRemainingWork(WithLock) {
 
     _killBackupCursor();
 
+    if (_sharedData) {
+        stdx::lock_guard<InitialSyncSharedData> lock(*_sharedData);
+        _sharedData->setStatusIfOK(
+            lock, Status{ErrorCodes::CallbackCanceled, "Initial sync attempt canceled"});
+    }
     if (_client) {
         _client->shutdownAndDisallowReconnect();
     }
@@ -878,8 +1001,13 @@ void FileCopyBasedInitialSyncer::_cancelRemainingWork(WithLock) {
 }
 
 void FileCopyBasedInitialSyncer::join() {
-    stdx::unique_lock<Latch> lk(_mutex);
-    _stateCondition.wait(lk, [this, &lk]() { return !_isActive(lk); });
+    {
+        stdx::unique_lock<Latch> lk(_mutex);
+        _stateCondition.wait(lk, [this, &lk]() { return !_isActive(lk); });
+    }
+    if (_startInitialSyncAttemptFuture) {
+        _startInitialSyncAttemptFuture->wait();
+    }
 }
 
 bool FileCopyBasedInitialSyncer::isActive() const {
@@ -910,9 +1038,13 @@ void FileCopyBasedInitialSyncer::cancelCurrentAttempt() {
     }
 }
 
-Status FileCopyBasedInitialSyncer::_connect() {
+Status FileCopyBasedInitialSyncer::_connect(WithLock) {
     _client = _createClientFn();
-    return _client->connect(_syncSource, "FileCopyBasedInitialSyncer", boost::none);
+    Status status = _client->connect(_syncSource, "FileCopyBasedInitialSyncer", boost::none);
+    if (!status.isOK())
+        return status;
+    return replAuthenticate(_client.get())
+        .withContext(str::stream() << "Failed to authenticate to " << _syncSource);
 }
 
 void FileCopyBasedInitialSyncer::_finishCallback(StatusWith<OpTimeAndWallTime> lastApplied) {
