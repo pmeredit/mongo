@@ -16,12 +16,12 @@ namespace process_health {
 class LdapHealthObserver final : public HealthObserver {
 public:
     LdapHealthObserver(ClockSource* clockSource);
-    ~LdapHealthObserver() final = default;
+    ~LdapHealthObserver() = default;
 
     /**
      * Health observer unique type.
      */
-    FaultFacetType getType() const final {
+    FaultFacetType getType() const {
         return FaultFacetType::kLdap;
     }
 
