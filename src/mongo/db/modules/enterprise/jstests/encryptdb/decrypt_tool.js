@@ -184,5 +184,5 @@ runTest("AES256-CBC", "1");
 if (platformSupportsGCM) {
     runTest("AES256-GCM", "2");
 }
-killPyKMIPServer(kmipServerPid);
+stopMongoProgramByPid(kmipServerPid);
 })();

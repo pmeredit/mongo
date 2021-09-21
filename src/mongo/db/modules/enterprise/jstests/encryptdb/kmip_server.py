@@ -3,9 +3,8 @@
 
 import logging
 import sys
-import tempfile
 
-from kmip.services.server import KmipServer
+from kmip.services.kmip_server import KMIPServer
 
 def main():
     logging.config.dictConfig({
@@ -42,35 +41,29 @@ def main():
             print("KMIP port must be an integer")
             sys.exit(1)
 
-    with tempfile.TemporaryDirectory() as dbdirname:
-        server = KmipServer(
-            hostname="127.0.0.1",
-            port=kmip_port,
-            key_path="jstests/libs/trusted-server.pem",
-            certificate_path="jstests/libs/trusted-server.pem",
-            ca_path="jstests/libs/trusted-ca.pem",
-            config_path=None,
-            policy_path=dbdirname,
-            log_path=dbdirname + '/log',
-            logging_level='DEBUG',
-            database_path=dbdirname + '/tmp.db',
-            auth_suite='TLS1.2',
-            enable_tls_client_auth=False,
-        )
+    server = KMIPServer(
+        host="127.0.0.1",
+        port=kmip_port,
+        keyfile="jstests/libs/trusted-server.pem",
+        certfile="jstests/libs/trusted-server.pem",
+        cert_reqs="CERT_REQUIRED",
+        ssl_version="PROTOCOL_SSLv23",
+        ca_certs="jstests/libs/trusted-ca.pem",
+        do_handshake_on_connect=True,
+        suppress_ragged_eofs=True)
 
-        logger.info(f"Starting KMIP server on port {kmip_port}")
+    logger.info("Starting KMIP server")
 
-        try:
-            server.start()
-            server.serve()
-        except KeyboardInterrupt as e:
-            logger.debug('Shutdown signal received')
-        except Exception as e:
-            logger.info('Exception received while serving: {0}'.format(e))
-        finally:
-            server.stop()
+    try:
+        server.serve()
+    except KeyboardInterrupt as e:
+        logger.debug('Shutdown signal received')
+    except Exception as e:
+        logger.info('Exception received while serving: {0}'.format(e))
+    finally:
+        server.close()
 
-        logger.info("Stopping KMIP server")
+    logger.info("Stopping KMIP server")
 
 
 if __name__ == '__main__':
