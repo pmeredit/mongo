@@ -9,7 +9,6 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/db/repl/initial_syncer_factory.h"
-#include "mongo/db/repl/repl_server_parameters_gen.h"
 #include "mongo/db/storage/encryption_hooks.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_global_options.h"
 #include "mongo/executor/scoped_task_executor.h"
@@ -21,8 +20,11 @@
 namespace mongo {
 namespace repl {
 
-constexpr int kFileCopyBasedInitialSyncMaxCursorFetchAttempts = 10;
-constexpr int kFileCopyBasedInitialSyncKeepBackupCursorAliveIntervalInMin = 5;
+// Failpoint which causes the file copy based initial sync to hang after opening the backupCursor.
+MONGO_FAIL_POINT_DEFINE(fCBISHangAfterOpeningBackupCursor);
+
+// Failpoint which causes the file copy based initial sync to hang after opening the backupCursor.
+MONGO_FAIL_POINT_DEFINE(fCBISSkipSyncingFilesPhase);
 
 FileCopyBasedInitialSyncer::FileCopyBasedInitialSyncer(
     InitialSyncerInterface::Options opts,
@@ -381,61 +383,62 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
         .on(executor, token);
 }
 
-void FileCopyBasedInitialSyncer::SyncingFilesState::keepBackupCursorAlive() {
-    backupCursorKeepAliveCancellation = CancellationSource(token);
+void FileCopyBasedInitialSyncer::_keepBackupCursorAlive() {
     LOGV2_DEBUG(
         5782303,
         2,
         "Starting to periodically send 'getMore' requests to keep the backup cursor alive.");
+    invariant(_syncingFilesState.backupId);
+    _syncingFilesState.backupCursorKeepAliveCancellation =
+        CancellationSource(_syncingFilesState.token);
+    executor::RemoteCommandRequest request(
+        _syncSource,
+        NamespaceString::kAdminDb.toString(),
+        std::move(BSON("getMore" << _syncingFilesState.backupCursorId << "collection"
+                                 << _syncingFilesState.backupCursorCollection)),
+        rpc::makeEmptyMetadata(),
+        nullptr);
+    // We're not expecting a response, set to fire and forget
+    request.fireAndForgetMode = executor::RemoteCommandRequest::FireAndForgetMode::kOn;
 
-    return AsyncTry([this, self = shared_from_this()] {
-               if (backupId) {
-                   executor::RemoteCommandRequest request(
-                       *syncSourcePtr,
-                       NamespaceString::kAdminDb.toString(),
-                       std::move(BSON("getMore" << backupCursorId << "collection"
-                                                << backupCursorCollection)),
-                       rpc::makeEmptyMetadata(),
-                       nullptr);
-                   // We're not expecting a response, set to fire and forget
-                   request.fireAndForgetMode =
-                       executor::RemoteCommandRequest::FireAndForgetMode::kOn;
-                   return executor
-                       ->scheduleRemoteCommand(std::move(request),
-                                               backupCursorKeepAliveCancellation.token())
-                       .getAsync([](auto&&) {});  // Ignore the result Future;
-               }
-           })
-        .until([](Status) { return false; })
-        .withDelayBetweenIterations(
-            Minutes(kFileCopyBasedInitialSyncKeepBackupCursorAliveIntervalInMin))
-        .on(executor, backupCursorKeepAliveCancellation.token())
-        .getAsync([](auto&&) {});  // Ignore the result Future;
+    _syncingFilesState.backupCursorKeepAliveFuture =
+        AsyncTry([this, self = shared_from_this(), request] {
+            return _syncingFilesState.executor->scheduleRemoteCommand(
+                std::move(request),
+                _syncingFilesState.backupCursorKeepAliveCancellation
+                    .token());  // Ignore the result Future;
+        })
+            .until([this, self = shared_from_this()](auto&&) { return false; })
+            .withDelayBetweenIterations(
+                Minutes(kFileCopyBasedInitialSyncKeepBackupCursorAliveIntervalInMin))
+            .on(_syncingFilesState.executor,
+                _syncingFilesState.backupCursorKeepAliveCancellation.token())
+            .onCompletion(
+                [this, self = shared_from_this()](auto&&) {});  // Ignore the result Future;
 }
 
-void FileCopyBasedInitialSyncer::SyncingFilesState::killBackupCursor() {
-    if (backupId) {
-        LOGV2_DEBUG(
-            5782305, 2, "Cancelling the 'getMore' requests that keeps the backCursor alive.");
-
-        backupCursorKeepAliveCancellation.cancel();
-
-        LOGV2_DEBUG(5782306, 2, "Trying to kill the backup cursor");
-
-        const auto cmdObj = BSON("killCursors" << backupCursorCollection << "cursors"
-                                               << BSON_ARRAY(backupCursorId));
-        executor::RemoteCommandRequest request(*syncSourcePtr,
-                                               NamespaceString::kAdminDb.toString(),
-                                               std::move(cmdObj),
-                                               rpc::makeEmptyMetadata(),
-                                               nullptr);
-
-        // We're not expecting a response, set to fire and forget
-        request.fireAndForgetMode = executor::RemoteCommandRequest::FireAndForgetMode::kOn;
-        return executor
-            ->scheduleRemoteCommand(std::move(request), CancellationToken::uncancelable())
-            .getAsync([](auto&&) {});  // Ignore the result Future;
+void FileCopyBasedInitialSyncer::_killBackupCursor() {
+    if (!_syncingFilesState.backupId) {
+        return;
     }
+
+    LOGV2_DEBUG(5782305, 2, "Cancelling the 'getMore' requests that keeps the backCursor alive.");
+    _syncingFilesState.backupCursorKeepAliveCancellation.cancel();
+
+    LOGV2_DEBUG(5782306, 2, "Trying to kill the backup cursor");
+    const auto cmdObj = BSON("killCursors" << _syncingFilesState.backupCursorCollection << "cursors"
+                                           << BSON_ARRAY(_syncingFilesState.backupCursorId));
+    executor::RemoteCommandRequest request(_syncSource,
+                                           NamespaceString::kAdminDb.toString(),
+                                           std::move(cmdObj),
+                                           rpc::makeEmptyMetadata(),
+                                           nullptr);
+
+    // We're not expecting a response, set to fire and forget
+    request.fireAndForgetMode = executor::RemoteCommandRequest::FireAndForgetMode::kOn;
+    return _syncingFilesState.executor
+        ->scheduleRemoteCommand(std::move(request), CancellationToken::uncancelable())
+        .getAsync([this, self = shared_from_this()](auto&&) {});  // Ignore the result Future;
 }
 
 StringSet FileCopyBasedInitialSyncer::SyncingFilesState::getNewFilesToClone(
@@ -451,8 +454,11 @@ StringSet FileCopyBasedInitialSyncer::SyncingFilesState::getNewFilesToClone(
 }
 
 void FileCopyBasedInitialSyncer::SyncingFilesState::reset() {
-    killBackupCursor();
-    syncSourcePtr.reset();
+    if (backupCursorKeepAliveFuture) {
+        backupCursorKeepAliveCancellation.cancel();
+        backupCursorKeepAliveFuture.get().wait();
+        backupCursorKeepAliveFuture = boost::none;
+    }
     backupCursorKeepAliveCancellation = {};
     backupId = boost::none;
     backupCursorId = 0;
@@ -560,7 +566,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_openBackupCursor(
                         metaData, "checkpointTimestamp", "backupCursor's first batch.metadata")
                         .timestamp();
                 _syncingFilesState.backupCursorId = data.cursorId;
-                _syncingFilesState.backupCursorCollection = data.nss.coll();
+                _syncingFilesState.backupCursorCollection = data.nss.coll().toString();
                 LOGV2_DEBUG(5782308,
                             2,
                             "Opened backup cursor on sync source.",
@@ -709,7 +715,30 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFromSyncSourceCursor() {
         return _openBackupCursor(returnedFiles)
             .then([this, self = shared_from_this(), returnedFiles] {
                 stdx::lock_guard<Latch> lock(_mutex);
-                _syncingFilesState.keepBackupCursorAlive();
+                _keepBackupCursorAlive();
+                _syncingFilesState.backupCursorFiles = returnedFiles;
+
+                if (MONGO_unlikely(fCBISHangAfterOpeningBackupCursor.shouldFail())) {
+                    // Hang in an async way to let other threads run in unit tests.
+                    return AsyncTry([this, self = shared_from_this()] {})
+                        .until([](Status) {
+                            if (MONGO_unlikely(fCBISHangAfterOpeningBackupCursor.shouldFail())) {
+                                LOGV2(5972801,
+                                      "file copy based initial sync - "
+                                      "fCBISHangAfterOpeningBackupCursor fail point enabled. "
+                                      "Blocking until fail point is disabled.");
+                                return false;
+                            }
+
+                            return true;
+                        })
+                        .withDelayBetweenIterations(Milliseconds(100))
+                        .on(_syncingFilesState.executor, _syncingFilesState.token);
+                } else {
+                    // Noop.
+                    return ExecutorFuture<void>(_syncingFilesState.executor);
+                }
+
                 // TODO (SERVER-58776): _cloneFiles(*files);
             });
     }
@@ -728,16 +757,16 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFromSyncSourceCursor() {
 ExecutorFuture<void> FileCopyBasedInitialSyncer::_startSyncingFiles(
     std::shared_ptr<executor::TaskExecutor> executor, const CancellationToken& token) {
     stdx::lock_guard<Latch> lock(_mutex);
-    if (_syncingFilesState.skipSyncingFilesPhaseForTest) {
+    if (MONGO_unlikely(fCBISSkipSyncingFilesPhase.shouldFail())) {
         // Noop.
         return ExecutorFuture<void>(executor);
     }
 
     // Initialize the state.
+    _killBackupCursor();
     _syncingFilesState.reset();
     _syncingFilesState.executor = executor;
     _syncingFilesState.token = token;
-    _syncingFilesState.syncSourcePtr = std::make_shared<HostAndPort>(_syncSource);
 
     return AsyncTry([this, self = shared_from_this()]() mutable {
                return _cloneFromSyncSourceCursor()
@@ -755,7 +784,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startSyncingFiles(
             stdx::lock_guard<Latch> lock(_mutex);
             if (!cloningStatus.isOK()) {
                 // Make sure to kill the backupCursor on failure.
-                _syncingFilesState.killBackupCursor();
+                _killBackupCursor();
 
                 // Returns the error to the caller.
                 return true;
@@ -789,7 +818,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startSyncingFiles(
             }
 
             // Make sure to kill the backupCursor on success.
-            _syncingFilesState.killBackupCursor();
+            _killBackupCursor();
             return true;
         })
         .on(_syncingFilesState.executor, _syncingFilesState.token);
@@ -814,6 +843,11 @@ Status FileCopyBasedInitialSyncer::shutdown() {
         _cancelRemainingWork(lock);
     }
 
+    if (_syncingFilesState.backupCursorKeepAliveFuture) {
+        // Wait for the thread that keeps the backupCursor alive.
+        _syncingFilesState.backupCursorKeepAliveFuture.get().wait();
+    }
+
     // If the initial sync attempt has been started, wait for it to be canceled (through
     // _cancelRemainingWork()) and for the onCompletion lambda to run the cleanup work on
     // _exec.
@@ -835,7 +869,7 @@ void FileCopyBasedInitialSyncer::_cancelRemainingWork(WithLock) {
     // Cancel the cancellation source to stop the work being run on the executor.
     _source.cancel();
 
-    _syncingFilesState.killBackupCursor();
+    _killBackupCursor();
 
     if (_client) {
         _client->shutdownAndDisallowReconnect();

@@ -4,6 +4,7 @@
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kTest
 
 #include "file_copy_based_initial_syncer.h"
+#include "mongo/bson/bsonmisc.h"
 #include "mongo/db/client.h"
 #include "mongo/db/index_builds_coordinator_mongod.h"
 #include "mongo/db/query/getmore_command_gen.h"
@@ -272,8 +273,9 @@ protected:
                 return std::unique_ptr<DBClientConnection>(
                     new MockDBClientConnection(_mockServer.get()));
             });
-            // TODO (SERVER-59728): Set this flag accordingly.
-            _fileCopyBasedInitialSyncer->skipSyncingFilesPhase_ForTest();
+            globalFailPointRegistry()
+                .find("fCBISSkipSyncingFilesPhase")
+                ->setMode(FailPoint::alwaysOn, 0);
         } catch (...) {
             ASSERT_OK(exceptionToStatus());
         }
@@ -315,6 +317,94 @@ protected:
     StatusWith<OpTimeAndWallTime> _lastApplied = Status(ErrorCodes::NotYetInitialized, "");
     InitialSyncerInterface::OnCompletionFn _onCompletion;
 
+    struct cursorDataMock {
+        const UUID backupId =
+            UUID(uassertStatusOK(UUID::parse(("2b068e03-5961-4d8e-b47a-d1c8cbd4b835"))));
+        const Timestamp checkpointTimestamp = Timestamp(1, 0);
+        const CursorId backupCursorId = 3703253128214665235ll;
+        const NamespaceString nss = NamespaceString("admin.$cmd.aggregate");
+        const std::vector<std::vector<std::string>> backupCursorFiles{
+            {"/data/db/job0/mongorunner/test-1/WiredTiger",
+             "/data/db/job0/mongorunner/test-1/WiredTiger.backup",
+             "/data/db/job0/mongorunner/test-1/sizeStorer.wt",
+             "/data/db/job0/mongorunner/test-1/index-1--3853645825680686061.wt",
+             "/data/db/job0/mongorunner/test-1/collection-0--3853645825680686061.wt",
+             "/data/db/job0/mongorunner/test-1/_mdb_catalog.wt",
+             "/data/db/job0/mongorunner/test-1/WiredTigerHS.wt",
+             "/data/db/job0/mongorunner/test-1/journal/WiredTigerLog.0000000001"},
+            {"/data/db/job0/mongorunner/test-1/journal/WiredTigerLog.0000000002",
+             "/data/db/job0/mongorunner/test-1/journal/WiredTigerLog.0000000003"}};
+        const std::vector<std::vector<int>> backupCursorFileSizes{
+            {47, 77050, 20480, 20480, 20480, 36864, 4096, 104857600}, {104857600, 104857600}};
+
+        const std::vector<std::vector<std::string>> extendedCursorFiles{
+            {"/data/db/job0/mongorunner/test-1/journal/WiredTigerLog.0000000004",
+             "/data/db/job0/mongorunner/test-1/journal/WiredTigerLog.0000000005"},
+            {"/data/db/job0/mongorunner/test-1/journal/WiredTigerLog.0000000006",
+             "/data/db/job0/mongorunner/test-1/journal/WiredTigerLog.0000000007"}};
+
+        BSONObj getBackupCursorBatches(int batchId) {
+            // Empty last batch.
+            if (batchId == -1) {
+                return BSON("cursor" << BSON("nextBatch" << BSONArray() << "id" << backupCursorId
+                                                         << "ns" << nss.ns())
+                                     << "ok" << 1.0);
+            }
+
+            BSONObjBuilder cursor;
+            BSONArrayBuilder batch(
+                cursor.subarrayStart((batchId == 0) ? "firstBatch" : "nextBatch"));
+
+            // First batch.
+            if (batchId == 0) {
+                auto metaData = BSON("backupId" << backupId << "checkpointTimestamp"
+                                                << checkpointTimestamp << "dbpath"
+                                                << "/data/db/job0/mongorunner/test-1");
+                batch.append(BSON("metadata" << metaData));
+            }
+            for (int i = 0; i < int(backupCursorFiles[batchId].size()); i++) {
+                batch.append(BSON("filename" << backupCursorFiles[batchId][i] << "fileSize"
+                                             << backupCursorFileSizes[batchId][i]));
+            }
+            batch.done();
+            cursor.append("id", backupCursorId);
+            cursor.append("ns", nss.ns());
+            BSONObjBuilder backupCursorReply;
+            backupCursorReply.append("cursor", cursor.obj());
+            backupCursorReply.append("ok", 1.0);
+            return backupCursorReply.obj();
+        }
+
+        BSONObj getExtendedCursorBatches(int cursorIndex) {
+            BSONObjBuilder cursor;
+            BSONArrayBuilder batch(cursor.subarrayStart("firstBatch"));
+            for (const auto& filename : extendedCursorFiles[cursorIndex]) {
+                batch.append(BSON("filename" << filename));
+            }
+            batch.done();
+            cursor.append("id", 0ll);
+            cursor.append("ns", nss.ns());
+            BSONObjBuilder extendedCursorReply;
+            extendedCursorReply.append("cursor", cursor.obj());
+            extendedCursorReply.append("ok", 1.0);
+            return extendedCursorReply.obj();
+        }
+    } cursorDataMock;
+
+    bool verifyCursorFiles(const StringSet& returnedFiles,
+                           const std::vector<std::vector<std::string>>& cursorFiles) {
+        int numOfFiles = 0;
+        for (int batchId = 0; batchId < int(cursorFiles.size()); batchId++) {
+            for (const auto& file : cursorFiles[batchId]) {
+                numOfFiles++;
+                if (!returnedFiles.contains(file)) {
+                    return false;
+                }
+            }
+        }
+
+        return numOfFiles == (int)returnedFiles.size();
+    }
 
     // Helper functions to test sending remote commands with the expected response.
     void expectHelloCommandWithResponse(bool isWritablePrimary,
@@ -372,6 +462,97 @@ protected:
         expectServerStatusCommandWithResponse("wiredTiger", false);
     }
 
+    void expectSuccessfulBackupCursorCall() {
+        auto backupCursorRequest =
+            BSON("aggregate" << 1 << "pipeline" << BSON_ARRAY(BSON("$backupCursor" << BSONObj())));
+
+        auto getMoreRequest = BSON("getMore" << cursorDataMock.backupCursorId << "collection"
+                                             << cursorDataMock.nss.coll());
+        // For keeping the backup cursor alive.
+        _mock->defaultExpect(
+            getMoreRequest,
+            RemoteCommandResponse({cursorDataMock.getBackupCursorBatches(-1), Milliseconds()}));
+
+        // The sync source satisfies requirements for FCBIS.
+        expectSuccessfulSyncSourceValidation();
+
+        {
+            MockNetwork::InSequence seq(*_mock);
+            _mock
+                ->expect(backupCursorRequest,
+                         RemoteCommandResponse(
+                             {cursorDataMock.getBackupCursorBatches(0), Milliseconds()}))
+                .times(1);
+            _mock
+                ->expect(getMoreRequest,
+                         RemoteCommandResponse(
+                             {cursorDataMock.getBackupCursorBatches(1), Milliseconds()}))
+                .times(1);
+
+            _mock
+                ->expect(getMoreRequest,
+                         RemoteCommandResponse(
+                             {cursorDataMock.getBackupCursorBatches(-1), Milliseconds()}))
+                .times(1);
+        }
+
+        _mock->runUntilExpectationsSatisfied();
+    }
+
+    void expectSuccessfulBackupCursorEmptyGetMore() {
+        auto getMoreRequest = BSON("getMore" << cursorDataMock.backupCursorId << "collection"
+                                             << cursorDataMock.nss.coll());
+        _mock
+            ->expect(
+                getMoreRequest,
+                RemoteCommandResponse({cursorDataMock.getBackupCursorBatches(-1), Milliseconds()}))
+            .times(1);
+        _mock->runUntilExpectationsSatisfied();
+    }
+
+    void expectSuccessfulExtendedBackupCursorCall(int cursorIndex, const Timestamp& extendTo) {
+        auto extendedBackupCursorRequest =
+            BSON("aggregate" << 1 << "pipeline"
+                             << BSON_ARRAY(BSON("$backupCursorExtend"
+                                                << BSON("backupId" << cursorDataMock.backupId
+                                                                   << "timestamp" << extendTo))));
+        _mock
+            ->expect(extendedBackupCursorRequest,
+                     RemoteCommandResponse(
+                         {cursorDataMock.getExtendedCursorBatches(cursorIndex), Milliseconds()}))
+            .times(1);
+        _mock->runUntilExpectationsSatisfied();
+    }
+
+    void expectSuccessfulReplSetGetStatusCall(const Timestamp& appliedOpTime) {
+        auto response =
+            BSON("ok" << 1.0 << "optimes" << BSON("appliedOpTime" << BSON("ts" << appliedOpTime)));
+        _mock
+            ->expect(BSON("replSetGetStatus" << 1),
+                     RemoteCommandResponse({response, Milliseconds()}))
+            .times(1);
+        _mock->runUntilExpectationsSatisfied();
+    }
+
+    void expectFailedReplSetGetStatusCall() {
+        auto response = BSON("ok" << 0 << "code" << ErrorCodes::NetworkTimeout);
+        _mock
+            ->expect(BSON("replSetGetStatus" << 1),
+                     RemoteCommandResponse({response, Milliseconds()}))
+            .times(1);
+        _mock->runUntilExpectationsSatisfied();
+    }
+
+    void expectSuccessfulKillBackupCursorCall() {
+        auto request = BSON("killCursors" << cursorDataMock.nss.coll() << "cursors"
+                                          << BSON_ARRAY(cursorDataMock.backupCursorId));
+        auto response =
+            BSON("ok" << 1.0 << "cursorsKilled" << BSON_ARRAY(cursorDataMock.backupCursorId));
+
+        _mock->expect(request, RemoteCommandResponse({response, Milliseconds()})).times(1);
+        _mock->runUntilExpectationsSatisfied();
+    }
+
 private:
     DataReplicatorExternalStateMock* _externalState;
     std::shared_ptr<FileCopyBasedInitialSyncer> _fileCopyBasedInitialSyncer;
@@ -390,6 +571,10 @@ void advanceClock(NetworkInterfaceMock* net, Milliseconds duration) {
     executor::NetworkInterfaceMock::InNetworkGuard guard(net);
     auto when = net->now() + duration;
     ASSERT_EQUALS(when, net->runUntil(when));
+}
+
+auto convertSecToMills(unsigned secs) {
+    return Milliseconds(static_cast<Milliseconds::rep>(1000 * secs));
 }
 
 ServiceContext::UniqueOperationContext makeOpCtx() {
@@ -858,4 +1043,142 @@ TEST_F(FileCopyBasedInitialSyncerTest,
 
     ASSERT_EQUALS(ErrorCodes::CallbackCanceled, _lastApplied);
 }
+
+TEST_F(FileCopyBasedInitialSyncerTest, SyncingFilesUsingBackupCursorOnly) {
+    auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
+    auto opCtx = makeOpCtx();
+
+    _syncSourceSelector->setChooseNewSyncSourceResult_forTest(HostAndPort("localhost", 12345));
+    globalFailPointRegistry().find("fCBISSkipSyncingFilesPhase")->setMode(FailPoint::off);
+
+    ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+    expectSuccessfulBackupCursorCall();
+    // Mark the initial sync as done as long as the lag is not greater than
+    // 'fileBasedInitialSyncMaxLagSec'.
+    expectSuccessfulReplSetGetStatusCall(
+        Timestamp(cursorDataMock.checkpointTimestamp.getSecs() + fileBasedInitialSyncMaxLagSec, 0));
+    ASSERT(verifyCursorFiles(fileCopyBasedInitialSyncer->getBackupCursorFiles_ForTest(),
+                             cursorDataMock.backupCursorFiles));
+
+    expectSuccessfulKillBackupCursorCall();
+    fileCopyBasedInitialSyncer->join();
+    ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest(),
+              Status::OK());
+}
+
+TEST_F(FileCopyBasedInitialSyncerTest, AlwaysKillBackupCursorOnFailure) {
+    auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
+    auto opCtx = makeOpCtx();
+
+    _syncSourceSelector->setChooseNewSyncSourceResult_forTest(HostAndPort("localhost", 12345));
+    globalFailPointRegistry().find("fCBISSkipSyncingFilesPhase")->setMode(FailPoint::off);
+
+    ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+    expectSuccessfulBackupCursorCall();
+    // Raise failure after opening the backup cursor.
+    expectFailedReplSetGetStatusCall();
+    ASSERT(verifyCursorFiles(fileCopyBasedInitialSyncer->getBackupCursorFiles_ForTest(),
+                             cursorDataMock.backupCursorFiles));
+
+    expectSuccessfulKillBackupCursorCall();
+    fileCopyBasedInitialSyncer->join();
+    ASSERT_EQUALS(ErrorCodes::NetworkTimeout, _lastApplied);
+    ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest(),
+              ErrorCodes::NetworkTimeout);
+}
+
+TEST_F(FileCopyBasedInitialSyncerTest, AlwaysKillBackupCursorOnShutdown) {
+    auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
+    auto opCtx = makeOpCtx();
+
+    _syncSourceSelector->setChooseNewSyncSourceResult_forTest(HostAndPort("localhost", 12345));
+    globalFailPointRegistry().find("fCBISSkipSyncingFilesPhase")->setMode(FailPoint::off);
+
+    ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+    expectSuccessfulBackupCursorCall();
+    ASSERT_OK(fileCopyBasedInitialSyncer->shutdown());
+    fileCopyBasedInitialSyncer->join();
+    expectSuccessfulKillBackupCursorCall();
+    ASSERT_EQUALS(ErrorCodes::CallbackCanceled, _lastApplied);
+}
+
+TEST_F(FileCopyBasedInitialSyncerTest, SyncingFilesUsingExtendedCursors) {
+    auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
+    auto opCtx = makeOpCtx();
+
+    _syncSourceSelector->setChooseNewSyncSourceResult_forTest(HostAndPort("localhost", 12345));
+    globalFailPointRegistry().find("fCBISSkipSyncingFilesPhase")->setMode(FailPoint::off);
+
+    ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+    expectSuccessfulBackupCursorCall();
+    // Force the lag to be greater than 'fileBasedInitialSyncMaxLagSec' to extend the backupCursor.
+    auto timeStamp = Timestamp(
+        cursorDataMock.checkpointTimestamp.getSecs() + fileBasedInitialSyncMaxLagSec + 1, 0);
+    expectSuccessfulReplSetGetStatusCall(timeStamp);
+    expectSuccessfulExtendedBackupCursorCall(0, timeStamp);
+
+    // Force the lag to be greater than 'fileBasedInitialSyncMaxLagSec' to extend the backupCursor
+    // again.
+    timeStamp = Timestamp(timeStamp.getSecs() + fileBasedInitialSyncMaxLagSec + 1, 0);
+    expectSuccessfulReplSetGetStatusCall(timeStamp);
+    expectSuccessfulExtendedBackupCursorCall(1, timeStamp);
+
+    // Mark the initial sync as done as long as the lag is not greater than
+    // 'fileBasedInitialSyncMaxLagSec'.
+    timeStamp = Timestamp(timeStamp.getSecs() + fileBasedInitialSyncMaxLagSec, 0);
+    expectSuccessfulReplSetGetStatusCall(timeStamp);
+
+    ASSERT(verifyCursorFiles(fileCopyBasedInitialSyncer->getBackupCursorFiles_ForTest(),
+                             cursorDataMock.backupCursorFiles));
+    ASSERT(verifyCursorFiles(fileCopyBasedInitialSyncer->getExtendedBackupCursorFiles_ForTest(),
+                             cursorDataMock.extendedCursorFiles));
+
+    expectSuccessfulKillBackupCursorCall();
+    fileCopyBasedInitialSyncer->join();
+    ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest(),
+              Status::OK());
+}
+
+TEST_F(FileCopyBasedInitialSyncerTest, KeepingBackupCursorAlive) {
+    auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
+    auto opCtx = makeOpCtx();
+
+    _syncSourceSelector->setChooseNewSyncSourceResult_forTest(HostAndPort("localhost", 12345));
+    globalFailPointRegistry().find("fCBISSkipSyncingFilesPhase")->setMode(FailPoint::off);
+
+    // Enable the failpoint to pause after opening the backupCursor.
+    auto hangAfterBackupCursorFailPoint =
+        globalFailPointRegistry().find("fCBISHangAfterOpeningBackupCursor");
+    auto timesEnteredFailPoint = hangAfterBackupCursorFailPoint->setMode(FailPoint::alwaysOn, 0);
+
+    ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+    expectSuccessfulBackupCursorCall();
+    hangAfterBackupCursorFailPoint->waitForTimesEntered(timesEnteredFailPoint + 1);
+
+    // We will keep extended the backup cursor every
+    // 'kFileCopyBasedInitialSyncKeepBackupCursorAliveIntervalInMin', testing it only 6 times.
+    for (int i = 0; i < 5; i++) {
+        advanceClock(
+            getNet(),
+            convertSecToMills(kFileCopyBasedInitialSyncKeepBackupCursorAliveIntervalInMin * 60));
+        expectSuccessfulBackupCursorEmptyGetMore();
+    }
+
+    hangAfterBackupCursorFailPoint->setMode(FailPoint::off);
+    // Advance the clock with 2 seconds to make sure that the backup cursor hang loop terminated.
+    advanceClock(getNet(), Milliseconds(static_cast<Milliseconds::rep>(100)));
+
+    // Mark the initial sync as done as long as the lag is not greater than
+    // 'fileBasedInitialSyncMaxLagSec'.
+    expectSuccessfulReplSetGetStatusCall(
+        Timestamp(cursorDataMock.checkpointTimestamp.getSecs() + fileBasedInitialSyncMaxLagSec, 0));
+    ASSERT(verifyCursorFiles(fileCopyBasedInitialSyncer->getBackupCursorFiles_ForTest(),
+                             cursorDataMock.backupCursorFiles));
+
+    expectSuccessfulKillBackupCursorCall();
+    fileCopyBasedInitialSyncer->join();
+    ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest(),
+              Status::OK());
+}
+
 }  // namespace

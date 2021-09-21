@@ -20,6 +20,9 @@
 namespace mongo {
 namespace repl {
 
+constexpr int kFileCopyBasedInitialSyncMaxCursorFetchAttempts = 10;
+constexpr int kFileCopyBasedInitialSyncKeepBackupCursorAliveIntervalInMin = 5;
+
 /**
  * The FileCopyBasedInitialSyncer performs initial sync through a file-copy based method rather than
  * a logical initial sync method.
@@ -90,11 +93,22 @@ public:
     HostAndPort getSyncSource_forTest();
 
     /**
-     * Do nothing in the syncing files phase.
+     * Returns list of files fetched from the backupCursor.
      * For testing only.
      */
-    void skipSyncingFilesPhase_ForTest() {
-        _syncingFilesState.skipSyncingFilesPhaseForTest = true;
+    StringSet getBackupCursorFiles_ForTest() {
+        return *_syncingFilesState.backupCursorFiles;
+    }
+
+    /**
+     * Returns list of files fetched from extended the backupCursor.
+     * For testing only.
+     */
+    StringSet getExtendedBackupCursorFiles_ForTest() {
+        StringSet files;
+        files.insert(_syncingFilesState.extendedCursorFiles.begin(),
+                     _syncingFilesState.extendedCursorFiles.end());
+        return files;
     }
 
 private:
@@ -178,6 +192,13 @@ private:
     ExecutorFuture<mongo::Timestamp> _getLastAppliedOpTimeFromSyncSource(
         std::shared_ptr<executor::TaskExecutor> executor, const CancellationToken& token);
 
+    // Keep issuing 'getMore' command to keep the backupCursor alive.
+    void _keepBackupCursorAlive();
+
+    // Kills the backupCursor if it exists, and cancels backupCursorKeepAliveCancellation.
+    // Safe to be called multiple times.
+    void _killBackupCursor();
+
     //
     // All member variables are labeled with one of the following codes indicating the
     // synchronization rules for accessing them.
@@ -245,13 +266,6 @@ private:
     struct SyncingFilesState : public std::enable_shared_from_this<SyncingFilesState> {
         SyncingFilesState() = default;
 
-        // Keep issuing 'getMore' command to keep the backupCursor alive.
-        void keepBackupCursorAlive();
-
-        // Kills the backupCursor if it exists, and cancels backupCursorKeepAliveCancellation.
-        // Safe to be called multiple times.
-        void killBackupCursor();
-
         void reset();
 
         // Extended cursor sends all log files created since the backupCursor's
@@ -262,17 +276,19 @@ private:
                                      WithLock lk);
 
         // The backupCursor used for initialSync, we should always have only one backupCursor opened
-        // on the syncSrc.
+        // on the sync source.
         boost::optional<mongo::UUID> backupId;
         CursorId backupCursorId;
-        StringData backupCursorCollection;
+        std::string backupCursorCollection;
         CancellationSource backupCursorKeepAliveCancellation;
+        boost::optional<ExecutorFuture<void>> backupCursorKeepAliveFuture;
 
-        std::shared_ptr<HostAndPort> syncSourcePtr;
         // The last timestamp that the syncing node has caught up to.
         mongo::Timestamp lastSyncedOpTime;
         // The last appliedOp timestamp that the syncing node knows about the sync source node.
         mongo::Timestamp lastAppliedOpTimeOnSyncSrc;
+        // Holds the files returned by the backupCursor.
+        std::shared_ptr<StringSet> backupCursorFiles;
         // Holds the files returned by extending the backupCursor.
         std::set<std::string> extendedCursorFiles;
         int fileBasedInitialSyncCycle = 1;
@@ -282,8 +298,6 @@ private:
 
         // The syncing file cancellation token.
         CancellationToken token = CancellationToken::uncancelable();
-
-        bool skipSyncingFilesPhaseForTest = false;
     } _syncingFilesState;
 };
 
