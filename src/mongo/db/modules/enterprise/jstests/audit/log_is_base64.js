@@ -60,6 +60,11 @@ function testAuditLineBase64(fixture, isMongos, enableCompression) {
     }, "Got not base64 when it was expected");
 
     fixture.stopProcess();
+
+    // Add a one-second delay to ensure that the next 'mongod' or
+    // 'mongos' run will not rotate to the same filename as the
+    // file created during this run
+    sleep(1000);
 }
 
 {

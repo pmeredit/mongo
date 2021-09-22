@@ -79,6 +79,11 @@ function testAuditLogHeader(fixture, isMongos, enableCompression) {
     }, "Audit log did not contain a valid header line on the top");
 
     fixture.stopProcess();
+
+    // Add a one-second delay to ensure that the next 'mongod' or
+    // 'mongos' run will not rotate to the same filename as the
+    // file created during this run
+    sleep(1000);
 }
 
 {
