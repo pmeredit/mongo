@@ -929,6 +929,14 @@ Status FileCopyBasedInitialSyncer::getStartInitialSyncAttemptFutureStatus_forTes
     }
 }
 
+Status FileCopyBasedInitialSyncer::waitForStartInitialSyncAttemptFutureStatus_forTest() {
+    if (_startInitialSyncAttemptFuture.is_initialized()) {
+        return _startInitialSyncAttemptFuture.get().getNoThrow();
+    } else {
+        return {ErrorCodes::IllegalOperation, "Initial sync has not started"};
+    }
+}
+
 HostAndPort FileCopyBasedInitialSyncer::getSyncSource_forTest() {
     return _syncSource;
 }

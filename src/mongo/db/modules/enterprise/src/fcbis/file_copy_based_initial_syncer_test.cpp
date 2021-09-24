@@ -717,7 +717,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, FCBISFailsIfNotUsingWiredTiger) {
 
     fileCopyBasedInitialSyncer->join();
 
-    ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest(),
+    ASSERT_EQ(fileCopyBasedInitialSyncer->waitForStartInitialSyncAttemptFutureStatus_forTest(),
               ErrorCodes::IncompatibleServerVersion);
     ASSERT_EQUALS(ErrorCodes::IncompatibleServerVersion, _lastApplied);
     ASSERT_EQUALS("File copy based initial sync requires using the WiredTiger storage engine.",

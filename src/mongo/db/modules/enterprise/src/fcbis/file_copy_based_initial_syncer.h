@@ -78,6 +78,12 @@ public:
     Status getStartInitialSyncAttemptFutureStatus_forTest();
 
     /**
+     * Waits for _startInitialSyncAttemptFuture to be ready and returns the status when it is done.
+     * For testing only.
+     */
+    Status waitForStartInitialSyncAttemptFutureStatus_forTest();
+
+    /**
      * Return _syncSource.
      * For testing only.
      */
