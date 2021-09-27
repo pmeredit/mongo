@@ -87,9 +87,7 @@ env.Program(
     ] + env.WindowsResourceFile("decryptor_tool.rc"),
     AIB_COMPONENT="mongoauditdecrypt",
     AIB_COMPONENTS_EXTRA=[
-        "dist",
         "dist-test",
-        "tools",
     ],
     LIBDEPS=[
         "$BUILD_DIR/mongo/base",
