@@ -14,6 +14,7 @@ env.Library(
     source=[
         'file_copy_based_initial_syncer.cpp',
         'initial_sync_file_mover.cpp',
+        'backup_file_cloner.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
@@ -37,12 +38,14 @@ env.Library(
 env.CppUnitTest(
     target='file_copy_based_initial_syncer_test',
     source=[
+        'backup_file_cloner_test.cpp',
         'file_copy_based_initial_syncer_test.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/db/auth/authmocks',
         '$BUILD_DIR/mongo/db/index_builds_coordinator_mongod',
+        '$BUILD_DIR/mongo/db/repl/cloner_test_fixtures',
         '$BUILD_DIR/mongo/db/repl/data_replicator_external_state_mock',
         '$BUILD_DIR/mongo/db/repl/repl_server_parameters',
         '$BUILD_DIR/mongo/db/repl/replmocks',
