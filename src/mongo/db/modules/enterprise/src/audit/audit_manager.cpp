@@ -252,7 +252,8 @@ MONGO_INITIALIZER_WITH_PREREQUISITES(InitializeGlobalAuditManager,
                                      ("AllCompressorsRegistered",
                                       "EndStartupOptionHandling",
                                       "MatchExpressionParser",
-                                      "PathlessOperatorMap"))
+                                      "PathlessOperatorMap",
+                                      "CryptographyInitialized"))
 (InitializerContext* context) {
     globalAuditManager.initialize(moe::startupOptionsParsed);
 }
