@@ -45,7 +45,7 @@ structs:
                 description: "Library to use for compression"
                 type: string
             keyStoreIdentifier:
-                type: object
+                type: object_owned
             encryptedKey:
                 description: "Encrypted log encryption key"
                 type: bindata_generic
