@@ -22,7 +22,6 @@ feature_dirs = [
     "queryable",
     "sasl",
     "search",
-    "serverless",
     "snmp" if not env.TargetOSIs('darwin') else [],
 ]
 

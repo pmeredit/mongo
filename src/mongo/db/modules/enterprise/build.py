@@ -33,7 +33,6 @@ def configure(conf, env):
         "queryable",
         "sasl",
         "search",
-        "serverless",
         "snmp",
     ]
 
