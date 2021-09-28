@@ -12,7 +12,10 @@
 #
 agentXSocket /tmp/agentx/master
 
-# On RHEL/CENTOS you may need to replace agentXSocket with agentx-master
+# On SELinux enabled RHEL, the socket should be in /var/agentx instead
+#agentXSocket /var/agentx/master
+
+# On some RHEL/CENTOS you may need to replace agentXSocket with agentx-master
 # mongod will issue a warning if needed: "Warning: Unknown token: agentXSocket"
 #agentx-master /tmp/agentx/master
 

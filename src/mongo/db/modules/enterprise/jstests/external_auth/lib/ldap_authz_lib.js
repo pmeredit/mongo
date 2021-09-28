@@ -380,6 +380,15 @@ function runTests(testCallback, configGenerator, callbackOptions) {
     st.stop();
 }
 
+function runTestsLocal(testCallback) {
+    const m = db.getMongo();
+    assert(m);
+    setupTest(m);
+    testCallback({conn: m});
+
+    jsTest.log("callback sucessful: " + testCallback.name);
+}
+
 function withSaslauthd(saslAuthdConfigFile, configGenerator, callback) {
     if (_isWindows()) {
         print("saslauthd may not be spawned on Windows. Skipping saslauthd test.");
