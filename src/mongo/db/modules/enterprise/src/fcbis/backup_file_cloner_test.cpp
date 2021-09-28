@@ -98,7 +98,7 @@ TEST_F(BackupFileClonerTest, CantCreateDirectory) {
     boost::filesystem::create_directory(_initialSyncPath);
     auto baddirPath = _initialSyncPath;
     baddirPath.append("baddir");
-    std::ofstream baddirFile(baddirPath, std::ios_base::out | std::ios_base::trunc);
+    std::ofstream baddirFile(baddirPath.native(), std::ios_base::out | std::ios_base::trunc);
     ASSERT_EQ(backupFileCloner->run().code(), 5781703);
 }
 
@@ -114,7 +114,7 @@ TEST_F(BackupFileClonerTest, PreStageSuccess) {
     ASSERT_EQ(0, boost::filesystem::file_size(filePath));
 
     // Now that it exists, test that it is truncated if we try again.
-    std::ofstream file(filePath);
+    std::ofstream file(filePath.native());
     file.write("stuff", 5);
     file.close();
     ASSERT_EQ(5, boost::filesystem::file_size(filePath));
