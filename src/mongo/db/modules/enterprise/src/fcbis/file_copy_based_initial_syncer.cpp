@@ -29,8 +29,12 @@ namespace repl {
 // Failpoint which causes the file copy based initial sync to hang after opening the backupCursor.
 MONGO_FAIL_POINT_DEFINE(fCBISHangAfterOpeningBackupCursor);
 
-// Failpoint which causes the file copy based initial sync to hang after opening the backupCursor.
+// Failpoint which causes the file copy based initial sync to skip the syncing files phase.
 MONGO_FAIL_POINT_DEFINE(fCBISSkipSyncingFilesPhase);
+
+// Failpoint which causes the file copy based initial sync to hang before deleting the old storage
+// files.
+MONGO_FAIL_POINT_DEFINE(fCBISHangBeforeDeletingOldStorageFiles);
 
 FileCopyBasedInitialSyncer::FileCopyBasedInitialSyncer(
     InitialSyncerInterface::Options opts,
@@ -134,6 +138,9 @@ ExecutorFuture<OpTimeAndWallTime> FileCopyBasedInitialSyncer::_startInitialSyncA
                return _selectAndValidateSyncSource(lock, executor, opCtx, token)
                    .then([this, self = shared_from_this(), executor, token](HostAndPort) {
                        return _startSyncingFiles(executor, token);
+                   })
+                   .then([this, self = shared_from_this()] {
+                       return _startDeletingOldStorageFilesPhase();
                    })
                    .then([this, self = shared_from_this()] { return _lastApplied; });
            })
@@ -480,6 +487,8 @@ void FileCopyBasedInitialSyncer::SyncingFilesState::reset() {
     currentBackupFileCloner.reset();
     backupFileClonerStats.clear();
     executor.reset();
+    oldStorageFilesToBeDeleted.clear();
+    currentFileMover.reset();
 
     token = CancellationToken::uncancelable();
 }
@@ -736,27 +745,9 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFromSyncSourceCursor() {
                 stdx::lock_guard<Latch> lock(_mutex);
                 _keepBackupCursorAlive();
                 _syncingFilesState.backupCursorFiles = returnedFiles;
-
-                if (MONGO_unlikely(fCBISHangAfterOpeningBackupCursor.shouldFail())) {
-                    // Hang in an async way to let other threads run in unit tests.
-                    return AsyncTry([this, self = shared_from_this()] {})
-                        .until([](Status) {
-                            if (MONGO_unlikely(fCBISHangAfterOpeningBackupCursor.shouldFail())) {
-                                LOGV2(5972801,
-                                      "file copy based initial sync - "
-                                      "fCBISHangAfterOpeningBackupCursor fail point enabled. "
-                                      "Blocking until fail point is disabled.");
-                                return false;
-                            }
-
-                            return true;
-                        })
-                        .withDelayBetweenIterations(Milliseconds(100))
-                        .on(_syncingFilesState.executor, _syncingFilesState.token);
-                } else {
-                    // Noop.
-                    return ExecutorFuture<void>(_syncingFilesState.executor);
-                }
+                return _hangAsyncIfFailPointEnabled("fCBISHangAfterOpeningBackupCursor",
+                                                    _syncingFilesState.executor,
+                                                    _syncingFilesState.token);
             })
             .then([this, self = shared_from_this(), returnedFiles] {
                 stdx::lock_guard lock(_mutex);
@@ -783,10 +774,6 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFromSyncSourceCursor() {
 ExecutorFuture<void> FileCopyBasedInitialSyncer::_startSyncingFiles(
     std::shared_ptr<executor::TaskExecutor> executor, const CancellationToken& token) {
     stdx::lock_guard<Latch> lock(_mutex);
-    if (MONGO_unlikely(fCBISSkipSyncingFilesPhase.shouldFail())) {
-        // Noop.
-        return ExecutorFuture<void>(executor);
-    }
     auto retryPeriod = initialSyncTransientErrorRetryPeriodSeconds.load();
     auto maxIdleTime = getCursorTimeoutMillis();
     // There's no point in waiting out an outage longer than our idle time, as the source will have
@@ -806,6 +793,11 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startSyncingFiles(
     _syncingFilesState.reset();
     _syncingFilesState.executor = executor;
     _syncingFilesState.token = token;
+
+    if (MONGO_unlikely(fCBISSkipSyncingFilesPhase.shouldFail())) {
+        // Noop.
+        return ExecutorFuture<void>(executor);
+    }
 
     return AsyncTry([this, self = shared_from_this()]() mutable {
                return _cloneFromSyncSourceCursor()
@@ -940,6 +932,57 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFiles(
         })
         .on(_syncingFilesState.executor, _syncingFilesState.token)
         .then([](bool) { return; });
+}
+
+ExecutorFuture<void> FileCopyBasedInitialSyncer::_hangAsyncIfFailPointEnabled(
+    StringData failPoint,
+    std::shared_ptr<executor::TaskExecutor> executor,
+    const CancellationToken& token) {
+    if (MONGO_unlikely(globalFailPointRegistry().find(failPoint)->shouldFail())) {
+        // Hang in an async way to let other threads run in unit tests.
+        return AsyncTry([this, self = shared_from_this()] {})
+            .until([logged = false, failPoint](Status) mutable {
+                if (MONGO_unlikely(globalFailPointRegistry().find(failPoint)->shouldFail())) {
+                    if (!logged) {
+                        logged = true;
+                        LOGV2(5972801,
+                              "file copy based initial sync: Fail point is enabled. "
+                              "Blocking until fail point is disabled.",
+                              "failPoint"_attr = failPoint);
+                    }
+                    return false;
+                }
+
+                return true;
+            })
+            .withDelayBetweenIterations(Milliseconds(100))
+            .on(executor, token);
+    } else {
+        // Noop.
+        return ExecutorFuture<void>(executor);
+    }
+}
+
+ExecutorFuture<void> FileCopyBasedInitialSyncer::_startDeletingOldStorageFilesPhase() {
+    return _getListOfOldFilesToBeDeleted()
+        .then([this, self = shared_from_this()] {
+            return _hangAsyncIfFailPointEnabled("fCBISHangBeforeDeletingOldStorageFiles",
+                                                _syncingFilesState.executor,
+                                                _syncingFilesState.token);
+        })
+        .then([this, self = shared_from_this()] {
+            _syncingFilesState.currentFileMover =
+                std::make_unique<InitialSyncFileMover>(storageGlobalParams.dbpath);
+            _syncingFilesState.currentFileMover->deleteFiles(
+                _syncingFilesState.oldStorageFilesToBeDeleted);
+        });
+}
+
+ExecutorFuture<void> FileCopyBasedInitialSyncer::_getListOfOldFilesToBeDeleted() {
+    // Files should be already clonned in '.initialSync' direcotry.
+    // TODO (SERVER-57826): Get list of deleted files and create
+    // INITIAL_SYNC_FILES_TO_DELETE.
+    return ExecutorFuture<void>(_syncingFilesState.executor);
 }
 
 Status FileCopyBasedInitialSyncer::shutdown() {

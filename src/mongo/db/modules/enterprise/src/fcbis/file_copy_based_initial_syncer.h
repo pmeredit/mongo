@@ -7,6 +7,7 @@
 #include <memory>
 
 #include "fcbis/backup_file_cloner.h"
+#include "fcbis/initial_sync_file_mover.h"
 #include "mongo/client/dbclient_connection.h"
 #include "mongo/db/repl/data_replicator_external_state.h"
 #include "mongo/db/repl/initial_sync_shared_data.h"
@@ -116,6 +117,10 @@ public:
         return _getPathRelativeTo(path, basePath);
     }
 
+    void setOldStorageFilesToBeDeleted_ForTest(const std::vector<std::string>& oldFiles) {
+        _syncingFilesState.oldStorageFilesToBeDeleted = oldFiles;
+    }
+
 private:
     /**
      * Open connection to the sync source for BackupFileCloners.
@@ -165,9 +170,26 @@ private:
 
     /**
      * Starts syncing files from the sync source.
+     *  1- Get the list of the files to be cloned from the cursors on the sync source.
+     *  2- Clone the files and put them in '.initialsync' directory.
      */
     ExecutorFuture<void> _startSyncingFiles(std::shared_ptr<executor::TaskExecutor> executor,
                                             const CancellationToken& token);
+
+    /**
+     * Starts deleting old storage files phase.
+     *  1- Get list of files to be deleted from local cursor.
+     *  2- Grab global lock.
+     *  3- Switch storage engines.
+     *  4- Clean up local DBs.
+     *  5- Delete the list of the files.
+     */
+    ExecutorFuture<void> _startDeletingOldStorageFilesPhase();
+
+    /**
+     * Gets the list of the old storage files that will be deleted in dbpath.
+     */
+    ExecutorFuture<void> _getListOfOldFilesToBeDeleted();
 
     /**
      * Opens the right cursor on the sync source and gets the files to be cloned.
@@ -215,6 +237,14 @@ private:
      * from a base path and a relative path.
      */
     static std::string _getPathRelativeTo(StringData path, StringData basePath);
+
+    /**
+     * Hang in async way if the fail point is enabled.
+     */
+    ExecutorFuture<void> _hangAsyncIfFailPointEnabled(
+        StringData failPoint,
+        std::shared_ptr<executor::TaskExecutor> executor,
+        const CancellationToken& token);
 
     //
     // All member variables are labeled with one of the following codes indicating the
@@ -287,7 +317,7 @@ private:
     boost::optional<ExecutorFuture<void>> _startInitialSyncAttemptFuture;
 
     // Holds the state for _startSyncingFiles async job.
-    struct SyncingFilesState : public std::enable_shared_from_this<SyncingFilesState> {
+    struct SyncingFilesState {
         SyncingFilesState() = default;
 
         void reset();
@@ -327,6 +357,10 @@ private:
 
         // The syncing file cancellation token.
         CancellationToken token = CancellationToken::uncancelable();
+
+        // List of relative paths to the old storage files in dbbath that will be deleted.
+        std::vector<std::string> oldStorageFilesToBeDeleted;
+        std::unique_ptr<InitialSyncFileMover> currentFileMover;
     } _syncingFilesState;
 };
 

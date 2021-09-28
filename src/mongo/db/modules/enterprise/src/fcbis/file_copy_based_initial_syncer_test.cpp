@@ -33,6 +33,7 @@
 #include "mongo/logv2/log.h"
 #include "mongo/platform/mutex.h"
 #include "mongo/unittest/log_test.h"
+#include "mongo/unittest/temp_dir.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/clock_source_mock.h"
 #include "mongo/util/concurrency/thread_pool.h"
@@ -282,6 +283,10 @@ protected:
         } catch (...) {
             ASSERT_OK(exceptionToStatus());
         }
+
+        _tempDir = std::make_unique<unittest::TempDir>("FileCopyBasedInitialSyncerTest");
+        storageGlobalParams.dbpath = _tempDir->path();
+        cursorDataMock.dbpath = boost::filesystem::path(_tempDir->path());
     }
 
     void tearDownExecutorThread() {
@@ -300,6 +305,7 @@ protected:
         _replicationProcess.reset();
         _storageInterface.reset();
         _mock.reset();
+        _tempDir.reset();
     }
 
     std::shared_ptr<TaskExecutorMock> _executorProxy;
@@ -316,6 +322,8 @@ protected:
     std::unique_ptr<ReplicationProcess> _replicationProcess;
     std::unique_ptr<ThreadPool> _dbWorkThreadPool;
     std::map<NamespaceString, CollectionCloneInfo> _collections;
+    // TODO (SERVER-57826): Remove '_tempDir' after start inherting 'ServiceContextMongoDTest'.
+    std::unique_ptr<unittest::TempDir> _tempDir;
 
     StatusWith<OpTimeAndWallTime> _lastApplied = Status(ErrorCodes::NotYetInitialized, "");
     InitialSyncerInterface::OnCompletionFn _onCompletion;
@@ -346,6 +354,10 @@ protected:
             {"/data/db/job0/mongorunner/test-1/journal/WiredTigerLog.0000000006",
              "/data/db/job0/mongorunner/test-1/journal/WiredTigerLog.0000000007"}};
 
+        StringData remoteDbPath = "/data/db/job0/mongorunner/test-1";
+
+        boost::filesystem::path dbpath;
+
         BSONObj getBackupCursorBatches(int batchId) {
             // Empty last batch.
             if (batchId == -1) {
@@ -361,8 +373,7 @@ protected:
             // First batch.
             if (batchId == 0) {
                 auto metaData = BSON("backupId" << backupId << "checkpointTimestamp"
-                                                << checkpointTimestamp << "dbpath"
-                                                << "/data/db/job0/mongorunner/test-1");
+                                                << checkpointTimestamp << "dbpath" << remoteDbPath);
                 batch.append(BSON("metadata" << metaData));
             }
             for (int i = 0; i < int(backupCursorFiles[batchId].size()); i++) {
@@ -391,6 +402,70 @@ protected:
             extendedCursorReply.append("cursor", cursor.obj());
             extendedCursorReply.append("ok", 1.0);
             return extendedCursorReply.obj();
+        }
+
+        std::vector<std::string> getAllRemoteFilesRelativePath() {
+            std::vector<std::string> allFiles;
+            for (int i = 0; i < 2; i++) {
+                for (const auto& file : backupCursorFiles[i]) {
+                    allFiles.push_back(
+                        FileCopyBasedInitialSyncer::getPathRelativeTo_forTest(file, remoteDbPath));
+                }
+
+                for (const auto& file : extendedCursorFiles[i]) {
+                    allFiles.push_back(
+                        FileCopyBasedInitialSyncer::getPathRelativeTo_forTest(file, remoteDbPath));
+                }
+            }
+
+            return allFiles;
+        }
+
+        void writeFileRelativeToDbPath(StringData fileRelativePath, StringData contents) {
+            boost::filesystem::path filepath(dbpath);
+            filepath.append(fileRelativePath.toString());
+            boost::filesystem::create_directories(filepath.parent_path());
+            std::ofstream writer(filepath.native());
+            writer << contents;
+        }
+
+        void createOldStorageFiles() {
+            auto files = getAllRemoteFilesRelativePath();
+            for (const auto& fileRelativePath : files) {
+                writeFileRelativeToDbPath(fileRelativePath, "_DATA_" + fileRelativePath + "_DATA_");
+            }
+        }
+
+        void assertExistsWithContents(StringData fileRelativePath, StringData expected_contents) {
+            auto path = dbpath;
+            path.append(fileRelativePath.toString());
+            ASSERT_TRUE(boost::filesystem::exists(path))
+                << "File " << fileRelativePath << " should exist but does not";
+            std::ifstream reader(path.native());
+            std::string contents;
+            reader >> contents;
+            ASSERT_EQ(contents, expected_contents)
+                << "File " << fileRelativePath << " should have contents " << expected_contents
+                << " but instead has " << contents;
+        }
+
+        void assertNotExist(StringData fileRelativePath) {
+            auto path = dbpath;
+            path.append(fileRelativePath.toString());
+            ASSERT_FALSE(boost::filesystem::exists(path))
+                << "File " << fileRelativePath << " shouldn't exist but does";
+        }
+
+        void validateOldStorageFiles(bool shouldExist) {
+            auto files = getAllRemoteFilesRelativePath();
+            for (const auto& fileRelativePath : files) {
+                if (!shouldExist) {
+                    assertNotExist(fileRelativePath);
+                } else {
+                    assertExistsWithContents(fileRelativePath,
+                                             "_DATA_" + fileRelativePath + "_DATA_");
+                }
+            }
         }
     } cursorDataMock;
 
@@ -1226,7 +1301,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, KeepingBackupCursorAlive) {
     }
 
     hangAfterBackupCursorFailPoint->setMode(FailPoint::off);
-    // Advance the clock with 2 seconds to make sure that the backup cursor hang loop terminated.
+    // Advance the clock to make sure that the failPoint hang loop terminated.
     advanceClock(getNet(), Milliseconds(static_cast<Milliseconds::rep>(100)));
 
     // Mark the initial sync as done as long as the lag is not greater than
@@ -1381,6 +1456,41 @@ TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromExtendedCursor) {
     ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest(),
               Status::OK());
     ASSERT_EQ(fileCopyBasedInitialSyncer->getSyncSource_forTest(), HostAndPort("localhost", 12345));
+}
+
+TEST_F(FileCopyBasedInitialSyncerTest, DeleteOldStorageFilesPhase) {
+    auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
+    auto opCtx = makeOpCtx();
+    globalFailPointRegistry().find("fCBISSkipSyncingFilesPhase")->setMode(FailPoint::alwaysOn, 0);
+    auto hangBeforeDeletingOldStorageFilesFailPoint =
+        globalFailPointRegistry().find("fCBISHangBeforeDeletingOldStorageFiles");
+    auto timesEnteredFailPoint =
+        hangBeforeDeletingOldStorageFilesFailPoint->setMode(FailPoint::alwaysOn, 0);
+    _syncSourceSelector->setChooseNewSyncSourceResult_forTest(HostAndPort("localhost", 12345));
+
+    // Add old storage files that will be deleted.
+    cursorDataMock.createOldStorageFiles();
+    cursorDataMock.validateOldStorageFiles(true /*shouldExist*/);
+
+    // Let initial sync works untill hitting the delete phase.
+    ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+    expectSuccessfulSyncSourceValidation();
+    hangBeforeDeletingOldStorageFilesFailPoint->waitForTimesEntered(timesEnteredFailPoint + 1);
+
+    // Override the files to be deleted with the files we added to the dbpath.
+    fileCopyBasedInitialSyncer->setOldStorageFilesToBeDeleted_ForTest(
+        cursorDataMock.getAllRemoteFilesRelativePath());
+
+    // Let initial sync finishes.
+    hangBeforeDeletingOldStorageFilesFailPoint->setMode(FailPoint::off);
+    // Advance the clock to make sure that the failPoint hang loop terminated.
+    advanceClock(getNet(), Milliseconds(static_cast<Milliseconds::rep>(100)));
+    fileCopyBasedInitialSyncer->join();
+    ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest(),
+              Status::OK());
+
+    // Make sure that all files got deleted.
+    cursorDataMock.validateOldStorageFiles(false /*shouldExist*/);
 }
 
 }  // namespace

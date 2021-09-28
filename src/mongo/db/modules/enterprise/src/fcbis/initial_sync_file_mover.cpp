@@ -137,10 +137,10 @@ void InitialSyncFileMover::_writeMarker(std::vector<std::string> filenames,
 void InitialSyncFileMover::_deleteFilesListedInDeleteMarker() {
     boost::filesystem::path filesToDeleteMarker(_dbpath);
     filesToDeleteMarker.append(kFilesToDeleteMarker.toString());
-    _deleteFiles(_readListOfFiles(filesToDeleteMarker));
+    deleteFiles(_readListOfFiles(filesToDeleteMarker));
 }
 
-void InitialSyncFileMover::_deleteFiles(const std::vector<std::string>& filesToDelete) {
+void InitialSyncFileMover::deleteFiles(const std::vector<std::string>& filesToDelete) {
     boost::filesystem::path dbpath(_dbpath);
     dbpath = boost::filesystem::canonical(dbpath);
     StringSet removedFiles;
@@ -268,7 +268,7 @@ void InitialSyncFileMover::_cleanupAfterFailedMoveAndFassert() {
     boost::filesystem::remove_all(initialSyncDir);
     auto movingFilesMarker = dbpath;
     movingFilesMarker.append(kMovingFilesMarker.toString());
-    _deleteFiles(_readListOfFiles(movingFilesMarker));
+    deleteFiles(_readListOfFiles(movingFilesMarker));
     boost::filesystem::remove(movingFilesMarker);
     fassertFailedNoTrace(5783416);
 }

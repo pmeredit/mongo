@@ -33,6 +33,11 @@ public:
      */
     void recoverFileCopyBasedInitialSyncAtStartup();
 
+    /**
+     * Deletes any list of files relative to dbpath.
+     */
+    void deleteFiles(const std::vector<std::string>& filesToDelete);
+
 private:
     InitialSyncFileMover(const InitialSyncFileMover&) = delete;
     InitialSyncFileMover& operator=(const InitialSyncFileMover&) = delete;
@@ -61,11 +66,6 @@ private:
      * Deletes the list of files in the kFilesToDeleteMarker file.
      */
     void _deleteFilesListedInDeleteMarker();
-
-    /**
-     * Deletes any list of files relative to dbpath.
-     */
-    void _deleteFiles(const std::vector<std::string>& filesToDelete);
 
     /**
      * Moves a list of files relative to kInitialSyncDir to dbpath.
