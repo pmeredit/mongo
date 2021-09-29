@@ -49,6 +49,8 @@ public:
 
     ~FileCopyBasedInitialSyncer() final;
 
+    std::string getInitialSyncMethod() const final;
+
     Status startup(OperationContext* opCtx, std::uint32_t maxAttempts) noexcept final;
 
     Status shutdown() final;

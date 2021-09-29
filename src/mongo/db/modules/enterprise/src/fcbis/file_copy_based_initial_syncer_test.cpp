@@ -573,8 +573,8 @@ protected:
         // $getField operator, which is able to handle '.' in field names.
         BSONObj getParameterReq = fromjson(
             "{$and:[{ getParameter: { $eq: 1 } },{$expr: { $eq: [{$getField: "
-            "\"\'wiredTigerDirectoryForIndexes\'\"}, 1]}},{$expr: {$eq:[{$getField: "
-            "\"\'storageGlobalParams.directoryperdb\'\"}, 1]}}]}");
+            "\"wiredTigerDirectoryForIndexes\"}, 1]}},{$expr: {$eq:[{$getField: "
+            "\"storageGlobalParams.directoryperdb\"}, 1]}}]}");
         _mock->expect(getParameterReq,
                       RemoteCommandResponse({getParameterResp.obj(), Milliseconds()}));
         _mock->runUntilExpectationsSatisfied();
@@ -930,7 +930,7 @@ void _simulateChooseSyncSourceFailure(executor::NetworkInterfaceMock* net,
 
 TEST_F(
     FileCopyBasedInitialSyncerTest,
-    FCBISReturnsInitialSyncOplogSourceMissingIfNoValidSyncSourceCanBeFoundAfterTenFailedChooseSyncSourceAttempts) {
+    FCBISReturnsInvalidSyncSourceIfNoValidSyncSourceCanBeFoundAfterTenFailedChooseSyncSourceAttempts) {
     auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
     auto opCtx = makeOpCtx();
 
@@ -943,7 +943,7 @@ TEST_F(
     _simulateChooseSyncSourceFailure(getNet(), _options.syncSourceRetryWait);
 
     fileCopyBasedInitialSyncer->join();
-    ASSERT_EQUALS(ErrorCodes::InitialSyncOplogSourceMissing, _lastApplied);
+    ASSERT_EQUALS(ErrorCodes::InvalidSyncSource, _lastApplied);
 }
 
 TEST_F(FileCopyBasedInitialSyncerTest, FCBISValidatesSyncSourceSuccessfully) {
@@ -1195,7 +1195,7 @@ TEST_F(FileCopyBasedInitialSyncerTest,
 
     fileCopyBasedInitialSyncer->join();
 
-    ASSERT_EQUALS(ErrorCodes::InitialSyncOplogSourceMissing, _lastApplied);
+    ASSERT_EQUALS(ErrorCodes::InvalidSyncSource, _lastApplied);
 }
 
 TEST_F(FileCopyBasedInitialSyncerTest,

@@ -85,6 +85,10 @@ FileCopyBasedInitialSyncer::~FileCopyBasedInitialSyncer() {
     });
 }
 
+std::string FileCopyBasedInitialSyncer::getInitialSyncMethod() const {
+    return "fileCopyBased";
+}
+
 Status FileCopyBasedInitialSyncer::startup(OperationContext* opCtx,
                                            std::uint32_t initialSyncMaxAttempts) noexcept {
     invariant(opCtx);
@@ -213,7 +217,7 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
                stdx::lock_guard<Latch> lock(_mutex);
                auto syncSource = _chooseSyncSource(lock);
                if (!syncSource.isOK()) {
-                   uassertStatusOK({ErrorCodes::InitialSyncOplogSourceMissing,
+                   uassertStatusOK({ErrorCodes::InvalidSyncSource,
                                     "No valid sync source found in current replica set to do an "
                                     "initial sync."});
                }
@@ -249,7 +253,10 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
                                                            "not a primary or secondary."});
                        }
 
-                       auto syncSourceMaxWireVersion = response.data["maxWireVersion"].numberInt();
+                       auto syncSourceMaxWireVersion = _getBSONField(response.data,
+                                                                     "maxWireVersion",
+                                                                     "sync source's hello response")
+                                                           .numberInt();
                        // The sync source must have a wire version where file copy based initial
                        // sync exists, and the syncing node’s MAX_WIRE_VERSION must be  greater than
                        // or equal to the sync source node’s MAX_WIRE_VERSION.
@@ -278,8 +285,8 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
                        const executor::RemoteCommandRequest request(
                            syncSource.getValue(),
                            "admin",
-                           BSON("getParameter" << 1 << "'storageGlobalParams.directoryperdb'" << 1
-                                               << "'wiredTigerDirectoryForIndexes'" << 1),
+                           BSON("getParameter" << 1 << "storageGlobalParams.directoryperdb" << 1
+                                               << "wiredTigerDirectoryForIndexes" << 1),
                            rpc::makeEmptyMetadata(),
                            nullptr);
 
@@ -404,6 +411,9 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
         .until([this, self = shared_from_this()](StatusWith<HostAndPort> status) mutable {
             stdx::lock_guard<Latch> lock(_mutex);
             if (!status.isOK()) {
+                LOGV2(5780601,
+                      "File copy based initial sync failed to choose sync source",
+                      "error"_attr = status.getStatus());
                 ++_chooseSyncSourceAttempt;
                 return _chooseSyncSourceAttempt >= _chooseSyncSourceMaxAttempts;
             }
