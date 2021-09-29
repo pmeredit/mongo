@@ -7,13 +7,13 @@
 #include "initial_sync_file_mover.h"
 
 #include "mongo/bson/bsonobj.h"
+#include "mongo/db/cursor_server_params.h"
 #include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/db/repl/initial_syncer_factory.h"
 #include "mongo/db/repl/repl_server_parameters_gen.h"
 #include "mongo/db/repl/replication_auth.h"
 #include "mongo/db/storage/encryption_hooks.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_global_options.h"
-#include "mongo/db/storage/wiredtiger/wiredtiger_parameters_gen.h"
 #include "mongo/executor/scoped_task_executor.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
@@ -788,8 +788,8 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startSyncingFiles(
         return ExecutorFuture<void>(executor);
     }
     auto retryPeriod = initialSyncTransientErrorRetryPeriodSeconds.load();
-    auto maxIdleTime = gWiredTigerSessionCloseIdleTimeSecs.load();
-    // There's no point in waiting out an outage longer than our idle time, as WT will have
+    auto maxIdleTime = getCursorTimeoutMillis();
+    // There's no point in waiting out an outage longer than our idle time, as the source will have
     // closed the cursor and we'll fail.
     if (retryPeriod > maxIdleTime) {
         LOGV2(5877602,
