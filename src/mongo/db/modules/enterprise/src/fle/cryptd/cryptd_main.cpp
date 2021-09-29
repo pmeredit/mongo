@@ -14,6 +14,7 @@
 #include "mongo/base/status.h"
 #include "mongo/bson/json.h"
 #include "mongo/db/client.h"
+#include "mongo/db/concurrency/locker_noop_client_observer.h"
 #include "mongo/db/initialize_server_global_state.h"
 #include "mongo/db/log_process_details.h"
 #include "mongo/db/repl/replication_coordinator_noop.h"
@@ -240,7 +241,9 @@ int CryptDMain(int argc, char** argv) {
     runGlobalInitializersOrDie(std::vector<std::string>(argv, argv + argc));
     startSignalProcessingThread(LogFileStatus::kNoLogFileToRotate);
 
-    setGlobalServiceContext(ServiceContext::make());
+    auto serviceContextHolder = ServiceContext::make();
+    serviceContextHolder->registerClientObserver(std::make_unique<LockerNoopClientObserver>());
+    setGlobalServiceContext(std::move(serviceContextHolder));
     auto serviceContext = getGlobalServiceContext();
 
     serviceContext->setServiceEntryPoint(std::make_unique<ServiceEntryPointCryptD>(serviceContext));
