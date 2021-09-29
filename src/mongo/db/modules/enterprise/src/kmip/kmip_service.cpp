@@ -113,7 +113,7 @@ StatusWith<std::string> KMIPService::createExternalKey() {
         return Status(ErrorCodes::BadValue,
                       str::stream()
                           << "KMIP create key failed, code: " << response.getResultReason()
-                          << " error: " << response.getResultMsg());
+                          << " error: " << response.getResultMsg()->data());
     }
     return response.getUID();
 }
@@ -130,7 +130,7 @@ StatusWith<std::unique_ptr<SymmetricKey>> KMIPService::getExternalKey(const std:
         return Status(ErrorCodes::BadValue,
                       str::stream() << "KMIP get key '" << uid
                                     << "' failed, code: " << response.getResultReason()
-                                    << " error: " << response.getResultMsg());
+                                    << " error: " << response.getResultMsg()->data());
     }
 
     std::unique_ptr<SymmetricKey> key = response.getSymmetricKey();
@@ -145,7 +145,7 @@ StatusWith<std::unique_ptr<SymmetricKey>> KMIPService::getExternalKey(const std:
 
 
 StatusWith<std::vector<uint8_t>> KMIPService::encrypt(const std::string& uid,
-                                                      const std::vector<uint8_t>& data) {
+                                                      const SecureVector<uint8_t>& data) {
     StatusWith<KMIPResponse> swResponse = _sendRequest(_generateKMIPEncryptRequest(uid, data));
     if (!swResponse.isOK()) {
         return swResponse.getStatus();
@@ -155,14 +155,16 @@ StatusWith<std::vector<uint8_t>> KMIPService::encrypt(const std::string& uid,
     if (response.getResultStatus() != kmip::statusSuccess) {
         return Status(ErrorCodes::BadValue,
                       str::stream() << "KMIP encrypt failed, code: " << response.getResultReason()
-                                    << " error: " << response.getResultMsg());
+                                    << " error: " << response.getResultMsg()->data());
     }
 
-    return response.getData();
+    auto sdata = response.getData();
+    return std::vector<uint8_t>(std::make_move_iterator(sdata->begin()),
+                                std::make_move_iterator(sdata->end()));
 }
 
-StatusWith<std::vector<uint8_t>> KMIPService::decrypt(const std::string& uid,
-                                                      const std::vector<uint8_t>& data) {
+StatusWith<SecureVector<uint8_t>> KMIPService::decrypt(const std::string& uid,
+                                                       const std::vector<uint8_t>& data) {
     StatusWith<KMIPResponse> swResponse = _sendRequest(_generateKMIPDecryptRequest(uid, data));
     if (!swResponse.isOK()) {
         return swResponse.getStatus();
@@ -172,7 +174,7 @@ StatusWith<std::vector<uint8_t>> KMIPService::decrypt(const std::string& uid,
     if (response.getResultStatus() != kmip::statusSuccess) {
         return Status(ErrorCodes::BadValue,
                       str::stream() << "KMIP decrypt failed, code: " << response.getResultReason()
-                                    << " error: " << response.getResultMsg());
+                                    << " error: " << response.getResultMsg()->data());
     }
 
     return response.getData();
@@ -203,46 +205,45 @@ void KMIPService::_initServerConnection(Milliseconds connectTimeout) {
 }
 
 // Sends a request message to the KMIP server and creates a KMIPResponse.
-StatusWith<KMIPResponse> KMIPService::_sendRequest(const std::vector<uint8_t>& request) {
-    char resp[2000];
+StatusWith<KMIPResponse> KMIPService::_sendRequest(const SecureVector<uint8_t>& request) {
+    SecureVector<char> resp(8);
 
-    _socket->send(reinterpret_cast<const char*>(request.data()), request.size(), "KMIP request");
+    _socket->send(reinterpret_cast<const char*>(request->data()), request->size(), "KMIP request");
     /**
      *  Read response header on the form:
      *  data[0:2] - tag identifier
      *  data[3]   - tag type
      *  data[4:7] - big endian encoded message body length
      */
-    _socket->recv(resp, 8);
-    if (memcmp(resp, kmip::responseMessageTag, 3) != 0 ||
-        resp[3] != static_cast<char>(ItemType::structure)) {
+    _socket->recv(resp->data(), 8);
+    if (memcmp(resp->data(), kmip::responseMessageTag, 3) != 0 ||
+        (*resp)[3] != static_cast<char>(ItemType::structure)) {
         return Status(ErrorCodes::FailedToParse,
                       "Expected KMIP response message to start with"
                       "reponse message tag");
     }
 
-    ConstDataRangeCursor cdrc(resp + 4, resp + 8);
+    ConstDataRangeCursor cdrc(resp->data() + 4, resp->data() + 8);
     StatusWith<BigEndian<uint32_t>> swBodyLength = cdrc.readAndAdvance<BigEndian<uint32_t>>();
     if (!swBodyLength.isOK()) {
         return swBodyLength.getStatus();
     }
 
     uint32_t bodyLength = static_cast<uint32_t>(swBodyLength.getValue());
-    massert(4044, "KMIP server response is too long", bodyLength <= sizeof(resp) - 8);
-    _socket->recv(&resp[8], bodyLength);
+    resp->resize(bodyLength + 8);
+    _socket->recv(&(*resp)[8], bodyLength);
 
-    StatusWith<KMIPResponse> swKMIPResponse = KMIPResponse::create(resp, bodyLength + 8);
-    secureZeroMemory(resp, bodyLength + 8);
+    StatusWith<KMIPResponse> swKMIPResponse = KMIPResponse::create(resp);
     return swKMIPResponse;
 }
 
-std::vector<uint8_t> KMIPService::_generateKMIPGetRequest(const std::string& uid) {
+SecureVector<uint8_t> KMIPService::_generateKMIPGetRequest(const std::string& uid) {
     std::vector<uint8_t> uuid(std::begin(uid), std::end(uid));
     mongo::kmip::GetKMIPRequestParameters getRequestParams(uuid);
     return encodeKMIPRequest(getRequestParams);
 }
 
-std::vector<uint8_t> KMIPService::_generateKMIPCreateRequest() {
+SecureVector<uint8_t> KMIPService::_generateKMIPCreateRequest() {
     std::vector<uint8_t> algorithm(std::begin(aesCryptoAlgorithm), std::end(aesCryptoAlgorithm));
     std::vector<uint8_t> length = convertIntToBigEndianArray(256);
     std::vector<uint8_t> usageMask{
@@ -252,14 +253,14 @@ std::vector<uint8_t> KMIPService::_generateKMIPCreateRequest() {
     return encodeKMIPRequest(createRequestParams);
 }
 
-std::vector<uint8_t> KMIPService::_generateKMIPEncryptRequest(const std::string& uid,
-                                                              const std::vector<uint8_t>& data) {
+SecureVector<uint8_t> KMIPService::_generateKMIPEncryptRequest(const std::string& uid,
+                                                               const SecureVector<uint8_t>& data) {
     EncryptKMIPRequestParameters encryptRequestParams({std::begin(uid), std::end(uid)}, data);
     return encodeKMIPRequest(encryptRequestParams);
 }
 
-std::vector<uint8_t> KMIPService::_generateKMIPDecryptRequest(const std::string& uid,
-                                                              const std::vector<uint8_t>& data) {
+SecureVector<uint8_t> KMIPService::_generateKMIPDecryptRequest(const std::string& uid,
+                                                               const std::vector<uint8_t>& data) {
     DecryptKMIPRequestParameters decryptRequestParams({std::begin(uid), std::end(uid)}, data);
     return encodeKMIPRequest(decryptRequestParams);
 }

@@ -9,8 +9,7 @@ namespace mongo {
 namespace {
 
 using namespace mongo::kmip;
-
-const uint8_t getSymmetricKey[] = {
+const std::vector<uint8_t> _getSymmetricKey = {
     /*respMessage*/ 0x42,
     0x00,
     0x7B,
@@ -316,7 +315,7 @@ const uint8_t getSymmetricKey[] = {
     0x00,
     0x00};
 
-const uint8_t destroyKey[] = {
+const std::vector<uint8_t> _destroyKey = {
     /*respMessage*/ 0x42,
     0x00,
     0x7B,
@@ -518,7 +517,7 @@ const uint8_t destroyKey[] = {
     0x00,
     0x00};
 
-const uint8_t extraTags[] = {
+const std::vector<uint8_t> _extraTags = {
     /*respMessage*/ 0x42,
     0x00,
     0x7B,
@@ -800,7 +799,7 @@ const uint8_t extraTags[] = {
     0x00,
     0x00};
 
-const uint8_t keyNotFound[] = {
+const std::vector<uint8_t> _keyNotFound = {
     0x42, 0x00, 0x7b, 0x01, 0x00, 0x00, 0x00, 0xa0, 0x42, 0x00, 0x7a, 0x01, 0x00, 0x00, 0x00, 0x48,
     0x42, 0x00, 0x69, 0x01, 0x00, 0x00, 0x00, 0x20, 0x42, 0x00, 0x6a, 0x02, 0x00, 0x00, 0x00, 0x04,
     0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x42, 0x00, 0x6b, 0x02, 0x00, 0x00, 0x00, 0x04,
@@ -813,7 +812,7 @@ const uint8_t keyNotFound[] = {
     0x42, 0x00, 0x7d, 0x07, 0x00, 0x00, 0x00, 0x09, 0x4e, 0x4f, 0x54, 0x5f, 0x46, 0x4f, 0x55, 0x4e,
     0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
-const uint8_t getAttributes[] = {
+const std::vector<uint8_t> _getAttributes = {
     /*respMessage*/ 0x42,
     0x00,
     0x7B,
@@ -1199,9 +1198,9 @@ const uint8_t getAttributes[] = {
     0x00,
     0x00};
 
-const uint8_t gibberish[] = {0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17};
+const std::vector<uint8_t> _gibberish = {0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17};
 
-const uint8_t incomplete[] = {
+const std::vector<uint8_t> _incomplete = {
     /*respMessage*/ 0x42,
     0x00,
     0x7B,
@@ -1291,190 +1290,190 @@ const uint8_t incomplete[] = {
     0x00,
     0x00};
 
-const uint8_t encrypted[] = {0x42,
-                             0x00,
-                             0x7b,
-                             0x01,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0xa8,
-                             0x42,
-                             0x00,
-                             0x7a,
-                             0x01,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x48,
-                             0x42,
-                             0x00,
-                             0x69,
-                             0x01,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x20,
-                             0x42,
-                             0x00,
-                             0x6a,
-                             0x02,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x04,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x01,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x42,
-                             0x00,
-                             0x6b,
-                             0x02,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x04,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x42,
-                             0x00,
-                             0x92,
-                             0x09,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x08,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x61,
-                             0x3b,
-                             0x6e,
-                             0xfa,
-                             0x42,
-                             0x00,
-                             0x0d,
-                             0x02,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x04,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x01,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x00,
-                             // batch item
-                             0x42,
-                             0x00,
-                             0x0f,
-                             0x01,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x50,
-                             // operation
-                             0x42,
-                             0x00,
-                             0x5c,
-                             0x05,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x04,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x1f,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x00,
-                             // result status
-                             0x42,
-                             0x00,
-                             0x7f,
-                             0x05,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x04,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x00,
-                             // response payload
-                             0x42,
-                             0x00,
-                             0x7c,
-                             0x01,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x28,
-                             // UID
-                             0x42,
-                             0x00,
-                             0x94,
-                             0x07,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x02,
-                             0x32,
-                             0x34,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x00,
-                             // data
-                             0x42,
-                             0x00,
-                             0xc2,
-                             0x08,
-                             0x00,
-                             0x00,
-                             0x00,
-                             0x10,
-                             0x35,
-                             0x4f,
-                             0xda,
-                             0x6c,
-                             0x3c,
-                             0xb3,
-                             0x81,
-                             0x74,
-                             0x55,
-                             0xa4,
-                             0xb1,
-                             0xfa,
-                             0x07,
-                             0xe4,
-                             0xd4,
-                             0xc0};
+const std::vector<uint8_t> _encrypted = {0x42,
+                                         0x00,
+                                         0x7b,
+                                         0x01,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0xa8,
+                                         0x42,
+                                         0x00,
+                                         0x7a,
+                                         0x01,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x48,
+                                         0x42,
+                                         0x00,
+                                         0x69,
+                                         0x01,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x20,
+                                         0x42,
+                                         0x00,
+                                         0x6a,
+                                         0x02,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x04,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x01,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x42,
+                                         0x00,
+                                         0x6b,
+                                         0x02,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x04,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x42,
+                                         0x00,
+                                         0x92,
+                                         0x09,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x08,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x61,
+                                         0x3b,
+                                         0x6e,
+                                         0xfa,
+                                         0x42,
+                                         0x00,
+                                         0x0d,
+                                         0x02,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x04,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x01,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         // batch item
+                                         0x42,
+                                         0x00,
+                                         0x0f,
+                                         0x01,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x50,
+                                         // operation
+                                         0x42,
+                                         0x00,
+                                         0x5c,
+                                         0x05,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x04,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x1f,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         // result status
+                                         0x42,
+                                         0x00,
+                                         0x7f,
+                                         0x05,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x04,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         // response payload
+                                         0x42,
+                                         0x00,
+                                         0x7c,
+                                         0x01,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x28,
+                                         // UID
+                                         0x42,
+                                         0x00,
+                                         0x94,
+                                         0x07,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x02,
+                                         0x32,
+                                         0x34,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         // data
+                                         0x42,
+                                         0x00,
+                                         0xc2,
+                                         0x08,
+                                         0x00,
+                                         0x00,
+                                         0x00,
+                                         0x10,
+                                         0x35,
+                                         0x4f,
+                                         0xda,
+                                         0x6c,
+                                         0x3c,
+                                         0xb3,
+                                         0x81,
+                                         0x74,
+                                         0x55,
+                                         0xa4,
+                                         0xb1,
+                                         0xfa,
+                                         0x07,
+                                         0xe4,
+                                         0xd4,
+                                         0xc0};
 
-const uint8_t decrypted[] = {
+const std::vector<uint8_t> _decrypted = {
     0x42, 0x00, 0x7b, 0x01, 0x00, 0x00, 0x00, 0xa0, 0x42, 0x00, 0x7a, 0x01, 0x00, 0x00, 0x00, 0x48,
     0x42, 0x00, 0x69, 0x01, 0x00, 0x00, 0x00, 0x20, 0x42, 0x00, 0x6a, 0x02, 0x00, 0x00, 0x00, 0x04,
     0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x42, 0x00, 0x6b, 0x02, 0x00, 0x00, 0x00, 0x04,
@@ -1488,9 +1487,9 @@ const uint8_t decrypted[] = {
     0x0a, 0x0b, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x00};
 
 TEST(KMIPResponseParsing, GetSymmetricKey) {
+    const SecureVector<char> getSymmetricKey(_getSymmetricKey.begin(), _getSymmetricKey.end());
     // Get symmetric key response
-    StatusWith<KMIPResponse> swKeyResponse = KMIPResponse::create(
-        reinterpret_cast<const char*>(getSymmetricKey), sizeof(getSymmetricKey));
+    StatusWith<KMIPResponse> swKeyResponse = KMIPResponse::create(getSymmetricKey);
     ASSERT(swKeyResponse.isOK()) << "Failed to parse getSymmetricKey "
                                  << swKeyResponse.getStatus().toString();
     KMIPResponse r = std::move(swKeyResponse.getValue());
@@ -1518,9 +1517,9 @@ TEST(KMIPResponseParsing, GetSymmetricKey) {
 }
 
 TEST(KMIPResponseParsing, DestroyKey) {
+    const SecureVector<char> destroyKey(_destroyKey.begin(), _destroyKey.end());
     // Destroy key response
-    StatusWith<KMIPResponse> swDestroyResponse =
-        KMIPResponse::create(reinterpret_cast<const char*>(destroyKey), sizeof(destroyKey));
+    StatusWith<KMIPResponse> swDestroyResponse = KMIPResponse::create(destroyKey);
     ASSERT(swDestroyResponse.isOK())
         << "Failed to parse destroy response" << swDestroyResponse.getStatus().toString();
 
@@ -1530,16 +1529,16 @@ TEST(KMIPResponseParsing, DestroyKey) {
 }
 
 TEST(KMIPResponseParsing, ExtraTags) {
+    const SecureVector<char> extraTags(_extraTags.begin(), _extraTags.end());
     // Extra tags
-    StatusWith<KMIPResponse> swExtraTags =
-        KMIPResponse::create(reinterpret_cast<const char*>(extraTags), sizeof(extraTags));
+    StatusWith<KMIPResponse> swExtraTags = KMIPResponse::create(extraTags);
     ASSERT(swExtraTags.isOK()) << "Failed to parse extraTags response"
                                << swExtraTags.getStatus().toString();
 }
 
 TEST(KMIPResponseParsing, KeyNotFound) {
-    StatusWith<KMIPResponse> swResponse =
-        KMIPResponse::create(reinterpret_cast<const char*>(keyNotFound), sizeof(keyNotFound));
+    const SecureVector<char> keyNotFound(_keyNotFound.begin(), _keyNotFound.end());
+    StatusWith<KMIPResponse> swResponse = KMIPResponse::create(keyNotFound);
     ASSERT(swResponse.isOK()) << "Failed to parse keyNotFound response"
                               << swResponse.getStatus().toString();
 
@@ -1547,30 +1546,32 @@ TEST(KMIPResponseParsing, KeyNotFound) {
     ASSERT(r.getResultStatus() != kmip::statusSuccess) << "Expected command to fail";
     ASSERT(r.getResultReason() == 0x01 /* Item not found */)
         << "Expected error code 0x01 (Item not found), found: " << r.getResultReason();
-    ASSERT(r.getResultMsg() == "NOT_FOUND")
-        << "Expected result msg \"NOT_FOUND\", found: " << r.getResultMsg();
+    ASSERT(*r.getResultMsg() == "NOT_FOUND")
+        << "Expected result msg \"NOT_FOUND\", found: " << *r.getResultMsg();
 }
 
 TEST(KMIPResponseParsing, NegativeTests) {
-    StatusWith<KMIPResponse> swResponse =
-        KMIPResponse::create(reinterpret_cast<const char*>(getAttributes), sizeof(getAttributes));
+    const SecureVector<char> getAttributes(_getAttributes.begin(), _getAttributes.end());
+    const SecureVector<char> gibberish(_gibberish.begin(), _gibberish.end());
+    const SecureVector<char> incomplete(_incomplete.begin(), _incomplete.end());
+    StatusWith<KMIPResponse> swResponse = KMIPResponse::create(getAttributes);
 
     ASSERT(swResponse.getStatus().reason() ==
            "Response message was malformed: unknown operation type 11")
         << "Invalid error message for unsupported response getAttributes";
 
-    swResponse = KMIPResponse::create(reinterpret_cast<const char*>(gibberish), sizeof(gibberish));
+    swResponse = KMIPResponse::create(gibberish);
     ASSERT(!swResponse.isOK()) << "Parsing gibberish did not produce an invalid Status";
 
-    swResponse =
-        KMIPResponse::create(reinterpret_cast<const char*>(incomplete), sizeof(incomplete));
+    swResponse = KMIPResponse::create(incomplete);
     ASSERT(!swResponse.isOK())
         << "Parsing an incomplete response did not produce an invalid Status";
 }
 
 TEST(KMIPResponseParsing, EncryptDecrypt) {
-    StatusWith<KMIPResponse> swResponse =
-        KMIPResponse::create(reinterpret_cast<const char*>(encrypted), sizeof(encrypted));
+    const SecureVector<char> encrypted(_encrypted.begin(), _encrypted.end());
+    const SecureVector<char> decrypted(_decrypted.begin(), _decrypted.end());
+    StatusWith<KMIPResponse> swResponse = KMIPResponse::create(encrypted);
     ASSERT(swResponse.isOK()) << "Failed to parse encrypt response"
                               << swResponse.getStatus().toString();
 
@@ -1578,13 +1579,13 @@ TEST(KMIPResponseParsing, EncryptDecrypt) {
     ASSERT(r.getResultStatus() == kmip::statusSuccess);
     ASSERT(r.getOpType() == static_cast<uint8_t>(OperationType::encrypt))
         << "Unexpected operation type: " << r.getOpType();
-    ASSERT(r.getData().size() == 16);
+    ASSERT(r.getData()->size() == 16);
     // 0x35, 0x4f, 0xda
-    ASSERT(r.getData()[0] == 0x35);
-    ASSERT(r.getData()[1] == 0x4f);
-    ASSERT(r.getData()[2] == 0xda);
+    ASSERT((*r.getData())[0] == 0x35);
+    ASSERT((*r.getData())[1] == 0x4f);
+    ASSERT((*r.getData())[2] == 0xda);
 
-    swResponse = KMIPResponse::create(reinterpret_cast<const char*>(decrypted), sizeof(decrypted));
+    swResponse = KMIPResponse::create(decrypted);
     ASSERT(swResponse.isOK()) << "Failed to parse decrypt response"
                               << swResponse.getStatus().toString();
 
@@ -1592,9 +1593,9 @@ TEST(KMIPResponseParsing, EncryptDecrypt) {
     ASSERT(r.getResultStatus() == kmip::statusSuccess);
     ASSERT(r.getOpType() == static_cast<uint8_t>(OperationType::decrypt))
         << "Unexpected operation type: " << r.getOpType();
-    ASSERT(r.getData()[0] == 0xa);
-    ASSERT(r.getData()[1] == 0xb);
-    ASSERT(r.getData()[2] == 0xc);
+    ASSERT((*r.getData())[0] == 0xa);
+    ASSERT((*r.getData())[1] == 0xb);
+    ASSERT((*r.getData())[2] == 0xc);
 }
 }  // namespace
 }  // namespace mongo

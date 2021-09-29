@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "kmip_consts.h"
+#include "mongo/base/secure_allocator.h"
 
 namespace mongo {
 namespace kmip {
@@ -56,11 +57,11 @@ struct GetKMIPRequestParameters : KMIPRequestParameters {
 };
 
 struct EncryptKMIPRequestParameters : KMIPRequestParameters {
-    explicit EncryptKMIPRequestParameters(std::vector<uint8_t> u, std::vector<uint8_t> d)
+    explicit EncryptKMIPRequestParameters(std::vector<uint8_t> u, SecureVector<uint8_t> d)
         : KMIPRequestParameters(OperationType::encrypt), uid(std::move(u)), data(std::move(d)) {}
 
     std::vector<uint8_t> uid;
-    std::vector<uint8_t> data;
+    SecureVector<uint8_t> data;
 };
 
 struct DecryptKMIPRequestParameters : KMIPRequestParameters {
@@ -78,7 +79,7 @@ struct DecryptKMIPRequestParameters : KMIPRequestParameters {
  */
 std::vector<uint8_t> convertIntToBigEndianArray(uint32_t input);
 
-std::vector<uint8_t> encodeKMIPRequest(const KMIPRequestParameters& requestParams);
+SecureVector<uint8_t> encodeKMIPRequest(const KMIPRequestParameters& requestParams);
 
 }  // namespace kmip
 }  // namespace mongo

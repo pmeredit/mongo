@@ -33,7 +33,7 @@ AuditKeyManager::KeyGenerationResult AuditKeyManagerKMIP::generateWrappedKey() {
     // create the ephemeral log encryption key
     SymmetricKey logEncryptKey(crypto::aesGenerate(crypto::sym256KeySize, kKMIPKeyId));
     const uint8_t* key = logEncryptKey.getKey();
-    std::vector<uint8_t> keyCopy(
+    SecureVector<uint8_t> keyCopy(
         key,
         key +
             logEncryptKey.getKeySize());  // since uint8_t is a byte, this pointer arithmetic is OK
@@ -61,14 +61,13 @@ SymmetricKey AuditKeyManagerKMIP::unwrapKey(WrappedKey wrappedKey) {
                     "reason"_attr = swDecrypted.getStatus().reason());
     }
 
-    SecureVector<std::uint8_t> secureKey(swDecrypted.getValue().begin(),
-                                         swDecrypted.getValue().end());
+    auto secureKey = std::move(swDecrypted.getValue());
 
     uassert(ErrorCodes::BadValue,
             "Failed decrypting audit key, wrong size",
             secureKey->size() == crypto::sym256KeySize);
 
-    return SymmetricKey(secureKey, crypto::aesAlgorithm, kKMIPKeyId);
+    return SymmetricKey(std::move(secureKey), crypto::aesAlgorithm, kKMIPKeyId);
 }
 
 BSONObj AuditKeyManagerKMIP::getKeyStoreID() {

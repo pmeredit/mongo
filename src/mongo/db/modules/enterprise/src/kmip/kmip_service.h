@@ -8,6 +8,7 @@
 
 #include "kmip_consts.h"
 #include "kmip_options.h"
+#include "mongo/base/secure_allocator.h"
 #include "mongo/base/status_with.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/net/hostandport.h"
@@ -52,15 +53,15 @@ public:
      * to add cryptographic parameters and IV support here.
      */
     StatusWith<std::vector<uint8_t>> encrypt(const std::string& uid,
-                                             const std::vector<uint8_t>& data);
+                                             const SecureVector<uint8_t>& data);
 
     /**
      * Requests the KMIP server to perform a decryption operation on the specified data with the
      * given key, and returns a StatusWith of the decrypted data. Note: In the future, we may want
      * to add cryptographic parameters and IV support here.
      */
-    StatusWith<std::vector<uint8_t>> decrypt(const std::string& uid,
-                                             const std::vector<uint8_t>& data);
+    StatusWith<SecureVector<uint8_t>> decrypt(const std::string& uid,
+                                              const std::vector<uint8_t>& data);
 
 private:
     KMIPService(const HostAndPort& server, std::shared_ptr<SSLManagerInterface> sslManager);
@@ -78,17 +79,17 @@ private:
     /**
      * Send a request to the KMIP server.
      */
-    StatusWith<KMIPResponse> _sendRequest(const std::vector<uint8_t>& request);
+    StatusWith<KMIPResponse> _sendRequest(const SecureVector<uint8_t>& request);
 
-    std::vector<uint8_t> _generateKMIPGetRequest(const std::string& uid);
+    SecureVector<uint8_t> _generateKMIPGetRequest(const std::string& uid);
 
-    std::vector<uint8_t> _generateKMIPCreateRequest();
+    SecureVector<uint8_t> _generateKMIPCreateRequest();
 
-    std::vector<uint8_t> _generateKMIPEncryptRequest(const std::string& uid,
-                                                     const std::vector<uint8_t>& data);
+    SecureVector<uint8_t> _generateKMIPEncryptRequest(const std::string& uid,
+                                                      const SecureVector<uint8_t>& data);
 
-    std::vector<uint8_t> _generateKMIPDecryptRequest(const std::string& uid,
-                                                     const std::vector<uint8_t>& data);
+    SecureVector<uint8_t> _generateKMIPDecryptRequest(const std::string& uid,
+                                                      const std::vector<uint8_t>& data);
 
     std::shared_ptr<SSLManagerInterface> _sslManager;
     HostAndPort _server;

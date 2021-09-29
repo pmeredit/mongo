@@ -27,7 +27,7 @@ public:
      * Factory function to parse a KMIP response. Parsing errors are indicated
      * in the status portion of the return value.
      */
-    static StatusWith<KMIPResponse> create(const char* responseMessage, size_t len);
+    static StatusWith<KMIPResponse> create(const SecureVector<char>& responseMessage);
 
     KMIPResponse(KMIPResponse&&) = default;
     KMIPResponse& operator=(KMIPResponse&&) = default;
@@ -61,7 +61,7 @@ public:
     uint32_t getResultReason() const {
         return _resultReason;
     }
-    std::string getResultMsg() const {
+    const SecureString& getResultMsg() const {
         return _resultMsg;
     }
 
@@ -72,14 +72,14 @@ public:
         return std::move(_symmetricKey);
     }
 
-    std::vector<uint8_t> getData() {
+    const SecureVector<uint8_t>& getData() const {
         return _data;
     }
 
     /**
      * Gets the unique key identifier from the parsed message
      */
-    std::string getUID() const {
+    const std::string& getUID() const {
         return _uid;
     }
 
@@ -105,12 +105,12 @@ private:
     Status _parseBatchItem(ConstDataRangeCursor* cdrc);
     StatusWith<std::string> _parseUIDPayload(ConstDataRangeCursor* cdrc);
     StatusWith<std::unique_ptr<SymmetricKey>> _parseSymmetricKeyPayload(ConstDataRangeCursor* cdrc);
-    StatusWith<std::string> _parseString(ConstDataRangeCursor* cdrc,
-                                         const uint8_t tag[],
-                                         const std::string& tagName);
-    StatusWith<std::vector<uint8_t>> _parseByteString(ConstDataRangeCursor* cdrc,
-                                                      const uint8_t tag[],
-                                                      const std::string& tagName);
+    StatusWith<SecureString> _parseString(ConstDataRangeCursor* cdrc,
+                                          const uint8_t tag[],
+                                          const std::string& tagName);
+    StatusWith<SecureVector<uint8_t>> _parseByteString(ConstDataRangeCursor* cdrc,
+                                                       const uint8_t tag[],
+                                                       const std::string& tagName);
     StatusWith<uint32_t> _parseInteger(ConstDataRangeCursor* cdrc,
                                        const uint8_t tag[],
                                        ItemType itemType,
@@ -121,7 +121,7 @@ private:
      */
     uint32_t _resultStatus;
     uint32_t _resultReason;
-    std::string _resultMsg;
+    SecureString _resultMsg;
     uint32_t _protocolVersion[2];
     time_t _timeStamp;
     uint8_t _opType;
@@ -129,7 +129,7 @@ private:
 
     std::unique_ptr<SymmetricKey> _symmetricKey;
     std::string _uid;
-    std::vector<uint8_t> _data;
+    SecureVector<uint8_t> _data;
 };
 }  // namespace kmip
 }  // namespace mongo

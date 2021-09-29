@@ -25,9 +25,9 @@
 namespace mongo {
 namespace kmip {
 
-StatusWith<KMIPResponse> KMIPResponse::create(const char* responseMessage, size_t len) {
+StatusWith<KMIPResponse> KMIPResponse::create(const SecureVector<char>& responseMessage) {
     KMIPResponse response;
-    ConstDataRangeCursor cdrc(responseMessage, responseMessage + len);
+    ConstDataRangeCursor cdrc(*responseMessage);
     Status parseResult = response._parseResponse(&cdrc);
     if (!parseResult.isOK()) {
         return parseResult;
@@ -164,7 +164,11 @@ StatusWith<std::string> KMIPResponse::_parseUIDPayload(ConstDataRangeCursor* cdr
         LOGV2_WARNING(24238, "Object type missing from batch item, attempting to parse anyway");
     }
 
-    return _parseString(cdrc, uniqueIdentifierTag, "UID");
+    auto swSecureUID = _parseString(cdrc, uniqueIdentifierTag, "UID");
+    if (!swSecureUID.isOK()) {
+        return swSecureUID.getStatus();
+    }
+    return swSecureUID.getValue()->data();
 }
 
 StatusWith<std::unique_ptr<SymmetricKey>> KMIPResponse::_parseSymmetricKeyPayload(
@@ -183,7 +187,7 @@ StatusWith<std::unique_ptr<SymmetricKey>> KMIPResponse::_parseSymmetricKeyPayloa
     if (!swUID.isOK()) {
         return swUID.getStatus();
     }
-    _uid = swUID.getValue();
+    _uid = swUID.getValue()->data();
 
     StatusWith<size_t> swTag =
         _parseTag(cdrc, symmetricKeyTag, ItemType::structure, "symmetric key");
@@ -292,7 +296,7 @@ Status KMIPResponse::_parseBatchItem(ConstDataRangeCursor* cdrc) {
             if (!swUID.isOK()) {
                 return swUID.getStatus();
             }
-            _uid = swUID.getValue();
+            _uid = std::move(swUID.getValue());
             break;
         }
         case static_cast<uint8_t>(OperationType::get): {
@@ -307,7 +311,7 @@ Status KMIPResponse::_parseBatchItem(ConstDataRangeCursor* cdrc) {
         case static_cast<uint8_t>(OperationType::encrypt): {
             // Currently ignores UID (line below) and IV (silently) in response.
             (void)_parseString(cdrc, uniqueIdentifierTag, "uid");  // Note: UID in response ignored
-            StatusWith<std::vector<uint8_t>> swData = _parseByteString(cdrc, dataTag, "data");
+            StatusWith<SecureVector<uint8_t>> swData = _parseByteString(cdrc, dataTag, "data");
             // XXX IV in response ignored
             if (!swData.isOK()) {
                 return swData.getStatus();
@@ -318,7 +322,7 @@ Status KMIPResponse::_parseBatchItem(ConstDataRangeCursor* cdrc) {
         case static_cast<uint8_t>(OperationType::decrypt): {
             // Ignores UID in response.
             (void)_parseString(cdrc, uniqueIdentifierTag, "uid");
-            StatusWith<std::vector<uint8_t>> swData = _parseByteString(cdrc, dataTag, "data");
+            StatusWith<SecureVector<uint8_t>> swData = _parseByteString(cdrc, dataTag, "data");
             if (!swData.isOK()) {
                 return swData.getStatus();
             }
@@ -342,7 +346,7 @@ Status KMIPResponse::_parseFailure(ConstDataRangeCursor* cdrc) {
     }
     _resultReason = static_cast<uint32_t>(swResultReason.getValue());
 
-    StatusWith<std::string> swResMsg = _parseString(cdrc, resultMessageTag, "result message");
+    StatusWith<SecureString> swResMsg = _parseString(cdrc, resultMessageTag, "result message");
     if (!swResMsg.isOK()) {
         return swResMsg.getStatus();
     }
@@ -371,9 +375,9 @@ Status KMIPResponse::_parseResponse(ConstDataRangeCursor* cdrc) {
     return _parseBatchItem(cdrc);
 }
 
-StatusWith<std::string> KMIPResponse::_parseString(ConstDataRangeCursor* cdrc,
-                                                   const uint8_t tag[],
-                                                   const std::string& tagName) {
+StatusWith<SecureString> KMIPResponse::_parseString(ConstDataRangeCursor* cdrc,
+                                                    const uint8_t tag[],
+                                                    const std::string& tagName) {
     StatusWith<size_t> swTag = _parseTag(cdrc, tag, ItemType::textString, tagName);
     if (!swTag.isOK()) {
         return swTag.getStatus();
@@ -396,12 +400,12 @@ StatusWith<std::string> KMIPResponse::_parseString(ConstDataRangeCursor* cdrc,
         return adv;
     }
 
-    return std::string(data, len);
+    return SecureString(data, len);
 }
 
-StatusWith<std::vector<uint8_t>> KMIPResponse::_parseByteString(ConstDataRangeCursor* cdrc,
-                                                                const uint8_t tag[],
-                                                                const std::string& tagName) {
+StatusWith<SecureVector<uint8_t>> KMIPResponse::_parseByteString(ConstDataRangeCursor* cdrc,
+                                                                 const uint8_t tag[],
+                                                                 const std::string& tagName) {
     StatusWith<size_t> swTag = _parseTag(cdrc, tag, ItemType::byteString, tagName);
     if (!swTag.isOK()) {
         return swTag.getStatus();
@@ -424,7 +428,7 @@ StatusWith<std::vector<uint8_t>> KMIPResponse::_parseByteString(ConstDataRangeCu
         return adv;
     }
 
-    return std::vector<uint8_t>(data, data + len);
+    return SecureVector<uint8_t>(data, data + len);
 }
 
 StatusWith<std::uint32_t> KMIPResponse::_parseInteger(ConstDataRangeCursor* cdrc,

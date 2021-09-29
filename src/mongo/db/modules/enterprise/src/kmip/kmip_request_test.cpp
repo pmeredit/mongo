@@ -19,7 +19,8 @@ TEST(KMIPRequestGeneration, CreateSymmetricKey) {
     usageMask.push_back(0x0C);
 
     mongo::kmip::CreateKMIPRequestParameters createParams(algorithm, length, usageMask);
-    std::vector<uint8_t> createOutput = mongo::kmip::encodeKMIPRequest(createParams);
+    auto createOutputS = *mongo::kmip::encodeKMIPRequest(createParams);
+    std::vector<uint8_t> createOutput(createOutputS.begin(), createOutputS.end());
 
     std::vector<uint8_t> expectedOutput = {
         0x42, 0x00, 0x78, 0x01, 0x00, 0x00, 0x01, 0x20, 0x42, 0x00, 0x77, 0x01, 0x00, 0x00, 0x00,
@@ -53,7 +54,8 @@ TEST(KMIPRequestGeneration, GetSymmetricKey) {
     std::vector<uint8_t> uid(std::begin(uidx), std::end(uidx));
 
     mongo::kmip::GetKMIPRequestParameters getParams(uid);
-    std::vector<uint8_t> getOutput = mongo::kmip::encodeKMIPRequest(getParams);
+    auto getOutputS = *mongo::kmip::encodeKMIPRequest(getParams);
+    std::vector<uint8_t> getOutput(getOutputS.begin(), getOutputS.end());
 
     std::vector<uint8_t> expectedOutput = {
         0x42, 0x00, 0x78, 0x01, 0x00, 0x00, 0x00, 0x90, 0x42, 0x00, 0x77, 0x01, 0x00, 0x00,
@@ -73,11 +75,12 @@ TEST(KMIPRequestGeneration, GetSymmetricKey) {
 
 TEST(KMIPRequestGeneration, Encrypt) {
     std::vector<uint8_t> uid = {'1', '2', '3'};
-    std::vector<uint8_t> data = {0xA, 0xB, 0xC};
-
+    std::vector<uint8_t> _data = {0xA, 0xB, 0xC};
+    SecureVector<uint8_t> data(_data.begin(), _data.end());
 
     mongo::kmip::EncryptKMIPRequestParameters getParams(uid, data);
-    std::vector<uint8_t> encOutput = mongo::kmip::encodeKMIPRequest(getParams);
+    auto encOutputS = *mongo::kmip::encodeKMIPRequest(getParams);
+    std::vector<uint8_t> encOutput(encOutputS.begin(), encOutputS.end());
 
     std::vector<uint8_t> expectedOutput = {
         0x42, 0x00, 0x78, 0x01, 0x00, 0x00, 0x00, 0x80, 0x42, 0x00, 0x77, 0x01, 0x00, 0x00,
@@ -99,7 +102,8 @@ TEST(KMIPRequestGeneration, Decrypt) {
 
 
     mongo::kmip::DecryptKMIPRequestParameters getParams(uid, data);
-    std::vector<uint8_t> decOutput = mongo::kmip::encodeKMIPRequest(getParams);
+    auto decOutputS = *mongo::kmip::encodeKMIPRequest(getParams);
+    std::vector<uint8_t> decOutput(decOutputS.begin(), decOutputS.end());
 
     std::vector<uint8_t> expectedOutput = {
         0x42, 0x00, 0x78, 0x01, 0x00, 0x00, 0x00, 0x80, 0x42, 0x00, 0x77, 0x01, 0x00, 0x00,
@@ -117,7 +121,8 @@ TEST(KMIPRequestGeneration, Decrypt) {
 
 TEST(KMIPRequestGeneration, DiscoverVersions) {
     mongo::kmip::DiscoverVersionsKMIPRequestParameters discoverParams;
-    std::vector<uint8_t> discoverOutput = mongo::kmip::encodeKMIPRequest(discoverParams);
+    auto discoverOutputS = *mongo::kmip::encodeKMIPRequest(discoverParams);
+    std::vector<uint8_t> discoverOutput(discoverOutputS.begin(), discoverOutputS.end());
 
     std::vector<uint8_t> expectedOutput = {
         0x42, 0x00, 0x78, 0x01, 0x00, 0x00, 0x00, 0x60, 0x42, 0x00, 0x77, 0x01, 0x00, 0x00, 0x00,

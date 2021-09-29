@@ -16,25 +16,46 @@ namespace mongo {
 namespace kmip {
 
 namespace {
-std::vector<uint8_t> padToEightByteMultiple(const std::vector<uint8_t>& input) {
-    std::vector<uint8_t> output(input);
+
+struct EncodingContext {
+    SecureVector<uint8_t> payload;
+};
+
+template <typename T>
+void padToEightByteMultipleHelper(std::vector<uint8_t, T>* output,
+                                  const std::vector<uint8_t, T>& input) {
+    *output = std::vector<uint8_t, T>(input);
     size_t uidSize = input.size();
     int paddingRequired = (uidSize % 8);
     if (paddingRequired != 0) {
         for (int i = 0; i < 8 - paddingRequired; i++) {
-            output.push_back(0x00);
+            output->push_back(0x00);
         }
     }
+}
+
+std::vector<uint8_t> padToEightByteMultiple(const std::vector<uint8_t>& input) {
+    std::vector<uint8_t> output;
+    padToEightByteMultipleHelper(&output, input);
     return output;
 }
 
-std::vector<uint8_t> encodeAttribute(std::vector<uint8_t>* attributeName,
-                                     ItemType attributeType,
-                                     const std::vector<uint8_t>& attributeData) {
+SecureVector<uint8_t> padToEightByteMultiple(const SecureVector<uint8_t>& input) {
+    SecureVector<uint8_t> output;
+    padToEightByteMultipleHelper(&(*output), *input);
+    return output;
+}
+
+size_t encodeAttribute(struct EncodingContext* ctx,
+                       std::vector<uint8_t>* attributeName,
+                       ItemType attributeType,
+                       const std::vector<uint8_t>& attributeData) {
+    auto& pl = *ctx->payload;
+    size_t startSize = pl.size();
+
     // The starting value corresponds to the size of the various tags that
     // are always present.
     size_t attributeSizeInt = 16;
-    std::vector<uint8_t> attribute;
 
     // For non-structures, the Item Length is the number of bytes excluding
     // the padding bytes. However, the overall structure's size includes the padding.
@@ -57,216 +78,222 @@ std::vector<uint8_t> encodeAttribute(std::vector<uint8_t>* attributeName,
     std::vector<uint8_t> attributeSize = convertIntToBigEndianArray(attributeSizeInt);
 
     //  Tag: Attribute (0x420008), Type: Structure (0x01), Data: Size
-    attribute.insert(attribute.end(), std::begin(attributeTag), std::end(attributeTag));
-    attribute.push_back(static_cast<uint8_t>(ItemType::structure));
-    attribute.insert(attribute.end(), std::begin(attributeSize), std::end(attributeSize));
+    pl.insert(pl.end(), std::begin(attributeTag), std::end(attributeTag));
+    pl.push_back(static_cast<uint8_t>(ItemType::structure));
+    pl.insert(pl.end(), std::begin(attributeSize), std::end(attributeSize));
 
     //  Tag: Attribute Name (0x42000A), Type: Text String (0x07), Size, Data: attributeName
-    attribute.insert(attribute.end(), std::begin(attributeNameTag), std::end(attributeNameTag));
-    attribute.push_back(static_cast<uint8_t>(ItemType::textString));
-    attribute.insert(attribute.end(), std::begin(nameSize), std::end(nameSize));
-    attribute.insert(attribute.end(), std::begin(paddedName), std::end(paddedName));
+    pl.insert(pl.end(), std::begin(attributeNameTag), std::end(attributeNameTag));
+    pl.push_back(static_cast<uint8_t>(ItemType::textString));
+    pl.insert(pl.end(), std::begin(nameSize), std::end(nameSize));
+    pl.insert(pl.end(), std::begin(paddedName), std::end(paddedName));
 
     //  Tag: Attribute Value (0x42000B), Type: attributeType, Size, Data: attributeData
-    attribute.insert(attribute.end(), std::begin(attributeValueTag), std::end(attributeValueTag));
-    attribute.push_back(static_cast<uint8_t>(attributeType));
-    attribute.insert(attribute.end(), std::begin(dataSize), std::end(dataSize));
-    attribute.insert(
-        attribute.end(), std::begin(processedAttributeData), std::end(processedAttributeData));
+    pl.insert(pl.end(), std::begin(attributeValueTag), std::end(attributeValueTag));
+    pl.push_back(static_cast<uint8_t>(attributeType));
+    pl.insert(pl.end(), std::begin(dataSize), std::end(dataSize));
+    pl.insert(pl.end(), std::begin(processedAttributeData), std::end(processedAttributeData));
 
-    return attribute;
+    return pl.size() - startSize;
 }
 
-std::vector<uint8_t> encodeCreatePayload(const CreateKMIPRequestParameters& requestParams) {
-    std::vector<uint8_t> payload;
+size_t encodeCreatePayload(struct EncodingContext* ctx,
+                           const CreateKMIPRequestParameters& requestParams) {
+    auto& pl = *ctx->payload;
+    size_t startSize = pl.size();
 
     // Tag: Object Type, Type: Enumeration, Enumeration Size, Data: Symmetric Key
-    payload.insert(payload.end(), std::begin(objectTypeTag), std::end(objectTypeTag));
-    payload.push_back(static_cast<uint8_t>(ItemType::enumeration));
-    payload.insert(
-        payload.end(), std::begin(enumerationByteLength), std::end(enumerationByteLength));
-    payload.insert(payload.end(),
-                   std::begin(symmetricKeyObjectTypeArray),
-                   std::end(symmetricKeyObjectTypeArray));
-    payload.insert(payload.end(), std::begin(fourBytePadding), std::end(fourBytePadding));
+    pl.insert(pl.end(), std::begin(objectTypeTag), std::end(objectTypeTag));
+    pl.push_back(static_cast<uint8_t>(ItemType::enumeration));
+    pl.insert(pl.end(), std::begin(enumerationByteLength), std::end(enumerationByteLength));
+    pl.insert(
+        pl.end(), std::begin(symmetricKeyObjectTypeArray), std::end(symmetricKeyObjectTypeArray));
+    pl.insert(pl.end(), std::begin(fourBytePadding), std::end(fourBytePadding));
+
+    // Tag: Template-Attribute, Type: Structure, Data: Size
+    pl.insert(pl.end(), std::begin(templateAttributeTag), std::end(templateAttributeTag));
+    pl.push_back(static_cast<uint8_t>(ItemType::structure));
+    size_t templateSizeIdx = pl.size();
+    pl.resize(pl.size() + 4);
 
     size_t templateSizeInt = 0;
 
     std::vector<uint8_t> cryptoAlgorithmTextStringVector(std::begin(cryptoAlgorithmTextString),
                                                          std::end(cryptoAlgorithmTextString));
-    std::vector<uint8_t> cryptoAlgorithmAttr = encodeAttribute(
-        &cryptoAlgorithmTextStringVector, ItemType::enumeration, requestParams.cryptoAlgorithm);
-    templateSizeInt += cryptoAlgorithmAttr.size();
+    templateSizeInt += encodeAttribute(ctx,
+                                       &cryptoAlgorithmTextStringVector,
+                                       ItemType::enumeration,
+                                       requestParams.cryptoAlgorithm);
 
     std::vector<uint8_t> cryptoLengthTextStringVector(std::begin(cryptoLengthTextString),
                                                       std::end(cryptoLengthTextString));
-    std::vector<uint8_t> cryptoLengthAttr = encodeAttribute(
-        &cryptoLengthTextStringVector, ItemType::integer, requestParams.cryptoLength);
-    templateSizeInt += cryptoLengthAttr.size();
+    templateSizeInt += encodeAttribute(
+        ctx, &cryptoLengthTextStringVector, ItemType::integer, requestParams.cryptoLength);
 
     std::vector<uint8_t> cryptoUsageMaskTextStringVector(std::begin(cryptoUsageMaskTextString),
                                                          std::end(cryptoUsageMaskTextString));
-    std::vector<uint8_t> cryptoUsageMaskAttr = encodeAttribute(
-        &cryptoUsageMaskTextStringVector, ItemType::integer, requestParams.cryptoUsageMask);
-    templateSizeInt += cryptoUsageMaskAttr.size();
+    templateSizeInt += encodeAttribute(
+        ctx, &cryptoUsageMaskTextStringVector, ItemType::integer, requestParams.cryptoUsageMask);
 
-    std::vector<uint8_t> templateSize = convertIntToBigEndianArray(templateSizeInt);
+    std::vector<uint8_t> templateSizeData = convertIntToBigEndianArray(templateSizeInt);
+    std::copy(templateSizeData.begin(), templateSizeData.end(), pl.begin() + templateSizeIdx);
 
-    // Tag: Template-Attribute, Type: Structure, Data: Size
-    payload.insert(payload.end(), std::begin(templateAttributeTag), std::end(templateAttributeTag));
-    payload.push_back(static_cast<uint8_t>(ItemType::structure));
-    payload.insert(payload.end(), std::begin(templateSize), std::end(templateSize));
-
-    payload.insert(payload.end(), std::begin(cryptoAlgorithmAttr), std::end(cryptoAlgorithmAttr));
-    payload.insert(payload.end(), std::begin(cryptoLengthAttr), std::end(cryptoLengthAttr));
-    payload.insert(payload.end(), std::begin(cryptoUsageMaskAttr), std::end(cryptoUsageMaskAttr));
-
-    return payload;
+    return pl.size() - startSize;
 }
 
-std::vector<uint8_t> encodeGetPayload(const GetKMIPRequestParameters& requestParams) {
-    std::vector<uint8_t> payload;
+size_t encodeGetPayload(struct EncodingContext* ctx,
+                        const GetKMIPRequestParameters& requestParams) {
+    auto& pl = *ctx->payload;
+    size_t startSize = pl.size();
 
     std::vector<uint8_t> paddedUUID = padToEightByteMultiple(requestParams.uid);
     // For Text Strings, the Item Length is the number of bytes excluding the padding bytes.
     std::vector<uint8_t> uidSize = convertIntToBigEndianArray(requestParams.uid.size());
 
     // Tag: Unique Identifier, Type: Text String, Size of UUID, UUID
-    payload.insert(payload.end(), std::begin(uniqueIdentifierTag), std::end(uniqueIdentifierTag));
-    payload.push_back(static_cast<uint8_t>(ItemType::textString));
+    pl.insert(pl.end(), std::begin(uniqueIdentifierTag), std::end(uniqueIdentifierTag));
+    pl.push_back(static_cast<uint8_t>(ItemType::textString));
 
-    payload.insert(payload.end(), std::begin(uidSize), std::end(uidSize));
-    payload.insert(payload.end(), std::begin(paddedUUID), std::end(paddedUUID));
+    pl.insert(pl.end(), std::begin(uidSize), std::end(uidSize));
+    pl.insert(pl.end(), std::begin(paddedUUID), std::end(paddedUUID));
 
-    return payload;
+    return pl.size() - startSize;
 }
 
-std::vector<uint8_t> encodeEncryptPayload(const EncryptKMIPRequestParameters& requestParams) {
-    std::vector<uint8_t> payload;
+size_t encodeEncryptPayload(struct EncodingContext* ctx,
+                            const EncryptKMIPRequestParameters& requestParams) {
+    auto& pl = *ctx->payload;
+    size_t startSize = pl.size();
 
     std::vector<uint8_t> paddedUUID = padToEightByteMultiple(requestParams.uid);
     std::vector<uint8_t> uidSize = convertIntToBigEndianArray(requestParams.uid.size());
 
     // Tag: Unique Identifier, Type: Text String, Size of UUID, UUID
-    payload.insert(payload.end(), std::begin(uniqueIdentifierTag), std::end(uniqueIdentifierTag));
-    payload.push_back(static_cast<uint8_t>(ItemType::textString));
+    pl.insert(pl.end(), std::begin(uniqueIdentifierTag), std::end(uniqueIdentifierTag));
+    pl.push_back(static_cast<uint8_t>(ItemType::textString));
 
-    payload.insert(payload.end(), std::begin(uidSize), std::end(uidSize));
-    payload.insert(payload.end(), std::begin(paddedUUID), std::end(paddedUUID));
+    pl.insert(pl.end(), std::begin(uidSize), std::end(uidSize));
+    pl.insert(pl.end(), std::begin(paddedUUID), std::end(paddedUUID));
 
     // Note that this does add an extra copy, but we are copying anyways, and our data is small
     // enough that it shouldn't matter.
-    std::vector<uint8_t> paddedData = padToEightByteMultiple(requestParams.data);
-    std::vector<uint8_t> dataSize = convertIntToBigEndianArray(requestParams.data.size());
+    SecureVector<uint8_t> paddedData = padToEightByteMultiple(requestParams.data);
+    std::vector<uint8_t> dataSize = convertIntToBigEndianArray(requestParams.data->size());
 
     // Tag: Data, Type: Byte String, Size of data, data to be encrypted
-    payload.insert(payload.end(), std::begin(dataTag), std::end(dataTag));
-    payload.push_back(static_cast<uint8_t>(ItemType::byteString));
+    pl.insert(pl.end(), std::begin(dataTag), std::end(dataTag));
+    pl.push_back(static_cast<uint8_t>(ItemType::byteString));
 
-    payload.insert(payload.end(), std::begin(dataSize), std::end(dataSize));
-    payload.insert(payload.end(), std::begin(paddedData), std::end(paddedData));
+    pl.insert(pl.end(), std::begin(dataSize), std::end(dataSize));
+    pl.insert(pl.end(), paddedData->begin(), paddedData->end());
 
-    return payload;
+    return pl.size() - startSize;
 }
 
-std::vector<uint8_t> encodeDecryptPayload(const DecryptKMIPRequestParameters& requestParams) {
-    std::vector<uint8_t> payload;
+size_t encodeDecryptPayload(struct EncodingContext* ctx,
+                            const DecryptKMIPRequestParameters& requestParams) {
+    auto& pl = *ctx->payload;
+    size_t startSize = pl.size();
 
     std::vector<uint8_t> paddedUUID = padToEightByteMultiple(requestParams.uid);
     std::vector<uint8_t> uidSize = convertIntToBigEndianArray(requestParams.uid.size());
 
     // Tag: Unique Identifier, Type: Text String, Size of UUID, UUID
-    payload.insert(payload.end(), std::begin(uniqueIdentifierTag), std::end(uniqueIdentifierTag));
-    payload.push_back(static_cast<uint8_t>(ItemType::textString));
+    pl.insert(pl.end(), std::begin(uniqueIdentifierTag), std::end(uniqueIdentifierTag));
+    pl.push_back(static_cast<uint8_t>(ItemType::textString));
 
-    payload.insert(payload.end(), std::begin(uidSize), std::end(uidSize));
-    payload.insert(payload.end(), std::begin(paddedUUID), std::end(paddedUUID));
+    pl.insert(pl.end(), std::begin(uidSize), std::end(uidSize));
+    pl.insert(pl.end(), std::begin(paddedUUID), std::end(paddedUUID));
 
     std::vector<uint8_t> paddedData = padToEightByteMultiple(requestParams.data);
     std::vector<uint8_t> dataSize = convertIntToBigEndianArray(requestParams.data.size());
 
     // Tag: Data, Type: Byte String, Size of data, data to be decrypted
-    payload.insert(payload.end(), std::begin(dataTag), std::end(dataTag));
-    payload.push_back(static_cast<uint8_t>(ItemType::byteString));
+    pl.insert(pl.end(), std::begin(dataTag), std::end(dataTag));
+    pl.push_back(static_cast<uint8_t>(ItemType::byteString));
 
-    payload.insert(payload.end(), std::begin(dataSize), std::end(dataSize));
-    payload.insert(payload.end(), std::begin(paddedData), std::end(paddedData));
+    pl.insert(pl.end(), std::begin(dataSize), std::end(dataSize));
+    pl.insert(pl.end(), std::begin(paddedData), std::end(paddedData));
 
-    return payload;
+    return pl.size() - startSize;
 }
 
-std::vector<uint8_t> encodeOpAndRequestPayload(const KMIPRequestParameters& requestParams) {
-    std::vector<uint8_t> request;
+size_t encodeOpAndRequestPayload(struct EncodingContext* ctx,
+                                 const KMIPRequestParameters& requestParams) {
+    auto& pl = *ctx->payload;
+    size_t startSize = pl.size();
 
     // Tag: Operation, Type: Enumeration, Enumeration Size, Data: OperationType
-    request.insert(request.end(), std::begin(operationTag), std::end(operationTag));
-    request.push_back(static_cast<uint8_t>(ItemType::enumeration));
-    request.insert(
-        request.end(), std::begin(enumerationByteLength), std::end(enumerationByteLength));
-    request.insert(request.end(),
-                   std::begin(requestParams.operationType),
-                   std::end(requestParams.operationType));
-    request.insert(request.end(), std::begin(fourBytePadding), std::end(fourBytePadding));
+    pl.insert(pl.end(), std::begin(operationTag), std::end(operationTag));
+    pl.push_back(static_cast<uint8_t>(ItemType::enumeration));
+    pl.insert(pl.end(), std::begin(enumerationByteLength), std::end(enumerationByteLength));
+    pl.insert(
+        pl.end(), std::begin(requestParams.operationType), std::end(requestParams.operationType));
+    pl.insert(pl.end(), std::begin(fourBytePadding), std::end(fourBytePadding));
 
-    std::vector<uint8_t> requestPayload;
+    // Tag: RequestPayload, Type: Structure, Data: Size
+    pl.insert(pl.end(), std::begin(requestPayloadTag), std::end(requestPayloadTag));
+    pl.push_back(static_cast<uint8_t>(ItemType::structure));
+    size_t requestPayloadSizeIdx = pl.size();
+    pl.resize(pl.size() + 4);
+
+    size_t requestPayloadSize;
     if (std::memcmp(requestParams.operationType,
                     createOperationTypeArray,
                     sizeof(createOperationTypeArray)) == 0) {
-        requestPayload =
-            encodeCreatePayload(static_cast<const CreateKMIPRequestParameters&>(requestParams));
+        requestPayloadSize = encodeCreatePayload(
+            ctx, static_cast<const CreateKMIPRequestParameters&>(requestParams));
     } else if (std::memcmp(requestParams.operationType,
                            getOperationTypeArray,
                            sizeof(getOperationTypeArray)) == 0) {
-        requestPayload =
-            encodeGetPayload(static_cast<const GetKMIPRequestParameters&>(requestParams));
+        requestPayloadSize =
+            encodeGetPayload(ctx, static_cast<const GetKMIPRequestParameters&>(requestParams));
     } else if (std::memcmp(requestParams.operationType,
                            discoverVersionsOperationTypeArray,
                            sizeof(getOperationTypeArray)) == 0) {
         // Discover Versions has no request payload.
+        requestPayloadSize = 0;
     } else if (std::memcmp(requestParams.operationType,
                            encryptOperationTypeArray,
                            sizeof(encryptOperationTypeArray)) == 0) {
-        requestPayload =
-            encodeEncryptPayload(static_cast<const EncryptKMIPRequestParameters&>(requestParams));
+        requestPayloadSize = encodeEncryptPayload(
+            ctx, static_cast<const EncryptKMIPRequestParameters&>(requestParams));
     } else if (std::memcmp(requestParams.operationType,
                            decryptOperationTypeArray,
                            sizeof(decryptOperationTypeArray)) == 0) {
-        requestPayload =
-            encodeDecryptPayload(static_cast<const DecryptKMIPRequestParameters&>(requestParams));
+        requestPayloadSize = encodeDecryptPayload(
+            ctx, static_cast<const DecryptKMIPRequestParameters&>(requestParams));
     } else {
         MONGO_UNREACHABLE;
     }
-    std::vector<uint8_t> payloadSize = convertIntToBigEndianArray(requestPayload.size());
-
-    // Tag: RequestPayload, Type: Structure, Data: Size
-    request.insert(request.end(), std::begin(requestPayloadTag), std::end(requestPayloadTag));
-    request.push_back(static_cast<uint8_t>(ItemType::structure));
-    request.insert(request.end(), std::begin(payloadSize), std::end(payloadSize));
-
-    // Request payload contents.
-    request.insert(request.end(), std::begin(requestPayload), std::end(requestPayload));
-
-    return request;
+    std::vector<uint8_t> requestPayloadSizeData = convertIntToBigEndianArray(requestPayloadSize);
+    std::copy(requestPayloadSizeData.begin(),
+              requestPayloadSizeData.end(),
+              pl.begin() + requestPayloadSizeIdx);
+    return pl.size() - startSize;
 }
 
-std::vector<uint8_t> encodeBatchItem(const KMIPRequestParameters& requestParams) {
-    std::vector<uint8_t> item;
-    std::vector<uint8_t> request = encodeOpAndRequestPayload(requestParams);
-    std::vector<uint8_t> requestSize = convertIntToBigEndianArray(request.size());
+size_t encodeBatchItem(struct EncodingContext* ctx, const KMIPRequestParameters& requestParams) {
+    auto& pl = *ctx->payload;
+    size_t startSize = pl.size();
 
     // Tag: Batch Item, Type: Structure, Data: Size
-    item.insert(item.end(), std::begin(batchItemTag), std::end(batchItemTag));
-    item.push_back(static_cast<uint8_t>(ItemType::structure));
-    item.insert(item.end(), std::begin(requestSize), std::end(requestSize));
+    pl.insert(pl.end(), std::begin(batchItemTag), std::end(batchItemTag));
+    pl.push_back(static_cast<uint8_t>(ItemType::structure));
+    size_t requestSizeIdx = pl.size();
+    pl.resize(pl.size() + 4);
 
-    // Operation Type information and Request Payload.
-    item.insert(item.end(), std::begin(request), std::end(request));
-
-    return item;
+    // Operation Type information and Request Payload
+    size_t requestSize = encodeOpAndRequestPayload(ctx, requestParams);
+    std::vector<uint8_t> requestSizeData = convertIntToBigEndianArray(requestSize);
+    std::copy(requestSizeData.begin(), requestSizeData.end(), pl.begin() + requestSizeIdx);
+    return pl.size() - startSize;
 }
 
-std::vector<uint8_t> encodeProtocolVersion(const KMIPRequestParameters& requestParams) {
-    std::vector<uint8_t> version;
+size_t encodeProtocolVersion(struct EncodingContext* ctx,
+                             const KMIPRequestParameters& requestParams) {
+    auto& pl = *ctx->payload;
+    size_t startSize = pl.size();
 
     std::vector<uint8_t> majorVersion =
         convertIntToBigEndianArray(requestParams.protocolVersion[0]);
@@ -274,46 +301,46 @@ std::vector<uint8_t> encodeProtocolVersion(const KMIPRequestParameters& requestP
         convertIntToBigEndianArray(requestParams.protocolVersion[1]);
 
     // Tag: Protocol Version Major, Type: Integer, Integer Size, Data: ...
-    version.insert(
-        version.end(), std::begin(protocolVersionMajorTag), std::end(protocolVersionMajorTag));
-    version.push_back(static_cast<uint8_t>(ItemType::integer));
-    version.insert(version.end(), std::begin(integerByteLength), std::end(integerByteLength));
-    version.insert(version.end(), std::begin(majorVersion), std::end(majorVersion));
-    version.insert(version.end(), std::begin(fourBytePadding), std::end(fourBytePadding));
+    pl.insert(pl.end(), std::begin(protocolVersionMajorTag), std::end(protocolVersionMajorTag));
+    pl.push_back(static_cast<uint8_t>(ItemType::integer));
+    pl.insert(pl.end(), std::begin(integerByteLength), std::end(integerByteLength));
+    pl.insert(pl.end(), std::begin(majorVersion), std::end(majorVersion));
+    pl.insert(pl.end(), std::begin(fourBytePadding), std::end(fourBytePadding));
 
     // Tag: Protocol Version Minor, Type: Integer, Integer Size, Data: ...
-    version.insert(
-        version.end(), std::begin(protocolVersionMinorTag), std::end(protocolVersionMinorTag));
-    version.push_back(static_cast<uint8_t>(ItemType::integer));
-    version.insert(version.end(), std::begin(integerByteLength), std::end(integerByteLength));
-    version.insert(version.end(), std::begin(minorVersion), std::end(minorVersion));
-    version.insert(version.end(), std::begin(fourBytePadding), std::end(fourBytePadding));
+    pl.insert(pl.end(), std::begin(protocolVersionMinorTag), std::end(protocolVersionMinorTag));
+    pl.push_back(static_cast<uint8_t>(ItemType::integer));
+    pl.insert(pl.end(), std::begin(integerByteLength), std::end(integerByteLength));
+    pl.insert(pl.end(), std::begin(minorVersion), std::end(minorVersion));
+    pl.insert(pl.end(), std::begin(fourBytePadding), std::end(fourBytePadding));
 
-    return version;
+    return pl.size() - startSize;
 }
 
-std::vector<uint8_t> encodeRequestHeader(const KMIPRequestParameters& requestParams) {
-    std::vector<uint8_t> header;
-    std::vector<uint8_t> version = encodeProtocolVersion(requestParams);
-    std::vector<uint8_t> versionSize = convertIntToBigEndianArray(version.size());
-
+size_t encodeRequestHeader(struct EncodingContext* ctx,
+                           const KMIPRequestParameters& requestParams) {
+    auto& pl = *ctx->payload;
+    size_t startSize = pl.size();
     // Tag: Protocol Version, Type: Structure, Data: Size
-    header.insert(header.end(), std::begin(protocolVersionTag), std::end(protocolVersionTag));
-    header.push_back(static_cast<uint8_t>(ItemType::structure));
-    header.insert(header.end(), std::begin(versionSize), std::end(versionSize));
+    pl.insert(pl.end(), std::begin(protocolVersionTag), std::end(protocolVersionTag));
+    pl.push_back(static_cast<uint8_t>(ItemType::structure));
+    size_t versionSizeIdx = pl.size();
+    pl.resize(pl.size() + 4);
 
-    // Insert the version information.
-    header.insert(header.end(), std::begin(version), std::end(version));
+    size_t versionSize = encodeProtocolVersion(ctx, requestParams);
+    std::vector<uint8_t> versionSizeData = convertIntToBigEndianArray(versionSize);
+
+    std::copy(versionSizeData.begin(), versionSizeData.end(), pl.begin() + versionSizeIdx);
 
     // Tag: Batch Count, Type: Integer, Integer Size, Data: Count (1)
     std::vector<uint8_t> batchCount = convertIntToBigEndianArray(1);
-    header.insert(header.end(), std::begin(batchCountTag), std::end(batchCountTag));
-    header.push_back(static_cast<uint8_t>(ItemType::integer));
-    header.insert(header.end(), std::begin(integerByteLength), std::end(integerByteLength));
-    header.insert(header.end(), std::begin(batchCount), std::end(batchCount));
-    header.insert(header.end(), std::begin(fourBytePadding), std::end(fourBytePadding));
+    pl.insert(pl.end(), std::begin(batchCountTag), std::end(batchCountTag));
+    pl.push_back(static_cast<uint8_t>(ItemType::integer));
+    pl.insert(pl.end(), std::begin(integerByteLength), std::end(integerByteLength));
+    pl.insert(pl.end(), std::begin(batchCount), std::end(batchCount));
+    pl.insert(pl.end(), std::begin(fourBytePadding), std::end(fourBytePadding));
 
-    return header;
+    return pl.size() - startSize;
 }
 }  // namespace
 
@@ -326,35 +353,37 @@ std::vector<uint8_t> convertIntToBigEndianArray(uint32_t input) {
     return output;
 }
 
-std::vector<uint8_t> encodeKMIPRequest(const KMIPRequestParameters& requestParams) {
-    std::vector<uint8_t> msg;
-
-    std::vector<uint8_t> header = encodeRequestHeader(requestParams);
-    std::vector<uint8_t> headerSize = convertIntToBigEndianArray(header.size());
-
-    // Request size is the size of the header and the batch items.
-    // The +8 is because the requestHeaderTag is not included in the header.size().
-    std::vector<uint8_t> item = encodeBatchItem(requestParams);
-    size_t requestSizeInt = header.size() + 8 + item.size();
-    std::vector<uint8_t> requestSize = convertIntToBigEndianArray(requestSizeInt);
+SecureVector<uint8_t> encodeKMIPRequest(const KMIPRequestParameters& requestParams) {
+    struct EncodingContext ctx;
+    auto& msg = *ctx.payload;
 
     // Tag: Request Message, Type: Structure, Data: Size
     msg.insert(msg.end(), std::begin(requestMessageTag), std::end(requestMessageTag));
     msg.push_back(static_cast<uint8_t>(ItemType::structure));
-    msg.insert(msg.end(), std::begin(requestSize), std::end(requestSize));
+    // skip slot for length
+    size_t requestSizeIdx = msg.size();
+    msg.resize(msg.size() + 4);
 
     // Tag: Request Header, Type: Structure, Data: Size
     msg.insert(msg.end(), std::begin(requestHeaderTag), std::end(requestHeaderTag));
     msg.push_back(static_cast<uint8_t>(ItemType::structure));
-    msg.insert(msg.end(), std::begin(headerSize), std::end(headerSize));
+    size_t headerSizeIdx = msg.size();
+    msg.resize(msg.size() + 4);
 
     // The request header.
-    msg.insert(msg.end(), std::begin(header), std::end(header));
+    size_t headerSize = encodeRequestHeader(&ctx, requestParams);
+    std::vector<uint8_t> headerSizeData = convertIntToBigEndianArray(headerSize);
 
     // The batch item.
-    msg.insert(msg.end(), std::begin(item), std::end(item));
+    // Request size is the size of the header and the batch items.
+    // The +8 is because the header for the request header data is not included in either size.
+    size_t requestSize = encodeBatchItem(&ctx, requestParams) + 8 + headerSize;
+    std::vector<uint8_t> requestSizeData = convertIntToBigEndianArray(requestSize);
 
-    return msg;
+    std::copy(headerSizeData.begin(), headerSizeData.end(), msg.begin() + headerSizeIdx);
+    std::copy(requestSizeData.begin(), requestSizeData.end(), msg.begin() + requestSizeIdx);
+
+    return ctx.payload;
 }
 
 }  // namespace kmip
