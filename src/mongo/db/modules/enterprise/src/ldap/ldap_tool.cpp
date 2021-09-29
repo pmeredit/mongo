@@ -490,7 +490,7 @@ int ldapToolMain(int argc, char** argv) {
             std::transform(swRoles.getValue().begin(),
                            swRoles.getValue().end(),
                            std::back_inserter(roleStrings),
-                           [](const RoleName& role) { return role.getRole().toString(); });
+                           [](const RoleName& role) { return role.getRole(); });
             return roleStrings;
         });
     }
