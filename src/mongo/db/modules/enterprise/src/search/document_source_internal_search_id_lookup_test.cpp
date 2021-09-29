@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "document_source_internal_search_id_lookup.h"
+#include "mongo/db/concurrency/locker_noop_service_context_test_fixture.h"
 #include "mongo/db/exec/document_value/document.h"
 #include "mongo/db/exec/document_value/document_value_test_util.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
@@ -17,7 +18,7 @@
 #include "mongo/db/pipeline/document_source_project.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/process_interface/stub_lookup_single_document_process_interface.h"
-#include "mongo/unittest/unittest.h"
+#include "mongo/unittest/temp_dir.h"
 
 namespace mongo {
 
@@ -30,7 +31,7 @@ using std::vector;
 using MockMongoInterface = StubLookupSingleDocumentProcessInterface;
 const NamespaceString kTestNss = NamespaceString("unittests.pipeline_test");
 
-class InternalSearchIdLookupTest : public ServiceContextTest {
+class InternalSearchIdLookupTest : public LockerNoopServiceContextTest {
 public:
     InternalSearchIdLookupTest() : InternalSearchIdLookupTest(NamespaceString(kTestNss)) {}
 

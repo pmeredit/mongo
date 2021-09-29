@@ -21,6 +21,7 @@
 #include "mongo/db/auth/authz_session_external_state_mock.h"
 #include "mongo/db/auth/sasl_mechanism_registry.h"
 #include "mongo/db/auth/sasl_options.h"
+#include "mongo/db/concurrency/locker_noop_client_observer.h"
 #include "mongo/db/service_context_test_fixture.h"
 #include "mongo/logv2/log.h"
 #include "mongo/unittest/unittest.h"
@@ -205,10 +206,12 @@ protected:
     void assertConversationFailure();
 };
 
-SaslConversationGssapi::SaslConversationGssapi()
-    : opCtx(makeOperationContext()), mechanism("GSSAPI") {
+SaslConversationGssapi::SaslConversationGssapi() : mechanism("GSSAPI") {
+    auto service = getServiceContext();
+    service->registerClientObserver(std::make_unique<LockerNoopClientObserver>());
+    opCtx = makeOperationContext();
 
-    auto tmpAuthManager = AuthorizationManager::create(getServiceContext());
+    auto tmpAuthManager = AuthorizationManager::create(service);
     authSession = tmpAuthManager->makeAuthorizationSession();
     authManager = tmpAuthManager.get();
     AuthorizationManager::set(getServiceContext(), std::move(tmpAuthManager));
