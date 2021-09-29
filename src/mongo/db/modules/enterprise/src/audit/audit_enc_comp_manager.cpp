@@ -121,37 +121,14 @@ BSONObj AuditEncryptionCompressionManager::decryptAndDecompress(
     return BSONObj(bsonString).copy();
 }
 
-BSONObj AuditEncryptionCompressionManager::compressAndEncrypt(const PlainAuditFrame& frame) const {
-    auto inBuff = ConstDataRange(frame.payload.objdata(), frame.payload.objsize());
-
-    // create an encrypted layout object just so we can get the expected
-    // ciphertext size and the header size for the preallocation below.
-    ConstEncryptedAuditLayout ctLayout(inBuff.data<uint8_t>(), inBuff.length());
-
-    // preallocate the contiguous buffer used for compress & encrypt
-    std::size_t compressAreaSize =
-        _compress ? _zstdCompressor->getMaxCompressedSize(inBuff.length()) : 0;
-    std::size_t encryptAreaSize = ctLayout.getHeaderSize() +
-        ctLayout.expectedCiphertextLen(_compress ? compressAreaSize : inBuff.length());
-    _preallocate.reserve(compressAreaSize + encryptAreaSize);
-
-    DataRange encryptArea(_preallocate.data(), encryptAreaSize);
-    DataRange compressArea(
-        _preallocate.data() + encryptAreaSize, compressAreaSize, encryptAreaSize);
-
-    if (_compress) {
-        auto sws = _zstdCompressor->compressData(inBuff, compressArea);
-        uassertStatusOK(sws.getStatus().withContext("Failed to compress audit line"));
-        invariant(compressAreaSize >= sws.getValue());
-        inBuff = ConstDataRange(compressArea.data(), sws.getValue());
-    }
-
-    auto encryptSize = _encrypt(frame.ts, inBuff, encryptArea);
+BSONObj AuditEncryptionCompressionManager::encryptAndEncode(ConstDataRange toEncrypt,
+                                                            const Date_t& ts) const {
+    auto encrypted = encrypt(toEncrypt, ts);
 
     BSONObjBuilder builder;
 
-    builder.append(PlainAuditFrame::kTimestampField, frame.ts);
-    builder.append(PlainAuditFrame::kLogField, base64::encode(encryptArea.data(), encryptSize));
+    builder.append(PlainAuditFrame::kTimestampField, ts);
+    builder.append(PlainAuditFrame::kLogField, base64::encode(encrypted.data(), encrypted.size()));
     return builder.obj();
 }
 

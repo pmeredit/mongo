@@ -155,8 +155,15 @@ public:
                 auto ac = am->getAuditEncryptionCompressionManager();
                 invariant(ac);
 
+                std::vector<uint8_t> compressed;
+                ConstDataRange toEncrypt(toWrite.payload.objdata(), toWrite.payload.objsize());
+                if (am->getCompressionEnabled()) {
+                    compressed = ac->compress(toEncrypt);
+                    toEncrypt = ConstDataRange(compressed);
+                }
+
                 logger::RotatableFileWriter::Use useWriter(_writer.get());
-                BSONObj obj = ac->compressAndEncrypt(toWrite);
+                BSONObj obj = ac->encryptAndEncode(toEncrypt, toWrite.ts);
 
                 if (am->getFormat() == AuditFormat::AuditFormatJsonFile) {
                     status = writeStream(useWriter, obj.jsonString(), true);

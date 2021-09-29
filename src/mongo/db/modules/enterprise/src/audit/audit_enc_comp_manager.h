@@ -30,7 +30,7 @@ public:
                                       bool compress,
                                       const AuditKeyManager::WrappedKey* wrappedKey = nullptr);
 
-    BSONObj compressAndEncrypt(const PlainAuditFrame& frame) const;
+    BSONObj encryptAndEncode(ConstDataRange toEncrypt, const Date_t& ts) const;
     BSONObj decryptAndDecompress(const EncryptedAuditFrame& frame) const;
 
     std::vector<std::uint8_t> compress(ConstDataRange toCompress) const;
@@ -60,9 +60,6 @@ private:
 
     // Whether compression is performed prior to encrypt
     bool _compress;
-
-    // Preallocated buffer for storing output of compress & encrypt
-    mutable std::vector<uint8_t> _preallocate;
 };
 
 }  // namespace audit

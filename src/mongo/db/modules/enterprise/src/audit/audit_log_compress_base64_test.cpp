@@ -10,6 +10,7 @@
 #include "audit_key_manager_mock.h"
 #include "mongo/base/init.h"
 #include "mongo/bson/json.h"
+#include "mongo/idl/server_parameter_test_util.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/base64.h"
 
@@ -34,23 +35,22 @@ public:
     }
 
 protected:
+    RAIIServerParameterControllerForTest _controller{"featureFlagAtRestEncryption", true};
+
     std::unique_ptr<AuditEncryptionCompressionManager> ac;
 };
 
 TEST_F(AuditLogCompressBase64Test, CheckStringIsBase64Test) {
-    if (feature_flags::gFeatureFlagAtRestEncryption.isEnabledAndIgnoreFCV()) {
-        bool isBase64 = base64::validate(toCompressLog);
-        ASSERT_FALSE(isBase64);
+    bool isBase64 = base64::validate(toCompressLog);
+    ASSERT_FALSE(isBase64);
 
-        BSONObj auditBson = fromjson(toCompressLog);
+    ConstDataRange toEncrypt(toCompressLog.data(), toCompressLog.size());
+    auto compressedLog = ac->encryptAndEncode(toEncrypt, Date_t::now());
 
-        auto compressedLog = ac->compressAndEncrypt({Date_t::now(), auditBson});
+    StringData logField(compressedLog.getStringField("log"_sd));
 
-        StringData logField(compressedLog.getStringField("log"_sd));
-
-        isBase64 = base64::validate(logField);
-        ASSERT_TRUE(isBase64);
-    }
+    isBase64 = base64::validate(logField);
+    ASSERT_TRUE(isBase64);
 }
 
 }  // namespace audit
