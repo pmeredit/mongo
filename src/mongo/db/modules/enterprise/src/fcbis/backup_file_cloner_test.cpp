@@ -76,12 +76,14 @@ TEST_F(BackupFileClonerTest, RelativePathIsnt) {
     auto absolutePath = boost::filesystem::current_path();
     auto backupFileCloner =
         makeBackupFileCloner("/path/to/backupfile", absolutePath.generic_string(), 0);
-    ASSERT_EQ(backupFileCloner->run().code(), 5781700);
+    auto status = backupFileCloner->run();
+    ASSERT_EQ(status.code(), 5781700) << status;
 }
 
 TEST_F(BackupFileClonerTest, RelativePathEscapes) {
     auto backupFileCloner = makeBackupFileCloner("/path/to/backupfile", "../escapee", 0);
-    ASSERT_EQ(backupFileCloner->run().code(), 5781701);
+    auto status = backupFileCloner->run();
+    ASSERT_EQ(status.code(), 5781701) << status;
 }
 
 TEST_F(BackupFileClonerTest, CantOpenFile) {
@@ -91,7 +93,8 @@ TEST_F(BackupFileClonerTest, CantOpenFile) {
     auto badfilePath = _initialSyncPath;
     badfilePath.append("dir/badfile");
     boost::filesystem::create_directories(badfilePath);
-    ASSERT_EQ(backupFileCloner->run().code(), ErrorCodes::FileOpenFailed);
+    auto status = backupFileCloner->run();
+    ASSERT_EQ(status.code(), ErrorCodes::FileOpenFailed) << status;
 }
 
 TEST_F(BackupFileClonerTest, CantCreateDirectory) {
@@ -101,7 +104,8 @@ TEST_F(BackupFileClonerTest, CantCreateDirectory) {
     auto baddirPath = _initialSyncPath;
     baddirPath.append("baddir");
     std::ofstream baddirFile(baddirPath.native(), std::ios_base::out | std::ios_base::trunc);
-    ASSERT_EQ(backupFileCloner->run().code(), 5781703);
+    auto status = backupFileCloner->run();
+    ASSERT_EQ(status.code(), 5781703) << status;
 }
 
 TEST_F(BackupFileClonerTest, PreStageSuccess) {
@@ -166,7 +170,8 @@ TEST_F(BackupFileClonerTest, NoEOF) {
     _mockServer->setCommandReply("aggregate", response.toBSONAsInitialResponse());
     auto filePath = _initialSyncPath;
     filePath.append("dir/backupfile");
-    ASSERT_EQ(backupFileCloner->run().code(), 5781710);
+    auto status = backupFileCloner->run();
+    ASSERT_EQ(status.code(), 5781710) << status;
 }
 
 TEST_F(BackupFileClonerTest, SingleBatch) {
@@ -317,7 +322,8 @@ TEST_F(BackupFileClonerTest, NonRetryableErrorFirstBatch) {
     auto backupFileCloner = makeBackupFileCloner("/path/dir/backupfile", "dir/backupfile", 0);
     _mockServer->setCommandReply(
         "aggregate", Status(ErrorCodes::IllegalOperation, "Non-retryable Error on first batch"));
-    ASSERT_EQ(backupFileCloner->run().code(), ErrorCodes::IllegalOperation);
+    auto status = backupFileCloner->run();
+    ASSERT_EQ(status.code(), ErrorCodes::IllegalOperation) << status;
 }
 
 TEST_F(BackupFileClonerTest, NonRetryableErrorSubsequentBatch) {
@@ -335,7 +341,8 @@ TEST_F(BackupFileClonerTest, NonRetryableErrorSubsequentBatch) {
         {batch1response.toBSONAsInitialResponse(),
          Status(ErrorCodes::IllegalOperation, "Non-retryable Error on second batch"),
          Status(ErrorCodes::UnknownError, "This should never be seen")});
-    ASSERT_EQ(backupFileCloner->run().code(), ErrorCodes::IllegalOperation);
+    auto status = backupFileCloner->run();
+    ASSERT_EQ(status.code(), ErrorCodes::IllegalOperation) << status;
 }
 
 TEST_F(BackupFileClonerTest, NonRetryableErrorFollowsRetryableError) {
@@ -355,7 +362,8 @@ TEST_F(BackupFileClonerTest, NonRetryableErrorFollowsRetryableError) {
          Status(ErrorCodes::HostUnreachable, "Retryable Error on second batch"),
          Status(ErrorCodes::IllegalOperation, "Non-retryable Error on retry"),
          Status(ErrorCodes::UnknownError, "This should never be seen")});
-    ASSERT_EQ(backupFileCloner->run().code(), ErrorCodes::IllegalOperation);
+    auto status = backupFileCloner->run();
+    ASSERT_EQ(status.code(), ErrorCodes::IllegalOperation) << status;
 }
 
 TEST_F(BackupFileClonerTest, InProgressStats) {
@@ -437,7 +445,7 @@ TEST_F(BackupFileClonerTest, InProgressStats) {
         fileWritingFailpoint->setMode(FailPoint::off);
         networkFailpoint->setMode(FailPoint::off);
         clonerFailpoint->waitForTimesEntered(Interruptible::notInterruptible(),
-                                             clonerFailpoint.initialTimesEntered());
+                                             clonerFailpoint.initialTimesEntered() + 1);
 
         // Stats after second batch.
         stats = backupFileCloner->getStats().toBSON();

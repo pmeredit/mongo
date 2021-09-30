@@ -88,10 +88,10 @@ void BackupFileCloner::preStage() {
 
     _localFilePath /= relativePath;
     _localFilePath = _localFilePath.lexically_normal();
-    uassert(5781701,
-            str::stream() << "Path " << _relativePathString
-                          << " must not escape its parent directory.",
-            StringData(_localFilePath.string()).startsWith(initialSyncPath.string()));
+    uassert(
+        5781701,
+        str::stream() << "Path " << _relativePathString << " must not escape its parent directory.",
+        StringData(_localFilePath.generic_string()).startsWith(initialSyncPath.generic_string()));
 
     // Create and open files and any parent directories.
     if (boost::filesystem::exists(_localFilePath)) {
