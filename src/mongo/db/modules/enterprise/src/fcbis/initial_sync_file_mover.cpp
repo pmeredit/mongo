@@ -68,23 +68,33 @@ void InitialSyncFileMover::recoverFileCopyBasedInitialSyncAtStartup() {
     if (!moveMarkerExists) {
         _deleteFilesListedInDeleteMarker();
         LOGV2_DEBUG(5783406, 1, "Recovering file based initial sync: old files have been deleted.");
-        filesToMove = _createListOfFilesToMove();
-        _writeMarker(filesToMove, kMovingFilesMarker, kMovingFilesTmpMarker);
+        filesToMove = createListOfFilesToMove();
+        writeMarker(filesToMove, kMovingFilesMarker, kMovingFilesTmpMarker);
     } else {
-        filesToMove = _readListOfFiles(movingFilesMarker);
+        filesToMove = readListOfFiles(kMovingFilesMarker);
     }
     if (deleteMarkerExists) {
         boost::filesystem::remove(filesToDeleteMarker);
     }
-    _moveFilesAndHandleFailure(filesToMove);
+    moveFilesAndHandleFailure(filesToMove);
     LOGV2_DEBUG(5783407, 1, "Recovering file based initial sync: new files have been moved.");
+    completeMovingInitialSyncFiles();
+}
+
+void InitialSyncFileMover::completeMovingInitialSyncFiles() {
+    boost::filesystem::path dbpath(_dbpath);
+    auto movingFilesMarker = dbpath;
+    movingFilesMarker.append(kMovingFilesMarker.toString());
+    auto initialSyncDir = dbpath;
+    initialSyncDir.append(kInitialSyncDir.toString());
     boost::filesystem::remove(movingFilesMarker);
     boost::filesystem::remove_all(initialSyncDir);
     LOGV2(5783405, "File based initial sync has been completed.");
 }
 
-std::vector<std::string> InitialSyncFileMover::_readListOfFiles(
-    const boost::filesystem::path& path) {
+std::vector<std::string> InitialSyncFileMover::readListOfFiles(StringData markerName) {
+    boost::filesystem::path path(_dbpath);
+    path.append(markerName.toString());
     // The format of the marker files is simply strings of relative paths terminated with NUL
     // characters.  This avoids having to worry about the BSON 16MB limit.
     std::vector<std::string> result;
@@ -103,7 +113,7 @@ std::vector<std::string> InitialSyncFileMover::_readListOfFiles(
     return result;
 }
 
-std::vector<std::string> InitialSyncFileMover::_createListOfFilesToMove() {
+std::vector<std::string> InitialSyncFileMover::createListOfFilesToMove() {
     std::vector<std::string> result;
     boost::filesystem::path initialSyncDir(_dbpath);
     initialSyncDir.append(kInitialSyncDir.toString());
@@ -116,9 +126,9 @@ std::vector<std::string> InitialSyncFileMover::_createListOfFilesToMove() {
     return result;
 }
 
-void InitialSyncFileMover::_writeMarker(std::vector<std::string> filenames,
-                                        StringData markerName,
-                                        StringData tmpMarkerName) {
+void InitialSyncFileMover::writeMarker(std::vector<std::string> filenames,
+                                       StringData markerName,
+                                       StringData tmpMarkerName) {
     boost::filesystem::path markerPath(_dbpath);
     markerPath.append(markerName.toString());
     boost::filesystem::path tmpMarkerPath(_dbpath);
@@ -133,11 +143,8 @@ void InitialSyncFileMover::_writeMarker(std::vector<std::string> filenames,
     fassertNoTrace(5783419, fsyncParentDirectory(markerPath));
 }
 
-
 void InitialSyncFileMover::_deleteFilesListedInDeleteMarker() {
-    boost::filesystem::path filesToDeleteMarker(_dbpath);
-    filesToDeleteMarker.append(kFilesToDeleteMarker.toString());
-    deleteFiles(_readListOfFiles(filesToDeleteMarker));
+    deleteFiles(readListOfFiles(kFilesToDeleteMarker));
 }
 
 void InitialSyncFileMover::deleteFiles(const std::vector<std::string>& filesToDelete) {
@@ -268,12 +275,12 @@ void InitialSyncFileMover::_cleanupAfterFailedMoveAndFassert() {
     boost::filesystem::remove_all(initialSyncDir);
     auto movingFilesMarker = dbpath;
     movingFilesMarker.append(kMovingFilesMarker.toString());
-    deleteFiles(_readListOfFiles(movingFilesMarker));
+    deleteFiles(readListOfFiles(kMovingFilesMarker));
     boost::filesystem::remove(movingFilesMarker);
     fassertFailedNoTrace(5783416);
 }
 
-void InitialSyncFileMover::_moveFilesAndHandleFailure(const std::vector<std::string>& filesToMove) {
+void InitialSyncFileMover::moveFilesAndHandleFailure(const std::vector<std::string>& filesToMove) {
     try {
         _moveFiles(filesToMove);
     } catch (boost::filesystem::filesystem_error& error) {

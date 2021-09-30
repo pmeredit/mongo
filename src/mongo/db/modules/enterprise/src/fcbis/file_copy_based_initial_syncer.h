@@ -192,6 +192,12 @@ private:
     ExecutorFuture<void> _getListOfOldFilesToBeDeleted();
 
     /**
+     * Starts moving new synced storage files from initial sync directory to dbpath and then removes
+     * the initial sync directory.
+     */
+    ExecutorFuture<void> _startMovingNewStorageFilesPhase();
+
+    /**
      * Opens the right cursor on the sync source and gets the files to be cloned.
      */
     ExecutorFuture<void> _cloneFromSyncSourceCursor();
@@ -351,6 +357,7 @@ private:
         std::string remoteDbpath;                                    // (X)
         std::unique_ptr<BackupFileCloner> currentBackupFileCloner;   // (X)
         std::vector<BackupFileCloner::Stats> backupFileClonerStats;  // (X)
+        std::vector<std::string> filesRelativePathsToBeMoved;
 
         // The syncing file executor.
         std::shared_ptr<executor::TaskExecutor> executor;

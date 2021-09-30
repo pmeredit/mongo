@@ -38,29 +38,40 @@ public:
      */
     void deleteFiles(const std::vector<std::string>& filesToDelete);
 
-private:
-    InitialSyncFileMover(const InitialSyncFileMover&) = delete;
-    InitialSyncFileMover& operator=(const InitialSyncFileMover&) = delete;
-
     /**
-     * Reads a list of filenames from the marker file specified by 'path'.
+     * Reads a list of filenames from the marker file.
      */
-    std::vector<std::string> _readListOfFiles(const boost::filesystem::path& path);
+    std::vector<std::string> readListOfFiles(StringData markerName);
 
     /**
      * Creates the list of files to move by enumerating the files in the initial sync directory.
      * Then creates the kFilesToMoveMarker and deletes the kFilesToDeleteMarker.  As a convenience,
      * returns the list of files.
      */
-    std::vector<std::string> _createListOfFilesToMove();
+    std::vector<std::string> createListOfFilesToMove();
 
     /**
      * Writes out a marker file, making sure the data is flushed before creating markerName and
      * making sure the directory is flushed afterwards.
      */
-    void _writeMarker(std::vector<std::string> filenames,
-                      StringData markerName,
-                      StringData tmpMarkerName);
+    void writeMarker(std::vector<std::string> filenames,
+                     StringData markerName,
+                     StringData tmpMarkerName);
+
+    /**
+     * Removes kFilesToMoveMarker and the empty kInitialSyncDir.
+     */
+    void completeMovingInitialSyncFiles();
+
+    /*
+     * Moves a list of files relative to kInitialSyncDir to dbpath.
+     * If moving fails, deletes all the files in the kFilesToMove marker file and fasserts.
+     */
+    void moveFilesAndHandleFailure(const std::vector<std::string>& filesToMove);
+
+private:
+    InitialSyncFileMover(const InitialSyncFileMover&) = delete;
+    InitialSyncFileMover& operator=(const InitialSyncFileMover&) = delete;
 
     /**
      * Deletes the list of files in the kFilesToDeleteMarker file.
@@ -78,12 +89,6 @@ private:
      * and calls fassert().
      */
     MONGO_COMPILER_NORETURN void _cleanupAfterFailedMoveAndFassert();
-
-    /*
-     * Moves a list of files relative to kInitialSyncDir to dbpath.
-     * If moving fails, deletes all the files in the kFilesToMove marker file and fasserts.
-     */
-    void _moveFilesAndHandleFailure(const std::vector<std::string>& filesToMove);
 
     std::string _dbpath;
 };

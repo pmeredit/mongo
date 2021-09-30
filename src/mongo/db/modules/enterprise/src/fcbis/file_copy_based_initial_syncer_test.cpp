@@ -280,6 +280,9 @@ protected:
             globalFailPointRegistry()
                 .find("fCBISSkipSyncingFilesPhase")
                 ->setMode(FailPoint::alwaysOn);
+            globalFailPointRegistry()
+                .find("fCBISSkipMovingFilesPhase")
+                ->setMode(FailPoint::alwaysOn);
         } catch (...) {
             ASSERT_OK(exceptionToStatus());
         }
@@ -287,6 +290,8 @@ protected:
         _tempDir = std::make_unique<unittest::TempDir>("FileCopyBasedInitialSyncerTest");
         storageGlobalParams.dbpath = _tempDir->path();
         cursorDataMock.dbpath = boost::filesystem::path(_tempDir->path());
+        cursorDataMock.currentFileMover =
+            std::make_unique<InitialSyncFileMover>(cursorDataMock.dbpath.string());
     }
 
     void tearDownExecutorThread() {
@@ -354,9 +359,19 @@ protected:
             {"/data/db/job0/mongorunner/test-1/journal/WiredTigerLog.0000000006",
              "/data/db/job0/mongorunner/test-1/journal/WiredTigerLog.0000000007"}};
 
+        const std::vector<std::string> markerFilesList{"WiredTiger",
+                                                       "WiredTiger.backup",
+                                                       "WiredTigerHS.wt",
+                                                       "_mdb_catalog.wt",
+                                                       "collection-0--3853645825680686061.wt",
+                                                       "index-1--3853645825680686061.wt",
+                                                       "journal",
+                                                       "sizeStorer.wt"};
+
         StringData remoteDbPath = "/data/db/job0/mongorunner/test-1";
 
         boost::filesystem::path dbpath;
+        std::unique_ptr<InitialSyncFileMover> currentFileMover;
 
         BSONObj getBackupCursorBatches(int batchId) {
             // Empty last batch.
@@ -421,23 +436,35 @@ protected:
             return allFiles;
         }
 
-        void writeFileRelativeToDbPath(StringData fileRelativePath, StringData contents) {
+        void writeFile(StringData fileRelativePath,
+                       StringData contents,
+                       bool insideInitialSyncDir) {
             boost::filesystem::path filepath(dbpath);
+            if (insideInitialSyncDir) {
+                filepath.append(InitialSyncFileMover::kInitialSyncDir.toString());
+            }
             filepath.append(fileRelativePath.toString());
             boost::filesystem::create_directories(filepath.parent_path());
             std::ofstream writer(filepath.native());
             writer << contents;
         }
 
-        void createOldStorageFiles() {
+        void createStorageFiles(bool insideInitialSyncDir = false) {
             auto files = getAllRemoteFilesRelativePath();
             for (const auto& fileRelativePath : files) {
-                writeFileRelativeToDbPath(fileRelativePath, "_DATA_" + fileRelativePath + "_DATA_");
+                writeFile(
+                    fileRelativePath, "_DATA_" + fileRelativePath + "_DATA_", insideInitialSyncDir);
             }
         }
 
-        void assertExistsWithContents(StringData fileRelativePath, StringData expected_contents) {
+        void assertExistsWithContents(StringData fileRelativePath,
+                                      StringData expected_contents,
+                                      bool insideInitialSyncDir) {
             auto path = dbpath;
+            if (insideInitialSyncDir) {
+                path.append(InitialSyncFileMover::kInitialSyncDir.toString());
+            }
+
             path.append(fileRelativePath.toString());
             ASSERT_TRUE(boost::filesystem::exists(path))
                 << "File " << fileRelativePath << " should exist but does not";
@@ -449,24 +476,45 @@ protected:
                 << " but instead has " << contents;
         }
 
-        void assertNotExist(StringData fileRelativePath) {
+        void assertNotExist(StringData fileRelativePath, bool insideInitialSyncDir) {
             auto path = dbpath;
+            if (insideInitialSyncDir) {
+                path.append(InitialSyncFileMover::kInitialSyncDir.toString());
+            }
             path.append(fileRelativePath.toString());
             ASSERT_FALSE(boost::filesystem::exists(path))
                 << "File " << fileRelativePath << " shouldn't exist but does";
         }
 
-        void validateOldStorageFiles(bool shouldExist) {
+        void validateFilesExistence(bool shouldExist, bool insideInitialSyncDir = false) {
             auto files = getAllRemoteFilesRelativePath();
             for (const auto& fileRelativePath : files) {
                 if (!shouldExist) {
-                    assertNotExist(fileRelativePath);
+                    assertNotExist(fileRelativePath, insideInitialSyncDir);
                 } else {
                     assertExistsWithContents(fileRelativePath,
-                                             "_DATA_" + fileRelativePath + "_DATA_");
+                                             "_DATA_" + fileRelativePath + "_DATA_",
+                                             insideInitialSyncDir);
                 }
             }
         }
+
+        void validateMarkerExistence(bool shouldExist, StringData markerName) {
+            if (!shouldExist) {
+                assertNotExist(markerName, false /*insideInitialSyncDir*/);
+            } else {
+                auto filesInMarker = currentFileMover->readListOfFiles(markerName);
+                sort(filesInMarker.begin(), filesInMarker.end());
+                ASSERT_TRUE(markerFilesList == filesInMarker);
+            }
+        }
+
+        void validateInitialSyncDirExistence(bool shouldExist) {
+            auto path = dbpath;
+            path.append(InitialSyncFileMover::kInitialSyncDir.toString());
+            ASSERT_TRUE(boost::filesystem::exists(path) == shouldExist);
+        }
+
     } cursorDataMock;
 
     bool verifyCursorFiles(const StringSet& returnedFiles,
@@ -1284,7 +1332,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, KeepingBackupCursorAlive) {
     // Enable the failpoint to pause after opening the backupCursor.
     auto hangAfterBackupCursorFailPoint =
         globalFailPointRegistry().find("fCBISHangAfterOpeningBackupCursor");
-    auto timesEnteredFailPoint = hangAfterBackupCursorFailPoint->setMode(FailPoint::alwaysOn, 0);
+    auto timesEnteredFailPoint = hangAfterBackupCursorFailPoint->setMode(FailPoint::alwaysOn);
 
     ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
     expectSuccessfulFileCloning();
@@ -1301,7 +1349,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, KeepingBackupCursorAlive) {
     }
 
     hangAfterBackupCursorFailPoint->setMode(FailPoint::off);
-    // Advance the clock to make sure that the failPoint hang loop terminated.
+    // Advance the clock to make sure that the failPoint hang loop terminates.
     advanceClock(getNet(), Milliseconds(static_cast<Milliseconds::rep>(100)));
 
     // Mark the initial sync as done as long as the lag is not greater than
@@ -1461,16 +1509,16 @@ TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromExtendedCursor) {
 TEST_F(FileCopyBasedInitialSyncerTest, DeleteOldStorageFilesPhase) {
     auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
     auto opCtx = makeOpCtx();
-    globalFailPointRegistry().find("fCBISSkipSyncingFilesPhase")->setMode(FailPoint::alwaysOn, 0);
+    globalFailPointRegistry().find("fCBISSkipSyncingFilesPhase")->setMode(FailPoint::alwaysOn);
     auto hangBeforeDeletingOldStorageFilesFailPoint =
         globalFailPointRegistry().find("fCBISHangBeforeDeletingOldStorageFiles");
     auto timesEnteredFailPoint =
-        hangBeforeDeletingOldStorageFilesFailPoint->setMode(FailPoint::alwaysOn, 0);
+        hangBeforeDeletingOldStorageFilesFailPoint->setMode(FailPoint::alwaysOn);
     _syncSourceSelector->setChooseNewSyncSourceResult_forTest(HostAndPort("localhost", 12345));
 
     // Add old storage files that will be deleted.
-    cursorDataMock.createOldStorageFiles();
-    cursorDataMock.validateOldStorageFiles(true /*shouldExist*/);
+    cursorDataMock.createStorageFiles();
+    cursorDataMock.validateFilesExistence(true /*shouldExist*/);
 
     // Let initial sync works untill hitting the delete phase.
     ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
@@ -1481,16 +1529,100 @@ TEST_F(FileCopyBasedInitialSyncerTest, DeleteOldStorageFilesPhase) {
     fileCopyBasedInitialSyncer->setOldStorageFilesToBeDeleted_ForTest(
         cursorDataMock.getAllRemoteFilesRelativePath());
 
-    // Let initial sync finishes.
+    // Let initial sync finish.
     hangBeforeDeletingOldStorageFilesFailPoint->setMode(FailPoint::off);
-    // Advance the clock to make sure that the failPoint hang loop terminated.
+    // Advance the clock to make sure that the failPoint hang loop terminates.
     advanceClock(getNet(), Milliseconds(static_cast<Milliseconds::rep>(100)));
     fileCopyBasedInitialSyncer->join();
     ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest(),
               Status::OK());
 
     // Make sure that all files got deleted.
-    cursorDataMock.validateOldStorageFiles(false /*shouldExist*/);
+    cursorDataMock.validateFilesExistence(false /*shouldExist*/);
+}
+
+TEST_F(FileCopyBasedInitialSyncerTest, MoveNewFilesPhase) {
+    auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
+    auto opCtx = makeOpCtx();
+
+    globalFailPointRegistry().find("fCBISSkipSyncingFilesPhase")->setMode(FailPoint::alwaysOn);
+    globalFailPointRegistry().find("fCBISSkipMovingFilesPhase")->setMode(FailPoint::off);
+    _syncSourceSelector->setChooseNewSyncSourceResult_forTest(HostAndPort("localhost", 12345));
+
+    auto hangBeforeDeletingTheDeleteMarkerFailPoint =
+        globalFailPointRegistry().find("fCBISHangBeforeDeletingTheDeleteMarker");
+    auto hangBeforeMovingTheNewFilesFailPoint =
+        globalFailPointRegistry().find("fCBISHangBeforeMovingTheNewFiles");
+    auto hangAfterMovingTheNewFilesFailPoint =
+        globalFailPointRegistry().find("fCBISHangAfterMovingTheNewFiles");
+
+    // Add new storage files that will be moved.
+    cursorDataMock.createStorageFiles(true /*insideInitialSyncDir*/);
+    cursorDataMock.validateFilesExistence(true /*shouldExist*/, true /*insideInitialSyncDir*/);
+
+    // Advance to the step of deleting the delete marker.
+    auto timesEnteredFailPoint =
+        hangBeforeDeletingTheDeleteMarkerFailPoint->setMode(FailPoint::alwaysOn);
+    ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+    expectSuccessfulSyncSourceValidation();
+    hangBeforeDeletingTheDeleteMarkerFailPoint->waitForTimesEntered(timesEnteredFailPoint + 1);
+
+    // Moving marker should exist.
+    cursorDataMock.validateMarkerExistence(true /*shouldExist*/,
+                                           InitialSyncFileMover::kMovingFilesMarker);
+
+    // Create the delete marker.
+    cursorDataMock.currentFileMover->writeMarker(cursorDataMock.markerFilesList,
+                                                 InitialSyncFileMover::kFilesToDeleteMarker,
+                                                 InitialSyncFileMover::kFilesToDeleteTmpMarker);
+    cursorDataMock.validateMarkerExistence(true /*shouldExist*/,
+                                           InitialSyncFileMover::kFilesToDeleteMarker);
+    cursorDataMock.validateMarkerExistence(false /*shouldExist*/,
+                                           InitialSyncFileMover::kFilesToDeleteTmpMarker);
+
+    timesEnteredFailPoint = hangBeforeMovingTheNewFilesFailPoint->setMode(FailPoint::alwaysOn);
+    // Let the delete marker get deleted.
+    hangBeforeDeletingTheDeleteMarkerFailPoint->setMode(FailPoint::off);
+    // Advance the clock to make sure that the failPoint hang loop terminates.
+    advanceClock(getNet(), Milliseconds(static_cast<Milliseconds::rep>(100)));
+    hangBeforeMovingTheNewFilesFailPoint->waitForTimesEntered(timesEnteredFailPoint + 1);
+
+    // Delete marker should be deleted.
+    cursorDataMock.validateMarkerExistence(false /*shouldExist*/,
+                                           InitialSyncFileMover::kFilesToDeleteMarker);
+    // Check files are in initialSync directory.
+    cursorDataMock.validateFilesExistence(true /*shouldExist*/, true /*insideInitialSyncDir*/);
+
+    timesEnteredFailPoint = hangAfterMovingTheNewFilesFailPoint->setMode(FailPoint::alwaysOn);
+    hangBeforeMovingTheNewFilesFailPoint->setMode(FailPoint::off);
+    // Advance the clock to make sure that the failPoint hang loop terminates.
+    advanceClock(getNet(), Milliseconds(static_cast<Milliseconds::rep>(100)));
+    hangAfterMovingTheNewFilesFailPoint->waitForTimesEntered(timesEnteredFailPoint + 1);
+
+    // Moving marker should exist.
+    cursorDataMock.validateMarkerExistence(true /*shouldExist*/,
+                                           InitialSyncFileMover::kMovingFilesMarker);
+    // Check files are in dbpath.
+    cursorDataMock.validateFilesExistence(true /*shouldExist*/, false /*insideInitialSyncDir*/);
+    // Check files are not in initialSync directory.
+    cursorDataMock.validateFilesExistence(false /*shouldExist*/, true /*insideInitialSyncDir*/);
+    // Initial sync dir should exist.
+    cursorDataMock.validateInitialSyncDirExistence(true);
+
+    // Let initial sync finish.
+    hangAfterMovingTheNewFilesFailPoint->setMode(FailPoint::off);
+    // Advance the clock to make sure that the failPoint hang loop terminates.
+    advanceClock(getNet(), Milliseconds(static_cast<Milliseconds::rep>(100)));
+
+    fileCopyBasedInitialSyncer->join();
+    ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest(),
+              Status::OK());
+
+    // Moving marker shouldn't exist.
+    cursorDataMock.validateMarkerExistence(false /*shouldExist*/,
+                                           InitialSyncFileMover::kMovingFilesMarker);
+    // Initial sync dir should be removed.
+    cursorDataMock.validateInitialSyncDirExistence(false /*shouldExist*/);
 }
 
 }  // namespace

@@ -36,6 +36,22 @@ MONGO_FAIL_POINT_DEFINE(fCBISSkipSyncingFilesPhase);
 // files.
 MONGO_FAIL_POINT_DEFINE(fCBISHangBeforeDeletingOldStorageFiles);
 
+// Failpoint which causes the file copy based initial sync to skip the moving new storage files
+// phase.
+MONGO_FAIL_POINT_DEFINE(fCBISSkipMovingFilesPhase);
+
+// Failpoint which causes the file copy based initial sync to hang before deleting the delete
+// marker.
+MONGO_FAIL_POINT_DEFINE(fCBISHangBeforeDeletingTheDeleteMarker);
+
+// Failpoint which causes the file copy based initial sync to hang before moving the new storage
+// files.
+MONGO_FAIL_POINT_DEFINE(fCBISHangBeforeMovingTheNewFiles);
+
+// Failpoint which causes the file copy based initial sync to hang after moving the new storage
+// files.
+MONGO_FAIL_POINT_DEFINE(fCBISHangAfterMovingTheNewFiles);
+
 FileCopyBasedInitialSyncer::FileCopyBasedInitialSyncer(
     InitialSyncerInterface::Options opts,
     std::unique_ptr<DataReplicatorExternalState> dataReplicatorExternalState,
@@ -141,6 +157,9 @@ ExecutorFuture<OpTimeAndWallTime> FileCopyBasedInitialSyncer::_startInitialSyncA
                    })
                    .then([this, self = shared_from_this()] {
                        return _startDeletingOldStorageFilesPhase();
+                   })
+                   .then([this, self = shared_from_this()] {
+                       return _startMovingNewStorageFilesPhase();
                    })
                    .then([this, self = shared_from_this()] { return _lastApplied; });
            })
@@ -489,6 +508,7 @@ void FileCopyBasedInitialSyncer::SyncingFilesState::reset() {
     executor.reset();
     oldStorageFilesToBeDeleted.clear();
     currentFileMover.reset();
+    filesRelativePathsToBeMoved.clear();
 
     token = CancellationToken::uncancelable();
 }
@@ -966,6 +986,53 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_hangAsyncIfFailPointEnabled(
         // Noop.
         return ExecutorFuture<void>(executor);
     }
+}
+
+ExecutorFuture<void> FileCopyBasedInitialSyncer::_startMovingNewStorageFilesPhase() {
+    if (MONGO_unlikely(fCBISSkipMovingFilesPhase.shouldFail())) {
+        // Noop.
+        return ExecutorFuture<void>(_syncingFilesState.executor);
+    }
+
+    return ExecutorFuture<void>(_syncingFilesState.executor)
+        .then([this, self = shared_from_this()] {
+            _syncingFilesState.filesRelativePathsToBeMoved =
+                _syncingFilesState.currentFileMover->createListOfFilesToMove();
+
+            // Writing the files to the move marker.
+            _syncingFilesState.currentFileMover->writeMarker(
+                _syncingFilesState.filesRelativePathsToBeMoved,
+                InitialSyncFileMover::kMovingFilesMarker,
+                InitialSyncFileMover::kMovingFilesTmpMarker);
+        })
+        .then([this, self = shared_from_this()] {
+            return _hangAsyncIfFailPointEnabled("fCBISHangBeforeDeletingTheDeleteMarker",
+                                                _syncingFilesState.executor,
+                                                _syncingFilesState.token)
+                .then([this, self = shared_from_this()] {
+                    // Deleting the delete marker.
+                    _syncingFilesState.currentFileMover->deleteFiles(
+                        {InitialSyncFileMover::kFilesToDeleteMarker.toString()});
+                });
+        })
+        .then([this, self = shared_from_this()] {
+            return _hangAsyncIfFailPointEnabled("fCBISHangBeforeMovingTheNewFiles",
+                                                _syncingFilesState.executor,
+                                                _syncingFilesState.token)
+                .then([this, self = shared_from_this()] {
+                    // Move the new files to dbpath.
+                    _syncingFilesState.currentFileMover->moveFilesAndHandleFailure(
+                        _syncingFilesState.filesRelativePathsToBeMoved);
+
+                    return _hangAsyncIfFailPointEnabled("fCBISHangAfterMovingTheNewFiles",
+                                                        _syncingFilesState.executor,
+                                                        _syncingFilesState.token);
+                });
+        })
+        .then([this, self = shared_from_this()] {
+            // Remove the move marker and the empty '.initialsync' directory.
+            _syncingFilesState.currentFileMover->completeMovingInitialSyncFiles();
+        });
 }
 
 ExecutorFuture<void> FileCopyBasedInitialSyncer::_startDeletingOldStorageFilesPhase() {
