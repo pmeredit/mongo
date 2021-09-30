@@ -123,6 +123,14 @@ public:
         _syncingFilesState.oldStorageFilesToBeDeleted = oldFiles;
     }
 
+    Status _cleanUpLocalCollectionsAfterSync_forTest(OperationContext* opCtx) {
+        return _cleanUpLocalCollectionsAfterSync(opCtx);
+    }
+
+    void setLastSyncedOpTime_forTest(const mongo::Timestamp ts) {
+        _syncingFilesState.lastSyncedOpTime = ts;
+    }
+
 private:
     /**
      * Open connection to the sync source for BackupFileCloners.
@@ -232,6 +240,18 @@ private:
      */
     ExecutorFuture<mongo::Timestamp> _getLastAppliedOpTimeFromSyncSource(
         std::shared_ptr<executor::TaskExecutor> executor, const CancellationToken& token);
+
+    /**
+     * Modifies local documents copied from the sync source to reflect data from the syncing node.
+     * This includes updating 'minValid', 'oplogTruncateAfterPoint', 'initialSyncId', the current
+     * replica set configuration, and the election collection.
+     */
+    Status _cleanUpLocalCollectionsAfterSync(OperationContext* opCtx);
+
+    /**
+     * Updates the replica set configuration on disk. Used in '_cleanUpLocalCollectionsAfterSync()'.
+     */
+    Status _replaceSyncSourceConfigWithLocalConfig(OperationContext* opCtx, const BSONObj& config);
 
     // Keep issuing 'getMore' command to keep the backupCursor alive.
     void _keepBackupCursorAlive();

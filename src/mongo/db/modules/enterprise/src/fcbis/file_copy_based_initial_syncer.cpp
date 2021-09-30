@@ -7,6 +7,7 @@
 #include "initial_sync_file_mover.h"
 
 #include "mongo/bson/bsonobj.h"
+#include "mongo/db/concurrency/write_conflict_exception.h"
 #include "mongo/db/cursor_server_params.h"
 #include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/db/repl/initial_syncer_factory.h"
@@ -51,6 +52,8 @@ MONGO_FAIL_POINT_DEFINE(fCBISHangBeforeMovingTheNewFiles);
 // Failpoint which causes the file copy based initial sync to hang after moving the new storage
 // files.
 MONGO_FAIL_POINT_DEFINE(fCBISHangAfterMovingTheNewFiles);
+
+static constexpr StringData kElectionNss = "local.replset.election"_sd;
 
 FileCopyBasedInitialSyncer::FileCopyBasedInitialSyncer(
     InitialSyncerInterface::Options opts,
@@ -498,6 +501,56 @@ FileCopyBasedInitialSyncer::SyncingFilesState::getNewFilesToClone(
         extendedCursorFiles.insert(p["filename"].str());
     });
     return newFilesToClone;
+}
+
+Status FileCopyBasedInitialSyncer::_cleanUpLocalCollectionsAfterSync(OperationContext* opCtx) {
+    _replicationProcess->getConsistencyMarkers()->setMinValid(opCtx,
+                                                              repl::OpTime(Timestamp(0, 1), -1));
+
+    _replicationProcess->getConsistencyMarkers()->setOplogTruncateAfterPoint(
+        opCtx, _syncingFilesState.lastSyncedOpTime);
+    // We need to first clear the 'initialSyncId' that was copied from the sync source, and then
+    // generate a new one for the syncing node.
+    _replicationProcess->getConsistencyMarkers()->clearInitialSyncId(opCtx);
+    _replicationProcess->getConsistencyMarkers()->setInitialSyncIdIfNotSet(opCtx);
+
+    // We drop the 'local.replset.election' collection as this node has not participated in any
+    // elections yet.
+    auto status = _storage->dropCollection(opCtx, NamespaceString(kElectionNss));
+    if (!status.isOK()) {
+        return status;
+    }
+    auto swCurrConfig = _dataReplicatorExternalState->getCurrentConfig();
+    if (!swCurrConfig.isOK()) {
+        return swCurrConfig.getStatus();
+    }
+
+    status = _replaceSyncSourceConfigWithLocalConfig(opCtx, swCurrConfig.getValue().toBSON());
+    if (!status.isOK()) {
+        return status;
+    }
+
+    return Status::OK();
+}
+
+Status FileCopyBasedInitialSyncer::_replaceSyncSourceConfigWithLocalConfig(OperationContext* opCtx,
+                                                                           const BSONObj& config) {
+    writeConflictRetry(opCtx,
+                       "overwrite sync source config with local config",
+                       NamespaceString::kSystemReplSetNamespace.ns(),
+                       [&] {
+                           WriteUnitOfWork wuow(opCtx);
+                           Lock::DBLock dbWriteLock(opCtx, "local", MODE_X);
+                           TimestampedBSONObj updateSpec;
+                           updateSpec.obj = BSON("$set" << BSON("config" << config));
+                           updateSpec.timestamp = Timestamp();
+
+                           Status status = _storage->putSingleton(
+                               opCtx, NamespaceString::kSystemReplSetNamespace, updateSpec);
+                           invariant(status);
+                           wuow.commit();
+                       });
+    return Status::OK();
 }
 
 void FileCopyBasedInitialSyncer::SyncingFilesState::reset() {

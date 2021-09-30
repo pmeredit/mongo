@@ -187,6 +187,12 @@ protected:
 
             return std::move(localLoader);
         };
+        _storageInterface->putSingletonFn = [this](OperationContext* opCtx,
+                                                   const NamespaceString& nss,
+                                                   const TimestampedBSONObj& update) {
+            LockGuard lock(_storageInterfaceWorkDoneMutex);
+            return Status::OK();
+        };
 
         auto* service = getGlobalServiceContext();
         service->setFastClockSource(std::make_unique<ClockSourceMock>());
@@ -1623,6 +1629,35 @@ TEST_F(FileCopyBasedInitialSyncerTest, MoveNewFilesPhase) {
                                            InitialSyncFileMover::kMovingFilesMarker);
     // Initial sync dir should be removed.
     cursorDataMock.validateInitialSyncDirExistence(false /*shouldExist*/);
+}
+
+TEST_F(FileCopyBasedInitialSyncerTest, CleanUpLocalCollectionsAfterSync) {
+    auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
+    auto opCtx = makeOpCtx();
+
+    auto minValidBefore = _replicationProcess->getConsistencyMarkers()->getMinValid(opCtx.get());
+    ASSERT_EQ(minValidBefore, OpTime());
+    auto oplogTruncateAfterPointBefore =
+        _replicationProcess->getConsistencyMarkers()->getOplogTruncateAfterPoint(opCtx.get());
+    ASSERT_EQ(oplogTruncateAfterPointBefore, Timestamp());
+    auto initialSyncIdBefore =
+        _replicationProcess->getConsistencyMarkers()->getInitialSyncId(opCtx.get());
+    ASSERT_TRUE(initialSyncIdBefore.isEmpty());
+
+    ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+    fileCopyBasedInitialSyncer->setLastSyncedOpTime_forTest(Timestamp(1, 1));
+    ASSERT_EQ(fileCopyBasedInitialSyncer->_cleanUpLocalCollectionsAfterSync_forTest(opCtx.get()),
+              Status::OK());
+
+    auto minValidAfter = _replicationProcess->getConsistencyMarkers()->getMinValid(opCtx.get());
+    ASSERT_EQ(minValidAfter, OpTime(Timestamp(0, 1), -1));
+    auto oplogTruncateAfterPointAfter =
+        _replicationProcess->getConsistencyMarkers()->getOplogTruncateAfterPoint(opCtx.get());
+    ASSERT_EQ(oplogTruncateAfterPointAfter, Timestamp(1, 1));
+    auto initialSyncIdAfter =
+        _replicationProcess->getConsistencyMarkers()->getInitialSyncId(opCtx.get());
+
+    ASSERT_FALSE(initialSyncIdAfter.isEmpty());
 }
 
 }  // namespace
