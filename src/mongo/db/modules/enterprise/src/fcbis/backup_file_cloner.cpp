@@ -30,6 +30,7 @@ BackupFileCloner::BackupFileCloner(const UUID& backupId,
                                    const std::string& remoteFileName,
                                    size_t remoteFileSize,
                                    const std::string& relativePath,
+                                   int extensionNumber,
                                    InitialSyncSharedData* sharedData,
                                    const HostAndPort& source,
                                    DBClientConnection* client,
@@ -62,7 +63,9 @@ BackupFileCloner::BackupFileCloner(const UUID& backupId,
           return executor::TaskExecutor::CallbackHandle();
       }),
       _fsWorkTaskRunner(dbPool) {
-    _stats.remoteFileName = _remoteFileName;
+    _stats.filePath = _relativePathString;
+    _stats.fileSize = _remoteFileSize;
+    _stats.extensionNumber = extensionNumber;
 }
 
 BaseCloner::ClonerStages BackupFileCloner::getStages() {
@@ -222,7 +225,7 @@ void BackupFileCloner::handleNextBatch(DBClientCursorBatchIterator& iter) {
                       "initialSyncHangBackupFileClonerAfterHandlingBatchResponse fail point "
                       "enabled. Blocking until fail point is disabled",
                       "remoteFile"_attr = _remoteFileName);
-                mongo::sleepsecs(1);
+                mongo::sleepmillis(100);
             }
         },
         [&](const BSONObj& data) {
@@ -272,9 +275,11 @@ void BackupFileCloner::writeDataToFilesystemCallback(
                     !_localFile.fail());
             _progressMeter.hit(dataLength);
             _fileOffset += dataLength;
+            _stats.bytesCopied += dataLength;
             _sawEof = doc["endOfFile"].booleanSafe();
         }
         _dataToWrite.clear();
+        _stats.writtenBatches++;
     }
 
     initialSyncHangDuringBackupFileClone.executeIf(
@@ -284,11 +289,11 @@ void BackupFileCloner::writeDataToFilesystemCallback(
                   "enabled. Blocking until fail point is disabled");
             while (MONGO_unlikely(initialSyncHangDuringBackupFileClone.shouldFail()) &&
                    !mustExit()) {
-                mongo::sleepsecs(1);
+                mongo::sleepmillis(100);
             }
         },
         [&](const BSONObj& data) {
-            return data["remoteFile"].String() == _remoteFileName &&
+            return (data["remoteFile"].eoo() || data["remoteFile"].str() == _remoteFileName) &&
                 (data["fileOffset"].eoo() || data["fileOffset"].safeNumberLong() <= _fileOffset);
         });
 }
@@ -319,8 +324,11 @@ BSONObj BackupFileCloner::Stats::toBSON() const {
 }
 
 void BackupFileCloner::Stats::append(BSONObjBuilder* builder) const {
-    builder->append("remoteFileName", remoteFileName);
-    /* TODO(SERVER-57818): Fill out the rest of the stats. */
+    builder->append("filePath", filePath);
+    builder->appendNumber("fileSize", static_cast<long long>(fileSize));
+    builder->appendNumber("bytesCopied", static_cast<long long>(bytesCopied));
+    if (extensionNumber > 0)
+        builder->appendNumber("extensionNumber", static_cast<long long>(extensionNumber));
     if (start != Date_t()) {
         builder->appendDate("start", start);
         if (end != Date_t()) {
@@ -331,6 +339,7 @@ void BackupFileCloner::Stats::append(BSONObjBuilder* builder) const {
         }
     }
     builder->appendNumber("receivedBatches", static_cast<long long>(receivedBatches));
+    builder->appendNumber("writtenBatches", static_cast<long long>(writtenBatches));
 }
 
 }  // namespace repl

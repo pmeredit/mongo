@@ -20,11 +20,14 @@ namespace repl {
 class BackupFileCloner final : public InitialSyncBaseCloner {
 public:
     struct Stats {
-        /* TODO(SERVER-57818): Fill out the rest of the stats. */
-        std::string remoteFileName;
+        std::string filePath;
+        size_t fileSize;
+        int extensionNumber;
         Date_t start;
         Date_t end;
         size_t receivedBatches{0};
+        size_t writtenBatches{0};
+        size_t bytesCopied{0};
 
         std::string toString() const;
         BSONObj toBSON() const;
@@ -43,14 +46,18 @@ public:
      * Constructor for backupFileCloner.
      *
      * remoteFileName: Path of file to copy on remote system.
-     * remoteFileSize: Size of remote file in bytes, used for progress messages only.
-     * relativePath: Path of file relative to dbpath on the remote system, as
-     *               a boost::filesystem::path generic path.
+     * remoteFileSize: Size of remote file in bytes, used for progress messages and stats only.
+     * relativePath: Path of file relative to dbpath on the remote system, as a
+     *               boost::filesystem::path generic path.
+     * extensionNumber: Sequence number of the backup extension this file belongs to, 0 for a file
+     *                  that is part of the original backup (rather than an extension.  Used for
+     *                  stats only.
      */
     BackupFileCloner(const UUID& backupId,
                      const std::string& remoteFileName,
                      size_t remoteFileSize,
                      const std::string& relativePath,
+                     int extensionNumber,
                      InitialSyncSharedData* sharedData,
                      const HostAndPort& source,
                      DBClientConnection* client,

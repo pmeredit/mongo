@@ -898,11 +898,16 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFiles(
                // Note that fileSize is not present in backup extensions.  It's only used for the
                // progress indicator so that's OK.
                size_t fileSize = metadata["fileSize"].safeNumberLong();
+               // Extension numbers are specified to start at 1 for the first extension.  The
+               // cycle starts at 1 for the initial non-extended backup.  So subtract 1 for the
+               // correct extension number.
+               int extensionNumber = _syncingFilesState.fileBasedInitialSyncCycle - 1;
                _syncingFilesState.currentBackupFileCloner =
                    std::make_unique<BackupFileCloner>(*_syncingFilesState.backupId,
                                                       fileName,
                                                       fileSize,
                                                       relativePath,
+                                                      extensionNumber,
                                                       _sharedData.get(),
                                                       _syncSource,
                                                       _client.get(),

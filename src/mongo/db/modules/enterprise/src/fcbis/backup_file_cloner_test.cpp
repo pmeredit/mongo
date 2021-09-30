@@ -43,11 +43,13 @@ protected:
     }
     std::unique_ptr<BackupFileCloner> makeBackupFileCloner(const std::string& remoteFileName,
                                                            const std::string& relativePath,
-                                                           size_t remoteFileSize) {
+                                                           size_t remoteFileSize,
+                                                           int extensionNumber = 0) {
         return std::make_unique<BackupFileCloner>(_backupId,
                                                   remoteFileName,
                                                   remoteFileSize,
                                                   relativePath,
+                                                  extensionNumber,
                                                   getSharedData(),
                                                   _source,
                                                   _mockClient.get(),
@@ -141,6 +143,17 @@ TEST_F(BackupFileClonerTest, EmptyFile) {
     ASSERT_OK(backupFileCloner->run());
     ASSERT(boost::filesystem::exists(filePath));
     ASSERT_EQ(0, boost::filesystem::file_size(filePath));
+
+    BSONObj stats = backupFileCloner->getStats().toBSON();
+
+    ASSERT_EQ("dir/backupfile", stats["filePath"].str());
+    ASSERT(stats["fileSize"].isNumber());
+    ASSERT(stats["bytesCopied"].isNumber());
+    ASSERT_EQ(0, stats["fileSize"].numberLong());
+    ASSERT_EQ(0, stats["bytesCopied"].numberLong());
+    // The empty batch counts as a batch.
+    ASSERT_EQ(1, stats["receivedBatches"].numberLong());
+    ASSERT_EQ(1, stats["writtenBatches"].numberLong());
 }
 
 TEST_F(BackupFileClonerTest, NoEOF) {
@@ -158,8 +171,9 @@ TEST_F(BackupFileClonerTest, NoEOF) {
 
 TEST_F(BackupFileClonerTest, SingleBatch) {
     auto absolutePath = boost::filesystem::current_path();
-    auto backupFileCloner = makeBackupFileCloner("/path/dir/backupfile", "dir/backupfile", 0);
     std::string fileData = "The slow green fox\n takes\r a nap\0 next to the lazy dog.";
+    auto backupFileCloner =
+        makeBackupFileCloner("/path/dir/backupfile", "dir/backupfile", fileData.size());
     auto bindata = BSONBinData(fileData.data(), fileData.size(), BinDataGeneral);
     CursorResponse response(
         NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
@@ -175,12 +189,21 @@ TEST_F(BackupFileClonerTest, SingleBatch) {
     std::ifstream checkStream(filePath.string(), std::ios_base::in | std::ios_base::binary);
     checkStream.read(actualFileData.data(), fileData.size());
     ASSERT_EQ(fileData, actualFileData);
+
+    BSONObj stats = backupFileCloner->getStats().toBSON();
+
+    ASSERT_EQ("dir/backupfile", stats["filePath"].str());
+    ASSERT_EQ(fileData.size(), stats["fileSize"].numberLong());
+    ASSERT_EQ(fileData.size(), stats["bytesCopied"].numberLong());
+    ASSERT_EQ(1, stats["receivedBatches"].numberLong());
+    ASSERT_EQ(1, stats["writtenBatches"].numberLong());
 }
 
 TEST_F(BackupFileClonerTest, Multibatch) {
     auto absolutePath = boost::filesystem::current_path();
-    auto backupFileCloner = makeBackupFileCloner("/path/dir/backupfile", "dir/backupfile", 0);
     std::string fileData = "ABCDEFGHJIKLMNOPQRST0123456789";
+    auto backupFileCloner =
+        makeBackupFileCloner("/path/dir/backupfile", "dir/backupfile", fileData.size());
     auto batch1bindata = BSONBinData(fileData.data(), 20, BinDataGeneral);
     auto batch2bindata = BSONBinData(fileData.data() + 20, fileData.size() - 20, BinDataGeneral);
     CursorResponse batch1response(
@@ -205,12 +228,21 @@ TEST_F(BackupFileClonerTest, Multibatch) {
     std::ifstream checkStream(filePath.string(), std::ios_base::in | std::ios_base::binary);
     checkStream.read(actualFileData.data(), fileData.size());
     ASSERT_EQ(fileData, actualFileData);
+
+    BSONObj stats = backupFileCloner->getStats().toBSON();
+
+    ASSERT_EQ("dir/backupfile", stats["filePath"].str());
+    ASSERT_EQ(fileData.size(), stats["fileSize"].numberLong());
+    ASSERT_EQ(fileData.size(), stats["bytesCopied"].numberLong());
+    ASSERT_EQ(2, stats["receivedBatches"].numberLong());
+    ASSERT_EQ(2, stats["writtenBatches"].numberLong());
 }
 
 TEST_F(BackupFileClonerTest, RetryOnFirstBatch) {
     auto absolutePath = boost::filesystem::current_path();
-    auto backupFileCloner = makeBackupFileCloner("/path/dir/backupfile", "dir/backupfile", 0);
     std::string fileData = "The slow green fox\n takes\r a nap\0 next to the lazy dog.";
+    auto backupFileCloner =
+        makeBackupFileCloner("/path/dir/backupfile", "dir/backupfile", fileData.size());
     auto bindata = BSONBinData(fileData.data(), fileData.size(), BinDataGeneral);
     CursorResponse response(
         NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
@@ -229,12 +261,21 @@ TEST_F(BackupFileClonerTest, RetryOnFirstBatch) {
     std::ifstream checkStream(filePath.string(), std::ios_base::in | std::ios_base::binary);
     checkStream.read(actualFileData.data(), fileData.size());
     ASSERT_EQ(fileData, actualFileData);
+
+    BSONObj stats = backupFileCloner->getStats().toBSON();
+
+    ASSERT_EQ("dir/backupfile", stats["filePath"].str());
+    ASSERT_EQ(fileData.size(), stats["fileSize"].numberLong());
+    ASSERT_EQ(fileData.size(), stats["bytesCopied"].numberLong());
+    ASSERT_EQ(1, stats["receivedBatches"].numberLong());
+    ASSERT_EQ(1, stats["writtenBatches"].numberLong());
 }
 
 TEST_F(BackupFileClonerTest, RetryOnSubsequentBatch) {
     auto absolutePath = boost::filesystem::current_path();
-    auto backupFileCloner = makeBackupFileCloner("/path/dir/backupfile", "dir/backupfile", 0);
     std::string fileData = "ABCDEFGHJIKLMNOPQRST0123456789";
+    auto backupFileCloner =
+        makeBackupFileCloner("/path/dir/backupfile", "dir/backupfile", fileData.size());
     auto batch1bindata = BSONBinData(fileData.data(), 20, BinDataGeneral);
     auto batch2bindata = BSONBinData(fileData.data() + 20, fileData.size() - 20, BinDataGeneral);
     CursorResponse batch1response(
@@ -261,6 +302,14 @@ TEST_F(BackupFileClonerTest, RetryOnSubsequentBatch) {
     std::ifstream checkStream(filePath.string(), std::ios_base::in | std::ios_base::binary);
     checkStream.read(actualFileData.data(), fileData.size());
     ASSERT_EQ(fileData, actualFileData);
+
+    BSONObj stats = backupFileCloner->getStats().toBSON();
+
+    ASSERT_EQ("dir/backupfile", stats["filePath"].str());
+    ASSERT_EQ(fileData.size(), stats["fileSize"].numberLong());
+    ASSERT_EQ(fileData.size(), stats["bytesCopied"].numberLong());
+    ASSERT_EQ(2, stats["receivedBatches"].numberLong());
+    ASSERT_EQ(2, stats["writtenBatches"].numberLong());
 }
 
 TEST_F(BackupFileClonerTest, NonRetryableErrorFirstBatch) {
@@ -307,6 +356,142 @@ TEST_F(BackupFileClonerTest, NonRetryableErrorFollowsRetryableError) {
          Status(ErrorCodes::IllegalOperation, "Non-retryable Error on retry"),
          Status(ErrorCodes::UnknownError, "This should never be seen")});
     ASSERT_EQ(backupFileCloner->run().code(), ErrorCodes::IllegalOperation);
+}
+
+TEST_F(BackupFileClonerTest, InProgressStats) {
+    auto absolutePath = boost::filesystem::current_path();
+    std::string fileData = "ABCDEFGHJIKLMNOPQRST0123456789";
+    auto backupFileCloner =
+        makeBackupFileCloner("/path/dir/backupfile", "dir/backupfile", fileData.size());
+    auto batch1bindata = BSONBinData(fileData.data(), 20, BinDataGeneral);
+    auto batch2bindata = BSONBinData(fileData.data() + 20, fileData.size() - 20, BinDataGeneral);
+    CursorResponse batch1response(
+        NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
+        1 /* cursorId */,
+        {BSON("byteOffset" << 0 << "data" << batch1bindata)});
+    CursorResponse batch2response(
+        NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
+        0 /* cursorId */,
+        {BSON("byteOffset" << 20 << "endOfFile" << true << "data" << batch2bindata)});
+    _mockServer->setCommandReply("aggregate",
+                                 {batch1response.toBSONAsInitialResponse(),
+                                  batch2response.toBSONAsInitialResponse(),
+                                  Status(ErrorCodes::UnknownError, "This should never be seen")});
+    boost::filesystem::create_directory(_initialSyncPath);
+    auto filePath = _initialSyncPath;
+    filePath.append("dir/backupfile");
+
+    // Stats before running
+    BSONObj stats = backupFileCloner->getStats().toBSON();
+
+    ASSERT_EQ("dir/backupfile", stats["filePath"].str());
+    ASSERT_EQ(fileData.size(), stats["fileSize"].numberLong());
+    ASSERT(stats["bytesCopied"].isNumber());
+    ASSERT(stats["receivedBatches"].isNumber());
+    ASSERT(stats["writtenBatches"].isNumber());
+    ASSERT_EQ(0, stats["bytesCopied"].numberLong());
+    ASSERT_EQ(0, stats["receivedBatches"].numberLong());
+    ASSERT_EQ(0, stats["writtenBatches"].numberLong());
+    ASSERT(stats["start"].eoo());
+    ASSERT(stats["end"].eoo());
+    ASSERT(stats["extensionNumber"].eoo());
+
+    stdx::thread backupFileClonerThread;
+    {
+        // Pause both network and file-writing threads
+        auto networkFailpoint = globalFailPointRegistry().find(
+            "initialSyncHangBackupFileClonerAfterHandlingBatchResponse");
+        auto fileWritingFailpoint =
+            globalFailPointRegistry().find("initialSyncHangDuringBackupFileClone");
+        auto fileWritingFailpointCount = fileWritingFailpoint->setMode(FailPoint::alwaysOn);
+        auto networkFailpointCount = networkFailpoint->setMode(FailPoint::alwaysOn);
+
+        // Stop after the query stage for one more stats check.
+        FailPointEnableBlock clonerFailpoint("hangAfterClonerStage",
+                                             BSON("cloner"
+                                                  << "BackupFileCloner"
+                                                  << "stage"
+                                                  << "query"));
+        // Run the cloner in another thread.
+        backupFileClonerThread = stdx::thread([&] {
+            Client::initThread("BackupFileClonerRunner");
+            ASSERT_OK(backupFileCloner->run());
+        });
+        fileWritingFailpoint->waitForTimesEntered(Interruptible::notInterruptible(),
+                                                  fileWritingFailpointCount + 1);
+        networkFailpoint->waitForTimesEntered(Interruptible::notInterruptible(),
+                                              networkFailpointCount + 1);
+
+        // Stats after first batch.
+        stats = backupFileCloner->getStats().toBSON();
+
+        ASSERT_EQ("dir/backupfile", stats["filePath"].str());
+        ASSERT_EQ(fileData.size(), stats["fileSize"].numberLong());
+        ASSERT_EQ(20, stats["bytesCopied"].numberLong());
+        ASSERT_EQ(1, stats["receivedBatches"].numberLong());
+        ASSERT_EQ(1, stats["writtenBatches"].numberLong());
+        ASSERT_EQ(Date, stats["start"].type());
+        ASSERT(stats["end"].eoo());
+        ASSERT(stats["extensionNumber"].eoo());
+
+        fileWritingFailpoint->setMode(FailPoint::off);
+        networkFailpoint->setMode(FailPoint::off);
+        clonerFailpoint->waitForTimesEntered(Interruptible::notInterruptible(),
+                                             clonerFailpoint.initialTimesEntered());
+
+        // Stats after second batch.
+        stats = backupFileCloner->getStats().toBSON();
+
+        ASSERT_EQ("dir/backupfile", stats["filePath"].str());
+        ASSERT_EQ(fileData.size(), stats["fileSize"].numberLong());
+        ASSERT_EQ(fileData.size(), stats["bytesCopied"].numberLong());
+        ASSERT_EQ(2, stats["receivedBatches"].numberLong());
+        ASSERT_EQ(2, stats["writtenBatches"].numberLong());
+        ASSERT_EQ(Date, stats["start"].type());
+        ASSERT(stats["end"].eoo());
+        ASSERT(stats["extensionNumber"].eoo());
+    }
+
+    backupFileClonerThread.join();
+
+    // Final stats.
+    stats = backupFileCloner->getStats().toBSON();
+
+    ASSERT_EQ("dir/backupfile", stats["filePath"].str());
+    ASSERT_EQ(fileData.size(), stats["fileSize"].numberLong());
+    ASSERT_EQ(fileData.size(), stats["bytesCopied"].numberLong());
+    ASSERT_EQ(2, stats["receivedBatches"].numberLong());
+    ASSERT_EQ(2, stats["writtenBatches"].numberLong());
+    ASSERT_EQ(Date, stats["start"].type());
+    ASSERT_EQ(Date, stats["end"].type());
+    ASSERT(stats["extensionNumber"].eoo());
+}
+
+TEST_F(BackupFileClonerTest, ExtensionStats) {
+    auto absolutePath = boost::filesystem::current_path();
+    auto backupFileCloner = makeBackupFileCloner("/path/dir/backupfile",
+                                                 "dir/backupfile",
+                                                 0,
+                                                 /* extensionNumber */ 2);
+    CursorResponse response(
+        NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
+        0 /* cursorId */,
+        {BSON("byteOffset" << 0 << "endOfFile" << true << "data" << BSONBinData())});
+    _mockServer->setCommandReply("aggregate", response.toBSONAsInitialResponse());
+    auto filePath = _initialSyncPath;
+    filePath.append("dir/backupfile");
+    ASSERT_OK(backupFileCloner->run());
+
+    BSONObj stats = backupFileCloner->getStats().toBSON();
+
+    ASSERT_EQ("dir/backupfile", stats["filePath"].str());
+    ASSERT(stats["fileSize"].isNumber());
+    ASSERT(stats["bytesCopied"].isNumber());
+    ASSERT_EQ(0, stats["fileSize"].numberLong());
+    ASSERT_EQ(0, stats["bytesCopied"].numberLong());
+    ASSERT_EQ(1, stats["receivedBatches"].numberLong());
+    ASSERT_EQ(1, stats["writtenBatches"].numberLong());
+    ASSERT_EQ(2, stats["extensionNumber"].numberLong());
 }
 
 }  // namespace repl
