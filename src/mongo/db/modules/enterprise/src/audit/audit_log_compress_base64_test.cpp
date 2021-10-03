@@ -2,6 +2,8 @@
  *    Copyright (C) 2021 MongoDB Inc.
  */
 
+#include "mongo/config.h"
+
 #include <fstream>
 
 #include "audit_enc_comp_manager.h"
@@ -45,12 +47,19 @@ TEST_F(AuditLogCompressBase64Test, CheckStringIsBase64Test) {
     ASSERT_FALSE(isBase64);
 
     ConstDataRange toEncrypt(toCompressLog.data(), toCompressLog.size());
+
+    // See SymmetricImplApple.
+#if MONGO_CONFIG_SSL_PROVIDER == MONGO_CONFIG_SSL_PROVIDER_APPLE
+    ASSERT_THROWS(ac->encryptAndEncode(toEncrypt, Date_t::now()),
+                  ExceptionFor<ErrorCodes::UnsupportedFormat>);
+#else
     auto compressedLog = ac->encryptAndEncode(toEncrypt, Date_t::now());
 
     StringData logField(compressedLog.getStringField("log"_sd));
 
     isBase64 = base64::validate(logField);
     ASSERT_TRUE(isBase64);
+#endif  // MONGO_CONFIG_SSL_PROVIDER == MONGO_CONFIG_SSL_PROVIDER_APPLE
 }
 
 }  // namespace audit
