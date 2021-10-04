@@ -13,14 +13,6 @@ const mongotConn = mongotmock.getConnection();
 
 const conn = MongoRunner.runMongod({setParameter: {mongotHost: mongotConn.host}});
 const db = conn.getDB("test");
-const getSearchMetaParam = db.adminCommand({getParameter: 1, featureFlagSearchMeta: 1});
-const isSearchMetaEnabled = getSearchMetaParam.hasOwnProperty("featureFlagSearchMeta") &&
-    getSearchMetaParam.featureFlagSearchMeta.value;
-if (!isSearchMetaEnabled) {
-    MongoRunner.stopMongod(conn);
-    mongotmock.stop();
-    return;
-}
 const coll = db.searchCollector;
 coll.drop();
 assert.commandWorked(coll.insert({"_id": 1, "title": "cakes"}));

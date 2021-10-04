@@ -13,19 +13,10 @@ const mongotmock = new MongotMock();
 mongotmock.start();
 const mongotConn = mongotmock.getConnection();
 
-const conn = MongoRunner.runMongod(
-    {setParameter: {mongotHost: mongotConn.host, featureFlagSearchMeta: true}});
+const conn = MongoRunner.runMongod({setParameter: {mongotHost: mongotConn.host}});
 
 const dbName = jsTestName();
 const testDB = conn.getDB(dbName);
-const getSearchMetaParam = testDB.adminCommand({getParameter: 1, featureFlagSearchMeta: 1});
-const isSearchMetaEnabled = getSearchMetaParam.hasOwnProperty("featureFlagSearchMeta") &&
-    getSearchMetaParam.featureFlagSearchMeta.value;
-if (!isSearchMetaEnabled) {
-    MongoRunner.stopMongod(conn);
-    mongotmock.stop();
-    return;
-}
 const coll = testDB.searchCollector;
 coll.drop();
 // We don't need documents for this test, but we need to create the collection. MongotMock will

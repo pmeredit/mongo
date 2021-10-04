@@ -23,14 +23,6 @@ const st = stWithMock.st;
 
 const mongos = st.s;
 const testDB = mongos.getDB(dbName);
-const getSearchMetaParam = testDB.adminCommand({getParameter: 1, featureFlagSearchMeta: 1});
-const isSearchMetaEnabled = getSearchMetaParam.hasOwnProperty("featureFlagSearchMeta") &&
-    getSearchMetaParam.featureFlagSearchMeta.value;
-if (!isSearchMetaEnabled) {
-    stWithMock.stop();
-    return;
-}
-
 const testColl = testDB.getCollection(collName);
 
 // Documents that end up on shard0.
