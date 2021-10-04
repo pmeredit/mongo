@@ -1,0 +1,11 @@
+# Copyright (C) 2019-present MongoDB, Inc.
+
+global:
+    cpp_namespace: "mongo"
+
+server_parameters:
+    "ldapUserCacheInvalidationInterval":
+        description: 'LDAP user cache invalidation interval (seconds)'
+        set_at: [ startup, runtime ]
+        cpp_class: LDAPUserCacheInvalidationIntervalParameter
+        default: 30

@@ -72,7 +72,6 @@ function LDAPTestConfigGenerator() {
     this.ldapTimeoutMS = 10000;
     this.ldapConnectionPoolHostRefreshIntervalMillis = 60000;
     this.ldapConnectionPoolMaximumConnectionsPerHost = 2;
-    this.ldapShouldRefreshUserCacheEntries = true;
 
     this.useLogFiles = false;
 
@@ -156,7 +155,6 @@ function LDAPTestConfigGenerator() {
                 this.ldapConnectionPoolMaximumConnectionsPerHost,
             ldapConnectionPoolHostRefreshIntervalMillis:
                 this.ldapConnectionPoolHostRefreshIntervalMillis,
-            ldapShouldRefreshUserCacheEntries: this.ldapShouldRefreshUserCacheEntries,
         };
         if (this.useSaslauthd === true) {
             setParameter.saslauthdPath = saslauthdPath + "/mux";
@@ -196,7 +194,6 @@ function LDAPTestConfigGenerator() {
         other.useHostname = true;
         other.mongosOptions = Object.extend({}, mongodConfig, true);
         delete other.mongosOptions.ldapAuthzQueryTemplate;
-        delete other.mongosOptions.setParameter.ldapShouldRefreshUserCacheEntries;
         config.other = other;
 
         return config;

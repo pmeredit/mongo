@@ -80,7 +80,6 @@ function runTimeoutTest(timeoutCallback, timeoutCallbackOptions) {
     }
     configGenerator.authorizationManagerCacheSize = 0;
     configGenerator.ldapValidateLDAPServerConfig = false;
-    configGenerator.ldapShouldRefreshUserCacheEntries = false;
 
     runTests(timeoutCallback, configGenerator, timeoutCallbackOptions);
 }

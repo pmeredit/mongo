@@ -47,10 +47,10 @@ Status AuthzManagerExternalStateLDAP::initialize(OperationContext* opCtx) {
     }
 
     if (_hasInitializedInvalidation.swap(1) == 0) {
-        _poller.go();
+        _invalidator.go();
         LOGV2(24215,
               "Server configured with LDAP Authorization. Spawned $external user cache "
-              "poller.");
+              "invalidator.");
     }
 
     // Detect if any documents exist in $external. If yes, log that they will not be

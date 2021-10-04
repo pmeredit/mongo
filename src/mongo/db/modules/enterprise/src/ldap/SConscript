@@ -172,8 +172,8 @@ env.Library(
     target='mongo_ldap',
     source=[
         'authz_manager_external_state_ldap.cpp',
-        'ldap_user_cache_poller.idl',
-        'ldap_user_cache_poller.cpp',
+        'ldap_user_cache_invalidator_job.cpp',
+        'ldap_user_cache_invalidator_job.idl',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/bson/mutable/mutable_bson',
