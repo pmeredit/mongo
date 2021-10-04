@@ -186,8 +186,8 @@ private:
 
     std::ofstream _localFile;  // (M)
     // File offset we will request from the remote side in the next query.
-    off_t _fileOffset;  // (M)
-    bool _sawEof;       // (X)
+    off_t _fileOffset = 0;  // (M)
+    bool _sawEof = false;   // (X)
 
     ProgressMeter _progressMeter;  // (X) progress meter for this instance.
     //  Function for scheduling filesystem work using the executor.
