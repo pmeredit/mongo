@@ -449,9 +449,9 @@ OpenLDAPConnection::OpenLDAPConnection(LDAPConnectionOptions options,
       _userAcquisitionStats(userAcquisitionStats) {
     initTraits();
 
-    Seconds seconds = duration_cast<Seconds>(_options.timeout);
+    Seconds seconds = duration_cast<Seconds>(_connectionOptions.timeout);
     _timeout.tv_sec = seconds.count();
-    _timeout.tv_usec = durationCount<Microseconds>(_options.timeout - seconds);
+    _timeout.tv_usec = durationCount<Microseconds>(_connectionOptions.timeout - seconds);
 }
 
 OpenLDAPConnection::~OpenLDAPConnection() {
@@ -571,7 +571,7 @@ void OpenLDAPConnection::initTraits() {
 }
 
 Status OpenLDAPConnection::connect() {
-    auto swHostURIs = _options.constructHostURIs();
+    auto swHostURIs = _connectionOptions.constructHostURIs();
     if (!swHostURIs.isOK()) {
         return swHostURIs.getStatus();
     }

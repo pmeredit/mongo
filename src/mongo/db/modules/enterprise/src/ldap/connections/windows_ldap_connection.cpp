@@ -105,7 +105,7 @@ WindowsLDAPConnection::WindowsLDAPConnection(LDAPConnectionOptions options,
       _reaper(std::move(reaper)),
       _tickSource(tickSource),
       _userAcquisitionStats(userAcquisitionStats) {
-    _timeoutSeconds = durationCount<Seconds>(_options.timeout);
+    _timeoutSeconds = durationCount<Seconds>(_connectionOptions.timeout);
 }
 
 WindowsLDAPConnection::~WindowsLDAPConnection() {
@@ -119,9 +119,9 @@ Status WindowsLDAPConnection::connect() {
     // Allocate the underlying connection object
     _pimpl->getSession() = nullptr;
 
-    std::wstring hosts = toWideString(joinLdapHostAndPort(_options.hosts, ' ').c_str());
+    std::wstring hosts = toWideString(joinLdapHostAndPort(_connectionOptions.hosts, ' ').c_str());
 
-    if (_options.hosts[0].isSSL()) {
+    if (_connectionOptions.hosts[0].isSSL()) {
         _pimpl->getSession() = ldap_sslinitW(const_cast<wchar_t*>(hosts.c_str()), LDAP_SSL_PORT, 1);
     } else {
         _pimpl->getSession() = ldap_initW(const_cast<wchar_t*>(hosts.c_str()), LDAP_PORT);
@@ -130,9 +130,9 @@ Status WindowsLDAPConnection::connect() {
     if (!_pimpl->getSession()) {
         // The ldap_*initW functions don't actually make a connection to the server until
         // ldap_connect is called. Failure here should not be gracefully recovered from.
-        Status status =
-            _pimpl->resultCodeToStatus(_options.hosts[0].isSSL() ? "ldap_sslinitW" : "ldap_initW",
-                                       "initialize LDAP session to a server");
+        Status status = _pimpl->resultCodeToStatus(
+            _connectionOptions.hosts[0].isSSL() ? "ldap_sslinitW" : "ldap_initW",
+            "initialize LDAP session to a server");
 
         if (!status.isOK()) {
             return status;
@@ -192,12 +192,16 @@ Status WindowsLDAPConnection::bindAsUser(const LDAPBindOptions& options,
     UserAcquisitionStatsHandle userAcquisitionStatsHandle =
         UserAcquisitionStatsHandle(userAcquisitionStats, tickSource, kBind);
 
+    // Store the bindOptions in the private member field to protect against cases where the argument
+    // goes out of scope.
+    _bindOptions = options;
+
     std::wstring user;
     std::wstring pwd;
     SEC_WINNT_AUTH_IDENTITY cred;
-    if (!options.useLDAPConnectionDefaults) {
-        user = toNativeString(options.bindDN.c_str());
-        pwd = toNativeString(options.password->c_str());
+    if (!_bindOptions->useLDAPConnectionDefaults) {
+        user = toNativeString(_bindOptions->bindDN.c_str());
+        pwd = toNativeString(_bindOptions->password->c_str());
         cred.Flags = SEC_WINNT_AUTH_IDENTITY_UNICODE;
         cred.User = reinterpret_cast<unsigned short*>(const_cast<wchar_t*>(user.c_str()));
         cred.UserLength = user.size();
@@ -209,11 +213,11 @@ Status WindowsLDAPConnection::bindAsUser(const LDAPBindOptions& options,
 
     ULONG result;
     Status resultStatus(ErrorCodes::OperationFailed,
-                        str::stream()
-                            << "Unknown bind operation requested: " << options.toCleanString());
+                        str::stream() << "Unknown bind operation requested: "
+                                      << _bindOptions->toCleanString());
 
-    if (options.authenticationChoice == LDAPBindType::kSimple) {
-        if (options.useLDAPConnectionDefaults) {
+    if (_bindOptions->authenticationChoice == LDAPBindType::kSimple) {
+        if (_bindOptions->useLDAPConnectionDefaults) {
             return Status(ErrorCodes::IllegalOperation,
                           "Cannot use default username and password with simple LDAP bind");
         }
@@ -223,16 +227,16 @@ Status WindowsLDAPConnection::bindAsUser(const LDAPBindOptions& options,
         ldapBindTimeoutHang.execute(
             [&](const BSONObj& data) { sleepsecs(data["delay"].numberInt()); });
 
-        result =
-            ldap_bind_sW(_pimpl->getSession(),
-                         const_cast<wchar_t*>(toNativeString(options.bindDN.c_str()).c_str()),
-                         const_cast<wchar_t*>(toNativeString(options.password->c_str()).c_str()),
-                         LDAP_AUTH_SIMPLE);
+        result = ldap_bind_sW(
+            _pimpl->getSession(),
+            const_cast<wchar_t*>(toNativeString(_bindOptions->bindDN.c_str()).c_str()),
+            const_cast<wchar_t*>(toNativeString(_bindOptions->password->c_str()).c_str()),
+            LDAP_AUTH_SIMPLE);
 
         resultStatus = _pimpl->resultCodeToStatus(result, "ldap_bind_sW", "to perform simple bind");
-    } else if (options.authenticationChoice == LDAPBindType::kSasl &&
-               options.saslMechanisms == "DIGEST-MD5") {
-        if (options.useLDAPConnectionDefaults) {
+    } else if (_bindOptions->authenticationChoice == LDAPBindType::kSasl &&
+               _bindOptions->saslMechanisms == "DIGEST-MD5") {
+        if (_bindOptions->useLDAPConnectionDefaults) {
             // If ldapBindTimeoutHang is set, then sleep for "delay" seconds to simulate a hang in
             // the network call.
             ldapBindTimeoutHang.execute(
@@ -250,8 +254,8 @@ Status WindowsLDAPConnection::bindAsUser(const LDAPBindOptions& options,
 
         resultStatus =
             _pimpl->resultCodeToStatus(result, "ldap_bind_sW", "to perform DIGEST-MD5 SASL bind");
-    } else if (options.authenticationChoice == LDAPBindType::kSasl &&
-               options.saslMechanisms == "GSSAPI") {
+    } else if (_bindOptions->authenticationChoice == LDAPBindType::kSasl &&
+               _bindOptions->saslMechanisms == "GSSAPI") {
         // Per Microsoft's documentation, this option "Sets or retrieves the preferred SASL binding
         // method prior to binding using the LDAP_AUTH_NEGOTIATE flag." But, this is not true, and
         // it causes LDAP_AUTH_DIGEST to use GSSAPI as well. Also, there doesn't seem to be a way to
@@ -262,7 +266,7 @@ Status WindowsLDAPConnection::bindAsUser(const LDAPBindOptions& options,
             return Status(ErrorCodes::OperationFailed, "Failed to set SASL method");
         }
 
-        if (options.useLDAPConnectionDefaults) {
+        if (_bindOptions->useLDAPConnectionDefaults) {
             // If ldapBindTimeoutHang is set, then sleep for "delay" seconds to simulate a hang in
             // the network call.
             ldapBindTimeoutHang.execute(
@@ -284,7 +288,7 @@ Status WindowsLDAPConnection::bindAsUser(const LDAPBindOptions& options,
     }
 
     if (resultStatus.isOK()) {
-        _boundUser = options.bindDN;
+        _boundUser = _bindOptions->bindDN;
     }
 
     return resultStatus;

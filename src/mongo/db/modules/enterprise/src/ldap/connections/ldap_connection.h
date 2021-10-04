@@ -31,7 +31,8 @@ class StringData;
  */
 class LDAPConnection {
 public:
-    explicit LDAPConnection(LDAPConnectionOptions options) : _options(std::move(options)) {}
+    explicit LDAPConnection(LDAPConnectionOptions options)
+        : _connectionOptions(std::move(options)) {}
     virtual ~LDAPConnection() = default;
 
     /**
@@ -80,7 +81,9 @@ public:
                               UserAcquisitionStats* userAcquisitionStats) = 0;
 
 protected:
-    LDAPConnectionOptions _options;
+    LDAPConnectionOptions _connectionOptions;
+    // Used to keep bind options in scope regardless of delays.
+    boost::optional<LDAPBindOptions> _bindOptions;
 };
 
 }  // namespace mongo

@@ -76,7 +76,6 @@ private:
     ldap_conncb _callback;    // callback that is called on connection
 
     boost::optional<std::string> _boundUser;
-    boost::optional<LDAPBindOptions> _bindOptions;
     static ProviderTraits _traits;
 
     // Used to track LDAP operations in CurOp
