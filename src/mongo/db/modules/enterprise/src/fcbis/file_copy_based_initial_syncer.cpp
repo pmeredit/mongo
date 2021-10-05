@@ -979,8 +979,9 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFiles(
                ++fileIndex;
                auto relativePath = _getPathRelativeTo(fileName, _syncingFilesState.remoteDbpath);
                // Note that fileSize is not present in backup extensions.  It's only used for the
-               // progress indicator so that's OK.
-               size_t fileSize = metadata["fileSize"].safeNumberLong();
+               // progress indicator so that's OK.  It will never be negative, but limiting it to
+               // zero avoids static-analysis errors.
+               size_t fileSize = std::max(0ll, metadata["fileSize"].safeNumberLong());
                // Extension numbers are specified to start at 1 for the first extension.  The
                // cycle starts at 1 for the initial non-extended backup.  So subtract 1 for the
                // correct extension number.
