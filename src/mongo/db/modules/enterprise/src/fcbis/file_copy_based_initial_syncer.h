@@ -143,7 +143,6 @@ private:
     ExecutorFuture<OpTimeAndWallTime> _startInitialSyncAttempt(
         WithLock lock,
         std::shared_ptr<executor::TaskExecutor> executor,
-        OperationContext* opCtx,
         const CancellationToken& token);
 
     /**
@@ -152,7 +151,6 @@ private:
     ExecutorFuture<HostAndPort> _selectAndValidateSyncSource(
         WithLock lock,
         std::shared_ptr<executor::TaskExecutor> executor,
-        OperationContext* opCtx,
         const CancellationToken& token);
 
     /**
@@ -172,6 +170,12 @@ private:
      * Used by shutdown().
      */
     void _cancelRemainingWork(WithLock);
+
+    /**
+     * Returns true if the initial syncer has received a shutdown request (_state is ShuttingDown).
+     */
+    bool _isShuttingDown() const;
+    bool _isShuttingDown_inlock() const;
 
     /**
      * Invokes completion callback and transitions state to State::kComplete.

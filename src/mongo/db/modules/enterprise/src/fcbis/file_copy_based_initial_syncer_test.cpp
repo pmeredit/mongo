@@ -1252,6 +1252,96 @@ TEST_F(FileCopyBasedInitialSyncerTest, SyncingFilesUsingBackupCursorOnly) {
               Status::OK());
 }
 
+TEST_F(FileCopyBasedInitialSyncerTest, FCBISRetriesIfBackupCursorAlreadyOpen) {
+    auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
+    auto opCtx = makeOpCtx();
+
+    _syncSourceSelector->setChooseNewSyncSourceResult_forTest(HostAndPort("localhost", 12345));
+    globalFailPointRegistry().find("fCBISSkipSyncingFilesPhase")->setMode(FailPoint::off);
+
+    ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+
+    auto backupCursorRequest =
+        BSON("aggregate" << 1 << "pipeline" << BSON_ARRAY(BSON("$backupCursor" << BSONObj())));
+
+    expectSuccessfulSyncSourceValidation();
+    auto errorCode = 50886;
+    _mock
+        ->expect(backupCursorRequest,
+                 RemoteCommandResponse(
+                     ErrorCodes::Error(errorCode),
+                     "The existing backup cursor must be closed before $backupCursor can succeed.",
+                     Milliseconds()))
+        .times(1);
+
+    _mock->runUntilExpectationsSatisfied();
+    fileCopyBasedInitialSyncer->join();
+    ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest().code(),
+              5973001);
+    ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest().reason(),
+              "Could not open backup cursor on the sync source: The existing backup cursor must be "
+              "closed before $backupCursor can succeed.");
+}
+
+TEST_F(FileCopyBasedInitialSyncerTest, FCBISFailsIfSyncSourceIsFsyncLocked) {
+    auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
+    auto opCtx = makeOpCtx();
+
+    _syncSourceSelector->setChooseNewSyncSourceResult_forTest(HostAndPort("localhost", 12345));
+    globalFailPointRegistry().find("fCBISSkipSyncingFilesPhase")->setMode(FailPoint::off);
+
+    ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+
+    auto backupCursorRequest =
+        BSON("aggregate" << 1 << "pipeline" << BSON_ARRAY(BSON("$backupCursor" << BSONObj())));
+    expectSuccessfulSyncSourceValidation();
+    auto errorCode = 50887;
+    _mock
+        ->expect(backupCursorRequest,
+                 RemoteCommandResponse(ErrorCodes::Error(errorCode),
+                                       "The node is currently fsyncLocked.",
+                                       Milliseconds()))
+        .times(1);
+
+    _mock->runUntilExpectationsSatisfied();
+    fileCopyBasedInitialSyncer->join();
+    ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest().code(),
+              5973001);
+    ASSERT_EQ(
+        fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest().reason(),
+        "Could not open backup cursor on the sync source: The node is currently fsyncLocked.");
+}
+
+TEST_F(FileCopyBasedInitialSyncerTest, FCBISFailsIfBackupCursorCommandNotSupported) {
+    auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
+    auto opCtx = makeOpCtx();
+
+    _syncSourceSelector->setChooseNewSyncSourceResult_forTest(HostAndPort("localhost", 12345));
+    globalFailPointRegistry().find("fCBISSkipSyncingFilesPhase")->setMode(FailPoint::off);
+
+    ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+
+    auto backupCursorRequest =
+        BSON("aggregate" << 1 << "pipeline" << BSON_ARRAY(BSON("$backupCursor" << BSONObj())));
+
+    expectSuccessfulSyncSourceValidation();
+    auto errorCode = 40324;
+    _mock
+        ->expect(backupCursorRequest,
+                 RemoteCommandResponse(ErrorCodes::Error(errorCode),
+                                       "Unrecognized pipeline stage name: '$backupCursor'",
+                                       Milliseconds()))
+        .times(1);
+
+    _mock->runUntilExpectationsSatisfied();
+    fileCopyBasedInitialSyncer->join();
+    ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest().code(),
+              5973001);
+    ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest().reason(),
+              "Could not open backup cursor on the sync source: Unrecognized pipeline stage name: "
+              "'$backupCursor'");
+}
+
 TEST_F(FileCopyBasedInitialSyncerTest, AlwaysKillBackupCursorOnFailure) {
     auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
     auto opCtx = makeOpCtx();

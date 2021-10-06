@@ -53,7 +53,11 @@ MONGO_FAIL_POINT_DEFINE(fCBISHangBeforeMovingTheNewFiles);
 // files.
 MONGO_FAIL_POINT_DEFINE(fCBISHangAfterMovingTheNewFiles);
 
+// Failpoint which causes the file copy based initial sync function to hang before finishing.
+MONGO_FAIL_POINT_DEFINE(fCBISHangBeforeFinish);
+
 static constexpr StringData kElectionNss = "local.replset.election"_sd;
+static constexpr Seconds kDenylistDuration(60);
 
 FileCopyBasedInitialSyncer::FileCopyBasedInitialSyncer(
     InitialSyncerInterface::Options opts,
@@ -115,7 +119,7 @@ Status FileCopyBasedInitialSyncer::startup(OperationContext* opCtx,
     _source = CancellationSource();
 
     ExecutorFuture<void> startInitialSyncAttemptFuture =
-        _startInitialSyncAttempt(lock, _exec, opCtx, _source.token())
+        _startInitialSyncAttempt(lock, _exec, _source.token())
             .onCompletion([this](StatusWith<OpTimeAndWallTime> lastApplied) {
                 _finishCallback(lastApplied);
                 return lastApplied.getStatus();
@@ -141,7 +145,6 @@ Status FileCopyBasedInitialSyncer::startup(OperationContext* opCtx,
 ExecutorFuture<OpTimeAndWallTime> FileCopyBasedInitialSyncer::_startInitialSyncAttempt(
     WithLock lock,
     std::shared_ptr<executor::TaskExecutor> executor,
-    OperationContext* opCtx,
     const CancellationToken& token) {
     if (storageGlobalParams.engine != "wiredTiger") {
         LOGV2_ERROR(5952600,
@@ -156,9 +159,9 @@ ExecutorFuture<OpTimeAndWallTime> FileCopyBasedInitialSyncer::_startInitialSyncA
 
     _lastApplied = {OpTime(), Date_t()};
 
-    return AsyncTry([this, self = shared_from_this(), executor, opCtx, token] {
+    return AsyncTry([this, self = shared_from_this(), executor, token] {
                stdx::lock_guard<Latch> lock(_mutex);
-               return _selectAndValidateSyncSource(lock, executor, opCtx, token)
+               return _selectAndValidateSyncSource(lock, executor, token)
                    .then([this, self = shared_from_this(), executor, token](HostAndPort) {
                        return _startSyncingFiles(executor, token);
                    })
@@ -211,12 +214,11 @@ StatusWith<HostAndPort> FileCopyBasedInitialSyncer::_chooseSyncSource(WithLock) 
 ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSource(
     WithLock lock,
     std::shared_ptr<executor::TaskExecutor> executor,
-    OperationContext* opCtx,
     const CancellationToken& token) {
     _chooseSyncSourceAttempt = 0;
     _chooseSyncSourceMaxAttempts = static_cast<std::uint32_t>(numInitialSyncConnectAttempts.load());
 
-    return AsyncTry([this, self = shared_from_this(), executor, opCtx, token] {
+    return AsyncTry([this, self = shared_from_this(), executor, token] {
                stdx::lock_guard<Latch> lock(_mutex);
                auto syncSource = _chooseSyncSource(lock);
                if (!syncSource.isOK()) {
@@ -229,14 +231,13 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
                // sync.
                // If the sync source does not meet the requirements, mark it as
                // unusable using the denylistSyncSource call and restart at sync source selection.
-               constexpr Seconds kDenylistDuration(60);
                const executor::RemoteCommandRequest request(syncSource.getValue(),
                                                             "admin",
                                                             BSON("hello" << 1),
                                                             rpc::makeEmptyMetadata(),
                                                             nullptr);
                return executor->scheduleRemoteCommand(std::move(request), token)
-                   .then([this, self = shared_from_this(), syncSource, kDenylistDuration](
+                   .then([this, self = shared_from_this(), syncSource](
                              const executor::TaskExecutor::ResponseStatus& response) {
                        stdx::lock_guard<Latch> lock(_mutex);
                        uassertStatusOK(response.status);
@@ -276,13 +277,7 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
                        }
                        return Status::OK();
                    })
-                   .then([this,
-                          self = shared_from_this(),
-                          opCtx,
-                          syncSource,
-                          kDenylistDuration,
-                          executor,
-                          token]() {
+                   .then([this, self = shared_from_this(), syncSource, executor, token]() {
                        stdx::lock_guard<Latch> lock(_mutex);
 
                        const executor::RemoteCommandRequest request(
@@ -294,11 +289,7 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
                            nullptr);
 
                        return executor->scheduleRemoteCommand(std::move(request), token)
-                           .then([this,
-                                  self = shared_from_this(),
-                                  opCtx,
-                                  syncSource,
-                                  kDenylistDuration](
+                           .then([this, self = shared_from_this(), syncSource](
                                      const executor::TaskExecutor::ResponseStatus& response) {
                                stdx::lock_guard<Latch> lock(_mutex);
                                uassertStatusOK(response.status);
@@ -335,13 +326,7 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
                                return Status::OK();
                            });
                    })
-                   .then([this,
-                          self = shared_from_this(),
-                          opCtx,
-                          syncSource,
-                          kDenylistDuration,
-                          executor,
-                          token]() {
+                   .then([this, self = shared_from_this(), syncSource, executor, token]() {
                        stdx::lock_guard<Latch> lock(_mutex);
                        const executor::RemoteCommandRequest request(syncSource.getValue(),
                                                                     "admin",
@@ -350,11 +335,7 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
                                                                     nullptr);
 
                        return executor->scheduleRemoteCommand(std::move(request), token)
-                           .then([this,
-                                  self = shared_from_this(),
-                                  opCtx,
-                                  syncSource,
-                                  kDenylistDuration](
+                           .then([this, self = shared_from_this(), syncSource](
                                      const executor::TaskExecutor::ResponseStatus& response)
                                      -> StatusWith<HostAndPort> {
                                stdx::lock_guard<Latch> lock(_mutex);
@@ -379,9 +360,9 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
                                                                    "local node must be using the "
                                                                    "WiredTiger storage engine."});
                                }
-
+                               auto opCtxHolder = cc().makeOperationContext();
+                               auto opCtx = opCtxHolder.get();
                                auto encHooks = EncryptionHooks::get(opCtx->getServiceContext());
-
                                // If the sync source doesn't have the encryptionAtRest field, that
                                // means it is not using the encrypted storage engine, so the local
                                // node should not be either. Otherwise, if the sync source has the
@@ -824,6 +805,22 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFromSyncSourceCursor() {
         invariant(!_syncingFilesState.backupId);
         auto returnedFiles = std::make_shared<BackupFileMetadataCollection>();
         return _openBackupCursor(returnedFiles)
+            .onError([this, self = shared_from_this()](const Status& status) {
+                // If backup cursor cannot be opened because the sync source node is fsynclocked,
+                // or it already has a backup cursor open, or if the $backupCursor command is not
+                // supported.
+                if (status.code() == 50887 || status.code() == 50886 || status.code() == 40324) {
+                    _opts.syncSourceSelector->denylistSyncSource(_syncSource,
+                                                                 Date_t::now() + kDenylistDuration);
+                    LOGV2_ERROR(5973000,
+                                "Could not open backup cursor on the sync source",
+                                "error"_attr = redact(status));
+                    return Status{ErrorCodes::Error(5973001),
+                                  "Could not open backup cursor on the sync source: " +
+                                      status.reason()};
+                }
+                return status;
+            })
             .then([this, self = shared_from_this(), returnedFiles] {
                 stdx::lock_guard<Latch> lock(_mutex);
                 _keepBackupCursorAlive();
@@ -898,7 +895,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startSyncingFiles(
         .until([this, self = shared_from_this()](Status cloningStatus) mutable {
             stdx::lock_guard<Latch> lock(_mutex);
             if (!cloningStatus.isOK()) {
-                // Make sure to kill the backupCursor on failure.
+                // Make sure to kill the backup cursor on failure.
                 _killBackupCursor();
 
                 // Returns the error to the caller.
@@ -1240,6 +1237,16 @@ void FileCopyBasedInitialSyncer::_finishCallback(StatusWith<OpTimeAndWallTime> l
         std::swap(_onCompletion, onCompletion);
     }
 
+    if (MONGO_unlikely(fCBISHangBeforeFinish.shouldFail())) {
+        // This log output is used in js tests so please leave it.
+        LOGV2(5973002,
+              "File copy basedinitial sync - fCBISHangBeforeFinish fail point "
+              "enabled. Blocking until fail point is disabled.");
+        while (MONGO_unlikely(fCBISHangBeforeFinish.shouldFail()) && !_isShuttingDown()) {
+            mongo::sleepsecs(1);
+        }
+    }
+
     // Completion callback must be invoked outside mutex.
     try {
         onCompletion(lastApplied);
@@ -1260,6 +1267,15 @@ void FileCopyBasedInitialSyncer::_finishCallback(StatusWith<OpTimeAndWallTime> l
         _state = State::kComplete;
         _stateCondition.notify_all();
     }
+}
+
+bool FileCopyBasedInitialSyncer::_isShuttingDown() const {
+    stdx::lock_guard<Latch> lock(_mutex);
+    return _isShuttingDown_inlock();
+}
+
+bool FileCopyBasedInitialSyncer::_isShuttingDown_inlock() const {
+    return State::kShuttingDown == _state;
 }
 
 Status FileCopyBasedInitialSyncer::getStartInitialSyncAttemptFutureStatus_forTest() {
