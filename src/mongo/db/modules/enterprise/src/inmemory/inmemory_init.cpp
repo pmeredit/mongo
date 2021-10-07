@@ -64,7 +64,7 @@ public:
         kv->setRecordStoreExtraOptions(inMemoryGlobalOptions.collectionConfig);
         kv->setSortedDataInterfaceExtraOptions(inMemoryGlobalOptions.indexConfig);
         // Intentionally leaked.
-        new WiredTigerServerStatusSection(kv.get());
+        new WiredTigerServerStatusSection();
 
         StorageEngineOptions options;
         options.directoryPerDB = false;
