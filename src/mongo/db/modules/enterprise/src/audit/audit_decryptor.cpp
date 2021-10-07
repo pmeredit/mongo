@@ -10,6 +10,7 @@
 #include "audit/audit_header_options_gen.h"
 #include "audit_decryptor_options.h"
 #include "audit_enc_comp_manager.h"
+#include "audit_key_manager_kmip.h"
 #include "audit_key_manager_local.h"
 
 #include "mongo/bson/json.h"
@@ -46,15 +47,27 @@ std::unique_ptr<AuditKeyManager> createKeyManagerFromHeader(
     BSONObj ks = header.getKeyStoreIdentifier();
 
     StringData type(ks.getStringField("provider"_sd));
-    uassert(ErrorCodes::BadValue,
-            "Audit file header has invalid key store identifier",
-            type == "local"_sd);
 
-    StringData file(ks.getStringField("filename"_sd));
-    uassert(ErrorCodes::BadValue,
-            "Audit file header has local key store with empty filename",
-            !file.empty());
-    return std::make_unique<AuditKeyManagerLocal>(file);
+    if (type == "local"_sd) {
+        StringData file(ks.getStringField("filename"_sd));
+        uassert(ErrorCodes::BadValue,
+                "Audit file header has local key store with empty filename",
+                !file.empty());
+        return std::make_unique<AuditKeyManagerLocal>(file);
+    } else if (type == "kmip"_sd) {
+        StringData method(ks.getStringField("keyWrapMethod"_sd));
+        StringData uid(ks.getStringField("uid"_sd));
+        if (method == "encrypt"_sd) {
+            return std::make_unique<AuditKeyManagerKMIPEncrypt>(uid.toString());
+        } else if (method == "get"_sd) {
+            return std::make_unique<AuditKeyManagerKMIPGet>(uid.toString());
+        }
+        uasserted(ErrorCodes::BadValue,
+                  str::stream() << "Audit file header has invalid KMIP keyWrapMethod: " << method
+                                << ".");
+    } else {
+        uasserted(ErrorCodes::BadValue, "Audit file header has invalid key store identifier");
+    }
 }
 
 void auditDecryptorTool(int argc, char* argv[]) {

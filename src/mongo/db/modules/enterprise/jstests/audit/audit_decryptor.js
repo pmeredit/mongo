@@ -4,11 +4,14 @@
  */
 
 load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+load('src/mongo/db/modules/enterprise/jstests/encryptdb/libs/helpers.js');
 load('jstests/ssl/libs/ssl_helpers.js');
 
 (function() {
 
 "use strict";
+
+const kmipServerPort = 6566;
 
 if (!TestData.setParameters.featureFlagAtRestEncryption) {
     // Don't accept option when FF not enabled.
@@ -50,11 +53,23 @@ function getCompressedMessage(json) {
 }
 
 print("Testing audit log decryptor program");
-function testAuditLogDecryptor(fixture, isMongos) {
-    let opts = {
-        auditCompressionMode: "zstd",
-        auditLocalKeyFile: AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE,
-    };
+function testAuditLogDecryptor(fixture, isMongos, useKmip) {
+    let opts;
+    let kmipPID;
+    if (useKmip) {
+        kmipPID = startPyKMIPServer(kmipServerPort);
+        const kmipUID = createPyKMIPKey(kmipServerPort);
+        opts = {
+            kmipServerName: "127.0.0.1",
+            kmipPort: kmipServerPort,
+            kmipServerCAFile: "jstests/libs/trusted-ca.pem",
+            kmipClientCertificateFile: "jstests/libs/trusted-client.pem",
+            auditEncryptionKeyUID: kmipUID,
+            auditCompressionMode: "zstd"
+        };
+    } else {
+        opts = {auditLocalKeyFile: AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE, auditCompressionMode: "zstd"};
+    }
     if (isMongos) {
         opts = {other: {mongosOptions: opts}};
     }
@@ -84,9 +99,30 @@ function testAuditLogDecryptor(fixture, isMongos) {
     jsTest.log("Running mongoauditdecrypt");
     jsTest.log("Decrypting " + auditPath);
     jsTest.log("Saving json file to " + outputFile);
-    const decryptPid = _startMongoProgram(
-        "mongoauditdecrypt", "--inputPath", auditPath, "--outputPath", outputFile, "--noConfirm");
-
+    let decryptPid;
+    if (useKmip) {
+        decryptPid = _startMongoProgram("mongoauditdecrypt",
+                                        "--inputPath",
+                                        auditPath,
+                                        "--outputPath",
+                                        outputFile,
+                                        "--noConfirm",
+                                        "--kmipServerName",
+                                        "127.0.0.1",
+                                        "--kmipPort",
+                                        kmipServerPort,
+                                        "--kmipServerCAFile",
+                                        "jstests/libs/trusted-ca.pem",
+                                        "--kmipClientCertificateFile",
+                                        "jstests/libs/trusted-client.pem");
+    } else {
+        decryptPid = _startMongoProgram("mongoauditdecrypt",
+                                        "--inputPath",
+                                        auditPath,
+                                        "--outputPath",
+                                        outputFile,
+                                        "--noConfirm");
+    }
     assert.eq(waitProgram(decryptPid), 0);
 
     const outputAudit = new AuditSpooler(outputFile, false);
@@ -94,22 +130,46 @@ function testAuditLogDecryptor(fixture, isMongos) {
 
     // Audit log was decoded and decompressed so it was able to be parsed
     assert.eq(isValidJSON(outputLine), true);
+    if (useKmip) {
+        killPyKMIPServer(kmipPID);
+    }
 }
+
+jsTest.log("Testing with local key file");
 
 {
     const standaloneFixture = new StandaloneFixture();
 
-    jsTest.log("Testing audit file from standalone can be decompressed with mongoauditdecrypt");
-    testAuditLogDecryptor(standaloneFixture, false);
+    jsTest.log("Testing audit file from standalone can be decompressed with mongoauditdecrypt" +
+               " using local key");
+    testAuditLogDecryptor(standaloneFixture, false, false);
 }
-
-sleep(2000);
 
 {
     const shardingFixture = new ShardingFixture();
 
     jsTest.log(
-        "Testing audit file from sharded cluster can be decompressed with mongoauditdecrypt");
-    testAuditLogDecryptor(shardingFixture, true);
+        "Testing audit file from sharded cluster can be decompressed with mongoauditdecrypt" +
+        " using local key");
+    testAuditLogDecryptor(shardingFixture, true, false);
+}
+
+jsTest.log("Testing with KMIP-based key");
+
+{
+    const standaloneFixture = new StandaloneFixture();
+
+    jsTest.log("Testing audit file from standalone can be decompressed with mongoauditdecrypt" +
+               " using KMIP");
+    testAuditLogDecryptor(standaloneFixture, false, true);
+}
+
+{
+    const shardingFixture = new ShardingFixture();
+
+    jsTest.log(
+        "Testing audit file from sharded cluster can be decompressed with mongoauditdecrypt" +
+        " using KMIP");
+    testAuditLogDecryptor(shardingFixture, true, true);
 }
 })();

@@ -17,7 +17,6 @@ struct KMIPParams {
     int kmipPort = 5696;
     int kmipConnectTimeoutMS = kSecurity_kmip_connectTimeoutMSDefault;
     int kmipConnectRetries = kSecurity_kmip_connectRetriesDefault;
-    std::string kmipEncryptionKeyIdentifier;
     std::string kmipKeyIdentifier;
     std::vector<std::string> kmipServerName;
     std::string kmipClientCertificateFile;

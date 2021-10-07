@@ -13,7 +13,7 @@ namespace kmip {
 /**
  * The KMIP Protocol Version that we implement for requests.
  */
-const int32_t MongoKMIPVersion[] = {1, 0};
+const int32_t MongoKMIPVersion[] = {1, 2};
 
 /**
  * Padding.

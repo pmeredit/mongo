@@ -278,22 +278,24 @@ void AuditManager::_initializeAuditLog(const moe::Environment& params) {
             }
 
             if (getEncryptionEnabled()) {
-
-                std::unique_ptr<AuditKeyManager> keyManager;
-
+                // Store info on how to create the manager
                 if (params.count("auditLog.localAuditKeyFile")) {
-                    keyManager = std::make_unique<AuditKeyManagerLocal>(
-                        params["auditLog.localAuditKeyFile"].as<std::string>());
+                    _managerType = ManagerType::kLocal;
+                    _localAuditKeyFile = params["auditLog.localAuditKeyFile"].as<std::string>();
+                } else if (params.count("auditLog.auditEncryptionKeyIdentifier")) {
+                    if (gAuditEncryptKeyWithKMIPGet) {
+                        _managerType = ManagerType::kKMIPGet;
+                    } else {
+                        _managerType = ManagerType::kKMIPEncrypt;
+                    }
+                    _auditEncryptionKeyUID =
+                        params["auditLog.auditEncryptionKeyIdentifier"].as<std::string>();
                 } else {
-                    // TODO (SERVER-58846): local key file is a temporary requirement until KMIP is
-                    // implemented.
                     uasserted(ErrorCodes::BadValue,
-                              "auditLog.localAuditKeyFile must be specified if "
+                              "auditLog.localAuditKeyFile or auditLog.auditEncryptionKeyIdentifier "
+                              "must be specified if "
                               "audit log encryption is enabled");
                 }
-
-                _ac = std::make_unique<AuditEncryptionCompressionManager>(std::move(keyManager),
-                                                                          getCompressionEnabled());
             }
 
             auto writer = std::make_unique<logger::RotatableFileWriter>();
@@ -316,9 +318,6 @@ void AuditManager::_initializeAuditLog(const moe::Environment& params) {
                 auditLogAppender.reset(
                     new BSONAppender(std::move(writer), std::move(headerWriter)));
             }
-
-            uassertStatusOK(auditLogAppender->rotate(
-                serverGlobalParams.logRenameOnRotate, terseCurrentTimeForFilename(), nullptr));
 
             logv2::addLogRotator(
                 logv2::kAuditLogTag,

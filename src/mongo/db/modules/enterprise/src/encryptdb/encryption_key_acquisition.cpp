@@ -67,26 +67,22 @@ StatusWith<std::unique_ptr<SymmetricKey>> getKeyFromKMIPServer(const KMIPParams&
                       "Encryption at rest enabled but no key server specified");
     }
 
-    auto swKMIPService = KMIPService::createKMIPService(kmipParams, sslParams.sslFIPSMode);
-    if (!swKMIPService.isOK()) {
-        return swKMIPService.getStatus();
-    }
-    auto kmipService = std::move(swKMIPService.getValue());
+    auto kmipService = getGlobalKMIPService();
 
     // Try to retrieve an existing key.
     if (!keyId.empty()) {
-        return kmipService.getExternalKey(keyId.toString());
+        return kmipService->getExternalKey(keyId.toString());
     }
 
     // Create and retrieve new key.
-    StatusWith<std::string> swCreateKey = kmipService.createExternalKey();
+    StatusWith<std::string> swCreateKey = kmipService->createExternalKey();
     if (!swCreateKey.isOK()) {
         return swCreateKey.getStatus();
     }
 
     std::string newKeyId = swCreateKey.getValue();
     LOGV2(24199, "Created KMIP key", "keyId"_attr = newKeyId);
-    return kmipService.getExternalKey(newKeyId);
+    return kmipService->getExternalKey(newKeyId);
 }
 
 }  // namespace mongo

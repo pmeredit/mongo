@@ -23,18 +23,17 @@ constexpr auto kKeyWrapMethodField = "keyWrapMethod"_sd;
 constexpr auto kUIDField = "uid"_sd;
 }  // namespace
 
-AuditKeyManagerKMIP::AuditKeyManagerKMIP(kmip::KMIPService ks, std::string uid)
-    : _kmipService(std::move(ks)), _keyEncryptKeyUID(std::move(uid)) {}
+AuditKeyManagerKMIP::AuditKeyManagerKMIP(std::string uid) : _keyEncryptKeyUID(std::move(uid)) {}
 
-AuditKeyManagerKMIPEncrypt::AuditKeyManagerKMIPEncrypt(kmip::KMIPService ks, std::string uid)
-    : AuditKeyManagerKMIP(std::move(ks), std::move(uid)) {
+AuditKeyManagerKMIPEncrypt::AuditKeyManagerKMIPEncrypt(std::string uid)
+    : AuditKeyManagerKMIP(std::move(uid)) {
     constexpr auto kKeyWrapMethodName = "encrypt"_sd;
     _keyStoreID = BSON(kProviderField << kProviderValue << kUIDField << _keyEncryptKeyUID
                                       << kKeyWrapMethodField << kKeyWrapMethodName);
 }
 
-AuditKeyManagerKMIPGet::AuditKeyManagerKMIPGet(kmip::KMIPService ks, std::string uid)
-    : AuditKeyManagerKMIP(std::move(ks), std::move(uid)) {
+AuditKeyManagerKMIPGet::AuditKeyManagerKMIPGet(std::string uid)
+    : AuditKeyManagerKMIP(std::move(uid)) {
     constexpr auto kKeyWrapMethodName = "get"_sd;
     _keyStoreID = BSON(kProviderField << kProviderValue << kUIDField << _keyEncryptKeyUID
                                       << kKeyWrapMethodField << kKeyWrapMethodName);
@@ -51,7 +50,7 @@ AuditKeyManager::KeyGenerationResult AuditKeyManagerKMIPEncrypt::generateWrapped
             logEncryptKey.getKeySize());  // since uint8_t is a byte, this pointer arithmetic is OK
 
     // encrypt with the provided key encryption key's UID through KMIP
-    auto swResult = _kmipService.encrypt(_keyEncryptKeyUID, keyCopy);
+    auto swResult = kmip::getGlobalKMIPService()->encrypt(_keyEncryptKeyUID, keyCopy);
 
     if (!swResult.getStatus().isOK()) {
         LOGV2_FATAL(5884600,
@@ -129,7 +128,7 @@ SymmetricKey AuditKeyManagerKMIPEncrypt::unwrapKey(WrappedKey wrappedKey) {
     std::vector<uint8_t> iv(ivPtr, ivPtr + ivLen);
 
     // decrypt with the provided key encryption key's UID and IV through KMIP
-    auto swDecrypted = _kmipService.decrypt(_keyEncryptKeyUID, iv, key);
+    auto swDecrypted = kmip::getGlobalKMIPService()->decrypt(_keyEncryptKeyUID, iv, key);
 
     if (!swDecrypted.getStatus().isOK()) {
         LOGV2_FATAL(5884601,
@@ -185,7 +184,7 @@ UniqueSymmetricKey AuditKeyManagerKMIPGet::fetchKeyEncryptKey() {
 
     // get the key encryption key from KMIP server
     auto keyEncryptKey =
-        uassertStatusOKWithContext(_kmipService.getExternalKey(_keyEncryptKeyUID),
+        uassertStatusOKWithContext(kmip::getGlobalKMIPService()->getExternalKey(_keyEncryptKeyUID),
                                    "Failed to get external key for audit key encryption");
 
     // the retrieved key must be 256 bits in size

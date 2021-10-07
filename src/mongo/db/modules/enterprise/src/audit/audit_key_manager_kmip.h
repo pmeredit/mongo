@@ -13,25 +13,24 @@ namespace audit {
 
 class AuditKeyManagerKMIP : public AuditKeyManager {
 public:
-    AuditKeyManagerKMIP(kmip::KMIPService ks, std::string uid);
+    explicit AuditKeyManagerKMIP(std::string uid);
     BSONObj getKeyStoreID() final;
 
 protected:
-    kmip::KMIPService _kmipService;
-    std::string _keyEncryptKeyUID;
     BSONObj _keyStoreID;
+    std::string _keyEncryptKeyUID;
 };
 
 class AuditKeyManagerKMIPEncrypt final : public AuditKeyManagerKMIP {
 public:
-    AuditKeyManagerKMIPEncrypt(kmip::KMIPService ks, std::string uid);
+    AuditKeyManagerKMIPEncrypt(std::string uid);
     KeyGenerationResult generateWrappedKey() final;
     SymmetricKey unwrapKey(WrappedKey wrappedKey) final;
 };
 
 class AuditKeyManagerKMIPGet final : public AuditKeyManagerKMIP {
 public:
-    AuditKeyManagerKMIPGet(kmip::KMIPService ks, std::string uid);
+    AuditKeyManagerKMIPGet(std::string uid);
     KeyGenerationResult generateWrappedKey() final;
     SymmetricKey unwrapKey(WrappedKey wrappedKey) final;
 

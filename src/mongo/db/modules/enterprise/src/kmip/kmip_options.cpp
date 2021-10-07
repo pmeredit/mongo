@@ -17,11 +17,6 @@ namespace mongo {
 StatusWith<KMIPParams> parseKMIPOptions(const optionenvironment::Environment& params) {
     KMIPParams kmipParams;
 
-    if (params.count("security.kmip.encryptionKeyIdentifier")) {
-        kmipParams.kmipEncryptionKeyIdentifier =
-            params["security.kmip.encryptionKeyIdentifier"].as<std::string>();
-    }
-
     if (params.count("security.kmip.keyIdentifier")) {
         kmipParams.kmipKeyIdentifier = params["security.kmip.keyIdentifier"].as<std::string>();
     }

@@ -46,6 +46,12 @@ server_parameters:
         default: ""
         cpp_varname: 'gAuditEncryptionHeaderMetadataFile'
         cpp_vartype: 'std::string'
+    auditEncryptKeyWithKMIPGet:
+        description: 'Use KMIP Get request to retrieve the key encryption key for encrypting the audit log encryption key'
+        set_at: startup
+        cpp_varname: gAuditEncryptKeyWithKMIPGet
+        cpp_vartype: bool
+        default: false
 
 structs:
     AuditConfigDocument:

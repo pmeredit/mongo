@@ -71,10 +71,7 @@ public:
         return getConfig()->auditAuthorizationSuccess.load();
     }
 
-    const AuditEncryptionCompressionManager* getAuditEncryptionCompressionManager() {
-        invariant(_ac);
-        return _ac.get();
-    }
+    const AuditEncryptionCompressionManager* getAuditEncryptionCompressionManager();
 
     void setAuditAuthorizationSuccess(bool val);
 
@@ -167,6 +164,12 @@ private:
     // Path to header metadata log file, empty if disabled
     std::string _headerMetadataPath;
 
+    // Path to local key file for audit log encryption, empty if disabled
+    std::string _localAuditKeyFile;
+
+    // UID for audit encryption key in KMIP server, empty if disabled
+    std::string _auditEncryptionKeyUID;
+
     // Format of the output, either text or BSON
     AuditFormat _format;
 
@@ -178,6 +181,9 @@ private:
 
     // Configure encryption of audit logs
     bool _encryptionEnabled{false};
+
+    // Type of audit key manager to create, if encryption enabled
+    enum class ManagerType { kLocal, kKMIPGet, kKMIPEncrypt } _managerType;
 
     // Current audit filter and audit success settings.
     std::shared_ptr<RuntimeConfiguration> _config;

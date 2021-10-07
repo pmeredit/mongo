@@ -34,8 +34,6 @@ public:
     KMIPService(const KMIPService&) = delete;
     KMIPService& operator=(const KMIPService&) = delete;
 
-    static StatusWith<KMIPService> createKMIPService(const KMIPParams& kmipParams, bool fipsMode);
-
     /**
      * Communicates with the KMIP server that a key should be
      * created, and returns a StatusWith< uid >.
@@ -66,8 +64,11 @@ public:
                                               const std::vector<uint8_t>& data,
                                               const std::vector<uint8_t>& iv);
 
+    friend std::shared_ptr<KMIPService> getGlobalKMIPService();
+
 private:
     KMIPService(const HostAndPort& server, std::shared_ptr<SSLManagerInterface> sslManager);
+    static StatusWith<KMIPService> createKMIPService(const KMIPParams& kmipParams, bool fipsMode);
     static StatusWith<KMIPService> createKMIPService(const HostAndPort& server,
                                                      const SSLParams& sslKMIPParams,
                                                      Milliseconds connectTimeout);
@@ -99,6 +100,9 @@ private:
     HostAndPort _server;
     std::unique_ptr<Socket> _socket;
 };
+
+
+std::shared_ptr<KMIPService> getGlobalKMIPService();
 
 }  // namespace kmip
 }  // namespace mongo

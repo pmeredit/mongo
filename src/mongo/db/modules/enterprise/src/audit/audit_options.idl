@@ -56,3 +56,10 @@ configs:
         short_name: auditLocalKeyFile
         arg_vartype: String
         requires: 'auditLog.destination'
+        conflicts: 'auditLog.auditEncryptionKeyIdentifier'
+    "auditLog.auditEncryptionKeyIdentifier":
+        description: 'UID of the KMIP key to be used for audit log encryption'
+        short_name: auditEncryptionKeyUID
+        arg_vartype: String
+        requires: ['security.kmip.serverName', 'auditLog.destination']
+        conflicts: 'auditLog.localAuditKeyFile'

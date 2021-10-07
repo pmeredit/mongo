@@ -10,6 +10,8 @@
 
 #include "audit/audit_config_gen.h"
 #include "audit/audit_feature_flag_gen.h"
+#include "audit/audit_key_manager_kmip.h"
+#include "audit/audit_key_manager_local.h"
 #include "audit_event.h"
 #include "audit_event_type.h"
 #include "audit_log.h"
@@ -18,6 +20,7 @@
 #include "mongo/db/json.h"
 #include "mongo/db/matcher/expression_parser.h"
 #include "mongo/logv2/log.h"
+#include "mongo/logv2/log_util.h"
 #include "mongo/util/options_parser/environment.h"
 #include "mongo/util/options_parser/startup_options.h"
 
@@ -213,7 +216,8 @@ void AuditManager::initialize(const moe::Environment& params) {
     }
 
     _encryptionEnabled = feature_flags::gFeatureFlagAtRestEncryption.isEnabledAndIgnoreFCV() &&
-        params.count("auditLog.localAuditKeyFile");
+        (params.count("auditLog.localAuditKeyFile") ||
+         params.count("auditLog.auditEncryptionKeyIdentifier"));
 
     if (params.count("auditLog.compressionMode") &&
         params["auditLog.compressionMode"].as<std::string>() != "" &&
@@ -228,6 +232,17 @@ void AuditManager::initialize(const moe::Environment& params) {
                 "auditLog.compressionMode must be set as zstd",
                 params["auditLog.compressionMode"].as<std::string>() == "zstd");
         _compressionEnabled = true;
+    }
+
+    if (gAuditEncryptKeyWithKMIPGet) {
+        uassert(ErrorCodes::BadValue,
+                "setParameter.auditEncryptKeyWithKMIPGet is only allowed if audit log "
+                "encryption is enabled!",
+                _encryptionEnabled);
+        uassert(ErrorCodes::BadValue,
+                "setParameter.auditEncryptKeyWithKMIPGet is only allowed if "
+                "auditLog.destination is 'file'",
+                isFileDestination());
     }
 
     if (!gAuditEncryptionHeaderMetadataFile.empty()) {
@@ -245,6 +260,37 @@ void AuditManager::initialize(const moe::Environment& params) {
     }
 
     _initializeAuditLog(params);
+}
+
+const AuditEncryptionCompressionManager* AuditManager::getAuditEncryptionCompressionManager() {
+    invariant(getEncryptionEnabled());
+    if (!_ac) {
+        // lazily create.
+        std::unique_ptr<AuditKeyManager> keyManager;
+
+        switch (_managerType) {
+            case ManagerType::kLocal:
+                keyManager = std::make_unique<AuditKeyManagerLocal>(_localAuditKeyFile);
+                break;
+            case ManagerType::kKMIPGet:
+                keyManager = std::make_unique<AuditKeyManagerKMIPGet>(_auditEncryptionKeyUID);
+                break;
+            case ManagerType::kKMIPEncrypt:
+                keyManager = std::make_unique<AuditKeyManagerKMIPEncrypt>(_auditEncryptionKeyUID);
+                break;
+            default:
+                // If encryption enabled, _managerType must be valid
+                MONGO_UNREACHABLE;
+        }
+
+        _ac = std::make_unique<AuditEncryptionCompressionManager>(std::move(keyManager),
+                                                                  getCompressionEnabled());
+    }
+    return _ac.get();
+}
+
+void rotateAuditLog() {
+    logv2::rotateLogs(serverGlobalParams.logRenameOnRotate, logv2::kAuditLogTag, [](Status s) {});
 }
 
 namespace {

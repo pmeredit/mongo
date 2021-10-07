@@ -94,6 +94,10 @@ function testRotateLogs(fixture) {
         audit.assertEntry("authenticate",
                           {"user": "user1", "db": "admin", "mechanism": "SCRAM-SHA-256"});
 
+        // Audit logs are rotated on startup, so this will be the second audit rotate after the
+        // startup of the process.
+        sleep(2000);
+
         assert.commandWorked(admin.adminCommand({logRotate: "audit"}));
         assert(checkLog.checkContainsOnceJson(conn, kLogRotationInitiatedID, {"logType": "audit"}));
 

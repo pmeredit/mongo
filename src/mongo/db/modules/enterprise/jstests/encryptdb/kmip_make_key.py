@@ -50,6 +50,7 @@ def main():
     logger.info("Creating KMIP key")
     with client:
         uid = client.create(CryptographicAlgorithm.AES, 256)
+        client.activate(uid)
         logger.info("Key created")
         logger.info("UID=<" + uid + ">")
         logger.info("KEY=<" + client.get(uid).value.hex() + ">")

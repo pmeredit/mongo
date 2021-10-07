@@ -8,19 +8,7 @@ global:
         section: 'Encryption at rest options'
         source: [ cli, ini, yaml ]
 
-server_parameters:
-    kmipEncryptAuditKeyWithGet:
-        description: 'Use KMIP Get request to retrieve the key encryption key for encrypting the audit log encryption key'
-        set_at: startup
-        cpp_varname: kmipEncryptAuditKeyWithGet
-        cpp_vartype: bool
-        default: false
-
 configs:
-    "security.kmip.encryptionKeyIdentifier":
-        description: 'KMIP unique identifier for existing key to use for at-rest encryption of audit logs'
-        short_name: kmipEncryptionKeyIdentifier
-        arg_vartype: String
     "security.kmip.keyStoreIdentifier":
         description: 'KMIP key store identifier'
         short_name: kmipKeyStoreIdentifier

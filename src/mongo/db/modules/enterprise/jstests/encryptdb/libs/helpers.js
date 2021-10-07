@@ -15,6 +15,43 @@ const isWindowsSchannel =
 
 const platformSupportsGCM = !(isOSX || isWindowsSchannel);
 
+const kmipPyPath = "src/mongo/db/modules/enterprise/jstests/encryptdb/";
+
+// Starts a PyKMIP server on the given port and returns the UID.
+function startPyKMIPServer(port) {
+    clearRawMongoProgramOutput();
+    const kmipServerPid = _startMongoProgram("python", kmipPyPath + "kmip_server.py", port);
+    // Assert here that PyKMIP is compatible with the default Python version
+    assert(checkProgram(kmipServerPid));
+    // wait for the PyKMIP server to be ready
+    assert.soon(() => rawMongoProgramOutput().search("Starting connection service") !== -1);
+    return kmipServerPid;
+}
+
+// Given the port of a KMIP server, runs a PyKMIP script which creates and activates a new symmetric
+// key, and returns its UID.
+function createPyKMIPKey(kmipServerPort) {
+    clearRawMongoProgramOutput();
+    _startMongoProgram("python", kmipPyPath + "kmip_make_key.py", kmipServerPort);
+    let uid;
+    assert.soon(() => {
+        const output = rawMongoProgramOutput();
+        // Wait for the UID to be output
+        let idx = output.search("UID=");
+        if (idx === -1) {
+            return false;
+        }
+        const baseidx = idx + 5;  // skip past UID=<_
+        const uidlen = output.substring(baseidx).search(">");
+        if (uidlen === -1) {
+            return false;
+        }
+        uid = output.substring(baseidx, baseidx + uidlen);
+        return true;
+    });
+    return uid;
+}
+
 function killPyKMIPServer(pid) {
     if (_isWindows()) {
         // we use taskkill because we need to kill children

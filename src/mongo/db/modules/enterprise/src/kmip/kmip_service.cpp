@@ -11,6 +11,7 @@
 #include <memory>
 #include <vector>
 
+#include "encryptdb/encryption_options.h"
 #include "kmip_consts.h"
 #include "kmip_request.h"
 #include "kmip_response.h"
@@ -28,6 +29,26 @@
 
 namespace mongo {
 namespace kmip {
+
+const auto getKMIPService = ServiceContext::declareDecoration<std::shared_ptr<KMIPService>>();
+
+std::shared_ptr<KMIPService> getGlobalKMIPService() {
+    ServiceContext* service = getGlobalServiceContext();
+
+    // This should never be called before the global service context has been created.
+    invariant(service);
+    auto kmipService = getKMIPService(service);
+
+    if (kmipService) {
+        return kmipService;
+    }
+
+    // lazily create
+    getKMIPService(service) =
+        std::make_shared<KMIPService>(uassertStatusOK(KMIPService::createKMIPService(
+            encryptionGlobalParams.kmipParams, sslGlobalParams.sslFIPSMode)));
+    return getKMIPService(service);
+};
 
 StatusWith<KMIPService> KMIPService::createKMIPService(const HostAndPort& server,
                                                        const SSLParams& sslKMIPParams,
@@ -268,5 +289,6 @@ SecureVector<uint8_t> KMIPService::_generateKMIPDecryptRequest(const std::string
     DecryptKMIPRequestParameters decryptRequestParams({std::begin(uid), std::end(uid)}, iv, data);
     return encodeKMIPRequest(decryptRequestParams);
 }
+
 }  // namespace kmip
 }  // namespace mongo

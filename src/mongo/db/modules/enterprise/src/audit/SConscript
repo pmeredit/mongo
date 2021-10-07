@@ -63,6 +63,7 @@ env.Library(
         'audit_enc_comp_manager.cpp',
         'audit_file_header.cpp',
         'audit_key_manager_local.cpp',
+        'audit_key_manager_kmip.cpp',
         'audit_feature_flag.idl',
         'audit_header_options.idl',
     ],
@@ -218,7 +219,6 @@ env.Library(
 env.CppUnitTest(
     target='audit_test',
     source=[
-        'audit_key_manager_kmip.cpp', # in test for now to enable building
         'audit_op_observer_test.cpp',
         'audit_enc_comp_manager_test.cpp',
         'audit_file_header_test.cpp',
