@@ -57,7 +57,6 @@ MONGO_FAIL_POINT_DEFINE(fCBISHangAfterMovingTheNewFiles);
 // Failpoint which causes the file copy based initial sync function to hang before finishing.
 MONGO_FAIL_POINT_DEFINE(fCBISHangBeforeFinish);
 
-static constexpr StringData kElectionNss = "local.replset.election"_sd;
 static constexpr Seconds kDenylistDuration(60);
 
 FileCopyBasedInitialSyncer::FileCopyBasedInitialSyncer(
@@ -498,7 +497,7 @@ Status FileCopyBasedInitialSyncer::_cleanUpLocalCollectionsAfterSync(OperationCo
 
     // We drop the 'local.replset.election' collection as this node has not participated in any
     // elections yet.
-    auto status = _storage->dropCollection(opCtx, NamespaceString(kElectionNss));
+    auto status = _storage->dropCollection(opCtx, NamespaceString::kLastVoteNamespace);
     if (!status.isOK()) {
         return status;
     }
