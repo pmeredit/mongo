@@ -47,21 +47,24 @@ public:
      */
     StatusWith<std::unique_ptr<SymmetricKey>> getExternalKey(const std::string& uid);
 
+    struct EncryptionResult {
+        std::vector<uint8_t> iv;
+        std::vector<uint8_t> data;
+    };
+
     /**
      * Requests the KMIP server to perform an encryption operation on the specified data with the
-     * given key, and returns a StatusWith of the encrypted data. Note: In the future, we may want
-     * to add cryptographic parameters and IV support here.
+     * given key, and returns a StatusWith of EncryptionResult.
      */
-    StatusWith<std::vector<uint8_t>> encrypt(const std::string& uid,
-                                             const SecureVector<uint8_t>& data);
+    StatusWith<EncryptionResult> encrypt(const std::string& uid, const SecureVector<uint8_t>& data);
 
     /**
      * Requests the KMIP server to perform a decryption operation on the specified data with the
-     * given key, and returns a StatusWith of the decrypted data. Note: In the future, we may want
-     * to add cryptographic parameters and IV support here.
+     * given key and IV, and returns a StatusWith of the decrypted data.
      */
     StatusWith<SecureVector<uint8_t>> decrypt(const std::string& uid,
-                                              const std::vector<uint8_t>& data);
+                                              const std::vector<uint8_t>& data,
+                                              const std::vector<uint8_t>& iv);
 
 private:
     KMIPService(const HostAndPort& server, std::shared_ptr<SSLManagerInterface> sslManager);
@@ -89,7 +92,8 @@ private:
                                                       const SecureVector<uint8_t>& data);
 
     SecureVector<uint8_t> _generateKMIPDecryptRequest(const std::string& uid,
-                                                      const std::vector<uint8_t>& data);
+                                                      const std::vector<uint8_t>& data,
+                                                      const std::vector<uint8_t>& iv);
 
     std::shared_ptr<SSLManagerInterface> _sslManager;
     HostAndPort _server;

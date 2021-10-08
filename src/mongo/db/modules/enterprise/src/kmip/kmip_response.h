@@ -72,8 +72,18 @@ public:
         return std::move(_symmetricKey);
     }
 
+    /**
+     * Gets the data from the parsed message
+     */
     const SecureVector<uint8_t>& getData() const {
         return _data;
+    }
+
+    /**
+     * Gets the IV from the parsed message
+     */
+    const std::vector<uint8_t>& getIV() const {
+        return _iv;
     }
 
     /**
@@ -130,6 +140,7 @@ private:
     std::unique_ptr<SymmetricKey> _symmetricKey;
     std::string _uid;
     SecureVector<uint8_t> _data;
+    std::vector<uint8_t> _iv;
 };
 }  // namespace kmip
 }  // namespace mongo

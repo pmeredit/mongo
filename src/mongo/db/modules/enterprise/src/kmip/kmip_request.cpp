@@ -215,6 +215,18 @@ size_t encodeDecryptPayload(struct EncodingContext* ctx,
     pl.insert(pl.end(), std::begin(dataSize), std::end(dataSize));
     pl.insert(pl.end(), std::begin(paddedData), std::end(paddedData));
 
+    if (!requestParams.iv.empty()) {
+        std::vector<uint8_t> paddedIV = padToEightByteMultiple(requestParams.iv);
+        std::vector<uint8_t> ivSize = convertIntToBigEndianArray(requestParams.iv.size());
+
+        // Tag: IV/Counter/Nonce, Type: Byte String, Size of IV, IV
+        pl.insert(pl.end(), std::begin(ivTag), std::end(ivTag));
+        pl.push_back(static_cast<uint8_t>(ItemType::byteString));
+
+        pl.insert(pl.end(), std::begin(ivSize), std::end(ivSize));
+        pl.insert(pl.end(), std::begin(paddedIV), std::end(paddedIV));
+    }
+
     return pl.size() - startSize;
 }
 

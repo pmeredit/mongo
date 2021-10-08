@@ -309,19 +309,30 @@ Status KMIPResponse::_parseBatchItem(ConstDataRangeCursor* cdrc) {
             break;
         }
         case static_cast<uint8_t>(OperationType::encrypt): {
-            // Currently ignores UID (line below) and IV (silently) in response.
-            (void)_parseString(cdrc, uniqueIdentifierTag, "uid");  // Note: UID in response ignored
+            // Ignores UID in response.
+            auto swS = _parseString(cdrc, uniqueIdentifierTag, "uid");
+            if (!swS.isOK()) {
+                return swS.getStatus();
+            }
             StatusWith<SecureVector<uint8_t>> swData = _parseByteString(cdrc, dataTag, "data");
-            // XXX IV in response ignored
+            StatusWith<SecureVector<uint8_t>> swIV = _parseByteString(cdrc, ivTag, "iv");
             if (!swData.isOK()) {
                 return swData.getStatus();
             }
             _data = std::move(swData.getValue());
+            // IV is optional in response, leave it empty if it's not there.
+            if (swIV.isOK()) {
+                _iv = std::vector<uint8_t>(std::make_move_iterator(swIV.getValue()->begin()),
+                                           std::make_move_iterator(swIV.getValue()->end()));
+            }
             break;
         }
         case static_cast<uint8_t>(OperationType::decrypt): {
             // Ignores UID in response.
-            (void)_parseString(cdrc, uniqueIdentifierTag, "uid");
+            auto swS = _parseString(cdrc, uniqueIdentifierTag, "uid");
+            if (!swS.isOK()) {
+                return swS.getStatus();
+            }
             StatusWith<SecureVector<uint8_t>> swData = _parseByteString(cdrc, dataTag, "data");
             if (!swData.isOK()) {
                 return swData.getStatus();

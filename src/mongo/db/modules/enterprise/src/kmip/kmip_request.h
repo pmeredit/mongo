@@ -50,25 +50,33 @@ struct DiscoverVersionsKMIPRequestParameters : KMIPRequestParameters {
 };
 
 struct GetKMIPRequestParameters : KMIPRequestParameters {
-    explicit GetKMIPRequestParameters(std::vector<uint8_t> u)
-        : KMIPRequestParameters(OperationType::get), uid(u) {}
+    explicit GetKMIPRequestParameters(std::vector<uint8_t> uid)
+        : KMIPRequestParameters(OperationType::get), uid(uid) {}
 
     std::vector<uint8_t> uid;
 };
 
 struct EncryptKMIPRequestParameters : KMIPRequestParameters {
-    explicit EncryptKMIPRequestParameters(std::vector<uint8_t> u, SecureVector<uint8_t> d)
-        : KMIPRequestParameters(OperationType::encrypt), uid(std::move(u)), data(std::move(d)) {}
+    EncryptKMIPRequestParameters(std::vector<uint8_t> uid, SecureVector<uint8_t> data)
+        : KMIPRequestParameters(OperationType::encrypt),
+          uid(std::move(uid)),
+          data(std::move(data)) {}
 
     std::vector<uint8_t> uid;
     SecureVector<uint8_t> data;
 };
 
 struct DecryptKMIPRequestParameters : KMIPRequestParameters {
-    explicit DecryptKMIPRequestParameters(std::vector<uint8_t> u, std::vector<uint8_t> d)
-        : KMIPRequestParameters(OperationType::decrypt), uid(std::move(u)), data(std::move(d)) {}
+    DecryptKMIPRequestParameters(std::vector<uint8_t> uid,
+                                 std::vector<uint8_t> iv,
+                                 std::vector<uint8_t> data)
+        : KMIPRequestParameters(OperationType::decrypt),
+          uid(std::move(uid)),
+          iv(std::move(iv)),
+          data(std::move(data)) {}
 
     std::vector<uint8_t> uid;
+    std::vector<uint8_t> iv;
     std::vector<uint8_t> data;
 };
 

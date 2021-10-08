@@ -39,21 +39,37 @@ AuditKeyManager::KeyGenerationResult AuditKeyManagerKMIP::generateWrappedKey() {
             logEncryptKey.getKeySize());  // since uint8_t is a byte, this pointer arithmetic is OK
 
     // encrypt with the provided key encryption key's UID through KMIP
-    auto swEncrypted = _kmipService.encrypt(_keyEncryptKeyUID, keyCopy);
+    auto swResult = _kmipService.encrypt(_keyEncryptKeyUID, keyCopy);
 
-    if (!swEncrypted.getStatus().isOK()) {
+    if (!swResult.getStatus().isOK()) {
         LOGV2_FATAL(5884600,
                     "Failed to encrypt key with KMIP",
-                    "reason"_attr = swEncrypted.getStatus().reason());
+                    "reason"_attr = swResult.getStatus().reason());
     }
 
-    return AuditKeyManager::KeyGenerationResult{std::move(logEncryptKey),
-                                                std::move(swEncrypted.getValue())};
+    // Create BSONObj incorporating both key and IV, and pretend it's the wrapped key
+    BSONObjBuilder builder;
+    auto iv = std::move(swResult.getValue().iv);
+    auto enckey = std::move(swResult.getValue().data);
+    builder.appendBinData("iv", iv.size(), BinDataGeneral, iv.data());
+    builder.appendBinData("key", enckey.size(), BinDataGeneral, enckey.data());
+    BSONObj keyObj = builder.obj();
+
+    return AuditKeyManager::KeyGenerationResult{
+        std::move(logEncryptKey),
+        std::vector<uint8_t>(keyObj.objdata(), keyObj.objdata() + keyObj.objsize())};
 }
 
 SymmetricKey AuditKeyManagerKMIP::unwrapKey(WrappedKey wrappedKey) {
-    // decrypt with the provided key encryption key's UID through KMIP
-    auto swDecrypted = _kmipService.decrypt(_keyEncryptKeyUID, wrappedKey);
+    // unwrap "Wrapped Key" which is actually IV and key
+    BSONObj keyObj = BSONObj(reinterpret_cast<char*>(wrappedKey.data()));
+    int keylen, ivlen;
+    auto ivPtr = keyObj.getField("iv").binData(ivlen);
+    auto keyPtr = keyObj.getField("key").binData(keylen);
+    std::vector<uint8_t> key(keyPtr, keyPtr + keylen);
+    std::vector<uint8_t> iv(ivPtr, ivPtr + ivlen);
+    // decrypt with the provided key encryption key's UID and IV through KMIP
+    auto swDecrypted = _kmipService.decrypt(_keyEncryptKeyUID, iv, key);
 
     if (!swDecrypted.getStatus().isOK()) {
         LOGV2_FATAL(5884601,

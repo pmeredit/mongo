@@ -144,8 +144,8 @@ StatusWith<std::unique_ptr<SymmetricKey>> KMIPService::getExternalKey(const std:
 }
 
 
-StatusWith<std::vector<uint8_t>> KMIPService::encrypt(const std::string& uid,
-                                                      const SecureVector<uint8_t>& data) {
+StatusWith<KMIPService::EncryptionResult> KMIPService::encrypt(const std::string& uid,
+                                                               const SecureVector<uint8_t>& data) {
     StatusWith<KMIPResponse> swResponse = _sendRequest(_generateKMIPEncryptRequest(uid, data));
     if (!swResponse.isOK()) {
         return swResponse.getStatus();
@@ -159,13 +159,16 @@ StatusWith<std::vector<uint8_t>> KMIPService::encrypt(const std::string& uid,
     }
 
     auto sdata = response.getData();
-    return std::vector<uint8_t>(std::make_move_iterator(sdata->begin()),
-                                std::make_move_iterator(sdata->end()));
+    auto iv = response.getIV();
+    return EncryptionResult{iv,
+                            std::vector<uint8_t>(std::make_move_iterator(sdata->begin()),
+                                                 std::make_move_iterator(sdata->end()))};
 }
 
 StatusWith<SecureVector<uint8_t>> KMIPService::decrypt(const std::string& uid,
+                                                       const std::vector<uint8_t>& iv,
                                                        const std::vector<uint8_t>& data) {
-    StatusWith<KMIPResponse> swResponse = _sendRequest(_generateKMIPDecryptRequest(uid, data));
+    StatusWith<KMIPResponse> swResponse = _sendRequest(_generateKMIPDecryptRequest(uid, iv, data));
     if (!swResponse.isOK()) {
         return swResponse.getStatus();
     }
@@ -260,8 +263,9 @@ SecureVector<uint8_t> KMIPService::_generateKMIPEncryptRequest(const std::string
 }
 
 SecureVector<uint8_t> KMIPService::_generateKMIPDecryptRequest(const std::string& uid,
+                                                               const std::vector<uint8_t>& iv,
                                                                const std::vector<uint8_t>& data) {
-    DecryptKMIPRequestParameters decryptRequestParams({std::begin(uid), std::end(uid)}, data);
+    DecryptKMIPRequestParameters decryptRequestParams({std::begin(uid), std::end(uid)}, iv, data);
     return encodeKMIPRequest(decryptRequestParams);
 }
 }  // namespace kmip
