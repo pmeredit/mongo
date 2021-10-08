@@ -9,6 +9,7 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/concurrency/write_conflict_exception.h"
 #include "mongo/db/cursor_server_params.h"
+#include "mongo/db/dbdirectclient.h"
 #include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/db/repl/initial_syncer_factory.h"
 #include "mongo/db/repl/repl_server_parameters_gen.h"
@@ -1112,9 +1113,35 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startDeletingOldStorageFilesPh
 }
 
 ExecutorFuture<void> FileCopyBasedInitialSyncer::_getListOfOldFilesToBeDeleted() {
-    // Files should be already clonned in '.initialSync' direcotry.
-    // TODO (SERVER-57826): Get list of deleted files and create
-    // INITIAL_SYNC_FILES_TO_DELETE.
+    // Files should be already cloned in '.initialSync' directory.
+    auto newOpCtx = cc().makeOperationContext();
+    DBDirectClient client(newOpCtx.get());
+    NamespaceString nss =
+        NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb.toString());
+
+    AggregateCommandRequest aggRequest(nss, {BSON("$backupCursor" << BSONObj())});
+    aggRequest.setWriteConcern(WriteConcernOptions());
+    auto cursor = uassertStatusOKWithContext(
+        DBClientCursor::fromAggregationRequest(
+            &client, aggRequest, false /* secondaryOk */, false /* useExhaust */),
+        "Failed to establish a cursor for aggregation");
+
+    // Traverse local backup cursor and write filenames to oldStorageFilesToBeDeleted.
+    while (cursor->more()) {
+        BSONObj doc = cursor->nextSafe();
+        // The first 'doc' read from the cursor contains metadata and no 'filename' field.
+        if (doc.hasField("filename")) {
+            auto absoluteFilename = doc.getField("filename").valueStringDataSafe();
+            if (!absoluteFilename.startsWith(storageGlobalParams.dbpath)) {
+                continue;
+            }
+            std::string filename =
+                _getPathRelativeTo(absoluteFilename.toString(), storageGlobalParams.dbpath);
+            _syncingFilesState.oldStorageFilesToBeDeleted.push_back(filename);
+        }
+    }
+
+    cursor->kill();
     return ExecutorFuture<void>(_syncingFilesState.executor);
 }
 

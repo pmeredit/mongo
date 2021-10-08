@@ -18,6 +18,7 @@ env.Library(
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/modules/enterprise/src/hot_backups/hot_backups',
         '$BUILD_DIR/mongo/db/repl/initial_syncer',
         '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core'
     ],
@@ -53,7 +54,9 @@ env.CppUnitTest(
         '$BUILD_DIR/mongo/db/repl/replmocks',
         '$BUILD_DIR/mongo/db/repl/sync_source_selector_mock',
         '$BUILD_DIR/mongo/db/repl/task_executor_mock',
-        '$BUILD_DIR/mongo/db/service_context_test_fixture',
+        '$BUILD_DIR/mongo/db/service_context_d_test_fixture',
+        '$BUILD_DIR/mongo/db/storage/backup_cursor_hooks',
+        '$BUILD_DIR/mongo/db/storage/devnull/storage_devnull_core',
         '$BUILD_DIR/mongo/dbtests/mocklib',
         '$BUILD_DIR/mongo/executor/thread_pool_task_executor_test_fixture',
         'file_copy_based_initial_syncer',

@@ -131,6 +131,14 @@ public:
         _syncingFilesState.lastSyncedOpTime = ts;
     }
 
+    /**
+     * Returns list of storage files fetched from the local backupCursor.
+     * For testing only.
+     */
+    const std::vector<std::string>& getOldStorageFilesToBeDeleted_forTest() {
+        return _syncingFilesState.oldStorageFilesToBeDeleted;
+    }
+
 private:
     /**
      * Open connection to the sync source for BackupFileCloners.

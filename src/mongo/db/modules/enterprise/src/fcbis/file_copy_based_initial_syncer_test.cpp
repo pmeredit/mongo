@@ -7,6 +7,7 @@
 #include "file_copy_based_initial_syncer.h"
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/db/client.h"
+#include "mongo/db/cursor_manager.h"
 #include "mongo/db/index_builds_coordinator_mongod.h"
 #include "mongo/db/query/cursor_response.h"
 #include "mongo/db/query/getmore_command_gen.h"
@@ -16,6 +17,7 @@
 #include "mongo/db/repl/optime.h"
 #include "mongo/db/repl/repl_server_parameters_gen.h"
 #include "mongo/db/repl/replication_consistency_markers_mock.h"
+#include "mongo/db/repl/replication_coordinator_mock.h"
 #include "mongo/db/repl/replication_process.h"
 #include "mongo/db/repl/replication_recovery_mock.h"
 #include "mongo/db/repl/storage_interface.h"
@@ -23,7 +25,10 @@
 #include "mongo/db/repl/sync_source_selector.h"
 #include "mongo/db/repl/sync_source_selector_mock.h"
 #include "mongo/db/repl/task_executor_mock.h"
+#include "mongo/db/service_context_d_test_fixture.h"
 #include "mongo/db/service_context_test_fixture.h"
+#include "mongo/db/storage/backup_cursor_hooks.h"
+#include "mongo/db/storage/devnull/devnull_kv_engine.h"
 #include "mongo/db/storage/storage_engine_mock.h"
 #include "mongo/dbtests/mock/mock_dbclient_connection.h"
 #include "mongo/dbtests/mock/mock_remote_db_server.h"
@@ -37,6 +42,7 @@
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/clock_source_mock.h"
 #include "mongo/util/concurrency/thread_pool.h"
+#include <boost/filesystem.hpp>
 
 namespace {
 
@@ -55,13 +61,11 @@ struct CollectionCloneInfo {
     Status status{ErrorCodes::NotYetInitialized, ""};
 };
 
-class FileCopyBasedInitialSyncerTest : public executor::ThreadPoolExecutorTest,
-                                       public SyncSourceSelector,
-                                       public ScopedGlobalServiceContextForTest {
+class FileCopyBasedInitialSyncerTest : public ServiceContextMongoDTest, public SyncSourceSelector {
 public:
-    FileCopyBasedInitialSyncerTest() : _threadClient(getGlobalServiceContext()) {}
+    FileCopyBasedInitialSyncerTest() : ServiceContextMongoDTest("devnull") {}
 
-    executor::ThreadPoolMock::Options makeThreadPoolMockOptions() const override;
+    executor::ThreadPoolMock::Options makeThreadPoolMockOptions() const;
 
     /**
      * clear/reset state
@@ -107,6 +111,14 @@ public:
         return *_storageInterface;
     }
 
+    executor::ThreadPoolTaskExecutor& getExecutor() {
+        return *_threadPoolExecutor;
+    }
+
+    executor::NetworkInterfaceMock* getNet() {
+        return _net;
+    }
+
 protected:
     struct StorageInterfaceResults {
         bool createOplogCalled = false;
@@ -124,7 +136,12 @@ protected:
     StorageInterfaceResults _storageInterfaceWorkDone;
 
     void setUp() override {
-        executor::ThreadPoolExecutorTest::setUp();
+        ServiceContextMongoDTest::setUp();
+        auto network = std::make_unique<executor::NetworkInterfaceMock>();
+        _net = network.get();
+        _threadPoolExecutor =
+            makeSharedThreadPoolTestExecutor(std::move(network), makeThreadPoolMockOptions());
+        _threadPoolExecutor->startup();
 
         _storageInterface = std::make_unique<StorageInterfaceMock>();
         _storageInterface->createOplogFn = [this](OperationContext* opCtx,
@@ -197,6 +214,15 @@ protected:
         auto* service = getGlobalServiceContext();
         service->setFastClockSource(std::make_unique<ClockSourceMock>());
         service->setPreciseClockSource(std::make_unique<ClockSourceMock>());
+
+        auto cursorManager = CursorManager::get(service);
+        cursorManager->setPreciseClockSource(service->getPreciseClockSource());
+
+        repl::StorageInterface::set(service, std::make_unique<repl::StorageInterfaceMock>());
+        ReplicationCoordinator::set(service, std::make_unique<ReplicationCoordinatorMock>(service));
+        BackupCursorHooks::initialize(service, service->getStorageEngine());
+        repl::createOplog(cc().makeOperationContext().get());
+
         ThreadPool::Options dbThreadPoolOptions;
         dbThreadPoolOptions.poolName = "dbthread";
         dbThreadPoolOptions.minThreads = 1U;
@@ -207,17 +233,11 @@ protected:
         _dbWorkThreadPool = std::make_unique<ThreadPool>(dbThreadPoolOptions);
         _dbWorkThreadPool->startup();
 
-        // Required by CollectionCloner::listIndexesStage() and IndexBuildsCoordinator.
-        service->setStorageEngine(std::make_unique<StorageEngineMock>());
-        IndexBuildsCoordinator::set(service, std::make_unique<IndexBuildsCoordinatorMongod>());
-
         _target = HostAndPort{"localhost:12346"};
         _mockServer = std::make_unique<MockRemoteDBServer>(_target.toString());
         _mock = std::make_unique<MockNetwork>(getNet());
 
         reset();
-
-        launchExecutorThread();
 
         _replicationProcess = std::make_unique<ReplicationProcess>(
             _storageInterface.get(),
@@ -239,14 +259,6 @@ protected:
 
         _options = options;
 
-        ThreadPool::Options threadPoolOptions;
-        threadPoolOptions.poolName = "replication";
-        threadPoolOptions.minThreads = 1U;
-        threadPoolOptions.maxThreads = 1U;
-        threadPoolOptions.onCreateThread = [](const std::string& threadName) {
-            Client::initThread(threadName.c_str());
-        };
-
         auto dataReplicatorExternalState = std::make_unique<DataReplicatorExternalStateMock>();
         dataReplicatorExternalState->taskExecutor = _executorProxy;
         dataReplicatorExternalState->currentTerm = 1LL;
@@ -264,7 +276,8 @@ protected:
         }
         _externalState = dataReplicatorExternalState.get();
 
-        _lastApplied = getDetectableErrorStatus();
+        storageGlobalParams.engine = "wiredTiger";
+        _lastApplied = {ErrorCodes::InternalError, "Initial test error status"};
         _onCompletion = [this](const StatusWith<OpTimeAndWallTime>& lastApplied) {
             _lastApplied = lastApplied;
         };
@@ -293,9 +306,7 @@ protected:
             ASSERT_OK(exceptionToStatus());
         }
 
-        _tempDir = std::make_unique<unittest::TempDir>("FileCopyBasedInitialSyncerTest");
-        storageGlobalParams.dbpath = _tempDir->path();
-        cursorDataMock.dbpath = boost::filesystem::path(_tempDir->path());
+        cursorDataMock.dbpath = boost::filesystem::path(storageGlobalParams.dbpath);
         cursorDataMock.currentFileMover =
             std::make_unique<InitialSyncFileMover>(cursorDataMock.dbpath.string());
     }
@@ -316,7 +327,6 @@ protected:
         _replicationProcess.reset();
         _storageInterface.reset();
         _mock.reset();
-        _tempDir.reset();
     }
 
     std::shared_ptr<TaskExecutorMock> _executorProxy;
@@ -333,8 +343,9 @@ protected:
     std::unique_ptr<ReplicationProcess> _replicationProcess;
     std::unique_ptr<ThreadPool> _dbWorkThreadPool;
     std::map<NamespaceString, CollectionCloneInfo> _collections;
-    // TODO (SERVER-57826): Remove '_tempDir' after start inherting 'ServiceContextMongoDTest'.
-    std::unique_ptr<unittest::TempDir> _tempDir;
+
+    executor::NetworkInterfaceMock* _net = nullptr;
+    std::shared_ptr<executor::ThreadPoolTaskExecutor> _threadPoolExecutor;
 
     StatusWith<OpTimeAndWallTime> _lastApplied = Status(ErrorCodes::NotYetInitialized, "");
     InitialSyncerInterface::OnCompletionFn _onCompletion;
@@ -708,6 +719,18 @@ protected:
         _mockServer->setCommandReply("aggregate", response);
     }
 
+    void populateBackupFiles(OperationContext* opCtx, const std::vector<std::string>& filenames) {
+        std::vector<StorageEngine::BackupBlock> backupBlocks;
+        for (const auto filename : filenames) {
+            StorageEngine::BackupBlock file = {storageGlobalParams.dbpath + filename};
+            backupBlocks.push_back(file);
+        }
+
+        auto devNullEngine = checked_cast<DevNullKVEngine*>(
+            opCtx->getClient()->getServiceContext()->getStorageEngine()->getEngine());
+        devNullEngine->setBackupBlocks_forTest({backupBlocks});
+    }
+
     void mockBackupFileData(const std::vector<std::string>& backupFileData) {
         std::vector<StatusWith<BSONObj>> responses;
         for (const auto& data : backupFileData) {
@@ -739,7 +762,6 @@ protected:
 private:
     DataReplicatorExternalStateMock* _externalState;
     std::shared_ptr<FileCopyBasedInitialSyncer> _fileCopyBasedInitialSyncer;
-    ThreadClient _threadClient;
     bool _executorThreadShutdownComplete = false;
     unittest::MinimumLoggedSeverityGuard replLogSeverityGuard{
         logv2::LogComponent::kReplicationInitialSync, logv2::LogSeverity::Debug(3)};
@@ -1748,6 +1770,56 @@ TEST_F(FileCopyBasedInitialSyncerTest, CleanUpLocalCollectionsAfterSync) {
         _replicationProcess->getConsistencyMarkers()->getInitialSyncId(opCtx.get());
 
     ASSERT_FALSE(initialSyncIdAfter.isEmpty());
+}
+
+TEST_F(FileCopyBasedInitialSyncerTest,
+       VerifyEmptyListOfStorageFilesToBeDeletedIsCorrectlyRecorded) {
+    auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
+    auto opCtx = makeOpCtx();
+
+    // Add empty list of files to devNullEngine for the local backup cursor.
+    std::vector<std::string> backupFilenames = {};
+    populateBackupFiles(opCtx.get(), backupFilenames);
+
+    _syncSourceSelector->setChooseNewSyncSourceResult_forTest(HostAndPort("localhost", 12345));
+    globalFailPointRegistry().find("fCBISSkipSyncingFilesPhase")->setMode(FailPoint::alwaysOn, 0);
+    ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+
+    expectSuccessfulSyncSourceValidation();
+
+    fileCopyBasedInitialSyncer->join();
+    ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest(),
+              Status::OK());
+
+    // There should be no filenames writen to _syncingFilesState.
+    auto result = fileCopyBasedInitialSyncer->getOldStorageFilesToBeDeleted_forTest();
+    ASSERT_EQUALS(0, result.size());
+}
+
+TEST_F(FileCopyBasedInitialSyncerTest, VerifyStorageFilesToBeDeletedAreCorrectlyRecorded) {
+    auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
+    auto opCtx = makeOpCtx();
+
+    // Add files to devNullEngine for the local backup cursor to read.
+    std::vector<std::string> backupFilenames = {"filename1.wt", "filename2.wt", "filename3.wt"};
+    populateBackupFiles(opCtx.get(), backupFilenames);
+
+    _syncSourceSelector->setChooseNewSyncSourceResult_forTest(HostAndPort("localhost", 12345));
+    globalFailPointRegistry().find("fCBISSkipSyncingFilesPhase")->setMode(FailPoint::alwaysOn, 0);
+    ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+
+    expectSuccessfulSyncSourceValidation();
+
+    fileCopyBasedInitialSyncer->join();
+    ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest(),
+              Status::OK());
+
+    // Verify the list of storage files were written to _syncingFilesState.
+    auto result = fileCopyBasedInitialSyncer->getOldStorageFilesToBeDeleted_forTest();
+    ASSERT_EQUALS(backupFilenames.size(), result.size());
+    for (auto filename : backupFilenames) {
+        ASSERT(std::find(result.begin(), result.end(), filename) != result.end());
+    }
 }
 
 }  // namespace
