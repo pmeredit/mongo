@@ -264,7 +264,14 @@ class AuditSpooler {
     assertNoNewEntries(atype = undefined, paramPartial = undefined) {
         // We want lines to return false. True means there is a match which we do not want.
         const log = this.getAllLines().slice(this._auditLine).filter(function(line) {
-            let parsedLine = JSON.parse(line);
+            let parsedLine;
+            try {
+                parsedLine = JSON.parse(line);
+            } catch (err) {
+                jsTest.log(line);
+                throw err;
+            }
+
             if (atype !== undefined && parsedLine.atype !== atype) {
                 return false;
             }
