@@ -236,6 +236,7 @@ env.CppUnitTest(
         'audit_log_compress_base64_test.cpp',
         'audit_log_header_test.cpp',
         'audit_key_manager_test.cpp',
+        'audit_sequence_id_test.cpp',
         'logger/rotatable_file_writer_test.cpp',
     ],
     LIBDEPS=[

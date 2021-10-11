@@ -7,6 +7,7 @@
 #include "audit_enc_comp_manager.h"
 #include "audit_file_header.h"
 #include "audit_key_manager_local.h"
+#include "audit_sequence_id.h"
 
 #include "mongo/base/error_extra_info.h"
 #include "mongo/base/string_data.h"
@@ -143,10 +144,9 @@ std::size_t AuditEncryptionCompressionManager::_encrypt(const Date_t& ts,
             ctLayout.canFitPlaintext(input.length()));
 
     // increment and get the IV
-    crypto::aesGenerateIV(_encryptKey.get(),
-                          EncryptedAuditLayout::header_type::kMode,
-                          ctLayout.getIV(),
-                          ctLayout.getIVSize());
+    AuditSequenceID iv(_encryptKey->getInitializationCount(),
+                       _encryptKey->getAndIncrementInvocationCount());
+    iv.serialize({ctLayout.getIV(), ctLayout.getIVSize()});
 
     // create encryptor & set AAD
     auto encryptor = uassertStatusOK(crypto::SymmetricEncryptor::create(
