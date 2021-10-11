@@ -143,12 +143,15 @@ size_t BackupFileCloner::getFileOffset() {
 }
 
 void BackupFileCloner::runQuery() {
-    auto backupFileStage =
-        BSON("$backupFile" << _backupId << "file" << _remoteFileName << "byteOffset"
-                           << static_cast<int64_t>(getFileOffset()));
+    auto backupFileStage = BSON(
+        "$_backupFile" << BSON("backupId" << _backupId << "file" << _remoteFileName << "byteOffset"
+                                          << static_cast<int64_t>(getFileOffset())));
     AggregateCommandRequest aggRequest(
         NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
         {backupFileStage});
+    aggRequest.setReadConcern(ReadConcernArgs::kImplicitDefault);
+    aggRequest.setWriteConcern(WriteConcernOptions());
+
     LOGV2_DEBUG(5781702,
                 2,
                 "Backup file cloner running aggregation",
