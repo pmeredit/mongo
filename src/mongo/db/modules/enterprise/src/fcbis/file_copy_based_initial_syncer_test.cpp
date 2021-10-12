@@ -1791,9 +1791,11 @@ TEST_F(FileCopyBasedInitialSyncerTest,
     ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest(),
               Status::OK());
 
-    // There should be no filenames writen to _syncingFilesState.
+    // The only filenames in '_syncingFilesState' should be the fixed-name files that are not
+    // returned by the backup cursor. These three files are explicitly added to the
+    // 'oldStorageFilesToBeDeleted' vector.
     auto result = fileCopyBasedInitialSyncer->getOldStorageFilesToBeDeleted_forTest();
-    ASSERT_EQUALS(0, result.size());
+    ASSERT_EQUALS(3, result.size());
 }
 
 TEST_F(FileCopyBasedInitialSyncerTest, VerifyStorageFilesToBeDeletedAreCorrectlyRecorded) {
@@ -1816,7 +1818,10 @@ TEST_F(FileCopyBasedInitialSyncerTest, VerifyStorageFilesToBeDeletedAreCorrectly
 
     // Verify the list of storage files were written to _syncingFilesState.
     auto result = fileCopyBasedInitialSyncer->getOldStorageFilesToBeDeleted_forTest();
-    ASSERT_EQUALS(backupFilenames.size(), result.size());
+    // We add 3 to the size of 'backupFilenames' to account for the three fixed-name files
+    // explicitly added to the 'oldStorageFilesToBeDeleted' vector. These files are not returned by
+    // the backup cursor.
+    ASSERT_EQUALS(backupFilenames.size() + 3, result.size());
     for (auto filename : backupFilenames) {
         ASSERT(std::find(result.begin(), result.end(), filename) != result.end());
     }

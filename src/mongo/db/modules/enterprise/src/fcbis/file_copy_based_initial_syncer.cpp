@@ -1141,6 +1141,15 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_getListOfOldFilesToBeDeleted()
     }
 
     cursor->kill();
+
+    // These fixed-name files exist in the dbpath and are not returned by the backup cursor.
+    // Instead, we must explicitly add them to the 'oldStorageFilesToBeDeleted' vector to ensure
+    // their deletion.
+    _syncingFilesState.oldStorageFilesToBeDeleted.insert(
+        _syncingFilesState.oldStorageFilesToBeDeleted.end(),
+        {"WiredTiger.wt", "WiredTiger.turtle", "storage.bson"});
+
+
     return ExecutorFuture<void>(_syncingFilesState.executor);
 }
 
