@@ -721,7 +721,7 @@ protected:
 
     void populateBackupFiles(OperationContext* opCtx, const std::vector<std::string>& filenames) {
         std::vector<StorageEngine::BackupBlock> backupBlocks;
-        for (const auto filename : filenames) {
+        for (const auto& filename : filenames) {
             StorageEngine::BackupBlock file = {storageGlobalParams.dbpath + filename};
             backupBlocks.push_back(file);
         }
