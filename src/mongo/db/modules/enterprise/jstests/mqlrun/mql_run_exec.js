@@ -13,6 +13,10 @@
 function mqlrunExec(inputFileName, pipeline, {outputBson = false} = {}) {
     clearRawMongoProgramOutput();
 
+    // Temp directory for mqlrun.
+    const tempDir = MongoRunner.dataPath + '_mqlrun';
+    resetDbpath(tempDir);
+
     // Convert 'pipeline' to a JSON string so that it can be passed to mqlrun as command line
     // argument. On Windows, the shell isn't happy with double quotes, so we replace them with
     // single quotes.
@@ -20,11 +24,16 @@ function mqlrunExec(inputFileName, pipeline, {outputBson = false} = {}) {
 
     const mqlrunExecutableName = _isWindows() ? "mqlrun.exe" : "mqlrun";
     const outputFormatFlag = outputBson ? "-b" : "-j";
-    assert.eq(
-        0,
-        runMongoProgram(
-            mqlrunExecutableName, outputFormatFlag, "-e", stringifiedPipeline, "-f", inputFileName),
-        "mqlrun exited with non-ok status");
+    assert.eq(0,
+              runMongoProgram(mqlrunExecutableName,
+                              outputFormatFlag,
+                              "-e",
+                              stringifiedPipeline,
+                              "-t",
+                              tempDir,
+                              "-f",
+                              inputFileName),
+              "mqlrun exited with non-ok status");
 
     if (outputBson) {
         return null;
