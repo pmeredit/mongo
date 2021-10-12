@@ -105,12 +105,20 @@ function containsMongotCursor(logLine) {
 }
 const mongotCursorLog = log.filter(containsMongotCursor);
 assert.eq(mongotCursorLog.length, 3);
-let expectedRegex = RegExp('mongot: \{ cursorid: 123, timeWaitingMillis: [0-9]* \}');
+let expectedRegex =
+    RegExp('mongot: \{ cursorid: 123, timeWaitingMillis: [0-9]*,batchNum:([1-3])\}');
 if (isJsonLogFormat) {
-    expectedRegex = /"mongot":{"cursorid":123,"timeWaitingMillis":[0-9]+}/;
+    expectedRegex = /"mongot":{"cursorid":123,"timeWaitingMillis":[0-9]+,"batchNum":([1-3])}/;
 }
+let expectedBatchNum = 1;
 mongotCursorLog.forEach(function(element) {
-    assert(expectedRegex.test(element), element + " - regex - " + expectedRegex);
+    let regexMatch = expectedRegex.exec(element);
+    assert.eq(regexMatch.length, 2, element + " - regex - " + expectedRegex);
+    // Take advantage of being able to compare strings to ints.
+    assert.eq(regexMatch[1],
+              expectedBatchNum,
+              "Expected batch number " + expectedBatchNum + " but found " + regexMatch[1]);
+    expectedBatchNum++;
 });
 
 const profilerLog = db.system.profile.find({"mongot": {$exists: true}}).toArray();

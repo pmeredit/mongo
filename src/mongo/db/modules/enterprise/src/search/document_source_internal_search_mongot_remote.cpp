@@ -126,6 +126,7 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchMongotRemote::doGetNex
     } else {
         opDebug.msWaitingForMongot = durationCount<Milliseconds>(_cursor->resetWaitingTime());
     }
+    opDebug.mongotBatchNum = _cursor->getBatchNum();
 
     // Meta variables will be constant across the query and only need to be set once.
     if (!pExpCtx->variables.hasConstantValue(Variables::kSearchMetaId) && _cursor &&
