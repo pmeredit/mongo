@@ -31,6 +31,12 @@ namespace repl {
 // Failpoint which causes the file copy based initial sync to hang after opening the backupCursor.
 MONGO_FAIL_POINT_DEFINE(fCBISHangAfterOpeningBackupCursor);
 
+// Failpoint which causes the file copy based initial sync to hang after extending the backupCursor.
+MONGO_FAIL_POINT_DEFINE(fCBISHangAfterExtendingBackupCursor);
+
+// Failpoint which forces the file copy based initial sync to extend the backupCursor.
+MONGO_FAIL_POINT_DEFINE(fCBISForceExtendBackupCursor);
+
 // Failpoint which causes the file copy based initial sync to skip the syncing files phase.
 MONGO_FAIL_POINT_DEFINE(fCBISSkipSyncingFilesPhase);
 
@@ -847,6 +853,12 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFromSyncSourceCursor() {
         .then([this, self = shared_from_this(), returnedFiles] {
             stdx::lock_guard<Latch> lock(_mutex);
             _syncingFilesState.lastSyncedOpTime = _syncingFilesState.lastAppliedOpTimeOnSyncSrc;
+            return _hangAsyncIfFailPointEnabled("fCBISHangAfterExtendingBackupCursor",
+                                                _syncingFilesState.executor,
+                                                _syncingFilesState.token);
+        })
+        .then([this, self = shared_from_this(), returnedFiles] {
+            stdx::lock_guard<Latch> lock(_mutex);
             return _cloneFiles(returnedFiles);
         });
 }
@@ -905,7 +917,8 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startSyncingFiles(
             auto lagInSecs =
                 static_cast<int>(_syncingFilesState.lastAppliedOpTimeOnSyncSrc.getSecs() -
                                  _syncingFilesState.lastSyncedOpTime.getSecs());
-            if (lagInSecs > fileBasedInitialSyncMaxLagSec) {
+            if (lagInSecs > fileBasedInitialSyncMaxLagSec ||
+                MONGO_unlikely(fCBISForceExtendBackupCursor.shouldFail())) {
                 if (++_syncingFilesState.fileBasedInitialSyncCycle <=
                     fileBasedInitialSyncMaxCyclesWithoutProgress) {
                     // We need to extend the backupCursor to get the updates till
