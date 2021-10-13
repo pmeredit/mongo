@@ -84,6 +84,8 @@ MONGO_FAIL_POINT_DEFINE(fCBISHangAfterAttemptingGetLastApplied);
 // Failpoint which causes the file copy based initial sync function to hang before finishing.
 MONGO_FAIL_POINT_DEFINE(fCBISHangBeforeFinish);
 
+MONGO_FAIL_POINT_DEFINE(fCBISHangAfterStartingFileClone);
+
 static constexpr Seconds kDenylistDuration(60);
 
 FileCopyBasedInitialSyncer::FileCopyBasedInitialSyncer(
@@ -154,13 +156,13 @@ Status FileCopyBasedInitialSyncer::startup(OperationContext* opCtx,
 
     _initialSyncAttempt = 0;
     _initialSyncMaxAttempts = initialSyncMaxAttempts;
-    _source = CancellationSource();
+    _initialSyncCancellationSource = CancellationSource();
     _stats.initialSyncStart = _exec->now();
 
     _createOplogIfNeeded(opCtx);
 
     ExecutorFuture<void> startInitialSyncAttemptFuture =
-        _startInitialSyncAttempt(lock, _exec, _source.token())
+        _startInitialSyncAttempt(lock, _exec, _initialSyncCancellationSource.token())
             .onCompletion([this](StatusWith<OpTimeAndWallTime> lastApplied) {
                 _finishCallback(lastApplied);
                 return lastApplied.getStatus();
@@ -224,9 +226,11 @@ ExecutorFuture<OpTimeAndWallTime> FileCopyBasedInitialSyncer::_startInitialSyncA
 
     return AsyncTry([this, self = shared_from_this(), executor, token] {
                stdx::lock_guard<Latch> lock(_mutex);
-               return _selectAndValidateSyncSource(lock, executor, token)
-                   .then([this, self = shared_from_this(), executor, token](HostAndPort) {
-                       return _startSyncingFiles(executor, token);
+               _attemptCancellationSource = CancellationSource(token);
+               return _selectAndValidateSyncSource(
+                          lock, executor, _attemptCancellationSource.token())
+                   .then([this, self = shared_from_this(), executor](HostAndPort) {
+                       return _startSyncingFiles(executor, _attemptCancellationSource.token());
                    })
                    .then([this, self = shared_from_this()] {
                        return _prepareStorageDirectoriesForMovingPhase();
@@ -1149,12 +1153,15 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFiles(
                }
                _syncingFilesState.executor->signalEvent(startCloner);
                return std::move(startClonerFuture).then([this, self = shared_from_this()] {
-                   stdx::lock_guard lock(_mutex);
-                   _syncingFilesState.backupFileClonerStats.emplace_back(
-                       _syncingFilesState.currentBackupFileCloner->getStats());
-                   _stats.copiedFileSize +=
-                       _syncingFilesState.currentBackupFileCloner->getStats().bytesCopied;
-                   _syncingFilesState.currentBackupFileCloner = nullptr;
+                   {
+                       stdx::lock_guard lock(_mutex);
+                       _syncingFilesState.backupFileClonerStats.emplace_back(
+                           _syncingFilesState.currentBackupFileCloner->getStats());
+                       _stats.copiedFileSize +=
+                           _syncingFilesState.currentBackupFileCloner->getStats().bytesCopied;
+                       _syncingFilesState.currentBackupFileCloner = nullptr;
+                   }
+                   fCBISHangAfterStartingFileClone.pauseWhileSet();
                    return false;  // Continue the loop.
                });
            })
@@ -1404,6 +1411,7 @@ Status FileCopyBasedInitialSyncer::shutdown() {
                 return Status::OK();
         }
         _cancelRemainingWork(lock);
+        _initialSyncCancellationSource.cancel();
     }
 
     if (_syncingFilesState.backupCursorKeepAliveFuture) {
@@ -1482,7 +1490,7 @@ void FileCopyBasedInitialSyncer::_switchStorageTo(
 
 void FileCopyBasedInitialSyncer::_cancelRemainingWork(WithLock) {
     // Cancel the cancellation source to stop the work being run on the executor.
-    _source.cancel();
+    _attemptCancellationSource.cancel();
 
     _killBackupCursor();
 

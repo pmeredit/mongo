@@ -421,9 +421,12 @@ private:
 
     OpTime _lastFetched;  // (MX)
 
-    // CancellationSource used on stepdown/shutdown to cancel work in all running instances of a
-    // PrimaryOnlyService.
-    CancellationSource _source;
+    // CancellationSource used on stepdown/shutdown to cancel work in all running instances of an
+    // initial sync.
+    CancellationSource _initialSyncCancellationSource;  // (MX)
+
+    // CancellationSource used to cancel work in one attempt of a initial sync.
+    CancellationSource _attemptCancellationSource;  // (MX)
 
     // Used to create the DBClientConnection for the cloners
     CreateClientFn _createClientFn;
