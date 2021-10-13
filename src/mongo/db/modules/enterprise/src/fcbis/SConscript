@@ -18,8 +18,12 @@ env.Library(
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/catalog/catalog_control',
         '$BUILD_DIR/mongo/db/modules/enterprise/src/hot_backups/hot_backups',
         '$BUILD_DIR/mongo/db/repl/initial_syncer',
+        "$BUILD_DIR/mongo/db/service_context",
+        "$BUILD_DIR/mongo/db/startup_recovery",
+        '$BUILD_DIR/mongo/db/storage/storage_engine_common',
         '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core'
     ],
     LIBDEPS_PRIVATE=[

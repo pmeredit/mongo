@@ -25,6 +25,9 @@ public:
     static constexpr StringData kFilesToDeleteMarker = "INITIAL_SYNC_FILES_TO_DELETE"_sd;
     static constexpr StringData kFilesToDeleteTmpMarker = "INITIAL_SYNC_FILES_TO_DELETE.tmp"_sd;
     static constexpr StringData kInitialSyncDir = ".initialsync"_sd;
+    // Used as a temporary directory where the storage engine switches inside while moving the
+    // files from '.initialsync' to dbpath.
+    static constexpr StringData kInitialSyncDummyDir = ".dummy"_sd;
     InitialSyncFileMover(const std::string& dbpath);
 
     /**

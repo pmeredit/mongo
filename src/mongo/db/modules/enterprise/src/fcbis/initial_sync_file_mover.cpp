@@ -121,6 +121,10 @@ std::vector<std::string> InitialSyncFileMover::createListOfFilesToMove() {
          dirIter != boost::filesystem::directory_iterator();
          dirIter++) {
         auto fileToMove = boost::filesystem::relative(dirIter->path(), initialSyncDir);
+        if (fileToMove.string() == kInitialSyncDummyDir) {
+            // Skip the dummy directory.
+            continue;
+        }
         result.emplace_back(fileToMove.string());
     }
     return result;

@@ -15,6 +15,8 @@
 #include "mongo/db/repl/repl_server_parameters_gen.h"
 #include "mongo/db/repl/replication_process.h"
 #include "mongo/db/repl/storage_interface.h"
+#include "mongo/db/service_context.h"
+#include "mongo/db/startup_recovery.h"
 #include "mongo/executor/scoped_task_executor.h"
 #include "mongo/executor/task_executor.h"
 #include "mongo/util/concurrency/thread_pool.h"
@@ -199,14 +201,26 @@ private:
                                             const CancellationToken& token);
 
     /**
-     * Starts deleting old storage files phase.
-     *  1- Get list of files to be deleted from local cursor.
-     *  2- Grab global lock.
-     *  3- Switch storage engines.
-     *  4- Clean up local DBs.
-     *  5- Delete the list of the files.
+     * Prepares the storage directories (dbpath & .initialsync) for moving phase.
+     *  1- Get list of files to be deleted from dbpath using local cursor.
+     *  2- Grab the global lock.
+     *  3- Switch storage engine to '.initialsync'.
+     *  4- Clean up local DBs in '.initialsync'.
+     *  5- Switch storage engine to '.initialsync/.dummy' temporarily to be able to move files.
+     *  5- Delete the list of the files from dbpath.
      */
-    ExecutorFuture<void> _startDeletingOldStorageFilesPhase();
+    ExecutorFuture<void> _prepareStorageDirectoriesForMovingPhase();
+
+    /**
+     * Shuts down current storage engine and reinitializes it in 'dbpath/relativeToDbPath'.
+     * It will close the catalog before shutting down the storage engine if 'closeCatalog' is true.
+     * It will perform startup recovery and open the catalog if the value of 'startupRecoveryMode'
+     * exists.
+     */
+    void _switchStorageTo(
+        boost::optional<std::string> relativeToDbPath,
+        bool closeCatalog,
+        boost::optional<startup_recovery::StartupRecoveryMode> startupRecoveryMode);
 
     /**
      * Gets the list of the old storage files that will be deleted in dbpath.
@@ -402,6 +416,9 @@ private:
         // List of relative paths to the old storage files in dbbath that will be deleted.
         std::vector<std::string> oldStorageFilesToBeDeleted;
         std::unique_ptr<InitialSyncFileMover> currentFileMover;
+        ServiceContext::UniqueOperationContext opCtx;
+        std::unique_ptr<Lock::GlobalLock> globalLock;
+        std::string originalDbPath;
     } _syncingFilesState;
 };
 

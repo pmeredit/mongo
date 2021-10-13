@@ -302,6 +302,9 @@ protected:
             globalFailPointRegistry()
                 .find("fCBISSkipMovingFilesPhase")
                 ->setMode(FailPoint::alwaysOn);
+            globalFailPointRegistry()
+                .find("fCBISSkipSwitchingStorage")
+                ->setMode(FailPoint::alwaysOn);
         } catch (...) {
             ASSERT_OK(exceptionToStatus());
         }
@@ -471,6 +474,28 @@ protected:
             for (const auto& fileRelativePath : files) {
                 writeFile(
                     fileRelativePath, "_DATA_" + fileRelativePath + "_DATA_", insideInitialSyncDir);
+            }
+        }
+
+        void createInitialSyncDummyDirectory() {
+            boost::filesystem::path filepath(dbpath);
+            filepath.append(InitialSyncFileMover::kInitialSyncDir.toString());
+            filepath.append(InitialSyncFileMover::kInitialSyncDummyDir.toString());
+            filepath.append("dummyFile");
+            boost::filesystem::create_directories(filepath.parent_path());
+            std::ofstream writer(filepath.native());
+            writer << "DummyFile_DATA";
+        }
+
+        void validateInitialSyncDummyDirectoryExistence(bool shouldExist) {
+            boost::filesystem::path fileRelativePath(
+                InitialSyncFileMover::kInitialSyncDummyDir.toString());
+            fileRelativePath.append("dummyFile");
+            if (!shouldExist) {
+                assertNotExist(fileRelativePath.string(), true /* insideInitialSyncDir */);
+            } else {
+                assertExistsWithContents(
+                    fileRelativePath.string(), "DummyFile_DATA", true /* insideInitialSyncDir */);
             }
         }
 
@@ -1677,6 +1702,9 @@ TEST_F(FileCopyBasedInitialSyncerTest, MoveNewFilesPhase) {
     // Add new storage files that will be moved.
     cursorDataMock.createStorageFiles(true /*insideInitialSyncDir*/);
     cursorDataMock.validateFilesExistence(true /*shouldExist*/, true /*insideInitialSyncDir*/);
+    // Create initial sync dummy dir.
+    cursorDataMock.createInitialSyncDummyDirectory();
+    cursorDataMock.validateInitialSyncDummyDirectoryExistence(true /*shouldExist*/);
 
     // Advance to the step of deleting the delete marker.
     auto timesEnteredFailPoint =
@@ -1710,6 +1738,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, MoveNewFilesPhase) {
                                            InitialSyncFileMover::kFilesToDeleteMarker);
     // Check files are in initialSync directory.
     cursorDataMock.validateFilesExistence(true /*shouldExist*/, true /*insideInitialSyncDir*/);
+    cursorDataMock.validateInitialSyncDummyDirectoryExistence(true /*shouldExist*/);
 
     timesEnteredFailPoint = hangAfterMovingTheNewFilesFailPoint->setMode(FailPoint::alwaysOn);
     hangBeforeMovingTheNewFilesFailPoint->setMode(FailPoint::off);
@@ -1726,6 +1755,8 @@ TEST_F(FileCopyBasedInitialSyncerTest, MoveNewFilesPhase) {
     cursorDataMock.validateFilesExistence(false /*shouldExist*/, true /*insideInitialSyncDir*/);
     // Initial sync dir should exist.
     cursorDataMock.validateInitialSyncDirExistence(true);
+    // Initial sync dummy dir should exist.
+    cursorDataMock.validateInitialSyncDummyDirectoryExistence(true /*shouldExist*/);
 
     // Let initial sync finish.
     hangAfterMovingTheNewFilesFailPoint->setMode(FailPoint::off);
