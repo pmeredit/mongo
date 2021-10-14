@@ -49,6 +49,9 @@ structs:
             encryptedKey:
                 description: "Encrypted log encryption key"
                 type: bindata_generic
+            MAC:
+                description: "Message authentication code using GCM with timestamp and version as AAD"
+                type: string
             auditRecordType:
                 description: "Type of record log (e.g. 'header')"
                 type: string

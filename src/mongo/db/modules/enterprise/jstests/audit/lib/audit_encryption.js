@@ -17,6 +17,7 @@ function isValidEncryptedAuditLogHeader(json) {
             "compressionMode",
             "keyStoreIdentifier",
             "encryptedKey",
+            "MAC",
             "auditRecordType"
         ];
 

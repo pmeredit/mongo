@@ -34,6 +34,11 @@ std::vector<std::uint8_t> getTimestampAAD(const Date_t& ts) {
     DataView(reinterpret_cast<char*>(output.data())).write(tagLittleEndian(aad));
     return output;
 }
+
+std::size_t getRequiredEncryptBufferSize(ConstDataRange toEncrypt) {
+    return ConstEncryptedAuditLayout::getHeaderSize() +
+        ConstEncryptedAuditLayout::expectedCiphertextLen(toEncrypt.length());
+}
 }  // namespace
 
 AuditEncryptionCompressionManager::AuditEncryptionCompressionManager(
@@ -59,12 +64,21 @@ AuditEncryptionCompressionManager::AuditEncryptionCompressionManager(
 
 BSONObj AuditEncryptionCompressionManager::encodeFileHeader() const {
     constexpr auto kNoCompress = "none"_sd;
+    Date_t ts = Date_t::now();
+
+    // generate the MAC
+    auto aad = _fileHeader->generateFileHeaderAuthenticatedData(ts, AUDIT_ENCRYPTION_VERSION);
+    auto mac =
+        encrypt(ConstDataRange(nullptr, nullptr), ConstDataRange(aad.objdata(), aad.objsize()));
+    auto encodedMac = base64::encode(mac.data(), mac.size());
+
     BSONObj toWriteFileHeader =
-        _fileHeader->generateFileHeader(AUDIT_ENCRYPTION_VERSION,
+        _fileHeader->generateFileHeader(ts,
+                                        AUDIT_ENCRYPTION_VERSION,
                                         _compress ? _zstdCompressor->getName() : kNoCompress,
+                                        encodedMac,
                                         _keyManager->getKeyStoreID(),
                                         _wrappedKey);
-
     return toWriteFileHeader;
 }
 
@@ -133,7 +147,7 @@ BSONObj AuditEncryptionCompressionManager::encryptAndEncode(ConstDataRange toEnc
     return builder.obj();
 }
 
-std::size_t AuditEncryptionCompressionManager::_encrypt(const Date_t& ts,
+std::size_t AuditEncryptionCompressionManager::_encrypt(ConstDataRange aad,
                                                         ConstDataRange input,
                                                         DataRange output) const {
     EncryptedAuditLayout ctLayout(const_cast<std::uint8_t*>(output.data<std::uint8_t>()),
@@ -152,12 +166,20 @@ std::size_t AuditEncryptionCompressionManager::_encrypt(const Date_t& ts,
     auto encryptor = uassertStatusOK(crypto::SymmetricEncryptor::create(
         *_encryptKey, crypto::aesMode::gcm, ctLayout.getIV(), ctLayout.getIVSize()));
 
-    auto aad = getTimestampAAD(ts);
-    uassertStatusOK(encryptor->addAuthenticatedData(aad.data(), aad.size()));
+    if (aad.length()) {
+        uassertStatusOK(encryptor->addAuthenticatedData(aad.data<uint8_t>(), aad.length()));
+    }
 
     // do the encrypt & finalize
-    auto ctLen = uassertStatusOK(encryptor->update(
-        input.data<std::uint8_t>(), input.length(), ctLayout.getData(), ctLayout.getDataSize()));
+    size_t ctLen = 0;
+    if (input.length()) {
+        invariant(input.data());
+        ctLen = uassertStatusOK(encryptor->update(input.data<std::uint8_t>(),
+                                                  input.length(),
+                                                  ctLayout.getData(),
+                                                  ctLayout.getDataSize()));
+    }
+
     ctLen += uassertStatusOK(
         encryptor->finalize(ctLayout.getData() + ctLen, ctLayout.getDataSize() - ctLen));
 
@@ -175,16 +197,28 @@ std::size_t AuditEncryptionCompressionManager::_encrypt(const Date_t& ts,
 
 std::vector<std::uint8_t> AuditEncryptionCompressionManager::encrypt(ConstDataRange toEncrypt,
                                                                      const Date_t& ts) const {
-    ConstEncryptedAuditLayout ctLayout(toEncrypt.data<uint8_t>(), toEncrypt.length());
-    auto bufSize = ctLayout.getHeaderSize() + ctLayout.expectedCiphertextLen(toEncrypt.length());
-    std::vector<std::uint8_t> outBuf(bufSize);
-    auto encryptSize = _encrypt(ts, toEncrypt, {outBuf.data(), outBuf.size()});
+    return encrypt(toEncrypt, getTimestampAAD(ts));
+}
+
+std::vector<std::uint8_t> AuditEncryptionCompressionManager::encrypt(ConstDataRange toEncrypt,
+                                                                     ConstDataRange aad) const {
+    std::vector<std::uint8_t> outBuf(getRequiredEncryptBufferSize(toEncrypt));
+    auto encryptSize = _encrypt(aad, toEncrypt, outBuf);
     outBuf.resize(encryptSize);
     return outBuf;
 }
 
 std::vector<std::uint8_t> AuditEncryptionCompressionManager::decrypt(ConstDataRange toDecrypt,
                                                                      const Date_t& ts) const {
+    return decrypt(toDecrypt, getTimestampAAD(ts));
+}
+
+std::vector<std::uint8_t> AuditEncryptionCompressionManager::decrypt(ConstDataRange toDecrypt,
+                                                                     ConstDataRange aad) const {
+    uassert(ErrorCodes::InvalidLength,
+            "Audit log decrypt input cannot be empty",
+            toDecrypt.length() > 0);
+
     ConstEncryptedAuditLayout ctLayout(toDecrypt.data<std::uint8_t>(), toDecrypt.length());
 
     // the input data range should at least be the header size in length
@@ -194,16 +228,25 @@ std::vector<std::uint8_t> AuditEncryptionCompressionManager::decrypt(ConstDataRa
 
     // set up the output buffer
     std::vector<std::uint8_t> outBuf(ctLayout.expectedPlaintextLen().second);
+    if (!outBuf.data()) {
+        // if the expected output size is 0 (e.g. GMAC),
+        // ensure that the output buffer is not null, or else
+        // windows will not authenticate the data correctly.
+        outBuf.resize(1);
+    }
 
     // create the decryptor & set AAD
     auto decryptor = uassertStatusOK(crypto::SymmetricDecryptor::create(
         *_encryptKey, crypto::aesMode::gcm, ctLayout.getIV(), ctLayout.getIVSize()));
-    auto aad = getTimestampAAD(ts);
-    uassertStatusOK(decryptor->addAuthenticatedData(aad.data(), aad.size()));
+
+    if (aad.length()) {
+        uassertStatusOK(decryptor->addAuthenticatedData(aad.data<uint8_t>(), aad.length()));
+    }
 
     // do the decrypt
     auto ptLen = uassertStatusOK(decryptor->update(
         ctLayout.getData(), ctLayout.getDataSize(), outBuf.data(), outBuf.size()));
+
     uassertStatusOK(decryptor->updateTag(ctLayout.getTag(), ctLayout.getTagSize()));
 
     ptLen += uassertStatusOK(decryptor->finalize(outBuf.data() + ptLen, outBuf.size() - ptLen));
@@ -211,6 +254,19 @@ std::vector<std::uint8_t> AuditEncryptionCompressionManager::decrypt(ConstDataRa
 
     outBuf.resize(ptLen);
     return outBuf;
+}
+
+Status AuditEncryptionCompressionManager::verifyHeaderMAC(
+    const AuditHeaderOptionsDocument& header) const try {
+    auto aad =
+        _fileHeader->generateFileHeaderAuthenticatedData(header.getTs(), header.getVersion());
+    auto macStr = base64::decode(header.getMAC());
+    decrypt(ConstDataRange(macStr.data(), macStr.size()),
+            ConstDataRange(aad.objdata(), aad.objsize()));
+
+    return Status::OK();
+} catch (...) {
+    return exceptionToStatus().addContext("Audit log header MAC authentication failed");
 }
 
 }  // namespace audit

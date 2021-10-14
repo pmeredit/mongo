@@ -106,7 +106,7 @@ public:
      * Return the expected size of the ciphertext given the length of this plaintext. This will
      * vary depending on the ciphermode.
      */
-    size_t expectedCiphertextLen(size_t plaintextLen) const {
+    static size_t expectedCiphertextLen(size_t plaintextLen) {
         if constexpr (Header::kMode == aesMode::cbc) {
             return crypto::aesBlockSize * (1 + plaintextLen / crypto::aesBlockSize);
         } else {
@@ -137,7 +137,7 @@ public:
     /**
      * Get the size of the tag
      */
-    constexpr std::size_t getTagSize() const {
+    static constexpr std::size_t getTagSize() {
         return Header::kTagSize;
     }
 
@@ -151,7 +151,7 @@ public:
     /**
      * Get the size of the extra data
      */
-    constexpr std::size_t getExtraSize() const {
+    static constexpr std::size_t getExtraSize() {
         return Header::kExtraSize;
     }
 
@@ -165,14 +165,14 @@ public:
     /**
      * Get the size of the IV
      */
-    constexpr std::size_t getIVSize() const {
+    static constexpr std::size_t getIVSize() {
         return Header::kIVSize;
     }
 
     /**
      * Get the size of all information prefixed to the ciphertext
      */
-    constexpr std::size_t getHeaderSize() const {
+    static constexpr std::size_t getHeaderSize() {
         return Header::kTagSize + Header::kExtraSize + Header::kIVSize;
     }
 

@@ -21,10 +21,14 @@ class AuditFileHeader {
 public:
     AuditFileHeader();
 
-    BSONObj generateFileHeader(StringData version,
+    BSONObj generateFileHeader(Date_t ts,
+                               StringData version,
                                StringData compressionMode,
+                               StringData mac,
                                BSONObj keyStoreIdentifier,
                                const AuditKeyManager::WrappedKey& encryptedKey);
+
+    BSONObj generateFileHeaderAuthenticatedData(Date_t ts, StringData version);
 };
 
 }  // namespace audit

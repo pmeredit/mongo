@@ -120,6 +120,8 @@ void auditDecryptorTool(int argc, char* argv[]) {
         AuditEncryptionCompressionManager ac = AuditEncryptionCompressionManager(
             std::move(keyManager), headerObj.getCompressionMode() == "zstd", &wrappedKey);
 
+        uassertStatusOK(ac.verifyHeaderMAC(headerObj));
+
         while (getline(input, line)) {
             ++numLine;
             try {

@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 
+#include "audit/audit_header_options_gen.h"
 #include "audit_file_header.h"
 #include "audit_frame.h"
 #include "audit_key_manager.h"
@@ -39,10 +40,14 @@ public:
     std::vector<std::uint8_t> encrypt(ConstDataRange toEncrypt, const Date_t& ts) const;
     std::vector<std::uint8_t> decrypt(ConstDataRange toDecrypt, const Date_t& ts) const;
 
+    std::vector<std::uint8_t> encrypt(ConstDataRange toEncrypt, ConstDataRange aad) const;
+    std::vector<std::uint8_t> decrypt(ConstDataRange toDecrypt, ConstDataRange aad) const;
+
     BSONObj encodeFileHeader() const;
+    Status verifyHeaderMAC(const AuditHeaderOptionsDocument& header) const;
 
 private:
-    std::size_t _encrypt(const Date_t& ts, ConstDataRange input, DataRange output) const;
+    std::size_t _encrypt(ConstDataRange aad, ConstDataRange input, DataRange output) const;
 
     std::unique_ptr<ZstdMessageCompressor> _zstdCompressor;
 
