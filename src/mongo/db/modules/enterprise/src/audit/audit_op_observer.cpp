@@ -84,7 +84,7 @@ void AuditOpObserver::updateAuditConfigFromDisk(OperationContext* opCtx) {
 
 void AuditOpObserver::onInserts(OperationContext* opCtx,
                                 const NamespaceString& nss,
-                                OptionalCollectionUUID uuid,
+                                const UUID& uuid,
                                 std::vector<InsertStatement>::const_iterator first,
                                 std::vector<InsertStatement>::const_iterator last,
                                 bool fromMigrate) {
@@ -140,7 +140,7 @@ void AuditOpObserver::aboutToDelete(OperationContext* opCtx,
 
 void AuditOpObserver::onDelete(OperationContext* opCtx,
                                const NamespaceString& nss,
-                               OptionalCollectionUUID uuid,
+                               const UUID& uuid,
                                StmtId stmtId,
                                const OplogDeleteEntryArgs& args) {
     if (deletingAuditConfigDecoration(opCtx)) {

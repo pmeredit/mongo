@@ -97,12 +97,8 @@ public:
             return InsertStatement(doc);
         });
         auto opCtx = cc().makeOperationContext();
-        observer.onInserts(opCtx.get(),
-                           nss,
-                           boost::none /* uuid */,
-                           stmts.cbegin(),
-                           stmts.cend(),
-                           false /* fromMigrate */);
+        observer.onInserts(
+            opCtx.get(), nss, UUID::gen(), stmts.cbegin(), stmts.cend(), false /* fromMigrate */);
     }
 
     void doUpdate(const NamespaceString& nss, BSONObj update, BSONObj updatedDoc) {
@@ -120,7 +116,7 @@ public:
         observer.aboutToDelete(opCtx.get(), nss, deletedDoc);
         OpObserver::OplogDeleteEntryArgs args;
         args.deletedDoc = &deletedDoc;
-        observer.onDelete(opCtx.get(), nss, boost::none /* uuid */, 1 /* StmtId */, args);
+        observer.onDelete(opCtx.get(), nss, UUID::gen(), 1 /* StmtId */, args);
     }
 
     void doDropDatabase(StringData dbname) {
