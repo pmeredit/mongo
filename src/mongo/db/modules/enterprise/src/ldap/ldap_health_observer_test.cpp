@@ -31,8 +31,8 @@ public:
                          std::shared_ptr<executor::TaskExecutor> taskExecutor)
         : FaultManager(svcCtx, taskExecutor) {}
 
-    Status transitionStateTest(FaultState newState) {
-        return transitionToState(newState);
+    void transitionStateTest(FaultState newState) {
+        transitionToState(newState);
     }
 
     FaultState getFaultStateTest() {
@@ -47,12 +47,12 @@ public:
         return getHealthObservers();
     }
 
-    Status processFaultExistsEventTest() {
-        return processFaultExistsEvent();
+    void processFaultExistsEventTest() {
+        processFaultExistsEvent();
     }
 
-    Status processFaultIsResolvedEventTest() {
-        return processFaultIsResolvedEvent();
+    void processFaultIsResolvedEventTest() {
+        processFaultIsResolvedEvent();
     }
 
     FaultInternal& getFault() {
