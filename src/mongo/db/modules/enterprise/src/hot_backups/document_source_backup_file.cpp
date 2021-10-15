@@ -56,10 +56,9 @@ boost::intrusive_ptr<DocumentSourceBackupFile> DocumentSourceBackupFile::createF
 }
 
 DocumentSource::GetNextResult DocumentSourceBackupFile::doGetNext() {
-    // If we have reached the end of file, read up to the desired length, or the remaining length to
-    // read is zero, return EOF to signal that this document source is exhausted.
-    if (_eof || _offset - _backupFileSpec.getByteOffset() == _backupFileSpec.getLength() ||
-        _remainingLengthToRead == 0) {
+    // If we have reached the end of file or read up to the desired length, return EOF to signal
+    // that this document source is exhausted.
+    if (_eof || _remainingLengthToRead == 0) {
         _src.close();
         return GetNextResult::makeEOF();
     }
@@ -101,7 +100,7 @@ DocumentSource::GetNextResult DocumentSourceBackupFile::doGetNext() {
     }
     builder.appendBinData("data", _src.gcount(), BinDataGeneral, buf.data());
 
-    if (!_eof && _remainingLengthToRead != 0) {
+    if (!_eof) {
         _offset = _src.tellg();
     }
 
