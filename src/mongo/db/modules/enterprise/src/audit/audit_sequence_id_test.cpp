@@ -15,6 +15,11 @@ public:
     AuditSequenceIDTest() {}
 };
 
+class AuditSequenceIDCheckerTest : public mongo::unittest::Test {
+public:
+    AuditSequenceIDCheckerTest() {}
+};
+
 TEST_F(AuditSequenceIDTest, IncrementOperatorTest) {
     AuditSequenceID seq;
     AuditSequenceID nextSeq(0, 1);
@@ -71,6 +76,28 @@ TEST_F(AuditSequenceIDTest, DeserializeTest) {
     // test exception thrown if input is too small
     input.pop_back();
     ASSERT_THROWS(AuditSequenceID::deserialize(input), mongo::DBException);
+}
+
+TEST_F(AuditSequenceIDCheckerTest, MatchAndIncrementTest) {
+    AuditSequenceID seq(0xdeadbeef, 0x1000);
+    std::vector<std::uint8_t> serialized(AuditSequenceID::kSerializedAuditSequenceIDSize);
+    AuditSequenceIDChecker checker(seq);
+
+    seq.serialize(serialized);
+    ASSERT_TRUE(checker.matchAndIncrement(serialized));
+
+    ++seq;
+    seq.serialize(serialized);
+    ASSERT_TRUE(checker.matchAndIncrement(serialized));
+
+    ++seq;
+    ++seq;
+    seq.serialize(serialized);
+    ASSERT_FALSE(checker.matchAndIncrement(serialized));
+
+    seq = AuditSequenceID(0xdeadbeef, 0x1002);
+    seq.serialize(serialized);
+    ASSERT_TRUE(checker.matchAndIncrement(serialized));
 }
 
 }  // namespace audit

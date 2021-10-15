@@ -11,6 +11,7 @@
 #include "audit_file_header.h"
 #include "audit_frame.h"
 #include "audit_key_manager.h"
+#include "audit_sequence_id.h"
 
 #include "encryptdb/symmetric_crypto.h"
 #include "mongo/base/data_range.h"
@@ -46,6 +47,9 @@ public:
     BSONObj encodeFileHeader() const;
     Status verifyHeaderMAC(const AuditHeaderOptionsDocument& header) const;
 
+    void setSequenceIDChecker(std::unique_ptr<AuditSequenceIDChecker> seqIDChecker);
+    void setSequenceIDCheckerFromHeader(const AuditHeaderOptionsDocument& header);
+
 private:
     std::size_t _encrypt(ConstDataRange aad, ConstDataRange input, DataRange output) const;
 
@@ -65,6 +69,9 @@ private:
 
     // Whether compression is performed prior to encrypt
     bool _compress;
+
+    // Checks the sequence of IVs are correct on decrypt
+    mutable std::unique_ptr<AuditSequenceIDChecker> _seqIDChecker;
 };
 
 }  // namespace audit

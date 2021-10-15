@@ -7,7 +7,6 @@
 #include "audit_enc_comp_manager.h"
 #include "audit_file_header.h"
 #include "audit_key_manager_local.h"
-#include "audit_sequence_id.h"
 
 #include "mongo/base/error_extra_info.h"
 #include "mongo/base/string_data.h"
@@ -226,6 +225,13 @@ std::vector<std::uint8_t> AuditEncryptionCompressionManager::decrypt(ConstDataRa
             "Audit log decrypt input is too short",
             toDecrypt.length() >= ctLayout.getHeaderSize());
 
+    // Check the IV matches the expected IV
+    if (_seqIDChecker) {
+        uassert(ErrorCodes::BadValue,
+                "IV in audit log line does not match the expected IV",
+                _seqIDChecker->matchAndIncrement({ctLayout.getIV(), ctLayout.getIVSize()}));
+    }
+
     // set up the output buffer
     std::vector<std::uint8_t> outBuf(ctLayout.expectedPlaintextLen().second);
     if (!outBuf.data()) {
@@ -267,6 +273,24 @@ Status AuditEncryptionCompressionManager::verifyHeaderMAC(
     return Status::OK();
 } catch (...) {
     return exceptionToStatus().addContext("Audit log header MAC authentication failed");
+}
+
+void AuditEncryptionCompressionManager::setSequenceIDCheckerFromHeader(
+    const AuditHeaderOptionsDocument& header) {
+    auto mac = base64::decode(header.getMAC());
+    EncryptedAuditLayout macLayout(reinterpret_cast<uint8_t*>(mac.data()), mac.size());
+    uassert(ErrorCodes::BadValue,
+            "Audit log header MAC has invalid length",
+            mac.size() == macLayout.getHeaderSize());
+    auto parsedIV = AuditSequenceID::deserialize({macLayout.getIV(), macLayout.getIVSize()});
+    // increment IV to the next expected IV from the log lines
+    ++parsedIV;
+    _seqIDChecker = std::make_unique<AuditSequenceIDChecker>(parsedIV);
+}
+
+void AuditEncryptionCompressionManager::setSequenceIDChecker(
+    std::unique_ptr<AuditSequenceIDChecker> seqIDChecker) {
+    _seqIDChecker = std::move(seqIDChecker);
 }
 
 }  // namespace audit

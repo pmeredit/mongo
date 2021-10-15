@@ -65,5 +65,26 @@ private:
     std::uint64_t _seqLow;
 };
 
+class AuditSequenceIDChecker {
+public:
+    explicit AuditSequenceIDChecker(AuditSequenceID startSeq) : _seq(startSeq) {}
+
+    bool matchAndIncrement(ConstDataRange seqBuf) {
+        // deserialize sequence buffer; throw on error
+        AuditSequenceID otherSeq = AuditSequenceID::deserialize(seqBuf);
+
+        // compare the deserialized sequence ID against expected sequence ID;
+        // increment expected sequence ID on a match
+        if (otherSeq == _seq) {
+            ++_seq;
+            return true;
+        }
+        return false;
+    }
+
+private:
+    AuditSequenceID _seq;
+};
+
 }  // namespace audit
 }  // namespace mongo

@@ -121,6 +121,7 @@ void auditDecryptorTool(int argc, char* argv[]) {
             std::move(keyManager), headerObj.getCompressionMode() == "zstd", &wrappedKey);
 
         uassertStatusOK(ac.verifyHeaderMAC(headerObj));
+        ac.setSequenceIDCheckerFromHeader(headerObj);
 
         while (getline(input, line)) {
             ++numLine;
