@@ -299,6 +299,7 @@ TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageValidCopyingFileLargerTh
 
     auto next = backupFile->getNext();
     ASSERT_EQ(next.getDocument().getField("data").getBinData().length, BSONObjMaxUserSize - 1);
+    ASSERT_EQ(next.getDocument().getField("byteOffset").getLong(), 0);
 
     next = backupFile->getNext();
     std::string expectedData = "0123456789";
@@ -324,12 +325,15 @@ TEST_F(DocumentSourceBackupFileTest, TestBackupFileStageValidCopyingFileMultiple
 
     auto next = backupFile->getNext();
     ASSERT_EQ(next.getDocument().getField("data").getBinData().length, BSONObjMaxUserSize - 1);
+    ASSERT_EQ(next.getDocument().getField("byteOffset").getLong(), 0);
 
     next = backupFile->getNext();
     ASSERT_EQ(next.getDocument().getField("data").getBinData().length, BSONObjMaxUserSize - 1);
+    ASSERT_EQ(next.getDocument().getField("byteOffset").getLong(), BSONObjMaxUserSize - 1);
 
     next = backupFile->getNext();
     ASSERT_EQ(next.getDocument().getField("data").getBinData().length, BSONObjMaxUserSize - 1);
+    ASSERT_EQ(next.getDocument().getField("byteOffset").getLong(), (BSONObjMaxUserSize - 1) * 2);
 
     next = backupFile->getNext();
     std::string expectedData = "000123";
@@ -358,6 +362,7 @@ TEST_F(DocumentSourceBackupFileTest,
 
     auto next = backupFile->getNext();
     ASSERT_EQ(next.getDocument().getField("data").getBinData().length, BSONObjMaxUserSize - 1);
+    ASSERT_EQ(next.getDocument().getField("byteOffset").getLong(), 0);
 
     next = backupFile->getNext();
     std::string expectedData = "012";

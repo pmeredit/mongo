@@ -95,15 +95,15 @@ DocumentSource::GetNextResult DocumentSourceBackupFile::doGetNext() {
         _remainingLengthToRead -= _src.gcount();
     }
 
-    if (!_eof && _remainingLengthToRead != 0) {
-        _offset = _src.tellg();
-    }
-
     builder.append("byteOffset", _offset);
     if (_eof) {
         builder.appendBool("endOfFile", _eof);
     }
     builder.appendBinData("data", _src.gcount(), BinDataGeneral, buf.data());
+
+    if (!_eof && _remainingLengthToRead != 0) {
+        _offset = _src.tellg();
+    }
 
     return {Document{builder.obj()}};
 }
