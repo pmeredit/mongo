@@ -59,6 +59,27 @@ protected:
     bool _gcmSupported;
 };
 
+TEST_F(AuditEncCompManagerTest, CompressedSizeTest) {
+    std::size_t sizeBeforeCompression = toCompressLog.size();
+    auto compressedLog = _encManager->compress({toCompressLog.data(), toCompressLog.size()});
+    std::size_t sizeAfterCompression = compressedLog.size();
+    ASSERT_LESS_THAN_OR_EQUALS(sizeAfterCompression, sizeBeforeCompression);
+}
+
+TEST_F(AuditEncCompManagerTest, CompressedStringDifferentTest) {
+    auto compressedLog = _encManager->compress({toCompressLog.data(), toCompressLog.size()});
+    std::string compressedStr(reinterpret_cast<char*>(compressedLog.data()), compressedLog.size());
+    ASSERT_NOT_EQUALS(toCompressLog, compressedStr);
+}
+
+TEST_F(AuditEncCompManagerTest, CompressDecompressRoundTrip) {
+    auto compressedLog = _encManager->compress({toCompressLog.data(), toCompressLog.size()});
+    auto decompressedLog = _encManager->decompress({compressedLog.data(), compressedLog.size()});
+    std::string decompressedStr(reinterpret_cast<char*>(decompressedLog.data()),
+                                decompressedLog.size());
+    ASSERT_EQUALS(toCompressLog, decompressedStr);
+}
+
 TEST_F(AuditEncCompManagerTest, EncryptDecryptRoundTrip) {
     if (!_gcmSupported) {
         return;
@@ -237,6 +258,23 @@ TEST_F(AuditEncCompManagerTest, VerifyHeaderMACFailTest) {
     ASSERT_TRUE(result.isOK());
 }
 
+TEST_F(AuditEncCompManagerTest, CheckEncryptedLogIsBase64Test) {
+    bool isBase64 = base64::validate(toCompressLog);
+    ASSERT_FALSE(isBase64);
+
+    ConstDataRange toEncrypt(toCompressLog.data(), toCompressLog.size());
+
+    if (!_gcmSupported) {
+        ASSERT_THROWS(_encManager->encryptAndEncode(toEncrypt, Date_t::now()),
+                      ExceptionFor<ErrorCodes::UnsupportedFormat>);
+        return;
+    }
+
+    auto compressedLog = _encManager->encryptAndEncode(toEncrypt, Date_t::now());
+    StringData logField(compressedLog.getStringField("log"_sd));
+    isBase64 = base64::validate(logField);
+    ASSERT_TRUE(isBase64);
+}
 
 }  // namespace audit
 }  // namespace mongo
