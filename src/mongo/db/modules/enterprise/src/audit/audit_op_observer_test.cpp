@@ -129,7 +129,7 @@ public:
         observer.postRenameCollection(opCtx.get(),
                                       fromColl,
                                       toColl,
-                                      boost::none /* uuid */,
+                                      UUID::gen(),
                                       boost::none /* targetUUID */,
                                       false /* stayTemp */);
     }

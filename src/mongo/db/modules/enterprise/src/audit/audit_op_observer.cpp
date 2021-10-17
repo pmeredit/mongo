@@ -159,7 +159,7 @@ void AuditOpObserver::onDropDatabase(OperationContext* opCtx, const std::string&
 
 repl::OpTime AuditOpObserver::onDropCollection(OperationContext* opCtx,
                                                const NamespaceString& collectionName,
-                                               OptionalCollectionUUID uuid,
+                                               const UUID& uuid,
                                                std::uint64_t numRecords,
                                                CollectionDropType dropType) {
     if (!isAuditingConfigured() || !isConfigNamespace(collectionName)) {
@@ -175,7 +175,7 @@ repl::OpTime AuditOpObserver::onDropCollection(OperationContext* opCtx,
 void AuditOpObserver::postRenameCollection(OperationContext* opCtx,
                                            const NamespaceString& fromCollection,
                                            const NamespaceString& toCollection,
-                                           OptionalCollectionUUID uuid,
+                                           const UUID& uuid,
                                            OptionalCollectionUUID dropTargetUUID,
                                            bool stayTemp) {
     if (isAuditingConfigured() && isConfigNamespace(fromCollection)) {
