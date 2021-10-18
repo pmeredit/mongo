@@ -26,7 +26,7 @@ namespace mongo {
 namespace {
 ServiceContext::ConstructorActionRegisterer createEncryptionKeyManager{
     "CreateEncryptionKeyManager",
-    {"CreateKeyEntropySource", "SecureAllocator", "SetWiredTigerCustomizationHooks"},
+    {"SecureAllocator", "SetWiredTigerCustomizationHooks"},
     [](ServiceContext* service) {
         // Setup the custom hooks required to enable encryption
         auto configHooks = std::make_unique<WiredTigerCustomizationHooks>();

@@ -40,7 +40,7 @@ void setupEncryption(ServiceContext* service, Args... args) {
 
 ServiceContext::ConstructorActionRegisterer registerEncryptionWiredTigerCustomizationHooks{
     "CreateEncryptionWiredTigerCustomizationHooks",
-    {"SetWiredTigerCustomizationHooks", "SecureAllocator", "CreateKeyEntropySource"},
+    {"SetWiredTigerCustomizationHooks", "SecureAllocator"},
     [](ServiceContext* service) { setupEncryption<EncryptionKeyManagerNoop>(service); }};
 
 

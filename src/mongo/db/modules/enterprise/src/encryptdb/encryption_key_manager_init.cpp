@@ -27,11 +27,7 @@ namespace {
 // and in-memory) are mutually exclusive.
 ServiceContext::ConstructorActionRegisterer registerEncryptionWiredTigerCustomizationHooks{
     "CreateEncryptionWiredTigerCustomizationHooks",
-    {"SetWiredTigerCustomizationHooks",
-     "WiredTigerEngineInit",
-     "SecureAllocator",
-     "CreateKeyEntropySource",
-     "SSLManager"},
+    {"SetWiredTigerCustomizationHooks", "WiredTigerEngineInit", "SecureAllocator", "SSLManager"},
     [](ServiceContext* service) {
         if (!encryptionGlobalParams.enableEncryption) {
             return;
