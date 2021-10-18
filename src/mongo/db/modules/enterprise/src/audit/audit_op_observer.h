@@ -64,7 +64,8 @@ public:
                             const BSONObj& catalogEntry,
                             const BSONObj& storageMetadata,
                             bool isDryRun) final;
-    void onReplicationRollback(OperationContext* opCtx, const RollbackObserverInfo& rbInfo);
+    void onReplicationRollback(OperationContext* opCtx,
+                               const RollbackObserverInfo& rbInfo) noexcept;
 
     // Remainder of operations are ignorable.
 
