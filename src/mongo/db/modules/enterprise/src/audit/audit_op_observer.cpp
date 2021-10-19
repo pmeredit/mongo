@@ -203,8 +203,8 @@ void AuditOpObserver::onImportCollection(OperationContext* opCtx,
     }
 }
 
-void AuditOpObserver::onReplicationRollback(OperationContext* opCtx,
-                                            const RollbackObserverInfo& rbInfo) noexcept {
+void AuditOpObserver::_onReplicationRollback(OperationContext* opCtx,
+                                             const RollbackObserverInfo& rbInfo) {
     if (rbInfo.rollbackNamespaces.count(kSettingsNS)) {
         // Some kind of rollback happend in the settings collection.
         // Just reload from disk to be safe.

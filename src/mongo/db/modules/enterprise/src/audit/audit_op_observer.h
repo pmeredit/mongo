@@ -64,8 +64,6 @@ public:
                             const BSONObj& catalogEntry,
                             const BSONObj& storageMetadata,
                             bool isDryRun) final;
-    void onReplicationRollback(OperationContext* opCtx,
-                               const RollbackObserverInfo& rbInfo) noexcept;
 
     // Remainder of operations are ignorable.
 
@@ -179,6 +177,9 @@ public:
 
     void onMajorityCommitPointUpdate(ServiceContext* service,
                                      const repl::OpTime& newCommitPoint) final {}
+
+private:
+    void _onReplicationRollback(OperationContext* opCtx, const RollbackObserverInfo& rbInfo);
 };
 
 }  // namespace audit
