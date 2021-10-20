@@ -8,6 +8,7 @@
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/catalog/catalog_control.h"
+#include "mongo/db/client.h"
 #include "mongo/db/concurrency/write_conflict_exception.h"
 #include "mongo/db/cursor_server_params.h"
 #include "mongo/db/dbdirectclient.h"
@@ -186,7 +187,7 @@ ExecutorFuture<OpTimeAndWallTime> FileCopyBasedInitialSyncer::_startInitialSyncA
         .until([this, self = shared_from_this()](StatusWith<OpTimeAndWallTime> result) mutable {
             stdx::lock_guard<Latch> lock(_mutex);
             // Always release the global lock.
-            _syncingFilesState.globalLock.reset();
+            _releaseGlobalLock(lock);
             if (!result.isOK()) {
                 LOGV2_ERROR(5781900,
                             "File Copy Based initial sync attempt failed -- attempts left: "
@@ -566,7 +567,8 @@ void FileCopyBasedInitialSyncer::SyncingFilesState::reset() {
     currentFileMover.reset();
     filesRelativePathsToBeMoved.clear();
     globalLock.reset();
-    opCtx.reset();
+    globalLockOpCtx.reset();
+    globalLockClient.reset();
     originalDbPath = "";
 
     token = CancellationToken::uncancelable();
@@ -894,7 +896,6 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startSyncingFiles(
     _syncingFilesState.reset();
     _syncingFilesState.executor = executor;
     _syncingFilesState.token = token;
-    _syncingFilesState.opCtx = cc().makeOperationContext();
     _syncingFilesState.originalDbPath = storageGlobalParams.dbpath;
 
     if (MONGO_unlikely(fCBISSkipSyncingFilesPhase.shouldFail())) {
@@ -1116,20 +1117,45 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startMovingNewStorageFilesPhas
         })
         .then([this, self = shared_from_this()] {
             // Open storage in dbPath with the new synced files.
-            _switchStorageTo(
-                boost::none /* relativeToDbPath */,
-                false /* closeCatalog */,
-                startup_recovery::StartupRecoveryMode::kReplicaSetMember /* startupRecoveryMode */);
+            stdx::lock_guard lk(_mutex);
+            {
+                AlternativeClientRegion globalLockRegion(_getGlobalLockClient(lk));
+                auto opCtx = _syncingFilesState.globalLockOpCtx.get();
+                _switchStorageTo(lk,
+                                 opCtx,
+                                 boost::none /* relativeToDbPath */,
+                                 false /* closeCatalog */,
+                                 startup_recovery::StartupRecoveryMode::
+                                     kReplicaSetMember /* startupRecoveryMode */);
 
-            // Remove the move marker and '.initialsync' directory.
-            _syncingFilesState.currentFileMover->completeMovingInitialSyncFiles();
-
+                // Remove the move marker and '.initialsync' directory.
+                _syncingFilesState.currentFileMover->completeMovingInitialSyncFiles();
+            }
             LOGV2_DEBUG(5994406,
                         2,
                         "Releasing the global lock for file copy based initial sync after "
                         "switching storage engines.");
-            _syncingFilesState.globalLock.reset();
+            _releaseGlobalLock(lk);
         });
+}
+
+ServiceContext::UniqueClient& FileCopyBasedInitialSyncer::_getGlobalLockClient(WithLock) {
+    if (!_syncingFilesState.globalLockClient) {
+        invariant(!_syncingFilesState.globalLockOpCtx);
+        _syncingFilesState.globalLockClient =
+            cc().getServiceContext()->makeClient("Global Lock FCBIS");
+        AlternativeClientRegion acr(_syncingFilesState.globalLockClient);
+        _syncingFilesState.globalLockOpCtx = cc().makeOperationContext();
+        _syncingFilesState.globalLock =
+            std::make_unique<Lock::GlobalLock>(_syncingFilesState.globalLockOpCtx.get(), MODE_X);
+    }
+    return _syncingFilesState.globalLockClient;
+}
+
+void FileCopyBasedInitialSyncer::_releaseGlobalLock(WithLock) {
+    _syncingFilesState.globalLock.reset();
+    _syncingFilesState.globalLockOpCtx.reset();
+    _syncingFilesState.globalLockClient.reset();
 }
 
 ExecutorFuture<void> FileCopyBasedInitialSyncer::_prepareStorageDirectoriesForMovingPhase() {
@@ -1139,24 +1165,29 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_prepareStorageDirectoriesForMo
                         2,
                         "Obtaining the global lock for file copy based initial sync before "
                         "switching storage engines.");
-            _syncingFilesState.globalLock =
-                std::make_unique<Lock::GlobalLock>(_syncingFilesState.opCtx.get(), MODE_X);
+            stdx::lock_guard lk(_mutex);
+            AlternativeClientRegion globalLockRegion(_getGlobalLockClient(lk));
+            auto opCtx = _syncingFilesState.globalLockOpCtx.get();
 
             // Switch storage to '.initialsync' directory.
             _switchStorageTo(
+                lk,
+                opCtx,
                 InitialSyncFileMover::kInitialSyncDir.toString() /* relativeToDbPath */,
                 true /* closeCatalog */,
                 startup_recovery::StartupRecoveryMode::
                     kReplicaSetMemberInStandalone /* startupRecoveryMode */);
 
             // Fix the local collections in '.initialsync' directory before moving it.
-            uassertStatusOK(_cleanUpLocalCollectionsAfterSync(_syncingFilesState.opCtx.get()));
+            uassertStatusOK(_cleanUpLocalCollectionsAfterSync(opCtx));
 
             // Switch storage to '.initialsync/.dummy' directory to start moving the synced files.
             boost::filesystem::path fileRelativePath(
                 InitialSyncFileMover::kInitialSyncDir.toString());
             fileRelativePath.append(InitialSyncFileMover::kInitialSyncDummyDir.toString());
-            _switchStorageTo(fileRelativePath.string() /* relativeToDbPath */,
+            _switchStorageTo(lk,
+                             opCtx,
+                             fileRelativePath.string() /* relativeToDbPath */,
                              true /* closeCatalog */,
                              boost::none /* startupRecoveryMode */);
 
@@ -1174,7 +1205,8 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_prepareStorageDirectoriesForMo
 
 ExecutorFuture<void> FileCopyBasedInitialSyncer::_getListOfOldFilesToBeDeleted() {
     // Files should be already cloned in '.initialSync' directory.
-    DBDirectClient client(_syncingFilesState.opCtx.get());
+    auto opCtx = cc().makeOperationContext();
+    DBDirectClient client(opCtx.get());
     NamespaceString nss =
         NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb.toString());
 
@@ -1255,6 +1287,8 @@ Status FileCopyBasedInitialSyncer::shutdown() {
 }
 
 void FileCopyBasedInitialSyncer::_switchStorageTo(
+    WithLock lk,
+    OperationContext* opCtx,
     boost::optional<std::string> relativeToDbPath,
     bool closeCatalog,
     boost::optional<startup_recovery::StartupRecoveryMode> startupRecoveryMode) {
@@ -1262,6 +1296,9 @@ void FileCopyBasedInitialSyncer::_switchStorageTo(
         // Noop.
         return;
     }
+
+    // Must have the global lock.
+    invariant(opCtx->lockState()->isW());
 
     boost::filesystem::path dirPath(_syncingFilesState.originalDbPath);
     if (relativeToDbPath) {
@@ -1276,14 +1313,13 @@ void FileCopyBasedInitialSyncer::_switchStorageTo(
 
     if (closeCatalog) {
         LOGV2_DEBUG(5994402, 2, "Closing the catalog before switching storage engine.");
-        catalog::closeCatalog(_syncingFilesState.opCtx.get());
+        catalog::closeCatalog(opCtx);
     }
 
     // Reinitializes storage engine and waits for it to complete startup.
     LOGV2_DEBUG(5994403, 2, "Reinitializing storage engine.", "dbPath"_attr = dirPath.string());
-    auto lastShutdownState =
-        reinitializeStorageEngine(_syncingFilesState.opCtx.get(), StorageEngineInitFlags{});
-    getGlobalServiceContext()->getStorageEngine()->notifyStartupComplete();
+    auto lastShutdownState = reinitializeStorageEngine(opCtx, StorageEngineInitFlags{});
+    opCtx->getServiceContext()->getStorageEngine()->notifyStartupComplete();
     invariant(StorageEngine::LastShutdownState::kClean == lastShutdownState);
 
     if (startupRecoveryMode) {
@@ -1292,13 +1328,13 @@ void FileCopyBasedInitialSyncer::_switchStorageTo(
                     "Performing startup recovery after switching storage engine.",
                     "dbPath"_attr = dirPath.string());
         startup_recovery::runStartupRecoveryInMode(
-            _syncingFilesState.opCtx.get(), lastShutdownState, startupRecoveryMode.get());
+            opCtx, lastShutdownState, startupRecoveryMode.get());
 
         LOGV2_DEBUG(5994405,
                     2,
                     "Reopening the catalog after switching storage engine.",
                     "dbPath"_attr = dirPath.string());
-        catalog::openCatalogAfterStorageChange(_syncingFilesState.opCtx.get());
+        catalog::openCatalogAfterStorageChange(opCtx);
     }
 }
 

@@ -216,8 +216,12 @@ private:
      * It will close the catalog before shutting down the storage engine if 'closeCatalog' is true.
      * It will perform startup recovery and open the catalog if the value of 'startupRecoveryMode'
      * exists.
+     *
+     * The opCtx must be holding the global lock in exclusive mode.
      */
     void _switchStorageTo(
+        WithLock lk,
+        OperationContext* opCtx,
         boost::optional<std::string> relativeToDbPath,
         bool closeCatalog,
         boost::optional<startup_recovery::StartupRecoveryMode> startupRecoveryMode);
@@ -291,6 +295,20 @@ private:
      * from a base path and a relative path.
      */
     static std::string _getPathRelativeTo(StringData path, StringData basePath);
+
+    /**
+     * If the global lock is not held, create a client and opCtx which holds it, and return
+     * a reference to the client.  Otherwise return a reference to the existing client holding
+     * the global lock.
+     */
+    ServiceContext::UniqueClient& _getGlobalLockClient(WithLock);
+
+    /**
+     * Release the global lock, associated opCtx, and associated client.
+     *
+     * Must not be called from the thread currently associated with the global lock client.
+     */
+    void _releaseGlobalLock(WithLock);
 
     /**
      * Hang in async way if the fail point is enabled.
@@ -416,7 +434,8 @@ private:
         // List of relative paths to the old storage files in dbbath that will be deleted.
         std::vector<std::string> oldStorageFilesToBeDeleted;
         std::unique_ptr<InitialSyncFileMover> currentFileMover;
-        ServiceContext::UniqueOperationContext opCtx;
+        ServiceContext::UniqueClient globalLockClient;
+        ServiceContext::UniqueOperationContext globalLockOpCtx;
         std::unique_ptr<Lock::GlobalLock> globalLock;
         std::string originalDbPath;
     } _syncingFilesState;
