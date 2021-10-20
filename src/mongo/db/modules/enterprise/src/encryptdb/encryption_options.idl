@@ -8,6 +8,12 @@ global:
         section: 'Encryption at rest options'
         source: [ cli, ini, yaml ]
 
+feature_flags:
+    featureFlagKmipActivate:
+        description: "Enable KMIP Activate operation when creating new encryption keys"
+        cpp_varname: gFeatureFlagKmipActivate
+        default: false
+
 configs:
     "security.enableEncryption":
         description: 'Enable encryption at rest'
