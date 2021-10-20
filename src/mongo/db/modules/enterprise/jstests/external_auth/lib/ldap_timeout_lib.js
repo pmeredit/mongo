@@ -10,13 +10,14 @@ const kSlowDelaySecs = 30;
 const kLdapTimeoutMS = 10000;
 const kUnderTimeoutRegex = new RegExp('^[0-9]{1,4}$|^[1-2][0-9]{4}$', 'i');
 const kOverTimeoutRegex = new RegExp('^[3-9][0-9]{4}$|^[1-9][0-9]{5,}$', 'i');
+const kDisableNativeLDAPTimeoutFailPoint = 'disableNativeLDAPTimeout';
 const kConnectionFailPoint = 'ldapConnectionTimeoutHang';
 const kBindFailPoint = 'ldapBindTimeoutHang';
 const kSearchFailPoint = 'ldapSearchTimeoutHang';
 const kLivenessCheckFailPoint = 'ldapLivenessCheckTimeoutHang';
 
 function setLdapFailPoint(fp, mode, delay, db, shardingTest) {
-    if (shardingTest && fp === 'ldapSearchTimeoutHang') {
+    if (shardingTest && (fp === kSearchFailPoint || fp === kDisableNativeLDAPTimeoutFailPoint)) {
         shardingTest.configRS.nodes.forEach((node) => {
             assert.commandWorked(node.adminCommand({
                 configureFailPoint: fp,

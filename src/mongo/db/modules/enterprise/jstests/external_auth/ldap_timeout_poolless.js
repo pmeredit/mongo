@@ -54,6 +54,8 @@ function poollessTimeoutTestCallback({conn, shardingTest, options}) {
     setLogLevel(conn);
 
     // Set the fail point and run the clients.
+    setLdapFailPoint(
+        kDisableNativeLDAPTimeoutFailPoint, 'alwaysOn', slowDelaySecs, conn, shardingTest);
     setLdapFailPoint(failPoint, {'times': slowResponses}, slowDelaySecs, conn, shardingTest);
     runClients(conn, options, {userName: 'ldapz_ldap1', pwd: defaultPwd});
 
@@ -62,8 +64,8 @@ function poollessTimeoutTestCallback({conn, shardingTest, options}) {
     // of the LDAP search operations would have used the same backing lookup call after the cache
     // miss. Since connection pooling is turned off, behavior is deterministic for hangs during bind
     // and connection establishment. Each auth attempt results in a fresh connection to the LDAP
-    // server. The first five hang and succeed after the hang (60 seconds), while the second five
-    // succeed at normal speeds (less than 60 seconds).
+    // server. The first five hang and succeed after the hang (30 seconds), while the second five
+    // succeed at normal speeds (less than 30 seconds).
     // Sometimes, an LDAP operation may fail due to genuine network issues or flakiness in the LDAP
     // server rather than the actual failpoints. To mitigate those impacts, the test will accept
     // up to 1 log more or less than expected.

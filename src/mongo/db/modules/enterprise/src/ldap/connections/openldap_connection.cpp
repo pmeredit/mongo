@@ -45,6 +45,7 @@ namespace {
 
 // These failpoints are present in both OpenLDAPConnection and WindowsLDAPConnection to simulate
 // timeouts during network operations.
+MONGO_FAIL_POINT_DEFINE(disableNativeLDAPTimeout);
 MONGO_FAIL_POINT_DEFINE(ldapConnectionTimeoutHang);
 MONGO_FAIL_POINT_DEFINE(ldapBindTimeoutHang);
 MONGO_FAIL_POINT_DEFINE(ldapSearchTimeoutHang);
@@ -449,6 +450,11 @@ OpenLDAPConnection::OpenLDAPConnection(LDAPConnectionOptions options,
       _userAcquisitionStats(userAcquisitionStats) {
     initTraits();
 
+    // If the disableLDAPNativeTimeout failpoint is set, then reset _connectionOptions.timeout to
+    // the value provided in the failpoint.
+    disableNativeLDAPTimeout.execute([&](const BSONObj& data) {
+        _connectionOptions.timeout = Milliseconds(data["delay"].numberInt() * 1000);
+    });
     Seconds seconds = duration_cast<Seconds>(_connectionOptions.timeout);
     _timeout.tv_sec = seconds.count();
     _timeout.tv_usec = durationCount<Microseconds>(_connectionOptions.timeout - seconds);

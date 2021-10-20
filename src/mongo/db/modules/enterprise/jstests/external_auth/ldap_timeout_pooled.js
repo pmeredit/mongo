@@ -130,12 +130,16 @@ function pooledTimeoutTestCallback({conn, shardingTest, options}) {
         // set the failpoint and sleep as long as needed to get to witness the failed connection
         // refreshes.
         runClients(conn, options, {userName: 'ldapz_ldap1', pwd: defaultPwd});
+        setLdapFailPoint(
+            kDisableNativeLDAPTimeoutFailPoint, 'alwaysOn', slowDelaySecs, conn, shardingTest);
         setLdapFailPoint(failPoint, {'times': slowResponses}, slowDelaySecs, conn, shardingTest);
         const refreshInterval = options.ldapConnectionPoolHostRefreshIntervalMillis;
         sleep(refreshInterval);
     } else {
         // Set the failpoint first because we do not need to worry about the failpoint triggering
         // during connection pool setup.
+        setLdapFailPoint(
+            kDisableNativeLDAPTimeoutFailPoint, 'alwaysOn', slowDelaySecs, conn, shardingTest);
         setLdapFailPoint(failPoint, {'times': slowResponses}, slowDelaySecs, conn, shardingTest);
         if (failPoint === kSearchFailPoint) {
             // Launch clients to authenticate as ldapz_ldap2, which actually has LDAP roles and so
