@@ -305,6 +305,9 @@ protected:
             globalFailPointRegistry()
                 .find("fCBISSkipSwitchingStorage")
                 ->setMode(FailPoint::alwaysOn);
+            globalFailPointRegistry()
+                .find("fCBISSkipUpdatingLastApplied")
+                ->setMode(FailPoint::alwaysOn);
         } catch (...) {
             ASSERT_OK(exceptionToStatus());
         }

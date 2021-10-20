@@ -318,6 +318,21 @@ private:
         std::shared_ptr<executor::TaskExecutor> executor,
         const CancellationToken& token);
 
+    /**
+     * Recovering without preserving history before top of oplog.
+     */
+    void _replicationStartupRecovery(WithLock);
+
+    /**
+     * Updates '_lastApplied' with the latest oplog timestamp.
+     */
+    void _updateLastAppliedOptime();
+
+    /**
+     * Updates storage timestamps after initialSync finished using '_lastApplied'.
+     */
+    void _updateStorageTimestampsAfterInitialSync(const StatusWith<OpTimeAndWallTime>& lastApplied);
+
     //
     // All member variables are labeled with one of the following codes indicating the
     // synchronization rules for accessing them.

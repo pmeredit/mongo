@@ -12,6 +12,7 @@
 #include "mongo/db/concurrency/write_conflict_exception.h"
 #include "mongo/db/cursor_server_params.h"
 #include "mongo/db/dbdirectclient.h"
+#include "mongo/db/dbhelpers.h"
 #include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/db/repl/initial_syncer_factory.h"
 #include "mongo/db/repl/repl_server_parameters_gen.h"
@@ -64,6 +65,10 @@ MONGO_FAIL_POINT_DEFINE(fCBISHangBeforeMovingTheNewFiles);
 // Failpoint which causes the file copy based initial sync to hang after moving the new storage
 // files.
 MONGO_FAIL_POINT_DEFINE(fCBISHangAfterMovingTheNewFiles);
+
+// Failpoint which causes the file copy based initial sync to skip updating '_lastApplied' from
+// latest oplog entry.
+MONGO_FAIL_POINT_DEFINE(fCBISSkipUpdatingLastApplied);
 
 // Failpoint which causes the file copy based initial sync function to hang before finishing.
 MONGO_FAIL_POINT_DEFINE(fCBISHangBeforeFinish);
@@ -153,6 +158,28 @@ Status FileCopyBasedInitialSyncer::startup(OperationContext* opCtx,
     return Status::OK();
 }
 
+void FileCopyBasedInitialSyncer::_updateLastAppliedOptime() {
+    if (MONGO_unlikely(fCBISSkipUpdatingLastApplied.shouldFail())) {
+        // Noop.
+        return;
+    }
+
+    stdx::lock_guard<Latch> lock(_mutex);
+    auto opCtx = cc().makeOperationContext();
+    BSONObj oplogEntryBSON;
+    invariant(Helpers::getLast(
+        opCtx.get(), NamespaceString::kRsOplogNamespace.ns().c_str(), oplogEntryBSON));
+
+    auto optimeAndWallTime =
+        OpTimeAndWallTime::parseOpTimeAndWallTimeFromOplogEntry(oplogEntryBSON);
+    invariant(optimeAndWallTime.isOK(),
+              str::stream() << "Found an invalid oplog entry: " << oplogEntryBSON
+                            << ", error: " << optimeAndWallTime.getStatus());
+
+    _lastApplied = optimeAndWallTime.getValue();
+    invariant(_lastApplied.opTime.getTimestamp() == _syncingFilesState.lastSyncedOpTime);
+}
+
 ExecutorFuture<OpTimeAndWallTime> FileCopyBasedInitialSyncer::_startInitialSyncAttempt(
     WithLock lock,
     std::shared_ptr<executor::TaskExecutor> executor,
@@ -182,7 +209,10 @@ ExecutorFuture<OpTimeAndWallTime> FileCopyBasedInitialSyncer::_startInitialSyncA
                    .then([this, self = shared_from_this()] {
                        return _startMovingNewStorageFilesPhase();
                    })
-                   .then([this, self = shared_from_this()] { return _lastApplied; });
+                   .then([this, self = shared_from_this()] {
+                       _updateLastAppliedOptime();
+                       return _lastApplied;
+                   });
            })
         .until([this, self = shared_from_this()](StatusWith<OpTimeAndWallTime> result) mutable {
             stdx::lock_guard<Latch> lock(_mutex);
@@ -1158,6 +1188,17 @@ void FileCopyBasedInitialSyncer::_releaseGlobalLock(WithLock) {
     _syncingFilesState.globalLockClient.reset();
 }
 
+void FileCopyBasedInitialSyncer::_replicationStartupRecovery(WithLock) {
+    auto opCtx = cc().makeOperationContext();
+    // Replay the oplog.
+    _replicationProcess->getReplicationRecovery()->recoverFromOplogAsStandalone(
+        opCtx.get(), true /* duringInitialSync */);
+
+    // To make wiredTiger take a stable checkpoint at shutdown.
+    _storage->setStableTimestamp(opCtx.get()->getServiceContext(),
+                                 _syncingFilesState.lastSyncedOpTime);
+}
+
 ExecutorFuture<void> FileCopyBasedInitialSyncer::_prepareStorageDirectoriesForMovingPhase() {
     return _getListOfOldFilesToBeDeleted()
         .then([this, self = shared_from_this()] {
@@ -1166,30 +1207,40 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_prepareStorageDirectoriesForMo
                         "Obtaining the global lock for file copy based initial sync before "
                         "switching storage engines.");
             stdx::lock_guard lk(_mutex);
-            AlternativeClientRegion globalLockRegion(_getGlobalLockClient(lk));
-            auto opCtx = _syncingFilesState.globalLockOpCtx.get();
+            {
+                AlternativeClientRegion globalLockRegion(_getGlobalLockClient(lk));
+                auto opCtx = _syncingFilesState.globalLockOpCtx.get();
 
-            // Switch storage to '.initialsync' directory.
-            _switchStorageTo(
-                lk,
-                opCtx,
-                InitialSyncFileMover::kInitialSyncDir.toString() /* relativeToDbPath */,
-                true /* closeCatalog */,
-                startup_recovery::StartupRecoveryMode::
-                    kReplicaSetMemberInStandalone /* startupRecoveryMode */);
+                // Switch storage to '.initialsync' directory.
+                _switchStorageTo(
+                    lk,
+                    opCtx,
+                    InitialSyncFileMover::kInitialSyncDir.toString() /* relativeToDbPath */,
+                    true /* closeCatalog */,
+                    startup_recovery::StartupRecoveryMode::
+                        kReplicaSetMemberInStandalone /* startupRecoveryMode */);
 
-            // Fix the local collections in '.initialsync' directory before moving it.
-            uassertStatusOK(_cleanUpLocalCollectionsAfterSync(opCtx));
+                // Fix the local collections in '.initialsync' directory before moving it.
+                uassertStatusOK(_cleanUpLocalCollectionsAfterSync(opCtx));
+            }
 
-            // Switch storage to '.initialsync/.dummy' directory to start moving the synced files.
-            boost::filesystem::path fileRelativePath(
-                InitialSyncFileMover::kInitialSyncDir.toString());
-            fileRelativePath.append(InitialSyncFileMover::kInitialSyncDummyDir.toString());
-            _switchStorageTo(lk,
-                             opCtx,
-                             fileRelativePath.string() /* relativeToDbPath */,
-                             true /* closeCatalog */,
-                             boost::none /* startupRecoveryMode */);
+            _releaseGlobalLock(lk);
+            _replicationStartupRecovery(lk);
+
+            {
+                AlternativeClientRegion globalLockRegion(_getGlobalLockClient(lk));
+                auto opCtx = _syncingFilesState.globalLockOpCtx.get();
+                // Switch storage to '.initialsync/.dummy' directory to start moving the synced
+                // files.
+                boost::filesystem::path fileRelativePath(
+                    InitialSyncFileMover::kInitialSyncDir.toString());
+                fileRelativePath.append(InitialSyncFileMover::kInitialSyncDummyDir.toString());
+                _switchStorageTo(lk,
+                                 opCtx,
+                                 fileRelativePath.string() /* relativeToDbPath */,
+                                 true /* closeCatalog */,
+                                 boost::none /* startupRecoveryMode */);
+            }
 
             return _hangAsyncIfFailPointEnabled("fCBISHangBeforeDeletingOldStorageFiles",
                                                 _syncingFilesState.executor,
@@ -1412,6 +1463,7 @@ void FileCopyBasedInitialSyncer::_finishCallback(StatusWith<OpTimeAndWallTime> l
     decltype(_onCompletion) onCompletion;
     {
         stdx::lock_guard<Latch> lock(_mutex);
+        _updateStorageTimestampsAfterInitialSync(lastApplied);
         invariant(_onCompletion);
         std::swap(_onCompletion, onCompletion);
     }
@@ -1446,6 +1498,30 @@ void FileCopyBasedInitialSyncer::_finishCallback(StatusWith<OpTimeAndWallTime> l
         _state = State::kComplete;
         _stateCondition.notify_all();
     }
+}
+
+void FileCopyBasedInitialSyncer::_updateStorageTimestampsAfterInitialSync(
+    const StatusWith<OpTimeAndWallTime>& lastApplied) {
+
+    if (!lastApplied.isOK()) {
+        return;
+    }
+
+    auto opCtxHolder = cc().makeOperationContext();
+    auto opCtx = opCtxHolder.get();
+    const auto lastAppliedOpTime = lastApplied.getValue().opTime;
+    auto initialDataTimestamp = lastAppliedOpTime.getTimestamp();
+
+    // A node coming out of initial sync must guarantee at least one oplog document is visible
+    // such that others can sync from this node. Oplog visibility is only advanced when applying
+    // oplog entries during initial sync. Correct the visibility to match the initial sync time
+    // before transitioning to steady state replication.
+    const bool orderedCommit = true;
+    _storage->oplogDiskLocRegister(opCtx, initialDataTimestamp, orderedCommit);
+
+    // All updates that represent initial sync must be completed before setting the initial data
+    // timestamp.
+    _storage->setInitialDataTimestamp(opCtx->getServiceContext(), initialDataTimestamp);
 }
 
 bool FileCopyBasedInitialSyncer::_isShuttingDown() const {
