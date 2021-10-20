@@ -74,6 +74,20 @@ class SetAuditConfigFixture {
         }
     }
 
+    fastForward(aType = undefined) {
+        let spoolers = [];
+        if (aType === undefined) {
+            // As a side-effect, this selects all spoolers since
+            // 'auditConfigure' events happen on all nodes.
+            spoolers = this.selectSpoolers('auditConfigure');
+        } else {
+            spoolers = this.selectSpoolers(aType);
+        }
+
+        this.waitFor(() => null);
+        spoolers.forEach((spooler) => spooler.fastForward());
+    }
+
     /**
      * Reset audit line on all spooler nodes.
      */
@@ -259,6 +273,7 @@ class SetAuditConfigFixture {
         assert.writeOK(test.coll.insert({x: 5}));
         this.assertAuditedAny('authCheck', {command: 'insert', args: {documents: [{x: 5}]}});
 
+        this.fastForward('authenticate');
         admin.logout();
         assert(admin.auth('admin', 'admin'));
         this.assertAuditedNone('authenticate');
