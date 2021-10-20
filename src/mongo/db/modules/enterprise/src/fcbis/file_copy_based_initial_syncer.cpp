@@ -1197,7 +1197,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_prepareStorageDirectoriesForMo
         })
         .then([this, self = shared_from_this()] {
             _syncingFilesState.currentFileMover =
-                std::make_unique<InitialSyncFileMover>(storageGlobalParams.dbpath);
+                std::make_unique<InitialSyncFileMover>(_syncingFilesState.originalDbPath);
             _syncingFilesState.currentFileMover->deleteFiles(
                 _syncingFilesState.oldStorageFilesToBeDeleted);
         });
@@ -1239,7 +1239,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_getListOfOldFilesToBeDeleted()
     // their deletion.
     _syncingFilesState.oldStorageFilesToBeDeleted.insert(
         _syncingFilesState.oldStorageFilesToBeDeleted.end(),
-        {"WiredTiger.wt", "WiredTiger.turtle", "storage.bson"});
+        {"WiredTiger.wt", "WiredTiger.turtle", "WiredTiger.lock", "storage.bson"});
 
 
     return ExecutorFuture<void>(_syncingFilesState.executor);
