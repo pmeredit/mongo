@@ -498,8 +498,8 @@ FileCopyBasedInitialSyncer::SyncingFilesState::getNewFilesToClone(
 }
 
 Status FileCopyBasedInitialSyncer::_cleanUpLocalCollectionsAfterSync(OperationContext* opCtx) {
-    _replicationProcess->getConsistencyMarkers()->setMinValid(opCtx,
-                                                              repl::OpTime(Timestamp(0, 1), -1));
+    _replicationProcess->getConsistencyMarkers()->setMinValid(
+        opCtx, repl::OpTime(Timestamp(0, 1), -1), true);
 
     _replicationProcess->getConsistencyMarkers()->setOplogTruncateAfterPoint(
         opCtx, _syncingFilesState.lastSyncedOpTime);
