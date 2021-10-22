@@ -19,19 +19,6 @@ load("src/mongo/db/modules/enterprise/jstests/live_import/libs/export_import_hel
 const dbName = "test";
 const collName = "import_collection_timeseries";
 
-// Check if the time-series feature flag is enabled.
-let conn = MongoRunner.runMongod();
-assert(conn);
-
-const timeseriesCollectionsEnabled =
-    TimeseriesTest.timeseriesCollectionsEnabled(conn.getDB(dbName).getMongo());
-MongoRunner.stopMongod(conn);
-
-if (!timeseriesCollectionsEnabled) {
-    jsTestLog("Skipping test because the time-series collection feature flag is disabled");
-    return;
-}
-
 Random.setRandomSeed();
 
 // Creates a time-series collection to be used for export.
