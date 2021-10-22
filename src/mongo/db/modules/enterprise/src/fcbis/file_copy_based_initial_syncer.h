@@ -148,6 +148,11 @@ private:
     Status _connect(WithLock);
 
     /**
+     * Create the oplog if it does not exist.
+     */
+    void _createOplogIfNeeded(OperationContext* opCtx);
+
+    /**
      * Start an initial sync attempt.
      */
     ExecutorFuture<OpTimeAndWallTime> _startInitialSyncAttempt(

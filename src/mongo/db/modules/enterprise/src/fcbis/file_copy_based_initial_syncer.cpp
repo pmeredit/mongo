@@ -8,6 +8,7 @@
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/catalog/catalog_control.h"
+#include "mongo/db/catalog_raii.h"
 #include "mongo/db/client.h"
 #include "mongo/db/concurrency/write_conflict_exception.h"
 #include "mongo/db/cursor_server_params.h"
@@ -112,6 +113,17 @@ std::string FileCopyBasedInitialSyncer::getInitialSyncMethod() const {
     return "fileCopyBased";
 }
 
+void FileCopyBasedInitialSyncer::_createOplogIfNeeded(OperationContext* opCtx) {
+    // The oplog is not really used, but it must exist to run the local backup cursor to
+    // enumerate files to delete.
+    Lock::GlobalWrite glk(opCtx);
+    AutoGetOplog oplogRead(opCtx, OplogAccessMode::kRead);
+    const auto& oplog = oplogRead.getCollection();
+    if (!oplog) {
+        uassertStatusOK(_storage->createOplog(opCtx, NamespaceString::kRsOplogNamespace));
+    }
+}
+
 Status FileCopyBasedInitialSyncer::startup(OperationContext* opCtx,
                                            std::uint32_t initialSyncMaxAttempts) noexcept {
     invariant(opCtx);
@@ -133,6 +145,8 @@ Status FileCopyBasedInitialSyncer::startup(OperationContext* opCtx,
     _initialSyncAttempt = 0;
     _initialSyncMaxAttempts = initialSyncMaxAttempts;
     _source = CancellationSource();
+
+    _createOplogIfNeeded(opCtx);
 
     ExecutorFuture<void> startInitialSyncAttemptFuture =
         _startInitialSyncAttempt(lock, _exec, _source.token())
