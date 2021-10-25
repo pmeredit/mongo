@@ -54,6 +54,12 @@ public:
 
     std::string getInitialSyncMethod() const final;
 
+    // Because, unlike logical initial sync, we replace the local database, we do not allow it
+    // to be accessed during the initial sync.
+    bool allowLocalDbAccess() const final {
+        return false;
+    }
+
     Status startup(OperationContext* opCtx, std::uint32_t maxAttempts) noexcept final;
 
     Status shutdown() final;
