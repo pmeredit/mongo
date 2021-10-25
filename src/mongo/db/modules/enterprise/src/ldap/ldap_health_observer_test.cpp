@@ -5,6 +5,7 @@
 #include "ldap_health_observer.h"
 
 #include "mongo/db/process_health/fault_manager.h"
+#include "mongo/db/process_health/fault_manager_config.h"
 #include "mongo/executor/thread_pool_task_executor_test_fixture.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/clock_source_mock.h"
@@ -29,7 +30,7 @@ class FaultManagerTestImpl : public FaultManager {
 public:
     FaultManagerTestImpl(ServiceContext* svcCtx,
                          std::shared_ptr<executor::TaskExecutor> taskExecutor)
-        : FaultManager(svcCtx, taskExecutor) {}
+        : FaultManager(svcCtx, taskExecutor, std::make_unique<FaultManagerConfig>()) {}
 
     void transitionStateTest(FaultState newState) {
         transitionToState(newState);
