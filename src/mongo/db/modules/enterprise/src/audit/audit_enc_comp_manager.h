@@ -50,6 +50,27 @@ public:
     void setSequenceIDChecker(std::unique_ptr<AuditSequenceIDChecker> seqIDChecker);
     void setSequenceIDCheckerFromHeader(const AuditHeaderOptionsDocument& header);
 
+    /**
+     * Encrypt plaintext using GCM.
+     * Returns the size of the ciphertext written in the <ciphertext> output buffer.
+     */
+    static std::size_t aesEncryptGCM(const SymmetricKey& key,
+                                     ConstDataRange iv,
+                                     ConstDataRange aad,
+                                     ConstDataRange plaintext,
+                                     DataRange ciphertext,
+                                     DataRange tag);
+    /**
+     * Decrypt ciphertext using GCM.
+     * Returns the size of the plaintext written in the <plaintext> output buffer.
+     */
+    static std::size_t aesDecryptGCM(const SymmetricKey& key,
+                                     ConstDataRange iv,
+                                     ConstDataRange aad,
+                                     ConstDataRange ciphertext,
+                                     ConstDataRange tag,
+                                     DataRange plaintext);
+
 private:
     std::size_t _encrypt(ConstDataRange aad, ConstDataRange input, DataRange output) const;
 

@@ -6,9 +6,7 @@
 
 #include "audit_key_manager_kmip.h"
 
-#include "encryptdb/encryption_key_acquisition.h"
-#include "encryptdb/symmetric_crypto.h"
-#include "mongo/crypto/symmetric_crypto.h"
+#include "audit_enc_comp_manager.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
 
@@ -21,17 +19,31 @@ namespace {
 constexpr auto kKMIPKeyId = "kmipLogEncryptKey"_sd;
 constexpr auto kProviderField = "provider"_sd;
 constexpr auto kProviderValue = "kmip"_sd;
+constexpr auto kKeyWrapMethodField = "keyWrapMethod"_sd;
 constexpr auto kUIDField = "uid"_sd;
 }  // namespace
 
 AuditKeyManagerKMIP::AuditKeyManagerKMIP(kmip::KMIPService ks, std::string uid)
-    : _kmipService(std::move(ks)),
-      _keyEncryptKeyUID(std::move(uid)),
-      _keyStoreID(BSON(kProviderField << kProviderValue << kUIDField << _keyEncryptKeyUID)) {}
+    : _kmipService(std::move(ks)), _keyEncryptKeyUID(std::move(uid)) {}
 
-AuditKeyManager::KeyGenerationResult AuditKeyManagerKMIP::generateWrappedKey() {
+AuditKeyManagerKMIPEncrypt::AuditKeyManagerKMIPEncrypt(kmip::KMIPService ks, std::string uid)
+    : AuditKeyManagerKMIP(std::move(ks), std::move(uid)) {
+    constexpr auto kKeyWrapMethodName = "encrypt"_sd;
+    _keyStoreID = BSON(kProviderField << kProviderValue << kUIDField << _keyEncryptKeyUID
+                                      << kKeyWrapMethodField << kKeyWrapMethodName);
+}
+
+AuditKeyManagerKMIPGet::AuditKeyManagerKMIPGet(kmip::KMIPService ks, std::string uid)
+    : AuditKeyManagerKMIP(std::move(ks), std::move(uid)) {
+    constexpr auto kKeyWrapMethodName = "get"_sd;
+    _keyStoreID = BSON(kProviderField << kProviderValue << kUIDField << _keyEncryptKeyUID
+                                      << kKeyWrapMethodField << kKeyWrapMethodName);
+}
+
+AuditKeyManager::KeyGenerationResult AuditKeyManagerKMIPEncrypt::generateWrappedKey() {
     // create the ephemeral log encryption key
     SymmetricKey logEncryptKey(crypto::aesGenerate(crypto::sym256KeySize, kKMIPKeyId));
+
     const uint8_t* key = logEncryptKey.getKey();
     SecureVector<uint8_t> keyCopy(
         key,
@@ -60,14 +72,62 @@ AuditKeyManager::KeyGenerationResult AuditKeyManagerKMIP::generateWrappedKey() {
         std::vector<uint8_t>(keyObj.objdata(), keyObj.objdata() + keyObj.objsize())};
 }
 
-SymmetricKey AuditKeyManagerKMIP::unwrapKey(WrappedKey wrappedKey) {
+AuditKeyManager::KeyGenerationResult AuditKeyManagerKMIPGet::generateWrappedKey() {
+    // create the ephemeral log encryption key
+    SymmetricKey logEncryptKey(crypto::aesGenerate(crypto::sym256KeySize, kKMIPKeyId));
+
+    // get the key encryption key from KMIP server
+    auto keyEncryptKey = fetchKeyEncryptKey();
+
+    // generate random IV
+    // per the NIST recommendation on usage of RBG-constructed IVs, the
+    // security of this encryption rests on the assumption that the key
+    // encrypt key will:
+    //  - not be used more than 2^32 times with random IVs. Encryption of
+    //    the log encrypt key shall only be performed once during process,
+    //    startup, making it highly unlikely to exceed the usage limit
+    //  - be rotated as often as needed to satisfy the usage limit
+    //  - not be used for any other encryption operation
+    //
+    auto iv = std::vector<uint8_t>(aesGetIVSize(crypto::aesMode::gcm));
+    uassertStatusOK(crypto::engineRandBytes(iv.data(), iv.size()));
+
+    // prepare the input and output buffers for GCM encrypt:
+    // input: we use the KMIP key ID as authenticated data (AAD), a random
+    //        IV, and the log encrypt key as plaintext
+    // output: the tag and ciphertext are concatenated together in contiguous
+    //         memory, but are passed as two separate DataRanges
+    auto aad = ConstDataRange(_keyEncryptKeyUID.data(), _keyEncryptKeyUID.size());
+    auto plaintext = ConstDataRange(logEncryptKey.getKey(), logEncryptKey.getKeySize());
+    std::vector<uint8_t> tagAndCiphertext(kWrappedKeyLen);
+    DataRange tag(tagAndCiphertext.data(), crypto::aesGCMTagSize);
+    DataRange ciphertext(tagAndCiphertext.data() + crypto::aesGCMTagSize, plaintext.length());
+
+    // encrypt the log encryption key with the key encryption key
+    auto ctLen = AuditEncryptionCompressionManager::aesEncryptGCM(
+        *keyEncryptKey, iv, aad, plaintext, ciphertext, tag);
+    invariant(ctLen == plaintext.length());
+
+    // Create BSONObj incorporating both key and IV, and pretend it's the wrapped key
+    BSONObjBuilder builder;
+    builder.appendBinData("iv", iv.size(), BinDataGeneral, iv.data());
+    builder.appendBinData("key", tagAndCiphertext.size(), BinDataGeneral, tagAndCiphertext.data());
+    BSONObj keyObj = builder.obj();
+
+    return AuditKeyManager::KeyGenerationResult{
+        std::move(logEncryptKey),
+        std::vector<uint8_t>(keyObj.objdata(), keyObj.objdata() + keyObj.objsize())};
+}
+
+SymmetricKey AuditKeyManagerKMIPEncrypt::unwrapKey(WrappedKey wrappedKey) {
     // unwrap "Wrapped Key" which is actually IV and key
     BSONObj keyObj = BSONObj(reinterpret_cast<char*>(wrappedKey.data()));
-    int keylen, ivlen;
-    auto ivPtr = keyObj.getField("iv").binData(ivlen);
-    auto keyPtr = keyObj.getField("key").binData(keylen);
-    std::vector<uint8_t> key(keyPtr, keyPtr + keylen);
-    std::vector<uint8_t> iv(ivPtr, ivPtr + ivlen);
+    int keyLen, ivLen;
+    auto ivPtr = keyObj.getField("iv").binData(ivLen);
+    auto keyPtr = keyObj.getField("key").binData(keyLen);
+    std::vector<uint8_t> key(keyPtr, keyPtr + keyLen);
+    std::vector<uint8_t> iv(ivPtr, ivPtr + ivLen);
+
     // decrypt with the provided key encryption key's UID and IV through KMIP
     auto swDecrypted = _kmipService.decrypt(_keyEncryptKeyUID, iv, key);
 
@@ -84,6 +144,57 @@ SymmetricKey AuditKeyManagerKMIP::unwrapKey(WrappedKey wrappedKey) {
             secureKey->size() == crypto::sym256KeySize);
 
     return SymmetricKey(std::move(secureKey), crypto::aesAlgorithm, kKMIPKeyId);
+}
+
+SymmetricKey AuditKeyManagerKMIPGet::unwrapKey(WrappedKey wrappedKey) {
+    // unwrap "Wrapped Key" which is actually IV and key
+    BSONObj keyObj = BSONObj(reinterpret_cast<char*>(wrappedKey.data()));
+    int keyLen, ivLen;
+    auto ivPtr = keyObj.getField("iv").binData(ivLen);
+    auto keyPtr = keyObj.getField("key").binData(keyLen);
+    uassert(ErrorCodes::OperationFailed,
+            "Wrapped key is not the expected size",
+            keyLen == kWrappedKeyLen);
+
+    // get the key encryption key from KMIP server
+    auto keyEncryptKey = fetchKeyEncryptKey();
+
+    // prepare the input and output buffers for GCM decrypt:
+    // input: KMIP key ID as authenticated data (AAD), the IV from
+    //        the "iv" field, the first 12 bytes of the "key" field
+    //        as tag, and the rest of the "key" field as ciphertext
+    // output: DataRange backed by a SecureVector that can fit a 256-bit key
+    auto iv = ConstDataRange(ivPtr, ivLen);
+    auto aad = ConstDataRange(_keyEncryptKeyUID.data(), _keyEncryptKeyUID.size());
+    auto ciphertext = ConstDataRange(keyPtr + crypto::aesGCMTagSize, crypto::sym256KeySize);
+    auto tag = ConstDataRange(keyPtr, crypto::aesGCMTagSize);
+    SecureVector<std::uint8_t> keyBuf(crypto::sym256KeySize);
+    auto plaintext = DataRange(keyBuf->data(), keyBuf->capacity());
+
+    // decrypt the wrapped key with GCM
+    AuditEncryptionCompressionManager::aesDecryptGCM(
+        *keyEncryptKey, iv, aad, ciphertext, tag, plaintext);
+
+    return SymmetricKey(std::move(keyBuf), crypto::aesAlgorithm, kKMIPKeyId);
+}
+
+UniqueSymmetricKey AuditKeyManagerKMIPGet::fetchKeyEncryptKey() {
+    uassert(ErrorCodes::BadValue,
+            "Cannot get key from KMIP server with empty key UID",
+            !_keyEncryptKeyUID.empty());
+
+    // get the key encryption key from KMIP server
+    auto keyEncryptKey =
+        uassertStatusOKWithContext(_kmipService.getExternalKey(_keyEncryptKeyUID),
+                                   "Failed to get external key for audit key encryption");
+
+    // the retrieved key must be 256 bits in size
+    uassert(ErrorCodes::BadValue,
+            str::stream() << "Retrieved key encryption key from KMIP is "
+                          << keyEncryptKey->getKeySize() * 8 << " bit; must be "
+                          << crypto::sym256KeySize * 8 << " bit",
+            keyEncryptKey->getKeySize() == crypto::sym256KeySize);
+    return keyEncryptKey;
 }
 
 BSONObj AuditKeyManagerKMIP::getKeyStoreID() {

@@ -152,43 +152,18 @@ std::size_t AuditEncryptionCompressionManager::_encrypt(ConstDataRange aad,
     EncryptedAuditLayout ctLayout(const_cast<std::uint8_t*>(output.data<std::uint8_t>()),
                                   output.length());
 
-    uassert(ErrorCodes::InvalidLength,
-            "Output buffer size is too small",
-            ctLayout.canFitPlaintext(input.length()));
-
     // increment and get the IV
-    AuditSequenceID iv(_encryptKey->getInitializationCount(),
-                       _encryptKey->getAndIncrementInvocationCount());
-    iv.serialize({ctLayout.getIV(), ctLayout.getIVSize()});
+    AuditSequenceID seqID(_encryptKey->getInitializationCount(),
+                          _encryptKey->getAndIncrementInvocationCount());
+    auto iv = DataRange(ctLayout.getIV(), ctLayout.getIVSize());
+    seqID.serialize(iv);
 
-    // create encryptor & set AAD
-    auto encryptor = uassertStatusOK(crypto::SymmetricEncryptor::create(
-        *_encryptKey, crypto::aesMode::gcm, ctLayout.getIV(), ctLayout.getIVSize()));
+    // set up the output buffers
+    auto ciphertext = DataRange(ctLayout.getData(), ctLayout.getDataSize());
+    auto tag = DataRange(ctLayout.getTag(), ctLayout.getTagSize());
 
-    if (aad.length()) {
-        uassertStatusOK(encryptor->addAuthenticatedData(aad.data<uint8_t>(), aad.length()));
-    }
-
-    // do the encrypt & finalize
-    size_t ctLen = 0;
-    if (input.length()) {
-        invariant(input.data());
-        ctLen = uassertStatusOK(encryptor->update(input.data<std::uint8_t>(),
-                                                  input.length(),
-                                                  ctLayout.getData(),
-                                                  ctLayout.getDataSize()));
-    }
-
-    ctLen += uassertStatusOK(
-        encryptor->finalize(ctLayout.getData() + ctLen, ctLayout.getDataSize() - ctLen));
-
-    // make sure the uassert above still holds post-encrypt
-    uassert(ErrorCodes::InvalidLength,
-            "Output buffer size is too small",
-            ctLen <= ctLayout.getDataSize());
-
-    // set the tag
-    uassertStatusOK(encryptor->finalizeTag(ctLayout.getTag(), ctLayout.getTagSize()));
+    // perform the encrypt
+    size_t ctLen = aesEncryptGCM(*_encryptKey, iv, aad, input, ciphertext, tag);
 
     // return the size of header + size of ciphertext
     return ctLayout.getHeaderSize() + ctLen;
@@ -226,37 +201,23 @@ std::vector<std::uint8_t> AuditEncryptionCompressionManager::decrypt(ConstDataRa
             toDecrypt.length() >= ctLayout.getHeaderSize());
 
     // Check the IV matches the expected IV
+    auto iv = ConstDataRange(ctLayout.getIV(), ctLayout.getIVSize());
     if (_seqIDChecker) {
         uassert(ErrorCodes::BadValue,
                 "IV in audit log line does not match the expected IV",
-                _seqIDChecker->matchAndIncrement({ctLayout.getIV(), ctLayout.getIVSize()}));
+                _seqIDChecker->matchAndIncrement(iv));
     }
+
+    // set up the input buffers
+    auto tag = ConstDataRange(ctLayout.getTag(), ctLayout.getTagSize());
+    auto ciphertext = ConstDataRange(ctLayout.getData(), ctLayout.getDataSize());
 
     // set up the output buffer
     std::vector<std::uint8_t> outBuf(ctLayout.expectedPlaintextLen().second);
-    if (!outBuf.data()) {
-        // if the expected output size is 0 (e.g. GMAC),
-        // ensure that the output buffer is not null, or else
-        // windows will not authenticate the data correctly.
-        outBuf.resize(1);
-    }
+    auto plaintext = DataRange(outBuf.data(), outBuf.size());
 
-    // create the decryptor & set AAD
-    auto decryptor = uassertStatusOK(crypto::SymmetricDecryptor::create(
-        *_encryptKey, crypto::aesMode::gcm, ctLayout.getIV(), ctLayout.getIVSize()));
-
-    if (aad.length()) {
-        uassertStatusOK(decryptor->addAuthenticatedData(aad.data<uint8_t>(), aad.length()));
-    }
-
-    // do the decrypt
-    auto ptLen = uassertStatusOK(decryptor->update(
-        ctLayout.getData(), ctLayout.getDataSize(), outBuf.data(), outBuf.size()));
-
-    uassertStatusOK(decryptor->updateTag(ctLayout.getTag(), ctLayout.getTagSize()));
-
-    ptLen += uassertStatusOK(decryptor->finalize(outBuf.data() + ptLen, outBuf.size() - ptLen));
-    invariant(ptLen <= outBuf.size());
+    // perform the decrypt
+    auto ptLen = aesDecryptGCM(*_encryptKey, iv, aad, ciphertext, tag, plaintext);
 
     outBuf.resize(ptLen);
     return outBuf;
@@ -292,6 +253,99 @@ void AuditEncryptionCompressionManager::setSequenceIDChecker(
     std::unique_ptr<AuditSequenceIDChecker> seqIDChecker) {
     _seqIDChecker = std::move(seqIDChecker);
 }
+
+std::size_t AuditEncryptionCompressionManager::aesEncryptGCM(const SymmetricKey& key,
+                                                             ConstDataRange iv,
+                                                             ConstDataRange aad,
+                                                             ConstDataRange plaintext,
+                                                             DataRange ciphertext,
+                                                             DataRange tag) {
+    uassert(ErrorCodes::InvalidLength,
+            "GCM encrypt initialization vector has invalid length",
+            iv.length() == crypto::aesGCMIVSize);
+    uassert(ErrorCodes::InvalidLength,
+            "GCM encrypt tag output buffer has invalid length",
+            tag.length() >= crypto::aesGCMTagSize);
+    uassert(ErrorCodes::InvalidLength,
+            "GCM encrypt ciphertext output buffer is too small",
+            ciphertext.length() >= plaintext.length());
+
+    // create encryptor & set AAD
+    auto encryptor = uassertStatusOK(crypto::SymmetricEncryptor::create(
+        key, crypto::aesMode::gcm, iv.data<std::uint8_t>(), iv.length()));
+
+    if (aad.length()) {
+        uassertStatusOK(encryptor->addAuthenticatedData(aad.data<std::uint8_t>(), aad.length()));
+    }
+
+    // do the encrypt & finalize
+    DataRangeCursor ctCursor(ciphertext);
+    auto ctBuf = const_cast<std::uint8_t*>(ctCursor.data<std::uint8_t>());
+    size_t ctLen = 0;
+    if (plaintext.length()) {
+        ctLen = uassertStatusOK(encryptor->update(
+            plaintext.data<std::uint8_t>(), plaintext.length(), ctBuf, ctCursor.length()));
+        ctCursor.advance(ctLen);
+        ctBuf = const_cast<std::uint8_t*>(ctCursor.data<std::uint8_t>());
+    }
+
+    ctLen += uassertStatusOK(encryptor->finalize(ctBuf, ctCursor.length()));
+
+    // set the tag
+    uassertStatusOK(
+        encryptor->finalizeTag(const_cast<std::uint8_t*>(tag.data<std::uint8_t>()), tag.length()));
+    invariant(ctLen == plaintext.length());
+    return ctLen;
+}
+
+std::size_t AuditEncryptionCompressionManager::aesDecryptGCM(const SymmetricKey& key,
+                                                             ConstDataRange iv,
+                                                             ConstDataRange aad,
+                                                             ConstDataRange ciphertext,
+                                                             ConstDataRange tag,
+                                                             DataRange plaintext) {
+    uassert(ErrorCodes::InvalidLength,
+            "GCM decrypt initialization vector has invalid length",
+            iv.length() == crypto::aesGCMIVSize);
+    uassert(ErrorCodes::InvalidLength,
+            "GCM decrypt tag has invalid length",
+            tag.length() >= crypto::aesGCMTagSize);
+    uassert(ErrorCodes::InvalidLength,
+            "GCM decrypt plaintext output buffer is too small",
+            plaintext.length() >= ciphertext.length());
+
+    // create the decryptor & set AAD
+    auto decryptor = uassertStatusOK(crypto::SymmetricDecryptor::create(
+        key, crypto::aesMode::gcm, iv.data<uint8_t>(), iv.length()));
+
+    if (aad.length()) {
+        uassertStatusOK(decryptor->addAuthenticatedData(aad.data<uint8_t>(), aad.length()));
+    }
+
+    std::vector<std::uint8_t> dummyBuf;
+    if (!plaintext.data()) {
+        // if the expected output size is 0 (e.g. GMAC),
+        // ensure that the output buffer is not null, or else
+        // windows will not authenticate the data correctly.
+        dummyBuf.resize(1);
+        plaintext = DataRange(dummyBuf.data(), 0);
+    }
+
+    // do the decrypt
+    DataRangeCursor ptCursor(plaintext);
+    auto ptBuf = const_cast<std::uint8_t*>(ptCursor.data<std::uint8_t>());
+    auto ptLen = uassertStatusOK(decryptor->update(
+        ciphertext.data<std::uint8_t>(), ciphertext.length(), ptBuf, ptCursor.length()));
+    ptCursor.advance(ptLen);
+    ptBuf = const_cast<std::uint8_t*>(ptCursor.data<std::uint8_t>());
+
+    uassertStatusOK(decryptor->updateTag(tag.data<std::uint8_t>(), tag.length()));
+
+    ptLen += uassertStatusOK(decryptor->finalize(ptBuf, ptCursor.length()));
+    invariant(ptLen <= plaintext.length());
+    return ptLen;
+}
+
 
 }  // namespace audit
 }  // namespace mongo
