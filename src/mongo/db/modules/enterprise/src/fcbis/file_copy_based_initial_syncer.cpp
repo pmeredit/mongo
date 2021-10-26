@@ -145,6 +145,7 @@ Status FileCopyBasedInitialSyncer::startup(OperationContext* opCtx,
     _initialSyncAttempt = 0;
     _initialSyncMaxAttempts = initialSyncMaxAttempts;
     _source = CancellationSource();
+    _stats.initialSyncStart = _exec->now();
 
     _createOplogIfNeeded(opCtx);
 
@@ -232,6 +233,20 @@ ExecutorFuture<OpTimeAndWallTime> FileCopyBasedInitialSyncer::_startInitialSyncA
             stdx::lock_guard<Latch> lock(_mutex);
             // Always release the global lock.
             _releaseGlobalLock(lock);
+
+            _stats.initialSyncEnd = _exec->now();
+            int runTime =
+                duration_cast<Milliseconds>(_stats.initialSyncStart - _stats.initialSyncEnd)
+                    .count();  // timer.millis();
+            int operationsRetried = 0;
+            int totalTimeUnreachableMillis = 0;
+            _stats.initialSyncAttemptInfos.emplace_back(
+                InitialSyncer::InitialSyncAttemptInfo{runTime,
+                                                      result.getStatus(),
+                                                      _syncSource,
+                                                      operationsRetried,
+                                                      totalTimeUnreachableMillis});
+
             if (!result.isOK()) {
                 LOGV2_ERROR(5781900,
                             "File Copy Based initial sync attempt failed -- attempts left: "
@@ -526,7 +541,7 @@ void FileCopyBasedInitialSyncer::_killBackupCursor() {
 
 FileCopyBasedInitialSyncer::BackupFileMetadataCollection
 FileCopyBasedInitialSyncer::SyncingFilesState::getNewFilesToClone(
-    const BackupFileMetadataCollection& backupCursorExtendFiles, WithLock lk) {
+    const BackupFileMetadataCollection& backupCursorExtendFiles, Stats* statsPtr, WithLock lk) {
     BackupFileMetadataCollection newFilesToClone;
     std::copy_if(backupCursorExtendFiles.begin(),
                  backupCursorExtendFiles.end(),
@@ -535,9 +550,10 @@ FileCopyBasedInitialSyncer::SyncingFilesState::getNewFilesToClone(
                      return extendedCursorFiles.find(p["filename"].str()) ==
                          extendedCursorFiles.end();
                  });
-    std::for_each(newFilesToClone.begin(), newFilesToClone.end(), [this](const BSONObj& p) {
-        extendedCursorFiles.insert(p["filename"].str());
-    });
+    for (auto it = newFilesToClone.begin(); it != newFilesToClone.end(); it++) {
+        extendedCursorFiles.insert((*it)["filename"].str());
+        statsPtr->totalFileSize += std::max(0ll, (*it)["fileSize"].safeNumberLong());
+    }
     return newFilesToClone;
 }
 
@@ -818,6 +834,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_extendBackupCursor(
         for (const BSONObj& doc : data.documents) {
             // Ensure filename field exists.
             _getBSONField(doc, "filename", "extended backupCursor's batches");
+            _stats.totalExtendedFileSize += std::max(0ll, doc["fileSize"].safeNumberLong());
             extendedFiles->emplace_back(doc.getOwned());
         }
 
@@ -848,16 +865,21 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_extendBackupCursor(
 
     return fetcher->onCompletion()
         .thenRunOn(_syncingFilesState.executor)
-        .then(
-            [this, self = shared_from_this(), fetcher, fetchStatus, returnedFiles, extendedFiles] {
-                stdx::lock_guard<Latch> lock(_mutex);
-                if (!*fetchStatus) {
-                    // The callback never got invoked.
-                    uasserted(5782301, "Internal error running cursor callback in command");
-                }
-                uassertStatusOK(fetchStatus->get());
-                *returnedFiles = _syncingFilesState.getNewFilesToClone(*extendedFiles, lock);
-            });
+        .then([this,
+               self = shared_from_this(),
+               fetcher,
+               fetchStatus,
+               returnedFiles,
+               extendedFiles,
+               statsPtr = &_stats] {
+            stdx::lock_guard<Latch> lock(_mutex);
+            if (!*fetchStatus) {
+                // The callback never got invoked.
+                uasserted(5782301, "Internal error running cursor callback in command");
+            }
+            uassertStatusOK(fetchStatus->get());
+            *returnedFiles = _syncingFilesState.getNewFilesToClone(*extendedFiles, statsPtr, lock);
+        });
 }
 
 ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFromSyncSourceCursor() {
@@ -941,6 +963,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startSyncingFiles(
     _syncingFilesState.executor = executor;
     _syncingFilesState.token = token;
     _syncingFilesState.originalDbPath = storageGlobalParams.dbpath;
+    _stats.reset();
 
     if (MONGO_unlikely(fCBISSkipSyncingFilesPhase.shouldFail())) {
         // Noop.
@@ -1052,6 +1075,9 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFiles(
                // cycle starts at 1 for the initial non-extended backup.  So subtract 1 for the
                // correct extension number.
                int extensionNumber = _syncingFilesState.fileBasedInitialSyncCycle - 1;
+               if (extensionNumber > 0) {
+                   _stats.extensionDataSize = fileSize;
+               }
                _syncingFilesState.currentBackupFileCloner =
                    std::make_unique<BackupFileCloner>(*_syncingFilesState.backupId,
                                                       fileName,
@@ -1077,6 +1103,8 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFiles(
                    stdx::lock_guard lock(_mutex);
                    _syncingFilesState.backupFileClonerStats.emplace_back(
                        _syncingFilesState.currentBackupFileCloner->getStats());
+                   _stats.copiedFileSize +=
+                       _syncingFilesState.currentBackupFileCloner->getStats().bytesCopied;
                    _syncingFilesState.currentBackupFileCloner = nullptr;
                    return false;  // Continue the loop.
                });
@@ -1439,10 +1467,6 @@ bool FileCopyBasedInitialSyncer::_isActive(WithLock) const {
     return State::kRunning == _state || State::kShuttingDown == _state;
 }
 
-BSONObj FileCopyBasedInitialSyncer::getInitialSyncProgress() const {
-    return BSONObj();
-}
-
 void FileCopyBasedInitialSyncer::cancelCurrentAttempt() {
     stdx::lock_guard lk(_mutex);
     if (_isActive(lk)) {
@@ -1456,6 +1480,170 @@ void FileCopyBasedInitialSyncer::cancelCurrentAttempt() {
                     "initial syncer is not "
                     "currently active.");
     }
+}
+
+std::string FileCopyBasedInitialSyncer::Stats::toString() const {
+    return toBSON().toString();
+}
+
+BSONObj FileCopyBasedInitialSyncer::Stats::toBSON() const {
+    BSONObjBuilder bob;
+    append(&bob);
+    return bob.obj();
+}
+
+void FileCopyBasedInitialSyncer::Stats::append(BSONObjBuilder* builder) const {
+    if (initialSyncStart != Date_t()) {
+        builder->appendDate("initialSyncStart", initialSyncStart);
+        auto elapsedDurationEnd = Date_t::now();
+        if (initialSyncEnd != Date_t()) {
+            builder->appendDate("initialSyncEnd", initialSyncEnd);
+            elapsedDurationEnd = initialSyncEnd;
+        }
+        long long elapsedMillis =
+            duration_cast<Milliseconds>(elapsedDurationEnd - initialSyncStart).count();
+        builder->appendNumber("totalInitialSyncElapsedMillis",
+                              static_cast<long long>(elapsedMillis));
+    }
+
+    BSONArrayBuilder arrBuilder(builder->subarrayStart("initialSyncAttempts"));
+    for (unsigned int i = 0; i < initialSyncAttemptInfos.size(); ++i) {
+        BSONObj obj = initialSyncAttemptInfos[i].toBSON();
+        if (builder->len() + obj.objsize() > BSONObjMaxUserSize) {
+            arrBuilder.append(BSON("Warning"
+                                   << "output truncated due to BSON object limit"));
+            break;
+        }
+        arrBuilder.append(obj);
+    }
+    arrBuilder.doneFast();
+}
+
+
+BSONObj FileCopyBasedInitialSyncer::_getInitialSyncProgress(WithLock) const {
+    BSONObjBuilder bob;
+    bob.append("method", "fileCopyBased");
+
+    bob.appendNumber("failedInitialSyncAttempts", static_cast<long long>(_initialSyncAttempt));
+    bob.appendNumber("maxFailedInitialSyncAttempts",
+                     static_cast<long long>(_initialSyncMaxAttempts));
+
+    _stats.append(&bob);
+
+    if (_state != State::kRunning)
+        return bob.obj();
+
+
+    // The following fields are present if there is a sync in progress
+
+    long long approxTotalDataSize = _stats.totalFileSize + _stats.totalExtendedFileSize;
+    bob.appendNumber("approxTotalDataSize", static_cast<long long>(approxTotalDataSize));
+
+    long long approxTotalBytesCopied = _stats.copiedFileSize;
+    if (_syncingFilesState.currentBackupFileCloner) {
+        approxTotalBytesCopied +=
+            _syncingFilesState.currentBackupFileCloner->getStats().bytesCopied;
+    }
+    bob.appendNumber("approxTotalBytesCopied", static_cast<long long>(approxTotalBytesCopied));
+    if (approxTotalBytesCopied > 0) {
+        const auto statsObj = bob.asTempObj();
+        auto totalInitialSyncElapsedMillis =
+            statsObj.getField("totalInitialSyncElapsedMillis").safeNumberLong();
+        const auto downloadRate =
+            (double)totalInitialSyncElapsedMillis / (double)approxTotalBytesCopied;
+        const auto remainingInitialSyncEstimatedMillis =
+            downloadRate * (double)(approxTotalDataSize - approxTotalBytesCopied);
+        bob.appendNumber("remainingInitialSyncEstimatedMillis",
+                         (long long)remainingInitialSyncEstimatedMillis);
+    }
+
+    // Total bytes in the initial set of files, before any $backupCursorExtend calls.
+    long int initialBackupDataSize = _stats.totalFileSize;
+    bob.appendNumber("initialBackupDataSize", static_cast<long long>(initialBackupDataSize));
+
+    // Last OpTime phase to be available in the previous backup cursor phase
+    // (not present if in the initial backup phase)
+    auto& previousOplogEnd = _syncingFilesState.lastSyncedOpTime;
+    if (!previousOplogEnd.isNull()) {
+        bob.append("previousOplogEnd", previousOplogEnd);
+    }
+
+    auto& currentOplogEnd =
+        _syncingFilesState.lastAppliedOpTimeOnSyncSrc;  // Last OpTime guaranteed to be available in
+                                                        // the current backup cursor phase
+    bob.append("currentOplogEnd", currentOplogEnd);
+
+    auto& syncSourceLastApplied =
+        _syncingFilesState
+            .lastAppliedOpTimeOnSyncSrc;  // The last applied optime at the sync source, as of the
+                                          // start of this backup phase (not present if in the
+                                          // initial backup phase)
+    if (!syncSourceLastApplied.isNull()) {
+        bob.append("syncSourceLastApplied", syncSourceLastApplied);
+    }
+
+    int numExtensions = 0;
+    if (_syncingFilesState.currentBackupFileCloner) {
+        numExtensions = _syncingFilesState.currentBackupFileCloner->getStats().extensionNumber;
+    }
+    // Number of times we have started a $backupCursorExtend (absent if never)
+    if (numExtensions > 0) {
+        bob.appendNumber("numExtensions", static_cast<long long>(numExtensions));
+    }
+
+    // Total bytes in the current extension (absent if no extension in progress)
+    int extensionDataSize = _stats.extensionDataSize;
+    if (extensionDataSize > 0) {
+        bob.appendNumber("extensionDataSize", static_cast<long long>(extensionDataSize));
+    }
+
+    if (_sharedData) {
+        stdx::lock_guard<InitialSyncSharedData> sdLock(*_sharedData);
+        auto unreachableSince = _sharedData->getSyncSourceUnreachableSince(sdLock);
+        if (unreachableSince != Date_t()) {
+            bob.append("syncSourceUnreachableSince", unreachableSince);
+            bob.append("currentOutageDurationMillis",
+                       durationCount<Milliseconds>(_sharedData->getCurrentOutageDuration(sdLock)));
+        }
+        bob.append("totalTimeUnreachableMillis",
+                   durationCount<Milliseconds>(_sharedData->getTotalTimeUnreachable(sdLock)));
+    }
+
+    // append each BackupFileCloners stats making sure not to exceed BSONObjMaxUserSize
+    BSONArrayBuilder fls(bob.subarrayStart("files"));
+    for (auto el = _syncingFilesState.backupFileClonerStats.begin();
+         el != _syncingFilesState.backupFileClonerStats.end();
+         el++) {
+        BSONObjBuilder flStat;
+        el->append(&flStat);
+        if (bob.len() + flStat.len() > BSONObjMaxUserSize) {
+            fls.append(BSON("Warning"
+                            << "output truncated due to BSON object limit"));
+            break;
+        }
+        fls.append(flStat.obj());
+    }
+    fls.doneFast();
+
+    return bob.obj();
+}
+
+BSONObj FileCopyBasedInitialSyncer::getInitialSyncProgress() const {
+    stdx::lock_guard<Latch> lock(_mutex);
+    if (_state == State::kPreStart) {
+        return BSONObj();
+    }
+
+    try {
+        return _getInitialSyncProgress(lock);
+    } catch (const DBException& e) {
+        LOGV2(8423328,
+              "Error creating initial sync progress object: {error}",
+              "Error creating initial sync progress object",
+              "error"_attr = e.toString());
+    }
+
+    return BSONObj();
 }
 
 Status FileCopyBasedInitialSyncer::_connect(WithLock) {

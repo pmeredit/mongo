@@ -817,6 +817,33 @@ ServiceContext::UniqueOperationContext makeOpCtx() {
 }
 
 
+TEST_F(FileCopyBasedInitialSyncerTest, elementary_getInitialSyncProgress) {
+    auto* fileCopyBasedInitialSyncer = getFileCopyBasedInitialSyncer();
+    auto opCtx = makeOpCtx();
+    ASSERT_FALSE(fileCopyBasedInitialSyncer->isActive());
+
+    BSONObj prog = fileCopyBasedInitialSyncer->getInitialSyncProgress();
+    ASSERT_EQUALS(prog.toString(), "{}") << prog;
+
+    const std::uint32_t maxAttempts = 1U;
+    ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
+
+    prog = fileCopyBasedInitialSyncer->getInitialSyncProgress();
+
+    ASSERT_EQUALS(prog.nFields(), 11) << prog;
+    ASSERT_EQUALS(prog["method"].str(), "fileCopyBased") << prog;
+    ASSERT(prog["failedInitialSyncAttempts"].isNumber()) << prog;
+    ASSERT_EQUALS(prog.getIntField("failedInitialSyncAttempts"), 0) << prog;
+    ASSERT_EQUALS(prog.getIntField("maxFailedInitialSyncAttempts"), 1) << prog;
+    ASSERT_EQUALS(prog["initialSyncStart"].type(), Date) << prog;
+    ASSERT_EQUALS(prog["totalInitialSyncElapsedMillis"].type(), NumberLong) << prog;
+    ASSERT_BSONOBJ_EQ(prog.getObjectField("initialSyncAttempts"), BSONObj());
+    ASSERT_EQUALS(prog.getIntField("approxTotalDataSize"), 0) << prog;
+    ASSERT_EQUALS(prog.getIntField("approxTotalBytesCopied"), 0) << prog;
+    ASSERT_EQUALS(prog.getIntField("initialBackupDataSize"), 0) << prog;
+}
+
+
 TEST_F(FileCopyBasedInitialSyncerTest, InvalidConstruction) {
     InitialSyncerInterface::Options options;
     options.getMyLastOptime = []() { return OpTime(); };
@@ -1407,6 +1434,18 @@ TEST_F(FileCopyBasedInitialSyncerTest, AlwaysKillBackupCursorOnFailure) {
     ASSERT(verifyCursorFiles(fileCopyBasedInitialSyncer->getBackupCursorFiles_ForTest(),
                              cursorDataMock.backupCursorFiles));
 
+    {
+        BSONObj prog = fileCopyBasedInitialSyncer->getInitialSyncProgress();
+
+        ASSERT_EQUALS(prog.nFields(), 7) << prog;
+        ASSERT_EQUALS(prog["method"].str(), "fileCopyBased") << prog;
+        ASSERT_EQUALS(prog.getIntField("failedInitialSyncAttempts"), 1) << prog;
+        ASSERT_EQUALS(prog.getIntField("maxFailedInitialSyncAttempts"), 1) << prog;
+        ASSERT_EQUALS(prog["initialSyncStart"].type(), Date) << prog;
+        ASSERT(prog["totalInitialSyncElapsedMillis"].isNumber()) << prog;
+        BSONObj attempts = prog["initialSyncAttempts"].Obj();
+        ASSERT_EQUALS(attempts.nFields(), 1) << attempts;
+    }
     expectSuccessfulKillBackupCursorCall();
     fileCopyBasedInitialSyncer->join();
     ASSERT_EQUALS(ErrorCodes::NetworkTimeout, _lastApplied);
@@ -1575,7 +1614,6 @@ TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromInitialSource) {
                              << "/path/to/dbpath/backupfile2"
                              << "fileSize" << int64_t(file2Data.size()))})
             .toBSONAsInitialResponse());
-
 
     mockBackupFileData({file1Data, file2Data});
     _mock->runUntilExpectationsSatisfied();

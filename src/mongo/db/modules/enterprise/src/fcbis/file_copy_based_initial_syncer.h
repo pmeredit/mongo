@@ -11,6 +11,7 @@
 #include "mongo/client/dbclient_connection.h"
 #include "mongo/db/repl/data_replicator_external_state.h"
 #include "mongo/db/repl/initial_sync_shared_data.h"
+#include "mongo/db/repl/initial_syncer.h"
 #include "mongo/db/repl/initial_syncer_interface.h"
 #include "mongo/db/repl/repl_server_parameters_gen.h"
 #include "mongo/db/repl/replication_process.h"
@@ -140,6 +141,39 @@ public:
     const std::vector<std::string>& getOldStorageFilesToBeDeleted_forTest() {
         return _syncingFilesState.oldStorageFilesToBeDeleted;
     }
+
+    struct InitialSyncAttemptInfo {
+        int durationMillis;
+        Status status;
+        HostAndPort syncSource;
+        // int rollBackId will not be provided, though it is for logical initial sync
+        int operationsRetried;
+        int totalTimeUnreachableMillis;
+
+        std::string toString() const;
+        BSONObj toBSON() const;
+        void append(BSONObjBuilder* builder) const;
+    };
+    struct Stats {
+        Date_t initialSyncStart;
+        Date_t initialSyncEnd;
+        std::vector<InitialSyncer::InitialSyncAttemptInfo> initialSyncAttemptInfos;
+        unsigned long totalFileSize{0};
+        unsigned long totalExtendedFileSize{0};
+        unsigned long copiedFileSize{0};
+        unsigned long extensionDataSize{0};
+
+        std::string toString() const;
+        BSONObj toBSON() const;
+        void append(BSONObjBuilder* builder) const;
+        void reset() {
+            totalFileSize = 0;
+            totalExtendedFileSize = 0;
+            copiedFileSize = 0;
+            extensionDataSize = 0;
+        }
+    };
+
 
 private:
     /**
@@ -419,7 +453,9 @@ private:
         // difference between the files returned by the consecutive backupCursorExtend to
         // clone only the new log files added since the previous backupCursorExtend.
         BackupFileMetadataCollection getNewFilesToClone(
-            const BackupFileMetadataCollection& backupCursorExtendFiles, WithLock lk);
+            const BackupFileMetadataCollection& backupCursorExtendFiles,
+            Stats* statsPtr,
+            WithLock lk);
 
         // The backupCursor used for initialSync, we should always have only one backupCursor opened
         // on the sync source.
@@ -459,6 +495,10 @@ private:
         std::unique_ptr<Lock::GlobalLock> globalLock;
         std::string originalDbPath;
     } _syncingFilesState;
+
+
+    BSONObj _getInitialSyncProgress(WithLock) const;
+    Stats _stats;
 };
 
 }  // namespace repl
