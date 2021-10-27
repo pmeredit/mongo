@@ -26,6 +26,7 @@ namespace repl {
 // DBClientConnection, optionally limited to a specific file name.
 MONGO_FAIL_POINT_DEFINE(initialSyncHangBackupFileClonerAfterHandlingBatchResponse);
 MONGO_FAIL_POINT_DEFINE(initialSyncHangDuringBackupFileClone);
+MONGO_FAIL_POINT_DEFINE(initialSyncBackupFileClonerDisableExhaust);
 BackupFileCloner::BackupFileCloner(const UUID& backupId,
                                    const std::string& remoteFileName,
                                    size_t remoteFileSize,
@@ -157,8 +158,9 @@ void BackupFileCloner::runQuery() {
                 "Backup file cloner running aggregation",
                 "source"_attr = getSource(),
                 "aggRequest"_attr = aggregation_request_helper::serializeToCommandObj(aggRequest));
+    const bool useExhaust = !MONGO_unlikely(initialSyncBackupFileClonerDisableExhaust.shouldFail());
     std::unique_ptr<DBClientCursor> cursor = uassertStatusOK(DBClientCursor::fromAggregationRequest(
-        getClient(), std::move(aggRequest), true /* secondaryOk */, true /* useExhaust */));
+        getClient(), std::move(aggRequest), true /* secondaryOk */, useExhaust));
     try {
         while (cursor->more()) {
             DBClientCursorBatchIterator iter(*cursor);

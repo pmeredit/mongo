@@ -26,9 +26,6 @@
 #include "mongo/util/destructor_guard.h"
 #include "mongo/util/future_util.h"
 
-// Failpoint which causes the initial sync function to hang after cloning all backup files
-MONGO_FAIL_POINT_DEFINE(fileCopyBasedInitialSyncHangAfterFileCloning);
-
 namespace mongo {
 namespace repl {
 
@@ -43,6 +40,15 @@ MONGO_FAIL_POINT_DEFINE(fCBISForceExtendBackupCursor);
 
 // Failpoint which causes the file copy based initial sync to skip the syncing files phase.
 MONGO_FAIL_POINT_DEFINE(fCBISSkipSyncingFilesPhase);
+
+// Failpoint which causes the initial sync function to hang after cloning all backup files.
+MONGO_FAIL_POINT_DEFINE(fCBISHangAfterFileCloning);
+
+// Failpoint which causes the initial sync function to hang before extending the backup cursor.
+MONGO_FAIL_POINT_DEFINE(fCBISHangBeforeExtendBackupCursor);
+
+// Failpoint which causes the initial sync function to hang after a backup cursor extend attempt.
+MONGO_FAIL_POINT_DEFINE(fCBISHangAfterAttemptingExtendBackupCursor);
 
 // Failpoint which causes the file copy based initial sync to skip switching storage engine.
 MONGO_FAIL_POINT_DEFINE(fCBISSkipSwitchingStorage);
@@ -70,6 +76,10 @@ MONGO_FAIL_POINT_DEFINE(fCBISHangAfterMovingTheNewFiles);
 // Failpoint which causes the file copy based initial sync to skip updating '_lastApplied' from
 // latest oplog entry.
 MONGO_FAIL_POINT_DEFINE(fCBISSkipUpdatingLastApplied);
+
+// Failpoint which causes the file copy based initial sync to hang after attempting to get the last
+// applied optime from the sync source.
+MONGO_FAIL_POINT_DEFINE(fCBISHangAfterAttemptingGetLastApplied);
 
 // Failpoint which causes the file copy based initial sync function to hang before finishing.
 MONGO_FAIL_POINT_DEFINE(fCBISHangBeforeFinish);
@@ -632,6 +642,7 @@ void FileCopyBasedInitialSyncer::SyncingFilesState::reset() {
     originalDbPath = "";
 
     token = CancellationToken::uncancelable();
+    retryingOperation = boost::none;
 }
 
 BSONElement FileCopyBasedInitialSyncer::_getBSONField(const BSONObj& obj,
@@ -644,42 +655,67 @@ BSONElement FileCopyBasedInitialSyncer::_getBSONField(const BSONObj& obj,
     return result;
 }
 
-ExecutorFuture<mongo::Timestamp> FileCopyBasedInitialSyncer::_getLastAppliedOpTimeFromSyncSource(
-    std::shared_ptr<executor::TaskExecutor> executor, const CancellationToken& token) {
-    stdx::lock_guard<Latch> lock(_mutex);
-    executor::RemoteCommandRequest request(_syncSource,
-                                           NamespaceString::kAdminDb.toString(),
-                                           std::move(BSON("replSetGetStatus" << 1)),
-                                           rpc::makeEmptyMetadata(),
-                                           nullptr);
-    return executor->scheduleRemoteCommand(std::move(request), token)
-        .then([this, self = shared_from_this()](const auto& response) {
-            uassertStatusOK(response.status);
-            auto& reply = response.data;
-            uassertStatusOK(getStatusFromCommandResult(reply));
-            // Parsing replSetGetStatus's reply to get lastAppliedOpTime.
-            // ReplSetGetStatus's reply example:
-            // {
-            //     ...
-            //     "optimes" : {
-            //         ...
-            //         "appliedOpTime" : {
-            //             "ts" : Timestamp(1583385878, 1),
-            //             "t" : NumberLong(3)
-            //         },
-            //         ...
-            //     }
-            //     ...
-            // }
-            auto lastAppliedOpTime = _getBSONField(
-                _getBSONField(_getBSONField(reply, "optimes", "replSetGetStatus's reply").Obj(),
-                              "appliedOpTime",
-                              "replSetGetStatus's reply.optimes")
-                    .Obj(),
-                "ts",
-                "replSetGetStatus's reply.optimes.appliedOpTime");
-            return lastAppliedOpTime.timestamp();
-        });
+ExecutorFuture<mongo::Timestamp> FileCopyBasedInitialSyncer::_getLastAppliedOpTimeFromSyncSource() {
+    return AsyncTry([this, self = shared_from_this()] {
+               stdx::lock_guard<Latch> lock(_mutex);
+               executor::RemoteCommandRequest request(_syncSource,
+                                                      NamespaceString::kAdminDb.toString(),
+                                                      std::move(BSON("replSetGetStatus" << 1)),
+                                                      rpc::makeEmptyMetadata(),
+                                                      nullptr);
+               return _syncingFilesState.executor
+                   ->scheduleRemoteCommand(std::move(request), _syncingFilesState.token)
+                   .then([this, self = shared_from_this()](const auto& response) {
+                       uassertStatusOK(response.status);
+                       auto& reply = response.data;
+                       uassertStatusOK(getStatusFromCommandResult(reply));
+                       // Parsing replSetGetStatus's reply to get lastAppliedOpTime.
+                       // ReplSetGetStatus's reply example:
+                       // {
+                       //     ...
+                       //     "optimes" : {
+                       //         ...
+                       //         "appliedOpTime" : {
+                       //             "ts" : Timestamp(1583385878, 1),
+                       //             "t" : NumberLong(3)
+                       //         },
+                       //         ...
+                       //     }
+                       //     ...
+                       // }
+                       auto lastAppliedOpTime = _getBSONField(
+                           _getBSONField(
+                               _getBSONField(reply, "optimes", "replSetGetStatus's reply").Obj(),
+                               "appliedOpTime",
+                               "replSetGetStatus's reply.optimes")
+                               .Obj(),
+                           "ts",
+                           "replSetGetStatus's reply.optimes.appliedOpTime");
+                       return lastAppliedOpTime.timestamp();
+                   });
+           })
+        .until([this, self = shared_from_this()](StatusWith<Timestamp> result) {
+            fCBISHangAfterAttemptingGetLastApplied.pauseWhileSet();
+            stdx::lock_guard<Latch> lock(_mutex);
+            return !_shouldRetryError(lock, result.getStatus());
+        })
+        .on(_syncingFilesState.executor, _syncingFilesState.token);
+}
+
+bool FileCopyBasedInitialSyncer::_shouldRetryError(WithLock lk, Status status) {
+    if (ErrorCodes::isRetriableError(status)) {
+        stdx::lock_guard<InitialSyncSharedData> sharedDataLock(*_sharedData);
+        return _sharedData->shouldRetryOperation(sharedDataLock,
+                                                 &_syncingFilesState.retryingOperation);
+    }
+    // The status was OK or some error other than a retriable error, so clear the retriable error
+    // state and indicate that we should not retry.
+    _clearRetriableError(lk);
+    return false;
+}
+
+void FileCopyBasedInitialSyncer::_clearRetriableError(WithLock lk) {
+    _syncingFilesState.retryingOperation = boost::none;
 }
 
 ExecutorFuture<void> FileCopyBasedInitialSyncer::_openBackupCursor(
@@ -786,6 +822,20 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_openBackupCursor(
             }
             uassertStatusOK(fetchStatus->get());
         });
+}
+
+ExecutorFuture<void> FileCopyBasedInitialSyncer::_extendBackupCursorWithRetry(
+    std::shared_ptr<BackupFileMetadataCollection> returnedFiles) {
+    fCBISHangBeforeExtendBackupCursor.pauseWhileSet();
+    return AsyncTry([this, self = shared_from_this(), returnedFiles] {
+               return _extendBackupCursor(returnedFiles);
+           })
+        .until([this, self = shared_from_this()](Status error) {
+            fCBISHangAfterAttemptingExtendBackupCursor.pauseWhileSet();
+            stdx::lock_guard<Latch> lock(_mutex);
+            return !_shouldRetryError(lock, error);
+        })
+        .on(_syncingFilesState.executor, _syncingFilesState.token);
 }
 
 ExecutorFuture<void> FileCopyBasedInitialSyncer::_extendBackupCursor(
@@ -926,7 +976,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFromSyncSourceCursor() {
     invariant(_syncingFilesState.backupId);
     // Extend the backupCursor opened in the first cycle.
     auto returnedFiles = std::make_shared<BackupFileMetadataCollection>();
-    return _extendBackupCursor(returnedFiles)
+    return _extendBackupCursorWithRetry(returnedFiles)
         .then([this, self = shared_from_this(), returnedFiles] {
             stdx::lock_guard<Latch> lock(_mutex);
             _syncingFilesState.lastSyncedOpTime = _syncingFilesState.lastAppliedOpTimeOnSyncSrc;
@@ -973,14 +1023,13 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startSyncingFiles(
     return AsyncTry([this, self = shared_from_this()]() mutable {
                return _cloneFromSyncSourceCursor()
                    .then([this, self = shared_from_this()]() {
-                       return _getLastAppliedOpTimeFromSyncSource(_syncingFilesState.executor,
-                                                                  _syncingFilesState.token);
+                       fCBISHangAfterFileCloning.pauseWhileSet();
+                       return _getLastAppliedOpTimeFromSyncSource();
                    })
                    .then([this,
                           self = shared_from_this()](mongo::Timestamp lastAppliedOpTimeOnSyncSrc) {
                        stdx::lock_guard<Latch> lock(_mutex);
                        _syncingFilesState.lastAppliedOpTimeOnSyncSrc = lastAppliedOpTimeOnSyncSrc;
-                       fileCopyBasedInitialSyncHangAfterFileCloning.pauseWhileSet();
                    });
            })
         .until([this, self = shared_from_this()](Status cloningStatus) mutable {
@@ -1308,7 +1357,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_getListOfOldFilesToBeDeleted()
     auto cursor = uassertStatusOKWithContext(
         DBClientCursor::fromAggregationRequest(
             &client, aggRequest, false /* secondaryOk */, false /* useExhaust */),
-        "Failed to establish a cursor for aggregation");
+        "Failed to establish an aggregation cursor for enumerating old files");
 
     // Traverse local backup cursor and write filenames to oldStorageFilesToBeDeleted.
     while (cursor->more()) {
@@ -1671,10 +1720,10 @@ void FileCopyBasedInitialSyncer::_finishCallback(StatusWith<OpTimeAndWallTime> l
     }
 
     if (MONGO_unlikely(fCBISHangBeforeFinish.shouldFail())) {
-        // This log output is used in js tests so please leave it.
         LOGV2(5973002,
-              "File copy basedinitial sync - fCBISHangBeforeFinish fail point "
-              "enabled. Blocking until fail point is disabled.");
+              "File copy based initial sync - fCBISHangBeforeFinish fail point "
+              "enabled. Blocking until fail point is disabled.",
+              "error"_attr = lastApplied.getStatus());
         while (MONGO_unlikely(fCBISHangBeforeFinish.shouldFail()) && !_isShuttingDown()) {
             mongo::sleepsecs(1);
         }

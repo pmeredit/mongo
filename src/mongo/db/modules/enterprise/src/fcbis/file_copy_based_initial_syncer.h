@@ -289,7 +289,10 @@ private:
 
     /**
      * Extends the backup cursor on the sync source and gets the files to be cloned.
+     * The WithRetry version retries until the _allowedOutageDuration is exceeded.
      */
+    ExecutorFuture<void> _extendBackupCursorWithRetry(
+        std::shared_ptr<BackupFileMetadataCollection> returnedFiles);
     ExecutorFuture<void> _extendBackupCursor(
         std::shared_ptr<BackupFileMetadataCollection> returnedFiles);
     /**
@@ -307,8 +310,7 @@ private:
     /**
      * Gets the 'lastAppliedOpTime' from the sync source node by sending 'replSetGetStatus' command.
      */
-    ExecutorFuture<mongo::Timestamp> _getLastAppliedOpTimeFromSyncSource(
-        std::shared_ptr<executor::TaskExecutor> executor, const CancellationToken& token);
+    ExecutorFuture<mongo::Timestamp> _getLastAppliedOpTimeFromSyncSource();
 
     /**
      * Modifies local documents copied from the sync source to reflect data from the syncing node.
@@ -348,6 +350,18 @@ private:
      * Must not be called from the thread currently associated with the global lock client.
      */
     void _releaseGlobalLock(WithLock);
+
+    /**
+     * Check if a status is one which means there's a retriable error and we should retry the
+     * current operation, and records whether an operation is currently being retried.  Note this
+     * can only handle one operation at a time.
+     */
+    bool _shouldRetryError(WithLock lk, Status status);
+
+    /**
+     * Indicates we are no longer handling a retriable error.
+     */
+    void _clearRetriableError(WithLock lk);
 
     /**
      * Hang in async way if the fail point is enabled.
@@ -482,10 +496,13 @@ private:
         std::vector<std::string> filesRelativePathsToBeMoved;
 
         // The syncing file executor.
-        std::shared_ptr<executor::TaskExecutor> executor;
+        std::shared_ptr<executor::TaskExecutor> executor;  // (X)
 
         // The syncing file cancellation token.
-        CancellationToken token = CancellationToken::uncancelable();
+        CancellationToken token = CancellationToken::uncancelable();  // (X)
+
+        // The operation, if any, currently being retried because of a network error.
+        InitialSyncSharedData::RetryableOperation retryingOperation;  // (M)
 
         // List of relative paths to the old storage files in dbbath that will be deleted.
         std::vector<std::string> oldStorageFilesToBeDeleted;

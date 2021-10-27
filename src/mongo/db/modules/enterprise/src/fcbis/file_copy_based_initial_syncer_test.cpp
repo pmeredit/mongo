@@ -718,7 +718,8 @@ protected:
     }
 
     void expectFailedReplSetGetStatusCall() {
-        auto response = BSON("ok" << 0 << "code" << ErrorCodes::NetworkTimeout);
+        // This should not be a retriable error.
+        auto response = BSON("ok" << 0 << "code" << ErrorCodes::UnknownError);
         _mock
             ->expect(BSON("replSetGetStatus" << 1),
                      RemoteCommandResponse({response, Milliseconds()}))
@@ -1448,9 +1449,9 @@ TEST_F(FileCopyBasedInitialSyncerTest, AlwaysKillBackupCursorOnFailure) {
     }
     expectSuccessfulKillBackupCursorCall();
     fileCopyBasedInitialSyncer->join();
-    ASSERT_EQUALS(ErrorCodes::NetworkTimeout, _lastApplied);
+    ASSERT_EQUALS(ErrorCodes::UnknownError, _lastApplied);
     ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest(),
-              ErrorCodes::NetworkTimeout);
+              ErrorCodes::UnknownError);
 }
 
 TEST_F(FileCopyBasedInitialSyncerTest, AlwaysKillBackupCursorOnShutdown) {
