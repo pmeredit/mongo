@@ -16,7 +16,7 @@ from ldaptor.protocols.ldap.ldapconnector import connectToLDAPEndpoint, LDAPClie
 from ldaptor.protocols.ldap.ldapsyntax import LDAPEntry
 from ldaptor.protocols.ldap.proxybase import ProxyBase
 from ldaptor.protocols.pureldap import LDAPSearchRequest, LDAPResult, LDAPFilter_equalityMatch
-from twisted.internet import defer, protocol, reactor, task
+from twisted.internet import defer, protocol, reactor, ssl, task
 from twisted.internet.endpoints import serverFromString, clientFromString, connectProtocol
 from twisted.python import log, usage
 from functools import partial
@@ -68,6 +68,7 @@ class Options(usage.Options):
     optFlags = [
         [ "testClient", "t", "Test connecting to an LDAP server and running a root DSE query" ],
         [ "useTLS", "s", "Whether to connect with SSL" ],
+        [ "useTLSServer", "", "Whether to listen with SSL" ],
         [ "unauthorizedRootDSE", "D", "Return INSUFFICIENT_PRIVILEGES for RootDSE queries" ],
     ]
 
@@ -75,7 +76,8 @@ class Options(usage.Options):
         [ "port", "p", 10389, "The port to listen on", int ],
         [ "targetHost", "t", "ldaptest.10gen.cc", "The host to proxy connections to", str ],
         [ "targetPort", "P", "389", "The port to proxy connections to", int ],
-        [ "delay", "d", 3.5, "How long to delay requests in seconds", float ]
+        [ "delay", "d", 3.5, "How long to delay requests in seconds", float ],
+        [ "serverCert", "", "", "TLS server cert PEM with private key" ],
     ]
 
 @defer.inlineCallbacks
@@ -131,6 +133,16 @@ if __name__ == "__main__":
         return proto
 
     factory.protocol = buildProtocol
-    reactor.listenTCP(int(config['port']), factory, interface="::1")
-    reactor.listenTCP(int(config['port']), factory, interface="127.0.0.1")
+    if  config['useTLSServer']:
+        reactor.listenSSL(int(config['port']), factory,
+                      ssl.DefaultOpenSSLContextFactory(
+            config['serverCert'], config['serverCert']), interface="::1")
+        reactor.listenSSL(int(config['port']), factory,
+                      ssl.DefaultOpenSSLContextFactory(
+            config['serverCert'], config['serverCert']), interface="127.0.0.1")
+    else:
+        reactor.listenTCP(int(config['port']), factory, interface="::1")
+        reactor.listenTCP(int(config['port']), factory, interface="127.0.0.1")
+
+
     reactor.run()

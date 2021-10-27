@@ -11,6 +11,7 @@
 #include "mongo/db/auth/cluster_auth_mode.h"
 #include "mongo/db/auth/role_name.h"
 #include "mongo/db/auth/user_name.h"
+#include "mongo/db/concurrency/locker_noop_client_observer.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log_component.h"
 #include "mongo/logv2/log_component_settings.h"
@@ -19,6 +20,7 @@
 #include "mongo/util/dns_query.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/invariant.h"
+#include "mongo/util/net/ocsp/ocsp_manager.h"
 #include "mongo/util/quick_exit.h"
 #include "mongo/util/signal_handlers.h"
 #include "mongo/util/system_tick_source.h"
@@ -65,17 +67,18 @@ void getSSLParamsForLdap(SSLParams* params) {
 }
 
 Status checkTlsConnectivity(LDAPHost& host) {
-    std::string hostName = host.getName();
-    int port = host.getPort();
-    SSLParams params;
-    getSSLParamsForLdap(&params);
-    std::shared_ptr<SSLManagerInterface> _sslManager = SSLManagerInterface::create(params, false);
-    SockAddr sockAddr = SockAddr::create(hostName, port, AF_UNSPEC);
-    Socket sock;
-    size_t attempt = 0;
-    constexpr size_t kMaxAttempts = 5;
-
     try {
+        std::string hostName = host.getName();
+        int port = host.getPort();
+        SSLParams params;
+        getSSLParamsForLdap(&params);
+        std::shared_ptr<SSLManagerInterface> _sslManager =
+            SSLManagerInterface::create(params, false);
+        SockAddr sockAddr = SockAddr::create(hostName, port, AF_UNSPEC);
+        Socket sock;
+        size_t attempt = 0;
+        constexpr size_t kMaxAttempts = 5;
+
         while (!sock.connect(sockAddr)) {
             ++attempt;
             if (attempt > kMaxAttempts) {
@@ -99,6 +102,12 @@ int ldapToolMain(int argc, char** argv) {
     runGlobalInitializersOrDie(std::vector<std::string>(argv, argv + argc));
     startSignalProcessingThread();
     setGlobalServiceContext(ServiceContext::make());
+
+    auto serviceContext = getGlobalServiceContext();
+    serviceContext->registerClientObserver(std::make_unique<LockerNoopClientObserver>());
+
+    OCSPManager::start(serviceContext);
+
     UserAcquisitionStats userAcquisitionStats;
 
     if (globalLDAPToolOptions->debug) {

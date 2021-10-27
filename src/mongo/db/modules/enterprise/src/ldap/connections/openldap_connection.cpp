@@ -35,6 +35,7 @@
 #include "mongo/util/time_support.h"
 
 #include "../ldap_connection_options.h"
+#include "../ldap_options.h"
 #include "../ldap_query.h"
 #include "ldap/ldap_parameters_gen.h"
 #include "ldap_connection_helpers.h"
@@ -582,6 +583,16 @@ Status OpenLDAPConnection::connect() {
         return swHostURIs.getStatus();
     }
     std::string hostURIs = std::move(swHostURIs.getValue());
+
+    if (!globalLDAPParams->serverCAFile.empty()) {
+        int ret2 = ldap_set_option(
+            nullptr, LDAP_OPT_X_TLS_CACERTFILE, globalLDAPParams->serverCAFile.c_str());
+        if (ret2 != LDAP_SUCCESS) {
+            return Status(ErrorCodes::OperationFailed,
+                          str::stream() << "Attempted to set the ca cert. Received error: "
+                                        << ldap_err2string(ret2));
+        }
+    }
 
     int err;
     {
