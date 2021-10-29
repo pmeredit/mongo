@@ -82,13 +82,10 @@ void InitialSyncFileMover::recoverFileCopyBasedInitialSyncAtStartup() {
 }
 
 void InitialSyncFileMover::completeMovingInitialSyncFiles() {
-    boost::filesystem::path dbpath(_dbpath);
-    auto movingFilesMarker = dbpath;
+    auto movingFilesMarker = boost::filesystem::path(_dbpath);
     movingFilesMarker.append(kMovingFilesMarker.toString());
-    auto initialSyncDir = dbpath;
-    initialSyncDir.append(kInitialSyncDir.toString());
     boost::filesystem::remove(movingFilesMarker);
-    boost::filesystem::remove_all(initialSyncDir);
+    deleteInitialSyncDir(_dbpath);
     LOGV2(5783405, "File based initial sync has been completed.");
 }
 
@@ -273,11 +270,8 @@ void InitialSyncFileMover::_moveFiles(const std::vector<std::string>& filesToMov
 }
 
 void InitialSyncFileMover::_cleanupAfterFailedMoveAndFassert() {
-    boost::filesystem::path dbpath(_dbpath);
-    auto initialSyncDir = dbpath;
-    initialSyncDir.append(kInitialSyncDir.toString());
-    boost::filesystem::remove_all(initialSyncDir);
-    auto movingFilesMarker = dbpath;
+    deleteInitialSyncDir(_dbpath);
+    auto movingFilesMarker = boost::filesystem::path(_dbpath);
     movingFilesMarker.append(kMovingFilesMarker.toString());
     deleteFiles(readListOfFiles(kMovingFilesMarker));
     boost::filesystem::remove(movingFilesMarker);
@@ -298,6 +292,12 @@ void InitialSyncFileMover::moveFilesAndHandleFailure(const std::vector<std::stri
 
         _cleanupAfterFailedMoveAndFassert();
     }
+}
+
+void InitialSyncFileMover::deleteInitialSyncDir(std::string dbpath) {
+    boost::filesystem::path initialSyncDir(dbpath);
+    initialSyncDir.append(kInitialSyncDir.toString());
+    boost::filesystem::remove_all(initialSyncDir);
 }
 
 }  // namespace repl

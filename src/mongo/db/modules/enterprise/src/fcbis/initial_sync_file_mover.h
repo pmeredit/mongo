@@ -72,6 +72,11 @@ public:
      */
     void moveFilesAndHandleFailure(const std::vector<std::string>& filesToMove);
 
+    /**
+     * Deletes the '.initialsync' directory relative to the dbpath.
+     */
+    static void deleteInitialSyncDir(std::string dbpath);
+
 private:
     InitialSyncFileMover(const InitialSyncFileMover&) = delete;
     InitialSyncFileMover& operator=(const InitialSyncFileMover&) = delete;

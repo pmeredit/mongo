@@ -436,6 +436,20 @@ TEST_F(InitialSyncFileMoverTest, Recovery_ConflictingNonEmptyDirectory) {
     ASSERT_FALSE(foundFile.empty()) << "Conflict directory was deleted instead of moved";
 }
 
+TEST_F(InitialSyncFileMoverTest, RemoveInitialSyncDirectoryTestDoesNotExist) {
+    InitialSyncFileMover::deleteInitialSyncDir(_dbpath.string());
+    ASSERT_FALSE(boost::filesystem::exists(_initialSyncPath));
+    ASSERT_TRUE(boost::filesystem::is_empty(_dbpath));
+}
+
+TEST_F(InitialSyncFileMoverTest, RemoveNonEmptyInitialSyncDirectoryTest) {
+    ASSERT_TRUE(boost::filesystem::create_directory(_initialSyncPath));
+    createNewFiles(_initialSyncPath);
+    InitialSyncFileMover::deleteInitialSyncDir(_dbpath.string());
+    ASSERT_FALSE(boost::filesystem::exists(_initialSyncPath));
+    ASSERT_TRUE(boost::filesystem::is_empty(_dbpath));
+}
+
 // The scenario where a file in the move marker is missing.
 DEATH_TEST_F(InitialSyncFileMoverTest, Recovery_MovedFileMissing, "5783416") {
     ASSERT_TRUE(boost::filesystem::create_directory(_initialSyncPath));

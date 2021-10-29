@@ -1024,6 +1024,12 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startSyncingFiles(
         return ExecutorFuture<void>(executor);
     }
 
+    // Some of our unit tests utilize the 'fCBISSkipSyncingFilesPhase' failpoint to skip this stage
+    // and therefore need to create the mock storage files in the '.initialsync' directory before
+    // the initial sync component actually starts up. To prevent the unit test from deleting these
+    // storage files before we've actually executed the test logic, we need to delete the
+    // '.initialsync' directory after the failpoint.
+    InitialSyncFileMover::deleteInitialSyncDir(storageGlobalParams.dbpath);
     return AsyncTry([this, self = shared_from_this()]() mutable {
                return _cloneFromSyncSourceCursor()
                    .then([this, self = shared_from_this()]() {
