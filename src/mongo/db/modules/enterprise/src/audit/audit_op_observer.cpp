@@ -112,9 +112,9 @@ void AuditOpObserver::onInserts(OperationContext* opCtx,
 }
 
 void AuditOpObserver::onUpdate(OperationContext* opCtx, const OplogUpdateEntryArgs& args) {
-    auto updatedDoc = args.updateArgs.updatedDoc;
+    auto updatedDoc = args.updateArgs->updatedDoc;
     if (!isConfigNamespace(args.nss) || !isAuditDoc(updatedDoc) ||
-        args.updateArgs.update.isEmpty()) {
+        args.updateArgs->update.isEmpty()) {
         return;
     }
 

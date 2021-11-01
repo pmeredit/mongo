@@ -106,7 +106,7 @@ public:
         CollectionUpdateArgs updateArgs;
         updateArgs.update = update;
         updateArgs.updatedDoc = updatedDoc;
-        OplogUpdateEntryArgs entryArgs(updateArgs, nss, UUID::gen());
+        OplogUpdateEntryArgs entryArgs(&updateArgs, nss, UUID::gen());
         auto opCtx = cc().makeOperationContext();
         observer.onUpdate(opCtx.get(), entryArgs);
     }
@@ -114,7 +114,7 @@ public:
     void doDelete(const NamespaceString& nss, BSONObj deletedDoc) {
         auto opCtx = cc().makeOperationContext();
         observer.aboutToDelete(opCtx.get(), nss, deletedDoc);
-        OpObserver::OplogDeleteEntryArgs args;
+        OplogDeleteEntryArgs args;
         args.deletedDoc = &deletedDoc;
         observer.onDelete(opCtx.get(), nss, UUID::gen(), 1 /* StmtId */, args);
     }
