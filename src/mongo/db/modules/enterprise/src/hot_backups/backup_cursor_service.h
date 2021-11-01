@@ -37,7 +37,7 @@ class BackupCursorService : public BackupCursorHooks {
     BackupCursorService& operator=(const BackupCursorService&) = delete;
 
 public:
-    BackupCursorService(StorageEngine* storageEngine) : _storageEngine(storageEngine) {}
+    BackupCursorService() {}
 
     bool enabled() const override {
         return true;
@@ -97,8 +97,6 @@ public:
 
 private:
     void _closeBackupCursor(OperationContext* opCtx, const UUID& backupId, WithLock);
-
-    StorageEngine* _storageEngine;
 
     enum State { kInactive, kFsyncLocked, kBackupCursorOpened };
 

@@ -33,8 +33,8 @@ namespace {
 
 MONGO_FAIL_POINT_DEFINE(backupCursorErrorAfterOpen);
 
-std::unique_ptr<BackupCursorService> constructBackupCursorService(StorageEngine* storageEngine) {
-    return std::make_unique<BackupCursorService>(storageEngine);
+std::unique_ptr<BackupCursorService> constructBackupCursorService() {
+    return std::make_unique<BackupCursorService>();
 }
 
 ServiceContext::ConstructorActionRegisterer registerBackupCursorHooks{
@@ -50,14 +50,14 @@ void BackupCursorService::fsyncLock(OperationContext* opCtx) {
     uassert(50884,
             "The existing backup cursor must be closed before fsyncLock can succeed.",
             _state != kBackupCursorOpened);
-    uassertStatusOK(_storageEngine->beginBackup(opCtx));
+    uassertStatusOK(opCtx->getServiceContext()->getStorageEngine()->beginBackup(opCtx));
     _state = kFsyncLocked;
 }
 
 void BackupCursorService::fsyncUnlock(OperationContext* opCtx) {
     stdx::lock_guard<Latch> lk(_mutex);
     uassert(50888, "The node is not fsyncLocked.", _state == kFsyncLocked);
-    _storageEngine->endBackup(opCtx);
+    opCtx->getServiceContext()->getStorageEngine()->endBackup(opCtx);
     _state = kInactive;
 }
 
@@ -99,16 +99,17 @@ BackupCursorState BackupCursorService::openBackupCursor(
 
     // Capture the checkpointTimestamp before and after opening a cursor. If it hasn't moved, the
     // checkpointTimestamp is known to be exact. If it has moved, uassert and have the user retry.
+    auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
     boost::optional<Timestamp> checkpointTimestamp;
     if (isReplSet) {
-        checkpointTimestamp = _storageEngine->getLastStableRecoveryTimestamp();
+        checkpointTimestamp = storageEngine->getLastStableRecoveryTimestamp();
     };
 
     std::unique_ptr<StorageEngine::StreamingCursor> streamingCursor;
     if (options.disableIncrementalBackup) {
-        uassertStatusOK(_storageEngine->disableIncrementalBackup(opCtx));
+        uassertStatusOK(storageEngine->disableIncrementalBackup(opCtx));
     } else {
-        streamingCursor = uassertStatusOK(_storageEngine->beginNonBlockingBackup(opCtx, options));
+        streamingCursor = uassertStatusOK(storageEngine->beginNonBlockingBackup(opCtx, options));
     }
 
     _state = kBackupCursorOpened;
@@ -133,7 +134,7 @@ BackupCursorState BackupCursorService::openBackupCursor(
     // Ensure the checkpointTimestamp hasn't moved. A subtle case to catch is the first stable
     // checkpoint coming out of initial sync racing with opening the backup cursor.
     if (checkpointTimestamp) {
-        auto requeriedCheckpointTimestamp = _storageEngine->getLastStableRecoveryTimestamp();
+        auto requeriedCheckpointTimestamp = storageEngine->getLastStableRecoveryTimestamp();
         if (!requeriedCheckpointTimestamp ||
             requeriedCheckpointTimestamp.get() < checkpointTimestamp.get()) {
             LOGV2_FATAL(50916,
@@ -273,15 +274,16 @@ BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext
     // guarantee the persistency of the oplog with timestamp `extendTo`.
     JournalFlusher::get(opCtx)->waitForJournalFlush();
 
+    auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
     std::vector<std::string> filesToBackup =
-        uassertStatusOK(_storageEngine->extendBackupCursor(opCtx));
+        uassertStatusOK(storageEngine->extendBackupCursor(opCtx));
     LOGV2(24202,
           "Backup cursor has been extended. backupId: {backupId} extendedTo: {extendTo}",
           "Backup cursor has been extended",
           "backupId"_attr = backupId,
           "extendTo"_attr = extendTo);
 
-    if (!_storageEngine->supportsReadConcernMajority()) {
+    if (!storageEngine->supportsReadConcernMajority()) {
         auto currentTerm = replCoord->getTerm();
         uassert(31055,
                 "Term has been changed since opening backup cursor. This is problematic with "
@@ -311,7 +313,7 @@ void BackupCursorService::_closeBackupCursor(OperationContext* opCtx,
             str::stream() << "Can only close the running backup cursor. To close: " << backupId
                           << " Running: " << *_activeBackupId,
             backupId == *_activeBackupId);
-    _storageEngine->endNonBlockingBackup(opCtx);
+    opCtx->getServiceContext()->getStorageEngine()->endNonBlockingBackup(opCtx);
     auto encHooks = EncryptionHooks::get(opCtx->getServiceContext());
     if (encHooks->enabled()) {
         fassert(50934, encHooks->endNonBlockingBackup());

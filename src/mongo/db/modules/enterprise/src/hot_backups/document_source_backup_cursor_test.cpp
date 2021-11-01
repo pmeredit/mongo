@@ -43,20 +43,17 @@ public:
 class DocumentSourceBackupCursorTest : public ServiceContextMongoDTest {
 public:
     DocumentSourceBackupCursorTest()
-        : ServiceContextMongoDTest("devnull"),
-          _opCtx(cc().makeOperationContext()),
-          _storageEngine(getServiceContext()->getStorageEngine()) {
+        : ServiceContextMongoDTest("devnull"), _opCtx(cc().makeOperationContext()) {
         repl::ReplicationCoordinator::set(
             getServiceContext(),
             std::make_unique<repl::ReplicationCoordinatorMock>(getServiceContext()));
         repl::StorageInterface::set(getServiceContext(),
                                     std::make_unique<repl::StorageInterfaceMock>());
-        BackupCursorHooks::initialize(getServiceContext(), _storageEngine);
+        BackupCursorHooks::initialize(getServiceContext());
     }
 
 protected:
     ServiceContext::UniqueOperationContext _opCtx;
-    StorageEngine* _storageEngine;
 };
 
 // Tests that the files retrieved in $backupCursor through DocumentSourceBackupCursor

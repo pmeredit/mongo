@@ -58,15 +58,13 @@ public:
 class DocumentSourceBackupFileTest : public ServiceContextMongoDTest {
 public:
     DocumentSourceBackupFileTest()
-        : ServiceContextMongoDTest("devnull"),
-          _opCtx(cc().makeOperationContext()),
-          _storageEngine(getServiceContext()->getStorageEngine()) {
+        : ServiceContextMongoDTest("devnull"), _opCtx(cc().makeOperationContext()) {
         repl::ReplicationCoordinator::set(
             getServiceContext(),
             std::make_unique<repl::ReplicationCoordinatorMock>(getServiceContext()));
         repl::StorageInterface::set(getServiceContext(),
                                     std::make_unique<repl::StorageInterfaceMock>());
-        BackupCursorHooks::initialize(getServiceContext(), _storageEngine);
+        BackupCursorHooks::initialize(getServiceContext());
     }
 
     // A helper function to create a backup cursor and get the backupId to pass into the test
@@ -112,7 +110,6 @@ public:
 
 protected:
     ServiceContext::UniqueOperationContext _opCtx;
-    StorageEngine* _storageEngine;
     // This file path will be returned by the backup cursor to the backupFile stage.
     std::string fileToBackup = storageGlobalParams.dbpath + "/filename.wt";
 };

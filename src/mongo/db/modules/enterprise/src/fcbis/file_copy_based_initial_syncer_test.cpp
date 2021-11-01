@@ -220,7 +220,7 @@ protected:
 
         repl::StorageInterface::set(service, std::make_unique<repl::StorageInterfaceMock>());
         ReplicationCoordinator::set(service, std::make_unique<ReplicationCoordinatorMock>(service));
-        BackupCursorHooks::initialize(service, service->getStorageEngine());
+        BackupCursorHooks::initialize(service);
         repl::createOplog(cc().makeOperationContext().get());
 
         ThreadPool::Options dbThreadPoolOptions;

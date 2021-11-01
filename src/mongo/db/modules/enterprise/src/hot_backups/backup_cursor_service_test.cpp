@@ -26,8 +26,7 @@ public:
     BackupCursorServiceTest()
         : ServiceContextMongoDTest("devnull"),
           _opCtx(cc().makeOperationContext()),
-          _storageEngine(getServiceContext()->getStorageEngine()),
-          _backupCursorService(std::make_unique<BackupCursorService>(_storageEngine)) {
+          _backupCursorService(std::make_unique<BackupCursorService>()) {
         repl::ReplicationCoordinator::set(
             getServiceContext(),
             std::make_unique<repl::ReplicationCoordinatorMock>(getServiceContext()));
@@ -37,7 +36,6 @@ public:
 
 protected:
     ServiceContext::UniqueOperationContext _opCtx;
-    StorageEngine* _storageEngine;
     std::unique_ptr<BackupCursorService> _backupCursorService;
 };
 
