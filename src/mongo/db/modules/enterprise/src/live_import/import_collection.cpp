@@ -160,23 +160,6 @@ ServiceContext::ConstructorActionRegisterer registerApplyImportCollectionFn{
     "ApplyImportCollection", [](ServiceContext* serviceContext) {
         repl::registerApplyImportCollectionFn(applyImportCollection);
     }};
-
-class CountsChange : public RecoveryUnit::Change {
-public:
-    CountsChange(WiredTigerRecordStore* rs, long long numRecords, long long dataSize)
-        : _rs(rs), _numRecords(numRecords), _dataSize(dataSize) {}
-    void commit(boost::optional<Timestamp>) {
-        _rs->setNumRecords(_numRecords);
-        _rs->setDataSize(_dataSize);
-    }
-    void rollback() {}
-
-private:
-    WiredTigerRecordStore* _rs;
-    long long _numRecords;
-    long long _dataSize;
-};
-
 }  // namespace
 
 void importCollection(OperationContext* opCtx,
@@ -309,10 +292,14 @@ void importCollection(OperationContext* opCtx,
         ownedCollection->setCommitted(false);
 
         // Update the number of records and data size appropriately on commit.
-        opCtx->recoveryUnit()->registerChange(std::make_unique<CountsChange>(
-            static_cast<WiredTigerRecordStore*>(ownedCollection->getRecordStore()),
-            numRecords,
-            dataSize));
+        opCtx->recoveryUnit()->onCommit(
+            [numRecords,
+             dataSize,
+             rs = static_cast<WiredTigerRecordStore*>(ownedCollection->getRecordStore())](
+                boost::optional<Timestamp>) {
+                rs->setNumRecords(numRecords);
+                rs->setDataSize(dataSize);
+            });
 
         // don't std::move, we will need access to the records later for auditing
         UncommittedCollections::addToTxn(opCtx, ownedCollection);
