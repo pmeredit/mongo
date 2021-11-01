@@ -66,7 +66,6 @@ public:
     static constexpr bool kLDAP_OPT_ERROR_STRINGNeedsFree = false;
 
     static constexpr auto LDAP_success = LDAP_SUCCESS;
-    static constexpr auto LDAP_insufficient_access = LDAP_INSUFFICIENT_RIGHTS;
     static constexpr auto LDAP_NO_SUCH_attribute = LDAP_NO_SUCH_ATTRIBUTE;
     static constexpr auto LDAP_NO_SUCH_object = LDAP_NO_SUCH_OBJECT;
     static constexpr auto LDAP_OPT_error_code = LDAP_OPT_ERROR_NUMBER;
@@ -84,6 +83,22 @@ public:
     static constexpr auto ldap_first_attribute = ::ldap_first_attribute;
     static constexpr auto ber_free = ::ber_free;
     static constexpr auto ldap_search_ext_s = ::ldap_search_ext_s;
+
+    static bool isSecurityError(ErrorCodeType code) {
+        // WinLDAP doesn't have LDAP_SECURITY_ERROR,
+        // so we'll manually check the relevant codes.
+        switch (code) {
+            // Proxy authz failure is something introduced by OpenLDAP,
+            // so WinLDAP doesn't have a constant for this.
+            case 0x2F:  // LDAP_X_PROXY_AUTHZ_FAILURE
+            case LDAP_INAPPROPRIATE_AUTH:
+            case LDAP_INVALID_CREDENTIALS:
+            case LDAP_INSUFFICIENT_RIGHTS:
+                return true;
+            default:
+                return false;
+        }
+    }
 
     static std::string toNativeString(const LibraryCharType* str) {
         return toUtf8String(str);

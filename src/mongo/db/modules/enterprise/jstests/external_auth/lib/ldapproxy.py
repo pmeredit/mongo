@@ -27,14 +27,16 @@ class LDAPProxy(ProxyBase):
         self.delay = float(config['delay'])
         self.msgID = 0
         self.port = config['port']
-        self.unauthorizedRootDSE = config['unauthorizedRootDSE']
+        self.unauthorizedRootDSE = None
+        if len(config['unauthorizedRootDSE']) > 0:
+            self.unauthorizedRootDSE = int(config['unauthorizedRootDSE'])
         ProxyBase.__init__(self)
 
     def handleBeforeForwardRequest(self, request, controls, reply):
         if isinstance(request, LDAPSearchRequest):
-            if self.unauthorizedRootDSE and (not request.baseObject) and (request.attributes == [b'supportedSASLMechanisms']):
-                log.msg("Proxy port {}: Failing on RootDSE query. Request was: {}".format(self.port, repr(request)))
-                reply(LDAPResult(resultCode=50)) # 50 == LDAP_INSUFFICIENT_PRIVILEGES
+            if (self.unauthorizedRootDSE is not None) and (not request.baseObject) and (request.attributes == [b'supportedSASLMechanisms']):
+                log.msg("Proxy port {}: Failing on RootDSE query with error {}. Request was: {}".format(self.port, self.unauthorizedRootDSE, repr(request)))
+                reply(LDAPResult(resultCode=self.unauthorizedRootDSE))
                 return None
 
             if isinstance(request.filter, LDAPFilter_equalityMatch) and (request.filter.attributeDesc.value == b'description'):
@@ -69,7 +71,6 @@ class Options(usage.Options):
         [ "testClient", "t", "Test connecting to an LDAP server and running a root DSE query" ],
         [ "useTLS", "s", "Whether to connect with SSL" ],
         [ "useTLSServer", "", "Whether to listen with SSL" ],
-        [ "unauthorizedRootDSE", "D", "Return INSUFFICIENT_PRIVILEGES for RootDSE queries" ],
     ]
 
     optParameters = [
@@ -78,6 +79,7 @@ class Options(usage.Options):
         [ "targetPort", "P", "389", "The port to proxy connections to", int ],
         [ "delay", "d", 3.5, "How long to delay requests in seconds", float ],
         [ "serverCert", "", "", "TLS server cert PEM with private key" ],
+        [ "unauthorizedRootDSE", "D", "", "Return an error for RootDSE queries" ],
     ]
 
 @defer.inlineCallbacks

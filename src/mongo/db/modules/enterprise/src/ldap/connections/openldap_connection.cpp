@@ -82,7 +82,6 @@ public:
     static constexpr bool kLDAP_OPT_ERROR_STRINGNeedsFree = true;
 
     static constexpr auto LDAP_success = LDAP_SUCCESS;
-    static constexpr auto LDAP_insufficient_access = LDAP_INSUFFICIENT_ACCESS;
     static constexpr auto LDAP_NO_SUCH_attribute = LDAP_NO_SUCH_ATTRIBUTE;
     static constexpr auto LDAP_NO_SUCH_object = LDAP_NO_SUCH_OBJECT;
     static constexpr auto LDAP_OPT_error_code = LDAP_OPT_RESULT_CODE;
@@ -100,6 +99,10 @@ public:
     static constexpr auto ldap_first_attribute = ::ldap_first_attribute;
     static constexpr auto ber_free = ::ber_free;
     static constexpr auto ldap_search_ext_s = ::ldap_search_ext_s;
+
+    static bool isSecurityError(ErrorCodeType code) {
+        return LDAP_SECURITY_ERROR(code);
+    }
 
     static std::string toNativeString(const LibraryCharType* str) {
         return std::string(str);

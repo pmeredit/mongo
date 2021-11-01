@@ -276,9 +276,9 @@ public:
         typename S::ErrorCodeType err;
         issueQuery(query, timeout, &err, tickSource, userAcquisitionStats);
 
-        if (err == S::LDAP_insufficient_access) {
+        if (S::isSecurityError(err)) {
             // Some LDAP servers do not permit any basic queries pre-auth.
-            // Treat an LDAP_INSUFFICIENT_ACCESS as a good enough signal that we can communicate.
+            // Treat security errors as a good enough signal that we can communicate.
             return Status::OK();
         }
 
