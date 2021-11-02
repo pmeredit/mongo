@@ -22,6 +22,7 @@
 #include "mongo/executor/task_executor.h"
 #include "mongo/util/concurrency/thread_pool.h"
 #include "mongo/util/future_util.h"
+#include "mongo/util/timer.h"
 
 namespace mongo {
 namespace repl {
@@ -169,6 +170,8 @@ public:
         unsigned long totalExtendedFileSize{0};
         unsigned long copiedFileSize{0};
         unsigned long extensionDataSize{0};
+        // Timer for timing how long each initial sync attempt takes.
+        Timer attemptTimer;
 
         std::string toString() const;
         BSONObj toBSON() const;
@@ -178,6 +181,7 @@ public:
             totalExtendedFileSize = 0;
             copiedFileSize = 0;
             extensionDataSize = 0;
+            attemptTimer.reset();
         }
     };
 
@@ -237,6 +241,11 @@ private:
      * Invokes completion callback and transitions state to State::kComplete.
      */
     void _finishCallback(StatusWith<OpTimeAndWallTime> lastApplied);
+
+    /**
+     * Mark initial sync stats as completed.
+     */
+    void _markInitialSyncCompleted(WithLock, const StatusWith<OpTimeAndWallTime>& lastApplied);
 
     /**
      * Starts syncing files from the sync source.

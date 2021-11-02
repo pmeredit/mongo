@@ -15,6 +15,7 @@
 #include "mongo/db/dbdirectclient.h"
 #include "mongo/db/dbhelpers.h"
 #include "mongo/db/pipeline/aggregate_command_gen.h"
+#include "mongo/db/repl/initial_syncer_common_stats.h"
 #include "mongo/db/repl/initial_syncer_factory.h"
 #include "mongo/db/repl/repl_server_parameters_gen.h"
 #include "mongo/db/repl/replication_auth.h"
@@ -85,6 +86,9 @@ MONGO_FAIL_POINT_DEFINE(fCBISHangAfterAttemptingGetLastApplied);
 MONGO_FAIL_POINT_DEFINE(fCBISHangBeforeFinish);
 
 MONGO_FAIL_POINT_DEFINE(fCBISHangAfterStartingFileClone);
+
+// Failpoint which allows getting the progress even after initial sync completes.
+MONGO_FAIL_POINT_DEFINE(fCBISAllowGettingProgressAfterInitialSyncCompletes);
 
 static constexpr Seconds kDenylistDuration(60);
 
@@ -248,18 +252,26 @@ ExecutorFuture<OpTimeAndWallTime> FileCopyBasedInitialSyncer::_startInitialSyncA
             // Always release the global lock.
             _releaseGlobalLock(lock);
 
-            _stats.initialSyncEnd = _exec->now();
-            int runTime =
-                duration_cast<Milliseconds>(_stats.initialSyncStart - _stats.initialSyncEnd)
-                    .count();  // timer.millis();
+            auto runTime = _stats.attemptTimer.millis();
             int operationsRetried = 0;
             int totalTimeUnreachableMillis = 0;
+            if (_sharedData) {
+                stdx::lock_guard<InitialSyncSharedData> sdLock(*_sharedData);
+                operationsRetried = _sharedData->getTotalRetries(sdLock);
+                totalTimeUnreachableMillis =
+                    durationCount<Milliseconds>(_sharedData->getTotalTimeUnreachable(sdLock));
+            }
             _stats.initialSyncAttemptInfos.emplace_back(
                 InitialSyncer::InitialSyncAttemptInfo{runTime,
                                                       result.getStatus(),
                                                       _syncSource,
                                                       operationsRetried,
                                                       totalTimeUnreachableMillis});
+
+            initial_sync_common_stats::LogInitialSyncAttemptStats(result,
+                                                                  _initialSyncAttempt + 1 <
+                                                                      _initialSyncMaxAttempts,
+                                                                  _getInitialSyncProgress(lock));
 
             if (!result.isOK()) {
                 LOGV2_ERROR(5781900,
@@ -270,6 +282,7 @@ ExecutorFuture<OpTimeAndWallTime> FileCopyBasedInitialSyncer::_startInitialSyncA
                             "attemptsLeft"_attr =
                                 (_initialSyncMaxAttempts - (_initialSyncAttempt + 1)),
                             "error"_attr = redact(result.getStatus()));
+                initial_sync_common_stats::initialSyncFailedAttempts.increment();
                 if (++_initialSyncAttempt >= _initialSyncMaxAttempts) {
                     // Log with fatal severity because this will eventually cause an fassert in
                     // ReplicationCoordinatorImpl.
@@ -766,6 +779,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_openBackupCursor(
             } else {
                 // Ensure filename field exists.
                 _getBSONField(doc, "filename", "backupCursor's batches");
+                _stats.totalFileSize += std::max(0ll, doc["fileSize"].safeNumberLong());
                 returnedFiles->emplace_back(doc.getOwned());
             }
         }
@@ -1678,7 +1692,10 @@ BSONObj FileCopyBasedInitialSyncer::_getInitialSyncProgress(WithLock) const {
 
 BSONObj FileCopyBasedInitialSyncer::getInitialSyncProgress() const {
     stdx::lock_guard<Latch> lock(_mutex);
-    if (_state == State::kPreStart) {
+    // We return an empty BSON object after an initial sync attempt has been successfully
+    // completed.
+    if (initial_sync_common_stats::initialSyncCompletes.get() > 0 &&
+        !MONGO_unlikely(fCBISAllowGettingProgressAfterInitialSyncCompletes.shouldFail())) {
         return BSONObj();
     }
 
@@ -1746,8 +1763,25 @@ void FileCopyBasedInitialSyncer::_finishCallback(StatusWith<OpTimeAndWallTime> l
         stdx::lock_guard<Latch> lock(_mutex);
         invariant(_state != State::kComplete);
         _state = State::kComplete;
+        _markInitialSyncCompleted(lock, lastApplied);
         _stateCondition.notify_all();
     }
+}
+
+void FileCopyBasedInitialSyncer::_markInitialSyncCompleted(
+    WithLock lock, const StatusWith<OpTimeAndWallTime>& lastApplied) {
+    _stats.initialSyncEnd = _exec->now();
+    if (!lastApplied.isOK()) {
+        initial_sync_common_stats::initialSyncFailures.increment();
+        return;
+    }
+
+    LOGV2(6119800,
+          "File copy based initial sync done; took {duration}.",
+          "File copy based initial sync done",
+          "duration"_attr =
+              duration_cast<Seconds>(_stats.initialSyncEnd - _stats.initialSyncStart));
+    initial_sync_common_stats::initialSyncCompletes.increment();
 }
 
 void FileCopyBasedInitialSyncer::_updateStorageTimestampsAfterInitialSync(

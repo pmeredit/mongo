@@ -308,6 +308,9 @@ protected:
             globalFailPointRegistry()
                 .find("fCBISSkipUpdatingLastApplied")
                 ->setMode(FailPoint::alwaysOn);
+            globalFailPointRegistry()
+                .find("fCBISAllowGettingProgressAfterInitialSyncCompletes")
+                ->setMode(FailPoint::alwaysOn);
         } catch (...) {
             ASSERT_OK(exceptionToStatus());
         }
@@ -823,14 +826,20 @@ TEST_F(FileCopyBasedInitialSyncerTest, elementary_getInitialSyncProgress) {
     auto opCtx = makeOpCtx();
     ASSERT_FALSE(fileCopyBasedInitialSyncer->isActive());
 
+    // Before starting initial sync.
     BSONObj prog = fileCopyBasedInitialSyncer->getInitialSyncProgress();
-    ASSERT_EQUALS(prog.toString(), "{}") << prog;
+    ASSERT_EQUALS(prog.nFields(), 4) << prog;
+    ASSERT_EQUALS(prog["method"].str(), "fileCopyBased") << prog;
+    ASSERT(prog["failedInitialSyncAttempts"].isNumber()) << prog;
+    ASSERT_EQUALS(prog.getIntField("failedInitialSyncAttempts"), 0) << prog;
+    ASSERT_EQUALS(prog.getIntField("maxFailedInitialSyncAttempts"), 0) << prog;
+    ASSERT_BSONOBJ_EQ(prog.getObjectField("initialSyncAttempts"), BSONObj());
 
     const std::uint32_t maxAttempts = 1U;
     ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
 
+    // After running initial sync.
     prog = fileCopyBasedInitialSyncer->getInitialSyncProgress();
-
     ASSERT_EQUALS(prog.nFields(), 11) << prog;
     ASSERT_EQUALS(prog["method"].str(), "fileCopyBased") << prog;
     ASSERT(prog["failedInitialSyncAttempts"].isNumber()) << prog;
