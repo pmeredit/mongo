@@ -16,6 +16,7 @@
 #include "mongo/bson/json.h"
 #include "mongo/db/service_context.h"
 #include "mongo/util/base64.h"
+#include "mongo/util/quick_exit.h"
 #include "mongo/util/signal_handlers.h"
 #include "mongo/util/text.h"
 
@@ -70,7 +71,7 @@ std::unique_ptr<AuditKeyManager> createKeyManagerFromHeader(
     }
 }
 
-void auditDecryptorTool(int argc, char* argv[]) {
+void auditDecryptorTool(int argc, char* argv[]) try {
     setupSignalHandlers();
     runGlobalInitializersOrDie(std::vector<std::string>(argv, argv + argc));
     startSignalProcessingThread();
@@ -84,9 +85,8 @@ void auditDecryptorTool(int argc, char* argv[]) {
 
     uassert(ErrorCodes::FileNotOpen,
             str::stream() << "The file '" << globalAuditDecryptorOptions.inputPath.string()
-                          << "' was not a regular file.",
+                          << "' is not a regular file.",
             boost::filesystem::is_regular_file(globalAuditDecryptorOptions.inputPath));
-
 
     uassert(ErrorCodes::FileNotOpen,
             str::stream() << "The file '" << globalAuditDecryptorOptions.outputPath.string()
@@ -105,10 +105,12 @@ void auditDecryptorTool(int argc, char* argv[]) {
                   << "Do you wish to continue? (Yes/No) [Default: No] ";
         std::string userConfirmation;
         std::getline(std::cin, userConfirmation);
-        uassert(ErrorCodes::OK,
-                "Not continuing.",
-                userConfirmation == "yes" || userConfirmation == "Yes" || userConfirmation == "y" ||
-                    userConfirmation == "Y");
+        std::transform(
+            userConfirmation.begin(), userConfirmation.end(), userConfirmation.begin(), ::tolower);
+        if (userConfirmation != "yes" && userConfirmation != "y") {
+            std::cout << "Not continuing." << std::endl;
+            quickExit(EXIT_SUCCESS);
+        }
     }
 
     // Open input file
@@ -174,6 +176,10 @@ void auditDecryptorTool(int argc, char* argv[]) {
 
     std::cout << "Successfully decrypted " << numLine << " lines to '"
               << globalAuditDecryptorOptions.outputPath << "'." << std::endl;
+} catch (...) {
+    auto cause = exceptionToStatus();
+    std::cerr << cause << std::endl;
+    quickExit(EXIT_FAILURE);
 }
 
 }  // namespace audit
