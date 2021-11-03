@@ -10,16 +10,11 @@
 namespace mongo {
 namespace process_health {
 
-LdapHealthObserver::LdapHealthObserver(ClockSource* clockSource, TickSource* tickSource)
-    : HealthObserverBase(clockSource, tickSource) {}
+LdapHealthObserver::LdapHealthObserver(ServiceContext* svcCtx) : HealthObserverBase(svcCtx) {}
 
 Future<HealthCheckStatus> LdapHealthObserver::periodicCheckImpl(
     PeriodicHealthCheckContext&& periodicCheckContext) {
     return Future<HealthCheckStatus>();
-}
-
-HealthObserverIntensity LdapHealthObserver::getIntensity() {
-    return HealthObserverIntensity::kNonCritical;
 }
 
 namespace {
@@ -27,9 +22,7 @@ namespace {
 // Health observer registration.
 MONGO_INITIALIZER(LdapHealthObserver)(InitializerContext*) {
     HealthObserverRegistration::registerObserverFactory(
-        [](ClockSource* clockSource, TickSource* tickSource) {
-            return std::make_unique<LdapHealthObserver>(clockSource, tickSource);
-        });
+        [](ServiceContext* svcCtx) { return std::make_unique<LdapHealthObserver>(svcCtx); });
 }
 
 }  // namespace

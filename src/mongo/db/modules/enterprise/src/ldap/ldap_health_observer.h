@@ -15,7 +15,7 @@ namespace process_health {
  */
 class LdapHealthObserver final : public HealthObserverBase {
 public:
-    LdapHealthObserver(ClockSource* clockSource, TickSource* tickSource);
+    explicit LdapHealthObserver(ServiceContext* svcCtx);
     ~LdapHealthObserver() = default;
 
     /**
@@ -30,8 +30,6 @@ public:
      */
     Future<HealthCheckStatus> periodicCheckImpl(
         PeriodicHealthCheckContext&& periodicCheckContext) override;
-
-    HealthObserverIntensity getIntensity() override;
 };
 
 }  // namespace process_health
