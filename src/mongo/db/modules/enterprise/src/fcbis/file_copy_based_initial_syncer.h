@@ -132,8 +132,9 @@ public:
         _syncingFilesState.oldStorageFilesToBeDeleted = oldFiles;
     }
 
-    Status _cleanUpLocalCollectionsAfterSync_forTest(OperationContext* opCtx) {
-        return _cleanUpLocalCollectionsAfterSync(opCtx);
+    Status _cleanUpLocalCollectionsAfterSync_forTest(OperationContext* opCtx,
+                                                     StatusWith<BSONObj> swCurrConfig) {
+        return _cleanUpLocalCollectionsAfterSync(opCtx, swCurrConfig);
     }
 
     void setLastSyncedOpTime_forTest(const mongo::Timestamp ts) {
@@ -323,12 +324,8 @@ private:
      * This includes updating 'minValid', 'oplogTruncateAfterPoint', 'initialSyncId', the current
      * replica set configuration, and the election collection.
      */
-    Status _cleanUpLocalCollectionsAfterSync(OperationContext* opCtx);
-
-    /**
-     * Updates the replica set configuration on disk. Used in '_cleanUpLocalCollectionsAfterSync()'.
-     */
-    Status _replaceSyncSourceConfigWithLocalConfig(OperationContext* opCtx, const BSONObj& config);
+    Status _cleanUpLocalCollectionsAfterSync(OperationContext* opCtx,
+                                             StatusWith<BSONObj> swCurrConfig);
 
     // Keep issuing 'getMore' command to keep the backupCursor alive.
     void _keepBackupCursorAlive();

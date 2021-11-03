@@ -571,7 +571,8 @@ FileCopyBasedInitialSyncer::SyncingFilesState::getNewFilesToClone(
     return newFilesToClone;
 }
 
-Status FileCopyBasedInitialSyncer::_cleanUpLocalCollectionsAfterSync(OperationContext* opCtx) {
+Status FileCopyBasedInitialSyncer::_cleanUpLocalCollectionsAfterSync(
+    OperationContext* opCtx, StatusWith<BSONObj> swCurrConfig) {
     _replicationProcess->getConsistencyMarkers()->setMinValid(
         opCtx, repl::OpTime(Timestamp(0, 1), -1), true);
 
@@ -588,36 +589,16 @@ Status FileCopyBasedInitialSyncer::_cleanUpLocalCollectionsAfterSync(OperationCo
     if (!status.isOK()) {
         return status;
     }
-    auto swCurrConfig = _dataReplicatorExternalState->getCurrentConfig();
+
     if (!swCurrConfig.isOK()) {
         return swCurrConfig.getStatus();
     }
 
-    status = _replaceSyncSourceConfigWithLocalConfig(opCtx, swCurrConfig.getValue().toBSON());
+    status = _dataReplicatorExternalState->storeLocalConfigDocument(opCtx, swCurrConfig.getValue());
     if (!status.isOK()) {
         return status;
     }
 
-    return Status::OK();
-}
-
-Status FileCopyBasedInitialSyncer::_replaceSyncSourceConfigWithLocalConfig(OperationContext* opCtx,
-                                                                           const BSONObj& config) {
-    writeConflictRetry(opCtx,
-                       "overwrite sync source config with local config",
-                       NamespaceString::kSystemReplSetNamespace.ns(),
-                       [&] {
-                           WriteUnitOfWork wuow(opCtx);
-                           Lock::DBLock dbWriteLock(opCtx, "local", MODE_X);
-                           TimestampedBSONObj updateSpec;
-                           updateSpec.obj = BSON("$set" << BSON("config" << config));
-                           updateSpec.timestamp = Timestamp();
-
-                           Status status = _storage->putSingleton(
-                               opCtx, NamespaceString::kSystemReplSetNamespace, updateSpec);
-                           invariant(status);
-                           wuow.commit();
-                       });
     return Status::OK();
 }
 
@@ -1314,6 +1295,10 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_prepareStorageDirectoriesForMo
             {
                 AlternativeClientRegion globalLockRegion(_getGlobalLockClient(lk));
                 auto opCtx = _syncingFilesState.globalLockOpCtx.get();
+                // Get a copy of the local config as it is on disk.  Since we may be in the middle
+                // of a reconfig, the on-disk state may be more up-to-date than the in-memory state.
+                StatusWith<BSONObj> config =
+                    _dataReplicatorExternalState->loadLocalConfigDocument(opCtx);
 
                 // Switch storage to '.initialsync' directory.
                 _switchStorageTo(
@@ -1325,7 +1310,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_prepareStorageDirectoriesForMo
                         kReplicaSetMemberInStandalone /* startupRecoveryMode */);
 
                 // Fix the local collections in '.initialsync' directory before moving it.
-                uassertStatusOK(_cleanUpLocalCollectionsAfterSync(opCtx));
+                uassertStatusOK(_cleanUpLocalCollectionsAfterSync(opCtx, config));
             }
 
             _releaseGlobalLock(lk);

@@ -1831,7 +1831,8 @@ TEST_F(FileCopyBasedInitialSyncerTest, CleanUpLocalCollectionsAfterSync) {
 
     ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
     fileCopyBasedInitialSyncer->setLastSyncedOpTime_forTest(Timestamp(1, 1));
-    ASSERT_EQ(fileCopyBasedInitialSyncer->_cleanUpLocalCollectionsAfterSync_forTest(opCtx.get()),
+    ASSERT_EQ(fileCopyBasedInitialSyncer->_cleanUpLocalCollectionsAfterSync_forTest(
+                  opCtx.get(), getExternalState()->loadLocalConfigDocument(opCtx.get())),
               Status::OK());
 
     auto minValidAfter = _replicationProcess->getConsistencyMarkers()->getMinValid(opCtx.get());
