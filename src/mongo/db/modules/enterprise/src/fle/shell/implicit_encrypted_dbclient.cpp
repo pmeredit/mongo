@@ -325,12 +325,10 @@ private:
         BSONObjBuilder builder;
         builder.append("keyAltNames"_sd, altName);
         BSONObj altNameObj(builder.obj());
-        BSONObj dataKeyObj = _conn->findOne(fullNameNS.ns(),
-                                            altNameObj,
-                                            Query(),
-                                            nullptr,
-                                            0,
-                                            repl::ReadConcernArgs::kImplicitDefault);
+        FindCommandRequest findCmd{fullNameNS};
+        findCmd.setFilter(altNameObj);
+        findCmd.setReadConcern(repl::ReadConcernArgs::kImplicitDefault);
+        BSONObj dataKeyObj = _conn->findOne(std::move(findCmd));
         if (dataKeyObj.isEmpty()) {
             uasserted(ErrorCodes::BadValue, "Invalid keyAltName.");
         }
