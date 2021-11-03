@@ -1263,7 +1263,6 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startMovingNewStorageFilesPhas
                 auto opCtx = _syncingFilesState.globalLockOpCtx.get();
                 _switchStorageTo(opCtx,
                                  boost::none /* relativeToDbPath */,
-                                 false /* closeCatalog */,
                                  startup_recovery::StartupRecoveryMode::
                                      kReplicaSetMember /* startupRecoveryMode */);
 
@@ -1336,7 +1335,6 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_prepareStorageDirectoriesForMo
                 _switchStorageTo(
                     opCtx,
                     InitialSyncFileMover::kInitialSyncDir.toString() /* relativeToDbPath */,
-                    true /* closeCatalog */,
                     startup_recovery::StartupRecoveryMode::
                         kReplicaSetMemberInStandalone /* startupRecoveryMode */);
 
@@ -1357,8 +1355,14 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_prepareStorageDirectoriesForMo
                 fileRelativePath.append(InitialSyncFileMover::kInitialSyncDummyDir.toString());
                 _switchStorageTo(opCtx,
                                  fileRelativePath.string() /* relativeToDbPath */,
-                                 true /* closeCatalog */,
                                  boost::none /* startupRecoveryMode */);
+                // We need to create some local collections while mounted on the
+                // '.initialsync/.dummy' directory, in case we attempt to shut down.
+                uassertStatusOK(
+                    _replicationProcess->getConsistencyMarkers()->createInternalCollections(opCtx));
+                _replicationProcess->getConsistencyMarkers()->setMinValid(
+                    opCtx, repl::OpTime(Timestamp(0, 1), -1), true);
+                _replicationProcess->getConsistencyMarkers()->setInitialSyncFlag(opCtx);
             }
 
             return _hangAsyncIfFailPointEnabled("fCBISHangBeforeDeletingOldStorageFiles",
@@ -1481,7 +1485,6 @@ Status FileCopyBasedInitialSyncer::shutdown() {
 void FileCopyBasedInitialSyncer::_switchStorageTo(
     OperationContext* opCtx,
     boost::optional<std::string> relativeToDbPath,
-    bool closeCatalog,
     boost::optional<startup_recovery::StartupRecoveryMode> startupRecoveryMode) {
     if (MONGO_unlikely(fCBISSkipSwitchingStorage.shouldFail())) {
         // Noop.
@@ -1498,19 +1501,20 @@ void FileCopyBasedInitialSyncer::_switchStorageTo(
     // Creates the directory if it doesn't exist.
     boost::filesystem::create_directories(dirPath);
 
-    LOGV2_DEBUG(5994401, 2, "Starting to switch storage engine.", "dbPath"_attr = dirPath.string());
-
-    if (closeCatalog) {
-        LOGV2_DEBUG(5994402, 2, "Closing the catalog before switching storage engine.");
-        catalog::closeCatalog(opCtx);
-    }
-
+    LOGV2_DEBUG(5994401,
+                2,
+                "Starting to switch storage engine. Closing the catalog.",
+                "dbPath"_attr = dirPath.string());
+    catalog::closeCatalog(opCtx);
     // Reinitializes storage engine and waits for it to complete startup.
     LOGV2_DEBUG(5994403, 2, "Reinitializing storage engine.", "dbPath"_attr = dirPath.string());
-    auto lastShutdownState = reinitializeStorageEngine(opCtx, StorageEngineInitFlags{}, [&dirPath] {
-        // Update the global dbpath between shutdown of the old engine and startup of the new.
-        storageGlobalParams.dbpath = dirPath.string();
-    });
+    auto lastShutdownState =
+        reinitializeStorageEngine(opCtx, StorageEngineInitFlags{}, [&dirPath, opCtx] {
+            // Update the global dbpath between shutdown of the old engine and startup of the new.
+            storageGlobalParams.dbpath = dirPath.string();
+            // Clear the cached oplog pointer in the service context.
+            repl::clearLocalOplogPtr(opCtx->getServiceContext());
+        });
     opCtx->getServiceContext()->getStorageEngine()->notifyStartupComplete();
     invariant(StorageEngine::LastShutdownState::kClean == lastShutdownState);
 
@@ -1521,13 +1525,12 @@ void FileCopyBasedInitialSyncer::_switchStorageTo(
                     "dbPath"_attr = dirPath.string());
         startup_recovery::runStartupRecoveryInMode(
             opCtx, lastShutdownState, startupRecoveryMode.get());
-
-        LOGV2_DEBUG(5994405,
-                    2,
-                    "Reopening the catalog after switching storage engine.",
-                    "dbPath"_attr = dirPath.string());
-        catalog::openCatalogAfterStorageChange(opCtx);
     }
+    LOGV2_DEBUG(5994405,
+                2,
+                "Reopening the catalog after switching storage engine.",
+                "dbPath"_attr = dirPath.string());
+    catalog::openCatalogAfterStorageChange(opCtx);
 }
 
 void FileCopyBasedInitialSyncer::_cancelRemainingWork(WithLock) {

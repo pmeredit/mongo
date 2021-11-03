@@ -268,9 +268,8 @@ private:
 
     /**
      * Shuts down current storage engine and reinitializes it in 'dbpath/relativeToDbPath'.
-     * It will close the catalog before shutting down the storage engine if 'closeCatalog' is true.
-     * It will perform startup recovery and open the catalog if the value of 'startupRecoveryMode'
-     * exists.
+     * Closes the catalog before shutting down the storage engine, performs startup recovery if the
+     * value of 'startupRecoveryMode' exists, and then opens the catalog.
      *
      * The opCtx must be holding the global lock in exclusive mode.  The class mutex must NOT
      * be held, as this may result in a deadlock.  Thus _switchStorageTo must only access
@@ -279,7 +278,6 @@ private:
     void _switchStorageTo(
         OperationContext* opCtx,
         boost::optional<std::string> relativeToDbPath,
-        bool closeCatalog,
         boost::optional<startup_recovery::StartupRecoveryMode> startupRecoveryMode);
 
     /**
