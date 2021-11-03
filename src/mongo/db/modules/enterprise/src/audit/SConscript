@@ -64,7 +64,6 @@ env.Library(
         'audit_file_header.cpp',
         'audit_key_manager_local.cpp',
         'audit_key_manager_kmip.cpp',
-        'audit_feature_flag.idl',
         'audit_header_options.idl',
     ],
     LIBDEPS=[
@@ -74,7 +73,6 @@ env.Library(
         '$BUILD_DIR/mongo/idl/basic_types',
     ],
     LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/idl/feature_flag',
         '$BUILD_DIR/mongo/transport/message_compressor',
     ],
 )

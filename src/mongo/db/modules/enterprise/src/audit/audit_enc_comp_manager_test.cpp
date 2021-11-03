@@ -4,7 +4,6 @@
 
 #include "audit_enc_comp_manager.h"
 
-#include "audit/audit_feature_flag_gen.h"
 #include "audit_key_manager_mock.h"
 #include "mongo/base/init.h"
 #include "mongo/idl/server_parameter_test_util.h"
@@ -52,8 +51,6 @@ public:
                                                 "auditRecordType"_sd};
 
 protected:
-    RAIIServerParameterControllerForTest _controller{"featureFlagAtRestEncryption", true};
-
     std::unique_ptr<AuditEncryptionCompressionManager> _encManager;
 
     bool _gcmSupported;

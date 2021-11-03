@@ -10,13 +10,6 @@ load('jstests/ssl/libs/ssl_helpers.js');
 
 "use strict";
 
-if (!TestData.setParameters.featureFlagAtRestEncryption) {
-    // Don't accept option when FF not enabled.
-    assert.throws(
-        () => MongoRunner.runMongodAuditLogger({auditCompressionMode: "zstd"}, false /* isBSON */));
-    return;
-}
-
 if (determineSSLProvider() !== "windows") {
     run("chmod", "600", AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE);
 }

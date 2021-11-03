@@ -4,7 +4,6 @@
 
 #include "audit_file_header.h"
 
-#include "audit/audit_feature_flag_gen.h"
 #include "audit_enc_comp_manager.h"
 #include "audit_key_manager_mock.h"
 #include "mongo/base/error_extra_info.h"
@@ -30,8 +29,6 @@ public:
                                                 "auditRecordType"_sd};
 
 protected:
-    RAIIServerParameterControllerForTest _controller{"featureFlagAtRestEncryption", true};
-
     AuditFileHeader _afh;
 };
 

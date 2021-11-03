@@ -9,7 +9,6 @@
 #include <boost/filesystem.hpp>
 
 #include "audit/audit_config_gen.h"
-#include "audit/audit_feature_flag_gen.h"
 #include "audit/audit_key_manager_kmip.h"
 #include "audit/audit_key_manager_local.h"
 #include "audit_event.h"
@@ -215,9 +214,8 @@ void AuditManager::initialize(const moe::Environment& params) {
         _runtimeConfiguration = true;
     }
 
-    _encryptionEnabled = feature_flags::gFeatureFlagAtRestEncryption.isEnabledAndIgnoreFCV() &&
-        (params.count("auditLog.localAuditKeyFile") ||
-         params.count("auditLog.auditEncryptionKeyIdentifier"));
+    _encryptionEnabled = (params.count("auditLog.localAuditKeyFile") ||
+                          params.count("auditLog.auditEncryptionKeyIdentifier"));
 
     if (params.count("auditLog.compressionMode") &&
         params["auditLog.compressionMode"].as<std::string>() != "" &&
