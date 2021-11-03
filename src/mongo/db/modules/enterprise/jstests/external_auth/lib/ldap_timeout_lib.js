@@ -6,10 +6,15 @@ load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.j
 // Const options.
 const kSlowResponses = 5;
 const kTotalRequests = 10;
-const kSlowDelaySecs = 30;
+const kSlowDelaySecs = 40;
 const kLdapTimeoutMS = 10000;
-const kUnderTimeoutRegex = new RegExp('^[0-9]{1,4}$|^[1-2][0-9]{4}$', 'i');
-const kOverTimeoutRegex = new RegExp('^[3-9][0-9]{4}$|^[1-9][0-9]{5,}$', 'i');
+const kLdapTimeoutErrorDeltaMS = 20000;
+const kUsersInfoTimeoutMS = 30000;
+const kUsersInfoTimeoutErrorDeltaMS = 10000;
+const kUnderTimeoutRegex = new RegExp('^[0-9]{1,4}$|^[1-3][0-9]{4}$', 'i');
+const kOverTimeoutRegex = new RegExp('^[4-9][0-9]{4}$|^[1-9][0-9]{5,}$', 'i');
+const kMaxPoolSize = 10;
+const kDefaultLdapConnectionPoolHostRefreshIntervalMillis = 60000;
 const kDisableNativeLDAPTimeoutFailPoint = 'disableNativeLDAPTimeout';
 const kConnectionFailPoint = 'ldapConnectionTimeoutHang';
 const kBindFailPoint = 'ldapBindTimeoutHang';
@@ -43,23 +48,25 @@ function setLogLevel(conn) {
     const adminDB = conn.getDB('admin');
     assert(adminDB.auth('siteRootAdmin', 'secret'));
     assert.commandWorked(adminDB.setLogLevel(1));
-    adminDB.logout();
 }
 
-function runClients(conn, options, user) {
+function runClients(conn, options, user, timeoutMS, maxTimeMS = 30000) {
     const totalRequests = options.totalRequests;
+    const failPoint = options.failPoint;
 
     const awaitLdapConnectionHangs = [];
     for (let i = 0; i < totalRequests; i++) {
-        awaitLdapConnectionHangs.push(
-            startParallelShell(funWithArgs(clientCallback, user), conn.port));
+        if (failPoint === kSearchFailPoint) {
+            awaitLdapConnectionHangs.push(startParallelShell(
+                funWithArgs(clientSearchCallback, user, timeoutMS, maxTimeMS), conn.port));
+        } else {
+            awaitLdapConnectionHangs.push(startParallelShell(
+                funWithArgs(clientConnBindCallback, user, timeoutMS), conn.port));
+        }
     }
 
     // Wait for all of the clients to complete.
     awaitLdapConnectionHangs.forEach((awaitHang) => awaitHang());
-
-    // Checking for logs requires admin auth.
-    assert(conn.getDB('admin').auth('siteRootAdmin', 'secret'));
 }
 
 function runTimeoutTest(timeoutCallback, timeoutCallbackOptions) {
@@ -79,7 +86,6 @@ function runTimeoutTest(timeoutCallback, timeoutCallbackOptions) {
         configGenerator.ldapConnectionPoolHostRefreshIntervalMillis =
             timeoutCallbackOptions.ldapConnectionPoolHostRefreshIntervalMillis;
     }
-    configGenerator.authorizationManagerCacheSize = 0;
     configGenerator.ldapValidateLDAPServerConfig = false;
     configGenerator.ldapShouldRefreshUserCacheEntries = false;
 
@@ -88,14 +94,34 @@ function runTimeoutTest(timeoutCallback, timeoutCallbackOptions) {
 
 // Authenticate as a user. This will trigger a bind operation to complete LDAP proxy auth and
 // possibly a search operation to get LDAP roles if LDAP authz is enabled for the user.
-const clientCallback = function({userName, pwd}) {
-    const externalDB = db.getMongo().getDB('$external');
-    return externalDB.auth({
-        user: userName,
-        pwd: pwd,
-        mechanism: 'PLAIN',
-        digestPassword: false,
-    });
+const clientConnBindCallback = function({userName, pwd}, timeoutMS) {
+    assert.time(() => {
+        const externalDB = db.getMongo().getDB('$external');
+        const authRes = externalDB.auth({
+            user: userName,
+            pwd: pwd,
+            mechanism: 'PLAIN',
+            digestPassword: false,
+        });
+
+        return (authRes === 1 || authRes === 0);
+    }, "Authentication hung for longer than expected", timeoutMS);
+};
+
+// Run usersInfo as a user. This will trigger a search operation that bypasses the authorization
+// user cache.
+const clientSearchCallback = function(user, timeoutMS, maxTimeMS) {
+    assert.time(() => {
+        const adminDB = db.getMongo().getDB('admin');
+        const externalDB = db.getMongo().getDB('$external');
+
+        adminDB.auth('siteRootAdmin', 'secret');
+
+        const res = externalDB.runCommand(
+            {usersInfo: user.userName, showPrivileges: true, maxTimeMS: maxTimeMS});
+
+        return (res.ok === 1 || res.ok === 0);
+    }, "usersInfo hung for longer than expected", timeoutMS);
 };
 
 // Checks that there are 'numUnder' logs representing operations that took less than the timeout and

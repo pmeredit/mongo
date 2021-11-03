@@ -1,52 +1,18 @@
+// @tags: [requires_ldap_pool]
+
 (function() {
 'use strict';
 
 load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_timeout_lib.js");
 
 // Const test options.
-const kExpectedBindFailLog = {
-    "mechanism": "PLAIN",
-    "user": "ldapz_ldap1",
-    "db": "$external",
-    "error": {
-        "code": new RegExp('96|18', 'i'),
-        "codeName": new RegExp('OperationFailed|AuthenticationFailed', 'i'),
-        "errmsg": new RegExp('Failed to acquire LDAP group membership|Authentication failed.', 'i'),
-    },
-};
-const kExpectedSearchFailLog = {
-    "mechanism": "PLAIN",
-    "user": "ldapz_ldap2",
-    "db": "$external",
-    "error": {
-        "code": new RegExp('96|18'),
-        "codeName": new RegExp('OperationFailed|AuthenticationFailed', 'i'),
-        "errmsg": new RegExp('Failed to acquire LDAP group membership|Authentication failed.', 'i'),
-    },
-};
-const kExpectedLivenessFailLog = {
-    "error": {
-        "code": 96,
-        "codeName": "OperationFailed",
-        "errmsg": "Operation timed out",
-    },
-};
-
 const kConnTestOptions = {
     failPoint: kConnectionFailPoint,
     isPooled: true,
-    ldapConnectionPoolHostRefreshIntervalMillis: 60000,
+    maxPoolSize: kMaxPoolSize,
+    ldapConnectionPoolHostRefreshIntervalMillis:
+        kDefaultLdapConnectionPoolHostRefreshIntervalMillis,
     ldapTimeoutMS: kLdapTimeoutMS,
-    maxPoolSize: 2,
-    expectedUnderTimeoutLogId: 20250,
-    expectedUnderTimeoutAttrs: {
-        "mechanism": "PLAIN",
-        "speculative": false,
-        "principalName": "ldapz_ldap1",
-        "authenticationDatabase": "$external",
-    },
-    expectedOverTimeoutLogId: 5286307,
-    expectedOverTimeoutAttrs: kExpectedBindFailLog,
     slowDelaySecs: kSlowDelaySecs,
     slowResponses: kSlowResponses,
     totalRequests: kTotalRequests,
@@ -55,18 +21,10 @@ const kConnTestOptions = {
 const kBindTestOptions = {
     failPoint: kBindFailPoint,
     isPooled: true,
-    ldapConnectionPoolHostRefreshIntervalMillis: 60000,
-    ldapTimeoutMS: 10000,
-    maxPoolSize: 2,
-    expectedUnderTimeoutLogId: 20250,
-    expectedUnderTimeoutAttrs: {
-        "mechanism": "PLAIN",
-        "speculative": false,
-        "principalName": "ldapz_ldap1",
-        "authenticationDatabase": "$external",
-    },
-    expectedOverTimeoutLogId: 5286307,
-    expectedOverTimeoutAttrs: kExpectedBindFailLog,
+    maxPoolSize: kMaxPoolSize,
+    ldapConnectionPoolHostRefreshIntervalMillis:
+        kDefaultLdapConnectionPoolHostRefreshIntervalMillis,
+    ldapTimeoutMS: kLdapTimeoutMS,
     slowDelaySecs: kSlowDelaySecs,
     slowResponses: kSlowResponses,
     totalRequests: kTotalRequests,
@@ -75,18 +33,10 @@ const kBindTestOptions = {
 const kSearchAuthzTestOptions = {
     failPoint: kSearchFailPoint,
     isPooled: true,
-    ldapConnectionPoolHostRefreshIntervalMillis: 60000,
-    ldapTimeoutMS: 10000,
-    maxPoolSize: 2,
-    expectedUnderTimeoutLogId: 20250,
-    expectedUnderTimeoutAttrs: {
-        "mechanism": "PLAIN",
-        "speculative": false,
-        "principalName": "ldapz_ldap2",
-        "authenticationDatabase": "$external",
-    },
-    expectedOverTimeoutLogId: 5286307,
-    expectedOverTimeoutAttrs: kExpectedSearchFailLog,
+    maxPoolSize: kMaxPoolSize,
+    ldapConnectionPoolHostRefreshIntervalMillis:
+        kDefaultLdapConnectionPoolHostRefreshIntervalMillis,
+    ldapTimeoutMS: kLdapTimeoutMS,
     slowDelaySecs: kSlowDelaySecs,
     slowResponses: kSlowResponses,
     totalRequests: kTotalRequests,
@@ -95,30 +45,31 @@ const kSearchAuthzTestOptions = {
 const kSearchLivenessCheckTestOptions = {
     failPoint: kLivenessCheckFailPoint,
     isPooled: true,
+    maxPoolSize: kMaxPoolSize,
     ldapConnectionPoolHostRefreshIntervalMillis: 3000,
-    ldapTimeoutMS: 10000,
-    maxPoolSize: 20,
-    expectedUnderTimeoutLogId: 24062,
-    expectedUnderTimeoutAttrs: {
-        "refreshTimeElapsedMillis": kUnderTimeoutRegex,
-    },
-    expectedOverTimeoutLogId: 5885201,
-    expectedOverTimeoutAttrs: kExpectedLivenessFailLog,
+    ldapTimeoutMS: kLdapTimeoutMS,
     slowDelaySecs: kSlowDelaySecs,
-    slowResponses: 1,
-    totalRequests: 1,
+    slowResponses: kSlowResponses,
+    totalRequests: kTotalRequests,
 };
 
 function pooledTimeoutTestCallback({conn, shardingTest, options}) {
     const failPoint = options.failPoint;
-    const expectedUnderTimeoutLogId = options.expectedUnderTimeoutLogId;
-    const expectedUnderTimeoutAttrs = options.expectedUnderTimeoutAttrs;
-    const expectedOverTimeoutLogId = options.expectedOverTimeoutLogId;
-    const expectedOverTimeoutAttrs = options.expectedOverTimeoutAttrs;
     const slowResponses = options.slowResponses;
     const slowDelaySecs = options.slowDelaySecs;
-    const totalRequests = options.totalRequests;
-    const maxPoolSize = options.maxPoolSize;
+
+    // All clients are expected to get a response from the server within the timeout the LDAP
+    // connection pool is enforcing plus an error margin to account for network latency.
+    // For the search failpoint, the behavior is a bit more complex thanks to lack of
+    // parallelization with usersInfo. The server can only process one usersInfo request at a time.
+    // Therefore, the slowest usersInfo requests will be delayed by the usersInfoTimeout * the
+    // number of slow responses plus the error margin. That timeout should only be attainable if
+    // each of the delayed usersInfo commands timed itself out in roughly usersInfoTimeoutMS.
+    let expectedPoolTimeoutMS = options.ldapTimeoutMS + kLdapTimeoutErrorDeltaMS;
+    if (failPoint === kSearchFailPoint) {
+        expectedPoolTimeoutMS =
+            (kUsersInfoTimeoutMS + kUsersInfoTimeoutErrorDeltaMS) * slowResponses;
+    }
 
     jsTest.log('Starting pooled timeout test for failpoint ' + failPoint);
 
@@ -126,116 +77,48 @@ function pooledTimeoutTestCallback({conn, shardingTest, options}) {
     setLogLevel(conn);
 
     if (failPoint === kLivenessCheckFailPoint) {
-        // Launch clients to authenticate as ldapz_ldap1 to warm up the connection pool, and then
-        // set the failpoint and sleep as long as needed to get to witness the failed connection
-        // refreshes.
-        runClients(conn, options, {userName: 'ldapz_ldap1', pwd: defaultPwd});
-        setLdapFailPoint(
-            kDisableNativeLDAPTimeoutFailPoint, 'alwaysOn', slowDelaySecs, conn, shardingTest);
+        // Launch clients to authenticate as ldapz_ldap1 to warm up the connection pool and prevent
+        // the failpoint from triggering during the smoke test.
+        runClients(
+            conn, options, {userName: 'ldapz_ldap1', pwd: defaultPwd}, expectedPoolTimeoutMS);
+        setLdapFailPoint(kDisableNativeLDAPTimeoutFailPoint, 'alwaysOn', 3600, conn, shardingTest);
         setLdapFailPoint(failPoint, {'times': slowResponses}, slowDelaySecs, conn, shardingTest);
         const refreshInterval = options.ldapConnectionPoolHostRefreshIntervalMillis;
-        sleep(refreshInterval);
+        sleep(refreshInterval + kLdapTimeoutErrorDeltaMS);
+
+        // Launch another set of clients to authenticate as ldapz_ldap1. Even if the delays during
+        // refresh caused the previous connection pool to expire, this should not impact a new set
+        // of clients trying to authenticate.
+        runClients(
+            conn, options, {userName: 'ldapz_ldap1', pwd: defaultPwd}, expectedPoolTimeoutMS);
     } else {
         // Set the failpoint first because we do not need to worry about the failpoint triggering
         // during connection pool setup.
-        setLdapFailPoint(
-            kDisableNativeLDAPTimeoutFailPoint, 'alwaysOn', slowDelaySecs, conn, shardingTest);
+        setLdapFailPoint(kDisableNativeLDAPTimeoutFailPoint, 'alwaysOn', 3600, conn, shardingTest);
         setLdapFailPoint(failPoint, {'times': slowResponses}, slowDelaySecs, conn, shardingTest);
         if (failPoint === kSearchFailPoint) {
-            // Launch clients to authenticate as ldapz_ldap2, which actually has LDAP roles and so
-            // should trigger failures when retrieving roles.
-            runClients(conn, options, {userName: 'ldapz_ldap2', pwd: defaultPwd});
+            // Launch clients to authenticate as ldapz_ldap2.
+            runClients(
+                conn, options, {userName: 'ldapz_ldap2', pwd: defaultPwd}, expectedPoolTimeoutMS);
         } else {
-            // Launch clients to authenticate as ldapz_ldap1, which is authn-only and so should
-            // trigger failures during connection establishment or during bind.
-            runClients(conn, options, {userName: 'ldapz_ldap1', pwd: defaultPwd});
+            // Launch clients to authenticate as ldapz_ldap1.
+            runClients(
+                conn, options, {userName: 'ldapz_ldap1', pwd: defaultPwd}, expectedPoolTimeoutMS);
         }
     }
 
-    // Determine the number of under timeout and over timeout logs expected based on the failPoint
-    // and the size of the connection pool. By default, the comparators are set to be slightly
-    // relaxed and accept an error of up to 1 log to account for unexpected flakiness in the LDAP
-    // server.
-    let countUnderTimeout;
-    let underComparator = (actual, expected) => {
-        return Math.abs(actual - expected) <= 1;
-    };
-    let countOverTimeout;
-    let overComparator = underComparator;
-
-    // When the LDAP server hangs for all connections in the pool, none of the clients will
-    // successfully auth within the timeout.
-    if (maxPoolSize <= slowResponses) {
-        countUnderTimeout = 0;
-        countOverTimeout = totalRequests;
-    } else {
-        switch (failPoint) {
-            case kConnectionFailPoint:
-            case kBindFailPoint:
-                // Due to the connection pool, the exact number of auth attempts that succeed will
-                // vary based on how healthy connections are provided. During connection
-                // establishment, the worst case is that all auth attempts that hit failpoints will
-                // time out. The best case is when the pool identifies the unhealthy connections and
-                // checks out ones that don't hit the fail point, resulting in more successes.
-                // Therefore, we simply assert that at least totalRequests - slowResponses auth
-                // attempts succeeded while at most slowResponses timed out.
-                countUnderTimeout = totalRequests - slowResponses;
-                underComparator = (actual, expected) => {
-                    return actual >= expected;
-                };
-                countOverTimeout = slowResponses;
-                overComparator = (actual, expected) => {
-                    return actual <= expected;
-                };
-                break;
-            case kSearchFailPoint:
-                // During authorization role checks, cache misses will result in search operations
-                // on the LDAP server. Each lookup request will join an already-in-progress one if
-                // available, which will be the one that is hung on a fail point. Therefore, they
-                // should all time out.
-                countUnderTimeout = 0;
-                countOverTimeout = totalRequests;
-                break;
-            case kLivenessCheckFailPoint:
-                // The connection pool uses liveness checks to refresh its connections. The number
-                // of times connections fail to refresh should be equal to 'slowResponses,' while
-                // the number of times connections successfully refresh should be at least
-                // 'totalRequests - slowResponses'.
-                countUnderTimeout = totalRequests - slowResponses;
-                underComparator = (actual, expected) => {
-                    return actual >= expected;
-                };
-                countOverTimeout = slowResponses;
-        }
-    }
-    // Assert that the logs reflect the expected number of successes and failures.
-    checkTimeoutLogs(conn,
-                     expectedUnderTimeoutLogId,
-                     expectedUnderTimeoutAttrs,
-                     countUnderTimeout,
-                     expectedOverTimeoutLogId,
-                     expectedOverTimeoutAttrs,
-                     countOverTimeout,
-                     underComparator,
-                     overComparator);
+    // Check that the server did not crash/close the connection with the test due to any of the
+    // delays.
+    assert(conn);
 
     jsTest.log('SUCCESS - pooled timeout test for failpoint ' + failPoint);
 }
 
-// Hang during connection establishment with default max of 2 connections in pool.
+// Hang during connection establishment.
 runTimeoutTest(pooledTimeoutTestCallback, kConnTestOptions);
-// Hang during connection establishment with max of 20 connections in pool.
-kConnTestOptions.maxPoolSize = 20;
-runTimeoutTest(pooledTimeoutTestCallback, kConnTestOptions);
-// Hang during bind with default max of 2 connections in pool.
+// Hang during bind.
 runTimeoutTest(pooledTimeoutTestCallback, kBindTestOptions);
-// Hang during bind with max of 20 connections in pool.
-kBindTestOptions.maxPoolSize = 20;
-runTimeoutTest(pooledTimeoutTestCallback, kBindTestOptions);
-// Hang during authorization search with default max of 2 connections in pool.
-runTimeoutTest(pooledTimeoutTestCallback, kSearchAuthzTestOptions);
-// Hang during authorization search with max of 20 connections in pool.
-kSearchAuthzTestOptions.maxPoolSize = 20;
+// Hang during authorization search.
 runTimeoutTest(pooledTimeoutTestCallback, kSearchAuthzTestOptions);
 // Hang during liveness check search.
 runTimeoutTest(pooledTimeoutTestCallback, kSearchLivenessCheckTestOptions);

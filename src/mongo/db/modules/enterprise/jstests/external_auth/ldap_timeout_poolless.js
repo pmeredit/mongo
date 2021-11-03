@@ -4,7 +4,7 @@
 load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_timeout_lib.js");
 
 // Const test options.
-const kExpectedCommandAttrs = {
+const kExpectedConnBindCommandAttrs = {
     "saslStart": 1,
     "mechanism": "PLAIN",
     "options": {"skipEmptyExchange": true},
@@ -12,22 +12,50 @@ const kExpectedCommandAttrs = {
     "$db": "$external",
 };
 
-const kTestOptions = {
+const kExpectedSearchCommandAttrs = {
+    "usersInfo": "ldapz_ldap1",
+    "showPrivileges": true,
+};
+
+// No connections are expected to time out when kConnectionFailPoint or kBindFailPoint are set.
+// If the failpoint is hit, auth will succeed after the delay elapses, otherwise it will succeed
+// normally without hitting the delay.
+const kConnBindTestOptions = {
     failPoint: kConnectionFailPoint,
     isPooled: false,
     ldapTimeoutMS: kLdapTimeoutMS,
     expectedUnderTimeoutLogId: 51803,
     expectedUnderTimeoutAttrs: {
         "ns": "$external.$cmd",
-        "command": kExpectedCommandAttrs,
+        "command": kExpectedConnBindCommandAttrs,
         "durationMillis": kUnderTimeoutRegex,
     },
     expectedOverTimeoutLogId: 51803,
     expectedOverTimeoutAttrs: {
         "ns": "$external.$cmd",
-        "command": kExpectedCommandAttrs,
+        "command": kExpectedConnBindCommandAttrs,
         "durationMillis": kOverTimeoutRegex,
 
+    },
+    slowDelaySecs: kSlowDelaySecs,
+    slowResponses: kSlowResponses,
+    totalRequests: kTotalRequests,
+};
+
+// Since usersInfo is bound by maxTimeMS and only one usersInfo can be processed at a time, all
+// usersInfo invocations should result in a timeout with an error message.
+const kSearchTestOptions = {
+    failPoint: kSearchFailPoint,
+    isPooled: false,
+    ldapTimeoutMS: kLdapTimeoutMS,
+    expectedUnderTimeoutLogId: 51803,
+    expectedUnderTimeoutAttrs: {
+        "errMsg": "command usersInfo requires authentication",
+    },
+    expectedOverTimeoutLogId: 51803,
+    expectedOverTimeoutAttrs: {
+        "command": kExpectedSearchCommandAttrs,
+        "errMsg": new RegExp('.*', 'i'),
     },
     slowDelaySecs: kSlowDelaySecs,
     slowResponses: kSlowResponses,
@@ -41,12 +69,38 @@ const kTestOptions = {
 function poollessTimeoutTestCallback({conn, shardingTest, options}) {
     const failPoint = options.failPoint;
     const expectedUnderTimeoutLogId = options.expectedUnderTimeoutLogId;
-    const expectedUnderTimeoutAttrs = options.expectedUnderTimeoutAttrs;
+    let expectedUnderTimeoutAttrs = options.expectedUnderTimeoutAttrs;
     const expectedOverTimeoutLogId = options.expectedOverTimeoutLogId;
-    const expectedOverTimeoutAttrs = options.expectedOverTimeoutAttrs;
+    let expectedOverTimeoutAttrs = options.expectedOverTimeoutAttrs;
     const slowDelaySecs = options.slowDelaySecs;
     const slowResponses = options.slowResponses;
     const totalRequests = options.totalRequests;
+
+    // All clients are expected to get a response from the server either after the full delay or
+    // after a timeout is enforced.
+    // First, kDisableNativeLDAPTimeoutFailPoint is set so that the system LDAP library timeout is
+    // set to some arbitrarily large value. Then, the following behavior occurs depending on the
+    // failpoint set:
+    //  - kConnectionFailPoint: runClients() launches shells that try to auth as ldapz_ldap1. The
+    //    first 'slowResponses' clients will be delayed by slowDelaySecs to get a connection to the
+    //    LDAP server, which will cause auth to take at least slowDelaySecs to complete. The
+    //    remaining clients will auth in less than slowDelaySecs.
+    //  - kBindFailPoint: runClients() launches shells that try to auth as ldapz_ldap1. The first
+    //    'slowResponses' clients will be delayed by slowDelaySecs when binding to the LDAP server
+    //    which will cause auth to take at least slowDelaySecs to complete. The remaining clients
+    //    will auth in less than slowDelaySecs.
+    //  - kSearchFailPoint: runClients() launches shells that execute usersInfo for ldapz_ldap1. The
+    //    first 'slowResponses' clients will be delayed by slowDelaySecs when searching for LDAP
+    //    group membership on the LDAP server for ldapz_ldap1. Since the server can only process one
+    //    usersInfo command at a time, the delays will propagate and multiply for the last clients
+    //    served. However, usersInfo has a built-in maxTimeMS timeout which should be less than
+    //    slowDelaySecs, so all usersInfo invocations should either fail due to timeout or due to
+    //    admin auth failure, resulting in an Unauthorized failure.
+    let expectedPoollessTimeoutMS = (options.slowDelaySecs * 1000) + kLdapTimeoutErrorDeltaMS;
+    if (failPoint === kSearchFailPoint) {
+        expectedPoollessTimeoutMS =
+            ((options.slowDelaySecs * 1000) + kLdapTimeoutErrorDeltaMS) * slowResponses;
+    }
 
     jsTest.log('Starting poolless timeout test for failpoint ' + failPoint);
 
@@ -54,30 +108,28 @@ function poollessTimeoutTestCallback({conn, shardingTest, options}) {
     setLogLevel(conn);
 
     // Set the fail point and run the clients.
-    setLdapFailPoint(
-        kDisableNativeLDAPTimeoutFailPoint, 'alwaysOn', slowDelaySecs, conn, shardingTest);
+    setLdapFailPoint(kDisableNativeLDAPTimeoutFailPoint, 'alwaysOn', 3600, conn, shardingTest);
     setLdapFailPoint(failPoint, {'times': slowResponses}, slowDelaySecs, conn, shardingTest);
-    runClients(conn, options, {userName: 'ldapz_ldap1', pwd: defaultPwd});
+    runClients(
+        conn, options, {userName: 'ldapz_ldap1', pwd: defaultPwd}, expectedPoollessTimeoutMS);
 
-    // If the delay occurred when searching for the LDAP user's group membership, it is expected
-    // that all of the auth attempts took at least the delay to complete. This must occur since all
-    // of the LDAP search operations would have used the same backing lookup call after the cache
-    // miss. Since connection pooling is turned off, behavior is deterministic for hangs during bind
-    // and connection establishment. Each auth attempt results in a fresh connection to the LDAP
-    // server. The first five hang and succeed after the hang (30 seconds), while the second five
-    // succeed at normal speeds (less than 30 seconds).
-    // Sometimes, an LDAP operation may fail due to genuine network issues or flakiness in the LDAP
-    // server rather than the actual failpoints. To mitigate those impacts, the test will accept
-    // up to 1 log more or less than expected.
     let countUnderTimeout = totalRequests - slowResponses;
     let countOverTimeout = slowResponses;
     const relaxedComparator = (actual, expected) => {
         return Math.abs(actual - expected) <= 1;
     };
+    let expectedUnderComparator = relaxedComparator;
+    let expectedOverComparator = relaxedComparator;
 
-    if (failPoint === 'ldapSearchTimeoutHang') {
-        countUnderTimeout = 0;
-        countOverTimeout = totalRequests;
+    if (failPoint === kSearchFailPoint) {
+        countUnderTimeout = 9;
+        countOverTimeout = 1;
+        expectedUnderComparator = (actual, expected) => {
+            return actual <= expected;
+        };
+        expectedOverComparator = (actual, expected) => {
+            return actual >= expected;
+        };
     }
 
     checkTimeoutLogs(conn,
@@ -87,8 +139,8 @@ function poollessTimeoutTestCallback({conn, shardingTest, options}) {
                      expectedOverTimeoutLogId,
                      expectedOverTimeoutAttrs,
                      countOverTimeout,
-                     relaxedComparator,
-                     relaxedComparator);
+                     expectedUnderComparator,
+                     expectedOverComparator);
 
     jsTest.log('SUCCESS - poolless timeout test for failpoint ' + failPoint);
 }
@@ -97,9 +149,8 @@ function poollessTimeoutTestCallback({conn, shardingTest, options}) {
 // using a connection pool, meaning that it is entirely reliant on the system LDAP library to
 // enforce timeouts. In the event that the LDAP library doesn't properly enforce the timeouts, the
 // server should be able to process requests normally (albeit slowly).
-runTimeoutTest(poollessTimeoutTestCallback, kTestOptions);
-kTestOptions.failPoint = kBindFailPoint;
-runTimeoutTest(poollessTimeoutTestCallback, kTestOptions);
-kTestOptions.failPoint = kSearchFailPoint;
-runTimeoutTest(poollessTimeoutTestCallback, kTestOptions);
+runTimeoutTest(poollessTimeoutTestCallback, kConnBindTestOptions);
+kConnBindTestOptions.failPoint = kBindFailPoint;
+runTimeoutTest(poollessTimeoutTestCallback, kConnBindTestOptions);
+runTimeoutTest(poollessTimeoutTestCallback, kSearchTestOptions);
 })();
