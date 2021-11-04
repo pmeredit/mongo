@@ -385,14 +385,29 @@ protected:
             {"/data/db/job0/mongorunner/test-1/journal/WiredTigerLog.0000000006",
              "/data/db/job0/mongorunner/test-1/journal/WiredTigerLog.0000000007"}};
 
-        const std::vector<std::string> markerFilesList{"WiredTiger",
-                                                       "WiredTiger.backup",
-                                                       "WiredTigerHS.wt",
-                                                       "_mdb_catalog.wt",
-                                                       "collection-0--3853645825680686061.wt",
-                                                       "index-1--3853645825680686061.wt",
-                                                       "journal",
-                                                       "sizeStorer.wt"};
+        const std::vector<std::string> moveMarkerFilesList{"WiredTiger",
+                                                           "WiredTiger.backup",
+                                                           "WiredTigerHS.wt",
+                                                           "_mdb_catalog.wt",
+                                                           "collection-0--3853645825680686061.wt",
+                                                           "index-1--3853645825680686061.wt",
+                                                           "journal",
+                                                           "sizeStorer.wt"};
+
+        const std::vector<std::string> deleteMarkerFilesList{"WiredTiger",
+                                                             "WiredTiger.backup",
+                                                             "WiredTigerHS.wt",
+                                                             "_mdb_catalog.wt",
+                                                             "collection-0--3853645825680686061.wt",
+                                                             "index-1--3853645825680686061.wt",
+                                                             "journal/WiredTigerLog.0000000001",
+                                                             "journal/WiredTigerLog.0000000002",
+                                                             "journal/WiredTigerLog.0000000003",
+                                                             "journal/WiredTigerLog.0000000004",
+                                                             "journal/WiredTigerLog.0000000005",
+                                                             "journal/WiredTigerLog.0000000006",
+                                                             "journal/WiredTigerLog.0000000007",
+                                                             "sizeStorer.wt"};
 
         StringData remoteDbPath = "/data/db/job0/mongorunner/test-1";
 
@@ -553,7 +568,11 @@ protected:
             } else {
                 auto filesInMarker = currentFileMover->readListOfFiles(markerName);
                 sort(filesInMarker.begin(), filesInMarker.end());
-                ASSERT_TRUE(markerFilesList == filesInMarker);
+                if (markerName == InitialSyncFileMover::kMovingFilesMarker) {
+                    ASSERT_TRUE(moveMarkerFilesList == filesInMarker);
+                } else {
+                    ASSERT_TRUE(deleteMarkerFilesList == filesInMarker);
+                }
             }
         }
 
@@ -1723,10 +1742,22 @@ TEST_F(FileCopyBasedInitialSyncerTest, DeleteOldStorageFilesPhase) {
     fileCopyBasedInitialSyncer->setOldStorageFilesToBeDeleted_ForTest(
         cursorDataMock.getAllRemoteFilesRelativePath());
 
-    // Let initial sync finish.
+    // After we finish deleting the old storage files, we need to ensure that the delete marker was
+    // successfully written to disk.
+    auto hangAfterDeletingOldStorageFilesFailPoint =
+        globalFailPointRegistry().find("fCBISHangAfterDeletingOldStorageFiles");
+    timesEnteredFailPoint = hangAfterDeletingOldStorageFilesFailPoint->setMode(FailPoint::alwaysOn);
     hangBeforeDeletingOldStorageFilesFailPoint->setMode(FailPoint::off);
     // Advance the clock to make sure that the failPoint hang loop terminates.
     advanceClock(getNet(), Milliseconds(static_cast<Milliseconds::rep>(100)));
+    hangAfterDeletingOldStorageFilesFailPoint->waitForTimesEntered(timesEnteredFailPoint + 1);
+
+    cursorDataMock.validateMarkerExistence(true /*shouldExist*/,
+                                           InitialSyncFileMover::kFilesToDeleteMarker);
+    // Let initial sync finish.
+    hangAfterDeletingOldStorageFilesFailPoint->setMode(FailPoint::off);
+    advanceClock(getNet(), Milliseconds(static_cast<Milliseconds::rep>(100)));
+
     fileCopyBasedInitialSyncer->join();
     ASSERT_EQ(fileCopyBasedInitialSyncer->getStartInitialSyncAttemptFutureStatus_forTest(),
               Status::OK());
@@ -1769,7 +1800,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, MoveNewFilesPhase) {
                                            InitialSyncFileMover::kMovingFilesMarker);
 
     // Create the delete marker.
-    cursorDataMock.currentFileMover->writeMarker(cursorDataMock.markerFilesList,
+    cursorDataMock.currentFileMover->writeMarker(cursorDataMock.deleteMarkerFilesList,
                                                  InitialSyncFileMover::kFilesToDeleteMarker,
                                                  InitialSyncFileMover::kFilesToDeleteTmpMarker);
     cursorDataMock.validateMarkerExistence(true /*shouldExist*/,

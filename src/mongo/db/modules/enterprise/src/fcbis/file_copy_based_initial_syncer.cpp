@@ -89,6 +89,9 @@ MONGO_FAIL_POINT_DEFINE(fCBISHangAfterStartingFileClone);
 
 // Failpoint which allows getting the progress even after initial sync completes.
 MONGO_FAIL_POINT_DEFINE(fCBISAllowGettingProgressAfterInitialSyncCompletes);
+// Failpoint which causes the file copy based initial sync to hang after deleting old
+// storage files and writing the list of files to the delete marker.
+MONGO_FAIL_POINT_DEFINE(fCBISHangAfterDeletingOldStorageFiles);
 
 static constexpr Seconds kDenylistDuration(60);
 
@@ -1352,8 +1355,18 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_prepareStorageDirectoriesForMo
         .then([this, self = shared_from_this()] {
             _syncingFilesState.currentFileMover =
                 std::make_unique<InitialSyncFileMover>(_syncingFilesState.originalDbPath);
+            // Before we delete the list of old storage files from disk, we write them to the delete
+            // marker for recovery purposes.
+            _syncingFilesState.currentFileMover->writeMarker(
+                _syncingFilesState.oldStorageFilesToBeDeleted,
+                InitialSyncFileMover::kFilesToDeleteMarker,
+                InitialSyncFileMover::kFilesToDeleteTmpMarker);
             _syncingFilesState.currentFileMover->deleteFiles(
                 _syncingFilesState.oldStorageFilesToBeDeleted);
+
+            return _hangAsyncIfFailPointEnabled("fCBISHangAfterDeletingOldStorageFiles",
+                                                _syncingFilesState.executor,
+                                                _syncingFilesState.token);
         });
 }
 
