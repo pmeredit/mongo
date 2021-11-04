@@ -10,6 +10,7 @@
 
 #include <boost/filesystem.hpp>
 #include <fstream>
+#include <stack>
 
 #include "mongo/db/storage/storage_file_util.h"
 #include "mongo/logv2/log.h"
@@ -113,16 +114,31 @@ std::vector<std::string> InitialSyncFileMover::readListOfFiles(StringData marker
 std::vector<std::string> InitialSyncFileMover::createListOfFilesToMove() {
     std::vector<std::string> result;
     boost::filesystem::path initialSyncDir(_dbpath);
+    std::stack<boost::filesystem::path> pathsToMove;
     initialSyncDir.append(kInitialSyncDir.toString());
-    for (auto dirIter = boost::filesystem::directory_iterator(initialSyncDir);
-         dirIter != boost::filesystem::directory_iterator();
-         dirIter++) {
-        auto fileToMove = boost::filesystem::relative(dirIter->path(), initialSyncDir);
-        if (fileToMove.string() == kInitialSyncDummyDir) {
-            // Skip the dummy directory.
-            continue;
+    pathsToMove.push(initialSyncDir);
+    while (!pathsToMove.empty()) {
+        const auto pathToMove = pathsToMove.top();
+        pathsToMove.pop();
+        for (auto dirIter = boost::filesystem::directory_iterator(pathToMove);
+             dirIter != boost::filesystem::directory_iterator();
+             dirIter++) {
+            auto fileToMove = boost::filesystem::relative(dirIter->path(), initialSyncDir);
+            if (fileToMove.string() == kInitialSyncDummyDir) {
+                // Skip the dummy directory.
+                continue;
+            }
+            // For directories to be moved to symlinks, we must move the files in the directory,
+            // not the symlink itself.
+            boost::filesystem::path destinationPath(_dbpath);
+            destinationPath /= fileToMove;
+            if (boost::filesystem::is_symlink(destinationPath) &&
+                boost::filesystem::is_directory(dirIter->path())) {
+                pathsToMove.push(dirIter->path());
+            } else {
+                result.emplace_back(fileToMove.string());
+            }
         }
-        result.emplace_back(fileToMove.string());
     }
     return result;
 }
@@ -152,20 +168,34 @@ void InitialSyncFileMover::deleteFiles(const std::vector<std::string>& filesToDe
     boost::filesystem::path dbpath(_dbpath);
     dbpath = boost::filesystem::canonical(dbpath);
     StringSet removedFiles;
+    StringSet symlinks;
     for (const auto& filename : filesToDelete) {
         boost::filesystem::path fileRelativePath(filename);
         // Marker files must contain only relative paths
         fassert(5783403, fileRelativePath.is_relative());
         // If the file list contains files in directories, we delete the whole directory.
         // This covers log files as well as directory-per-db and directory-per-index.
-        auto topPath = *fileRelativePath.begin();
+        // However, symlinks to directories are not considered directories.
+        auto pathIter = fileRelativePath.begin();
+        auto topPath = *pathIter;
+        auto fullPath = dbpath;
+        fullPath /= topPath;
+        ++pathIter;
+        while (pathIter != fileRelativePath.end() &&
+               removedFiles.find(topPath.string()) == removedFiles.end() &&
+               ((symlinks.find(topPath.string()) != symlinks.end()) ||
+                boost::filesystem::is_symlink(fullPath))) {
+            symlinks.insert(topPath.string());
+            topPath /= *pathIter;
+            fullPath /= *pathIter;
+            ++pathIter;
+        }
         // Avoid trying to remove the same file multiple times during the same run.  This avoids
         // log spam and excessive stats of the filesystem.
         if (removedFiles.find(topPath.string()) != removedFiles.end())
             continue;
-        auto fullPath = dbpath;
-        fullPath /= topPath;
-        fullPath = boost::filesystem::weakly_canonical(fullPath);
+        // Because we allow symlinks, we must only normalize, not canonicalize, this path.
+        fullPath = fullPath.lexically_normal();
         // Paths must be relative to dbpath.
         auto [dbpath_mismatch, fullPath_mismatch] =
             std::mismatch(dbpath.begin(), dbpath.end(), fullPath.begin(), fullPath.end());

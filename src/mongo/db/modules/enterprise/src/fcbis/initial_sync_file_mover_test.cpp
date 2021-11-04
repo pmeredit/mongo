@@ -83,7 +83,7 @@ protected:
     }
 
     // Ensure a file (relative to _dbpath) does not exist,
-    void assertDoesNotExist(StringData filepath) {
+    virtual void assertDoesNotExist(StringData filepath) {
         auto path = _dbpath;
         path.append(filepath.toString());
         ASSERT_FALSE(boost::filesystem::exists(path))
@@ -230,6 +230,53 @@ protected:
 private:
     unittest::MinimumLoggedSeverityGuard replLogSeverityGuard{logv2::LogComponent::kReplication,
                                                               logv2::LogSeverity::Debug(3)};
+};
+
+// Fixture for test which checks we can handle symlinked directories to outside the dbpath.
+class InitialSyncFileMoverSymlinkTest : public InitialSyncFileMoverTest {
+protected:
+    InitialSyncFileMoverSymlinkTest()
+        : InitialSyncFileMoverTest(),
+          _symlinkDestDir("InitialSyncFileMoverSymlinkTest"),
+          _symlinkDestPath(boost::filesystem::path(_symlinkDestDir.path())) {}
+
+    // Moves a directory (relative to dbpath) to the _symlinkDestDir and makes it a symlink
+    void moveDirToSymlink(StringData sourceDir) {
+        auto sourcePath = _dbpath;
+        sourcePath.append(sourceDir.toString());
+        for (auto& entry : boost::filesystem::directory_iterator(sourcePath)) {
+            auto newPath = _symlinkDestPath;
+            newPath += entry.path().filename();
+            boost::filesystem::rename(entry.path(), newPath);
+        }
+        boost::filesystem::remove_all(sourcePath);
+        boost::filesystem::create_directory_symlink(_symlinkDestPath, sourcePath);
+    }
+
+    // For this test, we allow symlinks to empty directories count as "does not exist".
+    void assertDoesNotExist(StringData filepath) override {
+        auto path = _dbpath;
+        path.append(filepath.toString());
+        if (boost::filesystem::is_symlink(path)) {
+            auto symlinkDest = boost::filesystem::read_symlink(path);
+            if (boost::filesystem::is_directory(path) && boost::filesystem::is_empty(path))
+                return;
+        }
+        ASSERT_FALSE(boost::filesystem::exists(path))
+            << "File " << filepath << " should not exist but does";
+    }
+
+    void assertIsSymlink(StringData filepath) {
+        auto path = _dbpath;
+        path.append(filepath.toString());
+        auto symlinkDest = boost::filesystem::read_symlink(path);
+        ASSERT_TRUE(symlinkDest == _symlinkDestPath)
+            << "File " << filepath << " should be a symlink to our symlink dir but is not.";
+    }
+
+protected:
+    unittest::TempDir _symlinkDestDir;
+    boost::filesystem::path _symlinkDestPath;
 };
 
 // The normal case when there are no initial sync files.
@@ -448,6 +495,24 @@ TEST_F(InitialSyncFileMoverTest, RemoveNonEmptyInitialSyncDirectoryTest) {
     InitialSyncFileMover::deleteInitialSyncDir(_dbpath.string());
     ASSERT_FALSE(boost::filesystem::exists(_initialSyncPath));
     ASSERT_TRUE(boost::filesystem::is_empty(_dbpath));
+}
+
+TEST_F(InitialSyncFileMoverSymlinkTest, OldDirIsSymlink) {
+    createAllFiles();
+    moveDirToSymlink("OLDDIR");
+    writeMarker(InitialSyncFileMover::kFilesToDeleteMarker, deleteMarkerContents());
+    fileMover.recoverFileCopyBasedInitialSyncAtStartup();
+    assertInitialSyncCompleted();
+    assertIsSymlink("OLDDIR");
+}
+
+TEST_F(InitialSyncFileMoverSymlinkTest, CommonDirIsSymlink) {
+    createAllFiles();
+    moveDirToSymlink("COMMONDIR");
+    writeMarker(InitialSyncFileMover::kFilesToDeleteMarker, deleteMarkerContents());
+    fileMover.recoverFileCopyBasedInitialSyncAtStartup();
+    assertInitialSyncCompleted();
+    assertIsSymlink("COMMONDIR");
 }
 
 // The scenario where a file in the move marker is missing.
