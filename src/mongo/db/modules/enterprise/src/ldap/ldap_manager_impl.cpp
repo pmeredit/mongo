@@ -90,6 +90,14 @@ StatusWith<std::vector<RoleName>> LDAPManagerImpl::getUserRoles(
     return roles;
 }
 
+Status LDAPManagerImpl::checkLivenessNotPooled(const LDAPConnectionOptions& connectionOptions,
+                                               TickSource* tickSource,
+                                               UserAcquisitionStats* userAcquisitionStats) {
+    LDAPConnectionOptions options = connectionOptions;
+    options.usePooledConnection = false;
+    return _runner->checkLivenessNotPooled(options, tickSource, userAcquisitionStats);
+}
+
 std::vector<LDAPHost> LDAPManagerImpl::getHosts() const {
     return _runner->getHosts();
 }

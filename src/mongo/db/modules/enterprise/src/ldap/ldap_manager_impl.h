@@ -44,6 +44,11 @@ public:
                                  TickSource* tickSource,
                                  UserAcquisitionStats* userAcquisitionStats) final;
 
+    // Pass-through to the runner liveness function.
+    Status checkLivenessNotPooled(const LDAPConnectionOptions& connectionOptions,
+                                  TickSource* tickSource,
+                                  UserAcquisitionStats* userAcquisitionStats) override;
+
     ////////////////////////////////////////////////////////////
     //
     // State inspection and manipulation methods.

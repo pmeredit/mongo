@@ -220,6 +220,9 @@ env.Library(
         '$BUILD_DIR/mongo/db/auth/authmongod',
         '$BUILD_DIR/mongo/db/process_health/fault_manager',
         '$BUILD_DIR/mongo/idl/server_parameter',
+        'ldap_connection',
+        'ldap_manager',
+        'ldap_manager_impl',
         'ldap_query',
     ],
 )

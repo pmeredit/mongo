@@ -63,14 +63,25 @@ Status LDAPRunnerImpl::bindAsUser(const std::string& user,
 
 StatusWith<std::unique_ptr<LDAPConnection>> LDAPRunnerImpl::getConnection(
     TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) {
-    LDAPBindOptions bindOptions;
     LDAPConnectionOptions connectionOptions;
 
+    {
+        stdx::lock_guard<Latch> lock(_memberAccessMutex);
+        connectionOptions = _options;
+    }
+    return getConnectionWithOptions(connectionOptions, tickSource, userAcquisitionStats);
+}
+
+StatusWith<std::unique_ptr<LDAPConnection>> LDAPRunnerImpl::getConnectionWithOptions(
+    LDAPConnectionOptions connectionOptions,
+    TickSource* tickSource,
+    UserAcquisitionStats* userAcquisitionStats) {
+
+    LDAPBindOptions bindOptions;
     std::vector<SecureString> bindPasswords;
     {
         stdx::lock_guard<Latch> lock(_memberAccessMutex);
         bindOptions = _defaultBindOptions;
-        connectionOptions = _options;
         bindPasswords = _bindPasswords;
     }
     auto swConnection =
@@ -117,6 +128,19 @@ StatusWith<LDAPEntityCollection> LDAPRunnerImpl::runQuery(
 Status LDAPRunnerImpl::checkLiveness(TickSource* tickSource,
                                      UserAcquisitionStats* userAcquisitionStats) {
     auto swConnection = getConnection(tickSource, userAcquisitionStats);
+    if (!swConnection.isOK()) {
+        return swConnection.getStatus();
+    }
+
+    return swConnection.getValue()->checkLiveness(tickSource, userAcquisitionStats);
+}
+
+Status LDAPRunnerImpl::checkLivenessNotPooled(const LDAPConnectionOptions& connectionOptions,
+                                              TickSource* tickSource,
+                                              UserAcquisitionStats* userAcquisitionStats) {
+    invariant(!connectionOptions.usePooledConnection);
+    auto swConnection =
+        getConnectionWithOptions(connectionOptions, tickSource, userAcquisitionStats);
     if (!swConnection.isOK()) {
         return swConnection.getStatus();
     }

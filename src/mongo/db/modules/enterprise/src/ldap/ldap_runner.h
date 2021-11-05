@@ -12,6 +12,7 @@
 #include "mongo/util/duration.h"
 #include "mongo/util/tick_source_mock.h"
 
+#include "ldap_connection_options.h"
 #include "ldap_host.h"
 #include "ldap_type_aliases.h"
 
@@ -60,6 +61,14 @@ public:
      */
     virtual Status checkLiveness(TickSource* tickSource,
                                  UserAcquisitionStats* userAcquisitionStats) = 0;
+
+    /** Check liveness bypassing the connection pool and using the supplied options.
+     * Precondition: connectionOptions.usePooledConnection == false. It is unsafe
+     *   to pool connections created with different options.
+     */
+    virtual Status checkLivenessNotPooled(const LDAPConnectionOptions& connectionOptions,
+                                          TickSource* tickSource,
+                                          UserAcquisitionStats* userAcquisitionStats) = 0;
 
     ////////////////////////////////////////////////////////////
     //

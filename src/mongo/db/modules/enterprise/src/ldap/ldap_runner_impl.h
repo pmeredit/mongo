@@ -36,7 +36,11 @@ public:
     StatusWith<LDAPEntityCollection> runQuery(const LDAPQuery& query,
                                               TickSource* tickSource,
                                               UserAcquisitionStats* userAcquisitionStats) final;
+
     Status checkLiveness(TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats) final;
+    Status checkLivenessNotPooled(const LDAPConnectionOptions& connectionOptions,
+                                  TickSource* tickSource,
+                                  UserAcquisitionStats* userAcquisitionStats) final;
 
     std::vector<LDAPHost> getHosts() const final;
     void setHosts(std::vector<LDAPHost> hosts) final;
@@ -55,6 +59,11 @@ public:
 private:
     StatusWith<std::unique_ptr<LDAPConnection>> getConnection(
         TickSource* tickSource, UserAcquisitionStats* userAcquisitionStats);
+    // Note: when used with non-standard options the conenction must not be pooled.
+    StatusWith<std::unique_ptr<LDAPConnection>> getConnectionWithOptions(
+        LDAPConnectionOptions connectionOptions,
+        TickSource* tickSource,
+        UserAcquisitionStats* userAcquisitionStats);
 
     LDAPConnectionFactory _factory;
 

@@ -32,6 +32,13 @@ public:
         return Status::OK();
     }
 
+    Status checkLivenessNotPooled(const LDAPConnectionOptions& connectionOptions,
+                                  TickSource* tickSource,
+                                  UserAcquisitionStats* userAcquisitionStats) final {
+        return Status::OK();
+    }
+
+
     StatusWith<LDAPEntityCollection> runQuery(const LDAPQuery& query,
                                               TickSource* tickSource,
                                               UserAcquisitionStats* userAcquisitionStats) final {

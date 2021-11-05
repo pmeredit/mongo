@@ -10,6 +10,7 @@
 #include "mongo/db/auth/user_acquisition_stats.h"
 #include "mongo/util/duration.h"
 
+#include "ldap_connection_options.h"
 #include "ldap_host.h"
 #include "ldap_type_aliases.h"
 
@@ -59,6 +60,15 @@ public:
                                          const SecureString& pwd,
                                          TickSource* tickSource,
                                          UserAcquisitionStats* userAcquisitionStats) = 0;
+
+    /** Ping the remote LDAP server to make certain communication works.
+     * This method will bypass the connection pool and use the provided connection
+     * options.
+     * @see LDAPRunner::checkLiveness()
+     */
+    virtual Status checkLivenessNotPooled(const LDAPConnectionOptions& connectionOptions,
+                                          TickSource* tickSource,
+                                          UserAcquisitionStats* userAcquisitionStats) = 0;
 
     ////////////////////////////////////////////////////////////
     //
