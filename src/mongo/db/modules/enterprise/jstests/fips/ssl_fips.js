@@ -1,7 +1,15 @@
+load("jstests/ssl/libs/ssl_helpers.js");
+
 (function() {
 
 // Test that FIPS mode works on enterprise builds of mongod and mongos if FIPS is available on the
 // OS.
+
+// Disable test on SLES 15 SP1 because of buggy FIPS support
+// SLES 15 SP2 FIPS works
+if (isSUSE15SP1()) {
+    return;
+}
 
 // Global consts.
 const SERVER_CERT = "jstests/libs/server.pem";

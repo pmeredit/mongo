@@ -1,8 +1,15 @@
 // Test that FIPS mode implicitly disables SCRAM-SHA-1 authentication mechanism
 // and that it can still be explicitly enabled.
+load("jstests/ssl/libs/ssl_helpers.js");
 
 (function() {
 'use strict';
+
+// Disable test on SLES 15 SP1 because of buggy FIPS support
+// SLES 15 SP2 FIPS works
+if (isSUSE15SP1()) {
+    return;
+}
 
 const SERVER_CERT = "jstests/libs/server.pem";
 const CLIENT_CERT = "jstests/libs/client.pem";
