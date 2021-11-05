@@ -1,33 +1,37 @@
 /**
  * Tests that modifications to the encrypted audit log file
  * can be detected on decrypt.
+ * @tags: [uses_pykmip]
  */
 
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit_encryption.js');
 load('jstests/ssl/libs/ssl_helpers.js');
 
 (function() {
 
 "use strict";
 
+// note: this port number must be unique among the audit tests that use
+// the PyKMIP server, so that these tests can run in parallel without
+// EADDRINUSE issues.
+const kmipServerPort = 6568;
+
 if (determineSSLProvider() !== "windows") {
     run("chmod", "600", AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE);
 }
 
 print("Testing audit log integrity checks are performed by the decryptor");
-function testAuditLogHeader(fixture, isMongos) {
-    let opts = {
-        auditLocalKeyFile: AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE,
-        auditCompressionMode: "zstd",
-    };
+function testAuditLogIntegrity(serverFixture, isMongos, keyManagerFixture) {
+    const enableCompression = true;
+    keyManagerFixture.startKeyServer();
+    let opts = keyManagerFixture.generateOptsWithDefaults(enableCompression);
+
     if (isMongos) {
         opts = {other: {mongosOptions: opts}};
     }
 
-    const runId = ISODate().getTime();
-
     jsTest.log("Testing: " + tojson(opts));
-    const {conn, audit, admin} = fixture.startProcess(opts);
+    const {conn, audit, admin} = serverFixture.startProcess(opts);
 
     // need at least 4 lines to perform this test
     assert.soon(() => {
@@ -37,17 +41,15 @@ function testAuditLogHeader(fixture, isMongos) {
         return audit.getCurrentAuditLine() >= 4;
     }, "Audit log must have at least 4 entries including header");
 
-    fixture.stopProcess();
+    serverFixture.stopProcess();
 
     // TEST 1: normal output decrypts successfully
     jsTest.log("Testing decrypt of normal audit log succeeds");
 
     let auditPath = conn.fullOptions.auditPath;
+    const runId = (isMongos ? "sharded" : "standalone") + "_" + keyManagerFixture.getKeyStoreType();
     const outputFile = MongoRunner.dataPath + "decompressedLog_" + runId + ".json";
-
-    let decryptPid = _startMongoProgram(
-        "mongoauditdecrypt", "--inputPath", auditPath, "--outputPath", outputFile, "--noConfirm");
-
+    let decryptPid = keyManagerFixture.runDecryptor(auditPath, outputFile);
     assert.eq(waitProgram(decryptPid), 0);
 
     // TEST 2: modify audit file by swapping log lines, verify decrypt fails
@@ -62,12 +64,7 @@ function testAuditLogHeader(fixture, isMongos) {
     auditPath = MongoRunner.dataPath + "auditLog_" + runId + ".swapped";
     writeFile(auditPath, lines.join("\n"));
 
-    decryptPid = _startMongoProgram("mongoauditdecrypt",
-                                    "--inputPath",
-                                    auditPath,
-                                    "--outputPath",
-                                    outputFile + ".swapped",
-                                    "--noConfirm");
+    decryptPid = keyManagerFixture.runDecryptor(auditPath, outputFile + ".swapped");
     assert.neq(waitProgram(decryptPid), 0);
 
     // TEST 3: modify audit file by removing lines, verify decrypt fails
@@ -81,28 +78,35 @@ function testAuditLogHeader(fixture, isMongos) {
     auditPath = MongoRunner.dataPath + "auditLog_" + runId + ".removed";
     writeFile(auditPath, lines.join("\n"));
 
-    decryptPid = _startMongoProgram("mongoauditdecrypt",
-                                    "--inputPath",
-                                    auditPath,
-                                    "--outputPath",
-                                    outputFile + ".removed",
-                                    "--noConfirm");
+    decryptPid = keyManagerFixture.runDecryptor(auditPath, outputFile + ".removed");
     assert.neq(waitProgram(decryptPid), 0);
+
+    keyManagerFixture.stopKeyServer();
+
+    // Add a one-second delay to ensure that the next 'mongod' or
+    // 'mongos' run will not rotate to the same filename as the
+    // file created during this run
+    sleep(1000);
 }
 
-{
-    const standaloneFixture = new StandaloneFixture();
+let keyManagerFixtures = [
+    new LocalFixture(),
+    new KMIPGetFixture(kmipServerPort),
+    new KMIPEncryptFixture(kmipServerPort)
+];
 
-    jsTest.log("Testing integrity checks when decrypting audit file from standalone");
-    testAuditLogHeader(standaloneFixture, false);
-}
+for (const keyManagerFixture of keyManagerFixtures) {
+    jsTest.log("Testing with key store type " + keyManagerFixture.getKeyStoreType());
 
-sleep(2000);
-
-{
-    const shardingFixture = new ShardingFixture();
-
-    jsTest.log("Testing integrity checks when decrypting audit file from sharded cluster");
-    testAuditLogHeader(shardingFixture, true);
+    {
+        const standaloneFixture = new StandaloneFixture();
+        jsTest.log("Testing integrity checks when decrypting audit file from standalone");
+        testAuditLogIntegrity(standaloneFixture, false, keyManagerFixture);
+    }
+    {
+        const shardingFixture = new ShardingFixture();
+        jsTest.log("Testing integrity checks when decrypting audit file from sharded cluster");
+        testAuditLogIntegrity(shardingFixture, true, keyManagerFixture);
+    }
 }
 })();

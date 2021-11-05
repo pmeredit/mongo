@@ -3,20 +3,16 @@
  * when compression is enabled
  */
 
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit_encryption.js');
 load('jstests/ssl/libs/ssl_helpers.js');
 
 (function() {
 
 "use strict";
 
-if (determineSSLProvider() === "windows") {
-    // windows doesn't currently support GCM, so
-    // the tests below will fail.
-    return;
+if (determineSSLProvider() !== "windows") {
+    run("chmod", "600", AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE);
 }
-
-run("chmod", "600", AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE);
 
 /**
  * Tries parsing an encrypted audit line and checks that it contains all properties.
@@ -48,12 +44,9 @@ function isValidFrame(json) {
 
 print("Testing audit log contains header when compression is enabled");
 function testAuditLogFrame(fixture, isMongos, enableCompression) {
-    let opts = {
-        auditLocalKeyFile: AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE,
-    };
-    if (enableCompression) {
-        opts.auditCompressionMode = "zstd";
-    }
+    const keyManagerFixture = new LocalFixture();
+    let opts = keyManagerFixture.generateOptsWithDefaults(enableCompression);
+
     if (isMongos) {
         opts = {other: {mongosOptions: opts}};
     }

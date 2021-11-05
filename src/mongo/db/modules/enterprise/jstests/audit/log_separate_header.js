@@ -9,22 +9,22 @@ load('jstests/ssl/libs/ssl_helpers.js');
 
 "use strict";
 
-if (determineSSLProvider() === "windows") {
-    // windows doesn't currently support GCM, so
-    // the tests below will fail.
-    return;
+if (determineSSLProvider() !== "windows") {
+    run("chmod", "600", AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE);
 }
-
-run("chmod", "600", AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE);
 
 print("Testing header metadata log duplicates audit log header when compression is enabled");
 function testHeaderMetadataLog(fixture, isMongos) {
-    let sepHeaderPath = MongoRunner.dataPath + "audit_header.log";
-    let opts = {
-        auditLocalKeyFile: AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE,
+    const sepHeaderPath = MongoRunner.dataPath + "audit_header.log";
+    const enableCompression = true;
+    const keyManagerFixture = new LocalFixture();
+    let opts = keyManagerFixture.generateOptsWithDefaults(enableCompression);
+
+    const extraOpts = {
         setParameter: {auditEncryptionHeaderMetadataFile: sepHeaderPath},
-        auditCompressionMode: "zstd"
     };
+    opts = mergeDeepObjects(opts, extraOpts);
+
     if (isMongos) {
         opts = {other: {mongosOptions: opts}};
     }
@@ -43,10 +43,13 @@ function testHeaderMetadataLog(fixture, isMongos) {
     assert.soon(() => {
         audit.resetAuditLine();
         const fileHeader = audit.getNextEntryNoParsing();
-        assert.eq(isValidEncryptedAuditLogHeader(fileHeader), true);
+        assert.eq(isValidEncryptedAuditLogHeader(fileHeader, keyManagerFixture.getKeyStoreType()),
+                  true);
 
         const sepFileHeader = auditSepHeader.getNextEntryNoParsing();
-        assert.eq(isValidEncryptedAuditLogHeader(sepFileHeader), true);
+        assert.eq(
+            isValidEncryptedAuditLogHeader(sepFileHeader, keyManagerFixture.getKeyStoreType()),
+            true);
 
         let jsonFileHeader = JSON.parse(fileHeader);
         let jsonSepFileHeader = JSON.parse(sepFileHeader);

@@ -1,19 +1,15 @@
 // Tests the logs are being written as base64
 
-load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit_encryption.js');
 load('jstests/ssl/libs/ssl_helpers.js');
 
 (function() {
 
 'use strict';
 
-if (determineSSLProvider() === "windows") {
-    // windows doesn't currently support GCM, so
-    // the tests below will fail.
-    return;
+if (determineSSLProvider() !== "windows") {
+    run("chmod", "600", AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE);
 }
-
-run("chmod", "600", AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE);
 
 function messageIsBase64(auditLine) {
     const base64regex = /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
@@ -30,12 +26,9 @@ function messageIsBase64(auditLine) {
 
 print("Testing logs being base64.");
 function testAuditLineBase64(fixture, isMongos, enableCompression) {
-    let opts = {
-        auditLocalKeyFile: AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE,
-    };
-    if (enableCompression) {
-        opts.auditCompressionMode = "zstd";
-    }
+    const keyManagerFixture = new LocalFixture();
+    let opts = keyManagerFixture.generateOptsWithDefaults(enableCompression);
+
     if (isMongos) {
         opts = {other: {mongosOptions: opts}};
     }

@@ -2,9 +2,6 @@
 
 'use strict';
 
-const AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE =
-    "src/mongo/db/modules/enterprise/jstests/audit/lib/localKey";
-
 /**
  * Parses a JSON filled audit file, and provides an interface for making assertions
  * about the audit events a server emitted into it.
@@ -356,7 +353,7 @@ class StandaloneFixture {
         this.opts = {
             logpath: this.logPathMongod,
             auth: "",
-            setParameter: "auditAuthorizationSuccess=true",
+            setParameter: {auditAuthorizationSuccess: "true"},
             auditPath: this.auditPath,
         };
         this.opts = mergeDeepObjects(this.opts, opts);
@@ -413,7 +410,7 @@ class ShardingFixture {
                 mongosOptions: {
                     logpath: this.logPathMongos,
                     auth: null,
-                    setParameter: "auditAuthorizationSuccess=true",
+                    setParameter: {auditAuthorizationSuccess: "true"},
                     auditPath: this.auditPath,
                     auditDestination: "file",
                     auditFormat: "JSON",
