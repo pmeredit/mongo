@@ -322,15 +322,6 @@ std::size_t AuditEncryptionCompressionManager::aesDecryptGCM(const SymmetricKey&
         uassertStatusOK(decryptor->addAuthenticatedData(aad.data<uint8_t>(), aad.length()));
     }
 
-    std::vector<std::uint8_t> dummyBuf;
-    if (!plaintext.data()) {
-        // if the expected output size is 0 (e.g. GMAC),
-        // ensure that the output buffer is not null, or else
-        // windows will not authenticate the data correctly.
-        dummyBuf.resize(1);
-        plaintext = DataRange(dummyBuf.data(), 0);
-    }
-
     // do the decrypt
     DataRangeCursor ptCursor(plaintext);
     auto ptBuf = const_cast<std::uint8_t*>(ptCursor.data<std::uint8_t>());
