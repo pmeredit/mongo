@@ -3,6 +3,7 @@
 ## Table of Contents
 
 - [High Level Overview](#high-level-overview)
+- [Encrypted Audit Logs](#encrypted-audit-logs)
 
 ## High Level Overview
 
@@ -50,10 +51,58 @@ example for logCreateUser can be found
 [here](https://github.com/10gen/mongo-enterprise-modules/tree/r4.4.0/src/audit/audit_user_management.cpp#L164-L172).
 If the event being logged does not match the audit filter, the event does not get logged.
 
-Audit messages for CRUD operations live in the command dispatch layer and fire only if the set 
+Audit messages for CRUD operations are emitted by the command dispatch layer if the set
 parameter `auditAuthorizationSuccess` is enabled or the authorization check for the command failed.
 This ensures that the audit log is not flooded with messages. Logging of audit events is done in
 [commands.cpp](https://github.com/mongodb/mongo/blob/r4.4.0/src/mongo/db/commands.cpp#L747-L778). At
 the bottom of that function, there is a call to `auditLogAuthEvent` which calls into
 [here](https://github.com/10gen/mongo-enterprise-modules/tree/r4.4.0/src/audit/audit_authz_check.cpp#L96-L129),
 which in turn calls `_logAuthzCheck`.
+
+## Encrypted Audit Logs
+
+If the audit destination is a file, the audit manager can be configured to encrypt
+each log entry using AES-256-GCM and an ephemeral key generated during process startup. This ephemeral
+*log encryption key* is, in turn, encrypted with another *key encryption key* that is provided externally,
+either through KMIP or a local key file. In addition, the audit manager can be configured to
+compress each log entry using the zstd algorithm prior to encrypting. Metadata about the compression
+and encryption, key acquisition, and the encrypted log encryption key itself, are written at the start
+of the audit log file as its header.
+
+The compression and encryption of individual audit lines is performed by an
+[`AuditEncryptionCompressionManager`](https://github.com/10gen/mongo-enterprise-modules/blob/afa9120b0f3e2cf54e08301ef7c9e9ddbeb2e36a/src/audit/audit_enc_comp_manager.h)
+object, which is owned by the global
+[`AuditManager`](https://github.com/10gen/mongo-enterprise-modules/blob/afa9120b0f3e2cf54e08301ef7c9e9ddbeb2e36a/src/audit/audit_manager.h#L195-L196)
+object. If encryption is enabled, each audit event is encrypted
+[here](https://github.com/10gen/mongo-enterprise-modules/blob/afa9120b0f3e2cf54e08301ef7c9e9ddbeb2e36a/src/audit/audit_log.cpp#L153-L172),
+before it is written to the audit log file.
+
+The `AuditEncryptionCompressionManager` depends on an `AuditKeyManager` object that generates the
+log encryption key, and encrypts the log encryption key with the key encryption key, producing the
+"wrapped" key that will be included in the log file header. Acquisition of the key encryption key
+from the external source (e.g. KMIP server), and the subsequent wrapping of the log encryption key,
+must happen during process startup. In particular, it must happen before the audit log is rotated,
+because that is when the header line is written.
+
+The `AuditEncryptionCompressionManager` is created and initialized lazily when first acquired from
+the global `AuditManager` object through the
+[`getAuditEncryptionCompressionManager()`](https://github.com/10gen/mongo-enterprise-modules/blob/afa9120b0f3e2cf54e08301ef7c9e9ddbeb2e36a/src/audit/audit_manager.cpp#L263-L288)
+method. This method also initializes the `AuditKeyManager` instance that the encryption manager
+depends on. This method cannot be called on an initializer, or before the global `ServiceContext`
+has been initialized, because some `AuditKeyManager` implementations like `AuditKeyManagerKMIPGet`
+or `AuditKeyManagerKMIPEncrypt` depend on the
+[`KMIPService`](https://github.com/10gen/mongo-enterprise-modules/blob/afa9120b0f3e2cf54e08301ef7c9e9ddbeb2e36a/src/kmip/kmip_service.cpp#L33)
+that decorates the global `ServiceContext`. When mongod or mongos starts up, the first call to
+`getAuditEncryptionCompressionManager()` happens during audit log rotation
+[here](https://github.com/10gen/mongo-enterprise-modules/blob/afa9120b0f3e2cf54e08301ef7c9e9ddbeb2e36a/src/audit/audit_log.cpp#L72).
+Audit log rotation itself is initiated
+[here](https://github.com/mongodb/mongo/blob/36468ab03f8a27498ce54862aadf5cc17957159a/src/mongo/db/mongod_main.cpp#L1472),
+well after the global `ServiceContext` is initialized.
+
+There are currently three implementations of the `AuditKeyManager`: `AuditKeyManagerLocal`,
+`AuditKeyManagerKMIPGet`, and `AuditKeyManagerKMIPEncrypt`. `AuditKeyManagerLocal` retrieves the
+key encryption key from a file containing a base64-encoded 256-bit key, and uses AES-256-CBC to
+wrap the log encryption key. `AuditKeyManagerKMIPGet` retrieves the key from the KMIP server via
+a Get request, and uses AES-256-GCM for key wrapping. `AuditKeyManagerKMIPEncrypt` does not pull
+a key encryption key from the KMIP server, instead it sends the server the log encryption key in
+an Encrypt request, and uses the returned encrypted key in the response as the wrapped key.
