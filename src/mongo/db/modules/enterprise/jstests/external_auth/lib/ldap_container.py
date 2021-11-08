@@ -45,13 +45,22 @@ def _run_process_capture(params, cwd=None):
 
 def _build_image(image_name: str) -> bool:
     # podman build -t image_name directory
-    ret = _run_process([
-        DOCKER, "build", "-t", image_name,
-        os.path.join(os.getcwd(),
-                     "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_dns")
-    ])
-    return ret == 0
+    retry = 0
 
+    # Retry the image build several times in case of network errors for image pulls
+    # There is no way to know if a build fails because of an image pull issue or
+    # simply a bug in the Dockerfile though
+    while retry < 5:
+        ret = _run_process([
+            DOCKER, "build", "-t", image_name,
+            os.path.join(os.getcwd(),
+                         "src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_dns")
+        ])
+
+        if ret == 0:
+            return True
+
+    return False
 
 def _list_containers() -> List[str]:
     # podman container ls --format=json
