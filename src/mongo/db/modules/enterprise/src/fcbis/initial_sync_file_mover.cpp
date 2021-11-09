@@ -15,10 +15,13 @@
 #include "mongo/db/storage/storage_file_util.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
-
+#include "mongo/util/fail_point.h"
 
 namespace mongo {
 namespace repl {
+
+// Failpoint which forces file copy to be used instead of rename.
+MONGO_FAIL_POINT_DEFINE(initialSyncFileMoverAlwaysCopy);
 
 InitialSyncFileMover::InitialSyncFileMover(const std::string& dbpath) : _dbpath(dbpath) {}
 
@@ -295,8 +298,37 @@ void InitialSyncFileMover::_moveFiles(const std::vector<std::string>& filesToMov
                 boost::filesystem::remove(destinationPath);
             }
         }
-        boost::filesystem::rename(fullSourcePath, destinationPath);
+        _renameOrCopy(fullSourcePath, destinationPath);
     }
+}
+
+void InitialSyncFileMover::_renameOrCopy(const boost::filesystem::path& sourcePath,
+                                         const boost::filesystem::path& destinationPath) {
+    try {
+        if (MONGO_unlikely(initialSyncFileMoverAlwaysCopy.shouldFail())) {
+            throw boost::filesystem::filesystem_error(
+                "initialSyncFileMoverAlwaysCopy failpoint set",
+                sourcePath,
+                destinationPath,
+                boost::system::errc::make_error_code(boost::system::errc::cross_device_link));
+        }
+        boost::filesystem::rename(sourcePath, destinationPath);
+        return;
+    } catch (boost::filesystem::filesystem_error& error) {
+        if (error.code() != boost::system::errc::cross_device_link) {
+            throw;
+        }
+        LOGV2(6133500,
+              "A file to be moved as part of initial sync could not be moved.  Copying instead.",
+              "error"_attr = error.what(),
+              "sourcePath"_attr = sourcePath.string(),
+              "destinationPath"_attr = destinationPath.string());
+    }
+    boost::filesystem::copy(sourcePath,
+                            destinationPath,
+                            boost::filesystem::copy_options::overwrite_existing |
+                                boost::filesystem::copy_options::recursive);
+    boost::filesystem::remove_all(sourcePath);
 }
 
 void InitialSyncFileMover::_cleanupAfterFailedMoveAndFassert() {

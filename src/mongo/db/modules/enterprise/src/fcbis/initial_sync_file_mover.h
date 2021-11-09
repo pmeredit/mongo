@@ -93,6 +93,12 @@ private:
 
 
     /**
+     * Renames the file from sourcePath to destinationPath, unless the files are on different
+     * file systems in which case it copies the file to destinationPath and deletes sourcePath.
+     */
+    void _renameOrCopy(const boost::filesystem::path& sourcePath,
+                       const boost::filesystem::path& destinationPath);
+    /**
      * Delete all files listed in the move marker, the .initialSync directory, and all markers,
      * and calls fassert().
      */

@@ -12,6 +12,7 @@
 #include "mongo/unittest/log_test.h"
 #include "mongo/unittest/temp_dir.h"
 #include "mongo/unittest/unittest.h"
+#include "mongo/util/fail_point.h"
 
 namespace mongo {
 namespace repl {
@@ -245,9 +246,13 @@ protected:
         auto sourcePath = _dbpath;
         sourcePath.append(sourceDir.toString());
         for (auto& entry : boost::filesystem::directory_iterator(sourcePath)) {
+            // We copy the files instead of rename/moving in case a subclass or test has
+            // arranged for the symlink to point to another device.
             auto newPath = _symlinkDestPath;
-            newPath += entry.path().filename();
-            boost::filesystem::rename(entry.path(), newPath);
+            newPath /= entry.path().filename();
+            boost::filesystem::copy(
+                entry.path(), newPath, boost::filesystem::copy_options::recursive);
+            boost::filesystem::remove_all(entry.path());
         }
         boost::filesystem::remove_all(sourcePath);
         boost::filesystem::create_directory_symlink(_symlinkDestPath, sourcePath);
@@ -507,6 +512,16 @@ TEST_F(InitialSyncFileMoverSymlinkTest, OldDirIsSymlink) {
 }
 
 TEST_F(InitialSyncFileMoverSymlinkTest, CommonDirIsSymlink) {
+    createAllFiles();
+    moveDirToSymlink("COMMONDIR");
+    writeMarker(InitialSyncFileMover::kFilesToDeleteMarker, deleteMarkerContents());
+    fileMover.recoverFileCopyBasedInitialSyncAtStartup();
+    assertInitialSyncCompleted();
+    assertIsSymlink("COMMONDIR");
+}
+
+TEST_F(InitialSyncFileMoverSymlinkTest, CommonDirIsSymlinkWithCopy) {
+    FailPointEnableBlock fp("initialSyncFileMoverAlwaysCopy");
     createAllFiles();
     moveDirToSymlink("COMMONDIR");
     writeMarker(InitialSyncFileMover::kFilesToDeleteMarker, deleteMarkerContents());
