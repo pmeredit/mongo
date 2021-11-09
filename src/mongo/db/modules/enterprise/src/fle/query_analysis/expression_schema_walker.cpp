@@ -290,6 +290,9 @@ public:
     void visit(const ExpressionReverseArray*) {
         _tracker.enterEvaluateOrCompare();
     }
+    void visit(const ExpressionSortArray*) {
+        _tracker.enterEvaluateOrCompare();
+    }
     void visit(const ExpressionSlice*) {
         _tracker.enterEvaluateOrCompare();
     }
@@ -641,6 +644,7 @@ public:
     void visit(const ExpressionSetUnion*) {}
     void visit(const ExpressionSize*) {}
     void visit(const ExpressionReverseArray*) {}
+    void visit(const ExpressionSortArray*) {}
     void visit(const ExpressionSlice*) {}
     void visit(const ExpressionIsArray*) {}
     void visit(const ExpressionRound*) {}
@@ -938,6 +942,9 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionReverseArray*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(const ExpressionSortArray*) {
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionSlice*) {

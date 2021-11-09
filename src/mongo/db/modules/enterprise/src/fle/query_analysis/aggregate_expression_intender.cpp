@@ -731,6 +731,9 @@ private:
     void visit(ExpressionReverseArray*) final {
         ensureNotEncryptedEnterEval("an array reversal", subtreeStack);
     }
+    void visit(ExpressionSortArray*) final {
+        ensureNotEncryptedEnterEval("an array sorting", subtreeStack);
+    }
     void visit(ExpressionSlice*) final {
         ensureNotEncryptedEnterEval("an array subset operation", subtreeStack);
     }
@@ -1040,6 +1043,7 @@ private:
     void visit(ExpressionSetUnion*) final {}
     void visit(ExpressionSize*) final {}
     void visit(ExpressionReverseArray*) final {}
+    void visit(ExpressionSortArray*) final {}
     void visit(ExpressionSlice*) final {}
     void visit(ExpressionIsArray*) final {}
     void visit(ExpressionRound*) final {}
@@ -1369,6 +1373,9 @@ private:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionReverseArray*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionSortArray*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionSlice*) final {
