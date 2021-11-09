@@ -1,0 +1,114 @@
+/**
+ * Tests that file copy based initial sync succeeds with mixed FCV replica sets. The
+ * 'runDowngradeTest()' function starts a replica set, sets the FCV to a downgraded version, adds a
+ * new node in the latest FCV, and ensures that the newly added node ends up in the downgraded FCV.
+ * The only way to test initial syncing a downgraded FCV node to an upgraded FCV replica set is with
+ * a sharded cluster, as shard servers start in downgraded FCV by default. As a result,
+ * 'runUpgradeTest()' starts a sharded cluster, adds a downgraded FCV node to the shard, and ensures
+ * the newly added node ends up in the latest FCV.
+ * @tags: [multiversion_incompatible]
+ */
+
+(function() {
+"use strict";
+
+function runDowngradeTest(downgradeFCV) {
+    const rst = new ReplSetTest({
+        nodes: 2,
+    });
+    rst.startSet();
+    rst.initiateWithHighElectionTimeout();
+
+    const primary = rst.getPrimary();
+    const secondary = rst.getSecondary();
+
+    const featureEnabled = assert
+                               .commandWorked(primary.adminCommand(
+                                   {getParameter: 1, featureFlagFileCopyBasedInitialSync: 1}))
+                               .featureFlagFileCopyBasedInitialSync.value;
+    if (!featureEnabled) {
+        jsTestLog(
+            "Skipping test because the file copy based initial sync feature flag is disabled");
+        rst.stopSet();
+        return false;
+    }
+
+    jsTestLog("Setting FCV to " + downgradeFCV);
+    assert.commandWorked(primary.adminCommand({setFeatureCompatibilityVersion: downgradeFCV}));
+
+    checkFCV(primary.getDB("admin"), downgradeFCV);
+    checkFCV(secondary.getDB("admin"), downgradeFCV);
+
+    // Add some data to be synced.
+    assert.commandWorked(primary.getDB("testDB").test.insert([{a: 1}, {b: 2}, {c: 3}]));
+    rst.awaitReplication();
+    // Ensure there's an up-to-date stable checkpoint for FCBIS to copy.
+    rst.awaitLastStableRecoveryTimestamp();
+    assert.commandWorked(primary.adminCommand({fsync: 1}));
+
+    jsTestLog(
+        "Adding the initial sync destination node with the latest FCV to the downgraded FCV replica set");
+    const initialSyncNode = rst.add({
+        setParameter: {
+            'initialSyncMethod': 'fileCopyBased',
+            'failpoint.forceSyncSourceCandidate':
+                tojson({mode: 'alwaysOn', data: {hostAndPort: primary.host}})
+        }
+    });
+
+    rst.reInitiate();
+    rst.waitForState(initialSyncNode, ReplSetTest.State.SECONDARY);
+    const initialSyncNodeDB = initialSyncNode.getDB("testDB");
+
+    assert.eq(3, initialSyncNodeDB.test.find().itcount());
+    checkFCV(initialSyncNode.getDB("admin"), downgradeFCV);
+    rst.stopSet();
+    return true;
+}
+
+function runUpgradeTest() {
+    const st = new ShardingTest({shards: 1, mongos: 1, config: 1});
+
+    const rst = st.rs0;
+    const primary = st.rs0.getPrimary();
+    const featureEnabled = assert
+                               .commandWorked(primary.adminCommand(
+                                   {getParameter: 1, featureFlagFileCopyBasedInitialSync: 1}))
+                               .featureFlagFileCopyBasedInitialSync.value;
+    if (!featureEnabled) {
+        jsTestLog(
+            "Skipping test because the file copy based initial sync feature flag is disabled");
+        st.stopSet();
+        return;
+    }
+
+    const db = st.getDB("testDB");
+    // Add some data to be synced.
+    assert.commandWorked(db.test.insert([{a: 1}, {b: 2}, {c: 3}]));
+    // Ensure there's an up-to-date stable checkpoint for FCBIS to copy.
+    rst.awaitLastStableRecoveryTimestamp();
+    assert.commandWorked(primary.adminCommand({fsync: 1}));
+
+    checkFCV(primary.getDB("admin"), latestFCV);
+
+    jsTestLog(
+        "Adding the initial sync destination node with downgraded FCV to the latest FCV shard replica set");
+    const initialSyncNode =
+        rst.add({'shardsvr': '', setParameter: {'initialSyncMethod': 'fileCopyBased'}});
+    rst.reInitiate();
+    rst.waitForState(initialSyncNode, ReplSetTest.State.SECONDARY);
+
+    const initialSyncNodeDB = initialSyncNode.getDB("testDB");
+    assert.eq(3, initialSyncNodeDB.test.find().itcount());
+    checkFCV(initialSyncNode.getDB("admin"), latestFCV);
+    st.stop();
+}
+
+const featureEnabled = runDowngradeTest(lastLTSFCV);
+if (featureEnabled) {
+    if (lastLTSFCV !== lastContinuousFCV) {
+        runDowngradeTest(lastContinuousFCV);
+    }
+    runUpgradeTest();
+}
+})();
