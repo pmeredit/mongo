@@ -272,10 +272,11 @@ private:
      * It will perform startup recovery and open the catalog if the value of 'startupRecoveryMode'
      * exists.
      *
-     * The opCtx must be holding the global lock in exclusive mode.
+     * The opCtx must be holding the global lock in exclusive mode.  The class mutex must NOT
+     * be held, as this may result in a deadlock.  Thus _switchStorageTo must only access
+     * members which do not require the mutex.
      */
     void _switchStorageTo(
-        WithLock lk,
         OperationContext* opCtx,
         boost::optional<std::string> relativeToDbPath,
         bool closeCatalog,
@@ -337,7 +338,7 @@ private:
                                              StatusWith<BSONObj> swCurrConfig);
 
     // Keep issuing 'getMore' command to keep the backupCursor alive.
-    void _keepBackupCursorAlive();
+    void _keepBackupCursorAlive(WithLock);
 
     // Kills the backupCursor if it exists, and cancels backupCursorKeepAliveCancellation.
     // Safe to be called multiple times.
@@ -354,14 +355,14 @@ private:
      * a reference to the client.  Otherwise return a reference to the existing client holding
      * the global lock.
      */
-    ServiceContext::UniqueClient& _getGlobalLockClient(WithLock);
+    ServiceContext::UniqueClient& _getGlobalLockClient();
 
     /**
      * Release the global lock, associated opCtx, and associated client.
      *
      * Must not be called from the thread currently associated with the global lock client.
      */
-    void _releaseGlobalLock(WithLock);
+    void _releaseGlobalLock();
 
     /**
      * Check if a status is one which means there's a retriable error and we should retry the
@@ -386,7 +387,7 @@ private:
     /**
      * Recovering without preserving history before top of oplog.
      */
-    void _replicationStartupRecovery(WithLock);
+    void _replicationStartupRecovery();
 
     /**
      * Updates '_lastApplied' with the latest oplog timestamp.
@@ -495,7 +496,7 @@ private:
         boost::optional<ExecutorFuture<void>> backupCursorKeepAliveFuture;
 
         // The last timestamp that the syncing node has caught up to.
-        mongo::Timestamp lastSyncedOpTime;
+        mongo::Timestamp lastSyncedOpTime;  // (X)
         // The last appliedOp timestamp that the syncing node knows about the sync source node.
         mongo::Timestamp lastAppliedOpTimeOnSyncSrc;
         // Holds the file metadata returned by the backupCursor.
@@ -521,16 +522,16 @@ private:
 
         // List of relative paths to the old storage files in dbbath that will be deleted.
         std::vector<std::string> oldStorageFilesToBeDeleted;
-        std::unique_ptr<InitialSyncFileMover> currentFileMover;
-        ServiceContext::UniqueClient globalLockClient;
-        ServiceContext::UniqueOperationContext globalLockOpCtx;
-        std::unique_ptr<Lock::GlobalLock> globalLock;
-        std::string originalDbPath;
+        std::unique_ptr<InitialSyncFileMover> currentFileMover;  // (X)
+        ServiceContext::UniqueClient globalLockClient;           // (X)
+        ServiceContext::UniqueOperationContext globalLockOpCtx;  // (X)
+        std::unique_ptr<Lock::GlobalLock> globalLock;            // (X)
+        std::string originalDbPath;                              // (X)
     } _syncingFilesState;
 
 
     BSONObj _getInitialSyncProgress(WithLock) const;
-    Stats _stats;
+    Stats _stats;  // (M)
 };
 
 }  // namespace repl

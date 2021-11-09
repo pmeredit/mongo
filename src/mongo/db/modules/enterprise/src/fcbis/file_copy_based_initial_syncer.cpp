@@ -251,10 +251,10 @@ ExecutorFuture<OpTimeAndWallTime> FileCopyBasedInitialSyncer::_startInitialSyncA
                    });
            })
         .until([this, self = shared_from_this()](StatusWith<OpTimeAndWallTime> result) mutable {
-            stdx::lock_guard<Latch> lock(_mutex);
             // Always release the global lock.
-            _releaseGlobalLock(lock);
+            _releaseGlobalLock();
 
+            stdx::lock_guard<Latch> lock(_mutex);
             auto runTime = _stats.attemptTimer.millis();
             int operationsRetried = 0;
             int totalTimeUnreachableMillis = 0;
@@ -511,7 +511,7 @@ ExecutorFuture<HostAndPort> FileCopyBasedInitialSyncer::_selectAndValidateSyncSo
         .on(executor, token);
 }
 
-void FileCopyBasedInitialSyncer::_keepBackupCursorAlive() {
+void FileCopyBasedInitialSyncer::_keepBackupCursorAlive(WithLock) {
     LOGV2_DEBUG(
         5782303,
         2,
@@ -958,7 +958,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFromSyncSourceCursor() {
             })
             .then([this, self = shared_from_this(), returnedFiles] {
                 stdx::lock_guard<Latch> lock(_mutex);
-                _keepBackupCursorAlive();
+                _keepBackupCursorAlive(lock);
                 _syncingFilesState.backupCursorFiles = returnedFiles;
                 return _hangAsyncIfFailPointEnabled("fCBISHangAfterOpeningBackupCursor",
                                                     _syncingFilesState.executor,
@@ -1249,12 +1249,10 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startMovingNewStorageFilesPhas
         })
         .then([this, self = shared_from_this()] {
             // Open storage in dbPath with the new synced files.
-            stdx::lock_guard lk(_mutex);
             {
-                AlternativeClientRegion globalLockRegion(_getGlobalLockClient(lk));
+                AlternativeClientRegion globalLockRegion(_getGlobalLockClient());
                 auto opCtx = _syncingFilesState.globalLockOpCtx.get();
-                _switchStorageTo(lk,
-                                 opCtx,
+                _switchStorageTo(opCtx,
                                  boost::none /* relativeToDbPath */,
                                  false /* closeCatalog */,
                                  startup_recovery::StartupRecoveryMode::
@@ -1267,11 +1265,11 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startMovingNewStorageFilesPhas
                         2,
                         "Releasing the global lock for file copy based initial sync after "
                         "switching storage engines.");
-            _releaseGlobalLock(lk);
+            _releaseGlobalLock();
         });
 }
 
-ServiceContext::UniqueClient& FileCopyBasedInitialSyncer::_getGlobalLockClient(WithLock) {
+ServiceContext::UniqueClient& FileCopyBasedInitialSyncer::_getGlobalLockClient() {
     if (!_syncingFilesState.globalLockClient) {
         invariant(!_syncingFilesState.globalLockOpCtx);
         _syncingFilesState.globalLockClient =
@@ -1284,13 +1282,13 @@ ServiceContext::UniqueClient& FileCopyBasedInitialSyncer::_getGlobalLockClient(W
     return _syncingFilesState.globalLockClient;
 }
 
-void FileCopyBasedInitialSyncer::_releaseGlobalLock(WithLock) {
+void FileCopyBasedInitialSyncer::_releaseGlobalLock() {
     _syncingFilesState.globalLock.reset();
     _syncingFilesState.globalLockOpCtx.reset();
     _syncingFilesState.globalLockClient.reset();
 }
 
-void FileCopyBasedInitialSyncer::_replicationStartupRecovery(WithLock) {
+void FileCopyBasedInitialSyncer::_replicationStartupRecovery() {
     auto opCtx = cc().makeOperationContext();
     // Replay the oplog.
     _replicationProcess->getReplicationRecovery()->recoverFromOplogAsStandalone(
@@ -1308,9 +1306,8 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_prepareStorageDirectoriesForMo
                         2,
                         "Obtaining the global lock for file copy based initial sync before "
                         "switching storage engines.");
-            stdx::lock_guard lk(_mutex);
             {
-                AlternativeClientRegion globalLockRegion(_getGlobalLockClient(lk));
+                AlternativeClientRegion globalLockRegion(_getGlobalLockClient());
                 auto opCtx = _syncingFilesState.globalLockOpCtx.get();
                 // Get a copy of the local config as it is on disk.  Since we may be in the middle
                 // of a reconfig, the on-disk state may be more up-to-date than the in-memory state.
@@ -1319,7 +1316,6 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_prepareStorageDirectoriesForMo
 
                 // Switch storage to '.initialsync' directory.
                 _switchStorageTo(
-                    lk,
                     opCtx,
                     InitialSyncFileMover::kInitialSyncDir.toString() /* relativeToDbPath */,
                     true /* closeCatalog */,
@@ -1330,19 +1326,18 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_prepareStorageDirectoriesForMo
                 uassertStatusOK(_cleanUpLocalCollectionsAfterSync(opCtx, config));
             }
 
-            _releaseGlobalLock(lk);
-            _replicationStartupRecovery(lk);
+            _releaseGlobalLock();
+            _replicationStartupRecovery();
 
             {
-                AlternativeClientRegion globalLockRegion(_getGlobalLockClient(lk));
+                AlternativeClientRegion globalLockRegion(_getGlobalLockClient());
                 auto opCtx = _syncingFilesState.globalLockOpCtx.get();
                 // Switch storage to '.initialsync/.dummy' directory to start moving the synced
                 // files.
                 boost::filesystem::path fileRelativePath(
                     InitialSyncFileMover::kInitialSyncDir.toString());
                 fileRelativePath.append(InitialSyncFileMover::kInitialSyncDummyDir.toString());
-                _switchStorageTo(lk,
-                                 opCtx,
+                _switchStorageTo(opCtx,
                                  fileRelativePath.string() /* relativeToDbPath */,
                                  true /* closeCatalog */,
                                  boost::none /* startupRecoveryMode */);
@@ -1455,7 +1450,6 @@ Status FileCopyBasedInitialSyncer::shutdown() {
 }
 
 void FileCopyBasedInitialSyncer::_switchStorageTo(
-    WithLock lk,
     OperationContext* opCtx,
     boost::optional<std::string> relativeToDbPath,
     bool closeCatalog,
