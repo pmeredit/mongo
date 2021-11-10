@@ -173,6 +173,13 @@ void LdapHealthObserver::_runSmokeChecksConcurrently(
                 auto cancellationToken = completionCancellationSource.token();
                 CheckResult perThreadResult;
 
+                if (!status.isOK()) {
+                    LOGV2(6131503, "Ldap smoke check aborted", "status"_attr = status);
+                    promise.emplaceValue(std::move(perThreadResult));
+                    completionCancellationSource.cancel();
+                    return;
+                }
+
                 // Loops until we find a good host or get canceled.
                 while (!cancellationToken.isCanceled() && !perThreadResult.smokeCheck) {
                     boost::optional<LDAPHost> host;
@@ -228,7 +235,7 @@ void LdapHealthObserver::_runSmokeChecksConcurrently(
 
 void LdapHealthObserver::_smokeCheck(const LDAPBindOptions& bindOptions,
                                      const LDAPConnectionOptions& connectionOptions,
-                                     CheckResult* result) {
+                                     CheckResult* result) try {
     invariant(!connectionOptions.hosts.empty());
     std::unique_ptr<UserAcquisitionStats> userAcquisitionStats =
         std::make_unique<UserAcquisitionStats>();
@@ -249,6 +256,10 @@ void LdapHealthObserver::_smokeCheck(const LDAPBindOptions& bindOptions,
     // Will be set if at least one host passed smoke check.
     LOGV2_DEBUG(5938605, 3, "LDAP smoke check passed", "server"_attr = connectionOptions.hosts);
     result->smokeCheck = true;
+} catch (const DBException& ex) {
+    LOGV2_WARNING(6131501, "Ldap smoke check failed", "error"_attr = ex.toString());
+} catch (...) {
+    LOGV2_WARNING(6131502, "Ldap smoke check failed with unknown exception");
 }
 
 namespace {

@@ -8,93 +8,38 @@
 
 #include "mongo/db/process_health/fault_manager.h"
 #include "mongo/db/process_health/fault_manager_config.h"
+#include "mongo/db/process_health/fault_manager_test_suite.h"
+#include "mongo/executor/network_interface_factory.h"
 #include "mongo/executor/thread_pool_task_executor_test_fixture.h"
 #include "mongo/logv2/log_component_settings.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/clock_source_mock.h"
+#include "mongo/util/concurrency/thread_pool.h"
+#include "mongo/util/tick_source_mock.h"
 
 namespace mongo {
 namespace process_health {
 namespace {
 
-std::shared_ptr<executor::ThreadPoolTaskExecutor> constructTaskExecutor() {
-    auto network = std::make_unique<executor::NetworkInterfaceMock>();
-    auto executor = makeSharedThreadPoolTestExecutor(std::move(network));
-    executor->startup();
-    return executor;
-}
+using test::FaultManagerTest;
 
-/**
- * Test wrapper class for FaultManager that has access to protected methods
- * for testing.
- */
-class FaultManagerTestImpl : public FaultManager {
-public:
-    FaultManagerTestImpl(ServiceContext* svcCtx,
-                         std::shared_ptr<executor::TaskExecutor> taskExecutor)
-        : FaultManager(
-              svcCtx, taskExecutor, std::make_unique<FaultManagerConfig>(), [](std::string) {}) {}
-
-    void transitionStateTest(FaultState newState) {
-        transitionToState(newState);
-    }
-
-    FaultState getFaultStateTest() {
-        return getFaultState();
-    }
-
-    void healthCheckTest() {
-        healthCheck();
-    }
-
-    std::vector<HealthObserver*> getHealthObserversTest() {
-        return getHealthObservers();
-    }
-
-    void processFaultExistsEventTest() {
-        processFaultExistsEvent();
-    }
-
-    void processFaultIsResolvedEventTest() {
-        processFaultIsResolvedEvent();
-    }
-
-    FaultInternal& getFault() {
-        FaultFacetsContainerPtr fault = getFaultFacetsContainer();
-        invariant(fault);
-        return *(static_cast<FaultInternal*>(fault.get()));
-    }
-};
-
-// Test suite for Ldap health observer.
-class LdapHealthObserverTest : public unittest::Test {
+class LdapHealthObserverTest : public FaultManagerTest {
 public:
     void setUp() override {
-        _svcCtx = ServiceContext::make();
-        _svcCtx->setFastClockSource(std::make_unique<ClockSourceMock>());
-        _svcCtx->setPreciseClockSource(std::make_unique<ClockSourceMock>());
-        _taskExecutor = constructTaskExecutor();
-        logv2::LogManager::global().getGlobalSettings().setMinimumLoggedSeverity(
-            mongo::logv2::LogComponent::kProcessHealth, logv2::LogSeverity::Debug(3));
-        logv2::LogManager::global().getGlobalSettings().setMinimumLoggedSeverity(
-            mongo::logv2::LogComponent::kAccessControl, logv2::LogSeverity::Debug(3));
+        RAIIServerParameterControllerForTest _controller{"featureFlagHealthMonitoring", true};
+        createServiceContextIfNeeded();
+        bumpUpLogging();
         resetManager();
+
         setStandardParams();
         resetLdapManager();
 
         // Lazy initialization requires that the health check is
         // triggered once before the health observers are instantiated.
         manager().healthCheckTest();
-    }
-
-    void tearDown() override {
-        // Shutdown the executor before the context is deleted.
-        resetManager();
-    }
-
-    void resetManager() {
-        FaultManager::set(_svcCtx.get(),
-                          std::make_unique<FaultManagerTestImpl>(_svcCtx.get(), _taskExecutor));
+        assertSoon([this] { return manager().getFaultState() != FaultState::kStartupCheck; });
+        // TODO(SERVER-61099): remove this when initial check is fixed.
+        sleepFor(Milliseconds(100));
     }
 
     void resetLdapManager() {
@@ -113,27 +58,11 @@ public:
         auto runner = std::make_unique<LDAPRunnerImpl>(bindOptions, connectionOptions);
         auto manager = std::make_unique<LDAPManagerImpl>(
             std::move(runner), std::move(queryParameters), std::move(mapper));
-        LDAPManager::set(_svcCtx.get(), std::move(manager));
-    }
-
-    FaultManagerTestImpl& manager() {
-        return *static_cast<FaultManagerTestImpl*>(FaultManager::get(_svcCtx.get()));
+        LDAPManager::set(svcCtx(), std::move(manager));
     }
 
     LdapHealthObserver& observer() {
-        std::vector<HealthObserver*> observers = manager().getHealthObserversTest();
-        ASSERT_TRUE(!observers.empty());
-        auto it = std::find_if(observers.begin(), observers.end(), [](const HealthObserver* o) {
-            return o->getType() == FaultFacetType::kLdap;
-        });
-        ASSERT_TRUE(it != observers.end());
-        return *static_cast<LdapHealthObserver*>(*it);
-    }
-
-    LdapHealthObserver::PeriodicHealthCheckContext checkContext() {
-        LdapHealthObserver::PeriodicHealthCheckContext ctx{CancellationToken::uncancelable(),
-                                                           _taskExecutor};
-        return ctx;
+        return FaultManagerTest::observer<LdapHealthObserver>(FaultFacetType::kLdap);
     }
 
     void setStandardParams() {
@@ -154,10 +83,6 @@ public:
         globalLDAPParams->serverHosts.push_back(
             LDAPHost(LDAPHost::Type::kDefault, "badhost.10gen.cc", false));
     }
-
-private:
-    ServiceContext::UniqueServiceContext _svcCtx;
-    std::shared_ptr<executor::ThreadPoolTaskExecutor> _taskExecutor;
 };
 
 TEST_F(LdapHealthObserverTest, HealthObserverIsLoaded) {
