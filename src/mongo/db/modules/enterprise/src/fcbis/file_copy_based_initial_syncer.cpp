@@ -17,6 +17,7 @@
 #include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/db/repl/initial_syncer_common_stats.h"
 #include "mongo/db/repl/initial_syncer_factory.h"
+#include "mongo/db/repl/last_vote.h"
 #include "mongo/db/repl/repl_server_parameters_gen.h"
 #include "mongo/db/repl/replication_auth.h"
 #include "mongo/db/storage/encryption_hooks.h"
@@ -599,18 +600,24 @@ Status FileCopyBasedInitialSyncer::_cleanUpLocalCollectionsAfterSync(
     _replicationProcess->getConsistencyMarkers()->clearInitialSyncId(opCtx);
     _replicationProcess->getConsistencyMarkers()->setInitialSyncIdIfNotSet(opCtx);
 
-    // We drop the 'local.replset.election' collection as this node has not participated in any
-    // elections yet.
-    auto status = _storage->dropCollection(opCtx, NamespaceString::kLastVoteNamespace);
-    if (!status.isOK()) {
-        return status;
-    }
+    // We clear the last vote as this node has not participated in any elections yet.
+    writeConflictRetry(
+        opCtx,
+        "clear lastVote after file copy based initial sync",
+        NamespaceString::kLastVoteNamespace.toString(),
+        [opCtx] {
+            AutoGetCollection coll(opCtx, NamespaceString::kLastVoteNamespace, MODE_X);
+            LastVote lastVote{OpTime::kInitialTerm, -1};
+            Helpers::putSingleton(
+                opCtx, NamespaceString::kLastVoteNamespace.ns().c_str(), lastVote.toBSON());
+        });
 
     if (!swCurrConfig.isOK()) {
         return swCurrConfig.getStatus();
     }
 
-    status = _dataReplicatorExternalState->storeLocalConfigDocument(opCtx, swCurrConfig.getValue());
+    Status status =
+        _dataReplicatorExternalState->storeLocalConfigDocument(opCtx, swCurrConfig.getValue());
     if (!status.isOK()) {
         return status;
     }
@@ -1257,6 +1264,10 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startMovingNewStorageFilesPhas
                                  false /* closeCatalog */,
                                  startup_recovery::StartupRecoveryMode::
                                      kReplicaSetMember /* startupRecoveryMode */);
+
+                // Make sure the replication coordinator gets durability updates.
+                opCtx->getServiceContext()->getStorageEngine()->setJournalListener(
+                    _dataReplicatorExternalState->getReplicationJournalListener());
 
                 // Remove the move marker and '.initialsync' directory.
                 _syncingFilesState.currentFileMover->completeMovingInitialSyncFiles();
