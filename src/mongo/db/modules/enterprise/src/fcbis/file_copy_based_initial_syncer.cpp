@@ -20,6 +20,9 @@
 #include "mongo/db/repl/last_vote.h"
 #include "mongo/db/repl/repl_server_parameters_gen.h"
 #include "mongo/db/repl/replication_auth.h"
+#include "mongo/db/repl/tenant_migration_access_blocker_util.h"
+#include "mongo/db/repl/transaction_oplog_application.h"
+#include "mongo/db/server_recovery.h"
 #include "mongo/db/storage/encryption_hooks.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_global_options.h"
 #include "mongo/executor/scoped_task_executor.h"
@@ -1301,7 +1304,12 @@ void FileCopyBasedInitialSyncer::_releaseGlobalLock() {
 
 void FileCopyBasedInitialSyncer::_replicationStartupRecovery() {
     auto opCtx = cc().makeOperationContext();
-    // Replay the oplog.
+    // Replay the oplog.  Setting inReplicationRecovery tells storage not to update the
+    // size storer (for fastcount), which should be correct already in the files we received.
+    inReplicationRecovery(opCtx->getServiceContext()) = true;
+    ON_BLOCK_EXIT([serviceContext = opCtx->getServiceContext()] {
+        inReplicationRecovery(serviceContext) = false;
+    });
     _replicationProcess->getReplicationRecovery()->recoverFromOplogAsStandalone(
         opCtx.get(), true /* duringInitialSync */);
 
@@ -1820,6 +1828,16 @@ void FileCopyBasedInitialSyncer::_updateStorageTimestampsAfterInitialSync(
     // before transitioning to steady state replication.
     const bool orderedCommit = true;
     _storage->oplogDiskLocRegister(opCtx, initialDataTimestamp, orderedCommit);
+
+    // Construct in-memory state of migrations and prepared transactions.
+    tenant_migration_access_blocker::recoverTenantMigrationAccessBlockers(opCtx);
+    // Setting inReplicationRecovery prevents double-counting of reconstructed prepared
+    // transactions.
+    inReplicationRecovery(opCtx->getServiceContext()) = true;
+    ON_BLOCK_EXIT([serviceContext = opCtx->getServiceContext()] {
+        inReplicationRecovery(serviceContext) = false;
+    });
+    reconstructPreparedTransactions(opCtx, repl::OplogApplication::Mode::kInitialSync);
 
     // All updates that represent initial sync must be completed before setting the initial data
     // timestamp.
