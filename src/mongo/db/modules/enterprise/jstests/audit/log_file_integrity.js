@@ -1,7 +1,7 @@
 /**
  * Tests that modifications to the encrypted audit log file
  * can be detected on decrypt.
- * @tags: [uses_pykmip]
+ * @tags: [uses_pykmip, requires_gcm]
  */
 
 load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit_encryption.js');

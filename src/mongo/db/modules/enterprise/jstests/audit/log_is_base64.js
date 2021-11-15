@@ -1,4 +1,7 @@
-// Tests the logs are being written as base64
+/**
+ * Tests that encrypted audit logs are being written as base64
+ * @tags: [requires_gcm]
+ */
 
 load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit_encryption.js');
 load('jstests/ssl/libs/ssl_helpers.js');

@@ -296,6 +296,14 @@ void AuditManager::_initializeAuditLog(const moe::Environment& params) {
                               "must be specified if "
                               "audit log encryption is enabled");
                 }
+
+                // fail if GCM is not supported
+                std::string mode = crypto::getStringFromCipherMode(crypto::aesMode::gcm);
+                uassert(ErrorCodes::InvalidOptions,
+                        str::stream() << "Audit log encryption cannot be enabled as the server is "
+                                         "not compiled with "
+                                      << mode << " support",
+                        crypto::getSupportedSymmetricAlgorithms().count(mode));
             }
 
             auto writer = std::make_unique<logger::RotatableFileWriter>();

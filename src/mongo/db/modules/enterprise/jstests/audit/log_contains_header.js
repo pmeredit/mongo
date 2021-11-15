@@ -1,7 +1,6 @@
 /**
- * Tests that the audit log contains a valid header at the top
- * when compression is enabled
- * @tags: [uses_pykmip]
+ * Tests that the encrypted audit log contains a valid header at the top
+ * @tags: [uses_pykmip, requires_gcm]
  */
 
 load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit_encryption.js');
@@ -20,7 +19,7 @@ if (determineSSLProvider() !== "windows") {
     run("chmod", "600", AUDIT_LOCAL_KEY_ENCRYPT_KEYFILE);
 }
 
-print("Testing audit log contains header when compression is enabled");
+print("Testing audit log contains header if encryption is enabled");
 function testAuditLogHeader(serverFixture, isMongos, enableCompression, keyManagerFixture) {
     keyManagerFixture.startKeyServer();
     let opts = keyManagerFixture.generateOptsWithDefaults(enableCompression);

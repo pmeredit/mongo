@@ -1,5 +1,6 @@
 /**
  * Tests that the header metadata log option works
+ * @tags: [requires_gcm]
  */
 
 load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit_encryption.js');

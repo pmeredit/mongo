@@ -1,6 +1,6 @@
 /**
- * Tests that the audit log is correctly framed
- * when compression is enabled
+ * Tests that the encrypted audit log has correct framing
+ * @tags: [requires_gcm]
  */
 
 load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit_encryption.js');
@@ -42,7 +42,7 @@ function isValidFrame(json) {
     }
 }
 
-print("Testing audit log contains header when compression is enabled");
+print("Testing encrypted audit log has valid framing protocol");
 function testAuditLogFrame(fixture, isMongos, enableCompression) {
     const keyManagerFixture = new LocalFixture();
     let opts = keyManagerFixture.generateOptsWithDefaults(enableCompression);

@@ -2,7 +2,7 @@
  * Tests that mongoauditdecrypt can successfully decrypt an
  * encrypted audit log file, which is generated for each of
  * the key store types and wrapping methods.
- * @tags: [uses_pykmip]
+ * @tags: [uses_pykmip, requires_gcm]
  */
 
 load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit_encryption.js');
