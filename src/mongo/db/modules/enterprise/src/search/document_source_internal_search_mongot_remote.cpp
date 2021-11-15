@@ -129,15 +129,11 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchMongotRemote::doGetNex
     opDebug.mongotBatchNum = _cursor->getBatchNum();
 
     // Meta variables will be constant across the query and only need to be set once.
+    // This feature was backported and is available on versions after 4.4. Therefore there is no
+    // need to check FCV, as downgrading should not cause any issues.
     if (!pExpCtx->variables.hasConstantValue(Variables::kSearchMetaId) && _cursor &&
         _cursor->getCursorVars() &&
-        ::mongo::feature_flags::gFeatureFlagSearchMeta.isEnabled(
-            serverGlobalParams.featureCompatibility)) {
-        uassert(5858103,
-                str::stream() << "Must enable 'featureFlagSearchMeta' to access '$$"
-                              << Variables::getBuiltinVariableName(Variables::kSearchMetaId),
-                ::mongo::feature_flags::gFeatureFlagSearchMeta.isEnabled(
-                    serverGlobalParams.featureCompatibility));
+        ::mongo::feature_flags::gFeatureFlagSearchMeta.isEnabledAndIgnoreFCV()) {
         // Variables on the cursor must be an object.
         auto varsObj = Value(_cursor->getCursorVars().get());
         auto metaVal = varsObj.getDocument().getField(
