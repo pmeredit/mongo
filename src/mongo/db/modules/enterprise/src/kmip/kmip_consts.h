@@ -24,6 +24,7 @@ const uint8_t fourBytePadding[] = {0x00, 0x00, 0x00, 0x00};
  * Message Tags.
  */
 const uint8_t attributeTag[] = {0x42, 0x00, 0x08};
+const uint8_t attributeIndexTag[] = {0x42, 0x00, 0x09};
 const uint8_t attributeNameTag[] = {0x42, 0x00, 0x0A};
 const uint8_t attributeValueTag[] = {0x42, 0x00, 0x0B};
 const uint8_t batchCountTag[] = {0x42, 0x00, 0x0D};
@@ -58,6 +59,19 @@ const uint8_t uniqueBatchItemIDTag[] = {0x42, 0x00, 0x93};
 const uint8_t uniqueIdentifierTag[] = {0x42, 0x00, 0x94};
 
 /**
+ * State Name which encodes the state for the 'State' attribute.
+ */
+enum class StateName : uint32_t {
+    stateless = 0x00,
+    preActive = 0x01,
+    active = 0x02,
+    deactivated = 0x03,
+    compromised = 0x04,
+    destroyed = 0x05,
+    destroyedCompromised = 0x06
+};
+
+/**
  * Item Types
  */
 enum class ItemType : uint8_t {
@@ -77,18 +91,22 @@ enum class ItemType : uint8_t {
  * Operation Types
  */
 enum class OperationType : uint8_t {
+    activate = 0x12,
     create = 0x01,
     decrypt = 0x20,
     discoverVersions = 0x1E,
     encrypt = 0x1F,
     get = 0x0A,
+    getAttributes = 0x0B,
 };
 
+const uint8_t activateOperationTypeArray[] = {0x00, 0x00, 0x00, 0x12};
 const uint8_t createOperationTypeArray[] = {0x00, 0x00, 0x00, 0x01};
 const uint8_t decryptOperationTypeArray[] = {0x00, 0x00, 0x00, 0x20};
 const uint8_t discoverVersionsOperationTypeArray[] = {0x00, 0x00, 0x00, 0x1E};
 const uint8_t encryptOperationTypeArray[] = {0x00, 0x00, 0x00, 0x1F};
 const uint8_t getOperationTypeArray[] = {0x00, 0x00, 0x00, 0x0A};
+const uint8_t getAttributesOperationTypeArray[] = {0x00, 0x00, 0x00, 0x0B};
 
 /**
  * Item Type Byte Lengths

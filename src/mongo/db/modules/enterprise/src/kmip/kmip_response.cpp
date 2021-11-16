@@ -340,6 +340,28 @@ Status KMIPResponse::_parseBatchItem(ConstDataRangeCursor* cdrc) {
             _data = std::move(swData.getValue());
             break;
         }
+        case static_cast<uint8_t>(OperationType::activate): {
+            auto swUID = _parseString(cdrc, uniqueIdentifierTag, "uid");
+            if (!swUID.isOK()) {
+                return swUID.getStatus();
+            }
+            _uid = std::move(swUID.getValue()->data());
+            break;
+        }
+        case static_cast<uint8_t>(OperationType::getAttributes): {
+            auto swUID = _parseString(cdrc, uniqueIdentifierTag, "uid");
+            if (!swUID.isOK()) {
+                return swUID.getStatus();
+            }
+            _uid = std::move(swUID.getValue()->data());
+
+            StatusWith<Attribute> swAttribute = _parseAttribute(cdrc, attributeTag, "attribute");
+            if (!swAttribute.isOK()) {
+                return swAttribute.getStatus();
+            }
+            _attribute = std::move(swAttribute.getValue());
+            break;
+        }
         default:
             return Status(ErrorCodes::FailedToParse,
                           str::stream() << "Response message was malformed: unknown operation type "
@@ -462,6 +484,39 @@ StatusWith<std::uint32_t> KMIPResponse::_parseInteger(ConstDataRangeCursor* cdrc
         return adv;
     }
     return static_cast<uint32_t>(swUInt32.getValue());
+}
+
+StatusWith<KMIPResponse::Attribute> KMIPResponse::_parseAttribute(ConstDataRangeCursor* cdrc,
+                                                                  const uint8_t tag[],
+                                                                  const std::string& tagName) {
+    StatusWith<size_t> swTag = _parseTag(cdrc, tag, ItemType::structure, tagName);
+    if (!swTag.isOK()) {
+        return swTag.getStatus();
+    }
+
+    auto swAttributeName = _parseString(cdrc, attributeNameTag, "attribute name");
+    if (!swAttributeName.isOK()) {
+        return swAttributeName.getStatus();
+    }
+    std::string attrName(swAttributeName.getValue()->data(), swAttributeName.getValue()->length());
+
+    // The value field is a variable type. In "State" attribute, the value is an enum, but it might
+    // differ for other attributes.
+    if (attrName == "State") {
+        // Note: there is an optional 'Attribute Index' field that we are not parsing.
+        auto swAttributeValue =
+            _parseInteger(cdrc, attributeValueTag, ItemType::enumeration, "attribute value");
+        if (!swAttributeValue.isOK()) {
+            return swAttributeValue.getStatus();
+        }
+        StateName attributeValue = static_cast<StateName>(swAttributeValue.getValue());
+        KMIPResponse::Attribute newAttribute = {std::move(attrName), 0, attributeValue};
+        return newAttribute;
+    } else {
+        return Status(ErrorCodes::FailedToParse,
+                      str::stream()
+                          << "Cannot parse attribute: " << attrName << ". Not implemented. ");
+    }
 }
 }  // namespace kmip
 }  // namespace mongo

@@ -11,7 +11,7 @@ global:
 feature_flags:
     featureFlagKmipActivate:
         description: "Enable KMIP Activate operation when creating new encryption keys"
-        cpp_varname: gFeatureFlagKmipActivate
+        cpp_varname: feature_flags::gFeatureFlagKmipActivate
         default: false
 
 configs:

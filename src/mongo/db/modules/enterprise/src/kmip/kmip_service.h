@@ -8,6 +8,7 @@
 
 #include "kmip_consts.h"
 #include "kmip_options.h"
+#include "kmip_response.h"
 #include "mongo/base/secure_allocator.h"
 #include "mongo/base/status_with.h"
 #include "mongo/util/duration.h"
@@ -64,6 +65,19 @@ public:
                                               const std::vector<uint8_t>& data,
                                               const std::vector<uint8_t>& iv);
 
+    /**
+     * Requests the KMIP server to perform an activation operation on a non-activated KMIP key with
+     * the UID specified and returns the key's UID.
+     */
+    StatusWith<const std::string> activate(const std::string& uid);
+
+    /**
+     * Requests the KMIP server to get the attribute of an object specified by the UID and returns
+     * the requested attribute consisting of the: attribute name, attribute index, attribute value.
+     */
+    StatusWith<KMIPResponse::Attribute> getAttributes(const std::string& uid,
+                                                      const std::string& attributeName);
+
     friend std::shared_ptr<KMIPService> getGlobalKMIPService();
 
 private:
@@ -85,6 +99,8 @@ private:
      */
     StatusWith<KMIPResponse> _sendRequest(const SecureVector<uint8_t>& request);
 
+    SecureVector<uint8_t> _generateKMIPActivateRequest(const std::string& uid);
+
     SecureVector<uint8_t> _generateKMIPGetRequest(const std::string& uid);
 
     SecureVector<uint8_t> _generateKMIPCreateRequest();
@@ -95,6 +111,9 @@ private:
     SecureVector<uint8_t> _generateKMIPDecryptRequest(const std::string& uid,
                                                       const std::vector<uint8_t>& data,
                                                       const std::vector<uint8_t>& iv);
+
+    SecureVector<uint8_t> _generateKMIPGetAttributesRequest(const std::string& uid,
+                                                            const std::string& attributeName);
 
     std::shared_ptr<SSLManagerInterface> _sslManager;
     HostAndPort _server;

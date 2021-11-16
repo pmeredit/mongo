@@ -97,6 +97,24 @@ size_t encodeAttribute(struct EncodingContext* ctx,
     return pl.size() - startSize;
 }
 
+size_t encodeActivatePayload(struct EncodingContext* ctx,
+                             const ActivateKMIPRequestParameters& requestParams) {
+    auto& pl = *ctx->payload;
+    size_t startSize = pl.size();
+
+    std::vector<uint8_t> paddedUUID = padToEightByteMultiple(requestParams.uid);
+    std::vector<uint8_t> uidSize = convertIntToBigEndianArray(requestParams.uid.size());
+
+    // Tag: Unique Identifier, Type: Text String, Size of UUID, UUID
+    pl.insert(pl.end(), std::begin(uniqueIdentifierTag), std::end(uniqueIdentifierTag));
+    pl.push_back(static_cast<uint8_t>(ItemType::textString));
+
+    pl.insert(pl.end(), std::begin(uidSize), std::end(uidSize));
+    pl.insert(pl.end(), std::begin(paddedUUID), std::end(paddedUUID));
+
+    return pl.size() - startSize;
+}
+
 size_t encodeCreatePayload(struct EncodingContext* ctx,
                            const CreateKMIPRequestParameters& requestParams) {
     auto& pl = *ctx->payload;
@@ -230,6 +248,34 @@ size_t encodeDecryptPayload(struct EncodingContext* ctx,
     return pl.size() - startSize;
 }
 
+size_t encodeGetAttributesPayload(struct EncodingContext* ctx,
+                                  const GetAttributesKMIPRequestParameters& requestParams) {
+    auto& pl = *ctx->payload;
+    size_t startSize = pl.size();
+
+    std::vector<uint8_t> paddedUUID = padToEightByteMultiple(requestParams.uid);
+    // For Text Strings, the Item Length is the number of bytes excluding the padding bytes.
+    std::vector<uint8_t> uidSize = convertIntToBigEndianArray(requestParams.uid.size());
+
+    // Tag: Unique Identifier, Type: Text String, Size of UUID, UUID
+    pl.insert(pl.end(), std::begin(uniqueIdentifierTag), std::end(uniqueIdentifierTag));
+    pl.push_back(static_cast<uint8_t>(ItemType::textString));
+
+    pl.insert(pl.end(), std::begin(uidSize), std::end(uidSize));
+    pl.insert(pl.end(), std::begin(paddedUUID), std::end(paddedUUID));
+
+    // Tag: Attribute Name, Type: Text String, Size of attribute name, attribute name size
+    std::vector<uint8_t> nameSize = convertIntToBigEndianArray(requestParams.attributeName.size());
+    std::vector<uint8_t> paddedName = padToEightByteMultiple(requestParams.attributeName);
+
+    pl.insert(pl.end(), std::begin(attributeNameTag), std::end(attributeNameTag));
+    pl.push_back(static_cast<uint8_t>(ItemType::textString));
+    pl.insert(pl.end(), std::begin(nameSize), std::end(nameSize));
+    pl.insert(pl.end(), std::begin(paddedName), std::end(paddedName));
+
+    return pl.size() - startSize;
+}
+
 size_t encodeOpAndRequestPayload(struct EncodingContext* ctx,
                                  const KMIPRequestParameters& requestParams) {
     auto& pl = *ctx->payload;
@@ -251,8 +297,13 @@ size_t encodeOpAndRequestPayload(struct EncodingContext* ctx,
 
     size_t requestPayloadSize;
     if (std::memcmp(requestParams.operationType,
-                    createOperationTypeArray,
-                    sizeof(createOperationTypeArray)) == 0) {
+                    activateOperationTypeArray,
+                    sizeof(activateOperationTypeArray)) == 0) {
+        requestPayloadSize = encodeActivatePayload(
+            ctx, static_cast<const ActivateKMIPRequestParameters&>(requestParams));
+    } else if (std::memcmp(requestParams.operationType,
+                           createOperationTypeArray,
+                           sizeof(createOperationTypeArray)) == 0) {
         requestPayloadSize = encodeCreatePayload(
             ctx, static_cast<const CreateKMIPRequestParameters&>(requestParams));
     } else if (std::memcmp(requestParams.operationType,
@@ -275,6 +326,11 @@ size_t encodeOpAndRequestPayload(struct EncodingContext* ctx,
                            sizeof(decryptOperationTypeArray)) == 0) {
         requestPayloadSize = encodeDecryptPayload(
             ctx, static_cast<const DecryptKMIPRequestParameters&>(requestParams));
+    } else if (std::memcmp(requestParams.operationType,
+                           getAttributesOperationTypeArray,
+                           sizeof(getAttributesOperationTypeArray)) == 0) {
+        requestPayloadSize = encodeGetAttributesPayload(
+            ctx, static_cast<const GetAttributesKMIPRequestParameters&>(requestParams));
     } else {
         MONGO_UNREACHABLE;
     }

@@ -14,7 +14,6 @@
 #include "encryptdb/encryption_options.h"
 #include "kmip_consts.h"
 #include "kmip_request.h"
-#include "kmip_response.h"
 #include "mongo/base/data_range_cursor.h"
 #include "mongo/base/data_type_endian.h"
 #include "mongo/base/init.h"
@@ -204,6 +203,40 @@ StatusWith<SecureVector<uint8_t>> KMIPService::decrypt(const std::string& uid,
     return response.getData();
 }
 
+StatusWith<const std::string> KMIPService::activate(const std::string& uid) {
+    StatusWith<KMIPResponse> swResponse = _sendRequest(_generateKMIPActivateRequest(uid));
+    if (!swResponse.isOK()) {
+        return swResponse.getStatus();
+    }
+
+    KMIPResponse response = std::move(swResponse.getValue());
+    if (response.getResultStatus() != kmip::statusSuccess) {
+        return Status(ErrorCodes::BadValue,
+                      str::stream() << "KMIP activate failed, code: " << response.getResultReason()
+                                    << ", error: " << response.getResultMsg()->data());
+    }
+    return response.getUID();
+}
+
+StatusWith<KMIPResponse::Attribute> KMIPService::getAttributes(const std::string& uid,
+                                                               const std::string& attributeName) {
+    StatusWith<KMIPResponse> swResponse =
+        _sendRequest(_generateKMIPGetAttributesRequest(uid, attributeName));
+    if (!swResponse.isOK()) {
+        return swResponse.getStatus();
+    }
+
+    KMIPResponse response = std::move(swResponse.getValue());
+    if (response.getResultStatus() != kmip::statusSuccess) {
+        return Status(ErrorCodes::BadValue,
+                      str::stream()
+                          << "KMIP get attributes failed, code: " << response.getResultReason()
+                          << ", error: " << response.getResultMsg()->data());
+    }
+
+    return response.getAttribute();
+}
+
 void KMIPService::_initServerConnection(Milliseconds connectTimeout) {
     auto makeAddress = [](const auto& host) -> SockAddr {
         try {
@@ -290,5 +323,16 @@ SecureVector<uint8_t> KMIPService::_generateKMIPDecryptRequest(const std::string
     return encodeKMIPRequest(decryptRequestParams);
 }
 
+SecureVector<uint8_t> KMIPService::_generateKMIPActivateRequest(const std::string& uid) {
+    ActivateKMIPRequestParameters activateRequestParams({std::begin(uid), std::end(uid)});
+    return encodeKMIPRequest(activateRequestParams);
+}
+
+SecureVector<uint8_t> KMIPService::_generateKMIPGetAttributesRequest(
+    const std::string& uid, const std::string& attributeName) {
+    GetAttributesKMIPRequestParameters getAttributesRequestParams(
+        {std::begin(uid), std::end(uid)}, {std::begin(attributeName), std::end(attributeName)});
+    return encodeKMIPRequest(getAttributesRequestParams);
+}
 }  // namespace kmip
 }  // namespace mongo

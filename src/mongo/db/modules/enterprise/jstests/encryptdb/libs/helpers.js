@@ -32,7 +32,8 @@ function startPyKMIPServer(port) {
 // key, and returns its UID.
 function createPyKMIPKey(kmipServerPort) {
     clearRawMongoProgramOutput();
-    _startMongoProgram("python", kmipPyPath + "kmip_make_key.py", kmipServerPort);
+    _startMongoProgram(
+        "python", kmipPyPath + "kmip_manage_key.py", "--kmipPort", kmipServerPort, "create_key");
     let uid;
     assert.soon(() => {
         const output = rawMongoProgramOutput();
@@ -50,6 +51,33 @@ function createPyKMIPKey(kmipServerPort) {
         return true;
     });
     return uid;
+}
+
+// Given the port of a KMIP server, runs a PyKMIP script which checks the key specified by the UID
+// is in the activated state.
+function isPyKMIPKeyActive(kmipServerPort, uid) {
+    clearRawMongoProgramOutput();
+    _startMongoProgram("python",
+                       kmipPyPath + "kmip_manage_key.py",
+                       "--kmipPort",
+                       kmipServerPort,
+                       "get_state_attribute",
+                       "--uid",
+                       uid);
+    let isActive;
+    assert.soon(() => {
+        const output = rawMongoProgramOutput();
+
+        let isActiveOutput = output.match(/IS_ACTIVE=<(.*)>/);
+        if (isActiveOutput !== null) {
+            isActive = isActiveOutput[1];
+            return true;
+        }
+
+        return false;
+    });
+
+    return (isActive == "True");
 }
 
 function killPyKMIPServer(pid) {

@@ -23,6 +23,17 @@ class KMIPResponse {
     KMIPResponse& operator=(const KMIPResponse&) = delete;
 
 public:
+    struct Attribute {
+        std::string name;
+        uint32_t index;
+        // The value field varies depending on the type of attribute.
+        // State attribute value is an enum describing the state, for others it can be Date-Time
+        // or other type of struct.
+        union {
+            StateName stateEnum;
+        } value;
+    };
+
     /**
      * Factory function to parse a KMIP response. Parsing errors are indicated
      * in the status portion of the return value.
@@ -93,6 +104,13 @@ public:
         return _uid;
     }
 
+    /**
+     * Gets the attribute struct from the parsed message
+     */
+    const Attribute& getAttribute() const {
+        return _attribute;
+    }
+
 private:
     KMIPResponse();
 
@@ -125,7 +143,9 @@ private:
                                        const uint8_t tag[],
                                        ItemType itemType,
                                        const std::string& tagName);
-
+    StatusWith<Attribute> _parseAttribute(ConstDataRangeCursor* cdrc,
+                                          const uint8_t tag[],
+                                          const std::string& tagName);
     /**
      * KMIP response message parameters
      */
@@ -141,6 +161,7 @@ private:
     std::string _uid;
     SecureVector<uint8_t> _data;
     std::vector<uint8_t> _iv;
+    Attribute _attribute;
 };
 }  // namespace kmip
 }  // namespace mongo

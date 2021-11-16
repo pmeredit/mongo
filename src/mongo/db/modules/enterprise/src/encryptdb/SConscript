@@ -114,6 +114,9 @@ env.Library(
         '$BUILD_DIR/mongo/db/auth/security_file',
         '$BUILD_DIR/mongo/db/modules/enterprise/kmip',
     ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/idl/feature_flag',
+    ],
 )
 
 wtEnv.CppUnitTest(

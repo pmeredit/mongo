@@ -10,6 +10,7 @@
 
 #include <memory>
 
+#include "encryptdb/encryption_options_gen.h"
 #include "encryption_options.h"
 #include "kmip/kmip_service.h"
 #include "mongo/base/string_data.h"
@@ -25,6 +26,9 @@
 using namespace mongo::kmip;
 
 namespace mongo {
+
+constexpr auto kStateAttribute = "State"_sd;
+
 StatusWith<std::unique_ptr<SymmetricKey>> getKeyFromKeyFile(StringData encryptionKeyFile) {
     auto keyStrings = readSecurityFile(encryptionKeyFile.toString());
     if (!keyStrings.isOK()) {
@@ -71,6 +75,7 @@ StatusWith<std::unique_ptr<SymmetricKey>> getKeyFromKMIPServer(const KMIPParams&
 
     // Try to retrieve an existing key.
     if (!keyId.empty()) {
+        // TODO(SERVER-42505): Periodically check if KMIP key is in the Active State
         return kmipService->getExternalKey(keyId.toString());
     }
 
@@ -82,6 +87,16 @@ StatusWith<std::unique_ptr<SymmetricKey>> getKeyFromKMIPServer(const KMIPParams&
 
     std::string newKeyId = swCreateKey.getValue();
     LOGV2(24199, "Created KMIP key", "keyId"_attr = newKeyId);
+    if (!feature_flags::gFeatureFlagKmipActivate.isEnabledAndIgnoreFCV()) {
+        return kmipService->getExternalKey(newKeyId);
+    }
+
+    StatusWith<std::string> swActivatedUid = kmipService->activate(newKeyId);
+    if (!swActivatedUid.isOK()) {
+        return swActivatedUid.getStatus();
+    }
+
+    LOGV2(2360700, "Activated KMIP key", "uid"_attr = swActivatedUid.getValue());
     return kmipService->getExternalKey(newKeyId);
 }
 

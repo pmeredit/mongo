@@ -30,6 +30,13 @@ struct KMIPRequestParameters {
     uint32_t protocolVersion[2];
 };
 
+struct ActivateKMIPRequestParameters : KMIPRequestParameters {
+    ActivateKMIPRequestParameters(std::vector<uint8_t> uid)
+        : KMIPRequestParameters(OperationType::activate), uid(std::move(uid)) {}
+
+    std::vector<uint8_t> uid;
+};
+
 struct CreateKMIPRequestParameters : KMIPRequestParameters {
     CreateKMIPRequestParameters(std::vector<uint8_t> algo,
                                 std::vector<uint8_t> len,
@@ -78,6 +85,16 @@ struct DecryptKMIPRequestParameters : KMIPRequestParameters {
     std::vector<uint8_t> uid;
     std::vector<uint8_t> iv;
     std::vector<uint8_t> data;
+};
+
+struct GetAttributesKMIPRequestParameters : KMIPRequestParameters {
+    GetAttributesKMIPRequestParameters(std::vector<uint8_t> uid, std::vector<uint8_t> attributeName)
+        : KMIPRequestParameters(OperationType::getAttributes),
+          uid(std::move(uid)),
+          attributeName(std::move(attributeName)) {}
+
+    std::vector<uint8_t> uid;
+    std::vector<uint8_t> attributeName;
 };
 
 /**
