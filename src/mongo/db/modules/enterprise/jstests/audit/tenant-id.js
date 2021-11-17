@@ -7,7 +7,7 @@
 const isMongoStoreEnabled = TestData.setParameters.featureFlagMongoStore;
 if (!isMongoStoreEnabled) {
     assert.throws(() => MongoRunner.runMongod({
-        setParameter: "supportMultitenancy=true",
+        setParameter: "multitenancySupport=true",
     }));
     return;
 }
@@ -38,7 +38,7 @@ function test(audit, conn, asBSON) {
 }
 
 const opts = {
-    setParameter: 'supportMultitenancy=true',
+    setParameter: 'multitenancySupport=true',
 };
 
 function runMongodTest(asBSON) {
