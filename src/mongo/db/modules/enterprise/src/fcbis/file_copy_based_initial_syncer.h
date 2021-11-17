@@ -489,10 +489,10 @@ private:
 
         // The backupCursor used for initialSync, we should always have only one backupCursor opened
         // on the sync source.
-        boost::optional<mongo::UUID> backupId;
+        boost::optional<mongo::UUID> backupId;  // (X)
         CursorId backupCursorId;
         std::string backupCursorCollection;
-        CancellationSource backupCursorKeepAliveCancellation;
+        CancellationSource backupCursorKeepAliveCancellation;  // (X)
         boost::optional<ExecutorFuture<void>> backupCursorKeepAliveFuture;
 
         // The last timestamp that the syncing node has caught up to.

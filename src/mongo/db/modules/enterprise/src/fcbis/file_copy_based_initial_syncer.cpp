@@ -1053,9 +1053,6 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startSyncingFiles(
         .until([this, self = shared_from_this()](Status cloningStatus) mutable {
             stdx::lock_guard<Latch> lock(_mutex);
             if (!cloningStatus.isOK()) {
-                // Make sure to kill the backup cursor on failure.
-                _killBackupCursor();
-
                 // Returns the error to the caller.
                 return true;
             }
@@ -1087,12 +1084,14 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startSyncingFiles(
                             fileBasedInitialSyncMaxCyclesWithoutProgress);
                 }
             }
-
-            // Make sure to kill the backupCursor on success.
-            _killBackupCursor();
             return true;
         })
-        .on(_syncingFilesState.executor, _syncingFilesState.token);
+        .on(_syncingFilesState.executor, _syncingFilesState.token)
+        .onCompletion([this, self = shared_from_this()](Status cloningStatus) {
+            // Make sure to kill the backupCursor whether cloning succeeds or fails.
+            _killBackupCursor();
+            return cloningStatus;
+        });
 }
 
 /* static */
@@ -1522,8 +1521,6 @@ void FileCopyBasedInitialSyncer::_switchStorageTo(
 void FileCopyBasedInitialSyncer::_cancelRemainingWork(WithLock) {
     // Cancel the cancellation source to stop the work being run on the executor.
     _attemptCancellationSource.cancel();
-
-    _killBackupCursor();
 
     if (_sharedData) {
         stdx::lock_guard<InitialSyncSharedData> lock(*_sharedData);

@@ -102,11 +102,17 @@ DocumentSource::GetNextResult DocumentSourceBackupFile::doGetNext() {
 
     if (!_eof) {
         _offset = _src.tellg();
+    } else {
+        _src.close();
     }
 
     return {Document{builder.obj()}};
 }
 
+void DocumentSourceBackupFile::doDispose() {
+    _eof = true;
+    _src.close();
+}
 DocumentSourceBackupFile::DocumentSourceBackupFile(
     const boost::intrusive_ptr<ExpressionContext>& expCtx, DocumentSourceBackupFileSpec spec)
     : DocumentSource(kStageName, expCtx),

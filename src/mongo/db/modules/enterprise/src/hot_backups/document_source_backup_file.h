@@ -52,6 +52,7 @@ public:
 
 protected:
     DocumentSource::GetNextResult doGetNext() override;
+    void doDispose() override;
 
 private:
     DocumentSourceBackupFileSpec _backupFileSpec;
