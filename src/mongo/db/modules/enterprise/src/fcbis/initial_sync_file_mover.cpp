@@ -126,20 +126,21 @@ std::vector<std::string> InitialSyncFileMover::createListOfFilesToMove() {
         for (auto dirIter = boost::filesystem::directory_iterator(pathToMove);
              dirIter != boost::filesystem::directory_iterator();
              dirIter++) {
-            auto fileToMove = boost::filesystem::relative(dirIter->path(), initialSyncDir);
-            if (fileToMove.string() == kInitialSyncDummyDir) {
-                // Skip the dummy directory.
+            auto relativePathToMove = boost::filesystem::relative(dirIter->path(), initialSyncDir);
+            if (relativePathToMove.generic_string() == kInitialSyncDummyDir ||
+                _isTmpLogFileRelativePath(relativePathToMove)) {
+                // Skip the dummy directory and any WiredTiger tmp files.
                 continue;
             }
             // For directories to be moved to symlinks, we must move the files in the directory,
             // not the symlink itself.
             boost::filesystem::path destinationPath(_dbpath);
-            destinationPath /= fileToMove;
+            destinationPath /= relativePathToMove;
             if (boost::filesystem::is_symlink(destinationPath) &&
                 boost::filesystem::is_directory(dirIter->path())) {
                 pathsToMove.push(dirIter->path());
             } else {
-                result.emplace_back(fileToMove.string());
+                result.emplace_back(relativePathToMove.string());
             }
         }
     }
@@ -233,6 +234,29 @@ void InitialSyncFileMover::deleteFiles(const std::vector<std::string>& filesToDe
         }
         removedFiles.insert(topPath.string());
     }
+    _deleteWiredTigerLogFiles(dbpath);
+}
+
+void InitialSyncFileMover::_deleteWiredTigerLogFiles(const boost::filesystem::path& dbpath) {
+    // TODO(SERVER-13455): If this ticket is implemented, we will have to take into account
+    // configurable "journal" directories.  This might include either requiring the directory to
+    // have the same name on the sync source and syncing node, or moving/renaming the directory on
+    // the syncing node.
+    boost::filesystem::path journalPath = dbpath;
+    journalPath.append("journal");
+    if (!boost::filesystem::exists(journalPath))
+        return;
+    for (const auto& dirEntry : boost::filesystem::directory_iterator(journalPath)) {
+        std::string filename = dirEntry.path().filename().generic_string();
+        if (StringData(filename).startsWith(kWiredTigerLogPrefix)) {
+            LOGV2_DEBUG(61537,
+                        2,
+                        "Deleting WiredTiger log file",
+                        "filename"_attr = filename,
+                        "fullPath"_attr = dirEntry.path().string());
+            boost::filesystem::remove(dirEntry.path());
+        }
+    }
 }
 
 void InitialSyncFileMover::_moveFiles(const std::vector<std::string>& filesToMove) {
@@ -283,7 +307,12 @@ void InitialSyncFileMover::_moveFiles(const std::vector<std::string>& filesToMov
                 "fullSourcePath"_attr = fullSourcePath.string());
         }
         if (boost::filesystem::exists(destinationPath)) {
-            if (!boost::filesystem::is_empty(destinationPath)) {
+            // The test for WiredTiger log files here should be redundant; we should have removed
+            // all the log files and we shouldn't be moving tmplog or preplog files.
+            const bool isWiredTigerLogOrTmpLogFile =
+                _isLogOrTmpLogFileRelativePath(fileRelativePath);
+            dassert(!isWiredTigerLogOrTmpLogFile);
+            if (!boost::filesystem::is_empty(destinationPath) && !isWiredTigerLogOrTmpLogFile) {
                 auto replacementPath = destinationPath;
                 replacementPath += boost::filesystem::unique_path("-%%%%-%%%%-%%%%-%%%%");
                 LOGV2_WARNING(5783413,
@@ -329,6 +358,36 @@ void InitialSyncFileMover::_renameOrCopy(const boost::filesystem::path& sourcePa
                             boost::filesystem::copy_options::overwrite_existing |
                                 boost::filesystem::copy_options::recursive);
     boost::filesystem::remove_all(sourcePath);
+}
+
+bool InitialSyncFileMover::_isRelativeFilePathInJournalDir(const boost::filesystem::path& path) {
+    // TODO(SERVER-13455): If this ticket is implemented, we will have to take into account
+    // configurable journal directories.
+    if (path.empty() || !path.is_relative())
+        return false;
+    boost::filesystem::path dirPath = path.parent_path();
+    if (dirPath.empty() || dirPath.filename().generic_string() != "journal")
+        return false;
+    // Note there may be directories above the journal path.  This is to take into account
+    // the encrypted storage engine, which puts another WiredTiger instance at "`dbpath`/key.store".
+    return true;
+}
+
+bool InitialSyncFileMover::_isLogOrTmpLogFileRelativePath(const boost::filesystem::path& path) {
+    if (!_isRelativeFilePathInJournalDir(path))
+        return false;
+    std::string filename = path.filename().generic_string();
+    return StringData(filename).startsWith(kWiredTigerPreplogPrefix) ||
+        StringData(filename).startsWith(kWiredTigerTmplogPrefix) ||
+        StringData(filename).startsWith(kWiredTigerLogPrefix);
+}
+
+bool InitialSyncFileMover::_isTmpLogFileRelativePath(const boost::filesystem::path& path) {
+    if (!_isRelativeFilePathInJournalDir(path))
+        return false;
+    std::string filename = path.filename().generic_string();
+    return StringData(filename).startsWith(kWiredTigerPreplogPrefix) ||
+        StringData(filename).startsWith(kWiredTigerTmplogPrefix);
 }
 
 void InitialSyncFileMover::_cleanupAfterFailedMoveAndFassert() {

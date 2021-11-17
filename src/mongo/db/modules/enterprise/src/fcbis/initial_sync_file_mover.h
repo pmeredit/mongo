@@ -25,6 +25,12 @@ public:
     static constexpr StringData kFilesToDeleteMarker = "INITIAL_SYNC_FILES_TO_DELETE"_sd;
     static constexpr StringData kFilesToDeleteTmpMarker = "INITIAL_SYNC_FILES_TO_DELETE.tmp"_sd;
     static constexpr StringData kInitialSyncDir = ".initialsync"_sd;
+    // These are copied from wiredtiger/src/include/log.h, which is internal to WiredTiger
+    // and can't be included from here.
+    static constexpr StringData kWiredTigerLogPrefix = "WiredTigerLog"_sd;
+    static constexpr StringData kWiredTigerPreplogPrefix = "WiredTigerPreplog"_sd;
+    static constexpr StringData kWiredTigerTmplogPrefix = "WiredTigerTmplog"_sd;
+
     // Used as a temporary directory where the storage engine switches inside while moving the
     // files from '.initialsync' to dbpath.
     static constexpr StringData kInitialSyncDummyDir = ".dummy"_sd;
@@ -37,7 +43,8 @@ public:
     void recoverFileCopyBasedInitialSyncAtStartup();
 
     /**
-     * Deletes any list of files relative to dbpath.
+     * Deletes any list of files relative to dbpath.  As a special case, also deletes all
+     * WiredTiger log files.
      */
     void deleteFiles(const std::vector<std::string>& filesToDelete);
 
@@ -50,6 +57,9 @@ public:
      * Creates the list of files to move by enumerating the files in the initial sync directory.
      * Then creates the kFilesToMoveMarker and deletes the kFilesToDeleteMarker.  As a convenience,
      * returns the list of files.
+     *
+     * This function skips any WiredTiger temp log and prep log files, as those would be deleted
+     * by WiredTiger on startup anyway.
      */
     std::vector<std::string> createListOfFilesToMove();
 
@@ -87,7 +97,20 @@ private:
     void _deleteFilesListedInDeleteMarker();
 
     /**
+     * Deletes WiredTiger log files in the WiredTiger journal directory relative to the
+     * passed-in dbpath.  We must delete the log files because it is possible another log file
+     * got created after the list in the delete marker file was made.
+     */
+    void _deleteWiredTigerLogFiles(const boost::filesystem::path& dbpath);
+
+    /**
      * Moves a list of files relative to kInitialSyncDir to dbpath.
+     *
+     * For most files, if the destination file exists and is non-empty, the file will be
+     * postfixed a temporary name.  For WiredTiger log, tmp log, or prep log files,
+     * an existing destination file will be removed, as WiredTiger cannot tolerate the
+     * presence of files that have the same prefix as those files but not the exact name format
+     * WiredTiger uses.
      */
     void _moveFiles(const std::vector<std::string>& filesToMove);
 
@@ -98,6 +121,27 @@ private:
      */
     void _renameOrCopy(const boost::filesystem::path& sourcePath,
                        const boost::filesystem::path& destinationPath);
+
+    /**
+     * Returns true if the path is a file at the top level of a WiredTiger journal directory.
+     * We treat WiredTiger log/preplog/tmplog files specially, and the criteria for a file to
+     * be considered such is that it has an appropriate prefix, and that its parent directory
+     * is called "journal".
+     */
+    bool _isRelativeFilePathInJournalDir(const boost::filesystem::path& path);
+
+    /**
+     * Returns true if the path is a WiredTiger log file, prep log file, or tmp log file.  Uses
+     * prefix matching, because WiredTiger does also.
+     */
+    bool _isLogOrTmpLogFileRelativePath(const boost::filesystem::path& path);
+
+    /**
+     * Returns true if the path is a WiredTiger tmp log file (including prep logs).  Uses prefix
+     * matching, because WiredTiger does also.
+     */
+    bool _isTmpLogFileRelativePath(const boost::filesystem::path& path);
+
     /**
      * Delete all files listed in the move marker, the .initialSync directory, and all markers,
      * and calls fassert().

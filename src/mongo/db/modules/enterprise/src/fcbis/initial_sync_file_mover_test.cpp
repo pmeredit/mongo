@@ -258,6 +258,82 @@ protected:
         boost::filesystem::create_directory_symlink(_symlinkDestPath, sourcePath);
     }
 
+    // For the journal files, we create two files of each type -- WiredTigerLog,
+    // WiredTigerTempLog, and WiredTigerPreplog -- in the old directory, and two in the new, with
+    // one overlapping.
+    //
+    // When we're not moving the entire journal directory, we expect the regular log files to be
+    // moved or copied, and the Temp and Prep files not to be moved or copied.  The duplicate log
+    // file should be overwritten with no replacement.  All the pre-existing regular log files
+    // should be removed even though they do not appear in the delete marker.
+    void createAndSymlinkJournalFiles() {
+        char filename[40];
+        char contents[40];
+        std::vector<std::string> logPrefixes = {
+            InitialSyncFileMover::kWiredTigerLogPrefix.toString(),
+            InitialSyncFileMover::kWiredTigerTmplogPrefix.toString(),
+            InitialSyncFileMover::kWiredTigerTmplogPrefix.toString()};
+        auto newJournalDir = _initialSyncPath;
+        newJournalDir.append("journal");
+        ASSERT_TRUE(boost::filesystem::create_directory(newJournalDir));
+        for (int i = 1; i <= 2; i++) {
+            for (auto& logPrefix : logPrefixes) {
+                sprintf(filename, "%s.%010d", logPrefix.c_str(), i);
+                sprintf(contents, "nj_%s.%010d", logPrefix.c_str(), i);
+                writeFile(newJournalDir, filename, contents);
+            }
+        }
+
+        auto oldJournalDir = _symlinkDestPath;
+        for (int i = 2; i <= 3; i++) {
+            for (auto& logPrefix : logPrefixes) {
+                sprintf(filename, "%s.%010d", logPrefix.c_str(), i);
+                sprintf(contents, "oj %s.%010d", logPrefix.c_str(), i);
+                writeFile(oldJournalDir, filename, contents);
+            }
+        }
+        auto sourcePath = _dbpath;
+        sourcePath.append("journal");
+        boost::filesystem::create_directory_symlink(_symlinkDestPath, sourcePath);
+    }
+
+    // The new journal directory should have the pre-existing temp and preplog files,
+    // and the new log files, and nothing else.
+    void checkJournalFiles() {
+        assertIsSymlink("journal");
+        auto journalPath = _dbpath;
+        journalPath.append("journal");
+        StringSet expectedFiles = {InitialSyncFileMover::kWiredTigerPreplogPrefix + ".0000000002",
+                                   InitialSyncFileMover::kWiredTigerPreplogPrefix + ".0000000003",
+                                   InitialSyncFileMover::kWiredTigerTmplogPrefix + ".0000000002",
+                                   InitialSyncFileMover::kWiredTigerTmplogPrefix + ".0000000003",
+                                   InitialSyncFileMover::kWiredTigerLogPrefix + ".0000000001",
+                                   InitialSyncFileMover::kWiredTigerLogPrefix + ".0000000002"};
+        StringSet actualFiles;
+        for (const auto& dirEntry : boost::filesystem::directory_iterator(journalPath)) {
+            std::string fileName = dirEntry.path().filename().generic_string();
+            ASSERT(expectedFiles.find(fileName) != expectedFiles.end())
+                << "File " << fileName
+                << " was found in the journal directory but should not be there";
+            actualFiles.insert(fileName);
+        }
+        for (auto& fileName : expectedFiles) {
+            ASSERT(expectedFiles.find(fileName) != expectedFiles.end())
+                << "File " << fileName
+                << " was expected to be found in the journal directory but was not there.";
+        }
+
+        // Make sure the log files which exist have the proper contents.  WiredTiger is just going
+        // to delete the prep and tmp files anyway, so no need to check their contents.
+        using namespace std::string_literals;
+        assertExistsWithContents(
+            "journal/"s + InitialSyncFileMover::kWiredTigerLogPrefix + ".0000000001",
+            "nj_"s + InitialSyncFileMover::kWiredTigerLogPrefix + ".0000000001");
+        assertExistsWithContents(
+            "journal/"s + InitialSyncFileMover::kWiredTigerLogPrefix + ".0000000002",
+            "nj_"s + InitialSyncFileMover::kWiredTigerLogPrefix + ".0000000002");
+    }
+
     // For this test, we allow symlinks to empty directories count as "does not exist".
     void assertDoesNotExist(StringData filepath) override {
         auto path = _dbpath;
@@ -528,6 +604,25 @@ TEST_F(InitialSyncFileMoverSymlinkTest, CommonDirIsSymlinkWithCopy) {
     fileMover.recoverFileCopyBasedInitialSyncAtStartup();
     assertInitialSyncCompleted();
     assertIsSymlink("COMMONDIR");
+}
+
+TEST_F(InitialSyncFileMoverSymlinkTest, JournalDirIsSymlink) {
+    createAllFiles();
+    createAndSymlinkJournalFiles();
+    writeMarker(InitialSyncFileMover::kFilesToDeleteMarker, deleteMarkerContents());
+    fileMover.recoverFileCopyBasedInitialSyncAtStartup();
+    assertInitialSyncCompleted();
+    checkJournalFiles();
+}
+
+TEST_F(InitialSyncFileMoverSymlinkTest, JournalDirIsSymlinkWithCopy) {
+    FailPointEnableBlock fp("initialSyncFileMoverAlwaysCopy");
+    createAllFiles();
+    createAndSymlinkJournalFiles();
+    writeMarker(InitialSyncFileMover::kFilesToDeleteMarker, deleteMarkerContents());
+    fileMover.recoverFileCopyBasedInitialSyncAtStartup();
+    assertInitialSyncCompleted();
+    checkJournalFiles();
 }
 
 // The scenario where a file in the move marker is missing.
