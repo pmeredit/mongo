@@ -1488,8 +1488,6 @@ void FileCopyBasedInitialSyncer::_switchStorageTo(
     boost::filesystem::create_directories(dirPath);
 
     LOGV2_DEBUG(5994401, 2, "Starting to switch storage engine.", "dbPath"_attr = dirPath.string());
-    // Update the global dbpath.
-    storageGlobalParams.dbpath = dirPath.string();
 
     if (closeCatalog) {
         LOGV2_DEBUG(5994402, 2, "Closing the catalog before switching storage engine.");
@@ -1498,7 +1496,10 @@ void FileCopyBasedInitialSyncer::_switchStorageTo(
 
     // Reinitializes storage engine and waits for it to complete startup.
     LOGV2_DEBUG(5994403, 2, "Reinitializing storage engine.", "dbPath"_attr = dirPath.string());
-    auto lastShutdownState = reinitializeStorageEngine(opCtx, StorageEngineInitFlags{});
+    auto lastShutdownState = reinitializeStorageEngine(opCtx, StorageEngineInitFlags{}, [&dirPath] {
+        // Update the global dbpath between shutdown of the old engine and startup of the new.
+        storageGlobalParams.dbpath = dirPath.string();
+    });
     opCtx->getServiceContext()->getStorageEngine()->notifyStartupComplete();
     invariant(StorageEngine::LastShutdownState::kClean == lastShutdownState);
 

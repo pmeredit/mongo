@@ -54,6 +54,9 @@ struct ExtendedWTEncryptor {
     crypto::aesMode cipherMode;  // Cipher mode
 };
 
+// Called if the system key is destroyed, so we know we need to re-initialize when we re-open.
+bool systemKeyDestroyed = false;
+
 int sizing(WT_ENCRYPTOR* encryptor, WT_SESSION* session, size_t* expansionConstant) noexcept {
     // Add a constant factor for WiredTiger to know how much extra memory it must allocate,
     // at most, for encryption.
@@ -236,6 +239,7 @@ int destroyEncryptor(WT_ENCRYPTOR* encryptor, WT_SESSION* session) noexcept {
                 // compatibility version downgrade so make sure a valid global encryption
                 // manager is installed.
                 initializeEncryptionKeyManager(getGlobalServiceContext());
+                systemKeyDestroyed = true;
             }
         }
         delete myEncryptor;
@@ -266,6 +270,12 @@ int mongo_addWiredTigerEncryptors_impl(WT_CONNECTION* connection) noexcept {
     extWTEncryptor->encryptor.encrypt = mongo::encrypt;
     extWTEncryptor->encryptor.decrypt = mongo::decrypt;
     extWTEncryptor->encryptor.terminate = mongo::destroyEncryptor;
+
+    if (systemKeyDestroyed) {
+        // Storage has been restarted, we need to re-initialize the encryption key manager.
+        systemKeyDestroyed = false;
+        initializeEncryptionKeyManager(getGlobalServiceContext());
+    }
 
     return connection->add_encryptor(connection,
                                      mongo::encryptionGlobalParams.encryptionCipherMode.c_str(),
