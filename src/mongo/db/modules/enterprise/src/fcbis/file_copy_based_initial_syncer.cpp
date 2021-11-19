@@ -1397,6 +1397,17 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_getListOfOldFilesToBeDeleted()
             &client, aggRequest, false /* secondaryOk */, false /* useExhaust */),
         "Failed to establish an aggregation cursor for enumerating old files");
 
+    // The DBClientCursor will not actually close the cursor if we happen to be in global shutdown
+    // when the cursor->close() call or cursor destructor is executed.  Leaving a local backup
+    // cursor open when we try to execute storage change (because the executor has not been shut
+    // down yet) will result in a crash.  (This will kill the cursor twice in the normal case, which
+    // shoud be of no consequence).
+    ON_BLOCK_EXIT([&client, cursorId = cursor->getCursorId(), nss = cursor->getNamespaceString()] {
+        if (cursorId) {
+            DESTRUCTOR_GUARD(client.killCursor(nss, cursorId));
+        }
+    });
+
     // Traverse local backup cursor and write filenames to oldStorageFilesToBeDeleted.
     while (cursor->more()) {
         BSONObj doc = cursor->nextSafe();
