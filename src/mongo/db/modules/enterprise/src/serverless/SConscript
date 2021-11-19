@@ -40,9 +40,12 @@ env.Program(
     target='mongoqd',
     source=[
         'mongoqd.cpp',
+        'tenant_to_shard_cache.cpp',
     ] + env.WindowsResourceFile("mongoqd.rc"),
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/service_context',
+        '$BUILD_DIR/mongo/s/sharding_initialization',
         'mongoqd_main',
     ],
     AIB_COMPONENT="mongoqd",
