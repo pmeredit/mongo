@@ -95,7 +95,7 @@ def _start(container: str, image_name: str) -> int:
     #podman run --rm  --dns=127.0.0.1 -v "$(pwd)":/app:z  --name dns_test --help  -it dns_client
     app_path = os.getcwd()
     _run_process([
-        DOCKER, "run", "--rm", "--dns=127.0.0.1", "--volume", app_path + ":/app:z", "--name",
+        DOCKER, "run", "--rm", "--log-driver", "json-file", "--dns=127.0.0.1", "--volume", app_path + ":/app:z", "--name",
         container, "--detach", image_name
     ])
 
@@ -110,6 +110,12 @@ def _stop(container: str) -> int:
     if not _is_container_running(container):
         print(f"Container '{container}' not running, not stopping it")
         return 0
+
+    print("=====================================================================================")
+    print("Dumping Docker Logs")
+    print("=====================================================================================")
+    _run_process([DOCKER, "logs", container])
+    print("=====================================================================================")
 
     _run_process([DOCKER, "stop", container])
 
