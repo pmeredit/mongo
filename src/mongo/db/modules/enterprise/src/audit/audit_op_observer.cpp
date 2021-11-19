@@ -133,6 +133,7 @@ void AuditOpObserver::onUpdate(OperationContext* opCtx, const OplogUpdateEntryAr
 
 void AuditOpObserver::aboutToDelete(OperationContext* opCtx,
                                     const NamespaceString& nss,
+                                    const UUID& uuid,
                                     const BSONObj& doc) {
     deletingAuditConfigDecoration(opCtx) =
         isAuditingConfigured() && isConfigNamespace(nss) && isAuditDoc(doc);
