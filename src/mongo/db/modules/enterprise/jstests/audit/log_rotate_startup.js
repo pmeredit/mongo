@@ -24,7 +24,8 @@ function testRotateLogsOnStartup(fixture) {
         const options = conn.fullOptions;
 
         // We need to sleep to prevent race conditions where the audit spooler is still reading
-        // the previous audit file
+        // the previous audit file and the name is not being moved to an existing audit archive
+        // file from the previous rotate.
         sleep(2000);
 
         fixture.restartMainFixtureProcess(conn, options, false);
@@ -53,6 +54,11 @@ function testRotateLogsOnStartup(fixture) {
                           {"user": "user2", "db": "admin", "mechanism": "SCRAM-SHA-256"});
 
         const options = conn.fullOptions;
+
+        // We need to sleep to prevent race conditions where the audit spooler is still reading
+        // the previous audit file and the name is not being moved to an existing audit archive
+        // file from the previous rotate.
+        sleep(2000);
 
         // Unclean shutdown is not being tested in ShardingFixture
         fixture.restartMainFixtureProcess(conn, options, true);
