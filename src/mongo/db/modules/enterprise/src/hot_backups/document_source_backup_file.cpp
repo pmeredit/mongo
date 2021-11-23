@@ -56,6 +56,33 @@ boost::intrusive_ptr<DocumentSourceBackupFile> DocumentSourceBackupFile::createF
 }
 
 DocumentSource::GetNextResult DocumentSourceBackupFile::doGetNext() {
+#ifdef _WIN32
+    // On Windows, it is vital that we close the file when we're not using it to avoid a crash when
+    // WiredTiger attempts to delete the file on shutdown or when the backup is done.  Closing the
+    // file would make performance terrible in the general case, so we only do it when not in
+    // exhaust mode (e.g. on the find command, since we don't start exhaust until the first
+    // getMore).  When we are in exhaust mode, we're guaranteed that breaking the connection kills
+    // the cursor, which will call doDispose and close the file there.
+    //
+    // We always re-open the file if it was closed and seek to '_offset', so we
+    // don't need to do anything special to handle that.
+    ON_BLOCK_EXIT([this] {
+        const bool isExhaust = getContext()->opCtx->isExhaust();
+        LOGV2_DEBUG(6170800,
+                    0,
+                    "Possibly closing file at end of getNext",
+                    "path"_attr = _backupFileSpec.getFile().toString(),
+                    "isExhaust"_attr = isExhaust,
+                    "eof"_attr = _eof,
+                    "remainingLength"_attr = _remainingLengthToRead,
+                    "open"_attr = _src.is_open());
+        if (!isExhaust) {
+            _src.close();
+            // Ignore close errors; the file may have already been closed.
+            _src.clear();
+        }
+    });
+#endif
     // If we have reached the end of file or read up to the desired length, return EOF to signal
     // that this document source is exhausted.
     if (_eof || _remainingLengthToRead == 0) {
@@ -91,7 +118,8 @@ DocumentSource::GetNextResult DocumentSourceBackupFile::doGetNext() {
         uassert(ErrorCodes::FileStreamFailed,
                 str::stream() << "Reading operation from file " << path << " failed",
                 !_src.fail());
-        _remainingLengthToRead -= _src.gcount();
+        if (isLengthSpecified)
+            _remainingLengthToRead -= _src.gcount();
     }
 
     builder.append("byteOffset", _offset);
