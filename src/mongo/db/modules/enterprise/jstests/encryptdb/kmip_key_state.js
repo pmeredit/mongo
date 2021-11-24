@@ -17,9 +17,9 @@ if (!TestData.setParameters.featureFlagKmipActivate) {
 }
 
 // Run mongod and create a new key by not passing in encryptionKeyId.
-function createKeyMongod() {
+function createKeyMongod(extraOpts) {
     clearRawMongoProgramOutput();
-    let opts = {
+    let defaultOpts = {
         enableEncryption: "",
         kmipServerName: "127.0.0.1",
         kmipPort: kmipServerPort,
@@ -29,6 +29,8 @@ function createKeyMongod() {
         // getting the state attribute from the newly created key.
         kmipClientCertificateFile: "jstests/libs/trusted-client.pem",
     };
+    let opts = Object.merge(defaultOpts, extraOpts);
+
     const md = MongoRunner.runMongod(opts);
     const adminDB = md.getDB('admin');
 
@@ -48,12 +50,23 @@ function createKeyMongod() {
 // Run mongod, create a new key (by not passing in encryptionKeyId) and ensure it is active.
 function mongodKeyActivationTest() {
     let kmipServerPid = startPyKMIPServer(kmipServerPort);
-    let keyId = createKeyMongod();
+    let keyId = createKeyMongod({});
     let isActive = isPyKMIPKeyActive(kmipServerPort, keyId);
 
     assert(isActive);
     killPyKMIPServer(kmipServerPid);
 }
 
+// Run mongod, create a new key with kmipActivateKeys set to false and ensure it is not active.
+function turnOffKmipActivateKeys() {
+    let kmipServerPid = startPyKMIPServer(kmipServerPort);
+    let keyId = createKeyMongod({kmipActivateKeys: false});
+    let isActive = isPyKMIPKeyActive(kmipServerPort, keyId);
+
+    assert(!isActive);
+    killPyKMIPServer(kmipServerPid);
+}
+
 mongodKeyActivationTest();
+turnOffKmipActivateKeys();
 })();

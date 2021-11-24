@@ -62,6 +62,10 @@ StatusWith<KMIPParams> parseKMIPOptions(const optionenvironment::Environment& pa
         kmipParams.kmipServerCAFile = params["security.kmip.serverCAFile"].as<std::string>();
     }
 
+    if (params.count("security.kmip.activateKeys")) {
+        kmipParams.activateKeys = params["security.kmip.activateKeys"].as<bool>();
+    }
+
 #ifdef MONGO_CONFIG_SSL_CERTIFICATE_SELECTORS
     if (params.count("security.kmip.clientCertificateSelector")) {
         const auto status = parseCertificateSelector(
