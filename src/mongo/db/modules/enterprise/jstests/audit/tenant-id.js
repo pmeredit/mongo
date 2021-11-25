@@ -24,12 +24,20 @@ function test(audit, conn, asBSON) {
     });
     audit.setCurrentAuditLine(preamble.length);
 
-    // Set security token on connection.
+    // Make a tenant user.
     const tenantID = ObjectId();
-    conn._setSecurityToken({tenant: tenantID});
+    assert.commandWorked(
+        conn.adminCommand({createUser: 'user1', '$tenant': tenantID, pwd: 'pwd', roles: ['root']}));
 
-    const admin = conn.getDB('admin');
-    assert.commandWorked(admin.runCommand({logApplicationMessage: 'Hello World'}));
+    // Set security token on connection.
+    const tennantConn = new Mongo(conn.host);
+    tennantConn._setSecurityToken(
+        _createSecurityToken({user: 'user1', db: 'admin', tenant: tenantID}));
+
+    // Generate audit event.
+    assert.commandWorked(tennantConn.adminCommand({logApplicationMessage: 'Hello World'}));
+
+    // Look for audited entry with tenant ID.
     const entry = audit.assertEntry('applicationMessage', {msg: 'Hello World'});
     assert(entry.tenant !== undefined, 'No tenant entry found: ' + tojson(entry));
     assert(entry.tenant['$oid'] !== undefined,
@@ -49,20 +57,7 @@ function runMongodTest(asBSON) {
     MongoRunner.stopMongod(m);
 }
 
-function runShardedTest(asBSON) {
-    const st = MongoRunner.runShardedClusterAuditLogger({}, opts);
-    const auditMongos = st.s0.auditSpooler();
-
-    test(auditMongos, st.s0, asBSON);
-    st.stop();
-}
-
 jsTest.log('START audit tenant-id.js ');
 runMongodTest(true);
 runMongodTest(false);
-
-jsTest.log('Sharding');
-runShardedTest(true);
-runShardedTest(false);
-jsTest.log('SUCCESS audit tenant-id.js');
 })();

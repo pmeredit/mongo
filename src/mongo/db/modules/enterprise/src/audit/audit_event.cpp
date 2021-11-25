@@ -10,7 +10,7 @@
 #include "mongo/db/audit.h"
 #include "mongo/db/auth/authorization_manager.h"
 #include "mongo/db/auth/authorization_session.h"
-#include "mongo/db/auth/security_token.h"
+#include "mongo/db/multitenancy.h"
 
 namespace mongo {
 namespace audit {
@@ -68,8 +68,8 @@ AuditEvent::AuditEvent(Client* client,
     if (!getGlobalAuditManager()->getEncryptionEnabled()) {
         builder.append(kTimestampField, _ts);
     }
-    if (auto token = auth::getSecurityToken(client->getOperationContext())) {
-        builder.append(kTenantField, token->getTenant());
+    if (auto tenant = getActiveTenant(client->getOperationContext())) {
+        builder.append(kTenantField, tenant.get());
     }
     serializeClient(client, &builder);
 
