@@ -177,7 +177,7 @@ void AuditOpObserver::postRenameCollection(OperationContext* opCtx,
                                            const NamespaceString& fromCollection,
                                            const NamespaceString& toCollection,
                                            const UUID& uuid,
-                                           OptionalCollectionUUID dropTargetUUID,
+                                           const boost::optional<UUID>& dropTargetUUID,
                                            bool stayTemp) {
     if (isAuditingConfigured() && isConfigNamespace(fromCollection)) {
         // Same as collection dropped from a config point of view.
