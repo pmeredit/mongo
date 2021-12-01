@@ -12,10 +12,46 @@ env = env.Clone()
 env.Library(
     target='mongoqd_main',
     source=[
+        'read_write_concern_defaults_cache_lookup_mongoqd.cpp',
         'mongoqd_main.cpp',
+        'mongoqd_options.cpp',
+        'mongoqd_options_init.cpp',
+        'mongoqd_options.idl',
+        'version_mongoqd.cpp',
     ],
     LIBDEPS_PRIVATE=[
-        '$BUILD_DIR/mongo/s/mongos_main',
+        # NOTE: Do not add new libdeps (public or private) here unless
+        # required by the linker to satisfy symbol dependencies from
+        # the files listed above in `sources`. If you need to add a
+        # library to inject a static or mongo initializer to mongoqd,
+        # please add that library as a private libdep of
+        # mongos_initializers.
+        '$BUILD_DIR/mongo/client/remote_command_targeter',
+        '$BUILD_DIR/mongo/db/audit',
+        '$BUILD_DIR/mongo/db/auth/authmongos',
+        '$BUILD_DIR/mongo/db/commands/rwc_defaults_commands',
+        '$BUILD_DIR/mongo/db/ftdc/ftdc_mongos',
+        '$BUILD_DIR/mongo/db/process_health/fault_manager',
+        '$BUILD_DIR/mongo/db/read_write_concern_defaults',
+        '$BUILD_DIR/mongo/db/serverinit',
+        '$BUILD_DIR/mongo/db/service_liaison_mongos',
+        '$BUILD_DIR/mongo/db/session_catalog',
+        '$BUILD_DIR/mongo/db/startup_warnings_common',
+        '$BUILD_DIR/mongo/s/client/sharding_client',
+        '$BUILD_DIR/mongo/s/commands/cluster_commands',
+        '$BUILD_DIR/mongo/s/committed_optime_metadata_hook',
+        '$BUILD_DIR/mongo/s/load_balancer_support',
+        '$BUILD_DIR/mongo/s/mongos_initializers',
+        '$BUILD_DIR/mongo/s/mongos_topology_coordinator',
+        '$BUILD_DIR/mongo/s/query/cluster_cursor_cleanup_job',
+        '$BUILD_DIR/mongo/s/sessions_collection_sharded',
+        '$BUILD_DIR/mongo/s/sharding_initialization',
+        '$BUILD_DIR/mongo/s/sharding_router_api',
+        '$BUILD_DIR/mongo/s/startup_initialization',
+        '$BUILD_DIR/mongo/transport/service_entry_point',
+        '$BUILD_DIR/mongo/transport/transport_layer_manager',
+        '$BUILD_DIR/mongo/util/latch_analyzer' if get_option('use-diagnostic-latches') == 'on' else [],
+        '$BUILD_DIR/mongo/util/signal_handlers',
     ],
     LIBDEPS=[
         # NOTE: This list must remain empty. Please only add to LIBDEPS_PRIVATE
