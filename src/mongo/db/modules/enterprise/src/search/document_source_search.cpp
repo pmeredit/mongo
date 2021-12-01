@@ -41,22 +41,17 @@ std::list<intrusive_ptr<DocumentSource>> DocumentSourceSearch::createFromBson(
     uassert(ErrorCodes::FailedToParse,
             str::stream() << "$search value must be an object. Found: " << typeName(elem.type()),
             elem.type() == BSONType::Object);
-    // If 'returnStoredFields' is true, we don't want to do idLookup. Instead, promote the fields in
-    // 'stored' to root.
+    // If 'returnStoredSource' is true, we don't want to do idLookup. Instead, promote the fields in
+    // 'storedSource' to root.
     // 'getBoolField' returns false if the field is not present.
-    if (elem.Obj().getBoolField(kReturnStoredFieldsArg)) {
-        // {$replaceRoot: {newRoot: {$mergeObjects: [ {$ifNull: ["$stored", {}]}, {_id: "$_id"}]}
-        // ]}}}. 'stored' is not always present in the document from mongot. If it's present, merge
-        // it with _id in the return document. 'stored' may be missing if the user has not
-        // configured their index to include any fields or if we are communicating with an older
-        // mongot version that does not support this protocol.
-        BSONObj replaceRootSpec = BSON(
-            "$replaceRoot" << BSON(
-                "newRoot" << BSON(
-                    "$mergeObjects" << BSON_ARRAY(
-                        BSON("$ifNull" << BSON_ARRAY("$" + kProtocolStoredFieldsName << BSONObj()))
-                        << BSON("_id"
-                                << "$_id")))));
+    if (elem.Obj().getBoolField(kReturnStoredSourceArg)) {
+        // {$replaceRoot: {newRoot: {$ifNull: ["$storedSource", "$$ROOT"]}}
+        // 'storedSource' is not always present in the document from mongot. If it's present, use it
+        // as the root. Otherwise keep the original document.
+        BSONObj replaceRootSpec =
+            BSON("$replaceRoot" << BSON(
+                     "newRoot" << BSON(
+                         "$ifNull" << BSON_ARRAY("$" + kProtocolStoredFieldsName << "$$ROOT"))));
         return {DocumentSourceInternalSearchMongotRemote::createFromBson(elem, pExpCtx),
                 DocumentSourceReplaceRoot::createFromBson(replaceRootSpec.firstElement(), pExpCtx)};
     }

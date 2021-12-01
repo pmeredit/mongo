@@ -1,5 +1,5 @@
 /**
- * Verify that $search with 'returnStoredFields' returns both metadata and full documents.
+ * Verify that $search with 'returnStoredSource' returns both metadata and full documents.
  */
 (function() {
 "use strict";
@@ -13,7 +13,7 @@ const dbName = jsTestName();
 const searchQuery = {
     query: "cakes",
     path: "title",
-    returnStoredFields: true
+    returnStoredSource: true
 };
 (function testStandalone() {
     // Set up mongotmock and point the mongod to it.
@@ -34,7 +34,7 @@ const searchQuery = {
     ]));
 
     const collUUID = getUUIDFromListCollections(testDB, coll.getName());
-    const searchQuery = {query: "cakes", path: "title", returnStoredFields: true};
+    const searchQuery = {query: "cakes", path: "title", returnStoredSource: true};
 
     const searchCmd = {
         search: coll.getName(),
@@ -56,15 +56,17 @@ const searchQuery = {
                         // Include a field not on mongod to make sure we are getting back mongot
                         // documents.
                         {
-                            _id: 2,
                             $searchScore: 0.654,
-                            stored: {title: "cookies and cakes", tasty: true}
+                            storedSource: {_id: 2, title: "cookies and cakes", tasty: true}
                         },
-                        {_id: 1, $searchScore: 0.321, stored: {title: "cakes", tasty: true}},
-                        {_id: 3, $searchScore: 0.123, stored: {title: "vegetables", tasty: false}},
-                        // Ensure that if a returned document doesn't have a 'stored' field we can
-                        // still return a corresponding document.
-                        {_id: 4, $searchScore: .2}
+                        {$searchScore: 0.321, storedSource: {_id: 1, title: "cakes", tasty: true}},
+                        {$searchScore: 0.123, storedSource: {title: "vegetables", tasty: false}},
+                        // Ensure that if a returned document doesn't have a 'storedSource' field we
+                        // can still return a corresponding document.
+                        {_id: 4, $searchScore: .2},
+                        // Ensure that if a returned document has an empty 'storedSource' field we
+                        // can still return a corresponding document.
+                        {$searchScore: 0.654, storedSource: {}}
                     ]
                 },
                 vars: {SEARCH_META: {value: 42}}
@@ -89,8 +91,9 @@ const searchQuery = {
         let expected = [
             {_id: 2, score: 0.654, title: "cookies and cakes", tasty: true, meta: {value: 42}},
             {_id: 1, score: 0.321, title: "cakes", tasty: true, meta: {value: 42}},
-            {_id: 3, score: 0.123, title: "vegetables", tasty: false, meta: {value: 42}},
-            {_id: 4, score: .2, meta: {value: 42}}
+            {score: 0.123, title: "vegetables", tasty: false, meta: {value: 42}},
+            {_id: 4, score: .2, meta: {value: 42}},
+            {score: .654, meta: {value: 42}}
         ];
         assert(arrayEq(expected, aggResults),
                "Expected:\n" + tojson(expected) + "\nGot:\n" + tojson(aggResults));
@@ -138,9 +141,10 @@ const searchQuery = {
     const responseOk = 1;
 
     const mongot0ResponseBatch = [
-        {_id: 2, $searchScore: 10, stored: {old: true}},
-        {_id: 1, $searchScore: 0.99, stored: {old: true}},
-        {_id: 3, $searchScore: 29}
+        {$searchScore: 10, storedSource: {_id: 2, old: true}},
+        {$searchScore: 0.99, storedSource: {_id: 1, old: true}},
+        {_id: 3, $searchScore: 29},
+        {$searchScore: 0.654, storedSource: {}}
     ];
     const history0 = [{
         expectedCommand:
@@ -151,9 +155,10 @@ const searchQuery = {
     s0Mongot.setMockResponses(history0, NumberLong(123));
 
     const mongot1ResponseBatch = [
-        {_id: 11, $searchScore: 111, stored: {old: false}},
-        {_id: 12, $searchScore: 29, stored: {old: false}},
-        {_id: 13, $searchScore: 30}
+        {$searchScore: 111, storedSource: {_id: 11, old: false}},
+        {$searchScore: 29, storedSource: {_id: 12, old: false}},
+        {_id: 13, $searchScore: 30},
+        {$searchScore: 0.456, storedSource: {}}
     ];
     const history1 = [{
         expectedCommand:
@@ -169,7 +174,9 @@ const searchQuery = {
         {_id: 3, score: 29},
         {_id: 11, old: false, score: 111},
         {_id: 12, old: false, score: 29},
-        {_id: 13, score: 30}
+        {_id: 13, score: 30},
+        {score: .654},
+        {score: .456},
     ];
 
     const aggResults = coll.aggregate([
