@@ -43,6 +43,17 @@ public:
         sleepFor(Milliseconds(100));
     }
 
+    void tearDown() override {
+        auto reaperDestroyedFp = globalFailPointRegistry().find("ldapConnectionReaperDestroyed");
+        auto timesEnteredBefore = reaperDestroyedFp->setMode(FailPoint::alwaysOn);
+        // Force the existing manager to be cleaned and wait for the connection reaper
+        // to be destroyed, because the reaper can outlive the manager and corrupt memory.
+        resetLdapManager();
+        reaperDestroyedFp->waitForTimesEntered(timesEnteredBefore + 1);
+        reaperDestroyedFp->setMode(FailPoint::off);
+        FaultManagerTest::tearDown();
+    }
+
     void resetLdapManager() {
         LDAPBindOptions bindOptions(globalLDAPParams->bindUser,
                                     globalLDAPParams->bindPassword,
@@ -86,7 +97,7 @@ public:
     }
 };
 
-// TODO(SERVER-61529): refactor base code to fix the tests and re-enable.
+// TODO(SERVER-61099): refactor base code to fix the tests and re-enable.
 #if 0
 TEST_F(LdapHealthObserverTest, HealthObserverIsLoaded) {
     std::vector<HealthObserver*> observers = manager().getHealthObserversTest();

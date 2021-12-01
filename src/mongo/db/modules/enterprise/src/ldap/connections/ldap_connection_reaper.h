@@ -23,6 +23,8 @@ class LDAPConnectionReaper {
 public:
     LDAPConnectionReaper();
 
+    ~LDAPConnectionReaper();
+
     /**
      * Schedule the connection reaper to disconnect/unbind a LDAP session on a background thread if
      * multithreading is safe. Otherwise, it will disconnect inline.

@@ -11,6 +11,7 @@
 #include "mongo/base/status_with.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/concurrency/thread_pool.h"
+#include "mongo/util/fail_point.h"
 #include "mongo/util/functional.h"
 #include "mongo/util/out_of_line_executor.h"
 #include "mongo/util/thread_safety_context.h"
@@ -18,6 +19,8 @@
 
 namespace mongo {
 namespace {
+
+MONGO_FAIL_POINT_DEFINE(ldapConnectionReaperDestroyed);
 
 static inline std::shared_ptr<ThreadPoolInterface> _makeThreadPool() {
     ThreadPool::Options opts;
@@ -31,6 +34,13 @@ static inline std::shared_ptr<ThreadPoolInterface> _makeThreadPool() {
 }  // namespace
 
 LDAPConnectionReaper::LDAPConnectionReaper() : _executor(_makeThreadPool()) {}
+
+LDAPConnectionReaper::~LDAPConnectionReaper() {
+    _executor.reset();
+    if (MONGO_unlikely(ldapConnectionReaperDestroyed.shouldFail())) {
+        LOGV2(6152901, "LDAP Connection reaper is destroyed");
+    }
+}
 
 void LDAPConnectionReaper::scheduleReapOrDisconnectInline(reapFunc reaper) {
     // If the LDAP connection is being reaped before it is safe to spawn multiple threads, the reap
