@@ -163,5 +163,6 @@ private:
     std::vector<uint8_t> _iv;
     Attribute _attribute;
 };
+
 }  // namespace kmip
 }  // namespace mongo

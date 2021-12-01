@@ -12,6 +12,7 @@
 
 #include "encryptdb/encryption_options_gen.h"
 #include "encryption_options.h"
+#include "kmip/kmip_key_active_periodic_job.h"
 #include "kmip/kmip_service.h"
 #include "mongo/base/string_data.h"
 #include "mongo/config.h"
@@ -26,8 +27,6 @@
 using namespace mongo::kmip;
 
 namespace mongo {
-
-constexpr auto kStateAttribute = "State"_sd;
 
 StatusWith<std::unique_ptr<SymmetricKey>> getKeyFromKeyFile(StringData encryptionKeyFile) {
     auto keyStrings = readSecurityFile(encryptionKeyFile.toString());
@@ -71,16 +70,35 @@ StatusWith<std::unique_ptr<SymmetricKey>> getKeyFromKMIPServer(const KMIPParams&
                       "Encryption at rest enabled but no key server specified");
     }
 
-    auto kmipService = getGlobalKMIPService();
+    auto swKmipService = KMIPService::createKMIPService();
+    if (!swKmipService.isOK()) {
+        return swKmipService.getStatus();
+    }
+
+    auto& kmipService = swKmipService.getValue();
 
     // Try to retrieve an existing key.
     if (!keyId.empty()) {
-        // TODO(SERVER-42505): Periodically check if KMIP key is in the Active State
-        return kmipService->getExternalKey(keyId.toString());
+        auto swKey = kmipService.getExternalKey(keyId.toString());
+        if (!swKey.isOK()) {
+            return swKey;
+        }
+
+        if (feature_flags::gFeatureFlagKmipActivate.isEnabledAndIgnoreFCV() &&
+            kmipParams.activateKeys) {
+            auto status = KMIPIsActivePollingJob::get(getGlobalServiceContext())
+                              ->createJob(keyId.toString(), kmipParams.kmipKeyStatePollingSeconds);
+            if (!status.isOK()) {
+                return status;
+            }
+            KMIPIsActivePollingJob::get(getGlobalServiceContext())->startJob();
+        }
+
+        return swKey;
     }
 
     // Create and retrieve new key.
-    StatusWith<std::string> swCreateKey = kmipService->createExternalKey();
+    StatusWith<std::string> swCreateKey = kmipService.createExternalKey();
     if (!swCreateKey.isOK()) {
         return swCreateKey.getStatus();
     }
@@ -89,16 +107,24 @@ StatusWith<std::unique_ptr<SymmetricKey>> getKeyFromKMIPServer(const KMIPParams&
     LOGV2(24199, "Created KMIP key", "keyId"_attr = newKeyId);
     if (!feature_flags::gFeatureFlagKmipActivate.isEnabledAndIgnoreFCV() ||
         !kmipParams.activateKeys) {
-        return kmipService->getExternalKey(newKeyId);
+        return kmipService.getExternalKey(newKeyId);
     }
 
-    StatusWith<std::string> swActivatedUid = kmipService->activate(newKeyId);
+    StatusWith<std::string> swActivatedUid = kmipService.activate(newKeyId);
     if (!swActivatedUid.isOK()) {
         return swActivatedUid.getStatus();
     }
 
     LOGV2(2360700, "Activated KMIP key", "uid"_attr = swActivatedUid.getValue());
-    return kmipService->getExternalKey(newKeyId);
+
+    auto status = KMIPIsActivePollingJob::get(getGlobalServiceContext())
+                      ->createJob(newKeyId, kmipParams.kmipKeyStatePollingSeconds);
+    if (!status.isOK()) {
+        return status;
+    }
+    KMIPIsActivePollingJob::get(getGlobalServiceContext())->startJob();
+
+    return kmipService.getExternalKey(newKeyId);
 }
 
 }  // namespace mongo

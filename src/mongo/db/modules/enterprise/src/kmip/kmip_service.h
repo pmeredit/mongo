@@ -78,7 +78,7 @@ public:
     StatusWith<KMIPResponse::Attribute> getAttributes(const std::string& uid,
                                                       const std::string& attributeName);
 
-    friend std::shared_ptr<KMIPService> getGlobalKMIPService();
+    static StatusWith<KMIPService> createKMIPService();
 
 private:
     KMIPService(const HostAndPort& server, std::shared_ptr<SSLManagerInterface> sslManager);
@@ -119,9 +119,6 @@ private:
     HostAndPort _server;
     std::unique_ptr<Socket> _socket;
 };
-
-
-std::shared_ptr<KMIPService> getGlobalKMIPService();
 
 }  // namespace kmip
 }  // namespace mongo

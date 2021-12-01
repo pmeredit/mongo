@@ -29,24 +29,9 @@
 namespace mongo {
 namespace kmip {
 
-const auto getKMIPService = ServiceContext::declareDecoration<std::shared_ptr<KMIPService>>();
-
-std::shared_ptr<KMIPService> getGlobalKMIPService() {
-    ServiceContext* service = getGlobalServiceContext();
-
-    // This should never be called before the global service context has been created.
-    invariant(service);
-    auto kmipService = getKMIPService(service);
-
-    if (kmipService) {
-        return kmipService;
-    }
-
-    // lazily create
-    getKMIPService(service) =
-        std::make_shared<KMIPService>(uassertStatusOK(KMIPService::createKMIPService(
-            encryptionGlobalParams.kmipParams, sslGlobalParams.sslFIPSMode)));
-    return getKMIPService(service);
+StatusWith<KMIPService> KMIPService::createKMIPService() {
+    return uassertStatusOK(
+        createKMIPService(encryptionGlobalParams.kmipParams, sslGlobalParams.sslFIPSMode));
 };
 
 StatusWith<KMIPService> KMIPService::createKMIPService(const HostAndPort& server,

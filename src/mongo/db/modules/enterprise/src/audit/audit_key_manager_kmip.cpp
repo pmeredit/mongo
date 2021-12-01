@@ -50,7 +50,14 @@ AuditKeyManager::KeyGenerationResult AuditKeyManagerKMIPEncrypt::generateWrapped
             logEncryptKey.getKeySize());  // since uint8_t is a byte, this pointer arithmetic is OK
 
     // encrypt with the provided key encryption key's UID through KMIP
-    auto swResult = kmip::getGlobalKMIPService()->encrypt(_keyEncryptKeyUID, keyCopy);
+    auto swKmipService = kmip::KMIPService::createKMIPService();
+    if (!swKmipService.isOK()) {
+        LOGV2_FATAL(4250506,
+                    "Failed to retrieve KMIP Service for encryption",
+                    "reason"_attr = swKmipService.getStatus());
+    }
+
+    auto swResult = swKmipService.getValue().encrypt(_keyEncryptKeyUID, keyCopy);
 
     if (!swResult.getStatus().isOK()) {
         LOGV2_FATAL(5884600,
@@ -128,7 +135,15 @@ SymmetricKey AuditKeyManagerKMIPEncrypt::unwrapKey(WrappedKey wrappedKey) {
     std::vector<uint8_t> iv(ivPtr, ivPtr + ivLen);
 
     // decrypt with the provided key encryption key's UID and IV through KMIP
-    auto swDecrypted = kmip::getGlobalKMIPService()->decrypt(_keyEncryptKeyUID, iv, key);
+
+    auto swKMIPService = kmip::KMIPService::createKMIPService();
+    if (!swKMIPService.isOK()) {
+        LOGV2_FATAL(4250507,
+                    "Unable to create KMIP Service for decryption",
+                    "reason"_attr = swKMIPService.getStatus());
+    }
+
+    auto swDecrypted = swKMIPService.getValue().decrypt(_keyEncryptKeyUID, iv, key);
 
     if (!swDecrypted.getStatus().isOK()) {
         LOGV2_FATAL(5884601,
@@ -183,8 +198,12 @@ UniqueSymmetricKey AuditKeyManagerKMIPGet::fetchKeyEncryptKey() {
             !_keyEncryptKeyUID.empty());
 
     // get the key encryption key from KMIP server
+    auto kmipService =
+        uassertStatusOKWithContext(kmip::KMIPService::createKMIPService(),
+                                   "Failed to set up KMIP Service for Audit Key encryption");
+
     auto keyEncryptKey =
-        uassertStatusOKWithContext(kmip::getGlobalKMIPService()->getExternalKey(_keyEncryptKeyUID),
+        uassertStatusOKWithContext(kmipService.getExternalKey(_keyEncryptKeyUID),
                                    "Failed to get external key for audit key encryption");
 
     // the retrieved key must be 256 bits in size

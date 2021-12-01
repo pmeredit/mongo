@@ -518,5 +518,6 @@ StatusWith<KMIPResponse::Attribute> KMIPResponse::_parseAttribute(ConstDataRange
                           << "Cannot parse attribute: " << attrName << ". Not implemented. ");
     }
 }
+
 }  // namespace kmip
 }  // namespace mongo

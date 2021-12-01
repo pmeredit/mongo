@@ -15,6 +15,7 @@
 #include <tuple>
 
 #include "encryptdb/encryption_key_manager_gen.h"
+#include "encryptdb/encryption_options_gen.h"
 #include "encrypted_data_protector.h"
 #include "encryption_key_acquisition.h"
 #include "mongo/base/checked_cast.h"
@@ -40,7 +41,6 @@
 
 namespace mongo {
 namespace fs = boost::filesystem;
-
 namespace {
 const std::string kInvalidatedKeyword = "-invalidated-";
 const std::string kInitializingKeyword = "-initializing";
@@ -599,6 +599,7 @@ Status EncryptionKeyManager::_initLocalKeystore() {
         _keystore.reset();
         return e.toStatus();
     }
+
     return Status::OK();
 }
 

@@ -80,6 +80,21 @@ function isPyKMIPKeyActive(kmipServerPort, uid) {
     return (isActive == "True");
 }
 
+function deactivatePyKMIPKey(kmipServerPort, uid) {
+    let pid = _startMongoProgram("python",
+                                 kmipPyPath + "kmip_manage_key.py",
+                                 "--kmipPort",
+                                 kmipServerPort,
+                                 "deactivate_kmip_key",
+                                 "--uid",
+                                 uid);
+
+    assert.soon(() => {
+        const status = checkProgram(pid);
+        return status.exitCode === 0;
+    });
+}
+
 function killPyKMIPServer(pid) {
     if (_isWindows()) {
         // we use taskkill because we need to kill children

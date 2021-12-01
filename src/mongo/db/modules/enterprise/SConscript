@@ -140,6 +140,7 @@ if "encryptdb" in env['MONGO_ENTERPRISE_FEATURES'] or "audit" in env['MONGO_ENTE
     env.Library(
         target='kmip',
         source=[
+            'src/kmip/kmip_key_active_periodic_job.cpp',
             'src/kmip/kmip_request.cpp',
             'src/kmip/kmip_response.cpp',
             'src/kmip/kmip_service.cpp',

@@ -1,4 +1,5 @@
-// This test tests that the KMIP 'State' attribute is 'active' upon creation.
+// This test checks that when the KMIP key is in a state other than active,
+// we shut down the node.
 // It assumes that PyKMIP is installed
 // @tags: [uses_pykmip]
 
@@ -6,7 +7,7 @@
 "use strict";
 
 const testDir = "src/mongo/db/modules/enterprise/jstests/encryptdb/";
-const kmipServerPort = 6569;
+const kmipServerPort = 6570;
 
 load("jstests/libs/log.js");
 load(testDir + "libs/helpers.js");
@@ -16,22 +17,22 @@ if (!TestData.setParameters.featureFlagKmipActivate) {
     return;
 }
 
-// Run mongod and create a new key by not passing in encryptionKeyId.
-function createKeyMongod(extraOpts) {
+function setUpTest() {
+    let kmipServerPid = startPyKMIPServer(kmipServerPort);
     clearRawMongoProgramOutput();
     let defaultOpts = {
         enableEncryption: "",
         kmipServerName: "127.0.0.1",
         kmipPort: kmipServerPort,
         kmipServerCAFile: "jstests/libs/trusted-ca.pem",
+        kmipKeyStatePollingSeconds: 5,
         encryptionCipherMode: "AES256-CBC",
         // We need the trusted-client certificate file in order to avoid permission issues when
         // getting the state attribute from the newly created key.
         kmipClientCertificateFile: "jstests/libs/trusted-client.pem",
     };
-    let opts = Object.merge(defaultOpts, extraOpts);
 
-    const md = MongoRunner.runMongod(opts);
+    const md = MongoRunner.runMongod(defaultOpts);
     const adminDB = md.getDB('admin');
 
     // Get the keyId of the newly created key from the logs.
@@ -43,30 +44,36 @@ function createKeyMongod(extraOpts) {
     let keyId = JSON.parse(line).attr.keyId;
     jsTest.log('Key ID found: ' + keyId);
 
+    return {keyId, kmipServerPid, md};
+}
+
+print("Testing that server shuts down when key is deactivated.");
+{
+    const {keyId, kmipServerPid, md} = setUpTest();
+
+    deactivatePyKMIPKey(kmipServerPort, keyId);
+    sleep(5000);
+
+    assert.gte(rawMongoProgramOutput().search(
+                   "KMIP Key used for ESE is not in active state. Shutting down server."),
+               0);
+
+    killPyKMIPServer(kmipServerPid);
+}
+
+print("Successfully verified that server shuts down when key is deactivated.");
+print("Testing that server does not shut down when periodic job cannot reach KMIP Server.");
+{
+    const {keyId, kmipServerPid, md} = setUpTest();
+
+    killPyKMIPServer(kmipServerPid);
+
+    sleep(5000);
+
+    checkLog.containsJson(md, 4250500);
+
     MongoRunner.stopMongod(md);
-    return keyId;
 }
-
-// Run mongod, create a new key (by not passing in encryptionKeyId) and ensure it is active.
-function mongodKeyActivationTest() {
-    let kmipServerPid = startPyKMIPServer(kmipServerPort);
-    let keyId = createKeyMongod({});
-    let isActive = isPyKMIPKeyActive(kmipServerPort, keyId);
-
-    assert(isActive);
-    killPyKMIPServer(kmipServerPid);
-}
-
-// Run mongod, create a new key with kmipActivateKeys set to false and ensure it is not active.
-function turnOffKmipActivateKeys() {
-    let kmipServerPid = startPyKMIPServer(kmipServerPort);
-    let keyId = createKeyMongod({kmipActivateKeys: false});
-    let isActive = isPyKMIPKeyActive(kmipServerPort, keyId);
-
-    assert(!isActive);
-    killPyKMIPServer(kmipServerPid);
-}
-
-mongodKeyActivationTest();
-turnOffKmipActivateKeys();
+print(
+    "Successfully verified that server does not shut down when periodic job cannot reach KMIP Server.");
 })();

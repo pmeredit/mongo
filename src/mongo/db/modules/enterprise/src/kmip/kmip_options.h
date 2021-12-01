@@ -23,6 +23,7 @@ struct KMIPParams {
     std::string kmipClientCertificateFile;
     std::string kmipClientCertificatePassword;
     std::string kmipServerCAFile;
+    boost::optional<Seconds> kmipKeyStatePollingSeconds;
 
 #ifdef MONGO_CONFIG_SSL_CERTIFICATE_SELECTORS
     SSLParams::CertificateSelector kmipClientCertificateSelector;  // --kmipCertificateSelector

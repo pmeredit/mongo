@@ -64,3 +64,8 @@ configs:
             - "security.kmip.clientCertificatePassword"
         condition:
             preprocessor: 'defined(MONGO_CONFIG_SSL_CERTIFICATE_SELECTORS)'
+    "security.kmip.keyStatePollingSeconds":
+        description: 'Frequency for node to poll KMIP server for key active state'
+        short_name: kmipKeyStatePollingSeconds
+        arg_vartype: Int
+        requires: "security.kmip.serverName"
