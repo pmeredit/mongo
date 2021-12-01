@@ -139,22 +139,11 @@ testWithOpts(function(opts) {
 });
 
 testWithOpts(function(opts) {
-    function clone(opts) {
-        // Clone parts of the options object because Javascript
-        // ShardingTest mutates opts.setParameters without first
-        // cloning it. TODO(SERVER-59909)
-        const ret = Object.assign({}, opts);
-        if (ret.setParameter) {
-            ret.setParameter = Object.assign({}, ret.setParameter);
-        }
-        return ret;
-    }
-
     jsTest.log('Sharding: ' + tojson(opts));
     const st = new ShardingTest({
-        mongos: [clone(opts)],
-        config: [clone(opts)],
-        rs: {nodes: [clone(opts)]},
+        mongos: [opts],
+        config: [opts],
+        rs: {nodes: [opts]},
         shards: 1,
         useHostname: false,
         other: {keyFile: 'jstests/libs/key1'},
