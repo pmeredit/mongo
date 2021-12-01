@@ -1,0 +1,64 @@
+# -*- mode: python; -*-
+
+
+from functools import partial
+import libdeps
+
+Import("env")
+Import("get_option")
+
+env = env.Clone()
+
+csfleSupportEnv = env.Clone()
+csfleSupportEnv.AppendUnique(
+    CPPDEFINES=[
+        'CSFLE_SUPPORT_COMPILING',
+     ],
+)
+
+if get_option('link-model') == 'static':
+    csfleSupportEnv.AppendUnique(
+        CPPDEFINES=[
+            'CSFLE_SUPPORT_STATIC',
+        ],
+        LINKFLAGS=[
+            '-static',
+        ],
+    )
+
+csfleSupportTargets = csfleSupportEnv.Library(
+    target='mongo_csfle',
+    source=[
+        'mongo_csfle.cpp',
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/service_context',
+        '$BUILD_DIR/mongo/util/options_parser/options_parser',
+        '../query_analysis/cryptd_query_analysis',
+    ],
+    AIB_COMPONENT='mongo-csfle',
+)
+
+env.AutoInstall(
+    '$PREFIX_INCLUDEDIR/mongo_csfle/v1/csfle_support',
+    source=['mongo_csfle.h'],
+    AIB_COMPONENT='mongo-csfle',
+    AIB_ROLE='dev',
+)
+
+if get_option('link-model') != 'dynamic-sdk':
+    csfleSupportTestEnv = env.Clone()
+    unitTest = csfleSupportTestEnv.CppUnitTest(
+        target="mongo_csfle_test",
+        source=[
+            "mongo_csfle_test.cpp",
+        ],
+        LIBDEPS=[
+            '$BUILD_DIR/mongo/db/service_context_test_fixture',
+            '$BUILD_DIR/mongo/unittest/unittest',
+            'mongo_csfle',
+        ],
+        UNITTEST_HAS_CUSTOM_MAINLINE=True,
+        AIB_COMPONENT='mongo-csfle-test',
+    )
