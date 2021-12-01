@@ -569,7 +569,8 @@ public:
                                              "1,15,5,1",
                                              ServerStatusClient::METRICS,
                                              "metrics.record.moves",
-                                             VT_CNT64));
+                                             VT_CNT64,
+                                             DEPRECATED));
         v.push_back(new ServerStatusCallback("metricsReplApplyBatchesNum",
                                              "1,15,6,1,1,1",
                                              ServerStatusClient::METRICS,

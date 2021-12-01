@@ -898,7 +898,7 @@ metricsRecord OBJECT IDENTIFIER ::= { metrics 5 }
 metricsRecordMoves OBJECT-TYPE
    SYNTAX      Counter64
    MAX-ACCESS  read-only
-   STATUS      current
+   STATUS      deprecated
    DESCRIPTION
       "total number of times documents move within the on-disk representation of the MongoDB data set"
    ::= { metricsRecord  1}
