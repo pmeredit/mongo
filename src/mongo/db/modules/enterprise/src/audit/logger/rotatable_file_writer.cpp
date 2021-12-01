@@ -210,7 +210,7 @@ Status RotatableFileWriter::Use::rotate(bool renameOnRotate,
             if (targetExists.getValue()) {
                 if (onMinorError)
                     onMinorError({ErrorCodes::FileRenameFailed,
-                                  "Target already exists during log rotation. Skipping this file. "
+                                  "Target already exists during log rotation. "
                                   "target={}, file={}"_format(renameTarget, _writer->_fileName)});
                 return Status::OK();
             }
