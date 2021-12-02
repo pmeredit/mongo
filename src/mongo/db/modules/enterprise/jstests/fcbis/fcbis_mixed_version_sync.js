@@ -6,7 +6,7 @@
  * a sharded cluster, as shard servers start in downgraded FCV by default. As a result,
  * 'runUpgradeTest()' starts a sharded cluster, adds a downgraded FCV node to the shard, and ensures
  * the newly added node ends up in the latest FCV.
- * @tags: [multiversion_incompatible]
+ * @tags: [multiversion_incompatible, requires_persistence, requires_wiredtiger]
  */
 
 (function() {

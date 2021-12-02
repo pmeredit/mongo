@@ -1,6 +1,7 @@
 /**
  * Tests that a node that has undergone file copy based initial sync can become primary and
  * contribute to the majority of the set.
+ * @tags: [requires_persistence, requires_wiredtiger]
  */
 (function() {
 "use strict";

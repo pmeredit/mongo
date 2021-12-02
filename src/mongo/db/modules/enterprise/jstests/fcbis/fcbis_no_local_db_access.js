@@ -1,5 +1,6 @@
 /**
  * Tests that access to 'local' is denied during File Copy Based Initial Sync.
+ * @tags: [requires_persistence, requires_wiredtiger]
  */
 (function() {
 "use strict";

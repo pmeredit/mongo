@@ -1,6 +1,7 @@
 /**
  * Tests that file copy based initial sync will fallback to logical initial sync if we cannot find
  * a valid sync source within numInitialSyncConnectAttempts.
+ * @tags: [requires_persistence, requires_wiredtiger]
  */
 (function() {
 "use strict";

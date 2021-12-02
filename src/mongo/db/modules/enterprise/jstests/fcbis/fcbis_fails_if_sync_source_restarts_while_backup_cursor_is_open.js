@@ -1,6 +1,7 @@
 /**
  * Tests that file copy based initial sync will fail if sync source restarts while backup cursor is
  * open in either the original backup phase or the extend backup phase
+ * @tags: [requires_persistence, requires_wiredtiger]
  */
 (function() {
 "use strict";

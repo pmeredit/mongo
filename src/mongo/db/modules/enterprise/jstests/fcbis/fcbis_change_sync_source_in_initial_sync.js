@@ -1,6 +1,7 @@
 /**
  * Tests that calling 'replSetSyncFrom' on an file-copy based initial syncing node will cancel the
  * current syncing attempt and cause it to retry against the newly designated sync source.
+ * @tags: [requires_persistence, requires_wiredtiger]
  */
 
 (function() {

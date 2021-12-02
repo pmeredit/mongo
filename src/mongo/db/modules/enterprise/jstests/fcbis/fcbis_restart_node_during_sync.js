@@ -2,6 +2,7 @@
  * Tests restarting a file copy based initial sync during various points. We attempt to restart the
  * syncing node while it is cloning files, after it has deleted the old storage files, and after it
  * has moved files from the '.initialsync' directory to the dbpath.
+ * @tags: [requires_persistence, requires_wiredtiger]
  */
 
 (function() {

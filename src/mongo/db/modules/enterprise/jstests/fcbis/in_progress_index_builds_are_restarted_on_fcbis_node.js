@@ -1,5 +1,6 @@
 /**
  * Tests that in progress index builds are restarted on file copy based initial sync node.
+ * @tags: [requires_persistence, requires_wiredtiger]
  */
 (function() {
 "use strict";
