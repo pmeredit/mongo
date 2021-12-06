@@ -33,14 +33,12 @@ public:
 
         setStandardParams();
         resetLdapManager();
+        resetManager(std::make_unique<FaultManagerConfig>());
 
         // Lazy initialization requires that the health check is
         // triggered once before the health observers are instantiated.
-        // TODO(SERVER-61099): enable when initial check is fixed.
-        // manager().healthCheckTest();
-        // assertSoon([this] { return manager().getFaultState() != FaultState::kStartupCheck; });
-        // TODO(SERVER-61099): remove this when initial check is fixed.
-        sleepFor(Milliseconds(100));
+        auto initialHealthCheckFuture = manager().startPeriodicHealthChecks();
+        initialHealthCheckFuture.get();
     }
 
     void tearDown() override {
@@ -97,8 +95,6 @@ public:
     }
 };
 
-// TODO(SERVER-61099): refactor base code to fix the tests and re-enable.
-#if 0
 TEST_F(LdapHealthObserverTest, HealthObserverIsLoaded) {
     std::vector<HealthObserver*> observers = manager().getHealthObserversTest();
     const int count =
@@ -184,7 +180,6 @@ TEST_F(LdapHealthObserverTest, SmokeCheckFailedOnBadConfig) {
     ASSERT_FALSE(result.checkPassed());
     ASSERT_GT(result.severity, 0.0);
 }
-#endif
 
 }  // namespace
 }  // namespace process_health
