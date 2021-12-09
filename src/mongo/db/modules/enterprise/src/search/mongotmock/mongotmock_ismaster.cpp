@@ -61,8 +61,8 @@ public:
         result.append("minWireVersion", wireSpec->incomingExternalClient.minWireVersion);
 
         // The mongod paired with a mongotmock should be able to auth as the __system user with
-        // the SCRAM-SHA-1 authentication mechanism.
-        result.append("saslSupportedMechs", BSON_ARRAY("SCRAM-SHA-1"));
+        // the SCRAM-SHA-256 authentication mechanism.
+        result.append("saslSupportedMechs", BSON_ARRAY("SCRAM-SHA-256"));
         return true;
     }
 } cmdMongotMockHello;
