@@ -81,6 +81,7 @@ public:
     CheckResult checkImpl(const PeriodicHealthCheckContext& periodicCheckContext);
 
 private:
+    struct ConcurrentRunContext;
     std::deque<LDAPHost> _checkDNS(CheckResult* result);
 
     // Wrapper to run smoke checks concurrently.
@@ -90,9 +91,10 @@ private:
                                      CheckResult* result);
 
     // Smoke check of one server, to be dispatched concurrently.
-    void _smokeCheck(const LDAPBindOptions& bindOptions,
-                     const LDAPConnectionOptions& connectionOptions,
-                     CheckResult* result);
+    static void _smokeCheck(const LDAPBindOptions& bindOptions,
+                            const LDAPConnectionOptions& connectionOptions,
+                            std::shared_ptr<ConcurrentRunContext> runContext,
+                            CheckResult* result);
 
     // The fields that do not need synchronization as only one periodicCheckImpl()
     // can run concurrently.

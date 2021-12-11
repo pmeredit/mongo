@@ -119,17 +119,22 @@ namespace {
 using PromiseFutureVector = std::vector<
     std::pair<Promise<LdapHealthObserver::CheckResult>, Future<LdapHealthObserver::CheckResult>>>;
 using SharedPromiseFutureVector = std::shared_ptr<PromiseFutureVector>;
+}  // namespace
 
 // Each running thread owns its own copy of this struct.
-struct ConcurrentRunContext {
+struct LdapHealthObserver::ConcurrentRunContext {
     ConcurrentRunContext(const LDAPBindOptions& bindOptions,
                          const LdapHealthObserver::PeriodicHealthCheckContext& periodicCheckContext,
                          SharedPromiseFutureVector promisesAndFutures,
-                         std::shared_ptr<std::deque<LDAPHost>> resolvedHosts)
+                         std::shared_ptr<std::deque<LDAPHost>> resolvedHosts,
+                         ServiceContext* svcCtx,
+                         TickSource* tickSource)
         : bindOptions(bindOptions),
           periodicCheckContext(periodicCheckContext),
           promisesAndFutures(promisesAndFutures),
-          resolvedHosts(std::move(resolvedHosts)) {}
+          resolvedHosts(std::move(resolvedHosts)),
+          svcCtx(svcCtx),
+          tickSource(tickSource) {}
     const LDAPBindOptions bindOptions;
     LdapHealthObserver::PeriodicHealthCheckContext periodicCheckContext;
     // Vector itself is immutable, only futures values can change.
@@ -139,8 +144,9 @@ struct ConcurrentRunContext {
                                            "LdapHealthObserver::ConcurrentRunContext::mutex");
     // Only this field needs protection, shared by all threads.
     std::shared_ptr<std::deque<LDAPHost>> resolvedHosts;
+    ServiceContext* const svcCtx;
+    TickSource* const tickSource;
 };
-}  // namespace
 
 void LdapHealthObserver::_runSmokeChecksConcurrently(
     const PeriodicHealthCheckContext& periodicCheckContext,
@@ -160,13 +166,18 @@ void LdapHealthObserver::_runSmokeChecksConcurrently(
         promisesAndFutures->push_back(std::make_pair(std::move(promise), std::move(future)));
     }
 
+    // Some checks can be stuck, the lifetime of 'concurrentRunContext' and everything else
+    // captured by lambda can outlive this method invocation.
+    auto concurrentRunContext = std::make_shared<ConcurrentRunContext>(bindOptions,
+                                                                       periodicCheckContext,
+                                                                       promisesAndFutures,
+                                                                       resolvedHosts,
+                                                                       svcCtx(),
+                                                                       tickSource());
+
     for (uint32_t threadNumber = 0; threadNumber < concurrency; ++threadNumber) {
-        // Some checks can be stuck, the lifetime of 'concurrentRunContext' and everything else
-        // captured by lambda can outlive this method invocation.
-        auto concurrentRunContext = std::make_shared<ConcurrentRunContext>(
-            bindOptions, periodicCheckContext, promisesAndFutures, resolvedHosts);
         concurrentRunContext->periodicCheckContext.taskExecutor->schedule(
-            [this, concurrency, threadNumber, concurrentRunContext, completionCancellationSource](
+            [concurrency, threadNumber, concurrentRunContext, completionCancellationSource](
                 Status status) mutable {
                 auto promise =
                     std::move((*concurrentRunContext->promisesAndFutures)[threadNumber].first);
@@ -195,8 +206,10 @@ void LdapHealthObserver::_runSmokeChecksConcurrently(
                     std::vector<LDAPHost> oneHostVec{host.value()};
                     LDAPConnectionOptions connectionOptions(globalLDAPParams->connectionTimeout,
                                                             oneHostVec);
-                    _smokeCheck(
-                        concurrentRunContext->bindOptions, connectionOptions, &perThreadResult);
+                    _smokeCheck(concurrentRunContext->bindOptions,
+                                connectionOptions,
+                                concurrentRunContext,
+                                &perThreadResult);
                 }
 
                 const auto smokeCheckSuccess = perThreadResult.smokeCheck;
@@ -224,25 +237,35 @@ void LdapHealthObserver::_runSmokeChecksConcurrently(
     // at least one future is ready. However the periodicCheckContext.cancellationToken
     // may abort the execution before any result is received.
     // We may abandon results from some threads and it affects stats, but it's not important.
+    int mergedThreads = 0;
     for (uint32_t threadNumber = 0; threadNumber < concurrency; ++threadNumber) {
         Future<CheckResult>& future = (*promisesAndFutures)[threadNumber].second;
         if (future.isReady()) {
             CheckResult result = std::move(future.get());
             aggregateResult->mergeFrom(result);
+            ++mergedThreads;
         }
     }
+    LOGV2_DEBUG(5939401,
+                2,
+                "LDAP smoke check completes",
+                "mergedThreads"_attr = mergedThreads,
+                "result"_attr = aggregateResult->smokeCheck);
 }
 
 void LdapHealthObserver::_smokeCheck(const LDAPBindOptions& bindOptions,
                                      const LDAPConnectionOptions& connectionOptions,
+                                     std::shared_ptr<ConcurrentRunContext> runContext,
                                      CheckResult* result) try {
+    Timer timer;
     invariant(!connectionOptions.hosts.empty());
     std::unique_ptr<UserAcquisitionStats> userAcquisitionStats =
         std::make_unique<UserAcquisitionStats>();
     // Avoid using the connection pool as a recycled connection will try to use
     // an already deleted copy of the 'userAcquisitionStats'.
-    auto status = LDAPManager::get(svcCtx())->checkLivenessNotPooled(
-        connectionOptions, tickSource(), userAcquisitionStats.get());
+    auto status = LDAPManager::get(runContext->svcCtx)
+                      ->checkLivenessNotPooled(
+                          connectionOptions, runContext->tickSource, userAcquisitionStats.get());
 
     result->hostsTestedBySmokeCheck++;
     if (!status.isOK()) {
@@ -250,7 +273,11 @@ void LdapHealthObserver::_smokeCheck(const LDAPBindOptions& bindOptions,
             status.withContext(str::stream() << "Server " << connectionOptions.hosts[0].toString());
         result->failures.push_back(status);
         result->severity += kSmokePenalty;
-        LOGV2_DEBUG(5938604, 1, "LDAP smoke check failure", "error"_attr = status);
+        LOGV2_DEBUG(5938604,
+                    1,
+                    "LDAP smoke check failure",
+                    "error"_attr = status,
+                    "elapsedTimeMs"_attr = timer.millis());
         return;
     }
     // Will be set if at least one host passed smoke check.
