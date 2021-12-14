@@ -61,6 +61,9 @@ public:
     AllowedOnSecondary secondaryAllowed(ServiceContext*) const override {
         return AllowedOnSecondary::kAlways;
     }
+    bool allowedWithSecurityToken() const override {
+        return true;
+    }
 };
 
 CmdLogApplicationMessage cmdLogApplicationMessage;
