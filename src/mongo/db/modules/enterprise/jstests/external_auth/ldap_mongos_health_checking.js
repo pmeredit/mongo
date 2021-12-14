@@ -14,12 +14,15 @@ const isAnyUbuntu = (() => {
         return false;
     }
 
-    const result = runProgram('cat', '/etc/issue');
-    if (result == 0) {
+    const rc = runProgram('cat', '/etc/issue');
+    if (rc != 0) {
+        jsTestLog(`Unexpected failure fetching /etc/issue ${rc}`);
         return false;
     }
+    var osRelease = rawMongoProgramOutput();
+    clearRawMongoProgramOutput();
 
-    return result.match(/Ubuntu/i);
+    return osRelease.match(/Ubuntu/i);
 })();
 
 const ldapServers =
