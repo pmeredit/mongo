@@ -225,13 +225,16 @@ env.Library(
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/s/mongos_initializers',
     ],
+    LIBDEPS_TAGS=[
+        # To link the enterprise_ldap_test only.
+        'lint-allow-bidirectional-edges',
+    ],
 )
 
 env.CppUnitTest(
     target='enterprise_ldap_test',
     source=[
         'ldap_connection_options_test.cpp',
-        'ldap_health_observer.cpp',
         'ldap_health_observer_test.cpp',
         'ldap_query_test.cpp',
         'name_mapping/rewrite_rule_test.cpp',
@@ -244,6 +247,7 @@ env.CppUnitTest(
         '$BUILD_DIR/mongo/executor/thread_pool_task_executor_test_fixture',
         '$BUILD_DIR/mongo/util/clock_source_mock',
         '../util/core_options_stub',
+        'ldap_health_observer',
         'ldap_manager_impl',
         'ldap_name_map',
         'ldap_query',
