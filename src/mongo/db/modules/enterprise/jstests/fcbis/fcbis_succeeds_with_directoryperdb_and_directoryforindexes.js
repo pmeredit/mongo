@@ -1,6 +1,6 @@
 /**
  * Tests that FCBIS succeeds with directoryperdb and wiredTigerDirectoryForIndexes set.
- * @tags: [requires_persistence, requires_wiredtiger]
+ * @tags: [requires_fcv_52, requires_persistence, requires_wiredtiger]
  */
 (function() {
 "use strict";

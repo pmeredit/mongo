@@ -3,6 +3,7 @@
  * the backup source.
  *
  * @tags: [
+ *   requires_fcv_52,
  *   requires_persistence,
  *   requires_wiredtiger,
  * ]

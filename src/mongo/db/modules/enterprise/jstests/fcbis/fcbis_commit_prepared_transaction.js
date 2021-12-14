@@ -2,6 +2,7 @@
  * Tests that we can successfully commit a prepared transaction transferred as part of a
  * file copy based initial sync, then continue to commit other transactions.
  * @tags: [
+ *   requires_fcv_52,
  *   requires_persistence,
  *   requires_wiredtiger,
  *   uses_prepare_transaction,

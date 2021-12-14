@@ -1,7 +1,7 @@
 /**
  * Tests that while using encrypted storage, the file copy based initial sync destination node will
  * roll over GCM encryption keys synced from the sync source.
- * @tags: [requires_persistence, requires_wiredtiger]
+ * @tags: [requires_fcv_52, requires_persistence, requires_wiredtiger]
  */
 
 (function() {

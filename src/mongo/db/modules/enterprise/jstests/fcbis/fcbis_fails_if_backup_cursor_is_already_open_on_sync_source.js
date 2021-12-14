@@ -1,7 +1,7 @@
 /**
  * Tests that file copy based initial sync will fail if backup cursor is already open on the chosen
  * sync source.
- * @tags: [requires_persistence, requires_wiredtiger]
+ * @tags: [requires_fcv_52, requires_persistence, requires_wiredtiger]
  */
 (function() {
 "use strict";

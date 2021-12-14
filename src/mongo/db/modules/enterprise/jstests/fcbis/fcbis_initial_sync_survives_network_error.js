@@ -5,7 +5,7 @@
  *
  * We do not check the exhaust operations (downloading of files) due to test infrastructure
  * limitations (mongobridge does not support exhaust).  We do have unit tests for these.
- * @tags: [requires_persistence, requires_wiredtiger]
+ * @tags: [requires_fcv_52, requires_persistence, requires_wiredtiger]
  *
  */
 (function() {

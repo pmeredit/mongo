@@ -1,7 +1,7 @@
 
 /**
  * Tests that backupCursor can be opened on FCBIS destination node after initial sync completed.
- * @tags: [requires_persistence, requires_wiredtiger]
+ * @tags: [requires_fcv_52, requires_persistence, requires_wiredtiger]
  */
 
 (function() {
