@@ -1,8 +1,8 @@
 FROM ubuntu:18.04
-RUN apt-get update && apt-get install -y libsnmp-dev curl dnsmasq
+RUN apt-get update && apt-get install -y libsnmp-dev curl dnsmasq dnsutils
 
 # FROM fedora:34
-# RUN dnf update -y && dnf install -y dnsmasq net-snmp-agent-libs libatomic
+# RUN dnf update -y && dnf install -y dnsmasq net-snmp-agent-libs libatomic bind-utils
 
 # Install a config file that describes the DNS settings to use
 COPY dnsmasq.conf /root

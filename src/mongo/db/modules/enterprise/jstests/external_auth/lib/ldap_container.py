@@ -99,7 +99,8 @@ def _start(container: str, image_name: str) -> int:
         container, "--detach", image_name
     ])
 
-    return 0
+    # Wait for container to start by running dig
+    return _run_process([DOCKER, "exec", "-w", "/app", container, "/usr/bin/dig", "@127.0.0.1", "foo.mock.mongodb.org", "+timeout=3", "+tries=10"])
 
 
 def _stop_args(args, extra) -> int:
