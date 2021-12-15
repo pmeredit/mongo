@@ -7,6 +7,9 @@
 
 load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
 
+// Increment this for the real stress test, value is low for the Evergreen.
+const kIterations = 2;
+
 // Firewall actions require Linux.
 const isLinux = getBuildInfo().buildEnvironment.target_os == "linux";
 const isAnyUbuntu = (() => {
@@ -51,6 +54,22 @@ var st = new ShardingTest({
 assert.commandWorked(st.s0.adminCommand(
     {"setParameter": 1, logComponentVerbosity: {processHealth: {verbosity: 3}}}));
 
+const mongosProcessId = (() => {
+    clearRawMongoProgramOutput();
+    const shellArgs = ['ps', '-e'];
+    const rc = _runMongoProgram.apply(null, shellArgs);
+    assert.eq(rc, 0);
+    var lines = rawMongoProgramOutput();
+    var found;
+    lines.split('\n').forEach((line) => {
+        const match = line.match(/[' ']+([0-9]+).*mongos.*/i);
+        if (match) {
+            found = match[1];
+        }
+    });
+    return found;
+})();
+
 // Invokes the 'ufw' firewall utility with 'args'.
 const firewallAction = function(args, allowedToFail = false) {
     clearRawMongoProgramOutput();
@@ -91,7 +110,6 @@ const testWithPartiallyDisabledFirewall = function() {
     const indexToNotBlock = Math.floor(Math.random() * ldapServersArray.length);
     const serversToBlock = ldapServersArray.slice(0, indexToNotBlock)
                                .concat(ldapServersArray.slice(indexToNotBlock + 1));
-    jsTestLog(serversToBlock);
 
     serversToBlock.forEach((serverName) => {
         changeFirewallForServer(serverName);
@@ -106,6 +124,20 @@ const testWithPartiallyDisabledFirewall = function() {
     serversToBlock.forEach((serverName) => {
         changeFirewallForServer(serverName, true /* remove rule */);
     });
+};
+
+const testWithFullyDisabledFirewall = function() {
+    ldapServersArray.forEach((serverName) => {
+        changeFirewallForServer(serverName);
+    });
+    sleep(Math.random() * 10000);  // Let mongos to run with firewall.
+
+    ldapServersArray.forEach((serverName) => {
+        changeFirewallForServer(serverName, true /* remove rule */);
+    });
+
+    // Mongos should be functional.
+    assert.commandWorked(st.s0.adminCommand({"ping": 1}));
 };
 
 const checkFirewallIsEnabled = function() {
@@ -124,6 +156,32 @@ const disableFirewall = function() {
     firewallAction(['disable'], true /* this can fail */);
 };
 
+const printMemoryForProcess = function(processId) {
+    clearRawMongoProgramOutput();
+    const shellArgs = ['cat', '/proc/' + processId + '/smaps'];
+    const rc = _runMongoProgram.apply(null, shellArgs);
+    assert.eq(rc, 0);
+    var lines = rawMongoProgramOutput();
+    var totalKb = 0;
+    lines.split('\n').forEach((line) => {
+        const match = line.match(/[' ']+Pss:[' ']+([0-9]+).*kB.*/i);
+        if (match) {
+            totalKb += parseInt(match[1]);
+        }
+    });
+    jsTestLog(`Total memory usage ${totalKb} kB`);
+};
+
+const printFdCount = function(processId) {
+    clearRawMongoProgramOutput();
+    const shellArgs = ['ls', '/proc/' + processId + '/fd/'];
+    const rc = _runMongoProgram.apply(null, shellArgs);
+    assert.eq(rc, 0);
+    var lines = rawMongoProgramOutput();
+    var totalFds = lines.split('\n').length;
+    jsTestLog(`Total files open ${totalFds}`);
+};
+
 var firewallIsEnabledAtStart = false;
 try {
     if (isAnyUbuntu) {
@@ -131,7 +189,20 @@ try {
         if (!firewallIsEnabledAtStart) {
             enableFirewall();
         }
-        testWithPartiallyDisabledFirewall();
+        for (var i = 0; i < kIterations; ++i) {
+            testWithPartiallyDisabledFirewall();
+            if (i % 10 == 0) {
+                printMemoryForProcess(mongosProcessId);
+                printFdCount(mongosProcessId);
+            }
+        }
+        for (var i = 0; i < kIterations; ++i) {
+            testWithFullyDisabledFirewall();
+            if (i % 10 == 0) {
+                printMemoryForProcess(mongosProcessId);
+                printFdCount(mongosProcessId);
+            }
+        }
     }
 
 } finally {
@@ -142,6 +213,11 @@ try {
 
 sleep(8000);  // Let all health checker threads stuck because of firewall to terminate.
 assert.commandWorked(st.s0.adminCommand({"ping": 1}));
+if (isAnyUbuntu) {
+    printMemoryForProcess(mongosProcessId);
+    printFdCount(mongosProcessId);
+}
+
 try {
     jsTestLog('Shutting down the sharded cluster');
     st.stop();
