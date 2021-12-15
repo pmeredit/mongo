@@ -13,11 +13,9 @@
 
 #include "encryption_options.h"
 #include "mongo/base/string_data.h"
+#include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
 
 namespace mongo {
-// A helper utility that uasserts if the Wired Tiger return code is not-okay.
-void uassertWTOK(int ret);
-
 // This is a stateless deleter for Wired Tiger structs. Wired Tiger structs have a close() method
 // that takes a pointer to the object being closed, and sometimes a char* to a config string. This
 // just wraps both of those up in some templates.

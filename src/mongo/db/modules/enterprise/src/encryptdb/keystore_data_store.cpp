@@ -89,10 +89,6 @@ Status createDirectoryIfNeeded(const fs::path& path) {
 
 }  // namespace
 
-void uassertWTOK(int ret) {
-    return uassertStatusOK(wtRCToStatus(ret));
-}
-
 bool WTDataStoreCursor::advance() {
     invariant(_cursor);
     int ret;
