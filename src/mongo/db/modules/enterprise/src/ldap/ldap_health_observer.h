@@ -42,6 +42,10 @@ public:
         return FaultFacetType::kLdap;
     }
 
+    Milliseconds getObserverTimeout() const override {
+        return Milliseconds(Seconds(30));
+    }
+
     /**
      * Triggers health check.
      * It is guaranteed that the next check is never invoked until the promise for the
