@@ -107,8 +107,7 @@ BSONObj analyzeQuery(const BSONObj document, OperationContext* opCtx, const Name
     } else if (commandName == "delete"_sd) {
         cryptd_query_analysis::processDeleteCommand(opCtx, opmsg, &schemaInfoBuilder);
     } else {
-        // TODO
-        invariant(false);
+        uasserted(mongo::ErrorCodes::CommandNotFound, "Input contains an unknown command");
     }
 
     return schemaInfoBuilder.obj();
@@ -320,6 +319,10 @@ uint8_t* MONGO_API_CALL mongo_csfle_v1_analyze_query(mongo_csfle_v1_query_analyz
                                                      uint32_t ns_len,
                                                      uint32_t* bson_len,
                                                      mongo_csfle_v1_status* status) {
+    invariant(matcher);
+    invariant(documentBSON);
+    invariant(bson_len);
+
     return enterCXX(mongo::getStatusImpl(status), [&]() {
         mongo::BSONObj document(mongo::fromInterfaceType(documentBSON));
 
