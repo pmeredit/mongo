@@ -52,7 +52,7 @@ var st = new ShardingTest({
 });
 
 assert.commandWorked(st.s0.adminCommand(
-    {"setParameter": 1, logComponentVerbosity: {processHealth: {verbosity: 3}}}));
+    {"setParameter": 1, logComponentVerbosity: {processHealth: {verbosity: 2}}}));
 
 const mongosProcessId = (() => {
     clearRawMongoProgramOutput();
@@ -158,9 +158,22 @@ const disableFirewall = function() {
 
 const printMemoryForProcess = function(processId) {
     clearRawMongoProgramOutput();
+    // /smaps could be unavailable, first print the /status
+    const statusShellArgs = ['ls', '/proc/' + processId + '/status'];
+    var rc = _runMongoProgram.apply(null, statusShellArgs);
+    if (rc != 0) {
+        jsTestLog(`Process status unavailable for pid ${processId}`);
+        // List /proc for debug.
+        _runMongoProgram.apply(...['ls', '/proc']);
+        return;
+    }
+    clearRawMongoProgramOutput();
     const shellArgs = ['cat', '/proc/' + processId + '/smaps'];
-    const rc = _runMongoProgram.apply(null, shellArgs);
-    assert.eq(rc, 0);
+    rc = _runMongoProgram.apply(null, shellArgs);
+    if (rc != 0) {
+        jsTestLog(`/proc/${processId}/smaps not available`);
+        return;
+    }
     var lines = rawMongoProgramOutput();
     var totalKb = 0;
     lines.split('\n').forEach((line) => {
@@ -176,7 +189,10 @@ const printFdCount = function(processId) {
     clearRawMongoProgramOutput();
     const shellArgs = ['ls', '/proc/' + processId + '/fd/'];
     const rc = _runMongoProgram.apply(null, shellArgs);
-    assert.eq(rc, 0);
+    if (rc != 0) {
+        jsTestLog(`/proc/${processId}/fd/ not available`);
+        return;
+    }
     var lines = rawMongoProgramOutput();
     var totalFds = lines.split('\n').length;
     jsTestLog(`Total files open ${totalFds}`);
