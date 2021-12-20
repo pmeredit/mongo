@@ -57,8 +57,8 @@ function scoreComparator(idA, idB) {
     return docIdToScore[idA] < docIdToScore[idB];
 }
 
-shard0Ids = Array.sort(shard0Ids, scoreComparator);
-shard1Ids = Array.sort(shard1Ids, scoreComparator);
+shard0Ids.sort(scoreComparator);
+shard1Ids.sort(scoreComparator);
 
 // Shard the test collection, split it, and move the higher chunk to shard1.
 assert.commandWorked(mongos.getDB("admin").runCommand({enableSharding: dbName}));
