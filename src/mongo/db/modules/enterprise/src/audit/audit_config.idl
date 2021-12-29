@@ -31,6 +31,7 @@ global:
 
 imports:
     - "mongo/idl/basic_types.idl"
+    - "mongo/idl/cluster_server_parameter.idl"
 
 server_parameters:
     auditConfigPollingFrequencySecs:
@@ -57,13 +58,14 @@ structs:
     AuditConfigDocument:
         description: "On-disk representation of runtime audit configuration"
         strict: false
+        inline_chained_structs: true
+        chained_structs:
+            # _id == 'audit'
+            ClusterServerParameter: ClusterServerParameter
         fields:
-            _id:
-                # Always 'audit' for this document.
-                # optional to allow us to use this for parsing on-disk documents,
-                # but still allow us to exclude it for serializing in replies
-                type: string
-                optional: true
-            generation: objectid
-            filter: object_owned
-            auditAuthorizationSuccess: bool
+            filter:
+                description: MQL expression of audit events to record
+                type: object_owned
+            auditAuthorizationSuccess:
+                description: Whether or not to audit successful CRUD events
+                type: bool
