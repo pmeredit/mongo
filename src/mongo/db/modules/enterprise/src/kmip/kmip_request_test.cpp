@@ -49,6 +49,7 @@
 
 #include "kmip_request.h"
 #include "mongo/unittest/unittest.h"
+#include "mongo/util/hex.h"
 
 namespace mongo {
 namespace {
@@ -63,7 +64,7 @@ void printExpectedOutput(std::vector<uint8_t> const& output) {
     int count = 0;
     for (auto val : output) {
         count++;
-        std::cout << std::hex << +val << " ";
+        std::cout << unsignedHex(+val) << " ";
         if (count % 8 == 0) {
             std::cout << '\n';
         }
