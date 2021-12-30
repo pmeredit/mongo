@@ -2348,24 +2348,6 @@ TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromInitialSourceGetStats) {
     }
 
     {
-        hangAfterFileCloning->waitForTimesEntered(1);
-        BSONObj prog = fileCopyBasedInitialSyncer->getInitialSyncProgress();
-
-        ASSERT_EQUALS(prog.nFields(), 11) << prog;
-        ASSERT_EQUALS(prog["method"].str(), "fileCopyBased") << prog;
-        ASSERT_EQUALS(prog.getIntField("failedInitialSyncAttempts"), 0) << prog;
-        ASSERT_EQUALS(prog.getIntField("maxFailedInitialSyncAttempts"), maxAttempts) << prog;
-        ASSERT_EQUALS(prog["initialSyncStart"].type(), Date) << prog;
-        ASSERT(prog["totalInitialSyncElapsedMillis"].isNumber()) << prog;
-        ASSERT_BSONOBJ_EQ(prog.getObjectField("initialSyncAttempts"), BSONObj());
-        ASSERT_EQUALS(prog.getIntField("approxTotalDataSize"), 0) << prog;
-        ASSERT_EQUALS(prog.getIntField("approxTotalBytesCopied"), 0) << prog;
-        ASSERT_EQUALS(prog.getIntField("initialBackupDataSize"), 0) << prog;
-        ASSERT_EQUALS(prog["currentOplogEnd"].type(), bsonTimestamp) << prog;
-        ASSERT_BSONOBJ_EQ(prog.getObjectField("files"), BSONObj());
-    }
-
-    {
         hangAfterFileCloning->waitForTimesEntered(2);
         BSONObj prog = fileCopyBasedInitialSyncer->getInitialSyncProgress();
         hangAfterFileCloning->setMode(FailPoint::off);
