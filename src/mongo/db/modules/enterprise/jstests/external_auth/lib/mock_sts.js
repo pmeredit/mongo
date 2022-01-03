@@ -5,6 +5,8 @@
 // These faults must match the list of faults in sts_http_server.py, see the
 // SUPPORTED_FAULT_TYPES list in sts_http_server.py
 const STS_FAULT_403 = "fault_403";
+const STS_FAULT_500 = "fault_500";
+const STS_FAULT_500_ONCE = "fault_500_once";
 
 class MockSTSServer {
     /**

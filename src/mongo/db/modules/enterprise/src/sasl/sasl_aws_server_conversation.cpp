@@ -27,6 +27,43 @@ namespace mongo {
 namespace {
 constexpr auto kAwsId = "awsId"_sd;
 constexpr auto kAwsArn = "awsArn"_sd;
+
+// Retry on 5xx response code or 0.
+HttpClient::HttpReply doAWSSTSRequestWithRetries(const std::unique_ptr<HttpClient>& client,
+                                                 StringData clientSecond,
+                                                 const std::vector<char>& serverNonce,
+                                                 char cbFlag,
+                                                 std::string* awsAccountId) {
+    auto retries = awsIam::saslAWSGlobalParams.awsSTSRetryCount;
+    while (true) {
+        auto [headers, requestBody] =
+            awsIam::parseClientSecond(clientSecond, serverNonce, cbFlag, awsAccountId);
+
+        ConstDataRange body(requestBody.c_str(), requestBody.size());
+        client->setHeaders(headers);
+
+        auto reply = client->request(
+            HttpClient::HttpMethod::kPOST, awsIam::saslAWSGlobalParams.awsSTSUrl, body);
+
+        if (((reply.code > 0) && (reply.code < 500)) || (reply.code >= 600)) {
+            return reply;
+        }
+
+        const bool retry = (retries--) > 0;
+        StringData replyBody;
+        reply.body.getCursor().readInto<StringData>(&replyBody);
+        LOGV2_DEBUG(6205300,
+                    4,
+                    "Received server error from AWS STS",
+                    "code"_attr = reply.code,
+                    "body"_attr = replyBody,
+                    "willRetry"_attr = retry);
+        if (!retry) {
+            return reply;
+        }
+    }
+    MONGO_UNREACHABLE;
+}
 }  // namespace
 
 void SaslAWSServerMechanism::appendExtraInfo(BSONObjBuilder* bob) const {
@@ -70,23 +107,14 @@ StatusWith<std::tuple<bool, std::string>> SaslAWSServerMechanism::_firstStep(
 StatusWith<std::tuple<bool, std::string>> SaslAWSServerMechanism::_secondStep(
     OperationContext* opCtx, StringData inputData) {
 
-    // Set the principal name to the AWS Account ID so that if sts::getCallerIdentity fails,
-    // we give the user a hint to which account failed.
-    auto [headers, requestBody] =
-        awsIam::parseClientSecond(inputData, _serverNonce, _cbFlag, &_awsId);
-
     std::unique_ptr<HttpClient> request = HttpClient::create();
-
-    ConstDataRange body(requestBody.c_str(), requestBody.size());
-    request->setHeaders(headers);
-
     if (getTestCommandsEnabled()) {
         request->allowInsecureHTTP(true);
     }
 
-    auto result = request->request(
-        HttpClient::HttpMethod::kPOST, awsIam::saslAWSGlobalParams.awsSTSUrl, body);
-
+    // Set the principal name to the AWS Account ID so that if sts::getCallerIdentity fails,
+    // we give the user a hint to which account failed.
+    auto result = doAWSSTSRequestWithRetries(request, inputData, _serverNonce, _cbFlag, &_awsId);
     auto cdrcBody = result.body.getCursor();
     StringData httpBody;
     cdrcBody.readInto<StringData>(&httpBody);

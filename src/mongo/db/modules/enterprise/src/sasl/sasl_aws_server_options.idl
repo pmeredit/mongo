@@ -11,3 +11,8 @@ server_parameters:
         set_at: startup
         default: "https://sts.amazonaws.com"
         cpp_varname: "awsIam::saslAWSGlobalParams.awsSTSUrl"
+    awsSTSRetryCount:
+        description: "Number of times to retry requests to AWS STS on 5xx or 0 response code"
+        set_at: startup
+        default: 2 # Total tries == 3.  One initial plus two retries.
+        cpp_varname: "awsIam::saslAWSGlobalParams.awsSTSRetryCount"

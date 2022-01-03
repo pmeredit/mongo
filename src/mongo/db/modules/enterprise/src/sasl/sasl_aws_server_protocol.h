@@ -29,6 +29,12 @@ struct SaslAWSGlobalParams {
      *  Derived from STS URL, just the host name. Used to set the Host: header in HTTP requests.
      */
     std::string awsSTSHost;
+
+    /**
+     * Number of times to retry requests to AWS STS.
+     * Defaulted in sasl_aws_server_options.idl
+     */
+    int awsSTSRetryCount{0};
 };
 
 extern SaslAWSGlobalParams saslAWSGlobalParams;

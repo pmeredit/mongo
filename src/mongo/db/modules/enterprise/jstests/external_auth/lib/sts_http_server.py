@@ -23,9 +23,18 @@ fault_type = None
 """Fault which causes sts::getCallerIdentity to return 403"""
 FAULT_403 = "fault_403"
 
+"""Fault which return 500, triggering retry."""
+FAULT_500 = "fault_500"
+
+"""Fault which causes each unique request to return 500 the first time it is made."""
+FAULT_500_ONCE = "fault_500_once"
+requests_seen = []
+
 # List of supported fault types
 SUPPORTED_FAULT_TYPES = [
     FAULT_403,
+    FAULT_500,
+    FAULT_500_ONCE,
 ]
 
 
@@ -159,7 +168,25 @@ class AwsStsHandler(http.server.BaseHTTPRequestHandler):
             return
 
         if fault_type == FAULT_403:
-            return self._do_get_caller_identity_faults()
+            return self._do_get_caller_identity_faults(FAULT_403)
+
+        if fault_type == FAULT_500_ONCE:
+            # First time we seen a given auth header we reply with 500.
+            # After that we return success.
+            global requests_seen
+
+            # Remove signature from the end as it has a time component which may change
+            stripped_header=auth_header
+            if stripped_header.find(', Signature='):
+                stripped_header=stripped_header[:stripped_header.find(', Signature')]
+
+            if auth_header not in requests_seen:
+                requests_seen.append(auth_header)
+                return self._do_get_caller_identity_faults(FAULT_500)
+
+        if fault_type == FAULT_500:
+            # As above, but repeatedly return 500.
+            return self._do_get_caller_identity_faults(FAULT_500)
 
         response = """<GetCallerIdentityResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/">
   <GetCallerIdentityResult>
@@ -174,12 +201,15 @@ class AwsStsHandler(http.server.BaseHTTPRequestHandler):
 
         self._send_reply(response.encode("utf-8"))
 
-    def _do_get_caller_identity_faults(self):
-        if fault_type == FAULT_403:
+    def _do_get_caller_identity_faults(self, fault):
+        if fault == FAULT_403:
             self._send_reply("Not allowed.".encode(), http.HTTPStatus.FORBIDDEN)
             return
+        if fault == FAULT_500:
+            self._send_reply("Something went wrong.".encode(), http.HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
 
-        raise ValueError("Unknown Fault Type: %s" % (fault_type))
+        raise ValueError("Unknown Fault Type: %s" % (fault))
 
     def _send_header(self):
         self.send_response(http.HTTPStatus.OK)
