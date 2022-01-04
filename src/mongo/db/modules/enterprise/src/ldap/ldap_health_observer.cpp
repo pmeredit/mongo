@@ -37,7 +37,7 @@ Future<HealthCheckStatus> LdapHealthObserver::periodicCheckImpl(
         completionPf.promise.emplaceValue(makeHealthyStatus());
     } else {
         completionPf.promise.emplaceValue(
-            makeSimpleFailedStatus(result.severity, std::move(result.failures)));
+            makeSimpleFailedStatus(Severity::kFailure, std::move(result.failures)));
     }
 
     return std::move(completionPf.future);
