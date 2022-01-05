@@ -35,20 +35,25 @@ const ldapServersArray = ldapServers.split(',');
 
 var st = new ShardingTest({
     shards: 1,
-    mongos: 1,
     config: 1,
-    other: {
-        mongosOptions: {
-            "ldapServers": ldapServers,
-            "ldapTransportSecurity": "none",
-            "ldapBindMethod": "simple",
-            //"ldapQueryUser": "cn=ldapz_admin,ou=Users,dc=10gen,dc=cc",
-            "ldapQueryUser": "cn=admin,dc=10gen,dc=cc",
-            "ldapQueryPassword": "Secret123",
-            "ldapTimeoutMS": 8000,
-            "setParameter": "featureFlagHealthMonitoring=true",
+    mongos: [{
+        setParameter: {
+            healthMonitoringIntensities: tojson({
+                values: [
+                    {type: "ldap", intensity: "critical"},
+                ]
+            }),
+            progressMonitor: tojson({interval: 100, deadline: 60}),
+            healthMonitoringIntervals: tojson({values: [{type: "ldap", interval: 30}]}),
         },
-    },
+        ldapServers: ldapServers,
+        ldapTransportSecurity: "none",
+        ldapBindMethod: "simple",
+        //"ldapQueryUser": "cn=ldapz_admin,ou=Users,dc=10gen,dc=cc",
+        ldapQueryUser: "cn=admin,dc=10gen,dc=cc",
+        ldapQueryPassword: "Secret123",
+        ldapTimeoutMS: 8000,
+    }],
 });
 
 assert.commandWorked(st.s0.adminCommand(
