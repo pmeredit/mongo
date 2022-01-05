@@ -9,6 +9,8 @@ load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.j
 
 // Increment this for the real stress test, value is low for the Evergreen.
 const kIterations = 2;
+const kWaitForCompletedChecksCount = 100;
+const kWaitForPassedChecksCount = 10;
 
 // Firewall actions require Linux.
 const isLinux = getBuildInfo().buildEnvironment.target_os == "linux";
@@ -204,6 +206,25 @@ const printFdCount = function(processId) {
     jsTestLog(`Total files open ${totalFds}`);
 };
 
+// Expects some minimal check count to pass. This expects the test to be enabled
+// on Enterprise builds only.
+const checkServerStats = function() {
+    while (true) {
+        let result =
+            assert.commandWorked(st.s0.adminCommand({serverStatus: 1, health: {details: true}}))
+                .health;
+        print(`Server status: ${tojson(result)}`);
+        // Wait for: at least 100 checks completed.
+        // At least some checks passed (more than 1).
+        if (result.LDAP.totalChecks >= kWaitForCompletedChecksCount &&
+            result.LDAP.totalChecks - result.LDAP.totalChecksWithFailure >=
+                kWaitForPassedChecksCount) {
+            break;
+        }
+        sleep(1000);
+    }
+};
+
 var firewallIsEnabledAtStart = false;
 try {
     if (isAnyUbuntu) {
@@ -239,6 +260,7 @@ if (isAnyUbuntu) {
     printMemoryForProcess(mongosProcessId);
     printFdCount(mongosProcessId);
 }
+checkServerStats();
 
 try {
     jsTestLog('Shutting down the sharded cluster');
