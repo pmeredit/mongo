@@ -169,7 +169,8 @@ const printMemoryForProcess = function(processId) {
     if (rc != 0) {
         jsTestLog(`Process status unavailable for pid ${processId}`);
         // List /proc for debug.
-        _runMongoProgram.apply(...['ls', '/proc']);
+        const shellArgs = ['ls', '/proc'];
+        _runMongoProgram.apply(null, shellArgs);
         return;
     }
     clearRawMongoProgramOutput();
