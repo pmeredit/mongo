@@ -27,7 +27,7 @@ def mongo_export_file_generator(target, source, env, for_signature):
     else:
         pass
 
-if get_option('link-model') == 'dynamic-sdk' and env.TargetOSIs('posix'):
+if get_option('link-model') == 'dynamic-sdk' and env.TargetOSIs('posix', 'windows'):
     csfleEnv['LIBDEPS_SHLIBEMITTER'] = partial(
         libdeps.libdeps_emitter,
         builder='SharedArchive',
