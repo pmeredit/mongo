@@ -1118,11 +1118,11 @@ std::string FileCopyBasedInitialSyncer::_getPathRelativeTo(StringData path, Stri
 ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFiles(
     std::shared_ptr<BackupFileMetadataCollection> filesToClone) {
     return AsyncTry([this, self = shared_from_this(), filesToClone, fileIndex = size_t(0)]() mutable
-                    -> Future<bool> {
+                    -> ExecutorFuture<bool> {
                stdx::lock_guard lock(_mutex);
                // Returns "true" only when all files are finished cloning.
                if (fileIndex == filesToClone->size())
-                   return coerceToFuture(true);
+                   return ExecutorFuture<bool>(_syncingFilesState.executor, true);
                auto metadata = (*filesToClone)[fileIndex];
                auto fileName = metadata["filename"].str();
                LOGV2_DEBUG(5877600,
@@ -1162,21 +1162,23 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFiles(
                if (startClonerFuture.isReady()) {
                    auto status = startClonerFuture.getNoThrow();
                    invariant(!status.isOK());
-                   return status;
+                   return ExecutorFuture<bool>(_syncingFilesState.executor, status);
                }
                _syncingFilesState.executor->signalEvent(startCloner);
-               return std::move(startClonerFuture).then([this, self = shared_from_this()] {
-                   {
-                       stdx::lock_guard lock(_mutex);
-                       _syncingFilesState.backupFileClonerStats.emplace_back(
-                           _syncingFilesState.currentBackupFileCloner->getStats());
-                       _stats.copiedFileSize +=
-                           _syncingFilesState.currentBackupFileCloner->getStats().bytesCopied;
-                       _syncingFilesState.currentBackupFileCloner = nullptr;
-                   }
-                   fCBISHangAfterStartingFileClone.pauseWhileSet();
-                   return false;  // Continue the loop.
-               });
+               return std::move(startClonerFuture)
+                   .thenRunOn(_syncingFilesState.executor)
+                   .then([this, self = shared_from_this()] {
+                       {
+                           stdx::lock_guard lock(_mutex);
+                           _syncingFilesState.backupFileClonerStats.emplace_back(
+                               _syncingFilesState.currentBackupFileCloner->getStats());
+                           _stats.copiedFileSize +=
+                               _syncingFilesState.currentBackupFileCloner->getStats().bytesCopied;
+                           _syncingFilesState.currentBackupFileCloner = nullptr;
+                       }
+                       fCBISHangAfterStartingFileClone.pauseWhileSet();
+                       return false;  // Continue the loop.
+                   });
            })
         .until([](StatusWith<bool> result) {
             // Stop and return on error or if result is "true".
