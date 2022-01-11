@@ -84,6 +84,8 @@ public:
     // Implementation of the health check, made public for testing.
     CheckResult checkImpl(const PeriodicHealthCheckContext& periodicCheckContext);
 
+    bool isConfigured() const override;
+
 private:
     struct ConcurrentRunContext;
     std::deque<LDAPHost> _checkDNS(CheckResult* result);

@@ -80,6 +80,17 @@ LdapHealthObserver::CheckResult LdapHealthObserver::checkImpl(
     return result;
 }
 
+bool LdapHealthObserver::isConfigured() const {
+    if (globalLDAPParams->serverHosts.empty()) {
+        static constexpr char kMsg[] =
+            "No LDAP hosts configured but LDAP health check is enabled, use security.ldap.servers";
+        LOGV2_DEBUG(5939100, 3, kMsg);
+        return false;
+    } else {
+        return true;
+    }
+}
+
 std::deque<LDAPHost> LdapHealthObserver::_checkDNS(LdapHealthObserver::CheckResult* result) {
     std::deque<LDAPHost> resolvedHosts;
 
