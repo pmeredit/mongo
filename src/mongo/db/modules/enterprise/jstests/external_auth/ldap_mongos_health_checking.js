@@ -6,29 +6,12 @@
 'use strict';
 
 load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
+load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ufw_firewall_lib.js");
 
 // Increment this for the real stress test, value is low for the Evergreen.
 const kIterations = 2;
 const kWaitForCompletedChecksCount = 100;
 const kWaitForPassedChecksCount = 10;
-
-// Firewall actions require Linux.
-const isLinux = getBuildInfo().buildEnvironment.target_os == "linux";
-const isAnyUbuntu = (() => {
-    if (!isLinux) {
-        return false;
-    }
-
-    const rc = runProgram('cat', '/etc/issue');
-    if (rc != 0) {
-        jsTestLog(`Unexpected failure fetching /etc/issue ${rc}`);
-        return false;
-    }
-    var osRelease = rawMongoProgramOutput();
-    clearRawMongoProgramOutput();
-
-    return osRelease.match(/Ubuntu/i);
-})();
 
 const ldapServers =
     "ec2-3-142-199-96.us-east-2.compute.amazonaws.com,ec2-3-141-40-15.us-east-2.compute.amazonaws.com";
@@ -77,37 +60,6 @@ const mongosProcessId = (() => {
     return found;
 })();
 
-// Invokes the 'ufw' firewall utility with 'args'.
-const firewallAction = function(args, allowedToFail = false) {
-    clearRawMongoProgramOutput();
-    const shellArgs = ['sudo', 'ufw'].concat(args);
-    jsTestLog(`${shellArgs}`);
-    const rc = _runMongoProgram.apply(null, shellArgs);
-    if (!allowedToFail) {
-        assert.eq(rc, 0);
-    }
-    return rawMongoProgramOutput();
-};
-
-// If 'removeRule' is true remove the blocking rule back.
-const changeFirewallForServer = function(server, removeRule = false) {
-    const removeRuleArg = removeRule ? ['delete'] : [];
-    const ip = resolve(server);
-    jsTestLog(`Change firewall rule for ${server} resolved to ${ip} with ${removeRule}`);
-    firewallAction(removeRuleArg.concat(['deny', 'out', 'to', ip]));
-};
-
-const resolve = function(host) {
-    clearRawMongoProgramOutput();
-    runMongoProgram('dig', '+short', host);
-    const out = rawMongoProgramOutput();
-    jsTestLog(out);
-    const matchIp = out.match(
-        /\b(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)/i);
-    jsTestLog(matchIp);
-    return matchIp[0];
-};
-
 // If there is more than one server, disable all but one server with firewall.
 // If there is only one server skip this test.
 const testWithPartiallyDisabledFirewall = function() {
@@ -145,22 +97,6 @@ const testWithFullyDisabledFirewall = function() {
 
     // Mongos should be functional.
     assert.commandWorked(st.s0.adminCommand({"ping": 1}));
-};
-
-const checkFirewallIsEnabled = function() {
-    const out = firewallAction(['status']);
-    const active = !/inactive/.test(out);
-    jsTestLog(`Firewall is active: ${active}`);
-    return active;
-};
-
-const enableFirewall = function() {
-    firewallAction(['enable']);
-};
-
-const disableFirewall = function() {
-    jsTestLog('Disable firewall');
-    firewallAction(['disable'], true /* this can fail */);
 };
 
 const printMemoryForProcess = function(processId) {
