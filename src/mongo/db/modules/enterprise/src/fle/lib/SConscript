@@ -20,7 +20,8 @@ def mongo_export_file_generator(target, source, env, for_signature):
     if env.ToolchainIs('msvc'):
         pass
     elif env.TargetOSIs('darwin'):
-        pass
+        script = env.File(env.subst("${TARGET.base}.exported_symbols_list", target=target))
+        return script.get_csig() if for_signature else "-Wl,-exported_symbols_list," + str(script)
     elif env.TargetOSIs('posix'):
         script = env.File(env.subst("${TARGET.base}.version_script", target=target))
         return script.get_csig() if for_signature else "-Wl,--version-script," + str(script)
