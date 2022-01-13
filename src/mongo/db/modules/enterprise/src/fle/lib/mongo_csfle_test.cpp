@@ -25,6 +25,47 @@ namespace {
 
 using mongo::ScopeGuard;
 
+static const std::string kSchema =
+    R"({
+        "type": "object",
+        "properties": {
+            "ssn": {
+                "encrypt": {
+                    "algorithm": "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                    "keyId": [
+                        {
+                            "$uuid": "1362d0ed-6182-478e-bb8a-ebcc53b91aa1"
+                        }
+                    ],
+                    "bsonType": "int"
+                }
+            },
+            "user": {
+                "type": "object",
+                "properties": {
+                    "account": {
+                        "encrypt": {
+                            "algorithm": "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                            "keyId": [
+                                {
+                                    "$uuid": "93282c77-9a6b-47cf-9c4c-beda02730881"
+                                }
+                            ],
+                            "bsonType": "string"
+                        }
+                    }
+                }
+            }
+        }
+    })";
+
+void replace_str(std::string& str, mongo::StringData search, mongo::StringData replace) {
+    auto pos = str.find(search.toString());
+    if (pos == std::string::npos)
+        return;
+    str.replace(pos, search.size(), replace.toString());
+}
+
 class CsfleTest : public mongo::unittest::Test {
 protected:
     void setUp() override {
@@ -105,6 +146,71 @@ protected:
         }
     }
 
+    void analyzeValidCommandCommon(const char* inputCmd,
+                                   const char* transformedCmd,
+                                   bool hasEncryptionPlaceholders = true,
+                                   bool schemaRequiresEncryption = true) {
+        std::string input =
+            R"({
+                <CMD>,
+                "jsonSchema" : <SCHEMA>,
+                "isRemoteSchema" : false,
+                "lsid" : { "id": { "$uuid": "32de9140-7ade-46bf-a72a-49442e4e93d7" } },
+                "$db": "test"
+            })";
+        std::string output =
+            R"({
+                "hasEncryptionPlaceholders" : <HAS_ENC>,
+                "schemaRequiresEncryption" : <REQ_ENC>,
+                "result" : {
+                    <CMD>,
+                    "lsid" : { "id" : { "$binary" : "Mt6RQHreRr+nKklELk6T1w==", "$type" : "04" } }
+                }
+            })";
+        replace_str(input, "<CMD>", inputCmd);
+        replace_str(input, "<SCHEMA>", kSchema);
+        replace_str(output, "<HAS_ENC>", hasEncryptionPlaceholders ? "true" : "false");
+        replace_str(output, "<REQ_ENC>", schemaRequiresEncryption ? "true" : "false");
+        replace_str(output, "<CMD>", transformedCmd);
+        checkAnalysisSuccess(input.c_str(), output.c_str());
+    }
+
+    void analyzeValidExplainCommandCommon(const char* inputCmd,
+                                          const char* transformedCmd,
+                                          bool hasEncryptionPlaceholders = true,
+                                          bool schemaRequiresEncryption = true) {
+        std::string input =
+            R"({
+                "explain" : {
+                    <CMD>,
+                    "lsid" : { "id": { "$uuid": "32de9140-7ade-46bf-a72a-49442e4e93d7" } },
+                    "$db" : "test"
+                },
+                "jsonSchema" : <SCHEMA>,
+                "isRemoteSchema" : false,
+                "lsid" : { "id": { "$uuid": "32de9140-7ade-46bf-a72a-49442e4e93d7" } },
+                "$db": "test"
+            })";
+        std::string output =
+            R"({
+                "hasEncryptionPlaceholders" : <HAS_ENC>,
+                "schemaRequiresEncryption" : <REQ_ENC>,
+                "result" : {
+                    "explain" : {
+                        <CMD>,
+                        "lsid" : { "id" : { "$binary" : "Mt6RQHreRr+nKklELk6T1w==", "$type" : "04" } }
+                    },
+                    "verbosity" : "allPlansExecution"
+                }
+            })";
+        replace_str(input, "<CMD>", inputCmd);
+        replace_str(input, "<SCHEMA>", kSchema);
+        replace_str(output, "<HAS_ENC>", hasEncryptionPlaceholders ? "true" : "false");
+        replace_str(output, "<REQ_ENC>", schemaRequiresEncryption ? "true" : "false");
+        replace_str(output, "<CMD>", transformedCmd);
+        checkAnalysisSuccess(input.c_str(), output.c_str());
+    }
+
     mongo_csfle_v1_status* status = nullptr;
     mongo_csfle_v1_lib* lib = nullptr;
 };
@@ -164,39 +270,6 @@ TEST_F(CsfleTest, QueryAnalyzerCreateWithBadLibHandleFails) {
     ASSERT(!analyzer);
     ASSERT_EQ(MONGO_CSFLE_V1_ERROR_INVALID_LIB_HANDLE, mongo_csfle_v1_status_get_error(status));
 }
-
-static const std::string kSchema = R"({
-            "type": "object",
-            "properties": {
-                "ssn": {
-                    "encrypt": {
-                        "algorithm": "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                        "keyId": [
-                            {
-                                "$uuid": "1362d0ed-6182-478e-bb8a-ebcc53b91aa1"
-                            }
-                        ],
-                        "bsonType": "int"
-                    }
-                },
-                "user": {
-                    "type": "object",
-                    "properties": {
-                        "account": {
-                            "encrypt": {
-                                "algorithm": "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                                "keyId": [
-                                    {
-                                        "$uuid": "93282c77-9a6b-47cf-9c4c-beda02730881"
-                                    }
-                                ],
-                                "bsonType": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        })";
 
 DEATH_TEST_F(CsfleTest, LibDestructionWithExistingAnalyzerFails, "invariant") {
     auto analyzer = mongo_csfle_v1_query_analyzer_create(lib, status);
@@ -297,270 +370,356 @@ TEST_F(CsfleTest, AnalyzeQueryInputHasUnknownCommand) {
                          mongo::ErrorCodes::CommandNotFound);
 }
 
-TEST_F(CsfleTest, CheckMatchWorksWithDefaults) {
-    checkAnalysisSuccess(
-        R"({
+static const char* kFindCmd =
+    R"(
         "find": "test",
         "filter": {
             "user.account": "secret"
-        },
-        "jsonSchema": {
-            "type": "object",
-            "properties": {
-                "ssn": {
-                    "encrypt": {
-                        "algorithm": "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                        "keyId": [
-                            {
-                                "$uuid": "1362d0ed-6182-478e-bb8a-ebcc53b91aa1"
-                            }
-                        ],
-                        "bsonType": "long"
-                    }
-                },
-                "user": {
-                    "type": "object",
-                    "properties": {
-                        "account": {
-                            "encrypt": {
-                                "algorithm": "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                                "keyId": [
-                                    {
-                                        "$uuid": "93282c77-9a6b-47cf-9c4c-beda02730881"
-                                    }
-                                ],
-                                "bsonType": "string"
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "isRemoteSchema": false,
-        "lsid": {
-            "id": {
-                "$uuid": "32de9140-7ade-46bf-a72a-49442e4e93d7"
-            }
-        },
-        "$db": "test"
-    })",
-        R"({ "hasEncryptionPlaceholders" : true, "schemaRequiresEncryption" : true, "result" : )"
-        R"({ "find" : "test", "filter" : { "user.account" : { "$eq" : { "$binary" : )"
-        R"("ADMAAAAQYQABAAAABWtpABAAAAAEkygsd5prR8+cTL7aAnMIgQJ2AAcAAABzZWNyZXQAAA==", "$type" : )"
-        R"("06" } } }, "lsid" : { "id" : { "$binary" : "Mt6RQHreRr+nKklELk6T1w==", )"
-        R"("$type" : "04" } } } })");
+        }
+    )";
+
+static const char* kTransformedFindCmd =
+    R"(
+        "find" : "test",
+        "filter" : { "user.account" : {
+            "$eq" : { "$binary" : "ADMAAAAQYQABAAAABWtpABAAAAAEkygsd5prR8+cTL7aAnMIgQJ2AAcAAABzZWNyZXQAAA==", "$type" : "06" }
+        } }
+    )";
+
+TEST_F(CsfleTest, AnalyzeValidFindCommand) {
+    analyzeValidCommandCommon(kFindCmd, kTransformedFindCmd);
 }
+
+TEST_F(CsfleTest, AnalyzeValidExplainFindCommand) {
+    analyzeValidExplainCommandCommon(kFindCmd, kTransformedFindCmd);
+}
+
+static const char* kAggregateCmd =
+    R"(
+        "aggregate": "test",
+        "pipeline": [ { "$match": { "user.account": "secret" } } ],
+        "cursor": {}
+    )";
+
+static const char* kTransformedAggregateCmd =
+    R"(
+        "aggregate" : "test",
+        "pipeline" : [ { "$match" : {
+            "user.account" : {
+                "$eq" : { "$binary" : "ADMAAAAQYQABAAAABWtpABAAAAAEkygsd5prR8+cTL7aAnMIgQJ2AAcAAABzZWNyZXQAAA==", "$type" : "06" }
+            }
+        } } ],
+        "cursor" : {}
+    )";
+
 
 TEST_F(CsfleTest, AnalyzeValidAggregateCommand) {
-    std::string input =
-        R"({
-            "aggregate": "test",
-            "pipeline": [ { "$match": { "user.account": "secret" } } ],
-            "cursor": {},
-            "jsonSchema": <SCHEMA>,
-            "isRemoteSchema": false,
-            "lsid": {
-                "id": {
-                    "$uuid": "32de9140-7ade-46bf-a72a-49442e4e93d7"
-                }
-            },
-            "$db": "test"
-        })";
-    input.replace(input.find("<SCHEMA>"), 8, kSchema);
-    std::string output =
-        R"({ "hasEncryptionPlaceholders" : true, "schemaRequiresEncryption" : true, "result" : )"
-        R"({ "aggregate" : "test", "pipeline" : [ { "$match" : { "user.account" : { "$eq" : { "$binary" : )"
-        R"("ADMAAAAQYQABAAAABWtpABAAAAAEkygsd5prR8+cTL7aAnMIgQJ2AAcAAABzZWNyZXQAAA==", "$type" : "06" } } } } ], )"
-        R"("cursor" : {}, "lsid" : { "id" : { "$binary" : "Mt6RQHreRr+nKklELk6T1w==", "$type" : "04" } } } })";
-    checkAnalysisSuccess(input.c_str(), output.c_str());
+    analyzeValidCommandCommon(kAggregateCmd, kTransformedAggregateCmd);
 }
+
+TEST_F(CsfleTest, AnalyzeValidExplainAggregateCommand) {
+    analyzeValidExplainCommandCommon(kAggregateCmd, kTransformedAggregateCmd);
+}
+
+static const char* kFindAndModifyCmd =
+    R"(
+        "findAndModify": "test",
+        "query": { "user.account": "secret" },
+        "update": { "$set": { "ssn" : 4145 } }
+    )";
+
+static const char* kTransformedFindAndModifyCmd =
+    R"(
+        "findAndModify" : "test",
+        "query" : {
+            "user.account" : {
+                "$eq" : { "$binary" : "ADMAAAAQYQABAAAABWtpABAAAAAEkygsd5prR8+cTL7aAnMIgQJ2AAcAAABzZWNyZXQAAA==", "$type" : "06" }
+            }
+        },
+        "update" : { "$set" : {
+            "ssn" : { "$binary" : "ACwAAAAQYQABAAAABWtpABAAAAAEE2LQ7WGCR467iuvMU7kaoRB2ADEQAAAA", "$type" : "06" }
+        } }
+    )";
 
 TEST_F(CsfleTest, AnalyzeValidFindAndModifyCommand) {
-    std::string input =
-        R"({
-            "findAndModify": "test",
-            "query": { "user.account": "secret" },
-            "update": { "$set": { "ssn" : 4145 } },
-            "jsonSchema": <SCHEMA>,
-            "isRemoteSchema": false,
-            "lsid": {
-                "id": {
-                    "$uuid": "32de9140-7ade-46bf-a72a-49442e4e93d7"
-                }
-            },
-            "$db": "test"
-        })";
-    input.replace(input.find("<SCHEMA>"), 8, kSchema);
-    std::string output =
-        R"({ "hasEncryptionPlaceholders" : true, "schemaRequiresEncryption" : true, "result" : )"
-        R"({ "findAndModify" : "test", "query" : { "user.account" : { "$eq" : { "$binary" : )"
-        R"("ADMAAAAQYQABAAAABWtpABAAAAAEkygsd5prR8+cTL7aAnMIgQJ2AAcAAABzZWNyZXQAAA==", "$type" : "06" } } }, )"
-        R"("update" : { "$set" : { "ssn" : { "$binary" : "ACwAAAAQYQABAAAABWtpABAAAAAEE2LQ7WGCR467iuvMU7kaoRB2ADEQAAAA", )"
-        R"("$type" : "06" } } }, "lsid" : { "id" : { "$binary" : "Mt6RQHreRr+nKklELk6T1w==", "$type" : "04" } } } })";
-    checkAnalysisSuccess(input.c_str(), output.c_str());
+    analyzeValidCommandCommon(kFindAndModifyCmd, kTransformedFindAndModifyCmd);
 }
+
+TEST_F(CsfleTest, AnalyzeValidExplainFindAndModifyCommand) {
+    analyzeValidExplainCommandCommon(kFindAndModifyCmd, kTransformedFindAndModifyCmd);
+}
+
+static const char* kCountCmd =
+    R"(
+        "count": "test",
+        "query": { "user.account": "secret" }
+    )";
+
+static const char* kTransformedCountCmd =
+    R"(
+        "count" : "test",
+        "query" : {
+            "user.account" : {
+                "$eq" : { "$binary" : "ADMAAAAQYQABAAAABWtpABAAAAAEkygsd5prR8+cTL7aAnMIgQJ2AAcAAABzZWNyZXQAAA==", "$type" : "06" }
+            }
+        }
+    )";
 
 TEST_F(CsfleTest, AnalyzeValidCountCommand) {
-    std::string input =
-        R"({
-            "count": "test",
-            "query": { "user.account": "secret" },
-            "jsonSchema": <SCHEMA>,
-            "isRemoteSchema": false,
-            "lsid": {
-                "id": {
-                    "$uuid": "32de9140-7ade-46bf-a72a-49442e4e93d7"
-                }
-            },
-            "$db": "test"
-        })";
-    input.replace(input.find("<SCHEMA>"), 8, kSchema);
-    std::string output =
-        R"({ "hasEncryptionPlaceholders" : true, "schemaRequiresEncryption" : true, "result" : )"
-        R"({ "count" : "test", "query" : { "user.account" : { "$eq" : { "$binary" : )"
-        R"("ADMAAAAQYQABAAAABWtpABAAAAAEkygsd5prR8+cTL7aAnMIgQJ2AAcAAABzZWNyZXQAAA==", "$type" : "06" } } }, )"
-        R"("lsid" : { "id" : { "$binary" : "Mt6RQHreRr+nKklELk6T1w==", "$type" : "04" } } } })";
-    checkAnalysisSuccess(input.c_str(), output.c_str());
+    analyzeValidCommandCommon(kCountCmd, kTransformedCountCmd);
 }
+
+TEST_F(CsfleTest, AnalyzeValidExplainCountCommand) {
+    analyzeValidExplainCommandCommon(kCountCmd, kTransformedCountCmd);
+}
+
+static const char* kDistinctCmd =
+    R"(
+        "distinct": "test",
+        "key": "user.pin",
+        "query": { "user.account" : "secret" }
+    )";
+
+static const char* kTransformedDistinctCmd =
+    R"(
+        "distinct" : "test",
+        "key": "user.pin",
+        "query": {
+            "user.account" : {
+                "$eq" : {
+                    "$binary" : "ADMAAAAQYQABAAAABWtpABAAAAAEkygsd5prR8+cTL7aAnMIgQJ2AAcAAABzZWNyZXQAAA==",
+                    "$type" : "06"
+                }
+            }
+        }
+    )";
 
 TEST_F(CsfleTest, AnalyzeValidDistinctCommand) {
-    std::string input =
-        R"({
-            "distinct": "test",
-            "key": "user.pin",
-            "query": { "user.account" : "secret" },
-            "jsonSchema": <SCHEMA>,
-            "isRemoteSchema": false,
-            "lsid": {
-                "id": {
-                    "$uuid": "32de9140-7ade-46bf-a72a-49442e4e93d7"
-                }
-            },
-            "$db": "test"
-        })";
-    input.replace(input.find("<SCHEMA>"), 8, kSchema);
-    std::string output =
-        R"({
-            "hasEncryptionPlaceholders" : true,
-            "schemaRequiresEncryption" : true,
-            "result" : {
-                "distinct" : "test",
-                "key": "user.pin",
-                "query": {
-                    "user.account" : {
-                        "$eq" : {
-                            "$binary" : "ADMAAAAQYQABAAAABWtpABAAAAAEkygsd5prR8+cTL7aAnMIgQJ2AAcAAABzZWNyZXQAAA==",
-                            "$type" : "06"
-                        }
-                    }
-                },
-                "lsid" : { "id" : { "$binary" : "Mt6RQHreRr+nKklELk6T1w==", "$type" : "04" } }
-            }
-        })";
-    checkAnalysisSuccess(input.c_str(), output.c_str());
+    analyzeValidCommandCommon(kDistinctCmd, kTransformedDistinctCmd);
 }
+
+TEST_F(CsfleTest, AnalyzeValidExplainDistinctCommand) {
+    analyzeValidExplainCommandCommon(kDistinctCmd, kTransformedDistinctCmd);
+}
+
+static const char* kUpdateCmd =
+    R"(
+        "update": "test",
+        "updates": [
+            { "q": { "ssn": 1234567890 }, "u": { "$set" : { "user.account" : "secret" } } }
+        ]
+    )";
+
+static const char* kTransformedUpdateCmd =
+    R"(
+        "update" : "test",
+        "updates": [{
+            "q" : {
+                "ssn" : { "$eq" : { "$binary" : "ACwAAAAQYQABAAAABWtpABAAAAAEE2LQ7WGCR467iuvMU7kaoRB2ANIClkkA", "$type" : "06" } }
+            },
+            "u" : {
+                "$set" : { "user.account" : {
+                    "$binary" : "ADMAAAAQYQABAAAABWtpABAAAAAEkygsd5prR8+cTL7aAnMIgQJ2AAcAAABzZWNyZXQAAA==", "$type" : "06"
+                } }
+            },
+            "multi" : false,
+            "upsert" : false
+        }]
+    )";
 
 TEST_F(CsfleTest, AnalyzeValidUpdateCommand) {
-    std::string input =
-        R"({
-            "update": "test",
-            "updates": [
-                { "q": { "ssn": 1234567890 }, "u": { "$set" : { "user.account" : "secret" } } }
-            ],
-            "jsonSchema": <SCHEMA>,
-            "isRemoteSchema": false,
-            "lsid": {
-                "id": {
-                    "$uuid": "32de9140-7ade-46bf-a72a-49442e4e93d7"
-                }
-            },
-           "$db": "test"
-    })";
-    input.replace(input.find("<SCHEMA>"), 8, kSchema);
-    std::string output =
-        R"({
-            "hasEncryptionPlaceholders" : true,
-            "schemaRequiresEncryption" : true,
-            "result" : {
-                "update" : "test",
-                "updates": [{
-                    "q" : {
-                        "ssn" : { "$eq" : { "$binary" : "ACwAAAAQYQABAAAABWtpABAAAAAEE2LQ7WGCR467iuvMU7kaoRB2ANIClkkA", "$type" : "06" } }
-                    },
-                    "u" : {
-                        "$set" : { "user.account" : {
-                            "$binary" : "ADMAAAAQYQABAAAABWtpABAAAAAEkygsd5prR8+cTL7aAnMIgQJ2AAcAAABzZWNyZXQAAA==", "$type" : "06"
-                        } }
-                    },
-                    "multi" : false,
-                    "upsert" : false
-                }],
-                "lsid" : { "id" : { "$binary" : "Mt6RQHreRr+nKklELk6T1w==", "$type" : "04" } }
-            }
-        })";
-    checkAnalysisSuccess(input.c_str(), output.c_str());
+    analyzeValidCommandCommon(kUpdateCmd, kTransformedUpdateCmd);
 }
+
+TEST_F(CsfleTest, AnalyzeValidExplainUpdateCommand) {
+    analyzeValidExplainCommandCommon(kUpdateCmd, kTransformedUpdateCmd);
+}
+
+static const char* kInsertCmd =
+    R"(
+        "insert" : "test",
+        "documents": [{ "_id": 2, "ssn": 1234567890, "user": { "account": "secret" } }]
+    )";
+
+static const char* kTransformedInsertCmd =
+    R"(
+        "insert" : "test",
+        "documents": [
+            {
+                "_id": 2,
+                "ssn": { "$binary" : "ACwAAAAQYQABAAAABWtpABAAAAAEE2LQ7WGCR467iuvMU7kaoRB2ANIClkkA", "$type" : "06" },
+                "user": { "account": { "$binary" : "ADMAAAAQYQABAAAABWtpABAAAAAEkygsd5prR8+cTL7aAnMIgQJ2AAcAAABzZWNyZXQAAA==", "$type" : "06" }}
+            }
+        ]
+    )";
 
 TEST_F(CsfleTest, AnalyzeValidInsertCommand) {
-    std::string input =
-        R"({
-            "insert": "test",
-            "documents": [
-                { "_id": 2, "ssn": 1234567890, "user": { "account": "secret" } }
-            ],
-            "jsonSchema": <SCHEMA>,
-            "isRemoteSchema": false,
-            "lsid": {
-                "id": {
-                    "$uuid": "32de9140-7ade-46bf-a72a-49442e4e93d7"
-                }
-            },
-           "$db": "test"
-    })";
-    input.replace(input.find("<SCHEMA>"), 8, kSchema);
-    std::string output =
-        R"({ "hasEncryptionPlaceholders" : true, "schemaRequiresEncryption" : true, "result" : )"
-        R"({ "insert" : "test", "documents" : [ { "_id" : 2, "ssn" : { "$binary" : )"
-        R"("ACwAAAAQYQABAAAABWtpABAAAAAEE2LQ7WGCR467iuvMU7kaoRB2ANIClkkA", "$type" : "06" }, )"
-        R"("user" : { "account" : { "$binary" : )"
-        R"("ADMAAAAQYQABAAAABWtpABAAAAAEkygsd5prR8+cTL7aAnMIgQJ2AAcAAABzZWNyZXQAAA==", "$type" : "06" })"
-        R"( } } ], "lsid" : { "id" : { "$binary" : "Mt6RQHreRr+nKklELk6T1w==", "$type" : "04" } } } })";
-    checkAnalysisSuccess(input.c_str(), output.c_str());
+    analyzeValidCommandCommon(kInsertCmd, kTransformedInsertCmd);
 }
 
+TEST_F(CsfleTest, AnalyzeValidExplainInsertCommand) {
+    analyzeValidExplainCommandCommon(kInsertCmd, kTransformedInsertCmd);
+}
+
+static const char* kDeleteCmd =
+    R"(
+        "delete": "test",
+        "deletes": [ { "q": { "ssn": 1234567890 }, "limit" : 1 } ]
+    )";
+
+static const char* kTransformedDeleteCmd =
+    R"(
+        "delete" : "test",
+        "deletes": [ {
+            "q" : {
+                "ssn" : { "$eq" : { "$binary" : "ACwAAAAQYQABAAAABWtpABAAAAAEE2LQ7WGCR467iuvMU7kaoRB2ANIClkkA", "$type" : "06" } }
+            },
+            "limit" : 1
+        } ]
+    )";
+
 TEST_F(CsfleTest, AnalyzeValidDeleteCommand) {
+    analyzeValidCommandCommon(kDeleteCmd, kTransformedDeleteCmd);
+}
+
+TEST_F(CsfleTest, AnalyzeValidExplainDeleteCommand) {
+    analyzeValidExplainCommandCommon(kDeleteCmd, kTransformedDeleteCmd);
+}
+
+TEST_F(CsfleTest, AnalyzeExplainInsideExplain) {
     std::string input =
         R"({
-            "delete": "test",
-            "deletes": [
-                { "q": { "ssn": 1234567890 }, "limit" : 1 }
-            ],
+            "explain": {
+                "explain": {
+                    "find" : "test",
+                    "filter" : {
+                        "user.account" : "secret"
+                    }
+                },
+                "$db": "test"
+            },
             "jsonSchema": <SCHEMA>,
             "isRemoteSchema": false,
-            "lsid": {
-                "id": {
-                    "$uuid": "32de9140-7ade-46bf-a72a-49442e4e93d7"
+            "$db": "test"
+        })";
+    replace_str(input, "<SCHEMA>", kSchema);
+    checkAnalysisFailure(input.c_str(),
+                         mongo_csfle_v1_error::MONGO_CSFLE_V1_ERROR_EXCEPTION,
+                         mongo::ErrorCodes::IllegalOperation);
+}
+
+TEST_F(CsfleTest, AnalyzeExplainUnknownCommand) {
+    std::string input =
+        R"({
+            "explain": {
+                "foo" : "test",
+                "filter" : {
+                    "user.account" : "secret"
+                },
+                "$db": "test"
+            },
+            "jsonSchema": <SCHEMA>,
+            "isRemoteSchema": false,
+            "$db": "test"
+        })";
+    replace_str(input, "<SCHEMA>", kSchema);
+    checkAnalysisFailure(input.c_str(),
+                         mongo_csfle_v1_error::MONGO_CSFLE_V1_ERROR_EXCEPTION,
+                         mongo::ErrorCodes::CommandNotFound);
+}
+
+TEST_F(CsfleTest, AnalyzeExplainWithoutOuterDb) {
+    std::string input =
+        R"({
+            "explain" : {
+                "find" : "test",
+                "filter" : {
+                    "user.account" : "secret"
+                },
+                "$db" : "test"
+            },
+            "jsonSchema": <SCHEMA>,
+            "isRemoteSchema": false
+        })";
+    replace_str(input, "<SCHEMA>", kSchema);
+    checkAnalysisFailure(
+        input.c_str(), mongo_csfle_v1_error::MONGO_CSFLE_V1_ERROR_EXCEPTION, 40414);
+}
+
+TEST_F(CsfleTest, AnalyzeExplainWithoutInnerDb) {
+    std::string input =
+        R"({
+            "explain" : {
+                "find" : "test",
+                "filter" : {
+                    "user.account" : "secret"
                 }
             },
-           "$db": "test"
-    })";
-    input.replace(input.find("<SCHEMA>"), 8, kSchema);
-    std::string output =
-        R"({
-            "hasEncryptionPlaceholders" : true,
-            "schemaRequiresEncryption" : true,
-            "result" : {
-                "delete" : "test",
-                "deletes": [{
-                    "q" : {
-                        "ssn" : { "$eq" : { "$binary" : "ACwAAAAQYQABAAAABWtpABAAAAAEE2LQ7WGCR467iuvMU7kaoRB2ANIClkkA", "$type" : "06" } }
-                    },
-                    "limit" : 1
-                }],
-                "lsid" : { "id" : { "$binary" : "Mt6RQHreRr+nKklELk6T1w==", "$type" : "04" } }
-            }
+            "jsonSchema": <SCHEMA>,
+            "isRemoteSchema": false,
+            "$db" : "test"
         })";
-    checkAnalysisSuccess(input.c_str(), output.c_str());
+    replace_str(input, "<SCHEMA>", kSchema);
+    checkAnalysisFailure(
+        input.c_str(), mongo_csfle_v1_error::MONGO_CSFLE_V1_ERROR_EXCEPTION, 40414);
+}
+
+TEST_F(CsfleTest, AnalyzeExplainWithMismatchedDb) {
+    std::string input =
+        R"({
+            "explain" : {
+                "find" : "test",
+                "filter" : {
+                    "user.account" : "secret"
+                },
+                "$db" : "foo"
+            },
+            "jsonSchema": <SCHEMA>,
+            "isRemoteSchema": false,
+            "$db" : "test"
+        })";
+    replace_str(input, "<SCHEMA>", kSchema);
+    checkAnalysisFailure(input.c_str(),
+                         mongo_csfle_v1_error::MONGO_CSFLE_V1_ERROR_EXCEPTION,
+                         mongo::ErrorCodes::InvalidNamespace);
+}
+
+TEST_F(CsfleTest, AnalyzeExplainWithInnerJsonSchema) {
+    std::string input =
+        R"({
+            "explain" : {
+                "find" : "test",
+                "filter" : {
+                    "user.account" : "secret"
+                },
+                "jsonSchema": <SCHEMA>,
+                "$db" : "test"
+            },
+            "isRemoteSchema": false,
+            "$db" : "test"
+        })";
+    replace_str(input, "<SCHEMA>", kSchema);
+    checkAnalysisFailure(
+        input.c_str(), mongo_csfle_v1_error::MONGO_CSFLE_V1_ERROR_EXCEPTION, 6221501);
+}
+
+TEST_F(CsfleTest, AnalyzeExplainWithInnerIsRemoteSchema) {
+    std::string input =
+        R"({
+            "explain" : {
+                "find" : "test",
+                "filter" : {
+                    "user.account" : "secret"
+                },
+                "isRemoteSchema": false,
+                "$db" : "test"
+            },
+            "jsonSchema": <SCHEMA>,
+            "$db" : "test"
+        })";
+    replace_str(input, "<SCHEMA>", kSchema);
+    checkAnalysisFailure(
+        input.c_str(), mongo_csfle_v1_error::MONGO_CSFLE_V1_ERROR_EXCEPTION, 6221502);
 }
 
 class OpmsgProcessTest : public mongo::ServiceContextTest {

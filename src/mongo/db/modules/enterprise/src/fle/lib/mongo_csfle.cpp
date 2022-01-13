@@ -13,6 +13,7 @@
 #include "mongo/db/concurrency/locker_noop_client_observer.h"
 #include "mongo/db/exec/projection_executor.h"
 #include "mongo/db/exec/projection_executor_builder.h"
+#include "mongo/db/explain_gen.h"
 #include "mongo/db/matcher/matcher.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/ops/parsed_update_array_filters.h"
@@ -40,6 +41,9 @@ namespace mongo {
 using CsfleSupportStatusImpl = StatusForAPI<mongo_csfle_v1_error>;
 
 const NamespaceString kDummyNamespaceStr = NamespaceString("");
+constexpr auto kExplainField = "explain"_sd;
+constexpr auto kResultField = "result"_sd;
+constexpr auto kVerbosityField = "verbosity"_sd;
 
 /**
  * C interfaces that use enterCXX() must provide a translateException() function that converts any
@@ -78,7 +82,41 @@ static void translateExceptionFallback(CsfleSupportStatusImpl& status) noexcept 
     setErrorMessageNoAlloc(status.what);
 }
 
-BSONObj analyzeQuery(const BSONObj document, OperationContext* opCtx, const NamespaceString ns) {
+/**
+ * For explain we need to re-wrap the inner command with placeholders inside an explain
+ * command.
+ */
+static void buildExplainReturnMessage(OperationContext* opCtx,
+                                      BSONObjBuilder* responseBuilder,
+                                      const BSONObj& innerObj,
+                                      const ExplainOptions::Verbosity& verbosity) {
+    // All successful commands have a result field.
+    dassert(innerObj.hasField(kResultField) &&
+            innerObj.getField(kResultField).type() == BSONType::Object);
+    for (const auto& elem : innerObj) {
+        if (elem.fieldNameStringData() == kResultField) {
+            // Hoist "result" up into result.explain.
+            BSONObjBuilder result(responseBuilder->subobjStart(kResultField));
+            result.append(kExplainField, elem.Obj());
+
+            // TODO: SERVER-40354 Only send back verbosity if it was sent in the original message.
+            result.append(kVerbosityField, ExplainOptions::verbosityString(verbosity));
+
+            // Add apiVersion field to reply if it was provided by the client.
+            if (auto apiVersion = APIParameters::get(opCtx).getAPIVersion()) {
+                result.append(APIParametersFromClient::kApiVersionFieldName, apiVersion.get());
+            }
+
+            result.doneFast();
+        } else {
+            responseBuilder->append(elem);
+        }
+    }
+}
+
+BSONObj analyzeNonExplainQuery(const BSONObj document,
+                               OperationContext* opCtx,
+                               const NamespaceString ns) {
 
     mongo::OpMsgRequest opmsg;
     opmsg.body = document;
@@ -107,10 +145,78 @@ BSONObj analyzeQuery(const BSONObj document, OperationContext* opCtx, const Name
     } else if (commandName == "delete"_sd) {
         cryptd_query_analysis::processDeleteCommand(opCtx, opmsg, &schemaInfoBuilder);
     } else {
-        uasserted(mongo::ErrorCodes::CommandNotFound, "Input contains an unknown command");
+        uasserted(mongo::ErrorCodes::CommandNotFound,
+                  str::stream() << "Query contains an unknown command: " << commandName);
     }
 
     return schemaInfoBuilder.obj();
+}
+
+BSONObj analyzeExplainQuery(const BSONObj document,
+                            OperationContext* opCtx,
+                            const NamespaceString ns) {
+    auto cleanedCmdObj = document.removeFields(
+        StringDataSet{cryptd_query_analysis::kJsonSchema, cryptd_query_analysis::kIsRemoteSchema});
+    auto explainCmd = ExplainCommandRequest::parse(
+        IDLParserErrorContext(ExplainCommandRequest::kCommandName,
+                              APIParameters::get(opCtx).getAPIStrict().value_or(false)),
+        cleanedCmdObj);
+
+    std::string dbname = explainCmd.getDbName().toString();
+
+    auto explainedObj = explainCmd.getCommandParameter();
+    uassert(6221501,
+            "In an explain command the jsonSchema field must be top-level and not inside the "
+            "command being explained.",
+            !explainedObj.hasField(cryptd_query_analysis::kJsonSchema));
+    if (auto cmdSchema = document[cryptd_query_analysis::kJsonSchema]) {
+        explainedObj = explainedObj.addField(cmdSchema);
+    }
+
+    uassert(6221502,
+            "In an explain command the isRemoteSchema field must be top-level and not inside the "
+            "command being explained.",
+            !explainedObj.hasField(cryptd_query_analysis::kIsRemoteSchema));
+    if (auto isRemoteSchema = document[cryptd_query_analysis::kIsRemoteSchema]) {
+        explainedObj = explainedObj.addField(isRemoteSchema);
+    }
+    if (auto innerDb = explainedObj["$db"]) {
+        uassert(ErrorCodes::InvalidNamespace,
+                str::stream() << "Mismatched $db in explain command. Expected " << dbname
+                              << " but got " << innerDb.checkAndGetStringData(),
+                innerDb.checkAndGetStringData() == dbname);
+    }
+
+    // Analyze the inner query
+    StringData innerCmdName = explainedObj.firstElementFieldName();
+    if (innerCmdName == "explain"_sd) {
+        uasserted(mongo::ErrorCodes::IllegalOperation, "Explain cannot explain itself");
+    }
+
+    BSONObj innerResult;
+
+    try {
+        innerResult = analyzeNonExplainQuery(explainedObj, opCtx, ns);
+    } catch (...) {
+        auto error = exceptionToStatus();
+        uassert(mongo::ErrorCodes::CommandNotFound,
+                str::stream() << "Explain failed due to unknown inner command: " << innerCmdName,
+                error.code() != mongo::ErrorCodes::CommandNotFound);
+        throw;
+    }
+
+    // Build the final response by wrapping the inner result & return
+    BSONObjBuilder explainBuilder;
+    buildExplainReturnMessage(opCtx, &explainBuilder, innerResult, explainCmd.getVerbosity());
+    return explainBuilder.obj();
+}
+
+BSONObj analyzeQuery(const BSONObj document, OperationContext* opCtx, const NamespaceString ns) {
+    const StringData commandName = document.firstElementFieldName();
+    if (commandName == "explain"_sd) {
+        return analyzeExplainQuery(document, opCtx, ns);
+    }
+    return analyzeNonExplainQuery(document, opCtx, ns);
 }
 
 }  // namespace mongo
@@ -294,7 +400,7 @@ int MONGO_API_CALL mongo_csfle_v1_status_get_code(const mongo_csfle_v1_status* c
 }
 
 mongo_csfle_v1_status* MONGO_API_CALL mongo_csfle_v1_status_create(void) {
-    return new mongo_csfle_v1_status;
+    return new (std::nothrow) mongo_csfle_v1_status;
 }
 
 void MONGO_API_CALL mongo_csfle_v1_status_destroy(mongo_csfle_v1_status* const status) {
