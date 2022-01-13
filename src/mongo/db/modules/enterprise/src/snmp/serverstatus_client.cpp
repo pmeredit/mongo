@@ -216,7 +216,7 @@ void ServerStatusClient::getDoubleField(StringData name, char* o_value, int o_va
 #pragma pop_macro("snprintf")
 #endif
 
-void ServerStatusClient::getStringField(StringData name, char* o_value, int o_valueLen) {
+void ServerStatusClient::getStringField(StringData name, char* o_value, size_t o_valueLen) {
     verify(o_value);
     verify(o_valueLen > 0);
 
@@ -227,8 +227,8 @@ void ServerStatusClient::getStringField(StringData name, char* o_value, int o_va
         return;
     }
 
-    int size = elem.valuestrsize();
-    memcpy(o_value, elem.valuestr(), std::min(size, o_valueLen));
+    size_t size = elem.valueStringDataSafe().size();
+    memcpy(o_value, elem.valueStringDataSafe().rawData(), std::min(size, o_valueLen));
 
     // if the value was larger than our buffer
     if (size > o_valueLen) {

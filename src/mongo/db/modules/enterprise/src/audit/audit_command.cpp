@@ -81,7 +81,7 @@ bool CmdLogApplicationMessage::errmsgRun(OperationContext* opCtx,
 
     if (cmdObj.hasField("logApplicationMessage")) {
         if (cmdObj["logApplicationMessage"].type() == String) {
-            audit::logApplicationMessage(client, cmdObj["logApplicationMessage"].valuestrsafe());
+            audit::logApplicationMessage(client, cmdObj.getStringField("logApplicationMessage"));
         } else {
             errmsg = "logApplicationMessage takes a string as its only argument";
             return false;

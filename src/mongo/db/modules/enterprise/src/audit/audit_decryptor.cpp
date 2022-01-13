@@ -36,8 +36,8 @@ StatusWith<EncryptedAuditFrame> getEncryptedAuditFrame(const std::string& line) 
     BSONObj bson = fromjson(line);
     frame.ts = bson.getField(EncryptedAuditFrame::kTimestampField).Date();
     auto str = bson.getStringField(EncryptedAuditFrame::kLogField);
-    frame.payload = std::vector(reinterpret_cast<const uint8_t*>(str),
-                                reinterpret_cast<const uint8_t*>(str) + strlen(str));
+    frame.payload = std::vector(reinterpret_cast<const uint8_t*>(str.rawData()),
+                                reinterpret_cast<const uint8_t*>(str.rawData()) + str.size());
     return frame;
 } catch (...) {
     return Status{ErrorCodes::BadValue, "Could not get compressed message."};
@@ -47,17 +47,17 @@ std::unique_ptr<AuditKeyManager> createKeyManagerFromHeader(
     const AuditHeaderOptionsDocument& header) {
     BSONObj ks = header.getKeyStoreIdentifier();
 
-    StringData type(ks.getStringField("provider"_sd));
+    StringData type = ks.getStringField("provider"_sd);
 
     if (type == "local"_sd) {
-        StringData file(ks.getStringField("filename"_sd));
+        StringData file = ks.getStringField("filename"_sd);
         uassert(ErrorCodes::BadValue,
                 "Audit file header has local key store with empty filename",
                 !file.empty());
         return std::make_unique<AuditKeyManagerLocal>(file);
     } else if (type == "kmip"_sd) {
-        StringData method(ks.getStringField("keyWrapMethod"_sd));
-        StringData uid(ks.getStringField("uid"_sd));
+        StringData method = ks.getStringField("keyWrapMethod"_sd);
+        StringData uid = ks.getStringField("uid"_sd);
         if (method == "encrypt"_sd) {
             return std::make_unique<AuditKeyManagerKMIPEncrypt>(uid.toString());
         } else if (method == "get"_sd) {

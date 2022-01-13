@@ -29,7 +29,7 @@ public:
     int64_t getInt64Field(StringData name);
     void getInt64FieldAsString(StringData name, char* o_value, int o_valueLen);
     void getDoubleField(StringData name, char* o_value, int o_valueLen);
-    void getStringField(StringData name, char* o_value, int o_valueLen);
+    void getStringField(StringData name, char* o_value, size_t o_valueLen);
     void getDateField(StringData name, char* o_value, int o_valueLen);
 
     static const std::string NO_EXTRA;

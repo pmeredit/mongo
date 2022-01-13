@@ -175,12 +175,11 @@ TEST_F(AuditEncCompManagerTest, EncodeFileHeaderTest) {
         ASSERT_TRUE(fileHeader.hasField(prop));
     }
 
-    const char* macStr = fileHeader.getStringField("MAC"_sd);
-    size_t macLen = strlen(macStr);
+    StringData macStr = fileHeader.getStringField("MAC"_sd);
 
     // the MAC has size 24 (12 tag + 12 IV) before it's encoded with base64.
-    ASSERT_EQUALS(base64::encodedLength(24), macLen);
-    ASSERT_TRUE(base64::validate(StringData(macStr, macLen)));
+    ASSERT_EQUALS(base64::encodedLength(24), macStr.size());
+    ASSERT_TRUE(base64::validate(macStr));
 }
 
 TEST_F(AuditEncCompManagerTest, VerifyHeaderMACPassTest) {
