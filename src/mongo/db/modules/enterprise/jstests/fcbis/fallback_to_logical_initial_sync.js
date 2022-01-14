@@ -47,7 +47,7 @@ const initialSyncNode = rst.add({
         'failpoint.initialSyncHangBeforeCopyingDatabases': tojson({mode: 'alwaysOn'}),
         'numInitialSyncConnectAttempts': 2,
         'numInitialSyncAttempts': 1,
-        'logComponentVerbosity': tojson({replication: {verbosity: 1}}),
+        'logComponentVerbosity': tojson({replication: {verbosity: 1, initialSync: 2}}),
     }
 });
 rst.reInitiate();

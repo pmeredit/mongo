@@ -81,7 +81,8 @@ const initialSyncNode = rst.add({
     setParameter: {
         'initialSyncMethod': 'fileCopyBased',
         'numInitialSyncAttempts': 1,
-        'logComponentVerbosity': tojson({replication: {verbosity: 2}, storage: {verbosity: 2}}),
+        'logComponentVerbosity':
+            tojson({replication: {verbosity: 2, initialSync: 2}, storage: {verbosity: 2}}),
     }
 });
 rst.reInitiate();

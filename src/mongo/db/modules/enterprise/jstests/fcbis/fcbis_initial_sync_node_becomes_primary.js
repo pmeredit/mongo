@@ -42,7 +42,12 @@ rst.awaitLastStableRecoveryTimestamp();
 assert.commandWorked(primary.adminCommand({fsync: 1}));
 
 jsTestLog("Adding the initial sync destination node to the replica set");
-const initialSyncNode = rst.add({setParameter: {'initialSyncMethod': 'fileCopyBased'}});
+const initialSyncNode = rst.add({
+    setParameter: {
+        'initialSyncMethod': 'fileCopyBased',
+        'logComponentVerbosity': tojson({replication: {verbosity: 1, initialSync: 2}})
+    }
+});
 rst.reInitiate();
 rst.waitForState(initialSyncNode, ReplSetTest.State.SECONDARY);
 const initialSyncNodeDb = initialSyncNode.getDB("test");

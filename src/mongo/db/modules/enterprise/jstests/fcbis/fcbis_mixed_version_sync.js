@@ -51,6 +51,7 @@ function runDowngradeTest(downgradeFCV) {
     const initialSyncNode = rst.add({
         setParameter: {
             'initialSyncMethod': 'fileCopyBased',
+            'logComponentVerbosity': tojson({replication: {verbosity: 1, initialSync: 2}}),
             'failpoint.forceSyncSourceCandidate':
                 tojson({mode: 'alwaysOn', data: {hostAndPort: primary.host}})
         }

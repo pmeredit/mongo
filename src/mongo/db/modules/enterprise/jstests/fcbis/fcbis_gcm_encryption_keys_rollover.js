@@ -25,7 +25,7 @@ const encryptedNodeOptions = {
     setParameter: {
         'initialSyncMethod': 'fileCopyBased',
         'numInitialSyncAttempts': 1,
-        'logComponentVerbosity': tojson({replication: {verbosity: 1}})
+        'logComponentVerbosity': tojson({replication: {verbosity: 1, initialSync: 2}})
     }
 };
 

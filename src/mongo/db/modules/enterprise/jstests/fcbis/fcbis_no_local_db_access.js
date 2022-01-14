@@ -42,7 +42,7 @@ const initialSyncNode = rst.add({
     setParameter: {
         'initialSyncMethod': 'fileCopyBased',
         'failpoint.fCBISHangAfterFileCloning': tojson({mode: 'alwaysOn'}),
-        'logComponentVerbosity': tojson({replication: {verbosity: 1}}),
+        'logComponentVerbosity': tojson({replication: {verbosity: 1, initialSync: 2}}),
     }
 });
 rst.reInitiate();

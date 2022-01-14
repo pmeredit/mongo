@@ -41,7 +41,7 @@ function runTest(failpoint) {
         setParameter: {
             'initialSyncMethod': 'fileCopyBased',
             'numInitialSyncAttempts': 1,
-            'logComponentVerbosity': tojson({replication: {verbosity: 1}}),
+            'logComponentVerbosity': tojson({replication: {verbosity: 1, initialSync: 2}}),
             'failpoint.fCBISHangBeforeFinish': tojson({mode: 'alwaysOn'}),
         }
     });
