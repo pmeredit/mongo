@@ -176,6 +176,10 @@ void auditDecryptorTool(int argc, char* argv[]) try {
 
     std::cout << "Successfully decrypted " << numLine << " lines to '"
               << globalAuditDecryptorOptions.outputPath << "'." << std::endl;
+
+    // To avoid Static Initialization Order Fiasco during exit, use quickExit to avoid static
+    // destructors
+    mongo::quickExit(EXIT_SUCCESS);
 } catch (...) {
     auto cause = exceptionToStatus();
     std::cerr << cause << std::endl;
