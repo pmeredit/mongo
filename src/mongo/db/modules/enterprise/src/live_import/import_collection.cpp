@@ -251,15 +251,15 @@ void importCollection(OperationContext* opCtx,
         // catalog entry. If this is a dryRun, we don't bother generating a new UUID (which requires
         // correcting the catalog entry metadata). Otherwise, we generate a new collection UUID for
         // the import as a primary.
-        DurableCatalog::ImportCollectionUUIDOption uuidOption = importOplogSlot.isNull() || isDryRun
-            ? DurableCatalog::ImportCollectionUUIDOption::kKeepOld
-            : DurableCatalog::ImportCollectionUUIDOption::kGenerateNew;
+        ImportOptions::ImportCollectionUUIDOption uuidOption = importOplogSlot.isNull() || isDryRun
+            ? ImportOptions::ImportCollectionUUIDOption::kKeepOld
+            : ImportOptions::ImportCollectionUUIDOption::kGenerateNew;
 
         // Create Collection object
         auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
         auto durableCatalog = storageEngine->getCatalog();
         auto importResult = uassertStatusOK(durableCatalog->importCollection(
-            opCtx, nss, catalogEntry, storageMetadata, uuidOption));
+            opCtx, nss, catalogEntry, storageMetadata, ImportOptions(uuidOption)));
 
         const auto md = durableCatalog->getMetaData(opCtx, importResult.catalogId);
         std::shared_ptr<Collection> ownedCollection = Collection::Factory::get(opCtx)->make(
