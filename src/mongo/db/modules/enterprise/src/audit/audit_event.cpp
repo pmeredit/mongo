@@ -68,11 +68,8 @@ AuditEvent::AuditEvent(Client* client,
     if (!getGlobalAuditManager()->getEncryptionEnabled()) {
         builder.append(kTimestampField, _ts);
     }
-
-    if (auto opCtx = client->getOperationContext()) {
-        if (auto tenant = getActiveTenant(opCtx)) {
-            builder.append(kTenantField, tenant.get());
-        }
+    if (auto tenant = getActiveTenant(client->getOperationContext())) {
+        builder.append(kTenantField, tenant.get());
     }
     serializeClient(client, &builder);
 
