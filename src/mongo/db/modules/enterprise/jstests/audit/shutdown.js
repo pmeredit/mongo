@@ -9,6 +9,8 @@ load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
 {
     print("START audit-shutdown.js standalone");
 
+    sleep(2000);
+
     const m = MongoRunner.runMongodAuditLogger({});
     const audit = m.auditSpooler();
     const admin = m.getDB("admin");
@@ -25,16 +27,20 @@ load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
 }
 
 {
-    print("SUCCESS audit-shutdown.js standalone");
+    print("START audit-shutdown.js sharded");
+
+    sleep(2000);
     const st = MongoRunner.runShardedClusterAuditLogger({});
     const auditMongos = st.s0.auditSpooler();
 
     st.stopMongos(0, st.s0.opts);
     auditMongos.assertEntry("shutdown", {});
+
+    sleep(2000);
     st.restartMongos(0, st.s0.opts);
 
     st.stop();
 
-    print("SUCCESS audit-shutdown.js standalone");
+    print("SUCCESS audit-shutdown.js sharded");
 }
 })();
