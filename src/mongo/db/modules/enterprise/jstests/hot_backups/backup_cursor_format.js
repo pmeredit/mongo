@@ -4,11 +4,12 @@
  * The first document will contain the metadata about the backup.
  * The remainder of the documents will have one of the formats listed below.
  *
- * For non-incremental backups, for incremental backups where the file had no changed blocks and
- * for the first full backup to be used as a basis for future incremental backups:
+ * For non-incremental backups, incremental backups where the file had no changed blocks, and the
+ * first full backup to be used as a basis for future incremental backups:
  * {
  *     filename: String,
  *     fileSize: Number,
+ *     required: bool
  * }
  *
  * For incremental backups where the file had changed blocks:
@@ -16,7 +17,8 @@
  *     filename: String,
  *     fileSize: Number,
  *     offset: Number,
- *     length: Number
+ *     length: Number,
+ *     required: bool
  * }
  * If the file had multiple changed blocks, then there will be one document per changed block.
  *
@@ -50,6 +52,34 @@ let x = 'x'.repeat(5 * 1024 * 1024);
 let y = 'y'.repeat(5 * 1024 * 1024);
 let z = 'z'.repeat(5 * 1024 * 1024);
 
+const validateFileRequiredField = function(doc) {
+    const kSeparator = _isWindows() ? "\\" : "/";
+
+    const filename = doc.filename.substring(doc.filename.lastIndexOf(kSeparator) + 1);
+    const required = doc.required;
+
+    // Verify that the correct WiredTiger files are marked as required.
+    if (filename == "WiredTiger" || filename == "WiredTiger.backup" ||
+        filename == "WiredTigerHS.wt" || filename.startsWith("WiredTigerLog.")) {
+        assert.eq(true, required);
+        return;
+    }
+
+    // Verify that the correct MongoDB files are marked as required.
+    if (filename == "_mdb_catalog.wt" || filename == "sizeStorer.wt") {
+        assert.eq(true, required);
+        return;
+    }
+
+    // TODO SERVER-62427: validate that the following namespaces are marked as required:
+    // - Any collection residing in an internal database (admin, local or config).
+    // - Each databases 'system.views' collection.
+    // - Collections with table logging enabled. See WiredTigerUtil::useTableLogging().
+
+    // Everything else shouldn't be marked as required.
+    assert.eq(false, required);
+};
+
 // Opening backup cursors can race with taking a checkpoint, so disable checkpoints.
 assert.commandWorked(
     primary.adminCommand({configureFailPoint: 'pauseCheckpointThread', mode: 'alwaysOn'}));
@@ -82,6 +112,8 @@ try {
             assert.eq(true, doc.hasOwnProperty("fileSize"));
             assert.eq(false, doc.hasOwnProperty("offset"));
             assert.eq(false, doc.hasOwnProperty("length"));
+            assert.eq(true, doc.hasOwnProperty("required"));
+            validateFileRequiredField(doc);
         }
     }
 
@@ -117,6 +149,8 @@ try {
             assert.eq(true, doc.hasOwnProperty("fileSize"));
             assert.eq(true, doc.hasOwnProperty("offset"));
             assert.eq(true, doc.hasOwnProperty("length"));
+            assert.eq(true, doc.hasOwnProperty("required"));
+            validateFileRequiredField(doc);
         }
     }
 
@@ -157,6 +191,8 @@ try {
             assert.eq(false, doc.hasOwnProperty("metadata"));
             assert.eq(true, doc.hasOwnProperty("filename"));
             assert.eq(true, doc.hasOwnProperty("fileSize"));
+            assert.eq(true, doc.hasOwnProperty("required"));
+            validateFileRequiredField(doc);
 
             // We only inserted documents into one collection, so at least one WiredTiger file
             // should have incremental changes to report, but not all files list will have these

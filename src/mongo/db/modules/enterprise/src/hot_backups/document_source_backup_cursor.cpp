@@ -59,31 +59,34 @@ DocumentSource::GetNextResult DocumentSourceBackupCursor::doGetNext() {
     }
 
     if (!_backupBlocks.empty()) {
-        const StorageEngine::BackupBlock& backupBlock = _backupBlocks.back();
+        const BackupBlock& backupBlock = _backupBlocks.back();
 
-        if (backupBlock.offset > static_cast<uint64_t>(std::numeric_limits<long long>::max()) ||
-            backupBlock.length > static_cast<uint64_t>(std::numeric_limits<long long>::max()) ||
-            backupBlock.fileSize > static_cast<uint64_t>(std::numeric_limits<long long>::max())) {
+        if (backupBlock.offset() > static_cast<uint64_t>(std::numeric_limits<long long>::max()) ||
+            backupBlock.length() > static_cast<uint64_t>(std::numeric_limits<long long>::max()) ||
+            backupBlock.fileSize() > static_cast<uint64_t>(std::numeric_limits<long long>::max())) {
             std::stringstream ss;
-            ss << "Offset " << backupBlock.offset << ", length " << backupBlock.length << ", or "
-               << backupBlock.fileSize << " is too large to convert from uint64_t to long long";
+            ss << "Offset " << backupBlock.offset() << ", length " << backupBlock.length()
+               << ", or " << backupBlock.fileSize()
+               << " is too large to convert from uint64_t to long long";
             uasserted(ErrorCodes::Overflow, ss.str());
         }
 
         Document doc;
-        if (backupBlock.offset == 0 && backupBlock.length == 0) {
-            doc = {{"filename", backupBlock.filename},
-                   {"fileSize", static_cast<long long>(backupBlock.fileSize)}};
+        if (backupBlock.offset() == 0 && backupBlock.length() == 0) {
+            doc = {{"filename", backupBlock.filename()},
+                   {"fileSize", static_cast<long long>(backupBlock.fileSize())},
+                   {"required", backupBlock.isRequired()}};
         } else {
-            doc = {{"filename", backupBlock.filename},
-                   {"fileSize", static_cast<long long>(backupBlock.fileSize)},
-                   {"offset", static_cast<long long>(backupBlock.offset)},
-                   {"length", static_cast<long long>(backupBlock.length)}};
+            doc = {{"filename", backupBlock.filename()},
+                   {"fileSize", static_cast<long long>(backupBlock.fileSize())},
+                   {"offset", static_cast<long long>(backupBlock.offset())},
+                   {"length", static_cast<long long>(backupBlock.length())},
+                   {"required", backupBlock.isRequired()}};
         }
 
         auto svcCtx = pExpCtx->opCtx->getServiceContext();
         auto backupCursorService = BackupCursorHooks::get(svcCtx);
-        backupCursorService->addFilename(_backupCursorState.backupId, backupBlock.filename);
+        backupCursorService->addFilename(_backupCursorState.backupId, backupBlock.filename());
 
         _backupBlocks.pop_back();
         return std::move(doc);

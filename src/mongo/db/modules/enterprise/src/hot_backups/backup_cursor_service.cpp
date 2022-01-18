@@ -164,7 +164,7 @@ BackupCursorState BackupCursorService::openBackupCursor(
                 oplogStart < oplogEnd);
     }
 
-    std::vector<StorageEngine::BackupBlock> eseBackupBlocks;
+    std::vector<BackupBlock> eseBackupBlocks;
     auto encHooks = EncryptionHooks::get(opCtx->getServiceContext());
     if (encHooks->enabled() && !options.disableIncrementalBackup) {
         std::vector<std::string> eseFiles = uassertStatusOK(encHooks->beginNonBlockingBackup());
@@ -181,7 +181,7 @@ BackupCursorState BackupCursorService::openBackupCursor(
             // The database instance backing the encryption at rest data simply returns filenames
             // that need to be copied whole. The assumption is these files are small so the cost is
             // negligible.
-            eseBackupBlocks.push_back({filename, 0 /* offset */, fileSize, fileSize});
+            eseBackupBlocks.push_back(BackupBlock(filename, 0 /* offset */, fileSize, fileSize));
         }
     }
 

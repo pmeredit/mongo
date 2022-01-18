@@ -70,13 +70,13 @@ TEST_F(BackupCursorServiceTest, TestDoubleUnlock) {
 TEST_F(BackupCursorServiceTest, TestTypicalCursorLifetime) {
     auto backupCursorState = _backupCursorService->openBackupCursor(
         _opCtx.get(), {false, false, kBlockSizeMB, boost::none, boost::none});
-    std::vector<StorageEngine::BackupBlock> backupBlocks =
+    std::vector<BackupBlock> backupBlocks =
         uassertStatusOK(backupCursorState.streamingCursor.get()->getNextBatch(1 /* batchSize */));
     ASSERT_EQUALS(1u, backupBlocks.size());
-    ASSERT_EQUALS("filename.wt", backupBlocks.front().filename);
-    ASSERT_EQUALS(0, backupBlocks.front().offset);
-    ASSERT_EQUALS(0, backupBlocks.front().length);
-    ASSERT_EQUALS(0, backupBlocks.front().fileSize);
+    ASSERT_EQUALS("filename.wt", backupBlocks.front().filename());
+    ASSERT_EQUALS(0, backupBlocks.front().offset());
+    ASSERT_EQUALS(0, backupBlocks.front().length());
+    ASSERT_EQUALS(0, backupBlocks.front().fileSize());
 
     _backupCursorService->closeBackupCursor(_opCtx.get(), backupCursorState.backupId);
 
@@ -85,10 +85,10 @@ TEST_F(BackupCursorServiceTest, TestTypicalCursorLifetime) {
     backupBlocks =
         uassertStatusOK(backupCursorState.streamingCursor.get()->getNextBatch(1 /* batchSize */));
     ASSERT_EQUALS(1u, backupBlocks.size());
-    ASSERT_EQUALS("filename.wt", backupBlocks.front().filename);
-    ASSERT_EQUALS(0, backupBlocks.front().offset);
-    ASSERT_EQUALS(0, backupBlocks.front().length);
-    ASSERT_EQUALS(0, backupBlocks.front().fileSize);
+    ASSERT_EQUALS("filename.wt", backupBlocks.front().filename());
+    ASSERT_EQUALS(0, backupBlocks.front().offset());
+    ASSERT_EQUALS(0, backupBlocks.front().length());
+    ASSERT_EQUALS(0, backupBlocks.front().fileSize());
 
     _backupCursorService->closeBackupCursor(_opCtx.get(), backupCursorState.backupId);
 }
