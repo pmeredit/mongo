@@ -71,7 +71,7 @@ AuditEvent::AuditEvent(Client* client,
 
     if (auto opCtx = client->getOperationContext()) {
         if (auto tenant = getActiveTenant(opCtx)) {
-            builder.append(kTenantField, tenant.get());
+            tenant.get().serializeToBSON(kTenantField, &builder);
         }
     }
     serializeClient(client, &builder);
