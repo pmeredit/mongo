@@ -259,12 +259,12 @@ void importCollection(OperationContext* opCtx,
         // Create Collection object
         auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
         auto durableCatalog = storageEngine->getCatalog();
-        auto importResult = uassertStatusOK(durableCatalog->importCollection(
-            opCtx, nss, catalogEntry, storageMetadata, ImportOptions(uuidOption)));
-
-        const auto md = durableCatalog->getMetaData(opCtx, importResult.catalogId);
         // TODO SERVER-62659 Ensure the correct tenantId is used.
         TenantNamespace tenantNs(getActiveTenant(opCtx), nss);
+        auto importResult = uassertStatusOK(durableCatalog->importCollection(
+            opCtx, tenantNs, catalogEntry, storageMetadata, ImportOptions(uuidOption)));
+
+        const auto md = durableCatalog->getMetaData(opCtx, importResult.catalogId);
         std::shared_ptr<Collection> ownedCollection = Collection::Factory::get(opCtx)->make(
             opCtx, tenantNs, importResult.catalogId, md, std::move(importResult.rs));
 
