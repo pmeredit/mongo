@@ -327,7 +327,8 @@ private:
         BSONObj altNameObj(builder.obj());
         FindCommandRequest findCmd{fullNameNS};
         findCmd.setFilter(altNameObj);
-        findCmd.setReadConcern(repl::ReadConcernArgs::kImplicitDefault);
+        findCmd.setReadConcern(
+            repl::ReadConcernArgs(repl::ReadConcernLevel::kMajorityReadConcern).toBSONInner());
         BSONObj dataKeyObj = _conn->findOne(std::move(findCmd));
         if (dataKeyObj.isEmpty()) {
             uasserted(ErrorCodes::BadValue, "Invalid keyAltName.");
