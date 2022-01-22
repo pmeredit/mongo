@@ -95,7 +95,7 @@ void aesGenerateIV(const SymmetricKey* key,
         if (bufferLen < ivSize) {
             fassert(40683, "IV buffer is too small for selected mode");
         }
-        auto status = engineRandBytes(buffer, ivSize);
+        auto status = engineRandBytes({buffer, ivSize});
         if (!status.isOK()) {
             fassert(4050, status);
         }
@@ -135,8 +135,8 @@ Status _doAESEncrypt(const SymmetricKey& key,
         aesGenerateIV(&key, mode, layout.getIV(), layout.getIVSize());
     }
 
-    auto encryptor =
-        uassertStatusOK(SymmetricEncryptor::create(key, mode, layout.getIV(), layout.getIVSize()));
+    auto encryptor = uassertStatusOK(
+        SymmetricEncryptor::create(key, mode, {layout.getIV(), layout.getIVSize()}));
 
     if (std::is_same<typename T::header_type, crypto::HeaderGCMV1>::value) {
         static_assert(crypto::HeaderGCMV1::kExtraSize == 13, "Page schema layout has changed");
@@ -154,18 +154,18 @@ Status _doAESEncrypt(const SymmetricKey& key,
 
         // Use the entire "extra" block except for the fixed 0xFFFFFFFF marker for AAD.
         uassertStatusOK(
-            encryptor->addAuthenticatedData(layout.getExtra() + 4, layout.getExtraSize() - 4));
+            encryptor->addAuthenticatedData({layout.getExtra() + 4, layout.getExtraSize() - 4}));
     } else {
         invariant(layout.getExtraSize() == 0);
     }
 
     const auto updateLen =
-        uassertStatusOK(encryptor->update(in, inLen, layout.getData(), layout.getDataSize()));
+        uassertStatusOK(encryptor->update({in, inLen}, {layout.getData(), layout.getDataSize()}));
     const auto finalLen = uassertStatusOK(
-        encryptor->finalize(layout.getData() + updateLen, layout.getDataSize() - updateLen));
+        encryptor->finalize({layout.getData() + updateLen, layout.getDataSize() - updateLen}));
     const auto len = updateLen + finalLen;
 
-    uassertStatusOK(encryptor->finalizeTag(layout.getTag(), layout.getTagSize()));
+    uassertStatusOK(encryptor->finalizeTag({layout.getTag(), layout.getTagSize()}));
 
 
     // Some cipher modes, such as GCM, will know in advance exactly how large their ciphertexts will
@@ -257,22 +257,23 @@ Status _doAESDecrypt(const SymmetricKey& key,
     }
 
     constexpr auto mode = T::header_type::kMode;
-    auto decryptor =
-        uassertStatusOK(SymmetricDecryptor::create(key, mode, layout.getIV(), layout.getIVSize()));
+    auto decryptor = uassertStatusOK(
+        SymmetricDecryptor::create(key, mode, {layout.getIV(), layout.getIVSize()}));
 
     if (std::is_same<typename T::header_type, crypto::HeaderGCMV1>::value) {
         invariant(layout.getExtraSize() == 13);
         // GCM Page schema only uses the post-marker bytes for AAD.
         uassertStatusOK(
-            decryptor->addAuthenticatedData(layout.getExtra() + 4, layout.getExtraSize() - 4));
+            decryptor->addAuthenticatedData({layout.getExtra() + 4, layout.getExtraSize() - 4}));
     } else {
         invariant(layout.getExtraSize() == 0);
     }
 
     const auto updateLen =
-        uassertStatusOK(decryptor->update(layout.getData(), layout.getDataSize(), out, outLen));
-    uassertStatusOK(decryptor->updateTag(layout.getTag(), layout.getTagSize()));
-    const auto finalLen = uassertStatusOK(decryptor->finalize(out + updateLen, outLen - updateLen));
+        uassertStatusOK(decryptor->update({layout.getData(), layout.getDataSize()}, {out, outLen}));
+    uassertStatusOK(decryptor->updateTag({layout.getTag(), layout.getTagSize()}));
+    const auto finalLen =
+        uassertStatusOK(decryptor->finalize({out + updateLen, outLen - updateLen}));
 
     *resultLen = updateLen + finalLen;
     invariant(*resultLen <= outLen);

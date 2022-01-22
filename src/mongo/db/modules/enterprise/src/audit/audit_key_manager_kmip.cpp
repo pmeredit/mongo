@@ -96,7 +96,7 @@ AuditKeyManager::KeyGenerationResult AuditKeyManagerKMIPGet::generateWrappedKey(
     //  - not be used for any other encryption operation
     //
     auto iv = std::vector<uint8_t>(aesGetIVSize(crypto::aesMode::gcm));
-    uassertStatusOK(crypto::engineRandBytes(iv.data(), iv.size()));
+    uassertStatusOK(crypto::engineRandBytes(DataRange(iv)));
 
     // prepare the input and output buffers for GCM encrypt:
     // input: we use the KMIP key ID as authenticated data (AAD), a random

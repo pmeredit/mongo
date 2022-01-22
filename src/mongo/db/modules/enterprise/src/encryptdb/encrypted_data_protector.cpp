@@ -66,7 +66,7 @@ Status EncryptedDataProtector::protect(const std::uint8_t* in,
         out += ivLen;
         *bytesWritten += ivLen;
 
-        auto swEncryptor = crypto::SymmetricEncryptor::create(*_key, _mode, iv, ivLen);
+        auto swEncryptor = crypto::SymmetricEncryptor::create(*_key, _mode, {iv, ivLen});
         if (!swEncryptor.isOK()) {
             return swEncryptor.getStatus();
         }
@@ -74,8 +74,8 @@ Status EncryptedDataProtector::protect(const std::uint8_t* in,
     }
 
     // Populate the buffer with ciphertext
-    int updateBytes = outLen - *bytesWritten;
-    auto swUpdate = _encryptor->update(in, inLen, out, updateBytes);
+    auto updateBytes = static_cast<std::size_t>(outLen - *bytesWritten);
+    auto swUpdate = _encryptor->update({in, inLen}, {out, updateBytes});
     if (!swUpdate.isOK()) {
         return swUpdate.getStatus();
     }
@@ -93,7 +93,7 @@ Status EncryptedDataProtector::finalize(std::uint8_t* out,
         return {ErrorCodes::UnknownError, "Encryptor not initialized"};
     }
 
-    auto swFinal = _encryptor->finalize(out, outLen);
+    auto swFinal = _encryptor->finalize({out, outLen});
     if (!swFinal.isOK()) {
         return swFinal.getStatus();
     }
@@ -132,7 +132,7 @@ Status EncryptedDataProtector::finalizeTag(std::uint8_t* out,
         return {ErrorCodes::UnknownError, "Encryptor not initialized"};
     }
 
-    auto swTag = _encryptor->finalizeTag(out, outLen);
+    auto swTag = _encryptor->finalizeTag({out, outLen});
     if (!swTag.isOK()) {
         return swTag.getStatus();
     }

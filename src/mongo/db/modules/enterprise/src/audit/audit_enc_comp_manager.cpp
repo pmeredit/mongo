@@ -271,29 +271,25 @@ std::size_t AuditEncryptionCompressionManager::aesEncryptGCM(const SymmetricKey&
             ciphertext.length() >= plaintext.length());
 
     // create encryptor & set AAD
-    auto encryptor = uassertStatusOK(crypto::SymmetricEncryptor::create(
-        key, crypto::aesMode::gcm, iv.data<std::uint8_t>(), iv.length()));
+    auto encryptor =
+        uassertStatusOK(crypto::SymmetricEncryptor::create(key, crypto::aesMode::gcm, iv));
 
     if (aad.length()) {
-        uassertStatusOK(encryptor->addAuthenticatedData(aad.data<std::uint8_t>(), aad.length()));
+        uassertStatusOK(encryptor->addAuthenticatedData(aad));
     }
 
     // do the encrypt & finalize
     DataRangeCursor ctCursor(ciphertext);
-    auto ctBuf = const_cast<std::uint8_t*>(ctCursor.data<std::uint8_t>());
     size_t ctLen = 0;
     if (plaintext.length()) {
-        ctLen = uassertStatusOK(encryptor->update(
-            plaintext.data<std::uint8_t>(), plaintext.length(), ctBuf, ctCursor.length()));
+        ctLen = uassertStatusOK(encryptor->update(plaintext, ctCursor));
         ctCursor.advance(ctLen);
-        ctBuf = const_cast<std::uint8_t*>(ctCursor.data<std::uint8_t>());
     }
 
-    ctLen += uassertStatusOK(encryptor->finalize(ctBuf, ctCursor.length()));
+    ctLen += uassertStatusOK(encryptor->finalize(ctCursor));
 
     // set the tag
-    uassertStatusOK(
-        encryptor->finalizeTag(const_cast<std::uint8_t*>(tag.data<std::uint8_t>()), tag.length()));
+    uassertStatusOK(encryptor->finalizeTag(tag));
     invariant(ctLen == plaintext.length());
     return ctLen;
 }
@@ -315,24 +311,21 @@ std::size_t AuditEncryptionCompressionManager::aesDecryptGCM(const SymmetricKey&
             plaintext.length() >= ciphertext.length());
 
     // create the decryptor & set AAD
-    auto decryptor = uassertStatusOK(crypto::SymmetricDecryptor::create(
-        key, crypto::aesMode::gcm, iv.data<uint8_t>(), iv.length()));
+    auto decryptor =
+        uassertStatusOK(crypto::SymmetricDecryptor::create(key, crypto::aesMode::gcm, iv));
 
     if (aad.length()) {
-        uassertStatusOK(decryptor->addAuthenticatedData(aad.data<uint8_t>(), aad.length()));
+        uassertStatusOK(decryptor->addAuthenticatedData(aad));
     }
 
     // do the decrypt
     DataRangeCursor ptCursor(plaintext);
-    auto ptBuf = const_cast<std::uint8_t*>(ptCursor.data<std::uint8_t>());
-    auto ptLen = uassertStatusOK(decryptor->update(
-        ciphertext.data<std::uint8_t>(), ciphertext.length(), ptBuf, ptCursor.length()));
+    auto ptLen = uassertStatusOK(decryptor->update(ciphertext, ptCursor));
     ptCursor.advance(ptLen);
-    ptBuf = const_cast<std::uint8_t*>(ptCursor.data<std::uint8_t>());
 
-    uassertStatusOK(decryptor->updateTag(tag.data<std::uint8_t>(), tag.length()));
+    uassertStatusOK(decryptor->updateTag(tag));
 
-    ptLen += uassertStatusOK(decryptor->finalize(ptBuf, ptCursor.length()));
+    ptLen += uassertStatusOK(decryptor->finalize(ptCursor));
     invariant(ptLen <= plaintext.length());
     return ptLen;
 }
