@@ -210,7 +210,7 @@ void importCollection(OperationContext* opCtx,
 
         uassert(ErrorCodes::NamespaceExists,
                 str::stream() << "A view already exists. NS: " << nss,
-                !ViewCatalog::get(db)->lookup(opCtx, nss));
+                !ViewCatalog::get(opCtx)->lookup(opCtx, nss));
 
         WriteUnitOfWork wunit(opCtx);
 
