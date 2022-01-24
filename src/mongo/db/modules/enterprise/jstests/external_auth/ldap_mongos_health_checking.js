@@ -10,8 +10,21 @@ load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ufw_firewall_lib
 
 // Increment this for the real stress test, value is low for the Evergreen.
 const kIterations = 2;
-const kWaitForCompletedChecksCount = 100;
+const kWaitForCompletedChecksCount = 50;
 const kWaitForPassedChecksCount = 10;
+
+const kMonitoringIntervalMs = 200;
+
+// Setting LDAP interval to be pretty short allowing a low probability failure.
+const kLdapTimeout = 5000;
+
+const kProgressMonitorInterval = 100;
+
+// The timeout should be enough to repeat the LDAP check once more after timeout.
+const kProgressMonitorDeadlineSec = (kLdapTimeout / 1000) * 2 + 1;
+
+// Let all blocked threads to timeout before terminating.
+const kAfterAllTestsSleep = kLdapTimeout + 100;
 
 const ldapTestServers = function() {
     return {
@@ -22,7 +35,7 @@ const ldapTestServers = function() {
             "ldapQueryUser": "cn=ldapz_admin,ou=Users,dc=10gen,dc=cc",
             "ldapQueryPassword": "Secret123",
             "ldapAuthzQueryTemplate": "{USER}?memberOf",
-            "ldapTimeoutMS": 10000,
+            "ldapTimeoutMS": kLdapTimeout,
         },
         "ActiveDirectory": {
             // Elastic IP for the ec2-18-216-194-49.us-east-2.compute.amazonaws.com host.
@@ -32,7 +45,7 @@ const ldapTestServers = function() {
             "ldapQueryUser": "cn=ldapz_admin,cn=Users,dc=mongotest,dc=com",
             "ldapQueryPassword": "Secret123",
             "ldapAuthzQueryTemplate": "{USER}?memberOf",
-            "ldapTimeoutMS": 10000,
+            "ldapTimeoutMS": kLdapTimeout,
         }
     };
 }();
@@ -50,8 +63,10 @@ const runTestSuite = function(ldapTestServer) {
                         {type: "ldap", intensity: "critical"},
                     ]
                 }),
-                progressMonitor: tojson({interval: 100, deadline: 60}),
-                healthMonitoringIntervals: tojson({values: [{type: "ldap", interval: 30}]}),
+                progressMonitor: tojson(
+                    {interval: kProgressMonitorInterval, deadline: kProgressMonitorDeadlineSec}),
+                healthMonitoringIntervals:
+                    tojson({values: [{type: "ldap", interval: kMonitoringIntervalMs}]}),
             },
             ldapServers: ldapTestServer["ldapServers"],
             ldapTransportSecurity: "none",
@@ -211,7 +226,8 @@ const runTestSuite = function(ldapTestServer) {
         }
     }
 
-    sleep(8000);  // Let all health checker threads stuck because of firewall to terminate.
+    sleep(kAfterAllTestsSleep);  // Let all health checker threads stuck because of firewall to
+                                 // terminate.
     assert.commandWorked(st.s0.adminCommand({"ping": 1}));
     if (isAnyUbuntu) {
         printMemoryForProcess(mongosProcessId);

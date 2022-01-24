@@ -19,21 +19,27 @@ const isAnyUbuntu = (() => {
 })();
 
 // Invokes the 'ufw' firewall utility with 'args'.
-const firewallAction = function(args, allowedToFail = false) {
+const firewallAction = function(args, allowedToFail = false, fetchOutput = true) {
     clearRawMongoProgramOutput();
     const shellArgs = ['sudo', 'ufw'].concat(args);
     jsTestLog(`${shellArgs}`);
-    const rc = _runMongoProgram.apply(null, shellArgs);
+    const rc = runNonMongoProgram.apply(null, shellArgs);
     if (!allowedToFail) {
         assert.eq(rc, 0);
     }
-    return rawMongoProgramOutput();
+    if (fetchOutput) {
+        const mongoOutput = rawMongoProgramOutput();
+        jsTestLog(`${mongoOutput}, rc ${rc}`);
+        return mongoOutput;
+    } else {
+        jsTestLog(`rc ${rc}`);
+    }
 };
 
 // Resolves server name to IP address using dig, works only on Unix platforms.
 const resolveIPUnix = function(host) {
     clearRawMongoProgramOutput();
-    runMongoProgram('dig', '+short', host);
+    runNonMongoProgram('dig', '+short', host);
     const out = rawMongoProgramOutput();
     jsTestLog(out);
     const matchIp = out.match(
@@ -59,10 +65,10 @@ const checkFirewallIsEnabled = function() {
 };
 
 const enableFirewall = function() {
-    firewallAction(['enable']);
+    firewallAction(['--force', 'enable'], false, false);
 };
 
 const disableFirewall = function() {
     jsTestLog('Disable firewall');
-    firewallAction(['disable'], true /* this can fail */);
+    firewallAction(['disable'], true /* this can fail */, false);
 };
