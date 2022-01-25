@@ -290,13 +290,13 @@ const AuditEncryptionCompressionManager* AuditManager::getAuditEncryptionCompres
 // Only to be called on startup - if an initial rotate is attempted but does
 // not succeed, throw an exception
 void rotateAuditLog() {
-    if (!globalAuditManager.isEnabled()) {
+    if (!globalAuditManager.isEnabled() || !globalAuditManager.isFileDestination()) {
         return;
     }
 
-    logv2::rotateLogs(serverGlobalParams.logRenameOnRotate,
-                      logv2::kAuditLogTag,
-                      [](Status s) -> void { uassertStatusOK(s); });
+    uassertStatusOK(logv2::rotateLogs(serverGlobalParams.logRenameOnRotate,
+                                      logv2::kAuditLogTag,
+                                      [](Status s) -> void { uassertStatusOK(s); }));
 }
 
 namespace {

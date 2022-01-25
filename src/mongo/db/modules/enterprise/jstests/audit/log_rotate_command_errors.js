@@ -1,0 +1,117 @@
+// Tests the errors returned when logRotate command fails
+
+load('src/mongo/db/modules/enterprise/jstests/audit/lib/audit.js');
+
+(function() {
+
+'use strict';
+
+function testSubsecondRotations() {
+    jsTest.log("Test two logRotate commands invoked within one second causes file rename failure");
+    const fixture = new StandaloneFixture();
+    const {conn, audit, admin} = fixture.startProcess();
+    fixture.createUserAndAuth();
+    sleep(2000);
+
+    assert.commandWorked(admin.adminCommand({logRotate: 1}));
+
+    let result = undefined;
+
+    // use assert.soon because we want to keep retrying the command
+    // in case the succeeding command did not arrive in the same
+    // second as the previous command
+    assert.soon(() => {
+        result = admin.adminCommand({logRotate: 1});
+        return result.ok === 0;
+    });
+    assert.eq(result.code, ErrorCodes.FileRenameFailed);
+
+    // verify the combined minor error message is logged
+    assert(checkLog.checkContainsOnceJson(conn, 6221501));
+
+    fixture.stopProcess();
+    sleep(1000);
+}
+
+function testPermissionDeniedOnRotation() {
+    if (_isWindows()) {
+        return;
+    }
+    jsTest.log("Test logRotate command fails with permission denied");
+    const fixture = new StandaloneFixture();
+    const {conn, audit, admin} = fixture.startProcess();
+    fixture.createUserAndAuth();
+    sleep(2000);
+
+    // remove write perms on the directory containing the log files
+    const rc = runProgram("chmod", "ug-w", MongoRunner.dataPath);
+    assert.eq(0, rc);
+
+    const result = admin.adminCommand({logRotate: 1});
+
+    // restore write perms
+    runProgram("chmod", "ug+w", MongoRunner.dataPath);
+
+    assert.eq(result.ok, 0);
+    assert.eq(result.code, ErrorCodes.FileRenameFailed);
+
+    // there should be 2 "Permission denied" messages logged,
+    // one for mongod.log and the other for audit.log
+    assert(checkLog.checkContainsWithCountJson(conn, 23168, undefined, 2));
+
+    fixture.stopProcess();
+    sleep(1000);
+}
+
+function testLogFileDeletedBeforeRotation() {
+    jsTest.log("Test logRotate command with deleted source file");
+    const fixture = new StandaloneFixture();
+    const {conn, audit, admin} = fixture.startProcess();
+    fixture.createUserAndAuth();
+    sleep(2000);
+
+    const logPath = MongoRunner.dataPath + "mongod.log";
+    const auditPath = MongoRunner.dataPath + "audit.log";
+    removeFile(logPath);
+    removeFile(auditPath);
+
+    const result = admin.adminCommand({logRotate: 1});
+
+    assert.eq(result.ok, 0);
+    assert.eq(result.code, ErrorCodes.FileRenameFailed);
+
+    // On Windows, this is logged as an "Access denied" error for each of
+    // the two files, while on others, this is just logged as a minor error.
+    if (_isWindows()) {
+        assert(checkLog.checkContainsWithCountJson(conn, 23168, undefined, 2));
+    } else {
+        assert(checkLog.checkContainsOnceJson(conn, 6221501));
+    }
+    fixture.stopProcess();
+    sleep(1000);
+}
+
+function testBadLogTypeInCommand() {
+    jsTest.log("Test logRotate command with invalid logType string");
+    const fixture = new StandaloneFixture();
+    const {conn, audit, admin} = fixture.startProcess();
+    fixture.createUserAndAuth();
+    sleep(2000);
+
+    const result = admin.adminCommand({logRotate: "foo"});
+    assert.eq(result.ok, 0);
+    assert.eq(result.code, ErrorCodes.NoSuchKey);
+
+    // verify the logs contain "Unknown log type..." error message
+    assert(checkLog.checkContainsOnceJson(conn, 6221500));
+    fixture.stopProcess();
+    sleep(1000);
+}
+
+{
+    testSubsecondRotations();
+    testPermissionDeniedOnRotation();
+    testLogFileDeletedBeforeRotation();
+    testBadLogTypeInCommand();
+}
+})();
