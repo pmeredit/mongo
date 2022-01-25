@@ -12,14 +12,29 @@
 #include "mongo/bson/json.h"
 #include "mongo/db/concurrency/locker_noop_client_observer.h"
 #include "mongo/db/service_context_test_fixture.h"
+#include "mongo/platform/shared_library.h"
 #include "mongo/unittest/death_test.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/quick_exit.h"
 #include "mongo/util/scopeguard.h"
 
+#define MONGO_CSFLE_PREFIX "mongo_csfle_v1"
+
+#if defined(_WIN32)
+#define LIBEXT ".dll"
+#elif defined(__APPLE__)
+#define LIBEXT ".dylib"
+#else
+#define LIBEXT ".so"
+#endif
+
+#define MONGO_CSFLE_LIBNAME MONGO_CSFLE_PREFIX LIBEXT
+
+#if !defined(CSFLE_UNITTEST_DYNAMIC)
 namespace mongo {
 BSONObj analyzeQuery(BSONObj document, OperationContext* opCtx, NamespaceString ns);
 }
+#endif
 
 namespace {
 
@@ -66,19 +81,63 @@ void replace_str(std::string& str, mongo::StringData search, mongo::StringData r
     str.replace(pos, search.size(), replace.toString());
 }
 
+#if defined(CSFLE_UNITTEST_DYNAMIC)
+
+mongo_csfle_v1_status* (*mongo_csfle_v1_status_create)(void);
+void (*mongo_csfle_v1_status_destroy)(mongo_csfle_v1_status*);
+int (*mongo_csfle_v1_status_get_error)(const mongo_csfle_v1_status*);
+const char* (*mongo_csfle_v1_status_get_explanation)(const mongo_csfle_v1_status*);
+int (*mongo_csfle_v1_status_get_code)(const mongo_csfle_v1_status*);
+
+mongo_csfle_v1_lib* (*mongo_csfle_v1_lib_create)(mongo_csfle_v1_status*);
+int (*mongo_csfle_v1_lib_destroy)(mongo_csfle_v1_lib*, mongo_csfle_v1_status*);
+
+mongo_csfle_v1_query_analyzer* (*mongo_csfle_v1_query_analyzer_create)(mongo_csfle_v1_lib*,
+                                                                       mongo_csfle_v1_status*);
+void (*mongo_csfle_v1_query_analyzer_destroy)(mongo_csfle_v1_query_analyzer*);
+uint8_t* (*mongo_csfle_v1_analyze_query)(mongo_csfle_v1_query_analyzer*,
+                                         const uint8_t*,
+                                         const char*,
+                                         uint32_t,
+                                         uint32_t*,
+                                         mongo_csfle_v1_status*);
+void (*mongo_csfle_v1_bson_free)(uint8_t*);
+
+#define LOAD_API_FUNC(shlib, name)                                 \
+    do {                                                           \
+        auto swFunc = shlib->getFunctionAs<decltype(name)>(#name); \
+        uassertStatusOK(swFunc.getStatus());                       \
+        name = swFunc.getValue();                                  \
+    } while (0)
+
+static void mongo_csfle_v1_api_load(std::unique_ptr<mongo::SharedLibrary>& shLibHandle) {
+    LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_status_create);
+    LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_status_destroy);
+    LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_status_get_error);
+    LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_status_get_explanation);
+    LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_status_get_code);
+    LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_lib_create);
+    LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_lib_destroy);
+    LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_query_analyzer_create);
+    LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_query_analyzer_destroy);
+    LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_analyze_query);
+    LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_bson_free);
+}
+#endif
+
 class CsfleTest : public mongo::unittest::Test {
 protected:
     void setUp() override {
         status = mongo_csfle_v1_status_create();
         ASSERT(status);
 
-        lib = mongo_csfle_v1_create(status);
+        lib = mongo_csfle_v1_lib_create(status);
         ASSERT(lib);
     }
 
     void tearDown() override {
         if (lib) {
-            int code = mongo_csfle_v1_destroy(lib, status);
+            int code = mongo_csfle_v1_lib_destroy(lib, status);
             ASSERT_EQ(code, MONGO_CSFLE_V1_SUCCESS);
             lib = nullptr;
         }
@@ -221,7 +280,7 @@ TEST_F(CsfleTest, InitializationIsSuccessful) {
 }
 
 TEST_F(CsfleTest, DoubleInitializationFails) {
-    auto lib2 = mongo_csfle_v1_create(status);
+    auto lib2 = mongo_csfle_v1_lib_create(status);
 
     ASSERT(!lib2);
     ASSERT_EQ(MONGO_CSFLE_V1_ERROR_LIBRARY_ALREADY_INITIALIZED,
@@ -229,27 +288,28 @@ TEST_F(CsfleTest, DoubleInitializationFails) {
 }
 
 TEST_F(CsfleTest, DoubleDestructionFails) {
-    ASSERT_EQ(MONGO_CSFLE_V1_SUCCESS, mongo_csfle_v1_destroy(lib, status));
+    ASSERT_EQ(MONGO_CSFLE_V1_SUCCESS, mongo_csfle_v1_lib_destroy(lib, status));
     ASSERT_EQ(MONGO_CSFLE_V1_SUCCESS, mongo_csfle_v1_status_get_error(status));
 
-    ASSERT_EQ(MONGO_CSFLE_V1_ERROR_LIBRARY_NOT_INITIALIZED, mongo_csfle_v1_destroy(lib, status));
+    ASSERT_EQ(MONGO_CSFLE_V1_ERROR_LIBRARY_NOT_INITIALIZED,
+              mongo_csfle_v1_lib_destroy(lib, status));
     ASSERT_EQ(MONGO_CSFLE_V1_ERROR_LIBRARY_NOT_INITIALIZED,
               mongo_csfle_v1_status_get_error(status));
     lib = nullptr;
 }
 
 TEST_F(CsfleTest, BadLibHandleDestructionFails) {
-    ASSERT_EQ(MONGO_CSFLE_V1_ERROR_INVALID_LIB_HANDLE, mongo_csfle_v1_destroy(nullptr, status));
+    ASSERT_EQ(MONGO_CSFLE_V1_ERROR_INVALID_LIB_HANDLE, mongo_csfle_v1_lib_destroy(nullptr, status));
     ASSERT_EQ(MONGO_CSFLE_V1_ERROR_INVALID_LIB_HANDLE, mongo_csfle_v1_status_get_error(status));
 
     int dummy;
     ASSERT_EQ(MONGO_CSFLE_V1_ERROR_INVALID_LIB_HANDLE,
-              mongo_csfle_v1_destroy(reinterpret_cast<mongo_csfle_v1_lib*>(&dummy), status));
+              mongo_csfle_v1_lib_destroy(reinterpret_cast<mongo_csfle_v1_lib*>(&dummy), status));
     ASSERT_EQ(MONGO_CSFLE_V1_ERROR_INVALID_LIB_HANDLE, mongo_csfle_v1_status_get_error(status));
 }
 
 TEST_F(CsfleTest, QueryAnalyzerCreateWithUninitializedLibFails) {
-    ASSERT_EQ(MONGO_CSFLE_V1_SUCCESS, mongo_csfle_v1_destroy(lib, status));
+    ASSERT_EQ(MONGO_CSFLE_V1_SUCCESS, mongo_csfle_v1_lib_destroy(lib, status));
 
     auto analyzer = mongo_csfle_v1_query_analyzer_create(lib, status);
     lib = nullptr;
@@ -274,7 +334,7 @@ TEST_F(CsfleTest, QueryAnalyzerCreateWithBadLibHandleFails) {
 DEATH_TEST_F(CsfleTest, LibDestructionWithExistingAnalyzerFails, "invariant") {
     auto analyzer = mongo_csfle_v1_query_analyzer_create(lib, status);
     ASSERT(analyzer);
-    mongo_csfle_v1_destroy(lib, status);
+    mongo_csfle_v1_lib_destroy(lib, status);
 }
 
 DEATH_TEST_F(CsfleTest, AnalyzeQueryNullHandleFails, "invariant") {
@@ -722,6 +782,7 @@ TEST_F(CsfleTest, AnalyzeExplainWithInnerIsRemoteSchema) {
         input.c_str(), mongo_csfle_v1_error::MONGO_CSFLE_V1_ERROR_EXCEPTION, 6206602);
 }
 
+#if !defined(CSFLE_UNITTEST_DYNAMIC)
 class OpmsgProcessTest : public mongo::ServiceContextTest {
 public:
     OpmsgProcessTest() = default;
@@ -808,6 +869,7 @@ TEST_F(OpmsgProcessTest, Basic) {
 
     ASSERT_EQ(json, retJson);
 }
+#endif
 
 }  // namespace
 
@@ -830,7 +892,24 @@ int main(const int argc, const char* const* const argv) {
         return EXIT_FAILURE;
     }
 
-    const auto result = ::mongo::unittest::Suite::run(std::vector<std::string>(), "", "", 1);
+    int result;
+#if !defined(CSFLE_UNITTEST_DYNAMIC)
+    result = ::mongo::unittest::Suite::run(std::vector<std::string>(), "", "", 1);
+#else
+    try {
+        auto swShLib = mongo::SharedLibrary::create(MONGO_CSFLE_LIBNAME);
+        uassertStatusOK(swShLib.getStatus());
+        std::cout << "Successfully loaded library " << MONGO_CSFLE_LIBNAME << std::endl;
+
+        mongo_csfle_v1_api_load(swShLib.getValue());
+
+        result = ::mongo::unittest::Suite::run(std::vector<std::string>(), "", "", 1);
+    } catch (...) {
+        auto status = mongo::exceptionToStatus();
+        std::cerr << "Failed to load the CSFLE library - " << status << std::endl;
+        return EXIT_FAILURE;
+    }
+#endif
 
     // This is the standard exit path for Mongo processes. See the mongo::quickExit() declaration
     // for more information.

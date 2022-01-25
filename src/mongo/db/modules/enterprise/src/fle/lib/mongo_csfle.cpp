@@ -254,7 +254,7 @@ ServiceContext* initialize() {
 struct ServiceContextDestructor {
     /**
      * This destructor gets called when the CSFLE Library gets torn down, either by a call to
-     * mongo_csfle_v1_destroy() or when the process exits.
+     * mongo_csfle_v1_lib_destroy() or when the process exits.
      */
     void operator()(mongo::ServiceContext* const serviceContext) const noexcept {
         Status status = mongo::runGlobalDeinitializers();
@@ -377,12 +377,12 @@ auto fromInterfaceType(const uint8_t* bson) noexcept {
 
 extern "C" {
 
-mongo_csfle_v1_lib* MONGO_API_CALL mongo_csfle_v1_create(mongo_csfle_v1_status* status) {
+mongo_csfle_v1_lib* MONGO_API_CALL mongo_csfle_v1_lib_create(mongo_csfle_v1_status* status) {
     return enterCXX(mongo::getStatusImpl(status), [&]() { return mongo::csfle_lib_init(); });
 }
 
-int MONGO_API_CALL mongo_csfle_v1_destroy(mongo_csfle_v1_lib* const lib,
-                                          mongo_csfle_v1_status* const status) {
+int MONGO_API_CALL mongo_csfle_v1_lib_destroy(mongo_csfle_v1_lib* const lib,
+                                              mongo_csfle_v1_status* const status) {
     return enterCXX(mongo::getStatusImpl(status), [&]() { return mongo::csfle_lib_fini(lib); });
 }
 

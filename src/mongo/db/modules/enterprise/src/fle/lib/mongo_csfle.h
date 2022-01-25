@@ -74,7 +74,7 @@ typedef struct mongo_csfle_v1_status mongo_csfle_v1_status;
  *
  * Returns NULL when construction of a mongo_csfle_v1_status object fails.
  *
- * This function may be called before mongo_csfle_v1_create().
+ * This function may be called before mongo_csfle_v1_lib_create().
  */
 MONGO_CSFLE_API mongo_csfle_v1_status* MONGO_API_CALL mongo_csfle_v1_status_create(void);
 
@@ -89,7 +89,7 @@ MONGO_CSFLE_API mongo_csfle_v1_status* MONGO_API_CALL mongo_csfle_v1_status_crea
  *
  * This function does not report failures.
  *
- * This function may be called before `mongo_csfle_v1_create()`.
+ * This function may be called before `mongo_csfle_v1_lib_create()`.
  *
  * This function causes all storage associated with the specified status object to be released,
  * including the storage referenced by functions that returned observable storage buffers from this
@@ -187,7 +187,7 @@ typedef struct mongo_csfle_v1_lib mongo_csfle_v1_lib;
  * On failure, returns NULL and populates the 'status' object if it is not NULL.
  */
 MONGO_CSFLE_API mongo_csfle_v1_lib* MONGO_API_CALL
-mongo_csfle_v1_create(mongo_csfle_v1_status* status);
+mongo_csfle_v1_lib_create(mongo_csfle_v1_status* status);
 
 /**
  * Tears down the state of this library. Existing mongo_csfle_v1_status objects remain valid.
@@ -202,10 +202,10 @@ mongo_csfle_v1_create(mongo_csfle_v1_status* status);
  * Returns MONGO_CSFLE_V1_SUCCESS on success.
  *
  * Returns MONGO_CSFLE_V1_ERROR_LIBRARY_NOT_INITIALIZED and modifies 'status' if
- * mongo_csfle_v1_create() has not been called previously.
+ * mongo_csfle_v1_lib_create() has not been called previously.
  */
-MONGO_CSFLE_API int MONGO_API_CALL mongo_csfle_v1_destroy(mongo_csfle_v1_lib* lib,
-                                                          mongo_csfle_v1_status* status);
+MONGO_CSFLE_API int MONGO_API_CALL mongo_csfle_v1_lib_destroy(mongo_csfle_v1_lib* lib,
+                                                              mongo_csfle_v1_status* status);
 
 
 /**

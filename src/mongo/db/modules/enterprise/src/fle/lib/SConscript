@@ -73,23 +73,26 @@ if get_option('link-model') == 'dynamic-sdk' and env.TargetOSIs('posix', 'window
 
 if get_option('link-model') != 'dynamic-sdk':
     csfleTestEnv = env.Clone()
-    csfleTestEnv.AppendUnique(
-        CPPDEFINES=[
-            'CSFLE_SUPPORT_STATIC',
-        ],
-    )
+    deps = [
+        '$BUILD_DIR/mongo/db/service_context_test_fixture',
+        '$BUILD_DIR/mongo/unittest/unittest',
+    ]
+    sources = [
+        "mongo_csfle_test.cpp",
+    ]
+    if 'CSFLE_UNITTEST_DYNAMIC' not in [i[0] for i in csfleTestEnv['CPPDEFINES']]:
+        csfleTestEnv.AppendUnique(
+            CPPDEFINES=[
+                'CSFLE_SUPPORT_STATIC',
+            ],
+        )
+        deps.append('../query_analysis/cryptd_query_analysis')
+        sources.append('mongo_csfle.cpp')
 
     unitTest = csfleTestEnv.CppUnitTest(
         target="mongo_csfle_test",
-        source=[
-            'mongo_csfle.cpp',
-            "mongo_csfle_test.cpp",
-        ],
-        LIBDEPS=[
-            '$BUILD_DIR/mongo/db/service_context_test_fixture',
-            '$BUILD_DIR/mongo/unittest/unittest',
-            '../query_analysis/cryptd_query_analysis',
-        ],
+        source=sources,
+        LIBDEPS=deps,
         UNITTEST_HAS_CUSTOM_MAINLINE=True,
         AIB_COMPONENT='mongo-csfle-test',
     )
