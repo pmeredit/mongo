@@ -191,3 +191,15 @@ Interoperability Protocol. The protocol defines a set of operations for interact
 management service. ESE allows you to store your master key in an external key manager and use KMIP
 to communicate with that key management service. All of the functions that ESE uses for KMIP are in
 [`kmip_service.h`](kmip_service.h).
+
+Keys stored in a KMIP speaking server have a
+[concept of state](https://docs.oasis-open.org/kmip/kmip-spec/v2.0/os/kmip-spec-v2.0-os.html#_Toc6497510)
+that determines whether the key is in use. When a key is created, it is put into the pre-active
+state. It must first be put into the active state before it can be used. If a key is not specified
+when starting an Encrypted mongod that is using KMIP, the node will reach out to KMIP and create a
+key. The node will then activate the key. To ensure that the ESE is not using an inactive key, the
+node runs a [periodic job](src/kmip/../../../kmip/kmip_key_active_periodic_job.h), constantly
+polling the KMIP server to get information on the key state to ensure that the key is active while
+the node is alive. If the KMIP server is down, the polling job will log a warning. If the state of
+the key is not active, the mongo node will shut down. When a key is being rotated out, the state of
+this key will not be checked. However the state of the new key will be checked.
