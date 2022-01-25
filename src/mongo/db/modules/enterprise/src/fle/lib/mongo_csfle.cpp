@@ -165,7 +165,7 @@ BSONObj analyzeExplainQuery(const BSONObj document,
     std::string dbname = explainCmd.getDbName().toString();
 
     auto explainedObj = explainCmd.getCommandParameter();
-    uassert(6221501,
+    uassert(6206601,
             "In an explain command the jsonSchema field must be top-level and not inside the "
             "command being explained.",
             !explainedObj.hasField(cryptd_query_analysis::kJsonSchema));
@@ -173,7 +173,7 @@ BSONObj analyzeExplainQuery(const BSONObj document,
         explainedObj = explainedObj.addField(cmdSchema);
     }
 
-    uassert(6221502,
+    uassert(6206602,
             "In an explain command the isRemoteSchema field must be top-level and not inside the "
             "command being explained.",
             !explainedObj.hasField(cryptd_query_analysis::kIsRemoteSchema));

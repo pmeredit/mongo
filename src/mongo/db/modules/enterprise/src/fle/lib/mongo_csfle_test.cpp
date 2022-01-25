@@ -700,7 +700,7 @@ TEST_F(CsfleTest, AnalyzeExplainWithInnerJsonSchema) {
         })";
     replace_str(input, "<SCHEMA>", kSchema);
     checkAnalysisFailure(
-        input.c_str(), mongo_csfle_v1_error::MONGO_CSFLE_V1_ERROR_EXCEPTION, 6221501);
+        input.c_str(), mongo_csfle_v1_error::MONGO_CSFLE_V1_ERROR_EXCEPTION, 6206601);
 }
 
 TEST_F(CsfleTest, AnalyzeExplainWithInnerIsRemoteSchema) {
@@ -719,7 +719,7 @@ TEST_F(CsfleTest, AnalyzeExplainWithInnerIsRemoteSchema) {
         })";
     replace_str(input, "<SCHEMA>", kSchema);
     checkAnalysisFailure(
-        input.c_str(), mongo_csfle_v1_error::MONGO_CSFLE_V1_ERROR_EXCEPTION, 6221502);
+        input.c_str(), mongo_csfle_v1_error::MONGO_CSFLE_V1_ERROR_EXCEPTION, 6206602);
 }
 
 class OpmsgProcessTest : public mongo::ServiceContextTest {
