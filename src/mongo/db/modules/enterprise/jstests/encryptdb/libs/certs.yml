@@ -17,4 +17,5 @@ certs:
   Issuer: 'jstests/libs/trusted-ca.pem'
   extensions:
     subjectAltName:
-      DNS: ['localhost', '127.0.0.1']
+      DNS: localhost
+      IP: 127.0.0.1
