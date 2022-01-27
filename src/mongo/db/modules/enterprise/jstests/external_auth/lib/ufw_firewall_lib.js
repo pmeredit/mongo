@@ -39,13 +39,21 @@ const firewallAction = function(args, allowedToFail = false, fetchOutput = true)
 // Resolves server name to IP address using dig, works only on Unix platforms.
 const resolveIPUnix = function(host) {
     clearRawMongoProgramOutput();
-    runNonMongoProgram('dig', '+short', host);
-    const out = rawMongoProgramOutput();
-    jsTestLog(out);
-    const matchIp = out.match(
-        /\b(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)/i);
-    jsTestLog(matchIp);
-    return matchIp[0];
+    var result;
+    assert.soon(() => {
+        runNonMongoProgram('dig', '+short', host);
+        const out = rawMongoProgramOutput();
+        jsTestLog(out);
+        const matchIp = out.match(
+            /\b(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)/i);
+        jsTestLog(matchIp);
+        if (!matchIp) {
+            return false;
+        }
+        result = matchIp[0];
+        return true;
+    }, 'Cannot resolve using dig', 20000, 1000);
+    return result;
 };
 
 // Sets or removes the firewall block to the provided server.
