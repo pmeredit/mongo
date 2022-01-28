@@ -62,9 +62,70 @@ StatusWith<std::unique_ptr<SymmetricKey>> getKeyFromKeyFile(StringData encryptio
                                           0);
 }
 
+Status _startPolling(KMIPService& kmipService, const KMIPParams& kmipParams, StringData keyId) {
+    auto status =
+        KMIPIsActivePollingJob::get(getGlobalServiceContext())
+            ->createJob(kmipService, keyId.toString(), kmipParams.kmipKeyStatePollingSeconds);
+
+    if (status.isOK()) {
+        KMIPIsActivePollingJob::get(getGlobalServiceContext())->startJob();
+    }
+    return status;
+}
+
+StatusWith<std::unique_ptr<SymmetricKey>> _fetchKey(KMIPService& kmipService,
+                                                    const KMIPParams& kmipParams,
+                                                    StringData keyId,
+                                                    bool activateKeyAndStartJob) {
+    auto swKey = kmipService.getExternalKey(keyId.toString());
+    if (!swKey.isOK() || !activateKeyAndStartJob) {
+        return swKey;
+    }
+
+    auto status = _startPolling(kmipService, kmipParams, keyId);
+    if (!status.isOK()) {
+        return status;
+    }
+
+    return swKey;
+}
+
+StatusWith<std::unique_ptr<SymmetricKey>> _createKey(KMIPService& kmipService,
+                                                     const KMIPParams& kmipParams,
+                                                     StringData keyId,
+                                                     bool activateKeyAndStartJob) {
+    // Create and retrieve new key.
+    StatusWith<std::string> swCreateKey = kmipService.createExternalKey();
+    if (!swCreateKey.isOK()) {
+        return swCreateKey.getStatus();
+    }
+
+    std::string newKeyId = swCreateKey.getValue();
+    LOGV2(24199, "Created KMIP key", "keyId"_attr = newKeyId);
+
+    auto swKey = kmipService.getExternalKey(keyId.toString());
+    if (!swKey.isOK() || !activateKeyAndStartJob) {
+        return swKey;
+    }
+
+    StatusWith<std::string> swActivatedUid = kmipService.activate(newKeyId);
+    if (!swActivatedUid.isOK()) {
+        return swActivatedUid.getStatus();
+    }
+
+    LOGV2(2360700, "Activated KMIP key", "uid"_attr = swActivatedUid.getValue());
+
+    auto status = _startPolling(kmipService, kmipParams, keyId);
+    if (!status.isOK()) {
+        return status;
+    }
+
+    return swKey;
+}
+
 StatusWith<std::unique_ptr<SymmetricKey>> getKeyFromKMIPServer(const KMIPParams& kmipParams,
-                                                               const SSLParams& sslParams,
-                                                               StringData keyId) {
+                                                               StringData keyId,
+                                                               bool ignoreStateAttribute) {
     if (kmipParams.kmipServerName.empty()) {
         return Status(ErrorCodes::BadValue,
                       "Encryption at rest enabled but no key server specified");
@@ -75,56 +136,21 @@ StatusWith<std::unique_ptr<SymmetricKey>> getKeyFromKMIPServer(const KMIPParams&
         return swKmipService.getStatus();
     }
 
+    if (ignoreStateAttribute) {
+        invariant(!keyId.empty());
+    }
+
+    bool activateKeyAndStartJob =
+        (feature_flags::gFeatureFlagKmipActivate.isEnabledAndIgnoreFCV() &&
+         kmipParams.activateKeys && !ignoreStateAttribute);
+
     auto& kmipService = swKmipService.getValue();
 
-    // Try to retrieve an existing key.
     if (!keyId.empty()) {
-        auto swKey = kmipService.getExternalKey(keyId.toString());
-        if (!swKey.isOK()) {
-            return swKey;
-        }
-
-        if (feature_flags::gFeatureFlagKmipActivate.isEnabledAndIgnoreFCV() &&
-            kmipParams.activateKeys) {
-            auto status = KMIPIsActivePollingJob::get(getGlobalServiceContext())
-                              ->createJob(keyId.toString(), kmipParams.kmipKeyStatePollingSeconds);
-            if (!status.isOK()) {
-                return status;
-            }
-            KMIPIsActivePollingJob::get(getGlobalServiceContext())->startJob();
-        }
-
-        return swKey;
+        return _fetchKey(kmipService, kmipParams, keyId, activateKeyAndStartJob);
+    } else {
+        return _createKey(kmipService, kmipParams, keyId, activateKeyAndStartJob);
     }
-
-    // Create and retrieve new key.
-    StatusWith<std::string> swCreateKey = kmipService.createExternalKey();
-    if (!swCreateKey.isOK()) {
-        return swCreateKey.getStatus();
-    }
-
-    std::string newKeyId = swCreateKey.getValue();
-    LOGV2(24199, "Created KMIP key", "keyId"_attr = newKeyId);
-    if (!feature_flags::gFeatureFlagKmipActivate.isEnabledAndIgnoreFCV() ||
-        !kmipParams.activateKeys) {
-        return kmipService.getExternalKey(newKeyId);
-    }
-
-    StatusWith<std::string> swActivatedUid = kmipService.activate(newKeyId);
-    if (!swActivatedUid.isOK()) {
-        return swActivatedUid.getStatus();
-    }
-
-    LOGV2(2360700, "Activated KMIP key", "uid"_attr = swActivatedUid.getValue());
-
-    auto status = KMIPIsActivePollingJob::get(getGlobalServiceContext())
-                      ->createJob(newKeyId, kmipParams.kmipKeyStatePollingSeconds);
-    if (!status.isOK()) {
-        return status;
-    }
-    KMIPIsActivePollingJob::get(getGlobalServiceContext())->startJob();
-
-    return kmipService.getExternalKey(newKeyId);
 }
 
 }  // namespace mongo

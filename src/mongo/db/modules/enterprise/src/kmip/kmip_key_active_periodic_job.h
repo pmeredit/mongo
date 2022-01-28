@@ -6,6 +6,7 @@
 
 #include <boost/optional.hpp>
 
+#include "kmip_service.h"
 #include "mongo/db/service_context.h"
 #include "mongo/util/periodic_runner.h"
 
@@ -20,7 +21,9 @@ namespace kmip {
  */
 class KMIPIsActivePollingJob {
 public:
-    Status createJob(std::string keyId, boost::optional<Seconds> periodSeconds);
+    Status createJob(KMIPService& kmipService,
+                     std::string keyId,
+                     boost::optional<Seconds> periodSeconds);
 
     void startJob() {
         _anchor.start();

@@ -12,7 +12,7 @@ load("jstests/libs/log.js");
 load(testDir + "libs/helpers.js");
 
 if (!TestData.setParameters.featureFlagKmipActivate || _isWindows()) {
-    // Don't accept option when FF not enabled.
+    // Don't run when FF not enabled.
     return;
 }
 
@@ -21,11 +21,11 @@ if (!TestData.setParameters.featureFlagKmipActivate || _isWindows()) {
 // de-activate the second key
 const kmipServerPid = startPyKMIPServer(kmipServerPort);
 const goodKey = createPyKMIPKey(kmipServerPort);
+const newGoodKey = createPyKMIPKey(kmipServerPort);
 const badKey = createPyKMIPKey(kmipServerPort);
 deactivatePyKMIPKey(kmipServerPort, badKey);
 
-jsTest.log("Start up the server normally and add some values to databases.");
-let opts = {
+const opts = {
     enableEncryption: "",
     kmipServerName: "127.0.0.1",
     kmipPort: kmipServerPort,
@@ -37,32 +37,65 @@ let opts = {
     kmipClientCertificateFile: "jstests/libs/trusted-client.pem",
 };
 
-let mongod = MongoRunner.runMongod(opts);
+let mongod;
 
-let testdb = mongod.getDB("test");
-assert.commandWorked(testdb.test.insert({foo: "bar"}));
+jsTest.log("Start up the server normally and add some values to databases.");
+{
+    mongod = MongoRunner.runMongod(opts);
+    const testdb = mongod.getDB("test");
 
-MongoRunner.stopMongod(mongod);
+    assert.commandWorked(testdb.test.insert({foo: "bar"}));
+    MongoRunner.stopMongod(mongod);
+}
 
 jsTest.log("Test that rollover works with active key.");
-let newOpts = Object.merge(opts, {eseDatabaseKeyRollover: "", restart: mongod});
-mongod = MongoRunner.runMongod(newOpts);
+{
+    const newOpts = Object.merge(opts, {eseDatabaseKeyRollover: "", restart: mongod});
+    mongod = MongoRunner.runMongod(newOpts);
+    const testdb = mongod.getDB("test");
 
-testdb = mongod.getDB("test");
-assert.commandWorked(testdb.test.insert({foo2: "bar2"}));
-const findResults = testdb.test.find({}, {_id: 0}).toArray();
-print(tojson(findResults));
-assert.eq(findResults.length, 2);
+    assert.commandWorked(testdb.test.insert({foo2: "bar2"}));
+    const findResults = testdb.test.find({}, {_id: 0}).toArray();
 
-MongoRunner.stopMongod(mongod);
+    print(tojson(findResults));
+    assert.eq(findResults.length, 2);
+    MongoRunner.stopMongod(mongod);
+}
+
+jsTest.log(
+    "Test that when the key being rotated from is de-activated we can still rotate to the new key.");
+{
+    // Cannot continue from previous test because of
+    // SERVER-63070. TODO: remove section when SERVER-63070 is complete
+    mongod = MongoRunner.runMongod(opts);
+    const testdb = mongod.getDB("test");
+    assert.commandWorked(testdb.test.insert({foo: "bar"}));
+    assert.commandWorked(testdb.test.insert({foo2: "bar2"}));
+    MongoRunner.stopMongod(mongod);
+    // End section added until SERVER-63070 is complete
+
+    deactivatePyKMIPKey(kmipServerPort, goodKey);
+
+    const newOpts = Object.merge(
+        opts, {kmipKeyIdentifier: newGoodKey, kmipRotateMasterKey: "", restart: mongod});
+    clearRawMongoProgramOutput();
+    mongod = MongoRunner.runMongod(newOpts);
+    assert(rawMongoProgramOutput().search("Rotated master encryption key") !== -1);
+}
 
 jsTest.log("Test that ESE key rotate does not work with de-activated key.");
-clearRawMongoProgramOutput();
+{
+    mongod = MongoRunner.runMongod(Object.merge(opts, {kmipKeyIdentifier: newGoodKey}));
+    MongoRunner.stopMongod(mongod);
 
-let badOpts =
-    Object.merge(opts, {kmipKeyIdentifier: badKey, kmipRotateMasterKey: "", restart: mongod});
-mongod = MongoRunner.runMongod(badOpts);
-assert(!mongod);
-assert(rawMongoProgramOutput().search("State of KMIP Key for ESE is not active on startup") !== -1);
+    const newOpts =
+        Object.merge(opts, {kmipKeyIdentifier: badKey, kmipRotateMasterKey: "", restart: mongod});
+    mongod = MongoRunner.runMongod(newOpts);
+
+    assert(!mongod);
+    assert(rawMongoProgramOutput().search("State of KMIP Key for ESE is not active on startup") !==
+           -1);
+}
+
 killPyKMIPServer(kmipServerPid);
 }());

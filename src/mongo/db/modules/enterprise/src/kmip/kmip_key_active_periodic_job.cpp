@@ -9,7 +9,6 @@
 
 #include "kmip_consts.h"
 #include "kmip_response.h"
-#include "kmip_service.h"
 #include "mongo/base/status.h"
 #include "mongo/logv2/log.h"
 
@@ -86,16 +85,12 @@ void run(std::string keyId) try {
                   "error"_attr = e);
 }
 
-Status KMIPIsActivePollingJob::createJob(std::string keyId,
+Status KMIPIsActivePollingJob::createJob(KMIPService& kmipService,
+                                         std::string keyId,
                                          boost::optional<Seconds> periodSeconds) {
 
-    auto swKmipService = mongo::kmip::KMIPService::createKMIPService();
-    if (!swKmipService.isOK()) {
-        return swKmipService.getStatus();
-    }
-
     StatusWith<KMIPResponse::Attribute> swStateAttribute =
-        swKmipService.getValue().getAttributes(keyId, kStateAttribute.toString());
+        kmipService.getAttributes(keyId, kStateAttribute.toString());
 
     if (!swStateAttribute.isOK()) {
         return swStateAttribute.getStatus();

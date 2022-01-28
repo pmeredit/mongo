@@ -501,7 +501,8 @@ Status EncryptionKeyManager::_initLocalKeystore() {
         }
 
         // Otherwise, keyId must be empty to request KMIP generate a new key
-        swMasterKey = getKeyFromKMIPServer(_encryptionParams->kmipParams, *_sslParams, kmipKeyId);
+        swMasterKey = getKeyFromKMIPServer(
+            _encryptionParams->kmipParams, kmipKeyId, _encryptionParams->rotateMasterKey);
     }
 
     if (!swMasterKey.isOK()) {
@@ -617,8 +618,7 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) try {
             "Key rotation requires that the new master key id be different from the old.");
     }
 
-    auto swRotMasterKey =
-        getKeyFromKMIPServer(_encryptionParams->kmipParams, *_sslParams, newKeyId);
+    auto swRotMasterKey = getKeyFromKMIPServer(_encryptionParams->kmipParams, newKeyId);
     if (!swRotMasterKey.isOK()) {
         return swRotMasterKey.getStatus();
     }
