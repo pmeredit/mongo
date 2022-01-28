@@ -103,6 +103,7 @@ public:
         options.directoryPerDB = params.directoryperdb;
         options.directoryForIndexes = wiredTigerGlobalOptions.directoryForIndexes;
         options.forRepair = params.repair;
+        options.forRestore = params.restore;
         return std::make_unique<StorageEngineImpl>(opCtx, std::move(kv), options);
     }
 

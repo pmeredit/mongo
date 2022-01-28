@@ -70,6 +70,7 @@ public:
         options.directoryPerDB = false;
         options.directoryForIndexes = false;
         options.forRepair = false;
+        options.forRestore = false;
 
         return std::make_unique<StorageEngineImpl>(opCtx, std::move(kv), options);
     }
