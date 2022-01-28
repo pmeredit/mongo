@@ -126,9 +126,6 @@ assert.soonNoExcept(() => {
     return res.ok;
 });
 
-assert.commandWorked(initialSyncNode.adminCommand(
-    {configureFailPoint: "fCBISHangAfterMovingTheNewFiles", mode: "off"}));
-
 jsTestLog("Restarting node to finish initial sync");
 rst.restart(initialSyncNode, {
     startClean: false,
