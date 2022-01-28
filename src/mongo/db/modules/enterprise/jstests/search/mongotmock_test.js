@@ -286,5 +286,38 @@ const testDB = conn.getDB("test");
     assert.eq(resp.numRemainingResponses, 0);
 }
 
+// Test that mongotmock can return a merging pipeline.
+{
+    const cursorId = NumberLong(123);
+    const pipelineCmd = {
+        "planShardedSearch": "collName",
+        "db": testDB.getName(),
+        "collectionUUID": "522cdf5e-54fc-4230-9d45-49da990e8ea7",
+        "query": {"text": {"path": "title", "query": "godfather"}}
+
+    };
+    const cursorHistory = [
+        {
+            expectedCommand: pipelineCmd,
+            // Real metaPipelines will be significantly larger, but this is fine for testing the
+            // mock.
+            response: {
+                ok: 1,
+                protocolVersion: 1,
+                metaPipeline: [{$documents: [{facetOne: 1, facetTwo: 2}]}]
+            }
+        },
+    ];
+
+    assert.commandWorked(
+        testDB.runCommand({setMockResponses: 1, cursorId: cursorId, history: cursorHistory}));
+    let resp = assert.commandWorked(testDB.runCommand(pipelineCmd));
+    assert.eq(resp, cursorHistory[0].response);
+
+    // Make sure there are no remaining queued responses.
+    resp = assert.commandWorked(testDB.runCommand({getQueuedResponses: 1}));
+    assert.eq(resp.numRemainingResponses, 0);
+}
+
 mongotMock.stop();
 }());

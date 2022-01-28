@@ -71,10 +71,13 @@ public:
                                 BSONObjBuilder* result) const = 0;
 };
 
-class MongotMockSearch final : public MongotMockBaseCmd {
+class MongotMockCursorCommand : public MongotMockBaseCmd {
 public:
-    MongotMockSearch() : MongotMockBaseCmd("search") {}
+    // This is not a real command, and thus must be built with a real command name.
+    MongotMockCursorCommand() = delete;
+    MongotMockCursorCommand(StringData commandName) : MongotMockBaseCmd(commandName) {}
 
+private:
     void processCommand(OperationContext* opCtx,
                         const std::string& dbname,
                         const BSONObj& cmdObj,
@@ -83,9 +86,10 @@ public:
 
         CursorState* state = stateGuard->claimAvailableState();
         uassert(31094,
-                str::stream() << "Cannot run search as there are no remaining unclaimed mock "
-                                 "cursor states. Received command: "
-                              << cmdObj,
+                str::stream()
+                    << "Cannot run search cursor command as there are no remaining unclaimed mock "
+                       "cursor states. Received command: "
+                    << cmdObj,
                 state);
 
         // We should not have allowed an empty 'history'.
@@ -100,7 +104,20 @@ public:
         // Pop the first response.
         state->popNextCommandResponsePair();
     }
+};
+
+class MongotMockSearch final : public MongotMockCursorCommand {
+public:
+    MongotMockSearch() : MongotMockCursorCommand("search") {}
+
 } cmdMongotMockSearch;
+
+// A command that generates a merging pipeline from a search query.
+class MongotMockPlanShardedSearchCommand final : public MongotMockCursorCommand {
+public:
+    MongotMockPlanShardedSearchCommand() : MongotMockCursorCommand("planShardedSearch") {}
+
+} cmdMongotMockPlanSearchCommand;
 
 
 class MongotMockGetMore final : public MongotMockBaseCmd {
