@@ -281,17 +281,17 @@ int kerberosToolMain(int argc, char* argv[]) {
                                                      OutputType::kHighlight)
                                      << "works with Kerberos service at "
                                      << formatOutput(kerbHost, OutputType::kImportant));
-    std::vector<std::string> serviceFQDNs =
-        getHostFQDNs(kerbHost, HostnameCanonicalizationMode::kForward);
-    report.checkAssert({[&serviceFQDNs] { return !serviceFQDNs.empty(); },
-                        str::stream()
-                            << "Hostname " << formatOutput(kerbHost, OutputType::kImportant)
-                            << formatOutput(" could not be canonicalized.", OutputType::kHighlight),
-                        {formatOutput("Consider updating your DNS records", OutputType::kSolution),
-                         formatOutput("Consider disabling hostname canonicalization in your "
-                                      "krb5.conf with flag canonicalize=false.",
-                                      OutputType::kSolution)},
-                        Report::FailType::kNonFatalFailure});
+    auto swServiceFQDNs = getHostFQDNs(kerbHost, HostnameCanonicalizationMode::kForward);
+    report.checkAssert(
+        {[&swServiceFQDNs] { return swServiceFQDNs.isOK() && !swServiceFQDNs.getValue().empty(); },
+         str::stream() << "Hostname " << formatOutput(kerbHost, OutputType::kImportant)
+                       << formatOutput(" could not be canonicalized.", OutputType::kHighlight),
+         {formatOutput("Consider updating your DNS records", OutputType::kSolution),
+          formatOutput("Consider disabling hostname canonicalization in your "
+                       "krb5.conf with flag canonicalize=false.",
+                       OutputType::kSolution)},
+         Report::FailType::kNonFatalFailure});
+    auto serviceFQDNs = swServiceFQDNs.getValue();
     if (rdnsState == boost::none || *rdnsState == true) {
         std::cout << "Performing " << formatOutput("reverse DNS lookup ", OutputType::kHighlight)
                   << "of the following FQDNs:" << std::endl;
@@ -305,10 +305,13 @@ int kerberosToolMain(int argc, char* argv[]) {
                            });
             return formattedFQDNs;
         });
-        std::vector<std::string> serviceFQDNsReverse =
+
+        auto swServiceFQDNsReverse =
             getHostFQDNs(kerbHost, HostnameCanonicalizationMode::kForwardAndReverse);
         report.checkAssert(
-            {[&serviceFQDNsReverse] { return !serviceFQDNsReverse.empty(); },
+            {[&swServiceFQDNsReverse] {
+                 return swServiceFQDNsReverse.isOK() && !swServiceFQDNsReverse.getValue().empty();
+             },
              str::stream() << "Hostname " << formatOutput(kerbHost, OutputType::kImportant)
                            << " resolves to IP address, but "
                            << formatOutput(
@@ -427,12 +430,13 @@ int kerberosToolMain(int argc, char* argv[]) {
             return parsedPrincipals;
         });
         for (const auto& entry : mongoDBEntries) {
-            auto principalFQDNs = getHostFQDNs(entry->getPrincipalHost().toString(),
-                                               HostnameCanonicalizationMode::kForward);
-            if (!std::includes(serviceFQDNs.begin(),
+            auto swPrincipalFQDNs = getHostFQDNs(entry->getPrincipalHost().toString(),
+                                                 HostnameCanonicalizationMode::kForward);
+            if (swPrincipalFQDNs.isOK() &&
+                !std::includes(serviceFQDNs.begin(),
                                serviceFQDNs.end(),
-                               principalFQDNs.begin(),
-                               principalFQDNs.end())) {
+                               swPrincipalFQDNs.getValue().begin(),
+                               swPrincipalFQDNs.getValue().end())) {
                 problemPrincipals.emplace_back(entry);
             }
         }
