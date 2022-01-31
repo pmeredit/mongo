@@ -96,7 +96,7 @@ public:
     Key getKey() {
         invariant(_cursor);
         Key ret;
-        uassertWTOK(_cursor->get_key(_cursor.get(), &ret));
+        uassertWTOK(_cursor->get_key(_cursor.get(), &ret), _cursor->session);
         return ret;
     }
 
@@ -105,7 +105,7 @@ public:
     StringData getKey() {
         invariant(_cursor);
         char* ret;
-        uassertWTOK(_cursor->get_key(_cursor.get(), &ret));
+        uassertWTOK(_cursor->get_key(_cursor.get(), &ret), _cursor->session);
         return StringData(ret);
     }
 
@@ -118,7 +118,8 @@ public:
         std::tuple<Args...> storage;
         auto ptrTuple = _makePointerTuple(storage);
         auto cursorTuple = std::make_tuple<WT_CURSOR*>(_cursor.get());
-        uassertWTOK(std::apply(_cursor->get_value, std::tuple_cat(cursorTuple, ptrTuple)));
+        uassertWTOK(std::apply(_cursor->get_value, std::tuple_cat(cursorTuple, ptrTuple)),
+                    _cursor->session);
         return storage;
     }
 
@@ -222,7 +223,7 @@ public:
             return iterator();
         }
 
-        uassertWTOK(ret);
+        uassertWTOK(ret, it->session);
         return it;
     }
 
@@ -238,7 +239,7 @@ public:
 
         auto cursorTuple = std::make_tuple<WT_CURSOR*>(it);
         std::apply(it->set_value, std::tuple_cat(cursorTuple, args));
-        uassertWTOK(it->insert(it));
+        uassertWTOK(it->insert(it), it->session);
     }
 
     // This inserts a new row with the value contained in the tuple of args. The table must have
@@ -250,7 +251,7 @@ public:
 
         auto cursorTuple = std::make_tuple<WT_CURSOR*>(it);
         std::apply(it->set_value, std::tuple_cat(cursorTuple, args));
-        uassertWTOK(it->insert(it));
+        uassertWTOK(it->insert(it), it->session);
         return it.getKey<uint64_t>();
     }
 
@@ -268,12 +269,12 @@ public:
     void update(const iterator& cursor, std::tuple<Args...> values) {
         auto cursorTuple = std::make_tuple<WT_CURSOR*>(cursor);
         std::apply(cursor->set_value, std::tuple_cat(cursorTuple, values));
-        uassertWTOK(cursor->update(cursor));
+        uassertWTOK(cursor->update(cursor), cursor->session);
     }
 
     // Flushes all changes made by this session to disk.
     void checkpoint() {
-        uassertWTOK(_session->checkpoint(_session.get(), nullptr));
+        uassertWTOK(_session->checkpoint(_session.get(), nullptr), _session.get());
     }
 
     // Returns true if the table is not corrupted and successfully verified, returns false

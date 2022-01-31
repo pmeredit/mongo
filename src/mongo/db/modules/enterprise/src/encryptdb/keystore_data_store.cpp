@@ -109,7 +109,7 @@ bool WTDataStoreCursor::advance() {
         _atEnd = true;
         return false;
     } else {
-        uassertStatusOK(wtRCToStatus(ret));
+        uassertStatusOK(wtRCToStatus(ret, _cursor->session));
     }
 
     return true;
@@ -128,7 +128,7 @@ UniqueWTCursor WTDataStoreCursor::_duplicate(const UniqueWTCursor& other) {
     WT_SESSION* session = other->session;
     auto rc = session->open_cursor(session, nullptr, other.get(), nullptr, &ptr);
     UniqueWTCursor cursor(ptr);
-    uassertWTOK(rc);
+    uassertWTOK(rc, session);
 
     return cursor;
 }
@@ -167,7 +167,7 @@ UniqueWTCursor WTDataStoreSession::_makeCursor(StringData uri, StringData cursor
     if (rc == WT_NOTFOUND || rc == ENOENT) {
         return nullptr;
     }
-    uassertWTOK(rc);
+    uassertWTOK(rc, _session.get());
     return cursor;
 }
 
@@ -229,7 +229,7 @@ void WTDataStoreSession::salvage() {
                     "being accessed. No repair is necessary unless other "
                     "errors are reported");
     } else {
-        fassertFailedWithStatusNoTrace(51226, wtRCToStatus(ret));
+        fassertFailedWithStatusNoTrace(51226, wtRCToStatus(ret, _session.get()));
     }
 }
 
@@ -260,7 +260,7 @@ WTDataStore::WTDataStore(const boost::filesystem::path& path,
         path.string().c_str(), keystoreEventHandlers(), wtConfig.str().c_str(), &connPtr);
     _connection.reset(connPtr);
 
-    uassertWTOK(rc);
+    uassertWTOK(rc, nullptr);
 }
 
 void WTDataStore::close() {
@@ -269,13 +269,15 @@ void WTDataStore::close() {
 
 WTDataStoreSession WTDataStore::makeSession() {
     WT_SESSION* sessionPtr = nullptr;
-    uassertWTOK(_connection->open_session(_connection.get(), nullptr, nullptr, &sessionPtr));
+    uassertWTOK(_connection->open_session(_connection.get(), nullptr, nullptr, &sessionPtr),
+                nullptr);
     return UniqueWTSession(sessionPtr);
 }
 
 void WTDataStore::createTable(const WTDataStoreSession& session, StringData config) {
     std::string fullConfig = str::stream() << _keystoreConfig << config;
-    uassertWTOK(session->create(session, kKeystoreTableName.rawData(), fullConfig.c_str()));
+    uassertWTOK(session->create(session, kKeystoreTableName.rawData(), fullConfig.c_str()),
+                nullptr);
 }
 
 }  // namespace mongo
