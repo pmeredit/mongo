@@ -29,9 +29,11 @@
 #include "mongo/util/scopeguard.h"
 
 namespace mongo {
-namespace {
 
 MONGO_FAIL_POINT_DEFINE(backupCursorErrorAfterOpen);
+MONGO_FAIL_POINT_DEFINE(backupCursorForceCheckpointConflict);
+
+namespace {
 
 std::unique_ptr<BackupCursorService> constructBackupCursorService() {
     return std::make_unique<BackupCursorService>();
@@ -145,9 +147,10 @@ BackupCursorState BackupCursorService::openBackupCursor(
                         "lastStableTimestamp"_attr = requeriedCheckpointTimestamp);
         }
 
-        uassert(50915,
+        uassert(ErrorCodes::BackupCursorOpenConflictWithCheckpoint,
                 str::stream() << "A checkpoint took place while opening a backup cursor.",
-                checkpointTimestamp == requeriedCheckpointTimestamp);
+                !backupCursorForceCheckpointConflict.shouldFail() &&
+                    checkpointTimestamp == requeriedCheckpointTimestamp);
     };
 
     // If the oplog exists, capture the first oplog entry after opening the backup cursor. Ensure

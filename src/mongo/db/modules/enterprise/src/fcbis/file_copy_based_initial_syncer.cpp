@@ -729,6 +729,28 @@ void FileCopyBasedInitialSyncer::_clearRetriableError(WithLock lk) {
     _syncingFilesState.retryingOperation = boost::none;
 }
 
+ExecutorFuture<void> FileCopyBasedInitialSyncer::_openBackupCursorWithRetry(
+    std::shared_ptr<BackupFileMetadataCollection> returnedFiles) {
+    return AsyncTry([this, self = shared_from_this(), returnedFiles] {
+               return _openBackupCursor(returnedFiles);
+           })
+        .until([this, self = shared_from_this(), attempt = 0](Status error) mutable {
+            attempt++;
+            // This error code, despite being category Retriable, is not handled by the internal
+            // Fetcher retry logic because we get it in the first getMore, not the aggregate
+            // command.
+            if (error.code() == ErrorCodes::BackupCursorOpenConflictWithCheckpoint) {
+                LOGV2(6196400,
+                      "Transient error while opening backup cursor",
+                      "error"_attr = error,
+                      "attempt"_attr = attempt);
+            }
+            return attempt >= kFileCopyBasedInitialSyncMaxCursorFetchAttempts ||
+                error.code() != ErrorCodes::BackupCursorOpenConflictWithCheckpoint;
+        })
+        .on(_syncingFilesState.executor, _syncingFilesState.token);
+}
+
 ExecutorFuture<void> FileCopyBasedInitialSyncer::_openBackupCursor(
     std::shared_ptr<BackupFileMetadataCollection> returnedFiles) {
     LOGV2_DEBUG(
@@ -949,7 +971,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFromSyncSourceCursor() {
         // Open backupCursor during the first cyle.
         invariant(!_syncingFilesState.backupId);
         auto returnedFiles = std::make_shared<BackupFileMetadataCollection>();
-        return _openBackupCursor(returnedFiles)
+        return _openBackupCursorWithRetry(returnedFiles)
             .onError([this, self = shared_from_this()](const Status& status) {
                 // If backup cursor cannot be opened because the sync source node is fsynclocked,
                 // or it already has a backup cursor open, or if the $backupCursor command is not

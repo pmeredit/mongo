@@ -298,7 +298,13 @@ private:
 
     /**
      * Opens a backup cursor on the sync source and gets the files to be cloned.
+     *
+     * The WithRetry version retries for kFileCopyBasedInitialSyncMaxCursorFetchAttempts
+     * as long as we get transient backup errors from the sync source.
+     *
      */
+    ExecutorFuture<void> _openBackupCursorWithRetry(
+        std::shared_ptr<BackupFileMetadataCollection> returnedFiles);
     ExecutorFuture<void> _openBackupCursor(
         std::shared_ptr<BackupFileMetadataCollection> returnedFiles);
 
