@@ -28,7 +28,7 @@ constexpr double kSmokePenalty = 0.1;
 LdapHealthObserver::LdapHealthObserver(ServiceContext* svcCtx) : HealthObserverBase(svcCtx) {}
 
 Future<HealthCheckStatus> LdapHealthObserver::periodicCheckImpl(
-    PeriodicHealthCheckContext&& periodicCheckContext) {
+    PeriodicHealthCheckContext&& periodicCheckContext) noexcept {
     auto completionPf = makePromiseFuture<HealthCheckStatus>();
 
     auto result = checkImpl(periodicCheckContext);
@@ -46,36 +46,43 @@ Future<HealthCheckStatus> LdapHealthObserver::periodicCheckImpl(
 LdapHealthObserver::CheckResult LdapHealthObserver::checkImpl(
     const PeriodicHealthCheckContext& periodicCheckContext) {
     LdapHealthObserver::CheckResult result;
-    if (globalLDAPParams->serverHosts.empty()) {
-        static constexpr char kMsg[] =
-            "No LDAP hosts configured but LDAP health check is enabled, use security.ldap.servers";
-        LOGV2_DEBUG(5938601, 3, kMsg);
-        // Effectively this aborts the check without error. We check params consistency elsewhere.
-        result.smokeCheck = true;
-        invariant(result.checkPassed());
-        return result;
+    try {
+        if (globalLDAPParams->serverHosts.empty()) {
+            static constexpr char kMsg[] =
+                "No LDAP hosts configured but LDAP health check is enabled, use "
+                "security.ldap.servers";
+            LOGV2_DEBUG(5938601, 3, kMsg);
+            // Effectively this aborts the check without error. We check params consistency
+            // elsewhere.
+            result.smokeCheck = true;
+            invariant(result.checkPassed());
+            return result;
+        }
+
+        // DNS checks are synchronous, block to result.
+        std::shared_ptr<std::deque<LDAPHost>> resolvedHosts =
+            std::make_shared<std::deque<LDAPHost>>(_checkDNS(&result));
+        if (resolvedHosts->empty()) {
+            return result;  // Error or Ok is set by `_checkDNS`.
+        }
+        // Shuffle hosts to avoid trying the same server every time.
+        auto rng = std::default_random_engine{};
+        std::shuffle(std::begin(*resolvedHosts), std::end(*resolvedHosts), rng);
+
+        LDAPBindOptions bindOptions(globalLDAPParams->bindUser,
+                                    globalLDAPParams->bindPassword,
+                                    globalLDAPParams->bindMethod,
+                                    globalLDAPParams->bindSASLMechanisms,
+                                    globalLDAPParams->useOSDefaults);
+
+        // Run smoke checks concurrently to avoid the case when a faulty server blocks the
+        // progress.
+        _runSmokeChecksConcurrently(
+            periodicCheckContext, bindOptions, std::move(resolvedHosts), &result);
+    } catch (const DBException& e) {
+        result.smokeCheck = false;
+        result.failures = {e.toStatus()};
     }
-
-    // DNS checks are synchronous, block to result.
-    std::shared_ptr<std::deque<LDAPHost>> resolvedHosts =
-        std::make_shared<std::deque<LDAPHost>>(_checkDNS(&result));
-    if (resolvedHosts->empty()) {
-        return result;  // Error or Ok is set by `_checkDNS`.
-    }
-    // Shuffle hosts to avoid trying the same server every time.
-    auto rng = std::default_random_engine{};
-    std::shuffle(std::begin(*resolvedHosts), std::end(*resolvedHosts), rng);
-
-    LDAPBindOptions bindOptions(globalLDAPParams->bindUser,
-                                globalLDAPParams->bindPassword,
-                                globalLDAPParams->bindMethod,
-                                globalLDAPParams->bindSASLMechanisms,
-                                globalLDAPParams->useOSDefaults);
-
-    // Run smoke checks concurrently to avoid the case when a faulty server blocks the
-    // progress.
-    _runSmokeChecksConcurrently(
-        periodicCheckContext, bindOptions, std::move(resolvedHosts), &result);
 
     return result;
 }

@@ -52,7 +52,7 @@ public:
      * previous one is filled, thus synchronization can be relaxed.
      */
     Future<HealthCheckStatus> periodicCheckImpl(
-        PeriodicHealthCheckContext&& periodicCheckContext) override;
+        PeriodicHealthCheckContext&& periodicCheckContext) noexcept override;
 
     // Non interface methods exposed for direct testing.
 
