@@ -73,7 +73,7 @@ TEST_F(BackupCursorServiceTest, TestTypicalCursorLifetime) {
     std::vector<BackupBlock> backupBlocks =
         uassertStatusOK(backupCursorState.streamingCursor.get()->getNextBatch(1 /* batchSize */));
     ASSERT_EQUALS(1u, backupBlocks.size());
-    ASSERT_EQUALS("filename.wt", backupBlocks.front().filename());
+    ASSERT_EQUALS("filename.wt", backupBlocks.front().filePath());
     ASSERT_EQUALS(0, backupBlocks.front().offset());
     ASSERT_EQUALS(0, backupBlocks.front().length());
     ASSERT_EQUALS(0, backupBlocks.front().fileSize());
@@ -85,7 +85,7 @@ TEST_F(BackupCursorServiceTest, TestTypicalCursorLifetime) {
     backupBlocks =
         uassertStatusOK(backupCursorState.streamingCursor.get()->getNextBatch(1 /* batchSize */));
     ASSERT_EQUALS(1u, backupBlocks.size());
-    ASSERT_EQUALS("filename.wt", backupBlocks.front().filename());
+    ASSERT_EQUALS("filename.wt", backupBlocks.front().filePath());
     ASSERT_EQUALS(0, backupBlocks.front().offset());
     ASSERT_EQUALS(0, backupBlocks.front().length());
     ASSERT_EQUALS(0, backupBlocks.front().fileSize());

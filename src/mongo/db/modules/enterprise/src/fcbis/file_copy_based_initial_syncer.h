@@ -524,7 +524,7 @@ private:
         // The operation, if any, currently being retried because of a network error.
         InitialSyncSharedData::RetryableOperation retryingOperation;  // (M)
 
-        // List of relative paths to the old storage files in dbbath that will be deleted.
+        // List of relative paths to the old storage files in dbpath that will be deleted.
         std::vector<std::string> oldStorageFilesToBeDeleted;
         std::unique_ptr<InitialSyncFileMover> currentFileMover;  // (X)
         ServiceContext::UniqueClient globalLockClient;           // (X)

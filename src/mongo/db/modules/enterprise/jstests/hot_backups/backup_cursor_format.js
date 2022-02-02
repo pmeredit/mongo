@@ -52,31 +52,52 @@ let x = 'x'.repeat(5 * 1024 * 1024);
 let y = 'y'.repeat(5 * 1024 * 1024);
 let z = 'z'.repeat(5 * 1024 * 1024);
 
-const validateFileRequiredField = function(doc) {
+const validateBackupCursorFields = function(doc) {
     const kSeparator = _isWindows() ? "\\" : "/";
 
     const filename = doc.filename.substring(doc.filename.lastIndexOf(kSeparator) + 1);
     const required = doc.required;
+    const ns = doc.ns;
+
+    jsTest.log("Field Validation: Filename: [" + filename + "] Namespace: [" + ns +
+               "] Required: [" + required + "]");
 
     // Verify that the correct WiredTiger files are marked as required.
     if (filename == "WiredTiger" || filename == "WiredTiger.backup" ||
         filename == "WiredTigerHS.wt" || filename.startsWith("WiredTigerLog.")) {
         assert.eq(true, required);
+        assert.eq("", ns);  // Empty
         return;
     }
 
     // Verify that the correct MongoDB files are marked as required.
     if (filename == "_mdb_catalog.wt" || filename == "sizeStorer.wt") {
         assert.eq(true, required);
+        assert.eq("", ns);  // Empty
         return;
     }
 
-    // TODO SERVER-62427: validate that the following namespaces are marked as required:
-    // - Any collection residing in an internal database (admin, local or config).
-    // - Each databases 'system.views' collection.
-    // - Collections with table logging enabled. See WiredTigerUtil::useTableLogging().
+    if (filename.startsWith("collection-") || filename.startsWith("index-")) {
+        assert.neq("", ns);
+
+        // Verify time-series collection has internal "system.buckets." string removed
+        if (ns.includes("timeseries-test")) {
+            assert.eq("test.timeseries-test", ns);
+            assert.neq("test.system.buckets.timeseries-test", ns);
+            assert.eq(false, required);
+            return;
+        } else if (ns.startsWith("local") || ns.startsWith("admin") || ns.startsWith("config") ||
+                   ns.includes("test.system.views")) {
+            // Verify that internal database and system.views files are marked required.
+            assert.eq(true, required);
+            return;
+        }
+    } else {
+        assert.eq("", ns);  // Empty
+    }
 
     // Everything else shouldn't be marked as required.
+    jsTest.log("Fallthrough");
     assert.eq(false, required);
 };
 
@@ -113,7 +134,8 @@ try {
             assert.eq(false, doc.hasOwnProperty("offset"));
             assert.eq(false, doc.hasOwnProperty("length"));
             assert.eq(true, doc.hasOwnProperty("required"));
-            validateFileRequiredField(doc);
+            assert.eq(true, doc.hasOwnProperty("ns"));
+            validateBackupCursorFields(doc);
         }
     }
 
@@ -150,7 +172,8 @@ try {
             assert.eq(true, doc.hasOwnProperty("offset"));
             assert.eq(true, doc.hasOwnProperty("length"));
             assert.eq(true, doc.hasOwnProperty("required"));
-            validateFileRequiredField(doc);
+            assert.eq(true, doc.hasOwnProperty("ns"));
+            validateBackupCursorFields(doc);
         }
     }
 
@@ -159,6 +182,14 @@ try {
     // Insert documents to create changes which incremental backup will make us copy.
     for (let i = 0; i < 25; i++) {
         primaryDB.getCollection("test").insert({x: x, y: y, z: z});
+    }
+
+    // Create time-series collection with some documents to test namespace behavior
+    // in the backup cursor
+    assert.commandWorked(
+        primaryDB.createCollection("timeseries-test", {timeseries: {timeField: "tm"}}));
+    for (let i = 0; i < 10; i++) {
+        primaryDB.getCollection("timeseries-test").insert({tm: ISODate(), x: i});
     }
 
     assert.commandWorked(primaryDB.adminCommand({fsync: 1}));
@@ -192,7 +223,8 @@ try {
             assert.eq(true, doc.hasOwnProperty("filename"));
             assert.eq(true, doc.hasOwnProperty("fileSize"));
             assert.eq(true, doc.hasOwnProperty("required"));
-            validateFileRequiredField(doc);
+            assert.eq(true, doc.hasOwnProperty("ns"));
+            validateBackupCursorFields(doc);
 
             // We only inserted documents into one collection, so at least one WiredTiger file
             // should have incremental changes to report, but not all files list will have these
