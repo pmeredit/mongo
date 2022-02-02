@@ -27,6 +27,11 @@ while (backupCursor.hasNext()) {
         continue;
     }
 
+    // All files for the encrypted storage engine need to be marked as required.
+    if (doc["filename"].includes("key.store")) {
+        assert(doc["required"]);
+    }
+
     foundKeystoreTable = foundKeystoreTable || doc["filename"].indexOf("keystore.wt") > -1;
 }
 assert(foundKeystoreTable);
