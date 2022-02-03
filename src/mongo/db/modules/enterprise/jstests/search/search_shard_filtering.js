@@ -13,6 +13,9 @@ load("src/mongo/db/modules/enterprise/jstests/search/lib/shardingtest_with_mongo
 const dbName = "test";
 const collName = "internal_search_mongot_remote";
 
+// This test deliberately creates orphans to test shard filtering.
+TestData.skipCheckOrphans = true;
+
 const stWithMock = new ShardingTestWithMongotMock({
     name: "sharded_search",
     shards: {
@@ -44,14 +47,26 @@ assert.commandWorked(testColl.insert({_id: 14, shardKey: 100, x: "cow", y: "lore
 assert.commandWorked(testColl.createIndex({shardKey: 1}));
 assert.commandWorked(testDB.adminCommand({enableSharding: dbName}));
 st.ensurePrimaryShard(dbName, st.shard0.name);
-st.shardColl(testColl, {shardKey: 1}, {shardKey: 10}, {shardKey: 10 + 1});
+
+// 'waitForDelete' is set to 'true' so that range deletion completes before we insert our orphan.
+st.shardColl(
+    testColl, {shardKey: 1}, {shardKey: 10}, {shardKey: 10 + 1}, dbName, true /* waitForDelete */);
 
 const shard0Conn = st.rs0.getPrimary();
 const shard1Conn = st.rs1.getPrimary();
 
+// Shard0 should have exactly 4 documents; none of which get filtered out.
+assert.eq(shard0Conn.getDB(dbName)[collName].find().itcount(), 4);
+assert.eq(testColl.find().itcount(), 8);
+
 // Insert a document into shard 0 which is not owned by that shard.
 assert.commandWorked(shard0Conn.getDB(dbName)[collName].insert(
     {_id: 15, shardKey: 100, x: "_should be filtered out"}));
+
+// Verify that the orphaned document exists on shard0, but that it gets filtered out when
+// querying 'testColl'.
+assert.eq(shard0Conn.getDB(dbName)[collName].find({_id: 15}).itcount(), 1);
+assert.eq(testColl.find().itcount(), 8);
 
 // Insert a document into shard 0 which doesn't have a shard key. This document should not be
 // skipped when mongot returns a result indicating that it matched the text query. The server
@@ -113,6 +128,9 @@ const expectedDocs = [
 ];
 
 assert.eq(testColl.aggregate([{$search: mongotQuery}]).toArray(), expectedDocs);
+
+// Verify that our orphaned document is still on shard0.
+assert.eq(shard0Conn.getDB(dbName)[collName].find({_id: 15}).itcount(), 1);
 
 stWithMock.stop();
 })();
