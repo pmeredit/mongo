@@ -39,13 +39,19 @@ const firewallAction = function(args, allowedToFail = false, fetchOutput = true)
 // Resolves server name to IP address using dig, works only on Unix platforms.
 const resolveIPUnix = function(host) {
     clearRawMongoProgramOutput();
+    const matchIpPattern =
+        /\b(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)/i;
+    // In tests dig is flaky if the host is already an IP address. Handle it
+    // as a special case.
+    if (host.match(matchIpPattern)) {
+        return host;
+    }
     var result;
     assert.soon(() => {
         runNonMongoProgram('dig', '+short', host);
         const out = rawMongoProgramOutput();
+        const matchIp = out.match(matchIpPattern);
         jsTestLog(out);
-        const matchIp = out.match(
-            /\b(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)/i);
         jsTestLog(matchIp);
         if (!matchIp) {
             return false;

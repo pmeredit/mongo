@@ -21,7 +21,7 @@ const kLdapTimeout = 5000;
 const kProgressMonitorInterval = 100;
 
 // The timeout should be enough to repeat the LDAP check once more after timeout.
-const kProgressMonitorDeadlineSec = (kLdapTimeout / 1000) * 2 + 1;
+const kProgressMonitorDeadlineSec = (kLdapTimeout / 1000) * 2 + 10;
 
 // Let all blocked threads to timeout before terminating.
 const kAfterAllTestsSleep = kLdapTimeout + 100;
@@ -78,7 +78,7 @@ const runTestSuite = function(ldapTestServer) {
     });
 
     assert.commandWorked(st.s0.adminCommand(
-        {"setParameter": 1, logComponentVerbosity: {processHealth: {verbosity: 2}}}));
+        {"setParameter": 1, logComponentVerbosity: {processHealth: {verbosity: 3}}}));
 
     const mongosProcessId = (() => {
         clearRawMongoProgramOutput();
