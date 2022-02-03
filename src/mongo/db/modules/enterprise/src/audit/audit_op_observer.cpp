@@ -59,9 +59,7 @@ void AuditOpObserver::updateAuditConfig(Client* client, const AuditConfigDocumen
 }
 
 void AuditOpObserver::clearAuditConfig(Client* client) {
-    AuditConfigDocument doc({}, false);
-    doc.setClusterServerParameter({OID()});
-    updateAuditConfig(client, doc);
+    updateAuditConfig(client, {OID(), {}, false});
 }
 
 void AuditOpObserver::updateAuditConfigFromDisk(OperationContext* opCtx) {

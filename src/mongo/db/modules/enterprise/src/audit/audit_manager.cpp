@@ -92,7 +92,7 @@ AuditConfigDocument AuditManager::getAuditConfig() const {
     auto current = _config;
 
     AuditConfigDocument config;
-    config.getClusterServerParameter().setGeneration(current->generation);
+    config.setGeneration(current->generation);
     config.setFilter(current->filterBSON.getOwned());
     config.setAuditAuthorizationSuccess(current->auditAuthorizationSuccess.load());
 

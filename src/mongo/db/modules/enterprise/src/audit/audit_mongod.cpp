@@ -101,14 +101,11 @@ struct SetAuditConfigCmd {
         auto filterBSON = cmd.getFilter().getOwned();
         am->parseFilter(filterBSON);
 
-        ClusterServerParameter docbase;
-        docbase.set_id(kAuditDocID);
-        docbase.setGeneration(OID::gen());
-
         AuditConfigDocument doc;
-        doc.setClusterServerParameter(std::move(docbase));
+        doc.set_id(kAuditDocID);
         doc.setFilter(filterBSON);
         doc.setAuditAuthorizationSuccess(cmd.getAuditAuthorizationSuccess());
+        doc.setGeneration(OID::gen());
 
         // Auditing of the config change and update of AuditManager occurs in AuditOpObserver.
         upsertConfig(opCtx, doc);

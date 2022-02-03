@@ -501,12 +501,9 @@ TEST_F(AuditOpObserverTest, InvalidFilterSyntax) {
 
     auto* am = getGlobalAuditManager();
     for (const auto& testcase : kInvalidFilters) {
-        ClusterServerParameter base;
-        base.set_id(kAuditDocID);
-        base.setGeneration(OID::gen());
-
         AuditConfigDocument config;
-        config.setClusterServerParameter(std::move(base));
+        config.set_id(kAuditDocID);
+        config.setGeneration(OID::gen());
         config.setFilter(testcase.getOwned());
         config.setAuditAuthorizationSuccess(false);
         ASSERT_THROWS_CODE(
