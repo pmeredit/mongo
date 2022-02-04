@@ -12,11 +12,6 @@ const kmipServerPort = 6570;
 load("jstests/libs/log.js");
 load(testDir + "libs/helpers.js");
 
-if (!TestData.setParameters.featureFlagKmipActivate) {
-    // Don't accept option when FF not enabled.
-    return;
-}
-
 function setUpTest() {
     let kmipServerPid = startPyKMIPServer(kmipServerPort);
     clearRawMongoProgramOutput();

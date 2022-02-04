@@ -11,7 +11,7 @@ const kmipServerPort = 6571;
 load("jstests/libs/log.js");
 load(testDir + "libs/helpers.js");
 
-if (!TestData.setParameters.featureFlagKmipActivate || _isWindows()) {
+if (_isWindows()) {
     // Don't run when FF not enabled.
     return;
 }

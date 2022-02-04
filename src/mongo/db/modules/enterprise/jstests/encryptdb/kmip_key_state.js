@@ -11,11 +11,6 @@ const kmipServerPort = 6569;
 load("jstests/libs/log.js");
 load(testDir + "libs/helpers.js");
 
-if (!TestData.setParameters.featureFlagKmipActivate) {
-    // Don't accept option when FF not enabled.
-    return;
-}
-
 // Run mongod and create a new key by not passing in encryptionKeyId.
 function createKeyMongod(extraOpts) {
     clearRawMongoProgramOutput();

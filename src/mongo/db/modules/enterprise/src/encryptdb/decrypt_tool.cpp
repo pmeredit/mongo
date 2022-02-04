@@ -46,7 +46,8 @@ int decryptToolMain(int argc, char* argv[]) {
         SSLParams sslParams;
         sslParams.sslFIPSMode = false;
         swDecryptKey = getKeyFromKMIPServer(globalDecryptToolOptions.kmipParams,
-                                            globalDecryptToolOptions.kmipParams.kmipKeyIdentifier);
+                                            globalDecryptToolOptions.kmipParams.kmipKeyIdentifier,
+                                            true /* ignore KMIP Key state */);
     } else {
         std::cout
             << "Must have either a keyFile, or a valid KMIP configuration to perform decryption"

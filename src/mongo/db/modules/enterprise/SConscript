@@ -132,7 +132,6 @@ if "encryptdb" in env['MONGO_ENTERPRISE_FEATURES'] or "audit" in env['MONGO_ENTE
         ],
         LIBDEPS_PRIVATE=[
             '$BUILD_DIR/mongo/db/modules/enterprise/src/encryptdb/log_redact_options',
-            '$BUILD_DIR/mongo/idl/feature_flag',
             '$BUILD_DIR/mongo/util/options_parser/options_parser',
         ],
     )

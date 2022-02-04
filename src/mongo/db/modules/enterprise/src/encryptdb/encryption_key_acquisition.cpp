@@ -140,9 +140,7 @@ StatusWith<std::unique_ptr<SymmetricKey>> getKeyFromKMIPServer(const KMIPParams&
         invariant(!keyId.empty());
     }
 
-    bool activateKeyAndStartJob =
-        (feature_flags::gFeatureFlagKmipActivate.isEnabledAndIgnoreFCV() &&
-         kmipParams.activateKeys && !ignoreStateAttribute);
+    bool activateKeyAndStartJob = (kmipParams.activateKeys && !ignoreStateAttribute);
 
     auto& kmipService = swKmipService.getValue();
 
