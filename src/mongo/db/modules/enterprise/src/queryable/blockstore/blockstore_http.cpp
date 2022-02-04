@@ -2,8 +2,11 @@
  * Copyright (C) 2018 MongoDB, Inc.  All Rights Reserved.
  */
 
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kNetwork
+
 #include "blockstore_http.h"
 
+#include "mongo/logv2/log.h"
 #include "mongo/util/str.h"
 
 namespace mongo {
@@ -12,6 +15,42 @@ namespace queryable {
 namespace {
 const std::array<int, 7> kBackoffSleepSecondsRead{1, 5, 10, 15, 20, 25, 30};
 const std::array<int, 3> kBackoffSleepSecondsList{1, 10, 30};
+
+std::string httpMethodString(HttpClient::HttpMethod method) {
+    if (method == HttpClient::HttpMethod::kGET) {
+        return "GET";
+    } else if (method == HttpClient::HttpMethod::kPOST) {
+        return "POST";
+    } else if (method == HttpClient::HttpMethod::kPUT) {
+        return "PUT";
+    }
+
+    MONGO_UNREACHABLE;
+}
+
+constexpr auto kDiagnosticLogLevel = 3;
+
+void logRequest(HttpClient::HttpMethod method, const std::string& url) {
+    LOGV2_DEBUG(6328800,
+                kDiagnosticLogLevel,
+                "BlockstoreHTTP request",
+                "method"_attr = httpMethodString(method),
+                "url"_attr = url);
+}
+
+void logResponse(Status status, const std::string& url) {
+    if (status.isOK()) {
+        LOGV2_DEBUG(6328801, kDiagnosticLogLevel, "BlockstoreHTTP OK response", "url"_attr = url);
+        return;
+    }
+
+    LOGV2_DEBUG(6328802,
+                kDiagnosticLogLevel,
+                "BlockstoreHTTP BAD response",
+                "status"_attr = status,
+                "url"_attr = url);
+}
+
 }  // namespace
 
 BlockstoreHTTP::BlockstoreHTTP(StringData apiUrl,
@@ -40,7 +79,11 @@ StatusWith<std::size_t> BlockstoreHTTP::read(StringData path,
         << "http://" << _apiUrl << "/os_read?snapshotId=" << _snapshotId << "&filename=" << path
         << "&offset=" << offset << "&length=" << count;
 
+    ScopeGuard logOKResponse([&] { logResponse(Status::OK(), url); });
+
     for (const auto& secs : kBackoffSleepSecondsRead) {
+        logRequest(HttpClient::HttpMethod::kGET, url);
+
         try {
             auto result = _client->get(url);
             status = buf.writeNoThrow(result.getCursor(), 0);
@@ -49,10 +92,12 @@ StatusWith<std::size_t> BlockstoreHTTP::read(StringData path,
             }
         } catch (...) {
             status = exceptionToStatus();
+            logResponse(status, url);
         }
         sleepsecs(secs);
     }
 
+    logOKResponse.dismiss();
     return status;
 }
 
@@ -60,22 +105,28 @@ StatusWith<DataBuilder> BlockstoreHTTP::write(StringData path,
                                               ConstDataRange buf,
                                               std::size_t offset,
                                               std::size_t count) const {
-    Status error(ErrorCodes::InternalError, "BlockstoreHTTP::write() returned an invalid error");
+    Status status(ErrorCodes::InternalError, "BlockstoreHTTP::write() returned an invalid error");
 
     const std::string url = str::stream()
         << "http://" << _apiUrl << "/os_wt_recovery_write?snapshotId=" << _snapshotId
         << "&filename=" << path << "&offset=" << offset << "&length=" << count;
 
+    ScopeGuard logOKResponse([&] { logResponse(Status::OK(), url); });
+
     for (const auto& secs : kBackoffSleepSecondsRead) {
+        logRequest(HttpClient::HttpMethod::kPOST, url);
+
         try {
             return _client->post(url, buf);
         } catch (...) {
-            error = exceptionToStatus();
+            status = exceptionToStatus();
+            logResponse(status, url);
         }
         sleepsecs(secs);
     }
 
-    return error;
+    logOKResponse.dismiss();
+    return status;
 }
 
 
@@ -86,15 +137,21 @@ StatusWith<DataBuilder> BlockstoreHTTP::listDirectory() const {
     const std::string url = str::stream()
         << "http://" << _apiUrl << "/os_list?snapshotId=" << _snapshotId;
 
+    ScopeGuard logOKResponse([&] { logResponse(Status::OK(), url); });
+
     for (const auto& secs : kBackoffSleepSecondsList) {
+        logRequest(HttpClient::HttpMethod::kGET, url);
+
         try {
             return _client->get(url);
         } catch (...) {
             status = exceptionToStatus();
+            logResponse(status, url);
         }
         sleepsecs(secs);
     }
 
+    logOKResponse.dismiss();
     return status;
 }
 
@@ -106,15 +163,21 @@ StatusWith<DataBuilder> BlockstoreHTTP::openFile(StringData path) const {
         << "http://" << _apiUrl << "/os_wt_recovery_open_file?snapshotId=" << _snapshotId
         << "&filename=" << path;
 
+    ScopeGuard logOKResponse([&] { logResponse(Status::OK(), url); });
+
     for (const auto& secs : kBackoffSleepSecondsList) {
+        logRequest(HttpClient::HttpMethod::kGET, url);
+
         try {
             return _client->get(url);
         } catch (...) {
             status = exceptionToStatus();
+            logResponse(status, url);
         }
         sleepsecs(secs);
     }
 
+    logOKResponse.dismiss();
     return status;
 }
 
@@ -126,15 +189,21 @@ StatusWith<DataBuilder> BlockstoreHTTP::renameFile(StringData from, StringData t
         << "http://" << _apiUrl << "/os_wt_rename_file?snapshotId=" << _snapshotId
         << "&from=" << from << "&to=" << to;
 
+    ScopeGuard logOKResponse([&] { logResponse(Status::OK(), url); });
+
     for (const auto& secs : kBackoffSleepSecondsList) {
+        logRequest(HttpClient::HttpMethod::kGET, url);
+
         try {
             return _client->get(url);
         } catch (...) {
             status = exceptionToStatus();
+            logResponse(status, url);
         }
         sleepsecs(secs);
     }
 
+    logOKResponse.dismiss();
     return status;
 }
 
