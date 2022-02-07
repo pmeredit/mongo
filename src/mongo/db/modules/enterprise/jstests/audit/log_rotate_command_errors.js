@@ -34,10 +34,19 @@ function testSubsecondRotations() {
 }
 
 function testPermissionDeniedOnRotation() {
-    if (_isWindows()) {
+    function isRunningAsRoot() {
+        clearRawMongoProgramOutput();
+        const rc = runProgram("id", "-un");
+        assert.eq(0, rc);
+        const output = rawMongoProgramOutput();
+        return output.trim().search("root") !== -1;
+    }
+
+    jsTest.log("Test logRotate command fails with permission denied");
+    if (_isWindows() || isRunningAsRoot()) {
+        jsTest.log("Test skipped");
         return;
     }
-    jsTest.log("Test logRotate command fails with permission denied");
     const fixture = new StandaloneFixture();
     const {conn, audit, admin} = fixture.startProcess();
     fixture.createUserAndAuth();
