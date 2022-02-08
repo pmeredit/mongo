@@ -103,10 +103,9 @@ if get_option('link-model') != 'dynamic-sdk':
     )
 
     obj = csfleShlibTestEnv.Object('mongo_csfle_shlib_test', 'mongo_csfle_test.cpp')
-    sources = [ obj ]
     unitTest = csfleShlibTestEnv.Program(
         target="mongo_csfle_shlib_test",
-        source=sources,
+        source=obj[0],
         LIBDEPS=[
             '$BUILD_DIR/mongo/db/service_context_test_fixture',
             '$BUILD_DIR/mongo/unittest/unittest',
