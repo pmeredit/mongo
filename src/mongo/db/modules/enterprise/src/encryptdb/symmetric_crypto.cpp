@@ -72,6 +72,8 @@ std::pair<std::size_t, std::size_t> expectedPlaintextLen(aesMode mode,
                 case PageSchema::k1:
                     return ConstEncryptedMemoryLayout<HeaderGCMV1>(ptr, len).expectedPlaintextLen();
             }
+        default:
+            invariant(false);
     }
     MONGO_UNREACHABLE;
 }

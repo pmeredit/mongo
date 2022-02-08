@@ -233,6 +233,8 @@ Status smokeTestAESCipherMode(aesMode mode, PageSchema schema) {
                 case PageSchema::k1:
                     return _doSmokeTestAESCipherMode<crypto::HeaderGCMV1>(kAESTestGCMData);
             }
+        default:
+            invariant(false);
     }
     MONGO_UNREACHABLE;
 }
