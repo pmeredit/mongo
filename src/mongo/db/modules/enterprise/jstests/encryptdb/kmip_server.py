@@ -2,6 +2,7 @@
 # which is required for some encrypted storage engine tests
 
 import copy
+import functools
 import logging
 import multiprocessing
 import signal
@@ -164,6 +165,14 @@ def patch_server():
 
     _process_decrypt_patched = engine.KmipEngine._kmip_version_supported('1.2')(_process_decrypt_patched)
 
+    def no_placeholder(fn):
+        @functools.wraps(fn)
+        def inner(self, *args, **kwargs):
+            self._logger.info("Clearing out the current _id_placeholder value")
+            self._id_placeholder = None
+            return fn(self, *args, **kwargs)
+        return inner
+
     def start_patched(self):
         """
         Prepare the server to start serving connections.
@@ -263,6 +272,8 @@ def patch_server():
 
     engine.KmipEngine._process_encrypt = _process_encrypt_patched
     engine.KmipEngine._process_decrypt = _process_decrypt_patched
+    engine.KmipEngine._process_get = no_placeholder(engine.KmipEngine._process_get)
+    engine.KmipEngine._process_get_attributes = no_placeholder(engine.KmipEngine._process_get_attributes)
     KmipServer.start = start_patched
 
 patch_server()

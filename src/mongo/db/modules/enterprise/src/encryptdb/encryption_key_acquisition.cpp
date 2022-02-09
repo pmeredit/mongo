@@ -92,7 +92,6 @@ StatusWith<std::unique_ptr<SymmetricKey>> _fetchKey(KMIPService& kmipService,
 
 StatusWith<std::unique_ptr<SymmetricKey>> _createKey(KMIPService& kmipService,
                                                      const KMIPParams& kmipParams,
-                                                     StringData keyId,
                                                      bool activateKeyAndStartJob) {
     // Create and retrieve new key.
     StatusWith<std::string> swCreateKey = kmipService.createExternalKey();
@@ -103,7 +102,7 @@ StatusWith<std::unique_ptr<SymmetricKey>> _createKey(KMIPService& kmipService,
     std::string newKeyId = swCreateKey.getValue();
     LOGV2(24199, "Created KMIP key", "keyId"_attr = newKeyId);
 
-    auto swKey = kmipService.getExternalKey(keyId.toString());
+    auto swKey = kmipService.getExternalKey(newKeyId);
     if (!swKey.isOK() || !activateKeyAndStartJob) {
         return swKey;
     }
@@ -115,7 +114,7 @@ StatusWith<std::unique_ptr<SymmetricKey>> _createKey(KMIPService& kmipService,
 
     LOGV2(2360700, "Activated KMIP key", "uid"_attr = swActivatedUid.getValue());
 
-    auto status = _startPolling(kmipService, kmipParams, keyId);
+    auto status = _startPolling(kmipService, kmipParams, newKeyId);
     if (!status.isOK()) {
         return status;
     }
@@ -147,7 +146,7 @@ StatusWith<std::unique_ptr<SymmetricKey>> getKeyFromKMIPServer(const KMIPParams&
     if (!keyId.empty()) {
         return _fetchKey(kmipService, kmipParams, keyId, activateKeyAndStartJob);
     } else {
-        return _createKey(kmipService, kmipParams, keyId, activateKeyAndStartJob);
+        return _createKey(kmipService, kmipParams, activateKeyAndStartJob);
     }
 }
 
