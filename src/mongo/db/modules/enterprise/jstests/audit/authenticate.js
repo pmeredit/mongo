@@ -48,12 +48,12 @@ function checkScram({authmech, conn, audit}) {
     assert.commandWorked(db.runCommand({createUser: "user1", pwd: "pwd", roles: []}));
     admin.logout();
 
-    let runWithCleanAudit = function(desc, func) {
+    function runWithCleanAudit(desc, func) {
         print(`Testing audit log for ${desc}`);
         audit.fastForward();
         func(port);
         audit.assertNoNewEntries("authenticate");
-    };
+    }
 
     // Check for positive auditing of authentications.
     runWithCleanAudit("positive-auth", function() {
@@ -61,6 +61,7 @@ function checkScram({authmech, conn, audit}) {
         const success =
             audit.assertEntry("authenticate", {user: "user1", db: "test", mechanism: authmech});
         assert.eq(success.result, 0);
+        db.logout();
     });
 
     // Check that connecting via shell only audits once.
@@ -127,12 +128,12 @@ function checkX509({conn, audit}) {
         test.foo.findOne();
     }, [], "read without login");
 
-    let runWithCleanAudit = function(desc, func) {
+    function runWithCleanAudit(desc, func) {
         print(`Testing audit log for ${desc}`);
         audit.fastForward();
         func();
         audit.assertNoNewEntries("authenticate");
-    };
+    }
 
     function runTlsShell(func) {
         const args = [
@@ -230,25 +231,29 @@ function checkIam({conn, audit}) {
         test.foo.findOne();
     }, [], "read without login");
 
-    let runWithCleanAudit = function(desc, func) {
+    function runWithCleanAudit(desc, func) {
         print(`Testing audit log for ${desc}`);
         audit.fastForward();
         func();
         audit.assertNoNewEntries("authenticate");
-    };
+    }
 
-    let checkAuth = function({authObj, auditObj, code}) {
+    function checkAuth({authObj, auditObj, code}) {
         const authBaseObj = {mechanism: 'MONGODB-AWS'};
+        const result = external.auth(Object.merge(authBaseObj, authObj));
         if (code === ErrorCodes.OK) {
-            assert(external.auth(Object.merge(authBaseObj, authObj)), "Authentication failed");
+            assert(result, "Authentication failed");
         } else {
-            assert(!external.auth(Object.merge(authBaseObj, authObj)), "Authentication succeeded");
+            assert(!result, "Authentication succeeded");
         }
 
         const auditBaseObj = {db: "$external", mechanism: "MONGODB-AWS"};
         const auditResult = audit.assertEntry("authenticate", Object.merge(auditObj, auditBaseObj));
         assert.eq(auditResult.result, code);
-    };
+        if (result) {
+            external.logout();
+        }
+    }
 
     mock_sts.start();
 
