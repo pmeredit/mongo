@@ -50,8 +50,11 @@ public:
          * stream().
          *
          * Set "append" to true to open "name" in append mode.  Otherwise, it is truncated.
+         *
+         * Set "reopen" to false to close the current stream without reopening it for the
+         * new file name.
          */
-        Status setFileName(const std::string& name, bool append);
+        Status setFileName(const std::string& name, bool append, bool reopen = true);
 
         /**
          * Rotates the currently opened file into "renameTarget", and open a new file

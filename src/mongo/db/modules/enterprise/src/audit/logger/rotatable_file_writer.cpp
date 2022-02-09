@@ -180,9 +180,10 @@ Win32FileStreambuf::int_type Win32FileStreambuf::overflow(int_type ch) {
 RotatableFileWriter::Use::Use(RotatableFileWriter* writer)
     : _writer(writer), _lock(writer->_mutex) {}
 
-Status RotatableFileWriter::Use::setFileName(const std::string& name, bool append) {
+Status RotatableFileWriter::Use::setFileName(const std::string& name, bool append, bool reopen) {
     _writer->_fileName = name;
-    return _openFileStream(append);
+    _writer->_stream.reset(nullptr);
+    return reopen ? _openFileStream(append) : Status::OK();
 }
 
 Status RotatableFileWriter::Use::rotate(bool renameOnRotate,

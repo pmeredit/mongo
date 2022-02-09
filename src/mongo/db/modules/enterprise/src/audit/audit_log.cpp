@@ -265,8 +265,11 @@ void AuditManager::_initializeAuditLog(const moe::Environment& params) {
         case AuditFormat::AuditFormatJsonFile:
         case AuditFormat::AuditFormatBsonFile: {
             const auto& auditLogPath = getPath();
+            bool auditLogExists = false;
 
             try {
+                auditLogExists = fs::exists(auditLogPath);
+
                 const auto auditDirectoryPath = fs::path(auditLogPath).parent_path();
                 if (!fs::exists(auditDirectoryPath)) {
                     fs::create_directory(auditDirectoryPath);
@@ -307,8 +310,13 @@ void AuditManager::_initializeAuditLog(const moe::Environment& params) {
             }
 
             auto writer = std::make_unique<logger::RotatableFileWriter>();
+
+            // Set up the log writer. If the file does not yet exist, delay opening
+            // the stream (hence delaying file creation) until the first log rotate
+            // occurs. This is to avoid having to create an empty file simply to be
+            // rotated later, leaving one more unnecessary file.
             uassertStatusOK(logger::RotatableFileWriter::Use(writer.get())
-                                .setFileName(auditLogPath, true /* append */));
+                                .setFileName(auditLogPath, true /* append */, auditLogExists));
 
             std::unique_ptr<logger::RotatableFileWriter> headerWriter = nullptr;
             const auto& headerPath = getHeaderMetadataPath();
