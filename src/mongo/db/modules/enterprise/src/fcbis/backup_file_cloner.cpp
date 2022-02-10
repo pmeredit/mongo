@@ -150,7 +150,7 @@ void BackupFileCloner::runQuery() {
     AggregateCommandRequest aggRequest(
         NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
         {backupFileStage});
-    aggRequest.setReadConcern(ReadConcernArgs::kImplicitDefault);
+    aggRequest.setReadConcern(ReadConcernArgs::kLocal);
     aggRequest.setWriteConcern(WriteConcernOptions());
 
     LOGV2_DEBUG(5781702,
