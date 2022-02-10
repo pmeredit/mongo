@@ -4,6 +4,7 @@
 (function() {
 "use strict";
 load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
+load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -49,9 +50,7 @@ const kIllegalTypes = [
 
 const schemaTemplate = {
     type: "object",
-    properties: {
-        foo: {encrypt: {algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic", keyId: [UUID()]}}
-    }
+    properties: {foo: {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()]}}}
 };
 
 // Verify that the schema is considered legal for all supported types.

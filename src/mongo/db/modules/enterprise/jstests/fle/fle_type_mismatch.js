@@ -6,6 +6,7 @@
 "use strict";
 
 load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
+load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -18,15 +19,8 @@ const coll = testDb.fle_type_mismatch;
 // random encryption algorithm.
 const multipleTypesRandomEncryptionSchema = {
     type: "object",
-    properties: {
-        foo: {
-            encrypt: {
-                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
-                keyId: [UUID()],
-                bsonType: ["string", "double"]
-            }
-        }
-    }
+    properties:
+        {foo: {encrypt: {algorithm: kRandomAlgo, keyId: [UUID()], bsonType: ["string", "double"]}}}
 };
 
 let cmdRes;
@@ -130,7 +124,7 @@ const deterministicEncryptionSchema = {
     properties: {
         foo: {
             encrypt: {
-                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                algorithm: kDeterministicAlgo,
                 keyId: [UUID()],
                 bsonType: ["long"],
             }
@@ -260,7 +254,7 @@ assert.commandFailedWithCode(testDb.runCommand({
 const deterministicEncryptionPatternPropertiesSchema = {
     type: "object",
     encryptMetadata: {
-        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+        algorithm: kDeterministicAlgo,
         keyId: [UUID()],
     },
     patternProperties: {"^foo": {encrypt: {bsonType: "long"}}},

@@ -5,6 +5,7 @@
 "use strict";
 
 load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
+load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -15,24 +16,10 @@ const coll = testDb.fle_delete;
 
 const schema = {
     type: "object",
-    properties: {
-        foo: {
-            encrypt: {
-                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                keyId: [UUID()],
-                bsonType: "long"
-            }
-        }
-    },
-    patternProperties: {
-        bar: {
-            encrypt: {
-                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                keyId: [UUID()],
-                bsonType: "long"
-            }
-        }
-    }
+    properties:
+        {foo: {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "long"}}},
+    patternProperties:
+        {bar: {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "long"}}}
 };
 
 // Verify that this delete command is correctly marked for encryption.
@@ -109,7 +96,7 @@ const randomSchema = {
     properties: {
         foo: {
             encrypt: {
-                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                algorithm: kRandomAlgo,
                 keyId: [UUID()],
             }
         }

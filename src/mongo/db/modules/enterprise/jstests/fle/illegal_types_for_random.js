@@ -5,6 +5,7 @@
 "use strict";
 
 load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
+load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -15,8 +16,7 @@ const coll = testDb.illegal_types_for_random;
 
 const schema = {
     type: "object",
-    properties:
-        {foo: {encrypt: {algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random", keyId: [UUID()]}}}
+    properties: {foo: {encrypt: {algorithm: kRandomAlgo, keyId: [UUID()]}}}
 };
 
 const insertCommandTemplate = {

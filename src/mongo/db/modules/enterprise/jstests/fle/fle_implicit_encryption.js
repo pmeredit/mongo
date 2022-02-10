@@ -4,15 +4,13 @@
 
 load("jstests/client_encrypt/lib/mock_kms.js");
 load('jstests/ssl/libs/ssl_helpers.js');
+load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
 
 (function() {
 "use strict";
 
 const mock_kms = new MockKMSServerAWS();
 mock_kms.start();
-
-const randomAlgorithm = "AEAD_AES_256_CBC_HMAC_SHA_512-Random";
-const deterministicAlgorithm = "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic";
 
 const x509_options = {
     sslMode: "requireSSL",
@@ -61,8 +59,8 @@ let testRandomizedCollection = (keyId, encryptedShell, unencryptedShell, collect
     // Performing CRUD on a collection encrypted with randomized algorithm.
     assert.writeOK(encryptedCollection.insert({name: "Shreyas", "ssn": NumberInt(123456789)}));
     assert.eq(0, unencryptedCollection.count({
-        "ssn": encryptedShell.getClientEncryption().encrypt(
-            keyId, NumberInt(123456789), randomAlgorithm)
+        "ssn":
+            encryptedShell.getClientEncryption().encrypt(keyId, NumberInt(123456789), kRandomAlgo)
     }));
 
     const ssn_bin = unencryptedCollection.find({name: "Shreyas"})[0].ssn;
@@ -125,7 +123,7 @@ let testDeterministicCollection = (keyId, encryptedShell, unencryptedShell, coll
 
     // Testing that deterministic encryption works
     const encryptedDeterministicSSN = encryptedShell.getClientEncryption().encrypt(
-        keyId, NumberInt(987654321), deterministicAlgorithm);
+        keyId, NumberInt(987654321), kDeterministicAlgo);
     assert.eq(3, unencryptedCollection.count({"ssn": encryptedDeterministicSSN}));
 
     unencryptedCollection.deleteMany({"ssn": encryptedDeterministicSSN});
@@ -139,7 +137,7 @@ let testDeterministicCollection = (keyId, encryptedShell, unencryptedShell, coll
         unencryptedCollection.insertOne({
             name: 'Davis' + i,
             'ssn': encryptedShell.getClientEncryption().encrypt(
-                keyId, NumberInt(i), deterministicAlgorithm)
+                keyId, NumberInt(i), kDeterministicAlgo)
         });
     }
 
@@ -177,8 +175,7 @@ encryptedDatabase.createCollection("students", {
             bsonType: "object",
             properties: {
                 name: {bsonType: "string", description: "must be a string"},
-                ssn:
-                    {encrypt: {bsonType: "int", algorithm: randomAlgorithm, keyId: [studentsKeyId]}}
+                ssn: {encrypt: {bsonType: "int", algorithm: kRandomAlgo, keyId: [studentsKeyId]}}
             }
         }
     }
@@ -198,7 +195,7 @@ encryptedDatabase.createCollection("teachers", {
                 ssn: {
                     encrypt: {
                         bsonType: "int",
-                        algorithm: deterministicAlgorithm,
+                        algorithm: kDeterministicAlgo,
                         keyId: [teachersKeyId],
                     }
                 }
@@ -226,7 +223,7 @@ const staffSchema = {
         ssn: {
             encrypt: {
                 bsonType: "int",
-                algorithm: randomAlgorithm,
+                algorithm: kRandomAlgo,
                 keyId: [staffKeyId],
             }
         }
@@ -243,7 +240,7 @@ const bureaucracySchema = {
         ssn: {
             encrypt: {
                 bsonType: "int",
-                algorithm: randomAlgorithm,
+                algorithm: kRandomAlgo,
                 keyId: "/name",
             }
         }
@@ -260,7 +257,7 @@ const adminSchema = {
         ssn: {
             encrypt: {
                 bsonType: "int",
-                algorithm: deterministicAlgorithm,
+                algorithm: kDeterministicAlgo,
                 keyId: [adminKeyId],
             }
         }

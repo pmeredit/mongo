@@ -6,6 +6,7 @@
 "use strict";
 
 load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
+load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
 
 const mongocryptd = new MongoCryptD();
 
@@ -14,11 +15,7 @@ mongocryptd.start();
 const conn = mongocryptd.getConnection();
 
 const encryptDoc = {
-    encrypt: {
-        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-        keyId: [UUID(), UUID()],
-        bsonType: "string"
-    }
+    encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID(), UUID()], bsonType: "string"}
 };
 
 const testCases = [
@@ -114,15 +111,8 @@ const testCases = [
     {
         schema: {
             type: "object",
-            properties: {
-                foo: {
-                    encrypt: {
-                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                        keyId: "/key",
-                        bsonType: "long"
-                    }
-                }
-            }
+            properties:
+                {foo: {encrypt: {algorithm: kDeterministicAlgo, keyId: "/key", bsonType: "long"}}}
         },
         query: {},
         update: {$set: {foo: NumberLong(5)}},
@@ -137,7 +127,7 @@ const testCases = [
             properties: {
                 foo: {
                     encrypt: {
-                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                        algorithm: kRandomAlgo,
                         keyId: [UUID(), UUID()],
                     }
                 }
@@ -259,10 +249,7 @@ assert.commandWorked(testDb.runCommand(updateCommand));
 // Test that a $rename between encrypted fields with different metadata fails.
 updateCommand.jsonSchema = {
     type: "object",
-    properties: {
-        foo: {encrypt: {algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random", keyId: "/key"}},
-        bar: encryptDoc
-    }
+    properties: {foo: {encrypt: {algorithm: kRandomAlgo, keyId: "/key"}}, bar: encryptDoc}
 };
 updateCommand.query = {};
 updateCommand.update = {
@@ -335,11 +322,7 @@ updateCommand.jsonSchema = {
     type: "object",
     properties: {
         foo: {
-            encrypt: {
-                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                keyId: [UUID(), UUID()],
-                bsonType: "timestamp"
-            }
+            encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID(), UUID()], bsonType: "timestamp"}
         }
     }
 };

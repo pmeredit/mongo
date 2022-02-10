@@ -5,6 +5,7 @@
 'use strict';
 
 load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
+load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -14,23 +15,12 @@ const testDB = conn.getDB("test");
 const sampleSchema = {
     type: "object",
     properties: {
-        ssn: {
-            encrypt: {
-                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                keyId: [UUID()],
-                bsonType: "long"
-            }
-        },
+        ssn: {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "long"}},
         user: {
             type: "object",
             properties: {
-                account: {
-                    encrypt: {
-                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                        keyId: [UUID()],
-                        bsonType: "string"
-                    }
-                }
+                account:
+                    {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}}
             }
         }
     }
@@ -193,13 +183,8 @@ let cmdRes = assert.commandWorked(testDB.runCommand({
     jsonSchema: {
         type: "object",
         patternProperties: {
-            "[Ss]sn": {
-                encrypt: {
-                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                    keyId: [UUID()],
-                    bsonType: "string"
-                }
-            }
+            "[Ss]sn":
+                {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}}
         }
     },
     isRemoteSchema: false
@@ -212,15 +197,8 @@ assert.commandFailedWithCode(testDB.runCommand({
     filter: {userSsn: "123-45-6789"},
     jsonSchema: {
         type: "object",
-        properties: {
-            userSsn: {
-                encrypt: {
-                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                    keyId: "/key",
-                    bsonType: "string"
-                }
-            }
-        }
+        properties:
+            {userSsn: {encrypt: {algorithm: kDeterministicAlgo, keyId: "/key", bsonType: "string"}}}
     },
     isRemoteSchema: false
 }),
@@ -235,7 +213,7 @@ assert.commandFailedWithCode(testDB.runCommand({
         properties: {
             userSsn: {
                 encrypt: {
-                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                    algorithm: kRandomAlgo,
                     keyId: [UUID()],
                 }
             }

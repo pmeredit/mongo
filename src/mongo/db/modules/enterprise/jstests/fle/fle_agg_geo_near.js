@@ -6,6 +6,7 @@
 "use strict";
 
 load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
+load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -14,11 +15,7 @@ const testDB = conn.getDB("test");
 const coll = testDB.fle_agg_geo_near;
 
 const encryptedStringSpec = {
-    encrypt: {
-        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-        keyId: [UUID()],
-        bsonType: "string"
-    }
+    encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}
 };
 
 let command, cmdRes;

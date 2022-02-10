@@ -9,6 +9,7 @@
 "use strict";
 
 load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
+load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -20,13 +21,8 @@ const coll = testDb.is_remote_schema;
 const schemaWithCryptdUnsupportedKeywords = {
     type: "object",
     properties: {a: {type: "string", minLength: 1}},
-    additionalProperties: {
-        encrypt: {
-            algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-            keyId: [UUID()],
-            bsonType: "long"
-        }
-    },
+    additionalProperties:
+        {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "long"}},
     maxProperties: 4
 };
 const schemaWithCryptdSupportedKeywords = {

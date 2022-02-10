@@ -10,6 +10,7 @@
 "use strict";
 
 load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
+load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -19,11 +20,7 @@ const testDb = conn.getDB("test");
 const coll = testDb.encrypt_with_arrays;
 
 const encryptObj = {
-    encrypt: {
-        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-        keyId: [UUID(), UUID()],
-        bsonType: "int"
-    }
+    encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID(), UUID()], bsonType: "int"}
 };
 const fooEncryptedSchema = {
     type: "object",
@@ -294,7 +291,7 @@ const fooEncryptedRandomSchema = {
     properties: {
         foo: {
             encrypt: {
-                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
+                algorithm: kRandomAlgo,
                 keyId: [UUID(), UUID()],
             }
         }
@@ -326,11 +323,7 @@ assert.commandFailedWithCode(testDb.runCommand({
         type: "object",
         properties: {
             foo: {
-                encrypt: {
-                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                    keyId: [UUID(), UUID()],
-                    bsonType: "array"
-                }
+                encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID(), UUID()], bsonType: "array"}
             }
         }
     },
@@ -346,11 +339,8 @@ assert.commandWorked(testDb.runCommand({
         type: "object",
         properties: {
             foo: {
-                encrypt: {
-                    algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random",
-                    keyId: [UUID(), UUID()],
-                    bsonType: ["int", "array"]
-                }
+                encrypt:
+                    {algorithm: kRandomAlgo, keyId: [UUID(), UUID()], bsonType: ["int", "array"]}
             }
         }
     },
@@ -359,9 +349,7 @@ assert.commandWorked(testDb.runCommand({
 
 const fooRandomEncryptedSchema = {
     type: "object",
-    properties: {
-        foo: {encrypt: {algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random", keyId: [UUID(), UUID()]}}
-    }
+    properties: {foo: {encrypt: {algorithm: kRandomAlgo, keyId: [UUID(), UUID()]}}}
 };
 
 // Verify that an insert command where 'foo' is an array succeeds when 'foo' is marked for

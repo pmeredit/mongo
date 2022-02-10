@@ -1,11 +1,13 @@
 /**
  * Verify that elements with an insert command are correctly marked for encryption.
+ *
  */
 
 (function() {
 "use strict";
 
 load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
+load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
 
 const mongocryptd = new MongoCryptD();
 
@@ -14,29 +16,20 @@ mongocryptd.start();
 const conn = mongocryptd.getConnection();
 
 const encryptDoc = {
-    encrypt: {
-        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-        keyId: [UUID(), UUID()],
-        bsonType: "string"
-    }
+    encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID(), UUID()], bsonType: "string"}
 };
 const testCases = [
     // Test that a top level encrypt is translated.
     {
-        schema: {type: "object", properties: {foo: encryptDoc}},
+        schema: generateSchema({foo: encryptDoc}),
         docs: [{foo: "bar"}, {foo: "bar"}],
         encryptedPaths: ["foo"],
         notEncryptedPaths: []
     },
     // Test that only the correct fields are translated.
     {
-        schema: {
-            type: "object",
-            properties: {
-                foo: encryptDoc,
-                bar: {type: "object", properties: {baz: encryptDoc, boo: {type: "string"}}}
-            }
-        },
+        schema:
+            generateSchema({foo: encryptDoc, 'bar.baz': encryptDoc, 'bar.boo': {type: "string"}}),
         docs: [
             {foo: "bar"},
             {stuff: "baz"},
@@ -47,34 +40,19 @@ const testCases = [
     },
     // Test that a JSONPointer keyId is accepted.
     {
-        schema: {
-            type: "object",
-            properties:
-                {foo: {encrypt: {algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random", keyId: "/key"}}}
-        },
+        schema: generateSchemaV1({foo: {encrypt: {algorithm: kRandomAlgo, keyId: "/key"}}}),
         docs: [{foo: "bar", "key": "string"}],
         encryptedPaths: ["foo"],
         notEncryptedPaths: []
     },
     // Test that a document with a nested Timestamp(0, 0) succeeds.
     {
-        schema: {
-            type: "object",
-            properties: {
-                foo: {
-                    type: "object",
-                    properties: {
-                        bar: {
-                            encrypt: {
-                                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                                keyId: [UUID(), UUID()],
-                                bsonType: "timestamp"
-                            }
-                        }
-                    }
-                }
+        schema: generateSchema({
+            'foo.bar': {
+                encrypt:
+                    {algorithm: kDeterministicAlgo, keyId: [UUID(), UUID()], bsonType: "timestamp"}
             }
-        },
+        }),
         docs: [{foo: {bar: Timestamp(0, 0)}}],
         encryptedPaths: ["foo.bar"],
         notEncryptedPaths: []
@@ -97,12 +75,12 @@ const extractField = function(doc, fieldName) {
 const testDb = conn.getDB("test");
 let insertCommand = {insert: "test.foo", documents: [], jsonSchema: {}, isRemoteSchema: false};
 for (let test of testCases) {
-    insertCommand["jsonSchema"] = test["schema"];
+    Object.assign(insertCommand, test["schema"]);
     insertCommand["documents"] = test["docs"];
     const result = assert.commandWorked(testDb.runCommand(insertCommand));
     for (let encryptedDoc of result["result"]["documents"]) {
-        // For each field that should be encrypted. Some documents may not contain all of the
-        // fields.
+        // For each field that should be encrypted. Some documents may not contain all of
+        // the fields.
         for (let encrypt of test.encryptedPaths) {
             const curField = extractField(encryptedDoc, encrypt);
             if (typeof curField !== "undefined") {
@@ -110,8 +88,8 @@ for (let test of testCases) {
                        tojson(test) + " Failed doc: " + tojson(encryptedDoc));
             }
         }
-        // For each field that should not be encrypted. Some documents may not contain all of
-        // the fields.
+        // For each field that should not be encrypted. Some documents may not contain all
+        // of the fields.
         for (let noEncrypt of test.notEncryptedPaths) {
             const curField = extractField(encryptedDoc, noEncrypt);
             if (typeof curField !== "undefined") {
@@ -179,7 +157,7 @@ assert.commandWorked(testDb.runCommand({
 
 // Test that an insert is rejected if a pointer points to an encrypted field.
 const pointerDoc = {
-    encrypt: {algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Random", keyId: "/key"}
+    encrypt: {algorithm: kRandomAlgo, keyId: "/key"}
 };
 assert.commandFailedWithCode(testDb.runCommand({
     insert: "test.foo",

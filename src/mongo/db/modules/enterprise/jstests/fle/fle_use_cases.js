@@ -8,12 +8,11 @@
 load("jstests/client_encrypt/lib/mock_kms.js");
 load('jstests/ssl/libs/ssl_helpers.js');
 load('jstests/aggregation/extras/utils.js');
+load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
 
 // Set up key management and encrypted shell.
 const mock_kms = new MockKMSServerAWS();
 mock_kms.start();
-const randomAlgorithm = "AEAD_AES_256_CBC_HMAC_SHA_512-Random";
-const deterministicAlgorithm = "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic";
 const x509_options = {
     sslMode: "requireSSL",
     sslPEMKeyFile: SERVER_CERT,
@@ -109,7 +108,7 @@ From unencrypted collection: ${tojson(unEncryptedResults[i])}`);
  */
 const medTestSchema = {
     encryptMetadata: {
-        algorithm: deterministicAlgorithm,
+        algorithm: kDeterministicAlgo,
         keyId: [defaultKeyId],
     },
     type: "object",
@@ -127,8 +126,7 @@ const medTestSchema = {
                 name: {encrypt: {bsonType: "string"}},
                 age: {encrypt: {bsonType: "int"}},
                 insurance: {
-                    encrypt:
-                        {algorithm: randomAlgorithm, bsonType: "string", keyId: [insuranceKeyId]}
+                    encrypt: {algorithm: kRandomAlgo, bsonType: "string", keyId: [insuranceKeyId]}
                 },
                 loc: {
                     type: "object",
@@ -147,8 +145,7 @@ const medTestSchema = {
             properties: {
                 name: {encrypt: {bsonType: "string"}},
                 insurance: {
-                    encrypt:
-                        {algorithm: randomAlgorithm, bsonType: "string", keyId: [insuranceKeyId]}
+                    encrypt: {algorithm: kRandomAlgo, bsonType: "string", keyId: [insuranceKeyId]}
                 },
                 loc: {
                     type: "object",

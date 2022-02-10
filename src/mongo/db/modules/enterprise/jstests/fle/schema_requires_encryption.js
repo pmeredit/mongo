@@ -6,6 +6,7 @@
 "use strict";
 
 load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
+load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -15,11 +16,7 @@ const testDb = conn.getDB("test");
 const coll = testDb.schema_requires_encryption;
 
 const schemaEncryptObj = {
-    encrypt: {
-        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-        keyId: [UUID(), UUID()],
-        bsonType: "int"
-    }
+    encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID(), UUID()], bsonType: "int"}
 };
 
 let schema, cmdRes;

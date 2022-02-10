@@ -5,6 +5,7 @@
 (function() {
 'use strict';
 load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
+load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
 
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
@@ -15,36 +16,19 @@ const uuid = UUID();
 const sampleSchema = {
     type: "object",
     properties: {
-        ssn: {
-            encrypt: {
-                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                keyId: [uuid],
-                bsonType: "long"
-            }
-        },
+        ssn: {encrypt: {algorithm: kDeterministicAlgo, keyId: [uuid], bsonType: "long"}},
         user: {
             type: "object",
             properties: {
-                account: {
-                    encrypt: {
-                        algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                        keyId: [UUID()],
-                        bsonType: "string"
-                    }
-                },
+                account:
+                    {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}},
 
             }
         },
-        friendSsn: {
-            encrypt: {
-                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
-                keyId: [uuid],
-                bsonType: "long"
-            }
-        },
+        friendSsn: {encrypt: {algorithm: kDeterministicAlgo, keyId: [uuid], bsonType: "long"}},
         incompatableEncryptionField: {
             encrypt: {
-                algorithm: "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic",
+                algorithm: kDeterministicAlgo,
                 keyId: [UUID()],
                 bsonType: "long"
 
