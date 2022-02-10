@@ -50,6 +50,9 @@ let st = new ShardingTest({
     ],
 });
 
+assert.commandWorked(st.s0.adminCommand(
+    {"setParameter": 1, logComponentVerbosity: {processHealth: {verbosity: 3}}}));
+
 assert.commandWorked(
     st.s0.adminCommand({"setParameter": 1, activeFaultDurationSecs: ACTIVE_FAULT_DURATION_SECS}));
 
