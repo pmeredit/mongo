@@ -1957,13 +1957,14 @@ TEST_F(FileCopyBasedInitialSyncerTest, SyncingFilesUsingBackupCursorOnlyGetStats
 
     auto hangAfterStartingFileClone =
         globalFailPointRegistry().find("fCBISHangAfterStartingFileClone");
-    hangAfterStartingFileClone->setMode(FailPoint::alwaysOn);
+    auto timesEnteredHangAfterStartingFileClone =
+        hangAfterStartingFileClone->setMode(FailPoint::alwaysOn);
 
     auto hangAfterFileCloning = globalFailPointRegistry().find("fCBISHangAfterFileCloning");
-    hangAfterFileCloning->setMode(FailPoint::alwaysOn);
+    auto timesEnteredHangAfterFileCloning = hangAfterFileCloning->setMode(FailPoint::alwaysOn);
 
     auto hangBeforeFinish = globalFailPointRegistry().find("fCBISHangBeforeFinish");
-    hangBeforeFinish->setMode(FailPoint::alwaysOn);
+    auto timesEnteredHangBeforeFinish = hangBeforeFinish->setMode(FailPoint::alwaysOn);
 
     ASSERT_OK(fileCopyBasedInitialSyncer->startup(opCtx.get(), maxAttempts));
     stdx::thread bgThread;
@@ -1983,7 +1984,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, SyncingFilesUsingBackupCursorOnlyGetStats
     });
 
     {
-        hangAfterStartingFileClone->waitForTimesEntered(1);
+        hangAfterStartingFileClone->waitForTimesEntered(timesEnteredHangAfterStartingFileClone + 1);
         BSONObj prog = fileCopyBasedInitialSyncer->getInitialSyncProgress();
         hangAfterStartingFileClone->setMode(FailPoint::off);
 
@@ -2014,7 +2015,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, SyncingFilesUsingBackupCursorOnlyGetStats
         ASSERT_EQUALS(file0.getIntField("writtenBatches"), 1) << prog;
     }
     {
-        hangAfterFileCloning->waitForTimesEntered(1);
+        hangAfterFileCloning->waitForTimesEntered(timesEnteredHangAfterFileCloning + 1);
         BSONObj prog = fileCopyBasedInitialSyncer->getInitialSyncProgress();
         hangAfterFileCloning->setMode(FailPoint::off);
 
@@ -2046,7 +2047,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, SyncingFilesUsingBackupCursorOnlyGetStats
         ASSERT_EQUALS(file0.getIntField("writtenBatches"), 1) << prog;
     }
     {
-        hangBeforeFinish->waitForTimesEntered(1);
+        hangBeforeFinish->waitForTimesEntered(timesEnteredHangBeforeFinish + 1);
         BSONObj prog = fileCopyBasedInitialSyncer->getInitialSyncProgress();
         hangBeforeFinish->setMode(FailPoint::off);
 
@@ -2100,14 +2101,16 @@ TEST_F(FileCopyBasedInitialSyncerTest, SyncingFilesUsingExtendedCursorsGetStats)
 
     auto hangBeforeExtendBackupCursor =
         globalFailPointRegistry().find("fCBISHangBeforeExtendBackupCursor");
-    hangBeforeExtendBackupCursor->setMode(FailPoint::alwaysOn);
+    auto timesEnteredHangBeforeExtendBackupCursor =
+        hangBeforeExtendBackupCursor->setMode(FailPoint::alwaysOn);
 
     auto hangAfterAttemptingExtendBackupCursor =
         globalFailPointRegistry().find("fCBISHangAfterAttemptingExtendBackupCursor");
-    hangAfterAttemptingExtendBackupCursor->setMode(FailPoint::alwaysOn);
+    auto timesEnteredHangAfterAttemptingExtendBackupCursor =
+        hangAfterAttemptingExtendBackupCursor->setMode(FailPoint::alwaysOn);
 
     auto hangBeforeFinish = globalFailPointRegistry().find("fCBISHangBeforeFinish");
-    hangBeforeFinish->setMode(FailPoint::alwaysOn);
+    auto timesEnteredHangBeforeFinish = hangBeforeFinish->setMode(FailPoint::alwaysOn);
 
     _syncSourceSelector->setChooseNewSyncSourceResult_forTest(HostAndPort("localhost", 12345));
     globalFailPointRegistry().find("fCBISSkipSyncingFilesPhase")->setMode(FailPoint::off);
@@ -2147,7 +2150,8 @@ TEST_F(FileCopyBasedInitialSyncerTest, SyncingFilesUsingExtendedCursorsGetStats)
     });
 
     {
-        hangBeforeExtendBackupCursor->waitForTimesEntered(1);
+        hangBeforeExtendBackupCursor->waitForTimesEntered(timesEnteredHangBeforeExtendBackupCursor +
+                                                          1);
         BSONObj prog = fileCopyBasedInitialSyncer->getInitialSyncProgress();
         hangBeforeExtendBackupCursor->setMode(FailPoint::off);
 
@@ -2170,7 +2174,8 @@ TEST_F(FileCopyBasedInitialSyncerTest, SyncingFilesUsingExtendedCursorsGetStats)
     }
 
     {
-        hangAfterAttemptingExtendBackupCursor->waitForTimesEntered(1);
+        hangAfterAttemptingExtendBackupCursor->waitForTimesEntered(
+            timesEnteredHangAfterAttemptingExtendBackupCursor + 1);
         BSONObj prog = fileCopyBasedInitialSyncer->getInitialSyncProgress();
         hangAfterAttemptingExtendBackupCursor->setMode(FailPoint::off);
 
@@ -2191,7 +2196,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, SyncingFilesUsingExtendedCursorsGetStats)
         ASSERT_EQUALS(files.nFields(), 10) << files;
     }
     {
-        hangBeforeFinish->waitForTimesEntered(1);
+        hangBeforeFinish->waitForTimesEntered(timesEnteredHangBeforeFinish + 1);
         BSONObj prog = fileCopyBasedInitialSyncer->getInitialSyncProgress();
         hangBeforeFinish->setMode(FailPoint::off);
 
@@ -2201,7 +2206,8 @@ TEST_F(FileCopyBasedInitialSyncerTest, SyncingFilesUsingExtendedCursorsGetStats)
         ASSERT_EQUALS(prog.getIntField("maxFailedInitialSyncAttempts"), maxAttempts) << prog;
         ASSERT_EQUALS(prog["initialSyncStart"].type(), Date) << prog;
         ASSERT(prog["totalInitialSyncElapsedMillis"].isNumber()) << prog;
-        ASSERT_BSONOBJ_EQ(prog.getObjectField("initialSyncAttempts"), BSONObj());
+        BSONObj attempts = prog["initialSyncAttempts"].Obj();
+        ASSERT_EQUALS(attempts.nFields(), 1) << attempts;
         ASSERT_EQUALS(prog.getIntField("approxTotalDataSize"), 314752297) << prog;
         ASSERT(prog["approxTotalBytesCopied"].isNumber()) << prog;
         ASSERT_EQUALS(prog.getIntField("initialBackupDataSize"), 314752297) << prog;
@@ -2210,7 +2216,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, SyncingFilesUsingExtendedCursorsGetStats)
         ASSERT_EQUALS(prog["syncSourceLastApplied"].type(), bsonTimestamp) << prog;
         ASSERT_EQUALS(prog.getIntField("totalTimeUnreachableMillis"), 0) << prog;
         BSONObj files = prog["files"].Obj();
-        ASSERT_EQUALS(files.nFields(), 10) << files;
+        ASSERT_EQUALS(files.nFields(), 14) << files;
 
         auto file0 = files["0"].Obj();
         ASSERT_EQUALS(file0.nFields(), 8) << files;
@@ -2256,10 +2262,13 @@ TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromInitialSourceGetStats) {
 
     auto hangAfterBackupCursorFailPoint =
         globalFailPointRegistry().find("fCBISHangAfterOpeningBackupCursor");
-    hangAfterBackupCursorFailPoint->setMode(FailPoint::alwaysOn);
+    auto timesEnteredHangAfterBackupCursor =
+        hangAfterBackupCursorFailPoint->setMode(FailPoint::alwaysOn);
 
-    auto hangAfterFileCloning = globalFailPointRegistry().find("fCBISHangAfterFileCloning");
-    hangAfterFileCloning->setMode(FailPoint::alwaysOn);
+    auto hangAfterFileCloningAsync =
+        globalFailPointRegistry().find("fCBISHangAfterFileCloningAsync");
+    auto timesEnteredHangAfterFileCloningAsync =
+        hangAfterFileCloningAsync->setMode(FailPoint::alwaysOn);
 
     auto opCtx = makeOpCtx();
 
@@ -2312,45 +2321,31 @@ TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromInitialSourceGetStats) {
     });
 
     {
-        hangAfterBackupCursorFailPoint->waitForTimesEntered(1);
-        BSONObj prog = fileCopyBasedInitialSyncer->getInitialSyncProgress();
-
-        ASSERT_EQUALS(prog.nFields(), 11) << prog;
-        ASSERT_EQUALS(prog["method"].str(), "fileCopyBased") << prog;
-        ASSERT_EQUALS(prog.getIntField("failedInitialSyncAttempts"), 0) << prog;
-        ASSERT_EQUALS(prog.getIntField("maxFailedInitialSyncAttempts"), maxAttempts) << prog;
-        ASSERT_EQUALS(prog["initialSyncStart"].type(), Date) << prog;
-        ASSERT(prog["totalInitialSyncElapsedMillis"].isNumber()) << prog;
-        ASSERT_BSONOBJ_EQ(prog.getObjectField("initialSyncAttempts"), BSONObj());
-        ASSERT_EQUALS(prog.getIntField("approxTotalDataSize"), 0) << prog;
-        ASSERT_EQUALS(prog.getIntField("approxTotalBytesCopied"), 0) << prog;
-        ASSERT_EQUALS(prog.getIntField("initialBackupDataSize"), 0) << prog;
-        ASSERT_EQUALS(prog["currentOplogEnd"].type(), bsonTimestamp) << prog;
-        ASSERT_BSONOBJ_EQ(prog.getObjectField("files"), BSONObj());
-    }
-    {
-        hangAfterBackupCursorFailPoint->waitForTimesEntered(2);
+        hangAfterBackupCursorFailPoint->waitForTimesEntered(timesEnteredHangAfterBackupCursor + 1);
         BSONObj prog = fileCopyBasedInitialSyncer->getInitialSyncProgress();
         hangAfterBackupCursorFailPoint->setMode(FailPoint::off);
+        advanceClock(getNet(), Milliseconds(static_cast<Milliseconds::rep>(100)));
 
-        ASSERT_EQUALS(prog.nFields(), 11) << prog;
+        ASSERT_EQUALS(prog.nFields(), 12) << prog;
         ASSERT_EQUALS(prog["method"].str(), "fileCopyBased") << prog;
         ASSERT_EQUALS(prog.getIntField("failedInitialSyncAttempts"), 0) << prog;
         ASSERT_EQUALS(prog.getIntField("maxFailedInitialSyncAttempts"), maxAttempts) << prog;
         ASSERT_EQUALS(prog["initialSyncStart"].type(), Date) << prog;
         ASSERT(prog["totalInitialSyncElapsedMillis"].isNumber()) << prog;
         ASSERT_BSONOBJ_EQ(prog.getObjectField("initialSyncAttempts"), BSONObj());
-        ASSERT_EQUALS(prog.getIntField("approxTotalDataSize"), 0) << prog;
+        ASSERT_EQUALS(prog.getIntField("approxTotalDataSize"), 48) << prog;
         ASSERT_EQUALS(prog.getIntField("approxTotalBytesCopied"), 0) << prog;
-        ASSERT_EQUALS(prog.getIntField("initialBackupDataSize"), 0) << prog;
+        ASSERT_EQUALS(prog.getIntField("initialBackupDataSize"), 48) << prog;
         ASSERT_EQUALS(prog["currentOplogEnd"].type(), bsonTimestamp) << prog;
         ASSERT_BSONOBJ_EQ(prog.getObjectField("files"), BSONObj());
     }
 
+
     {
-        hangAfterFileCloning->waitForTimesEntered(2);
+        hangAfterFileCloningAsync->waitForTimesEntered(timesEnteredHangAfterFileCloningAsync + 1);
         BSONObj prog = fileCopyBasedInitialSyncer->getInitialSyncProgress();
-        hangAfterFileCloning->setMode(FailPoint::off);
+        hangAfterFileCloningAsync->setMode(FailPoint::off);
+        advanceClock(getNet(), Milliseconds(static_cast<Milliseconds::rep>(100)));
 
         ASSERT_EQUALS(prog.nFields(), 14) << prog;
         ASSERT_EQUALS(prog["method"].str(), "fileCopyBased") << prog;
@@ -2392,9 +2387,13 @@ TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromInitialSourceGetStats) {
         ASSERT_EQUALS(file1.getIntField("elapsedMillis"), 0) << prog;
         ASSERT_EQUALS(file1.getIntField("receivedBatches"), 1) << prog;
         ASSERT_EQUALS(file1.getIntField("writtenBatches"), 1) << prog;
+
+        expectSuccessfulReplSetGetStatusCall(Timestamp(
+            cursorDataMock.checkpointTimestamp.getSecs() + fileBasedInitialSyncMaxLagSec, 0));
     }
 
     bgThread.join();
+    fileCopyBasedInitialSyncer->join();
 
     {
         BSONObj prog = fileCopyBasedInitialSyncer->getInitialSyncProgress();
@@ -2414,8 +2413,6 @@ TEST_F(FileCopyBasedInitialSyncerTest, ClonesFilesFromInitialSourceGetStats) {
         ASSERT_EQUALS(attempt0["syncSource"].str(), "localhost:12345") << attempts;
         ASSERT_GREATER_THAN(attempt0.getIntField("durationMillis"), 0) << attempts;
     }
-
-    fileCopyBasedInitialSyncer->join();
     checkFileData("backupfile1", file1Data);
     checkFileData("backupfile2", file2Data);
 

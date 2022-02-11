@@ -47,6 +47,9 @@ MONGO_FAIL_POINT_DEFINE(fCBISForceExtendBackupCursor);
 MONGO_FAIL_POINT_DEFINE(fCBISSkipSyncingFilesPhase);
 
 // Failpoint which causes the initial sync function to hang after cloning all backup files.
+MONGO_FAIL_POINT_DEFINE(fCBISHangAfterFileCloningAsync);
+
+// Failpoint which causes the initial sync function to hang after cloning all backup files.
 MONGO_FAIL_POINT_DEFINE(fCBISHangAfterFileCloning);
 
 // Failpoint which causes the initial sync function to hang before extending the backup cursor.
@@ -1064,6 +1067,11 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startSyncingFiles(
                return _cloneFromSyncSourceCursor()
                    .then([this, self = shared_from_this()]() {
                        fCBISHangAfterFileCloning.pauseWhileSet();
+                       return _hangAsyncIfFailPointEnabled("fCBISHangAfterFileCloningAsync",
+                                                           _syncingFilesState.executor,
+                                                           _syncingFilesState.token);
+                   })
+                   .then([this, self = shared_from_this()]() {
                        return _getLastAppliedOpTimeFromSyncSource();
                    })
                    .then([this,
@@ -1802,9 +1810,7 @@ void FileCopyBasedInitialSyncer::_finishCallback(StatusWith<OpTimeAndWallTime> l
               "File copy based initial sync - fCBISHangBeforeFinish fail point "
               "enabled. Blocking until fail point is disabled.",
               "error"_attr = lastApplied.getStatus());
-        while (MONGO_unlikely(fCBISHangBeforeFinish.shouldFail()) && !_isShuttingDown()) {
-            mongo::sleepsecs(1);
-        }
+        fCBISHangBeforeFinish.pauseWhileSet();
     }
 
     // Completion callback must be invoked outside mutex.
