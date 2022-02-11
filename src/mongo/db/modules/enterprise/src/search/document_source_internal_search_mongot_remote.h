@@ -79,9 +79,6 @@ public:
         boost::optional<ExplainOptions::Verbosity> explain = boost::none) const override;
 
 private:
-    static BSONObj commandObject(const BSONObj& query,
-                                 const boost::intrusive_ptr<ExpressionContext>& expCtx);
-
     DocumentSourceInternalSearchMongotRemote(const BSONObj& query,
                                              const boost::intrusive_ptr<ExpressionContext>& expCtx,
                                              executor::TaskExecutor* taskExecutor)
@@ -89,13 +86,6 @@ private:
           _searchQuery(query.getOwned()),
           _taskExecutor(taskExecutor) {}
 
-    executor::RemoteCommandRequest getRemoteCommandRequest() const;
-
-    /**
-     * Gets the explain information by issuing an explain command to mongot and blocking
-     * until the response is retrieved. Throws an exception on failure.
-     */
-    BSONObj getExplainResponse() const;
 
     boost::optional<BSONObj> _getNext();
 
