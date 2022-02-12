@@ -18,7 +18,7 @@ try {
     setupTest(conn);
 
     const adminDB = conn.getDB("admin");
-    adminDB.auth("siteRootAdmin", "secret");
+    assert(adminDB.auth("siteRootAdmin", "secret"));
     checkLog.containsJson(adminDB, 5945602, {}, 15000);
     adminDB.logout();
 
@@ -26,7 +26,7 @@ try {
     const authOptions = {user: user1, pwd: defaultPwd, mechanism: "PLAIN", digestPassword: false};
     authAndVerify({conn: conn, options: {authOptions: authOptions, user: user1}});
 
-    adminDB.auth("siteRootAdmin", "secret");
+    assert(adminDB.auth("siteRootAdmin", "secret"));
     checkLog.containsJson(adminDB, 5945601, {}, 30000);
 } finally {
     MongoRunner.stopMongod(conn);
