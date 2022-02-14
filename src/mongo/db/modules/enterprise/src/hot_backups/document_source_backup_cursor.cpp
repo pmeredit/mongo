@@ -71,19 +71,26 @@ DocumentSource::GetNextResult DocumentSourceBackupCursor::doGetNext() {
             uasserted(ErrorCodes::Overflow, ss.str());
         }
 
+        std::string uuidStr;
+        if (backupBlock.uuid().has_value()) {
+            uuidStr = backupBlock.uuid().value().toString();
+        }
+
         Document doc;
         if (backupBlock.offset() == 0 && backupBlock.length() == 0) {
             doc = {{"filename", backupBlock.filePath()},
                    {"fileSize", static_cast<long long>(backupBlock.fileSize())},
                    {"required", backupBlock.isRequired()},
-                   {"ns", backupBlock.ns()}};
+                   {"ns", backupBlock.ns()},
+                   {"uuid", uuidStr}};
         } else {
             doc = {{"filename", backupBlock.filePath()},
                    {"fileSize", static_cast<long long>(backupBlock.fileSize())},
                    {"offset", static_cast<long long>(backupBlock.offset())},
                    {"length", static_cast<long long>(backupBlock.length())},
                    {"required", backupBlock.isRequired()},
-                   {"ns", backupBlock.ns()}};
+                   {"ns", backupBlock.ns()},
+                   {"uuid", uuidStr}};
         }
 
         auto svcCtx = pExpCtx->opCtx->getServiceContext();

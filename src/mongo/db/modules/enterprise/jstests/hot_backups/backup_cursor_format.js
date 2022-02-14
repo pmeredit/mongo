@@ -58,6 +58,7 @@ const validateBackupCursorFields = function(doc) {
     const filename = doc.filename.substring(doc.filename.lastIndexOf(kSeparator) + 1);
     const required = doc.required;
     const ns = doc.ns;
+    const uuid = doc.uuid;
 
     jsTest.log("Field Validation: Filename: [" + filename + "] Namespace: [" + ns +
                "] Required: [" + required + "]");
@@ -66,19 +67,22 @@ const validateBackupCursorFields = function(doc) {
     if (filename == "WiredTiger" || filename == "WiredTiger.backup" ||
         filename == "WiredTigerHS.wt" || filename.startsWith("WiredTigerLog.")) {
         assert.eq(true, required);
-        assert.eq("", ns);  // Empty
+        assert.eq("", ns);    // Empty
+        assert.eq("", uuid);  // Empty
         return;
     }
 
     // Verify that the correct MongoDB files are marked as required.
     if (filename == "_mdb_catalog.wt" || filename == "sizeStorer.wt") {
         assert.eq(true, required);
-        assert.eq("", ns);  // Empty
+        assert.eq("", ns);    // Empty
+        assert.eq("", uuid);  // Empty
         return;
     }
 
     if (filename.startsWith("collection-") || filename.startsWith("index-")) {
         assert.neq("", ns);
+        assert.neq("", uuid);
 
         // Verify time-series collection has internal "system.buckets." string removed
         if (ns.includes("timeseries-test")) {
@@ -93,7 +97,8 @@ const validateBackupCursorFields = function(doc) {
             return;
         }
     } else {
-        assert.eq("", ns);  // Empty
+        assert.eq("", ns);    // Empty
+        assert.eq("", uuid);  // Empty
     }
 
     // Everything else shouldn't be marked as required.
