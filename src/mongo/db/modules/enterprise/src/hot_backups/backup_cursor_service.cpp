@@ -22,6 +22,7 @@
 #include "mongo/db/service_context.h"
 #include "mongo/db/storage/control/journal_flusher.h"
 #include "mongo/db/storage/encryption_hooks.h"
+#include "mongo/db/storage/historical_ident_tracker.h"
 #include "mongo/db/storage/storage_engine.h"
 #include "mongo/db/storage/storage_options.h"
 #include "mongo/logv2/log.h"
@@ -107,11 +108,16 @@ BackupCursorState BackupCursorService::openBackupCursor(
         checkpointTimestamp = storageEngine->getLastStableRecoveryTimestamp();
     };
 
+    if (checkpointTimestamp) {
+        HistoricalIdentTracker::get(opCtx).pinAtTimestamp(checkpointTimestamp.get());
+    }
+
     std::unique_ptr<StorageEngine::StreamingCursor> streamingCursor;
     if (options.disableIncrementalBackup) {
         uassertStatusOK(storageEngine->disableIncrementalBackup(opCtx));
     } else {
-        streamingCursor = uassertStatusOK(storageEngine->beginNonBlockingBackup(opCtx, options));
+        streamingCursor = uassertStatusOK(
+            storageEngine->beginNonBlockingBackup(opCtx, checkpointTimestamp, options));
     }
 
     _state = kBackupCursorOpened;
@@ -126,6 +132,7 @@ BackupCursorState BackupCursorService::openBackupCursor(
     // A backup cursor is open. Any exception code path must leave the BackupCursorService in an
     // inactive state.
     ScopeGuard closeCursorGuard = [this, opCtx, &lk] {
+        HistoricalIdentTracker::get(opCtx).unpin();
         _closeBackupCursor(opCtx, *_activeBackupId, lk);
     };
 
@@ -184,8 +191,8 @@ BackupCursorState BackupCursorService::openBackupCursor(
             // The database instance backing the encryption at rest data simply returns filenames
             // that need to be copied whole. The assumption is these files are small so the cost is
             // negligible.
-            eseBackupBlocks.push_back(
-                BackupBlock(opCtx, filename, 0 /* offset */, fileSize, fileSize));
+            eseBackupBlocks.push_back(BackupBlock(
+                opCtx, filename, checkpointTimestamp, 0 /* offset */, fileSize, fileSize));
         }
     }
 
@@ -227,6 +234,7 @@ BackupCursorState BackupCursorService::openBackupCursor(
 
 void BackupCursorService::closeBackupCursor(OperationContext* opCtx, const UUID& backupId) {
     stdx::lock_guard<Latch> lk(_mutex);
+    HistoricalIdentTracker::get(opCtx).unpin();
     _closeBackupCursor(opCtx, backupId, lk);
 }
 

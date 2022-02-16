@@ -773,7 +773,9 @@ protected:
     void populateBackupFiles(OperationContext* opCtx, const std::vector<std::string>& filenames) {
         std::vector<BackupBlock> backupBlocks;
         for (const auto& filename : filenames) {
-            BackupBlock file = BackupBlock(opCtx, storageGlobalParams.dbpath + '/' + filename);
+            BackupBlock file = BackupBlock(opCtx,
+                                           storageGlobalParams.dbpath + '/' + filename,
+                                           /*checkpointTimestamp=*/boost::none);
             backupBlocks.push_back(file);
         }
 
