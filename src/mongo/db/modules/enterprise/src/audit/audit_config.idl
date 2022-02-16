@@ -52,6 +52,12 @@ server_parameters:
         cpp_varname: gAuditEncryptKeyWithKMIPGet
         cpp_vartype: bool
         default: false
+    auditEncryptionWithKMS:
+        description: 'Cloud only feature'
+        set_at: startup
+        cpp_varname: gAuditEncryptionWithKMS
+        cpp_vartype: bool
+        default: false
 
 structs:
     AuditConfigDocument:

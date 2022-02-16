@@ -213,6 +213,8 @@ function isValidKeyStoreIdentifier(keyStoreId, keyStoreType) {
         properties = [
             "provider",
             "keyWrapMethod",
+            "kmipServerName",
+            "kmipPort",
             "uid",
         ];
         provider = "kmip";

@@ -39,7 +39,7 @@ SymmetricKey AuditKeyManagerMock::unwrapKey(WrappedKey wrappedKey) {
                         _defaultKey.getInitializationCount());
 }
 
-BSONObj AuditKeyManagerMock::getKeyStoreID() {
+BSONObj AuditKeyManagerMock::getKeyStoreID() const {
     BSONObjBuilder builder;
     builder.append(kProviderField, kProviderValue);
     return builder.obj();

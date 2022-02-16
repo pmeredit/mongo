@@ -274,7 +274,10 @@ const AuditEncryptionCompressionManager* AuditManager::getAuditEncryptionCompres
                 keyManager = std::make_unique<AuditKeyManagerKMIPGet>(_auditEncryptionKeyUID);
                 break;
             case ManagerType::kKMIPEncrypt:
-                keyManager = std::make_unique<AuditKeyManagerKMIPEncrypt>(_auditEncryptionKeyUID);
+                keyManager = std::make_unique<AuditKeyManagerKMIPEncrypt>(
+                    _auditEncryptionKeyUID,
+                    gAuditEncryptionWithKMS ? KeyStoreIDFormat::kmsConfigStruct
+                                            : KeyStoreIDFormat::kmipKeyIdentifier);
                 break;
             default:
                 // If encryption enabled, _managerType must be valid

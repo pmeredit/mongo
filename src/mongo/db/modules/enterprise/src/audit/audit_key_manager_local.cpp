@@ -79,7 +79,7 @@ SymmetricKey AuditKeyManagerLocal::unwrapKey(WrappedKey wrappedKey) {
     return SymmetricKey(std::move(outBuf), crypto::aesAlgorithm, kLocalKeyId);
 }
 
-BSONObj AuditKeyManagerLocal::getKeyStoreID() {
+BSONObj AuditKeyManagerLocal::getKeyStoreID() const {
     return _keyStoreID;
 }
 

@@ -10,13 +10,24 @@ Import('env')
 env = env.Clone()
 
 env.Library(
+    target='audit_config',
+    source=[
+        'audit_config.idl',
+    ],
+    LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/server_options_core',
+        '$BUILD_DIR/mongo/idl/server_parameter',
+    ]
+)
+
+env.Library(
     target='audit_enterprise',
     source=[
         'audit_application_message.cpp',
         'audit_authentication.cpp',
         'audit_authz_check.cpp',
         'audit_commands.idl',
-        'audit_config.idl',
         'audit_event.cpp',
         'audit_event_type.idl',
         'audit_indexes_collections_databases.cpp',
@@ -38,6 +49,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/auth/auth',
         '$BUILD_DIR/mongo/db/ops/write_ops_parsers',
         '$BUILD_DIR/mongo/util/net/network',
+        'audit_config',
         'audit_enc_comp_manager',
     ],
     LIBDEPS_PRIVATE=[
@@ -73,6 +85,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/modules/enterprise/src/encryptdb/key_acquisition',
         '$BUILD_DIR/mongo/db/modules/enterprise/symmetric_crypto_enterprise',
         '$BUILD_DIR/mongo/idl/basic_types',
+        'audit_config',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/transport/message_compressor',

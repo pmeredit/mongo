@@ -11,10 +11,12 @@
 namespace mongo {
 namespace audit {
 
+enum class KeyStoreIDFormat { kmsConfigStruct, kmipKeyIdentifier };
+
 class AuditKeyManagerKMIP : public AuditKeyManager {
 public:
     explicit AuditKeyManagerKMIP(std::string uid);
-    BSONObj getKeyStoreID() final;
+    BSONObj getKeyStoreID() const final;
 
 protected:
     BSONObj _keyStoreID;
@@ -23,7 +25,7 @@ protected:
 
 class AuditKeyManagerKMIPEncrypt final : public AuditKeyManagerKMIP {
 public:
-    AuditKeyManagerKMIPEncrypt(std::string uid);
+    AuditKeyManagerKMIPEncrypt(std::string uid, KeyStoreIDFormat format);
     KeyGenerationResult generateWrappedKey() final;
     SymmetricKey unwrapKey(WrappedKey wrappedKey) final;
 };

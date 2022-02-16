@@ -59,7 +59,8 @@ std::unique_ptr<AuditKeyManager> createKeyManagerFromHeader(
         StringData method = ks.getStringField("keyWrapMethod"_sd);
         StringData uid = ks.getStringField("uid"_sd);
         if (method == "encrypt"_sd) {
-            return std::make_unique<AuditKeyManagerKMIPEncrypt>(uid.toString());
+            return std::make_unique<AuditKeyManagerKMIPEncrypt>(
+                uid.toString(), KeyStoreIDFormat::kmipKeyIdentifier);
         } else if (method == "get"_sd) {
             return std::make_unique<AuditKeyManagerKMIPGet>(uid.toString());
         }

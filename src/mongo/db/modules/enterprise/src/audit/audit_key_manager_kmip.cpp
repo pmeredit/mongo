@@ -6,7 +6,11 @@
 
 #include "audit_key_manager_kmip.h"
 
+#include "audit/audit_config_gen.h"
 #include "audit_enc_comp_manager.h"
+#include "encryptdb/encryption_options.h"
+#include "kmip/kmip_options.h"
+#include "mongo/bson/json.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
 
@@ -18,6 +22,8 @@ namespace audit {
 namespace {
 constexpr auto kKMIPKeyId = "kmipLogEncryptKey"_sd;
 constexpr auto kProviderField = "provider"_sd;
+constexpr auto kServerField = "kmipServerName"_sd;
+constexpr auto kPortField = "kmipPort"_sd;
 constexpr auto kProviderValue = "kmip"_sd;
 constexpr auto kKeyWrapMethodField = "keyWrapMethod"_sd;
 constexpr auto kUIDField = "uid"_sd;
@@ -25,18 +31,30 @@ constexpr auto kUIDField = "uid"_sd;
 
 AuditKeyManagerKMIP::AuditKeyManagerKMIP(std::string uid) : _keyEncryptKeyUID(std::move(uid)) {}
 
-AuditKeyManagerKMIPEncrypt::AuditKeyManagerKMIPEncrypt(std::string uid)
+AuditKeyManagerKMIPEncrypt::AuditKeyManagerKMIPEncrypt(std::string uid, KeyStoreIDFormat format)
     : AuditKeyManagerKMIP(std::move(uid)) {
     constexpr auto kKeyWrapMethodName = "encrypt"_sd;
-    _keyStoreID = BSON(kProviderField << kProviderValue << kUIDField << _keyEncryptKeyUID
-                                      << kKeyWrapMethodField << kKeyWrapMethodName);
+
+    if (format == KeyStoreIDFormat::kmsConfigStruct) {
+        _keyStoreID = fromjson(_keyEncryptKeyUID);
+    } else {
+        _keyStoreID =
+            BSON(kProviderField << kProviderValue << kUIDField << _keyEncryptKeyUID << kServerField
+                                << encryptionGlobalParams.kmipParams.kmipServerName << kPortField
+                                << encryptionGlobalParams.kmipParams.kmipPort << kKeyWrapMethodField
+                                << kKeyWrapMethodName);
+    }
 }
 
 AuditKeyManagerKMIPGet::AuditKeyManagerKMIPGet(std::string uid)
     : AuditKeyManagerKMIP(std::move(uid)) {
+
     constexpr auto kKeyWrapMethodName = "get"_sd;
-    _keyStoreID = BSON(kProviderField << kProviderValue << kUIDField << _keyEncryptKeyUID
-                                      << kKeyWrapMethodField << kKeyWrapMethodName);
+    _keyStoreID =
+        BSON(kProviderField << kProviderValue << kUIDField << _keyEncryptKeyUID << kServerField
+                            << encryptionGlobalParams.kmipParams.kmipServerName << kPortField
+                            << encryptionGlobalParams.kmipParams.kmipPort << kKeyWrapMethodField
+                            << kKeyWrapMethodName);
 }
 
 AuditKeyManager::KeyGenerationResult AuditKeyManagerKMIPEncrypt::generateWrappedKey() {
@@ -215,7 +233,7 @@ UniqueSymmetricKey AuditKeyManagerKMIPGet::fetchKeyEncryptKey() {
     return keyEncryptKey;
 }
 
-BSONObj AuditKeyManagerKMIP::getKeyStoreID() {
+BSONObj AuditKeyManagerKMIP::getKeyStoreID() const {
     return _keyStoreID;
 }
 

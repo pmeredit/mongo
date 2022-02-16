@@ -43,7 +43,7 @@ public:
     /**
      * Get details about the managed key store in BSON format
      */
-    virtual BSONObj getKeyStoreID() = 0;
+    virtual BSONObj getKeyStoreID() const = 0;
 };
 
 }  // namespace audit
