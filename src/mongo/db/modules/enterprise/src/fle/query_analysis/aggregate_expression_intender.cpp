@@ -326,7 +326,7 @@ void attemptReconcilingFieldEncryptionInCompared(const EncryptionSchemaTreeNode&
     // Any reference to a randomly encrypted field within a comparison subtree will fail.
     auto metadata = schema.getEncryptionMetadataForPath(
         FieldRef(fieldPath.getFieldPathWithoutCurrentPrefix().fullPath()));
-    if (metadata && metadata->algorithm == FleAlgorithmEnum::kRandom) {
+    if (metadata && metadata->algorithmIs(FleAlgorithmEnum::kRandom)) {
         uassertedComparisonOfRandomlyEncrypted(fieldPath.getFieldPathWithoutCurrentPrefix());
     }
     compared->state = stdx::visit(

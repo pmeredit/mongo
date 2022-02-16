@@ -3164,5 +3164,331 @@ TEST_F(EncryptionSchemaTreeTest, CanAffixLiteralsToEncryptedNodesButNotToNotEncr
     ASSERT_FALSE(leaf->literals()->empty());
 }
 
+
+/**
+ * Tests new parser for EncryptedFieldConfig and new FLE 2 algorithm enum.
+ */
+TEST_F(EncryptionSchemaTreeTest, Fle2ParseDottedAndTopLevelFields) {
+    BSONObj encryptedFields = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "a",
+                       "bsonType": "string",
+                       "queries": [
+                           {"queryType": "equality"}
+                       ]
+                   }, {
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "b.c",
+                       "bsonType": "int",
+                       "queries": {"queryType": "equality"}
+                   }]
+           }
+    )");
+
+    auto root = EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields);
+    ASSERT_FALSE(root->getEncryptionMetadata());
+
+    // "a" with type "string" should be encrypted and queryable.
+    auto leafA = root->getNode(FieldRef{"a"});
+    auto metadataA = leafA->getEncryptionMetadata();
+    ASSERT(metadataA->algorithmIs(Fle2AlgorithmInt::kEquality));
+    ASSERT(metadataA->bsonTypeSet == MatcherTypeSet(BSONType::String));
+
+    // "b.c" with type "int" should be encrypted and queryable.
+    auto nodeB = root->getNode(FieldRef{"b"});
+    ASSERT_FALSE(nodeB->getEncryptionMetadata());
+    auto leafBC = nodeB->getNode(FieldRef{"c"});
+    auto metadataBC = leafBC->getEncryptionMetadata();
+    ASSERT(metadataBC->algorithmIs(Fle2AlgorithmInt::kEquality));
+    ASSERT(metadataBC->bsonTypeSet == MatcherTypeSet(BSONType::NumberInt));
+}
+
+TEST_F(EncryptionSchemaTreeTest, Fle2ParseNotQueryableField) {
+    BSONObj encryptedFields = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "a",
+                       "bsonType": "date",
+                       "queries": []
+                   }, {
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "b.c",
+                       "bsonType": "long"
+                   }]
+           }
+    )");
+
+    // The root is not encrypted.
+    auto root = EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields);
+    ASSERT_FALSE(root->getEncryptionMetadata());
+
+    // "a" with type "date" should be encrypted but not queryable.
+    auto leafA = root->getNode(FieldRef{"a"});
+    auto metadataA = leafA->getEncryptionMetadata();
+    ASSERT(metadataA->algorithmIs(Fle2AlgorithmInt::kUnindexed));
+    ASSERT(metadataA->bsonTypeSet == MatcherTypeSet(BSONType::Date));
+
+    // "b" is not encryped.
+    auto nodeB = root->getNode(FieldRef{"b"});
+    ASSERT_FALSE(nodeB->getEncryptionMetadata());
+
+    // "b.c" with type "long" should be encrypted but not queryable.
+    auto leafBC = nodeB->getNode(FieldRef{"c"});
+    auto metadataBC = leafBC->getEncryptionMetadata();
+    ASSERT(metadataBC->algorithmIs(Fle2AlgorithmInt::kUnindexed));
+    ASSERT(metadataBC->bsonTypeSet == MatcherTypeSet(BSONType::NumberLong));
+}
+
+TEST_F(EncryptionSchemaTreeTest, Fle2EncryptedFieldsCanHaveSharedPrefix) {
+    BSONObj encryptedFields = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "a.b.c",
+                       "bsonType": "string",
+                       "queries": {"queryType": "equality"}
+                   }, {
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "a.b.d",
+                       "bsonType": "string",
+                       "queries": {"queryType": "equality"}
+                   }]
+           }
+    )");
+    auto root = EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields);
+    ASSERT_FALSE(root->getEncryptionMetadata());
+
+    // "a.b" is not encryped.
+    auto nodeAB = root->getNode(FieldRef{"a.b"});
+    ASSERT_FALSE(nodeAB->getEncryptionMetadata());
+
+    // "a.b.c" should be encrypted and queryable.
+    auto leafABC = nodeAB->getNode(FieldRef{"c"});
+    auto metadataABC = leafABC->getEncryptionMetadata();
+    ASSERT(metadataABC->algorithmIs(Fle2AlgorithmInt::kEquality));
+    ASSERT(metadataABC->bsonTypeSet == MatcherTypeSet(BSONType::String));
+
+    // "a.b.d" should also be encrypted and queryable.
+    auto leafABD = nodeAB->getNode(FieldRef{"d"});
+    auto metadataABD = leafABD->getEncryptionMetadata();
+    ASSERT(metadataABD->algorithmIs(Fle2AlgorithmInt::kEquality));
+    ASSERT(metadataABD->bsonTypeSet == MatcherTypeSet(BSONType::String));
+}
+
+TEST_F(EncryptionSchemaTreeTest, Fle2MarksNumericFieldNameAsEncrypted) {
+    BSONObj encryptedFields = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "a.0",
+                       "bsonType": "string",
+                       "queries": {"queryType": "equality"}
+                   }, {
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "b.0.c",
+                       "bsonType": "string",
+                       "queries": {"queryType": "equality"}
+                   }]
+           }
+    )");
+    auto root = EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields);
+
+    // "a.0" should be encrypted and queryable.
+    auto leafA0 = root->getNode(FieldRef{"a.0"});
+    auto metadataA0 = leafA0->getEncryptionMetadata();
+    ASSERT(metadataA0->algorithmIs(Fle2AlgorithmInt::kEquality));
+    ASSERT(metadataA0->bsonTypeSet == MatcherTypeSet(BSONType::String));
+
+    // "b.0.c" should also be encrypted and queryable.
+    auto leafB0C = root->getNode(FieldRef{"b.0.c"});
+    auto metadataB0C = leafB0C->getEncryptionMetadata();
+    ASSERT(metadataB0C->algorithmIs(Fle2AlgorithmInt::kEquality));
+    ASSERT(metadataB0C->bsonTypeSet == MatcherTypeSet(BSONType::String));
+}
+
+TEST_F(EncryptionSchemaTreeTest, Fle2CannotEncryptPrefixOfAnotherField) {
+    BSONObj badPathPrefixFirst = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "a.b",
+                       "bsonType": "string",
+                       "queries": []
+                   }, {
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "a.b.c",
+                       "bsonType": "string"
+                   }]
+           }
+    )");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(badPathPrefixFirst),
+                       AssertionException,
+                       51096);
+
+    BSONObj badPathPrefixSecond = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "a.b.c",
+                       "bsonType": "string",
+                       "queries": []
+                   }, {
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "a.b",
+                       "bsonType": "string"
+                   }]
+           }
+    )");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(badPathPrefixSecond),
+                       AssertionException,
+                       6316401);
+
+    BSONObj pathsAreIdentical = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "a.b.c",
+                       "bsonType": "string",
+                       "queries": []
+                   }, {
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "a.b.c",
+                       "bsonType": "string"
+                   }]
+           }
+    )");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(pathsAreIdentical),
+                       AssertionException,
+                       6316401);
+}
+
+TEST_F(EncryptionSchemaTreeTest, Fle2CannotParseEmptyFieldPath) {
+    BSONObj emptyFieldName = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "",
+                       "bsonType": "string",
+                       "queries": []
+                   }]
+           }
+    )");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(emptyFieldName),
+                       AssertionException,
+                       6316402);
+}
+
+TEST_F(EncryptionSchemaTreeTest, Fle2BSONTypeMustBeSingleValue) {
+    BSONObj bsonTypeList = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "a.b.c",
+                       "bsonType": ["string", "int"],
+                       "queries": []
+                   }]
+           }
+    )");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(bsonTypeList),
+                       AssertionException,
+                       ErrorCodes::TypeMismatch);
+}
+
+TEST_F(EncryptionSchemaTreeTest, Fle2BadBSONTypeForEncryptedField) {
+    // Certain BSON types should not be allowed when the path is queryable.
+    BSONObj badBSONTypeQueryable = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "a.b.c",
+                       "bsonType": "object",
+                       "queries": {"queryType": "equality"}
+                   }]
+           }
+    )");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(badBSONTypeQueryable),
+                       AssertionException,
+                       6316404);
+
+    // However, those types are allowed when the path is not queryable.
+    BSONObj badBSONTypeNotQueryable = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "a.b.c",
+                       "bsonType": "object",
+                       "queries": []
+                   }]
+           }
+    )");
+    auto result = EncryptionSchemaTreeNode::parseEncryptedFieldConfig(badBSONTypeNotQueryable);
+    auto metadataABC = result->getNode(FieldRef{"a.b.c"})->getEncryptionMetadata();
+    ASSERT(metadataABC && metadataABC->algorithmIs(Fle2AlgorithmInt::kUnindexed));
+
+    // Other BSON types are forbidden whether or not the path is queryable.
+    BSONObj alwaysForbiddenBSONType = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "a.b.c",
+                       "bsonType": "null",
+                       "queries": []
+                   }]
+           }
+    )");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(alwaysForbiddenBSONType),
+                       AssertionException,
+                       31041);
+}
+
+TEST_F(EncryptionSchemaTreeTest, Fle2CannotEncryptFieldPrefixedById) {
+    BSONObj pathIsId = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "_id",
+                       "bsonType": "object",
+                       "queries": []
+                   }]
+           }
+    )");
+    ASSERT_THROWS_CODE(
+        EncryptionSchemaTreeNode::parseEncryptedFieldConfig(pathIsId), AssertionException, 6316403);
+
+    BSONObj pathPrefixedById = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "_id.a.b",
+                       "bsonType": "object",
+                       "queries": []
+                   }]
+           }
+    )");
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(pathPrefixedById),
+                       AssertionException,
+                       6316403);
+}
+
+TEST(EncryptionSchemaTreeTest, Fle2CannotGetMetadataForPathContainingEncryptedPrefix) {
+    BSONObj encryptedFields = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "a.b",
+                       "bsonType": "date",
+                       "queries": []
+                   }]
+           }
+    )");
+
+    auto result = EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields);
+    ASSERT_THROWS_CODE(
+        result->getEncryptionMetadataForPath(FieldRef("a.b.c")), AssertionException, 51102);
+}
+
+TEST(EncryptionSchemaTreeTest, Fle2SupportedQueriesMustHaveEqualityType) {
+    BSONObj encryptedFields = fromjson(R"({
+               "fields": [{
+                       "keyId": {$binary: "fkJwjwbZSiS/AtxiedXLNQ==", $type: "04"},
+                       "path": "a.b",
+                       "bsonType": "date",
+                       "queries": {"queryType": "range"}
+                   }]
+           }
+    )");
+
+    ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(encryptedFields),
+                       AssertionException,
+                       ErrorCodes::BadValue);
+}
 }  // namespace
 }  // namespace mongo

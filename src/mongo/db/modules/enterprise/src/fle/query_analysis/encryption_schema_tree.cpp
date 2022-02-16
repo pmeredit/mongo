@@ -7,6 +7,7 @@
 #include "encryption_schema_tree.h"
 
 #include "mongo/bson/bsontypes.h"
+#include "mongo/crypto/encryption_fields_gen.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/db/matcher/schema/json_schema_parser.h"
 #include "mongo/util/regex_util.h"
@@ -219,11 +220,13 @@ std::unique_ptr<EncryptionSchemaEncryptedNode> parseEncrypt(
     EncryptionInfo encryptInfo = EncryptionInfo::parse(encryptCtxt, encryptElt.embeddedObject());
     auto metadata = metadataChain.combineWithChain(encryptInfo);
 
-    const bool deterministic = metadata.algorithm == FleAlgorithmEnum::kDeterministic;
+    const bool deterministic = metadata.algorithmIs(FleAlgorithmEnum::kDeterministic);
+    const auto algEnum =
+        deterministic ? FleAlgorithmEnum::kDeterministic : FleAlgorithmEnum ::kRandom;
     uassert(51194,
             str::stream() << "Invalid schema containing the '"
                           << JSONSchemaParser::kSchemaEncryptKeyword << "' keyword, "
-                          << FleAlgorithm_serializer(metadata.algorithm)
+                          << FleAlgorithm_serializer(algEnum)
                           << " encryption algorithm not allowed.",
             (deterministic || (encryptAllowedSet & EncryptAllowed::kRandom)) &&
                 (!deterministic || (encryptAllowedSet & EncryptAllowed::kDeterministic)));
@@ -498,6 +501,38 @@ bool EncryptionSchemaTreeNode::_mayContainEncryptedNodeBelowPrefix(const FieldRe
     return false;
 }
 
+std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parseEncryptedFieldConfig(
+    BSONObj efc) {
+    auto parsedEFC =
+        EncryptedFieldConfig::parse(IDLParserErrorContext("EncryptedFieldConfig"), efc);
+
+    auto root = std::make_unique<EncryptionSchemaNotEncryptedNode>();
+    for (auto& field : parsedEFC.getFields()) {
+        uassert(6316402, "Encrypted field must have a non-empty path", !field.getPath().empty());
+
+        auto fieldRef = FieldRef{field.getPath()};
+        uassert(6316403, "Cannot encrypt _id or its subfields", fieldRef.getPart(0) != "_id");
+
+        // Collect all of the specified queries supported on this field.
+        std::vector<QueryTypeConfig> supportedQueries;
+        if (auto& queries = field.getQueries()) {
+            stdx::visit(
+                visit_helper::Overloaded{
+                    [&](QueryTypeConfig qtc) { supportedQueries.push_back(std::move(qtc)); },
+                    [&](std::vector<QueryTypeConfig> qtcs) { supportedQueries = std::move(qtcs); }},
+                queries.value());
+        }
+
+        ResolvedEncryptionInfo metadataForChild{
+            field.getKeyId(), typeFromName(field.getBsonType()), std::move(supportedQueries)};
+
+        root->addChild(
+            std::move(fieldRef),
+            std::make_unique<EncryptionSchemaEncryptedNode>(std::move(metadataForChild)));
+    }
+    return root;
+}
+
 std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parse(
     BSONObj schema, EncryptionSchemaType schemaType) {
     // Verify that the schema is valid by running through the normal JSONSchema parser, ignoring the
@@ -539,10 +574,22 @@ std::vector<EncryptionSchemaTreeNode*> EncryptionSchemaTreeNode::getChildrenForP
 clonable_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::addChild(
     FieldRef path, std::unique_ptr<EncryptionSchemaTreeNode> node) {
     uassert(51096, "Cannot add a field to an existing encrypted field", !getEncryptionMetadata());
+
     auto nextChild = path.getPart(0);
     if (path.numParts() == 1) {
         clonable_ptr<EncryptionSchemaTreeNode> returnedChild = nullptr;
         if (auto replacedChild = getNamedChild(nextChild)) {
+            // We must forbid encrypting a prefix of an already encrypted path. Note that parsing
+            // for FLE 1 handles this elsewhere.
+            auto isFle2Encrypted = false;
+            if (auto encryptedNode = dynamic_cast<EncryptionSchemaEncryptedNode*>(node.get())) {
+                isFle2Encrypted = encryptedNode->getEncryptionMetadata()->isFle2Encrypted();
+            }
+
+            uassert(6316401,
+                    "Cannot add an encrypted field as a prefix of another encrypted field",
+                    !isFle2Encrypted || !replacedChild->mayContainEncryptedNode());
+
             returnedChild = replacedChild->clone();
         }
         _propertiesChildren[nextChild.toString()] = std::move(node);

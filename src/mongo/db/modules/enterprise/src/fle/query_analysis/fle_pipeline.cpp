@@ -282,7 +282,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGraphLookUp(
                           << "' in the $graphLookup aggregation stage need to be both encrypted "
                              " the with the deterministic algorithm.",
             (!connectFromMetadata && !connectToMetadata) ||
-                connectFromMetadata->algorithm == FleAlgorithmEnum::kDeterministic);
+                connectFromMetadata->algorithmIs(FleAlgorithmEnum::kDeterministic));
 
     clonable_ptr<EncryptionSchemaTreeNode> newSchema = prevSchema->clone();
     // Mark modified paths with unknown encryption, which ensures an exception if a field is
@@ -363,7 +363,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForLookUp(
                               << "' in the $lookup aggregation stage need to be both encrypted "
                                  " the with deterministic algorithm.",
                 (!localMetadata && !foreignMetadata) ||
-                    localMetadata->algorithm == FleAlgorithmEnum::kDeterministic);
+                    localMetadata->algorithmIs(FleAlgorithmEnum::kDeterministic));
 
         // Since a $lookup may be specified with both pipeline and local/foreignField syntax,
         // we ensure here that we only add the modified paths to 'newSchema' once.
@@ -442,7 +442,8 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForUnwind(
 
     uassert(31153,
             "$unwind is not allowed on a field which is encrypted with the randomized algorithm",
-            !unwindPathMetadata || unwindPathMetadata->algorithm != FleAlgorithmEnum::kRandom);
+            !unwindPathMetadata ||
+                unwindPathMetadata->algorithmIs(FleAlgorithmEnum::kDeterministic));
 
     std::unique_ptr<EncryptionSchemaTreeNode> newSchema = prevSchema->clone();
 

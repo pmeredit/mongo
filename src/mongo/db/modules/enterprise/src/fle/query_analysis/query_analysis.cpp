@@ -470,7 +470,7 @@ PlaceHolderResult addPlaceHoldersForDistinct(const boost::intrusive_ptr<Expressi
         uassert(31026,
                 "Distinct key is not allowed to be marked for encryption with the randomized "
                 "encryption algorithm",
-                keyMetadata->algorithm != FleAlgorithmEnum::kRandom);
+                keyMetadata->algorithmIs(FleAlgorithmEnum::kDeterministic));
 
         // Raise an error if the non-simple collation has been specified, but only do it if the
         // schema indicates that the field type is a string.
@@ -850,7 +850,7 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
     if (placeholderContext == EncryptionPlaceholderContext::kComparison) {
         uassert(51158,
                 "Cannot query on fields encrypted with the randomized encryption algorithm",
-                metadata.algorithm == FleAlgorithmEnum::kDeterministic);
+                metadata.algorithmIs(FleAlgorithmEnum::kDeterministic));
 
         switch (elem.type()) {
             case BSONType::String:
@@ -885,10 +885,10 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
     //
     // Together, these conditions imply that if the encryption algorithm is deterministic, then the
     // type of 'elem' is known to be valid for deterministic encryption. Check that assumption here.
-    invariant(metadata.algorithm == FleAlgorithmEnum::kRandom ||
+    invariant(metadata.algorithmIs(FleAlgorithmEnum::kRandom) ||
               ResolvedEncryptionInfo::isTypeLegalWithDeterministic(elem.type()));
 
-    FleAlgorithmInt integerAlgorithm = metadata.algorithm == FleAlgorithmEnum::kDeterministic
+    FleAlgorithmInt integerAlgorithm = metadata.algorithmIs(FleAlgorithmEnum::kDeterministic)
         ? FleAlgorithmInt::kDeterministic
         : FleAlgorithmInt::kRandom;
 

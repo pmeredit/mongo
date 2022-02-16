@@ -8,6 +8,37 @@
 
 namespace mongo {
 
+ResolvedEncryptionInfo::ResolvedEncryptionInfo(
+    UUID uuid,
+    BSONType bsonType,
+    boost::optional<std::vector<QueryTypeConfig>> fle2SupportedQueries)
+    : keyId(EncryptSchemaKeyId({std::move(uuid)})),
+      bsonTypeSet(MatcherTypeSet(bsonType)),
+      fle2SupportedQueries(std::move(fle2SupportedQueries)) {
+
+    // A field is considered unindexed unless the user specifies supported queries for it.
+    algorithm = Fle2AlgorithmInt::kUnindexed;
+    if (this->fle2SupportedQueries) {
+        for (const auto& supportedQuery : this->fle2SupportedQueries.get()) {
+            uassert(6316400,
+                    "Encrypted field must have query type equality",
+                    supportedQuery.getQueryType() == QueryTypeEnum::Equality);
+            algorithm = Fle2AlgorithmInt::kEquality;
+        }
+    }
+
+    // Check for types that are prohibited for all encryption algorithms and types not legal in
+    // combination with the FLE 2 encryption algorithm.
+    for (auto&& type : this->bsonTypeSet->bsonTypes) {
+        // TODO SERVER-63657: replace "FLE 2" in the following error message with chosen string.
+        uassert(6316404,
+                str::stream() << "Cannot use FLE 2 encryption for element of type: "
+                              << typeName(type),
+                isTypeLegalWithFLE2(type));
+        throwIfIllegalTypeForEncryption(type);
+    }
+}
+
 ResolvedEncryptionInfo::ResolvedEncryptionInfo(EncryptSchemaKeyId keyId,
                                                FleAlgorithmEnum algorithm,
                                                boost::optional<MatcherTypeSet> bsonTypeSet)
@@ -40,6 +71,24 @@ ResolvedEncryptionInfo::ResolvedEncryptionInfo(EncryptSchemaKeyId keyId,
     }
 }
 
+bool ResolvedEncryptionInfo::algorithmIs(FleAlgorithmEnum fle1Alg) const {
+    if (auto actualFle1Alg = stdx::get_if<FleAlgorithmEnum>(&algorithm)) {
+        return *actualFle1Alg == fle1Alg;
+    }
+    return false;
+}
+
+bool ResolvedEncryptionInfo::algorithmIs(Fle2AlgorithmInt fle2Alg) const {
+    if (auto actualFle2Alg = stdx::get_if<Fle2AlgorithmInt>(&algorithm)) {
+        return *actualFle2Alg == fle2Alg;
+    }
+    return false;
+}
+
+bool ResolvedEncryptionInfo::isFle2Encrypted() const {
+    return algorithmIs(Fle2AlgorithmInt::kUnindexed) || algorithmIs(Fle2AlgorithmInt::kUnindexed);
+}
+
 bool ResolvedEncryptionInfo::isTypeLegalWithDeterministic(BSONType bsonType) {
     switch (bsonType) {
         // These types cannot be supported with deterministic encryption because they are non-scalar
@@ -62,6 +111,29 @@ bool ResolvedEncryptionInfo::isTypeLegalWithDeterministic(BSONType bsonType) {
         // equalivalence classes: NumberDecimal(2.1) is equal to NumberDecimal(2.10) which is equal
         // to NumberDecimal(2.100), and so on. The encodings differ depending on the number of
         // significant digits.
+        case BSONType::NumberDouble:
+        case BSONType::NumberDecimal:
+            return false;
+
+        default:
+            return true;
+    }
+}
+
+bool ResolvedEncryptionInfo::isTypeLegalWithFLE2(BSONType bsonType) const {
+    // Unindexed FLE 2 encryption behaves similarly to random encryption.
+    if (algorithmIs(Fle2AlgorithmInt::kUnindexed)) {
+        return true;
+    }
+
+    // FLE 2 encryption with equality queries behaves similarly to deterministic encryption. The
+    // reason for banning the following types is due to the same logic as above: FLE 2 encryption
+    // also relies on exact bit-for-bit comparison, which in general does not hold for these types.
+    // Note: bool IS supported under FLE 2 encryption but not FLE 1 deterministic encryption.
+    switch (bsonType) {
+        case BSONType::Array:
+        case BSONType::Object:
+        case BSONType::CodeWScope:
         case BSONType::NumberDouble:
         case BSONType::NumberDecimal:
             return false;

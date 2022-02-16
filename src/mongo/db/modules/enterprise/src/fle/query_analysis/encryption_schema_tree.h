@@ -44,7 +44,11 @@ struct clonable_traits<EncryptionSchemaTreeNode> {
  * The children of this node are accessed via a string map, where the key used in the map represents
  * the next path component.
  *
- * Example schema with encrypted fields "user.ssn" and "account":
+ * An encryption schema tree can be constructed via two endpoints. One endpoint supports converting
+ * BSON representing $jsonSchema (FLE 1), and the other supports converting BSON representing an
+ * EncryptedFieldConfig (FLE 2).
+ *
+ * For FLE 1, example $jsonSchema with encrypted fields "user.ssn" and "account":
  *
  * {$jsonSchema: {
  *      type: "object",
@@ -71,6 +75,39 @@ struct clonable_traits<EncryptionSchemaTreeNode> {
  *          ssn /       \ address
  *             /         \
  *     EncryptedNode  NotEncryptedNode
+ *
+ * For FLE 2, example EncryptedFieldConfig with encrypted fields "user.ssn" and "account":
+ *
+ *  {
+ *      ..., // encrypted collections information
+ *      "fields":
+ *          [{
+ *              "keyId": ...,
+ *              "path": "user.ssn",
+ *              "bsonType": "string",
+ *              "queries": {"queryType": "equality"}
+ *          }, {
+ *              "keyId": ...,
+ *              "path": "account",
+ *              "bsonType": "string",
+ *              "queries": []
+ *          }]
+ *  }
+ *
+ * Results in the following encryption schema tree:
+ *
+ *                   NotEncryptedNode
+ *                       /    \
+ *                 user /      \ account
+ *                     /        \
+ *        NotEncryptedNode    EncryptedNode
+ *               /           supportedQueries: []
+ *          ssn /
+ *             /
+ *     EncryptedNode
+ *    supportedQueries: [{"queryType": "equality"}]
+ *
+ * In this case, each EncryptedNode keeps track of the queries on which its path can be queried.
  */
 class EncryptionSchemaTreeNode {
 public:
@@ -112,6 +149,13 @@ public:
     static std::unique_ptr<EncryptionSchemaTreeNode> parse(BSONObj schema,
                                                            EncryptionSchemaType schemaType);
 
+    /**
+     * Converts an EncryptedFieldConfig represented as BSON into an encryption schema tree. Returns
+     * a pointer to the root of the tree or throws an exception if either the config is invalid or
+     * is valid but illegal from an encryption analysis perspective.
+     */
+    static std::unique_ptr<EncryptionSchemaTreeNode> parseEncryptedFieldConfig(BSONObj efc);
+
     virtual ~EncryptionSchemaTreeNode() = default;
 
     virtual std::unique_ptr<EncryptionSchemaTreeNode> clone() const = 0;
@@ -130,7 +174,8 @@ public:
 
     /**
      * Returns true if this tree contains at least one EncryptionSchemaEncryptedNode with the
-     * random algorithm or at least one EncryptionSchemaStateMixedNode.
+     * FLE 1 random algorithm or FLE 2 algorithm or contains at least one
+     * EncryptionSchemaStateMixedNode.
      */
     virtual bool mayContainRandomlyEncryptedNode() const;
 
@@ -156,7 +201,7 @@ public:
 
     /**
      * Adds 'node' as a special "wildcard" child which is used for all field names that don't have
-     * explicit child nodes. For instance, consider the schema
+     * explicit child nodes. For use when parsing $jsonSchema. For instance, consider the schema
      *
      * {
      *   type: "object",
@@ -184,7 +229,7 @@ public:
 
     /**
      * Adds 'node' as a special child associated with a regular expression rather than a fixed field
-     * name. For instance, consider the schema
+     * name. For use when parsing $jsonSchema. For instance, consider the schema
      *
      * {
      *   type: "object",
@@ -284,19 +329,21 @@ private:
     }
 
     /**
-     * Given the property name 'name', returns a list of child nodes for the subschemas that are
+     * Returns a list of child nodes under this node with name 'name'.
+     *
+     * For a tree constructed from $jsonSchema, only considers the subschemas that are
      * relevant. This follows the rules associated with the JSON Schema 'properties',
      * 'patternProperties', and 'additionalProperties' keywords. If there is a child added to the
      * tree via addChild() with the edge name exactly matching 'name', then that child will be
      * included in the output list. In addition, children added via addPatternPropertiesChild()
-     * whose regex matches 'name' will be included in the output list.
+     * whose regex matches 'name' will be included in the output list. If no regular addChild()
+     * nodes or 'patternProperties' child nodes are found, but a node has been added via
+     * addAdditionalPropertiesChild(), then returns this 'additionalProperties' child. If no child
+     * with 'name' exists, no 'patternProperties' child whose regex matches 'name' existis, and
+     * there is no 'additionalProperties' child, then returns an empty vector.
      *
-     * If no regular addChild() nodes or 'patternProperties' child nodes are found, but a node has
-     * been added via addAdditionalPropertiesChild(), then returns this 'additionalProperties'
-     * child.
-     *
-     * If no child with 'name' exists, no 'patternProperties' child whose regex matches 'name'
-     * exists, and there is no 'additionalProperties' child, then returns an empty vector.
+     * For a tree constructed from EncryptedFieldConfig, only a child added via addChild() with an
+     * edge name matching 'name' will be included.
      */
     std::vector<EncryptionSchemaTreeNode*> getChildrenForPathComponent(StringData name) const;
 
@@ -317,17 +364,20 @@ private:
 
     StringMap<clonable_ptr<EncryptionSchemaTreeNode>> _propertiesChildren;
 
-    // Holds any children which are associated with a regex rather than a specific field name.
+    // Holds any children which are associated with a regex rather than a specific field name. This
+    // should be empty when parsing EncryptedFieldConfig.
     std::set<PatternPropertiesChild> _patternPropertiesChildren;
 
     // If non-null, this special child is used when no applicable child is found by name in
     // '_propertiesChildren' or by regex in '_patternPropertiesChildren'. Used to implement
-    // encryption analysis for the 'additionalProperties' keyword.
+    // encryption analysis for the 'additionalProperties' keyword. This should be null when parsing
+    // EncryptedFieldConfig.
     clonable_ptr<EncryptionSchemaTreeNode> _additionalPropertiesChild;
 };
 
 /**
- * Represents a path that is not encrypted. May be either an internal node or a leaf node.
+ * Represents a path that is not encrypted. When parsing $jsonSchema, this may appear as an internal
+ * node or a leaf node. When parsing EncryptedFieldConfig, this may only appear as an internal node.
  */
 class EncryptionSchemaNotEncryptedNode final : public EncryptionSchemaTreeNode {
 public:
@@ -341,8 +391,9 @@ public:
 };
 
 /**
- * Node which represents an encrypted field per the corresponding JSON Schema. A path is considered
- * encrypted only if it's final component lands on this node.
+ * Node which represents an encrypted field per the corresponding JSON Schema, or per the
+ * EncryptedFieldConfig. A path is considered encrypted only if it's final component lands on this
+ * node.
  */
 class EncryptionSchemaEncryptedNode final : public EncryptionSchemaTreeNode {
 public:
@@ -358,7 +409,7 @@ public:
     }
 
     bool mayContainRandomlyEncryptedNode() const final {
-        return _metadata.algorithm == FleAlgorithmEnum::kRandom;
+        return _metadata.algorithmIs(FleAlgorithmEnum::kRandom) || _metadata.isFle2Encrypted();
     }
 
     std::unique_ptr<EncryptionSchemaTreeNode> clone() const final {
