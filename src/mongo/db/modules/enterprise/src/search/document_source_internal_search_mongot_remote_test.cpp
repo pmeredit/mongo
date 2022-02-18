@@ -18,7 +18,7 @@ using InternalSearchMongotRemoteTest = AggregationContextFixture;
 TEST_F(InternalSearchMongotRemoteTest, SearchMongotRemoteNotAllowedInTransaction) {
     auto expCtx = getExpCtx();
     expCtx->uuid = UUID::gen();
-    expCtx->inMultiDocumentTransaction = true;
+    expCtx->opCtx->setInMultiDocumentTransaction();
     globalMongotParams.host = "localhost:27027";
     globalMongotParams.enabled = true;
 
