@@ -142,7 +142,7 @@ BackupCursorState BackupCursorService::openBackupCursor(
 
     // Ensure the checkpointTimestamp hasn't moved. A subtle case to catch is the first stable
     // checkpoint coming out of initial sync racing with opening the backup cursor.
-    if (checkpointTimestamp) {
+    if (checkpointTimestamp && !options.disableIncrementalBackup) {
         auto requeriedCheckpointTimestamp = storageEngine->getLastStableRecoveryTimestamp();
         if (!requeriedCheckpointTimestamp ||
             requeriedCheckpointTimestamp.get() < checkpointTimestamp.get()) {

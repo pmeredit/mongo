@@ -11,6 +11,7 @@
 (function() {
 "use strict";
 
+load("jstests/libs/backup_utils.js");
 const db1Name = "incremental_backup1";
 const db2Name = "incremental_backup2";
 const coll1Name = "coll1";
@@ -60,8 +61,22 @@ rst.awaitLastStableRecoveryTimestamp();
 assert.commandWorked(primary.adminCommand({fsync: 1}));
 
 jsTest.log("Taking a full backup for incremental purposes.");
-let backupCursor = primary.getDB("admin").aggregate(
-    [{$backupCursor: {incrementalBackup: true, thisBackupName: "A"}}]);
+let backupCursor = null;
+while (!backupCursor) {
+    try {
+        backupCursor = primary.getDB("admin").aggregate(
+            [{$backupCursor: {incrementalBackup: true, thisBackupName: "A"}}]);
+    } catch (e) {
+        if (e.code != ErrorCodes.BackupCursorOpenConflictWithCheckpoint)
+            throw e;
+        jsTestLog({"Failed to open a backup cursor, retrying.": e});
+        // Release the incremental backup started with an inconsistent checkpoint.
+        backupCursor =
+            primary.getDB("admin").aggregate([{$backupCursor: {disableIncrementalBackup: true}}]);
+        backupCursor.close();
+        backupCursor = null;
+    }
+}
 while (backupCursor.hasNext()) {
     backupCursor.next();
 }
@@ -91,8 +106,22 @@ rst.waitForState(initialSyncNode, ReplSetTest.State.SECONDARY);
 // Verify that we can take an incremental backup on "A", after the file copy based initial sync
 // completes.
 jsTest.log("Taking an incremental backup on the previous one");
-backupCursor = primary.getDB("admin").aggregate(
-    [{$backupCursor: {incrementalBackup: true, thisBackupName: "B", srcBackupName: "A"}}]);
+let backupInc = 1;
+backupCursor = null;
+while (!backupCursor) {
+    try {
+        let backupName = "B" + backupInc++;
+        backupCursor = primary.getDB("admin").aggregate([{
+            $backupCursor: {incrementalBackup: true, thisBackupName: backupName, srcBackupName: "A"}
+        }]);
+    } catch (e) {
+        if (e.code != ErrorCodes.BackupCursorOpenConflictWithCheckpoint)
+            throw e;
+        jsTestLog({"Failed to open an incremental backup cursor, retrying.": e});
+        // We can't discard just the information for the backup which just failed. So instead
+        // we retry with a different backup ID, based on the original source ID.
+    }
+}
 let partialFiles = 0;
 while (backupCursor.hasNext()) {
     let backupData = backupCursor.next();
