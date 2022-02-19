@@ -82,7 +82,7 @@ bool hasExistingDatafiles(const fs::path& path) {
 void KeystoreSchemaVersionServerParameter::append(OperationContext* opCtx,
                                                   BSONObjBuilder& b,
                                                   const std::string& name) {
-    if (!encryptionGlobalParams.enableEncryption) {
+    if (!opCtx || !encryptionGlobalParams.enableEncryption) {
         return;
     }
 
