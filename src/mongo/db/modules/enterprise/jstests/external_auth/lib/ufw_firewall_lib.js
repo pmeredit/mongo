@@ -69,6 +69,7 @@ const changeFirewallForServer = function(server, removeRule = false) {
     const ip = resolveIPUnix(server);
     jsTestLog(`Change firewall rule for ${server} resolved to ${ip} with ${removeRule}`);
     firewallAction(removeRuleArg.concat(['deny', 'out', 'to', ip]));
+    firewallAction(['status', 'verbose']);
 };
 
 const checkFirewallIsEnabled = function() {
