@@ -549,8 +549,12 @@ PlaceHolderResult addPlaceHoldersForFindAndModify(
               request.getUpsert().value_or(false)));
 
         if (request.getUpsert().value_or(false) &&
-            updateMod->type() == write_ops::UpdateModification::Type::kClassic) {
-            verifyNoGeneratedEncryptedFields(updateMod->getUpdateClassic(), *schemaTree.get());
+            (updateMod->type() == write_ops::UpdateModification::Type::kReplacement ||
+             updateMod->type() == write_ops::UpdateModification::Type::kModifier)) {
+            auto updateObj = updateMod->type() == write_ops::UpdateModification::Type::kReplacement
+                ? updateMod->getUpdateReplacement()
+                : updateMod->getUpdateModifier();
+            verifyNoGeneratedEncryptedFields(updateObj, *schemaTree.get());
         }
 
         auto newUpdate = replaceEncryptedFieldsInUpdate(
@@ -620,8 +624,12 @@ PlaceHolderResult addPlaceHoldersForUpdate(OperationContext* opCtx,
                   schemaTree->getEncryptionMetadataForPath(FieldRef("_id")) && update.getUpsert()));
 
         if (update.getUpsert() &&
-            updateMod.type() == write_ops::UpdateModification::Type::kClassic) {
-            verifyNoGeneratedEncryptedFields(updateMod.getUpdateClassic(), *schemaTree.get());
+            (updateMod.type() == write_ops::UpdateModification::Type::kReplacement ||
+             updateMod.type() == write_ops::UpdateModification::Type::kModifier)) {
+            auto updateObj = updateMod.type() == write_ops::UpdateModification::Type::kReplacement
+                ? updateMod.getUpdateReplacement()
+                : updateMod.getUpdateModifier();
+            verifyNoGeneratedEncryptedFields(updateObj, *schemaTree.get());
         }
 
         auto newFilter = replaceEncryptedFieldsInFilter(expCtx, *schemaTree.get(), update.getQ());
