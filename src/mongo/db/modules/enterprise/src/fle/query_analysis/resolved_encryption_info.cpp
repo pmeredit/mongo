@@ -86,7 +86,7 @@ bool ResolvedEncryptionInfo::algorithmIs(Fle2AlgorithmInt fle2Alg) const {
 }
 
 bool ResolvedEncryptionInfo::isFle2Encrypted() const {
-    return algorithmIs(Fle2AlgorithmInt::kUnindexed) || algorithmIs(Fle2AlgorithmInt::kUnindexed);
+    return algorithmIs(Fle2AlgorithmInt::kUnindexed) || algorithmIs(Fle2AlgorithmInt::kEquality);
 }
 
 bool ResolvedEncryptionInfo::isTypeLegalWithDeterministic(BSONType bsonType) {

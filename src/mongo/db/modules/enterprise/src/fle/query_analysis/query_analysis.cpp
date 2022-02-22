@@ -14,6 +14,7 @@
 #include "fle_pipeline.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
+#include "mongo/crypto/fle_field_schema_gen.h"
 #include "mongo/db/commands.h"
 #include "mongo/db/matcher/expression_parser.h"
 #include "mongo/db/matcher/expression_type.h"
@@ -747,6 +748,37 @@ void processQueryCommand(OperationContext* opCtx,
     serializePlaceholderResult(placeholder, builder);
 }
 
+BSONObj buildFle2EncryptPlaceholder(EncryptionPlaceholderContext ctx,
+                                    const ResolvedEncryptionInfo& metadata,
+                                    BSONElement elem) {
+    auto placeholderType = ctx == EncryptionPlaceholderContext::kComparison
+        ? Fle2PlaceholderType::kFind
+        : Fle2PlaceholderType::kInsert;
+    auto algorithm = stdx::get<Fle2AlgorithmInt>(metadata.algorithm);
+    auto ki = metadata.keyId.uuids()[0];
+    auto cm = algorithm == Fle2AlgorithmInt::kUnindexed
+        ? 0
+        : metadata.fle2SupportedQueries.get()[0].getContention();
+    auto marking = FLE2EncryptionPlaceholder(
+        placeholderType, algorithm, ki /*indexKeyId*/, ki /*userKeyId*/, IDLAnyType(elem), cm);
+
+    // Serialize the placeholder to BSON.
+    BSONObjBuilder bob;
+    marking.serialize(&bob);
+    auto markingObj = bob.done();
+
+    // Encode the placeholder BSON as BinData (sub-type 6 for encryption). Prepend the sub-subtype
+    // byte representing the FLE2 intent-to-encrypt marking before the BSON payload.
+    BufBuilder binDataBuffer;
+    binDataBuffer.appendChar(static_cast<uint8_t>(EncryptedBinDataType::kFLE2Placeholder));
+    binDataBuffer.appendBuf(markingObj.objdata(), markingObj.objsize());
+
+    BSONObjBuilder binDataBob;
+    binDataBob.appendBinData(
+        elem.fieldNameStringData(), binDataBuffer.len(), BinDataType::Encrypt, binDataBuffer.buf());
+    return binDataBob.obj();
+}
+
 }  // namespace
 
 PlaceHolderResult parsePlaceholderResult(BSONObj obj) {
@@ -856,9 +888,15 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
     // are only possible against deterministically encrypted fields, whereas either the random or
     // deterministic encryption algorithms are legal in the context of a placeholder for a write.
     if (placeholderContext == EncryptionPlaceholderContext::kComparison) {
-        uassert(51158,
-                "Cannot query on fields encrypted with the randomized encryption algorithm",
-                metadata.algorithmIs(FleAlgorithmEnum::kDeterministic));
+        if (metadata.isFle2Encrypted()) {
+            uassert(63165,
+                    "Cannot query non-indexed fields with the randomized encryption algorithm",
+                    metadata.algorithmIs(Fle2AlgorithmInt::kEquality));
+        } else {
+            uassert(51158,
+                    "Cannot query on fields encrypted with the randomized encryption algorithm",
+                    metadata.algorithmIs(FleAlgorithmEnum::kDeterministic));
+        }
 
         switch (elem.type()) {
             case BSONType::String:
@@ -881,6 +919,11 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
                               << " because schema requires that type is one of: "
                               << typeSetToString(*metadata.bsonTypeSet),
                 metadata.bsonTypeSet->hasType(elem.type()));
+    }
+
+    if (metadata.isFle2Encrypted()) {
+        invariant(metadata.isTypeLegalWithFLE2(elem.type()));
+        return buildFle2EncryptPlaceholder(placeholderContext, metadata, elem);
     }
 
     // At this point we know the following:
@@ -929,7 +972,7 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
     // Encode the placeholder BSON as BinData (sub-type 6 for encryption). Prepend the sub-subtype
     // byte represent the intent-to-encrypt marking before the BSON payload.
     BufBuilder binDataBuffer;
-    binDataBuffer.appendChar(FleBlobSubtype::IntentToEncrypt);
+    binDataBuffer.appendChar(static_cast<uint8_t>(EncryptedBinDataType::kPayload));
     binDataBuffer.appendBuf(markingObj.objdata(), markingObj.objsize());
 
     BSONObjBuilder binDataBob;

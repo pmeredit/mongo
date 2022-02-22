@@ -236,6 +236,33 @@ TEST_F(FLETestFixture, VerifyCorrectBinaryFormatForGeneratedPlaceholderWithValue
     verifyBinData(static_cast<const char*>(binDataElem.data), binDataElem.length);
 }
 
+TEST(FLE2BuildEncryptPlaceholderValueTest, FailsForNonQueryableRandomEncryption) {
+    auto metadata = ResolvedEncryptionInfo(UUID::fromCDR(uuidBytes), BSONType::String, boost::none);
+    auto placeholderType = EncryptionPlaceholderContext::kComparison;
+    ASSERT_THROWS_CODE(buildEncryptPlaceholder(Value(1), metadata, placeholderType, nullptr),
+                       AssertionException,
+                       63165);
+}
+
+TEST(FLE2BuildEncryptPlaceholderValueTest, FailsForInconsistentTypes) {
+    auto fle2Type = std::vector{QueryTypeConfig(QueryTypeEnum::Equality)};
+    auto metadata = ResolvedEncryptionInfo(UUID::fromCDR(uuidBytes), BSONType::NumberInt, fle2Type);
+    auto placeholderType = EncryptionPlaceholderContext::kComparison;
+    ASSERT_THROWS_CODE(buildEncryptPlaceholder(Value("s"_sd), metadata, placeholderType, nullptr),
+                       AssertionException,
+                       31118);
+}
+
+TEST(FLE2BuildEncryptPlaceholderValueTest, SucceedsForRandomQueryableEncryption) {
+    auto fle2Type = std::vector{QueryTypeConfig(QueryTypeEnum::Equality)};
+    auto metadata = ResolvedEncryptionInfo(UUID::fromCDR(uuidBytes), BSONType::String, fle2Type);
+    auto placeholderType = EncryptionPlaceholderContext::kComparison;
+    auto binData = buildEncryptPlaceholder(Value("string"_sd), metadata, placeholderType, nullptr);
+
+    ASSERT_EQ(binData.getType(), BSONType::BinData);
+    ASSERT_EQ(binData.getBinData().type, BinDataType::Encrypt);
+}
+
 TEST(BuildEncryptPlaceholderValueTest, SucceedsForArrayWithRandomEncryption) {
     ResolvedEncryptionInfo metadata{
         EncryptSchemaKeyId{{UUID::fromCDR(uuidBytes)}}, FleAlgorithmEnum::kRandom, boost::none};
