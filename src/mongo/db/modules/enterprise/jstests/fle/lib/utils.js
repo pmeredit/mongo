@@ -13,24 +13,33 @@ function fle2Enabled() {
  *
  * @param {Object} fieldMap A map of field path to encryption metadata. The field path may contain
  *     dots, which are always treated as accessing a field of a nested document. The metadata can be
- *     in v1 or v2 form.
+ *     in v1 or v2 form. That is, the following are both examples of valid fieldMaps:
+ *     1. {
+ *          a.b.c: {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}},
+ *          d.e.f: {bsonType: "string"}
+ *        }
+ *     2. {
+ *          a.b.c: {queries: {queryType: "equality"}, keyId: UUID(), bsonType: "string"}},
+ *          d.e.f: {keyId: UUID(), bsonType: "string"}
+ *        }
+ * @param {string} collName The name of the collection that the command is being run against.
  * @returns {Object} Returns an object that describes the encrypted fields, either in V1's format as
  *     a JSON Schema or V2's format with encryptionInformation.
  */
-function generateSchema(fieldMap) {
+function generateSchema(fieldMap, collName) {
     assert.eq(typeof fieldMap, 'object');
     if (!fle2Enabled()) {
         return generateSchemaV1(fieldMap);
     }
 
-    return generateSchemaV2(fieldMap);
+    return generateSchemaV2(fieldMap, collName);
 }
 
 function generateSchemaV1(fieldMap) {
     let jsonSchema = {type: "object"};
     let properties = {};
     // Convert each dotted path spec to explicit objects with 'properties' for each component.
-    for (let path in fieldMap) {
+    for (const [path, pathSpec] of Object.entries(fieldMap)) {
         const pathElements = path.split('.');
         let currentLevel = properties;
         for (let idx = 0; idx < pathElements.length - 1; idx++) {
@@ -41,13 +50,61 @@ function generateSchemaV1(fieldMap) {
             currentLevel = currentLevel[pathElem]["properties"];
         }
 
-        currentLevel[pathElements[pathElements.length - 1]] = fieldMap[path];
+        // If pathSpec uses FLE 1 syntax, pass it on to the final schema directly.
+        if (pathSpec.hasOwnProperty("encrypt") || !pathSpec.hasOwnProperty("keyId")) {
+            currentLevel[pathElements[pathElements.length - 1]] = pathSpec;
+            continue;
+        }
+
+        // Convert indexed FLE 2 encryption to kDeterministicAlgo and unindexed FLE 2 encryption to
+        // kRandomAlgo.
+        let spec = {
+            keyId: [pathSpec["keyId"]],
+            bsonType: pathSpec["bsonType"],
+            algorithm: kRandomAlgo
+        };
+        if (spec.hasOwnProperty("queries") && spec.queries !== []) {
+            spec.algorithm = kDeterministicAlgo;
+        }
+        currentLevel[pathElements[pathElements.length - 1]] = {encrypt: spec};
     }
     jsonSchema["properties"] = properties;
     return {jsonSchema: jsonSchema};
 }
 
-function generateSchemaV2(fieldMap) {
-    // TODO SERVER-63275: build encryptionInformation from fieldMap
-    return generateSchemaV1(fieldMap);
+function generateSchemaV2(fieldMap, collName) {
+    let encryptionInformation = {type: 1, schema: {}};
+    let fields = [];
+    for (const [path, pathSpec] of Object.entries(fieldMap)) {
+        // If pathSpec uses FLE 2 syntax, pass it on to the final schema directly.
+        if (!pathSpec.hasOwnProperty("encrypt") && pathSpec.hasOwnProperty("keyId")) {
+            let encryptedField = {path: path};
+            Object.assign(encryptedField, pathSpec);
+            fields.push(encryptedField);
+            continue;
+        }
+
+        // If pathSpec uses FLE 1 syntax but no algorithm was specified, then the field is not
+        // encrypted and we should not add it to the encryption information.
+        if (!pathSpec.hasOwnProperty("encrypt")) {
+            continue;
+        }
+
+        let encryptedField = {
+            path: path,
+            keyId: pathSpec["encrypt"]["keyId"][0],
+            bsonType: pathSpec["encrypt"]["bsonType"]
+        };
+
+        // Convert kDeterministicAlgo to the indexed FLE 2 encryption and kRandomAlgo to the
+        // unindexed FLE 2 encryption.
+        if (pathSpec["encrypt"]["algorithm"] === kDeterministicAlgo) {
+            encryptedField["queries"] = [{"queryType": "equality"}];
+        }
+
+        fields.push(encryptedField);
+    }
+
+    encryptionInformation["schema"][collName] = {fields: fields};
+    return {encryptionInformation: encryptionInformation};
 }

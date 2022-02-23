@@ -1,6 +1,8 @@
 /**
  * Verify that elements with an insert command are correctly marked for encryption.
  *
+ * TODO SERVER-63275: Enable for FLE 2
+ * @tags: [unsupported_fle_2]
  */
 
 (function() {
@@ -18,18 +20,20 @@ const conn = mongocryptd.getConnection();
 const encryptDoc = {
     encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID(), UUID()], bsonType: "string"}
 };
+const collName = "test.foo";
+
 const testCases = [
     // Test that a top level encrypt is translated.
     {
-        schema: generateSchema({foo: encryptDoc}),
+        schema: generateSchema({foo: encryptDoc}, collName),
         docs: [{foo: "bar"}, {foo: "bar"}],
         encryptedPaths: ["foo"],
         notEncryptedPaths: []
     },
     // Test that only the correct fields are translated.
     {
-        schema:
-            generateSchema({foo: encryptDoc, 'bar.baz': encryptDoc, 'bar.boo': {type: "string"}}),
+        schema: generateSchema(
+            {foo: encryptDoc, 'bar.baz': encryptDoc, 'bar.boo': {type: "string"}}, collName),
         docs: [
             {foo: "bar"},
             {stuff: "baz"},
@@ -40,7 +44,8 @@ const testCases = [
     },
     // Test that a JSONPointer keyId is accepted.
     {
-        schema: generateSchemaV1({foo: {encrypt: {algorithm: kRandomAlgo, keyId: "/key"}}}),
+        schema:
+            generateSchemaV1({foo: {encrypt: {algorithm: kRandomAlgo, keyId: "/key"}}}, collName),
         docs: [{foo: "bar", "key": "string"}],
         encryptedPaths: ["foo"],
         notEncryptedPaths: []
@@ -52,7 +57,8 @@ const testCases = [
                 encrypt:
                     {algorithm: kDeterministicAlgo, keyId: [UUID(), UUID()], bsonType: "timestamp"}
             }
-        }),
+        },
+                               collName),
         docs: [{foo: {bar: Timestamp(0, 0)}}],
         encryptedPaths: ["foo.bar"],
         notEncryptedPaths: []
@@ -73,7 +79,7 @@ const extractField = function(doc, fieldName) {
 };
 
 const testDb = conn.getDB("test");
-let insertCommand = {insert: "test.foo", documents: [], jsonSchema: {}, isRemoteSchema: false};
+let insertCommand = {insert: collName, documents: [], jsonSchema: {}, isRemoteSchema: false};
 for (let test of testCases) {
     Object.assign(insertCommand, test["schema"]);
     insertCommand["documents"] = test["docs"];
@@ -102,7 +108,7 @@ for (let test of testCases) {
 
 // Make sure that additional command arguments are correctly included in the response.
 insertCommand = {
-    insert: "test.foo",
+    insert: collName,
     documents: [{"foo": "bar"}],
     jsonSchema: {type: "object", properties: {bar: encryptDoc}},
     isRemoteSchema: false
@@ -116,7 +122,7 @@ assert.eq(false, res.result.hasOwnProperty("bypassDocumentValidation"), tojson(r
 
 // Explicitly setting them on the command should override the default.
 insertCommand = {
-    insert: "test.foo",
+    insert: collName,
     documents: [{"foo": "bar"}],
     jsonSchema: {type: "object", properties: {bar: encryptDoc}},
     isRemoteSchema: false,
@@ -130,7 +136,7 @@ assert.eq(res.result.bypassDocumentValidation, true, tojson(res));
 
 // Test that a document without _id fails to insert when the schema says encrypt _id.
 assert.commandFailedWithCode(testDb.runCommand({
-    insert: "test.foo",
+    insert: collName,
     documents: [{"foo": "bar"}],
     jsonSchema: {type: "object", properties: {"_id": encryptDoc}},
     isRemoteSchema: false
@@ -139,7 +145,7 @@ assert.commandFailedWithCode(testDb.runCommand({
 
 // Test that a document with a top level Timestamp(0, 0) fails to encrypt.
 assert.commandFailedWithCode(testDb.runCommand({
-    insert: "test.foo",
+    insert: collName,
     documents: [{"foo": Timestamp(0, 0)}],
     jsonSchema: {type: "object", properties: {"foo": encryptDoc}},
     isRemoteSchema: false
@@ -148,7 +154,7 @@ assert.commandFailedWithCode(testDb.runCommand({
 
 // Test that command does not fail if a subfield of _id is encrypted.
 assert.commandWorked(testDb.runCommand({
-    insert: "test.foo",
+    insert: collName,
     documents: [{"foo": "bar"}],
     jsonSchema:
         {type: "object", properties: {"_id": {type: "object", properties: {"nested": encryptDoc}}}},
@@ -160,7 +166,7 @@ const pointerDoc = {
     encrypt: {algorithm: kRandomAlgo, keyId: "/key"}
 };
 assert.commandFailedWithCode(testDb.runCommand({
-    insert: "test.foo",
+    insert: collName,
     documents: [{"foo": "bar", "key": "test"}],
     jsonSchema: {type: "object", properties: {"foo": pointerDoc, "key": encryptDoc}},
     isRemoteSchema: false
