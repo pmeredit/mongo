@@ -72,7 +72,7 @@ function fsmClient(host) {
     return _startMongoProgram({args: resmokeCmd.split(' ')});
 }
 
-const numImportThreads = 10;
+const numImportThreads = 4;
 const numImportsPerThread = 50;
 // This returns an array of {tid, name, collectionProperties};
 const collectionsToImport = exportCollections(numImportThreads, numImportsPerThread);
