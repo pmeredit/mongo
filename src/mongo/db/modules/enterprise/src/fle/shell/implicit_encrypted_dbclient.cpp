@@ -45,6 +45,7 @@ class ImplicitEncryptedDBClientBase final : public EncryptedDBClientBase {
         BSONObj schema;
         Date_t ts;    // Used to mark when the schema was stored in this struct.
         bool remote;  // True if the schema is from the server. Else false.
+        enum class SchemaType { none, jsonSchema, encryptedFields } _schemaType;
     };
 
 public:
@@ -64,7 +65,6 @@ public:
         return handleEncryptionRequest(std::move(request));
     }
 
-
     SchemaInfo getRemoteOrInputSchema(const OpMsgRequest& request, NamespaceString ns) {
         // Check for a client provided schema first
         if (_encryptionOptions.getSchemaMap()) {
@@ -74,10 +74,21 @@ public:
                 uassert(ErrorCodes::BadValue,
                         "Invalid Schema object in Client Side FLE Options",
                         schemaElem.isABSONObj());
-                return SchemaInfo{schemaElem.Obj().getOwned(), Date_t::now(), false};
+
+                BSONObj schemaObj = schemaElem.Obj();
+
+                if (schemaObj.hasField("escCollection") && schemaObj.hasField("eccCollection") &&
+                    schemaObj.hasField("ecocCollection")) {
+
+                    return SchemaInfo{schemaObj.getOwned(),
+                                      Date_t::now(),
+                                      false,
+                                      SchemaInfo::SchemaType::encryptedFields};
+                }
+                return SchemaInfo{
+                    schemaObj.getOwned(), Date_t::now(), false, SchemaInfo::SchemaType::jsonSchema};
             }
         }
-
         // Since there is no local schema, try remote
         BSONObj filter = BSON("name" << ns.coll());
         auto collectionInfos = _conn->getCollectionInfos(ns.db().toString(), filter);
@@ -87,15 +98,25 @@ public:
             BSONObj highLevelSchema = collectionInfos.front();
 
             BSONObj options = highLevelSchema.getObjectField("options");
-            if (!options.isEmpty() && !options.getObjectField("validator").isEmpty() &&
+            if (!options.isEmpty()) {
+                if (!options.getObjectField("encryptedFields").isEmpty()) {
+                    return SchemaInfo{options.getObjectField("encryptedFields").getOwned(),
+                                      Date_t::now(),
+                                      true,
+                                      SchemaInfo::SchemaType::encryptedFields};
+                }
+            }
+
+            if (!options.getObjectField("validator").isEmpty() &&
                 !options.getObjectField("validator").getObjectField("$jsonSchema").isEmpty()) {
                 BSONObj validator = options.getObjectField("validator");
                 BSONObj schema = validator.getObjectField("$jsonSchema");
-                return SchemaInfo{schema.getOwned(), Date_t::now(), true};
+                return SchemaInfo{
+                    schema.getOwned(), Date_t::now(), true, SchemaInfo::SchemaType::jsonSchema};
             }
         }
 
-        return SchemaInfo{BSONObj(), Date_t::now(), true};
+        return SchemaInfo{BSONObj(), Date_t::now(), true, SchemaInfo::SchemaType::none};
     }
 
     SchemaInfo getSchema(const OpMsgRequest& request, NamespaceString ns) {
