@@ -24,7 +24,9 @@ const config = readSetupJson();
 assert.commandWorked(
     external.runCommand({createUser: config["iam_auth_ecs_account_arn"], roles: []}));
 
-assert(external.auth({
+const testConn = new Mongo(conn.host);
+const testExternal = testConn.getDB('$external');
+assert(testExternal.auth({
     user: config["iam_auth_ecs_account"],
     pwd: config["iam_auth_ecs_secret_access_key"],
     mechanism: 'MONGODB-AWS'

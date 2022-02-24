@@ -51,7 +51,9 @@ assert(admin.auth("admin", "pwd"));
 
 assert.commandWorked(external.runCommand({createUser: ASSUMED_ROLE, roles: []}));
 
-assert(external.auth({
+const testConn = new Mongo(conn.host);
+const testExternal = testConn.getDB('$external');
+assert(testExternal.auth({
     user: credentials["AccessKeyId"],
     pwd: credentials["SecretAccessKey"],
     awsIamSessionToken: credentials["SessionToken"],
