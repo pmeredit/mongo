@@ -143,7 +143,7 @@ std::string toString() {
 void rewriteLiteralToIntent(const ExpressionContext& expCtx,
                             const ResolvedEncryptionInfo& encryptedType,
                             ExpressionConstant* literal) {
-    using namespace cryptd_query_analysis;
+    using namespace query_analysis;
     literal->setValue(buildEncryptPlaceholder(literal->getValue(),
                                               encryptedType,
                                               EncryptionPlaceholderContext::kComparison,

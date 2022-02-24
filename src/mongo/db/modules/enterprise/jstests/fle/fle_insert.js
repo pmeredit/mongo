@@ -1,8 +1,5 @@
 /**
  * Verify that elements with an insert command are correctly marked for encryption.
- *
- * TODO SERVER-63275: Enable for FLE 2
- * @tags: [unsupported_fle_2]
  */
 
 (function() {
@@ -79,8 +76,8 @@ const extractField = function(doc, fieldName) {
 };
 
 const testDb = conn.getDB("test");
-let insertCommand = {insert: collName, documents: [], jsonSchema: {}, isRemoteSchema: false};
 for (let test of testCases) {
+    let insertCommand = {insert: collName, documents: []};
     Object.assign(insertCommand, test["schema"]);
     insertCommand["documents"] = test["docs"];
     const result = assert.commandWorked(testDb.runCommand(insertCommand));
@@ -107,12 +104,8 @@ for (let test of testCases) {
 }
 
 // Make sure that additional command arguments are correctly included in the response.
-insertCommand = {
-    insert: collName,
-    documents: [{"foo": "bar"}],
-    jsonSchema: {type: "object", properties: {bar: encryptDoc}},
-    isRemoteSchema: false
-};
+let insertCommand = Object.assign({insert: collName, documents: [{"foo": "bar"}]},
+                                  generateSchema({bar: encryptDoc}, collName));
 
 let res = assert.commandWorked(testDb.runCommand(insertCommand));
 
@@ -121,45 +114,26 @@ assert.eq(false, res.result.hasOwnProperty("ordered"), tojson(res));
 assert.eq(false, res.result.hasOwnProperty("bypassDocumentValidation"), tojson(res));
 
 // Explicitly setting them on the command should override the default.
-insertCommand = {
+insertCommand = Object.assign({
     insert: collName,
     documents: [{"foo": "bar"}],
-    jsonSchema: {type: "object", properties: {bar: encryptDoc}},
-    isRemoteSchema: false,
     ordered: false,
     bypassDocumentValidation: true,
-};
+},
+                              generateSchema({bar: encryptDoc}, collName));
 
 res = assert.commandWorked(testDb.runCommand(insertCommand));
 assert.eq(res.result.ordered, false, tojson(res));
 assert.eq(res.result.bypassDocumentValidation, true, tojson(res));
 
-// Test that a document without _id fails to insert when the schema says encrypt _id.
-assert.commandFailedWithCode(testDb.runCommand({
-    insert: collName,
-    documents: [{"foo": "bar"}],
-    jsonSchema: {type: "object", properties: {"_id": encryptDoc}},
-    isRemoteSchema: false
-}),
-                             51130);
-
 // Test that a document with a top level Timestamp(0, 0) fails to encrypt.
-assert.commandFailedWithCode(testDb.runCommand({
-    insert: collName,
-    documents: [{"foo": Timestamp(0, 0)}],
-    jsonSchema: {type: "object", properties: {"foo": encryptDoc}},
-    isRemoteSchema: false
-}),
-                             51129);
-
-// Test that command does not fail if a subfield of _id is encrypted.
-assert.commandWorked(testDb.runCommand({
-    insert: collName,
-    documents: [{"foo": "bar"}],
-    jsonSchema:
-        {type: "object", properties: {"_id": {type: "object", properties: {"nested": encryptDoc}}}},
-    isRemoteSchema: false
-}));
+assert.commandFailedWithCode(
+    testDb.runCommand(Object.assign({
+        insert: collName,
+        documents: [{"foo": Timestamp(0, 0)}],
+    },
+                                    generateSchema({"foo": encryptDoc}, collName))),
+    51129);
 
 // Test that an insert is rejected if a pointer points to an encrypted field.
 const pointerDoc = {
@@ -172,5 +146,67 @@ assert.commandFailedWithCode(testDb.runCommand({
     isRemoteSchema: false
 }),
                              30017);
+
+// In FLE 1, the restrictions on _id with random encryption must apply to FLE 2 regardless of the
+// queryability. The following tests are specific to FLE 1's ability to encrypt _id with the
+// deterministic algorithm.
+
+// Test that a document without _id fails to insert when the schema says
+// encrypt _id.
+assert.commandFailedWithCode(testDb.runCommand({
+    insert: collName,
+    documents: [{"foo": "bar"}],
+    jsonSchema: {type: "object", properties: {"_id": encryptDoc}},
+    isRemoteSchema: false
+}),
+                             51130);
+
+// Test that command does not fail if a subfield of _id is encrypted.
+assert.commandWorked(testDb.runCommand({
+    insert: collName,
+    documents: [{"foo": "bar"}],
+    jsonSchema:
+        {type: "object", properties: {"_id": {type: "object", properties: {"nested": encryptDoc}}}},
+    isRemoteSchema: false
+}));
+
+// Test that _id or a nested field under _id is not allowed to be encrypted with the random
+// algorithm. Note that in FLE 2, all fields are encrypted randomly regardless of the queryability.
+const errCode = fle2Enabled() ? 6316403 : 51194;
+let encryptSchema = generateSchema(
+    {"_id": {queries: {queryType: "equality"}, keyId: UUID(), bsonType: "string"}}, collName);
+assert.commandFailedWithCode(testDb.runCommand(Object.assign({
+    insert: collName,
+    documents: [{"foo": "bar"}],
+},
+                                                             encryptSchema)),
+                             errCode);
+
+encryptSchema = generateSchema({"_id": {keyId: UUID(), bsonType: "string"}}, collName);
+assert.commandFailedWithCode(testDb.runCommand(Object.assign({
+    insert: collName,
+    documents: [{"foo": "bar"}],
+},
+                                                             encryptSchema)),
+                             errCode);
+
+encryptSchema = generateSchema(
+    {"_id.nested": {queries: {queryType: "equality"}, keyId: UUID(), bsonType: "string"}},
+    collName);
+assert.commandFailedWithCode(testDb.runCommand(Object.assign({
+    insert: collName,
+    documents: [{"foo": "bar"}],
+},
+                                                             encryptSchema)),
+                             errCode);
+
+encryptSchema = generateSchema({"_id.nested": {keyId: UUID(), bsonType: "string"}}, collName);
+assert.commandFailedWithCode(testDb.runCommand(Object.assign({
+    insert: collName,
+    documents: [{"foo": "bar"}],
+},
+                                                             encryptSchema)),
+                             errCode);
+
 mongocryptd.stop();
 }());

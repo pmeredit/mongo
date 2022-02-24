@@ -122,7 +122,7 @@ public:
             auto placeholder =
                 buildEncryptPlaceholder(host->val,
                                         metadata.get(),
-                                        cryptd_query_analysis::EncryptionPlaceholderContext::kWrite,
+                                        query_analysis::EncryptionPlaceholderContext::kWrite,
                                         collator);
             _backingBSONs.push_back(placeholder);
             // The object returned by 'buildEncryptPlaceholder' only has one element.
@@ -138,13 +138,13 @@ public:
                 // It is legal to use $set to create an encrypted string field, even if the update
                 // operation has a non-simple collation.
                 const CollatorInterface* collator = nullptr;
-                auto placeholder = replaceEncryptedFields(
-                    host->val.embeddedObject(),
-                    &_schemaTree,
-                    cryptd_query_analysis::EncryptionPlaceholderContext::kWrite,
-                    _currentPath,
-                    boost::none,
-                    collator);
+                auto placeholder =
+                    replaceEncryptedFields(host->val.embeddedObject(),
+                                           &_schemaTree,
+                                           query_analysis::EncryptionPlaceholderContext::kWrite,
+                                           _currentPath,
+                                           boost::none,
+                                           collator);
                 if (placeholder.hasEncryptionPlaceholders) {
                     auto finalBSON = BSON(host->val.fieldNameStringData() << placeholder.result);
                     host->val = finalBSON.firstElement();

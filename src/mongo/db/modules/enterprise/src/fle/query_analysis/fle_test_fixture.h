@@ -71,11 +71,10 @@ protected:
     template <class T>
     BSONObj buildEncryptElem(T value, const ResolvedEncryptionInfo& metadata) {
         auto tempObj = BSON("v" << value);
-        return buildEncryptPlaceholder(
-            tempObj.firstElement(),
-            metadata,
-            cryptd_query_analysis::EncryptionPlaceholderContext::kComparison,
-            nullptr);
+        return buildEncryptPlaceholder(tempObj.firstElement(),
+                                       metadata,
+                                       query_analysis::EncryptionPlaceholderContext::kComparison,
+                                       nullptr);
     }
 
     /**

@@ -51,7 +51,7 @@ if get_option('link-model') == 'dynamic-sdk' and env.TargetOSIs('posix', 'window
             '$BUILD_DIR/mongo/base',
             '$BUILD_DIR/mongo/db/service_context',
             '$BUILD_DIR/mongo/util/options_parser/options_parser',
-            '../query_analysis/cryptd_query_analysis',
+            '../query_analysis/query_analysis',
         ],
         AIB_COMPONENT='mongo-csfle',
         SHLIBPREFIX="",
@@ -88,7 +88,7 @@ if get_option('link-model') != 'dynamic-sdk':
         LIBDEPS=[
             '$BUILD_DIR/mongo/db/service_context_test_fixture',
             '$BUILD_DIR/mongo/unittest/unittest',
-            '../query_analysis/cryptd_query_analysis',
+            '../query_analysis/query_analysis',
         ],
         UNITTEST_HAS_CUSTOM_MAINLINE=True,
         AIB_COMPONENT='mongo-csfle-test',

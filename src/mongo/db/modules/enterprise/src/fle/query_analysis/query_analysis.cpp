@@ -14,6 +14,7 @@
 #include "fle_pipeline.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
+#include "mongo/crypto/encryption_fields_gen.h"
 #include "mongo/crypto/fle_field_schema_gen.h"
 #include "mongo/db/commands.h"
 #include "mongo/db/matcher/expression_parser.h"
@@ -34,27 +35,12 @@
 #include "mongo/idl/idl_parser.h"
 #include "mongo/rpc/op_msg.h"
 
-namespace mongo::cryptd_query_analysis {
+namespace mongo::query_analysis {
 namespace {
 
 static constexpr auto kHasEncryptionPlaceholders = "hasEncryptionPlaceholders"_sd;
 static constexpr auto kSchemaRequiresEncryption = "schemaRequiresEncryption"_sd;
 static constexpr auto kResult = "result"_sd;
-
-struct CryptdQueryAnalysisParams {
-    CryptdQueryAnalysisParams(const BSONObj& jsonSchema,
-                              const EncryptionSchemaType schemaType,
-                              BSONObj strippedObj)
-        : jsonSchema(jsonSchema), schemaType(schemaType), strippedObj(std::move(strippedObj)) {}
-
-    BSONObj jsonSchema;
-    EncryptionSchemaType schemaType;
-
-    /**
-     * Command object without 'jsonSchema' and 'isRemoteSchema' fields.
-     */
-    BSONObj strippedObj;
-};
 
 std::string typeSetToString(const MatcherTypeSet& typeSet) {
     StringBuilder sb;
@@ -70,14 +56,16 @@ std::string typeSetToString(const MatcherTypeSet& typeSet) {
 }
 
 /**
- * Extracts and returns the 'CryptdQueryAnalysisParams' in the command 'obj'.
+ * Extracts and returns the 'QueryAnalysisParams' in the command 'obj'.
  *
  * Throws an AssertionException if the 'jsonSchema' or 'isRemoteSchema' fields are missing or not of
  * the correct type.
  */
-CryptdQueryAnalysisParams extractCryptdParameters(const BSONObj& obj) {
+QueryAnalysisParams extractCryptdParameters(const BSONObj& obj) {
     boost::optional<BSONObj> jsonSchema;
+    boost::optional<BSONObj> encryptInfo;
     boost::optional<bool> isRemoteSchema;
+    bool isFLE2 = false;
     BSONObjBuilder stripped;
     for (auto& e : obj) {
         if (e.fieldNameStringData() == kJsonSchema) {
@@ -86,22 +74,50 @@ CryptdQueryAnalysisParams extractCryptdParameters(const BSONObj& obj) {
         } else if (e.fieldNameStringData() == kIsRemoteSchema) {
             uassert(31102, "isRemoteSchema is expected to be a boolean", e.type() == Bool);
             isRemoteSchema = e.Bool();
+        } else if (e.fieldNameStringData() == kEncryptionInformation &&
+                   ::mongo::gFeatureFlagFLE2.isEnabledAndIgnoreFCV()) {
+            uassert(6327501, "encryptionInformation must be an object", e.type() == Object);
+
+            auto parsedEncryptionInfo =
+                EncryptionInformation::parse(IDLParserErrorContext("EncryptInformation"), e.Obj());
+            auto schemaSpec = parsedEncryptionInfo.getSchema();
+
+            uassert(6327503,
+                    "Exactly one namespace is supported with encryptionInformation",
+                    schemaSpec.nFields() == 1);
+            uassert(6327504,
+                    "Each namespace schema must be an object",
+                    schemaSpec.firstElement().type() == Object);
+
+            encryptInfo = schemaSpec.firstElement().Obj();
+            isFLE2 = true;
+
+            // TODO SERVER-64040 include 'encryptionInformation' in response object.
+            // stripped.append(e);
         } else {
             stripped.append(e);
         }
     }
-    uassert(51073, "jsonSchema is a required command field", jsonSchema);
-    uassert(31104, "isRemoteSchema is a required command field", isRemoteSchema);
+    uassert(51073, "jsonSchema or encryptionInformation is required", jsonSchema || encryptInfo);
+    uassert(31104, "isRemoteSchema is a required command field", isRemoteSchema || isFLE2);
 
-    return CryptdQueryAnalysisParams(*jsonSchema,
-                                     *isRemoteSchema ? EncryptionSchemaType::kRemote
-                                                     : EncryptionSchemaType::kLocal,
-                                     stripped.obj());
+    uassert(6327500,
+            "Cannot specify both jsonSchema and encryptionInformation",
+            (jsonSchema && !encryptInfo) || (!jsonSchema && encryptInfo));
+    uassert(6327502,
+            "Cannot specify both isRemoteSchema and encryptionInformation",
+            (isRemoteSchema && !encryptInfo) || (!isRemoteSchema && encryptInfo));
+
+    return isFLE2 ? QueryAnalysisParams(*encryptInfo, stripped.obj())
+                  : QueryAnalysisParams(*jsonSchema,
+                                        *isRemoteSchema ? EncryptionSchemaType::kRemote
+                                                        : EncryptionSchemaType::kLocal,
+                                        stripped.obj());
 }
 
 /**
- * If 'collation' is boost::none, returns nullptr. Otherwise, uses the collator factory decorating
- * 'opCtx' to produce a collator for 'collation'.
+ * If 'collation' is boost::none, returns nullptr. Otherwise, uses the collator factory
+ * decorating 'opCtx' to produce a collator for 'collation'.
  */
 std::unique_ptr<CollatorInterface> parseCollator(OperationContext* opCtx,
                                                  const boost::optional<BSONObj>& collation) {
@@ -169,13 +185,13 @@ BSONObj replaceEncryptedFieldsRecursive(const EncryptionSchemaTreeNode* schema,
         } else if (element.type() == BSONType::Array) {
             // Encrypting beneath an array is not supported. If the user has an array along an
             // encrypted path, they have violated the type:"object" condition of the schema. For
-            // example, if the user's schema indicates that "foo.bar" is encrypted, it is implied
-            // that "foo" is an object. We should therefore return an error if the user attempts to
-            // insert a document such as {foo: [{bar: 1}, {bar: 2}]}.
+            // example, if the user's schema indicates that "foo.bar" is encrypted, it is
+            // implied that "foo" is an object. We should therefore return an error if the user
+            // attempts to insert a document such as {foo: [{bar: 1}, {bar: 2}]}.
             //
             // Although mongocryptd doesn't enforce the provided JSON Schema in full, we make an
-            // effort here to enforce the encryption-related aspects of the schema. Ensuring that
-            // there are no arrays along an encrypted path falls within this mandate.
+            // effort here to enforce the encryption-related aspects of the schema. Ensuring
+            // that there are no arrays along an encrypted path falls within this mandate.
             uassert(31006,
                     str::stream() << "An array at path '" << leadingPath->dottedField()
                                   << "' would violate the schema",
@@ -200,8 +216,8 @@ BSONObj removeExtraFields(const std::set<StringData>& original, const BSONObj& r
         auto field = elem.fieldNameStringData();
         // "$db" is always removed because the drivers adds it to every message sent. If
         // we sent them in the reply, the drivers would wind up trying to add it again when
-        // sending the query to mongod. In addition, some queries may not want to send $db at all
-        // to a specific mongod version, so we remove it here instead of in the driver.
+        // sending the query to mongod. In addition, some queries may not want to send $db at
+        // all to a specific mongod version, so we remove it here instead of in the driver.
         if (field == "$db") {
             continue;
         }
@@ -213,12 +229,12 @@ BSONObj removeExtraFields(const std::set<StringData>& original, const BSONObj& r
 }
 
 /**
- * Parses the MatchExpression given by 'filter' and replaces encrypted fields with their appropriate
- * EncryptionPlaceholder according to the schema.
+ * Parses the MatchExpression given by 'filter' and replaces encrypted fields with their
+ * appropriate EncryptionPlaceholder according to the schema.
  *
- * Returns a PlaceHolderResult containing the new MatchExpression and a boolean to indicate whether
- * it contains an intent-to-encrypt marking. Throws an assertion if the MatchExpression is invalid
- * or contains an invalid operator over an encrypted field.
+ * Returns a PlaceHolderResult containing the new MatchExpression and a boolean to indicate
+ * whether it contains an intent-to-encrypt marking. Throws an assertion if the MatchExpression
+ * is invalid or contains an invalid operator over an encrypted field.
  *
  * Throws an assertion if 'filter' might require a collation-aware comparison and 'collator' is
  * non-null.
@@ -250,9 +266,9 @@ PlaceHolderResult replaceEncryptedFieldsInFilter(
  * Parses the update given by 'updateMod' and replaces encrypted fields with their appropriate
  * EncryptionPlaceholder according to the schema.
  *
- * Returns a PlaceHolderResult containing the new update object and a boolean to indicate whether
- * it contains an intent-to-encrypt marking. Throws an assertion if the update object is invalid
- * or contains an invalid operator over an encrypted field.
+ * Returns a PlaceHolderResult containing the new update object and a boolean to indicate
+ * whether it contains an intent-to-encrypt marking. Throws an assertion if the update object is
+ * invalid or contains an invalid operator over an encrypted field.
  */
 PlaceHolderResult replaceEncryptedFieldsInUpdate(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
@@ -260,8 +276,8 @@ PlaceHolderResult replaceEncryptedFieldsInUpdate(
     const write_ops::UpdateModification& updateMod,
     const std::vector<mongo::BSONObj>& arrayFilters) {
     UpdateDriver driver(expCtx);
-    // Although arrayFilters cannot contain encrypted fields, pass them through to the UpdateDriver
-    // to prevent parsing errors for arrayFilters on a non-encrypted field path.
+    // Although arrayFilters cannot contain encrypted fields, pass them through to the
+    // UpdateDriver to prevent parsing errors for arrayFilters on a non-encrypted field path.
     auto parsedArrayFilters =
         uassertStatusOK(parsedUpdateArrayFilters(expCtx, arrayFilters, NamespaceString("")));
     driver.parse(updateMod, parsedArrayFilters);
@@ -298,11 +314,10 @@ PlaceHolderResult replaceEncryptedFieldsInUpdate(
             // markings.
             FLEPipeline flePipe{Pipeline::parse(updateMod.getUpdatePipeline(), expCtx), schemaTree};
 
-            // The current pipeline analysis assumes that the document coming out of the pipeline is
-            // being returned to the user but for pipelines in an update it is being written to a
-            // collection. For instance, a simple {$addFields: {a: 5}} will
-            // never mark 'a' for encryption as it's treated as a new field in the returned
-            // doc.
+            // The current pipeline analysis assumes that the document coming out of the
+            // pipeline is being returned to the user but for pipelines in an update it is being
+            // written to a collection. For instance, a simple {$addFields: {a: 5}} will never
+            // mark 'a' for encryption as it's treated as a new field in the returned doc.
             //
             // However, in an update, the 5 may need to be marked for encryption if the
             // schema indicates that 'a' is encrypted. For now, assert that the pipeline
@@ -339,17 +354,18 @@ PlaceHolderResult addPlaceHoldersForFind(const boost::intrusive_ptr<ExpressionCo
                                          const std::string& dbName,
                                          const BSONObj& cmdObj,
                                          std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
-    // Parse to a FindCommandRequest to ensure the command syntax is valid. We can use a temporary
-    // database name however the collection name will be used when serializing back to BSON.
+    // Parse to a FindCommandRequest to ensure the command syntax is valid. We can use a
+    // temporary database name however the collection name will be used when serializing back to
+    // BSON.
     auto findCommand = query_request_helper::makeFromFindCommand(
         cmdObj, boost::none, APIParameters::get(expCtx->opCtx).getAPIStrict().value_or(false));
 
     auto filterPlaceholder =
         replaceEncryptedFieldsInFilter(expCtx, *schemaTree, findCommand->getFilter());
 
-    // This is an optional wrapper around a pipeline containing just the projection from the find
-    // command. With it we can reuse our pipeline analysis to determine if the projection is invalid
-    // or in need of markers.
+    // This is an optional wrapper around a pipeline containing just the projection from the
+    // find command. With it we can reuse our pipeline analysis to determine if the projection
+    // is invalid or in need of markers.
     const auto projectionPipeWrapper = [&] {
         if (auto proj = findCommand->getProjection(); !proj.isEmpty())
             return boost::optional<FLEPipeline>{FLEPipeline{
@@ -402,8 +418,8 @@ PlaceHolderResult addPlaceHoldersForAggregate(
         boost::none,
         APIParameters::get(expCtx->opCtx).getAPIStrict().value_or(false));
 
-    // Add the populated list of involved namespaces to the expression context, needed at parse time
-    // by stages such as $lookup and $out.
+    // Add the populated list of involved namespaces to the expression context, needed at parse
+    // time by stages such as $lookup and $out.
     expCtx->ns = request.getNamespace();
     expCtx->setResolvedNamespaces([&]() {
         const LiteParsedPipeline liteParsedPipeline(request);
@@ -416,8 +432,9 @@ PlaceHolderResult addPlaceHoldersForAggregate(
         return resolvedNamespaces;
     }());
 
-    // Build a FLEPipeline which will replace encrypted fields with intent-to-encrypt markings, then
-    // update the AggregateCommandRequest with the new pipeline if there were any replaced fields.
+    // Build a FLEPipeline which will replace encrypted fields with intent-to-encrypt markings,
+    // then update the AggregateCommandRequest with the new pipeline if there were any replaced
+    // fields.
     FLEPipeline flePipe{Pipeline::parse(request.getPipeline(), expCtx), *schemaTree.get()};
 
     // Serialize the translated command by manually appending each field that was present in the
@@ -501,8 +518,9 @@ PlaceHolderResult addPlaceHoldersForDistinct(const boost::intrusive_ptr<Expressi
         parsedDistinct.setQuery(placeholder.result);
     }
 
-    // Serialize the parsed distinct command. Passing the original command object to 'serialize()'
-    // allows the IDL to merge generic fields which the command does not specifically handle.
+    // Serialize the parsed distinct command. Passing the original command object to
+    // 'serialize()' allows the IDL to merge generic fields which the command does not
+    // specifically handle.
     return PlaceHolderResult{placeholder.hasEncryptionPlaceholders,
                              schemaTree->mayContainEncryptedNode(),
                              nullptr,
@@ -542,12 +560,12 @@ PlaceHolderResult addPlaceHoldersForFindAndModify(
 
     bool anythingEncrypted = false;
     if (auto updateMod = request.getUpdate()) {
-        uassert(
-            31151,
-            "Pipelines in findAndModify are not allowed with an encrypted '_id' and 'upsert: true'",
-            !(updateMod->type() == write_ops::UpdateModification::Type::kPipeline &&
-              schemaTree->getEncryptionMetadataForPath(FieldRef("_id")) &&
-              request.getUpsert().value_or(false)));
+        uassert(31151,
+                "Pipelines in findAndModify are not allowed with an encrypted '_id' and "
+                "'upsert: true'",
+                !(updateMod->type() == write_ops::UpdateModification::Type::kPipeline &&
+                  schemaTree->getEncryptionMetadataForPath(FieldRef("_id")) &&
+                  request.getUpsert().value_or(false)));
 
         if (request.getUpsert().value_or(false) &&
             (updateMod->type() == write_ops::UpdateModification::Type::kReplacement ||
@@ -705,8 +723,7 @@ void processWriteOpCommand(OperationContext* opCtx,
     auto newRequest = makeHybrid(request, cryptdParams.strippedObj);
 
     // Parse the JSON Schema to an encryption schema tree.
-    auto schemaTree =
-        EncryptionSchemaTreeNode::parse(cryptdParams.jsonSchema, cryptdParams.schemaType);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(cryptdParams);
 
     PlaceHolderResult placeholder = func(opCtx, newRequest, std::move(schemaTree));
 
@@ -727,8 +744,7 @@ void processQueryCommand(OperationContext* opCtx,
     auto cryptdParams = extractCryptdParameters(cmdObj);
 
     // Parse the JSON Schema to an encryption schema tree.
-    auto schemaTree =
-        EncryptionSchemaTreeNode::parse(cryptdParams.jsonSchema, cryptdParams.schemaType);
+    auto schemaTree = EncryptionSchemaTreeNode::parse(cryptdParams);
 
     auto collator = extractCollator(opCtx, cmdObj);
     boost::intrusive_ptr<ExpressionContext> expCtx(
@@ -767,8 +783,8 @@ BSONObj buildFle2EncryptPlaceholder(EncryptionPlaceholderContext ctx,
     marking.serialize(&bob);
     auto markingObj = bob.done();
 
-    // Encode the placeholder BSON as BinData (sub-type 6 for encryption). Prepend the sub-subtype
-    // byte representing the FLE2 intent-to-encrypt marking before the BSON payload.
+    // Encode the placeholder BSON as BinData (sub-type 6 for encryption). Prepend the
+    // sub-subtype byte representing the FLE2 intent-to-encrypt marking before the BSON payload.
     BufBuilder binDataBuffer;
     binDataBuffer.appendChar(static_cast<uint8_t>(EncryptedBinDataType::kFLE2Placeholder));
     binDataBuffer.appendBuf(markingObj.objdata(), markingObj.objsize());
@@ -996,4 +1012,4 @@ Value buildEncryptPlaceholder(Value input,
                                          boost::none)[wrappingKey]);
 }
 
-}  // namespace mongo::cryptd_query_analysis
+}  // namespace mongo::query_analysis

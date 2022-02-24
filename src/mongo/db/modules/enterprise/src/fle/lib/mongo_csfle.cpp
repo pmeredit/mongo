@@ -124,26 +124,25 @@ BSONObj analyzeNonExplainQuery(const BSONObj document,
 
     BSONObjBuilder schemaInfoBuilder;
     if (commandName == "find"_sd) {
-        cryptd_query_analysis::processFindCommand(
-            opCtx, ns.db().toString(), document, &schemaInfoBuilder);
+        query_analysis::processFindCommand(opCtx, ns.db().toString(), document, &schemaInfoBuilder);
     } else if (commandName == "aggregate"_sd) {
-        cryptd_query_analysis::processAggregateCommand(
+        query_analysis::processAggregateCommand(
             opCtx, ns.db().toString(), document, &schemaInfoBuilder);
     } else if (commandName == "findandmodify"_sd || commandName == "findAndModify"_sd) {
-        cryptd_query_analysis::processFindAndModifyCommand(
+        query_analysis::processFindAndModifyCommand(
             opCtx, ns.db().toString(), document, &schemaInfoBuilder);
     } else if (commandName == "count"_sd) {
-        cryptd_query_analysis::processCountCommand(
+        query_analysis::processCountCommand(
             opCtx, ns.db().toString(), document, &schemaInfoBuilder);
     } else if (commandName == "distinct"_sd) {
-        cryptd_query_analysis::processDistinctCommand(
+        query_analysis::processDistinctCommand(
             opCtx, ns.db().toString(), document, &schemaInfoBuilder);
     } else if (commandName == "update"_sd) {
-        cryptd_query_analysis::processUpdateCommand(opCtx, opmsg, &schemaInfoBuilder);
+        query_analysis::processUpdateCommand(opCtx, opmsg, &schemaInfoBuilder);
     } else if (commandName == "insert"_sd) {
-        cryptd_query_analysis::processInsertCommand(opCtx, opmsg, &schemaInfoBuilder);
+        query_analysis::processInsertCommand(opCtx, opmsg, &schemaInfoBuilder);
     } else if (commandName == "delete"_sd) {
-        cryptd_query_analysis::processDeleteCommand(opCtx, opmsg, &schemaInfoBuilder);
+        query_analysis::processDeleteCommand(opCtx, opmsg, &schemaInfoBuilder);
     } else {
         uasserted(mongo::ErrorCodes::CommandNotFound,
                   str::stream() << "Query contains an unknown command: " << commandName);
@@ -156,7 +155,7 @@ BSONObj analyzeExplainQuery(const BSONObj document,
                             OperationContext* opCtx,
                             const NamespaceString ns) {
     auto cleanedCmdObj = document.removeFields(
-        StringDataSet{cryptd_query_analysis::kJsonSchema, cryptd_query_analysis::kIsRemoteSchema});
+        StringDataSet{query_analysis::kJsonSchema, query_analysis::kIsRemoteSchema});
     auto explainCmd = ExplainCommandRequest::parse(
         IDLParserErrorContext(ExplainCommandRequest::kCommandName,
                               APIParameters::get(opCtx).getAPIStrict().value_or(false)),
@@ -168,16 +167,16 @@ BSONObj analyzeExplainQuery(const BSONObj document,
     uassert(6206601,
             "In an explain command the jsonSchema field must be top-level and not inside the "
             "command being explained.",
-            !explainedObj.hasField(cryptd_query_analysis::kJsonSchema));
-    if (auto cmdSchema = document[cryptd_query_analysis::kJsonSchema]) {
+            !explainedObj.hasField(query_analysis::kJsonSchema));
+    if (auto cmdSchema = document[query_analysis::kJsonSchema]) {
         explainedObj = explainedObj.addField(cmdSchema);
     }
 
     uassert(6206602,
             "In an explain command the isRemoteSchema field must be top-level and not inside the "
             "command being explained.",
-            !explainedObj.hasField(cryptd_query_analysis::kIsRemoteSchema));
-    if (auto isRemoteSchema = document[cryptd_query_analysis::kIsRemoteSchema]) {
+            !explainedObj.hasField(query_analysis::kIsRemoteSchema));
+    if (auto isRemoteSchema = document[query_analysis::kIsRemoteSchema]) {
         explainedObj = explainedObj.addField(isRemoteSchema);
     }
     if (auto innerDb = explainedObj["$db"]) {

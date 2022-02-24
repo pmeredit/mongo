@@ -106,7 +106,7 @@ All of the commands that `mongocryptd` knows how to handle are implemented in [f
 
 The heftiest part of `mongocryptd` is the query analysis pipeline, located in [fle/query_analysis](./query_analysis).
 Queries are processed by the pipeline via `mongocryptd` as well as hooks in 
-[ImplicitEncryptedDBClientBase](./shell/implicit_encrypted_dbclient.cpp), denoted by the use of namespace `cryptd_query_analysis`.
+[ImplicitEncryptedDBClientBase](./shell/implicit_encrypted_dbclient.cpp), denoted by the use of namespace `query_analysis`.
 
 ## CSFLE
 

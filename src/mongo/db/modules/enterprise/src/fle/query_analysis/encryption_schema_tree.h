@@ -14,14 +14,12 @@
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/db/pipeline/expression.h"
 #include "mongo/util/str.h"
+#include "query_analysis.h"
 #include "resolved_encryption_info.h"
 
+using namespace mongo::query_analysis;
+
 namespace mongo {
-/**
- * 'kRemote' represents the validation schema from mongod and 'kLocal' represents the schema
- * generated using the drivers.
- */
-enum class EncryptionSchemaType { kRemote, kLocal };
 
 class EncryptionSchemaTreeNode;
 
@@ -137,6 +135,12 @@ public:
             return (regex.pattern() < other.regex.pattern());
         }
     };
+
+    /**
+     * Invokes either the JSON Schema or EncryptedFieldConfig parser depending on the values within
+     * 'params'.
+     */
+    static std::unique_ptr<EncryptionSchemaTreeNode> parse(const QueryAnalysisParams& params);
 
     /**
      * Converts a JSON schema, represented as BSON, into an encryption schema tree. Returns a

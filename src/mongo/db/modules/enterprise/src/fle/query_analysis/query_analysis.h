@@ -4,9 +4,9 @@
 
 #pragma once
 
-#include "encryption_schema_tree.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/exec/document_value/value.h"
+#include "mongo/db/matcher/expression.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/db/matcher/schema/encrypt_schema_types.h"
 #include "mongo/db/operation_context.h"
@@ -14,9 +14,16 @@
 #include "mongo/rpc/op_msg.h"
 #include "resolved_encryption_info.h"
 
-namespace mongo::cryptd_query_analysis {
+namespace mongo {
+
+class EncryptionSchemaTreeNode;
+
+namespace query_analysis {
+
 constexpr auto kJsonSchema = "jsonSchema"_sd;
 constexpr auto kIsRemoteSchema = "isRemoteSchema"_sd;
+
+constexpr auto kEncryptionInformation = "encryptionInformation"_sd;
 
 /**
  * Struct to hold information about placeholder results returned to client.
@@ -37,6 +44,37 @@ struct PlaceHolderResult {
     // Serialized command result after replacing fields with their appropriate intent-to-encrypt
     // marking.
     BSONObj result;
+};
+
+/**
+ * 'kRemote' represents the validation schema from mongod and 'kLocal' represents the schema
+ * generated using the drivers.
+ */
+enum class EncryptionSchemaType { kRemote, kLocal };
+
+struct QueryAnalysisParams {
+    QueryAnalysisParams(const BSONObj& jsonSchema,
+                        const EncryptionSchemaType schemaType,
+                        BSONObj strippedObj)
+        : schema(FLE1Params{jsonSchema, schemaType}), strippedObj(std::move(strippedObj)) {}
+
+    QueryAnalysisParams(const BSONObj& encryptionInfo, BSONObj strippedObj)
+        : schema(FLE2Params{encryptionInfo}), strippedObj(std::move(strippedObj)) {}
+
+    struct FLE1Params {
+        BSONObj jsonSchema;
+        EncryptionSchemaType schemaType;
+    };
+    struct FLE2Params {
+        BSONObj encryptedFieldsConfig;
+    };
+
+    stdx::variant<FLE1Params, FLE2Params> schema;
+
+    /**
+     * Command object without the encryption-related fields.
+     */
+    BSONObj strippedObj;
 };
 
 /**
@@ -180,4 +218,5 @@ BSONObj buildEncryptPlaceholder(
     const boost::optional<BSONObj>& origDoc = boost::none,
     boost::optional<const EncryptionSchemaTreeNode&> schema = boost::none);
 
-}  // namespace mongo::cryptd_query_analysis
+}  // namespace query_analysis
+}  // namespace mongo

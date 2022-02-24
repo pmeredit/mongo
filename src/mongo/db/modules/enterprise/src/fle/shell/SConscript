@@ -21,7 +21,7 @@ if get_option('js-engine') != 'none':
             '$BUILD_DIR/mongo/scripting/scripting',
             '$BUILD_DIR/mongo/shell/encrypted_dbclient',
             '$BUILD_DIR/third_party/shim_mozjs',
-            '../query_analysis/cryptd_query_analysis',
+            '../query_analysis/query_analysis',
         ],
         LIBDEPS_DEPENDENTS=[
             '$BUILD_DIR/mongo/shell/mongo_initializers'

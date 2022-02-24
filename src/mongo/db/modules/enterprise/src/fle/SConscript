@@ -66,7 +66,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/query/common_query_enums_and_helpers',
         '$BUILD_DIR/mongo/db/wire_version',
         '$BUILD_DIR/mongo/util/version_impl',
-        'query_analysis/cryptd_query_analysis',
+        'query_analysis/query_analysis',
     ],
 )
 

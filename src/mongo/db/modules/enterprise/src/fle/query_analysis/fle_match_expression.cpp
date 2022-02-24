@@ -15,7 +15,7 @@
 namespace mongo {
 
 using MatchType = MatchExpression::MatchType;
-using EncryptionPlaceholderContext = cryptd_query_analysis::EncryptionPlaceholderContext;
+using EncryptionPlaceholderContext = query_analysis::EncryptionPlaceholderContext;
 
 FLEMatchExpression::FLEMatchExpression(std::unique_ptr<MatchExpression> expression,
                                        const EncryptionSchemaTreeNode& schemaTree)

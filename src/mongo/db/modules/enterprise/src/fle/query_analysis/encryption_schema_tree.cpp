@@ -8,6 +8,7 @@
 
 #include "mongo/bson/bsontypes.h"
 #include "mongo/crypto/encryption_fields_gen.h"
+#include "mongo/crypto/fle_field_schema_gen.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/db/matcher/schema/json_schema_parser.h"
 #include "mongo/util/regex_util.h"
@@ -546,6 +547,20 @@ std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parse(
     // predecessors.
     std::list<EncryptionMetadata> metadataChain;
     return _parse(schema, kAllEncryptAllowed, true, metadataChain, schemaType);
+}
+
+std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parse(
+    const QueryAnalysisParams& params) {
+    return stdx::visit(
+        visit_helper::Overloaded{
+            [](const QueryAnalysisParams::FLE1Params& params) {
+                return parse(params.jsonSchema, params.schemaType);
+            },
+            [](const QueryAnalysisParams::FLE2Params& params) {
+                return parseEncryptedFieldConfig(params.encryptedFieldsConfig);
+            },
+        },
+        params.schema);
 }
 
 std::vector<EncryptionSchemaTreeNode*> EncryptionSchemaTreeNode::getChildrenForPathComponent(

@@ -17,7 +17,7 @@
 #include "mongo/unittest/unittest.h"
 #include "query_analysis.h"
 
-namespace mongo::cryptd_query_analysis {
+namespace mongo::query_analysis {
 namespace {
 static const uint8_t uuidBytes[] = {0, 0, 0, 0, 0, 0, 0x40, 0, 0x80, 0, 0, 0, 0, 0, 0, 0};
 static const BSONObj randomEncryptObj =
@@ -795,4 +795,4 @@ TEST(EncryptionUpdateVisitorTest, RenameWithNestedSourceEncryptFails) {
     ASSERT_THROWS_CODE(driver.visitRoot(&updateVisitor), AssertionException, 51160);
 }
 }  // namespace
-}  // namespace mongo::cryptd_query_analysis
+}  // namespace mongo::query_analysis

@@ -50,7 +50,7 @@ def debuggability_test():
             'mongo_csfle_v1_analyze_query',
             'mongo::analyzeQuery',
             'mongo::analyzeNonExplainQuery',
-            'mongo::cryptd_query_analysis::(anonymous namespace)::processQueryCommand',
+            'mongo::query_analysis::(anonymous namespace)::processQueryCommand',
         ]
     for func in breaks:
         print("Setting breakpoint and continuing to {} ...".format(func))

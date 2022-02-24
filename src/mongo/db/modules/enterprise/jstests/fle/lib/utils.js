@@ -69,10 +69,11 @@ function generateSchemaV1(fieldMap) {
         currentLevel[pathElements[pathElements.length - 1]] = {encrypt: spec};
     }
     jsonSchema["properties"] = properties;
-    return {jsonSchema: jsonSchema};
+    return {jsonSchema: jsonSchema, isRemoteSchema: false};
 }
 
 function generateSchemaV2(fieldMap, collName) {
+    assert(collName != undefined, "Missing required collection name for generateSchema()");
     let encryptionInformation = {type: 1, schema: {}};
     let fields = [];
     for (const [path, pathSpec] of Object.entries(fieldMap)) {

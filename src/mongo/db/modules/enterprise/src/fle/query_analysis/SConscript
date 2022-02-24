@@ -5,7 +5,7 @@ Import('env')
 env = env.Clone()
 
 env.Library(
-    target='cryptd_query_analysis',
+    target='query_analysis',
     source=[
         'aggregate_expression_intender.cpp',
         'collator_factory_cryptd.cpp',
@@ -19,6 +19,7 @@ env.Library(
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/crypto/encrypted_field_config',
+        '$BUILD_DIR/mongo/crypto/fle_crypto',
         '$BUILD_DIR/mongo/db/commands',
         '$BUILD_DIR/mongo/db/matcher/expressions',
         '$BUILD_DIR/mongo/db/ops/parsed_update_array_filters',
@@ -45,6 +46,6 @@ env.CppUnitTest(
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/query/query_test_service_context',
         '$BUILD_DIR/mongo/db/service_context_test_fixture',
-        'cryptd_query_analysis',
+        'query_analysis',
     ],
 )

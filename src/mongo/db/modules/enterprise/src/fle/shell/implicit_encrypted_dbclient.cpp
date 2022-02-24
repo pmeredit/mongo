@@ -165,7 +165,7 @@ public:
 
         auto obj = runQueryAnalysis(requestInner, schemaInfo, ns, explainedCommand);
 
-        auto placeholder = cryptd_query_analysis::parsePlaceholderResult(obj);
+        auto placeholder = query_analysis::parsePlaceholderResult(obj);
 
         {
             BSONObjBuilder explainBuilder;
@@ -174,7 +174,7 @@ public:
         }
 
         BSONObjBuilder builder;
-        cryptd_query_analysis::serializePlaceholderResult(placeholder, &builder);
+        query_analysis::serializePlaceholderResult(placeholder, &builder);
         return builder.obj();
     }
 
@@ -187,8 +187,8 @@ public:
         }
 
         BSONObjBuilder commandBuilder;
-        commandBuilder.append(cryptd_query_analysis::kJsonSchema, schemaInfo.schema);
-        commandBuilder.append(cryptd_query_analysis::kIsRemoteSchema, schemaInfo.remote);
+        commandBuilder.append(query_analysis::kJsonSchema, schemaInfo.schema);
+        commandBuilder.append(query_analysis::kIsRemoteSchema, schemaInfo.remote);
         commandBuilder.appendElementsUnique(request.body);
         BSONObj cmdObj = commandBuilder.obj();
         request.body = cmdObj;
@@ -198,26 +198,26 @@ public:
 
         BSONObjBuilder schemaInfoBuilder;
         if (commandName == "find"_sd) {
-            cryptd_query_analysis::processFindCommand(
+            query_analysis::processFindCommand(
                 opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder);
         } else if (commandName == "aggregate"_sd) {
-            cryptd_query_analysis::processAggregateCommand(
+            query_analysis::processAggregateCommand(
                 opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder);
         } else if (commandName == "findandmodify"_sd || commandName == "findAndModify"_sd) {
-            cryptd_query_analysis::processFindAndModifyCommand(
+            query_analysis::processFindAndModifyCommand(
                 opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder);
         } else if (commandName == "count"_sd) {
-            cryptd_query_analysis::processCountCommand(
+            query_analysis::processCountCommand(
                 opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder);
         } else if (commandName == "distinct"_sd) {
-            cryptd_query_analysis::processDistinctCommand(
+            query_analysis::processDistinctCommand(
                 opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder);
         } else if (commandName == "update"_sd) {
-            cryptd_query_analysis::processUpdateCommand(opCtx, request, &schemaInfoBuilder);
+            query_analysis::processUpdateCommand(opCtx, request, &schemaInfoBuilder);
         } else if (commandName == "insert"_sd) {
-            cryptd_query_analysis::processInsertCommand(opCtx, request, &schemaInfoBuilder);
+            query_analysis::processInsertCommand(opCtx, request, &schemaInfoBuilder);
         } else if (commandName == "delete"_sd) {
-            cryptd_query_analysis::processDeleteCommand(opCtx, request, &schemaInfoBuilder);
+            query_analysis::processDeleteCommand(opCtx, request, &schemaInfoBuilder);
         }
 
         return schemaInfoBuilder.obj();
