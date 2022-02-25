@@ -10,6 +10,8 @@
 #include "mongo/bson/bson_depth.h"
 #include "mongo/client/dbclient_base.h"
 #include "mongo/crypto/aead_encryption.h"
+#include "mongo/crypto/fle_crypto.h"
+#include "mongo/crypto/fle_key_vault_shell.h"
 #include "mongo/crypto/symmetric_crypto.h"
 #include "mongo/db/client.h"
 #include "mongo/db/commands.h"
@@ -46,6 +48,10 @@ class ImplicitEncryptedDBClientBase final : public EncryptedDBClientBase {
         Date_t ts;    // Used to mark when the schema was stored in this struct.
         bool remote;  // True if the schema is from the server. Else false.
         enum class SchemaType { none, jsonSchema, encryptedFields } _schemaType;
+
+        bool isFLE2() {
+            return _schemaType == SchemaType::encryptedFields;
+        }
     };
 
 public:
@@ -60,7 +66,8 @@ public:
         if (_encryptionOptions.getBypassAutoEncryption().value_or(false)) {
             auto databaseName = request.getDatabase().toString();
             auto result = _conn->runCommandWithTarget(request).first;
-            return processResponse(std::move(result), databaseName);
+            return processResponseFLE1(processResponseFLE2(std::move(result), databaseName).first,
+                                       databaseName);
         }
         return handleEncryptionRequest(std::move(request));
     }
@@ -253,7 +260,9 @@ public:
         // getMore has nothing to encrypt in the request but the response may have to be decrypted.
         if (commandName == "getMore"_sd) {
             auto result = _conn->runCommandWithTarget(request).first;
-            return processResponse(std::move(result), databaseName);
+
+            return processResponseFLE1(processResponseFLE2(std::move(result), databaseName).first,
+                                       databaseName);
         }
 
         NamespaceString ns;
@@ -273,7 +282,10 @@ public:
         if (schemaInfoObject.schema.isEmpty()) {
             // Always attempt to decrypt - could have encrypted data
             auto result = _conn->runCommandWithTarget(request).first;
-            return processResponse(std::move(result), databaseName);
+            if (schemaInfoObject.isFLE2()) {
+                return processResponseFLE2(std::move(result), databaseName);
+            }
+            return processResponseFLE1(std::move(result), databaseName);
         }
 
         BSONObj schemaInfo = runQueryAnalysis(request, schemaInfoObject, ns, commandName);
@@ -293,7 +305,10 @@ public:
         OpMsgRequest finalReq(OpMsg{std::move(finalRequestObj), {}});
         auto result = _conn->runCommandWithTarget(finalReq).first;
 
-        return processResponse(std::move(result), databaseName);
+        if (schemaInfoObject.isFLE2()) {
+            return processResponseFLE2(std::move(result), databaseName);
+        }
+        return processResponseFLE1(std::move(result), databaseName);
     }
 
     BSONObj preprocessRequest(const BSONObj& schemaInfo, const StringData& databaseName) {
@@ -302,7 +317,10 @@ public:
                 "Query preprocessing of command yielded error. Result object not found.",
                 field.isABSONObj());
 
-        return encryptDecryptCommand(field.Obj(), true, databaseName);
+        auto obj = encryptDecryptCommand(field.Obj(), true, databaseName);
+
+        FLEKeyVaultShellImpl vault(_encryptionOptions, getCollectionNS(), _conn.get());
+        return FLEClientCrypto::generateInsertOrUpdateFromPlaceholders(obj, &vault);
     }
 
     void encryptMarking(const BSONObj& obj, BSONObjBuilder* builder, StringData elemName) override {
