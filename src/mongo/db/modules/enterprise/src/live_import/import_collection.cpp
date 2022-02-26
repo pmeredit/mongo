@@ -12,6 +12,7 @@
 #include "live_import/import_collection_coordinator.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/audit.h"
+#include "mongo/db/catalog/collection_catalog.h"
 #include "mongo/db/catalog/database_holder.h"
 #include "mongo/db/catalog/uncommitted_collections.h"
 #include "mongo/db/concurrency/d_concurrency.h"
@@ -28,7 +29,6 @@
 #include "mongo/db/storage/recovery_unit.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_global_options.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_record_store.h"
-#include "mongo/db/views/view_catalog.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/fail_point.h"
 
@@ -210,7 +210,7 @@ void importCollection(OperationContext* opCtx,
 
         uassert(ErrorCodes::NamespaceExists,
                 str::stream() << "A view already exists. NS: " << nss,
-                !ViewCatalog::get(opCtx)->lookup(opCtx, nss));
+                !catalog->lookupView(opCtx, nss));
 
         WriteUnitOfWork wunit(opCtx);
 
