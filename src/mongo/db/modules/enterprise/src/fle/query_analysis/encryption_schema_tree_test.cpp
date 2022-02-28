@@ -9,6 +9,7 @@
 #include "fle_test_fixture.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/json.h"
+#include "mongo/crypto/fle_field_schema_gen.h"
 #include "mongo/db/bson/bson_helper.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/unittest/death_test.h"
