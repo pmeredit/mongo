@@ -38,7 +38,8 @@ const smoke = runMongoProgram("mongo",
 assert.eq(smoke, 0, "Could not auth with smoke user");
 
 // Try the auth function
-assert(external.auth({mechanism: 'MONGODB-AWS'}));
+const newConn = new Mongo(conn.host);
+assert(newConn.getDB('$external').auth({mechanism: 'MONGODB-AWS'}));
 
 MongoRunner.stopMongod(conn);
 }());

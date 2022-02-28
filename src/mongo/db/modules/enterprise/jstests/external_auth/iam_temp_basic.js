@@ -45,7 +45,7 @@ const smoke = runMongoProgram("mongo",
                               "1");
 assert.eq(smoke, 0, "Could not auth with smoke user");
 
-assert(external.auth({
+assert((new Mongo(conn.host)).getDB('$external').auth({
     user: aws_common.users.tempUser.id,
     pwd: aws_common.users.tempUser.secretKey,
     awsIamSessionToken: aws_common.users.tempUser.sessionToken,
