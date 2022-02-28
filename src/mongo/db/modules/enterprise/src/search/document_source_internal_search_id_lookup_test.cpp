@@ -61,8 +61,7 @@ TEST_F(InternalSearchIdLookupTest, ShouldSkipResultsWhenIdNotFound) {
     auto spec = specObj.firstElement();
 
     // Set up the idLookup stage.
-    auto idLookupStages = DocumentSourceInternalSearchIdLookUp::createFromBson(spec, expCtx);
-    auto idLookupStage = idLookupStages.front();
+    auto idLookupStage = DocumentSourceInternalSearchIdLookUp::createFromBson(spec, expCtx);
 
     // Mock its input.
     auto mockLocalSource =
@@ -99,8 +98,7 @@ TEST_F(InternalSearchIdLookupTest, ShouldNotRemoveMetadata) {
     auto specObj = BSON("$_internalSearchIdLookup" << BSONObj());
     auto spec = specObj.firstElement();
 
-    auto idLookupStages = DocumentSourceInternalSearchIdLookUp::createFromBson(spec, expCtx);
-    auto idLookupStage = idLookupStages.front();
+    auto idLookupStage = DocumentSourceInternalSearchIdLookUp::createFromBson(spec, expCtx);
     idLookupStage->setSource(&mockLocalSource);
 
     // Set up a project stage that asks for metadata.
@@ -145,12 +143,10 @@ TEST_F(InternalSearchIdLookupTest, ShouldParseFromSerialized) {
 
     // On mongod we should be able to re-parse it.
     expCtx->inMongos = false;
-    auto idLookupStages =
+    auto idLookupStageMongod =
         DocumentSourceInternalSearchIdLookUp::createFromBson(spec.firstElement(), expCtx);
-
-    // Mongod will add the shard filter here. See other tests for more specific coverage for
-    // that behavior.
-    ASSERT_EQ(idLookupStages.size(), 2u);
+    ASSERT_EQ(DocumentSourceInternalSearchIdLookUp::kStageName,
+              idLookupStageMongod->getSourceName());
 }
 
 TEST_F(InternalSearchIdLookupTest, ShouldFailParsingWhenSpecNotEmptyObject) {
@@ -198,8 +194,7 @@ TEST_F(InternalSearchIdLookupTest, ShouldAllowStringOrObjectIdValues) {
     auto spec = specObj.firstElement();
 
     // Set up the idLookup stage.
-    auto idLookupStages = DocumentSourceInternalSearchIdLookUp::createFromBson(spec, expCtx);
-    auto idLookupStage = idLookupStages.front();
+    auto idLookupStage = DocumentSourceInternalSearchIdLookUp::createFromBson(spec, expCtx);
 
     // Mock its input.
     auto mockLocalSource = DocumentSourceMock::createForTest(
@@ -237,8 +232,7 @@ TEST_F(InternalSearchIdLookupTest, ShouldNotErrorOnEmptyResult) {
     auto spec = specObj.firstElement();
 
     // Set up the idLookup stage.
-    auto idLookupStages = DocumentSourceInternalSearchIdLookUp::createFromBson(spec, expCtx);
-    auto idLookupStage = idLookupStages.front();
+    auto idLookupStage = DocumentSourceInternalSearchIdLookUp::createFromBson(spec, expCtx);
 
     // Mock its input.
     auto mockLocalSource = DocumentSourceMock::createForTest({}, expCtx);
@@ -250,36 +244,6 @@ TEST_F(InternalSearchIdLookupTest, ShouldNotErrorOnEmptyResult) {
 
     ASSERT_TRUE(idLookupStage->getNext().isEOF());
     ASSERT_TRUE(idLookupStage->getNext().isEOF());
-}
-
-TEST_F(InternalSearchIdLookupTest, IncludesShardFilterOnMongod) {
-    auto expCtx = getExpCtx();
-    expCtx->uuid = UUID::gen();
-    expCtx->inMongos = false;
-    auto specObj = BSON("$_internalSearchIdLookup" << BSONObj());
-    auto spec = specObj.firstElement();
-
-    // Parsing the _id lookup stage should resolve to an _id lookup stage followed by a shard
-    // filter.
-    auto idLookupStages = DocumentSourceInternalSearchIdLookUp::createFromBson(spec, expCtx);
-    ASSERT_EQ(idLookupStages.size(), 2u);
-    ASSERT(dynamic_cast<DocumentSourceInternalShardFilter*>(idLookupStages.back().get()) !=
-           nullptr);
-}
-
-TEST_F(InternalSearchIdLookupTest, NoShardFilterOnMongos) {
-    auto expCtx = getExpCtx();
-    expCtx->uuid = UUID::gen();
-    expCtx->inMongos = true;
-    auto specObj = BSON("$_internalSearchIdLookup" << BSONObj());
-    auto spec = specObj.firstElement();
-
-    expCtx->mongoProcessInterface =
-        std::make_unique<MockMongoInterface>(std::deque<DocumentSource::GetNextResult>());
-
-    // We should be able to parse this stage on mongos, though no shard filter will be added.
-    auto idLookupStages = DocumentSourceInternalSearchIdLookUp::createFromBson(spec, expCtx);
-    ASSERT_EQ(idLookupStages.size(), 1u);
 }
 
 }  // namespace

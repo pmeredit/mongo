@@ -5,6 +5,7 @@
 #pragma once
 
 #include "mongo/db/pipeline/expression_context.h"
+#include "mongo/db/pipeline/search_helper.h"
 #include "mongo/executor/task_executor_cursor.h"
 
 namespace mongo::mongot_cursor {
@@ -27,4 +28,13 @@ BSONObj getExplainResponse(const boost::intrusive_ptr<ExpressionContext>& expCtx
                            const BSONObj& query,
                            executor::TaskExecutor* taskExecutor);
 
+/**
+ * A class that contains methods that are implemented as stubs in community that need to be
+ * overridden.
+ */
+class SearchImplementedHelperFunctions : public SearchDefaultHelperFunctions {
+public:
+    void assertSearchMetaAccessValid(const Pipeline::SourceContainer& pipeline) override final;
+    void injectSearchShardFiltererIfNeeded(Pipeline* pipeline) override final;
+};
 }  // namespace mongo::mongot_cursor

@@ -61,8 +61,8 @@ public:
                                      DiskUseRequirement::kNoDiskUse,
                                      FacetRequirement::kNotAllowed,
                                      TransactionRequirement::kNotAllowed,
-                                     LookupRequirement::kNotAllowed,
-                                     UnionRequirement::kNotAllowed,
+                                     LookupRequirement::kAllowed,
+                                     UnionRequirement::kAllowed,
                                      ChangeStreamRequirement::kDenylist);
         constraints.requiresInputDocSource = false;
 
@@ -107,4 +107,12 @@ private:
     boost::optional<CursorId> _cursorId{boost::none};
 };
 
+namespace search_meta {
+/**
+ * This function walks the pipeline and verifies that if there is a $search stage in a sub-pipeline
+ * that there is no $$SEARCH_META access.
+ */
+void assertSearchMetaAccessValid(const Pipeline::SourceContainer& pipeline);
+
+}  // namespace search_meta
 }  // namespace mongo

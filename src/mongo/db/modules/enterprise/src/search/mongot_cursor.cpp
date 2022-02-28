@@ -4,9 +4,15 @@
 
 #include "mongot_cursor.h"
 
+#include "document_source_internal_search_id_lookup.h"
+#include "document_source_internal_search_mongot_remote.h"
+#include "mongo/db/pipeline/document_source_documents.h"
+#include "mongo/db/pipeline/document_source_internal_shard_filter.h"
+#include "mongo/db/pipeline/search_helper.h"
 #include "mongo/executor/remote_command_request.h"
 #include "mongo/executor/task_executor_cursor.h"
 #include "mongo/rpc/get_status_from_command_result.h"
+#include "mongo/s/query/document_source_merge_cursors.h"
 #include "mongo/transport/transport_layer.h"
 #include "mongo/util/net/hostandport.h"
 #include "mongot_options.h"
@@ -97,6 +103,112 @@ std::vector<executor::TaskExecutorCursor> establishCursors(
     }
 
     return cursors;
+}
+
+namespace {
+// The following stages are required to run search queries but do not support dep tracking. If we
+// encounter one in a pipeline, ignore NOT_SUPPORTED.
+std::set<StringData> skipDepTrackingStages{DocumentSourceInternalSearchMongotRemote::kStageName,
+                                           DocumentSourceInternalSearchIdLookUp::kStageName,
+                                           DocumentSourceDocuments::kStageName,
+                                           DocumentSourceMergeCursors::kStageName};
+std::pair<bool, bool> assertSearchMetaAccessValidHelper(const Pipeline::SourceContainer& pipeline) {
+    // Whether there is a $$SEARCH_META in the pipeline.
+    bool searchMetaAccessed = false;
+    // Whether or not $$SEARCH_META is set in various locations.
+    bool searchMetaSet = false;
+    bool searchMetaSetInSubPipeline = false;
+
+    // If we see a stage that doesn't support dependency tracking, there's no way to tell if we'd
+    // be doing something incorrectly.
+    bool depTrackingSupported = true;
+
+    for (const auto& source : pipeline) {
+        DepsTracker dep;
+        // Check if this is a stage that sets $$SEARCH_META.
+        auto stageName = StringData(source->getSourceName());
+        if (stageName == DocumentSourceInternalSearchMongotRemote::kStageName) {
+            searchMetaSet = true;
+        }
+
+        // If this stage has a sub-pipeline, check those stages as well.
+        auto subPipeline = source->getSubPipeline();
+        if (subPipeline && subPipeline->size() != 0) {
+            auto [subMetaSet, subMetaAccessed] = assertSearchMetaAccessValidHelper(*subPipeline);
+            searchMetaAccessed = searchMetaAccessed || subMetaAccessed;
+            if (subMetaSet) {
+                searchMetaSetInSubPipeline = true;
+                searchMetaSet = true;
+            }
+        }
+
+        // Check if this stage references $$SEARCH_META. If a stage does not support dep tracking,
+        // fail as soon as we hit something search related.
+        if (DepsTracker::State::NOT_SUPPORTED == source->getDependencies(&dep) &&
+            skipDepTrackingStages.find(stageName) == skipDepTrackingStages.end()) {
+            depTrackingSupported = false;
+        } else if (dep.hasVariableReferenceTo({Variables::kSearchMetaId})) {
+            searchMetaAccessed = true;
+        }
+
+        uassert(6080011,
+                "Could not determine whether $$SEARCH_META would be accessed in a not-allowed "
+                "context",
+                depTrackingSupported || (!searchMetaAccessed && !searchMetaSet));
+
+        uassert(6080010,
+                "$$SEARCH_META is not available if there is a search stage in a sub-pipeline in "
+                "the same query",
+                !searchMetaAccessed || !searchMetaSetInSubPipeline);
+    }
+
+    return {searchMetaSet, searchMetaAccessed};
+}
+
+void injectSearchShardFilteredIfNeeded(Pipeline* pipeline) {
+    auto& sources = pipeline->getSources();
+    auto internalSearchLookupIt = sources.begin();
+    // Bail early if the pipeline is not $search stage
+    if (internalSearchLookupIt == sources.end() ||
+        mongo::DocumentSourceInternalSearchMongotRemote::kStageName !=
+            (*internalSearchLookupIt)->getSourceName()) {
+        return;
+    }
+
+    while (internalSearchLookupIt != sources.end()) {
+        if (DocumentSourceInternalSearchIdLookUp::kStageName ==
+            (*internalSearchLookupIt)->getSourceName()) {
+            break;
+        }
+        internalSearchLookupIt++;
+    }
+
+    if (internalSearchLookupIt != sources.end()) {
+        auto expCtx = pipeline->getContext();
+        if (auto shardFilterer = expCtx->mongoProcessInterface->getShardFilterer(expCtx)) {
+            auto doc = new DocumentSourceInternalShardFilter(expCtx, std::move(shardFilterer));
+            internalSearchLookupIt++;
+            sources.insert(internalSearchLookupIt, doc);
+            Pipeline::stitch(&sources);
+        }
+    }
+}
+
+ServiceContext::ConstructorActionRegisterer searchQueryImplementation{
+    "searchQueryImplementation", {"searchQueryHelperRegisterer"}, [](ServiceContext* context) {
+        invariant(context);
+        getSearchHelpers(context) = std::make_unique<SearchImplementedHelperFunctions>();
+    }};
+}  // namespace
+
+void SearchImplementedHelperFunctions::assertSearchMetaAccessValid(
+    const Pipeline::SourceContainer& pipeline) {
+    assertSearchMetaAccessValidHelper(pipeline);
+}
+
+void mongo::mongot_cursor::SearchImplementedHelperFunctions::injectSearchShardFiltererIfNeeded(
+    Pipeline* pipeline) {
+    injectSearchShardFilteredIfNeeded(pipeline);
 }
 
 }  // namespace mongo::mongot_cursor

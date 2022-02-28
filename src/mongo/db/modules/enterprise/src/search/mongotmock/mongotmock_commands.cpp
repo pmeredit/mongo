@@ -25,7 +25,8 @@ void checkUserCommandMatchesExpectedCommand(BSONObj userCmd, BSONObj expectedCmd
     for (auto&& elem : expectedCmd) {
         uassert(31086,
                 str::stream() << "Expected command matching " << expectedCmd << " but got "
-                              << userCmd,
+                              << userCmd << " field " << userCmd[elem.fieldNameStringData()]
+                              << " != " << elem,
                 SimpleBSONElementComparator::kInstance.evaluate(
                     userCmd[elem.fieldNameStringData()] == elem));
     }

@@ -22,21 +22,14 @@ DocumentSourceInternalSearchIdLookUp::DocumentSourceInternalSearchIdLookUp(
     const intrusive_ptr<ExpressionContext>& pExpCtx)
     : DocumentSource(kStageName, pExpCtx) {}
 
-std::list<intrusive_ptr<DocumentSource>> DocumentSourceInternalSearchIdLookUp::createFromBson(
+intrusive_ptr<DocumentSource> DocumentSourceInternalSearchIdLookUp::createFromBson(
     BSONElement elem, const intrusive_ptr<ExpressionContext>& pExpCtx) {
     uassert(31016,
             str::stream() << "$_internalSearchIdLookup value must be an empty object. Found: "
                           << typeName(elem.type()),
             elem.type() == BSONType::Object && elem.embeddedObject().isEmpty());
 
-    std::list<boost::intrusive_ptr<DocumentSource>> list = {
-        new DocumentSourceInternalSearchIdLookUp(pExpCtx)};
-
-    if (auto shardFilterer = pExpCtx->mongoProcessInterface->getShardFilterer(pExpCtx)) {
-        list.push_back(new DocumentSourceInternalShardFilter(pExpCtx, std::move(shardFilterer)));
-    }
-
-    return list;
+    return new DocumentSourceInternalSearchIdLookUp(pExpCtx);
 }
 
 Value DocumentSourceInternalSearchIdLookUp::serialize(

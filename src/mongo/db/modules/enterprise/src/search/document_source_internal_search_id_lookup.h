@@ -28,7 +28,7 @@ public:
     /**
      * Creates an $_internalSearchIdLookup stage. "elem" must be an empty object.
      */
-    static std::list<boost::intrusive_ptr<DocumentSource>> createFromBson(
+    static boost::intrusive_ptr<DocumentSource> createFromBson(
         BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& pExpCtx);
 
     DocumentSourceInternalSearchIdLookUp(const boost::intrusive_ptr<ExpressionContext>& pExpCtx);
@@ -42,8 +42,8 @@ public:
                                      DiskUseRequirement::kNoDiskUse,
                                      FacetRequirement::kNotAllowed,
                                      TransactionRequirement::kNotAllowed,
-                                     LookupRequirement::kNotAllowed,
-                                     UnionRequirement::kNotAllowed,
+                                     LookupRequirement::kAllowed,
+                                     UnionRequirement::kAllowed,
                                      ChangeStreamRequirement::kDenylist);
 
         return constraints;
