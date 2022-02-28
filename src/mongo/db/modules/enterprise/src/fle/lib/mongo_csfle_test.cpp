@@ -83,6 +83,8 @@ void replace_str(std::string& str, mongo::StringData search, mongo::StringData r
 
 #if defined(CSFLE_UNITTEST_DYNAMIC)
 
+uint64_t (*mongo_csfle_v1_get_version)(void);
+const char* (*mongo_csfle_v1_get_version_str)(void);
 mongo_csfle_v1_status* (*mongo_csfle_v1_status_create)(void);
 void (*mongo_csfle_v1_status_destroy)(mongo_csfle_v1_status*);
 int (*mongo_csfle_v1_status_get_error)(const mongo_csfle_v1_status*);
@@ -111,6 +113,8 @@ void (*mongo_csfle_v1_bson_free)(uint8_t*);
     } while (0)
 
 static void mongo_csfle_v1_api_load(std::unique_ptr<mongo::SharedLibrary>& shLibHandle) {
+    LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_get_version);
+    LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_get_version_str);
     LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_status_create);
     LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_status_destroy);
     LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_status_get_error);
@@ -273,6 +277,14 @@ protected:
     mongo_csfle_v1_status* status = nullptr;
     mongo_csfle_v1_lib* lib = nullptr;
 };
+
+TEST_F(CsfleTest, GetVersionReturnsReasonableValues) {
+    uint64_t version = mongo_csfle_v1_get_version();
+    const char* versionStr = mongo_csfle_v1_get_version_str();
+    std::cerr << "CSFLE Version: " << versionStr << ", " << std::hex << version << std::endl;
+    ASSERT(version >= 0x05030000);
+    ASSERT(versionStr);
+}
 
 TEST_F(CsfleTest, InitializationIsSuccessful) {
     ASSERT_EQ(MONGO_CSFLE_V1_SUCCESS, mongo_csfle_v1_status_get_error(status));

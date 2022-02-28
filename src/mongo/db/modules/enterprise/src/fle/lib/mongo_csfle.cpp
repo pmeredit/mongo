@@ -25,6 +25,7 @@
 #include "mongo/rpc/op_msg_rpc_impls.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/version.h"
+#include "mongo/util/version_constants.h"
 
 #include <algorithm>
 #include <memory>
@@ -218,6 +219,20 @@ BSONObj analyzeQuery(const BSONObj document, OperationContext* opCtx, const Name
     return analyzeNonExplainQuery(document, opCtx, ns);
 }
 
+uint64_t getCsfleVersion() {
+    return (version::kMajorVersion << 24) | (version::kMinorVersion << 16) |
+        (version::kPatchVersion << 8);
+}
+
+#ifndef MONGO_DISTMOD
+#define MONGO_DISTMOD "dev"
+#endif
+
+const char* getCsfleVersionStr() {
+    static const auto version = "mongo_csfle_v1-" MONGO_DISTMOD "-" + version::kVersion;
+    return version.c_str();
+}
+
 }  // namespace mongo
 
 struct mongo_csfle_v1_status {
@@ -375,6 +390,14 @@ auto fromInterfaceType(const uint8_t* bson) noexcept {
 }  // namespace mongo
 
 extern "C" {
+
+uint64_t MONGO_API_CALL mongo_csfle_v1_get_version(void) {
+    return mongo::getCsfleVersion();
+}
+
+const char* MONGO_API_CALL mongo_csfle_v1_get_version_str(void) {
+    return mongo::getCsfleVersionStr();
+}
 
 mongo_csfle_v1_lib* MONGO_API_CALL mongo_csfle_v1_lib_create(mongo_csfle_v1_status* status) {
     return enterCXX(mongo::getStatusImpl(status), [&]() { return mongo::csfle_lib_init(); });
