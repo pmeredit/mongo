@@ -598,6 +598,7 @@ PlaceHolderResult addPlaceHoldersForFindAndModify(
 
 PlaceHolderResult addPlaceHoldersForInsert(OperationContext* opCtx,
                                            const OpMsgRequest& request,
+                                           const QueryAnalysisParams& params,
                                            std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     auto batch = InsertOp::parse(request);
     auto docs = batch.getDocuments();
@@ -624,6 +625,7 @@ PlaceHolderResult addPlaceHoldersForInsert(OperationContext* opCtx,
 
 PlaceHolderResult addPlaceHoldersForUpdate(OperationContext* opCtx,
                                            const OpMsgRequest& request,
+                                           const QueryAnalysisParams& params,
                                            std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     auto updateDBName = request.getDatabase();
     auto updateOp = UpdateOp::parse(request);
@@ -674,6 +676,7 @@ PlaceHolderResult addPlaceHoldersForUpdate(OperationContext* opCtx,
 
 PlaceHolderResult addPlaceHoldersForDelete(OperationContext* opCtx,
                                            const OpMsgRequest& request,
+                                           const QueryAnalysisParams& params,
                                            std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     invariant(schemaTree);
     PlaceHolderResult placeHolderResult{};
@@ -683,6 +686,12 @@ PlaceHolderResult addPlaceHoldersForDelete(OperationContext* opCtx,
         write_ops::DeleteCommandRequest::parse(IDLParserErrorContext("delete"), request);
     std::vector<write_ops::DeleteOpEntry> markedDeletes;
     for (auto&& op : deleteRequest.getDeletes()) {
+        // TODO SERVER-63657: update this message.
+        uassert(6382800,
+                "Multi-document deletes are not allowed with FLE 2 encryption",
+                !(op.getMulti() &&
+                  stdx::holds_alternative<QueryAnalysisParams::FLE2Params>(params.schema)));
+
         markedDeletes.push_back(op);
         auto& opToMark = markedDeletes.back();
         auto collator = parseCollator(opCtx, op.getCollation());
@@ -713,6 +722,7 @@ OpMsgRequest makeHybrid(const OpMsgRequest& request, BSONObj body) {
 using WriteOpProcessFunction =
     PlaceHolderResult(OperationContext* opCtx,
                       const OpMsgRequest& request,
+                      const QueryAnalysisParams& params,
                       std::unique_ptr<EncryptionSchemaTreeNode> schemaTree);
 
 void processWriteOpCommand(OperationContext* opCtx,
@@ -725,7 +735,7 @@ void processWriteOpCommand(OperationContext* opCtx,
     // Parse the JSON Schema to an encryption schema tree.
     auto schemaTree = EncryptionSchemaTreeNode::parse(cryptdParams);
 
-    PlaceHolderResult placeholder = func(opCtx, newRequest, std::move(schemaTree));
+    PlaceHolderResult placeholder = func(opCtx, newRequest, cryptdParams, std::move(schemaTree));
 
     serializePlaceholderResult(placeholder, builder);
 }

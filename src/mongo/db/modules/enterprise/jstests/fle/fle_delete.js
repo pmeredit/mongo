@@ -1,8 +1,5 @@
 /**
  * Test that mongocryptd can correctly mark the delete command with intent-to-encrypt placeholders.
- *
- * TODO SERVER-63828: Enable for FLE 2
- * @tags: [unsupported_fle_2]
  */
 (function() {
 "use strict";
@@ -61,14 +58,13 @@ let deleteCmd = {
     delete: coll.getName(),
     deletes: [
         {q: {foo: NumberLong(1), baz: 3}, limit: 1},
-        {q: {foo: NumberLong(1), bar: NumberLong(1)}, limit: 0},
+        {q: {foo: NumberLong(1), bar: NumberLong(1)}, limit: 1},
     ],
-    isRemoteSchema: false
 };
 
 checkEncryptionMarking(deleteCmd, schema, [
     {limit: 1, and: [{path: "foo", encrypted: true}, {path: "baz", encrypted: false, eq: 3}]},
-    {limit: 0, and: [{path: "foo", encrypted: true}, {path: "bar", encrypted: true}]}
+    {limit: 1, and: [{path: "foo", encrypted: true}, {path: "bar", encrypted: true}]}
 ]);
 
 // Negative test to make sure that 'hasEncryptionPlaceholders' is set to false when no fields
@@ -77,20 +73,37 @@ deleteCmd = {
     delete: coll.getName(),
     deletes: [
         {q: {w: 1, x: {$in: [1, 2]}}, limit: 1},
-        {q: {y: 1, z: {foo: 1}}, limit: 0},
+        {q: {y: 1, z: {foo: 1}}, limit: 1},
     ],
-    isRemoteSchema: false
 };
 Object.assign(deleteCmd, schema);
 
 let cmdRes = assert.commandWorked(testDb.runCommand(deleteCmd));
 assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
 
+// Show that multi-document deletes are allowed under FLE 1 and disallowed under FLE 2.
+deleteCmd.deletes = [{q: {foo: NumberLong(1), bar: NumberLong(1)}, limit: 0}];
+if (fle2Enabled()) {
+    assert.commandFailedWithCode(testDb.runCommand(deleteCmd), 6382800);
+} else {
+    cmdRes = assert.commandWorked(testDb.runCommand(deleteCmd));
+    assert(cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(0, cmdRes.result.deletes[0].limit, cmdRes);
+}
+
+deleteCmd.deletes = [{q: {y: 1, z: {foo: 1}}, limit: 0}];
+if (fle2Enabled()) {
+    assert.commandFailedWithCode(testDb.runCommand(deleteCmd), 6382800);
+} else {
+    cmdRes = assert.commandWorked(testDb.runCommand(deleteCmd));
+    assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(0, cmdRes.result.deletes[0].limit, cmdRes);
+}
+
 // Test a delete with an empty 'deletes' array.
 deleteCmd = {
     delete: coll.getName(),
     deletes: [],
-    isRemoteSchema: false
 };
 Object.assign(deleteCmd, schema);
 
@@ -132,24 +145,18 @@ checkEncryptionMarking(deleteCmd, schema, [
     {limit: 0, and: [{path: "x", encrypted: false, eq: 1}, {path: "foobar", encrypted: true}]}
 ]);
 
-// Test that a delete query on a field encrypted with the randomized algorithm fails.
-const randomSchema = generateSchema({
-    foo: {
-        encrypt: {
-            algorithm: kRandomAlgo,
-            keyId: [UUID()],
-        }
-    }
-},
-                                    coll.getFullName());
+// Test that a delete query on a field encrypted with the randomized algorithm (FLE 1) or unindexed
+// encryption (FLE 2) fails.
+const randomSchema =
+    generateSchema({foo: {encrypt: {algorithm: kRandomAlgo, keyId: [UUID()], bsonType: "string"}}},
+                   coll.getFullName());
 deleteCmd = {
     delete: coll.getName(),
     deletes: [{q: {foo: 1}, limit: 1}],
-    isRemoteSchema: false
 };
 Object.assign(deleteCmd, randomSchema);
 
-assert.commandFailedWithCode(testDb.runCommand(deleteCmd), 51158);
+assert.commandFailedWithCode(testDb.runCommand(deleteCmd), [63165, 51158]);
 
 mongocryptd.stop();
 }());
