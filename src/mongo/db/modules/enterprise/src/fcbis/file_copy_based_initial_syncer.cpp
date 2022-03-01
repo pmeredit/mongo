@@ -14,6 +14,7 @@
 #include "mongo/db/cursor_server_params.h"
 #include "mongo/db/dbdirectclient.h"
 #include "mongo/db/dbhelpers.h"
+#include "mongo/db/index_builds_coordinator.h"
 #include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/db/repl/initial_syncer_common_stats.h"
 #include "mongo/db/repl/initial_syncer_factory.h"
@@ -1346,6 +1347,10 @@ void FileCopyBasedInitialSyncer::_replicationStartupRecovery() {
     // To make wiredTiger take a stable checkpoint at shutdown.
     _storage->setStableTimestamp(opCtx.get()->getServiceContext(),
                                  _syncingFilesState.lastSyncedOpTime);
+
+    // Index builds may have been started and not completed during oplog application.  Stop
+    // those index builds now; they will be resumed during final recovery.
+    IndexBuildsCoordinator::get(opCtx.get())->stopIndexBuildsForRollback(opCtx.get());
 }
 
 ExecutorFuture<void> FileCopyBasedInitialSyncer::_prepareStorageDirectoriesForMovingPhase() {
@@ -1368,7 +1373,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_prepareStorageDirectoriesForMo
                     opCtx,
                     InitialSyncFileMover::kInitialSyncDir.toString() /* relativeToDbPath */,
                     startup_recovery::StartupRecoveryMode::
-                        kReplicaSetMemberInStandalone /* startupRecoveryMode */);
+                        kReplicaSetMember /* startupRecoveryMode */);
 
                 // Fix the local collections in '.initialsync' directory before moving it.
                 uassertStatusOK(_cleanUpLocalCollectionsAfterSync(opCtx, config));
