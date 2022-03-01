@@ -139,7 +139,7 @@ public:
     }
 
     void setLastSyncedOpTime_forTest(const mongo::Timestamp ts) {
-        _syncingFilesState.lastSyncedOpTime = ts;
+        _syncingFilesState.lastSyncedStableTimestamp = ts;
     }
 
     /**
@@ -399,6 +399,11 @@ private:
     void _updateLastAppliedOptime();
 
     /**
+     * Gets the OpTime and wall time of the last entry in the oplog.
+     */
+    OpTimeAndWallTime _getTopOfOplogOpTimeAndWallTime(OperationContext* opCtx);
+
+    /**
      * Updates storage timestamps after initialSync finished using '_lastApplied'.
      */
     void _updateStorageTimestampsAfterInitialSync(const StatusWith<OpTimeAndWallTime>& lastApplied);
@@ -499,8 +504,9 @@ private:
         CancellationSource backupCursorKeepAliveCancellation;  // (X)
         boost::optional<ExecutorFuture<void>> backupCursorKeepAliveFuture;
 
-        // The last timestamp that the syncing node has caught up to.
-        mongo::Timestamp lastSyncedOpTime;  // (X)
+        // The last timestamp that the syncing node has caught up to which is known to be in the
+        // stable checkpoint on the sync source.
+        mongo::Timestamp lastSyncedStableTimestamp;  // (X)
         // The last appliedOp timestamp that the syncing node knows about the sync source node.
         mongo::Timestamp lastAppliedOpTimeOnSyncSrc;
         // Holds the file metadata returned by the backupCursor.

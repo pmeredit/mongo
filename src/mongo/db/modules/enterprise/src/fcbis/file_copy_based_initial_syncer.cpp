@@ -208,9 +208,15 @@ void FileCopyBasedInitialSyncer::_updateLastAppliedOptime() {
 
     stdx::lock_guard<Latch> lock(_mutex);
     auto opCtx = cc().makeOperationContext();
+    _lastApplied = _getTopOfOplogOpTimeAndWallTime(opCtx.get());
+    invariant(_lastApplied.opTime.getTimestamp() >= _syncingFilesState.lastSyncedStableTimestamp);
+}
+
+OpTimeAndWallTime FileCopyBasedInitialSyncer::_getTopOfOplogOpTimeAndWallTime(
+    OperationContext* opCtx) {
     BSONObj oplogEntryBSON;
-    invariant(Helpers::getLast(
-        opCtx.get(), NamespaceString::kRsOplogNamespace.ns().c_str(), oplogEntryBSON));
+    invariant(
+        Helpers::getLast(opCtx, NamespaceString::kRsOplogNamespace.ns().c_str(), oplogEntryBSON));
 
     auto optimeAndWallTime =
         OpTimeAndWallTime::parseOpTimeAndWallTimeFromOplogEntry(oplogEntryBSON);
@@ -218,8 +224,7 @@ void FileCopyBasedInitialSyncer::_updateLastAppliedOptime() {
               str::stream() << "Found an invalid oplog entry: " << oplogEntryBSON
                             << ", error: " << optimeAndWallTime.getStatus());
 
-    _lastApplied = optimeAndWallTime.getValue();
-    invariant(_lastApplied.opTime.getTimestamp() == _syncingFilesState.lastSyncedOpTime);
+    return optimeAndWallTime.getValue();
 }
 
 ExecutorFuture<OpTimeAndWallTime> FileCopyBasedInitialSyncer::_startInitialSyncAttempt(
@@ -600,8 +605,6 @@ Status FileCopyBasedInitialSyncer::_cleanUpLocalCollectionsAfterSync(
     _replicationProcess->getConsistencyMarkers()->setMinValid(
         opCtx, repl::OpTime(Timestamp(0, 1), -1), true);
 
-    _replicationProcess->getConsistencyMarkers()->setOplogTruncateAfterPoint(
-        opCtx, _syncingFilesState.lastSyncedOpTime);
     // We need to first clear the 'initialSyncId' that was copied from the sync source, and then
     // generate a new one for the syncing node.
     _replicationProcess->getConsistencyMarkers()->clearInitialSyncId(opCtx);
@@ -642,7 +645,7 @@ void FileCopyBasedInitialSyncer::SyncingFilesState::reset() {
     backupId = boost::none;
     backupCursorId = 0;
     backupCursorCollection = {};
-    lastSyncedOpTime = {};
+    lastSyncedStableTimestamp = {};
     extendedCursorFiles.clear();
     fileBasedInitialSyncCycle = 1;
     currentBackupFileCloner.reset();
@@ -798,7 +801,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_openBackupCursor(
                     _getBSONField(doc, "metadata", "backupCursor's first batch").Obj();
                 _syncingFilesState.backupId = UUID(uassertStatusOK(UUID::parse(
                     _getBSONField(metaData, "backupId", "backupCursor's first batch.metadata"))));
-                _syncingFilesState.lastSyncedOpTime =
+                _syncingFilesState.lastSyncedStableTimestamp =
                     _getBSONField(
                         metaData, "checkpointTimestamp", "backupCursor's first batch.metadata")
                         .timestamp();
@@ -806,15 +809,15 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_openBackupCursor(
                     _getBSONField(metaData, "dbpath", "remote dbpath").str();
                 _syncingFilesState.backupCursorId = data.cursorId;
                 _syncingFilesState.backupCursorCollection = data.nss.coll().toString();
-                LOGV2_DEBUG(5782308,
-                            2,
-                            "Opened backup cursor on sync source.",
-                            "SyncSrc"_attr = _syncSource,
-                            "backupId"_attr = _syncingFilesState.backupId.get(),
-                            "lastSyncedOpTime"_attr = _syncingFilesState.lastSyncedOpTime,
-                            "backupCursorId"_attr = _syncingFilesState.backupCursorId,
-                            "backupCursorCollection"_attr =
-                                _syncingFilesState.backupCursorCollection);
+                LOGV2_DEBUG(
+                    5782308,
+                    2,
+                    "Opened backup cursor on sync source.",
+                    "SyncSrc"_attr = _syncSource,
+                    "backupId"_attr = _syncingFilesState.backupId.get(),
+                    "lastSyncedStableTimestamp"_attr = _syncingFilesState.lastSyncedStableTimestamp,
+                    "backupCursorId"_attr = _syncingFilesState.backupCursorId,
+                    "backupCursorCollection"_attr = _syncingFilesState.backupCursorCollection);
             } else {
                 // Ensure filename field exists.
                 _getBSONField(doc, "filename", "backupCursor's batches");
@@ -1017,7 +1020,8 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFromSyncSourceCursor() {
     return _extendBackupCursorWithRetry(returnedFiles)
         .then([this, self = shared_from_this(), returnedFiles] {
             stdx::lock_guard<Latch> lock(_mutex);
-            _syncingFilesState.lastSyncedOpTime = _syncingFilesState.lastAppliedOpTimeOnSyncSrc;
+            _syncingFilesState.lastSyncedStableTimestamp =
+                _syncingFilesState.lastAppliedOpTimeOnSyncSrc;
             return _hangAsyncIfFailPointEnabled("fCBISHangAfterExtendingBackupCursor",
                                                 _syncingFilesState.executor,
                                                 _syncingFilesState.token);
@@ -1090,7 +1094,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startSyncingFiles(
 
             auto lagInSecs =
                 static_cast<int>(_syncingFilesState.lastAppliedOpTimeOnSyncSrc.getSecs() -
-                                 _syncingFilesState.lastSyncedOpTime.getSecs());
+                                 _syncingFilesState.lastSyncedStableTimestamp.getSecs());
             if (lagInSecs > fileBasedInitialSyncMaxLagSec ||
                 MONGO_unlikely(fCBISForceExtendBackupCursor.shouldFail())) {
                 if (++_syncingFilesState.fileBasedInitialSyncCycle <=
@@ -1341,16 +1345,27 @@ void FileCopyBasedInitialSyncer::_replicationStartupRecovery() {
     ON_BLOCK_EXIT([serviceContext = opCtx->getServiceContext()] {
         inReplicationRecovery(serviceContext) = false;
     });
+
+    // The oplogTruncateAfterPoint is a logged table, so it will be correct whether we have done
+    // only an initial backup, or extensions.  We will apply all oplog entries up to the
+    // oplogTruncateAfterPoint, and put them in a stable checkpoint.  This may result in our stable
+    // optime being ahead of the commit point of the system, but that is OK because we will
+    // eventually set our initialDataTimestamp to the end of the oplog, which will prevent us from
+    // attempting to move the stable optime backwards.
     _replicationProcess->getReplicationRecovery()->recoverFromOplogAsStandalone(
         opCtx.get(), true /* duringInitialSync */);
-
-    // To make wiredTiger take a stable checkpoint at shutdown.
-    _storage->setStableTimestamp(opCtx.get()->getServiceContext(),
-                                 _syncingFilesState.lastSyncedOpTime);
 
     // Index builds may have been started and not completed during oplog application.  Stop
     // those index builds now; they will be resumed during final recovery.
     IndexBuildsCoordinator::get(opCtx.get())->stopIndexBuildsForRollback(opCtx.get());
+
+    // We may not have an oplog if we're not using real storage.
+    if (MONGO_unlikely(fCBISSkipSwitchingStorage.shouldFail()))
+        return;
+
+    // To make wiredTiger take a stable checkpoint at shutdown.
+    auto lastApplied = _getTopOfOplogOpTimeAndWallTime(opCtx.get()).opTime;
+    _storage->setStableTimestamp(opCtx.get()->getServiceContext(), lastApplied.getTimestamp());
 }
 
 ExecutorFuture<void> FileCopyBasedInitialSyncer::_prepareStorageDirectoriesForMovingPhase() {
@@ -1700,7 +1715,7 @@ BSONObj FileCopyBasedInitialSyncer::_getInitialSyncProgress(WithLock) const {
 
     // Last OpTime phase to be available in the previous backup cursor phase
     // (not present if in the initial backup phase)
-    auto& previousOplogEnd = _syncingFilesState.lastSyncedOpTime;
+    auto& previousOplogEnd = _syncingFilesState.lastSyncedStableTimestamp;
     if (!previousOplogEnd.isNull()) {
         bob.append("previousOplogEnd", previousOplogEnd);
     }

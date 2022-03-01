@@ -1888,7 +1888,7 @@ TEST_F(FileCopyBasedInitialSyncerTest, CleanUpLocalCollectionsAfterSync) {
     ASSERT_EQ(minValidAfter, OpTime(Timestamp(0, 1), -1));
     auto oplogTruncateAfterPointAfter =
         _replicationProcess->getConsistencyMarkers()->getOplogTruncateAfterPoint(opCtx.get());
-    ASSERT_EQ(oplogTruncateAfterPointAfter, Timestamp(1, 1));
+    ASSERT_EQ(oplogTruncateAfterPointAfter, oplogTruncateAfterPointBefore);
     auto initialSyncIdAfter =
         _replicationProcess->getConsistencyMarkers()->getInitialSyncId(opCtx.get());
 
