@@ -41,7 +41,7 @@ const rst = new ReplSetTest({
         }
     ],
     // Frequent checkpoints.
-    nodeOptions: {syncdelay: 5}
+    nodeOptions: {syncdelay: 5, setParameter: {logLevel: 0}}
 });
 
 rst.startSet();
@@ -177,16 +177,16 @@ for (let iteration = 1; iteration <= kNumIterations; iteration++) {
     }
 
     // Restore the full backup.
-    const fullBackupConn =
-        MongoRunner.runMongod({dbpath: fullBackupPath, noCleanData: true, restore: ""});
+    const fullBackupConn = MongoRunner.runMongod(
+        {dbpath: fullBackupPath, noCleanData: true, restore: "", setParameter: {logLevel: 0}});
     assert(fullBackupConn);
 
     // Clear the RamLog to avoid reading the log from the restore above.
     clearRawMongoProgramOutput();
 
     // Restore the selective backup.
-    const selectiveBackupConn =
-        MongoRunner.runMongod({dbpath: selectiveBackupPath, noCleanData: true, restore: ""});
+    const selectiveBackupConn = MongoRunner.runMongod(
+        {dbpath: selectiveBackupPath, noCleanData: true, restore: "", setParameter: {logLevel: 0}});
     assert(selectiveBackupConn);
 
     // Files known to the storage engine but not the durable catalog at the recovery timestamp will
