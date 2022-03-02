@@ -177,7 +177,7 @@ for (let iteration = 1; iteration <= kNumIterations; iteration++) {
     }
 
     // Restore the full backup.
-    const fullBackupConn = MongoRunner.runMongod(
+    let fullBackupConn = MongoRunner.runMongod(
         {dbpath: fullBackupPath, noCleanData: true, restore: "", setParameter: {logLevel: 0}});
     assert(fullBackupConn);
 
@@ -185,7 +185,7 @@ for (let iteration = 1; iteration <= kNumIterations; iteration++) {
     clearRawMongoProgramOutput();
 
     // Restore the selective backup.
-    const selectiveBackupConn = MongoRunner.runMongod(
+    let selectiveBackupConn = MongoRunner.runMongod(
         {dbpath: selectiveBackupPath, noCleanData: true, restore: "", setParameter: {logLevel: 0}});
     assert(selectiveBackupConn);
 
@@ -221,8 +221,8 @@ for (let iteration = 1; iteration <= kNumIterations; iteration++) {
 
     assert.eq(0, orphanedFiles.length, orphanedFiles);
 
-    const selectiveAdminDb = selectiveBackupConn.getDB("admin");
-    const dbList = selectiveAdminDb.runCommand({listDatabases: 1, nameOnly: true}).databases;
+    let selectiveAdminDb = selectiveBackupConn.getDB("admin");
+    let dbList = selectiveAdminDb.runCommand({listDatabases: 1, nameOnly: true}).databases;
 
     dbList.forEach(function(dbInfo) {
         const dbName = dbInfo.name;
@@ -285,7 +285,49 @@ for (let iteration = 1; iteration <= kNumIterations; iteration++) {
     assert.eq(
         numCollectionsSkipped, Object.keys(optionalFilesSkipped).length, optionalFilesSkipped);
 
-    // TODO SERVER-63787: test point-in-time restore functionality.
+    jsTestLog("Testing point-in-time restore functionality");
+    fullBackupConn = MongoRunner.runMongod({
+        dbpath: fullBackupPath,
+        noCleanData: true,
+        restore: "",
+        setParameter: {recoverFromOplogAsStandalone: true, takeUnstableCheckpointOnShutdown: true}
+    });
+    assert(fullBackupConn);
+
+    selectiveBackupConn = MongoRunner.runMongod({
+        dbpath: selectiveBackupPath,
+        noCleanData: true,
+        restore: "",
+        setParameter: {recoverFromOplogAsStandalone: true, takeUnstableCheckpointOnShutdown: true}
+    });
+    assert(selectiveBackupConn);
+
+    // Compare dbHash's now that the oplog was replayed.
+    selectiveAdminDb = selectiveBackupConn.getDB("admin");
+    dbList = selectiveAdminDb.runCommand({listDatabases: 1, nameOnly: true}).databases;
+    dbList.forEach(function(dbInfo) {
+        const dbName = dbInfo.name;
+        const fullDbHash =
+            assert.commandWorked(fullBackupConn.getDB(dbName).runCommand({dbHash: 1}));
+        const selectiveDbHash =
+            assert.commandWorked(selectiveBackupConn.getDB(dbName).runCommand({dbHash: 1}));
+
+        for (const collection of Object.keys(selectiveDbHash.collections)) {
+            if (collection == "system.views") {
+                // Skip comparing dbHash on 'system.views' collections as views for collections not
+                // restored are removed.
+                continue;
+            }
+
+            const selectiveCollHash = selectiveDbHash.collections[collection];
+            const fullCollHash = fullDbHash.collections[collection];
+
+            assert.eq(selectiveCollHash, fullCollHash);
+        }
+    });
+
+    MongoRunner.stopMongod(fullBackupConn);
+    MongoRunner.stopMongod(selectiveBackupConn);
 }
 
 stopFSMClient(fsmPid);
