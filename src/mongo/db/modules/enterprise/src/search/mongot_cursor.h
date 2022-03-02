@@ -36,5 +36,12 @@ class SearchImplementedHelperFunctions : public SearchDefaultHelperFunctions {
 public:
     void assertSearchMetaAccessValid(const Pipeline::SourceContainer& pipeline) override final;
     void injectSearchShardFiltererIfNeeded(Pipeline* pipeline) override final;
+    std::unique_ptr<Pipeline, PipelineDeleter> generateMetadataPipelineForSearch(
+        OperationContext* opCtx,
+        boost::intrusive_ptr<ExpressionContext> expCtx,
+        const AggregateCommandRequest& request,
+        Pipeline* origPipeline,
+        boost::optional<UUID> uuid) override final;
 };
+
 }  // namespace mongo::mongot_cursor

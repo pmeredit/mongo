@@ -78,6 +78,45 @@ public:
     Value serialize(
         boost::optional<ExplainOptions::Verbosity> explain = boost::none) const override;
 
+    BSONObj getSearchQuery() {
+        return _searchQuery.getOwned();
+    }
+
+    auto getTaskExecutor() {
+        return _taskExecutor;
+    }
+
+    void setCursor(executor::TaskExecutorCursor cursor) {
+        _cursor.emplace(std::move(cursor));
+        _dispatchedQuery = true;
+    }
+
+    /**
+     * If a cursor establishment phase was run and returned no documents, make sure we don't later
+     * repeat the query to mongot.
+     */
+    void markCollectionEmpty() {
+        _dispatchedQuery = true;
+    }
+
+    /**
+     * Create a copy of this document source that can be given a different cursor from the original.
+     * Copies everything necessary to make a mongot remote query, but does not copy the cursor.
+     */
+    boost::intrusive_ptr<DocumentSourceInternalSearchMongotRemote> copyForAlternateSource(
+        executor::TaskExecutorCursor cursor) {
+        auto newStage =
+            new DocumentSourceInternalSearchMongotRemote(_searchQuery, pExpCtx, _taskExecutor);
+        newStage->setCursor(std::move(cursor));
+        return newStage;
+    }
+
+    /**
+     * Method to expose the status of the 'searchReturnsEoFImmediately' failpoint to the code
+     * that sets up this document source.
+     */
+    static bool skipSearchStageRemoteSetup();
+
 private:
     DocumentSourceInternalSearchMongotRemote(const BSONObj& query,
                                              const boost::intrusive_ptr<ExpressionContext>& expCtx,
@@ -100,6 +139,12 @@ private:
     executor::TaskExecutor* _taskExecutor;
 
     boost::optional<executor::TaskExecutorCursor> _cursor;
+
+    /**
+     * Track whether either the stage or an earlier caller issues a mongot remote request. This
+     * can be true even if '_cursor' is boost::none, which can happen if no documents are returned.
+     */
+    bool _dispatchedQuery = false;
 
     // Store the cursorId. We need to store it on the document source because the id on the
     // TaskExecutorCursor will be set to zero after the final getMore after the cursor is

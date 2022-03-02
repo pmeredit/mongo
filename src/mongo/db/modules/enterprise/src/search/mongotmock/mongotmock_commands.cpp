@@ -99,6 +99,25 @@ private:
 
         checkUserCommandMatchesExpectedCommand(cmdObj, cmdResponsePair.expectedCommand);
 
+        // If this command returns multiple cursors, we need to claim a state for each one.
+        // Note that this only uses one response even though it prepares two cursor states.
+        if (cmdResponsePair.response.hasField("cursors")) {
+            BSONElement cursorsArrayElem = cmdResponsePair.response.getField("cursors");
+            uassert(6253508,
+                    "Cursors field in response must be an array",
+                    cursorsArrayElem.type() == BSONType::Array);
+            auto cursorsArray = cursorsArrayElem.Array();
+            uassert(
+                6253509, "Cursors field must have exactly two cursors", cursorsArray.size() == 2);
+            auto secondState = stateGuard->claimAvailableState();
+            uassert(
+                6253510,
+                str::stream() << "Could not return mulitple cursor states as there are no "
+                                 "remaining unclaimed mock cursor states. Attempted response was "
+                              << cmdResponsePair.response,
+                secondState);
+        }
+
         // Return the queued response.
         result->appendElements(cmdResponsePair.response);
 

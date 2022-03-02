@@ -54,9 +54,17 @@ class ShardingTestWithMongotMock {
         let mongotMocksIdx = 0;
         for (let i = 0; i < this._nShards; ++i) {
             for (let j = 0; j < this._shardingTestOptions.shards["rs" + i].nodes; ++j) {
+                // Restarting a shard with new options overrides the old options. Add in any options
+                // previously specified.
+                let newParams = {};
+                if (this._shardingTestOptions.hasOwnProperty("other") &&
+                    this._shardingTestOptions.other.hasOwnProperty("shardOptions") &&
+                    this._shardingTestOptions.other.shardOptions.hasOwnProperty("setParameter")) {
+                    newParams = this._shardingTestOptions.other.shardOptions.setParameter;
+                }
+                newParams.mongotHost = this._mongotMocks[mongotMocksIdx++].getConnection().host;
                 this.st["rs" + i].restart(j, {
-                    setParameter:
-                        {mongotHost: this._mongotMocks[mongotMocksIdx++].getConnection().host}
+                    setParameter: newParams,
                 });
             }
 

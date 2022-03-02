@@ -6,9 +6,12 @@
 
 #include "document_source_internal_search_id_lookup.h"
 #include "document_source_internal_search_mongot_remote.h"
+#include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/db/pipeline/document_source_documents.h"
 #include "mongo/db/pipeline/document_source_internal_shard_filter.h"
+#include "mongo/db/pipeline/pipeline.h"
 #include "mongo/db/pipeline/search_helper.h"
+#include "mongo/db/s/collection_sharding_state.h"
 #include "mongo/executor/remote_command_request.h"
 #include "mongo/executor/task_executor_cursor.h"
 #include "mongo/rpc/get_status_from_command_result.h"
@@ -21,6 +24,9 @@
 namespace mongo::mongot_cursor {
 
 namespace {
+const std::string kMetadataCursorType = "meta";
+const std::string kResultCursorType = "results";
+
 BSONObj commandObject(const boost::intrusive_ptr<ExpressionContext>& expCtx, const BSONObj& query) {
     BSONObjBuilder builder;
     builder.append("search", expCtx->ns.coll());
@@ -52,6 +58,107 @@ executor::RemoteCommandRequest getRemoteCommandRequest(
 }
 
 }  // namespace
+/**
+ * Creates an additional pipeline to be run during a query if the query needs to generate metadata.
+ * Does not take ownership of the passed in pipeline, and returns a pipeline containing only a
+ * metadata generating $search stage. Can return null if no metadata pipeline is required.
+ */
+std::unique_ptr<Pipeline, PipelineDeleter>
+SearchImplementedHelperFunctions::generateMetadataPipelineForSearch(
+    OperationContext* opCtx,
+    boost::intrusive_ptr<ExpressionContext> expCtx,
+    const AggregateCommandRequest& request,
+    Pipeline* origPipeline,
+    boost::optional<UUID> uuid) {
+    if (expCtx->explain) {
+        // $search doesn't return documents or metadata from explain regardless of the verbosity.
+        return nullptr;
+    }
+    // We only want to return multiple cursors if this request originated from mongoS, and not from
+    // a user. If the collection isn't sharded there won't be any need to merge the metadata.
+    auto needMetadataPipeline = request.getFromMongos() && expCtx->needsMerge &&
+        ::mongo::feature_flags::gFeatureFlagSearchShardedFacets.isEnabledAndIgnoreFCV();
+
+    // If there's no pipeline, we have no work to do.
+    if (!origPipeline || origPipeline->getSources().size() == 0) {
+        return nullptr;
+    }
+
+    // Set up all the necessary checks for later. If any of the following checks are false we
+    // won't need a metadata pipeline but we still need to setup the original search stage (if
+    // present). $search is required to be the first stage of the pipeline.
+    auto potentialSearchStage = origPipeline->getSources().front();
+    if (potentialSearchStage->getSourceName() !=
+        DocumentSourceInternalSearchMongotRemote::kStageName) {
+        return nullptr;
+    }
+
+    uassert(
+        6253506, "Cannot have exchange specified in a $search pipeline", !request.getExchange());
+
+
+    auto origSearchStage =
+        dynamic_cast<DocumentSourceInternalSearchMongotRemote*>(potentialSearchStage.get());
+
+    // Some tests build $search pipelines without actually setting up a mongot. In this case either
+    // return a dummy stage or nothing depending on the environment. Note that in this case we don't
+    // actually make any queries, the document source will return eof immediately.
+    if (MONGO_unlikely(DocumentSourceInternalSearchMongotRemote::skipSearchStageRemoteSetup())) {
+        if (needMetadataPipeline) {
+            boost::intrusive_ptr<DocumentSource> newStage = origSearchStage->clone();
+            return Pipeline::create({newStage}, expCtx);
+        }
+        return nullptr;
+    }
+
+    // The search stage has not yet established its cursor on mongoT. Establish the cursor for it.
+    auto cursors = mongot_cursor::establishCursors(
+        expCtx, origSearchStage->getSearchQuery(), origSearchStage->getTaskExecutor());
+
+    // mongot can return zero cursors for an empty collection, one without metadata, or two for
+    // results and metadata.
+    tassert(6253500, "Expected less than or exactly two cursors from mongot", cursors.size() <= 2);
+
+    if (cursors.size() == 0) {
+        origSearchStage->markCollectionEmpty();
+    }
+
+    std::unique_ptr<Pipeline, PipelineDeleter> newPipeline = nullptr;
+    for (auto it = cursors.begin(); it != cursors.end(); it++) {
+        auto cursorLabel = it->getType();
+        if (!cursorLabel) {
+            // If a cursor is unlabeled mongot does not support metadata cursors. $$SEARCH_META
+            // should not be supported in this query.
+            tassert(6253301,
+                    "Expected cursors to be labeled if there are more than one",
+                    cursors.size() == 1);
+            origSearchStage->setCursor(std::move(cursors.front()));
+            return nullptr;
+        }
+        auto cursorType = cursorLabel.get();
+        if (cursorType == kResultCursorType) {
+            origSearchStage->setCursor(std::move(*it));
+            origPipeline->pipelineType = CursorTypeEnum::DocumentResult;
+        } else if (cursorType == kMetadataCursorType) {
+            // If this request is not from mongos, is not sharded, or the feature flag is not
+            // enabled mongos should not have added the "intermediate" flag to the mongot query, and
+            // we therefore should not have seen a metadata cursor.
+            // Ignore FCV for the feature flag as this feature is available on earlier versions.
+            tassert(6253303, "Didn't expect metadata cursor from mongot", needMetadataPipeline);
+            // Clone the MongotRemote stage and set the metadata cursor.
+            auto newStage = origSearchStage->copyForAlternateSource(std::move(*it));
+
+            // Build a new pipeline with the metadata source as the only stage.
+            newPipeline = Pipeline::create({newStage}, expCtx);
+            newPipeline->pipelineType = CursorTypeEnum::SearchMetaResult;
+        } else {
+            tasserted(6253302, str::stream() << "Unexpected cursor type '" << cursorType << "'");
+        }
+    }
+
+    // Can return null if we did not build a metadata pipeline.
+    return newPipeline;
+}
 
 BSONObj getExplainResponse(const boost::intrusive_ptr<ExpressionContext>& expCtx,
                            const BSONObj& query,
@@ -79,6 +186,7 @@ BSONObj getExplainResponse(const boost::intrusive_ptr<ExpressionContext>& expCtx
             explain.type() == BSONType::Object);
     return explain.embeddedObject().getOwned();
 }
+
 std::vector<executor::TaskExecutorCursor> establishCursors(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const BSONObj& query,
@@ -88,14 +196,15 @@ std::vector<executor::TaskExecutorCursor> establishCursors(
     if (!expCtx->uuid) {
         return {};
     }
-    // If this is an explain query, getExplainResponse() should have been called instead. No cursor
-    // is necessary for explain.
-    tassert(6253300,
-            "Expected to have query, not explain, to establish mongot cursors",
-            !expCtx->explain);
 
     std::vector<executor::TaskExecutorCursor> cursors;
     cursors.emplace_back(taskExecutor, getRemoteCommandRequest(expCtx, query));
+    // Wait for the cursors to actually be populated. Wait on the callback handle of the original
+    // cursor.
+    if (auto callback = cursors[0].getCallbackHandle()) {
+        taskExecutor->wait(callback.get(), expCtx->opCtx);
+        cursors[0].populateCursor(expCtx->opCtx);
+    }
     auto additionalCursors = cursors[0].releaseAdditionalCursors();
     // Preserve cursor order. Expect cursors to be labeled, so this may not be necessary.
     for (auto& thisCursor : additionalCursors) {

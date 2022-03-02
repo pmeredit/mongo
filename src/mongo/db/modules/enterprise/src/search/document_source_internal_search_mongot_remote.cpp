@@ -75,8 +75,14 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchMongotRemote::doGetNex
         return DocumentSource::GetNextResult::makeEOF();
     }
 
-    if (!_cursor) {
+    // If the collection is sharded we should have a cursor already. Otherwise establish it now.
+    if (!_cursor && !_dispatchedQuery) {
+        tassert(6253505,
+                "Expected to have a cursor already in a sharded pipeline",
+                !pExpCtx->needsMerge ||
+                    !::mongo::feature_flags::gFeatureFlagSearchMeta.isEnabledAndIgnoreFCV());
         auto cursors = mongot_cursor::establishCursors(pExpCtx, _searchQuery, _taskExecutor);
+        _dispatchedQuery = true;
         tassert(5253301, "Expected exactly one cursor from mongot", cursors.size() == 1);
         _cursor.emplace(std::move(cursors[0]));
     }
@@ -127,5 +133,8 @@ intrusive_ptr<DocumentSource> DocumentSourceInternalSearchMongotRemote::createFr
         elem.embeddedObject(), expCtx, executor::getMongotTaskExecutor(serviceContext));
 }
 
+bool DocumentSourceInternalSearchMongotRemote::skipSearchStageRemoteSetup() {
+    return MONGO_unlikely(searchReturnEofImmediately.shouldFail());
+}
 
 }  // namespace mongo
