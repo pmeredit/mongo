@@ -32,7 +32,7 @@ function startPyKMIPServer(port) {
 // key, and returns its UID.
 function createPyKMIPKey(kmipServerPort) {
     clearRawMongoProgramOutput();
-    _startMongoProgram(
+    const pid = _startMongoProgram(
         "python", kmipPyPath + "kmip_manage_key.py", "--kmipPort", kmipServerPort, "create_key");
     let uid;
     assert.soon(() => {
@@ -50,6 +50,9 @@ function createPyKMIPKey(kmipServerPort) {
         uid = output.substring(baseidx, baseidx + uidlen);
         return true;
     });
+
+    waitProgram(pid);
+
     return uid;
 }
 
@@ -57,13 +60,13 @@ function createPyKMIPKey(kmipServerPort) {
 // is in the activated state.
 function isPyKMIPKeyActive(kmipServerPort, uid) {
     clearRawMongoProgramOutput();
-    _startMongoProgram("python",
-                       kmipPyPath + "kmip_manage_key.py",
-                       "--kmipPort",
-                       kmipServerPort,
-                       "get_state_attribute",
-                       "--uid",
-                       uid);
+    const pid = _startMongoProgram("python",
+                                   kmipPyPath + "kmip_manage_key.py",
+                                   "--kmipPort",
+                                   kmipServerPort,
+                                   "get_state_attribute",
+                                   "--uid",
+                                   uid);
     let isActive;
     assert.soon(() => {
         const output = rawMongoProgramOutput();
@@ -77,10 +80,14 @@ function isPyKMIPKeyActive(kmipServerPort, uid) {
         return false;
     });
 
+    waitProgram(pid);
+
     return (isActive == "True");
 }
 
 function deactivatePyKMIPKey(kmipServerPort, uid) {
+    clearRawMongoProgramOutput();
+
     let pid = _startMongoProgram("python",
                                  kmipPyPath + "kmip_manage_key.py",
                                  "--kmipPort",
@@ -90,9 +97,10 @@ function deactivatePyKMIPKey(kmipServerPort, uid) {
                                  uid);
 
     assert.soon(() => {
-        const status = checkProgram(pid);
-        return status.exitCode === 0;
+        return rawMongoProgramOutput().search("Successfully Deactivated KMIP Key") !== -1;
     });
+
+    waitProgram(pid);
 }
 
 function killPyKMIPServer(pid) {
