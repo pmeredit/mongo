@@ -14,6 +14,7 @@
 #include "mongo/util/regex_util.h"
 #include "mongo/util/string_map.h"
 
+#include <algorithm>
 #include <list>
 #include <set>
 
@@ -724,6 +725,47 @@ std::unique_ptr<EncryptionSchemaTreeNode>
 clonable_traits<EncryptionSchemaTreeNode>::clone_factory_type::operator()(
     const EncryptionSchemaTreeNode& input) const {
     return input.clone();
+}
+
+bool EncryptionSchemaTreeNode::isFle2LeafEquivalent(const EncryptionSchemaTreeNode& other) const {
+    // If either node is encrypted, the nodes must have the same metadata.
+    auto myMetadata = getEncryptionMetadata();
+    auto otherMetadata = other.getEncryptionMetadata();
+    if (myMetadata || otherMetadata) {
+        return myMetadata == otherMetadata;
+    }
+
+    // The nodes must have exactly the same number of children with encrypted subtrees. Note that
+    // we can assume _patternPropertiesChildren and _additionalPropertiesChild are empty since both
+    // nodes should be constructed from encryptionInformation.
+    auto numMaybeEncryptedSubtrees = [](const auto* node) {
+        return std::count_if(
+            node->_propertiesChildren.begin(),
+            node->_propertiesChildren.end(),
+            [](const auto& child) { return child.second->mayContainEncryptedNode(); });
+    };
+    if (numMaybeEncryptedSubtrees(this) != numMaybeEncryptedSubtrees(&other)) {
+        return false;
+    }
+
+    for (const auto& [path, child] : _propertiesChildren) {
+        // The nodes may have different non-encrytpted children.
+        if (!child->mayContainEncryptedNode()) {
+            continue;
+        }
+
+        // For a child of this node with an encrypted subtree, there must be a child of the other
+        // node with a matching path and encryption information.
+        auto otherChild = other.getNode(FieldRef{path});
+        if (!otherChild) {
+            return false;
+        }
+        if (!child->isFle2LeafEquivalent(*otherChild)) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 bool EncryptionSchemaTreeNode::operator==(const EncryptionSchemaTreeNode& other) const {

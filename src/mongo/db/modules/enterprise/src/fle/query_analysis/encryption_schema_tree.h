@@ -303,6 +303,15 @@ public:
         return !(*this == other);
     }
 
+    /**
+     * Returns whether this tree and 'other' are equivalent with respect to FLE 2 encryption. It
+     * considers equality of encrypted leaves only. That is, it ignores children specified by regex
+     * or 'additionalProperties', since none should exist for a tree built from
+     * 'encryptionInformation'. As with regular equality, comparing EncryptionSchemaStateMixedNodes
+     * for encrypted leaf equality will fail.
+     */
+    bool isFle2LeafEquivalent(const EncryptionSchemaTreeNode& other) const;
+
 private:
     static boost::optional<ResolvedEncryptionInfo> getEncryptionMetadataForNode(
         const EncryptionSchemaTreeNode* node) {

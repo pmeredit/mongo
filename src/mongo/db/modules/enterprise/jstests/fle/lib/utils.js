@@ -22,17 +22,17 @@ function fle2Enabled() {
  *          a.b.c: {queries: {queryType: "equality"}, keyId: UUID(), bsonType: "string"}},
  *          d.e.f: {keyId: UUID(), bsonType: "string"}
  *        }
- * @param {string} collName The name of the collection that the command is being run against.
+ * @param {string} namespace The namespace of the collection that the command is being run against.
  * @returns {Object} Returns an object that describes the encrypted fields, either in V1's format as
  *     a JSON Schema or V2's format with encryptionInformation.
  */
-function generateSchema(fieldMap, collName) {
+function generateSchema(fieldMap, namespace) {
     assert.eq(typeof fieldMap, 'object');
     if (!fle2Enabled()) {
         return generateSchemaV1(fieldMap);
     }
 
-    return generateSchemaV2(fieldMap, collName);
+    return generateSchemaV2(fieldMap, namespace);
 }
 
 function generateSchemaV1(fieldMap) {
@@ -72,8 +72,8 @@ function generateSchemaV1(fieldMap) {
     return {jsonSchema: jsonSchema, isRemoteSchema: false};
 }
 
-function generateSchemaV2(fieldMap, collName) {
-    assert(collName != undefined, "Missing required collection name for generateSchema()");
+function generateSchemaV2(fieldMap, namespace) {
+    assert(namespace != undefined, "Missing required namespace for generateSchema()");
     let encryptionInformation = {type: 1, schema: {}};
     let fields = [];
     for (const [path, pathSpec] of Object.entries(fieldMap)) {
@@ -106,6 +106,6 @@ function generateSchemaV2(fieldMap, collName) {
         fields.push(encryptedField);
     }
 
-    encryptionInformation["schema"][collName] = {fields: fields};
+    encryptionInformation["schema"][namespace] = {fields: fields};
     return {encryptionInformation: encryptionInformation};
 }

@@ -72,6 +72,12 @@ public:
         FieldRef sourcePath{host->getValue().fieldNameStringData()};
         auto sourceMetadata = _schemaTree.getEncryptionMetadataForPath(sourcePath);
         auto destinationMetadata = _schemaTree.getEncryptionMetadataForPath(_currentPath);
+
+        // TODO SERVER-63657: update this message.
+        uassert(6329901,
+                "$rename between encrypted fields is not permitted with FLE 2",
+                (!sourceMetadata || !sourceMetadata->isFle2Encrypted()) &&
+                    (!destinationMetadata || !destinationMetadata->isFle2Encrypted()));
         uassert(51160,
                 "$rename between two encrypted fields must have the same metadata or both be "
                 "unencrypted",
