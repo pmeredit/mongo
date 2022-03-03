@@ -1,5 +1,5 @@
 /**
- * Test that deterministic encryption is banned for the correct set of BSON types.
+ * Test the behavior of declaring queryable encrypted fields with various BSON types.
  */
 (function() {
 "use strict";
@@ -11,9 +11,9 @@ mongocryptd.start();
 
 const conn = mongocryptd.getConnection();
 const testDb = conn.getDB("test");
-const coll = testDb.illegal_types_for_deterministic;
+const coll = testDb[jsTestName()];
 
-const kLegalTypes = [
+const kLegalQueryableTypes = [
     "binData",
     "date",
     "dbPointer",
@@ -27,17 +27,16 @@ const kLegalTypes = [
     "timestamp",
 ];
 
-// Some types are illegal for deterministic (and random) encryption because the type itself is
+// Some types are illegal for encryption because the type itself is
 // the only meaningful value, and the type is not hidden by encryption.
 const kSingleTypeValuedErrCode = 31041;
 
-// Some types are illegal specifically for the deterministic encryption algorithm because
+// Some types are illegal specifically for the queryable encryption because
 // equality semantics of MQL cannot be preserved after encryption.
-const kProhibitedForDeterministicErrCode = 31122;
+const kProhibitedForDeterministicErrCode = fle2Enabled() ? 6316404 : 31122;
 
-const kIllegalTypes = [
+let kIllegalTypes = [
     {type: "array", code: kProhibitedForDeterministicErrCode},
-    {type: "bool", code: kProhibitedForDeterministicErrCode},
     {type: "decimal", code: kProhibitedForDeterministicErrCode},
     {type: "double", code: kProhibitedForDeterministicErrCode},
     {type: "javascriptWithScope", code: kProhibitedForDeterministicErrCode},
@@ -48,34 +47,38 @@ const kIllegalTypes = [
     {type: "undefined", code: kSingleTypeValuedErrCode},
 ];
 
+// In FLE 2, encrypting 'bool' is allowed regardless of whether it's queryable.
+if (!fle2Enabled()) {
+    kIllegalTypes.push({type: "bool", code: kProhibitedForDeterministicErrCode});
+}
+
 const schemaTemplate = {
-    type: "object",
-    properties: {foo: {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()]}}}
+    foo: {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()]}}
 };
 
 // Verify that the schema is considered legal for all supported types.
-for (const legalType of kLegalTypes) {
-    schemaTemplate.properties.foo.encrypt.bsonType = legalType;
-    assert.commandWorked(testDb.runCommand({
-        insert: coll.getName(),
-        documents: [{_id: 1}],
-        jsonSchema: schemaTemplate,
-        isRemoteSchema: false
-    }));
+for (const legalType of kLegalQueryableTypes) {
+    schemaTemplate.foo.encrypt.bsonType = legalType;
+    assert.commandWorked(
+        testDb.runCommand(Object.assign({
+            insert: coll.getName(),
+            documents: [{_id: 1}],
+        },
+                                        generateSchema(schemaTemplate, coll.getFullName()))));
 }
 
 // Verify that the schema is prohibited for all unsupported types, even though the insert
 // command does not actually attempt to insert an element with the illegal type inside the
-// deterministically encrypted field.
+// encrypted field.
 for (const illegalType of kIllegalTypes) {
-    schemaTemplate.properties.foo.encrypt.bsonType = illegalType.type;
-    assert.commandFailedWithCode(testDb.runCommand({
-        insert: coll.getName(),
-        documents: [{_id: 1}],
-        jsonSchema: schemaTemplate,
-        isRemoteSchema: false
-    }),
-                                 illegalType.code);
+    schemaTemplate.foo.encrypt.bsonType = illegalType.type;
+    assert.commandFailedWithCode(
+        testDb.runCommand(Object.assign({
+            insert: coll.getName(),
+            documents: [{_id: 1}],
+        },
+                                        generateSchema(schemaTemplate, coll.getFullName()))),
+        illegalType.code);
 }
 
 mongocryptd.stop();

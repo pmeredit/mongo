@@ -56,10 +56,11 @@ std::string typeSetToString(const MatcherTypeSet& typeSet) {
 }
 
 /**
- * Extracts and returns the 'QueryAnalysisParams' in the command 'obj'.
+ * Extracts and returns the 'QueryAnalysisParams' in the command 'obj' by parsing the 'jsonSchema'
+ * field (FLE 1) or 'encryptionInformation' field (FLE 2).
  *
- * Throws an AssertionException if the 'jsonSchema' or 'isRemoteSchema' fields are missing or not of
- * the correct type.
+ * Throws an AssertionException if a required parameter is missing or if conflicting parameters are
+ * given.
  */
 QueryAnalysisParams extractCryptdParameters(const BSONObj& obj) {
     boost::optional<BSONObj> jsonSchema;

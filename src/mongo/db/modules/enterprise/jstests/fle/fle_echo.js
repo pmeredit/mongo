@@ -1,5 +1,7 @@
-// Validate fle accepts commands with and without json schema for non-encrypted commands.
-//
+/**
+ * Validate that mongocryptd/mongocsfle correctly echoes passthrough fields that aren't needed for
+ * query analysis.
+ */
 (function() {
 'use strict';
 
@@ -13,21 +15,17 @@ mongocryptd.start();
 const conn = mongocryptd.getConnection();
 const testDB = conn.getDB("test");
 
-const basicJSONSchema = {
-    properties: {foo: {type: "string"}}
-};
-const basicEncryptSchema = {
-    type: "object",
-    properties: {
-        foo: {
-            encrypt: {
-                algorithm: kDeterministicAlgo,
-                keyId: [UUID("4edee966-03cc-4525-bfa8-de8acd6746fa")],
-                bsonType: "long"
-            }
+const unencryptedSchema = generateSchema({foo: {type: "string"}}, "test.foo");
+const fooEncryptedSchema = generateSchema({
+    foo: {
+        encrypt: {
+            algorithm: kDeterministicAlgo,
+            keyId: [UUID("4edee966-03cc-4525-bfa8-de8acd6746fa")],
+            bsonType: "long"
         }
     }
-};
+},
+                                          "test.foo");
 
 let cmds = [
     {cmdName: "find", cmd: {find: "foo", filter: {_id: 1}}},
@@ -59,7 +57,7 @@ cmds.forEach(element => {
     assert.commandFailed(testDB.runCommand(element.cmd));
 
     // NOTE: This mutates element so it now has jsonSchema
-    Object.extend(element.cmd, {jsonSchema: basicJSONSchema, isRemoteSchema: false});
+    Object.extend(element.cmd, unencryptedSchema);
 
     // Make sure json schema works
     const ret1 = assert.commandWorked(testDB.runCommand(element.cmd));
@@ -92,7 +90,7 @@ cmds.forEach(element => {
     };
 
     // Switch to the schema containing encrypted fields.
-    Object.assign(element.cmd, {jsonSchema: basicEncryptSchema});
+    Object.assign(element.cmd, fooEncryptedSchema);
 
     // Merge the passthrough fields with the current command object.
     Object.assign(element.cmd, passthroughFields);

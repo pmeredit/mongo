@@ -12,14 +12,12 @@ mongocryptd.start();
 const conn = mongocryptd.getConnection();
 const testDB = conn.getDB("test");
 
-const basicEncryptSchema = {
-    type: "object",
-    properties: {foo: {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "long"}}}
-};
+const basicEncryptSchema = generateSchema(
+    {foo: {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "long"}}},
+    "test.test");
 
 let cmds = [
     {find: "test", filter: {foo: NumberLong(1)}},
-    {distinct: "test", query: {foo: NumberLong(1)}, key: "foo"},
     {count: "test", query: {foo: NumberLong(1)}},
     {findAndModify: "test", query: {foo: NumberLong(1)}, update: {$inc: {score: 1.0}}},
     // old name
@@ -30,21 +28,22 @@ let cmds = [
     {delete: "test", deletes: [{q: {foo: NumberLong(1)}, limit: 1}]},
 ];
 
+// Distinct is only supported with FLE 1.
+if (!fle2Enabled()) {
+    cmds.push({distinct: "test", query: {foo: NumberLong(1)}, key: "foo"});
+}
+
 cmds.forEach(element => {
     // Make sure no json schema fails when explaining
     const explainBad = {explain: 1, explain: element};  // eslint-disable-line no-dupe-keys
     assert.commandFailed(testDB.runCommand(explainBad));
 
-    const explainCmd = {
-        explain: element,
-        jsonSchema: basicEncryptSchema,
-        isRemoteSchema: false,
-        verbosity: "executionStats"
-    };
+    const explainCmd =
+        Object.assign({explain: element, verbosity: "executionStats"}, basicEncryptSchema);
 
     const explainRes = assert.commandWorked(testDB.runCommand(explainCmd));
 
-    Object.extend(element, {jsonSchema: basicEncryptSchema, isRemoteSchema: false});
+    Object.extend(element, basicEncryptSchema);
     const normalRes = assert.commandWorked(testDB.runCommand(element));
     // Added by the shell.
     delete normalRes["result"]["lsid"];
@@ -54,12 +53,11 @@ cmds.forEach(element => {
     assert.eq(explainRes["result"]["verbosity"], "executionStats");
 
     // Test that an explain with the schema in the explained object fails.
-    const misplacedSchema = {
+    const misplacedSchema = Object.assign({
         explain: element,
-        jsonSchema: basicEncryptSchema,
-        isRemoteSchema: false
-    };
-    assert.commandFailedWithCode(testDB.runCommand(misplacedSchema), 30050);
+    },
+                                          basicEncryptSchema);
+    assert.commandFailedWithCode(testDB.runCommand(misplacedSchema), [30050, 6365900]);
 });
 
 mongocryptd.stop();

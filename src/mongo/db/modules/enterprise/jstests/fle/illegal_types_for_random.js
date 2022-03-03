@@ -1,5 +1,8 @@
 /**
  * Test that random encryption is banned for the correct set of BSON types.
+ *
+ * TODO SERVER-64127 Enable this test
+ * @tags: [unsupported_fle_2]
  */
 (function() {
 "use strict";
@@ -14,17 +17,14 @@ const conn = mongocryptd.getConnection();
 const testDb = conn.getDB("test");
 const coll = testDb.illegal_types_for_random;
 
-const schema = {
-    type: "object",
-    properties: {foo: {encrypt: {algorithm: kRandomAlgo, keyId: [UUID()]}}}
-};
+const schema =
+    generateSchema({foo: {encrypt: {algorithm: kRandomAlgo, keyId: [UUID()]}}}, coll.getFullName());
 
-const insertCommandTemplate = {
+const insertCommandTemplate = Object.assign({
     insert: coll.getName(),
     documents: [{foo: 1}],
-    jsonSchema: schema,
-    isRemoteSchema: false
-};
+},
+                                            schema);
 
 // Test that the following types can be successfully marked for encryption:
 //  - array

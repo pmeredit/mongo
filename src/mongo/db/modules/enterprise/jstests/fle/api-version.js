@@ -3,6 +3,7 @@
 'use strict';
 
 load("src/mongo/db/modules/enterprise/jstests/fle/lib/mongocryptd.js");
+load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
 
 function runTestCmdVersion(db, cmd, apiVersion) {
     if (apiVersion !== undefined) {
@@ -27,17 +28,10 @@ function runTest(db) {
     };
 
     // find
-    runTestCmd(db, Object.assign({}, findBase, {
-        jsonSchema: {},
-        isRemoteSchema: true,
-    }));
+    runTestCmd(db, Object.assign({}, findBase, generateSchema({}, "test.default")));
 
     // explain
-    runTestCmd(db, {
-        explain: findBase,
-        jsonSchema: {},
-        isRemoteSchema: true,
-    });
+    runTestCmd(db, Object.assign({explain: findBase}, generateSchema({}, "test.default")));
 }
 
 {

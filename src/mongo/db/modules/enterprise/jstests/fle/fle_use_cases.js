@@ -1,5 +1,8 @@
 /**
  * Test correctness of Field Level Encryption for different commands in realistic use cases.
+ *
+ * TODO SERVER-63311 Attempt to re-use as much of this test as possible.
+ * @tags: [unsupported_fle_2]
  */
 
 (function() {

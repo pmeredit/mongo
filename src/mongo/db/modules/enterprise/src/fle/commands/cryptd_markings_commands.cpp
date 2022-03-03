@@ -434,8 +434,9 @@ std::unique_ptr<CommandInvocation> CryptdExplainCmd::parse(OperationContext* opC
 
     const BSONObj& cmdObj = request.body;
 
-    auto cleanedCmdObj = cmdObj.removeFields(
-        StringDataSet{query_analysis::kJsonSchema, query_analysis::kIsRemoteSchema});
+    auto cleanedCmdObj = cmdObj.removeFields(StringDataSet{query_analysis::kJsonSchema,
+                                                           query_analysis::kIsRemoteSchema,
+                                                           query_analysis::kEncryptionInformation});
     auto explainCmd = ExplainCommandRequest::parse(
         IDLParserErrorContext(ExplainCommandRequest::kCommandName,
                               APIParameters::get(opCtx).getAPIStrict().value_or(false)),
@@ -453,6 +454,14 @@ std::unique_ptr<CommandInvocation> CryptdExplainCmd::parse(OperationContext* opC
             !explainedObj.hasField(query_analysis::kJsonSchema));
     if (auto cmdSchema = cmdObj[query_analysis::kJsonSchema]) {
         explainedObj = explainedObj.addField(cmdSchema);
+    }
+
+    uassert(6365900,
+            "In an explain command the encryptionInformation field must be top-level and not "
+            "inside the command being explained.",
+            !explainedObj.hasField(query_analysis::kEncryptionInformation));
+    if (auto cmdEncryptInfo = cmdObj[query_analysis::kEncryptionInformation]) {
+        explainedObj = explainedObj.addField(cmdEncryptInfo);
     }
 
     uassert(31103,
