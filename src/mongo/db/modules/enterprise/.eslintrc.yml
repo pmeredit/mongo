@@ -2,6 +2,10 @@ env:
   es6: true
   mongo: true
 
+# Support spread operator in objects
+parserOptions:
+  ecmaVersion: 2018
+
 rules:
   # Rules are documented at http://eslint.org/docs/rules/
   no-cond-assign: 2
