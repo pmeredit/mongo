@@ -21,7 +21,10 @@ let NoopWorker = function() {
     this.teardown = function() {};
 };
 
-let msg = new ShardedBackupRestoreTest(new NoopWorker())
-              .run({isPitRestore: true, backupBinaryVersion: "last-continuous"});
+let msg = new ShardedBackupRestoreTest(new NoopWorker()).run({
+    isPitRestore: true,
+    isSelectiveRestore: false,
+    backupBinaryVersion: "last-continuous"
+});
 assert.eq(msg, "Test succeeded.");
 }());

@@ -53,7 +53,8 @@ function testBackup(extend) {
 
     const backupCursor = openBackupCursor(primary);
     const metadata = getBackupCursorMetadata(backupCursor);
-    copyBackupCursorFiles(backupCursor, metadata.dbpath, backupPath, false /* async */);
+    copyBackupCursorFiles(
+        backupCursor, /*namespacesToSkip=*/[], metadata.dbpath, backupPath, false /* async */);
 
     // Add more documents after backing up the previously inserted documents. These will not be
     // backed up unless we are testing with backup cursor extension.
@@ -65,7 +66,11 @@ function testBackup(extend) {
 
     if (extend) {
         const extendedCursor = extendBackupCursor(primary, metadata.backupId, res.operationTime);
-        copyBackupCursorExtendFiles(extendedCursor, metadata.dbpath, backupPath, false /* async */);
+        copyBackupCursorExtendFiles(extendedCursor,
+                                    /*namespacesToSkip=*/[],
+                                    metadata.dbpath,
+                                    backupPath,
+                                    false /* async */);
     }
 
     let copiedFiles = ls(backupPath);
