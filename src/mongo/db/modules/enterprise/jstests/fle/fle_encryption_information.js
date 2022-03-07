@@ -45,8 +45,7 @@ for (const efc of validConfigurations) {
     }));
 
     // For FLE 2, 'encryptionInformation' should not be stripped from the command.
-    // TODO SERVER-64040 include 'encryptionInformation' in response object.
-    // assert(res.hasOwnProperty("encryptionInformation"));
+    assert(res["result"].hasOwnProperty("encryptionInformation"), tojson(res));
 }
 
 // Test that encryptionInformation is mutually exclusive with jsonSchema, but at least one must be
