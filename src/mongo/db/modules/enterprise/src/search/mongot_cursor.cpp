@@ -88,17 +88,17 @@ SearchImplementedHelperFunctions::generateMetadataPipelineForSearch(
     // won't need a metadata pipeline but we still need to setup the original search stage (if
     // present). $search is required to be the first stage of the pipeline.
     auto potentialSearchStage = origPipeline->getSources().front();
-    if (potentialSearchStage->getSourceName() !=
-        DocumentSourceInternalSearchMongotRemote::kStageName) {
+
+    auto origSearchStage =
+        dynamic_cast<DocumentSourceInternalSearchMongotRemote*>(potentialSearchStage.get());
+
+    if (!origSearchStage) {
         return nullptr;
     }
 
     uassert(
         6253506, "Cannot have exchange specified in a $search pipeline", !request.getExchange());
 
-
-    auto origSearchStage =
-        dynamic_cast<DocumentSourceInternalSearchMongotRemote*>(potentialSearchStage.get());
 
     // Some tests build $search pipelines without actually setting up a mongot. In this case either
     // return a dummy stage or nothing depending on the environment. Note that in this case we don't
