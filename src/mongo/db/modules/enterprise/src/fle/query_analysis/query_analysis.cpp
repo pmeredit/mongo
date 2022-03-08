@@ -1025,7 +1025,7 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
     // Encode the placeholder BSON as BinData (sub-type 6 for encryption). Prepend the sub-subtype
     // byte represent the intent-to-encrypt marking before the BSON payload.
     BufBuilder binDataBuffer;
-    binDataBuffer.appendChar(static_cast<uint8_t>(EncryptedBinDataType::kPayload));
+    binDataBuffer.appendChar(static_cast<uint8_t>(EncryptedBinDataType::kPlaceholder));
     binDataBuffer.appendBuf(markingObj.objdata(), markingObj.objsize());
 
     BSONObjBuilder binDataBob;
