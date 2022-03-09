@@ -96,7 +96,7 @@ function generateOplogEntries(db, dbName, collectionNames) {
     // Rename "b" -> "c".
     assert.commandWorked(db.adminCommand({renameCollection: "test.b", to: "test.c"}));
 
-    // IndexBuildTest.pauseIndexBuilds(primary);
+    IndexBuildTest.pauseIndexBuilds(primary);
 
     return session;
 }
@@ -133,15 +133,15 @@ function validateIndexes(db, isIndexBuildDone) {
         assert.commandWorked(db.runCommand({listIndexes: "a", includeIndexBuildInfo: true}))
             .cursor.firstBatch;
     jsTestLog(listIndexesRes);
-    assert.eq(2, listIndexesRes.length);  // TODO SERVER-64304: 3
+    assert.eq(3, listIndexesRes.length);
     assert.eq("_id_", listIndexesRes[0].spec.name);
     assert(!listIndexesRes[0].hasOwnProperty("indexBuildInfo"));
 
     assert.eq("y_1", listIndexesRes[1].spec.name);
     assert(!listIndexesRes[1].hasOwnProperty("indexBuildInfo"));
 
-    // assert.eq("x_1", listIndexesRes[2].spec.name); // TODO SERVER-64304: Uncomment these lines
-    // assert.neq(isIndexBuildDone, listIndexesRes[2].hasOwnProperty("indexBuildInfo"));
+    assert.eq("x_1", listIndexesRes[2].spec.name);
+    assert.neq(isIndexBuildDone, listIndexesRes[2].hasOwnProperty("indexBuildInfo"));
 }
 
 function validateCollections(db) {
@@ -175,11 +175,11 @@ function validateSelectiveBackupRestore() {
 //
 // main
 //
-const rst = new ReplSetTest({nodes: 1});
+let rst = new ReplSetTest({nodes: 1});
 rst.startSet();
 rst.initiate();
 
-const primary = rst.getPrimary();
+let primary = rst.getPrimary();
 const dbName = "test";
 let db = primary.getDB(dbName);
 
@@ -205,13 +205,12 @@ assert.commandWorked(db.adminCommand({fsync: 1}));
 // Perform actions on collections after the checkpoint.
 let session = generateOplogEntries(db, dbName, collectionNames);
 
-// TODO SERVER-64304: un-comment all the index build pieces of this test.
 // Start two-phase index builds without finishing them.
-// const awaitIndexBuildA = IndexBuildTest.startIndexBuild(primary, "test.a", {x: 1});
-// IndexBuildTest.waitForIndexBuildToScanCollection(db, "a", "x_1");
+const awaitIndexBuildA = IndexBuildTest.startIndexBuild(primary, "test.a", {x: 1});
+IndexBuildTest.waitForIndexBuildToScanCollection(db, "a", "x_1");
 
-// const awaitIndexBuildC = IndexBuildTest.startIndexBuild(primary, "test.c", {x: 1});
-// IndexBuildTest.waitForIndexBuildToScanCollection(db, "c", "x_1");
+const awaitIndexBuildC = IndexBuildTest.startIndexBuild(primary, "test.c", {x: 1});
+IndexBuildTest.waitForIndexBuildToScanCollection(db, "c", "x_1");
 
 // Run a prepared transaction spanning both collections WITHOUT committing.
 const sessionDb = session.getDatabase(dbName);
@@ -238,7 +237,6 @@ jsTestLog(backupCursor.next());
 
 while (backupCursor.hasNext()) {
     let doc = backupCursor.next();
-    assert.neq(doc.ns, "test.c");
 
     // Copy everything but collection "test.b" and its indexes.
     if (doc.ns == "test.b") {
@@ -261,11 +259,10 @@ removeUriFromWiredTigerBackup(backupDbPath, cCollUri);
 const cIndexUri = getUriForIndex(db.getCollection("c"), /*indexName=*/"_id_");
 removeUriFromWiredTigerBackup(backupDbPath, cIndexUri);
 
-// TODO SERVER-64304: uncomment these lines
 // Finish two-phase index builds.
-// IndexBuildTest.resumeIndexBuilds(primary);
-// awaitIndexBuildA();
-// awaitIndexBuildC();
+IndexBuildTest.resumeIndexBuilds(primary);
+awaitIndexBuildA();
+awaitIndexBuildC();
 
 assert.commandWorked(
     primary.adminCommand({configureFailPoint: "pauseCheckpointThread", mode: "off"}));
@@ -281,13 +278,14 @@ MongoRunner.stopMongod(conn);
 validateSelectiveBackupRestore();
 
 // Finally, restart the node as a replica set to build any unfinished index builds.
-conn = MongoRunner.runMongod(
-    {dbpath: backupDbPath, noCleanData: true, replSet: jsTestName(), port: primary.port});
-assert(conn);
-db = conn.getDB(dbName);
+rst = new ReplSetTest({nodes: [{dbpath: backupDbPath, noCleanData: true, port: primary.port}]});
+rst.startSet();
+
+primary = rst.getPrimary();
+db = primary.getDB(dbName);
 
 // Commit the un-committed prepared transaction.
-const commitSession = PrepareHelpers.createSessionWithGivenId(conn, lsid);
+const commitSession = PrepareHelpers.createSessionWithGivenId(primary, lsid);
 const commitSessionDB = commitSession.getDatabase(dbName);
 commitSession.setTxnNumber_forTesting(txnNumber);
 assert.commandWorked(commitSessionDB.adminCommand({
@@ -297,13 +295,12 @@ assert.commandWorked(commitSessionDB.adminCommand({
     autocommit: false,
 }));
 
-// TODO SERVER-64304: uncomment these lines
 // Wait for "x_1" to finish building before doing checks.
-// assert.soonNoExcept(() => {
-//     IndexBuildTest.assertIndexes(
-//         db.getCollection("a"), 3, ["_id_", "x_1", "y_1"], [], {includeBuildUUIDs: true});
-//     return true;
-// });
+assert.soonNoExcept(() => {
+    IndexBuildTest.assertIndexes(
+        db.getCollection("a"), 3, ["_id_", "x_1", "y_1"], [], {includeBuildUUIDs: true});
+    return true;
+});
 
 validateCollections(db);
 
@@ -316,5 +313,5 @@ validateOplogEntries(db.getCollection("a"), /*numOps=*/15);
 assert.eq(1, db.getCollection("a").find({x: 500}).itcount());
 assert.eq(1, db.getCollection("a").find({x: 501}).itcount());
 
-MongoRunner.stopMongod(conn);
+rst.stopSet();
 }());
