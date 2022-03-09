@@ -11,40 +11,32 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
 const conn = mongocryptd.getConnection();
-const testDB = conn.getDB("test");
+const collName = "test";
+const testDB = conn.getDB(collName);
 
-const sampleSchema = {
-    type: "object",
-    properties: {
-        ssn: {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "int"}},
-        user: {
-            type: "object",
-            properties: {
-                account:
-                    {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}}
-            }
-        }
-    }
-};
+const schema = generateSchema({
+    ssn: {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "int"}},
+    "user.account": {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}}
+},
+                              collName);
 
 const testCases = [
     // Test that a count with no encrypted fields in filter succeeds.
-    {schema: sampleSchema, query: {"foo": 4}, encryptedPaths: [], notEncryptedPaths: ["foo"]},
+    {schema: schema, query: {"foo": 4}, encryptedPaths: [], notEncryptedPaths: ["foo"]},
     // Test that a count with an encrypted field in filter succeeds.
     {
-        schema: sampleSchema,
+        schema: schema,
         query: {"ssn": NumberInt(4), "foo": 7},
         encryptedPaths: ["ssn"],
         notEncryptedPaths: ["foo"]
     },
     // Test that a count with no query still succeeds.
-    {schema: sampleSchema, query: {}, encryptedPaths: [], notEncryptedPaths: []}
+    {schema: schema, query: {}, encryptedPaths: [], notEncryptedPaths: []}
 ];
-let countCommand = {count: "test", query: {}, jsonSchema: {}, isRemoteSchema: false};
 
 for (let test of testCases) {
-    countCommand["jsonSchema"] = test["schema"];
-    countCommand["query"] = test["query"];
+    let countCommand = {count: collName, query: test["query"]};
+    countCommand = Object.assign(countCommand, test["schema"]);
     const result = assert.commandWorked(testDB.runCommand(countCommand));
     assert.eq(true, result["schemaRequiresEncryption"]);
     if (test["encryptedPaths"].length >= 1) {
@@ -68,32 +60,26 @@ for (let test of testCases) {
 }
 
 // Test that a nested encrypted field in a query succeeds.
-countCommand["jsonSchema"] = sampleSchema;
-countCommand["query"] = {
-    user: {account: "5"}
-};
-let result = assert.commandWorked(testDB.runCommand(countCommand));
+let result = assert.commandWorked(
+    testDB.runCommand(Object.assign({count: collName, query: {user: {account: "5"}}}, schema)));
 let docResult = result["result"];
 assert(docResult["query"]["user"]["$eq"]["account"] instanceof BinData, docResult);
 
 // Test that a count with an invalid query type fails.
-countCommand["jsonSchema"] = sampleSchema;
-countCommand["query"] = 5;
-assert.commandFailedWithCode(testDB.runCommand(countCommand), ErrorCodes.TypeMismatch);
+assert.commandFailedWithCode(testDB.runCommand(Object.assign({count: collName, query: 5}, schema)),
+                             ErrorCodes.TypeMismatch);
 
 // Test that passthrough fields come back.
-countCommand = {
-    count: "test",
+let countCommand = {
+    count: collName,
     query: {},
-    jsonSchema: sampleSchema,
-    isRemoteSchema: false,
     limit: 1,
     skip: 1,
     hint: "string",
     readConcern: {level: "majority"}
 };
 
-result = assert.commandWorked(testDB.runCommand(countCommand));
+result = assert.commandWorked(testDB.runCommand(Object.assign(countCommand, schema)));
 docResult = result["result"];
 assert.eq(docResult["count"], countCommand["count"]);
 assert.eq(docResult["limit"], countCommand["limit"]);

@@ -3034,17 +3034,32 @@ TEST(EncryptionSchemaTreeTest, MissingNestedPatternPropertiesAreNotEqual) {
 }
 
 TEST(EncryptionSchemaTreeTest, StateMixedNodeGetEncryptionMetadataFails) {
-    EncryptionSchemaStateMixedNode node{};
+    EncryptionSchemaStateMixedNode node{FleVersion::kFle1};
     ASSERT_THROWS_CODE(node.getEncryptionMetadata(), AssertionException, 31133);
 }
 
 TEST(EncryptionSchemaTreeTest, StateMixedNodeContainsEncryptedNodeReturnsTrue) {
-    EncryptionSchemaStateMixedNode node{};
+    EncryptionSchemaStateMixedNode node{FleVersion::kFle1};
     ASSERT_TRUE(node.mayContainEncryptedNode());
 }
 
 TEST(EncryptionSchemaTreeTest, StateMixedNodeContainsRandomEncryptedNodeReturnsTrue) {
-    EncryptionSchemaStateMixedNode node{};
+    EncryptionSchemaStateMixedNode node{FleVersion::kFle1};
+    ASSERT_TRUE(node.mayContainRandomlyEncryptedNode());
+}
+
+TEST(EncryptionSchemaTreeTest, Fle2StateMixedNodeGetEncryptionMetadataFails) {
+    EncryptionSchemaStateMixedNode node{FleVersion::kFle2};
+    ASSERT_THROWS_CODE(node.getEncryptionMetadata(), AssertionException, 31133);
+}
+
+TEST(EncryptionSchemaTreeTest, Fle2StateMixedNodeContainsEncryptedNodeReturnsTrue) {
+    EncryptionSchemaStateMixedNode node{FleVersion::kFle2};
+    ASSERT_TRUE(node.mayContainEncryptedNode());
+}
+
+TEST(EncryptionSchemaTreeTest, Fle2StateMixedNodeContainsRandomEncryptedNodeReturnsTrue) {
+    EncryptionSchemaStateMixedNode node{FleVersion::kFle2};
     ASSERT_TRUE(node.mayContainRandomlyEncryptedNode());
 }
 
@@ -3066,7 +3081,8 @@ TEST(EncryptionSchemaTreeTest, GetEncryptionMetadataFailsIfPathHitsStateMixedNod
             }
         })");
     auto root = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
-    root->addChild(FieldRef("ticker"), std::make_unique<EncryptionSchemaStateMixedNode>());
+    root->addChild(FieldRef("ticker"),
+                   std::make_unique<EncryptionSchemaStateMixedNode>(FleVersion::kFle1));
     ASSERT_THROWS_CODE(
         root->getEncryptionMetadataForPath(FieldRef("ticker")), AssertionException, 31133);
     ASSERT_TRUE(root->mayContainEncryptedNode());
@@ -3075,8 +3091,9 @@ TEST(EncryptionSchemaTreeTest, GetEncryptionMetadataFailsIfPathHitsStateMixedNod
 }
 
 TEST(EncryptionSchemaTreeTest, StateMixedNodeGetMetadataForStateMixedNodeNestedCorrectlyFails) {
-    auto root = std::make_unique<EncryptionSchemaNotEncryptedNode>();
-    root->addChild(FieldRef("name.ticker"), std::make_unique<EncryptionSchemaStateMixedNode>());
+    auto root = std::make_unique<EncryptionSchemaNotEncryptedNode>(FleVersion::kFle1);
+    root->addChild(FieldRef("name.ticker"),
+                   std::make_unique<EncryptionSchemaStateMixedNode>(FleVersion::kFle1));
     ASSERT_THROWS_CODE(
         root->getEncryptionMetadataForPath(FieldRef("name.ticker")), AssertionException, 31133);
 }
@@ -3099,7 +3116,8 @@ TEST(EncryptionSchemaTreeTest, StateMixedNodeInAdditionalPropertiesFailsOnUndefi
             }
         })");
     auto root = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
-    root->addAdditionalPropertiesChild(std::make_unique<EncryptionSchemaStateMixedNode>());
+    root->addAdditionalPropertiesChild(
+        std::make_unique<EncryptionSchemaStateMixedNode>(root->parsedFrom));
     ASSERT(root->getEncryptionMetadataForPath(FieldRef("ssn")));
     ASSERT_FALSE(root->getEncryptionMetadataForPath(FieldRef("name")));
     ASSERT_TRUE(root->mayContainEncryptedNode());
@@ -3108,13 +3126,24 @@ TEST(EncryptionSchemaTreeTest, StateMixedNodeInAdditionalPropertiesFailsOnUndefi
 }
 
 TEST(EncryptionSchemaTreeTest, StateMixedNodeInPatternPropertiesMetadataFailOnMatchedProperty) {
-    auto root = std::make_unique<EncryptionSchemaNotEncryptedNode>();
-    root->addPatternPropertiesChild(R"(tickers+)",
-                                    std::make_unique<EncryptionSchemaStateMixedNode>());
+    auto root = std::make_unique<EncryptionSchemaNotEncryptedNode>(FleVersion::kFle1);
+    root->addPatternPropertiesChild(
+        R"(tickers+)", std::make_unique<EncryptionSchemaStateMixedNode>(FleVersion::kFle1));
     ASSERT_FALSE(root->getEncryptionMetadataForPath(FieldRef("some.path")));
     ASSERT_TRUE(root->mayContainEncryptedNode());
     ASSERT_THROWS_CODE(
         root->getEncryptionMetadataForPath(FieldRef("tickerssss")), AssertionException, 31133);
+}
+
+DEATH_TEST_REGEX_F(EncryptionSchemaTreeTest,
+                   Fle2AddingPatternPropertiesFails,
+                   "Tripwire assertion.*6329205") {
+    auto root = std::make_unique<EncryptionSchemaNotEncryptedNode>(FleVersion::kFle2);
+    ASSERT_THROWS_CODE(
+        root->addPatternPropertiesChild(
+            R"(tickers+)", std::make_unique<EncryptionSchemaStateMixedNode>(FleVersion::kFle2)),
+        AssertionException,
+        6329205);
 }
 
 TEST(EncryptionSchemaTreeTest, AddChildThrowsIfAddingToEncryptedNode) {
@@ -3135,9 +3164,16 @@ TEST(EncryptionSchemaTreeTest, AddChildThrowsIfAddingToEncryptedNode) {
         })");
     auto root = EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal);
     ASSERT_THROWS_CODE(
-        root->addChild(FieldRef{"ssn.test"}, std::make_unique<EncryptionSchemaNotEncryptedNode>()),
+        root->addChild(FieldRef{"ssn.test"},
+                       std::make_unique<EncryptionSchemaNotEncryptedNode>(root->parsedFrom)),
         AssertionException,
         51096);
+}
+
+DEATH_TEST(EncryptionSchemaTreeTest, AddChildThrowsIfParsedFromVersionsDontMatch, "invariant") {
+    auto root = std::make_unique<EncryptionSchemaNotEncryptedNode>(FleVersion::kFle1);
+    root->addChild(FieldRef("foo"),
+                   std::make_unique<EncryptionSchemaNotEncryptedNode>(FleVersion::kFle2));
 }
 
 TEST_F(EncryptionSchemaTreeTest, CanAffixLiteralsToEncryptedNodesButNotToNotEncryptedNodes) {

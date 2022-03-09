@@ -196,5 +196,23 @@ command.filter = {
 };
 res = assert.commandFailedWithCode(testDB.runCommand(command), 31098);
 
+if (fle2Enabled()) {
+    const schema = generateSchemaV2(
+        {ssn: {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}}},
+        "test");
+
+    // TODO: SERVER-63313 Query analysis for encrypted $eq expressions.
+    assert.commandFailedWithCode(
+        testDB.runCommand(
+            Object.assign({find: "test", filter: {$expr: {$eq: ['$ssn', "123"]}}}, schema)),
+        6329200);
+
+    // TODO: SERVER-63311 Query analysis for aggregation expressions / $expr.
+    assert.commandFailedWithCode(
+        testDB.runCommand(
+            Object.assign({find: "test", filter: {$expr: {$eq: ['$foo', "123"]}}}, schema)),
+        6329200);
+}
+
 mongocryptd.stop();
 })();

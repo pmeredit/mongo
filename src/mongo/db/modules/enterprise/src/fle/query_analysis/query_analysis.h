@@ -12,6 +12,7 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/db/query/collation/collator_interface.h"
 #include "mongo/rpc/op_msg.h"
+#include "mongo/util/visit_helper.h"
 #include "resolved_encryption_info.h"
 
 namespace mongo {
@@ -69,7 +70,17 @@ struct QueryAnalysisParams {
         BSONObj encryptedFieldsConfig;
     };
 
+    FleVersion fleVersion() const {
+        return stdx::visit(
+            visit_helper::Overloaded{
+                [&](FLE1Params) { return FleVersion::kFle1; },
+                [&](FLE2Params) { return FleVersion::kFle2; },
+            },
+            schema);
+    }
+
     stdx::variant<FLE1Params, FLE2Params> schema;
+
 
     /**
      * Command object without the encryption-related fields.

@@ -66,7 +66,7 @@ QueryAnalysisParams extractCryptdParameters(const BSONObj& obj) {
     boost::optional<BSONObj> jsonSchema;
     boost::optional<BSONObj> encryptInfo;
     boost::optional<bool> isRemoteSchema;
-    bool isFLE2 = false;
+    FleVersion fleVersion = FleVersion::kFle1;
     BSONObjBuilder stripped;
     for (auto& e : obj) {
         if (e.fieldNameStringData() == kJsonSchema) {
@@ -91,7 +91,7 @@ QueryAnalysisParams extractCryptdParameters(const BSONObj& obj) {
                     schemaSpec.firstElement().type() == Object);
 
             encryptInfo = schemaSpec.firstElement().Obj();
-            isFLE2 = true;
+            fleVersion = FleVersion::kFle2;
 
             // TODO SERVER-64040 include 'encryptionInformation' in response object.
             // stripped.append(e);
@@ -100,7 +100,9 @@ QueryAnalysisParams extractCryptdParameters(const BSONObj& obj) {
         }
     }
     uassert(51073, "jsonSchema or encryptionInformation is required", jsonSchema || encryptInfo);
-    uassert(31104, "isRemoteSchema is a required command field", isRemoteSchema || isFLE2);
+    uassert(31104,
+            "isRemoteSchema is a required command field",
+            isRemoteSchema || fleVersion == FleVersion::kFle2);
 
     uassert(6327500,
             "Cannot specify both jsonSchema and encryptionInformation",
@@ -109,11 +111,12 @@ QueryAnalysisParams extractCryptdParameters(const BSONObj& obj) {
             "Cannot specify both isRemoteSchema and encryptionInformation",
             (isRemoteSchema && !encryptInfo) || (!isRemoteSchema && encryptInfo));
 
-    return isFLE2 ? QueryAnalysisParams(*encryptInfo, stripped.obj())
-                  : QueryAnalysisParams(*jsonSchema,
-                                        *isRemoteSchema ? EncryptionSchemaType::kRemote
-                                                        : EncryptionSchemaType::kLocal,
-                                        stripped.obj());
+    return fleVersion == FleVersion::kFle2
+        ? QueryAnalysisParams(*encryptInfo, stripped.obj())
+        : QueryAnalysisParams(*jsonSchema,
+                              *isRemoteSchema ? EncryptionSchemaType::kRemote
+                                              : EncryptionSchemaType::kLocal,
+                              stripped.obj());
 }
 
 /**
@@ -273,7 +276,6 @@ PlaceHolderResult replaceEncryptedFieldsInFilter(
  */
 PlaceHolderResult replaceEncryptedFieldsInUpdate(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
-    const QueryAnalysisParams& params,
     const EncryptionSchemaTreeNode& schemaTree,
     const write_ops::UpdateModification& updateMod,
     const std::vector<mongo::BSONObj>& arrayFilters) {
@@ -325,23 +327,20 @@ PlaceHolderResult replaceEncryptedFieldsInUpdate(
             // schema indicates that 'a' is encrypted. For now, assert that the pipeline
             // does not alter the schema and handle marking literals in examples like the
             // one above in SERVER-41485.
-            stdx::visit(
-                visit_helper::Overloaded{
-                    [&](QueryAnalysisParams::FLE1Params) {
-                        uassert(
-                            31146,
+            switch (schemaTree.parsedFrom) {
+                case FleVersion::kFle1:
+                    uassert(31146,
                             "Pipelines in updates are not allowed to modify encrypted fields or "
                             "add fields which are not present in the schema",
                             flePipe.getOutputSchema() == schemaTree);
-                    },
-                    [&](QueryAnalysisParams::FLE2Params) {
-                        uassert(
-                            6329902,
+                    break;
+                case FleVersion::kFle2:
+                    uassert(6329902,
                             "Pipelines in updates are not allowed to modify encrypted fields or "
                             "add encrypted fields which are not present in the schema",
                             flePipe.getOutputSchema().isFle2LeafEquivalent(schemaTree));
-                    }},
-                params.schema);
+                    break;
+            }
 
             BSONArrayBuilder arr;
             flePipe.serialize(&arr);
@@ -368,7 +367,6 @@ PlaceHolderResult replaceEncryptedFieldsInUpdate(
 PlaceHolderResult addPlaceHoldersForFind(const boost::intrusive_ptr<ExpressionContext>& expCtx,
                                          const std::string& dbName,
                                          const BSONObj& cmdObj,
-                                         const QueryAnalysisParams& params,
                                          std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     // Parse to a FindCommandRequest to ensure the command syntax is valid. We can use a
     // temporary database name however the collection name will be used when serializing back to
@@ -383,7 +381,12 @@ PlaceHolderResult addPlaceHoldersForFind(const boost::intrusive_ptr<ExpressionCo
     // find command. With it we can reuse our pipeline analysis to determine if the projection
     // is invalid or in need of markers.
     const auto projectionPipeWrapper = [&] {
-        if (auto proj = findCommand->getProjection(); !proj.isEmpty())
+        if (auto proj = findCommand->getProjection(); !proj.isEmpty()) {
+            // TODO: SERVER-63311 Remove uassert when query analysis for FLE2 aggregation is added.
+            // TODO: SERVER-63657 Update user-facing naming for FLE2.
+            uassert(6329201,
+                    "Pipelines not yet supported in FLE2.",
+                    schemaTree->parsedFrom == FleVersion::kFle1);
             return boost::optional<FLEPipeline>{FLEPipeline{
                 Pipeline::create(makeFlattenedList<boost::intrusive_ptr<DocumentSource>>(
                                      DocumentSourceProject::create(
@@ -397,8 +400,9 @@ PlaceHolderResult addPlaceHoldersForFind(const boost::intrusive_ptr<ExpressionCo
                                          DocumentSourceProject::kStageName)),
                                  expCtx),
                 *schemaTree.get()}};
-        else
+        } else {
             return boost::optional<FLEPipeline>{};
+        }
     }();
 
     BSONObjBuilder bob;
@@ -426,7 +430,6 @@ PlaceHolderResult addPlaceHoldersForAggregate(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const std::string& dbName,
     const BSONObj& cmdObj,
-    const QueryAnalysisParams& params,
     std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     // Parse the command to an AggregateCommandRequest to verify that there no unknown fields.
     auto request = aggregation_request_helper::parseFromBSON(
@@ -476,7 +479,6 @@ PlaceHolderResult addPlaceHoldersForAggregate(
 PlaceHolderResult addPlaceHoldersForCount(const boost::intrusive_ptr<ExpressionContext>& expCtx,
                                           const std::string& dbName,
                                           const BSONObj& cmdObj,
-                                          const QueryAnalysisParams& params,
                                           std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     BSONObjBuilder resultBuilder;
     auto countCmd = CountCommandRequest::parse(IDLParserErrorContext("count"), cmdObj);
@@ -495,7 +497,6 @@ PlaceHolderResult addPlaceHoldersForCount(const boost::intrusive_ptr<ExpressionC
 PlaceHolderResult addPlaceHoldersForDistinct(const boost::intrusive_ptr<ExpressionContext>& expCtx,
                                              const std::string& dbName,
                                              const BSONObj& cmdObj,
-                                             const QueryAnalysisParams& params,
                                              std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     auto parsedDistinct = DistinctCommandRequest::parse(IDLParserErrorContext("distinct"), cmdObj);
 
@@ -573,7 +574,6 @@ PlaceHolderResult addPlaceHoldersForFindAndModify(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const std::string& dbName,
     const BSONObj& cmdObj,
-    const QueryAnalysisParams& params,
     std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     auto request(write_ops::FindAndModifyCommandRequest::parse(
         IDLParserErrorContext("findAndModify"), cmdObj));
@@ -598,7 +598,6 @@ PlaceHolderResult addPlaceHoldersForFindAndModify(
 
         auto newUpdate = replaceEncryptedFieldsInUpdate(
             expCtx,
-            params,
             *schemaTree.get(),
             updateMod.get(),
             request.getArrayFilters().value_or(std::vector<BSONObj>()));
@@ -619,7 +618,6 @@ PlaceHolderResult addPlaceHoldersForFindAndModify(
 
 PlaceHolderResult addPlaceHoldersForInsert(OperationContext* opCtx,
                                            const OpMsgRequest& request,
-                                           const QueryAnalysisParams& params,
                                            std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     auto batch = InsertOp::parse(request);
     auto docs = batch.getDocuments();
@@ -646,7 +644,6 @@ PlaceHolderResult addPlaceHoldersForInsert(OperationContext* opCtx,
 
 PlaceHolderResult addPlaceHoldersForUpdate(OperationContext* opCtx,
                                            const OpMsgRequest& request,
-                                           const QueryAnalysisParams& params,
                                            std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     auto updateDBName = request.getDatabase();
     auto updateOp = UpdateOp::parse(request);
@@ -658,8 +655,7 @@ PlaceHolderResult addPlaceHoldersForUpdate(OperationContext* opCtx,
         // TODO SERVER-63657: update this message.
         uassert(6329900,
                 "Multi-document updates are not allowed with FLE 2 encryption",
-                !(update.getMulti() &&
-                  stdx::holds_alternative<QueryAnalysisParams::FLE2Params>(params.schema)));
+                !(update.getMulti() && schemaTree->parsedFrom == FleVersion::kFle2));
 
         auto& updateMod = update.getU();
         auto collator = parseCollator(opCtx, update.getCollation());
@@ -682,7 +678,7 @@ PlaceHolderResult addPlaceHoldersForUpdate(OperationContext* opCtx,
 
         auto newFilter = replaceEncryptedFieldsInFilter(expCtx, *schemaTree.get(), update.getQ());
         auto newUpdate = replaceEncryptedFieldsInUpdate(
-            expCtx, params, *schemaTree.get(), updateMod, write_ops::arrayFiltersOf(update));
+            expCtx, *schemaTree.get(), updateMod, write_ops::arrayFiltersOf(update));
 
         // Create a non-const copy.
         auto newEntry = update;
@@ -703,7 +699,6 @@ PlaceHolderResult addPlaceHoldersForUpdate(OperationContext* opCtx,
 
 PlaceHolderResult addPlaceHoldersForDelete(OperationContext* opCtx,
                                            const OpMsgRequest& request,
-                                           const QueryAnalysisParams& params,
                                            std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     invariant(schemaTree);
     PlaceHolderResult placeHolderResult{};
@@ -716,8 +711,7 @@ PlaceHolderResult addPlaceHoldersForDelete(OperationContext* opCtx,
         // TODO SERVER-63657: update this message.
         uassert(6382800,
                 "Multi-document deletes are not allowed with FLE 2 encryption",
-                !(op.getMulti() &&
-                  stdx::holds_alternative<QueryAnalysisParams::FLE2Params>(params.schema)));
+                !(op.getMulti() && schemaTree->parsedFrom == FleVersion::kFle2));
 
         markedDeletes.push_back(op);
         auto& opToMark = markedDeletes.back();
@@ -749,7 +743,6 @@ OpMsgRequest makeHybrid(const OpMsgRequest& request, BSONObj body) {
 using WriteOpProcessFunction =
     PlaceHolderResult(OperationContext* opCtx,
                       const OpMsgRequest& request,
-                      const QueryAnalysisParams& params,
                       std::unique_ptr<EncryptionSchemaTreeNode> schemaTree);
 
 void processWriteOpCommand(OperationContext* opCtx,
@@ -762,7 +755,7 @@ void processWriteOpCommand(OperationContext* opCtx,
     // Parse the JSON Schema to an encryption schema tree.
     auto schemaTree = EncryptionSchemaTreeNode::parse(cryptdParams);
 
-    PlaceHolderResult placeholder = func(opCtx, newRequest, cryptdParams, std::move(schemaTree));
+    PlaceHolderResult placeholder = func(opCtx, newRequest, std::move(schemaTree));
 
     serializePlaceholderResult(placeholder, builder);
 }
@@ -771,7 +764,6 @@ using QueryProcessFunction =
     PlaceHolderResult(const boost::intrusive_ptr<ExpressionContext>& expCtx,
                       const std::string& dbName,
                       const BSONObj& cmdObj,
-                      const QueryAnalysisParams& params,
                       std::unique_ptr<EncryptionSchemaTreeNode> schemaTree);
 
 void processQueryCommand(OperationContext* opCtx,
@@ -789,7 +781,7 @@ void processQueryCommand(OperationContext* opCtx,
         new ExpressionContext(opCtx, std::move(collator), NamespaceString(dbName)));
 
     PlaceHolderResult placeholder =
-        func(expCtx, dbName, cryptdParams.strippedObj, cryptdParams, std::move(schemaTree));
+        func(expCtx, dbName, cryptdParams.strippedObj, std::move(schemaTree));
     auto fieldNames = cmdObj.getFieldNames<std::set<StringData>>();
 
     // A new camel-case name of the FindAndModify command needs to be used

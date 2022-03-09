@@ -10,6 +10,7 @@
 
 #include "mongo/base/clonable_ptr.h"
 #include "mongo/bson/bsonobj.h"
+#include "mongo/crypto/fle_field_schema_gen.h"
 #include "mongo/db/field_ref.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/db/pipeline/expression.h"
@@ -109,6 +110,7 @@ struct clonable_traits<EncryptionSchemaTreeNode> {
  */
 class EncryptionSchemaTreeNode {
 public:
+    explicit EncryptionSchemaTreeNode(FleVersion parsedFrom) : parsedFrom(parsedFrom) {}
     struct PatternPropertiesChild {
         PatternPropertiesChild(StringData regexStringData,
                                std::unique_ptr<EncryptionSchemaTreeNode> child)
@@ -228,6 +230,13 @@ public:
      * names other than "a" and "b".
      */
     void addAdditionalPropertiesChild(std::unique_ptr<EncryptionSchemaTreeNode> node) {
+        tassert(6329202,
+                "Additional properties only acceptable when parsed from JSONSchema with FLE 1.",
+                this->parsedFrom == FleVersion::kFle1);
+        tassert(6329204,
+                "New children must have the same FLE version as their parent.",
+                this->parsedFrom == node->parsedFrom);
+
         _additionalPropertiesChild = std::move(node);
     }
 
@@ -254,6 +263,13 @@ public:
      */
     void addPatternPropertiesChild(StringData regex,
                                    std::unique_ptr<EncryptionSchemaTreeNode> node) {
+        tassert(6329205,
+                "Pattern properties only acceptable when parsed from JSONSchema with FLE 1.",
+                this->parsedFrom == FleVersion::kFle1);
+        tassert(6329206,
+                "New children must have the same FLE version as their parent.",
+                this->parsedFrom == node->parsedFrom);
+
         _patternPropertiesChildren.insert(PatternPropertiesChild{regex, std::move(node)});
     }
 
@@ -311,6 +327,8 @@ public:
      * for encrypted leaf equality will fail.
      */
     bool isFle2LeafEquivalent(const EncryptionSchemaTreeNode& other) const;
+
+    const FleVersion parsedFrom;
 
 private:
     static boost::optional<ResolvedEncryptionInfo> getEncryptionMetadataForNode(
@@ -394,6 +412,8 @@ private:
  */
 class EncryptionSchemaNotEncryptedNode final : public EncryptionSchemaTreeNode {
 public:
+    EncryptionSchemaNotEncryptedNode(FleVersion parsedFrom)
+        : EncryptionSchemaTreeNode(parsedFrom) {}
     boost::optional<ResolvedEncryptionInfo> getEncryptionMetadata() const final {
         return boost::none;
     }
@@ -410,8 +430,8 @@ public:
  */
 class EncryptionSchemaEncryptedNode final : public EncryptionSchemaTreeNode {
 public:
-    EncryptionSchemaEncryptedNode(ResolvedEncryptionInfo metadata)
-        : _metadata(std::move(metadata)) {}
+    EncryptionSchemaEncryptedNode(ResolvedEncryptionInfo metadata, FleVersion parsedFrom)
+        : EncryptionSchemaTreeNode(parsedFrom), _metadata(std::move(metadata)) {}
 
     boost::optional<ResolvedEncryptionInfo> getEncryptionMetadata() const final {
         return _metadata;
@@ -446,6 +466,8 @@ private:
  */
 class EncryptionSchemaStateMixedNode final : public EncryptionSchemaTreeNode {
 public:
+    EncryptionSchemaStateMixedNode(FleVersion parsedFrom) : EncryptionSchemaTreeNode(parsedFrom) {}
+
     boost::optional<ResolvedEncryptionInfo> getEncryptionMetadata() const final {
         uasserted(31133,
                   "Cannot get metadata for path whose encryption properties are not known until "

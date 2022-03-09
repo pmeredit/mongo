@@ -2,6 +2,7 @@
  * Copyright (C) 2019 MongoDB, Inc.  All Rights Reserved.
  */
 
+#include "mongo/crypto/fle_field_schema_gen.h"
 #include "mongo/platform/basic.h"
 
 #include <boost/intrusive_ptr.hpp>
@@ -19,7 +20,8 @@ namespace {
  */
 class SchemaTracker {
 public:
-    explicit SchemaTracker(bool outputIsCompared) : _outputIsCompared(outputIsCompared){};
+    explicit SchemaTracker(bool outputIsCompared, FleVersion schemaVersion)
+        : schemaVersion(schemaVersion), _outputIsCompared(outputIsCompared){};
 
     /**
      * Exits the current evaluation state. If exitting the outermost evaluated expression, then this
@@ -30,7 +32,7 @@ public:
         invariant(_evaluateSubtreeCount > 0);
         --_evaluateSubtreeCount;
         if (_evaluateSubtreeCount == 0)
-            reconcileSchema(std::make_unique<EncryptionSchemaNotEncryptedNode>());
+            reconcileSchema(std::make_unique<EncryptionSchemaNotEncryptedNode>(schemaVersion));
     }
 
     /**
@@ -57,7 +59,8 @@ public:
                 // comparing against it will result in an assertion.
                 if (typeid(*_outputSchema) != typeid(EncryptionSchemaStateMixedNode) &&
                     *_outputSchema != *newSchema) {
-                    _outputSchema = std::make_unique<EncryptionSchemaStateMixedNode>();
+                    _outputSchema =
+                        std::make_unique<EncryptionSchemaStateMixedNode>(newSchema->parsedFrom);
                 }
             } else
                 _outputSchema = std::move(newSchema);
@@ -71,7 +74,7 @@ public:
      */
     void reconcileLiteral() {
         if (!_outputIsCompared)
-            reconcileSchema(std::make_unique<EncryptionSchemaNotEncryptedNode>());
+            reconcileSchema(std::make_unique<EncryptionSchemaNotEncryptedNode>(schemaVersion));
     }
 
     void decrementEvaluate() {
@@ -81,8 +84,10 @@ public:
 
     std::unique_ptr<EncryptionSchemaTreeNode> releaseOutputSchema() {
         return _outputSchema ? std::move(_outputSchema)
-                             : std::make_unique<EncryptionSchemaNotEncryptedNode>();
+                             : std::make_unique<EncryptionSchemaNotEncryptedNode>(schemaVersion);
     }
+
+    const FleVersion schemaVersion;
 
 private:
     // Tracks the evaluated nesting level of the current expression being visited. In general,
@@ -523,7 +528,8 @@ public:
                             " disallowed",
                     prefixedPath.getFieldName(0) != "CURRENT" &&
                         prefixedPath.getFieldName(0) != "ROOT");
-            _tracker.reconcileSchema(std::make_unique<EncryptionSchemaNotEncryptedNode>());
+            _tracker.reconcileSchema(
+                std::make_unique<EncryptionSchemaNotEncryptedNode>(_tracker.schemaVersion));
             // The FieldPath is a field reference.
         } else {
 
@@ -537,7 +543,8 @@ public:
             if (auto node = _schema.getNode(path)) {
                 _tracker.reconcileSchema(node->clone());
             } else {
-                _tracker.reconcileSchema(std::make_unique<EncryptionSchemaNotEncryptedNode>());
+                _tracker.reconcileSchema(
+                    std::make_unique<EncryptionSchemaNotEncryptedNode>(_tracker.schemaVersion));
             }
         }
     }
@@ -552,7 +559,7 @@ public:
     }
 
     void visit(const ExpressionObject* expr) {
-        auto newSchema = std::make_unique<EncryptionSchemaNotEncryptedNode>();
+        auto newSchema = std::make_unique<EncryptionSchemaNotEncryptedNode>(_tracker.schemaVersion);
         for (auto [field, childExpr] : expr->getChildExpressions()) {
             newSchema->addChild(FieldRef(field), getOutputSchema(_schema, childExpr.get(), false));
         }
@@ -1181,7 +1188,7 @@ class ExpressionWalkerSchema {
 public:
     ExpressionWalkerSchema(const EncryptionSchemaTreeNode& schema, bool expressionOutputIsCompared)
         : _schema(schema),
-          _tracker(expressionOutputIsCompared),
+          _tracker(expressionOutputIsCompared, schema.parsedFrom),
           _preVisitor(_schema, _tracker),
           _inVisitor(_schema, _tracker),
           _postVisitor(_schema, _tracker) {}

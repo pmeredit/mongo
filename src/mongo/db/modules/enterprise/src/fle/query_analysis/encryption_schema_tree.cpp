@@ -233,7 +233,7 @@ std::unique_ptr<EncryptionSchemaEncryptedNode> parseEncrypt(
             (deterministic || (encryptAllowedSet & EncryptAllowed::kRandom)) &&
                 (!deterministic || (encryptAllowedSet & EncryptAllowed::kDeterministic)));
 
-    return std::make_unique<EncryptionSchemaEncryptedNode>(std::move(metadata));
+    return std::make_unique<EncryptionSchemaEncryptedNode>(std::move(metadata), FleVersion::kFle1);
 }
 
 /**
@@ -315,7 +315,7 @@ std::unique_ptr<EncryptionSchemaTreeNode> parseObjectKeywords(
     bool topLevel,
     const EncryptMetadataChainMemento& metadataChain,
     EncryptionSchemaType schemaType) {
-    auto node = std::make_unique<EncryptionSchemaNotEncryptedNode>();
+    auto node = std::make_unique<EncryptionSchemaNotEncryptedNode>(FleVersion::kFle1);
 
     // Check if the type of the current schema specifies type:"object". We only permit the 'encrypt'
     // keyword inside nested schemas if the current schema requires an object.
@@ -508,7 +508,7 @@ std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parseEncrypt
     auto parsedEFC =
         EncryptedFieldConfig::parse(IDLParserErrorContext("EncryptedFieldConfig"), efc);
 
-    auto root = std::make_unique<EncryptionSchemaNotEncryptedNode>();
+    auto root = std::make_unique<EncryptionSchemaNotEncryptedNode>(FleVersion::kFle2);
     for (auto& field : parsedEFC.getFields()) {
         uassert(6316402, "Encrypted field must have a non-empty path", !field.getPath().empty());
 
@@ -528,9 +528,9 @@ std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parseEncrypt
         ResolvedEncryptionInfo metadataForChild{
             field.getKeyId(), typeFromName(field.getBsonType()), std::move(supportedQueries)};
 
-        root->addChild(
-            std::move(fieldRef),
-            std::make_unique<EncryptionSchemaEncryptedNode>(std::move(metadataForChild)));
+        root->addChild(std::move(fieldRef),
+                       std::make_unique<EncryptionSchemaEncryptedNode>(std::move(metadataForChild),
+                                                                       FleVersion::kFle2));
     }
     return root;
 }
@@ -589,6 +589,10 @@ std::vector<EncryptionSchemaTreeNode*> EncryptionSchemaTreeNode::getChildrenForP
 
 clonable_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::addChild(
     FieldRef path, std::unique_ptr<EncryptionSchemaTreeNode> node) {
+
+    // Can't mix FLE versions.
+    invariant(this->parsedFrom == node->parsedFrom);
+
     uassert(51096, "Cannot add a field to an existing encrypted field", !getEncryptionMetadata());
 
     auto nextChild = path.getPart(0);
@@ -613,7 +617,7 @@ clonable_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::addChild(
     }
     if (!getNamedChild(nextChild)) {
         _propertiesChildren[nextChild.toString()] =
-            std::make_unique<EncryptionSchemaNotEncryptedNode>();
+            std::make_unique<EncryptionSchemaNotEncryptedNode>(this->parsedFrom);
     }
     auto nextChildNode = getNamedChild(nextChild);
     path.removeFirstPart();
@@ -728,6 +732,9 @@ clonable_traits<EncryptionSchemaTreeNode>::clone_factory_type::operator()(
 }
 
 bool EncryptionSchemaTreeNode::isFle2LeafEquivalent(const EncryptionSchemaTreeNode& other) const {
+    tassert(6329203,
+            "isFle2LeafEquivalent can only be called on FLE2 schema nodes.",
+            this->parsedFrom == FleVersion::kFle2 && other.parsedFrom == FleVersion::kFle2);
     // If either node is encrypted, the nodes must have the same metadata.
     auto myMetadata = getEncryptionMetadata();
     auto otherMetadata = other.getEncryptionMetadata();

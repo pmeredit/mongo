@@ -45,6 +45,11 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForInclusionNode(
     const EncryptionSchemaTreeNode& prevSchema,
     const projection_executor::InclusionNode& root,
     std::unique_ptr<EncryptionSchemaTreeNode> futureSchema) {
+    // Can't mix FLE1 and FLE2.
+    invariant(prevSchema.parsedFrom == futureSchema->parsedFrom);
+
+    auto fleVersion = futureSchema->parsedFrom;
+
     std::set<std::string> preservedPaths;
     root.reportProjectedPaths(&preservedPaths);
     // Each string is a projected, included path.
@@ -72,8 +77,9 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForInclusionNode(
             // array for dotted path projections, so mark the first path component with an
             // EncryptionSchemaStateMixedNode in the schema tree.
             if (expressionSchema->mayContainEncryptedNode() && fullPath.numParts() > 1) {
-                futureSchema->addChild(FieldRef(fullPath[0]),
-                                       std::make_unique<EncryptionSchemaStateMixedNode>());
+                futureSchema->addChild(
+                    FieldRef(fullPath[0]),
+                    std::make_unique<EncryptionSchemaStateMixedNode>(fleVersion));
             } else {
                 // Output schema for the expression does not contain any encrypted fields OR the
                 // projected field is not a dotted path.
@@ -88,8 +94,9 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForInclusionNode(
             // path then we need to make sure not to have any encrypted nodes since it may reference
             // an array.
             if (oldEncryptionInfo->mayContainEncryptedNode() && targetField.numParts() > 1) {
-                futureSchema->addChild(FieldRef(targetField[0]),
-                                       std::make_unique<EncryptionSchemaStateMixedNode>());
+                futureSchema->addChild(
+                    FieldRef(targetField[0]),
+                    std::make_unique<EncryptionSchemaStateMixedNode>(fleVersion));
             } else {
                 // Output schema for the expression does not contain any encrypted fields OR the
                 // projected field is not a dotted path.
@@ -123,6 +130,9 @@ void propagateAccumulatedFieldsToSchema(const clonable_ptr<EncryptionSchemaTreeN
                                         const std::vector<AccumulationStatement>& accumulatedFields,
                                         clonable_ptr<EncryptionSchemaTreeNode>& newSchema,
                                         bool groupKeyMayContainEncryptedFields) {
+    invariant(prevSchema->parsedFrom == newSchema->parsedFrom);
+    auto fleVersion = newSchema->parsedFrom;
+
     for (const auto& accuStmt : accumulatedFields) {
         boost::intrusive_ptr<AccumulatorState> accu = accuStmt.makeAccumulator();
 
@@ -133,10 +143,10 @@ void propagateAccumulatedFieldsToSchema(const clonable_ptr<EncryptionSchemaTreeN
         if (accu->getOpName() == "$addToSet"s || accu->getOpName() == "$push"s) {
             if (perDocExprSchema->mayContainEncryptedNode()) {
                 newSchema->addChild(FieldRef(accuStmt.fieldName),
-                                    std::make_unique<EncryptionSchemaStateMixedNode>());
+                                    std::make_unique<EncryptionSchemaStateMixedNode>(fleVersion));
             } else {
                 newSchema->addChild(FieldRef(accuStmt.fieldName),
-                                    std::make_unique<EncryptionSchemaNotEncryptedNode>());
+                                    std::make_unique<EncryptionSchemaNotEncryptedNode>(fleVersion));
             }
             if (accu->getOpName() == "$addToSet"s) {
                 uassert(51223,
@@ -166,7 +176,7 @@ void propagateAccumulatedFieldsToSchema(const clonable_ptr<EncryptionSchemaTreeN
             }
 
             newSchema->addChild(FieldRef(accuStmt.fieldName),
-                                std::make_unique<EncryptionSchemaNotEncryptedNode>());
+                                std::make_unique<EncryptionSchemaNotEncryptedNode>(fleVersion));
         }
     }
 }
@@ -179,8 +189,9 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForBucketAuto(
     const clonable_ptr<EncryptionSchemaTreeNode>& prevSchema,
     const std::vector<clonable_ptr<EncryptionSchemaTreeNode>>& children,
     const DocumentSourceBucketAuto& source) {
+
     clonable_ptr<EncryptionSchemaTreeNode> newSchema =
-        std::make_unique<EncryptionSchemaNotEncryptedNode>();
+        std::make_unique<EncryptionSchemaNotEncryptedNode>(prevSchema->parsedFrom);
 
     // Schema of the grouping expression cannot have encrypted nodes, because bucketization
     // expression uses inequality comparisons against the 'groupBy' field.
@@ -192,7 +203,8 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForBucketAuto(
             !expressionSchema->mayContainEncryptedNode());
 
     // Always project a not encrypted '_id' field.
-    newSchema->addChild(FieldRef{"_id"}, std::make_unique<EncryptionSchemaNotEncryptedNode>());
+    newSchema->addChild(FieldRef{"_id"},
+                        std::make_unique<EncryptionSchemaNotEncryptedNode>(newSchema->parsedFrom));
 
     const bool groupKeyMayContainEncryptedFields = false;
     propagateAccumulatedFieldsToSchema(
@@ -207,10 +219,11 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGeoNear(
     clonable_ptr<EncryptionSchemaTreeNode> newSchema = prevSchema->clone();
     // Mark projected paths as unencrypted.
     newSchema->addChild(FieldRef(source.getDistanceField().fullPath()),
-                        std::make_unique<EncryptionSchemaNotEncryptedNode>());
+                        std::make_unique<EncryptionSchemaNotEncryptedNode>(newSchema->parsedFrom));
     if (source.getLocationField()) {
-        newSchema->addChild(FieldRef(source.getLocationField()->fullPath()),
-                            std::make_unique<EncryptionSchemaNotEncryptedNode>());
+        newSchema->addChild(
+            FieldRef(source.getLocationField()->fullPath()),
+            std::make_unique<EncryptionSchemaNotEncryptedNode>(newSchema->parsedFrom));
     }
     return newSchema;
 }
@@ -219,8 +232,9 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGroup(
     const clonable_ptr<EncryptionSchemaTreeNode>& prevSchema,
     const std::vector<clonable_ptr<EncryptionSchemaTreeNode>>& children,
     const DocumentSourceGroup& source) {
+    auto fleVersion = prevSchema->parsedFrom;
     clonable_ptr<EncryptionSchemaTreeNode> newSchema =
-        std::make_unique<EncryptionSchemaNotEncryptedNode>();
+        std::make_unique<EncryptionSchemaNotEncryptedNode>(fleVersion);
 
     bool groupKeyMayContainEncryptedFields = false;
     for (const auto& [pathStr, expression] : source.getIdFields()) {
@@ -292,10 +306,13 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGraphLookUp(
     invariant(modifiedPaths.renames.empty());
     for (const auto& path : modifiedPaths.paths) {
         if (prevSchema->mayContainEncryptedNode()) {
-            newSchema->addChild(FieldRef(path), std::make_unique<EncryptionSchemaStateMixedNode>());
+            newSchema->addChild(
+                FieldRef(path),
+                std::make_unique<EncryptionSchemaStateMixedNode>(newSchema->parsedFrom));
         } else {
-            newSchema->addChild(FieldRef(path),
-                                std::make_unique<EncryptionSchemaNotEncryptedNode>());
+            newSchema->addChild(
+                FieldRef(path),
+                std::make_unique<EncryptionSchemaNotEncryptedNode>(newSchema->parsedFrom));
         }
     }
     return newSchema;
@@ -321,11 +338,13 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForLookUp(
         invariant(children.size() == 1);
         for (const auto& path : modifiedPaths.paths) {
             if (children[0]->mayContainEncryptedNode()) {
-                newSchema->addChild(FieldRef(path),
-                                    std::make_unique<EncryptionSchemaStateMixedNode>());
+                newSchema->addChild(
+                    FieldRef(path),
+                    std::make_unique<EncryptionSchemaStateMixedNode>(newSchema->parsedFrom));
             } else {
-                newSchema->addChild(FieldRef(path),
-                                    std::make_unique<EncryptionSchemaNotEncryptedNode>());
+                newSchema->addChild(
+                    FieldRef(path),
+                    std::make_unique<EncryptionSchemaNotEncryptedNode>(newSchema->parsedFrom));
             }
         }
     }
@@ -369,8 +388,9 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForLookUp(
         // we ensure here that we only add the modified paths to 'newSchema' once.
         if (!source.hasPipeline()) {
             for (const auto& path : modifiedPaths.paths) {
-                newSchema->addChild(FieldRef(path),
-                                    std::make_unique<EncryptionSchemaStateMixedNode>());
+                newSchema->addChild(
+                    FieldRef(path),
+                    std::make_unique<EncryptionSchemaStateMixedNode>(newSchema->parsedFrom));
             }
         }
     }
@@ -389,7 +409,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaNoEncryption(
     const std::vector<clonable_ptr<EncryptionSchemaTreeNode>>& children,
     const DocumentSource& source) {
     return clonable_ptr<EncryptionSchemaTreeNode>(
-        std::make_unique<EncryptionSchemaNotEncryptedNode>());
+        std::make_unique<EncryptionSchemaNotEncryptedNode>(prevSchema->parsedFrom));
 }
 
 clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForSingleDocumentTransformation(
@@ -404,7 +424,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForSingleDocumentTransform
             return propagateSchemaForInclusionNode(
                 *prevSchema,
                 *includer.getRoot(),
-                std::make_unique<EncryptionSchemaNotEncryptedNode>());
+                std::make_unique<EncryptionSchemaNotEncryptedNode>(prevSchema->parsedFrom));
         }
         case TransformerInterface::TransformerType::kExclusionProjection: {
             const auto& excluder =
@@ -451,8 +471,9 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForUnwind(
     // the same path and can consider this path to be unencrypted.
     auto arrayIndexPath = source.indexPath();
     if (arrayIndexPath) {
-        newSchema->addChild(FieldRef(arrayIndexPath->fullPath()),
-                            std::make_unique<EncryptionSchemaNotEncryptedNode>());
+        newSchema->addChild(
+            FieldRef(arrayIndexPath->fullPath()),
+            std::make_unique<EncryptionSchemaNotEncryptedNode>(newSchema->parsedFrom));
     }
 
     return std::move(newSchema);
