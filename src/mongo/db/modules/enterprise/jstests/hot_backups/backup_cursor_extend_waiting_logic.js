@@ -84,8 +84,7 @@ function assertLaggedSecondaryGetBlocked() {
     let firstBatch = cursor.next();
     assert("checkpointTimestamp" in firstBatch.metadata);
     const backupId = firstBatch.metadata.backupId;
-    copyBackupCursorFiles(
-        cursor, /*namespacesToSkip=*/[], firstBatch.metadata.dbpath, restorePath, false);
+    copyBackupCursorFiles(cursor, firstBatch.metadata.dbpath, restorePath, false);
 
     // Stop advancing committedSnapshot timestamp on the secondary.
     stopServerReplication(rst.getSecondary());
@@ -116,8 +115,7 @@ function assertLaggedSecondaryGetBlocked() {
     let extendCursor = extendBackupCursor(rst.getSecondary(), backupId, clusterTime);
     let timeElapsed = (new Date()).getTime() - now;
     jsTestLog("Extend took " + timeElapsed + "ms");
-    copyBackupCursorExtendFiles(
-        extendCursor, /*namespacesToSkip=*/[], firstBatch.metadata.dbpath, restorePath, false);
+    copyBackupCursorExtendFiles(extendCursor, firstBatch.metadata.dbpath, restorePath, false);
 
     verifyData(clusterTime, numDocs);
 
@@ -148,8 +146,7 @@ function assertLaggedShardCatchUpWithNoopWrites() {
     let firstBatch = cursor.next();
     assert("checkpointTimestamp" in firstBatch.metadata);
     const backupId = firstBatch.metadata.backupId;
-    copyBackupCursorFiles(
-        cursor, /*namespacesToSkip=*/[], firstBatch.metadata.dbpath, restorePath, false);
+    copyBackupCursorFiles(cursor, firstBatch.metadata.dbpath, restorePath, false);
 
     // Advance the cluster time by doing writes to shard A.
     jsTestLog("Start writes on shard A");
@@ -166,8 +163,7 @@ function assertLaggedShardCatchUpWithNoopWrites() {
     let extendCursor = extendBackupCursor(shardB, backupId, clusterTime);
     let timeElapsed = (new Date()).getTime() - now;
     jsTestLog("Extend took " + timeElapsed + "ms");
-    copyBackupCursorExtendFiles(
-        extendCursor, /*namespacesToSkip=*/[], firstBatch.metadata.dbpath, restorePath, false);
+    copyBackupCursorExtendFiles(extendCursor, firstBatch.metadata.dbpath, restorePath, false);
 
     verifyData(clusterTime, 0);
 

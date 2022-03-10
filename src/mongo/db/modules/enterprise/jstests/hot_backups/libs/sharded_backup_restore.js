@@ -38,9 +38,7 @@
 var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
     "use strict";
 
-    load("jstests/disk/libs/wt_file_helper.js");
     load("jstests/libs/backup_utils.js");
-    load("jstests/libs/feature_flag_util.js");
 
     // When opening a backup cursor, only checkpointed data is backed up. However, the most
     // up-to-date size storer information is used. Thus the fast count may be inaccurate.
@@ -48,10 +46,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
 
     const numShards = 4;
     const dbName = "test";
-    const collNameRestored = "continuous_writes_restored";
-    const collNameUnrestored = "continuous_writes_unrestored";
-    let collUUIDUnrestored;
-
+    const collName = "continuous_writes";
     const restorePaths = [
         MongoRunner.dataPath + "forRestore/shard0",
         MongoRunner.dataPath + "forRestore/shard1",
@@ -73,7 +68,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
     /////////// Helper functions for checking causal consistency of the backup ///////////
     //////////////////////////////////////////////////////////////////////////////////////
 
-    function _setupShardedCollectionForCausalWrites(st, dbName, collName) {
+    function _setupShardedCollectionForCausalWrites(st) {
         const fullNs = dbName + "." + collName;
         jsTestLog("Setting up sharded collection " + fullNs);
 
@@ -92,7 +87,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         st.adminCommand({moveChunk: fullNs, find: {numForPartition: 150}, to: st.shard3.shardName});
     }
 
-    function _startCausalWriterClient(st, collNames) {
+    function _startCausalWriterClient(st) {
         jsTestLog("Starting causal writer client");
 
         // This 1st write goes to shard 0, 2nd goes to shard 1, ..., Nth goes to shard N-1, and
@@ -103,13 +98,11 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         // Make sure some writes are persistent on disk in order to have a meaningful checkpoint
         // to backup.
         while (docId < 100) {
-            for (const collName of collNames) {
-                assert.commandWorked(st.getDB(dbName)[collName].insert({
-                    shardId: docId % numShards,
-                    numForPartition: numFallsIntoShard[docId % numShards],
-                    docId: docId
-                }));
-            }
+            assert.commandWorked(st.getDB(dbName)[collName].insert({
+                shardId: docId % numShards,
+                numForPartition: numFallsIntoShard[docId % numShards],
+                docId: docId
+            }));
             docId++;
         }
         for (let i = 0; i < numShards; i++) {
@@ -120,27 +113,20 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
             }
         }
 
-        const writerClientCmds = function(dbName, collNamesStr, numShards) {
+        const writerClientCmds = function(dbName, collName, numShards) {
             const session = db.getMongo().startSession({causalConsistency: true});
-
-            let sessionColls = [];
-            const collNames = collNamesStr.split(",");
-            for (const collName of collNames) {
-                sessionColls.push(session.getDatabase(dbName).getCollection(collName));
-            }
+            const sessionColl = session.getDatabase(dbName).getCollection(collName);
 
             const numFallsIntoShard = [-150, -50, 50, 150];
             let docId = 100;
 
             // Run indefinitely.
             while (1) {
-                for (const sessionColl of sessionColls) {
-                    assert.commandWorked(sessionColl.insert({
-                        shardId: docId % numShards,
-                        numForPartition: numFallsIntoShard[docId % numShards],
-                        docId: docId
-                    }));
-                }
+                assert.commandWorked(sessionColl.insert({
+                    shardId: docId % numShards,
+                    numForPartition: numFallsIntoShard[docId % numShards],
+                    docId: docId
+                }));
                 docId++;
             }
         };
@@ -148,7 +134,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         return startMongoProgramNoConnect(
             MongoRunner.mongoShellPath,
             '--eval',
-            `(${writerClientCmds})("${dbName}", "${collNames}", ${numShards})`,
+            `(${writerClientCmds})("${dbName}", "${collName}", ${numShards})`,
             st.s.host);
     }
 
@@ -165,7 +151,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
     function _verifyDataIsCausallyConsistent(mongos, shards) {
         jsTestLog("Verifying data is causally consistent");
 
-        const coll = mongos.getDB(dbName).getCollection(collNameRestored);
+        const coll = mongos.getDB(dbName).getCollection(collName);
         const docs = coll.find().toArray();
         const total = docs.length;
         assert.gt(total, 0, "There is no doc.");
@@ -180,7 +166,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
                     print("Shard " + shard.name + ": " +
                           tojson(shard.getPrimary()
                                      .getDB(dbName)
-                                     .getCollection(collNameRestored)
+                                     .getCollection(collName)
                                      .find()
                                      .toArray()));
                 });
@@ -407,8 +393,8 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
     //////////////////////////////// Backup Specification ////////////////////////////////
     //////////////////////////////////////////////////////////////////////////////////////
 
-    function _createBackup(st, isSelectiveRestore) {
-        jsTestLog("Creating " + (isSelectiveRestore ? "selective" : "full") + " backup");
+    function _createBackup(st) {
+        jsTestLog("Creating backup");
 
         /**
          *  1. Take note of the topology configuration of the entire cluster.
@@ -425,8 +411,6 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         let backupIds = [];
         let maxCheckpointTimestamp = Timestamp();
         let stopCounter = new CountDownLatch(1);
-        let filesCopied = [];
-        let fileCopiedCallback = (fileCopied) => filesCopied.push(fileCopied);
         for (let i = 0; i < numShards + 1; i++) {
             const shardNum = (i === numShards) ? "CSRS" : ("shard" + i);
             jsTestLog("Backing up " + shardNum + " with node " + nodesToBackup[i].host);
@@ -443,23 +427,14 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
             /**
              *  3. Spawn a copy worker thread to copy the data files for each node.
              */
-            const namespacesToSkip = [];
-            if (isSelectiveRestore) {
-                namespacesToSkip.push(dbName + "." + collNameUnrestored);
-            }
-
-            const copyThread = copyBackupCursorFiles(backupCursors[i],
-                                                     namespacesToSkip,
-                                                     metadata["dbpath"],
-                                                     restorePaths[i],
-                                                     /*async=*/true,
-                                                     fileCopiedCallback);
+            const copyThread =
+                copyBackupCursorFiles(backupCursors[i], metadata["dbpath"], restorePaths[i], true);
             jsTestLog("Opened up backup cursor on " + nodesToBackup[i] + ": " + tojson(metadata));
             dbpaths[i] = metadata.dbpath;
             backupIds[i] = metadata.backupId;
 
             /**
-             *  4. Get the `maxCheckpointTimestamp` given all the checkpoint timestamps returned by
+             *  4. Get the `maxCheckpointTImestamp` given all the checkpoint timestamps returned by
              *     $backupCursor.
              */
             let checkpointTimestamp = metadata.checkpointTimestamp;
@@ -482,8 +457,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         for (let i = 0; i < numShards + 1; i++) {
             jsTestLog("Extending backup cursor for shard" + i);
             let cursor = extendBackupCursor(nodesToBackup[i], backupIds[i], maxCheckpointTimestamp);
-            let thread = copyBackupCursorExtendFiles(
-                cursor, /*namespacesToSkip=*/[], dbpaths[i], restorePaths[i], true);
+            let thread = copyBackupCursorExtendFiles(cursor, dbpaths[i], restorePaths[i], true);
             copyWorkers.push(thread);
             cursor.close();
         }
@@ -521,34 +495,12 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
             cursor.close();
         });
 
-        // TODO SERVER-62605: remove this block after WT-8703 is complete.
-        if (isSelectiveRestore) {
-            for (let i = 0; i < numShards; i++) {
-                // Remove URIs for collection "continuous_writes_unrestored", and its indexes "_id_"
-                // and "numForPartition_1" from WiredTiger.backup.
-                const collUnrestored =
-                    nodesToBackup[i].getDB(dbName).getCollection(collNameUnrestored);
-                const collUri = getUriForColl(collUnrestored);
-                const indexIdUri = getUriForIndex(collUnrestored, /*indexName=*/"_id_");
-                const indexNumForPartitionUri =
-                    getUriForIndex(collUnrestored, /*indexName=*/"numForPartition_1");
-
-                removeUriFromWiredTigerBackup(restorePaths[i], collUri);
-                removeUriFromWiredTigerBackup(restorePaths[i], indexIdUri);
-                removeUriFromWiredTigerBackup(restorePaths[i], indexNumForPartitionUri);
-
-                jsTestLog("Modified WiredTiger.backup to remove URIs: " + collUri + ", " +
-                          indexIdUri + ", and " + indexNumForPartitionUri + " on shard: " + i);
-            }
-        }
-
         jsTestLog({
             msg: "Sharded cluster has been successfully backed up.",
             maxCheckpointTimestamp: maxCheckpointTimestamp,
-            restorePaths: restorePaths,
-            filesCopied: filesCopied
+            restorePaths: restorePaths
         });
-        return {maxCheckpointTimestamp, initialTopology, filesCopied};
+        return {maxCheckpointTimestamp, initialTopology};
     }
 
     //////////////////////////////////////////////////////////////////////////////////////
@@ -560,9 +512,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
                                 restoredNodePort,
                                 backupPointInTime,
                                 restorePointInTime,
-                                restoreOplogEntries,
-                                isSelectiveRestore,
-                                filesCopied) {
+                                restoreOplogEntries) {
         const isCSRS = (setName === csrsName);
 
         /**
@@ -576,25 +526,12 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
          *
          * For simplicity, we restore to a single node replica set. In practice we'd want to
          * do the same procedure on each shard server in the destination cluster.
-         *
-         * For selective restores, checks that collNameUnrestored was not restored on each shard
-         * server.
          */
         let conn = MongoRunner.runMongod({
             dbpath: restorePath,
             noCleanData: true,  // Do not delete existing data on startup.
-            setParameter: {ttlMonitorEnabled: false, disableLogicalSessionCacheRefresh: true},
-            ...(isSelectiveRestore && {restore: ""}),
+            setParameter: {ttlMonitorEnabled: false, disableLogicalSessionCacheRefresh: true}
         });
-
-        if (!isCSRS) {
-            const collList = conn.getDB(dbName)
-                                 .runCommand({listCollections: 1, filter: {type: "collection"}})
-                                 .cursor.firstBatch;
-            collList.forEach(function(collInfo) {
-                assert.neq(collNameUnrestored, collInfo.name);
-            });
-        }
 
         /**
          * 3. Remove all documents in `local.system.replset`.
@@ -657,12 +594,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
             jsTestLog(restorePath + ": Restarting node on temporary port " + tmpPort);
             const tmpSet = new ReplSetTest({
                 name: setName,
-                nodes: [{
-                    noCleanData: true,
-                    dbpath: restorePath,
-                    port: tmpPort,
-                    ...(isSelectiveRestore && {restore: ""}),
-                }],
+                nodes: [{noCleanData: true, dbpath: restorePath, port: tmpPort}],
             });
             if (isCSRS) {
                 tmpSet.startSet({configsvr: ""});
@@ -690,7 +622,6 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
             conn = MongoRunner.runMongod({
                 dbpath: restorePath,
                 noCleanData: true,
-                ...(isSelectiveRestore && {restore: ""}),
                 setParameter: {ttlMonitorEnabled: false, disableLogicalSessionCacheRefresh: true}
             });
 
@@ -724,7 +655,6 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
             conn = MongoRunner.runMongod({
                 dbpath: restorePath,
                 noCleanData: true,
-                ...(isSelectiveRestore && {restore: ""}),
                 setParameter:
                     {recoverFromOplogAsStandalone: true, takeUnstableCheckpointOnShutdown: true}
             });
@@ -737,45 +667,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         }
 
         /**
-         * 11. When performing a selective restore, the CSRS needs to perform an additional step to
-         * remove any references to unrestored collections from its config collections.
-         */
-        if (isCSRS && isSelectiveRestore) {
-            conn = MongoRunner.runMongod({
-                dbpath: restorePath,
-                noCleanData: true,
-                restore: "",
-                setParameter: {ttlMonitorEnabled: false, disableLogicalSessionCacheRefresh: true}
-            });
-            assert.neq(conn, null);
-
-            // Create "local.system.collections_to_restore" and populate it with collections
-            // restored on shards before running "_configsvrRunRestore".
-            assert.commandWorked(
-                conn.getDB("local").createCollection("system.collections_to_restore"));
-            for (const fileCopied of filesCopied) {
-                if (fileCopied.ns.length == 0 || fileCopied.uuid.length == 0) {
-                    // Skip files not known to the catalog, such as WiredTiger metadata files.
-                    continue;
-                }
-
-                assert.commandWorked(conn.getDB("local")
-                                         .getCollection("system.collections_to_restore")
-                                         .insert({ns: fileCopied.ns, uuid: UUID(fileCopied.uuid)}));
-            }
-
-            // Removes any references from the CSRS config collections for any collections not
-            // present in "local.system.collections_to_restore".
-            assert.commandWorked(conn.getDB("admin").runCommand({_configsvrRunRestore: 1}));
-
-            // Remove "local.system.collections_to_restore" after running "_configsvrRunRestore".
-            assert(conn.getDB("local").getCollection("system.collections_to_restore").drop());
-
-            MongoRunner.stopMongod(conn, {noCleanData: true});
-        }
-
-        /**
-         * 12. Start each replica set member as a standalone on an ephemeral port,
+         * 11. Start each replica set member as a standalone on an ephemeral port,
          *      - without auth
          *      - with setParameter.ttlMonitorEnabled=false
          *      - with no sharding.clusterRole value
@@ -795,16 +687,13 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
                           restoredNodePorts,
                           backupPointInTime,
                           restorePointInTime,
-                          restoreOplogEntries,
-                          isSelectiveRestore,
-                          filesCopied) {
+                          restoreOplogEntries) {
         jsTestLog({
             msg: "Restoring CSRS.",
             restorePath: restorePath,
             port: restoredCSRSPort,
             restorePIT: restorePointInTime,
-            backupPointInTime: backupPointInTime,
-            isSelectiveRestore: isSelectiveRestore
+            backupPointInTime: backupPointInTime
         });
 
         const conn = _restoreReplicaSet(restorePath,
@@ -812,20 +701,18 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
                                         restoredCSRSPort,
                                         backupPointInTime,
                                         restorePointInTime,
-                                        restoreOplogEntries,
-                                        isSelectiveRestore,
-                                        filesCopied);
+                                        restoreOplogEntries);
         const configDb = conn.getDB("config");
 
         /**
-         * 13. Remove all documents from `config.mongos`.
+         * 12. Remove all documents from `config.mongos`.
          *     Remove all documents from `config.lockpings`.
          */
         assert.commandWorked(configDb.mongos.remove({}));
         assert.commandWorked(configDb.lockpings.remove({}));
 
         /**
-         * 14. For every sourceShardName document in `config.shards`:
+         * 13. For every sourceShardName document in `config.shards`:
          *      - For every document in `config.databases` with {primary: sourceShardName}:
          *          - Set primary from sourceShardName to destShardName
          *      - For every document in `config.chunks` with {shard: sourceShardName}:
@@ -875,37 +762,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         jsTestLog("ClusterId doc: " + tojson(clusterId));
 
         /**
-         * 15. For selective restores, verify that none of the config collections contain references
-         * to the unrestored collection.
-         */
-        if (isSelectiveRestore) {
-            // These checks should be kept in sync with any changes made to the
-            // '_configsvrRunRestore' command.
-            jsTestLog("Verifying that the config collections have no references of: " +
-                      tojson({nss: collNameUnrestored, uuid: collUUIDUnrestored}));
-
-            assert.eq(0, configDb.chunks.find({uuid: collUUIDUnrestored}).itcount());
-            assert.eq(0,
-                      configDb.collections.find({_id: collNameUnrestored, uuid: collUUIDUnrestored})
-                          .itcount());
-            assert.eq(0, configDb.locks.find({_id: collNameUnrestored}).itcount());
-            assert.eq(0,
-                      configDb.migrationCoordinators
-                          .find({nss: collNameUnrestored, collectionUuid: collUUIDUnrestored})
-                          .itcount());
-            assert.eq(0, configDb.tags.find({ns: collNameUnrestored}).itcount());
-            assert.eq(0,
-                      configDb.rangeDeletions
-                          .find({nss: collNameUnrestored, collectionUuid: collUUIDUnrestored})
-                          .itcount());
-            assert.eq(0,
-                      configDb.getCollection("system.sharding_ddl_coordinators")
-                          .find({"_id.namespace": collNameUnrestored})
-                          .itcount());
-        }
-
-        /**
-         * 16. Shut down the mongod process cleanly via a shutdown command.
+         * 14. Shut down the mongod process cleanly via a shutdown command.
          *     Start the process as a replica set/shard member on regular port.
          */
         MongoRunner.stopMongod(conn, {noCleanData: true});
@@ -920,8 +777,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
                            restoreOplogEntries,
                            clusterId,
                            shardNum,
-                           configsvrConnectionString,
-                           isSelectiveRestore) {
+                           configsvrConnectionString) {
         jsTestLog("Restoring shard at " + restorePath + " for port " + restoredNodePort);
 
         const conn = _restoreReplicaSet(restorePath,
@@ -929,17 +785,16 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
                                         restoredNodePort,
                                         backupPointInTime,
                                         restorePointInTime,
-                                        restoreOplogEntries,
-                                        isSelectiveRestore);
+                                        restoreOplogEntries);
 
         /**
-         * 13. Remove the {_id: "minOpTimeRecovery"} from the `admin.system.version` collection.
+         * 12. Remove the {_id: "minOpTimeRecovery"} from the `admin.system.version` collection.
          */
         const adminDb = conn.getDB("admin");
         assert.commandWorked(adminDb.system.version.remove({_id: "minOpTimeRecovery"}));
 
         /**
-         * 14. Update the {"_id": "shardIdentity"} in `admin.system.version`:
+         * 13. Update the {"_id": "shardIdentity"} in `admin.system.version`:
          * "$set": {
          *              "clusterId":                 clusterId,
          *              "shardName":                 destShardName,
@@ -963,7 +818,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         }));
 
         /**
-         * 15. Drop `config.cache.collections`.
+         * 14. Drop `config.cache.collections`.
          *     Drop `config.cache.chunks.*` collections.
          *     Drop `config.cache.databases`.
          */
@@ -978,23 +833,18 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         });
 
         /**
-         * 16. Shut down the mongod process cleanly via a shutdown command.
+         * 15. Shut down the mongod process cleanly via a shutdown command.
          *     Start the process as a replica set/shard member on regular port.
          */
         MongoRunner.stopMongod(conn, {noCleanData: true});
     }
 
-    function _restoreFromBackup(restoredNodePorts,
-                                backupPointInTime,
-                                restorePointInTime,
-                                restoreOplogEntries,
-                                isSelectiveRestore,
-                                filesCopied) {
+    function _restoreFromBackup(
+        restoredNodePorts, backupPointInTime, restorePointInTime, restoreOplogEntries) {
         jsTestLog({
             msg: "Restoring from backup.",
             "Backup PIT": backupPointInTime,
-            "Restore PIT": restorePointInTime,
-            "Selective Restore": isSelectiveRestore
+            "Restore PIT": restorePointInTime
         });
 
         /**
@@ -1019,9 +869,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
                                        restoredNodePorts,
                                        backupPointInTime,
                                        restorePointInTime,
-                                       csrsRestoreOplogEntries,
-                                       isSelectiveRestore,
-                                       filesCopied);
+                                       csrsRestoreOplogEntries);
 
         const configsvrConnectionString =
             csrsName + "/localhost:" + restoredNodePorts[configServerIdx];
@@ -1037,8 +885,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
                           shardRestoreOplogEntries,
                           clusterId,
                           i,
-                          configsvrConnectionString,
-                          isSelectiveRestore);
+                          configsvrConnectionString);
         }
     }
 
@@ -1048,8 +895,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
 
     // If 'isPitRestore' is specified, does a PIT restore to an arbitrary PIT and checks that the
     // data is consistent.
-    this.run = function(
-        {isPitRestore = false, isSelectiveRestore = false, backupBinaryVersion = "latest"} = {}) {
+    this.run = function({isPitRestore = false, backupBinaryVersion = "latest"} = {}) {
         /**
          *  Setup for backup
          */
@@ -1075,42 +921,8 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
             },
         });
 
-        if (isSelectiveRestore &&
-            !FeatureFlagUtil.isEnabled(st.s0.getDB("test"), "SelectiveBackup")) {
-            jsTestLog("Skipping as featureFlagSelectiveBackup is not enabled");
-            st.stop();
-            return "Test succeeded.";
-        }
-
-        // TODO SERVER-62605 remove this block.
-        if (isSelectiveRestore && _isWindows()) {
-            jsTestLog("Skipping selective restore test on windows");
-            st.stop();
-            return "Test succeeded.";
-        }
-
-        let collNames = [collNameRestored];
-        if (isSelectiveRestore) {
-            collNames.push(collNameUnrestored);
-        }
-
-        for (const collName of collNames) {
-            _setupShardedCollectionForCausalWrites(st, dbName, collName);
-        }
-
-        if (isSelectiveRestore) {
-            // Store the UUID of the collection that will not be restored. This will be used during
-            // the CSRS restore to make sure no config collections reference the collection.
-            collUUIDUnrestored = st.shard0.getDB(dbName)
-                                     .runCommand({
-                                         listCollections: 1,
-                                         filter: {name: collNameUnrestored, type: "collection"}
-                                     })
-                                     .cursor.firstBatch[0]
-                                     .info.uuid;
-        }
-
-        let writerPid = _startCausalWriterClient(st, collNames);
+        _setupShardedCollectionForCausalWrites(st, dbName, collName);
+        let writerPid = _startCausalWriterClient(st);
 
         jsTestLog("Resetting db path");
         resetDbpath(MongoRunner.dataPath + "forRestore/");
@@ -1123,12 +935,10 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         let restorePointInTime;
         let restoreOplogEntries;
         let lastDocID;
-        let filesCopied;
         try {
-            const result = _createBackup(st, isSelectiveRestore);
+            const result = _createBackup(st);
             const initialTopology = result.initialTopology;
             backupPointInTime = result.maxCheckpointTimestamp;
-            filesCopied = result.filesCopied;
 
             if (isPitRestore) {
                 // The common reason for a retry is for the config server to generate an oplog entry
@@ -1167,12 +977,8 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
          */
         const restoredNodePorts = allocatePorts(numShards + 1);
         tmpPort = Math.max(...restoredNodePorts) + 1;
-        _restoreFromBackup(restoredNodePorts,
-                           backupPointInTime,
-                           restorePointInTime,
-                           restoreOplogEntries,
-                           isSelectiveRestore,
-                           filesCopied);
+        _restoreFromBackup(
+            restoredNodePorts, backupPointInTime, restorePointInTime, restoreOplogEntries);
 
         /**
          *  Check data consistency

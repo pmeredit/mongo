@@ -152,11 +152,8 @@ sleep(1000 + Random.randInt(1000));
 let backupCursor = openBackupCursor(primary);
 sleep(Random.randInt(1000));
 let primaryBackupMetadata = getBackupCursorMetadata(backupCursor);
-copyBackupCursorFiles(backupCursor,
-                      /*namespacesToSkip=*/[],
-                      primaryBackupMetadata.dbpath,
-                      primary.dbpath + "/primary-backup",
-                      false);
+copyBackupCursorFiles(
+    backupCursor, primaryBackupMetadata.dbpath, primary.dbpath + "/primary-backup", false);
 jsTestLog({"Primary $backupCursor metadata": primaryBackupMetadata});
 backupCursor.close();
 
@@ -168,11 +165,8 @@ getBackupColl(primary).insert({});
 // performing file copies. The data copied must not contain causally related writes.
 sleep(1000 + Random.randInt(1000));
 let secondaryBackupMetadata = getBackupCursorMetadata(backupCursor);
-copyBackupCursorFiles(backupCursor,
-                      /*namespacesToSkip=*/[],
-                      secondaryBackupMetadata.dbpath,
-                      secondary.dbpath + "/secondary-backup",
-                      false);
+copyBackupCursorFiles(
+    backupCursor, secondaryBackupMetadata.dbpath, secondary.dbpath + "/secondary-backup", false);
 jsTestLog({"Secondary $backupCursor metadata": secondaryBackupMetadata});
 backupCursor.close();
 

@@ -20,18 +20,18 @@ let ChunkMigrator = function() {
         let shardsInfo = mongos.getDB("config").shards.find().sort({_id: 1}).toArray();
         jsTestLog("Shards Info: " + tojson(shardsInfo));
         let chunksInfo = mongos.getDB("config")
-                             .chunks.find({ns: "test.continuous_writes_restored"})
+                             .chunks.find({ns: "test.continuous_writes"})
                              .sort({_id: 1})
                              .toArray();
         jsTestLog("Chunks Info before migrations: " + tojson(chunksInfo));
         jsTestLog("Migrate the first chunk [MinKey, -100) from shard 0 to shard 2");
         assert.commandWorked(mongos.adminCommand({
-            moveChunk: "test.continuous_writes_restored",
+            moveChunk: "test.continuous_writes",
             find: {numForPartition: -100000},
             to: shardsInfo[2]._id
         }));
         chunksInfo = mongos.getDB("config")
-                         .chunks.find({ns: "test.continuous_writes_restored"})
+                         .chunks.find({ns: "test.continuous_writes"})
                          .sort({_id: 1})
                          .toArray();
         jsTestLog("Chunks Info after migrations: " + tojson(chunksInfo));
