@@ -42,6 +42,8 @@ std::list<intrusive_ptr<DocumentSource>> DocumentSourceSearchMeta::createFromBso
     std::list<intrusive_ptr<DocumentSource>> res{
         // Fetch the search results and populate $$SEARCH_META.
         DocumentSourceInternalSearchMongotRemote::createFromBson(elem, pExpCtx),
+        // Do not send search query results to merging node.
+        DocumentSourceLimit::create(pExpCtx, 1),
         // Replace any documents returned by mongot with the SEARCH_META contents.
         DocumentSourceReplaceRoot::createFromBson(
             BSON("$replaceRoot" << BSON("newRoot" << std::string("$$SEARCH_META"))).firstElement(),
