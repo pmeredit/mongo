@@ -1,5 +1,5 @@
 /**
- * A simple case of sharded PIT backup/restore.
+ * A simple case of sharded snapshot selective backup/restore.
  *
  * @tags: [
  *   requires_journaling,
@@ -23,6 +23,6 @@ let NoopWorker = function() {
 };
 
 let msg = new ShardedBackupRestoreTest(new NoopWorker())
-              .run({isPitRestore: true, isSelectiveRestore: false, backupBinaryVersion: "latest"});
+              .run({isPitRestore: false, isSelectiveRestore: true, backupBinaryVersion: "latest"});
 assert.eq(msg, "Test succeeded.");
 }());

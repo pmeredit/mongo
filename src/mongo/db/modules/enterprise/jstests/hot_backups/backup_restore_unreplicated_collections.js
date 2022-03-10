@@ -52,7 +52,8 @@ checkLog.containsJson(primary, 22237, {dropTimestamp: {$timestamp: {t: 0, i: 0}}
 const backupPath = primary.dbpath + "backup_restore";
 const backupCursor = openBackupCursor(primary);
 const metadata = getBackupCursorMetadata(backupCursor);
-copyBackupCursorFiles(backupCursor, metadata.dbpath, backupPath, false /* async */);
+copyBackupCursorFiles(
+    backupCursor, /*namespacesToSkip=*/[], metadata.dbpath, backupPath, false /* async */);
 
 rst.stopSet(/*signal=*/null, /*forRestart=*/true);
 
