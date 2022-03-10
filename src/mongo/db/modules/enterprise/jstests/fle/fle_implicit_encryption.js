@@ -1,5 +1,8 @@
 /**
  * Check the functionality of query functions with encryption.
+ *
+ * TODO SERVER-64213 Enable end to end testing
+ * @tags: [unsupported_fle_2]
  */
 
 load("jstests/client_encrypt/lib/mock_kms.js");

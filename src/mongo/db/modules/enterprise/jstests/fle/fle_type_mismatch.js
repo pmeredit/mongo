@@ -198,14 +198,17 @@ assert.commandFailedWithCode(testDb.runCommand(Object.assign({
                                                              deterministicEncryptionSchema)),
                              31118);
 
-// Cannot compare the encrypted field to an int in a distinct command.
-assert.commandFailedWithCode(testDb.runCommand(Object.assign({
-    distinct: coll.getName(),
-    key: "key",
-    query: {foo: {$eq: NumberInt(3)}},
-},
-                                                             deterministicEncryptionSchema)),
-                             31118);
+// Distinct command is not supported in FLE 2.
+if (!fle2Enabled()) {
+    // Cannot compare the encrypted field to an int in a distinct command.
+    assert.commandFailedWithCode(testDb.runCommand(Object.assign({
+        distinct: coll.getName(),
+        key: "key",
+        query: {foo: {$eq: NumberInt(3)}},
+    },
+                                                                 deterministicEncryptionSchema)),
+                                 31118);
+}
 
 // Cannot compare the encrypted field to an int in an aggregate command.
 assert.commandFailedWithCode(testDb.runCommand(Object.assign({

@@ -29,7 +29,6 @@ const fooEncryptedSchema = generateSchema({
 
 let cmds = [
     {cmdName: "find", cmd: {find: "foo", filter: {_id: 1}}},
-    {cmdName: "distinct", cmd: {distinct: "foo", query: {_id: 1}, key: "_id"}},
     {cmdName: "count", cmd: {count: "foo", query: {_id: 1}}},
     {
         cmdName: "findAndModify",
@@ -51,6 +50,11 @@ let cmds = [
     },
     {cmdName: "delete", cmd: {delete: "foo", deletes: [{q: {foo: NumberLong(1)}, limit: 1}]}}
 ];
+
+// Distinct is only supported with FLE 1.
+if (!fle2Enabled()) {
+    cmds.push({cmdName: "distinct", cmd: {distinct: "foo", query: {_id: 1}, key: "_id"}});
+}
 
 cmds.forEach(element => {
     // Make sure no json schema fails
