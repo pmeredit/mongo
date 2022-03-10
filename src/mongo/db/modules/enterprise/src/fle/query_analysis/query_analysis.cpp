@@ -93,9 +93,8 @@ QueryAnalysisParams extractCryptdParameters(const BSONObj& obj) {
             encryptInfo = schemaSpec.firstElement().Obj();
             isFLE2 = true;
 
-            // Unlike FLE 1, 'encryptionInformation' should be retained in the command BSON as it
-            // will be forwarded to the server.
-            stripped.append(e);
+            // TODO SERVER-64040 include 'encryptionInformation' in response object.
+            // stripped.append(e);
         } else {
             stripped.append(e);
         }
