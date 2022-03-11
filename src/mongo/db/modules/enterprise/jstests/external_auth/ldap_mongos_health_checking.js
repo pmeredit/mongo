@@ -6,7 +6,7 @@
 'use strict';
 
 load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ldap_authz_lib.js");
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ufw_firewall_lib.js");
+load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/iptables_lib.js");
 
 // Increment this for the real stress test, value is low for the Evergreen.
 const kIterations = 2;
@@ -107,7 +107,7 @@ const runTestSuite = function(ldapTestServer) {
                                    .concat(ldapServersArray.slice(indexToNotBlock + 1));
 
         serversToBlock.forEach((serverName) => {
-            changeFirewallForServer(serverName);
+            enableFirewallFromServer(serverName);
         });
         sleep(10000);  // Let mongos to run with firewall.
         // The timeout for each request is 8 sec. In each health check, one thread
@@ -117,18 +117,18 @@ const runTestSuite = function(ldapTestServer) {
         assert.commandWorked(st.s0.adminCommand({"ping": 1}));
 
         serversToBlock.forEach((serverName) => {
-            changeFirewallForServer(serverName, true /* remove rule */);
+            disableFirewallFromServer(serverName);
         });
     };
 
     const testWithFullyDisabledFirewall = function() {
         ldapServersArray.forEach((serverName) => {
-            changeFirewallForServer(serverName);
+            enableFirewallFromServer(serverName);
         });
         sleep(Math.random() * 10000);  // Let mongos to run with firewall.
 
         ldapServersArray.forEach((serverName) => {
-            changeFirewallForServer(serverName, true /* remove rule */);
+            disableFirewallFromServer(serverName);
         });
 
         // Mongos should be functional.
@@ -196,14 +196,8 @@ const runTestSuite = function(ldapTestServer) {
             sleep(1000);
         }
     };
-
-    var firewallIsEnabledAtStart = false;
     try {
         if (isAnyUbuntu) {
-            firewallIsEnabledAtStart = checkFirewallIsEnabled();
-            if (!firewallIsEnabledAtStart) {
-                enableFirewall();
-            }
             for (var i = 0; i < kIterations; ++i) {
                 testWithPartiallyDisabledFirewall();
                 if (i % 10 == 0) {
@@ -219,10 +213,15 @@ const runTestSuite = function(ldapTestServer) {
                 }
             }
         }
-
     } finally {
-        if (isAnyUbuntu && !firewallIsEnabledAtStart) {
-            disableFirewall();
+        // If we hit an assertion above, make sure firewall from each server is disabled
+        if (isAnyUbuntu) {
+            ldapServersArray.forEach((serverName) => {
+                // If firewall from server is not already disabled, disable it
+                while (isFirewallEnabledFromServer(serverName)) {
+                    disableFirewallFromServer(serverName);
+                }
+            });
         }
     }
 

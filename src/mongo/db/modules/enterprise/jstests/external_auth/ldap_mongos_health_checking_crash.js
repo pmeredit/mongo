@@ -12,7 +12,7 @@
 (function() {
 'use strict';
 
-load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/ufw_firewall_lib.js");
+load("src/mongo/db/modules/enterprise/jstests/external_auth/lib/iptables_lib.js");
 
 const ldapServer = "ldaptest.10gen.cc";
 const ACTIVE_FAULT_DURATION_SECS = 1;
@@ -68,34 +68,38 @@ assert.commandWorked(st.s0.adminCommand({"ping": 1}));
 
 assert(faultState() == 'Ok');
 
-// Turn the firewall on.
-enableFirewall();
-changeFirewallForServer(ldapServer);
+try {
+    // TODO: SERVER-64479.  Fix firewall concurrency issues.
+    // Turn the firewall on (drop packets from ldapServer).
+    enableFirewallFromServer(ldapServer);
 
-// Wait for non-ok LDAP status or network error.
-assert.soon(() => {
-    try {
-        return faultState() == 'TransientFault' || faultState() == 'ActiveFault';
-    } catch (e) {
-        jsTestLog(`Can't fetch server status: ${e}`);
-        return true;  // Server must be down already.
+    // Wait for non-ok LDAP status or network error.
+    assert.soon(() => {
+        try {
+            return faultState() == 'TransientFault' || faultState() == 'ActiveFault';
+        } catch (e) {
+            jsTestLog(`Can't fetch server status: ${e}`);
+            return true;  // Server must be down already.
+        }
+    }, 'Cannot reach mongos', 20000, 1000);
+
+    // Waits until the mongos crashes.
+    assert.soon(() => {
+        try {
+            let res = st.s0.adminCommand({"ping": 1});
+            jsTestLog(`Ping result: ${tojson(res)}`);
+            return res.ok != 1;
+        } catch (e) {
+            jsTestLog(`Ping failed: ${tojson(e)}`);
+            return true;
+        }
+    }, 'Mongos is not shutting down as expected', 30000, 400);
+} finally {
+    // In case assertion is hit, make sure firewall is down
+    while (isFirewallEnabledFromServer(ldapServer)) {
+        disableFirewallFromServer(ldapServer);
     }
-}, 'Cannot reach mongos', 20000, 1000);
-
-// Waits until the mongos crashes.
-assert.soon(() => {
-    try {
-        let res = st.s0.adminCommand({"ping": 1});
-        jsTestLog(`Ping result: ${tojson(res)}`);
-        return res.ok != 1;
-    } catch (e) {
-        jsTestLog(`Ping failed: ${tojson(e)}`);
-        return true;
-    }
-}, 'Mongos is not shutting down as expected', 30000, 400);
-
-changeFirewallForServer(ldapServer, true /* remove rule */);
-disableFirewall();
+}
 
 try {
     st.stop({skipValidatingExitCode: true, skipValidation: true});
