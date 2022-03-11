@@ -84,7 +84,7 @@ public:
                 BSONObj schemaObj = schemaElem.Obj();
 
                 if (schemaObj.hasField("escCollection") && schemaObj.hasField("eccCollection") &&
-                    schemaObj.hasField("ecocCollection")) {
+                    schemaObj.hasField("ecocCollection") && schemaObj.hasField("encryptedFields")) {
 
                     return SchemaInfo{schemaObj.getOwned(),
                                       Date_t::now(),
@@ -106,6 +106,7 @@ public:
             BSONObj options = highLevelSchema.getObjectField("options");
             if (!options.isEmpty()) {
                 if (!options.getObjectField("encryptedFields").isEmpty()) {
+
                     return SchemaInfo{options.getObjectField("encryptedFields").getOwned(),
                                       Date_t::now(),
                                       true,
@@ -340,7 +341,7 @@ public:
 
         auto obj = encryptDecryptCommand(field.Obj(), true, databaseName);
 
-        return FLEClientCrypto::generateInsertOrUpdateFromPlaceholders(obj, this);
+        return FLEClientCrypto::transformPlaceholders(obj, this);
     }
 
     void encryptMarking(const BSONObj& obj, BSONObjBuilder* builder, StringData elemName) override {
