@@ -11,7 +11,6 @@
 #include "mongo/client/dbclient_base.h"
 #include "mongo/crypto/aead_encryption.h"
 #include "mongo/crypto/fle_crypto.h"
-#include "mongo/crypto/fle_key_vault_shell.h"
 #include "mongo/crypto/symmetric_crypto.h"
 #include "mongo/db/client.h"
 #include "mongo/db/commands.h"
@@ -49,7 +48,7 @@ class ImplicitEncryptedDBClientBase final : public EncryptedDBClientBase {
         bool remote;  // True if the schema is from the server. Else false.
         enum class SchemaType { none, jsonSchema, encryptedFields } _schemaType;
 
-        bool isFLE2() {
+        bool isFLE2() const {
             return _schemaType == SchemaType::encryptedFields;
         }
     };
@@ -194,9 +193,31 @@ public:
         }
 
         BSONObjBuilder commandBuilder;
-        commandBuilder.append(query_analysis::kJsonSchema, schemaInfo.schema);
-        commandBuilder.append(query_analysis::kIsRemoteSchema, schemaInfo.remote);
         commandBuilder.appendElementsUnique(request.body);
+
+        if (schemaInfo.isFLE2()) {
+            BSONObj ei;
+            // commands that may delete fields require delete tokens
+            if (commandName == "delete" || commandName == "findAndModify" ||
+                commandName == "findandmodify" || commandName == "update") {
+
+                EncryptedFieldConfig efc = EncryptedFieldConfig::parse(
+                    IDLParserErrorContext("encryptedFields"), schemaInfo.schema);
+                ei = EncryptionInformationHelpers::encryptionInformationSerializeForDelete(
+                    ns, efc, this);
+
+            } else {
+
+                ei = EncryptionInformationHelpers::encryptionInformationSerialize(
+                    ns, schemaInfo.schema);
+            }
+
+            commandBuilder.append(query_analysis::kEncryptionInformation, ei);
+        } else {
+            commandBuilder.append(query_analysis::kJsonSchema, schemaInfo.schema);
+            commandBuilder.append(query_analysis::kIsRemoteSchema, schemaInfo.remote);
+        }
+
         BSONObj cmdObj = commandBuilder.obj();
         request.body = cmdObj;
         auto client = &cc();
@@ -311,7 +332,7 @@ public:
         return processResponseFLE1(std::move(result), databaseName);
     }
 
-    BSONObj preprocessRequest(const BSONObj& schemaInfo, const StringData& databaseName) {
+    BSONObj preprocessRequest(const BSONObj& schemaInfo, const StringData databaseName) {
         BSONElement field = schemaInfo.getField("result"_sd);
         uassert(31060,
                 "Query preprocessing of command yielded error. Result object not found.",
@@ -319,8 +340,7 @@ public:
 
         auto obj = encryptDecryptCommand(field.Obj(), true, databaseName);
 
-        FLEKeyVaultShellImpl vault(_encryptionOptions, getCollectionNS(), _conn.get());
-        return FLEClientCrypto::generateInsertOrUpdateFromPlaceholders(obj, &vault);
+        return FLEClientCrypto::generateInsertOrUpdateFromPlaceholders(obj, this);
     }
 
     void encryptMarking(const BSONObj& obj, BSONObjBuilder* builder, StringData elemName) override {
