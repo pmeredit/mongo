@@ -69,6 +69,7 @@ res = assert.commandWorked(edb.basic.updateOne(
 assert.eq(res.modifiedCount, 1);
 
 client.assertEncryptedCollectionCounts("basic", 2, 5, 3, 8);
+client.assertOneEncryptedDocumentFields("basic", {"last": "Marcus"}, {"first": "john"});
 
 // Update an unencrypted field in a document, expect no esc/ecc/ecoc changes
 res = assert.commandWorked(edb.basic.updateOne({"last": "marco"}, {$set: {"middle": "matthew"}}));
