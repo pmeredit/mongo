@@ -16,12 +16,6 @@ load("jstests/libs/feature_flag_util.js");
 
 TestData.skipEnforceFastCountOnValidate = true;
 
-// TODO SERVER-62605: enable this test on Windows after WT-8703 is complete.
-if (_isWindows()) {
-    jsTestLog("Skipping test on Windows");
-    return;
-}
-
 const rst = new ReplSetTest({nodes: 1});
 
 rst.startSet();
@@ -58,9 +52,6 @@ rst.stopSet(/*signal=*/null, /*forRestart=*/true);
 
 // Remove the table for index {x: 1}.
 removeFile(backupDbpath + "/" + indexUri + ".wt");
-
-// TODO SERVER-62605: remove this function after WT-8703 is complete.
-removeUriFromWiredTigerBackup(backupDbpath, indexUri);
 
 // Trying to restore collection "a" with the data files for index {x: 1} missing will crash.
 assert.throws(() => {

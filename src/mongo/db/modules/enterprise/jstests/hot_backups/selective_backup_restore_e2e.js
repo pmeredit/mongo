@@ -83,7 +83,6 @@ for (let iteration = 1; iteration <= kNumIterations; iteration++) {
 
     const optionalFilesCopied = {};
     const optionalFilesSkipped = {};
-    const orphanedFiles = [];
 
     while (backupCursor.hasNext()) {
         const doc = backupCursor.next();
@@ -103,10 +102,10 @@ for (let iteration = 1; iteration <= kNumIterations; iteration++) {
 
         if (doc.ns.length == 0) {
             // The file is known to the storage engine but not the durable catalog at the backups
-            // checkpoint timestamp. This file would get dropped during startup recovery.
+            // checkpoint timestamp. WiredTiger will not reconstruct the metadata for this file
+            // during startup recovery as it isn't copied.
             jsTestLog("Skipping orphaned file for selective backup: " + tojson(doc));
             assert.eq("", doc.uuid);
-            orphanedFiles.push(identStem);
             continue;
         }
 
@@ -167,15 +166,6 @@ for (let iteration = 1; iteration <= kNumIterations; iteration++) {
 
     const numCollectionsSkipped = Object.keys(optionalFilesSkipped).length;
 
-    // TODO SERVER-62605: remove this block after WT-8703 is complete.
-    for (const optionalFileSkipped of Object.keys(optionalFilesSkipped)) {
-        const entry = optionalFilesSkipped[optionalFileSkipped];
-        removeUriFromWiredTigerBackup(selectiveBackupPath, entry.collUri);
-        for (const indexUri of entry.indexUris) {
-            removeUriFromWiredTigerBackup(selectiveBackupPath, indexUri);
-        }
-    }
-
     // Restore the full backup.
     let fullBackupConn = MongoRunner.runMongod(
         {dbpath: fullBackupPath, noCleanData: true, restore: "", setParameter: {logLevel: 0}});
@@ -201,13 +191,6 @@ for (let iteration = 1; iteration <= kNumIterations; iteration++) {
         const lineObj = JSON.parse(line.substring(firstBraceIdx));
         const droppedIdent = lineObj.attr.ident;
 
-        if (orphanedFiles.includes(droppedIdent)) {
-            jsTestLog("Removing orphaned file during startup recovery: " + droppedIdent);
-            const index = orphanedFiles.indexOf(droppedIdent);
-            orphanedFiles.splice(index, 1);
-            return;
-        }
-
         for (const optionalFileCopied of Object.keys(optionalFilesCopied)) {
             const entry = optionalFilesCopied[optionalFileCopied];
             if (entry.collUri == droppedIdent || entry.indexUris.includes(droppedIdent)) {
@@ -218,8 +201,6 @@ for (let iteration = 1; iteration <= kNumIterations; iteration++) {
             }
         }
     });
-
-    assert.eq(0, orphanedFiles.length, orphanedFiles);
 
     let selectiveAdminDb = selectiveBackupConn.getDB("admin");
     let dbList = selectiveAdminDb.runCommand({listDatabases: 1, nameOnly: true}).databases;

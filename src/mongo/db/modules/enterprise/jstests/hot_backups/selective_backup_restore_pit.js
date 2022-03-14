@@ -28,12 +28,6 @@ load("jstests/noPassthrough/libs/index_build.js");
 
 TestData.skipEnforceFastCountOnValidate = true;
 
-// TODO SERVER-62605: enable this test on Windows after WT-8703 is complete.
-if (_isWindows()) {
-    jsTestLog("Skipping test on Windows");
-    return;
-}
-
 function generateData(db, collectionName) {
     assert.commandWorked(db.createCollection(collectionName));
 
@@ -252,12 +246,6 @@ backupCursor.close();
 
 // Abort the prepared transaction.
 assert.commandWorked(session.abortTransaction_forTesting());
-
-// TODO SERVER-62605: remove this block after WT-8703 is complete.
-const cCollUri = getUriForColl(db.getCollection("c"));
-removeUriFromWiredTigerBackup(backupDbPath, cCollUri);
-const cIndexUri = getUriForIndex(db.getCollection("c"), /*indexName=*/"_id_");
-removeUriFromWiredTigerBackup(backupDbPath, cIndexUri);
 
 // Finish two-phase index builds.
 IndexBuildTest.resumeIndexBuilds(primary);

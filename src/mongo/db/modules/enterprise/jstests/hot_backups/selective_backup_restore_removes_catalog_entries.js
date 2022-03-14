@@ -18,12 +18,6 @@ load("jstests/noPassthrough/libs/index_build.js");
 
 TestData.skipEnforceFastCountOnValidate = true;
 
-// TODO SERVER-62605: enable this test on Windows after WT-8703 is complete.
-if (_isWindows()) {
-    jsTestLog("Skipping test on Windows");
-    return;
-}
-
 const rst = new ReplSetTest({nodes: 1});
 
 rst.startSet();
@@ -78,11 +72,6 @@ awaitIndexBuild();
 removeFile(backupDbpath + "/" + collUri + ".wt");
 removeFile(backupDbpath + "/" + indexIdUri + ".wt");
 removeFile(backupDbpath + "/" + indexXUri + ".wt");
-
-// TODO SERVER-62605: remove this function after WT-8703 is complete.
-removeUriFromWiredTigerBackup(backupDbpath, collUri);
-removeUriFromWiredTigerBackup(backupDbpath, indexIdUri);
-removeUriFromWiredTigerBackup(backupDbpath, indexXUri);
 
 // Start a standalone node in restore mode on the backed up data files.
 const mongod = startMongodOnExistingPath(backupDbpath, {restore: ""});

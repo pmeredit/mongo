@@ -521,27 +521,6 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
             cursor.close();
         });
 
-        // TODO SERVER-62605: remove this block after WT-8703 is complete.
-        if (isSelectiveRestore) {
-            for (let i = 0; i < numShards; i++) {
-                // Remove URIs for collection "continuous_writes_unrestored", and its indexes "_id_"
-                // and "numForPartition_1" from WiredTiger.backup.
-                const collUnrestored =
-                    nodesToBackup[i].getDB(dbName).getCollection(collNameUnrestored);
-                const collUri = getUriForColl(collUnrestored);
-                const indexIdUri = getUriForIndex(collUnrestored, /*indexName=*/"_id_");
-                const indexNumForPartitionUri =
-                    getUriForIndex(collUnrestored, /*indexName=*/"numForPartition_1");
-
-                removeUriFromWiredTigerBackup(restorePaths[i], collUri);
-                removeUriFromWiredTigerBackup(restorePaths[i], indexIdUri);
-                removeUriFromWiredTigerBackup(restorePaths[i], indexNumForPartitionUri);
-
-                jsTestLog("Modified WiredTiger.backup to remove URIs: " + collUri + ", " +
-                          indexIdUri + ", and " + indexNumForPartitionUri + " on shard: " + i);
-            }
-        }
-
         jsTestLog({
             msg: "Sharded cluster has been successfully backed up.",
             maxCheckpointTimestamp: maxCheckpointTimestamp,
@@ -1098,13 +1077,6 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         if (isSelectiveRestore &&
             !FeatureFlagUtil.isEnabled(st.s0.getDB("test"), "SelectiveBackup")) {
             jsTestLog("Skipping as featureFlagSelectiveBackup is not enabled");
-            st.stop();
-            return "Test succeeded.";
-        }
-
-        // TODO SERVER-62605 remove this block.
-        if (isSelectiveRestore && _isWindows()) {
-            jsTestLog("Skipping selective restore test on windows");
             st.stop();
             return "Test succeeded.";
         }
