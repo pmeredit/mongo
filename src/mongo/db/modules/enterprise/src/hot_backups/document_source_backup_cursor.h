@@ -140,7 +140,8 @@ private:
     GetNextResult doGetNext() final;
 
     BackupCursorState _backupCursorState;
-    std::vector<BackupBlock> _backupBlocks;
+    std::deque<BackupBlock> _backupBlocks;
+    const std::size_t _kBatchSize;
 };
 
 }  // namespace mongo

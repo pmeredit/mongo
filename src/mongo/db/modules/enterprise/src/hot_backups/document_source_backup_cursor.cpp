@@ -5,6 +5,7 @@
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kQuery
 
 #include "mongo/platform/basic.h"
+#include "mongo/util/testing_proctor.h"
 
 #include "document_source_backup_cursor.h"
 
@@ -26,8 +27,8 @@ DocumentSourceBackupCursor::DocumentSourceBackupCursor(
     const boost::intrusive_ptr<ExpressionContext>& pExpCtx,
     const StorageEngine::BackupOptions& options)
     : DocumentSource(kStageName, pExpCtx),
-      _backupCursorState(
-          pExpCtx->mongoProcessInterface->openBackupCursor(pExpCtx->opCtx, options)) {}
+      _backupCursorState(pExpCtx->mongoProcessInterface->openBackupCursor(pExpCtx->opCtx, options)),
+      _kBatchSize(TestingProctor::instance().isEnabled() ? 10 : 1000) {}
 
 DocumentSourceBackupCursor::~DocumentSourceBackupCursor() {
     try {
@@ -39,8 +40,6 @@ DocumentSourceBackupCursor::~DocumentSourceBackupCursor() {
 }
 
 DocumentSource::GetNextResult DocumentSourceBackupCursor::doGetNext() {
-    const std::size_t kBatchSize = 1000;
-
     if (_backupCursorState.preamble) {
         Document doc = _backupCursorState.preamble.get();
         _backupCursorState.preamble = boost::none;
@@ -55,11 +54,11 @@ DocumentSource::GetNextResult DocumentSourceBackupCursor::doGetNext() {
 
     if (_backupBlocks.empty() && _backupCursorState.streamingCursor) {
         _backupBlocks = uassertStatusOK(
-            _backupCursorState.streamingCursor->getNextBatch(pExpCtx->opCtx, kBatchSize));
+            _backupCursorState.streamingCursor->getNextBatch(pExpCtx->opCtx, _kBatchSize));
     }
 
     if (!_backupBlocks.empty()) {
-        const BackupBlock& backupBlock = _backupBlocks.back();
+        const BackupBlock& backupBlock = _backupBlocks.front();
 
         if (backupBlock.offset() > static_cast<uint64_t>(std::numeric_limits<long long>::max()) ||
             backupBlock.length() > static_cast<uint64_t>(std::numeric_limits<long long>::max()) ||
@@ -97,7 +96,7 @@ DocumentSource::GetNextResult DocumentSourceBackupCursor::doGetNext() {
         auto backupCursorService = BackupCursorHooks::get(svcCtx);
         backupCursorService->addFilename(_backupCursorState.backupId, backupBlock.filePath());
 
-        _backupBlocks.pop_back();
+        _backupBlocks.pop_front();
         return std::move(doc);
     }
 

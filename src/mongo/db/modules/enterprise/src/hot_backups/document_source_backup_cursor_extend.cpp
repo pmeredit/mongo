@@ -34,9 +34,9 @@ DocumentSourceBackupCursorExtend::DocumentSourceBackupCursorExtend(
 
 DocumentSource::GetNextResult DocumentSourceBackupCursorExtend::doGetNext() {
     if (!_backupCursorExtendState.filenames.empty()) {
-        Document doc = {{"filename", _backupCursorExtendState.filenames.back()},
+        Document doc = {{"filename", _backupCursorExtendState.filenames.front()},
                         {"required", true}};
-        _backupCursorExtendState.filenames.pop_back();
+        _backupCursorExtendState.filenames.pop_front();
         return {std::move(doc)};
     }
 

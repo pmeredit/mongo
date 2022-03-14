@@ -174,7 +174,7 @@ BackupCursorState BackupCursorService::openBackupCursor(
                 oplogStart < oplogEnd);
     }
 
-    std::vector<BackupBlock> eseBackupBlocks;
+    std::deque<BackupBlock> eseBackupBlocks;
     auto encHooks = EncryptionHooks::get(opCtx->getServiceContext());
     if (encHooks->enabled() && !options.disableIncrementalBackup) {
         std::vector<std::string> eseFiles = uassertStatusOK(encHooks->beginNonBlockingBackup());
@@ -229,7 +229,7 @@ BackupCursorState BackupCursorService::openBackupCursor(
     Document preamble{{"metadata", builder.obj()}};
 
     closeCursorGuard.dismiss();
-    return {*_activeBackupId, preamble, std::move(streamingCursor), eseBackupBlocks};
+    return {*_activeBackupId, preamble, std::move(streamingCursor), std::move(eseBackupBlocks)};
 }
 
 void BackupCursorService::closeBackupCursor(OperationContext* opCtx, const UUID& backupId) {
@@ -287,7 +287,7 @@ BackupCursorExtendState BackupCursorService::extendBackupCursor(OperationContext
     JournalFlusher::get(opCtx)->waitForJournalFlush();
 
     auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
-    std::vector<std::string> filesToBackup =
+    std::deque<std::string> filesToBackup =
         uassertStatusOK(storageEngine->extendBackupCursor(opCtx));
     LOGV2(24202,
           "Backup cursor has been extended. backupId: {backupId} extendedTo: {extendTo}",

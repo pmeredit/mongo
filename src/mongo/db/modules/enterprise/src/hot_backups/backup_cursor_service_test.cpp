@@ -70,7 +70,7 @@ TEST_F(BackupCursorServiceTest, TestDoubleUnlock) {
 TEST_F(BackupCursorServiceTest, TestTypicalCursorLifetime) {
     auto backupCursorState = _backupCursorService->openBackupCursor(
         _opCtx.get(), {false, false, kBlockSizeMB, boost::none, boost::none});
-    std::vector<BackupBlock> backupBlocks = uassertStatusOK(
+    std::deque<BackupBlock> backupBlocks = uassertStatusOK(
         backupCursorState.streamingCursor.get()->getNextBatch(_opCtx.get(), 1 /* batchSize */));
     ASSERT_EQUALS(1u, backupBlocks.size());
     ASSERT_EQUALS("filename.wt", backupBlocks.front().filePath());
