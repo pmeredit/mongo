@@ -199,7 +199,7 @@ res = assert.commandFailedWithCode(testDB.runCommand(command), 31098);
 if (fle2Enabled()) {
     const schema = generateSchemaV2(
         {ssn: {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}}},
-        "test");
+        "test.test");
 
     // TODO: SERVER-63313 Query analysis for encrypted $eq expressions.
     assert.commandFailedWithCode(

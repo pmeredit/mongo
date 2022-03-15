@@ -11,14 +11,14 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
 const conn = mongocryptd.getConnection();
+const testDB = conn.getDB("test");
 const collName = "test";
-const testDB = conn.getDB(collName);
 
 const schema = generateSchema({
     ssn: {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "int"}},
     "user.account": {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}}
 },
-                              collName);
+                              "test.test");
 
 const testCases = [
     // Test that a count with no encrypted fields in filter succeeds.
@@ -61,9 +61,18 @@ for (let test of testCases) {
 
 // Test that a nested encrypted field in a query succeeds.
 let result = assert.commandWorked(
-    testDB.runCommand(Object.assign({count: collName, query: {user: {account: "5"}}}, schema)));
+    testDB.runCommand(Object.assign({count: collName, query: {'user.account': "5"}}, schema)));
 let docResult = result["result"];
-assert(docResult["query"]["user"]["$eq"]["account"] instanceof BinData, docResult);
+assert(docResult["query"]["user.account"]["$eq"] instanceof BinData, docResult);
+
+if (!fle2Enabled()) {
+    // In FLE 1, we can also do a comparison to an object containing an encrypted payload. This is
+    // not permitted in FLE 2.
+    result = assert.commandWorked(
+        testDB.runCommand(Object.assign({count: collName, query: {user: {account: "5"}}}, schema)));
+    docResult = result["result"];
+    assert(docResult["query"]["user"]["$eq"]["account"] instanceof BinData, docResult);
+}
 
 // Test that a count with an invalid query type fails.
 assert.commandFailedWithCode(testDB.runCommand(Object.assign({count: collName, query: 5}, schema)),

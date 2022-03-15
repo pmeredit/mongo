@@ -10,14 +10,14 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
 const conn = mongocryptd.getConnection();
-const collName = "test";
-const testDB = conn.getDB(collName);
+const testDB = conn.getDB("test");
+const namespace = "test.test";
 
-const schema = generateSchema({
+let schema = generateSchema({
     ssn: {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "long"}},
     "user.account": {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}}
 },
-                              collName);
+                            namespace);
 
 function assertEncryptedFieldInResponse({filter, path = "", requiresEncryption}) {
     const res = assert.commandWorked(
@@ -44,15 +44,6 @@ let res = assert.commandWorked(testDB.runCommand(
 assert(res.hasEncryptionPlaceholders, tojson(res));
 assert(res.result.filter["ssn"]["$in"][0] instanceof BinData, tojson(res));
 
-// Elements within object in $in array correctly marked for encryption.
-res = assert.commandWorked(testDB.runCommand(Object.assign({
-    find: "test",
-    filter: {user: {"$in": [{account: "1234"}]}},
-},
-                                                           schema)));
-assert(res.hasEncryptionPlaceholders, tojson(res));
-assert(res.result.filter["user"]["$in"][0]["account"] instanceof BinData, tojson(res));
-
 // Multiple elements inside $in array correctly marked for encryption.
 res = assert.commandWorked(testDB.runCommand(Object.assign({
     find: "test",
@@ -63,17 +54,6 @@ assert(res.hasEncryptionPlaceholders, tojson(res));
 assert(res.result.filter["ssn"]["$in"][0] instanceof BinData, tojson(res));
 assert(res.result.filter["ssn"]["$in"][1] instanceof BinData, tojson(res));
 assert(res.result.filter["ssn"]["$in"][2] instanceof BinData, tojson(res));
-
-// Mixture of encrypted and non-encrypt elements inside $in array.
-res = assert.commandWorked(testDB.runCommand(Object.assign({
-    find: "test",
-    filter: {user: {"$in": ["notEncrypted", {also: "notEncrypted"}, {account: "encrypted"}]}},
-},
-                                                           schema)));
-assert(res.hasEncryptionPlaceholders, tojson(res));
-assert(res.result.filter["user"]["$in"][0] === "notEncrypted", tojson(res));
-assert(res.result.filter["user"]["$in"][1]["also"] === "notEncrypted", tojson(res));
-assert(res.result.filter["user"]["$in"][2]["account"] instanceof BinData, tojson(res));
 
 // Responses to queries without any encrypted fields should not set the
 // 'hasEncryptionPlaceholders' bit.
@@ -140,7 +120,84 @@ assert.doesNotThrow(() => testDB.runCommand(Object.assign({
 },
                                                           schema)));
 
+// Comparing an encrypted field to an object is banned in FLE 1 and 2. bsonType "object" is not
+// an allowed type for a field which is queryable.
+schema = generateSchema(
+    {user: {queries: {queryType: "equality"}, keyId: UUID(), bsonType: "object"}}, namespace);
+let findCmd = {find: "test", filter: {user: {ssn: 5}}};
+assert.commandFailedWithCode(testDB.runCommand(Object.assign(findCmd, schema)), [31122, 6316404]);
+
+// And attempting to compare an encrypted field to an object will fail if the bson type of the
+// field is not "object".
+schema = generateSchema(
+    {user: {queries: {queryType: "equality"}, keyId: UUID(), bsonType: "string"}}, namespace);
+assert.commandFailedWithCode(testDB.runCommand(Object.assign(findCmd, schema)), 31118);
+
+// And of course we can't perform either of the above queries if the field is not queryable.
+schema = generateSchema({user: {keyId: UUID(), bsonType: "object"}}, namespace);
+assert.commandFailedWithCode(testDB.runCommand(Object.assign(findCmd, schema)), [51158, 63165]);
+schema = generateSchema({user: {keyId: UUID(), bsonType: "string"}}, namespace);
+assert.commandFailedWithCode(testDB.runCommand(Object.assign(findCmd, schema)), [51158, 63165]);
+
+// Now consider comparing a non-encrypted field to an object. If no elements under the object are
+// encrypted, this is permitted in FLE 1 and FLE 2. So, even though 'user.ssn' is encrypted, the
+// user can still compare 'user' to an object. If all documents in the collection have the
+// encrypted fields present, these queries should return empty result sets.
+schema = generateSchema({'user.ssn': {keyId: UUID(), bsonType: "string"}}, namespace);
+findCmd.filter = {
+    user: 1
+};
+assert.commandWorked(testDB.runCommand(Object.assign(findCmd, schema)));
+findCmd.filter = {
+    user: {_id: 1}
+};
+assert.commandWorked(testDB.runCommand(Object.assign(findCmd, schema)));
+
+//
+// But comparing a non-encrypted field to an object where the object DOES contain encrypted
+// sub-fields is not permitted in FLE 2 because the server rewrite would be more complicated.
+// Note: FLE 1 and FLE 2 differ in behavior here. FLE 1 permits this query.
+//
+schema = generateSchema({
+    'user.ssn': {queries: {queryType: "equality"}, keyId: UUID(), bsonType: "string"},
+    'other.nested.encrypted': {queries: {queryType: "equality"}, keyId: UUID(), bsonType: "string"}
+},
+                        namespace);
+const objectWithEncryptedFieldFilters = [
+    {user: {ssn: '123456789'}},
+    {user: {age: 30, ssn: '123456789'}},
+    {user: {$in: ["notEncrypted", {age: 30}, {age: 35, ssn: '123456789'}]}},
+    {'other.nested': {encrypted: "abc"}},
+    {other: {nested: {encrypted: "abc"}}},
+    {'other.nested': {$in: ["notEncrypted", {num: 1}, {num: 2, encrypted: '123456789'}]}},
+];
+for (const filter of objectWithEncryptedFieldFilters) {
+    findCmd.filter = filter;
+    if (fle2Enabled()) {
+        assert.commandFailedWithCode(testDB.runCommand(Object.assign(findCmd, schema)),
+                                     [6341900, 6341901]);
+    } else {
+        res = assert.commandWorked(testDB.runCommand(Object.assign(findCmd, schema)));
+        assert(res.hasEncryptionPlaceholders, tojson(res));
+    }
+}
+
+// One last interesting test. This query is permitted because it semantically means: return all
+// documents where the field 'other' has exactly one subfield, 'nested.encrypted', and that subfield
+// is equal to "abc". In the specified schema, we encrypted the subfield 'encrypted' under 'nested'
+// under 'other'. So, the query is not against any encrypted fields.
+findCmd.filter = {
+    other: {'nested.encrypted': "abc"}
+};
+res = assert.commandWorked(testDB.runCommand(Object.assign(findCmd, schema)));
+assert(!res.hasEncryptionPlaceholders, tojson(res));
+
 // Invalid expressions correctly fail to parse.
+schema = generateSchema({
+    ssn: {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "long"}},
+    "user.account": {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}}
+},
+                        namespace);
 assert.commandFailedWithCode(testDB.runCommand(Object.assign({
     find: "test",
     filter: {$cantDoThis: 5},
@@ -215,7 +272,7 @@ assert.commandFailedWithCode(testDB.runCommand(Object.assign({
                                                                      }
                                                                  }
                                                              },
-                                                                            collName))),
+                                                                            namespace))),
                              [51158, 63165]);
 
 mongocryptd.stop();

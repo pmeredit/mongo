@@ -59,6 +59,11 @@ void FLEMatchExpression::replaceElementsInEqExpression(const EncryptionSchemaTre
                                        boost::none,
                                        eqExpr->getCollator());
             if (hasEncrypt) {
+                // TODO SERVER-63657: adjust the error message.
+                uassert(6341900,
+                        "Comparisons to objects which contain encrypted payloads is not allowed "
+                        "with FLE 2",
+                        schemaTree.parsedFrom != FleVersion::kFle2);
                 eqExpr->setData(allocateEncryptedObject(placeholder));
             }
         } else if (rhsElem.type() == BSONType::Array) {
@@ -108,6 +113,12 @@ void FLEMatchExpression::replaceElementsInInExpression(const EncryptionSchemaTre
                 // the underlying MatchExpression has been marked with at least one
                 // intent-to-encrypt placeholder.
                 if (elemHasEncrypt) {
+                    // TODO SERVER-63657: adjust the error message.
+                    uassert(
+                        6341901,
+                        "Comparisons to objects which contain encrypted payloads is not allowed "
+                        "with FLE 2",
+                        schemaTree.parsedFrom != FleVersion::kFle2);
                     replacedElements.push_back(allocateEncryptedObject(placeholder));
                 } else {
                     replacedElements.push_back(elem);

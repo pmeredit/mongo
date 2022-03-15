@@ -58,15 +58,15 @@ function generateSchemaV1(fieldMap) {
 
         // Convert indexed FLE 2 encryption to kDeterministicAlgo and unindexed FLE 2 encryption to
         // kRandomAlgo.
-        let spec = {
+        let fle1Spec = {
             keyId: [pathSpec["keyId"]],
             bsonType: pathSpec["bsonType"],
             algorithm: kRandomAlgo
         };
-        if (spec.hasOwnProperty("queries") && spec.queries !== []) {
-            spec.algorithm = kDeterministicAlgo;
+        if (pathSpec.hasOwnProperty("queries") && pathSpec.queries !== []) {
+            fle1Spec.algorithm = kDeterministicAlgo;
         }
-        currentLevel[pathElements[pathElements.length - 1]] = {encrypt: spec};
+        currentLevel[pathElements[pathElements.length - 1]] = {encrypt: fle1Spec};
     }
     jsonSchema["properties"] = properties;
     return {jsonSchema: jsonSchema, isRemoteSchema: false};

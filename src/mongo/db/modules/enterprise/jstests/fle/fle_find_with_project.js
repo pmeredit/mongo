@@ -10,14 +10,14 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
 const conn = mongocryptd.getConnection();
+const testDB = conn.getDB("test");
 const collName = "test";
-const testDB = conn.getDB(collName);
 
 const schema = generateSchema({
     ssn: {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "long"}},
     "user.account": {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}}
 },
-                              collName);
+                              "test.test");
 
 // TODO: SERVER-63311 Make sure tests commands work in both FLE versions once query analysis for
 // aggregation is added.

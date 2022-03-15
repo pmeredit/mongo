@@ -147,32 +147,12 @@ assert.commandFailedWithCode(testDb.runCommand({
 }),
                              30017);
 
-// In FLE 1, the restrictions on _id with random encryption must apply to FLE 2 regardless of the
-// queryability. The following tests are specific to FLE 1's ability to encrypt _id with the
-// deterministic algorithm.
+// The following tests show behavior of FLE 1 and FLE 2 when encrypting _id. The restrictions on
+// _id with random encryption from FLE 1 must apply to FLE 2 since all fields are encrypted randomly
+// in FLE 2 regardless of the queryability.
 
-// Test that a document without _id fails to insert when the schema says
-// encrypt _id.
-assert.commandFailedWithCode(testDb.runCommand({
-    insert: "foo",
-    documents: [{"foo": "bar"}],
-    jsonSchema: {type: "object", properties: {"_id": encryptDoc}},
-    isRemoteSchema: false
-}),
-                             51130);
-
-// Test that command does not fail if a subfield of _id is encrypted.
-assert.commandWorked(testDb.runCommand({
-    insert: "foo",
-    documents: [{"foo": "bar"}],
-    jsonSchema:
-        {type: "object", properties: {"_id": {type: "object", properties: {"nested": encryptDoc}}}},
-    isRemoteSchema: false
-}));
-
-// Test that _id or a nested field under _id is not allowed to be encrypted with the random
-// algorithm. Note that in FLE 2, all fields are encrypted randomly regardless of the queryability.
-const errCode = fle2Enabled() ? 6316403 : 51194;
+// Test that a document without _id fails to insert when the schema says to encrypt _id with the
+// the deterministic algorithm on FLE 1 or FLE 2.
 let encryptSchema = generateSchema(
     {"_id": {queries: {queryType: "equality"}, keyId: UUID(), bsonType: "string"}}, namespace);
 assert.commandFailedWithCode(testDb.runCommand(Object.assign({
@@ -180,33 +160,47 @@ assert.commandFailedWithCode(testDb.runCommand(Object.assign({
     documents: [{"foo": "bar"}],
 },
                                                              encryptSchema)),
-                             errCode);
+                             fle2Enabled() ? 6316403 : 51130);
 
+// Test that a document without _id fails to insert when the schema says to encrypt _id with the
+// the random algorithm on FLE 1 or FLE 2.
 encryptSchema = generateSchema({"_id": {keyId: UUID(), bsonType: "string"}}, namespace);
 assert.commandFailedWithCode(testDb.runCommand(Object.assign({
     insert: "foo",
     documents: [{"foo": "bar"}],
 },
                                                              encryptSchema)),
-                             errCode);
+                             fle2Enabled() ? 6316403 : 51194);
 
+// A nested field under _id is allowed to be encrypted with the deterministic algorithm. In FLE 2,
+// all fields are encrypted randomly regardless of the queryability, so this is disallowed.
 encryptSchema = generateSchema(
     {"_id.nested": {queries: {queryType: "equality"}, keyId: UUID(), bsonType: "string"}},
     namespace);
-assert.commandFailedWithCode(testDb.runCommand(Object.assign({
-    insert: "foo",
-    documents: [{"foo": "bar"}],
-},
-                                                             encryptSchema)),
-                             errCode);
+if (fle2Enabled()) {
+    assert.commandFailedWithCode(testDb.runCommand(Object.assign({
+        insert: "foo",
+        documents: [{"foo": "bar"}],
+    },
+                                                                 encryptSchema)),
+                                 6316403);
+} else {
+    assert.commandWorked(testDb.runCommand(Object.assign({
+        insert: "foo",
+        documents: [{"foo": "bar"}],
+    },
+                                                         encryptSchema)));
+}
 
+// Test that a document without _id fails to insert when the schema says to encrypt a subfiled of
+// _id with the the random algorithm on FLE 1 or FLE 2.
 encryptSchema = generateSchema({"_id.nested": {keyId: UUID(), bsonType: "string"}}, namespace);
 assert.commandFailedWithCode(testDb.runCommand(Object.assign({
     insert: "foo",
     documents: [{"foo": "bar"}],
 },
                                                              encryptSchema)),
-                             errCode);
+                             fle2Enabled() ? 6316403 : 51194);
 
 mongocryptd.stop();
 }());
