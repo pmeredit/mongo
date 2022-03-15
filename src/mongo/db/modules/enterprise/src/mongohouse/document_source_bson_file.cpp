@@ -2,15 +2,13 @@
  * Copyright (C) 2019 MongoDB, Inc.  All Rights Reserved.
  */
 
-#include "mongo/platform/basic.h"
-
 #include <fcntl.h>
-#ifndef _WIN32
-#include <sys/mman.h>
-#endif
+#include <fmt/format.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+
 #ifndef _WIN32
+#include <sys/mman.h>
 #include <unistd.h>
 #endif
 
@@ -34,50 +32,38 @@ DocumentSourceBSONFile::DocumentSourceBSONFile(const intrusive_ptr<ExpressionCon
 #else
       _mapped(MAP_FAILED) {
 #endif
+    using namespace fmt::literals;
+    auto errMsg = [&](StringData op) {
+        auto ec = lastSystemError();
+        return "Failed to {} {}: {}"_format(op, _fileName, errorMessage(ec));
+    };
+
 #ifdef _WIN32
     _file = CreateFileA(
         _fileName.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0L, nullptr);
-    uassert(ErrorCodes::FileNotOpen,
-            str::stream() << "Failed to open " << _fileName << ": "
-                          << errnoWithDescription(GetLastError()),
-            _file != INVALID_HANDLE_VALUE);
+    uassert(ErrorCodes::FileNotOpen, errMsg("open"), _file != INVALID_HANDLE_VALUE);
 
     LARGE_INTEGER liFileSize;
-    uassert(ErrorCodes::FileNotOpen,
-            str::stream() << "Failed to stat " << _fileName << ": "
-                          << errnoWithDescription(GetLastError()),
-            GetFileSizeEx(_file, &liFileSize));
+    uassert(ErrorCodes::FileNotOpen, errMsg("stat"), GetFileSizeEx(_file, &liFileSize));
 
     _fileSize = static_cast<size_t>(liFileSize.QuadPart);
 
     _fileMapping = CreateFileMappingA(_file, nullptr, PAGE_READONLY, 0L, 0L, nullptr);
-    uassert(ErrorCodes::FileNotOpen,
-            str::stream() << "Failed to mmap " << _fileName << ": "
-                          << errnoWithDescription(GetLastError()),
-            _fileMapping != nullptr);
+    uassert(ErrorCodes::FileNotOpen, errMsg("mmap"), _fileMapping != nullptr);
 
     _mapped = MapViewOfFile(_fileMapping, FILE_MAP_READ, 0L, 0L, 0L);
-    uassert(ErrorCodes::FileNotOpen,
-            str::stream() << "Failed to mmap " << _fileName << ": "
-                          << errnoWithDescription(GetLastError()),
-            _mapped != nullptr);
+    uassert(ErrorCodes::FileNotOpen, errMsg("mmap"), _mapped != nullptr);
 #else
     _fd = open(_fileName.c_str(), O_RDONLY);
-    uassert(ErrorCodes::FileNotOpen,
-            str::stream() << "Failed to open " << _fileName << ": " << strerror(errno),
-            _fd >= 0);
+    uassert(ErrorCodes::FileNotOpen, errMsg("open"), _fd >= 0);
 
     struct stat buf;
-    uassert(ErrorCodes::FileNotOpen,
-            str::stream() << "Failed to stat " << _fileName << ": " << strerror(errno),
-            fstat(_fd, &buf) == 0);
+    uassert(ErrorCodes::FileNotOpen, errMsg("stat"), fstat(_fd, &buf) == 0);
 
     _fileSize = buf.st_size;
 
     _mapped = mmap(nullptr, _fileSize, PROT_READ, MAP_SHARED, _fd, 0);
-    uassert(ErrorCodes::FileNotOpen,
-            str::stream() << "Failed to mmap " << _fileName << ": " << strerror(errno),
-            _mapped != MAP_FAILED);
+    uassert(ErrorCodes::FileNotOpen, errMsg("mmap"), _mapped != MAP_FAILED);
 #endif
 }
 

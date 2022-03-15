@@ -5,6 +5,7 @@
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 #include <cstdlib>
+#include <fmt/format.h>
 #include <memory>
 #include <string>
 #include <sys/types.h>
@@ -41,6 +42,7 @@
 
 namespace {
 using namespace mongo;
+using namespace fmt::literals;
 
 const std::string mockHostName = "localhost";
 const std::string mockServiceName = "mockservice";
@@ -86,20 +88,19 @@ void setupLegacyEnvironment() {
     const pid_t child = fork();
     fassert(4020, child >= 0);
     if (child == 0) {
-        int er = execlp("kinit",
-                        "kinit",
-                        "-k",
-                        "-t",
-                        "jstests/libs/mockuser.keytab",
-                        "-c",
-                        krb5ccFile,
-                        userName.c_str(),
-                        nullptr);
-        Status s = Status::OK();
-        if (er != 0) {
-            s = Status(ErrorCodes::InternalError, errnoWithPrefix("cannot execute \"kinit\""));
-        }
-        fassert(4021, s);
+        execlp("kinit",
+               "kinit",
+               "-k",
+               "-t",
+               "jstests/libs/mockuser.keytab",
+               "-c",
+               krb5ccFile,
+               userName.c_str(),
+               nullptr);
+        auto ec = lastSystemError();
+        fassert(4021,
+                Status(ErrorCodes::InternalError,
+                       "cannot execute \"kinit\": {}"_format(errorMessage(ec))));
     }
     int waitStatus;
     pid_t waitedPid;

@@ -5,6 +5,7 @@
 #include "mongo/platform/basic.h"
 
 #include <boost/filesystem.hpp>
+#include <fmt/format.h>
 #include <fstream>
 
 #include "keystore_metadata.h"
@@ -15,12 +16,15 @@
 namespace mongo {
 namespace {
 
+using namespace fmt::literals;
+
 Status makeError(StringData action,
                  const boost::filesystem::path& path,
                  ErrorCodes::Error err = ErrorCodes::InternalError) {
+    auto ec = lastSystemError();
     return Status(err,
-                  str::stream() << "Failed to " << action << " keystore metadata file ("
-                                << path.string() << "): " << errnoWithDescription());
+                  "Failed to {} keystore metadata file ({}): {}"_format(
+                      action, path.string(), errorMessage(ec)));
 }
 
 }  // namespace
