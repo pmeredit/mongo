@@ -14,7 +14,6 @@
 #include "mongo/db/audit.h"
 #include "mongo/db/catalog/collection_catalog.h"
 #include "mongo/db/catalog/database_holder.h"
-#include "mongo/db/catalog/uncommitted_collections.h"
 #include "mongo/db/concurrency/d_concurrency.h"
 #include "mongo/db/concurrency/write_conflict_exception.h"
 #include "mongo/db/db_raii.h"
@@ -302,7 +301,7 @@ void importCollection(OperationContext* opCtx,
             });
 
         // don't std::move, we will need access to the records later for auditing
-        UncommittedCollections::addToTxn(opCtx, ownedCollection);
+        CollectionCatalog::get(opCtx)->onCreateCollection(opCtx, ownedCollection);
 
         if (isDryRun) {
             // This aborts the WUOW and rolls back the import.
