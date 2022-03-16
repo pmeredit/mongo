@@ -60,6 +60,12 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursorExtend::createFro
                           << " Run the aggregation against the database instead.",
             pExpCtx->ns.isCollectionlessAggregateNS());
 
+    uassert(
+        ErrorCodes::InvalidNamespace,
+        str::stream() << kStageName
+                      << " cannot be part of a query that references any collection or database.",
+        pExpCtx->noForeignNamespaces());
+
     boost::optional<UUID> backupId = boost::none;
     boost::optional<Timestamp> extendTo = boost::none;
 

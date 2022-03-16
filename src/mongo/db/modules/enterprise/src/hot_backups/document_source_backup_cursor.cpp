@@ -129,6 +129,12 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceBackupCursor::createFromBson(
                           << " Run the aggregation against the database instead.",
             pExpCtx->ns.isCollectionlessAggregateNS());
 
+    uassert(
+        ErrorCodes::InvalidNamespace,
+        str::stream() << kStageName
+                      << " cannot be part of a query that references any collection or database.",
+        pExpCtx->noForeignNamespaces());
+
     // Parse $backupCursor arguments for incremental backups.
     BackupCursorParameters params =
         BackupCursorParameters::parse(IDLParserErrorContext(""), spec.Obj());

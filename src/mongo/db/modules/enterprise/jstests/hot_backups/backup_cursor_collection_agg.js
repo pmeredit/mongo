@@ -38,5 +38,23 @@ try {
     assert(e.code == ErrorCodes.InvalidNamespace);
 }
 
+// Similarly referencing a collection in a later stage like $out is not allowed.
+const foreignColectionStages = [
+    {$out: collName},
+    {$unionWith: collName},
+    {$lookup: {from: collName, pipeline: [], as: "joined"}},
+    {$merge: collName},
+    {
+        $graphLookup:
+            {from: collName, startWith: "$a", connectFromField: "a", connectToField: "a", as: "a"}
+    }
+];
+["$backupCursor", "$backupCursorExtend"].forEach((stage) => {
+    foreignColectionStages.forEach((foreignReference) => {
+        assert.throwsWithCode(() => db.aggregate([{[stage]: {}}, foreignReference]),
+                              ErrorCodes.InvalidNamespace);
+    });
+});
+
 rst.stopSet();
 }());
