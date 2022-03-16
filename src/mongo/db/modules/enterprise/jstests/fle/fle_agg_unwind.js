@@ -17,13 +17,9 @@ const coll = testDB.fle_agg_unwind;
 // Encryption of a $unwind stage which does not reference an encrypted field is a no-op,
 // regardless of algorithm used.
 function testUnwindEncryptionForNotReferencedPath(encryptionSpec) {
-    const command = {
-        aggregate: coll.getName(),
-        pipeline: [{$unwind: {path: "$foo"}}],
-        cursor: {},
-        jsonSchema: {type: "object", properties: {ssn: encryptionSpec}},
-        isRemoteSchema: false,
-    };
+    const command = Object.assign(
+        {aggregate: coll.getName(), pipeline: [{$unwind: {path: "$foo"}}], cursor: {}},
+        generateSchema({ssn: encryptionSpec}, coll.getFullName()));
     const cmdRes = assert.commandWorked(testDB.runCommand(command));
     delete command.jsonSchema;
     delete command.isRemoteSchema;
@@ -41,48 +37,55 @@ const encryptedStringSpec = {
     encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}
 };
 
+const ssnEncryptedSpec = generateSchema({ssn: encryptedStringSpec}, coll.getFullName());
+
 testUnwindEncryptionForNotReferencedPath(encryptedStringSpec);
 
 // Encryption of a $unwind stage that references an encrypted field but uses a deterministic
-// algorithm is a no-op. This assumes that encrypted fields are banned from arrays.
-let command = {
-    aggregate: coll.getName(),
-    pipeline: [{$unwind: {path: "$ssnArray"}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {ssnArray: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
-let cmdRes = assert.commandWorked(testDB.runCommand(command));
-delete command.jsonSchema;
-delete command.isRemoteSchema;
-delete cmdRes.result.lsid;
-assert.eq(command, cmdRes.result, cmdRes);
-assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
-assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+// algorithm is a no-op. This assumes that encrypted fields are banned from arrays. This operation
+// is not allowed in FLE 2 as all fields are randomly encrypted.
+let cmdRes;
+let command =
+    Object.assign({aggregate: coll.getName(), pipeline: [{$unwind: {path: "$ssn"}}], cursor: {}},
+                  ssnEncryptedSpec);
+if (fle2Enabled()) {
+    assert.commandFailedWithCode(testDB.runCommand(command), 31153);
+} else {
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    delete command.jsonSchema;
+    delete command.isRemoteSchema;
+    delete cmdRes.result.lsid;
+    assert.eq(command, cmdRes.result, cmdRes);
+    assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+}
 
 // A $unwind/$match sequence that references an encrypted field and uses a deterministic
-// algorithm is marked for encryption.
-command = {
+// algorithm is marked for encryption. This operation is not allowed in FLE 2 as all fields are
+// randomly encrypted.
+command = Object.assign({
     aggregate: coll.getName(),
-    pipeline: [{$unwind: {path: "$ssnArray"}}, {$match: {ssnArray: {$eq: "123456789"}}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {ssnArray: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
-cmdRes = assert.commandWorked(testDB.runCommand(command));
-assert(cmdRes.result.pipeline[1].$match.ssnArray.$eq instanceof BinData, cmdRes);
-assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
-assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+    pipeline: [{$unwind: {path: "$ssn"}}, {$match: {ssn: {$eq: "123456789"}}}],
+    cursor: {}
+},
+                        ssnEncryptedSpec);
+if (fle2Enabled()) {
+    assert.commandFailedWithCode(testDB.runCommand(command), 31153);
+} else {
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    assert(cmdRes.result.pipeline[1].$match.ssn.$eq instanceof BinData, cmdRes);
+    assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+}
 
 // A $unwind that replaces an encrypted field with "includeArrayIndex" will no longer
 // consider that field to be encrypted.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [{$unwind: {path: "$foo", includeArrayIndex: "ssn"}}, {$match: {ssn: {$eq: 0}}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {ssn: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
+    cursor: {}
+},
+                        ssnEncryptedSpec);
 cmdRes = assert.commandWorked(testDB.runCommand(command));
 delete command.jsonSchema;
 delete command.isRemoteSchema;
@@ -100,31 +103,25 @@ const encryptedStringSpec = {
     encrypt: {algorithm: kRandomAlgo, keyId: [UUID()], bsonType: "string"}
 };
 
+const ssnEncryptedSpec = generateSchema({ssn: encryptedStringSpec}, coll.getFullName());
+
 testUnwindEncryptionForNotReferencedPath(encryptedStringSpec);
 
 // Encryption of a $unwind stage that references an encrypted field using a random algorithm
 // is expected to fail.
-let command = {
-    aggregate: coll.getName(),
-    pipeline: [{$unwind: {path: "$ssnArray"}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {ssnArray: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
+let command =
+    Object.assign({aggregate: coll.getName(), pipeline: [{$unwind: {path: "$ssn"}}], cursor: {}},
+                  ssnEncryptedSpec);
 assert.commandFailedWithCode(testDB.runCommand(command), 31153);
 
 // Encryption of a $unwind stage that references a prefix of an encrypted field using a
 // random algorithm is a no-op.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [{$unwind: {path: "$ssnArray"}}, {$match: {ssn: {$eq: 123456789}}}],
-    cursor: {},
-    jsonSchema: {
-        type: "object",
-        properties: {ssnArray: {type: "object", properties: {ssn: encryptedStringSpec}}}
-    },
-    isRemoteSchema: false,
-};
+    cursor: {}
+},
+                        generateSchema({'ssnArray.ssn': encryptedStringSpec}, coll.getFullName()));
 let cmdRes = assert.commandWorked(testDB.runCommand(command));
 delete command.jsonSchema;
 delete command.isRemoteSchema;
@@ -135,32 +132,27 @@ assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
 
 // Encryption of a $unwind stage that references a prefix of an encrypted field using a
 // random algorithm, followed by a $match against the encrypted field is expected to fail.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [{$unwind: {path: "$ssnArray"}}, {$match: {"ssnArray.ssn": {$eq: 123456789}}}],
-    cursor: {},
-    jsonSchema: {
-        type: "object",
-        properties: {ssnArray: {type: "object", properties: {ssn: encryptedStringSpec}}}
-    },
-    isRemoteSchema: false,
-};
-assert.commandFailedWithCode(testDB.runCommand(command), 51158);
+    cursor: {}
+},
+                        generateSchema({'ssnArray.ssn': encryptedStringSpec}, coll.getFullName()));
+assert.commandFailedWithCode(testDB.runCommand(command), [51158, 63165]);
 
 // Encryption of a $unwind stage that references a potentially encrypted field fails on
 // subsequent match.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [
-        {$project: {ssnArray: {$cond: {if: {$eq: ["$a", "$b"]}, then: "foo", else: "$ssnArray"}}}},
-        {$unwind: {path: "$ssnArray"}},
-        {$match: {"ssnArray": {$eq: 123456789}}}
+        {$project: {ssn: {$cond: {if: {$eq: ["$a", "$b"]}, then: "foo", else: "$ssn"}}}},
+        {$unwind: {path: "$ssn"}},
+        {$match: {"ssn": {$eq: 123456789}}}
     ],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {ssnArray: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
-assert.commandFailedWithCode(testDB.runCommand(command), 31133);
+    cursor: {}
+},
+                        ssnEncryptedSpec);
+assert.commandFailedWithCode(testDB.runCommand(command), [31133, 6331100]);
 })();
 
 mongocryptd.stop();

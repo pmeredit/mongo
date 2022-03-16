@@ -351,16 +351,23 @@ assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, sche
 // encryption.
 updateCommand.updates[0].u =
     [{$addFields: {bar: {$cond: {if: {$eq: ["$foo", "afternoon"]}, then: "good", else: "bad"}}}}];
-result = assert.commandWorked(testDb.runCommand(Object.assign(updateCommand, schema)));
-assert.eq(true, result.schemaRequiresEncryption, result);
-assert.eq(true, result.hasEncryptionPlaceholders, result);
-assert(result.result.updates[0].u[0]["$addFields"].bar["$cond"][0]["$eq"][1]["$const"] instanceof
-           BinData,
-       tojson(result));
+
+if (fle2Enabled()) {
+    // TODO SERVER-63313 Support referencing encrypted field in aggregate expressions in FLE 2.
+    assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, schema)), 6331100);
+} else {
+    result = assert.commandWorked(testDb.runCommand(Object.assign(updateCommand, schema)));
+    assert.eq(true, result.schemaRequiresEncryption, result);
+    assert.eq(true, result.hasEncryptionPlaceholders, result);
+    assert(
+        result.result.updates[0].u[0]["$addFields"].bar["$cond"][0]["$eq"][1]["$const"] instanceof
+            BinData,
+        tojson(result));
+}
 
 //
 // Pipelines which produce an output schema which does not match the original schema for the
-// collection correctly fail in FLE 1. Note: FLE 1 and FLE differ in behavior here. FLE 2 is more
+// collection correctly fail in FLE 1. Note: FLE 1 and FLE 2 differ in behavior here. FLE 2 is more
 // permissive and allows pipelines which only affect the schema of non-encrypted fields.
 //
 updateCommand.updates[0].u = [{$addFields: {newField: 5}}];
@@ -383,7 +390,8 @@ assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, sche
 // Pipelines which perform an invalid operation on an encrypted field correctly fail.
 schema = generateSchema({foo: encryptDoc}, namespace);
 updateCommand.updates[0].u = [{$addFields: {newField: {$add: ["$foo", 1]}}}];
-assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, schema)), 31110);
+assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, schema)),
+                             [31110, 6331100]);
 
 // Pipelines in update are not allowed if _id is marked for encryption and upsert is set to true.
 schema = generateSchema({_id: encryptDoc}, namespace);

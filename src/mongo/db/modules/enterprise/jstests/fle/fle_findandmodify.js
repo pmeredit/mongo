@@ -377,12 +377,18 @@ assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, sche
 // encryption.
 updateCommand.update =
     [{$addFields: {bar: {$cond: {if: {$eq: ["$foo", "afternoon"]}, then: "good", else: "bad"}}}}];
-result = assert.commandWorked(testDb.runCommand(Object.assign(updateCommand, schema)));
-assert.eq(true, result.schemaRequiresEncryption, result);
-assert.eq(true, result.hasEncryptionPlaceholders, result);
-assert(
-    result.result.update[0]["$addFields"]["bar"]["$cond"][0]["$eq"][1]["$const"] instanceof BinData,
-    tojson(result));
+
+if (fle2Enabled()) {
+    // TODO SERVER-63313 Support referencing encrypted field in aggregate expressions in FLE 2.
+    assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, schema)), 6331100);
+} else {
+    result = assert.commandWorked(testDb.runCommand(Object.assign(updateCommand, schema)));
+    assert.eq(true, result.schemaRequiresEncryption, result);
+    assert.eq(true, result.hasEncryptionPlaceholders, result);
+    assert(result.result.update[0]["$addFields"]["bar"]["$cond"][0]["$eq"][1]["$const"] instanceof
+               BinData,
+           tojson(result));
+}
 
 //
 // Pipelines which produce an output schema that does not match the original schema for the

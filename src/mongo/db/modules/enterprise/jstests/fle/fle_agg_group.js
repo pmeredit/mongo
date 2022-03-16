@@ -14,6 +14,8 @@ const conn = mongocryptd.getConnection();
 const testDB = conn.getDB("test");
 const coll = testDB.fle_agg_group;
 
+const FLE2InvalidReferenceCode = 6331100;
+
 const encryptedStringSpec = {
     encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}
 };
@@ -23,24 +25,29 @@ const encryptedIntSpec = {
 };
 
 const encryptedRandomSpec = {
-    encrypt: {algorithm: kRandomAlgo, keyId: [UUID()]}
+    encrypt: {algorithm: kRandomAlgo, keyId: [UUID()], bsonType: "string"}
 };
 
-function assertCommandUnchanged(command, hasEncryptionPlaceholders, schemaRequiresEncryption) {
-    let cmdRes = assert.commandWorked(testDB.runCommand(command));
-    delete command.jsonSchema;
-    delete command.isRemoteSchema;
-    delete cmdRes.result.lsid;
-    assert.eq(command, cmdRes.result, cmdRes);
-    assert.eq(hasEncryptionPlaceholders, cmdRes.hasEncryptionPlaceholders, cmdRes);
-    assert.eq(schemaRequiresEncryption, cmdRes.schemaRequiresEncryption, cmdRes);
+function assertCommandUnchanged(
+    command, hasEncryptionPlaceholders, schemaRequiresEncryption, fle2ErrCode) {
+    if (fle2Enabled() && fle2ErrCode != undefined) {
+        assert.commandFailedWithCode(testDB.runCommand(command), fle2ErrCode);
+    } else {
+        let cmdRes = assert.commandWorked(testDB.runCommand(command));
+        delete command.jsonSchema;
+        delete command.isRemoteSchema;
+        delete cmdRes.result.lsid;
+        assert.eq(command, cmdRes.result, cmdRes);
+        assert.eq(hasEncryptionPlaceholders, cmdRes.hasEncryptionPlaceholders, cmdRes);
+        assert.eq(schemaRequiresEncryption, cmdRes.schemaRequiresEncryption, cmdRes);
+    }
 }
 
 let command, cmdRes;
 
 // Test that $group with an object passed for _id does not get affected when no encryption is
 // required by the schema.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [{
         $group: {
@@ -57,194 +64,188 @@ command = {
             count: {$sum: {$const: 1}}
         }
     }],
-    cursor: {},
-    jsonSchema: {},
-    isRemoteSchema: false,
-};
+    cursor: {}
+},
+                        generateSchema({}, coll.getFullName()));
 assertCommandUnchanged(command, false, false);
 
 // Test that $group with an expression passed for '_id' marks this field as not encrypted,
 // because the corresponding expression is not encrypted.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [{$group: {_id: {$const: null}}}, {$match: {"_id": {$eq: "winterfell"}}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {_id: encryptedStringSpec}},
-    isRemoteSchema: false
-};
-assertCommandUnchanged(command, false, true);
+    cursor: {}
+},
+                        generateSchema({_id: encryptedStringSpec}, coll.getFullName()));
+assertCommandUnchanged(command, false, true, 6316403);
 
 // Test that $group with an object passed for '_id' marks its field as encrypted,
 // if a corresponding expression is a rename and the old field is encrypted.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [{$group: {_id: {dt: "$date"}}}, {$match: {"_id.dt": {$eq: "winterfell"}}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {date: encryptedStringSpec}},
-    isRemoteSchema: false
-};
-cmdRes = assert.commandWorked(testDB.runCommand(command));
-assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
-assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
-assert(cmdRes.hasOwnProperty("result"), cmdRes);
-assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
-assert(cmdRes.result.pipeline[1].$match["_id.dt"].$eq instanceof BinData, cmdRes);
+    cursor: {}
+},
+                        generateSchema({date: encryptedStringSpec}, coll.getFullName()));
+// FLE 2 does not support referring to an encrypted field in an aggregate expression.
+if (fle2Enabled()) {
+    assert.commandFailedWithCode(testDB.runCommand(command), FLE2InvalidReferenceCode);
+} else {
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+    assert(cmdRes.hasOwnProperty("result"), cmdRes);
+    assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
+    assert(cmdRes.result.pipeline[1].$match["_id.dt"].$eq instanceof BinData, cmdRes);
+}
 
 // Test that $group with an object passed for '_id' marks its field as not encrypted,
 // if a corresponding expression is a rename and the old field is not encrypted.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [{$group: {_id: {dt: "$date"}}}, {$match: {"_id.dt": {$eq: "winterfell"}}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {notdate: encryptedStringSpec}},
-    isRemoteSchema: false
-};
+    cursor: {}
+},
+                        generateSchema({notdate: encryptedStringSpec}, coll.getFullName()));
 assertCommandUnchanged(command, false, true);
 
 // Test that $group with an object passed for '_id' marks its field as not encrypted,
 // if a corresponding expression is not a rename.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [
         {$group: {_id: {year: {$year: {date: "$date"}}}}},
         {$match: {"_id.year": {$eq: "winterfell"}}}
     ],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {year: encryptedStringSpec}},
-    isRemoteSchema: false
-};
+    cursor: {}
+},
+                        generateSchema({year: encryptedStringSpec}, coll.getFullName()));
 assertCommandUnchanged(command, false, true);
 
+const qtyEncryptedQueryable = generateSchema({qty: encryptedStringSpec}, coll.getFullName());
+const qtyEncryptedRandom = generateSchema({qty: encryptedRandomSpec}, coll.getFullName());
+
 // Test that $group with an expression in '_id' has constants correctly marked for encryption.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline:
         [{$group: {_id: {$cond: [{$eq: ["$qty", {$const: "thousand"}]}, "1000", "not1000"]}}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {qty: encryptedStringSpec}},
-    isRemoteSchema: false
-};
-cmdRes = assert.commandWorked(testDB.runCommand(command));
-assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
-assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
-assert(cmdRes.hasOwnProperty("result"), cmdRes);
-assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
-assert(cmdRes.result.pipeline[0].$group._id.$cond[0].$eq[1]["$const"] instanceof BinData, cmdRes);
+    cursor: {}
+},
+                        qtyEncryptedQueryable);
+// FLE 2 does not support referring to an encrypted field in an aggregate expression.
+if (fle2Enabled()) {
+    assert.commandFailedWithCode(testDB.runCommand(command), FLE2InvalidReferenceCode);
+} else {
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+    assert(cmdRes.hasOwnProperty("result"), cmdRes);
+    assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
+    assert(cmdRes.result.pipeline[0].$group._id.$cond[0].$eq[1]["$const"] instanceof BinData,
+           cmdRes);
+}
 
 // Test that $group with an expression in '_id' requires a stable output type across documents
 // to allow for comparisons. The encryption properties of $qtyOther and $qty are the same.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline:
         [{$group: {_id: {$cond: [{$eq: ["$value", {$const: "thousand"}]}, "$qty", "$qtyOther"]}}}],
-    cursor: {},
-    jsonSchema:
-        {type: "object", properties: {qty: encryptedStringSpec, qtyOther: encryptedStringSpec}},
-    isRemoteSchema: false
-};
-assertCommandUnchanged(command, false, true);
+    cursor: {}
+},
+                        generateSchema({qty: encryptedStringSpec, qtyOther: encryptedStringSpec},
+                                       coll.getFullName()));
+assertCommandUnchanged(command, false, true, FLE2InvalidReferenceCode);
 
 // Test that $group with an expression in '_id' requires a stable output type across documents
 // to allow for comparisons. The encryption properties of $qtyOther and $qty are different.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline:
         [{$group: {_id: {$cond: [{$eq: ["$qty", {$const: "thousand"}]}, "$qty", "$qtyOther"]}}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {qty: encryptedStringSpec}},
-    isRemoteSchema: false
-};
-assert.commandFailedWithCode(testDB.runCommand(command), 51222);
+    cursor: {}
+},
+                        qtyEncryptedQueryable);
+assert.commandFailedWithCode(testDB.runCommand(command), [51222, FLE2InvalidReferenceCode]);
 
 // Test that $group with an expression in '_id' correctly marks literals since the evaluated
 // result of the expression will be used in comparison across documents.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [{
         $group:
             {_id: {$cond: [{$eq: ["$value", {$const: "thousand"}]}, {$const: "1000"}, "$qty"]}}
     }],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {qty: encryptedStringSpec}},
-    isRemoteSchema: false
-};
-cmdRes = assert.commandWorked(testDB.runCommand(command));
-assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
-assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
-assert(cmdRes.result.pipeline[0].$group._id.$cond[1].$const instanceof BinData, cmdRes);
+    cursor: {}
+},
+                        qtyEncryptedQueryable);
+// FLE 2 does not support referring to an encrypted field in an aggregate expression.
+if (fle2Enabled()) {
+    assert.commandFailedWithCode(testDB.runCommand(command), FLE2InvalidReferenceCode);
+} else {
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+    assert(cmdRes.result.pipeline[0].$group._id.$cond[1].$const instanceof BinData, cmdRes);
+}
 
 // Test that literals are properly marked when $ifNull is used in the _id field.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
-    pipeline: [{$group: {_id: {$ifNull: ["$ssn", "no-ssn"]}}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {ssn: encryptedStringSpec}},
-    isRemoteSchema: false
-};
-cmdRes = assert.commandWorked(testDB.runCommand(command));
-assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
-assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
-assert(cmdRes.result.pipeline[0].$group._id.$ifNull[1].$const instanceof BinData, cmdRes);
+    pipeline: [{$group: {_id: {$ifNull: ["$qty", "no-ssn"]}}}],
+    cursor: {}
+},
+                        qtyEncryptedQueryable);
+// FLE 2 does not support referring to an encrypted field in an aggregate expression.
+if (fle2Enabled()) {
+    assert.commandFailedWithCode(testDB.runCommand(command), FLE2InvalidReferenceCode);
+} else {
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+    assert(cmdRes.result.pipeline[0].$group._id.$ifNull[1].$const instanceof BinData, cmdRes);
+}
 
 // Test that the $group succeeds if _id expression is a deterministically encrypted field.
-command = {
-    aggregate: coll.getName(),
-    pipeline: [{$group: {_id: "$foo"}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {foo: encryptedStringSpec}},
-    isRemoteSchema: false
-};
-assertCommandUnchanged(command, false, true);
+command =
+    Object.assign({aggregate: coll.getName(), pipeline: [{$group: {_id: "$qty"}}], cursor: {}},
+                  qtyEncryptedQueryable);
+assertCommandUnchanged(command, false, true, FLE2InvalidReferenceCode);
 
 // Test that the $group fails if _id expression is a prefix of a deterministically encrypted
 // field.
-command = {
-    aggregate: coll.getName(),
-    pipeline: [{$group: {_id: "$foo"}}],
-    cursor: {},
-    jsonSchema: {
-        type: "object",
-        properties: {foo: {type: "object", properties: {bar: encryptedStringSpec}}}
-    },
-    isRemoteSchema: false
-};
-assert.commandFailedWithCode(testDB.runCommand(command), 31129);
+command =
+    Object.assign({aggregate: coll.getName(), pipeline: [{$group: {_id: "$foo"}}], cursor: {}},
+                  generateSchema({'foo.bar': encryptedStringSpec}, coll.getFullName()));
+assert.commandFailedWithCode(testDB.runCommand(command), [31129, FLE2InvalidReferenceCode]);
 
 // Test that the $group fails if _id expression is a path with an encrypted prefix.
-command = {
-    aggregate: coll.getName(),
-    pipeline: [{$group: {_id: "$foo.bar"}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {foo: encryptedStringSpec}},
-    isRemoteSchema: false
-};
-assert.commandFailedWithCode(testDB.runCommand(command), 51102);
+command =
+    Object.assign({aggregate: coll.getName(), pipeline: [{$group: {_id: "$qty.bar"}}], cursor: {}},
+                  qtyEncryptedQueryable);
+assert.commandFailedWithCode(testDB.runCommand(command), [51102, FLE2InvalidReferenceCode]);
 
 // Test that the $group fails if _id expression outputs schema with any fields encrypted with
 // the random algorithm.
-command = {
-    aggregate: coll.getName(),
-    pipeline: [{$group: {_id: "$foo"}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {foo: encryptedRandomSpec}},
-    isRemoteSchema: false
-};
-assert.commandFailedWithCode(testDB.runCommand(command), 51222);
+command =
+    Object.assign({aggregate: coll.getName(), pipeline: [{$group: {_id: "$qty"}}], cursor: {}},
+                  qtyEncryptedRandom);
+assert.commandFailedWithCode(testDB.runCommand(command), [51222, FLE2InvalidReferenceCode]);
 
 // Test that the $addToSet accumulator in $group succeeds if the output type is stable and
 // its output schema has only deterministic nodes.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [{$group: {_id: {$const: null}, totalQuantity: {$addToSet: "$qty"}}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {qty: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
-assertCommandUnchanged(command, false, true);
+    cursor: {}
+},
+                        qtyEncryptedQueryable);
+assertCommandUnchanged(command, false, true, FLE2InvalidReferenceCode);
 
 // Test that the $addToSet accumulator in $group successfully marks constants if added along
 // with an encrypted field.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [{
         $group: {
@@ -255,18 +256,23 @@ command = {
             }
         }
     }],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {qty: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
-cmdRes = assert.commandWorked(testDB.runCommand(command));
-assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
-assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
-assert(cmdRes.result.pipeline[0].$group.totalQuantity.$addToSet.$cond[2].$const instanceof BinData,
-       cmdRes);
+    cursor: {}
+},
+                        qtyEncryptedQueryable);
+// FLE 2 does not support referring to an encrypted field in an aggregate expression.
+if (fle2Enabled()) {
+    assert.commandFailedWithCode(testDB.runCommand(command), FLE2InvalidReferenceCode);
+} else {
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+    assert(
+        cmdRes.result.pipeline[0].$group.totalQuantity.$addToSet.$cond[2].$const instanceof BinData,
+        cmdRes);
+}
 
 // Test that the $addToSet accumulator in $group fails if the output type is unstable.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [{
         $group: {
@@ -276,22 +282,20 @@ command = {
                      {$cond: [{$eq: ["$qty", {$const: "thousand"}]}, "$qty", "$otherQty"]}}
         }
     }],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {qty: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
-assert.commandFailedWithCode(testDB.runCommand(command), 51223);
+    cursor: {}
+},
+                        qtyEncryptedQueryable);
+assert.commandFailedWithCode(testDB.runCommand(command), [51223, FLE2InvalidReferenceCode]);
 
 // Test that the $addToSet accumulator in $group fails if its expression outputs schema with
 // any fields encrypted with the random algorithm.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [{$group: {_id: null, totalQuantity: {$addToSet: "$qty"}}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {qty: encryptedRandomSpec}},
-    isRemoteSchema: false,
-};
-assert.commandFailedWithCode(testDB.runCommand(command), 51223);
+    cursor: {}
+},
+                        qtyEncryptedRandom);
+assert.commandFailedWithCode(testDB.runCommand(command), [51223, FLE2InvalidReferenceCode]);
 
 // Test that fields corresponding to accumulator expressions with array accumulators over
 // not encrypted fields in $group can be referenced in the query and are marked as not
@@ -307,56 +311,54 @@ command = {
 let arrayAccus = ["$addToSet", "$push"];
 for (let accu of arrayAccus) {
     command.pipeline[0].$group.itemList = {[accu]: "$item"};
-    command.jsonSchema = {type: "object", properties: {notitem: encryptedStringSpec}};
-    command.isRemoteSchema = false;
+    Object.assign(command, qtyEncryptedRandom);
     assertCommandUnchanged(command, false, true);
 }
 
 // Test that fields corresponding to accumulator expressions with array accumulators over
 // encrypted fields in $group are supported as long as they are not referenced afterwards.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [{$group: {_id: "$castle", itemList: {}}}, {$match: {_id: {$eq: "winterfell"}}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {item: encryptedStringSpec}},
-    isRemoteSchema: false
-};
+    cursor: {}
+},
+                        generateSchema({item: encryptedStringSpec}, coll.getFullName()));
 for (let accu of arrayAccus) {
     command.pipeline[0].$group.itemList = {[accu]: "$item"};
 
-    cmdRes = assert.commandWorked(testDB.runCommand(command));
-    assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
-    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
-    assert(cmdRes.hasOwnProperty("result"), cmdRes);
-    assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
+    // FLE 2 does not support referring to an encrypted field in an aggregate expression.
+    if (fle2Enabled()) {
+        assert.commandFailedWithCode(testDB.runCommand(command), FLE2InvalidReferenceCode);
+    } else {
+        cmdRes = assert.commandWorked(testDB.runCommand(command));
+        assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
+        assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+        assert(cmdRes.hasOwnProperty("result"), cmdRes);
+        assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
+    }
 }
 
 // Test that fields corresponding to accumulator expressions with array accumulators over
 // encrypted fields in $group cannot be referenced in subsequent stages.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [{$group: {_id: null, itemList: {}}}, {$match: {"itemList": {$eq: "winterfell"}}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {item: encryptedStringSpec}},
-    isRemoteSchema: false
-};
+    cursor: {}
+},
+                        generateSchema({item: encryptedStringSpec}, coll.getFullName()));
 for (let accu of arrayAccus) {
     command.pipeline[0].$group.itemList = {[accu]: "$item"};
-    assert.commandFailedWithCode(testDB.runCommand(command), 31133);
+    assert.commandFailedWithCode(testDB.runCommand(command), [31133, FLE2InvalidReferenceCode]);
 }
 
 // Test that numeric accumulator expressions aggregating encrypted fields fail.
-command = {
-    aggregate: coll.getName(),
-    pipeline: [{$group: {_id: null, totalPrice: {}}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {price: encryptedIntSpec}},
-    isRemoteSchema: false,
-};
+command = Object.assign(
+    {aggregate: coll.getName(), pipeline: [{$group: {_id: null, totalPrice: {}}}], cursor: {}},
+    generateSchema({price: encryptedIntSpec}, coll.getFullName()));
 let numericAccus = ["$sum", "$min", "$max", "$avg", "$stdDevPop", "$stdDevSamp"];
 for (let accu of numericAccus) {
     command.pipeline[0].$group.totalPrice = {[accu]: "$price"};
-    assert.commandFailedWithCode(testDB.runCommand(command), 51221);
+    assert.commandFailedWithCode(testDB.runCommand(command), [51221, FLE2InvalidReferenceCode]);
 }
 
 // Test that numeric accumulators are allowed if their expression involves a comparison to an
@@ -365,70 +367,68 @@ for (let accu of numericAccus) {
 let condExpr = {
     $cond: [{$eq: ["$qty", "thousand"]}, {$multiply: ["$price", {$const: 0.8}]}, "$price"]
 };
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [{$group: {_id: null, totalPrice: {}, count: {}}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {qty: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
+    cursor: {}
+},
+                        qtyEncryptedQueryable);
 for (let accu of numericAccus) {
     command.pipeline[0]
         .$group = {_id: null, totalPrice: {[accu]: condExpr}, count: {[accu]: {$const: 1}}};
 
-    cmdRes = assert.commandWorked(testDB.runCommand(command));
-    assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
-    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
-    assert(cmdRes.hasOwnProperty("result"), cmdRes);
-    assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
-    assert(
-        cmdRes.result.pipeline[0].$group.totalPrice[accu].$cond[0].$eq[1].$const instanceof BinData,
-        cmdRes);
-    assert.eq(cmdRes.result.pipeline[0].$group.totalPrice[accu].$cond[1].$multiply[1].$const,
-              0.8,
-              cmdRes);
-    assert.eq(cmdRes.result.pipeline[0].$group.count[accu].$const, 1, cmdRes);
+    // FLE 2 does not support referring to an encrypted field in an aggregate expression.
+    if (fle2Enabled()) {
+        assert.commandFailedWithCode(testDB.runCommand(command), FLE2InvalidReferenceCode);
+    } else {
+        cmdRes = assert.commandWorked(testDB.runCommand(command));
+        assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
+        assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+        assert(cmdRes.hasOwnProperty("result"), cmdRes);
+        assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
+        assert(cmdRes.result.pipeline[0].$group.totalPrice[accu].$cond[0].$eq[1].$const instanceof
+                   BinData,
+               cmdRes);
+        assert.eq(cmdRes.result.pipeline[0].$group.totalPrice[accu].$cond[1].$multiply[1].$const,
+                  0.8,
+                  cmdRes);
+        assert.eq(cmdRes.result.pipeline[0].$group.count[accu].$const, 1, cmdRes);
+    }
 }
 
 // Test that fields corresponding to the $first, $last accumulators in $group
 // preserve encryption properties of the expression.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [
         {$group: {_id: null, representative: {}}},
         {$match: {"representative": {$eq: "winterfell"}}}
     ],
-    cursor: {},
-    jsonSchema: {
-        type: "object",
-        properties: {sales: {type: "object", properties: {region: encryptedStringSpec}}}
-    },
-    isRemoteSchema: false
-};
+    cursor: {}
+},
+                        generateSchema({'sales.region': encryptedStringSpec}, coll.getFullName()));
 
 let selectionAccus = ["$first", "$last"];
 for (let accu of selectionAccus) {
     command.pipeline[0].$group.representative = {[accu]: "$sales.region"};
 
-    cmdRes = assert.commandWorked(testDB.runCommand(command));
-    assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
-    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
-    assert(cmdRes.hasOwnProperty("result"), cmdRes);
-    assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
-    assert(cmdRes.result.pipeline[1].$match["representative"].$eq instanceof BinData, cmdRes);
+    // FLE 2 does not support referring to an encrypted field in an aggregate expression.
+    if (fle2Enabled()) {
+        assert.commandFailedWithCode(testDB.runCommand(command), FLE2InvalidReferenceCode);
+    } else {
+        cmdRes = assert.commandWorked(testDB.runCommand(command));
+        assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
+        assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+        assert(cmdRes.hasOwnProperty("result"), cmdRes);
+        assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
+        assert(cmdRes.result.pipeline[1].$match["representative"].$eq instanceof BinData, cmdRes);
+    }
 }
 
 // Test that accumulator expression aggregating prefixes of encrypted fields fails.
-command = {
-    aggregate: coll.getName(),
-    pipeline: [{$group: {_id: null, totalPrice: {}}}],
-    cursor: {},
-    jsonSchema: {
-        type: "object",
-        properties: {foo: {type: "object", properties: {price: encryptedIntSpec}}}
-    },
-    isRemoteSchema: false,
-};
+command = Object.assign(
+    {aggregate: coll.getName(), pipeline: [{$group: {_id: null, totalPrice: {}}}], cursor: {}},
+    generateSchema({'foo.price': encryptedIntSpec}, coll.getFullName()));
 let allAccus = numericAccus.concat(selectionAccus).concat(arrayAccus).concat(["$mergeObjects"]);
 for (let accu of allAccus) {
     command.pipeline[0].$group.totalPrice = {[accu]: "$foo"};
@@ -436,28 +436,26 @@ for (let accu of allAccus) {
 }
 
 // Test that the $mergeObjects accumulator expression aggregating not encrypted fields succeeds.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
-    pipeline: [{$group: {_id: {$const: null}, combination: {$mergeObjects: "$qty"}}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {otherQty: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
+    pipeline: [{$group: {_id: {$const: null}, combination: {$mergeObjects: "$otherQty"}}}],
+    cursor: {}
+},
+                        qtyEncryptedQueryable);
 assertCommandUnchanged(command, false, true);
 
 // Test that the $mergeObjects accumulator expression aggregating encrypted fields fails.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [{$group: {_id: null, combination: {$mergeObjects: "$qty"}}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {qty: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
-assert.commandFailedWithCode(testDB.runCommand(command), 51221);
+    cursor: {}
+},
+                        qtyEncryptedQueryable);
+assert.commandFailedWithCode(testDB.runCommand(command), [51221, FLE2InvalidReferenceCode]);
 
 // Test that $accumulator is allowed as long as it doesn't touch any encrypted fields.
 // It's allowed to reference the group key.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [{
         $group: {
@@ -475,14 +473,13 @@ command = {
             },
         }
     }],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {secretString: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
+    cursor: {}
+},
+                        generateSchema({secretString: encryptedStringSpec}, coll.getFullName()));
 assertCommandUnchanged(command, false, true);
 
 // Test that $accumulator is not allowed to reference encrypted or possibly-encrypted fields.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [{
         $group: {
@@ -499,15 +496,14 @@ command = {
             },
         }
     }],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {secretString: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
-assert.commandFailedWithCode(testDB.runCommand(command), 51221);
+    cursor: {}
+},
+                        generateSchema({secretString: encryptedStringSpec}, coll.getFullName()));
+assert.commandFailedWithCode(testDB.runCommand(command), [51221, FLE2InvalidReferenceCode]);
 
 // Test that even when encrypted fields end up in the group key, $accumulator is not allowed to
 // reference them.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [{
         $group: {
@@ -526,11 +522,10 @@ command = {
             },
         }
     }],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {secretString: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
-assert.commandFailedWithCode(testDB.runCommand(command), 4544715);
+    cursor: {}
+},
+                        generateSchema({secretString: encryptedStringSpec}, coll.getFullName()));
+assert.commandFailedWithCode(testDB.runCommand(command), [4544715, FLE2InvalidReferenceCode]);
 
 mongocryptd.stop();
 })();

@@ -17,19 +17,18 @@ const encryptedStringSpec = {
     encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}
 };
 
+const encryptedUserSpec = generateSchema({user: encryptedStringSpec}, coll.getFullName());
+const encryptedSsnSpec = generateSchema({ssn: encryptedStringSpec}, coll.getFullName());
+
 let command, cmdRes, expected;
 
 // Basic inclusion test.
-command = {
-    aggregate: coll.getName(),
-    pipeline: [{$project: {user: 1}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {user: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
+command = Object.assign({aggregate: coll.getName(), pipeline: [{$project: {user: 1}}], cursor: {}},
+                        encryptedUserSpec);
 
 cmdRes = assert.commandWorked(testDB.runCommand(command));
 delete cmdRes.result.lsid;
+delete cmdRes.result.encryptionInformation;
 expected = {
     aggregate: coll.getName(),
     pipeline: [{$project: {_id: true, user: true}}],
@@ -41,17 +40,17 @@ assert(!cmdRes.hasEncryptionPlaceholders, cmdRes);
 
 // Test that matching on a field that was projected out does not result in an intent-to-encyrpt
 // marking.
-command = {
-    aggregate: coll.getName(),
-    pipeline: [{$project: {user: 1}}, {$match: {removed: "isHere"}}],
-    cursor: {},
-    jsonSchema:
-        {type: "object", properties: {user: encryptedStringSpec, removed: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
+command = Object.assign(
+    {
+        aggregate: coll.getName(),
+        pipeline: [{$project: {user: 1}}, {$match: {removed: "isHere"}}],
+        cursor: {}
+    },
+    generateSchema({user: encryptedStringSpec, removed: encryptedStringSpec}, coll.getFullName()));
 
 cmdRes = assert.commandWorked(testDB.runCommand(command));
 delete cmdRes.result.lsid;
+delete cmdRes.result.encryptionInformation;
 expected = {
     aggregate: coll.getName(),
     pipeline: [{$project: {_id: true, user: true}}, {$match: {removed: {$eq: "isHere"}}}],
@@ -62,73 +61,69 @@ assert(cmdRes.schemaRequiresEncryption, cmdRes);
 assert(!cmdRes.hasEncryptionPlaceholders);
 
 // Test that matching a renamed dotted field does result in an intent-to-encrypt marking.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [{$project: {"newUser": "$user.ssn"}}, {$match: {"newUser": "isHere"}}],
-    cursor: {},
-    jsonSchema: {
-        type: "object",
-        properties: {user: {type: "object", properties: {ssn: encryptedStringSpec}}}
-    },
-    isRemoteSchema: false,
-};
-
-cmdRes = assert.commandWorked(testDB.runCommand(command));
-assert(cmdRes.schemaRequiresEncryption, cmdRes);
-assert(cmdRes.hasEncryptionPlaceholders, cmdRes);
-assert(cmdRes.result.pipeline[1].$match.newUser.$eq instanceof BinData, cmdRes);
+    cursor: {}
+},
+                        generateSchema({'user.ssn': encryptedStringSpec}, coll.getFullName()));
+// FLE 2 does not support referring to encrypted fields in any aggregate expression.
+if (fle2Enabled()) {
+    assert.commandFailedWithCode(testDB.runCommand(command), 6331100);
+} else {
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    assert(cmdRes.schemaRequiresEncryption, cmdRes);
+    assert(cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert(cmdRes.result.pipeline[1].$match.newUser.$eq instanceof BinData, cmdRes);
+}
 
 // Test that renaming an encrypted field to a new dotted field is allowed as long as the field
 // is not referenced in subsequent stages.
-command = {
-    aggregate: coll.getName(),
-    pipeline: [{$project: {"newUser.ssn": "$ssn"}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {ssn: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
+command = Object.assign(
+    {aggregate: coll.getName(), pipeline: [{$project: {"newUser.ssn": "$ssn"}}], cursor: {}},
+    encryptedSsnSpec);
 cmdRes = assert.commandWorked(testDB.runCommand(command));
 assert(cmdRes.schemaRequiresEncryption, cmdRes);
 assert(!cmdRes.hasEncryptionPlaceholders, cmdRes);
 
 // Test that adding a new dotted path which is computed from an encrypted is allowed as long as
 // the field is not referenced in subsequent stages.
-command = {
-    aggregate: coll.getName(),
-    pipeline: [{$project: {"newUser.ssn": {$cond: [true, "$ssn", "$otherSsn"]}}}],
-    cursor: {},
-    jsonSchema:
-        {type: "object", properties: {ssn: encryptedStringSpec, otherSsn: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
-cmdRes = assert.commandWorked(testDB.runCommand(command));
-assert(cmdRes.schemaRequiresEncryption, cmdRes);
-assert(!cmdRes.hasEncryptionPlaceholders, cmdRes);
+command = Object.assign(
+    {
+        aggregate: coll.getName(),
+        pipeline: [{$project: {"newUser.ssn": {$cond: [true, "$ssn", "$otherSsn"]}}}],
+        cursor: {}
+    },
+    generateSchema({ssn: encryptedStringSpec, otherSsn: encryptedStringSpec}, coll.getFullName()));
+// FLE 2 does not support referring to encrypted fields in any aggregate expression.
+if (fle2Enabled()) {
+    assert.commandFailedWithCode(testDB.runCommand(command), 6331100);
+} else {
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    assert(cmdRes.schemaRequiresEncryption, cmdRes);
+    assert(!cmdRes.hasEncryptionPlaceholders, cmdRes);
+}
 
 // Test that accessing a dotted path which is the target of a rename from an encrypted field is
 // not allowed. This is because projecting a dotted path *could* access a sub-document within an
 // array. In this example, if 'newUser' was an array then we would end up with an encrypted
 // field within an object in that array.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [{$project: {"newUser.ssn": "$ssn"}}, {$match: {newUser: {ssn: "1234"}}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {ssn: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
+    cursor: {}
+},
+                        encryptedSsnSpec);
 assert.commandFailedWithCode(testDB.runCommand(command), 31133);
 
 // Basic exclusion test.
-command = {
-    aggregate: coll.getName(),
-    pipeline: [{$project: {"user": 0}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {user: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
+command =
+    Object.assign({aggregate: coll.getName(), pipeline: [{$project: {"user": 0}}], cursor: {}},
+                  encryptedUserSpec);
 
 cmdRes = assert.commandWorked(testDB.runCommand(command));
 delete cmdRes.result.lsid;
+delete cmdRes.result.encryptionInformation;
 expected = {
     aggregate: coll.getName(),
     pipeline: [{$project: {user: false, _id: true}}],
@@ -139,33 +134,32 @@ assert(cmdRes.schemaRequiresEncryption, cmdRes);
 assert(!cmdRes.hasEncryptionPlaceholders);
 
 // Test that exclusion ignores fields left in schema.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [{$project: {"user": 0}}, {$match: {remaining: "isHere"}}],
-    cursor: {},
-    jsonSchema:
-        {type: "object", properties: {user: encryptedStringSpec, remaining: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
+    cursor: {}
+},
+                        generateSchema({user: encryptedStringSpec, remaining: encryptedStringSpec},
+                                       coll.getFullName()));
 
 cmdRes = assert.commandWorked(testDB.runCommand(command));
 delete cmdRes.result.lsid;
+delete cmdRes.result.encryptionInformation;
+
 assert(cmdRes.result.pipeline[1].$match.remaining.$eq instanceof BinData,
        cmdRes.result.pipeline[1].$match.remaining.$eq);
 assert(cmdRes.schemaRequiresEncryption, cmdRes);
 assert(cmdRes.hasEncryptionPlaceholders);
 
 // Basic expressions test.
-command = {
-    aggregate: coll.getName(),
-    pipeline: [{$project: {"user": "$a"}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {user: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
+command =
+    Object.assign({aggregate: coll.getName(), pipeline: [{$project: {"user": "$a"}}], cursor: {}},
+                  encryptedUserSpec);
 
 cmdRes = assert.commandWorked(testDB.runCommand(command));
 delete cmdRes.result.lsid;
+delete cmdRes.result.encryptionInformation;
+
 expected = {
     aggregate: coll.getName(),
     pipeline: [{$project: {"_id": true, user: "$a"}}],
@@ -174,27 +168,30 @@ expected = {
 assert.eq(expected, cmdRes.result, cmdRes.result);
 
 // Test that constants being compared to encrypted fields come back as placeholders.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [{$project: {"isTed": {$eq: ["$user", "Ted"]}}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {user: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
-cmdRes = assert.commandWorked(testDB.runCommand(command));
-delete cmdRes.result.lsid;
-assert(cmdRes.result.pipeline[0].$project.isTed.$eq[1]["$const"] instanceof BinData, cmdRes);
+    cursor: {}
+},
+                        encryptedUserSpec);
+// TODO SERVER-63313 Support agg $eq.
+if (fle2Enabled()) {
+    assert.commandFailedWithCode(testDB.runCommand(command), 6331100);
+} else {
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    delete cmdRes.result.lsid;
+    delete cmdRes.result.encryptionInformation;
+    assert(cmdRes.result.pipeline[0].$project.isTed.$eq[1]["$const"] instanceof BinData, cmdRes);
+}
 
 // Basic $addFields test.
-command = {
-    aggregate: coll.getName(),
-    pipeline: [{$addFields: {"user": "$ssn"}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {user: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
+command = Object.assign(
+    {aggregate: coll.getName(), pipeline: [{$addFields: {"user": "$ssn"}}], cursor: {}},
+    encryptedUserSpec);
 cmdRes = assert.commandWorked(testDB.runCommand(command));
 delete cmdRes.result.lsid;
+delete cmdRes.result.encryptionInformation;
+
 expected = {
     aggregate: coll.getName(),
     pipeline: [{$addFields: {user: "$ssn"}}],
@@ -205,64 +202,76 @@ assert(cmdRes.schemaRequiresEncryption, cmdRes);
 assert(!cmdRes.hasEncryptionPlaceholders);
 
 // Test that $addFields does not affect the schema for other fields.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [{$addFields: {"user": "randomString"}}, {$match: {ssn: "isHere"}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {ssn: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
+    cursor: {}
+},
+                        encryptedSsnSpec);
 cmdRes = assert.commandWorked(testDB.runCommand(command));
 delete cmdRes.result.lsid;
+delete cmdRes.result.encryptionInformation;
+
 assert(cmdRes.schemaRequiresEncryption, cmdRes);
 assert(cmdRes.hasEncryptionPlaceholders);
 assert(cmdRes.result.pipeline[1].$match.ssn.$eq instanceof BinData,
        cmdRes.result.pipeline[1].$match.ssn.$eq);
 
 // Test that hasEncryptionPlaceholders is properly set without a $match stage.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [
         {$addFields: {"userIs123": {"$eq": ["$ssn", "1234"]}}},
     ],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {ssn: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
-cmdRes = assert.commandWorked(testDB.runCommand(command));
-delete cmdRes.result.lsid;
-assert(cmdRes.schemaRequiresEncryption, cmdRes);
-assert(cmdRes.hasEncryptionPlaceholders);
+    cursor: {}
+},
+                        encryptedSsnSpec);
+// TODO SERVER-63313 Support agg $eq.
+if (fle2Enabled()) {
+    assert.commandFailedWithCode(testDB.runCommand(command), 6331100);
+} else {
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    delete cmdRes.result.lsid;
+    delete cmdRes.result.encryptionInformation;
 
-command = {
+    assert(cmdRes.schemaRequiresEncryption, cmdRes);
+    assert(cmdRes.hasEncryptionPlaceholders);
+}
+
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [
         {$addFields: {"userIs123": {"$eq": ["$foo", "1234"]}}},
     ],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {ssn: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
+    cursor: {}
+},
+                        encryptedSsnSpec);
 cmdRes = assert.commandWorked(testDB.runCommand(command));
 delete cmdRes.result.lsid;
+delete cmdRes.result.encryptionInformation;
+
 assert(cmdRes.schemaRequiresEncryption, cmdRes);
 assert(!cmdRes.hasEncryptionPlaceholders, cmdRes);
 
-command = {
-    aggregate: coll.getName(),
-    pipeline: [
-        {$addFields: {"cleanedSSN": {$ifNull: ["$ssn", "$otherSsn"]}}},
-        {$match: {cleanedSSN: "1234"}}
-    ],
-    cursor: {},
-    jsonSchema:
-        {type: "object", properties: {ssn: encryptedStringSpec, otherSsn: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
-cmdRes = assert.commandWorked(testDB.runCommand(command));
-assert(cmdRes.hasEncryptionPlaceholders);
-assert(cmdRes.schemaRequiresEncryption);
-assert(cmdRes.result.pipeline[1].$match.cleanedSSN.$eq instanceof BinData, cmdRes);
+command = Object.assign(
+    {
+        aggregate: coll.getName(),
+        pipeline: [
+            {$addFields: {"cleanedSSN": {$ifNull: ["$ssn", "$otherSsn"]}}},
+            {$match: {cleanedSSN: "1234"}}
+        ],
+        cursor: {}
+    },
+    generateSchema({ssn: encryptedStringSpec, otherSsn: encryptedStringSpec}, coll.getFullName()));
+// TODO SERVER-63313 Support agg $eq.
+if (fle2Enabled()) {
+    assert.commandFailedWithCode(testDB.runCommand(command), 6331100);
+} else {
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    assert(cmdRes.hasEncryptionPlaceholders);
+    assert(cmdRes.schemaRequiresEncryption);
+    assert(cmdRes.result.pipeline[1].$match.cleanedSSN.$eq instanceof BinData, cmdRes);
+}
 
 mongocryptd.stop();
 })();

@@ -23,7 +23,7 @@ const encryptedIntSpec = {
 };
 
 const encryptedRandomSpec = {
-    encrypt: {algorithm: kRandomAlgo, keyId: [UUID()]}
+    encrypt: {algorithm: kRandomAlgo, keyId: [UUID()], bsonType: "int"}
 };
 
 const graphLookupSpec = {
@@ -40,7 +40,7 @@ let command, cmdRes;
 
 // Test that self-graphlookup with unencrypted equality match fields, unencrypted 'startWith'
 // field and bringing unencrypted fields succeeds.
-command = {
+command = Object.assign({
         aggregate: coll.getName(),
         pipeline: [{
             $graphLookup: {
@@ -54,10 +54,7 @@ command = {
                 restrictSearchWithMatch: {"hobbies": {"$eq": "golf"}}
             }
         }],
-        cursor: {},
-        jsonSchema: {},
-        isRemoteSchema: false,
-    };
+        cursor: {}}, generateSchema({}, coll.getFullName()));
 cmdRes = assert.commandWorked(testDB.runCommand(command));
 delete command.jsonSchema;
 delete command.isRemoteSchema;
@@ -67,26 +64,26 @@ assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
 assert.eq(false, cmdRes.schemaRequiresEncryption, cmdRes);
 
 // Test that self-graphlookup with equality match fields encrypted with a deterministic
-// algorithm and matching bsonTypes and bringing unencrypted fields succeeds.
-command = {
-    aggregate: coll.getName(),
-    pipeline: [graphLookupSpec],
-    cursor: {},
-    jsonSchema:
-        {type: "object", properties: {name: encryptedStringSpec, reportsTo: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
-cmdRes = assert.commandWorked(testDB.runCommand(command));
-delete command.jsonSchema;
-delete command.isRemoteSchema;
-delete cmdRes.result.lsid;
-assert.eq(command, cmdRes.result, cmdRes);
-assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
-assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+// algorithm and matching bsonTypes and bringing unencrypted fields succeeds. In FLE 2, comparing
+// two encrypted fields is not supported.
+command = Object.assign({aggregate: coll.getName(), pipeline: [graphLookupSpec], cursor: {}},
+                        generateSchema({name: encryptedStringSpec, reportsTo: encryptedStringSpec},
+                                       coll.getFullName()));
+if (fle2Enabled()) {
+    assert.commandFailedWithCode(testDB.runCommand(command), 6331101);
+} else {
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    delete command.jsonSchema;
+    delete command.isRemoteSchema;
+    delete cmdRes.result.lsid;
+    assert.eq(command, cmdRes.result, cmdRes);
+    assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+}
 
 // Test that self-graphLookup with 'restrictSearchWithMatch' on a top-level encrypted field is
 // correctly marked for encryption.
-command = {
+command = Object.assign({
         aggregate: coll.getName(),
         pipeline: [{
             $graphLookup: {
@@ -98,10 +95,7 @@ command = {
                 restrictSearchWithMatch: {"hobbies": "golf"}
             }
         }],
-        cursor: {},
-        jsonSchema: {type: "object", properties: {hobbies: encryptedStringSpec}},
-        isRemoteSchema: false,
-    };
+        cursor: {}}, generateSchema({hobbies: encryptedStringSpec}, coll.getFullName()));
 cmdRes = assert.commandWorked(testDB.runCommand(command));
 assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
 assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
@@ -113,7 +107,7 @@ assert(
 
 // Test that self-graphlookup with 'restrictSearchWithMatch' on a nested encrypted field is
 // correctly marked for encryption.
-command = {
+command = Object.assign({
         aggregate: coll.getName(),
         pipeline: [{
             $graphLookup: {
@@ -125,13 +119,7 @@ command = {
                 restrictSearchWithMatch: {"personal.hobbies": "golf"}
             }
         }],
-        cursor: {},
-        jsonSchema: {
-            type: "object",
-            properties: {personal: {type: "object", properties: {hobbies: encryptedStringSpec}}}
-        },
-        isRemoteSchema: false,
-    };
+        cursor: {}}, generateSchema({'personal.hobbies': encryptedStringSpec}, coll.getFullName()));
 cmdRes = assert.commandWorked(testDB.runCommand(command));
 assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
 assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
@@ -144,62 +132,65 @@ assert(cmdRes.result.pipeline[0]
        cmdRes);
 
 // Test that self-graphlookup with 'restrictSearchWithMatch' on a matching patternProperty is
-// correctly marked for encryption.
-command = {
-        aggregate: coll.getName(),
-        pipeline: [{
-            $graphLookup: {
-                from: coll.getName(),
-                as: "reportingHierarchy",
-                connectToField: "name",
-                connectFromField: "reportsTo",
-                startWith: "$reportsTo",
-                restrictSearchWithMatch: {"hobbies": "golf"}
-            }
-        }],
-        cursor: {},
-        jsonSchema: {type: "object", patternProperties: {hob: encryptedStringSpec}},
-        isRemoteSchema: false,
-    };
-cmdRes = assert.commandWorked(testDB.runCommand(command));
-assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
-assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
-assert(cmdRes.hasOwnProperty("result"), cmdRes);
-assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
-assert(
-    cmdRes.result.pipeline[0].$graphLookup.restrictSearchWithMatch.hobbies.$eq instanceof BinData,
-    cmdRes);
+// correctly marked for encryption. FLE 2 does not support patternProperties or
+// additionalProperties.
+if (!fle2Enabled()) {
+    command = {
+            aggregate: coll.getName(),
+            pipeline: [{
+                $graphLookup: {
+                    from: coll.getName(),
+                    as: "reportingHierarchy",
+                    connectToField: "name",
+                    connectFromField: "reportsTo",
+                    startWith: "$reportsTo",
+                    restrictSearchWithMatch: {"hobbies": "golf"}
+                }
+            }],
+            cursor: {},
+            jsonSchema: {type: "object", patternProperties: {hob: encryptedStringSpec}},
+            isRemoteSchema: false,
+        };
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+    assert(cmdRes.hasOwnProperty("result"), cmdRes);
+    assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
+    assert(cmdRes.result.pipeline[0].$graphLookup.restrictSearchWithMatch.hobbies.$eq instanceof
+               BinData,
+           cmdRes);
 
-// Test that self-graphlookup with 'restrictSearchWithMatch' on an additionalProperty is
-// correctly marked for encryption.
-command = {
-        aggregate: coll.getName(),
-        pipeline: [{
-            $graphLookup: {
-                from: coll.getName(),
-                as: "reportingHierarchy",
-                connectToField: "name",
-                connectFromField: "reportsTo",
-                startWith: "$reportsTo",
-                restrictSearchWithMatch: {"hobbies": "golf"}
-            }
-        }],
-        cursor: {},
-        jsonSchema: {type: "object", properties: {}, additionalProperties: encryptedStringSpec},
-        isRemoteSchema: false,
-    };
-cmdRes = assert.commandWorked(testDB.runCommand(command));
-assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
-assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
-assert(cmdRes.hasOwnProperty("result"), cmdRes);
-assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
-assert(
-    cmdRes.result.pipeline[0].$graphLookup.restrictSearchWithMatch.hobbies.$eq instanceof BinData,
-    cmdRes);
+    // Test that self-graphlookup with 'restrictSearchWithMatch' on an additionalProperty is
+    // correctly marked for encryption.
+    command = {
+            aggregate: coll.getName(),
+            pipeline: [{
+                $graphLookup: {
+                    from: coll.getName(),
+                    as: "reportingHierarchy",
+                    connectToField: "name",
+                    connectFromField: "reportsTo",
+                    startWith: "$reportsTo",
+                    restrictSearchWithMatch: {"hobbies": "golf"}
+                }
+            }],
+            cursor: {},
+            jsonSchema: {type: "object", properties: {}, additionalProperties: encryptedStringSpec},
+            isRemoteSchema: false,
+        };
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+    assert(cmdRes.hasOwnProperty("result"), cmdRes);
+    assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
+    assert(cmdRes.result.pipeline[0].$graphLookup.restrictSearchWithMatch.hobbies.$eq instanceof
+               BinData,
+           cmdRes);
+}
 
 // Test that 'startWith' expression in $graphLookup has constants correctly marked for
 // encryption.
-command = {
+command = Object.assign({
         aggregate: coll.getName(),
         pipeline: [{
             $graphLookup: {
@@ -218,31 +209,36 @@ command = {
                 },
             }
         }],
-        cursor: {},
-        jsonSchema: {type: "object", properties: {department: encryptedStringSpec}},
-        isRemoteSchema: false
-    };
-cmdRes = assert.commandWorked(testDB.runCommand(command));
-assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
-assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
-assert(cmdRes.hasOwnProperty("result"), cmdRes);
-assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
-assert(cmdRes.result.pipeline[0].$graphLookup.startWith.category.$cond[0].$eq[1].$const instanceof
-           BinData,
-       cmdRes);
+        cursor: {}}, generateSchema({department: encryptedStringSpec}, coll.getFullName()));
+
+// TODO SERVER-63313 Support agg $eq.
+if (fle2Enabled()) {
+    assert.commandFailedWithCode(testDB.runCommand(command), 6331102);
+} else {
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+    assert(cmdRes.hasOwnProperty("result"), cmdRes);
+    assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
+    assert(
+        cmdRes.result.pipeline[0].$graphLookup.startWith.category.$cond[0].$eq[1].$const instanceof
+            BinData,
+        cmdRes);
+}
 
 // Test that referencing 'as' field from $lookup in subsequent stages fails.
-assert.commandFailedWithCode(testDB.runCommand({
-    aggregate: coll.getName(),
-    pipeline: [graphLookupSpec, {$match: {"reportingHierarchy": {$gt: "winterfell"}}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {}, additionalProperties: encryptedStringSpec},
-    isRemoteSchema: false
-}),
-                             31133);
+assert.commandFailedWithCode(
+    testDB.runCommand(Object.assign(
+        {
+            aggregate: coll.getName(),
+            pipeline: [graphLookupSpec, {$match: {"reportingHierarchy": {$gt: "winterfell"}}}],
+            cursor: {}
+        },
+        generateSchema({reportingHierarchy: encryptedStringSpec}, coll.getFullName()))),
+    31133);
 
 // Test that not self-graphlookup fails.
-assert.commandFailedWithCode(testDB.runCommand({
+assert.commandFailedWithCode(testDB.runCommand(Object.assign({
         aggregate: coll.getName(),
         pipeline: [{
             $graphLookup: {
@@ -253,83 +249,56 @@ assert.commandFailedWithCode(testDB.runCommand({
                 startWith: "$reportsTo"
             }
         }],
-        cursor: {},
-        jsonSchema: {},
-        isRemoteSchema: false,
-    }),
+        cursor: {}}, generateSchema({}, coll.getFullName()))),
                                  51204);
 
 // Test that self-graphlookup when 'connectFromField' has an encrypted child fails.
-assert.commandFailedWithCode(testDB.runCommand({
-    aggregate: coll.getName(),
-    pipeline: [graphLookupSpec],
-    cursor: {},
-    jsonSchema: {
-        type: "object",
-        properties: {reportsTo: {type: "object", properties: {group: encryptedStringSpec}}}
-    },
-    isRemoteSchema: false,
-}),
-                             51230);
+assert.commandFailedWithCode(
+    testDB.runCommand(Object.assign(
+        {aggregate: coll.getName(), pipeline: [graphLookupSpec], cursor: {}},
+        generateSchema({'reportsTo.group': encryptedStringSpec}, coll.getFullName()))),
+    51230);
 
 // Test that self-graphlookup when 'connectToField' has an encrypted child fails.
-assert.commandFailedWithCode(testDB.runCommand({
-    aggregate: coll.getName(),
-    pipeline: [graphLookupSpec],
-    cursor: {},
-    jsonSchema: {
-        type: "object",
-        properties: {name: {type: "object", properties: {group: encryptedStringSpec}}}
-    },
-    isRemoteSchema: false,
-}),
-                             51231);
+assert.commandFailedWithCode(
+    testDB.runCommand(
+        Object.assign({aggregate: coll.getName(), pipeline: [graphLookupSpec], cursor: {}},
+                      generateSchema({'name.group': encryptedStringSpec}, coll.getFullName()))),
+    51231);
 
 // Test that self-graphlookup with unencrypted 'connectFromField' and encrypted 'connectToField'
 // fails.
-assert.commandFailedWithCode(testDB.runCommand({
-    aggregate: coll.getName(),
-    pipeline: [graphLookupSpec],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {name: encryptedStringSpec}},
-    isRemoteSchema: false,
-}),
-                             51232);
+assert.commandFailedWithCode(
+    testDB.runCommand(
+        Object.assign({aggregate: coll.getName(), pipeline: [graphLookupSpec], cursor: {}},
+                      generateSchema({name: encryptedStringSpec}, coll.getFullName()))),
+    [51232, 6331101]);
 
 // Test that self-graphlookup with encrypted 'connectFromField' and unencrypted 'connectToField'
 // fails.
-assert.commandFailedWithCode(testDB.runCommand({
-    aggregate: coll.getName(),
-    pipeline: [graphLookupSpec],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {reportsTo: encryptedStringSpec}},
-    isRemoteSchema: false,
-}),
-                             51232);
+assert.commandFailedWithCode(
+    testDB.runCommand(
+        Object.assign({aggregate: coll.getName(), pipeline: [graphLookupSpec], cursor: {}},
+                      generateSchema({reportsTo: encryptedStringSpec}, coll.getFullName()))),
+    [51232, 6331101]);
 
 // Test that self-graphlookup with encrypted 'connectFromField' and 'connectToField' with
 // different bsonTypes fails.
-assert.commandFailedWithCode(testDB.runCommand({
-    aggregate: coll.getName(),
-    pipeline: [graphLookupSpec],
-    cursor: {},
-    jsonSchema:
-        {type: "object", properties: {name: encryptedStringSpec, reportTo: encryptedIntSpec}},
-    isRemoteSchema: false,
-}),
-                             51232);
+assert.commandFailedWithCode(
+    testDB.runCommand(
+        Object.assign({aggregate: coll.getName(), pipeline: [graphLookupSpec], cursor: {}},
+                      generateSchema({name: encryptedStringSpec, reportTo: encryptedIntSpec},
+                                     coll.getFullName()))),
+    [51232, 6331101]);
 
 // Test that self-graphlookup with encrypted 'connectFromField' and 'connectToField' with a
 // random algorithm fails.
-assert.commandFailedWithCode(testDB.runCommand({
-    aggregate: coll.getName(),
-    pipeline: [graphLookupSpec],
-    cursor: {},
-    jsonSchema:
-        {type: "object", properties: {name: encryptedRandomSpec, reportsTo: encryptedRandomSpec}},
-    isRemoteSchema: false,
-}),
-                             51233);
+assert.commandFailedWithCode(
+    testDB.runCommand(
+        Object.assign({aggregate: coll.getName(), pipeline: [graphLookupSpec], cursor: {}},
+                      generateSchema({name: encryptedRandomSpec, reportsTo: encryptedRandomSpec},
+                                     coll.getFullName()))),
+    [51233, 6331101]);
 
 mongocryptd.stop();
 })();

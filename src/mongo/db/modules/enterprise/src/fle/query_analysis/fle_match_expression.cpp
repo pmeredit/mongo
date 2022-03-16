@@ -152,11 +152,6 @@ void FLEMatchExpression::replaceEncryptedElements(const EncryptionSchemaTreeNode
         }
 
         case MatchType::EXPRESSION: {
-            // TODO: SERVER-63311 support $expr in FLE2 query analysis.
-            // TODO: SERVER-63657 update this message.
-            uassert(6329200,
-                    "Queryable random encryption not yet supported in $expr.",
-                    schemaTree.parsedFrom == FleVersion::kFle1);
             auto expr = static_cast<ExprMatchExpression*>(root);
             _didMark = aggregate_expression_intender::mark(
                 *expr->getExpressionContext(), schemaTree, expr->getExpression().get(), false);

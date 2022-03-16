@@ -19,28 +19,54 @@ const schema = generateSchema({
 },
                               "test.test");
 
-// TODO: SERVER-63311 Make sure tests commands work in both FLE versions once query analysis for
-// aggregation is added.
-if (!fle2Enabled()) {
-    // Verify that just including a projection does not cause the analysis to report
-    // that the output is encrypted.
-    let res = assert.commandWorked(testDB.runCommand(Object.assign({
-        find: collName,
-        filter: {},
-        projection: {importantMath: {$add: [NumberLong(3), NumberLong(4)]}},
-    },
-                                                                   schema)));
-    assert(!res.hasEncryptionPlaceholders, tojson(res));
+// Verify that just including a projection does not cause the analysis to report
+// that the output is encrypted.
+let res = assert.commandWorked(testDB.runCommand(Object.assign({
+    find: collName,
+    filter: {},
+    projection: {importantMath: {$add: [NumberLong(3), NumberLong(4)]}},
+},
+                                                               schema)));
+assert(!res.hasEncryptionPlaceholders, tojson(res));
 
-    // Verify that a non-equality comparison results in an error.
+// Verify that a non-equality comparison results in an error.
+assert.commandFailedWithCode(testDB.runCommand(Object.assign({
+    find: collName,
+    filter: {},
+    projection: {isSsnFake: {$gt: ["$ssn", NumberLong(0)]}},
+},
+                                                             schema)),
+                             [31110, 6331100]);
+
+// TODO SERVER-63313 support agg $eq.
+if (fle2Enabled()) {
+    // Referring to an encrypted field in the projection spec is not allowed.
     assert.commandFailedWithCode(testDB.runCommand(Object.assign({
         find: collName,
         filter: {},
-        projection: {isSsnFake: {$gt: ["$ssn", NumberLong(0)]}},
+        projection: {isSsnFake: {$eq: ["$ssn", NumberLong(0)]}},
     },
                                                                  schema)),
-                                 31110);
+                                 6331100);
 
+    assert.commandFailedWithCode(testDB.runCommand(Object.assign({
+        find: collName,
+        filter: {"user.account": "secret"},
+        projection:
+            {isSsnFake: {"$in": ["$ssn", [NumberLong(0), NumberLong(111111111), NumberLong(42)]]}},
+    },
+                                                                 schema)),
+                                 6331100);
+
+    //  Cannot reference a prefix of an encrypted field in a computed projection.
+    assert.commandFailedWithCode(testDB.runCommand(Object.assign({
+        find: collName,
+        filter: {"user.account": "secret"},
+        projection: {isUserFake: {$eq: ["$user", {fake: true}]}}
+    },
+                                                                 schema)),
+                                 31129);
+} else {
     // Verify projection without query correctly marks fields.
     res = assert.commandWorked(testDB.runCommand(Object.assign({
         find: collName,
@@ -66,45 +92,16 @@ if (!fle2Enabled()) {
            tojson(res));
     assert(res.result.projection["isSsnFake"]["$in"][1][2]["$const"] instanceof BinData,
            tojson(res));
-} else {
-    // Verify that just including a projection does not cause the analysis to report
-    // that the output is encrypted.
-    assert.commandFailedWithCode(testDB.runCommand(Object.assign({
-        find: collName,
-        filter: {},
-        projection: {importantMath: {$add: [NumberLong(3), NumberLong(4)]}},
-    },
-                                                                 schema)),
-                                 6329201);
-
-    // Verify that a non-equality comparison results in an error.
-    assert.commandFailedWithCode(testDB.runCommand(Object.assign({
-        find: collName,
-        filter: {},
-        projection: {isSsnFake: {$gt: ["$ssn", NumberLong(0)]}},
-    },
-                                                                 schema)),
-                                 6329201);
-
-    // Verify projection without query correctly marks fields.
-    assert.commandFailedWithCode(testDB.runCommand(Object.assign({
-        find: collName,
-        filter: {},
-        projection: {isSsnFake: {$eq: ["$ssn", NumberLong(0)]}},
-    },
-                                                                 schema)),
-                                 6329201);
-
-    // Verify projection with query correctly marks fields.
-    assert.commandFailedWithCode(testDB.runCommand(Object.assign({
-        find: collName,
-        filter: {"user.account": "secret"},
-        projection:
-            {isSsnFake: {"$in": ["$ssn", [NumberLong(0), NumberLong(111111111), NumberLong(42)]]}},
-    },
-                                                                 schema)),
-                                 6329201);
 }
+
+// A computed projection which does not reference any encrypted fields is allowed.
+res = assert.commandWorked(testDB.runCommand(Object.assign({
+    find: collName,
+    filter: {},
+    projection: {notEncrypted: {$eq: ["$name", "plain"]}},
+},
+                                                           schema)));
+assert.eq(false, res.hasEncryptionPlaceholders, tojson(res));
 
 mongocryptd.stop();
 })();

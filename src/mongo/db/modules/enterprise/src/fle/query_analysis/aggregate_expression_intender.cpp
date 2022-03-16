@@ -571,6 +571,14 @@ private:
             fieldPath->getFieldPath().getPathLength() <= 1) {
             reconcileVariableAccess(*fieldPath, subtreeStack);
         } else {
+            FieldRef path{fieldPath->getFieldPathWithoutCurrentPrefix().fullPath()};
+            // TODO: SERVER-63657 Update user-facing naming for FLE2.
+            uassert(6331102,
+                    "Cannot refer to an encrypted field in an aggregation expression in FLE 2",
+                    (!schema.getEncryptionMetadataForPath(path) &&
+                     !schema.mayContainEncryptedNodeBelowPrefix(path)) ||
+                        schema.parsedFrom == FleVersion::kFle1);
+
             attemptReconcilingFieldEncryption(schema, *fieldPath, subtreeStack);
             // Indicate that we've seen this field to improve error messages if we see an
             // incompatible field later.

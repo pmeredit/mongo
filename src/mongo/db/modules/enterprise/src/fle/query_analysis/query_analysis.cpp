@@ -383,11 +383,6 @@ PlaceHolderResult addPlaceHoldersForFind(const boost::intrusive_ptr<ExpressionCo
     // is invalid or in need of markers.
     const auto projectionPipeWrapper = [&] {
         if (auto proj = findCommand->getProjection(); !proj.isEmpty()) {
-            // TODO: SERVER-63311 Remove uassert when query analysis for FLE2 aggregation is added.
-            // TODO: SERVER-63657 Update user-facing naming for FLE2.
-            uassert(6329201,
-                    "Pipelines not yet supported in FLE2.",
-                    schemaTree->parsedFrom == FleVersion::kFle1);
             return boost::optional<FLEPipeline>{FLEPipeline{
                 Pipeline::create(makeFlattenedList<boost::intrusive_ptr<DocumentSource>>(
                                      DocumentSourceProject::create(

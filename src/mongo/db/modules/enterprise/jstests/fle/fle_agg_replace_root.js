@@ -17,32 +17,20 @@ const encryptedStringSpec = {
     encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}
 };
 
+const encryptedUserSsnSpec = generateSchema({'user.ssn': encryptedStringSpec}, coll.getFullName());
+
 let command, cmdRes, expected;
 
 // Test that replacing the root with encrypted field fails.
-command = {
-    aggregate: coll.getName(),
-    pipeline: [{$replaceRoot: {newRoot: "$user.ssn"}}],
-    cursor: {},
-    jsonSchema: {
-        type: "object",
-        properties: {user: {type: "object", properties: {ssn: encryptedStringSpec}}}
-    },
-    isRemoteSchema: false,
-};
-assert.commandFailedWithCode(testDB.runCommand(command), 31159);
+command = Object.assign(
+    {aggregate: coll.getName(), pipeline: [{$replaceRoot: {newRoot: "$user.ssn"}}], cursor: {}},
+    encryptedUserSsnSpec);
+assert.commandFailedWithCode(testDB.runCommand(command), [31159, 6331100]);
 
 // Test that replacing the root with new field works.
-command = {
-    aggregate: coll.getName(),
-    pipeline: [{$replaceRoot: {newRoot: "$otherField"}}],
-    cursor: {},
-    jsonSchema: {
-        type: "object",
-        properties: {user: {type: "object", properties: {ssn: encryptedStringSpec}}}
-    },
-    isRemoteSchema: false,
-};
+command = Object.assign(
+    {aggregate: coll.getName(), pipeline: [{$replaceRoot: {newRoot: "$otherField"}}], cursor: {}},
+    encryptedUserSsnSpec);
 
 cmdRes = assert.commandWorked(testDB.runCommand(command));
 delete cmdRes.result.lsid;
@@ -55,45 +43,47 @@ assert(cmdRes.schemaRequiresEncryption, cmdRes);
 assert(!cmdRes.hasEncryptionPlaceholders, cmdRes);
 
 // Test that $replaceRoot stage cannot create new encrypted fields.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [{$replaceRoot: {newRoot: {encryptedField: "$user"}}}],
-    cursor: {},
-    jsonSchema:
-        {type: "object", properties: {user: encryptedStringSpec, remaining: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
-assert.commandFailedWithCode(testDB.runCommand(command), 31110);
+    cursor: {}
+},
+                        generateSchema({user: encryptedStringSpec, remaining: encryptedStringSpec},
+                                       coll.getFullName()));
+assert.commandFailedWithCode(testDB.runCommand(command), [31110, 6331100]);
 
-// Test that schema is correctly translated after $replaceRoot stage. 'encryptedField' fields
+// Test that schema is correctly translated after $replaceRoot stage. 'ssn' fields
 // will not be an encrypted field after '$replaceRoot' stage.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [
         {$replaceRoot: {newRoot: {encryptedField: "$newField"}}},
         {$match: {encryptedField: "isHere"}}
     ],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {encryptedField: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
+    cursor: {}
+},
+                        generateSchema({encryptedField: encryptedStringSpec}, coll.getFullName()));
 cmdRes = assert.commandWorked(testDB.runCommand(command));
 assert(cmdRes.schemaRequiresEncryption, cmdRes);
 assert(!cmdRes.hasEncryptionPlaceholders, cmdRes);
 
 // Test that constants being compared to encrypted fields come back as placeholders.
-command = {
+command = Object.assign({
     aggregate: coll.getName(),
     pipeline: [{$replaceRoot: {newRoot: {"isTed": {$eq: ["$user", "Ted"]}}}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {user: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
-cmdRes = assert.commandWorked(testDB.runCommand(command));
-assert(cmdRes.schemaRequiresEncryption, cmdRes);
-assert(cmdRes.hasEncryptionPlaceholders, cmdRes);
-assert(cmdRes.result.pipeline[0].$replaceRoot.newRoot.isTed.$eq[1]["$const"] instanceof BinData,
-       cmdRes);
+    cursor: {}
+},
+                        generateSchema({user: encryptedStringSpec}, coll.getFullName()));
+// TODO SERVER-63313 Support agg $eq.
+if (fle2Enabled()) {
+    assert.commandFailedWithCode(testDB.runCommand(command), 6331100);
+} else {
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    assert(cmdRes.schemaRequiresEncryption, cmdRes);
+    assert(cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert(cmdRes.result.pipeline[0].$replaceRoot.newRoot.isTed.$eq[1]["$const"] instanceof BinData,
+           cmdRes);
+}
 
 mongocryptd.stop();
 })();

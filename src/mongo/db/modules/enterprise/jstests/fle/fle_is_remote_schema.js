@@ -3,7 +3,9 @@
  *   - when 'isRemoteSchema' is true, mongocryptd allows schema keywords which are only enforced on
  *     mongod.
  *   - when 'isRemoteSchema' is false, prohibits schema keywords that are only
-       enforced on mongod, and take no effect on mongocryptd.
+ *     enforced on mongod, and take no effect on mongocryptd.
+ *
+ * @tags: [unsupported_fle_2]
  */
 (function() {
 "use strict";

@@ -205,13 +205,20 @@ if (fle2Enabled()) {
     assert.commandFailedWithCode(
         testDB.runCommand(
             Object.assign({find: "test", filter: {$expr: {$eq: ['$ssn', "123"]}}}, schema)),
-        6329200);
+        6331102);
 
-    // TODO: SERVER-63311 Query analysis for aggregation expressions / $expr.
+    const nestedSchema = generateSchemaV2({
+        'user.ssn': {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}}
+    },
+                                          "test.test");
     assert.commandFailedWithCode(
-        testDB.runCommand(
-            Object.assign({find: "test", filter: {$expr: {$eq: ['$foo', "123"]}}}, schema)),
-        6329200);
+        testDB.runCommand(Object.assign(
+            {find: "test", filter: {$expr: {$eq: ['$user', {ssn: 123}]}}}, nestedSchema)),
+        6331102);
+
+    // $expr which does not reference an encrypted field is allowed.
+    assert.commandWorked(testDB.runCommand(
+        Object.assign({find: "test", filter: {$expr: {$eq: ['$foo', "123"]}}}, schema)));
 }
 
 mongocryptd.stop();

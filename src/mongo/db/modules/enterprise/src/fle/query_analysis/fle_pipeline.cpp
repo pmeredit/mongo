@@ -282,6 +282,11 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGraphLookUp(
         str::stream() << "'connectToField' '" << connectToField.fullPath()
                       << "' in the $graphLookup aggregation stage cannot have an encrypted child.",
         connectToMetadata || !prevSchema->mayContainEncryptedNodeBelowPrefix(connectToRef));
+    uassert(6331101,
+            str::stream() << "Cannot refer to encrypted field in $graphLookup 'connectFromField' "
+                             "or 'connectToField'",
+            (!connectFromMetadata || !connectFromMetadata->isFle2Encrypted()) &&
+                (!connectToMetadata || !connectToMetadata->isFle2Encrypted()));
 
     uassert(
         51232,
@@ -292,9 +297,9 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForGraphLookUp(
         (!connectFromMetadata && !connectToMetadata) || connectFromMetadata == connectToMetadata);
     uassert(51233,
             str::stream() << "'connectFromField' '" << connectFromField.fullPath()
-                          << " and 'connectToField' '" << connectToField.fullPath()
+                          << "' and 'connectToField' '" << connectToField.fullPath()
                           << "' in the $graphLookup aggregation stage need to be both encrypted "
-                             " the with the deterministic algorithm.",
+                             " with the deterministic algorithm.",
             (!connectFromMetadata && !connectToMetadata) ||
                 connectFromMetadata->algorithmIs(FleAlgorithmEnum::kDeterministic));
 
@@ -370,6 +375,11 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForLookUp(
                           << "' in the $lookup aggregation stage cannot have an encrypted child.",
             foreignMetadata || !prevSchema->mayContainEncryptedNodeBelowPrefix(foreignRef));
 
+        uassert(6331103,
+                str::stream() << "Cannot refer to encrypted field in $lookup 'localField' "
+                                 "or 'foreignField'",
+                (!localMetadata || !localMetadata->isFle2Encrypted()) &&
+                    (!foreignMetadata || !foreignMetadata->isFle2Encrypted()));
         uassert(51210,
                 str::stream() << "'localField' '" << localField->fullPath()
                               << " and 'foreignField' '" << foreignField->fullPath()
@@ -380,7 +390,7 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForLookUp(
                 str::stream() << "'localField' '" << localField->fullPath()
                               << " and 'foreignField' '" << foreignField->fullPath()
                               << "' in the $lookup aggregation stage need to be both encrypted "
-                                 " the with deterministic algorithm.",
+                                 "with deterministic algorithm.",
                 (!localMetadata && !foreignMetadata) ||
                     localMetadata->algorithmIs(FleAlgorithmEnum::kDeterministic));
 

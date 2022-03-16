@@ -1,7 +1,8 @@
 /**
  * Test correctness of Field Level Encryption for different commands in realistic use cases.
  *
- * TODO SERVER-63311 Attempt to re-use as much of this test as possible.
+ * The majority of this test refers to encrypted fields in aggregation pipelines, which is not
+ * allowed in FLE 2.
  * @tags: [unsupported_fle_2]
  */
 
@@ -24,7 +25,6 @@ const x509_options = {
 };
 
 const conn = MongoRunner.runMongod(x509_options);
-const unencryptedDatabase = conn.getDB("test");
 
 const awsKMS = {
     accessKeyId: "access",

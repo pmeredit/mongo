@@ -540,6 +540,12 @@ public:
                     "Referencing a prefix of an encrypted field is not supported",
                     _schema.getEncryptionMetadataForPath(path) ||
                         !_schema.mayContainEncryptedNodeBelowPrefix(path));
+
+            // TODO: SERVER-63657 Update user-facing naming for FLE2.
+            uassert(6331100,
+                    "Cannot refer to an encrypted field in an aggregation expression in FLE 2",
+                    !_schema.getEncryptionMetadataForPath(path) ||
+                        _schema.parsedFrom == FleVersion::kFle1);
             if (auto node = _schema.getNode(path)) {
                 _tracker.reconcileSchema(node->clone());
             } else {

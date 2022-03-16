@@ -1,5 +1,5 @@
 /**
- * Basic set of tests to verify the command response from mongocryptd for the aggregate command.
+ * Basic set of tests to verify the command response from query analysis for the aggregate command.
  */
 (function() {
 "use strict";
@@ -19,15 +19,21 @@ const encryptedStringSpec = {
 
 let command, cmdRes, schema;
 
+// Builds an aggregate command to send to query analysis using the given schema spec. May build FLE
+// 1 or FLE 2 syntax depending on the test suite parameters.
+function buildAggregate(pipeline, schema) {
+    return Object.assign({aggregate: coll.getName(), pipeline: pipeline, cursor: {}},
+                         generateSchema(schema, coll.getFullName()));
+}
+
+function buildCollectionlessAggregate(pipeline) {
+    return Object.assign({aggregate: 1, pipeline: pipeline, cursor: {}},
+                         generateSchema({}, coll.getFullName()));
+}
+
 // Test that a $match stage which does not reference an encrypted field is correctly reflected
 // back from mongocryptd.
-command = {
-    aggregate: coll.getName(),
-    pipeline: [{$match: {}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {ssn: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
+command = buildAggregate([{$match: {}}], {ssn: encryptedStringSpec});
 cmdRes = assert.commandWorked(testDB.runCommand(command));
 delete command.jsonSchema;
 delete command.isRemoteSchema;
@@ -39,16 +45,9 @@ assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
 // Test that a single $match stage on a top-level encrypted field is correctly marked for
 // encryption.
 schema = {
-    type: "object",
-    properties: {location: encryptedStringSpec}
+    location: encryptedStringSpec
 };
-command = {
-    aggregate: coll.getName(),
-    pipeline: [{$match: {location: "winterfell"}}],
-    cursor: {},
-    jsonSchema: schema,
-    isRemoteSchema: false,
-};
+command = buildAggregate([{$match: {location: "winterfell"}}], schema);
 cmdRes = assert.commandWorked(testDB.runCommand(command));
 assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
 assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
@@ -57,13 +56,7 @@ assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
 assert(cmdRes.result.pipeline[0].$match.location.$eq instanceof BinData, cmdRes);
 
 // Test that a $match stage alongside a no-op stage is correctly marked for encryption.
-command = {
-    aggregate: coll.getName(),
-    pipeline: [{$limit: NumberLong(1)}, {$match: {location: "kings landing"}}],
-    cursor: {},
-    jsonSchema: schema,
-    isRemoteSchema: false,
-};
+command = buildAggregate([{$limit: NumberLong(1)}, {$match: {location: "kings landing"}}], schema);
 cmdRes = assert.commandWorked(testDB.runCommand(command));
 assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
 assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
@@ -74,16 +67,9 @@ assert(cmdRes.result.pipeline[1].$match.location.$eq instanceof BinData, cmdRes)
 
 // Test that a $match stage on a nested encrypted field is correctly marked for encryption.
 schema = {
-    type: "object",
-    properties: {user: {type: "object", properties: {name: encryptedStringSpec}}}
+    'user.name': encryptedStringSpec
 };
-command = {
-    aggregate: coll.getName(),
-    pipeline: [{$match: {"user.name": "night king"}}],
-    cursor: {},
-    jsonSchema: schema,
-    isRemoteSchema: false,
-};
+command = buildAggregate([{$match: {"user.name": "night king"}}], schema);
 cmdRes = assert.commandWorked(testDB.runCommand(command));
 assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
 assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
@@ -91,54 +77,44 @@ assert(cmdRes.hasOwnProperty("result"), cmdRes);
 assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
 assert(cmdRes.result.pipeline[0].$match["user.name"].$eq instanceof BinData, cmdRes);
 
-// Test that a $match stage on a matching patternProperty is correctly marked for encryption.
-schema = {
-    type: "object",
-    patternProperties: {loc: encryptedStringSpec}
-};
-command = {
-    aggregate: coll.getName(),
-    pipeline: [{$match: {location: "castle black"}}],
-    cursor: {},
-    jsonSchema: schema,
-    isRemoteSchema: false,
-};
-cmdRes = assert.commandWorked(testDB.runCommand(command));
-assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
-assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
-assert(cmdRes.hasOwnProperty("result"), cmdRes);
-assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
-assert(cmdRes.result.pipeline[0].$match.location.$eq instanceof BinData, cmdRes);
+// Test that a $match stage on a matching patternProperty is correctly marked for encryption. Only
+// supported in FLE 1.
+if (!fle2Enabled()) {
+    schema = {type: "object", patternProperties: {loc: encryptedStringSpec}};
+    command = {
+        aggregate: coll.getName(),
+        pipeline: [{$match: {location: "castle black"}}],
+        cursor: {},
+        jsonSchema: schema,
+        isRemoteSchema: false,
+    };
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+    assert(cmdRes.hasOwnProperty("result"), cmdRes);
+    assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
+    assert(cmdRes.result.pipeline[0].$match.location.$eq instanceof BinData, cmdRes);
 
-// Test that a $match stage on an additionalProperty is correctly marked for encryption.
-schema = {
-    type: "object",
-    properties: {},
-    additionalProperties: encryptedStringSpec
-};
-command = {
-    aggregate: coll.getName(),
-    pipeline: [{$match: {location: "castle black"}}],
-    cursor: {},
-    jsonSchema: schema,
-    isRemoteSchema: false,
-};
-cmdRes = assert.commandWorked(testDB.runCommand(command));
-assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
-assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
-assert(cmdRes.hasOwnProperty("result"), cmdRes);
-assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
-assert(cmdRes.result.pipeline[0].$match.location.$eq instanceof BinData, cmdRes);
+    // Test that a $match stage on an additionalProperty is correctly marked for encryption.
+    schema = {type: "object", properties: {}, additionalProperties: encryptedStringSpec};
+    command = {
+        aggregate: coll.getName(),
+        pipeline: [{$match: {location: "castle black"}}],
+        cursor: {},
+        jsonSchema: schema,
+        isRemoteSchema: false,
+    };
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
+    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+    assert(cmdRes.hasOwnProperty("result"), cmdRes);
+    assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
+    assert(cmdRes.result.pipeline[0].$match.location.$eq instanceof BinData, cmdRes);
+}
 
 // Test that a $sort stage which does not reference an encrypted field is correctly reflected
 // back from mongocryptd.
-command = {
-    aggregate: coll.getName(),
-    pipeline: [{$sort: {bar: 1}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {foo: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
+command = buildAggregate([{$sort: {bar: 1}}], {foo: encryptedStringSpec});
 cmdRes = assert.commandWorked(testDB.runCommand(command));
 delete command.jsonSchema;
 delete command.isRemoteSchema;
@@ -148,39 +124,16 @@ assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
 assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
 
 // Test that a $sort stage that references an encrypted field fails.
-command = {
-    aggregate: coll.getName(),
-    pipeline: [{$sort: {name: -1, ssn: 1}}],
-    cursor: {},
-    jsonSchema: {type: "object", properties: {ssn: encryptedStringSpec}},
-    isRemoteSchema: false,
-};
+command = buildAggregate([{$sort: {name: -1, ssn: 1}}], {ssn: encryptedStringSpec});
 assert.commandFailedWithCode(testDB.runCommand(command), 51201);
 
 // Test that a $sort stage that references a prefix of an encrypted field fails.
-command = {
-    aggregate: coll.getName(),
-    pipeline: [{$sort: {identity: -1}}],
-    cursor: {},
-    jsonSchema: {
-        type: "object",
-        properties: {identity: {type: "object", properties: {ssn: encryptedStringSpec}}},
-    },
-    isRemoteSchema: false,
-};
+command = buildAggregate([{$sort: {identity: -1}}], {'identity.ssn': encryptedStringSpec});
 assert.commandFailedWithCode(testDB.runCommand(command), 51201);
 
 // Test that a $sort stage that references a path with an encrypted prefix fails.
-command = {
-    aggregate: coll.getName(),
-    pipeline: [{$sort: {"identity.ssn.number": -1}}],
-    cursor: {},
-    jsonSchema: {
-        type: "object",
-        properties: {identity: {type: "object", properties: {ssn: encryptedStringSpec}}}
-    },
-    isRemoteSchema: false,
-};
+command =
+    buildAggregate([{$sort: {"identity.ssn.number": -1}}], {'identity.ssn': encryptedStringSpec});
 assert.commandFailedWithCode(testDB.runCommand(command), 51102);
 
 // Test that stages which cannot contain sensitive data are correctly reflected back from
@@ -195,13 +148,7 @@ const pipelinesForNotAffectedStages = [
 ];
 
 for (let pipe of pipelinesForNotAffectedStages) {
-    const aggCommand = {
-        aggregate: "test",
-        pipeline: pipe,
-        cursor: {},
-        jsonSchema: {type: "object", properties: {}, additionalProperties: encryptedStringSpec},
-        isRemoteSchema: false,
-    };
+    const aggCommand = buildAggregate(pipe, {ssn: encryptedStringSpec});
 
     cmdRes = assert.commandWorked(testDB.runCommand(aggCommand));
     delete aggCommand.jsonSchema;
@@ -227,21 +174,12 @@ const invalidStages = [
 ];
 
 for (let stage of invalidStages) {
-    const aggCommand = {
-        aggregate: "test",
-        pipeline: [stage],
-        cursor: {},
-        jsonSchema: {},
-        isRemoteSchema: false,
-    };
-
+    const aggCommand = buildAggregate([stage], {});
     assert.commandFailedWithCode(testDB.runCommand(aggCommand), 31011);
 }
 
 // Correctly fail for stages which reference additional collections.
-command = {
-        aggregate: "test",
-        pipeline: [{
+command = buildAggregate([{
             $graphLookup: {
                 from: "other",
                 startWith: "$reportsTo",
@@ -249,19 +187,10 @@ command = {
                 connectToField: "name",
                 as: "reportingHierarchy"
             }
-        }],
-        cursor: {},
-        jsonSchema: {},
-        isRemoteSchema: false,
-    };
+        }], {});
 assert.commandFailedWithCode(testDB.runCommand(command), 51204);
-command = {
-    aggregate: "test",
-    pipeline: [{$lookup: {from: "other", localField: "ssn", foreignField: "sensitive", as: "res"}}],
-    cursor: {},
-    jsonSchema: {},
-    isRemoteSchema: false,
-};
+command = buildAggregate(
+    [{$lookup: {from: "other", localField: "ssn", foreignField: "sensitive", as: "res"}}], {});
 assert.commandFailedWithCode(testDB.runCommand(command), 51204);
 
 // Correctly fail for the $search stage.
@@ -269,78 +198,35 @@ command.pipeline = [{$search: {}}];
 assert.commandFailedWithCode(testDB.runCommand(command), 40324);
 
 // Test that all collection-less aggregations result in a failure.
-command = {
-    aggregate: 1,
-    pipeline: [{$changeStream: {}}],
-    cursor: {},
-    jsonSchema: {},
-    isRemoteSchema: false,
-};
+command = buildCollectionlessAggregate([{$changeStream: {}}]);
 assert.commandFailedWithCode(testDB.runCommand(command), 31011);
-command = {
-    aggregate: 1,
-    pipeline: [{$listLocalSessions: {}}],
-    cursor: {},
-    jsonSchema: {},
-    isRemoteSchema: false,
-};
+command = buildCollectionlessAggregate([{$listLocalSessions: {}}]);
 assert.commandFailedWithCode(testDB.runCommand(command), 31106);
-command = {
-    aggregate: 1,
-    pipeline: [{$listLocalSessions: {allUsers: true}}],
-    cursor: {},
-    jsonSchema: {},
-    isRemoteSchema: false,
-};
+command = buildCollectionlessAggregate([{$listLocalSessions: {allUsers: true}}]);
 assert.commandFailedWithCode(testDB.runCommand(command), 31106);
-command = {
-    aggregate: 1,
-    pipeline: [{$listSessions: {}}],
-    cursor: {},
-    jsonSchema: {},
-    isRemoteSchema: false,
-};
+command = buildCollectionlessAggregate([{$listSessions: {}}]);
 assert.commandFailedWithCode(testDB.runCommand(command), 31106);
-command = {
-    aggregate: 1,
-    pipeline: [{$listSessions: {allUsers: true}}],
-    cursor: {},
-    jsonSchema: {},
-    isRemoteSchema: false,
-};
+command = buildCollectionlessAggregate([{$listSessions: {allUsers: true}}]);
 assert.commandFailedWithCode(testDB.runCommand(command), 31106);
 
 // CurrentOp must be run against admin db.
-assert.commandFailedWithCode(testDB.getSiblingDB("admin").runCommand({
-    aggregate: 1,
-    pipeline: [{$currentOp: {}}],
-    cursor: {},
-    jsonSchema: {},
-    isRemoteSchema: false,
-}),
-                             31011);
+assert.commandFailedWithCode(
+    testDB.getSiblingDB("admin").runCommand(buildCollectionlessAggregate([{$currentOp: {}}])),
+    31011);
 
 // Invalid pipelines correctly fail to parse.
-assert.commandFailedWithCode(testDB.runCommand({
-    aggregate: "test",
-    pipeline: [{$unknownStage: {}}],
-    cursor: {},
-    jsonSchema: {},
-    isRemoteSchema: false,
-}),
-                             40324);
+assert.commandFailedWithCode(testDB.runCommand(buildAggregate([{$unknownStage: {}}], {})), 40324);
 
 // Generic command options are correctly reflected back from mongocryptd.
-command = {
+command = Object.assign({
     aggregate: "test",
     pipeline: [{$limit: NumberLong(1)}],
     allowDiskUse: true,
     cursor: {},
     maxTimeMS: 1,
     explain: true,
-    jsonSchema: {},
-    isRemoteSchema: false,
-};
+},
+                        generateSchema({}, coll.getFullName()));
 
 cmdRes = assert.commandWorked(testDB.runCommand(command));
 delete command.jsonSchema;
@@ -352,8 +238,7 @@ assert.eq(false, cmdRes.schemaRequiresEncryption, cmdRes);
 
 command.allowDiskUse = false;
 command.explain = false;
-command.jsonSchema = {};
-command.isRemoteSchema = false;
+Object.assign(command, generateSchema({}, coll.getFullName()));
 cmdRes = assert.commandWorked(testDB.runCommand(command));
 delete command.jsonSchema;
 delete command.isRemoteSchema;
