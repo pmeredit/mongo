@@ -1,0 +1,64 @@
+// Ensures that a new collection cannot have both encryptedFields
+// and jsonSchema with encrypt.
+
+/**
+ * @tags: [
+ *  featureFlagFLE2,
+ * ]
+ */
+load("jstests/fle2/libs/encrypted_client_util.js");
+load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
+
+(function() {
+'use strict';
+
+let dbName = 'create_collection_basic';
+let dbTest = db.getSiblingDB(dbName);
+dbTest.dropDatabase();
+
+const sampleJSONSchema = {
+    validator: {
+        $jsonSchema: {
+            bsonType: "object",
+            properties: {
+                name: {bsonType: "string", description: "must be a string"},
+                ssn: {encrypt: {bsonType: "int", algorithm: kRandomAlgo, keyId: [UUID()]}}
+            }
+        }
+    }
+};
+
+const sampleEncryptedFields = {
+    encryptedFields: {
+        "fields": [
+            {
+                "path": "ssn",
+                "keyId": UUID("11d58b8a-0c6c-4d69-a0bd-70c6d9befae9"),
+                "bsonType": "int",
+                "queries": {"queryType": "equality"},
+            },
+        ]
+    }
+};
+
+const mergedOptions = Object.assign({}, sampleJSONSchema, sampleEncryptedFields);
+
+let client = new EncryptedClient(db.getMongo(), dbName);
+
+client.createBasicEncryptionCollection = function(coll, options, failure) {
+    if (failure != null) {
+        assert.commandFailedWithCode(this._edb.createCollection(coll, options), failure);
+        return;
+    }
+    assert.commandWorked(this._edb.createCollection(coll, options));
+};
+
+assert.commandWorked(client.createEncryptionCollection("enc_fields", sampleEncryptedFields));
+client.createBasicEncryptionCollection("json_schema", sampleJSONSchema);
+client.createBasicEncryptionCollection("merged", mergedOptions, 224);
+
+// Test collmod
+const collmodPayload = Object.assign({}, {collMod: "enc_fields"}, sampleJSONSchema);
+
+assert.commandFailedWithCode(client.getDB().runCommand(collmodPayload), 224);
+}());
