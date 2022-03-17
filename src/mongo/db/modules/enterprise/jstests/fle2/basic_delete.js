@@ -10,7 +10,7 @@ load("jstests/fle2/libs/encrypted_client_util.js");
 (function() {
 'use strict';
 
-if (!isFLE2ShardingEnabled()) {
+if (!isFLE2Enabled()) {
     return;
 }
 
@@ -35,8 +35,11 @@ client.assertEncryptedCollectionCounts("basic", 2, 2, 0, 2);
 client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "mark"});
 
 // Delete a document
-let res = assert.commandWorked(edb.basic.deleteOne({"last": "marco"}));
-assert.eq(res.deletedCount, 1);
+let res = assert.commandWorked(
+    edb.runCommand({delete: "basic", deletes: [{"q": {"last": "marco"}, limit: 1}]}));
+print(tojson(res));
+assert.eq(res.n, 1);
+client.assertWriteCommandReplyFields(res);
 
 client.assertEncryptedCollectionCounts("basic", 1, 2, 1, 3);
 
