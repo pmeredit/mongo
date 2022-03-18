@@ -88,8 +88,8 @@ function runTest(failpoint) {
     checkLog.containsJson(initialSyncNode, 21077);
     checkLog.containsJson(initialSyncNode, 5781900);
 
-    assert.commandWorked(
-        initialSyncNode.adminCommand({configureFailPoint: "fCBISHangBeforeFinish", mode: "off"}));
+    assert.adminCommandWorkedAllowingNetworkError(
+        initialSyncNode, {configureFailPoint: "fCBISHangBeforeFinish", mode: "off"});
     assert.eq(MongoRunner.EXIT_ABRUPT, waitMongoProgram(initialSyncNode.port));
 
     // We skip validation and dbhashes because the initial sync failed so the initial sync node is
