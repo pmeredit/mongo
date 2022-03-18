@@ -71,36 +71,16 @@ function testRotateLogsOnStartup(fixture) {
     }
 }
 
-// /dir/blah.log -> /dir/blah.log.2021-12-03T00-29-32
-function _generateRotatedFileNameFromLogPath(logPath, rotateDate) {
-    return logPath + "." + rotateDate.getFullYear() + "-" +
-        String(rotateDate.getMonth() + 1).padStart(2, '0') + "-" +
-        String(rotateDate.getDate()).padStart(2, '0') + "T" +
-        String(rotateDate.getHours()).padStart(2, '0') + "-" +
-        String(rotateDate.getMinutes()).padStart(2, '0') + "-" +
-        String(rotateDate.getSeconds()).padStart(2, '0');
-}
-
-function testRotateLogOnStartupFailureAbortsStartup(fixture, opts) {
-    // The # of dummy files to generate for this test
-    // This will give us a lead time of <numFiles> seconds for mongo[d,s] to start and
-    // attempt to rotate the log file - hopefully plenty of time
-    const numFiles = 30;
-
-    const timestampStrings = new Array(numFiles);
-    const now = new Date().getTime();
+function testRotateLogOnStartupFailureAbortsStartup(fixture) {
     const logPath = fixture.auditPath;
 
-    // generate a bunch of dummy "rotated" log files to foil the on-start log rotation.
-    for (let i = 0; i < numFiles; i++) {
-        let nextSecond = new Date(now + (i * 1000));
-        timestampStrings[i] = _generateRotatedFileNameFromLogPath(logPath, nextSecond);
+    if (!pathExists(logPath)) {
+        writeFile(logPath, "");
+        print("Wrote file to " + logPath +
+              " as it was not present and required for rotation at startup.");
     }
 
-    // write the dummy files using shell cmd
-    for (let f = 0; f < numFiles; f++) {
-        writeFile(timestampStrings[f], "");
-    }
+    const opts = {setParameter: "failpoint.auditLogRotateFileExists={mode:'alwaysOn'}"};
 
     // the fixture should not startup due to filename collision with dummy files
     let err = {returnCode: -1};
@@ -108,13 +88,12 @@ function testRotateLogOnStartupFailureAbortsStartup(fixture, opts) {
         err = assert.throws(() => fixture.startProcess(opts),
                             [],
                             "Fixture failed when log rotation on startup failed");
-        assert.eq(err.returnCode, 102);  // ExitCode::EXIT_AUDIT_ROTATE_ERROR
-    } finally {
-        // cleanup the dummy files regardless of outcome
-        for (let f = 0; f < numFiles; f++) {
-            removeFile(timestampStrings[f]);
-        }
+    } catch (ex) {
+        // if the test fails, the server is going to start, make sure to try and shut it down
+        fixture.stopProcess();
     }
+    assert.eq(err.returnCode,
+              MongoRunner.EXIT_AUDIT_ROTATE_ERROR);  // See ExitCode::EXIT_AUDIT_ROTATE_ERROR
 }
 
 // this fixture is not concerned with auditing, it is simply intended to test process
@@ -125,14 +104,12 @@ class SimpleStandaloneMongosFixture {
         this.auditPath = MongoRunner.dataPath + "audit.log";
     }
 
-    startProcess() {
-        let opts = {
-            logpath: this.logPathMongod,
-            auditDestination: "file",
-            auditFormat: "JSON",
-            auditPath: MongoRunner.dataPath + "audit.log",
-            configdb: "something/127.0.01.1:20023"
-        };
+    startProcess(opts) {
+        opts.logpath = this.logPathMongos;
+        opts.auditDestination = "file";
+        opts.auditFormat = "JSON";
+        opts.auditPath = MongoRunner.dataPath + "audit.log";
+        opts.configdb = "something/127.0.01.1:20023";
 
         const conn = MongoRunner.runMongos(opts);
 
@@ -151,17 +128,15 @@ class SimpleStandaloneMongosFixture {
 // to test process startup or fail
 class SimpleStandaloneMongodFixture {
     constructor() {
-        this.logPathMongos = MongoRunner.dataPath + "mongos.log";
+        this.logPathMongod = MongoRunner.dataPath + "mongod.log";
         this.auditPath = MongoRunner.dataPath + "audit.log";
     }
 
-    startProcess() {
-        let opts = {
-            logpath: this.logPathMongod,
-            auditDestination: "file",
-            auditFormat: "JSON",
-            auditPath: MongoRunner.dataPath + "audit.log",
-        };
+    startProcess(opts) {
+        opts.logpath = this.logPathMongod;
+        opts.auditDestination = "file";
+        opts.auditFormat = "JSON";
+        opts.auditPath = MongoRunner.dataPath + "audit.log";
 
         const conn = MongoRunner.runMongod(opts);
 

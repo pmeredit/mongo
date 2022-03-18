@@ -1,7 +1,6 @@
 /**
  *    Copyright (C) 2018 10gen Inc.
  */
-
 #include "mongo/platform/basic.h"
 
 #include "rotatable_file_writer.h"
@@ -12,9 +11,11 @@
 #include <fstream>
 
 #include "mongo/base/string_data.h"
+#include "mongo/util/fail_point.h"
 #include "mongo/util/str.h"
 
 namespace mongo {
+MONGO_FAIL_POINT_DEFINE(auditLogRotateFileExists);
 namespace logger {
 
 namespace {
@@ -194,6 +195,7 @@ Status RotatableFileWriter::Use::rotate(bool renameOnRotate,
         _writer->_stream->flush();
 
         if (renameOnRotate) {
+
             auto targetExists = [&]() -> StatusWith<bool> {
                 try {
                     return boost::filesystem::exists(renameTarget);
@@ -208,7 +210,7 @@ Status RotatableFileWriter::Use::rotate(bool renameOnRotate,
                         renameTarget));
             }
 
-            if (targetExists.getValue()) {
+            if (targetExists.getValue() || MONGO_unlikely(auditLogRotateFileExists.shouldFail())) {
                 if (onMinorError)
                     onMinorError({ErrorCodes::FileRenameFailed,
                                   "Target already exists during log rotation. "
