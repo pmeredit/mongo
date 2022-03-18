@@ -211,6 +211,7 @@ void FLEMatchExpression::replaceEncryptedElements(const EncryptionSchemaTreeNode
         case MatchType::INTERNAL_EXPR_LTE:
         case MatchType::INTERNAL_SCHEMA_ALL_ELEM_MATCH_FROM_INDEX:
         case MatchType::INTERNAL_SCHEMA_BIN_DATA_ENCRYPTED_TYPE:
+        case MatchType::INTERNAL_SCHEMA_BIN_DATA_FLE2_ENCRYPTED_TYPE:
         case MatchType::INTERNAL_SCHEMA_BIN_DATA_SUBTYPE:
         case MatchType::INTERNAL_SCHEMA_EQ:
         case MatchType::INTERNAL_SCHEMA_FMOD:
