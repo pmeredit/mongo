@@ -51,16 +51,33 @@ assert.eq(res.deletedCount, 1);
 
 client.assertEncryptedCollectionCounts("basic", 0, 2, 2, 4);
 
-// Negative: Test bulk delete
-assert.throwsWithCode(() => {
-    edb.basic.bulkWrite([
-        {deleteOne: {"filter": {"char": "Brisbane"}}},
-        {deleteOne: {"filter": {"char2": "Brisbane"}}}
-    ]);
-}, 6371302);
+// Negative: Test bulk delete. Query analysis is throwing this error in the shell
+res = assert.commandFailedWithCode(dbTest.basic.runCommand({
+    delete: edb.basic.getName(),
+    deletes: [
+        {
+            q: {"last": "marco"},
+            limit: 1,
+        },
+        {
+            q: {"last": "marco2"},
+            limit: 1,
+        },
+    ],
+    encryptionInformation: {schema: {}}
+}),
+                                   6371302);
 
 // Negative: Delete many documents. Query analysis is throwing this error in the shell
-assert.throwsWithCode(() => {
-    edb.basic.deleteMany({});
-}, 6382800);
+res = assert.commandFailedWithCode(dbTest.basic.runCommand({
+    delete: edb.basic.getName(),
+    deletes: [
+        {
+            q: {"last": "marco2"},
+            limit: 0,
+        },
+    ],
+    encryptionInformation: {schema: {}}
+}),
+                                   6371303);
 }());

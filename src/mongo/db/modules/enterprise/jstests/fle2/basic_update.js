@@ -86,20 +86,28 @@ assert.eq(res.matchedCount, 1);
 assert.eq(res.modifiedCount, 1);
 client.assertEncryptedCollectionCounts("basic", 2, 5, 3, 8);
 
-//  Negative: Test bulk update
-assert.throwsWithCode(() => {
-    edb.basic.bulkWrite([
-        {updateOne: {"filter": {"char": "Eldon"}, "update": {$set: {"status": "Critical Injury"}}}},
+//  Negative: Test bulk update. Send raw unencrypted commands to bypass query analysis
+res = assert.commandFailedWithCode(dbTest.basic.runCommand({
+    update: edb.basic.getName(),
+    updates: [
+        {q: {"last": "marco"}, u: {$set: {status: "Modified", comments: ["$misc1", "$misc2"]}}},
+        {q: {"last": "marco2"}, u: {$set: {status: "Modified", comments: ["$misc3", "$misc2"]}}}
+    ],
+    encryptionInformation: {schema: {}}
+}),
+                                   6371502);
+
+// Negative: Update many documents. Send raw unencrypted commands to bypass query analysis
+res = assert.commandFailedWithCode(dbTest.basic.runCommand({
+    update: edb.basic.getName(),
+    updates: [
         {
-            updateOne:
-                {"filter": {"char2": "Eldon"}, "update": {$set: {"status": "Critical Injury"}}}
+            q: {"last": "marco"},
+            u: {$set: {status: "Modified", comments: ["$misc1", "$misc2"]}},
+            multi: true,
         },
-
-    ]);
-}, 6371502);
-
-// Negative: Update many documents. Query analysis is throwing this error in the shell
-assert.throwsWithCode(() => {
-    edb.basic.updateMany({x: 1}, {$set: {y: 1}});
-}, 6329900);
+    ],
+    encryptionInformation: {schema: {}}
+}),
+                                   6371503);
 }());
