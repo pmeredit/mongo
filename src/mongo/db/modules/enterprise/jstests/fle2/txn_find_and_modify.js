@@ -10,7 +10,7 @@ load("jstests/fle2/libs/encrypted_client_util.js");
 (function() {
 'use strict';
 
-if (!isFLE2ShardingEnabled()) {
+if (!isFLE2Enabled()) {
     return;
 }
 
@@ -26,6 +26,7 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
 }));
 
 let edb = client.getDB();
+dbTest.basic.createIndex({"middle": 1}, {unique: true});
 
 // Insert a document with a field that gets encrypted
 const session = edb.getMongo().startSession({causalConsistency: false});
@@ -35,24 +36,35 @@ const sessionColl = sessionDB.getCollection("basic");
 // Verify we can insert two documents in a txn
 session.startTransaction();
 
-assert.commandWorked(sessionColl.insert({"_id": 1, "first": "mark", "last": "marco"}));
-assert.commandWorked(sessionColl.insert({"_id": 2, "first": "Mark", "last": "Marco"}));
-assert.commandWorked(sessionColl.updateOne({"last": "marco"}, {$set: {"first": "matthew"}}));
+assert.commandWorked(
+    sessionColl.insert({"_id": 1, "first": "mark", "last": "marco", "middle": "marky"}));
+assert.commandWorked(
+    sessionColl.insert({"_id": 2, "first": "Mark", "last": "Marco", "middle": "Marky"}));
+let res = assert.commandWorked(sessionColl.runCommand({
+    findAndModify: edb.basic.getName(),
+    query: {"last": "marco"},
+    update: {$set: {"first": "matthew"}}
+}));
+print("RES:" + tojson(res));
 
 session.commitTransaction();
 
 client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 4);
 
 client.assertEncryptedCollectionDocuments("basic", [
-    {"_id": 1, "first": "matthew", "last": "marco"},
-    {"_id": 2, "first": "Mark", "last": "Marco"},
+    {"_id": 1, "first": "matthew", "last": "marco", "middle": "marky"},
+    {"_id": 2, "first": "Mark", "last": "Marco", "middle": "Marky"},
 ]);
 
 //////////////////////////////////////////////////////////////////////////////////
 // Verify we insert two documents in a txn but abort it
 session.startTransaction();
 
-assert.commandWorked(sessionColl.updateOne({"last": "Marco"}, {$set: {"first": "Matthew"}}));
+assert.commandWorked(sessionColl.runCommand({
+    findAndModify: edb.basic.getName(),
+    query: {"last": "Marco"},
+    update: {$set: {"first": "Matthew"}}
+}));
 
 // In the TXN the counts are right
 client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 6);
@@ -60,5 +72,22 @@ client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 6);
 assert.commandWorked(session.abortTransaction_forTesting());
 
 // Then they revert after it is aborted
+client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 4);
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////
+// Verify we can abort a txn with an error
+
+session.startTransaction();
+
+res = assert.commandFailed(sessionColl.runCommand({
+    findAndModify: edb.basic.getName(),
+    query: {"last": "marco"},
+    update: {$set: {"middle": "Marky"}}
+}));
+print(tojson(res));
+assert.eq(res.code, ErrorCodes.DuplicateKey);
+assert.eq(res.codeName, "DuplicateKey");
+assert(res.hasOwnProperty("errmsg"));
+
 client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 4);
 }());

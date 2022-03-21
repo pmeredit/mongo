@@ -10,7 +10,7 @@ load("jstests/fle2/libs/encrypted_client_util.js");
 (function() {
 'use strict';
 
-if (!isFLE2ShardingEnabled()) {
+if (!isFLE2Enabled()) {
     return;
 }
 
@@ -140,4 +140,27 @@ client.assertEncryptedCollectionDocuments("basic", [
     {"_id": 1, "first": "luke", "last": "marco"},
     {"_id": 2, "first": "john", "last": "Marcus", "middle": "markus"},
 ]);
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////
+// Add a duplicate index entry
+dbTest.basic.createIndex({"middle": 1}, {unique: true});
+
+res = assert.commandFailed(edb.basic.runCommand({
+    findAndModify: edb.basic.getName(),
+    query: {"last": "marco"},
+    update: {$set: {"middle": "markus"}}
+}));
+print(tojson(res));
+
+client.assertEncryptedCollectionCounts("basic", 2, 5, 3, 8);
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+// Null Update
+res = assert.commandWorked(edb.basic.runCommand({
+    findAndModify: edb.basic.getName(),
+    query: {"last": "marky"},
+    update: {$set: {"first": "matthew"}}
+}));
+
+client.assertEncryptedCollectionCounts("basic", 2, 6, 3, 9);
 }());

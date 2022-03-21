@@ -28,10 +28,6 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
 let edb = client.getDB();
 
 // Insert a document with a field that gets encrypted
-
-// Verify we can insert two documents in a txn
-
-// Insert a document with a field that gets encrypted
 let res = assert.commandWorked(
     edb.runCommand({"insert": "basic", documents: [{"_id": 1, "first": "mark"}]}));
 print(tojson(res));

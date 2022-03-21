@@ -10,7 +10,7 @@ load("jstests/fle2/libs/encrypted_client_util.js");
 (function() {
 'use strict';
 
-if (!isFLE2ShardingEnabled()) {
+if (!isFLE2Enabled()) {
     return;
 }
 
@@ -49,7 +49,6 @@ assert.commandFailedWithCode(edb.basic.runCommand({
 // Verify fields is not allowed
 assert.commandFailedWithCode(edb.basic.runCommand({
     findAndModify: edb.basic.getName(),
-
     fields: {_id: 1},
     query: {"last": "markus"},
     update: {$set: {"first": "Marky"}}

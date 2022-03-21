@@ -10,7 +10,7 @@ load("jstests/fle2/libs/encrypted_client_util.js");
 (function() {
 'use strict';
 
-if (!isFLE2ShardingEnabled()) {
+if (!isFLE2Enabled()) {
     return;
 }
 
@@ -60,11 +60,16 @@ client.assertEncryptedCollectionCounts("basic", 0, 2, 2, 4);
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 // FAIL: Remove and update the encrypted field
-assert.commandFailedWithCode(edb.basic.runCommand({
-    findAndModify: edb.basic.getName(),
-    query: {"last": "marco"},
-    remove: true,
-    update: {$set: {"first": "luke"}}
-}),
-                             6371401);
+
+// The FLE sharding code throws this directly. In replica sets, the regular mongod code throws this
+// with a different error code
+if (isFLE2ShardingEnabled()) {
+    assert.commandFailedWithCode(edb.basic.runCommand({
+        findAndModify: edb.basic.getName(),
+        query: {"last": "marco"},
+        remove: true,
+        update: {$set: {"first": "luke"}}
+    }),
+                                 6371401);
+}
 }());
