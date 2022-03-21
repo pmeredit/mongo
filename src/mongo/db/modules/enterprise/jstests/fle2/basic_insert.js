@@ -10,7 +10,7 @@ load("jstests/fle2/libs/encrypted_client_util.js");
 (function() {
 'use strict';
 
-if (!isFLE2ShardingEnabled()) {
+if (!isFLE2Enabled()) {
     return;
 }
 
@@ -28,7 +28,15 @@ assert.commandWorked(client.createEncryptionCollection("basic", {
 let edb = client.getDB();
 
 // Insert a document with a field that gets encrypted
-assert.commandWorked(edb.basic.insert({"first": "mark"}));
+
+// Verify we can insert two documents in a txn
+
+// Insert a document with a field that gets encrypted
+let res = assert.commandWorked(
+    edb.runCommand({"insert": "basic", documents: [{"_id": 1, "first": "mark"}]}));
+print(tojson(res));
+assert.eq(res.n, 1);
+client.assertWriteCommandReplyFields(res);
 
 client.assertEncryptedCollectionCounts("basic", 1, 1, 0, 1);
 
@@ -55,4 +63,12 @@ assert.eq(rawDoc["last"], "marco");
 assert(rawDoc["__safeContent__"] === undefined);
 
 client.assertEncryptedCollectionCounts("basic", 2, 1, 0, 1);
+
+// Trigger a duplicate key exception and validate the response
+res = assert.commandFailed(
+    edb.runCommand({"insert": "basic", documents: [{"_id": 1, "first": "marco"}]}));
+print(tojson(res));
+
+assert.eq(res.n, 0);
+client.assertWriteCommandReplyFields(res);
 }());
