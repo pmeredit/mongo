@@ -1,0 +1,42 @@
+load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
+load("jstests/fle2/libs/encrypted_client_util.js");
+
+(function() {
+const collName = jsTestName();
+const encryptedFields = {
+    "fields": [{"path": "ssn", "bsonType": "string", "queries": {"queryType": "equality"}}]
+};
+
+const assertExplainResult = (edb, collName, query, assertions) => {
+    const result = assert.commandWorked(edb.runCommand({
+        explain: {
+            find: collName,
+            projection: {[kSafeContentField]: 0},
+            filter: query,
+        },
+        verbosity: "queryPlanner"
+    }));
+    let inputQuery;
+    if (result.queryPlanner.winningPlan.shards) {
+        inputQuery = result.queryPlanner.winningPlan.shards[0].parsedQuery;
+    } else {
+        // TODO: SERVER-64055 Find command on mongod.
+        return;
+    }
+
+    assertions(inputQuery, result);
+};
+
+runEncryptedTest(db, "find_explain", collName, encryptedFields, (edb) => {
+    assert.commandWorked(edb[collName].insert({_id: 0, ssn: "123"}));
+    assertExplainResult(edb, collName, {"ssn": "123"}, (query, result) => {
+        assert(query.hasOwnProperty(kSafeContentField), result);
+        assert(!query.hasOwnProperty("ssn"), result);
+    });
+    assertExplainResult(edb, collName, {_id: 0}, (query, result) => {
+        assert(!query.hasOwnProperty(kSafeContentField), result);
+        assert(!query.hasOwnProperty("ssn"), result);
+        assert(query.hasOwnProperty("_id"), result);
+    });
+});
+}());
