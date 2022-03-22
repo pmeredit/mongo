@@ -5,7 +5,9 @@
  * The backup blocks should be returned in the same order as WT returns them.
  *
  * @tags: [
- *   requires_wiredtiger,
+ *  requires_wiredtiger,
+ *  requires_replication,
+ *  requires_persistence,
  * ]
  */
 
