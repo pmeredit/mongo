@@ -18,7 +18,6 @@
 #include "mongo/db/concurrency/d_concurrency.h"
 #include "mongo/db/concurrency/write_conflict_exception.h"
 #include "mongo/db/db_raii.h"
-#include "mongo/db/multitenancy.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/op_observer.h"
 #include "mongo/db/operation_context.h"
@@ -259,14 +258,12 @@ void importCollection(OperationContext* opCtx,
         // Create Collection object
         auto storageEngine = opCtx->getServiceContext()->getStorageEngine();
         auto durableCatalog = storageEngine->getCatalog();
-        // TODO SERVER-62659 Ensure the correct tenantId is used.
-        TenantNamespace tenantNs(getActiveTenant(opCtx), nss);
         auto importResult = uassertStatusOK(durableCatalog->importCollection(
-            opCtx, tenantNs, catalogEntry, storageMetadata, ImportOptions(uuidOption)));
+            opCtx, nss, catalogEntry, storageMetadata, ImportOptions(uuidOption)));
 
         const auto md = durableCatalog->getMetaData(opCtx, importResult.catalogId);
         std::shared_ptr<Collection> ownedCollection = Collection::Factory::get(opCtx)->make(
-            opCtx, tenantNs, importResult.catalogId, md, std::move(importResult.rs));
+            opCtx, nss, importResult.catalogId, md, std::move(importResult.rs));
 
         {
             // Validate index spec.
