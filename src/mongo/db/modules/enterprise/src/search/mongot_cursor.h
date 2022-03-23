@@ -42,6 +42,8 @@ public:
         const AggregateCommandRequest& request,
         Pipeline* origPipeline,
         boost::optional<UUID> uuid) override final;
+    boost::optional<std::string> validatePipelineForShardedCollection(
+        const Pipeline& pipeline) override final;
 };
 
 }  // namespace mongo::mongot_cursor

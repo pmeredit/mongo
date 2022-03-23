@@ -8,6 +8,11 @@ load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");  // Fo
 load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
 load("src/mongo/db/modules/enterprise/jstests/search/lib/shardingtest_with_mongotmock.js");
 
+// This test tests behavior before search sharded facets were enabled.
+if (TestData.setParameters.hasOwnProperty("featureFlagSearchShardedFacets")) {
+    jsTestLog("Skipping test as 'featureFlagSearchShardedFacets is enabled");
+    return;
+}
 const dbName = jsTestName();
 const collName = jsTestName();
 const stWithMock = new ShardingTestWithMongotMock({
@@ -99,11 +104,12 @@ const mongotQuery = {};
     const s1Mongot = stWithMock.getMockConnectedToHost(shard1Conn);
     s1Mongot.setMockResponses(shard1History, NumberLong(123));
 }
+
 assert.commandFailedWithCode(testDB.runCommand({
     aggregate: testColl.getName(),
     pipeline: [{$search: mongotQuery}, {$project: {val: "$$SEARCH_META"}}],
     cursor: {}
 }),
-                             5858100);
+                             [5858100, 6347900]);
 stWithMock.stop();
 })();

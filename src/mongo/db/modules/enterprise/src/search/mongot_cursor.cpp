@@ -221,6 +221,11 @@ std::set<StringData> skipDepTrackingStages{DocumentSourceInternalSearchMongotRem
                                            DocumentSourceInternalSearchIdLookUp::kStageName,
                                            DocumentSourceDocuments::kStageName,
                                            DocumentSourceMergeCursors::kStageName};
+
+// Returns a pair of booleans. The first is whether or not '$$SEARCH_META' is set by 'pipeline', the
+// second is whether '$$SEARCH_META' is accessed by 'pipeline'. It is assumed that
+// 'DocumentSourceInternalSearchMongotRemote' is the only stage that sets '$$SEARCH_META', and that
+// it always sets '$$SEARCH_META'.
 std::pair<bool, bool> assertSearchMetaAccessValidHelper(const Pipeline::SourceContainer& pipeline) {
     // Whether there is a $$SEARCH_META in the pipeline.
     bool searchMetaAccessed = false;
@@ -313,6 +318,34 @@ ServiceContext::ConstructorActionRegisterer searchQueryImplementation{
 void SearchImplementedHelperFunctions::assertSearchMetaAccessValid(
     const Pipeline::SourceContainer& pipeline) {
     assertSearchMetaAccessValidHelper(pipeline);
+}
+
+boost::optional<std::string> SearchImplementedHelperFunctions::validatePipelineForShardedCollection(
+    const Pipeline& pipeline) {
+    // We've already checked in 'assertSearchMetaAccessValid' for all failure conditions except
+    // $$SEARCH_META access in a sharded collection. Only fail in that case.
+    // Only do these checks for a $search pipeline, if $$SEARCH_META is accessed in a non-$search
+    // pipeline we would have failed earlier.
+    auto firstStage = pipeline.peekFront();
+    if (!firstStage ||
+        StringData(firstStage->getSourceName()) !=
+            DocumentSourceInternalSearchMongotRemote::kStageName) {
+        return boost::none;
+    }
+    for (const auto& source : pipeline.getSources()) {
+        DepsTracker dep;
+        if (DepsTracker::State::NOT_SUPPORTED == source->getDependencies(&dep)) {
+            // We would have failed earlier if this particular stage was an issue.
+            continue;
+        } else if (dep.hasVariableReferenceTo({Variables::kSearchMetaId}) &&
+                   !::mongo::feature_flags::gFeatureFlagSearchShardedFacets.isEnabled(
+                       serverGlobalParams.featureCompatibility)) {
+            return std::string(
+                "$$SEARCH_META cannot be used in a sharded environment unless "
+                "'featureFlagSearchShardedFacets' is enabled");
+        }
+    }
+    return boost::none;
 }
 
 void mongo::mongot_cursor::SearchImplementedHelperFunctions::injectSearchShardFiltererIfNeeded(
