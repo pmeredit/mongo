@@ -6,8 +6,34 @@
 
 load("src/mongo/db/modules/enterprise/jstests/snmp/lib/snmplib.js");
 
-let conn = MongoRunner.runMongod({"snmp-master": ""});
-run_snmpwalk_test(conn, "127.0.0.1:1161");
-MongoRunner.stopMongod(conn);
+{
+    jsTest.log("====Testing that basic SNMP support works====");
 
-jsTest.log("snmp test suite run successfully");
+    let conn = MongoRunner.runMongod({"snmp-master": ""});
+    run_snmpwalk_test(conn, "127.0.0.1:1161");
+    MongoRunner.stopMongod(conn);
+}
+
+const deprecationWarningMessage =
+    "DeprecationWarning: SNMP is deprecated, and will be removed in a future version.";
+
+{
+    jsTest.log(
+        "====Testing That Deprecation Warning Is not Displayed when SNMP is not enabled====");
+    const conn = MongoRunner.runMongod({});
+    try {
+        assert(!checkLog.checkContainsOnce(conn, deprecationWarningMessage));
+    } finally {
+        MongoRunner.stopMongod(conn);
+    }
+}
+
+{
+    jsTest.log("====Testing That Deprecation Warning Is Displayed when SNMP enabled====");
+    const conn = MongoRunner.runMongod({"snmp-master": ""});
+    try {
+        checkLog.contains(conn, deprecationWarningMessage);
+    } finally {
+        MongoRunner.stopMongod(conn);
+    }
+}

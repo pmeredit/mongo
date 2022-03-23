@@ -970,6 +970,12 @@ public:
             return;
         }
 
+        // TODO: Remove for 7.0 per PM-2644
+        LOGV2_WARNING_OPTIONS(
+            6473601,
+            {logv2::LogTag::kStartupWarnings},
+            "DeprecationWarning: SNMP is deprecated, and will be removed in a future version.");
+
         fassert(4032,
                 SNMPERR_SUCCESS ==
                     snmp_register_callback(
