@@ -247,9 +247,11 @@ for (let thisCursorTopLevel of cursorArray) {
         assert.sameMembers(expectedDocs, getMoreResults);
     } else if (thisCursor.type == "results") {
         const expectedDocs = [
-            {_id: 1, val: 1, "$searchScore": .4},
-            {_id: 2, val: 2, "$searchScore": .3},
-            {_id: 3, val: 3, "$searchScore": .123}
+            // SortKey and searchScore are included because we're getting results directly from the
+            // shard.
+            {_id: 1, val: 1, "$searchScore": .4, "$sortKey": [.4]},
+            {_id: 2, val: 2, "$searchScore": .3, "$sortKey": [.3]},
+            {_id: 3, val: 3, "$searchScore": .123, "$sortKey": [.123]}
         ];
         assert.sameMembers(expectedDocs, getMoreResults);
     } else {
@@ -285,10 +287,12 @@ for (let thisCursorTopLevel of cursorArray) {
         const expectedDocs = [{metaVal: 10}, {metaVal: 11}, {metaVal: 12}, {metaVal: 13}];
         assert.sameMembers(expectedDocs, getMoreResults);
     } else if (thisCursor.type == "results") {
+        // SortKey and searchScore are included because we're getting results directly from the
+        // shard.
         const expectedDocs = [
-            {_id: 5, val: 5, "$searchScore": .4},
-            {_id: 6, val: 6, "$searchScore": .3},
-            {_id: 7, val: 7, "$searchScore": .123}
+            {_id: 5, val: 5, "$searchScore": .4, "$sortKey": [.4]},
+            {_id: 6, val: 6, "$searchScore": .3, "$sortKey": [.3]},
+            {_id: 7, val: 7, "$searchScore": .123, "$sortKey": [.123]}
         ];
         assert.sameMembers(expectedDocs, getMoreResults);
     } else {

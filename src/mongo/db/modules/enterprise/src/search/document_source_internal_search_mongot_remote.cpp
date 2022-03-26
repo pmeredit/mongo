@@ -122,6 +122,19 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchMongotRemote::doGetNex
         return DocumentSource::GetNextResult::makeEOF();
     }
 
+    // For now, sort is always on '$searchScore'. Metadata is only present if the data needs to be
+    // merged.
+    if (pExpCtx->needsMerge) {
+        // Metadata can't be changed on a Document. Create a MutableDocument to set the sortKey.
+        MutableDocument output(Document::fromBsonWithMetaData(response.get()));
+        // If this stage is getting metadata documents from mongot, those don't include searchScore.
+        if (output.metadata().hasSearchScore()) {
+            output.metadata().setSortKey(Value{output.metadata().getSearchScore()},
+                                         true /* isSingleElementKey */);
+        }
+        return output.freeze();
+    }
+
     return Document::fromBsonWithMetaData(response.get());
 }
 

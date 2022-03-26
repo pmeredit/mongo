@@ -28,7 +28,6 @@ intrusive_ptr<DocumentSource> DocumentSourceInternalSearchIdLookUp::createFromBs
             str::stream() << "$_internalSearchIdLookup value must be an empty object. Found: "
                           << typeName(elem.type()),
             elem.type() == BSONType::Object && elem.embeddedObject().isEmpty());
-
     return new DocumentSourceInternalSearchIdLookUp(pExpCtx);
 }
 
@@ -82,13 +81,6 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchIdLookUp::doGetNext() 
 
     // Transfer searchScore metadata from inputDoc to the result.
     output.copyMetaDataFrom(inputDoc);
-
-    if (pExpCtx->needsMerge) {
-        auto isSingleElementKey = true;
-        output.metadata().setSortKey(Value{inputDoc.metadata().getSearchScore()},
-                                     isSingleElementKey);
-    }
-
     return output.freeze();
 }
 

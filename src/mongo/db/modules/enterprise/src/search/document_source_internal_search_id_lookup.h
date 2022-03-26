@@ -10,10 +10,6 @@
 
 namespace mongo {
 
-namespace search_constants {
-const BSONObj kSortSpec = BSON("$searchScore" << -1);
-}  // namespace search_constants
-
 /**
  * Queries local collection for _id equality matches. Intended for use with
  * $_internalSearchMongotRemote (see $search) as part of the Search project.
@@ -45,6 +41,8 @@ public:
                                      LookupRequirement::kAllowed,
                                      UnionRequirement::kAllowed,
                                      ChangeStreamRequirement::kDenylist);
+        // Set to true to allow this to be run on the shards before the search implicit sort.
+        constraints.preservesOrderAndMetadata = true;
 
         return constraints;
     }
@@ -55,15 +53,12 @@ public:
     Value serialize(boost::optional<ExplainOptions::Verbosity> explain) const;
 
     /**
-     * This stage must be run on each shard and will cause the pipeline to split. mongos
-     * will merge by searchScore.
+     * This stage must be run on each shard.
      */
     boost::optional<DistributedPlanLogic> distributedPlanLogic() final {
         DistributedPlanLogic logic;
 
-        logic.mergingStage = nullptr;
         logic.shardsStage = this;
-        logic.inputSortPattern = search_constants::kSortSpec;
 
         return logic;
     }

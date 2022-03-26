@@ -66,7 +66,7 @@ const searchQuery = {
                         {_id: 4, $searchScore: .2},
                         // Ensure that if a returned document has an empty 'storedSource' field we
                         // can still return a corresponding document.
-                        {$searchScore: 0.654, storedSource: {}}
+                        {$searchScore: 0.653, storedSource: {}}
                     ]
                 },
                 vars: {SEARCH_META: {value: 42}}
@@ -90,10 +90,10 @@ const searchQuery = {
                              .toArray();
         let expected = [
             {_id: 2, score: 0.654, title: "cookies and cakes", tasty: true, meta: {value: 42}},
+            {score: .653, meta: {value: 42}},
             {_id: 1, score: 0.321, title: "cakes", tasty: true, meta: {value: 42}},
             {score: 0.123, title: "vegetables", tasty: false, meta: {value: 42}},
             {_id: 4, score: .2, meta: {value: 42}},
-            {score: .654, meta: {value: 42}}
         ];
         assert(arrayEq(expected, aggResults),
                "Expected:\n" + tojson(expected) + "\nGot:\n" + tojson(aggResults));
@@ -141,9 +141,9 @@ const searchQuery = {
     const responseOk = 1;
 
     const mongot0ResponseBatch = [
+        {_id: 3, $searchScore: 29},
         {$searchScore: 10, storedSource: {_id: 2, old: true}},
         {$searchScore: 0.99, storedSource: {_id: 1, old: true}},
-        {_id: 3, $searchScore: 29},
         {$searchScore: 0.654, storedSource: {}}
     ];
     const history0 = [{
@@ -156,8 +156,8 @@ const searchQuery = {
 
     const mongot1ResponseBatch = [
         {$searchScore: 111, storedSource: {_id: 11, old: false}},
-        {$searchScore: 29, storedSource: {_id: 12, old: false}},
         {_id: 13, $searchScore: 30},
+        {$searchScore: 28, storedSource: {_id: 12, old: false}},
         {$searchScore: 0.456, storedSource: {}}
     ];
     const history1 = [{
@@ -169,12 +169,12 @@ const searchQuery = {
     s1Mongot.setMockResponses(history1, NumberLong(456));
 
     const expectedDocs = [
-        {_id: 1, old: true, score: .99},
-        {_id: 2, old: true, score: 10},
-        {_id: 3, score: 29},
         {_id: 11, old: false, score: 111},
-        {_id: 12, old: false, score: 29},
         {_id: 13, score: 30},
+        {_id: 3, score: 29},
+        {_id: 12, old: false, score: 28},
+        {_id: 2, old: true, score: 10},
+        {_id: 1, old: true, score: .99},
         {score: .654},
         {score: .456},
     ];
@@ -182,11 +182,12 @@ const searchQuery = {
     const aggResults = coll.aggregate([
                                {$search: searchQuery},
                                {$project: {_id: 1, old: 1, score: {$meta: "searchScore"}}},
-                               {$sort: {_id: 1}}
                            ])
                            .toArray();
-    assert(arrayEq(expectedDocs, aggResults),
-           "Expected:\n" + tojson(expectedDocs) + "\nGot:\n" + tojson(aggResults));
+    // Make sure order is according to $searchScore.
+    assert.eq(expectedDocs,
+              aggResults,
+              "Expected:\n" + tojson(expectedDocs) + "\nGot:\n" + tojson(aggResults));
 
     stWithMock.stop();
 })();

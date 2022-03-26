@@ -12,6 +12,10 @@
 
 namespace mongo {
 
+namespace search_constants {
+const BSONObj kSortSpec = BSON("$searchScore" << -1);
+}  // namespace search_constants
+
 /**
  * A class to retrieve $search results from a mongot process.
  *
@@ -71,8 +75,19 @@ public:
 
     const char* getSourceName() const override;
 
-    boost::optional<DistributedPlanLogic> distributedPlanLogic() {
-        return boost::none;
+    /**
+     * This is the first stage in the pipeline and so will always be run on shards. Mark as not
+     * needing split as the sort can be deferred.
+     */
+    boost::optional<DistributedPlanLogic> distributedPlanLogic() final {
+        DistributedPlanLogic logic;
+
+        logic.mergingStage = nullptr;
+        logic.shardsStage = nullptr;
+        logic.mergeSortPattern = search_constants::kSortSpec;
+        logic.needsSplit = false;
+
+        return logic;
     }
 
     Value serialize(
