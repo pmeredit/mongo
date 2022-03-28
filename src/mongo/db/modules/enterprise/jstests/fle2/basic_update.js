@@ -10,7 +10,7 @@ load("jstests/fle2/libs/encrypted_client_util.js");
 (function() {
 'use strict';
 
-if (!isFLE2ShardingEnabled()) {
+if (!isFLE2Enabled()) {
     return;
 }
 
@@ -86,6 +86,15 @@ assert.eq(res.matchedCount, 1);
 assert.eq(res.modifiedCount, 1);
 client.assertEncryptedCollectionCounts("basic", 2, 5, 3, 8);
 
+// Update an unencrypted field in a document, but match no documents
+// expect writes to esc,ecoc
+res = assert.commandWorked(edb.basic.updateOne({"last": "marky"}, {$set: {"first": "matthew"}}));
+print(tojson(res));
+assert.eq(res.matchedCount, 0);
+assert.eq(res.modifiedCount, 0);
+
+client.assertEncryptedCollectionCounts("basic", 2, 6, 3, 9);
+
 //  Negative: Test bulk update. Send raw unencrypted commands to bypass query analysis
 res = assert.commandFailedWithCode(dbTest.basic.runCommand({
     update: edb.basic.getName(),
@@ -110,4 +119,6 @@ res = assert.commandFailedWithCode(dbTest.basic.runCommand({
     encryptionInformation: {schema: {}}
 }),
                                    6371503);
+
+// TODO - NULL Update
 }());
