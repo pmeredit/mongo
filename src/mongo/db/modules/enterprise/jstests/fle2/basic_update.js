@@ -51,7 +51,7 @@ client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "m
 res = assert.commandWorked(edb.basic.updateOne({"last": "marco"}, {$unset: {"first": ""}}));
 assert.eq(res.modifiedCount, 1);
 rawDoc = dbTest.basic.find({"last": "marco"}).toArray()[0];
-assert.eq(rawDoc["__safeContent__"], []);
+assert.eq(rawDoc[kSafeContentField], []);
 assert(!rawDoc.hasOwnProperty("first"));
 
 client.assertEncryptedCollectionCounts("basic", 2, 3, 2, 5);

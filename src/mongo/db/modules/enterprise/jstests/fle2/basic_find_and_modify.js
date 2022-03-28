@@ -41,7 +41,7 @@ client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "m
 let res = assert.commandWorked(edb.basic.runCommand({
     findAndModify: edb.basic.getName(),
     query: {"last": "marco"},
-    update: {$set: {"first": "matthew"}}
+    update: {$set: {"first": "matthew"}},
 }));
 print("RES:" + tojson(res));
 
@@ -62,7 +62,7 @@ assert.commandWorked(edb.basic.runCommand({
     update: {$unset: {"first": ""}}
 }));
 const rawDoc = dbTest.basic.find({"last": "marco"}).toArray()[0];
-assert.eq(rawDoc["__safeContent__"], []);
+assert.eq(rawDoc[kSafeContentField], []);
 assert(!rawDoc.hasOwnProperty("first"));
 
 client.assertEncryptedCollectionCounts("basic", 2, 3, 2, 5);
@@ -141,9 +141,24 @@ client.assertEncryptedCollectionDocuments("basic", [
     {"_id": 2, "first": "john", "last": "Marcus", "middle": "markus"},
 ]);
 
+// Upsert to create a new document with an encrypted field.
+client.assertDocumentChanges("basic", [0, 1], [2], () => {
+    return assert.commandWorked(edb.basic.runCommand({
+        findAndModify: edb.basic.getName(),
+        query: {"_id": 3},
+        update: {$set: {"first": "Mark", "middle": "Markus"}},
+        upsert: true,
+    }));
+});
+client.assertEncryptedCollectionDocuments("basic", [
+    {"_id": 1, "first": "luke", "last": "marco"},
+    {"_id": 2, "first": "john", "last": "Marcus", "middle": "markus"},
+    {"_id": 3, "first": "Mark", "middle": "Markus"},
+]);
+
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 // Add a duplicate index entry
-dbTest.basic.createIndex({"middle": 1}, {unique: true});
+assert.commandWorked(dbTest.basic.createIndex({"middle": 1}, {unique: true}));
 
 res = assert.commandFailed(edb.basic.runCommand({
     findAndModify: edb.basic.getName(),
@@ -152,7 +167,7 @@ res = assert.commandFailed(edb.basic.runCommand({
 }));
 print(tojson(res));
 
-client.assertEncryptedCollectionCounts("basic", 2, 5, 3, 8);
+client.assertEncryptedCollectionCounts("basic", 3, 6, 3, 9);
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 // Null Update
@@ -162,5 +177,5 @@ res = assert.commandWorked(edb.basic.runCommand({
     update: {$set: {"first": "matthew"}}
 }));
 
-client.assertEncryptedCollectionCounts("basic", 2, 6, 3, 9);
+client.assertEncryptedCollectionCounts("basic", 3, 7, 3, 10);
 }());

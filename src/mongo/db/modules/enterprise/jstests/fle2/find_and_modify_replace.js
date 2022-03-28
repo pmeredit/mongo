@@ -61,7 +61,7 @@ assert.commandWorked(edb.basic.runCommand(
 res = assert.commandWorked(edb.basic.replaceOne({"last": "marco"}, {"last": "marco"}));
 assert.eq(res.modifiedCount, 1);
 let rawDoc = dbTest.basic.find({"last": "marco"}).toArray()[0];
-assert.eq(rawDoc["__safeContent__"], []);
+assert.eq(rawDoc[kSafeContentField], []);
 assert(!rawDoc.hasOwnProperty("first"));
 
 client.assertEncryptedCollectionCounts("basic", 2, 3, 2, 5);
