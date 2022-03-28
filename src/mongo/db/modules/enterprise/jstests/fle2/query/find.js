@@ -2,6 +2,10 @@ load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
 load("jstests/fle2/libs/encrypted_client_util.js");
 
 (function() {
+if (!isFLE2Enabled()) {
+    return;
+}
+
 /**
  *
  * @param {object} testData An object that contains the contents of the test. Namely:

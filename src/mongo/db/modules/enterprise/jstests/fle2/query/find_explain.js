@@ -2,6 +2,10 @@ load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
 load("jstests/fle2/libs/encrypted_client_util.js");
 
 (function() {
+if (!isFLE2Enabled()) {
+    return;
+}
+
 const collName = jsTestName();
 const encryptedFields = {
     "fields": [{"path": "ssn", "bsonType": "string", "queries": {"queryType": "equality"}}]
