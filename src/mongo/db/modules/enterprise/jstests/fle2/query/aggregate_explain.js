@@ -1,0 +1,57 @@
+/**
+ * Test explain with aggregations on encrypted collections.
+ *
+ * @tags: [featureFlagFLE2]
+ */
+
+load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
+load("jstests/fle2/libs/encrypted_client_util.js");
+
+(function() {
+
+// Set up the encrypted collection.
+const collName = jsTestName();
+const dbName = jsTestName();
+let client = new EncryptedClient(db.getMongo(), dbName);
+assert.commandWorked(client.createEncryptionCollection(collName, {
+    encryptedFields:
+        {"fields": [{"path": "ssn", "bsonType": "string", "queries": {"queryType": "equality"}}]}
+}));
+let edb = client.getDB();
+
+// Explain the pipeline on the provided db and collection, then run the provided asserts with the
+// parsed query found in the explain plan.
+const assertExplainResult = (edb, collName, pipeline, assertions) => {
+    const result = assert.commandWorked(edb.runCommand({
+        explain: {aggregate: collName, pipeline: pipeline, cursor: {}},
+        verbosity: "queryPlanner"
+    }));
+
+    if (result.shards) {
+        // Test the assertions on each shard's part of the explain.
+        for (const shardName in result.shards) {
+            const inputQuery = result.shards[shardName].queryPlanner.parsedQuery;
+            assertions(inputQuery, result);
+        }
+    } else {
+        // TODO: SERVER-63312 Agg command on mongod.
+        return;
+    }
+};
+
+assert.commandWorked(edb[collName].insert({_id: 0, ssn: "123"}));
+
+// When a query is on encrypted fields, the explain contains the rewritten query.
+assertExplainResult(edb, collName, [{$match: {ssn: "123"}}], (query, result) => {
+    assert(query.hasOwnProperty("__safeContent__"), result);
+    assert(!query.hasOwnProperty("ssn"), result);
+});
+
+// When a query is not on encrypted fields, the explain contains the original query, since no
+// rewrites should be done.
+assertExplainResult(edb, collName, [{$match: {_id: "456"}}], (query, result) => {
+    assert(!query.hasOwnProperty("__safeContent__"), result);
+    assert(!query.hasOwnProperty("ssn"), result);
+    assert(query.hasOwnProperty("_id"), result);
+});
+}());
