@@ -40,15 +40,15 @@ function assertInsertFails(docs, schema, errCode) {
 
 // Verify that an insert command where 'foo' is an array fails when 'foo' is marked for
 // encryption.
-assertInsertFails([{_id: 1, foo: [1, 2, 3]}], fooEncryptedSchema, 31118);
+assertInsertFails([{_id: 1, foo: [1, 2, 3]}], fooEncryptedSchema, 31041);
 
-assertInsertFails([{_id: 1, foo: [{bar: 1}, {bar: 2}, {bar: 3}]}], fooEncryptedSchema, 31118);
+assertInsertFails([{_id: 1, foo: [{bar: 1}, {bar: 2}, {bar: 3}]}], fooEncryptedSchema, 31041);
 
 // Verify that an insert command where 'foo.bar' is an array fails when 'foo.bar' is marked for
 // encryption.
-assertInsertFails([{_id: 1, foo: {bar: [1, 2, 3]}}], fooDotBarEncryptedSchema, 31118);
+assertInsertFails([{_id: 1, foo: {bar: [1, 2, 3]}}], fooDotBarEncryptedSchema, 31041);
 assertInsertFails(
-    [{_id: 1, foo: {bar: [{baz: 1}, {baz: 2}, {baz: 3}]}}], fooDotBarEncryptedSchema, 31118);
+    [{_id: 1, foo: {bar: [{baz: 1}, {baz: 2}, {baz: 3}]}}], fooDotBarEncryptedSchema, 31041);
 
 // Verify that an insert command where 'foo' is an array fails when 'foo.bar' is marked for
 // encryption.
@@ -76,28 +76,28 @@ function assertUpdateFails(updates, schema, errCode) {
 }
 
 // Verify that a $set inside an update cannot create an array along an encrypted path.
-assertUpdateFails([{q: {}, u: {$set: {foo: [1, 2, 3]}}}], fooEncryptedSchema, 31118);
-assertUpdateFails([{q: {}, u: {$set: {foo: {bar: [1, 2, 3]}}}}], fooDotBarEncryptedSchema, 31118);
+assertUpdateFails([{q: {}, u: {$set: {foo: [1, 2, 3]}}}], fooEncryptedSchema, 31041);
+assertUpdateFails([{q: {}, u: {$set: {foo: {bar: [1, 2, 3]}}}}], fooDotBarEncryptedSchema, 31041);
 assertUpdateFails([{q: {}, u: {$set: {foo: [{bar: 1}]}}}], fooDotBarEncryptedSchema, 51159);
 
 // Verify that a $set inside an update cannot create an array along an encrypted path when the
 // upsert flag is true.
 assertUpdateFails(
-    [{q: {}, u: {$set: {foo: {bar: [1, 2, 3]}}}, upsert: true}], fooDotBarEncryptedSchema, 31118);
+    [{q: {}, u: {$set: {foo: {bar: [1, 2, 3]}}}, upsert: true}], fooDotBarEncryptedSchema, 31041);
 
 assertUpdateFails(
     [{q: {}, u: {$set: {foo: [{bar: 1}]}}, upsert: true}], fooDotBarEncryptedSchema, 51159);
 
 // Verify that a replacement style update cannot create an array along an encrypted path.
-assertUpdateFails([{q: {}, u: {foo: [1, 2, 3]}}], fooEncryptedSchema, 31118);
-assertUpdateFails([{q: {}, u: {foo: {bar: [1, 2, 3]}}}], fooDotBarEncryptedSchema, 31118);
+assertUpdateFails([{q: {}, u: {foo: [1, 2, 3]}}], fooEncryptedSchema, 31041);
+assertUpdateFails([{q: {}, u: {foo: {bar: [1, 2, 3]}}}], fooDotBarEncryptedSchema, 31041);
 assertUpdateFails([{q: {}, u: {foo: [{bar: 1}]}}], fooDotBarEncryptedSchema, 31006);
 
 // An update command whose query predicate implies the existence of an array along an encrypted
 // path should fail.
 assertUpdateFails([{q: {foo: {$eq: {bar: {baz: [1, 2, 3]}}}}, u: {$set: {notEncrypted: 1}}}],
                   fooDotBarDotBazEncryptedSchema,
-                  31118);
+                  31041);
 assertUpdateFails([{q: {foo: {$eq: {bar: [{baz: 1}]}}}, u: {$set: {notEncrypted: 1}}}],
                   fooDotBarDotBazEncryptedSchema,
                   31006);
@@ -111,7 +111,7 @@ function assertFindCmdFails(filter, schema, errCode) {
 
 // A find command whose predicate implies the existence of an array along an encrypted path
 // should fail.
-assertFindCmdFails({foo: {$eq: {bar: {baz: [1, 2, 3]}}}}, fooDotBarDotBazEncryptedSchema, 31118);
+assertFindCmdFails({foo: {$eq: {bar: {baz: [1, 2, 3]}}}}, fooDotBarDotBazEncryptedSchema, 31041);
 assertFindCmdFails(
     {foo: {$eq: {bar: [{baz: 1}, {baz: 2}]}}}, fooDotBarDotBazEncryptedSchema, 31006);
 
@@ -125,7 +125,7 @@ function assertDeleteFails(deletes, schema, errCode) {
 // A delete command whose predicate implies the existence of an array along an encrypted path
 // should fail.
 assertDeleteFails(
-    [{q: {foo: {$eq: {bar: {baz: [1, 2, 3]}}}}, limit: 1}], fooDotBarDotBazEncryptedSchema, 31118);
+    [{q: {foo: {$eq: {bar: {baz: [1, 2, 3]}}}}, limit: 1}], fooDotBarDotBazEncryptedSchema, 31041);
 assertDeleteFails([{q: {foo: {$eq: {bar: [{baz: 1}, {baz: 2}]}}}, limit: 1}],
                   fooDotBarDotBazEncryptedSchema,
                   31006);
@@ -145,12 +145,12 @@ assertUpdateFails([{q: {foo: {$in: [1, [{bar: 2}]]}}, u: {$set: {notEncrypted: 1
                   31008);
 
 // An equality-to-array predicate against an encrypted path should result in an error.
-assertFindCmdFails({foo: {$eq: [1, 2, 3]}}, fooEncryptedSchema, 31118);
-assertFindCmdFails({foo: {$in: [[1, 2, 3]]}}, fooEncryptedSchema, 31118);
+assertFindCmdFails({foo: {$eq: [1, 2, 3]}}, fooEncryptedSchema, 31041);
+assertFindCmdFails({foo: {$in: [[1, 2, 3]]}}, fooEncryptedSchema, 31041);
 
 // Deterministic encryption of an object is not legal, since the schema specifies that 'foo'
 // must be of type "int".
-assertInsertFails([{_id: 1, foo: {bar: [1, 2, 3]}}], fooEncryptedSchema, 31118);
+assertInsertFails([{_id: 1, foo: {bar: [1, 2, 3]}}], fooEncryptedSchema, 31041);
 
 // Can insert an encrypted object, even if that object contains a nested array, when the
 // encryption algorithm is random.

@@ -2499,7 +2499,7 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithSingleValueBSONTypeInEncryptObjec
                           << "properties" << BSON("foo" << encrypt));
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
                        AssertionException,
-                       31041);
+                       31122);
     // Test MaxKey
     encrypt = BSON("encrypt" << BSON("algorithm"
                                      << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
@@ -2511,7 +2511,7 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithSingleValueBSONTypeInEncryptObjec
                   << "properties" << BSON("foo" << encrypt));
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
                        AssertionException,
-                       31041);
+                       31122);
     // Test Undefined
     encrypt = BSON("encrypt" << BSON("algorithm"
                                      << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
@@ -2523,7 +2523,7 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithSingleValueBSONTypeInEncryptObjec
                   << "properties" << BSON("foo" << encrypt));
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
                        AssertionException,
-                       31041);
+                       31122);
     // Test Null
     encrypt = BSON("encrypt" << BSON("algorithm"
                                      << "AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"
@@ -2535,7 +2535,7 @@ TEST(EncryptionSchemaTreeTest, FailsToParseWithSingleValueBSONTypeInEncryptObjec
                   << "properties" << BSON("foo" << encrypt));
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parse(schema, EncryptionSchemaType::kLocal),
                        AssertionException,
-                       31041);
+                       31122);
 }
 
 TEST(EncryptionSchemaTreeTest, IdEncryptedWithDeterministicAlgorithmSucceeds) {
@@ -3466,7 +3466,7 @@ TEST_F(EncryptionSchemaTreeTest, Fle2BadBSONTypeForEncryptedField) {
     )");
     ASSERT_THROWS_CODE(EncryptionSchemaTreeNode::parseEncryptedFieldConfig(alwaysForbiddenBSONType),
                        AssertionException,
-                       31041);
+                       6316404);
 }
 
 TEST_F(EncryptionSchemaTreeTest, Fle2CannotEncryptFieldPrefixedById) {

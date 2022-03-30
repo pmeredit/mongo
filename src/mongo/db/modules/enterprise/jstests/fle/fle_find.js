@@ -131,7 +131,7 @@ assert.commandFailedWithCode(testDB.runCommand(Object.assign(findCmd, schema)), 
 // field is not "object".
 schema = generateSchema(
     {user: {queries: {queryType: "equality"}, keyId: UUID(), bsonType: "string"}}, namespace);
-assert.commandFailedWithCode(testDB.runCommand(Object.assign(findCmd, schema)), 31118);
+assert.commandFailedWithCode(testDB.runCommand(Object.assign(findCmd, schema)), 31041);
 
 // And of course we can't perform either of the above queries if the field is not queryable.
 schema = generateSchema({user: {keyId: UUID(), bsonType: "object"}}, namespace);

@@ -27,20 +27,9 @@ namespace mongo {
  */
 struct ResolvedEncryptionInfo {
     /**
-     * Throws an exception if 'bsonType' is never permitted to be encrypted by the client,
-     * regardless of the encryption algorithm or any other encryption options.
+     * Returns true if 'bsonType' is allowed with the algorithm defined in this object.
      */
-    static void throwIfIllegalTypeForEncryption(BSONType bsonType);
-
-    /**
-     * Returns true if 'bsonType' is allowed in combination with deterministic encryption.
-     */
-    static bool isTypeLegalWithDeterministic(BSONType bsonType);
-
-    /**
-     * Returns true if 'bsonType' is allowed in combination with FLE 2 encryption.
-     */
-    bool isTypeLegalWithFLE2(BSONType bsonType) const;
+    bool isTypeLegal(BSONType bsonType) const;
 
     /**
      * Returns true if 'algorithm' is any kind of FLE 2 encryption algorithm.

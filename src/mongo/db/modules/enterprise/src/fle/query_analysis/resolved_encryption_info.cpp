@@ -4,9 +4,71 @@
 
 #include "mongo/platform/basic.h"
 
+#include "mongo/crypto/encryption_fields_util.h"
 #include "resolved_encryption_info.h"
 
 namespace mongo {
+
+namespace {
+
+bool isTypeLegalForFle1Algorithm(BSONType bsonType, FleAlgorithmEnum algo) {
+    if (algo == FleAlgorithmEnum::kRandom) {
+        switch (bsonType) {
+            // These "single-valued" types carry no information other than the type. Client-side
+            // encryption does not hide the type, so encrypting these types would achieve nothing
+            // and is actively prohibited.
+            case BSONType::MinKey:
+            case BSONType::MaxKey:
+            case BSONType::Undefined:
+            case BSONType::jstNULL:
+                return false;
+            default:
+                return true;
+        }
+    } else if (algo == FleAlgorithmEnum::kDeterministic) {
+        switch (bsonType) {
+            // These "single-valued" types carry no information other than the type. Client-side
+            // encryption does not hide the type, so encrypting these types would achieve nothing
+            // and is actively prohibited.
+            case BSONType::MinKey:
+            case BSONType::MaxKey:
+            case BSONType::Undefined:
+            case BSONType::jstNULL:
+
+            // These types cannot be supported with deterministic encryption because they are
+            // non-scalar types. In general, equality comparison of objects and arrays (or the
+            // object inside a code w/ scope) is not byte-wise.
+            case BSONType::Array:
+            case BSONType::Object:
+            case BSONType::CodeWScope:
+
+            // Bool is not supported with deterministic encryption because it would be easy to
+            // reverse the encryption. There will be only two distinct ciphertext values, and the
+            // distribution may reveal which maps to true and which to false.
+            case BSONType::Bool:
+
+            // Byte-wise comparison is also not correct in all cases for floating point numbers. For
+            // instance, MQL equality semantics make all NaNs equal. Similarly, +0 and -0 are
+            // considered equal. However, the various NaNs and various zeros consist of different
+            // byte sequences.
+            //
+            // For decimal128, the problem extends beyond NaNs and zeros. Any decimal128 number has
+            // equalivalence classes: NumberDecimal(2.1) is equal to NumberDecimal(2.10) which is
+            // equal to NumberDecimal(2.100), and so on. The encodings differ depending on the
+            // number of significant digits.
+            case BSONType::NumberDouble:
+            case BSONType::NumberDecimal:
+                return false;
+
+            default:
+                return true;
+        }
+    } else {
+        MONGO_UNREACHABLE;
+    }
+}
+
+}  // namespace
 
 ResolvedEncryptionInfo::ResolvedEncryptionInfo(
     UUID uuid,
@@ -34,8 +96,7 @@ ResolvedEncryptionInfo::ResolvedEncryptionInfo(
         uassert(6316404,
                 str::stream() << "Cannot use FLE 2 encryption for element of type: "
                               << typeName(type),
-                isTypeLegalWithFLE2(type));
-        throwIfIllegalTypeForEncryption(type);
+                this->isTypeLegal(type));
     }
 }
 
@@ -48,15 +109,6 @@ ResolvedEncryptionInfo::ResolvedEncryptionInfo(EncryptSchemaKeyId keyId,
                 "A deterministically encrypted field must have exactly one specified type.",
                 this->bsonTypeSet && this->bsonTypeSet->isSingleType());
 
-        // Check for bson types that are not legal in combination with the deterministic encryption
-        // algorithm.
-        for (auto&& type : this->bsonTypeSet->bsonTypes) {
-            uassert(31122,
-                    str::stream() << "Cannot use deterministic encryption for element of type: "
-                                  << typeName(type),
-                    isTypeLegalWithDeterministic(type));
-        }
-
         uassert(
             31169,
             "A deterministically encrypted field cannot have a keyId represented by a JSON pointer",
@@ -66,7 +118,9 @@ ResolvedEncryptionInfo::ResolvedEncryptionInfo(EncryptSchemaKeyId keyId,
     // Check for types that are prohibited for all encryption algorithms.
     if (this->bsonTypeSet) {
         for (auto&& type : this->bsonTypeSet->bsonTypes) {
-            throwIfIllegalTypeForEncryption(type);
+            uassert(31122,
+                    str::stream() << "Cannot encrypt element of type: " << typeName(type),
+                    this->isTypeLegal(type));
         }
     }
 }
@@ -89,74 +143,21 @@ bool ResolvedEncryptionInfo::isFle2Encrypted() const {
     return algorithmIs(Fle2AlgorithmInt::kUnindexed) || algorithmIs(Fle2AlgorithmInt::kEquality);
 }
 
-bool ResolvedEncryptionInfo::isTypeLegalWithDeterministic(BSONType bsonType) {
-    switch (bsonType) {
-        // These types cannot be supported with deterministic encryption because they are non-scalar
-        // types. In general, equality comparison of objects and arrays (or the object inside a code
-        // w/ scope) is not byte-wise.
-        case BSONType::Array:
-        case BSONType::Object:
-        case BSONType::CodeWScope:
-
-        // Bool is not supported with deterministic encryption because it would be easy to reverse
-        // the encryption. There will be only two distinct ciphertext values, and the distribution
-        // may reveal which maps to true and which to false.
-        case BSONType::Bool:
-
-        // Byte-wise comparison is also not correct in all cases for floating point numbers. For
-        // instance, MQL equality semantics make all NaNs equal. Similarly, +0 and -0 are considered
-        // equal. However, the various NaNs and various zeros consist of different byte sequences.
-        //
-        // For decimal128, the problem extends beyond NaNs and zeros. Any decimal128 number has
-        // equalivalence classes: NumberDecimal(2.1) is equal to NumberDecimal(2.10) which is equal
-        // to NumberDecimal(2.100), and so on. The encodings differ depending on the number of
-        // significant digits.
-        case BSONType::NumberDouble:
-        case BSONType::NumberDecimal:
-            return false;
-
-        default:
-            return true;
-    }
-}
-
-bool ResolvedEncryptionInfo::isTypeLegalWithFLE2(BSONType bsonType) const {
-    // Unindexed FLE 2 encryption behaves similarly to random encryption.
-    if (algorithmIs(Fle2AlgorithmInt::kUnindexed)) {
-        return true;
-    }
-
-    // FLE 2 encryption with equality queries behaves similarly to deterministic encryption. The
-    // reason for banning the following types is due to the same logic as above: FLE 2 encryption
-    // also relies on exact bit-for-bit comparison, which in general does not hold for these types.
-    // Note: bool IS supported under FLE 2 encryption but not FLE 1 deterministic encryption.
-    switch (bsonType) {
-        case BSONType::Array:
-        case BSONType::Object:
-        case BSONType::CodeWScope:
-        case BSONType::NumberDouble:
-        case BSONType::NumberDecimal:
-            return false;
-
-        default:
-            return true;
-    }
-}
-
-void ResolvedEncryptionInfo::throwIfIllegalTypeForEncryption(BSONType bsonType) {
-    switch (bsonType) {
-        // These "single-valued" types carry no information other than the type. Client-side
-        // encryption does not hide the type, so encrypting these types would achieve nothing and is
-        // actively prohibited.
-        case BSONType::MinKey:
-        case BSONType::MaxKey:
-        case BSONType::Undefined:
-        case BSONType::jstNULL:
-            uasserted(31041,
-                      str::stream() << "Cannot encrypt element of type: " << typeName(bsonType));
-        default:
-            return;
-    }
+bool ResolvedEncryptionInfo::isTypeLegal(BSONType bsonType) const {
+    return stdx::visit(
+        visit_helper::Overloaded{
+            [&](FleAlgorithmEnum algo) { return isTypeLegalForFle1Algorithm(bsonType, algo); },
+            [&](Fle2AlgorithmInt algo) {
+                switch (algo) {
+                    case Fle2AlgorithmInt::kEquality:
+                        return isFLE2EqualityIndexedSupportedType(bsonType);
+                    case Fle2AlgorithmInt::kUnindexed:
+                        return isFLE2UnindexedSupportedType(bsonType);
+                    default:
+                        MONGO_UNREACHABLE;
+                }
+            }},
+        algorithm);
 }
 
 }  // namespace mongo

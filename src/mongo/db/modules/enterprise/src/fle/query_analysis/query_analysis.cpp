@@ -15,6 +15,7 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/crypto/encryption_fields_gen.h"
+#include "mongo/crypto/encryption_fields_util.h"
 #include "mongo/crypto/fle_field_schema_gen.h"
 #include "mongo/db/commands.h"
 #include "mongo/db/matcher/expression_parser.h"
@@ -923,7 +924,9 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
                                 const boost::optional<const EncryptionSchemaTreeNode&> schema) {
     // Some types are unconditionally banned. Make sure we're not trying to mark any such type for
     // encryption.
-    ResolvedEncryptionInfo::throwIfIllegalTypeForEncryption(elem.type());
+    uassert(31041,
+            str::stream() << "Cannot encrypt element of type: " << typeName(elem.type()),
+            metadata.isTypeLegal(elem.type()));
 
     // There are more stringent requirements for which encryption placeholders are legal in the
     // context of a query which makes a comparison to an encrypted field. For instance, comparisons
@@ -963,12 +966,14 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
                 metadata.bsonTypeSet->hasType(elem.type()));
     }
 
+
+    invariant(metadata.isTypeLegal(elem.type()));
     if (metadata.isFle2Encrypted()) {
-        invariant(metadata.isTypeLegalWithFLE2(elem.type()));
         return buildFle2EncryptPlaceholder(placeholderContext, metadata, elem);
     }
 
     // At this point we know the following:
+    //  - The metadata is configured for FLE 1
     //  - The caller has provided a valid ResolvedEncryptionInfo, which enforces that there is
     //  exactly one type specified in combination with the deterministic encryption algorithm.
     //  - The caller also has verified that this type is valid in combination with the deterministic
@@ -978,8 +983,7 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
     //
     // Together, these conditions imply that if the encryption algorithm is deterministic, then the
     // type of 'elem' is known to be valid for deterministic encryption. Check that assumption here.
-    invariant(metadata.algorithmIs(FleAlgorithmEnum::kRandom) ||
-              ResolvedEncryptionInfo::isTypeLegalWithDeterministic(elem.type()));
+    invariant(metadata.algorithmIs(FleAlgorithmEnum::kRandom) || metadata.isTypeLegal(elem.type()));
 
     FleAlgorithmInt integerAlgorithm = metadata.algorithmIs(FleAlgorithmEnum::kDeterministic)
         ? FleAlgorithmInt::kDeterministic

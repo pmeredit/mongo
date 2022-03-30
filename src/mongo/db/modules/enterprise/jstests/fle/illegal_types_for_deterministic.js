@@ -29,7 +29,7 @@ const kLegalQueryableTypes = [
 
 // Some types are illegal for encryption because the type itself is
 // the only meaningful value, and the type is not hidden by encryption.
-const kSingleTypeValuedErrCode = 31041;
+const kSingleTypeValuedErrCode = fle2Enabled() ? 6316404 : 31122;
 
 // Some types are illegal specifically for the queryable encryption because
 // equality semantics of MQL cannot be preserved after encryption.
