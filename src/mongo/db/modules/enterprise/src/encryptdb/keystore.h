@@ -84,14 +84,20 @@ public:
 
         // Inserts a new key into the keystore. The key ID of the key must have a name, but is
         // not required to have a numeric ID. If the keystore supports numeric key IDs, the key
-        // will be modified to have its assigned key ID before insert returns.
-        virtual void insert(const UniqueSymmetricKey& key) = 0;
+        // will be modified to have its assigned key ID before insert returns. The rolloverId
+        // argument is optional. If set, it specifies the ID of the key's rollover set. By default,
+        // we use the current rollover set.
+        virtual void insert(const UniqueSymmetricKey& key,
+                            boost::optional<uint32_t> rolloverId = boost::none) = 0;
 
         virtual void update(iterator it, const UniqueSymmetricKey& key) = 0;
 
         WTDataStoreSession* dataStoreSession() {
             return &_session;
         }
+
+        // Returns the rollover set ID of the entry in the keystore pointed to by the cursor.
+        virtual uint32_t getRolloverId(WTDataStoreCursor& cursor) const = 0;
 
     protected:
         explicit Session(WTDataStoreSession&& session) : _session(std::move(session)) {}

@@ -642,8 +642,16 @@ Status EncryptionKeyManager::_rotateMasterKey(const std::string& newKeyId) try {
 
     auto keystore = std::move(_keystore);
     auto readSession = keystore->makeSession();
-    for (auto&& key : *readSession) {
-        writeSession->insert(key);
+
+    if (_keystoreMetadata.getVersion() < 1) {
+        // V0 doesn't support rollover, so we don't need to complicate the logic
+        for (auto&& key : *readSession) {
+            writeSession->insert(key);
+        }
+    } else {
+        for (auto it = readSession->begin(); it != readSession->end(); ++it) {
+            writeSession->insert(*it, readSession->getRolloverId(it.cursor()));
+        }
     }
 
     readSession.reset();

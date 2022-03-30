@@ -66,15 +66,6 @@ jsTest.log("Test that rollover works with active key.");
 jsTest.log(
     "Test that when the key being rotated from is de-activated we can still rotate to the new key.");
 {
-    // Cannot continue from previous test because of
-    // SERVER-63070. TODO: remove section when SERVER-63070 is complete
-    mongod = MongoRunner.runMongod(opts);
-    const testdb = mongod.getDB("test");
-    assert.commandWorked(testdb.test.insert({foo: "bar"}));
-    assert.commandWorked(testdb.test.insert({foo2: "bar2"}));
-    MongoRunner.stopMongod(mongod);
-    // End section added until SERVER-63070 is complete
-
     deactivatePyKMIPKey(kmipServerPort, goodKey);
 
     const newOpts = Object.merge(

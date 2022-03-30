@@ -165,7 +165,7 @@ public:
         return iterator(dataStoreSession()->search(keyId.name().c_str()), this);
     }
 
-    void insert(const UniqueSymmetricKey& key) override {
+    void insert(const UniqueSymmetricKey& key, boost::optional<uint32_t> rolloverId) override {
         KeystoreRecordViewV0 view(key);
         dataStoreSession()->insert(view.id.rawData(), view.toTuple());
         storedKeys.add(SymmetricKeyId(key->getKeyId().name()), true);
@@ -175,6 +175,13 @@ public:
         KeystoreRecordViewV0 view(key);
         dataStoreSession()->update(it.cursor(), view.toTuple());
         storedKeys.add(SymmetricKeyId(key->getKeyId().name()), true);
+    }
+
+    uint32_t getRolloverId(WTDataStoreCursor& cursor) const override {
+        LOGV2_FATAL_NOTRACE(
+            6307000,
+            "The encrypted storage engine must be configured with AES256-GCM mode to support "
+            "database key rollover");
     }
 
 protected:
@@ -301,11 +308,12 @@ public:
         return iterator(dataStoreSession()->search(numericId.get()), this);
     }
 
-    void insert(const UniqueSymmetricKey& key) override {
+    void insert(const UniqueSymmetricKey& key, boost::optional<uint32_t> rolloverId) override {
+        uint32_t rid = rolloverId.value_or(_parent->_rolloverId);
         // Make sure the key ID of the input key has a name but hasn't been assigned an ID yet
         invariant(!key->getKeyId().name().empty());
 
-        KeystoreRecordViewV1 view(key, _parent->_rolloverId);
+        KeystoreRecordViewV1 view(key, rid);
         if (key->getKeyId().id()) {
             dataStoreSession()->insert(view.id, view.toTuple());
         } else {
@@ -315,14 +323,19 @@ public:
             key->setKeyId(SymmetricKeyId(view.database, keyId));
         }
 
-        // Now that we've inserted the key, cache the mapping of dbname to numeric ID so we can
-        // lookup the key by name later on.
+        // Now that we've inserted the key, if the key is in the current rollover set, cache the
+        // mapping of dbname to numeric ID so we can lookup the key by name later on. We only want
+        // to cache keys in the current rollover set, since old rollover sets have outdated name to
+        // ID pairings.
         const auto& keyId = key->getKeyId();
-        bool inserted;
-        {
-            stdx::lock_guard<Latch> lk(_parent->_dbNameToKeyIdCurrentMutex);
-            std::tie(std::ignore, inserted) =
-                _parent->_dbNameToKeyIdCurrent.insert({keyId.name(), keyId.id().get()});
+        if (rid == _parent->_rolloverId) {
+            bool inserted;
+            {
+                stdx::lock_guard<Latch> lk(_parent->_dbNameToKeyIdCurrentMutex);
+                std::tie(std::ignore, inserted) =
+                    _parent->_dbNameToKeyIdCurrent.insert({keyId.name(), keyId.id().get()});
+            }
+            fassert(51172, inserted);
         }
 
         storedKeys.add(keyId, true);
@@ -334,8 +347,8 @@ public:
                     1,
                     "Cached encryption key mapping",
                     "keyDatabase"_attr = key->getKeyId().name(),
-                    "keyId"_attr = keyId.id().get());
-        fassert(51172, inserted);
+                    "keyId"_attr = keyId.id().get(),
+                    "keyRolloverId"_attr = rolloverId);
     }
 
     void update(iterator it, const UniqueSymmetricKey& key) override {
@@ -352,6 +365,10 @@ public:
 
         dataStoreSession()->update(it.cursor(), view.toTuple());
         storedKeys.add(keyId, true);
+    }
+
+    uint32_t getRolloverId(WTDataStoreCursor& cursor) const override {
+        return KeystoreRecordViewV1(cursor).rolloverId;
     }
 
 protected:

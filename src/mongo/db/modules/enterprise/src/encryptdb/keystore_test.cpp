@@ -232,6 +232,42 @@ TEST_F(KeystoreFixture, V1RolloverTest) {
     ASSERT_FALSE(secondIt == ks.session->end());
 }
 
+// Check that insertion with differing rolloverIds works as expected.
+TEST_F(KeystoreFixture, V1InsertRolloverTest) {
+    if (!gcmSupported()) {
+        LOGV2(6307001, "Test requires GCM");
+        return;
+    }
+
+    using FindMode = Keystore::Session::FindMode;
+
+    auto ks = makeKeystoreAndSession(Keystore::Version::k1);
+    uint32_t oldRolloverId = ks.keystore->getRolloverId();
+    ks.keystore->rollOverKeys();
+    uint32_t currentRolloverId = ks.keystore->getRolloverId();
+    ASSERT_FALSE(oldRolloverId == currentRolloverId);
+
+    auto aKey = makeKey("a");
+    ks.session->insert(aKey);
+
+    // Test that inserting a duplicate key with a different rolloverId is fine
+    auto aKeyAgain = makeKey("a");
+    ks.session->insert(aKeyAgain, oldRolloverId);
+
+    // A name-based lookup should return the newer rollover ID entry.
+    auto it = ks.session->find(aKey->getKeyId(), FindMode::kCurrent);
+    ASSERT_FALSE(it == ks.session->end());
+    ASSERT_EQ(it->getKeyId().id(), aKey->getKeyId().id());
+    ASSERT_EQ(currentRolloverId, ks.session->getRolloverId(it.cursor()));
+
+    // A name-based lookup when there's only an entry in the old rollover set should not find
+    // anything.
+    auto cKey = makeKey("c");
+    ks.session->insert(cKey, oldRolloverId);
+    it = ks.session->find(cKey->getKeyId(), FindMode::kCurrent);
+    ASSERT_TRUE(it == ks.session->end());
+}
+
 // We require "AES256-GCM" to pass this test
 #if MONGO_CONFIG_SSL_PROVIDER == MONGO_CONFIG_SSL_PROVIDER_OPENSSL
 DEATH_TEST_REGEX_F(KeystoreFixture, V1SalvageFixKeystore2, "Fatal assertion.*51226") {
