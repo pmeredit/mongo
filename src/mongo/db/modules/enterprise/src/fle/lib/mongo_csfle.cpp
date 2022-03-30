@@ -265,20 +265,6 @@ ServiceContext* initialize() {
     return serviceContext;
 }
 
-struct ServiceContextDestructor {
-    /**
-     * This destructor gets called when the CSFLE Library gets torn down, either by a call to
-     * mongo_csfle_v1_lib_destroy() or when the process exits.
-     */
-    void operator()(mongo::ServiceContext* const serviceContext) const noexcept {
-        Status status = mongo::runGlobalDeinitializers();
-        uassertStatusOKWithContext(status, "Global deinitilization failed");
-
-        setGlobalServiceContext(nullptr);
-    }
-};
-
-using EmbeddedServiceContextPtr = std::unique_ptr<mongo::ServiceContext, ServiceContextDestructor>;
 }  // namespace
 }  // namespace mongo
 
@@ -288,7 +274,22 @@ struct mongo_csfle_v1_lib {
     mongo_csfle_v1_lib(const mongo_csfle_v1_lib&) = delete;
     void operator=(const mongo_csfle_v1_lib&) = delete;
 
-    mongo::EmbeddedServiceContextPtr serviceContext;
+    /**
+     * This gets called when the CSFLE Library gets torn down, by a call to
+     * mongo_csfle_v1_lib_destroy()
+     */
+    void free() noexcept {
+        if (nullptr != serviceContext) {
+            serviceContext = nullptr;
+
+            auto status = mongo::runGlobalDeinitializers();
+            uassertStatusOKWithContext(status, "Global deinitilization failed");
+
+            mongo::setGlobalServiceContext(nullptr);
+        }
+    }
+
+    mongo::ServiceContext* serviceContext;
 };
 
 struct mongo_csfle_v1_query_analyzer {
@@ -336,6 +337,7 @@ void csfle_lib_fini(mongo_csfle_v1_lib* const lib) {
                                     "Invalid CSFLE Support Library handle."};
     }
 
+    library->free();
     library.reset();
 }
 
