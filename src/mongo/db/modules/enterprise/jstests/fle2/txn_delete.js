@@ -43,10 +43,23 @@ session.commitTransaction();
 
 client.assertEncryptedCollectionCounts("basic", 1, 2, 1, 3);
 
-// Verify we insert two documents in a txn but abort it
+// Verify we delete two documents in a txn but abort it
 session.startTransaction();
 
 assert.commandWorked(sessionColl.deleteOne({"last": "Marco"}));
+
+// In the TXN the counts are right
+client.assertEncryptedCollectionCounts("basic", 0, 2, 2, 4);
+
+assert.commandWorked(session.abortTransaction_forTesting());
+
+// Then they revert after it is aborted
+client.assertEncryptedCollectionCounts("basic", 1, 2, 1, 3);
+
+session.startTransaction();
+
+// Verify we delete a document by an encrypted field but abort it.
+assert.commandWorked(sessionColl.deleteOne({"first": "Mark"}));
 
 // In the TXN the counts are right
 client.assertEncryptedCollectionCounts("basic", 0, 2, 2, 4);
