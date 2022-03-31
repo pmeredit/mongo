@@ -779,6 +779,7 @@ protected:
         for (const auto& filename : filenames) {
             BackupBlock file = BackupBlock(opCtx,
                                            storageGlobalParams.dbpath + '/' + filename,
+                                           /*identToNamespaceAndUUIDMap=*/{},
                                            /*checkpointTimestamp=*/boost::none);
             backupBlocks.push_back(file);
         }
