@@ -1,3 +1,10 @@
+/**
+ * Test find command over encrypted fields for FLE2.
+ * @tags: [
+ *  featureFlagFLE2,
+ * ]
+ */
+
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
 load("jstests/fle2/libs/encrypted_client_util.js");
 
@@ -5,7 +12,6 @@ load("jstests/fle2/libs/encrypted_client_util.js");
 if (!isFLE2Enabled()) {
     return;
 }
-
 /**
  *
  * @param {object} testData An object that contains the contents of the test. Namely:
@@ -108,7 +114,6 @@ const tests = [
         query: {$or: [{ssn: docs[0].ssn}, {age: docs[1].age}]},
         expected: [docs[0], docs[1], docs[3]]
     },
-
     // Update value of document, make sure that query for old value returns 0 documents and query
     // for new value returns 1 document.
     {
@@ -118,14 +123,14 @@ const tests = [
         query: {ssn: docs[1].ssn},
         expected: []
     },
-    {query: {ssn: "555"}, expected: [Object.assign({}, docs[1], {ssn: "555"})]}
+    {query: {ssn: "555"}, expected: [Object.assign({}, docs[1], {ssn: "555"})]},
 ];
 
-const collName = jsTestName();
-
+let collName = jsTestName();
 runEncryptedTest(db, "find", collName, encryptedFields, (edb) => {
     print("non-transaction test cases.");
     const coll = edb[collName];
+    coll.drop();
 
     let i = 0;
     for (const test of tests) {
@@ -133,11 +138,13 @@ runEncryptedTest(db, "find", collName, encryptedFields, (edb) => {
     }
 });
 
-runEncryptedTest(db, "find", collName, encryptedFields, (edb) => {
+collName = collName + "_transaction";
+runEncryptedTest(db, "find_transaction", collName, encryptedFields, (edb) => {
     print("transaction test cases.");
     const session = edb.getMongo().startSession({causalConsistency: false});
     const sessionDB = session.getDatabase(db.getName());
     const sessionColl = sessionDB.getCollection(collName);
+    sessionColl.drop();
 
     let i = 0;
     for (const test of tests) {

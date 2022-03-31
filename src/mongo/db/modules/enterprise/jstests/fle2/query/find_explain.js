@@ -24,8 +24,7 @@ const assertExplainResult = (edb, collName, query, assertions) => {
     if (result.queryPlanner.winningPlan.shards) {
         inputQuery = result.queryPlanner.winningPlan.shards[0].parsedQuery;
     } else {
-        // TODO: SERVER-64055 Find command on mongod.
-        return;
+        inputQuery = result.queryPlanner.parsedQuery;
     }
 
     assertions(inputQuery, result);
