@@ -31,6 +31,14 @@ struct ResolvedEncryptionInfo {
      * regardless of the encryption algorithm or any other encryption options.
      */
     static void throwIfIllegalTypeForEncryption(BSONType bsonType);
+    /**
+     * Overloaded helper to handle checking a BinData element's subtype.
+     */
+    static void throwIfIllegalElemForEncryption(BSONElement elem);
+    /**
+     * Throws an exception if BinData is of subtype 6.
+     */
+    static void throwIfIllegalBinDataSubType(BinDataType binType);
 
     /**
      * Returns true if 'bsonType' is allowed in combination with deterministic encryption.

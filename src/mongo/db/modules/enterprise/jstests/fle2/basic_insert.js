@@ -83,4 +83,10 @@ print(tojson(res));
 
 assert.eq(res.n, 0);
 client.assertWriteCommandReplyFields(res);
+
+// Inserting a document with encrypted data at a path that is marked for encryption, throws an
+// error.
+assert.throwsWithCode(
+    () => edb.basic.runCommand({"insert": "basic", documents: [{"first": BinData(6, "data")}]}),
+    31041);
 }());

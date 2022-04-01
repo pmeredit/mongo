@@ -143,6 +143,18 @@ bool ResolvedEncryptionInfo::isTypeLegalWithFLE2(BSONType bsonType) const {
     }
 }
 
+void ResolvedEncryptionInfo::throwIfIllegalElemForEncryption(BSONElement elem) {
+    elem.type() == BSONType::BinData ? throwIfIllegalBinDataSubType(elem.binDataType())
+                                     : throwIfIllegalTypeForEncryption(elem.type());
+}
+
+void ResolvedEncryptionInfo::throwIfIllegalBinDataSubType(BinDataType binType) {
+    // Encrypting already encrypted data is not allowed.
+    uassert(64095,
+            str::stream() << "Cannot encrypt binary data of subtype 6",
+            binType != BinDataType::Encrypt);
+}
+
 void ResolvedEncryptionInfo::throwIfIllegalTypeForEncryption(BSONType bsonType) {
     switch (bsonType) {
         // These "single-valued" types carry no information other than the type. Client-side

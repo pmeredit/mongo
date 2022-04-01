@@ -36,15 +36,16 @@ const kSingleTypeValuedErrCode = 31041;
 const kProhibitedForDeterministicErrCode = fle2Enabled() ? 6316404 : 31122;
 
 let kIllegalTypes = [
-    {type: "array", code: kProhibitedForDeterministicErrCode},
-    {type: "decimal", code: kProhibitedForDeterministicErrCode},
-    {type: "double", code: kProhibitedForDeterministicErrCode},
-    {type: "javascriptWithScope", code: kProhibitedForDeterministicErrCode},
-    {type: "maxKey", code: kSingleTypeValuedErrCode},
-    {type: "minKey", code: kSingleTypeValuedErrCode},
-    {type: "null", code: kSingleTypeValuedErrCode},
-    {type: "object", code: kProhibitedForDeterministicErrCode},
-    {type: "undefined", code: kSingleTypeValuedErrCode},
+    {type: "array", docs: [{_id: 1}], code: kProhibitedForDeterministicErrCode},
+    {type: "decimal", docs: [{_id: 1}], code: kProhibitedForDeterministicErrCode},
+    {type: "double", docs: [{_id: 1}], code: kProhibitedForDeterministicErrCode},
+    {type: "javascriptWithScope", docs: [{_id: 1}], code: kProhibitedForDeterministicErrCode},
+    {type: "maxKey", docs: [{_id: 1}], code: kSingleTypeValuedErrCode},
+    {type: "minKey", docs: [{_id: 1}], code: kSingleTypeValuedErrCode},
+    {type: "null", docs: [{_id: 1}], code: kSingleTypeValuedErrCode},
+    {type: "object", docs: [{_id: 1}], code: kProhibitedForDeterministicErrCode},
+    {type: "undefined", docs: [{_id: 1}], code: kSingleTypeValuedErrCode},
+    {type: "binData", docs: [{foo: BinData(6, "data")}], code: kSingleTypeValuedErrCode},
 ];
 
 // In FLE 2, encrypting 'bool' is allowed regardless of whether it's queryable.
@@ -75,7 +76,7 @@ for (const illegalType of kIllegalTypes) {
     assert.commandFailedWithCode(
         testDb.runCommand(Object.assign({
             insert: coll.getName(),
-            documents: [{_id: 1}],
+            documents: illegalType.docs,
         },
                                         generateSchema(schemaTemplate, coll.getFullName()))),
         illegalType.code);
