@@ -48,16 +48,16 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
 function insertInitialTestData(client, coll) {
     // Populate the EDC with sample data
     for (let i = 1; i <= 5; i++) {
-        assert.commandWorked(coll.insert({"first": "roger", "ctr": i}));
-        assert.commandWorked(coll.insert({"first": "roderick", "ctr": i}));
+        assert.commandWorked(coll.insert({"first": "roger", "alias": "rog", "ctr": i}));
+        assert.commandWorked(coll.insert({"first": "roderick", "alias": "rod", "ctr": i}));
     }
     for (let i = 1; i <= 10; i++) {
-        assert.commandWorked(coll.insert({"first": "ruben", "ctr": i}));
-        assert.commandWorked(coll.insert({"first": "reginald", "ctr": i}));
+        assert.commandWorked(coll.insert({"first": "ruben", "alias": "ben", "ctr": i}));
+        assert.commandWorked(coll.insert({"first": "reginald", "alias": "reg", "ctr": i}));
     }
-    assert.commandWorked(coll.insert({"first": "rudolf", "ctr": 1}));
-    assert.commandWorked(coll.insert({"first": "brian", "ctr": 1}));
-    client.assertEncryptedCollectionCounts("encrypted", 32, 32, 0, 32);
+    assert.commandWorked(coll.insert({"first": "rudolf", "alias": "rudy", "ctr": 1}));
+    assert.commandWorked(coll.insert({"first": "brian", "alias": "bri", "ctr": 1}));
+    client.assertEncryptedCollectionCounts(coll.getName(), 32, 32, 0, 32);
 }
 
 jsTestLog("Test normal compaction of inserts (ESC) only");
@@ -94,6 +94,84 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
     client.assertStateCollectionsAfterCompact(collName);
 });
 
+jsTestLog("Test normal compaction of deletes");
+runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
+    const coll = edb[collName];
+    insertInitialTestData(client, coll);
+
+    // delete 5 out of 10 'reg' (entries 1-5, in-order)
+    for (let i = 1; i <= 5; i++) {
+        assert.commandWorked(coll.deleteOne({"alias": "reg", "ctr": i}));
+    }
+    client.assertEncryptedCollectionCounts(collName, 27, 32, 5, 37);
+
+    // ECC entries squashed as the deletes are all adjacent; null doc added
+    assert.commandWorked(coll.compact());
+    client.assertEncryptedCollectionCounts(collName, 27, 6, 2, 0);
+    client.assertStateCollectionsAfterCompact(collName);
+
+    // delete the even numbered 'ben's
+    for (let i = 1; i <= 5; i++) {
+        assert.commandWorked(coll.deleteOne({"alias": "ben", "ctr": i * 2}));
+    }
+    client.assertEncryptedCollectionCounts(collName, 22, 6, 7, 5);
+
+    // no ECC entries squashed as no adjacent deletes to merge; no null doc added
+    assert.commandWorked(coll.compact());
+    client.assertEncryptedCollectionCounts(collName, 22, 6, 7, 0);
+    client.assertStateCollectionsAfterCompact(collName);
+
+    // delete the odd numbered 'ben's except 1
+    for (let i = 3; i < 10; i += 2) {
+        assert.commandWorked(coll.deleteOne({"alias": "ben", "ctr": i}));
+    }
+    client.assertEncryptedCollectionCounts(collName, 18, 6, 11, 4);
+
+    // ECC entries 2-10 for 'ben' are merged to a single entry; null doc added
+    assert.commandWorked(coll.compact());
+    client.assertEncryptedCollectionCounts(collName, 18, 6, 4, 0);
+    client.assertStateCollectionsAfterCompact(collName);
+});
+
+jsTestLog("Test compact of 1:1 insert and deletes clears the ESC & ECC");
+runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
+    const coll = edb[collName];
+    for (let i = 1; i <= 100; i++) {
+        assert.commandWorked(
+            coll.insert({"first": "bob_" + (i % 23), "ssn": "222-23-212" + (i % 11), "_id": i}));
+    }
+    client.assertEncryptedCollectionCounts(collName, 100, 200, 0, 200);
+
+    // squash inserts into 23 null docs for "first" and 11 for "ssn"
+    assert.commandWorked(coll.compact());
+    client.assertEncryptedCollectionCounts(collName, 100, 23 + 11, 0, 0);
+    client.assertStateCollectionsAfterCompact(collName);
+
+    // deleting all entries and compacting clears the ESC and ECC
+    for (let i = 100; i > 0; i--) {
+        assert.commandWorked(coll.deleteOne({"_id": i}));
+    }
+    client.assertEncryptedCollectionCounts(collName, 0, 23 + 11, 200, 200);
+
+    assert.commandWorked(coll.compact());
+    client.assertEncryptedCollectionCounts(collName, 0, 0, 0, 0);
+    client.assertStateCollectionsAfterCompact(collName);
+
+    // insert the same entries again, but don't compact before delete
+    for (let i = 1; i <= 100; i++) {
+        assert.commandWorked(
+            coll.insert({"first": "bob_" + (i % 23), "ssn": "222-23-212" + (i % 11), "_id": i}));
+    }
+    client.assertEncryptedCollectionCounts(collName, 100, 200, 0, 200);
+    for (let i = 100; i > 0; i--) {
+        assert.commandWorked(coll.deleteOne({"_id": i}));
+    }
+    client.assertEncryptedCollectionCounts(collName, 0, 200, 200, 400);
+    assert.commandWorked(coll.compact());
+    client.assertEncryptedCollectionCounts(collName, 0, 0, 0, 0);
+    client.assertStateCollectionsAfterCompact(collName);
+});
+
 jsTestLog("Test compact where ecoc and ecoc.compact both exist and ecoc.compact is empty");
 runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
     const coll = edb[collName];
@@ -102,20 +180,21 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
     // fle2.encrypted.ecoc.compact exist before compaction
     assert.commandWorked(edb.createCollection(ecocCompactName));
 
-    // Insert some non-unique values for "first"
+    // Insert & delete some non-unique values for "first"
     for (let i = 1; i <= 5; i++) {
-        assert.commandWorked(coll.insert({"first": "silas"}));
+        assert.commandWorked(coll.insert({"first": "silas", "ctr": i}));
+        assert.commandWorked(coll.deleteOne({"ctr": i}));
     }
-    client.assertEncryptedCollectionCounts(collName, 5, 5, 0, 5);
+    client.assertEncryptedCollectionCounts(collName, 0, 5, 5, 10);
 
     // First compact should be no-op because the ecoc.compact is empty
     assert.commandWorked(coll.compact());
-    client.assertEncryptedCollectionCounts(collName, 5, 5, 0, 5);
+    client.assertEncryptedCollectionCounts(collName, 0, 5, 5, 10);
     client.assertStateCollectionsAfterCompact(collName);
 
     // Second compact compacts "first"
     assert.commandWorked(coll.compact());
-    client.assertEncryptedCollectionCounts(collName, 5, 1, 0, 0);
+    client.assertEncryptedCollectionCounts(collName, 0, 0, 0, 0);
     client.assertStateCollectionsAfterCompact(collName);
 });
 
@@ -123,32 +202,35 @@ jsTestLog("Test compact where ecoc and ecoc.compact both exist and ecoc.compact 
 runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
     const coll = edb[collName];
 
-    // Insert some non-unique values for "first"
-    for (let i = 1; i <= 5; i++) {
-        assert.commandWorked(coll.insert({"first": "silas"}));
+    // Insert some non-unique values for "first"; then delete 1-5
+    for (let i = 1; i <= 10; i++) {
+        assert.commandWorked(coll.insert({"first": "silas", "ctr": i}));
+        if (i <= 5) {
+            assert.commandWorked(coll.deleteOne({"ctr": i}));
+        }
     }
-    client.assertEncryptedCollectionCounts(collName, 5, 5, 0, 5);
+    client.assertEncryptedCollectionCounts(collName, 5, 10, 5, 15);
 
     // Rename the ecoc collection to a fle2.encrypted.ecoc.compact, and recreate the ecoc collection
     assert.commandWorked(admin.runCommand(
         {renameCollection: dbName + "." + ecocName, to: dbName + "." + ecocCompactName}));
     assert.commandWorked(edb.createCollection(ecocName));
-    client.assertEncryptedCollectionCounts(collName, 5, 5, 0, 0);
+    client.assertEncryptedCollectionCounts(collName, 5, 10, 5, 0);
 
     // Insert non-unique values for "ssn"
     for (let i = 1; i <= 5; i++) {
         assert.commandWorked(coll.insert({"ssn": "987-98-9876"}));
     }
-    client.assertEncryptedCollectionCounts(collName, 10, 10, 0, 5);
+    client.assertEncryptedCollectionCounts(collName, 10, 15, 5, 5);
 
-    // First compact should only compact values inserted for "first"
+    // First compact should only compact values inserted/deleted for "first"
     assert.commandWorked(coll.compact());
-    client.assertEncryptedCollectionCounts(collName, 10, 6, 0, 5);
+    client.assertEncryptedCollectionCounts(collName, 10, 6, 2, 5);
     client.assertStateCollectionsAfterCompact(collName);
 
     // Second compact compacts the values inserted for "ssn"
     assert.commandWorked(coll.compact());
-    client.assertEncryptedCollectionCounts(collName, 10, 2, 0, 0);
+    client.assertEncryptedCollectionCounts(collName, 10, 2, 2, 0);
     client.assertStateCollectionsAfterCompact(collName);
 });
 
