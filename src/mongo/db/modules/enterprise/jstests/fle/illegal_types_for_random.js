@@ -67,7 +67,6 @@ assertInsertingEncryptedValueSucceeds(Timestamp(1, 1234));
 // - minKey
 // - null
 // - undefined
-// - BinData with Subtype 6
 function assertInsertingEncryptedValueFails(val) {
     insertCommandTemplate.documents[0].foo = val;
     assert.commandFailedWithCode(testDb.runCommand(insertCommandTemplate), 31041);
@@ -77,7 +76,6 @@ assertInsertingEncryptedValueFails(MaxKey);
 assertInsertingEncryptedValueFails(MinKey);
 assertInsertingEncryptedValueFails(null);
 assertInsertingEncryptedValueFails(undefined);
-assertInsertingEncryptedValueFails(BinData(6, "data"));
 
 mongocryptd.stop();
 }());

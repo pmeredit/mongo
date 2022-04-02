@@ -923,7 +923,7 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
                                 const boost::optional<const EncryptionSchemaTreeNode&> schema) {
     // Some types are unconditionally banned. Make sure we're not trying to mark any such type for
     // encryption.
-    ResolvedEncryptionInfo::throwIfIllegalElemForEncryption(elem);
+    ResolvedEncryptionInfo::throwIfIllegalTypeForEncryption(elem.type());
 
     // There are more stringent requirements for which encryption placeholders are legal in the
     // context of a query which makes a comparison to an encrypted field. For instance, comparisons

@@ -202,16 +202,5 @@ assert.commandFailedWithCode(testDb.runCommand(Object.assign({
                                                              encryptSchema)),
                              fle2Enabled() ? 6316403 : 51194);
 
-// Test that inserting a document with encrypted data at a path that is marked for encryption,
-// fails.
-encryptSchema = generateSchema(
-    {foo: {encrypt: {algorithm: kRandomAlgo, keyId: [UUID()], bsonType: "string"}}}, namespace);
-assert.commandFailedWithCode(testDb.runCommand(Object.assign({
-    insert: "foo",
-    documents: [{foo: BinData(6, "data")}],
-},
-                                                             encryptSchema)),
-                             31041);
-
 mongocryptd.stop();
 }());

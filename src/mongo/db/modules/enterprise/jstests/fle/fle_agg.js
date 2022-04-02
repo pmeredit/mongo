@@ -178,21 +178,6 @@ for (let stage of invalidStages) {
     assert.commandFailedWithCode(testDB.runCommand(aggCommand), 31011);
 }
 
-// Correctly fail for stages that query an encrypted field with encrypted data.
-command = Object.assign(
-    {
-        aggregate: "test",
-        pipeline: [{$match: {location: BinData(6, "data")}}],
-        allowDiskUse: true,
-        cursor: {},
-        maxTimeMS: 1,
-        explain: true,
-    },
-    generateSchema(
-        {location: {encrypt: {algorithm: kRandomAlgo, keyId: [UUID()], bsonType: "string"}}},
-        coll.getFullName()));
-assert.commandFailedWithCode(testDB.runCommand(command), 31041);
-
 // Correctly fail for stages which reference additional collections.
 command = buildAggregate([{
             $graphLookup: {

@@ -399,11 +399,6 @@ updateCommand.updates = [{q: {}, u: [{}], upsert: true}];
 assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, schema)),
                              [31150, 6316403]);
 
-// Updating a document with encrypted data at a path that is marked for encryption, fails.
-schema = generateSchema({foo: encryptDoc, bar: encryptDoc}, namespace);
-updateCommand.updates = [{q: {bar: {$in: ["1", "5"]}}, u: {$set: {foo: BinData(6, "data")}}}];
-assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, schema)), 31041);
-
 //
 // Note: the following syntax is only valid for FLE 1, so the following tests exercise FLE 1-only
 // behavior.
