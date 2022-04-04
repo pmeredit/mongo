@@ -265,12 +265,21 @@ MongoRunner.stopMongod(conn);
 // Startup again but with 'recoverFromOplogAsStandalone: true' this time.
 validateSelectiveBackupRestore();
 
+clearRawMongoProgramOutput();
+
 // Finally, restart the node as a replica set to build any unfinished index builds.
-rst = new ReplSetTest({nodes: [{dbpath: backupDbPath, noCleanData: true, port: primary.port}]});
+rst = new ReplSetTest({
+    nodes: [{dbpath: backupDbPath, noCleanData: true, port: primary.port}],
+    nodeOptions: {setParameter: {logComponentVerbosity: tojsononeline({storage: {recovery: 2}})}}
+});
 rst.startSet();
 
 primary = rst.getPrimary();
 db = primary.getDB(dbName);
+
+// Committing a prepared transaction cannot be run before its prepare oplog entry has been majority
+// committed. Wait for a stable checkpoint to be performed.
+checkLog.containsJson(primary, 23986);
 
 // Commit the un-committed prepared transaction.
 const commitSession = PrepareHelpers.createSessionWithGivenId(primary, lsid);
