@@ -12,6 +12,8 @@ load("jstests/fle2/libs/encrypted_client_util.js");
 // Set up the encrypted collection.
 const collName = jsTestName();
 const dbName = jsTestName();
+const dbTest = db.getSiblingDB(dbName);
+dbTest.dropDatabase();
 let client = new EncryptedClient(db.getMongo(), dbName);
 assert.commandWorked(client.createEncryptionCollection(collName, {
     encryptedFields:
@@ -34,8 +36,7 @@ const assertExplainResult = (edb, collName, pipeline, assertions) => {
             assertions(inputQuery, result);
         }
     } else {
-        // TODO: SERVER-63312 Agg command on mongod.
-        return;
+        assertions(result.queryPlanner.parsedQuery, result);
     }
 };
 
