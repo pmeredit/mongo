@@ -1,18 +1,14 @@
 /**
- * Test find command over encrypted fields for FLE2.
+ * Test count command over encrypted fields for FLE2.
  * @tags: [
  *  featureFlagFLE2,
  * ]
  */
-
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
 load("jstests/fle2/libs/encrypted_client_util.js");
 load("src/mongo/db/modules/enterprise/jstests/fle2/query/match_expression_data.js");
 
 (function() {
-if (!isFLE2Enabled()) {
-    return;
-}
 /**
  *
  * @param {object} testData An object that contains the contents of the test. Namely:
@@ -32,18 +28,17 @@ const runTestWithColl = ({insert = [], before = null, query, expected}, testColl
     for (const doc of insert) {
         assert.commandWorked(testColl.insert(doc), message);
     }
-    const result = testColl.find(query, {[kSafeContentField]: 0}).toArray();
-
-    assertArrayEq({actual: result, expected, extraErrorMsg: tojson(message)});
+    const result = testColl.count(query);
+    assert.eq(result, expected.length, tojson(message));
 };
 
 const {encryptedFields, tests} = matchExpressionFLETestCases;
 
-let collName = jsTestName();
-runEncryptedTest(db, "find", collName, encryptedFields, (edb) => {
+const collName = jsTestName();
+
+runEncryptedTest(db, "count", collName, encryptedFields, (edb) => {
     print("non-transaction test cases.");
     const coll = edb[collName];
-    coll.drop();
 
     let i = 0;
     for (const test of tests) {
@@ -51,19 +46,6 @@ runEncryptedTest(db, "find", collName, encryptedFields, (edb) => {
     }
 });
 
-collName = collName + "_transaction";
-runEncryptedTest(db, "find_transaction", collName, encryptedFields, (edb) => {
-    print("transaction test cases.");
-    const session = edb.getMongo().startSession({causalConsistency: false});
-    const sessionDB = session.getDatabase(db.getName());
-    const sessionColl = sessionDB.getCollection(collName);
-    sessionColl.drop();
-
-    let i = 0;
-    for (const test of tests) {
-        session.startTransaction();
-        runTestWithColl(test, sessionColl, {index: i++, testData: test, transaction: true});
-        session.commitTransaction();
-    }
-});
+// Note: Count command is not supported in multi-document transactions, so only run outside of a
+// transaction.
 }());

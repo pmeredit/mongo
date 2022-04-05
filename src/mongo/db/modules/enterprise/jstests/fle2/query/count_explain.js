@@ -1,5 +1,5 @@
 /**
- * Test explain for find command over encrypted fields for FLE2.
+ * Test explain for count command over encrypted fields for FLE2.
  * @tags: [
  *  featureFlagFLE2,
  * ]
@@ -20,9 +20,8 @@ const encryptedFields = {
 const assertExplainResult = (edb, collName, query, assertions) => {
     const result = assert.commandWorked(edb.runCommand({
         explain: {
-            find: collName,
-            projection: {[kSafeContentField]: 0},
-            filter: query,
+            count: collName,
+            query: query,
         },
         verbosity: "queryPlanner"
     }));
@@ -36,7 +35,7 @@ const assertExplainResult = (edb, collName, query, assertions) => {
     assertions(inputQuery, result);
 };
 
-runEncryptedTest(db, "find_explain", collName, encryptedFields, (edb) => {
+runEncryptedTest(db, "count_explain", collName, encryptedFields, (edb) => {
     assert.commandWorked(edb[collName].insert({_id: 0, ssn: "123"}));
     assertExplainResult(edb, collName, {"ssn": "123"}, (query, result) => {
         assert(query.hasOwnProperty(kSafeContentField), result);
