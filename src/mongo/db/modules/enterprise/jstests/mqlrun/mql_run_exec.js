@@ -7,10 +7,17 @@
 // "new Date(1427144809506)" to represent special BSON types. As a future improvement (see
 // SERVER-45247), we could change mqlrun to produce output as strict extended JSON strings.
 //
-// If 'outputBson' is true, instructs mqlrun to return the result set as BSON. Asserts that mqlrun
-// returns with a successful exit code, and returns null on success. As a future improvement, we
-// could improve the test machinery to be able to process BSON-formatted output produced by mqlrun.
-function mqlrunExec(inputFileName, pipeline, {outputBson = false} = {}) {
+// If 'outputBson' is true, instructs mqlrun to return the result set as BSON.
+//
+// If 'allowSpillToDisk' is true, then mqlrun is configured with the temp file directory for
+// spilling to disk.
+//
+// Asserts that mqlrun returns with exit code 'expectedReturnCode'. Returns null if 'outputBson' is
+// true, and an array of strings with mqlrun output otherwise. As a future improvement, we could
+// improve the test machinery to be able to process BSON-formatted output produced by mqlrun.
+function mqlrunExec(inputFileName,
+                    pipeline,
+                    {outputBson = false, allowSpillToDisk = true, expectedReturnCode = 0} = {}) {
     clearRawMongoProgramOutput();
 
     // Temp directory for mqlrun.
@@ -24,16 +31,16 @@ function mqlrunExec(inputFileName, pipeline, {outputBson = false} = {}) {
 
     const mqlrunExecutableName = _isWindows() ? "mqlrun.exe" : "mqlrun";
     const outputFormatFlag = outputBson ? "-b" : "-j";
-    assert.eq(0,
-              runMongoProgram(mqlrunExecutableName,
-                              outputFormatFlag,
-                              "-e",
-                              stringifiedPipeline,
-                              "-t",
-                              tempDir,
-                              "-f",
-                              inputFileName),
-              "mqlrun exited with non-ok status");
+    let mqlrunArguments = [mqlrunExecutableName, outputFormatFlag, "-e", stringifiedPipeline, "-f"];
+    if (allowSpillToDisk) {
+        mqlrunArguments.push("-t");
+        mqlrunArguments.push(tempDir);
+    }
+    mqlrunArguments.push(inputFileName);
+    assert.eq(expectedReturnCode,
+              runMongoProgram(...mqlrunArguments),
+              expectedReturnCode === 0 ? "mqlrun exited with non-ok status"
+                                       : "mqlrun exited with unexpected status");
 
     if (outputBson) {
         return null;
