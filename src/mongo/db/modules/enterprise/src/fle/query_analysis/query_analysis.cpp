@@ -925,9 +925,10 @@ BSONObj buildEncryptPlaceholder(BSONElement elem,
     // Some types are unconditionally banned. Make sure we're not trying to mark any such type for
     // encryption.
     uassert(31041,
-            str::stream() << "Cannot encrypt element of type: " << typeName(elem.type()),
-            metadata.isTypeLegal(elem.type()));
-
+            str::stream() << "Cannot encrypt element of type: "
+                          << (elem.type() == BSONType::BinData ? "encrypted binary data"
+                                                               : typeName(elem.type())),
+            metadata.isElemLegalForEncryption(elem));
     // There are more stringent requirements for which encryption placeholders are legal in the
     // context of a query which makes a comparison to an encrypted field. For instance, comparisons
     // are only possible against deterministically encrypted fields, whereas either the random or

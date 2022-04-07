@@ -2,10 +2,9 @@
  * Copyright (C) 2019 MongoDB, Inc.  All Rights Reserved.
  */
 
-#include "mongo/platform/basic.h"
-
-#include "mongo/crypto/encryption_fields_util.h"
 #include "resolved_encryption_info.h"
+#include "mongo/crypto/encryption_fields_util.h"
+#include "mongo/platform/basic.h"
 
 namespace mongo {
 
@@ -141,6 +140,20 @@ bool ResolvedEncryptionInfo::algorithmIs(Fle2AlgorithmInt fle2Alg) const {
 
 bool ResolvedEncryptionInfo::isFle2Encrypted() const {
     return algorithmIs(Fle2AlgorithmInt::kUnindexed) || algorithmIs(Fle2AlgorithmInt::kEquality);
+}
+
+bool ResolvedEncryptionInfo::isElemLegalForEncryption(BSONElement elem) const {
+    if (elem.type() == BSONType::BinData)
+        return isBinDataSubTypeLegalForEncryption(elem.binDataType());
+
+    return isTypeLegal(elem.type());
+}
+
+bool ResolvedEncryptionInfo::isBinDataSubTypeLegalForEncryption(BinDataType binType) const {
+    // Encrypting already encrypted data is not allowed.
+    if (binType == BinDataType::Encrypt)
+        return false;
+    return true;
 }
 
 bool ResolvedEncryptionInfo::isTypeLegal(BSONType bsonType) const {

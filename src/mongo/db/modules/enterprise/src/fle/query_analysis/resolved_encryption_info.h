@@ -27,6 +27,15 @@ namespace mongo {
  */
 struct ResolvedEncryptionInfo {
     /**
+     * Helper to handle checking a BinData element's subtype.
+     */
+    bool isElemLegalForEncryption(BSONElement elem) const;
+    /**
+     * Throws an exception if BinData is of subtype 6.
+     */
+    bool isBinDataSubTypeLegalForEncryption(BinDataType binType) const;
+
+    /**
      * Returns true if 'bsonType' is allowed with the algorithm defined in this object.
      */
     bool isTypeLegal(BSONType bsonType) const;

@@ -72,10 +72,17 @@ function assertInsertingEncryptedValueFails(val) {
     assert.commandFailedWithCode(testDb.runCommand(insertCommandTemplate), 31041);
 }
 
+// Test that BinData with Subtype 6 cannot be marked for encryption.
+function assertInsertingEncryptedBinDataFails(val) {
+    insertCommandTemplate.documents[0].foo = val;
+    assert.commandFailedWithCode(testDb.runCommand(insertCommandTemplate), 31041);
+}
+
 assertInsertingEncryptedValueFails(MaxKey);
 assertInsertingEncryptedValueFails(MinKey);
 assertInsertingEncryptedValueFails(null);
 assertInsertingEncryptedValueFails(undefined);
+assertInsertingEncryptedBinDataFails(BinData(6, "data"));
 
 mongocryptd.stop();
 }());
