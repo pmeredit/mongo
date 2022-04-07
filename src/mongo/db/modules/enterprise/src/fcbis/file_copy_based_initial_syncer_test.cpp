@@ -63,7 +63,7 @@ struct CollectionCloneInfo {
 
 class FileCopyBasedInitialSyncerTest : public ServiceContextMongoDTest, public SyncSourceSelector {
 public:
-    FileCopyBasedInitialSyncerTest() : ServiceContextMongoDTest("devnull") {}
+    FileCopyBasedInitialSyncerTest() : ServiceContextMongoDTest(Options{}.engine("devnull")) {}
 
     executor::ThreadPoolMock::Options makeThreadPoolMockOptions() const;
 

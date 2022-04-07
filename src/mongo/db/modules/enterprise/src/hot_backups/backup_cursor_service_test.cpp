@@ -24,7 +24,7 @@ const int kBlockSizeMB = 16;
 class BackupCursorServiceTest : public ServiceContextMongoDTest {
 public:
     BackupCursorServiceTest()
-        : ServiceContextMongoDTest("devnull"),
+        : ServiceContextMongoDTest(Options{}.engine("devnull")),
           _opCtx(cc().makeOperationContext()),
           _backupCursorService(std::make_unique<BackupCursorService>()) {
         repl::ReplicationCoordinator::set(

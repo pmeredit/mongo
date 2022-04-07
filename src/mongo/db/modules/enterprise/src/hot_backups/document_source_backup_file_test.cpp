@@ -58,7 +58,8 @@ public:
 class DocumentSourceBackupFileTest : public ServiceContextMongoDTest {
 public:
     DocumentSourceBackupFileTest()
-        : ServiceContextMongoDTest("devnull"), _opCtx(cc().makeOperationContext()) {
+        : ServiceContextMongoDTest(Options{}.engine("devnull")),
+          _opCtx(cc().makeOperationContext()) {
         repl::ReplicationCoordinator::set(
             getServiceContext(),
             std::make_unique<repl::ReplicationCoordinatorMock>(getServiceContext()));
