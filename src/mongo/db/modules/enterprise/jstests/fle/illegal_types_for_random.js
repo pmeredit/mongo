@@ -1,8 +1,5 @@
 /**
  * Test that random encryption is banned for the correct set of BSON types.
- *
- * TODO SERVER-64126 Enable this test
- * @tags: [unsupported_fle_2]
  */
 (function() {
 "use strict";

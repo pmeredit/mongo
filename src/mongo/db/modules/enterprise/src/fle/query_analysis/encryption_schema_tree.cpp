@@ -525,8 +525,13 @@ std::unique_ptr<EncryptionSchemaTreeNode> EncryptionSchemaTreeNode::parseEncrypt
                 queries.value());
         }
 
+        boost::optional<BSONType> optType = boost::none;
+        if (field.getBsonType().has_value()) {
+            optType = typeFromName(field.getBsonType().value());
+        }
+
         ResolvedEncryptionInfo metadataForChild{
-            field.getKeyId(), typeFromName(field.getBsonType()), std::move(supportedQueries)};
+            field.getKeyId(), optType, std::move(supportedQueries)};
 
         root->addChild(std::move(fieldRef),
                        std::make_unique<EncryptionSchemaEncryptedNode>(std::move(metadataForChild),

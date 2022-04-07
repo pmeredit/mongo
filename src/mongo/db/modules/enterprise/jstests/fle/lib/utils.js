@@ -91,12 +91,6 @@ function generateSchemaV2(fieldMap, namespace) {
             continue;
         }
 
-        // TODO SERVER-64126 Make bsonType optional.
-        assert(!fle2Enabled() ||
-                   (pathSpec.encrypt.hasOwnProperty("bsonType") &&
-                    typeof pathSpec.encrypt.bsonType == 'string'),
-               "FLE 2 requires exactly one bsonType");
-
         let encryptedField = {
             path: path,
             keyId: pathSpec["encrypt"]["keyId"][0],

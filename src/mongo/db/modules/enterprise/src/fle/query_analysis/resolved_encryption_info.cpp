@@ -71,10 +71,10 @@ bool isTypeLegalForFle1Algorithm(BSONType bsonType, FleAlgorithmEnum algo) {
 
 ResolvedEncryptionInfo::ResolvedEncryptionInfo(
     UUID uuid,
-    BSONType bsonType,
+    boost::optional<BSONType> bsonType,
     boost::optional<std::vector<QueryTypeConfig>> fle2SupportedQueries)
     : keyId(EncryptSchemaKeyId({std::move(uuid)})),
-      bsonTypeSet(MatcherTypeSet(bsonType)),
+      bsonTypeSet(bsonType ? boost::optional<MatcherTypeSet>(bsonType.value()) : boost::none),
       fle2SupportedQueries(std::move(fle2SupportedQueries)) {
 
     // A field is considered unindexed unless the user specifies supported queries for it.
@@ -90,12 +90,14 @@ ResolvedEncryptionInfo::ResolvedEncryptionInfo(
 
     // Check for types that are prohibited for all encryption algorithms and types not legal in
     // combination with the FLE 2 encryption algorithm.
-    for (auto&& type : this->bsonTypeSet->bsonTypes) {
-        // TODO SERVER-63657: replace "FLE 2" in the following error message with chosen string.
-        uassert(6316404,
-                str::stream() << "Cannot use FLE 2 encryption for element of type: "
-                              << typeName(type),
-                this->isTypeLegal(type));
+    if (this->bsonTypeSet.has_value()) {
+        for (auto&& type : this->bsonTypeSet->bsonTypes) {
+            // TODO SERVER-63657: replace "FLE 2" in the following error message with chosen string.
+            uassert(6316404,
+                    str::stream() << "Cannot use FLE 2 encryption for element of type: "
+                                  << typeName(type),
+                    this->isTypeLegal(type));
+        }
     }
 }
 

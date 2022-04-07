@@ -53,7 +53,7 @@ struct ResolvedEncryptionInfo {
      * illegal combination of options.
      */
     ResolvedEncryptionInfo(UUID uuid,
-                           BSONType bsonType,
+                           boost::optional<BSONType> bsonType,
                            boost::optional<std::vector<QueryTypeConfig>> fle2SupportedQueries);
 
     /**
