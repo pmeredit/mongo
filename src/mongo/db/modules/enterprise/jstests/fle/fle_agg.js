@@ -181,7 +181,7 @@ for (let stage of invalidStages) {
 // Correctly fail for stages that query an encrypted field with encrypted data.
 command = Object.assign(
     {
-        aggregate: "test",
+        aggregate: "fle_agg",
         pipeline: [{$match: {location: BinData(6, "data")}}],
         allowDiskUse: true,
         cursor: {},
@@ -214,27 +214,27 @@ assert.commandFailedWithCode(testDB.runCommand(command), 40324);
 
 // Test that all collection-less aggregations result in a failure.
 command = buildCollectionlessAggregate([{$changeStream: {}}]);
-assert.commandFailedWithCode(testDB.runCommand(command), 31011);
+assert.commandFailedWithCode(testDB.runCommand(command), 6411900);
 command = buildCollectionlessAggregate([{$listLocalSessions: {}}]);
-assert.commandFailedWithCode(testDB.runCommand(command), 31106);
+assert.commandFailedWithCode(testDB.runCommand(command), 6411900);
 command = buildCollectionlessAggregate([{$listLocalSessions: {allUsers: true}}]);
-assert.commandFailedWithCode(testDB.runCommand(command), 31106);
+assert.commandFailedWithCode(testDB.runCommand(command), 6411900);
 command = buildCollectionlessAggregate([{$listSessions: {}}]);
-assert.commandFailedWithCode(testDB.runCommand(command), 31106);
+assert.commandFailedWithCode(testDB.runCommand(command), 6411900);
 command = buildCollectionlessAggregate([{$listSessions: {allUsers: true}}]);
-assert.commandFailedWithCode(testDB.runCommand(command), 31106);
+assert.commandFailedWithCode(testDB.runCommand(command), 6411900);
 
 // CurrentOp must be run against admin db.
 assert.commandFailedWithCode(
     testDB.getSiblingDB("admin").runCommand(buildCollectionlessAggregate([{$currentOp: {}}])),
-    31011);
+    6411900);
 
 // Invalid pipelines correctly fail to parse.
 assert.commandFailedWithCode(testDB.runCommand(buildAggregate([{$unknownStage: {}}], {})), 40324);
 
 // Generic command options are correctly reflected back from mongocryptd.
 command = Object.assign({
-    aggregate: "test",
+    aggregate: "fle_agg",
     pipeline: [{$limit: NumberLong(1)}],
     allowDiskUse: true,
     cursor: {},

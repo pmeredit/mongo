@@ -13,7 +13,7 @@ load("src/mongo/db/modules/enterprise/jstests/fle/lib/utils.js");
 const mongocryptd = new MongoCryptD();
 mongocryptd.start();
 const conn = mongocryptd.getConnection();
-const testDb = conn.getDB("test");
+const testDb = conn.getDB("db");
 
 // Verify that a valid 'encryptionInformation' is parsed correctly.
 let validConfigurations = [
@@ -29,7 +29,7 @@ let validConfigurations = [
 ];
 for (const efc of validConfigurations) {
     const res = assert.commandWorked(testDb.runCommand({
-        insert: "db.test",
+        insert: "test",
         documents: [{"foo": "bar"}],
         encryptionInformation: {
             type: 1,
@@ -51,7 +51,7 @@ for (const efc of validConfigurations) {
 // Test that encryptionInformation is mutually exclusive with jsonSchema, but at least one must be
 // provided.
 assert.commandFailedWithCode(testDb.runCommand({
-    insert: "db.test",
+    insert: "test",
     documents: [{"foo": "bar"}],
     encryptionInformation: {type: 1, schema: {"db.test": {}}},
     jsonSchema: {}
@@ -60,7 +60,7 @@ assert.commandFailedWithCode(testDb.runCommand({
 
 // Test that encryptionInformation is mutually exclusive with isRemoteSchema.
 assert.commandFailedWithCode(testDb.runCommand({
-    insert: "db.test",
+    insert: "test",
     documents: [{"foo": "bar"}],
     encryptionInformation: {type: 1, schema: {"db.test": {}}},
     isRemoteSchema: false
@@ -69,7 +69,7 @@ assert.commandFailedWithCode(testDb.runCommand({
 
 // Test that 'schema' must be an object.
 assert.commandFailedWithCode(testDb.runCommand({
-    insert: "db.test",
+    insert: "test",
     documents: [{"foo": "bar"}],
     encryptionInformation: {type: 1, schema: "secret"},
 }),
@@ -77,13 +77,13 @@ assert.commandFailedWithCode(testDb.runCommand({
 
 // Test that 'schema' must contain exactly one namespace.
 assert.commandFailedWithCode(testDb.runCommand({
-    insert: "db.test",
+    insert: "test",
     documents: [{"foo": "bar"}],
     encryptionInformation: {type: 1, schema: {"db.test": {}, "db.test2": {}}},
 }),
                              6327503);
 assert.commandFailedWithCode(testDb.runCommand({
-    insert: "db.test",
+    insert: "test",
     documents: [{"foo": "bar"}],
     encryptionInformation: {type: 1, schema: {}},
 }),
@@ -92,7 +92,7 @@ assert.commandFailedWithCode(testDb.runCommand({
 // Test that 'encryptionInformation' must be an object.
 assert.commandFailedWithCode(
     testDb.runCommand(
-        {insert: "db.test", documents: [{"foo": "bar"}], encryptionInformation: "secret"}),
+        {insert: "test", documents: [{"foo": "bar"}], encryptionInformation: "secret"}),
     6327501);
 
 mongocryptd.stop();
