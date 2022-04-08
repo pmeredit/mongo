@@ -125,25 +125,31 @@ BSONObj analyzeNonExplainQuery(const BSONObj document,
 
     BSONObjBuilder schemaInfoBuilder;
     if (commandName == "find"_sd) {
-        query_analysis::processFindCommand(opCtx, ns.db().toString(), document, &schemaInfoBuilder);
+        auto db = ns.db().toString();
+        query_analysis::processFindCommand(
+            opCtx, std::move(db), document, &schemaInfoBuilder, std::move(ns));
     } else if (commandName == "aggregate"_sd) {
+        auto db = ns.db().toString();
         query_analysis::processAggregateCommand(
-            opCtx, ns.db().toString(), document, &schemaInfoBuilder);
+            opCtx, std::move(db), document, &schemaInfoBuilder, std::move(ns));
     } else if (commandName == "findandmodify"_sd || commandName == "findAndModify"_sd) {
+        auto db = ns.db().toString();
         query_analysis::processFindAndModifyCommand(
-            opCtx, ns.db().toString(), document, &schemaInfoBuilder);
+            opCtx, std::move(db), document, &schemaInfoBuilder, std::move(ns));
     } else if (commandName == "count"_sd) {
+        auto db = ns.db().toString();
         query_analysis::processCountCommand(
-            opCtx, ns.db().toString(), document, &schemaInfoBuilder);
+            opCtx, std::move(db), document, &schemaInfoBuilder, std::move(ns));
     } else if (commandName == "distinct"_sd) {
+        auto db = ns.db().toString();
         query_analysis::processDistinctCommand(
-            opCtx, ns.db().toString(), document, &schemaInfoBuilder);
+            opCtx, std::move(db), document, &schemaInfoBuilder, std::move(ns));
     } else if (commandName == "update"_sd) {
-        query_analysis::processUpdateCommand(opCtx, opmsg, &schemaInfoBuilder);
+        query_analysis::processUpdateCommand(opCtx, opmsg, &schemaInfoBuilder, std::move(ns));
     } else if (commandName == "insert"_sd) {
-        query_analysis::processInsertCommand(opCtx, opmsg, &schemaInfoBuilder);
+        query_analysis::processInsertCommand(opCtx, opmsg, &schemaInfoBuilder, std::move(ns));
     } else if (commandName == "delete"_sd) {
-        query_analysis::processDeleteCommand(opCtx, opmsg, &schemaInfoBuilder);
+        query_analysis::processDeleteCommand(opCtx, opmsg, &schemaInfoBuilder, std::move(ns));
     } else {
         uasserted(mongo::ErrorCodes::CommandNotFound,
                   str::stream() << "Query contains an unknown command: " << commandName);

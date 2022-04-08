@@ -109,7 +109,12 @@ public:
                         const std::string& dbname,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        query_analysis::processFindCommand(opCtx, dbname, cmdObj, result);
+        query_analysis::processFindCommand(
+            opCtx,
+            dbname,
+            cmdObj,
+            result,
+            NamespaceString{CommandHelpers::parseNsFromCommand(dbname, cmdObj)});
     }
 } cmdCryptDFind;
 
@@ -122,7 +127,12 @@ public:
                         const std::string& dbname,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        query_analysis::processAggregateCommand(opCtx, dbname, cmdObj, result);
+        query_analysis::processAggregateCommand(
+            opCtx,
+            dbname,
+            cmdObj,
+            result,
+            NamespaceString{CommandHelpers::parseNsFromCommand(dbname, cmdObj)});
     }
 } cmdCryptDAggregate;
 
@@ -135,7 +145,12 @@ public:
                         const std::string& dbname,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        query_analysis::processDistinctCommand(opCtx, dbname, cmdObj, result);
+        query_analysis::processDistinctCommand(
+            opCtx,
+            dbname,
+            cmdObj,
+            result,
+            NamespaceString{CommandHelpers::parseNsFromCommand(dbname, cmdObj)});
     }
 } cmdCryptDDistinct;
 
@@ -147,7 +162,12 @@ public:
                         const std::string& dbname,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        query_analysis::processCountCommand(opCtx, dbname, cmdObj, result);
+        query_analysis::processCountCommand(
+            opCtx,
+            dbname,
+            cmdObj,
+            result,
+            NamespaceString{CommandHelpers::parseNsFromCommand(dbname, cmdObj)});
     }
 } cmdCryptDCount;
 
@@ -160,7 +180,12 @@ public:
                         const std::string& dbname,
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
-        query_analysis::processFindAndModifyCommand(opCtx, dbname, cmdObj, result);
+        query_analysis::processFindAndModifyCommand(
+            opCtx,
+            dbname,
+            cmdObj,
+            result,
+            NamespaceString{CommandHelpers::parseNsFromCommand(dbname, cmdObj)});
     }
 } cmdCryptDFindAndModify;
 
@@ -211,6 +236,11 @@ public:
                        StringData dbName)
             : CommandInvocation(definition), _request(request), _dbName(dbName) {}
 
+    protected:
+        NamespaceString ns() const final {
+            return NamespaceString(CommandHelpers::parseNsFromCommand(_dbName, _request.body));
+        }
+
     private:
         bool supportsWriteConcern() const final {
             MONGO_UNREACHABLE;
@@ -223,10 +253,6 @@ public:
 
         bool allowsSpeculativeMajorityReads() const final {
             MONGO_UNREACHABLE;
-        }
-
-        NamespaceString ns() const final {
-            return NamespaceString(CommandHelpers::parseNsFromCommand(_dbName, _request.body));
         }
 
         void doCheckAuthorization(OperationContext* opCtx) const final {}
@@ -281,7 +307,7 @@ public:
         void processWriteCommand(OperationContext* opCtx,
                                  const OpMsgRequest& request,
                                  BSONObjBuilder* builder) final {
-            query_analysis::processInsertCommand(opCtx, request, builder);
+            query_analysis::processInsertCommand(opCtx, request, builder, ns());
         }
     };
 
@@ -308,7 +334,7 @@ public:
         void processWriteCommand(OperationContext* opCtx,
                                  const OpMsgRequest& request,
                                  BSONObjBuilder* builder) final {
-            query_analysis::processUpdateCommand(opCtx, request, builder);
+            query_analysis::processUpdateCommand(opCtx, request, builder, ns());
         }
     };
 
@@ -335,7 +361,7 @@ public:
         void processWriteCommand(OperationContext* opCtx,
                                  const OpMsgRequest& request,
                                  BSONObjBuilder* builder) final {
-            query_analysis::processDeleteCommand(opCtx, request, builder);
+            query_analysis::processDeleteCommand(opCtx, request, builder, ns());
         }
     };
 
