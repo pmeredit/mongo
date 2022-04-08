@@ -15,6 +15,9 @@ function runTest(conn) {
     let dbName = 'txn_contention_find_and_modify';
     let db = conn.getDB(dbName);
 
+    // TODO SERVER-65395: Remove when fle2 tests can handle a retry limit for internal transactions.
+    configureFailPoint(conn, "skipTransactionApiRetryCheckInHandleError");
+
     let client = new EncryptedClient(db.getMongo(), dbName);
 
     assert.commandWorked(client.createEncryptionCollection("basic", {
