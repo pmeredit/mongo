@@ -37,6 +37,14 @@ const runTestWithColl = ({insert = [], before = null, query, expected}, testColl
     assertArrayEq({actual: result, expected, extraErrorMsg: tojson(message)});
 };
 
+// To be run immediately after runTestWithColl. Does not preform the 'before' or 'insert' actions;
+// only runs the provided query and asserts on the expected documents.
+const runTestWithGetMores = ({query, expected}, testColl, message) => {
+    const extraErrorMsg = Object.assign({}, message, {withGetMores: true});
+    const result = testColl.find(query, {[kSafeContentField]: 0}).batchSize(1).toArray();
+    assertArrayEq({actual: result, expected, extraErrorMsg: tojson(extraErrorMsg)});
+};
+
 const {encryptedFields, tests} = matchExpressionFLETestCases;
 
 let collName = jsTestName();
@@ -47,7 +55,10 @@ runEncryptedTest(db, "find", collName, encryptedFields, (edb) => {
 
     let i = 0;
     for (const test of tests) {
-        runTestWithColl(test, coll, {index: i++, testData: test, transaction: false});
+        const extraInfo = {index: i++, testData: test, transaction: false};
+        runTestWithColl(test, coll, extraInfo);
+
+        runTestWithGetMores(test, coll, extraInfo);
     }
 });
 
@@ -61,8 +72,13 @@ runEncryptedTest(db, "find_transaction", collName, encryptedFields, (edb) => {
 
     let i = 0;
     for (const test of tests) {
+        const extraInfo = {index: i++, testData: test, transaction: true};
         session.startTransaction();
-        runTestWithColl(test, sessionColl, {index: i++, testData: test, transaction: true});
+        runTestWithColl(test, sessionColl, extraInfo);
+        session.commitTransaction();
+
+        session.startTransaction();
+        runTestWithGetMores(test, sessionColl, extraInfo);
         session.commitTransaction();
     }
 });

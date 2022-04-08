@@ -44,13 +44,18 @@ assert.commandWorked(coll.createIndex({location: "2dsphere"}));
 // Run the pipeline on the provided collection, and assert that the results are equivalent to
 // 'expected'. The pipeline is appended with a $project stage to project out safeContent data
 // and other fields that are inconvenient to have in the output.
-const runTest = (pipeline, collection, expected, extraInfo) => {
+const runTest = (pipeline, options, collection, expected, extraInfo) => {
     const aggPipeline = pipeline.slice();
     aggPipeline.push(
         {$project: {[kSafeContentField]: 0, [`chain.${kSafeContentField}`]: 0, distance: 0}});
-
-    const result = collection.aggregate(aggPipeline).toArray();
+    const result = collection.aggregate(aggPipeline, options).toArray();
     assertArrayEq({actual: result, expected: expected, extraErrorMsg: tojson(extraInfo)});
+};
+
+// Same as above but with batchSize=1 to check that the pipeline runs correctly across getMore's.
+const runTestWithGetMores = (pipeline, collection, expected, extraInfo) => {
+    const extraErrorMsg = Object.assign({}, extraInfo, {withGetMores: true});
+    return runTest(pipeline, {cursor: {batchSize: 1}}, collection, expected, extraErrorMsg);
 };
 
 const tests = [
@@ -254,8 +259,10 @@ const tests = [
 
 // Run all of the tests.
 for (const testData of tests) {
-    runTest(
-        testData.pipeline, coll, testData.expected, Object.assign({transaction: false}, testData));
+    const extraInfo = Object.assign({transaction: false}, testData);
+    runTest(testData.pipeline, {}, coll, testData.expected, extraInfo);
+
+    runTestWithGetMores(testData.pipeline, coll, testData.expected, extraInfo);
 }
 
 // Run the same tests, this time in a transaction.
@@ -264,11 +271,13 @@ const sessionDB = session.getDatabase(dbName);
 const sessionColl = sessionDB.getCollection(collName);
 
 for (const testData of tests) {
+    const extraInfo = Object.assign({transaction: true}, testData);
     session.startTransaction();
-    runTest(testData.pipeline,
-            sessionColl,
-            testData.expected,
-            Object.assign({transaction: true}, testData));
+    runTest(testData.pipeline, {}, sessionColl, testData.expected, extraInfo);
+    session.commitTransaction();
+
+    session.startTransaction();
+    runTestWithGetMores(testData.pipeline, sessionColl, testData.expected, extraInfo);
     session.commitTransaction();
 }
 }());

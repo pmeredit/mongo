@@ -28,72 +28,133 @@ assert.commandWorked(client.createEncryptionCollection(collName, {
 }));
 
 const edb = client.getDB();
-const coll = edb[collName];
-assert.commandWorked(
-    coll.insert({_id: 1, secretString: "1337", nested: {secretInt: NumberInt(1337)}}));
-assert.commandWorked(coll.insert({_id: 2, secretString: "5", nested: {secretInt: NumberInt(5)}}));
+let coll = edb[collName];
 
-// Querying on a top-level encrypted field.
-assert.commandWorked(coll.runCommand({
-    findAndModify: collName,
-    query: {secretString: "1337"},
-    update: {$set: {is1337: true}},
-}));
-
-// Querying on a nested encrypted field.
-assert.commandWorked(coll.runCommand({
-    findAndModify: collName,
-    query: {'nested.secretInt': NumberInt(5)},
-    update: {$set: {isNestedFive: true}}
-}));
-
-client.assertEncryptedCollectionDocuments(collName, [
-    {_id: 1, secretString: "1337", nested: {secretInt: NumberInt(1337)}, is1337: true},
-    {_id: 2, secretString: "5", nested: {secretInt: NumberInt(5)}, isNestedFive: true}
-]);
-
-// Query over both a top level and nested encrypted field.
-assert.commandWorked(coll.runCommand({
-    findAndModify: collName,
-    query: {secretString: "5", 'nested.secretInt': NumberInt(5)},
-    update: {$set: {bothFive: true}}
-}));
-
-// Query over an encrypted field which matches no documents.
-assert.commandWorked(coll.runCommand({
-    findAndModify: collName,
-    query: {secretString: "6"},
-    update: {_id: 3, secretString: "6", nested: {secretInt: NumberInt(6)}},
-    upsert: true
-}));
-
-client.assertEncryptedCollectionDocuments(collName, [
-    {_id: 1, secretString: "1337", nested: {secretInt: NumberInt(1337)}, is1337: true},
+const testCases = [
     {
-        _id: 2,
-        secretString: "5",
-        nested: {secretInt: NumberInt(5)},
-        isNestedFive: true,
-        bothFive: true
+        // Querying on a top-level encrypted field.
+        command: {
+            findAndModify: collName,
+            query: {secretString: "1337"},
+            update: {$set: {is1337: true}},
+        }
     },
-    {_id: 3, secretString: "6", nested: {secretInt: NumberInt(6)}}
-]);
+    {
+        // Querying on a nested encrypted field.
+        command: {
+            findAndModify: collName,
+            query: {'nested.secretInt': NumberInt(5)},
+            update: {$set: {isNestedFive: true}}
+        }
+    },
+    {
+        // Querying on a nested encrypted field.
+        command: {
+            findAndModify: collName,
+            query: {'nested.secretInt': NumberInt(5)},
+            update: {$set: {isNestedFive: true}}
+        },
+        after: () => {
+            client.assertEncryptedCollectionDocuments(collName, [
+                {_id: 1, secretString: "1337", nested: {secretInt: NumberInt(1337)}, is1337: true},
+                {_id: 2, secretString: "5", nested: {secretInt: NumberInt(5)}, isNestedFive: true}
+            ]);
+        },
+    },
+    {
+        // Query over both a top level and nested encrypted field.
+        command: {
+            findAndModify: collName,
+            query: {secretString: "5", 'nested.secretInt': NumberInt(5)},
+            update: {$set: {bothFive: true}}
+        }
+    },
+    {
+        // Query over an encrypted field which matches no documents.
+        command: {
+            findAndModify: collName,
+            query: {secretString: "6"},
+            update: {_id: 3, secretString: "6", nested: {secretInt: NumberInt(6)}},
+            upsert: true
+        },
+        after: () => {
+            client.assertEncryptedCollectionDocuments(collName, [
+                {_id: 1, secretString: "1337", nested: {secretInt: NumberInt(1337)}, is1337: true},
+                {
+                    _id: 2,
+                    secretString: "5",
+                    nested: {secretInt: NumberInt(5)},
+                    isNestedFive: true,
+                    bothFive: true
+                },
+                {_id: 3, secretString: "6", nested: {secretInt: NumberInt(6)}}
+            ]);
+        }
+    },
+    {
+        // Query over one encrypted field and $unset another.
+        command: {
+            findAndModify: collName,
+            query: {secretString: "5"},
+            update: {$unset: {'nested.secretInt': 1}}
+        },
+        after: () => {
+            assert.eq([{_id: 2, secretString: "5", nested: {}, isNestedFive: true, bothFive: true}],
+                      coll.find({_id: 2}, {[kSafeContentField]: 0}).toArray());
+        }
+    },
+    {
+        // Verify that a user can specify a writeConcern without failing within the
+        // internally-created transaction. This is expected to fail if the command is running in
+        // a transaction created by the user.
+        command: {
+            findAndModify: collName,
+            query: {secretString: "6"},
+            update: {$set: {isSix: true}},
+            writeConcern: {w: 2},
+        },
+        skipIfUserTxn: true
+    }
+];
 
-// Query over one encrypted field and $unset another.
-assert.commandWorked(coll.runCommand({
-    findAndModify: collName,
-    query: {secretString: "5"},
-    update: {$unset: {'nested.secretInt': 1}}
-}));
-assert.eq([{_id: 2, secretString: "5", nested: {}, isNestedFive: true, bothFive: true}],
-          coll.find({_id: 2}, {[kSafeContentField]: 0}).toArray());
+const populateColl = () => {
+    assert.commandWorked(
+        coll.insert({_id: 1, secretString: "1337", nested: {secretInt: NumberInt(1337)}}));
+    assert.commandWorked(
+        coll.insert({_id: 2, secretString: "5", nested: {secretInt: NumberInt(5)}}));
 
-// Verify that a user can specify a writeConcern without failing within the internally-created
-// transaction.
-assert.commandWorked(coll.runCommand({
-    findAndModify: collName,
-    query: {secretString: "6"},
-    update: {$set: {isSix: true}},
-    writeConcern: {w: 2},
-}));
+    const docs = coll.find().toArray();
+    assert(docs.length == 2 && docs[0].hasOwnProperty(kSafeContentField));
+};
+
+// Run all of the tests.
+populateColl();
+for (const test of testCases) {
+    assert.commandWorked(coll.runCommand(test.command), tojson(test.command));
+
+    if (test.after) {
+        test.after();
+    }
+}
+
+// Run the same tests, this time in a transaction.
+const session = edb.getMongo().startSession({causalConsistency: false});
+const sessionDB = session.getDatabase(dbName);
+coll = sessionDB.getCollection(collName);
+coll.drop();
+
+populateColl();
+for (const test of testCases) {
+    if (test.skipIfUserTxn) {
+        continue;
+    }
+
+    session.startTransaction();
+    assert.commandWorked(coll.runCommand(test.command), tojson(test.command));
+    session.commitTransaction();
+
+    if (test.after) {
+        test.after();
+    }
+}
 }());
