@@ -67,9 +67,9 @@ command = Object.assign({
     cursor: {}
 },
                         generateSchema({'user.ssn': encryptedStringSpec}, coll.getFullName()));
-// FLE 2 does not support referring to encrypted fields in any aggregate expression.
+// FLE 2 has only limited support for referring to encrypted fields in aggregate expressions.
 if (fle2Enabled()) {
-    assert.commandFailedWithCode(testDB.runCommand(command), 6331100);
+    assert.commandFailedWithCode(testDB.runCommand(command), 6331102);
 } else {
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     assert(cmdRes.schemaRequiresEncryption, cmdRes);
@@ -95,9 +95,9 @@ command = Object.assign(
         cursor: {}
     },
     generateSchema({ssn: encryptedStringSpec, otherSsn: encryptedStringSpec}, coll.getFullName()));
-// FLE 2 does not support referring to encrypted fields in any aggregate expression.
+// FLE 2 has only limited support for referring to encrypted fields in aggregate expressions.
 if (fle2Enabled()) {
-    assert.commandFailedWithCode(testDB.runCommand(command), 6331100);
+    assert.commandFailedWithCode(testDB.runCommand(command), 6331102);
 } else {
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     assert(cmdRes.schemaRequiresEncryption, cmdRes);
@@ -174,9 +174,9 @@ command = Object.assign({
     cursor: {}
 },
                         encryptedUserSpec);
-// TODO SERVER-63313 Support agg $eq.
+// TODO SERVER-65296 Support comparisons to encrypted fields under project.
 if (fle2Enabled()) {
-    assert.commandFailedWithCode(testDB.runCommand(command), 6331100);
+    assert.commandFailedWithCode(testDB.runCommand(command), 6331102);
 } else {
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     delete cmdRes.result.lsid;
@@ -226,9 +226,9 @@ command = Object.assign({
     cursor: {}
 },
                         encryptedSsnSpec);
-// TODO SERVER-63313 Support agg $eq.
+// TODO SERVER-65296 Support comparisons to encrypted fields under project.
 if (fle2Enabled()) {
-    assert.commandFailedWithCode(testDB.runCommand(command), 6331100);
+    assert.commandFailedWithCode(testDB.runCommand(command), 6331102);
 } else {
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     delete cmdRes.result.lsid;
@@ -263,9 +263,9 @@ command = Object.assign(
         cursor: {}
     },
     generateSchema({ssn: encryptedStringSpec, otherSsn: encryptedStringSpec}, coll.getFullName()));
-// TODO SERVER-63313 Support agg $eq.
+// TODO SERVER-65296 Support comparisons to encrypted fields under project.
 if (fle2Enabled()) {
-    assert.commandFailedWithCode(testDB.runCommand(command), 6331100);
+    assert.commandFailedWithCode(testDB.runCommand(command), 6331102);
 } else {
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     assert(cmdRes.hasEncryptionPlaceholders);

@@ -13,31 +13,16 @@ const conn = mongocryptd.getConnection();
 const testDB = conn.getDB("test");
 const uuid = UUID();
 
-const sampleSchema = {
-    type: "object",
-    properties: {
-        ssn: {encrypt: {algorithm: kDeterministicAlgo, keyId: [uuid], bsonType: "long"}},
-        user: {
-            type: "object",
-            properties: {
-                account:
-                    {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}},
-
-            }
-        },
-        friendSsn: {encrypt: {algorithm: kDeterministicAlgo, keyId: [uuid], bsonType: "long"}},
-        incompatableEncryptionField: {
-            encrypt: {
-                algorithm: kDeterministicAlgo,
-                keyId: [UUID()],
-                bsonType: "long"
-
-            }
-        },
-        score: {bsonType: "long"},
-        summary: {bsonType: "string"}
-    }
-};
+// Note that in the following schema, two fields share the same keyId. Though this is not supported
+// in FLE 2, to share the tests below between FLE 1 and FLE 2, we use the same keyId here.
+let schema = generateSchema({
+    ssn: {encrypt: {algorithm: kDeterministicAlgo, keyId: [uuid], bsonType: "long"}},
+    'user.account': {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}},
+    friendSsn: {encrypt: {algorithm: kDeterministicAlgo, keyId: [uuid], bsonType: "long"}},
+    incompatableEncryptionField:
+        {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "long"}}
+},
+                            "test.test");
 
 function getValueAtPath(obj, path) {
     const parts = path.split('.');
@@ -58,20 +43,25 @@ function assertEncryptedFieldAtPath(res, path) {
 }
 
 let res = null;
-let command = {
+let command = Object.assign({
     find: "test",
     filter: {'$expr': {'$eq': ['$ssn', '$friendSsn']}},
-    jsonSchema: sampleSchema,
-    isRemoteSchema: false
-};
-// Two encrypted fields can be compared if their encryption metadata matches.
-res = assert.commandWorked(testDB.runCommand(command));
-assert.eq(false, res.hasEncryptionPlaceholders);
+},
+                            schema);
+
+// Two encrypted fields can be compared if their encryption metadata matches. This is forbidden in
+// FLE 2.
+if (fle2Enabled()) {
+    assert.commandFailedWithCode(testDB.runCommand(command), 6334101);
+} else {
+    res = assert.commandWorked(testDB.runCommand(command));
+    assert.eq(false, res.hasEncryptionPlaceholders);
+}
 
 command.filter = {
     '$expr': {'$eq': ['$ssn', '$incompatableEncryptionField']}
 };
-assert.commandFailedWithCode(testDB.runCommand(command), 31100);
+assert.commandFailedWithCode(testDB.runCommand(command), [31100, 6334101]);
 
 // Constants are marked for encryption in comparisons to encrypted fields.
 command.filter = {
@@ -98,8 +88,12 @@ command.filter = {
     }
 
 };
-res = assert.commandWorked(testDB.runCommand(command));
-assertEncryptedFieldAtPath(res, '$expr.$eq.1.$cond.1.$const');
+if (fle2Enabled()) {
+    assert.commandFailedWithCode(testDB.runCommand(command), 6334105);
+} else {
+    res = assert.commandWorked(testDB.runCommand(command));
+    assertEncryptedFieldAtPath(res, '$expr.$eq.1.$cond.1.$const');
+}
 
 // Non-equality comparison with an unencrypted fields passes.
 command.filter = {
@@ -112,7 +106,7 @@ assert.eq(false, res.hasEncryptionPlaceholders);
 command.filter = {
     '$expr': {'$gte': ['$ssn', 25]}
 };
-assert.commandFailedWithCode(testDB.runCommand(command), 31110);
+assert.commandFailedWithCode(testDB.runCommand(command), [31110, 6331102]);
 
 // Inequality between an encrypted field and a constant marks the constant for encryption.
 command.filter = {
@@ -128,7 +122,7 @@ command.filter = {
 
     }
 };
-assert.commandFailedWithCode(testDB.runCommand(command), 31099);
+assert.commandFailedWithCode(testDB.runCommand(command), [31099, 6334105]);
 
 // Encryption placeholders within $and expressions.
 command.filter = {
@@ -143,7 +137,7 @@ assertEncryptedFieldAtPath(res, '$expr.$and.1.$ne.1.$const');
 command.filter = {
     '$expr': {'$eq': ['$ssn', {'$concat': ['hi', 'world']}]}
 };
-assert.commandFailedWithCode(testDB.runCommand(command), 31117);
+assert.commandFailedWithCode(testDB.runCommand(command), [31117, 6334105]);
 
 command.filter = {
     '$expr': {'$eq': ['$summary', {'$concat': ['one', ' ', 'two']}]}
@@ -170,56 +164,83 @@ assertEncryptedFieldAtPath(res, '$expr.$switch.branches.1.case.$eq.1.$const');
 command.filter = {
     $expr: {$eq: ['$ssn', {$ifNull: ['$ssn', NumberLong(123456)]}]}
 };
-res = assert.commandWorked(testDB.runCommand(command));
-assertEncryptedFieldAtPath(res, '$expr.$eq.1.$ifNull.1.$const');
+if (fle2Enabled()) {
+    assert.commandFailedWithCode(testDB.runCommand(command), 6334105);
+} else {
+    res = assert.commandWorked(testDB.runCommand(command));
+    assertEncryptedFieldAtPath(res, '$expr.$eq.1.$ifNull.1.$const');
+}
 
 // Make sure that even non-sensical but syntactically correct $ifNulls correctly mark literals
 // for encryption.
 command.filter = {
     $expr: {$eq: ['$ssn', {$ifNull: [NumberLong(123456), NumberLong(19234)]}]}
 };
-res = assert.commandWorked(testDB.runCommand(command));
-assertEncryptedFieldAtPath(res, '$expr.$eq.1.$ifNull.0.$const');
-assertEncryptedFieldAtPath(res, '$expr.$eq.1.$ifNull.1.$const');
+if (fle2Enabled()) {
+    assert.commandFailedWithCode(testDB.runCommand(command), 6334105);
+} else {
+    res = assert.commandWorked(testDB.runCommand(command));
+    assertEncryptedFieldAtPath(res, '$expr.$eq.1.$ifNull.0.$const');
+    assertEncryptedFieldAtPath(res, '$expr.$eq.1.$ifNull.1.$const');
+}
 
 // Literals should be marked even when the encrypted field is inside of $ifNull.
 command.filter = {
     $expr: {$eq: [NumberLong(1234), {$ifNull: ['$ssn', NumberLong(1234)]}]}
 };
-res = assert.commandWorked(testDB.runCommand(command));
-assertEncryptedFieldAtPath(res, '$expr.$eq.0.$const');
-assertEncryptedFieldAtPath(res, '$expr.$eq.1.$ifNull.1.$const');
+if (fle2Enabled()) {
+    assert.commandFailedWithCode(testDB.runCommand(command), 6331102);
+} else {
+    res = assert.commandWorked(testDB.runCommand(command));
+    assertEncryptedFieldAtPath(res, '$expr.$eq.0.$const');
+    assertEncryptedFieldAtPath(res, '$expr.$eq.1.$ifNull.1.$const');
+}
 
 // Conflicts in encryption between fields should result in an error.
 command.filter = {
     $expr: {$eq: ['$foo', {$ifNull: ['$ssn', '$foo2']}]}
 };
-res = assert.commandFailedWithCode(testDB.runCommand(command), 31098);
+res = assert.commandFailedWithCode(testDB.runCommand(command), [31098, 6331102]);
 
-if (fle2Enabled()) {
-    const schema = generateSchemaV2(
-        {ssn: {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}}},
-        "test.test");
+command.filter = {
+    $expr: {$eq: ['$ssn', NumberLong(123)]}
+};
+res = assert.commandWorked(testDB.runCommand(command));
+assertEncryptedFieldAtPath(res, '$expr.$eq.1.$const');
 
-    // TODO: SERVER-63313 Query analysis for encrypted $eq expressions.
-    assert.commandFailedWithCode(
-        testDB.runCommand(
-            Object.assign({find: "test", filter: {$expr: {$eq: ['$ssn', "123"]}}}, schema)),
-        6331102);
+// Referencing a prefix of an encrypted field in a comparison should fail.
+command.filter = {
+    $expr: {$eq: ['$user', {account: "123"}]}
+};
+assert.commandFailedWithCode(testDB.runCommand(command), [31131, 6334105]);
 
-    const nestedSchema = generateSchemaV2({
-        'user.ssn': {encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}}
-    },
-                                          "test.test");
-    assert.commandFailedWithCode(
-        testDB.runCommand(Object.assign(
-            {find: "test", filter: {$expr: {$eq: ['$user', {ssn: 123}]}}}, nestedSchema)),
-        6331102);
+// Comparing an encryted field to an object should fail.
+command.filter = {
+    $expr: {$eq: ['$user.account', {obj: 123}]}
+};
+assert.commandFailedWithCode(testDB.runCommand(command), [31117, 6334105]);
 
-    // $expr which does not reference an encrypted field is allowed.
-    assert.commandWorked(testDB.runCommand(
-        Object.assign({find: "test", filter: {$expr: {$eq: ['$foo', "123"]}}}, schema)));
-}
+// $expr which does not reference an encrypted field is allowed.
+command.filter = {
+    $expr: {$eq: ['$foo', "123"]}
+};
+res = assert.commandWorked(testDB.runCommand(command));
+assert.eq(false, res.hasEncryptionPlaceholders);
+
+// Comparing a randomly encrypted node to a constant should result in an error.
+schema = generateSchema({
+    ssn: {encrypt: {algorithm: kRandomAlgo, keyId: [uuid], bsonType: "long"}},
+    friendSsn: {encrypt: {algorithm: kRandomAlgo, keyId: [uuid], bsonType: "long"}},
+},
+                        "test.test");
+command.filter = {
+    $expr: {$eq: ['$ssn', NumberLong(123)]}
+};
+assert.commandFailedWithCode(testDB.runCommand(Object.assign(command, schema)), 31158);
+command.filter = {
+    $expr: {$eq: ['$ssn', '$friendSsn']}
+};
+assert.commandFailedWithCode(testDB.runCommand(Object.assign(command, schema)), [31158, 6334101]);
 
 mongocryptd.stop();
 })();

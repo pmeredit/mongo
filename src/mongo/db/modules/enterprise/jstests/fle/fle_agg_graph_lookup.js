@@ -211,20 +211,14 @@ command = Object.assign({
         }],
         cursor: {}}, generateSchema({department: encryptedStringSpec}, coll.getFullName()));
 
-// TODO SERVER-63313 Support agg $eq.
-if (fle2Enabled()) {
-    assert.commandFailedWithCode(testDB.runCommand(command), 6331102);
-} else {
-    cmdRes = assert.commandWorked(testDB.runCommand(command));
-    assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
-    assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
-    assert(cmdRes.hasOwnProperty("result"), cmdRes);
-    assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
-    assert(
-        cmdRes.result.pipeline[0].$graphLookup.startWith.category.$cond[0].$eq[1].$const instanceof
-            BinData,
-        cmdRes);
-}
+cmdRes = assert.commandWorked(testDB.runCommand(command));
+assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
+assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
+assert(cmdRes.hasOwnProperty("result"), cmdRes);
+assert.eq(coll.getName(), cmdRes.result.aggregate, cmdRes);
+assert(cmdRes.result.pipeline[0].$graphLookup.startWith.category.$cond[0].$eq[1].$const instanceof
+           BinData,
+       cmdRes);
 
 // Test that referencing 'as' field from $lookup in subsequent stages fails.
 assert.commandFailedWithCode(

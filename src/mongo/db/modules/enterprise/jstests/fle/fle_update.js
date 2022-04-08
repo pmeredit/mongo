@@ -353,8 +353,7 @@ updateCommand.updates[0].u =
     [{$addFields: {bar: {$cond: {if: {$eq: ["$foo", "afternoon"]}, then: "good", else: "bad"}}}}];
 
 if (fle2Enabled()) {
-    // TODO SERVER-63313 Support referencing encrypted field in aggregate expressions in FLE 2.
-    assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, schema)), 6331100);
+    assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, schema)), 6331102);
 } else {
     result = assert.commandWorked(testDb.runCommand(Object.assign(updateCommand, schema)));
     assert.eq(true, result.schemaRequiresEncryption, result);
@@ -391,7 +390,7 @@ assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, sche
 schema = generateSchema({foo: encryptDoc}, namespace);
 updateCommand.updates[0].u = [{$addFields: {newField: {$add: ["$foo", 1]}}}];
 assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, schema)),
-                             [31110, 6331100]);
+                             [31110, 6331102]);
 
 // Pipelines in update are not allowed if _id is marked for encryption and upsert is set to true.
 schema = generateSchema({_id: encryptDoc}, namespace);

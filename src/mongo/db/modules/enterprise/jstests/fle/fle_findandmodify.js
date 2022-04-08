@@ -379,8 +379,7 @@ updateCommand.update =
     [{$addFields: {bar: {$cond: {if: {$eq: ["$foo", "afternoon"]}, then: "good", else: "bad"}}}}];
 
 if (fle2Enabled()) {
-    // TODO SERVER-63313 Support referencing encrypted field in aggregate expressions in FLE 2.
-    assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, schema)), 6331100);
+    assert.commandFailedWithCode(testDb.runCommand(Object.assign(updateCommand, schema)), 6331102);
 } else {
     result = assert.commandWorked(testDb.runCommand(Object.assign(updateCommand, schema)));
     assert.eq(true, result.schemaRequiresEncryption, result);

@@ -140,7 +140,7 @@ command.pipeline = [
     },
 ];
 if (fle2Enabled()) {
-    assert.commandFailedWithCode(testDB.runCommand(command), 6331100);
+    assert.commandFailedWithCode(testDB.runCommand(command), 6331102);
 } else {
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
@@ -165,7 +165,7 @@ command = Object.assign({
     cursor: {}
 },
                         qtyEncryptedSchema);
-assert.commandFailedWithCode(testDB.runCommand(command), [31110, 6331100]);
+assert.commandFailedWithCode(testDB.runCommand(command), [31110, 6331102]);
 
 // Test that the $addToSet accumulator in $bucket succeeds if the output type is stable and
 // its output schema has only deterministic nodes. In FLE 2, such a reference is not allowed.
@@ -174,7 +174,7 @@ command.pipeline = [{
         {groupBy: "$price", boundaries: [0, 200], output: {distinctQuantities: {$addToSet: "$qty"}}}
 }];
 if (fle2Enabled()) {
-    assert.commandFailedWithCode(testDB.runCommand(command), 6331100);
+    assert.commandFailedWithCode(testDB.runCommand(command), 51223);
 } else {
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     delete cmdRes.result.lsid;
@@ -280,10 +280,9 @@ for (let accu of numericAccus) {
     command.pipeline[0].$bucket.output.totalPrice = {[accu]: condExpr};
     command.pipeline[0].$bucket.output.count = {[accu]: {$const: 1}};
 
-    // Referring to an encrypted field in an aggregate expression is not supported in FLE 2.
-    // TODO SERVER-63313 enable support for $eq.
+    // Referring to an encrypted field in an aggregate expression has limited support in FLE 2.
     if (fle2Enabled()) {
-        assert.commandFailedWithCode(testDB.runCommand(command), 6331100);
+        assert.commandFailedWithCode(testDB.runCommand(command), 6331102);
     } else {
         cmdRes = assert.commandWorked(testDB.runCommand(command));
         assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
@@ -316,10 +315,10 @@ let selectionAccus = ["$first", "$last"];
 for (let accu of selectionAccus) {
     command.pipeline[0].$bucket.output.qtyRes = {[accu]: "$qty"};
 
-    // Referring to an encrypted field in an aggregate expression or accumulator is not supported in
-    // FLE 2.
+    // Referring to an encrypted field in an aggregate expression or accumulator has limited support
+    // in FLE 2.
     if (fle2Enabled()) {
-        assert.commandFailedWithCode(testDB.runCommand(command), 6331100);
+        assert.commandFailedWithCode(testDB.runCommand(command), 6331102);
     } else {
         cmdRes = assert.commandWorked(testDB.runCommand(command));
         assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);

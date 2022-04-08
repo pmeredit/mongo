@@ -152,7 +152,7 @@ command = Object.assign({
     cursor: {}
 },
                         ssnEncryptedSpec);
-assert.commandFailedWithCode(testDB.runCommand(command), [31133, 6331100]);
+assert.commandFailedWithCode(testDB.runCommand(command), 31133);
 })();
 
 mongocryptd.stop();

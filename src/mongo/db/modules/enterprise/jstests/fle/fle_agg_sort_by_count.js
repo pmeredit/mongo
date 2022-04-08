@@ -90,9 +90,8 @@ command = Object.assign({
     cursor: {}
 },
                         encryptedQtySpec);
-// TODO SERVER-63313 Support agg $eq.
 if (fle2Enabled()) {
-    assert.commandFailedWithCode(testDB.runCommand(command), 6331100);
+    assert.commandFailedWithCode(testDB.runCommand(command), 6331102);
 } else {
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
@@ -112,7 +111,7 @@ command = Object.assign({
     cursor: {}
 },
                         encryptedQtySpec);
-assert.commandFailedWithCode(testDB.runCommand(command), [51222, 6331100]);
+assert.commandFailedWithCode(testDB.runCommand(command), 51222);
 
 // Test that $sortByCount succeeds if it is specified with a deterministically encrypted
 // field.
@@ -122,9 +121,9 @@ command = Object.assign({
     cursor: {}
 },
                         encryptedQtySpec);
-// FLE 2 does not support references to encrypted fields in aggregate expressions.
+// FLE 2 has only limited support for references to encrypted fields in aggregate expressions.
 if (fle2Enabled()) {
-    assert.commandFailedWithCode(testDB.runCommand(command), 6331100);
+    assert.commandFailedWithCode(testDB.runCommand(command), 51222);
 } else {
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
@@ -150,7 +149,7 @@ assert.commandFailedWithCode(testDB.runCommand(command), 51102);
 // algorithm.
 command = Object.assign({aggregate: coll.getName(), pipeline: [{$sortByCount: "$foo"}], cursor: {}},
                         generateSchema({foo: encryptedRandomSpec}, coll.getFullName()));
-assert.commandFailedWithCode(testDB.runCommand(command), [51222, 6331100]);
+assert.commandFailedWithCode(testDB.runCommand(command), 51222);
 
 mongocryptd.stop();
 })();

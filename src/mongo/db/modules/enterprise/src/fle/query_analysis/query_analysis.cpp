@@ -255,7 +255,7 @@ PlaceHolderResult replaceEncryptedFieldsInFilter(
 
     // Build a FLEMatchExpression, which will replace encrypted values with their appropriate
     // intent-to-encrypt markings.
-    FLEMatchExpression fleMatchExpr(std::move(matchExpr), schemaTree);
+    FLEMatchExpression fleMatchExpr(std::move(matchExpr), schemaTree, FLE2FieldRefExpr::allowed);
 
     // Replace the previous filter object with the new MatchExpression after marking it for
     // encryption.

@@ -584,7 +584,8 @@ aggregate_expression_intender::Intention analyzeForMatch(FLEPipeline* flePipe,
                                                          DocumentSourceMatch* source) {
     // Build a FLEMatchExpression from the MatchExpression within the $match stage, replacing any
     // constants with their appropriate intent-to-encrypt markings.
-    FLEMatchExpression fleMatch{source->getMatchExpression()->shallowClone(), schema};
+    FLEMatchExpression fleMatch{
+        source->getMatchExpression()->shallowClone(), schema, FLE2FieldRefExpr::allowed};
 
     // Rebuild the DocumentSourceMatch using the serialized MatchExpression after replacing
     // encrypted values.
@@ -610,7 +611,7 @@ aggregate_expression_intender::Intention analyzeForGeoNear(FLEPipeline* flePipe,
                                                      flePipe->getPipeline().getContext(),
                                                      ExtensionsCallbackNoop(),
                                                      Pipeline::kGeoNearMatcherFeatures));
-    FLEMatchExpression fleMatch{std::move(queryExpression), schema};
+    FLEMatchExpression fleMatch{std::move(queryExpression), schema, FLE2FieldRefExpr::allowed};
 
     if (auto key = source->getKeyField()) {
         FieldRef keyField(key->fullPath());
@@ -640,8 +641,11 @@ aggregate_expression_intender::Intention analyzeForGraphLookUp(
     const EncryptionSchemaTreeNode& schema,
     DocumentSourceGraphLookUp* source) {
     // Replace contants with their appropriate intent-to-encrypt markings in the 'startWith' field.
-    auto didMark = aggregate_expression_intender::mark(
-        *flePipe->getPipeline().getContext(), schema, source->getStartWithField(), false);
+    auto didMark = aggregate_expression_intender::mark(*flePipe->getPipeline().getContext(),
+                                                       schema,
+                                                       source->getStartWithField(),
+                                                       false,
+                                                       FLE2FieldRefExpr::allowed);
 
     // Build a FLEMatchExpression from the MatchExpression for the additional filter, replacing any
     // constants with their appropriate intent-to-encrypt markings.
@@ -651,7 +655,7 @@ aggregate_expression_intender::Intention analyzeForGraphLookUp(
                                                          flePipe->getPipeline().getContext(),
                                                          ExtensionsCallbackNoop(),
                                                          Pipeline::kAllowedMatcherFeatures));
-        FLEMatchExpression fleMatch{std::move(queryExpression), schema};
+        FLEMatchExpression fleMatch{std::move(queryExpression), schema, FLE2FieldRefExpr::allowed};
 
         // Update the query in the DocumentSourceGraphLookUp using the serialized MatchExpression
         // after replacing encrypted values.

@@ -329,5 +329,21 @@ if (fle2Enabled()) {
     assert.eq(true, cmdRes.schemaRequiresEncryption, cmdRes);
 }
 
+// Show that we are not marking constants for encryption inside $lookup subpipelines.
+// TODO SERVER-65310: Mark constans for encryption inside subpipelines.
+command = Object.assign({
+    aggregate: coll.getName(),
+    pipeline: [
+        {$match: {foo: "1"}},
+        {$lookup: {from: coll.getName(), as: "docs", pipeline: [{$match: {foo: "1"}}]}}
+    ],
+    cursor: {}
+},
+                        fooEncryptedSchema);
+// The first $match has constants marked for encryption, but the second $match is unmodified.
+cmdRes = assert.commandWorked(testDB.runCommand(command));
+assert(cmdRes.result.pipeline[0].$match.foo.$eq instanceof BinData, cmdRes);
+assert.eq(cmdRes.result.pipeline[1].$lookup.pipeline[0].$match.foo, "1", cmdRes);
+
 mongocryptd.stop();
 })();

@@ -18,8 +18,9 @@ using MatchType = MatchExpression::MatchType;
 using EncryptionPlaceholderContext = query_analysis::EncryptionPlaceholderContext;
 
 FLEMatchExpression::FLEMatchExpression(std::unique_ptr<MatchExpression> expression,
-                                       const EncryptionSchemaTreeNode& schemaTree)
-    : _expression(std::move(expression)) {
+                                       const EncryptionSchemaTreeNode& schemaTree,
+                                       FLE2FieldRefExpr fieldRefSupported)
+    : _expression(std::move(expression)), fieldRefSupported(fieldRefSupported) {
     replaceEncryptedElements(schemaTree, _expression.get());
 }
 
@@ -153,8 +154,11 @@ void FLEMatchExpression::replaceEncryptedElements(const EncryptionSchemaTreeNode
 
         case MatchType::EXPRESSION: {
             auto expr = static_cast<ExprMatchExpression*>(root);
-            _didMark = aggregate_expression_intender::mark(
-                *expr->getExpressionContext(), schemaTree, expr->getExpression().get(), false);
+            _didMark = aggregate_expression_intender::mark(*expr->getExpressionContext(),
+                                                           schemaTree,
+                                                           expr->getExpression().get(),
+                                                           false,
+                                                           fieldRefSupported);
             break;
         }
 

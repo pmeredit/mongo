@@ -77,6 +77,12 @@ struct Subtree {
         // against accidentally allowing arrays where we did not intend to do so.
         ExpressionArray* temporarilyPermittedArrayLiteral{nullptr};
 
+        // Whether or not an encrypted field path is permitted in the expression tree is context-
+        // specific for FLE 2. As above, we use this member variable to track whether or not we are
+        // in a special circumstance where we can allow a field path, and we use a pointer to the
+        // specific ExpressionFieldPath we know is allowed to add an extra layer of defense.
+        ExpressionFieldPath* temporarilyPermittedEncryptedFieldPath{nullptr};
+
         // The following structs are state types. Each Compared Subtree starts in the Unkown state
         // and transitions into the NotEncrypted or Encrypted state.
 
@@ -239,6 +245,27 @@ Intention exitSubtree(const ExpressionContext& expCtx, std::stack<Subtree>& subt
               "Comparison disallowed between fields where one is randomly encrypted; field '"s +
                   currentField.fullPath() + "' is randomly encrypted.");
 }
+[[noreturn]] void uassertedComparisonFLE2EncryptedFields(const FieldPath& fieldPath0,
+                                                         const FieldPath& fieldPath1) {
+    // TODO: SERVER-63657 Update user-facing naming for FLE2.
+    uasserted(6334101,
+              "Comparison disallowed between two fields encrypted with FLE 2 encryption; "
+              "fields '"s +
+                  fieldPath0.fullPath() + "' and '" + fieldPath1.fullPath() +
+                  "' are FLE 2 encrypted.");
+}
+
+void ensureFLE2EncryptedFieldComparedToConstant(ExpressionFieldPath* encryptedFieldPath,
+                                                Expression* comparedTo) {
+    // TODO: SERVER-63657 Update user-facing naming for FLE2.
+    auto constant = dynamic_cast<ExpressionConstant*>(comparedTo);
+    uassert(6334105,
+            "Comparison disallowed between FLE 2 encrypted fields and non-constant expressions; "
+            "field '"s +
+                encryptedFieldPath->getFieldPathWithoutCurrentPrefix().fullPath() +
+                "' is FLE 2 encrypted.",
+            constant);
+}
 
 [[noreturn]] void uassertedEvaluationInComparedEncryptedSubtree(
     const StringData evaluation, const std::vector<FieldPath>& comparedFields) {
@@ -326,7 +353,9 @@ void attemptReconcilingFieldEncryptionInCompared(const EncryptionSchemaTreeNode&
     // Any reference to a randomly encrypted field within a comparison subtree will fail.
     auto metadata = schema.getEncryptionMetadataForPath(
         FieldRef(fieldPath.getFieldPathWithoutCurrentPrefix().fullPath()));
-    if (metadata && metadata->algorithmIs(FleAlgorithmEnum::kRandom)) {
+    if (metadata &&
+        (metadata->algorithmIs(FleAlgorithmEnum::kRandom) ||
+         metadata->algorithmIs(Fle2AlgorithmInt::kUnindexed))) {
         uassertedComparisonOfRandomlyEncrypted(fieldPath.getFieldPathWithoutCurrentPrefix());
     }
     compared->state = stdx::visit(
@@ -433,8 +462,12 @@ class IntentionPreVisitor final : public ExpressionMutableVisitor {
 public:
     IntentionPreVisitor(const ExpressionContext& expCtx,
                         const EncryptionSchemaTreeNode& schema,
-                        std::stack<Subtree>& subtreeStack)
-        : expCtx(expCtx), schema(schema), subtreeStack(subtreeStack) {}
+                        std::stack<Subtree>& subtreeStack,
+                        FLE2FieldRefExpr fieldRefSupported)
+        : expCtx(expCtx),
+          schema(schema),
+          subtreeStack(subtreeStack),
+          fieldRefSupported(fieldRefSupported) {}
 
 private:
     void visit(ExpressionConstant* constant) final {
@@ -499,15 +532,52 @@ private:
     void visit(ExpressionCompare* compare) final {
         switch (compare->getOp()) {
             case ExpressionCompare::EQ:
-            case ExpressionCompare::NE:
+            case ExpressionCompare::NE: {
                 // The result of this comparison will be either true or false, never encrypted. So
                 // if the Subtree above us is comparing to an encrypted value that has to be an
                 // error.
                 ensureNotEncrypted("an equality comparison", subtreeStack);
                 // Now that we're sure our result won't be compared to encrypted values, enter a new
                 // Subtree to provide a new context for our children - this is a fresh start.
-                enterSubtree(Subtree::Compared{}, subtreeStack);
+                Subtree::Compared comparedSubtree;
+
+                // We specifically support references to encrypted field paths under $eq, e.g.
+                // {$eq: ["$encryptedField", <constant>]}. If there is exactly one field path as a
+                // child to this $eq, set temporarilyPermittedEncryptedFieldPath to indicate that
+                // the field path is allowed.
+                if (schema.parsedFrom == FleVersion::kFle2) {
+                    auto firstChild = compare->getOperandList()[0].get();
+                    auto firstOpFieldPath = dynamic_cast<ExpressionFieldPath*>(firstChild);
+                    auto secondChild = compare->getOperandList()[1].get();
+                    auto secondOpFieldPath = dynamic_cast<ExpressionFieldPath*>(secondChild);
+
+                    auto isEncryptedFieldPath = [&](ExpressionFieldPath* fieldPathExpr) {
+                        if (fieldPathExpr) {
+                            auto ref = fieldPathExpr->getFieldPathWithoutCurrentPrefix().fullPath();
+                            return schema.getEncryptionMetadataForPath(FieldRef{ref}) ||
+                                schema.mayContainEncryptedNodeBelowPrefix(FieldRef{ref});
+                        }
+                        return false;
+                    };
+                    auto firstEncrypted = isEncryptedFieldPath(firstOpFieldPath);
+                    auto secondEncrypted = isEncryptedFieldPath(secondOpFieldPath);
+
+                    if (firstEncrypted && secondEncrypted) {
+                        uassertedComparisonFLE2EncryptedFields(
+                            firstOpFieldPath->getFieldPathWithoutCurrentPrefix(),
+                            secondOpFieldPath->getFieldPathWithoutCurrentPrefix());
+                    } else if (firstEncrypted) {
+                        comparedSubtree.temporarilyPermittedEncryptedFieldPath = firstOpFieldPath;
+                        ensureFLE2EncryptedFieldComparedToConstant(firstOpFieldPath, secondChild);
+                    } else if (secondEncrypted) {
+                        comparedSubtree.temporarilyPermittedEncryptedFieldPath = secondOpFieldPath;
+                        ensureFLE2EncryptedFieldComparedToConstant(secondOpFieldPath, firstChild);
+                    }
+                }
+
+                enterSubtree(comparedSubtree, subtreeStack);
                 return;
+            }
             case ExpressionCompare::GT:
                 ensureNotEncryptedEnterEval("a greater than comparison", subtreeStack);
                 return;
@@ -572,12 +642,24 @@ private:
             reconcileVariableAccess(*fieldPath, subtreeStack);
         } else {
             FieldRef path{fieldPath->getFieldPathWithoutCurrentPrefix().fullPath()};
-            // TODO: SERVER-63657 Update user-facing naming for FLE2.
-            uassert(6331102,
-                    "Cannot refer to an encrypted field in an aggregation expression in FLE 2",
-                    (!schema.getEncryptionMetadataForPath(path) &&
-                     !schema.mayContainEncryptedNodeBelowPrefix(path)) ||
-                        schema.parsedFrom == FleVersion::kFle1);
+            // Most of the time it is illegal to use a FieldPath in an aggregation expression.
+            // However, there are certain exceptions. To determine whether a FieldPath is allowed in
+            // the current context we must examine the Subtree stack and check if a previously
+            // visited expression determined it was ok.
+            if (auto comparedSubtree = stdx::get_if<Subtree::Compared>(&subtreeStack.top().output);
+                fieldRefSupported == FLE2FieldRefExpr::allowed && comparedSubtree &&
+                fieldPath == comparedSubtree->temporarilyPermittedEncryptedFieldPath) {
+                comparedSubtree->temporarilyPermittedEncryptedFieldPath = nullptr;
+            } else {
+                FieldRef path{fieldPath->getFieldPathWithoutCurrentPrefix().fullPath()};
+                // TODO: SERVER-63657 Update user-facing naming for FLE2.
+                uassert(6331102,
+                        "Invalid reference to an encrypted field within aggregate expression: "s +
+                            path.dottedField(),
+                        (!schema.getEncryptionMetadataForPath(path) &&
+                         !schema.mayContainEncryptedNodeBelowPrefix(path)) ||
+                            schema.parsedFrom == FleVersion::kFle1);
+            }
 
             attemptReconcilingFieldEncryption(schema, *fieldPath, subtreeStack);
             // Indicate that we've seen this field to improve error messages if we see an
@@ -628,8 +710,23 @@ private:
         // {$in: ["xx-yyy-zzz", "$allowlistedSSNs"]} and 'allowlistedSSNs' is encrypted, we won't be
         // able to look within the array to evaluate the $in. So in these cases we add an
         // 'Evaluated' Subtree to make sure none of the arguments are encrypted.
-        if (dynamic_cast<ExpressionArray*>(in->getOperandList()[1].get())) {
-            enterSubtree(Subtree::Compared{}, subtreeStack);
+        if (auto arrExpr = dynamic_cast<ExpressionArray*>(in->getOperandList()[1].get())) {
+            auto comparedSubtree = Subtree::Compared{};
+            // We also specifically support cases like: {$in: ["$encryptedField", <arr>]}. We set
+            // temporarilyPermittedEncryptedFieldPath to the child field path to indicate that the
+            // encrypted field path is allowed in this case.
+            if (auto firstOp = dynamic_cast<ExpressionFieldPath*>(in->getOperandList()[0].get())) {
+                auto ref = firstOp->getFieldPathWithoutCurrentPrefix().fullPath();
+                if (schema.parsedFrom == FleVersion::kFle2 &&
+                    (schema.getEncryptionMetadataForPath(FieldRef{ref}) ||
+                     schema.mayContainEncryptedNodeBelowPrefix(FieldRef{ref}))) {
+                    comparedSubtree.temporarilyPermittedEncryptedFieldPath = firstOp;
+                    for (auto& elem : arrExpr->getChildren()) {
+                        ensureFLE2EncryptedFieldComparedToConstant(firstOp, elem.get());
+                    }
+                }
+            }
+            enterSubtree(comparedSubtree, subtreeStack);
         } else {
             enterSubtree(Subtree::Evaluated{"an $in comparison without an array literal"},
                          subtreeStack);
@@ -944,6 +1041,8 @@ private:
     const ExpressionContext& expCtx;
     const EncryptionSchemaTreeNode& schema;
     std::stack<Subtree>& subtreeStack;
+
+    FLE2FieldRefExpr fieldRefSupported;
 };
 
 class IntentionInVisitor final : public ExpressionMutableVisitor {
@@ -1591,8 +1690,9 @@ class IntentionWalker final {
 public:
     IntentionWalker(const ExpressionContext& expCtx,
                     const EncryptionSchemaTreeNode& schema,
-                    bool expressionOutputIsCompared)
-        : expCtx(expCtx), schema(schema) {
+                    bool expressionOutputIsCompared,
+                    FLE2FieldRefExpr fieldRefSupported)
+        : expCtx(expCtx), schema(schema), fieldRefSupported(fieldRefSupported) {
         // Before walking, enter the outermost Subtree.
         enterSubtree(expressionOutputIsCompared ? decltype(Subtree::output)(Subtree::Compared{})
                                                 : Subtree::Forwarded{},
@@ -1625,7 +1725,9 @@ private:
     const EncryptionSchemaTreeNode& schema;
     std::stack<Subtree> subtreeStack;
 
-    IntentionPreVisitor intentionPreVisitor{expCtx, schema, subtreeStack};
+    FLE2FieldRefExpr fieldRefSupported;
+
+    IntentionPreVisitor intentionPreVisitor{expCtx, schema, subtreeStack, fieldRefSupported};
     IntentionInVisitor intentionInVisitor{expCtx, schema, subtreeStack};
     IntentionPostVisitor intentionPostVisitor{expCtx, schema, subtreeStack};
 };
@@ -1635,8 +1737,9 @@ private:
 Intention mark(const ExpressionContext& expCtx,
                const EncryptionSchemaTreeNode& schema,
                Expression* expression,
-               bool expressionOutputIsCompared) {
-    IntentionWalker walker{expCtx, schema, expressionOutputIsCompared};
+               bool expressionOutputIsCompared,
+               FLE2FieldRefExpr fieldRefSupported) {
+    IntentionWalker walker{expCtx, schema, expressionOutputIsCompared, fieldRefSupported};
     expression_walker::walk<Expression>(expression, &walker);
     return walker.exitOutermostSubtree(expressionOutputIsCompared);
 }

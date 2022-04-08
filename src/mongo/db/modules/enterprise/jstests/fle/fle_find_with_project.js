@@ -36,9 +36,9 @@ assert.commandFailedWithCode(testDB.runCommand(Object.assign({
     projection: {isSsnFake: {$gt: ["$ssn", NumberLong(0)]}},
 },
                                                              schema)),
-                             [31110, 6331100]);
+                             [31110, 6331102]);
 
-// TODO SERVER-63313 support agg $eq.
+// TODO SERVER-65296 Support comparisons to encrypted fields under project.
 if (fle2Enabled()) {
     // Referring to an encrypted field in the projection spec is not allowed.
     assert.commandFailedWithCode(testDB.runCommand(Object.assign({
@@ -47,7 +47,7 @@ if (fle2Enabled()) {
         projection: {isSsnFake: {$eq: ["$ssn", NumberLong(0)]}},
     },
                                                                  schema)),
-                                 6331100);
+                                 6331102);
 
     assert.commandFailedWithCode(testDB.runCommand(Object.assign({
         find: collName,
@@ -56,7 +56,7 @@ if (fle2Enabled()) {
             {isSsnFake: {"$in": ["$ssn", [NumberLong(0), NumberLong(111111111), NumberLong(42)]]}},
     },
                                                                  schema)),
-                                 6331100);
+                                 6331102);
 
     //  Cannot reference a prefix of an encrypted field in a computed projection.
     assert.commandFailedWithCode(testDB.runCommand(Object.assign({

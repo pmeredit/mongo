@@ -9,7 +9,16 @@
 #include "encryption_schema_tree.h"
 #include "mongo/db/pipeline/expression.h"
 
-namespace mongo::aggregate_expression_intender {
+namespace mongo {
+
+/**
+ * Indicates whether or not references to FLE 2-encrypted fields are allowed within an expression.
+ * The value of this enum should be chosen based on the server-side support for completing rewrites
+ * of the expression. It should be disallowed here if the server-side does not support the rewrite.
+ */
+enum class FLE2FieldRefExpr { allowed, disallowed };
+
+namespace aggregate_expression_intender {
 
 /**
  * Indicates whether or not mark() actually inserted any intent-to-encrypt markers, since they are
@@ -34,12 +43,16 @@ inline Intention operator||(Intention a, Intention b) {
  * output to perform equality comparisons. For example, if this expression tree is used as the
  * group keys in a $group stage.
  *
+ * The value of 'fieldRefSupported' determines if references to FLE 2-encrypted fields are allowed
+ * within the expression. This value is ignored when 'schema' indicates we are using FLE 1.
+ *
  * Returns an Intention enum indicating whether or not intent-to-encrypt markers were inserted.
  */
 Intention mark(const ExpressionContext& expCtx,
                const EncryptionSchemaTreeNode& schema,
                Expression* expression,
-               bool expressionOutputIsCompared);
+               bool expressionOutputIsCompared,
+               FLE2FieldRefExpr fieldRefSupported = FLE2FieldRefExpr::disallowed);
 
 /**
  * Given an input 'expression' and 'schema', returns the output schema associated with the evaluated
@@ -61,4 +74,5 @@ std::unique_ptr<EncryptionSchemaTreeNode> getOutputSchema(const EncryptionSchema
                                                           Expression* expression,
                                                           bool expressionOutputIsCompared);
 
-}  // namespace mongo::aggregate_expression_intender
+}  // namespace aggregate_expression_intender
+}  // namespace mongo

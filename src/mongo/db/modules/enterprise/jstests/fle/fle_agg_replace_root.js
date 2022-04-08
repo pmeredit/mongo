@@ -25,7 +25,7 @@ let command, cmdRes, expected;
 command = Object.assign(
     {aggregate: coll.getName(), pipeline: [{$replaceRoot: {newRoot: "$user.ssn"}}], cursor: {}},
     encryptedUserSsnSpec);
-assert.commandFailedWithCode(testDB.runCommand(command), [31159, 6331100]);
+assert.commandFailedWithCode(testDB.runCommand(command), 31159);
 
 // Test that replacing the root with new field works.
 command = Object.assign(
@@ -50,7 +50,7 @@ command = Object.assign({
 },
                         generateSchema({user: encryptedStringSpec, remaining: encryptedStringSpec},
                                        coll.getFullName()));
-assert.commandFailedWithCode(testDB.runCommand(command), [31110, 6331100]);
+assert.commandFailedWithCode(testDB.runCommand(command), [31110, 6331102]);
 
 // Test that schema is correctly translated after $replaceRoot stage. 'ssn' fields
 // will not be an encrypted field after '$replaceRoot' stage.
@@ -74,9 +74,8 @@ command = Object.assign({
     cursor: {}
 },
                         generateSchema({user: encryptedStringSpec}, coll.getFullName()));
-// TODO SERVER-63313 Support agg $eq.
 if (fle2Enabled()) {
-    assert.commandFailedWithCode(testDB.runCommand(command), 6331100);
+    assert.commandFailedWithCode(testDB.runCommand(command), 6331102);
 } else {
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     assert(cmdRes.schemaRequiresEncryption, cmdRes);

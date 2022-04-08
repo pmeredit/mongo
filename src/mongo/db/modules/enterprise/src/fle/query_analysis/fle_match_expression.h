@@ -25,7 +25,8 @@ public:
      * MatchExpression contains an invalid operator on an encrypted field.
      */
     FLEMatchExpression(std::unique_ptr<MatchExpression> expression,
-                       const EncryptionSchemaTreeNode& schemaTree);
+                       const EncryptionSchemaTreeNode& schemaTree,
+                       FLE2FieldRefExpr fieldRefSupported = FLE2FieldRefExpr::disallowed);
 
     MatchExpression* getMatchExpression() const {
         return _expression.get();
@@ -84,6 +85,8 @@ private:
     // encryption.
     std::vector<BSONObj> _encryptedElements;
     std::unique_ptr<MatchExpression> _expression;
+
+    FLE2FieldRefExpr fieldRefSupported;
 
     // Keeps track of whether or not this expression has any placeholders marked for encryption.
     aggregate_expression_intender::Intention _didMark =

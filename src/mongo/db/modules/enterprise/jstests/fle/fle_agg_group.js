@@ -14,7 +14,7 @@ const conn = mongocryptd.getConnection();
 const testDB = conn.getDB("test");
 const coll = testDB.fle_agg_group;
 
-const FLE2InvalidReferenceCode = 6331100;
+const FLE2InvalidReferenceCode = 6331102;
 
 const encryptedStringSpec = {
     encrypt: {algorithm: kDeterministicAlgo, keyId: [UUID()], bsonType: "string"}
@@ -87,9 +87,9 @@ command = Object.assign({
     cursor: {}
 },
                         generateSchema({date: encryptedStringSpec}, coll.getFullName()));
-// FLE 2 does not support referring to an encrypted field in an aggregate expression.
+// FLE 2 has only limited support for referring to an encrypted field in an aggregate expression.
 if (fle2Enabled()) {
-    assert.commandFailedWithCode(testDB.runCommand(command), FLE2InvalidReferenceCode);
+    assert.commandFailedWithCode(testDB.runCommand(command), 51222);
 } else {
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
@@ -133,7 +133,7 @@ command = Object.assign({
     cursor: {}
 },
                         qtyEncryptedQueryable);
-// FLE 2 does not support referring to an encrypted field in an aggregate expression.
+// FLE 2 has only limited support for referring to an encrypted field in an aggregate expression.
 if (fle2Enabled()) {
     assert.commandFailedWithCode(testDB.runCommand(command), FLE2InvalidReferenceCode);
 } else {
@@ -156,7 +156,7 @@ command = Object.assign({
 },
                         generateSchema({qty: encryptedStringSpec, qtyOther: encryptedStringSpec},
                                        coll.getFullName()));
-assertCommandUnchanged(command, false, true, FLE2InvalidReferenceCode);
+assertCommandUnchanged(command, false, true, 51222);
 
 // Test that $group with an expression in '_id' requires a stable output type across documents
 // to allow for comparisons. The encryption properties of $qtyOther and $qty are different.
@@ -167,7 +167,7 @@ command = Object.assign({
     cursor: {}
 },
                         qtyEncryptedQueryable);
-assert.commandFailedWithCode(testDB.runCommand(command), [51222, FLE2InvalidReferenceCode]);
+assert.commandFailedWithCode(testDB.runCommand(command), 51222);
 
 // Test that $group with an expression in '_id' correctly marks literals since the evaluated
 // result of the expression will be used in comparison across documents.
@@ -180,9 +180,9 @@ command = Object.assign({
     cursor: {}
 },
                         qtyEncryptedQueryable);
-// FLE 2 does not support referring to an encrypted field in an aggregate expression.
+// FLE 2 has only limited support for referring to an encrypted field in an aggregate expression.
 if (fle2Enabled()) {
-    assert.commandFailedWithCode(testDB.runCommand(command), FLE2InvalidReferenceCode);
+    assert.commandFailedWithCode(testDB.runCommand(command), 51222);
 } else {
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
@@ -197,9 +197,9 @@ command = Object.assign({
     cursor: {}
 },
                         qtyEncryptedQueryable);
-// FLE 2 does not support referring to an encrypted field in an aggregate expression.
+// FLE 2 has only limited support for referring to an encrypted field in an aggregate expression.
 if (fle2Enabled()) {
-    assert.commandFailedWithCode(testDB.runCommand(command), FLE2InvalidReferenceCode);
+    assert.commandFailedWithCode(testDB.runCommand(command), 51222);
 } else {
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
@@ -211,27 +211,27 @@ if (fle2Enabled()) {
 command =
     Object.assign({aggregate: coll.getName(), pipeline: [{$group: {_id: "$qty"}}], cursor: {}},
                   qtyEncryptedQueryable);
-assertCommandUnchanged(command, false, true, FLE2InvalidReferenceCode);
+assertCommandUnchanged(command, false, true, 51222);
 
 // Test that the $group fails if _id expression is a prefix of a deterministically encrypted
 // field.
 command =
     Object.assign({aggregate: coll.getName(), pipeline: [{$group: {_id: "$foo"}}], cursor: {}},
                   generateSchema({'foo.bar': encryptedStringSpec}, coll.getFullName()));
-assert.commandFailedWithCode(testDB.runCommand(command), [31129, FLE2InvalidReferenceCode]);
+assert.commandFailedWithCode(testDB.runCommand(command), 31129);
 
 // Test that the $group fails if _id expression is a path with an encrypted prefix.
 command =
     Object.assign({aggregate: coll.getName(), pipeline: [{$group: {_id: "$qty.bar"}}], cursor: {}},
                   qtyEncryptedQueryable);
-assert.commandFailedWithCode(testDB.runCommand(command), [51102, FLE2InvalidReferenceCode]);
+assert.commandFailedWithCode(testDB.runCommand(command), 51102);
 
 // Test that the $group fails if _id expression outputs schema with any fields encrypted with
 // the random algorithm.
 command =
     Object.assign({aggregate: coll.getName(), pipeline: [{$group: {_id: "$qty"}}], cursor: {}},
                   qtyEncryptedRandom);
-assert.commandFailedWithCode(testDB.runCommand(command), [51222, FLE2InvalidReferenceCode]);
+assert.commandFailedWithCode(testDB.runCommand(command), 51222);
 
 // Test that the $addToSet accumulator in $group succeeds if the output type is stable and
 // its output schema has only deterministic nodes.
@@ -241,7 +241,7 @@ command = Object.assign({
     cursor: {}
 },
                         qtyEncryptedQueryable);
-assertCommandUnchanged(command, false, true, FLE2InvalidReferenceCode);
+assertCommandUnchanged(command, false, true, 51223);
 
 // Test that the $addToSet accumulator in $group successfully marks constants if added along
 // with an encrypted field.
@@ -259,9 +259,9 @@ command = Object.assign({
     cursor: {}
 },
                         qtyEncryptedQueryable);
-// FLE 2 does not support referring to an encrypted field in an aggregate expression.
+// FLE 2 has only limited support for referring to an encrypted field in an aggregate expression.
 if (fle2Enabled()) {
-    assert.commandFailedWithCode(testDB.runCommand(command), FLE2InvalidReferenceCode);
+    assert.commandFailedWithCode(testDB.runCommand(command), 51223);
 } else {
     cmdRes = assert.commandWorked(testDB.runCommand(command));
     assert.eq(true, cmdRes.hasEncryptionPlaceholders, cmdRes);
@@ -285,7 +285,7 @@ command = Object.assign({
     cursor: {}
 },
                         qtyEncryptedQueryable);
-assert.commandFailedWithCode(testDB.runCommand(command), [51223, FLE2InvalidReferenceCode]);
+assert.commandFailedWithCode(testDB.runCommand(command), 51223);
 
 // Test that the $addToSet accumulator in $group fails if its expression outputs schema with
 // any fields encrypted with the random algorithm.
@@ -295,7 +295,7 @@ command = Object.assign({
     cursor: {}
 },
                         qtyEncryptedRandom);
-assert.commandFailedWithCode(testDB.runCommand(command), [51223, FLE2InvalidReferenceCode]);
+assert.commandFailedWithCode(testDB.runCommand(command), 51223);
 
 // Test that fields corresponding to accumulator expressions with array accumulators over
 // not encrypted fields in $group can be referenced in the query and are marked as not
@@ -326,9 +326,9 @@ command = Object.assign({
 for (let accu of arrayAccus) {
     command.pipeline[0].$group.itemList = {[accu]: "$item"};
 
-    // FLE 2 does not support referring to an encrypted field in an aggregate expression.
+    // FLE 2 has limited support for referring to an encrypted field in an aggregate expression.
     if (fle2Enabled()) {
-        assert.commandFailedWithCode(testDB.runCommand(command), FLE2InvalidReferenceCode);
+        assert.commandFailedWithCode(testDB.runCommand(command), [FLE2InvalidReferenceCode, 51223]);
     } else {
         cmdRes = assert.commandWorked(testDB.runCommand(command));
         assert.eq(false, cmdRes.hasEncryptionPlaceholders, cmdRes);
@@ -348,7 +348,10 @@ command = Object.assign({
                         generateSchema({item: encryptedStringSpec}, coll.getFullName()));
 for (let accu of arrayAccus) {
     command.pipeline[0].$group.itemList = {[accu]: "$item"};
-    assert.commandFailedWithCode(testDB.runCommand(command), [31133, FLE2InvalidReferenceCode]);
+    // This expected errors list may seem unusually long, but different accumulators can trigger
+    // different error codes, so we do actually need each code in the list.
+    assert.commandFailedWithCode(testDB.runCommand(command),
+                                 [31133, 51223, FLE2InvalidReferenceCode]);
 }
 
 // Test that numeric accumulator expressions aggregating encrypted fields fail.
@@ -358,7 +361,7 @@ command = Object.assign(
 let numericAccus = ["$sum", "$min", "$max", "$avg", "$stdDevPop", "$stdDevSamp"];
 for (let accu of numericAccus) {
     command.pipeline[0].$group.totalPrice = {[accu]: "$price"};
-    assert.commandFailedWithCode(testDB.runCommand(command), [51221, FLE2InvalidReferenceCode]);
+    assert.commandFailedWithCode(testDB.runCommand(command), 51221);
 }
 
 // Test that numeric accumulators are allowed if their expression involves a comparison to an
@@ -377,7 +380,7 @@ for (let accu of numericAccus) {
     command.pipeline[0]
         .$group = {_id: null, totalPrice: {[accu]: condExpr}, count: {[accu]: {$const: 1}}};
 
-    // FLE 2 does not support referring to an encrypted field in an aggregate expression.
+    // FLE 2 has limited support for referring to an encrypted field in an aggregate expression.
     if (fle2Enabled()) {
         assert.commandFailedWithCode(testDB.runCommand(command), FLE2InvalidReferenceCode);
     } else {
@@ -412,7 +415,7 @@ let selectionAccus = ["$first", "$last"];
 for (let accu of selectionAccus) {
     command.pipeline[0].$group.representative = {[accu]: "$sales.region"};
 
-    // FLE 2 does not support referring to an encrypted field in an aggregate expression.
+    // FLE 2 has limited support for referring to an encrypted field in an aggregate expression.
     if (fle2Enabled()) {
         assert.commandFailedWithCode(testDB.runCommand(command), FLE2InvalidReferenceCode);
     } else {
@@ -451,7 +454,7 @@ command = Object.assign({
     cursor: {}
 },
                         qtyEncryptedQueryable);
-assert.commandFailedWithCode(testDB.runCommand(command), [51221, FLE2InvalidReferenceCode]);
+assert.commandFailedWithCode(testDB.runCommand(command), 51221);
 
 // Test that $accumulator is allowed as long as it doesn't touch any encrypted fields.
 // It's allowed to reference the group key.
@@ -499,7 +502,7 @@ command = Object.assign({
     cursor: {}
 },
                         generateSchema({secretString: encryptedStringSpec}, coll.getFullName()));
-assert.commandFailedWithCode(testDB.runCommand(command), [51221, FLE2InvalidReferenceCode]);
+assert.commandFailedWithCode(testDB.runCommand(command), 51221);
 
 // Test that even when encrypted fields end up in the group key, $accumulator is not allowed to
 // reference them.
@@ -525,7 +528,7 @@ command = Object.assign({
     cursor: {}
 },
                         generateSchema({secretString: encryptedStringSpec}, coll.getFullName()));
-assert.commandFailedWithCode(testDB.runCommand(command), [4544715, FLE2InvalidReferenceCode]);
+assert.commandFailedWithCode(testDB.runCommand(command), [4544715, 51222]);
 
 mongocryptd.stop();
 })();
