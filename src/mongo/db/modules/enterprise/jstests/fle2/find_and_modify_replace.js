@@ -2,17 +2,13 @@
  * Test encrypted find and modify with replacement style update and upsert
  *
  * @tags: [
- *  featureFlagFLE2,
+ * requires_fcv_60
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
 
 (function() {
 'use strict';
-
-if (!isFLE2ShardingEnabled()) {
-    return;
-}
 
 const dbName = 'find_and_modify_replace';
 const dbTest = db.getSiblingDB(dbName);

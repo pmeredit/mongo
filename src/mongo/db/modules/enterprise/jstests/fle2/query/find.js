@@ -1,7 +1,7 @@
 /**
  * Test find command over encrypted fields for FLE2.
  * @tags: [
- *  featureFlagFLE2,
+ * requires_fcv_60
  * ]
  */
 
@@ -10,9 +10,6 @@ load("jstests/fle2/libs/encrypted_client_util.js");
 load("src/mongo/db/modules/enterprise/jstests/fle2/query/match_expression_data.js");
 
 (function() {
-if (!isFLE2Enabled()) {
-    return;
-}
 /**
  *
  * @param {object} testData An object that contains the contents of the test. Namely:

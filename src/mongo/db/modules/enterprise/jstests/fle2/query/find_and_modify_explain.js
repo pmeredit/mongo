@@ -2,7 +2,7 @@
  * Test for explain of findAndModify over encrypted fields.
  *
  * @tags: [
- *  featureFlagFLE2,
+ *  requires_fcv_60,
  * ]
  */
 (function() {

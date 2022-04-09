@@ -2,17 +2,13 @@
  * Test encrypted find and modify works with array filters
  *
  * @tags: [
- *  featureFlagFLE2,
+ * requires_fcv_60
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
 
 (function() {
 'use strict';
-
-if (!isFLE2Enabled()) {
-    return;
-}
 
 const dbName = 'find_and_modify_array_filters';
 const dbTest = db.getSiblingDB(dbName);

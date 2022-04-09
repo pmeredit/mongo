@@ -2,7 +2,7 @@
  * Test encrypted delete works race under contention
  *
  * @tags: [
- *  featureFlagFLE2,
+ * requires_fcv_60
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
@@ -10,10 +10,6 @@ load("jstests/libs/fail_point_util.js");
 
 (function() {
 'use strict';
-
-if (!isFLE2Enabled()) {
-    return;
-}
 
 function runTest(conn) {
     let dbName = 'txn_contention_delete';

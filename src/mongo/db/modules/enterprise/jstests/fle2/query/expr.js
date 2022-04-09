@@ -1,7 +1,7 @@
 /**
  * Test rewrites of agg expressions over encrypted fields for FLE2.
  *
- * @tags: [featureFlagFLE2]
+ * @tags: [requires_fcv_60]
  */
 
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
@@ -156,15 +156,15 @@ const aggTests = [
         pipeline: [
             {
                 $graphLookup: {
-                    from: collName, 
-                    as: "chain", 
-                    connectToField: "name", 
+                    from: collName,
+                    as: "chain",
+                    connectToField: "name",
                     connectFromField: "manager",
                     startWith: "$manager",
                     restrictSearchWithMatch: {$expr: {$in: ["$ssn", ["123", "456"]]}}
                 }
             }
-        ], 
+        ],
         expected: [
             Object.assign({chain: [docs[1]]}, docs[0]),
             Object.assign({chain: []}, docs[1]),
@@ -177,15 +177,15 @@ const aggTests = [
         pipeline: [
             {
                 $graphLookup: {
-                    from: collName, 
-                    as: "chain", 
-                    connectToField: "name", 
+                    from: collName,
+                    as: "chain",
+                    connectToField: "name",
                     connectFromField: "manager",
                     startWith: "$manager",
                     restrictSearchWithMatch: {$expr: {$in: ["$name", ["A", "B", "D"]]}}
                 }
             }
-        ], 
+        ],
         expected: [
             Object.assign({chain: [docs[1]]}, docs[0]),
             Object.assign({chain: []}, docs[1]),
@@ -198,9 +198,9 @@ const aggTests = [
         pipeline: [
             {
                 $graphLookup: {
-                    from: collName, 
-                    as: "chain", 
-                    connectToField: "name", 
+                    from: collName,
+                    as: "chain",
+                    connectToField: "name",
                     connectFromField: "manager",
                     maxDepth: 0,
                     startWith: {
@@ -212,7 +212,7 @@ const aggTests = [
                     },
                 }
             }
-        ], 
+        ],
         expected: [
             Object.assign({chain: [docs[0]]}, docs[0]),
             Object.assign({chain: [docs[2]]}, docs[1]),
@@ -225,9 +225,9 @@ const aggTests = [
         pipeline: [
             {
                 $graphLookup: {
-                    from: collName, 
-                    as: "chain", 
-                    connectToField: "name", 
+                    from: collName,
+                    as: "chain",
+                    connectToField: "name",
                     connectFromField: "manager",
                     maxDepth: 0,
                     startWith: {
@@ -239,7 +239,7 @@ const aggTests = [
                     },
                 }
             }
-        ], 
+        ],
         expected: [
             Object.assign({chain: [docs[0]]}, docs[0]),
             Object.assign({chain: [docs[2]]}, docs[1]),
@@ -252,9 +252,9 @@ const aggTests = [
         pipeline: [
             {
                 $graphLookup: {
-                    from: collName, 
-                    as: "chain", 
-                    connectToField: "name", 
+                    from: collName,
+                    as: "chain",
+                    connectToField: "name",
                     connectFromField: "manager",
                     maxDepth: 0,
                     startWith: {
@@ -267,7 +267,7 @@ const aggTests = [
                     restrictSearchWithMatch: {$expr: {$in: ["$ssn", ["123", "456"]]}}
                 }
             }
-        ], 
+        ],
         expected: [
             Object.assign({chain: [docs[0]]}, docs[0]),
             Object.assign({chain: []}, docs[1]),
@@ -276,13 +276,13 @@ const aggTests = [
         ]
     },
     // Similar to the above, test that $geoNear undergoes rewrites for the query field.
-    {    
+    {
         pipeline: [
             {
                 $geoNear: {
-                    near: {type: "Point", coordinates: [0, 0]}, 
-                    distanceField: "distance", 
-                    key: "location", 
+                    near: {type: "Point", coordinates: [0, 0]},
+                    distanceField: "distance",
+                    key: "location",
                     query: {$expr: {$and: [{$in: ["$ssn", ["789", "456"]]}, {$eq: ["$age", NumberLong(35)]}]}}
                 }
             }
@@ -292,13 +292,13 @@ const aggTests = [
         ]
     },
     // Test that when the query field is missing, we get the correct results.
-    {    
+    {
         pipeline: [
             {
                 $geoNear: {
-                    near: {type: "Point", coordinates: [0, 0]}, 
-                    distanceField: "distance", 
-                    key: "location", 
+                    near: {type: "Point", coordinates: [0, 0]},
+                    distanceField: "distance",
+                    key: "location",
                 }
             }
         ],
@@ -307,13 +307,13 @@ const aggTests = [
         ]
     },
     // Test that when no rewrites are needed on the query field, we get the correct results.
-    {    
+    {
         pipeline: [
             {
                 $geoNear: {
-                    near: {type: "Point", coordinates: [0, 0]}, 
-                    distanceField: "distance", 
-                    key: "location", 
+                    near: {type: "Point", coordinates: [0, 0]},
+                    distanceField: "distance",
+                    key: "location",
                     query: {$expr: {$eq: ["$name", "A"]}}
                 }
             }
@@ -324,36 +324,36 @@ const aggTests = [
     },
 
     // Test multi-stage pipelines.
-    {   
+    {
         // $match with a rewrite followed by $graphLookup with a rewrite.
         pipeline: [
             {$match: {$expr: {$eq: ["$ssn", "789"]}}},
             {
                 $graphLookup: {
-                    from: collName, 
-                    as: "chain", 
-                    connectToField: "name", 
+                    from: collName,
+                    as: "chain",
+                    connectToField: "name",
                     connectFromField: "manager",
                     startWith: "$manager",
                     restrictSearchWithMatch: {$expr: {$in: ["$ssn", ["123", "456"]]}}
                 }
             }
-        ], 
+        ],
         expected: [Object.assign({chain: [docs[3], docs[0], docs[1]]}, docs[2])]
     },
     {
         // $match with a rewrite followed by $group.
         pipeline: [
-            {$match: {$expr: {$in: ["$ssn", ["123", "456"]]}}}, 
+            {$match: {$expr: {$in: ["$ssn", ["123", "456"]]}}},
             {$group: {_id: "$manager", numReports: {$count: {}}}}
         ],
         expected: [{_id: "B", numReports: 1}, {_id: "C", numReports: 1}, {_id: "A", numReports: 1}]
     },
-    {   
+    {
         // $group then $match. With the stages swapped, the $match is referencing fields which no
         // longer exist in the input documents and should filter out every document.
         pipeline: [
-            {$group: {_id: "$manager", numReports: {$count: {}}}}, 
+            {$group: {_id: "$manager", numReports: {$count: {}}}},
             {$match: {$expr: {$in: ["$ssn", ["123", "456"]]}}}
         ],
         expected: []
@@ -361,8 +361,8 @@ const aggTests = [
     {
         // Alternate between stages that require rewriting and stages that do not.
         pipeline: [
-            {$unwind: {path: "$location"}}, 
-            {$match: {$expr: {$in: ['$age', [NumberLong(25), NumberLong(35), NumberLong(55)]]}}}, 
+            {$unwind: {path: "$location"}},
+            {$match: {$expr: {$in: ['$age', [NumberLong(25), NumberLong(35), NumberLong(55)]]}}},
             {$match: {_id: {$in: [0, 1]}}},
             {$match: {$expr: {$eq: ["$ssn", "123"]}}},
             {$project: {ssn: 1}}
@@ -373,9 +373,9 @@ const aggTests = [
         // Alternate between stages that require rewriting and stages that do not. Same as above but
         // with a permuted $match order.
         pipeline: [
-            {$unwind: {path: "$location"}}, 
+            {$unwind: {path: "$location"}},
             {$match: {_id: {$in: [0, 1]}}},
-            {$match: {$expr: {$in: ['$age', [NumberLong(25), NumberLong(35), NumberLong(55)]]}}}, 
+            {$match: {$expr: {$in: ['$age', [NumberLong(25), NumberLong(35), NumberLong(55)]]}}},
             {$match: {$expr: {$eq: ["$ssn", "123"]}}},
             {$project: {ssn: 1}}
         ],

@@ -1,7 +1,9 @@
 /**
  * Test explain with aggregations on encrypted collections.
  *
- * @tags: [featureFlagFLE2]
+ * @tags: [
+ * requires_fcv_60
+ ]
  */
 
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.

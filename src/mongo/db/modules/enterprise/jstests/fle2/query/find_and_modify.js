@@ -2,7 +2,7 @@
  * Test encrypted find and modify correctly rewrites the filter portion.
  *
  * @tags: [
- *  featureFlagFLE2,
+ * requires_fcv_60
  * ]
  */
 (function() {

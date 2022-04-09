@@ -1,7 +1,7 @@
 /**
  * Test count command over encrypted fields for FLE2.
  * @tags: [
- *  featureFlagFLE2,
+ * requires_fcv_60
  * ]
  */
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.

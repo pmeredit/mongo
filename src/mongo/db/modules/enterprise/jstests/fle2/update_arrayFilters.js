@@ -2,17 +2,13 @@
  * Test encrypted update with array filters works
  *
  * @tags: [
- *  featureFlagFLE2,
+ * requires_fcv_60
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
 
 (function() {
 'use strict';
-
-if (!isFLE2Enabled()) {
-    return;
-}
 
 let dbName = 'update_arrayFilters';
 let dbTest = db.getSiblingDB(dbName);

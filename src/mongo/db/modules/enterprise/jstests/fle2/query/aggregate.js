@@ -1,7 +1,9 @@
 /**
  * Test aggregations on encrypted collections.
  *
- * @tags: [featureFlagFLE2]
+ * @tags: [
+ * requires_fcv_60
+ ]
  */
 
 load('jstests/aggregation/extras/utils.js');  // For assertArrayEq.
@@ -73,9 +75,9 @@ const tests = [
         pipeline: [
             {
                 $graphLookup: {
-                    from: collName, 
-                    as: "chain", 
-                    connectToField: "name", 
+                    from: collName,
+                    as: "chain",
+                    connectToField: "name",
                     connectFromField: "manager",
                     startWith: "$manager",
                     restrictSearchWithMatch: {ssn: {$in: ["123", "456"]}}
@@ -94,9 +96,9 @@ const tests = [
         pipeline: [
             {
                 $graphLookup: {
-                    from: collName, 
-                    as: "chain", 
-                    connectToField: "name", 
+                    from: collName,
+                    as: "chain",
+                    connectToField: "name",
                     connectFromField: "manager",
                     startWith: "$manager",
                     restrictSearchWithMatch: {ssn: {$ne: "789"}, _id: {$lt: 3}}
@@ -115,9 +117,9 @@ const tests = [
         pipeline: [
             {
                 $geoNear: {
-                    near: {type: "Point", coordinates: [0, 0]}, 
-                    distanceField: "distance", 
-                    key: "location", 
+                    near: {type: "Point", coordinates: [0, 0]},
+                    distanceField: "distance",
+                    key: "location",
                     query: {ssn: {$in: ["789", "456"]}}
                 }
             }
@@ -128,13 +130,13 @@ const tests = [
         ]
     },
     // $geoNear with a compound filter on an encrypted field ($ne) and a non-encrypted field.
-    {    
+    {
         pipeline: [
             {
                 $geoNear: {
-                    near: {type: "Point", coordinates: [0, 0]}, 
-                    distanceField: "distance", 
-                    key: "location", 
+                    near: {type: "Point", coordinates: [0, 0]},
+                    distanceField: "distance",
+                    key: "location",
                     query: {ssn: {$ne: "123"}, _id: 1}
                 }
             }
@@ -156,15 +158,15 @@ const tests = [
             {$match: {ssn: "789"}},
             {
                 $graphLookup: {
-                    from: collName, 
-                    as: "chain", 
-                    connectToField: "name", 
+                    from: collName,
+                    as: "chain",
+                    connectToField: "name",
                     connectFromField: "manager",
                     startWith: "$manager",
                     restrictSearchWithMatch: {ssn: {$in: ["123", "456"]}}
                 }
             }
-        ], 
+        ],
         expected: [Object.assign({chain: [docs[3], docs[0], docs[1]]}, docs[2])]
     },
     // $match on a non-encrypted field.
@@ -173,9 +175,9 @@ const tests = [
     {
         pipeline: [{
             $graphLookup: {
-                from: collName, 
-                as: "chain", 
-                connectToField: "name", 
+                from: collName,
+                as: "chain",
+                connectToField: "name",
                 connectFromField: "manager",
                 startWith: "$manager",
                 maxDepth: 0
@@ -195,7 +197,7 @@ const tests = [
     },
     // $project including an encrypted field.
     {
-        pipeline: [{$project: {_id: 0, ssn: 1}}], 
+        pipeline: [{$project: {_id: 0, ssn: 1}}],
         expected: [{ssn: "123"}, {ssn: "456"}, {ssn: "789"}, {ssn: "123"}]
     },
 
@@ -222,9 +224,9 @@ const tests = [
         pipeline: [
             {
                 $graphLookup: {
-                    from: collName, 
-                    as: "chain", 
-                    connectToField: "name", 
+                    from: collName,
+                    as: "chain",
+                    connectToField: "name",
                     connectFromField: "manager",
                     startWith: "$manager",
                     restrictSearchWithMatch: {ssn: {$in: ["123", "456"]}, "age": {$ne: NumberLong(35)}}
@@ -239,13 +241,13 @@ const tests = [
         ]
     },
     // $geoNear which filters on two encrypted fields ($in, $eq).
-    {    
+    {
         pipeline: [
             {
                 $geoNear: {
-                    near: {type: "Point", coordinates: [0, 0]}, 
-                    distanceField: "distance", 
-                    key: "location", 
+                    near: {type: "Point", coordinates: [0, 0]},
+                    distanceField: "distance",
+                    key: "location",
                     query: {ssn: {$in: ["789", "456"]}, age: NumberLong(35)}
                 }
             }

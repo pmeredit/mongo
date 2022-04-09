@@ -2,17 +2,13 @@
  * Test encrypted find and modify with remove works
  *
  * @tags: [
- *  featureFlagFLE2,
+ * requires_fcv_60
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
 
 (function() {
 'use strict';
-
-if (!isFLE2Enabled()) {
-    return;
-}
 
 const dbName = 'basic_find_and_modify_remove';
 const dbTest = db.getSiblingDB(dbName);
