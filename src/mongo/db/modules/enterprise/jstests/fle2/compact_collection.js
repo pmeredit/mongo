@@ -16,7 +16,7 @@ if (!isFLE2ReplicationEnabled()) {
 
 const dbName = 'compact_collection_db';
 const collName = 'encrypted';
-const ecocName = 'fle2.' + collName + '.ecoc';
+const ecocName = 'enxcol_.' + collName + '.ecoc';
 const ecocCompactName = ecocName + '.compact';
 
 const admin = db.getMongo().getDB("admin");
@@ -176,8 +176,8 @@ jsTestLog("Test compact where ecoc and ecoc.compact both exist and ecoc.compact 
 runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
     const coll = edb[collName];
 
-    // Pre-create the renamed ecoc collection, so that both fle2.encrypted.ecoc and
-    // fle2.encrypted.ecoc.compact exist before compaction
+    // Pre-create the renamed ecoc collection, so that both enxcol_.encrypted.ecoc and
+    // enxcol_.encrypted.ecoc.compact exist before compaction
     assert.commandWorked(edb.createCollection(ecocCompactName));
 
     // Insert & delete some non-unique values for "first"
@@ -211,7 +211,8 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
     }
     client.assertEncryptedCollectionCounts(collName, 5, 10, 5, 15);
 
-    // Rename the ecoc collection to a fle2.encrypted.ecoc.compact, and recreate the ecoc collection
+    // Rename the ecoc collection to a enxcol_.encrypted.ecoc.compact, and recreate the ecoc
+    // collection
     assert.commandWorked(admin.runCommand(
         {renameCollection: dbName + "." + ecocName, to: dbName + "." + ecocCompactName}));
     assert.commandWorked(edb.createCollection(ecocName));
@@ -244,7 +245,7 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
     }
     client.assertEncryptedCollectionCounts(collName, 5, 5, 0, 5);
 
-    // Rename the ecoc collection to a fle2.encrypted.ecoc.compact
+    // Rename the ecoc collection to a enxcol_.encrypted.ecoc.compact
     assert.commandWorked(admin.runCommand(
         {renameCollection: dbName + "." + ecocName, to: dbName + "." + ecocCompactName}));
     client.assertEncryptedCollectionCounts(collName, 5, 5, 0, 0);
