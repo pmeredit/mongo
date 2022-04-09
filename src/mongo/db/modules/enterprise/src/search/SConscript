@@ -20,6 +20,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/pipeline/pipeline',
     ],
     LIBDEPS_PRIVATE=[
+        '$BUILD_DIR/mongo/db/pipeline/sharded_agg_helpers',
         '$BUILD_DIR/mongo/executor/task_executor_cursor',
         'mongot_options',
         'mongot_task_executor',

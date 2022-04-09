@@ -17,7 +17,8 @@ namespace mongo::mongot_cursor {
 std::vector<executor::TaskExecutorCursor> establishCursors(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const BSONObj& query,
-    executor::TaskExecutor* taskExecutor);
+    executor::TaskExecutor* taskExecutor,
+    const boost::optional<int>& protocolVersion = boost::none);
 
 /**
  * Gets the explain information by issuing an explain command to mongot and blocking
@@ -27,6 +28,20 @@ std::vector<executor::TaskExecutorCursor> establishCursors(
 BSONObj getExplainResponse(const boost::intrusive_ptr<ExpressionContext>& expCtx,
                            const BSONObj& query,
                            executor::TaskExecutor* taskExecutor);
+
+/**
+ * Fetch the search metadata merging pipeline from mongot. The return value is a pair including the
+ * parsed pipeline along with the protocol version which must be included in the search query.
+ */
+std::pair<std::unique_ptr<Pipeline, PipelineDeleter>, int> fetchMergingPipeline(
+    const boost::intrusive_ptr<ExpressionContext>& pExpCtx, const BSONObj& searchRequest);
+
+/**
+ * Create the initial search pipeline which can be used for both $search and $searchMeta. The
+ * returned list is unique and mutable.
+ */
+std::list<boost::intrusive_ptr<DocumentSource>> createInitialSearchPipeline(
+    BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& pExpCtx);
 
 /**
  * A class that contains methods that are implemented as stubs in community that need to be

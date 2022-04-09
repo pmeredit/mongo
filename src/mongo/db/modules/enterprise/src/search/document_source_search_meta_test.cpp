@@ -28,11 +28,18 @@ using std::vector;
 
 using SearchMetaTest = AggregationContextFixture;
 
+struct MockMongoInterface final : public StubMongoProcessInterface {
+    bool inShardedEnvironment(OperationContext* opCtx) const override {
+        return false;
+    }
+};
+
 TEST_F(SearchMetaTest, TestParsingOfSearchMeta) {
     const auto mongotQuery = fromjson("{query: 'cakes', path: 'title'}");
     auto specObj = BSON("$searchMeta" << mongotQuery);
 
     auto expCtx = getExpCtx();
+    expCtx->mongoProcessInterface = std::make_unique<MockMongoInterface>();
     auto fromNs = NamespaceString("unittests.$cmd.aggregate");
     expCtx->setResolvedNamespaces(StringMap<ExpressionContext::ResolvedNamespace>{
         {fromNs.coll().toString(), {fromNs, std::vector<BSONObj>()}}});

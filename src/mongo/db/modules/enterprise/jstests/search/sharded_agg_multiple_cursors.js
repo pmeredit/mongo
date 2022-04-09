@@ -10,6 +10,7 @@ load('jstests/libs/uuid_util.js');                 // For getUUIDFromListCollect
 load("jstests/libs/collection_drop_recreate.js");  // For assertCreateCollection.
 load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
 load("src/mongo/db/modules/enterprise/jstests/search/lib/shardingtest_with_mongotmock.js");
+load("src/mongo/db/modules/enterprise/jstests/search/lib/search_sharded_example_cursors.js");
 load("jstests/libs/feature_flag_util.js");  // For isEnabled.
 
 const dbName = "test";
@@ -59,132 +60,35 @@ st.ensurePrimaryShard(dbName, st.shard0.name);
 st.shardColl(coll, {_id: 1}, {_id: splitPoint}, {_id: splitPoint + 1});
 
 const mongotQuery = {};
+const protocolVersion = NumberInt(1);
+const shardPipelineStage = {
+    "$_internalSearchMongotRemote":
+        {"mongotQuery": mongotQuery, metadataMergeProtocolVersion: protocolVersion}
+};
 const collUUID0 = getUUIDFromListCollections(st.rs0.getPrimary().getDB(dbName), collName);
 const collUUID1 = getUUIDFromListCollections(st.rs1.getPrimary().getDB(dbName), collName);
 // History for shard 1.
 {
-    const resultsID = NumberLong(123);
-    const metaID = NumberLong(2);
-    const historyResults = [
-        {
-            expectedCommand: mongotCommandForQuery(mongotQuery, collName, dbName, collUUID0),
-            response: {
-                ok: 1,
-                cursors: [
-                    {
-                        cursor: {
-                            id: resultsID,
-                            type: "results",
-                            ns: collNS,
-                            nextBatch: [
-                                {_id: 1, val: 1, $searchScore: .4},
-                                {_id: 2, val: 2, $searchScore: .3},
-                            ],
-                        },
-                        ok: 1
-                    },
-                    {
-                        cursor: {
-                            id: metaID,
-                            ns: collNS,
-                            type: "meta",
-                            nextBatch: [{metaVal: 1}, {metaVal: 2}],
-                        },
-                        ok: 1
-                    }
-                ]
-            }
-        },
-        // GetMore for results cursor
-        {
-            expectedCommand: {getMore: resultsID, collection: coll.getName()},
-            response: {
-                cursor: {
-                    id: NumberLong(0),
-                    ns: coll.getFullName(),
-                    nextBatch: [{_id: 3, val: 3, $searchScore: 0.123}]
-                },
-                ok: 1
-            }
-        },
-    ];
-    const historyMeta = [
-        // GetMore for metadata cursor.
-        {
-            expectedCommand: {getMore: metaID, collection: coll.getName()},
-            response: {
-                cursor: {id: NumberLong(0), ns: collNS, nextBatch: [{metaVal: 3}, {metaVal: 4}]},
-                ok: 1
-            }
-        },
-    ];
+    const exampleCursor = searchShardedExampleCursors1(
+        dbName,
+        collNS,
+        collName,
+        mongotCommandForQuery(mongotQuery, collName, dbName, collUUID0, protocolVersion));
     const s0Mongot = stWithMock.getMockConnectedToHost(st.rs0.getPrimary());
-    s0Mongot.setMockResponses(historyResults, resultsID);
-    s0Mongot.setMockResponses(historyMeta, metaID);
+    s0Mongot.setMockResponses(exampleCursor.historyResults, exampleCursor.resultsID);
+    s0Mongot.setMockResponses(exampleCursor.historyMeta, exampleCursor.metaID);
 }
 
 // History for shard 2
 {
-    const resultsID = NumberLong(3);
-    const metaID = NumberLong(4);
-    const historyResults = [
-        {
-            expectedCommand: mongotCommandForQuery(mongotQuery, collName, dbName, collUUID1),
-            response: {
-                ok: 1,
-                cursors: [
-                    {
-                        cursor: {
-                            id: resultsID,
-                            type: "results",
-                            ns: collNS,
-                            nextBatch: [
-                                {_id: 5, val: 5, $searchScore: .4},
-                                {_id: 6, val: 6, $searchScore: .3},
-                            ],
-
-                        },
-                        ok: 1,
-                    },
-                    {
-                        cursor: {
-                            id: metaID,
-                            ns: collNS,
-                            type: "meta",
-                            nextBatch: [{metaVal: 10}, {metaVal: 11}],
-                        },
-                        ok: 1
-                    }
-                ]
-            }
-        },
-        // GetMore for results cursor
-        {
-            expectedCommand: {getMore: resultsID, collection: coll.getName()},
-            response: {
-                cursor: {
-                    id: NumberLong(0),
-                    ns: coll.getFullName(),
-                    nextBatch: [{_id: 7, val: 7, $searchScore: 0.123}]
-                },
-                ok: 1
-            }
-        },
-    ];
-    const historyMeta = [
-        // GetMore for metadata cursor.
-        {
-            expectedCommand: {getMore: metaID, collection: coll.getName()},
-            response: {
-                cursor: {id: NumberLong(0), ns: collNS, nextBatch: [{metaVal: 12}, {metaVal: 13}]},
-                ok: 1
-            }
-        },
-
-    ];
+    const exampleCursor = searchShardedExampleCursors2(
+        dbName,
+        collNS,
+        collName,
+        mongotCommandForQuery(mongotQuery, collName, dbName, collUUID1, protocolVersion));
     const s1Mongot = stWithMock.getMockConnectedToHost(st.rs1.getPrimary());
-    s1Mongot.setMockResponses(historyResults, resultsID);
-    s1Mongot.setMockResponses(historyMeta, metaID);
+    s1Mongot.setMockResponses(exampleCursor.historyResults, exampleCursor.resultsID);
+    s1Mongot.setMockResponses(exampleCursor.historyMeta, exampleCursor.metaID);
 }
 
 /**
@@ -222,7 +126,7 @@ const shardZeroDB = st.rs0.getPrimary().getDB(dbName);
 const shardZeroColl = shardZeroDB[collName];
 let commandObj = {
     aggregate: shardZeroColl.getName(),
-    pipeline: [{$_internalSearchMongotRemote: mongotQuery}],
+    pipeline: [shardPipelineStage],
     fromMongos: true,
     needsMerge: true,
     // Establishing cursors always has batch size zero.
@@ -264,7 +168,7 @@ const shardOneDB = st.rs1.getPrimary().getDB(dbName);
 const shardOneColl = shardOneDB[collName];
 commandObj = {
     aggregate: shardOneColl.getName(),
-    pipeline: [{$_internalSearchMongotRemote: mongotQuery}],
+    pipeline: [shardPipelineStage],
     fromMongos: true,
     needsMerge: true,
     // Establishing cursors always has batch size zero.
@@ -303,7 +207,7 @@ for (let thisCursorTopLevel of cursorArray) {
 // Check that if exchange is set on a search query it fails.
 commandObj = {
     aggregate: shardOneColl.getName(),
-    pipeline: [{$_internalSearchMongotRemote: mongotQuery}],
+    pipeline: [shardPipelineStage],
     fromMongos: true,
     needsMerge: true,
     exchange: {policy: "roundrobin", consumers: NumberInt(4), bufferSize: NumberInt(1024)},

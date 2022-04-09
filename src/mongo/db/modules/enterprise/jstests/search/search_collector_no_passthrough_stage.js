@@ -7,6 +7,7 @@
 load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
 load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
 load("src/mongo/db/modules/enterprise/jstests/search/lib/shardingtest_with_mongotmock.js");
+load("jstests/libs/feature_flag_util.js");
 
 const dbName = jsTestName();
 const collName = jsTestName();
@@ -37,11 +38,11 @@ st.ensurePrimaryShard(dbName, st.shard1.shardName);
 const shard0Conn = st.rs0.getPrimary();
 const shard1Conn = st.rs1.getPrimary();
 const collUUID = getUUIDFromListCollections(testDB, testColl.getName());
-const mongotQuery = {};
+const searchQuery = {};
 const searchCmd = {
     search: testColl.getName(),
     collectionUUID: collUUID,
-    query: mongotQuery,
+    query: searchQuery,
     $db: testDB.getName()
 };
 {
@@ -69,9 +70,13 @@ const searchCmd = {
     s1Mongot.setMockResponses(shard1History, NumberLong(123));
 }
 
+if (FeatureFlagUtil.isEnabled(testDB, "SearchShardedFacets")) {
+    setGenericMergePipeline(collName, searchQuery, dbName, stWithMock);
+}
+
 let cursor = testColl.aggregate(
     [
-        {$search: mongotQuery},
+        {$search: searchQuery},
         {$project: {_id: 1, meta: "$$SEARCH_META"}},
         {$out: foreignColl.getName()}
     ],

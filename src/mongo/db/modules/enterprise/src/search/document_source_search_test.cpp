@@ -28,11 +28,18 @@ using std::vector;
 
 using SearchTest = AggregationContextFixture;
 
+struct MockMongoInterface final : public StubMongoProcessInterface {
+    bool inShardedEnvironment(OperationContext* opCtx) const override {
+        return false;
+    }
+};
+
 TEST_F(SearchTest, ShouldSerializeAndExplainAtUnspecifiedVerbosity) {
     const auto mongotQuery = fromjson("{term: 'asdf'}");
     const auto stageObj = BSON("$search" << mongotQuery);
 
     auto expCtx = getExpCtx();
+    expCtx->mongoProcessInterface = std::make_unique<MockMongoInterface>();
     expCtx->uuid = UUID::gen();
 
     list<intrusive_ptr<DocumentSource>> results =

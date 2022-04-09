@@ -1,20 +1,23 @@
 /**
- * Verify that `$search` queries that set '$$SEARCH_META' fail on sharded collections.
+ * Verify that `$search` queries that set '$$SEARCH_META' succeed on sharded collections.
  */
 (function() {
 "use strict";
 load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");  // For
                                                                            // mongotCommandForQuery.
-load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
 load("src/mongo/db/modules/enterprise/jstests/search/lib/shardingtest_with_mongotmock.js");
+load("src/mongo/db/modules/enterprise/jstests/search/lib/search_sharded_example_cursors.js");
+load("jstests/libs/feature_flag_util.js");
+load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
 
-// This test tests behavior before search sharded facets were enabled.
-if (TestData.setParameters.hasOwnProperty("featureFlagSearchShardedFacets")) {
-    jsTestLog("Skipping test as 'featureFlagSearchShardedFacets is enabled");
-    return;
-}
 const dbName = jsTestName();
 const collName = jsTestName();
+let nodeOptions = {setParameter: {enableTestCommands: 1}};
+// In certain evergreen configurations the feature flag may be set via a different method. Make
+// sure we don't duplicate a parameter set.
+if (!TestData.setParameters.hasOwnProperty("featureFlagSearchShardedFacets")) {
+    nodeOptions.setParameter["featureFlagSearchShardedFacets"] = true;
+}
 const stWithMock = new ShardingTestWithMongotMock({
     name: "sharded_search",
     shards: {
@@ -22,6 +25,11 @@ const stWithMock = new ShardingTestWithMongotMock({
         rs1: {nodes: 1},
     },
     mongos: 1,
+    other: {
+        rsOptions: nodeOptions,
+        mongosOptions: nodeOptions,
+        shardOptions: nodeOptions,
+    }
 });
 stWithMock.start();
 const st = stWithMock.st;
@@ -51,65 +59,149 @@ const shard0Conn = st.rs0.getPrimary();
 const shard1Conn = st.rs1.getPrimary();
 const collUUID0 = getUUIDFromListCollections(shard0Conn.getDB(dbName), collName);
 const collUUID1 = getUUIDFromListCollections(shard1Conn.getDB(dbName), collName);
+const collUUID = collUUID0;
+const collNS = testColl.getFullName();
 
-const mongotQuery = {};
+const searchQuery = {
+    query: "cakes",
+    path: "title"
+};
+
+const expectedCommand = mongotCommandForQuery(
+    searchQuery, testColl.getName(), testDB.getName(), collUUID, NumberInt(42));
+
+// History for shard 1.
 {
-    const shard0History = [
+    const resultsID = NumberLong(11);
+    const metaID = NumberLong(12);
+    const historyResults = [
         {
-            expectedCommand:
-                mongotCommandForQuery(mongotQuery, testColl.getName(), testDB.getName(), collUUID0),
+            expectedCommand: expectedCommand,
             response: {
                 ok: 1,
-                cursor: {
-                    id: NumberLong(0),
-                    ns: testColl.getFullName(),
-                    nextBatch: [
-                        {_id: 2, $searchScore: 0.654},
-                        {_id: 1, $searchScore: 0.321},
-                        {_id: 3, $searchScore: .2},
-                        {_id: 4, $searchScore: .5}
-                    ]
-                },
-                vars: {SEARCH_META: {value: 1}}
+                cursors: [
+                    {
+                        cursor: {
+                            id: NumberLong(0),
+                            type: "results",
+                            ns: collNS,
+                            nextBatch: [
+                                {_id: 1, val: 1, $searchScore: .41},
+                                {_id: 2, val: 2, $searchScore: .31},
+                                {_id: 3, val: 3, $searchScore: .28},
+                                {_id: 4, val: 4, $searchScore: .11},
+                            ],
+                        },
+                        ok: 1
+                    },
+                    {
+                        cursor: {
+                            id: NumberLong(0),
+                            ns: collNS,
+                            type: "meta",
+                            nextBatch: [{type: 1, count: 2}, {type: 2, count: 17}],
+                        },
+                        ok: 1
+                    }
+                ]
             }
         },
     ];
-
-    const s0Mongot = stWithMock.getMockConnectedToHost(shard0Conn);
-    s0Mongot.setMockResponses(shard0History, NumberLong(123));
+    const mongot = stWithMock.getMockConnectedToHost(st.rs0.getPrimary());
+    mongot.setMockResponses(historyResults, resultsID, metaID);
 }
 
+// History for shard 2.
 {
-    const shard1History = [
+    const resultsID = NumberLong(21);
+    const metaID = NumberLong(22);
+    const historyResults = [
         {
-            expectedCommand:
-                mongotCommandForQuery(mongotQuery, testColl.getName(), testDB.getName(), collUUID1),
+            expectedCommand: expectedCommand,
             response: {
                 ok: 1,
-                cursor: {
-                    id: NumberLong(0),
-                    ns: testColl.getFullName(),
-                    nextBatch: [
-                        {_id: 11, $searchScore: 0.654},
-                        {_id: 12, $searchScore: 0.321},
-                        {_id: 13, $searchScore: .2},
-                        {_id: 14, $searchScore: .5}
-                    ]
-                },
-                vars: {SEARCH_META: {value: 1}}
+                cursors: [
+                    {
+                        cursor: {
+                            id: NumberLong(0),
+                            type: "results",
+                            ns: collNS,
+                            nextBatch: [
+                                {_id: 11, val: 11, $searchScore: .4},
+                                {_id: 12, val: 12, $searchScore: .3},
+                                {_id: 13, val: 13, $searchScore: .2},
+                                {_id: 14, val: 14, $searchScore: .1},
+                            ],
+                        },
+                        ok: 1
+                    },
+                    {
+                        cursor: {
+                            id: NumberLong(0),
+                            ns: collNS,
+                            type: "meta",
+                            nextBatch: [{type: 1, count: 5}, {type: 2, count: 10}],
+                        },
+                        ok: 1
+                    }
+                ]
             }
         },
     ];
-
-    const s1Mongot = stWithMock.getMockConnectedToHost(shard1Conn);
-    s1Mongot.setMockResponses(shard1History, NumberLong(123));
+    const mongot = stWithMock.getMockConnectedToHost(st.rs1.getPrimary());
+    mongot.setMockResponses(historyResults, resultsID, metaID);
 }
 
-assert.commandFailedWithCode(testDB.runCommand({
-    aggregate: testColl.getName(),
-    pipeline: [{$search: mongotQuery}, {$project: {val: "$$SEARCH_META"}}],
-    cursor: {}
-}),
-                             [5858100, 6347900]);
+// History for mongos
+{
+    const mergingPipelineHistory = [{
+        expectedCommand: {planShardedSearch: collName, query: searchQuery, $db: dbName},
+        response: {
+            ok: 1,
+            protocolVersion: NumberInt(42),
+            // This does not represent an actual merging pipeline. The merging pipeline is
+            // arbitrary, it just must only generate one document.
+            metaPipeline: [
+                {
+                    "$group": {
+                        "_id": {
+                            "type": "$type",
+                        },
+                        "sum": {
+                            "$sum": "$count",
+                        }
+                    }
+                },
+                {$project: {_id: 0, type: "$_id.type", count: "$sum"}},
+                {$match: {"type": 1}}
+            ]
+        }
+    }];
+    const mongot = stWithMock.getMockConnectedToHost(stWithMock.st.s);
+    mongot.setMockResponses(mergingPipelineHistory, 1);
+}
+
+let cursor = testColl.aggregate([
+    {$search: searchQuery},
+    {$project: {_id: 1, meta: "$$SEARCH_META"}},
+]);
+
+const metaDoc = {
+    type: 1,
+    count: 7
+};
+const expected = [
+    {"_id": 1, "meta": metaDoc},
+    {"_id": 11, "meta": metaDoc},
+    {"_id": 2, "meta": metaDoc},
+    {"_id": 12, "meta": metaDoc},
+    {"_id": 3, "meta": metaDoc},
+    {"_id": 13, "meta": metaDoc},
+    {"_id": 4, "meta": metaDoc},
+    {"_id": 14, "meta": metaDoc}
+];
+
+assert.eq(expected, cursor.toArray());
+
 stWithMock.stop();
 })();

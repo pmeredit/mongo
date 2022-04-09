@@ -9,14 +9,20 @@
 #include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/db/pipeline/document_source_documents.h"
 #include "mongo/db/pipeline/document_source_internal_shard_filter.h"
+#include "mongo/db/pipeline/document_source_limit.h"
+#include "mongo/db/pipeline/document_source_queue.h"
+#include "mongo/db/pipeline/document_source_replace_root.h"
+#include "mongo/db/pipeline/document_source_union_with.h"
 #include "mongo/db/pipeline/pipeline.h"
 #include "mongo/db/pipeline/search_helper.h"
+#include "mongo/db/pipeline/sharded_agg_helpers.h"
 #include "mongo/db/s/collection_sharding_state.h"
 #include "mongo/executor/remote_command_request.h"
 #include "mongo/executor/task_executor_cursor.h"
 #include "mongo/rpc/get_status_from_command_result.h"
 #include "mongo/s/query/document_source_merge_cursors.h"
 #include "mongo/transport/transport_layer.h"
+#include "mongo/util/fail_point.h"
 #include "mongo/util/net/hostandport.h"
 #include "mongot_options.h"
 #include "mongot_task_executor.h"
@@ -26,21 +32,14 @@ namespace mongo::mongot_cursor {
 namespace {
 const std::string kMetadataCursorType = "meta";
 const std::string kResultCursorType = "results";
+// Used to allow test-only stages in a pipeline even if they don't support dependency tracking.
+MONGO_FAIL_POINT_DEFINE(assumeMetaContextOK);
 
-BSONObj commandObject(const boost::intrusive_ptr<ExpressionContext>& expCtx, const BSONObj& query) {
-    BSONObjBuilder builder;
-    builder.append("search", expCtx->ns.coll());
-    expCtx->uuid.get().appendToBuilder(&builder, "collectionUUID");
-    builder.append("query", query);
-    if (expCtx->explain) {
-        builder.append("explain",
-                       BSON("verbosity" << ExplainOptions::verbosityString(*expCtx->explain)));
-    }
-    return builder.obj();
-}
-
+/**
+ * Create the RemoteCommandRequest for the provided command.
+ */
 executor::RemoteCommandRequest getRemoteCommandRequest(
-    const boost::intrusive_ptr<ExpressionContext>& expCtx, const BSONObj& query) {
+    const boost::intrusive_ptr<ExpressionContext>& expCtx, const BSONObj& cmdObj) {
     uassert(31082,
             str::stream() << "$search not enabled! "
                           << "Enable Search by setting serverParameter mongotHost to a valid "
@@ -49,15 +48,44 @@ executor::RemoteCommandRequest getRemoteCommandRequest(
     auto swHostAndPort = HostAndPort::parse(globalMongotParams.host);
     // This host and port string is configured and validated at startup.
     invariant(swHostAndPort.getStatus().isOK());
-    executor::RemoteCommandRequest rcr(executor::RemoteCommandRequest(swHostAndPort.getValue(),
-                                                                      expCtx->ns.db().toString(),
-                                                                      commandObject(expCtx, query),
-                                                                      expCtx->opCtx));
+    executor::RemoteCommandRequest rcr(executor::RemoteCommandRequest(
+        swHostAndPort.getValue(), expCtx->ns.db().toString(), cmdObj, expCtx->opCtx));
     rcr.sslMode = transport::ConnectSSLMode::kDisableSSL;
     return rcr;
 }
 
+executor::RemoteCommandRequest getRemoteCommandRequestForQuery(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
+    const BSONObj& query,
+    const boost::optional<int> protocolVersion = boost::none) {
+    BSONObjBuilder cmdBob;
+    cmdBob.append("search", expCtx->ns.coll());
+    expCtx->uuid.get().appendToBuilder(&cmdBob, "collectionUUID");
+    cmdBob.append("query", query);
+    if (expCtx->explain) {
+        cmdBob.append("explain",
+                      BSON("verbosity" << ExplainOptions::verbosityString(*expCtx->explain)));
+    }
+    if (protocolVersion) {
+        cmdBob.append("intermediate", *protocolVersion);
+    }
+    return getRemoteCommandRequest(expCtx, cmdBob.obj());
+}
+
+bool isSearchPipeline(const Pipeline* pipeline) {
+    if (!pipeline || pipeline->getSources().empty()) {
+        return false;
+    }
+    auto firstStage = pipeline->peekFront();
+    if (!firstStage)
+        return false;
+    return (StringData(firstStage->getSourceName()) ==
+            DocumentSourceInternalSearchMongotRemote::kStageName);
+}
+
+
 }  // namespace
+
 /**
  * Creates an additional pipeline to be run during a query if the query needs to generate metadata.
  * Does not take ownership of the passed in pipeline, and returns a pipeline containing only a
@@ -70,31 +98,19 @@ SearchImplementedHelperFunctions::generateMetadataPipelineForSearch(
     const AggregateCommandRequest& request,
     Pipeline* origPipeline,
     boost::optional<UUID> uuid) {
-    if (expCtx->explain) {
+    if (expCtx->explain || !isSearchPipeline(origPipeline)) {
         // $search doesn't return documents or metadata from explain regardless of the verbosity.
         return nullptr;
     }
-    // We only want to return multiple cursors if this request originated from mongoS, and not from
-    // a user. If the collection isn't sharded there won't be any need to merge the metadata.
-    auto needMetadataPipeline = request.getFromMongos() && expCtx->needsMerge &&
-        ::mongo::feature_flags::gFeatureFlagSearchShardedFacets.isEnabledAndIgnoreFCV();
-
-    // If there's no pipeline, we have no work to do.
-    if (!origPipeline || origPipeline->getSources().size() == 0) {
-        return nullptr;
-    }
-
-    // Set up all the necessary checks for later. If any of the following checks are false we
-    // won't need a metadata pipeline but we still need to setup the original search stage (if
-    // present). $search is required to be the first stage of the pipeline.
-    auto potentialSearchStage = origPipeline->getSources().front();
 
     auto origSearchStage =
-        dynamic_cast<DocumentSourceInternalSearchMongotRemote*>(potentialSearchStage.get());
+        dynamic_cast<DocumentSourceInternalSearchMongotRemote*>(origPipeline->peekFront());
+    tassert(6253727, "Expected search stage", origSearchStage);
 
-    if (!origSearchStage) {
-        return nullptr;
-    }
+    // We only want to return multiple cursors if we are not in mongos and we plan on getting
+    // unmerged metadata documents back from mongot.
+    auto shouldBuildMetadataPipeline =
+        !expCtx->inMongos && origSearchStage->getIntermediateResultsProtocolVersion();
 
     uassert(
         6253506, "Cannot have exchange specified in a $search pipeline", !request.getExchange());
@@ -104,16 +120,18 @@ SearchImplementedHelperFunctions::generateMetadataPipelineForSearch(
     // return a dummy stage or nothing depending on the environment. Note that in this case we don't
     // actually make any queries, the document source will return eof immediately.
     if (MONGO_unlikely(DocumentSourceInternalSearchMongotRemote::skipSearchStageRemoteSetup())) {
-        if (needMetadataPipeline) {
-            boost::intrusive_ptr<DocumentSource> newStage = origSearchStage->clone();
-            return Pipeline::create({newStage}, expCtx);
+        if (shouldBuildMetadataPipeline) {
+            return Pipeline::create({origSearchStage->clone()}, expCtx);
         }
         return nullptr;
     }
 
     // The search stage has not yet established its cursor on mongoT. Establish the cursor for it.
-    auto cursors = mongot_cursor::establishCursors(
-        expCtx, origSearchStage->getSearchQuery(), origSearchStage->getTaskExecutor());
+    auto cursors =
+        mongot_cursor::establishCursors(expCtx,
+                                        origSearchStage->getSearchQuery(),
+                                        origSearchStage->getTaskExecutor(),
+                                        origSearchStage->getIntermediateResultsProtocolVersion());
 
     // mongot can return zero cursors for an empty collection, one without metadata, or two for
     // results and metadata.
@@ -140,11 +158,12 @@ SearchImplementedHelperFunctions::generateMetadataPipelineForSearch(
             origSearchStage->setCursor(std::move(*it));
             origPipeline->pipelineType = CursorTypeEnum::DocumentResult;
         } else if (cursorType == kMetadataCursorType) {
-            // If this request is not from mongos, is not sharded, or the feature flag is not
-            // enabled mongos should not have added the "intermediate" flag to the mongot query, and
-            // we therefore should not have seen a metadata cursor.
-            // Ignore FCV for the feature flag as this feature is available on earlier versions.
-            tassert(6253303, "Didn't expect metadata cursor from mongot", needMetadataPipeline);
+            // If we don't think we're in a sharded environment, mongot should not have sent
+            // metadata.
+            tassert(
+                6253303, "Didn't expect metadata cursor from mongot", shouldBuildMetadataPipeline);
+            tassert(
+                6253726, "Expected to not already have created a metadata pipeline", !newPipeline);
             // Clone the MongotRemote stage and set the metadata cursor.
             auto newStage = origSearchStage->copyForAlternateSource(std::move(*it));
 
@@ -163,7 +182,7 @@ SearchImplementedHelperFunctions::generateMetadataPipelineForSearch(
 BSONObj getExplainResponse(const boost::intrusive_ptr<ExpressionContext>& expCtx,
                            const BSONObj& query,
                            executor::TaskExecutor* taskExecutor) {
-    auto request = getRemoteCommandRequest(expCtx, query);
+    auto request = getRemoteCommandRequestForQuery(expCtx, query);
     auto [promise, future] = makePromiseFuture<executor::TaskExecutor::RemoteCommandCallbackArgs>();
     auto promisePtr = std::make_shared<Promise<executor::TaskExecutor::RemoteCommandCallbackArgs>>(
         std::move(promise));
@@ -190,7 +209,8 @@ BSONObj getExplainResponse(const boost::intrusive_ptr<ExpressionContext>& expCtx
 std::vector<executor::TaskExecutorCursor> establishCursors(
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const BSONObj& query,
-    executor::TaskExecutor* taskExecutor) {
+    executor::TaskExecutor* taskExecutor,
+    const boost::optional<int>& protocolVersion) {
     // UUID is required for mongot queries. If not present, no results for the query as the
     // collection has not been created yet.
     if (!expCtx->uuid) {
@@ -198,7 +218,8 @@ std::vector<executor::TaskExecutorCursor> establishCursors(
     }
 
     std::vector<executor::TaskExecutorCursor> cursors;
-    cursors.emplace_back(taskExecutor, getRemoteCommandRequest(expCtx, query));
+    cursors.emplace_back(taskExecutor,
+                         getRemoteCommandRequestForQuery(expCtx, query, protocolVersion));
     // Wait for the cursors to actually be populated. Wait on the callback handle of the original
     // cursor.
     if (auto callback = cursors[0].getCallbackHandle()) {
@@ -218,14 +239,15 @@ namespace {
 // The following stages are required to run search queries but do not support dep tracking. If we
 // encounter one in a pipeline, ignore NOT_SUPPORTED.
 std::set<StringData> skipDepTrackingStages{DocumentSourceInternalSearchMongotRemote::kStageName,
-                                           DocumentSourceInternalSearchIdLookUp::kStageName,
                                            DocumentSourceDocuments::kStageName,
-                                           DocumentSourceMergeCursors::kStageName};
-
+                                           DocumentSourceMergeCursors::kStageName,
+                                           DocumentSourceQueue::kStageName};
 // Returns a pair of booleans. The first is whether or not '$$SEARCH_META' is set by 'pipeline', the
-// second is whether '$$SEARCH_META' is accessed by 'pipeline'. It is assumed that
-// 'DocumentSourceInternalSearchMongotRemote' is the only stage that sets '$$SEARCH_META', and that
-// it always sets '$$SEARCH_META'.
+// second is whether '$$SEARCH_META' is accessed by 'pipeline'. It is assumed that if there is a
+// 'DocumentSourceInternalSearchMongotRemote' then '$$SEARCH_META' will be set at some point in the
+// pipeline. Depending on the configuration of the cluster
+// 'DocumentSourceSetVariableFromSubPipeline' could do the actual setting of the variable, but it
+// can only be generated alongside a 'DocumentSourceInternalSearchMongotRemote'.
 std::pair<bool, bool> assertSearchMetaAccessValidHelper(const Pipeline::SourceContainer& pipeline) {
     // Whether there is a $$SEARCH_META in the pipeline.
     bool searchMetaAccessed = false;
@@ -315,8 +337,77 @@ ServiceContext::ConstructorActionRegisterer searchQueryImplementation{
     }};
 }  // namespace
 
+std::pair<std::unique_ptr<Pipeline, PipelineDeleter>, int> fetchMergingPipeline(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx, const BSONObj& searchRequest) {
+    // Retrieve merging pipeline from mongot.
+    auto taskExecutor = executor::getMongotTaskExecutor(expCtx->opCtx->getServiceContext());
+    auto cmdObj = [&]() {
+        BSONObjBuilder cmdBob;
+        // Request for faceted search merging pipeline uses "planShardedSearch" instead of "search".
+        cmdBob.append("planShardedSearch", expCtx->ns.coll());
+        cmdBob.append("query", searchRequest);
+        if (expCtx->explain) {
+            cmdBob.append("explain",
+                          BSON("verbosity" << ExplainOptions::verbosityString(*expCtx->explain)));
+        }
+        return cmdBob.obj();
+    }();
+
+    executor::RemoteCommandResponse response =
+        Status(ErrorCodes::InternalError, "Internal error running search command");
+    executor::TaskExecutor::CallbackHandle cbHnd =
+        uassertStatusOKWithContext(taskExecutor->scheduleRemoteCommand(
+                                       getRemoteCommandRequest(expCtx, cmdObj),
+                                       [&response](const auto& args) { response = args.response; }),
+                                   str::stream() << "Failed to execute search command " << cmdObj);
+    taskExecutor->wait(cbHnd, expCtx->opCtx);
+    uassertStatusOKWithContext(response.status,
+                               str::stream() << "Failed to execute search command " << cmdObj);
+
+    auto mergingPipeline = mongo::Pipeline::parseFromArray(response.data["metaPipeline"], expCtx);
+
+    // We must also communicate the protocolVersion back to the caller.
+    int protocolVersion = response.data["protocolVersion"_sd].Int();
+    return {std::move(mergingPipeline), protocolVersion};
+}
+
+std::list<boost::intrusive_ptr<DocumentSource>> createInitialSearchPipeline(
+    BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& expCtx) {
+
+    uassert(ErrorCodes::FailedToParse,
+            str::stream() << "$search/$searchMeta value must be an object. Found: "
+                          << typeName(elem.type()),
+            elem.type() == BSONType::Object);
+
+    if (!expCtx->mongoProcessInterface->inShardedEnvironment(expCtx->opCtx) ||
+        MONGO_unlikely(DocumentSourceInternalSearchMongotRemote::skipSearchStageRemoteSetup()) ||
+        !feature_flags::gFeatureFlagSearchShardedFacets.isEnabled(
+            serverGlobalParams.featureCompatibility)) {
+        return {DocumentSourceInternalSearchMongotRemote::createFromBson(elem, expCtx)};
+    }
+
+    // We need a $setVariableFromSubPipeline if we support faceted search on sharded cluster. If the
+    // collection is not sharded, the search will have previously been sent to the primary shard and
+    // we don't need to merge the metadata.
+    // We don't actually know if the collection is sharded at this point, so assume it is in order
+    // to generate the correct pipeline. The extra stage will be removed later if necessary.
+    auto [mergingPipeline, protocolVersion] = fetchMergingPipeline(expCtx, elem.embeddedObject());
+
+    auto mongotRemoteStage = make_intrusive<DocumentSourceInternalSearchMongotRemote>(
+        elem.embeddedObject(),
+        expCtx,
+        executor::getMongotTaskExecutor(expCtx->opCtx->getServiceContext()),
+        protocolVersion,
+        std::move(mergingPipeline));
+
+    return {mongotRemoteStage};
+}
+
 void SearchImplementedHelperFunctions::assertSearchMetaAccessValid(
     const Pipeline::SourceContainer& pipeline) {
+    if (MONGO_unlikely(assumeMetaContextOK.shouldFail())) {
+        return;
+    }
     assertSearchMetaAccessValidHelper(pipeline);
 }
 
@@ -326,10 +417,7 @@ boost::optional<std::string> SearchImplementedHelperFunctions::validatePipelineF
     // $$SEARCH_META access in a sharded collection. Only fail in that case.
     // Only do these checks for a $search pipeline, if $$SEARCH_META is accessed in a non-$search
     // pipeline we would have failed earlier.
-    auto firstStage = pipeline.peekFront();
-    if (!firstStage ||
-        StringData(firstStage->getSourceName()) !=
-            DocumentSourceInternalSearchMongotRemote::kStageName) {
+    if (!isSearchPipeline(&pipeline)) {
         return boost::none;
     }
     for (const auto& source : pipeline.getSources()) {

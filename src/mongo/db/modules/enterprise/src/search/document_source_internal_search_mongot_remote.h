@@ -7,13 +7,17 @@
 #include <queue>
 
 #include "mongo/db/pipeline/document_source.h"
+#include "mongo/db/pipeline/document_source_set_variable_from_subpipeline.h"
+#include "mongo/db/pipeline/stage_constraints.h"
 #include "mongo/executor/task_executor_cursor.h"
 #include "mongo/util/net/hostandport.h"
+#include "mongo/util/stacktrace.h"
 
 namespace mongo {
 
 namespace search_constants {
 const BSONObj kSortSpec = BSON("$searchScore" << -1);
+
 }  // namespace search_constants
 
 /**
@@ -56,9 +60,7 @@ public:
     static boost::intrusive_ptr<DocumentSource> createFromBson(
         BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& pExpCtx);
 
-    virtual ~DocumentSourceInternalSearchMongotRemote() = default;
-
-    StageConstraints constraints(Pipeline::SplitState pipeState) const override {
+    static StageConstraints getSearchDefaultConstraints() {
         StageConstraints constraints(StreamType::kStreaming,
                                      PositionRequirement::kFirst,
                                      HostTypeRequirement::kAnyShard,
@@ -69,8 +71,35 @@ public:
                                      UnionRequirement::kAllowed,
                                      ChangeStreamRequirement::kDenylist);
         constraints.requiresInputDocSource = false;
-
         return constraints;
+    }
+
+    /**
+     * In a sharded environment this stage generates a DocumentSourceSetVariableFromSubPipeline to
+     * run on the merging shard. This function contains the logic that allows that stage to move
+     * past shards only stages.
+     */
+    static bool canMovePastDuringSplit(const DocumentSource& ds) {
+        DepsTracker depsTracker;
+        bool depTrackingSupported = ds.getDependencies(&depsTracker) != DepsTracker::NOT_SUPPORTED;
+        // Check if next stage uses the variable.
+        return depTrackingSupported &&
+            !depsTracker.hasVariableReferenceTo(
+                std::set<Variables::Id>{Variables::kSearchMetaId}) &&
+            ds.constraints().preservesOrderAndMetadata;
+    }
+
+    DocumentSourceInternalSearchMongotRemote(
+        const BSONObj& query,
+        const boost::intrusive_ptr<ExpressionContext>& expCtx,
+        executor::TaskExecutor* executor,
+        int protocolVersion,
+        std::unique_ptr<Pipeline, PipelineDeleter> mergePipeline);
+
+    virtual ~DocumentSourceInternalSearchMongotRemote() = default;
+
+    StageConstraints constraints(Pipeline::SplitState pipeState) const override {
+        return getSearchDefaultConstraints();
     }
 
     const char* getSourceName() const override;
@@ -82,12 +111,29 @@ public:
     boost::optional<DistributedPlanLogic> distributedPlanLogic() final {
         DistributedPlanLogic logic;
 
-        logic.mergingStage = nullptr;
-        logic.shardsStage = nullptr;
+        logic.shardsStage = this;
+        if (::mongo::feature_flags::gFeatureFlagSearchShardedFacets.isEnabled(
+                serverGlobalParams.featureCompatibility)) {
+            logic.mergingStage = DocumentSourceSetVariableFromSubPipeline::create(
+                pExpCtx, _mergingPipeline->clone(), Variables::kSearchMetaId);
+        }
         logic.mergeSortPattern = search_constants::kSortSpec;
         logic.needsSplit = false;
+        logic.canMovePast = canMovePastDuringSplit;
 
         return logic;
+    }
+
+    virtual boost::intrusive_ptr<DocumentSource> clone() const override {
+        if (_metadataMergeProtocolVersion) {
+            return new DocumentSourceInternalSearchMongotRemote(
+                _searchQuery,
+                pExpCtx,
+                _taskExecutor,
+                _metadataMergeProtocolVersion.get(),
+                _mergingPipeline ? _mergingPipeline->clone() : nullptr);
+        }
+        return new DocumentSourceInternalSearchMongotRemote(_searchQuery, pExpCtx, _taskExecutor);
     }
 
     Value serialize(
@@ -132,6 +178,16 @@ public:
      */
     static bool skipSearchStageRemoteSetup();
 
+    boost::optional<int> getIntermediateResultsProtocolVersion() {
+        // If it turns out that this stage is not running on a sharded collection, we don't want
+        // to send the protocol version to mongot. If the protocol version is sent, mongot will
+        // generate unmerged metadata documents that we won't be set up to merge.
+        if (!pExpCtx->needsMerge) {
+            return boost::none;
+        }
+        return _metadataMergeProtocolVersion;
+    }
+
 private:
     DocumentSourceInternalSearchMongotRemote(const BSONObj& query,
                                              const boost::intrusive_ptr<ExpressionContext>& expCtx,
@@ -139,7 +195,6 @@ private:
         : DocumentSource(kStageName, expCtx),
           _searchQuery(query.getOwned()),
           _taskExecutor(taskExecutor) {}
-
 
     boost::optional<BSONObj> _getNext();
 
@@ -165,6 +220,20 @@ private:
     // TaskExecutorCursor will be set to zero after the final getMore after the cursor is
     // exhausted.
     boost::optional<CursorId> _cursorId{boost::none};
+
+    /**
+     * Protocol version if it must be communicated via the search request.
+     * If we are in a sharded environment but on a non-sharded collection we may have a protocol
+     * version even though it should not be sent to mongot.
+     */
+    boost::optional<int> _metadataMergeProtocolVersion;
+
+    /**
+     * This stage may need to merge the metadata it generates on the merging half of the pipeline.
+     * Until we know if the merge needs to be done, we hold the pipeline containig the merging
+     * logic here.
+     */
+    std::unique_ptr<Pipeline, PipelineDeleter> _mergingPipeline;
 };
 
 namespace search_meta {

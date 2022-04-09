@@ -9,6 +9,7 @@ load('jstests/libs/uuid_util.js');                 // For getUUIDFromListCollect
 load("jstests/libs/collection_drop_recreate.js");  // For assertCreateCollection.
 load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
 load("src/mongo/db/modules/enterprise/jstests/search/lib/shardingtest_with_mongotmock.js");
+load("jstests/libs/feature_flag_util.js");
 
 const dbName = "test";
 const collName = "internal_search_mongot_remote";
@@ -26,11 +27,12 @@ const stWithMock = new ShardingTestWithMongotMock({
 });
 stWithMock.start();
 const st = stWithMock.st;
-
 const mongos = st.s;
 const testDb = mongos.getDB(dbName);
 const testColl = testDb.getCollection(collName);
 const collNS = testColl.getFullName();
+const useShardedFacets = FeatureFlagUtil.isEnabled(testDb, "SearchShardedFacets");
+const protocolVersion = NumberLong(42);
 
 Random.setRandomSeed();
 
@@ -86,62 +88,82 @@ function constructMongotResponseBatchForIds(ids, startIdx, endIdx) {
 
 const responseOk = 1;
 
+const expectedMongotCommand = useShardedFacets
+    ? mongotCommandForQuery(mongotQuery, collName, dbName, collUUID0, protocolVersion)
+    : mongotCommandForQuery(mongotQuery, collName, dbName, collUUID0);
 // Set up history for the mock associated with the primary of shard 0.
 {
     const history = [
         {
-            expectedCommand: mongotCommandForQuery(mongotQuery, collName, dbName, collUUID0),
-            response: mongotResponseForBatch(
-                constructMongotResponseBatchForIds(shard0Ids, 0, 30), cursorId, collNS, responseOk),
+            expectedCommand: expectedMongotCommand,
+            response:
+                mongotResponseMetadataAgnostic(constructMongotResponseBatchForIds(shard0Ids, 0, 30),
+                                               cursorId,
+                                               collNS,
+                                               responseOk,
+                                               useShardedFacets),
         },
         {
             expectedCommand: {getMore: cursorId, collection: collName},
-            response: mongotResponseForBatch(constructMongotResponseBatchForIds(shard0Ids, 30, 60),
-                                             cursorId,
-                                             collNS,
-                                             responseOk),
+            response: mongotResponseMetadataAgnostic(
+                constructMongotResponseBatchForIds(shard0Ids, 30, 60),
+                cursorId,
+                collNS,
+                responseOk,
+                useShardedFacets),
         },
         {
             expectedCommand: {getMore: cursorId, collection: collName},
-            response: mongotResponseForBatch(
+            response: mongotResponseMetadataAgnostic(
                 constructMongotResponseBatchForIds(shard0Ids, 60, shard0Ids.length),
                 NumberLong(0),
                 collNS,
-                responseOk)
+                responseOk,
+                useShardedFacets)
         }
     ];
     const s0Mongot = stWithMock.getMockConnectedToHost(st.rs0.getPrimary());
-    s0Mongot.setMockResponses(history, cursorId);
+    s0Mongot.setMockResponsesMetadataAgnostic(history, cursorId, useShardedFacets);
 }
 
 // Set up history for the mock associated with the primary of shard 1.
 {
     const history = [
         {
-            expectedCommand: mongotCommandForQuery(mongotQuery, collName, dbName, collUUID1),
-            response: mongotResponseForBatch(
-                constructMongotResponseBatchForIds(shard1Ids, 0, 30), cursorId, collNS, responseOk),
+            expectedCommand: expectedMongotCommand,
+            response:
+                mongotResponseMetadataAgnostic(constructMongotResponseBatchForIds(shard1Ids, 0, 30),
+                                               cursorId,
+                                               collNS,
+                                               responseOk,
+                                               useShardedFacets),
         },
         {
             expectedCommand: {getMore: cursorId, collection: collName},
-            response: mongotResponseForBatch(constructMongotResponseBatchForIds(shard1Ids, 30, 70),
-                                             cursorId,
-                                             collNS,
-                                             responseOk),
+            response: mongotResponseMetadataAgnostic(
+                constructMongotResponseBatchForIds(shard1Ids, 30, 70),
+                cursorId,
+                collNS,
+                responseOk,
+                useShardedFacets),
         },
         {
             expectedCommand: {getMore: cursorId, collection: collName},
-            response: mongotResponseForBatch(
+            response: mongotResponseMetadataAgnostic(
                 constructMongotResponseBatchForIds(shard1Ids, 70, shard1Ids.length),
                 NumberLong(0),
                 collNS,
-                responseOk)
+                responseOk,
+                useShardedFacets)
         }
     ];
     const s1Mongot = stWithMock.getMockConnectedToHost(st.rs1.getPrimary());
-    s1Mongot.setMockResponses(history, cursorId);
+    s1Mongot.setMockResponsesMetadataAgnostic(history, cursorId, useShardedFacets);
 }
 
+if (useShardedFacets === true) {
+    setGenericMergePipeline(testColl.getName(), mongotQuery, dbName, stWithMock);
+}
 // Be sure the searchScore results are in decreasing order.
 const queryResults = testColl.aggregate(pipeline).toArray();
 assert.eq(queryResults.length, shard0Ids.length + shard1Ids.length);

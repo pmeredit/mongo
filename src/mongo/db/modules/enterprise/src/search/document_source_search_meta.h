@@ -13,7 +13,7 @@ namespace mongo {
  * The $searchMeta stage is an alias for [$_internalSearchMongotRemote,
  * $replaceWith, $unionWith, $limit] to only return the meta results from a $search query.
  */
-class DocumentSourceSearchMeta final {
+class DocumentSourceSearchMeta final : public DocumentSource {
 public:
     static constexpr StringData kStageName = "$searchMeta"_sd;
 
@@ -62,10 +62,29 @@ public:
 
     const char* getSourceName() const;
 
+    StageConstraints constraints(Pipeline::SplitState pipeState) const override;
+
+    boost::optional<DistributedPlanLogic> distributedPlanLogic() final {
+        // This stage should never be used in a distributed plan.
+        MONGO_UNREACHABLE_TASSERT(6253717);
+    }
+
 private:
-    // It is illegal to construct a DocumentSourceSearchMeta directly, use createFromBson()
-    // instead.
+    // Pipelines usually should not construct a DocumentSourceSearchMeta directly, use
+    // createFromBson() instead.
     DocumentSourceSearchMeta() = default;
+    DocumentSourceSearchMeta(BSONObj spec, const boost::intrusive_ptr<ExpressionContext> expCtx)
+        : DocumentSource(kStageName, expCtx), _userObj(std::move(spec)) {}
+
+    virtual Value serialize(boost::optional<ExplainOptions::Verbosity> explain = boost::none) const;
+    GetNextResult doGetNext() {
+        // We should never execute a DocumentSourceSearchMeta.
+        MONGO_UNREACHABLE_TASSERT(6253718);
+    }
+
+    // The original stage specification that was the value for the "$searchMeta" field of the owning
+    // object.
+    BSONObj _userObj;
 };
 
 }  // namespace mongo

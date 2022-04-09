@@ -47,6 +47,11 @@ public:
         return constraints;
     }
 
+    DepsTracker::State getDependencies(DepsTracker* deps) const final {
+        // This just depends on the '_id' field.
+        deps->fields.insert("_id");
+        return DepsTracker::State::SEE_NEXT;
+    }
     /**
      * Serialize this stage - return is of the form { $_internalSearchIdLookup: {} }
      */

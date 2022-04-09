@@ -9,9 +9,13 @@
  * @param {String} collName - The collection name.
  * @param {String} db - The database name.
  * @param {BinaryType} collectionUUID - the binary representation of a collection's UUID.
+ * @param {Int} protocolVersion - If present, the version of mongot's merging logic.
  */
-function mongotCommandForQuery(query, collName, db, collectionUUID) {
-    return {search: collName, $db: db, collectionUUID, query};
+function mongotCommandForQuery(query, collName, db, collectionUUID, protocolVersion = null) {
+    if (protocolVersion === null) {
+        return {search: collName, $db: db, collectionUUID, query};
+    }
+    return {search: collName, $db: db, collectionUUID, query, intermediate: protocolVersion};
 }
 
 /**
@@ -24,6 +28,49 @@ function mongotCommandForQuery(query, collName, db, collectionUUID) {
  */
 function mongotResponseForBatch(nextBatch, id, ns, ok) {
     return {ok, cursor: {id, ns, nextBatch}};
+}
+
+/**
+ * Same as above but for multiple cursors.
+ */
+function mongotMultiCursorResponseForBatch(
+    firstCursorBatch, firstId, secondCursorBatch, secondId, ns, ok) {
+    return {
+        ok,
+        cursors: [
+            {cursor: {id: firstId, ns, nextBatch: firstCursorBatch, type: "results"}, ok},
+            {cursor: {id: secondId, ns, nextBatch: secondCursorBatch, type: "meta"}, ok}
+        ]
+    };
+}
+
+/**
+ * Helper so callers don't have to check 'useShardedFacets' at every callsite. Metadata results and
+ * cursor number is arbitrary, this assumes they won't be checked.
+ */
+function mongotResponseMetadataAgnostic(nextBatch, id, ns, ok, useShardedFacets) {
+    if (useShardedFacets) {
+        return mongotMultiCursorResponseForBatch(nextBatch, id, [{val: 1}], NumberLong(0), ns, ok);
+    }
+    return mongotResponseForBatch(nextBatch, id, ns, ok);
+}
+
+/**
+ * Helper to set a generic merge pipeline for tests that don't care about metadata. Defaults to
+ * setting on the mongot partnered with mongos unless 'overrideMongot' is passed in.
+ */
+function setGenericMergePipeline(collName, query, dbName, stWithMock) {
+    const mergingPipelineHistory = [{
+        expectedCommand: {planShardedSearch: collName, query: query, $db: dbName},
+        response: {
+            ok: 1,
+            protocolVersion: NumberInt(42),
+            // Tests calling this don't use metadata. Give a trivial pipeline.
+            metaPipeline: [{$limit: 1}]
+        }
+    }];
+    const mongot = stWithMock.getMockConnectedToHost(stWithMock.st.s);
+    mongot.setMockResponses(mergingPipelineHistory, 1423);
 }
 
 class MongotMock {
@@ -100,7 +147,7 @@ class MongotMock {
         const connection = this.getConnection();
         // Check the remaining history on the mock. There should be 0 remaining queued commands.
         const resp = assert.commandWorked(connection.adminCommand({getQueuedResponses: 1}));
-        assert.eq(resp.numRemainingResponses, 0);
+        assert.eq(resp.numRemainingResponses, 0, resp);
 
         return stopMongoProgramByPid(this.pid);
     }
@@ -118,8 +165,10 @@ class MongotMock {
      * @param {Array} expectedMongotMockCmdsAndResponses - Array of [expectedCommand, response]
      * pairs for the mock mongot.
      * @param {Number} cursorId - The mongot cursor ID.
+     * @param {Number} additionalCursorId - If the initial command will return multiple cursors, and
+     *     there is no getMore to set the response for the state, pass this instead.
      */
-    setMockResponses(expectedMongotMockCmdsAndResponses, cursorId) {
+    setMockResponses(expectedMongotMockCmdsAndResponses, cursorId, additionalCursorId = 0) {
         const connection = this.getConnection();
         const setMockResponsesCommand = {
             setMockResponses: 1,
@@ -127,5 +176,25 @@ class MongotMock {
             history: expectedMongotMockCmdsAndResponses,
         };
         assert.commandWorked(connection.getDB("mongotmock").runCommand(setMockResponsesCommand));
+        if (additionalCursorId !== 0) {
+            assert.commandWorked(connection.getDB("mongotmock").runCommand({
+                allowMultiCursorResponse: 1,
+                cursorId: NumberLong(additionalCursorId)
+            }));
+        }
+    }
+
+    /**
+     * Helper for above so callers don't have to check useShardedFacets at each callsite.
+     */
+    setMockResponsesMetadataAgnostic(expectedMongotMockCmdsAndResponses,
+                                     cursorId,
+                                     useShardedFacets) {
+        if (useShardedFacets) {
+            this.setMockResponses(
+                expectedMongotMockCmdsAndResponses, cursorId, NumberLong(cursorId + 1001));
+        } else {
+            this.setMockResponses(expectedMongotMockCmdsAndResponses, cursorId);
+        }
     }
 }

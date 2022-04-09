@@ -18,18 +18,29 @@ using mongotmock::CursorState;
 using mongotmock::getMongotMockState;
 using mongotmock::MongotMockStateGuard;
 
+
+const BSONObj placeholderCmd = BSON("placeholder"
+                                    << "expected");
+const BSONObj placeholderResponse = BSON("placeholder"
+                                         << "response");
+
 // Do a "loose" check that every field in 'expectedCmd' is in 'userCmd'. Does not check in the
 // other direction.
-void checkUserCommandMatchesExpectedCommand(BSONObj userCmd, BSONObj expectedCmd) {
+bool checkUserCommandMatchesExpectedCommand(BSONObj userCmd, BSONObj expectedCmd) {
     // Check that the given command matches the expected command's values.
     for (auto&& elem : expectedCmd) {
-        uassert(31086,
-                str::stream() << "Expected command matching " << expectedCmd << " but got "
-                              << userCmd << " field " << userCmd[elem.fieldNameStringData()]
-                              << " != " << elem,
-                SimpleBSONElementComparator::kInstance.evaluate(
-                    userCmd[elem.fieldNameStringData()] == elem));
+        if (!SimpleBSONElementComparator::kInstance.evaluate(userCmd[elem.fieldNameStringData()] ==
+                                                             elem)) {
+            return false;
+        }
     }
+    return true;
+}
+
+void assertUserCommandMatchesExpectedCommand(BSONObj userCmd, BSONObj expectedCmd) {
+    uassert(31086,
+            str::stream() << "Expected command matching " << expectedCmd << " but got " << userCmd,
+            checkUserCommandMatchesExpectedCommand(userCmd, expectedCmd));
 }
 
 /**
@@ -84,7 +95,6 @@ private:
                         const BSONObj& cmdObj,
                         BSONObjBuilder* result) const final {
         MongotMockStateGuard stateGuard = getMongotMockState(opCtx->getServiceContext());
-
         CursorState* state = stateGuard->claimAvailableState();
         uassert(31094,
                 str::stream()
@@ -97,7 +107,7 @@ private:
         invariant(state->hasNextCursorResponse());
         auto cmdResponsePair = state->peekNextCommandResponsePair();
 
-        checkUserCommandMatchesExpectedCommand(cmdObj, cmdResponsePair.expectedCommand);
+        assertUserCommandMatchesExpectedCommand(cmdObj, cmdResponsePair.expectedCommand);
 
         // If this command returns multiple cursors, we need to claim a state for each one.
         // Note that this only uses one response even though it prepares two cursor states.
@@ -112,10 +122,16 @@ private:
             auto secondState = stateGuard->claimAvailableState();
             uassert(
                 6253510,
-                str::stream() << "Could not return mulitple cursor states as there are no "
+                str::stream() << "Could not return multiple cursor states as there are no "
                                  "remaining unclaimed mock cursor states. Attempted response was "
                               << cmdResponsePair.response,
                 secondState);
+            // Pop the response from the second state if it is a placeholder.
+            auto secondResponsePair = secondState->peekNextCommandResponsePair();
+            if (checkUserCommandMatchesExpectedCommand(secondResponsePair.expectedCommand,
+                                                       placeholderCmd)) {
+                secondState->popNextCommandResponsePair();
+            }
         }
 
         // Return the queued response.
@@ -162,11 +178,11 @@ public:
                 cursorState->hasNextCursorResponse());
         uassert(31088,
                 str::stream() << "Cannot run getMore on cursor id " << cursorId
-                              << "without having run search",
+                              << " without having run search",
                 cursorState->claimed());
 
         auto cmdResponsePair = cursorState->peekNextCommandResponsePair();
-        checkUserCommandMatchesExpectedCommand(cmdObj, cmdResponsePair.expectedCommand);
+        assertUserCommandMatchesExpectedCommand(cmdObj, cmdResponsePair.expectedCommand);
         result->appendElements(cmdResponsePair.response);
 
         cursorState->popNextCommandResponsePair();
@@ -201,11 +217,11 @@ public:
                 cursorState);
         uassert(31093,
                 str::stream() << "Cannot run killCursors on cursor id " << cursorId
-                              << "without having run search",
+                              << " without having run search",
                 cursorState->claimed());
 
         auto cmdResponsePair = cursorState->peekNextCommandResponsePair();
-        checkUserCommandMatchesExpectedCommand(cmdObj, cmdResponsePair.expectedCommand);
+        assertUserCommandMatchesExpectedCommand(cmdObj, cmdResponsePair.expectedCommand);
         result->appendElements(cmdResponsePair.response);
 
         cursorState->popNextCommandResponsePair();
@@ -214,6 +230,42 @@ public:
                 !cursorState->hasNextCursorResponse());
     }
 } cmdMongotMockKillCursors;
+
+/*
+ * If a command needs two cursor states, this command claims a state without needing an additional
+ * history.
+ */
+class MongotMockAllowMultiCursorResponse final : public MongotMockBaseCmd {
+public:
+    MongotMockAllowMultiCursorResponse() : MongotMockBaseCmd("allowMultiCursorResponse") {}
+
+    void processCommand(OperationContext* opCtx,
+                        const std::string& dbname,
+                        const BSONObj& cmdObj,
+                        BSONObjBuilder* result) const final {
+
+        MongotMockStateGuard stateGuard = getMongotMockState(opCtx->getServiceContext());
+
+        uassert(ErrorCodes::InvalidOptions,
+                "cursorId should be type NumberLong",
+                cmdObj["cursorId"].type() == BSONType::NumberLong);
+        const CursorId id = cmdObj["cursorId"].Long();
+        uassert(ErrorCodes::InvalidOptions, "cursorId may not equal 0", id != 0);
+
+        std::deque<mongotmock::ExpectedCommandResponsePair> commandResponsePairs;
+
+        uassert(ErrorCodes::InvalidOptions,
+                "allowMultiCursorResponse should not have 'history'",
+                !cmdObj.hasField("history"));
+
+        // Use an empty response pair, it will be ignored as the response was specified by the
+        // original setMockResponse.
+        commandResponsePairs.push_back({placeholderCmd, placeholderResponse});
+
+        stateGuard->setStateForId(id,
+                                  std::make_unique<CursorState>(std::move(commandResponsePairs)));
+    }
+} cmdMongotMockAllowMultiCursorResponse;
 
 class MongotMockSetMockResponse final : public MongotMockBaseCmd {
 public:

@@ -13,7 +13,15 @@ class ShardingTestWithMongotMock {
         this._shardingTestOptions = Object.assign({}, shardingTestOptions);
 
         this._nShards = Object.keys(shardingTestOptions.shards).length;
-        this._mocksNeeded = 0;
+        this._mongosCount = 1;
+        if (shardingTestOptions.hasOwnProperty("mongos")) {
+            assert(Number.isInteger(shardingTestOptions["mongos"],
+                                    "Number of mongos nodes must be an integer"));
+            this._mongosCount = shardingTestOptions["mongos"];
+        }
+
+        // One mock is needed for each mongoS in the shardingTest.
+        this._mocksNeeded = this._mongosCount;
         for (let i = 0; i < this._nShards; i++) {
             const msg =
                 "ShardingTestWithMongotMock only supports 'shard' options passed to ShardingTest " +
@@ -23,6 +31,8 @@ class ShardingTestWithMongotMock {
             this._mocksNeeded += shardingTestOptions.shards["rs" + i].nodes;
         }
 
+        // The set of mongot mock instances. Shard instances are first, followed by
+        // mongos-adjacent instances.
         this._mongotMocks = [];
         // Internal mapping from host string to mongotmock connection.
         this._hostToMockMap = {};
@@ -46,7 +56,7 @@ class ShardingTestWithMongotMock {
 
         this.st = new ShardingTest(this._shardingTestOptions);
 
-        // Restart each node in order to point it at its parnter mongotmock. Restarting the nodes
+        // Restart each node in order to point it at its partner mongotmock. Restarting the nodes
         // is necessary to work around SERVER-41281, and can be avoided once SERVER-41281 is fixed.
 
         // Now convert the sharding test parameters to a form where we can tell each node to use a
@@ -54,21 +64,24 @@ class ShardingTestWithMongotMock {
         let mongotMocksIdx = 0;
         for (let i = 0; i < this._nShards; ++i) {
             for (let j = 0; j < this._shardingTestOptions.shards["rs" + i].nodes; ++j) {
-                // Restarting a shard with new options overrides the old options. Add in any options
-                // previously specified.
-                let newParams = {};
-                if (this._shardingTestOptions.hasOwnProperty("other") &&
-                    this._shardingTestOptions.other.hasOwnProperty("shardOptions") &&
-                    this._shardingTestOptions.other.shardOptions.hasOwnProperty("setParameter")) {
-                    newParams = this._shardingTestOptions.other.shardOptions.setParameter;
-                }
-                newParams.mongotHost = this._mongotMocks[mongotMocksIdx++].getConnection().host;
-                this.st["rs" + i].restart(j, {
+                let mongotHost = this._mongotMocks[mongotMocksIdx++].getConnection().host;
+                let node = this.st["rs" + i];
+                let newParams = Object.merge(node.nodes[j].fullOptions.setParameter || {},
+                                             {mongotHost: mongotHost});
+                node.restart(j, {
                     setParameter: newParams,
+                    restart: true,
                 });
             }
 
             this.st["rs" + i].waitForPrimary();
+        }
+        for (let i = 0; i < this._mongosCount; ++i) {
+            let mongotHost = this._mongotMocks[mongotMocksIdx++].getConnection().host;
+            let node = this.st["s" + i];
+            let newParams =
+                Object.merge(node.fullOptions.setParameter || {}, {mongotHost: mongotHost});
+            this.st.restartMongos(i, {setParameter: newParams, restart: true});
         }
     }
 

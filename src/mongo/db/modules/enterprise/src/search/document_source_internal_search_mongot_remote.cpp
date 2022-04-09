@@ -19,6 +19,12 @@
 #include "mongot_task_executor.h"
 
 namespace mongo {
+namespace {
+const std::string kSearchQueryField = "mongotQuery";
+const std::string kProtocolVersionField = "metadataMergeProtocolVersion";
+const std::string kMergingPipelineField = "mergingPipeline";
+
+}  // namespace
 
 using boost::intrusive_ptr;
 using executor::RemoteCommandRequest;
@@ -39,15 +45,25 @@ Value DocumentSourceInternalSearchMongotRemote::serialize(
     boost::optional<ExplainOptions::Verbosity> explain) const {
     // Though mongos can generate explain output, it should never make a remote call to the mongot.
     if (!explain || pExpCtx->inMongos) {
-        return Value(DOC(getSourceName() << Document(_searchQuery)));
+        if (_metadataMergeProtocolVersion) {
+            MutableDocument mDoc;
+            mDoc.addField(kSearchQueryField, Value(_searchQuery));
+            mDoc.addField(kProtocolVersionField, Value(_metadataMergeProtocolVersion.get()));
+            mDoc.addField(kMergingPipelineField, Value(_mergingPipeline->serialize()));
+            return Value(Document{{getSourceName(), mDoc.freezeToValue()}});
+        } else {
+            return Value(Document{{getSourceName(), _searchQuery}});
+        }
     }
     // Explain with queryPlanner verbosity does not execute the query, so the _explainResponse
     // may not be populated. In that case, we fetch the response here instead.
     BSONObj explainInfo = _explainResponse.isEmpty()
         ? mongot_cursor::getExplainResponse(pExpCtx, _searchQuery, _taskExecutor)
         : _explainResponse;
-    return Value(DOC(getSourceName() << DOC("mongotQuery" << Document(_searchQuery) << "explain"
-                                                          << Document(explainInfo))));
+    MutableDocument mDoc;
+    mDoc.addField(kSearchQueryField, Value(_searchQuery));
+    mDoc.addField("explain", Value(explainInfo));
+    return Value(DOC(getSourceName() << mDoc.freeze()));
 }
 
 boost::optional<BSONObj> DocumentSourceInternalSearchMongotRemote::_getNext() {
@@ -80,7 +96,8 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchMongotRemote::doGetNex
         tassert(6253505,
                 "Expected to have a cursor already in a sharded pipeline",
                 !pExpCtx->needsMerge ||
-                    !::mongo::feature_flags::gFeatureFlagSearchMeta.isEnabledAndIgnoreFCV());
+                    !::mongo::feature_flags::gFeatureFlagSearchShardedFacets.isEnabled(
+                        serverGlobalParams.featureCompatibility));
         auto cursors = mongot_cursor::establishCursors(pExpCtx, _searchQuery, _taskExecutor);
         _dispatchedQuery = true;
         tassert(5253301, "Expected exactly one cursor from mongot", cursors.size() == 1);
@@ -134,7 +151,6 @@ DocumentSource::GetNextResult DocumentSourceInternalSearchMongotRemote::doGetNex
         }
         return output.freeze();
     }
-
     return Document::fromBsonWithMetaData(response.get());
 }
 
@@ -142,9 +158,45 @@ intrusive_ptr<DocumentSource> DocumentSourceInternalSearchMongotRemote::createFr
     BSONElement elem, const intrusive_ptr<ExpressionContext>& expCtx) {
     uassert(31067, "Search argument must be an object.", elem.type() == BSONType::Object);
     auto serviceContext = expCtx->opCtx->getServiceContext();
+    auto obj = elem.embeddedObject();
+    // If creating from a user request, BSON is just an object with a search query. Otherwise it has
+    // both these fields.
+    if (obj.hasField(kProtocolVersionField) || obj.hasField(kSearchQueryField)) {
+        uassert(6253711,
+                "'metadataMergeProtocolVersion' and 'searchQuery' are only allowed together",
+                obj.hasField(kSearchQueryField) && obj.hasField(kProtocolVersionField));
+        auto query = obj.getField(kSearchQueryField);
+        auto version = obj.getField(kProtocolVersionField);
+        uassert(6253712, "'searchQuery' must be an object", query.type() == BSONType::Object);
+        uassert(6253713,
+                "'metadataMergeProtocolVersion' must be an int",
+                version.type() == BSONType::NumberInt);
+        std::unique_ptr<Pipeline, PipelineDeleter> searchMetaMergePipe;
+        if (auto mergePipe = obj[kMergingPipelineField]) {
+            searchMetaMergePipe = Pipeline::parseFromArray(mergePipe, expCtx);
+        }
+        return new DocumentSourceInternalSearchMongotRemote(
+            query.embeddedObject(),
+            expCtx,
+            executor::getMongotTaskExecutor(serviceContext),
+            version.Int(),
+            std::move(searchMetaMergePipe));
+    }
     return new DocumentSourceInternalSearchMongotRemote(
-        elem.embeddedObject(), expCtx, executor::getMongotTaskExecutor(serviceContext));
+        obj, expCtx, executor::getMongotTaskExecutor(serviceContext));
 }
+
+DocumentSourceInternalSearchMongotRemote::DocumentSourceInternalSearchMongotRemote(
+    const BSONObj& query,
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
+    executor::TaskExecutor* taskExecutor,
+    int metadataMergeProtocolVersion,
+    std::unique_ptr<Pipeline, PipelineDeleter> mergePipeline)
+    : DocumentSource(kStageName, expCtx),
+      _searchQuery(query.getOwned()),
+      _taskExecutor(taskExecutor),
+      _metadataMergeProtocolVersion(metadataMergeProtocolVersion),
+      _mergingPipeline(std::move(mergePipeline)) {}
 
 bool DocumentSourceInternalSearchMongotRemote::skipSearchStageRemoteSetup() {
     return MONGO_unlikely(searchReturnEofImmediately.shouldFail());

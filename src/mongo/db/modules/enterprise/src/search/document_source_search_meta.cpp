@@ -12,6 +12,7 @@
 #include "mongo/db/pipeline/document_source_union_with.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/pipeline.h"
+#include "mongot_cursor.h"
 
 namespace mongo {
 
@@ -25,41 +26,61 @@ REGISTER_DOCUMENT_SOURCE_CONDITIONALLY(
     AllowedWithApiStrict::kNeverInVersion1,
     AllowedWithClientType::kAny,
     boost::none,
-    ::mongo::feature_flags::gFeatureFlagSearchMeta.isEnabledAndIgnoreFCV());
+    feature_flags::gFeatureFlagSearchMeta.isEnabledAndIgnoreFCV());
 
 const char* DocumentSourceSearchMeta::getSourceName() const {
     return kStageName.rawData();
 }
 
 std::list<intrusive_ptr<DocumentSource>> DocumentSourceSearchMeta::createFromBson(
-    BSONElement elem, const intrusive_ptr<ExpressionContext>& pExpCtx) {
+    BSONElement elem, const intrusive_ptr<ExpressionContext>& expCtx) {
 
-    uassert(ErrorCodes::FailedToParse,
-            str::stream() << "$searchMeta value must be an object. Found: "
-                          << typeName(elem.type()),
-            elem.type() == BSONType::Object);
+    // If we are parsing a view, we don't actually want to make any calls to mongot which happen
+    // during desugaring.
+    if (expCtx->isParsingViewDefinition) {
+        uassert(ErrorCodes::FailedToParse,
+                str::stream() << "$searchMeta value must be an object. Found: "
+                              << typeName(elem.type()),
+                elem.type() == BSONType::Object);
+        intrusive_ptr<DocumentSourceSearchMeta> source(
+            new DocumentSourceSearchMeta(elem.Obj().getOwned(), expCtx));
+        return {source};
+    }
 
-    std::list<intrusive_ptr<DocumentSource>> res{
-        // Fetch the search results and populate $$SEARCH_META.
-        DocumentSourceInternalSearchMongotRemote::createFromBson(elem, pExpCtx),
-        // Do not send search query results to merging node.
-        DocumentSourceLimit::create(pExpCtx, 1),
-        // Replace any documents returned by mongot with the SEARCH_META contents.
-        DocumentSourceReplaceRoot::createFromBson(
-            BSON("$replaceRoot" << BSON("newRoot" << std::string("$$SEARCH_META"))).firstElement(),
-            pExpCtx),
-        // If mongot returned no documents, generate a document to return. This depends on the
-        // current, undocumented behavior of $unionWith that the outer pipeline is iterated before
-        // the inner pipeline.
-        DocumentSourceUnionWith::createFromBson(
-            BSON(DocumentSourceUnionWith::kStageName
-                 << BSON("pipeline" << BSON_ARRAY(BSON(DocumentSourceDocuments::kStageName
-                                                       << BSON_ARRAY("$$SEARCH_META")))))
-                .firstElement(),
-            pExpCtx.get()),
-        // Only return one copy of the meta results.
-        DocumentSourceLimit::create(pExpCtx, 1)};
-    return res;
+    std::list<intrusive_ptr<DocumentSource>> desugaredPipeline =
+        mongot_cursor::createInitialSearchPipeline(elem, expCtx);
+
+    // Do not send search query results to merging node.
+    desugaredPipeline.push_back(DocumentSourceLimit::create(expCtx, 1));
+
+    // Replace any documents returned by mongot with the SEARCH_META contents.
+    desugaredPipeline.push_back(DocumentSourceReplaceRoot::createFromBson(
+        BSON("$replaceRoot" << BSON("newRoot" << std::string("$$SEARCH_META"))).firstElement(),
+        expCtx));
+
+    // If mongot returned no documents, generate a document to return. This depends on the
+    // current, undocumented behavior of $unionWith that the outer pipeline is iterated before
+    // the inner pipeline.
+    desugaredPipeline.push_back(DocumentSourceUnionWith::createFromBson(
+        BSON(DocumentSourceUnionWith::kStageName
+             << BSON("pipeline" << BSON_ARRAY(
+                         BSON(DocumentSourceDocuments::kStageName << BSON_ARRAY("$$SEARCH_META")))))
+            .firstElement(),
+        expCtx.get()));
+
+    // Only return one copy of the meta results.
+    desugaredPipeline.push_back(DocumentSourceLimit::create(expCtx, 1));
+
+    return desugaredPipeline;
+}
+
+StageConstraints DocumentSourceSearchMeta::constraints(Pipeline::SplitState pipeState) const {
+    return DocumentSourceInternalSearchMongotRemote::getSearchDefaultConstraints();
+}
+
+Value DocumentSourceSearchMeta::serialize(
+    boost::optional<ExplainOptions::Verbosity> explain) const {
+    return Value(DOC(kStageName << Value(_userObj)));
 }
 
 }  // namespace mongo

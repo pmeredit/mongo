@@ -9,10 +9,14 @@
 namespace mongo {
 
 /**
- * The $search stage is an alias for [$_internalSearchMongotRemote,
- * $_internalSearchIdLookup] stages associated with an $search query.
+ * The $search stage expands to multiple internal stages when parsed, namely
+ * $_internalSearchMongotRemote and $_internalSearchIdLookup. $setVariableFromSubPipeline may also
+ * be added to handle $$SEARCH_META assignment.
+ *
+ * We only ever make a DocumentSourceSearch for a pipeline to store it in the view catalog.
+ * Desugaring must be done every time the view is called.
  */
-class DocumentSourceSearch final {
+class DocumentSourceSearch final : public DocumentSource {
 public:
     static constexpr StringData kStageName = "$search"_sd;
     static constexpr StringData kReturnStoredSourceArg = "returnStoredSource"_sd;
@@ -60,10 +64,30 @@ public:
 
     const char* getSourceName() const;
 
+    StageConstraints constraints(Pipeline::SplitState pipeState) const override;
+
+    boost::optional<DistributedPlanLogic> distributedPlanLogic() final {
+        // This stage should never be used in a distributed plan.
+        MONGO_UNREACHABLE_TASSERT(6253715);
+    }
+
+
 private:
-    // It is illegal to construct a DocumentSourceSearch directly, use createFromBson()
+    // Pipelines usually should not construct a DocumentSourceSearch directly, use createFromBson()
     // instead.
     DocumentSourceSearch() = default;
+    DocumentSourceSearch(BSONObj spec, const boost::intrusive_ptr<ExpressionContext> expCtx)
+        : DocumentSource(kStageName, expCtx), _userObj(std::move(spec)) {}
+    virtual Value serialize(boost::optional<ExplainOptions::Verbosity> explain = boost::none) const;
+
+    GetNextResult doGetNext() {
+        // We should never execute a DocumentSourceSearch.
+        MONGO_UNREACHABLE_TASSERT(6253716);
+    }
+
+    // The original stage specification that was the value for the "$search" field of the owning
+    // object.
+    BSONObj _userObj;
 };
 
 }  // namespace mongo

@@ -7,6 +7,7 @@
 load('jstests/libs/uuid_util.js');  // For getUUIDFromListCollections.
 load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
 load("src/mongo/db/modules/enterprise/jstests/search/lib/shardingtest_with_mongotmock.js");
+load("jstests/libs/feature_flag_util.js");
 
 const stWithMock = new ShardingTestWithMongotMock({
     name: "sharded_search",
@@ -23,6 +24,7 @@ const dbName = jsTestName();
 
 const mongos = st.s;
 const testDB = mongos.getDB(dbName);
+const useShardedFacets = FeatureFlagUtil.isEnabled(testDB, "SearchShardedFacets");
 
 const coll = testDB.getCollection("search");
 coll.drop();
@@ -75,12 +77,43 @@ const mongotQuery = {
     query: "cakes",
     path: "title"
 };
-const searchCmdSharded =
-    mongotCommandForQuery(mongotQuery, coll.getName(), testDB.getName(), collUUIDSharded);
+
+let searchCmdSharded = useShardedFacets
+    ? mongotCommandForQuery(
+          mongotQuery, coll.getName(), testDB.getName(), collUUIDSharded, NumberInt(42))
+    : mongotCommandForQuery(mongotQuery, coll.getName(), testDB.getName(), collUUIDSharded);
+
 const searchCmd =
     mongotCommandForQuery(mongotQuery, unshardedColl.getName(), testDB.getName(), collUUID);
 
-const shard1History = [
+const shard0HistoryShardedColl = [
+    {
+        expectedCommand: searchCmdSharded,
+        response: mongotResponseMetadataAgnostic(
+            [
+                {_id: 12, $searchScore: 0.91},
+                {_id: 11, $searchScore: 0.83},
+            ],
+            NumberLong(0),
+            coll.getFullName(),
+            true,
+            useShardedFacets)
+    },
+];
+
+const shard1HistoryShardedColl = [
+    {
+        expectedCommand: searchCmdSharded,
+        response: mongotResponseMetadataAgnostic(
+            [{_id: 1, $searchScore: 0.43}, {_id: 2, $searchScore: 0.32}],
+            NumberLong(0),
+            coll.getFullName(),
+            true,
+            useShardedFacets)
+    },
+];
+
+const shard1HistoryUnsharded = [
     {
         expectedCommand: searchCmd,
         response: mongotResponseForBatch(
@@ -96,32 +129,6 @@ const shard1History = [
             true)
     },
 ];
-
-const shard0HistoryShardedColl = [
-    {
-        expectedCommand: searchCmdSharded,
-        response: mongotResponseForBatch(
-            [
-                {_id: 12, $searchScore: 0.91},
-                {_id: 11, $searchScore: 0.83},
-            ],
-            NumberLong(0),
-            coll.getFullName(),
-            true)
-    },
-];
-
-const shard1HistoryShardedColl = [
-    {
-        expectedCommand: searchCmdSharded,
-        response:
-            mongotResponseForBatch([{_id: 1, $searchScore: 0.43}, {_id: 2, $searchScore: 0.32}],
-                                   NumberLong(0),
-                                   coll.getFullName(),
-                                   true)
-    },
-];
-
 const makeLookupPipeline = (collection) => [
         {$project: {"_id": 0}},
         {
@@ -150,12 +157,42 @@ const makeLookupPipeline = (collection) => [
             }
         }
     ];
-
 // Unsharded $lookup with sharded $search.
-s0Mongot.setMockResponses(shard0HistoryShardedColl, NumberLong(121));
-s1Mongot.setMockResponses(shard1HistoryShardedColl, NumberLong(121));
-s0Mongot.setMockResponses(shard0HistoryShardedColl, NumberLong(122));
-s1Mongot.setMockResponses(shard1HistoryShardedColl, NumberLong(122));
+if (useShardedFacets === true) {
+    setGenericMergePipeline(coll.getName(), mongotQuery, dbName, stWithMock);
+    const historyObj = {
+        expectedCommand: {planShardedSearch: coll.getName(), query: mongotQuery, $db: dbName},
+        response: {
+            ok: 1,
+            protocolVersion: NumberInt(42),
+            // This test doesn't use metadata. Give a trivial pipeline.
+            metaPipeline: [{$limit: 1}]
+        }
+    };
+    // Gets called a number of times. The same cursor isn't used again for planShardedSearch, so
+    // use two different states.
+    const mergingPipelineHistory = [historyObj];
+    s1Mongot.setMockResponses(mergingPipelineHistory, 1423);
+    s1Mongot.setMockResponses(mergingPipelineHistory, 1424);
+    s0Mongot.setMockResponsesMetadataAgnostic(
+        shard0HistoryShardedColl, NumberLong(121), useShardedFacets);
+    s1Mongot.setMockResponsesMetadataAgnostic(
+        shard1HistoryShardedColl, NumberLong(121), useShardedFacets);
+    s1Mongot.setMockResponses(mergingPipelineHistory, 1425);
+    s0Mongot.setMockResponsesMetadataAgnostic(
+        shard0HistoryShardedColl, NumberLong(122), useShardedFacets);
+    s1Mongot.setMockResponsesMetadataAgnostic(
+        shard1HistoryShardedColl, NumberLong(122), useShardedFacets);
+} else {
+    s0Mongot.setMockResponsesMetadataAgnostic(
+        shard0HistoryShardedColl, NumberLong(121), useShardedFacets);
+    s1Mongot.setMockResponsesMetadataAgnostic(
+        shard1HistoryShardedColl, NumberLong(121), useShardedFacets);
+    s0Mongot.setMockResponsesMetadataAgnostic(
+        shard0HistoryShardedColl, NumberLong(122), useShardedFacets);
+    s1Mongot.setMockResponsesMetadataAgnostic(
+        shard1HistoryShardedColl, NumberLong(122), useShardedFacets);
+}
 
 assert.sameMembers(
     [
@@ -165,10 +202,40 @@ assert.sameMembers(
     collBase.aggregate(makeLookupPipeline(coll)).toArray());
 
 // Sharded $lookup with sharded $search.
-s0Mongot.setMockResponses(shard0HistoryShardedColl, NumberLong(121));
-s1Mongot.setMockResponses(shard1HistoryShardedColl, NumberLong(121));
-s0Mongot.setMockResponses(shard0HistoryShardedColl, NumberLong(122));
-s1Mongot.setMockResponses(shard1HistoryShardedColl, NumberLong(122));
+if (useShardedFacets === true) {
+    setGenericMergePipeline(coll.getName(), mongotQuery, dbName, stWithMock, stWithMock);
+    const historyObj = {
+        expectedCommand: {planShardedSearch: coll.getName(), query: mongotQuery, $db: dbName},
+        response: {
+            ok: 1,
+            protocolVersion: NumberInt(42),
+            // This test doesn't use metadata. Give a trivial pipeline.
+            metaPipeline: [{$limit: 1}]
+        }
+    };
+    const mergingPipelineHistory = [historyObj];
+    s1Mongot.setMockResponses(mergingPipelineHistory, 1423);
+    s0Mongot.setMockResponses(mergingPipelineHistory, 1423);
+    s1Mongot.setMockResponses(mergingPipelineHistory, 1424);
+    s0Mongot.setMockResponses(mergingPipelineHistory, 1424);
+    s0Mongot.setMockResponsesMetadataAgnostic(
+        shard0HistoryShardedColl, NumberLong(121), useShardedFacets);
+    s1Mongot.setMockResponsesMetadataAgnostic(
+        shard1HistoryShardedColl, NumberLong(121), useShardedFacets);
+    s0Mongot.setMockResponsesMetadataAgnostic(
+        shard0HistoryShardedColl, NumberLong(122), useShardedFacets);
+    s1Mongot.setMockResponsesMetadataAgnostic(
+        shard1HistoryShardedColl, NumberLong(122), useShardedFacets);
+} else {
+    s0Mongot.setMockResponsesMetadataAgnostic(
+        shard0HistoryShardedColl, NumberLong(121), useShardedFacets);
+    s1Mongot.setMockResponsesMetadataAgnostic(
+        shard1HistoryShardedColl, NumberLong(121), useShardedFacets);
+    s0Mongot.setMockResponsesMetadataAgnostic(
+        shard0HistoryShardedColl, NumberLong(122), useShardedFacets);
+    s1Mongot.setMockResponsesMetadataAgnostic(
+        shard1HistoryShardedColl, NumberLong(122), useShardedFacets);
+}
 
 assert.sameMembers(
     [
@@ -178,8 +245,13 @@ assert.sameMembers(
     shardedCollBase.aggregate(makeLookupPipeline(coll)).toArray());
 
 // Unsharded $unionWith with sharded $search.
-s0Mongot.setMockResponses(shard0HistoryShardedColl, NumberLong(121));
-s1Mongot.setMockResponses(shard1HistoryShardedColl, NumberLong(121));
+s0Mongot.setMockResponsesMetadataAgnostic(
+    shard0HistoryShardedColl, NumberLong(121), useShardedFacets);
+s1Mongot.setMockResponsesMetadataAgnostic(
+    shard1HistoryShardedColl, NumberLong(121), useShardedFacets);
+if (useShardedFacets === true) {
+    setGenericMergePipeline(coll.getName(), mongotQuery, dbName, stWithMock);
+}
 assert.sameMembers(collBase
                        .aggregate([
                            {$unionWith: {coll: coll.getName(), pipeline: [{$search: mongotQuery}]}},
@@ -195,8 +267,13 @@ assert.sameMembers(collBase
                    ]);
 
 // Sharded $unionWith with sharded $search.
-s0Mongot.setMockResponses(shard0HistoryShardedColl, NumberLong(121));
-s1Mongot.setMockResponses(shard1HistoryShardedColl, NumberLong(121));
+if (useShardedFacets === true) {
+    setGenericMergePipeline(coll.getName(), mongotQuery, dbName, stWithMock);
+}
+s0Mongot.setMockResponsesMetadataAgnostic(
+    shard0HistoryShardedColl, NumberLong(121), useShardedFacets);
+s1Mongot.setMockResponsesMetadataAgnostic(
+    shard1HistoryShardedColl, NumberLong(121), useShardedFacets);
 assert.sameMembers(shardedCollBase
                        .aggregate([
                            {$unionWith: {coll: coll.getName(), pipeline: [{$search: mongotQuery}]}},
@@ -210,10 +287,30 @@ assert.sameMembers(shardedCollBase
                        {_id: 1, "title": "cakes"},
                        {_id: 2, "title": "oranges"}
                    ]);
-
 // Test non-sharded $search in $lookup is allowed (base is unsharded).
-s1Mongot.setMockResponses(shard1History, NumberLong(121));
-s1Mongot.setMockResponses(shard1History, NumberLong(122));
+if (useShardedFacets === true) {
+    const historyObj = {
+        expectedCommand:
+            {planShardedSearch: unshardedColl.getName(), query: mongotQuery, $db: dbName},
+        response: {
+            ok: 1,
+            protocolVersion: NumberInt(42),
+            // This test doesn't use metadata. Give a trivial pipeline.
+            metaPipeline: [{$limit: 1}]
+        }
+    };
+    const mergingPipelineHistory = [historyObj];
+    s1Mongot.setMockResponses(mergingPipelineHistory, 1423);
+    s1Mongot.setMockResponses(mergingPipelineHistory, 1424);
+    s1Mongot.setMockResponses(shard1HistoryUnsharded, NumberLong(121));
+    s1Mongot.setMockResponses(mergingPipelineHistory, 1425);
+    s1Mongot.setMockResponses(shard1HistoryUnsharded, NumberLong(122));
+} else {
+    s1Mongot.setMockResponsesMetadataAgnostic(
+        shard1HistoryUnsharded, NumberLong(121), useShardedFacets);
+    s1Mongot.setMockResponsesMetadataAgnostic(
+        shard1HistoryUnsharded, NumberLong(122), useShardedFacets);
+}
 const unshardedLookupResults = collBase.aggregate(makeLookupPipeline(unshardedColl)).toArray();
 const lookupSearchExpected = [
     {"localField": "cakes", "weird": false, "cake_data": [{"ref_id": 1}]},
@@ -222,8 +319,30 @@ const lookupSearchExpected = [
 assert.sameMembers(lookupSearchExpected, unshardedLookupResults);
 
 // Test that non-sharded $search in $lookup works (base is sharded).
-s1Mongot.setMockResponses(shard1History, NumberLong(121));
-s1Mongot.setMockResponses(shard1History, NumberLong(122));
+if (useShardedFacets === true) {
+    setGenericMergePipeline(unshardedColl.getName(), mongotQuery, dbName, stWithMock);
+    const historyObj = {
+        expectedCommand:
+            {planShardedSearch: unshardedColl.getName(), query: mongotQuery, $db: dbName},
+        response: {
+            ok: 1,
+            protocolVersion: NumberInt(42),
+            // This test doesn't use metadata. Give a trivial pipeline.
+            metaPipeline: [{$limit: 1}]
+        }
+    };
+    const mergingPipelineHistory = [historyObj];
+    s1Mongot.setMockResponses(mergingPipelineHistory, 1423);
+    s1Mongot.setMockResponses(mergingPipelineHistory, 1424);
+    s1Mongot.setMockResponses(shard1HistoryUnsharded, NumberLong(121));
+    s1Mongot.setMockResponses(mergingPipelineHistory, 1425);
+    s1Mongot.setMockResponses(shard1HistoryUnsharded, NumberLong(122));
+} else {
+    s1Mongot.setMockResponsesMetadataAgnostic(
+        shard1HistoryUnsharded, NumberLong(121), useShardedFacets);
+    s1Mongot.setMockResponsesMetadataAgnostic(
+        shard1HistoryUnsharded, NumberLong(122), useShardedFacets);
+}
 const unshardedLookupShardedBaseResults =
     shardedCollBase.aggregate(makeLookupPipeline(unshardedColl)).toArray();
 const lookupSearchShardedBaseExpected = [
@@ -233,7 +352,22 @@ const lookupSearchShardedBaseExpected = [
 assert.sameMembers(lookupSearchShardedBaseExpected, unshardedLookupShardedBaseResults);
 
 // Test that non-sharded $search in $unionWith works (base is unsharded).
-s1Mongot.setMockResponses(shard1History, NumberLong(128));
+if (useShardedFacets == true) {
+    setGenericMergePipeline(coll.getName(), mongotQuery, dbName, stWithMock);
+    const historyObj = {
+        expectedCommand:
+            {planShardedSearch: unshardedColl.getName(), query: mongotQuery, $db: dbName},
+        response: {
+            ok: 1,
+            protocolVersion: NumberInt(42),
+            // This test doesn't use metadata. Give a trivial pipeline.
+            metaPipeline: [{$limit: 1}]
+        }
+    };
+    const mergingPipelineHistory = [historyObj];
+    s1Mongot.setMockResponses(mergingPipelineHistory, 1423);
+}
+s1Mongot.setMockResponses(shard1HistoryUnsharded, NumberLong(128));
 assert.sameMembers(
     collBase
         .aggregate([
@@ -250,9 +384,12 @@ assert.sameMembers(
         {"title": "cakes and apples"},
         {"title": "cakes and kale"}
     ]);
-
 // Test non-sharded $search in $unionWith is allowed (base is sharded).
-s1Mongot.setMockResponses(shard1History, NumberLong(129));
+
+if (useShardedFacets == true) {
+    setGenericMergePipeline(unshardedColl.getName(), mongotQuery, dbName, stWithMock);
+}
+s1Mongot.setMockResponses(shard1HistoryUnsharded, NumberLong(129));
 
 assert.sameMembers(
     shardedCollBase
@@ -270,6 +407,5 @@ assert.sameMembers(
         {"title": "cakes and apples"},
         {"title": "cakes and kale"}
     ]);
-
 stWithMock.stop();
 })();

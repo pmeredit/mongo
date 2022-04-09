@@ -8,6 +8,7 @@ load('jstests/libs/uuid_util.js');                 // For getUUIDFromListCollect
 load("jstests/libs/collection_drop_recreate.js");  // For assertCreateCollection.
 load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
 load("src/mongo/db/modules/enterprise/jstests/search/lib/shardingtest_with_mongotmock.js");
+load("jstests/libs/feature_flag_util.js");
 
 const dbName = "test";
 const collName = "internal_search_mongot_remote";
@@ -30,6 +31,7 @@ const mongos = st.s;
 const testDB = mongos.getDB(dbName);
 const testColl = testDB.getCollection(collName);
 const collNS = testColl.getFullName();
+const useShardedFacets = FeatureFlagUtil.isEnabled(testDB, "SearchShardedFacets");
 
 assert.commandWorked(testColl.insert({_id: 1, x: "ow"}));
 assert.commandWorked(testColl.insert({_id: 2, x: "now", y: "lorem"}));
@@ -49,6 +51,10 @@ const collUUID0 = getUUIDFromListCollections(st.rs0.getPrimary().getDB(dbName), 
 const collUUID1 = getUUIDFromListCollections(st.rs1.getPrimary().getDB(dbName), collName);
 
 const mongotQuery = {};
+const protocolVersion = NumberInt(42);
+const expectedMongotCommand = useShardedFacets
+    ? mongotCommandForQuery(mongotQuery, collName, dbName, collUUID0, protocolVersion)
+    : mongotCommandForQuery(mongotQuery, collName, dbName, collUUID0);
 const cursorId = NumberLong(123);
 const pipeline = [
     {$search: mongotQuery},
@@ -75,11 +81,12 @@ function testBasicCase(shard0Conn, shard1Conn) {
         {_id: 1, $searchScore: 0.99},
     ];
     const history0 = [{
-        expectedCommand: mongotCommandForQuery(mongotQuery, collName, dbName, collUUID0),
-        response: mongotResponseForBatch(mongot0ResponseBatch, NumberLong(0), collNS, responseOk),
+        expectedCommand: expectedMongotCommand,
+        response: mongotResponseMetadataAgnostic(
+            mongot0ResponseBatch, NumberLong(0), collNS, responseOk, useShardedFacets),
     }];
     const s0Mongot = stWithMock.getMockConnectedToHost(shard0Conn);
-    s0Mongot.setMockResponses(history0, cursorId);
+    s0Mongot.setMockResponsesMetadataAgnostic(history0, cursorId, useShardedFacets);
 
     const mongot1ResponseBatch = [
         {_id: 11, $searchScore: 111},
@@ -88,11 +95,12 @@ function testBasicCase(shard0Conn, shard1Conn) {
         {_id: 14, $searchScore: 28},
     ];
     const history1 = [{
-        expectedCommand: mongotCommandForQuery(mongotQuery, collName, dbName, collUUID1),
-        response: mongotResponseForBatch(mongot1ResponseBatch, NumberLong(0), collNS, responseOk),
+        expectedCommand: expectedMongotCommand,
+        response: mongotResponseMetadataAgnostic(
+            mongot1ResponseBatch, NumberLong(0), collNS, responseOk, useShardedFacets),
     }];
     const s1Mongot = stWithMock.getMockConnectedToHost(shard1Conn);
-    s1Mongot.setMockResponses(history1, cursorId);
+    s1Mongot.setMockResponsesMetadataAgnostic(history1, cursorId, useShardedFacets);
 
     const expectedDocs = [
         {_id: 11, x: "brown", y: "ipsum"},
@@ -105,6 +113,9 @@ function testBasicCase(shard0Conn, shard1Conn) {
         {_id: 1, x: "ow"},
     ];
 
+    if (useShardedFacets === true) {
+        setGenericMergePipeline(testColl.getName(), mongotQuery, dbName, stWithMock);
+    }
     assert.eq(testColl.aggregate(pipeline).toArray(), expectedDocs);
 }
 runTestOnPrimaries(testBasicCase);
@@ -120,8 +131,9 @@ function testErrorCase(shard0Conn, shard1Conn) {
     ];
     const history0 = [
         {
-            expectedCommand: mongotCommandForQuery(mongotQuery, collName, dbName, collUUID0),
-            response: mongotResponseForBatch(mongot0ResponseBatch, cursorId, collNS, responseOk),
+            expectedCommand: expectedMongotCommand,
+            response: mongotResponseMetadataAgnostic(
+                mongot0ResponseBatch, cursorId, collNS, responseOk, useShardedFacets),
         },
         {
             expectedCommand: {getMore: cursorId, collection: collName},
@@ -134,7 +146,7 @@ function testErrorCase(shard0Conn, shard1Conn) {
         }
     ];
     const s0Mongot = stWithMock.getMockConnectedToHost(shard0Conn);
-    s0Mongot.setMockResponses(history0, cursorId);
+    s0Mongot.setMockResponsesMetadataAgnostic(history0, cursorId, useShardedFacets);
 
     const mongot1ResponseBatch = [
         {_id: 11, $searchScore: 111},
@@ -143,12 +155,16 @@ function testErrorCase(shard0Conn, shard1Conn) {
         {_id: 14, $searchScore: 28},
     ];
     const history1 = [{
-        expectedCommand: mongotCommandForQuery(mongotQuery, collName, dbName, collUUID1),
-        response: mongotResponseForBatch(mongot1ResponseBatch, NumberLong(0), collNS, responseOk),
+        expectedCommand: expectedMongotCommand,
+        response: mongotResponseMetadataAgnostic(
+            mongot1ResponseBatch, NumberLong(0), collNS, responseOk, useShardedFacets),
     }];
     const s1Mongot = stWithMock.getMockConnectedToHost(shard1Conn);
-    s1Mongot.setMockResponses(history1, cursorId);
+    s1Mongot.setMockResponsesMetadataAgnostic(history1, cursorId, useShardedFacets);
 
+    if (useShardedFacets === true) {
+        setGenericMergePipeline(testColl.getName(), mongotQuery, dbName, stWithMock);
+    }
     const err = assert.throws(() => testColl.aggregate(pipeline).toArray());
     assert.commandFailedWithCode(err, ErrorCodes.InternalError);
 }
@@ -164,33 +180,36 @@ function testUnevenResultDistributionCase(shard0Conn, shard1Conn) {
         {_id: 3, $searchScore: 100},
     ];
     const history0 = [{
-        expectedCommand: mongotCommandForQuery(mongotQuery, collName, dbName, collUUID0),
-        response: mongotResponseForBatch(mongot0ResponseBatch, NumberLong(0), collNS, responseOk),
+        expectedCommand: expectedMongotCommand,
+        response: mongotResponseMetadataAgnostic(
+            mongot0ResponseBatch, NumberLong(0), collNS, responseOk, useShardedFacets),
     }];
     const s0Mongot = stWithMock.getMockConnectedToHost(shard0Conn);
-    s0Mongot.setMockResponses(history0, cursorId);
+    s0Mongot.setMockResponsesMetadataAgnostic(history0, cursorId, useShardedFacets);
 
     const history1 = [
         {
-            expectedCommand: mongotCommandForQuery(mongotQuery, collName, dbName, collUUID1),
-            response:
-                mongotResponseForBatch([{_id: 11, $searchScore: 111}, {_id: 13, $searchScore: 30}],
-                                       cursorId,
-                                       collNS,
-                                       responseOk),
+            expectedCommand: expectedMongotCommand,
+            response: mongotResponseMetadataAgnostic(
+                [{_id: 11, $searchScore: 111}, {_id: 13, $searchScore: 30}],
+                cursorId,
+                collNS,
+                responseOk,
+                useShardedFacets),
         },
 
         {
             expectedCommand: {getMore: cursorId, collection: collName},
-            response:
-                mongotResponseForBatch([{_id: 12, $searchScore: 29}, {_id: 14, $searchScore: 28}],
-                                       NumberLong(0),
-                                       collNS,
-                                       responseOk)
+            response: mongotResponseMetadataAgnostic(
+                [{_id: 12, $searchScore: 29}, {_id: 14, $searchScore: 28}],
+                NumberLong(0),
+                collNS,
+                responseOk,
+                useShardedFacets)
         }
     ];
     const s1Mongot = stWithMock.getMockConnectedToHost(shard1Conn);
-    s1Mongot.setMockResponses(history1, cursorId);
+    s1Mongot.setMockResponsesMetadataAgnostic(history1, cursorId, useShardedFacets);
 
     const expectedDocs = [
         {_id: 11, x: "brown", y: "ipsum"},
@@ -200,6 +219,9 @@ function testUnevenResultDistributionCase(shard0Conn, shard1Conn) {
         {_id: 14, x: "cow", y: "lorem ipsum"},
     ];
 
+    if (useShardedFacets === true) {
+        setGenericMergePipeline(testColl.getName(), mongotQuery, dbName, stWithMock);
+    }
     assert.eq(testColl.aggregate(pipeline).toArray(), expectedDocs);
 }
 runTestOnPrimaries(testUnevenResultDistributionCase);
@@ -217,11 +239,12 @@ function testMisbehavingMongot(shard0Conn, shard1Conn) {
         {_id: 3, $searchScore: 100},
     ];
     const history0 = [{
-        expectedCommand: mongotCommandForQuery(mongotQuery, collName, dbName, collUUID0),
-        response: mongotResponseForBatch(mongot0ResponseBatch, NumberLong(0), collNS, responseOk),
+        expectedCommand: expectedMongotCommand,
+        response: mongotResponseMetadataAgnostic(
+            mongot0ResponseBatch, NumberLong(0), collNS, responseOk, useShardedFacets),
     }];
     const s0Mongot = stWithMock.getMockConnectedToHost(shard0Conn);
-    s0Mongot.setMockResponses(history0, cursorId);
+    s0Mongot.setMockResponsesMetadataAgnostic(history0, cursorId, useShardedFacets);
 
     const mongot1ResponseBatch = [
         {_id: 11, $searchScore: 111},
@@ -230,11 +253,12 @@ function testMisbehavingMongot(shard0Conn, shard1Conn) {
         {_id: 14, $searchScore: 28},
     ];
     const history1 = [{
-        expectedCommand: mongotCommandForQuery(mongotQuery, collName, dbName, collUUID1),
-        response: mongotResponseForBatch(mongot1ResponseBatch, NumberLong(0), collNS, responseOk),
+        expectedCommand: expectedMongotCommand,
+        response: mongotResponseMetadataAgnostic(
+            mongot1ResponseBatch, NumberLong(0), collNS, responseOk, useShardedFacets),
     }];
     const s1Mongot = stWithMock.getMockConnectedToHost(shard1Conn);
-    s1Mongot.setMockResponses(history1, cursorId);
+    s1Mongot.setMockResponsesMetadataAgnostic(history1, cursorId, useShardedFacets);
 
     const expectedDocs = [
         {_id: 11, x: "brown", y: "ipsum"},
@@ -247,6 +271,9 @@ function testMisbehavingMongot(shard0Conn, shard1Conn) {
         {_id: 1, x: "ow"},
     ];
 
+    if (useShardedFacets === true) {
+        setGenericMergePipeline(testColl.getName(), mongotQuery, dbName, stWithMock);
+    }
     const res = testColl.aggregate(pipeline).toArray();
 
     // In this case, mongod returns incorrect results (and doesn't crash). Check that the _set_
@@ -268,11 +295,12 @@ function testSearchFollowedBySortOnDifferentKey(shard0Conn, shard1Conn) {
         {_id: 1, $searchScore: 0.99},
     ];
     const history0 = [{
-        expectedCommand: mongotCommandForQuery(mongotQuery, collName, dbName, collUUID0),
-        response: mongotResponseForBatch(mongot0ResponseBatch, NumberLong(0), collNS, responseOk),
+        expectedCommand: expectedMongotCommand,
+        response: mongotResponseMetadataAgnostic(
+            mongot0ResponseBatch, NumberLong(0), collNS, responseOk, useShardedFacets),
     }];
     const s0Mongot = stWithMock.getMockConnectedToHost(shard0Conn);
-    s0Mongot.setMockResponses(history0, cursorId);
+    s0Mongot.setMockResponsesMetadataAgnostic(history0, cursorId, useShardedFacets);
 
     const mongot1ResponseBatch = [
         {_id: 11, $searchScore: 111},
@@ -281,11 +309,12 @@ function testSearchFollowedBySortOnDifferentKey(shard0Conn, shard1Conn) {
         {_id: 14, $searchScore: 28},
     ];
     const history1 = [{
-        expectedCommand: mongotCommandForQuery(mongotQuery, collName, dbName, collUUID1),
-        response: mongotResponseForBatch(mongot1ResponseBatch, NumberLong(0), collNS, responseOk),
+        expectedCommand: expectedMongotCommand,
+        response: mongotResponseMetadataAgnostic(
+            mongot1ResponseBatch, NumberLong(0), collNS, responseOk, useShardedFacets),
     }];
     const s1Mongot = stWithMock.getMockConnectedToHost(shard1Conn);
-    s1Mongot.setMockResponses(history1, cursorId);
+    s1Mongot.setMockResponsesMetadataAgnostic(history1, cursorId, useShardedFacets);
 
     const expectedDocs = [
         {_id: 1, x: "ow"},
@@ -298,6 +327,9 @@ function testSearchFollowedBySortOnDifferentKey(shard0Conn, shard1Conn) {
         {_id: 14, x: "cow", y: "lorem ipsum"},
     ];
 
+    if (useShardedFacets === true) {
+        setGenericMergePipeline(testColl.getName(), mongotQuery, dbName, stWithMock);
+    }
     assert.eq(testColl.aggregate(pipeline.concat([{$sort: {_id: 1}}])).toArray(), expectedDocs);
 }
 runTestOnPrimaries(testSearchFollowedBySortOnDifferentKey);

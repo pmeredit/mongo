@@ -9,10 +9,10 @@
 #include "document_source_internal_search_id_lookup.h"
 #include "document_source_internal_search_mongot_remote.h"
 #include "mongo/db/pipeline/document_source.h"
-#include "mongo/db/pipeline/document_source_add_fields.h"
 #include "mongo/db/pipeline/document_source_internal_shard_filter.h"
 #include "mongo/db/pipeline/document_source_replace_root.h"
 #include "mongo/db/pipeline/expression_context.h"
+#include "mongot_cursor.h"
 
 namespace mongo {
 
@@ -35,12 +35,29 @@ const char* DocumentSourceSearch::getSourceName() const {
     return kStageName.rawData();
 }
 
+Value DocumentSourceSearch::serialize(boost::optional<ExplainOptions::Verbosity> explain) const {
+    return Value(DOC(kStageName << Value(_userObj)));
+}
+
 std::list<intrusive_ptr<DocumentSource>> DocumentSourceSearch::createFromBson(
     BSONElement elem, const intrusive_ptr<ExpressionContext>& pExpCtx) {
 
-    uassert(ErrorCodes::FailedToParse,
-            str::stream() << "$search value must be an object. Found: " << typeName(elem.type()),
-            elem.type() == BSONType::Object);
+    // If we are parsing a view, we don't actually want to make any calls to mongot which happen
+    // during desugaring.
+    if (pExpCtx->isParsingViewDefinition) {
+        uassert(ErrorCodes::FailedToParse,
+                str::stream() << "$search value must be an object. Found: "
+                              << typeName(elem.type()),
+                elem.type() == BSONType::Object);
+        intrusive_ptr<DocumentSourceSearch> source(
+            new DocumentSourceSearch(elem.Obj().getOwned(), pExpCtx));
+        return {source};
+    }
+
+
+    std::list<intrusive_ptr<DocumentSource>> desugaredPipeline =
+        mongot_cursor::createInitialSearchPipeline(elem, pExpCtx);
+
     // If 'returnStoredSource' is true, we don't want to do idLookup. Instead, promote the fields in
     // 'storedSource' to root.
     // 'getBoolField' returns false if the field is not present.
@@ -52,13 +69,19 @@ std::list<intrusive_ptr<DocumentSource>> DocumentSourceSearch::createFromBson(
             BSON("$replaceRoot" << BSON(
                      "newRoot" << BSON(
                          "$ifNull" << BSON_ARRAY("$" + kProtocolStoredFieldsName << "$$ROOT"))));
-        return {DocumentSourceInternalSearchMongotRemote::createFromBson(elem, pExpCtx),
-                DocumentSourceReplaceRoot::createFromBson(replaceRootSpec.firstElement(), pExpCtx)};
+        desugaredPipeline.push_back(
+            DocumentSourceReplaceRoot::createFromBson(replaceRootSpec.firstElement(), pExpCtx));
+    } else {
+        // idLookup must always be immediately after the $mongotRemote stage, which is always first
+        // in the pipeline.
+        desugaredPipeline.insert(std::next(desugaredPipeline.begin()),
+                                 new DocumentSourceInternalSearchIdLookUp(pExpCtx));
     }
-    return {
-        DocumentSourceInternalSearchMongotRemote::createFromBson(elem, pExpCtx),
-        new DocumentSourceInternalSearchIdLookUp(pExpCtx),
-    };
+
+    return desugaredPipeline;
+}
+StageConstraints DocumentSourceSearch::constraints(Pipeline::SplitState pipeState) const {
+    return DocumentSourceInternalSearchMongotRemote::getSearchDefaultConstraints();
 }
 
 }  // namespace mongo

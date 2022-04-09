@@ -1,0 +1,199 @@
+/**
+ * Test that we properly fetch the metadata merging pipeline during planning.
+ */
+(function() {
+"use strict";
+load("src/mongo/db/modules/enterprise/jstests/search/lib/mongotmock.js");
+load("src/mongo/db/modules/enterprise/jstests/search/lib/shardingtest_with_mongotmock.js");
+load("src/mongo/db/modules/enterprise/jstests/search/lib/search_sharded_example_cursors.js");
+load("jstests/libs/analyze_plan.js");       // For getAggPlanStages().
+load('jstests/libs/uuid_util.js');          // For getUUIDFromListCollections.
+load("jstests/libs/feature_flag_util.js");  // For isEnabled.
+
+let nodeOptions = {setParameter: {enableTestCommands: 1}};
+// In certain evergreen configurations the feature flag may be set via a different method. Make
+// sure we don't duplicate a parameter set.
+if (!TestData.setParameters.hasOwnProperty("featureFlagSearchShardedFacets")) {
+    jsTestLog("Skipping as featureFlagSearchShardedFacets is not enabled");
+    return;
+}
+
+const stWithMock = new ShardingTestWithMongotMock({
+    name: "sharded_search",
+    shards: {
+        rs0: {nodes: 1},
+        rs1: {nodes: 1},
+    },
+    mongos: 1,
+    other: {
+        rsOptions: nodeOptions,
+        mongosOptions: nodeOptions,
+        shardOptions: nodeOptions,
+    }
+});
+stWithMock.start();
+const st = stWithMock.st;
+
+const conn = stWithMock.st.s;
+const mongotConn = stWithMock.getMockConnectedToHost(conn);
+
+const dbName = jsTestName();
+const testDB = conn.getDB(dbName);
+
+const collName = "meta";
+const coll = testDB.getCollection(collName);
+const collNS = coll.getFullName();
+coll.drop();
+assert.commandWorked(coll.insert({"_id": 1, "title": "cakes"}));
+assert.commandWorked(coll.insert({"_id": 2, "title": "cookies and cakes"}));
+assert.commandWorked(coll.insert({"_id": 3, "title": "vegetables"}));
+assert.commandWorked(coll.insert({"_id": 4, "title": "take and bake cakes"}));
+
+assert.commandWorked(conn.getDB("admin").runCommand({enableSharding: dbName}));
+st.ensurePrimaryShard(dbName, st.shard0.name);
+st.shardColl(coll, {_id: 1}, {_id: 2}, {_id: 3}, dbName);
+
+const currentVerbosity = "queryPlanner";
+
+const searchQuery = {
+    query: "cakes",
+    path: "title"
+};
+const protocolVersion = NumberInt(42);
+const mergingPipelineHistory = [{
+    expectedCommand: {planShardedSearch: coll.getName(), query: searchQuery, $db: dbName},
+    response: {
+        ok: 1,
+        protocolVersion: protocolVersion,
+        metaPipeline: [{
+            "$group": {
+                "_id": {"type": "$type", "path": "$path", "bucket": "$bucket"},
+                "value": {
+                    "$sum": "$metaVal",
+                }
+            }
+        }]
+    }
+}];
+
+// Test that explain includes a $setVariableFromSubPipeline stage with the appropriate merging
+// pipeline. Note that mongotmock state must be handled correctly here not to influence the next
+// test(s).
+function testExplain() {
+    mongotConn.setMockResponses(mergingPipelineHistory, 1);
+
+    const mongotQuery = searchQuery;
+    const collUUID0 = getUUIDFromListCollections(st.rs0.getPrimary().getDB(dbName), collName);
+    const collUUID1 = getUUIDFromListCollections(st.rs1.getPrimary().getDB(dbName), collName);
+    // History for shard 1.
+    {
+        const exampleCursor = searchShardedExampleCursors1(
+            dbName,
+            collNS,
+            collName,
+            // Explain doesn't take protocol version.
+            mongotCommandForQuery(mongotQuery, collName, dbName, collUUID0));
+        exampleCursor.historyResults[0].response.explain = {destiny: "avatar"};
+        const mongot = stWithMock.getMockConnectedToHost(st.rs0.getPrimary());
+        mongot.setMockResponses(exampleCursor.historyResults, exampleCursor.resultsID);
+        mongot.setMockResponses(exampleCursor.historyMeta, exampleCursor.metaID);
+    }
+
+    // History for shard 2
+    {
+        const exampleCursor = searchShardedExampleCursors2(
+            dbName,
+            collNS,
+            collName,
+            // Explain doesn't take protocol version.
+            mongotCommandForQuery(mongotQuery, collName, dbName, collUUID1));
+        exampleCursor.historyResults[0].response.explain = {destiny: "avatar"};
+        const mongot = stWithMock.getMockConnectedToHost(st.rs1.getPrimary());
+        mongot.setMockResponses(exampleCursor.historyResults, exampleCursor.resultsID);
+        mongot.setMockResponses(exampleCursor.historyMeta, exampleCursor.metaID);
+    }
+
+    let explain = coll.explain(currentVerbosity).aggregate([{$search: searchQuery}]);
+    let mergingPipeline = explain.splitPipeline.mergerPart;
+    // First element in merging pipeline must be a $mergeCursors stage.
+    assert.eq(["$mergeCursors"], Object.keys(mergingPipeline[0]));
+    // Second element sets the variable given the sub-pipeline provided above.
+    assert.eq({
+        "$setVariableFromSubPipeline": {
+            "setVariable": "$$SEARCH_META",
+            "pipeline": [{
+                "$group": {
+                    "_id": {"type": "$type", "path": "$path", "bucket": "$bucket"},
+                    "value": {"$sum": "$metaVal"}
+                }
+            }]
+        }
+    },
+              mergingPipeline[1]);
+}
+
+// Set the mock responses for a query which includes the result cursors.
+function setQueryMockResponses(removeGetMore) {
+    mongotConn.setMockResponses(mergingPipelineHistory, 1);
+
+    const mongotQuery = searchQuery;
+    const collUUID0 = getUUIDFromListCollections(st.rs0.getPrimary().getDB(dbName), collName);
+    const collUUID1 = getUUIDFromListCollections(st.rs1.getPrimary().getDB(dbName), collName);
+    // History for shard 1.
+    {
+        const exampleCursor = searchShardedExampleCursors1(
+            dbName,
+            collNS,
+            collName,
+            mongotCommandForQuery(mongotQuery, collName, dbName, collUUID0, protocolVersion));
+        // If the query we are setting responses for has a limit, the getMore is not needed.
+        if (removeGetMore) {
+            exampleCursor.historyResults.pop();
+            exampleCursor.historyResults[0].response.cursors[0].cursor.id = NumberLong(0);
+        }
+        const mongot = stWithMock.getMockConnectedToHost(st.rs0.getPrimary());
+        mongot.setMockResponses(exampleCursor.historyResults, exampleCursor.resultsID);
+        mongot.setMockResponses(exampleCursor.historyMeta, exampleCursor.metaID);
+    }
+
+    // History for shard 2
+    {
+        const exampleCursor = searchShardedExampleCursors2(
+            dbName,
+            collNS,
+            collName,
+            mongotCommandForQuery(mongotQuery, collName, dbName, collUUID1, protocolVersion));
+        if (removeGetMore) {
+            exampleCursor.historyResults.pop();
+            exampleCursor.historyResults[0].response.cursors[0].cursor.id = NumberLong(0);
+        }
+        const mongot = stWithMock.getMockConnectedToHost(st.rs1.getPrimary());
+        mongot.setMockResponses(exampleCursor.historyResults, exampleCursor.resultsID);
+        mongot.setMockResponses(exampleCursor.historyMeta, exampleCursor.metaID);
+    }
+}
+
+// Test that a $search query properly computes the $$SEARCH_META value according to the pipeline
+// returned by mongot(mock).
+function testSearchQuery() {
+    setQueryMockResponses(false);
+    let queryResult =
+        coll.aggregate([{$search: searchQuery}, {$project: {"var": "$$SEARCH_META"}}]);
+    assert.eq([{_id: 1, var : {_id: {}, value: 56}}], queryResult.toArray());
+}
+
+// Test that a $searchMeta query properly computes the metadata value according to the pipeline
+// returned by mongot(mock).
+function testSearchMetaQuery() {
+    setQueryMockResponses(true);
+    let queryResult = coll.aggregate([{$searchMeta: searchQuery}]);
+    // Same as above query result but not embedded in a document.
+    assert.eq([{_id: {}, value: 56}], queryResult.toArray());
+}
+
+testExplain();
+testSearchQuery();
+testSearchMetaQuery();
+
+stWithMock.stop();
+})();

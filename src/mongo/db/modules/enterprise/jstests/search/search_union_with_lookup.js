@@ -365,7 +365,6 @@ assert.commandWorked(db.createView(view1.getName(), collBase.getName(), [
     {$project: {"localField": 1, "_id": 0}},
     {$unionWith: {coll: coll.getName(), pipeline: [{$search: viewSearchQuery}]}}
 ]));
-
 const viewCursor = view1.aggregate([]);
 
 const viewExpected = [

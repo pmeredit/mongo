@@ -8,6 +8,7 @@ load("jstests/libs/analyze_plan.js");  // For getAggPlanStages().
 load('jstests/libs/uuid_util.js');     // For getUUIDFromListCollections.
 load("src/mongo/db/modules/enterprise/jstests/search/lib/shardingtest_with_mongotmock.js");
 load("jstests/aggregation/extras/utils.js");  // For arrayEq
+load("jstests/libs/feature_flag_util.js");
 
 const dbName = jsTestName();
 const searchQuery = {
@@ -102,8 +103,7 @@ const searchQuery = {
     MongoRunner.stopMongod(conn);
     mongotmock.stop();
 })();
-// Repeat the test in a sharded environment. Note that $$SEARCH_META is not allowed on sharded
-// clusters, so we won't repeat that part.
+// Repeat the test in a sharded environment.
 (function testSharded() {
     const stWithMock = new ShardingTestWithMongotMock({
         name: "sharded_search",
@@ -120,6 +120,7 @@ const searchQuery = {
     const testDB = mongos.getDB(dbName);
     const coll = testDB.getCollection(jsTestName());
     const collNS = coll.getFullName();
+    const useShardedFacets = FeatureFlagUtil.isEnabled(testDB, "SearchShardedFacets");
 
     // Documents that end up on shard0.
     assert.commandWorked(coll.insert([{_id: 1, shardKey: 0}, {_id: 2, shardKey: 0}]));
@@ -146,44 +147,113 @@ const searchQuery = {
         {$searchScore: 0.99, storedSource: {_id: 1, old: true}},
         {$searchScore: 0.654, storedSource: {}}
     ];
-    const history0 = [{
-        expectedCommand:
-            {search: coll.getName(), collectionUUID: collUUID0, query: searchQuery, $db: dbName},
-        response: mongotResponseForBatch(mongot0ResponseBatch, NumberLong(0), collNS, responseOk),
-    }];
-    const s0Mongot = stWithMock.getMockConnectedToHost(shard0Conn);
-    s0Mongot.setMockResponses(history0, NumberLong(123));
-
     const mongot1ResponseBatch = [
         {$searchScore: 111, storedSource: {_id: 11, old: false}},
         {_id: 13, $searchScore: 30},
         {$searchScore: 28, storedSource: {_id: 12, old: false}},
         {$searchScore: 0.456, storedSource: {}}
     ];
-    const history1 = [{
-        expectedCommand:
-            {search: coll.getName(), collectionUUID: collUUID1, query: searchQuery, $db: dbName},
-        response: mongotResponseForBatch(mongot1ResponseBatch, NumberLong(0), collNS, responseOk),
-    }];
+    let history0 = [];
+    let history1 = [];
+    let expectedDocs = [];
+    const protocolVersion = NumberLong(42);
+    if (useShardedFacets) {
+        history0 = [{
+            expectedCommand: {
+                search: coll.getName(),
+                collectionUUID: collUUID0,
+                query: searchQuery,
+                $db: dbName,
+                intermediate: protocolVersion,
+            },
+            response: mongotMultiCursorResponseForBatch(mongot0ResponseBatch,
+                                                        NumberLong(0),
+                                                        [{val: 20}, {val: 30}],
+                                                        NumberLong(0),
+                                                        collNS,
+                                                        responseOk),
+        }];
+        history1 = [{
+            expectedCommand: {
+                search: coll.getName(),
+                collectionUUID: collUUID1,
+                query: searchQuery,
+                $db: dbName,
+                intermediate: protocolVersion,
+            },
+            response: mongotMultiCursorResponseForBatch(mongot1ResponseBatch,
+                                                        NumberLong(0),
+                                                        [{val: 200}, {val: 300}],
+                                                        NumberLong(0),
+                                                        collNS,
+                                                        responseOk),
+        }];
+        expectedDocs = [
+            {_id: 11, old: false, score: 111, meta: 550},
+            {_id: 13, score: 30, meta: 550},
+            {_id: 3, score: 29, meta: 550},
+            {_id: 12, old: false, score: 28, meta: 550},
+            {_id: 2, old: true, score: 10, meta: 550},
+            {_id: 1, old: true, score: .99, meta: 550},
+            {score: .654, meta: 550},
+            {score: .456, meta: 550},
+        ];
+        const mergingPipelineHistory = [{
+            expectedCommand: {planShardedSearch: coll.getName(), query: searchQuery, $db: dbName},
+            response: {
+                ok: 1,
+                protocolVersion: NumberInt(42),
+                metaPipeline: [{$group: {_id: null, val: {$sum: "$val"}}}],
+            }
+        }];
+        const mongot = stWithMock.getMockConnectedToHost(stWithMock.st.s);
+        mongot.setMockResponses(mergingPipelineHistory, 1423);
+    } else {
+        history0 = [{
+            expectedCommand: {
+                search: coll.getName(),
+                collectionUUID: collUUID0,
+                query: searchQuery,
+                $db: dbName
+            },
+            response:
+                mongotResponseForBatch(mongot0ResponseBatch, NumberLong(0), collNS, responseOk),
+        }];
+        history1 = [{
+            expectedCommand: {
+                search: coll.getName(),
+                collectionUUID: collUUID1,
+                query: searchQuery,
+                $db: dbName
+            },
+            response:
+                mongotResponseForBatch(mongot1ResponseBatch, NumberLong(0), collNS, responseOk),
+        }];
+        expectedDocs = [
+            {_id: 11, old: false, score: 111},
+            {_id: 13, score: 30},
+            {_id: 3, score: 29},
+            {_id: 12, old: false, score: 28},
+            {_id: 2, old: true, score: 10},
+            {_id: 1, old: true, score: .99},
+            {score: .654},
+            {score: .456},
+        ];
+    }
+    const s0Mongot = stWithMock.getMockConnectedToHost(shard0Conn);
+    s0Mongot.setMockResponsesMetadataAgnostic(history0, NumberLong(123), useShardedFacets);
+
     const s1Mongot = stWithMock.getMockConnectedToHost(shard1Conn);
-    s1Mongot.setMockResponses(history1, NumberLong(456));
+    s1Mongot.setMockResponsesMetadataAgnostic(history1, NumberLong(456), useShardedFacets);
 
-    const expectedDocs = [
-        {_id: 11, old: false, score: 111},
-        {_id: 13, score: 30},
-        {_id: 3, score: 29},
-        {_id: 12, old: false, score: 28},
-        {_id: 2, old: true, score: 10},
-        {_id: 1, old: true, score: .99},
-        {score: .654},
-        {score: .456},
+    let pipeline = [
+        {$search: searchQuery},
+        {$project: {_id: 1, old: 1, score: {$meta: "searchScore"}}},
     ];
-
-    const aggResults = coll.aggregate([
-                               {$search: searchQuery},
-                               {$project: {_id: 1, old: 1, score: {$meta: "searchScore"}}},
-                           ])
-                           .toArray();
+    if (useShardedFacets) {
+        pipeline.push({$addFields: {meta: "$$SEARCH_META.val"}});
+    }
+    const aggResults = coll.aggregate(pipeline).toArray();
     // Make sure order is according to $searchScore.
     assert.eq(expectedDocs,
               aggResults,
