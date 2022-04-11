@@ -76,8 +76,7 @@ QueryAnalysisParams extractCryptdParameters(const BSONObj& obj) {
         } else if (e.fieldNameStringData() == kIsRemoteSchema) {
             uassert(31102, "isRemoteSchema is expected to be a boolean", e.type() == Bool);
             isRemoteSchema = e.Bool();
-        } else if (e.fieldNameStringData() == kEncryptionInformation &&
-                   ::mongo::gFeatureFlagFLE2.isEnabledAndIgnoreFCV()) {
+        } else if (e.fieldNameStringData() == kEncryptionInformation) {
             uassert(6327501, "encryptionInformation must be an object", e.type() == Object);
 
             auto parsedEncryptionInfo =

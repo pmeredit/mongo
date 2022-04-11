@@ -2,7 +2,7 @@
  * Verify that mongocryptd/mongocsfle accepts the encryptionInformation syntax for describing
  * encrypted fields.
  *
- * @tags: [unsupported_fle_1]
+ * @tags: [unsupported_fle_1, requires_fcv_60]
  */
 (function() {
 "use strict";

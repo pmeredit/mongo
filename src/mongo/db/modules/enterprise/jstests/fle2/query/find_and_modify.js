@@ -16,20 +16,6 @@ dbTest.dropDatabase();
 
 const collName = "test";
 
-const client = new EncryptedClient(db.getMongo(), dbName);
-
-assert.commandWorked(client.createEncryptionCollection(collName, {
-    encryptedFields: {
-        "fields": [
-            {"path": "secretString", "bsonType": "string", "queries": {"queryType": "equality"}},
-            {"path": "nested.secretInt", "bsonType": "int", "queries": {"queryType": "equality"}}
-        ]
-    }
-}));
-
-const edb = client.getDB();
-let coll = edb[collName];
-
 const testCases = [
     {
         // Querying on a top-level encrypted field.
@@ -117,7 +103,31 @@ const testCases = [
     }
 ];
 
+let coll;
+
 const populateColl = () => {
+    db.getSiblingDB(dbName).dropDatabase();
+    let client = new EncryptedClient(db.getMongo(), dbName);
+
+    assert.commandWorked(client.createEncryptionCollection(collName, {
+        encryptedFields: {
+            "fields": [
+                {
+                    "path": "secretString",
+                    "bsonType": "string",
+                    "queries": {"queryType": "equality"}
+                },
+                {
+                    "path": "nested.secretInt",
+                    "bsonType": "int",
+                    "queries": {"queryType": "equality"}
+                }
+            ]
+        }
+    }));
+
+    coll = client.getDB()[collName];
+
     assert.commandWorked(
         coll.insert({_id: 1, secretString: "1337", nested: {secretInt: NumberInt(1337)}}));
     assert.commandWorked(
@@ -125,10 +135,14 @@ const populateColl = () => {
 
     const docs = coll.find().toArray();
     assert(docs.length == 2 && docs[0].hasOwnProperty(kSafeContentField));
+
+    client.assertEncryptedCollectionCounts(coll.getName(), 2, 4, 0, 4);
+    return client;
 };
 
 // Run all of the tests.
-populateColl();
+let client = populateColl();
+
 for (const test of testCases) {
     assert.commandWorked(coll.runCommand(test.command), tojson(test.command));
 
@@ -138,12 +152,11 @@ for (const test of testCases) {
 }
 
 // Run the same tests, this time in a transaction.
+client = populateColl();
+let edb = client.getDB();
 const session = edb.getMongo().startSession({causalConsistency: false});
 const sessionDB = session.getDatabase(dbName);
 coll = sessionDB.getCollection(collName);
-coll.drop();
-
-populateColl();
 for (const test of testCases) {
     if (test.skipIfUserTxn) {
         continue;
