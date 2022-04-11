@@ -25,7 +25,7 @@ function insertInitialTestData(client, coll) {
     client.assertEncryptedCollectionCounts(coll.getName(), 32, 32, 0, 32);
 }
 
-function runTest(conn) {
+function runTest(conn, primaryConn, isMongos) {
     const dbName = 'compact_collection_db';
     const collName = 'compact_stats';
     let db = conn.getDB(dbName);
@@ -63,9 +63,9 @@ function runTest(conn) {
         assert.gte(stats1.esc.read, NumberLong(51));
 
         client.assertEncryptedCollectionCounts(collName, 32, 6, 0, 0);
-        client.assertStateCollectionsAfterCompact(collName);
+        client.assertStateCollectionsAfterCompact(collName, !isMongos);
 
-        let serverStatusFle = db.serverStatus().fle.compactStats;
+        let serverStatusFle = primaryConn.getDB("admin").serverStatus().fle.compactStats;
         assert.eq(serverStatusFle.ecoc.read, NumberLong(32));
         assert.eq(serverStatusFle.ecoc.deleted, NumberLong(0));
         assert.eq(serverStatusFle.ecc.read, NumberLong(12));
@@ -104,9 +104,9 @@ function runTest(conn) {
         });
 
         client.assertEncryptedCollectionCounts(collName, 42, 6, 0, 0);
-        client.assertStateCollectionsAfterCompact(collName);
+        client.assertStateCollectionsAfterCompact(collName, !isMongos);
 
-        serverStatusFle = db.serverStatus().fle.compactStats;
+        serverStatusFle = primaryConn.getDB("admin").serverStatus().fle.compactStats;
         assert.eq(serverStatusFle.ecoc.read, NumberLong(42));
         assert.eq(serverStatusFle.ecoc.deleted, NumberLong(0));
         assert.eq(serverStatusFle.ecc.read, NumberLong(16));
@@ -127,17 +127,16 @@ jsTestLog("ReplicaSet: Testing fle2 compaction stats");
 
     rst.initiate();
     rst.awaitReplication();
-    runTest(rst.getPrimary());
+    runTest(rst.getPrimary(), rst.getPrimary(), false);
     rst.stopSet();
 }
 
-// TODO SERVER-65170 - enable test
-// jsTestLog("Sharding: Testing fle2 compaction stats");
-// {
-//     const st = new ShardingTest({shards: 1, mongos: 1, config: 1});
+jsTestLog("Sharding: Testing fle2 compaction stats");
+{
+    const st = new ShardingTest({shards: 1, mongos: 1, config: 1});
 
-//     runTest(st.s);
+    runTest(st.s, st.shard0, true);
 
-//     st.stop();
-// }
+    st.stop();
+}
 }());
