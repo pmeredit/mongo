@@ -44,11 +44,11 @@ const runTestWithGetMores = ({query, expected}, testColl, message) => {
 
 const {encryptedFields, tests} = matchExpressionFLETestCases;
 
+let dbName = "find";
 let collName = jsTestName();
-runEncryptedTest(db, "find", collName, encryptedFields, (edb) => {
+runEncryptedTest(db, dbName, collName, encryptedFields, (edb, client) => {
     print("non-transaction test cases.");
     const coll = edb[collName];
-    coll.drop();
 
     let i = 0;
     for (const test of tests) {
@@ -57,15 +57,16 @@ runEncryptedTest(db, "find", collName, encryptedFields, (edb) => {
 
         runTestWithGetMores(test, coll, extraInfo);
     }
+    client.assertEncryptedCollectionCounts(collName, 4, 9, 1, 10);
 });
 
+dbName = dbName + "_transaction";
 collName = collName + "_transaction";
-runEncryptedTest(db, "find_transaction", collName, encryptedFields, (edb) => {
+runEncryptedTest(db, dbName, collName, encryptedFields, (edb, client) => {
     print("transaction test cases.");
     const session = edb.getMongo().startSession({causalConsistency: false});
-    const sessionDB = session.getDatabase(db.getName());
+    const sessionDB = session.getDatabase(dbName);
     const sessionColl = sessionDB.getCollection(collName);
-    sessionColl.drop();
 
     let i = 0;
     for (const test of tests) {
@@ -78,5 +79,6 @@ runEncryptedTest(db, "find_transaction", collName, encryptedFields, (edb) => {
         runTestWithGetMores(test, sessionColl, extraInfo);
         session.commitTransaction();
     }
+    client.assertEncryptedCollectionCounts(collName, 4, 9, 1, 10);
 });
 }());
