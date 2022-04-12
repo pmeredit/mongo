@@ -26,10 +26,16 @@ const mockWriteClientPath =
 const kLdapUserCacheRefreshInterval = 10;
 const kLdapUserCacheStalenessInterval = 30;
 const kMongosCacheInvalidationInterval = 45;
-const kErrorDeltaTimeMS = 5000;
-const kShardedRefreshInterval = kLdapUserCacheRefreshInterval + kMongosCacheInvalidationInterval;
-const kShardedStalenessInterval =
-    kLdapUserCacheStalenessInterval + kMongosCacheInvalidationInterval;
+const kErrorMS = 3000;
+const kMongodRefreshSleepMS = ((kLdapUserCacheRefreshInterval) * 1000) + kErrorMS;
+const kMongodStalenessSleepMS =
+    ((kLdapUserCacheRefreshInterval + kLdapUserCacheStalenessInterval) * 1000) + kErrorMS;
+const kShardedRefreshSleepMS =
+    ((kLdapUserCacheRefreshInterval + kMongosCacheInvalidationInterval) * 1000) + kErrorMS;
+const kShardedStalenessSleepMS = ((kLdapUserCacheRefreshInterval + kLdapUserCacheStalenessInterval +
+                                   kMongosCacheInvalidationInterval) *
+                                  1000) +
+    kErrorMS;
 
 // Function ran by client shells in parallel while testing refresh.
 const clientRefreshCallback = function({userName, pwd}, expectedResult) {
@@ -72,8 +78,7 @@ function testStalenessInterval({userName, pwd}, conn, ldapServerPid, stalenessIn
     const testDB = conn.getDB('test');
     assert.writeOK(testDB.test.insert({a: 1}), "Cannot write immediately after LDAP server outage");
 
-    const sleepIntervalMS = (stalenessInterval * 1000) + kErrorDeltaTimeMS;
-    sleep(sleepIntervalMS);
+    sleep(stalenessInterval);
     assert.writeError(testDB.test.insert({a: 1}),
                       "can write after LDAP server outage + staleness interval");
 }
@@ -152,8 +157,7 @@ function runCommonTest(conn, ldapServerPid, mockServerPort, refreshInterval, sta
     // After waiting for the refresh interval, the mongod should now have acquired the updated set
     // of roles for ldapz_ldap1 and ldapz_ldap2. Subsequently, ldapz_ldap1 should now fail to write
     // to the test collection while ldapz_ldap2 still succeeds.
-    const sleepIntervalMS = (refreshInterval * 1000) + kErrorDeltaTimeMS;
-    sleep(sleepIntervalMS);
+    sleep(refreshInterval);
     awaitClient =
         startParallelShell(funWithArgs(clientRefreshCallback, ldapUserOne, 'failure'), conn.port);
     awaitClient();
@@ -183,8 +187,8 @@ function runMongodTest() {
     runCommonTest(mongod,
                   mockServerInfo.ldapServerPid,
                   mockServerInfo.mockServerPort,
-                  kLdapUserCacheRefreshInterval,
-                  kLdapUserCacheStalenessInterval);
+                  kMongodRefreshSleepMS,
+                  kMongodStalenessSleepMS);
 
     // Shut down the mongod.
     MongoRunner.stopMongod(mongod);
@@ -217,8 +221,8 @@ function runShardedTest() {
     runCommonTest(mongos,
                   mockServerInfo.ldapServerPid,
                   mockServerInfo.mockServerPort,
-                  kShardedRefreshInterval,
-                  kShardedStalenessInterval);
+                  kShardedRefreshSleepMS,
+                  kShardedStalenessSleepMS);
 
     // Shut down the sharded cluster.
     shardedCluster.stop();
@@ -279,8 +283,7 @@ function runShardedCacheOverflowTest() {
     assert.eq(waitProgram(ldapWriteClientPid), 0);
 
     // Sleep for the mongos refresh interval, and then verify that the open connection cannot write.
-    const sleepIntervalMS = (kShardedRefreshInterval * 1000) + kErrorDeltaTimeMS;
-    sleep(sleepIntervalMS);
+    sleep(kShardedRefreshSleepMS);
     assert.writeError(testDB.test.insert({a: 1}),
                       "Refresh did not occur, can still write after LDAP server role update");
 
