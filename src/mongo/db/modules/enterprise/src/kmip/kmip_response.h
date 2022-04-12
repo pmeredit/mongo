@@ -45,7 +45,7 @@ public:
     /**
      * Gets the protocol version for the parsed response.
      */
-    const std::tuple<uint32_t, uint32_t> getProtocolVersion() const {
+    std::tuple<uint32_t, uint32_t> getProtocolVersion() const {
         return std::make_tuple(_protocolVersion[0], _protocolVersion[1]);
     }
 

@@ -35,7 +35,7 @@ StatusWith<LDAPBindType> getLDAPBindType(StringData type) {
                   str::stream() << "Unrecognized LDAP bind method: " << type);
 }
 
-const StringData authenticationChoiceToString(LDAPBindType type) {
+StringData authenticationChoiceToString(LDAPBindType type) {
     if (type == LDAPBindType::kSimple) {
         return kSimple;
     }

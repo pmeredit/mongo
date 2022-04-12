@@ -47,7 +47,7 @@ public:
                                     TickSource* tickSource,
                                     UserAcquisitionStats* userAcquisitionStats) const final;
 
-    const StringData toStringData() const final;
+    StringData toStringData() const final;
 
 private:
     LDAPRewriteRule(pcrecpp::RE match,

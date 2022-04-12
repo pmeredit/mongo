@@ -40,7 +40,7 @@ const std::map<uint32_t, std::string> keyStateToString{{0x00, "stateless"},
                                                        {0x05, "destroyed"},
                                                        {0x06, "destroyedCompromised"}};
 
-std::string const kmipKeyStateToString(const StateName& name) {
+std::string kmipKeyStateToString(const StateName& name) {
     const uint32_t num = static_cast<uint32_t>(name);
     return keyStateToString.find(num)->second;
 }

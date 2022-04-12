@@ -41,7 +41,7 @@ enum class LDAPTransportSecurityType : std::uint8_t { kNone, kTLS };
 StatusWith<LDAPBindType> getLDAPBindType(StringData type);
 
 /** Produce the corresponding string representation of an LDAPBindType */
-const StringData authenticationChoiceToString(LDAPBindType type);
+StringData authenticationChoiceToString(LDAPBindType type);
 
 
 /**

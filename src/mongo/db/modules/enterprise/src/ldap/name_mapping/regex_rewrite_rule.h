@@ -50,7 +50,7 @@ public:
                                     TickSource* tickSource,
                                     UserAcquisitionStats* userAcquisitionStats) const final;
 
-    const StringData toStringData() const final;
+    StringData toStringData() const final;
 
 private:
     RegexRewriteRule(pcrecpp::RE match, std::string substitution, std::string stringRepresentation);

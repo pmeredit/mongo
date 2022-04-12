@@ -51,7 +51,7 @@ public:
     /**
      * Produce a string representation of the rule
      */
-    virtual const StringData toStringData() const = 0;
+    virtual StringData toStringData() const = 0;
 
 protected:
     StatusWith<std::vector<std::string>> _extractMatches(const pcrecpp::RE& match,

@@ -113,7 +113,7 @@ StatusWith<std::string> RegexRewriteRule::resolve(
     return builder.str();
 }
 
-const StringData RegexRewriteRule::toStringData() const {
+StringData RegexRewriteRule::toStringData() const {
     return StringData(_stringRepresentation);
 }
 }  // namespace mongo

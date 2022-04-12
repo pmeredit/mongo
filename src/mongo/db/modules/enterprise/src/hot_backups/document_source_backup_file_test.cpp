@@ -118,7 +118,7 @@ protected:
     std::string fileToBackup = storageGlobalParams.dbpath + "/filename.wt";
 };
 
-const boost::intrusive_ptr<ExpressionContext> createExpressionContext(
+boost::intrusive_ptr<ExpressionContext> createExpressionContext(
     const ServiceContext::UniqueOperationContext& opCtx) {
     auto expCtx =
         make_intrusive<ExpressionContext>(opCtx.get(),

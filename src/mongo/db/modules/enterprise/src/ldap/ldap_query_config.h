@@ -41,7 +41,7 @@ StatusWith<LDAPQueryScope> getLDAPQueryScope(StringData scope);
 /**
  * Convert LDAPQueryScope enum into string representation
  */
-const StringData LDAPQueryScopeToString(LDAPQueryScope scope);
+StringData LDAPQueryScopeToString(LDAPQueryScope scope);
 
 /**
  * Convert LDAPQueryScope enum into ostream for unittests

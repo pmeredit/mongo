@@ -80,7 +80,7 @@ StatusWith<std::string> LDAPRewriteRule::resolve(LDAPRunner* runner,
     return ldapResults.begin()->first;
 }
 
-const StringData LDAPRewriteRule::toStringData() const {
+StringData LDAPRewriteRule::toStringData() const {
     return StringData(_stringRepresentation);
 }
 }  // namespace mongo

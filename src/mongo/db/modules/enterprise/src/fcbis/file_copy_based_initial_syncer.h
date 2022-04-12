@@ -121,7 +121,7 @@ public:
      * Returns list of files fetched from extended the backupCursor.
      * For testing only.
      */
-    const StringSet getExtendedBackupCursorFiles_ForTest() {
+    StringSet getExtendedBackupCursorFiles_ForTest() {
         return _syncingFilesState.extendedCursorFiles;
     }
 

@@ -79,7 +79,7 @@ public:
      * Given _dbPath = "/data/db" and path = "/data/db/journal/WiredTigerLog.001", this returns
      * "journal/WiredTigerLog.001".
      */
-    const std::string getFileRelativePath(const std::string& path) {
+    std::string getFileRelativePath(const std::string& path) {
         boost::filesystem::path dbPath(_dbpath);
         boost::filesystem::path fullPath(path);
 
@@ -91,7 +91,7 @@ public:
      * Given _dbPath = "/data/db" and relativePath = "journal/WiredTigerLog.001", this returns
      * "/data/db/journal/WiredTigerLog.001".
      */
-    const std::string getFileAbsolutePathFromRelativePath(const std::string& relativePath) {
+    std::string getFileAbsolutePathFromRelativePath(const std::string& relativePath) {
         boost::filesystem::path fullPath = _dbpath;
         fullPath /= relativePath;
         return fullPath.string();

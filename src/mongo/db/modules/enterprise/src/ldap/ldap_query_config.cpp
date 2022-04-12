@@ -88,7 +88,7 @@ StatusWith<LDAPQueryScope> getLDAPQueryScope(StringData scope) {
     }
 }
 
-const StringData LDAPQueryScopeToString(LDAPQueryScope scope) {
+StringData LDAPQueryScopeToString(LDAPQueryScope scope) {
     if (scope == LDAPQueryScope::kBase) {
         return kBase;
     } else if (scope == LDAPQueryScope::kOne) {
