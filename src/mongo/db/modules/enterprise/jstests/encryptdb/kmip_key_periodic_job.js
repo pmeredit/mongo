@@ -47,11 +47,12 @@ print("Testing that server shuts down when key is deactivated.");
     const {keyId, kmipServerPid, md} = setUpTest();
 
     deactivatePyKMIPKey(kmipServerPort, keyId);
-    sleep(5000);
+    sleep(10000);
 
-    assert.gte(rawMongoProgramOutput().search(
-                   "KMIP Key used for ESE is not in active state. Shutting down server."),
-               0);
+    assert.soon(() => {
+        return rawMongoProgramOutput().search(
+                   "KMIP Key used for ESE is not in active state. Shutting down server.") >= 0;
+    });
 
     killPyKMIPServer(kmipServerPid);
 }
@@ -63,7 +64,7 @@ print("Testing that server does not shut down when periodic job cannot reach KMI
 
     killPyKMIPServer(kmipServerPid);
 
-    sleep(5000);
+    sleep(10000);
 
     checkLog.containsJson(md, 4250500);
 
