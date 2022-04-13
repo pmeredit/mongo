@@ -156,49 +156,41 @@ PlaceHolderResult replaceEncryptedFields(BSONObj doc,
 void processFindCommand(OperationContext* opCtx,
                         const std::string& dbName,
                         const BSONObj& cmdObj,
-                        BSONObjBuilder* builder,
-                        NamespaceString ns);
+                        BSONObjBuilder* builder);
 
 void processAggregateCommand(OperationContext* opCtx,
                              const std::string& dbName,
                              const BSONObj& cmdObj,
-                             BSONObjBuilder* builder,
-                             NamespaceString ns);
+                             BSONObjBuilder* builder);
 
 void processDistinctCommand(OperationContext* opCtx,
                             const std::string& dbName,
                             const BSONObj& cmdObj,
-                            BSONObjBuilder* builder,
-                            NamespaceString ns);
+                            BSONObjBuilder* builder);
 
 void processCountCommand(OperationContext* opCtx,
                          const std::string& dbName,
                          const BSONObj& cmdObj,
-                         BSONObjBuilder* builder,
-                         NamespaceString ns);
+                         BSONObjBuilder* builder);
 
 void processFindAndModifyCommand(OperationContext* opCtx,
                                  const std::string& dbName,
                                  const BSONObj& cmdObj,
-                                 BSONObjBuilder* builder,
-                                 NamespaceString ns);
+                                 BSONObjBuilder* builder);
 
 // Write Ops commands take document sequences so we process OpMsgRequest instead of BSONObj
 
 void processInsertCommand(OperationContext* opCtx,
                           const OpMsgRequest& request,
-                          BSONObjBuilder* builder,
-                          NamespaceString ns);
+                          BSONObjBuilder* builder);
 
 void processUpdateCommand(OperationContext* opCtx,
                           const OpMsgRequest& request,
-                          BSONObjBuilder* builder,
-                          NamespaceString ns);
+                          BSONObjBuilder* builder);
 
 void processDeleteCommand(OperationContext* opCtx,
                           const OpMsgRequest& request,
-                          BSONObjBuilder* builder,
-                          NamespaceString ns);
+                          BSONObjBuilder* builder);
 
 /**
  * Builds an EncryptionPlaceholder using 'input' and 'metadata'. Returns a Value which is a BinData

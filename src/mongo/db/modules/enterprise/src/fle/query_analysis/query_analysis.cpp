@@ -63,7 +63,7 @@ std::string typeSetToString(const MatcherTypeSet& typeSet) {
  * Throws an AssertionException if a required parameter is missing or if conflicting parameters are
  * given.
  */
-QueryAnalysisParams extractCryptdParameters(const BSONObj& obj, const NamespaceString ns) {
+QueryAnalysisParams extractCryptdParameters(const BSONObj& obj) {
     boost::optional<BSONObj> jsonSchema;
     boost::optional<BSONObj> encryptInfo;
     boost::optional<bool> isRemoteSchema;
@@ -89,11 +89,6 @@ QueryAnalysisParams extractCryptdParameters(const BSONObj& obj, const NamespaceS
             uassert(6327504,
                     "Each namespace schema must be an object",
                     schemaSpec.firstElement().type() == Object);
-            uassert(6411900,
-                    "Namespace in encryptionInformation: '"s +
-                        schemaSpec.firstElementFieldNameStringData() +
-                        "' does not match namespace given in command: '" + ns.ns() + '\'',
-                    schemaSpec.firstElementFieldNameStringData() == ns.ns());
 
             encryptInfo = schemaSpec.firstElement().Obj();
             fleVersion = FleVersion::kFle2;
@@ -749,9 +744,8 @@ using WriteOpProcessFunction =
 void processWriteOpCommand(OperationContext* opCtx,
                            const OpMsgRequest& request,
                            BSONObjBuilder* builder,
-                           WriteOpProcessFunction func,
-                           const NamespaceString ns) {
-    auto cryptdParams = extractCryptdParameters(request.body, ns);
+                           WriteOpProcessFunction func) {
+    auto cryptdParams = extractCryptdParameters(request.body);
     auto newRequest = makeHybrid(request, cryptdParams.strippedObj);
 
     // Parse the JSON Schema to an encryption schema tree.
@@ -772,9 +766,8 @@ void processQueryCommand(OperationContext* opCtx,
                          const std::string& dbName,
                          const BSONObj& cmdObj,
                          BSONObjBuilder* builder,
-                         QueryProcessFunction func,
-                         const NamespaceString ns) {
-    auto cryptdParams = extractCryptdParameters(cmdObj, ns);
+                         QueryProcessFunction func) {
+    auto cryptdParams = extractCryptdParameters(cmdObj);
 
     // Parse the JSON Schema to an encryption schema tree.
     auto schemaTree = EncryptionSchemaTreeNode::parse(cryptdParams);
@@ -872,62 +865,54 @@ PlaceHolderResult replaceEncryptedFields(BSONObj doc,
 void processFindCommand(OperationContext* opCtx,
                         const std::string& dbName,
                         const BSONObj& cmdObj,
-                        BSONObjBuilder* builder,
-                        const NamespaceString ns) {
-    processQueryCommand(opCtx, dbName, cmdObj, builder, addPlaceHoldersForFind, ns);
+                        BSONObjBuilder* builder) {
+    processQueryCommand(opCtx, dbName, cmdObj, builder, addPlaceHoldersForFind);
 }
 
 void processAggregateCommand(OperationContext* opCtx,
                              const std::string& dbName,
                              const BSONObj& cmdObj,
-                             BSONObjBuilder* builder,
-                             const NamespaceString ns) {
-    processQueryCommand(opCtx, dbName, cmdObj, builder, addPlaceHoldersForAggregate, ns);
+                             BSONObjBuilder* builder) {
+    processQueryCommand(opCtx, dbName, cmdObj, builder, addPlaceHoldersForAggregate);
 }
 
 void processDistinctCommand(OperationContext* opCtx,
                             const std::string& dbName,
                             const BSONObj& cmdObj,
-                            BSONObjBuilder* builder,
-                            const NamespaceString ns) {
-    processQueryCommand(opCtx, dbName, cmdObj, builder, addPlaceHoldersForDistinct, ns);
+                            BSONObjBuilder* builder) {
+    processQueryCommand(opCtx, dbName, cmdObj, builder, addPlaceHoldersForDistinct);
 }
 
 void processCountCommand(OperationContext* opCtx,
                          const std::string& dbName,
                          const BSONObj& cmdObj,
-                         BSONObjBuilder* builder,
-                         const NamespaceString ns) {
-    processQueryCommand(opCtx, dbName, cmdObj, builder, addPlaceHoldersForCount, ns);
+                         BSONObjBuilder* builder) {
+    processQueryCommand(opCtx, dbName, cmdObj, builder, addPlaceHoldersForCount);
 }
 
 void processFindAndModifyCommand(OperationContext* opCtx,
                                  const std::string& dbName,
                                  const BSONObj& cmdObj,
-                                 BSONObjBuilder* builder,
-                                 const NamespaceString ns) {
-    processQueryCommand(opCtx, dbName, cmdObj, builder, addPlaceHoldersForFindAndModify, ns);
+                                 BSONObjBuilder* builder) {
+    processQueryCommand(opCtx, dbName, cmdObj, builder, addPlaceHoldersForFindAndModify);
 }
 
 void processInsertCommand(OperationContext* opCtx,
                           const OpMsgRequest& request,
-                          BSONObjBuilder* builder,
-                          const NamespaceString ns) {
-    processWriteOpCommand(opCtx, request, builder, addPlaceHoldersForInsert, ns);
+                          BSONObjBuilder* builder) {
+    processWriteOpCommand(opCtx, request, builder, addPlaceHoldersForInsert);
 }
 
 void processUpdateCommand(OperationContext* opCtx,
                           const OpMsgRequest& request,
-                          BSONObjBuilder* builder,
-                          const NamespaceString ns) {
-    processWriteOpCommand(opCtx, request, builder, addPlaceHoldersForUpdate, ns);
+                          BSONObjBuilder* builder) {
+    processWriteOpCommand(opCtx, request, builder, addPlaceHoldersForUpdate);
 }
 
 void processDeleteCommand(OperationContext* opCtx,
                           const OpMsgRequest& request,
-                          BSONObjBuilder* builder,
-                          const NamespaceString ns) {
-    processWriteOpCommand(opCtx, request, builder, addPlaceHoldersForDelete, ns);
+                          BSONObjBuilder* builder) {
+    processWriteOpCommand(opCtx, request, builder, addPlaceHoldersForDelete);
 }
 
 BSONObj buildEncryptPlaceholder(BSONElement elem,

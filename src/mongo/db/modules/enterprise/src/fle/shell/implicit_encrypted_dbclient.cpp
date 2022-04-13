@@ -228,25 +228,25 @@ public:
         BSONObjBuilder schemaInfoBuilder;
         if (commandName == "find"_sd) {
             query_analysis::processFindCommand(
-                opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder, ns);
+                opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder);
         } else if (commandName == "aggregate"_sd) {
             query_analysis::processAggregateCommand(
-                opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder, ns);
+                opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder);
         } else if (commandName == "findandmodify"_sd || commandName == "findAndModify"_sd) {
             query_analysis::processFindAndModifyCommand(
-                opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder, ns);
+                opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder);
         } else if (commandName == "count"_sd) {
             query_analysis::processCountCommand(
-                opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder, ns);
+                opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder);
         } else if (commandName == "distinct"_sd) {
             query_analysis::processDistinctCommand(
-                opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder, ns);
+                opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder);
         } else if (commandName == "update"_sd) {
-            query_analysis::processUpdateCommand(opCtx, request, &schemaInfoBuilder, ns);
+            query_analysis::processUpdateCommand(opCtx, request, &schemaInfoBuilder);
         } else if (commandName == "insert"_sd) {
-            query_analysis::processInsertCommand(opCtx, request, &schemaInfoBuilder, ns);
+            query_analysis::processInsertCommand(opCtx, request, &schemaInfoBuilder);
         } else if (commandName == "delete"_sd) {
-            query_analysis::processDeleteCommand(opCtx, request, &schemaInfoBuilder, ns);
+            query_analysis::processDeleteCommand(opCtx, request, &schemaInfoBuilder);
         }
 
         return schemaInfoBuilder.obj();
