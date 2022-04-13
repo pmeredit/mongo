@@ -71,11 +71,12 @@ std::pair<std::size_t, std::size_t> expectedPlaintextLen(aesMode mode,
                     return ConstEncryptedMemoryLayout<HeaderGCMV0>(ptr, len).expectedPlaintextLen();
                 case PageSchema::k1:
                     return ConstEncryptedMemoryLayout<HeaderGCMV1>(ptr, len).expectedPlaintextLen();
+                default:
+                    MONGO_UNREACHABLE;
             }
         default:
-            invariant(false);
+            MONGO_UNREACHABLE;
     }
-    MONGO_UNREACHABLE;
 }
 
 void aesGenerateIV(const SymmetricKey* key,

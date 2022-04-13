@@ -392,7 +392,7 @@ private:
                 if (optId) {
                     return optId;
                 }
-            /* fallthrough */
+                [[fallthrough]];
             case FindMode::kCurrent: {
                 stdx::lock_guard<Latch> lk(_parent->_dbNameToKeyIdCurrentMutex);
                 auto it = _parent->_dbNameToKeyIdCurrent.find(keyId.name());
@@ -405,7 +405,7 @@ private:
                 if (optId) {
                     return optId;
                 }
-            /* fallthrough */
+                [[fallthrough]];
             case FindMode::kOldest: {
                 auto it = _parent->_dbNameToKeyIdOldest.find(keyId.name());
                 if (it == _parent->_dbNameToKeyIdOldest.end()) {

@@ -232,11 +232,12 @@ Status smokeTestAESCipherMode(aesMode mode, PageSchema schema) {
                     return _doSmokeTestAESCipherMode<crypto::HeaderGCMV0>(kAESTestGCMData);
                 case PageSchema::k1:
                     return _doSmokeTestAESCipherMode<crypto::HeaderGCMV1>(kAESTestGCMData);
+                default:
+                    MONGO_UNREACHABLE;
             }
         default:
-            invariant(false);
+            MONGO_UNREACHABLE;
     }
-    MONGO_UNREACHABLE;
 }
 
 }  // namespace crypto
