@@ -56,7 +56,17 @@ clonable_ptr<EncryptionSchemaTreeNode> propagateSchemaForInclusionNode(
     for (const auto& projection : preservedPaths) {
         FieldRef path(projection);
         if (auto includedNode = prevSchema.getNode(path)) {
-            futureSchema->addChild(path, includedNode->clone());
+            // In FLE 2, an inclusion like {ssn: 1} results in the safeContent field being projected
+            // out, and rewrites of $match's on encrypted fields following the $project will fail or
+            // potentially return incorrect results. So, we allow the $project, but we forbid
+            // subsequent references to the field.
+            if (prevSchema.parsedFrom == FleVersion::kFle2 &&
+                includedNode->mayContainEncryptedNode()) {
+                futureSchema->addChild(
+                    FieldRef(path), std::make_unique<EncryptionSchemaStateMixedNode>(fleVersion));
+            } else {
+                futureSchema->addChild(path, includedNode->clone());
+            }
         }
     }
 

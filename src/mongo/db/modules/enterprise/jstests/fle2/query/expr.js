@@ -365,9 +365,11 @@ const aggTests = [
             {$match: {$expr: {$in: ['$age', [NumberLong(25), NumberLong(35), NumberLong(55)]]}}},
             {$match: {_id: {$in: [0, 1]}}},
             {$match: {$expr: {$eq: ["$ssn", "123"]}}},
-            {$project: {ssn: 1}}
         ],
-        expected: [{_id: 0, ssn: "123"}, {_id: 0, ssn: "123"}]
+        expected: [
+            {_id: 0, ssn: "123", name: "A", manager: "B", age: NumberLong(25), location: 0},
+            {_id: 0, ssn: "123", name: "A", manager: "B", age: NumberLong(25), location: 0}
+        ]
     },
     {
         // Alternate between stages that require rewriting and stages that do not. Same as above but
@@ -377,9 +379,11 @@ const aggTests = [
             {$match: {_id: {$in: [0, 1]}}},
             {$match: {$expr: {$in: ['$age', [NumberLong(25), NumberLong(35), NumberLong(55)]]}}},
             {$match: {$expr: {$eq: ["$ssn", "123"]}}},
-            {$project: {ssn: 1}}
         ],
-        expected: [{_id: 0, ssn: "123"}, {_id: 0, ssn: "123"}]
+        expected: [
+            {_id: 0, ssn: "123", name: "A", manager: "B", age: NumberLong(25), location: 0},
+            {_id: 0, ssn: "123", name: "A", manager: "B", age: NumberLong(25), location: 0}
+        ]
     },
 ];
 
@@ -434,6 +438,10 @@ const illegalTests = [
         // we reach the $match stage, which needs the array to properly filter.
         run: () => coll.aggregate([{$project: {ssn: 1}}, {$match: {$expr: {$eq: ["$ssn", "123"]}}}])
                        .toArray()
+    },
+    {
+        // Sanity check: querying as above but without $expr should also fail.
+        run: () => coll.aggregate([{$project: {ssn: 1}}, {$match: {ssn: "123"}}]).toArray()
     }
 ];
 for (const testData of illegalTests) {

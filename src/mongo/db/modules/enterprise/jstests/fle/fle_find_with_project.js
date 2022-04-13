@@ -103,5 +103,14 @@ res = assert.commandWorked(testDB.runCommand(Object.assign({
                                                            schema)));
 assert.eq(false, res.hasEncryptionPlaceholders, tojson(res));
 
+// An inclusion projection of encrypted fields is allowed.
+res = assert.commandWorked(testDB.runCommand(Object.assign({
+    find: collName,
+    filter: {},
+    projection: {ssn: 1},
+},
+                                                           schema)));
+assert.eq(false, res.hasEncryptionPlaceholders, tojson(res));
+
 mongocryptd.stop();
 })();

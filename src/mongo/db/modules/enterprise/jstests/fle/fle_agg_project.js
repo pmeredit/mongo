@@ -60,6 +60,39 @@ assert.eq(expected, cmdRes.result, cmdRes.result);
 assert(cmdRes.schemaRequiresEncryption, cmdRes);
 assert(!cmdRes.hasEncryptionPlaceholders);
 
+// Test that matching on a projected, encrypted field does result in an intent-to-encrypt marking.
+command = Object.assign({
+    aggregate: coll.getName(),
+    pipeline: [{$project: {user: 1}}, {$match: {user: "abc"}}],
+    cursor: {}
+},
+                        generateSchema({user: encryptedStringSpec}, coll.getFullName()));
+// TODO SERVER-65346: permit $project with an encrypted field in FLE 2.
+if (fle2Enabled()) {
+    assert.commandFailedWithCode(testDB.runCommand(command), 31133);
+} else {
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    assert(cmdRes.schemaRequiresEncryption, cmdRes);
+    assert(cmdRes.hasEncryptionPlaceholders);
+}
+
+// Test that matching on a projected field that is a prefix of an encrypted field does result in an
+// intent-to-encrypt marking.
+command = Object.assign({
+    aggregate: coll.getName(),
+    pipeline: [{$project: {user: 1}}, {$match: {'user.ssn': "abc"}}],
+    cursor: {}
+},
+                        generateSchema({'user.ssn': encryptedStringSpec}, coll.getFullName()));
+// TODO SERVER-65346: permit $project with an encrypted field in FLE 2.
+if (fle2Enabled()) {
+    assert.commandFailedWithCode(testDB.runCommand(command), 31133);
+} else {
+    cmdRes = assert.commandWorked(testDB.runCommand(command));
+    assert(cmdRes.schemaRequiresEncryption, cmdRes);
+    assert(cmdRes.hasEncryptionPlaceholders);
+}
+
 // Test that matching a renamed dotted field does result in an intent-to-encrypt marking.
 command = Object.assign({
     aggregate: coll.getName(),
