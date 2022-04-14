@@ -69,39 +69,7 @@ const cursorId = NumberLong(17);
         mongotConn.adminCommand({setMockResponses: 1, cursorId, history: history}));
 
     const explain = coll.explain("queryPlanner").aggregate([{$searchMeta: searchQuery}]);
-
-    // $searchMeta desugars to a pipeline like this:
-    // [
-    //     {$mockCollection: [{}]},
-    //     {$setVariableFromSubPipeline: {
-    //         setVariable: "$$SEARCH_META",
-    //         pipeline: [
-    //             {$_internalSearchMongotRemote: {/* search query */}},
-    //             {$replaceRoot: {newRoot: "$$SEARCH_META"}},
-    //             {$limit: 1}
-    //         ],
-    //         ifEmpty: "$$SEARCH_META",  // Inner pipeline's SEARCH_META becomes outer's.
-    //     }},
-    //     {$replaceRoot: {newRoot: "$$SEARCH_META"}}
-    // ]
-    assert(explain.stages[0].hasOwnProperty("$mockCollection"), explain.stages);
-    assert(explain.stages[1].hasOwnProperty("$setVariableFromSubPipeline"), explain.stages);
-    const setSearchMetaStage = getAggPlanStage(explain, "$setVariableFromSubPipeline");
-    assert(setSearchMetaStage.hasOwnProperty("$setVariableFromSubPipeline"), setSearchMetaStage);
-
-    const setSearchMetaSpec = setSearchMetaStage.$setVariableFromSubPipeline;
-    assert(setSearchMetaSpec.hasOwnProperty("pipeline"), setSearchMetaSpec);
-    assert.eq(setSearchMetaSpec.pipeline.length, 3);
-    const searchStage = setSearchMetaSpec.pipeline[0];
-    assert(searchStage.hasOwnProperty("$_internalSearchMongotRemote"));
-    const replaceRoot = setSearchMetaSpec.pipeline[1];
-    assert(replaceRoot.hasOwnProperty("$replaceRoot"), replaceRoot);
-    const limit = setSearchMetaSpec.pipeline[2];
-    assert(limit.hasOwnProperty("$limit"), limit);
-
-    assert(explain.stages[2].hasOwnProperty("$replaceRoot"));
-    const replaceRootStage = getAggPlanStage(explain, "$replaceRoot");
-    assert.eq(replaceRootStage, {"$replaceRoot": {"newRoot": "$$SEARCH_META"}});
+    assert(explain.stages[0].hasOwnProperty("$searchMeta"), explain.stages);
 }
 
 MongoRunner.stopMongod(conn);

@@ -8,6 +8,7 @@
 
 #include "document_source_internal_search_id_lookup.h"
 #include "document_source_internal_search_mongot_remote.h"
+#include "lite_parsed_search.h"
 #include "mongo/db/pipeline/document_source.h"
 #include "mongo/db/pipeline/document_source_internal_shard_filter.h"
 #include "mongo/db/pipeline/document_source_replace_root.h"
@@ -20,14 +21,14 @@ using boost::intrusive_ptr;
 using std::list;
 
 REGISTER_DOCUMENT_SOURCE(search,
-                         DocumentSourceSearch::LiteParsed::parse,
+                         LiteParsedSearchStage::parse,
                          DocumentSourceSearch::createFromBson,
                          AllowedWithApiStrict::kNeverInVersion1);
 
 // $searchBeta is supported as an alias for $search for compatibility with applications that used
 // search during its beta period.
 REGISTER_DOCUMENT_SOURCE(searchBeta,
-                         DocumentSourceSearch::LiteParsed::parse,
+                         LiteParsedSearchStage::parse,
                          DocumentSourceSearch::createFromBson,
                          AllowedWithApiStrict::kNeverInVersion1);
 
@@ -40,28 +41,26 @@ Value DocumentSourceSearch::serialize(boost::optional<ExplainOptions::Verbosity>
 }
 
 std::list<intrusive_ptr<DocumentSource>> DocumentSourceSearch::createFromBson(
-    BSONElement elem, const intrusive_ptr<ExpressionContext>& pExpCtx) {
+    BSONElement elem, const intrusive_ptr<ExpressionContext>& expCtx) {
+    uassert(ErrorCodes::FailedToParse,
+            str::stream() << "$search value must be an object. Found: " << typeName(elem.type()),
+            elem.type() == BSONType::Object);
+    auto specObj = elem.embeddedObject();
 
     // If we are parsing a view, we don't actually want to make any calls to mongot which happen
     // during desugaring.
-    if (pExpCtx->isParsingViewDefinition) {
-        uassert(ErrorCodes::FailedToParse,
-                str::stream() << "$search value must be an object. Found: "
-                              << typeName(elem.type()),
-                elem.type() == BSONType::Object);
-        intrusive_ptr<DocumentSourceSearch> source(
-            new DocumentSourceSearch(elem.Obj().getOwned(), pExpCtx));
-        return {source};
+    if (expCtx->isParsingViewDefinition) {
+        return {make_intrusive<DocumentSourceSearch>(specObj, expCtx)};
     }
 
-
     std::list<intrusive_ptr<DocumentSource>> desugaredPipeline =
-        mongot_cursor::createInitialSearchPipeline(elem, pExpCtx);
+        mongot_cursor::createInitialSearchPipeline<DocumentSourceInternalSearchMongotRemote>(
+            specObj, expCtx);
 
     // If 'returnStoredSource' is true, we don't want to do idLookup. Instead, promote the fields in
     // 'storedSource' to root.
     // 'getBoolField' returns false if the field is not present.
-    if (elem.Obj().getBoolField(kReturnStoredSourceArg)) {
+    if (specObj.getBoolField(kReturnStoredSourceArg)) {
         // {$replaceRoot: {newRoot: {$ifNull: ["$storedSource", "$$ROOT"]}}
         // 'storedSource' is not always present in the document from mongot. If it's present, use it
         // as the root. Otherwise keep the original document.
@@ -70,12 +69,12 @@ std::list<intrusive_ptr<DocumentSource>> DocumentSourceSearch::createFromBson(
                      "newRoot" << BSON(
                          "$ifNull" << BSON_ARRAY("$" + kProtocolStoredFieldsName << "$$ROOT"))));
         desugaredPipeline.push_back(
-            DocumentSourceReplaceRoot::createFromBson(replaceRootSpec.firstElement(), pExpCtx));
+            DocumentSourceReplaceRoot::createFromBson(replaceRootSpec.firstElement(), expCtx));
     } else {
         // idLookup must always be immediately after the $mongotRemote stage, which is always first
         // in the pipeline.
         desugaredPipeline.insert(std::next(desugaredPipeline.begin()),
-                                 new DocumentSourceInternalSearchIdLookUp(pExpCtx));
+                                 make_intrusive<DocumentSourceInternalSearchIdLookUp>(expCtx));
     }
 
     return desugaredPipeline;

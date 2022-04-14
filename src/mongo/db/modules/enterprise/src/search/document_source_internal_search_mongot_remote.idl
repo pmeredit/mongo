@@ -1,0 +1,25 @@
+#Copyright(C) 2022 MongoDB, Inc.All Rights Reserved.
+
+global:
+  cpp_namespace: "mongo"
+
+imports:
+  - "mongo/idl/basic_types.idl"
+
+structs:
+  InternalSearchMongotRemoteSpec:
+    description: Specification for a $_internalSearchMongotRemote stage given in the full, explicit format.
+    strict: true
+    fields:
+      mongotQuery:
+        description: The remote text search query.
+        optional: false
+        type: object
+      metadataMergeProtocolVersion:
+        description: The mongot protocol version.
+        optional: false
+        type: int
+      mergingPipeline:
+        description: An optional pipeline to apply to the collection being unioned.
+        optional: true
+        type: array<object>

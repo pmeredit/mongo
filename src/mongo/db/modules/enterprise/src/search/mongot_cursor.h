@@ -4,9 +4,11 @@
 
 #pragma once
 
+#include "document_source_internal_search_mongot_remote.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/search_helper.h"
 #include "mongo/executor/task_executor_cursor.h"
+#include "mongot_task_executor.h"
 
 namespace mongo::mongot_cursor {
 
@@ -40,8 +42,33 @@ std::pair<std::unique_ptr<Pipeline, PipelineDeleter>, int> fetchMergingPipeline(
  * Create the initial search pipeline which can be used for both $search and $searchMeta. The
  * returned list is unique and mutable.
  */
+template <typename TargetSearchDocumentSource>
 std::list<boost::intrusive_ptr<DocumentSource>> createInitialSearchPipeline(
-    BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& pExpCtx);
+    BSONObj specObj, const boost::intrusive_ptr<ExpressionContext>& expCtx) {
+
+    uassert(6600901,
+            "Running search command in non-allowed context (update pipeline)",
+            !expCtx->isParsingPipelineUpdate);
+    auto params = DocumentSourceInternalSearchMongotRemote::parseParamsFromBson(specObj, expCtx);
+    auto executor = executor::getMongotTaskExecutor(expCtx->opCtx->getServiceContext());
+    if (!expCtx->mongoProcessInterface->inShardedEnvironment(expCtx->opCtx) ||
+        MONGO_unlikely(DocumentSourceInternalSearchMongotRemote::skipSearchStageRemoteSetup()) ||
+        !feature_flags::gFeatureFlagSearchShardedFacets.isEnabled(
+            serverGlobalParams.featureCompatibility)) {
+        return {make_intrusive<TargetSearchDocumentSource>(std::move(params), expCtx, executor)};
+    }
+
+    // We need a $setVariableFromSubPipeline if we support faceted search on sharded cluster. If the
+    // collection is not sharded, the search will have previously been sent to the primary shard and
+    // we don't need to merge the metadata.
+    // We don't actually know if the collection is sharded at this point, so assume it is in order
+    // to generate the correct pipeline. The extra stage will be removed later if necessary.
+    auto [mergingPipeline, protocolVersion] = fetchMergingPipeline(expCtx, specObj);
+    params.mergePipeline = std::move(mergingPipeline);
+    params.protocolVersion = protocolVersion;
+
+    return {make_intrusive<TargetSearchDocumentSource>(std::move(params), expCtx, executor)};
+}
 
 /**
  * A class that contains methods that are implemented as stubs in community that need to be

@@ -5,17 +5,17 @@
 #include "document_source_search_meta.h"
 
 #include "document_source_internal_search_mongot_remote.h"
+#include "lite_parsed_search.h"
 #include "mongo/db/pipeline/document_source.h"
 #include "mongo/db/pipeline/document_source_documents.h"
 #include "mongo/db/pipeline/document_source_limit.h"
-#include "mongo/db/pipeline/document_source_mock_collection.h"
 #include "mongo/db/pipeline/document_source_replace_root.h"
-#include "mongo/db/pipeline/document_source_set_variable_from_subpipeline.h"
 #include "mongo/db/pipeline/document_source_union_with.h"
-#include "mongo/db/pipeline/expression.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/pipeline.h"
+#include "mongo/db/query/cursor_response_gen.h"
 #include "mongot_cursor.h"
+#include "mongot_task_executor.h"
 
 namespace mongo {
 
@@ -24,94 +24,93 @@ using std::list;
 
 REGISTER_DOCUMENT_SOURCE_CONDITIONALLY(
     searchMeta,
-    DocumentSourceSearchMeta::LiteParsed::parse,
+    LiteParsedSearchStage::parse,
     DocumentSourceSearchMeta::createFromBson,
     AllowedWithApiStrict::kNeverInVersion1,
     AllowedWithClientType::kAny,
     boost::none,
     feature_flags::gFeatureFlagSearchMeta.isEnabledAndIgnoreFCV());
 
-const char* DocumentSourceSearchMeta::getSourceName() const {
-    return kStageName.rawData();
+Value DocumentSourceSearchMeta::serialize(
+    boost::optional<ExplainOptions::Verbosity> explain) const {
+    if (!pExpCtx->explain && pExpCtx->inMongos) {
+        return Value(Document{{getSourceName(), serializeWithoutMergePipeline(explain)}});
+    }
+    return DocumentSourceInternalSearchMongotRemote::serialize(explain);
+}
+
+executor::TaskExecutorCursor DocumentSourceSearchMeta::establishCursor() {
+    auto cursors = mongot_cursor::establishCursors(
+        pExpCtx, getSearchQuery(), getTaskExecutor(), getIntermediateResultsProtocolVersion());
+    if (cursors.size() == 1) {
+        const auto& cursor = *cursors.begin();
+        tassert(6448010,
+                "If there's one cursor we expect to get SEARCH_META from the attached vars",
+                !getIntermediateResultsProtocolVersion() && !cursor.getType() &&
+                    cursor.getCursorVars());
+        return std::move(*cursors.begin());
+    }
+    for (auto&& cursor : cursors) {
+        tassert(6448008, "Expected every mongot cursor to come back with a type", cursor.getType());
+        auto cursorType = CursorType_parse(IDLParserErrorContext("ShardedAggHelperCursorType"),
+                                           cursor.getType().get());
+        if (cursorType == CursorTypeEnum::SearchMetaResult) {
+            // Note this may leak the other cursor(s). Should look into whether we can killCursors.
+            return std::move(cursor);
+        }
+    }
+    tasserted(6448009, "Expected to get a metadata cursor back from mongot, found none");
+}
+
+DocumentSource::GetNextResult DocumentSourceSearchMeta::getNextAfterSetup() {
+    if (pExpCtx->needsMerge) {
+        // When we are merging $searchMeta we have established a cursor which only returns metadata
+        // results (see 'establishCursor()'). So just iterate that cursor normally.
+        return DocumentSourceInternalSearchMongotRemote::getNextAfterSetup();
+    }
+
+    if (!_returnedAlready) {
+        tryToSetSearchMetaVar();
+        auto& vars = pExpCtx->variables;
+        tassert(6448005,
+                "Expected SEARCH_META to be set for $searchMeta stage",
+                vars.hasConstantValue(Variables::kSearchMetaId) &&
+                    vars.getValue(Variables::kSearchMetaId).isObject());
+        _returnedAlready = true;
+        return {vars.getValue(Variables::kSearchMetaId).getDocument()};
+    }
+    return GetNextResult::makeEOF();
 }
 
 std::list<intrusive_ptr<DocumentSource>> DocumentSourceSearchMeta::createFromBson(
     BSONElement elem, const intrusive_ptr<ExpressionContext>& expCtx) {
 
-    // If we are parsing a view, we don't actually want to make any calls to mongot which happen
-    // during desugaring.
+    uassert(ErrorCodes::FailedToParse,
+            str::stream() << "$searchMeta value must be an object. Found: "
+                          << typeName(elem.type()),
+            elem.type() == BSONType::Object);
+
+    auto specObj = elem.embeddedObject();
+
+    // Avoid any calls to mongot during desugaring.
     if (expCtx->isParsingViewDefinition) {
-        uassert(ErrorCodes::FailedToParse,
-                str::stream() << "$searchMeta value must be an object. Found: "
-                              << typeName(elem.type()),
-                elem.type() == BSONType::Object);
-        intrusive_ptr<DocumentSourceSearchMeta> source(
-            new DocumentSourceSearchMeta(elem.Obj().getOwned(), expCtx));
-        return {source};
+        auto params =
+            DocumentSourceInternalSearchMongotRemote::parseParamsFromBson(specObj, expCtx);
+        auto executor = executor::getMongotTaskExecutor(expCtx->opCtx->getServiceContext());
+        return {make_intrusive<DocumentSourceSearchMeta>(std::move(params), expCtx, executor)};
     }
 
-    // To compute '$searchMeta' we essentially run a $search stage and throw out the "normal"
-    // results and just keep the metadata. Unfortunately it's not that simple because the pipeline
-    // needs to return metadata even if there were no search results. The $search stage doesn't have
-    // this behavior, so instead we'll do this trick:
-    // [
-    //   {$documents: [{}]},  // Generate a single document which will be the result.
-    //   {$setVariableFromSubPipeline: {
-    //      varId: kSearchMetaId,
-    //      pipeline: [
-    //        {$search: {/* search query */}},
-    //        {$replaceWith: "$$SEARCH_META"},
-    //        {$limit: 1}
-    //      ],
-    //      // This argument will handle the case with no search results.
-    //      // The variable is still defined in this case.
-    //      ifEmpty: "$$SEARCH_META"
-    //   }},
-    //   // Now that we've computed SEARCH_META, replace our dummy document with the value.
-    //   {$replaceWith: "$$SEARCH_META"}
-    // ]
-
-    std::list<intrusive_ptr<DocumentSource>> output;
-    // A single placeholder document to be returned.
-    // In order to use $documents we normally have to run a collectionless aggregate. We don't want
-    // to change the ExpressionContext's namespace here for fear of confusing other stages in the
-    // pipeline or debugging information, so instead we'll use $mockCollection which relaxes this
-    // constraint.
-    output.emplace_back(make_intrusive<DocumentSourceMockCollection>(
-        std::deque<DocumentSource::GetNextResult>{Document{}}, expCtx));
-    // Then a pipeline to set the SEARCH_META variable.
-    auto subPipelineCtx = expCtx->copyForSubPipeline(expCtx->ns, expCtx->uuid);
-    auto setVarPipeline = Pipeline::create(
-        [&]() {
-            auto setVarPipeline = mongot_cursor::createInitialSearchPipeline(elem, subPipelineCtx);
-            setVarPipeline.emplace_back(DocumentSourceReplaceRoot::createFromBson(
-                BSON("$replaceRoot" << BSON("newRoot" << std::string("$$SEARCH_META")))
-                    .firstElement(),
-                subPipelineCtx));
-            setVarPipeline.emplace_back(DocumentSourceLimit::create(subPipelineCtx, 1));
-            return setVarPipeline;
-        }(),
-        subPipelineCtx);
-    output.emplace_back(DocumentSourceSetVariableFromSubPipeline::create(
-        expCtx,
-        subPipelineCtx->mongoProcessInterface->attachCursorSourceToPipeline(
-            setVarPipeline.release()),
-        Variables::kSearchMetaId,
-        ExpressionFieldPath::createVarFromString(
-            subPipelineCtx.get(), "SEARCH_META", subPipelineCtx->variablesParseState)));
-    output.emplace_back(DocumentSourceReplaceRoot::createFromBson(
-        BSON("$replaceRoot" << BSON("newRoot" << std::string("$$SEARCH_META"))).firstElement(),
-        expCtx));
-    return output;
-}
-
-StageConstraints DocumentSourceSearchMeta::constraints(Pipeline::SplitState pipeState) const {
-    return DocumentSourceInternalSearchMongotRemote::getSearchDefaultConstraints();
-}
-
-Value DocumentSourceSearchMeta::serialize(
-    boost::optional<ExplainOptions::Verbosity> explain) const {
-    return Value(DOC(kStageName << Value(_userObj)));
+    if (expCtx->needsMerge) {
+        // If we need to merge output later, we just need to produce this shard's metadata and
+        // that's it.
+        return {make_intrusive<DocumentSourceSearchMeta>(
+            parseParamsFromBson(specObj, expCtx),
+            expCtx,
+            executor::getMongotTaskExecutor(expCtx->opCtx->getServiceContext()))};
+    }
+    // Otherwise, we need to call this helper to determine if this is a sharded environment. If so,
+    // we need to consult a mongot to construct such a merging pipeline for us to use later.
+    return mongot_cursor::createInitialSearchPipeline<DocumentSourceSearchMeta>(specObj, expCtx);
 }
 
 }  // namespace mongo

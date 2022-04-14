@@ -13,6 +13,7 @@ env.Library(
         'document_source_search_meta.cpp',
         'document_source_internal_search_id_lookup.cpp',
         'document_source_internal_search_mongot_remote.cpp',
+        'document_source_internal_search_mongot_remote.idl',
         'mongot_cursor.cpp',
     ],
     LIBDEPS=[
@@ -22,6 +23,7 @@ env.Library(
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/db/pipeline/sharded_agg_helpers',
         '$BUILD_DIR/mongo/executor/task_executor_cursor',
+        '$BUILD_DIR/mongo/idl/idl_parser',
         'mongot_options',
         'mongot_task_executor',
     ],

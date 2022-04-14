@@ -9,8 +9,9 @@
 #include "mongo/db/pipeline/aggregate_command_gen.h"
 #include "mongo/db/pipeline/document_source_documents.h"
 #include "mongo/db/pipeline/document_source_internal_shard_filter.h"
+#include "mongo/db/pipeline/document_source_limit.h"
 #include "mongo/db/pipeline/document_source_queue.h"
-#include "mongo/db/pipeline/document_source_set_variable_from_subpipeline.h"
+#include "mongo/db/pipeline/document_source_replace_root.h"
 #include "mongo/db/pipeline/document_source_union_with.h"
 #include "mongo/db/pipeline/pipeline.h"
 #include "mongo/db/pipeline/process_interface/stub_mongo_process_interface.h"
@@ -30,8 +31,6 @@
 namespace mongo::mongot_cursor {
 
 namespace {
-const std::string kMetadataCursorType = "meta";
-const std::string kResultCursorType = "results";
 // Used to allow test-only stages in a pipeline even if they don't support dependency tracking.
 MONGO_FAIL_POINT_DEFINE(assumeMetaContextOK);
 
@@ -158,11 +157,12 @@ SearchImplementedHelperFunctions::generateMetadataPipelineForSearch(
             origSearchStage->setCursor(std::move(cursors.front()));
             return nullptr;
         }
-        auto cursorType = cursorLabel.get();
-        if (cursorType == kResultCursorType) {
+        auto cursorType = CursorType_parse(IDLParserErrorContext("ShardedAggHelperCursorType"),
+                                           cursorLabel.get());
+        if (cursorType == CursorTypeEnum::DocumentResult) {
             origSearchStage->setCursor(std::move(*it));
             origPipeline->pipelineType = CursorTypeEnum::DocumentResult;
-        } else if (cursorType == kMetadataCursorType) {
+        } else if (cursorType == CursorTypeEnum::SearchMetaResult) {
             // If we don't think we're in a sharded environment, mongot should not have sent
             // metadata.
             tassert(
@@ -176,7 +176,8 @@ SearchImplementedHelperFunctions::generateMetadataPipelineForSearch(
             newPipeline = Pipeline::create({newStage}, expCtx);
             newPipeline->pipelineType = CursorTypeEnum::SearchMetaResult;
         } else {
-            tasserted(6253302, str::stream() << "Unexpected cursor type '" << cursorType << "'");
+            tasserted(6253302,
+                      str::stream() << "Unexpected cursor type '" << cursorLabel.get() << "'");
         }
     }
 
@@ -385,38 +386,6 @@ std::pair<std::unique_ptr<Pipeline, PipelineDeleter>, int> fetchMergingPipeline(
     // We must also communicate the protocolVersion back to the caller.
     int protocolVersion = response.data["protocolVersion"_sd].Int();
     return {std::move(mergingPipeline), protocolVersion};
-}
-
-std::list<boost::intrusive_ptr<DocumentSource>> createInitialSearchPipeline(
-    BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& expCtx) {
-
-    uassert(ErrorCodes::FailedToParse,
-            str::stream() << "$search/$searchMeta value must be an object. Found: "
-                          << typeName(elem.type()),
-            elem.type() == BSONType::Object);
-    uassert(6600901,
-            "Running search command in non-allowed context (update pipeline)",
-            !expCtx->isParsingPipelineUpdate);
-    if (!expCtx->mongoProcessInterface->inShardedEnvironment(expCtx->opCtx) ||
-        MONGO_unlikely(DocumentSourceInternalSearchMongotRemote::skipSearchStageRemoteSetup()) ||
-        !feature_flags::gFeatureFlagSearchShardedFacets.isEnabled(
-            serverGlobalParams.featureCompatibility)) {
-        return {DocumentSourceInternalSearchMongotRemote::createFromBson(elem, expCtx)};
-    }
-
-    // We need a $setVariableFromSubPipeline if we support faceted search on sharded cluster. If the
-    // collection is not sharded, the search will have previously been sent to the primary shard and
-    // we don't need to merge the metadata.
-    // We don't actually know if the collection is sharded at this point, so assume it is in order
-    // to generate the correct pipeline. The extra stage will be removed later if necessary.
-    auto [mergingPipeline, protocolVersion] = fetchMergingPipeline(expCtx, elem.embeddedObject());
-
-    return {make_intrusive<DocumentSourceInternalSearchMongotRemote>(
-        elem.embeddedObject(),
-        expCtx,
-        executor::getMongotTaskExecutor(expCtx->opCtx->getServiceContext()),
-        protocolVersion,
-        std::move(mergingPipeline))};
 }
 
 void SearchImplementedHelperFunctions::assertSearchMetaAccessValid(

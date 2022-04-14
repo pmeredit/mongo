@@ -22,40 +22,20 @@ const BSONObj kSortSpec = BSON("$searchScore" << -1);
 
 /**
  * A class to retrieve $search results from a mongot process.
- *
- * Work slated and not handled yet:
- * - TODO Handle sharded sort merging properly (SERVER-40015)
  */
-class DocumentSourceInternalSearchMongotRemote final : public DocumentSource {
+class DocumentSourceInternalSearchMongotRemote : public DocumentSource {
 public:
+    struct Params {
+        Params(BSONObj queryObj) : query(queryObj) {}
+        BSONObj query;
+        boost::optional<int> protocolVersion;
+        std::unique_ptr<Pipeline, PipelineDeleter> mergePipeline = nullptr;
+    };
+
     static constexpr StringData kStageName = "$_internalSearchMongotRemote"_sd;
 
-    class LiteParsed final : public LiteParsedDocumentSource {
-    public:
-        static std::unique_ptr<LiteParsed> parse(const NamespaceString& nss,
-                                                 const BSONElement& spec) {
-            return std::make_unique<LiteParsed>(spec.fieldName(), nss);
-        }
-
-        explicit LiteParsed(std::string parseTimeName, NamespaceString nss)
-            : LiteParsedDocumentSource(std::move(parseTimeName)), _nss(std::move(nss)) {}
-
-        stdx::unordered_set<NamespaceString> getInvolvedNamespaces() const final {
-            return stdx::unordered_set<NamespaceString>();
-        }
-
-        PrivilegeVector requiredPrivileges(bool isMongos,
-                                           bool bypassDocumentValidation) const final {
-            return {Privilege(ResourcePattern::forExactNamespace(_nss), ActionType::find)};
-        }
-
-        bool isInitialSource() const final {
-            return true;
-        }
-
-    private:
-        const NamespaceString _nss;
-    };
+    static Params parseParamsFromBson(BSONObj obj,
+                                      const boost::intrusive_ptr<ExpressionContext>& expCtx);
 
     static boost::intrusive_ptr<DocumentSource> createFromBson(
         BSONElement elem, const boost::intrusive_ptr<ExpressionContext>& pExpCtx);
@@ -89,12 +69,18 @@ public:
             ds.constraints().preservesOrderAndMetadata;
     }
 
-    DocumentSourceInternalSearchMongotRemote(
-        const BSONObj& query,
-        const boost::intrusive_ptr<ExpressionContext>& expCtx,
-        executor::TaskExecutor* executor,
-        int protocolVersion,
-        std::unique_ptr<Pipeline, PipelineDeleter> mergePipeline);
+
+    DocumentSourceInternalSearchMongotRemote(Params&& params,
+                                             const boost::intrusive_ptr<ExpressionContext>& expCtx,
+                                             executor::TaskExecutor* taskExecutor)
+        : DocumentSource(kStageName, expCtx),
+          _mergingPipeline(std::move(params.mergePipeline)),
+          _searchQuery(params.query.getOwned()),
+          _taskExecutor(taskExecutor) {
+        if (params.protocolVersion) {
+            _metadataMergeProtocolVersion = *params.protocolVersion;
+        }
+    }
 
     virtual ~DocumentSourceInternalSearchMongotRemote() = default;
 
@@ -108,14 +94,15 @@ public:
      * This is the first stage in the pipeline and so will always be run on shards. Mark as not
      * needing split as the sort can be deferred.
      */
-    boost::optional<DistributedPlanLogic> distributedPlanLogic() final {
+    virtual boost::optional<DistributedPlanLogic> distributedPlanLogic() override {
         DistributedPlanLogic logic;
 
         logic.shardsStage = this;
         if (::mongo::feature_flags::gFeatureFlagSearchShardedFacets.isEnabled(
                 serverGlobalParams.featureCompatibility)) {
-            logic.mergingStage = DocumentSourceSetVariableFromSubPipeline::create(
-                pExpCtx, _mergingPipeline->clone(), Variables::kSearchMetaId);
+            tassert(6448006, "Expected merging pipeline to be set already", _mergingPipeline);
+            logic.mergingStages = {DocumentSourceSetVariableFromSubPipeline::create(
+                pExpCtx, _mergingPipeline->clone(), Variables::kSearchMetaId)};
         }
         logic.mergeSortPattern = search_constants::kSortSpec;
         logic.needsSplit = false;
@@ -125,25 +112,18 @@ public:
     }
 
     virtual boost::intrusive_ptr<DocumentSource> clone() const override {
-        if (_metadataMergeProtocolVersion) {
-            return new DocumentSourceInternalSearchMongotRemote(
-                _searchQuery,
-                pExpCtx,
-                _taskExecutor,
-                _metadataMergeProtocolVersion.get(),
-                _mergingPipeline ? _mergingPipeline->clone() : nullptr);
-        }
-        return new DocumentSourceInternalSearchMongotRemote(_searchQuery, pExpCtx, _taskExecutor);
+        auto params = Params{_searchQuery};
+        params.protocolVersion = _metadataMergeProtocolVersion;
+        params.mergePipeline = _mergingPipeline ? _mergingPipeline->clone() : nullptr;
+        return make_intrusive<DocumentSourceInternalSearchMongotRemote>(
+            std::move(params), pExpCtx, _taskExecutor);
     }
 
-    Value serialize(
-        boost::optional<ExplainOptions::Verbosity> explain = boost::none) const override;
-
-    BSONObj getSearchQuery() {
+    BSONObj getSearchQuery() const {
         return _searchQuery.getOwned();
     }
 
-    auto getTaskExecutor() {
+    auto getTaskExecutor() const {
         return _taskExecutor;
     }
 
@@ -166,8 +146,8 @@ public:
      */
     boost::intrusive_ptr<DocumentSourceInternalSearchMongotRemote> copyForAlternateSource(
         executor::TaskExecutorCursor cursor) {
-        auto newStage =
-            new DocumentSourceInternalSearchMongotRemote(_searchQuery, pExpCtx, _taskExecutor);
+        auto newStage = boost::intrusive_ptr<DocumentSourceInternalSearchMongotRemote>(
+            static_cast<DocumentSourceInternalSearchMongotRemote*>(clone().get()));
         newStage->setCursor(std::move(cursor));
         return newStage;
     }
@@ -188,17 +168,42 @@ public:
         return _metadataMergeProtocolVersion;
     }
 
+protected:
+    /**
+     * Helper serialize method that avoids making mongot call during explain from mongos.
+     */
+    Document serializeWithoutMergePipeline(
+        boost::optional<ExplainOptions::Verbosity> explain = boost::none) const;
+
+    virtual Value serialize(
+        boost::optional<ExplainOptions::Verbosity> explain = boost::none) const override;
+
+    /**
+     * Inspects the cursor to see if it set any vars, and propogates their definitions to the
+     * ExpressionContext. For now, we only expect SEARCH_META to be defined.
+     */
+    void tryToSetSearchMetaVar();
+
+    virtual executor::TaskExecutorCursor establishCursor();
+
+    virtual GetNextResult getNextAfterSetup();
+
+    bool shouldReturnEOF();
+
+    /**
+     * This stage may need to merge the metadata it generates on the merging half of the pipeline.
+     * Until we know if the merge needs to be done, we hold the pipeline containig the merging
+     * logic here.
+     */
+    std::unique_ptr<Pipeline, PipelineDeleter> _mergingPipeline;
+
 private:
-    DocumentSourceInternalSearchMongotRemote(const BSONObj& query,
-                                             const boost::intrusive_ptr<ExpressionContext>& expCtx,
-                                             executor::TaskExecutor* taskExecutor)
-        : DocumentSource(kStageName, expCtx),
-          _searchQuery(query.getOwned()),
-          _taskExecutor(taskExecutor) {}
+    /**
+     * Does some common setup and checks, then calls 'getNextAfterSetup()' if appropriate.
+     */
+    GetNextResult doGetNext() final;
 
     boost::optional<BSONObj> _getNext();
-
-    GetNextResult doGetNext() override;
 
     const BSONObj _searchQuery;
 
@@ -227,13 +232,6 @@ private:
      * version even though it should not be sent to mongot.
      */
     boost::optional<int> _metadataMergeProtocolVersion;
-
-    /**
-     * This stage may need to merge the metadata it generates on the merging half of the pipeline.
-     * Until we know if the merge needs to be done, we hold the pipeline containig the merging
-     * logic here.
-     */
-    std::unique_ptr<Pipeline, PipelineDeleter> _mergingPipeline;
 };
 
 namespace search_meta {
