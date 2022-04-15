@@ -8,8 +8,11 @@
 #include "mongo/db/pipeline/document_source.h"
 #include "mongo/db/pipeline/document_source_documents.h"
 #include "mongo/db/pipeline/document_source_limit.h"
+#include "mongo/db/pipeline/document_source_mock_collection.h"
 #include "mongo/db/pipeline/document_source_replace_root.h"
+#include "mongo/db/pipeline/document_source_set_variable_from_subpipeline.h"
 #include "mongo/db/pipeline/document_source_union_with.h"
+#include "mongo/db/pipeline/expression.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/pipeline.h"
 #include "mongot_cursor.h"
@@ -47,31 +50,59 @@ std::list<intrusive_ptr<DocumentSource>> DocumentSourceSearchMeta::createFromBso
         return {source};
     }
 
-    std::list<intrusive_ptr<DocumentSource>> desugaredPipeline =
-        mongot_cursor::createInitialSearchPipeline(elem, expCtx);
+    // To compute '$searchMeta' we essentially run a $search stage and throw out the "normal"
+    // results and just keep the metadata. Unfortunately it's not that simple because the pipeline
+    // needs to return metadata even if there were no search results. The $search stage doesn't have
+    // this behavior, so instead we'll do this trick:
+    // [
+    //   {$documents: [{}]},  // Generate a single document which will be the result.
+    //   {$setVariableFromSubPipeline: {
+    //      varId: kSearchMetaId,
+    //      pipeline: [
+    //        {$search: {/* search query */}},
+    //        {$replaceWith: "$$SEARCH_META"},
+    //        {$limit: 1}
+    //      ],
+    //      // This argument will handle the case with no search results.
+    //      // The variable is still defined in this case.
+    //      ifEmpty: "$$SEARCH_META"
+    //   }},
+    //   // Now that we've computed SEARCH_META, replace our dummy document with the value.
+    //   {$replaceWith: "$$SEARCH_META"}
+    // ]
 
-    // Do not send search query results to merging node.
-    desugaredPipeline.push_back(DocumentSourceLimit::create(expCtx, 1));
-
-    // Replace any documents returned by mongot with the SEARCH_META contents.
-    desugaredPipeline.push_back(DocumentSourceReplaceRoot::createFromBson(
+    std::list<intrusive_ptr<DocumentSource>> output;
+    // A single placeholder document to be returned.
+    // In order to use $documents we normally have to run a collectionless aggregate. We don't want
+    // to change the ExpressionContext's namespace here for fear of confusing other stages in the
+    // pipeline or debugging information, so instead we'll use $mockCollection which relaxes this
+    // constraint.
+    output.emplace_back(make_intrusive<DocumentSourceMockCollection>(
+        std::deque<DocumentSource::GetNextResult>{Document{}}, expCtx));
+    // Then a pipeline to set the SEARCH_META variable.
+    auto subPipelineCtx = expCtx->copyForSubPipeline(expCtx->ns, expCtx->uuid);
+    auto setVarPipeline = Pipeline::create(
+        [&]() {
+            auto setVarPipeline = mongot_cursor::createInitialSearchPipeline(elem, subPipelineCtx);
+            setVarPipeline.emplace_back(DocumentSourceReplaceRoot::createFromBson(
+                BSON("$replaceRoot" << BSON("newRoot" << std::string("$$SEARCH_META")))
+                    .firstElement(),
+                subPipelineCtx));
+            setVarPipeline.emplace_back(DocumentSourceLimit::create(subPipelineCtx, 1));
+            return setVarPipeline;
+        }(),
+        subPipelineCtx);
+    output.emplace_back(DocumentSourceSetVariableFromSubPipeline::create(
+        expCtx,
+        subPipelineCtx->mongoProcessInterface->attachCursorSourceToPipeline(
+            setVarPipeline.release()),
+        Variables::kSearchMetaId,
+        ExpressionFieldPath::createVarFromString(
+            subPipelineCtx.get(), "SEARCH_META", subPipelineCtx->variablesParseState)));
+    output.emplace_back(DocumentSourceReplaceRoot::createFromBson(
         BSON("$replaceRoot" << BSON("newRoot" << std::string("$$SEARCH_META"))).firstElement(),
         expCtx));
-
-    // If mongot returned no documents, generate a document to return. This depends on the
-    // current, undocumented behavior of $unionWith that the outer pipeline is iterated before
-    // the inner pipeline.
-    desugaredPipeline.push_back(DocumentSourceUnionWith::createFromBson(
-        BSON(DocumentSourceUnionWith::kStageName
-             << BSON("pipeline" << BSON_ARRAY(
-                         BSON(DocumentSourceDocuments::kStageName << BSON_ARRAY("$$SEARCH_META")))))
-            .firstElement(),
-        expCtx.get()));
-
-    // Only return one copy of the meta results.
-    desugaredPipeline.push_back(DocumentSourceLimit::create(expCtx, 1));
-
-    return desugaredPipeline;
+    return output;
 }
 
 StageConstraints DocumentSourceSearchMeta::constraints(Pipeline::SplitState pipeState) const {

@@ -11,9 +11,11 @@
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/pipeline/aggregation_context_fixture.h"
 #include "mongo/db/pipeline/document_source_limit.h"
+#include "mongo/db/pipeline/document_source_mock.h"
+#include "mongo/db/pipeline/document_source_mock_collection.h"
 #include "mongo/db/pipeline/document_source_replace_root.h"
+#include "mongo/db/pipeline/document_source_set_variable_from_subpipeline.h"
 #include "mongo/db/pipeline/document_source_single_document_transformation.h"
-#include "mongo/db/pipeline/document_source_union_with.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/assert_util.h"
 #include "mongot_options.h"
@@ -32,6 +34,19 @@ struct MockMongoInterface final : public StubMongoProcessInterface {
     bool inShardedEnvironment(OperationContext* opCtx) const override {
         return false;
     }
+
+    std::unique_ptr<Pipeline, PipelineDeleter> attachCursorSourceToPipeline(
+        Pipeline* pipeline,
+        ShardTargetingPolicy shardTargetingPolicy = ShardTargetingPolicy::kAllowed,
+        boost::optional<BSONObj> readConcern = boost::none) override {
+        // Return the pipeline unmodified. In this test, we expect it to start with a $mongotRemote
+        // stage.
+        ASSERT_GT(pipeline->getSources().size(), 0);
+        ASSERT(dynamic_cast<DocumentSourceInternalSearchMongotRemote*>(
+            pipeline->getSources().begin()->get()));
+        return std::unique_ptr<Pipeline, PipelineDeleter>(
+            pipeline, PipelineDeleter{pipeline->getContext()->opCtx});
+    }
 };
 
 TEST_F(SearchMetaTest, TestParsingOfSearchMeta) {
@@ -46,29 +61,40 @@ TEST_F(SearchMetaTest, TestParsingOfSearchMeta) {
     list<intrusive_ptr<DocumentSource>> results =
         DocumentSourceSearchMeta::createFromBson(specObj.firstElement(), expCtx);
 
-    ASSERT_EQUALS(results.size(), 5UL);
+    ASSERT_EQUALS(results.size(), 3UL);
     auto it = results.begin();
-    const auto* mongotRemoteStage =
-        dynamic_cast<DocumentSourceInternalSearchMongotRemote*>(it->get());
-    ASSERT(mongotRemoteStage);
+    const auto* mockCollection = dynamic_cast<DocumentSourceMockCollection*>(it->get());
+    ASSERT(mockCollection);
 
     std::advance(it, 1);
-    const auto* firstLimitStage = dynamic_cast<DocumentSourceLimit*>(it->get());
-    ASSERT(firstLimitStage);
+    const auto* setVarStage = dynamic_cast<DocumentSourceSetVariableFromSubPipeline*>(it->get());
+    ASSERT(setVarStage);
+
+    {
+        auto subPipe = setVarStage->getSubPipeline();
+        ASSERT(subPipe);
+        ASSERT_EQUALS(subPipe->size(), 3UL);
+        auto subPipeIt = subPipe->begin();
+        const auto* mongotRemote =
+            dynamic_cast<DocumentSourceInternalSearchMongotRemote*>(subPipeIt->get());
+        ASSERT(mongotRemote);
+
+        std::advance(subPipeIt, 1);
+        // DocumentSourceReplaceRoot desugars to singleDocTransStage in createFromBson().
+        const auto* replaceRoot =
+            dynamic_cast<DocumentSourceSingleDocumentTransformation*>(subPipeIt->get());
+        ASSERT(replaceRoot);
+
+        std::advance(subPipeIt, 1);
+        const auto* limit = dynamic_cast<DocumentSourceLimit*>(subPipeIt->get());
+        ASSERT(limit);
+    }
 
     std::advance(it, 1);
     // DocumentSourceReplaceRoot desugars to singleDocTransStage in createFromBson().
     const auto* singleDocTransStage =
         dynamic_cast<DocumentSourceSingleDocumentTransformation*>(it->get());
     ASSERT(singleDocTransStage);
-
-    std::advance(it, 1);
-    const auto* unionWithStage = dynamic_cast<DocumentSourceUnionWith*>(it->get());
-    ASSERT(unionWithStage);
-
-    std::advance(it, 1);
-    const auto* secondLimitStage = dynamic_cast<DocumentSourceLimit*>(it->get());
-    ASSERT(secondLimitStage);
 
     // $searchMeta argument must be an object.
     specObj = BSON("$searchMeta" << 1000);

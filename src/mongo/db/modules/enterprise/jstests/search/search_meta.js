@@ -70,26 +70,38 @@ const cursorId = NumberLong(17);
 
     const explain = coll.explain("queryPlanner").aggregate([{$searchMeta: searchQuery}]);
 
-    assert(explain.stages[0].hasOwnProperty("$_internalSearchMongotRemote"));
-    const searchStage = getAggPlanStage(explain, "$_internalSearchMongotRemote");
-    assert.neq(searchStage, null);
-    // $searchMeta desugars to a pipeline that contains two $limit stages. The first
-    // is to prevent sending query result docs to the merging node. The second
-    // is to make sure only one copy of the meta results is returned.
-    assert(explain.stages[1].hasOwnProperty("$limit"));
-    assert(explain.stages[4].hasOwnProperty("$limit"));
-    const limitStages = getAggPlanStages(explain, "$limit");
-    assert.eq(limitStages, [{$limit: NumberLong(1)}, {$limit: NumberLong(1)}]);
+    // $searchMeta desugars to a pipeline like this:
+    // [
+    //     {$mockCollection: [{}]},
+    //     {$setVariableFromSubPipeline: {
+    //         setVariable: "$$SEARCH_META",
+    //         pipeline: [
+    //             {$_internalSearchMongotRemote: {/* search query */}},
+    //             {$replaceRoot: {newRoot: "$$SEARCH_META"}},
+    //             {$limit: 1}
+    //         ],
+    //         ifEmpty: "$$SEARCH_META",  // Inner pipeline's SEARCH_META becomes outer's.
+    //     }},
+    //     {$replaceRoot: {newRoot: "$$SEARCH_META"}}
+    // ]
+    assert(explain.stages[0].hasOwnProperty("$mockCollection"), explain.stages);
+    assert(explain.stages[1].hasOwnProperty("$setVariableFromSubPipeline"), explain.stages);
+    const setSearchMetaStage = getAggPlanStage(explain, "$setVariableFromSubPipeline");
+    assert(setSearchMetaStage.hasOwnProperty("$setVariableFromSubPipeline"), setSearchMetaStage);
+
+    const setSearchMetaSpec = setSearchMetaStage.$setVariableFromSubPipeline;
+    assert(setSearchMetaSpec.hasOwnProperty("pipeline"), setSearchMetaSpec);
+    assert.eq(setSearchMetaSpec.pipeline.length, 3);
+    const searchStage = setSearchMetaSpec.pipeline[0];
+    assert(searchStage.hasOwnProperty("$_internalSearchMongotRemote"));
+    const replaceRoot = setSearchMetaSpec.pipeline[1];
+    assert(replaceRoot.hasOwnProperty("$replaceRoot"), replaceRoot);
+    const limit = setSearchMetaSpec.pipeline[2];
+    assert(limit.hasOwnProperty("$limit"), limit);
 
     assert(explain.stages[2].hasOwnProperty("$replaceRoot"));
     const replaceRootStage = getAggPlanStage(explain, "$replaceRoot");
     assert.eq(replaceRootStage, {"$replaceRoot": {"newRoot": "$$SEARCH_META"}});
-
-    assert(explain.stages[3].hasOwnProperty("$unionWith"));
-    const unionWithStage = getAggPlanStage(explain, "$unionWith");
-    const unionWith = unionWithStage["$unionWith"];
-    assert(unionWith.hasOwnProperty("pipeline"));
-    assert(!unionWith.hasOwnProperty("coll"));
 }
 
 MongoRunner.stopMongod(conn);

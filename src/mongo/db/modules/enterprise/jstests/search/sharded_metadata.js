@@ -268,7 +268,7 @@ testMergeAtLocation("anyShard", testColl, false);
 testMergeAtLocation("primaryShard", testColl, false);
 testMergeAtLocation("localOnly", testColl, false);
 
-// Skip mongoS merges for $searchMeta, as $unionWith can't run on mongoS.
+testMergeAtLocationSearchMeta("mongos", testColl, false);
 testMergeAtLocationSearchMeta("anyShard", testColl, false);
 testMergeAtLocationSearchMeta("primaryShard", testColl, false);
 // Repeat, but the collection is a view.
@@ -282,7 +282,7 @@ testMergeAtLocation("localOnly", viewColl, true);
 viewColl.drop();
 testDB.createView(collName + "viewColl", testColl.getName(), [{$searchMeta: mongotQuery}], {});
 viewColl = testDB.getCollection(collName + "viewColl");
-// Skip mongoS merges for $searchMeta, as $unionWith can't run on mongoS.
+testMergeAtLocationSearchMeta("mongos", testColl, false);
 testMergeAtLocationSearchMeta("anyShard", viewColl, true);
 testMergeAtLocationSearchMeta("primaryShard", viewColl, true);
 stWithMock.stop();

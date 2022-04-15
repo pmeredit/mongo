@@ -45,18 +45,33 @@ const collUUID = getUUIDFromListCollections(db, coll.getName());
 
 var cursorCounter = 123;
 
+/**
+ * Term: Search term to query for.
+ * Times: Number of commands mongotmock should expect.
+ * Batch: Docs for mongotmock to return.
+ * searchMetaValue: Value to be used in all the documents as 'vars'. If times >1 and this is an
+ * array, length must be equal to times.
+ * Returns the query to run.
+ */
 function setupSearchQuery(term, times, batch, searchMetaValue) {
     const searchQuery = {query: term, path: "title"};
     const searchCmd = mongotCommandForQuery(searchQuery, coll.getName(), dbName, collUUID);
 
+    if (Array.isArray(searchMetaValue)) {
+        assert.eq(times, searchMetaValue.length);
+    }
     // Give mongotmock some stuff to return.
     for (let i = 0; i < times; i++) {
         const cursorId = NumberLong(cursorCounter++);
+        let thisMeta = searchMetaValue;
+        if (Array.isArray(thisMeta)) {
+            thisMeta = searchMetaValue[i];
+        }
         const history = [{
             expectedCommand: searchCmd,
             response: {
                 cursor: {id: NumberLong(0), ns: coll.getFullName(), nextBatch: batch},
-                vars: {SEARCH_META: {value: searchMetaValue}},
+                vars: {SEARCH_META: {value: thisMeta}},
                 ok: 1
             }
         }];
@@ -145,61 +160,114 @@ const unionExpected = [
 ];
 assert.sameMembers(unionExpected, unionCursor.toArray());
 
-// Assert that if SEARCH_META is accessed in a query with multiple search type stages the query will
-// fail. No need to setup a response on mongot, as we will fail before running the remote query.
-assert.commandFailedWithCode(db.runCommand({
+const multiUnionSearch = setupSearchQuery("cakes",
+                                          2,
+                                          [
+                                              {_id: 1, $searchScore: 0.9},
+                                              {_id: 2, $searchScore: 0.8},
+                                          ],
+                                          ["outer", "inner"]);
+
+// Multiple $search commands with $$SEARCH_META are allowed in a pipeline.
+let result = assert.commandWorked(db.runCommand({
     aggregate: coll.getName(),
     pipeline: [
-        {$search: {/*Not accessed*/}},
-        {$addFields: {meta: "$$SEARCH_META"}},
+        {$search: multiUnionSearch},
+        {$project: {_id: 1, meta: "$$SEARCH_META"}},
         {
             $unionWith: {
                 coll: coll.getName(),
-                pipeline: [{$search: {/*Not accessed*/}}, {$addFields: {meta: "$$SEARCH_META"}}]
+                pipeline: [{$search: multiUnionSearch}, {$addFields: {meta: "$$SEARCH_META"}}]
             }
         }
     ],
     cursor: {}
-}),
-                             6080010);
+}));
+
+const multiUnionExpected = [
+    {_id: 1, meta: {value: "outer"}},
+    {_id: 2, meta: {value: "outer"}},
+    {_id: 1, title: "cakes", meta: {value: "inner"}},
+    {_id: 2, title: "cookies and cakes", meta: {value: "inner"}},
+];
+
+assert.sameMembers(result.cursor.firstBatch, multiUnionExpected);
 
 // Same test with $lookup.
-assert.commandFailedWithCode(db.runCommand({
+const multiLookupSearch = setupSearchQuery("cakes",
+                                           3,
+                                           [
+                                               {_id: 1, $searchScore: 0.9},
+                                               {_id: 2, $searchScore: 0.8},
+                                           ],
+                                           ["outer", "firstLookup", "secondLookup"]);
+result = assert.commandWorked(db.runCommand({
     aggregate: coll.getName(),
     pipeline: [
-        {$search: {/*Not accessed*/}},
-        {$addFields: {meta: "$$SEARCH_META"}},
+        {$search: multiLookupSearch},
+        {$project: {_id: 1, meta: "$$SEARCH_META"}},
         {
             $lookup: {
                 from: coll.getName(),
-                pipeline: [{$search: {/*Not accessed*/}}, {$addFields: {meta: "$$SEARCH_META"}}],
+                pipeline: [{$search: multiLookupSearch}, {$addFields: {meta: "$$SEARCH_META"}}],
                 as: "arr",
             }
         }
     ],
     cursor: {}
-}),
-                             6080010);
+}));
+const multiLookupExpected = [
+    {
+        _id: 1,
+        meta: {value: "outer"},
+        arr: [
+            {_id: 1, title: "cakes", meta: {value: "firstLookup"}},
+            {_id: 2, title: "cookies and cakes", meta: {value: "firstLookup"}},
+        ]
+    },
+    {
+        _id: 2,
+        meta: {value: "outer"},
+        arr: [
+            {_id: 1, title: "cakes", meta: {value: "secondLookup"}},
+            {_id: 2, title: "cookies and cakes", meta: {value: "secondLookup"}},
+        ]
+    },
+
+];
+
+assert.sameMembers(result.cursor.firstBatch, multiLookupExpected);
 
 // $search stage in a sub-pipeline.
-// Assert that if SEARCH_META is accessed in a query with a search stage in a sub-pipeline
-// the query will fail. No need to setup a response on mongot, as we will fail before running the
-// remote query.
-assert.commandFailedWithCode(db.runCommand({
+const unionSubSearch = setupSearchQuery("cakes",
+                                        1,
+                                        [
+                                            {_id: 1, $searchScore: 0.9},
+                                            {_id: 2, $searchScore: 0.8},
+                                        ],
+                                        "metaVal");
+result = assert.commandWorked(db.runCommand({
     aggregate: coll.getName(),
     pipeline: [
-        {$match: {val: 1}},
+        {$match: {val: 1}},  // Matches nothing.
         {
             $unionWith: {
                 coll: coll.getName(),
-                pipeline: [{$search: {/*Not accessed*/}}, {$addFields: {meta: "$$SEARCH_META"}}]
+                pipeline: [{$search: unionSubSearch}, {$addFields: {meta: "$$SEARCH_META"}}]
             }
         },
     ],
     cursor: {}
-}),
-                             6080010);
+}));
 
+const unionSubSearchExpected = [
+    {_id: 1, meta: {value: "metaVal"}, title: "cakes"},
+    {_id: 2, meta: {value: "metaVal"}, title: "cookies and cakes"},
+];
+
+assert.sameMembers(result.cursor.firstBatch, unionSubSearchExpected);
+
+// Cannot access $$SEARCH_META after a stage with a sub-pipeline.
 assert.commandFailedWithCode(db.runCommand({
     aggregate: coll.getName(),
     pipeline: [
@@ -209,9 +277,9 @@ assert.commandFailedWithCode(db.runCommand({
     ],
     cursor: {}
 }),
-                             6080010);
+                             6347901);
 
-// $$SEARCH_META before $unionWith ($search in pipeline)
+// $$SEARCH_META before $unionWith ($search in pipeline).
 assert.commandFailedWithCode(db.runCommand({
     aggregate: coll.getName(),
     pipeline: [
@@ -220,7 +288,7 @@ assert.commandFailedWithCode(db.runCommand({
     ],
     cursor: {}
 }),
-                             6080010);
+                             6347902);
 
 // Same test with $lookup.
 assert.commandFailedWithCode(db.runCommand({
@@ -238,24 +306,37 @@ assert.commandFailedWithCode(db.runCommand({
     ],
     cursor: {}
 }),
-                             6080010);
+                             6347901);
 
 // Test with $lookup ($searchMeta in pipeline).
-assert.commandFailedWithCode(db.runCommand({
+const lookupSubSearchMeta = setupSearchQuery("cakes",
+                                             1,
+                                             [
+                                                 {_id: 1, $searchScore: 0.9},
+                                                 {_id: 2, $searchScore: 0.8},
+                                             ],
+                                             "metaVal");
+result = assert.commandWorked(db.runCommand({
             aggregate: coll.getName(),
             pipeline: [
-                {$match: {val: 1}},
+                {$match: {_id: 1}}, // Match one document.
                 {
                     $lookup: {
                         from: coll.getName(),
-                        pipeline: [{$searchMeta: {/*Not accessed*/}}],
+                        pipeline: [{$searchMeta: lookupSubSearchMeta}],
                         as: "arr",
                     }
                 },
             ],
             cursor: {}
-        }),
-        6080010);
+        }));
+
+const lookupSubSearchMeta2 = [
+    {_id: 1, title: "cakes", arr: [{value: "metaVal"}]},
+];
+
+assert.sameMembers(result.cursor.firstBatch, lookupSubSearchMeta2);
+
 // Reset the history for the next test.
 let cookiesQuery = setupSearchQuery("cookies",
                                     1,
@@ -274,7 +355,7 @@ setupSearchQuery("cakes",
                      {_id: 8, $searchScore: 0.5}
                  ],
                  1);
-// Assert that if $$SEARCH_META is not accessed, multiple search-type stages are allowed.
+// Assert multiple search-type stages are allowed.
 const union2Result =
     coll.aggregate([
             {$search: cookiesQuery},
@@ -309,45 +390,120 @@ const union2SearchExpected = [
 ];
 assert.sameMembers(union2SearchExpected, union2Result);
 
-assert.commandFailedWithCode(db.runCommand({
-    aggregate: collBase.getName(),
+// $searchMeta in a sub-pipeline is allowed.
+const unionSubSearchMeta = setupSearchQuery("cakes",
+                                            1,
+                                            [
+                                                {_id: 1, $searchScore: 0.9},
+                                                {_id: 2, $searchScore: 0.8},
+                                            ],
+                                            "metaVal");
+result = assert.commandWorked(db.runCommand({
+    aggregate: coll.getName(),
     cursor: {},
-    pipeline:
-        [{$unionWith: {coll: coll.getName(), pipeline: [{$searchMeta: {/* Not Accessed */}}]}}]
-}),
-                             6080010);
+    pipeline: [
+        {$match: {_id: 1}},
+        {$unionWith: {coll: coll.getName(), pipeline: [{$searchMeta: unionSubSearchMeta}]}}
+    ]
+}));
 
-assert.commandFailedWithCode(db.runCommand({
-    aggregate: collBase.getName(),
-    cursor: {},
-    pipeline: [{
-        $lookup:
-            {from: coll.getName(), as: "arr", pipeline: [{$searchMeta: {/* Not Accessed */}}]}
-    }]
-}),
-                             6080010);
+const unionSubSearchMetaResults = [
+    {_id: 1, title: "cakes"},
+    {value: "metaVal"},
+];
 
-// $searchMeta with $search will fail since $searchMeta accesses $$SEARCH_META.
+assert.sameMembers(result.cursor.firstBatch, unionSubSearchMetaResults);
+
+// $searchMeta works in a sub-pipeline with a top-level search.
+const searchMetaTestGenericQuery = setupSearchQuery("cakes",
+                                                    2,
+                                                    [
+                                                        {_id: 1, $searchScore: 0.9},
+                                                        {_id: 2, $searchScore: 0.8},
+                                                    ],
+                                                    ["outer", "inner"]);
+result = assert.commandWorked(db.runCommand({
+    aggregate: coll.getName(),
+    pipeline: [
+        {$search: searchMetaTestGenericQuery},
+        {$project: {_id: 1, meta: "$$SEARCH_META"}},
+        {$unionWith: {coll: coll.getName(), pipeline: [{$searchMeta: searchMetaTestGenericQuery}]}}
+    ],
+    cursor: {}
+}));
+
+const searchMetaTestExpected1 = [
+    {_id: 1, meta: {value: "outer"}},
+    {_id: 2, meta: {value: "outer"}},
+    {value: "inner"},
+];
+assert.sameMembers(result.cursor.firstBatch, searchMetaTestExpected1);
+
+// Same query as last test.
+setupSearchQuery("cakes",
+                 2,
+                 [
+                     {_id: 1, $searchScore: 0.9},
+                     {_id: 2, $searchScore: 0.8},
+                 ],
+                 ["outer", "inner"]);
+// Multiple $searchMeta in the pipeline works.
+result = assert.commandWorked(db.runCommand({
+    aggregate: coll.getName(),
+    pipeline: [
+        {$searchMeta: searchMetaTestGenericQuery},
+        {$unionWith: {coll: coll.getName(), pipeline: [{$searchMeta: searchMetaTestGenericQuery}]}}
+    ],
+    cursor: {}
+}));
+const searchMetaTestExpected2 = [
+    {value: "outer"},
+    {value: "inner"},
+];
+assert.sameMembers(result.cursor.firstBatch, searchMetaTestExpected2);
+
+// Multiple sub-pipelines with $$SEARCH_META are ok.
+setupSearchQuery("cakes",
+                 3,
+                 [
+                     {_id: 1, $searchScore: 0.9},
+                     {_id: 2, $searchScore: 0.8},
+                 ],
+                 ["outer", "first", "second"]);
+// Multiple $searchMeta in the pipeline works.
+result = assert.commandWorked(db.runCommand({
+    aggregate: coll.getName(),
+    pipeline: [
+        {$search: searchMetaTestGenericQuery},
+        {$match: {_id: 1}},
+        {$project: {_id: 1, title: 1, meta: "$$SEARCH_META"}},
+        {$unionWith: {coll: coll.getName(), pipeline: [{$searchMeta: searchMetaTestGenericQuery}]}},
+        {$sort: {_id: 1}},  // Arbitrary unrelated stage.
+        {$unionWith: {coll: coll.getName(), pipeline: [{$searchMeta: searchMetaTestGenericQuery}]}},
+    ],
+    cursor: {}
+}));
+const searchMetaTestExpected3 = [
+    {_id: 1, title: "cakes", meta: {value: "outer"}},
+    {value: "first"},
+    {value: "second"},
+];
+assert.sameMembers(result.cursor.firstBatch, searchMetaTestExpected3);
+
+// Top level $$SEARCH_META is out of scope after $unionWith.
 assert.commandFailedWithCode(db.runCommand({
     aggregate: coll.getName(),
     pipeline: [
-        {$search: {/* Not Accessed */}},
-        {$unionWith: {coll: coll.getName(), pipeline: [{$searchMeta: {/* Not Accessed */}}]}}
+        {$search: searchMetaTestGenericQuery},
+        {$match: {_id: 1}},
+        {$unionWith: {coll: coll.getName(), pipeline: [{$searchMeta: searchMetaTestGenericQuery}]}},
+        {$project: {_id: 1, title: 1, meta: "$$SEARCH_META"}},
+        {$sort: {_id: 1}},  // Arbitrary unrelated stage.
+        {$unionWith: {coll: coll.getName(), pipeline: [{$searchMeta: searchMetaTestGenericQuery}]}},
     ],
     cursor: {}
 }),
-                             6080010);
-
-// Multiple $searchMeta in the pipeline will fail.
-assert.commandFailedWithCode(db.runCommand({
-    aggregate: coll.getName(),
-    pipeline: [
-        {$searchMeta: {/* Not Accessed */}},
-        {$unionWith: {coll: coll.getName(), pipeline: [{$searchMeta: {/* Not Accessed */}}]}}
-    ],
-    cursor: {}
-}),
-                             6080010);
+                             6347901);
 
 // $search within a view use-case with $unionWith.
 const viewSearchQuery = setupSearchQuery("cakes",
@@ -546,6 +702,55 @@ assert.commandFailedWithCode(db.runCommand({
     cursor: {}
 }),
                              40602);
+
+// Verify we fail if $lookup references "$$SEARCH_META" in its let variables, but we don't have
+// "$$SEARCH_META" defined.
+assert.commandFailedWithCode(db.runCommand({
+    aggregate: collBase.getName(),
+    pipeline: [
+        {
+            $lookup: {
+                from: coll.getName(),
+                let: {
+                    // This should be detected and error.
+                    myVar: {$mergeObjects: ["$$SEARCH_META", {distracting: "object"}]},
+                },
+                pipeline: [{$match: {$expr: {$eq: ["$$myVar", "$mySubObj"]}}}],
+                as: "cake_data"
+            }
+        }
+    ],
+    cursor: {}
+}),
+                            6347902);
+
+// Verify we can still succeed if $lookup references "$$SEARCH_META" in its let variables and we DO
+// have "$$SEARCH_META" defined.
+const successfulSearchThenMetaLookup = setupSearchQuery("cakes",
+                                                        1,
+                                                        [
+                                                            {_id: 1, $searchScore: 0.9},
+                                                            {_id: 2, $searchScore: 0.8},
+                                                        ],
+                                                        1);
+assert.commandWorked(db.runCommand({
+    aggregate: coll.getName(),
+    pipeline: [
+        {$search: successfulSearchThenMetaLookup},
+        {
+            $lookup: {
+                from: coll.getName(),
+                let: {
+                    // This should be detected and error.
+                    myVar: {$mergeObjects: ["$$SEARCH_META", {distracting: "object"}]},
+                },
+                pipeline: [{$match: {$expr: {$eq: ["$$myVar", "$mySubObj"]}}}],
+                as: "cake_data"
+            }
+        }
+    ],
+    cursor: {}
+}));
 
 MongoRunner.stopMongod(conn);
 mongotmock.stop();

@@ -145,14 +145,15 @@ const makeLookupPipeline = (collection) => [
                                 $eq: ["$title", "$$local_title"]
                             }
                         }
-                    },
-                    {
-                        $project: {
+                    }, {
+                        $project: collection === unshardedColl ? ({
+                            "_id": 0, "ref_id": "$_id",
+                        }) : ({
                             "_id": 0,
-                            "ref_id": "$_id"
-                        }
-                    }
-                ],
+                            "ref_id": "$_id",
+                            "searchMeta": useShardedFacets ? "$$SEARCH_META" : {"val": {$literal: 1}},
+                        })
+                    }],
                 as: "cake_data"
             }
         }
@@ -196,8 +197,16 @@ if (useShardedFacets === true) {
 
 assert.sameMembers(
     [
-        {"localField": "cakes", "weird": false, "cake_data": [{"ref_id": 1}]},
-        {"localField": "cakes and kale", "weird": true, "cake_data": [{"ref_id": 12}]}
+        {
+            "localField": "cakes",
+            "weird": false,
+            "cake_data": [{"ref_id": 1, "searchMeta": {"val": 1}}]
+        },
+        {
+            "localField": "cakes and kale",
+            "weird": true,
+            "cake_data": [{"ref_id": 12, "searchMeta": {"val": 1}}]
+        }
     ],
     collBase.aggregate(makeLookupPipeline(coll)).toArray());
 
@@ -239,8 +248,16 @@ if (useShardedFacets === true) {
 
 assert.sameMembers(
     [
-        {"localField": "cakes", "weird": false, "cake_data": [{"ref_id": 1}]},
-        {"localField": "cakes and kale", "weird": true, "cake_data": [{"ref_id": 12}]}
+        {
+            "localField": "cakes",
+            "weird": false,
+            "cake_data": [{"ref_id": 1, "searchMeta": {"val": 1}}]
+        },
+        {
+            "localField": "cakes and kale",
+            "weird": true,
+            "cake_data": [{"ref_id": 12, "searchMeta": {"val": 1}}]
+        }
     ],
     shardedCollBase.aggregate(makeLookupPipeline(coll)).toArray());
 

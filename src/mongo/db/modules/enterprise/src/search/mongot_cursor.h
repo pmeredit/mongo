@@ -49,7 +49,8 @@ std::list<boost::intrusive_ptr<DocumentSource>> createInitialSearchPipeline(
  */
 class SearchImplementedHelperFunctions : public SearchDefaultHelperFunctions {
 public:
-    void assertSearchMetaAccessValid(const Pipeline::SourceContainer& pipeline) override final;
+    void assertSearchMetaAccessValid(const Pipeline::SourceContainer& pipeline,
+                                     ExpressionContext* expCtx) override final;
     void injectSearchShardFiltererIfNeeded(Pipeline* pipeline) override final;
     std::unique_ptr<Pipeline, PipelineDeleter> generateMetadataPipelineForSearch(
         OperationContext* opCtx,

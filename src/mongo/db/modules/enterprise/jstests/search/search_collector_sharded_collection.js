@@ -37,6 +37,8 @@ const st = stWithMock.st;
 const mongos = st.s;
 const testDB = mongos.getDB(dbName);
 const testColl = testDB.getCollection(collName);
+const shardedCollBase = testDB.getCollection("baseSharded");
+shardedCollBase.drop();
 
 // Documents that end up on shard0.
 assert.commandWorked(testColl.insert({_id: 1, shardKey: 0, x: "ow"}));
@@ -49,11 +51,17 @@ assert.commandWorked(testColl.insert({_id: 12, shardKey: 100, x: "cow", y: "lore
 assert.commandWorked(testColl.insert({_id: 13, shardKey: 100, x: "brown", y: "ipsum"}));
 assert.commandWorked(testColl.insert({_id: 14, shardKey: 100, x: "cow", y: "lorem ipsum"}));
 
+// non-search collection
+assert.commandWorked(shardedCollBase.insert({"_id": 0, "x": "x1"}));
+assert.commandWorked(shardedCollBase.insert({"_id": 101, "x": "x2"}));
+
 // Shard the test collection, split it at {shardKey: 10}, and move the higher chunk to shard1.
 assert.commandWorked(testColl.createIndex({shardKey: 1}));
 assert.commandWorked(testDB.adminCommand({enableSharding: dbName}));
 st.ensurePrimaryShard(dbName, st.shard0.name);
 st.shardColl(testColl, {shardKey: 1}, {shardKey: 10}, {shardKey: 10 + 1});
+st.ensurePrimaryShard(dbName, st.shard0.shardName);
+st.shardColl(shardedCollBase, {_id: 1}, {_id: 100}, {_id: 101});
 
 const shard0Conn = st.rs0.getPrimary();
 const shard1Conn = st.rs1.getPrimary();
