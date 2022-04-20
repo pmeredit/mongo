@@ -59,6 +59,11 @@ executor::RemoteCommandRequest getRemoteCommandRequestForQuery(
     const boost::optional<int> protocolVersion = boost::none) {
     BSONObjBuilder cmdBob;
     cmdBob.append("search", expCtx->ns.coll());
+    uassert(
+        6584801,
+        str::stream() << "A uuid is required for a search query, but was missing. Got namespace "
+                      << expCtx->ns.toString(),
+        expCtx->uuid);
     expCtx->uuid.get().appendToBuilder(&cmdBob, "collectionUUID");
     cmdBob.append("query", query);
     if (expCtx->explain) {
