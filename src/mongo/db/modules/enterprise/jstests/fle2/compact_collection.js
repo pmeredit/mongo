@@ -14,7 +14,7 @@ const dbName = 'compact_collection_db';
 const collName = 'encrypted';
 const ecocName = 'enxcol_.' + collName + '.ecoc';
 const ecocCompactName = ecocName + '.compact';
-const ecocExistsAfterCompact = !isMongos(db);
+const ecocExistsAfterCompact = false;
 
 const sampleEncryptedFields = {
     fields: [

@@ -25,7 +25,7 @@ function insertInitialTestData(client, coll) {
     client.assertEncryptedCollectionCounts(coll.getName(), 32, 32, 0, 32);
 }
 
-function runTest(conn, primaryConn, isMongos) {
+function runTest(conn, primaryConn) {
     const dbName = 'compact_collection_db';
     const collName = 'compact_stats';
     let db = conn.getDB(dbName);
@@ -63,7 +63,7 @@ function runTest(conn, primaryConn, isMongos) {
         assert.gte(stats1.esc.read, NumberLong(51));
 
         client.assertEncryptedCollectionCounts(collName, 32, 6, 0, 0);
-        client.assertStateCollectionsAfterCompact(collName, !isMongos);
+        client.assertStateCollectionsAfterCompact(collName, false /* ecocExists */);
 
         let serverStatusFle = primaryConn.getDB("admin").serverStatus().fle.compactStats;
         assert.eq(serverStatusFle.ecoc.read, NumberLong(32));
@@ -104,7 +104,7 @@ function runTest(conn, primaryConn, isMongos) {
         });
 
         client.assertEncryptedCollectionCounts(collName, 42, 6, 0, 0);
-        client.assertStateCollectionsAfterCompact(collName, !isMongos);
+        client.assertStateCollectionsAfterCompact(collName, false /* ecocExists */);
 
         serverStatusFle = primaryConn.getDB("admin").serverStatus().fle.compactStats;
         assert.eq(serverStatusFle.ecoc.read, NumberLong(42));
@@ -127,7 +127,7 @@ jsTestLog("ReplicaSet: Testing fle2 compaction stats");
 
     rst.initiate();
     rst.awaitReplication();
-    runTest(rst.getPrimary(), rst.getPrimary(), false);
+    runTest(rst.getPrimary(), rst.getPrimary());
     rst.stopSet();
 }
 
@@ -135,7 +135,7 @@ jsTestLog("Sharding: Testing fle2 compaction stats");
 {
     const st = new ShardingTest({shards: 1, mongos: 1, config: 1});
 
-    runTest(st.s, st.shard0, true);
+    runTest(st.s, st.shard0);
 
     st.stop();
 }
