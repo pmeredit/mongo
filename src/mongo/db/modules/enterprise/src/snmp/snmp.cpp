@@ -753,7 +753,7 @@ public:
                 c64.high = val64 >> 32;
 
                 return snmp_set_var_typed_value(
-                    var, ASN_COUNTER64, reinterpret_cast<u_char*>(&c64), sizeof(val64));
+                    var, ASN_COUNTER64, reinterpret_cast<u_char*>(&c64), sizeof(c64));
             }
             case ASN_OCTET_STR: {
                 int len = 0;
