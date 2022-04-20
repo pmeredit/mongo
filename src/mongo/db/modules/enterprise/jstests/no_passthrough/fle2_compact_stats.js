@@ -49,18 +49,22 @@ function runTest(conn, primaryConn) {
         // Compact each distinct value where no null doc is present yet
         let stats1 = assert.commandWorked(coll.compact()).stats;
         print(tojson(stats1));
+        // each ecoc entry is read once
         assert.eq(stats1.ecoc.read, NumberLong(32));
         assert.eq(stats1.ecoc.deleted, NumberLong(0));
+        // (1 null doc read attempt + 1 ipos read attempt) * 6
         assert.eq(stats1.ecc.read, NumberLong(12));
         assert.eq(stats1.ecc.inserted, NumberLong(0));
         assert.eq(stats1.ecc.updated, NumberLong(0));
         assert.eq(stats1.ecc.deleted, NumberLong(0));
+        // (1 compaction placeholder insert + 1 null doc insert) * 6
         assert.eq(stats1.esc.inserted, NumberLong(12));
         assert.eq(stats1.esc.updated, NumberLong(0));
+        // 32 entries deleted + 6 placeholders deleted
         assert.eq(stats1.esc.deleted, NumberLong(38));
         // the read count varies based on the exact way tags are generated because the keys are
         // non-deterministic
-        assert.gte(stats1.esc.read, NumberLong(51));
+        assert.gte(stats1.esc.read, NumberLong(50));
 
         client.assertEncryptedCollectionCounts(collName, 32, 6, 0, 0);
         client.assertStateCollectionsAfterCompact(collName, false /* ecocExists */);
@@ -75,7 +79,7 @@ function runTest(conn, primaryConn) {
         assert.eq(serverStatusFle.esc.inserted, NumberLong(12));
         assert.eq(serverStatusFle.esc.updated, NumberLong(0));
         assert.eq(serverStatusFle.esc.deleted, NumberLong(38));
-        assert.gte(serverStatusFle.esc.read, NumberLong(51));
+        assert.gte(serverStatusFle.esc.read, NumberLong(50));
 
         // Insert more non-unique values for "first"
         for (let i = 1; i <= 5; i++) {
