@@ -61,8 +61,10 @@ protected:
 // are correctly tracked and checked in BackupCursorService.
 TEST_F(DocumentSourceBackupCursorTest, TestFilenameCheck) {
     // Set up MockMongoInterface.
-    auto expCtx = new ExpressionContext(
-        _opCtx.get(), nullptr, NamespaceString::makeCollectionlessAggregateNSS("unittest"));
+    auto expCtx = new ExpressionContext(_opCtx.get(),
+                                        nullptr,
+                                        NamespaceString::makeCollectionlessAggregateNSS(
+                                            TenantDatabaseName(boost::none, "unittest")));
     expCtx->mongoProcessInterface = std::make_unique<MockMongoInterface>();
 
     // Set up the $backupCursor stage.

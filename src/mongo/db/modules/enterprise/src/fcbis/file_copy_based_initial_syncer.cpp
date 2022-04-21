@@ -764,7 +764,8 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_openBackupCursor(
         5782307, 2, "Trying to open backup cursor on sync source.", "SyncSrc"_attr = _syncSource);
     const auto cmdObj = [this, self = shared_from_this()] {
         AggregateCommandRequest aggRequest(
-            NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
+            NamespaceString::makeCollectionlessAggregateNSS(
+                TenantDatabaseName(boost::none, NamespaceString::kAdminDb)),
             {BSON("$backupCursor" << BSONObj())});
         // We must set a writeConcern on internal commands.
         aggRequest.setWriteConcern(WriteConcernOptions());
@@ -889,7 +890,8 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_extendBackupCursor(
                 "extendTo"_attr = _syncingFilesState.lastAppliedOpTimeOnSyncSrc);
     const auto cmdObj = [this, self = shared_from_this()] {
         AggregateCommandRequest aggRequest(
-            NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb),
+            NamespaceString::makeCollectionlessAggregateNSS(
+                TenantDatabaseName(boost::none, NamespaceString::kAdminDb)),
             {BSON("$backupCursorExtend"
                   << BSON("backupId" << _syncingFilesState.backupId.get() << "timestamp"
                                      << _syncingFilesState.lastAppliedOpTimeOnSyncSrc))});
@@ -1443,8 +1445,8 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_getListOfOldFilesToBeDeleted()
     // Files should be already cloned in '.initialSync' directory.
     auto opCtx = cc().makeOperationContext();
     DBDirectClient client(opCtx.get());
-    NamespaceString nss =
-        NamespaceString::makeCollectionlessAggregateNSS(NamespaceString::kAdminDb.toString());
+    NamespaceString nss = NamespaceString::makeCollectionlessAggregateNSS(
+        TenantDatabaseName(boost::none, NamespaceString::kAdminDb));
 
     AggregateCommandRequest aggRequest(nss, {BSON("$backupCursor" << BSONObj())});
     aggRequest.setWriteConcern(WriteConcernOptions());

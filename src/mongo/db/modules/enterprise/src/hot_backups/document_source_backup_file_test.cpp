@@ -120,8 +120,11 @@ protected:
 
 const boost::intrusive_ptr<ExpressionContext> createExpressionContext(
     const ServiceContext::UniqueOperationContext& opCtx) {
-    auto expCtx = make_intrusive<ExpressionContext>(
-        opCtx.get(), nullptr, NamespaceString::makeCollectionlessAggregateNSS("unittest"));
+    auto expCtx =
+        make_intrusive<ExpressionContext>(opCtx.get(),
+                                          nullptr,
+                                          NamespaceString::makeCollectionlessAggregateNSS(
+                                              TenantDatabaseName(boost::none, "unittest")));
     expCtx->mongoProcessInterface = std::make_unique<MockMongoInterface>();
     return expCtx;
 }
