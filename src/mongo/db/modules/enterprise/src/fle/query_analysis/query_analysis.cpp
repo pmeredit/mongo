@@ -429,6 +429,7 @@ PlaceHolderResult addPlaceHoldersForAggregate(
     std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
     // Parse the command to an AggregateCommandRequest to verify that there no unknown fields.
     auto request = aggregation_request_helper::parseFromBSON(
+        expCtx->opCtx,
         dbName,
         cmdObj,
         boost::none,

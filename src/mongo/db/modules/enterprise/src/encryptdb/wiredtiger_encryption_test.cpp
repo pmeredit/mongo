@@ -12,7 +12,6 @@
 #include "mongo/base/init.h"
 #include "mongo/base/string_data.h"
 #include "mongo/crypto/symmetric_crypto.h"
-#include "mongo/db/operation_context_noop.h"
 #include "mongo/db/service_context_test_fixture.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_kv_engine.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_recovery_unit.h"
@@ -73,21 +72,11 @@ public:
           _connection(dbPath, cipherName),
           _sessionCache(_connection.getConnection(), _connection.getClockSource()) {}
 
-    WiredTigerSessionCache* getSessionCache() {
-        return &_sessionCache;
-    }
-
-    OperationContext* newOperationContext() {
-        return new OperationContextNoop(
-            new WiredTigerRecoveryUnit(getSessionCache(), &_oplogManager));
-    }
-
-    void writeData() {
+    void writeData(OperationContext* opCtx) {
         WiredTigerRecoveryUnit* ru = new WiredTigerRecoveryUnit(&_sessionCache, &_oplogManager);
-        OperationContextNoop opCtx(ru);
         WiredTigerSession* mongoSession = ru->getSession();
 
-        WriteUnitOfWork uow(&opCtx);
+        WriteUnitOfWork uow(opCtx);
         WT_SESSION* session = mongoSession->getSession();
 
         /*
@@ -180,7 +169,8 @@ TEST_F(ServiceContextTest, ReadWriteDataCBC) {
     unittest::TempDir dbPath("cbc_wt_test");
     {
         WiredTigerUtilHarnessHelper helper(dbPath.path(), crypto::aes256CBCName);
-        helper.writeData();
+        auto opCtx = makeOperationContext();
+        helper.writeData(opCtx.get());
     }
     {
         WiredTigerUtilHarnessHelper helper(dbPath.path(), crypto::aes256CBCName);
@@ -198,7 +188,8 @@ TEST_F(ServiceContextTest, ReadWriteDataGCM) {
     unittest::TempDir dbPath("gcm_wt_test");
     {
         WiredTigerUtilHarnessHelper helper(dbPath.path(), crypto::aes256GCMName);
-        helper.writeData();
+        auto opCtx = makeOperationContext();
+        helper.writeData(opCtx.get());
     }
     {
         WiredTigerUtilHarnessHelper helper(dbPath.path(), crypto::aes256GCMName);

@@ -86,8 +86,8 @@ let conn = MongoRunner.runMongod({
 });
 assert(conn);
 
-// Read-only mode is not enabled due to an in-progress index build.
-assert(checkLog.checkContainsWithCountJson(conn, 21558, {}, /*expectedCount=*/0));
+// Read-only mode is enabled due to '--recoverFromOplogAsStandalone' parameter.
+checkLog.containsJson(conn, 21558);
 
 // Oplog recovery is done at this point. Resume the index build.
 db = conn.getDB(dbName);

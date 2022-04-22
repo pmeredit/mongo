@@ -47,7 +47,6 @@ public:
         const bool durable = false;
         const bool ephemeral = true;
         const bool repair = false;
-        const bool readOnly = false;
         auto kv = std::make_unique<WiredTigerKVEngine>(
             getCanonicalName().toString(),
             dbpath.string(),
@@ -59,8 +58,7 @@ public:
             0,
             durable,
             ephemeral,
-            repair,
-            readOnly);
+            repair);
         kv->setRecordStoreExtraOptions(inMemoryGlobalOptions.collectionConfig);
         kv->setSortedDataInterfaceExtraOptions(inMemoryGlobalOptions.indexConfig);
         // Intentionally leaked.

@@ -43,10 +43,10 @@ public:
                                           const StorageEngineLockFile* lockFile) const override {
         uassert(ErrorCodes::InvalidOptions,
                 "Queryable restores must be started with --queryableBackupMode",
-                params.readOnly);
+                params.queryableBackupMode);
 
         uassert(ErrorCodes::InvalidOptions,
-                "Cannot start queryable_wt without setting --queryableBackuApiUri and "
+                "Cannot start queryable_wt without setting --queryableBackupApiUri and "
                 "--queryableSnapshotId",
                 queryable::queryableGlobalOptions.getApiUri() &&
                     queryable::queryableGlobalOptions.getSnapshotId());
@@ -92,8 +92,7 @@ public:
                                                  wiredTigerGlobalOptions.getMaxHistoryFileSizeMB(),
                                                  params.dur,
                                                  kEphemeral,
-                                                 params.repair,
-                                                 params.readOnly);
+                                                 params.repair);
         kv->setRecordStoreExtraOptions(wiredTigerGlobalOptions.collectionConfig);
         kv->setSortedDataInterfaceExtraOptions(wiredTigerGlobalOptions.indexConfig);
         // Intentionally leaked.
@@ -143,7 +142,7 @@ public:
         return builder.obj();
     }
 
-    bool supportsReadOnly() const override {
+    bool supportsQueryableBackupMode() const override {
         return true;
     }
 };

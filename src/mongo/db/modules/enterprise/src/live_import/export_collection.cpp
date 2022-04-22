@@ -45,9 +45,8 @@ void appendStorageMetadata(OperationContext* opCtx, const std::string& ident, BS
 }  // namespace
 
 void exportCollection(OperationContext* opCtx, const NamespaceString& nss, BSONObjBuilder* out) {
-    uassert(5088600,
-            "Exporting a collection is only permitted in read-only mode.",
-            storageGlobalParams.readOnly);
+    uassert(
+        5088600, "Exporting a collection is only permitted in read-only mode.", opCtx->readOnly());
 
     // Allow fetching views to provide a well defined error below.
     AutoGetCollectionForRead autoCollection(opCtx, nss, AutoGetCollectionViewMode::kViewsPermitted);
