@@ -33,8 +33,8 @@
 const healthCollName = "system.healthlog";
 const metadataDbName = "config";
 const rangeCollName = "unhealthyRanges";
-const saveCollPrefix = "dbcheck.";
-const backupCollPrefix = "dbcheck_backup.";
+const saveCollPrefix = "dbcheck_";
+const backupCollPrefix = "dbcheck_backup_";
 var backup;
 
 function getLeastId(docs) {
@@ -280,7 +280,9 @@ function findBadRanges(dbToRepair, nodelist) {
             let doc = cursor.next();
             if (doc.data && doc.data.success) {
                 try {
-                    let [dbName, collName] = doc.namespace.split('.', 2);
+                    let i = doc.namespace.indexOf(".");
+                    let [dbName, collName] =
+                        [doc.namespace.slice(0, i), doc.namespace.slice(i + 1)];
                     let res = rangeColl.insertOne({
                         _id: {
                             db: dbName,
