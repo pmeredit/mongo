@@ -36,7 +36,8 @@ server_parameters:
   ldapConnectionPoolMaximumConnectionsPerHost:
     description: >
         The maximum number of connections to keep open to each LDAP host
-    default: 2
+    default:
+      expr: std::numeric_limits<int>::max()
     set_at: startup
     cpp_vartype: int
     cpp_varname: ldapConnectionPoolMaximumConnectionsPerHost
@@ -44,8 +45,7 @@ server_parameters:
   ldapConnectionPoolMaximumConnectionsInProgressPerHost:
     description: >
         The maximum number of in-progress connect operations (to prevent connection storms)
-    default:
-      expr: std::numeric_limits<int>::max()
+    default: 2
     set_at: startup
     cpp_vartype: int
     cpp_varname: ldapConnectionPoolMaximumConnectionsInProgressPerHost
