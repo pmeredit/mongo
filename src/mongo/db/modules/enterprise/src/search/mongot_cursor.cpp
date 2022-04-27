@@ -13,6 +13,7 @@
 #include "mongo/db/pipeline/document_source_set_variable_from_subpipeline.h"
 #include "mongo/db/pipeline/document_source_union_with.h"
 #include "mongo/db/pipeline/pipeline.h"
+#include "mongo/db/pipeline/process_interface/stub_mongo_process_interface.h"
 #include "mongo/db/pipeline/search_helper.h"
 #include "mongo/db/pipeline/sharded_agg_helpers.h"
 #include "mongo/db/s/collection_sharding_state.h"
@@ -393,7 +394,9 @@ std::list<boost::intrusive_ptr<DocumentSource>> createInitialSearchPipeline(
             str::stream() << "$search/$searchMeta value must be an object. Found: "
                           << typeName(elem.type()),
             elem.type() == BSONType::Object);
-
+    uassert(6600901,
+            "Running search command in non-allowed context (update pipeline)",
+            !expCtx->isParsingPipelineUpdate);
     if (!expCtx->mongoProcessInterface->inShardedEnvironment(expCtx->opCtx) ||
         MONGO_unlikely(DocumentSourceInternalSearchMongotRemote::skipSearchStageRemoteSetup()) ||
         !feature_flags::gFeatureFlagSearchShardedFacets.isEnabled(

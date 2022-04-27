@@ -71,6 +71,11 @@ assert.commandFailedWithCode(testDB.runCommand({
 }),
                              40602);
 
+// $search is not allowed in an update pipeline. Error code matters on version.
+assert.commandFailedWithCode(
+    testDB.runCommand({"findandmodify": collName, "update": [{"$search": {}}]}),
+    [6600901, ErrorCodes.InvalidOptions]);
+
 // Make sure the server is still up.
 assert.commandWorked(testDB.runCommand("ping"));
 
