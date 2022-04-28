@@ -82,19 +82,30 @@ function setupSearchQuery(term, times, batch, searchMetaValue) {
     return searchQuery;
 }
 
-const lookupSearchQuery = setupSearchQuery("cakes",
-                                           2,
-                                           [
-                                               {_id: 1, $searchScore: 0.9},
-                                               {_id: 2, $searchScore: 0.8},
-                                               {_id: 5, $searchScore: 0.7},
-                                               {_id: 6, $searchScore: 0.6},
-                                               {_id: 8, $searchScore: 0.5}
-                                           ],
-                                           1);
-
-const makeLookupPipeline = (fromColl, stage) =>
-        [
+const makeLookupPipeline = (fromColl, stage, localField) => {
+    if (localField) {
+        return [
+        {$project: {"_id": 0}},
+        {
+            $lookup: {
+                from: fromColl,
+                localField: "localField",
+                foreignField: "title",
+                as: "cake_data",
+                pipeline: [
+                    stage,
+                    {
+                        $project: {
+                            "_id": 0,
+                            "ref_id": "$_id"
+                        }
+                    }
+                ]
+            }
+        }
+    ];
+    } else {
+        return [
             {$project: {"_id": 0}},
             {
                 $lookup: {
@@ -120,18 +131,37 @@ const makeLookupPipeline = (fromColl, stage) =>
                 }
             }
         ];
+    }
+};
 
-const makeLookupSearchPipeline = (fromColl) =>
-    makeLookupPipeline(fromColl, {$search: lookupSearchQuery});
+const makeLookupSearchPipeline = (fromColl, searchQuery, localField) =>
+    makeLookupPipeline(fromColl, {$search: searchQuery}, localField);
 
 // Perform a $search query with $lookup.
-const lookupCursor = collBase.aggregate(makeLookupSearchPipeline(coll.getName()));
+function searchWithLookup(localField) {
+    const lookupSearchQuery = setupSearchQuery("cakes",
+                                               2,
+                                               [
+                                                   {_id: 1, $searchScore: 0.9},
+                                                   {_id: 2, $searchScore: 0.8},
+                                                   {_id: 5, $searchScore: 0.7},
+                                                   {_id: 6, $searchScore: 0.6},
+                                                   {_id: 8, $searchScore: 0.5}
+                                               ],
+                                               1);
 
-const lookupExpected = [
-    {"localField": "cakes", "weird": false, "cake_data": [{"ref_id": 1}]},
-    {"localField": "cakes and kale", "weird": true, "cake_data": [{"ref_id": 8}]}
-];
-assert.sameMembers(lookupExpected, lookupCursor.toArray());
+    const lookupCursor =
+        collBase.aggregate(makeLookupSearchPipeline(coll.getName(), lookupSearchQuery, localField));
+
+    const lookupExpected = [
+        {"localField": "cakes", "weird": false, "cake_data": [{"ref_id": 1}]},
+        {"localField": "cakes and kale", "weird": true, "cake_data": [{"ref_id": 8}]}
+    ];
+    assert.sameMembers(lookupExpected, lookupCursor.toArray());
+}
+
+searchWithLookup(false);
+searchWithLookup(true);
 
 const unionSearchQuery = setupSearchQuery("cakes",
                                           1,
@@ -569,7 +599,7 @@ const nestedLookupQuery = setupSearchQuery("cakes",
                                            ],
                                            1);
 
-const nestedInternalPipeline = makeLookupSearchPipeline(coll.getName());
+const nestedInternalPipeline = makeLookupSearchPipeline(coll.getName(), nestedLookupQuery);
 nestedInternalPipeline.push({$unwind: "$cake_data"},
                             {$match: {$expr: {$eq: ["$cake_data.ref_id", "$$local_ref_id"]}}});
 const nestedLookupPipeline = [
@@ -608,7 +638,7 @@ assert.commandWorked(db.createView(view1.getName(), coll.getName(), [
 
 assert.commandFailedWithCode(db.runCommand({
     aggregate: collBase.getName(),
-    pipeline: makeLookupSearchPipeline(view1.getName()),
+    pipeline: makeLookupSearchPipeline(view1.getName(), {query: "cakes", path: "title"}),
     cursor: {}
 }),
                              40602);
@@ -632,7 +662,8 @@ assert.sameMembers(
         {"localField": "cakes", "weird": false, "cake_data": [{"ref_id": 1}]},
         {"localField": "cakes and kale", "weird": true, "cake_data": [{"ref_id": 8}]}
     ],
-    collBase.aggregate(makeLookupSearchPipeline(view1.getName())).toArray());
+    collBase.aggregate(makeLookupSearchPipeline(view1.getName(), {query: "cakes", path: "title"}))
+        .toArray());
 
 // $unionWith against non-trivial view($search) fails.
 view1.drop();
@@ -681,28 +712,6 @@ assert.sameMembers(
         ])
         .toArray());
 
-// Verify localField/foreignField combination fails in $lookup with $search.
-assert.commandFailedWithCode(db.runCommand({
-    aggregate: collBase.getName(),
-    pipeline: [
-        {
-            $lookup: {
-                from: coll.getName(),
-                localField: "localField",
-                foreignField: "title",
-                pipeline: [
-                    {
-                        $search: lookupSearchQuery
-                    }
-                ],
-                as: "cake_data"
-            }
-        }
-    ],
-    cursor: {}
-}),
-                             40602);
-
 // Verify we fail if $lookup references "$$SEARCH_META" in its let variables, but we don't have
 // "$$SEARCH_META" defined.
 assert.commandFailedWithCode(db.runCommand({
@@ -724,7 +733,7 @@ assert.commandFailedWithCode(db.runCommand({
 }),
                             6347902);
 
-// Verify we can still succeed if $lookup references "$$SEARCH_META" in its let variables and we DO
+// Verify we can still succeed if $lookup references "$$SEARCH_META" in its let variables and we
 // have "$$SEARCH_META" defined.
 const successfulSearchThenMetaLookup = setupSearchQuery("cakes",
                                                         1,
