@@ -304,6 +304,9 @@ public:
     void visit(const ExpressionIsArray*) {
         _tracker.enterEvaluateOrCompare();
     }
+    void visit(const ExpressionInternalFindAllValuesAtPath*) {
+        _tracker.enterEvaluateOrCompare();
+    }
     void visit(const ExpressionRound*) {
         _tracker.enterEvaluateOrCompare();
     }
@@ -655,6 +658,7 @@ public:
     void visit(const ExpressionSortArray*) {}
     void visit(const ExpressionSlice*) {}
     void visit(const ExpressionIsArray*) {}
+    void visit(const ExpressionInternalFindAllValuesAtPath*) {}
     void visit(const ExpressionRound*) {}
     void visit(const ExpressionSplit*) {}
     void visit(const ExpressionSqrt*) {}
@@ -959,6 +963,9 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionIsArray*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(const ExpressionInternalFindAllValuesAtPath*) {
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionRound*) {

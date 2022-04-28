@@ -845,6 +845,9 @@ private:
     void visit(ExpressionIsArray*) final {
         ensureNotEncryptedEnterEval("an array type determination", subtreeStack);
     }
+    void visit(ExpressionInternalFindAllValuesAtPath*) final {
+        ensureNotEncryptedEnterEval("an array deep unwinding operation", subtreeStack);
+    }
     void visit(ExpressionRound*) final {
         ensureNotEncryptedEnterEval("a rounding calculation", subtreeStack);
     }
@@ -1153,6 +1156,7 @@ private:
     void visit(ExpressionSortArray*) final {}
     void visit(ExpressionSlice*) final {}
     void visit(ExpressionIsArray*) final {}
+    void visit(ExpressionInternalFindAllValuesAtPath*) final {}
     void visit(ExpressionRound*) final {}
     void visit(ExpressionSplit*) final {}
     void visit(ExpressionSqrt*) final {}
@@ -1489,6 +1493,9 @@ private:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionIsArray*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionInternalFindAllValuesAtPath*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionRound*) final {
