@@ -73,8 +73,8 @@ public:
           _sessionCache(_connection.getConnection(), _connection.getClockSource()) {}
 
     void writeData(OperationContext* opCtx) {
-        WiredTigerRecoveryUnit* ru = new WiredTigerRecoveryUnit(&_sessionCache, &_oplogManager);
-        WiredTigerSession* mongoSession = ru->getSession();
+        WiredTigerRecoveryUnit ru = WiredTigerRecoveryUnit(&_sessionCache, &_oplogManager);
+        WiredTigerSession* mongoSession = ru.getSession();
 
         WriteUnitOfWork uow(opCtx);
         WT_SESSION* session = mongoSession->getSession();
