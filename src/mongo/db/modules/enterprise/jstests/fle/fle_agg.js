@@ -214,20 +214,20 @@ assert.commandFailedWithCode(testDB.runCommand(command), 40324);
 
 // Test that all collection-less aggregations result in a failure.
 command = buildCollectionlessAggregate([{$changeStream: {}}]);
-assert.commandFailedWithCode(testDB.runCommand(command), 6411900);
+assert.commandFailedWithCode(testDB.runCommand(command), [31011, 6411900]);
 command = buildCollectionlessAggregate([{$listLocalSessions: {}}]);
-assert.commandFailedWithCode(testDB.runCommand(command), 6411900);
+assert.commandFailedWithCode(testDB.runCommand(command), [31106, 6411900]);
 command = buildCollectionlessAggregate([{$listLocalSessions: {allUsers: true}}]);
-assert.commandFailedWithCode(testDB.runCommand(command), 6411900);
+assert.commandFailedWithCode(testDB.runCommand(command), [31106, 6411900]);
 command = buildCollectionlessAggregate([{$listSessions: {}}]);
-assert.commandFailedWithCode(testDB.runCommand(command), 6411900);
+assert.commandFailedWithCode(testDB.runCommand(command), [31106, 6411900]);
 command = buildCollectionlessAggregate([{$listSessions: {allUsers: true}}]);
-assert.commandFailedWithCode(testDB.runCommand(command), 6411900);
+assert.commandFailedWithCode(testDB.runCommand(command), [31106, 6411900]);
 
 // CurrentOp must be run against admin db.
 assert.commandFailedWithCode(
     testDB.getSiblingDB("admin").runCommand(buildCollectionlessAggregate([{$currentOp: {}}])),
-    6411900);
+    [31011, 6411900]);
 
 // Invalid pipelines correctly fail to parse.
 assert.commandFailedWithCode(testDB.runCommand(buildAggregate([{$unknownStage: {}}], {})), 40324);
