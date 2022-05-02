@@ -2,7 +2,10 @@
  * Test encrypted find and modify works under a user txn.
  *
  * @tags: [
- * requires_fcv_60
+ * requires_fcv_60,
+ * does_not_support_causal_consistency,
+ * assumes_read_concern_unchanged,
+ * assumes_unsharded_collection
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
@@ -63,7 +66,7 @@ assert.commandWorked(sessionColl.runCommand({
 }));
 
 // In the TXN the counts are right
-client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 6);
+client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 2, 4, 2, 6);
 
 assert.commandWorked(session.abortTransaction_forTesting());
 

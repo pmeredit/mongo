@@ -3,6 +3,11 @@
  *
  * @tags: [
  * requires_fcv_60
+ * assumes_unsharded_collection,
+ * requires_non_retryable_commands,
+ * assumes_read_preference_unchanged,
+ * requires_capped,
+ * assumes_unsharded_collection,
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");

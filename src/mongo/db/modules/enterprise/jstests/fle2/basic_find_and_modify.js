@@ -2,7 +2,8 @@
  * Test encrypted find and modify works
  *
  * @tags: [
- * requires_fcv_60
+ * requires_fcv_60,
+ * assumes_unsharded_collection
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
@@ -154,24 +155,26 @@ client.assertEncryptedCollectionDocuments("basic", [
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 // Add a duplicate index entry
-assert.commandWorked(dbTest.basic.createIndex({"middle": 1}, {unique: true}));
+if (!client.useImplicitSharding) {
+    assert.commandWorked(dbTest.basic.createIndex({"middle": 1}, {unique: true}));
 
-res = assert.commandFailed(edb.basic.runCommand({
-    findAndModify: edb.basic.getName(),
-    query: {"last": "marco"},
-    update: {$set: {"middle": "markus"}}
-}));
-print(tojson(res));
+    res = assert.commandFailed(edb.basic.runCommand({
+        findAndModify: edb.basic.getName(),
+        query: {"last": "marco"},
+        update: {$set: {"middle": "markus"}}
+    }));
+    print(tojson(res));
 
-client.assertEncryptedCollectionCounts("basic", 3, 6, 3, 9);
+    client.assertEncryptedCollectionCounts("basic", 3, 6, 3, 9);
 
-/////////////////////////////////////////////////////////////////////////////////////////////////////
-// Null Update
-res = assert.commandWorked(edb.basic.runCommand({
-    findAndModify: edb.basic.getName(),
-    query: {"last": "marky"},
-    update: {$set: {"first": "matthew"}}
-}));
+    /////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Null Update
+    res = assert.commandWorked(edb.basic.runCommand({
+        findAndModify: edb.basic.getName(),
+        query: {"last": "marky"},
+        update: {$set: {"first": "matthew"}}
+    }));
 
-client.assertEncryptedCollectionCounts("basic", 3, 7, 3, 10);
+    client.assertEncryptedCollectionCounts("basic", 3, 7, 3, 10);
+}
 }());

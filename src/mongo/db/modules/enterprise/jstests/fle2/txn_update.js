@@ -2,7 +2,10 @@
  * Test encrypted update works under a user txn.
  *
  * @tags: [
- * requires_fcv_60
+ * requires_fcv_60,
+ * does_not_support_causal_consistency,
+ * assumes_read_concern_unchanged,
+ * assumes_unsharded_collection,
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
@@ -54,7 +57,7 @@ session.startTransaction();
 assert.commandWorked(sessionColl.updateOne({"last": "Marco"}, {$set: {"first": "Matthew"}}));
 
 // In the TXN the counts are right
-client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 6);
+client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 2, 4, 2, 6);
 
 assert.commandWorked(session.abortTransaction_forTesting());
 
@@ -66,7 +69,7 @@ client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 4);
 session.startTransaction();
 assert.commandWorked(sessionColl.updateOne({"first": "Mark"}, {$set: {"first": "Matthew"}}));
 // In the TXN the counts are right
-client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 6);
+client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 2, 4, 2, 6);
 assert.commandWorked(session.abortTransaction_forTesting());
 // Then they revert after it is aborted
 client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 4);
@@ -74,7 +77,7 @@ client.assertEncryptedCollectionCounts("basic", 2, 3, 1, 4);
 // Verify we can update documents while querying by an encrypted field and commit the transaction.
 session.startTransaction();
 assert.commandWorked(sessionColl.updateOne({"first": "Mark"}, {$set: {"first": "Matthew"}}));
-client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 6);
+client.assertEncryptedCollectionCountsByObject(sessionDB, "basic", 2, 4, 2, 6);
 session.commitTransaction();
 // Counts should persist outside the transaction.
 client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 6);

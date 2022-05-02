@@ -43,29 +43,31 @@ client.assertEncryptedCollectionDocuments("basic", [
     {"_id": 2, "first": "Mark", "last": "Marcus", "middle": "markus"},
 ]);
 
-//////////////////////////////////////////////////////////////////////////////////////////////////////
-// Remove a document by collation
-assert.commandWorked(edb.basic.runCommand({
-    findAndModify: edb.basic.getName(),
-    query: {"last": "marcus"},
-    remove: true,
-    collation: {locale: 'en_US', strength: 2}
-}));
-
-client.assertEncryptedCollectionCounts("basic", 0, 2, 2, 4);
-
-//////////////////////////////////////////////////////////////////////////////////////////////////////
-// FAIL: Remove and update the encrypted field
-
-// The FLE sharding code throws this directly. In replica sets, the regular mongod code throws this
-// with a different error code
-if (isFLE2ShardingEnabled()) {
-    assert.commandFailedWithCode(edb.basic.runCommand({
+if (!client.useImplicitSharding) {
+    //////////////////////////////////////////////////////////////////////////////////////////////////////
+    // Remove a document by collation
+    assert.commandWorked(edb.basic.runCommand({
         findAndModify: edb.basic.getName(),
-        query: {"last": "marco"},
+        query: {"last": "marcus"},
         remove: true,
-        update: {$set: {"first": "luke"}}
-    }),
-                                 6371401);
+        collation: {locale: 'en_US', strength: 2}
+    }));
+
+    client.assertEncryptedCollectionCounts("basic", 0, 2, 2, 4);
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////////
+    // FAIL: Remove and update the encrypted field
+
+    // The FLE sharding code throws this directly. In replica sets, the regular mongod code throws
+    // this with a different error code
+    if (isMongos(db)) {
+        assert.commandFailedWithCode(edb.basic.runCommand({
+            findAndModify: edb.basic.getName(),
+            query: {"last": "marco"},
+            remove: true,
+            update: {$set: {"first": "luke"}}
+        }),
+                                     6371401);
+    }
 }
 }());

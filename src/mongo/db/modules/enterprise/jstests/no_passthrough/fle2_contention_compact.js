@@ -104,7 +104,7 @@ function runTest(conn, primaryConn) {
         const bgCompact = startParallelShell(bgCompactFunc, conn.port);
         admin.runCommand(
             {waitForFailPoint: failpoint, timesEntered: hitCount + 1, maxTimeMS: 10000});
-        client.assertEncryptedCollectionCounts(collName, 10, 11, 0, 0);
+        client.assertEncryptedCollectionCounts(collName, 10, 10, 0, 0);
 
         // Start an insert which will keep retrying and fail due to write conflict
         const res = coll.insert({_id: 11, "first": "mark"});
@@ -142,11 +142,11 @@ function runTest(conn, primaryConn) {
             {waitForFailPoint: failpoint, timesEntered: hitCount + 1, maxTimeMS: 10000});
 
         // ESC now has the placeholder at this point
-        client.assertEncryptedCollectionCounts(collName, 5, 11, 5, 0);
+        client.assertEncryptedCollectionCounts(collName, 5, 10, 5, 0);
 
         // Delete another entry, which inserts an ECC entry in the next position: 6
         assert.commandWorked(coll.deleteOne({_id: 6}));
-        client.assertEncryptedCollectionCounts(collName, 4, 11, 6, 1);
+        client.assertEncryptedCollectionCounts(collName, 4, 10, 6, 1);
 
         // Unblock the compact
         assert.commandWorked(admin.runCommand({configureFailPoint: failpoint, mode: 'off'}));
@@ -180,7 +180,7 @@ function runTest(conn, primaryConn) {
         admin.runCommand(
             {waitForFailPoint: failpoint, timesEntered: hitCount + 1, maxTimeMS: 10000});
         // ESC and ECC now have placeholders at this point
-        client.assertEncryptedCollectionCounts(collName, 5, 11, 6, 0);
+        client.assertEncryptedCollectionCounts(collName, 5, 10, 5, 0);
 
         // Start delete which will keep retrying and fail due to write conflict
         const res = edb.runCommand({delete: collName, deletes: [{q: {_id: 6}, limit: 1}]});

@@ -2,7 +2,8 @@
  * Test encrypted find and modify works with array filters
  *
  * @tags: [
- * requires_fcv_60
+ * requires_fcv_60,
+ * assumes_unsharded_collection
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");

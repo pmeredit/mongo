@@ -2,7 +2,8 @@
  * Test CRUD operations work on sharded collections in a transaction.
  *
  * @tags: [
- * requires_fcv_60
+ * requires_fcv_60,
+ * assumes_unsharded_collection,
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
@@ -11,7 +12,7 @@ load("jstests/concurrency/fsm_workload_helpers/server_types.js");
 (function() {
 'use strict';
 
-if (!isFLE2ShardingEnabled()) {
+if (!isMongos(db)) {
     return;
 }
 

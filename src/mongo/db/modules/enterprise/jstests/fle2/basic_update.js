@@ -2,9 +2,11 @@
  * Test encrypted update works
  *
  * @tags: [
- * requires_fcv_60
+ * requires_fcv_60,
+ * requires_non_retryable_writes
  * ]
  */
+
 load("jstests/fle2/libs/encrypted_client_util.js");
 
 (function() {
@@ -59,28 +61,20 @@ client.assertOneEncryptedDocumentFields("basic", {"last": "marco"}, {"first": "l
 
 client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 6);
 
-// Update  a document by case-insensitive collation
-res = assert.commandWorked(edb.basic.updateOne(
-    {"last": "marcus"}, {$set: {"first": "john"}}, {collation: {locale: 'en_US', strength: 2}}));
-assert.eq(res.modifiedCount, 1);
-
-client.assertEncryptedCollectionCounts("basic", 2, 5, 3, 8);
-client.assertOneEncryptedDocumentFields("basic", {"last": "Marcus"}, {"first": "john"});
-
 // Update an unencrypted field in a document, expect no esc/ecc/ecoc changes
 res = assert.commandWorked(edb.basic.updateOne({"last": "marco"}, {$set: {"middle": "matthew"}}));
 print(tojson(res));
 assert.eq(res.matchedCount, 1);
 assert.eq(res.modifiedCount, 1);
 
-client.assertEncryptedCollectionCounts("basic", 2, 5, 3, 8);
+client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 6);
 
 // Remove an unencrypted field in a document, expect no esc/ecc/ecoc changes
 res = assert.commandWorked(edb.basic.updateOne({"last": "marco"}, {$unset: {"middle": ""}}));
 print(tojson(res));
 assert.eq(res.matchedCount, 1);
 assert.eq(res.modifiedCount, 1);
-client.assertEncryptedCollectionCounts("basic", 2, 5, 3, 8);
+client.assertEncryptedCollectionCounts("basic", 2, 4, 2, 6);
 
 // Update an unencrypted field in a document, but match no documents
 // expect writes to esc,ecoc
@@ -89,7 +83,7 @@ print(tojson(res));
 assert.eq(res.matchedCount, 0);
 assert.eq(res.modifiedCount, 0);
 
-client.assertEncryptedCollectionCounts("basic", 2, 6, 3, 9);
+client.assertEncryptedCollectionCounts("basic", 2, 5, 2, 7);
 
 //  Negative: Test bulk update. Send raw unencrypted commands to bypass query analysis
 res = assert.commandFailedWithCode(dbTest.basic.runCommand({
@@ -134,44 +128,55 @@ assert.commandWorked(coll.insert({"first": "Mark", "last": "Marcus", "middle": "
 print("EDC: " + tojson(dbTest[collName].find().toArray()));
 client.assertEncryptedCollectionCounts(collName, 2, 2, 0, 2);
 
-// Update an encrypted field in a document
-res = assert.commandWorked(coll.updateOne({"first": "mark"}, {$set: {"first": "matthew"}}));
-print(tojson(res));
-assert.eq(res.matchedCount, 1);
-assert.eq(res.modifiedCount, 1);
+if (!client.useImplicitSharding) {
+    // Update a document by case-insensitive collation
+    res = assert.commandWorked(edb.basic.updateOne({"last": "marcus"},
+                                                   {$set: {"first": "john"}},
+                                                   {collation: {locale: 'en_US', strength: 2}}));
+    assert.eq(res.modifiedCount, 1);
 
-client.assertEncryptedCollectionCounts(collName, 2, 3, 1, 4);
+    client.assertEncryptedCollectionCounts("basic", 2, 6, 3, 9);
+    client.assertOneEncryptedDocumentFields("basic", {"last": "Marcus"}, {"first": "john"});
 
-client.assertOneEncryptedDocumentFields(collName, {"last": "marco"}, {"first": "matthew"});
+    // Update an encrypted field in a document
+    res = assert.commandWorked(coll.updateOne({"first": "mark"}, {$set: {"first": "matthew"}}));
+    print(tojson(res));
+    assert.eq(res.matchedCount, 1);
+    assert.eq(res.modifiedCount, 1);
 
-// Remove the encrypted field
-res = assert.commandWorked(coll.updateOne({"first": "matthew"}, {$unset: {"first": ""}}));
-assert.eq(res.modifiedCount, 1);
-rawDoc = dbTest[collName].find({"last": "marco"}).toArray()[0];
-assert.eq(rawDoc["__safeContent__"], []);
-assert(!rawDoc.hasOwnProperty("first"));
+    client.assertEncryptedCollectionCounts(collName, 2, 3, 1, 4);
 
-client.assertEncryptedCollectionCounts(collName, 2, 3, 2, 5);
+    client.assertOneEncryptedDocumentFields(collName, {"last": "marco"}, {"first": "matthew"});
 
-// Add the encrypted field
-res = assert.commandWorked(coll.updateOne({"last": "marco"}, {$set: {"first": "luke"}}));
-assert.eq(res.modifiedCount, 1);
-client.assertOneEncryptedDocumentFields(collName, {"last": "marco"}, {"first": "luke"});
+    // Remove the encrypted field
+    res = assert.commandWorked(coll.updateOne({"first": "matthew"}, {$unset: {"first": ""}}));
+    assert.eq(res.modifiedCount, 1);
+    rawDoc = dbTest[collName].find({"last": "marco"}).toArray()[0];
+    assert.eq(rawDoc["__safeContent__"], []);
+    assert(!rawDoc.hasOwnProperty("first"));
 
-client.assertEncryptedCollectionCounts(collName, 2, 4, 2, 6);
+    client.assertEncryptedCollectionCounts(collName, 2, 3, 2, 5);
 
-// Update an unencrypted field in a document, expect no esc/ecc/ecoc changes
-res = assert.commandWorked(coll.updateOne({"first": "luke"}, {$set: {"middle": "matthew"}}));
-print(tojson(res));
-assert.eq(res.matchedCount, 1);
-assert.eq(res.modifiedCount, 1);
+    // Add the encrypted field
+    res = assert.commandWorked(coll.updateOne({"last": "marco"}, {$set: {"first": "luke"}}));
+    assert.eq(res.modifiedCount, 1);
+    client.assertOneEncryptedDocumentFields(collName, {"last": "marco"}, {"first": "luke"});
 
-client.assertEncryptedCollectionCounts(collName, 2, 4, 2, 6);
+    client.assertEncryptedCollectionCounts(collName, 2, 4, 2, 6);
 
-// Remove an unencrypted field in a document, expect no esc/ecc/ecoc changes
-res = assert.commandWorked(coll.updateOne({"first": "luke"}, {$unset: {"middle": ""}}));
-print(tojson(res));
-assert.eq(res.matchedCount, 1);
-assert.eq(res.modifiedCount, 1);
-client.assertEncryptedCollectionCounts(collName, 2, 4, 2, 6);
+    // Update an unencrypted field in a document, expect no esc/ecc/ecoc changes
+    res = assert.commandWorked(coll.updateOne({"first": "luke"}, {$set: {"middle": "matthew"}}));
+    print(tojson(res));
+    assert.eq(res.matchedCount, 1);
+    assert.eq(res.modifiedCount, 1);
+
+    client.assertEncryptedCollectionCounts(collName, 2, 4, 2, 6);
+
+    // Remove an unencrypted field in a document, expect no esc/ecc/ecoc changes
+    res = assert.commandWorked(coll.updateOne({"first": "luke"}, {$unset: {"middle": ""}}));
+    print(tojson(res));
+    assert.eq(res.matchedCount, 1);
+    assert.eq(res.modifiedCount, 1);
+    client.assertEncryptedCollectionCounts(collName, 2, 4, 2, 6);
+}
 }());
