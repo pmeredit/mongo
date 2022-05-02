@@ -95,7 +95,7 @@ QueryAnalysisParams extractCryptdParameters(const BSONObj& obj, const NamespaceS
                         "' does not match namespace given in command: '" + ns.ns() + '\'',
                     schemaSpec.firstElementFieldNameStringData() == ns.ns());
 
-            encryptInfo = schemaSpec.firstElement().Obj();
+            encryptInfo = schemaSpec.firstElement().Obj().getOwned();
             fleVersion = FleVersion::kFle2;
 
             // Unlike FLE 1, 'encryptionInformation' should be retained in the command BSON as it
