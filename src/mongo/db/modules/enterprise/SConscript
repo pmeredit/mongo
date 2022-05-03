@@ -67,12 +67,14 @@ if get_option('lint-scope') == 'changed':
     env.Alias( "lint-fast" , [ eslint, clang_format, pylinters ] )
     env.Alias( "lint" , [ eslint, clang_format, pylinters ] )
 
+if set( ['fle'] ) == set( env['MONGO_ENTERPRISE_FEATURES'] ):
+    print( "This is an CSFLE-only build. Allowing to build with no http client and SSL libs." )
+else:
+    if get_option( "ssl" ) != "on":
+        env.FatalError("SSL not enabled. Enterprise MongoDB must be built with --ssl specified")
 
-if get_option( "ssl" ) != "on":
-    env.FatalError("SSL not enabled. Enterprise MongoDB must be built with --ssl specified")
-
-if http_client != "on":
-    env.FatalError("Enterprise build requires http client support")
+    if http_client != "on":
+        env.FatalError("Enterprise build requires http client support")
 
 env.InjectMongoIncludePaths()
 env.InjectModule("enterprise", builder=True, consumer=False)
