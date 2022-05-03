@@ -23,7 +23,7 @@
 (function() {
 'use strict';
 
-load('jstests/libs/get_index_helpers.js');
+load('jstests/libs/index_catalog_helpers.js');
 load('jstests/multiVersion/libs/multi_rs.js');
 load('jstests/multiVersion/libs/verify_versions.js');
 
@@ -118,11 +118,11 @@ for (let i = 0; i < versions.length; i++) {
                   `data from ${oldVersionCollection} should be available; nodes: ${tojson(nodes)}`);
         assert.neq(
             null,
-            GetIndexHelpers.findByKeyPattern(testDB[oldVersionCollection].getIndexes(), {a: 1}),
+            IndexCatalogHelpers.findByKeyPattern(testDB[oldVersionCollection].getIndexes(), {a: 1}),
             `index a from ${oldVersionCollection} should be available; nodes: ${tojson(nodes)}`);
         assert.neq(
             null,
-            GetIndexHelpers.findByKeyPattern(testDB[oldVersionCollection].getIndexes(), {b: 1}),
+            IndexCatalogHelpers.findByKeyPattern(testDB[oldVersionCollection].getIndexes(), {b: 1}),
             `index b from ${oldVersionCollection} should be available; nodes: ${tojson(nodes)}`);
     }
 
