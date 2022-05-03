@@ -139,7 +139,9 @@ public:
         }
 
         auto schemaInfo = getRemoteOrInputSchema(request, ns);
-        _schemaCache.add(ns, schemaInfo);
+        if (!schemaInfo.schema.isEmpty()) {
+            _schemaCache.add(ns, schemaInfo);
+        }
 
         return schemaInfo;
     }
@@ -241,6 +243,15 @@ public:
         } else if (commandName == "distinct"_sd) {
             query_analysis::processDistinctCommand(
                 opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder, ns);
+        } else if (commandName == "create"_sd) {
+            query_analysis::processCreateCommand(
+                opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder, ns);
+        } else if (commandName == "collMod"_sd) {
+            query_analysis::processCollModCommand(
+                opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder, ns);
+        } else if (commandName == "createIndexes"_sd) {
+            query_analysis::processCreateIndexesCommand(
+                opCtx, ns.db().toString(), cmdObj, &schemaInfoBuilder, ns);
         } else if (commandName == "update"_sd) {
             query_analysis::processUpdateCommand(opCtx, request, &schemaInfoBuilder, ns);
         } else if (commandName == "insert"_sd) {
@@ -299,7 +310,27 @@ public:
             ns = CommandHelpers::parseNsCollectionRequired(databaseName, request.body);
         }
 
-        auto schemaInfoObject = getSchema(request, ns);
+        auto schemaInfoObject = [&]() {
+            if (commandName == "create"_sd) {
+                if (request.body.hasField("encryptedFields")) {
+                    return SchemaInfo{request.body.getObjectField("encryptedFields").getOwned(),
+                                      Date_t::now(),
+                                      true,
+                                      SchemaInfo::SchemaType::encryptedFields};
+                } else {
+                    return SchemaInfo{BSONObj(), Date_t::now(), true, SchemaInfo::SchemaType::none};
+                }
+            } else {
+                return getSchema(request, ns);
+            }
+        }();
+
+
+        // collMod commands can modify JSONSchema validators, and so we should invalidate the schema
+        // cache entry after a collMod command.
+        if (commandName == "collMod"_sd) {
+            _schemaCache.erase(ns);
+        }
 
         if (schemaInfoObject.schema.isEmpty()) {
             // Always attempt to decrypt - could have encrypted data

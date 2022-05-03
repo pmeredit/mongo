@@ -22,6 +22,7 @@ env.Library(
         '$BUILD_DIR/mongo/crypto/fle_crypto',
         '$BUILD_DIR/mongo/crypto/fle_fields',
         '$BUILD_DIR/mongo/db/commands',
+        '$BUILD_DIR/mongo/db/commands/create_command',
         '$BUILD_DIR/mongo/db/matcher/expressions',
         '$BUILD_DIR/mongo/db/ops/parsed_update_array_filters',
         '$BUILD_DIR/mongo/db/ops/write_ops_parsers',

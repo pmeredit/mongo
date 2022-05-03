@@ -81,7 +81,9 @@ function testSequence({sequenceFunc, encryptedSchema}) {
     unEncryptedDatabase.coll.drop();
 
     // For FLE to be used in the shell, need to add the schema to the collection as a validator.
-    encryptedDatabase.createCollection("coll", {validator: {$jsonSchema: encryptedSchema}});
+    assert.commandWorked(
+        encryptedDatabase.createCollection("coll", {validator: {$jsonSchema: encryptedSchema}}));
+
     const encryptedColl = encryptedDatabase.coll;
     const unEncryptedColl = unEncryptedDatabase.coll;
 

@@ -189,6 +189,57 @@ public:
     }
 } cmdCryptDFindAndModify;
 
+class CryptDCreate final : public CryptDPlaceholder {
+public:
+    CryptDCreate() : CryptDPlaceholder("create") {}
+
+    void processCommand(OperationContext* opCtx,
+                        const std::string& dbname,
+                        const BSONObj& cmdObj,
+                        BSONObjBuilder* result) const final {
+        query_analysis::processCreateCommand(
+            opCtx,
+            dbname,
+            cmdObj,
+            result,
+            NamespaceString{CommandHelpers::parseNsFromCommand(dbname, cmdObj)});
+    }
+} cmdCryptDCreate;
+
+class CryptDCollMod final : public CryptDPlaceholder {
+public:
+    CryptDCollMod() : CryptDPlaceholder("collMod") {}
+
+    void processCommand(OperationContext* opCtx,
+                        const std::string& dbname,
+                        const BSONObj& cmdObj,
+                        BSONObjBuilder* result) const final {
+        query_analysis::processCollModCommand(
+            opCtx,
+            dbname,
+            cmdObj,
+            result,
+            NamespaceString{CommandHelpers::parseNsFromCommand(dbname, cmdObj)});
+    }
+} cmdCryptDCollMod;
+
+class CryptDCreateIndexes final : public CryptDPlaceholder {
+public:
+    CryptDCreateIndexes() : CryptDPlaceholder("createIndexes") {}
+
+    void processCommand(OperationContext* opCtx,
+                        const std::string& dbname,
+                        const BSONObj& cmdObj,
+                        BSONObjBuilder* result) const final {
+        query_analysis::processCreateIndexesCommand(
+            opCtx,
+            dbname,
+            cmdObj,
+            result,
+            NamespaceString{CommandHelpers::parseNsFromCommand(dbname, cmdObj)});
+    }
+} cmdCryptDCreateIndexes;
+
 
 /**
  * A command for running write ops.

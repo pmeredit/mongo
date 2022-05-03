@@ -144,6 +144,18 @@ BSONObj analyzeNonExplainQuery(const BSONObj document,
         auto db = ns.db().toString();
         query_analysis::processDistinctCommand(
             opCtx, std::move(db), document, &schemaInfoBuilder, std::move(ns));
+    } else if (commandName == "create"_sd) {
+        auto db = ns.db().toString();
+        query_analysis::processCreateCommand(
+            opCtx, std::move(db), document, &schemaInfoBuilder, std::move(ns));
+    } else if (commandName == "collMod"_sd) {
+        auto db = ns.db().toString();
+        query_analysis::processCollModCommand(
+            opCtx, std::move(db), document, &schemaInfoBuilder, std::move(ns));
+    } else if (commandName == "createIndexes"_sd) {
+        auto db = ns.db().toString();
+        query_analysis::processCreateIndexesCommand(
+            opCtx, std::move(db), document, &schemaInfoBuilder, std::move(ns));
     } else if (commandName == "update"_sd) {
         query_analysis::processUpdateCommand(opCtx, opmsg, &schemaInfoBuilder, std::move(ns));
     } else if (commandName == "insert"_sd) {

@@ -183,6 +183,24 @@ void processFindAndModifyCommand(OperationContext* opCtx,
                                  BSONObjBuilder* builder,
                                  NamespaceString ns);
 
+void processCreateCommand(OperationContext* opCtx,
+                          const std::string& dbName,
+                          const BSONObj& cmdObj,
+                          BSONObjBuilder* builder,
+                          NamespaceString ns);
+
+void processCollModCommand(OperationContext* opCtx,
+                           const std::string& dbName,
+                           const BSONObj& cmdObj,
+                           BSONObjBuilder* builder,
+                           NamespaceString ns);
+
+void processCreateIndexesCommand(OperationContext* opCtx,
+                                 const std::string& dbName,
+                                 const BSONObj& cmdObj,
+                                 BSONObjBuilder* builder,
+                                 NamespaceString ns);
+
 // Write Ops commands take document sequences so we process OpMsgRequest instead of BSONObj
 
 void processInsertCommand(OperationContext* opCtx,

@@ -2,6 +2,7 @@
  * Copyright (C) 2019 MongoDB, Inc.  All Rights Reserved.
  */
 
+#include "mongo/db/namespace_string.h"
 #include "mongo/platform/basic.h"
 
 #include "query_analysis.h"
@@ -17,7 +18,10 @@
 #include "mongo/crypto/encryption_fields_gen.h"
 #include "mongo/crypto/encryption_fields_util.h"
 #include "mongo/crypto/fle_field_schema_gen.h"
+#include "mongo/db/coll_mod_gen.h"
 #include "mongo/db/commands.h"
+#include "mongo/db/commands/create_gen.h"
+#include "mongo/db/create_indexes_gen.h"
 #include "mongo/db/matcher/expression_parser.h"
 #include "mongo/db/matcher/expression_type.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
@@ -829,6 +833,95 @@ BSONObj buildFle2EncryptPlaceholder(EncryptionPlaceholderContext ctx,
     return binDataBob.obj();
 }
 
+PlaceHolderResult addPlaceholdersForCommandWithValidator(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
+    const std::string& dbName,
+    const BSONObj& cmdObj,
+    std::unique_ptr<EncryptionSchemaTreeNode> schemaTree,
+    boost::optional<BSONObj> validator) {
+    if (!validator) {
+        return PlaceHolderResult{false, schemaTree->mayContainEncryptedNode(), nullptr, cmdObj};
+    }
+
+    if (schemaTree->parsedFrom == FleVersion::kFle1 &&
+        validator->firstElementFieldNameStringData() == "$jsonSchema"_sd) {
+        auto cmdWithValidatorSchema =
+            cmdObj.addField(BSON("jsonSchema" << validator->firstElement()).firstElement())
+                .addField(BSON("isRemoteSchema" << false).firstElement());
+
+        auto cryptdParams = extractCryptdParameters(
+            cmdWithValidatorSchema,
+            NamespaceString{CommandHelpers::parseNsFromCommand(dbName, cmdObj)});
+        auto schemaTreeFromValidator = EncryptionSchemaTreeNode::parse(cryptdParams);
+
+        uassert(6491101,
+                "validator with $jsonSchema must be identical to FLE 1 jsonSchema parameter.",
+                *schemaTree == *schemaTreeFromValidator);
+
+        return PlaceHolderResult{false, schemaTree->mayContainEncryptedNode(), nullptr, cmdObj};
+    }
+
+    auto newQueryPlaceholder = replaceEncryptedFieldsInFilter(expCtx, *schemaTree, validator.get());
+
+    // TODO: SERVER-66094 Support encrypted fields in collection validator.
+    uassert(6491100,
+            "Comparison to encrypted fields not supported in collection validator.",
+            !newQueryPlaceholder.hasEncryptionPlaceholders);
+    return PlaceHolderResult{false,
+                             schemaTree->mayContainEncryptedNode(),
+                             std::move(newQueryPlaceholder.matchExpr),
+                             cmdObj};
+}
+
+PlaceHolderResult addPlaceHoldersForCreate(const boost::intrusive_ptr<ExpressionContext>& expCtx,
+                                           const std::string& dbName,
+                                           const BSONObj& cmdObj,
+                                           std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
+    // TODO: SERVER-66094 Add encryptionInformation to command IDL and stop stripping it out when
+    // supporting encrypted fields in validator.
+    auto strippedCmd = cmdObj.removeField(kEncryptionInformation);
+    auto cmd = CreateCommand::parse(IDLParserErrorContext("create"), strippedCmd);
+    return addPlaceholdersForCommandWithValidator(
+        expCtx, dbName, strippedCmd, std::move(schemaTree), cmd.getValidator());
+}
+
+PlaceHolderResult addPlaceHoldersForCollMod(const boost::intrusive_ptr<ExpressionContext>& expCtx,
+                                            const std::string& dbName,
+                                            const BSONObj& cmdObj,
+                                            std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
+    // TODO: SERVER-66094 Add encryptionInformation to command IDL and stop stripping it out when
+    // supporting encrypted fields in validator.
+    auto strippedCmd = cmdObj.removeField(kEncryptionInformation);
+    auto cmd = CollMod::parse(IDLParserErrorContext("collMod"), strippedCmd);
+    return addPlaceholdersForCommandWithValidator(
+        expCtx, dbName, strippedCmd, std::move(schemaTree), cmd.getValidator());
+}
+
+PlaceHolderResult addPlaceHoldersForCreateIndexes(
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
+    const std::string& dbName,
+    const BSONObj& cmdObj,
+    std::unique_ptr<EncryptionSchemaTreeNode> schemaTree) {
+    // TODO: SERVER-66092 Add encryptionInformation to command IDL and stop stripping it out when
+    // supporting encrypted fields in partial filter expression.
+    auto strippedCmd = cmdObj.removeField(kEncryptionInformation);
+    auto cmd = CreateIndexesCommand::parse(IDLParserErrorContext("createIndexes"), strippedCmd);
+
+    for (const auto& index : cmd.getIndexes()) {
+        if (index.hasField(NewIndexSpec::kPartialFilterExpressionFieldName)) {
+            auto partialFilter =
+                index.getObjectField(NewIndexSpec::kPartialFilterExpressionFieldName);
+            auto newQueryPlaceholder =
+                replaceEncryptedFieldsInFilter(expCtx, *schemaTree, partialFilter);
+            // TODO: SERVER-66092 Support encrypted fields in partial filter expression.
+            uassert(6491102,
+                    "Comparison to encrypted fields not supported in a partialFilterExpression.",
+                    !newQueryPlaceholder.hasEncryptionPlaceholders);
+        }
+    }
+    return PlaceHolderResult{false, schemaTree->mayContainEncryptedNode(), nullptr, strippedCmd};
+}
+
 }  // namespace
 
 PlaceHolderResult parsePlaceholderResult(BSONObj obj) {
@@ -908,6 +1001,30 @@ void processFindAndModifyCommand(OperationContext* opCtx,
                                  BSONObjBuilder* builder,
                                  const NamespaceString ns) {
     processQueryCommand(opCtx, dbName, cmdObj, builder, addPlaceHoldersForFindAndModify, ns);
+}
+
+void processCreateCommand(OperationContext* opCtx,
+                          const std::string& dbName,
+                          const BSONObj& cmdObj,
+                          BSONObjBuilder* builder,
+                          const NamespaceString ns) {
+    processQueryCommand(opCtx, dbName, cmdObj, builder, addPlaceHoldersForCreate, ns);
+}
+
+void processCollModCommand(OperationContext* opCtx,
+                           const std::string& dbName,
+                           const BSONObj& cmdObj,
+                           BSONObjBuilder* builder,
+                           const NamespaceString ns) {
+    processQueryCommand(opCtx, dbName, cmdObj, builder, addPlaceHoldersForCollMod, ns);
+}
+
+void processCreateIndexesCommand(OperationContext* opCtx,
+                                 const std::string& dbName,
+                                 const BSONObj& cmdObj,
+                                 BSONObjBuilder* builder,
+                                 const NamespaceString ns) {
+    processQueryCommand(opCtx, dbName, cmdObj, builder, addPlaceHoldersForCreateIndexes, ns);
 }
 
 void processInsertCommand(OperationContext* opCtx,

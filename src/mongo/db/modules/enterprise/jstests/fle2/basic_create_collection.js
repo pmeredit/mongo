@@ -45,7 +45,16 @@ const mergedOptions = Object.assign({}, sampleJSONSchema, sampleEncryptedFields)
 
 let client = new EncryptedClient(db.getMongo(), dbName);
 
-client.createBasicEncryptionCollection = function(coll, options, failure) {
+const codeFailedInQueryAnalysis = (cb) => {
+    try {
+        cb();
+        return false;
+    } catch (e) {
+        return e.message.indexOf("Client Side Field Level Encryption Error") !== -1;
+    }
+};
+
+client.createBasicEncryptionCollection = function(coll, options, failure, qaFailure) {
     if (failure != null) {
         assert.commandFailedWithCode(this._edb.createCollection(coll, options), failure);
         return;
@@ -55,12 +64,13 @@ client.createBasicEncryptionCollection = function(coll, options, failure) {
 
 assert.commandWorked(client.createEncryptionCollection("enc_fields", sampleEncryptedFields));
 client.createBasicEncryptionCollection("json_schema", sampleJSONSchema);
-client.createBasicEncryptionCollection("merged", mergedOptions, 224);
+assert(codeFailedInQueryAnalysis(
+    () => client.createBasicEncryptionCollection("merged", mergedOptions, 224)));
 
 // Test collmod
 const collmodPayload = Object.assign({}, {collMod: "enc_fields"}, sampleJSONSchema);
 
-assert.commandFailedWithCode(client.getDB().runCommand(collmodPayload), 224);
+assert(codeFailedInQueryAnalysis(() => client.getDB().runCommand(collmodPayload), 224));
 
 // Test that bsontype needs to be specified if queries is specified, and that bsontype
 // does not need to be specified if queries is not specified.
