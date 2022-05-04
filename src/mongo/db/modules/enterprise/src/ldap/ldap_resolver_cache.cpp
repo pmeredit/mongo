@@ -2,8 +2,6 @@
  *  Copyright (C) 2021 MongoDB Inc.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kConnectionPool
-
 
 #include "mongo/platform/basic.h"
 
@@ -17,6 +15,8 @@
 #include "mongo/util/dns_query.h"
 #include "mongo/util/duration.h"
 #include "mongo/util/time_support.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kConnectionPool
 
 
 namespace mongo {

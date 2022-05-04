@@ -2,7 +2,6 @@
  *  Copyright (C) 2016 MongoDB Inc.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kConnectionPool
 
 #include "mongo/platform/basic.h"
 
@@ -39,6 +38,9 @@
 #else
 #include "windows_ldap_connection.h"
 #endif
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kConnectionPool
+
 
 namespace mongo {
 namespace {

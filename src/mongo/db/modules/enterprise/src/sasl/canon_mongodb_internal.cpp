@@ -15,7 +15,6 @@
  * their use.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 #include <cstring>
 #include <sasl/sasl.h>
@@ -24,6 +23,9 @@
 #include "mongo/base/init.h"
 #include "mongo/util/ctype.h"
 #include "mongo/util/str.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
+
 
 namespace mongo {
 namespace {

@@ -2,7 +2,6 @@
  * Copyright (C) 2013 10gen, Inc.  All Rights Reserved.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 #include "mongo_gssapi.h"
 
@@ -16,6 +15,9 @@
 #include "mongo/util/str.h"
 
 #include "util/gssapi_helpers.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
+
 
 namespace mongo {
 namespace gssapi {

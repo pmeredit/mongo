@@ -2,7 +2,6 @@
  *  Copyright (C) 2021 MongoDB Inc.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 #include "mongo/platform/basic.h"
 
@@ -18,6 +17,9 @@
 #include "mongo/util/exit.h"
 
 #include "ldap_options.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
+
 
 namespace mongo {
 namespace {

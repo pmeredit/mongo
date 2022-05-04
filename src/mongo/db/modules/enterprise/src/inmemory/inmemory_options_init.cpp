@@ -2,13 +2,15 @@
  * Copyright (C) 2014 MongoDB, Inc.  All Rights Reserved.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
 #include "mongo/platform/basic.h"
 
 #include <iostream>
 
 #include "inmemory_options_init.h"
 #include "mongo/logv2/log.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
+
 
 //#include "mongo/db/storage/data_protector.h"
 

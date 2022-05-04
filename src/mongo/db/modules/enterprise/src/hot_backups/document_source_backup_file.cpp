@@ -2,7 +2,6 @@
  * Copyright (C) 2021 MongoDB, Inc.  All Rights Reserved.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
 
 #include "document_source_backup_file.h"
 #include "mongo/db/exec/document_value/document.h"
@@ -11,6 +10,9 @@
 #include "mongo/platform/basic.h"
 #include <algorithm>
 #include <boost/filesystem.hpp>
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
+
 
 namespace mongo {
 

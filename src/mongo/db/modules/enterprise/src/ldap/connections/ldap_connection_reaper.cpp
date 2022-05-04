@@ -2,7 +2,6 @@
  *  Copyright (C) 2021 MongoDB Inc.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 #include "mongo/platform/basic.h"
 
@@ -16,6 +15,9 @@
 #include "mongo/util/out_of_line_executor.h"
 #include "mongo/util/thread_safety_context.h"
 #include "mongo/util/tick_source.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
+
 
 namespace mongo {
 namespace {

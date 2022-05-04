@@ -2,7 +2,6 @@
  *  Copyright (C) 2016 MongoDB Inc.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
 
 #include "mongo/platform/basic.h"
 
@@ -30,6 +29,9 @@
 
 #include "../blockstore/blockstore_http.h"
 #include "queryable_global_options.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
+
 
 namespace mongo {
 

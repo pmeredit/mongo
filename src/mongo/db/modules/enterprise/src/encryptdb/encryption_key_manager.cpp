@@ -3,7 +3,6 @@
  * The main KMIP API that is exposed to the rest of the codebase.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
 
 #include "mongo/platform/basic.h"
 
@@ -38,6 +37,9 @@
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/time_support.h"
 #include "symmetric_crypto.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
+
 
 namespace mongo {
 namespace fs = boost::filesystem;

@@ -2,7 +2,6 @@
  *    Copyright (C) 2021 MongoDB Inc.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 #include "audit_enc_comp_manager.h"
 #include "audit_file_header.h"
@@ -16,6 +15,9 @@
 #include "mongo/util/base64.h"
 #include "mongo/util/options_parser/environment.h"
 #include <string>
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
+
 
 namespace mongo {
 namespace audit {

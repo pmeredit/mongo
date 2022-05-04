@@ -2,7 +2,6 @@
  * Copyright (C) 2021 MongoDB, Inc.  All Rights Reserved.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kQuery
 
 #include "mongo/db/pipeline/variables.h"
 #include "mongo/platform/basic.h"
@@ -21,6 +20,9 @@
 #include "mongo/logv2/log.h"
 #include "mongo/unittest/unittest.h"
 #include <memory>
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kQuery
+
 
 namespace mongo {
 namespace {

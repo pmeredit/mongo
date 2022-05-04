@@ -3,8 +3,6 @@
  */
 
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
-
 #include "mongo/platform/basic.h"
 
 #include "mongo_gssapi.h"
@@ -20,6 +18,9 @@
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/str.h"
 #include "mongo/util/text.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
+
 
 extern "C" int plain_server_plug_init(const sasl_utils_t* utils,
                                       int maxversion,

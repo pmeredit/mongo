@@ -2,7 +2,6 @@
  * Copyright (C) 2015 MongoDB, Inc.  All Rights Reserved.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
 
 #include "mongo/platform/basic.h"
 
@@ -23,6 +22,9 @@
 #include "mongo/util/base64.h"
 #include "mongo/util/net/ssl_options.h"
 #include "mongo/util/str.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
+
 
 using namespace mongo::kmip;
 

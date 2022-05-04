@@ -2,7 +2,6 @@
  *    Copyright (C) 2021-present MongoDB, Inc.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kSharding
 
 #include "mongo/platform/basic.h"
 
@@ -100,6 +99,9 @@
 #include "mongoqd_options.h"
 #include "read_write_concern_defaults_cache_lookup_mongoqd.h"
 #include "version_mongoqd.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kSharding
+
 
 namespace mongo {
 

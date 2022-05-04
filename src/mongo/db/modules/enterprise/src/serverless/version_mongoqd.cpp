@@ -2,7 +2,6 @@
  *    Copyright (C) 2021-present MongoDB, Inc.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kSharding
 
 #include "version_mongoqd.h"
 
@@ -17,6 +16,9 @@
 #include "mongo/util/debug_util.h"
 #include "mongo/util/version.h"
 #include "serverless/version_mongoqd.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kSharding
+
 
 namespace mongo {
 namespace {

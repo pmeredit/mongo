@@ -7,7 +7,6 @@
  * their use.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 #include <cstring>
 #include <sasl/sasl.h>
@@ -17,6 +16,9 @@
 #include "mongo/base/init.h"
 #include "mongo/base/status.h"
 #include "mongo/base/string_data.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
+
 
 #ifndef _WIN32
 #error Windows only sasl auxprop plugin

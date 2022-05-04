@@ -2,7 +2,6 @@
  * Copyright (C) 2013 10gen, Inc.  All Rights Reserved.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 #include <cstdlib>
 #include <fmt/format.h>
@@ -32,6 +31,9 @@
 
 #include "cyrus_sasl_authentication_session.h"
 #include "util/gssapi_helpers.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
+
 
 /**
  * This test may require the hostname contained in mockHostName to canonicalize to

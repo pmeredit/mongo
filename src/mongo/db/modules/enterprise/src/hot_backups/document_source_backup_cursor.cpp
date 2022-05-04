@@ -2,7 +2,6 @@
  * Copyright (C) 2018 MongoDB, Inc.  All Rights Reserved.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kQuery
 
 #include "mongo/platform/basic.h"
 #include "mongo/util/testing_proctor.h"
@@ -15,6 +14,9 @@
 #include "mongo/logv2/log.h"
 
 #include "hot_backups/backup_cursor_parameters_gen.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kQuery
+
 
 namespace mongo {
 

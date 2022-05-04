@@ -1,7 +1,6 @@
 /**
  *    Copyright (C) 2021 MongoDB, Inc.  All Rights Reserved.
  */
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kTest
 
 #include "fcbis/initial_sync_file_mover.h"
 #include "file_copy_based_initial_syncer.h"
@@ -43,6 +42,9 @@
 #include "mongo/util/clock_source_mock.h"
 #include "mongo/util/concurrency/thread_pool.h"
 #include <boost/filesystem.hpp>
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kTest
+
 
 namespace {
 

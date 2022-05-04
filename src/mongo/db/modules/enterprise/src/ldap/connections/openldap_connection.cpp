@@ -2,7 +2,6 @@
  *  Copyright (C) 2016 MongoDB Inc.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 #include "mongo/config.h"
 #include "mongo/platform/basic.h"
@@ -40,6 +39,9 @@
 #include "ldap/ldap_parameters_gen.h"
 #include "ldap_connection_helpers.h"
 #include "ldap_connection_reaper.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
+
 
 namespace mongo {
 namespace {

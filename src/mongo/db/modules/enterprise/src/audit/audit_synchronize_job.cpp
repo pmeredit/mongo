@@ -2,7 +2,6 @@
  *    Copyright (C) 2021 MongoDB Inc.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 #include "audit/audit_commands_gen.h"
 #include "audit/audit_config_gen.h"
@@ -14,6 +13,9 @@
 #include "mongo/s/client/shard.h"
 #include "mongo/s/grid.h"
 #include "mongo/util/periodic_runner.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
+
 
 namespace mongo {
 namespace audit {

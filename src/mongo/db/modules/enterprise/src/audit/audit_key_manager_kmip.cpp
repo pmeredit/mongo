@@ -2,7 +2,6 @@
  *    Copyright (C) 2021 MongoDB Inc.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
 
 #include "audit_key_manager_kmip.h"
 
@@ -13,6 +12,9 @@
 #include "mongo/bson/json.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/assert_util.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
+
 
 namespace crypto = ::mongo::crypto;
 

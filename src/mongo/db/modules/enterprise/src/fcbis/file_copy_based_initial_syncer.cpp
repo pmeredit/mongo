@@ -1,7 +1,6 @@
 /**
  * Copyright (C) 2021 MongoDB, Inc.  All Rights Reserved.
  */
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kReplicationInitialSync
 
 #include "file_copy_based_initial_syncer.h"
 #include "initial_sync_file_mover.h"
@@ -31,6 +30,9 @@
 #include "mongo/util/assert_util.h"
 #include "mongo/util/destructor_guard.h"
 #include "mongo/util/future_util.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kReplicationInitialSync
+
 
 namespace mongo {
 namespace repl {

@@ -2,7 +2,6 @@
  * Copyright (C) 2012 10gen, Inc.  All Rights Reserved.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 #include <algorithm>
 #include <string>
@@ -21,6 +20,9 @@
 #include "mongo/util/base64.h"
 #include "mongo/util/sequence_util.h"
 #include "mongo/util/str.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
+
 
 namespace mongo {
 

@@ -2,7 +2,6 @@
  *  Copyright (C) 2021-present MongoDB, Inc.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kProcessHealth
 
 #include "ldap_health_observer.h"
 #include "ldap_manager.h"
@@ -12,6 +11,9 @@
 #include "mongo/db/process_health/health_observer_registration.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kProcessHealth
+
 
 namespace mongo {
 namespace process_health {

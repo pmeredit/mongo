@@ -2,7 +2,6 @@
  * Copyright (c) 2019 MongoDB, Inc.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
 
 #include "mongo/platform/basic.h"
 
@@ -17,6 +16,9 @@
 #include "mongo/util/lru_cache.h"
 #include "mongo/util/string_map.h"
 #include "symmetric_crypto.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
+
 
 namespace mongo {
 namespace {

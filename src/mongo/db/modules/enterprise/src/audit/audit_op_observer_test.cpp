@@ -1,4 +1,3 @@
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
 
 #include "audit/audit_op_observer.h"
 
@@ -17,6 +16,9 @@
 #include "mongo/s/write_ops/batched_command_response.h"
 #include "mongo/unittest/unittest.h"
 #include "mongo/util/options_parser/environment.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kDefault
+
 
 namespace moe = mongo::optionenvironment;
 

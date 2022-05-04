@@ -2,7 +2,6 @@
  *  Copyright (C) 2016 MongoDB Inc.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 #include "mongo/platform/basic.h"
 
@@ -24,6 +23,9 @@
 #include "ldap/ldap_runner.h"
 #include "ldap_rewrite_rule.h"
 #include "regex_rewrite_rule.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
+
 
 namespace mongo {
 

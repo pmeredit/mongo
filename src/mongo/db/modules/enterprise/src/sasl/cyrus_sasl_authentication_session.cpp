@@ -2,7 +2,6 @@
  * Copyright (C) 2014 10gen, Inc.  All Rights Reserved.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 #include <sasl/sasl.h>
 
@@ -32,6 +31,9 @@
 
 #include "../ldap/ldap_manager.h"
 #include "../ldap/ldap_options.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
+
 
 namespace mongo {
 

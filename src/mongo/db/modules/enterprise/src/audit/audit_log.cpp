@@ -3,7 +3,6 @@
  */
 
 #include "mongo/base/string_data.h"
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 #include "audit_log.h"
 
@@ -28,6 +27,9 @@
 #include "mongo/logv2/log_util.h"
 #include "mongo/util/options_parser/environment.h"
 #include "mongo/util/time_support.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
+
 
 namespace mongo::audit {
 

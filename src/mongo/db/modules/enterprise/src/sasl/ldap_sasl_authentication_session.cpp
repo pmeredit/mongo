@@ -2,7 +2,6 @@
  *    Copyright (C) 2016 MongoDB Inc.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
 
 #include <vector>
 
@@ -28,6 +27,9 @@
 #include "../ldap/ldap_options.h"
 #include "../ldap/name_mapping/internal_to_ldap_user_name_mapper.h"
 #include "cyrus_sasl_authentication_session.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kAccessControl
+
 
 namespace mongo {
 

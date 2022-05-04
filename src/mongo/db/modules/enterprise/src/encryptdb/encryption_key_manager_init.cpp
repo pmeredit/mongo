@@ -3,7 +3,6 @@
  * The main KMIP API that is exposed to the rest of the codebase.
  */
 
-#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
 
 #include "mongo/platform/basic.h"
 
@@ -19,6 +18,9 @@
 #include "mongo/db/storage/wiredtiger/wiredtiger_extensions.h"
 #include "mongo/util/net/ssl_options.h"
 #include "symmetric_crypto_smoke.h"
+
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kStorage
+
 
 namespace mongo {
 namespace {
