@@ -131,7 +131,7 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
     client.assertStateCollectionsAfterCompact(collName, ecocExistsAfterCompact);
 });
 
-jsTestLog("Test compact of 1:1 insert and deletes clears the ESC & ECC");
+jsTestLog("Test compact of 1:1 insert and deletes");
 runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
     const coll = edb[collName];
     for (let i = 1; i <= 100; i++) {
@@ -142,17 +142,18 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
 
     // squash inserts into 23 null docs for "first" and 11 for "ssn"
     assert.commandWorked(coll.compact());
-    client.assertEncryptedCollectionCounts(collName, 100, 23 + 11, 0, 0);
+    client.assertEncryptedCollectionCounts(collName, 100, 34, 0, 0);
     client.assertStateCollectionsAfterCompact(collName, ecocExistsAfterCompact);
 
-    // deleting all entries and compacting clears the ESC and ECC
+    // deleting all entries and compacting leaves only a null doc and a single
+    // compacted entry per unique pair in ECC.
     for (let i = 100; i > 0; i--) {
         assert.commandWorked(coll.deleteOne({"_id": i}));
     }
-    client.assertEncryptedCollectionCounts(collName, 0, 23 + 11, 200, 200);
+    client.assertEncryptedCollectionCounts(collName, 0, 34, 200, 200);
 
     assert.commandWorked(coll.compact());
-    client.assertEncryptedCollectionCounts(collName, 0, 0, 0, 0);
+    client.assertEncryptedCollectionCounts(collName, 0, 34, 68, 0);
     client.assertStateCollectionsAfterCompact(collName, ecocExistsAfterCompact);
 
     // insert the same entries again, but don't compact before delete
@@ -160,13 +161,13 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
         assert.commandWorked(
             coll.insert({"first": "bob_" + (i % 23), "ssn": "222-23-212" + (i % 11), "_id": i}));
     }
-    client.assertEncryptedCollectionCounts(collName, 100, 200, 0, 200);
+    client.assertEncryptedCollectionCounts(collName, 100, 234, 68, 200);
     for (let i = 100; i > 0; i--) {
         assert.commandWorked(coll.deleteOne({"_id": i}));
     }
-    client.assertEncryptedCollectionCounts(collName, 0, 200, 200, 400);
+    client.assertEncryptedCollectionCounts(collName, 0, 234, 268, 400);
     assert.commandWorked(coll.compact());
-    client.assertEncryptedCollectionCounts(collName, 0, 0, 0, 0);
+    client.assertEncryptedCollectionCounts(collName, 0, 34, 68, 0);
     client.assertStateCollectionsAfterCompact(collName, ecocExistsAfterCompact);
 });
 
@@ -193,7 +194,7 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
 
     // Second compact compacts "first"
     assert.commandWorked(coll.compact());
-    client.assertEncryptedCollectionCounts(collName, 0, 0, 0, 0);
+    client.assertEncryptedCollectionCounts(collName, 0, 1, 2, 0);
     client.assertStateCollectionsAfterCompact(collName, ecocExistsAfterCompact);
 });
 
@@ -302,7 +303,8 @@ runEncryptedTest(db, dbName, collName, sampleEncryptedFields, (edb, client) => {
     const badTokens3 = {
         first: HexData(0, "060102030405060708091011121314151602"),
         ssn: HexData(0, "060102030405060708091011121314151602"),
-    };  // token is not bindata
+    };
+    // token is not bindata
     assert.commandFailedWithCode(
         edb.runCommand({"compactStructuredEncryptionData": collName, compactionTokens: badTokens1}),
         6346801);
