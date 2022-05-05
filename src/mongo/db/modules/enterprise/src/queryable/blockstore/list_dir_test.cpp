@@ -53,8 +53,6 @@ public:
     // Ignore client configs.
     virtual void allowInsecureHTTP(bool) {}
     virtual void setHeaders(const std::vector<std::string>& headers) {}
-    virtual void setConnectTimeout(Seconds timeout) {}
-    virtual void setTimeout(Seconds timeout) {}
 };
 
 class LargeListDir : public MockedHttpClient {

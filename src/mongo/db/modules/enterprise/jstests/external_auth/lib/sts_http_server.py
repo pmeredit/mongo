@@ -28,6 +28,9 @@ FAULT_500 = "fault_500"
 
 """Fault which causes each unique request to return 500 the first time it is made."""
 FAULT_500_ONCE = "fault_500_once"
+
+"""Fault which causes replies not to be sent back."""
+FAULT_UNRESPONSIVE = "fault_unresponsive"
 requests_seen = []
 
 # List of supported fault types
@@ -35,6 +38,7 @@ SUPPORTED_FAULT_TYPES = [
     FAULT_403,
     FAULT_500,
     FAULT_500_ONCE,
+    FAULT_UNRESPONSIVE
 ]
 
 
@@ -52,6 +56,9 @@ class AwsStsHandler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def do_POST(self):
+        if fault_type == FAULT_UNRESPONSIVE:
+            # Don't send a reply, leaving the requestor hanging.
+            return
         """Serve a POST request."""
         parts = urllib.parse.urlsplit(self.path)
         path = parts[2]

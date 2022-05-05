@@ -7,6 +7,7 @@
 const STS_FAULT_403 = "fault_403";
 const STS_FAULT_500 = "fault_500";
 const STS_FAULT_500_ONCE = "fault_500_once";
+const STS_FAULT_UNRESPONSIVE = "fault_unresponsive";
 
 class MockSTSServer {
     /**
