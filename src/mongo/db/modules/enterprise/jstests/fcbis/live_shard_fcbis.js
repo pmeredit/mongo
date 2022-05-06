@@ -8,7 +8,7 @@
 (function() {
 "use strict";
 
-// TODO(SERVER-64601): Re-enable this test and add corresponding 'requires_fcv_*' tag.
+// TODO(SERVER-64628): Re-enable this test and add corresponding 'requires_fcv_*' tag.
 if (true) {
     jsTest.log("This test is temporary disabled.");
     return;
