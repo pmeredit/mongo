@@ -198,7 +198,8 @@ function runTest(conn, primaryConn) {
         setupTest(client);
 
         const coll = edb[collName];
-        const failpoint = "fleCompactHangAfterESCPlaceholderInsert";
+        const failpoint1 = "fleCompactHangAfterESCPlaceholderInsert";
+        const failpoint2 = "fleCompactFailBeforeECOCRead";
 
         for (let i = 1; i <= 5; i++) {
             assert.commandWorked(coll.deleteOne({_id: i}));
@@ -208,26 +209,34 @@ function runTest(conn, primaryConn) {
         // Setup a failpoint that hangs after ESC placeholder insertion
         const hitCount =
             assert
-                .commandWorked(admin.runCommand({configureFailPoint: failpoint, mode: 'alwaysOn'}))
+                .commandWorked(admin.runCommand({configureFailPoint: failpoint1, mode: 'alwaysOn'}))
                 .count;
 
         // Start the first compact, which hangs
         const bgCompactOne = startParallelShell(bgCompactFunc, conn.port);
         admin.runCommand(
-            {waitForFailPoint: failpoint, timesEntered: hitCount + 1, maxTimeMS: 10000});
+            {waitForFailPoint: failpoint1, timesEntered: hitCount + 1, maxTimeMS: 10000});
 
-        // Start the second compact, which waits for the first compact
+        // Enable the failpoint that throws on subsequent compacts
+        assert.commandWorked(admin.runCommand({configureFailPoint: failpoint2, mode: 'alwaysOn'}));
+
+        // Start the second compact which should not hit the throwing failpoint
         const bgCompactTwo = startParallelShell(bgCompactFunc, conn.port);
 
+        // Not reliable, but need to delay so bgCompactTwo has a chance to actually send
+        // the compact command, before the hanging failpoint is disabled.
+        sleep(10 * 1000);
+
         // Unblock the first compact
-        assert.commandWorked(admin.runCommand({configureFailPoint: failpoint, mode: 'off'}));
+        assert.commandWorked(admin.runCommand({configureFailPoint: failpoint1, mode: 'off'}));
+
         bgCompactOne();
         bgCompactTwo();
 
-        // the second compact should be a no-op as there is nothing to compact
-        const expectedLogId = isMongos ? 6548305 : 6548306;
-        checkLog.containsJson(primaryConn, expectedLogId);
         client.assertEncryptedCollectionCounts(collName, 5, 1, 2, 0);
+
+        // Disable the throwing failpoint
+        assert.commandWorked(admin.runCommand({configureFailPoint: failpoint2, mode: 'off'}));
     });
 }
 
