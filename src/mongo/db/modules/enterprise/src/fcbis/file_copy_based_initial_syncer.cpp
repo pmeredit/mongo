@@ -767,7 +767,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_openBackupCursor(
     const auto cmdObj = [this, self = shared_from_this()] {
         AggregateCommandRequest aggRequest(
             NamespaceString::makeCollectionlessAggregateNSS(
-                TenantDatabaseName(boost::none, NamespaceString::kAdminDb)),
+                DatabaseName(boost::none, NamespaceString::kAdminDb)),
             {BSON("$backupCursor" << BSONObj())});
         // We must set a writeConcern on internal commands.
         aggRequest.setWriteConcern(WriteConcernOptions());
@@ -893,7 +893,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_extendBackupCursor(
     const auto cmdObj = [this, self = shared_from_this()] {
         AggregateCommandRequest aggRequest(
             NamespaceString::makeCollectionlessAggregateNSS(
-                TenantDatabaseName(boost::none, NamespaceString::kAdminDb)),
+                DatabaseName(boost::none, NamespaceString::kAdminDb)),
             {BSON("$backupCursorExtend"
                   << BSON("backupId" << _syncingFilesState.backupId.get() << "timestamp"
                                      << _syncingFilesState.lastAppliedOpTimeOnSyncSrc))});
@@ -1448,7 +1448,7 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_getListOfOldFilesToBeDeleted()
     auto opCtx = cc().makeOperationContext();
     DBDirectClient client(opCtx.get());
     NamespaceString nss = NamespaceString::makeCollectionlessAggregateNSS(
-        TenantDatabaseName(boost::none, NamespaceString::kAdminDb));
+        DatabaseName(boost::none, NamespaceString::kAdminDb));
 
     AggregateCommandRequest aggRequest(nss, {BSON("$backupCursor" << BSONObj())});
     aggRequest.setWriteConcern(WriteConcernOptions());
