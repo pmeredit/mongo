@@ -2,17 +2,18 @@
  * Tests that sharding state is properly initialized on new config members that were added into live
  * config server replica sets using FCBIS.
  *
- * @tags: [requires_persistence, requires_wiredtiger]
+ * We control our own failovers, and we also need the RSM to react reasonably quickly to those.
+ * @tags: [
+ *  requires_fcv_60,
+ *  requires_persistence,
+ *  requires_wiredtiger,
+ *  does_not_support_stepdowns,
+ *  requires_streamable_rsm
+ * ]
  */
 
 (function() {
 "use strict";
-
-// TODO(SERVER-64628): Re-enable this test and add corresponding 'requires_fcv_*' tag.
-if (true) {
-    jsTest.log("This test is temporary disabled.");
-    return;
-}
 
 load("jstests/sharding/libs/sharding_state_test.js");
 
