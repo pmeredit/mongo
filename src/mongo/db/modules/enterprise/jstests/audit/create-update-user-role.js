@@ -55,13 +55,24 @@ let runCommands = function(db) {
     assert.commandWorked(db.runCommand({updateRole: "role1", authenticationRestrictions: []}));
     assert.commandWorked(db.runCommand(
         {updateRole: "role1", authenticationRestrictions: [{clientSource: ["::1/128"]}]}));
+
+    // GrantPrivilegesToRole command
+    const grantRevokePrivilege = {resource: {db: "test", collection: "bar"}, actions: ["find"]};
+    assert.commandWorked(
+        db.runCommand({grantPrivilegesToRole: "role1", privileges: [grantRevokePrivilege]}));
+
+    // RevokePrivilegesFromRole command
+    assert.commandWorked(
+        db.runCommand({revokePrivilegesFromRole: "role1", privileges: [grantRevokePrivilege]}));
 };
 
 let checkAuditAuth = function(audit) {
     // Create User auth audit entries
-    audit.assertEntryRelaxed("authCheck",
-                             {args: {createUser: "user1", pwd: "xxx", $db: "test", roles: []}});
+    audit.assertEntryRelaxed(
+        "authCheck",
+        {ns: "test.user1", args: {createUser: "user1", pwd: "xxx", $db: "test", roles: []}});
     audit.assertEntryRelaxed("authCheck", {
+        ns: "test.user2",
         args: {
             createUser: "user2",
             pwd: "xxx",
@@ -69,9 +80,11 @@ let checkAuditAuth = function(audit) {
             roles: [{role: "readWrite", db: "admin"}]
         }
     });
-    audit.assertEntryRelaxed("authCheck",
-                             {args: {createUser: "user3", pwd: "xxx", $db: "test", roles: []}});
+    audit.assertEntryRelaxed(
+        "authCheck",
+        {ns: "test.user3", args: {createUser: "user3", pwd: "xxx", $db: "test", roles: []}});
     audit.assertEntryRelaxed("authCheck", {
+        ns: "test.user4",
         args: {
             createUser: "user4",
             pwd: "xxx",
@@ -83,27 +96,34 @@ let checkAuditAuth = function(audit) {
 
     // Update User auth audit entries
     audit.assertEntryRelaxed("authCheck", {args: {updateUser: "user1", pwd: "xxx", $db: "test"}});
-    audit.assertEntryRelaxed(
-        "authCheck",
-        {args: {updateUser: "user1", roles: [{role: "readWrite", db: "admin"}], $db: "test"}});
     audit.assertEntryRelaxed("authCheck", {
+        ns: "test.user1",
+        args: {updateUser: "user1", roles: [{role: "readWrite", db: "admin"}], $db: "test"}
+    });
+    audit.assertEntryRelaxed("authCheck", {
+        ns: "test.user1",
         args: {
             updateUser: "user1",
             $db: "test",
             authenticationRestrictions: [{serverAddress: ["::1/128"]}]
         }
     });
-    audit.assertEntryRelaxed(
-        "authCheck", {args: {updateUser: "user1", $db: "test", authenticationRestrictions: []}});
+    audit.assertEntryRelaxed("authCheck", {
+        ns: "test.user1",
+        args: {updateUser: "user1", $db: "test", authenticationRestrictions: []}
+    });
 
     // Create Role auth audit entries
-    audit.assertEntryRelaxed("authCheck",
-                             {args: {createRole: "role1", $db: "test", privileges: [], roles: []}});
+    audit.assertEntryRelaxed(
+        "authCheck",
+        {ns: "test.role1", args: {createRole: "role1", $db: "test", privileges: [], roles: []}});
     audit.assertEntryRelaxed("authCheck", {
+        ns: "test.role2",
         args:
             {createRole: "role2", $db: "test", privileges: [], roles: [{role: "role1", db: "test"}]}
     });
     audit.assertEntryRelaxed("authCheck", {
+        ns: "test.role3",
         args: {
             createRole: "role3",
             $db: "test",
@@ -112,6 +132,7 @@ let checkAuditAuth = function(audit) {
         }
     });
     audit.assertEntryRelaxed("authCheck", {
+        ns: "test.role4",
         args: {
             createRole: "role4",
             $db: "test",
@@ -121,6 +142,7 @@ let checkAuditAuth = function(audit) {
         }
     });
     audit.assertEntryRelaxed("authCheck", {
+        ns: "test.role5",
         args: {
             createRole: "role5",
             $db: "test",
@@ -131,26 +153,48 @@ let checkAuditAuth = function(audit) {
     });
 
     // Update Role auth audit entries
-    audit.assertEntryRelaxed("authCheck", {args: {updateRole: "role1", $db: "test", roles: []}});
     audit.assertEntryRelaxed(
-        "authCheck",
-        {args: {updateRole: "role3", $db: "test", roles: [{role: "role1", db: "test"}]}});
-    audit.assertEntryRelaxed("authCheck",
-                             {args: {updateRole: "role1", $db: "test", privileges: []}});
+        "authCheck", {ns: "test.role1", args: {updateRole: "role1", $db: "test", roles: []}});
     audit.assertEntryRelaxed("authCheck", {
+        ns: "test.role3",
+        args: {updateRole: "role3", $db: "test", roles: [{role: "role1", db: "test"}]}
+    });
+    audit.assertEntryRelaxed(
+        "authCheck", {ns: "test.role1", args: {updateRole: "role1", $db: "test", privileges: []}});
+    audit.assertEntryRelaxed("authCheck", {
+        ns: "test.role1",
         args: {
             updateRole: "role1",
             $db: "test",
             privileges: [{resource: {db: "test", collection: "foo"}, actions: ["find"]}]
         }
     });
-    audit.assertEntryRelaxed(
-        "authCheck", {args: {updateRole: "role1", $db: "test", authenticationRestrictions: []}});
     audit.assertEntryRelaxed("authCheck", {
+        ns: "test.role1",
+        args: {updateRole: "role1", $db: "test", authenticationRestrictions: []}
+    });
+    audit.assertEntryRelaxed("authCheck", {
+        ns: "test.role1",
         args: {
             updateRole: "role1",
             $db: "test",
             authenticationRestrictions: [{clientSource: ["::1/128"]}]
+        }
+    });
+
+    // Grant and revoke privileges to/from role
+    audit.assertEntryRelaxed("authCheck", {
+        ns: "test.role1",
+        args: {
+            grantPrivilegesToRole: "role1",
+            privileges: [{resource: {db: "test", collection: "bar"}, actions: ["find"]}]
+        }
+    });
+    audit.assertEntryRelaxed("authCheck", {
+        ns: "test.role1",
+        args: {
+            revokePrivilegesFromRole: "role1",
+            privileges: [{resource: {db: "test", collection: "bar"}, actions: ["find"]}]
         }
     });
 };
@@ -218,6 +262,18 @@ let checkAuditDB = function(audit) {
     audit.assertEntry(
         "updateRole",
         {role: "role1", db: "test", authenticationRestrictions: [{clientSource: ["::1/128"]}]});
+
+    // Grant and privileges to/from role
+    audit.assertEntry("grantPrivilegesToRole", {
+        role: "role1",
+        db: "test",
+        privileges: [{resource: {db: "test", collection: "bar"}, actions: ["find"]}]
+    });
+    audit.assertEntry("revokePrivilegesFromRole", {
+        role: "role1",
+        db: "test",
+        privileges: [{resource: {db: "test", collection: "bar"}, actions: ["find"]}]
+    });
 };
 
 {
