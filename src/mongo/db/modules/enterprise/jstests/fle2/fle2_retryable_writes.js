@@ -8,6 +8,7 @@
  * assumes_read_preference_unchanged,
  * requires_capped,
  * assumes_unsharded_collection,
+ * exclude_from_large_txns,
  * ]
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
