@@ -171,7 +171,14 @@ if "encryptdb" in env['MONGO_ENTERPRISE_FEATURES'] or "audit" in env['MONGO_ENTE
 # SNMP doc files
 env.AutoInstall(
     target='$PREFIX/snmp',
-    source=env.Glob("docs/*"),
+    source=[
+        "docs/snmp/MONGOD-MIB.txt",
+        "docs/snmp/README-snmp.txt",
+        "docs/snmp/mongod.conf.master.selinux",
+        "docs/snmp/MONGODBINC-MIB.txt",
+        "docs/snmp/mongod.conf.master",
+        "docs/snmp/mongod.conf.subagent"
+    ],
     AIB_COMPONENT='snmp',
     AIB_COMPONENTS_EXTRA=[
         'dist',

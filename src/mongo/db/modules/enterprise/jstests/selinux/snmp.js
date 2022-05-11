@@ -30,7 +30,7 @@ class TestDefinition extends SelinuxBaseTest {
             setsebool mongod_can_connect_snmp on
 
             mkdir -p /var/lib/mongo/.snmp
-            cp src/mongo/db/modules/enterprise/docs/mongod.conf.master.selinux /var/lib/mongo/.snmp/mongod.conf
+            cp src/mongo/db/modules/enterprise/docs/snmp/mongod.conf.master.selinux /var/lib/mongo/.snmp/mongod.conf
             chown mongod /var/lib/mongo -R
         `));
     }
