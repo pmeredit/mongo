@@ -183,7 +183,7 @@ void importCollection(OperationContext* opCtx,
 
     // Since a global IX lock is taken during the import, the opCtx is already guaranteed to be
     // killed during stepDown/stepUp. But it is better to make this explicit for clarity.
-    opCtx->setAlwaysInterruptAtStepDownOrUp();
+    opCtx->setAlwaysInterruptAtStepDownOrUp_UNSAFE();
 
     return writeConflictRetry(opCtx, "importCollection", nss.ns(), [&] {
         AutoGetDb autoDb(opCtx, nss.db(), MODE_IX);
