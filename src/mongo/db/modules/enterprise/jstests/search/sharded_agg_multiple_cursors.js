@@ -16,6 +16,15 @@ load("jstests/libs/feature_flag_util.js");  // For isEnabled.
 const dbName = "test";
 const collName = "internal_search_mongot_remote";
 
+const makeInternalConn = (function createInternalClient(conn) {
+    const curDB = conn.getDB(dbName);
+    assert.commandWorked(curDB.runCommand({
+        ["hello"]: 1,
+        internalClient: {minWireVersion: NumberInt(0), maxWireVersion: NumberInt(7)}
+    }));
+    return conn;
+});
+
 let nodeOptions = {setParameter: {enableTestCommands: 1}};
 // In certain evergreen configurations the feature flag may be set via a different method. Make
 // sure we don't duplicate a parameter set.
@@ -122,13 +131,18 @@ function validateGetMoreResponse(getMoreRes, expectedId) {
     return getMoreCursor.nextBatch;
 }
 // Run a query against a specific shard to see what a mongod response to a search query looks like.
-const shardZeroDB = st.rs0.getPrimary().getDB(dbName);
+// Since we are running a pipeline with $_internalSearchMongotRemote we need to use an internal
+// client.
+const shardZeroConn = makeInternalConn(st.rs0.getPrimary());
+const shardZeroDB = shardZeroConn.getDB(dbName);
 const shardZeroColl = shardZeroDB[collName];
 let commandObj = {
     aggregate: shardZeroColl.getName(),
     pipeline: [shardPipelineStage],
     fromMongos: true,
     needsMerge: true,
+    // Internal client has to provide writeConcern
+    writeConcern: {w: "majority"},
     // Establishing cursors always has batch size zero.
     cursor: {batchSize: 0},
 };
@@ -164,13 +178,18 @@ for (let thisCursorTopLevel of cursorArray) {
 }
 
 // Repeat for second shard.
-const shardOneDB = st.rs1.getPrimary().getDB(dbName);
+// Since we are running a pipeline with $_internalSearchMongotRemote we need to use an internal
+// client.
+const shardOneConn = makeInternalConn(st.rs1.getPrimary());
+const shardOneDB = shardOneConn.getDB(dbName);
 const shardOneColl = shardOneDB[collName];
 commandObj = {
     aggregate: shardOneColl.getName(),
     pipeline: [shardPipelineStage],
     fromMongos: true,
     needsMerge: true,
+    // Internal client requires explicit writeConcern
+    writeConcern: {w: "majority"},
     // Establishing cursors always has batch size zero.
     cursor: {batchSize: 0},
 };
@@ -211,6 +230,7 @@ commandObj = {
     fromMongos: true,
     needsMerge: true,
     exchange: {policy: "roundrobin", consumers: NumberInt(4), bufferSize: NumberInt(1024)},
+    writeConcern: {w: "majority"},
     // Establishing cursors always has batch size zero.
     cursor: {batchSize: 0},
 };

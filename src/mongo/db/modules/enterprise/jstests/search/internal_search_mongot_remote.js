@@ -1,5 +1,5 @@
 /**
- * Tests for the `$_internalSearchMongotRemote` aggregation pipeline stage.
+ * Tests for the `$search` aggregation pipeline stage.
  */
 (function() {
 "use strict";
@@ -26,11 +26,14 @@ const testDB = conn.getDB(dbName);
 assertCreateCollection(testDB, collName);
 const collUUID = getUUIDFromListCollections(testDB, collName);
 
-// $_internalSearchMongotRemote can query mongot and correctly pass along results.
+const coll = testDB.getCollection(collName);
+coll.insert({_id: 0});
+
+// $search can query mongot and correctly pass along results.
 {
     const mongotQuery = {};
     const cursorId = NumberLong(123);
-    const pipeline = [{$_internalSearchMongotRemote: mongotQuery}];
+    const pipeline = [{$search: mongotQuery}];
     const mongotResponseBatch = [{_id: 0}];
     const responseOk = 1;
     const expectedDocs = [{_id: 0}];
@@ -43,14 +46,11 @@ const collUUID = getUUIDFromListCollections(testDB, collName);
     assert.eq(testDB[collName].aggregate(pipeline).toArray(), expectedDocs);
 }
 
-// $_internalSearchMongotRemote populates {$meta: searchScore}.
+// $search populates {$meta: searchScore}.
 {
     const mongotQuery = {};
     const cursorId = NumberLong(123);
-    const pipeline = [
-        {$_internalSearchMongotRemote: mongotQuery},
-        {$project: {_id: 1, score: {$meta: "searchScore"}}}
-    ];
+    const pipeline = [{$search: mongotQuery}, {$project: {_id: 1, score: {$meta: "searchScore"}}}];
     const mongotResponseBatch = [{_id: 0, $searchScore: 1.234}];
     const responseOk = 1;
     const expectedDocs = [{_id: 0, score: 1.234}];
@@ -63,15 +63,13 @@ const collUUID = getUUIDFromListCollections(testDB, collName);
     assert.eq(testDB[collName].aggregate(pipeline).toArray(), expectedDocs);
 }
 
-// $_internalSearchMongotRemote populates {$meta: searchScoreDetails}.
+// $search populates {$meta: searchScoreDetails}.
 {
     const mongotQuery = {scoreDetails: true};
     const cursorId = NumberLong(123);
     const searchScoreDetails = {scoreDetails: "great score"};
-    const pipeline = [
-        {$_internalSearchMongotRemote: mongotQuery},
-        {$project: {_id: 1, scoreInfo: {$meta: "searchScoreDetails"}}}
-    ];
+    const pipeline =
+        [{$search: mongotQuery}, {$project: {_id: 1, scoreInfo: {$meta: "searchScoreDetails"}}}];
     const mongotResponseBatch = [{_id: 0, $searchScoreDetails: searchScoreDetails}];
     const responseOk = 1;
     const expectedDocs = [{_id: 0, scoreInfo: searchScoreDetails}];
@@ -88,10 +86,8 @@ const collUUID = getUUIDFromListCollections(testDB, collName);
 {
     const mongotQuery = {scoreDetails: true};
     const cursorId = NumberLong(123);
-    const pipeline = [
-        {$_internalSearchMongotRemote: mongotQuery},
-        {$project: {_id: 1, scoreInfo: {$meta: "searchScoreDetails"}}}
-    ];
+    const pipeline =
+        [{$search: mongotQuery}, {$project: {_id: 1, scoreInfo: {$meta: "searchScoreDetails"}}}];
     const mongotResponseBatch = [{_id: 0, $searchScoreDetails: "great score"}];
     const responseOk = 1;
 
@@ -106,14 +102,16 @@ const collUUID = getUUIDFromListCollections(testDB, collName);
     assert.commandFailedWithCode(res, 10065);
 }
 
-// $_internalSearchMongotRemote handles multiple documents and batches correctly.
+coll.insert({_id: 1});
+coll.insert({_id: 10});
+coll.insert({_id: 11});
+coll.insert({_id: 20});
+
+// $search handles multiple documents and batches correctly.
 {
     const mongotQuery = {};
     const cursorId = NumberLong(123);
-    const pipeline = [
-        {$_internalSearchMongotRemote: mongotQuery},
-        {$project: {_id: 1, score: {$meta: "searchScore"}}}
-    ];
+    const pipeline = [{$search: mongotQuery}, {$project: {_id: 1, score: {$meta: "searchScore"}}}];
 
     const batchOne = [{_id: 0, $searchScore: 1.234}, {_id: 1, $searchScore: 1.21}];
     const batchTwo = [{_id: 10, $searchScore: 1.1}, {_id: 11, $searchScore: 0.8}];

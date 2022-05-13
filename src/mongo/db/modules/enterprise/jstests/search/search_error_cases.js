@@ -1,6 +1,5 @@
 /**
- * Test error conditions for the `$search` and `$_internalSearchMongotRemote` aggregation
- * pipeline stages.
+ * Test error conditions for the `$search` aggregation pipeline stages.
  */
 
 (function() {
@@ -19,30 +18,21 @@ assert.commandWorked(testDB[collName].insert({_id: 0}));
 assert.commandWorked(testDB[collName].insert({_id: 1}));
 assert.commandWorked(testDB[collName].insert({_id: 2}));
 
-// $_internalSearchMongotRemote cannot be used inside a transaction.
+// $search cannot be used inside a transaction.
 let session = testDB.getMongo().startSession({readConcern: {level: "local"}});
 let sessionDb = session.getDatabase(dbName);
 
 session.startTransaction();
 assert.commandFailedWithCode(
-    sessionDb.runCommand(
-        {aggregate: collName, pipeline: [{$_internalSearchMongotRemote: {}}], cursor: {}}),
+    sessionDb.runCommand({aggregate: collName, pipeline: [{$search: {}}], cursor: {}}),
     ErrorCodes.OperationNotSupportedInTransaction);
 session.endSession();
 
-// $_internalSearchMongotRemote cannot be used inside a $facet subpipeline.
-let pipeline = [{$facet: {originalPipeline: [{$_internalSearchMongotRemote: {}}]}}];
+// $search cannot be used inside a $facet subpipeline.
+let pipeline = [{$facet: {originalPipeline: [{$search: {}}]}}];
 let cmdObj = {aggregate: collName, pipeline: pipeline, cursor: {}};
 
 assert.commandFailedWithCode(testDB.runCommand(cmdObj), 40600);
-
-// $_internalSearchMongotRemote is only valid as the first stage in a pipeline.
-assert.commandFailedWithCode(testDB.runCommand({
-    aggregate: collName,
-    pipeline: [{$match: {}}, {$_internalSearchMongotRemote: {}}],
-    cursor: {},
-}),
-                             40602);
 
 // $search cannot be used inside a transaction.
 session = testDB.getMongo().startSession({readConcern: {level: "local"}});
@@ -52,16 +42,6 @@ assert.commandFailedWithCode(
     sessionDb.runCommand({aggregate: collName, pipeline: [{$search: {}}], cursor: {}}),
     ErrorCodes.OperationNotSupportedInTransaction);
 session.endSession();
-
-// $search cannot be used inside a $facet subpipeline.
-pipeline = [{$facet: {originalPipeline: [{$search: {}}]}}];
-cmdObj = {
-    aggregate: collName,
-    pipeline: pipeline,
-    cursor: {}
-};
-
-assert.commandFailedWithCode(testDB.runCommand(cmdObj), 40600);
 
 // $search is only valid as the first stage in a pipeline.
 assert.commandFailedWithCode(testDB.runCommand({

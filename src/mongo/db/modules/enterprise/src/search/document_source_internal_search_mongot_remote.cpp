@@ -35,10 +35,13 @@ using boost::intrusive_ptr;
 using executor::RemoteCommandRequest;
 using executor::TaskExecutorCursor;
 
-REGISTER_DOCUMENT_SOURCE(_internalSearchMongotRemote,
-                         LiteParsedSearchStage::parse,
-                         DocumentSourceInternalSearchMongotRemote::createFromBson,
-                         AllowedWithApiStrict::kAlways);
+REGISTER_DOCUMENT_SOURCE_CONDITIONALLY(_internalSearchMongotRemote,
+                                       LiteParsedSearchStage::parse,
+                                       DocumentSourceInternalSearchMongotRemote::createFromBson,
+                                       AllowedWithApiStrict::kInternal,
+                                       AllowedWithClientType::kInternal,
+                                       boost::none,
+                                       true);
 
 MONGO_FAIL_POINT_DEFINE(searchReturnEofImmediately);
 
