@@ -119,13 +119,16 @@ SearchImplementedHelperFunctions::generateMetadataPipelineForSearch(
     uassert(
         6253506, "Cannot have exchange specified in a $search pipeline", !request.getExchange());
 
-
     // Some tests build $search pipelines without actually setting up a mongot. In this case either
     // return a dummy stage or nothing depending on the environment. Note that in this case we don't
     // actually make any queries, the document source will return eof immediately.
     if (MONGO_unlikely(DocumentSourceInternalSearchMongotRemote::skipSearchStageRemoteSetup())) {
         if (shouldBuildMetadataPipeline) {
-            return Pipeline::create({origSearchStage->clone()}, expCtx);
+            // Construct a duplicate ExpressionContext for our cloned pipeline. This is necessary
+            // so that the duplicated pipeline and the cloned pipeline do not accidentally
+            // share an OperationContext.
+            auto newExpCtx = expCtx->copyWith(expCtx->ns, expCtx->uuid);
+            return Pipeline::create({origSearchStage->clone(newExpCtx)}, newExpCtx);
         }
         return nullptr;
     }
@@ -169,11 +172,17 @@ SearchImplementedHelperFunctions::generateMetadataPipelineForSearch(
                 6253303, "Didn't expect metadata cursor from mongot", shouldBuildMetadataPipeline);
             tassert(
                 6253726, "Expected to not already have created a metadata pipeline", !newPipeline);
+
+            // Construct a duplicate ExpressionContext for our cloned pipeline. This is necessary
+            // so that the duplicated pipeline and the cloned pipeline do not accidentally
+            // share an OperationContext.
+            auto newExpCtx = expCtx->copyWith(expCtx->ns, expCtx->uuid);
+
             // Clone the MongotRemote stage and set the metadata cursor.
-            auto newStage = origSearchStage->copyForAlternateSource(std::move(*it));
+            auto newStage = origSearchStage->copyForAlternateSource(std::move(*it), newExpCtx);
 
             // Build a new pipeline with the metadata source as the only stage.
-            newPipeline = Pipeline::create({newStage}, expCtx);
+            newPipeline = Pipeline::create({newStage}, newExpCtx);
             newPipeline->pipelineType = CursorTypeEnum::SearchMetaResult;
         } else {
             tasserted(6253302,

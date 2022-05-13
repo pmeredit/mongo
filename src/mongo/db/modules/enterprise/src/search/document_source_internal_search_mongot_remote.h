@@ -111,12 +111,14 @@ public:
         return logic;
     }
 
-    virtual boost::intrusive_ptr<DocumentSource> clone() const override {
+    virtual boost::intrusive_ptr<DocumentSource> clone(
+        const boost::intrusive_ptr<ExpressionContext>& newExpCtx) const override {
         auto params = Params{_searchQuery};
         params.protocolVersion = _metadataMergeProtocolVersion;
-        params.mergePipeline = _mergingPipeline ? _mergingPipeline->clone() : nullptr;
+        params.mergePipeline = _mergingPipeline ? _mergingPipeline->clone(newExpCtx) : nullptr;
+        auto expCtx = newExpCtx ? newExpCtx : pExpCtx;
         return make_intrusive<DocumentSourceInternalSearchMongotRemote>(
-            std::move(params), pExpCtx, _taskExecutor);
+            std::move(params), expCtx, _taskExecutor);
     }
 
     BSONObj getSearchQuery() const {
@@ -145,9 +147,11 @@ public:
      * Copies everything necessary to make a mongot remote query, but does not copy the cursor.
      */
     boost::intrusive_ptr<DocumentSourceInternalSearchMongotRemote> copyForAlternateSource(
-        executor::TaskExecutorCursor cursor) {
+        executor::TaskExecutorCursor cursor,
+        const boost::intrusive_ptr<ExpressionContext>& newExpCtx) {
+        tassert(6635400, "newExpCtx should not be null", newExpCtx != nullptr);
         auto newStage = boost::intrusive_ptr<DocumentSourceInternalSearchMongotRemote>(
-            static_cast<DocumentSourceInternalSearchMongotRemote*>(clone().get()));
+            static_cast<DocumentSourceInternalSearchMongotRemote*>(clone(newExpCtx).get()));
         newStage->setCursor(std::move(cursor));
         return newStage;
     }
