@@ -73,9 +73,8 @@ public:
         auto sourceMetadata = _schemaTree.getEncryptionMetadataForPath(sourcePath);
         auto destinationMetadata = _schemaTree.getEncryptionMetadataForPath(_currentPath);
 
-        // TODO SERVER-63657: update this message.
         uassert(6329901,
-                "$rename between encrypted fields is not permitted with FLE 2",
+                "$rename between encrypted fields is not permitted with Queryable Encryption",
                 (!sourceMetadata || !sourceMetadata->isFle2Encrypted()) &&
                     (!destinationMetadata || !destinationMetadata->isFle2Encrypted()));
         uassert(51160,

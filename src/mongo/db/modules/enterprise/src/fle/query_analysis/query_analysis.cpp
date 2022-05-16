@@ -658,9 +658,8 @@ PlaceHolderResult addPlaceHoldersForUpdate(OperationContext* opCtx,
     PlaceHolderResult phr;
 
     for (auto&& update : updateOp.getUpdates()) {
-        // TODO SERVER-63657: update this message.
         uassert(6329900,
-                "Multi-document updates are not allowed with FLE 2 encryption",
+                "Multi-document updates are not allowed with Queryable Encryption",
                 !(update.getMulti() && schemaTree->parsedFrom == FleVersion::kFle2));
 
         auto& updateMod = update.getU();
@@ -714,9 +713,8 @@ PlaceHolderResult addPlaceHoldersForDelete(OperationContext* opCtx,
         write_ops::DeleteCommandRequest::parse(IDLParserErrorContext("delete"), request);
     std::vector<write_ops::DeleteOpEntry> markedDeletes;
     for (auto&& op : deleteRequest.getDeletes()) {
-        // TODO SERVER-63657: update this message.
         uassert(6382800,
-                "Multi-document deletes are not allowed with FLE 2 encryption",
+                "Multi-document deletes are not allowed with Queryable Encryption",
                 !(op.getMulti() && schemaTree->parsedFrom == FleVersion::kFle2));
 
         markedDeletes.push_back(op);

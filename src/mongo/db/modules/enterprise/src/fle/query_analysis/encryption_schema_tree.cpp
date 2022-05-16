@@ -738,7 +738,7 @@ clonable_traits<EncryptionSchemaTreeNode>::clone_factory_type::operator()(
 
 bool EncryptionSchemaTreeNode::isFle2LeafEquivalent(const EncryptionSchemaTreeNode& other) const {
     tassert(6329203,
-            "isFle2LeafEquivalent can only be called on FLE2 schema nodes.",
+            "isFle2LeafEquivalent can only be called on Queryable Encryption schema nodes.",
             this->parsedFrom == FleVersion::kFle2 && other.parsedFrom == FleVersion::kFle2);
     // If either node is encrypted, the nodes must have the same metadata.
     auto myMetadata = getEncryptionMetadata();

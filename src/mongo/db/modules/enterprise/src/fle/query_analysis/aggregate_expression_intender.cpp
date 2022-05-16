@@ -247,23 +247,21 @@ Intention exitSubtree(const ExpressionContext& expCtx, std::stack<Subtree>& subt
 }
 [[noreturn]] void uassertedComparisonFLE2EncryptedFields(const FieldPath& fieldPath0,
                                                          const FieldPath& fieldPath1) {
-    // TODO: SERVER-63657 Update user-facing naming for FLE2.
     uasserted(6334101,
-              "Comparison disallowed between two fields encrypted with FLE 2 encryption; "
+              "Comparison disallowed between two fields encrypted with Queryable Encryption; "
               "fields '"s +
-                  fieldPath0.fullPath() + "' and '" + fieldPath1.fullPath() +
-                  "' are FLE 2 encrypted.");
+                  fieldPath0.fullPath() + "' and '" + fieldPath1.fullPath() + "' are encrypted.");
 }
 
 void ensureFLE2EncryptedFieldComparedToConstant(ExpressionFieldPath* encryptedFieldPath,
                                                 Expression* comparedTo) {
-    // TODO: SERVER-63657 Update user-facing naming for FLE2.
     auto constant = dynamic_cast<ExpressionConstant*>(comparedTo);
     uassert(6334105,
-            "Comparison disallowed between FLE 2 encrypted fields and non-constant expressions; "
+            "Comparison disallowed between Queryable Encryption encrypted fields and non-constant "
+            "expressions; "
             "field '"s +
                 encryptedFieldPath->getFieldPathWithoutCurrentPrefix().fullPath() +
-                "' is FLE 2 encrypted.",
+                "' is encrypted.",
             constant);
 }
 
@@ -652,7 +650,6 @@ private:
                 comparedSubtree->temporarilyPermittedEncryptedFieldPath = nullptr;
             } else {
                 FieldRef path{fieldPath->getFieldPathWithoutCurrentPrefix().fullPath()};
-                // TODO: SERVER-63657 Update user-facing naming for FLE2.
                 uassert(6331102,
                         "Invalid reference to an encrypted field within aggregate expression: "s +
                             path.dottedField(),

@@ -92,9 +92,8 @@ ResolvedEncryptionInfo::ResolvedEncryptionInfo(
     // combination with the FLE 2 encryption algorithm.
     if (this->bsonTypeSet.has_value()) {
         for (auto&& type : this->bsonTypeSet->bsonTypes) {
-            // TODO SERVER-63657: replace "FLE 2" in the following error message with chosen string.
             uassert(6316404,
-                    str::stream() << "Cannot use FLE 2 encryption for element of type: "
+                    str::stream() << "Cannot use Queryable Encryption for element of type: "
                                   << typeName(type),
                     this->isTypeLegal(type));
         }
