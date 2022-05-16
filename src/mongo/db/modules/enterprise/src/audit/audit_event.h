@@ -9,7 +9,6 @@
 #include "audit_event_type.h"
 #include "mongo/base/error_codes.h"
 #include "mongo/bson/oid.h"
-#include "mongo/db/auth/user_set.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/db/matcher/expression.h"
 #include "mongo/db/matcher/matchable.h"

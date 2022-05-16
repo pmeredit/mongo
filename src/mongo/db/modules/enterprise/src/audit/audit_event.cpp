@@ -39,17 +39,15 @@ constexpr auto kIsSystemUser = "isSystemUser"_sd;
 }  // namespace
 
 ImpersonatedClientAttrs::ImpersonatedClientAttrs(Client* client) {
-    auto authSession = AuthorizationSession::get(client);
-
-    if (authSession) {
-        UserNameIterator userNamesIt = authSession->getImpersonatedUserNames();
-        RoleNameIterator roleNamesIt = authSession->getImpersonatedRoleNames();
-        if (!userNamesIt.more()) {
-            userNamesIt = authSession->getAuthenticatedUserNames();
-            roleNamesIt = authSession->getAuthenticatedRoleNames();
+    if (auto as = AuthorizationSession::get(client)) {
+        auto userName = as->getImpersonatedUserName();
+        auto roleNamesIt = as->getImpersonatedRoleNames();
+        if (!userName) {
+            userName = as->getAuthenticatedUserName();
+            roleNamesIt = as->getAuthenticatedRoleNames();
         }
-        for (; userNamesIt.more(); userNamesIt.next()) {
-            this->userNames.emplace_back(userNamesIt.get());
+        if (userName) {
+            this->userName = std::move(userName.get());
         }
         for (; roleNamesIt.more(); roleNamesIt.next()) {
             this->roleNames.emplace_back(roleNamesIt.get());
@@ -120,18 +118,23 @@ void AuditEvent::serializeClient(Client* client, BSONObjBuilder* builder) {
 
     if (AuthorizationSession::exists(client)) {
         auto as = AuthorizationSession::get(client);
-        UserNameIterator userNames = as->getImpersonatedUserNames();
+        auto userName = as->getImpersonatedUserName();
         RoleNameIterator roleNames;
 
-        if (userNames.more()) {
+        if (userName) {
             roleNames = as->getImpersonatedRoleNames();
         } else {
-            userNames = as->getAuthenticatedUserNames();
+            userName = as->getAuthenticatedUserName();
             roleNames = as->getAuthenticatedRoleNames();
         }
 
-        // users: [{db: dbnane, user: username}, ...]
-        serializeNamesToBSON(userNames, builder, kUsersField);
+        // users: [{db: dbname, user: username}]
+        BSONArrayBuilder namesBuilder(builder->subarrayStart(kUsersField));
+        if (userName) {
+            userName->serializeToBSON(&namesBuilder);
+        }
+        namesBuilder.doneFast();
+
         // roles: [{db: dbname, role: rolename}, ...]
         serializeNamesToBSON(roleNames, builder, kRolesField);
     }
