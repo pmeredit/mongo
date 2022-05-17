@@ -7,16 +7,28 @@
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
 load("jstests/libs/fail_point_util.js");
+load("jstests/libs/parallel_shell_helpers.js");
 
 (function() {
 'use strict';
 
+function bgDeleteFunc(query) {
+    load("jstests/fle2/libs/encrypted_client_util.js");
+    let client = new EncryptedClient(db.getMongo(), "txn_contention_delete");
+    while (true) {
+        try {
+            client.getDB().basic.deleteOne(query);
+            return;
+        } catch (e) {
+            assert.eq(e.code, ErrorCodes.WriteConflict, "Unexpected error: " + tojson(e));
+            print("deleteOne(" + tojson(query) + ") threw a WriteConflict error. Retrying...");
+        }
+    }
+}
+
 function runTest(conn) {
     let dbName = 'txn_contention_delete';
     let db = conn.getDB(dbName);
-
-    // TODO SERVER-65395: Remove when fle2 tests can handle a retry limit for internal transactions.
-    configureFailPoint(conn, "skipTransactionApiRetryCheckInHandleError");
 
     let client = new EncryptedClient(db.getMongo(), dbName);
 
@@ -36,18 +48,10 @@ function runTest(conn) {
     assert.commandWorked(
         db.adminCommand({configureFailPoint: "fleCrudHangDelete", mode: {times: 2}}));
 
-    // Start two inserts. One will wait for the other
-    let insertOne = startParallelShell(function() {
-        load("jstests/fle2/libs/encrypted_client_util.js");
-        let client = new EncryptedClient(db.getMongo(), "txn_contention_delete");
-        assert.commandWorked(client.getDB().basic.deleteOne({"last": "Marcus"}));
-    }, conn.port);
+    // Start two deletes. One will wait for the other
+    let insertOne = startParallelShell(funWithArgs(bgDeleteFunc, {"last": "Marcus"}), conn.port);
 
-    let insertTwo = startParallelShell(function() {
-        load("jstests/fle2/libs/encrypted_client_util.js");
-        let client = new EncryptedClient(db.getMongo(), "txn_contention_delete");
-        assert.commandWorked(client.getDB().basic.deleteOne({"last": "marco"}));
-    }, conn.port);
+    let insertTwo = startParallelShell(funWithArgs(bgDeleteFunc, {"last": "marco"}), conn.port);
 
     // Wait for the two parallel shells
     insertOne();

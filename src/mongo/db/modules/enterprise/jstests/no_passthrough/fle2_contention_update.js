@@ -7,16 +7,29 @@
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
 load("jstests/libs/fail_point_util.js");
+load("jstests/libs/parallel_shell_helpers.js");
 
 (function() {
 'use strict';
 
+function bgUpdateFunc(query, update) {
+    load("jstests/fle2/libs/encrypted_client_util.js");
+    let client = new EncryptedClient(db.getMongo(), "txn_contention_update");
+    while (true) {
+        try {
+            client.getDB().basic.updateOne(query, update);
+            return;
+        } catch (e) {
+            assert.eq(e.code, ErrorCodes.WriteConflict, "Unexpected error: " + tojson(e));
+            print("updateOne(" + tojson(query) + ", " + tojson(update) +
+                  ") threw a WriteConflict error. Retrying...");
+        }
+    }
+}
+
 function runTest(conn) {
     let dbName = 'txn_contention_update';
     let db = conn.getDB(dbName);
-
-    // TODO SERVER-65395: Remove when fle2 tests can handle a retry limit for internal transactions.
-    configureFailPoint(conn, "skipTransactionApiRetryCheckInHandleError");
 
     let client = new EncryptedClient(db.getMongo(), dbName);
 
@@ -36,20 +49,12 @@ function runTest(conn) {
     assert.commandWorked(
         db.adminCommand({configureFailPoint: "fleCrudHangUpdate", mode: {times: 2}}));
 
-    // Start two inserts. One will wait for the other
-    let insertOne = startParallelShell(function() {
-        load("jstests/fle2/libs/encrypted_client_util.js");
-        let client = new EncryptedClient(db.getMongo(), "txn_contention_update");
-        assert.commandWorked(
-            client.getDB().basic.updateOne({"last": "Marcus"}, {$set: {"first": "matthew"}}));
-    }, conn.port);
+    // Start two updates. One will wait for the other
+    let insertOne = startParallelShell(
+        funWithArgs(bgUpdateFunc, {"last": "Marcus"}, {$set: {"first": "matthew"}}), conn.port);
 
-    let insertTwo = startParallelShell(function() {
-        load("jstests/fle2/libs/encrypted_client_util.js");
-        let client = new EncryptedClient(db.getMongo(), "txn_contention_update");
-        assert.commandWorked(
-            client.getDB().basic.updateOne({"last": "marco"}, {$set: {"first": "matthew"}}));
-    }, conn.port);
+    let insertTwo = startParallelShell(
+        funWithArgs(bgUpdateFunc, {"last": "marco"}, {$set: {"first": "matthew"}}), conn.port);
 
     // Wait for the two parallel shells
     insertOne();

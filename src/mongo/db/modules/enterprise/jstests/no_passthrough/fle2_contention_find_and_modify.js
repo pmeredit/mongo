@@ -7,16 +7,31 @@
  */
 load("jstests/fle2/libs/encrypted_client_util.js");
 load("jstests/libs/fail_point_util.js");
+load("jstests/libs/parallel_shell_helpers.js");
 
 (function() {
 'use strict';
 
+function bgFindAndModifyFunc(query, update) {
+    load("jstests/fle2/libs/encrypted_client_util.js");
+    let client = new EncryptedClient(db.getMongo(), "txn_contention_find_and_modify");
+    while (true) {
+        let res = client.getDB().runCommand({findAndModify: "basic", query: query, update: update});
+        if (res.ok === 0 || (res.hasOwnProperty("writeErrors") && res.writeErrors.length > 0)) {
+            assert.commandFailedWithCode(
+                res, ErrorCodes.WriteConflict, "Unexpected error: " + tojson(res));
+            print("findAndModify(" + tojson(query) + ", " + tojson(update) +
+                  ") threw a WriteConflict error. Retrying...");
+            continue;
+        }
+        assert.commandWorked(res);
+        return;
+    }
+}
+
 function runTest(conn) {
     let dbName = 'txn_contention_find_and_modify';
     let db = conn.getDB(dbName);
-
-    // TODO SERVER-65395: Remove when fle2 tests can handle a retry limit for internal transactions.
-    configureFailPoint(conn, "skipTransactionApiRetryCheckInHandleError");
 
     let client = new EncryptedClient(db.getMongo(), dbName);
 
@@ -32,30 +47,18 @@ function runTest(conn) {
     assert.commandWorked(edb.basic.insert({_id: 2, "first": "Mark", "last": "Marcus"}));
     client.assertEncryptedCollectionCounts("basic", 2, 2, 0, 2);
 
-    // Setup a failpoint that hangs in update
+    // Setup a failpoint that hangs in findAndModify
     assert.commandWorked(
         db.adminCommand({configureFailPoint: "fleCrudHangFindAndModify", mode: {times: 2}}));
 
-    // Start two inserts. One will wait for the other
-    let insertOne = startParallelShell(function() {
-        load("jstests/fle2/libs/encrypted_client_util.js");
-        let client = new EncryptedClient(db.getMongo(), "txn_contention_find_and_modify");
-        assert.commandWorked(client.getDB().runCommand({
-            findAndModify: "basic",
-            query: {"last": "Marcus"},
-            update: {$set: {"first": "matthew"}}
-        }));
-    }, conn.port);
+    // Start two findAndModify. One will wait for the other
+    let insertOne = startParallelShell(
+        funWithArgs(bgFindAndModifyFunc, {"last": "Marcus"}, {$set: {"first": "matthew"}}),
+        conn.port);
 
-    let insertTwo = startParallelShell(function() {
-        load("jstests/fle2/libs/encrypted_client_util.js");
-        let client = new EncryptedClient(db.getMongo(), "txn_contention_find_and_modify");
-        assert.commandWorked(client.getDB().runCommand({
-            findAndModify: "basic",
-            query: {"last": "marco"},
-            update: {$set: {"first": "matthew"}}
-        }));
-    }, conn.port);
+    let insertTwo = startParallelShell(
+        funWithArgs(bgFindAndModifyFunc, {"last": "marco"}, {$set: {"first": "matthew"}}),
+        conn.port);
 
     // Wait for the two parallel shells
     insertOne();
