@@ -542,7 +542,7 @@ void FileCopyBasedInitialSyncer::_keepBackupCursorAlive(WithLock) {
         rpc::makeEmptyMetadata(),
         nullptr);
     // We're not expecting a response, set to fire and forget
-    request.fireAndForgetMode = executor::RemoteCommandRequest::FireAndForgetMode::kOn;
+    request.options.fireAndForget = true;
 
     _syncingFilesState.backupCursorKeepAliveFuture =
         AsyncTry([this, self = shared_from_this(), request] {
@@ -578,7 +578,7 @@ void FileCopyBasedInitialSyncer::_killBackupCursor() {
                                            nullptr);
 
     // We're not expecting a response, set to fire and forget
-    request.fireAndForgetMode = executor::RemoteCommandRequest::FireAndForgetMode::kOn;
+    request.options.fireAndForget = true;
     return _syncingFilesState.executor
         ->scheduleRemoteCommand(std::move(request), CancellationToken::uncancelable())
         .getAsync([this, self = shared_from_this()](auto&&) {});  // Ignore the result Future;
