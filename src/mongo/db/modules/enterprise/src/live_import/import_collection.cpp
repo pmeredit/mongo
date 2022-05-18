@@ -218,7 +218,7 @@ void importCollection(OperationContext* opCtx,
                                       nss,
                                       Top::LockType::NotLocked,
                                       AutoStatsTracker::LogMode::kUpdateTopAndCurOp,
-                                      catalog->getDatabaseProfileLevel(nss.db()));
+                                      catalog->getDatabaseProfileLevel(nss.dbName()));
 
         // If the collection creation rolls back, ensure that the Top entry created for the
         // collection is deleted.
