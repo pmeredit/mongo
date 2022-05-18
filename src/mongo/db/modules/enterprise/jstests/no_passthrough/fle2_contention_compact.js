@@ -52,6 +52,7 @@ function runTest(conn, primaryConn) {
     const testDb = conn.getDB(dbName);
     const admin = primaryConn.getDB("admin");
     const isMongos = conn.isMongos();
+    const failpointWaitTimeoutMS = 5 * 60 * 1000;
 
     assert.commandWorked(testDb.setLogLevel(5, "sharding"));
 
@@ -70,8 +71,11 @@ function runTest(conn, primaryConn) {
 
         // Start a compact, which will hang before the ESC placeholder insert
         const bgCompact = startParallelShell(bgCompactFunc, conn.port);
-        admin.runCommand(
-            {waitForFailPoint: failpoint, timesEntered: hitCount + 1, maxTimeMS: 10000});
+        assert.commandWorked(admin.runCommand({
+            waitForFailPoint: failpoint,
+            timesEntered: hitCount + 1,
+            maxTimeMS: failpointWaitTimeoutMS
+        }));
         client.assertEncryptedCollectionCounts(collName, 10, 10, 0, 0);
 
         // Insert another entry in the next position: 11
@@ -102,8 +106,11 @@ function runTest(conn, primaryConn) {
 
         // Start a compact, which will hang after the ESC placeholder insert
         const bgCompact = startParallelShell(bgCompactFunc, conn.port);
-        admin.runCommand(
-            {waitForFailPoint: failpoint, timesEntered: hitCount + 1, maxTimeMS: 10000});
+        assert.commandWorked(admin.runCommand({
+            waitForFailPoint: failpoint,
+            timesEntered: hitCount + 1,
+            maxTimeMS: failpointWaitTimeoutMS
+        }));
         client.assertEncryptedCollectionCounts(collName, 10, 10, 0, 0);
 
         // Start an insert which will keep retrying and fail due to write conflict
@@ -138,8 +145,11 @@ function runTest(conn, primaryConn) {
 
         // Start a compact, which will hang before the ECC placeholder insert at pos 6
         const bgCompact = startParallelShell(bgCompactFunc, conn.port);
-        admin.runCommand(
-            {waitForFailPoint: failpoint, timesEntered: hitCount + 1, maxTimeMS: 10000});
+        assert.commandWorked(admin.runCommand({
+            waitForFailPoint: failpoint,
+            timesEntered: hitCount + 1,
+            maxTimeMS: failpointWaitTimeoutMS
+        }));
 
         // ESC now has the placeholder at this point
         client.assertEncryptedCollectionCounts(collName, 5, 10, 5, 0);
@@ -177,8 +187,11 @@ function runTest(conn, primaryConn) {
 
         // Start a compact, which will hang after the ECC placeholder insert
         const bgCompact = startParallelShell(bgCompactFunc, conn.port);
-        admin.runCommand(
-            {waitForFailPoint: failpoint, timesEntered: hitCount + 1, maxTimeMS: 10000});
+        assert.commandWorked(admin.runCommand({
+            waitForFailPoint: failpoint,
+            timesEntered: hitCount + 1,
+            maxTimeMS: failpointWaitTimeoutMS
+        }));
         // ESC and ECC now have placeholders at this point
         client.assertEncryptedCollectionCounts(collName, 5, 10, 5, 0);
 
@@ -214,8 +227,11 @@ function runTest(conn, primaryConn) {
 
         // Start the first compact, which hangs
         const bgCompactOne = startParallelShell(bgCompactFunc, conn.port);
-        admin.runCommand(
-            {waitForFailPoint: failpoint1, timesEntered: hitCount + 1, maxTimeMS: 10000});
+        assert.commandWorked(admin.runCommand({
+            waitForFailPoint: failpoint1,
+            timesEntered: hitCount + 1,
+            maxTimeMS: failpointWaitTimeoutMS
+        }));
 
         // Enable the failpoint that throws on subsequent compacts
         assert.commandWorked(admin.runCommand({configureFailPoint: failpoint2, mode: 'alwaysOn'}));
