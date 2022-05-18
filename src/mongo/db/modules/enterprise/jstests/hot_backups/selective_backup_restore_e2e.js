@@ -69,7 +69,7 @@ function resetBackupPaths() {
     mkdir(selectiveBackupPath + kSeparator + "journal");
 }
 
-const kNumIterations = 10;
+const kNumIterations = 5;
 for (let iteration = 1; iteration <= kNumIterations; iteration++) {
     jsTestLog("Running iteration " + iteration);
 
