@@ -26,6 +26,7 @@ env.Library(
         'audit_application_message.cpp',
         'audit_authentication.cpp',
         'audit_authz_check.cpp',
+        'audit_cluster_server_parameters.cpp',
         'audit_commands.idl',
         'audit_event.cpp',
         'audit_event_type.idl',

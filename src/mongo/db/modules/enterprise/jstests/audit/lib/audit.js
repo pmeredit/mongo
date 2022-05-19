@@ -243,7 +243,7 @@ class AuditSpooler {
                 return false;
             },
             () => {
-                return _makeErrorMessage();
+                return this._makeErrorMessage();
             });
 
         // Success if we got here, return the matched record.
@@ -315,6 +315,21 @@ class AuditSpooler {
                               "(" + tojson(target[property]) + ") == false");
                         return false;
                     }
+                } else if (Array.isArray(source[property])) {
+                    /* { foo: ['bar', 'baz', ...] } */
+                    // Assert that all of the elements in source satisfy _deepPartialEquals for at
+                    // least one element in target.
+                    const res = source[property].every(srcElement => {
+                        return target[property].some(targetElement => {
+                            return this._deepPartialEquals(targetElement, srcElement);
+                        });
+                    });
+                    if (!res) {
+                        print(property + " does not contain all expected elements. " +
+                              tojson(source[property]) + " != " + tojson(target[property]));
+                        return false;
+                    }
+
                 } else if (typeof source[property] !== "object") {
                     /* { foo: 'bar' } */
                     const res = source[property] === target[property];

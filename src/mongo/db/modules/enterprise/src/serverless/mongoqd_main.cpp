@@ -618,7 +618,6 @@ ExitCode runMongoqdServer(ServiceContext* serviceContext) {
     ThreadClient tc("mongoqdMain", serviceContext);
 
     logMongoqdVersionInfo(nullptr);
-    audit::logStartupOptions(tc.get(), serverGlobalParams.parsedOpts);
 
     // Set up the periodic runner for background job execution
     {
@@ -774,6 +773,10 @@ ExitCode runMongoqdServer(ServiceContext* serviceContext) {
                     "error"_attr = redact(status));
         return EXIT_NET_ERROR;
     }
+
+    // Startup options are written to the audit log at the end of startup so that cluster server
+    // parameters are guaranteed to have been initialized from disk at this point.
+    audit::logStartupOptions(tc.get(), serverGlobalParams.parsedOpts);
 
     serviceContext->notifyStartupComplete();
 
