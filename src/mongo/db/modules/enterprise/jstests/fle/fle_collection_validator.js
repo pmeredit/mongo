@@ -43,6 +43,41 @@ for (const cmd of ["create", "collMod"]) {
             {[cmd]: "test", validator: {$jsonSchema: generateSchemaV1(schemaProto).jsonSchema}},
             schema)));
 
+        assert.commandFailedWithCode(testDB.runCommand(Object.assign({
+            [cmd]: "test",
+            validator: {$jsonSchema: generateSchemaV1(schemaProto).jsonSchema, ssn: "foo"}
+        },
+                                                                     schema)),
+                                     51092);
+
+        // TODO: SERVER-66657 This validator is currently rejected but it could be allowed with more
+        // advanced query analysis.
+        assert.commandFailedWithCode(testDB.runCommand(Object.assign({
+            [cmd]: "test",
+            validator: {
+                $or: [
+                    {$jsonSchema: generateSchemaV1(schemaProto).jsonSchema},
+                    {ssn: {$exists: false}},
+                ]
+            }
+        },
+                                                                     schema)),
+                                     51092);
+
+        // TODO: SERVER-66657 This validator is currently rejected but it could be allowed with more
+        // advanced query analysis.
+        assert.commandFailedWithCode(testDB.runCommand(Object.assign({
+            [cmd]: "test",
+            validator: {
+                $and: [
+                    {$jsonSchema: generateSchemaV1(schemaProto).jsonSchema},
+                    {ssn: {$exists: true}},
+                ]
+            }
+        },
+                                                                     schema)),
+                                     51092);
+
         // This validator only references the ssn field and no user.account field. Since the schemas
         // don't match, creating a collection with this validator should fail.
         assert.commandFailedWithCode(testDB.runCommand(Object.assign({

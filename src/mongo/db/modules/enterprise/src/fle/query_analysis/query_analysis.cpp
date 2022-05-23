@@ -841,7 +841,18 @@ PlaceHolderResult addPlaceholdersForCommandWithValidator(
         return PlaceHolderResult{false, schemaTree->mayContainEncryptedNode(), nullptr, cmdObj};
     }
 
-    if (schemaTree->parsedFrom == FleVersion::kFle1 &&
+    // None of the MatchExpression operators that are desugared from $jsonSchema are supported in
+    // query analysis. However, for FLE1 we need to explicitly support the use case where the
+    // collection validator is used to store the schema rather than a client-side schemaMap. So, if
+    // we're parsing a validator in a FLE1 collection and $jsonSchema is the only operator, we allow
+    // the operation if the schema inside the operator exactly matches the schema passed to query
+    // analysis for this collection. This is the case when the validator has one top-level field
+    // with the key `$jsonSchema`. If $jsonSchema is AND-ed (explicitly or implicity) or OR-ed with
+    // other operators, this branch will not be taken and a generic error will be thrown that an
+    // internal schema operator is unsupported in query analysis.
+    // TODO: SERVER-66657 Support some validators that have $jsonSchema AND-ed or OR-ed with other
+    // operators.
+    if (schemaTree->parsedFrom == FleVersion::kFle1 && validator->nFields() == 1 &&
         validator->firstElementFieldNameStringData() == "$jsonSchema"_sd) {
         auto cmdWithValidatorSchema =
             cmdObj.addField(BSON("jsonSchema" << validator->firstElement()).firstElement())
