@@ -83,7 +83,10 @@ void exportCollection(OperationContext* opCtx, const NamespaceString& nss, BSONO
 
     BSONObjBuilder indexIdentsBuilder;
     const IndexCatalog* indexCatalog = collection->getIndexCatalog();
-    auto it = indexCatalog->getIndexIterator(opCtx, /*includeUnfinishedIndexes=*/true);
+    auto it = indexCatalog->getIndexIterator(opCtx,
+                                             IndexCatalog::InclusionPolicy::kReady |
+                                                 IndexCatalog::InclusionPolicy::kUnfinished |
+                                                 IndexCatalog::InclusionPolicy::kFrozen);
     while (it->more()) {
         const IndexCatalogEntry* entry = it->next();
         const std::string indexName = entry->descriptor()->indexName();
