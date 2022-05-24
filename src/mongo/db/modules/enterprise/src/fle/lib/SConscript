@@ -1,6 +1,5 @@
 # -*- mode: python; -*-
 
-
 from functools import partial
 import libdeps
 
@@ -10,11 +9,10 @@ Import("get_option")
 env = env.Clone()
 
 csfleEnv = env.Clone()
-csfleEnv.AppendUnique(
-    CPPDEFINES=[
-        'CSFLE_SUPPORT_COMPILING',
-     ],
-)
+csfleEnv.AppendUnique(CPPDEFINES=[
+    'CSFLE_SUPPORT_COMPILING',
+], )
+
 
 def mongo_export_file_generator(target, source, env, for_signature):
     if env.ToolchainIs('msvc'):
@@ -28,6 +26,7 @@ def mongo_export_file_generator(target, source, env, for_signature):
     else:
         pass
 
+
 if get_option('link-model') == 'dynamic-sdk' and env.TargetOSIs('posix', 'windows'):
     csfleEnv['LIBDEPS_SHLIBEMITTER'] = partial(
         libdeps.libdeps_emitter,
@@ -36,11 +35,9 @@ if get_option('link-model') == 'dynamic-sdk' and env.TargetOSIs('posix', 'window
     )
 
     csfleEnv['MONGO_EXPORT_FILE_SHLINKFLAGS'] = mongo_export_file_generator
-    csfleEnv.AppendUnique(
-        SHLINKFLAGS=[
-            '$MONGO_EXPORT_FILE_SHLINKFLAGS',
-        ],
-    )
+    csfleEnv.AppendUnique(SHLINKFLAGS=[
+        '$MONGO_EXPORT_FILE_SHLINKFLAGS',
+    ])
 
     csfleSupportTargets = csfleEnv.SharedLibrary(
         target='mongo_csfle_v1',
@@ -73,11 +70,9 @@ if get_option('link-model') == 'dynamic-sdk' and env.TargetOSIs('posix', 'window
 
 if get_option('link-model') != 'dynamic-sdk':
     csfleTestEnv = env.Clone()
-    csfleTestEnv.AppendUnique(
-        CPPDEFINES=[
-            'CSFLE_SUPPORT_STATIC',
-        ],
-    )
+    csfleTestEnv.AppendUnique(CPPDEFINES=[
+        'CSFLE_SUPPORT_STATIC',
+    ])
 
     unitTest = csfleTestEnv.CppUnitTest(
         target="mongo_csfle_test",
@@ -96,11 +91,9 @@ if get_option('link-model') != 'dynamic-sdk':
 
 if get_option('link-model') != 'dynamic-sdk':
     csfleShlibTestEnv = env.Clone()
-    csfleShlibTestEnv.AppendUnique(
-        CPPDEFINES=[
-            'CSFLE_UNITTEST_DYNAMIC',
-        ],
-    )
+    csfleShlibTestEnv.AppendUnique(CPPDEFINES=[
+        'CSFLE_UNITTEST_DYNAMIC',
+    ])
 
     obj = csfleShlibTestEnv.Object('mongo_csfle_shlib_test', 'mongo_csfle_test.cpp')
     unitTest = csfleShlibTestEnv.Program(

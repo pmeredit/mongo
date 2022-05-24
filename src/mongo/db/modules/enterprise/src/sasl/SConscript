@@ -2,7 +2,6 @@
 
 import SCons
 
-
 Import('env')
 
 env = env.Clone()
@@ -11,16 +10,18 @@ saslconf = Configure(env)
 
 have_sasl_lib = saslconf.CheckLibWithHeader(
     "sasl2",
-    ["stddef.h","sasl/sasl.h"], "C",
+    ["stddef.h", "sasl/sasl.h"],
+    "C",
     "sasl_version_info(0, 0, 0, 0, 0, 0);",
-    autoadd=False)
+    autoadd=False,
+)
 
 if not have_sasl_lib:
     env.ConfError("Could not find <sasl/sasl.h> and sasl library, required for enterprise build.")
 
 if saslconf.env.TargetOSIs('windows'):
     saslconf.env['MONGO_GSSAPI_IMPL'] = "sspi"
-    saslconf.env['MONGO_GSSAPI_LIB'] = [ "secur32" ]
+    saslconf.env['MONGO_GSSAPI_LIB'] = ["secur32"]
 else:
     if saslconf.CheckLib(library="gssapi_krb5", autoadd=False):
         saslconf.env['MONGO_GSSAPI_IMPL'] = "gssapi"
@@ -40,7 +41,7 @@ env.Library(
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/client/sasl_aws_common',
-        '$BUILD_DIR/mongo/db/server_options_core', # For object_check.h
+        '$BUILD_DIR/mongo/db/server_options_core',  # For object_check.h
     ],
 )
 
@@ -103,7 +104,7 @@ env.Library(
     target='mongosaslservercommon',
     source=[
         'cyrus_sasl_authentication_session.cpp',
-        'ldap_sasl_authentication_session.cpp'
+        'ldap_sasl_authentication_session.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/curop',
@@ -123,20 +124,18 @@ env.Library(
 
 if env.TargetOSIs("windows"):
     # Ensure we're building with /MD or /MDd
-    mdFlags = ["/MD","/MDd"]
+    mdFlags = ["/MD", "/MDd"]
     hasFlag = 0
     for mdFlag in mdFlags:
         if mdFlag in env['CCFLAGS']:
             hasFlag += 1
     if hasFlag != 1:
         env.FatalError("You must enable dynamic CRT --dynamic-windows to build the "
-            "enterprise version")
+                       "enterprise version")
 else:
     env.CppUnitTest(
         target='sasl_authentication_session_gssapi_test',
-        source=[
-            'sasl_authentication_session_gssapi_test.cpp'
-        ],
+        source=['sasl_authentication_session_gssapi_test.cpp'],
         UNITTEST_HAS_CUSTOM_MAINLINE=True,
         LIBDEPS=[
             '$BUILD_DIR/mongo/base',
@@ -154,5 +153,5 @@ else:
             '../ldap/ldap_manager_init',
             'mongosaslservercommon',
             'mongosaslserversession',
-        ]
+        ],
     )

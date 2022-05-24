@@ -34,7 +34,7 @@ env.Library(
 wtEnv.Library(
     target='export_collection',
     source=[
-        'export_collection.cpp'
+        'export_collection.cpp',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/base',
@@ -50,7 +50,7 @@ wtEnv.Library(
 wtEnv.Library(
     target='import_collection',
     source=[
-        'import_collection.cpp'
+        'import_collection.cpp',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/base',
@@ -76,7 +76,7 @@ wtEnv.Library(
 env.Library(
     target='import_collection_coordinator',
     source=[
-        'import_collection_coordinator.cpp'
+        'import_collection_coordinator.cpp',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/base',

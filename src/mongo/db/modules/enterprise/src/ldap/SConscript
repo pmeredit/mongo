@@ -10,14 +10,20 @@ if env.TargetOSIs('windows'):
     ldapconf.env['MONGO_LDAP_LIB'] = ["Wldap32"]
 else:
     have_ldap_h = ldapconf.CheckLibWithHeader(
-                "ldap",
-                ["ldap.h"], "C",
-                "ldap_is_ldap_url(\"ldap://127.0.0.1\");", autoadd=False)
+        "ldap",
+        ["ldap.h"],
+        "C",
+        "ldap_is_ldap_url(\"ldap://127.0.0.1\");",
+        autoadd=False,
+    )
 
     have_lber_h = ldapconf.CheckLibWithHeader(
-                "lber",
-                ["lber.h"], "C",
-                "ber_free(NULL, 0);", autoadd=False)
+        "lber",
+        ["lber.h"],
+        "C",
+        "ber_free(NULL, 0);",
+        autoadd=False,
+    )
 
     if have_ldap_h:
         ldapconf.env.AppendUnique(MONGO_LDAP_LIB=['ldap'])
@@ -47,7 +53,7 @@ env.Library(
 env.Library(
     target='ldap_manager_init',
     source=[
-        'ldap_manager_init.cpp'
+        'ldap_manager_init.cpp',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/db/service_context',
@@ -139,7 +145,7 @@ ldap_connection_sources = [
     'connections/ldap_connection_factory.cpp',
     'connections/ldap_connection_helpers.cpp',
     'connections/ldap_connection_reaper.cpp',
-    'ldap_resolver_cache.cpp'
+    'ldap_resolver_cache.cpp',
 ]
 
 if env.TargetOSIs('windows'):
@@ -165,7 +171,7 @@ env.Library(
         'ldap_manager',
         'ldap_parameters',
     ],
-    SYSLIBDEPS=env.get("MONGO_LDAP_LIB", [])
+    SYSLIBDEPS=env.get("MONGO_LDAP_LIB", []),
 )
 
 env.Library(
@@ -220,7 +226,7 @@ env.Library(
         'ldap_connection',
         'ldap_manager',
         'ldap_manager_impl',
-        'ldap_query',    
+        'ldap_query',
     ],
     LIBDEPS_DEPENDENTS=[
         '$BUILD_DIR/mongo/s/mongos_initializers',
@@ -260,7 +266,7 @@ env.Program(
         "ldap_tool.cpp",
         "ldap_tool_options.cpp",
         'ldap_tool_options.idl',
-    ] +  env.WindowsResourceFile("ldap_tool.rc"),
+    ] + env.WindowsResourceFile("ldap_tool.rc"),
     AIB_COMPONENT="mongoldap",
     AIB_COMPONENTS_EXTRA=[
         "dist",

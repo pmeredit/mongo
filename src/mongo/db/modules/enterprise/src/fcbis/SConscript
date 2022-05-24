@@ -24,7 +24,7 @@ env.Library(
         "$BUILD_DIR/mongo/db/service_context",
         "$BUILD_DIR/mongo/db/startup_recovery",
         '$BUILD_DIR/mongo/db/storage/storage_engine_common',
-        '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core'
+        '$BUILD_DIR/mongo/db/storage/wiredtiger/storage_wiredtiger_core',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/db/concurrency/exception_util',
@@ -77,6 +77,6 @@ env.CppUnitTest(
         'initial_sync_file_mover_test.cpp',
     ],
     LIBDEPS=[
-        'file_copy_based_initial_syncer'
+        'file_copy_based_initial_syncer',
     ],
 )

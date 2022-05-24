@@ -2,7 +2,7 @@
 
 Import([
     'env',
-    'get_option'
+    'get_option',
 ])
 
 if get_option('js-engine') != 'none':
@@ -28,7 +28,7 @@ if get_option('js-engine') != 'none':
             '../query_analysis/query_analysis',
         ],
         LIBDEPS_DEPENDENTS=[
-            '$BUILD_DIR/mongo/shell/mongo_initializers'
+            '$BUILD_DIR/mongo/shell/mongo_initializers',
         ],
         # TODO: this tag must be used because the tcmalloc library is added
         # as public dependency for each Library: https://jira.mongodb.org/browse/SERVER-49788

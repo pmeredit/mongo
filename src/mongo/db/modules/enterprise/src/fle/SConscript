@@ -74,7 +74,7 @@ env.Library(
 env.Program(
     target="mongocryptd",
     source=[
-        "cryptd/cryptd_main_shim.cpp"
+        "cryptd/cryptd_main_shim.cpp",
     ],
     LIBDEPS=[
         'cryptd_commands',

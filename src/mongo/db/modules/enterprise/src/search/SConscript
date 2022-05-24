@@ -34,7 +34,7 @@ env.Library(
     LIBDEPS_TAGS=[
         'lint-allow-nonprivate-on-deps-dependents',
         'lint-allow-bidirectional-edges',
-    ]
+    ],
 )
 
 env.Library(
@@ -48,7 +48,7 @@ env.Library(
         '$BUILD_DIR/mongo/idl/idl_parser',
         '$BUILD_DIR/mongo/idl/server_parameter',
         '$BUILD_DIR/mongo/util/net/network',
-    ]
+    ],
 )
 
 env.Library(
@@ -94,5 +94,5 @@ env.CppUnitTest(
         '$BUILD_DIR/mongo/db/service_context_test_fixture',
         'document_source_search',
         'mongot_options',
-    ]
+    ],
 )

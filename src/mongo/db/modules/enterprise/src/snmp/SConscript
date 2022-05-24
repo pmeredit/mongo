@@ -2,7 +2,6 @@
 
 import SCons
 
-
 Import('env')
 
 env = env.Clone()
@@ -14,8 +13,7 @@ if env.TargetOSIs('windows'):
             # class. The snmp library still uses the 'register'
             # keyword.
             "/wd5033",
-        ],
-    )
+        ], )
 
 env.Library(
     target='mongosnmp',

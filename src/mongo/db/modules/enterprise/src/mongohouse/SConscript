@@ -31,5 +31,5 @@ env.Program(
     AIB_COMPONENT='mh',
     AIB_COMPONENTS_EXTRA=[
         'dist-test',
-    ]
+    ],
 )

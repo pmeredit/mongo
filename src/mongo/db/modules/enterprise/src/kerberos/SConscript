@@ -2,10 +2,10 @@
 
 import textwrap
 
-
 Import('env')
 
 env = env.Clone()
+
 
 def CheckKRB5Features(context):
     test_body = """
@@ -23,6 +23,7 @@ def CheckKRB5Features(context):
     ret = context.TryCompile(textwrap.dedent(test_body), ".cpp")
     context.Result(ret)
     return ret
+
 
 krb5conf = Configure(env, custom_tests={'CheckKRB5Features': CheckKRB5Features})
 if krb5conf.CheckKRB5Features():
@@ -64,5 +65,5 @@ env.Program(
         "../util/gssapi_helpers" if not env.TargetOSIs("windows") else [],
         "../util/report_tool",
         "kerberos_tool",
-    ]
+    ],
 )

@@ -50,7 +50,8 @@ env.Library(
         '$BUILD_DIR/mongo/s/startup_initialization',
         '$BUILD_DIR/mongo/transport/service_entry_point',
         '$BUILD_DIR/mongo/transport/transport_layer_manager',
-        '$BUILD_DIR/mongo/util/latch_analyzer' if get_option('use-diagnostic-latches') == 'on' else [],
+        '$BUILD_DIR/mongo/util/latch_analyzer'
+        if get_option('use-diagnostic-latches') == 'on' else [],
         '$BUILD_DIR/mongo/util/signal_handlers',
     ],
     LIBDEPS=[
@@ -67,7 +68,8 @@ if env.TargetOSIs('windows'):
             ('@mongo_version_patch@', version_parts[2]),
             ('@mongo_version_extra@', version_parts[3]),
             ('@mongo_version_extra_str@', version_extra),
-        ])
+        ],
+    )
 
     env.Alias('generated-sources', generatedServerManifest)
     env.Depends("mongoqd.res", generatedServerManifest)

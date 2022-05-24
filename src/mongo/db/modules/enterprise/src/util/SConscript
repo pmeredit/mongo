@@ -11,13 +11,13 @@ env.Library(
     ],
     LIBDEPS_PRIVATE=[
         "$BUILD_DIR/mongo/base",
-    ]
+    ],
 )
 
 env.Library(
     target="gssapi_helpers",
     source=[
-        "gssapi_helpers.cpp"
+        "gssapi_helpers.cpp",
     ],
     LIBDEPS_PRIVATE=[
         "$BUILD_DIR/mongo/base",
@@ -34,5 +34,5 @@ env.Library(
     ],
     LIBDEPS_PRIVATE=[
         "$BUILD_DIR/mongo/base",
-    ]
+    ],
 )

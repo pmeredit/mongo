@@ -4,7 +4,6 @@ import SCons
 
 from libdeps import deptype
 
-
 Import('env')
 
 env = env.Clone()
@@ -18,7 +17,7 @@ env.Library(
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/db/server_options_core',
         '$BUILD_DIR/mongo/idl/server_parameter',
-    ]
+    ],
 )
 
 env.Library(
@@ -266,7 +265,7 @@ env.CppUnitTest(
 env.Library(
     target='audit_key_manager_mock',
     source=[
-       'audit_key_manager_mock.cpp',
+        'audit_key_manager_mock.cpp',
     ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',

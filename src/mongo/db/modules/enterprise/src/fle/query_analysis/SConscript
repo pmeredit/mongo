@@ -32,7 +32,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/query/command_request_response',
         '$BUILD_DIR/mongo/db/query/query_request',
         '$BUILD_DIR/mongo/db/update/update_driver',
-    ]
+    ],
 )
 
 env.CppUnitTest(
