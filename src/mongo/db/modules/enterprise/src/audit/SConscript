@@ -49,8 +49,6 @@ env.Library(
         '$BUILD_DIR/mongo/db/auth/auth',
         '$BUILD_DIR/mongo/db/ops/write_ops_parsers',
         '$BUILD_DIR/mongo/util/net/network',
-        'audit_config',
-        'audit_enc_comp_manager',
     ],
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/db/auth/authprivilege',
@@ -61,6 +59,8 @@ env.Library(
         '$BUILD_DIR/mongo/idl/cluster_server_parameter',
         '$BUILD_DIR/mongo/transport/message_compressor',
         '$BUILD_DIR/mongo/util/options_parser/options_parser',
+        'audit_config',
+        'audit_enc_comp_manager',
     ],
     LIBDEPS_DEPENDENTS=[
         ('$BUILD_DIR/mongo/db/audit', deptype.Public),
@@ -128,6 +128,7 @@ env.Library(
     LIBDEPS_PRIVATE=[
         '$BUILD_DIR/mongo/db/audit',
         '$BUILD_DIR/mongo/s/grid',
+        'audit_config',
         'audit_enterprise',
     ],
 )
@@ -201,6 +202,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/dbdirectclient',
         '$BUILD_DIR/mongo/db/dbhelpers',
         '$BUILD_DIR/mongo/s/write_ops/batch_write_types',
+        'audit_enc_comp_manager',
         'audit_enterprise',
         'audit_synchronize_job',
     ],
@@ -253,6 +255,8 @@ env.CppUnitTest(
         '$BUILD_DIR/mongo/idl/cluster_server_parameter',
         '$BUILD_DIR/mongo/util/options_parser/options_parser',
         '$BUILD_DIR/mongo/util/signal_handlers',
+        'audit_config',
+        'audit_enc_comp_manager',
         'audit_enterprise',
         'audit_key_manager_mock',
         'audit_mongod',
@@ -280,6 +284,7 @@ env.Library(
         '$BUILD_DIR/mongo/db/auth/authprivilege',
         '$BUILD_DIR/mongo/db/commands',
         '$BUILD_DIR/mongo/s/grid',
+        'audit_config',
         'audit_enterprise',
         'audit_synchronize_job',
     ],
