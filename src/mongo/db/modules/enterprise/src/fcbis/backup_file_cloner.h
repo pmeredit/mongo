@@ -5,6 +5,7 @@
 #pragma once
 
 #include <boost/filesystem.hpp>
+#include <boost/filesystem/fstream.hpp>
 #include <memory>
 #include <vector>
 

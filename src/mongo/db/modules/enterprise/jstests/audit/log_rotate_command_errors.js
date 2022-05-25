@@ -89,13 +89,8 @@ function testLogFileDeletedBeforeRotation() {
     assert.eq(result.ok, 0);
     assert.eq(result.code, ErrorCodes.FileRenameFailed);
 
-    // On Windows, this is logged as an "Access denied" error for each of
-    // the two files, while on others, this is just logged as a minor error.
-    if (_isWindows()) {
-        assert(checkLog.checkContainsWithCountJson(conn, 23168, undefined, 2));
-    } else {
-        assert(checkLog.checkContainsOnceJson(conn, 6221501));
-    }
+    assert(checkLog.checkContainsOnceJson(conn, 6221501));
+
     fixture.stopProcess();
     sleep(1000);
 }

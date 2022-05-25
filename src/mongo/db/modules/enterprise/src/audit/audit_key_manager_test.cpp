@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "boost/filesystem.hpp"
+#include "boost/filesystem/fstream.hpp"
 #include "mongo/base/data_range.h"
 #include "mongo/unittest/temp_dir.h"
 #include "mongo/unittest/unittest.h"

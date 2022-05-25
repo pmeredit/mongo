@@ -6,7 +6,7 @@
 #include "mongo/platform/basic.h"
 
 #include "boost/filesystem.hpp"
-
+#include "boost/filesystem/fstream.hpp"
 #include <boost/optional/optional_io.hpp>
 #include <memory>
 
