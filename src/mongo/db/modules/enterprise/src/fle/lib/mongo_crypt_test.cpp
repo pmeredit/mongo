@@ -283,7 +283,7 @@ TEST_F(MongoCryptTest, GetVersionReturnsReasonableValues) {
     const char* versionStr = mongo_crypt_v1_get_version_str();
     std::cerr << "Mongo Crypt Library Version: " << versionStr << ", " << std::hex << version
               << std::endl;
-    ASSERT(version >= 0x05030000);
+    ASSERT(version >= 0x0006'0000'0000'0000);
     ASSERT(versionStr);
 }
 

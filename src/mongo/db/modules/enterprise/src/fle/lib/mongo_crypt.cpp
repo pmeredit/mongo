@@ -239,8 +239,9 @@ BSONObj analyzeQuery(const BSONObj document, OperationContext* opCtx, const Name
 }
 
 uint64_t getMongoCryptVersion() {
-    return (version::kMajorVersion << 24) | (version::kMinorVersion << 16) |
-        (version::kPatchVersion << 8);
+    return (static_cast<uint64_t>(version::kMajorVersion) << 48) |
+        (static_cast<uint64_t>(version::kMinorVersion) << 32) |
+        (static_cast<uint64_t>(version::kPatchVersion) << 16);
 }
 
 #ifndef MONGO_DISTMOD
