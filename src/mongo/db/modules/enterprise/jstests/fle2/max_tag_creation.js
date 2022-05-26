@@ -34,7 +34,7 @@ for (let i = 0; i < 99; i++) {
 
 // Setting this parameter means encrypted rewrites will generate no more than 99 encrypted tags.
 assert.commandWorked(
-    edb.adminCommand({setParameter: 1, internalQueryFLERewriteMemoryLimit: 99 * 32}));
+    edb.adminCommand({setParameter: 1, internalQueryFLERewriteMemoryLimit: 10 * 40 + 89 * 41}));
 
 const command = {
     find: collName,
@@ -46,7 +46,7 @@ assert.commandWorked(edb.basic.runCommand(command));
 
 // Set limit to 98 tags.
 assert.commandWorked(
-    edb.adminCommand({setParameter: 1, internalQueryFLERewriteMemoryLimit: 98 * 32}));
+    edb.adminCommand({setParameter: 1, internalQueryFLERewriteMemoryLimit: 10 * 40 + 88 * 41}));
 
 // Running the same query again should fail because rewriting the filter will require creating more
 // tags than the newly set internal limit.
