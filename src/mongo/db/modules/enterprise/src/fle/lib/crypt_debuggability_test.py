@@ -1,11 +1,11 @@
-# Run on gdb with 'gdb ./mongo_csfle_shlib_test --batch -ex "source debuggability_test.py"'
+# Run on gdb with 'gdb ./mongo_crypt_shlib_test --batch -ex "source debuggability_test.py"'
 import os
 import gdb
 import re
 import traceback
 
-DBGPROG = 'mongo_csfle_shlib_test'
-LIBNAME = 'mongo_csfle_v1.so'
+DBGPROG = 'mongo_crypt_shlib_test'
+LIBNAME = 'mongo_crypt_v1.so'
 print('Running as PID {}'.format(os.getpid()))
 
 def set_breakpoint_and_continue(addr):
@@ -30,7 +30,7 @@ def debuggability_test():
     # Start the program
     gdb.execute('start')
 
-    # Assert the mongo_csfle library is not loaded yet
+    # Assert the mongo_crypt library is not loaded yet
     shlibs = gdb.execute("info sharedlibrary", False, True);
     matches = re.findall(LIBNAME, shlibs)
     assert LIBNAME not in matches, "Shared library {} is dynamically linked".format(LIBNAME)
@@ -46,8 +46,8 @@ def debuggability_test():
     assert LIBNAME in matches, "Shared library {} did not get dynamically loaded".format(LIBNAME)
 
     breaks = [
-            '(anonymous namespace)::CsfleTest::checkAnalysisSuccess',
-            'mongo_csfle_v1_analyze_query',
+            '(anonymous namespace)::MongoCryptTest::checkAnalysisSuccess',
+            'mongo_crypt_v1_analyze_query',
             'mongo::analyzeQuery',
             'mongo::analyzeNonExplainQuery',
             'mongo::query_analysis::(anonymous namespace)::processQueryCommand',
@@ -85,7 +85,7 @@ def debuggability_test():
     gdb.execute('next')
     gdb.execute('set variable output=0')
 
-    bp = set_breakpoint_and_continue("mongo::handleException<mongo_csfle_v1_error>")
+    bp = set_breakpoint_and_continue("mongo::handleException<mongo_crypt_v1_error>")
     assert_at_breakpoint(bp)
 
     gdb.execute('next')

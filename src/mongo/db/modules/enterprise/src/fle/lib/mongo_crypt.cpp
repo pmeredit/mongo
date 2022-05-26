@@ -5,7 +5,7 @@
 
 #include "mongo/platform/basic.h"
 
-#include "mongo_csfle.h"
+#include "mongo_crypt.h"
 
 #include "fle/query_analysis/query_analysis.h"
 #include "mongo/base/initializer.h"
@@ -39,7 +39,7 @@
 
 namespace mongo {
 
-using CsfleSupportStatusImpl = StatusForAPI<mongo_csfle_v1_error>;
+using MongoCryptSupportStatusImpl = StatusForAPI<mongo_crypt_v1_error>;
 
 const NamespaceString kDummyNamespaceStr = NamespaceString("");
 constexpr auto kExplainField = "explain"_sd;
@@ -50,22 +50,23 @@ constexpr auto kVerbosityField = "verbosity"_sd;
  * C interfaces that use enterCXX() must provide a translateException() function that converts any
  * possible exception into a StatusForAPI<> object.
  */
-static CsfleSupportStatusImpl translateException(stdx::type_identity<CsfleSupportStatusImpl>) try {
+static MongoCryptSupportStatusImpl translateException(
+    stdx::type_identity<MongoCryptSupportStatusImpl>) try {
     throw;
 } catch (const ExceptionFor<ErrorCodes::ReentrancyNotAllowed>& ex) {
-    return {MONGO_CSFLE_V1_ERROR_REENTRANCY_NOT_ALLOWED, ex.code(), ex.what()};
+    return {MONGO_CRYPT_V1_ERROR_REENTRANCY_NOT_ALLOWED, ex.code(), ex.what()};
 } catch (const DBException& ex) {
-    return {MONGO_CSFLE_V1_ERROR_EXCEPTION, ex.code(), ex.what()};
-} catch (const ExceptionForAPI<mongo_csfle_v1_error>& ex) {
+    return {MONGO_CRYPT_V1_ERROR_EXCEPTION, ex.code(), ex.what()};
+} catch (const ExceptionForAPI<mongo_crypt_v1_error>& ex) {
     return {ex.statusCode(), mongo::ErrorCodes::InternalError, ex.what()};
 } catch (const std::bad_alloc& ex) {
-    return {MONGO_CSFLE_V1_ERROR_ENOMEM, mongo::ErrorCodes::InternalError, ex.what()};
+    return {MONGO_CRYPT_V1_ERROR_ENOMEM, mongo::ErrorCodes::InternalError, ex.what()};
 } catch (const std::exception& ex) {
-    return {MONGO_CSFLE_V1_ERROR_UNKNOWN, mongo::ErrorCodes::InternalError, ex.what()};
+    return {MONGO_CRYPT_V1_ERROR_UNKNOWN, mongo::ErrorCodes::InternalError, ex.what()};
 } catch (...) {
-    return {MONGO_CSFLE_V1_ERROR_UNKNOWN,
+    return {MONGO_CRYPT_V1_ERROR_UNKNOWN,
             mongo::ErrorCodes::InternalError,
-            "Unknown error encountered in performing requested mongo_csfle_v1 operation"};
+            "Unknown error encountered in performing requested mongo_crypt_v1 operation"};
 }
 
 /**
@@ -77,8 +78,8 @@ static CsfleSupportStatusImpl translateException(stdx::type_identity<CsfleSuppor
  * We use an out param instead of returning the StatusForAPI<> object so as to avoid a std::string
  * copy that may allocate memory.
  */
-static void translateExceptionFallback(CsfleSupportStatusImpl& status) noexcept {
-    status.error = MONGO_CSFLE_V1_ERROR_IN_REPORTING_ERROR;
+static void translateExceptionFallback(MongoCryptSupportStatusImpl& status) noexcept {
+    status.error = MONGO_CRYPT_V1_ERROR_IN_REPORTING_ERROR;
     status.exception_code = -1;
     setErrorMessageNoAlloc(status.what);
 }
@@ -237,7 +238,7 @@ BSONObj analyzeQuery(const BSONObj document, OperationContext* opCtx, const Name
     return analyzeNonExplainQuery(document, opCtx, ns);
 }
 
-uint64_t getCsfleVersion() {
+uint64_t getMongoCryptVersion() {
     return (version::kMajorVersion << 24) | (version::kMinorVersion << 16) |
         (version::kPatchVersion << 8);
 }
@@ -246,26 +247,26 @@ uint64_t getCsfleVersion() {
 #define MONGO_DISTMOD "dev"
 #endif
 
-const char* getCsfleVersionStr() {
-    static const auto version = "mongo_csfle_v1-" MONGO_DISTMOD "-" + version::kVersion;
+const char* getMongoCryptVersionStr() {
+    static const auto version = "mongo_crypt_v1-" MONGO_DISTMOD "-" + version::kVersion;
     return version.c_str();
 }
 
 }  // namespace mongo
 
-struct mongo_csfle_v1_status {
-    mongo::CsfleSupportStatusImpl statusImpl;
+struct mongo_crypt_v1_status {
+    mongo::MongoCryptSupportStatusImpl statusImpl;
 };
 
 namespace mongo {
 
 namespace {
 
-CsfleSupportStatusImpl* getStatusImpl(mongo_csfle_v1_status* status) {
+MongoCryptSupportStatusImpl* getStatusImpl(mongo_crypt_v1_status* status) {
     return status ? &status->statusImpl : nullptr;
 }
 
-using CsfleSupportException = ExceptionForAPI<mongo_csfle_v1_error>;
+using MongoCryptSupportException = ExceptionForAPI<mongo_crypt_v1_error>;
 
 ServiceContext* initialize() {
     srand(static_cast<unsigned>(curTimeMicros64()));
@@ -286,15 +287,15 @@ ServiceContext* initialize() {
 }  // namespace
 }  // namespace mongo
 
-struct mongo_csfle_v1_lib {
-    mongo_csfle_v1_lib() : serviceContext(mongo::initialize()) {}
+struct mongo_crypt_v1_lib {
+    mongo_crypt_v1_lib() : serviceContext(mongo::initialize()) {}
 
-    mongo_csfle_v1_lib(const mongo_csfle_v1_lib&) = delete;
-    void operator=(const mongo_csfle_v1_lib&) = delete;
+    mongo_crypt_v1_lib(const mongo_crypt_v1_lib&) = delete;
+    void operator=(const mongo_crypt_v1_lib&) = delete;
 
     /**
-     * This gets called when the CSFLE Library gets torn down, by a call to
-     * mongo_csfle_v1_lib_destroy()
+     * This gets called when the Mongo Crypt Shared Library gets torn down, by a call to
+     * mongo_crypt_v1_lib_destroy()
      */
     void free() noexcept {
         if (nullptr != serviceContext) {
@@ -310,8 +311,8 @@ struct mongo_csfle_v1_lib {
     mongo::ServiceContext* serviceContext;
 };
 
-struct mongo_csfle_v1_query_analyzer {
-    mongo_csfle_v1_query_analyzer(mongo::ServiceContext::UniqueClient client)
+struct mongo_crypt_v1_query_analyzer {
+    mongo_crypt_v1_query_analyzer(mongo::ServiceContext::UniqueClient client)
         : client(std::move(client)), opCtx(this->client->makeOperationContext()) {}
 
 
@@ -323,76 +324,78 @@ struct mongo_csfle_v1_query_analyzer {
 namespace mongo {
 namespace {
 
-std::unique_ptr<mongo_csfle_v1_lib> library;
+std::unique_ptr<mongo_crypt_v1_lib> library;
 
-mongo_csfle_v1_lib* csfle_lib_init() {
+mongo_crypt_v1_lib* mongo_crypt_lib_init() {
     if (library) {
-        throw CsfleSupportException{
-            MONGO_CSFLE_V1_ERROR_LIBRARY_ALREADY_INITIALIZED,
-            "Cannot initialize the CSFLE Support Library when it is already initialized."};
+        throw MongoCryptSupportException{MONGO_CRYPT_V1_ERROR_LIBRARY_ALREADY_INITIALIZED,
+                                         "Cannot initialize the Mongo Crypt Shared Support Library "
+                                         "when it is already initialized."};
     }
 
-    library = std::make_unique<mongo_csfle_v1_lib>();
+    library = std::make_unique<mongo_crypt_v1_lib>();
 
     return library.get();
 }
 
-void csfle_lib_fini(mongo_csfle_v1_lib* const lib) {
+void mongo_crypt_lib_fini(mongo_crypt_v1_lib* const lib) {
     if (!lib) {
-        throw CsfleSupportException{
-            MONGO_CSFLE_V1_ERROR_INVALID_LIB_HANDLE,
-            "Cannot close a `NULL` pointer referencing a CSFLE Support Library Instance"};
+        throw MongoCryptSupportException{
+            MONGO_CRYPT_V1_ERROR_INVALID_LIB_HANDLE,
+            "Cannot close a `NULL` pointer referencing a Mongo Crypt Shared Library Instance"};
     }
 
     if (!library) {
-        throw CsfleSupportException{
-            MONGO_CSFLE_V1_ERROR_LIBRARY_NOT_INITIALIZED,
-            "Cannot close the CSFLE Support Library when it is not initialized"};
+        throw MongoCryptSupportException{
+            MONGO_CRYPT_V1_ERROR_LIBRARY_NOT_INITIALIZED,
+            "Cannot close the Mongo Crypt Shared Library when it is not initialized"};
     }
 
     if (library.get() != lib) {
-        throw CsfleSupportException{MONGO_CSFLE_V1_ERROR_INVALID_LIB_HANDLE,
-                                    "Invalid CSFLE Support Library handle."};
+        throw MongoCryptSupportException{MONGO_CRYPT_V1_ERROR_INVALID_LIB_HANDLE,
+                                         "Invalid Mongo Crypt Shared Library handle."};
     }
 
     library->free();
     library.reset();
 }
 
-mongo_csfle_v1_query_analyzer* query_analyzer_create(mongo_csfle_v1_lib* const lib) {
+mongo_crypt_v1_query_analyzer* query_analyzer_create(mongo_crypt_v1_lib* const lib) {
     if (!library) {
-        throw CsfleSupportException{MONGO_CSFLE_V1_ERROR_LIBRARY_NOT_INITIALIZED,
-                                    "Cannot create a new collator when the CSFLE Support Library "
-                                    "is not yet initialized."};
+        throw MongoCryptSupportException{
+            MONGO_CRYPT_V1_ERROR_LIBRARY_NOT_INITIALIZED,
+            "Cannot create a new collator when the Mongo Crypt Shared Library "
+            "is not yet initialized."};
     }
 
     if (library.get() != lib) {
-        throw CsfleSupportException{MONGO_CSFLE_V1_ERROR_INVALID_LIB_HANDLE,
-                                    "Cannot create a new collator when the CSFLE Support Library "
-                                    "is not yet initialized."};
+        throw MongoCryptSupportException{
+            MONGO_CRYPT_V1_ERROR_INVALID_LIB_HANDLE,
+            "Cannot create a new collator when the Mongo Crypt Shared Library "
+            "is not yet initialized."};
     }
 
-    return new mongo_csfle_v1_query_analyzer(lib->serviceContext->makeClient("csfle_support"));
+    return new mongo_crypt_v1_query_analyzer(lib->serviceContext->makeClient("crypt_support"));
 }
 
-int capi_status_get_error(const mongo_csfle_v1_status* const status) noexcept {
+int capi_status_get_error(const mongo_crypt_v1_status* const status) noexcept {
     invariant(status);
     return status->statusImpl.error;
 }
 
-const char* capi_status_get_what(const mongo_csfle_v1_status* const status) noexcept {
+const char* capi_status_get_what(const mongo_crypt_v1_status* const status) noexcept {
     invariant(status);
     return status->statusImpl.what.c_str();
 }
 
-int capi_status_get_code(const mongo_csfle_v1_status* const status) noexcept {
+int capi_status_get_code(const mongo_crypt_v1_status* const status) noexcept {
     invariant(status);
     return status->statusImpl.exception_code;
 }
 
 /**
  * toInterfaceType changes the compiler's interpretation from our internal BSON type 'char*' to
- * 'uint8_t*' which is the interface type of the CSFLE library.
+ * 'uint8_t*' which is the interface type of the Mongo Crypt Shared library.
  */
 auto toInterfaceType(char* bson) noexcept {
     return static_cast<uint8_t*>(static_cast<void*>(bson));
@@ -400,7 +403,7 @@ auto toInterfaceType(char* bson) noexcept {
 
 /**
  * fromInterfaceType changes the compiler's interpretation from 'uint8_t*' which is the BSON
- * interface type of the CSFLE library to our internal type 'char*'.
+ * interface type of the Mongo Crypt Shared library to our internal type 'char*'.
  */
 auto fromInterfaceType(const uint8_t* bson) noexcept {
     return static_cast<const char*>(static_cast<const void*>(bson));
@@ -411,62 +414,63 @@ auto fromInterfaceType(const uint8_t* bson) noexcept {
 
 extern "C" {
 
-uint64_t MONGO_API_CALL mongo_csfle_v1_get_version(void) {
-    return mongo::getCsfleVersion();
+uint64_t MONGO_API_CALL mongo_crypt_v1_get_version(void) {
+    return mongo::getMongoCryptVersion();
 }
 
-const char* MONGO_API_CALL mongo_csfle_v1_get_version_str(void) {
-    return mongo::getCsfleVersionStr();
+const char* MONGO_API_CALL mongo_crypt_v1_get_version_str(void) {
+    return mongo::getMongoCryptVersionStr();
 }
 
-mongo_csfle_v1_lib* MONGO_API_CALL mongo_csfle_v1_lib_create(mongo_csfle_v1_status* status) {
-    return enterCXX(mongo::getStatusImpl(status), [&]() { return mongo::csfle_lib_init(); });
+mongo_crypt_v1_lib* MONGO_API_CALL mongo_crypt_v1_lib_create(mongo_crypt_v1_status* status) {
+    return enterCXX(mongo::getStatusImpl(status), [&]() { return mongo::mongo_crypt_lib_init(); });
 }
 
-int MONGO_API_CALL mongo_csfle_v1_lib_destroy(mongo_csfle_v1_lib* const lib,
-                                              mongo_csfle_v1_status* const status) {
-    return enterCXX(mongo::getStatusImpl(status), [&]() { return mongo::csfle_lib_fini(lib); });
+int MONGO_API_CALL mongo_crypt_v1_lib_destroy(mongo_crypt_v1_lib* const lib,
+                                              mongo_crypt_v1_status* const status) {
+    return enterCXX(mongo::getStatusImpl(status),
+                    [&]() { return mongo::mongo_crypt_lib_fini(lib); });
 }
 
-int MONGO_API_CALL mongo_csfle_v1_status_get_error(const mongo_csfle_v1_status* const status) {
+int MONGO_API_CALL mongo_crypt_v1_status_get_error(const mongo_crypt_v1_status* const status) {
     return mongo::capi_status_get_error(status);
 }
 
 const char* MONGO_API_CALL
-mongo_csfle_v1_status_get_explanation(const mongo_csfle_v1_status* const status) {
+mongo_crypt_v1_status_get_explanation(const mongo_crypt_v1_status* const status) {
     return mongo::capi_status_get_what(status);
 }
 
-int MONGO_API_CALL mongo_csfle_v1_status_get_code(const mongo_csfle_v1_status* const status) {
+int MONGO_API_CALL mongo_crypt_v1_status_get_code(const mongo_crypt_v1_status* const status) {
     return mongo::capi_status_get_code(status);
 }
 
-mongo_csfle_v1_status* MONGO_API_CALL mongo_csfle_v1_status_create(void) {
-    return new (std::nothrow) mongo_csfle_v1_status;
+mongo_crypt_v1_status* MONGO_API_CALL mongo_crypt_v1_status_create(void) {
+    return new (std::nothrow) mongo_crypt_v1_status;
 }
 
-void MONGO_API_CALL mongo_csfle_v1_status_destroy(mongo_csfle_v1_status* const status) {
+void MONGO_API_CALL mongo_crypt_v1_status_destroy(mongo_crypt_v1_status* const status) {
     delete status;
 }
 
-mongo_csfle_v1_query_analyzer* MONGO_API_CALL
-mongo_csfle_v1_query_analyzer_create(mongo_csfle_v1_lib* lib, mongo_csfle_v1_status* const status) {
+mongo_crypt_v1_query_analyzer* MONGO_API_CALL
+mongo_crypt_v1_query_analyzer_create(mongo_crypt_v1_lib* lib, mongo_crypt_v1_status* const status) {
     return enterCXX(mongo::getStatusImpl(status),
                     [&]() { return mongo::query_analyzer_create(lib); });
 }
 
 void MONGO_API_CALL
-mongo_csfle_v1_query_analyzer_destroy(mongo_csfle_v1_query_analyzer* const collator) {
-    mongo::CsfleSupportStatusImpl* nullStatus = nullptr;
+mongo_crypt_v1_query_analyzer_destroy(mongo_crypt_v1_query_analyzer* const collator) {
+    mongo::MongoCryptSupportStatusImpl* nullStatus = nullptr;
     static_cast<void>(enterCXX(nullStatus, [=]() { delete collator; }));
 }
 
-uint8_t* MONGO_API_CALL mongo_csfle_v1_analyze_query(mongo_csfle_v1_query_analyzer* matcher,
+uint8_t* MONGO_API_CALL mongo_crypt_v1_analyze_query(mongo_crypt_v1_query_analyzer* matcher,
                                                      const uint8_t* documentBSON,
                                                      const char* ns_str,
                                                      uint32_t ns_len,
                                                      uint32_t* bson_len,
-                                                     mongo_csfle_v1_status* status) {
+                                                     mongo_crypt_v1_status* status) {
     invariant(matcher);
     invariant(documentBSON);
     invariant(bson_len);
@@ -495,8 +499,8 @@ uint8_t* MONGO_API_CALL mongo_csfle_v1_analyze_query(mongo_csfle_v1_query_analyz
 }
 
 
-void MONGO_API_CALL mongo_csfle_v1_bson_free(uint8_t* bson) {
-    mongo::CsfleSupportStatusImpl* nullStatus = nullptr;
+void MONGO_API_CALL mongo_crypt_v1_bson_free(uint8_t* bson) {
+    mongo::MongoCryptSupportStatusImpl* nullStatus = nullptr;
     static_cast<void>(enterCXX(nullStatus, [=]() { delete[](bson); }));
 }
 

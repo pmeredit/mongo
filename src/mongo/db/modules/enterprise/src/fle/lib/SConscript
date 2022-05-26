@@ -8,9 +8,9 @@ Import("get_option")
 
 env = env.Clone()
 
-csfleEnv = env.Clone()
-csfleEnv.AppendUnique(CPPDEFINES=[
-    'CSFLE_SUPPORT_COMPILING',
+cryptEnv = env.Clone()
+cryptEnv.AppendUnique(CPPDEFINES=[
+    'MONGO_CRYPT_SUPPORT_COMPILING',
 ], )
 
 
@@ -28,21 +28,21 @@ def mongo_export_file_generator(target, source, env, for_signature):
 
 
 if get_option('link-model') == 'dynamic-sdk' and env.TargetOSIs('posix', 'windows'):
-    csfleEnv['LIBDEPS_SHLIBEMITTER'] = partial(
+    cryptEnv['LIBDEPS_SHLIBEMITTER'] = partial(
         libdeps.libdeps_emitter,
         builder='SharedArchive',
         visibility_map=libdeps.dependency_visibility_honored,
     )
 
-    csfleEnv['MONGO_EXPORT_FILE_SHLINKFLAGS'] = mongo_export_file_generator
-    csfleEnv.AppendUnique(SHLINKFLAGS=[
+    cryptEnv['MONGO_EXPORT_FILE_SHLINKFLAGS'] = mongo_export_file_generator
+    cryptEnv.AppendUnique(SHLINKFLAGS=[
         '$MONGO_EXPORT_FILE_SHLINKFLAGS',
     ])
 
-    csfleSupportTargets = csfleEnv.SharedLibrary(
-        target='mongo_csfle_v1',
+    cryptSupportTargets = cryptEnv.SharedLibrary(
+        target='mongo_crypt_v1',
         source=[
-            'mongo_csfle.cpp',
+            'mongo_crypt.cpp',
         ],
         LIBDEPS_PRIVATE=[
             '$BUILD_DIR/mongo/base',
@@ -50,35 +50,28 @@ if get_option('link-model') == 'dynamic-sdk' and env.TargetOSIs('posix', 'window
             '$BUILD_DIR/mongo/util/options_parser/options_parser',
             '../query_analysis/query_analysis',
         ],
-        AIB_COMPONENT='mongo-csfle',
+        AIB_COMPONENT='mongo-crypt',
         SHLIBPREFIX="",
     )
 
     env.AutoInstall(
-        '$PREFIX_INCLUDEDIR/mongo_csfle/v1/mongo_csfle',
-        source=['mongo_csfle.h'],
-        AIB_COMPONENT='mongo-csfle',
-        AIB_ROLE='dev',
-    )
-
-    env.AutoInstall(
-        '$PREFIX/share/licenses/mongo_csfle/',
-        source=['../../../distsrc/LICENSE-Enterprise.txt'],
-        AIB_COMPONENT='mongo-csfle',
+        '$PREFIX_INCLUDEDIR/mongo_crypt/v1/mongo_crypt',
+        source=['mongo_crypt.h'],
+        AIB_COMPONENT='mongo-crypt',
         AIB_ROLE='dev',
     )
 
 if get_option('link-model') != 'dynamic-sdk':
-    csfleTestEnv = env.Clone()
-    csfleTestEnv.AppendUnique(CPPDEFINES=[
-        'CSFLE_SUPPORT_STATIC',
+    cryptTestEnv = env.Clone()
+    cryptTestEnv.AppendUnique(CPPDEFINES=[
+        'MONGO_CRYPT_SUPPORT_STATIC',
     ])
 
-    unitTest = csfleTestEnv.CppUnitTest(
-        target="mongo_csfle_test",
+    unitTest = cryptTestEnv.CppUnitTest(
+        target="mongo_crypt_test",
         source=[
-            'mongo_csfle.cpp',
-            "mongo_csfle_test.cpp",
+            'mongo_crypt.cpp',
+            "mongo_crypt_test.cpp",
         ],
         LIBDEPS=[
             '$BUILD_DIR/mongo/db/service_context_test_fixture',
@@ -86,29 +79,29 @@ if get_option('link-model') != 'dynamic-sdk':
             '../query_analysis/query_analysis',
         ],
         UNITTEST_HAS_CUSTOM_MAINLINE=True,
-        AIB_COMPONENT='mongo-csfle-test',
+        AIB_COMPONENT='mongo-crypt-test',
     )
 
 if get_option('link-model') != 'dynamic-sdk':
-    csfleShlibTestEnv = env.Clone()
-    csfleShlibTestEnv.AppendUnique(CPPDEFINES=[
-        'CSFLE_UNITTEST_DYNAMIC',
+    cryptShlibTestEnv = env.Clone()
+    cryptShlibTestEnv.AppendUnique(CPPDEFINES=[
+        'MONGO_CRYPT_UNITTEST_DYNAMIC',
     ])
 
-    obj = csfleShlibTestEnv.Object('mongo_csfle_shlib_test', 'mongo_csfle_test.cpp')
-    unitTest = csfleShlibTestEnv.Program(
-        target="mongo_csfle_shlib_test",
+    obj = cryptShlibTestEnv.Object('mongo_crypt_shlib_test', 'mongo_crypt_test.cpp')
+    unitTest = cryptShlibTestEnv.Program(
+        target="mongo_crypt_shlib_test",
         source=obj[0],
         LIBDEPS=[
             '$BUILD_DIR/mongo/db/service_context_test_fixture',
             '$BUILD_DIR/mongo/unittest/unittest',
         ],
-        AIB_COMPONENT='mongo-csfle-shlib-test',
+        AIB_COMPONENT='mongo-crypt-shlib-test',
     )
 
-    csfleShlibTestEnv.AutoInstall(
+    cryptShlibTestEnv.AutoInstall(
         '$PREFIX/',
-        source=['csfle_debuggability_test.py'],
-        AIB_COMPONENT='mongo-csfle-shlib-test',
+        source=['crypt_debuggability_test.py'],
+        AIB_COMPONENT='mongo-crypt-shlib-test',
         AIB_ROLE='base',
     )

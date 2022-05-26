@@ -72,7 +72,7 @@ public:
 ServiceContext::ConstructorActionRegisterer registerCryptdCollatorFactory{
     "CreateCryptdCollatorFactory",
     // `CreateCryptdCollatorFactory` depends on `CreateCollatorFactory` to ensure that
-    // `CreateCryptdCollatorFactory` is initialized last, as CSFLE assumes it'll use a
+    // `CreateCryptdCollatorFactory` is initialized last, as Mongo Crypt Shared assumes it'll use a
     // `CollatorFactoryCryptd` instance from `CollatorFactoryInterface::get` (cf. SERVER-56906).
     {"CreateCollatorFactory"},
     [](ServiceContext* serviceContext) {

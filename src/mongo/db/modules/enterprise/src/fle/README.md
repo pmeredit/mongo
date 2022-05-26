@@ -24,8 +24,9 @@ Manual FLE requires the application author to write encryption and decryption lo
 functions in the driver or shell.
 
 Automatic FLE relies on a daemon process called **`mongocryptd`** which is spawned by the
-driver, or on **`CSFLE`** library which is dynamically loaded by the driver.
-The client will send commands to `mongocryptd` or `CSFLE` which marks appropriate BSON fields to be encrypted, and then
+driver, or on **`Mongo Crypt Shared`** library which is dynamically loaded by the driver.
+The client will send commands to `mongocryptd` or `Mongo Crypt Shared` library,
+which marks appropriate BSON fields to be encrypted, and then
 the driver encrypts them using [libmongocrypt](https://github.com/mongodb/libmongocrypt). When receiving encrypted data
 back from the server, the driver will retrieve a key from the server's key vault automatically for the appropriate
 fields and will use that key to decrypt them.
@@ -161,17 +162,17 @@ The heftiest part of `mongocryptd` is the query analysis pipeline, located in [f
 Queries are processed by the pipeline via `mongocryptd` as well as hooks in
 [ImplicitEncryptedDBClientBase](./shell/implicit_encrypted_dbclient.cpp), denoted by the use of namespace `query_analysis`.
 
-## CSFLE
+## Mongo Crypt Shared
 
-`CSFLE` library is an alternative to `mongocryptd`, which provides the same functionality. Like `mongocryptd`, it parses the
+`Mongo Crypt Shared` library is an alternative to `mongocryptd`, which provides the same functionality. Like `mongocryptd`, it parses the
 [automatic encryption rules](https://docs.mongodb.com/manual/reference/security-client-side-automatic-json-schema/#field-level-encryption-json-schema)
 specified to the database connection and automatically applies these rules to read and write operations. Unlike
-`mongocryptd` a running daemon is not required for `CSFLE`, which is implemented as a dynamically loadable library
+`mongocryptd` a running daemon is not required for `Mongo Crypt Shared`, which is implemented as a dynamically loadable library
 and runs in the same memory space as the client process.
 
-In order to use `CSFLE`, the user application must ship the library for the desired platform together with application binary.
+In order to use `Mongo Crypt Shared`, the user application must ship the library for the desired platform together with application binary.
 Drivers would automatically load the library and use it.
 
-Code implementing `CSFLE` is located in [fle/lib](./lib). It wraps [fle/query_analysis](./query_analysis) component
+Code implementing `Mongo Crypt Shared` is located in [fle/lib](./lib). It wraps [fle/query_analysis](./query_analysis) component
 used by `mongocryptd` and will therefore functionally operate in the same manner as `mongocryptd` does. Also see
-[mongo_csfle.h](../src/fle/lib/mongo_csfle.h) for interface declarations.
+[mongo_crypt.h](../src/fle/lib/mongo_crypt.h) for interface declarations.

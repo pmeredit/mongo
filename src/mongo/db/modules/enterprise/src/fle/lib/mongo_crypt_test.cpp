@@ -6,7 +6,7 @@
 #include <string>
 #include <utility>
 
-#include "fle/lib/mongo_csfle.h"
+#include "fle/lib/mongo_crypt.h"
 
 #include "mongo/base/initializer.h"
 #include "mongo/bson/json.h"
@@ -18,7 +18,7 @@
 #include "mongo/util/quick_exit.h"
 #include "mongo/util/scopeguard.h"
 
-#define MONGO_CSFLE_PREFIX "mongo_csfle_v1"
+#define MONGO_CRYPT_PREFIX "mongo_crypt_v1"
 
 #if defined(_WIN32)
 #define LIBEXT ".dll"
@@ -28,9 +28,9 @@
 #define LIBEXT ".so"
 #endif
 
-#define MONGO_CSFLE_LIBNAME MONGO_CSFLE_PREFIX LIBEXT
+#define MONGO_CRYPT_LIBNAME MONGO_CRYPT_PREFIX LIBEXT
 
-#if !defined(CSFLE_UNITTEST_DYNAMIC)
+#if !defined(MONGO_CRYPT_UNITTEST_DYNAMIC)
 namespace mongo {
 BSONObj analyzeQuery(BSONObj document, OperationContext* opCtx, NamespaceString ns);
 }
@@ -81,29 +81,29 @@ void replace_str(std::string& str, mongo::StringData search, mongo::StringData r
     str.replace(pos, search.size(), replace.toString());
 }
 
-#if defined(CSFLE_UNITTEST_DYNAMIC)
+#if defined(MONGO_CRYPT_UNITTEST_DYNAMIC)
 
-uint64_t (*mongo_csfle_v1_get_version)(void);
-const char* (*mongo_csfle_v1_get_version_str)(void);
-mongo_csfle_v1_status* (*mongo_csfle_v1_status_create)(void);
-void (*mongo_csfle_v1_status_destroy)(mongo_csfle_v1_status*);
-int (*mongo_csfle_v1_status_get_error)(const mongo_csfle_v1_status*);
-const char* (*mongo_csfle_v1_status_get_explanation)(const mongo_csfle_v1_status*);
-int (*mongo_csfle_v1_status_get_code)(const mongo_csfle_v1_status*);
+uint64_t (*mongo_crypt_v1_get_version)(void);
+const char* (*mongo_crypt_v1_get_version_str)(void);
+mongo_crypt_v1_status* (*mongo_crypt_v1_status_create)(void);
+void (*mongo_crypt_v1_status_destroy)(mongo_crypt_v1_status*);
+int (*mongo_crypt_v1_status_get_error)(const mongo_crypt_v1_status*);
+const char* (*mongo_crypt_v1_status_get_explanation)(const mongo_crypt_v1_status*);
+int (*mongo_crypt_v1_status_get_code)(const mongo_crypt_v1_status*);
 
-mongo_csfle_v1_lib* (*mongo_csfle_v1_lib_create)(mongo_csfle_v1_status*);
-int (*mongo_csfle_v1_lib_destroy)(mongo_csfle_v1_lib*, mongo_csfle_v1_status*);
+mongo_crypt_v1_lib* (*mongo_crypt_v1_lib_create)(mongo_crypt_v1_status*);
+int (*mongo_crypt_v1_lib_destroy)(mongo_crypt_v1_lib*, mongo_crypt_v1_status*);
 
-mongo_csfle_v1_query_analyzer* (*mongo_csfle_v1_query_analyzer_create)(mongo_csfle_v1_lib*,
-                                                                       mongo_csfle_v1_status*);
-void (*mongo_csfle_v1_query_analyzer_destroy)(mongo_csfle_v1_query_analyzer*);
-uint8_t* (*mongo_csfle_v1_analyze_query)(mongo_csfle_v1_query_analyzer*,
+mongo_crypt_v1_query_analyzer* (*mongo_crypt_v1_query_analyzer_create)(mongo_crypt_v1_lib*,
+                                                                       mongo_crypt_v1_status*);
+void (*mongo_crypt_v1_query_analyzer_destroy)(mongo_crypt_v1_query_analyzer*);
+uint8_t* (*mongo_crypt_v1_analyze_query)(mongo_crypt_v1_query_analyzer*,
                                          const uint8_t*,
                                          const char*,
                                          uint32_t,
                                          uint32_t*,
-                                         mongo_csfle_v1_status*);
-void (*mongo_csfle_v1_bson_free)(uint8_t*);
+                                         mongo_crypt_v1_status*);
+void (*mongo_crypt_v1_bson_free)(uint8_t*);
 
 #define LOAD_API_FUNC(shlib, name)                                 \
     do {                                                           \
@@ -112,47 +112,47 @@ void (*mongo_csfle_v1_bson_free)(uint8_t*);
         name = swFunc.getValue();                                  \
     } while (0)
 
-static void mongo_csfle_v1_api_load(std::unique_ptr<mongo::SharedLibrary>& shLibHandle) {
-    LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_get_version);
-    LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_get_version_str);
-    LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_status_create);
-    LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_status_destroy);
-    LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_status_get_error);
-    LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_status_get_explanation);
-    LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_status_get_code);
-    LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_lib_create);
-    LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_lib_destroy);
-    LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_query_analyzer_create);
-    LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_query_analyzer_destroy);
-    LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_analyze_query);
-    LOAD_API_FUNC(shLibHandle, mongo_csfle_v1_bson_free);
+static void mongo_crypt_v1_api_load(std::unique_ptr<mongo::SharedLibrary>& shLibHandle) {
+    LOAD_API_FUNC(shLibHandle, mongo_crypt_v1_get_version);
+    LOAD_API_FUNC(shLibHandle, mongo_crypt_v1_get_version_str);
+    LOAD_API_FUNC(shLibHandle, mongo_crypt_v1_status_create);
+    LOAD_API_FUNC(shLibHandle, mongo_crypt_v1_status_destroy);
+    LOAD_API_FUNC(shLibHandle, mongo_crypt_v1_status_get_error);
+    LOAD_API_FUNC(shLibHandle, mongo_crypt_v1_status_get_explanation);
+    LOAD_API_FUNC(shLibHandle, mongo_crypt_v1_status_get_code);
+    LOAD_API_FUNC(shLibHandle, mongo_crypt_v1_lib_create);
+    LOAD_API_FUNC(shLibHandle, mongo_crypt_v1_lib_destroy);
+    LOAD_API_FUNC(shLibHandle, mongo_crypt_v1_query_analyzer_create);
+    LOAD_API_FUNC(shLibHandle, mongo_crypt_v1_query_analyzer_destroy);
+    LOAD_API_FUNC(shLibHandle, mongo_crypt_v1_analyze_query);
+    LOAD_API_FUNC(shLibHandle, mongo_crypt_v1_bson_free);
 }
 #endif
 
-class CsfleTest : public mongo::unittest::Test {
+class MongoCryptTest : public mongo::unittest::Test {
 protected:
     void setUp() override {
-        status = mongo_csfle_v1_status_create();
+        status = mongo_crypt_v1_status_create();
         ASSERT(status);
 
-        lib = mongo_csfle_v1_lib_create(status);
+        lib = mongo_crypt_v1_lib_create(status);
         ASSERT(lib);
     }
 
     void tearDown() override {
         if (lib) {
-            int code = mongo_csfle_v1_lib_destroy(lib, status);
-            ASSERT_EQ(code, MONGO_CSFLE_V1_SUCCESS);
+            int code = mongo_crypt_v1_lib_destroy(lib, status);
+            ASSERT_EQ(code, MONGO_CRYPT_V1_SUCCESS);
             lib = nullptr;
         }
 
-        mongo_csfle_v1_status_destroy(status);
+        mongo_crypt_v1_status_destroy(status);
         status = nullptr;
     }
 
     /**
      * toBSONForAPI is a custom converter from json which satisfies the unusual uint8_t type that
-     * mongo_csfle uses for BSON. The intermediate BSONObj is also returned since its lifetime
+     * mongo_crypt uses for BSON. The intermediate BSONObj is also returned since its lifetime
      * governs the lifetime of the uint8_t*.
      */
     auto toBSONForAPI(const char* json) {
@@ -163,7 +163,7 @@ protected:
 
     /**
      * fromBSONForAPI is a custom converter to json which satisfies the unusual uint8_t type that
-     * mongo_csfle uses for BSON.
+     * mongo_crypt uses for BSON.
      */
     auto fromBSONForAPI(const uint8_t* bson) {
         return mongo::tojson(
@@ -172,20 +172,20 @@ protected:
     }
 
     auto checkAnalysis(const char* inputJSON, uint32_t* outputLen) {
-        auto matcher = mongo_csfle_v1_query_analyzer_create(lib, nullptr);
+        auto matcher = mongo_crypt_v1_query_analyzer_create(lib, nullptr);
         ASSERT(matcher);
-        ON_BLOCK_EXIT([matcher] { mongo_csfle_v1_query_analyzer_destroy(matcher); });
+        ON_BLOCK_EXIT([matcher] { mongo_crypt_v1_query_analyzer_destroy(matcher); });
 
         auto inputBSON = toBSONForAPI(inputJSON);
         auto ret =
-            mongo_csfle_v1_analyze_query(matcher, inputBSON.first, "db.test", 7, outputLen, status);
+            mongo_crypt_v1_analyze_query(matcher, inputBSON.first, "db.test", 7, outputLen, status);
         return ret;
     }
 
     void checkAnalysisSuccess(const char* inputJSON, const char* outputJSON) {
         uint32_t bson_len = 0;
         auto ret = checkAnalysis(inputJSON, &bson_len);
-        ON_BLOCK_EXIT([ret] { mongo_csfle_v1_bson_free(ret); });
+        ON_BLOCK_EXIT([ret] { mongo_crypt_v1_bson_free(ret); });
 
         ASSERT(ret);
 
@@ -195,17 +195,17 @@ protected:
     }
 
     void checkAnalysisFailure(const char* inputJSON,
-                              mongo_csfle_v1_error expectedError,
+                              mongo_crypt_v1_error expectedError,
                               int expectedExceptionCode = 0) {
         uint32_t bson_len = 0;
         auto ret = checkAnalysis(inputJSON, &bson_len);
-        ON_BLOCK_EXIT([ret] { mongo_csfle_v1_bson_free(ret); });
+        ON_BLOCK_EXIT([ret] { mongo_crypt_v1_bson_free(ret); });
 
         ASSERT(!ret);
         ASSERT_EQ(bson_len, 0);
-        ASSERT_EQ(mongo_csfle_v1_status_get_error(status), expectedError);
+        ASSERT_EQ(mongo_crypt_v1_status_get_error(status), expectedError);
         if (expectedExceptionCode) {
-            ASSERT_EQ(mongo_csfle_v1_status_get_code(status), expectedExceptionCode);
+            ASSERT_EQ(mongo_crypt_v1_status_get_code(status), expectedExceptionCode);
         }
     }
 
@@ -274,82 +274,83 @@ protected:
         checkAnalysisSuccess(input.c_str(), output.c_str());
     }
 
-    mongo_csfle_v1_status* status = nullptr;
-    mongo_csfle_v1_lib* lib = nullptr;
+    mongo_crypt_v1_status* status = nullptr;
+    mongo_crypt_v1_lib* lib = nullptr;
 };
 
-TEST_F(CsfleTest, GetVersionReturnsReasonableValues) {
-    uint64_t version = mongo_csfle_v1_get_version();
-    const char* versionStr = mongo_csfle_v1_get_version_str();
-    std::cerr << "CSFLE Version: " << versionStr << ", " << std::hex << version << std::endl;
+TEST_F(MongoCryptTest, GetVersionReturnsReasonableValues) {
+    uint64_t version = mongo_crypt_v1_get_version();
+    const char* versionStr = mongo_crypt_v1_get_version_str();
+    std::cerr << "Mongo Crypt Library Version: " << versionStr << ", " << std::hex << version
+              << std::endl;
     ASSERT(version >= 0x05030000);
     ASSERT(versionStr);
 }
 
-TEST_F(CsfleTest, InitializationIsSuccessful) {
-    ASSERT_EQ(MONGO_CSFLE_V1_SUCCESS, mongo_csfle_v1_status_get_error(status));
+TEST_F(MongoCryptTest, InitializationIsSuccessful) {
+    ASSERT_EQ(MONGO_CRYPT_V1_SUCCESS, mongo_crypt_v1_status_get_error(status));
     ASSERT(lib);
 }
 
-TEST_F(CsfleTest, DoubleInitializationFails) {
-    auto lib2 = mongo_csfle_v1_lib_create(status);
+TEST_F(MongoCryptTest, DoubleInitializationFails) {
+    auto lib2 = mongo_crypt_v1_lib_create(status);
 
     ASSERT(!lib2);
-    ASSERT_EQ(MONGO_CSFLE_V1_ERROR_LIBRARY_ALREADY_INITIALIZED,
-              mongo_csfle_v1_status_get_error(status));
+    ASSERT_EQ(MONGO_CRYPT_V1_ERROR_LIBRARY_ALREADY_INITIALIZED,
+              mongo_crypt_v1_status_get_error(status));
 }
 
-TEST_F(CsfleTest, DoubleDestructionFails) {
-    ASSERT_EQ(MONGO_CSFLE_V1_SUCCESS, mongo_csfle_v1_lib_destroy(lib, status));
-    ASSERT_EQ(MONGO_CSFLE_V1_SUCCESS, mongo_csfle_v1_status_get_error(status));
+TEST_F(MongoCryptTest, DoubleDestructionFails) {
+    ASSERT_EQ(MONGO_CRYPT_V1_SUCCESS, mongo_crypt_v1_lib_destroy(lib, status));
+    ASSERT_EQ(MONGO_CRYPT_V1_SUCCESS, mongo_crypt_v1_status_get_error(status));
 
-    ASSERT_EQ(MONGO_CSFLE_V1_ERROR_LIBRARY_NOT_INITIALIZED,
-              mongo_csfle_v1_lib_destroy(lib, status));
-    ASSERT_EQ(MONGO_CSFLE_V1_ERROR_LIBRARY_NOT_INITIALIZED,
-              mongo_csfle_v1_status_get_error(status));
+    ASSERT_EQ(MONGO_CRYPT_V1_ERROR_LIBRARY_NOT_INITIALIZED,
+              mongo_crypt_v1_lib_destroy(lib, status));
+    ASSERT_EQ(MONGO_CRYPT_V1_ERROR_LIBRARY_NOT_INITIALIZED,
+              mongo_crypt_v1_status_get_error(status));
     lib = nullptr;
 }
 
-TEST_F(CsfleTest, BadLibHandleDestructionFails) {
-    ASSERT_EQ(MONGO_CSFLE_V1_ERROR_INVALID_LIB_HANDLE, mongo_csfle_v1_lib_destroy(nullptr, status));
-    ASSERT_EQ(MONGO_CSFLE_V1_ERROR_INVALID_LIB_HANDLE, mongo_csfle_v1_status_get_error(status));
+TEST_F(MongoCryptTest, BadLibHandleDestructionFails) {
+    ASSERT_EQ(MONGO_CRYPT_V1_ERROR_INVALID_LIB_HANDLE, mongo_crypt_v1_lib_destroy(nullptr, status));
+    ASSERT_EQ(MONGO_CRYPT_V1_ERROR_INVALID_LIB_HANDLE, mongo_crypt_v1_status_get_error(status));
 
     int dummy;
-    ASSERT_EQ(MONGO_CSFLE_V1_ERROR_INVALID_LIB_HANDLE,
-              mongo_csfle_v1_lib_destroy(reinterpret_cast<mongo_csfle_v1_lib*>(&dummy), status));
-    ASSERT_EQ(MONGO_CSFLE_V1_ERROR_INVALID_LIB_HANDLE, mongo_csfle_v1_status_get_error(status));
+    ASSERT_EQ(MONGO_CRYPT_V1_ERROR_INVALID_LIB_HANDLE,
+              mongo_crypt_v1_lib_destroy(reinterpret_cast<mongo_crypt_v1_lib*>(&dummy), status));
+    ASSERT_EQ(MONGO_CRYPT_V1_ERROR_INVALID_LIB_HANDLE, mongo_crypt_v1_status_get_error(status));
 }
 
-TEST_F(CsfleTest, QueryAnalyzerCreateWithUninitializedLibFails) {
-    ASSERT_EQ(MONGO_CSFLE_V1_SUCCESS, mongo_csfle_v1_lib_destroy(lib, status));
+TEST_F(MongoCryptTest, QueryAnalyzerCreateWithUninitializedLibFails) {
+    ASSERT_EQ(MONGO_CRYPT_V1_SUCCESS, mongo_crypt_v1_lib_destroy(lib, status));
 
-    auto analyzer = mongo_csfle_v1_query_analyzer_create(lib, status);
+    auto analyzer = mongo_crypt_v1_query_analyzer_create(lib, status);
     lib = nullptr;
 
     ASSERT(!analyzer);
-    ASSERT_EQ(MONGO_CSFLE_V1_ERROR_LIBRARY_NOT_INITIALIZED,
-              mongo_csfle_v1_status_get_error(status));
+    ASSERT_EQ(MONGO_CRYPT_V1_ERROR_LIBRARY_NOT_INITIALIZED,
+              mongo_crypt_v1_status_get_error(status));
 }
 
-TEST_F(CsfleTest, QueryAnalyzerCreateWithBadLibHandleFails) {
+TEST_F(MongoCryptTest, QueryAnalyzerCreateWithBadLibHandleFails) {
     int dummy;
     auto analyzer =
-        mongo_csfle_v1_query_analyzer_create(reinterpret_cast<mongo_csfle_v1_lib*>(&dummy), status);
+        mongo_crypt_v1_query_analyzer_create(reinterpret_cast<mongo_crypt_v1_lib*>(&dummy), status);
     ASSERT(!analyzer);
-    ASSERT_EQ(MONGO_CSFLE_V1_ERROR_INVALID_LIB_HANDLE, mongo_csfle_v1_status_get_error(status));
+    ASSERT_EQ(MONGO_CRYPT_V1_ERROR_INVALID_LIB_HANDLE, mongo_crypt_v1_status_get_error(status));
 
-    analyzer = mongo_csfle_v1_query_analyzer_create(nullptr, status);
+    analyzer = mongo_crypt_v1_query_analyzer_create(nullptr, status);
     ASSERT(!analyzer);
-    ASSERT_EQ(MONGO_CSFLE_V1_ERROR_INVALID_LIB_HANDLE, mongo_csfle_v1_status_get_error(status));
+    ASSERT_EQ(MONGO_CRYPT_V1_ERROR_INVALID_LIB_HANDLE, mongo_crypt_v1_status_get_error(status));
 }
 
-DEATH_TEST_F(CsfleTest, LibDestructionWithExistingAnalyzerFails, "invariant") {
-    auto analyzer = mongo_csfle_v1_query_analyzer_create(lib, status);
+DEATH_TEST_F(MongoCryptTest, LibDestructionWithExistingAnalyzerFails, "invariant") {
+    auto analyzer = mongo_crypt_v1_query_analyzer_create(lib, status);
     ASSERT(analyzer);
-    mongo_csfle_v1_lib_destroy(lib, status);
+    mongo_crypt_v1_lib_destroy(lib, status);
 }
 
-DEATH_TEST_F(CsfleTest, AnalyzeQueryNullHandleFails, "invariant") {
+DEATH_TEST_F(MongoCryptTest, AnalyzeQueryNullHandleFails, "invariant") {
     std::string input =
         R"({
             "find": "test",
@@ -360,17 +361,17 @@ DEATH_TEST_F(CsfleTest, AnalyzeQueryNullHandleFails, "invariant") {
         })";
     auto inputBSON = toBSONForAPI(input.c_str());
     uint32_t bsonLen = 0;
-    mongo_csfle_v1_analyze_query(nullptr, inputBSON.first, "db.test", 7, &bsonLen, status);
+    mongo_crypt_v1_analyze_query(nullptr, inputBSON.first, "db.test", 7, &bsonLen, status);
 }
 
-DEATH_TEST_F(CsfleTest, AnalyzeQueryNullInputBSONFails, "invariant") {
+DEATH_TEST_F(MongoCryptTest, AnalyzeQueryNullInputBSONFails, "invariant") {
     uint32_t bsonLen = 0;
-    auto analyzer = mongo_csfle_v1_query_analyzer_create(lib, status);
+    auto analyzer = mongo_crypt_v1_query_analyzer_create(lib, status);
     ASSERT(analyzer);
-    mongo_csfle_v1_analyze_query(analyzer, nullptr, "db.test", 7, &bsonLen, status);
+    mongo_crypt_v1_analyze_query(analyzer, nullptr, "db.test", 7, &bsonLen, status);
 }
 
-DEATH_TEST_F(CsfleTest, AnalyzerQueryNullBSONLenFails, "invariant") {
+DEATH_TEST_F(MongoCryptTest, AnalyzerQueryNullBSONLenFails, "invariant") {
     std::string input =
         R"({
             "find": "test",
@@ -380,12 +381,12 @@ DEATH_TEST_F(CsfleTest, AnalyzerQueryNullBSONLenFails, "invariant") {
             "$db": "test"
         })";
     auto inputBSON = toBSONForAPI(input.c_str());
-    auto analyzer = mongo_csfle_v1_query_analyzer_create(lib, status);
+    auto analyzer = mongo_crypt_v1_query_analyzer_create(lib, status);
     ASSERT(analyzer);
-    mongo_csfle_v1_analyze_query(analyzer, inputBSON.first, "db.test", 7, nullptr, status);
+    mongo_crypt_v1_analyze_query(analyzer, inputBSON.first, "db.test", 7, nullptr, status);
 }
 
-TEST_F(CsfleTest, AnalyzeQueryNullNamespaceSuccessful) {
+TEST_F(MongoCryptTest, AnalyzeQueryNullNamespaceSuccessful) {
     std::string input =
         R"({
             "find": "test",
@@ -396,17 +397,17 @@ TEST_F(CsfleTest, AnalyzeQueryNullNamespaceSuccessful) {
         })";
     auto inputBSON = toBSONForAPI(input.c_str());
     uint32_t bsonLen = 0;
-    auto analyzer = mongo_csfle_v1_query_analyzer_create(lib, status);
+    auto analyzer = mongo_crypt_v1_query_analyzer_create(lib, status);
     ASSERT(analyzer);
-    ON_BLOCK_EXIT([analyzer] { mongo_csfle_v1_query_analyzer_destroy(analyzer); });
+    ON_BLOCK_EXIT([analyzer] { mongo_crypt_v1_query_analyzer_destroy(analyzer); });
 
     auto output =
-        mongo_csfle_v1_analyze_query(analyzer, inputBSON.first, nullptr, 0, &bsonLen, status);
-    ON_BLOCK_EXIT([output] { mongo_csfle_v1_bson_free(output); });
+        mongo_crypt_v1_analyze_query(analyzer, inputBSON.first, nullptr, 0, &bsonLen, status);
+    ON_BLOCK_EXIT([output] { mongo_crypt_v1_bson_free(output); });
     ASSERT(output);
 }
 
-TEST_F(CsfleTest, AnalyzeQueryInputMissingJsonSchema) {
+TEST_F(MongoCryptTest, AnalyzeQueryInputMissingJsonSchema) {
     std::string input =
         R"({
             "find": "test",
@@ -414,10 +415,10 @@ TEST_F(CsfleTest, AnalyzeQueryInputMissingJsonSchema) {
             "isRemoteSchema": false,
             "$db": "test"
         })";
-    checkAnalysisFailure(input.c_str(), mongo_csfle_v1_error::MONGO_CSFLE_V1_ERROR_EXCEPTION);
+    checkAnalysisFailure(input.c_str(), mongo_crypt_v1_error::MONGO_CRYPT_V1_ERROR_EXCEPTION);
 }
 
-TEST_F(CsfleTest, AnalyzeQueryInputMissingIsRemoteSchema) {
+TEST_F(MongoCryptTest, AnalyzeQueryInputMissingIsRemoteSchema) {
     std::string input =
         R"({
             "find": "test",
@@ -425,10 +426,10 @@ TEST_F(CsfleTest, AnalyzeQueryInputMissingIsRemoteSchema) {
             "jsonSchema": {},
             "$db": "test"
         })";
-    checkAnalysisFailure(input.c_str(), mongo_csfle_v1_error::MONGO_CSFLE_V1_ERROR_EXCEPTION);
+    checkAnalysisFailure(input.c_str(), mongo_crypt_v1_error::MONGO_CRYPT_V1_ERROR_EXCEPTION);
 }
 
-TEST_F(CsfleTest, AnalyzeQueryInputHasUnknownCommand) {
+TEST_F(MongoCryptTest, AnalyzeQueryInputHasUnknownCommand) {
     std::string input =
         R"({
             "foo" : "test",
@@ -438,7 +439,7 @@ TEST_F(CsfleTest, AnalyzeQueryInputHasUnknownCommand) {
             "$db": "test"
         })";
     checkAnalysisFailure(input.c_str(),
-                         mongo_csfle_v1_error::MONGO_CSFLE_V1_ERROR_EXCEPTION,
+                         mongo_crypt_v1_error::MONGO_CRYPT_V1_ERROR_EXCEPTION,
                          mongo::ErrorCodes::CommandNotFound);
 }
 
@@ -458,11 +459,11 @@ static const char* kTransformedFindCmd =
         } }
     )";
 
-TEST_F(CsfleTest, AnalyzeValidFindCommand) {
+TEST_F(MongoCryptTest, AnalyzeValidFindCommand) {
     analyzeValidCommandCommon(kFindCmd, kTransformedFindCmd);
 }
 
-TEST_F(CsfleTest, AnalyzeValidExplainFindCommand) {
+TEST_F(MongoCryptTest, AnalyzeValidExplainFindCommand) {
     analyzeValidExplainCommandCommon(kFindCmd, kTransformedFindCmd);
 }
 
@@ -485,11 +486,11 @@ static const char* kTransformedAggregateCmd =
     )";
 
 
-TEST_F(CsfleTest, AnalyzeValidAggregateCommand) {
+TEST_F(MongoCryptTest, AnalyzeValidAggregateCommand) {
     analyzeValidCommandCommon(kAggregateCmd, kTransformedAggregateCmd);
 }
 
-TEST_F(CsfleTest, AnalyzeValidExplainAggregateCommand) {
+TEST_F(MongoCryptTest, AnalyzeValidExplainAggregateCommand) {
     analyzeValidExplainCommandCommon(kAggregateCmd, kTransformedAggregateCmd);
 }
 
@@ -513,11 +514,11 @@ static const char* kTransformedFindAndModifyCmd =
         } }
     )";
 
-TEST_F(CsfleTest, AnalyzeValidFindAndModifyCommand) {
+TEST_F(MongoCryptTest, AnalyzeValidFindAndModifyCommand) {
     analyzeValidCommandCommon(kFindAndModifyCmd, kTransformedFindAndModifyCmd);
 }
 
-TEST_F(CsfleTest, AnalyzeValidExplainFindAndModifyCommand) {
+TEST_F(MongoCryptTest, AnalyzeValidExplainFindAndModifyCommand) {
     analyzeValidExplainCommandCommon(kFindAndModifyCmd, kTransformedFindAndModifyCmd);
 }
 
@@ -537,11 +538,11 @@ static const char* kTransformedCountCmd =
         }
     )";
 
-TEST_F(CsfleTest, AnalyzeValidCountCommand) {
+TEST_F(MongoCryptTest, AnalyzeValidCountCommand) {
     analyzeValidCommandCommon(kCountCmd, kTransformedCountCmd);
 }
 
-TEST_F(CsfleTest, AnalyzeValidExplainCountCommand) {
+TEST_F(MongoCryptTest, AnalyzeValidExplainCountCommand) {
     analyzeValidExplainCommandCommon(kCountCmd, kTransformedCountCmd);
 }
 
@@ -566,11 +567,11 @@ static const char* kTransformedDistinctCmd =
         }
     )";
 
-TEST_F(CsfleTest, AnalyzeValidDistinctCommand) {
+TEST_F(MongoCryptTest, AnalyzeValidDistinctCommand) {
     analyzeValidCommandCommon(kDistinctCmd, kTransformedDistinctCmd);
 }
 
-TEST_F(CsfleTest, AnalyzeValidExplainDistinctCommand) {
+TEST_F(MongoCryptTest, AnalyzeValidExplainDistinctCommand) {
     analyzeValidExplainCommandCommon(kDistinctCmd, kTransformedDistinctCmd);
 }
 
@@ -599,11 +600,11 @@ static const char* kTransformedUpdateCmd =
         }]
     )";
 
-TEST_F(CsfleTest, AnalyzeValidUpdateCommand) {
+TEST_F(MongoCryptTest, AnalyzeValidUpdateCommand) {
     analyzeValidCommandCommon(kUpdateCmd, kTransformedUpdateCmd);
 }
 
-TEST_F(CsfleTest, AnalyzeValidExplainUpdateCommand) {
+TEST_F(MongoCryptTest, AnalyzeValidExplainUpdateCommand) {
     analyzeValidExplainCommandCommon(kUpdateCmd, kTransformedUpdateCmd);
 }
 
@@ -625,11 +626,11 @@ static const char* kTransformedInsertCmd =
         ]
     )";
 
-TEST_F(CsfleTest, AnalyzeValidInsertCommand) {
+TEST_F(MongoCryptTest, AnalyzeValidInsertCommand) {
     analyzeValidCommandCommon(kInsertCmd, kTransformedInsertCmd);
 }
 
-TEST_F(CsfleTest, AnalyzeValidExplainInsertCommand) {
+TEST_F(MongoCryptTest, AnalyzeValidExplainInsertCommand) {
     analyzeValidExplainCommandCommon(kInsertCmd, kTransformedInsertCmd);
 }
 
@@ -650,15 +651,15 @@ static const char* kTransformedDeleteCmd =
         } ]
     )";
 
-TEST_F(CsfleTest, AnalyzeValidDeleteCommand) {
+TEST_F(MongoCryptTest, AnalyzeValidDeleteCommand) {
     analyzeValidCommandCommon(kDeleteCmd, kTransformedDeleteCmd);
 }
 
-TEST_F(CsfleTest, AnalyzeValidExplainDeleteCommand) {
+TEST_F(MongoCryptTest, AnalyzeValidExplainDeleteCommand) {
     analyzeValidExplainCommandCommon(kDeleteCmd, kTransformedDeleteCmd);
 }
 
-TEST_F(CsfleTest, AnalyzeExplainInsideExplain) {
+TEST_F(MongoCryptTest, AnalyzeExplainInsideExplain) {
     std::string input =
         R"({
             "explain": {
@@ -676,11 +677,11 @@ TEST_F(CsfleTest, AnalyzeExplainInsideExplain) {
         })";
     replace_str(input, "<SCHEMA>", kSchema);
     checkAnalysisFailure(input.c_str(),
-                         mongo_csfle_v1_error::MONGO_CSFLE_V1_ERROR_EXCEPTION,
+                         mongo_crypt_v1_error::MONGO_CRYPT_V1_ERROR_EXCEPTION,
                          mongo::ErrorCodes::IllegalOperation);
 }
 
-TEST_F(CsfleTest, AnalyzeExplainUnknownCommand) {
+TEST_F(MongoCryptTest, AnalyzeExplainUnknownCommand) {
     std::string input =
         R"({
             "explain": {
@@ -696,11 +697,11 @@ TEST_F(CsfleTest, AnalyzeExplainUnknownCommand) {
         })";
     replace_str(input, "<SCHEMA>", kSchema);
     checkAnalysisFailure(input.c_str(),
-                         mongo_csfle_v1_error::MONGO_CSFLE_V1_ERROR_EXCEPTION,
+                         mongo_crypt_v1_error::MONGO_CRYPT_V1_ERROR_EXCEPTION,
                          mongo::ErrorCodes::CommandNotFound);
 }
 
-TEST_F(CsfleTest, AnalyzeExplainWithoutOuterDb) {
+TEST_F(MongoCryptTest, AnalyzeExplainWithoutOuterDb) {
     std::string input =
         R"({
             "explain" : {
@@ -715,10 +716,10 @@ TEST_F(CsfleTest, AnalyzeExplainWithoutOuterDb) {
         })";
     replace_str(input, "<SCHEMA>", kSchema);
     checkAnalysisFailure(
-        input.c_str(), mongo_csfle_v1_error::MONGO_CSFLE_V1_ERROR_EXCEPTION, 40414);
+        input.c_str(), mongo_crypt_v1_error::MONGO_CRYPT_V1_ERROR_EXCEPTION, 40414);
 }
 
-TEST_F(CsfleTest, AnalyzeExplainWithoutInnerDb) {
+TEST_F(MongoCryptTest, AnalyzeExplainWithoutInnerDb) {
     std::string input =
         R"({
             "explain" : {
@@ -733,10 +734,10 @@ TEST_F(CsfleTest, AnalyzeExplainWithoutInnerDb) {
         })";
     replace_str(input, "<SCHEMA>", kSchema);
     checkAnalysisFailure(
-        input.c_str(), mongo_csfle_v1_error::MONGO_CSFLE_V1_ERROR_EXCEPTION, 40414);
+        input.c_str(), mongo_crypt_v1_error::MONGO_CRYPT_V1_ERROR_EXCEPTION, 40414);
 }
 
-TEST_F(CsfleTest, AnalyzeExplainWithMismatchedDb) {
+TEST_F(MongoCryptTest, AnalyzeExplainWithMismatchedDb) {
     std::string input =
         R"({
             "explain" : {
@@ -752,11 +753,11 @@ TEST_F(CsfleTest, AnalyzeExplainWithMismatchedDb) {
         })";
     replace_str(input, "<SCHEMA>", kSchema);
     checkAnalysisFailure(input.c_str(),
-                         mongo_csfle_v1_error::MONGO_CSFLE_V1_ERROR_EXCEPTION,
+                         mongo_crypt_v1_error::MONGO_CRYPT_V1_ERROR_EXCEPTION,
                          mongo::ErrorCodes::InvalidNamespace);
 }
 
-TEST_F(CsfleTest, AnalyzeExplainWithInnerJsonSchema) {
+TEST_F(MongoCryptTest, AnalyzeExplainWithInnerJsonSchema) {
     std::string input =
         R"({
             "explain" : {
@@ -772,10 +773,10 @@ TEST_F(CsfleTest, AnalyzeExplainWithInnerJsonSchema) {
         })";
     replace_str(input, "<SCHEMA>", kSchema);
     checkAnalysisFailure(
-        input.c_str(), mongo_csfle_v1_error::MONGO_CSFLE_V1_ERROR_EXCEPTION, 6206601);
+        input.c_str(), mongo_crypt_v1_error::MONGO_CRYPT_V1_ERROR_EXCEPTION, 6206601);
 }
 
-TEST_F(CsfleTest, AnalyzeExplainWithInnerIsRemoteSchema) {
+TEST_F(MongoCryptTest, AnalyzeExplainWithInnerIsRemoteSchema) {
     std::string input =
         R"({
             "explain" : {
@@ -791,10 +792,10 @@ TEST_F(CsfleTest, AnalyzeExplainWithInnerIsRemoteSchema) {
         })";
     replace_str(input, "<SCHEMA>", kSchema);
     checkAnalysisFailure(
-        input.c_str(), mongo_csfle_v1_error::MONGO_CSFLE_V1_ERROR_EXCEPTION, 6206602);
+        input.c_str(), mongo_crypt_v1_error::MONGO_CRYPT_V1_ERROR_EXCEPTION, 6206602);
 }
 
-#if !defined(CSFLE_UNITTEST_DYNAMIC)
+#if !defined(MONGO_CRYPT_UNITTEST_DYNAMIC)
 class OpmsgProcessTest : public mongo::ServiceContextTest {
 public:
     OpmsgProcessTest() = default;
@@ -889,7 +890,7 @@ TEST_F(OpmsgProcessTest, Basic) {
 //
 // Note that we don't use the main() defined for most other unit tests so that we can avoid double
 // calling runGlobalInitializers(), which is called both from the regular unit test main() and from
-// the CSFLE Library intializer function that gets tested here.
+// the Mongo Crypt Shared Library intializer function that gets tested here.
 int main(const int argc, const char* const* const argv) {
     // See comment by the same code block in mongo_embedded_test.cpp
     auto ret = mongo::runGlobalInitializers(std::vector<std::string>{argv, argv + argc});
@@ -905,20 +906,20 @@ int main(const int argc, const char* const* const argv) {
     }
 
     int result;
-#if !defined(CSFLE_UNITTEST_DYNAMIC)
+#if !defined(MONGO_CRYPT_UNITTEST_DYNAMIC)
     result = ::mongo::unittest::Suite::run(std::vector<std::string>(), "", "", 1);
 #else
     try {
-        auto swShLib = mongo::SharedLibrary::create(MONGO_CSFLE_LIBNAME);
+        auto swShLib = mongo::SharedLibrary::create(MONGO_CRYPT_LIBNAME);
         uassertStatusOK(swShLib.getStatus());
-        std::cout << "Successfully loaded library " << MONGO_CSFLE_LIBNAME << std::endl;
+        std::cout << "Successfully loaded library " << MONGO_CRYPT_LIBNAME << std::endl;
 
-        mongo_csfle_v1_api_load(swShLib.getValue());
+        mongo_crypt_v1_api_load(swShLib.getValue());
 
         result = ::mongo::unittest::Suite::run(std::vector<std::string>(), "", "", 1);
     } catch (...) {
         auto status = mongo::exceptionToStatus();
-        std::cerr << "Failed to load the CSFLE library - " << status << std::endl;
+        std::cerr << "Failed to load the Mongo Crypt Shared library - " << status << std::endl;
         return EXIT_FAILURE;
     }
 #endif

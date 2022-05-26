@@ -1,4 +1,0 @@
-MONGO_CSFLE_1.0 {
-    global: mongo_csfle_v1_*;
-    local: *;
-};
