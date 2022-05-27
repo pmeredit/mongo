@@ -715,7 +715,8 @@ ExecutorFuture<mongo::Timestamp> FileCopyBasedInitialSyncer::_getLastAppliedOpTi
                    });
            })
         .until([this, self = shared_from_this()](StatusWith<Timestamp> result) {
-            fCBISHangAfterAttemptingGetLastApplied.pauseWhileSet();
+            fCBISHangAfterAttemptingGetLastApplied.pauseWhileSetAndNotCanceled(
+                Interruptible::notInterruptible(), _syncingFilesState.token);
             stdx::lock_guard<Latch> lock(_mutex);
             return !_shouldRetryError(lock, result.getStatus());
         })
@@ -870,12 +871,14 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_openBackupCursor(
 
 ExecutorFuture<void> FileCopyBasedInitialSyncer::_extendBackupCursorWithRetry(
     std::shared_ptr<BackupFileMetadataCollection> returnedFiles) {
-    fCBISHangBeforeExtendBackupCursor.pauseWhileSet();
+    fCBISHangBeforeExtendBackupCursor.pauseWhileSetAndNotCanceled(Interruptible::notInterruptible(),
+                                                                  _syncingFilesState.token);
     return AsyncTry([this, self = shared_from_this(), returnedFiles] {
                return _extendBackupCursor(returnedFiles);
            })
         .until([this, self = shared_from_this()](Status error) {
-            fCBISHangAfterAttemptingExtendBackupCursor.pauseWhileSet();
+            fCBISHangAfterAttemptingExtendBackupCursor.pauseWhileSetAndNotCanceled(
+                Interruptible::notInterruptible(), _syncingFilesState.token);
             stdx::lock_guard<Latch> lock(_mutex);
             return !_shouldRetryError(lock, error);
         })
@@ -1075,7 +1078,8 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_startSyncingFiles(
     return AsyncTry([this, self = shared_from_this()]() mutable {
                return _cloneFromSyncSourceCursor()
                    .then([this, self = shared_from_this()]() {
-                       fCBISHangAfterFileCloning.pauseWhileSet();
+                       fCBISHangAfterFileCloning.pauseWhileSetAndNotCanceled(
+                           Interruptible::notInterruptible(), _syncingFilesState.token);
                        return _hangAsyncIfFailPointEnabled("fCBISHangAfterFileCloningAsync",
                                                            _syncingFilesState.executor,
                                                            _syncingFilesState.token);
@@ -1215,7 +1219,8 @@ ExecutorFuture<void> FileCopyBasedInitialSyncer::_cloneFiles(
                                _syncingFilesState.currentBackupFileCloner->getStats().bytesCopied;
                            _syncingFilesState.currentBackupFileCloner = nullptr;
                        }
-                       fCBISHangAfterStartingFileClone.pauseWhileSet();
+                       fCBISHangAfterStartingFileClone.pauseWhileSetAndNotCanceled(
+                           Interruptible::notInterruptible(), _syncingFilesState.token);
                        return false;  // Continue the loop.
                    });
            })
@@ -1834,7 +1839,8 @@ void FileCopyBasedInitialSyncer::_finishCallback(StatusWith<OpTimeAndWallTime> l
               "File copy based initial sync - fCBISHangBeforeFinish fail point "
               "enabled. Blocking until fail point is disabled.",
               "error"_attr = lastApplied.getStatus());
-        fCBISHangBeforeFinish.pauseWhileSet();
+        fCBISHangBeforeFinish.pauseWhileSetAndNotCanceled(Interruptible::notInterruptible(),
+                                                          _syncingFilesState.token);
     }
 
     // Completion callback must be invoked outside mutex.

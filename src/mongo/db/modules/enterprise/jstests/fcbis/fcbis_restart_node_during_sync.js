@@ -57,9 +57,6 @@ initialSyncNode.adminCommand({
     maxTimeMS: kDefaultWaitForFailPointTimeout
 });
 
-assert.commandWorked(initialSyncNode.adminCommand(
-    {configureFailPoint: "fCBISHangAfterStartingFileClone", mode: "off"}));
-
 jsTestLog("Restarting node with 'fCBISHangAfterDeletingOldStorageFiles' enabled");
 rst.restart(initialSyncNode, {
     setParameter: {
