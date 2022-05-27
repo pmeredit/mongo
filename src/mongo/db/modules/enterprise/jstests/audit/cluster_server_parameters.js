@@ -44,7 +44,7 @@ const expectedSetUpdateClusterParameterAudit = {
     updatedClusterServerParameter: {
         _id: "changeStreamOptions",
         preAndPostImages: {
-            expireAfterSeconds: 30,
+            expireAfterSeconds: NumberLong(30),
         },
     },
 };
@@ -153,8 +153,7 @@ class ClusterServerParameterAuditFixtureSharded {
             case 'getClusterParameter':
                 return this.spoolers;
             case 'updateCachedClusterServerParameter':
-                // TODO - update this to this.spoolers after auditing mongos refreshes.
-                return this.mongodSpoolers;
+                return this.spoolers;
             case 'setClusterParameter':
                 return this.mongodSpoolers;
             default:
@@ -172,7 +171,7 @@ class ClusterServerParameterAuditFixtureSharded {
         const spoolers = this.selectSpoolers(aType);
 
         spoolers.forEach((spooler) => {
-            spooler.assertEntryRelaxed(aType, params);
+            spooler.assertEntryRelaxed(aType, params, 35000);
         });
     }
 
