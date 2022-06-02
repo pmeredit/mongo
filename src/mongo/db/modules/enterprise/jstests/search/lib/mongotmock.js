@@ -106,7 +106,7 @@ class MongotMock {
 
         args.push("--pidfilepath=" + this.dataDir + "/cryptd.pid");
 
-        if (TestData.auth) {
+        if (TestData && TestData.auth) {
             args.push("--clusterAuthMode=keyFile");
             args.push("--keyFile=" + TestData.keyFile);
         }
@@ -144,10 +144,8 @@ class MongotMock {
      *  Stop mongotmock, asserting that it shutdown cleanly.
      */
     stop() {
-        const connection = this.getConnection();
         // Check the remaining history on the mock. There should be 0 remaining queued commands.
-        const resp = assert.commandWorked(connection.adminCommand({getQueuedResponses: 1}));
-        assert.eq(resp.numRemainingResponses, 0, resp);
+        this.assertEmpty();
 
         return stopMongoProgramByPid(this.pid);
     }
@@ -196,5 +194,14 @@ class MongotMock {
         } else {
             this.setMockResponses(expectedMongotMockCmdsAndResponses, cursorId);
         }
+    }
+
+    /**
+     * Verify that no responses remain enqueued in the mock. Call this in between consecutive tests.
+     */
+    assertEmpty() {
+        const connection = this.getConnection();
+        const resp = assert.commandWorked(connection.adminCommand({getQueuedResponses: 1}));
+        assert.eq(resp.numRemainingResponses, 0, resp);
     }
 }

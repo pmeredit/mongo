@@ -25,404 +25,291 @@ const dbName = jsTestName();
 const mongos = st.s;
 const testDB = mongos.getDB(dbName);
 const useShardedFacets = FeatureFlagUtil.isEnabled(testDB, "SearchShardedFacets");
+assert(useShardedFacets);  // This test is not designed to run before the feature flag was set.
 
-const coll = testDB.getCollection("search");
-coll.drop();
+const shardedSearchColl = testDB.getCollection("search_sharded");
+const unshardedSearchColl = testDB.getCollection("search_unsharded");
+const shardedBaseColl = testDB.getCollection("base_sharded");
+const unshardedBaseColl = testDB.getCollection("base_unsharded");
 
-const unshardedColl = testDB.getCollection("search_unsharded");
-unshardedColl.drop();
+const baseCollDocs = [
+    {"_id": 100, "localField": "cakes", "weird": false},
+    // Split between first and second shard will be here.
+    {"_id": 101, "localField": "cakes and kale", "weird": true},
+];
 
-const collBase = testDB.getCollection("base");
-collBase.drop();
+const searchCollDocs = [
+    {"_id": 0, "title": "cakes"},
+    {"_id": 1, "title": "cookies and cakes"},
+    {"_id": 2, "title": "vegetables"},
+    {"_id": 3, "title": "oranges"},
+    // Split between first and second shard will be here.
+    {"_id": 4, "title": "cakes and oranges"},
+    {"_id": 5, "title": "cakes and apples"},
+    {"_id": 6, "title": "apples"},
+    {"_id": 7, "title": "cakes and kale"},
+];
 
-const shardedCollBase = testDB.getCollection("baseSharded");
-shardedCollBase.drop();
+function loadData(coll, docs) {
+    coll.drop();
+    var bulk = coll.initializeUnorderedBulkOp();
+    for (const doc of docs) {
+        bulk.insert(doc);
+    }
+    assert.commandWorked(bulk.execute());
+}
 
-assert.commandWorked(coll.insert({"_id": 1, "title": "cakes"}));
-assert.commandWorked(coll.insert({"_id": 2, "title": "oranges"}));
-assert.commandWorked(coll.insert({"_id": 11, "title": "cakes and oranges"}));
-assert.commandWorked(coll.insert({"_id": 12, "title": "cakes and kale"}));
+loadData(unshardedBaseColl, baseCollDocs);
+loadData(shardedBaseColl, baseCollDocs);
+loadData(unshardedSearchColl, searchCollDocs);
+loadData(shardedSearchColl, searchCollDocs);
 
-assert.commandWorked(unshardedColl.insert({"_id": 1, "title": "cakes"}));
-assert.commandWorked(unshardedColl.insert({"_id": 2, "title": "cookies and cakes"}));
-assert.commandWorked(unshardedColl.insert({"_id": 3, "title": "vegetables"}));
-assert.commandWorked(unshardedColl.insert({"_id": 4, "title": "oranges"}));
-assert.commandWorked(unshardedColl.insert({"_id": 5, "title": "cakes and oranges"}));
-assert.commandWorked(unshardedColl.insert({"_id": 6, "title": "cakes and apples"}));
-assert.commandWorked(unshardedColl.insert({"_id": 7, "title": "apples"}));
-assert.commandWorked(unshardedColl.insert({"_id": 8, "title": "cakes and kale"}));
-
-assert.commandWorked(collBase.insert({"_id": 100, "localField": "cakes", "weird": false}));
-assert.commandWorked(collBase.insert({"_id": 101, "localField": "cakes and kale", "weird": true}));
-
-assert.commandWorked(shardedCollBase.insert({"_id": 100, "localField": "cakes", "weird": false}));
-assert.commandWorked(
-    shardedCollBase.insert({"_id": 110, "localField": "cakes and kale", "weird": true}));
-
-// Shard search collection
+// Shard search collection.
 assert.commandWorked(mongos.getDB("admin").runCommand({enableSharding: dbName}));
-st.shardColl(coll, {_id: 1}, {_id: 10}, {_id: 10 + 1});
+st.shardColl(shardedSearchColl, {_id: 1}, {_id: 4}, {_id: 4});
 // Ensure primary shard so we only set the correct mongot to have history.
-st.ensurePrimaryShard(dbName, st.shard1.shardName);
-st.shardColl(shardedCollBase, {_id: 1}, {_id: 105}, {_id: 106});
+st.ensurePrimaryShard(dbName,
+                      st.shard1.shardName);  // Shard1 is the primary.
+// Shard base collection.
+st.shardColl(shardedBaseColl, {_id: 1}, {_id: 101}, {_id: 101});
 
 const shard0Conn = st.rs0.getPrimary();
 const shard1Conn = st.rs1.getPrimary();
-const s0Mongot = stWithMock.getMockConnectedToHost(shard0Conn);
-const s1Mongot = stWithMock.getMockConnectedToHost(shard1Conn);
-const collUUIDSharded = getUUIDFromListCollections(testDB, coll.getName());
-const collUUID = getUUIDFromListCollections(testDB, unshardedColl.getName());
+const d0Mongot = stWithMock.getMockConnectedToHost(shard0Conn);
+const d1Mongot = stWithMock.getMockConnectedToHost(shard1Conn);
+const sMongot = stWithMock.getMockConnectedToHost(stWithMock.st.s);
 
 const mongotQuery = {
     query: "cakes",
     path: "title"
 };
 
-let searchCmdSharded = useShardedFacets
-    ? mongotCommandForQuery(
-          mongotQuery, coll.getName(), testDB.getName(), collUUIDSharded, NumberInt(42))
-    : mongotCommandForQuery(mongotQuery, coll.getName(), testDB.getName(), collUUIDSharded);
+//------------------------
+// Define mocks' responses
+//------------------------
 
-const searchCmd =
-    mongotCommandForQuery(mongotQuery, unshardedColl.getName(), testDB.getName(), collUUID);
+function searchQueryExpectedByMock(searchColl) {
+    return mongotCommandForQuery(mongotQuery,
+                                 searchColl.getName(),
+                                 testDB.getName(),
+                                 getUUIDFromListCollections(testDB, searchColl.getName()));
+}
 
-const shard0HistoryShardedColl = [
+const shard1HistorySharded = [
     {
-        expectedCommand: searchCmdSharded,
-        response: mongotResponseMetadataAgnostic(
-            [
-                {_id: 12, $searchScore: 0.91},
-                {_id: 11, $searchScore: 0.83},
-            ],
+        expectedCommand: searchQueryExpectedByMock(shardedSearchColl),
+        response: mongotMultiCursorResponseForBatch(
+            [{_id: 0, $searchScore: 0.99}, {_id: 1, $searchScore: 0.20}],
             NumberLong(0),
-            coll.getFullName(),
-            true,
-            useShardedFacets)
+            // Unmerged search metadata.  There are a total of 2 docs from this mongot.
+            [{count: 1}, {count: 1}],  // mongot can return any number of metadata docs to merge.
+            NumberLong(0),
+            shardedSearchColl.getFullName(),
+            true)
     },
 ];
 
-const shard1HistoryShardedColl = [
+const shard0HistorySharded = [
     {
-        expectedCommand: searchCmdSharded,
-        response: mongotResponseMetadataAgnostic(
-            [{_id: 1, $searchScore: 0.43}, {_id: 2, $searchScore: 0.32}],
+        expectedCommand: searchQueryExpectedByMock(shardedSearchColl),
+        response: mongotMultiCursorResponseForBatch(
+            [
+                {_id: 4, $searchScore: 0.33},
+                {_id: 5, $searchScore: 0.38},
+                {_id: 7, $searchScore: 0.45}
+            ],
             NumberLong(0),
-            coll.getFullName(),
-            true,
-            useShardedFacets)
+            // Unmerged search metadata.  There are a total of 3 docs from this mongot.
+            [{count: 2}, {count: 1}, {count: 0}, {count: 0}],
+            NumberLong(0),
+            shardedSearchColl.getFullName(),
+            true)
     },
 ];
 
 const shard1HistoryUnsharded = [
     {
-        expectedCommand: searchCmd,
-        response: mongotResponseForBatch(
-            [
-                {_id: 2, $searchScore: 0.91},
-                {_id: 1, $searchScore: 0.83},
-                {_id: 5, $searchScore: 0.73},
-                {_id: 8, $searchScore: 0.67},
-                {_id: 6, $searchScore: 0.53}
-            ],
-            NumberLong(0),
-            unshardedColl.getFullName(),
-            true)
+        expectedCommand: searchQueryExpectedByMock(unshardedSearchColl),
+        response: {
+            cursor: {
+                id: NumberLong(0),
+                ns: unshardedSearchColl.getFullName(),
+                nextBatch: [
+                    {_id: 0, $searchScore: 0.99},
+                    {_id: 1, $searchScore: 0.20},
+                    {_id: 4, $searchScore: 0.33},
+                    {_id: 5, $searchScore: 0.38},
+                    {_id: 7, $searchScore: 0.45}
+                ]
+            },
+            vars: {SEARCH_META: {count: 5}}
+        }
     },
 ];
-const makeLookupPipeline = (collection) => [
-        {$project: {"_id": 0}},
-        {
-            $lookup: {
-                from: collection.getName(),
-                let: { local_title: "$localField" },
-                pipeline: [
-                    {
-                        $search: mongotQuery
-                    },
-                    {
-                        $match: {
-                            $expr: {
-                                $eq: ["$title", "$$local_title"]
-                            }
+
+//--------------
+// $lookup tests
+//--------------
+const makeLookupPipeline = (searchColl) => [
+    {$project: {"_id": 0}},
+    {
+        $lookup: {
+            from: searchColl.getName(),
+            let: { local_title: "$localField" },
+            pipeline: [
+                {
+                    $search: mongotQuery
+                },
+                {
+                    $match: {
+                        $expr: {
+                            $eq: ["$title", "$$local_title"]
                         }
-                    }, {
-                        $project: collection === unshardedColl ? ({
-                            "_id": 0, "ref_id": "$_id",
-                        }) : ({
-                            "_id": 0,
-                            "ref_id": "$_id",
-                            "searchMeta": useShardedFacets ? "$$SEARCH_META" : {"val": {$literal: 1}},
-                        })
-                    }],
-                as: "cake_data"
+                    }
+                },
+                {
+                    $project: {
+                        "_id": 0,
+                        "ref_id": "$_id",
+                        "searchMeta": "$$SEARCH_META",
+                    }
+                }],
+            as: "cake_data"
+        }
+    }
+];
+
+const expectedLookupResults = [
+    {"localField": "cakes", "weird": false, "cake_data": [{"ref_id": 0, "searchMeta": {count: 5}}]},
+    {
+        "localField": "cakes and kale",
+        "weird": true,
+        "cake_data": [{"ref_id": 7, "searchMeta": {count: 5}}]
+    }
+];
+
+const kPlan = "planSearch";
+const kSearch = "search";
+let cursorId = 1000;
+
+function setupMockRequest(searchColl, mongot, requestType) {
+    if (requestType == kPlan) {
+        const mergingPipelineHistory = [{
+            expectedCommand:
+                {planShardedSearch: searchColl.getName(), query: mongotQuery, $db: dbName},
+            response: {
+                ok: 1,
+                protocolVersion: NumberInt(42),
+                metaPipeline:  // Sum counts in the shard metadata.
+                    [{$group: {_id: null, count: {$sum: "$count"}}}, {$project: {_id: 0, count: 1}}]
             }
-        }
-    ];
-// Unsharded $lookup with sharded $search.
-if (useShardedFacets === true) {
-    setGenericMergePipeline(coll.getName(), mongotQuery, dbName, stWithMock);
-    const historyObj = {
-        expectedCommand: {planShardedSearch: coll.getName(), query: mongotQuery, $db: dbName},
-        response: {
-            ok: 1,
-            protocolVersion: NumberInt(42),
-            // This test doesn't use metadata. Give a trivial pipeline.
-            metaPipeline: [{$limit: 1}]
-        }
-    };
-    // Gets called a number of times. The same cursor isn't used again for planShardedSearch, so
-    // use two different states.
-    const mergingPipelineHistory = [historyObj];
-    s1Mongot.setMockResponses(mergingPipelineHistory, 1423);
-    s1Mongot.setMockResponses(mergingPipelineHistory, 1424);
-    s0Mongot.setMockResponsesMetadataAgnostic(
-        shard0HistoryShardedColl, NumberLong(121), useShardedFacets);
-    s1Mongot.setMockResponsesMetadataAgnostic(
-        shard1HistoryShardedColl, NumberLong(121), useShardedFacets);
-    s1Mongot.setMockResponses(mergingPipelineHistory, 1425);
-    s0Mongot.setMockResponsesMetadataAgnostic(
-        shard0HistoryShardedColl, NumberLong(122), useShardedFacets);
-    s1Mongot.setMockResponsesMetadataAgnostic(
-        shard1HistoryShardedColl, NumberLong(122), useShardedFacets);
-} else {
-    s0Mongot.setMockResponsesMetadataAgnostic(
-        shard0HistoryShardedColl, NumberLong(121), useShardedFacets);
-    s1Mongot.setMockResponsesMetadataAgnostic(
-        shard1HistoryShardedColl, NumberLong(121), useShardedFacets);
-    s0Mongot.setMockResponsesMetadataAgnostic(
-        shard0HistoryShardedColl, NumberLong(122), useShardedFacets);
-    s1Mongot.setMockResponsesMetadataAgnostic(
-        shard1HistoryShardedColl, NumberLong(122), useShardedFacets);
+        }];
+        mongot.setMockResponses(mergingPipelineHistory, cursorId);
+    } else {
+        assert(requestType == kSearch, "invalid request type");
+        assert(mongot != sMongot, "only plan requests should go to mongoS");
+        assert(!(searchColl == unshardedSearchColl && mongot == d0Mongot),
+               "unsharded requests should not go to secondary");
+        const history =
+            (mongot == d1Mongot
+                 ? (searchColl == shardedSearchColl ? shard1HistorySharded : shard1HistoryUnsharded)
+                 : shard0HistorySharded);
+        mongot.setMockResponsesMetadataAgnostic(history, cursorId, searchColl == shardedSearchColl);
+    }
+    cursorId += 1;
 }
 
-assert.sameMembers(
-    [
-        {
-            "localField": "cakes",
-            "weird": false,
-            "cake_data": [{"ref_id": 1, "searchMeta": {"val": 1}}]
-        },
-        {
-            "localField": "cakes and kale",
-            "weird": true,
-            "cake_data": [{"ref_id": 12, "searchMeta": {"val": 1}}]
-        }
-    ],
-    collBase.aggregate(makeLookupPipeline(coll)).toArray());
-
-// Sharded $lookup with sharded $search.
-if (useShardedFacets === true) {
-    setGenericMergePipeline(coll.getName(), mongotQuery, dbName, stWithMock, stWithMock);
-    const historyObj = {
-        expectedCommand: {planShardedSearch: coll.getName(), query: mongotQuery, $db: dbName},
-        response: {
-            ok: 1,
-            protocolVersion: NumberInt(42),
-            // This test doesn't use metadata. Give a trivial pipeline.
-            metaPipeline: [{$limit: 1}]
-        }
-    };
-    const mergingPipelineHistory = [historyObj];
-    s1Mongot.setMockResponses(mergingPipelineHistory, 1423);
-    s0Mongot.setMockResponses(mergingPipelineHistory, 1423);
-    s1Mongot.setMockResponses(mergingPipelineHistory, 1424);
-    s0Mongot.setMockResponses(mergingPipelineHistory, 1424);
-    s0Mongot.setMockResponsesMetadataAgnostic(
-        shard0HistoryShardedColl, NumberLong(121), useShardedFacets);
-    s1Mongot.setMockResponsesMetadataAgnostic(
-        shard1HistoryShardedColl, NumberLong(121), useShardedFacets);
-    s0Mongot.setMockResponsesMetadataAgnostic(
-        shard0HistoryShardedColl, NumberLong(122), useShardedFacets);
-    s1Mongot.setMockResponsesMetadataAgnostic(
-        shard1HistoryShardedColl, NumberLong(122), useShardedFacets);
-} else {
-    s0Mongot.setMockResponsesMetadataAgnostic(
-        shard0HistoryShardedColl, NumberLong(121), useShardedFacets);
-    s1Mongot.setMockResponsesMetadataAgnostic(
-        shard1HistoryShardedColl, NumberLong(121), useShardedFacets);
-    s0Mongot.setMockResponsesMetadataAgnostic(
-        shard0HistoryShardedColl, NumberLong(122), useShardedFacets);
-    s1Mongot.setMockResponsesMetadataAgnostic(
-        shard1HistoryShardedColl, NumberLong(122), useShardedFacets);
+function setupAllMockRequests(searchColl, mockResponses) {
+    for (const i of mockResponses["mongos"]) {
+        setupMockRequest(searchColl, sMongot, i);
+    }
+    for (const i of mockResponses["primary"]) {
+        setupMockRequest(searchColl, d1Mongot, i);
+    }
+    for (const i of mockResponses["secondary"]) {
+        setupMockRequest(searchColl, d0Mongot, i);
+    }
 }
 
-assert.sameMembers(
-    [
-        {
-            "localField": "cakes",
-            "weird": false,
-            "cake_data": [{"ref_id": 1, "searchMeta": {"val": 1}}]
-        },
-        {
-            "localField": "cakes and kale",
-            "weird": true,
-            "cake_data": [{"ref_id": 12, "searchMeta": {"val": 1}}]
-        }
-    ],
-    shardedCollBase.aggregate(makeLookupPipeline(coll)).toArray());
+function lookupTest(baseColl, searchColl, mockResponses) {
+    setupAllMockRequests(searchColl, mockResponses);
+    assert.sameMembers(expectedLookupResults,
+                       baseColl.aggregate(makeLookupPipeline(searchColl)).toArray());
+    stWithMock.assertEmptyMocks();
+}
 
-// Unsharded $unionWith with sharded $search.
-s0Mongot.setMockResponsesMetadataAgnostic(
-    shard0HistoryShardedColl, NumberLong(121), useShardedFacets);
-s1Mongot.setMockResponsesMetadataAgnostic(
-    shard1HistoryShardedColl, NumberLong(121), useShardedFacets);
-if (useShardedFacets === true) {
-    setGenericMergePipeline(coll.getName(), mongotQuery, dbName, stWithMock);
-}
-assert.sameMembers(collBase
-                       .aggregate([
-                           {$unionWith: {coll: coll.getName(), pipeline: [{$search: mongotQuery}]}},
-                       ])
-                       .toArray(),
-                   [
-                       {_id: 100, "localField": "cakes", "weird": false},
-                       {_id: 101, "localField": "cakes and kale", "weird": true},
-                       {_id: 12, "title": "cakes and kale"},
-                       {_id: 11, "title": "cakes and oranges"},
-                       {_id: 1, "title": "cakes"},
-                       {_id: 2, "title": "oranges"}
-                   ]);
+// Test all combinations of sharded/unsharded base/search collection.
+lookupTest(unshardedBaseColl,
+           unshardedSearchColl,
+           {mongos: [], primary: [kPlan, kPlan, kSearch, kPlan, kSearch], secondary: []});
 
-// Sharded $unionWith with sharded $search.
-if (useShardedFacets === true) {
-    setGenericMergePipeline(coll.getName(), mongotQuery, dbName, stWithMock);
-}
-s0Mongot.setMockResponsesMetadataAgnostic(
-    shard0HistoryShardedColl, NumberLong(121), useShardedFacets);
-s1Mongot.setMockResponsesMetadataAgnostic(
-    shard1HistoryShardedColl, NumberLong(121), useShardedFacets);
-assert.sameMembers(shardedCollBase
-                       .aggregate([
-                           {$unionWith: {coll: coll.getName(), pipeline: [{$search: mongotQuery}]}},
-                       ])
-                       .toArray(),
-                   [
-                       {_id: 100, "localField": "cakes", "weird": false},
-                       {_id: 110, "localField": "cakes and kale", "weird": true},
-                       {_id: 12, "title": "cakes and kale"},
-                       {_id: 11, "title": "cakes and oranges"},
-                       {_id: 1, "title": "cakes"},
-                       {_id: 2, "title": "oranges"}
-                   ]);
-// Test non-sharded $search in $lookup is allowed (base is unsharded).
-if (useShardedFacets === true) {
-    const historyObj = {
-        expectedCommand:
-            {planShardedSearch: unshardedColl.getName(), query: mongotQuery, $db: dbName},
-        response: {
-            ok: 1,
-            protocolVersion: NumberInt(42),
-            // This test doesn't use metadata. Give a trivial pipeline.
-            metaPipeline: [{$limit: 1}]
-        }
-    };
-    const mergingPipelineHistory = [historyObj];
-    s1Mongot.setMockResponses(mergingPipelineHistory, 1423);
-    s1Mongot.setMockResponses(mergingPipelineHistory, 1424);
-    s1Mongot.setMockResponses(shard1HistoryUnsharded, NumberLong(121));
-    s1Mongot.setMockResponses(mergingPipelineHistory, 1425);
-    s1Mongot.setMockResponses(shard1HistoryUnsharded, NumberLong(122));
-} else {
-    s1Mongot.setMockResponsesMetadataAgnostic(
-        shard1HistoryUnsharded, NumberLong(121), useShardedFacets);
-    s1Mongot.setMockResponsesMetadataAgnostic(
-        shard1HistoryUnsharded, NumberLong(122), useShardedFacets);
-}
-const unshardedLookupResults = collBase.aggregate(makeLookupPipeline(unshardedColl)).toArray();
-const lookupSearchExpected = [
-    {"localField": "cakes", "weird": false, "cake_data": [{"ref_id": 1}]},
-    {"localField": "cakes and kale", "weird": true, "cake_data": [{"ref_id": 8}]}
+lookupTest(unshardedBaseColl, shardedSearchColl, {
+    mongos: [kPlan],
+    primary: [kPlan, kPlan, kSearch, kPlan, kSearch],
+    secondary: [kSearch, kSearch]
+});
+
+lookupTest(shardedBaseColl,
+           unshardedSearchColl,
+           {mongos: [kPlan], primary: [kPlan, kPlan, kSearch, kPlan, kSearch], secondary: []});
+
+lookupTest(shardedBaseColl, shardedSearchColl, {
+    mongos: [kPlan],
+    primary: [kPlan, kPlan, kSearch, kSearch],
+    secondary: [kPlan, kPlan, kSearch, kSearch]
+});
+
+// ----------------
+// $unionWith tests
+// ----------------
+const makeUnionWithPipeline = (searchColl) => [{
+    $unionWith: {
+        coll: searchColl.getName(),
+        pipeline: [
+            {$search: mongotQuery},
+            {
+                $project: {
+                    "_id": 0,
+                    "ref_id": "$_id",
+                    "title": "$title",
+                    "searchMeta": "$$SEARCH_META",
+                }
+            }
+        ]
+    }
+}];
+
+const expectedUnionWithResult = [
+    {_id: 100, "localField": "cakes", "weird": false},
+    {_id: 101, "localField": "cakes and kale", "weird": true},
+    {"ref_id": 0, "title": "cakes", "searchMeta": {"count": 5}},
+    {"ref_id": 1, "title": "cookies and cakes", "searchMeta": {"count": 5}},
+    {"ref_id": 4, "title": "cakes and oranges", "searchMeta": {"count": 5}},
+    {"ref_id": 5, "title": "cakes and apples", "searchMeta": {"count": 5}},
+    {"ref_id": 7, "title": "cakes and kale", "searchMeta": {"count": 5}}
 ];
-assert.sameMembers(lookupSearchExpected, unshardedLookupResults);
 
-// Test that non-sharded $search in $lookup works (base is sharded).
-if (useShardedFacets === true) {
-    setGenericMergePipeline(unshardedColl.getName(), mongotQuery, dbName, stWithMock);
-    const historyObj = {
-        expectedCommand:
-            {planShardedSearch: unshardedColl.getName(), query: mongotQuery, $db: dbName},
-        response: {
-            ok: 1,
-            protocolVersion: NumberInt(42),
-            // This test doesn't use metadata. Give a trivial pipeline.
-            metaPipeline: [{$limit: 1}]
-        }
-    };
-    const mergingPipelineHistory = [historyObj];
-    s1Mongot.setMockResponses(mergingPipelineHistory, 1423);
-    s1Mongot.setMockResponses(mergingPipelineHistory, 1424);
-    s1Mongot.setMockResponses(shard1HistoryUnsharded, NumberLong(121));
-    s1Mongot.setMockResponses(mergingPipelineHistory, 1425);
-    s1Mongot.setMockResponses(shard1HistoryUnsharded, NumberLong(122));
-} else {
-    s1Mongot.setMockResponsesMetadataAgnostic(
-        shard1HistoryUnsharded, NumberLong(121), useShardedFacets);
-    s1Mongot.setMockResponsesMetadataAgnostic(
-        shard1HistoryUnsharded, NumberLong(122), useShardedFacets);
+function unionTest(baseColl, searchColl, mockResponses) {
+    setupAllMockRequests(searchColl, mockResponses);
+    assert.sameMembers(baseColl.aggregate(makeUnionWithPipeline(searchColl)).toArray(),
+                       expectedUnionWithResult);
+    stWithMock.assertEmptyMocks();
 }
-const unshardedLookupShardedBaseResults =
-    shardedCollBase.aggregate(makeLookupPipeline(unshardedColl)).toArray();
-const lookupSearchShardedBaseExpected = [
-    {"localField": "cakes", "weird": false, "cake_data": [{"ref_id": 1}]},
-    {"localField": "cakes and kale", "weird": true, "cake_data": [{"ref_id": 8}]}
-];
-assert.sameMembers(lookupSearchShardedBaseExpected, unshardedLookupShardedBaseResults);
 
-// Test that non-sharded $search in $unionWith works (base is unsharded).
-if (useShardedFacets == true) {
-    setGenericMergePipeline(coll.getName(), mongotQuery, dbName, stWithMock);
-    const historyObj = {
-        expectedCommand:
-            {planShardedSearch: unshardedColl.getName(), query: mongotQuery, $db: dbName},
-        response: {
-            ok: 1,
-            protocolVersion: NumberInt(42),
-            // This test doesn't use metadata. Give a trivial pipeline.
-            metaPipeline: [{$limit: 1}]
-        }
-    };
-    const mergingPipelineHistory = [historyObj];
-    s1Mongot.setMockResponses(mergingPipelineHistory, 1423);
-}
-s1Mongot.setMockResponses(shard1HistoryUnsharded, NumberLong(128));
-assert.sameMembers(
-    collBase
-        .aggregate([
-            {$unionWith: {coll: unshardedColl.getName(), pipeline: [{$search: mongotQuery}]}},
-            {$project: {"_id": 0, "weird": 0}}
-        ])
-        .toArray(),
-    [
-        {"localField": "cakes"},
-        {"localField": "cakes and kale"},
-        {"title": "cakes"},
-        {"title": "cookies and cakes"},
-        {"title": "cakes and oranges"},
-        {"title": "cakes and apples"},
-        {"title": "cakes and kale"}
-    ]);
-// Test non-sharded $search in $unionWith is allowed (base is sharded).
+// Test all combinations of sharded/unsharded base/search collection.
+unionTest(
+    unshardedBaseColl, unshardedSearchColl, {mongos: [], primary: [kPlan, kSearch], secondary: []});
 
-if (useShardedFacets == true) {
-    setGenericMergePipeline(unshardedColl.getName(), mongotQuery, dbName, stWithMock);
-}
-s1Mongot.setMockResponses(shard1HistoryUnsharded, NumberLong(129));
+unionTest(unshardedBaseColl,
+          shardedSearchColl,
+          {mongos: [kPlan], primary: [kSearch], secondary: [kSearch]});
 
-assert.sameMembers(
-    shardedCollBase
-        .aggregate([
-            {$unionWith: {coll: unshardedColl.getName(), pipeline: [{$search: mongotQuery}]}},
-            {$project: {"_id": 0, "weird": 0}}
-        ])
-        .toArray(),
-    [
-        {"localField": "cakes"},
-        {"localField": "cakes and kale"},
-        {"title": "cakes"},
-        {"title": "cookies and cakes"},
-        {"title": "cakes and oranges"},
-        {"title": "cakes and apples"},
-        {"title": "cakes and kale"}
-    ]);
+unionTest(
+    shardedBaseColl, unshardedSearchColl, {mongos: [kPlan], primary: [kSearch], secondary: []});
+
+unionTest(shardedBaseColl,
+          shardedSearchColl,
+          {mongos: [kPlan], primary: [kSearch], secondary: [kSearch]});
+
 stWithMock.stop();
 })();

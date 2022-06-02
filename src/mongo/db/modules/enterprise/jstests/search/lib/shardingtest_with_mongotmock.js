@@ -103,4 +103,10 @@ class ShardingTestWithMongotMock {
         const res = assert.commandWorked(conn.adminCommand({getParameter: 1, mongotHost: 1}));
         return this._hostToMockMap[res.mongotHost];
     }
+
+    assertEmptyMocks() {
+        for (let mock of this._mongotMocks) {
+            mock.assertEmpty();
+        }
+    }
 }
