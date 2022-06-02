@@ -31,8 +31,6 @@
 namespace mongo::mongot_cursor {
 
 namespace {
-// Used to allow test-only stages in a pipeline even if they don't support dependency tracking.
-MONGO_FAIL_POINT_DEFINE(assumeMetaContextOK);
 
 /**
  * Create the RemoteCommandRequest for the provided command.
@@ -251,10 +249,7 @@ std::vector<executor::TaskExecutorCursor> establishCursors(
 }
 
 namespace {
-// The following stages are required to run search queries but do not support dep tracking. If we
-// encounter one in a pipeline, ignore NOT_SUPPORTED.
-std::set<StringData> skipDepTrackingStages{DocumentSourceInternalSearchMongotRemote::kStageName,
-                                           DocumentSourceMergeCursors::kStageName};
+
 // Returns a pair of booleans. The first is whether or not '$$SEARCH_META' is set by 'pipeline', the
 // second is whether '$$SEARCH_META' is accessed by 'pipeline'. It is assumed that if there is a
 // 'DocumentSourceInternalSearchMongotRemote' then '$$SEARCH_META' will be set at some point in the
@@ -262,18 +257,11 @@ std::set<StringData> skipDepTrackingStages{DocumentSourceInternalSearchMongotRem
 // 'DocumentSourceSetVariableFromSubPipeline' could do the actual setting of the variable, but it
 // can only be generated alongside a 'DocumentSourceInternalSearchMongotRemote'.
 void assertSearchMetaAccessValidHelper(const Pipeline::SourceContainer& pipeline) {
-    // Whether there is a $$SEARCH_META in the pipeline.
-    bool searchMetaAccessed = false;
     // Whether or not there was a sub-pipeline stage previously in this pipeline.
     bool subPipeSeen = false;
     bool searchMetaSet = false;
 
-    // If we see a stage that doesn't support dependency tracking, there's no way to tell if we'd
-    // be doing something incorrectly.
-    bool depTrackingSupported = true;
-
     for (const auto& source : pipeline) {
-        DepsTracker dep;
         // Check if this is a stage that sets $$SEARCH_META.
         static constexpr StringData kSetVarName =
             DocumentSourceSetVariableFromSubPipeline::kStageName;
@@ -303,25 +291,17 @@ void assertSearchMetaAccessValidHelper(const Pipeline::SourceContainer& pipeline
             }
         }
 
-        // Check if this stage references $$SEARCH_META. If a stage does not support dep tracking,
-        // fail as soon as we hit something search related.
-        if (DepsTracker::State::NOT_SUPPORTED == source->getDependencies(&dep) &&
-            skipDepTrackingStages.find(stageName) == skipDepTrackingStages.end()) {
-            depTrackingSupported = false;
-        } else if (dep.hasVariableReferenceTo({Variables::kSearchMetaId})) {
+        // Check if this stage references $$SEARCH_META.
+        std::set<Variables::Id> refs;
+        source->addVariableRefs(&refs);
+        if (Variables::hasVariableReferenceTo(refs, {Variables::kSearchMetaId})) {
             uassert(6347901,
                     "Can't access $$SEARCH_META after a stage with a sub-pipeline",
                     !subPipeSeen || thisStageSubPipeline);
             uassert(6347902,
                     "Can't access $$SEARCH_META without a $search stage earlier in the pipeline",
                     searchMetaSet);
-            searchMetaAccessed = true;
         }
-
-        uassert(6080011,
-                "Could not determine whether $$SEARCH_META would be accessed in a not-allowed "
-                "context",
-                depTrackingSupported || (!searchMetaAccessed && !searchMetaSet));
     }
 }
 
@@ -399,9 +379,6 @@ std::pair<std::unique_ptr<Pipeline, PipelineDeleter>, int> fetchMergingPipeline(
 
 void SearchImplementedHelperFunctions::assertSearchMetaAccessValid(
     const Pipeline::SourceContainer& pipeline, ExpressionContext* expCtx) {
-    if (MONGO_unlikely(assumeMetaContextOK.shouldFail())) {
-        return;
-    }
     // If we already validated this pipeline on mongos, no need to do it again on a shard. Check
     // mergeCursors because we could be on a shard doing the merge.
     if ((expCtx->inMongos || !expCtx->needsMerge) &&
@@ -424,11 +401,9 @@ boost::optional<std::string> validatePipelineForShardedCollectionHelper(
             }
         }
 
-        DepsTracker dep;
-        if (DepsTracker::State::NOT_SUPPORTED == source->getDependencies(&dep)) {
-            // We would have failed earlier if this particular stage was an issue.
-            continue;
-        } else if (dep.hasVariableReferenceTo({Variables::kSearchMetaId})) {
+        std::set<Variables::Id> refs;
+        source->addVariableRefs(&refs);
+        if (Variables::hasVariableReferenceTo(refs, {Variables::kSearchMetaId})) {
             return std::string(
                 "$$SEARCH_META cannot be used in a sharded environment unless "
                 "'featureFlagSearchShardedFacets' is enabled");

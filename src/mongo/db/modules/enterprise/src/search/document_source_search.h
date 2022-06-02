@@ -38,6 +38,8 @@ public:
         MONGO_UNREACHABLE_TASSERT(6253715);
     }
 
+    void addVariableRefs(std::set<Variables::Id>* refs) const final {}
+
 private:
     virtual Value serialize(boost::optional<ExplainOptions::Verbosity> explain = boost::none) const;
 

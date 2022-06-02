@@ -61,12 +61,11 @@ public:
      * past shards only stages.
      */
     static bool canMovePastDuringSplit(const DocumentSource& ds) {
-        DepsTracker depsTracker;
-        bool depTrackingSupported = ds.getDependencies(&depsTracker) != DepsTracker::NOT_SUPPORTED;
         // Check if next stage uses the variable.
-        return depTrackingSupported &&
-            !depsTracker.hasVariableReferenceTo(
-                std::set<Variables::Id>{Variables::kSearchMetaId}) &&
+        std::set<Variables::Id> refs;
+        ds.addVariableRefs(&refs);
+        return !Variables::hasVariableReferenceTo(
+                   refs, std::set<Variables::Id>{Variables::kSearchMetaId}) &&
             ds.constraints().preservesOrderAndMetadata;
     }
 
@@ -175,6 +174,8 @@ public:
         }
         return _metadataMergeProtocolVersion;
     }
+
+    void addVariableRefs(std::set<Variables::Id>* refs) const final {}
 
 protected:
     /**

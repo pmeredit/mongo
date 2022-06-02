@@ -38,13 +38,6 @@ const st = stWithMock.st;
 const mongos = st.s;
 const testDB = mongos.getDB(dbName);
 
-// We're going to use a test only stage that does not support dependency tracking.
-testDB.adminCommand({configureFailPoint: "assumeMetaContextOK", mode: "alwaysOn"});
-st.rs0.getPrimary().getDB(dbName).adminCommand(
-    {configureFailPoint: "assumeMetaContextOK", mode: "alwaysOn"});
-st.rs1.getPrimary().getDB(dbName).adminCommand(
-    {configureFailPoint: "assumeMetaContextOK", mode: "alwaysOn"});
-
 function setupCollection(localName) {
     const testColl = testDB.getCollection(localName);
 

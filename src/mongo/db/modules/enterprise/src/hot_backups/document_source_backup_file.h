@@ -50,6 +50,8 @@ public:
         return constraints;
     }
 
+    void addVariableRefs(std::set<Variables::Id>* refs) const final {}
+
 protected:
     DocumentSource::GetNextResult doGetNext() override;
     void doDispose() override;
