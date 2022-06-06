@@ -151,8 +151,8 @@ void AuditOpObserver::onDelete(OperationContext* opCtx,
     }
 }
 
-void AuditOpObserver::onDropDatabase(OperationContext* opCtx, const std::string& dbName) {
-    if (!isAuditingConfigured() || (dbName != kConfigDB)) {
+void AuditOpObserver::onDropDatabase(OperationContext* opCtx, const DatabaseName& dbName) {
+    if (!isAuditingConfigured() || (dbName.db() != kConfigDB)) {
         return;
     }
 

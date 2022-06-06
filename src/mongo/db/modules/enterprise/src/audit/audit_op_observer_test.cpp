@@ -124,7 +124,7 @@ public:
 
     void doDropDatabase(StringData dbname) {
         auto opCtx = cc().makeOperationContext();
-        observer.onDropDatabase(opCtx.get(), dbname.toString());
+        observer.onDropDatabase(opCtx.get(), DatabaseName(boost::none, dbname));
     }
 
     void doRenameCollection(const NamespaceString& fromColl, const NamespaceString& toColl) {
