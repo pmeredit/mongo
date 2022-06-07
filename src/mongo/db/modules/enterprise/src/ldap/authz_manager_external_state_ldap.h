@@ -108,7 +108,7 @@ public:
      * Passthrough to AuthorizationManagerExternalStateMongod
      */
     Status getRoleDescriptionsForDB(OperationContext* opCtx,
-                                    StringData dbname,
+                                    const DatabaseName& dbname,
                                     PrivilegeFormat showPrivileges,
                                     AuthenticationRestrictionsFormat showRestrictions,
                                     bool showBuiltinRoles,
