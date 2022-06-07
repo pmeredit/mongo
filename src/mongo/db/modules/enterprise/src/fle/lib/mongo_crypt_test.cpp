@@ -3,6 +3,7 @@
  */
 
 #include <algorithm>
+#include <boost/io/ios_state.hpp>
 #include <string>
 #include <utility>
 
@@ -279,6 +280,8 @@ protected:
 };
 
 TEST_F(MongoCryptTest, GetVersionReturnsReasonableValues) {
+    boost::io::ios_all_saver ias(std::cerr);
+
     uint64_t version = mongo_crypt_v1_get_version();
     const char* versionStr = mongo_crypt_v1_get_version_str();
     std::cerr << "Mongo Crypt Library Version: " << versionStr << ", " << std::hex << version
