@@ -45,7 +45,7 @@ RegexRewriteRule::RegexRewriteRule(pcrecpp::RE match,
  * Strict string to number parsing.
  * Number may only have base-10 digits.
  * Number must not be negative or contain any whitespace.
- * Number must not exceed "max" value.
+ * Number must be smaller than "max" value.
  */
 bool _parseGroup(StringData possibleNumber, std::size_t max, std::size_t* group) {
     std::size_t ret = 0;
@@ -56,7 +56,7 @@ bool _parseGroup(StringData possibleNumber, std::size_t max, std::size_t* group)
         }
         ret *= 10;
         ret += (ch - '0');
-        if (ret > max) {
+        if (ret >= max) {
             return false;
         }
     }
@@ -75,7 +75,7 @@ StatusWith<std::string> RegexRewriteRule::resolve(
         return swExtractedMatches.getStatus();
     }
     auto components = std::move(swExtractedMatches.getValue());
-    auto max = components.size() - 1;
+    auto max = components.size();
 
     StringBuilder builder;
     StringData sub = _substitution;
@@ -103,7 +103,7 @@ StatusWith<std::string> RegexRewriteRule::resolve(
         }
 
         // Valid subgroup. Copy in the preamble and substitue the find.
-        invariant(group <= max);
+        invariant(group < max);
         builder << sub.substr(0, open) << components[group];
 
         // Continue after the last valid subgroup.

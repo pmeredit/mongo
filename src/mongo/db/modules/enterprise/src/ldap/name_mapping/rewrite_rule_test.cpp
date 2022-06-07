@@ -145,6 +145,8 @@ TEST_F(RegexTransformTest, nonCaptureGroupBraces) {
     // Unavailable capture group placeholders are ignored.
     ASSERT_EQ(transform("(.+) (.+)", "A: {0}, B: {1}, C: {2}", "Hello World"),
               "A: Hello, B: World, C: {2}");
+    // Ensure 0 capture group + non-zero substitution works
+    ASSERT_EQ(transform(".+", "{0}", "test"), "{0}");
 
     // Unmatched braces are ignored.
     ASSERT_EQ(transform("(.+)", "}{{0}} { {0} }{", "test"), "}{test} { test }{");
