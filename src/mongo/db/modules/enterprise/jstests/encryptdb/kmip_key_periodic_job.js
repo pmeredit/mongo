@@ -66,7 +66,7 @@ print("Testing that server does not shut down when periodic job cannot reach KMI
 
     sleep(10000);
 
-    checkLog.containsJson(md, 4250500);
+    checkLog.containsJson(md, 4250502);
 
     MongoRunner.stopMongod(md);
 }

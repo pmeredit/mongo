@@ -32,9 +32,8 @@ namespace mongo {
 namespace kmip {
 
 StatusWith<KMIPService> KMIPService::createKMIPService() {
-    return uassertStatusOK(
-        createKMIPService(encryptionGlobalParams.kmipParams, sslGlobalParams.sslFIPSMode));
-};
+    return createKMIPService(encryptionGlobalParams.kmipParams, sslGlobalParams.sslFIPSMode);
+}
 
 StatusWith<KMIPService> KMIPService::createKMIPService(const HostAndPort& server,
                                                        const SSLParams& sslKMIPParams,

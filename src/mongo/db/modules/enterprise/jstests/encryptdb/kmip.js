@@ -114,7 +114,7 @@ function runTest(cipherMode, extra_opts = {}) {
     });
 
     const code = waitProgram(mongod.pid);
-    assert.eq(code, MongoRunner.EXIT_ABORT, "Ran mongod with invalid KMIP server address");
+    assert.eq(code, MongoRunner.EXIT_ABRUPT, "Ran mongod with invalid KMIP server address");
     killPyKMIPServer(kmipServerPid);
 }
 
