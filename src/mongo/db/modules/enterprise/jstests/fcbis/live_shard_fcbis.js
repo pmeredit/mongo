@@ -17,6 +17,7 @@
 
 load("jstests/sharding/libs/sharding_state_test.js");
 
+TestData.skipEnforceFastCountOnValidate = true;
 const st = new ShardingTest({config: 1, shards: {rs0: {nodes: 1}}});
 const rs = st.rs0;
 
