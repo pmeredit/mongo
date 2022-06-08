@@ -75,7 +75,7 @@ Future<DbResponse> ServiceEntryPointCryptD::handleRequest(OperationContext* opCt
 
     OpMsgRequest request;
     try {  // Parse.
-        request = rpc::opMsgRequestFromAnyProtocol(message);
+        request = rpc::opMsgRequestFromAnyProtocol(message, opCtx->getClient());
     } catch (const DBException& ex) {
         // If this error needs to fail the connection, propagate it out.
         if (ErrorCodes::isConnectionFatalMessageParseError(ex.code()))

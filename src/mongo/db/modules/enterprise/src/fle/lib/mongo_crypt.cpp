@@ -122,6 +122,7 @@ BSONObj analyzeNonExplainQuery(const BSONObj document,
 
     mongo::OpMsgRequest opmsg;
     opmsg.body = document;
+    opmsg.validatedTenant = ValidatedTenantId(ns.dbName());
     const StringData commandName = document.firstElementFieldName();
 
     BSONObjBuilder schemaInfoBuilder;
