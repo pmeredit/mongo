@@ -203,7 +203,7 @@ ExitCode initAndListen() {
     serviceContext->notifyStartupComplete();
 
 #ifndef _WIN32
-    mongo::signalForkSuccess();
+    initialize_server_global_state::signalForkSuccess();
 #else
     if (ntservice::shouldStartService()) {
         ntservice::reportStatus(SERVICE_RUNNING);
@@ -223,7 +223,7 @@ ExitCode initService() {
 
 MONGO_INITIALIZER_GENERAL(ForkServer, ("EndStartupOptionHandling"), ("default"))
 (InitializerContext* context) {
-    mongo::forkServerOrDie();
+    initialize_server_global_state::forkServerOrDie();
 }
 
 MONGO_INITIALIZER_WITH_PREREQUISITES(SetFeatureCompatibilityVersionLatest,
@@ -263,11 +263,11 @@ int CryptDMain(int argc, char** argv) {
 
     cmdline_utils::censorArgvArray(argc, argv);
 
-    if (!initializeServerGlobalState(serviceContext, PidFileWrite::kNoWrite))
+    if (!initialize_server_global_state::checkSocketPath())
         quickExit(EXIT_FAILURE);
 
     // Per SERVER-7434, startSignalProcessingThread must run after any forks (i.e.
-    // initializeServerGlobalState) and before the creation of any other threads
+    // initialize_server_global_state::forkServerOrDie) and before the creation of any other threads
     startSignalProcessingThread();
 
 #ifdef _WIN32
