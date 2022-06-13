@@ -119,10 +119,13 @@ static void buildExplainReturnMessage(OperationContext* opCtx,
 BSONObj analyzeNonExplainQuery(const BSONObj document,
                                OperationContext* opCtx,
                                const NamespaceString ns) {
+    using VTS = auth::ValidatedTenancyScope;
 
     mongo::OpMsgRequest opmsg;
     opmsg.body = document;
-    opmsg.validatedTenant = ValidatedTenantId(ns.dbName());
+    if (auto tenant = ns.dbName().tenantId()) {
+        opmsg.validatedTenancyScope = VTS(tenant.get(), VTS::TrustedFLEQueryAnalysisTag{});
+    }
     const StringData commandName = document.firstElementFieldName();
 
     BSONObjBuilder schemaInfoBuilder;

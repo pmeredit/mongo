@@ -741,7 +741,7 @@ OpMsgRequest makeHybrid(const OpMsgRequest& request, BSONObj body) {
     OpMsgRequest newRequest;
     newRequest.body = body;
     newRequest.sequences = request.sequences;
-    newRequest.validatedTenant = request.validatedTenant;
+    newRequest.validatedTenancyScope = request.validatedTenancyScope;
     return newRequest;
 }
 

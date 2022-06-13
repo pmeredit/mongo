@@ -170,7 +170,7 @@ public:
             builder.appendElements(explainedObj);
             builder.append(request.body["$db"_sd]);
             requestInner.body = builder.obj();
-            requestInner.validatedTenant = request.validatedTenant;
+            requestInner.validatedTenancyScope = request.validatedTenancyScope;
         }
 
         auto obj = runQueryAnalysis(requestInner, schemaInfo, ns, explainedCommand);
