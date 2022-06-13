@@ -132,21 +132,33 @@ class SetAuditConfigFixture {
         assert(aType !== undefined, "aType required for assertAuditedAny");
         assert.neq(aType, 'auditConfigure', "Use assertAuditedAll with 'auditConfigure'");
 
+        // We fully expect that some nodes will never have an audit entry.
+        // If we used the default timeout (5 minutes) on each node
+        // then the test runner would timeout.
+        //
+        // Instead, assert that within enough time to visit each spooler twice plus 30 seconds
+        // at least one spooler must succeed, but only block for 5 seconds at a time on
+        // any given node.  It is expected to see success within one pass.
         const spoolers = this.selectSpoolers(aType);
+        const kTimeoutForSingleMS = 5 * 1000;
+        const kTimeoutMarginMS = 30 * 1000;
+        const kTimeoutForAnyMS = (spoolers.length * 2 * kTimeoutForSingleMS) + kTimeoutMarginMS;
+
         this.waitFor(function() {
-            assert(spoolers.some(function(audit) {
-                try {
-                    // Failure is an option...
-                    const opts = {runHangAnalyzer: false};
-                    const entry =
-                        audit.assertEntryRelaxed(aType, params, undefined, undefined, opts);
-                    assert(entry.result === 0, "Audit entry is not OK: " + tojson(entry));
-                    return true;
-                } catch (e) {
-                    return false;
-                }
-            }),
-                   "Could not find audit entry on any node");
+            assert.soon(function() {
+                return spoolers.some(function(audit) {
+                    try {
+                        // Failure is an option...
+                        const opts = {runHangAnalyzer: false};
+                        const entry = audit.assertEntryRelaxed(
+                            aType, params, kTimeoutForSingleMS, undefined, opts);
+                        assert(entry.result === 0, "Audit entry is not OK: " + tojson(entry));
+                        return true;
+                    } catch (e) {
+                        return false;
+                    }
+                });
+            }, "Could not find audit entry on any node", kTimeoutForAnyMS, undefined);
         });
     }
 
