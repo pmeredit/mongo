@@ -24,7 +24,7 @@ if get_option('js-engine') != 'none':
             '$BUILD_DIR/mongo/crypto/symmetric_crypto',
             '$BUILD_DIR/mongo/scripting/scripting',
             '$BUILD_DIR/mongo/shell/encrypted_dbclient',
-            '$BUILD_DIR/third_party/shim_mozjs',
+            '$BUILD_DIR/third_party/mozjs/mozjs',
             '../query_analysis/query_analysis',
         ],
         LIBDEPS_DEPENDENTS=[
