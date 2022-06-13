@@ -58,8 +58,8 @@ assert.commandWorked(initialSyncNode.adminCommand({
 // Check that file copy based initial sync could not open the backup cursor on the sync source.
 checkLog.containsJson(initialSyncNode, 5973000);
 
-assert.commandWorked(
-    initialSyncNode.adminCommand({configureFailPoint: "fCBISHangBeforeFinish", mode: "off"}));
+assert.adminCommandWorkedAllowingNetworkError(
+    initialSyncNode, {configureFailPoint: "fCBISHangBeforeFinish", mode: "off"});
 
 jsTestLog("File copy based initial sync should fail");
 assert.eq(MongoRunner.EXIT_ABRUPT, waitMongoProgram(initialSyncNode.port));
