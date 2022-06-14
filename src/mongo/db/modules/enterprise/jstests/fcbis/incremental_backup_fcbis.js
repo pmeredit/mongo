@@ -20,6 +20,9 @@ const testName = TestData.testName;
 
 const rst = new ReplSetTest({
     name: testName,
+    nodeOptions: {
+        wiredTigerCacheSizeGB: 0.256,
+    },
     nodes: [{
         setParameter: {
             'initialSyncMethod': "fileCopyBased",
@@ -40,6 +43,12 @@ if (!featureEnabled) {
     return;
 }
 
+// Verify storage engine cache size in effect during recovery.
+const actualCacheSizeGB = assert.commandWorked(primary.adminCommand({getCmdLineOpts: 1}))
+                              .parsed.storage.wiredTiger.engineConfig.cacheSizeGB;
+jsTestLog('Storage cache size of ' + actualCacheSizeGB + ' GB.');
+assert.close(0.256, actualCacheSizeGB);
+
 const db1 = primary.getDB(db1Name);
 const coll1 = db1.getCollection(coll1Name);
 const db2 = primary.getDB(db2Name);
@@ -54,6 +63,9 @@ const z = 'z'.repeat(1 * 1024 * 1024);
 for (let i = 0; i < 250; i++) {
     assert.commandWorked(coll1.insert({x: x, y: y, i: i}));
     assert.commandWorked(coll2.insert({y: y, z: z, i: i}));
+    if ((i % 10) == 9) {
+        rst.awaitReplication();
+    }
 }
 
 // Take a stable checkpoint for the initial backup
