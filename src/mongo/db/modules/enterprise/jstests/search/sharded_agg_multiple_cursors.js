@@ -52,7 +52,7 @@ const testDb = mongos.getDB(dbName);
 const coll = testDb.getCollection(collName);
 const collNS = coll.getFullName();
 
-if (!FeatureFlagUtil.isEnabled(testDb, "SearchShardedFacets")) {
+if (!FeatureFlagUtil.isEnabled(st.configRS.getPrimary().getDB(dbName), "SearchShardedFacets")) {
     jsTestLog("Skipping as featureFlagSearchShardedFacets is not enabled");
     return;
 }

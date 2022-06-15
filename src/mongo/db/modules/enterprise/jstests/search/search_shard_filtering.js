@@ -80,7 +80,8 @@ const collUUID1 = getUUIDFromListCollections(st.rs1.getPrimary().getDB(dbName), 
 const mongotQuery = {};
 const responseOk = 1;
 
-const useShardedFacets = FeatureFlagUtil.isEnabled(testDB, "SearchShardedFacets");
+const useShardedFacets =
+    FeatureFlagUtil.isEnabled(st.configRS.getPrimary().getDB(dbName), "SearchShardedFacets");
 const mongot0ResponseBatch = [
     // Mongot will act "stale": it will have an index entry for a document not owned by shard
     // 0.

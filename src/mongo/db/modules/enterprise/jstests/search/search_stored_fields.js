@@ -120,7 +120,8 @@ const searchQuery = {
     const testDB = mongos.getDB(dbName);
     const coll = testDB.getCollection(jsTestName());
     const collNS = coll.getFullName();
-    const useShardedFacets = FeatureFlagUtil.isEnabled(testDB, "SearchShardedFacets");
+    const useShardedFacets =
+        FeatureFlagUtil.isEnabled(st.configRS.getPrimary().getDB(dbName), "SearchShardedFacets");
 
     // Documents that end up on shard0.
     assert.commandWorked(coll.insert([{_id: 1, shardKey: 0}, {_id: 2, shardKey: 0}]));

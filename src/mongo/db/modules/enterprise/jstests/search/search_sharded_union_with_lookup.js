@@ -24,7 +24,8 @@ const dbName = jsTestName();
 
 const mongos = st.s;
 const testDB = mongos.getDB(dbName);
-const useShardedFacets = FeatureFlagUtil.isEnabled(testDB, "SearchShardedFacets");
+const useShardedFacets =
+    FeatureFlagUtil.isEnabled(st.configRS.getPrimary().getDB(dbName), "SearchShardedFacets");
 assert(useShardedFacets);  // This test is not designed to run before the feature flag was set.
 
 const shardedSearchColl = testDB.getCollection("search_sharded");

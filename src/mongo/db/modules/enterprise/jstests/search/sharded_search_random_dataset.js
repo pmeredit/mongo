@@ -31,7 +31,8 @@ const mongos = st.s;
 const testDb = mongos.getDB(dbName);
 const testColl = testDb.getCollection(collName);
 const collNS = testColl.getFullName();
-const useShardedFacets = FeatureFlagUtil.isEnabled(testDb, "SearchShardedFacets");
+const useShardedFacets =
+    FeatureFlagUtil.isEnabled(st.configRS.getPrimary().getDB(dbName), "SearchShardedFacets");
 const protocolVersion = NumberLong(42);
 
 Random.setRandomSeed();

@@ -1076,7 +1076,7 @@ var ShardedBackupRestoreTest = function(concurrentWorkWhileBackup) {
         });
 
         if (isSelectiveRestore &&
-            !FeatureFlagUtil.isEnabled(st.s0.getDB("test"), "SelectiveBackup")) {
+            !FeatureFlagUtil.isEnabled(st.configRS.getPrimary().getDB(dbName), "SelectiveBackup")) {
             jsTestLog("Skipping as featureFlagSelectiveBackup is not enabled");
             st.stop();
             return "Test succeeded.";
