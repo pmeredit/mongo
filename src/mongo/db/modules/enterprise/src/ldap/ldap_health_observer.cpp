@@ -30,7 +30,7 @@ constexpr double kSmokePenalty = 0.1;
 LdapHealthObserver::LdapHealthObserver(ServiceContext* svcCtx) : HealthObserverBase(svcCtx) {}
 
 Future<HealthCheckStatus> LdapHealthObserver::periodicCheckImpl(
-    PeriodicHealthCheckContext&& periodicCheckContext) noexcept {
+    PeriodicHealthCheckContext&& periodicCheckContext) {
     auto completionPf = makePromiseFuture<HealthCheckStatus>();
 
     auto result = checkImpl(periodicCheckContext);
