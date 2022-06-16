@@ -3,6 +3,7 @@
  *
  * @tags: [
  *  requires_fcv_60,
+ *  requires_fle_in_always,
  * ]
  */
 (function() {

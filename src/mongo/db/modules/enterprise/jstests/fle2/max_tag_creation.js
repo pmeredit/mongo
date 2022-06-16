@@ -37,11 +37,15 @@ assert.commandWorked(
     edb.adminCommand({setParameter: 1, internalQueryFLERewriteMemoryLimit: 10 * 40 + 89 * 41}));
 
 const command = {
-    find: collName,
-    filter: {firstName: "Toby"}
+    update: collName,
+    updates: [{
+        q: {firstName: "Toby"},
+        u: {$set: {lastName: "Parker"}},
+        upsert: true,  // Use upserts because low selectivity mode will not kick in
+    }]
 };
 
-// The FLE rewriter will generate 99 tags for this query, so the find command should pass.
+// The FLE rewriter will generate 99 tags for this query, so the update command should pass.
 assert.commandWorked(edb.basic.runCommand(command));
 
 // Set limit to 98 tags.
@@ -50,11 +54,11 @@ assert.commandWorked(
 
 // Running the same query again should fail because rewriting the filter will require creating more
 // tags than the newly set internal limit.
-assert.commandFailedWithCode(edb.basic.runCommand(command), 6401800);
+assert.commandFailedWithCode(edb.basic.runCommand(command), ErrorCodes.FLEMaxTagLimitExceeded);
 
 // Delete a document
 assert.commandWorked(edb.runCommand({delete: "basic", deletes: [{"q": {"num": 50}, limit: 1}]}));
 
-// The FLE rewriter will generate 98 tags for this query, so the find command should pass.
+// The FLE rewriter will generate 98 tags for this query, so the update command should pass.
 assert.commandWorked(edb.basic.runCommand(command));
 }());

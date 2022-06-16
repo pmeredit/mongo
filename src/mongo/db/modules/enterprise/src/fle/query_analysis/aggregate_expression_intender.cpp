@@ -771,6 +771,9 @@ private:
     void visit(ExpressionLog10*) final {
         ensureNotEncryptedEnterEval("a base-ten logarithm calculation", subtreeStack);
     }
+    void visit(ExpressionInternalFLEEqual*) final {
+        ensureNotEncryptedEnterEval("a fle equal match", subtreeStack);
+    }
     void visit(ExpressionMap*) final {
         ensureNotEncryptedEnterEval("a map function", subtreeStack);
     }
@@ -1125,6 +1128,7 @@ private:
     void visit(ExpressionLn*) final {}
     void visit(ExpressionLog*) final {}
     void visit(ExpressionLog10*) final {}
+    void visit(ExpressionInternalFLEEqual*) final {}
     void visit(ExpressionMap*) final {}
     void visit(ExpressionMeta*) final {}
     void visit(ExpressionMod*) final {}
@@ -1425,6 +1429,9 @@ private:
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionLog10*) final {
+        didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
+    }
+    void visit(ExpressionInternalFLEEqual*) final {
         didSetIntention = exitSubtree<Subtree::Evaluated>(expCtx, subtreeStack) || didSetIntention;
     }
     void visit(ExpressionMap*) final {

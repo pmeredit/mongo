@@ -241,6 +241,9 @@ public:
     void visit(const ExpressionLog10*) {
         _tracker.enterEvaluateOrCompare();
     }
+    void visit(const ExpressionInternalFLEEqual*) {
+        _tracker.enterEvaluateOrCompare();
+    }
     void visit(const ExpressionMap*) {
         _tracker.enterEvaluateOrCompare();
     }
@@ -636,6 +639,7 @@ public:
     void visit(const ExpressionLn*) {}
     void visit(const ExpressionLog*) {}
     void visit(const ExpressionLog10*) {}
+    void visit(const ExpressionInternalFLEEqual*) {}
     void visit(const ExpressionMap*) {}
     void visit(const ExpressionMeta*) {}
     void visit(const ExpressionMod*) {}
@@ -900,6 +904,9 @@ public:
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionLog10*) {
+        _tracker.exitEvaluateOrCompare();
+    }
+    void visit(const ExpressionInternalFLEEqual*) {
         _tracker.exitEvaluateOrCompare();
     }
     void visit(const ExpressionMap*) {

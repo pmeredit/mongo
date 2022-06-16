@@ -174,9 +174,18 @@ if (!client.useImplicitSharding) {
 
     // Remove an unencrypted field in a document, expect no esc/ecc/ecoc changes
     res = assert.commandWorked(coll.updateOne({"first": "luke"}, {$unset: {"middle": ""}}));
-    print(tojson(res));
     assert.eq(res.matchedCount, 1);
     assert.eq(res.modifiedCount, 1);
     client.assertEncryptedCollectionCounts(collName, 2, 4, 2, 6);
+
+    // Update an unencrypted field in a document with upsert, but match no documents
+    // expect writes to esc,ecoc
+    res = assert.commandWorked(
+        edb.basic.updateOne({"last": "marky"}, {$set: {"first": "matthew"}}, {upsert: true}));
+    print(tojson(res));
+    assert.eq(res.matchedCount, 0);
+    assert.eq(res.modifiedCount, 1);
+
+    client.assertEncryptedCollectionCounts("basic", 3, 7, 3, 10);
 }
 }());
