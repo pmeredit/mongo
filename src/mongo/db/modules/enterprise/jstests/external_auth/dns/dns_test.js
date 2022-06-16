@@ -3,7 +3,12 @@
 (function() {
 "use strict";
 
-const ldapURLS = ["srv:foo.mock.mongodb.org", "srv_raw:service.mock.mongodb.org"];
+const ldapURLS = [
+    "srv:foo.mock.mongodb.org",
+    "srv_raw:service.mock.mongodb.org",
+    "cname-ldap.mock.mongodb.org",
+    "cname-cname-ldap.mock.mongodb.org"
+];
 
 for (let ldapURL of ldapURLS) {
     const conn = MongoRunner.runMongod({
