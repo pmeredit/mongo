@@ -21,8 +21,8 @@ const ecocExistsAfterCompact = false;
 
 const sampleEncryptedFields = {
     fields: [
-        {path: "first", bsonType: "string", queries: {"queryType": "equality"}},
-        {path: "ssn", bsonType: "string", queries: {"queryType": "equality"}},
+        {path: "first", bsonType: "string", queries: {"queryType": "equality", contention: 0}},
+        {path: "ssn", bsonType: "string", queries: {"queryType": "equality", contention: 0}},
     ]
 };
 
