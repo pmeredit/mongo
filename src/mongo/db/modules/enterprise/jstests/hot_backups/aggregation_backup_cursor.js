@@ -94,11 +94,6 @@ TestData.disableImplicitSessions = false;
 
 MongoRunner.stopMongod(conn);
 
-if (jsTest.options().noJournal) {
-    print("This test is being run with nojournal. Skipping ReplicaSet part.");
-    return;
-}
-
 // Run a replica set to verify the contents of the `metadata` document.
 let rst = new ReplSetTest({name: "aggBackupCursor", nodes: 1});
 rst.startSet();

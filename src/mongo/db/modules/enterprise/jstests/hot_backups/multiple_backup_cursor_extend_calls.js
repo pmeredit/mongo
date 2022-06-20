@@ -6,7 +6,6 @@
  * calls do not change previous log files.
  *
  * @tags: [
- *   requires_journaling,
  *   requires_persistence,
  *   requires_wiredtiger,
  * ]

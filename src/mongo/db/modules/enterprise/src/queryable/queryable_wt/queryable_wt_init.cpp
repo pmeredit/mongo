@@ -92,7 +92,6 @@ public:
                                                  wiredTigerGlobalOptions.engineConfig,
                                                  cacheMB,
                                                  wiredTigerGlobalOptions.getMaxHistoryFileSizeMB(),
-                                                 params.dur,
                                                  kEphemeral,
                                                  params.repair);
         kv->setRecordStoreExtraOptions(wiredTigerGlobalOptions.collectionConfig);

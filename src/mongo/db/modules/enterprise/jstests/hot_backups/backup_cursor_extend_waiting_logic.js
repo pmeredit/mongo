@@ -4,7 +4,6 @@
  * persisent on the disk of that node.
  *
  * @tags: [
- *   requires_journaling,
  *   requires_persistence,
  *   requires_sharding,
  *   requires_wiredtiger,

@@ -3,7 +3,6 @@
  * 'last-continuous' binary version.
  *
  * @tags: [requires_wiredtiger,
- *         requires_journaling,
  *         requires_persistence]
  */
 

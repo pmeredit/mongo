@@ -2,7 +2,6 @@
  * Tests that a selective restore fails when restoring a collection with missing index files.
  *
  * @tags: [
- *   requires_journaling,
  *   requires_persistence,
  *   requires_wiredtiger,
  * ]

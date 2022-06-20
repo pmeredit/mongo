@@ -39,12 +39,9 @@ public:
         boost::filesystem::create_directory(dbpath);
 
         std::string engineConfig = inMemoryGlobalOptions.engineConfig;
-        engineConfig +=
-            ",in_memory=true,log=(enabled=false),"
-            "file_manager=(close_idle_time=0),checkpoint=(wait=0,log_size=0)";
+        engineConfig += ",file_manager=(close_idle_time=0),checkpoint=(wait=0,log_size=0)";
 
         size_t cacheMB = WiredTigerUtil::getCacheSizeMB(inMemoryGlobalOptions.inMemorySizeGB);
-        const bool durable = false;
         const bool ephemeral = true;
         const bool repair = false;
         auto kv = std::make_unique<WiredTigerKVEngine>(
@@ -56,7 +53,6 @@ public:
             // inMemory configurations ignore the maxCacheOverflowFileSize
             // so leave as 0 (unbounded)
             0,
-            durable,
             ephemeral,
             repair);
         kv->setRecordStoreExtraOptions(inMemoryGlobalOptions.collectionConfig);

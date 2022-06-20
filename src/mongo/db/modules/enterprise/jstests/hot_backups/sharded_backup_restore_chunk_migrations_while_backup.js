@@ -3,7 +3,6 @@
  * be causally consistent.
  *
  * @tags: [
- *   requires_journaling,
  *   requires_persistence,
  *   requires_wiredtiger,
  * ]
