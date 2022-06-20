@@ -23,7 +23,6 @@ feature_dirs = [
     "sasl",
     "search",
     "serverless",
-    "snmp" if not env.TargetOSIs('darwin') else [],
 ]
 
 env = env.Clone()
@@ -168,25 +167,6 @@ if "encryptdb" in env['MONGO_ENTERPRISE_FEATURES'] or "audit" in env['MONGO_ENTE
         ],
     )
 
-# SNMP doc files
-env.AutoInstall(
-    target='$PREFIX/snmp',
-    source=[
-        "docs/snmp/MONGOD-MIB.txt",
-        "docs/snmp/README-snmp.txt",
-        "docs/snmp/mongod.conf.master.selinux",
-        "docs/snmp/MONGODBINC-MIB.txt",
-        "docs/snmp/mongod.conf.master",
-        "docs/snmp/mongod.conf.subagent"
-    ],
-    AIB_COMPONENT='snmp',
-    AIB_COMPONENTS_EXTRA=[
-        'dist',
-        'dist-test',
-    ],
-    AIB_ROLE="base",
-)
-
 if env.TargetOSIs("windows"):
 
     libs = []
@@ -196,13 +176,6 @@ if env.TargetOSIs("windows"):
             'files': ['libsasl.dll', 'libsasl.pdb'],
             'component': 'windows-sasl-lib',
             'components_extra': ['mongo', 'shell', 'mongod', 'mongos', 'core', 'servers', 'dist', 'dist-test']
-        }]
-
-    if 'snmp' in env['MONGO_ENTERPRISE_FEATURES']:
-        libs += [{
-            'files': ['netsnmp.dll', 'netsnmp.pdb'],
-            'component': 'windows-netsnmp-lib',
-            'components_extra': ['mongod', 'servers', 'core', 'dist', 'dist-test']
         }]
 
     paths = [str(env.Dir(libpath).Dir('..').Dir('bin')) for libpath in env.get('LIBPATH', [])]
