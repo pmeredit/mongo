@@ -58,7 +58,7 @@ void exportCollection(OperationContext* opCtx, const NamespaceString& nss, BSONO
             !autoCollection.getView());
     uassert(5091801,
             str::stream() << "Collection with namespace " << nss << " does not exist.",
-            autoCollection.getDb() && autoCollection.getCollection());
+            autoCollection.getCollection());
 
     CollectionProperties collectionProperties;
     const auto& collection = autoCollection.getCollection();
