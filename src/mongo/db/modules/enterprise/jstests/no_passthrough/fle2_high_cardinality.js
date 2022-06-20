@@ -134,7 +134,7 @@ function runTest(conn) {
                 $_internalFleEq: {
                     field: "$first",
                     edc: fleEq.edc,
-                    counter: NumberLong(0),
+                    counter: NumberLong(4),
                     server: fleEq.server
 
                 }

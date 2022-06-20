@@ -16,7 +16,9 @@ load("jstests/libs/uuid_util.js");
 const dbName = 'txn_contention_compact';
 const collName = "basic";
 const sampleEncryptedFields = {
-    "fields": [{"path": "first", "bsonType": "string", "queries": {"queryType": "equality"}}]
+    "fields": [
+        {"path": "first", "bsonType": "string", "queries": {"queryType": "equality", contention: 0}}
+    ]
 };
 
 const bgCompactFunc = function() {
