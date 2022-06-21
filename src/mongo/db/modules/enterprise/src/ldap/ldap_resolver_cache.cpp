@@ -20,6 +20,20 @@
 
 
 namespace mongo {
+
+int getDnsPortNumber(const std::vector<std::pair<dns::SRVHostEntry, Seconds>>& dnsRecords,
+                     const LDAPHost& host) {
+    int dnsPort = dnsRecords.front().first.port;
+    if (host.isSSL()) {
+        if (dnsPort == 389) {
+            dnsPort = 636;
+        } else if (dnsPort == 3268) {
+            dnsPort = 3269;
+        }
+    }
+    return dnsPort;
+}
+
 LDAPResolvedHost LDAPDNSResolverCache::_getResolvedHost(const LDAPHost& host,
                                                         const CacheEntry& entry) {
     return LDAPResolvedHost(host.getName(),
@@ -65,9 +79,9 @@ LDAPDNSResolverCache::CacheEntry LDAPDNSResolverCache::_resolveHost(const LDAPHo
     if (host.getType() == LDAPHost::Type::kSRVRaw) {
         std::vector<std::pair<dns::SRVHostEntry, Seconds>> dnsRecords =
             dns::lookupSRVRecords(host.getName());
-        return CacheEntry{dnsRecords.front().first.host,
-                          dnsRecords.front().first.port,
-                          Date_t::now() + dnsRecords.front().second};
+        int dnsPort = getDnsPortNumber(dnsRecords, host);
+        return CacheEntry{
+            dnsRecords.front().first.host, dnsPort, Date_t::now() + dnsRecords.front().second};
     } else if (host.getType() == LDAPHost::Type::kSRV) {
         /*
         Under SRV mode, probe for
@@ -80,9 +94,9 @@ LDAPDNSResolverCache::CacheEntry LDAPDNSResolverCache::_resolveHost(const LDAPHo
         try {
             std::vector<std::pair<dns::SRVHostEntry, Seconds>> dnsRecords =
                 dns::lookupSRVRecords(gcName);
-            return CacheEntry{dnsRecords.front().first.host,
-                              dnsRecords.front().first.port,
-                              Date_t::now() + dnsRecords.front().second};
+            int dnsPort = getDnsPortNumber(dnsRecords, host);
+            return CacheEntry{
+                dnsRecords.front().first.host, dnsPort, Date_t::now() + dnsRecords.front().second};
         } catch (ExceptionFor<ErrorCodes::DNSHostNotFound>&) {
             // "Could not find Active Directory Global Catalog SRV record, host {host}",
             LOGV2_DEBUG(5904800,
@@ -93,9 +107,9 @@ LDAPDNSResolverCache::CacheEntry LDAPDNSResolverCache::_resolveHost(const LDAPHo
 
         std::vector<std::pair<dns::SRVHostEntry, Seconds>> dnsRecords =
             dns::lookupSRVRecords("_ldap._tcp." + host.getName());
-        return CacheEntry{dnsRecords.front().first.host,
-                          dnsRecords.front().first.port,
-                          Date_t::now() + dnsRecords.front().second};
+        int dnsPort = getDnsPortNumber(dnsRecords, host);
+        return CacheEntry{
+            dnsRecords.front().first.host, dnsPort, Date_t::now() + dnsRecords.front().second};
     } else {
         std::vector<std::pair<std::string, Seconds>> dnsRecords =
             dns::lookupARecords(host.getName());

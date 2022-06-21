@@ -10,6 +10,7 @@ const ldapURLS = [
     "cname-cname-ldap.mock.mongodb.org"
 ];
 
+// TODO: Add TLS test cases SERVER-67714
 for (let ldapURL of ldapURLS) {
     const conn = MongoRunner.runMongod({
         ldapServers: ldapURL,
