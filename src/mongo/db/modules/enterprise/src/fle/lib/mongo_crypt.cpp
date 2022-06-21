@@ -178,8 +178,10 @@ BSONObj analyzeNonExplainQuery(const BSONObj document,
 BSONObj analyzeExplainQuery(const BSONObj document,
                             OperationContext* opCtx,
                             const NamespaceString ns) {
-    auto cleanedCmdObj = document.removeFields(
-        StringDataSet{query_analysis::kJsonSchema, query_analysis::kIsRemoteSchema});
+    auto cleanedCmdObj =
+        document.removeFields(StringDataSet{query_analysis::kJsonSchema,
+                                            query_analysis::kIsRemoteSchema,
+                                            query_analysis::kEncryptionInformation});
     auto explainCmd = ExplainCommandRequest::parse(
         IDLParserErrorContext(ExplainCommandRequest::kCommandName,
                               APIParameters::get(opCtx).getAPIStrict().value_or(false)),
@@ -196,6 +198,15 @@ BSONObj analyzeExplainQuery(const BSONObj document,
         explainedObj = explainedObj.addField(cmdSchema);
     }
 
+    uassert(6650801,
+            "In an explain command the encryptionInformation field cannot both be in the explain "
+            "command and inside the command being explained.",
+            !document.hasField(query_analysis::kEncryptionInformation) ||
+                !explainedObj.hasField(query_analysis::kEncryptionInformation));
+    if (auto cmdEncryptInfo = document[query_analysis::kEncryptionInformation]) {
+        explainedObj = explainedObj.addField(cmdEncryptInfo);
+    }
+
     uassert(6206602,
             "In an explain command the isRemoteSchema field must be top-level and not inside the "
             "command being explained.",
@@ -208,6 +219,8 @@ BSONObj analyzeExplainQuery(const BSONObj document,
                 str::stream() << "Mismatched $db in explain command. Expected " << dbname
                               << " but got " << innerDb.checkAndGetStringData(),
                 innerDb.checkAndGetStringData() == dbname);
+    } else {
+        explainedObj = explainedObj.addField(document["$db"]);
     }
 
     // Analyze the inner query

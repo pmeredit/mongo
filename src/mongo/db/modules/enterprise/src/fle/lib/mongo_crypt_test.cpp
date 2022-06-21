@@ -75,6 +75,32 @@ static const std::string kSchema =
         }
     })";
 
+static const std::string kEncryptionInfo =
+    R"({
+        "schema": {
+            "db.test": {
+                "fields": [
+                    {
+                        "path": "ssn",
+                        "keyId": {
+                            "$uuid": "1362d0ed-6182-478e-bb8a-ebcc53b91aa1"
+                        },
+                        "bsonType": "string",
+                        "queries" : { "queryType" : "equality", "contention": 0 }
+                    },
+                    {
+                        "path": "user.account",
+                        "keyId": {
+                            "$uuid": "93282c77-9a6b-47cf-9c4c-beda02730881"
+                        },
+                        "bsonType": "string",
+                        "queries" : { "queryType" : "equality", "contention": 0 }
+                    }
+                ]
+            }
+        }
+    })";
+
 void replace_str(std::string& str, mongo::StringData search, mongo::StringData replace) {
     auto pos = str.find(search.toString());
     if (pos == std::string::npos)
@@ -247,8 +273,7 @@ protected:
             R"({
                 "explain" : {
                     <CMD>,
-                    "lsid" : { "id": { "$uuid": "32de9140-7ade-46bf-a72a-49442e4e93d7" } },
-                    "$db" : "test"
+                    "lsid" : { "id": { "$uuid": "32de9140-7ade-46bf-a72a-49442e4e93d7" } }
                 },
                 "jsonSchema" : <SCHEMA>,
                 "isRemoteSchema" : false,
@@ -272,6 +297,72 @@ protected:
         replace_str(output, "<HAS_ENC>", hasEncryptionPlaceholders ? "true" : "false");
         replace_str(output, "<REQ_ENC>", schemaRequiresEncryption ? "true" : "false");
         replace_str(output, "<CMD>", transformedCmd);
+        checkAnalysisSuccess(input.c_str(), output.c_str());
+    }
+
+    void analyzeValidFLE2CommandCommon(const char* inputCmd,
+                                       const char* transformedCmd,
+                                       bool hasEncryptionPlaceholders = true,
+                                       bool schemaRequiresEncryption = true) {
+        std::string input =
+            R"({
+                <CMD>,
+                "encryptionInformation" : <ENCRYPTINFO>,
+                "lsid" : { "id": { "$uuid": "32de9140-7ade-46bf-a72a-49442e4e93d7" } },
+                "$db": "test"
+            })";
+        std::string output =
+            R"({
+                "hasEncryptionPlaceholders" : <HAS_ENC>,
+                "schemaRequiresEncryption" : <REQ_ENC>,
+                "result" : {
+                    <CMD>,
+                    "encryptionInformation" : <ENCRYPTINFO>,
+                    "lsid" : { "id" : { "$binary" : "Mt6RQHreRr+nKklELk6T1w==", "$type" : "04" } }
+                }
+            })";
+        replace_str(input, "<CMD>", inputCmd);
+        replace_str(input, "<ENCRYPTINFO>", kEncryptionInfo);
+        replace_str(output, "<HAS_ENC>", hasEncryptionPlaceholders ? "true" : "false");
+        replace_str(output, "<REQ_ENC>", schemaRequiresEncryption ? "true" : "false");
+        replace_str(output, "<CMD>", transformedCmd);
+        replace_str(output, "<ENCRYPTINFO>", kEncryptionInfo);
+        checkAnalysisSuccess(input.c_str(), output.c_str());
+    }
+
+    void analyzeValidFLE2ExplainCommandCommon(const char* inputCmd,
+                                              const char* transformedCmd,
+                                              bool hasEncryptionPlaceholders = true,
+                                              bool schemaRequiresEncryption = true) {
+        std::string input =
+            R"({
+                "explain" : {
+                    <CMD>,
+                    "lsid" : { "id": { "$uuid": "32de9140-7ade-46bf-a72a-49442e4e93d7" } }
+                },
+                "encryptionInformation" : <ENCRYPTINFO>,
+                "lsid" : { "id": { "$uuid": "32de9140-7ade-46bf-a72a-49442e4e93d7" } },
+                "$db": "test"
+            })";
+        std::string output =
+            R"({
+                "hasEncryptionPlaceholders" : <HAS_ENC>,
+                "schemaRequiresEncryption" : <REQ_ENC>,
+                "result" : {
+                    "explain" : {
+                        <CMD>,
+                        "lsid" : { "id" : { "$binary" : "Mt6RQHreRr+nKklELk6T1w==", "$type" : "04" } },
+                        "encryptionInformation" : <ENCRYPTINFO>
+                    },
+                    "verbosity" : "allPlansExecution"
+                }
+            })";
+        replace_str(input, "<CMD>", inputCmd);
+        replace_str(input, "<ENCRYPTINFO>", kEncryptionInfo);
+        replace_str(output, "<HAS_ENC>", hasEncryptionPlaceholders ? "true" : "false");
+        replace_str(output, "<REQ_ENC>", schemaRequiresEncryption ? "true" : "false");
+        replace_str(output, "<CMD>", transformedCmd);
+        replace_str(output, "<ENCRYPTINFO>", kEncryptionInfo);
         checkAnalysisSuccess(input.c_str(), output.c_str());
     }
 
@@ -418,7 +509,8 @@ TEST_F(MongoCryptTest, AnalyzeQueryInputMissingJsonSchema) {
             "isRemoteSchema": false,
             "$db": "test"
         })";
-    checkAnalysisFailure(input.c_str(), mongo_crypt_v1_error::MONGO_CRYPT_V1_ERROR_EXCEPTION);
+    checkAnalysisFailure(
+        input.c_str(), mongo_crypt_v1_error::MONGO_CRYPT_V1_ERROR_EXCEPTION, 51073);
 }
 
 TEST_F(MongoCryptTest, AnalyzeQueryInputMissingIsRemoteSchema) {
@@ -429,7 +521,8 @@ TEST_F(MongoCryptTest, AnalyzeQueryInputMissingIsRemoteSchema) {
             "jsonSchema": {},
             "$db": "test"
         })";
-    checkAnalysisFailure(input.c_str(), mongo_crypt_v1_error::MONGO_CRYPT_V1_ERROR_EXCEPTION);
+    checkAnalysisFailure(
+        input.c_str(), mongo_crypt_v1_error::MONGO_CRYPT_V1_ERROR_EXCEPTION, 31104);
 }
 
 TEST_F(MongoCryptTest, AnalyzeQueryInputHasUnknownCommand) {
@@ -462,12 +555,29 @@ static const char* kTransformedFindCmd =
         } }
     )";
 
+static const char* kTransformedFLE2FindCmd =
+    R"(
+        "find" : "test",
+        "filter" : { "user.account" : {
+            "$eq" : { "$binary" :
+            "A18AAAAQdAACAAAAEGEAAgAAAAVraQAQAAAABJMoLHeaa0fPnEy+2gJzCIEFa3UAEAAAAASTKCx3mmtHz5xMvtoCcwiBAnYABwAAAHNlY3JldAASY20AAAAAAAAAAAAA", "$type" : "06" }
+        } }
+    )";
+
 TEST_F(MongoCryptTest, AnalyzeValidFindCommand) {
     analyzeValidCommandCommon(kFindCmd, kTransformedFindCmd);
 }
 
 TEST_F(MongoCryptTest, AnalyzeValidExplainFindCommand) {
     analyzeValidExplainCommandCommon(kFindCmd, kTransformedFindCmd);
+}
+
+TEST_F(MongoCryptTest, AnalyzeValidFLE2FindCommand) {
+    analyzeValidFLE2CommandCommon(kFindCmd, kTransformedFLE2FindCmd);
+}
+
+TEST_F(MongoCryptTest, AnalyzeValidFLE2ExplainFindCommand) {
+    analyzeValidFLE2ExplainCommandCommon(kFindCmd, kTransformedFLE2FindCmd);
 }
 
 static const char* kAggregateCmd =
@@ -722,24 +832,6 @@ TEST_F(MongoCryptTest, AnalyzeExplainWithoutOuterDb) {
         input.c_str(), mongo_crypt_v1_error::MONGO_CRYPT_V1_ERROR_EXCEPTION, 40414);
 }
 
-TEST_F(MongoCryptTest, AnalyzeExplainWithoutInnerDb) {
-    std::string input =
-        R"({
-            "explain" : {
-                "find" : "test",
-                "filter" : {
-                    "user.account" : "secret"
-                }
-            },
-            "jsonSchema": <SCHEMA>,
-            "isRemoteSchema": false,
-            "$db" : "test"
-        })";
-    replace_str(input, "<SCHEMA>", kSchema);
-    checkAnalysisFailure(
-        input.c_str(), mongo_crypt_v1_error::MONGO_CRYPT_V1_ERROR_EXCEPTION, 40414);
-}
-
 TEST_F(MongoCryptTest, AnalyzeExplainWithMismatchedDb) {
     std::string input =
         R"({
@@ -796,6 +888,54 @@ TEST_F(MongoCryptTest, AnalyzeExplainWithInnerIsRemoteSchema) {
     replace_str(input, "<SCHEMA>", kSchema);
     checkAnalysisFailure(
         input.c_str(), mongo_crypt_v1_error::MONGO_CRYPT_V1_ERROR_EXCEPTION, 6206602);
+}
+
+TEST_F(MongoCryptTest, AnalyzeExplainWithInnerAndOuterEncryptionInformation) {
+    std::string input =
+        R"({
+            "explain" : {
+                <CMD>,
+                "encryptionInformation": <ENCRYPTINFO>
+            },
+            "encryptionInformation": <ENCRYPTINFO>,
+            "$db" : "test"
+        })";
+    replace_str(input, "<CMD>", kFindCmd);
+    replace_str(input, "<ENCRYPTINFO>", kEncryptionInfo);
+    replace_str(input, "<ENCRYPTINFO>", kEncryptionInfo);
+    checkAnalysisFailure(
+        input.c_str(), mongo_crypt_v1_error::MONGO_CRYPT_V1_ERROR_EXCEPTION, 6650801);
+}
+
+TEST_F(MongoCryptTest, AnalyzeExplainWithInnerEncryptionInformation) {
+    std::string input =
+        R"({
+            "explain" : {
+                <CMD>,
+                "lsid" : { "id": { "$uuid": "32de9140-7ade-46bf-a72a-49442e4e93d7" } },
+                "encryptionInformation": <ENCRYPTINFO>
+            },
+            "lsid" : { "id": { "$uuid": "32de9140-7ade-46bf-a72a-49442e4e93d7" } },
+            "$db" : "test"
+        })";
+    std::string output =
+        R"({
+            "hasEncryptionPlaceholders" : true,
+            "schemaRequiresEncryption" : true,
+            "result" : {
+                "explain" : {
+                    <CMD>,
+                    "lsid" : { "id" : { "$binary" : "Mt6RQHreRr+nKklELk6T1w==", "$type" : "04" } },
+                    "encryptionInformation" : <ENCRYPTINFO>
+                },
+                "verbosity" : "allPlansExecution"
+            }
+        })";
+    replace_str(input, "<CMD>", kFindCmd);
+    replace_str(input, "<ENCRYPTINFO>", kEncryptionInfo);
+    replace_str(output, "<CMD>", kTransformedFLE2FindCmd);
+    replace_str(output, "<ENCRYPTINFO>", kEncryptionInfo);
+    checkAnalysisSuccess(input.c_str(), output.c_str());
 }
 
 #if !defined(MONGO_CRYPT_UNITTEST_DYNAMIC)
