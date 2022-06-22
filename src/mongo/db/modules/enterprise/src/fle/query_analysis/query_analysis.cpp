@@ -1,8 +1,6 @@
 /**
  * Copyright (C) 2019 MongoDB, Inc.  All Rights Reserved.
  */
-
-#include "mongo/db/namespace_string.h"
 #include "mongo/platform/basic.h"
 
 #include "query_analysis.h"
@@ -17,6 +15,7 @@
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/crypto/encryption_fields_gen.h"
 #include "mongo/crypto/encryption_fields_util.h"
+#include "mongo/crypto/fle_crypto.h"
 #include "mongo/crypto/fle_field_schema_gen.h"
 #include "mongo/db/coll_mod_gen.h"
 #include "mongo/db/commands.h"
@@ -810,7 +809,9 @@ BSONObj buildFle2EncryptPlaceholder(EncryptionPlaceholderContext ctx,
     auto ki = metadata.keyId.uuids()[0];
     auto cm = algorithm == Fle2AlgorithmInt::kUnindexed
         ? 0
-        : metadata.fle2SupportedQueries.get()[0].getContention();
+        : metadata.fle2SupportedQueries.get()[0]
+              .getContention();  // TODO: SERVER-67421 support multiple encrypted query types on a
+                                 // single field.
     auto marking = FLE2EncryptionPlaceholder(
         placeholderType, algorithm, ki /*indexKeyId*/, ki /*userKeyId*/, IDLAnyType(elem), cm);
 
@@ -1182,6 +1183,52 @@ Value buildEncryptPlaceholder(Value input,
                                          collator,
                                          boost::none,
                                          boost::none)[wrappingKey]);
+}
+
+BSONObj serializeFle2Placeholder(StringData fieldname,
+                                 const FLE2EncryptionPlaceholder& placeholder) {
+
+    // Encode the placeholder BSON as BinData (sub-type 6 for encryption). Prepend the
+    // sub-subtype byte representing the FLE2 intent-to-encrypt marking before the BSON payload.
+    BufBuilder binDataBuffer;
+    binDataBuffer.appendChar(static_cast<uint8_t>(EncryptedBinDataType::kFLE2Placeholder));
+    auto markingObj = placeholder.toBSON();
+    binDataBuffer.appendBuf(markingObj.objdata(), markingObj.objsize());
+
+    BSONObjBuilder binDataBob;
+    binDataBob.appendBinData(
+        fieldname, binDataBuffer.len(), BinDataType::Encrypt, binDataBuffer.buf());
+    return binDataBob.obj();
+}
+
+std::unique_ptr<EncryptedBetweenMatchExpression> buildEncryptedBetweenWithPlaceholder(
+    StringData fieldname, UUID ki, int64_t cm, BSONElement min, BSONElement max) {
+    auto range_obj = BSON("" << BSON_ARRAY(min << max));
+    auto placeholder =
+        serializeFle2Placeholder(fieldname,
+                                 FLE2EncryptionPlaceholder(Fle2PlaceholderType::kFind,
+                                                           Fle2AlgorithmInt::kRange,
+                                                           ki,
+                                                           ki,
+                                                           IDLAnyType(range_obj.firstElement()),
+                                                           cm));
+    return std::make_unique<EncryptedBetweenMatchExpression>(fieldname, placeholder.firstElement());
+}
+
+std::pair<BSONElement, BSONElement> getEncryptedRange(
+    const FLE2EncryptionPlaceholder& placeholder) {
+    auto range = placeholder.getValue().getElement().Array();
+    invariant(range.size() == 2);
+    return {range[0], range[1]};
+}
+
+FLE2EncryptionPlaceholder parseRangePlaceholder(BSONElement elt) {
+    auto cdr = binDataToCDR(elt);
+    auto [encryptedType, subCdr] = fromEncryptedConstDataRange(cdr);
+    tassert(6720203,
+            "BinData payload not a placeholder.",
+            encryptedType == EncryptedBinDataType::kFLE2Placeholder);
+    return parseFromCDR<FLE2EncryptionPlaceholder>(subCdr);
 }
 
 }  // namespace mongo::query_analysis

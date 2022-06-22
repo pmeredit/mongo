@@ -255,5 +255,30 @@ BSONObj buildEncryptPlaceholder(
     const boost::optional<BSONObj>& origDoc = boost::none,
     boost::optional<const EncryptionSchemaTreeNode&> schema = boost::none);
 
+/**
+ * Get the min and max from an encrypted range placeholder. The returned elements are held by the
+ * passed-in placeholder, so the placeholder must outlive the return value of this function.
+ */
+std::pair<BSONElement, BSONElement> getEncryptedRange(const FLE2EncryptionPlaceholder& placeholder);
+
+/**
+ * Serialize a FLE2EncryptionPlaceholder to BSON, properly wrapping the placeholder as bindata with
+ * the encryption subtype.
+ */
+BSONObj serializeFle2Placeholder(StringData fieldname,
+                                 const FLE2EncryptionPlaceholder& placeholder);
+
+/**
+ * Build a $encryptedBetween MatchExpression with a placeholder range. The min and max BSONElements
+ * will be copied into owned BSON inside the created MatchExpression.
+ */
+std::unique_ptr<EncryptedBetweenMatchExpression> buildEncryptedBetweenWithPlaceholder(
+    StringData fieldname, UUID ki, int64_t cm, BSONElement min, BSONElement max);
+
+/**
+ * Parse a range placeholder from an BinData payload.
+ */
+FLE2EncryptionPlaceholder parseRangePlaceholder(BSONElement elt);
+
 }  // namespace query_analysis
 }  // namespace mongo
