@@ -1,0 +1,20 @@
+# Copyright (C) 2022-present MongoDB, Inc.
+
+global:
+    cpp_namespace: "mongo"
+    cpp_includes:
+    - "sasl/oidc_params.h"
+
+server_parameters:
+    oidcAuthURL:
+        description: "Address of the IDP authentication endpoint"
+        set_at: startup
+        cpp_varname: "oidcGlobalParams.authURL"
+    oidcClientId:
+        description: "Unique identifier of this OIDC client"
+        set_at: startup
+        cpp_varname: "oidcGlobalParams.clientId"
+    oidcClientSecret:
+        description: "Secret used when communicating with IDP"
+        set_at: startup
+        cpp_varname: "oidcGlobalParams.clientSecret"
