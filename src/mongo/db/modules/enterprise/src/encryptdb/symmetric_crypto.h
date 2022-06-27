@@ -68,12 +68,18 @@ struct HeaderGCMV1 {
     static constexpr std::size_t kExtraSize = 13;
     static constexpr std::size_t kIVSize = 12;
 };
-
+#ifdef _GLIBCXX_DEBUG
+constexpr size_t kMaxHeaderSize = 37;
+static_assert(HeaderGCMV1::kTagSize + HeaderGCMV1::kExtraSize + HeaderGCMV1::kIVSize == 37);
+static_assert(HeaderGCMV0::kTagSize + HeaderGCMV0::kExtraSize + HeaderGCMV0::kIVSize == 24);
+static_assert(HeaderCBCV0::kTagSize + HeaderCBCV0::kExtraSize + HeaderCBCV0::kIVSize == 16);
+#else
 constexpr size_t kMaxHeaderSize = std::max<size_t>({
     HeaderCBCV0::kTagSize + HeaderCBCV0::kExtraSize + HeaderCBCV0::kIVSize,
     HeaderGCMV0::kTagSize + HeaderGCMV0::kExtraSize + HeaderGCMV0::kIVSize,
     HeaderGCMV1::kTagSize + HeaderGCMV1::kExtraSize + HeaderGCMV1::kIVSize,
 });
+#endif
 
 template <typename T, class Header>
 class EncryptedMemoryLayout {
