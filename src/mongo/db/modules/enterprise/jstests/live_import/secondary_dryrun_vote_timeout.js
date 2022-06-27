@@ -45,6 +45,10 @@ const importFn = function(dbName, collectionProperties) {
 const waitForImportShell =
     startParallelShell(funWithArgs(importFn, dbName, collectionProperties), primary.port);
 
+// Wait for the secondary to vote for the dry run.
+jsTestLog('Waiting for the primary to receive a vote from the secondary for the dry run.');
+checkLog.containsJson(primary, 5085500, {dryRunSuccess: true});
+
 // The voteCommitImportCollection should have been blocked by now.
 failPoint.wait();
 
