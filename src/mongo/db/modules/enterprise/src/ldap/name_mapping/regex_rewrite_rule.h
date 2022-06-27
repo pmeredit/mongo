@@ -7,8 +7,9 @@
 #include "rewrite_rule.h"
 
 #include <optional>
-#include <pcrecpp.h>
 #include <string>
+
+#include "mongo/util/pcre.h"
 
 namespace mongo {
 
@@ -53,9 +54,9 @@ public:
     StringData toStringData() const final;
 
 private:
-    RegexRewriteRule(pcrecpp::RE match, std::string substitution, std::string stringRepresentation);
+    RegexRewriteRule(pcre::Regex match, std::string substitution, std::string stringRepresentation);
 
-    pcrecpp::RE _match;
+    pcre::Regex _match;
     std::string _substitution;          // The string which capture groups will be substituted into
     std::string _stringRepresentation;  // Stored for toStringData
 };

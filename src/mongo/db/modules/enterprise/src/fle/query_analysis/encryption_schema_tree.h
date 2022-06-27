@@ -5,7 +5,6 @@
 #pragma once
 
 #include <functional>
-#include <pcrecpp.h>
 #include <type_traits>
 
 #include "mongo/base/clonable_ptr.h"
@@ -14,6 +13,8 @@
 #include "mongo/db/field_ref.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/db/pipeline/expression.h"
+#include "mongo/util/errno_util.h"
+#include "mongo/util/pcre.h"
 #include "mongo/util/str.h"
 #include "query_analysis.h"
 #include "resolved_encryption_info.h"
@@ -114,15 +115,15 @@ public:
     struct PatternPropertiesChild {
         PatternPropertiesChild(StringData regexStringData,
                                std::unique_ptr<EncryptionSchemaTreeNode> child)
-            : regex(regexStringData.toString()), child(std::move(child)) {
-            const auto& errorStr = regex.error();
+            : regex{std::string{regexStringData}}, child(std::move(child)) {
             uassert(51141,
                     str::stream() << "Invalid regular expression in 'patternProperties': "
-                                  << regexStringData << " PCRE error string: " << errorStr,
-                    errorStr.empty());
+                                  << regexStringData
+                                  << " PCRE error string: " << errorMessage(regex.error()),
+                    regex);
         }
 
-        pcrecpp::RE regex;
+        pcre::Regex regex;
         clonable_ptr<EncryptionSchemaTreeNode> child;
 
         bool operator==(const PatternPropertiesChild& other) const {

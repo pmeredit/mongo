@@ -11,7 +11,8 @@
 #include "mongo/crypto/fle_field_schema_gen.h"
 #include "mongo/db/matcher/schema/encrypt_schema_gen.h"
 #include "mongo/db/matcher/schema/json_schema_parser.h"
-#include "mongo/util/regex_util.h"
+#include "mongo/util/pcre.h"
+#include "mongo/util/pcre_util.h"
 #include "mongo/util/string_map.h"
 
 #include <algorithm>
@@ -388,8 +389,8 @@ std::unique_ptr<EncryptionSchemaTreeNode> parseObjectKeywords(
 
             // At the top level, if _id matches the pattern, we need to ban the random encryption
             // algorithm.
-            pcrecpp::RE re(pattern.fieldName());
-            if (topLevel && re.PartialMatch("_id")) {
+            pcre::Regex re(pattern.fieldName());
+            if (topLevel && re.matchView("_id")) {
                 encryptAllowedSetForPattern &= ~EncryptAllowed::kRandom;
             }
 
@@ -578,8 +579,7 @@ std::vector<EncryptionSchemaTreeNode*> EncryptionSchemaTreeNode::getChildrenForP
     }
 
     for (auto&& [regex, child] : _patternPropertiesChildren) {
-        if (regex.PartialMatch(
-                pcrecpp::StringPiece{name.rawData(), static_cast<int>(name.size())})) {
+        if (regex.matchView(name)) {
             matchingChildren.push_back(child.get());
         }
     }

@@ -20,7 +20,7 @@ namespace mongo {
 
 StatusWith<LDAPRewriteRule> LDAPRewriteRule::create(const std::string& strMatch,
                                                     const std::string& strQuery) {
-    pcrecpp::RE match(strMatch, pcrecpp::UTF8());
+    pcre::Regex match(strMatch, pcre::UTF);
 
     auto swQueryParameters = LDAPQueryConfig::createLDAPQueryConfigWithComponents(strQuery);
     if (!swQueryParameters.isOK()) {
@@ -37,7 +37,7 @@ StatusWith<LDAPRewriteRule> LDAPRewriteRule::create(const std::string& strMatch,
 LDAPRewriteRule::LDAPRewriteRule(LDAPRewriteRule&& rr) = default;
 LDAPRewriteRule& LDAPRewriteRule::operator=(LDAPRewriteRule&& rr) = default;
 
-LDAPRewriteRule::LDAPRewriteRule(pcrecpp::RE match,
+LDAPRewriteRule::LDAPRewriteRule(pcre::Regex match,
                                  ComponentSubstitutionLDAPQueryConfig queryParameters,
                                  std::string stringRepresentation)
     : _match(std::move(match)),

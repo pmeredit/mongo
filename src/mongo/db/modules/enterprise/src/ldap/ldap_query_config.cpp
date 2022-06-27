@@ -8,11 +8,11 @@
 
 #include <functional>
 #include <limits>
-#include <pcrecpp.h>
 
 #include "mongo/base/status_with.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/ctype.h"
+#include "mongo/util/pcre.h"
 #include "mongo/util/str.h"
 
 namespace mongo {
@@ -56,7 +56,7 @@ StatusWith<std::string> percentDecodeString(std::string&& input) {
 }
 
 // clang-format off
-const pcrecpp::RE ldapRelativeURIRegex(
+const pcre::Regex ldapRelativeURIRegex(
     "(?:([^?]+)?" // [ dn
         "(?:\\?([^?]+)?" // [ "?" [attributes]
             "(?:\\?([^?]+)?" // [ "?" [scope]
@@ -66,7 +66,7 @@ const pcrecpp::RE ldapRelativeURIRegex(
             ")?"
         ")?"
     ")?"
-    , pcrecpp::UTF8());
+    , pcre::UTF | pcre::ANCHORED | pcre::ENDANCHORED);
 // clang-format on
 
 const StringData kBase{"base"};
@@ -112,9 +112,20 @@ StatusWith<T> LDAPQueryConfig::createDerivedLDAPQueryConfig(const std::string& i
 
     // Use a regular expression to find all the interesting components in the query URI and copy
     // them into std::strings.
-    if (!ldapRelativeURIRegex.FullMatch(
-            input, &params.baseDN, &attributes, &scope, &params.filter, &extensions)) {
+    if (auto m = ldapRelativeURIRegex.matchView(input); !m) {
         return Status(ErrorCodes::FailedToParse, "Invalid LDAP URL");
+    } else {
+        invariant(m.captureCount() == 5);
+        size_t mi = 1;
+        for (std::string* sp : {
+                 &params.baseDN,
+                 &attributes,
+                 &scope,
+                 &params.filter,
+                 &extensions,
+             }) {
+            *sp = std::string{m[mi++]};
+        }
     }
 
     // After being parsed by the regex, the attributes are stored as a comma separated string.

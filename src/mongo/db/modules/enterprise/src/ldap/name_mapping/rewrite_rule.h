@@ -6,11 +6,11 @@
 
 #include <boost/optional.hpp>
 #include <optional>
-#include <pcrecpp.h>
 #include <string>
 #include <vector>
 
 #include "mongo/db/auth/user_acquisition_stats.h"
+#include "mongo/util/pcre.h"
 
 namespace mongo {
 class LDAPRunner;
@@ -54,7 +54,7 @@ public:
     virtual StringData toStringData() const = 0;
 
 protected:
-    StatusWith<std::vector<std::string>> _extractMatches(const pcrecpp::RE& match,
+    StatusWith<std::vector<std::string>> _extractMatches(const pcre::Regex& match,
                                                          StringData input) const;
 };
 

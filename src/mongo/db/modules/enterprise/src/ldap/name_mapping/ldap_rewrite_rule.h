@@ -50,12 +50,11 @@ public:
     StringData toStringData() const final;
 
 private:
-    LDAPRewriteRule(pcrecpp::RE match,
+    LDAPRewriteRule(pcre::Regex match,
                     ComponentSubstitutionLDAPQueryConfig queryParameters,
                     std::string stringRepresentation);
 
-
-    pcrecpp::RE _match;
+    pcre::Regex _match;
     ComponentSubstitutionLDAPQueryConfig _queryConfig;
     std::string _stringRepresentation;  // Stored for toStringData
 };
